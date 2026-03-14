@@ -1,0 +1,28 @@
+{
+    "extends": "../tsconfig.base.json",
+    "compilerOptions": {
+        "jsx": "react",
+        "rootDir": "..",
+        "experimentalDecorators": true,
+        "outDir": "dist",
+        "noEmit": true,
+        "types": [
+            "node",
+            "bun-types"
+        ],
+        "baseUrl": ".",
+        "paths": {
+            "@/*": ["src/*"],
+            "#embedded-assets": ["src/runtime/embeddedAssets"]
+        }
+    },
+    "include": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.d.ts",
+        "tools/**/*.d.ts",
+        "../hub/src/**/*.ts",
+        "../hub/src/**/*.d.ts"
+    ],
+    "exclude": ["node_modules"]
+}

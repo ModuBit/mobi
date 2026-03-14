@@ -1,0 +1,11 @@
+{
+    "login": {
+        "title": "MOBI",
+        "subtitle": "随时随地 Vibe Coding",
+        "tokenPlaceholder": "访问令牌",
+        "tokenRequired": "请输入访问令牌",
+        "connect": "连接",
+        "connectSuccess": "连接成功",
+        "authFailed": "认证失败，请检查 Token 是否正确"
+    }
+}

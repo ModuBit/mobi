@@ -1,0 +1,11 @@
+{
+    "login": {
+        "title": "MOBI",
+        "subtitle": "Vibe Coding Anywhere",
+        "tokenPlaceholder": "Access Token",
+        "tokenRequired": "Please enter access token",
+        "connect": "Connect",
+        "connectSuccess": "Connected",
+        "authFailed": "Authentication failed, please check your token"
+    }
+}

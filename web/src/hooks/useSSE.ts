@@ -1,0 +1,74 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { useEffect, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { SSEClient } from '@/realtime/sseClient'
+import { useAuthStore } from '@/stores/authStore'
+import type { SyncEvent } from '@mobi/shared'
+
+/**
+ * SSE 连接 Hook
+ * 自动管理 SSE 连接生命周期，并在收到事件时更新 React Query 缓存
+ */
+export function useSSE() {
+    const { token } = useAuthStore()
+    const queryClient = useQueryClient()
+    const clientRef = useRef<SSEClient | null>(null)
+
+    useEffect(() => {
+        if (!token) return
+
+        const client = new SSEClient(() => {
+            if (!token) return null
+            return `${window.location.origin}/api/events?token=${token}`
+        })
+
+        clientRef.current = client
+
+        const unsubscribe = client.subscribe((event: SyncEvent) => {
+            handleSyncEvent(event, queryClient)
+        })
+
+        client.connect()
+
+        return () => {
+            unsubscribe()
+            client.disconnect()
+        }
+    }, [token, queryClient])
+
+    return clientRef.current
+}
+
+/**
+ * 处理同步事件，更新 React Query 缓存
+ */
+function handleSyncEvent(event: SyncEvent, queryClient: ReturnType<typeof useQueryClient>) {
+    switch (event.type) {
+        case 'session-added':
+        case 'session-updated':
+        case 'session-removed':
+            queryClient.invalidateQueries({ queryKey: ['sessions'] })
+            if (event.type !== 'session-removed') {
+                queryClient.invalidateQueries({ queryKey: ['session', event.sessionId] })
+            }
+            break
+        case 'message-received':
+            queryClient.invalidateQueries({ queryKey: ['messages', event.sessionId] })
+            break
+    }
+}

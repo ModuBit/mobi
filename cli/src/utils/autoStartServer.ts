@@ -1,0 +1,189 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * Auto-start hub module
+ *
+ * Automatically starts the MOBI hub when CLI is launched
+ * if specific conditions are met:
+ * 1. MOBI_API_URL is not set (using default localhost:2222)
+ * 2. cliApiToken exists in settings.json (hub was previously started)
+ * 3. Port 2222 is not currently listening
+ */
+
+import chalk from 'chalk'
+import { createConnection } from 'node:net'
+import { configuration } from '@/configuration'
+import { readSettings } from '@/persistence'
+import { spawnMobiCli } from '@/utils/spawnMobiCli'
+import { logger } from '@/ui/logger'
+
+const DEFAULT_SERVER_PORT = 2222
+const SERVER_STARTUP_TIMEOUT_MS = 10000
+const POLL_INTERVAL_MS = 200
+const PORT_CHECK_TIMEOUT_MS = 1000
+
+/**
+ * Check if a port is currently listening (cross-platform)
+ */
+async function checkPortListening(port: number, host: string = '127.0.0.1'): Promise<boolean> {
+    return new Promise((resolve) => {
+        const socket = createConnection({ port, host })
+
+        const cleanup = () => {
+            socket.removeAllListeners()
+            socket.destroy()
+        }
+
+        socket.setTimeout(PORT_CHECK_TIMEOUT_MS)
+
+        socket.on('connect', () => {
+            cleanup()
+            resolve(true)
+        })
+
+        socket.on('error', () => {
+            cleanup()
+            resolve(false)
+        })
+
+        socket.on('timeout', () => {
+            cleanup()
+            resolve(false)
+        })
+    })
+}
+
+/**
+ * Check if hub is ready via health endpoint
+ */
+async function checkServerHealth(url: string): Promise<boolean> {
+    try {
+        const response = await fetch(`${url}/health`, {
+            signal: AbortSignal.timeout(1000)
+        })
+        return response.ok
+    } catch {
+        return false
+    }
+}
+
+/**
+ * Wait for hub to become ready
+ */
+async function waitForServerReady(
+    url: string,
+    maxWaitMs: number = SERVER_STARTUP_TIMEOUT_MS,
+    pollIntervalMs: number = POLL_INTERVAL_MS
+): Promise<boolean> {
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < maxWaitMs) {
+        if (await checkServerHealth(url)) {
+            logger.debug(`[AUTO-START] Server ready after ${Date.now() - startTime}ms`)
+            return true
+        }
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+    }
+
+    return false
+}
+
+/**
+ * Determine if hub should be auto-started
+ */
+async function shouldAutoStartServer(): Promise<boolean> {
+    // Condition 1: MOBI_API_URL not set (using default localhost:2222)
+    if (process.env.MOBI_API_URL) {
+        logger.debug('[AUTO-START] MOBI_API_URL is set, skipping auto-start')
+        return false
+    }
+
+    // Condition 2: Check settings.json
+    const settings = await readSettings()
+
+    // 2a: apiUrl is set in settings.json (user configured a specific hub)
+    if (settings.apiUrl || settings.serverUrl) {
+        logger.debug('[AUTO-START] apiUrl is set in settings.json, skipping auto-start')
+        return false
+    }
+
+    // 2b: cliApiToken exists in settings.json (hub was previously started)
+    if (!settings.cliApiToken) {
+        logger.debug('[AUTO-START] No cliApiToken in settings, skipping auto-start')
+        return false
+    }
+
+    // Condition 3: Port 2222 is not currently listening
+    const isListening = await checkPortListening(DEFAULT_SERVER_PORT)
+    if (isListening) {
+        logger.debug('[AUTO-START] Port 2222 already in use, skipping auto-start')
+        return false
+    }
+
+    return true
+}
+
+/**
+ * Start hub as a child process (will exit when CLI exits)
+ */
+function startServerAsChild(): void {
+    const serverProcess = spawnMobiCli(['hub'], {
+        detached: false,
+        stdio: 'ignore',
+        env: process.env
+    })
+
+    logger.debug(`[AUTO-START] Hub process spawned with PID ${serverProcess.pid}`)
+
+    // Ensure hub is killed when CLI exits
+    process.on('exit', () => {
+        serverProcess.kill()
+    })
+}
+
+/**
+ * Main entry point: auto-start hub if conditions are met
+ */
+export async function maybeAutoStartServer(): Promise<void> {
+    try {
+        const shouldStart = await shouldAutoStartServer()
+        if (!shouldStart) {
+            return
+        }
+
+        logger.debug('[AUTO-START] Starting hub automatically...')
+        console.log(chalk.gray('Starting MOBI hub in background...'))
+
+        startServerAsChild()
+
+        const isReady = await waitForServerReady(configuration.apiUrl)
+
+        if (!isReady) {
+            console.log(chalk.yellow('Warning: Hub did not start within expected time'))
+            console.log(chalk.gray('  Try running `mobi hub` manually to see errors'))
+            return
+        }
+
+        console.log(chalk.green('MOBI hub started'))
+    } catch (error) {
+        logger.debug('[AUTO-START] Error during hub auto-start', error)
+        console.log(chalk.yellow('Warning: Failed to auto-start hub'))
+        if (error instanceof Error) {
+            console.log(chalk.gray(`  Error: ${error.message}`))
+        }
+    }
+}
