@@ -17,10 +17,10 @@
 import { theme as antTheme, Tooltip, Dropdown } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
-import { useUiStore } from '@/stores/uiStore'
+import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/authStore'
 import { useIsMobile } from '@/hooks/useMediaQuery'
-import { mainNavItems, bottomNavItems, logoutNavItem } from './navConfig'
+import { mainNavItems, bottomNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { User } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
@@ -47,6 +47,7 @@ const LogoContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] 
     justify-content: center;
     margin-bottom: 16px;
     color: ${props => props.$token.colorPrimary};
+    cursor: pointer;
 `
 
 const LogoImage = styled.img`
@@ -82,16 +83,12 @@ const Spacer = styled.div`
 export function RailNav() {
     const { token } = useToken()
     const { t } = useTranslation()
-    const { activeModule, setActiveModule } = useUiStore()
+    const navigate = useNavigate()
+    const location = useLocation()
     const { logout } = useAuthStore()
     const isMobile = useIsMobile()
 
-    // 移动端不显示侧边导航栏
-    if (isMobile) {
-        return null
-    }
-
-    // 用户菜单项 - 使用 useMemo 避免每次渲染重新创建
+    // 用户菜单项 - 使用 useMemo 避免每次渲染重新创建（必须在条件返回之前）
     const userMenuItems: MenuProps['items'] = useMemo(() => [
         {
             key: logoutNavItem.key,
@@ -101,11 +98,28 @@ export function RailNav() {
         },
     ], [t, logout])
 
+    // 处理导航点击
+    const handleNavClick = (key: string, disabled?: boolean) => {
+        if (disabled) return
+        const path = navPathMap[key]
+        if (path) {
+            navigate({ to: path })
+        }
+    }
+
+    // 移动端不显示侧边导航栏
+    if (isMobile) {
+        return null
+    }
+
     // 桌面端：左侧垂直导航栏
     return (
         <SidebarContainer $token={token}>
-            {/* Logo */}
-            <LogoContainer $token={token}>
+            {/* Logo - 点击跳转到会话列表 */}
+            <LogoContainer
+                $token={token}
+                onClick={() => navigate({ to: '/sessions' })}
+            >
                 <LogoImage src="/logo.svg" alt="Mobi" />
             </LogoContainer>
 
@@ -117,10 +131,10 @@ export function RailNav() {
                     placement="right"
                 >
                     <NavItem
-                        $active={activeModule === item.key}
+                        $active={getNavActiveKey(location.pathname, item.key)}
                         $token={token}
                         disabled={item.disabled}
-                        onClick={() => !item.disabled && setActiveModule(item.key as typeof activeModule)}
+                        onClick={() => handleNavClick(item.key, item.disabled)}
                     >
                         <item.icon size={20} />
                     </NavItem>
@@ -137,9 +151,9 @@ export function RailNav() {
                     placement="right"
                 >
                     <NavItem
-                        $active={activeModule === item.key}
+                        $active={getNavActiveKey(location.pathname, item.key)}
                         $token={token}
-                        onClick={() => setActiveModule(item.key as typeof activeModule)}
+                        onClick={() => handleNavClick(item.key)}
                     >
                         <item.icon size={20} />
                     </NavItem>

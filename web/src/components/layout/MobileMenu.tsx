@@ -16,10 +16,11 @@
 
 import { theme as antTheme, Drawer } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useUiStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useIsMobile } from '@/hooks/useMediaQuery'
-import { mobileNavItems, logoutNavItem } from './navConfig'
+import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { Menu } from 'lucide-react'
 import styled from '@emotion/styled'
 
@@ -93,16 +94,21 @@ export function MobileMenuButton() {
 export function MobileMenuDrawer() {
     const { token } = useToken()
     const { t } = useTranslation()
-    const { mobileMenuOpen, setMobileMenuOpen, activeModule, setActiveModule } = useUiStore()
+    const navigate = useNavigate()
+    const location = useLocation()
+    const { mobileMenuOpen, setMobileMenuOpen } = useUiStore()
     const { logout } = useAuthStore()
     const isMobile = useIsMobile()
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
 
-    // 选择菜单项
+    // 选择菜单项 - 使用路由导航
     const handleSelect = (key: string) => {
-        setActiveModule(key as typeof activeModule)
+        const path = navPathMap[key]
+        if (path) {
+            navigate({ to: path })
+        }
         handleClose()
     }
 
@@ -114,18 +120,18 @@ export function MobileMenuDrawer() {
             open={mobileMenuOpen}
             onClose={handleClose}
             placement="bottom"
-            height="auto"
             closable={false}
             styles={{
-                body: { padding: 0 },
+                body: { padding: 0, maxHeight: '80vh', overflow: 'auto' },
                 header: { display: 'none' },
+                wrapper: { height: 'auto', maxHeight: '80vh' },
             }}
         >
             <MenuContent $token={token}>
                 {mobileNavItems.map((item) => (
                     <MenuItem
                         key={item.key}
-                        $active={activeModule === item.key}
+                        $active={getNavActiveKey(location.pathname, item.key)}
                         $token={token}
                         onClick={() => handleSelect(item.key)}
                     >

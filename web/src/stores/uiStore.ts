@@ -22,8 +22,6 @@ import i18n from '@/i18n'
 type SessionViewMode = 'chat' | 'files' | 'terminal'
 // 文件视图 Tab
 type FileViewTab = 'files' | 'git'
-// 激活的模块
-type ActiveModule = 'sessions' | 'skills' | 'mcp' | 'settings'
 // 主题（支持 system）
 type Theme = 'light' | 'dark' | 'system'
 // 语言
@@ -48,10 +46,9 @@ export function resolveTheme(theme: Theme): 'light' | 'dark' {
 }
 
 interface UiState {
-    // 新状态
+    // 会话视图状态
     sessionViewMode: SessionViewMode
     fileViewTab: FileViewTab
-    activeModule: ActiveModule
     theme: Theme
     locale: Locale
     mobileMenuOpen: boolean
@@ -60,7 +57,6 @@ interface UiState {
     // 操作方法
     setSessionViewMode: (mode: SessionViewMode) => void
     setFileViewTab: (tab: FileViewTab) => void
-    setActiveModule: (module: ActiveModule) => void
     setSidebarOpen: (open: boolean) => void
     toggleSidebar: () => void
     setTheme: (theme: Theme) => void
@@ -73,14 +69,12 @@ export const useUiStore = create<UiState>()(
         (set) => ({
             sessionViewMode: 'chat',
             fileViewTab: 'files',
-            activeModule: 'sessions',
             sidebarOpen: true,
             theme: 'dark',
             locale: getSystemLocale(),
             mobileMenuOpen: false,
             setSessionViewMode: (mode) => set({ sessionViewMode: mode }),
             setFileViewTab: (tab) => set({ fileViewTab: tab }),
-            setActiveModule: (module) => set({ activeModule: module }),
             setSidebarOpen: (open) => set({ sidebarOpen: open }),
             toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
             setTheme: (theme) => set({ theme }),

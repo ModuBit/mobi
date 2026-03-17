@@ -55,3 +55,17 @@ export const logoutNavItem: NavItemConfig = {
     icon: LogOut,
     labelKey: 'nav.logout',
 }
+
+// 导航路径映射 - 统一管理所有导航路径
+export const navPathMap: Record<string, string> = {
+    sessions: '/sessions',
+    settings: '/settings',
+}
+
+// 根据当前路径判断导航项是否激活
+export function getNavActiveKey(pathname: string, key: string): boolean {
+    if (key === 'sessions') {
+        return pathname === '/' || pathname === '/sessions' || pathname.startsWith('/sessions/')
+    }
+    return pathname === `/${key}`
+}

@@ -14,10 +14,13 @@
  * limitations under the License.
  */
 
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter, redirect, Outlet } from '@tanstack/react-router'
 import { App } from './App'
 import { LoginPage } from './pages/LoginPage'
 import { MainLayout } from './components/layout/MainLayout'
+import { SessionsPage } from './pages/SessionsPage'
+import { SessionDetailPage } from './pages/SessionDetailPage'
+import { SettingsPage } from './pages/SettingsPage'
 
 // Root route - wraps all routes with App component
 const rootRoute = createRootRoute({
@@ -31,25 +34,52 @@ const loginRoute = createRoute({
     component: LoginPage,
 })
 
-// 主布局路由
-const mainRoute = createRoute({
+// 主布局路由 - pathless layout route（不消耗 URL 路径）
+const mainLayoutRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/',
+    id: 'mainLayout',
     component: MainLayout,
 })
 
+// 索引路由 - 重定向到会话列表
+const indexRoute = createRoute({
+    getParentRoute: () => mainLayoutRoute,
+    path: '/',
+    beforeLoad: () => {
+        throw redirect({ to: '/sessions' })
+    },
+})
+
+// 会话列表页
+const sessionsRoute = createRoute({
+    getParentRoute: () => mainLayoutRoute,
+    path: 'sessions',
+    component: SessionsPage,
+})
+
 // 会话详情页
-const sessionRoute = createRoute({
-    getParentRoute: () => mainRoute,
+const sessionDetailRoute = createRoute({
+    getParentRoute: () => mainLayoutRoute,
     path: 'sessions/$sessionId',
+    component: SessionDetailPage,
+})
+
+// 设置页
+const settingsRoute = createRoute({
+    getParentRoute: () => mainLayoutRoute,
+    path: 'settings',
+    component: SettingsPage,
 })
 
 // Create router
 export const router = createRouter({
     routeTree: rootRoute.addChildren([
         loginRoute,
-        mainRoute.addChildren([
-            sessionRoute,
+        mainLayoutRoute.addChildren([
+            indexRoute,
+            sessionsRoute,
+            sessionDetailRoute,
+            settingsRoute,
         ]),
     ]),
 })

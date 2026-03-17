@@ -18,8 +18,7 @@ import { theme as antTheme, ConfigProvider } from 'antd'
 import { useUiStore, resolveTheme } from '@/stores/uiStore'
 import { RailNav } from './RailNav'
 import { MobileMenuDrawer } from './MobileMenu'
-import { SessionModule } from '@/components/session/SessionModule'
-import { SettingsModule } from '@/components/settings/SettingsModule'
+import { Outlet } from '@tanstack/react-router'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Helmet } from 'react-helmet-async'
@@ -38,30 +37,17 @@ const LayoutContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'
 const MainContent = styled.main`
     flex: 1;
     display: flex;
-    flex-direction: column;
     overflow: hidden;
     min-width: 0;
 `
 
-// 占位模块组件
-function PlaceholderModule({ name }: { name: string }) {
-    const { token } = useToken()
-    return (
-        <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            color: token.colorTextSecondary
-        }}>
-            {name} 模块开发中...
-        </div>
-    )
-}
-
+/**
+ * 主布局组件
+ * 使用 Outlet 渲染子路由内容
+ */
 export function MainLayout() {
     const { token } = useToken()
-    const { activeModule, theme } = useUiStore()
+    const { theme } = useUiStore()
     const { t } = useTranslation()
 
     // 缓存解析后的主题值
@@ -71,21 +57,6 @@ export function MainLayout() {
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', resolvedTheme)
     }, [resolvedTheme])
-
-    // 渲染内容区
-    const renderContent = () => {
-        switch (activeModule) {
-            case 'sessions':
-                return <SessionModule />
-            case 'settings':
-                return <SettingsModule />
-            case 'skills':
-            case 'mcp':
-                return <PlaceholderModule name={activeModule.toUpperCase()} />
-            default:
-                return <SessionModule />
-        }
-    }
 
     return (
         <ConfigProvider
@@ -99,7 +70,7 @@ export function MainLayout() {
             <LayoutContainer $token={token}>
                 <RailNav />
                 <MainContent>
-                    {renderContent()}
+                    <Outlet />
                 </MainContent>
             </LayoutContainer>
             {/* 移动端底部弹出菜单 */}
