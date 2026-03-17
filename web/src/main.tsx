@@ -18,7 +18,7 @@ import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider } from '@tanstack/react-router'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
-import { ConfigProvider, theme as antTheme } from 'antd'
+import { ConfigProvider, theme as antTheme, App as AntApp } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
 import { HelmetProvider } from 'react-helmet-async'
@@ -359,7 +359,9 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
                 algorithm,
             }}
         >
-            {children}
+            <AntApp>
+                {children}
+            </AntApp>
         </ConfigProvider>
     )
 }

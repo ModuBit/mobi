@@ -67,7 +67,7 @@ export function PermissionRequest({ sessionId, session }: PermissionRequestProps
             border: `1px solid ${token.colorWarningBorder}`,
             borderRadius: 8
         }}>
-            <Space direction="vertical" style={{ width: '100%' }}>
+            <Space orientation="vertical" style={{ width: '100%' }}>
                 <Text strong>
                     <ExclamationCircleOutlined style={{ color: token.colorWarningText, marginRight: 8 }} />
                     {t('chat.permission.title')}

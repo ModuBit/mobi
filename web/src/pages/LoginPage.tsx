@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Form, Input, Button, Card, Typography, Space, message, theme as antTheme } from 'antd'
+import { Form, Input, Button, Card, Typography, Space, App, theme as antTheme } from 'antd'
 import { SunOutlined, MoonOutlined } from '@ant-design/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -34,6 +34,7 @@ export function LoginPage() {
     const [loading, setLoading] = useState(false)
     const { token } = useToken()
     const { theme, setTheme, locale, setLocale } = useUiStore()
+    const { message } = App.useApp()
 
     // 主题切换（在 light 和 dark 之间切换）
     const handleToggleTheme = () => {
@@ -149,7 +150,7 @@ export function LoginPage() {
                 style={{ width: '100%', maxWidth: 400, background: 'transparent', border: 'none', boxShadow: 'none' }}
                 styles={{ body: { background: 'transparent' } }}
             >
-                <Space direction="vertical" style={{ width: '100%' }} size="large">
+                <Space orientation="vertical" style={{ width: '100%' }} size="large">
                     <div style={{ textAlign: 'center' }}>
                         <Title level={2} style={{ marginBottom: 4 }}>{t('login.title')}</Title>
                         <Paragraph type="secondary">

@@ -18,6 +18,7 @@ import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { SSEClient } from '@/realtime/sseClient'
 import { useAuthStore } from '@/stores/authStore'
+import { useNavigate } from '@tanstack/react-router'
 import type { SyncEvent } from '@mobi/shared'
 
 /**
@@ -25,17 +26,28 @@ import type { SyncEvent } from '@mobi/shared'
  * 自动管理 SSE 连接生命周期，并在收到事件时更新 React Query 缓存
  */
 export function useSSE() {
-    const { token } = useAuthStore()
+    const { token, logout } = useAuthStore()
     const queryClient = useQueryClient()
     const clientRef = useRef<SSEClient | null>(null)
+    const navigate = useNavigate()
 
     useEffect(() => {
         if (!token) return
 
-        const client = new SSEClient(() => {
-            if (!token) return null
-            return `${window.location.origin}/api/events?token=${token}`
-        })
+        const handleUnauthorized = () => {
+            // 清除认证状态
+            logout()
+            // 跳转到登录页
+            navigate({ to: '/login' })
+        }
+
+        const client = new SSEClient(
+            () => {
+                if (!token) return null
+                return `${window.location.origin}/api/events?token=${token}`
+            },
+            handleUnauthorized
+        )
 
         clientRef.current = client
 
@@ -49,7 +61,7 @@ export function useSSE() {
             unsubscribe()
             client.disconnect()
         }
-    }, [token, queryClient])
+    }, [token, queryClient, logout, navigate])
 
     return clientRef.current
 }

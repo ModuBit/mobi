@@ -14,45 +14,77 @@
  * limitations under the License.
  */
 
+import { fetchEventSource } from '@microsoft/fetch-event-source'
 import type { SyncEvent } from '@mobi/shared'
 
 type SyncEventListener = (event: SyncEvent) => void
+type UnauthorizedHandler = () => void
 
 /**
  * SSE 客户端，用于接收 Hub 服务器的实时事件
+ * 使用 @microsoft/fetch-event-source 实现，支持自定义 headers 和状态码检测
  */
 export class SSEClient {
-    private eventSource: EventSource | null = null
     private listeners: Set<SyncEventListener> = new Set()
+    private abortController: AbortController | null = null
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null
     private reconnectDelay = 1000
+    private isConnecting = false
 
     constructor(
-        private readonly getUrl: () => string | null
+        private readonly getUrl: () => string | null,
+        private readonly onUnauthorized?: UnauthorizedHandler
     ) {}
 
     /**
      * 连接到 SSE 端点
      */
-    connect(): void {
+    async connect(): Promise<void> {
+        if (this.isConnecting) return
+
         const url = this.getUrl()
         if (!url) return
 
         this.disconnect()
-        this.eventSource = new EventSource(url)
+        this.isConnecting = true
+        this.abortController = new AbortController()
 
-        this.eventSource.onmessage = (e) => {
-            try {
-                const event = JSON.parse(e.data) as SyncEvent
-                this.listeners.forEach(listener => listener(event))
-            } catch {
-                // ignore parse errors
-            }
-        }
-
-        this.eventSource.onerror = () => {
-            this.disconnect()
+        try {
+            await fetchEventSource(url, {
+                signal: this.abortController.signal,
+                onopen: async (response) => {
+                    if (response.status === 401) {
+                        // 认证失败，触发未授权回调
+                        this.onUnauthorized?.()
+                        throw new Error('Unauthorized')
+                    }
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`)
+                    }
+                },
+                onmessage: (event) => {
+                    try {
+                        const data = JSON.parse(event.data) as SyncEvent
+                        this.listeners.forEach(listener => listener(data))
+                    } catch {
+                        // ignore parse errors
+                    }
+                },
+                onerror: (error) => {
+                    // 返回重连延迟（毫秒），或抛出错误停止重连
+                    console.error('SSE error:', error)
+                    return this.reconnectDelay
+                },
+                onclose: () => {
+                    // 连接关闭，尝试重连
+                    this.scheduleReconnect()
+                },
+            })
+        } catch {
+            // 连接失败，尝试重连
             this.scheduleReconnect()
+        } finally {
+            this.isConnecting = false
         }
     }
 
@@ -60,14 +92,17 @@ export class SSEClient {
      * 断开连接
      */
     disconnect(): void {
-        this.eventSource?.close()
-        this.eventSource = null
+        if (this.abortController) {
+            this.abortController.abort()
+            this.abortController = null
+        }
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer)
             this.reconnectTimer = null
         }
-        // 重置重连延迟
+        // 重置状态
         this.reconnectDelay = 1000
+        this.isConnecting = false
     }
 
     /**
@@ -83,7 +118,10 @@ export class SSEClient {
      * 调度重连
      */
     private scheduleReconnect(): void {
+        if (this.reconnectTimer) return // 防止重复调度
+
         this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null
             this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000)
             this.connect()
         }, this.reconnectDelay)

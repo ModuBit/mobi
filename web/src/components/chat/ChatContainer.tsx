@@ -115,7 +115,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     if (messagesLoading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <Spin tip={t('common.loading')} />
+                <Spin description={t('common.loading')} />
             </div>
         )
     }
