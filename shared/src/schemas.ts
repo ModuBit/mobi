@@ -202,7 +202,8 @@ export const SessionSchema = z.object({
     thinkingAt: z.number(),
     runtimeState: RuntimeStateSchema.optional(),
     permissionMode: PermissionModeSchema.optional(),
-    modelMode: ModelModeSchema.optional()
+    modelMode: ModelModeSchema.optional(),
+    groupKey: z.string().optional()
 })
 
 export type Session = z.infer<typeof SessionSchema>
