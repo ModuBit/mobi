@@ -1,4 +1,17 @@
 {
+    "common": {
+        "loading": "Loading...",
+        "noData": "No data",
+        "confirm": "Confirm",
+        "cancel": "Cancel",
+        "approve": "Approve",
+        "reject": "Reject",
+        "back": "Back",
+        "backHome": "Back to Home",
+        "error": "Error",
+        "success": "Success",
+        "save": "Save"
+    },
     "login": {
         "title": "MOBI",
         "subtitle": "Vibe Coding Anywhere",
@@ -7,5 +20,86 @@
         "connect": "Connect",
         "connectSuccess": "Connected",
         "authFailed": "Authentication failed, please check your token"
+    },
+    "nav": {
+        "sessions": "Sessions",
+        "skills": "Skills",
+        "mcp": "MCP",
+        "settings": "Settings"
+    },
+    "home": {
+        "title": "Sessions",
+        "newSession": "New Session",
+        "logout": "Logout"
+    },
+    "session": {
+        "loadFailed": "Failed to load session",
+        "notFound": "Session not found or has been deleted",
+        "tabs": {
+            "chat": "Chat",
+            "files": "Files",
+            "git": "Git",
+            "terminal": "Terminal"
+        },
+        "status": {
+            "thinking": "Thinking",
+            "active": "Active",
+            "ended": "Ended"
+        },
+        "empty": "No sessions yet. Start a new conversation."
+    },
+    "chat": {
+        "empty": "No messages",
+        "inputPlaceholder": "Type a message... (Shift+Enter for new line)",
+        "sessionEnded": "Session ended",
+        "apiError": "API Error",
+        "duration": "Duration",
+        "retry": "Retry",
+        "permission": {
+            "title": "Permission Required",
+            "toolRequest": "Tool {{tool}} requests execution permission"
+        },
+        "tool": {
+            "input": "Input:",
+            "output": "Output:",
+            "description": "Description:",
+            "noContent": "No content"
+        }
+    },
+    "files": {
+        "title": "File Explorer",
+        "empty": "No file changes in this session",
+        "selectToView": "Select a file to view content"
+    },
+    "git": {
+        "filesChanged": "{{count}} files changed",
+        "empty": "No pending changes",
+        "selectToView": "Select a file to view diff",
+        "loadFailed": "Failed to load diff",
+        "status": {
+            "added": "Added",
+            "modified": "Modified",
+            "deleted": "Deleted",
+            "renamed": "Renamed",
+            "untracked": "Untracked"
+        }
+    },
+    "terminal": {
+        "title": "Terminal",
+        "connected": "Terminal connected",
+        "exited": "Process exited with code: {{code}}",
+        "reconnect": "Reconnect"
+    },
+    "settings": {
+        "title": "Settings",
+        "general": "General",
+        "account": "Account",
+        "notifications": "Notifications",
+        "about": "About",
+        "language": "Language",
+        "theme": "Theme",
+        "themeLight": "Light",
+        "themeDark": "Dark",
+        "themeSystem": "System"
     }
 }

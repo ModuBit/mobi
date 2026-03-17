@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-import { Layout } from 'antd'
+import { Layout, theme as antTheme } from 'antd'
 import type { ReactNode } from 'react'
 
 const { Sider, Content } = Layout
+const { useToken } = antTheme
 
 interface AppLayoutProps {
     sidebar?: ReactNode
@@ -27,6 +28,8 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ sidebar, children, sidebarOpen = true, onSidebarToggle }: AppLayoutProps) {
+    const { token } = useToken()
+
     return (
         <Layout style={{ height: '100vh' }}>
             {sidebar && (
@@ -41,8 +44,8 @@ export function AppLayout({ sidebar, children, sidebarOpen = true, onSidebarTogg
                     style={{
                         overflow: 'auto',
                         height: '100vh',
-                        background: '#fff',
-                        borderRight: '1px solid #f0f0f0'
+                        background: token.colorBgContainer,
+                        borderRight: `1px solid ${token.colorBorder}`
                     }}
                 >
                     {sidebar}

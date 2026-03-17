@@ -32,7 +32,17 @@ export function LoginPage() {
     const [form] = Form.useForm()
     const [loading, setLoading] = useState(false)
     const { token } = useToken()
-    const { theme, toggleTheme, locale, toggleLocale } = useUiStore()
+    const { theme, setTheme, locale, setLocale } = useUiStore()
+
+    // 主题切换（在 light 和 dark 之间切换）
+    const handleToggleTheme = () => {
+        setTheme(theme === 'dark' ? 'light' : 'dark')
+    }
+
+    // 语言切换
+    const handleToggleLocale = () => {
+        setLocale(locale === 'zh' ? 'en' : 'zh')
+    }
     const { t } = useTranslation()
 
     // baseUrl 就是当前页面的 origin（Hub 服务器）
@@ -78,7 +88,7 @@ export function LoginPage() {
             <div style={{ position: 'fixed', top: 16, right: 16, display: 'flex', gap: 8 }}>
                 <Button
                     type="text"
-                    onClick={toggleLocale}
+                    onClick={handleToggleLocale}
                     title={locale === 'zh' ? 'Switch to English' : '切换到中文'}
                     style={{ padding: 0, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
@@ -127,7 +137,7 @@ export function LoginPage() {
                     shape="circle"
                     type="text"
                     icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-                    onClick={toggleTheme}
+                    onClick={handleToggleTheme}
                 />
             </div>
             <Card

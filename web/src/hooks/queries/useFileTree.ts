@@ -16,7 +16,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
-import { createMobiApi } from '@/api/client'
+import { useMobiApi } from '@/api/client'
 
 export interface FileNode {
     name: string
@@ -29,7 +29,7 @@ export interface FileNode {
  */
 export function useFileTree(sessionId: string | null, path: string) {
     const { token } = useAuthStore()
-    const api = createMobiApi(token)
+    const api = useMobiApi(token)
 
     return useQuery({
         queryKey: ['files', sessionId, path],
@@ -49,7 +49,7 @@ export function useFileTree(sessionId: string | null, path: string) {
  */
 export function useFileContent(sessionId: string | null, filePath: string | null) {
     const { token } = useAuthStore()
-    const api = createMobiApi(token)
+    const api = useMobiApi(token)
 
     return useQuery({
         queryKey: ['file-content', sessionId, filePath],

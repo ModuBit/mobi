@@ -14,14 +14,16 @@
  * limitations under the License.
  */
 
-import { Button, Space, Typography, Tag } from 'antd'
+import { Button, Space, Typography, Tag, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 import type { Session } from '@/api/types'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
-import { createMobiApi } from '@/api/client'
+import { useMobiApi } from '@/api/client'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 const { Text } = Typography
+const { useToken } = antTheme
 
 interface PermissionRequestProps {
     sessionId: string
@@ -29,9 +31,11 @@ interface PermissionRequestProps {
 }
 
 export function PermissionRequest({ sessionId, session }: PermissionRequestProps) {
-    const { token } = useAuthStore()
-    const api = createMobiApi(token)
+    const { token: authToken } = useAuthStore()
+    const api = useMobiApi(authToken)
     const queryClient = useQueryClient()
+    const { token } = useToken()
+    const { t } = useTranslation()
 
     const requests = session?.agentState?.requests || {}
     const pendingRequests = Object.entries(requests)
@@ -59,17 +63,17 @@ export function PermissionRequest({ sessionId, session }: PermissionRequestProps
         <div style={{
             margin: '8px 16px',
             padding: 12,
-            background: '#fffbe6',
-            border: '1px solid #ffe58f',
+            background: token.colorWarningBg,
+            border: `1px solid ${token.colorWarningBorder}`,
             borderRadius: 8
         }}>
             <Space direction="vertical" style={{ width: '100%' }}>
-                <Space>
-                    <ExclamationCircleOutlined style={{ color: '#faad14' }} />
-                    <Text strong>需要权限确认</Text>
-                </Space>
+                <Text strong>
+                    <ExclamationCircleOutlined style={{ color: token.colorWarningText, marginRight: 8 }} />
+                    {t('chat.permission.title')}
+                </Text>
                 <Text>
-                    工具 <Tag color="orange">{toolName}</Tag> 请求执行权限
+                    {t('chat.permission.toolRequest', { tool: toolName })} <Tag color="orange">{toolName}</Tag>
                 </Text>
                 <Space>
                     <Button
@@ -78,7 +82,7 @@ export function PermissionRequest({ sessionId, session }: PermissionRequestProps
                         onClick={() => approveMutation.mutate(requestId)}
                         loading={approveMutation.isPending}
                     >
-                        批准
+                        {t('common.approve')}
                     </Button>
                     <Button
                         danger
@@ -86,7 +90,7 @@ export function PermissionRequest({ sessionId, session }: PermissionRequestProps
                         onClick={() => denyMutation.mutate(requestId)}
                         loading={denyMutation.isPending}
                     >
-                        拒绝
+                        {t('common.reject')}
                     </Button>
                 </Space>
             </Space>

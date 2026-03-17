@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-import { Card, Badge, Typography, Space } from 'antd'
+import { Card, Badge, Typography, Space, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { Session } from '@/api/types'
 import { useNavigate } from '@tanstack/react-router'
 
 const { Text } = Typography
+const { useToken } = antTheme
 
 interface SessionCardProps {
     session: Session
@@ -27,6 +29,8 @@ interface SessionCardProps {
 
 export function SessionCard({ session, active }: SessionCardProps) {
     const navigate = useNavigate()
+    const { token } = useToken()
+    const { t } = useTranslation()
     const metadata = session.metadata as { name?: string; path?: string } | undefined
 
     const handleClick = () => {
@@ -35,7 +39,9 @@ export function SessionCard({ session, active }: SessionCardProps) {
 
     const displayName = metadata?.name || metadata?.path?.split('/').pop() || session.id.slice(0, 8)
     const status = session.active ? 'processing' : 'default'
-    const statusText = session.active ? (session.thinking ? '思考中...' : '活跃') : '已结束'
+    const statusText = session.active
+        ? (session.thinking ? t('session.status.thinking') + '...' : t('session.status.active'))
+        : t('session.status.ended')
 
     return (
         <Card
@@ -45,7 +51,7 @@ export function SessionCard({ session, active }: SessionCardProps) {
             style={{
                 marginBottom: 8,
                 cursor: 'pointer',
-                border: active ? '2px solid #1677ff' : '1px solid #f0f0f0'
+                border: active ? `2px solid ${token.colorPrimary}` : `1px solid ${token.colorBorder}`
             }}
             styles={{ body: { padding: '12px 16px' } }}
         >

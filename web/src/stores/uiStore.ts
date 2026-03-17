@@ -18,9 +18,22 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import i18n from '@/i18n'
 
-type ActiveTab = 'chat' | 'files' | 'git' | 'terminal'
-type Theme = 'light' | 'dark'
+// 会话视图模式
+type SessionViewMode = 'chat' | 'files' | 'terminal'
+// 文件视图 Tab
+type FileViewTab = 'files' | 'git'
+// 激活的模块
+type ActiveModule = 'sessions' | 'skills' | 'mcp' | 'settings'
+// 主题（支持 system）
+type Theme = 'light' | 'dark' | 'system'
+// 语言
 type Locale = 'zh' | 'en'
+
+// 获取系统主题
+function getSystemTheme(): 'light' | 'dark' {
+    if (typeof window === 'undefined') return 'dark'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
 
 // 获取系统语言
 function getSystemLocale(): Locale {
@@ -29,41 +42,57 @@ function getSystemLocale(): Locale {
     return lang.startsWith('zh') ? 'zh' : 'en'
 }
 
+// 解析主题设置
+export function resolveTheme(theme: Theme): 'light' | 'dark' {
+    return theme === 'system' ? getSystemTheme() : theme
+}
+
 interface UiState {
-    activeTab: ActiveTab
-    sidebarOpen: boolean
+    // 新状态
+    sessionViewMode: SessionViewMode
+    fileViewTab: FileViewTab
+    activeModule: ActiveModule
     theme: Theme
     locale: Locale
-    setActiveTab: (tab: ActiveTab) => void
+    // 保留兼容
+    sidebarOpen: boolean
+    // 操作方法
+    setSessionViewMode: (mode: SessionViewMode) => void
+    setFileViewTab: (tab: FileViewTab) => void
+    setActiveModule: (module: ActiveModule) => void
     setSidebarOpen: (open: boolean) => void
     toggleSidebar: () => void
-    toggleTheme: () => void
-    toggleLocale: () => void
+    setTheme: (theme: Theme) => void
+    setLocale: (locale: Locale) => void
 }
 
 export const useUiStore = create<UiState>()(
     persist(
         (set) => ({
-            activeTab: 'chat',
-            sidebarOpen: false,
-            // 默认 dark 主题
+            sessionViewMode: 'chat',
+            fileViewTab: 'files',
+            activeModule: 'sessions',
+            sidebarOpen: true,
             theme: 'dark',
-            // 默认系统语言
             locale: getSystemLocale(),
-            setActiveTab: (tab) => set({ activeTab: tab }),
+            setSessionViewMode: (mode) => set({ sessionViewMode: mode }),
+            setFileViewTab: (tab) => set({ fileViewTab: tab }),
+            setActiveModule: (module) => set({ activeModule: module }),
             setSidebarOpen: (open) => set({ sidebarOpen: open }),
             toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-            toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
-            toggleLocale: () => set((state) => {
-                const newLocale = state.locale === 'zh' ? 'en' : 'zh'
-                i18n.changeLanguage(newLocale)
-                return { locale: newLocale }
-            }),
+            setTheme: (theme) => set({ theme }),
+            setLocale: (locale) => {
+                i18n.changeLanguage(locale)
+                return set({ locale })
+            },
         }),
         {
             name: 'mobi-ui',
             // 持久化 theme 和 locale
-            partialize: (state) => ({ theme: state.theme, locale: state.locale }),
+            partialize: (state) => ({
+                theme: state.theme,
+                locale: state.locale,
+            }),
             // 合并时保留 store 默认值，防止 localStorage 中无该字段时为 undefined
             merge: (persistedState, currentState) => ({
                 ...currentState,

@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-import { Tree, Spin, Empty, Typography, Skeleton } from 'antd'
+import { Tree, Spin, Empty, Typography, Skeleton, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { FolderOutlined, FileOutlined } from '@ant-design/icons'
 import { useFileTree, useFileContent } from '@/hooks/queries/useFileTree'
 import { useState, useMemo } from 'react'
 import type { DataNode } from 'antd/es/tree'
 
 const { Text } = Typography
+const { useToken } = antTheme
 
 interface FileTreeProps {
     sessionId: string
@@ -28,6 +30,8 @@ interface FileTreeProps {
 
 export default function FileTree({ sessionId }: FileTreeProps) {
     const [selectedFile, setSelectedFile] = useState<string | null>(null)
+    const { token } = useToken()
+    const { t } = useTranslation()
 
     // 获取根目录文件列表
     const { data: rootFiles, isLoading } = useFileTree(sessionId, '.')
@@ -63,15 +67,15 @@ export default function FileTree({ sessionId }: FileTreeProps) {
     }
 
     if (!rootFiles || rootFiles.length === 0) {
-        return <Empty description="目录为空" style={{ marginTop: 40 }} />
+        return <Empty description={t('files.empty')} style={{ marginTop: 40 }} />
     }
 
     return (
         <div style={{ display: 'flex', height: 'calc(100vh - 130px)' }}>
             {/* 文件树 */}
-            <div style={{ width: '40%', overflow: 'auto', borderRight: '1px solid #f0f0f0', padding: 8 }}>
-                <div style={{ padding: '8px 4px', borderBottom: '1px solid #f0f0f0', marginBottom: 8 }}>
-                    <Text strong>文件浏览器</Text>
+            <div style={{ width: '40%', overflow: 'auto', borderRight: `1px solid ${token.colorBorder}`, padding: 8 }}>
+                <div style={{ padding: '8px 4px', borderBottom: `1px solid ${token.colorBorder}`, marginBottom: 8 }}>
+                    <Text strong>{t('files.title')}</Text>
                 </div>
                 <Tree
                     treeData={treeData}
@@ -83,14 +87,14 @@ export default function FileTree({ sessionId }: FileTreeProps) {
             </div>
 
             {/* 文件内容 */}
-            <div style={{ flex: 1, overflow: 'auto', padding: 16, background: '#fafafa' }}>
+            <div style={{ flex: 1, overflow: 'auto', padding: 16, background: token.colorBgLayout }}>
                 {fileLoading ? (
                     <div style={{ textAlign: 'center', padding: 40 }}>
                         <Spin />
                     </div>
                 ) : fileContent !== null ? (
                     <div>
-                        <div style={{ marginBottom: 8, color: '#666', fontSize: 12 }}>
+                        <div style={{ marginBottom: 8, fontSize: 12 }}>
                             <Text type="secondary">{selectedFile}</Text>
                         </div>
                         <pre style={{
@@ -99,16 +103,16 @@ export default function FileTree({ sessionId }: FileTreeProps) {
                             whiteSpace: 'pre-wrap',
                             wordBreak: 'break-all',
                             fontFamily: 'monospace',
-                            background: '#fff',
+                            background: token.colorBgContainer,
                             padding: 12,
                             borderRadius: 4,
-                            border: '1px solid #e8e8e8'
+                            border: `1px solid ${token.colorBorder}`
                         }}>
                             {fileContent}
                         </pre>
                     </div>
                 ) : (
-                    <Empty description="选择文件查看内容" style={{ marginTop: 40 }} />
+                    <Empty description={t('files.selectToView')} style={{ marginTop: 40 }} />
                 )}
             </div>
         </div>

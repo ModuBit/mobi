@@ -14,8 +14,40 @@
  * limitations under the License.
  */
 
-import axios, { type AxiosInstance } from 'axios'
+import { useMemo } from 'react'
+import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage } from './types'
+
+// 全局 401 处理回调（由外部设置）
+let onUnauthorized: (() => void) | null = null
+let isHandling401 = false // 防止重复调用
+
+/**
+ * 设置 401 未授权回调
+ * 当 API 请求返回 401 时，会调用此回调
+ * @returns 清理函数，调用后移除回调
+ */
+export function setUnauthorizedHandler(handler: () => void): () => void {
+    onUnauthorized = () => {
+        // 防止重复调用（短时间内多个 401 响应）
+        if (isHandling401) return
+        isHandling401 = true
+
+        try {
+            handler()
+        } finally {
+            // 延迟重置，防止短时间内重复触发
+            setTimeout(() => {
+                isHandling401 = false
+            }, 1000)
+        }
+    }
+
+    // 返回清理函数
+    return () => {
+        onUnauthorized = null
+    }
+}
 
 // 创建 API 客户端（使用当前页面的 origin）
 export function createApiClient(token: string | null): AxiosInstance {
@@ -26,6 +58,18 @@ export function createApiClient(token: string | null): AxiosInstance {
             'Content-Type': 'application/json'
         }
     })
+
+    // 响应拦截器：处理 401 未授权
+    client.interceptors.response.use(
+        (response) => response,
+        (error: AxiosError) => {
+            if (error.response?.status === 401 && onUnauthorized) {
+                onUnauthorized()
+            }
+            return Promise.reject(error)
+        }
+    )
+
     return client
 }
 
@@ -100,3 +144,11 @@ export function createMobiApi(token: string | null) {
 }
 
 export type MobiApi = ReturnType<typeof createMobiApi>
+
+/**
+ * React Hook: 获取缓存的 Mobi API 实例
+ * 只在 token 变化时重建 API 客户端
+ */
+export function useMobiApi(token: string | null): MobiApi {
+    return useMemo(() => createMobiApi(token), [token])
+}

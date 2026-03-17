@@ -16,7 +16,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
-import { createMobiApi } from '@/api/client'
+import { useMobiApi } from '@/api/client'
 import type { GitDiffResponse } from '@/api/types'
 
 /**
@@ -24,7 +24,7 @@ import type { GitDiffResponse } from '@/api/types'
  */
 export function useGitDiff(sessionId: string | null, filePath: string | null) {
     const { token } = useAuthStore()
-    const api = createMobiApi(token)
+    const api = useMobiApi(token)
 
     return useQuery({
         queryKey: ['git-diff', sessionId, filePath],

@@ -15,11 +15,13 @@
  */
 
 import { List, Empty, Skeleton } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { SessionCard } from './SessionCard'
 import { useSessions } from '@/hooks/queries/useSessions'
 
 export function SessionList() {
     const { data: sessions = [], isLoading } = useSessions()
+    const { t } = useTranslation()
 
     if (isLoading) {
         return <Skeleton active paragraph={{ rows: 4 }} style={{ padding: 16 }} />
@@ -28,7 +30,7 @@ export function SessionList() {
     if (sessions.length === 0) {
         return (
             <Empty
-                description="暂无会话"
+                description={t('session.empty')}
                 style={{ marginTop: 40 }}
             />
         )

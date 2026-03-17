@@ -16,7 +16,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
-import { createMobiApi } from '@/api/client'
+import { useMobiApi } from '@/api/client'
 import type { Session } from '@/api/types'
 
 /**
@@ -24,7 +24,7 @@ import type { Session } from '@/api/types'
  */
 export function useSessions() {
     const { token } = useAuthStore()
-    const api = createMobiApi(token)
+    const api = useMobiApi(token)
 
     return useQuery({
         queryKey: ['sessions'],

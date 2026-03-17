@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-import { Collapse, Tag, Typography, Empty } from 'antd'
+import { Collapse, Tag, Typography, Empty, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { CodeOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import type { ParsedToolCallBlock, ParsedToolResultBlock } from './messageParser'
 
 const { Text } = Typography
+const { useToken } = antTheme
 
 interface ToolCallBlockProps {
     block: ParsedToolCallBlock
@@ -29,6 +31,8 @@ interface ToolResultBlockProps {
 }
 
 export function ToolCallBlock({ block }: ToolCallBlockProps) {
+    const { token } = useToken()
+    const { t } = useTranslation()
     const toolName = block.name || 'Unknown Tool'
 
     // 工具输入
@@ -53,14 +57,15 @@ export function ToolCallBlock({ block }: ToolCallBlockProps) {
                     <div>
                         {inputStr && (
                             <div style={{ marginBottom: 8 }}>
-                                <Text type="secondary" style={{ fontSize: 11 }}>输入:</Text>
+                                <Text type="secondary" style={{ fontSize: 11 }}>{t('chat.tool.input')}</Text>
                                 <pre style={{
-                                    background: '#f5f5f5',
+                                    background: token.colorBgContainer,
                                     padding: 8,
                                     borderRadius: 4,
                                     fontSize: 12,
                                     overflowX: 'auto',
-                                    margin: '4px 0'
+                                    margin: '4px 0',
+                                    border: `1px solid ${token.colorBorder}`
                                 }}>
                                     {inputStr}
                                 </pre>
@@ -68,20 +73,21 @@ export function ToolCallBlock({ block }: ToolCallBlockProps) {
                         )}
                         {block.description && (
                             <div>
-                                <Text type="secondary" style={{ fontSize: 11 }}>描述:</Text>
+                                <Text type="secondary" style={{ fontSize: 11 }}>{t('chat.tool.description')}</Text>
                                 <pre style={{
-                                    background: '#e6f7ff',
+                                    background: token.colorInfoBg,
                                     padding: 8,
                                     borderRadius: 4,
                                     fontSize: 12,
                                     overflowX: 'auto',
-                                    margin: '4px 0'
+                                    margin: '4px 0',
+                                    border: `1px solid ${token.colorInfoBorder}`
                                 }}>
                                     {block.description}
                                 </pre>
                             </div>
                         )}
-                        {!inputStr && !block.description && <Empty description="无内容" />}
+                        {!inputStr && !block.description && <Empty description={t('chat.tool.noContent')} />}
                     </div>
                 )
             }]}
@@ -90,6 +96,8 @@ export function ToolCallBlock({ block }: ToolCallBlockProps) {
 }
 
 export function ToolResultBlock({ block }: ToolResultBlockProps) {
+    const { token } = useToken()
+    const { t } = useTranslation()
     const isError = block.is_error
 
     // 工具结果
@@ -119,10 +127,10 @@ export function ToolResultBlock({ block }: ToolResultBlockProps) {
                     <div>
                         {resultStr && (
                             <div>
-                                <Text type="secondary" style={{ fontSize: 11 }}>输出:</Text>
+                                <Text type="secondary" style={{ fontSize: 11 }}>{t('chat.tool.output')}</Text>
                                 <pre style={{
-                                    background: isError ? '#fff2f0' : '#f6ffed',
-                                    border: `1px solid ${isError ? '#ffa39e' : '#b7eb8f'}`,
+                                    background: isError ? token.colorErrorBg : token.colorSuccessBg,
+                                    border: `1px solid ${isError ? token.colorErrorBorder : token.colorSuccessBorder}`,
                                     padding: 8,
                                     borderRadius: 4,
                                     fontSize: 12,
@@ -135,7 +143,7 @@ export function ToolResultBlock({ block }: ToolResultBlockProps) {
                                 </pre>
                             </div>
                         )}
-                        {!resultStr && <Empty description="无内容" />}
+                        {!resultStr && <Empty description={t('chat.tool.noContent')} />}
                     </div>
                 )
             }]}

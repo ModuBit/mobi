@@ -16,39 +16,42 @@
 
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { App } from './App'
-import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
-import { SessionPage } from './pages/SessionPage'
+import { MainLayout } from './components/layout/MainLayout'
 
 // Root route - wraps all routes with App component
 const rootRoute = createRootRoute({
     component: App,
 })
 
-// Index route - home page
-const indexRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/',
-    component: HomePage,
-})
-
-// Session route - session detail page
-const sessionRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/sessions/$sessionId',
-    component: SessionPage,
-})
-
-// Login route - login page
+// 登录路由（无布局）
 const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
     component: LoginPage,
 })
 
+// 主布局路由
+const mainRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/',
+    component: MainLayout,
+})
+
+// 会话详情页
+const sessionRoute = createRoute({
+    getParentRoute: () => mainRoute,
+    path: 'sessions/$sessionId',
+})
+
 // Create router
 export const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, sessionRoute, loginRoute])
+    routeTree: rootRoute.addChildren([
+        loginRoute,
+        mainRoute.addChildren([
+            sessionRoute,
+        ]),
+    ]),
 })
 
 // Type declaration for router

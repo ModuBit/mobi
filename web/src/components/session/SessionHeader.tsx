@@ -14,15 +14,17 @@
  * limitations under the License.
  */
 
-import { Button, Space, Select, Tag, Typography } from 'antd'
+import { Button, Space, Select, Tag, Typography, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import { useNavigate } from '@tanstack/react-router'
 import type { Session } from '@/api/types'
 import { useAuthStore } from '@/stores/authStore'
-import { createMobiApi } from '@/api/client'
+import { useMobiApi } from '@/api/client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 const { Text } = Typography
+const { useToken } = antTheme
 
 interface SessionHeaderProps {
     session: Session
@@ -30,9 +32,11 @@ interface SessionHeaderProps {
 
 export function SessionHeader({ session }: SessionHeaderProps) {
     const navigate = useNavigate()
-    const { token } = useAuthStore()
-    const api = createMobiApi(token)
+    const { token: authToken } = useAuthStore()
+    const api = useMobiApi(authToken)
     const queryClient = useQueryClient()
+    const { token } = useToken()
+    const { t } = useTranslation()
 
     const setPermMutation = useMutation({
         mutationFn: (mode: string) => api.sessions.setPermissionMode(session.id, mode),
@@ -45,11 +49,11 @@ export function SessionHeader({ session }: SessionHeaderProps) {
     return (
         <div style={{
             padding: '12px 16px',
-            borderBottom: '1px solid #f0f0f0',
+            borderBottom: `1px solid ${token.colorBorder}`,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            background: '#fff',
+            background: token.colorBgContainer,
             position: 'sticky',
             top: 0,
             zIndex: 10
@@ -63,11 +67,11 @@ export function SessionHeader({ session }: SessionHeaderProps) {
             <Space size="small">
                 {session.active && (
                     <Tag color={session.thinking ? 'blue' : 'green'}>
-                        {session.thinking ? '思考中' : '活跃'}
+                        {session.thinking ? t('session.status.thinking') : t('session.status.active')}
                     </Tag>
                 )}
                 {!session.active && (
-                    <Tag color="default">已结束</Tag>
+                    <Tag color="default">{t('session.status.ended')}</Tag>
                 )}
                 <Select
                     value={session.permissionMode || 'default'}

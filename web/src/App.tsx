@@ -19,12 +19,24 @@ import { useSSE } from '@/hooks/useSSE'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect } from 'react'
+import { setUnauthorizedHandler } from '@/api/client'
 
 export function App() {
-    const { token } = useAuthStore()
+    const { token, logout } = useAuthStore()
     const navigate = useNavigate()
     const location = useLocation()
     useSSE() // 初始化 SSE 连接
+
+    // 设置 401 未授权处理器
+    useEffect(() => {
+        const cleanup = setUnauthorizedHandler(() => {
+            // 清理登录态
+            logout()
+            // 跳转到登录页
+            navigate({ to: '/login' })
+        })
+        return cleanup // 组件卸载时清理
+    }, [logout, navigate])
 
     // 自动重定向到登录页
     useEffect(() => {

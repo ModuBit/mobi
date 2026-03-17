@@ -15,9 +15,11 @@
  */
 
 import { useGitDiff } from '@/hooks/queries/useGitDiff'
-import { Spin, Typography } from 'antd'
+import { Spin, Typography, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
 
 const { Text } = Typography
+const { useToken } = antTheme
 
 interface DiffViewProps {
     sessionId: string
@@ -26,8 +28,9 @@ interface DiffViewProps {
 
 /**
  * Diff 行渲染 - 根据不同类型添加不同样式
+ * 注意：Git diff 颜色保持固定（绿色=添加，红色=删除），这是业界标准
  */
-function renderDiffLine(line: string, index: number) {
+function renderDiffLine(line: string, index: number, token: ReturnType<typeof useToken>['token']) {
     const style: React.CSSProperties = {
         display: 'block',
         fontFamily: 'monospace',
@@ -38,26 +41,26 @@ function renderDiffLine(line: string, index: number) {
         paddingRight: 8,
     }
 
-    // 添加的行
+    // 添加的行 - 保持绿色
     if (line.startsWith('+') && !line.startsWith('+++')) {
         style.background = '#e6ffec'
         style.color = '#22863a'
     }
-    // 删除的行
+    // 删除的行 - 保持红色
     else if (line.startsWith('-') && !line.startsWith('---')) {
         style.background = '#ffebe9'
         style.color = '#cb2431'
     }
-    // 位置信息
+    // 位置信息 - 保持蓝色
     else if (line.startsWith('@@')) {
         style.background = '#f1f8ff'
         style.color = '#0366d6'
     }
-    // 文件头信息
+    // 文件头信息 - 使用主题色
     else if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
         style.fontWeight = 'bold'
-        style.color = '#24292e'
-        style.background = '#f6f8fa'
+        style.color = token.colorText
+        style.background = token.colorBgLayout
     }
 
     return <span key={index} style={style}>{line || ' '}</span>
@@ -68,6 +71,8 @@ function renderDiffLine(line: string, index: number) {
  */
 export default function DiffView({ sessionId, filePath }: DiffViewProps) {
     const { data: diff, isLoading } = useGitDiff(sessionId, filePath)
+    const { token } = useToken()
+    const { t } = useTranslation()
 
     if (isLoading) {
         return (
@@ -80,7 +85,7 @@ export default function DiffView({ sessionId, filePath }: DiffViewProps) {
     if (!diff) {
         return (
             <div style={{ padding: 16 }}>
-                <Text type="secondary">无法加载 Diff</Text>
+                <Text type="secondary">{t('git.loadFailed')}</Text>
             </div>
         )
     }
@@ -92,8 +97,8 @@ export default function DiffView({ sessionId, filePath }: DiffViewProps) {
             {/* 文件路径标题 */}
             <div style={{
                 padding: '8px 12px',
-                borderBottom: '1px solid #f0f0f0',
-                background: '#fafafa',
+                borderBottom: `1px solid ${token.colorBorder}`,
+                background: token.colorBgLayout,
                 position: 'sticky',
                 top: 0,
                 zIndex: 1
@@ -103,7 +108,7 @@ export default function DiffView({ sessionId, filePath }: DiffViewProps) {
 
             {/* Diff 内容 */}
             <div style={{ padding: '8px 0' }}>
-                {lines.map((line, i) => renderDiffLine(line, i))}
+                {lines.map((line, i) => renderDiffLine(line, i, token))}
             </div>
         </div>
     )

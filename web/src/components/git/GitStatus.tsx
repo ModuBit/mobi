@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-import { List, Tag, Spin, Empty, Typography } from 'antd'
+import { List, Tag, Spin, Empty, Typography, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { useGitStatus } from '@/hooks/queries/useGitStatus'
 import { useState } from 'react'
 import DiffView from './DiffView'
 
 const { Text } = Typography
+const { useToken } = antTheme
 
 interface GitStatusProps {
     sessionId: string
@@ -39,23 +41,23 @@ function getStatusColor(status: string): string {
     }
 }
 
-/**
- * 获取状态文本
- */
-function getStatusText(status: string): string {
-    switch (status) {
-        case 'M': return 'Modified'
-        case 'A': return 'Added'
-        case 'D': return 'Deleted'
-        case 'R': return 'Renamed'
-        case '?': return 'Untracked'
-        default: return status
-    }
-}
-
 export default function GitStatus({ sessionId }: GitStatusProps) {
     const { data: gitStatus, isLoading } = useGitStatus(sessionId)
     const [selectedFile, setSelectedFile] = useState<string | null>(null)
+    const { token } = useToken()
+    const { t } = useTranslation()
+
+    // 获取状态文本（需要翻译）
+    const getStatusText = (status: string): string => {
+        switch (status) {
+            case 'M': return t('git.status.modified')
+            case 'A': return t('git.status.added')
+            case 'D': return t('git.status.deleted')
+            case 'R': return t('git.status.renamed')
+            case '?': return t('git.status.untracked')
+            default: return status
+        }
+    }
 
     if (isLoading) {
         return (
@@ -73,7 +75,7 @@ export default function GitStatus({ sessionId }: GitStatusProps) {
     if (files.length === 0) {
         return (
             <div style={{ padding: 16 }}>
-                <Empty description="没有待提交的更改" style={{ marginTop: 40 }} />
+                <Empty description={t('git.empty')} style={{ marginTop: 40 }} />
             </div>
         )
     }
@@ -81,12 +83,12 @@ export default function GitStatus({ sessionId }: GitStatusProps) {
     return (
         <div style={{ height: 'calc(100vh - 130px)', display: 'flex' }}>
             {/* 文件列表 */}
-            <div style={{ width: '40%', borderRight: '1px solid #f0f0f0', overflow: 'auto' }}>
+            <div style={{ width: '40%', borderRight: `1px solid ${token.colorBorder}`, overflow: 'auto' }}>
                 {/* 头部信息 */}
                 <div style={{
                     padding: '8px 12px',
-                    borderBottom: '1px solid #f0f0f0',
-                    background: '#fafafa',
+                    borderBottom: `1px solid ${token.colorBorder}`,
+                    background: token.colorBgLayout,
                     position: 'sticky',
                     top: 0,
                     zIndex: 1
@@ -97,8 +99,8 @@ export default function GitStatus({ sessionId }: GitStatusProps) {
                             {branch}
                         </Text>
                     </div>
-                    <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
-                        {files.length} 个文件变更
+                    <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 4 }}>
+                        {t('git.filesChanged', { count: files.length })}
                         {ahead > 0 && <span style={{ marginLeft: 8 }}>↑ {ahead}</span>}
                         {behind > 0 && <span style={{ marginLeft: 8 }}>↓ {behind}</span>}
                     </div>
@@ -113,7 +115,7 @@ export default function GitStatus({ sessionId }: GitStatusProps) {
                             style={{
                                 cursor: 'pointer',
                                 padding: '8px 12px',
-                                background: selectedFile === file.path ? '#e6f7ff' : undefined,
+                                background: selectedFile === file.path ? token.colorPrimaryBg : undefined,
                                 transition: 'background 0.2s',
                             }}
                             onClick={() => setSelectedFile(file.path)}
@@ -141,7 +143,7 @@ export default function GitStatus({ sessionId }: GitStatusProps) {
                 {selectedFile ? (
                     <DiffView sessionId={sessionId} filePath={selectedFile} />
                 ) : (
-                    <Empty description="选择文件查看 Diff" style={{ marginTop: 40 }} />
+                    <Empty description={t('git.selectToView')} style={{ marginTop: 40 }} />
                 )}
             </div>
         </div>

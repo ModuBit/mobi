@@ -1,4 +1,17 @@
 {
+    "common": {
+        "loading": "加载中...",
+        "noData": "暂无数据",
+        "confirm": "确认",
+        "cancel": "取消",
+        "approve": "批准",
+        "reject": "拒绝",
+        "back": "返回",
+        "backHome": "返回首页",
+        "error": "错误",
+        "success": "成功",
+        "save": "保存"
+    },
     "login": {
         "title": "MOBI",
         "subtitle": "随时随地 Vibe Coding",
@@ -7,5 +20,86 @@
         "connect": "连接",
         "connectSuccess": "连接成功",
         "authFailed": "认证失败，请检查 Token 是否正确"
+    },
+    "nav": {
+        "sessions": "会话",
+        "skills": "技能",
+        "mcp": "MCP",
+        "settings": "设置"
+    },
+    "home": {
+        "title": "会话列表",
+        "newSession": "新建会话",
+        "logout": "退出"
+    },
+    "session": {
+        "loadFailed": "加载会话失败",
+        "notFound": "会话不存在或已被删除",
+        "tabs": {
+            "chat": "对话",
+            "files": "文件",
+            "git": "Git",
+            "terminal": "终端"
+        },
+        "status": {
+            "thinking": "思考中",
+            "active": "活跃",
+            "ended": "已结束"
+        },
+        "empty": "暂无会话，点击新建开始对话"
+    },
+    "chat": {
+        "empty": "暂无消息",
+        "inputPlaceholder": "输入消息... (Shift+Enter 换行)",
+        "sessionEnded": "会话已结束",
+        "apiError": "API 错误",
+        "duration": "耗时",
+        "retry": "重试",
+        "permission": {
+            "title": "需要权限确认",
+            "toolRequest": "工具 {{tool}} 请求执行权限"
+        },
+        "tool": {
+            "input": "输入:",
+            "output": "输出:",
+            "description": "描述:",
+            "noContent": "无内容"
+        }
+    },
+    "files": {
+        "title": "文件浏览器",
+        "empty": "当前会话无文件变更",
+        "selectToView": "选择文件查看内容"
+    },
+    "git": {
+        "filesChanged": "{{count}} 个文件变更",
+        "empty": "没有待提交的更改",
+        "selectToView": "选择文件查看 Diff",
+        "loadFailed": "无法加载 Diff",
+        "status": {
+            "added": "新增",
+            "modified": "修改",
+            "deleted": "删除",
+            "renamed": "重命名",
+            "untracked": "未跟踪"
+        }
+    },
+    "terminal": {
+        "title": "终端",
+        "connected": "终端已连接",
+        "exited": "进程已退出，代码: {{code}}",
+        "reconnect": "重连"
+    },
+    "settings": {
+        "title": "设置",
+        "general": "通用",
+        "account": "账户",
+        "notifications": "通知",
+        "about": "关于",
+        "language": "语言",
+        "theme": "主题",
+        "themeLight": "浅色",
+        "themeDark": "深色",
+        "themeSystem": "跟随系统"
     }
 }

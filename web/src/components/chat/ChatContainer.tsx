@@ -16,7 +16,8 @@
 
 import { useRef, useEffect, useMemo } from 'react'
 import { Bubble, Sender } from '@ant-design/x'
-import { Spin, Typography, Empty, Avatar } from 'antd'
+import { Spin, Typography, Empty, Avatar, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/hooks/queries/useMessages'
 import { useSession } from '@/hooks/queries/useSession'
 import { useSendMessage } from '@/hooks/mutations/useSendMessage'
@@ -29,6 +30,7 @@ import remarkGfm from 'remark-gfm'
 import type { ParsedMessage, ParsedContentBlock } from './messageParser'
 
 const { Text } = Typography
+const { useToken } = antTheme
 
 // AI 机器人头像组件
 const AI_AVATAR = <Avatar style={{ background: '#1677ff' }}>🤖</Avatar>
@@ -53,6 +55,8 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId)
     const bottomRef = useRef<HTMLDivElement>(null)
+    const { token } = useToken()
+    const { t } = useTranslation()
 
     // 解析所有消息
     const parsedMessages = useMemo(() => {
@@ -78,7 +82,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
             for (let i = 0; i < msg.content.length; i++) {
                 const block = msg.content[i]
                 const blockKey = `${msg.id}-${i}`
-                const content = renderContentBlock(block)
+                const content = renderContentBlock(block, token)
 
                 if (content !== null) {
                     items.push({
@@ -96,7 +100,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
         }
 
         return items
-    }, [parsedMessages, session?.thinking])
+    }, [parsedMessages, session?.thinking, token])
 
     // 自动滚动到底部
     useEffect(() => {
@@ -111,7 +115,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     if (messagesLoading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <Spin tip="加载中..." />
+                <Spin tip={t('common.loading')} />
             </div>
         )
     }
@@ -121,7 +125,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
             {/* 消息列表 */}
             <div style={{ flex: 1, overflow: 'auto', padding: '16px 8px' }}>
                 {parsedMessages.length === 0 ? (
-                    <Empty description="暂无消息" style={{ marginTop: 40 }} />
+                    <Empty description={t('chat.empty')} style={{ marginTop: 40 }} />
                 ) : (
                     <>
                         <Bubble.List
@@ -151,16 +155,16 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
             />
 
             {/* 输入框 */}
-            <div style={{ padding: '8px 16px', borderTop: '1px solid #f0f0f0', background: '#fff' }}>
+            <div style={{ padding: '8px 16px', borderTop: `1px solid ${token.colorBorder}`, background: token.colorBgContainer }}>
                 <Sender
                     onSubmit={handleSend}
                     loading={sendMutation.isPending || session?.thinking}
-                    placeholder="输入消息... (Shift+Enter 换行)"
+                    placeholder={t('chat.inputPlaceholder')}
                     disabled={!session?.active}
                 />
                 {!session?.active && (
                     <Text type="secondary" style={{ fontSize: 12, display: 'block', textAlign: 'center', marginTop: 4 }}>
-                        会话已结束
+                        {t('chat.sessionEnded')}
                     </Text>
                 )}
             </div>
@@ -169,7 +173,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
 }
 
 // 渲染内容块
-function renderContentBlock(block: ParsedContentBlock): React.ReactNode {
+function renderContentBlock(block: ParsedContentBlock, token: ReturnType<typeof useToken>['token']): React.ReactNode {
     switch (block.type) {
         case 'text':
             return (
@@ -183,11 +187,11 @@ function renderContentBlock(block: ParsedContentBlock): React.ReactNode {
             return (
                 <div style={{
                     padding: '8px 12px',
-                    background: '#fff7e6',
-                    border: '1px solid #ffd591',
+                    background: token.colorWarningBg,
+                    border: `1px solid ${token.colorWarningBorder}`,
                     borderRadius: 4,
                     fontSize: 12,
-                    color: '#873800',
+                    color: token.colorWarningText,
                     fontStyle: 'italic'
                 }}>
                     💭 {block.text}
@@ -201,11 +205,11 @@ function renderContentBlock(block: ParsedContentBlock): React.ReactNode {
             return (
                 <div style={{
                     padding: '8px 12px',
-                    background: '#e6f7ff',
-                    border: '1px solid #91d5ff',
+                    background: token.colorInfoBg,
+                    border: `1px solid ${token.colorInfoBorder}`,
                     borderRadius: 4,
                     fontSize: 12,
-                    color: '#0050b3'
+                    color: token.colorInfoText
                 }}>
                     📝 {block.summary}
                 </div>
@@ -214,10 +218,10 @@ function renderContentBlock(block: ParsedContentBlock): React.ReactNode {
             return (
                 <div style={{
                     padding: '8px 12px',
-                    background: '#f5f5f5',
+                    background: token.colorBgContainer,
                     borderRadius: 4,
                     fontSize: 12,
-                    color: '#666'
+                    color: token.colorTextSecondary
                 }}>
                     {formatEvent(block.event)}
                 </div>
@@ -229,11 +233,13 @@ function renderContentBlock(block: ParsedContentBlock): React.ReactNode {
 
 // 格式化事件
 function formatEvent(event: { type: string; [key: string]: unknown }): string {
+    // 注意：这里的翻译需要通过 t() 函数，但由于这是纯函数，暂时保留硬编码
+    // TODO: 考虑重构为 React 组件以支持翻译
     switch (event.type) {
         case 'api-error':
-            return `❌ API 错误 (重试 ${event.retryAttempt}/${event.maxRetries})`
+            return `❌ API Error (Retry ${event.retryAttempt}/${event.maxRetries})`
         case 'turn-duration':
-            return `⏱️ 耗时: ${event.durationMs}ms`
+            return `⏱️ Duration: ${event.durationMs}ms`
         default:
             return `📌 ${event.type}`
     }

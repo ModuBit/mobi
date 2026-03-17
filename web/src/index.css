@@ -8,10 +8,27 @@ html, body, #root {
     padding: 0;
 }
 
+html {
+    /* Light 模式背景（默认） */
+    background: #fafafa;
+}
+
+html[data-theme='dark'] {
+    /* Dark 模式背景 */
+    background: #09090b;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
+    /* 透明背景，跟随 html */
+    background: transparent;
+    color: #18181b;
+}
+
+html[data-theme='dark'] body {
+    color: #fafafa;
 }
 
 /* 移动端安全区适配 */
@@ -26,7 +43,7 @@ pre, code {
     font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 }
 
-/* 滚动条样式 */
+/* 滚动条样式 - Light 模式 */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -45,15 +62,24 @@ pre, code {
     background: #bfbfbf;
 }
 
+/* 滚动条样式 - Dark 模式 */
+html[data-theme='dark'] ::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+}
+
+html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+    background: #52525b;
+}
+
 /* Dark 模式下 solid 按钮文字颜色修复 */
-[data-theme='dark'] .ant-btn-variant-solid {
+html[data-theme='dark'] .ant-btn-variant-solid {
     color: #18181b !important;
 }
 
-[data-theme='dark'] .ant-btn-variant-solid:hover {
+html[data-theme='dark'] .ant-btn-variant-solid:hover {
     color: #18181b !important;
 }
 
-[data-theme='dark'] .ant-btn-variant-solid:active {
+html[data-theme='dark'] .ant-btn-variant-solid:active {
     color: #18181b !important;
 }

@@ -16,14 +16,14 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
-import { createMobiApi } from '@/api/client'
+import { useMobiApi } from '@/api/client'
 
 /**
  * 发送消息 Mutation Hook
  */
 export function useSendMessage(sessionId: string) {
     const { token } = useAuthStore()
-    const api = createMobiApi(token)
+    const api = useMobiApi(token)
     const queryClient = useQueryClient()
 
     return useMutation({
