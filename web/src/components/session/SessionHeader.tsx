@@ -22,6 +22,7 @@ import type { Session } from '@/api/types'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { getSessionDisplayName } from '@/utils/sessionUtils'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -43,8 +44,7 @@ export function SessionHeader({ session }: SessionHeaderProps) {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['session', session.id] })
     })
 
-    const metadata = session.metadata as { name?: string; path?: string } | null | undefined
-    const displayName = metadata?.name || metadata?.path?.split('/').pop() || session.id?.slice(0, 8) || 'Unknown'
+    const displayName = getSessionDisplayName(session)
 
     return (
         <div style={{

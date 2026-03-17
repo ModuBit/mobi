@@ -22,7 +22,7 @@ import styled from '@emotion/styled'
 
 const { useToken } = antTheme
 
-const ContentContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+const ContentContainer = styled.div`
     padding: 4px 0;
 `
 
@@ -36,13 +36,14 @@ const LoadMoreContainer = styled.div<{ $token: ReturnType<typeof useToken>['toke
 
 interface SessionGroupContentProps {
     groupKey: string
+    selectedSessionId?: string
 }
 
 /**
  * 会话分组内容组件
  * 显示分组内的会话列表，支持加载更多
  */
-export function SessionGroupContent({ groupKey }: SessionGroupContentProps) {
+export function SessionGroupContent({ groupKey, selectedSessionId }: SessionGroupContentProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useGroupSessions(groupKey)
@@ -50,7 +51,7 @@ export function SessionGroupContent({ groupKey }: SessionGroupContentProps) {
     // 首次加载
     if (isLoading) {
         return (
-            <ContentContainer $token={token}>
+            <ContentContainer>
                 <Skeleton active paragraph={{ rows: 2 }} />
             </ContentContainer>
         )
@@ -60,9 +61,13 @@ export function SessionGroupContent({ groupKey }: SessionGroupContentProps) {
     const sessions = data?.pages.flatMap(page => page.sessions) ?? []
 
     return (
-        <ContentContainer $token={token}>
+        <ContentContainer>
             {sessions.map((session) => (
-                <SessionCard key={session.id} session={session} />
+                <SessionCard
+                    key={session.id}
+                    session={session}
+                    active={selectedSessionId === session.id}
+                />
             ))}
 
             {/* 加载更多按钮 */}

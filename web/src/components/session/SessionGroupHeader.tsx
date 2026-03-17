@@ -15,7 +15,6 @@
  */
 
 import { Typography, Badge, Space, theme as antTheme } from 'antd'
-import { useTranslation } from 'react-i18next'
 import type { SessionGroup } from '@/api/types'
 import styled from '@emotion/styled'
 
@@ -27,7 +26,6 @@ const HeaderContainer = styled.div`
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    padding-right: 8px;
 `
 
 const GroupInfo = styled.div`
@@ -39,9 +37,17 @@ const GroupInfo = styled.div`
 
 const GroupName = styled(Text)`
     font-weight: 600;
+    font-size: 15px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin: 0 !important;
+`
+
+const CountText = styled(Text)`
+    font-size: 12px;
+    flex-shrink: 0;
+    margin: 0 !important;
 `
 
 interface SessionGroupHeaderProps {
@@ -50,27 +56,23 @@ interface SessionGroupHeaderProps {
 
 /**
  * 会话分组头部组件
- * 显示分组名称、活跃数量和总数
+ * 显示分组名称和会话数量
  */
 export function SessionGroupHeader({ group }: SessionGroupHeaderProps) {
     const { token } = useToken()
-    const { t } = useTranslation()
 
     return (
         <HeaderContainer>
             <GroupInfo>
                 <GroupName>{group.name}</GroupName>
-                <Space size={4}>
-                    {group.activeCount > 0 && (
-                        <Badge
-                            status="processing"
-                            text={<Text type="secondary" style={{ fontSize: 12 }}>{group.activeCount} {t('sessionGroup.active')}</Text>}
-                        />
-                    )}
-                    <Text type="secondary" style={{ fontSize: 12}}>
-                        {t('sessionGroup.total', { count: group.totalCount })}
-                    </Text>
-                </Space>
+                {group.activeCount > 0 && (
+                    <Space size={4}>
+                        <Badge status="processing" />
+                        <CountText type="secondary">
+                            ({group.activeCount})
+                        </CountText>
+                    </Space>
+                )}
             </GroupInfo>
         </HeaderContainer>
     )

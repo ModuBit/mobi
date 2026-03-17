@@ -24,6 +24,8 @@ import { FileView } from '@/components/files/FileView'
 import TerminalView from '@/components/terminal/TerminalView'
 import { IconButton } from '@/components/ui/IconButton'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
+import { useIsMobile } from '@/hooks/useMediaQuery'
+import { getSessionDisplayName } from '@/utils/sessionUtils'
 import { Folder, Terminal, ArrowLeft } from 'lucide-react'
 import styled from '@emotion/styled'
 
@@ -87,6 +89,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const navigate = useNavigate()
     const { data: session, isLoading, error } = useSession(sessionId)
     const { sessionViewMode, setSessionViewMode } = useUiStore()
+    const isMobile = useIsMobile()
 
     if (isLoading) {
         return (
@@ -111,20 +114,23 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         )
     }
 
-    const metadata = session.metadata as { name?: string; path?: string } | undefined
-    const displayName = metadata?.name || metadata?.path?.split('/').pop() || sessionId.slice(0, 8)
+    const displayName = getSessionDisplayName(session)
 
     return (
         <DetailContainer $token={token}>
             {/* Header */}
             <DetailHeader $token={token}>
                 <HeaderLeft>
-                    <MobileMenuButton />
-                    <IconButton
-                        icon={<ArrowLeft size={18} />}
-                        tooltip={t('common.back')}
-                        onClick={() => navigate({ to: '/' })}
-                    />
+                    {isMobile && (
+                        <>
+                            <MobileMenuButton />
+                            <IconButton
+                                icon={<ArrowLeft size={18} />}
+                                tooltip={t('common.back')}
+                                onClick={() => navigate({ to: '/sessions' })}
+                            />
+                        </>
+                    )}
                     <span style={{ fontWeight: 500 }}>{displayName}</span>
                     {session.active && (
                         <Badge

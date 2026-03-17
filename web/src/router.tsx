@@ -18,6 +18,7 @@ import { createRootRoute, createRoute, createRouter, redirect, Outlet } from '@t
 import { App } from './App'
 import { LoginPage } from './pages/LoginPage'
 import { MainLayout } from './components/layout/MainLayout'
+import { SessionsLayout } from './pages/SessionsLayout'
 import { SessionsPage } from './pages/SessionsPage'
 import { SessionDetailPage } from './pages/SessionDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -50,17 +51,24 @@ const indexRoute = createRoute({
     },
 })
 
-// 会话列表页
-const sessionsRoute = createRoute({
+// 会话布局路由 - 包含侧边栏
+const sessionsLayoutRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'sessions',
+    component: SessionsLayout,
+})
+
+// 会话列表页（索引）
+const sessionsIndexRoute = createRoute({
+    getParentRoute: () => sessionsLayoutRoute,
+    path: '/',
     component: SessionsPage,
 })
 
 // 会话详情页
 const sessionDetailRoute = createRoute({
-    getParentRoute: () => mainLayoutRoute,
-    path: 'sessions/$sessionId',
+    getParentRoute: () => sessionsLayoutRoute,
+    path: '$sessionId',
     component: SessionDetailPage,
 })
 
@@ -77,8 +85,10 @@ export const router = createRouter({
         loginRoute,
         mainLayoutRoute.addChildren([
             indexRoute,
-            sessionsRoute,
-            sessionDetailRoute,
+            sessionsLayoutRoute.addChildren([
+                sessionsIndexRoute,
+                sessionDetailRoute,
+            ]),
             settingsRoute,
         ]),
     ]),

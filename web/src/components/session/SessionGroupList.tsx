@@ -14,18 +14,20 @@
  * limitations under the License.
  */
 
-import { Collapse, Empty, Skeleton } from 'antd'
+import { Collapse, Empty, Skeleton, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
 import { SessionGroupHeader } from './SessionGroupHeader'
 import { SessionGroupContent } from './SessionGroupContent'
 import styled from '@emotion/styled'
-import { theme as antTheme } from 'antd'
+import { RightOutlined } from '@ant-design/icons'
 
 const { useToken } = antTheme
 
 const GroupListContainer = styled.div`
     padding: 8px 4px;
+    flex: 1;
+    overflow-y: auto;
 `
 
 const EmptyContainer = styled.div`
@@ -35,11 +37,24 @@ const EmptyContainer = styled.div`
     height: 200px;
 `
 
+// 自定义展开图标 - 使用 shouldForwardProp 阻止 $isActive 传递到 DOM
+const ExpandIcon = styled(RightOutlined, {
+    shouldForwardProp: (prop) => prop !== '$isActive',
+})<{ $isActive?: boolean }>`
+    font-size: 10px;
+    transition: transform 0.2s ease;
+    transform: rotate(${props => props.$isActive ? 90 : 0}deg);
+`
+
+interface SessionGroupListProps {
+    selectedSessionId?: string
+}
+
 /**
  * 会话分组列表组件
  * 使用 Ant Design Collapse 展示分组会话
  */
-export function SessionGroupList() {
+export function SessionGroupList({ selectedSessionId }: SessionGroupListProps) {
     const { token } = useToken()
     const { data: groups = [], isLoading } = useSessionGroups()
     const { t } = useTranslation()
@@ -59,12 +74,7 @@ export function SessionGroupList() {
     const collapseItems = groups.map((group) => ({
         key: group.key,
         label: <SessionGroupHeader group={group} />,
-        children: <SessionGroupContent groupKey={group.key} />,
-        style: {
-            marginBottom: 8,
-            borderRadius: token.borderRadius,
-            border: `1px solid ${token.colorBorder}`,
-        }
+        children: <SessionGroupContent groupKey={group.key} selectedSessionId={selectedSessionId} />,
     }))
 
     return (
@@ -74,8 +84,20 @@ export function SessionGroupList() {
                 defaultActiveKey={groups.filter(g => g.activeCount > 0).map(g => g.key)}
                 items={collapseItems}
                 bordered={false}
-                expandIconPosition="end"
+                expandIcon={({ isActive }) => <ExpandIcon $isActive={isActive} />}
+                expandIconPlacement="start"
                 style={{ background: 'transparent' }}
+                styles={{
+                    header: {
+                        padding: '8px 12px',
+                        borderRadius: token.borderRadius,
+                        background: token.colorBgContainer,
+                    },
+                    body: {
+                        padding: '4px 0 0 0',
+                        background: 'transparent',
+                    },
+                }}
             />
         </GroupListContainer>
     )

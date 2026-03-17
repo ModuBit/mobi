@@ -14,28 +14,18 @@
  * limitations under the License.
  */
 
-import { Typography, Empty } from 'antd'
-import { useTranslation } from 'react-i18next'
-import styled from '@emotion/styled'
-
-const EmptyContainer = styled.div`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    flex: 1;
-`
+import type { CommandDefinition } from './types'
 
 /**
- * 会话列表页（索引）
- * 当没有选中会话时显示空状态提示
+ * hook-forwarder 命令
+ * 用于转发 Claude 的 SessionStart hook 到主 CLI 进程
+ * 这是一个内部命令，不应该触发完整的 CLI 启动流程
  */
-export function SessionsPage() {
-    const { t } = useTranslation()
-
-    return (
-        <EmptyContainer>
-            <Empty description={t('session.selectToView')} />
-        </EmptyContainer>
-    )
+export const hookForwarderCommand: CommandDefinition = {
+    name: 'hook-forwarder',
+    requiresRuntimeAssets: false,
+    run: async ({ commandArgs }) => {
+        const { runSessionHookForwarder } = await import('@/claude/utils/sessionHookForwarder')
+        await runSessionHookForwarder(commandArgs)
+    }
 }
