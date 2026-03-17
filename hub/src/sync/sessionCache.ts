@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-import { AgentStateSchema, MetadataSchema, TeamStateSchema } from '@mobi/shared/schemas'
-import type { ModelMode, PermissionMode, Session } from '@mobi/shared/types'
+import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
+import type { ModelMode, PermissionMode, RuntimeState, Session } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
-import { extractTodoWriteTodosFromMessageContent, TodosSchema } from './todos'
+import { extractTodoWriteTodosFromMessageContent } from './todos'
+import { extractTeamStateFromMessageContent, applyTeamStateDelta } from './teams'
 
 export class SessionCache {
     private readonly sessions: Map<string, Session> = new Map()
     private readonly lastBroadcastAtBySessionId: Map<string, number> = new Map()
-    private readonly todoBackfillAttemptedSessionIds: Set<string> = new Set()
+    private readonly runtimeStateBackfillAttemptedSessionIds: Set<string> = new Set()
 
     constructor(
         private readonly store: Store,
@@ -37,6 +38,23 @@ export class SessionCache {
     }
 
     getSessionsByNamespace(namespace: string): Session[] {
+        // 从数据库获取该 namespace 的所有 sessions，确保数据一致性
+        const storedSessions = this.store.sessions.getSessionsByNamespace(namespace)
+
+        // 同步缓存：移除不在数据库中的 sessions
+        for (const [id, session] of this.sessions) {
+            if (session.namespace === namespace && !storedSessions.some(s => s.id === id)) {
+                this.sessions.delete(id)
+                this.lastBroadcastAtBySessionId.delete(id)
+                this.runtimeStateBackfillAttemptedSessionIds.delete(id)
+            }
+        }
+
+        // 刷新/加载 sessions 到缓存
+        for (const stored of storedSessions) {
+            this.refreshSession(stored.id)
+        }
+
         return this.getSessions().filter((session) => session.namespace === namespace)
     }
 
@@ -88,18 +106,41 @@ export class SessionCache {
 
         const existing = this.sessions.get(sessionId)
 
-        if (stored.todos === null && !this.todoBackfillAttemptedSessionIds.has(sessionId)) {
-            this.todoBackfillAttemptedSessionIds.add(sessionId)
+        // 从消息中回填 runtimeState（todos、teamState 等）
+        if (stored.runtimeState === null && !this.runtimeStateBackfillAttemptedSessionIds.has(sessionId)) {
+            this.runtimeStateBackfillAttemptedSessionIds.add(sessionId)
             const messages = this.store.messages.getMessages(sessionId, 200)
+
+            let runtimeState: RuntimeState = {}
+
+            // 提取 todos
             for (let i = messages.length - 1; i >= 0; i -= 1) {
                 const message = messages[i]
                 const todos = extractTodoWriteTodosFromMessageContent(message.content)
                 if (todos) {
-                    const updated = this.store.sessions.setSessionTodos(sessionId, todos, message.createdAt, stored.namespace)
-                    if (updated) {
-                        stored = this.store.sessions.getSession(sessionId) ?? stored
-                    }
+                    runtimeState.todos = todos
                     break
+                }
+            }
+
+            // 提取 teamState（从消息中增量构建）
+            let teamState = existing?.runtimeState?.teamState ?? null
+            for (const message of messages) {
+                const delta = extractTeamStateFromMessageContent(message.content)
+                if (delta) {
+                    teamState = applyTeamStateDelta(teamState, delta)
+                }
+            }
+            if (teamState) {
+                runtimeState.teamState = teamState
+            }
+
+            // 如果有数据，保存到数据库
+            if (Object.keys(runtimeState).length > 0) {
+                const updatedAt = Date.now()
+                const updated = this.store.sessions.setRuntimeState(sessionId, runtimeState, updatedAt, stored.namespace)
+                if (updated) {
+                    stored = this.store.sessions.getSession(sessionId) ?? stored
                 }
             }
         }
@@ -114,15 +155,9 @@ export class SessionCache {
             return parsed.success ? parsed.data : null
         })()
 
-        const todos = (() => {
-            if (stored.todos === null) return undefined
-            const parsed = TodosSchema.safeParse(stored.todos)
-            return parsed.success ? parsed.data : undefined
-        })()
-
-        const teamState = (() => {
-            if (stored.teamState === null || stored.teamState === undefined) return undefined
-            const parsed = TeamStateSchema.safeParse(stored.teamState)
+        const runtimeState = (() => {
+            if (stored.runtimeState === null) return undefined
+            const parsed = RuntimeStateSchema.safeParse(stored.runtimeState)
             return parsed.success ? parsed.data : undefined
         })()
 
@@ -140,8 +175,7 @@ export class SessionCache {
             agentStateVersion: stored.agentStateVersion,
             thinking: existing?.thinking ?? false,
             thinkingAt: existing?.thinkingAt ?? 0,
-            todos,
-            teamState,
+            runtimeState,
             permissionMode: existing?.permissionMode,
             modelMode: existing?.modelMode
         }
@@ -152,6 +186,11 @@ export class SessionCache {
     }
 
     reloadAll(): void {
+        // 先清空缓存，确保移除数据库中已删除的 sessions
+        this.sessions.clear()
+        this.lastBroadcastAtBySessionId.clear()
+        this.runtimeStateBackfillAttemptedSessionIds.clear()
+
         const sessions = this.store.sessions.getSessions()
         for (const session of sessions) {
             this.refreshSession(session.id)
@@ -302,7 +341,7 @@ export class SessionCache {
 
         this.sessions.delete(sessionId)
         this.lastBroadcastAtBySessionId.delete(sessionId)
-        this.todoBackfillAttemptedSessionIds.delete(sessionId)
+        this.runtimeStateBackfillAttemptedSessionIds.delete(sessionId)
 
         this.publisher.emit({ type: 'session-removed', sessionId, namespace: session.namespace })
     }
@@ -341,22 +380,20 @@ export class SessionCache {
             }
         }
 
-        if (oldStored.todos !== null && oldStored.todosUpdatedAt !== null) {
-            this.store.sessions.setSessionTodos(
-                newSessionId,
-                oldStored.todos,
-                oldStored.todosUpdatedAt,
-                namespace
-            )
-        }
+        // 合并 runtimeState
+        if (oldStored.runtimeState !== null && oldStored.runtimeStateUpdatedAt !== null) {
+            const oldRuntimeState = oldStored.runtimeState as RuntimeState
+            const newRuntimeState = (newStored.runtimeState as RuntimeState) ?? {}
+            const mergedRuntimeState = this.mergeRuntimeState(oldRuntimeState, newRuntimeState)
 
-        if (oldStored.teamState !== null && oldStored.teamStateUpdatedAt !== null) {
-            this.store.sessions.setSessionTeamState(
-                newSessionId,
-                oldStored.teamState,
-                oldStored.teamStateUpdatedAt,
-                namespace
-            )
+            if (Object.keys(mergedRuntimeState).length > 0) {
+                this.store.sessions.setRuntimeState(
+                    newSessionId,
+                    mergedRuntimeState,
+                    Math.max(oldStored.runtimeStateUpdatedAt, newStored.runtimeStateUpdatedAt ?? 0),
+                    namespace
+                )
+            }
         }
 
         const deleted = this.store.sessions.deleteSession(oldSessionId, namespace)
@@ -369,7 +406,7 @@ export class SessionCache {
             this.publisher.emit({ type: 'session-removed', sessionId: oldSessionId, namespace })
         }
         this.lastBroadcastAtBySessionId.delete(oldSessionId)
-        this.todoBackfillAttemptedSessionIds.delete(oldSessionId)
+        this.runtimeStateBackfillAttemptedSessionIds.delete(oldSessionId)
 
         this.refreshSession(newSessionId)
     }
@@ -416,5 +453,21 @@ export class SessionCache {
         }
 
         return changed ? merged : newMetadata
+    }
+
+    private mergeRuntimeState(oldState: RuntimeState, newState: RuntimeState): RuntimeState {
+        const merged: RuntimeState = { ...newState }
+
+        // 合并 todos（优先使用更新的）
+        if (oldState.todos && !newState.todos) {
+            merged.todos = oldState.todos
+        }
+
+        // 合并 teamState
+        if (oldState.teamState && !newState.teamState) {
+            merged.teamState = oldState.teamState
+        }
+
+        return merged
     }
 }

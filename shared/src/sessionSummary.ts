@@ -50,9 +50,9 @@ export function toSessionSummary(session: Session): SessionSummary {
         worktree: session.metadata.worktree
     } : null
 
-    const todoProgress = session.todos?.length ? {
-        completed: session.todos.filter(t => t.status === 'completed').length,
-        total: session.todos.length
+    const todoProgress = session.runtimeState?.todos?.length ? {
+        completed: session.runtimeState.todos.filter(t => t.status === 'completed').length,
+        total: session.runtimeState.todos.length
     } : null
 
     return {

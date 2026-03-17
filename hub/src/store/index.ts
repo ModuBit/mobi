@@ -38,7 +38,7 @@ export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 4
+const SCHEMA_VERSION: number = 5
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
@@ -156,10 +156,8 @@ export class Store {
                 metadata_version INTEGER DEFAULT 1,
                 agent_state TEXT,
                 agent_state_version INTEGER DEFAULT 1,
-                todos TEXT,
-                todos_updated_at INTEGER,
-                team_state TEXT,
-                team_state_updated_at INTEGER,
+                runtime_state TEXT,
+                runtime_state_updated_at INTEGER,
                 active INTEGER DEFAULT 0,
                 active_at INTEGER,
                 seq INTEGER DEFAULT 0

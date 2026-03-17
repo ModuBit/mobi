@@ -21,6 +21,7 @@ export type {
     AttachmentMetadata,
     DecryptedMessage,
     Metadata,
+    RuntimeState,
     Session,
     SyncEvent,
     TeamMember,

@@ -20,7 +20,7 @@ import {
     MetadataSchema,
     ModelModeSchema,
     PermissionModeSchema,
-    TodosSchema
+    RuntimeStateSchema
 } from '@mobi/shared/schemas'
 import type { ModelMode, PermissionMode } from '@mobi/shared/types'
 import { z } from 'zod'
@@ -111,7 +111,7 @@ export const CreateSessionResponseSchema = z.object({
         agentStateVersion: z.number(),
         thinking: z.boolean(),
         thinkingAt: z.number(),
-        todos: TodosSchema.optional(),
+        runtimeState: RuntimeStateSchema.optional(),
         permissionMode: PermissionModeSchema.optional(),
         modelMode: ModelModeSchema.optional()
     })

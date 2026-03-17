@@ -24,8 +24,7 @@ import {
     getSessionByNamespace,
     getSessions,
     getSessionsByNamespace,
-    setSessionTeamState,
-    setSessionTodos,
+    setRuntimeState,
     updateSessionAgentState,
     updateSessionMetadata
 } from './sessions'
@@ -60,12 +59,11 @@ export class SessionStore {
         return updateSessionAgentState(this.db, id, agentState, expectedVersion, namespace)
     }
 
-    setSessionTodos(id: string, todos: unknown, todosUpdatedAt: number, namespace: string): boolean {
-        return setSessionTodos(this.db, id, todos, todosUpdatedAt, namespace)
-    }
-
-    setSessionTeamState(id: string, teamState: unknown, updatedAt: number, namespace: string): boolean {
-        return setSessionTeamState(this.db, id, teamState, updatedAt, namespace)
+    /**
+     * 设置运行时状态（合并了 todos、teamState 等扩展状态）
+     */
+    setRuntimeState(id: string, runtimeState: unknown, updatedAt: number, namespace: string): boolean {
+        return setRuntimeState(this.db, id, runtimeState, updatedAt, namespace)
     }
 
     getSession(id: string): StoredSession | null {

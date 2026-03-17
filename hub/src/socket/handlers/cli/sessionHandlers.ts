@@ -17,7 +17,7 @@
 import type { ClientToServerEvents } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import type { ModelMode, PermissionMode, TeamState } from '@mobi/shared/types'
+import type { ModelMode, PermissionMode, RuntimeState, TeamState } from '@mobi/shared/types'
 import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
@@ -104,20 +104,26 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
         const msg = store.messages.addMessage(sid, content, localId)
 
+        // 提取并更新 runtimeState（todos、teamState 等）
         const todos = extractTodoWriteTodosFromMessageContent(content)
-        if (todos) {
-            const updated = store.sessions.setSessionTodos(sid, todos, msg.createdAt, session.namespace)
-            if (updated) {
-                onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid } })
-            }
-        }
-
         const teamDelta = extractTeamStateFromMessageContent(content)
-        if (teamDelta) {
+
+        if (todos || teamDelta) {
             const existingSession = store.sessions.getSession(sid)
-            const existingTeamState = existingSession?.teamState as TeamState | null | undefined
-            const newTeamState = applyTeamStateDelta(existingTeamState ?? null, teamDelta)
-            const updated = store.sessions.setSessionTeamState(sid, newTeamState, msg.createdAt, session.namespace)
+            const existingRuntimeState = (existingSession?.runtimeState as RuntimeState) ?? {}
+
+            // 合并 todos
+            if (todos) {
+                existingRuntimeState.todos = todos
+            }
+
+            // 合并 teamState
+            if (teamDelta) {
+                const existingTeamState = existingRuntimeState.teamState ?? null
+                existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamDelta) ?? undefined
+            }
+
+            const updated = store.sessions.setRuntimeState(sid, existingRuntimeState, msg.createdAt, session.namespace)
             if (updated) {
                 onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid } })
             }

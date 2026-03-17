@@ -153,6 +153,18 @@ export const TeamStateSchema = z.object({
 
 export type TeamState = z.infer<typeof TeamStateSchema>
 
+/**
+ * 运行时状态：存储会话的扩展状态（todos、teamState 等）
+ * 未来新增功能可在此对象中添加字段，无需修改数据库 schema
+ */
+export const RuntimeStateSchema = z.object({
+    todos: TodosSchema.optional(),
+    teamState: TeamStateSchema.optional()
+    // 未来可扩展：fooState: FooStateSchema.optional()
+})
+
+export type RuntimeState = z.infer<typeof RuntimeStateSchema>
+
 export const AttachmentMetadataSchema = z.object({
     id: z.string(),
     filename: z.string(),
@@ -188,8 +200,7 @@ export const SessionSchema = z.object({
     agentStateVersion: z.number(),
     thinking: z.boolean(),
     thinkingAt: z.number(),
-    todos: TodosSchema.optional(),
-    teamState: TeamStateSchema.optional(),
+    runtimeState: RuntimeStateSchema.optional(),
     permissionMode: PermissionModeSchema.optional(),
     modelMode: ModelModeSchema.optional()
 })
