@@ -20,6 +20,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/authStore'
 import { useUiStore } from '@/stores/uiStore'
+import { Helmet } from 'react-helmet-async'
 import axios from 'axios'
 import { useState } from 'react'
 
@@ -76,7 +77,11 @@ export function LoginPage() {
     }
 
     return (
-        <div style={{
+        <>
+            <Helmet>
+                <title>{t('siteTitle')}</title>
+            </Helmet>
+            <div style={{
             minHeight: '100vh',
             display: 'flex',
             alignItems: 'center',
@@ -180,5 +185,6 @@ export function LoginPage() {
                 </Space>
             </Card>
         </div>
+        </>
     )
 }

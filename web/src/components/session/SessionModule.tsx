@@ -19,11 +19,12 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useSessions } from '@/hooks/queries/useSessions'
 import { useUiStore } from '@/stores/uiStore'
-import { useAuthStore } from '@/stores/authStore'
 import { ContentSidebar } from '@/components/layout/ContentSidebar'
+import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { SessionDetail } from './SessionDetail'
 import { SessionCard } from './SessionCard'
-import { PlusOutlined, LogoutOutlined } from '@ant-design/icons'
+import { PlusOutlined } from '@ant-design/icons'
+import { useIsMobile } from '@/hooks/useMediaQuery'
 import { useEffect, useMemo } from 'react'
 import styled from '@emotion/styled'
 
@@ -36,6 +37,12 @@ const SidebarHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] 
     display: flex;
     justify-content: space-between;
     align-items: center;
+`
+
+const HeaderLeft = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 8px;
 `
 
 const SessionListContainer = styled.div`
@@ -62,9 +69,9 @@ export function SessionModule() {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const location = useLocation()
-    const { logout } = useAuthStore()
     const { data: sessions = [], isLoading } = useSessions()
     const { setSessionViewMode } = useUiStore()
+    const isMobile = useIsMobile()
 
     // 使用 TanStack Router 的 useLocation 响应式获取 sessionId
     const sessionId = useMemo(
@@ -92,25 +99,30 @@ export function SessionModule() {
         console.log('New session')
     }
 
+    // 移动端聊天页：只显示聊天详情
+    if (isMobile && sessionId) {
+        return (
+            <MainContentArea>
+                <SessionDetail sessionId={sessionId} />
+            </MainContentArea>
+        )
+    }
+
     return (
         <>
             {/* 左侧会话列表 */}
             <ContentSidebar>
                 <SidebarHeader $token={token}>
-                    <Title level={5} style={{ margin: 0 }}>{t('home.title')}</Title>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                        <Button
-                            type="primary"
-                            icon={<PlusOutlined />}
-                            size="small"
-                            onClick={handleNewSession}
-                        />
-                        <Button
-                            icon={<LogoutOutlined />}
-                            size="small"
-                            onClick={logout}
-                        />
-                    </div>
+                    <HeaderLeft>
+                        <MobileMenuButton />
+                        <Title level={5} style={{ margin: 0 }}>{t('home.title')}</Title>
+                    </HeaderLeft>
+                    <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        size="small"
+                        onClick={handleNewSession}
+                    />
                 </SidebarHeader>
                 <SessionListContainer>
                     {isLoading ? (

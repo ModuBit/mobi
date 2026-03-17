@@ -54,6 +54,7 @@ interface UiState {
     activeModule: ActiveModule
     theme: Theme
     locale: Locale
+    mobileMenuOpen: boolean
     // 保留兼容
     sidebarOpen: boolean
     // 操作方法
@@ -64,6 +65,7 @@ interface UiState {
     toggleSidebar: () => void
     setTheme: (theme: Theme) => void
     setLocale: (locale: Locale) => void
+    setMobileMenuOpen: (open: boolean) => void
 }
 
 export const useUiStore = create<UiState>()(
@@ -75,6 +77,7 @@ export const useUiStore = create<UiState>()(
             sidebarOpen: true,
             theme: 'dark',
             locale: getSystemLocale(),
+            mobileMenuOpen: false,
             setSessionViewMode: (mode) => set({ sessionViewMode: mode }),
             setFileViewTab: (tab) => set({ fileViewTab: tab }),
             setActiveModule: (module) => set({ activeModule: module }),
@@ -85,6 +88,7 @@ export const useUiStore = create<UiState>()(
                 i18n.changeLanguage(locale)
                 return set({ locale })
             },
+            setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
         }),
         {
             name: 'mobi-ui',

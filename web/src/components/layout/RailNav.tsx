@@ -14,20 +14,20 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Tooltip } from 'antd'
+import { theme as antTheme, Tooltip, Dropdown } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { useMemo } from 'react'
 import { useUiStore } from '@/stores/uiStore'
-import {
-    Bot,
-    MessageSquare,
-    Zap,
-    Plug,
-    Settings,
-} from 'lucide-react'
+import { useAuthStore } from '@/stores/authStore'
+import { useIsMobile } from '@/hooks/useMediaQuery'
+import { mainNavItems, bottomNavItems, logoutNavItem } from './navConfig'
+import { User } from 'lucide-react'
+import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
 
+// 桌面端：左侧垂直导航栏
 const SidebarContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     width: 56px;
     height: 100vh;
@@ -47,6 +47,11 @@ const LogoContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] 
     justify-content: center;
     margin-bottom: 16px;
     color: ${props => props.$token.colorPrimary};
+`
+
+const LogoImage = styled.img`
+    width: 32px;
+    height: 32px;
 `
 
 const NavItem = styled.button<{ $active: boolean; $token: ReturnType<typeof useToken>['token'] }>`
@@ -74,38 +79,41 @@ const Spacer = styled.div`
     flex: 1;
 `
 
-const navItems: Array<{
-    key: string
-    icon: typeof MessageSquare
-    tooltipKey: string
-    disabled?: boolean
-}> = [
-    { key: 'sessions', icon: MessageSquare, tooltipKey: 'nav.sessions' },
-    { key: 'skills', icon: Zap, tooltipKey: 'nav.skills', disabled: true },
-    { key: 'mcp', icon: Plug, tooltipKey: 'nav.mcp', disabled: true },
-]
-
-const bottomItems = [
-    { key: 'settings', icon: Settings, tooltipKey: 'nav.settings' },
-] as const
-
 export function RailNav() {
     const { token } = useToken()
     const { t } = useTranslation()
     const { activeModule, setActiveModule } = useUiStore()
+    const { logout } = useAuthStore()
+    const isMobile = useIsMobile()
 
+    // 移动端不显示侧边导航栏
+    if (isMobile) {
+        return null
+    }
+
+    // 用户菜单项 - 使用 useMemo 避免每次渲染重新创建
+    const userMenuItems: MenuProps['items'] = useMemo(() => [
+        {
+            key: logoutNavItem.key,
+            label: t(logoutNavItem.labelKey),
+            icon: <logoutNavItem.icon size={16} />,
+            onClick: logout,
+        },
+    ], [t, logout])
+
+    // 桌面端：左侧垂直导航栏
     return (
         <SidebarContainer $token={token}>
             {/* Logo */}
             <LogoContainer $token={token}>
-                <Bot size={28} />
+                <LogoImage src="/logo.svg" alt="Mobi" />
             </LogoContainer>
 
             {/* 主导航 */}
-            {navItems.map((item) => (
+            {mainNavItems.map((item) => (
                 <Tooltip
                     key={item.key}
-                    title={t(item.tooltipKey)}
+                    title={t(item.labelKey)}
                     placement="right"
                 >
                     <NavItem
@@ -122,10 +130,10 @@ export function RailNav() {
             <Spacer />
 
             {/* 底部导航 */}
-            {bottomItems.map((item) => (
+            {bottomNavItems.map((item) => (
                 <Tooltip
                     key={item.key}
-                    title={t(item.tooltipKey)}
+                    title={t(item.labelKey)}
                     placement="right"
                 >
                     <NavItem
@@ -137,6 +145,21 @@ export function RailNav() {
                     </NavItem>
                 </Tooltip>
             ))}
+
+            {/* 用户菜单 */}
+            <Dropdown
+                menu={{ items: userMenuItems }}
+                trigger={['click']}
+                placement="topRight"
+            >
+                <NavItem
+                    $active={false}
+                    $token={token}
+                    as="div"
+                >
+                    <User size={20} />
+                </NavItem>
+            </Dropdown>
         </SidebarContainer>
     )
 }

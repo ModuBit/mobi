@@ -21,6 +21,7 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { ConfigProvider, theme as antTheme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import enUS from 'antd/locale/en_US'
+import { HelmetProvider } from 'react-helmet-async'
 import { router } from './router'
 import { useUiStore } from './stores/uiStore'
 import i18n from './i18n'
@@ -97,7 +98,7 @@ const shadcnLightToken = {
     colorBgContainer: '#ffffff',
     colorBgElevated: '#ffffff',
     colorBgLayout: '#fafafa',
-    colorBgSpotlight: 'rgba(24, 24, 27, 0.85)',
+    colorBgSpotlight: '#18181b',
     colorBgMask: 'rgba(24, 24, 27, 0.45)',
     colorBorder: '#e4e4e7',
     colorBorderSecondary: '#f4f4f5',
@@ -178,7 +179,8 @@ const shadcnDarkToken = {
     colorBgContainer: '#18181b',
     colorBgElevated: '#27272a',
     colorBgLayout: '#09090b',
-    colorBgSpotlight: 'rgba(250, 250, 250, 0.85)',
+    colorBgSpotlight: '#fafafa',
+    colorTextLightSolid: '#18181b',
     colorBgMask: 'rgba(0, 0, 0, 0.65)',
     colorBorder: '#27272a',
     colorBorderSecondary: '#18181b',
@@ -364,10 +366,12 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-        <ThemeProvider>
-            <QueryClientProvider client={queryClient}>
-                <RouterProvider router={router} />
-            </QueryClientProvider>
-        </ThemeProvider>
+        <HelmetProvider>
+            <ThemeProvider>
+                <QueryClientProvider client={queryClient}>
+                    <RouterProvider router={router} />
+                </QueryClientProvider>
+            </ThemeProvider>
+        </HelmetProvider>
     </React.StrictMode>
 )

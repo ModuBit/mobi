@@ -1,0 +1,57 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import {
+    MessageSquare,
+    Zap,
+    Plug,
+    Settings,
+    LogOut,
+    type LucideIcon,
+} from 'lucide-react'
+
+// 导航项配置
+export interface NavItemConfig {
+    key: string
+    icon: LucideIcon
+    labelKey: string
+    disabled?: boolean
+}
+
+// 主导航项（桌面端显示）
+export const mainNavItems: NavItemConfig[] = [
+    { key: 'sessions', icon: MessageSquare, labelKey: 'nav.sessions' },
+    { key: 'skills', icon: Zap, labelKey: 'nav.skills', disabled: true },
+    { key: 'mcp', icon: Plug, labelKey: 'nav.mcp', disabled: true },
+]
+
+// 底部导航项（桌面端底部）
+export const bottomNavItems: NavItemConfig[] = [
+    { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
+]
+
+// 移动端菜单项（过滤掉 disabled 的项）
+export const mobileNavItems: NavItemConfig[] = [
+    { key: 'sessions', icon: MessageSquare, labelKey: 'nav.sessions' },
+    { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
+]
+
+// 退出登录项
+export const logoutNavItem: NavItemConfig = {
+    key: 'logout',
+    icon: LogOut,
+    labelKey: 'nav.logout',
+}

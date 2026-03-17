@@ -23,6 +23,7 @@ import { ChatContainer } from '@/components/chat/ChatContainer'
 import { FileView } from '@/components/files/FileView'
 import TerminalView from '@/components/terminal/TerminalView'
 import { IconButton } from '@/components/ui/IconButton'
+import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { Folder, Terminal, ArrowLeft } from 'lucide-react'
 import styled from '@emotion/styled'
 
@@ -118,6 +119,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
             {/* Header */}
             <DetailHeader $token={token}>
                 <HeaderLeft>
+                    <MobileMenuButton />
                     <IconButton
                         icon={<ArrowLeft size={18} />}
                         tooltip={t('common.back')}

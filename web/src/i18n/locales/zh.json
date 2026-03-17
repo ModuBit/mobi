@@ -1,4 +1,5 @@
 {
+    "siteTitle": "MOBI | 随时随地 Vibe Coding",
     "common": {
         "loading": "加载中...",
         "noData": "暂无数据",
@@ -25,7 +26,9 @@
         "sessions": "会话",
         "skills": "技能",
         "mcp": "MCP",
-        "settings": "设置"
+        "settings": "设置",
+        "logout": "退出登录",
+        "menu": "菜单"
     },
     "home": {
         "title": "会话列表",

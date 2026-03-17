@@ -17,9 +17,12 @@
 import { theme as antTheme, ConfigProvider } from 'antd'
 import { useUiStore, resolveTheme } from '@/stores/uiStore'
 import { RailNav } from './RailNav'
+import { MobileMenuDrawer } from './MobileMenu'
 import { SessionModule } from '@/components/session/SessionModule'
 import { SettingsModule } from '@/components/settings/SettingsModule'
 import { useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Helmet } from 'react-helmet-async'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -59,6 +62,7 @@ function PlaceholderModule({ name }: { name: string }) {
 export function MainLayout() {
     const { token } = useToken()
     const { activeModule, theme } = useUiStore()
+    const { t } = useTranslation()
 
     // 缓存解析后的主题值
     const resolvedTheme = useMemo(() => resolveTheme(theme), [theme])
@@ -89,12 +93,17 @@ export function MainLayout() {
                 algorithm: resolvedTheme === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
             }}
         >
+            <Helmet>
+                <title>{t('siteTitle')}</title>
+            </Helmet>
             <LayoutContainer $token={token}>
                 <RailNav />
                 <MainContent>
                     {renderContent()}
                 </MainContent>
             </LayoutContainer>
+            {/* 移动端底部弹出菜单 */}
+            <MobileMenuDrawer />
         </ConfigProvider>
     )
 }
