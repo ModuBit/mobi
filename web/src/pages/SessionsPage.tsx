@@ -14,15 +14,13 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Button, Typography, Empty, Skeleton } from 'antd'
+import { theme as antTheme, Button, Typography, Empty } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useSessions } from '@/hooks/queries/useSessions'
 import { ContentSidebar } from '@/components/layout/ContentSidebar'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
-import { SessionCard } from '@/components/session/SessionCard'
+import { SessionGroupList } from '@/components/session/SessionGroupList'
 import { PlusOutlined } from '@ant-design/icons'
 import { useIsMobile } from '@/hooks/useMediaQuery'
-import { useMemo } from 'react'
 import styled from '@emotion/styled'
 
 const { Title } = Typography
@@ -45,7 +43,6 @@ const HeaderLeft = styled.div`
 const SessionListContainer = styled.div`
     flex: 1;
     overflow-y: auto;
-    padding: 8px 4px;
 `
 
 const EmptyContainer = styled.div`
@@ -68,21 +65,12 @@ const MobileContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'
 
 /**
  * 会话列表页面
- * 显示所有会话的列表，点击会话跳转到详情页
+ * 显示所有会话的分组列表，点击会话跳转到详情页
  */
 export function SessionsPage() {
     const { token } = useToken()
     const { t } = useTranslation()
-    const { data: sessions = [], isLoading } = useSessions()
     const isMobile = useIsMobile()
-
-    // 使用 useMemo 缓存排序结果
-    const sortedSessions = useMemo(() => {
-        return [...sessions].sort((a, b) => {
-            if (a.active !== b.active) return a.active ? -1 : 1
-            return (b.updatedAt || 0) - (a.updatedAt || 0)
-        })
-    }, [sessions])
 
     const handleNewSession = () => {
         // TODO: 实现新建会话
@@ -106,18 +94,7 @@ export function SessionsPage() {
                     />
                 </SidebarHeader>
                 <SessionListContainer>
-                    {isLoading ? (
-                        <Skeleton active paragraph={{ rows: 4 }} style={{ padding: 16 }} />
-                    ) : sortedSessions.length === 0 ? (
-                        <Empty description={t('session.empty')} style={{ marginTop: 40 }} />
-                    ) : (
-                        sortedSessions.map((session) => (
-                            <SessionCard
-                                key={session.id}
-                                session={session}
-                            />
-                        ))
-                    )}
+                    <SessionGroupList />
                 </SessionListContainer>
             </MobileContainer>
         )
@@ -140,23 +117,12 @@ export function SessionsPage() {
                     />
                 </SidebarHeader>
                 <SessionListContainer>
-                    {isLoading ? (
-                        <Skeleton active paragraph={{ rows: 4 }} style={{ padding: 16 }} />
-                    ) : sortedSessions.length === 0 ? (
-                        <Empty description={t('session.empty')} style={{ marginTop: 40 }} />
-                    ) : (
-                        sortedSessions.map((session) => (
-                            <SessionCard
-                                key={session.id}
-                                session={session}
-                            />
-                        ))
-                    )}
+                    <SessionGroupList />
                 </SessionListContainer>
             </ContentSidebar>
 
             <EmptyContainer style={{ color: token.colorTextSecondary }}>
-                <Empty description={t('session.empty')} />
+                <Empty description={t('session.selectToView')} />
             </EmptyContainer>
         </>
     )

@@ -158,12 +158,14 @@ export class Store {
                 agent_state_version INTEGER DEFAULT 1,
                 runtime_state TEXT,
                 runtime_state_updated_at INTEGER,
+                group_key TEXT,
                 active INTEGER DEFAULT 0,
                 active_at INTEGER,
                 seq INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
             CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
+            CREATE INDEX IF NOT EXISTS idx_sessions_group_key ON sessions(group_key);
 
             CREATE TABLE IF NOT EXISTS machines (
                 id TEXT PRIMARY KEY,

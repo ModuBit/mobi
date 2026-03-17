@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage } from './types'
+import type { Session, DecryptedMessage, SessionGroup, SessionGroupsResponse, GroupSessionsResponse } from './types'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -139,6 +139,19 @@ export function createMobiApi(token: string | null) {
             getVapidKey: () => client.get<{ publicKey: string }>('/api/push/vapid-key'),
             subscribe: (subscription: PushSubscriptionJSON) =>
                 client.post('/api/push/subscribe', subscription),
+        },
+
+        // Session Groups
+        sessionGroups: {
+            list: () => client.get<SessionGroupsResponse>('/api/session-groups'),
+            getSessions: (groupKey: string, cursor?: number, limit?: number) =>
+                client.get<GroupSessionsResponse>('/api/session-groups/sessions', {
+                    params: {
+                        groupKey,
+                        ...(cursor !== undefined && { cursor }),
+                        limit: limit ?? 20
+                    }
+                }),
         },
     }
 }

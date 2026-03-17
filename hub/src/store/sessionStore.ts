@@ -24,9 +24,13 @@ import {
     getSessionByNamespace,
     getSessions,
     getSessionsByNamespace,
+    getSessionGroups as getSessionGroupsFromDb,
+    getSessionsByGroup as getSessionsByGroupFromDb,
     setRuntimeState,
     updateSessionAgentState,
-    updateSessionMetadata
+    updateSessionMetadata,
+    type SessionGroup,
+    type GroupSessionsResult
 } from './sessions'
 
 export class SessionStore {
@@ -84,5 +88,20 @@ export class SessionStore {
 
     deleteSession(id: string, namespace: string): boolean {
         return deleteSession(this.db, id, namespace)
+    }
+
+    // ============ 分组相关 ============
+
+    getSessionGroups(namespace: string): SessionGroup[] {
+        return getSessionGroupsFromDb(this.db, namespace)
+    }
+
+    getSessionsByGroup(
+        namespace: string,
+        groupKey: string,
+        cursor: number | null,
+        limit?: number
+    ): GroupSessionsResult {
+        return getSessionsByGroupFromDb(this.db, namespace, groupKey, cursor, limit)
     }
 }

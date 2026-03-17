@@ -49,3 +49,23 @@ export interface GitStatusFile {
 export interface GitDiffResponse {
     diff: string
 }
+
+// ============ Session Group Types ============
+
+export interface SessionGroup {
+    key: string
+    name: string
+    activeCount: number
+    totalCount: number
+    updatedAt: number
+}
+
+export interface SessionGroupsResponse {
+    groups: SessionGroup[]
+}
+
+export interface GroupSessionsResponse {
+    sessions: Session[]
+    nextCursor: number | null
+    hasMore: boolean
+}

@@ -34,6 +34,7 @@ type DbSessionRow = {
     agent_state_version: number
     runtime_state: string | null
     runtime_state_updated_at: number | null
+    group_key: string | null
     active: number
     active_at: number | null
     seq: number
@@ -53,10 +54,29 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         agentStateVersion: row.agent_state_version,
         runtimeState: safeJsonParse(row.runtime_state),
         runtimeStateUpdatedAt: row.runtime_state_updated_at,
+        groupKey: row.group_key,
         active: row.active === 1,
         activeAt: row.active_at,
         seq: row.seq
     }
+}
+
+/**
+ * 从 path 中提取分组 key
+ * 规则：取 path 的最后两级目录
+ * 示例：/home/user/projects/mobi/src → projects/mobi
+ */
+export function extractGroupKey(path: string | undefined | null): string | null {
+    if (!path) return null
+
+    // 规范化路径，处理 Windows 路径分隔符
+    const normalized = path.replace(/\\/g, '/')
+    const parts = normalized.split('/').filter(Boolean)
+
+    // 边界情况处理
+    if (parts.length === 0) return null
+    if (parts.length === 1) return parts[0]
+    return parts.slice(-2).join('/')
 }
 
 export function getOrCreateSession(
@@ -80,18 +100,24 @@ export function getOrCreateSession(
     const metadataJson = JSON.stringify(metadata)
     const agentStateJson = agentState === null || agentState === undefined ? null : JSON.stringify(agentState)
 
+    // 计算 groupKey
+    const metadataObj = metadata as { path?: string } | null
+    const groupKey = extractGroupKey(metadataObj?.path)
+
     db.prepare(`
         INSERT INTO sessions (
             id, tag, namespace, machine_id, created_at, updated_at,
             metadata, metadata_version,
             agent_state, agent_state_version,
             runtime_state, runtime_state_updated_at,
+            group_key,
             active, active_at, seq
         ) VALUES (
             @id, @tag, @namespace, NULL, @created_at, @updated_at,
             @metadata, 1,
             @agent_state, 1,
             NULL, NULL,
+            @group_key,
             0, NULL, 0
         )
     `).run({
@@ -101,7 +127,8 @@ export function getOrCreateSession(
         created_at: now,
         updated_at: now,
         metadata: metadataJson,
-        agent_state: agentStateJson
+        agent_state: agentStateJson,
+        group_key: groupKey
     })
 
     const row = getSession(db, id)
@@ -237,4 +264,77 @@ export function deleteSession(db: Database, id: string, namespace: string): bool
         'DELETE FROM sessions WHERE id = ? AND namespace = ?'
     ).run(id, namespace)
     return result.changes > 0
+}
+
+// ============ 分组相关 ============
+
+export type SessionGroup = {
+    key: string
+    name: string
+    activeCount: number
+    totalCount: number
+    updatedAt: number
+}
+
+export function getSessionGroups(db: Database, namespace: string): SessionGroup[] {
+    const rows = db.prepare(`
+        SELECT
+            group_key,
+            COUNT(*) as total_count,
+            SUM(CASE WHEN active = 1 THEN 1 ELSE 0 END) as active_count,
+            MAX(updated_at) as updated_at
+        FROM sessions
+        WHERE namespace = ? AND group_key IS NOT NULL
+        GROUP BY group_key
+        ORDER BY
+            MAX(active) DESC,
+            MAX(updated_at) DESC
+    `).all(namespace) as Array<{
+        group_key: string
+        total_count: number
+        active_count: number
+        updated_at: number
+    }>
+
+    return rows.map(row => ({
+        key: row.group_key,
+        name: row.group_key,
+        activeCount: row.active_count,
+        totalCount: row.total_count,
+        updatedAt: row.updated_at
+    }))
+}
+
+export type GroupSessionsResult = {
+    sessions: StoredSession[]
+    nextCursor: number | null
+    hasMore: boolean
+}
+
+export function getSessionsByGroup(
+    db: Database,
+    namespace: string,
+    groupKey: string,
+    cursor: number | null,
+    limit: number = 20
+): GroupSessionsResult {
+    const cursorCondition = cursor ? 'AND updated_at < ?' : ''
+    const sql = `
+        SELECT * FROM sessions
+        WHERE namespace = ? AND group_key = ? ${cursorCondition}
+        ORDER BY active DESC, updated_at DESC
+        LIMIT ?
+    `
+
+    const rows = cursor
+        ? db.prepare(sql).all(namespace, groupKey, cursor, limit) as DbSessionRow[]
+        : db.prepare(sql).all(namespace, groupKey, limit) as DbSessionRow[]
+
+    const sessions = rows.map(toStoredSession)
+    const hasMore = rows.length === limit
+    const nextCursor = hasMore && rows.length > 0
+        ? rows[rows.length - 1].updated_at
+        : null
+
+    return { sessions, nextCursor, hasMore }
 }
