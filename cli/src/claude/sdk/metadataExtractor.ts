@@ -16,11 +16,10 @@
 
 /**
  * SDK Metadata Extractor
- * Captures available tools and slash commands from Claude SDK initialization
+ * 使用官方 SDK 的 initializationResult() 方法获取可用工具和命令
  */
 
-import { query } from './query'
-import type { SDKSystemMessage } from './types'
+import { query } from './adapter'
 import { logger } from '@/ui/logger'
 
 export interface SDKMetadata {
@@ -29,49 +28,37 @@ export interface SDKMetadata {
 }
 
 /**
- * Extract SDK metadata by running a minimal query and capturing the init message
- * @returns SDK metadata containing tools and slash commands
+ * 使用官方 SDK 的 initializationResult() 方法提取元数据
+ * @returns SDK 元数据，包含工具和斜杠命令列表
  */
 export async function extractSDKMetadata(): Promise<SDKMetadata> {
     const abortController = new AbortController()
-    
+
     try {
         logger.debug('[metadataExtractor] Starting SDK metadata extraction')
-        
-        // Run SDK with minimal tools allowed
+
+        // 使用空提示和最小配置创建查询
         const sdkQuery = query({
-            prompt: 'hello',
+            prompt: '',
             options: {
-                allowedTools: ['Bash(echo)'],
-                maxTurns: 1,
+                maxTurns: 0,
                 abort: abortController.signal
             }
         })
 
-        // Wait for the first system message which contains tools and slash commands
-        for await (const message of sdkQuery) {
-            if (message.type === 'system' && message.subtype === 'init') {
-                const systemMessage = message as SDKSystemMessage
-                
-                const metadata: SDKMetadata = {
-                    tools: systemMessage.tools,
-                    slashCommands: systemMessage.slash_commands
-                }
-                
-                logger.debug('[metadataExtractor] Captured SDK metadata:', metadata)
-                
-                // Abort the query since we got what we need
-                abortController.abort()
-                
-                return metadata
-            }
-        }
-        
-        logger.debug('[metadataExtractor] No init message received from SDK')
-        return {}
-        
+        // 使用官方 SDK 的 initializationResult() 方法
+        const init = await sdkQuery.initializationResult()
+
+        logger.debug('[metadataExtractor] Captured SDK metadata:', init)
+
+        // 关闭查询
+        sdkQuery.close()
+        abortController.abort()
+
+        return init
+
     } catch (error) {
-        // Check if it's an abort error (expected)
+        // 检查是否是中止错误（预期行为）
         if (error instanceof Error && error.name === 'AbortError') {
             logger.debug('[metadataExtractor] SDK query aborted after capturing metadata')
             return {}

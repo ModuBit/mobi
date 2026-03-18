@@ -16,11 +16,15 @@
 
 /**
  * Claude Code SDK integration for MOBI CLI
- * Provides clean TypeScript implementation without Bun support
+ *
+ * 使用官方 @anthropic-ai/claude-agent-sdk 作为底层实现，
+ * 通过适配层保持向后兼容的 API。
  */
 
-export { query } from './query'
-export { AbortError } from './types'
+// 从适配层导出
+export { query, AbortError, QueryWrapper } from './adapter'
+
+// 导出类型定义
 export type {
     QueryOptions,
     QueryPrompt,
@@ -36,3 +40,9 @@ export type {
     CanCallToolCallback,
     PermissionResult
 } from './types'
+
+// 导出工具函数（保留向后兼容）
+export { getDefaultClaudeCodePath, logDebug, streamToStdin } from './utils'
+
+// 导出提示词常量
+export * from './prompts'
