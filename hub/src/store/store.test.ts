@@ -168,4 +168,47 @@ describe('Store', () => {
         expect(messages[0].seq).toBeLessThan(messages[1].seq)
         expect(messages[1].seq).toBeLessThan(messages[2].seq)
     })
+
+    test('通过 claudeSessionId 查找会话', () => {
+        // metadata.claudeSessionId 存在时能找到
+        const session = store.sessions.getOrCreateSession(
+            'tag-with-claude-id',
+            { claudeSessionId: 'claude-abc-123', path: '/some/path' },
+            null,
+            'default'
+        )
+
+        const found = store.sessions.getSessionByClaudeSessionId('claude-abc-123', 'default')
+        expect(found).not.toBeNull()
+        expect(found?.id).toBe(session.id)
+
+        // 不存在时返回 null
+        const notFound = store.sessions.getSessionByClaudeSessionId('non-existent', 'default')
+        expect(notFound).toBeNull()
+
+        // namespace 隔离：同一 claudeSessionId 在不同 namespace 找不到
+        const wrongNs = store.sessions.getSessionByClaudeSessionId('claude-abc-123', 'other-ns')
+        expect(wrongNs).toBeNull()
+    })
+
+    test('通过 claudeSessionId 查找会话 - 多条记录取 updated_at 最新', () => {
+        // 第一条
+        store.sessions.getOrCreateSession(
+            'tag-old',
+            { claudeSessionId: 'claude-dup-456' },
+            null,
+            'default'
+        )
+        // 第二条（tag 不同，但 claudeSessionId 相同）
+        const newer = store.sessions.getOrCreateSession(
+            'tag-new',
+            { claudeSessionId: 'claude-dup-456' },
+            null,
+            'default'
+        )
+
+        const found = store.sessions.getSessionByClaudeSessionId('claude-dup-456', 'default')
+        // 取 updated_at 最新的一条
+        expect(found?.id).toBe(newer.id)
+    })
 })

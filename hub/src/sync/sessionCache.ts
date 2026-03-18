@@ -94,6 +94,13 @@ export class SessionCache {
         return this.refreshSession(stored.id) ?? (() => { throw new Error('Failed to load session') })()
     }
 
+    getSessionByClaudeSessionId(claudeSessionId: string, namespace: string): Session | null {
+        const stored = this.store.sessions.getSessionByClaudeSessionId(claudeSessionId, namespace)
+        if (!stored) return null
+        // 先从内存缓存取，缓存未命中时从数据库加载（与其他读方法行为一致）
+        return this.sessions.get(stored.id) ?? this.refreshSession(stored.id) ?? null
+    }
+
     refreshSession(sessionId: string): Session | null {
         let stored = this.store.sessions.getSession(sessionId)
         if (!stored) {
@@ -177,7 +184,8 @@ export class SessionCache {
             thinkingAt: existing?.thinkingAt ?? 0,
             runtimeState,
             permissionMode: existing?.permissionMode,
-            modelMode: existing?.modelMode
+            modelMode: existing?.modelMode,
+            tag: stored.tag
         }
 
         this.sessions.set(sessionId, session)

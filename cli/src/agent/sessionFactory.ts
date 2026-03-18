@@ -37,6 +37,7 @@ export type SessionBootstrapOptions = {
     workingDirectory?: string
     tag?: string
     agentState?: AgentState | null
+    claudeArgs?: string[]   // 用于解析 --resume，从而复用已有 Hub session
 }
 
 export type SessionBootstrapResult = {
@@ -116,13 +117,50 @@ async function reportSessionStarted(sessionId: string, metadata: Metadata): Prom
     }
 }
 
+/**
+ * 从 claudeArgs 中解析 --resume 的 session ID
+ * 例：['--resume', 'abc-123'] → 'abc-123'
+ * 例：['--resume'] → null（无参数，恢复上次会话，没有显式 ID）
+ * 例：undefined / 无 --resume → null
+ */
+function extractResumeSessionId(claudeArgs?: string[]): string | null {
+    if (!claudeArgs) return null
+    const idx = claudeArgs.indexOf('--resume')
+    if (idx === -1) return null
+    const next = claudeArgs[idx + 1]
+    // 下一个参数存在且不是 flag（不以 - 开头），视为 session ID
+    if (next && !next.startsWith('-')) {
+        return next
+    }
+    return null
+}
+
 export async function bootstrapSession(options: SessionBootstrapOptions): Promise<SessionBootstrapResult> {
     const workingDirectory = options.workingDirectory ?? process.cwd()
     const startedBy = options.startedBy ?? 'terminal'
-    const sessionTag = options.tag ?? randomUUID()
     const agentState = options.agentState === undefined ? {} : options.agentState
 
     const api = await ApiClient.create()
+
+    let sessionTag = options.tag ?? randomUUID()
+
+    // 若有 --resume <claudeSessionId>，尝试找到已有 Hub session 并复用其 tag
+    const resumeClaudeSessionId = extractResumeSessionId(options.claudeArgs)
+    if (resumeClaudeSessionId) {
+        logger.debug(`[START] --resume 检测到 claudeSessionId: ${resumeClaudeSessionId}，尝试复用 Hub session`)
+        try {
+            const existingSession = await api.getSessionByClaudeSessionId(resumeClaudeSessionId)
+            if (existingSession?.tag) {
+                // 用已有 session 的 tag 调用 getOrCreateSession，Hub 会返回同一条记录
+                sessionTag = existingSession.tag
+                logger.debug(`[START] 找到已有 Hub session (id=${existingSession.id})，复用 tag: ${sessionTag}`)
+            } else {
+                logger.debug(`[START] 未找到对应 Hub session，新建`)
+            }
+        } catch (error) {
+            logger.debug(`[START] 查找 Hub session 失败，降级为新建:`, error)
+        }
+    }
 
     const machineId = await getMachineIdOrExit()
     await api.getOrCreateMachine({

@@ -203,7 +203,8 @@ export const SessionSchema = z.object({
     runtimeState: RuntimeStateSchema.optional(),
     permissionMode: PermissionModeSchema.optional(),
     modelMode: ModelModeSchema.optional(),
-    groupKey: z.string().optional()
+    groupKey: z.string().optional(),
+    tag: z.string().nullable().optional()   // Hub session 的标签，用于 getOrCreateSession 时复用
 })
 
 export type Session = z.infer<typeof SessionSchema>

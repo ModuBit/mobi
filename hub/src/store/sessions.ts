@@ -235,6 +235,24 @@ export function setRuntimeState(
     }
 }
 
+export function getSessionByClaudeSessionId(
+    db: Database,
+    claudeSessionId: string,
+    namespace: string
+): StoredSession | null {
+    // 通过 json_extract 读取 metadata.claudeSessionId 字段查找
+    // 全表扫描但 sessions 表数据量极小，性能可接受
+    // 多条相同 claudeSessionId 时，取 updated_at 最新的一条；相同时取 rowid 最大（即最新插入）的一条
+    const row = db.prepare(`
+        SELECT * FROM sessions
+        WHERE json_extract(metadata, '$.claudeSessionId') = ?
+          AND namespace = ?
+        ORDER BY updated_at DESC, rowid DESC
+        LIMIT 1
+    `).get(claudeSessionId, namespace) as DbSessionRow | undefined
+    return row ? toStoredSession(row) : null
+}
+
 export function getSession(db: Database, id: string): StoredSession | null {
     const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as DbSessionRow | undefined
     return row ? toStoredSession(row) : null

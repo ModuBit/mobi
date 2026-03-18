@@ -21,6 +21,7 @@ import {
     deleteSession,
     getOrCreateSession,
     getSession,
+    getSessionByClaudeSessionId,
     getSessionByNamespace,
     getSessions,
     getSessionsByNamespace,
@@ -72,6 +73,10 @@ export class SessionStore {
 
     getSession(id: string): StoredSession | null {
         return getSession(this.db, id)
+    }
+
+    getSessionByClaudeSessionId(claudeSessionId: string, namespace: string): StoredSession | null {
+        return getSessionByClaudeSessionId(this.db, claudeSessionId, namespace)
     }
 
     getSessionByNamespace(id: string, namespace: string): StoredSession | null {

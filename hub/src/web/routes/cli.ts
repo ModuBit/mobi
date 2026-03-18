@@ -120,6 +120,21 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         return c.json({ session })
     })
 
+    // 注意：此路由必须注册在 /sessions/:id 之前，否则会被参数路由拦截
+    app.get('/sessions/by-claude-session/:claudeSessionId', (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not ready' }, 503)
+        }
+        const claudeSessionId = c.req.param('claudeSessionId')
+        const namespace = c.get('namespace')
+        const session = engine.getSessionByClaudeSessionId(claudeSessionId, namespace)
+        if (!session) {
+            return c.json({ error: 'Session not found' }, 404)
+        }
+        return c.json({ session })
+    })
+
     app.get('/sessions/:id', (c) => {
         const engine = getSyncEngine()
         if (!engine) {

@@ -65,7 +65,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         flavor: 'claude',
         startedBy,
         workingDirectory,
-        agentState: initialState
+        agentState: initialState,
+        claudeArgs: options.claudeArgs   // 新增，用于 --resume 时复用 Hub session
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
 

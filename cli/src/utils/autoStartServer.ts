@@ -19,9 +19,9 @@
  *
  * Automatically starts the MOBI hub when CLI is launched
  * if specific conditions are met:
- * 1. MOBI_API_URL is not set (using default localhost:2222)
+ * 1. MOBI_API_URL is not set (using default localhost:DEFAULT_SERVER_PORT)
  * 2. cliApiToken exists in settings.json (hub was previously started)
- * 3. Port 2222 is not currently listening
+ * 3. DEFAULT_SERVER_PORT is not currently listening
  */
 
 import chalk from 'chalk'
@@ -106,7 +106,7 @@ async function waitForServerReady(
  * Determine if hub should be auto-started
  */
 async function shouldAutoStartServer(): Promise<boolean> {
-    // Condition 1: MOBI_API_URL not set (using default localhost:2222)
+    // Condition 1: MOBI_API_URL not set (using default localhost:DEFAULT_SERVER_PORT)
     if (process.env.MOBI_API_URL) {
         logger.debug('[AUTO-START] MOBI_API_URL is set, skipping auto-start')
         return false
@@ -127,10 +127,10 @@ async function shouldAutoStartServer(): Promise<boolean> {
         return false
     }
 
-    // Condition 3: Port 2222 is not currently listening
+    // Condition 3: DEFAULT_SERVER_PORT is not currently listening
     const isListening = await checkPortListening(DEFAULT_SERVER_PORT)
     if (isListening) {
-        logger.debug('[AUTO-START] Port 2222 already in use, skipping auto-start')
+        logger.debug(`[AUTO-START] Port ${DEFAULT_SERVER_PORT} already in use, skipping auto-start`)
         return false
     }
 

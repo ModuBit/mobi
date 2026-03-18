@@ -28,6 +28,7 @@ import { spawnMobiCli } from '@/utils/spawnMobiCli'
 import { maybeAutoStartServer } from '@/utils/autoStartServer'
 import { withBunRuntimeEnv } from '@/utils/bunRuntime'
 import { extractErrorInfo } from '@/utils/errorUtils'
+import { getDefaultClaudeCodePath } from '@/claude/sdk/utils'
 import type { CommandDefinition } from './types'
 
 // 检测是否为网络连接错误
@@ -66,10 +67,11 @@ async function runLocalMode(options: StartOptions): Promise<void> {
     logger.debug(`[LOCAL] Starting Claude with args:`, claudeArgs)
 
     // 直接启动 claude 进程
-    const claudeProcess = spawn('claude', claudeArgs, {
+    const claudeCommand = getDefaultClaudeCodePath()
+    const claudeProcess = spawn(claudeCommand, claudeArgs, {
         stdio: 'inherit',
         env: withBunRuntimeEnv(),
-        shell: process.platform === 'win32'
+        shell: false
     })
 
     return new Promise((resolve, reject) => {
@@ -171,9 +173,9 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
             try {
                 const claudeHelp = execFileSync(
-                    'claude',
+                    getDefaultClaudeCodePath(),
                     ['--help'],
-                    { encoding: 'utf8', env: withBunRuntimeEnv(), shell: process.platform === 'win32' }
+                    { encoding: 'utf8', env: withBunRuntimeEnv(), shell: false }
                 )
                 console.log(claudeHelp)
             } catch {

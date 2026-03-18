@@ -113,7 +113,8 @@ export const CreateSessionResponseSchema = z.object({
         thinkingAt: z.number(),
         runtimeState: RuntimeStateSchema.optional(),
         permissionMode: PermissionModeSchema.optional(),
-        modelMode: ModelModeSchema.optional()
+        modelMode: ModelModeSchema.optional(),
+        tag: z.string().nullable().optional()   // 用于 --resume 时复用 Hub session
     })
 })
 

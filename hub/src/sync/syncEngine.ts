@@ -230,6 +230,10 @@ export class SyncEngine {
         return this.sessionCache.getOrCreateSession(tag, metadata, agentState, namespace)
     }
 
+    getSessionByClaudeSessionId(claudeSessionId: string, namespace: string): Session | null {
+        return this.sessionCache.getSessionByClaudeSessionId(claudeSessionId, namespace)
+    }
+
     getOrCreateMachine(id: string, metadata: unknown, runnerState: unknown, namespace: string): Machine {
         return this.machineCache.getOrCreateMachine(id, metadata, runnerState, namespace)
     }
