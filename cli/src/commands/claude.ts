@@ -104,6 +104,7 @@ export const claudeCommand: CommandDefinition = {
         let showHelp = false
         const unknownArgs: string[] = []
 
+        // 解析命令行参数
         for (let i = 0; i < args.length; i++) {
             const arg = args[i]
 
@@ -111,14 +112,18 @@ export const claudeCommand: CommandDefinition = {
                 showHelp = true
                 unknownArgs.push(arg)
             } else if (arg === '--mobi-starting-mode') {
+                // 设置启动模式
                 options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
             } else if (arg === '--yolo') {
+                // 设置yolo模式
                 options.permissionMode = 'bypassPermissions'
                 unknownArgs.push('--dangerously-skip-permissions')
             } else if (arg === '--dangerously-skip-permissions') {
+                // 与yolo模式相同
                 options.permissionMode = 'bypassPermissions'
                 unknownArgs.push(arg)
             } else if (arg === '--model') {
+                // 设置模型
                 const model = args[++i]
                 if (!model) {
                     throw new Error('Missing --model value')
@@ -126,8 +131,10 @@ export const claudeCommand: CommandDefinition = {
                 options.model = model
                 unknownArgs.push('--model', model)
             } else if (arg === '--started-by') {
+                // 设置启动来源
                 options.startedBy = args[++i] as 'runner' | 'terminal'
             } else {
+                // 其他claude code参数
                 unknownArgs.push(arg)
                 if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
                     unknownArgs.push(args[++i])
@@ -136,10 +143,13 @@ export const claudeCommand: CommandDefinition = {
         }
 
         if (unknownArgs.length > 0) {
+            // 透传给claude code的参数
             options.claudeArgs = [...(options.claudeArgs || []), ...unknownArgs]
         }
 
+        // 显示帮助信息
         if (showHelp) {
+            // 限制mobi的帮助信息
             console.log(`
 ${chalk.bold('mobi')} - Claude Code On the Go
 
@@ -171,6 +181,7 @@ ${chalk.gray('─'.repeat(60))}
 ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 `)
 
+            // 追加 claude code 的帮助信息
             try {
                 const claudeHelp = execFileSync(
                     getDefaultClaudeCodePath(),
@@ -185,12 +196,17 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
             process.exit(0)
         }
 
+        // 初始化 cli auth token
         await initializeToken()
+        // 启动 mobi hub （如果需要）
+        // mobi hub 会随 mobi 一同关闭
         await maybeAutoStartServer()
+        // 确保设置了 cli auth token 并初始化 machineId
         await authAndSetupMachineIfNeeded()
 
         logger.debug('Ensuring mobi background service is running & matches our version...')
 
+        // 启动 mobi runner （如果需要）
         if (!(await isRunnerRunningCurrentlyInstalledMobiVersion())) {
             logger.debug('Starting mobi background service...')
 
@@ -199,6 +215,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
                 stdio: 'ignore',
                 env: process.env
             })
+            // mobi runner 完全独立于父进程后台运行
             runnerProcess.unref()
 
             await new Promise(resolve => setTimeout(resolve, 200))
@@ -218,7 +235,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
                 try {
                     await runLocalMode(options)
-                    return // 成功完成本地模式
+                    return
                 } catch (localError) {
                     console.error(chalk.red('Failed to run in local mode:'), extractErrorInfo(localError).message)
                     process.exit(1)

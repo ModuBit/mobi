@@ -17,31 +17,35 @@
 /**
  * Claude Code SDK integration for MOBI CLI
  *
- * 使用官方 @anthropic-ai/claude-agent-sdk 作为底层实现，
- * 通过适配层保持向后兼容的 API。
+ * 直接使用官方 @anthropic-ai/claude-agent-sdk
  */
 
-// 从适配层导出
-export { query, AbortError, QueryWrapper } from './adapter'
+// 从官方 SDK 导出
+export {
+    query,
+    AbortError,
+} from '@anthropic-ai/claude-agent-sdk'
 
-// 导出类型定义
+// 导出官方 SDK 类型
 export type {
-    QueryOptions,
-    QueryPrompt,
+    Query,
+    Options,
     SDKMessage,
     SDKUserMessage,
     SDKAssistantMessage,
     SDKSystemMessage,
     SDKResultMessage,
-    SDKControlResponse,
-    ControlRequest,
-    InterruptRequest,
-    SDKControlRequest,
+    CanUseTool,
+    PermissionResult as SDKPermissionResult,
+} from '@anthropic-ai/claude-agent-sdk'
+
+// 导出自定义类型（官方 SDK 没有的）
+export type {
+    PermissionResult,
     CanCallToolCallback,
-    PermissionResult
 } from './types'
 
-// 导出工具函数（保留向后兼容）
+// 导出工具函数
 export { getDefaultClaudeCodePath, logDebug, streamToStdin } from './utils'
 
 // 导出提示词常量

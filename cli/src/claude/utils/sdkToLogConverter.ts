@@ -27,7 +27,7 @@ import type {
     SDKAssistantMessage,
     SDKSystemMessage,
     SDKResultMessage
-} from '@/claude/sdk'
+} from '@anthropic-ai/claude-agent-sdk'
 import type { RawJSONLines } from '@/claude/types'
 import type { ClaudePermissionMode } from '@mobi/shared/types'
 
@@ -110,10 +110,12 @@ export class SDKToLogConverter {
         const timestamp = new Date().toISOString()
         let parentUuid = this.lastUuid;
         let isSidechain = false;
-        if (sdkMessage.parent_tool_use_id) {
+        // 检查是否有 parent_tool_use_id（仅存在于 user 和 assistant 消息）
+        const msgWithParent = sdkMessage as SDKUserMessage | SDKAssistantMessage;
+        if (msgWithParent.parent_tool_use_id) {
             isSidechain = true;
-            parentUuid = this.sidechainLastUUID.get((sdkMessage as any).parent_tool_use_id) ?? null;
-            this.sidechainLastUUID.set((sdkMessage as any).parent_tool_use_id!, uuid);
+            parentUuid = this.sidechainLastUUID.get(msgWithParent.parent_tool_use_id) ?? null;
+            this.sidechainLastUUID.set(msgWithParent.parent_tool_use_id, uuid);
         }
         const baseFields = {
             parentUuid: parentUuid,
@@ -199,35 +201,6 @@ export class SDKToLogConverter {
                 // Result messages are not converted to log messages
                 // They're SDK-specific messages that indicate session completion
                 // Not part of the actual conversation log
-                break
-            }
-
-            // Handle tool use results (often comes as user messages)
-            case 'tool_result': {
-                const toolMsg = sdkMessage as any
-                const baseLogMessage: any = {
-                    ...baseFields,
-                    type: 'user',
-                    message: {
-                        role: 'user',
-                        content: [{
-                            type: 'tool_result',
-                            tool_use_id: toolMsg.tool_use_id,
-                            content: toolMsg.content
-                        }]
-                    },
-                    toolUseResult: toolMsg.content
-                }
-
-                // Add mode if available from responses
-                if (toolMsg.tool_use_id && this.responses?.has(toolMsg.tool_use_id)) {
-                    const response = this.responses.get(toolMsg.tool_use_id)
-                    if (response?.mode) {
-                        baseLogMessage.mode = response.mode
-                    }
-                }
-
-                logMessage = baseLogMessage
                 break
             }
 

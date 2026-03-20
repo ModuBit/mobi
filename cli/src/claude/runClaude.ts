@@ -66,7 +66,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         startedBy,
         workingDirectory,
         agentState: initialState,
-        claudeArgs: options.claudeArgs   // 新增，用于 --resume 时复用 Hub session
+        claudeArgs: options.claudeArgs   // 用于 --resume 时复用 Hub session
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
 
@@ -74,10 +74,10 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     extractSDKMetadataAsync(async (sdkMetadata) => {
         logger.debug('[start] SDK metadata extracted, updating session:', sdkMetadata);
         try {
-            // Update session metadata with tools and slash commands
+            // Update session metadata with agents and slash commands
             session.updateMetadata((currentMetadata) => ({
                 ...currentMetadata,
-                tools: sdkMetadata.tools,
+                agents: sdkMetadata.agents,
                 slashCommands: sdkMetadata.slashCommands
             }));
             logger.debug('[start] Session metadata updated with SDK capabilities');

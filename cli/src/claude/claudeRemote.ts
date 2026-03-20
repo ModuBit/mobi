@@ -14,8 +14,15 @@
  * limitations under the License.
  */
 
-import { EnhancedMode, PermissionMode } from "./loop";
-import { query, type QueryOptions as Options, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import { EnhancedMode } from "./loop";
+import {
+    query,
+    type Options,
+    type SDKMessage,
+    type SDKSystemMessage,
+    type SDKUserMessage,
+    AbortError,
+} from '@anthropic-ai/claude-agent-sdk'
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
 import { parseSpecialCommand } from "@/parsers/specialCommands";
@@ -24,7 +31,7 @@ import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
-import { PermissionResult } from "./sdk/types";
+import type { PermissionResult } from "./sdk/types";
 import { getMobiBlobsDir } from "@/constants/uploadPaths";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
 
@@ -59,7 +66,7 @@ export async function claudeRemote(opts: {
     if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
         startFrom = null;
     }
-    
+
     // Extract --resume from claudeArgs if present (for first spawn)
     if (!startFrom && opts.claudeArgs) {
         for (let i = 0; i < opts.claudeArgs.length; i++) {
@@ -124,6 +131,16 @@ export async function claudeRemote(opts: {
         }
     }
 
+    // Prepare abort controller
+    const abortController = opts.signal ? new AbortController() : undefined;
+    if (abortController && opts.signal) {
+        if (opts.signal.aborted) {
+            abortController.abort();
+        } else {
+            opts.signal.addEventListener('abort', () => abortController.abort(), { once: true });
+        }
+    }
+
     // Prepare SDK options
     let mode = initial.mode;
     const sdkOptions: Options = {
@@ -133,14 +150,36 @@ export async function claudeRemote(opts: {
         permissionMode: initial.mode.permissionMode,
         model: initial.mode.model,
         fallbackModel: initial.mode.fallbackModel,
-        customSystemPrompt: initial.mode.customSystemPrompt ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt : undefined,
-        appendSystemPrompt: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
+        // 使用 systemPrompt 配置（官方 SDK 格式）
+        systemPrompt: initial.mode.customSystemPrompt
+            ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt
+            : {
+                type: 'preset' as const,
+                preset: 'claude_code' as const,
+                append: initial.mode.appendSystemPrompt
+                    ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt
+                    : systemPrompt,
+            },
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: initial.mode.disallowedTools,
-        canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal }) => opts.canCallTool(toolName, input, mode, options),
-        abort: opts.signal,
+        // canUseTool 回调
+        canUseTool: async (toolName, input, options) => {
+            const result = await opts.canCallTool(toolName, input, mode, { signal: options.signal });
+            if (result.behavior === 'allow') {
+                return {
+                    behavior: 'allow' as const,
+                    updatedInput: result.updatedInput,
+                };
+            } else {
+                return {
+                    behavior: 'deny' as const,
+                    message: result.message,
+                };
+            }
+        },
+        abortController,
         pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
-        settingsPath: opts.hookSettingsPath,
+        settings: opts.hookSettingsPath,
         additionalDirectories: [getMobiBlobsDir()],
     }
 
@@ -164,6 +203,8 @@ export async function claudeRemote(opts: {
             role: 'user',
             content: initial.message,
         },
+        parent_tool_use_id: null,
+        session_id: '', // SDK 会在运行时填充
     });
 
     // Start the loop
@@ -224,7 +265,12 @@ export async function claudeRemote(opts: {
                     return;
                 }
                 mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                messages.push({
+                    type: 'user',
+                    message: { role: 'user', content: next.message },
+                    parent_tool_use_id: null,
+                    session_id: '', // SDK 会在运行时填充
+                });
             }
 
             // Handle tool result

@@ -19,17 +19,17 @@
  * 使用官方 SDK 的 initializationResult() 方法获取可用工具和命令
  */
 
-import { query } from './adapter'
+import { query } from '@anthropic-ai/claude-agent-sdk'
 import { logger } from '@/ui/logger'
 
 export interface SDKMetadata {
-    tools?: string[]
+    agents?: string[]
     slashCommands?: string[]
 }
 
 /**
  * 使用官方 SDK 的 initializationResult() 方法提取元数据
- * @returns SDK 元数据，包含工具和斜杠命令列表
+ * @returns SDK 元数据，包含代理和斜杠命令列表
  */
 export async function extractSDKMetadata(): Promise<SDKMetadata> {
     const abortController = new AbortController()
@@ -42,7 +42,7 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
             prompt: '',
             options: {
                 maxTurns: 0,
-                abort: abortController.signal
+                abortController,
             }
         })
 
@@ -51,11 +51,13 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
 
         logger.debug('[metadataExtractor] Captured SDK metadata:', init)
 
-        // 关闭查询
+        // 关闭查询（close 会自动中止）
         sdkQuery.close()
-        abortController.abort()
 
-        return init
+        return {
+            agents: init.agents?.map(a => a.name),
+            slashCommands: init.commands?.map(c => c.name),
+        }
 
     } catch (error) {
         // 检查是否是中止错误（预期行为）
@@ -75,7 +77,7 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
 export function extractSDKMetadataAsync(onComplete: (metadata: SDKMetadata) => void): void {
     extractSDKMetadata()
         .then(metadata => {
-            if (metadata.tools || metadata.slashCommands) {
+            if (metadata.agents || metadata.slashCommands) {
                 onComplete(metadata)
             }
         })

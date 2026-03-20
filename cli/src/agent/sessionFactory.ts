@@ -140,6 +140,7 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
     const startedBy = options.startedBy ?? 'terminal'
     const agentState = options.agentState === undefined ? {} : options.agentState
 
+    // 与 hub 通信的 API 客户端
     const api = await ApiClient.create()
 
     let sessionTag = options.tag ?? randomUUID()
@@ -162,6 +163,7 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         }
     }
 
+    // 注册 machine
     const machineId = await getMachineIdOrExit()
     await api.getOrCreateMachine({
         machineId,
@@ -175,6 +177,7 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         machineId
     })
 
+    // 创建或复用 session
     const sessionInfo = await api.getOrCreateSession({
         tag: sessionTag,
         metadata,
@@ -183,6 +186,7 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
 
     const session = api.sessionSyncClient(sessionInfo)
 
+    // 通知 runner session 已启动
     await reportSessionStarted(sessionInfo.id, metadata)
 
     return {
