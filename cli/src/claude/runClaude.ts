@@ -71,14 +71,13 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     logger.debug(`Session created: ${sessionInfo.id}`);
 
     // Extract SDK metadata in background and update session when ready
-    extractSDKMetadataAsync(async (sdkMetadata) => {
-        logger.debug('[start] SDK metadata extracted, updating session:', sdkMetadata);
+    extractSDKMetadataAsync(async (extractedMetadata) => {
+        logger.debug('[start] SDK metadata extracted, updating session:', extractedMetadata);
         try {
-            // Update session metadata with agents and slash commands
+            // 更新会话元数据，保存完整的 SDK 元数据
             session.updateMetadata((currentMetadata) => ({
                 ...currentMetadata,
-                agents: sdkMetadata.agents,
-                slashCommands: sdkMetadata.slashCommands
+                sdkMetadata: extractedMetadata
             }));
             logger.debug('[start] Session metadata updated with SDK capabilities');
         } catch (error) {

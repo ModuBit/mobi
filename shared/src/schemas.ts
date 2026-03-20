@@ -35,6 +35,67 @@ export const WorktreeMetadataSchema = z.object({
 
 export type WorktreeMetadata = z.infer<typeof WorktreeMetadataSchema>
 
+// ============ SDK 相关 Schema ============
+
+/** SDK 斜杠命令信息 */
+export const SlashCommandSchema = z.object({
+    name: z.string(),
+    description: z.string(),
+    argumentHint: z.string()
+})
+
+export type SlashCommand = z.infer<typeof SlashCommandSchema>
+
+/** SDK 子代理信息 */
+export const AgentInfoSchema = z.object({
+    name: z.string(),
+    description: z.string(),
+    model: z.string().optional()
+})
+
+export type AgentInfo = z.infer<typeof AgentInfoSchema>
+
+/** SDK 模型信息 */
+export const ModelInfoSchema = z.object({
+    value: z.string(),
+    displayName: z.string(),
+    description: z.string()
+})
+
+export type ModelInfo = z.infer<typeof ModelInfoSchema>
+
+/** SDK 账户信息 */
+export const AccountInfoSchema = z.object({
+    email: z.string().optional(),
+    organization: z.string().optional(),
+    subscriptionType: z.string().optional(),
+    tokenSource: z.string().optional(),
+    apiKeySource: z.string().optional(),
+    apiProvider: z.enum(['firstParty', 'bedrock', 'vertex', 'foundry']).optional()
+})
+
+export type AccountInfo = z.infer<typeof AccountInfoSchema>
+
+/** SDK 快速模式状态 */
+export const FastModeStateSchema = z.enum(['off', 'cooldown', 'on'])
+
+export type FastModeState = z.infer<typeof FastModeStateSchema>
+
+/** SDK 元数据（来自 initializationResult） */
+export const SDKMetadataSchema = z.object({
+    commands: z.array(SlashCommandSchema).optional(),
+    agents: z.array(AgentInfoSchema).optional(),
+    outputStyle: z.string().optional(),
+    availableOutputStyles: z.array(z.string()).optional(),
+    models: z.array(ModelInfoSchema).optional(),
+    account: AccountInfoSchema.optional(),
+    fastModeState: FastModeStateSchema.optional()
+})
+
+export type SDKMetadata = z.infer<typeof SDKMetadataSchema>
+
+// ============ 元数据 Schema ============
+
 export const MetadataSchema = z.object({
     path: z.string(),
     host: z.string(),
@@ -49,7 +110,8 @@ export const MetadataSchema = z.object({
     opencodeSessionId: z.string().optional(),
     cursorSessionId: z.string().optional(),
     tools: z.array(z.string()).optional(),
-    slashCommands: z.array(z.string()).optional(),
+    /** SDK 元数据（来自 initializationResult） */
+    sdkMetadata: SDKMetadataSchema.optional(),
     homeDir: z.string().optional(),
     mobiHomeDir: z.string().optional(),
     mobiLibDir: z.string().optional(),

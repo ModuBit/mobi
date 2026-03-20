@@ -21,15 +21,21 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { logger } from '@/ui/logger'
+import type { SDKMetadata } from '@mobi/shared'
 
-export interface SDKMetadata {
-    agents?: string[]
-    slashCommands?: string[]
-}
+// 重新导出类型供其他模块使用
+export type {
+    SDKMetadata,
+    SlashCommand,
+    AgentInfo,
+    ModelInfo,
+    AccountInfo,
+    FastModeState
+} from '@mobi/shared'
 
 /**
  * 使用官方 SDK 的 initializationResult() 方法提取元数据
- * @returns SDK 元数据，包含代理和斜杠命令列表
+ * @returns SDK 元数据，包含完整的初始化响应信息
  */
 export async function extractSDKMetadata(): Promise<SDKMetadata> {
     const abortController = new AbortController()
@@ -54,9 +60,15 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
         // 关闭查询（close 会自动中止）
         sdkQuery.close()
 
+        // 返回完整的初始化响应信息
         return {
-            agents: init.agents?.map(a => a.name),
-            slashCommands: init.commands?.map(c => c.name),
+            commands: init.commands,
+            agents: init.agents,
+            outputStyle: init.output_style,
+            availableOutputStyles: init.available_output_styles,
+            models: init.models,
+            account: init.account,
+            fastModeState: init.fast_mode_state,
         }
 
     } catch (error) {
@@ -77,7 +89,7 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
 export function extractSDKMetadataAsync(onComplete: (metadata: SDKMetadata) => void): void {
     extractSDKMetadata()
         .then(metadata => {
-            if (metadata.agents || metadata.slashCommands) {
+            if (metadata.agents || metadata.commands) {
                 onComplete(metadata)
             }
         })
