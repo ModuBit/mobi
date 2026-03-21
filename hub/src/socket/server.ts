@@ -155,9 +155,8 @@ export function createSocketServer(deps: SocketServerDeps): {
     })
     terminalNs.on('connection', (socket) => registerTerminalHandlers(socket, {
         io,
-        getSession: (sessionId) => {
-            return deps.getSession?.(sessionId) ?? deps.store.sessions.getSession(sessionId)
-        },
+        // active 状态只从内存获取，不存储在数据库中
+        getSession: (sessionId) => deps.getSession?.(sessionId) ?? null,
         terminalRegistry,
         maxTerminalsPerSocket,
         maxTerminalsPerSession

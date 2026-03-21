@@ -28,8 +28,6 @@ export type StoredSession = {
     runtimeState: unknown | null
     runtimeStateUpdatedAt: number | null
     groupKey: string | null
-    active: boolean
-    activeAt: number | null
     seq: number
 }
 

@@ -94,10 +94,8 @@ async function main() {
         jwtSecret,
         corsOrigins: config.corsOrigins,
         getSession: (sessionId) => {
-            if (syncEngine) {
-                return syncEngine.getSession(sessionId) ?? null
-            }
-            return store.sessions.getSession(sessionId)
+            // active 状态只从内存（SyncEngine）获取，不存储在数据库中
+            return syncEngine?.getSession(sessionId) ?? null
         },
         onWebappEvent: (event: SyncEvent) => syncEngine?.handleRealtimeEvent(event),
         onSessionAlive: (payload) => syncEngine?.handleSessionAlive(payload),

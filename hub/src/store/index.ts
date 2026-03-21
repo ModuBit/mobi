@@ -38,7 +38,7 @@ export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 5
+const SCHEMA_VERSION: number = 6
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
@@ -136,6 +136,18 @@ export class Store {
             return
         }
 
+        if (currentVersion === 4 && SCHEMA_VERSION === 5) {
+            this.migrateFromV4ToV5()
+            this.setUserVersion(SCHEMA_VERSION)
+            return
+        }
+
+        if (currentVersion === 5 && SCHEMA_VERSION === 6) {
+            this.migrateFromV5ToV6()
+            this.setUserVersion(SCHEMA_VERSION)
+            return
+        }
+
         if (currentVersion !== SCHEMA_VERSION) {
             throw this.buildSchemaMismatchError(currentVersion)
         }
@@ -159,8 +171,6 @@ export class Store {
                 runtime_state TEXT,
                 runtime_state_updated_at INTEGER,
                 group_key TEXT,
-                active INTEGER DEFAULT 0,
-                active_at INTEGER,
                 seq INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
@@ -315,6 +325,68 @@ export class Store {
         }
         if (!columns.has('team_state_updated_at')) {
             this.db.exec('ALTER TABLE sessions ADD COLUMN team_state_updated_at INTEGER')
+        }
+    }
+
+    private migrateFromV4ToV5(): void {
+        // v4 到 v5 没有结构变化
+        return
+    }
+
+    private migrateFromV5ToV6(): void {
+        // v5 到 v6：移除 sessions 表的 active 和 active_at 字段
+        // SQLite 不支持 DROP COLUMN，需要重建表
+        const columns = this.getSessionColumnNames()
+        if (!columns.has('active') && !columns.has('active_at')) {
+            // 已经迁移过
+            return
+        }
+
+        try {
+            this.db.exec('BEGIN')
+            this.db.exec(`
+                CREATE TABLE sessions_new (
+                    id TEXT PRIMARY KEY,
+                    tag TEXT,
+                    namespace TEXT NOT NULL DEFAULT 'default',
+                    machine_id TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    metadata TEXT,
+                    metadata_version INTEGER DEFAULT 1,
+                    agent_state TEXT,
+                    agent_state_version INTEGER DEFAULT 1,
+                    runtime_state TEXT,
+                    runtime_state_updated_at INTEGER,
+                    group_key TEXT,
+                    seq INTEGER DEFAULT 0
+                )
+            `)
+            this.db.exec(`
+                INSERT INTO sessions_new (
+                    id, tag, namespace, machine_id, created_at, updated_at,
+                    metadata, metadata_version,
+                    agent_state, agent_state_version,
+                    runtime_state, runtime_state_updated_at,
+                    group_key, seq
+                )
+                SELECT id, tag, namespace, machine_id, created_at, updated_at,
+                       metadata, metadata_version,
+                       agent_state, agent_state_version,
+                       runtime_state, runtime_state_updated_at,
+                       group_key, seq
+                FROM sessions
+            `)
+            this.db.exec('DROP TABLE sessions')
+            this.db.exec('ALTER TABLE sessions_new RENAME TO sessions')
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag)')
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace)')
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_group_key ON sessions(group_key)')
+            this.db.exec('COMMIT')
+        } catch (error) {
+            this.db.exec('ROLLBACK')
+            const message = error instanceof Error ? error.message : String(error)
+            throw new Error(`SQLite schema migration v5->v6 failed: ${message}`)
         }
     }
 

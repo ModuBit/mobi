@@ -174,8 +174,9 @@ export class SessionCache {
             seq: stored.seq,
             createdAt: stored.createdAt,
             updatedAt: stored.updatedAt,
-            active: existing?.active ?? stored.active,
-            activeAt: existing?.activeAt ?? (stored.activeAt ?? stored.createdAt),
+            // active 和 activeAt 只从内存获取，不存储在数据库中
+            active: existing?.active ?? false,
+            activeAt: existing?.activeAt ?? stored.createdAt,
             metadata,
             metadataVersion: stored.metadataVersion,
             agentState,
@@ -189,7 +190,10 @@ export class SessionCache {
         }
 
         this.sessions.set(sessionId, session)
-        this.publisher.emit({ type: existing ? 'session-updated' : 'session-added', sessionId, data: session })
+        // 只在真正新增 session 时广播，避免循环触发
+        if (!existing) {
+            this.publisher.emit({ type: 'session-added', sessionId, data: session })
+        }
         return session
     }
 

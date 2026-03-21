@@ -44,7 +44,8 @@ export function useSSE() {
         const client = new SSEClient(
             () => {
                 if (!token) return null
-                return `${window.location.origin}/api/events?token=${token}`
+                // all=true 用于接收所有 session 相关事件（如 session-updated）
+                return `${window.location.origin}/api/events?token=${token}&all=true`
             },
             handleUnauthorized
         )
@@ -74,7 +75,13 @@ function handleSyncEvent(event: SyncEvent, queryClient: ReturnType<typeof useQue
         case 'session-added':
         case 'session-updated':
         case 'session-removed':
+            // 刷新会话列表（旧的）
             queryClient.invalidateQueries({ queryKey: ['sessions'] })
+            // 刷新分组列表（activeCount 可能变化）
+            queryClient.invalidateQueries({ queryKey: ['sessionGroups'] })
+            // 刷新所有分组内的 sessions（使用通配符匹配）
+            queryClient.invalidateQueries({ queryKey: ['groupSessions'] })
+            // 刷新单个 session 详情
             if (event.type !== 'session-removed') {
                 queryClient.invalidateQueries({ queryKey: ['session', event.sessionId] })
             }

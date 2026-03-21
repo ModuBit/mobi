@@ -35,8 +35,6 @@ type DbSessionRow = {
     runtime_state: string | null
     runtime_state_updated_at: number | null
     group_key: string | null
-    active: number
-    active_at: number | null
     seq: number
 }
 
@@ -55,8 +53,6 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         runtimeState: safeJsonParse(row.runtime_state),
         runtimeStateUpdatedAt: row.runtime_state_updated_at,
         groupKey: row.group_key,
-        active: row.active === 1,
-        activeAt: row.active_at,
         seq: row.seq
     }
 }
@@ -110,15 +106,13 @@ export function getOrCreateSession(
             metadata, metadata_version,
             agent_state, agent_state_version,
             runtime_state, runtime_state_updated_at,
-            group_key,
-            active, active_at, seq
+            group_key, seq
         ) VALUES (
             @id, @tag, @namespace, NULL, @created_at, @updated_at,
             @metadata, 1,
             @agent_state, 1,
             NULL, NULL,
-            @group_key,
-            0, NULL, 0
+            @group_key, 0
         )
     `).run({
         id,
@@ -299,25 +293,22 @@ export function getSessionGroups(db: Database, namespace: string): SessionGroup[
         SELECT
             group_key,
             COUNT(*) as total_count,
-            SUM(CASE WHEN active = 1 THEN 1 ELSE 0 END) as active_count,
             MAX(updated_at) as updated_at
         FROM sessions
         WHERE namespace = ? AND group_key IS NOT NULL
         GROUP BY group_key
         ORDER BY
-            MAX(active) DESC,
             MAX(updated_at) DESC
     `).all(namespace) as Array<{
         group_key: string
         total_count: number
-        active_count: number
         updated_at: number
     }>
 
     return rows.map(row => ({
         key: row.group_key,
         name: row.group_key,
-        activeCount: row.active_count,
+        activeCount: 0,  // 将在 API 层从内存计算
         totalCount: row.total_count,
         updatedAt: row.updated_at
     }))
@@ -340,7 +331,7 @@ export function getSessionsByGroup(
     const sql = `
         SELECT * FROM sessions
         WHERE namespace = ? AND group_key = ? ${cursorCondition}
-        ORDER BY active DESC, updated_at DESC
+        ORDER BY updated_at DESC
         LIMIT ?
     `
 

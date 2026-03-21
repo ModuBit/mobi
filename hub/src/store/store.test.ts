@@ -38,7 +38,7 @@ describe('Store', () => {
         expect(session.id).toBeTruthy()
         expect(session.tag).toBe('test-tag-1')
         expect(session.namespace).toBe('default')
-        expect(session.active).toBe(false)
+        // active 状态不再存储在数据库中
     })
 
     test('获取已存在的会话（幂等）', () => {
