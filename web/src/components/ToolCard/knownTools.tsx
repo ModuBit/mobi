@@ -270,6 +270,7 @@ export const knownTools: Record<string, {
         subtitle: (opts) => formatChecklistCount(extractUpdatePlanChecklist(opts.input, opts.result), 'step'),
         minimal: (opts) => extractUpdatePlanChecklist(opts.input, opts.result).length === 0
     },
+    // ExitPlanMode 和 exit_plan_mode 共用配置
     ExitPlanMode: {
         icon: () => <FileTextOutlined style={DEFAULT_ICON_STYLE} />,
         title: () => 'Plan proposal',
@@ -280,6 +281,7 @@ export const knownTools: Record<string, {
         title: () => 'Plan proposal',
         minimal: false
     },
+    // AskUserQuestion 和 ask_user_question 共用配置
     AskUserQuestion: {
         icon: () => <QuestionCircleOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {

@@ -241,15 +241,12 @@ export function NewSession(props: NewSessionProps) {
         setError(null)
         try {
             const resolvedModel = model !== 'auto' ? model : undefined
-            // Mobi 目前当前仅支持 Claude，不使用 modelReasoningEffort
-            const resolvedModelReasoningEffort = undefined
 
             const result = await spawnSession({
                 machineId,
                 directory: trimmedDirectory,
                 agent,
                 model: resolvedModel,
-                modelReasoningEffort: resolvedModelReasoningEffort,
                 yolo: yoloMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined
