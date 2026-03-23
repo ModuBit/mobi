@@ -22,7 +22,7 @@ import { requireMachine } from './guards'
 
 const spawnBodySchema = z.object({
     directory: z.string().min(1),
-    agent: z.enum(['claude', 'codex', 'cursor', 'gemini', 'opencode']).optional(),
+    agent: z.enum(['claude']).optional(),  // Mobi 当前仅支持 Claude
     model: z.string().optional(),
     yolo: z.boolean().optional(),
     sessionType: z.enum(['simple', 'worktree']).optional(),

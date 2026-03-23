@@ -37,6 +37,7 @@ export type SessionBootstrapOptions = {
     workingDirectory?: string
     tag?: string
     agentState?: AgentState | null
+    model?: string
     claudeArgs?: string[]   // 用于解析 --resume，从而复用已有 Hub session
 }
 

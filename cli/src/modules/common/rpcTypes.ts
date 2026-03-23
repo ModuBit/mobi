@@ -20,7 +20,7 @@ export interface SpawnSessionOptions {
     sessionId?: string
     resumeSessionId?: string
     approvedNewDirectoryCreation?: boolean
-    agent?: 'claude' | 'codex' | 'cursor' | 'gemini' | 'opencode'
+    agent?: 'claude'  // Mobi 当前仅支持 Claude
     model?: string
     yolo?: boolean
     token?: string

@@ -21,7 +21,7 @@ import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/authStore'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { mainNavItems, bottomNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
-import { User } from 'lucide-react'
+import { User, Plus } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
 
@@ -76,6 +76,13 @@ const NavItem = styled.button<{ $active: boolean; $token: ReturnType<typeof useT
     }
 `
 
+const Divider = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    width: 24px;
+    height: 1px;
+    background: ${props => props.$token.colorBorder};
+    margin: 8px 0;
+`
+
 const Spacer = styled.div`
     flex: 1;
 `
@@ -122,6 +129,19 @@ export function RailNav() {
             >
                 <LogoImage src="/logo.svg" alt="Mobi" />
             </LogoContainer>
+
+            {/* 新建会话按钮 */}
+            <Tooltip title={t('home.newSession')} placement="right">
+                <NavItem
+                    $active={false}
+                    $token={token}
+                    onClick={() => navigate({ to: '/sessions/new' })}
+                >
+                    <Plus size={20} />
+                </NavItem>
+            </Tooltip>
+
+            <Divider $token={token} />
 
             {/* 主导航 */}
             {mainNavItems.map((item) => (

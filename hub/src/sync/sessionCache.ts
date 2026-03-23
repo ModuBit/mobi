@@ -15,7 +15,7 @@
  */
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
-import type { ModelMode, PermissionMode, RuntimeState, Session } from '@mobi/shared/types'
+import type { PermissionMode, RuntimeState, Session } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
@@ -185,7 +185,6 @@ export class SessionCache {
             thinkingAt: existing?.thinkingAt ?? 0,
             runtimeState,
             permissionMode: existing?.permissionMode,
-            modelMode: existing?.modelMode,
             tag: stored.tag
         }
 
@@ -215,7 +214,7 @@ export class SessionCache {
         thinking?: boolean
         mode?: 'local' | 'remote'
         permissionMode?: PermissionMode
-        modelMode?: ModelMode
+        model?: string | null
     }): void {
         const t = clampAliveTime(payload.time)
         if (!t) return
@@ -226,7 +225,7 @@ export class SessionCache {
         const wasActive = session.active
         const wasThinking = session.thinking
         const previousPermissionMode = session.permissionMode
-        const previousModelMode = session.modelMode
+        const previousModel = session.runtimeState?.model
 
         session.active = true
         session.activeAt = Math.max(session.activeAt, t)
@@ -235,13 +234,22 @@ export class SessionCache {
         if (payload.permissionMode !== undefined) {
             session.permissionMode = payload.permissionMode
         }
-        if (payload.modelMode !== undefined) {
-            session.modelMode = payload.modelMode
+        if (payload.model !== undefined) {
+            const currentModel = session.runtimeState?.model
+            if (payload.model !== currentModel) {
+                // 更新 runtimeState 中的 model
+                const newRuntimeState = {
+                    ...session.runtimeState,
+                    model: payload.model
+                }
+                this.store.sessions.setRuntimeState(payload.sid, newRuntimeState, t, session.namespace)
+                session.runtimeState = newRuntimeState
+            }
         }
 
         const now = Date.now()
         const lastBroadcastAt = this.lastBroadcastAtBySessionId.get(session.id) ?? 0
-        const modeChanged = previousPermissionMode !== session.permissionMode || previousModelMode !== session.modelMode
+        const modeChanged = previousPermissionMode !== session.permissionMode || previousModel !== session.runtimeState?.model
         const shouldBroadcast = (!wasActive && session.active)
             || (wasThinking !== session.thinking)
             || modeChanged
@@ -257,7 +265,7 @@ export class SessionCache {
                     activeAt: session.activeAt,
                     thinking: session.thinking,
                     permissionMode: session.permissionMode,
-                    modelMode: session.modelMode
+                    model: session.runtimeState?.model
                 }
             })
         }
@@ -292,7 +300,7 @@ export class SessionCache {
         }
     }
 
-    applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; modelMode?: ModelMode }): void {
+    applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null }): void {
         const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
         if (!session) {
             return
@@ -301,8 +309,25 @@ export class SessionCache {
         if (config.permissionMode !== undefined) {
             session.permissionMode = config.permissionMode
         }
-        if (config.modelMode !== undefined) {
-            session.modelMode = config.modelMode
+        if (config.model !== undefined) {
+            const currentModel = session.runtimeState?.model
+            if (config.model !== currentModel) {
+                // 更新 runtimeState 中的 model
+                const newRuntimeState = {
+                    ...session.runtimeState,
+                    model: config.model
+                }
+                const updated = this.store.sessions.setRuntimeState(
+                    sessionId,
+                    newRuntimeState,
+                    Date.now(),
+                    session.namespace
+                )
+                if (!updated) {
+                    throw new Error('Failed to update session model')
+                }
+                session.runtimeState = newRuntimeState
+            }
         }
 
         this.publisher.emit({ type: 'session-updated', sessionId, data: session })
@@ -392,7 +417,7 @@ export class SessionCache {
             }
         }
 
-        // 合并 runtimeState
+        // 合并 runtimeState（包括 todos、teamState、model 等）
         if (oldStored.runtimeState !== null && oldStored.runtimeStateUpdatedAt !== null) {
             const oldRuntimeState = oldStored.runtimeState as RuntimeState
             const newRuntimeState = (newStored.runtimeState as RuntimeState) ?? {}
@@ -478,6 +503,11 @@ export class SessionCache {
         // 合并 teamState
         if (oldState.teamState && !newState.teamState) {
             merged.teamState = oldState.teamState
+        }
+
+        // 合并 model（如果新会话没有 model，保留旧会话的 model）
+        if (oldState.model !== undefined && newState.model === undefined) {
+            merged.model = oldState.model
         }
 
         return merged

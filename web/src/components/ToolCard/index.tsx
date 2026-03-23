@@ -1,0 +1,549 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import type { ToolInfo, ToolCallBlock } from './types'
+import type { MobiApi } from '@/api/client'
+import type { SessionMetadataSummary } from '@/types/api'
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { isObject, safeStringify } from '@mobi/shared'
+import { Card, Typography, Tag, Modal, Button, Collapse, theme as antTheme } from 'antd'
+import {
+    CodeOutlined,
+    CheckCircleOutlined,
+    CloseCircleOutlined,
+    LoadingOutlined,
+    FileTextOutlined,
+    EditOutlined,
+    SearchOutlined,
+    GlobalOutlined,
+    QuestionCircleOutlined,
+    BulbOutlined,
+    RocketOutlined,
+    ToolOutlined,
+    LockOutlined,
+    PlayCircleOutlined,
+    RightOutlined
+} from '@ant-design/icons'
+import { PermissionFooter } from './PermissionFooter'
+import { AskUserQuestionFooter } from './AskUserQuestionFooter'
+import { RequestUserInputFooter } from './RequestUserInputFooter'
+import { isAskUserQuestionToolName } from './askUserQuestion'
+import { isRequestUserInputToolName } from './requestUserInput'
+import { getToolPresentation } from './knownTools'
+import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
+import { getToolResultViewComponent } from './views/_results'
+import { getInputString, getInputStringAny, truncate } from '@/lib/toolInputUtils'
+import { useTranslation } from 'react-i18next'
+
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+
+import './ToolCard.css'
+
+import type { ParsedToolCallBlock } from '@/components/chat/messageParser'
+
+// 重新导出 types 以供其他组件使用
+export type { ToolCallBlock, ToolPermission } from './types'
+
+const { Text } = Typography
+const { useToken } = antTheme
+
+const ELAPSED_INTERVAL_MS = 1000
+
+function ElapsedView(props: { from: number; active: boolean }) {
+    const [now, setNow] = useState(() => Date.now())
+
+    useEffect(() => {
+        if (!props.active) return
+        const id = setInterval(() => setNow(Date.now()), ELAPSED_INTERVAL_MS)
+        return () => clearInterval(id)
+    }, [props.active])
+
+    if (!props.active) return null
+
+    const elapsed = (now - props.from) / 1000
+    if (!Number.isFinite(elapsed)) return null
+
+    return (
+        <Text type="secondary" style={{ fontSize: 11, fontFamily: 'monospace' }}>
+            {elapsed.toFixed(1)}s
+        </Text>
+    )
+}
+
+// Task 状态图标
+function TaskStateIcon(props: { state: ToolCallBlock['tool']['state'] }) {
+    const { token } = useToken()
+    if (props.state === 'completed') {
+        return <CheckCircleOutlined style={{ color: token.colorSuccess }} />
+    }
+    if (props.state === 'error') {
+        return <CloseCircleOutlined style={{ color: token.colorError }} />
+    }
+    if (props.state === 'pending') {
+        return <LockOutlined style={{ color: token.colorWarning }} />
+    }
+    return <LoadingOutlined style={{ color: token.colorPrimary }} spin />
+}
+
+// 获取 Task 子任务摘要
+function getTaskSummaryChildren(block: ToolCallBlock): { visible: ToolCallBlock[]; remaining: number } | null {
+    if (block.tool.name !== 'Task') return null
+
+    const children = block.children
+        .filter((child): child is ToolCallBlock => child.kind === 'tool-call')
+        .filter((child) => child.tool.state === 'pending' || child.tool.state === 'running' || child.tool.state === 'completed' || child.tool.state === 'error')
+
+    if (children.length === 0) return null
+
+    const visible = children.slice(-3)
+    return { visible, remaining: children.length - visible.length }
+}
+
+// 渲染 Task 摘要
+function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummary | null): ReactNode | null {
+    const summary = getTaskSummaryChildren(block)
+    if (!summary) return null
+
+    const visible = summary.visible
+    const remaining = summary.remaining
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0 4px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {visible.map((child) => (
+                    <div key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ minWidth: 0, flex: 1, fontFamily: 'monospace', fontSize: 11, color: '#666' }}>
+                            <span style={{ marginRight: 8, display: 'inline-block', width: 16, textAlign: 'center', verticalAlign: 'middle' }}>
+                                <TaskStateIcon state={child.tool.state} />
+                            </span>
+                            <span style={{ verticalAlign: 'middle', wordBreak: 'break-all' }}>
+                                {formatTaskChildLabel(child, metadata)}
+                            </span>
+                        </div>
+                    </div>
+                ))}
+                {remaining > 0 ? (
+                    <div style={{ fontSize: 11, color: '#999', fontStyle: 'italic' }}>
+                        (+{remaining} more)
+                    </div>
+                ) : null}
+            </div>
+        </div>
+    )
+}
+
+// 格式化 Task 子任务标签
+function formatTaskChildLabel(child: ToolCallBlock, metadata: SessionMetadataSummary | null): string {
+    const presentation = getToolPresentation({
+        toolName: child.tool.name,
+        input: child.tool.input,
+        result: child.tool.result,
+        childrenCount: child.children.length,
+        description: child.tool.description,
+        metadata
+    })
+
+    if (presentation.subtitle) {
+        return truncate(`${presentation.title}: ${presentation.subtitle}`, 140)
+    }
+
+    return presentation.title
+}
+
+// 渲染工具输入
+function renderToolInput(block: ToolCallBlock): ReactNode {
+    const toolName = block.tool.name
+    const input = block.tool.input
+
+    if (toolName === 'Task' && isObject(input) && typeof input.prompt === 'string') {
+        return <MarkdownContent content={input.prompt} />
+    }
+
+    if (toolName === 'Edit') {
+        const diff = renderEditInput(input)
+        if (diff) return diff
+    }
+
+    if (toolName === 'MultiEdit' && isObject(input)) {
+        const filePath = getInputStringAny(input, ['file_path', 'path']) ?? undefined
+        const edits = Array.isArray(input.edits) ? input.edits : null
+        if (edits && edits.length > 0) {
+            const rendered = edits
+                .slice(0, 3)
+                .map((edit, idx) => {
+                    if (!isObject(edit)) return null
+                    const oldString = getInputString(edit, 'old_string')
+                    const newString = getInputString(edit, 'new_string')
+                    if (oldString === null || newString === null) return null
+                    return (
+                        <div key={idx}>
+                            <InlineDiffView oldString={oldString} newString={newString} filePath={filePath} />
+                        </div>
+                    )
+                })
+                .filter(Boolean)
+
+            if (rendered.length > 0) {
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {rendered}
+                        {edits.length > 3 ? (
+                            <div style={{ fontSize: 11, color: '#999' }}>
+                                (+{edits.length - 3} more edits)
+                            </div>
+                        ) : null}
+                    </div>
+                )
+            }
+        }
+    }
+
+    if (toolName === 'Write' && isObject(input)) {
+        const filePath = getInputStringAny(input, ['file_path', 'path'])
+        const content = getInputStringAny(input, ['content', 'text'])
+        if (filePath && content !== null) {
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 11, color: '#999', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                        {filePath}
+                    </div>
+                    <CodeBlock code={content} language="text" />
+                </div>
+            )
+        }
+    }
+
+    if (toolName === 'ExitPlanMode' || toolName === 'exit_plan_mode') {
+        const plan = renderExitPlanModeInput(input)
+        if (plan) return plan
+    }
+
+    const commandArray = isObject(input) && Array.isArray(input.command) ? input.command : null
+    if (toolName === 'Bash' && (typeof commandArray?.[0] === 'string' || typeof input === 'object')) {
+        const cmd = Array.isArray(commandArray)
+            ? commandArray.filter((part) => typeof part === 'string').join(' ')
+            : getInputStringAny(input, ['command', 'cmd'])
+        if (cmd) {
+            return <CodeBlock code={cmd} language="bash" />
+        }
+    }
+
+    return <CodeBlock code={safeStringify(input)} language="json" />
+}
+
+// 渲染 Edit 输入
+function renderEditInput(input: unknown): ReactNode | null {
+    if (!isObject(input)) return null
+    const filePath = getInputStringAny(input, ['file_path', 'path']) ?? undefined
+    const oldString = getInputString(input, 'old_string')
+    const newString = getInputString(input, 'new_string')
+    if (oldString === null || newString === null) return null
+
+    return (
+        <InlineDiffView oldString={oldString} newString={newString} filePath={filePath} />
+    )
+}
+
+// 渲染 ExitPlanMode 输入
+function renderExitPlanModeInput(input: unknown): ReactNode | null {
+    if (!isObject(input)) return null
+    const plan = getInputString(input, 'plan')
+    if (!plan) return null
+    return <MarkdownContent content={plan} />
+}
+
+// 状态图标
+function StatusIcon(props: { state: ToolCallBlock['tool']['state'] }) {
+    const { token } = useToken()
+    if (props.state === 'completed') {
+        return <CheckCircleOutlined style={{ fontSize: 12, color: token.colorSuccess }} />
+    }
+    if (props.state === 'error') {
+        return <CloseCircleOutlined style={{ fontSize: 12, color: token.colorError }} />
+    }
+    if (props.state === 'pending') {
+        return <LockOutlined style={{ fontSize: 12, color: token.colorWarning }} />
+    }
+    return <LoadingOutlined style={{ fontSize: 12, color: token.colorPrimary }} spin />
+}
+
+// 状态颜色
+function statusColorClass(state: ToolCallBlock['tool']['state'], token: ReturnType<typeof useToken>['token']): string {
+    if (state === 'completed') return token.colorSuccess
+    if (state === 'error') return token.colorError
+    if (state === 'pending') return token.colorWarning
+    return token.colorTextSecondary
+}
+
+// Markdown 内容渲染
+function MarkdownContent(props: { content: string }) {
+    return (
+        <div style={{ maxWidth: '100%' }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {props.content || ''}
+            </ReactMarkdown>
+        </div>
+    )
+}
+
+// 代码块组件
+function CodeBlock(props: { code: string; language?: string }) {
+    const { token } = useToken()
+    return (
+        <pre style={{
+            background: token.colorBgContainer,
+            padding: 8,
+            borderRadius: 4,
+            fontSize: 12,
+            overflowX: 'auto',
+            margin: '4px 0',
+            border: `1px solid ${token.colorBorder}`,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word'
+        }}>
+            {props.code}
+        </pre>
+    )
+}
+
+// 内联 Diff 视图
+function InlineDiffView(props: { oldString: string; newString: string; filePath?: string }) {
+    const { token } = useToken()
+    const lines: ReactNode[] = []
+    const oldLines = props.oldString.split('\n')
+    const newLines = props.newString.split('\n')
+
+    for (let i = 0; i < Math.max(oldLines.length, newLines.length); i++) {
+        const oldLine = oldLines[i]
+        const newLine = newLines[i]
+
+        if (oldLine !== undefined && oldLine !== newLine) {
+            lines.push(
+                <div key={`old-${i}`} style={{ background: '#ffebe9', color: '#cb2431', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
+                    - {oldLine}
+                </div>
+            )
+        }
+        if (newLine !== undefined) {
+            lines.push(
+                <div key={`new-${i}`} style={{ background: '#e6ffec', color: '#22863a', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
+                    + {newLine}
+                </div>
+            )
+        }
+    }
+
+    return (
+        <div style={{ border: `1px solid ${token.colorBorder}`, borderRadius: 4, overflow: 'hidden' }}>
+            {props.filePath && (
+                <div style={{ padding: '4px 8px', background: token.colorBgLayout, fontSize: 11, color: token.colorTextSecondary }}>
+                    {props.filePath}
+                </div>
+            )}
+            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                {lines}
+            </div>
+        </div>
+    )
+}
+
+type ToolCardProps = {
+    api: MobiApi
+    sessionId: string
+    metadata: SessionMetadataSummary | null
+    disabled: boolean
+    onDone: () => void
+    block: ToolCallBlock
+}
+
+function ToolCardInner(props: ToolCardProps) {
+    const { t } = useTranslation()
+    const { token } = useToken()
+    const presentation = useMemo(() => getToolPresentation({
+        toolName: props.block.tool.name,
+        input: props.block.tool.input,
+        result: props.block.tool.result,
+        childrenCount: props.block.children.length,
+        description: props.block.tool.description,
+        metadata: props.metadata
+    }), [
+        props.block.tool.name,
+        props.block.tool.input,
+        props.block.tool.result,
+        props.block.children.length,
+        props.block.tool.description,
+        props.metadata
+    ])
+
+    const toolName = props.block.tool.name
+    const toolTitle = presentation.title
+    const subtitle = presentation.subtitle ?? props.block.tool.description
+    const taskSummary = renderTaskSummary(props.block, props.metadata)
+    const runningFrom = props.block.tool.startedAt ?? props.block.tool.createdAt
+    const showInline = !presentation.minimal && toolName !== 'Task'
+    const CompactToolView = showInline ? getToolViewComponent(toolName) : null
+    const FullToolView = getToolFullViewComponent(toolName)
+    const ResultToolView = getToolResultViewComponent(toolName)
+    const permission = props.block.tool.permission
+    const isAskUserQuestion = isAskUserQuestionToolName(toolName)
+    const isRequestUserInput = isRequestUserInputToolName(toolName)
+    const isQuestionTool = isAskUserQuestion || isRequestUserInput
+    const showsPermissionFooter = Boolean(permission && (
+        permission.status === 'pending'
+        || ((permission.status === 'denied' || permission.status === 'canceled') && Boolean(permission.reason))
+    ))
+    const hasBody = showInline || taskSummary !== null || showsPermissionFooter
+    const stateColor = statusColorClass(props.block.tool.state, token)
+
+    const [modalOpen, setModalOpen] = useState(false)
+
+    const header = (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: token.colorTextSecondary }}>
+                        {presentation.icon}
+                    </div>
+                    <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', wordBreak: 'break-word' }}>
+                        {toolTitle}
+                    </Text>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    <ElapsedView from={runningFrom} active={props.block.tool.state === 'running'} />
+                    <span style={{ color: stateColor }}>
+                        <StatusIcon state={props.block.tool.state} />
+                    </span>
+                    <RightOutlined style={{ color: token.colorTextSecondary, fontSize: 12 }} />
+                </div>
+            </div>
+
+            {subtitle ? (
+                <Text type="secondary" style={{ fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all', opacity: 0.8 }}>
+                    {truncate(subtitle, 160)}
+                </Text>
+            ) : null}
+        </div>
+    )
+
+    return (
+        <Card
+            size="small"
+            className="tool-card"
+            style={{ overflow: 'hidden' }}
+        >
+            <div
+                style={{ padding: 12, cursor: 'pointer' }}
+                onClick={() => setModalOpen(true)}
+            >
+                {header}
+            </div>
+
+            {hasBody ? (
+                <div style={{ padding: '0 12px 12px' }}>
+                    {taskSummary ? (
+                        <div style={{ marginTop: 8 }}>
+                            {taskSummary}
+                        </div>
+                    ) : null}
+
+                    {showInline ? (
+                        CompactToolView ? (
+                            <div style={{ marginTop: 12 }}>
+                                <CompactToolView block={props.block} metadata={props.metadata} />
+                            </div>
+                        ) : (
+                            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div>
+                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.input')}</div>
+                                    {renderToolInput(props.block)}
+                                </div>
+                                <div>
+                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
+                                    <ResultToolView block={props.block} metadata={props.metadata} />
+                                </div>
+                            </div>
+                        )
+                    ) : null}
+
+                    {isAskUserQuestion && permission?.status === 'pending' ? (
+                        <AskUserQuestionFooter
+                            api={props.api}
+                            sessionId={props.sessionId}
+                            tool={props.block.tool}
+                            disabled={props.disabled}
+                            onDone={props.onDone}
+                        />
+                    ) : isRequestUserInput && permission?.status === 'pending' ? (
+                        <RequestUserInputFooter
+                            sessionId={props.sessionId}
+                            tool={props.block.tool}
+                            disabled={props.disabled}
+                            onDone={props.onDone}
+                        />
+                    ) : (
+                        <PermissionFooter
+                            api={props.api}
+                            sessionId={props.sessionId}
+                            metadata={props.metadata}
+                            tool={props.block.tool}
+                            disabled={props.disabled}
+                            onDone={props.onDone}
+                        />
+                    )}
+                </div>
+            ) : null}
+
+            <Modal
+                open={modalOpen}
+                onCancel={() => setModalOpen(false)}
+                footer={null}
+                title={toolTitle}
+                width={640}
+            >
+                {(() => {
+                    const isQuestionToolWithAnswers = isQuestionTool
+                        && permission?.answers
+                        && Object.keys(permission.answers).length > 0
+
+                    return (
+                        <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
+                            <div>
+                                <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
+                                    {isQuestionToolWithAnswers ? t('tool.questionsAnswers') : t('tool.input')}
+                                </div>
+                                {FullToolView ? (
+                                    <FullToolView block={props.block} metadata={props.metadata} />
+                                ) : (
+                                    renderToolInput(props.block)
+                                )}
+                            </div>
+                            {!isQuestionToolWithAnswers && (
+                                <div>
+                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
+                                    <ResultToolView block={props.block} metadata={props.metadata} />
+                                </div>
+                            )}
+                        </div>
+                    )
+                })()}
+            </Modal>
+        </Card>
+    )
+}
+
+export const ToolCard = memo(ToolCardInner)

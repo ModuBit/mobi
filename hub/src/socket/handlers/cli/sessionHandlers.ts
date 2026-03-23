@@ -17,7 +17,7 @@
 import type { ClientToServerEvents } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import type { ModelMode, PermissionMode, RuntimeState, TeamState } from '@mobi/shared/types'
+import type { PermissionMode, RuntimeState, TeamState } from '@mobi/shared/types'
 import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
@@ -31,7 +31,7 @@ type SessionAlivePayload = {
     thinking?: boolean
     mode?: 'local' | 'remote'
     permissionMode?: PermissionMode
-    modelMode?: ModelMode
+    model?: string | null
 }
 
 type SessionEndPayload = {

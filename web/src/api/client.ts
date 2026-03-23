@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, SessionGroup, SessionGroupsResponse, GroupSessionsResponse } from './types'
+import type { Session, DecryptedMessage, SessionGroup, SessionGroupsResponse, GroupSessionsResponse, Machine } from './types'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -87,13 +87,27 @@ export function createMobiApi(token: string | null) {
         // Sessions
         sessions: {
             list: () => client.get<{ sessions: Session[] }>('/api/sessions'),
-            get: (sessionId: string) => client.get<Session>(`/api/sessions/${sessionId}`),
+            get: (sessionId: string) => client.get<{ session: Session }>(`/api/sessions/${sessionId}`),
             create: (path: string) => client.post<Session>('/api/sessions', { path }),
             delete: (sessionId: string) => client.delete(`/api/sessions/${sessionId}`),
             setPermissionMode: (sessionId: string, mode: string) =>
                 client.post(`/api/sessions/${sessionId}/permission-mode`, { mode }),
             setModelMode: (sessionId: string, mode: string) =>
                 client.post(`/api/sessions/${sessionId}/model-mode`, { mode }),
+            // 会话操作
+            archive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/archive`),
+            abort: (sessionId: string) => client.post(`/api/sessions/${sessionId}/abort`),
+            switch: (sessionId: string) => client.post(`/api/sessions/${sessionId}/switch`),
+            resume: (sessionId: string) => client.post<{ sessionId: string }>(`/api/sessions/${sessionId}/resume`),
+            rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
+            // 上传文件
+            upload: (sessionId: string, filename: string, content: string, mimeType: string) =>
+                client.post(`/api/sessions/${sessionId}/upload`, { filename, content, mimeType }),
+            deleteUpload: (sessionId: string, path: string) =>
+                client.post(`/api/sessions/${sessionId}/upload/delete`, { path }),
+            // 斜杠命令和技能
+            slashCommands: (sessionId: string) => client.get(`/api/sessions/${sessionId}/slash-commands`),
+            skills: (sessionId: string) => client.get(`/api/sessions/${sessionId}/skills`),
         },
 
         // Messages
@@ -152,6 +166,15 @@ export function createMobiApi(token: string | null) {
                         limit: limit ?? 20
                     }
                 }),
+        },
+
+        // Machines
+        machines: {
+            list: () => client.get<{ machines: Machine[] }>('/api/machines'),
+            spawn: (machineId: string, directory: string, agent?: string, model?: string, yolo?: boolean, sessionType?: string, worktreeName?: string) =>
+                client.post(`/api/machines/${machineId}/spawn`, { directory, agent, model, yolo, sessionType, worktreeName }),
+            checkPathsExist: (machineId: string, paths: string[]) =>
+                client.post<{ exists: Record<string, boolean> }>(`/api/machines/${machineId}/paths/exists`, { paths }),
         },
     }
 }

@@ -38,7 +38,7 @@ export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 6
+const SCHEMA_VERSION: number = 1
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
@@ -77,10 +77,10 @@ export class Store {
         }
 
         this.db = new Database(dbPath, { create: true, readwrite: true, strict: true })
-        this.db.exec('PRAGMA journal_mode = WAL')
-        this.db.exec('PRAGMA synchronous = NORMAL')
-        this.db.exec('PRAGMA foreign_keys = ON')
-        this.db.exec('PRAGMA busy_timeout = 5000')
+        this.db.run('PRAGMA journal_mode = WAL')
+        this.db.run('PRAGMA synchronous = NORMAL')
+        this.db.run('PRAGMA foreign_keys = ON')
+        this.db.run('PRAGMA busy_timeout = 5000')
         this.initSchema()
 
         if (dbPath !== ':memory:' && !dbPath.startsWith('file::memory:')) {
@@ -106,47 +106,22 @@ export class Store {
     private initSchema(): void {
         const currentVersion = this.getUserVersion()
         if (currentVersion === 0) {
-            if (this.hasAnyUserTables()) {
-                this.migrateLegacySchemaIfNeeded()
-                this.createSchema()
-                this.setUserVersion(SCHEMA_VERSION)
-                return
-            }
-
             this.createSchema()
             this.setUserVersion(SCHEMA_VERSION)
             return
         }
 
-        if (currentVersion === 1 && SCHEMA_VERSION === 2) {
-            this.migrateFromV1ToV2()
-            this.setUserVersion(SCHEMA_VERSION)
-            return
-        }
-
-        if (currentVersion === 2 && SCHEMA_VERSION === 3) {
-            this.migrateFromV2ToV3()
-            this.setUserVersion(SCHEMA_VERSION)
-            return
-        }
-
-        if (currentVersion === 3 && SCHEMA_VERSION === 4) {
-            this.migrateFromV3ToV4()
-            this.setUserVersion(SCHEMA_VERSION)
-            return
-        }
-
-        if (currentVersion === 4 && SCHEMA_VERSION === 5) {
-            this.migrateFromV4ToV5()
-            this.setUserVersion(SCHEMA_VERSION)
-            return
-        }
-
-        if (currentVersion === 5 && SCHEMA_VERSION === 6) {
-            this.migrateFromV5ToV6()
-            this.setUserVersion(SCHEMA_VERSION)
-            return
-        }
+        // 数据迁移指南：
+        // 当需要修改 schema 时，按以下步骤操作：
+        // 1. 递增 SCHEMA_VERSION 常量
+        // 2. 在此添加迁移逻辑，例如：
+        //    if (currentVersion === 1 && SCHEMA_VERSION === 2) {
+        //        this.migrateFromV1ToV2()
+        //        this.setUserVersion(SCHEMA_VERSION)
+        //        return
+        //    }
+        // 3. 实现对应的 migrateFromVXToVY() 方法，使用 ALTER TABLE 或重建表
+        // 4. 对于复杂迁移，使用事务包裹：BEGIN -> 执行迁移 -> COMMIT/ROLLBACK
 
         if (currentVersion !== SCHEMA_VERSION) {
             throw this.buildSchemaMismatchError(currentVersion)
@@ -156,7 +131,7 @@ export class Store {
     }
 
     private createSchema(): void {
-        this.db.exec(`
+        this.db.run(`
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
                 tag TEXT,
@@ -228,185 +203,13 @@ export class Store {
         `)
     }
 
-    private migrateLegacySchemaIfNeeded(): void {
-        const columns = this.getMachineColumnNames()
-        if (columns.size === 0) {
-            return
-        }
-
-        const hasDaemon = columns.has('daemon_state') || columns.has('daemon_state_version')
-        const hasRunner = columns.has('runner_state') || columns.has('runner_state_version')
-
-        if (hasDaemon && hasRunner) {
-            throw new Error('SQLite schema has both daemon_state and runner_state columns in machines; manual cleanup required.')
-        }
-
-        if (hasDaemon && !hasRunner) {
-            this.migrateFromV1ToV2()
-        }
-    }
-
-    private migrateFromV1ToV2(): void {
-        const columns = this.getMachineColumnNames()
-        if (columns.size === 0) {
-            throw new Error('SQLite schema missing machines table for v1 to v2 migration.')
-        }
-
-        const hasDaemon = columns.has('daemon_state') && columns.has('daemon_state_version')
-        const hasRunner = columns.has('runner_state') && columns.has('runner_state_version')
-
-        if (hasRunner && !hasDaemon) {
-            return
-        }
-
-        if (!hasDaemon) {
-            throw new Error('SQLite schema missing daemon_state columns for v1 to v2 migration.')
-        }
-
-        try {
-            this.db.exec('BEGIN')
-            this.db.exec('ALTER TABLE machines RENAME COLUMN daemon_state TO runner_state')
-            this.db.exec('ALTER TABLE machines RENAME COLUMN daemon_state_version TO runner_state_version')
-            this.db.exec('COMMIT')
-            return
-        } catch (error) {
-            this.db.exec('ROLLBACK')
-        }
-
-        try {
-            this.db.exec('BEGIN')
-            this.db.exec(`
-                CREATE TABLE machines_new (
-                    id TEXT PRIMARY KEY,
-                    namespace TEXT NOT NULL DEFAULT 'default',
-                    created_at INTEGER NOT NULL,
-                    updated_at INTEGER NOT NULL,
-                    metadata TEXT,
-                    metadata_version INTEGER DEFAULT 1,
-                    runner_state TEXT,
-                    runner_state_version INTEGER DEFAULT 1,
-                    active INTEGER DEFAULT 0,
-                    active_at INTEGER,
-                    seq INTEGER DEFAULT 0
-                );
-            `)
-            this.db.exec(`
-                INSERT INTO machines_new (
-                    id, namespace, created_at, updated_at,
-                    metadata, metadata_version,
-                    runner_state, runner_state_version,
-                    active, active_at, seq
-                )
-                SELECT id, namespace, created_at, updated_at,
-                       metadata, metadata_version,
-                       daemon_state, daemon_state_version,
-                       active, active_at, seq
-                FROM machines;
-            `)
-            this.db.exec('DROP TABLE machines')
-            this.db.exec('ALTER TABLE machines_new RENAME TO machines')
-            this.db.exec('CREATE INDEX IF NOT EXISTS idx_machines_namespace ON machines(namespace)')
-            this.db.exec('COMMIT')
-        } catch (error) {
-            this.db.exec('ROLLBACK')
-            const message = error instanceof Error ? error.message : String(error)
-            throw new Error(`SQLite schema migration v1->v2 failed: ${message}`)
-        }
-    }
-
-    private migrateFromV2ToV3(): void {
-        return
-    }
-
-    private migrateFromV3ToV4(): void {
-        const columns = this.getSessionColumnNames()
-        if (!columns.has('team_state')) {
-            this.db.exec('ALTER TABLE sessions ADD COLUMN team_state TEXT')
-        }
-        if (!columns.has('team_state_updated_at')) {
-            this.db.exec('ALTER TABLE sessions ADD COLUMN team_state_updated_at INTEGER')
-        }
-    }
-
-    private migrateFromV4ToV5(): void {
-        // v4 到 v5 没有结构变化
-        return
-    }
-
-    private migrateFromV5ToV6(): void {
-        // v5 到 v6：移除 sessions 表的 active 和 active_at 字段
-        // SQLite 不支持 DROP COLUMN，需要重建表
-        const columns = this.getSessionColumnNames()
-        if (!columns.has('active') && !columns.has('active_at')) {
-            // 已经迁移过
-            return
-        }
-
-        try {
-            this.db.exec('BEGIN')
-            this.db.exec(`
-                CREATE TABLE sessions_new (
-                    id TEXT PRIMARY KEY,
-                    tag TEXT,
-                    namespace TEXT NOT NULL DEFAULT 'default',
-                    machine_id TEXT,
-                    created_at INTEGER NOT NULL,
-                    updated_at INTEGER NOT NULL,
-                    metadata TEXT,
-                    metadata_version INTEGER DEFAULT 1,
-                    agent_state TEXT,
-                    agent_state_version INTEGER DEFAULT 1,
-                    runtime_state TEXT,
-                    runtime_state_updated_at INTEGER,
-                    group_key TEXT,
-                    seq INTEGER DEFAULT 0
-                )
-            `)
-            this.db.exec(`
-                INSERT INTO sessions_new (
-                    id, tag, namespace, machine_id, created_at, updated_at,
-                    metadata, metadata_version,
-                    agent_state, agent_state_version,
-                    runtime_state, runtime_state_updated_at,
-                    group_key, seq
-                )
-                SELECT id, tag, namespace, machine_id, created_at, updated_at,
-                       metadata, metadata_version,
-                       agent_state, agent_state_version,
-                       runtime_state, runtime_state_updated_at,
-                       group_key, seq
-                FROM sessions
-            `)
-            this.db.exec('DROP TABLE sessions')
-            this.db.exec('ALTER TABLE sessions_new RENAME TO sessions')
-            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag)')
-            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace)')
-            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_group_key ON sessions(group_key)')
-            this.db.exec('COMMIT')
-        } catch (error) {
-            this.db.exec('ROLLBACK')
-            const message = error instanceof Error ? error.message : String(error)
-            throw new Error(`SQLite schema migration v5->v6 failed: ${message}`)
-        }
-    }
-
-    private getSessionColumnNames(): Set<string> {
-        const rows = this.db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>
-        return new Set(rows.map((row) => row.name))
-    }
-
-    private getMachineColumnNames(): Set<string> {
-        const rows = this.db.prepare('PRAGMA table_info(machines)').all() as Array<{ name: string }>
-        return new Set(rows.map((row) => row.name))
-    }
-
     private getUserVersion(): number {
         const row = this.db.prepare('PRAGMA user_version').get() as { user_version: number } | undefined
         return row?.user_version ?? 0
     }
 
     private setUserVersion(version: number): void {
-        this.db.exec(`PRAGMA user_version = ${version}`)
+        this.db.run(`PRAGMA user_version = ${version}`)
     }
 
     private hasAnyUserTables(): boolean {

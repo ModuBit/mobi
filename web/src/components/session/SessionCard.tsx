@@ -111,9 +111,9 @@ function SessionCardInner({ session, active }: SessionCardProps) {
 
     const displayName = getSessionDisplayName(session)
     const relativeTime = formatRelativeTime(session.updatedAt)
-    const metadata = session.metadata as { flavor?: string; modelMode?: string } | undefined
+    const metadata = session.metadata as { flavor?: string; model?: string } | undefined
     const cliName = getCliDisplayName(metadata?.flavor)
-    const modelName = getModelDisplayName(session.modelMode ?? metadata?.modelMode)
+    const modelName = getModelDisplayName(session.runtimeState?.model ?? metadata?.model)
 
     return (
         <CardContainer

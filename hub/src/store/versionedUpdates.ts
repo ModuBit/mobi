@@ -19,17 +19,29 @@ import type { Database } from 'bun:sqlite'
 import type { VersionedUpdateResult } from './types'
 
 type VersionedUpdateArgs<T> = {
+    /** SQLite 数据库实例 */
     db: Database
+    /** 要更新的表名 */
     table: string
+    /** 记录的唯一标识 */
     id: string
+    /** 命名空间，用于数据隔离 */
     namespace: string
+    /** 要更新的字段名 */
     field: string
+    /** 版本号字段名，用于乐观锁控制 */
     versionField: string
+    /** 期望的当前版本号，用于检测并发冲突 */
     expectedVersion: number
+    /** 要更新的新值 */
     value: T
+    /** 将值编码为数据库存储格式（如 JSON 字符串） */
     encode: (value: T) => string | null
+    /** 将数据库值解码为原始类型 */
     decode: (value: string | null) => T
+    /** 额外的 SET 子句（如 'updated_at = @updated_at'） */
     setClauses?: string[]
+    /** 额外子句对应的参数值 */
     params?: Record<string, unknown>
 }
 

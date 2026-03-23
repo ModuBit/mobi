@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ModelMode, PermissionMode } from '@mobi/shared/types'
+import type { PermissionMode } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
@@ -109,7 +109,7 @@ export class RpcGateway {
         sessionId: string,
         config: {
             permissionMode?: PermissionMode
-            modelMode?: ModelMode
+            model?: string | null
         }
     ): Promise<unknown> {
         return await this.sessionRpc(sessionId, 'set-session-config', config)
@@ -122,7 +122,7 @@ export class RpcGateway {
     async spawnSession(
         machineId: string,
         directory: string,
-        agent: 'claude' | 'codex' | 'cursor' | 'gemini' | 'opencode' = 'claude',
+        agent: 'claude' = 'claude',  // Mobi 当前仅支持 Claude
         model?: string,
         yolo?: boolean,
         sessionType?: 'simple' | 'worktree',

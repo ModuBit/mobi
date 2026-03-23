@@ -14,47 +14,40 @@
  * limitations under the License.
  */
 
+/**
+ * Mobi 当前仅支持 Claude Code
+ */
+
 export const CLAUDE_PERMISSION_MODES = ['default', 'acceptEdits', 'bypassPermissions', 'plan'] as const
 export type ClaudePermissionMode = typeof CLAUDE_PERMISSION_MODES[number]
 
-export const CODEX_PERMISSION_MODES = ['default', 'read-only', 'safe-yolo', 'yolo'] as const
-export type CodexPermissionMode = typeof CODEX_PERMISSION_MODES[number]
+export const CLAUDE_MODEL_PRESETS = ['sonnet', 'sonnet[1m]', 'opus', 'opus[1m]'] as const
+export type ClaudeModelPreset = typeof CLAUDE_MODEL_PRESETS[number]
 
-export const GEMINI_PERMISSION_MODES = ['default', 'read-only', 'safe-yolo', 'yolo'] as const
-export type GeminiPermissionMode = typeof GEMINI_PERMISSION_MODES[number]
+export const CLAUDE_MODEL_LABELS: Record<ClaudeModelPreset, string> = {
+    sonnet: 'Sonnet',
+    'sonnet[1m]': 'Sonnet 1M',
+    opus: 'Opus',
+    'opus[1m]': 'Opus 1M'
+}
 
-export const OPENCODE_PERMISSION_MODES = ['default', 'yolo'] as const
-export type OpencodePermissionMode = typeof OPENCODE_PERMISSION_MODES[number]
-
-export const CURSOR_PERMISSION_MODES = ['default', 'plan', 'ask', 'yolo'] as const
-export type CursorPermissionMode = typeof CURSOR_PERMISSION_MODES[number]
-
+// Mobi 当前仅支持 Claude，简化权限模式
 export const PERMISSION_MODES = [
     'default',
     'acceptEdits',
     'bypassPermissions',
-    'plan',
-    'ask',
-    'read-only',
-    'safe-yolo',
-    'yolo'
+    'plan'
 ] as const
 export type PermissionMode = typeof PERMISSION_MODES[number]
 
-export const MODEL_MODES = ['default', 'sonnet', 'opus'] as const
-export type ModelMode = typeof MODEL_MODES[number]
-
-export type AgentFlavor = 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor'
+// Mobi 当前仅支持 Claude
+export type AgentFlavor = 'claude'
 
 export const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
     default: 'Default',
     acceptEdits: 'Accept Edits',
     plan: 'Plan Mode',
-    ask: 'Ask Mode',
-    bypassPermissions: 'Yolo',
-    'read-only': 'Read Only',
-    'safe-yolo': 'Safe Yolo',
-    yolo: 'Yolo'
+    bypassPermissions: 'Yolo'
 }
 
 export type PermissionModeTone = 'neutral' | 'info' | 'warning' | 'danger'
@@ -63,23 +56,13 @@ export const PERMISSION_MODE_TONES: Record<PermissionMode, PermissionModeTone> =
     default: 'neutral',
     acceptEdits: 'warning',
     plan: 'info',
-    ask: 'info',
-    bypassPermissions: 'danger',
-    'read-only': 'warning',
-    'safe-yolo': 'warning',
-    yolo: 'danger'
+    bypassPermissions: 'danger'
 }
 
 export type PermissionModeOption = {
     mode: PermissionMode
     label: string
     tone: PermissionModeTone
-}
-
-export const MODEL_MODE_LABELS: Record<ModelMode, string> = {
-    default: 'Default',
-    sonnet: 'Sonnet',
-    opus: 'Opus'
 }
 
 export function getPermissionModeLabel(mode: PermissionMode): string {
@@ -90,41 +73,32 @@ export function getPermissionModeTone(mode: PermissionMode): PermissionModeTone 
     return PERMISSION_MODE_TONES[mode]
 }
 
-export function getPermissionModesForFlavor(flavor?: string | null): readonly PermissionMode[] {
-    if (flavor === 'codex') {
-        return CODEX_PERMISSION_MODES
-    }
-    if (flavor === 'gemini') {
-        return GEMINI_PERMISSION_MODES
-    }
-    if (flavor === 'opencode') {
-        return OPENCODE_PERMISSION_MODES
-    }
-    if (flavor === 'cursor') {
-        return CURSOR_PERMISSION_MODES
-    }
+// Mobi 当前仅支持 Claude，简化函数
+export function getPermissionModesForFlavor(_flavor?: string | null): readonly PermissionMode[] {
     return CLAUDE_PERMISSION_MODES
 }
 
-export function getPermissionModeOptionsForFlavor(flavor?: string | null): PermissionModeOption[] {
-    return getPermissionModesForFlavor(flavor).map((mode) => ({
+export function getPermissionModeOptionsForFlavor(_flavor?: string | null): PermissionModeOption[] {
+    return CLAUDE_PERMISSION_MODES.map((mode) => ({
         mode,
         label: getPermissionModeLabel(mode),
         tone: getPermissionModeTone(mode)
     }))
 }
 
-export function isPermissionModeAllowedForFlavor(mode: PermissionMode, flavor?: string | null): boolean {
-    return getPermissionModesForFlavor(flavor).includes(mode)
+export function isPermissionModeAllowedForFlavor(mode: PermissionMode, _flavor?: string | null): boolean {
+    return CLAUDE_PERMISSION_MODES.includes(mode as ClaudePermissionMode)
 }
 
-export function getModelModesForFlavor(flavor?: string | null): readonly ModelMode[] {
-    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'opencode' || flavor === 'cursor') {
-        return []
+export function isClaudeModelPreset(model: string | null | undefined): model is ClaudeModelPreset {
+    return typeof model === 'string' && CLAUDE_MODEL_PRESETS.includes(model as ClaudeModelPreset)
+}
+
+export function getClaudeModelLabel(model: string): string | null {
+    const trimmedModel = model.trim()
+    if (!trimmedModel) {
+        return null
     }
-    return MODEL_MODES
-}
 
-export function isModelModeAllowedForFlavor(mode: ModelMode, flavor?: string | null): boolean {
-    return getModelModesForFlavor(flavor).includes(mode)
+    return CLAUDE_MODEL_LABELS[trimmedModel as ClaudeModelPreset] ?? null
 }

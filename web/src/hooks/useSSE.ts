@@ -14,22 +14,147 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { SSEClient } from '@/realtime/sseClient'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavigate } from '@tanstack/react-router'
+import { queryKeys } from '@/lib/query-keys'
 import type { SyncEvent } from '@mobi/shared'
+
+// 查询失效批处理间隔（毫秒）
+const INVALIDATION_BATCH_MS = 16
+
+type PendingInvalidations = {
+    sessions: boolean
+    sessionGroups: boolean
+    machines: boolean
+    sessionIds: Set<string>
+}
 
 /**
  * SSE 连接 Hook
  * 自动管理 SSE 连接生命周期，并在收到事件时更新 React Query 缓存
+ * 支持查询失效批处理以优化性能
  */
 export function useSSE() {
     const { token, logout } = useAuthStore()
     const queryClient = useQueryClient()
     const clientRef = useRef<SSEClient | null>(null)
     const navigate = useNavigate()
+
+    // 批处理失效相关 refs
+    const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const pendingInvalidationsRef = useRef<PendingInvalidations>({
+        sessions: false,
+        sessionGroups: false,
+        machines: false,
+        sessionIds: new Set(),
+    })
+
+    // 执行批处理失效
+    const flushInvalidations = useCallback(() => {
+        const pending = pendingInvalidationsRef.current
+        if (!pending.sessions && !pending.sessionGroups && !pending.machines && pending.sessionIds.size === 0) {
+            return
+        }
+
+        const shouldInvalidateSessions = pending.sessions
+        const shouldInvalidateSessionGroups = pending.sessionGroups
+        const shouldInvalidateMachines = pending.machines
+        const sessionIds = Array.from(pending.sessionIds)
+
+        // 重置待处理状态
+        pending.sessions = false
+        pending.sessionGroups = false
+        pending.machines = false
+        pending.sessionIds.clear()
+
+        // 执行失效操作
+        const tasks: Array<Promise<unknown>> = []
+        if (shouldInvalidateSessions) {
+            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.sessions }))
+        }
+        if (shouldInvalidateSessionGroups) {
+            tasks.push(queryClient.invalidateQueries({ queryKey: ['sessionGroups'] }))
+            tasks.push(queryClient.invalidateQueries({ queryKey: ['groupSessions'] }))
+        }
+        if (shouldInvalidateMachines) {
+            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.machines }))
+        }
+        for (const sessionId of sessionIds) {
+            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }))
+            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.messages(sessionId) }))
+        }
+
+        if (tasks.length > 0) {
+            void Promise.all(tasks).catch(() => { })
+        }
+    }, [queryClient])
+
+    // 调度批处理失效
+    const scheduleInvalidationFlush = useCallback(() => {
+        if (invalidationTimerRef.current) {
+            return
+        }
+        invalidationTimerRef.current = setTimeout(() => {
+            invalidationTimerRef.current = null
+            flushInvalidations()
+        }, INVALIDATION_BATCH_MS)
+    }, [flushInvalidations])
+
+    // 添加会话列表到待失效队列
+    const queueSessionListInvalidation = useCallback(() => {
+        pendingInvalidationsRef.current.sessions = true
+        pendingInvalidationsRef.current.sessionGroups = true
+        scheduleInvalidationFlush()
+    }, [scheduleInvalidationFlush])
+
+    // 添加单个会话到待失效队列
+    const queueSessionDetailInvalidation = useCallback((sessionId: string) => {
+        pendingInvalidationsRef.current.sessionIds.add(sessionId)
+        scheduleInvalidationFlush()
+    }, [scheduleInvalidationFlush])
+
+    // 添加机器列表到待失效队列
+    const queueMachinesInvalidation = useCallback(() => {
+        pendingInvalidationsRef.current.machines = true
+        scheduleInvalidationFlush()
+    }, [scheduleInvalidationFlush])
+
+    // 处理同步事件
+    const handleSyncEvent = useCallback((event: SyncEvent) => {
+        switch (event.type) {
+            case 'session-added':
+            case 'session-updated':
+                // 刷新会话列表和单个会话详情
+                queueSessionListInvalidation()
+                queueSessionDetailInvalidation(event.sessionId)
+                break
+            case 'session-removed':
+                // 删除时移除缓存
+                queryClient.removeQueries({ queryKey: queryKeys.session(event.sessionId) })
+                queryClient.removeQueries({ queryKey: queryKeys.messages(event.sessionId) })
+                queueSessionListInvalidation()
+                break
+            case 'message-received':
+                // 只刷新消息，不刷新会话列表
+                queueSessionDetailInvalidation(event.sessionId)
+                break
+            case 'machine-updated':
+                queueMachinesInvalidation()
+                break
+            case 'heartbeat':
+                // 心跳事件，无需处理
+                break
+            case 'connection-changed':
+                // 连接状态变化，无需处理
+                break
+            case 'toast':
+                // Toast 通知，由外部处理
+                break
+        }
+    }, [queryClient, queueSessionListInvalidation, queueSessionDetailInvalidation, queueMachinesInvalidation])
 
     useEffect(() => {
         if (!token) return
@@ -53,7 +178,7 @@ export function useSSE() {
         clientRef.current = client
 
         const unsubscribe = client.subscribe((event: SyncEvent) => {
-            handleSyncEvent(event, queryClient)
+            handleSyncEvent(event)
         })
 
         client.connect()
@@ -61,33 +186,20 @@ export function useSSE() {
         return () => {
             unsubscribe()
             client.disconnect()
+            // 清理批处理定时器
+            if (invalidationTimerRef.current) {
+                clearTimeout(invalidationTimerRef.current)
+                invalidationTimerRef.current = null
+            }
+            // 重置待处理状态
+            pendingInvalidationsRef.current = {
+                sessions: false,
+                sessionGroups: false,
+                machines: false,
+                sessionIds: new Set(),
+            }
         }
-    }, [token, queryClient, logout, navigate])
+    }, [token, logout, navigate, handleSyncEvent])
 
     return clientRef.current
-}
-
-/**
- * 处理同步事件，更新 React Query 缓存
- */
-function handleSyncEvent(event: SyncEvent, queryClient: ReturnType<typeof useQueryClient>) {
-    switch (event.type) {
-        case 'session-added':
-        case 'session-updated':
-        case 'session-removed':
-            // 刷新会话列表（旧的）
-            queryClient.invalidateQueries({ queryKey: ['sessions'] })
-            // 刷新分组列表（activeCount 可能变化）
-            queryClient.invalidateQueries({ queryKey: ['sessionGroups'] })
-            // 刷新所有分组内的 sessions（使用通配符匹配）
-            queryClient.invalidateQueries({ queryKey: ['groupSessions'] })
-            // 刷新单个 session 详情
-            if (event.type !== 'session-removed') {
-                queryClient.invalidateQueries({ queryKey: ['session', event.sessionId] })
-            }
-            break
-        case 'message-received':
-            queryClient.invalidateQueries({ queryKey: ['messages', event.sessionId] })
-            break
-    }
 }

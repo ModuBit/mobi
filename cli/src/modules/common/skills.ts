@@ -42,7 +42,7 @@ function getUserSkillsRoot(): string {
 }
 
 function getAdminSkillsRoot(): string {
-    return join('/etc', 'codex', 'skills');
+    return join('/etc', 'mobi', 'skills');
 }
 
 function getProjectSkillsRoot(directory: string): string {

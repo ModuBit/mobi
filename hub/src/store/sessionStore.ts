@@ -65,7 +65,7 @@ export class SessionStore {
     }
 
     /**
-     * 设置运行时状态（合并了 todos、teamState 等扩展状态）
+     * 设置运行时状态（合并了 todos、teamState、model 等扩展状态）
      */
     setRuntimeState(id: string, runtimeState: unknown, updatedAt: number, namespace: string): boolean {
         return setRuntimeState(this.db, id, runtimeState, updatedAt, namespace)

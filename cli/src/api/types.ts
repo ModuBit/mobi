@@ -18,11 +18,10 @@ import {
     AgentStateSchema,
     AttachmentMetadataSchema,
     MetadataSchema,
-    ModelModeSchema,
     PermissionModeSchema,
     RuntimeStateSchema
 } from '@mobi/shared/schemas'
-import type { ModelMode, PermissionMode } from '@mobi/shared/types'
+import type { PermissionMode } from '@mobi/shared/types'
 import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
 
@@ -32,12 +31,11 @@ export type {
     AgentState,
     AttachmentMetadata,
     ClaudePermissionMode,
-    CodexPermissionMode,
     Metadata,
     Session
 } from '@mobi/shared/types'
 export type SessionPermissionMode = PermissionMode
-export type SessionModelMode = ModelMode
+export type SessionModel = string | null
 
 export { AgentStateSchema, AttachmentMetadataSchema, MetadataSchema }
 
@@ -112,8 +110,8 @@ export const CreateSessionResponseSchema = z.object({
         thinking: z.boolean(),
         thinkingAt: z.number(),
         runtimeState: RuntimeStateSchema.optional(),
+        model: z.string().nullable().optional(),
         permissionMode: PermissionModeSchema.optional(),
-        modelMode: ModelModeSchema.optional(),
         tag: z.string().nullable().optional()   // 用于 --resume 时复用 Hub session
     })
 })

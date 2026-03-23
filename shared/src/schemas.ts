@@ -15,10 +15,9 @@
  */
 
 import { z } from 'zod'
-import { MODEL_MODES, PERMISSION_MODES } from './modes'
+import { PERMISSION_MODES } from './modes'
 
 export const PermissionModeSchema = z.enum(PERMISSION_MODES)
-export const ModelModeSchema = z.enum(MODEL_MODES)
 
 const MetadataSummarySchema = z.object({
     text: z.string(),
@@ -105,10 +104,6 @@ export const MetadataSchema = z.object({
     summary: MetadataSummarySchema.optional(),
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(),
-    codexSessionId: z.string().optional(),
-    geminiSessionId: z.string().optional(),
-    opencodeSessionId: z.string().optional(),
-    cursorSessionId: z.string().optional(),
     tools: z.array(z.string()).optional(),
     /** SDK 元数据（来自 initializationResult） */
     sdkMetadata: SDKMetadataSchema.optional(),
@@ -216,12 +211,13 @@ export const TeamStateSchema = z.object({
 export type TeamState = z.infer<typeof TeamStateSchema>
 
 /**
- * 运行时状态：存储会话的扩展状态（todos、teamState 等）
+ * 运行时状态：存储会话的扩展状态（todos、teamState、model 等）
  * 未来新增功能可在此对象中添加字段，无需修改数据库 schema
  */
 export const RuntimeStateSchema = z.object({
     todos: TodosSchema.optional(),
-    teamState: TeamStateSchema.optional()
+    teamState: TeamStateSchema.optional(),
+    model: z.string().nullable().optional()
     // 未来可扩展：fooState: FooStateSchema.optional()
 })
 
@@ -264,7 +260,6 @@ export const SessionSchema = z.object({
     thinkingAt: z.number(),
     runtimeState: RuntimeStateSchema.optional(),
     permissionMode: PermissionModeSchema.optional(),
-    modelMode: ModelModeSchema.optional(),
     groupKey: z.string().optional(),
     tag: z.string().nullable().optional()   // Hub session 的标签，用于 getOrCreateSession 时复用
 })

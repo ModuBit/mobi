@@ -323,23 +323,10 @@ export async function startRunner(): Promise<void> {
         // Resolve authentication token if provided
         let extraEnv: Record<string, string> = {};
         if (options.token) {
-          if (options.agent === 'codex') {
-
-            // Create a temporary directory for Codex
-            const codexHomeDir = await fs.mkdtemp(join(os.tmpdir(), 'mobi-codex-'));
-
-            // Write the token to the temporary directory
-            await fs.writeFile(join(codexHomeDir, 'auth.json'), options.token);
-
-            // Set the environment variable for Codex
-            extraEnv = {
-              CODEX_HOME: codexHomeDir
-            };
-          } else if (options.agent === 'claude' || !options.agent) {
-            extraEnv = {
-              CLAUDE_CODE_OAUTH_TOKEN: options.token
-            };
-          }
+          // Mobi 当前仅支持 Claude
+          extraEnv = {
+            CLAUDE_CODE_OAUTH_TOKEN: options.token
+          };
         }
 
         if (worktreeInfo) {
@@ -354,27 +341,13 @@ export async function startRunner(): Promise<void> {
         }
 
         // Construct arguments for the CLI
-        const agentCommand = agent === 'codex'
-          ? 'codex'
-          : agent === 'cursor'
-            ? 'cursor'
-            : agent === 'gemini'
-              ? 'gemini'
-              : agent === 'opencode'
-                ? 'opencode'
-                : 'claude';
-        const args = [agentCommand];
+        // Mobi 当前仅支持 Claude
+        const args = ['claude'];
         if (options.resumeSessionId) {
-            if (agent === 'codex') {
-                args.push('resume', options.resumeSessionId);
-            } else if (agent === 'cursor') {
-                args.push('--resume', options.resumeSessionId);
-            } else {
-                args.push('--resume', options.resumeSessionId);
-            }
+          args.push('--resume', options.resumeSessionId);
         }
         args.push('--mobi-starting-mode', 'remote', '--started-by', 'runner');
-        if (options.model && agent !== 'opencode') {
+        if (options.model) {
           args.push('--model', options.model);
         }
         if (yolo) {

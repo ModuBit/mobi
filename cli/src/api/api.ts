@@ -79,7 +79,6 @@ export class ApiClient {
                 thinkingAt: raw.thinkingAt,
                 runtimeState: raw.runtimeState,
                 permissionMode: raw.permissionMode,
-                modelMode: raw.modelMode,
                 tag: raw.tag
             }
         } catch (error: unknown) {
@@ -149,7 +148,6 @@ export class ApiClient {
             thinkingAt: raw.thinkingAt,
             runtimeState: raw.runtimeState,
             permissionMode: raw.permissionMode,
-            modelMode: raw.modelMode,
             tag: raw.tag
         }
     }

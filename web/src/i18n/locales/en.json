@@ -50,7 +50,20 @@
             "ended": "Ended"
         },
         "empty": "No sessions yet. Start a new conversation.",
-        "selectToView": "Select a session to view details"
+        "selectToView": "Select a session to view details",
+        "actions": {
+            "more": "More Actions",
+            "rename": "Rename",
+            "archive": "Archive",
+            "delete": "Delete",
+            "abort": "Abort",
+            "resume": "Resume",
+            "switch": "Switch Mode",
+            "deleteConfirmTitle": "Delete Session",
+            "deleteConfirmContent": "Are you sure you want to delete this session? This action cannot be undone.",
+            "namePlaceholder": "Enter session name",
+            "nameRequired": "Please enter a session name"
+        }
     },
     "sessionGroup": {
         "active": "active",
@@ -110,5 +123,19 @@
         "themeLight": "Light",
         "themeDark": "Dark",
         "themeSystem": "System"
+    },
+    "composer": {
+        "placeholder": "Type a message... (Shift+Enter for new line)",
+        "attach": "Add attachment",
+        "settings": "Settings",
+        "abort": "Abort",
+        "send": "Send",
+        "permissionMode": "Permission Mode"
+    },
+    "status": {
+        "online": "Online",
+        "offline": "Offline",
+        "permissionRequired": "Permission Required",
+        "percentLeft": "{{percent}}% left"
     }
 }

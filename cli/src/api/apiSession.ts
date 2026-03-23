@@ -38,7 +38,7 @@ import type {
     MessageMeta,
     Metadata,
     Session,
-    SessionModelMode,
+    SessionModel,
     SessionPermissionMode,
     UserMessage
 } from './types'
@@ -407,11 +407,11 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
-    sendCodexMessage(body: unknown): void {
+    sendAgentMessage(body: unknown): void {
         const content = {
             role: 'agent',
             content: {
-                type: 'codex',
+                type: 'agent',
                 data: body
             },
             meta: {
@@ -454,7 +454,7 @@ export class ApiSessionClient extends EventEmitter {
     keepAlive(
         thinking: boolean,
         mode: 'local' | 'remote',
-        runtime?: { permissionMode?: SessionPermissionMode; modelMode?: SessionModelMode }
+        runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel }
     ): void {
         this.socket.volatile.emit('session-alive', {
             sid: this.sessionId,

@@ -15,21 +15,22 @@
  */
 
 import { useRef, useEffect, useMemo } from 'react'
-import { Bubble, Sender } from '@ant-design/x'
-import { Spin, Typography, Empty, Avatar, theme as antTheme } from 'antd'
+import { Bubble } from '@ant-design/x'
+import { Spin, Empty, Avatar, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/hooks/queries/useMessages'
 import { useSession } from '@/hooks/queries/useSession'
 import { useSendMessage } from '@/hooks/mutations/useSendMessage'
+import { useSessionActions } from '@/hooks/mutations/useSessionActions'
 import { parseMessages } from './messageParser'
 import { ToolCallBlock, ToolResultBlock } from './ToolResultBlock'
 import { PermissionRequest } from './PermissionRequest'
+import { ChatComposer } from '@/components/composer/ChatComposer'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import type { ParsedMessage, ParsedContentBlock } from './messageParser'
 
-const { Text } = Typography
 const { useToken } = antTheme
 
 // AI 机器人头像组件
@@ -54,6 +55,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     const { data: messages = [], isLoading: messagesLoading } = useMessages(sessionId)
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId)
+    const sessionActions = useSessionActions(sessionId)
     const bottomRef = useRef<HTMLDivElement>(null)
     const { token } = useToken()
     const { t } = useTranslation()
@@ -107,10 +109,24 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [bubbleItems.length])
 
+    // 发送消息
     const handleSend = (text: string) => {
         if (!text.trim()) return
         sendMutation.mutate(text)
     }
+
+    // 中断会话
+    const handleAbort = async () => {
+        await sessionActions.abortSession()
+    }
+
+    // 权限模式变更
+    const handlePermissionModeChange = async (mode: string) => {
+        await sessionActions.setPermissionMode(mode)
+    }
+
+    // Agent 类型
+    const agentFlavor = session?.metadata?.flavor ?? null
 
     if (messagesLoading) {
         return (
@@ -154,20 +170,21 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                 session={session}
             />
 
-            {/* 输入框 */}
-            <div style={{ padding: '8px 16px', borderTop: `1px solid ${token.colorBorder}`, background: token.colorBgContainer }}>
-                <Sender
-                    onSubmit={handleSend}
-                    loading={sendMutation.isPending || session?.thinking}
-                    placeholder={t('chat.inputPlaceholder')}
-                    disabled={!session?.active}
-                />
-                {!session?.active && (
-                    <Text type="secondary" style={{ fontSize: 12, display: 'block', textAlign: 'center', marginTop: 4 }}>
-                        {t('chat.sessionEnded')}
-                    </Text>
-                )}
-            </div>
+            {/* Composer 输入组件 */}
+            <ChatComposer
+                disabled={sendMutation.isPending}
+                permissionMode={session?.permissionMode}
+                model={session?.runtimeState?.model}
+                active={session?.active ?? false}
+                allowSendWhenInactive
+                thinking={session?.thinking ?? false}
+                agentState={session?.agentState}
+                contextSize={undefined} // TODO: 从消息中计算上下文大小
+                agentFlavor={agentFlavor}
+                onPermissionModeChange={handlePermissionModeChange}
+                onSend={handleSend}
+                onAbort={handleAbort}
+            />
         </div>
     )
 }

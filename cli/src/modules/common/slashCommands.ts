@@ -23,7 +23,7 @@ export interface SlashCommand {
     name: string;
     description?: string;
     source: 'builtin' | 'user' | 'plugin' | 'project';
-    content?: string;  // Expanded content for Codex user prompts
+    content?: string;  // Expanded content for user prompts
     pluginName?: string;  // Name of the plugin that provides this command
 }
 
@@ -38,7 +38,8 @@ export interface ListSlashCommandsResponse {
 }
 
 /**
- * Built-in slash commands for each agent type.
+ * Built-in slash commands for Claude.
+ * Mobi 当前仅支持 Claude Code。
  */
 const BUILTIN_COMMANDS: Record<string, SlashCommand[]> = {
     claude: [
@@ -48,13 +49,6 @@ const BUILTIN_COMMANDS: Record<string, SlashCommand[]> = {
         { name: 'cost', description: 'Show session cost', source: 'builtin' },
         { name: 'plan', description: 'Toggle plan mode', source: 'builtin' },
     ],
-    codex: [],
-    gemini: [
-        { name: 'about', description: 'About Gemini', source: 'builtin' },
-        { name: 'clear', description: 'Clear conversation', source: 'builtin' },
-        { name: 'compress', description: 'Compress context', source: 'builtin' },
-    ],
-    opencode: [],
 };
 
 /**
@@ -98,37 +92,26 @@ function parseFrontmatter(fileContent: string): { description?: string; content:
 /**
  * Get the user commands directory for an agent type.
  * Returns null if the agent doesn't support user commands.
+ * Mobi 当前仅支持 Claude。
  */
 function getUserCommandsDir(agent: string): string | null {
-    switch (agent) {
-        case 'claude': {
-            const configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
-            return join(configDir, 'commands');
-        }
-        case 'codex': {
-            const codexHome = process.env.CODEX_HOME ?? join(homedir(), '.codex');
-            return join(codexHome, 'prompts');
-        }
-        default:
-            // Gemini and other agents don't have user commands
-            return null;
+    if (agent === 'claude') {
+        const configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
+        return join(configDir, 'commands');
     }
+    return null;
 }
 
 /**
  * Get the project commands directory for an agent type.
  * Returns null if the agent doesn't support project commands.
+ * Mobi 当前仅支持 Claude。
  */
 function getProjectCommandsDir(agent: string, projectDir: string): string | null {
-    switch (agent) {
-        case 'claude':
-            return join(projectDir, '.claude', 'commands');
-        case 'codex':
-            return join(projectDir, '.codex', 'prompts');
-        default:
-            // Gemini and other agents don't have project commands
-            return null;
+    if (agent === 'claude') {
+        return join(projectDir, '.claude', 'commands');
     }
+    return null;
 }
 
 /**

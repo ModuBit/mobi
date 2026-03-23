@@ -37,11 +37,7 @@ export type { SessionSummary, SessionSummaryMetadata } from './sessionSummary'
 export type {
     AgentFlavor,
     ClaudePermissionMode,
-    CodexPermissionMode,
-    CursorPermissionMode,
-    GeminiPermissionMode,
-    OpencodePermissionMode,
-    ModelMode,
+    ClaudeModelPreset,
     PermissionMode,
     PermissionModeOption,
     PermissionModeTone

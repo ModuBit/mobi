@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { getPermissionModesForFlavor, isModelModeAllowedForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
-import { ModelModeSchema, PermissionModeSchema } from '@mobi/shared/schemas'
+import { getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
+import { PermissionModeSchema } from '@mobi/shared/schemas'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { SyncEngine, Session } from '../../sync/syncEngine'
@@ -26,8 +26,8 @@ const permissionModeSchema = z.object({
     mode: PermissionModeSchema
 })
 
-const modelModeSchema = z.object({
-    model: ModelModeSchema
+const modelSchema = z.object({
+    model: z.string().nullable()
 })
 
 const renameSessionSchema = z.object({
@@ -284,21 +284,16 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const body = await c.req.json().catch(() => null)
-        const parsed = modelModeSchema.safeParse(body)
+        const parsed = modelSchema.safeParse(body)
         if (!parsed.success) {
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        const flavor = sessionResult.session.metadata?.flavor ?? 'claude'
-        if (!isModelModeAllowedForFlavor(parsed.data.model, flavor)) {
-            return c.json({ error: 'Model mode is only supported for Claude sessions' }, 400)
-        }
-
         try {
-            await engine.applySessionConfig(sessionResult.sessionId, { modelMode: parsed.data.model })
+            await engine.applySessionConfig(sessionResult.sessionId, { model: parsed.data.model })
             return c.json({ ok: true })
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to apply model mode'
+            const message = error instanceof Error ? error.message : 'Failed to apply model'
             return c.json({ error: message }, 409)
         }
     })

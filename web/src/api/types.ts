@@ -15,7 +15,7 @@
  */
 
 // 从 @mobi/shared 导入类型
-import type { Session, DecryptedMessage, SyncEvent } from '@mobi/shared'
+import type { Session, DecryptedMessage, SyncEvent, Metadata } from '@mobi/shared'
 
 export type { Session, DecryptedMessage, SyncEvent }
 
@@ -68,4 +68,17 @@ export interface GroupSessionsResponse {
     sessions: Session[]
     nextCursor: number | null
     hasMore: boolean
+}
+
+// ============ Machine Types ============
+
+export interface Machine {
+    id: string
+    active: boolean
+    activeAt: number
+    metadata: Metadata | null
+}
+
+export interface MachinesResponse {
+    machines: Machine[]
 }

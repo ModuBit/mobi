@@ -50,7 +50,20 @@
             "ended": "已结束"
         },
         "empty": "暂无会话，点击新建开始对话",
-        "selectToView": "选择会话查看详情"
+        "selectToView": "选择会话查看详情",
+        "actions": {
+            "more": "更多操作",
+            "rename": "重命名",
+            "archive": "归档",
+            "delete": "删除",
+            "abort": "中断",
+            "resume": "恢复",
+            "switch": "切换模式",
+            "deleteConfirmTitle": "删除会话",
+            "deleteConfirmContent": "确定要删除此会话吗？此操作无法撤销。",
+            "namePlaceholder": "请输入会话名称",
+            "nameRequired": "请输入会话名称"
+        }
     },
     "sessionGroup": {
         "active": "活跃",
@@ -110,5 +123,19 @@
         "themeLight": "浅色",
         "themeDark": "深色",
         "themeSystem": "跟随系统"
+    },
+    "composer": {
+        "placeholder": "输入消息... (Shift+Enter 换行)",
+        "attach": "添加附件",
+        "settings": "设置",
+        "abort": "中断",
+        "send": "发送",
+        "permissionMode": "权限模式"
+    },
+    "status": {
+        "online": "在线",
+        "offline": "离线",
+        "permissionRequired": "需要权限确认",
+        "percentLeft": "{{percent}}% 剩余"
     }
 }

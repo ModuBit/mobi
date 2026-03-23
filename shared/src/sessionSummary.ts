@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import type { ModelMode } from './modes'
 import type { Session, WorktreeMetadata } from './schemas'
 
 export type SessionSummaryMetadata = {
@@ -35,7 +34,7 @@ export type SessionSummary = {
     metadata: SessionSummaryMetadata | null
     todoProgress: { completed: number; total: number } | null
     pendingRequestsCount: number
-    modelMode?: ModelMode
+    model?: string | null
 }
 
 export function toSessionSummary(session: Session): SessionSummary {
@@ -64,6 +63,6 @@ export function toSessionSummary(session: Session): SessionSummary {
         metadata,
         todoProgress,
         pendingRequestsCount,
-        modelMode: session.modelMode
+        model: session.runtimeState?.model
     }
 }

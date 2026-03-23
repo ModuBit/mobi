@@ -21,6 +21,7 @@ import { MainLayout } from './components/layout/MainLayout'
 import { SessionsLayout } from './pages/SessionsLayout'
 import { SessionsPage } from './pages/SessionsPage'
 import { SessionDetailPage } from './pages/SessionDetailPage'
+import { NewSessionPage } from './pages/NewSessionPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 // Root route - wraps all routes with App component
@@ -72,6 +73,13 @@ const sessionDetailRoute = createRoute({
     component: SessionDetailPage,
 })
 
+// 新建会话页
+const newSessionRoute = createRoute({
+    getParentRoute: () => mainLayoutRoute,
+    path: 'sessions/new',
+    component: NewSessionPage,
+})
+
 // 设置页
 const settingsRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
@@ -89,6 +97,7 @@ export const router = createRouter({
                 sessionsIndexRoute,
                 sessionDetailRoute,
             ]),
+            newSessionRoute,
             settingsRoute,
         ]),
     ]),

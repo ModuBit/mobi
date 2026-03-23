@@ -23,7 +23,7 @@
  * - 无端对端加密；数据以 JSON 格式存储在 SQLite 中
  */
 
-import type { DecryptedMessage, ModelMode, PermissionMode, Session, SyncEvent } from '@mobi/shared/types'
+import type { DecryptedMessage, PermissionMode, Session, SyncEvent } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { RpcRegistry } from '../socket/rpcRegistry'
@@ -203,7 +203,7 @@ export class SyncEngine {
         thinking?: boolean
         mode?: 'local' | 'remote'
         permissionMode?: PermissionMode
-        modelMode?: ModelMode
+        model?: string | null
     }): void {
         this.sessionCache.handleSessionAlive(payload)
     }
@@ -301,14 +301,14 @@ export class SyncEngine {
         sessionId: string,
         config: {
             permissionMode?: PermissionMode
-            modelMode?: ModelMode
+            model?: string | null
         }
     ): Promise<void> {
         const result = await this.rpcGateway.requestSessionConfig(sessionId, config)
         if (!result || typeof result !== 'object') {
             throw new Error('Invalid response from session config RPC')
         }
-        const obj = result as { applied?: { permissionMode?: Session['permissionMode']; modelMode?: Session['modelMode'] } }
+        const obj = result as { applied?: { permissionMode?: Session['permissionMode']; model?: string | null } }
         const applied = obj.applied
         if (!applied || typeof applied !== 'object') {
             throw new Error('Missing applied session config')
@@ -320,7 +320,7 @@ export class SyncEngine {
     async spawnSession(
         machineId: string,
         directory: string,
-        agent: 'claude' | 'codex' | 'cursor' | 'gemini' | 'opencode' = 'claude',
+        agent: 'claude' = 'claude',  // Mobi 当前仅支持 Claude
         model?: string,
         yolo?: boolean,
         sessionType?: 'simple' | 'worktree',
@@ -350,18 +350,8 @@ export class SyncEngine {
             return { type: 'error', message: 'Session metadata missing path', code: 'resume_unavailable' }
         }
 
-        const flavor = metadata.flavor === 'codex' || metadata.flavor === 'gemini' || metadata.flavor === 'opencode' || metadata.flavor === 'cursor'
-            ? metadata.flavor
-            : 'claude'
-        const resumeToken = flavor === 'codex'
-            ? metadata.codexSessionId
-            : flavor === 'gemini'
-                ? metadata.geminiSessionId
-                : flavor === 'opencode'
-                    ? metadata.opencodeSessionId
-                    : flavor === 'cursor'
-                        ? metadata.cursorSessionId
-                        : metadata.claudeSessionId
+        // Mobi 当前仅支持 Claude
+        const resumeToken = metadata.claudeSessionId
 
         if (!resumeToken) {
             return { type: 'error', message: 'Resume session ID unavailable', code: 'resume_unavailable' }
@@ -391,8 +381,8 @@ export class SyncEngine {
         const spawnResult = await this.rpcGateway.spawnSession(
             targetMachine.id,
             metadata.path,
-            flavor,
-            undefined,
+            'claude',  // Mobi 当前仅支持 Claude
+            session.runtimeState?.model ?? undefined,
             undefined,
             undefined,
             undefined,

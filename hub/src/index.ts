@@ -80,7 +80,9 @@ async function main() {
     console.log(`[Hub] MOBI_LISTEN_PORT: ${config.listenPort} (${formatSource(config.sources.listenPort)})`)
     console.log(`[Hub] MOBI_PUBLIC_URL: ${config.publicUrl} (${formatSource(config.sources.publicUrl)})`)
 
+    // 数据存储
     const store = new Store(config.dbPath)
+    // JWT 密钥
     const jwtSecret = await getOrCreateJwtSecret()
     const vapidKeys = await getOrCreateVapidKeys(config.dataDir)
     const vapidSubject = process.env.VAPID_SUBJECT ?? 'mailto:admin@mobi.local'
