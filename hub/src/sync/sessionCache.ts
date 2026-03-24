@@ -198,7 +198,7 @@ export class SessionCache {
         return session
     }
 
-    reloadAll(): void {
+    warmupCache(): void {
         // 先清空缓存，确保移除数据库中已删除的 sessions
         this.sessions.clear()
         this.lastBroadcastAtBySessionId.clear()

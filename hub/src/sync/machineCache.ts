@@ -143,7 +143,7 @@ export class MachineCache {
         return machine
     }
 
-    reloadAll(): void {
+    warmupCache(): void {
         const machines = this.store.machines.getMachines()
         for (const machine of machines) {
             this.refreshMachine(machine.id)

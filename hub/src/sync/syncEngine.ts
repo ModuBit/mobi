@@ -14,15 +14,6 @@
  * limitations under the License.
  */
 
-/**
- * 同步引擎（直连架构）
- *
- * 直连架构说明：
- * - mobi-hub 是集线器（Socket.IO + REST）
- * - mobi CLI 直接连接到 hub（无中继）
- * - 无端对端加密；数据以 JSON 格式存储在 SQLite 中
- */
-
 import type { DecryptedMessage, PermissionMode, Session, SyncEvent } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
@@ -77,7 +68,7 @@ export class SyncEngine {
         this.machineCache = new MachineCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
-        this.reloadAll()
+        this.warmupCache()
         this.inactivityTimer = setInterval(() => this.expireInactive(), 5_000)
     }
 
@@ -221,9 +212,9 @@ export class SyncEngine {
         this.machineCache.expireInactive()
     }
 
-    private reloadAll(): void {
-        this.sessionCache.reloadAll()
-        this.machineCache.reloadAll()
+    private warmupCache(): void {
+        this.sessionCache.warmupCache()
+        this.machineCache.warmupCache()
     }
 
     getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string): Session {
