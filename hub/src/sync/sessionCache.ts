@@ -24,7 +24,10 @@ import { extractTeamStateFromMessageContent, applyTeamStateDelta } from './teams
 
 /**
  * 从消息中回填 runtimeState（todos、teamState 等）
- * 用于历史数据迁移或按需恢复
+ *
+ * 用于历史数据迁移或按需恢复。
+ * 注意：当前 runtimeState 已在消息处理时实时持久化，此函数预留用于未来的迁移/恢复场景。
+ *
  * @param messages 消息列表
  * @param existingRuntimeState 现有的 runtimeState（用于增量合并）
  * @returns 回填后的 runtimeState，如果没有数据则返回 null
