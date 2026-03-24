@@ -17,7 +17,15 @@
 export type VisibilityState = 'visible' | 'hidden'
 
 export class VisibilityTracker {
+    /**
+     * 命名空间 -> 可见连接ID集合
+     * 用于快速查询某个命名空间下是否有可见连接
+     */
     private readonly visibleConnections = new Map<string, Set<string>>()
+    /**
+     * 连接ID -> 命名空间
+     * 反向索引，用于通过连接ID快速定位所属命名空间
+     */
     private readonly subscriptionToNamespace = new Map<string, string>()
 
     registerConnection(subscriptionId: string, namespace: string, state: VisibilityState): void {

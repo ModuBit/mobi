@@ -55,6 +55,7 @@ export function createEventsRoutes(
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
+    // 建立SSE连接
     app.get('/events', (c) => {
         const manager = getSseManager()
         if (!manager) {
@@ -135,6 +136,7 @@ export function createEventsRoutes(
         })
     })
 
+    // 维护SSE连接所在页面可见性
     app.post('/visibility', async (c) => {
         const tracker = getVisibilityTracker()
         if (!tracker) {
