@@ -264,6 +264,13 @@ export function getSessions(db: Database): StoredSession[] {
     return rows.map(toStoredSession)
 }
 
+export function getRecentSessions(db: Database, limit: number): StoredSession[] {
+    const rows = db.prepare(
+        'SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ?'
+    ).all(limit) as DbSessionRow[]
+    return rows.map(toStoredSession)
+}
+
 export function getSessionsByNamespace(db: Database, namespace: string): StoredSession[] {
     const rows = db.prepare(
         'SELECT * FROM sessions WHERE namespace = ? ORDER BY updated_at DESC'

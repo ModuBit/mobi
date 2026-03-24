@@ -22,10 +22,52 @@ import { EventPublisher } from './eventPublisher'
 import { extractTodoWriteTodosFromMessageContent } from './todos'
 import { extractTeamStateFromMessageContent, applyTeamStateDelta } from './teams'
 
+/**
+ * 从消息中回填 runtimeState（todos、teamState 等）
+ * 用于历史数据迁移或按需恢复
+ * @param messages 消息列表
+ * @param existingRuntimeState 现有的 runtimeState（用于增量合并）
+ * @returns 回填后的 runtimeState，如果没有数据则返回 null
+ */
+export function backfillRuntimeStateFromMessages(
+    messages: Array<{ content: unknown }>,
+    existingRuntimeState?: RuntimeState
+): RuntimeState | null {
+    const runtimeState: RuntimeState = {}
+
+    // 提取 todos（从最新的消息开始，找到第一个有效的）
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i]
+        const todos = extractTodoWriteTodosFromMessageContent(message.content)
+        if (todos) {
+            runtimeState.todos = todos
+            break
+        }
+    }
+
+    // 提取 teamState（从消息中增量构建）
+    let teamState = existingRuntimeState?.teamState ?? null
+    for (const message of messages) {
+        const delta = extractTeamStateFromMessageContent(message.content)
+        if (delta) {
+            teamState = applyTeamStateDelta(teamState, delta)
+        }
+    }
+    if (teamState) {
+        runtimeState.teamState = teamState
+    }
+
+    return Object.keys(runtimeState).length > 0 ? runtimeState : null
+}
+
 export class SessionCache {
+    /** 会话缓存：sessionId -> Session */
     private readonly sessions: Map<string, Session> = new Map()
+    /**
+     * 会话最后广播时间戳：sessionId -> timestamp
+     * 用于节流广播，避免频繁发送 session-updated 事件（最小间隔 10 秒）
+     */
     private readonly lastBroadcastAtBySessionId: Map<string, number> = new Map()
-    private readonly runtimeStateBackfillAttemptedSessionIds: Set<string> = new Set()
 
     constructor(
         private readonly store: Store,
@@ -46,7 +88,6 @@ export class SessionCache {
             if (session.namespace === namespace && !storedSessions.some(s => s.id === id)) {
                 this.sessions.delete(id)
                 this.lastBroadcastAtBySessionId.delete(id)
-                this.runtimeStateBackfillAttemptedSessionIds.delete(id)
             }
         }
 
@@ -102,7 +143,7 @@ export class SessionCache {
     }
 
     refreshSession(sessionId: string): Session | null {
-        let stored = this.store.sessions.getSession(sessionId)
+        const stored = this.store.sessions.getSession(sessionId)
         if (!stored) {
             const existed = this.sessions.delete(sessionId)
             if (existed) {
@@ -112,45 +153,6 @@ export class SessionCache {
         }
 
         const existing = this.sessions.get(sessionId)
-
-        // 从消息中回填 runtimeState（todos、teamState 等）
-        if (stored.runtimeState === null && !this.runtimeStateBackfillAttemptedSessionIds.has(sessionId)) {
-            this.runtimeStateBackfillAttemptedSessionIds.add(sessionId)
-            const messages = this.store.messages.getMessages(sessionId, 200)
-
-            let runtimeState: RuntimeState = {}
-
-            // 提取 todos
-            for (let i = messages.length - 1; i >= 0; i -= 1) {
-                const message = messages[i]
-                const todos = extractTodoWriteTodosFromMessageContent(message.content)
-                if (todos) {
-                    runtimeState.todos = todos
-                    break
-                }
-            }
-
-            // 提取 teamState（从消息中增量构建）
-            let teamState = existing?.runtimeState?.teamState ?? null
-            for (const message of messages) {
-                const delta = extractTeamStateFromMessageContent(message.content)
-                if (delta) {
-                    teamState = applyTeamStateDelta(teamState, delta)
-                }
-            }
-            if (teamState) {
-                runtimeState.teamState = teamState
-            }
-
-            // 如果有数据，保存到数据库
-            if (Object.keys(runtimeState).length > 0) {
-                const updatedAt = Date.now()
-                const updated = this.store.sessions.setRuntimeState(sessionId, runtimeState, updatedAt, stored.namespace)
-                if (updated) {
-                    stored = this.store.sessions.getSession(sessionId) ?? stored
-                }
-            }
-        }
 
         const metadata = (() => {
             const parsed = MetadataSchema.safeParse(stored.metadata)
@@ -200,9 +202,9 @@ export class SessionCache {
         // 先清空缓存，确保移除数据库中已删除的 sessions
         this.sessions.clear()
         this.lastBroadcastAtBySessionId.clear()
-        this.runtimeStateBackfillAttemptedSessionIds.clear()
 
-        const sessions = this.store.sessions.getSessions()
+        // 只加载最近 100 个 session，避免启动时加载过多数据
+        const sessions = this.store.sessions.getRecentSessions(100)
         for (const session of sessions) {
             this.refreshSession(session.id)
         }
@@ -378,7 +380,6 @@ export class SessionCache {
 
         this.sessions.delete(sessionId)
         this.lastBroadcastAtBySessionId.delete(sessionId)
-        this.runtimeStateBackfillAttemptedSessionIds.delete(sessionId)
 
         this.publisher.emit({ type: 'session-removed', sessionId, namespace: session.namespace })
     }
@@ -443,7 +444,6 @@ export class SessionCache {
             this.publisher.emit({ type: 'session-removed', sessionId: oldSessionId, namespace })
         }
         this.lastBroadcastAtBySessionId.delete(oldSessionId)
-        this.runtimeStateBackfillAttemptedSessionIds.delete(oldSessionId)
 
         this.refreshSession(newSessionId)
     }

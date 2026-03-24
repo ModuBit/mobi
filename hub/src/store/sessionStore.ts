@@ -24,6 +24,7 @@ import {
     getSessionByClaudeSessionId,
     getSessionByNamespace,
     getSessions,
+    getRecentSessions,
     getSessionsByNamespace,
     getSessionGroups as getSessionGroupsFromDb,
     getSessionsByGroup as getSessionsByGroupFromDb,
@@ -85,6 +86,10 @@ export class SessionStore {
 
     getSessions(): StoredSession[] {
         return getSessions(this.db)
+    }
+
+    getRecentSessions(limit: number): StoredSession[] {
+        return getRecentSessions(this.db, limit)
     }
 
     getSessionsByNamespace(namespace: string): StoredSession[] {
