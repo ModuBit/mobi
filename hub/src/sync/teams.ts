@@ -44,17 +44,6 @@ function extractToolBlocks(content: Record<string, unknown>): Array<{ name: stri
         }
     }
 
-    // Codex format: { type: 'codex', data: { type: 'tool-call', name: '...', input: {...} } }
-    if (content.type === 'codex') {
-        const data = isObject(content.data) ? content.data : null
-        if (!data || data.type !== 'tool-call') return blocks
-        const name = typeof data.name === 'string' ? data.name : null
-        if (!name) return blocks
-        const input = isObject(data.input) ? data.input as Record<string, unknown> : null
-        if (!input) return blocks
-        blocks.push({ name, input })
-    }
-
     return blocks
 }
 
