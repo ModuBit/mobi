@@ -28,9 +28,13 @@ type TerminalRegistryOptions = {
 }
 
 export class TerminalRegistry {
+    // terminalId -> 终端信息（主存储）
     private readonly terminals = new Map<string, TerminalRegistryEntry>()
+    // socketId -> terminalId集合（按Web socket索引）
     private readonly terminalsBySocket = new Map<string, Set<string>>()
+    // sessionId -> terminalId集合（按会话索引）
     private readonly terminalsBySession = new Map<string, Set<string>>()
+    // cliSocketId -> terminalId集合（按CLI socket索引）
     private readonly terminalsByCliSocket = new Map<string, Set<string>>()
     private readonly idleTimeoutMs: number
     private readonly onIdle?: (entry: TerminalRegistryEntry) => void

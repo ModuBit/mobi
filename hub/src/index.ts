@@ -99,9 +99,13 @@ async function main() {
             // active 状态只从内存（SyncEngine）获取，不存储在数据库中
             return syncEngine?.getSession(sessionId) ?? null
         },
+        // Web 端实时事件（如文件变更、终端输出）→ 转发给 SyncEngine 处理
         onWebappEvent: (event: SyncEvent) => syncEngine?.handleRealtimeEvent(event),
+        // CLI 心跳保活 → 更新会话活跃状态
         onSessionAlive: (payload) => syncEngine?.handleSessionAlive(payload),
+        // CLI 断开/结束 → 清理会话资源
         onSessionEnd: (payload) => syncEngine?.handleSessionEnd(payload),
+        // CLI 机器心跳 → 更新机器在线状态
         onMachineAlive: (payload) => syncEngine?.handleMachineAlive(payload)
     })
 
@@ -136,6 +140,7 @@ async function main() {
         syncEngine?.stop()
         sseManager?.stop()
         webServer?.stop()
+        console.log('Shutdown complete.')
         process.exit(0)
     }
 

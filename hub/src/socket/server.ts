@@ -88,13 +88,15 @@ export function createSocketServer(deps: SocketServerDeps): {
     })
     io.bind(engine)
 
-    const rpcRegistry = new RpcRegistry()
     const idleTimeoutMs = resolveEnvNumber('MOBI_TERMINAL_IDLE_TIMEOUT_MS', DEFAULT_IDLE_TIMEOUT_MS)
     const maxTerminals = resolveEnvNumber('MOBI_TERMINAL_MAX_TERMINALS', DEFAULT_MAX_TERMINALS)
     const maxTerminalsPerSocket = maxTerminals
     const maxTerminalsPerSession = maxTerminals
+    
     const cliNs = io.of('/cli')
     const terminalNs = io.of('/terminal')
+
+    const rpcRegistry = new RpcRegistry()
     const terminalRegistry = new TerminalRegistry({
         idleTimeoutMs,
         onIdle: (entry) => {
@@ -126,10 +128,11 @@ export function createSocketServer(deps: SocketServerDeps): {
         store: deps.store,
         rpcRegistry,
         terminalRegistry,
-        onSessionAlive: deps.onSessionAlive,
-        onSessionEnd: deps.onSessionEnd,
-        onMachineAlive: deps.onMachineAlive,
-        onWebappEvent: deps.onWebappEvent
+        // 以下回调转发给 SyncEngine 处理状态同步
+        onSessionAlive: deps.onSessionAlive,  // CLI心跳保活
+        onSessionEnd: deps.onSessionEnd,      // CLI会话结束
+        onMachineAlive: deps.onMachineAlive,  // CLI机器心跳
+        onWebappEvent: deps.onWebappEvent     // Web端实时事件
     }))
 
     terminalNs.use(async (socket, next) => {
