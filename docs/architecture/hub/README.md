@@ -1,6 +1,6 @@
 # Hub 模块
 
-Hub 是 Mobi 的核心服务器。
+Hub 是 Mobi 的核心服务器，连接 CLI 客户端和 Web 前端。
 
 ## 整体架构
 
@@ -10,32 +10,53 @@ graph TB
     Web[Web 浏览器]
 
     subgraph Hub
-        SocketServer[SocketServer<br/>Socket.IO]
-        WebServer[WebServer<br/>HTTP]
-        SyncEngine[SyncEngine<br/>同步引擎]
-        SSEManager[SSEManager<br/>事件推送]
-        Store[Store<br/>SQLite]
+        IO[SocketServer<br/>Socket.IO]
+        WS[WebServer<br/>HTTP + SSE]
+        SE[SyncEngine]
+        Store[(Store)]
     end
 
-    CLI -->|Socket.IO| SocketServer
-    CLI -->|HTTP| WebServer
-    Web -->|HTTP/SSE| WebServer
+    CLI <-->|实时| IO
+    CLI -->|初始化| WS
+    Web <-->|实时| IO
+    Web <-->|HTTP/SSE| WS
 
-    SocketServer --> SyncEngine
-    WebServer --> SyncEngine
-    SyncEngine --> SSEManager
-    SyncEngine --> Store
+    IO <--> SE
+    WS --> SE
+    SE --> Store
 ```
+
+## 数据通道
+
+### 上行流（CLI → Hub → Web）
+
+| 路径 | 场景 |
+|------|------|
+| **HTTP** | 会话/机器初始化、消息回填 |
+| **Socket.IO** | 心跳、消息、状态更新、终端事件 |
+
+### 下行流（Web → Hub → CLI）
+
+| 路径 | 场景 |
+|------|------|
+| **MessageService** | 发送消息 |
+| **RpcGateway** | 权限操作、会话控制、文件操作、Git 操作 |
+
+### 终端通道
+
+CLI ↔ Socket.IO(/terminal) ↔ Web，实时双向，不经过 SyncEngine。
+
+详见 [SyncEngine 架构](./sync-engine)。
 
 ## 核心组件
 
 | 组件 | 职责 |
 |------|------|
-| **SyncEngine** | 同步引擎，协调所有数据操作 |
+| **[SyncEngine](./sync-engine)** | 同步引擎，协调所有数据操作 |
 | **SocketServer** | Socket.IO 服务器，处理 CLI 连接 |
 | **[WebServer](./web-server)** | HTTP 服务器，提供 API 和静态资源 |
-| **SSEManager** | 管理 SSE 连接，向 Web 推送实时事件 |
-| **Store** | 数据存储，SQLite 数据库 |
+| **[SSEManager](./sse-manager)** | 管理 SSE 连接，向 Web 推送实时事件 |
+| **[Store](./store)** | 数据存储，SQLite 数据库 |
 
 ## 启动流程
 

@@ -13,12 +13,13 @@ HTTP 服务器，使用 Hono 框架。
 | `/api/auth/*` | 无 | [登录、验证](./auth.md) |
 | `/cli/*` | [Access Token](./auth.md) | CLI 专用 API |
 | `/api/events` | [JWT](./auth.md) | [SSE 事件推送](./api/sse-events.md) |
-| `/api/sessions/*` | [JWT](./auth.md) | 会话管理 |
-| `/api/messages/*` | [JWT](./auth.md) | 消息管理 |
-| `/api/permissions/*` | [JWT](./auth.md) | 权限操作 |
+| `/api/sessions/*` | [JWT](./auth.md) | [会话管理](./api/sessions.md) |
+| `/api/session-groups/*` | [JWT](./auth.md) | [会话分组](./api/sessions.md) |
+| `/api/messages/*` | [JWT](./auth.md) | [消息管理](./api/messages.md) |
+| `/api/permissions/*` | [JWT](./auth.md) | [权限操作](./api/permissions.md) |
 | `/api/machines/*` | [JWT](./auth.md) | 机器管理 |
-| `/api/git/*` | [JWT](./auth.md) | Git 操作 |
-| `/api/push/*` | [JWT](./auth.md) | 推送订阅 |
+| `/api/git/*` | [JWT](./auth.md) | [Git 与文件操作](./api/git.md) |
+| `/api/push/*` | [JWT](./auth.md) | [推送订阅](./api/push.md) |
 | `/*` | - | 静态资源（Web UI） |
 
 ## 路由注册顺序
@@ -30,7 +31,10 @@ flowchart TB
     match -->|/health| health[健康检查]
     match -->|/socket.io/*| socketio[Socket.IO 引擎]
     match -->|/api/auth/*| auth[认证路由]
-    match -->|/cli/*| cli[CLI 路由]
+    match -->|/cli/*| cli_auth[Access Token 认证]
+    cli_auth --> cli{CLI 子路由}
+    cli -->|/cli/sessions| cli_sess[会话 CRUD]
+    cli -->|/cli/machines| cli_machine[机器 CRUD]
 
     match -->|/api/*| jwt[JWT 认证中间件]
     jwt --> submatch{子路由}
