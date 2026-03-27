@@ -46,16 +46,16 @@ graph TB
 
 CLI ↔ Socket.IO(/terminal) ↔ Web，实时双向，不经过 SyncEngine。
 
-详见 [SyncEngine 架构](./sync-engine)。
+详见 [SyncEngine 架构](./sync)。
 
 ## 核心组件
 
 | 组件 | 职责 |
 |------|------|
-| **[SyncEngine](./sync-engine)** | 同步引擎，协调所有数据操作 |
+| **[SyncEngine](./sync)** | 同步引擎，协调所有数据操作 |
 | **SocketServer** | Socket.IO 服务器，处理 CLI 连接 |
-| **[WebServer](./web-server)** | HTTP 服务器，提供 API 和静态资源 |
-| **[SSEManager](./sse-manager)** | 管理 SSE 连接，向 Web 推送实时事件 |
+| **[WebServer](./web)** | HTTP 服务器，提供 API 和静态资源 |
+| **[SSEManager](./sse)** | 管理 SSE 连接，向 Web 推送实时事件 |
 | **[Store](./store)** | 数据存储，SQLite 数据库 |
 
 ## 启动流程

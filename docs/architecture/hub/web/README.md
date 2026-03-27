@@ -6,12 +6,21 @@ HTTP 服务器，使用 Hono 框架。
 
 ## 路由结构
 
+路由按客户端分类：
+
+| 路由前缀 | 客户端 | 认证方式 | 用途 |
+|---------|--------|---------|------|
+| `/cli/*` | CLI | Access Token | CLI 初始化、查询（Session/Machine CRUD） |
+| `/api/*` | Web | JWT | Web 端操作（会话管理、消息、权限、Git 等） |
+
+详细端点：
+
 | 路径 | 认证 | 说明 |
 |------|------|------|
 | `/health` | 无 | 健康检查 |
 | `/socket.io/*` | [按命名空间](./auth.md) | Socket.IO（见下方说明） |
 | `/api/auth/*` | 无 | [登录、验证](./auth.md) |
-| `/cli/*` | [Access Token](./auth.md) | CLI 专用 API |
+| `/cli/*` | [Access Token](./auth.md) | [CLI 专用 API](./cli/cli.md) |
 | `/api/events` | [JWT](./auth.md) | [SSE 事件推送](./api/sse-events.md) |
 | `/api/sessions/*` | [JWT](./auth.md) | [会话管理](./api/sessions.md) |
 | `/api/session-groups/*` | [JWT](./auth.md) | [会话分组](./api/sessions.md) |

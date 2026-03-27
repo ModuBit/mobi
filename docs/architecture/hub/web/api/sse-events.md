@@ -4,7 +4,7 @@
 
 Server-Sent Events（SSE）用于向 Web 客户端推送实时事件。
 
-> 底层实现：[SSEManager](../../sse-manager)
+> 底层实现：[SSEManager](../../sse)
 
 ## 端点
 
