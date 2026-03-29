@@ -18,12 +18,42 @@ import type { Session, SyncEngine, SyncEvent } from '../sync/syncEngine'
 import type { NotificationChannel, NotificationHubOptions } from './notificationTypes'
 import { extractMessageEventType } from './eventParsing'
 
+/**
+ * 通知中心
+ *
+ * 监听 SyncEngine 事件，在适当时机通过 NotificationChannel 向用户发送通知。
+ *
+ * 两种通知场景：
+ * 1. 权限请求通知（Permission Request）
+ *    - 触发事件：session-updated / session-added
+ *    - 触发条件：session.agentState.requests 中出现新的 requestId
+ *    - 防抖策略：500ms 内的多次状态更新合并为一次通知
+ *    - 场景说明：CLI 执行需要用户授权的操作（如写文件、运行命令）时，
+ *      requests 作为 session 状态的一部分更新（状态驱动），而非独立事件。
+ *      这样做的好处是断线恢复时不会丢失 pending 请求，多端也能看到一致状态。
+ *
+ * 2. Ready 通知
+ *    - 触发事件：message-received
+ *    - 触发条件：消息类型为 'ready'
+ *    - 冷却策略：5s 内不重复发送
+ *    - 场景说明：Agent 完成任务，等待用户输入。
+ *
+ * 防抖 vs 冷却：
+ * - 防抖（debbounce）：延迟发送，每次新请求都重置计时，500ms 内无更新才真正发送。
+ *   适用于请求可能短时间密集到来的场景。
+ * - 冷却（cooldown）：立即发送，但 5s 内不重复。适用于事件本身就间隔较长的场景。
+ */
 export class NotificationHub {
     private readonly channels: NotificationChannel[]
+    /** Ready 通知冷却时间，5s 内不重复发送 */
     private readonly readyCooldownMs: number
+    /** 权限请求防抖时间，500ms 内的多次更新合并为一次通知 */
     private readonly permissionDebounceMs: number
+    /** 每个 session 上次已知的权限请求 ID 集合，用于检测新增请求 */
     private readonly lastKnownRequests: Map<string, Set<string>> = new Map()
+    /** 每个 session 的防抖定时器 */
     private readonly notificationDebounce: Map<string, NodeJS.Timeout> = new Map()
+    /** 每个 session 上次发送 Ready 通知的时间戳，用于冷却控制 */
     private readonly lastReadyNotificationAt: Map<string, number> = new Map()
     private unsubscribeSyncEvents: (() => void) | null = null
 
@@ -54,6 +84,13 @@ export class NotificationHub {
         this.lastReadyNotificationAt.clear()
     }
 
+    /**
+     * 处理 SyncEngine 事件
+     *
+     * session-updated/session-added → 检测权限请求变化
+     * session-removed → 清理状态
+     * message-received + type=ready → 发送 Ready 通知
+     */
     private handleSyncEvent(event: SyncEvent): void {
         if ((event.type === 'session-updated' || event.type === 'session-added') && event.sessionId) {
             const session = this.syncEngine.getSession(event.sessionId)
@@ -98,6 +135,13 @@ export class NotificationHub {
         return session
     }
 
+    /**
+     * 检测是否有新的权限请求需要通知
+     *
+     * 对比当前 requests 与上次已知的 requests，发现新 requestId 时触发防抖通知。
+     * 防抖机制：每次检测到新请求都重置 500ms 计时器，只有 500ms 内无新请求时才真正发送。
+     * 这样可以将短时间内的多次状态更新合并为一次通知。
+     */
     private checkForPermissionNotification(session: Session): void {
         const requests = session.agentState?.requests
 
@@ -146,6 +190,11 @@ export class NotificationHub {
         await this.notifyPermission(session)
     }
 
+    /**
+     * 发送 Ready 通知（带冷却）
+     *
+     * 冷却机制：5s 内只发送一次，避免频繁通知。与防抖不同，冷却是立即发送但不重复。
+     */
     private async sendReadyNotification(sessionId: string): Promise<void> {
         const session = this.getNotifiableSession(sessionId)
         if (!session) {

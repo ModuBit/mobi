@@ -98,11 +98,8 @@ export function createWebApp(options: {
 
     app.route('/cli', createCliRoutes(options.getSyncEngine))
 
-    // 处理认证
     app.route('/api', createAuthRoutes(options.jwtSecret))
-    // 配置认证中间件
     app.use('/api/*', createAuthMiddleware(options.jwtSecret))
-    // 处理SSE事件
     app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker))
     app.route('/api', createSessionsRoutes(options.getSyncEngine))
     app.route('/api', createSessionGroupsRoutes(options.getSyncEngine, options.store))

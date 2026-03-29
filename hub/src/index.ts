@@ -112,6 +112,7 @@ async function main() {
     syncEngine = new SyncEngine(store, socketServer.io, socketServer.rpcRegistry, sseManager)
 
     const notificationChannels: NotificationChannel[] = [
+        // WEB端（SSE/WEB-PUSH)
         new PushNotificationChannel(pushService, sseManager, visibilityTracker, config.publicUrl)
     ]
 
