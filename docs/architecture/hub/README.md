@@ -52,10 +52,12 @@ CLI ↔ Socket.IO(/terminal) ↔ Web，实时双向，不经过 SyncEngine。
 
 | 组件 | 职责 |
 |------|------|
+| **[Configuration](./config)** | 配置管理，统一优先级与持久化 |
 | **[SyncEngine](./sync)** | 同步引擎，协调所有数据操作 |
 | **[SocketServer](./socket)** | Socket.IO 服务器，处理 CLI 连接 |
 | **[WebServer](./web)** | HTTP 服务器，提供 API 和静态资源 |
 | **[SSEManager](./sse)** | 管理 SSE 连接，向 Web 推送实时事件 |
+| **[VisibilityTracker](./visibility)** | 页面可见性追踪，通知降级策略 |
 | **[PushService](./push)** | Web Push 通知，离线时推送通知 |
 | **[NotificationHub](./notification)** | 通知调度，监听事件并分发通知 |
 | **[Store](./store)** | 数据存储，SQLite 数据库 |
