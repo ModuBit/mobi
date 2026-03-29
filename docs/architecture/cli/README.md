@@ -70,9 +70,9 @@ resolveCommand(args) → { command, context }
 |------|------|-----------|------|
 | **(default)** | `claude` | ✅ | 启动 Claude Code 会话，连接 Hub 实现远程控制 |
 | [`auth`](./auth) | — | ✅ | 认证管理（login / logout / status） |
-| `hub` | — | ✅ | 启动 Hub 服务器 |
+| [`hub`](./hub) | — | ✅ | 启动 Hub 服务器 |
 | `runner` | — | ✅ | 后台 Runner 管理（start / stop / list / status / logs） |
-| `mcp` | — | ❌ | MCP stdio bridge，转发 MCP 请求 |
+| [`mcp`](./mcp) | — | ❌ | MCP Server，暴露 `change_title` 工具（随 Claude 会话自动启动） |
 | [`doctor`](./doctor) | — | ✅ | 系统诊断与故障排除 |
 | [`hook`](./hook) | — | ❌ | 内部命令，转发 Claude SessionStart hook |
 
@@ -122,9 +122,11 @@ Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.json` > 交�
 
 详见 [Auth 认证系统](./auth)。
 
-#### hub — 启动 Hub 服务器
+#### [hub](./hub) — 启动 Hub 服务器
 
-通过 `import('../../../hub/src/index')` 直接加载 Hub 模块，支持 `--host` 和 `--port` 参数。
+解析 `--host`/`--port` 参数后加载 Hub 模块。CLI 主命令会通过 `maybeAutoStartServer()` 自动启动 Hub。
+
+详见 [Hub 命令](./hub)。
 
 #### runner — 后台 Runner 管理
 
@@ -140,9 +142,11 @@ Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.json` > 交�
 
 Runner 在后台运行，管理 Claude 会话的生命周期，允许用户离开终端后会话继续运行。
 
-#### mcp — MCP stdio bridge
+#### [mcp](./mcp) — MCP Server
 
-启动 MCP stdio bridge，将 MCP 请求转发给 Hub，不需要运行时资源。
+随 Claude 会话自动启动 HTTP MCP Server，暴露 `change_title` 工具让 Claude Code 修改会话标题，通过 Socket.IO 同步到 Hub。
+
+详见 [MCP 系统](./mcp)。
 
 #### [doctor](./doctor) — 系统诊断
 
@@ -172,7 +176,7 @@ cli/src/
 │   ├── auth.ts                  # 认证管理命令
 │   ├── hub.ts                   # Hub 服务器启动命令
 │   ├── runner.ts                # Runner 管理命令
-│   ├── mcp.ts                   # MCP stdio bridge 命令
+│   ├── mcp.ts                   # MCP 命令入口
 │   ├── doctor.ts                # 系统诊断命令
 │   └── hookForwarder.ts         # 内部 hook 转发命令
 ```

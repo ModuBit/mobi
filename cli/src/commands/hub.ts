@@ -44,10 +44,10 @@ export const hubCommand: CommandDefinition = {
             const { host, port } = parseHubArgs(context.commandArgs)
 
             if (host) {
-                process.env.WEBAPP_HOST = host
+                process.env.MOBI_LISTEN_HOST = host
             }
             if (port) {
-                process.env.WEBAPP_PORT = port
+                process.env.MOBI_LISTEN_PORT = port
             }
             await import('../../../hub/src/index')
         } catch (error) {
