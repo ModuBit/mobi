@@ -28,7 +28,6 @@ const COMMANDS: CommandDefinition[] = [
     authCommand,
     mcpCommand,
     hubCommand,
-    { ...hubCommand, name: 'server' }, // server 作为 hub 的别名
     doctorCommand,
     runnerCommand,
     hookForwarderCommand // 用于转发 Claude 的 SessionStart hook

@@ -22,6 +22,7 @@
  */
 
 import chalk from 'chalk'
+import { spawn } from 'node:child_process'
 import { configuration } from '@/configuration'
 import { readSettings } from '@/persistence'
 import { checkIfRunnerRunningAndCleanupStaleState } from '@/runner/controlClient'
@@ -31,6 +32,8 @@ import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isBunCompiled, projectPath, runtimePath } from '@/projectPath'
+import { getDefaultClaudeCodePath } from '@/claude/sdk/utils'
+import { withBunRuntimeEnv } from '@/utils/bunRuntime'
 import packageJson from '../../package.json'
 
 /**
@@ -88,13 +91,13 @@ export async function runDoctorRunner(): Promise<void> {
     return runDoctorCommand('runner');
 }
 
-export async function runDoctorCommand(filter?: 'all' | 'runner'): Promise<void> {
+export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Promise<void> {
     // Default to 'all' if no filter specified
     if (!filter) {
         filter = 'all';
     }
     
-    console.log(chalk.bold.cyan('\n🩺 mobi CLI Doctor\n'));
+    console.log(`\n${chalk.bold.cyan('🩺 mobi CLI Doctor')} ${chalk.bold(filter)}\n`);
 
     // For 'all' filter, show everything. For 'runner', only show runner-related info
     if (filter === 'all') {
@@ -294,5 +297,31 @@ export async function runDoctorCommand(filter?: 'all' | 'runner'): Promise<void>
         console.log(`Documentation: ${chalk.blue(pkg.homepage ?? 'See project README')}`);
     }
 
-    console.log(chalk.green('\n✅ Doctor diagnosis complete!\n'));
+    console.log(chalk.green('\n✅ Doctor diagnosis complete!'));
+
+    // 追加 Claude Code doctor 信息（仅 TTY 环境，claude doctor 需要交互输入）
+    if (filter === 'all' && process.stdin.isTTY) {
+        try {
+            const claudePath = getDefaultClaudeCodePath()
+            console.log(chalk.bold.cyan('\n🔍 Claude Code Doctor\n'));
+
+            await new Promise<void>((resolve) => {
+                const child = spawn(claudePath, ['doctor'], {
+                    stdio: 'inherit',
+                    env: withBunRuntimeEnv(),
+                    shell: false,
+                })
+
+                child.on('close', () => resolve())
+                child.on('error', () => {
+                    console.log(chalk.yellow('Could not run claude doctor. Make sure claude is installed.'))
+                    resolve()
+                })
+            })
+        } catch {
+            console.log(chalk.yellow('Could not find Claude Code CLI. Install Claude Code or set MOBI_CLAUDE_PATH.'))
+        }
+    }
+
+    console.log()
 }

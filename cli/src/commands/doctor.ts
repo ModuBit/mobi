@@ -30,6 +30,6 @@ export const doctorCommand: CommandDefinition = {
             }
             process.exit(0)
         }
-        await runDoctorCommand()
+        await runDoctorCommand(commandArgs[0])
     }
 }
