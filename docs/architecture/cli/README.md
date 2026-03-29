@@ -74,7 +74,7 @@ resolveCommand(args) → { command, context }
 | `runner` | — | ✅ | 后台 Runner 管理（start / stop / list / status / logs） |
 | `mcp` | — | ❌ | MCP stdio bridge，转发 MCP 请求 |
 | [`doctor`](./doctor) | — | ✅ | 系统诊断与故障排除 |
-| `hook-forwarder` | — | ❌ | 内部命令，转发 Claude SessionStart hook |
+| [`hook`](./hook) | — | ❌ | 内部命令，转发 Claude SessionStart hook |
 
 ### 命令详解
 
@@ -153,9 +153,11 @@ Runner 在后台运行，管理 Claude 会话的生命周期，允许用户离�
 
 详见 [Doctor 系统诊断](./doctor)。
 
-#### hook-forwarder — 内部命令
+#### [hook](./hook) — SessionStart Hook 转发
 
-转发 Claude 的 SessionStart hook 到主 CLI 进程。不触发完整的 CLI 启动流程，不需要运行时资源。
+转发 Claude 的 SessionStart hook 到主 CLI 进程。由三个协作组件构成：Hook Server（HTTP 服务）、Hook Settings（配置生成）、Hook Forwarder（stdin → HTTP 桥梁）。
+
+详见 [Hook 系统](./hook)。
 
 ## 代码入口
 
