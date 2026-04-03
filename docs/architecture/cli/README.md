@@ -71,7 +71,9 @@ resolveCommand(args) → { command, context }
 | **(default)** | `claude` | ✅ | 启动 Claude Code 会话，连接 Hub 实现远程控制 |
 | [`auth`](./auth) | — | ✅ | 认证管理（login / logout / status） |
 | [`hub`](./hub) | — | ✅ | 启动 Hub 服务器 |
-| `runner` | — | ✅ | 后台 Runner 管理（start / stop / list / status / logs） |
+| [`runner`](./runner) | — | ✅ | 后台 Runner 管理（start / stop / list / status / logs） |
+
+**详见 [Runner 命令](./runner)。**
 | [`mcp`](./mcp) | — | ❌ | MCP Server，暴露 `change_title` 工具（随 Claude 会话自动启动） |
 | [`doctor`](./doctor) | — | ✅ | 系统诊断与故障排除 |
 | [`hook`](./hook) | — | ❌ | 内部命令，转发 Claude SessionStart hook |
@@ -128,7 +130,7 @@ Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.json` > 交�
 
 详见 [Hub 命令](./hub)。
 
-#### runner — 后台 Runner 管理
+#### [runner](./runner) — 后台 Runner 管理
 
 | 子命令 | 说明 |
 |--------|------|
@@ -141,6 +143,8 @@ Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.json` > 交�
 | `logs` | 显示最新 Runner 日志路径 |
 
 Runner 在后台运行，管理 Claude 会话的生命周期，允许用户离开终端后会话继续运行。
+
+详见 [Runner 命令](./runner)。
 
 #### [mcp](./mcp) — MCP Server
 

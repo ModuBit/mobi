@@ -218,6 +218,7 @@ export async function startRunner(): Promise<void> {
       let worktreeInfo: WorktreeInfo | null = null;
       let MobiProcess: ReturnType<typeof spawnMobiCli> | null = null;
 
+      // 判断directory是否存在，如果不存在则尝试创建
       if (sessionType === 'simple') {
         try {
           await fs.access(directory);
@@ -274,6 +275,7 @@ export async function startRunner(): Promise<void> {
         }
       }
 
+      // 尝试创建worktree
       if (sessionType === 'worktree') {
         const worktreeResult = await createWorktree({
           basePath: directory,
