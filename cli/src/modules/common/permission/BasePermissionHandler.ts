@@ -26,7 +26,7 @@ type RpcHandlerManagerLike = {
 
 export type AutoApprovalDecision = 'approved' | 'approved_for_session';
 
-type AutoApprovalRuleSet = {
+export type AutoApprovalRuleSet = {
     alwaysToolNameHints?: string[];
     alwaysToolIdHints?: string[];
     writeToolNameHints?: string[];
@@ -40,6 +40,41 @@ const AUTO_APPROVE_TOOL_NAME_HINTS = [
 ];
 const AUTO_APPROVE_TOOL_ID_HINTS = ['change_title', 'save_memory'];
 const AUTO_APPROVE_WRITE_TOOL_HINTS = ['write', 'edit', 'create', 'delete', 'patch', 'fs-edit'];
+
+/**
+ * 解析工具自动审批决策（独立函数，便于外部复用）
+ */
+export function resolveToolAutoApprovalDecision(
+    mode: PermissionMode | undefined,
+    toolName: string,
+    toolCallId: string,
+    ruleOverrides?: AutoApprovalRuleSet
+): AutoApprovalDecision | null {
+    const rules = {
+        alwaysToolNameHints: ruleOverrides?.alwaysToolNameHints ?? AUTO_APPROVE_TOOL_NAME_HINTS,
+        alwaysToolIdHints: ruleOverrides?.alwaysToolIdHints ?? AUTO_APPROVE_TOOL_ID_HINTS,
+        writeToolNameHints: ruleOverrides?.writeToolNameHints ?? AUTO_APPROVE_WRITE_TOOL_HINTS
+    };
+
+    const lowerTool = toolName.toLowerCase();
+    const lowerId = toolCallId.toLowerCase();
+    const decisionForMode: AutoApprovalDecision = mode === 'bypassPermissions' ? 'approved_for_session' : 'approved';
+
+    if (rules.alwaysToolNameHints.some((name) => lowerTool.includes(name))) {
+        return decisionForMode;
+    }
+
+    if (rules.alwaysToolIdHints.some((name) => lowerId.includes(name))) {
+        return decisionForMode;
+    }
+
+    // Mobi 当前仅支持 Claude 的权限模式
+    if (mode === 'bypassPermissions') {
+        return 'approved_for_session';
+    }
+
+    return null;
+}
 
 export type PermissionHandlerClient = {
     rpcHandlerManager: RpcHandlerManagerLike;
@@ -96,29 +131,7 @@ export abstract class BasePermissionHandler<TResponse extends { id: string }, TR
         toolCallId: string,
         ruleOverrides?: AutoApprovalRuleSet
     ): AutoApprovalDecision | null {
-        const rules = {
-            alwaysToolNameHints: ruleOverrides?.alwaysToolNameHints ?? AUTO_APPROVE_TOOL_NAME_HINTS,
-            alwaysToolIdHints: ruleOverrides?.alwaysToolIdHints ?? AUTO_APPROVE_TOOL_ID_HINTS,
-            writeToolNameHints: ruleOverrides?.writeToolNameHints ?? AUTO_APPROVE_WRITE_TOOL_HINTS
-        };
-
-        const lowerTool = toolName.toLowerCase();
-        const lowerId = toolCallId.toLowerCase();
-
-        if (rules.alwaysToolNameHints.some((name) => lowerTool.includes(name))) {
-            return 'approved';
-        }
-
-        if (rules.alwaysToolIdHints.some((name) => lowerId.includes(name))) {
-            return 'approved';
-        }
-
-        // Mobi 当前仅支持 Claude 的权限模式
-        if (mode === 'bypassPermissions') {
-            return 'approved_for_session';
-        }
-
-        return null;
+        return resolveToolAutoApprovalDecision(mode, toolName, toolCallId, ruleOverrides);
     }
 
     protected addPendingRequest(
