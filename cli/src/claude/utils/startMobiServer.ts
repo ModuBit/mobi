@@ -17,6 +17,10 @@
 /**
  * MOBI MCP server
  * Provides MOBI CLI specific tools including chat session title management
+ *
+ * 使用 stateless 模式：每个 HTTP 请求创建独立的 transport 实例，
+ * 兼容 MCP SDK 1.25+ 及以上版本。
+ * 参考：https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/server.md
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -39,7 +43,7 @@ export async function startMobiServer(client: ApiSessionClient) {
                 summary: title,
                 leafUuid: randomUUID()
             });
-            
+
             return { success: true };
         } catch (error) {
             return { success: false, error: String(error) };
@@ -47,7 +51,7 @@ export async function startMobiServer(client: ApiSessionClient) {
     };
 
     //
-    // Create the MCP server
+    // Create the MCP server (工具注册，不预先绑定 transport)
     //
 
     const mcp = new McpServer({
@@ -67,7 +71,7 @@ export async function startMobiServer(client: ApiSessionClient) {
     }, async (args: { title: string }) => {
         const response = await handler(args.title);
         logger.debug('[mobiMCP] Response:', response);
-        
+
         if (response.success) {
             return {
                 content: [
@@ -91,19 +95,22 @@ export async function startMobiServer(client: ApiSessionClient) {
         }
     });
 
-    const transport = new StreamableHTTPServerTransport({
-        // NOTE: Returning session id here will result in claude
-        // sdk spawn to fail with `Invalid Request: Server already initialized`
-        sessionIdGenerator: undefined
-    });
-    await mcp.connect(transport);
-
     //
     // Create the HTTP server
+    // Stateless 模式：每个请求创建独立的 transport 并 connect 到 MCP server
     //
 
     const server = createServer(async (req, res) => {
         try {
+            // 关闭上一次连接（将 _transport 置为 undefined，允许重新 connect）
+            // request handlers（工具注册）不会被清除，可以安全复用
+            await mcp.close();
+
+            // 每个请求创建独立的 transport（stateless 模式要求）
+            const transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: undefined
+            });
+            await mcp.connect(transport);
             await transport.handleRequest(req, res);
         } catch (error) {
             logger.debug("Error handling request:", error);
