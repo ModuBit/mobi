@@ -35,6 +35,113 @@
 | GET | `/session-groups/sessions` | 获取分组内会话（分页） |
 
 
+### GET /sessions — 获取会话列表
+
+```json
+// Response
+[
+    {
+        "id": "sess-abc123",
+        "namespace": "/Users/dev/project",
+        "seq": 5,
+        "active": true,
+        "metadata": {
+            "sessionName": "feature-auth",
+            "workingDir": "/Users/dev/project"
+        },
+        "permissionMode": "default",
+        "createdAt": 1712000000000,
+        "updatedAt": 1712000060000
+    }
+]
+```
+
+### GET /sessions/:id — 获取会话详情
+
+```json
+// Response
+{
+    "id": "sess-abc123",
+    "namespace": "/Users/dev/project",
+    "seq": 5,
+    "active": true,
+    "activeAt": 1712000060000,
+    "thinking": false,
+    "metadata": { "sessionName": "feature-auth" },
+    "runtimeState": { "model": "sonnet" },
+    "permissionMode": "default"
+}
+```
+
+### POST /sessions/:id/permission-mode — 设置权限模式
+
+```json
+// Request
+{ "mode": "acceptEdits" }
+
+// Response
+{ "ok": true }
+
+// Error (不支持的模式)
+{ "error": "Permission mode not supported" }    // 400
+```
+
+### POST /sessions/:id/model — 设置模型
+
+```json
+// Request
+{ "model": "opus" }
+
+// Response
+{ "ok": true }
+```
+
+### PATCH /sessions/:id — 重命名会话
+
+```json
+// Request
+{ "sessionName": "新名称" }
+
+// Response
+{ "ok": true }
+```
+
+### GET /sessions/:id/slash-commands — 获取斜杠命令
+
+```json
+// Response
+[
+    { "name": "/commit", "description": "创建提交", "argumentHint": "" },
+    { "name": "/review", "description": "代码审查", "argumentHint": "" }
+]
+```
+
+### Session Groups
+
+#### GET /session-groups — 获取分组列表
+
+```json
+// Response
+[
+    { "groupKey": "/Users/dev/project", "count": 3, "latestActiveAt": 1712000060000 },
+    { "groupKey": "/Users/dev/other", "count": 1, "latestActiveAt": 1711990000000 }
+]
+```
+
+#### GET /session-groups/sessions — 获取分组内会话（分页）
+
+```
+GET /api/session-groups/sessions?groupKey=/Users/dev/project&limit=20&offset=0
+```
+
+```json
+// Response
+{
+    "sessions": [...],
+    "total": 3
+}
+```
+
 ## 权限模式
 
 ```mermaid

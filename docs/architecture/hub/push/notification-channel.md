@@ -58,33 +58,47 @@ flowchart TB
 
 ### Permission Request
 
-```
-┌─────────────────────────────────────┐
-│  Permission Request                 │
-│  ─────────────────                  │
-│  {会话名} ({工具名})                 │
-│                                     │
-│  tag: permission-{sessionId}        │
-│  type: permission-request           │
-└─────────────────────────────────────┘
+触发时机：CLI 需要用户授权工具调用时。
+
+```mermaid
+block-beta
+    columns 1
+    block:notif1:1
+        columns 1
+        title1["Permission Request"]
+        sep1["─────────────────"]
+        body1["{会话名} ({工具名})"]
+    end
 ```
 
-触发时机：CLI 需要用户授权工具调用时。
+| 属性 | 值 |
+|------|-----|
+| title | `Permission Request` |
+| body | `{会话名} ({工具名})` |
+| tag | `permission-{sessionId}` |
+| type | `permission-request` |
 
 ### Ready for Input
 
-```
-┌─────────────────────────────────────┐
-│  Ready for input                    │
-│  ───────────────                    │
-│  {Agent名} is waiting in {会话名}   │
-│                                     │
-│  tag: ready-{sessionId}             │
-│  type: ready                        │
-└─────────────────────────────────────┘
+触发时机：Agent 完成任务，等待用户输入时。
+
+```mermaid
+block-beta
+    columns 1
+    block:notif2:1
+        columns 1
+        title2["Ready for input"]
+        sep2["───────────────"]
+        body2["{Agent名} is waiting in {会话名}"]
+    end
 ```
 
-触发时机：Agent 完成任务，等待用户输入时。
+| 属性 | 值 |
+|------|-----|
+| title | `Ready for input` |
+| body | `{Agent名} is waiting in {会话名}` |
+| tag | `ready-{sessionId}` |
+| type | `ready` |
 
 ## 数据结构
 

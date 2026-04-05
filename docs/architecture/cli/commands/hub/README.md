@@ -10,7 +10,7 @@
 flowchart TB
     Start["mobi hub --host x --port y"] --> Parse["parseHubArgs()<br/>解析 --host / --port"]
     Parse --> Env["设置环境变量<br/>MOBI_LISTEN_HOST / MOBI_LISTEN_PORT"]
-    Env --> Import["import('../../../hub/src/index')"]
+    Env --> Import["import('../../../../hub/src/index')"]
     Import --> HubMain["hub/src/index.ts → main()"]
     HubMain --> Config["createConfiguration()"]
     Config --> Store["Store (SQLite)"]

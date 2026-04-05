@@ -15,12 +15,30 @@
 
 ```typescript
 {
-    mode?: PermissionMode,           // 权限模式
-    allowTools?: string[],           // 允许的工具列表
+    mode?: PermissionMode,           // 权限模式（可选）
+    allowTools?: string[],           // 允许的工具列表（可选）
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
     answers?: Record<string, string[]> | Record<string, { answers: string[] }>
 }
 ```
+
+**示例**：
+
+```json
+// 批准本次请求
+{
+    "decision": "approved",
+    "mode": "default"
+}
+
+// 批准整个会话中所有同类请求
+{
+    "decision": "approved_for_session",
+    "allowTools": ["Bash", "Edit"]
+}
+```
+
+> PermissionMode 取值详见 [共享类型](./types.md#permissionmode)
 
 ### 响应
 
@@ -43,6 +61,12 @@
 {
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort'
 }
+```
+
+**示例**：
+
+```json
+{ "decision": "denied" }
 ```
 
 ### 响应

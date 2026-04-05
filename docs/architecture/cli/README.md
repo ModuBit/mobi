@@ -69,14 +69,12 @@ resolveCommand(args) → { command, context }
 | 命令 | 别名 | 运行时资源 | 职责 |
 |------|------|-----------|------|
 | **(default)** | `claude` | ✅ | 启动 Claude Code 会话，连接 Hub 实现远程控制 |
-| [`auth`](./auth) | — | ✅ | 认证管理（login / logout / status） |
-| [`hub`](./hub) | — | ✅ | 启动 Hub 服务器 |
-| [`runner`](./runner) | — | ✅ | 后台 Runner 管理（start / stop / list / status / logs） |
-
-**详见 [Runner 命令](./runner)。**
-| [`mcp`](./mcp) | — | ❌ | MCP Server，暴露 `change_title` 工具（随 Claude 会话自动启动） |
-| [`doctor`](./doctor) | — | ✅ | 系统诊断与故障排除 |
-| [`hook`](./hook) | — | ❌ | 内部命令，转发 Claude SessionStart hook |
+| [`auth`](./commands/auth) | — | ✅ | 认证管理（login / logout / status） |
+| [`hub`](./commands/hub) | — | ✅ | 启动 Hub 服务器 |
+| [`runner`](./commands/runner) | — | ✅ | 后台 Runner 管理（start / stop / list / status / logs） |
+| [`mcp`](./commands/mcp) | — | ❌ | MCP Server，暴露 `change_title` 工具（随 Claude 会话自动启动） |
+| [`doctor`](./commands/doctor) | — | ✅ | 系统诊断与故障排除 |
+| [`hook`](./commands/hook) | — | ❌ | 内部命令，转发 Claude SessionStart hook |
 
 ### 命令详解
 
@@ -122,13 +120,13 @@ flowchart TB
 
 Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.json` > 交互式输入。
 
-详见 [Auth 认证系统](./auth)。
+详见 [Auth 认证系统](./commands/auth)。
 
 #### [hub](./hub) — 启动 Hub 服务器
 
 解析 `--host`/`--port` 参数后加载 Hub 模块。CLI 主命令会通过 `maybeAutoStartServer()` 自动启动 Hub。
 
-详见 [Hub 命令](./hub)。
+详见 [Hub 命令](./commands/hub)。
 
 #### [runner](./runner) — 后台 Runner 管理
 
@@ -144,13 +142,13 @@ Token 优先级：环境变量 `CLI_API_TOKEN` > `~/.mobi/settings.json` > 交�
 
 Runner 在后台运行，管理 Claude 会话的生命周期，允许用户离开终端后会话继续运行。
 
-详见 [Runner 命令](./runner)。
+详见 [Runner 命令](./commands/runner)。
 
 #### [mcp](./mcp) — MCP Server
 
 随 Claude 会话自动启动 HTTP MCP Server，暴露 `change_title` 工具让 Claude Code 修改会话标题，通过 Socket.IO 同步到 Hub。
 
-详见 [MCP 系统](./mcp)。
+详见 [MCP 系统](./commands/mcp)。
 
 #### [doctor](./doctor) — 系统诊断
 
@@ -159,13 +157,13 @@ Runner 在后台运行，管理 Claude 会话的生命周期，允许用户离�
 | (无) | 运行完整诊断检查 |
 | `clean` | 清理失控的 mobi 进程 |
 
-详见 [Doctor 系统诊断](./doctor)。
+详见 [Doctor 系统诊断](./commands/doctor)。
 
-#### [hook](./hook) — SessionStart Hook 转发
+#### [hook](./commands/hook) — SessionStart Hook 转发
 
 转发 Claude 的 SessionStart hook 到主 CLI 进程。由三个协作组件构成：Hook Server（HTTP 服务）、Hook Settings（配置生成）、Hook Forwarder（stdin → HTTP 桥梁）。
 
-详见 [Hook 系统](./hook)。
+详见 [Hook 系统](./commands/hook)。
 
 ## API 通信层
 

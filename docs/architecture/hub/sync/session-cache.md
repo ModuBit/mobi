@@ -96,13 +96,22 @@ flowchart TB
 ## 过期清理
 
 ```typescript
-// 每 5 秒执行一次
+// SyncEngine 启动后，每 5 秒调用一次
+// 检查所有缓存中的会话，将超时未心跳的会话标记为不活跃
 expireInactive() {
-    for (const session of sessions) {
-        if (session.active && now - session.activeAt > 30_000) {
-            session.active = false
-            emit('session-updated', { active: false })
-        }
+    const sessionTimeoutMs = 30_000  // 30 秒超时阈值
+
+    for (const session of this.sessions.values()) {
+        if (!session.active) continue                    // 跳过已不活跃的会话
+        if (now - session.activeAt <= sessionTimeoutMs) continue  // 未超时，跳过
+
+        session.active = false                           // 标记为不活跃（仅内存）
+        session.thinking = false                         // 同时清除思考状态
+        this.publisher.emit({                            // 广播状态变化
+            type: 'session-updated',
+            sessionId: session.id,
+            data: { active: false }
+        })
     }
 }
 ```
@@ -111,10 +120,12 @@ expireInactive() {
 
 ```typescript
 warmupCache() {
-    // 只加载最近 100 个会话
-    const sessions = store.sessions.getRecentSessions(100)
+    this.sessions.clear()                      // 先清空缓存，确保移除数据库中已删除的会话
+    this.lastBroadcastAtBySessionId.clear()    // 清空节流记录
+
+    const sessions = this.store.sessions.getRecentSessions(100)  // 只加载最近 100 个，避免启动过慢
     for (const session of sessions) {
-        this.refreshSession(session.id)
+        this.refreshSession(session.id)        // 逐个加载到内存缓存
     }
 }
 ```

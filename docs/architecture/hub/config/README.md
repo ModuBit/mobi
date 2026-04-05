@@ -57,14 +57,14 @@ configuration.listenPort
 
 | 属性 | 类型 | 环境变量 | 默认值 | 持久化 |
 |------|------|----------|--------|--------|
-| `dataDir` | `string` | `MOBI_HOME` | `~/.mobi` | - |
-| `dbPath` | `string` | `DB_PATH` | `{dataDir}/mobi.db` | - |
-| `settingsFile` | `string` | — | `{dataDir}/settings.json` | - |
-| `listenHost` | `string` | `MOBI_LISTEN_HOST` | `127.0.0.1` | settings.json |
-| `listenPort` | `number` | `MOBI_LISTEN_PORT` | `2222` | settings.json |
-| `publicUrl` | `string` | `MOBI_PUBLIC_URL` | `http://localhost:{port}` | settings.json |
-| `corsOrigins` | `string[]` | `CORS_ORIGINS` | 从 publicUrl 派生 | settings.json |
-| `cliApiToken` | `string` | `CLI_API_TOKEN` | 自动生成 | settings.json |
+| `dataDir` | `string` | `MOBI_HOME` | `~/.mobi` | 不持久化 |
+| `dbPath` | `string` | `DB_PATH` | `{dataDir}/mobi.db` | 不持久化 |
+| `settingsFile` | `string` | — | `{dataDir}/settings.json` | 不持久化 |
+| `listenHost` | `string` | `MOBI_LISTEN_HOST` | `127.0.0.1` | `settings.json` |
+| `listenPort` | `number` | `MOBI_LISTEN_PORT` | `2222` | `settings.json` |
+| `publicUrl` | `string` | `MOBI_PUBLIC_URL` | `http://localhost:{port}` | `settings.json` |
+| `corsOrigins` | `string[]` | `CORS_ORIGINS` | 从 publicUrl 派生 | `settings.json` |
+| `cliApiToken` | `string` | `CLI_API_TOKEN` | 自动生成 | `settings.json` |
 
 > `dataDir` 和 `dbPath` 仅通过环境变量设置，不持久化到 `settings.json`。
 
@@ -242,11 +242,11 @@ hub/src/
 
 | 环境变量 | 配置项 | 持久化 |
 |----------|--------|--------|
-| `MOBI_HOME` | 数据目录 | - |
-| `DB_PATH` | 数据库路径 | - |
-| `MOBI_LISTEN_HOST` | 监听地址 | settings.json |
-| `MOBI_LISTEN_PORT` | 监听端口 | settings.json |
-| `MOBI_PUBLIC_URL` | 公开 URL | settings.json |
-| `CORS_ORIGINS` | CORS 来源 | settings.json |
-| `CLI_API_TOKEN` | CLI 认证 Token | settings.json |
-| `VAPID_SUBJECT` | Web Push 联系方式 | - |
+| `MOBI_HOME` | 数据目录 | 不持久化 |
+| `DB_PATH` | 数据库路径 | 不持久化 |
+| `MOBI_LISTEN_HOST` | 监听地址 | `settings.json` |
+| `MOBI_LISTEN_PORT` | 监听端口 | `settings.json` |
+| `MOBI_PUBLIC_URL` | 公开 URL | `settings.json` |
+| `CORS_ORIGINS` | CORS 来源 | `settings.json` |
+| `CLI_API_TOKEN` | CLI 认证 Token | `settings.json` |
+| `VAPID_SUBJECT` | Web Push 联系方式 | 不持久化 |

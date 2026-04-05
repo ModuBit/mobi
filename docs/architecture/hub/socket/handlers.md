@@ -1,5 +1,19 @@
 # 事件处理器架构
 
+> **目录**
+>
+> - [整体流程](#整体流程)
+> - [/cli namespace：connection 流程](#/cli-namespaceconnection-流程)
+>   - [初始化阶段](#1-初始化阶段)
+>   - [处理器注册](#2-处理器注册)
+>   - [断线清理](#3-断线清理)
+> - [/cli 会话处理器](#/cli-会话处理器)
+> - [/cli 机器处理器](#/cli-机器处理器)
+> - [/cli RPC 处理器](#/cli-rpc-处理器)
+> - [/cli 终端处理器（CLI 端）](#/cli-终端处理器cli-端)
+> - [/terminal namespace：connection 流程](#/terminal-namespaceconnection-流程)
+> - [共同模式](#共同模式)
+
 **文件**:
 - [`hub/src/socket/handlers/cli/index.ts`](/hub/src/socket/handlers/cli/index.ts) — /cli 入口
 - [`hub/src/socket/handlers/terminal.ts`](/hub/src/socket/handlers/terminal.ts) — /terminal 入口

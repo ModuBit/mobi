@@ -103,13 +103,21 @@ flowchart TB
 ## 过期清理
 
 ```typescript
-// 每 5 秒执行一次
+// SyncEngine 启动后，每 5 秒调用一次
+// 检查所有缓存中的机器，将超时未心跳的机器标记为离线
 expireInactive() {
-    for (const machine of machines) {
-        if (machine.active && now - machine.activeAt > 45_000) {
-            machine.active = false
-            emit('machine-updated', { active: false })
-        }
+    const machineTimeoutMs = 45_000  // 45 秒超时阈值（比 Session 的 30 秒更宽松）
+
+    for (const machine of this.machines.values()) {
+        if (!machine.active) continue                      // 跳过已离线的机器
+        if (now - machine.activeAt <= machineTimeoutMs) continue  // 未超时，跳过
+
+        machine.active = false                             // 标记为离线
+        this.publisher.emit({                              // 广播状态变化
+            type: 'machine-updated',
+            machineId: machine.id,
+            data: { active: false }
+        })
     }
 }
 ```

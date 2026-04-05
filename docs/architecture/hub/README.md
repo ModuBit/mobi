@@ -2,6 +2,45 @@
 
 Hub 是 Mobi 的核心服务器，连接 CLI 客户端和 Web 前端。
 
+## 新人指引
+
+### 前置知识
+
+阅读本文档前，建议了解以下概念：
+
+- **Socket.IO**：实时双向通信框架，Hub 用它管理 CLI 和 Web 的实时连接
+- **SSE (Server-Sent Events)**：服务器单向推送协议，Hub 用它向 Web 推送实时事件
+- **SQLite (WAL 模式)**：嵌入式数据库，Hub 用它持久化会话、消息等数据
+- **Web Push (VAPID)**：浏览器推送通知协议，Hub 用它实现离线通知
+
+### 建议阅读顺序
+
+1. **本文件** — 建立整体架构认知
+2. [Configuration](./config) — 了解配置体系，后续模块都依赖配置
+3. [Store](./store) — 了解数据存储层，SyncEngine 在此基础上运作
+4. [SyncEngine](./sync) — **核心模块**，建议按 README → 各子文档的顺序精读
+5. [SocketServer](./socket) — CLI 连接管理，先看 README，再按需查看 handlers / rpc / terminal
+6. [WebServer](./web) — HTTP API 层，先看 README 和 auth，再按需查看各 API 端点
+7. [SSEManager](./sse) — Web 实时推送
+8. [VisibilityTracker](./visibility) — 页面可见性追踪（影响通知策略）
+9. [NotificationHub](./notification) → [PushService](./push) — 通知链路
+
+### 术语表
+
+| 术语 | 含义 |
+|------|------|
+| **Session** | 一次 Agent 会话，对应 CLI 的一次 `claude` 运行实例 |
+| **Machine** | 一台运行 CLI 的机器，一个 Machine 可运行多个 Session |
+| **Namespace** | Socket.IO 的多租户隔离机制，Hub 使用 `/cli`（CLI 连接）和 `/web`（Web 连接）两个 namespace |
+| **SyncEvent** | SyncEngine 产生的事件，如 `session-updated`、`message-created`，用于通知其他组件 |
+| **RpcGateway** | Web → CLI 的远程调用网关，支持权限审批、文件操作、Git 操作等 |
+| **SyncEngine** | 核心同步引擎，协调所有数据操作（Session、Machine、Message），是 Hub 的"大脑" |
+| **Store** | SQLite 数据存储层，提供 Cache（内存缓存）和 Persistence（持久化）两层抽象 |
+| **Terminal** | 终端通道，CLI ↔ Web 的实时双向终端 I/O，不经过 SyncEngine |
+| **VAPID** | Voluntary Application Server Identification，Web Push 的服务器身份验证协议 |
+| **SSE** | Server-Sent Events，服务器向浏览器单向推送事件的协议 |
+| **Visibility** | 页面可见性状态（visible/hidden），影响通知策略——可见时用 SSE 推送，不可见时用 Web Push |
+
 ## 整体架构
 
 ```mermaid
