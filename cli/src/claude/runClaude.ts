@@ -23,7 +23,7 @@ import { hashObject } from '@/utils/deterministicJson';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
-import { startMobiServer } from '@/claude/utils/startMobiServer';
+import { startMobiMcpServer } from '@/claude/utils/startMobiMcpServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
@@ -64,7 +64,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
     const initialState: AgentState = {};
     const initialModel = normalizeClaudeSessionModel(options.model);
-    const { api, session, sessionInfo } = await bootstrapSession({
+    const { api, apiSession, sessionInfo } = await bootstrapSession({
         flavor: 'claude',
         startedBy,
         workingDirectory,
@@ -79,7 +79,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         logger.debug('[start] SDK metadata extracted, updating session:', extractedMetadata);
         try {
             // 更新会话元数据，保存完整的 SDK 元数据
-            session.updateMetadata((currentMetadata) => ({
+            apiSession.updateMetadata((currentMetadata) => ({
                 ...currentMetadata,
                 sdkMetadata: extractedMetadata
             }));
@@ -90,7 +90,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     });
 
     // Start MOBI MCP server
-    const mobiServer = await startMobiServer(session);
+    const mobiServer = await startMobiMcpServer(apiSession);
     logger.debug(`[START] MOBI MCP server started at ${mobiServer.url}`);
 
     // Variable to track current session instance (updated via onSessionReady callback)
@@ -133,7 +133,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     logger.infoDeveloper(`Logs: ${logPath}`);
 
     const lifecycle = createRunnerLifecycle({
-        session,
+        apiSession,
         logTag: 'claude',
         stopKeepAlive: () => currentSessionRef.current?.stopKeepAlive(),
         onAfterClose: () => {
@@ -144,11 +144,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     });
 
     lifecycle.registerProcessHandlers();
-    registerKillSessionHandler(session.rpcHandlerManager, lifecycle.cleanupAndExit);
+    registerKillSessionHandler(apiSession.rpcHandlerManager, lifecycle.cleanupAndExit);
 
     // Set initial agent state
     const startingMode = options.startingMode ?? (startedBy === 'runner' ? 'remote' : 'local');
-    setControlledByUser(session, startingMode);
+    setControlledByUser(apiSession, startingMode);
 
     // Import MessageQueue2 and create message queue
     const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject({
@@ -179,7 +179,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         sessionInstance.setModel(currentModel);
         logger.debug(`[loop] Synced session config for keepalive: permissionMode=${currentPermissionMode}, model=${currentModel ?? 'auto'}`);
     };
-    session.onUserMessage((message) => {
+    apiSession.onUserMessage((message) => {
         const sessionPermissionMode = currentSessionRef.current?.getPermissionMode();
         if (sessionPermissionMode && isPermissionModeAllowedForFlavor(sessionPermissionMode, 'claude')) {
             currentPermissionMode = sessionPermissionMode as PermissionMode;
@@ -318,7 +318,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         return normalizeClaudeSessionModel(value);
     };
 
-    session.rpcHandlerManager.registerHandler('set-session-config', async (payload: unknown) => {
+    apiSession.rpcHandlerManager.registerHandler('set-session-config', async (payload: unknown) => {
         if (!payload || typeof payload !== 'object') {
             throw new Error('Invalid session config payload');
         }
@@ -347,7 +347,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             messageQueue,
             api,
             allowedTools: mobiServer.toolNames.map(toolName => `mcp__mobi__${toolName}`),
-            onModeChange: createModeChangeHandler(session),
+            onModeChange: createModeChangeHandler(apiSession),
             onSessionReady: (sessionInstance) => {
                 currentSessionRef.current = sessionInstance;
                 syncSessionModes();
@@ -358,7 +358,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                     url: mobiServer.url,
                 }
             },
-            session,
+            apiSession,
             claudeEnvVars: options.claudeEnvVars,
             claudeArgs: options.claudeArgs,
             startedBy,

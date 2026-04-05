@@ -32,7 +32,7 @@ import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
 
-export async function startMobiServer(client: ApiSessionClient) {
+export async function startMobiMcpServer(client: ApiSessionClient) {
     // Handler that sends title updates via the client
     const handler = async (title: string) => {
         logger.debug('[mobiMCP] Changing title to:', title);

@@ -19,7 +19,7 @@ import { logger } from '@/ui/logger'
 import { restoreTerminalState } from '@/ui/terminalState'
 
 type RunnerLifecycleOptions = {
-    session: ApiSessionClient
+    apiSession: ApiSessionClient
     logTag: string
     stopKeepAlive?: () => void
     onBeforeClose?: () => Promise<void> | void
@@ -44,7 +44,7 @@ export function createRunnerLifecycle(options: RunnerLifecycleOptions): RunnerLi
     const logPrefix = `[${options.logTag}]`
 
     const archiveAndClose = async () => {
-        options.session.updateMetadata((currentMetadata) => ({
+        options.apiSession.updateMetadata((currentMetadata) => ({
             ...currentMetadata,
             lifecycleState: 'archived',
             lifecycleStateSince: Date.now(),
@@ -52,9 +52,9 @@ export function createRunnerLifecycle(options: RunnerLifecycleOptions): RunnerLi
             archiveReason
         }))
 
-        options.session.sendSessionDeath()
-        await options.session.flush()
-        await options.session.close()
+        options.apiSession.sendSessionDeath()
+        await options.apiSession.flush()
+        await options.apiSession.close()
     }
 
     const cleanup = async () => {
@@ -142,16 +142,16 @@ export function createRunnerLifecycle(options: RunnerLifecycleOptions): RunnerLi
     }
 }
 
-export function setControlledByUser(session: ApiSessionClient, mode: 'local' | 'remote'): void {
-    session.updateAgentState((currentState) => ({
+export function setControlledByUser(apiSession: ApiSessionClient, mode: 'local' | 'remote'): void {
+    apiSession.updateAgentState((currentState) => ({
         ...currentState,
         controlledByUser: mode === 'local'
     }))
 }
 
-export function createModeChangeHandler(session: ApiSessionClient): (mode: 'local' | 'remote') => void {
+export function createModeChangeHandler(apiSession: ApiSessionClient): (mode: 'local' | 'remote') => void {
     return (mode) => {
-        session.sendSessionEvent({ type: 'switch', mode })
-        setControlledByUser(session, mode)
+        apiSession.sendSessionEvent({ type: 'switch', mode })
+        setControlledByUser(apiSession, mode)
     }
 }

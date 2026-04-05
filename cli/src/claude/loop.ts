@@ -45,7 +45,7 @@ interface LoopOptions {
     startedBy?: 'runner' | 'terminal'
     onModeChange: (mode: 'local' | 'remote') => void
     mcpServers: Record<string, any>
-    session: ApiSessionClient
+    apiSession: ApiSessionClient
     api: ApiClient,
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
@@ -63,7 +63,7 @@ export async function loop(opts: LoopOptions) {
     const startingMode = opts.startingMode ?? 'local';
     const session = new Session({
         api: opts.api,
-        client: opts.session,
+        client: opts.apiSession,
         path: opts.path,
         sessionId: null,
         claudeEnvVars: opts.claudeEnvVars,

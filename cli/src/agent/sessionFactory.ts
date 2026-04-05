@@ -43,7 +43,7 @@ export type SessionBootstrapOptions = {
 
 export type SessionBootstrapResult = {
     api: ApiClient
-    session: ApiSessionClient
+    apiSession: ApiSessionClient
     sessionInfo: Session
     metadata: Metadata
     machineId: string
@@ -185,14 +185,14 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         state: agentState
     })
 
-    const session = api.sessionSyncClient(sessionInfo)
+    const apiSession = api.sessionSyncClient(sessionInfo)
 
     // 通知 runner session 已启动
     await reportSessionStarted(sessionInfo.id, metadata)
 
     return {
         api,
-        session,
+        apiSession,
         sessionInfo,
         metadata,
         machineId,
