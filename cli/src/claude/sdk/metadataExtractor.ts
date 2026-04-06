@@ -21,6 +21,7 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { logger } from '@/ui/logger'
+import { getDefaultClaudeCodePath } from '@/claude/sdk/utils'
 import type { SDKMetadata } from '@mobi/shared'
 
 // 重新导出类型供其他模块使用
@@ -35,6 +36,11 @@ export type {
 
 /**
  * 使用官方 SDK 的 initializationResult() 方法提取元数据
+ *
+ * 注意：必须使用非空 prompt + maxTurns >= 1，否则子进程会立即退出，
+ * 导致 initializationResult() 永远无法获取响应。
+ * 通过 allowedTools 限制工具范围以最小化开销。
+ *
  * @returns SDK 元数据，包含完整的初始化响应信息
  */
 export async function extractSDKMetadata(): Promise<SDKMetadata> {
@@ -43,12 +49,14 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
     try {
         logger.debug('[metadataExtractor] Starting SDK metadata extraction')
 
-        // 使用空提示和最小配置创建查询
+        // 使用最小化配置创建查询，确保子进程存活足够久
         const sdkQuery = query({
-            prompt: '',
+            prompt: 'echo hi',
             options: {
-                maxTurns: 0,
+                maxTurns: 1,
                 abortController,
+                allowedTools: ['Bash(echo)'],
+                pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
             }
         })
 
@@ -57,7 +65,7 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
 
         logger.debug('[metadataExtractor] Captured SDK metadata:', init)
 
-        // 关闭查询（close 会自动中止）
+        // 获取完元数据后立即关闭查询
         sdkQuery.close()
 
         // 返回完整的初始化响应信息
