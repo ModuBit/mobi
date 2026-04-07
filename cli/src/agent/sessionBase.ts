@@ -15,7 +15,7 @@
  */
 
 import { ApiClient, ApiSessionClient } from '@/lib';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { MessageQueue } from '@/utils/MessageQueue';
 import type { Metadata, SessionModel, SessionPermissionMode } from '@/api/types';
 import { logger } from '@/ui/logger';
 
@@ -25,7 +25,7 @@ export type AgentSessionBaseOptions<Mode> = {
     path: string;
     logPath: string;
     sessionId: string | null;
-    messageQueue: MessageQueue2<Mode>;
+    messageQueue: MessageQueue<Mode>;
     onModeChange: (mode: 'local' | 'remote') => void;
     mode?: 'local' | 'remote';
     sessionLabel: string;
@@ -40,7 +40,7 @@ export class AgentSessionBase<Mode> {
     readonly logPath: string;
     readonly api: ApiClient;
     readonly client: ApiSessionClient;
-    readonly queue: MessageQueue2<Mode>;
+    readonly queue: MessageQueue<Mode>;
     protected readonly _onModeChange: (mode: 'local' | 'remote') => void;
 
     sessionId: string | null;

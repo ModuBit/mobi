@@ -43,8 +43,11 @@ type BaseSessionScannerOptions = {
 
 export abstract class BaseSessionScanner<TEvent> {
     private readonly sync: InvalidateSync;
+    /** 文件路径 → watcher 清理函数，通过 pruneWatchers 清理不再需要的条目 */
     private readonly watchers = new Map<string, () => void>();
+    /** 已处理消息的去重 key 集合，防止重复发送（仅随 scanner 销毁释放） */
     private readonly processedEventKeys = new Set<string>();
+    /** 文件路径 → 上次读取的行号，用于增量读取（仅随 scanner 销毁释放） */
     private readonly fileCursors = new Map<string, number>();
     private intervalId: ReturnType<typeof setInterval> | null = null;
     private stopped = false;
@@ -176,6 +179,7 @@ export abstract class BaseSessionScanner<TEvent> {
             for (const entry of events) {
                 const key = this.generateEventKey(entry.event, { filePath, lineIndex: entry.lineIndex });
                 if (this.processedEventKeys.has(key)) {
+                    // 跳过已处理的事件，防止重复处理
                     this.recordProcessedKey(key);
                     continue;
                 }

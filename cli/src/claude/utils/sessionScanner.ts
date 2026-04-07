@@ -22,9 +22,16 @@ import { getProjectPath } from "./path";
 import { BaseSessionScanner, SessionFileScanEntry, SessionFileScanResult, SessionFileScanStats } from "@/modules/common/session/BaseSessionScanner";
 
 /**
- * Known internal Claude Code event types that should be silently skipped.
- * These are written to session JSONL files by Claude Code but are not 
- * actual conversation messages - they're internal state/tracking events.
+ * Claude Code 内部事件类型，需要在扫描时静默跳过。
+ *
+ * 这些事件由 Claude Code CLI 写入 session JSONL 文件，但并非实际的对话消息，
+ * 而是 Claude Code 内部用于状态跟踪和管理的记录事件：
+ *
+ * - file-history-snapshot: 文件历史快照，记录工作目录中文件的状态
+ * - change: 变更事件，跟踪文件系统或内部状态的变化
+ * - queue-operation: 队列操作，管理内部任务队列的状态
+ *
+ * 过滤原因：这些事件与用户-助手对话无关，结构也不同，保留它们会导致解析问题。
  */
 const INTERNAL_CLAUDE_EVENT_TYPES = new Set([
     'file-history-snapshot',
@@ -61,9 +68,13 @@ export type SessionScanner = ReturnType<typeof createSessionScanner>;
 class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
     private readonly projectDir: string;
     private readonly onMessage: (message: RawJSONLines) => void;
+    /** 已完成扫描的会话ID集合，用于避免重复处理已扫描过的会话 */
     private readonly finishedSessions = new Set<string>();
+    /** 待扫描的会话ID集合，当切换到新会话时，旧会话暂存于此等待后续扫描 */
     private readonly pendingSessions = new Set<string>();
+    /** 当前正在进行的会话ID */
     private currentSessionId: string | null;
+    /** 本轮扫描过程中已扫描的会话ID集合，用于扫描完成后更新会话状态（将pending移至finished） */
     private readonly scannedSessions = new Set<string>();
 
     constructor(opts: { sessionId: string | null; workingDirectory: string; onMessage: (message: RawJSONLines) => void }) {
@@ -159,6 +170,16 @@ class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
                 this.finishedSessions.add(sessionId);
             }
         }
+
+        // 清理已结束会话的 watcher，防止 /compact 等操作导致旧 watcher 累积
+        const keepFiles = new Set<string>();
+        for (const sessionId of this.pendingSessions) {
+            keepFiles.add(this.sessionFilePath(sessionId));
+        }
+        if (this.currentSessionId) {
+            keepFiles.add(this.sessionFilePath(this.currentSessionId));
+        }
+        this.pruneWatchers(keepFiles);
     }
 
     private sessionFilePath(sessionId: string): string {

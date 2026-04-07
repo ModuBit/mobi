@@ -15,7 +15,7 @@
  */
 
 import { ApiSessionClient } from "@/api/apiSession"
-import { MessageQueue2 } from "@/utils/MessageQueue2"
+import { MessageQueue } from "@/utils/MessageQueue"
 import { logger } from "@/ui/logger"
 import { runLocalRemoteSession } from "@/agent/loopBase"
 import { Session } from "./session"
@@ -49,7 +49,7 @@ interface LoopOptions {
     api: ApiClient,
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
-    messageQueue: MessageQueue2<EnhancedMode>
+    messageQueue: MessageQueue<EnhancedMode>
     allowedTools?: string[]
     onSessionReady?: (session: Session) => void
     hookSettingsPath: string

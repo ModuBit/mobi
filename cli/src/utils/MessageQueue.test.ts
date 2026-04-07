@@ -15,18 +15,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { MessageQueue2 } from './MessageQueue2';
+import { MessageQueue } from './MessageQueue';
 import { hashObject } from './deterministicJson';
 
-describe('MessageQueue2', () => {
+describe('MessageQueue', () => {
     it('should create a queue', () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         expect(queue.size()).toBe(0);
         expect(queue.isClosed()).toBe(false);
     });
 
     it('should push and retrieve messages with same mode', async () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         
         queue.push('message1', 'local');
         queue.push('message2', 'local');
@@ -40,7 +40,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should return only messages with same mode and keep others', async () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         
         queue.push('local1', 'local');
         queue.push('local2', 'local');
@@ -68,7 +68,7 @@ describe('MessageQueue2', () => {
             context?: string;
         }
         
-        const queue = new MessageQueue2<Mode>(
+        const queue = new MessageQueue<Mode>(
             mode => `${mode.type}-${mode.context || 'default'}`
         );
         
@@ -90,7 +90,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should wait for messages when queue is empty', async () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         
         // Start waiting
         const waitPromise = queue.waitForMessagesAndGetAsString();
@@ -108,7 +108,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should return null when waiting and queue closes', async () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         
         // Start waiting
         const waitPromise = queue.waitForMessagesAndGetAsString();
@@ -123,7 +123,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should handle abort signal', async () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         const abortController = new AbortController();
         
         // Start waiting
@@ -139,7 +139,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should return null immediately if abort signal is already aborted', async () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         const abortController = new AbortController();
         
         // Abort before calling
@@ -150,7 +150,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should handle abort signal with existing messages', async () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         const abortController = new AbortController();
         
         // Add messages
@@ -163,14 +163,14 @@ describe('MessageQueue2', () => {
     });
 
     it('should throw when pushing to closed queue', () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         queue.close();
         
         expect(() => queue.push('message', 'local')).toThrow('Cannot push to closed queue');
     });
 
     it('should handle multiple waiting and pushing cycles', async () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         
         // First cycle
         queue.push('cycle1', 'mode1');
@@ -205,7 +205,7 @@ describe('MessageQueue2', () => {
             disallowedTools?: string[];
         }
         
-        const queue = new MessageQueue2<EnhancedMode>(mode => hashObject(mode));
+        const queue = new MessageQueue<EnhancedMode>(mode => hashObject(mode));
         
         // Push messages with different enhanced mode combinations
         queue.push('message1', { permissionMode: 'default', model: 'sonnet' });
@@ -277,7 +277,7 @@ describe('MessageQueue2', () => {
             disallowedTools?: string[];
         }
         
-        const queue = new MessageQueue2<EnhancedMode>(mode => hashObject(mode));
+        const queue = new MessageQueue<EnhancedMode>(mode => hashObject(mode));
         
         // Push messages with null reset behavior
         queue.push('message1', { permissionMode: 'default', model: 'sonnet' });
@@ -341,7 +341,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should notify waiter immediately when message is pushed', async () => {
-        const queue = new MessageQueue2<string>(mode => mode);
+        const queue = new MessageQueue<string>(mode => mode);
         
         let resolved = false;
         const waitPromise = queue.waitForMessagesAndGetAsString().then(result => {
@@ -364,7 +364,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should batch messages pushed with pushImmediate normally', async () => {
-        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        const queue = new MessageQueue<{ type: string }>((mode) => mode.type);
         
         // Add some regular messages
         queue.push('message1', { type: 'A' });
@@ -384,7 +384,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should isolate messages pushed with pushIsolateAndClear', async () => {
-        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        const queue = new MessageQueue<{ type: string }>((mode) => mode.type);
         
         // Add some regular messages
         queue.push('message1', { type: 'A' });
@@ -409,7 +409,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should stop batching when hitting isolated message', async () => {
-        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        const queue = new MessageQueue<{ type: string }>((mode) => mode.type);
         
         // Add regular messages
         queue.push('message1', { type: 'A' });
@@ -443,7 +443,7 @@ describe('MessageQueue2', () => {
     });
 
     it('should differentiate between pushImmediate and pushIsolateAndClear behavior', async () => {
-        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        const queue = new MessageQueue<{ type: string }>((mode) => mode.type);
         
         // Test pushImmediate behavior - does NOT clear queue
         queue.push('before1', { type: 'A' });

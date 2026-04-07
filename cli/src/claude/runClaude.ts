@@ -18,7 +18,7 @@ import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
 import { AgentState, SessionModel } from '@/api/types';
 import { EnhancedMode, PermissionMode } from './loop';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { MessageQueue } from '@/utils/MessageQueue';
 import { hashObject } from '@/utils/deterministicJson';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
@@ -90,8 +90,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     });
 
     // Start MOBI MCP server
-    const mobiServer = await startMobiMcpServer(apiSession);
-    logger.debug(`[START] MOBI MCP server started at ${mobiServer.url}`);
+    const mobiMcpServer = await startMobiMcpServer(apiSession);
+    logger.debug(`[START] MOBI MCP server started at ${mobiMcpServer.url}`);
 
     // Variable to track current session instance (updated via onSessionReady callback)
     const currentSessionRef: { current: Session | null } = { current: null };
@@ -137,7 +137,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         logTag: 'claude',
         stopKeepAlive: () => currentSessionRef.current?.stopKeepAlive(),
         onAfterClose: () => {
-            mobiServer.stop();
+            mobiMcpServer.stop();
             hookServer.stop();
             cleanupHookSettingsFile(hookSettingsPath, 'generateHookSettings');
         }
@@ -150,8 +150,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     const startingMode = options.startingMode ?? (startedBy === 'runner' ? 'remote' : 'local');
     setControlledByUser(apiSession, startingMode);
 
-    // Import MessageQueue2 and create message queue
-    const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject({
+    // Import MessageQueue and create message queue
+    const messageQueue = new MessageQueue<EnhancedMode>(mode => hashObject({
         isPlan: mode.permissionMode === 'plan',
         model: mode.model,
         fallbackModel: mode.fallbackModel,
@@ -346,7 +346,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             startingMode,
             messageQueue,
             api,
-            allowedTools: mobiServer.toolNames.map(toolName => `mcp__mobi__${toolName}`),
+            allowedTools: mobiMcpServer.toolNames.map(toolName => `mcp__mobi__${toolName}`),
             onModeChange: createModeChangeHandler(apiSession),
             onSessionReady: (sessionInstance) => {
                 currentSessionRef.current = sessionInstance;
@@ -355,7 +355,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             mcpServers: {
                 'mobi': {
                     type: 'http' as const,
-                    url: mobiServer.url,
+                    url: mobiMcpServer.url,
                 }
             },
             apiSession,

@@ -27,7 +27,7 @@ interface QueueItem<T> {
  * A mode-aware message queue that stores messages with their modes.
  * Returns consistent batches of messages with the same mode.
  */
-export class MessageQueue2<T> {
+export class MessageQueue<T> {
     public queue: QueueItem<T>[] = []; // Made public for testing
     private waiter: ((hasMessages: boolean) => void) | null = null;
     private closed = false;
@@ -40,7 +40,7 @@ export class MessageQueue2<T> {
     ) {
         this.modeHasher = modeHasher;
         this.onMessageHandler = onMessageHandler;
-        logger.debug(`[MessageQueue2] Initialized`);
+        logger.debug(`[MessageQueue] Initialized`);
     }
 
     /**
@@ -59,7 +59,7 @@ export class MessageQueue2<T> {
         }
 
         const modeHash = this.modeHasher(mode);
-        logger.debug(`[MessageQueue2] push() called with mode hash: ${modeHash}`);
+        logger.debug(`[MessageQueue] push() called with mode hash: ${modeHash}`);
 
         this.queue.push({
             message,
@@ -75,13 +75,13 @@ export class MessageQueue2<T> {
 
         // Notify waiter if any
         if (this.waiter) {
-            logger.debug(`[MessageQueue2] Notifying waiter`);
+            logger.debug(`[MessageQueue] Notifying waiter`);
             const waiter = this.waiter;
             this.waiter = null;
             waiter(true);
         }
 
-        logger.debug(`[MessageQueue2] push() completed. Queue size: ${this.queue.length}`);
+        logger.debug(`[MessageQueue] push() completed. Queue size: ${this.queue.length}`);
     }
 
     /**
@@ -89,34 +89,7 @@ export class MessageQueue2<T> {
      * Does not clear the queue or enforce isolation.
      */
     pushImmediate(message: string, mode: T): void {
-        if (this.closed) {
-            throw new Error('Cannot push to closed queue');
-        }
-
-        const modeHash = this.modeHasher(mode);
-        logger.debug(`[MessageQueue2] pushImmediate() called with mode hash: ${modeHash}`);
-
-        this.queue.push({
-            message,
-            mode,
-            modeHash,
-            isolate: false
-        });
-
-        // Trigger message handler if set
-        if (this.onMessageHandler) {
-            this.onMessageHandler(message, mode);
-        }
-
-        // Notify waiter if any
-        if (this.waiter) {
-            logger.debug(`[MessageQueue2] Notifying waiter for immediate message`);
-            const waiter = this.waiter;
-            this.waiter = null;
-            waiter(true);
-        }
-
-        logger.debug(`[MessageQueue2] pushImmediate() completed. Queue size: ${this.queue.length}`);
+        this.push(message, mode);
     }
 
     /**
@@ -130,7 +103,7 @@ export class MessageQueue2<T> {
         }
 
         const modeHash = this.modeHasher(mode);
-        logger.debug(`[MessageQueue2] pushIsolateAndClear() called with mode hash: ${modeHash} - clearing ${this.queue.length} pending messages`);
+        logger.debug(`[MessageQueue] pushIsolateAndClear() called with mode hash: ${modeHash} - clearing ${this.queue.length} pending messages`);
 
         // Clear any pending messages to ensure this message is processed in complete isolation
         this.queue = [];
@@ -149,13 +122,13 @@ export class MessageQueue2<T> {
 
         // Notify waiter if any
         if (this.waiter) {
-            logger.debug(`[MessageQueue2] Notifying waiter for isolated message`);
+            logger.debug(`[MessageQueue] Notifying waiter for isolated message`);
             const waiter = this.waiter;
             this.waiter = null;
             waiter(true);
         }
 
-        logger.debug(`[MessageQueue2] pushIsolateAndClear() completed. Queue size: ${this.queue.length}`);
+        logger.debug(`[MessageQueue] pushIsolateAndClear() completed. Queue size: ${this.queue.length}`);
     }
 
     /**
@@ -167,7 +140,7 @@ export class MessageQueue2<T> {
         }
 
         const modeHash = this.modeHasher(mode);
-        logger.debug(`[MessageQueue2] unshift() called with mode hash: ${modeHash}`);
+        logger.debug(`[MessageQueue] unshift() called with mode hash: ${modeHash}`);
 
         this.queue.unshift({
             message,
@@ -183,20 +156,20 @@ export class MessageQueue2<T> {
 
         // Notify waiter if any
         if (this.waiter) {
-            logger.debug(`[MessageQueue2] Notifying waiter`);
+            logger.debug(`[MessageQueue] Notifying waiter`);
             const waiter = this.waiter;
             this.waiter = null;
             waiter(true);
         }
 
-        logger.debug(`[MessageQueue2] unshift() completed. Queue size: ${this.queue.length}`);
+        logger.debug(`[MessageQueue] unshift() completed. Queue size: ${this.queue.length}`);
     }
 
     /**
      * Reset the queue - clears all messages and resets to empty state
      */
     reset(): void {
-        logger.debug(`[MessageQueue2] reset() called. Clearing ${this.queue.length} messages`);
+        logger.debug(`[MessageQueue] reset() called. Clearing ${this.queue.length} messages`);
         this.queue = [];
         this.closed = false;
 
@@ -208,7 +181,7 @@ export class MessageQueue2<T> {
      * Close the queue - no more messages can be pushed
      */
     close(): void {
-        logger.debug(`[MessageQueue2] close() called`);
+        logger.debug(`[MessageQueue] close() called`);
         this.closed = true;
 
         // Notify any waiting caller
@@ -276,7 +249,7 @@ export class MessageQueue2<T> {
         if (firstItem.isolate) {
             const item = this.queue.shift()!;
             sameModeMessages.push(item.message);
-            logger.debug(`[MessageQueue2] Collected isolated message with mode hash: ${targetModeHash}`);
+            logger.debug(`[MessageQueue] Collected isolated message with mode hash: ${targetModeHash}`);
         } else {
             // Collect all messages with the same mode until we hit an isolated message
             while (this.queue.length > 0 &&
@@ -285,7 +258,7 @@ export class MessageQueue2<T> {
                 const item = this.queue.shift()!;
                 sameModeMessages.push(item.message);
             }
-            logger.debug(`[MessageQueue2] Collected batch of ${sameModeMessages.length} messages with mode hash: ${targetModeHash}`);
+            logger.debug(`[MessageQueue] Collected batch of ${sameModeMessages.length} messages with mode hash: ${targetModeHash}`);
         }
 
         // Join all messages with newlines
@@ -330,7 +303,7 @@ export class MessageQueue2<T> {
             // Set up abort handler
             if (abortSignal) {
                 abortHandler = () => {
-                    logger.debug('[MessageQueue2] Wait aborted');
+                    logger.debug('[MessageQueue] Wait aborted');
                     finish(false);
                 };
                 abortSignal.addEventListener('abort', abortHandler);
@@ -350,7 +323,7 @@ export class MessageQueue2<T> {
                 return;
             }
 
-            logger.debug('[MessageQueue2] Waiting for messages...');
+            logger.debug('[MessageQueue] Waiting for messages...');
         });
     }
 }

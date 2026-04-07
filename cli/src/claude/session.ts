@@ -15,7 +15,7 @@
  */
 
 import { ApiClient, ApiSessionClient } from '@/lib';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { MessageQueue } from '@/utils/MessageQueue';
 import { logger } from '@/ui/logger';
 import { AgentSessionBase } from '@/agent/sessionBase';
 import type { SessionModel } from '@/api/types';
@@ -47,7 +47,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         claudeEnvVars?: Record<string, string>;
         claudeArgs?: string[];
         mcpServers: Record<string, any>;
-        messageQueue: MessageQueue2<EnhancedMode>;
+        messageQueue: MessageQueue<EnhancedMode>;
         onModeChange: (mode: 'local' | 'remote') => void;
         allowedTools?: string[];
         mode?: 'local' | 'remote';

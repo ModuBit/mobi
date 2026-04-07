@@ -27,6 +27,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
         workingDirectory: session.path,
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
+            // summary 是session title，自己生成，参见 @cli/src/claude/utils/startMobiMcpServer.ts
             if (message.type !== 'summary') {
                 session.client.sendClaudeSessionMessage(message)
             }
