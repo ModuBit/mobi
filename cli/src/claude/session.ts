@@ -116,7 +116,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
 
         const filteredArgs: string[] = [];
         for (let i = 0; i < this.claudeArgs.length; i++) {
-            if (this.claudeArgs[i] === '--resume') {
+            if (this.claudeArgs[i] === '--resume' || this.claudeArgs[i] === '-r') {
                 // Check if next arg looks like a UUID (contains dashes and alphanumeric)
                 if (i + 1 < this.claudeArgs.length) {
                     const nextArg = this.claudeArgs[i + 1];

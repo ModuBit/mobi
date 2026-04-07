@@ -107,6 +107,7 @@ export class BaseLocalLauncher {
             rpcHandlerManager.registerHandler('abort', doAbort)
             rpcHandlerManager.registerHandler('switch', doSwitch)
             queue.setOnMessage(() => {
+                // 收到remote消息，先切换
                 void doSwitch()
             })
 

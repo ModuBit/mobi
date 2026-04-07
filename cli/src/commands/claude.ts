@@ -60,7 +60,7 @@ async function runLocalMode(options: StartOptions): Promise<void> {
     }
 
     // 添加模型
-    if (options.model && !claudeArgs.includes('--model')) {
+    if (options.model && !claudeArgs.some(arg => arg === '--model' || arg === '-m')) {
         claudeArgs.push('--model', options.model)
     }
 
@@ -122,7 +122,7 @@ export const claudeCommand: CommandDefinition = {
                 // 与yolo模式相同
                 options.permissionMode = 'bypassPermissions'
                 unknownArgs.push(arg)
-            } else if (arg === '--model') {
+            } else if (arg === '--model' || arg === '-m') {
                 // 设置模型
                 const model = args[++i]
                 if (!model) {

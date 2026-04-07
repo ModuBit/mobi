@@ -70,7 +70,7 @@ export async function claudeRemote(opts: {
     // Extract --resume from claudeArgs if present (for first spawn)
     if (!startFrom && opts.claudeArgs) {
         for (let i = 0; i < opts.claudeArgs.length; i++) {
-            if (opts.claudeArgs[i] === '--resume') {
+            if (opts.claudeArgs[i] === '--resume' || opts.claudeArgs[i] === '-r') {
                 // Check if next arg exists and looks like a session ID
                 if (i + 1 < opts.claudeArgs.length) {
                     const nextArg = opts.claudeArgs[i + 1];

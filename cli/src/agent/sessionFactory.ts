@@ -126,7 +126,7 @@ async function reportSessionStarted(sessionId: string, metadata: Metadata): Prom
  */
 function extractResumeSessionId(claudeArgs?: string[]): string | null {
     if (!claudeArgs) return null
-    const idx = claudeArgs.indexOf('--resume')
+    const idx = claudeArgs.findIndex(arg => arg === '--resume' || arg === '-r')
     if (idx === -1) return null
     const next = claudeArgs[idx + 1]
     // 下一个参数存在且不是 flag（不以 - 开头），视为 session ID

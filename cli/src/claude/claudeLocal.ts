@@ -43,8 +43,8 @@ export async function claudeLocal(opts: {
     mkdirSync(projectDir, { recursive: true });
 
     // Check if user passed explicit session control flags.
-    const hasContinueFlag = opts.claudeArgs?.includes('--continue');
-    const hasResumeFlag = opts.claudeArgs?.includes('--resume');
+    const hasContinueFlag = opts.claudeArgs?.some(arg => arg === '--continue' || arg === '-c');
+    const hasResumeFlag = opts.claudeArgs?.some(arg => arg === '--resume' || arg === '-r');
     const hasUserSessionControl = Boolean(hasContinueFlag || hasResumeFlag);
 
     // Determine session strategy:
