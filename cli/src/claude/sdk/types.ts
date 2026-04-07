@@ -18,24 +18,32 @@
  * 自定义类型定义
  *
  * 仅包含官方 SDK 没有的自定义类型
+ * SDK 提供的类型直接从 SDK 重新导出
  */
 
-/**
- * 权限结果类型（用于工具调用权限检查）
- *
- * 与官方 SDK 的 PermissionResult 兼容，但使用简化的接口
- */
-export type PermissionResult = {
-    behavior: 'allow'
-    updatedInput?: Record<string, unknown>
-} | {
-    behavior: 'deny'
-    message: string
-}
+// 从 SDK 重新导出权限相关类型
+export type {
+    PermissionResult,
+    PermissionUpdate,
+    PermissionDecisionClassification,
+    PermissionRuleValue,
+    PermissionBehavior,
+    PermissionUpdateDestination,
+} from '@anthropic-ai/claude-agent-sdk'
 
 /**
  * 工具权限检查回调函数类型
+ *
+ * 与官方 SDK 的 CanUseTool 对齐，包含 suggestions、toolUseID 等参数
  */
 export interface CanCallToolCallback {
-    (toolName: string, input: unknown, options: { signal: AbortSignal }): Promise<PermissionResult>
+    (
+        toolName: string,
+        input: unknown,
+        options: {
+            signal: AbortSignal
+            suggestions?: import('@anthropic-ai/claude-agent-sdk').PermissionUpdate[]
+            toolUseID?: string
+        }
+    ): Promise<import('@anthropic-ai/claude-agent-sdk').PermissionResult>
 }

@@ -32,9 +32,9 @@ const CO_AUTHORED_CREDITS = (() => trimIdent(`
 
     <main commit message>
 
-    via [MOBI](https://mobi.run)
+    via [MOBI](https://mobi.chat)
 
-    Co-Authored-By: MOBI <noreply@mobi.run>
+    Co-Authored-By: MOBI <noreply@mobi.chat>
 `))();
 
 /**

@@ -161,7 +161,7 @@ export class SDKToLogConverter {
                 logMessage = {
                     ...baseFields,
                     type: 'assistant',
-                    message: assistantMsg.message,
+                    message: assistantMsg.message as any,
                     // Assistant messages often have additional fields
                     requestId: (assistantMsg as any).requestId
                 }

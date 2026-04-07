@@ -47,7 +47,7 @@ function createAssistantMessage(content: unknown[]): SDKAssistantMessage {
         parent_tool_use_id: null,
         uuid: '00000000-0000-0000-0000-000000000001',
         session_id: 'test-session'
-    } as SDKAssistantMessage
+    } as unknown as SDKAssistantMessage
 }
 
 describe('SDKToLogConverter', () => {

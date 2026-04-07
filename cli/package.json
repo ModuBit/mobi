@@ -17,7 +17,7 @@
     },
     "bugs": "https://github.com/modu/mobi/issues",
     "dependencies": {
-        "@anthropic-ai/claude-agent-sdk": "^0.2.77",
+        "@anthropic-ai/claude-agent-sdk": "^0.2.92",
         "@mobi/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.25.1",
         "axios": "^1.13.2",

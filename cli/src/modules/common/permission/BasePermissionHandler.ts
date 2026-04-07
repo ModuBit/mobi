@@ -86,6 +86,10 @@ export type PendingPermissionRequest<TResult> = {
     reject: (error: Error) => void;
     toolName: string;
     input: unknown;
+    // SDK 提供的权限建议，用户选择"本session允许"时透传回去
+    suggestions?: unknown[];
+    // SDK 提供的工具调用 ID
+    toolUseID?: string;
 };
 
 export type PermissionCompletion = {
@@ -138,9 +142,16 @@ export abstract class BasePermissionHandler<TResponse extends { id: string }, TR
         id: string,
         toolName: string,
         input: unknown,
-        handlers: { resolve: (value: TResult) => void; reject: (error: Error) => void }
+        handlers: { resolve: (value: TResult) => void; reject: (error: Error) => void },
+        extra?: { suggestions?: unknown[]; toolUseID?: string }
     ): void {
-        this.pendingRequests.set(id, { ...handlers, toolName, input });
+        this.pendingRequests.set(id, {
+            ...handlers,
+            toolName,
+            input,
+            suggestions: extra?.suggestions,
+            toolUseID: extra?.toolUseID,
+        });
         this.onRequestRegistered(id, toolName, input);
         this.client.updateAgentState((currentState) => ({
             ...currentState,

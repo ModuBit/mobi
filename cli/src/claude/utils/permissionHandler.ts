@@ -23,7 +23,7 @@
 
 import { logger } from "@/lib";
 import type { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { PermissionResult } from "../sdk/types";
+import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "../sdk/types";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { deepEqual } from "@/utils/deepEqual";
@@ -266,8 +266,24 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
 
         // Handle default case for all other tools
         const result: PermissionResult = response.approved
-            ? { behavior: 'allow', updatedInput: (pending.input as Record<string, unknown>) || {} }
-            : { behavior: 'deny', message: response.reason || `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.` };
+            ? {
+                behavior: 'allow',
+                updatedInput: (pending.input as Record<string, unknown>) || {},
+                // 用户选择"本session允许"时，透传 SDK 的权限建议
+                ...(response.allowTools && response.allowTools.length > 0 && pending.suggestions
+                    ? { updatedPermissions: pending.suggestions as PermissionUpdate[] }
+                    : {}),
+                decisionClassification: response.allowTools && response.allowTools.length > 0
+                    ? 'user_permanent' as PermissionDecisionClassification
+                    : 'user_temporary' as PermissionDecisionClassification,
+                toolUseID: pending.toolUseID,
+            }
+            : {
+                behavior: 'deny',
+                message: response.reason || `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`,
+                decisionClassification: 'user_reject' as PermissionDecisionClassification,
+                toolUseID: pending.toolUseID,
+            };
 
         pending.resolve(result);
         return completion;
@@ -276,7 +292,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     /**
      * Creates the canCallTool callback for the SDK
      */
-    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }): Promise<PermissionResult> => {
+    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string }): Promise<PermissionResult> => {
         const isQuestionTool = isQuestionToolName(toolName);
 
         // Check if tool is explicitly allowed
@@ -325,7 +341,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                 throw new Error(`Could not resolve tool call ID for ${toolName}`);
             }
         }
-        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, { suggestions: options.suggestions, toolUseID: options.toolUseID });
     }
 
     /**
@@ -335,7 +351,8 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         id: string,
         toolName: string,
         input: unknown,
-        signal: AbortSignal
+        signal: AbortSignal,
+        extra?: { suggestions?: PermissionUpdate[]; toolUseID?: string }
     ): Promise<PermissionResult> {
         return new Promise<PermissionResult>((resolve, reject) => {
             // Set up abort signal handling
@@ -355,7 +372,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                     signal.removeEventListener('abort', abortHandler);
                     reject(error);
                 }
-            });
+            }, { suggestions: extra?.suggestions, toolUseID: extra?.toolUseID });
 
             logger.debug(`Permission request sent for tool call ${id}: ${toolName}`);
         });

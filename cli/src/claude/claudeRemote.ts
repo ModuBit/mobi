@@ -32,6 +32,7 @@ import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { PermissionResult } from "./sdk/types";
+import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import { getMobiBlobsDir } from "@/constants/uploadPaths";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
 
@@ -46,7 +47,7 @@ export async function claudeRemote(opts: {
     allowedTools: string[],
     hookSettingsPath: string,
     signal?: AbortSignal,
-    canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }) => Promise<PermissionResult>,
+    canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string }) => Promise<PermissionResult>,
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
@@ -164,18 +165,13 @@ export async function claudeRemote(opts: {
         disallowedTools: initial.mode.disallowedTools,
         // canUseTool 回调
         canUseTool: async (toolName, input, options) => {
-            const result = await opts.canCallTool(toolName, input, mode, { signal: options.signal });
-            if (result.behavior === 'allow') {
-                return {
-                    behavior: 'allow' as const,
-                    updatedInput: result.updatedInput,
-                };
-            } else {
-                return {
-                    behavior: 'deny' as const,
-                    message: result.message,
-                };
-            }
+            const result = await opts.canCallTool(toolName, input, mode, {
+                signal: options.signal,
+                suggestions: options.suggestions,
+                toolUseID: options.toolUseID,
+            });
+            // 直接返回完整的 PermissionResult，透传 updatedPermissions 等字段
+            return result;
         },
         abortController,
         pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
