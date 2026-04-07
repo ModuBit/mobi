@@ -20,7 +20,7 @@ import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
-import type { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKAssistantMessage, SDKMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
@@ -47,6 +47,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private abortFuture: Future<void> | null = null;
     private permissionHandler: PermissionHandler | null = null;
     private handleSessionFound: ((sessionId: string) => void) | null = null;
+    // SDK Query 引用，用于 interrupt/close 控制
+    private queryRef: Query | null = null;
 
     constructor(session: Session) {
         super(process.env.DEBUG ? session.logPath : undefined);
@@ -66,12 +68,20 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
     private async handleAbortRequest(): Promise<void> {
         logger.debug('[remote]: doAbort');
-        await this.abort();
+        if (this.queryRef) {
+            // 优雅中断：SDK 发送 result，内循环不退出，等待下一条用户消息
+            await this.queryRef.interrupt();
+        } else {
+            // Query 还没创建，直接 abort signal
+            await this.abort();
+        }
     }
 
     private async handleSwitchRequest(): Promise<void> {
         logger.debug('[remote]: doSwitch');
         await this.requestExit('switch', async () => {
+            this.queryRef?.close();
+            this.queryRef = null;
             await this.abort();
         });
     }
@@ -79,6 +89,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private async handleExitFromUi(): Promise<void> {
         logger.debug('[remote]: Exiting client via Ctrl-C');
         await this.requestExit('exit', async () => {
+            this.queryRef?.close();
+            this.queryRef = null;
             await this.abort();
         });
     }
@@ -318,9 +330,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         mcpServers: session.mcpServers,
                         hookSettingsPath: session.hookSettingsPath,
                         canCallTool: permissionHandler.handleToolCall,
-                        isAborted: (toolCallId: string) => {
-                            return permissionHandler.isAborted(toolCallId);
-                        },
+                        onQueryReady: (query) => { this.queryRef = query },
                         nextMessage: async () => {
                             if (pending) {
                                 let p = pending;
@@ -368,7 +378,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 session.client.sendSessionEvent({ type: 'ready' });
                             }
                         },
-                        signal: controller.signal,
                     });
 
                     session.consumeOneTimeFlags();
@@ -402,6 +411,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     this.abortController = null;
                     this.abortFuture?.resolve(undefined);
                     this.abortFuture = null;
+                    this.queryRef = null;
                     logger.debug('[remote]: launch done');
                     permissionHandler.reset();
                     modeHash = null;

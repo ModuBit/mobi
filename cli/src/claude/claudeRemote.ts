@@ -18,10 +18,11 @@ import { EnhancedMode } from "./loop";
 import {
     query,
     type Options,
+    type Query,
     type SDKMessage,
     type SDKSystemMessage,
     type SDKUserMessage,
-    AbortError,
+    type SDKResultMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
@@ -46,20 +47,20 @@ export async function claudeRemote(opts: {
     claudeArgs?: string[],
     allowedTools: string[],
     hookSettingsPath: string,
-    signal?: AbortSignal,
     canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string }) => Promise<PermissionResult>,
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
     onReady: () => void,
-    isAborted: (toolCallId: string) => boolean,
 
     // Callbacks
     onSessionFound: (id: string) => void,
     onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
-    onSessionReset?: () => void
+    onSessionReset?: () => void,
+    // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
+    onQueryReady?: (query: Query) => void,
 }) {
 
     // Check if session is valid
@@ -132,16 +133,6 @@ export async function claudeRemote(opts: {
         }
     }
 
-    // Prepare abort controller
-    const abortController = opts.signal ? new AbortController() : undefined;
-    if (abortController && opts.signal) {
-        if (opts.signal.aborted) {
-            abortController.abort();
-        } else {
-            opts.signal.addEventListener('abort', () => abortController.abort(), { once: true });
-        }
-    }
-
     // Prepare SDK options
     let mode = initial.mode;
     const sdkOptions: Options = {
@@ -173,7 +164,6 @@ export async function claudeRemote(opts: {
             // 直接返回完整的 PermissionResult，透传 updatedPermissions 等字段
             return result;
         },
-        abortController,
         pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
         settings: opts.hookSettingsPath,
         additionalDirectories: [getMobiBlobsDir()],
@@ -209,6 +199,9 @@ export async function claudeRemote(opts: {
         options: sdkOptions,
     });
 
+    // 把 Query 引用传给外部，用于 interrupt/close 控制
+    opts.onQueryReady?.(response);
+
     updateThinking(true);
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
@@ -240,7 +233,15 @@ export async function claudeRemote(opts: {
             // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
-                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                const resultMsg = message as SDKResultMessage;
+                const terminalReason = resultMsg.terminal_reason;
+                const isInterrupt = terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools';
+
+                if (isInterrupt) {
+                    logger.debug('[claudeRemote] Interrupted, waiting for next message');
+                } else {
+                    logger.debug('[claudeRemote] Result received, waiting for next message');
+                }
 
                 // Send completion messages
                 if (isCompactCommand) {
@@ -269,25 +270,6 @@ export async function claudeRemote(opts: {
                 });
             }
 
-            // Handle tool result
-            if (message.type === 'user') {
-                const msg = message as SDKUserMessage;
-                if (msg.message.role === 'user' && Array.isArray(msg.message.content)) {
-                    for (let c of msg.message.content) {
-                        if (c.type === 'tool_result' && c.tool_use_id && opts.isAborted(c.tool_use_id)) {
-                            logger.debug('[claudeRemote] Tool aborted, exiting claudeRemote');
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    } catch (e) {
-        if (e instanceof AbortError) {
-            logger.debug(`[claudeRemote] Aborted`);
-            // Ignore
-        } else {
-            throw e;
         }
     } finally {
         updateThinking(false);
