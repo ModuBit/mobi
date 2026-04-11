@@ -55,7 +55,7 @@ function isAskUserQuestionToolName(toolName: string): boolean {
 }
 
 function isRequestUserInputToolName(toolName: string): boolean {
-    return toolName === 'request_user_input';
+    return toolName === 'RequestUserInput' || toolName === 'request_user_input';
 }
 
 function isQuestionToolName(toolName: string): boolean {
@@ -151,6 +151,9 @@ function buildRequestUserInputUpdatedInput(input: unknown, answers: unknown): Re
         answers
     };
 }
+
+// toolCalls 已用的条目无查询价值，超过上限时自动清理
+const MAX_TOOL_CALLS = 50;
 
 export class PermissionHandler extends BasePermissionHandler<PermissionResponse, PermissionResult> {
     private toolCalls: { id: string, name: string, input: any, used: boolean }[] = [];
@@ -333,8 +336,9 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         // Approval flow
         //
 
-        let toolCallId = this.resolveToolCallId(toolName, input);
-        if (!toolCallId) { // What if we got permission before tool call
+        // 优先使用 SDK 直接提供的 toolUseID，避免脆弱的 name+input 匹配
+        let toolCallId = options.toolUseID ?? this.resolveToolCallId(toolName, input);
+        if (!toolCallId) {
             await delay(1000);
             toolCallId = this.resolveToolCallId(toolName, input);
             if (!toolCallId) {
@@ -358,6 +362,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             // Set up abort signal handling
             const abortHandler = () => {
                 this.pendingRequests.delete(id);
+                this.finalizeRequest(id, { status: 'canceled', reason: 'Permission request aborted' });
                 reject(new Error('Permission request aborted'));
             };
             signal.addEventListener('abort', abortHandler, { once: true });
@@ -446,6 +451,13 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                     }
                 }
             }
+            // 超过上限时清理已用条目；仍超限则截断保留最新的
+            if (this.toolCalls.length > MAX_TOOL_CALLS) {
+                this.toolCalls = this.toolCalls.filter(tc => !tc.used);
+                if (this.toolCalls.length > MAX_TOOL_CALLS) {
+                    this.toolCalls = this.toolCalls.slice(-MAX_TOOL_CALLS);
+                }
+            }
         }
         if (message.type === 'user') {
             const userMsg = message as SDKUserMessage;
@@ -480,6 +492,19 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
 
         // Tool call is not aborted
         return false;
+    }
+
+    /**
+     * 轮次间重置：清空工具调用追踪和挂起请求，保留会话级白名单
+     */
+    resetForNewTurn(): void {
+        this.toolCalls = [];
+        this.responses.clear();
+
+        this.cancelPendingRequests({
+            completedReason: 'Turn ended',
+            rejectMessage: 'Turn reset'
+        });
     }
 
     /**

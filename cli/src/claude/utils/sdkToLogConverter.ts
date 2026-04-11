@@ -197,12 +197,12 @@ export class SDKToLogConverter {
                 break
             }
 
-            case 'result': {
+            // case 'result': {
                 // Result messages are not converted to log messages
                 // They're SDK-specific messages that indicate session completion
                 // Not part of the actual conversation log
-                break
-            }
+                // break
+            // }
 
             default:
                 // Unknown message type - pass through with all fields

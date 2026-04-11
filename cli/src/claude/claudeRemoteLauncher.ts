@@ -142,7 +142,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         this.handleSessionFound = handleSessionFound;
         session.addSessionFoundCallback(handleSessionFound);
 
+        // 跟踪 exit_plan_mode 工具调用的 ID，用于在收到 tool_result 时检测并处理 plan mode 退出逻辑
+        // 当用户批准 plan mode 退出时，permissionHandler 会故意返回 deny + PLAN_FAKE_REJECT 来"欺骗" SDK
+        // 此处需要拦截 PLAN_FAKE_REJECT 并替换为正常结果，同时 SDK 会处理注入的 PLAN_FAKE_RESTART 消息
         let planModeToolCalls = new Set<string>();
+        // 跟踪所有正在执行中的工具调用，记录 parentToolCallId 用于处理嵌套工具调用场景
+        // 工具开始执行时添加，收到 tool_result 时移除
         let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
 
         function onMessage(message: SDKMessage) {
@@ -413,7 +418,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     this.abortFuture = null;
                     this.queryRef = null;
                     logger.debug('[remote]: launch done');
-                    permissionHandler.reset();
+                    permissionHandler.resetForNewTurn();
                     modeHash = null;
                     mode = null;
                 }
