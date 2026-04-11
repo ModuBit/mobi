@@ -49,6 +49,5 @@ export function useGroupSessions(groupKey: string | null) {
             return lastPage.nextCursor
         },
         enabled: !!token && !!groupKey,
-        refetchInterval: 30_000, // 每 30 秒自动刷新
     })
 }

@@ -172,7 +172,8 @@ export class SSEManager {
         }
 
         if (event.type === 'message-received') {
-            return connection.sessionId === event.sessionId
+            // all=true 接收所有消息，否则仅接收绑定的 session
+            return connection.all || connection.sessionId === event.sessionId
         }
 
         if (event.type === 'connection-changed') {

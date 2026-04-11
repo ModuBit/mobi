@@ -14,13 +14,73 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { SSEClient } from '@/realtime/sseClient'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavigate } from '@tanstack/react-router'
 import { queryKeys } from '@/lib/query-keys'
-import type { SyncEvent } from '@mobi/shared'
+import type { Session, SyncEvent } from '@mobi/shared'
+
+/**
+ * 使用 setQueryData 直接更新 session 缓存
+ * 避免因 session-updated 心跳事件触发不必要的 API 请求
+ */
+function patchSessionCache(
+    queryClient: ReturnType<typeof useQueryClient>,
+    sessionId: string,
+    data: unknown,
+) {
+    if (!data || typeof data !== 'object') return
+
+    const delta = data as Record<string, unknown>
+    const patch: Record<string, unknown> = {}
+    let runtimeStatePatch: Record<string, unknown> | null = null
+
+    if ('id' in delta && delta.id === sessionId) {
+        // 完整 session 对象（如 applySessionConfig 场景）
+        Object.assign(patch, delta)
+    } else {
+        // 增量数据（心跳、状态变化等）
+        for (const key of ['active', 'activeAt', 'thinking', 'thinkingAt', 'permissionMode']) {
+            if (key in delta) patch[key] = delta[key]
+        }
+        // model 在心跳数据中是顶层字段，但属于 session.runtimeState
+        if ('model' in delta) {
+            runtimeStatePatch = { model: delta.model }
+        }
+    }
+
+    if (Object.keys(patch).length === 0 && !runtimeStatePatch) return
+
+    // 更新单个会话详情缓存
+    queryClient.setQueryData<Session>(queryKeys.session(sessionId), (old) => {
+        if (!old) return old
+        return {
+            ...old,
+            ...patch,
+            ...(runtimeStatePatch
+                ? { runtimeState: { ...old.runtimeState, ...runtimeStatePatch } }
+                : {}),
+        }
+    })
+
+    // 更新会话列表缓存中对应的 session
+    queryClient.setQueryData<Session[]>(queryKeys.sessions, (old) => {
+        if (!old) return old
+        const idx = old.findIndex(s => s.id === sessionId)
+        if (idx === -1) return old
+        const updated = [...old]
+        updated[idx] = {
+            ...updated[idx],
+            ...patch,
+            ...(runtimeStatePatch
+                ? { runtimeState: { ...updated[idx].runtimeState, ...runtimeStatePatch } }
+                : {}),
+        }
+        return updated
+    })
+}
 
 // 查询失效批处理间隔（毫秒）
 const INVALIDATION_BATCH_MS = 16
@@ -33,11 +93,10 @@ type PendingInvalidations = {
 }
 
 /**
- * SSE 连接 Hook
- * 自动管理 SSE 连接生命周期，并在收到事件时更新 React Query 缓存
- * 支持查询失效批处理以优化性能
+ * SSE Provider：全局管理唯一的 SSE 连接
+ * 负责连接生命周期、事件处理和缓存更新
  */
-export function useSSE() {
+export function SSEProvider({ children }: { children: ReactNode }) {
     const { token, logout } = useAuthStore()
     const queryClient = useQueryClient()
     const clientRef = useRef<SSEClient | null>(null)
@@ -126,10 +185,12 @@ export function useSSE() {
     const handleSyncEvent = useCallback((event: SyncEvent) => {
         switch (event.type) {
             case 'session-added':
-            case 'session-updated':
-                // 刷新会话列表和单个会话详情
+                // 新会话加入，刷新列表（不需要刷新消息）
                 queueSessionListInvalidation()
-                queueSessionDetailInvalidation(event.sessionId)
+                break
+            case 'session-updated':
+                // 使用 setQueryData 直接更新缓存，避免心跳触发 API 请求
+                patchSessionCache(queryClient, event.sessionId, event.data)
                 break
             case 'session-removed':
                 // 删除时移除缓存
@@ -201,5 +262,5 @@ export function useSSE() {
         }
     }, [token, logout, navigate, handleSyncEvent])
 
-    return clientRef.current
+    return <>{children}</>
 }

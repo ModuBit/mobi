@@ -33,6 +33,5 @@ export function useSessionGroups() {
             return res.data.groups as SessionGroup[]
         },
         enabled: !!token,
-        refetchInterval: 30_000, // 每 30 秒自动刷新
     })
 }

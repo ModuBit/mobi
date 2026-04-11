@@ -15,7 +15,7 @@
  */
 
 import { Outlet } from '@tanstack/react-router'
-import { useSSE } from '@/hooks/useSSE'
+import { SSEProvider } from '@/hooks/useSSE'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect } from 'react'
@@ -25,7 +25,6 @@ export function App() {
     const { token, logout } = useAuthStore()
     const navigate = useNavigate()
     const location = useLocation()
-    useSSE() // 初始化 SSE 连接
 
     // 设置 401 未授权处理器
     useEffect(() => {
@@ -47,5 +46,9 @@ export function App() {
         }
     }, [token, location.pathname, navigate])
 
-    return <Outlet />
+    return (
+        <SSEProvider>
+            <Outlet />
+        </SSEProvider>
+    )
 }
