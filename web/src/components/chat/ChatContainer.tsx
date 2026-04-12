@@ -16,20 +16,27 @@
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { Bubble, Think } from '@ant-design/x'
-import { Spin, Empty, Button, theme as antTheme } from 'antd'
+import { Spin, Empty, Button, Modal, theme as antTheme } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
+import {
+    Check, X, Loader, Terminal, FileSearch, Eye, FileEdit, Pencil,
+    Globe, Lightbulb, Rocket, Users, MessageSquare, HelpCircle,
+    FileText, ListChecks, Blocks, Wrench, Play,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/hooks/queries/useMessages'
 import { useSession } from '@/hooks/queries/useSession'
 import { useSendMessage } from '@/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/hooks/mutations/useSessionActions'
 import { parseMessages } from './messageParser'
-import { ToolCallBlock, ToolResultBlock } from './ToolResultBlock'
+import { mergeToolResults } from './toolMerger'
+import { getToolPresentation } from '@/components/ToolCard/knownTools'
 import { PermissionRequest } from './PermissionRequest'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { XMarkdown } from '@ant-design/x-markdown'
 
-import type { ParsedMessage, ParsedContentBlock } from './messageParser'
+import type { ParsedContentBlock, MergedToolCallBlock } from './messageParser'
+import type { SessionMetadataSummary } from '@/api/types'
 
 const { useToken } = antTheme
 
@@ -63,9 +70,12 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     const { token } = useToken()
     const { t } = useTranslation()
 
-    // 解析所有消息
+    // 工具渲染所需的元数据
+    const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
+
+    // 解析所有消息并合并 tool result
     const parsedMessages = useMemo(() => {
-        return parseMessages(messages)
+        return mergeToolResults(parseMessages(messages))
     }, [messages])
 
     // 监听 Bubble.List 内部滚动容器的滚动位置
@@ -107,8 +117,13 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
             content: React.ReactNode
             typing?: boolean
             variant?: 'borderless'
-            _apiErrorCode?: string | null
         }> = []
+
+        // 用于 api-error 去重的 error code 跟踪（不放入 item 避免 DOM 透传）
+        const apiErrorCodeMap = new Map<string, string | null>()
+
+        // 工具渲染所需的上下文
+        const toolContext = { metadata }
 
         for (const msg of parsedMessages) {
             for (let i = 0; i < msg.content.length; i++) {
@@ -116,28 +131,33 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                 const blockKey = `${msg.id}-${i}`
                 const isLastAssistantBlock = msg.role === 'assistant' && i === msg.content.length - 1
                 const isThinking = isLastAssistantBlock && !!session?.thinking
-                const content = renderContentBlock(block, token, isThinking, t)
+                const content = renderContentBlock(block, token, isThinking, t, toolContext)
 
                 if (content === null) continue
 
                 if (msg.role === 'system') {
                     const isApiError = block.type === 'event' && block.event.type === 'api-error'
                     // 用 error code 判断同一次重试链，合并为只展示最后一条
-                    if (isApiError && items.length > 0 && items[items.length - 1]._apiErrorCode) {
-                        const prevCode = items[items.length - 1]._apiErrorCode
-                        const curCode = getApiErrorCode(block.event.error)
-                        if (prevCode === curCode) {
-                            items[items.length - 1] = {
-                                key: blockKey, role: 'system', content, variant: 'borderless',
-                                _apiErrorCode: curCode,
+                    if (isApiError && items.length > 0) {
+                        const lastKey = items[items.length - 1].key
+                        const prevCode = apiErrorCodeMap.get(lastKey)
+                        if (prevCode) {
+                            const curCode = getApiErrorCode(block.event.error)
+                            if (prevCode === curCode) {
+                                items[items.length - 1] = {
+                                    key: blockKey, role: 'system', content, variant: 'borderless',
+                                }
+                                apiErrorCodeMap.set(blockKey, curCode)
+                                continue
                             }
-                            continue
                         }
                     }
                     items.push({
                         key: blockKey, role: 'system', content, variant: 'borderless',
-                        _apiErrorCode: isApiError ? getApiErrorCode(block.event.error) : undefined,
                     })
+                    if (isApiError) {
+                        apiErrorCodeMap.set(blockKey, getApiErrorCode(block.event.error))
+                    }
                     continue
                 }
 
@@ -154,7 +174,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
         }
 
         return items
-    }, [parsedMessages, session?.thinking, token])
+    }, [parsedMessages, session?.thinking, token, t, metadata])
 
     // 自动滚动到底部
     useEffect(() => {
@@ -191,7 +211,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* 消息列表 */}
-            <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '16px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
+            <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {parsedMessages.length === 0 ? (
                     <Empty description={t('chat.empty')} style={{ marginTop: 40 }} />
                 ) : (
@@ -223,7 +243,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                         style={{
                             position: 'absolute',
                             left: '50%',
-                            bottom: 8,
+                            bottom: 32,
                             transform: 'translateX(-50%)',
                             zIndex: 10,
                             boxShadow: token.boxShadowSecondary,
@@ -242,6 +262,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
 
             {/* Composer 输入组件 */}
             <ChatComposer
+                sessionId={sessionId}
                 disabled={sendMutation.isPending}
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
@@ -259,8 +280,19 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     )
 }
 
+// ToolCard 渲染上下文
+type ToolRenderContext = {
+    metadata: SessionMetadataSummary | null
+}
+
 // 渲染内容块
-function renderContentBlock(block: ParsedContentBlock, token: ReturnType<typeof useToken>['token'], isThinking: boolean, t: (key: string, params?: Record<string, unknown>) => string): React.ReactNode {
+function renderContentBlock(
+    block: ParsedContentBlock,
+    token: ReturnType<typeof useToken>['token'],
+    isThinking: boolean,
+    t: (key: string, params?: Record<string, unknown>) => string,
+    toolContext: ToolRenderContext,
+): React.ReactNode {
     switch (block.type) {
         case 'text':
             return (
@@ -270,10 +302,17 @@ function renderContentBlock(block: ParsedContentBlock, token: ReturnType<typeof 
             )
         case 'reasoning':
             return <ReasoningBlock text={block.text} thinking={isThinking} />
+        case 'merged-tool-call':
+            return (
+                <MergedToolCallRenderer
+                    block={block}
+                    toolContext={toolContext}
+                />
+            )
+        // tool-call 和 tool-result 在 merge 后不再出现，保留 fallback
         case 'tool-call':
-            return <ToolCallBlock block={block} />
         case 'tool-result':
-            return <ToolResultBlock block={block} />
+            return null
         case 'summary':
             return (
                 <div style={{
@@ -391,4 +430,162 @@ function getApiErrorCode(error: unknown): string | null {
     // 退回到 status code
     if (typeof err.status === 'number') return String(err.status)
     return null
+}
+
+// Lucide 图标样式
+const ICON_STYLE: React.CSSProperties = { width: 14, height: 14 }
+
+// 根据工具名获取 Lucide 图标
+function getToolIcon(name: string): React.ReactNode {
+    if (name.startsWith('mcp__')) return <Blocks style={ICON_STYLE} />
+
+    const iconMap: Record<string, React.ReactNode> = {
+        Task: <Rocket style={ICON_STYLE} />,
+        TeamCreate: <Users style={ICON_STYLE} />,
+        TeamDelete: <Users style={ICON_STYLE} />,
+        SendMessage: <MessageSquare style={ICON_STYLE} />,
+        Bash: <Terminal style={ICON_STYLE} />,
+        shell_command: <Terminal style={ICON_STYLE} />,
+        Read: <Eye style={ICON_STYLE} />,
+        Edit: <FileEdit style={ICON_STYLE} />,
+        MultiEdit: <FileEdit style={ICON_STYLE} />,
+        Write: <Pencil style={ICON_STYLE} />,
+        Glob: <FileSearch style={ICON_STYLE} />,
+        Grep: <FileSearch style={ICON_STYLE} />,
+        LS: <FileSearch style={ICON_STYLE} />,
+        WebFetch: <Globe style={ICON_STYLE} />,
+        WebSearch: <Globe style={ICON_STYLE} />,
+        AskUserQuestion: <HelpCircle style={ICON_STYLE} />,
+        ask_user_question: <HelpCircle style={ICON_STYLE} />,
+        request_user_input: <HelpCircle style={ICON_STYLE} />,
+        ExitPlanMode: <FileText style={ICON_STYLE} />,
+        exit_plan_mode: <FileText style={ICON_STYLE} />,
+        update_plan: <ListChecks style={ICON_STYLE} />,
+        TodoWrite: <ListChecks style={ICON_STYLE} />,
+        NotebookRead: <Eye style={ICON_STYLE} />,
+        NotebookEdit: <FileEdit style={ICON_STYLE} />,
+    }
+
+    return iconMap[name] ?? <Wrench style={ICON_STYLE} />
+}
+
+// 状态图标（Lucide）
+function StatusStateIcon({ state }: { state: 'pending' | 'running' | 'completed' | 'error' }) {
+    const style: React.CSSProperties = { width: 12, height: 12 }
+    if (state === 'completed') return <Check style={style} />
+    if (state === 'error') return <X style={style} />
+    if (state === 'pending') return <Play style={style} />
+    return <Loader style={style} className="anticon-spin" />
+}
+
+// 合并工具调用的渲染组件
+// 使用 Think 组件作为外壳，点击打开弹窗查看详情
+function MergedToolCallRenderer({ block, toolContext }: {
+    block: MergedToolCallBlock
+    toolContext: ToolRenderContext
+}) {
+    const { t } = useTranslation()
+    const { token } = useToken()
+    const [modalOpen, setModalOpen] = useState(false)
+
+    const presentation = useMemo(() => getToolPresentation({
+        toolName: block.name,
+        input: block.input,
+        result: block.result,
+        childrenCount: block.children.length,
+        description: block.description,
+        metadata: toolContext.metadata,
+    }), [block.name, block.input, block.result, block.children.length, block.description, toolContext.metadata])
+
+    const isLoading = block.state === 'running'
+    const subtitle = presentation.subtitle ?? block.description
+
+    const stateColor = block.state === 'completed' ? token.colorSuccess
+        : block.state === 'error' ? token.colorError
+        : block.state === 'pending' ? token.colorWarning
+        : token.colorTextSecondary
+
+    return (
+        <>
+            <Think
+                icon={getToolIcon(block.name)}
+                title={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 500, fontSize: 13 }}>{presentation.title}</span>
+                        {subtitle && (
+                            <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
+                                {subtitle.length > 80 ? `${subtitle.slice(0, 80)}...` : subtitle}
+                            </span>
+                        )}
+                        <span style={{ color: stateColor, display: 'inline-flex', alignItems: 'center', marginLeft: 'auto' }}>
+                            <StatusStateIcon state={block.state} />
+                        </span>
+                    </div>
+                }
+                loading={isLoading}
+                expanded={false}
+                onExpand={() => setModalOpen(true)}
+            />
+
+            <Modal
+                open={modalOpen}
+                onCancel={() => setModalOpen(false)}
+                footer={null}
+                title={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {getToolIcon(block.name)}
+                        <span>{presentation.title}</span>
+                    </div>
+                }
+                width={640}
+            >
+                <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
+                    {/* 工具输入 */}
+                    {block.input !== undefined && (
+                        <div>
+                            <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
+                                {t('chat.tool.input')}
+                            </div>
+                            <pre style={{
+                                background: token.colorBgContainer,
+                                padding: 8,
+                                borderRadius: 4,
+                                fontSize: 12,
+                                overflowX: 'auto',
+                                margin: 0,
+                                border: `1px solid ${token.colorBorder}`,
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                            }}>
+                                {typeof block.input === 'string' ? block.input : JSON.stringify(block.input, null, 2)}
+                            </pre>
+                        </div>
+                    )}
+                    {/* 工具输出 */}
+                    {block.result !== undefined && (
+                        <div>
+                            <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
+                                {t('chat.tool.output')}
+                            </div>
+                            <pre style={{
+                                background: block.resultIsError ? token.colorErrorBg : token.colorSuccessBg,
+                                border: `1px solid ${block.resultIsError ? token.colorErrorBorder : token.colorSuccessBorder}`,
+                                padding: 8,
+                                borderRadius: 4,
+                                fontSize: 12,
+                                overflowX: 'auto',
+                                margin: 0,
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                maxHeight: 400,
+                                overflowY: 'auto',
+                            }}>
+                                {typeof block.result === 'string' ? block.result : JSON.stringify(block.result, null, 2)}
+                            </pre>
+                        </div>
+                    )}
+                </div>
+            </Modal>
+        </>
+    )
 }

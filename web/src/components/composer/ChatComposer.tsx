@@ -48,6 +48,8 @@ interface ChatComposerProps {
     contextSize?: number
     /** Agent 类型 */
     agentFlavor?: string | null
+    /** 会话 ID */
+    sessionId?: string
     /** 权限模式变更回调 */
     onPermissionModeChange?: (mode: PermissionMode) => void
     /** 模型变更回调 */
@@ -75,6 +77,7 @@ export function ChatComposer(props: ChatComposerProps) {
         agentState,
         contextSize,
         agentFlavor,
+        sessionId,
         onPermissionModeChange,
         onSend,
         onAbort
@@ -158,6 +161,7 @@ export function ChatComposer(props: ChatComposerProps) {
         <div style={{ padding: '0 12px 12px' }}>
             {/* 状态栏 */}
             <StatusBar
+                sessionId={sessionId ?? ''}
                 active={active}
                 thinking={thinking}
                 agentState={agentState}

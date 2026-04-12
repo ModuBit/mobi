@@ -24,6 +24,8 @@ import {
     isPermissionModeAllowedForFlavor
 } from '@mobi/shared'
 import { getContextBudgetTokens } from '@/chat/modelConfig'
+import { PixelAvatar } from '@/components/PixelAvatar/PixelAvatar'
+import type { AgentStatus } from '@/components/PixelAvatar/types'
 
 // 思考状态随机消息
 const VIBING_MESSAGES = [
@@ -53,6 +55,8 @@ const PERMISSION_TONE_COLORS: Record<string, string> = {
 }
 
 interface StatusBarProps {
+    /** 会话 ID，用于生成一致的动态头像 */
+    sessionId: string
     /** 会话是否活跃 */
     active: boolean
     /** 是否正在思考 */
@@ -78,6 +82,7 @@ export function StatusBar(props: StatusBarProps) {
     const { token } = theme.useToken()
 
     const {
+        sessionId,
         active,
         thinking,
         agentState,
@@ -94,16 +99,14 @@ export function StatusBar(props: StatusBarProps) {
         if (!active) {
             return {
                 text: t('status.offline'),
-                color: '#999',
-                isPulsing: false
+                agentStatus: 'inactive' as AgentStatus,
             }
         }
 
         if (hasPermissions) {
             return {
                 text: t('status.permissionRequired'),
-                color: '#FF9500',
-                isPulsing: true
+                agentStatus: 'awaiting_auth' as AgentStatus,
             }
         }
 
@@ -111,15 +114,13 @@ export function StatusBar(props: StatusBarProps) {
             const vibingMessage = VIBING_MESSAGES[Math.floor(Math.random() * VIBING_MESSAGES.length)].toLowerCase() + '…'
             return {
                 text: vibingMessage,
-                color: '#007AFF',
-                isPulsing: true
+                agentStatus: 'outputting' as AgentStatus,
             }
         }
 
         return {
             text: t('status.online'),
-            color: '#34C759',
-            isPulsing: false
+            agentStatus: 'idle' as AgentStatus,
         }
     }, [active, thinking, agentState, t])
 
@@ -163,19 +164,11 @@ export function StatusBar(props: StatusBarProps) {
             padding: '0 8px 4px',
             fontSize: 12
         }}>
-            {/* 左侧：连接状态和上下文 */}
+            {/* 左侧：动态头像 + 连接状态和上下文 */}
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span
-                        style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            backgroundColor: connectionStatus.color,
-                            animation: connectionStatus.isPulsing ? 'pulse 1.5s infinite' : undefined
-                        }}
-                    />
-                    <span style={{ color: connectionStatus.color }}>
+                    <PixelAvatar name={sessionId} status={connectionStatus.agentStatus} size={18} />
+                    <span style={{ color: token.colorTextSecondary, fontSize: 11 }}>
                         {connectionStatus.text}
                     </span>
                 </div>

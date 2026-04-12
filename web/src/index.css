@@ -101,9 +101,14 @@ pre, code {
     font-family: var(--font-mono);
 }
 
-/* 系统消息气泡紧凑样式 */
+/* 消息气泡紧凑间距 */
+.ant-bubble {
+    padding-block: 6px !important;
+}
+
+/* 系统消息气泡更紧凑 */
 .ant-bubble-system {
-    padding-block: 4px !important;
+    padding-block: 2px !important;
 }
 
 /* Bubble.List 滚动容器隐藏滚动条 */

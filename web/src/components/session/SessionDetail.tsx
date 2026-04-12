@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Spin, Result, Button, Badge } from 'antd'
+import { theme as antTheme, Spin, Result, Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/hooks/queries/useSession'
@@ -132,12 +132,6 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                         </>
                     )}
                     <span style={{ fontWeight: 500 }}>{displayName}</span>
-                    {session.active && (
-                        <Badge
-                            status="processing"
-                            text={session.thinking ? t('session.status.thinking') : t('session.status.active')}
-                        />
-                    )}
                 </HeaderLeft>
                 <HeaderRight>
                     <IconButton

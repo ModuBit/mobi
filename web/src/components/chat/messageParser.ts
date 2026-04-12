@@ -60,6 +60,23 @@ export type ParsedEventBlock = {
   }
 }
 
+// 合并后的工具调用块（tool call + tool result）
+export type ToolCallState = 'pending' | 'running' | 'completed' | 'error'
+
+export type MergedToolCallBlock = {
+  type: 'merged-tool-call'
+  id: string
+  name: string
+  input: unknown
+  description: string | null
+  result: unknown
+  resultIsError: boolean
+  state: ToolCallState
+  createdAt: number
+  children: MergedToolCallBlock[]
+  permission: null
+}
+
 // 所有解析后的内容块类型
 export type ParsedContentBlock =
   | ParsedTextBlock
@@ -68,6 +85,7 @@ export type ParsedContentBlock =
   | ParsedToolResultBlock
   | ParsedSummaryBlock
   | ParsedEventBlock
+  | MergedToolCallBlock
 
 // 解析后的消息类型
 export type ParsedMessage = {

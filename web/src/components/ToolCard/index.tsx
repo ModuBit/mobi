@@ -51,9 +51,6 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import './ToolCard.css'
-
-import type { ParsedToolCallBlock } from '@/components/chat/messageParser'
 
 // 重新导出 types 以供其他组件使用
 export type { ToolCallBlock, ToolPermission } from './types'
