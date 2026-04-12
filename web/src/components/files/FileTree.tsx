@@ -102,7 +102,7 @@ export default function FileTree({ sessionId }: FileTreeProps) {
                             margin: 0,
                             whiteSpace: 'pre-wrap',
                             wordBreak: 'break-all',
-                            fontFamily: 'monospace',
+                            fontFamily: 'var(--font-mono)',
                             background: token.colorBgContainer,
                             padding: 12,
                             borderRadius: 4,

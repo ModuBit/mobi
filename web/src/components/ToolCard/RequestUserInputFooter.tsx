@@ -151,7 +151,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
         }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Tag color="orange">{t('tool.question')}</Tag>
-                <span style={{ fontFamily: 'monospace', fontSize: 12, color: token.colorTextSecondary }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: token.colorTextSecondary }}>
                     [{clampedStep + 1}/{total}]
                 </span>
             </div>

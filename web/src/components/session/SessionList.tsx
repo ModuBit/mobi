@@ -17,7 +17,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { Conversations } from '@ant-design/x'
 import type { ConversationsProps } from '@ant-design/x'
-import { Modal, Input, message, Skeleton, Empty, Badge } from 'antd'
+import { Modal, Input, message, Skeleton, Empty } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -35,11 +35,30 @@ import { useMobiApi } from '@/api/client'
 import { useSessionActions } from '@/hooks/mutations/useSessionActions'
 import { queryKeys } from '@/lib/query-keys'
 import { getSessionDisplayName } from '@/utils/sessionUtils'
+import { PixelAvatar } from '@/components/PixelAvatar/PixelAvatar'
+import type { AgentStatus, StatusStyle } from '@/components/PixelAvatar/types'
 import styled from '@emotion/styled'
 import type { Session } from '@/api/types'
 
+/**
+ * 根据 session 状态推导头像状态
+ * - inactive: 未激活
+ * - awaiting_auth: 等待用户授权
+ * - outputting: 输出中（thinking）
+ * - idle: 已输出，等待用户输入
+ */
+function getSessionAvatarStatus(session: Session): AgentStatus {
+    if (!session.active) return 'inactive'
+    const pendingRequests = session.agentState?.requests
+    if (pendingRequests && Object.keys(pendingRequests).length > 0) return 'awaiting_auth'
+    if (session.thinking) return 'outputting'
+    return 'idle'
+}
+
+// Session 列表中的头像样式：默认已无边框，使用默认动画即可
+const SESSION_AVATAR_STYLES: Partial<Record<AgentStatus, StatusStyle>> = {}
+
 const ListContainer = styled.div`
-    padding: 8px 4px;
     flex: 1;
     overflow-y: auto;
 `
@@ -97,7 +116,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                     key: session.id,
                     label: getSessionDisplayName(session),
                     group: group?.name || groupKey,
-                    ...(session.active ? { icon: <Badge status="processing" /> } : {}),
+                    icon: <PixelAvatar name={session.id} status={getSessionAvatarStatus(session)} size={24} statusStyles={SESSION_AVATAR_STYLES} />,
                 })
             }
         }
@@ -308,6 +327,10 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                     }}
                     menu={menu}
                     style={{ height: '100%' }}
+                    styles={{
+                        root: { padding: '4px 8px' },
+                        item: { paddingInline: 8 },
+                    }}
                 />
             </ListContainer>
 

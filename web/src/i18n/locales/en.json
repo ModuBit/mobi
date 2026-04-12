@@ -72,11 +72,15 @@
     },
     "chat": {
         "empty": "No messages",
+        "thinking": "Thinking...",
+        "thought": "Thought",
         "inputPlaceholder": "Type a message... (Shift+Enter for new line)",
         "sessionEnded": "Session ended",
         "apiError": "API Error",
         "duration": "Duration",
+        "durationValue": "Duration: {{value}}",
         "retry": "Retry",
+        "switchMode": "Switch to {{mode}} mode",
         "permission": {
             "title": "Permission Required",
             "toolRequest": "Tool {{tool}} requests execution permission"

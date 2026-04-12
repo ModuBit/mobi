@@ -1,0 +1,48 @@
+.pixel-avatar {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pixel-avatar canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    display: block;
+}
+
+/* 输出中：绿色快速脉冲 */
+@keyframes pixel-avatar-pulse {
+    0%, 100% {
+        background-color: rgba(0, 184, 148, 0.08);
+        box-shadow: 0 0 6px rgba(0, 184, 148, 0.15);
+    }
+    50% {
+        background-color: rgba(0, 184, 148, 0.2);
+        box-shadow: 0 0 16px rgba(0, 184, 148, 0.55);
+    }
+}
+
+/* 等待授权：黄色呼吸 */
+@keyframes pixel-avatar-breathe-yellow {
+    0%, 100% {
+        background-color: rgba(253, 203, 110, 0.06);
+        box-shadow: 0 0 6px rgba(253, 203, 110, 0.15);
+    }
+    50% {
+        background-color: rgba(253, 203, 110, 0.18);
+        box-shadow: 0 0 14px rgba(253, 203, 110, 0.45);
+    }
+}
+
+/* 等待输入：灰色缓慢呼吸 */
+@keyframes pixel-avatar-breathe-gray {
+    0%, 100% {
+        background-color: rgba(99, 110, 114, 0.03);
+        box-shadow: 0 0 4px rgba(99, 110, 114, 0.08);
+    }
+    50% {
+        background-color: rgba(99, 110, 114, 0.1);
+        box-shadow: 0 0 10px rgba(99, 110, 114, 0.25);
+    }
+}

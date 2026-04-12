@@ -80,6 +80,31 @@ function patchSessionCache(
         }
         return updated
     })
+
+    // 更新 groupSessions 分页缓存中对应的 session
+    queryClient.getQueriesData<{ pages: Array<{ sessions: Session[] }> }>({
+        queryKey: ['groupSessions'],
+    }).forEach(([queryKey, data]) => {
+        if (!data?.pages) return
+        let found = false
+        const newPages = data.pages.map(page => {
+            const sessionIdx = page.sessions.findIndex(s => s.id === sessionId)
+            if (sessionIdx === -1) return page
+            found = true
+            const newSessions = [...page.sessions]
+            newSessions[sessionIdx] = {
+                ...newSessions[sessionIdx],
+                ...patch,
+                ...(runtimeStatePatch
+                    ? { runtimeState: { ...newSessions[sessionIdx].runtimeState, ...runtimeStatePatch } }
+                    : {}),
+            }
+            return { ...page, sessions: newSessions }
+        })
+        if (found) {
+            queryClient.setQueryData(queryKey, { ...data, pages: newPages })
+        }
+    })
 }
 
 // 查询失效批处理间隔（毫秒）

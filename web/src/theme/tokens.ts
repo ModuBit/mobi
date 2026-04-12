@@ -16,6 +16,8 @@
 
 // Shadcn 风格 Light 主题配置
 export const shadcnLightToken = {
+    fontFamily: "var(--font-body)",
+    fontFamilyCode: "var(--font-mono)",
     colorPrimary: '#18181b',
     colorSuccess: '#22c55e',
     colorWarning: '#f97316',
@@ -96,6 +98,8 @@ export const shadcnLightToken = {
 
 // Shadcn 风格 Dark 主题配置
 export const shadcnDarkToken = {
+    fontFamily: "var(--font-body)",
+    fontFamilyCode: "var(--font-mono)",
     colorPrimary: '#fafafa',
     colorSuccess: '#22c55e',
     colorWarning: '#f97316',

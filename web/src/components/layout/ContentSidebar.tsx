@@ -21,7 +21,7 @@ import styled from '@emotion/styled'
 const { useToken } = antTheme
 
 const SidebarContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    width: 300px;
+    width: 200px;
     height: 100vh;
     background: ${props => props.$token.colorBgContainer};
     border-right: 1px solid ${props => props.$token.colorBorder};

@@ -316,7 +316,7 @@ const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
         <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {lines.map((line) => (
-                    <div key={line} style={{ fontSize: 13, fontFamily: 'monospace', color: '#333', wordBreak: 'break-all' }}>
+                    <div key={line} style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: '#333', wordBreak: 'break-all' }}>
                         {line}
                     </div>
                 ))}
@@ -336,7 +336,7 @@ const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
         return (
             <>
                 {path ? (
-                    <div style={{ marginBottom: 8, fontSize: 11, color: '#999', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    <div style={{ marginBottom: 8, fontSize: 11, color: '#999', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
                         {basename(path)}
                     </div>
                 ) : null}

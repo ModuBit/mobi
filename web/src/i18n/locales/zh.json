@@ -72,11 +72,15 @@
     },
     "chat": {
         "empty": "暂无消息",
+        "thinking": "思考中...",
+        "thought": "思考完成",
         "inputPlaceholder": "输入消息... (Shift+Enter 换行)",
         "sessionEnded": "会话已结束",
         "apiError": "API 错误",
         "duration": "耗时",
+        "durationValue": "耗时: {{value}}",
         "retry": "重试",
+        "switchMode": "切换到 {{mode}} 模式",
         "permission": {
             "title": "需要权限确认",
             "toolRequest": "工具 {{tool}} 请求执行权限"

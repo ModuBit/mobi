@@ -115,7 +115,7 @@ function DiffInlineView(props: {
                 </div>
             ) : null}
 
-            <div style={{ fontFamily: 'monospace', fontSize: 12 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
                 {diff.map((part, i) => {
                     const lines = part.value.split('\n')
                     if (lines.length > 0 && lines[lines.length - 1] === '') {
@@ -225,7 +225,7 @@ export function DiffView(props: {
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                             <div style={{
                                 minWidth: 0,
-                                fontFamily: 'monospace',
+                                fontFamily: 'var(--font-mono)',
                                 fontSize: 11,
                                 color: token.colorTextSecondary,
                                 overflow: 'hidden',
@@ -249,7 +249,7 @@ export function DiffView(props: {
                 title={title}
                 width={800}
             >
-                <div style={{ fontFamily: 'monospace', fontSize: 11, color: token.colorTextSecondary, marginBottom: 12 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: token.colorTextSecondary, marginBottom: 12 }}>
                     {stats.label}
                 </div>
                 <div style={{ maxHeight: '75vh', overflow: 'auto' }}>

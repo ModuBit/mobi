@@ -33,7 +33,7 @@ interface DiffViewProps {
 function renderDiffLine(line: string, index: number, token: ReturnType<typeof useToken>['token']) {
     const style: React.CSSProperties = {
         display: 'block',
-        fontFamily: 'monospace',
+        fontFamily: 'var(--font-mono)',
         fontSize: 12,
         lineHeight: '20px',
         whiteSpace: 'pre',

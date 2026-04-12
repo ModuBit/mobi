@@ -78,7 +78,7 @@ function ElapsedView(props: { from: number; active: boolean }) {
     if (!Number.isFinite(elapsed)) return null
 
     return (
-        <Text type="secondary" style={{ fontSize: 11, fontFamily: 'monospace' }}>
+        <Text type="secondary" style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>
             {elapsed.toFixed(1)}s
         </Text>
     )
@@ -126,7 +126,7 @@ function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummar
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {visible.map((child) => (
                     <div key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ minWidth: 0, flex: 1, fontFamily: 'monospace', fontSize: 11, color: '#666' }}>
+                        <div style={{ minWidth: 0, flex: 1, fontFamily: 'var(--font-mono)', fontSize: 11, color: '#666' }}>
                             <span style={{ marginRight: 8, display: 'inline-block', width: 16, textAlign: 'center', verticalAlign: 'middle' }}>
                                 <TaskStateIcon state={child.tool.state} />
                             </span>
@@ -218,7 +218,7 @@ function renderToolInput(block: ToolCallBlock): ReactNode {
         if (filePath && content !== null) {
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 11, color: '#999', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    <div style={{ fontSize: 11, color: '#999', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
                         {filePath}
                     </div>
                     <CodeBlock code={content} language="text" />
@@ -333,14 +333,14 @@ function InlineDiffView(props: { oldString: string; newString: string; filePath?
 
         if (oldLine !== undefined && oldLine !== newLine) {
             lines.push(
-                <div key={`old-${i}`} style={{ background: '#ffebe9', color: '#cb2431', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
+                <div key={`old-${i}`} style={{ background: '#ffebe9', color: '#cb2431', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
                     - {oldLine}
                 </div>
             )
         }
         if (newLine !== undefined) {
             lines.push(
-                <div key={`new-${i}`} style={{ background: '#e6ffec', color: '#22863a', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
+                <div key={`new-${i}`} style={{ background: '#e6ffec', color: '#22863a', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
                     + {newLine}
                 </div>
             )
@@ -433,7 +433,7 @@ function ToolCardInner(props: ToolCardProps) {
             </div>
 
             {subtitle ? (
-                <Text type="secondary" style={{ fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all', opacity: 0.8 }}>
+                <Text type="secondary" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, wordBreak: 'break-all', opacity: 0.8 }}>
                     {truncate(subtitle, 160)}
                 </Text>
             ) : null}

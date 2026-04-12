@@ -1,3 +1,61 @@
+/* ==================== 字体定义 ==================== */
+
+/* 正文：阿里巴巴普惠体 3.0 (GB2312 子集) */
+@font-face {
+    font-family: 'Alibaba PuHuiTi 3.0';
+    src: url('/fonts/alibaba-puhuiti/AlibabaPuHuiTi-3-55-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    unicode-range: U+0020-007E, U+00A0-00FF, U+2000-206F, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+}
+
+@font-face {
+    font-family: 'Alibaba PuHuiTi 3.0';
+    src: url('/fonts/alibaba-puhuiti/AlibabaPuHuiTi-3-65-Medium.woff2') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+    unicode-range: U+0020-007E, U+00A0-00FF, U+2000-206F, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+}
+
+@font-face {
+    font-family: 'Alibaba PuHuiTi 3.0';
+    src: url('/fonts/alibaba-puhuiti/AlibabaPuHuiTi-3-85-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+    unicode-range: U+0020-007E, U+00A0-00FF, U+2000-206F, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+}
+
+/* 等宽：JetBrains Mono */
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/jetbrains-mono/JetBrainsMono-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* ==================== CSS 变量 ==================== */
+
+:root {
+    --font-body: 'Alibaba PuHuiTi 3.0', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    /* 聊天气泡：mono 优先，PuHuiTi 兜底中文 */
+    --font-chat: 'JetBrains Mono', 'Alibaba PuHuiTi 3.0', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ==================== 全局样式 ==================== */
+
 * {
     box-sizing: border-box;
 }
@@ -19,7 +77,7 @@ html[data-theme='dark'] {
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
     /* 透明背景，跟随 html */
@@ -40,7 +98,28 @@ html[data-theme='dark'] body {
 
 /* 代码块样式 */
 pre, code {
-    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    font-family: var(--font-mono);
+}
+
+/* 系统消息气泡紧凑样式 */
+.ant-bubble-system {
+    padding-block: 4px !important;
+}
+
+/* Bubble.List 滚动容器隐藏滚动条 */
+.ant-bubble-list-scroll-box::-webkit-scrollbar {
+    display: none !important;
+}
+.ant-bubble-list-scroll-box {
+    scrollbar-width: none !important;
+}
+
+/* Session 列表隐藏滚动条 */
+.ant-conversations::-webkit-scrollbar {
+    display: none !important;
+}
+.ant-conversations {
+    scrollbar-width: none !important;
 }
 
 /* 滚动条样式 - Light 模式 */
