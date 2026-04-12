@@ -391,16 +391,8 @@ export function parseMessage(message: DecryptedMessage): ParsedMessage | null {
       return parseUserOutput(id, localId, createdAt, data)
     }
 
-    // 解析 summary 消息
-    if (data.type === 'summary' && typeof data.summary === 'string') {
-      return {
-        id,
-        localId,
-        createdAt,
-        role: 'assistant',
-        content: [{ type: 'summary', summary: data.summary }]
-      }
-    }
+    // 跳过 summary 消息（会话摘要，不需要展示）
+    if (data.type === 'summary') return null
 
     // 解析 system 事件
     if (data.type === 'system') {
@@ -431,6 +423,9 @@ export function parseMessage(message: DecryptedMessage): ParsedMessage | null {
   if (innerContent.type === 'event') {
     const eventData = isObject(innerContent.data) ? innerContent.data : null
     if (!eventData || typeof eventData.type !== 'string') return null
+
+    // 跳过 ready 事件（SDK 就绪通知，无需展示）
+    if (eventData.type === 'ready') return null
 
     return {
       id,

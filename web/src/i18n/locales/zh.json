@@ -143,5 +143,16 @@
         "offline": "离线",
         "permissionRequired": "需要权限确认",
         "percentLeft": "{{percent}}% 剩余"
+    },
+    "notification": {
+        "sseDisconnected": "连接已断开",
+        "sseDisconnectedDesc": "与服务器断开连接，正在尝试重连...",
+        "sseReconnected": "连接已恢复",
+        "sseReconnectedDesc": "已重新连接到服务器",
+        "permissionRequest": "开启通知",
+        "permissionRequestDesc": "允许浏览器通知，以便在 SSE 连接断开/恢复时及时收到提醒",
+        "permissionRequestBtn": "允许通知",
+        "permissionGuide": "通知权限被阻止",
+        "permissionGuideDesc": "浏览器已阻止通知权限，请在浏览器设置中手动开启：点击地址栏左侧图标 → 站点设置 → 通知 → 允许"
     }
 }

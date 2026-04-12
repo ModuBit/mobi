@@ -319,7 +319,9 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         data: z.object({
             status: z.string(),
             subscriptionId: z.string().optional()
-        }).optional()
+        }).optional(),
+        connected: z.boolean().optional(),
+        reconnected: z.boolean().optional()
     })
 ])
 

@@ -30,6 +30,8 @@ export class SSEClient {
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null
     private reconnectDelay = 1000
     private isConnecting = false
+    private hasConnected = false
+    private isConnected = false
 
     constructor(
         private readonly getUrl: () => string | null,
@@ -61,6 +63,21 @@ export class SSEClient {
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}`)
                     }
+
+                    if (this.hasConnected) {
+                        if (this.isConnected) {
+                            // 静默断开重连：浏览器后台断开未触发 onerror/onclose，
+                            // isConnected 仍为 true，需要先通知断连再通知重连
+                            this.listeners.forEach(listener => listener({ type: 'connection-changed', connected: false }))
+                        }
+                        // 通知重连（无论是否静默断开）
+                        this.isConnected = true
+                        this.listeners.forEach(listener => listener({ type: 'connection-changed', connected: true, reconnected: true }))
+                    } else {
+                        // 首次连接
+                        this.isConnected = true
+                    }
+                    this.hasConnected = true
                 },
                 onmessage: (event) => {
                     try {
@@ -73,9 +90,19 @@ export class SSEClient {
                 onerror: (error) => {
                     // 返回重连延迟（毫秒），或抛出错误停止重连
                     console.error('SSE error:', error)
+                    // 通知断开连接（仅首次断连时发射）
+                    if (this.isConnected) {
+                        this.isConnected = false
+                        this.listeners.forEach(listener => listener({ type: 'connection-changed', connected: false }))
+                    }
                     return this.reconnectDelay
                 },
                 onclose: () => {
+                    // 通知断开连接（仅首次断连时发射）
+                    if (this.isConnected) {
+                        this.isConnected = false
+                        this.listeners.forEach(listener => listener({ type: 'connection-changed', connected: false }))
+                    }
                     // 连接关闭，尝试重连
                     this.scheduleReconnect()
                 },
@@ -103,6 +130,8 @@ export class SSEClient {
         // 重置状态
         this.reconnectDelay = 1000
         this.isConnecting = false
+        this.hasConnected = false
+        this.isConnected = false
     }
 
     /**

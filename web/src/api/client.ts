@@ -148,6 +148,12 @@ export function createMobiApi(token: string | null) {
                 `${window.location.origin}/api/events?namespace=${namespace}&token=${token}`,
         },
 
+        // Visibility
+        visibility: {
+            report: (subscriptionId: string, visibility: 'visible' | 'hidden') =>
+                client.post('/api/visibility', { subscriptionId, visibility }),
+        },
+
         // Push notifications
         push: {
             getVapidKey: () => client.get<{ publicKey: string }>('/api/push/vapid-key'),

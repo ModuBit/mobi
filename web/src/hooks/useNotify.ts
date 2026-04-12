@@ -1,0 +1,88 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { useCallback } from 'react'
+import { App } from 'antd'
+
+/** 通知选项 */
+export interface NotifyOptions {
+    /** 通知唯一标识，可用于 destroy 关闭 */
+    key?: string
+    /** 通知标题 */
+    message: string
+    /** 通知描述 */
+    description?: string
+    /** 自动关闭秒数，0=不关闭 */
+    duration?: number
+}
+
+/** 通知类型 */
+type NotifyType = 'success' | 'warning' | 'error' | 'info'
+
+/** 通知 API */
+export interface NotifyAPI {
+    success: (options: NotifyOptions) => void
+    warning: (options: NotifyOptions) => void
+    error: (options: NotifyOptions) => void
+    info: (options: NotifyOptions) => void
+    /** 关闭指定 key 的通知（仅页面通知支持） */
+    destroy: (key: string) => void
+}
+
+/**
+ * 统一通知 hook
+ *
+ * 已授权浏览器通知 → 使用系统通知 (new Notification)
+ * 未授权 → 使用 antd notification (页面内通知)
+ */
+export function useNotify(): NotifyAPI {
+    const { notification } = App.useApp()
+
+    const dispatch = useCallback((type: NotifyType, options: NotifyOptions) => {
+        // 已授权浏览器通知 → 发送系统通知
+        if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+                new Notification(options.message, {
+                    body: options.description ?? '',
+                    icon: '/favicon.ico',
+                })
+            } catch {
+                // 某些环境不支持
+            }
+            return
+        }
+
+        // 未授权 → 使用 antd 页面通知
+        notification[type]({
+            key: options.key,
+            message: options.message,
+            description: options.description,
+            duration: options.duration,
+        })
+    }, [notification])
+
+    const destroy = useCallback((key: string) => {
+        notification.destroy(key)
+    }, [notification])
+
+    return {
+        success: useCallback((options: NotifyOptions) => dispatch('success', options), [dispatch]),
+        warning: useCallback((options: NotifyOptions) => dispatch('warning', options), [dispatch]),
+        error: useCallback((options: NotifyOptions) => dispatch('error', options), [dispatch]),
+        info: useCallback((options: NotifyOptions) => dispatch('info', options), [dispatch]),
+        destroy,
+    }
+}

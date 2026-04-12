@@ -322,19 +322,6 @@ function renderContentBlock(
         case 'tool-call':
         case 'tool-result':
             return null
-        case 'summary':
-            return (
-                <div style={{
-                    padding: '8px 12px',
-                    background: token.colorInfoBg,
-                    border: `1px solid ${token.colorInfoBorder}`,
-                    borderRadius: 4,
-                    fontSize: 12,
-                    color: token.colorInfoText
-                }}>
-                    📝 {block.summary}
-                </div>
-            )
         case 'event':
             return (
                 <div style={{

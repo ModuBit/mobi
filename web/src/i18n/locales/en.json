@@ -143,5 +143,16 @@
         "offline": "Offline",
         "permissionRequired": "Permission Required",
         "percentLeft": "{{percent}}% left"
+    },
+    "notification": {
+        "sseDisconnected": "Connection Lost",
+        "sseDisconnectedDesc": "Disconnected from server, attempting to reconnect...",
+        "sseReconnected": "Connection Restored",
+        "sseReconnectedDesc": "Successfully reconnected to server",
+        "permissionRequest": "Enable Notifications",
+        "permissionRequestDesc": "Allow browser notifications to get timely alerts when SSE connection disconnects or restores",
+        "permissionRequestBtn": "Allow Notifications",
+        "permissionGuide": "Notifications Blocked",
+        "permissionGuideDesc": "Browser has blocked notifications. Please enable manually: Click the icon in address bar → Site settings → Notifications → Allow"
     }
 }

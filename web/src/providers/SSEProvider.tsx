@@ -20,7 +20,11 @@ import { SSEClient } from '@/realtime/sseClient'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavigate } from '@tanstack/react-router'
 import { queryKeys } from '@/lib/query-keys'
-import type { Session, SyncEvent } from '@mobi/shared'
+import { useTranslation } from 'react-i18next'
+import { useNotify } from '@/hooks/useNotify'
+import { useMobiApi } from '@/api/client'
+import { App, Button } from 'antd'
+import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
 
 /**
  * 使用 setQueryData 直接更新 session 缓存
@@ -110,6 +114,10 @@ function patchSessionCache(
 // 查询失效批处理间隔（毫秒）
 const INVALIDATION_BATCH_MS = 16
 
+// 模块级变量：页面刷新后自动重置，路由切换时保持
+// 用于控制通知权限检查只在本页面生命周期内执行一次
+let notificationPermissionChecked = false
+
 type PendingInvalidations = {
     sessions: boolean
     sessionGroups: boolean
@@ -125,7 +133,12 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const { token, logout } = useAuthStore()
     const queryClient = useQueryClient()
     const clientRef = useRef<SSEClient | null>(null)
+    const subscriptionIdRef = useRef<string | null>(null)
     const navigate = useNavigate()
+    const notify = useNotify()
+    const api = useMobiApi(token)
+    const { notification } = App.useApp()
+    const { t } = useTranslation()
 
     // 批处理失效相关 refs
     const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -224,8 +237,14 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 queueSessionListInvalidation()
                 break
             case 'message-received':
-                // 只刷新消息，不刷新会话列表
-                queueSessionDetailInvalidation(event.sessionId)
+                // 直接将消息追加到缓存，避免全量拉取
+                if (event.message) {
+                    const msg = event.message as DecryptedMessage
+                    queryClient.setQueryData<DecryptedMessage[]>(
+                        queryKeys.messages(event.sessionId),
+                        (old) => old ? [...old, msg] : [msg],
+                    )
+                }
                 break
             case 'machine-updated':
                 queueMachinesInvalidation()
@@ -234,13 +253,91 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // 心跳事件，无需处理
                 break
             case 'connection-changed':
-                // 连接状态变化，无需处理
+                // 从服务端初始事件中提取 subscriptionId（每次连接/重连都会收到）
+                if (event.data?.subscriptionId) {
+                    subscriptionIdRef.current = event.data.subscriptionId
+                    // 收到新 subscriptionId 后立即上报当前可见性
+                    api.visibility.report(
+                        event.data.subscriptionId,
+                        document.hidden ? 'hidden' : 'visible'
+                    ).catch(() => {})
+                }
+                if (event.connected === false) {
+                    // 断连时服务端已 removeConnection，清除本地 subscriptionId
+                    subscriptionIdRef.current = null
+                    // SSE 断开 → 显示警告通知
+                    notify.warning({
+                        key: 'sse-disconnected',
+                        message: t('notification.sseDisconnected'),
+                        description: t('notification.sseDisconnectedDesc'),
+                        duration: 0,
+                    })
+                }
+                if (event.reconnected) {
+                    // 关闭断连通知
+                    notify.destroy('sse-disconnected')
+                    // 重连成功 → 显示成功通知
+                    notify.success({
+                        message: t('notification.sseReconnected'),
+                        description: t('notification.sseReconnectedDesc'),
+                        duration: 5,
+                    })
+                    // 刷新所有消息缓存，补齐断线期间遗漏的消息
+                    queryClient.invalidateQueries({ queryKey: queryKeys.sessions }).catch(() => {})
+                    queryClient.getQueriesData<DecryptedMessage[]>({
+                        queryKey: ['messages'],
+                    }).forEach(([queryKey]) => {
+                        queryClient.invalidateQueries({ queryKey }).catch(() => {})
+                    })
+                }
                 break
             case 'toast':
                 // Toast 通知，由外部处理
                 break
         }
-    }, [queryClient, queueSessionListInvalidation, queueSessionDetailInvalidation, queueMachinesInvalidation])
+    }, [queryClient, queueSessionListInvalidation, queueSessionDetailInvalidation, queueMachinesInvalidation, notify, t, api])
+
+    // 浏览器通知权限管理
+    // 模块级变量控制：同一页面生命周期内只检查一次，刷新后重置
+    useEffect(() => {
+        if (!token) return
+        if (!('Notification' in window)) return
+        if (notificationPermissionChecked) return
+        notificationPermissionChecked = true
+
+        // 延迟 2 秒执行，避免干扰页面加载
+        setTimeout(() => {
+            if (Notification.permission === 'default') {
+                // 需要用户手势才能触发浏览器授权弹窗，使用带按钮的页面通知
+                notification.info({
+                    key: 'notification-permission-request',
+                    title: t('notification.permissionRequest'),
+                    description: t('notification.permissionRequestDesc'),
+                    duration: 0,
+                    actions: [
+                        <Button
+                            key="allow"
+                            type="primary"
+                            size="small"
+                            onClick={() => {
+                                Notification.requestPermission()
+                                notification.destroy('notification-permission-request')
+                            }}
+                        >
+                            {t('notification.permissionRequestBtn')}
+                        </Button>
+                    ],
+                })
+            } else if (Notification.permission === 'denied') {
+                notification.info({
+                    key: 'notification-permission-guide',
+                    title: t('notification.permissionGuide'),
+                    description: t('notification.permissionGuideDesc'),
+                    duration: 10,
+                })
+            }
+        }, 2000)
+    }, [token, notification, t])
 
     useEffect(() => {
         if (!token) return
@@ -256,7 +353,9 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             () => {
                 if (!token) return null
                 // all=true 用于接收所有 session 相关事件（如 session-updated）
-                return `${window.location.origin}/api/events?token=${token}&all=true`
+                // visibility 传递初始可见性状态
+                const initialVisibility = document.hidden ? 'hidden' : 'visible'
+                return `${window.location.origin}/api/events?token=${token}&all=true&visibility=${initialVisibility}`
             },
             handleUnauthorized
         )
@@ -269,9 +368,20 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
         client.connect()
 
+        // 页面可见性变化时上报 Hub
+        const handleVisibilityChange = () => {
+            const id = subscriptionIdRef.current
+            if (!id) return
+            api.visibility.report(id, document.hidden ? 'hidden' : 'visible').catch(() => {})
+        }
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+
         return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange)
             unsubscribe()
             client.disconnect()
+            // 清理 subscriptionId
+            subscriptionIdRef.current = null
             // 清理批处理定时器
             if (invalidationTimerRef.current) {
                 clearTimeout(invalidationTimerRef.current)
