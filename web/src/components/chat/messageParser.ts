@@ -95,6 +95,8 @@ export type ParsedMessage = {
   role: 'user' | 'assistant' | 'system'
   content: ParsedContentBlock[]
   isMeta?: boolean
+  /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
+  isSynthetic?: boolean
 }
 
 // 辅助函数：类型检查
@@ -181,6 +183,9 @@ function parseAssistantOutput(
   }
 }
 
+// 中断消息的正则匹配
+const INTERRUPTED_PATTERN = /\[Request interrupted by user\]/
+
 /**
  * 解析 user 消息的输出
  */
@@ -214,7 +219,8 @@ function parseUserOutput(
       localId,
       createdAt,
       role: 'user',
-      content: [{ type: 'text', text: messageContent }]
+      content: [{ type: 'text', text: messageContent }],
+      isSynthetic: INTERRUPTED_PATTERN.test(messageContent),
     }
   }
 
@@ -252,8 +258,52 @@ function parseUserOutput(
     localId,
     createdAt,
     role: 'user',
-    content: blocks
+    content: blocks,
+    isSynthetic: blocks.some(b => b.type === 'text' && INTERRUPTED_PATTERN.test(b.text)),
   }
+}
+
+/**
+ * 解析 result 消息（执行结果，含 abort/error 等）
+ */
+function parseResultOutput(
+  messageId: string,
+  localId: string | null,
+  createdAt: number,
+  data: Record<string, unknown>
+): ParsedMessage | null {
+  const subtype = asString(data.subtype)
+  const terminalReason = asString(data.terminal_reason) ?? asString(data.terminalReason)
+  const isError = Boolean(data.is_error)
+  const numTurns = asNumber(data.num_turns) ?? asNumber(data.numTurns)
+
+  // 中断
+  if (terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools') {
+    return {
+      id: messageId,
+      localId,
+      createdAt,
+      role: 'system',
+      content: [{ type: 'event', event: { type: 'aborted', numTurns } }]
+    }
+  }
+
+  // 其他错误结果
+  if (isError || subtype === 'error_during_execution') {
+    const errors = Array.isArray(data.errors)
+      ? (data.errors as unknown[]).filter((e): e is string => typeof e === 'string')
+      : []
+    return {
+      id: messageId,
+      localId,
+      createdAt,
+      role: 'system',
+      content: [{ type: 'event', event: { type: 'execution-error', subtype: subtype ?? 'unknown', errors, numTurns } }]
+    }
+  }
+
+  // 正常完成，静默忽略
+  return null
 }
 
 /**
@@ -356,6 +406,14 @@ export function parseMessage(message: DecryptedMessage): ParsedMessage | null {
     if (data.type === 'system') {
       return parseSystemEvent(id, localId, createdAt, data)
     }
+
+    // 解析 result 消息（执行结果，含 abort/error 等）
+    if (data.type === 'result') {
+      return parseResultOutput(id, localId, createdAt, data)
+    }
+
+    // 未识别的 output data.type，打印 warn
+    console.warn('[messageParser] 未识别的 output 消息类型:', data.type, { id, seq: message.seq, data })
   }
 
   // 处理 text 类型（来自 webapp 发送的文本消息）
@@ -385,6 +443,9 @@ export function parseMessage(message: DecryptedMessage): ParsedMessage | null {
       }]
     }
   }
+
+  // 未识别的 innerContent.type，打印 warn
+  console.warn('[messageParser] 未识别的消息结构:', innerContent.type, { id, content })
 
   return null
 }

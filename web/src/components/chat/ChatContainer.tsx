@@ -131,7 +131,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                 const blockKey = `${msg.id}-${i}`
                 const isLastAssistantBlock = msg.role === 'assistant' && i === msg.content.length - 1
                 const isThinking = isLastAssistantBlock && !!session?.thinking
-                const content = renderContentBlock(block, token, isThinking, t, toolContext)
+                const content = renderContentBlock(block, token, isThinking, !!msg.isSynthetic, t, toolContext)
 
                 if (content === null) continue
 
@@ -286,15 +286,24 @@ type ToolRenderContext = {
 }
 
 // 渲染内容块
+// isSynthetic: 非用户主动输入的消息（如 SDK 自动生成的中断消息），使用柔和样式
 function renderContentBlock(
     block: ParsedContentBlock,
     token: ReturnType<typeof useToken>['token'],
     isThinking: boolean,
+    isSynthetic: boolean,
     t: (key: string, params?: Record<string, unknown>) => string,
     toolContext: ToolRenderContext,
 ): React.ReactNode {
     switch (block.type) {
         case 'text':
+            if (isSynthetic) {
+                return (
+                    <span style={{ fontSize: 12, opacity: 0.5 }}>
+                        {block.text}
+                    </span>
+                )
+            }
             return (
                 <div style={{ maxWidth: '100%' }}>
                     <XMarkdown content={block.text || ''} />
@@ -371,6 +380,12 @@ function formatEvent(event: { type: string; [key: string]: unknown }, t: (key: s
         case 'switch': {
             const mode = String(event.mode || '')
             return t('chat.switchMode', { mode })
+        }
+        case 'aborted': {
+            return t('chat.aborted')
+        }
+        case 'execution-error': {
+            return t('chat.executionError')
         }
         default:
             return `${event.type}`
