@@ -15,7 +15,7 @@
  */
 
 import type { InfiniteData } from '@tanstack/react-query'
-import type { DecryptedMessage, MessagesResponse } from '@/types/api'
+import type { DecryptedMessage, MessagesResponse } from '@/api/types'
 
 /**
  * 生成客户端唯一 ID

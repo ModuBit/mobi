@@ -15,7 +15,7 @@
  */
 
 import type { NormalizedMessage } from './types'
-import type { AttachmentMetadata } from '@/types/api'
+import type { AttachmentMetadata } from '@/api/types'
 import { isObject } from '@mobi/shared'
 
 function parseAttachments(raw: unknown): AttachmentMetadata[] | undefined {

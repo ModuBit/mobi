@@ -16,7 +16,7 @@
 
 import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
 import { safeStringify } from '@mobi/shared'
-import type { DecryptedMessage } from '@/types/api'
+import type { DecryptedMessage } from '@/api/types'
 import type { NormalizedMessage } from './types'
 import { isSkippableAgentContent, normalizeAgentRecord } from './normalizeAgent'
 import { normalizeUserRecord } from './normalizeUser'

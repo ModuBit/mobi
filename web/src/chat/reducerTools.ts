@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentState } from '@/types/api'
+import type { AgentState } from '@/api/types'
 import type { ChatBlock, ChatToolCall, NormalizedMessage, ToolCallBlock, ToolPermission } from './types'
 
 /** 权限条目 */

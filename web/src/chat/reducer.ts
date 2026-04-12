@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentState } from '@/types/api'
+import type { AgentState } from '@/api/types'
 import type { ChatBlock, NormalizedMessage, UsageData } from './types'
 import { traceMessages, type TracedMessage } from './tracer'
 import { dedupeAgentEvents, foldApiErrorEvents } from './reducerEvents'

@@ -156,7 +156,7 @@ export function NewSessionPage() {
                                     placeholder="Select a machine"
                                     onChange={(value) => setSelectedMachineId(value)}
                                     options={activeMachines.map(m => ({
-                                        label: m.metadata?.name || m.metadata?.host || m.id,
+                                        label: m.metadata?.displayName || m.metadata?.host || m.id,
                                         value: m.id,
                                     }))}
                                 />

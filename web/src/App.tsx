@@ -15,7 +15,7 @@
  */
 
 import { Outlet } from '@tanstack/react-router'
-import { SSEProvider } from '@/hooks/useSSE'
+import { SSEProvider } from '@/providers/SSEProvider'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect } from 'react'

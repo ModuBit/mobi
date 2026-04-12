@@ -16,7 +16,7 @@
 
 import type { ComponentType } from 'react'
 import type { ToolCallBlock } from '../types'
-import type { SessionMetadataSummary } from '@/types/api'
+import type { SessionMetadataSummary } from '@/api/types'
 import { EditView } from '@/components/ToolCard/views/EditView'
 import { AskUserQuestionView } from '@/components/ToolCard/views/AskUserQuestionView'
 import { RequestUserInputView } from '@/components/ToolCard/views/RequestUserInputView'

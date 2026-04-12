@@ -16,7 +16,7 @@
 
 import type { ToolInfo, ToolCallBlock } from './types'
 import type { MobiApi } from '@/api/client'
-import type { SessionMetadataSummary } from '@/types/api'
+import type { SessionMetadataSummary } from '@/api/types'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { isObject, safeStringify } from '@mobi/shared'
 import { Card, Typography, Tag, Modal, Button, Collapse, theme as antTheme } from 'antd'

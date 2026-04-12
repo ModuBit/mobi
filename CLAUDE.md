@@ -8,7 +8,7 @@ Mobi 是 Claude Code 远程控制工具，允许用户通过浏览器远程与�
 
 Monorepo 结构: `shared/` (协议) + `hub/` (服务器) + `cli/` (客户端) + `web/` (前端)
 
-详细文档: [architecture.md](docs/architecture.md) | [development.md](docs/development.md) | [web-architecture.md](docs/web-architecture.md)
+详细文档: [architecture/](docs/architecture/) | [development.md](docs/development.md)
 
 ## Constraints
 
@@ -36,11 +36,12 @@ bun run test         # 测试
 | 存储层 | `hub/src/store/index.ts` |
 | 会话循环 | `cli/src/claude/loop.ts` |
 | Schema 定义 | `shared/src/schemas.ts` |
-| 主布局 | `web/src/components/layout/MainLayout.tsx` |
-| 图标导航 | `web/src/components/layout/RailNav.tsx` |
-| 会话模块 | `web/src/components/session/SessionModule.tsx` |
-| UI 状态 | `web/src/stores/uiStore.ts` |
 | 路由配置 | `web/src/router.tsx` |
+| SSE 连接管理 | `web/src/providers/SSEProvider.tsx` |
+| API 类型定义 | `web/src/api/types.ts` |
+| 消息解析器 | `web/src/components/chat/messageParser.ts` |
+| 工具卡片注册 | `web/src/components/ToolCard/knownTools.tsx` |
+| 查询缓存 Key | `web/src/lib/query-keys.ts` |
 
 ## Config
 

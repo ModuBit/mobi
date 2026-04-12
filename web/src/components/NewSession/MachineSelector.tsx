@@ -22,8 +22,8 @@ import type { Machine } from '@/api/types'
  * 获取机器显示名称
  */
 function getMachineTitle(machine: Machine): string {
-    // 使用 host 或 name 作为显示名称
-    if (machine.metadata?.name) return machine.metadata.name
+    // 使用 displayName 或 host 作为显示名称
+    if (machine.metadata?.displayName) return machine.metadata.displayName
     if (machine.metadata?.host) return machine.metadata.host
     return machine.id.slice(0, 8)
 }
@@ -51,7 +51,7 @@ export function MachineSelector({
         label: (
             <span>
                 {getMachineTitle(m)}
-                {m.metadata?.os ? ` (${m.metadata.os})` : ''}
+                {m.metadata?.platform ? ` (${m.metadata.platform})` : ''}
             </span>
         )
     }))

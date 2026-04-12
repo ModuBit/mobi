@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { UploadFileResponse } from '@/types/api'
+import type { UploadFileResponse } from '@/api/types'
 
 /**
  * 文件附件类型

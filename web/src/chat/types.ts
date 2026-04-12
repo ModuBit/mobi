@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AttachmentMetadata, MessageStatus } from '@/types/api'
+import type { AttachmentMetadata, MessageStatus } from '@/api/types'
 
 export type UsageData = {
     input_tokens: number

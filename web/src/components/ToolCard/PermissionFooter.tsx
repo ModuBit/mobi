@@ -15,7 +15,7 @@
  */
 
 import type { MobiApi } from '@/api/client'
-import type { SessionMetadataSummary } from '@/types/api'
+import type { SessionMetadataSummary } from '@/api/types'
 import type { ToolInfo, ToolPermission } from './types'
 import { memo, useMemo, useState } from 'react'
 import { Button, theme as antTheme, Typography, Spin } from 'antd'

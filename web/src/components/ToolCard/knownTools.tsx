@@ -15,7 +15,7 @@
  */
 
 import type { ReactNode } from 'react'
-import type { SessionMetadataSummary } from '@/types/api'
+import type { SessionMetadataSummary } from '@/api/types'
 import { isObject } from '@mobi/shared'
 import {
     CodeOutlined,

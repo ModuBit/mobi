@@ -96,8 +96,14 @@ function asNumber(value: unknown): number | null {
  * 检查消息是否应该跳过（isMeta 或 isCompactSummary）
  */
 export function isSkippableMessage(content: unknown): boolean {
-  if (!isObject(content) || content.type !== 'output') return false
-  const data = isObject(content.data) ? content.data : null
+  if (!isObject(content)) return false
+  // 解包外层 { role, content, meta }
+  let innerContent = content
+  if (isObject(content.content) && typeof content.role === 'string') {
+    innerContent = content.content as Record<string, unknown>
+  }
+  if (innerContent.type !== 'output') return false
+  const data = isObject(innerContent.data) ? innerContent.data : null
   if (!data) return false
   return Boolean(data.isMeta) || Boolean(data.isCompactSummary)
 }
@@ -286,11 +292,22 @@ function parseSystemEvent(
 export function parseMessage(message: DecryptedMessage): ParsedMessage | null {
   const { id, localId, createdAt, content } = message
 
-  if (!isObject(content) || typeof content.type !== 'string') return null
+  if (!isObject(content)) return null
+
+  // 消息可能有外层包装：{ role, content: { type, data/text }, meta }
+  // 需要解包到实际的消息内容
+  let innerContent = content
+  let outerRole: string | null = null
+  if (isObject(content.content) && typeof content.role === 'string') {
+    outerRole = content.role
+    innerContent = content.content as Record<string, unknown>
+  }
+
+  if (typeof innerContent.type !== 'string') return null
 
   // 处理 output 类型（主要的消息类型）
-  if (content.type === 'output') {
-    const data = isObject(content.data) ? content.data : null
+  if (innerContent.type === 'output') {
+    const data = isObject(innerContent.data) ? innerContent.data : null
     if (!data || typeof data.type !== 'string') return null
 
     // 跳过 meta 和 compact-summary 消息
@@ -323,9 +340,20 @@ export function parseMessage(message: DecryptedMessage): ParsedMessage | null {
     }
   }
 
+  // 处理 text 类型（来自 webapp 发送的文本消息）
+  if (innerContent.type === 'text' && typeof innerContent.text === 'string') {
+    return {
+      id,
+      localId,
+      createdAt,
+      role: outerRole === 'user' ? 'user' : 'assistant',
+      content: [{ type: 'text', text: innerContent.text }]
+    }
+  }
+
   // 处理 event 类型
-  if (content.type === 'event') {
-    const eventData = isObject(content.data) ? content.data : null
+  if (innerContent.type === 'event') {
+    const eventData = isObject(innerContent.data) ? innerContent.data : null
     if (!eventData || typeof eventData.type !== 'string') return null
 
     return {

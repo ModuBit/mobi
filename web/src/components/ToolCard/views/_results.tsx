@@ -25,7 +25,7 @@ import remarkGfm from 'remark-gfm'
 
 import type { ToolPermission } from '../types'
 
-import type { SessionMetadataSummary } from '@/types/api'
+import type { SessionMetadataSummary } from '@/api/types'
 
 const { Text } = Typography
 const { useToken } = antTheme
