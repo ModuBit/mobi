@@ -16,7 +16,7 @@
 
 import { useRef, useEffect, useMemo } from 'react'
 import { Bubble } from '@ant-design/x'
-import { Spin, Empty, Avatar, theme as antTheme } from 'antd'
+import { Spin, Empty, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/hooks/queries/useMessages'
 import { useSession } from '@/hooks/queries/useSession'
@@ -26,21 +26,17 @@ import { parseMessages } from './messageParser'
 import { ToolCallBlock, ToolResultBlock } from './ToolResultBlock'
 import { PermissionRequest } from './PermissionRequest'
 import { ChatComposer } from '@/components/composer/ChatComposer'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { XMarkdown } from '@ant-design/x-markdown'
 
 import type { ParsedMessage, ParsedContentBlock } from './messageParser'
 
 const { useToken } = antTheme
 
-// AI 机器人头像组件
-const AI_AVATAR = <Avatar style={{ background: '#1677ff' }}>🤖</Avatar>
-
 // Bubble.List role 配置
 const BUBBLE_ROLES = {
     assistant: {
         placement: 'start' as const,
-        avatar: AI_AVATAR,
+        variant: 'borderless' as const,
     },
     user: {
         placement: 'end' as const,
@@ -153,8 +149,8 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                             <div style={{ padding: '8px 16px' }}>
                                 <Bubble
                                     placement="start"
+                                    variant="borderless"
                                     loading
-                                    avatar={AI_AVATAR}
                                     content=""
                                 />
                             </div>
@@ -195,9 +191,7 @@ function renderContentBlock(block: ParsedContentBlock, token: ReturnType<typeof 
         case 'text':
             return (
                 <div style={{ maxWidth: '100%' }}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {block.text || ''}
-                    </ReactMarkdown>
+                    <XMarkdown content={block.text || ''} />
                 </div>
             )
         case 'reasoning':

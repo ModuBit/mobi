@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet, useParams } from '@tanstack/react-router'
 import { ContentSidebar } from '@/components/layout/ContentSidebar'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
-import { SessionGroupList } from '@/components/session/SessionGroupList'
+import { SessionList } from '@/components/session/SessionList'
 import { PlusOutlined } from '@ant-design/icons'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import styled from '@emotion/styled'
@@ -97,7 +97,7 @@ export function SessionsLayout() {
                         onClick={handleNewSession}
                     />
                 </SidebarHeader>
-                <SessionGroupList />
+                <SessionList />
             </MobileContainer>
         )
     }
@@ -118,7 +118,7 @@ export function SessionsLayout() {
                         onClick={handleNewSession}
                     />
                 </SidebarHeader>
-                <SessionGroupList selectedSessionId={sessionId} />
+                <SessionList selectedSessionId={sessionId} />
             </ContentSidebar>
 
             <MainContentArea>
