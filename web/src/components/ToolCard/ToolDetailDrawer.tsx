@@ -183,8 +183,9 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
                 body: {
                     padding: 0,
                     paddingBottom: isMobile ? `max(24px, env(safe-area-inset-bottom))` : 0,
+                    overflowY: 'auto',
                 },
-                wrapper: isMobile ? { height: 'auto', maxHeight: '85vh' } : undefined,
+                wrapper: isMobile ? { height: 'auto', maxHeight: '85vh', display: 'flex', flexDirection: 'column' } : undefined,
             }}
         >
             {/* 输入区 */}

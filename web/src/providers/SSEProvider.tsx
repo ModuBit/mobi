@@ -333,7 +333,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         notificationPermissionChecked = true
 
         // 延迟 2 秒执行，避免干扰页面加载
-        setTimeout(() => {
+        const timerId = setTimeout(() => {
             if (Notification.permission === 'default') {
                 // 需要用户手势才能触发浏览器授权弹窗，使用带按钮的页面通知
                 notification.info({
@@ -364,6 +364,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 })
             }
         }, 2000)
+
+        return () => clearTimeout(timerId)
     }, [token, notification, t])
 
     useEffect(() => {
@@ -395,10 +397,13 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
         client.connect()
 
-        // 页面可见性变化时上报 Hub
+        // 页面可见性变化时上报 Hub（仅在状态实际变化时发送）
+        let lastHidden = document.hidden
         const handleVisibilityChange = () => {
             const id = subscriptionIdRef.current
             if (!id) return
+            if (document.hidden === lastHidden) return
+            lastHidden = document.hidden
             api.visibility.report(id, document.hidden ? 'hidden' : 'visible').catch(() => {})
         }
         document.addEventListener('visibilitychange', handleVisibilityChange)

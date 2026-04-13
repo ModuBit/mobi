@@ -138,6 +138,14 @@ html[data-theme='dark'] .x-markdown code {
     justify-content: flex-end !important;
 }
 
+/* Drawer body 隐藏滚动条 */
+.ant-drawer-body {
+    scrollbar-width: none !important;
+}
+.ant-drawer-body::-webkit-scrollbar {
+    display: none !important;
+}
+
 /* Bubble footer 间距缩小 */
 .ant-bubble-footer {
     margin-block-start: 4px !important;

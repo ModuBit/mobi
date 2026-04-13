@@ -21,6 +21,7 @@ import type {
     AgentTextBlock,
     ChatBlock,
     CliOutputBlock,
+    EventDisplay,
     ToolCallBlock,
     ToolPermission,
     UserTextBlock,
@@ -151,7 +152,7 @@ function areCliOutputBlocksEqual(left: CliOutputBlock, right: CliOutputBlock): b
         && left.meta === right.meta
 }
 
-function areEventDisplaysEqual(left?: import('./types').EventDisplay, right?: import('./types').EventDisplay): boolean {
+function areEventDisplaysEqual(left?: EventDisplay, right?: EventDisplay): boolean {
     if (left === right) return true
     if (!left || !right) return false
     return left.align === right.align

@@ -392,14 +392,13 @@ function renderChatBlock(
                 />
             )
         case 'agent-event':
-            // 对于 message 类型（summary）显示文本
+            // message 类型事件（summary），居中显示
             if (block.event.type === 'message') {
                 return (
                     <div style={{
                         padding: '4px 0',
                         fontSize: 11,
                         color: token.colorTextQuaternary,
-                        textAlign: 'center',
                     }}>
                         {String(block.event.message ?? '')}
                     </div>
@@ -668,18 +667,20 @@ function ToolCallPreviewContent({
 
     return (
         <div
-            onClick={(e) => { e.stopPropagation(); onViewDetail() }}
             style={{ position: 'relative', marginTop: 4, cursor: 'pointer', paddingLeft: 12, paddingRight: 12, paddingBottom: 24 }}
         >
             <div style={{ maxHeight: maxContentHeight, overflow: 'hidden' }} ref={contentRef}>
                 <ResultView block={adaptedBlock} metadata={metadata} />
             </div>
-            <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0, height: 48,
-                background: `linear-gradient(transparent, ${token.colorBgContainer} 70%)`,
-                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-                paddingBottom: 4, color: token.colorPrimary, fontSize: 12,
-            }}>
+            <div
+                onClick={(e) => { e.stopPropagation(); onViewDetail() }}
+                style={{
+                    position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
+                    background: `linear-gradient(transparent 0%, transparent 30%, ${token.colorBgContainer} 85%)`,
+                    display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                    paddingBottom: 4, color: token.colorPrimary, fontSize: 12,
+                }}
+            >
                 {t('chat.tool.viewDetail')} →
             </div>
         </div>

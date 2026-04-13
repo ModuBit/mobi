@@ -105,6 +105,28 @@ function looksLikeJson(text: string): boolean {
     const trimmed = text.trim()
     return (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))
 }
+// 递归解析多层编码的 JSON（如 JSON 字符串内嵌 JSON 字符串）
+// 最多 unwrap 3 层，防止死循环
+function tryParseJson(text: string, maxDepth = 3): { parsed: unknown; depth: number } | null {
+    try {
+        let parsed: unknown = JSON.parse(text)
+        let depth = 1
+        while (typeof parsed === 'string' && depth < maxDepth) {
+            try {
+                parsed = JSON.parse(parsed)
+                depth++
+            } catch {
+                break
+            }
+        }
+        // 只有最终结果不是原始字符串才算成功
+        if (typeof parsed === 'string') return null
+        return { parsed, depth }
+    } catch {
+        return null
+    }
+}
+
 function renderText(text: string, opts: { mode: 'markdown' | 'code' | 'auto'; language?: string } = { mode: 'auto' }) {
     const { token } = useToken()
     if (opts.mode === 'code') {
@@ -113,8 +135,13 @@ function renderText(text: string, opts: { mode: 'markdown' | 'code' | 'auto'; la
     if (opts.mode === 'markdown') {
         return <MarkdownContent content={text} />
     }
-    if (looksLikeHtml(text) || looksLikeJson(text)) {
-        return <CodeBlock code={text} language={looksLikeJson(text) ? 'json' : 'html'} />
+    // auto 模式：优先尝试 JSON 解析（含多层 unwrap），再降级 HTML/markdown
+    const jsonResult = tryParseJson(text)
+    if (jsonResult) {
+        return <CodeBlock code={JSON.stringify(jsonResult.parsed, null, 2)} language="json" />
+    }
+    if (looksLikeHtml(text)) {
+        return <CodeBlock code={text} language="html" />
     }
     return <MarkdownContent content={text} />
 }
