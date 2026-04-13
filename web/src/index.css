@@ -121,6 +121,11 @@ pre, code {
     padding-block: 2px !important;
 }
 
+/* Bubble footer 间距缩小 */
+.ant-bubble-footer {
+    margin-block-start: 4px !important;
+}
+
 /* Bubble.List 滚动容器隐藏滚动条 */
 .ant-bubble-list-scroll-box::-webkit-scrollbar {
     display: none !important;

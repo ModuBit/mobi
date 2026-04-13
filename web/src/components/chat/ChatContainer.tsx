@@ -116,6 +116,8 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
             content: React.ReactNode
             typing?: boolean
             variant?: 'borderless'
+            footer?: React.ReactNode
+            footerPlacement?: 'inner-start' | 'inner-end'
         }> = []
 
         // 用于 api-error 去重的 error code 跟踪（不放入 item 避免 DOM 透传）
@@ -160,6 +162,8 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                     continue
                 }
 
+                // 用户消息在最后一个内容块时显示时间戳
+                const isUserLastBlock = msg.role === 'user' && i === msg.content.length - 1
                 items.push({
                     key: blockKey,
                     role: msg.role,
@@ -168,6 +172,10 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                         block.type === 'text' &&
                         i === msg.content.length - 1 &&
                         session?.thinking,
+                    ...(isUserLastBlock ? {
+                        footer: <span style={{ fontSize: 11, opacity: 0.6 }}>{formatMessageTime(msg.createdAt)}</span>,
+                        footerPlacement: 'outer-end' as const,
+                    } : {}),
                 })
             }
         }
@@ -554,4 +562,22 @@ function MergedToolCallRenderer({ block, toolContext }: {
             />
         </>
     )
+}
+
+// 格式化消息时间：当天 HH:mm，非当天 MM/DD HH:mm，非当年 YYYY/MM/DD HH:mm
+function formatMessageTime(createdAt: number): string {
+    const date = new Date(createdAt)
+    const now = new Date()
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    const time = `${hours}:${minutes}`
+
+    const sameYear = date.getFullYear() === now.getFullYear()
+    const sameMonth = sameYear && date.getMonth() === now.getMonth()
+    const sameDay = sameMonth && date.getDate() === now.getDate()
+
+    if (sameDay) return time
+    const monthDay = `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`
+    if (sameYear) return `${monthDay} ${time}`
+    return `${date.getFullYear()}/${monthDay} ${time}`
 }
