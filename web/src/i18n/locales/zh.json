@@ -91,7 +91,11 @@
             "input": "输入:",
             "output": "输出:",
             "description": "描述:",
-            "noContent": "无内容"
+            "noContent": "无内容",
+            "viewDetail": "查看详情",
+            "statusDone": "完成",
+            "statusError": "出错",
+            "statusRunning": "运行中"
         }
     },
     "files": {

@@ -106,6 +106,16 @@ pre, code {
     padding-block: 6px !important;
 }
 
+/* Think 内容区上间距收紧 */
+.ant-think-content {
+    margin-top: 6px !important;
+}
+
+/* 工具卡片 Think 内容区去掉左 padding */
+.tool-call-think .ant-think-content {
+    padding-left: 0 !important;
+}
+
 /* 系统消息气泡更紧凑 */
 .ant-bubble-system {
     padding-block: 2px !important;

@@ -91,7 +91,11 @@
             "input": "Input:",
             "output": "Output:",
             "description": "Description:",
-            "noContent": "No content"
+            "noContent": "No content",
+            "viewDetail": "View details",
+            "statusDone": "Done",
+            "statusError": "Error",
+            "statusRunning": "Running"
         }
     },
     "files": {

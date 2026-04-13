@@ -16,13 +16,8 @@
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { Bubble, Think } from '@ant-design/x'
-import { Spin, Empty, Button, Modal, theme as antTheme } from 'antd'
+import { Spin, Empty, Button, theme as antTheme } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
-import {
-    Check, X, Loader, Terminal, FileSearch, Eye, FileEdit, Pencil,
-    Globe, Lightbulb, Rocket, Users, MessageSquare, HelpCircle,
-    FileText, ListChecks, Blocks, Wrench, Play,
-} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/hooks/queries/useMessages'
 import { useSession } from '@/hooks/queries/useSession'
@@ -30,12 +25,16 @@ import { useSendMessage } from '@/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/hooks/mutations/useSessionActions'
 import { parseMessages } from './messageParser'
 import { mergeToolResults } from './toolMerger'
-import { getToolPresentation } from '@/components/ToolCard/knownTools'
 import { PermissionRequest } from './PermissionRequest'
+import { ToolDetailDrawer } from '@/components/ToolCard/ToolDetailDrawer'
+import { getToolIcon, StatusStateIcon } from '@/components/ToolCard/toolIcons'
+import { getToolResultViewComponent } from '@/components/ToolCard/views/_results'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { XMarkdown } from '@ant-design/x-markdown'
+import { useIsMobile } from '@/hooks/useMediaQuery'
 
 import type { ParsedContentBlock, MergedToolCallBlock } from './messageParser'
+import type { ToolCallBlock } from '@/components/ToolCard/types'
 import type { SessionMetadataSummary } from '@/api/types'
 
 const { useToken } = antTheme
@@ -434,160 +433,125 @@ function getApiErrorCode(error: unknown): string | null {
     return null
 }
 
-// Lucide 图标样式
-const ICON_STYLE: React.CSSProperties = { width: 14, height: 14 }
-
-// 根据工具名获取 Lucide 图标
-function getToolIcon(name: string): React.ReactNode {
-    if (name.startsWith('mcp__')) return <Blocks style={ICON_STYLE} />
-
-    const iconMap: Record<string, React.ReactNode> = {
-        Task: <Rocket style={ICON_STYLE} />,
-        TeamCreate: <Users style={ICON_STYLE} />,
-        TeamDelete: <Users style={ICON_STYLE} />,
-        SendMessage: <MessageSquare style={ICON_STYLE} />,
-        Bash: <Terminal style={ICON_STYLE} />,
-        shell_command: <Terminal style={ICON_STYLE} />,
-        Read: <Eye style={ICON_STYLE} />,
-        Edit: <FileEdit style={ICON_STYLE} />,
-        MultiEdit: <FileEdit style={ICON_STYLE} />,
-        Write: <Pencil style={ICON_STYLE} />,
-        Glob: <FileSearch style={ICON_STYLE} />,
-        Grep: <FileSearch style={ICON_STYLE} />,
-        LS: <FileSearch style={ICON_STYLE} />,
-        WebFetch: <Globe style={ICON_STYLE} />,
-        WebSearch: <Globe style={ICON_STYLE} />,
-        AskUserQuestion: <HelpCircle style={ICON_STYLE} />,
-        ask_user_question: <HelpCircle style={ICON_STYLE} />,
-        request_user_input: <HelpCircle style={ICON_STYLE} />,
-        ExitPlanMode: <FileText style={ICON_STYLE} />,
-        exit_plan_mode: <FileText style={ICON_STYLE} />,
-        update_plan: <ListChecks style={ICON_STYLE} />,
-        TodoWrite: <ListChecks style={ICON_STYLE} />,
-        NotebookRead: <Eye style={ICON_STYLE} />,
-        NotebookEdit: <FileEdit style={ICON_STYLE} />,
+// 将 MergedToolCallBlock 转换为 ToolCallBlock 以适配视图组件接口
+function mergedToToolCallBlock(block: MergedToolCallBlock): ToolCallBlock {
+    return {
+        id: block.id,
+        kind: 'tool-call',
+        tool: {
+            name: block.name,
+            input: block.input,
+            result: block.result,
+            state: block.state,
+            description: block.description,
+            startedAt: null,
+            createdAt: block.createdAt,
+            permission: null,
+        },
+        children: block.children.map(mergedToToolCallBlock),
     }
-
-    return iconMap[name] ?? <Wrench style={ICON_STYLE} />
 }
 
-// 状态图标（Lucide）
-function StatusStateIcon({ state }: { state: 'pending' | 'running' | 'completed' | 'error' }) {
-    const style: React.CSSProperties = { width: 12, height: 12 }
-    if (state === 'completed') return <Check style={style} />
-    if (state === 'error') return <X style={style} />
-    if (state === 'pending') return <Play style={style} />
-    return <Loader style={style} className="anticon-spin" />
+// 工具预览内容（在 Think 展开区域内渲染）
+function ToolPreviewContent({ block, metadata, onViewDetail }: {
+    block: MergedToolCallBlock
+    metadata: SessionMetadataSummary | null
+    onViewDetail: () => void
+}) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const isMobile = useIsMobile()
+    const contentRef = useRef<HTMLDivElement>(null)
+    const [isOverflowing, setIsOverflowing] = useState(false)
+
+    const ResultView = useMemo(() => getToolResultViewComponent(block.name), [block.name])
+    const adaptedBlock = useMemo(() => mergedToToolCallBlock(block), [block])
+
+    const showPreview = block.state !== 'running' && block.result !== undefined
+
+    // 溢出检测
+    useEffect(() => {
+        const el = contentRef.current
+        if (!el) return
+        const observer = new ResizeObserver(() => {
+            setIsOverflowing(el.scrollHeight > el.clientHeight)
+        })
+        observer.observe(el)
+        return () => observer.disconnect()
+    }, [ResultView, block.result])
+
+    if (!showPreview) return null
+
+    const maxContentHeight = 100
+
+    return (
+        <div
+            onClick={(e) => { e.stopPropagation(); onViewDetail() }}
+            style={{ position: 'relative', marginTop: 4, cursor: 'pointer', paddingLeft: 12, paddingRight: 12, paddingBottom: 24 }}
+        >
+            <div style={{ maxHeight: maxContentHeight, overflow: 'hidden' }} ref={contentRef}>
+                <ResultView block={adaptedBlock} metadata={metadata} />
+            </div>
+            {/* 渐变遮罩 - 始终显示，暗示内容为预览，承载点击打开 drawer */}
+            <div style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0, height: 48,
+                background: `linear-gradient(transparent, ${token.colorBgContainer} 70%)`,
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                paddingBottom: 4, color: token.colorPrimary, fontSize: 12,
+            }}>
+                {t('chat.tool.viewDetail')} →
+            </div>
+        </div>
+    )
 }
 
 // 合并工具调用的渲染组件
-// 使用 Think 组件作为外壳，点击打开弹窗查看详情
+// 使用 Think 组件作为外壳，默认展开显示内联预览，点击标题栏收起
+// 点击「查看详情」打开 ToolDetailDrawer 查看完整信息
 function MergedToolCallRenderer({ block, toolContext }: {
     block: MergedToolCallBlock
     toolContext: ToolRenderContext
 }) {
-    const { t } = useTranslation()
     const { token } = useToken()
-    const [modalOpen, setModalOpen] = useState(false)
-
-    const presentation = useMemo(() => getToolPresentation({
-        toolName: block.name,
-        input: block.input,
-        result: block.result,
-        childrenCount: block.children.length,
-        description: block.description,
-        metadata: toolContext.metadata,
-    }), [block.name, block.input, block.result, block.children.length, block.description, toolContext.metadata])
+    const [expanded, setExpanded] = useState(true)
+    const [drawerOpen, setDrawerOpen] = useState(false)
 
     const isLoading = block.state === 'running'
-    const subtitle = presentation.subtitle ?? block.description
-
-    const stateColor = block.state === 'completed' ? token.colorSuccess
-        : block.state === 'error' ? token.colorError
-        : block.state === 'pending' ? token.colorWarning
-        : token.colorTextSecondary
 
     return (
         <>
             <Think
+                className="tool-call-think"
                 icon={getToolIcon(block.name)}
                 title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 500, fontSize: 13 }}>{presentation.title}</span>
-                        {subtitle && (
+                        <span style={{ fontWeight: 500, fontSize: 13 }}>{block.name}</span>
+                        {block.description && (
                             <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
-                                {subtitle.length > 80 ? `${subtitle.slice(0, 80)}...` : subtitle}
+                                {block.description.length > 80 ? `${block.description.slice(0, 80)}...` : block.description}
                             </span>
                         )}
-                        <span style={{ color: stateColor, display: 'inline-flex', alignItems: 'center', marginLeft: 'auto' }}>
+                        <span style={{ color: block.state === 'completed' ? token.colorSuccess : block.state === 'error' ? token.colorError : token.colorTextSecondary, display: 'inline-flex', alignItems: 'center', marginLeft: 'auto' }}>
                             <StatusStateIcon state={block.state} />
                         </span>
                     </div>
                 }
                 loading={isLoading}
-                expanded={false}
-                onExpand={() => setModalOpen(true)}
-            />
-
-            <Modal
-                open={modalOpen}
-                onCancel={() => setModalOpen(false)}
-                footer={null}
-                title={
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {getToolIcon(block.name)}
-                        <span>{presentation.title}</span>
-                    </div>
-                }
-                width={640}
+                expanded={expanded}
+                onExpand={setExpanded}
             >
-                <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
-                    {/* 工具输入 */}
-                    {block.input !== undefined && (
-                        <div>
-                            <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
-                                {t('chat.tool.input')}
-                            </div>
-                            <pre style={{
-                                background: token.colorBgContainer,
-                                padding: 8,
-                                borderRadius: 4,
-                                fontSize: 12,
-                                overflowX: 'auto',
-                                margin: 0,
-                                border: `1px solid ${token.colorBorder}`,
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                            }}>
-                                {typeof block.input === 'string' ? block.input : JSON.stringify(block.input, null, 2)}
-                            </pre>
-                        </div>
-                    )}
-                    {/* 工具输出 */}
-                    {block.result !== undefined && (
-                        <div>
-                            <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
-                                {t('chat.tool.output')}
-                            </div>
-                            <pre style={{
-                                background: block.resultIsError ? token.colorErrorBg : token.colorSuccessBg,
-                                border: `1px solid ${block.resultIsError ? token.colorErrorBorder : token.colorSuccessBorder}`,
-                                padding: 8,
-                                borderRadius: 4,
-                                fontSize: 12,
-                                overflowX: 'auto',
-                                margin: 0,
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                                maxHeight: 400,
-                                overflowY: 'auto',
-                            }}>
-                                {typeof block.result === 'string' ? block.result : JSON.stringify(block.result, null, 2)}
-                            </pre>
-                        </div>
-                    )}
-                </div>
-            </Modal>
+                <ToolPreviewContent
+                    block={block}
+                    metadata={toolContext.metadata}
+                    onViewDetail={() => setDrawerOpen(true)}
+                />
+            </Think>
+            <ToolDetailDrawer
+                block={block}
+                metadata={toolContext.metadata}
+                open={drawerOpen}
+                onClose={() => setDrawerOpen(false)}
+            />
         </>
     )
 }
