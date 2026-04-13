@@ -125,6 +125,7 @@ function areUserTextBlocksEqual(left: UserTextBlock, right: UserTextBlock): bool
         && left.localId === right.localId
         && left.createdAt === right.createdAt
         && left.meta === right.meta
+        && left.isSynthetic === right.isSynthetic
 }
 
 function areAgentTextBlocksEqual(left: AgentTextBlock, right: AgentTextBlock): boolean {
@@ -132,6 +133,7 @@ function areAgentTextBlocksEqual(left: AgentTextBlock, right: AgentTextBlock): b
         && left.localId === right.localId
         && left.createdAt === right.createdAt
         && left.meta === right.meta
+        && left.isSynthetic === right.isSynthetic
 }
 
 function areAgentReasoningBlocksEqual(left: AgentReasoningBlock, right: AgentReasoningBlock): boolean {
@@ -149,9 +151,18 @@ function areCliOutputBlocksEqual(left: CliOutputBlock, right: CliOutputBlock): b
         && left.meta === right.meta
 }
 
+function areEventDisplaysEqual(left?: import('./types').EventDisplay, right?: import('./types').EventDisplay): boolean {
+    if (left === right) return true
+    if (!left || !right) return false
+    return left.align === right.align
+        && left.color === right.color
+        && left.padding === right.padding
+}
+
 function areAgentEventBlocksEqual(left: AgentEventBlock, right: AgentEventBlock): boolean {
     return left.createdAt === right.createdAt
         && left.meta === right.meta
+        && areEventDisplaysEqual(left.display, right.display)
         && areAgentEventsEqual(left.event, right.event)
 }
 

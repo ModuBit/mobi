@@ -130,6 +130,14 @@ html[data-theme='dark'] .x-markdown code {
     padding-block: 2px !important;
 }
 
+/* 事件对齐控制（覆盖 system 角色默认的居中） */
+.ant-bubble:has(.event-align-left) {
+    justify-content: flex-start !important;
+}
+.ant-bubble:has(.event-align-right) {
+    justify-content: flex-end !important;
+}
+
 /* Bubble footer 间距缩小 */
 .ant-bubble-footer {
     margin-block-start: 4px !important;

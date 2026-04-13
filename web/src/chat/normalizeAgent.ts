@@ -18,6 +18,9 @@ import type { AgentEvent, NormalizedAgentContent, NormalizedMessage, ToolResultP
 import { asNumber, asString, isObject } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 
+// 中断消息的正则匹配
+const INTERRUPTED_PATTERN = /\[Request interrupted by user\]/
+
 function normalizeToolResultPermissions(value: unknown): ToolResultPermission | undefined {
     if (!isObject(value)) return undefined
     const date = asNumber(value.date)
@@ -124,6 +127,7 @@ function normalizeUserOutput(
         }
     }
     if (typeof messageContent === 'string') {
+        const isSynthetic = INTERRUPTED_PATTERN.test(messageContent)
         return {
             id: messageId,
             localId,
@@ -131,14 +135,19 @@ function normalizeUserOutput(
             role: 'user',
             isSidechain: false,
             content: { type: 'text', text: messageContent },
-            meta
+            meta,
+            isSynthetic
         }
     }
     const blocks: NormalizedAgentContent[] = []
+    let hasInterruptedText = false
     if (Array.isArray(messageContent)) {
         for (const block of messageContent) {
             if (!isObject(block) || typeof block.type !== 'string') continue
             if (block.type === 'text' && typeof block.text === 'string') {
+                if (INTERRUPTED_PATTERN.test(block.text)) {
+                    hasInterruptedText = true
+                }
                 blocks.push({ type: 'text', text: block.text, uuid, parentUUID })
                 continue
             }
@@ -166,7 +175,8 @@ function normalizeUserOutput(
         role: 'agent',
         isSidechain,
         content: blocks,
-        meta
+        meta,
+        isSynthetic: hasInterruptedText
     }
 }
 export function isSkippableAgentContent(content: unknown): boolean {
@@ -271,6 +281,47 @@ export function normalizeAgentRecord(
                 meta
             }
         }
+        // 处理 result 消息（执行结果，含 abort/error 等）
+        if (data.type === 'result') {
+            const subtype = asString(data.subtype)
+            const terminalReason = asString(data.terminal_reason) ?? asString(data.terminalReason)
+            const isError = Boolean(data.is_error)
+            const numTurns = asNumber(data.num_turns) ?? asNumber(data.numTurns)
+
+            // 中断
+            if (terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools') {
+                return {
+                    id: messageId,
+                    localId,
+                    createdAt,
+                    role: 'event',
+                    content: { type: 'aborted', numTurns },
+                    isSidechain: false,
+                    meta
+                }
+            }
+
+            // 其他错误结果
+            if (isError || subtype === 'error_during_execution') {
+                const errors = Array.isArray(data.errors)
+                    ? (data.errors as unknown[]).filter((e): e is string => typeof e === 'string')
+                    : []
+                return {
+                    id: messageId,
+                    localId,
+                    createdAt,
+                    role: 'event',
+                    content: { type: 'execution-error', subtype: subtype ?? 'unknown', errors, numTurns },
+                    isSidechain: false,
+                    meta
+                }
+            }
+
+            // 正常完成，静默忽略
+            return null
+        }
+        // 未识别的 output 消息类型，打印警告
+        console.warn('[normalizeAgent] 未识别的 output 消息类型:', data.type, { messageId, data })
         return null
     }
     if (content.type === 'event') {

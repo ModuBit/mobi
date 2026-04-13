@@ -34,6 +34,8 @@ export type AgentEvent =
     | { type: 'turn-duration'; durationMs: number }
     | { type: 'microcompact'; trigger: string; preTokens: number; tokensSaved: number }
     | { type: 'compact'; trigger: string; preTokens: number }
+    | { type: 'aborted'; numTurns: number | null }
+    | { type: 'execution-error'; subtype: string; errors: string[]; numTurns: number | null }
     | ({ type: string } & Record<string, unknown>)
 
 export type ToolResultPermission = {
@@ -100,6 +102,8 @@ export type NormalizedMessage = ({
     usage?: UsageData
     status?: MessageStatus
     originalText?: string
+    /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
+    isSynthetic?: boolean
 }
 
 export type ToolPermission = {
@@ -138,6 +142,8 @@ export type UserTextBlock = {
     status?: MessageStatus
     originalText?: string
     meta?: unknown
+    /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
+    isSynthetic?: boolean
 }
 
 export type AgentTextBlock = {
@@ -147,6 +153,8 @@ export type AgentTextBlock = {
     createdAt: number
     text: string
     meta?: unknown
+    /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
+    isSynthetic?: boolean
 }
 
 export type AgentReasoningBlock = {
@@ -168,12 +176,24 @@ export type CliOutputBlock = {
     meta?: unknown
 }
 
+/** 事件渲染提示，由 reducer 层设置，渲染层只负责执行 */
+export type EventDisplay = {
+    /** 内容对齐方式 */
+    align?: 'left' | 'center' | 'right'
+    /** 颜色主题 */
+    color?: 'default' | 'error' | 'warning' | 'success'
+    /** 是否保留内边距，默认 true */
+    padding?: boolean
+}
+
 export type AgentEventBlock = {
     kind: 'agent-event'
     id: string
     createdAt: number
     event: AgentEvent
     meta?: unknown
+    /** 渲染提示 */
+    display?: EventDisplay
 }
 
 export type ToolCallBlock = {

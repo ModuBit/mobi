@@ -23,18 +23,15 @@ import { useMessages } from '@/hooks/queries/useMessages'
 import { useSession } from '@/hooks/queries/useSession'
 import { useSendMessage } from '@/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/hooks/mutations/useSessionActions'
-import { parseMessages } from './messageParser'
-import { mergeToolResults } from './toolMerger'
+import { reduceChatBlocks, normalizeDecryptedMessage } from '@/chat'
 import { PermissionRequest } from './PermissionRequest'
 import { ToolDetailDrawer } from '@/components/ToolCard/ToolDetailDrawer'
 import { getToolIcon, StatusStateIcon } from '@/components/ToolCard/toolIcons'
 import { getToolResultViewComponent } from '@/components/ToolCard/views/_results'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { XMarkdown } from '@ant-design/x-markdown'
-import { useIsMobile } from '@/hooks/useMediaQuery'
 
-import type { ParsedContentBlock, MergedToolCallBlock } from './messageParser'
-import type { ToolCallBlock } from '@/components/ToolCard/types'
+import type { ChatBlock } from '@/chat'
 import type { SessionMetadataSummary } from '@/api/types'
 
 const { useToken } = antTheme
@@ -72,10 +69,14 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
     // 工具渲染所需的元数据
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
 
-    // 解析所有消息并合并 tool result
-    const parsedMessages = useMemo(() => {
-        return mergeToolResults(parseMessages(messages))
-    }, [messages])
+    // 使用 reduceChatBlocks 处理消息（包含 CLI 输出合并）
+    const { blocks: chatBlocks } = useMemo(() => {
+        // 先标准化消息，然后归约为聊天块
+        const normalized = messages
+            .map(normalizeDecryptedMessage)
+            .filter((m): m is Exclude<typeof m, null> => m !== null)
+        return reduceChatBlocks(normalized, session?.agentState)
+    }, [messages, session?.agentState])
 
     // 监听 Bubble.List 内部滚动容器的滚动位置
     // Bubble.List 使用 column-reverse 布局，scrollTop 为负值表示已滚动到上方
@@ -95,7 +96,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
 
         scrollBox.addEventListener('scroll', handleScroll, { passive: true })
         return () => scrollBox.removeEventListener('scroll', handleScroll)
-    }, [parsedMessages.length])
+    }, [chatBlocks.length])
 
     // 跳到底部（column-reverse: scrollTop=0 即底部）
     const handleScrollToBottom = useCallback(() => {
@@ -107,8 +108,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
         }
     }, [])
 
-    // 将 ParsedMessage 转换为 Bubble.List items
-    // Bubble.List 内置支持 role: 'system'，自动用 Bubble.System 渲染
+    // 将 ChatBlock 转换为 Bubble.List items
     const bubbleItems = useMemo(() => {
         const items: Array<{
             key: string
@@ -120,73 +120,82 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
             footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
         }> = []
 
-        // 用于 api-error 去重的 error code 跟踪（不放入 item 避免 DOM 透传）
+        const toolContext = { metadata }
+        // 用于 api-error 去重的 error code 跟踪
         const apiErrorCodeMap = new Map<string, string | null>()
 
-        // 工具渲染所需的上下文
-        const toolContext = { metadata }
-
-        for (const msg of parsedMessages) {
-            for (let i = 0; i < msg.content.length; i++) {
-                const block = msg.content[i]
-                const blockKey = `${msg.id}-${i}`
-                const isLastAssistantBlock = msg.role === 'assistant' && i === msg.content.length - 1
-                const isThinking = isLastAssistantBlock && !!session?.thinking
-                const content = renderContentBlock(block, token, isThinking, !!msg.isSynthetic, t, toolContext)
-
-                if (content === null) continue
-
-                if (msg.role === 'system') {
-                    const isApiError = block.type === 'event' && block.event.type === 'api-error'
-                    // 用 error code 判断同一次重试链，合并为只展示最后一条
-                    if (isApiError && items.length > 0) {
-                        const lastKey = items[items.length - 1].key
-                        const prevCode = apiErrorCodeMap.get(lastKey)
-                        if (prevCode) {
-                            const curCode = getApiErrorCode(block.event.error)
-                            if (prevCode === curCode) {
-                                items[items.length - 1] = {
-                                    key: blockKey, role: 'system', content, variant: 'borderless',
-                                }
-                                apiErrorCodeMap.set(blockKey, curCode)
-                                continue
-                            }
-                        }
-                    }
-                    items.push({
-                        key: blockKey, role: 'system', content, variant: 'borderless',
-                    })
-                    if (isApiError) {
-                        apiErrorCodeMap.set(blockKey, getApiErrorCode(block.event.error))
-                    }
-                    continue
-                }
-
-                // 用户消息在最后一个内容块时显示时间戳
-                const isUserLastBlock = msg.role === 'user' && i === msg.content.length - 1
-                items.push({
-                    key: blockKey,
-                    role: msg.role,
-                    content,
-                    typing: msg.role === 'assistant' &&
-                        block.type === 'text' &&
-                        i === msg.content.length - 1 &&
-                        session?.thinking,
-                    ...(isUserLastBlock ? {
-                        footer: <span style={{ fontSize: 11, opacity: 0.6 }}>{formatMessageTime(msg.createdAt)}</span>,
-                        footerPlacement: 'outer-end' as const,
-                    } : {}),
-                })
+        // 用于判断是否是最后一个 assistant 块（typing 动画）
+        let lastAssistantBlockKey: string | null = null
+        for (let i = chatBlocks.length - 1; i >= 0; i--) {
+            const block = chatBlocks[i]
+            if (block.kind === 'agent-text' || block.kind === 'agent-reasoning') {
+                lastAssistantBlockKey = block.id
+                break
             }
         }
 
+        for (const block of chatBlocks) {
+            const content = renderChatBlock(block, token, session?.thinking, t, toolContext)
+            if (content === null) continue
+
+            // 处理 api-error 去重
+            if (block.kind === 'agent-event') {
+                const isApiError = block.event.type === 'api-error'
+                if (isApiError && items.length > 0) {
+                    const lastKey = items[items.length - 1].key
+                    const prevCode = apiErrorCodeMap.get(lastKey)
+                    if (prevCode) {
+                        const curCode = getApiErrorCode('error' in block.event ? block.event.error : undefined)
+                        if (prevCode === curCode) {
+                            items[items.length - 1] = {
+                                key: block.id, role: 'system', content, variant: 'borderless',
+                            }
+                            apiErrorCodeMap.set(block.id, curCode)
+                            continue
+                        }
+                    }
+                }
+                if (isApiError) {
+                    apiErrorCodeMap.set(block.id, getApiErrorCode('error' in block.event ? block.event.error : undefined))
+                }
+            }
+
+            // 确定角色
+            let role: 'assistant' | 'user' | 'system' = 'user'
+            if (block.kind === 'agent-text' || block.kind === 'agent-reasoning' || block.kind === 'tool-call') {
+                role = 'assistant'
+            } else if (block.kind === 'agent-event') {
+                role = 'system'
+            } else if (block.kind === 'cli-output') {
+                role = block.source === 'assistant' ? 'assistant' : 'user'
+            }
+
+            // 判断是否需要 typing 动画
+            const isTyping = role === 'assistant' &&
+                (block.kind === 'agent-text' || block.kind === 'agent-reasoning') &&
+                block.id === lastAssistantBlockKey &&
+                !!session?.thinking
+
+            items.push({
+                key: block.id,
+                role,
+                content,
+                typing: isTyping,
+                variant: (role === 'system' || role === 'assistant') ? 'borderless' : undefined,
+                footer: block.kind === 'user-text' ? (
+                    <span style={{ fontSize: 11, opacity: 0.6 }}>{formatMessageTime(block.createdAt)}</span>
+                ) : undefined,
+                footerPlacement: 'outer-end',
+            })
+        }
+
         return items
-    }, [parsedMessages, session?.thinking, token, t, metadata])
+    }, [chatBlocks, session?.thinking, token, t, metadata])
 
     // 自动滚动到底部
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [bubbleItems.length])
+    }, [chatBlocks.length])
 
     // 发送消息
     const handleSend = (text: string) => {
@@ -219,7 +228,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* 消息列表 */}
             <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
-                {parsedMessages.length === 0 ? (
+                {chatBlocks.length === 0 ? (
                     <Empty description={t('chat.empty')} style={{ marginTop: 40 }} />
                 ) : (
                     <>
@@ -292,19 +301,33 @@ type ToolRenderContext = {
     metadata: SessionMetadataSummary | null
 }
 
-// 渲染内容块
-// isSynthetic: 非用户主动输入的消息（如 SDK 自动生成的中断消息），使用柔和样式
-function renderContentBlock(
-    block: ParsedContentBlock,
+// 解析 CLI 输出文本，提取命令和输出
+function parseCliOutputText(text: string): { command: string | null, stdout: string | null } {
+    const commandMatch = text.match(/<command-name>([\s\S]*?)<\/command-name>/i)
+    const stdoutMatch = text.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/i)
+
+    const command = commandMatch ? commandMatch[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
+        String.fromCharCode(parseInt(hex, 16))
+    ).trim() : null
+
+    const stdout = stdoutMatch ? stdoutMatch[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
+        String.fromCharCode(parseInt(hex, 16))
+    ).replace(/\x1B\[[0-9;]*m/g, '').trim() : null
+
+    return { command, stdout }
+}
+
+// 渲染 ChatBlock
+function renderChatBlock(
+    block: ChatBlock,
     token: ReturnType<typeof useToken>['token'],
-    isThinking: boolean,
-    isSynthetic: boolean,
+    isThinking: boolean | undefined,
     t: (key: string, params?: Record<string, unknown>) => string,
     toolContext: ToolRenderContext,
 ): React.ReactNode {
-    switch (block.type) {
-        case 'text':
-            if (isSynthetic) {
+    switch (block.kind) {
+        case 'user-text':
+            if (block.isSynthetic) {
                 return (
                     <span style={{ fontSize: 12, opacity: 0.5 }}>
                         {block.text}
@@ -316,27 +339,87 @@ function renderContentBlock(
                     <XMarkdown content={block.text || ''} />
                 </div>
             )
-        case 'reasoning':
-            return <ReasoningBlock text={block.text} thinking={isThinking} />
-        case 'merged-tool-call':
+        case 'agent-text':
+            if (block.isSynthetic) {
+                return (
+                    <span style={{ fontSize: 12, opacity: 0.5 }}>
+                        {block.text}
+                    </span>
+                )
+            }
             return (
-                <MergedToolCallRenderer
+                <div style={{ maxWidth: '100%' }}>
+                    <XMarkdown content={block.text || ''} />
+                </div>
+            )
+        case 'agent-reasoning':
+            return <ReasoningBlock text={block.text} thinking={isThinking ?? false} />
+        case 'cli-output': {
+            const { command, stdout } = parseCliOutputText(block.text)
+            return (
+                <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                }}>
+                    {command && (
+                        <div style={{ fontWeight: 500, marginBottom: stdout ? 4 : 0 }}>{command}</div>
+                    )}
+                    {stdout && (
+                        <div style={{
+                            color: token.colorTextSecondary,
+                            paddingLeft: command ? 16 : 0,
+                            position: 'relative',
+                        }}>
+                            {command && (
+                                <span style={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    color: token.colorTextTertiary,
+                                }}>└ </span>
+                            )}
+                            {stdout}
+                        </div>
+                    )}
+                </div>
+            )
+        }
+        case 'tool-call':
+            return (
+                <ToolCallRenderer
                     block={block}
                     toolContext={toolContext}
                 />
             )
-        // tool-call 和 tool-result 在 merge 后不再出现，保留 fallback
-        case 'tool-call':
-        case 'tool-result':
-            return null
-        case 'event':
+        case 'agent-event':
+            // 对于 message 类型（summary）显示文本
+            if (block.event.type === 'message') {
+                return (
+                    <div style={{
+                        padding: '4px 0',
+                        fontSize: 11,
+                        color: token.colorTextQuaternary,
+                        textAlign: 'center',
+                    }}>
+                        {String(block.event.message ?? '')}
+                    </div>
+                )
+            }
+            // 通用事件渲染（样式由 block.display 控制）
+            const d = block.display
+            const alignClass = d?.align ? `event-align-${d.align}` : undefined
+            const colorValue = d?.color === 'error' || d?.color === 'warning'
+                ? 'rgba(239, 68, 68, 0.45)'
+                : token.colorTextQuaternary
             return (
-                <div style={{
-                    padding: '4px 0',
-                    fontSize: 11,
-                    color: block.event.type === 'api-error' ? 'rgba(239, 68, 68, 0.45)' : token.colorTextQuaternary,
-                    textAlign: 'center',
-                }}>
+                <div
+                    className={alignClass}
+                    style={{
+                        padding: d?.padding === false ? 0 : '4px 0',
+                        fontSize: 11,
+                        color: colorValue,
+                    }}
+                >
                     {formatEvent(block.event, t)}
                 </div>
             )
@@ -378,8 +461,19 @@ function formatEvent(event: { type: string; [key: string]: unknown }, t: (key: s
         case 'aborted': {
             return t('chat.aborted')
         }
+        case 'title-changed': {
+            // 不显示 title-changed 事件
+            return null
+        }
         case 'execution-error': {
-            return t('chat.executionError')
+            const subtype = String(event.subtype ?? 'unknown')
+            const errors = Array.isArray(event.errors) ? event.errors.join(', ') : ''
+            return (
+                <div>
+                    <div>{t('chat.executionError')}</div>
+                    {errors && <div style={{ marginTop: 2 }}>{errors}</div>}
+                </div>
+            )
         }
         default:
             return `${event.type}`
@@ -441,41 +535,121 @@ function getApiErrorCode(error: unknown): string | null {
     return null
 }
 
-// 将 MergedToolCallBlock 转换为 ToolCallBlock 以适配视图组件接口
-function mergedToToolCallBlock(block: MergedToolCallBlock): ToolCallBlock {
-    return {
-        id: block.id,
-        kind: 'tool-call',
-        tool: {
-            name: block.name,
-            input: block.input,
-            result: block.result,
-            state: block.state,
-            description: block.description,
-            startedAt: null,
-            createdAt: block.createdAt,
-            permission: null,
-        },
-        children: block.children.map(mergedToToolCallBlock),
-    }
+// 渲染 ToolCallBlock（来自 reduceChatBlocks）
+function ToolCallRenderer({ block, toolContext }: {
+    block: Extract<ChatBlock, { kind: 'tool-call' }>
+    toolContext: ToolRenderContext
+}) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const [expanded, setExpanded] = useState(true)
+    const [drawerOpen, setDrawerOpen] = useState(false)
+
+    const tool = block.tool
+    const isLoading = tool.state === 'running'
+
+    return (
+        <>
+            <Think
+                className="tool-call-think"
+                icon={getToolIcon(tool.name)}
+                title={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 500, fontSize: 13 }}>{tool.name}</span>
+                        {tool.description && (
+                            <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
+                                {tool.description.length > 80 ? `${tool.description.slice(0, 80)}...` : tool.description}
+                            </span>
+                        )}
+                        <span style={{ color: tool.state === 'completed' ? token.colorSuccess : tool.state === 'error' ? token.colorError : token.colorTextSecondary, display: 'inline-flex', alignItems: 'center', marginLeft: 'auto' }}>
+                            <StatusStateIcon state={tool.state} />
+                        </span>
+                    </div>
+                }
+                loading={isLoading}
+                expanded={expanded}
+                onExpand={setExpanded}
+            >
+                <ToolCallPreviewContent
+                    toolCallBlock={block}
+                    metadata={toolContext.metadata}
+                    onViewDetail={() => setDrawerOpen(true)}
+                />
+            </Think>
+            <ToolDetailDrawer
+                block={block}
+                metadata={toolContext.metadata}
+                open={drawerOpen}
+                onClose={() => setDrawerOpen(false)}
+            />
+        </>
+    )
 }
 
 // 工具预览内容（在 Think 展开区域内渲染）
-function ToolPreviewContent({ block, metadata, onViewDetail }: {
-    block: MergedToolCallBlock
+function ToolCallPreviewContent({
+    toolCallBlock,
+    metadata,
+    onViewDetail
+}: {
+    toolCallBlock: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
     onViewDetail: () => void
 }) {
     const { token } = useToken()
     const { t } = useTranslation()
-    const isMobile = useIsMobile()
     const contentRef = useRef<HTMLDivElement>(null)
     const [isOverflowing, setIsOverflowing] = useState(false)
 
-    const ResultView = useMemo(() => getToolResultViewComponent(block.name), [block.name])
-    const adaptedBlock = useMemo(() => mergedToToolCallBlock(block), [block])
+    const tool = toolCallBlock.tool
+    const ResultView = useMemo(() => getToolResultViewComponent(tool.name), [tool.name])
 
-    const showPreview = block.state !== 'running' && block.result !== undefined
+    // 转换为 ToolCard/types.ToolCallBlock 格式
+    const adaptedBlock = useMemo(() => {
+        type ChatToolPermission = NonNullable<typeof tool.permission>
+        const convertPerm = (perm: ChatToolPermission) => ({
+            id: perm.id,
+            status: perm.status,
+            reason: perm.reason,
+            decision: perm.decision === 'denied' ? 'abort' as const : perm.decision === 'approved_for_session' ? 'approved_for_session' as const : perm.decision === 'approved' ? 'approved' as const : undefined,
+            mode: perm.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
+            allowedTools: perm.allowedTools,
+            answers: perm.answers,
+        })
+        return {
+            id: toolCallBlock.id,
+            kind: 'tool-call' as const,
+            tool: {
+                name: tool.name,
+                input: tool.input,
+                result: tool.result ?? undefined,
+                state: tool.state,
+                description: tool.description,
+                startedAt: tool.startedAt,
+                createdAt: tool.createdAt,
+                permission: tool.permission ? convertPerm(tool.permission) : null,
+            },
+            children: toolCallBlock.children
+                .filter((b): b is Extract<ChatBlock, { kind: 'tool-call' }> => b.kind === 'tool-call')
+                .map((child) => ({
+                    id: child.id,
+                    kind: 'tool-call' as const,
+                    tool: {
+                        name: child.tool.name,
+                        input: child.tool.input,
+                        result: child.tool.result ?? undefined,
+                        state: child.tool.state,
+                        description: child.tool.description,
+                        startedAt: child.tool.startedAt,
+                        createdAt: child.tool.createdAt,
+                        permission: child.tool.permission ? convertPerm(child.tool.permission) : null,
+                    },
+                    children: [],
+                })),
+        }
+    }, [toolCallBlock, tool])
+
+    const showPreview = tool.state !== 'running' && tool.result !== undefined
 
     // 溢出检测
     useEffect(() => {
@@ -486,7 +660,7 @@ function ToolPreviewContent({ block, metadata, onViewDetail }: {
         })
         observer.observe(el)
         return () => observer.disconnect()
-    }, [ResultView, block.result])
+    }, [ResultView, tool.result])
 
     if (!showPreview) return null
 
@@ -500,7 +674,6 @@ function ToolPreviewContent({ block, metadata, onViewDetail }: {
             <div style={{ maxHeight: maxContentHeight, overflow: 'hidden' }} ref={contentRef}>
                 <ResultView block={adaptedBlock} metadata={metadata} />
             </div>
-            {/* 渐变遮罩 - 始终显示，暗示内容为预览，承载点击打开 drawer */}
             <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0, height: 48,
                 background: `linear-gradient(transparent, ${token.colorBgContainer} 70%)`,
@@ -510,57 +683,6 @@ function ToolPreviewContent({ block, metadata, onViewDetail }: {
                 {t('chat.tool.viewDetail')} →
             </div>
         </div>
-    )
-}
-
-// 合并工具调用的渲染组件
-// 使用 Think 组件作为外壳，默认展开显示内联预览，点击标题栏收起
-// 点击「查看详情」打开 ToolDetailDrawer 查看完整信息
-function MergedToolCallRenderer({ block, toolContext }: {
-    block: MergedToolCallBlock
-    toolContext: ToolRenderContext
-}) {
-    const { token } = useToken()
-    const [expanded, setExpanded] = useState(true)
-    const [drawerOpen, setDrawerOpen] = useState(false)
-
-    const isLoading = block.state === 'running'
-
-    return (
-        <>
-            <Think
-                className="tool-call-think"
-                icon={getToolIcon(block.name)}
-                title={
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 500, fontSize: 13 }}>{block.name}</span>
-                        {block.description && (
-                            <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
-                                {block.description.length > 80 ? `${block.description.slice(0, 80)}...` : block.description}
-                            </span>
-                        )}
-                        <span style={{ color: block.state === 'completed' ? token.colorSuccess : block.state === 'error' ? token.colorError : token.colorTextSecondary, display: 'inline-flex', alignItems: 'center', marginLeft: 'auto' }}>
-                            <StatusStateIcon state={block.state} />
-                        </span>
-                    </div>
-                }
-                loading={isLoading}
-                expanded={expanded}
-                onExpand={setExpanded}
-            >
-                <ToolPreviewContent
-                    block={block}
-                    metadata={toolContext.metadata}
-                    onViewDetail={() => setDrawerOpen(true)}
-                />
-            </Think>
-            <ToolDetailDrawer
-                block={block}
-                metadata={toolContext.metadata}
-                open={drawerOpen}
-                onClose={() => setDrawerOpen(false)}
-            />
-        </>
     )
 }
 

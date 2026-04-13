@@ -25,7 +25,7 @@ import { safeStringify } from '@mobi/shared'
 import { useTranslation } from 'react-i18next'
 import type { SessionMetadataSummary } from '@/api/types'
 import type { ToolCallBlock } from './types'
-import type { MergedToolCallBlock } from '@/components/chat/messageParser'
+import type { ChatBlock } from '@/chat'
 import { getToolPresentation } from './knownTools'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
@@ -40,37 +40,52 @@ const { useToken } = antTheme
  * 抽屉详情组件属性
  */
 type ToolDetailDrawerProps = {
-    block: MergedToolCallBlock
+    block: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
     open: boolean
     onClose: () => void
 }
 
 /**
- * 将 MergedToolCallBlock 转换为 ToolCallBlock，以适配视图组件接口
+ * 将 ChatBlock.ToolCallBlock 转换为 ToolCard/types.ToolCallBlock，以适配视图组件接口
  */
-function mergedToToolCallBlock(block: MergedToolCallBlock): ToolCallBlock {
+function chatBlockToToolCardBlock(block: Extract<ChatBlock, { kind: 'tool-call' }>): ToolCallBlock {
+    // 转换 ToolPermission 类型
+    const convertPermission = (perm: NonNullable<typeof block.tool.permission>): ToolCallBlock['tool']['permission'] => {
+        return {
+            id: perm.id,
+            status: perm.status,
+            reason: perm.reason,
+            decision: perm.decision === 'denied' ? ('abort' as const) : perm.decision === 'approved_for_session' ? ('approved_for_session' as const) : perm.decision === 'approved' ? ('approved' as const) : undefined,
+            mode: perm.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
+            allowedTools: perm.allowedTools,
+            answers: perm.answers,
+        }
+    }
+
     return {
         id: block.id,
         kind: 'tool-call',
         tool: {
-            name: block.name,
-            input: block.input,
-            result: block.result,
-            state: block.state,
-            description: block.description,
-            startedAt: null,
-            createdAt: block.createdAt,
-            permission: null,
+            name: block.tool.name,
+            input: block.tool.input,
+            result: block.tool.result ?? undefined,
+            state: block.tool.state,
+            description: block.tool.description,
+            startedAt: block.tool.startedAt,
+            createdAt: block.tool.createdAt,
+            permission: block.tool.permission ? convertPermission(block.tool.permission) : null,
         },
-        children: block.children.map(mergedToToolCallBlock),
+        children: block.children
+            .filter((b): b is Extract<ChatBlock, { kind: 'tool-call' }> => b.kind === 'tool-call')
+            .map(chatBlockToToolCardBlock),
     }
 }
 
 /**
  * 获取状态文字描述
  */
-function getStatusText(state: MergedToolCallBlock['state'], t: (key: string) => string): string {
+function getStatusText(state: 'pending' | 'running' | 'completed' | 'error', t: (key: string) => string): string {
     switch (state) {
         case 'completed': return t('chat.tool.statusDone')
         case 'error': return t('chat.tool.statusError')
@@ -88,23 +103,25 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
     const { token } = useToken()
     const isMobile = useIsMobile()
 
+    const tool = block.tool
+
     // 缓存展示信息
     const presentation = useMemo(() => getToolPresentation({
-        toolName: block.name,
-        input: block.input,
-        result: block.result,
+        toolName: tool.name,
+        input: tool.input,
+        result: tool.result,
         childrenCount: block.children.length,
-        description: block.description,
+        description: tool.description,
         metadata,
-    }), [block.name, block.input, block.result, block.children.length, block.description, metadata])
+    }), [tool.name, tool.input, tool.result, block.children.length, tool.description, metadata])
 
     // 缓存视图组件
-    const FullView = useMemo(() => getToolFullViewComponent(block.name), [block.name])
-    const CompactView = useMemo(() => getToolViewComponent(block.name), [block.name])
-    const ResultView = useMemo(() => getToolResultViewComponent(block.name), [block.name])
+    const FullView = useMemo(() => getToolFullViewComponent(tool.name), [tool.name])
+    const CompactView = useMemo(() => getToolViewComponent(tool.name), [tool.name])
+    const ResultView = useMemo(() => getToolResultViewComponent(tool.name), [tool.name])
 
-    // 将 MergedToolCallBlock 转为 ToolCallBlock 以适配视图接口
-    const adaptedBlock = useMemo(() => mergedToToolCallBlock(block), [block])
+    // 将 ChatBlock.ToolCallBlock 转为 ToolCard/types.ToolCallBlock 以适配视图接口
+    const adaptedBlock = useMemo(() => chatBlockToToolCardBlock(block), [block])
 
     // 副标题截断到 60 字
     const truncatedSubtitle = presentation.subtitle
@@ -112,7 +129,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
         : null
 
     // 状态文字
-    const statusText = getStatusText(block.state, t)
+    const statusText = getStatusText(tool.state, t)
 
     // 标签样式
     const labelStyle: CSSProperties = {
@@ -137,7 +154,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
     const titleContent = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: token.colorTextSecondary }}>
-                {getToolIcon(block.name, ICON_STYLE_LG)}
+                {getToolIcon(tool.name, ICON_STYLE_LG)}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
                 <Text strong style={{ fontSize: 14, wordBreak: 'break-word' }}>
@@ -189,7 +206,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
                     }}>
-                        {safeStringify(block.input)}
+                        {safeStringify(tool.input)}
                     </pre>
                 )}
             </div>
@@ -202,7 +219,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <div style={labelStyle}>{t('chat.tool.output')}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <StatusStateIcon state={block.state} style={{ fontSize: 12 }} />
+                        <StatusStateIcon state={tool.state} style={{ fontSize: 12 }} />
                         {statusText ? (
                             <Text type="secondary" style={{ fontSize: 11 }}>{statusText}</Text>
                         ) : null}

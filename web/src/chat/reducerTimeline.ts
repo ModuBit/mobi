@@ -14,11 +14,38 @@
  * limitations under the License.
  */
 
-import type { ChatBlock, ToolCallBlock, ToolPermission } from './types'
+import type { AgentEventBlock, ChatBlock, EventDisplay, ToolCallBlock, ToolPermission } from './types'
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
 import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, type PermissionEntry } from './reducerTools'
+
+// 根据事件类型获取渲染提示
+function getEventDisplay(event: { type: string }): EventDisplay | undefined {
+    switch (event.type) {
+        case 'turn-duration': return { align: 'left', padding: false }
+        case 'api-error': return { color: 'error' }
+        case 'execution-error': return { color: 'error' }
+        default: return undefined
+    }
+}
+
+// 创建 agent-event block
+function createEventBlock(params: {
+    id: string
+    createdAt: number
+    event: { type: string; [key: string]: unknown }
+    meta?: unknown
+}): AgentEventBlock {
+    return {
+        kind: 'agent-event',
+        id: params.id,
+        createdAt: params.createdAt,
+        event: params.event,
+        meta: params.meta,
+        display: getEventDisplay(params.event),
+    }
+}
 
 /**
  * 归约时间线
@@ -44,25 +71,23 @@ export function reduceTimeline(
                 hasReadyEvent = true
                 continue
             }
-            blocks.push({
-                kind: 'agent-event',
+            blocks.push(createEventBlock({
                 id: msg.id,
                 createdAt: msg.createdAt,
                 event: msg.content,
                 meta: msg.meta
-            })
+            }))
             continue
         }
 
         const event = parseMessageAsEvent(msg)
         if (event) {
-            blocks.push({
-                kind: 'agent-event',
+            blocks.push(createEventBlock({
                 id: msg.id,
                 createdAt: msg.createdAt,
                 event,
                 meta: msg.meta
-            })
+            }))
             continue
         }
 
@@ -87,7 +112,8 @@ export function reduceTimeline(
                 attachments: msg.content.attachments,
                 status: msg.status,
                 originalText: msg.originalText,
-                meta: msg.meta
+                meta: msg.meta,
+                isSynthetic: msg.isSynthetic
             })
             continue
         }
@@ -113,7 +139,8 @@ export function reduceTimeline(
                         localId: msg.localId,
                         createdAt: msg.createdAt,
                         text: c.text,
-                        meta: msg.meta
+                        meta: msg.meta,
+                        isSynthetic: msg.isSynthetic
                     })
                     continue
                 }
@@ -130,14 +157,14 @@ export function reduceTimeline(
                     continue
                 }
 
+                // summary 消息转换为事件显示
                 if (c.type === 'summary') {
-                    blocks.push({
-                        kind: 'agent-event',
+                    blocks.push(createEventBlock({
                         id: `${msg.id}:${idx}`,
                         createdAt: msg.createdAt,
                         event: { type: 'message', message: c.summary },
                         meta: msg.meta
-                    })
+                    }))
                     continue
                 }
 
@@ -146,13 +173,12 @@ export function reduceTimeline(
                         const title = context.titleChangesByToolUseId.get(c.id) ?? extractTitleFromChangeTitleInput(c.input)
                         if (title && !context.emittedTitleChangeToolUseIds.has(c.id)) {
                             context.emittedTitleChangeToolUseIds.add(c.id)
-                            blocks.push({
-                                kind: 'agent-event',
+                            blocks.push(createEventBlock({
                                 id: `${msg.id}:${idx}`,
                                 createdAt: msg.createdAt,
                                 event: { type: 'title-changed', title },
                                 meta: msg.meta
-                            })
+                            }))
                         }
                         continue
                     }
@@ -191,13 +217,12 @@ export function reduceTimeline(
                     if (title) {
                         if (!context.emittedTitleChangeToolUseIds.has(c.tool_use_id)) {
                             context.emittedTitleChangeToolUseIds.add(c.tool_use_id)
-                            blocks.push({
-                                kind: 'agent-event',
+                            blocks.push(createEventBlock({
                                 id: `${msg.id}:${idx}`,
                                 createdAt: msg.createdAt,
                                 event: { type: 'title-changed', title },
                                 meta: msg.meta
-                            })
+                            }))
                         }
                         continue
                     }
