@@ -379,6 +379,7 @@ export class ApiSessionClient extends EventEmitter {
         if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
             this.updateMetadata((metadata) => ({
                 ...metadata,
+                name: body.summary,
                 summary: {
                     text: body.summary,
                     updatedAt: Date.now()

@@ -21,15 +21,16 @@ interface SessionMetadata {
     path?: string
     flavor?: string
     modelMode?: string
+    summary?: { text: string }
 }
 
 /**
  * 获取会话显示名称
- * 优先级：metadata.name > path 最后一段 > session.id 前8位 > 'Unknown'
+ * 优先级：summary.text > metadata.name > path 最后一段 > session.id 前8位 > 'Unknown'
  */
 export function getSessionDisplayName(session: Session): string {
     const metadata = session.metadata as SessionMetadata | undefined
-    return metadata?.name || metadata?.path?.split('/').pop() || session.id?.slice(0, 8) || 'Unknown'
+    return metadata?.summary?.text || metadata?.name || metadata?.path?.split('/').pop() || session.id?.slice(0, 8) || 'Unknown'
 }
 
 /**

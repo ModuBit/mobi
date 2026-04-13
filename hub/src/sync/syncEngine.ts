@@ -171,15 +171,9 @@ export class SyncEngine {
     handleRealtimeEvent(event: SyncEvent): void {
         if (event.type === 'session-updated' && event.sessionId) {
             this.sessionCache.refreshSession(event.sessionId)
-            return
-        }
-
-        if (event.type === 'machine-updated' && event.machineId) {
+        } else if (event.type === 'machine-updated' && event.machineId) {
             this.machineCache.refreshMachine(event.machineId)
-            return
-        }
-
-        if (event.type === 'message-received' && event.sessionId) {
+        } else if (event.type === 'message-received' && event.sessionId) {
             if (!this.getSession(event.sessionId)) {
                 this.sessionCache.refreshSession(event.sessionId)
             }

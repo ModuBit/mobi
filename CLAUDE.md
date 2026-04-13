@@ -49,6 +49,10 @@ bun run test         # 测试
 - 默认端口: 2222
 - 数据库: SQLite (WAL)
 
+## Git 提交规范
+
+- **禁止在提交信息中包含 `Co-Authored-By` 信息**
+
 ## License Header
 
 所有源代码文件（`.ts`、`.tsx`）必须包含 Apache 2.0 版权信息。创建新文件时，请在文件开头添加：
