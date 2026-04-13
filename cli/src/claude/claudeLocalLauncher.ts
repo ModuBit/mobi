@@ -18,14 +18,40 @@ import { claudeLocal } from "./claudeLocal";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { BaseLocalLauncher } from "@/modules/common/launcher/BaseLocalLauncher";
+import { logger } from "@/ui/logger";
+
+/**
+ * 从 claudeArgs 中解析 --resume / --continue 的 session ID
+ * 当 session.sessionId 为 null 时（如 mobi --resume <id>），
+ * 通过此函数从 claudeArgs 提取 Claude Code 的 session ID 供 scanner 预加载
+ */
+function extractSessionIdFromArgs(claudeArgs?: string[]): string | null {
+    if (!claudeArgs) return null
+    // --resume <sessionId> 或 --continue <sessionId> 或 -c <sessionId> 或 -r <sessionId>
+    for (const flag of ['--resume', '-r', '--continue', '-c']) {
+        const idx = claudeArgs.findIndex(arg => arg === flag)
+        if (idx !== -1) {
+            const next = claudeArgs[idx + 1]
+            if (next && !next.startsWith('-')) {
+                return next
+            }
+        }
+    }
+    return null
+}
 
 export async function claudeLocalLauncher(session: Session): Promise<'switch' | 'exit'> {
 
+    // 优先使用 session.sessionId（remote 模式下由 SDK 设置），
+    // 其次从 claudeArgs 中提取 --resume/--continue 的 session ID
+    const scannerSessionId = session.sessionId ?? extractSessionIdFromArgs(session.claudeArgs);
+    logger.debug(`[LocalLauncher] Creating scanner: sessionId=${scannerSessionId}, path=${session.path}`);
+
     // Create scanner
     const scanner = await createSessionScanner({
-        sessionId: session.sessionId,
+        sessionId: scannerSessionId,
         workingDirectory: session.path,
-        onMessage: (message) => { 
+        onMessage: (message) => {
             // Block SDK summary messages - we generate our own
             // summary 是session title，自己生成，参见 @cli/src/claude/utils/startMobiMcpServer.ts
             if (message.type !== 'summary') {

@@ -370,7 +370,10 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.emit('message', {
             sid: this.sessionId,
-            message: content
+            message: content,
+            // 使用 Claude Code 的 uuid 作为 localId，供 Hub DB 去重
+            // resume 场景下同一消息的 uuid 保持不变，Hub 可通过 localId 避免重复存储
+            localId: body.uuid
         })
 
         if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {

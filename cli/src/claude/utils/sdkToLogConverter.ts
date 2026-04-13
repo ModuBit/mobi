@@ -106,7 +106,9 @@ export class SDKToLogConverter {
      * Convert SDK message to log format
      */
     convert(sdkMessage: SDKMessage): RawJSONLines | null {
-        const uuid = randomUUID()
+        // 优先使用 SDK 自带的 uuid（resume 时保持不变，可用于 DB 去重），
+        // 仅在 SDK 未提供时回退到自生成
+        const uuid = (sdkMessage as any).uuid || randomUUID()
         const timestamp = new Date().toISOString()
         let parentUuid = this.lastUuid;
         let isSidechain = false;

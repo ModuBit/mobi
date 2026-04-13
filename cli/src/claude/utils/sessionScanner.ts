@@ -86,21 +86,18 @@ class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
 
     public onNewSession(sessionId: string): void {
         if (this.currentSessionId === sessionId) {
-            logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is the same as the current session, skipping`);
             return;
         }
         if (this.finishedSessions.has(sessionId)) {
-            logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already finished, skipping`);
             return;
         }
         if (this.pendingSessions.has(sessionId)) {
-            logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already pending, skipping`);
             return;
         }
         if (this.currentSessionId) {
             this.pendingSessions.add(this.currentSessionId);
         }
-        logger.debug(`[SESSION_SCANNER] New session: ${sessionId}`);
+        logger.debug(`[SESSION_SCANNER] onNewSession: ${this.currentSessionId ?? '(none)'} → ${sessionId}`);
         this.currentSessionId = sessionId;
         this.invalidate();
     }
@@ -111,7 +108,7 @@ class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
         }
         const sessionFile = this.sessionFilePath(this.currentSessionId);
         const { events, totalLines } = await readSessionLog(sessionFile, 0);
-        logger.debug(`[SESSION_SCANNER] Marking ${events.length} existing messages as processed from session ${this.currentSessionId}`);
+        logger.debug(`[SESSION_SCANNER] initialize: sessionId=${this.currentSessionId}, seeding ${events.length} existing messages as processed`);
         const keys = events.map((entry) => messageKey(entry.event));
         this.seedProcessedKeys(keys);
         this.setCursor(sessionFile, totalLines);

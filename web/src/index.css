@@ -101,6 +101,15 @@ pre, code {
     font-family: var(--font-mono);
 }
 
+/* XMarkdown inline code 背景色 */
+.x-markdown code {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme='dark'] .x-markdown code {
+    background: rgba(255, 255, 255, 0.1);
+}
+
 /* 消息气泡紧凑间距 */
 .ant-bubble {
     padding-block: 6px !important;

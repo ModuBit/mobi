@@ -85,17 +85,43 @@ function patchSessionCache(
         return updated
     })
 
-    // 更新 groupSessions 分页缓存中对应的 session
-    queryClient.getQueriesData<{ pages: Array<{ sessions: Session[] }> }>({
+    // 更新 groupSessions 缓存中对应的 session
+    // 支持两种数据格式：无限查询 { pages: [...] } 和普通查询 { sessions: [...] }
+    queryClient.getQueriesData({
         queryKey: ['groupSessions'],
     }).forEach(([queryKey, data]) => {
-        if (!data?.pages) return
-        let found = false
-        const newPages = data.pages.map(page => {
-            const sessionIdx = page.sessions.findIndex(s => s.id === sessionId)
-            if (sessionIdx === -1) return page
-            found = true
-            const newSessions = [...page.sessions]
+        if (!data || typeof data !== 'object') return
+
+        // 无限查询格式：{ pages: [{ sessions: [...] }] }
+        if ('pages' in data && Array.isArray((data as { pages: unknown[] }).pages)) {
+            const pagesData = data as { pages: Array<{ sessions: Session[] }> }
+            let found = false
+            const newPages = pagesData.pages.map(page => {
+                const sessionIdx = page.sessions.findIndex(s => s.id === sessionId)
+                if (sessionIdx === -1) return page
+                found = true
+                const newSessions = [...page.sessions]
+                newSessions[sessionIdx] = {
+                    ...newSessions[sessionIdx],
+                    ...patch,
+                    ...(runtimeStatePatch
+                        ? { runtimeState: { ...newSessions[sessionIdx].runtimeState, ...runtimeStatePatch } }
+                        : {}),
+                }
+                return { ...page, sessions: newSessions }
+            })
+            if (found) {
+                queryClient.setQueryData(queryKey, { ...data, pages: newPages })
+            }
+            return
+        }
+
+        // 普通查询格式：{ sessions: [...], groupKey: string }
+        if ('sessions' in data && Array.isArray((data as { sessions: unknown[] }).sessions)) {
+            const sessionsData = data as { sessions: Session[]; [key: string]: unknown }
+            const sessionIdx = sessionsData.sessions.findIndex(s => s.id === sessionId)
+            if (sessionIdx === -1) return
+            const newSessions = [...sessionsData.sessions]
             newSessions[sessionIdx] = {
                 ...newSessions[sessionIdx],
                 ...patch,
@@ -103,10 +129,7 @@ function patchSessionCache(
                     ? { runtimeState: { ...newSessions[sessionIdx].runtimeState, ...runtimeStatePatch } }
                     : {}),
             }
-            return { ...page, sessions: newSessions }
-        })
-        if (found) {
-            queryClient.setQueryData(queryKey, { ...data, pages: newPages })
+            queryClient.setQueryData(queryKey, { ...data, sessions: newSessions })
         }
     })
 }
@@ -237,12 +260,16 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 queueSessionListInvalidation()
                 break
             case 'message-received':
-                // 直接将消息追加到缓存，避免全量拉取
+                // 追加消息到缓存，按 id 去重防止重复显示
                 if (event.message) {
                     const msg = event.message as DecryptedMessage
                     queryClient.setQueryData<DecryptedMessage[]>(
                         queryKeys.messages(event.sessionId),
-                        (old) => old ? [...old, msg] : [msg],
+                        (old) => {
+                            if (!old) return [msg]
+                            if (old.some(m => m.id === msg.id)) return old
+                            return [...old, msg]
+                        },
                     )
                 }
                 break

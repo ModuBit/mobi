@@ -53,7 +53,15 @@ export function addMessage(
             'SELECT * FROM messages WHERE session_id = ? AND local_id = ? LIMIT 1'
         ).get(sessionId, localId) as DbMessageRow | undefined
         if (existing) {
-            return toStoredMessage(existing)
+            // 相同 localId：更新内容（resume 场景下内容可能有增量变化）
+            db.prepare(
+                'UPDATE messages SET content = @content WHERE id = @id'
+            ).run({
+                content: JSON.stringify(content),
+                id: existing.id
+            })
+            const updated = db.prepare('SELECT * FROM messages WHERE id = ?').get(existing.id) as DbMessageRow
+            return toStoredMessage(updated)
         }
     }
 

@@ -117,7 +117,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
             typing?: boolean
             variant?: 'borderless'
             footer?: React.ReactNode
-            footerPlacement?: 'inner-start' | 'inner-end'
+            footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
         }> = []
 
         // 用于 api-error 去重的 error code 跟踪（不放入 item 避免 DOM 透传）
