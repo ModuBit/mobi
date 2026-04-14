@@ -136,13 +136,12 @@ export function SessionListDrawer() {
 
                 {/* 第一层：Session 列表 */}
                 <Drawer
+                    title={t('nav.sessions')}
                     open={sessionListDrawerOpen}
                     onClose={handleCloseList}
                     placement="bottom"
-                    closable={false}
                     styles={{
                         body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-                        header: { display: 'none' },
                         wrapper: { height: 'auto', maxHeight: '85vh' },
                     }}
                 >
@@ -151,13 +150,12 @@ export function SessionListDrawer() {
 
                 {/* 第二层：新建会话 */}
                 <Drawer
+                    title={t('session.newSession')}
                     open={newSessionDrawerOpen}
                     onClose={handleCloseNew}
                     placement="bottom"
-                    closable={false}
                     styles={{
                         body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex', flexDirection: 'column' },
-                        header: { display: 'none' },
                         wrapper: { height: 'auto', maxHeight: '85vh' },
                     }}
                 >
@@ -178,14 +176,13 @@ export function SessionListDrawer() {
 
             {/* 第一层：Session 列表 */}
             <Drawer
+                title={t('nav.sessions')}
                 open={sessionListDrawerOpen}
                 onClose={handleCloseList}
                 placement="right"
-                closable={false}
                 width={300}
                 styles={{
                     body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-                    header: { display: 'none' },
                 }}
             >
                 {listDrawerContent}
@@ -193,14 +190,13 @@ export function SessionListDrawer() {
 
             {/* 第二层：新建会话 */}
             <Drawer
+                title={t('session.newSession')}
                 open={newSessionDrawerOpen}
                 onClose={handleCloseNew}
                 placement="right"
-                closable={false}
                 width={360}
                 styles={{
                     body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
-                    header: { display: 'none' },
                 }}
             >
                 {newSessionDrawerContent}

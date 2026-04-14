@@ -117,13 +117,12 @@ export function MobileMenuDrawer() {
 
     return (
         <Drawer
+            title={t('nav.menu')}
             open={mobileMenuOpen}
             onClose={handleClose}
             placement="bottom"
-            closable={false}
             styles={{
                 body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', maxHeight: '85vh', overflow: 'auto' },
-                header: { display: 'none' },
                 wrapper: { height: 'auto', maxHeight: '85vh' },
             }}
         >
