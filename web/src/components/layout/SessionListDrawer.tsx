@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Drawer, Typography, Button, Tooltip } from 'antd'
+import { theme as antTheme, Drawer, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useParams } from '@tanstack/react-router'
+import { useParams, useNavigate } from '@tanstack/react-router'
 import { useUiStore } from '@/stores/uiStore'
 import { useIsMobile } from '@/hooks/useMediaQuery'
+import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
 import { SessionList } from '@/components/session/SessionList'
-import { PlusOutlined } from '@ant-design/icons'
+import { NewSession } from '@/components/NewSession'
 import { List } from 'lucide-react'
 import styled from '@emotion/styled'
 
-const { Title } = Typography
 const { useToken } = antTheme
 
 const TriggerButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
@@ -52,62 +52,79 @@ const TriggerButton = styled.button<{ $token: ReturnType<typeof useToken>['token
     }
 `
 
-const DrawerHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    padding: 12px 12px 8px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid ${props => props.$token.colorBorder};
-`
-
 /**
  * Session 列表 Drawer 组件
- * 通过右上角按钮触发：
- * - PC 端：右侧 Drawer
- * - 移动端：底部 Drawer（最高 85%）
+ * - 空列表时：显示 NewSession 表单
+ * - 有列表时：显示 SessionList，“+”按钮打开第二层 Drawer
  */
 export function SessionListDrawer() {
     const { token } = useToken()
     const { t } = useTranslation()
+    const navigate = useNavigate()
     const isMobile = useIsMobile()
     const params = useParams({ strict: false })
     const sessionId = params.sessionId as string | undefined
-    const { sessionListDrawerOpen, setSessionListDrawerOpen } = useUiStore()
+    const {
+        sessionListDrawerOpen, setSessionListDrawerOpen,
+        newSessionDrawerOpen, setNewSessionDrawerOpen,
+    } = useUiStore()
+
+    // 检测是否有会话
+    const { data: groups = [] } = useSessionGroups()
+    const hasSessions = groups.some(g => g.totalCount > 0)
 
     const handleOpen = () => setSessionListDrawerOpen(true)
-    const handleClose = () => setSessionListDrawerOpen(false)
+    const handleCloseList = () => {
+        setSessionListDrawerOpen(false)
+        setNewSessionDrawerOpen(false)
+    }
+    const handleOpenNew = () => setNewSessionDrawerOpen(true)
+    const handleCloseNew = () => setNewSessionDrawerOpen(false)
 
-    const handleNewSession = () => {
-        // TODO: 实现新建会话
-        console.log('New session')
+    // 新建成功：导航到新会话，关闭所有 Drawer
+    const handleNewSuccess = (newSessionId: string) => {
+        setNewSessionDrawerOpen(false)
+        setSessionListDrawerOpen(false)
+        navigate({ to: '/sessions/$sessionId', params: { sessionId: newSessionId } })
     }
 
-    // Drawer 内容：仅在打开时渲染 SessionList，避免关闭时执行无用的查询
-    const drawerContent = sessionListDrawerOpen && (
-        <>
-            <DrawerHeader $token={token}>
-                <Title level={5} style={{ margin: 0 }}>{t('home.title')}</Title>
-                <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    size="small"
-                    onClick={handleNewSession}
+    // 新建取消
+    const handleNewCancel = () => {
+        setNewSessionDrawerOpen(false)
+    }
+
+    // 列表 Drawer 的内容
+    const listDrawerContent = sessionListDrawerOpen && (
+        hasSessions
+            ? <SessionList selectedSessionId={sessionId} />
+            : (
+                <NewSession
+                    onSuccess={handleNewSuccess}
+                    onCancel={handleCloseList}
                 />
-            </DrawerHeader>
-            <SessionList selectedSessionId={sessionId} />
-        </>
+            )
     )
 
-    // 移动端：底部 Drawer（自适应高度，最高 85%）
+    // 新建会话第二层 Drawer 内容
+    const newSessionDrawerContent = newSessionDrawerOpen && (
+        <NewSession
+            onSuccess={handleNewSuccess}
+            onCancel={handleNewCancel}
+        />
+    )
+
+    // 移动端：底部 Drawer
     if (isMobile) {
         return (
             <>
                 <TriggerButton $token={token} onClick={handleOpen}>
                     <List size={18} />
                 </TriggerButton>
+
+                {/* 第一层：Session 列表 */}
                 <Drawer
                     open={sessionListDrawerOpen}
-                    onClose={handleClose}
+                    onClose={handleCloseList}
                     placement="bottom"
                     closable={false}
                     styles={{
@@ -116,7 +133,22 @@ export function SessionListDrawer() {
                         wrapper: { height: 'auto', maxHeight: '85vh' },
                     }}
                 >
-                    {drawerContent}
+                    {listDrawerContent}
+                </Drawer>
+
+                {/* 第二层：新建会话 */}
+                <Drawer
+                    open={newSessionDrawerOpen}
+                    onClose={handleCloseNew}
+                    placement="bottom"
+                    closable={false}
+                    styles={{
+                        body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
+                        header: { display: 'none' },
+                        wrapper: { height: 'auto', maxHeight: '85vh' },
+                    }}
+                >
+                    {newSessionDrawerContent}
                 </Drawer>
             </>
         )
@@ -130,9 +162,11 @@ export function SessionListDrawer() {
                     <List size={18} />
                 </TriggerButton>
             </Tooltip>
+
+            {/* 第一层：Session 列表 */}
             <Drawer
                 open={sessionListDrawerOpen}
-                onClose={handleClose}
+                onClose={handleCloseList}
                 placement="right"
                 closable={false}
                 width={300}
@@ -141,7 +175,22 @@ export function SessionListDrawer() {
                     header: { display: 'none' },
                 }}
             >
-                {drawerContent}
+                {listDrawerContent}
+            </Drawer>
+
+            {/* 第二层：新建会话 */}
+            <Drawer
+                open={newSessionDrawerOpen}
+                onClose={handleCloseNew}
+                placement="right"
+                closable={false}
+                width={360}
+                styles={{
+                    body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
+                    header: { display: 'none' },
+                }}
+            >
+                {newSessionDrawerContent}
             </Drawer>
         </>
     )

@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
-import { Typography, Empty } from 'antd'
+import { Empty, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from '@tanstack/react-router'
+import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
+import { NewSession } from '@/components/NewSession'
 import styled from '@emotion/styled'
 
-const EmptyContainer = styled.div`
+const Container = styled.div`
     display: flex;
     align-items: center;
     justify-content: center;
@@ -26,16 +29,52 @@ const EmptyContainer = styled.div`
     flex: 1;
 `
 
+const NewSessionWrapper = styled.div`
+    width: 100%;
+    max-width: 480px;
+    height: 100%;
+    overflow: auto;
+`
+
 /**
  * 会话列表页（索引）
- * 当没有选中会话时显示空状态提示
+ * - 空列表时显示新建会话表单
+ * - 有会话时提示选择
  */
 export function SessionsPage() {
     const { t } = useTranslation()
+    const navigate = useNavigate()
+    const { data: groups = [], isLoading } = useSessionGroups()
+    const hasSessions = groups.some(g => g.totalCount > 0)
 
+    if (isLoading) {
+        return (
+            <Container>
+                <Spin size="large" />
+            </Container>
+        )
+    }
+
+    // 空列表：显示新建会话表单
+    if (!hasSessions) {
+        return (
+            <Container>
+                <NewSessionWrapper>
+                    <NewSession
+                        onSuccess={(sessionId) => {
+                            navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+                        }}
+                        onCancel={() => {}}
+                    />
+                </NewSessionWrapper>
+            </Container>
+        )
+    }
+
+    // 有会话：提示选择
     return (
-        <EmptyContainer>
+        <Container>
             <Empty description={t('session.selectToView')} />
-        </EmptyContainer>
+        </Container>
     )
 }
