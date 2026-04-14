@@ -165,7 +165,7 @@ export function SessionListDrawer() {
         )
     }
 
-    // PC 端：右侧 Drawer
+    // PC 端：右侧 Drawer（嵌套实现层级推挤效果）
     return (
         <>
             <Tooltip title={t('nav.sessions')} placement="left">
@@ -174,7 +174,6 @@ export function SessionListDrawer() {
                 </TriggerButton>
             </Tooltip>
 
-            {/* 第一层：Session 列表 */}
             <Drawer
                 title={t('nav.sessions')}
                 open={sessionListDrawerOpen}
@@ -186,20 +185,18 @@ export function SessionListDrawer() {
                 }}
             >
                 {listDrawerContent}
-            </Drawer>
-
-            {/* 第二层：新建会话 */}
-            <Drawer
-                title={t('session.newSession')}
-                open={newSessionDrawerOpen}
-                onClose={handleCloseNew}
-                placement="right"
-                size={360}
-                styles={{
-                    body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
-                }}
-            >
-                {newSessionDrawerContent}
+                <Drawer
+                    title={t('session.newSession')}
+                    open={newSessionDrawerOpen}
+                    onClose={handleCloseNew}
+                    placement="right"
+                    size={360}
+                    styles={{
+                        body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
+                    }}
+                >
+                    {newSessionDrawerContent}
+                </Drawer>
             </Drawer>
         </>
     )
