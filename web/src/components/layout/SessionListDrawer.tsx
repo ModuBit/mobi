@@ -14,17 +14,43 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Drawer, FloatButton, Typography, Button } from 'antd'
+import { theme as antTheme, Drawer, Typography, Button, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useParams } from '@tanstack/react-router'
 import { useUiStore } from '@/stores/uiStore'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { SessionList } from '@/components/session/SessionList'
-import { PlusOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { PlusOutlined } from '@ant-design/icons'
+import { List } from 'lucide-react'
 import styled from '@emotion/styled'
 
 const { Title } = Typography
 const { useToken } = antTheme
+
+const TriggerButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
+    position: fixed;
+    right: 16px;
+    top: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid ${props => props.$token.colorBorder};
+    background: ${props => props.$token.colorBgContainer};
+    color: ${props => props.$token.colorTextSecondary};
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 100;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+    &:hover {
+        color: ${props => props.$token.colorPrimary};
+        border-color: ${props => props.$token.colorPrimary};
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    }
+`
 
 const DrawerHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     padding: 12px 12px 8px;
@@ -36,7 +62,7 @@ const DrawerHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }
 
 /**
  * Session 列表 Drawer 组件
- * 通过右上角 FloatButton 触发：
+ * 通过右上角按钮触发：
  * - PC 端：右侧 Drawer
  * - 移动端：底部 Drawer（最高 85%）
  */
@@ -76,11 +102,9 @@ export function SessionListDrawer() {
     if (isMobile) {
         return (
             <>
-                <FloatButton
-                    icon={<UnorderedListOutlined />}
-                    onClick={handleOpen}
-                    style={{ right: 16, top: 16 }}
-                />
+                <TriggerButton $token={token} onClick={handleOpen}>
+                    <List size={18} />
+                </TriggerButton>
                 <Drawer
                     open={sessionListDrawerOpen}
                     onClose={handleClose}
@@ -101,11 +125,11 @@ export function SessionListDrawer() {
     // PC 端：右侧 Drawer
     return (
         <>
-            <FloatButton
-                icon={<UnorderedListOutlined />}
-                onClick={handleOpen}
-                style={{ right: 24, top: 24 }}
-            />
+            <Tooltip title={t('nav.sessions')} placement="left">
+                <TriggerButton $token={token} onClick={handleOpen}>
+                    <List size={18} />
+                </TriggerButton>
+            </Tooltip>
             <Drawer
                 open={sessionListDrawerOpen}
                 onClose={handleClose}
