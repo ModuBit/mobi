@@ -16,10 +16,9 @@
 
 import { theme as antTheme, Tooltip, Dropdown } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useMemo, useRef, useEffect, useCallback } from 'react'
+import { useMemo } from 'react'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/authStore'
-import { useUiStore } from '@/stores/uiStore'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { mainNavItems, bottomNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { User } from 'lucide-react'
@@ -95,47 +94,6 @@ export function RailNav() {
     const location = useLocation()
     const { logout } = useAuthStore()
     const isMobile = useIsMobile()
-    const { setSessionListDrawerOpen } = useUiStore()
-    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-    const clearCloseTimer = useCallback(() => {
-        if (closeTimerRef.current) {
-            clearTimeout(closeTimerRef.current)
-            closeTimerRef.current = null
-        }
-    }, [])
-
-    const scheduleClose = useCallback(() => {
-        clearCloseTimer()
-        closeTimerRef.current = setTimeout(() => {
-            setSessionListDrawerOpen(false)
-        }, 200)
-    }, [clearCloseTimer, setSessionListDrawerOpen])
-
-    const handleSessionsMouseEnter = useCallback(() => {
-        clearCloseTimer()
-        setSessionListDrawerOpen(true)
-    }, [clearCloseTimer, setSessionListDrawerOpen])
-
-    const handleSessionsMouseLeave = useCallback(() => {
-        scheduleClose()
-    }, [scheduleClose])
-
-    useEffect(() => {
-        const handleDrawerEnter = () => clearCloseTimer()
-        const handleDrawerLeave = () => scheduleClose()
-
-        window.addEventListener('session-drawer-enter', handleDrawerEnter)
-        window.addEventListener('session-drawer-leave', handleDrawerLeave)
-        return () => {
-            window.removeEventListener('session-drawer-enter', handleDrawerEnter)
-            window.removeEventListener('session-drawer-leave', handleDrawerLeave)
-        }
-    }, [clearCloseTimer, scheduleClose])
-
-    useEffect(() => {
-        return () => clearCloseTimer()
-    }, [clearCloseTimer])
 
     // 用户菜单项 - 使用 useMemo 避免每次渲染重新创建（必须在条件返回之前）
     const userMenuItems: MenuProps['items'] = useMemo(() => [
@@ -175,32 +133,22 @@ export function RailNav() {
             <Divider $token={token} />
 
             {/* 主导航 */}
-            {mainNavItems.map((item) => {
-                // sessions 项特殊处理：hover 触发 Drawer
-                const isSessionsItem = item.key === 'sessions'
-                const hoverProps = isSessionsItem ? {
-                    onMouseEnter: handleSessionsMouseEnter,
-                    onMouseLeave: handleSessionsMouseLeave,
-                } : {}
-
-                return (
-                    <Tooltip
-                        key={item.key}
-                        title={t(item.labelKey)}
-                        placement="right"
+            {mainNavItems.map((item) => (
+                <Tooltip
+                    key={item.key}
+                    title={t(item.labelKey)}
+                    placement="right"
+                >
+                    <NavItem
+                        $active={getNavActiveKey(location.pathname, item.key)}
+                        $token={token}
+                        disabled={item.disabled}
+                        onClick={() => handleNavClick(item.key, item.disabled)}
                     >
-                        <NavItem
-                            $active={getNavActiveKey(location.pathname, item.key)}
-                            $token={token}
-                            disabled={item.disabled}
-                            onClick={() => handleNavClick(item.key, item.disabled)}
-                            {...hoverProps}
-                        >
-                            <item.icon size={20} />
-                        </NavItem>
-                    </Tooltip>
-                )
-            })}
+                        <item.icon size={20} />
+                    </NavItem>
+                </Tooltip>
+            ))}
 
             <Spacer />
 

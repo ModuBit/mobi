@@ -26,7 +26,7 @@ import { IconButton } from '@/components/ui/IconButton'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { getSessionDisplayName } from '@/utils/sessionUtils'
-import { Folder, Terminal, ArrowLeft, MessageSquare } from 'lucide-react'
+import { Folder, Terminal, ArrowLeft } from 'lucide-react'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -88,7 +88,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { data: session, isLoading, error } = useSession(sessionId)
-    const { sessionViewMode, setSessionViewMode, setSessionListDrawerOpen } = useUiStore()
+    const { sessionViewMode, setSessionViewMode } = useUiStore()
     const isMobile = useIsMobile()
 
     if (isLoading) {
@@ -124,11 +124,6 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                     {isMobile && (
                         <>
                             <MobileMenuButton />
-                            <IconButton
-                                icon={<MessageSquare size={18} />}
-                                tooltip={t('nav.sessions')}
-                                onClick={() => setSessionListDrawerOpen(true)}
-                            />
                             <IconButton
                                 icon={<ArrowLeft size={18} />}
                                 tooltip={t('common.back')}

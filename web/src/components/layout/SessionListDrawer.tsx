@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Drawer, Typography, Button } from 'antd'
+import { theme as antTheme, Drawer, FloatButton, Typography, Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useParams } from '@tanstack/react-router'
 import { useUiStore } from '@/stores/uiStore'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { SessionList } from '@/components/session/SessionList'
-import { PlusOutlined } from '@ant-design/icons'
+import { PlusOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import styled from '@emotion/styled'
 
 const { Title } = Typography
@@ -36,8 +36,9 @@ const DrawerHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }
 
 /**
  * Session 列表 Drawer 组件
- * PC 端：左侧 overlay（无遮罩），由 RailNav hover 触发
- * 移动端：底部 Drawer（有遮罩），由 header 按钮触发
+ * 通过右上角 FloatButton 触发：
+ * - PC 端：右侧 Drawer
+ * - 移动端：底部 Drawer（最高 85%）
  */
 export function SessionListDrawer() {
     const { token } = useToken()
@@ -47,23 +48,12 @@ export function SessionListDrawer() {
     const sessionId = params.sessionId as string | undefined
     const { sessionListDrawerOpen, setSessionListDrawerOpen } = useUiStore()
 
+    const handleOpen = () => setSessionListDrawerOpen(true)
     const handleClose = () => setSessionListDrawerOpen(false)
 
     const handleNewSession = () => {
         // TODO: 实现新建会话
         console.log('New session')
-    }
-
-    const handleDrawerMouseEnter = () => {
-        if (!isMobile) {
-            window.dispatchEvent(new CustomEvent('session-drawer-enter'))
-        }
-    }
-
-    const handleDrawerMouseLeave = () => {
-        if (!isMobile) {
-            window.dispatchEvent(new CustomEvent('session-drawer-leave'))
-        }
     }
 
     // Drawer 内容：仅在打开时渲染 SessionList，避免关闭时执行无用的查询
@@ -82,43 +72,53 @@ export function SessionListDrawer() {
         </>
     )
 
-    // 移动端：底部 Drawer
+    // 移动端：底部 Drawer（自适应高度，最高 85%）
     if (isMobile) {
         return (
-            <Drawer
-                open={sessionListDrawerOpen}
-                onClose={handleClose}
-                placement="bottom"
-                closable={false}
-                styles={{
-                    body: { padding: 0, maxHeight: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-                    header: { display: 'none' },
-                    wrapper: { height: 'auto', maxHeight: '70vh' },
-                }}
-            >
-                {drawerContent}
-            </Drawer>
+            <>
+                <FloatButton
+                    icon={<UnorderedListOutlined />}
+                    onClick={handleOpen}
+                    style={{ right: 16, top: 16 }}
+                />
+                <Drawer
+                    open={sessionListDrawerOpen}
+                    onClose={handleClose}
+                    placement="bottom"
+                    closable={false}
+                    styles={{
+                        body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+                        header: { display: 'none' },
+                        wrapper: { height: 'auto', maxHeight: '85vh' },
+                    }}
+                >
+                    {drawerContent}
+                </Drawer>
+            </>
         )
     }
 
-    // PC 端：左侧 overlay Drawer（无遮罩）
+    // PC 端：右侧 Drawer
     return (
-        <div onMouseEnter={handleDrawerMouseEnter} onMouseLeave={handleDrawerMouseLeave}>
+        <>
+            <FloatButton
+                icon={<UnorderedListOutlined />}
+                onClick={handleOpen}
+                style={{ right: 24, top: 24 }}
+            />
             <Drawer
                 open={sessionListDrawerOpen}
                 onClose={handleClose}
-                placement="left"
+                placement="right"
                 closable={false}
-                mask={false}
-                width={280}
+                width={300}
                 styles={{
                     body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
                     header: { display: 'none' },
-                    wrapper: { marginLeft: '56px' },
                 }}
             >
                 {drawerContent}
             </Drawer>
-        </div>
+        </>
     )
 }
