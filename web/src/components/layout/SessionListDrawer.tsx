@@ -180,7 +180,7 @@ export function SessionListDrawer() {
                 open={sessionListDrawerOpen}
                 onClose={handleCloseList}
                 placement="right"
-                width={300}
+                size={300}
                 styles={{
                     body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
                 }}
@@ -194,7 +194,7 @@ export function SessionListDrawer() {
                 open={newSessionDrawerOpen}
                 onClose={handleCloseNew}
                 placement="right"
-                width={360}
+                size={360}
                 styles={{
                     body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
                 }}
