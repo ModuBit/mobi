@@ -128,7 +128,7 @@ export function SessionListDrawer() {
                     placement="bottom"
                     closable={false}
                     styles={{
-                        body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+                        body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
                         header: { display: 'none' },
                         wrapper: { height: 'auto', maxHeight: '85vh' },
                     }}
@@ -143,7 +143,7 @@ export function SessionListDrawer() {
                     placement="bottom"
                     closable={false}
                     styles={{
-                        body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
+                        body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex', flexDirection: 'column' },
                         header: { display: 'none' },
                         wrapper: { height: 'auto', maxHeight: '85vh' },
                     }}

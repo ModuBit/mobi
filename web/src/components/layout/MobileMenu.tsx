@@ -122,9 +122,9 @@ export function MobileMenuDrawer() {
             placement="bottom"
             closable={false}
             styles={{
-                body: { padding: 0, maxHeight: '80vh', overflow: 'auto' },
+                body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', maxHeight: '85vh', overflow: 'auto' },
                 header: { display: 'none' },
-                wrapper: { height: 'auto', maxHeight: '80vh' },
+                wrapper: { height: 'auto', maxHeight: '85vh' },
             }}
         >
             <MenuContent $token={token}>

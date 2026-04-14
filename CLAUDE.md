@@ -49,6 +49,14 @@ bun run test         # 测试
 - 默认端口: 2222
 - 数据库: SQLite (WAL)
 
+## 移动端 Drawer 规范
+
+所有移动端底部弹出 Drawer（`placement="bottom"`）必须遵守：
+
+- **高度自适应**: `wrapper: { height: 'auto' }`
+- **最高不超过 85%**: `wrapper: { maxHeight: '85vh' }`
+- **底部安全边界**: `body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }`，防止被底部横条/圆角遮挡
+
 ## Git 提交规范
 
 - **禁止在提交信息中包含 `Co-Authored-By` 信息**
