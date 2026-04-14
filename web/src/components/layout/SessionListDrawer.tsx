@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Button, Drawer, Empty, Tooltip } from 'antd'
+import { theme as antTheme, Button, Drawer, Empty } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useUiStore } from '@/stores/uiStore'
@@ -22,35 +22,9 @@ import { useIsMobile } from '@/hooks/useMediaQuery'
 import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
 import { SessionList } from '@/components/session/SessionList'
 import { NewSession } from '@/components/NewSession'
-import { List, Plus } from 'lucide-react'
-import styled from '@emotion/styled'
+import { Plus } from 'lucide-react'
 
 const { useToken } = antTheme
-
-const TriggerButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
-    position: fixed;
-    right: 16px;
-    top: 16px;
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    border: 1px solid ${props => props.$token.colorBorder};
-    background: ${props => props.$token.colorBgContainer};
-    color: ${props => props.$token.colorTextSecondary};
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 100;
-    transition: all 0.2s;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-
-    &:hover {
-        color: ${props => props.$token.colorPrimary};
-        border-color: ${props => props.$token.colorPrimary};
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-    }
-`
 
 /**
  * Session 列表 Drawer 组件
@@ -58,7 +32,6 @@ const TriggerButton = styled.button<{ $token: ReturnType<typeof useToken>['token
  * - 有列表时：显示 SessionList，“+”按钮打开第二层 Drawer
  */
 export function SessionListDrawer() {
-    const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
     const isMobile = useIsMobile()
@@ -73,7 +46,6 @@ export function SessionListDrawer() {
     const { data: groups = [] } = useSessionGroups()
     const hasSessions = groups.some(g => g.totalCount > 0)
 
-    const handleOpen = () => setSessionListDrawerOpen(true)
     const handleCloseList = () => {
         setSessionListDrawerOpen(false)
         setNewSessionDrawerOpen(false)
@@ -129,58 +101,15 @@ export function SessionListDrawer() {
     // 移动端：底部 Drawer（嵌套实现层级推挤效果）
     if (isMobile) {
         return (
-            <>
-                <TriggerButton $token={token} onClick={handleOpen}>
-                    <List size={18} />
-                </TriggerButton>
-
-                <Drawer
-                    title={t('nav.sessions')}
-                    extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
-                    open={sessionListDrawerOpen}
-                    onClose={handleCloseList}
-                    placement="bottom"
-                    styles={{
-                        body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-                        wrapper: { height: 'auto', maxHeight: '85vh' },
-                    }}
-                >
-                    {listDrawerContent}
-                    <Drawer
-                        title={t('session.newSession')}
-                        open={newSessionDrawerOpen}
-                        onClose={handleCloseNew}
-                        placement="bottom"
-                        styles={{
-                            body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex', flexDirection: 'column' },
-                            wrapper: { height: 'auto', maxHeight: '85vh' },
-                        }}
-                    >
-                        {newSessionDrawerContent}
-                    </Drawer>
-                </Drawer>
-            </>
-        )
-    }
-
-    // PC 端：右侧 Drawer（嵌套实现层级推挤效果）
-    return (
-        <>
-            <Tooltip title={t('nav.sessions')} placement="left">
-                <TriggerButton $token={token} onClick={handleOpen}>
-                    <List size={18} />
-                </TriggerButton>
-            </Tooltip>
-
             <Drawer
                 title={t('nav.sessions')}
                 extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
                 open={sessionListDrawerOpen}
                 onClose={handleCloseList}
-                placement="right"
-                size={300}
+                placement="bottom"
                 styles={{
-                    body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+                    body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+                    wrapper: { height: 'auto', maxHeight: '85vh' },
                 }}
             >
                 {listDrawerContent}
@@ -188,15 +117,44 @@ export function SessionListDrawer() {
                     title={t('session.newSession')}
                     open={newSessionDrawerOpen}
                     onClose={handleCloseNew}
-                    placement="right"
-                    size={360}
+                    placement="bottom"
                     styles={{
-                        body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
+                        body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex', flexDirection: 'column' },
+                        wrapper: { height: 'auto', maxHeight: '85vh' },
                     }}
                 >
                     {newSessionDrawerContent}
                 </Drawer>
             </Drawer>
-        </>
+        )
+    }
+
+    // PC 端：右侧 Drawer（嵌套实现层级推挤效果）
+    return (
+        <Drawer
+            title={t('nav.sessions')}
+            extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
+            open={sessionListDrawerOpen}
+            onClose={handleCloseList}
+            placement="right"
+            size={300}
+            styles={{
+                body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+            }}
+        >
+            {listDrawerContent}
+            <Drawer
+                title={t('session.newSession')}
+                open={newSessionDrawerOpen}
+                onClose={handleCloseNew}
+                placement="right"
+                size={360}
+                styles={{
+                    body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
+                }}
+            >
+                {newSessionDrawerContent}
+            </Drawer>
+        </Drawer>
     )
 }

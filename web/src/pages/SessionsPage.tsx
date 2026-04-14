@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
-import { Button, Empty, Spin } from 'antd'
+import { theme as antTheme, Button, Empty, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useUiStore } from '@/stores/uiStore'
 import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
-import { Plus } from 'lucide-react'
+import { useIsMobile } from '@/hooks/useMediaQuery'
+import { MobileMenuButton } from '@/components/layout/MobileMenu'
+import { IconButton } from '@/components/ui/IconButton'
+import { Plus, List } from 'lucide-react'
 import styled from '@emotion/styled'
+
+const { useToken } = antTheme
 
 const Container = styled.div`
     display: flex;
@@ -29,16 +34,27 @@ const Container = styled.div`
     flex: 1;
 `
 
+const MobileHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: ${props => props.$token.colorBgContainer};
+    border-bottom: 1px solid ${props => props.$token.colorBorder};
+`
+
 /**
  * 会话列表页（索引）
  * - 空列表时显示新建按钮，点击打开新建会话 Drawer
  * - 有会话时提示选择
  */
 export function SessionsPage() {
+    const { token } = useToken()
     const { t } = useTranslation()
     const { data: groups = [], isLoading } = useSessionGroups()
     const hasSessions = groups.some(g => g.totalCount > 0)
-    const { setNewSessionDrawerOpen } = useUiStore()
+    const isMobile = useIsMobile()
+    const { setSessionListDrawerOpen, setNewSessionDrawerOpen } = useUiStore()
 
     const handleNewSession = () => {
         setNewSessionDrawerOpen(true)
@@ -52,9 +68,8 @@ export function SessionsPage() {
         )
     }
 
-    // 空列表：显示新建按钮
-    if (!hasSessions) {
-        return (
+    const content = !hasSessions
+        ? (
             <Container>
                 <Empty
                     description={t('session.empty')}
@@ -69,12 +84,28 @@ export function SessionsPage() {
                 </Empty>
             </Container>
         )
+        : (
+            <Container>
+                <Empty description={t('session.selectToView')} />
+            </Container>
+        )
+
+    // 移动端：顶部 header + 内容
+    if (isMobile) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <MobileHeader $token={token}>
+                    <MobileMenuButton />
+                    <IconButton
+                        icon={<List size={18} />}
+                        onClick={() => setSessionListDrawerOpen(true)}
+                    />
+                </MobileHeader>
+                {content}
+            </div>
+        )
     }
 
-    // 有会话：提示选择
-    return (
-        <Container>
-            <Empty description={t('session.selectToView')} />
-        </Container>
-    )
+    // PC 端：直接展示内容
+    return content
 }

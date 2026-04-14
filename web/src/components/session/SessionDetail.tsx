@@ -23,9 +23,10 @@ import { ChatContainer } from '@/components/chat/ChatContainer'
 import { FileView } from '@/components/files/FileView'
 import TerminalView from '@/components/terminal/TerminalView'
 import { IconButton } from '@/components/ui/IconButton'
+import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { getSessionDisplayName } from '@/utils/sessionUtils'
-import { Folder, Terminal, ArrowLeft } from 'lucide-react'
+import { Folder, Terminal, ArrowLeft, List } from 'lucide-react'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -87,7 +88,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { data: session, isLoading, error } = useSession(sessionId)
-    const { sessionViewMode, setSessionViewMode } = useUiStore()
+    const { sessionViewMode, setSessionViewMode, setSessionListDrawerOpen } = useUiStore()
     const isMobile = useIsMobile()
 
     if (isLoading) {
@@ -121,15 +122,24 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
             <DetailHeader $token={token}>
                 <HeaderLeft>
                     {isMobile && (
-                        <IconButton
-                            icon={<ArrowLeft size={18} />}
-                            tooltip={t('common.back')}
-                            onClick={() => navigate({ to: '/sessions' })}
-                        />
+                        <>
+                            <MobileMenuButton />
+                            <IconButton
+                                icon={<ArrowLeft size={18} />}
+                                tooltip={t('common.back')}
+                                onClick={() => navigate({ to: '/sessions' })}
+                            />
+                        </>
                     )}
                     <span style={{ fontWeight: 500 }}>{displayName}</span>
                 </HeaderLeft>
                 <HeaderRight>
+                    {isMobile && (
+                        <IconButton
+                            icon={<List size={18} />}
+                            onClick={() => setSessionListDrawerOpen(true)}
+                        />
+                    )}
                     <IconButton
                         icon={<Folder size={18} />}
                         active={sessionViewMode === 'files'}
