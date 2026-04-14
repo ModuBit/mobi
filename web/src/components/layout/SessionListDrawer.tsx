@@ -136,6 +136,7 @@ export function SessionListDrawer() {
 
                 <Drawer
                     title={t('nav.sessions')}
+                    extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
                     open={sessionListDrawerOpen}
                     onClose={handleCloseList}
                     placement="bottom"
@@ -173,6 +174,7 @@ export function SessionListDrawer() {
 
             <Drawer
                 title={t('nav.sessions')}
+                extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
                 open={sessionListDrawerOpen}
                 onClose={handleCloseList}
                 placement="right"
