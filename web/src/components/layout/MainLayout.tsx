@@ -17,8 +17,9 @@
 import { theme as antTheme, ConfigProvider } from 'antd'
 import { useUiStore, resolveTheme } from '@/stores/uiStore'
 import { RailNav } from './RailNav'
-import { MobileMenuDrawer } from './MobileMenu'
+import { MobileMenuButton, MobileMenuDrawer } from './MobileMenu'
 import { SessionListDrawer } from './SessionListDrawer'
+import { useIsMobile } from '@/hooks/useMediaQuery'
 import { Outlet } from '@tanstack/react-router'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -50,6 +51,7 @@ export function MainLayout() {
     const { token } = useToken()
     const { theme } = useUiStore()
     const { t } = useTranslation()
+    const isMobile = useIsMobile()
 
     // 缓存解析后的主题值
     const resolvedTheme = useMemo(() => resolveTheme(theme), [theme])
@@ -74,6 +76,7 @@ export function MainLayout() {
                     <Outlet />
                 </MainContent>
             </LayoutContainer>
+            {isMobile && <MobileMenuButton />}
             <SessionListDrawer />
             {/* 移动端底部弹出菜单 */}
             <MobileMenuDrawer />

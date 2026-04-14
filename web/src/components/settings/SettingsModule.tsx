@@ -17,7 +17,6 @@
 import { theme as antTheme, Typography, Divider, Select } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useUiStore } from '@/stores/uiStore'
-import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { Globe, Palette } from 'lucide-react'
 import styled from '@emotion/styled'
 
@@ -110,7 +109,6 @@ export function SettingsModule() {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {/* 移动端 Header */}
                 <MobileHeader $token={token}>
-                    <MobileMenuButton />
                     <Title level={5} style={{ margin: 0 }}>{t('settings.title')}</Title>
                 </MobileHeader>
 

@@ -23,7 +23,6 @@ import { ChatContainer } from '@/components/chat/ChatContainer'
 import { FileView } from '@/components/files/FileView'
 import TerminalView from '@/components/terminal/TerminalView'
 import { IconButton } from '@/components/ui/IconButton'
-import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { getSessionDisplayName } from '@/utils/sessionUtils'
 import { Folder, Terminal, ArrowLeft } from 'lucide-react'
@@ -122,14 +121,11 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
             <DetailHeader $token={token}>
                 <HeaderLeft>
                     {isMobile && (
-                        <>
-                            <MobileMenuButton />
-                            <IconButton
-                                icon={<ArrowLeft size={18} />}
-                                tooltip={t('common.back')}
-                                onClick={() => navigate({ to: '/sessions' })}
-                            />
-                        </>
+                        <IconButton
+                            icon={<ArrowLeft size={18} />}
+                            tooltip={t('common.back')}
+                            onClick={() => navigate({ to: '/sessions' })}
+                        />
                     )}
                     <span style={{ fontWeight: 500 }}>{displayName}</span>
                 </HeaderLeft>
