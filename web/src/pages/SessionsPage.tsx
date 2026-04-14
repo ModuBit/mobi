@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-import { Empty, Spin } from 'antd'
+import { Button, Empty, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
+import { useUiStore } from '@/stores/uiStore'
 import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
-import { NewSession } from '@/components/NewSession'
+import { Plus } from 'lucide-react'
 import styled from '@emotion/styled'
 
 const Container = styled.div`
@@ -29,23 +29,21 @@ const Container = styled.div`
     flex: 1;
 `
 
-const NewSessionWrapper = styled.div`
-    width: 100%;
-    max-width: 480px;
-    height: 100%;
-    overflow: auto;
-`
-
 /**
  * 会话列表页（索引）
- * - 空列表时显示新建会话表单
+ * - 空列表时显示新建按钮，点击打开新建会话 Drawer
  * - 有会话时提示选择
  */
 export function SessionsPage() {
     const { t } = useTranslation()
-    const navigate = useNavigate()
     const { data: groups = [], isLoading } = useSessionGroups()
     const hasSessions = groups.some(g => g.totalCount > 0)
+    const { setSessionListDrawerOpen, setNewSessionDrawerOpen } = useUiStore()
+
+    const handleNewSession = () => {
+        setNewSessionDrawerOpen(true)
+        setSessionListDrawerOpen(true)
+    }
 
     if (isLoading) {
         return (
@@ -55,18 +53,21 @@ export function SessionsPage() {
         )
     }
 
-    // 空列表：显示新建会话表单
+    // 空列表：显示新建按钮
     if (!hasSessions) {
         return (
             <Container>
-                <NewSessionWrapper>
-                    <NewSession
-                        onSuccess={(sessionId) => {
-                            navigate({ to: '/sessions/$sessionId', params: { sessionId } })
-                        }}
-                        onCancel={() => {}}
-                    />
-                </NewSessionWrapper>
+                <Empty
+                    description={t('session.empty')}
+                >
+                    <Button
+                        type="primary"
+                        icon={<Plus size={16} />}
+                        onClick={handleNewSession}
+                    >
+                        {t('session.newSession')}
+                    </Button>
+                </Empty>
             </Container>
         )
     }

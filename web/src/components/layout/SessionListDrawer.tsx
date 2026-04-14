@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Drawer, Tooltip } from 'antd'
+import { theme as antTheme, Button, Drawer, Empty, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useUiStore } from '@/stores/uiStore'
@@ -22,7 +22,7 @@ import { useIsMobile } from '@/hooks/useMediaQuery'
 import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
 import { SessionList } from '@/components/session/SessionList'
 import { NewSession } from '@/components/NewSession'
-import { List } from 'lucide-react'
+import { List, Plus } from 'lucide-react'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -54,7 +54,7 @@ const TriggerButton = styled.button<{ $token: ReturnType<typeof useToken>['token
 
 /**
  * Session 列表 Drawer 组件
- * - 空列表时：显示 NewSession 表单
+ * - 空列表时：显示新建按钮，点击打开第二层 Drawer
  * - 有列表时：显示 SessionList，“+”按钮打开第二层 Drawer
  */
 export function SessionListDrawer() {
@@ -93,16 +93,29 @@ export function SessionListDrawer() {
         setNewSessionDrawerOpen(false)
     }
 
+    // 空状态
+    const emptyContent = (
+        <div style={{ padding: '32px 16px' }}>
+            <Empty
+                description={t('session.empty')}
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+            >
+                <Button
+                    type="primary"
+                    icon={<Plus size={16} />}
+                    onClick={handleOpenNew}
+                >
+                    {t('session.newSession')}
+                </Button>
+            </Empty>
+        </div>
+    )
+
     // 列表 Drawer 的内容
     const listDrawerContent = sessionListDrawerOpen && (
         hasSessions
             ? <SessionList selectedSessionId={sessionId} />
-            : (
-                <NewSession
-                    onSuccess={handleNewSuccess}
-                    onCancel={handleCloseList}
-                />
-            )
+            : emptyContent
     )
 
     // 新建会话第二层 Drawer 内容

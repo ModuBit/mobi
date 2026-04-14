@@ -50,6 +50,7 @@
             "ended": "已结束"
         },
         "empty": "暂无会话，点击新建开始对话",
+        "newSession": "新建会话",
         "selectToView": "选择会话查看详情",
         "actions": {
             "more": "更多操作",

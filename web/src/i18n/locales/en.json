@@ -50,6 +50,7 @@
             "ended": "Ended"
         },
         "empty": "No sessions yet. Start a new conversation.",
+        "newSession": "New Session",
         "selectToView": "Select a session to view details",
         "actions": {
             "more": "More Actions",
