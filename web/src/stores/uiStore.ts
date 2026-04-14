@@ -52,6 +52,7 @@ interface UiState {
     theme: Theme
     locale: Locale
     mobileMenuOpen: boolean
+    sessionListDrawerOpen: boolean
     // 保留兼容
     sidebarOpen: boolean
     // 操作方法
@@ -62,6 +63,7 @@ interface UiState {
     setTheme: (theme: Theme) => void
     setLocale: (locale: Locale) => void
     setMobileMenuOpen: (open: boolean) => void
+    setSessionListDrawerOpen: (open: boolean) => void
 }
 
 export const useUiStore = create<UiState>()(
@@ -73,6 +75,7 @@ export const useUiStore = create<UiState>()(
             theme: 'dark',
             locale: getSystemLocale(),
             mobileMenuOpen: false,
+            sessionListDrawerOpen: false,
             setSessionViewMode: (mode) => set({ sessionViewMode: mode }),
             setFileViewTab: (tab) => set({ fileViewTab: tab }),
             setSidebarOpen: (open) => set({ sidebarOpen: open }),
@@ -83,6 +86,7 @@ export const useUiStore = create<UiState>()(
                 return set({ locale })
             },
             setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
+            setSessionListDrawerOpen: (open) => set({ sessionListDrawerOpen: open }),
         }),
         {
             name: 'mobi-ui',

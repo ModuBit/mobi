@@ -14,32 +14,8 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Button, Typography } from 'antd'
-import { useTranslation } from 'react-i18next'
-import { Outlet, useParams } from '@tanstack/react-router'
-import { ContentSidebar } from '@/components/layout/ContentSidebar'
-import { MobileMenuButton } from '@/components/layout/MobileMenu'
-import { SessionList } from '@/components/session/SessionList'
-import { PlusOutlined } from '@ant-design/icons'
-import { useIsMobile } from '@/hooks/useMediaQuery'
+import { Outlet } from '@tanstack/react-router'
 import styled from '@emotion/styled'
-
-const { Title } = Typography
-const { useToken } = antTheme
-
-const SidebarHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    padding: 16px 12px;
-    border-bottom: 1px solid ${props => props.$token.colorBorder};
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-`
-
-const HeaderLeft = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-`
 
 const MainContentArea = styled.div`
     flex: 1;
@@ -48,82 +24,14 @@ const MainContentArea = styled.div`
     overflow: hidden;
 `
 
-// 移动端全屏容器
-const MobileContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    width: 100%;
-    height: 100%;
-    background: ${props => props.$token.colorBgContainer};
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-`
-
 /**
  * 会话布局组件
- * 左侧显示分组会话列表，右侧通过 Outlet 渲染子路由内容
+ * Session list 改为 overlay Drawer 模式，内容区始终占满宽度
  */
 export function SessionsLayout() {
-    const { token } = useToken()
-    const { t } = useTranslation()
-    const isMobile = useIsMobile()
-    const params = useParams({ strict: false })
-    const sessionId = params.sessionId as string | undefined
-
-    const handleNewSession = () => {
-        // TODO: 实现新建会话
-        console.log('New session')
-    }
-
-    // 移动端：有选中会话时只显示详情，否则显示列表
-    if (isMobile) {
-        if (sessionId) {
-            return (
-                <MainContentArea>
-                    <Outlet />
-                </MainContentArea>
-            )
-        }
-        return (
-            <MobileContainer $token={token}>
-                <SidebarHeader $token={token}>
-                    <HeaderLeft>
-                        <MobileMenuButton />
-                        <Title level={5} style={{ margin: 0 }}>{t('home.title')}</Title>
-                    </HeaderLeft>
-                    <Button
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        size="small"
-                        onClick={handleNewSession}
-                    />
-                </SidebarHeader>
-                <SessionList />
-            </MobileContainer>
-        )
-    }
-
-    // 桌面端：左侧列表 + 右侧内容区
     return (
-        <>
-            <ContentSidebar>
-                <SidebarHeader $token={token}>
-                    <HeaderLeft>
-                        <MobileMenuButton />
-                        <Title level={5} style={{ margin: 0 }}>{t('home.title')}</Title>
-                    </HeaderLeft>
-                    <Button
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        size="small"
-                        onClick={handleNewSession}
-                    />
-                </SidebarHeader>
-                <SessionList selectedSessionId={sessionId} />
-            </ContentSidebar>
-
-            <MainContentArea>
-                <Outlet />
-            </MainContentArea>
-        </>
+        <MainContentArea>
+            <Outlet />
+        </MainContentArea>
     )
 }
