@@ -37,6 +37,7 @@ import { queryKeys } from '@/lib/query-keys'
 import { getSessionDisplayName } from '@/utils/sessionUtils'
 import { PixelAvatar } from '@/components/PixelAvatar/PixelAvatar'
 import type { AgentStatus, StatusStyle } from '@/components/PixelAvatar/types'
+import { useUiStore } from '@/stores/uiStore'
 import styled from '@emotion/styled'
 import type { Session } from '@/api/types'
 
@@ -84,6 +85,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
     const { token: authToken } = useAuthStore()
     const api = useMobiApi(authToken)
     const queryClient = useQueryClient()
+    const { setSessionListDrawerOpen } = useUiStore()
 
     // 获取分组列表
     const { data: groups = [], isLoading: groupsLoading } = useSessionGroups()
@@ -132,7 +134,8 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
     // 导航到选中会话
     const handleActiveChange = useCallback((key: string) => {
         navigate({ to: '/sessions/$sessionId', params: { sessionId: key } })
-    }, [navigate])
+        setSessionListDrawerOpen(false)
+    }, [navigate, setSessionListDrawerOpen])
 
     // 查找 session 数据
     const findSession = useCallback((sessionId: string): Session | undefined => {
