@@ -27,21 +27,27 @@ import styled from '@emotion/styled'
 const { useToken } = antTheme
 
 const MenuButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
-    width: 36px;
-    height: 36px;
+    position: fixed;
+    left: 16px;
+    top: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid ${props => props.$token.colorBorder};
+    background: ${props => props.$token.colorBgContainer};
+    color: ${props => props.$token.colorTextSecondary};
     display: flex;
     align-items: center;
     justify-content: center;
-    border: none;
-    background: transparent;
-    color: ${props => props.$token.colorText};
-    border-radius: 8px;
     cursor: pointer;
+    z-index: 100;
     transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 
     &:hover {
-        background: ${props => props.$token.colorPrimaryBg};
         color: ${props => props.$token.colorPrimary};
+        border-color: ${props => props.$token.colorPrimary};
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
     }
 `
 
