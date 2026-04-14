@@ -289,7 +289,7 @@ function statusColorClass(state: ToolCallBlock['tool']['state'], token: ReturnTy
 // Markdown 内容渲染
 function MarkdownContent(props: { content: string }) {
     return (
-        <div style={{ maxWidth: '100%' }}>
+        <div className="x-markdown" style={{ maxWidth: '100%' }}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {props.content || ''}
             </ReactMarkdown>
@@ -415,7 +415,7 @@ function ToolCardInner(props: ToolCardProps) {
                     <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: token.colorTextSecondary }}>
                         {presentation.icon}
                     </div>
-                    <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', wordBreak: 'break-word' }}>
+                    <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0' }}>
                         {toolTitle}
                     </Text>
                 </div>

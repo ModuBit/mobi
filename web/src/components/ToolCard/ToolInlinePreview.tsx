@@ -132,6 +132,7 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
         gap: 8,
         padding: '8px 12px',
         borderBottom: `1px solid ${token.colorBorderSecondary}`,
+        overflow: 'hidden',
     }
 
     // 预览内容区样式
@@ -177,7 +178,7 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
                 <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: token.colorTextSecondary }}>
                     {getToolIcon(block.name)}
                 </div>
-                <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', wordBreak: 'break-word', flex: 1 }}>
+                <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                     {presentation.title}
                 </Text>
                 {truncatedSubtitle ? (

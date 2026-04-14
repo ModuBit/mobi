@@ -27,6 +27,7 @@ import { reduceChatBlocks, normalizeDecryptedMessage } from '@/chat'
 import { PermissionRequest } from './PermissionRequest'
 import { ToolDetailDrawer } from '@/components/ToolCard/ToolDetailDrawer'
 import { getToolIcon, StatusStateIcon } from '@/components/ToolCard/toolIcons'
+import { getToolPresentation } from '@/components/ToolCard/knownTools'
 import { getToolResultViewComponent } from '@/components/ToolCard/views/_results'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { XMarkdown } from '@ant-design/x-markdown'
@@ -546,6 +547,14 @@ function ToolCallRenderer({ block, toolContext }: {
 
     const tool = block.tool
     const isLoading = tool.state === 'running'
+    const toolPresentation = getToolPresentation({
+        toolName: tool.name,
+        input: tool.input,
+        result: tool.result,
+        childrenCount: block.children?.length ?? 0,
+        description: tool.description ?? null,
+        metadata: null
+    })
 
     return (
         <>
@@ -553,14 +562,16 @@ function ToolCallRenderer({ block, toolContext }: {
                 className="tool-call-think"
                 icon={getToolIcon(tool.name)}
                 title={
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 500, fontSize: 13 }}>{tool.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+                        <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0', minWidth: 0 }}>
+                            {toolPresentation.title}
+                        </span>
                         {tool.description && (
-                            <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
-                                {tool.description.length > 80 ? `${tool.description.slice(0, 80)}...` : tool.description}
+                            <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0, maxWidth: '40%' }}>
+                                {tool.description.length > 60 ? `${tool.description.slice(0, 60)}...` : tool.description}
                             </span>
                         )}
-                        <span style={{ color: tool.state === 'completed' ? token.colorSuccess : tool.state === 'error' ? token.colorError : token.colorTextSecondary, display: 'inline-flex', alignItems: 'center', marginLeft: 'auto' }}>
+                        <span style={{ color: tool.state === 'completed' ? token.colorSuccess : tool.state === 'error' ? token.colorError : token.colorTextSecondary, display: 'inline-flex', alignItems: 'center', marginLeft: 'auto', flexShrink: 0 }}>
                             <StatusStateIcon state={tool.state} />
                         </span>
                     </div>

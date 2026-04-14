@@ -208,7 +208,7 @@ function isProbablyMarkdownList(text: string): boolean {
 // Markdown 内容渲染
 function MarkdownContent(props: { content: string }) {
     return (
-        <div style={{ maxWidth: '100%' }}>
+        <div className="x-markdown" style={{ maxWidth: '100%' }}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {props.content || ''}
             </ReactMarkdown>

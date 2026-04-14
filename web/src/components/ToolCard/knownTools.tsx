@@ -69,11 +69,11 @@ function formatMCPTitle(toolName: string): string {
     const withoutPrefix = toolName.replace(/^mcp__/, '')
     const parts = withoutPrefix.split('__')
     if (parts.length >= 2) {
-        const serverName = snakeToTitleWithSpaces(parts[0])
-        const toolPart = snakeToTitleWithSpaces(parts.slice(1).join('_'))
-        return `MCP: ${serverName} ${toolPart}`
+        const serverName = parts[0]
+        const toolPart = parts.slice(1).join('_')
+        return `(MCP) ${serverName}:${toolPart}`
     }
-    return `MCP: ${snakeToTitleWithSpaces(withoutPrefix)}`
+    return `(MCP) ${withoutPrefix}`
 }
 
 type ToolOpts = {
