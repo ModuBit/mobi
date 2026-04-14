@@ -16,12 +16,13 @@
 
 import { theme as antTheme, Tooltip, Dropdown } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useMemo } from 'react'
+import { useMemo, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/authStore'
+import { useUiStore } from '@/stores/uiStore'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { mainNavItems, bottomNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
-import { User, Plus } from 'lucide-react'
+import { User } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
 
@@ -94,6 +95,53 @@ export function RailNav() {
     const location = useLocation()
     const { logout } = useAuthStore()
     const isMobile = useIsMobile()
+    const { setSessionListDrawerOpen } = useUiStore()
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    // 清除关闭计时器
+    const clearCloseTimer = useCallback(() => {
+        if (closeTimerRef.current) {
+            clearTimeout(closeTimerRef.current)
+            closeTimerRef.current = null
+        }
+    }, [])
+
+    // 延迟关闭 Drawer（200ms）
+    const scheduleClose = useCallback(() => {
+        clearCloseTimer()
+        closeTimerRef.current = setTimeout(() => {
+            setSessionListDrawerOpen(false)
+        }, 200)
+    }, [clearCloseTimer, setSessionListDrawerOpen])
+
+    // hover 进入 sessions 图标 → 打开 Drawer
+    const handleSessionsMouseEnter = useCallback(() => {
+        clearCloseTimer()
+        setSessionListDrawerOpen(true)
+    }, [clearCloseTimer, setSessionListDrawerOpen])
+
+    // hover 离开 sessions 图标 → 延迟关闭
+    const handleSessionsMouseLeave = useCallback(() => {
+        scheduleClose()
+    }, [scheduleClose])
+
+    // 监听 Drawer 区域的 hover 事件，协同关闭计时器
+    useEffect(() => {
+        const handleDrawerEnter = () => clearCloseTimer()
+        const handleDrawerLeave = () => scheduleClose()
+
+        window.addEventListener('session-drawer-enter', handleDrawerEnter)
+        window.addEventListener('session-drawer-leave', handleDrawerLeave)
+        return () => {
+            window.removeEventListener('session-drawer-enter', handleDrawerEnter)
+            window.removeEventListener('session-drawer-leave', handleDrawerLeave)
+        }
+    }, [clearCloseTimer, scheduleClose])
+
+    // 组件卸载时清除计时器
+    useEffect(() => {
+        return () => clearCloseTimer()
+    }, [clearCloseTimer])
 
     // 用户菜单项 - 使用 useMemo 避免每次渲染重新创建（必须在条件返回之前）
     const userMenuItems: MenuProps['items'] = useMemo(() => [
@@ -130,36 +178,35 @@ export function RailNav() {
                 <LogoImage src="/logo.svg" alt="Mobi" />
             </LogoContainer>
 
-            {/* 新建会话按钮 */}
-            <Tooltip title={t('home.newSession')} placement="right">
-                <NavItem
-                    $active={false}
-                    $token={token}
-                    onClick={() => navigate({ to: '/sessions/new' })}
-                >
-                    <Plus size={20} />
-                </NavItem>
-            </Tooltip>
-
             <Divider $token={token} />
 
             {/* 主导航 */}
-            {mainNavItems.map((item) => (
-                <Tooltip
-                    key={item.key}
-                    title={t(item.labelKey)}
-                    placement="right"
-                >
-                    <NavItem
-                        $active={getNavActiveKey(location.pathname, item.key)}
-                        $token={token}
-                        disabled={item.disabled}
-                        onClick={() => handleNavClick(item.key, item.disabled)}
+            {mainNavItems.map((item) => {
+                // sessions 项特殊处理：hover 触发 Drawer
+                const isSessionsItem = item.key === 'sessions'
+                const hoverProps = isSessionsItem ? {
+                    onMouseEnter: handleSessionsMouseEnter,
+                    onMouseLeave: handleSessionsMouseLeave,
+                } : {}
+
+                return (
+                    <Tooltip
+                        key={item.key}
+                        title={t(item.labelKey)}
+                        placement="right"
                     >
-                        <item.icon size={20} />
-                    </NavItem>
-                </Tooltip>
-            ))}
+                        <NavItem
+                            $active={getNavActiveKey(location.pathname, item.key)}
+                            $token={token}
+                            disabled={item.disabled}
+                            onClick={() => handleNavClick(item.key, item.disabled)}
+                            {...hoverProps}
+                        >
+                            <item.icon size={20} />
+                        </NavItem>
+                    </Tooltip>
+                )
+            })}
 
             <Spacer />
 
