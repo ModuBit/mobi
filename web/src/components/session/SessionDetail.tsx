@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Spin, Result, Button } from 'antd'
+import { Layout, Spin, Result, Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/hooks/queries/useSession'
@@ -24,40 +24,11 @@ import { FileView } from '@/components/files/FileView'
 import TerminalView from '@/components/terminal/TerminalView'
 import { IconButton } from '@/components/ui/IconButton'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { getSessionDisplayName } from '@/utils/sessionUtils'
 import { Folder, Terminal, ArrowLeft, List } from 'lucide-react'
 import styled from '@emotion/styled'
-
-const { useToken } = antTheme
-
-const DetailContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: ${props => props.$token.colorBgLayout};
-`
-
-const DetailHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    background: ${props => props.$token.colorBgContainer};
-    border-bottom: 1px solid ${props => props.$token.colorBorder};
-`
-
-const HeaderLeft = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-`
-
-const HeaderRight = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-`
 
 const ContentArea = styled.div`
     flex: 1;
@@ -84,7 +55,6 @@ interface SessionDetailProps {
 }
 
 export function SessionDetail({ sessionId }: SessionDetailProps) {
-    const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { data: session, isLoading, error } = useSession(sessionId)
@@ -117,46 +87,48 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const displayName = getSessionDisplayName(session)
 
     return (
-        <DetailContainer $token={token}>
-            {/* Header */}
-            <DetailHeader $token={token}>
-                <HeaderLeft>
-                    {isMobile && (
-                        <>
-                            <MobileMenuButton />
+        <Layout style={{ height: '100%' }}>
+            <PageHeader
+                left={
+                    <>
+                        {isMobile && (
+                            <>
+                                <MobileMenuButton />
+                                <IconButton
+                                    icon={<ArrowLeft size={18} />}
+                                    tooltip={t('common.back')}
+                                    onClick={() => navigate({ to: '/sessions' })}
+                                />
+                            </>
+                        )}
+                        <span style={{ fontWeight: 500 }}>{displayName}</span>
+                    </>
+                }
+                right={
+                    <>
+                        {isMobile && (
                             <IconButton
-                                icon={<ArrowLeft size={18} />}
-                                tooltip={t('common.back')}
-                                onClick={() => navigate({ to: '/sessions' })}
+                                icon={<List size={18} />}
+                                onClick={() => setSessionListDrawerOpen(true)}
                             />
-                        </>
-                    )}
-                    <span style={{ fontWeight: 500 }}>{displayName}</span>
-                </HeaderLeft>
-                <HeaderRight>
-                    {isMobile && (
+                        )}
                         <IconButton
-                            icon={<List size={18} />}
-                            onClick={() => setSessionListDrawerOpen(true)}
+                            icon={<Folder size={18} />}
+                            active={sessionViewMode === 'files'}
+                            tooltip={t('session.tabs.files')}
+                            onClick={() => setSessionViewMode(sessionViewMode === 'files' ? 'chat' : 'files')}
                         />
-                    )}
-                    <IconButton
-                        icon={<Folder size={18} />}
-                        active={sessionViewMode === 'files'}
-                        tooltip={t('session.tabs.files')}
-                        onClick={() => setSessionViewMode(sessionViewMode === 'files' ? 'chat' : 'files')}
-                    />
-                    <IconButton
-                        icon={<Terminal size={18} />}
-                        active={sessionViewMode === 'terminal'}
-                        tooltip={t('session.tabs.terminal')}
-                        onClick={() => setSessionViewMode(sessionViewMode === 'terminal' ? 'chat' : 'terminal')}
-                    />
-                </HeaderRight>
-            </DetailHeader>
+                        <IconButton
+                            icon={<Terminal size={18} />}
+                            active={sessionViewMode === 'terminal'}
+                            tooltip={t('session.tabs.terminal')}
+                            onClick={() => setSessionViewMode(sessionViewMode === 'terminal' ? 'chat' : 'terminal')}
+                        />
+                    </>
+                }
+            />
 
-            {/* Content Area - 使用隐藏而非卸载来保持长连接 */}
-            <ContentArea>
+            <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
                 {/* 聊天视图：隐藏但不卸载 */}
                 <ChatWrapper $visible={sessionViewMode === 'chat'}>
                     <ChatContainer sessionId={sessionId} />
@@ -175,7 +147,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                         <TerminalView sessionId={sessionId} />
                     </OverlayView>
                 )}
-            </ContentArea>
-        </DetailContainer>
+            </Layout.Content>
+        </Layout>
     )
 }

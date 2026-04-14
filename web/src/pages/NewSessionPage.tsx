@@ -15,32 +15,17 @@
  */
 
 import { useState, useCallback } from 'react'
-import { Button, Form, Input, Select, Spin, message, Typography, theme as antTheme, Card } from 'antd'
+import { Button, Form, Input, Layout, Select, Spin, message, Typography, theme as antTheme, Card } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowLeftOutlined, FolderOutlined } from '@ant-design/icons'
 import { useMachines } from '@/hooks/queries/useMachines'
 import { useSpawnSession, type SpawnInput } from '@/hooks/mutations/useSpawnSession'
+import { PageHeader } from '@/components/layout/PageHeader'
 import styled from '@emotion/styled'
 
 const { Title, Text } = Typography
 const { useToken } = antTheme
-
-const PageContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: ${props => props.$token.colorBgLayout};
-`
-
-const PageHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 24px;
-    background: ${props => props.$token.colorBgContainer};
-    border-bottom: 1px solid ${props => props.$token.colorBorder};
-`
 
 const PageContent = styled.div`
     flex: 1;
@@ -116,21 +101,26 @@ export function NewSessionPage() {
     }, [navigate])
 
     return (
-        <PageContainer $token={token}>
+        <Layout style={{ height: '100%' }}>
             {/* 页面头部 */}
-            <PageHeader $token={token}>
-                <Button
-                    icon={<ArrowLeftOutlined />}
-                    type="text"
-                    onClick={handleBack}
-                />
-                <Title level={4} style={{ margin: 0 }}>
-                    {t('home.newSession')}
-                </Title>
-            </PageHeader>
+            <PageHeader
+                left={
+                    <>
+                        <Button
+                            icon={<ArrowLeftOutlined />}
+                            type="text"
+                            onClick={handleBack}
+                        />
+                        <Title level={4} style={{ margin: 0 }}>
+                            {t('home.newSession')}
+                        </Title>
+                    </>
+                }
+            />
 
             {/* 表单内容 */}
-            <PageContent>
+            <Layout.Content>
+                <PageContent>
                 <FormCard>
                     {isLoadingMachines ? (
                         <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -268,6 +258,7 @@ export function NewSessionPage() {
                     )}
                 </FormCard>
             </PageContent>
-        </PageContainer>
+            </Layout.Content>
+        </Layout>
     )
 }

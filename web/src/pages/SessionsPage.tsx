@@ -14,34 +14,15 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Button, Empty, Spin } from 'antd'
+import { Button, Empty, Layout, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useUiStore } from '@/stores/uiStore'
 import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { IconButton } from '@/components/ui/IconButton'
 import { Plus, List } from 'lucide-react'
-import styled from '@emotion/styled'
-
-const { useToken } = antTheme
-
-const Container = styled.div`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    flex: 1;
-`
-
-const MobileHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    background: ${props => props.$token.colorBgContainer};
-    border-bottom: 1px solid ${props => props.$token.colorBorder};
-`
 
 /**
  * 会话列表页（索引）
@@ -49,7 +30,6 @@ const MobileHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }
  * - 有会话时提示选择
  */
 export function SessionsPage() {
-    const { token } = useToken()
     const { t } = useTranslation()
     const { data: groups = [], isLoading } = useSessionGroups()
     const hasSessions = groups.some(g => g.totalCount > 0)
@@ -60,17 +40,9 @@ export function SessionsPage() {
         setNewSessionDrawerOpen(true)
     }
 
-    if (isLoading) {
-        return (
-            <Container>
-                <Spin size="large" />
-            </Container>
-        )
-    }
-
     const content = !hasSessions
         ? (
-            <Container>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 <Empty
                     description={t('session.empty')}
                 >
@@ -82,27 +54,39 @@ export function SessionsPage() {
                         {t('session.newSession')}
                     </Button>
                 </Empty>
-            </Container>
+            </div>
         )
         : (
-            <Container>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 <Empty description={t('session.selectToView')} />
-            </Container>
+            </div>
         )
+
+    if (isLoading) {
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                <Spin size="large" />
+            </div>
+        )
+    }
 
     // 移动端：顶部 header + 内容
     if (isMobile) {
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                <MobileHeader $token={token}>
-                    <MobileMenuButton />
-                    <IconButton
-                        icon={<List size={18} />}
-                        onClick={() => setSessionListDrawerOpen(true)}
-                    />
-                </MobileHeader>
-                {content}
-            </div>
+            <Layout style={{ height: '100%' }}>
+                <PageHeader
+                    left={<MobileMenuButton />}
+                    right={
+                        <IconButton
+                            icon={<List size={18} />}
+                            onClick={() => setSessionListDrawerOpen(true)}
+                        />
+                    }
+                />
+                <Layout.Content>
+                    {content}
+                </Layout.Content>
+            </Layout>
         )
     }
 
