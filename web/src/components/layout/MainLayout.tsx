@@ -18,6 +18,7 @@ import { theme as antTheme, ConfigProvider } from 'antd'
 import { useUiStore, resolveTheme } from '@/stores/uiStore'
 import { RailNav } from './RailNav'
 import { MobileMenuDrawer } from './MobileMenu'
+import { SessionListDrawer } from './SessionListDrawer'
 import { Outlet } from '@tanstack/react-router'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -73,6 +74,7 @@ export function MainLayout() {
                     <Outlet />
                 </MainContent>
             </LayoutContainer>
+            <SessionListDrawer />
             {/* 移动端底部弹出菜单 */}
             <MobileMenuDrawer />
         </ConfigProvider>
