@@ -126,7 +126,7 @@ export function SessionListDrawer() {
         />
     )
 
-    // 移动端：底部 Drawer
+    // 移动端：底部 Drawer（嵌套实现层级推挤效果）
     if (isMobile) {
         return (
             <>
@@ -134,7 +134,6 @@ export function SessionListDrawer() {
                     <List size={18} />
                 </TriggerButton>
 
-                {/* 第一层：Session 列表 */}
                 <Drawer
                     title={t('nav.sessions')}
                     open={sessionListDrawerOpen}
@@ -146,20 +145,18 @@ export function SessionListDrawer() {
                     }}
                 >
                     {listDrawerContent}
-                </Drawer>
-
-                {/* 第二层：新建会话 */}
-                <Drawer
-                    title={t('session.newSession')}
-                    open={newSessionDrawerOpen}
-                    onClose={handleCloseNew}
-                    placement="bottom"
-                    styles={{
-                        body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex', flexDirection: 'column' },
-                        wrapper: { height: 'auto', maxHeight: '85vh' },
-                    }}
-                >
-                    {newSessionDrawerContent}
+                    <Drawer
+                        title={t('session.newSession')}
+                        open={newSessionDrawerOpen}
+                        onClose={handleCloseNew}
+                        placement="bottom"
+                        styles={{
+                            body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex', flexDirection: 'column' },
+                            wrapper: { height: 'auto', maxHeight: '85vh' },
+                        }}
+                    >
+                        {newSessionDrawerContent}
+                    </Drawer>
                 </Drawer>
             </>
         )
