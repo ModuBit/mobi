@@ -38,11 +38,10 @@ export function SessionsPage() {
     const { t } = useTranslation()
     const { data: groups = [], isLoading } = useSessionGroups()
     const hasSessions = groups.some(g => g.totalCount > 0)
-    const { setSessionListDrawerOpen, setNewSessionDrawerOpen } = useUiStore()
+    const { setNewSessionDrawerOpen } = useUiStore()
 
     const handleNewSession = () => {
         setNewSessionDrawerOpen(true)
-        setSessionListDrawerOpen(true)
     }
 
     if (isLoading) {
