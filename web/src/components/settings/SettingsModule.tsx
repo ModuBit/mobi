@@ -27,6 +27,7 @@ const { useToken } = antTheme
 
 const SettingsContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     display: flex;
+    width: 100%;
     height: 100%;
 `
 
@@ -99,56 +100,58 @@ export function SettingsModule() {
             <Layout style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {/* 移动端 Header */}
                 <PageHeader
-                    left={<MobileMenuButton />}
-                    right={<Title level={5} style={{ margin: 0 }}>{t('settings.title')}</Title>}
+                    left={<>
+                        <MobileMenuButton />
+                        <Title level={5} style={{ margin: 0 }}>{t('settings.title')}</Title>
+                    </>}
                 />
 
                 <Layout.Content>
                     <SettingsContent $token={token}>
-                    <Title level={4}>{t('settings.general')}</Title>
-                    <Divider />
+                        <Title level={4}>{t('settings.general')}</Title>
+                        <Divider />
 
-                    {/* 语言设置 */}
-                    <SettingItem>
-                        <SettingLabel>
-                            <Globe size={18} color={token.colorTextSecondary} />
-                            <div>
-                                <Text strong>{t('settings.language')}</Text>
-                            </div>
-                        </SettingLabel>
-                        <Select
-                            value={locale}
-                            onChange={setLocale}
-                            style={{ width: 150 }}
-                            options={[
-                                { value: 'zh', label: '简体中文' },
-                                { value: 'en', label: 'English' },
-                            ]}
-                        />
-                    </SettingItem>
+                        {/* 语言设置 */}
+                        <SettingItem>
+                            <SettingLabel>
+                                <Globe size={18} color={token.colorTextSecondary} />
+                                <div>
+                                    <Text strong>{t('settings.language')}</Text>
+                                </div>
+                            </SettingLabel>
+                            <Select
+                                value={locale}
+                                onChange={setLocale}
+                                style={{ width: 150 }}
+                                options={[
+                                    { value: 'zh', label: '简体中文' },
+                                    { value: 'en', label: 'English' },
+                                ]}
+                            />
+                        </SettingItem>
 
-                    <Divider />
+                        <Divider />
 
-                    {/* 主题设置 */}
-                    <SettingItem>
-                        <SettingLabel>
-                            <Palette size={18} color={token.colorTextSecondary} />
-                            <div>
-                                <Text strong>{t('settings.theme')}</Text>
-                            </div>
-                        </SettingLabel>
-                        <Select
-                            value={theme}
-                            onChange={setTheme}
-                            style={{ width: 150 }}
-                            options={[
-                                { value: 'light', label: t('settings.themeLight') },
-                                { value: 'dark', label: t('settings.themeDark') },
-                                { value: 'system', label: t('settings.themeSystem') },
-                            ]}
-                        />
-                    </SettingItem>
-                </SettingsContent>
+                        {/* 主题设置 */}
+                        <SettingItem>
+                            <SettingLabel>
+                                <Palette size={18} color={token.colorTextSecondary} />
+                                <div>
+                                    <Text strong>{t('settings.theme')}</Text>
+                                </div>
+                            </SettingLabel>
+                            <Select
+                                value={theme}
+                                onChange={setTheme}
+                                style={{ width: 150 }}
+                                options={[
+                                    { value: 'light', label: t('settings.themeLight') },
+                                    { value: 'dark', label: t('settings.themeDark') },
+                                    { value: 'system', label: t('settings.themeSystem') },
+                                ]}
+                            />
+                        </SettingItem>
+                    </SettingsContent>
                 </Layout.Content>
             </Layout>
         </SettingsContainer>

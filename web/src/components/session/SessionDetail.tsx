@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Layout, Spin, Result, Button } from 'antd'
+import { Layout, Spin, Result, Button, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/hooks/queries/useSession'
@@ -86,6 +86,36 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
 
     const displayName = getSessionDisplayName(session)
 
+    // 视图切换按钮（渲染在 Composer 左侧）
+    const viewModeButtons = (
+        <>
+            <Tooltip title={t('session.tabs.files')}>
+                <Button
+                    type="text"
+                    size="small"
+                    icon={<Folder size={14} />}
+                    onClick={() => setSessionViewMode(sessionViewMode === 'files' ? 'chat' : 'files')}
+                    style={{
+                        borderRadius: '50%',
+                        color: sessionViewMode === 'files' ? 'var(--ant-color-primary)' : undefined,
+                    }}
+                />
+            </Tooltip>
+            <Tooltip title={t('session.tabs.terminal')}>
+                <Button
+                    type="text"
+                    size="small"
+                    icon={<Terminal size={14} />}
+                    onClick={() => setSessionViewMode(sessionViewMode === 'terminal' ? 'chat' : 'terminal')}
+                    style={{
+                        borderRadius: '50%',
+                        color: sessionViewMode === 'terminal' ? 'var(--ant-color-primary)' : undefined,
+                    }}
+                />
+            </Tooltip>
+        </>
+    )
+
     return (
         <Layout style={{ height: '100%' }}>
             <PageHeader
@@ -105,33 +135,18 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                     </>
                 }
                 right={
-                    <>
-                        {isMobile && (
-                            <IconButton
-                                icon={<List size={18} />}
-                                onClick={() => setSessionListDrawerOpen(true)}
-                            />
-                        )}
-                        <IconButton
-                            icon={<Folder size={18} />}
-                            active={sessionViewMode === 'files'}
-                            tooltip={t('session.tabs.files')}
-                            onClick={() => setSessionViewMode(sessionViewMode === 'files' ? 'chat' : 'files')}
-                        />
-                        <IconButton
-                            icon={<Terminal size={18} />}
-                            active={sessionViewMode === 'terminal'}
-                            tooltip={t('session.tabs.terminal')}
-                            onClick={() => setSessionViewMode(sessionViewMode === 'terminal' ? 'chat' : 'terminal')}
-                        />
-                    </>
+                    <IconButton
+                        icon={<List size={18} />}
+                        tooltip={t('nav.sessions')}
+                        onClick={() => setSessionListDrawerOpen(true)}
+                    />
                 }
             />
 
             <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
                 {/* 聊天视图：隐藏但不卸载 */}
                 <ChatWrapper $visible={sessionViewMode === 'chat'}>
-                    <ChatContainer sessionId={sessionId} />
+                    <ChatContainer sessionId={sessionId} extraComposerButtons={viewModeButtons} />
                 </ChatWrapper>
 
                 {/* 文件视图：全屏覆盖 */}

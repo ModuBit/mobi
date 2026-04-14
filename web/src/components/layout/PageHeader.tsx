@@ -38,7 +38,7 @@ export const HeaderRight = styled.div`
     gap: 8px;
 `
 
-const StyledHeader = styled(Layout.Header)<{ $token: ReturnType<typeof useToken>['token'] }>`
+const StyledHeader = styled(Layout.Header)<{ $bg: string; $border: string }>`
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -46,38 +46,25 @@ const StyledHeader = styled(Layout.Header)<{ $token: ReturnType<typeof useToken>
     height: auto;
     min-height: 48px;
     line-height: normal;
-    background: ${props => props.$token.colorBgContainer} !important;
-    border-bottom: 1px solid ${props => props.$token.colorBorder};
+    background: ${p => p.$bg};
+    border-bottom: 1px solid ${p => p.$border};
 `
 
 interface PageHeaderProps {
     left?: ReactNode
     right?: ReactNode
-    children?: ReactNode
 }
 
 /**
- * 统一的页面头部组件
- *
- * 支持两种用法：
- * 1. left/right 属性：`<PageHeader left={...} right={...} />`
- * 2. 直接子元素：`<PageHeader>内容</PageHeader>`
+ * 统一的页面头部组件，基于 antd Layout.Header
  */
-export function PageHeader({ left, right, children }: PageHeaderProps) {
+export function PageHeader({ left, right }: PageHeaderProps) {
     const { token } = useToken()
 
-    if (left || right) {
-        return (
-            <StyledHeader $token={token}>
-                <HeaderLeft>{left}</HeaderLeft>
-                {right && <HeaderRight>{right}</HeaderRight>}
-            </StyledHeader>
-        )
-    }
-
     return (
-        <StyledHeader $token={token}>
-            {children}
+        <StyledHeader $bg={token.colorBgContainer} $border={token.colorBorder}>
+            <HeaderLeft>{left}</HeaderLeft>
+            {right && <HeaderRight>{right}</HeaderRight>}
         </StyledHeader>
     )
 }

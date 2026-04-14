@@ -15,8 +15,9 @@
  */
 
 import { useState, useCallback, useMemo } from 'react'
-import { Input, Button, Tooltip, Space } from 'antd'
-import { SendOutlined, PaperClipOutlined, SettingOutlined, StopOutlined } from '@ant-design/icons'
+import { Button, Tooltip, Space } from 'antd'
+import { PaperClipOutlined, SettingOutlined, StopOutlined } from '@ant-design/icons'
+import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, PermissionMode } from '@mobi/shared'
 import {
@@ -26,8 +27,6 @@ import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import type { FileAttachment } from '@/lib/fileAttachments'
 import { createFileAttachment } from '@/lib/fileAttachments'
-
-const { TextArea } = Input
 
 interface ChatComposerProps {
     /** 是否禁用 */
@@ -50,6 +49,8 @@ interface ChatComposerProps {
     agentFlavor?: string | null
     /** 会话 ID */
     sessionId?: string
+    /** 额外的底部按钮（渲染在 prefix 区域） */
+    extraLeftButtons?: React.ReactNode
     /** 权限模式变更回调 */
     onPermissionModeChange?: (mode: PermissionMode) => void
     /** 模型变更回调 */
@@ -62,7 +63,7 @@ interface ChatComposerProps {
 
 /**
  * 聊天输入组件
- * 支持多行输入、附件上传
+ * 基于 antd X 的 Sender 组件，支持多行输入、附件上传
  */
 export function ChatComposer(props: ChatComposerProps) {
     const { t } = useTranslation()
@@ -78,6 +79,7 @@ export function ChatComposer(props: ChatComposerProps) {
         contextSize,
         agentFlavor,
         sessionId,
+        extraLeftButtons,
         onPermissionModeChange,
         onSend,
         onAbort
@@ -105,38 +107,16 @@ export function ChatComposer(props: ChatComposerProps) {
     // 显示设置按钮
     const showSettingsButton = Boolean(onPermissionModeChange && permissionModeOptions.length > 0)
 
-    // 发送消息
-    const handleSend = useCallback(() => {
+    // 提交消息
+    const handleSubmit = useCallback((content: string) => {
         if (!canSend) return
-        onSend(trimmed)
+        onSend(content.trim())
         setText('')
         setAttachments([])
-    }, [canSend, onSend, trimmed])
-
-    // 键盘事件处理
-    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        // IME 组合输入时不拦截
-        if (e.nativeEvent.isComposing) return
-
-        // Enter 发送（非 Shift 组合）
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            if (canSend) {
-                handleSend()
-            }
-            return
-        }
-
-        // Escape 中断思考
-        if (e.key === 'Escape' && thinking && onAbort) {
-            e.preventDefault()
-            onAbort()
-        }
-    }, [canSend, handleSend, thinking, onAbort])
+    }, [canSend, onSend])
 
     // 添加附件
     const handleAttach = useCallback(() => {
-        // 触发文件选择对话框
         const input = document.createElement('input')
         input.type = 'file'
         input.multiple = true
@@ -171,97 +151,75 @@ export function ChatComposer(props: ChatComposerProps) {
                 agentFlavor={agentFlavor}
             />
 
-            {/* 输入区域容器 */}
-            <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                borderRadius: 20,
-                background: 'var(--ant-color-fill-secondary, #f5f5f5)',
-                overflow: 'hidden'
-            }}>
-                {/* 附件列表 */}
-                <AttachmentList
-                    attachments={attachments}
-                    onRemove={handleRemoveAttachment}
-                />
-
-                {/* 输入框 */}
-                <TextArea
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={t('composer.placeholder')}
-                    disabled={controlsDisabled}
-                    autoSize={{ minRows: 1, maxRows: 5 }}
-                    style={{
-                        border: 'none',
-                        background: 'transparent',
-                        resize: 'none',
-                        fontSize: 14,
-                        lineHeight: 1.5,
-                        padding: '12px 16px'
-                    }}
-                />
-
-                {/* 操作按钮 */}
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0 8px 8px'
-                }}>
-                    {/* 左侧按钮组 */}
-                    <Space size={4}>
-                        {/* 附件按钮 */}
-                        <Tooltip title={t('composer.attach')}>
-                            <Button
-                                type="text"
-                                size="small"
-                                icon={<PaperClipOutlined />}
-                                onClick={handleAttach}
-                                disabled={controlsDisabled}
-                                style={{ borderRadius: '50%' }}
-                            />
-                        </Tooltip>
-
-                        {/* 设置按钮 */}
-                        {showSettingsButton && (
-                            <Tooltip title={t('composer.settings')}>
+            {/* Sender 输入组件 */}
+            <Sender
+                value={text}
+                onChange={setText}
+                onSubmit={handleSubmit}
+                onCancel={onAbort}
+                placeholder={t('composer.placeholder')}
+                disabled={controlsDisabled}
+                loading={thinking}
+                autoSize={{ minRows: 1, maxRows: 5 }}
+                header={
+                    hasAttachments ? (
+                        <AttachmentList
+                            attachments={attachments}
+                            onRemove={handleRemoveAttachment}
+                        />
+                    ) : null
+                }
+                suffix={false}
+                footer={(oriNode) => (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Space size={4}>
+                            {/* 附件按钮 */}
+                            <Tooltip title={t('composer.attach')}>
                                 <Button
                                     type="text"
                                     size="small"
-                                    icon={<SettingOutlined />}
+                                    icon={<PaperClipOutlined />}
+                                    onClick={handleAttach}
                                     disabled={controlsDisabled}
                                     style={{ borderRadius: '50%' }}
                                 />
                             </Tooltip>
-                        )}
 
-                        {/* 中断按钮 */}
-                        {(thinking) && (
-                            <Tooltip title={t('composer.abort')}>
-                                <Button
-                                    type="text"
-                                    size="small"
-                                    icon={<StopOutlined />}
-                                    onClick={onAbort}
-                                    style={{ borderRadius: '50%', color: 'var(--ant-color-error)' }}
-                                />
-                            </Tooltip>
-                        )}
-                    </Space>
+                            {/* 设置按钮 */}
+                            {showSettingsButton && (
+                                <Tooltip title={t('composer.settings')}>
+                                    <Button
+                                        type="text"
+                                        size="small"
+                                        icon={<SettingOutlined />}
+                                        disabled={controlsDisabled}
+                                        style={{ borderRadius: '50%' }}
+                                    />
+                                </Tooltip>
+                            )}
 
-                    {/* 发送按钮 */}
-                    <Button
-                        type="primary"
-                        shape="circle"
-                        size="small"
-                        icon={<SendOutlined />}
-                        onClick={handleSend}
-                        disabled={!canSend}
-                    />
-                </div>
-            </div>
+                            {/* 中断按钮 */}
+                            {thinking && (
+                                <Tooltip title={t('composer.abort')}>
+                                    <Button
+                                        type="text"
+                                        size="small"
+                                        icon={<StopOutlined />}
+                                        onClick={onAbort}
+                                        style={{ borderRadius: '50%', color: 'var(--ant-color-error)' }}
+                                    />
+                                </Tooltip>
+                            )}
+
+                            {/* 额外按钮（视图切换等） */}
+                            {extraLeftButtons}
+                        </Space>
+
+                        {/* 发送按钮 */}
+                        {oriNode}
+                    </div>
+                )}
+            />
         </div>
     )
 }

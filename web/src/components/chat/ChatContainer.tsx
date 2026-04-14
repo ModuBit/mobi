@@ -54,9 +54,11 @@ const BUBBLE_ROLES = {
 
 interface ChatContainerProps {
     sessionId: string
+    /** 传递给 ChatComposer 的额外按钮 */
+    extraComposerButtons?: React.ReactNode
 }
 
-export function ChatContainer({ sessionId }: ChatContainerProps) {
+export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainerProps) {
     const { data: messages = [], isLoading: messagesLoading } = useMessages(sessionId)
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId)
@@ -292,6 +294,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                 onPermissionModeChange={handlePermissionModeChange}
                 onSend={handleSend}
                 onAbort={handleAbort}
+                extraLeftButtons={extraComposerButtons}
             />
         </div>
     )

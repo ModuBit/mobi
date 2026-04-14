@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, ConfigProvider } from 'antd'
+import { theme as antTheme, ConfigProvider, Layout } from 'antd'
 import { useUiStore, resolveTheme } from '@/stores/uiStore'
 import { RailNav } from './RailNav'
 import { MobileMenuDrawer } from './MobileMenu'
@@ -23,31 +23,12 @@ import { Outlet } from '@tanstack/react-router'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Helmet } from 'react-helmet-async'
-import styled from '@emotion/styled'
-
-const { useToken } = antTheme
-
-const LayoutContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    height: 100vh;
-    width: 100vw;
-    overflow: hidden;
-    background: ${props => props.$token.colorBgLayout};
-`
-
-const MainContent = styled.main`
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-    min-width: 0;
-`
 
 /**
  * 主布局组件
- * 使用 Outlet 渲染子路由内容
+ * 使用 antd Layout 组件组织 RailNav + Content
  */
 export function MainLayout() {
-    const { token } = useToken()
     const { theme } = useUiStore()
     const { t } = useTranslation()
 
@@ -68,12 +49,12 @@ export function MainLayout() {
             <Helmet>
                 <title>{t('siteTitle')}</title>
             </Helmet>
-            <LayoutContainer $token={token}>
+            <Layout style={{ height: '100vh', overflow: 'hidden', flexDirection: 'row' }}>
                 <RailNav />
-                <MainContent>
+                <Layout.Content style={{ flex: 1, display: 'flex', overflow: 'hidden', minWidth: 0 }}>
                     <Outlet />
-                </MainContent>
-            </LayoutContainer>
+                </Layout.Content>
+            </Layout>
             <SessionListDrawer />
             {/* 移动端底部弹出菜单 */}
             <MobileMenuDrawer />

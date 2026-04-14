@@ -58,7 +58,23 @@ export function SessionsPage() {
         )
         : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <Empty description={t('session.selectToView')} />
+                <Empty description={t('session.selectToView')}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <Button
+                            icon={<List size={16} />}
+                            onClick={() => setSessionListDrawerOpen(true)}
+                        >
+                            {t('nav.sessions')}
+                        </Button>
+                        <Button
+                            type="primary"
+                            icon={<Plus size={16} />}
+                            onClick={handleNewSession}
+                        >
+                            {t('session.newSession')}
+                        </Button>
+                    </div>
+                </Empty>
             </div>
         )
 
@@ -90,6 +106,21 @@ export function SessionsPage() {
         )
     }
 
-    // PC 端：直接展示内容
-    return content
+    // PC 端：header + 内容
+    return (
+        <Layout style={{ height: '100%' }}>
+            <PageHeader
+                right={
+                    <IconButton
+                        icon={<List size={18} />}
+                        tooltip={t('nav.sessions')}
+                        onClick={() => setSessionListDrawerOpen(true)}
+                    />
+                }
+            />
+            <Layout.Content>
+                {content}
+            </Layout.Content>
+        </Layout>
+    )
 }
