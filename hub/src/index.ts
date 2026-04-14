@@ -24,6 +24,7 @@
  */
 
 import { createConfiguration, type ConfigSource } from './configuration'
+import { writeHubState, clearHubState } from './config/hubState'
 import { Store } from './store'
 import { SyncEngine, type SyncEvent } from './sync/syncEngine'
 import { NotificationHub } from './notifications/notificationHub'
@@ -135,8 +136,17 @@ async function main() {
     console.log('')
     console.log('Mobi Hub is ready!')
 
+    // 写入 hub 状态文件，供 CLI status/stop 子命令使用
+    writeHubState(config.dataDir, {
+        pid: process.pid,
+        listenHost: config.listenHost,
+        listenPort: config.listenPort,
+        startTime: new Date().toLocaleString()
+    })
+
     const shutdown = async () => {
         console.log('\nShutting down...')
+        clearHubState(config.dataDir)
         notificationHub?.stop()
         syncEngine?.stop()
         sseManager?.stop()

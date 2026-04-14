@@ -15,6 +15,8 @@
  */
 
 import chalk from 'chalk'
+import { readHubState, type HubLocallyPersistedState } from '@/persistence'
+import { isProcessAlive, killProcess } from '@/utils/process'
 import type { CommandDefinition, CommandContext } from './types'
 
 function parseHubArgs(args: string[]): { host?: string; port?: string } {
@@ -36,10 +38,83 @@ function parseHubArgs(args: string[]): { host?: string; port?: string } {
     return result
 }
 
+async function fetchHubHealth(host: string, port: number): Promise<{ status: string; protocolVersion: string } | null> {
+    try {
+        const response = await fetch(`http://${host}:${port}/health`, {
+            signal: AbortSignal.timeout(3000)
+        })
+        if (!response.ok) return null
+        return await response.json() as { status: string; protocolVersion: string }
+    } catch {
+        return null
+    }
+}
+
+/**
+ * 读取 Hub 状态并校验进程是否存活
+ * 供 status/stop 子命令复用
+ */
+async function getLiveHubState(): Promise<HubLocallyPersistedState | null> {
+    const state = await readHubState()
+
+    if (!state) {
+        console.log(chalk.yellow('Hub is not running'))
+        console.log(chalk.gray('  No hub state file found'))
+        return null
+    }
+
+    if (!isProcessAlive(state.pid)) {
+        console.log(chalk.yellow('Hub is not running'))
+        console.log(chalk.gray(`  Process (PID ${state.pid}) is dead`))
+        return null
+    }
+
+    return state
+}
+
+async function runHubStatus(): Promise<void> {
+    const state = await getLiveHubState()
+    if (!state) return
+
+    const health = await fetchHubHealth(state.listenHost, state.listenPort)
+
+    console.log(chalk.green('Hub is running'))
+    console.log(`  PID:         ${state.pid}`)
+    console.log(`  Listen:      ${state.listenHost}:${state.listenPort}`)
+    console.log(`  Local URL:   http://localhost:${state.listenPort}`)
+    console.log(`  Started at:  ${state.startTime}`)
+    if (health) {
+        console.log(`  Health:      ${chalk.green(health.status)}`)
+        console.log(`  Protocol:    v${health.protocolVersion}`)
+    }
+}
+
+async function runHubStop(): Promise<void> {
+    const state = await getLiveHubState()
+    if (!state) return
+
+    console.log(`Stopping hub (PID ${state.pid})...`)
+
+    const killed = await killProcess(state.pid)
+    console.log(killed ? chalk.green('Hub stopped') : chalk.red('Failed to stop hub'))
+}
+
 export const hubCommand: CommandDefinition = {
     name: 'hub',
     requiresRuntimeAssets: true,
     run: async (context: CommandContext) => {
+        const subcommand = context.commandArgs[0]
+
+        if (subcommand === 'status') {
+            await runHubStatus()
+            process.exit(0)
+        }
+
+        if (subcommand === 'stop') {
+            await runHubStop()
+            process.exit(0)
+        }
+
         try {
             const { host, port } = parseHubArgs(context.commandArgs)
 

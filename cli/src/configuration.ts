@@ -39,6 +39,7 @@ class Configuration {
     public readonly privateKeyFile: string
     public readonly runnerStateFile: string
     public readonly runnerLockFile: string
+    public readonly hubStateFile: string
     public readonly currentCliVersion: string
 
     public readonly isExperimentalEnabled: boolean
@@ -66,6 +67,7 @@ class Configuration {
         this.privateKeyFile = join(this.mobiHomeDir, 'access.key')
         this.runnerStateFile = join(this.mobiHomeDir, 'runner.state.json')
         this.runnerLockFile = join(this.mobiHomeDir, 'runner.state.json.lock')
+        this.hubStateFile = join(this.mobiHomeDir, 'hub.state.json')
 
         this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.MOBI_EXPERIMENTAL?.toLowerCase() || '')
 

@@ -55,6 +55,17 @@ export interface RunnerLocallyPersistedState {
   runnerLogPath?: string;
 }
 
+/**
+ * Hub 状态持久化
+ * Hub 启动时写入，关闭时清理，用于 CLI status/stop 子命令
+ */
+export interface HubLocallyPersistedState {
+  pid: number;
+  listenHost: string;
+  listenPort: number;
+  startTime: string;
+}
+
 export async function readSettings(): Promise<Settings> {
   if (!existsSync(configuration.settingsFile)) {
     return { ...defaultSettings }
@@ -270,4 +281,40 @@ export async function releaseRunnerLock(lockHandle: FileHandle): Promise<void> {
       unlinkSync(configuration.runnerLockFile);
     }
   } catch { }
+}
+
+//
+// Hub 状态持久化
+//
+
+/**
+ * 读取 Hub 状态文件
+ */
+export async function readHubState(): Promise<HubLocallyPersistedState | null> {
+  try {
+    if (!existsSync(configuration.hubStateFile)) {
+      return null;
+    }
+    const content = await readFile(configuration.hubStateFile, 'utf-8');
+    return JSON.parse(content) as HubLocallyPersistedState;
+  } catch (error) {
+    console.error(`[PERSISTENCE] Hub state file corrupted: ${configuration.hubStateFile}`, error);
+    return null;
+  }
+}
+
+/**
+ * 写入 Hub 状态文件（同步写入保证原子性）
+ */
+export function writeHubState(state: HubLocallyPersistedState): void {
+  writeFileSync(configuration.hubStateFile, JSON.stringify(state, null, 2), 'utf-8');
+}
+
+/**
+ * 清理 Hub 状态文件
+ */
+export async function clearHubState(): Promise<void> {
+  if (existsSync(configuration.hubStateFile)) {
+    await unlink(configuration.hubStateFile);
+  }
 }
