@@ -49,7 +49,7 @@ interface ChatComposerProps {
     agentFlavor?: string | null
     /** 会话 ID */
     sessionId?: string
-    /** 额外的底部按钮（渲染在 prefix 区域） */
+    /** 额外的底部按钮（渲染在 Sender footer 区域） */
     extraLeftButtons?: React.ReactNode
     /** 权限模式变更回调 */
     onPermissionModeChange?: (mode: PermissionMode) => void
@@ -107,7 +107,6 @@ export function ChatComposer(props: ChatComposerProps) {
     // 显示设置按钮
     const showSettingsButton = Boolean(onPermissionModeChange && permissionModeOptions.length > 0)
 
-    // 提交消息
     const handleSubmit = useCallback((content: string) => {
         if (!canSend) return
         onSend(content.trim())
@@ -115,7 +114,6 @@ export function ChatComposer(props: ChatComposerProps) {
         setAttachments([])
     }, [canSend, onSend])
 
-    // 添加附件
     const handleAttach = useCallback(() => {
         const input = document.createElement('input')
         input.type = 'file'
@@ -132,7 +130,6 @@ export function ChatComposer(props: ChatComposerProps) {
         input.click()
     }, [])
 
-    // 移除附件
     const handleRemoveAttachment = useCallback((id: string) => {
         setAttachments(prev => prev.filter(a => a.id !== id))
     }, [])

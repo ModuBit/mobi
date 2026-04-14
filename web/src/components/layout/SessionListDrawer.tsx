@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Button, Drawer, Empty } from 'antd'
+import { Button, Drawer, Empty } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useUiStore } from '@/stores/uiStore'
@@ -24,14 +24,20 @@ import { SessionList } from '@/components/session/SessionList'
 import { NewSession } from '@/components/NewSession'
 import { Plus } from 'lucide-react'
 
-const { useToken } = antTheme
+// 移动端 Drawer 样式常量
+const MOBILE_LIST_STYLES = {
+    body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'hidden', display: 'flex' as const, flexDirection: 'column' as const },
+    wrapper: { height: 'auto', maxHeight: '85vh' },
+}
 
-/**
- * Session 列表 Drawer 组件
- * - 空列表时：显示新建按钮，点击打开第二层 Drawer
- * - 有列表时：显示 SessionList，"+"按钮打开第二层 Drawer
- * - NewSession 支持嵌套（push 效果）和独立打开两种模式
- */
+const MOBILE_NEW_STYLES = {
+    body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex' as const, flexDirection: 'column' as const },
+    wrapper: { height: 'auto', maxHeight: '85vh' },
+}
+
+const PC_LIST_BODY_STYLES = { padding: 0, overflow: 'hidden', display: 'flex' as const, flexDirection: 'column' as const }
+const PC_NEW_BODY_STYLES = { padding: 0, overflow: 'auto', display: 'flex' as const, flexDirection: 'column' as const }
+
 export function SessionListDrawer() {
     const { t } = useTranslation()
     const navigate = useNavigate()
@@ -43,7 +49,6 @@ export function SessionListDrawer() {
         newSessionDrawerOpen, setNewSessionDrawerOpen,
     } = useUiStore()
 
-    // 检测是否有会话
     const { data: groups = [] } = useSessionGroups()
     const hasSessions = groups.some(g => g.totalCount > 0)
 
@@ -54,19 +59,16 @@ export function SessionListDrawer() {
     const handleOpenNew = () => setNewSessionDrawerOpen(true)
     const handleCloseNew = () => setNewSessionDrawerOpen(false)
 
-    // 新建成功：导航到新会话，关闭所有 Drawer
     const handleNewSuccess = (newSessionId: string) => {
         setNewSessionDrawerOpen(false)
         setSessionListDrawerOpen(false)
         navigate({ to: '/sessions/$sessionId', params: { sessionId: newSessionId } })
     }
 
-    // 新建取消
     const handleNewCancel = () => {
         setNewSessionDrawerOpen(false)
     }
 
-    // 空状态
     const emptyContent = (
         <div style={{ padding: '32px 16px' }}>
             <Empty
@@ -84,12 +86,10 @@ export function SessionListDrawer() {
         </div>
     )
 
-    // 列表 Drawer 的内容
     const listDrawerContent = hasSessions
         ? <SessionList selectedSessionId={sessionId} />
         : emptyContent
 
-    // 新建会话 Drawer 内容
     const newSessionContent = (
         <NewSession
             onSuccess={handleNewSuccess}
@@ -97,61 +97,52 @@ export function SessionListDrawer() {
         />
     )
 
+    // 独立的 NewSession Drawer（session list 未打开时使用）
+    const standaloneNewDrawer = !sessionListDrawerOpen && (
+        <Drawer
+            title={t('session.newSession')}
+            open={newSessionDrawerOpen}
+            onClose={handleCloseNew}
+            placement={isMobile ? 'bottom' : 'right'}
+            size={360}
+            styles={{
+                body: isMobile ? MOBILE_NEW_STYLES.body : PC_NEW_BODY_STYLES,
+                wrapper: isMobile ? MOBILE_NEW_STYLES.wrapper : undefined,
+            }}
+        >
+            {newSessionContent}
+        </Drawer>
+    )
+
     if (isMobile) {
         return (
             <>
-                {/* Session 列表 Drawer */}
                 <Drawer
                     title={t('nav.sessions')}
                     extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
                     open={sessionListDrawerOpen}
                     onClose={handleCloseList}
                     placement="bottom"
-                    styles={{
-                        body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-                        wrapper: { height: 'auto', maxHeight: '85vh' },
-                    }}
+                    styles={MOBILE_LIST_STYLES}
                 >
                     {listDrawerContent}
-                    {/* 嵌套新建 Drawer（push 效果） */}
-                    {sessionListDrawerOpen && (
-                        <Drawer
-                            title={t('session.newSession')}
-                            open={newSessionDrawerOpen}
-                            onClose={handleCloseNew}
-                            placement="bottom"
-                            styles={{
-                                body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex', flexDirection: 'column' },
-                                wrapper: { height: 'auto', maxHeight: '85vh' },
-                            }}
-                        >
-                            {newSessionContent}
-                        </Drawer>
-                    )}
-                </Drawer>
-                {/* 独立新建 Drawer（session list 未打开时） */}
-                {!sessionListDrawerOpen && (
                     <Drawer
                         title={t('session.newSession')}
                         open={newSessionDrawerOpen}
                         onClose={handleCloseNew}
                         placement="bottom"
-                        styles={{
-                            body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex', flexDirection: 'column' },
-                            wrapper: { height: 'auto', maxHeight: '85vh' },
-                        }}
+                        styles={MOBILE_NEW_STYLES}
                     >
                         {newSessionContent}
                     </Drawer>
-                )}
+                </Drawer>
+                {standaloneNewDrawer}
             </>
         )
     }
 
-    // PC 端
     return (
         <>
-            {/* Session 列表 Drawer */}
             <Drawer
                 title={t('nav.sessions')}
                 extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
@@ -159,42 +150,21 @@ export function SessionListDrawer() {
                 onClose={handleCloseList}
                 placement="right"
                 size={300}
-                styles={{
-                    body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-                }}
+                styles={{ body: PC_LIST_BODY_STYLES }}
             >
                 {listDrawerContent}
-                {/* 嵌套新建 Drawer（push 效果） */}
-                {sessionListDrawerOpen && (
-                    <Drawer
-                        title={t('session.newSession')}
-                        open={newSessionDrawerOpen}
-                        onClose={handleCloseNew}
-                        placement="right"
-                        size={360}
-                        styles={{
-                            body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
-                        }}
-                    >
-                        {newSessionContent}
-                    </Drawer>
-                )}
-            </Drawer>
-            {/* 独立新建 Drawer（session list 未打开时） */}
-            {!sessionListDrawerOpen && (
                 <Drawer
                     title={t('session.newSession')}
                     open={newSessionDrawerOpen}
                     onClose={handleCloseNew}
                     placement="right"
                     size={360}
-                    styles={{
-                        body: { padding: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' },
-                    }}
+                    styles={{ body: PC_NEW_BODY_STYLES }}
                 >
                     {newSessionContent}
                 </Drawer>
-            )}
+            </Drawer>
+            {standaloneNewDrawer}
         </>
     )
 }

@@ -86,7 +86,6 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
 
     const displayName = getSessionDisplayName(session)
 
-    // 视图切换按钮（渲染在 Composer 左侧）
     const viewModeButtons = (
         <>
             <Tooltip title={t('session.tabs.files')}>
