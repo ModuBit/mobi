@@ -54,7 +54,6 @@ export function SessionListDrawer() {
         console.log('New session')
     }
 
-    // PC 端：鼠标进入 Drawer 取消关闭计时器
     const handleDrawerMouseEnter = () => {
         if (!isMobile) {
             window.dispatchEvent(new CustomEvent('session-drawer-enter'))
@@ -66,6 +65,22 @@ export function SessionListDrawer() {
             window.dispatchEvent(new CustomEvent('session-drawer-leave'))
         }
     }
+
+    // Drawer 内容：仅在打开时渲染 SessionList，避免关闭时执行无用的查询
+    const drawerContent = sessionListDrawerOpen && (
+        <>
+            <DrawerHeader $token={token}>
+                <Title level={5} style={{ margin: 0 }}>{t('home.title')}</Title>
+                <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    size="small"
+                    onClick={handleNewSession}
+                />
+            </DrawerHeader>
+            <SessionList selectedSessionId={sessionId} />
+        </>
+    )
 
     // 移动端：底部 Drawer
     if (isMobile) {
@@ -81,16 +96,7 @@ export function SessionListDrawer() {
                     wrapper: { height: 'auto', maxHeight: '70vh' },
                 }}
             >
-                <DrawerHeader $token={token}>
-                    <Title level={5} style={{ margin: 0 }}>{t('home.title')}</Title>
-                    <Button
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        size="small"
-                        onClick={handleNewSession}
-                    />
-                </DrawerHeader>
-                <SessionList selectedSessionId={sessionId} />
+                {drawerContent}
             </Drawer>
         )
     }
@@ -111,16 +117,7 @@ export function SessionListDrawer() {
                     wrapper: { marginLeft: '56px' },
                 }}
             >
-                <DrawerHeader $token={token}>
-                    <Title level={5} style={{ margin: 0 }}>{t('home.title')}</Title>
-                    <Button
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        size="small"
-                        onClick={handleNewSession}
-                    />
-                </DrawerHeader>
-                <SessionList selectedSessionId={sessionId} />
+                {drawerContent}
             </Drawer>
         </div>
     )

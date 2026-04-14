@@ -98,7 +98,6 @@ export function RailNav() {
     const { setSessionListDrawerOpen } = useUiStore()
     const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    // 清除关闭计时器
     const clearCloseTimer = useCallback(() => {
         if (closeTimerRef.current) {
             clearTimeout(closeTimerRef.current)
@@ -106,7 +105,6 @@ export function RailNav() {
         }
     }, [])
 
-    // 延迟关闭 Drawer（200ms）
     const scheduleClose = useCallback(() => {
         clearCloseTimer()
         closeTimerRef.current = setTimeout(() => {
@@ -114,18 +112,15 @@ export function RailNav() {
         }, 200)
     }, [clearCloseTimer, setSessionListDrawerOpen])
 
-    // hover 进入 sessions 图标 → 打开 Drawer
     const handleSessionsMouseEnter = useCallback(() => {
         clearCloseTimer()
         setSessionListDrawerOpen(true)
     }, [clearCloseTimer, setSessionListDrawerOpen])
 
-    // hover 离开 sessions 图标 → 延迟关闭
     const handleSessionsMouseLeave = useCallback(() => {
         scheduleClose()
     }, [scheduleClose])
 
-    // 监听 Drawer 区域的 hover 事件，协同关闭计时器
     useEffect(() => {
         const handleDrawerEnter = () => clearCloseTimer()
         const handleDrawerLeave = () => scheduleClose()
@@ -138,7 +133,6 @@ export function RailNav() {
         }
     }, [clearCloseTimer, scheduleClose])
 
-    // 组件卸载时清除计时器
     useEffect(() => {
         return () => clearCloseTimer()
     }, [clearCloseTimer])
