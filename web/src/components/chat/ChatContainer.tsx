@@ -296,9 +296,9 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
                 onSend={handleSend}
                 onAbort={handleAbort}
                 onActivate={() => sessionActions.resumeSession()}
-                activatePending={sessionActions.isPending}
+                activatePending={sessionActions.isResumePending}
                 onSwitchToRemote={() => sessionActions.switchSession()}
-                switchPending={sessionActions.isPending}
+                switchPending={sessionActions.isSwitchPending}
                 extraLeftButtons={extraComposerButtons}
             />
         </div>

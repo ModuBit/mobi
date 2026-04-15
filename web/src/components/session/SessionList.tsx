@@ -93,6 +93,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
 
     // 长按 ActionSheet 状态
     const [actionSheetSessionId, setActionSheetSessionId] = useState<string | null>(null)
+    const [actionSheetLoadingKey, setActionSheetLoadingKey] = useState<string | null>(null)
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
     const lastTouchedKey = useRef<string | null>(null)
 
@@ -171,7 +172,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                             </Button>
                         </div>
                         : isMobile
-                            ? <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            ? <div data-session-id={session.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {getSessionDisplayName(session)}
                                 </span>
@@ -317,15 +318,18 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                 icon: <PlayCircleOutlined />,
                 label: t('session.actions.resume'),
                 onClick: async () => {
-                    setActionSheetSessionId(null)
+                    setActionSheetLoadingKey('resume')
                     try {
                         const res = await api.sessions.resume(sessionId)
                         message.success(t('common.success'))
                         await invalidateAll(sessionId)
+                        setActionSheetSessionId(null)
+                        setActionSheetLoadingKey(null)
                         navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
                         setSessionListDrawerOpen(false)
                     } catch {
                         message.error(t('common.error'))
+                        setActionSheetLoadingKey(null)
                     }
                 },
             })
@@ -337,14 +341,17 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
             label: t('session.actions.archive'),
             disabled: !session.active,
             onClick: async () => {
-                setActionSheetSessionId(null)
+                setActionSheetLoadingKey('archive')
                 try {
                     await api.sessions.archive(sessionId)
                     message.success(t('common.success'))
-                    invalidateAll(sessionId)
+                    await invalidateAll(sessionId)
+                    setActionSheetSessionId(null)
+                    setActionSheetLoadingKey(null)
                     setSessionListDrawerOpen(false)
                 } catch {
                     message.error(t('common.error'))
+                    setActionSheetLoadingKey(null)
                 }
             },
         })
@@ -358,7 +365,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
             danger: true,
             disabled: session.active,
             onClick: () => {
-                setActionSheetSessionId(null)
+                setActionSheetLoadingKey('delete')
                 Modal.confirm({
                     title: t('session.actions.deleteConfirmTitle'),
                     content: t('session.actions.deleteConfirmContent'),
@@ -372,13 +379,19 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                             queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
                             queryClient.removeQueries({ queryKey: queryKeys.messages(sessionId) })
                             await invalidateAll(sessionId)
+                            setActionSheetSessionId(null)
+                            setActionSheetLoadingKey(null)
                             if (selectedSessionId === sessionId) {
                                 navigate({ to: '/sessions' })
                             }
                             setSessionListDrawerOpen(false)
                         } catch {
                             message.error(t('common.error'))
+                            setActionSheetLoadingKey(null)
                         }
+                    },
+                    onCancel: () => {
+                        setActionSheetLoadingKey(null)
                     },
                 })
             },
@@ -387,31 +400,23 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         return actions
     }, [findSession, t, api, invalidateAll, queryClient, navigate, startRename, selectedSessionId, setSessionListDrawerOpen])
 
-    // 移动端长按事件处理：通过遍历 items 和 DOM 匹配 session key
+    // 移动端长按事件处理：通过 data-session-id 属性匹配 session key
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
         // 从触摸点向上查找 Conversations item 元素
         const el = (e.target as HTMLElement).closest('[class*="ant-conversations-item"]') as HTMLElement | null
         if (!el) return
 
-        // 通过 item 的文本内容匹配 session
-        const itemText = el.textContent?.trim()
-        if (!itemText) return
+        // 通过 data-session-id 属性获取 session id
+        const sessionId = el.querySelector('[data-session-id]')?.getAttribute('data-session-id')
+        if (!sessionId) return
 
-        const matchedItem = items.find(item => {
-            if (!('label' in item)) return false
-            const label = typeof item.label === 'string' ? item.label : ''
-            return label && itemText.startsWith(label)
-        })
-
-        if (!matchedItem) return
-
-        lastTouchedKey.current = matchedItem.key as string
+        lastTouchedKey.current = sessionId
         longPressTimer.current = setTimeout(() => {
             if (lastTouchedKey.current) {
                 setActionSheetSessionId(lastTouchedKey.current)
             }
         }, 500)
-    }, [items])
+    }, [setActionSheetSessionId])
 
     const handleTouchEnd = useCallback(() => {
         if (longPressTimer.current) {
@@ -469,7 +474,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                 <Drawer
                     placement="bottom"
                     open={!!actionSheetSessionId}
-                    onClose={() => setActionSheetSessionId(null)}
+                    onClose={() => { if (!actionSheetLoadingKey) setActionSheetSessionId(null) }}
                     closable={false}
                     styles={{
                         wrapper: { height: 'auto', maxHeight: '60vh' },
@@ -485,8 +490,9 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                                 type="text"
                                 block
                                 icon={item.icon}
-                                disabled={item.disabled}
+                                disabled={item.disabled || !!actionSheetLoadingKey}
                                 danger={item.danger}
+                                loading={actionSheetLoadingKey === item.key}
                                 style={{
                                     height: 48,
                                     justifyContent: 'flex-start',
@@ -504,6 +510,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                         type="text"
                         block
                         icon={<CloseOutlined />}
+                        disabled={!!actionSheetLoadingKey}
                         style={{ height: 48, justifyContent: 'center', color: 'var(--ant-color-text-secondary)' }}
                         onClick={() => setActionSheetSessionId(null)}
                     >

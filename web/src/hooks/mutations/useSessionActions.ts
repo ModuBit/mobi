@@ -33,6 +33,8 @@ export function useSessionActions(sessionId: string | null): {
     renameSession: (name: string) => Promise<void>
     deleteSession: () => Promise<void>
     isPending: boolean
+    isResumePending: boolean
+    isSwitchPending: boolean
 } {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
@@ -158,5 +160,7 @@ export function useSessionActions(sessionId: string | null): {
             modelMutation.isPending ||
             renameMutation.isPending ||
             deleteMutation.isPending,
+        isResumePending: resumeMutation.isPending,
+        isSwitchPending: switchMutation.isPending,
     }
 }
