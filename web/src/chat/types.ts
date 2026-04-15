@@ -16,6 +16,12 @@
 
 import type { AttachmentMetadata, MessageStatus } from '@/api/types'
 
+/** 消息元数据 */
+export type MessageMeta = {
+    sentFrom?: string
+    [key: string]: unknown
+}
+
 export type UsageData = {
     input_tokens: number
     output_tokens: number
@@ -98,7 +104,7 @@ export type NormalizedMessage = ({
     localId: string | null
     createdAt: number
     isSidechain: boolean
-    meta?: unknown
+    meta?: MessageMeta
     usage?: UsageData
     status?: MessageStatus
     originalText?: string
@@ -141,7 +147,7 @@ export type UserTextBlock = {
     attachments?: AttachmentMetadata[]
     status?: MessageStatus
     originalText?: string
-    meta?: unknown
+    meta?: MessageMeta
     /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
     isSynthetic?: boolean
 }
@@ -152,7 +158,7 @@ export type AgentTextBlock = {
     localId: string | null
     createdAt: number
     text: string
-    meta?: unknown
+    meta?: MessageMeta
     /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
     isSynthetic?: boolean
 }
@@ -163,7 +169,7 @@ export type AgentReasoningBlock = {
     localId: string | null
     createdAt: number
     text: string
-    meta?: unknown
+    meta?: MessageMeta
 }
 
 export type CliOutputBlock = {
@@ -173,7 +179,7 @@ export type CliOutputBlock = {
     createdAt: number
     text: string
     source: 'user' | 'assistant'
-    meta?: unknown
+    meta?: MessageMeta
 }
 
 /** 事件渲染提示，由 reducer 层设置，渲染层只负责执行 */
@@ -191,7 +197,7 @@ export type AgentEventBlock = {
     id: string
     createdAt: number
     event: AgentEvent
-    meta?: unknown
+    meta?: MessageMeta
     /** 渲染提示 */
     display?: EventDisplay
 }
@@ -203,7 +209,7 @@ export type ToolCallBlock = {
     createdAt: number
     tool: ChatToolCall
     children: ChatBlock[]
-    meta?: unknown
+    meta?: MessageMeta
 }
 
 export type ChatBlock = UserTextBlock | AgentTextBlock | AgentReasoningBlock | CliOutputBlock | ToolCallBlock | AgentEventBlock

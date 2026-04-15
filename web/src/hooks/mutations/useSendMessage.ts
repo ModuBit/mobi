@@ -17,6 +17,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
+import { queryKeys } from '@/lib/query-keys'
 
 /**
  * 发送消息 Mutation Hook
@@ -28,12 +29,16 @@ export function useSendMessage(sessionId: string) {
 
     return useMutation({
         mutationFn: (text: string) => {
-            const localId = `local-${Date.now()}`
+            const localId = `local-${crypto.randomUUID()}`
             return api.messages.send(sessionId, text, localId)
         },
         onSuccess: () => {
             // 发送成功后刷新消息列表
-            queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
+            queryClient.invalidateQueries({ queryKey: queryKeys.messages(sessionId) })
+        },
+        onError: (error) => {
+            // SSE 会推送正确状态，此处仅记录错误
+            console.error('[useSendMessage] 发送消息失败:', error)
         }
     })
 }

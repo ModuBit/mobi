@@ -33,6 +33,8 @@ export const queryKeys = {
     machines: ['machines'] as const,
     /** Git 状态 */
     gitStatus: (sessionId: string) => ['git-status', sessionId] as const,
+    /** Git 差异 */
+    gitDiff: (sessionId: string, filePath?: string) => ['git-diff', sessionId, filePath] as const,
     /** 会话文件搜索 */
     sessionFiles: (sessionId: string, query: string) => ['session-files', sessionId, query] as const,
     /** 会话目录 */

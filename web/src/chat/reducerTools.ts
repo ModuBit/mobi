@@ -15,7 +15,7 @@
  */
 
 import type { AgentState } from '@/api/types'
-import type { ChatBlock, ChatToolCall, NormalizedMessage, ToolCallBlock, ToolPermission } from './types'
+import type { ChatBlock, ChatToolCall, MessageMeta, NormalizedMessage, ToolCallBlock, ToolPermission } from './types'
 
 /** 权限条目 */
 export type PermissionEntry = {
@@ -80,7 +80,7 @@ export function ensureToolBlock(
     seed: {
         createdAt: number
         localId: string | null
-        meta?: unknown
+        meta?: MessageMeta
         name: string
         input: unknown
         description: string | null
@@ -94,27 +94,37 @@ export function ensureToolBlock(
             return normalized === '' || normalized === 'tool' || normalized === 'unknown'
         }
 
+        // 创建浅拷贝以保持不可变性
+        const updatedTool = { ...existing.tool }
+        const updated: ToolCallBlock = {
+            ...existing,
+            tool: updatedTool
+        }
+
         // 保留最早的 createdAt 以保持稳定排序
-        if (seed.createdAt < existing.createdAt) {
-            existing.createdAt = seed.createdAt
-            existing.tool.createdAt = seed.createdAt
+        if (seed.createdAt < updated.createdAt) {
+            updated.createdAt = seed.createdAt
+            updatedTool.createdAt = seed.createdAt
         }
         if (seed.permission) {
-            existing.tool.permission = { ...existing.tool.permission, ...seed.permission }
-            if (existing.tool.state === 'running' && seed.permission.status === 'pending') {
-                existing.tool.state = 'pending'
+            updatedTool.permission = { ...updatedTool.permission, ...seed.permission }
+            if (updatedTool.state === 'running' && seed.permission.status === 'pending') {
+                updatedTool.state = 'pending'
             }
         }
-        if (seed.name && (!isPlaceholderToolName(seed.name) || isPlaceholderToolName(existing.tool.name))) {
-            existing.tool.name = seed.name
+        if (seed.name && (!isPlaceholderToolName(seed.name) || isPlaceholderToolName(updatedTool.name))) {
+            updatedTool.name = seed.name
         }
         if (seed.input !== null && seed.input !== undefined) {
-            existing.tool.input = seed.input
+            updatedTool.input = seed.input
         }
         if (seed.description !== null) {
-            existing.tool.description = seed.description
+            updatedTool.description = seed.description
         }
-        return existing
+
+        // 更新映射以保持引用一致性
+        toolBlocksById.set(id, updated)
+        return updated
     }
 
     const initialState: ChatToolCall['state'] = seed.permission?.status === 'pending'

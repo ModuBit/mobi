@@ -30,9 +30,23 @@ import { getToolResultViewComponent } from './views/_results'
 import { getToolIcon, StatusStateIcon } from './toolIcons'
 import { truncate } from '@/lib/toolInputUtils'
 import { useIsMobile } from '@/hooks/useMediaQuery'
+import styled from '@emotion/styled'
 
 const { Text } = Typography
 const { useToken } = antTheme
+
+/**
+ * 使用 CSS hover 替代命令式 onMouseEnter/onMouseLeave 操作
+ */
+const HoverableContainer = styled.div<{ $hoverBg: string }>`
+    cursor: pointer;
+    overflow: hidden;
+    transition: background-color 0.2s;
+
+    &:hover {
+        background-color: ${props => props.$hoverBg};
+    }
+`
 
 /**
  * 内联预览组件属性
@@ -116,15 +130,6 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
     // 预览区最大高度
     const previewMaxHeight = isMobile ? 100 : 120
 
-    // 外层容器样式
-    const containerStyle: CSSProperties = {
-        cursor: 'pointer',
-        border: `1px solid ${token.colorBorderSecondary}`,
-        borderRadius: 10,
-        overflow: 'hidden',
-        transition: 'background-color 0.2s',
-    }
-
     // 标题栏样式
     const headerStyle: CSSProperties = {
         display: 'flex',
@@ -163,15 +168,13 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
     }
 
     return (
-        <div
-            style={containerStyle}
+        <HoverableContainer
+            $hoverBg={token.colorBgTextHover}
+            style={{
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: 10,
+            }}
             onClick={onClick}
-            onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = token.colorBgTextHover
-            }}
-            onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent'
-            }}
         >
             {/* 标题栏 */}
             <div style={headerStyle}>
@@ -204,7 +207,7 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
             <div style={footerStyle}>
                 {t('chat.tool.viewDetail')} →
             </div>
-        </div>
+        </HoverableContainer>
     )
 }
 

@@ -20,6 +20,7 @@ import type { SessionMetadataSummary } from '@/api/types'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { isObject, safeStringify } from '@mobi/shared'
 import { Card, Typography, Tag, Modal, Button, Collapse, theme as antTheme } from 'antd'
+import type { GlobalToken } from 'antd/es/theme/interface'
 import {
     CodeOutlined,
     CheckCircleOutlined,
@@ -111,7 +112,7 @@ function getTaskSummaryChildren(block: ToolCallBlock): { visible: ToolCallBlock[
 }
 
 // 渲染 Task 摘要
-function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummary | null): ReactNode | null {
+function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummary | null, token: GlobalToken): ReactNode | null {
     const summary = getTaskSummaryChildren(block)
     if (!summary) return null
 
@@ -123,7 +124,7 @@ function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummar
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {visible.map((child) => (
                     <div key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ minWidth: 0, flex: 1, fontFamily: 'var(--font-mono)', fontSize: 11, color: '#666' }}>
+                        <div style={{ minWidth: 0, flex: 1, fontFamily: 'var(--font-mono)', fontSize: 11, color: token.colorTextSecondary }}>
                             <span style={{ marginRight: 8, display: 'inline-block', width: 16, textAlign: 'center', verticalAlign: 'middle' }}>
                                 <TaskStateIcon state={child.tool.state} />
                             </span>
@@ -134,7 +135,7 @@ function renderTaskSummary(block: ToolCallBlock, metadata: SessionMetadataSummar
                     </div>
                 ))}
                 {remaining > 0 ? (
-                    <div style={{ fontSize: 11, color: '#999', fontStyle: 'italic' }}>
+                    <div style={{ fontSize: 11, color: token.colorTextTertiary, fontStyle: 'italic' }}>
                         (+{remaining} more)
                     </div>
                 ) : null}
@@ -162,7 +163,7 @@ function formatTaskChildLabel(child: ToolCallBlock, metadata: SessionMetadataSum
 }
 
 // 渲染工具输入
-function renderToolInput(block: ToolCallBlock): ReactNode {
+function renderToolInput(block: ToolCallBlock, token: GlobalToken): ReactNode {
     const toolName = block.tool.name
     const input = block.tool.input
 
@@ -199,7 +200,7 @@ function renderToolInput(block: ToolCallBlock): ReactNode {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {rendered}
                         {edits.length > 3 ? (
-                            <div style={{ fontSize: 11, color: '#999' }}>
+                            <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
                                 (+{edits.length - 3} more edits)
                             </div>
                         ) : null}
@@ -215,7 +216,7 @@ function renderToolInput(block: ToolCallBlock): ReactNode {
         if (filePath && content !== null) {
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 11, color: '#999', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
+                    <div style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
                         {filePath}
                     </div>
                     <CodeBlock code={content} language="text" />
@@ -330,14 +331,14 @@ function InlineDiffView(props: { oldString: string; newString: string; filePath?
 
         if (oldLine !== undefined && oldLine !== newLine) {
             lines.push(
-                <div key={`old-${i}`} style={{ background: '#ffebe9', color: '#cb2431', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
+                <div key={`old-${i}`} style={{ background: token.colorErrorBg, color: token.colorError, fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
                     - {oldLine}
                 </div>
             )
         }
         if (newLine !== undefined) {
             lines.push(
-                <div key={`new-${i}`} style={{ background: '#e6ffec', color: '#22863a', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
+                <div key={`new-${i}`} style={{ background: token.colorSuccessBg, color: token.colorSuccess, fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre', paddingLeft: 8 }}>
                     + {newLine}
                 </div>
             )
@@ -389,7 +390,7 @@ function ToolCardInner(props: ToolCardProps) {
     const toolName = props.block.tool.name
     const toolTitle = presentation.title
     const subtitle = presentation.subtitle ?? props.block.tool.description
-    const taskSummary = renderTaskSummary(props.block, props.metadata)
+    const taskSummary = renderTaskSummary(props.block, props.metadata, token)
     const runningFrom = props.block.tool.startedAt ?? props.block.tool.createdAt
     const showInline = !presentation.minimal && toolName !== 'Task'
     const CompactToolView = showInline ? getToolViewComponent(toolName) : null
@@ -467,7 +468,7 @@ function ToolCardInner(props: ToolCardProps) {
                             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
                                 <div>
                                     <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.input')}</div>
-                                    {renderToolInput(props.block)}
+                                    {renderToolInput(props.block, token)}
                                 </div>
                                 <div>
                                     <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
@@ -526,7 +527,7 @@ function ToolCardInner(props: ToolCardProps) {
                                 {FullToolView ? (
                                     <FullToolView block={props.block} metadata={props.metadata} />
                                 ) : (
-                                    renderToolInput(props.block)
+                                    renderToolInput(props.block, token)
                                 )}
                             </div>
                             {!isQuestionToolWithAnswers && (

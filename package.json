@@ -14,8 +14,9 @@
         "typecheck:hub": "cd hub && bun run typecheck",
         "typecheck:cli": "cd cli && bun run typecheck",
         "typecheck:web": "cd web && bun run typecheck",
-        "test": "bun run test:hub",
-        "test:hub": "cd hub && bun run test"
+        "test": "bun run test:hub && bun run test:web",
+        "test:hub": "cd hub && bun run test",
+        "test:web": "cd web && bun run test"
     },
     "devDependencies": {
         "concurrently": "^9.2.1"

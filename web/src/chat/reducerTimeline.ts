@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentEventBlock, ChatBlock, EventDisplay, ToolCallBlock, ToolPermission } from './types'
+import type { AgentEventBlock, ChatBlock, EventDisplay, MessageMeta, ToolCallBlock, ToolPermission } from './types'
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
@@ -35,7 +35,7 @@ function createEventBlock(params: {
     id: string
     createdAt: number
     event: { type: string; [key: string]: unknown }
-    meta?: unknown
+    meta?: MessageMeta
 }): AgentEventBlock {
     return {
         kind: 'agent-event',
@@ -185,7 +185,7 @@ export function reduceTimeline(
 
                     const permission = context.permissionsById.get(c.id)?.permission
 
-                    const block = ensureToolBlock(blocks, toolBlocksById, c.id, {
+                    let block = ensureToolBlock(blocks, toolBlocksById, c.id, {
                         createdAt: msg.createdAt,
                         localId: msg.localId,
                         meta: msg.meta,
@@ -196,8 +196,13 @@ export function reduceTimeline(
                     })
 
                     if (block.tool.state === 'pending') {
+                        // 创建浅拷贝以保持不可变性
+                        block = { ...block, tool: { ...block.tool } }
                         block.tool.state = 'running'
                         block.tool.startedAt = msg.createdAt
+                        // 更新 blocks 数组中的引用
+                        blocks[blocks.length - 1] = block
+                        toolBlocksById.set(c.id, block)
                     }
 
                     if (c.name === 'Task' && !context.consumedGroupIds.has(msg.id)) {
@@ -206,7 +211,10 @@ export function reduceTimeline(
                             context.consumedGroupIds.add(msg.id)
                             const child = reduceTimeline(sidechain, context)
                             hasReadyEvent = hasReadyEvent || child.hasReadyEvent
-                            block.children = child.blocks
+                            // 创建浅拷贝以保持不可变性
+                            const taskBlock = { ...block, children: child.blocks }
+                            blocks[blocks.length - 1] = taskBlock
+                            toolBlocksById.set(c.id, taskBlock)
                         }
                     }
                     continue
@@ -259,9 +267,13 @@ export function reduceTimeline(
                         permission
                     })
 
-                    block.tool.result = c.content
-                    block.tool.completedAt = msg.createdAt
-                    block.tool.state = c.is_error ? 'error' : 'completed'
+                    // 创建浅拷贝以保持不可变性
+                    const completedBlock = { ...block, tool: { ...block.tool } }
+                    completedBlock.tool.result = c.content
+                    completedBlock.tool.completedAt = msg.createdAt
+                    completedBlock.tool.state = c.is_error ? 'error' : 'completed'
+                    blocks[blocks.length - 1] = completedBlock
+                    toolBlocksById.set(c.tool_use_id, completedBlock)
                     continue
                 }
 

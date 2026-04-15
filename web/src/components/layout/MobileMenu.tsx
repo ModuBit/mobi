@@ -49,24 +49,22 @@ const MenuContent = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>
     background: ${props => props.$token.colorBgContainer};
 `
 
-const MenuItem = styled.div<{ $active: boolean; $token: ReturnType<typeof useToken>['token'] }>`
+const MenuItem = styled.div<{ $active: boolean; $danger?: boolean; $token: ReturnType<typeof useToken>['token'] }>`
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 16px 20px;
     cursor: pointer;
-    color: ${props => props.$active ? props.$token.colorPrimary : props.$token.colorText};
+    color: ${props => {
+        if (props.$danger) return props.$token.colorError
+        return props.$active ? props.$token.colorPrimary : props.$token.colorText
+    }};
     background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
     transition: all 0.2s;
+    ${props => props.$danger ? `border-top: 1px solid ${props.$token.colorBorder}; margin-top: 8px;` : ''}
 
     &:hover {
         background: ${props => props.$token.colorPrimaryBg};
-    }
-
-    &:last-child {
-        border-top: 1px solid ${props => props.$token.colorBorder};
-        margin-top: 8px;
-        color: ${props => props.$token.colorError};
     }
 `
 
@@ -140,6 +138,7 @@ export function MobileMenuDrawer() {
                 ))}
                 <MenuItem
                     $active={false}
+                    $danger={true}
                     $token={token}
                     onClick={() => {
                         handleClose()

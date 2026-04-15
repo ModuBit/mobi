@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import type { SessionGroup } from '@/api/types'
+import { queryKeys } from '@/lib/query-keys'
 
 /**
  * 获取会话分组列表
@@ -27,7 +28,7 @@ export function useSessionGroups() {
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: ['sessionGroups'],
+        queryKey: queryKeys.sessionGroups,
         queryFn: async () => {
             const res = await api.sessionGroups.list()
             return res.data.groups as SessionGroup[]

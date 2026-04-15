@@ -28,6 +28,7 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import { useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/query-keys'
 
 const { useToken } = antTheme
 const { TextArea } = Input
@@ -102,8 +103,8 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
         const formattedAnswers = formatRequestUserInputAnswers(stateByQuestion)
         setLoading(true)
         try {
-            await api.permissions.approve(props.sessionId, permission.id)
-            queryClient.invalidateQueries({ queryKey: ['session', props.sessionId] })
+            await api.permissions.approve(props.sessionId, permission.id, formattedAnswers)
+            queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
             props.onDone()
         } catch (e) {
             setError(e instanceof Error ? e.message : t('tool.requestFailed'))

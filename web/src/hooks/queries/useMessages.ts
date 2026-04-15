@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import type { DecryptedMessage } from '@/api/types'
+import { queryKeys } from '@/lib/query-keys'
 
 /**
  * 获取会话消息列表
@@ -27,7 +28,7 @@ export function useMessages(sessionId: string | null) {
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: ['messages', sessionId],
+        queryKey: queryKeys.messages(sessionId!),
         queryFn: async () => {
             if (!sessionId) return []
             const res = await api.messages.list(sessionId)

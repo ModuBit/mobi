@@ -20,6 +20,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { setUnauthorizedHandler } from '@/api/client'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export function App() {
     const { token, logout } = useAuthStore()
@@ -47,8 +48,10 @@ export function App() {
     }, [token, location.pathname, navigate])
 
     return (
-        <SSEProvider>
-            <Outlet />
-        </SSEProvider>
+        <ErrorBoundary>
+            <SSEProvider>
+                <Outlet />
+            </SSEProvider>
+        </ErrorBoundary>
     )
 }

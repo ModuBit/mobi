@@ -17,7 +17,7 @@
 import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
 import { safeStringify } from '@mobi/shared'
 import type { DecryptedMessage } from '@/api/types'
-import type { NormalizedMessage } from './types'
+import type { NormalizedMessage, MessageMeta } from './types'
 import { isSkippableAgentContent, normalizeAgentRecord } from './normalizeAgent'
 import { normalizeUserRecord } from './normalizeUser'
 
@@ -41,7 +41,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
     }
 
     if (record.role === 'user') {
-        const normalized = normalizeUserRecord(message.id, message.localId, message.createdAt, record.content, record.meta)
+        const normalized = normalizeUserRecord(message.id, message.localId, message.createdAt, record.content, record.meta as MessageMeta | undefined)
         return normalized
             ? { ...normalized, status: message.status, originalText: message.originalText }
             : {
@@ -51,7 +51,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
                 role: 'user',
                 isSidechain: false,
                 content: { type: 'text', text: safeStringify(record.content) },
-                meta: record.meta,
+                meta: record.meta as MessageMeta | undefined,
                 status: message.status,
                 originalText: message.originalText
             }
@@ -60,7 +60,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
         if (isSkippableAgentContent(record.content)) {
             return null
         }
-        const normalized = normalizeAgentRecord(message.id, message.localId, message.createdAt, record.content, record.meta)
+        const normalized = normalizeAgentRecord(message.id, message.localId, message.createdAt, record.content, record.meta as MessageMeta | undefined)
         if (normalized) {
             return { ...normalized, status: message.status, originalText: message.originalText }
         }
@@ -80,7 +80,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
             role: 'agent',
             isSidechain: false,
             content: [{ type: 'text', text: safeStringify(record.content), uuid: message.id, parentUUID: null }],
-            meta: record.meta,
+            meta: record.meta as MessageMeta | undefined,
             status: message.status,
             originalText: message.originalText
         }
@@ -93,7 +93,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
         role: 'agent',
         isSidechain: false,
         content: [{ type: 'text', text: safeStringify(record.content), uuid: message.id, parentUUID: null }],
-        meta: record.meta,
+        meta: record.meta as MessageMeta | undefined,
         status: message.status,
         originalText: message.originalText
     }

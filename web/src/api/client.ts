@@ -136,10 +136,15 @@ export function createMobiApi(token: string | null) {
 
         // Permissions
         permissions: {
-            approve: (sessionId: string, requestId: string) =>
-                client.post(`/api/sessions/${sessionId}/permissions/${requestId}/approve`),
-            deny: (sessionId: string, requestId: string) =>
-                client.post(`/api/sessions/${sessionId}/permissions/${requestId}/deny`),
+            approve: (sessionId: string, requestId: string, body?: {
+                mode?: string
+                allowTools?: string[]
+                decision?: string
+                answers?: Record<string, string[]> | Record<string, { answers: string[] }>
+            }) =>
+                client.post(`/api/sessions/${sessionId}/permissions/${requestId}/approve`, body),
+            deny: (sessionId: string, requestId: string, body?: { decision?: string }) =>
+                client.post(`/api/sessions/${sessionId}/permissions/${requestId}/deny`, body),
         },
 
         // Events (SSE)

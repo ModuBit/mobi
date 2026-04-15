@@ -87,16 +87,6 @@ export function mergeToolResults(messages: ParsedMessage[]): ParsedMessage[] {
         (block) => block.type !== 'tool-result'
       )
 
-      // 检查是否有未被 assistant 消息中 tool-call 匹配到的 result
-      // （防御性处理：result 先于 call 到达）
-      for (const block of msg.content) {
-        if (block.type === 'tool-result') {
-          // 检查是否已在某条 assistant 消息中被合并
-          // 通过检查 resultMap 中是否还有该 key 来判断
-          // 占位块不需要在这里创建，因为我们在最后统一处理
-        }
-      }
-
       if (nonResultBlocks.length > 0) {
         result.push({ ...msg, content: nonResultBlocks })
       }

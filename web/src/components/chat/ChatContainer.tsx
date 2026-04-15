@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
+import { useRef, useEffect, useMemo, useState, useCallback, memo } from 'react'
 import { Bubble, Think } from '@ant-design/x'
 import { Spin, Empty, Button, theme as antTheme } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
@@ -322,7 +322,7 @@ function parseCliOutputText(text: string): { command: string | null, stdout: str
 }
 
 // 渲染文本块（user-text / agent-text 共用）
-function TextBlock({ text, isSynthetic }: { text: string; isSynthetic?: boolean }) {
+const TextBlock = memo(function TextBlock({ text, isSynthetic }: { text: string; isSynthetic?: boolean }) {
     if (isSynthetic) {
         return <span style={{ fontSize: 12, opacity: 0.5 }}>{text}</span>
     }
@@ -331,10 +331,10 @@ function TextBlock({ text, isSynthetic }: { text: string; isSynthetic?: boolean 
             <XMarkdown content={text || ''} />
         </div>
     )
-}
+})
 
 // CLI 输出渲染
-function CliOutputBlock({ text }: { text: string }) {
+const CliOutputBlock = memo(function CliOutputBlock({ text }: { text: string }) {
     const { token } = useToken()
     const { command, stdout } = parseCliOutputText(text)
     return (
@@ -364,10 +364,10 @@ function CliOutputBlock({ text }: { text: string }) {
             )}
         </div>
     )
-}
+})
 
 // Agent 事件渲染
-function AgentEventBlock({ block }: { block: AgentEventBlockType }) {
+const AgentEventBlock = memo(function AgentEventBlock({ block }: { block: AgentEventBlockType }) {
     const { token } = useToken()
     const { t } = useTranslation()
 
@@ -400,7 +400,7 @@ function AgentEventBlock({ block }: { block: AgentEventBlockType }) {
             {formatEvent(block.event, t)}
         </div>
     )
-}
+})
 
 // 渲染 ChatBlock
 function renderChatBlock(block: ChatBlock, ctx: {
@@ -480,7 +480,7 @@ function formatEvent(event: { type: string; [key: string]: unknown }, t: (key: s
 // 思考过程渲染
 // thinking=true: 正在思考，默认展开，标题"思考中..."
 // thinking=false: 思考完成，默认收起，标题"思考完成"
-function ReasoningBlock({ text, thinking }: { text: string; thinking: boolean }) {
+const ReasoningBlock = memo(function ReasoningBlock({ text, thinking }: { text: string; thinking: boolean }) {
     const { t } = useTranslation()
     const [expanded, setExpanded] = useState(thinking)
     return (
@@ -495,7 +495,7 @@ function ReasoningBlock({ text, thinking }: { text: string; thinking: boolean })
             </div>
         </Think>
     )
-}
+})
 
 // 从 error 对象中提取错误详情用于展示
 // error 结构: { error: { error: { code, message } } }

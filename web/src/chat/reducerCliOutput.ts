@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ChatBlock, CliOutputBlock } from './types'
+import type { ChatBlock, CliOutputBlock, MessageMeta } from './types'
 
 const CLI_TAG_REGEX = /<(?:local-command-[a-z-]+|command-(?:name|message|args))>/i
 const CLI_COMMAND_NAME_REGEX = /<command-name>/i
@@ -48,7 +48,7 @@ export function createCliOutputBlock(props: {
     createdAt: number
     text: string
     source: CliOutputBlock['source']
-    meta?: unknown
+    meta?: MessageMeta
 }): CliOutputBlock {
     return {
         kind: 'cli-output',

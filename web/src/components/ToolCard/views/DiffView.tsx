@@ -124,8 +124,8 @@ function DiffInlineView(props: {
 
                     const prefix = part.added ? '+' : part.removed ? '-' : ' '
                     const bgStyle: React.CSSProperties = {
-                        background: part.added ? '#e6ffec' : part.removed ? '#ffebe9' : 'transparent',
-                        color: part.added ? '#22863a' : part.removed ? '#cb2431' : token.colorText
+                        background: part.added ? token.colorSuccessBg : part.removed ? token.colorErrorBg : 'transparent',
+                        color: part.added ? token.colorSuccess : part.removed ? token.colorError : token.colorText
                     }
 
                     return (

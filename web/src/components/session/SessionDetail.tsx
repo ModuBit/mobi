@@ -36,10 +36,10 @@ const ContentArea = styled.div`
     overflow: hidden;
 `
 
-const ChatWrapper = styled.div<{ $visible: boolean }>`
+const ChatWrapper = styled.div`
     position: absolute;
     inset: 0;
-    display: ${props => props.$visible ? 'flex' : 'none'};
+    display: flex;
     flex-direction: column;
 `
 
@@ -143,10 +143,12 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
             />
 
             <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
-                {/* 聊天视图：隐藏但不卸载 */}
-                <ChatWrapper $visible={sessionViewMode === 'chat'}>
-                    <ChatContainer sessionId={sessionId} extraComposerButtons={viewModeButtons} />
-                </ChatWrapper>
+                {/* 聊天视图：条件渲染，非可见时不挂载以节省资源 */}
+                {sessionViewMode === 'chat' && (
+                    <ChatWrapper>
+                        <ChatContainer sessionId={sessionId} extraComposerButtons={viewModeButtons} />
+                    </ChatWrapper>
+                )}
 
                 {/* 文件视图：全屏覆盖 */}
                 {sessionViewMode === 'files' && (

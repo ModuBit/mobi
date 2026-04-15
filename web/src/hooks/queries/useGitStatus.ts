@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import type { GitStatusResponse } from '@/api/types'
+import { queryKeys } from '@/lib/query-keys'
 
 /**
  * 获取会话的 Git 状态
@@ -27,7 +28,7 @@ export function useGitStatus(sessionId: string | null) {
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: ['git-status', sessionId],
+        queryKey: queryKeys.gitStatus(sessionId!),
         queryFn: async () => {
             if (!sessionId) return null
             const res = await api.git.status(sessionId)

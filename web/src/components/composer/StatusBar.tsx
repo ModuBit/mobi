@@ -46,12 +46,12 @@ const VIBING_MESSAGES = [
     "Wibbling", "Wizarding", "Working", "Wrangling"
 ]
 
-// 权限模式颜色映射
+// 权限模式颜色映射（使用 antd token 语义颜色）
 const PERMISSION_TONE_COLORS: Record<string, string> = {
-    neutral: 'text-gray-500',
-    info: 'text-blue-500',
-    warning: 'text-amber-500',
-    danger: 'text-red-500'
+    neutral: 'colorTextSecondary',
+    info: 'colorInfo',
+    warning: 'colorWarning',
+    danger: 'colorError'
 }
 
 interface StatusBarProps {
@@ -111,7 +111,9 @@ export function StatusBar(props: StatusBarProps) {
         }
 
         if (thinking) {
-            const vibingMessage = VIBING_MESSAGES[Math.floor(Math.random() * VIBING_MESSAGES.length)].toLowerCase() + '…'
+            // 使用 sessionId 做 hash 确定性选择，避免每次重算时闪烁
+            const seed = sessionId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+            const vibingMessage = VIBING_MESSAGES[seed % VIBING_MESSAGES.length].toLowerCase() + '…'
             return {
                 text: vibingMessage,
                 agentStatus: 'outputting' as AgentStatus,
@@ -122,7 +124,7 @@ export function StatusBar(props: StatusBarProps) {
             text: t('status.online'),
             agentStatus: 'idle' as AgentStatus,
         }
-    }, [active, thinking, agentState, t])
+    }, [active, thinking, agentState, t, sessionId])
 
     // 计算上下文警告
     const contextWarning = useMemo(() => {
@@ -153,7 +155,7 @@ export function StatusBar(props: StatusBarProps) {
     const permissionModeLabel = displayPermissionMode ? getPermissionModeLabel(displayPermissionMode) : null
     const permissionModeTone = displayPermissionMode ? getPermissionModeTone(displayPermissionMode) : null
     const permissionModeColor = permissionModeTone
-        ? (PERMISSION_TONE_COLORS[permissionModeTone] || token.colorTextSecondary)
+        ? (token[PERMISSION_TONE_COLORS[permissionModeTone] as keyof typeof token] as string || token.colorTextSecondary)
         : token.colorTextSecondary
 
     return (

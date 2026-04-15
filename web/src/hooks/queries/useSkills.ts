@@ -18,22 +18,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import { queryKeys } from '@/lib/query-keys'
+import type { SkillSummary } from '@/api/types'
 
-/**
- * 技能定义
- */
-export interface Skill {
-    /** 技能名称 */
-    name: string
-    /** 技能描述 */
-    description?: string
-    /** 技能来源 */
-    source?: 'builtin' | 'user' | 'plugin' | 'project'
-}
+/** 技能（保持 Skill 别名以兼容现有使用） */
+export type Skill = SkillSummary
 
 /**
  * 获取会话可用的技能列表
- * @param sessionId 会话 ID
  */
 export function useSkills(sessionId: string | null) {
     const { token } = useAuthStore()
@@ -45,7 +36,6 @@ export function useSkills(sessionId: string | null) {
             if (!sessionId) return []
 
             const res = await api.sessions.skills(sessionId)
-            // 假设 API 返回格式为 { skills: Skill[] }
             return res.data?.skills ?? []
         },
         enabled: !!token && !!sessionId,

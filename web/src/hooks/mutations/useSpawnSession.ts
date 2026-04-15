@@ -18,6 +18,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import { queryKeys } from '@/lib/query-keys'
+import type { SpawnResponse } from '@/api/types'
 
 /**
  * 创建会话的输入参数
@@ -41,14 +42,7 @@ export interface SpawnInput {
     worktreeName?: string
 }
 
-/**
- * 创建会话的响应
- */
-export interface SpawnResponse {
-    type: 'success' | 'error'
-    sessionId?: string
-    message?: string
-}
+export type { SpawnResponse }
 
 /**
  * 创建新会话的 Hook

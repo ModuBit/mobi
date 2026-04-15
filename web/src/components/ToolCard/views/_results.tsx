@@ -245,9 +245,10 @@ const AskUserQuestionResultView: ToolViewComponent = (props: ToolViewProps) => {
     return <MarkdownResultView {...props} />
 }
 const BashResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
     const result = props.block.tool.result
     if (result === undefined || result === null) {
-        return <div style={{ fontSize: 13, color: '#999' }}>{placeholderForState(props.block.tool.state)}</div>
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
     }
     if (typeof result === 'string') {
         const toolUseError = parseToolUseError(result)
@@ -282,15 +283,16 @@ const BashResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
     return (
         <>
-            <div style={{ fontSize: 13, color: '#999' }}>(no output)</div>
+            <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
             <RawJsonDevOnly value={result} />
         </>
     )
 }
 const MarkdownResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
     const result = props.block.tool.result
     if (result === undefined || result === null) {
-        return <div style={{ fontSize: 13, color: '#999' }}>{placeholderForState(props.block.tool.state)}</div>
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
     }
     const text = extractTextFromResult(result)
     if (text) {
@@ -303,21 +305,22 @@ const MarkdownResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
     return (
         <>
-            <div style={{ fontSize: 13, color: '#999' }}>(no output)</div>
+            <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
             <RawJsonDevOnly value={result} />
         </>
     )
 }
 const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
     const result = props.block.tool.result
     if (result === undefined || result === null) {
-        return <div style={{ fontSize: 13, color: '#999' }}>{placeholderForState(props.block.tool.state)}</div>
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
     }
     const text = extractTextFromResult(result)
     if (!text) {
         return (
             <>
-                <div style={{ fontSize: 13, color: '#999' }}>(no output)</div>
+                <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
                 <RawJsonDevOnly value={result} />
             </>
         )
@@ -334,7 +337,7 @@ const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
     if (lines.length === 0) {
         return (
             <>
-                <div style={{ fontSize: 13, color: '#999' }}>(no output)</div>
+                <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
                 <RawJsonDevOnly value={result} />
             </>
         )
@@ -343,7 +346,7 @@ const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
         <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {lines.map((line) => (
-                    <div key={line} style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: '#333', wordBreak: 'break-all' }}>
+                    <div key={line} style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: token.colorText, wordBreak: 'break-all' }}>
                         {line}
                     </div>
                 ))}
@@ -353,9 +356,10 @@ const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
     )
 }
 const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
     const result = props.block.tool.result
     if (result === undefined || result === null) {
-        return <div style={{ fontSize: 13, color: '#999' }}>{placeholderForState(props.block.tool.state)}</div>
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
     }
     const file = extractReadFileContent(result)
     if (file) {
@@ -363,7 +367,7 @@ const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
         return (
             <>
                 {path ? (
-                    <div style={{ marginBottom: 8, fontSize: 11, color: '#999', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
+                    <div style={{ marginBottom: 8, fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
                         {basename(path)}
                     </div>
                 ) : null}
@@ -383,22 +387,23 @@ const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
     return (
         <>
-            <div style={{ fontSize: 13, color: '#999' }}>(no output)</div>
+            <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
             <RawJsonDevOnly value={result} />
         </>
     )
 }
 const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
     const { state, result } = props.block.tool
     if (result === undefined || result === null) {
         if (state === 'completed') {
-            return <div style={{ fontSize: 13, color: '#999' }}>Done</div>
+            return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>Done</div>
         }
-        return <div style={{ fontSize: 13, color: '#999' }}>{placeholderForState(state)}</div>
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(state)}</div>
     }
     const text = extractTextFromResult(result)
     if (typeof text === 'string' && text.trim().length > 0) {
-        const color = state === 'error' ? '#cb2431' : '#333'
+        const color = state === 'error' ? token.colorError : token.colorText
         return (
             <>
                 <div style={{ fontSize: 13, color }}>
@@ -410,7 +415,7 @@ const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
     return (
         <>
-            <div style={{ fontSize: 13, color: '#999' }}>
+            <div style={{ fontSize: 13, color: token.colorTextTertiary }}>
                 {state === 'completed' ? 'Done' : '(no output)'}
             </div>
             <RawJsonDevOnly value={result} />
@@ -418,16 +423,18 @@ const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
     )
 }
 const TodoWriteResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
     const todos = extractTodoChecklist(props.block.tool.input, props.block.tool.result)
     if (todos.length === 0) {
-        return <div style={{ fontSize: 13, color: '#999' }}>{placeholderForState(props.block.tool.state)}</div>
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
     }
     return <ChecklistList items={todos} />
 }
 const GenericResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
     const result = props.block.tool.result
     if (result === undefined || result === null) {
-        return <div style={{ fontSize: 13, color: '#999' }}>{placeholderForState(props.block.tool.state)}</div>
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
     }
     const text = extractTextFromResult(result)
     if (text) {

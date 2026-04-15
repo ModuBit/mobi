@@ -24,6 +24,7 @@ import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuest
 import { getInputStringAny } from '@/lib/toolInputUtils'
 import { useAuthStore } from '@/stores/authStore'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/query-keys'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -202,8 +203,8 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
 
         setLoading(true)
         try {
-            await props.api.permissions.approve(props.sessionId, permission.id)
-            queryClient.invalidateQueries({ queryKey: ['session', props.sessionId] })
+            await props.api.permissions.approve(props.sessionId, permission.id, { answers })
+            queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
             props.onDone()
         } catch (e) {
             setError(e instanceof Error ? e.message : t('tool.requestFailed'))

@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback } from 'react'
-import { Button, Form, Input, Layout, Select, Spin, message, Typography, theme as antTheme, Card } from 'antd'
+import { App, Button, Form, Input, Layout, Select, Spin, Typography, theme as antTheme, Card } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowLeftOutlined, FolderOutlined } from '@ant-design/icons'
@@ -58,6 +58,7 @@ export function NewSessionPage() {
     const [form] = Form.useForm()
     const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null)
     const [directory, setDirectory] = useState('')
+    const { message } = App.useApp()
 
     const { machines, isLoading: isLoadingMachines } = useMachines()
     const { spawnSession, isPending } = useSpawnSession()
@@ -90,7 +91,7 @@ export function NewSessionPage() {
         if (result.type === 'success' && result.sessionId) {
             message.success(t('common.success'))
             navigate({ to: '/sessions/$sessionId', params: { sessionId: result.sessionId } })
-        } else {
+        } else if (result.type === 'error') {
             message.error(result.message || t('common.error'))
         }
     }, [spawnSession, navigate, t])

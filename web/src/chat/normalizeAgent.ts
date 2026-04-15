@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentEvent, NormalizedAgentContent, NormalizedMessage, ToolResultPermission } from './types'
+import type { AgentEvent, NormalizedAgentContent, NormalizedMessage, ToolResultPermission, MessageMeta } from './types'
 import { asNumber, asString, isObject } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 
@@ -53,7 +53,7 @@ function normalizeAssistantOutput(
     localId: string | null,
     createdAt: number,
     data: Record<string, unknown>,
-    meta?: unknown
+    meta?: MessageMeta
 ): NormalizedMessage | null {
     const uuid = asString(data.uuid) ?? messageId
     const parentUUID = asString(data.parentUuid) ?? null
@@ -108,7 +108,7 @@ function normalizeUserOutput(
     localId: string | null,
     createdAt: number,
     data: Record<string, unknown>,
-    meta?: unknown
+    meta?: MessageMeta
 ): NormalizedMessage | null {
     const uuid = asString(data.uuid) ?? messageId
     const parentUUID = asString(data.parentUuid) ?? null
@@ -191,7 +191,7 @@ export function normalizeAgentRecord(
     localId: string | null,
     createdAt: number,
     content: unknown,
-    meta?: unknown
+    meta?: MessageMeta
 ): NormalizedMessage | null {
     if (!isObject(content) || typeof content.type !== 'string') return null
     if (content.type === 'output') {

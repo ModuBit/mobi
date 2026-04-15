@@ -187,7 +187,7 @@ export function NewSession(props: NewSessionProps) {
                 props.onSuccess(result.sessionId)
                 return
             }
-            setError(result.message ?? '创建会话失败')
+            setError(result.type === 'error' ? (result.message ?? '创建会话失败') : '创建会话失败')
         } catch (e) {
             setError(e instanceof Error ? e.message : '创建会话失败')
         }

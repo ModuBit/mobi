@@ -160,6 +160,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const navigate = useNavigate()
     const notify = useNotify()
     const api = useMobiApi(token)
+    const apiRef = useRef(api)
+    apiRef.current = api
     const { notification } = App.useApp()
     const { t } = useTranslation()
 
@@ -196,7 +198,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.sessions }))
         }
         if (shouldInvalidateSessionGroups) {
-            tasks.push(queryClient.invalidateQueries({ queryKey: ['sessionGroups'] }))
+            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.sessionGroups }))
             tasks.push(queryClient.invalidateQueries({ queryKey: ['groupSessions'] }))
         }
         if (shouldInvalidateMachines) {
@@ -284,7 +286,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 if (event.data?.subscriptionId) {
                     subscriptionIdRef.current = event.data.subscriptionId
                     // 收到新 subscriptionId 后立即上报当前可见性
-                    api.visibility.report(
+                    apiRef.current.visibility.report(
                         event.data.subscriptionId,
                         document.hidden ? 'hidden' : 'visible'
                     ).catch(() => {})
@@ -322,7 +324,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // Toast 通知，由外部处理
                 break
         }
-    }, [queryClient, queueSessionListInvalidation, queueSessionDetailInvalidation, queueMachinesInvalidation, notify, t, api])
+    }, [queryClient, queueSessionListInvalidation, queueSessionDetailInvalidation, queueMachinesInvalidation, notify, t])
 
     // 浏览器通知权限管理
     // 模块级变量控制：同一页面生命周期内只检查一次，刷新后重置
@@ -404,7 +406,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             if (!id) return
             if (document.hidden === lastHidden) return
             lastHidden = document.hidden
-            api.visibility.report(id, document.hidden ? 'hidden' : 'visible').catch(() => {})
+            apiRef.current.visibility.report(id, document.hidden ? 'hidden' : 'visible').catch(() => {})
         }
         document.addEventListener('visibilitychange', handleVisibilityChange)
 

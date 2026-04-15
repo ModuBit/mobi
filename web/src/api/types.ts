@@ -269,6 +269,14 @@ export type SlashCommandsResponse = {
 export type SkillSummary = {
     name: string
     description?: string
+    source?: 'builtin' | 'user' | 'plugin' | 'project'
+}
+
+/** 文件树节点 */
+export type FileNode = {
+    name: string
+    path: string
+    type: 'file' | 'directory'
 }
 
 export type SkillsResponse = {

@@ -23,9 +23,85 @@ import { useUiStore } from '@/stores/uiStore'
 import { Helmet } from 'react-helmet-async'
 import axios from 'axios'
 import { useState } from 'react'
+import styled from '@emotion/styled'
 
 const { Title, Paragraph } = Typography
 const { useToken } = antTheme
+
+/** 登录页面全屏居中容器 */
+const PageContainer = styled.div<{ $bgColor: string }>`
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: ${props => props.$bgColor};
+    padding: 16px;
+`
+
+/** 右上角固定按钮组容器 */
+const TopActions = styled.div`
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    gap: 8px;
+`
+
+/** 主题切换按钮容器 */
+const LocaleSwitchIcon = styled.div`
+    position: relative;
+    width: 24px;
+    height: 20px;
+`
+
+/** 当前语言标签（左上角，有背景填充） */
+const ActiveLocale = styled.span<{ $isDark: boolean }>`
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 14px;
+    z-index: 2;
+    padding: 0 3px;
+    border-radius: 3px;
+    background: ${props => props.$isDark ? '#d8d8d8' : '#18181b'};
+    color: ${props => props.$isDark ? '#18181b' : '#ffffff'};
+`
+
+/** 待切换语言标签（右下角，透明背景，有 border） */
+const InactiveLocale = styled.span<{ $isDark: boolean; $textColor: string }>`
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    font-size: 9px;
+    font-weight: 400;
+    line-height: 12px;
+    z-index: 1;
+    padding: 0 2px;
+    border-radius: 2px;
+    background: transparent;
+    border: 1px solid ${props => props.$isDark ? '#52525b' : '#d4d4d8'};
+    color: ${props => props.$textColor};
+`
+
+/** 标题居中区域 */
+const TitleArea = styled.div`
+    text-align: center;
+`
+
+/** 登录卡片透明样式 */
+const TransparentCard = styled(Card)`
+    width: 100%;
+    max-width: 400px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+
+    .ant-card-body {
+        background: transparent;
+    }
+`
 
 export function LoginPage() {
     const navigate = useNavigate()
@@ -82,16 +158,9 @@ export function LoginPage() {
             <Helmet>
                 <title>{t('siteTitle')}</title>
             </Helmet>
-            <div style={{
-            minHeight: '100vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: token.colorBgLayout,
-            padding: '16px',
-        }}>
+            <PageContainer $bgColor={token.colorBgLayout}>
             {/* 右上角按钮组：语言 + 主题 */}
-            <div style={{ position: 'fixed', top: 16, right: 16, display: 'flex', gap: 8 }}>
+            <TopActions>
                 <Button
                     type="text"
                     onClick={handleToggleLocale}
@@ -99,45 +168,14 @@ export function LoginPage() {
                     style={{ padding: 0, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                     {/* Ant Design 官网风格的语言切换按钮 */}
-                    <div style={{
-                        position: 'relative',
-                        width: 24,
-                        height: 20,
-                    }}>
-                        {/* 当前语言 - 左上，有背景填充 */}
-                        <span style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            fontSize: 10,
-                            fontWeight: 600,
-                            lineHeight: '14px',
-                            zIndex: 2,
-                            padding: '0 3px',
-                            borderRadius: 3,
-                            background: theme === 'dark' ? '#d8d8d8' : '#18181b',
-                            color: theme === 'dark' ? '#18181b' : '#ffffff',
-                        }}>
+                    <LocaleSwitchIcon>
+                        <ActiveLocale $isDark={theme === 'dark'}>
                             {locale === 'zh' ? '中' : 'En'}
-                        </span>
-                        {/* 待切换语言 - 右下，背景透明，有 border */}
-                        <span style={{
-                            position: 'absolute',
-                            bottom: 0,
-                            right: 0,
-                            fontSize: 9,
-                            fontWeight: 400,
-                            lineHeight: '12px',
-                            zIndex: 1,
-                            padding: '0 2px',
-                            borderRadius: 2,
-                            background: 'transparent',
-                            border: `1px solid ${theme === 'dark' ? '#52525b' : '#d4d4d8'}`,
-                            color: token.colorTextTertiary,
-                        }}>
+                        </ActiveLocale>
+                        <InactiveLocale $isDark={theme === 'dark'} $textColor={token.colorTextTertiary}>
                             {locale === 'zh' ? 'En' : '中'}
-                        </span>
-                    </div>
+                        </InactiveLocale>
+                    </LocaleSwitchIcon>
                 </Button>
                 <Button
                     shape="circle"
@@ -145,18 +183,15 @@ export function LoginPage() {
                     icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
                     onClick={handleToggleTheme}
                 />
-            </div>
-            <Card
-                style={{ width: '100%', maxWidth: 400, background: 'transparent', border: 'none', boxShadow: 'none' }}
-                styles={{ body: { background: 'transparent' } }}
-            >
+            </TopActions>
+            <TransparentCard>
                 <Space orientation="vertical" style={{ width: '100%' }} size="large">
-                    <div style={{ textAlign: 'center' }}>
+                    <TitleArea>
                         <Title level={2} style={{ marginBottom: 4 }}>{t('login.title')}</Title>
                         <Paragraph type="secondary">
                             {t('login.subtitle')}
                         </Paragraph>
-                    </div>
+                    </TitleArea>
                     <Form
                         form={form}
                         layout="vertical"
@@ -184,8 +219,8 @@ export function LoginPage() {
                         </Form.Item>
                     </Form>
                 </Space>
-            </Card>
-        </div>
+            </TransparentCard>
+        </PageContainer>
         </>
     )
 }

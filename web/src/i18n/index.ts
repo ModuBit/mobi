@@ -24,7 +24,17 @@ i18n.use(initReactI18next).init({
         zh: { translation: zh },
         en: { translation: en },
     },
-    lng: 'zh', // 初始值，会被 uiStore 覆盖
+    lng: (() => {
+        try {
+            const stored = localStorage.getItem('language')
+            if (stored) return stored
+            const navLang = navigator.language?.toLowerCase() ?? ''
+            if (navLang.startsWith('zh')) return 'zh'
+            return 'en'
+        } catch {
+            return 'zh'
+        }
+    })(),
     fallbackLng: 'en',
     interpolation: {
         escapeValue: false, // React 已经处理 XSS

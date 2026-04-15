@@ -18,6 +18,7 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import type { Session } from '@/api/types'
+import { queryKeys } from '@/lib/query-keys'
 
 const PAGE_SIZE = 20
 
@@ -35,7 +36,7 @@ export function useGroupSessions(groupKey: string | null) {
     const api = useMobiApi(token)
 
     return useInfiniteQuery<GroupSessionsPage>({
-        queryKey: ['groupSessions', groupKey],
+        queryKey: queryKeys.groupSessions(groupKey!),
         queryFn: async ({ pageParam }) => {
             const cursor = pageParam as number | undefined
             const res = await api.sessionGroups.getSessions(groupKey!, cursor, PAGE_SIZE)

@@ -17,12 +17,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
+import { queryKeys } from '@/lib/query-keys'
+import type { FileNode } from '@/api/types'
 
-export interface FileNode {
-    name: string
-    path: string
-    type: 'file' | 'directory'
-}
+export type { FileNode }
 
 /**
  * 获取目录下的文件列表
@@ -32,7 +30,7 @@ export function useFileTree(sessionId: string | null, path: string) {
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: ['files', sessionId, path],
+        queryKey: queryKeys.sessionDirectory(sessionId!, path),
         queryFn: async () => {
             if (!sessionId) return []
             const res = await api.files.list(sessionId, path)
@@ -52,7 +50,7 @@ export function useFileContent(sessionId: string | null, filePath: string | null
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: ['file-content', sessionId, filePath],
+        queryKey: queryKeys.sessionFile(sessionId!, filePath!),
         queryFn: async () => {
             if (!sessionId || !filePath) return null
             const res = await api.files.read(sessionId, filePath)

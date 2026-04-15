@@ -37,6 +37,14 @@ export function useTerminalSocket({
     const socketRef = useRef<Socket | null>(null)
     const isOpenRef = useRef(false)
 
+    // 使用 ref 存储回调，避免引用变化导致 effect 重执行
+    const onDataRef = useRef(onData)
+    const onExitRef = useRef(onExit)
+    const onOpenRef = useRef(onOpen)
+    onDataRef.current = onData
+    onExitRef.current = onExit
+    onOpenRef.current = onOpen
+
     useEffect(() => {
         if (!token) return
 
@@ -51,14 +59,14 @@ export function useTerminalSocket({
         // 监听终端输出
         socket.on('terminal:output', (data: { sessionId: string; terminalId: string; data: string }) => {
             if (data.sessionId === sessionId && data.terminalId === terminalId) {
-                onData(data.data)
+                onDataRef.current(data.data)
             }
         })
 
         // 监听终端退出
         socket.on('terminal:exit', (data: { sessionId: string; terminalId: string; code?: number }) => {
             if (data.sessionId === sessionId && data.terminalId === terminalId) {
-                onExit?.(data.code)
+                onExitRef.current?.(data.code)
                 isOpenRef.current = false
             }
         })
@@ -77,7 +85,7 @@ export function useTerminalSocket({
             socket.disconnect()
             socketRef.current = null
         }
-    }, [token, sessionId, terminalId, onData, onExit, onOpen])
+    }, [token, sessionId, terminalId])
 
     // 打开终端
     const open = useCallback((cols: number, rows: number, cwd?: string) => {
@@ -90,9 +98,9 @@ export function useTerminalSocket({
                 cwd,
             })
             isOpenRef.current = true
-            onOpen?.()
+            onOpenRef.current?.()
         }
-    }, [sessionId, terminalId, onOpen])
+    }, [sessionId, terminalId])
 
     // 写入数据
     const write = useCallback((data: string) => {

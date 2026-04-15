@@ -41,7 +41,12 @@ export const useAuthStore = create<AuthState>()(
     )
 )
 
-// 便捷 hook：直接返回 baseUrl
-export function useBaseUrl() {
+// 便捷函数：直接返回 baseUrl（非 hook，可在任意位置调用）
+export function getBaseUrl() {
     return window.location.origin
+}
+
+// 向后兼容：保留 hook 形式导出
+export function useBaseUrl() {
+    return getBaseUrl()
 }

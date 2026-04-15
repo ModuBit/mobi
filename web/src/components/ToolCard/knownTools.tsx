@@ -85,6 +85,59 @@ type ToolOpts = {
     metadata: SessionMetadataSummary | null
 }
 
+// 通用终端工具配置（Bash / shell_command 共用）
+const terminalToolConfig = {
+    icon: () => <CodeOutlined style={DEFAULT_ICON_STYLE} />,
+    title: (opts: ToolOpts) => opts.description ?? 'Terminal',
+    subtitle: (opts: ToolOpts) => getInputStringAny(opts.input, ['command', 'cmd']),
+    minimal: true
+}
+
+// 退出计划模式工具配置（ExitPlanMode / exit_plan_mode 共用）
+const exitPlanModeConfig = {
+    icon: () => <FileTextOutlined style={DEFAULT_ICON_STYLE} />,
+    title: () => 'Plan proposal',
+    minimal: false
+}
+
+// 用户提问工具标题生成（AskUserQuestion / ask_user_question / request_user_input 共用）
+function askUserQuestionTitle(opts: ToolOpts, titleField: 'header' | 'id' = 'header'): string {
+    const questions = isObject(opts.input) && Array.isArray(opts.input.questions)
+        ? opts.input.questions : []
+    const count = questions.length
+    const first = questions[0] ?? null
+    const titleValue = isObject(first) && typeof first[titleField] === 'string'
+        ? (first[titleField] as string).trim() : ''
+
+    if (count > 1) {
+        return `${count} Questions`
+    }
+    return titleValue.length > 0 ? titleValue : 'Question'
+}
+
+// 用户提问工具副标题生成（共用）
+function askUserQuestionSubtitle(opts: ToolOpts): string | null {
+    const questions = isObject(opts.input) && Array.isArray(opts.input.questions)
+        ? opts.input.questions : []
+    const count = questions.length
+    const first = questions[0] ?? null
+    const question = isObject(first) && typeof first.question === 'string'
+        ? first.question.trim() : ''
+
+    if (count > 1 && question.length > 0) {
+        return truncate(question, 100) + ` (+${count - 1} more)`
+    }
+    return question.length > 0 ? truncate(question, 120) : null
+}
+
+// AskUserQuestion 和 ask_user_question 共用配置（基于 header 字段）
+const askUserQuestionConfig = {
+    icon: () => <QuestionCircleOutlined style={DEFAULT_ICON_STYLE} />,
+    title: (opts: ToolOpts) => askUserQuestionTitle(opts, 'header'),
+    subtitle: (opts: ToolOpts) => askUserQuestionSubtitle(opts),
+    minimal: true
+}
+
 export const knownTools: Record<string, {
     icon: (opts: ToolOpts) => ReactNode
     title: (opts: ToolOpts) => string
@@ -136,12 +189,7 @@ export const knownTools: Record<string, {
         },
         minimal: true
     },
-    Bash: {
-        icon: () => <CodeOutlined style={DEFAULT_ICON_STYLE} />,
-        title: (opts) => opts.description ?? 'Terminal',
-        subtitle: (opts) => getInputStringAny(opts.input, ['command', 'cmd']),
-        minimal: true
-    },
+    Bash: terminalToolConfig,
     Glob: {
         icon: () => <SearchOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => getInputStringAny(opts.input, ['pattern']) ?? 'Search files',
@@ -163,12 +211,7 @@ export const knownTools: Record<string, {
         },
         minimal: true
     },
-    shell_command: {
-        icon: () => <CodeOutlined style={DEFAULT_ICON_STYLE} />,
-        title: (opts) => opts.description ?? 'Terminal',
-        subtitle: (opts) => getInputStringAny(opts.input, ['command', 'cmd']),
-        minimal: true
-    },
+    shell_command: terminalToolConfig,
     Read: {
         icon: () => <EyeOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
@@ -270,106 +313,14 @@ export const knownTools: Record<string, {
         subtitle: (opts) => formatChecklistCount(extractUpdatePlanChecklist(opts.input, opts.result), 'step'),
         minimal: (opts) => extractUpdatePlanChecklist(opts.input, opts.result).length === 0
     },
-    // ExitPlanMode 和 exit_plan_mode 共用配置
-    ExitPlanMode: {
-        icon: () => <FileTextOutlined style={DEFAULT_ICON_STYLE} />,
-        title: () => 'Plan proposal',
-        minimal: false
-    },
-    exit_plan_mode: {
-        icon: () => <FileTextOutlined style={DEFAULT_ICON_STYLE} />,
-        title: () => 'Plan proposal',
-        minimal: false
-    },
-    // AskUserQuestion 和 ask_user_question 共用配置
-    AskUserQuestion: {
-        icon: () => <QuestionCircleOutlined style={DEFAULT_ICON_STYLE} />,
-        title: (opts) => {
-            const questions = isObject(opts.input) && Array.isArray(opts.input.questions)
-                ? opts.input.questions : []
-            const count = questions.length
-            const first = questions[0] ?? null
-            const header = isObject(first) && typeof first.header === 'string'
-                ? first.header.trim() : ''
-
-            if (count > 1) {
-                return `${count} Questions`
-            }
-            return header.length > 0 ? header : 'Question'
-        },
-        subtitle: (opts) => {
-            const questions = isObject(opts.input) && Array.isArray(opts.input.questions)
-                ? opts.input.questions : []
-            const count = questions.length
-            const first = questions[0] ?? null
-            const question = isObject(first) && typeof first.question === 'string'
-                ? first.question.trim() : ''
-
-            if (count > 1 && question.length > 0) {
-                return truncate(question, 100) + ` (+${count - 1} more)`
-            }
-            return question.length > 0 ? truncate(question, 120) : null
-        },
-        minimal: true
-    },
-    ask_user_question: {
-        icon: () => <QuestionCircleOutlined style={DEFAULT_ICON_STYLE} />,
-        title: (opts) => {
-            const questions = isObject(opts.input) && Array.isArray(opts.input.questions)
-                ? opts.input.questions : []
-            const count = questions.length
-            const first = questions[0] ?? null
-            const header = isObject(first) && typeof first.header === 'string'
-                ? first.header.trim() : ''
-
-            if (count > 1) {
-                return `${count} Questions`
-            }
-            return header.length > 0 ? header : 'Question'
-        },
-        subtitle: (opts) => {
-            const questions = isObject(opts.input) && Array.isArray(opts.input.questions)
-                ? opts.input.questions : []
-            const count = questions.length
-            const first = questions[0] ?? null
-            const question = isObject(first) && typeof first.question === 'string'
-                ? first.question.trim() : ''
-
-            if (count > 1 && question.length > 0) {
-                return truncate(question, 100) + ` (+${count - 1} more)`
-            }
-            return question.length > 0 ? truncate(question, 120) : null
-        },
-        minimal: true
-    },
+    ExitPlanMode: exitPlanModeConfig,
+    exit_plan_mode: exitPlanModeConfig,
+    AskUserQuestion: askUserQuestionConfig,
+    ask_user_question: askUserQuestionConfig,
     request_user_input: {
         icon: () => <QuestionCircleOutlined style={DEFAULT_ICON_STYLE} />,
-        title: (opts) => {
-            const questions = isObject(opts.input) && Array.isArray(opts.input.questions)
-                ? opts.input.questions : []
-            const count = questions.length
-            const first = questions[0] ?? null
-            const id = isObject(first) && typeof first.id === 'string'
-                ? first.id.trim() : ''
-
-            if (count > 1) {
-                return `${count} Questions`
-            }
-            return id.length > 0 ? id : 'Question'
-        },
-        subtitle: (opts) => {
-            const questions = isObject(opts.input) && Array.isArray(opts.input.questions)
-                ? opts.input.questions : []
-            const count = questions.length
-            const first = questions[0] ?? null
-            const question = isObject(first) && typeof first.question === 'string'
-                ? first.question.trim() : ''
-
-            if (count > 1 && question.length > 0) {
-                return truncate(question, 100) + ` (+${count - 1} more)`
-            }
-            return question.length > 0 ? truncate(question, 120) : null
-        },
+        title: (opts) => askUserQuestionTitle(opts, 'id'),
+        subtitle: (opts) => askUserQuestionSubtitle(opts),
         minimal: true
     }
 }

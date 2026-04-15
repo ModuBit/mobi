@@ -18,22 +18,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import { queryKeys } from '@/lib/query-keys'
+import type { SlashCommand } from '@/api/types'
 
-/**
- * 斜杠命令定义
- */
-export interface SlashCommand {
-    /** 命令名称（不含斜杠） */
-    name: string
-    /** 命令描述 */
-    description?: string
-    /** 命令来源 */
-    source?: 'builtin' | 'user' | 'plugin' | 'project'
-}
+export type { SlashCommand }
 
 /**
  * 获取会话可用的斜杠命令
- * @param sessionId 会话 ID
  */
 export function useSlashCommands(sessionId: string | null) {
     const { token } = useAuthStore()
@@ -45,7 +35,6 @@ export function useSlashCommands(sessionId: string | null) {
             if (!sessionId) return []
 
             const res = await api.sessions.slashCommands(sessionId)
-            // 假设 API 返回格式为 { commands: SlashCommand[] }
             return res.data?.commands ?? []
         },
         enabled: !!token && !!sessionId,

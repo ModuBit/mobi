@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { NormalizedMessage } from './types'
+import type { NormalizedMessage, MessageMeta } from './types'
 import type { AttachmentMetadata } from '@/api/types'
 import { isObject } from '@mobi/shared'
 
@@ -48,7 +48,7 @@ export function normalizeUserRecord(
     localId: string | null,
     createdAt: number,
     content: unknown,
-    meta?: unknown
+    meta?: MessageMeta
 ): NormalizedMessage | null {
     if (typeof content === 'string') {
         return {

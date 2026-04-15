@@ -14,25 +14,17 @@
  * limitations under the License.
  */
 
-import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/stores/authStore'
-import { useMobiApi } from '@/api/client'
-import type { Session } from '@/api/types'
-import { queryKeys } from '@/lib/query-keys'
+import { defineConfig } from 'vitest/config'
+import path from 'path'
 
-/**
- * 获取所有会话列表
- */
-export function useSessions() {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
-
-    return useQuery({
-        queryKey: queryKeys.sessions,
-        queryFn: async () => {
-            const res = await api.sessions.list()
-            return res.data.sessions as Session[]
+export default defineConfig({
+    resolve: {
+        alias: {
+            '@': path.resolve(__dirname, 'src'),
         },
-        enabled: !!token,
-    })
-}
+    },
+    test: {
+        include: ['tests/**/*.test.ts'],
+        environment: 'node',
+    },
+})

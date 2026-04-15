@@ -73,7 +73,7 @@ export function reduceChatBlocks(
     // 只在没有工具调用/结果时创建仅权限的工具卡片
     // 同时跳过比当前视图中最旧消息更早的权限，避免分页时混合新旧工具卡片
     const oldestMessageTime = normalized.length > 0
-        ? Math.min(...normalized.map(m => m.createdAt))
+        ? normalized.reduce((min, m) => Math.min(min, m.createdAt), Infinity)
         : null
 
     for (const [id, entry] of permissionsById) {
