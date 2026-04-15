@@ -54,6 +54,9 @@ interface UiState {
     mobileMenuOpen: boolean
     sessionListDrawerOpen: boolean
     newSessionDrawerOpen: boolean
+    // 重命名
+    renamingSessionId: string | null
+    renameValue: string
     // 操作方法
     setSessionViewMode: (mode: SessionViewMode) => void
     setFileViewTab: (tab: FileViewTab) => void
@@ -62,6 +65,9 @@ interface UiState {
     setMobileMenuOpen: (open: boolean) => void
     setSessionListDrawerOpen: (open: boolean) => void
     setNewSessionDrawerOpen: (open: boolean) => void
+    startRename: (sessionId: string, currentValue: string) => void
+    setRenameValue: (value: string) => void
+    cancelRename: () => void
 }
 
 export const useUiStore = create<UiState>()(
@@ -74,6 +80,8 @@ export const useUiStore = create<UiState>()(
             mobileMenuOpen: false,
             sessionListDrawerOpen: false,
             newSessionDrawerOpen: false,
+            renamingSessionId: null,
+            renameValue: '',
             setSessionViewMode: (mode) => set({ sessionViewMode: mode }),
             setFileViewTab: (tab) => set({ fileViewTab: tab }),
             setTheme: (theme) => set({ theme }),
@@ -84,6 +92,9 @@ export const useUiStore = create<UiState>()(
             setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
             setSessionListDrawerOpen: (open) => set({ sessionListDrawerOpen: open }),
             setNewSessionDrawerOpen: (open) => set({ newSessionDrawerOpen: open }),
+            startRename: (sessionId, currentValue) => set({ renamingSessionId: sessionId, renameValue: currentValue }),
+            setRenameValue: (value) => set({ renameValue: value }),
+            cancelRename: () => set({ renamingSessionId: null, renameValue: '' }),
         }),
         {
             name: 'mobi-ui',

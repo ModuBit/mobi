@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import { Conversations } from '@ant-design/x'
 import type { ConversationsProps } from '@ant-design/x'
-import { Modal, Input, message, Skeleton, Empty } from 'antd'
+import { Modal, Input, message, Skeleton, Empty, Drawer, Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -28,6 +28,8 @@ import {
     StopOutlined,
     PlayCircleOutlined,
     SwapOutlined,
+    CloseOutlined,
+    MoreOutlined,
 } from '@ant-design/icons'
 import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
 import { useAuthStore } from '@/stores/authStore'
@@ -38,6 +40,7 @@ import { getSessionDisplayName } from '@/utils/sessionUtils'
 import { PixelAvatar } from '@/components/PixelAvatar/PixelAvatar'
 import type { AgentStatus, StatusStyle } from '@/components/PixelAvatar/types'
 import { useUiStore } from '@/stores/uiStore'
+import { useIsMobile } from '@/hooks/useMediaQuery'
 import styled from '@emotion/styled'
 import type { Session } from '@/api/types'
 
@@ -85,7 +88,13 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
     const { token: authToken } = useAuthStore()
     const api = useMobiApi(authToken)
     const queryClient = useQueryClient()
-    const { setSessionListDrawerOpen } = useUiStore()
+    const { setSessionListDrawerOpen, startRename, renamingSessionId, renameValue, setRenameValue, cancelRename } = useUiStore()
+    const isMobile = useIsMobile()
+
+    // 长按 ActionSheet 状态
+    const [actionSheetSessionId, setActionSheetSessionId] = useState<string | null>(null)
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const lastTouchedKey = useRef<string | null>(null)
 
     // 获取分组列表
     const { data: groups = [], isLoading: groupsLoading } = useSessionGroups()
@@ -102,6 +111,32 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         })),
     })
 
+    // 使缓存失效
+    const invalidateAll = useCallback(async (sessionId: string) => {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
+        await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
+        await queryClient.invalidateQueries({ queryKey: ['sessionGroups'] })
+        await queryClient.invalidateQueries({ queryKey: ['groupSessions'] })
+    }, [queryClient])
+
+    const renameActions = useSessionActions(renamingSessionId)
+
+    // 确认重命名
+    const handleRenameConfirm = useCallback(async () => {
+        if (!renameValue.trim() || !renamingSessionId) {
+            message.error(t('session.actions.nameRequired'))
+            return
+        }
+        try {
+            await renameActions.renameSession(renameValue.trim())
+            message.success(t('common.success'))
+            await invalidateAll(renamingSessionId)
+            cancelRename()
+        } catch {
+            message.error(t('common.error'))
+        }
+    }, [renameValue, renamingSessionId, renameActions, t, invalidateAll, cancelRename])
+
     // 构建 Conversations items
     const items = useMemo(() => {
         const result: ConversationsProps['items'] = []
@@ -114,9 +149,41 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
             const group = groups[i]
 
             for (const session of sessions) {
+                const isRenaming = renamingSessionId === session.id
                 result.push({
                     key: session.id,
-                    label: getSessionDisplayName(session),
+                    label: isRenaming
+                        ? <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                            <Input
+                                size="small"
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                onPressEnter={handleRenameConfirm}
+                                onKeyDown={(e) => { if (e.key === 'Escape') cancelRename() }}
+                                autoFocus
+                                style={{ flex: 1 }}
+                            />
+                            <Button size="small" type="primary" onClick={handleRenameConfirm} loading={renameActions.isPending}>
+                                {t('common.confirm')}
+                            </Button>
+                            <Button size="small" onClick={cancelRename}>
+                                {t('common.cancel')}
+                            </Button>
+                        </div>
+                        : isMobile
+                            ? <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {getSessionDisplayName(session)}
+                                </span>
+                                <MoreOutlined
+                                    style={{ color: 'var(--ant-color-text-tertiary)', fontSize: 14, padding: '8px 4px', cursor: 'pointer', flexShrink: 0 }}
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        setActionSheetSessionId(session.id)
+                                    }}
+                                />
+                            </div>
+                            : getSessionDisplayName(session),
                     group: group?.name || groupKey,
                     icon: <PixelAvatar name={session.id} status={getSessionAvatarStatus(session)} size={24} statusStyles={SESSION_AVATAR_STYLES} />,
                 })
@@ -124,7 +191,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         }
 
         return result
-    }, [groupQueries, groups])
+    }, [groupQueries, groups, renamingSessionId, renameValue, setRenameValue, handleRenameConfirm, cancelRename, isMobile, setActionSheetSessionId])
 
     // 默认展开有活跃会话的分组
     const defaultExpandedKeys = useMemo(() => {
@@ -147,20 +214,6 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         return undefined
     }, [groupQueries])
 
-    // 重命名状态
-    const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
-    const [renameValue, setRenameValue] = useState('')
-    const renameActions = useSessionActions(renamingSessionId)
-
-    // 使缓存失效
-    const invalidateAll = useCallback(async (sessionId: string) => {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
-        await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
-        await queryClient.invalidateQueries({ queryKey: ['sessionGroups'] })
-        // 精确失效该分组缓存
-        await queryClient.invalidateQueries({ queryKey: ['groupSessions'] })
-    }, [queryClient])
-
     // 菜单配置
     const menu: ConversationsProps['menu'] = useCallback((conversation: Record<string, unknown>) => {
         const sessionId = conversation.key as string
@@ -176,9 +229,8 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                 icon: <EditOutlined />,
                 label: t('session.actions.rename'),
                 onClick: () => {
-                    setRenamingSessionId(sessionId)
                     const metadata = session.metadata as Record<string, unknown> | undefined
-                    setRenameValue((metadata?.name as string) || '')
+                    startRename(sessionId, (metadata?.name as string) || '')
                 },
             })
 
@@ -186,11 +238,13 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                 key: 'archive',
                 icon: <InboxOutlined />,
                 label: t('session.actions.archive'),
+                disabled: !session.active,
                 onClick: async () => {
                     try {
                         await api.sessions.archive(sessionId)
                         message.success(t('common.success'))
                         invalidateAll(sessionId)
+                        setSessionListDrawerOpen(false)
                     } catch {
                         message.error(t('common.error'))
                     }
@@ -199,66 +253,12 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
 
             menuItems.push({ type: 'divider' as const })
 
-            // 已结束的会话可恢复
-            if (!session.active) {
-                menuItems.push({
-                    key: 'resume',
-                    icon: <PlayCircleOutlined />,
-                    label: t('session.actions.resume'),
-                    onClick: async () => {
-                        try {
-                            const res = await api.sessions.resume(sessionId)
-                            message.success(t('common.success'))
-                            await invalidateAll(sessionId)
-                            navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
-                        } catch {
-                            message.error(t('common.error'))
-                        }
-                    },
-                })
-            }
-
-            // 活跃会话可中断和切换模式
-            if (session.active) {
-                menuItems.push({
-                    key: 'abort',
-                    icon: <StopOutlined />,
-                    label: t('session.actions.abort'),
-                    danger: true,
-                    onClick: async () => {
-                        try {
-                            await api.sessions.abort(sessionId)
-                            message.success(t('common.success'))
-                            invalidateAll(sessionId)
-                        } catch {
-                            message.error(t('common.error'))
-                        }
-                    },
-                })
-
-                menuItems.push({
-                    key: 'switch',
-                    icon: <SwapOutlined />,
-                    label: t('session.actions.switch'),
-                    onClick: async () => {
-                        try {
-                            await api.sessions.switch(sessionId)
-                            message.success(t('common.success'))
-                            invalidateAll(sessionId)
-                        } catch {
-                            message.error(t('common.error'))
-                        }
-                    },
-                })
-            }
-
-            menuItems.push({ type: 'divider' as const })
-
             menuItems.push({
                 key: 'delete',
                 icon: <DeleteOutlined />,
                 label: t('session.actions.delete'),
                 danger: true,
+                disabled: session.active,
                 onClick: () => {
                     Modal.confirm({
                         title: t('session.actions.deleteConfirmTitle'),
@@ -273,7 +273,10 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                                 queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
                                 queryClient.removeQueries({ queryKey: queryKeys.messages(sessionId) })
                                 await invalidateAll(sessionId)
-                                navigate({ to: '/sessions' })
+                                if (selectedSessionId === sessionId) {
+                                    navigate({ to: '/sessions' })
+                                }
+                                setSessionListDrawerOpen(false)
                             } catch {
                                 message.error(t('common.error'))
                             }
@@ -286,23 +289,143 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         }
 
         return { items: buildItems() }
-    }, [findSession, t, api, navigate, invalidateAll, queryClient])
+    }, [findSession, t, api, navigate, invalidateAll, queryClient, selectedSessionId, setSessionListDrawerOpen])
 
-    // 确认重命名
-    const handleRenameConfirm = useCallback(async () => {
-        if (!renameValue.trim() || !renamingSessionId) {
-            message.error(t('session.actions.nameRequired'))
-            return
+    // 移动端：从 session id 获取菜单操作项
+    const getActionSheetItems = useCallback((sessionId: string) => {
+        const session = findSession(sessionId)
+        if (!session) return []
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const actions: any[] = []
+
+        actions.push({
+            key: 'rename',
+            icon: <EditOutlined />,
+            label: t('session.actions.rename'),
+            onClick: () => {
+                setActionSheetSessionId(null)
+                const metadata = session.metadata as Record<string, unknown> | undefined
+                startRename(sessionId, (metadata?.name as string) || '')
+            },
+        })
+
+        // 未激活会话可恢复
+        if (!session.active) {
+            actions.push({
+                key: 'resume',
+                icon: <PlayCircleOutlined />,
+                label: t('session.actions.resume'),
+                onClick: async () => {
+                    setActionSheetSessionId(null)
+                    try {
+                        const res = await api.sessions.resume(sessionId)
+                        message.success(t('common.success'))
+                        await invalidateAll(sessionId)
+                        navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
+                        setSessionListDrawerOpen(false)
+                    } catch {
+                        message.error(t('common.error'))
+                    }
+                },
+            })
         }
-        try {
-            await renameActions.renameSession(renameValue.trim())
-            message.success(t('common.success'))
-            await invalidateAll(renamingSessionId)
-            setRenamingSessionId(null)
-        } catch {
-            message.error(t('common.error'))
+
+        actions.push({
+            key: 'archive',
+            icon: <InboxOutlined />,
+            label: t('session.actions.archive'),
+            disabled: !session.active,
+            onClick: async () => {
+                setActionSheetSessionId(null)
+                try {
+                    await api.sessions.archive(sessionId)
+                    message.success(t('common.success'))
+                    invalidateAll(sessionId)
+                    setSessionListDrawerOpen(false)
+                } catch {
+                    message.error(t('common.error'))
+                }
+            },
+        })
+
+        actions.push({ type: 'divider' as const })
+
+        actions.push({
+            key: 'delete',
+            icon: <DeleteOutlined />,
+            label: t('session.actions.delete'),
+            danger: true,
+            disabled: session.active,
+            onClick: () => {
+                setActionSheetSessionId(null)
+                Modal.confirm({
+                    title: t('session.actions.deleteConfirmTitle'),
+                    content: t('session.actions.deleteConfirmContent'),
+                    okText: t('common.confirm'),
+                    okButtonProps: { danger: true },
+                    cancelText: t('common.cancel'),
+                    onOk: async () => {
+                        try {
+                            await api.sessions.delete(sessionId)
+                            message.success(t('common.success'))
+                            queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
+                            queryClient.removeQueries({ queryKey: queryKeys.messages(sessionId) })
+                            await invalidateAll(sessionId)
+                            if (selectedSessionId === sessionId) {
+                                navigate({ to: '/sessions' })
+                            }
+                            setSessionListDrawerOpen(false)
+                        } catch {
+                            message.error(t('common.error'))
+                        }
+                    },
+                })
+            },
+        })
+
+        return actions
+    }, [findSession, t, api, invalidateAll, queryClient, navigate, startRename, selectedSessionId, setSessionListDrawerOpen])
+
+    // 移动端长按事件处理：通过遍历 items 和 DOM 匹配 session key
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+        // 从触摸点向上查找 Conversations item 元素
+        const el = (e.target as HTMLElement).closest('[class*="ant-conversations-item"]') as HTMLElement | null
+        if (!el) return
+
+        // 通过 item 的文本内容匹配 session
+        const itemText = el.textContent?.trim()
+        if (!itemText) return
+
+        const matchedItem = items.find(item => {
+            if (!('label' in item)) return false
+            const label = typeof item.label === 'string' ? item.label : ''
+            return label && itemText.startsWith(label)
+        })
+
+        if (!matchedItem) return
+
+        lastTouchedKey.current = matchedItem.key as string
+        longPressTimer.current = setTimeout(() => {
+            if (lastTouchedKey.current) {
+                setActionSheetSessionId(lastTouchedKey.current)
+            }
+        }, 500)
+    }, [items])
+
+    const handleTouchEnd = useCallback(() => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current)
+            longPressTimer.current = null
         }
-    }, [renameValue, renamingSessionId, renameActions, t, invalidateAll])
+        lastTouchedKey.current = null
+    }, [])
+
+    // ActionSheet 中当前 session 的菜单项
+    const actionSheetItems = useMemo(() => {
+        if (!actionSheetSessionId) return []
+        return getActionSheetItems(actionSheetSessionId)
+    }, [actionSheetSessionId, getActionSheetItems])
 
     // 加载状态
     if (groupsLoading) {
@@ -319,7 +442,11 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
 
     return (
         <>
-            <ListContainer>
+            <ListContainer
+                onTouchStart={isMobile ? handleTouchStart : undefined}
+                onTouchEnd={isMobile ? handleTouchEnd : undefined}
+                onTouchMove={isMobile ? handleTouchEnd : undefined}
+            >
                 <Conversations
                     items={items}
                     activeKey={selectedSessionId}
@@ -328,7 +455,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                         collapsible: true,
                         defaultExpandedKeys,
                     }}
-                    menu={menu}
+                    menu={isMobile ? undefined : menu}
                     style={{ height: '100%' }}
                     styles={{
                         root: { padding: '4px 8px' },
@@ -337,24 +464,53 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                 />
             </ListContainer>
 
-            {/* 重命名弹窗 */}
-            <Modal
-                title={t('session.actions.rename')}
-                open={!!renamingSessionId}
-                onOk={handleRenameConfirm}
-                onCancel={() => setRenamingSessionId(null)}
-                okText={t('common.confirm')}
-                cancelText={t('common.cancel')}
-                confirmLoading={renameActions.isPending}
-            >
-                <Input
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    placeholder={t('session.actions.namePlaceholder')}
-                    onPressEnter={handleRenameConfirm}
-                    autoFocus
-                />
-            </Modal>
+            {/* 移动端 ActionSheet */}
+            {isMobile && (
+                <Drawer
+                    placement="bottom"
+                    open={!!actionSheetSessionId}
+                    onClose={() => setActionSheetSessionId(null)}
+                    closable={false}
+                    styles={{
+                        wrapper: { height: 'auto', maxHeight: '60vh' },
+                        body: { padding: '8px 0', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' },
+                    }}
+                >
+                    {actionSheetItems.map((item: any) =>
+                        item.type === 'divider' ? (
+                            <div key="divider" style={{ height: 1, background: 'var(--ant-color-border-secondary)', margin: '4px 16px' }} />
+                        ) : (
+                            <Button
+                                key={item.key}
+                                type="text"
+                                block
+                                icon={item.icon}
+                                disabled={item.disabled}
+                                danger={item.danger}
+                                style={{
+                                    height: 48,
+                                    justifyContent: 'flex-start',
+                                    paddingInline: 20,
+                                    color: item.danger ? 'var(--ant-color-error)' : undefined,
+                                }}
+                                onClick={item.onClick}
+                            >
+                                {item.label}
+                            </Button>
+                        )
+                    )}
+                    <div style={{ height: 1, background: 'var(--ant-color-border-secondary)', margin: '4px 16px' }} />
+                    <Button
+                        type="text"
+                        block
+                        icon={<CloseOutlined />}
+                        style={{ height: 48, justifyContent: 'center', color: 'var(--ant-color-text-secondary)' }}
+                        onClick={() => setActionSheetSessionId(null)}
+                    >
+                        {t('common.cancel')}
+                    </Button>
+                </Drawer>
+            )}
         </>
     )
 }

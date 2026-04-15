@@ -55,7 +55,7 @@
         "actions": {
             "more": "More Actions",
             "rename": "Rename",
-            "archive": "Archive",
+            "archive": "Exit",
             "delete": "Delete",
             "abort": "Abort",
             "resume": "Resume",
@@ -142,7 +142,7 @@
         "abort": "Abort",
         "send": "Send",
         "permissionMode": "Permission Mode",
-        "activate": "Activate Session",
+        "activate": "Resume",
         "switchToRemote": "Switch to Remote Mode"
     },
     "status": {

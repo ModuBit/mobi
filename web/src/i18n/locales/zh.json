@@ -55,7 +55,7 @@
         "actions": {
             "more": "更多操作",
             "rename": "重命名",
-            "archive": "归档",
+            "archive": "退出",
             "delete": "删除",
             "abort": "中断",
             "resume": "恢复",
@@ -142,7 +142,7 @@
         "abort": "中断",
         "send": "发送",
         "permissionMode": "权限模式",
-        "activate": "激活会话",
+        "activate": "恢复会话",
         "switchToRemote": "切换到远程模式"
     },
     "status": {
