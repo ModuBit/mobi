@@ -33,6 +33,7 @@ import { ChatComposer } from '@/components/composer/ChatComposer'
 import { XMarkdown } from '@ant-design/x-markdown'
 
 import type { ChatBlock } from '@/chat'
+import type { AgentEventBlock as AgentEventBlockType } from '@/chat/types'
 import type { SessionMetadataSummary } from '@/api/types'
 
 const { useToken } = antTheme
@@ -123,7 +124,6 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
             footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
         }> = []
 
-        const toolContext = { metadata }
         // 用于 api-error 去重的 error code 跟踪
         const apiErrorCodeMap = new Map<string, string | null>()
 
@@ -138,7 +138,7 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
         }
 
         for (const block of chatBlocks) {
-            const content = renderChatBlock(block, token, session?.thinking, t, toolContext)
+            const content = renderChatBlock(block, { metadata, isThinking: !!session?.thinking })
             if (content === null) continue
 
             // 处理 api-error 去重
@@ -300,11 +300,6 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
     )
 }
 
-// ToolCard 渲染上下文
-type ToolRenderContext = {
-    metadata: SessionMetadataSummary | null
-}
-
 // 解析 CLI 输出文本，提取命令和输出
 function parseCliOutputText(text: string): { command: string | null, stdout: string | null } {
     const commandMatch = text.match(/<command-name>([\s\S]*?)<\/command-name>/i)
@@ -321,111 +316,105 @@ function parseCliOutputText(text: string): { command: string | null, stdout: str
     return { command, stdout }
 }
 
-// 渲染 ChatBlock
-function renderChatBlock(
-    block: ChatBlock,
-    token: ReturnType<typeof useToken>['token'],
-    isThinking: boolean | undefined,
-    t: (key: string, params?: Record<string, unknown>) => string,
-    toolContext: ToolRenderContext,
-): React.ReactNode {
-    switch (block.kind) {
-        case 'user-text':
-            if (block.isSynthetic) {
-                return (
-                    <span style={{ fontSize: 12, opacity: 0.5 }}>
-                        {block.text}
-                    </span>
-                )
-            }
-            return (
-                <div style={{ maxWidth: '100%' }}>
-                    <XMarkdown content={block.text || ''} />
-                </div>
-            )
-        case 'agent-text':
-            if (block.isSynthetic) {
-                return (
-                    <span style={{ fontSize: 12, opacity: 0.5 }}>
-                        {block.text}
-                    </span>
-                )
-            }
-            return (
-                <div style={{ maxWidth: '100%' }}>
-                    <XMarkdown content={block.text || ''} />
-                </div>
-            )
-        case 'agent-reasoning':
-            return <ReasoningBlock text={block.text} thinking={isThinking ?? false} />
-        case 'cli-output': {
-            const { command, stdout } = parseCliOutputText(block.text)
-            return (
+// 渲染文本块（user-text / agent-text 共用）
+function TextBlock({ text, isSynthetic }: { text: string; isSynthetic?: boolean }) {
+    if (isSynthetic) {
+        return <span style={{ fontSize: 12, opacity: 0.5 }}>{text}</span>
+    }
+    return (
+        <div style={{ maxWidth: '100%' }}>
+            <XMarkdown content={text || ''} />
+        </div>
+    )
+}
+
+// CLI 输出渲染
+function CliOutputBlock({ text }: { text: string }) {
+    const { token } = useToken()
+    const { command, stdout } = parseCliOutputText(text)
+    return (
+        <div style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 12,
+            lineHeight: 1.6,
+        }}>
+            {command && (
+                <div style={{ fontWeight: 500, marginBottom: stdout ? 4 : 0 }}>{command}</div>
+            )}
+            {stdout && (
                 <div style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 12,
-                    lineHeight: 1.6,
+                    color: token.colorTextSecondary,
+                    paddingLeft: command ? 16 : 0,
+                    position: 'relative',
                 }}>
                     {command && (
-                        <div style={{ fontWeight: 500, marginBottom: stdout ? 4 : 0 }}>{command}</div>
+                        <span style={{
+                            position: 'absolute',
+                            left: 0,
+                            color: token.colorTextTertiary,
+                        }}>└ </span>
                     )}
-                    {stdout && (
-                        <div style={{
-                            color: token.colorTextSecondary,
-                            paddingLeft: command ? 16 : 0,
-                            position: 'relative',
-                        }}>
-                            {command && (
-                                <span style={{
-                                    position: 'absolute',
-                                    left: 0,
-                                    color: token.colorTextTertiary,
-                                }}>└ </span>
-                            )}
-                            {stdout}
-                        </div>
-                    )}
+                    {stdout}
                 </div>
-            )
-        }
+            )}
+        </div>
+    )
+}
+
+// Agent 事件渲染
+function AgentEventBlock({ block }: { block: AgentEventBlockType }) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+
+    if (block.event.type === 'message') {
+        return (
+            <div style={{
+                padding: '4px 0',
+                fontSize: 11,
+                color: token.colorTextQuaternary,
+            }}>
+                {String(block.event.message ?? '')}
+            </div>
+        )
+    }
+
+    const d = block.display
+    const alignClass = d?.align ? `event-align-${d.align}` : undefined
+    const colorValue = d?.color === 'error' || d?.color === 'warning'
+        ? 'rgba(239, 68, 68, 0.45)'
+        : token.colorTextQuaternary
+    return (
+        <div
+            className={alignClass}
+            style={{
+                padding: d?.padding === false ? 0 : '4px 0',
+                fontSize: 11,
+                color: colorValue,
+            }}
+        >
+            {formatEvent(block.event, t)}
+        </div>
+    )
+}
+
+// 渲染 ChatBlock
+function renderChatBlock(block: ChatBlock, ctx: {
+    metadata: SessionMetadataSummary | null
+    isThinking: boolean
+}): React.ReactNode {
+    switch (block.kind) {
+        case 'user-text':
+            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} />
+        case 'agent-text':
+            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} />
+        case 'agent-reasoning':
+            return <ReasoningBlock text={block.text} thinking={ctx.isThinking} />
+        case 'cli-output':
+            return <CliOutputBlock text={block.text} />
         case 'tool-call':
-            return (
-                <ToolCallRenderer
-                    block={block}
-                    toolContext={toolContext}
-                />
-            )
+            return <ToolCallRenderer block={block} metadata={ctx.metadata} />
         case 'agent-event':
-            // message 类型事件（summary），居中显示
-            if (block.event.type === 'message') {
-                return (
-                    <div style={{
-                        padding: '4px 0',
-                        fontSize: 11,
-                        color: token.colorTextQuaternary,
-                    }}>
-                        {String(block.event.message ?? '')}
-                    </div>
-                )
-            }
-            // 通用事件渲染（样式由 block.display 控制）
-            const d = block.display
-            const alignClass = d?.align ? `event-align-${d.align}` : undefined
-            const colorValue = d?.color === 'error' || d?.color === 'warning'
-                ? 'rgba(239, 68, 68, 0.45)'
-                : token.colorTextQuaternary
-            return (
-                <div
-                    className={alignClass}
-                    style={{
-                        padding: d?.padding === false ? 0 : '4px 0',
-                        fontSize: 11,
-                        color: colorValue,
-                    }}
-                >
-                    {formatEvent(block.event, t)}
-                </div>
-            )
+            return <AgentEventBlock block={block} />
         default:
             return null
     }
@@ -492,7 +481,7 @@ function ReasoningBlock({ text, thinking }: { text: string; thinking: boolean })
     return (
         <Think
             title={thinking ? t('chat.thinking') : t('chat.thought')}
-            loading={thinking}
+            blink={thinking}
             expanded={expanded}
             onExpand={setExpanded}
         >
@@ -539,9 +528,9 @@ function getApiErrorCode(error: unknown): string | null {
 }
 
 // 渲染 ToolCallBlock（来自 reduceChatBlocks）
-function ToolCallRenderer({ block, toolContext }: {
+function ToolCallRenderer({ block, metadata }: {
     block: Extract<ChatBlock, { kind: 'tool-call' }>
-    toolContext: ToolRenderContext
+    metadata: SessionMetadataSummary | null
 }) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -556,7 +545,7 @@ function ToolCallRenderer({ block, toolContext }: {
         result: tool.result,
         childrenCount: block.children?.length ?? 0,
         description: tool.description ?? null,
-        metadata: null
+        metadata
     })
 
     return (
@@ -579,19 +568,19 @@ function ToolCallRenderer({ block, toolContext }: {
                         </span>
                     </div>
                 }
-                loading={isLoading}
+                blink={isLoading}
                 expanded={expanded}
                 onExpand={setExpanded}
             >
                 <ToolCallPreviewContent
                     toolCallBlock={block}
-                    metadata={toolContext.metadata}
+                    metadata={metadata}
                     onViewDetail={() => setDrawerOpen(true)}
                 />
             </Think>
             <ToolDetailDrawer
                 block={block}
-                metadata={toolContext.metadata}
+                metadata={metadata}
                 open={drawerOpen}
                 onClose={() => setDrawerOpen(false)}
             />

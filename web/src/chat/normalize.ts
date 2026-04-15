@@ -61,19 +61,29 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
             return null
         }
         const normalized = normalizeAgentRecord(message.id, message.localId, message.createdAt, record.content, record.meta)
-        return normalized
-            ? { ...normalized, status: message.status, originalText: message.originalText }
-            : {
-                id: message.id,
-                localId: message.localId,
-                createdAt: message.createdAt,
-                role: 'agent',
-                isSidechain: false,
-                content: [{ type: 'text', text: safeStringify(record.content), uuid: message.id, parentUUID: null }],
-                meta: record.meta,
-                status: message.status,
-                originalText: message.originalText
+        if (normalized) {
+            return { ...normalized, status: message.status, originalText: message.originalText }
+        }
+        // normalizeAgentRecord 对 result/success 等消息返回 null 属于正常跳过，
+        // 不应走 JSON dump fallback，仅当确实是未知类型时才兜底
+        const rc = record.content as Record<string, unknown>
+        if (rc?.type === 'output') {
+            const data = rc.data as Record<string, unknown> | null
+            if (data && typeof data === 'object' && data.type === 'result') {
+                return null
             }
+        }
+        return {
+            id: message.id,
+            localId: message.localId,
+            createdAt: message.createdAt,
+            role: 'agent',
+            isSidechain: false,
+            content: [{ type: 'text', text: safeStringify(record.content), uuid: message.id, parentUUID: null }],
+            meta: record.meta,
+            status: message.status,
+            originalText: message.originalText
+        }
     }
 
     return {
