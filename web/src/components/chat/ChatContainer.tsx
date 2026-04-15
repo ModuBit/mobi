@@ -286,7 +286,7 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
                 active={session?.active ?? false}
-                allowSendWhenInactive
+                allowSendWhenInactive={false}
                 thinking={session?.thinking ?? false}
                 agentState={session?.agentState}
                 contextSize={undefined} // TODO: 从消息中计算上下文大小

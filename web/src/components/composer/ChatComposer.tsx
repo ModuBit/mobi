@@ -19,7 +19,7 @@ import { Button, Tooltip, Space } from 'antd'
 import { PaperClipOutlined, SettingOutlined, StopOutlined, PlayCircleOutlined, SwapOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
-import type { AgentState, PermissionMode } from '@mobi/shared'
+import type { AgentState, PermissionMode, Session } from '@mobi/shared'
 import {
     getPermissionModeOptionsForFlavor
 } from '@mobi/shared'
@@ -27,9 +27,6 @@ import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import type { FileAttachment } from '@/lib/fileAttachments'
 import { createFileAttachment } from '@/lib/fileAttachments'
-
-/** 会话运行模式 */
-export type SessionMode = 'local' | 'remote'
 
 interface ChatComposerProps {
     /** 是否禁用 */
@@ -53,7 +50,7 @@ interface ChatComposerProps {
     /** 会话 ID */
     sessionId?: string
     /** 会话运行模式 */
-    mode?: SessionMode
+    mode?: Session['mode']
     /** 额外的底部按钮（渲染在 Sender footer 区域） */
     extraLeftButtons?: React.ReactNode
     /** 权限模式变更回调 */
@@ -155,7 +152,7 @@ export function ChatComposer(props: ChatComposerProps) {
     // 会话未激活时的覆盖层
     const showInactiveCover = !active && !allowSendWhenInactive
 
-    // 本地模式时的覆盖层（file 和 terminal 除外）
+    // 本地模式时的覆盖层（保留 footer 中的 file/terminal 按钮）
     const showLocalModeCover = active && mode === 'local'
 
     return (
@@ -202,7 +199,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                         size="small"
                                         icon={<PaperClipOutlined />}
                                         onClick={handleAttach}
-                                        disabled={controlsDisabled}
+                                        disabled={controlsDisabled || showLocalModeCover}
                                         style={{ borderRadius: '50%' }}
                                     />
                                 </Tooltip>
@@ -214,7 +211,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                             type="text"
                                             size="small"
                                             icon={<SettingOutlined />}
-                                            disabled={controlsDisabled}
+                                            disabled={controlsDisabled || showLocalModeCover}
                                             style={{ borderRadius: '50%' }}
                                         />
                                     </Tooltip>
@@ -233,28 +230,30 @@ export function ChatComposer(props: ChatComposerProps) {
                                     </Tooltip>
                                 )}
 
-                                {/* 额外按钮（视图切换等） - local 模式下仍然可用 */}
+                                {/* 额外按钮（视图切换等） */}
                                 {extraLeftButtons}
                             </Space>
 
                             {/* 发送按钮 */}
-                            {oriNode}
+                            {showLocalModeCover ? null : oriNode}
                         </div>
                     )}
                 />
 
                 {/* 未激活覆盖层 */}
                 {showInactiveCover && (
-                    <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'var(--ant-color-bg-container)',
-                        borderRadius: 'var(--ant-border-radius)',
-                        zIndex: 10,
-                    }}>
+                    <div
+                        className="sender-overlay"
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: 'var(--ant-border-radius)',
+                            zIndex: 10,
+                        }}
+                    >
                         <Button
                             type="primary"
                             icon={<PlayCircleOutlined />}
@@ -266,21 +265,23 @@ export function ChatComposer(props: ChatComposerProps) {
                     </div>
                 )}
 
-                {/* 本地模式覆盖层（保留 file/terminal 按钮） */}
+                {/* 本地模式覆盖层（保留 footer 中的按钮） */}
                 {showLocalModeCover && (
-                    <div style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 40,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'var(--ant-color-bg-container)',
-                        borderRadius: 'var(--ant-border-radius)',
-                        zIndex: 10,
-                    }}>
+                    <div
+                        className="sender-overlay"
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 56,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: 'var(--ant-border-radius)',
+                            zIndex: 10,
+                        }}
+                    >
                         <Button
                             type="primary"
                             icon={<SwapOutlined />}

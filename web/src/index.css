@@ -294,3 +294,14 @@ html[data-theme='dark'] .ant-btn-variant-solid:hover {
 html[data-theme='dark'] .ant-btn-variant-solid:active {
     color: #18181b !important;
 }
+
+/* Sender 磨砂遮罩层 */
+.sender-overlay {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(1px) saturate(1.4);
+    -webkit-backdrop-filter: blur(1px) saturate(1.4);
+}
+
+html[data-theme='dark'] .sender-overlay {
+    background: rgba(0, 0, 0, 0.55);
+}
