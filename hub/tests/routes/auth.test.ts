@@ -16,12 +16,12 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { jwtVerify } from 'jose'
-import { Store } from '../../store'
-import { createWebApp } from '../server'
-import { createConfiguration, resetConfiguration } from '../../configuration'
-import type { SSEManager } from '../../sse/sseManager'
-import type { VisibilityTracker } from '../../visibility/visibilityTracker'
-import type { SyncEngine } from '../../sync/syncEngine'
+import { Store } from '../../src/store'
+import { createWebApp } from '../../src/web/server'
+import { createConfiguration, resetConfiguration } from '../../src/configuration'
+import type { SSEManager } from '../../src/sse/sseManager'
+import type { VisibilityTracker } from '../../src/visibility/visibilityTracker'
+import type { SyncEngine } from '../../src/sync/syncEngine'
 
 // 测试用的 JWT secret
 const testJwtSecret = new Uint8Array(32)

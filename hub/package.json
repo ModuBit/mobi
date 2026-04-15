@@ -6,7 +6,7 @@
     "scripts": {
         "start": "bun run src/index.ts",
         "dev": "bun --watch run src/index.ts",
-        "test": "bun test",
+        "test": "bun test tests/",
         "typecheck": "tsc --noEmit",
         "build": "bun build src/index.ts --outdir dist --target bun"
     },
