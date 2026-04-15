@@ -25,6 +25,10 @@ export const queryKeys = {
     session: (sessionId: string) => ['session', sessionId] as const,
     /** 会话消息 */
     messages: (sessionId: string) => ['messages', sessionId] as const,
+    /** 会话分组列表 */
+    sessionGroups: ['sessionGroups'] as const,
+    /** 分组下的会话 */
+    groupSessions: (groupKey: string) => ['groupSessions', groupKey] as const,
     /** 机器列表 */
     machines: ['machines'] as const,
     /** Git 状态 */

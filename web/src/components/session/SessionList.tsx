@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { Conversations } from '@ant-design/x'
 import type { ConversationsProps } from '@ant-design/x'
 import { Modal, Input, message, Skeleton, Empty, Drawer, Button } from 'antd'
@@ -25,9 +25,7 @@ import {
     EditOutlined,
     DeleteOutlined,
     InboxOutlined,
-    StopOutlined,
     PlayCircleOutlined,
-    SwapOutlined,
     CloseOutlined,
     MoreOutlined,
 } from '@ant-design/icons'
@@ -42,15 +40,8 @@ import type { AgentStatus, StatusStyle } from '@/components/PixelAvatar/types'
 import { useUiStore } from '@/stores/uiStore'
 import { useIsMobile } from '@/hooks/useMediaQuery'
 import styled from '@emotion/styled'
-import type { Session } from '@/api/types'
+import type { Session, SessionMetadataSummary } from '@/api/types'
 
-/**
- * 根据 session 状态推导头像状态
- * - inactive: 未激活
- * - awaiting_auth: 等待用户授权
- * - outputting: 输出中（thinking）
- * - idle: 已输出，等待用户输入
- */
 function getSessionAvatarStatus(session: Session): AgentStatus {
     if (!session.active) return 'inactive'
     const pendingRequests = session.agentState?.requests
@@ -59,7 +50,6 @@ function getSessionAvatarStatus(session: Session): AgentStatus {
     return 'idle'
 }
 
-// Session 列表中的头像样式：默认已无边框，使用默认动画即可
 const SESSION_AVATAR_STYLES: Partial<Record<AgentStatus, StatusStyle>> = {}
 
 const ListContainer = styled.div`
@@ -78,6 +68,27 @@ interface SessionListProps {
     selectedSessionId?: string
 }
 
+// 会话操作 loading key 类型
+type SessionActionKey = 'resume' | 'archive' | 'delete'
+
+// ActionSheet 菜单项类型
+type ActionSheetItem =
+    | { type: 'divider' }
+    | {
+        key: string
+        icon: React.ReactNode
+        label: string
+        danger?: boolean
+        disabled?: boolean
+        onClick: () => void
+    }
+
+// 共享操作上下文
+interface ActionContext {
+    setLoadingKey: (key: SessionActionKey | null) => void
+    onSuccess: () => void
+}
+
 /**
  * 会话列表组件
  * 使用 Ant Design X Conversations 组件实现
@@ -91,11 +102,21 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
     const { setSessionListDrawerOpen, startRename, renamingSessionId, renameValue, setRenameValue, cancelRename } = useUiStore()
     const isMobile = useIsMobile()
 
-    // 长按 ActionSheet 状态
+    // ActionSheet 状态
     const [actionSheetSessionId, setActionSheetSessionId] = useState<string | null>(null)
-    const [actionSheetLoadingKey, setActionSheetLoadingKey] = useState<string | null>(null)
+    const [actionSheetLoadingKey, setActionSheetLoadingKey] = useState<SessionActionKey | null>(null)
+    // PC 菜单 loading 状态
+    const [menuLoadingKey, setMenuLoadingKey] = useState<SessionActionKey | null>(null)
+    // 长按相关
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
     const lastTouchedKey = useRef<string | null>(null)
+
+    // 长按 timer 清理
+    useEffect(() => {
+        return () => {
+            if (longPressTimer.current) clearTimeout(longPressTimer.current)
+        }
+    }, [])
 
     // 获取分组列表
     const { data: groups = [], isLoading: groupsLoading } = useSessionGroups()
@@ -103,7 +124,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
     // 并行获取所有分组的会话
     const groupQueries = useQueries({
         queries: groups.map(group => ({
-            queryKey: ['groupSessions', group.key],
+            queryKey: queryKeys.groupSessions(group.key),
             queryFn: async () => {
                 const res = await api.sessionGroups.getSessions(group.key, undefined, 100)
                 return { sessions: res.data.sessions as Session[], groupKey: group.key }
@@ -114,10 +135,12 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
 
     // 使缓存失效
     const invalidateAll = useCallback(async (sessionId: string) => {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
-        await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
-        await queryClient.invalidateQueries({ queryKey: ['sessionGroups'] })
-        await queryClient.invalidateQueries({ queryKey: ['groupSessions'] })
+        await Promise.all([
+            queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.sessionGroups }),
+            queryClient.invalidateQueries({ queryKey: ['groupSessions'] }),
+        ])
     }, [queryClient])
 
     const renameActions = useSessionActions(renamingSessionId)
@@ -215,157 +238,61 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         return undefined
     }, [groupQueries])
 
-    // 菜单配置
-    const menu: ConversationsProps['menu'] = useCallback((conversation: Record<string, unknown>) => {
-        const sessionId = conversation.key as string
-        const session = findSession(sessionId)
-        if (!session) return { items: [] }
+    // 从 session metadata 中提取显示名称
+    const getSessionName = useCallback((session: Session) => {
+        const metadata = session.metadata as SessionMetadataSummary | undefined
+        return metadata?.name || ''
+    }, [])
 
-        const buildItems = () => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const menuItems: any[] = []
+    // 构建共享的操作项（PC 和移动端复用）
+    const buildActionItems = useCallback((
+        sessionId: string,
+        session: Session,
+        ctx: ActionContext,
+    ): ActionSheetItem[] => {
+        const items: ActionSheetItem[] = []
 
-            menuItems.push({
-                key: 'rename',
-                icon: <EditOutlined />,
-                label: t('session.actions.rename'),
-                onClick: () => {
-                    const metadata = session.metadata as Record<string, unknown> | undefined
-                    startRename(sessionId, (metadata?.name as string) || '')
-                },
-            })
-
-            menuItems.push({
-                key: 'archive',
-                icon: <InboxOutlined />,
-                label: t('session.actions.archive'),
-                disabled: !session.active,
-                onClick: async () => {
-                    try {
-                        await api.sessions.archive(sessionId)
-                        message.success(t('common.success'))
-                        invalidateAll(sessionId)
-                        setSessionListDrawerOpen(false)
-                    } catch {
-                        message.error(t('common.error'))
-                    }
-                },
-            })
-
-            menuItems.push({ type: 'divider' as const })
-
-            menuItems.push({
-                key: 'delete',
-                icon: <DeleteOutlined />,
-                label: t('session.actions.delete'),
-                danger: true,
-                disabled: session.active,
-                onClick: () => {
-                    Modal.confirm({
-                        title: t('session.actions.deleteConfirmTitle'),
-                        content: t('session.actions.deleteConfirmContent'),
-                        okText: t('common.confirm'),
-                        okButtonProps: { danger: true },
-                        cancelText: t('common.cancel'),
-                        onOk: async () => {
-                            try {
-                                await api.sessions.delete(sessionId)
-                                message.success(t('common.success'))
-                                queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
-                                queryClient.removeQueries({ queryKey: queryKeys.messages(sessionId) })
-                                await invalidateAll(sessionId)
-                                if (selectedSessionId === sessionId) {
-                                    navigate({ to: '/sessions' })
-                                }
-                                setSessionListDrawerOpen(false)
-                            } catch {
-                                message.error(t('common.error'))
-                            }
-                        },
-                    })
-                },
-            })
-
-            return menuItems
-        }
-
-        return { items: buildItems() }
-    }, [findSession, t, api, navigate, invalidateAll, queryClient, selectedSessionId, setSessionListDrawerOpen])
-
-    // 移动端：从 session id 获取菜单操作项
-    const getActionSheetItems = useCallback((sessionId: string) => {
-        const session = findSession(sessionId)
-        if (!session) return []
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const actions: any[] = []
-
-        actions.push({
+        items.push({
             key: 'rename',
             icon: <EditOutlined />,
             label: t('session.actions.rename'),
             onClick: () => {
-                setActionSheetSessionId(null)
-                const metadata = session.metadata as Record<string, unknown> | undefined
-                startRename(sessionId, (metadata?.name as string) || '')
+                startRename(sessionId, getSessionName(session))
+                ctx.onSuccess()
             },
         })
 
-        // 未激活会话可恢复
-        if (!session.active) {
-            actions.push({
-                key: 'resume',
-                icon: <PlayCircleOutlined />,
-                label: t('session.actions.resume'),
-                onClick: async () => {
-                    setActionSheetLoadingKey('resume')
-                    try {
-                        const res = await api.sessions.resume(sessionId)
-                        message.success(t('common.success'))
-                        await invalidateAll(sessionId)
-                        setActionSheetSessionId(null)
-                        setActionSheetLoadingKey(null)
-                        navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
-                        setSessionListDrawerOpen(false)
-                    } catch {
-                        message.error(t('common.error'))
-                        setActionSheetLoadingKey(null)
-                    }
-                },
-            })
-        }
-
-        actions.push({
+        items.push({
             key: 'archive',
             icon: <InboxOutlined />,
             label: t('session.actions.archive'),
             disabled: !session.active,
             onClick: async () => {
-                setActionSheetLoadingKey('archive')
+                ctx.setLoadingKey('archive')
                 try {
                     await api.sessions.archive(sessionId)
                     message.success(t('common.success'))
                     await invalidateAll(sessionId)
-                    setActionSheetSessionId(null)
-                    setActionSheetLoadingKey(null)
+                    ctx.onSuccess()
                     setSessionListDrawerOpen(false)
                 } catch {
                     message.error(t('common.error'))
-                    setActionSheetLoadingKey(null)
+                } finally {
+                    ctx.setLoadingKey(null)
                 }
             },
         })
 
-        actions.push({ type: 'divider' as const })
+        items.push({ type: 'divider' as const })
 
-        actions.push({
+        items.push({
             key: 'delete',
             icon: <DeleteOutlined />,
             label: t('session.actions.delete'),
             danger: true,
             disabled: session.active,
             onClick: () => {
-                setActionSheetLoadingKey('delete')
+                ctx.setLoadingKey('delete')
                 Modal.confirm({
                     title: t('session.actions.deleteConfirmTitle'),
                     content: t('session.actions.deleteConfirmContent'),
@@ -379,34 +306,84 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                             queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
                             queryClient.removeQueries({ queryKey: queryKeys.messages(sessionId) })
                             await invalidateAll(sessionId)
-                            setActionSheetSessionId(null)
-                            setActionSheetLoadingKey(null)
+                            ctx.onSuccess()
                             if (selectedSessionId === sessionId) {
                                 navigate({ to: '/sessions' })
                             }
                             setSessionListDrawerOpen(false)
                         } catch {
                             message.error(t('common.error'))
-                            setActionSheetLoadingKey(null)
+                        } finally {
+                            ctx.setLoadingKey(null)
                         }
                     },
                     onCancel: () => {
-                        setActionSheetLoadingKey(null)
+                        ctx.setLoadingKey(null)
                     },
                 })
             },
         })
 
-        return actions
-    }, [findSession, t, api, invalidateAll, queryClient, navigate, startRename, selectedSessionId, setSessionListDrawerOpen])
+        return items
+    }, [t, api, invalidateAll, queryClient, navigate, getSessionName, startRename, selectedSessionId, setSessionListDrawerOpen])
 
-    // 移动端长按事件处理：通过 data-session-id 属性匹配 session key
+    // PC 端菜单配置
+    const menu: ConversationsProps['menu'] = useCallback((conversation: Record<string, unknown>) => {
+        const sessionId = conversation.key as string
+        const session = findSession(sessionId)
+        if (!session) return { items: [] }
+
+        const ctx: ActionContext = {
+            setLoadingKey: setMenuLoadingKey,
+            onSuccess: () => {},
+        }
+        return { items: buildActionItems(sessionId, session, ctx) }
+    }, [findSession, buildActionItems])
+
+    // 移动端 ActionSheet 操作项
+    const getActionSheetItems = useCallback((sessionId: string) => {
+        const session = findSession(sessionId)
+        if (!session) return []
+
+        const ctx: ActionContext = {
+            setLoadingKey: setActionSheetLoadingKey,
+            onSuccess: () => setActionSheetSessionId(null),
+        }
+
+        const items: ActionSheetItem[] = []
+
+        // 未激活会话可恢复（仅移动端）
+        if (!session.active) {
+            items.push({
+                key: 'resume',
+                icon: <PlayCircleOutlined />,
+                label: t('session.actions.resume'),
+                onClick: async () => {
+                    setActionSheetLoadingKey('resume')
+                    try {
+                        const res = await api.sessions.resume(sessionId)
+                        message.success(t('common.success'))
+                        await invalidateAll(sessionId)
+                        setActionSheetSessionId(null)
+                        navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
+                        setSessionListDrawerOpen(false)
+                    } catch {
+                        message.error(t('common.error'))
+                    } finally {
+                        setActionSheetLoadingKey(null)
+                    }
+                },
+            })
+        }
+
+        return [...items, ...buildActionItems(sessionId, session, ctx)]
+    }, [findSession, t, api, invalidateAll, navigate, buildActionItems])
+
+    // 移动端长按事件处理
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
-        // 从触摸点向上查找 Conversations item 元素
         const el = (e.target as HTMLElement).closest('[class*="ant-conversations-item"]') as HTMLElement | null
         if (!el) return
 
-        // 通过 data-session-id 属性获取 session id
         const sessionId = el.querySelector('[data-session-id]')?.getAttribute('data-session-id')
         if (!sessionId) return
 
@@ -426,11 +403,8 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         lastTouchedKey.current = null
     }, [])
 
-    // ActionSheet 中当前 session 的菜单项
-    const actionSheetItems = useMemo(() => {
-        if (!actionSheetSessionId) return []
-        return getActionSheetItems(actionSheetSessionId)
-    }, [actionSheetSessionId, getActionSheetItems])
+    // ActionSheet 菜单项
+    const actionSheetItems = actionSheetSessionId ? getActionSheetItems(actionSheetSessionId) : []
 
     // 加载状态
     if (groupsLoading) {
@@ -481,9 +455,9 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                         body: { padding: '8px 0', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' },
                     }}
                 >
-                    {actionSheetItems.map((item: any) =>
-                        item.type === 'divider' ? (
-                            <div key="divider" style={{ height: 1, background: 'var(--ant-color-border-secondary)', margin: '4px 16px' }} />
+                    {actionSheetItems.map((item, index) =>
+                        'type' in item ? (
+                            <div key={`divider-${index}`} style={{ height: 1, background: 'var(--ant-color-border-secondary)', margin: '4px 16px' }} />
                         ) : (
                             <Button
                                 key={item.key}
