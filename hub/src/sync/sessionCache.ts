@@ -190,6 +190,7 @@ export class SessionCache {
             thinkingAt: existing?.thinkingAt ?? 0,
             runtimeState,
             permissionMode: existing?.permissionMode,
+            mode: existing?.mode,
             tag: stored.tag
         }
 
@@ -231,11 +232,15 @@ export class SessionCache {
         const wasThinking = session.thinking
         const previousPermissionMode = session.permissionMode
         const previousModel = session.runtimeState?.model
+        const previousMode = session.mode
 
         session.active = true
         session.activeAt = Math.max(session.activeAt, t)
         session.thinking = Boolean(payload.thinking)
         session.thinkingAt = t
+        if (payload.mode !== undefined) {
+            session.mode = payload.mode
+        }
         if (payload.permissionMode !== undefined) {
             session.permissionMode = payload.permissionMode
         }
@@ -254,7 +259,7 @@ export class SessionCache {
 
         const now = Date.now()
         const lastBroadcastAt = this.lastBroadcastAtBySessionId.get(session.id) ?? 0
-        const modeChanged = previousPermissionMode !== session.permissionMode || previousModel !== session.runtimeState?.model
+        const modeChanged = previousPermissionMode !== session.permissionMode || previousModel !== session.runtimeState?.model || previousMode !== session.mode
         const shouldBroadcast = (!wasActive && session.active)
             || (wasThinking !== session.thinking)
             || modeChanged
@@ -269,6 +274,7 @@ export class SessionCache {
                     active: true,
                     activeAt: session.activeAt,
                     thinking: session.thinking,
+                    mode: session.mode,
                     permissionMode: session.permissionMode,
                     model: session.runtimeState?.model
                 }
@@ -290,7 +296,7 @@ export class SessionCache {
         session.thinking = false
         session.thinkingAt = t
 
-        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false, thinking: false } })
+        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false, thinking: false, mode: session.mode } })
     }
 
     expireInactive(now: number = Date.now()): void {

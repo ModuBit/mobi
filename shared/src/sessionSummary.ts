@@ -35,6 +35,7 @@ export type SessionSummary = {
     todoProgress: { completed: number; total: number } | null
     pendingRequestsCount: number
     model?: string | null
+    mode?: 'local' | 'remote'
 }
 
 export function toSessionSummary(session: Session): SessionSummary {
@@ -63,6 +64,7 @@ export function toSessionSummary(session: Session): SessionSummary {
         metadata,
         todoProgress,
         pendingRequestsCount,
-        model: session.runtimeState?.model
+        model: session.runtimeState?.model,
+        mode: session.mode,
     }
 }

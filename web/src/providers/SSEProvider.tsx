@@ -46,7 +46,7 @@ function patchSessionCache(
         Object.assign(patch, delta)
     } else {
         // 增量数据（心跳、状态变化等）
-        for (const key of ['active', 'activeAt', 'thinking', 'thinkingAt', 'permissionMode', 'metadata']) {
+        for (const key of ['active', 'activeAt', 'thinking', 'thinkingAt', 'permissionMode', 'mode', 'metadata']) {
             if (key in delta) patch[key] = delta[key]
         }
         // model 在心跳数据中是顶层字段，但属于 session.runtimeState

@@ -291,9 +291,14 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
                 agentState={session?.agentState}
                 contextSize={undefined} // TODO: 从消息中计算上下文大小
                 agentFlavor={agentFlavor}
+                mode={session?.mode}
                 onPermissionModeChange={handlePermissionModeChange}
                 onSend={handleSend}
                 onAbort={handleAbort}
+                onActivate={() => sessionActions.resumeSession()}
+                activatePending={sessionActions.isPending}
+                onSwitchToRemote={() => sessionActions.switchSession()}
+                switchPending={sessionActions.isPending}
                 extraLeftButtons={extraComposerButtons}
             />
         </div>
