@@ -23,6 +23,14 @@
 - 默认端口: 2222
 - 数据库: SQLite (WAL)
 
+## 测试
+
+→ [docs/conventions/testing.md](../docs/conventions/testing.md)
+
+- 框架：bun:test
+- 运行：`bun test`
+- 使用 `:memory:` SQLite 数据库
+
 ## 架构文档
 
 → [docs/architecture/hub/](../docs/architecture/hub/)

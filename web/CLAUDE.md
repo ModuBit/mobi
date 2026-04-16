@@ -25,6 +25,13 @@
 - **最高不超过 85%**: `wrapper: { maxHeight: '85vh' }`
 - **底部安全边界**: `body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }`，防止被底部横条/圆角遮挡
 
+## 测试
+
+→ [docs/conventions/testing.md](../docs/conventions/testing.md)
+
+- 框架：vitest + @testing-library/react + jsdom
+- 运行：`bun test`
+
 ## 架构文档
 
 → [docs/architecture/web/](../docs/architecture/web/)

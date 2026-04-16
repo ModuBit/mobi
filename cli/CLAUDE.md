@@ -16,6 +16,13 @@
 | `src/commands/claude.ts` | 默认命令，启动 Claude 会话 |
 | `src/claude/loop.ts` | 会话循环（Local/Remote 模式切换） |
 
+## 测试
+
+→ [docs/conventions/testing.md](../docs/conventions/testing.md)
+
+- 框架：vitest
+- 运行：`bun test`
+
 ## 架构文档
 
 → [docs/architecture/cli/](../docs/architecture/cli/)

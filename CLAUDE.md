@@ -38,6 +38,8 @@ bun run dev          # 启动 Hub + Web
 bun run build        # 构建
 bun run typecheck    # 类型检查
 bun run test         # 测试
+bun run lint         # ESLint 检查
+bun run lint:deps    # 依赖方向检查
 ```
 
 ## 文档索引

@@ -16,6 +16,13 @@
 | `src/socket.ts` | Socket.IO 事件类型定义 |
 | `src/index.ts` | Barrel export |
 
+## 测试
+
+→ [docs/conventions/testing.md](../docs/conventions/testing.md)
+
+- 框架：vitest
+- 运行：`bun test`
+
 ## 约束
 
 - 所有跨包共享的类型必须在此包定义
