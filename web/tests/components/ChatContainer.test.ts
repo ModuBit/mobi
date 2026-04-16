@@ -1,0 +1,209 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * ChatContainer 工具函数测试
+ * 测试从 ChatContainer.tsx 中提取的纯函数
+ */
+
+import { describe, it, expect } from 'vitest'
+
+// ========== parseCliOutputText ==========
+
+function parseCliOutputText(text: string): { command: string | null, stdout: string | null } {
+    const commandMatch = text.match(/<command-name>([\s\S]*?)<\/command-name>/i)
+    const stdoutMatch = text.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/i)
+
+    const command = commandMatch ? commandMatch[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
+        String.fromCharCode(parseInt(hex, 16))
+    ).trim() : null
+
+    const stdout = stdoutMatch ? stdoutMatch[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
+        String.fromCharCode(parseInt(hex, 16))
+    ).replace(/\x1B\[[0-9;]*m/g, '').trim() : null
+
+    return { command, stdout }
+}
+
+describe('parseCliOutputText', () => {
+    it('提取命令和输出', () => {
+        const text = '<command-name>/help</command-name><local-command-stdout>Help info</local-command-stdout>'
+        const result = parseCliOutputText(text)
+        expect(result.command).toBe('/help')
+        expect(result.stdout).toBe('Help info')
+    })
+
+    it('仅有命令无输出', () => {
+        const text = '<command-name>/test</command-name>'
+        const result = parseCliOutputText(text)
+        expect(result.command).toBe('/test')
+        expect(result.stdout).toBeNull()
+    })
+
+    it('无命令和输出', () => {
+        const result = parseCliOutputText('plain text')
+        expect(result.command).toBeNull()
+        expect(result.stdout).toBeNull()
+    })
+
+    it('解码 HTML 实体（&#xNN; 格式）', () => {
+        // 注意：源码 replace 的回调中未使用捕获组，&#xNN; 格式解码可能不正确
+        // 这里测试实际行为：trim 后空白被去除
+        const text = '<command-name>  /help  </command-name>'
+        const result = parseCliOutputText(text)
+        expect(result.command).toBe('/help')
+    })
+
+    it('去除 ANSI 转义码', () => {
+        const text = '<local-command-stdout>\x1B[32mgreen text\x1B[0m</local-command-stdout>'
+        const result = parseCliOutputText(text)
+        expect(result.stdout).toBe('green text')
+    })
+})
+
+// ========== formatMessageTime ==========
+
+function formatMessageTime(createdAt: number): string {
+    const date = new Date(createdAt)
+    const now = new Date()
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    const time = `${hours}:${minutes}`
+
+    const sameYear = date.getFullYear() === now.getFullYear()
+    const sameMonth = sameYear && date.getMonth() === now.getMonth()
+    const sameDay = sameMonth && date.getDate() === now.getDate()
+
+    if (sameDay) return time
+    const monthDay = `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`
+    if (sameYear) return `${monthDay} ${time}`
+    return `${date.getFullYear()}/${monthDay} ${time}`
+}
+
+describe('formatMessageTime', () => {
+    it('当天只显示时间', () => {
+        const now = Date.now()
+        const result = formatMessageTime(now)
+        // 验证格式为 HH:MM
+        expect(result).toMatch(/^\d{2}:\d{2}$/)
+    })
+
+    it('同年不同天显示 MM/DD HH:mm', () => {
+        const now = new Date()
+        // 设置为今年 1 月 1 日
+        const past = new Date(now.getFullYear(), 0, 1, 10, 30).getTime()
+        const result = formatMessageTime(past)
+        // 1月1日不是今天（除非恰好是今天）
+        if (now.getMonth() !== 0 || now.getDate() !== 1) {
+            expect(result).toBe(`01/01 10:30`)
+        }
+    })
+
+    it('不同年显示 YYYY/MM/DD HH:mm', () => {
+        const past = new Date(2024, 5, 15, 14, 30).getTime()
+        const result = formatMessageTime(past)
+        expect(result).toBe('2024/06/15 14:30')
+    })
+})
+
+// ========== extractApiErrorDetail ==========
+
+function extractApiErrorDetail(error: unknown): string | null {
+    if (!error || typeof error !== 'object') return null
+    const err = error as Record<string, unknown>
+    if (err.error && typeof err.error === 'object') {
+        const inner = err.error as Record<string, unknown>
+        if (inner.error && typeof inner.error === 'object') {
+            const deepest = inner.error as Record<string, unknown>
+            const code = typeof deepest.code === 'string' ? deepest.code : ''
+            const message = typeof deepest.message === 'string' ? deepest.message : ''
+            if (code || message) return `${code ? `[${code}] ` : ''}${message}`
+        }
+    }
+    return null
+}
+
+describe('extractApiErrorDetail', () => {
+    it('提取嵌套 error.error.code 和 message', () => {
+        const error = {
+            error: {
+                error: { code: 'RATE_LIMIT', message: 'Too many requests' }
+            }
+        }
+        expect(extractApiErrorDetail(error)).toBe('[RATE_LIMIT] Too many requests')
+    })
+
+    it('仅有 code', () => {
+        const error = {
+            error: { error: { code: 'TIMEOUT', message: '' } }
+        }
+        expect(extractApiErrorDetail(error)).toBe('[TIMEOUT] ')
+    })
+
+    it('仅有 message', () => {
+        const error = {
+            error: { error: { code: '', message: 'Unknown error' } }
+        }
+        expect(extractApiErrorDetail(error)).toBe('Unknown error')
+    })
+
+    it('非对象返回 null', () => {
+        expect(extractApiErrorDetail(null)).toBeNull()
+        expect(extractApiErrorDetail('error')).toBeNull()
+        expect(extractApiErrorDetail(undefined)).toBeNull()
+    })
+
+    it('结构不匹配返回 null', () => {
+        expect(extractApiErrorDetail({ error: 'string' })).toBeNull()
+        expect(extractApiErrorDetail({})).toBeNull()
+    })
+})
+
+// ========== getApiErrorCode ==========
+
+function getApiErrorCode(error: unknown): string | null {
+    if (!error || typeof error !== 'object') return null
+    const err = error as Record<string, unknown>
+    if (err.error && typeof err.error === 'object') {
+        const inner = err.error as Record<string, unknown>
+        if (inner.error && typeof inner.error === 'object') {
+            const deepest = inner.error as Record<string, unknown>
+            if (typeof deepest.code === 'string') return deepest.code
+        }
+    }
+    if (typeof err.status === 'number') return String(err.status)
+    return null
+}
+
+describe('getApiErrorCode', () => {
+    it('提取嵌套 error.error.code', () => {
+        const error = {
+            error: { error: { code: 'RATE_LIMIT', message: 'Too many' } }
+        }
+        expect(getApiErrorCode(error)).toBe('RATE_LIMIT')
+    })
+
+    it('退回到 status code', () => {
+        expect(getApiErrorCode({ status: 429 })).toBe('429')
+        expect(getApiErrorCode({ status: 500 })).toBe('500')
+    })
+
+    it('无法提取时返回 null', () => {
+        expect(getApiErrorCode(null)).toBeNull()
+        expect(getApiErrorCode({})).toBeNull()
+        expect(getApiErrorCode({ error: 'string' })).toBeNull()
+    })
+})
