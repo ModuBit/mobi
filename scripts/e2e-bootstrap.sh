@@ -9,7 +9,7 @@ set -euo pipefail
 readonly HUB_PORT=2222
 readonly WEB_PORT=5173
 readonly E2E_TMPDIR="/tmp/mobi-e2e-test"
-readonly CLI_API_TOKEN="e2e-test-token-mobi"
+CLI_API_TOKEN="e2e-test-token-mobi"
 readonly HUB_HEALTH_URL="http://localhost:${HUB_PORT}/health"
 readonly WEB_HEALTH_URL="http://localhost:${WEB_PORT}"
 readonly MAX_WAIT_SECONDS=30
@@ -52,14 +52,15 @@ check_port() {
 wait_for_url() {
     local url=$1
     local name=$2
-    local elapsed=0
+    local max_attempts=$(( MAX_WAIT_SECONDS * 2 ))  # POLL_INTERVAL=0.5, 所以 ×2
+    local attempt=0
 
-    while (( elapsed < MAX_WAIT_SECONDS )); do
+    while (( attempt < max_attempts )); do
         if curl -sf --max-time 2 "${url}" &>/dev/null; then
             return 0
         fi
         sleep "${POLL_INTERVAL}"
-        elapsed=$(echo "${elapsed} + ${POLL_INTERVAL}" | bc)
+        attempt=$(( attempt + 1 ))
     done
 
     log_error "等待 ${name} 就绪超时（${MAX_WAIT_SECONDS}s）"
@@ -122,15 +123,14 @@ main() {
     log_info "CLI_API_TOKEN=${CLI_API_TOKEN}"
 
     # 从 hub/ 目录启动
-    HUB_PID=$(
+    (
         cd "${MOBI_ROOT}/hub" && \
         MOBI_HOME="${E2E_TMPDIR}" \
         CLI_API_TOKEN="${CLI_API_TOKEN}" \
-        bun run dev \
-            &>/tmp/mobi-e2e-hub.log \
-        & echo $!
-    )
-
+        bun run dev &>/tmp/mobi-e2e-hub.log
+    ) &
+    HUB_PID="${!}"
+    disown
     log_info "Hub 进程已启动 (PID: ${HUB_PID})"
 
     # 4. 等待 Hub 健康检查通过
@@ -147,13 +147,12 @@ main() {
     log_section "启动 Web Dev Server"
 
     # 从 web/ 目录启动
-    WEB_PID=$(
+    (
         cd "${MOBI_ROOT}/web" && \
-        bun run dev \
-            &>/tmp/mobi-e2e-web.log \
-        & echo $!
-    )
-
+        bun run dev &>/tmp/mobi-e2e-web.log
+    ) &
+    WEB_PID="${!}"
+    disown
     log_info "Web Dev Server 进程已启动 (PID: ${WEB_PID})"
 
     # 6. 等待 Web 就绪
