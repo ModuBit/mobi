@@ -75,10 +75,10 @@ export function readClaudeSettings(): ClaudeSettings | null {
 export function shouldIncludeCoAuthoredBy(): boolean {
   const settings = readClaudeSettings();
   
-  // If no settings file or includeCoAuthoredBy is not explicitly set,
-  // default to false to maintain backward compatibility
+  // 如果没有配置文件或 includeCoAuthoredBy 未设置，
+  // 默认返回 true
   if (!settings || settings.includeCoAuthoredBy === undefined) {
-    return false;
+    return true;
   }
   
   return settings.includeCoAuthoredBy;
