@@ -354,6 +354,21 @@
 
 ---
 
+## 18. Web 端支持渲染 Claude Code 的 Recap 消息
+
+**相关文件**：
+- `web/src/components/chat/ChatContainer.tsx` — 消息渲染
+- `web/src/chat/` — 消息解析与归约
+- `cli/src/claude/utils/sdkToLogConverter.ts` — SDK 消息转换
+
+**待确认**：
+- Claude Code 在 resume 会话时会生成 recap 消息（对话摘要），当前 Web 端是否已正确识别和渲染
+- recap 消息在 SDK 消息流中的 type / subtype 标识
+- 前端消息解析器（messageParser / reducerTools）是否需要适配 recap 类型
+- recap 消息的展示样式（折叠/展开、区分于普通消息）
+
+---
+
 <!-- 模板：新增待确认项
 ## extractSDKMetadata 功能评估
 
