@@ -1,24 +1,36 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Mobi — Claude Code 远程控制工具，通过浏览器远程与本地 Claude Code 会话交互。
 
-## Project
+## Monorepo
 
-Mobi 是 Claude Code 远程控制工具，允许用户通过浏览器远程与本地 Claude Code 会话交互。
+| 包 | 职责 |
+|---|---|
+| [shared/](shared/) | 协议定义（Zod Schema） |
+| [hub/](hub/) | 服务器（Hono + Socket.IO + SQLite） |
+| [cli/](cli/) | 客户端（Bun + Ink + Claude Agent SDK） |
+| [web/](web/) | 前端（React + Ant Design X + TanStack） |
 
-Monorepo 结构: `shared/` (协议) + `hub/` (服务器) + `cli/` (客户端) + `web/` (前端)
+各包目录下有 `CLAUDE.md`，进入对应目录时自动加载。
 
-详细文档: [architecture/](docs/architecture/) | [development.md](docs/development.md)
+## 全局约束
 
-## Constraints
-
-- **运行时**: 使用 bun（不是 npm/node）
-- **注释语言**: 代码中使用中文注释
-- **内部依赖**: 使用 `workspace:*` 引用
+- **运行时**: bun（不是 npm/node）
 - **TypeScript**: 严格模式
-- **文档同步**: 修改了架构、新增包、调整关键文件路径、改变通信机制后，同步更新 `docs/architecture.md`；调整了脚本命令、CLI 子命令、环境变量后，同步更新 `docs/development.md`
+- **注释**: 中文
+- **内部依赖**: `workspace:*`
 
-## Quick Commands
+## 新建文件
+
+创建 `.ts` / `.tsx` 文件前，先读 [docs/conventions/license-header.md](docs/conventions/license-header.md) 获取版权头模板。
+
+编码规范按包查阅：
+- Shared → [docs/conventions/shared.md](docs/conventions/shared.md)
+- Hub → [docs/conventions/hub.md](docs/conventions/hub.md)
+- CLI → [docs/conventions/cli.md](docs/conventions/cli.md)
+- Web → [docs/conventions/web.md](docs/conventions/web.md)
+
+## 快速命令
 
 ```bash
 bun install          # 安装依赖
@@ -28,59 +40,25 @@ bun run typecheck    # 类型检查
 bun run test         # 测试
 ```
 
-## Key Files
+## 文档索引
 
-| 组件 | 路径 |
-|------|------|
-| 同步引擎 | `hub/src/sync/syncEngine.ts` |
-| 存储层 | `hub/src/store/index.ts` |
-| 会话循环 | `cli/src/claude/loop.ts` |
-| Schema 定义 | `shared/src/schemas.ts` |
-| 路由配置 | `web/src/router.tsx` |
-| SSE 连接管理 | `web/src/providers/SSEProvider.tsx` |
-| API 类型定义 | `web/src/api/types.ts` |
-| 消息解析器 | `web/src/components/chat/messageParser.ts` |
-| 工具卡片注册 | `web/src/components/ToolCard/knownTools.tsx` |
-| 查询缓存 Key | `web/src/lib/query-keys.ts` |
+| 需要 | 去哪里 |
+|------|--------|
+| 系统架构总览 | [docs/architecture/README.md](docs/architecture/README.md) |
+| 各模块架构 | [docs/architecture/](docs/architecture/)（hub/ cli/ web/） |
+| 编码规范 | [docs/conventions/](docs/conventions/) |
+| 待处理项 | [docs/pending.md](docs/pending.md) |
 
-## Config
+## 文档同步
 
-- 数据目录: `~/.mobi/`
-- 默认端口: 2222
-- 数据库: SQLite (WAL)
+代码变更涉及以下情况时，询问用户是否执行 `/sync-docs` 检查并更新受影响的项目文档：
 
-## 移动端 Drawer 规范
+- 新增 / 删除 / 重命名了源文件或目录
+- 修改了模块接口、导出、API 端点
+- 修改了通信协议、数据流、消息格式
 
-所有移动端底部弹出 Drawer（`placement="bottom"`）必须遵守：
+修 bug、调样式、改注释等不影响结构的变更无需询问。
 
-- **高度自适应**: `wrapper: { height: 'auto' }`
-- **最高不超过 85%**: `wrapper: { maxHeight: '85vh' }`
-- **底部安全边界**: `body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }`，防止被底部横条/圆角遮挡
+## Git 规范
 
-## Git 提交规范
-
-- **禁止在提交信息中包含 `Co-Authored-By` 信息**
-
-## License Header
-
-所有源代码文件（`.ts`、`.tsx`）必须包含 Apache 2.0 版权信息。创建新文件时，请在文件开头添加：
-
-```typescript
-/*
- * Copyright Maner·Fan
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-```
-
-适用范围：`shared/src/`、`hub/src/`、`cli/src/`、`web/src/` 及项目配置文件
+- **禁止**在提交信息中包含 `Co-Authored-By` 信息

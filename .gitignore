@@ -27,7 +27,8 @@ dist/
 Thumbs.db
 
 # Claude / Superpowers (local config)
-.claude/
+.claude/settings.local.json
+.qoder
 .superpowers/
 
 # Temporary files
