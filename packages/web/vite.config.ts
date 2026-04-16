@@ -18,6 +18,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
+// 从环境变量读取配置，支持 profile 机制覆盖
+const hubUrl = process.env.MOBI_API_URL || 'http://localhost:2222'
+const webPort = parseInt(process.env.MOBI_WEB_PORT || '5173', 10)
+
 export default defineConfig({
     plugins: [react()],
     resolve: {
@@ -26,10 +30,11 @@ export default defineConfig({
         }
     },
     server: {
+        port: webPort,
         proxy: {
-            '/api': 'http://localhost:2222',
+            '/api': hubUrl,
             '/socket.io': {
-                target: 'http://localhost:2222',
+                target: hubUrl,
                 ws: true
             }
         }
