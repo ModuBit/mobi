@@ -4,7 +4,7 @@
     "version": "0.1.0",
     "type": "module",
     "scripts": {
-        "dev": "vite",
+        "dev": "bun run src/dev.ts",
         "build": "vite build",
         "typecheck": "tsc --noEmit",
         "preview": "vite preview",
