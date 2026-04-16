@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
 # E2E 测试环境清理脚本
 # 查找并终止 Mobi E2E 相关进程，清理临时数据目录
+# 通过 e2e profile 获取端口和数据目录配置
 
 set -euo pipefail
 
-# ─── 配置 ────────────────────────────────────────────────────────────────────
-readonly E2E_TMPDIR="/tmp/mobi-e2e-test"
-readonly HUB_PORT=2224
-readonly WEB_PORT=5175
+# ─── 配置（从 e2e profile 读取） ────────────────────────────────────────────
+readonly PROFILE_NAME="e2e"
+readonly PROFILE_FILE="${HOME}/.mobi/profiles/${PROFILE_NAME}.env"
+
+if [[ -f "${PROFILE_FILE}" ]]; then
+    readonly HUB_PORT=$(grep -E '^MOBI_LISTEN_PORT=' "${PROFILE_FILE}" | head -1 | cut -d= -f2 | xargs)
+    readonly WEB_PORT=$(grep -E '^MOBI_WEB_PORT=' "${PROFILE_FILE}" | head -1 | cut -d= -f2 | xargs)
+    readonly E2E_TMPDIR=$(grep -E '^MOBI_HOME=' "${PROFILE_FILE}" | head -1 | cut -d= -f2 | xargs)
+else
+    readonly HUB_PORT=2224
+    readonly WEB_PORT=5175
+    readonly E2E_TMPDIR="/tmp/mobi-e2e-test"
+fi
 
 # ─── 颜色 ────────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -69,7 +79,7 @@ kill_port() {
 
 # ─── 主流程 ───────────────────────────────────────────────────────────────────
 main() {
-    log_section "Mobi E2E 测试环境清理"
+    log_section "Mobi E2E 测试环境清理 (profile: ${PROFILE_NAME})"
 
     local cleaned=false
 

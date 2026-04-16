@@ -2,14 +2,24 @@
 # E2E 测试环境引导脚本
 # 启动 Hub + Web Dev Server，等待所有服务就绪后保持前台运行
 # Ctrl+C 或收到 SIGTERM 时自动清理所有子进程
+# 通过 --profile e2e 加载配置
 
 set -euo pipefail
 
 # ─── 配置 ────────────────────────────────────────────────────────────────────
-readonly HUB_PORT=2224
-readonly WEB_PORT=5175
-readonly E2E_TMPDIR="/tmp/mobi-e2e-test"
-CLI_API_TOKEN="e2e-test-token-mobi"
+readonly PROFILE_NAME="e2e"
+readonly PROFILE_FILE="${HOME}/.mobi/profiles/${PROFILE_NAME}.env"
+
+if [[ ! -f "${PROFILE_FILE}" ]]; then
+    echo -e "\033[0;31m[ERROR]\033[0m Profile 文件不存在: ${PROFILE_FILE}"
+    echo "请先运行: profiles/install.sh"
+    exit 1
+fi
+
+# 从 profile 文件提取端口号（仅用于健康检查，服务启动由 --profile 处理）
+readonly HUB_PORT=$(grep -E '^MOBI_LISTEN_PORT=' "${PROFILE_FILE}" | head -1 | cut -d= -f2 | xargs)
+readonly WEB_PORT=$(grep -E '^MOBI_WEB_PORT=' "${PROFILE_FILE}" | head -1 | cut -d= -f2 | xargs)
+readonly E2E_TMPDIR=$(grep -E '^MOBI_HOME=' "${PROFILE_FILE}" | head -1 | cut -d= -f2 | xargs)
 readonly HUB_HEALTH_URL="http://localhost:${HUB_PORT}/health"
 readonly WEB_HEALTH_URL="http://localhost:${WEB_PORT}"
 readonly MAX_WAIT_SECONDS=30
@@ -105,7 +115,7 @@ trap cleanup SIGINT SIGTERM
 
 # ─── 主流程 ───────────────────────────────────────────────────────────────────
 main() {
-    log_section "Mobi E2E 测试环境引导"
+    log_section "Mobi E2E 测试环境引导 (profile: ${PROFILE_NAME})"
 
     # 1. 检查端口
     log_info "检查端口占用情况..."
@@ -117,18 +127,12 @@ main() {
     log_info "创建临时数据目录: ${E2E_TMPDIR}"
     mkdir -p "${E2E_TMPDIR}"
 
-    # 3. 启动 Hub
+    # 3. 启动 Hub（通过 CLI 加载 --profile e2e）
     log_section "启动 Hub"
-    log_info "MOBI_HOME=${E2E_TMPDIR}"
-    log_info "CLI_API_TOKEN=${CLI_API_TOKEN}"
 
-    # 从 packages/hub/ 目录启动
     (
-        cd "${MOBI_ROOT}/packages/hub" && \
-        MOBI_HOME="${E2E_TMPDIR}" \
-        MOBI_LISTEN_PORT="${HUB_PORT}" \
-        CLI_API_TOKEN="${CLI_API_TOKEN}" \
-        bun run dev &>/tmp/mobi-e2e-hub.log
+        cd "${MOBI_ROOT}" && \
+        bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" hub &>/tmp/mobi-e2e-hub.log
     ) &
     HUB_PID="${!}"
     disown
@@ -144,15 +148,12 @@ main() {
     fi
     log_info "Hub 已就绪 ✓"
 
-    # 5. 启动 Web Dev Server
+    # 5. 启动 Web Dev Server（通过 dev.ts 加载 --profile e2e）
     log_section "启动 Web Dev Server"
 
-    # 从 packages/web/ 目录启动
     (
         cd "${MOBI_ROOT}/packages/web" && \
-        MOBI_API_URL="http://localhost:${HUB_PORT}" \
-        MOBI_WEB_PORT="${WEB_PORT}" \
-        bun run dev &>/tmp/mobi-e2e-web.log
+        bun run dev --profile "${PROFILE_NAME}" &>/tmp/mobi-e2e-web.log
     ) &
     WEB_PID="${!}"
     disown
@@ -174,7 +175,6 @@ main() {
     echo -e "  ${BOLD}Hub 健康检查${RESET}:  ${HUB_HEALTH_URL}"
     echo -e "  ${BOLD}Web${RESET}:          http://localhost:${WEB_PORT}"
     echo -e "  ${BOLD}数据目录${RESET}:     ${E2E_TMPDIR}"
-    echo -e "  ${BOLD}CLI API Token${RESET}: ${CLI_API_TOKEN}"
     echo ""
     log_info "按 Ctrl+C 停止所有服务并清理"
 
