@@ -9,7 +9,8 @@
         "./socket": "./src/socket.ts",
         "./modes": "./src/modes.ts",
         "./types": "./src/types.ts",
-        "./messages": "./src/messages.ts"
+        "./messages": "./src/messages.ts",
+        "./profile": "./src/profile.ts"
     },
     "scripts": {
         "test": "vitest run",
