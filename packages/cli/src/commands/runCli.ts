@@ -19,10 +19,17 @@ import { ensureRuntimeAssets } from '@/runtime/assets'
 import { isBunCompiled } from '@/projectPath'
 import { logger } from '@/ui/logger'
 import { getCliArgs } from '@/utils/cliArgs'
+import { loadProfile } from '@mobi/shared/profile'
 import { resolveCommand } from './registry'
 
 export async function runCli(): Promise<void> {
     const args = getCliArgs()
+
+    // 加载 profile（会从 args 中移除 --profile 参数）
+    const profile = loadProfile(args)
+    if (profile) {
+        logger.debug(`[PROFILE] 已加载 profile: ${profile}`)
+    }
 
     if (args.includes('-v') || args.includes('--version')) {
         console.log(`mobi version: ${packageJson.version}`)
