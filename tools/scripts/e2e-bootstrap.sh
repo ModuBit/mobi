@@ -6,8 +6,8 @@
 set -euo pipefail
 
 # ─── 配置 ────────────────────────────────────────────────────────────────────
-readonly HUB_PORT=2222
-readonly WEB_PORT=5173
+readonly HUB_PORT=2224
+readonly WEB_PORT=5175
 readonly E2E_TMPDIR="/tmp/mobi-e2e-test"
 CLI_API_TOKEN="e2e-test-token-mobi"
 readonly HUB_HEALTH_URL="http://localhost:${HUB_PORT}/health"
@@ -126,6 +126,7 @@ main() {
     (
         cd "${MOBI_ROOT}/packages/hub" && \
         MOBI_HOME="${E2E_TMPDIR}" \
+        MOBI_LISTEN_PORT="${HUB_PORT}" \
         CLI_API_TOKEN="${CLI_API_TOKEN}" \
         bun run dev &>/tmp/mobi-e2e-hub.log
     ) &
@@ -149,6 +150,8 @@ main() {
     # 从 packages/web/ 目录启动
     (
         cd "${MOBI_ROOT}/packages/web" && \
+        MOBI_API_URL="http://localhost:${HUB_PORT}" \
+        MOBI_WEB_PORT="${WEB_PORT}" \
         bun run dev &>/tmp/mobi-e2e-web.log
     ) &
     WEB_PID="${!}"

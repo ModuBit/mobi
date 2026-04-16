@@ -6,8 +6,8 @@ set -euo pipefail
 
 # ─── 配置 ────────────────────────────────────────────────────────────────────
 readonly E2E_TMPDIR="/tmp/mobi-e2e-test"
-readonly HUB_PORT=2222
-readonly WEB_PORT=5173
+readonly HUB_PORT=2224
+readonly WEB_PORT=5175
 
 # ─── 颜色 ────────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
