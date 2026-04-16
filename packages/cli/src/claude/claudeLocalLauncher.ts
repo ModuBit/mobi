@@ -40,7 +40,10 @@ function extractSessionIdFromArgs(claudeArgs?: string[]): string | null {
     return null
 }
 
-export async function claudeLocalLauncher(session: Session): Promise<'switch' | 'exit'> {
+export async function claudeLocalLauncher(
+    session: Session,
+    processCleanupRef?: { current: (() => void) | null }
+): Promise<'switch' | 'exit'> {
 
     // 优先使用 session.sessionId（remote 模式下由 SDK 设置），
     // 其次从 claudeArgs 中提取 --resume/--continue 的 session ID
@@ -97,10 +100,17 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
         abortLogMessage: 'doAbort',
         switchLogMessage: 'doSwitch'
     });
+
+    if (processCleanupRef) {
+        processCleanupRef.current = launcher.control.requestExit;
+    }
     try {
         return await launcher.run();
     } finally {
         // Cleanup
+        if (processCleanupRef) {
+            processCleanupRef.current = null;
+        }
         session.removeSessionFoundCallback(handleSessionFound);
         await scanner.cleanup();
     }

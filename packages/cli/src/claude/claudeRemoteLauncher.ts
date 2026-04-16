@@ -43,6 +43,7 @@ interface PermissionsField {
 
 class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private readonly session: Session;
+    private readonly processCleanupRef?: { current: (() => void) | null };
     private abortController: AbortController | null = null;
     private abortFuture: Future<void> | null = null;
     private permissionHandler: PermissionHandler | null = null;
@@ -50,9 +51,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // SDK Query 引用，用于 interrupt/close 控制
     private queryRef: Query | null = null;
 
-    constructor(session: Session) {
+    constructor(session: Session, processCleanupRef?: { current: (() => void) | null }) {
         super(process.env.DEBUG ? session.logPath : undefined);
         this.session = session;
+        this.processCleanupRef = processCleanupRef;
     }
 
     protected createDisplay(context: RemoteLauncherDisplayContext): React.ReactElement {
@@ -335,7 +337,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         mcpServers: session.mcpServers,
                         hookSettingsPath: session.hookSettingsPath,
                         canCallTool: permissionHandler.handleToolCall,
-                        onQueryReady: (query) => { this.queryRef = query },
+                        onQueryReady: (query) => {
+                            this.queryRef = query;
+                            if (this.processCleanupRef) {
+                                this.processCleanupRef.current = () => {
+                                    query.close();
+                                    this.queryRef = null;
+                                };
+                            }
+                        },
                         nextMessage: async () => {
                             if (pending) {
                                 let p = pending;
@@ -445,10 +455,17 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         if (this.abortFuture) {
             this.abortFuture.resolve(undefined);
         }
+
+        if (this.processCleanupRef) {
+            this.processCleanupRef.current = null;
+        }
     }
 }
 
-export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
-    const launcher = new ClaudeRemoteLauncher(session);
+export async function claudeRemoteLauncher(
+    session: Session,
+    processCleanupRef?: { current: (() => void) | null }
+): Promise<'switch' | 'exit'> {
+    const launcher = new ClaudeRemoteLauncher(session, processCleanupRef);
     return launcher.launch();
 }

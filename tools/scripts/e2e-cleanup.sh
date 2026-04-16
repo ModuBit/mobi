@@ -19,6 +19,8 @@ else
     readonly E2E_TMPDIR="/tmp/mobi-e2e-test"
 fi
 
+readonly RUNNER_STATE_FILE="${E2E_TMPDIR}/runner.state.json"
+
 # ─── 颜色 ────────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -27,12 +29,11 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-# ─── 辅助函数 ─────────────────────────────────────────────────────────────────
-log_info()    { echo -e "${GREEN}[INFO]${RESET}  $*"; }
-log_warn()    { echo -e "${YELLOW}[WARN]${RESET}  $*"; }
-log_error()   { echo -e "${RED}[ERROR]${RESET} $*"; }
-log_section() { echo -e "\n${BOLD}${CYAN}=== $* ===${RESET}"; }
+# ─── 引入共享函数 ─────────────────────────────────────────────────────────────
+# shellcheck source=e2e-common.sh
+source "$(dirname "$0")/e2e-common.sh"
 
+# ─── 辅助函数 ─────────────────────────────────────────────────────────────────
 # 终止占用指定端口的进程
 kill_port() {
     local port=$1
@@ -42,14 +43,14 @@ kill_port() {
     pids=$(lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
 
     if [[ -z "${pids}" ]]; then
-        log_info "端口 ${port}（${name}）无占用进程"
+        e2e_log_info "端口 ${port}（${name}）无占用进程"
         return 0
     fi
 
     for pid in ${pids}; do
         local cmd
         cmd=$(ps -p "${pid}" -o comm= 2>/dev/null || echo "unknown")
-        log_info "终止 ${name} 进程: PID=${pid} (${cmd})"
+        e2e_log_info "终止 ${name} 进程: PID=${pid} (${cmd})"
         kill -TERM "${pid}" 2>/dev/null || true
     done
 
@@ -71,7 +72,7 @@ kill_port() {
     done
 
     # 超时后强制终止
-    log_warn "进程未在 5s 内退出，强制终止"
+    e2e_log_warn "进程未在 5s 内退出，强制终止"
     for pid in ${pids}; do
         kill -9 "${pid}" 2>/dev/null || true
     done
@@ -79,47 +80,46 @@ kill_port() {
 
 # ─── 主流程 ───────────────────────────────────────────────────────────────────
 main() {
-    log_section "Mobi E2E 测试环境清理 (profile: ${PROFILE_NAME})"
+    e2e_log_section "Mobi E2E 测试环境清理 (profile: ${PROFILE_NAME})"
 
     local cleaned=false
 
-    # 1. 终止 Hub 进程
-    log_info "查找 Hub 进程（端口 ${HUB_PORT}）..."
-    kill_port "${HUB_PORT}" "Hub"
+    # 1. 并行终止 Hub、Web、Runner 进程
+    e2e_log_info "查找并终止 Hub（端口 ${HUB_PORT}）、Web（端口 ${WEB_PORT}）、Runner..."
+    kill_port "${HUB_PORT}" "Hub" &
+    kill_port "${WEB_PORT}" "Web Dev Server" &
+    e2e_stop_runner "${RUNNER_STATE_FILE}" &
+    wait
     cleaned=true
 
-    # 2. 终止 Web Dev Server 进程
-    log_info "查找 Web Dev Server 进程（端口 ${WEB_PORT}）..."
-    kill_port "${WEB_PORT}" "Web Dev Server"
-    cleaned=true
-
-    # 3. 清理临时数据目录
+    # 4. 清理临时数据目录
     if [[ -d "${E2E_TMPDIR}" ]]; then
-        log_info "清理临时数据目录: ${E2E_TMPDIR}"
+        e2e_log_info "清理临时数据目录: ${E2E_TMPDIR}"
         rm -rf "${E2E_TMPDIR}"
         cleaned=true
     else
-        log_info "临时数据目录不存在: ${E2E_TMPDIR}"
+        e2e_log_info "临时数据目录不存在: ${E2E_TMPDIR}"
     fi
 
-    # 4. 清理日志文件
+    # 5. 清理日志文件
     local log_files=(
         "/tmp/mobi-e2e-hub.log"
         "/tmp/mobi-e2e-web.log"
+        "/tmp/mobi-e2e-runner.log"
     )
     for f in "${log_files[@]}"; do
         if [[ -f "${f}" ]]; then
-            log_info "清理日志文件: ${f}"
+            e2e_log_info "清理日志文件: ${f}"
             rm -f "${f}"
             cleaned=true
         fi
     done
 
-    # 5. 输出结果
+    # 6. 输出结果
     if [[ "${cleaned}" == true ]]; then
-        log_info "清理完成 ✓"
+        e2e_log_info "清理完成 ✓"
     else
-        log_warn "未发现需要清理的资源"
+        e2e_log_warn "未发现需要清理的资源"
     fi
 }
 

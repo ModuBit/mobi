@@ -15,7 +15,21 @@
  * limitations under the License.
  */
 
+// 必须在所有其他模块 import 之前加载 profile，
+// 因为 Configuration 单例在模块加载时就会读取 process.env
+import { loadProfile } from '@mobi/shared/profile'
 
-import { runCli } from './commands/runCli'
+// 加载 profile 并从 process.argv 中移除 --profile 参数
+// （loadProfile 会 splice 传入的数组，这里直接传 argv 切片以同步移除）
+const argvSlice = process.argv.slice(2)
+loadProfile(argvSlice)
+// 同步修改 process.argv，确保下游 getCliArgs() 不再看到 --profile
+process.argv = [process.argv[0], process.argv[1], ...argvSlice]
 
-void runCli()
+// 动态 import，确保 profile 环境变量已注入后再加载依赖模块
+import('./commands/runCli').then(({ runCli }) => {
+    void runCli()
+}).catch((err) => {
+    console.error('Failed to start CLI:', err)
+    process.exit(1)
+})

@@ -53,6 +53,7 @@ interface LoopOptions {
     allowedTools?: string[]
     onSessionReady?: (session: Session) => void
     hookSettingsPath: string
+    processCleanupRef?: { current: (() => void) | null }
 }
 
 export async function loop(opts: LoopOptions) {
@@ -81,12 +82,14 @@ export async function loop(opts: LoopOptions) {
         model: opts.model
     });
 
+    const cleanup = opts.processCleanupRef;
+
     await runLocalRemoteSession({
         session,
         startingMode: opts.startingMode,
         logTag: 'loop',
-        runLocal: claudeLocalLauncher,
-        runRemote: claudeRemoteLauncher,
+        runLocal: (s) => claudeLocalLauncher(s, cleanup),
+        runRemote: (s) => claudeRemoteLauncher(s, cleanup),
         onSessionReady: opts.onSessionReady
     });
 }

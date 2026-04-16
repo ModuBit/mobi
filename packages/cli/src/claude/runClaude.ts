@@ -96,6 +96,9 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     // Variable to track current session instance (updated via onSessionReady callback)
     const currentSessionRef: { current: Session | null } = { current: null };
 
+    // 用于在信号退出时清理子进程（防止 Claude Code / SDK Query 残留）
+    const processCleanupRef = { current: null as (() => void) | null };
+
     const formatFailureReason = (message: string): string => {
         const maxLength = 200;
         if (message.length <= maxLength) {
@@ -136,6 +139,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         apiSession,
         logTag: 'claude',
         stopKeepAlive: () => currentSessionRef.current?.stopKeepAlive(),
+        onBeforeClose: () => {
+            // 清理子进程：关闭 SDK Query / 终止 Claude Code 进程树
+            processCleanupRef.current?.();
+            processCleanupRef.current = null;
+        },
         onAfterClose: () => {
             mobiMcpServer.stop();
             hookServer.stop();
@@ -362,7 +370,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             claudeEnvVars: options.claudeEnvVars,
             claudeArgs: options.claudeArgs,
             startedBy,
-            hookSettingsPath
+            hookSettingsPath,
+            processCleanupRef
         });
     } catch (error) {
         loopError = error;
