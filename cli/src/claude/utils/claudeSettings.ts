@@ -76,9 +76,9 @@ export function shouldIncludeCoAuthoredBy(): boolean {
   const settings = readClaudeSettings();
   
   // 如果没有配置文件或 includeCoAuthoredBy 未设置，
-  // 默认返回 true
+  // 默认返回 false
   if (!settings || settings.includeCoAuthoredBy === undefined) {
-    return true;
+    return false;
   }
   
   return settings.includeCoAuthoredBy;

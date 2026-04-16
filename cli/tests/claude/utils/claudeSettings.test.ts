@@ -79,17 +79,17 @@ describe('Claude Settings', () => {
   });
 
   describe('shouldIncludeCoAuthoredBy', () => {
-    it('returns true when no settings file exists (default behavior)', () => {
+    it('returns false when no settings file exists (default behavior)', () => {
       const result = shouldIncludeCoAuthoredBy();
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
 
-    it('returns true when includeCoAuthoredBy is not set (default behavior)', () => {
+    it('returns false when includeCoAuthoredBy is not set (default behavior)', () => {
       const settingsPath = join(testClaudeDir, 'settings.json');
       writeFileSync(settingsPath, JSON.stringify({ otherSetting: 'value' }));
 
       const result = shouldIncludeCoAuthoredBy();
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
 
     it('returns false when includeCoAuthoredBy is explicitly set to false', () => {
