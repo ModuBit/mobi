@@ -22,8 +22,8 @@
 
 ## 适用范围
 
-- `shared/src/`
-- `hub/src/`
-- `cli/src/`
-- `web/src/`
+- `packages/shared/src/`
+- `packages/hub/src/`
+- `packages/cli/src/`
+- `packages/web/src/`
 - 项目配置文件

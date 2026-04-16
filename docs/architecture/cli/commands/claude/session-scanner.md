@@ -3,8 +3,8 @@
 Local 模式下，Claude 进程将消息写入 JSONL 文件。SessionScanner 负责监听这些文件的变化，解析新消息并转发到 Hub。
 
 **文件**:
-- [`cli/src/claude/utils/sessionScanner.ts`](/cli/src/claude/utils/sessionScanner.ts) — Claude 专用实现（243 行）
-- [`cli/src/modules/common/session/BaseSessionScanner.ts`](/cli/src/modules/common/session/BaseSessionScanner.ts) — 抽象基类（205 行）
+- [`packages/cli/src/claude/utils/sessionScanner.ts`](/packages/cli/src/claude/utils/sessionScanner.ts) — Claude 专用实现（243 行）
+- [`packages/cli/src/modules/common/session/BaseSessionScanner.ts`](/packages/cli/src/modules/common/session/BaseSessionScanner.ts) — 抽象基类（205 行）
 
 ---
 
@@ -194,7 +194,7 @@ async cleanup(): Promise<void> {
 
 ### InvalidateSync — 防抖同步
 
-**文件**: `cli/src/utils/sync.ts`
+**文件**: `packages/cli/src/utils/sync.ts`
 
 `InvalidateSync` 是一个带"双重失效"保护的去抖执行器，确保在持续变化中不遗漏消息：
 
@@ -262,7 +262,7 @@ sequenceDiagram
 
 ### File Watcher — 文件变化监听
 
-**文件**: `cli/src/modules/watcher/startFileWatcher.ts`
+**文件**: `packages/cli/src/modules/watcher/startFileWatcher.ts`
 
 使用 Node.js `fs/promises` 的 `watch()` API 监听文件变化：
 
@@ -380,7 +380,7 @@ summary 消息由 Mobi 自己生成（通过 MCP `change_title` 工具），不�
 
 ## 在 claudeLocalLauncher 中的使用
 
-**文件**: `cli/src/claude/claudeLocalLauncher.ts`
+**文件**: `packages/cli/src/claude/claudeLocalLauncher.ts`
 
 ```mermaid
 flowchart TB
@@ -427,7 +427,7 @@ flowchart TB
 
 | 文件 | 职责 |
 |------|------|
-| `cli/src/utils/sync.ts` | `InvalidateSync` — 防抖同步执行器 |
-| `cli/src/modules/watcher/startFileWatcher.ts` | 文件变化监听封装 |
-| `cli/src/claude/utils/path.ts` | `getProjectPath()` — Claude 项目目录定位 |
-| `cli/src/claude/types.ts` | `RawJSONLines` — JSONL 行类型定义 |
+| `packages/cli/src/utils/sync.ts` | `InvalidateSync` — 防抖同步执行器 |
+| `packages/cli/src/modules/watcher/startFileWatcher.ts` | 文件变化监听封装 |
+| `packages/cli/src/claude/utils/path.ts` | `getProjectPath()` — Claude 项目目录定位 |
+| `packages/cli/src/claude/types.ts` | `RawJSONLines` — JSONL 行类型定义 |

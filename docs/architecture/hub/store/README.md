@@ -1,6 +1,6 @@
 # Store 数据层
 
-**文件**: [`hub/src/store/index.ts`](/hub/src/store/index.ts)
+**文件**: [`packages/hub/src/store/index.ts`](/packages/hub/src/store/index.ts)
 
 SQLite 数据库封装，使用 Bun 原生 SQLite，WAL 模式。
 
@@ -107,7 +107,7 @@ PRAGMA busy_timeout = 5000    // 5 秒超时
 ## 代码入口
 
 ```
-hub/src/store/
+packages/hub/src/store/
 ├── index.ts           # Store 主入口
 ├── sessionStore.ts    # 会话存储
 ├── machineStore.ts    # 机器存储

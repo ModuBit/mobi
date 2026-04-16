@@ -4,7 +4,7 @@
 
 ## 编码规范
 
-→ [docs/conventions/hub.md](../docs/conventions/hub.md)
+→ [docs/conventions/hub.md](../../docs/conventions/hub.md)
 
 ## 关键文件
 
@@ -25,7 +25,7 @@
 
 ## 测试
 
-→ [docs/conventions/testing.md](../docs/conventions/testing.md)
+→ [docs/conventions/testing.md](../../docs/conventions/testing.md)
 
 - 框架：bun:test
 - 运行：`bun test`
@@ -33,4 +33,4 @@
 
 ## 架构文档
 
-→ [docs/architecture/hub/](../docs/architecture/hub/)
+→ [docs/architecture/hub/](../../docs/architecture/hub/)

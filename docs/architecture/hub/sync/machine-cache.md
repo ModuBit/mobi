@@ -1,6 +1,6 @@
 # MachineCache
 
-**文件**: [`hub/src/sync/machineCache.ts`](/hub/src/sync/machineCache.ts)
+**文件**: [`packages/hub/src/sync/machineCache.ts`](/packages/hub/src/sync/machineCache.ts)
 
 机器缓存层，管理 CLI 客户端的内存状态。
 

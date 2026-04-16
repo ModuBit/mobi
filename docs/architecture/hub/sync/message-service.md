@@ -1,6 +1,6 @@
 # MessageService
 
-**文件**: [`hub/src/sync/messageService.ts`](/hub/src/sync/messageService.ts)
+**文件**: [`packages/hub/src/sync/messageService.ts`](/packages/hub/src/sync/messageService.ts)
 
 消息服务，处理消息的分页查询和发送。
 

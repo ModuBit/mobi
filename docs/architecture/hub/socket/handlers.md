@@ -15,8 +15,8 @@
 > - [共同模式](#共同模式)
 
 **文件**:
-- [`hub/src/socket/handlers/cli/index.ts`](/hub/src/socket/handlers/cli/index.ts) — /cli 入口
-- [`hub/src/socket/handlers/terminal.ts`](/hub/src/socket/handlers/terminal.ts) — /terminal 入口
+- [`packages/hub/src/socket/handlers/cli/index.ts`](/packages/hub/src/socket/handlers/cli/index.ts) — /cli 入口
+- [`packages/hub/src/socket/handlers/terminal.ts`](/packages/hub/src/socket/handlers/terminal.ts) — /terminal 入口
 
 两个 namespace 在客户端连接后，分别注册各自的处理器组。本文梳理 connection 之后的完整流程。
 
@@ -106,7 +106,7 @@ socket.on('disconnect', () => {
 
 ## /cli 会话处理器
 
-**文件**: [`hub/src/socket/handlers/cli/sessionHandlers.ts`](/hub/src/socket/handlers/cli/sessionHandlers.ts)
+**文件**: [`packages/hub/src/socket/handlers/cli/sessionHandlers.ts`](/packages/hub/src/socket/handlers/cli/sessionHandlers.ts)
 
 处理会话相关的所有事件。
 
@@ -176,7 +176,7 @@ CLI 通过 `expectedVersion` 实现乐观锁，如果版本不匹配，返回当
 
 ## /cli 机器处理器
 
-**文件**: [`hub/src/socket/handlers/cli/machineHandlers.ts`](/hub/src/socket/handlers/cli/machineHandlers.ts)
+**文件**: [`packages/hub/src/socket/handlers/cli/machineHandlers.ts`](/packages/hub/src/socket/handlers/cli/machineHandlers.ts)
 
 与会话处理器结构对称，处理机器相关事件。
 
@@ -194,7 +194,7 @@ CLI 通过 `expectedVersion` 实现乐观锁，如果版本不匹配，返回当
 
 ## /cli RPC 处理器
 
-**文件**: [`hub/src/socket/handlers/cli/rpcHandlers.ts`](/hub/src/socket/handlers/cli/rpcHandlers.ts)
+**文件**: [`packages/hub/src/socket/handlers/cli/rpcHandlers.ts`](/packages/hub/src/socket/handlers/cli/rpcHandlers.ts)
 
 最简单的处理器组，只做注册/注销。
 
@@ -209,7 +209,7 @@ rpc-unregister →  rpcRegistry.unregister(socket, method)
 
 ## /cli 终端处理器（CLI 端）
 
-**文件**: [`hub/src/socket/handlers/cli/terminalHandlers.ts`](/hub/src/socket/handlers/cli/terminalHandlers.ts)
+**文件**: [`packages/hub/src/socket/handlers/cli/terminalHandlers.ts`](/packages/hub/src/socket/handlers/cli/terminalHandlers.ts)
 
 CLI 端的终端事件处理器，负责将 CLI 的终端输出转发给 Web 端。
 

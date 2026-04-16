@@ -1,6 +1,6 @@
 # Hub 命令 — 启动 Hub 服务器
 
-文件 [`cli/src/commands/hub.ts`](/cli/src/commands/hub.ts)
+文件 [`packages/cli/src/commands/hub.ts`](/packages/cli/src/commands/hub.ts)
 
 `mobi hub` 命令是 Hub 模块的 CLI 入口，解析参数后通过 `import` 加载 Hub 模块启动服务器。
 
@@ -10,8 +10,8 @@
 flowchart TB
     Start["mobi hub --host x --port y"] --> Parse["parseHubArgs()<br/>解析 --host / --port"]
     Parse --> Env["设置环境变量<br/>MOBI_LISTEN_HOST / MOBI_LISTEN_PORT"]
-    Env --> Import["import('../../../../hub/src/index')"]
-    Import --> HubMain["hub/src/index.ts → main()"]
+    Env --> Import["import('../../../../packages/hub/src/index')"]
+    Import --> HubMain["packages/hub/src/index.ts → main()"]
     HubMain --> Config["createConfiguration()"]
     Config --> Store["Store (SQLite)"]
     Config --> SocketServer["SocketServer"]
@@ -28,7 +28,7 @@ flowchart TB
 
 ## Hub 模块启动流程
 
-Hub 模块（`hub/src/index.ts`）的 `main()` 函数按顺序初始化各组件：
+Hub 模块（`packages/hub/src/index.ts`）的 `main()` 函数按顺序初始化各组件：
 
 ```mermaid
 flowchart TB
@@ -119,11 +119,11 @@ NotificationHub.stop() → SyncEngine.stop() → SSEManager.stop() → WebServer
 ## 代码结构
 
 ```
-cli/src/commands/
+packages/cli/src/commands/
 └── hub.ts                    # hub 命令入口
 ```
 
 | 文件 | 入口 |
 |------|------|
-| `cli/src/commands/hub.ts` | [`hubCommand`](/cli/src/commands/hub.ts) |
-| `cli/src/utils/autoStartServer.ts` | [`maybeAutoStartServer()`](/cli/src/utils/autoStartServer.ts) |
+| `packages/cli/src/commands/hub.ts` | [`hubCommand`](/packages/cli/src/commands/hub.ts) |
+| `packages/cli/src/utils/autoStartServer.ts` | [`maybeAutoStartServer()`](/packages/cli/src/utils/autoStartServer.ts) |

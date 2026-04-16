@@ -90,7 +90,7 @@ graph TB
 ## 目录结构
 
 ```
-web/src/
+packages/web/src/
 ├── main.tsx                    应用入口（~50 行），组装 Provider 链
 ├── App.tsx                     根组件，认证守卫 + SSEProvider 包裹
 ├── router.tsx                  TanStack Router 路由定义

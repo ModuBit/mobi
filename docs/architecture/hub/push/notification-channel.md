@@ -1,6 +1,6 @@
 # PushNotificationChannel 架构
 
-**文件**: [`hub/src/push/pushNotificationChannel.ts`](/hub/src/push/pushNotificationChannel.ts)
+**文件**: [`packages/hub/src/push/pushNotificationChannel.ts`](/packages/hub/src/push/pushNotificationChannel.ts)
 
 推送通知通道，实现 `NotificationChannel` 接口，结合 SSE 和 Web Push 实现智能降级通知。
 

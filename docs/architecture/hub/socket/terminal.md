@@ -1,9 +1,9 @@
 # 终端代理
 
 **文件**:
-- [`hub/src/socket/terminalRegistry.ts`](/hub/src/socket/terminalRegistry.ts)
-- [`hub/src/socket/handlers/terminal.ts`](/hub/src/socket/handlers/terminal.ts)（/terminal namespace）
-- [`hub/src/socket/handlers/cli/terminalHandlers.ts`](/hub/src/socket/handlers/cli/terminalHandlers.ts)（/cli namespace）
+- [`packages/hub/src/socket/terminalRegistry.ts`](/packages/hub/src/socket/terminalRegistry.ts)
+- [`packages/hub/src/socket/handlers/terminal.ts`](/packages/hub/src/socket/handlers/terminal.ts)（/terminal namespace）
+- [`packages/hub/src/socket/handlers/cli/terminalHandlers.ts`](/packages/hub/src/socket/handlers/cli/terminalHandlers.ts)（/cli namespace）
 
 终端代理在 Web 浏览器和 CLI 之间实时转发终端 I/O，让用户可以在浏览器中操作远程终端。
 

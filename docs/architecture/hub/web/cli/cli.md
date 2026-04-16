@@ -1,6 +1,6 @@
 # CLI 路由
 
-**文件**: [`hub/src/web/routes/cli.ts`](/hub/src/web/routes/cli.ts)
+**文件**: [`packages/hub/src/web/routes/cli.ts`](/packages/hub/src/web/routes/cli.ts)
 
 CLI 专用的 HTTP API，用于会话和机器的初始化与查询。
 

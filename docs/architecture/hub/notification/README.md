@@ -1,10 +1,10 @@
 # 通知系统架构
 
 **文件**:
-- [`hub/src/notifications/notificationHub.ts`](/hub/src/notifications/notificationHub.ts)
-- [`hub/src/notifications/notificationTypes.ts`](/hub/src/notifications/notificationTypes.ts)
-- [`hub/src/notifications/eventParsing.ts`](/hub/src/notifications/eventParsing.ts)
-- [`hub/src/notifications/sessionInfo.ts`](/hub/src/notifications/sessionInfo.ts)
+- [`packages/hub/src/notifications/notificationHub.ts`](/packages/hub/src/notifications/notificationHub.ts)
+- [`packages/hub/src/notifications/notificationTypes.ts`](/packages/hub/src/notifications/notificationTypes.ts)
+- [`packages/hub/src/notifications/eventParsing.ts`](/packages/hub/src/notifications/eventParsing.ts)
+- [`packages/hub/src/notifications/sessionInfo.ts`](/packages/hub/src/notifications/sessionInfo.ts)
 
 通知系统监听 SyncEngine 事件，在适当时机通过多种渠道向用户发送通知。
 
@@ -49,7 +49,7 @@ flowchart TB
 
 实现 `NotificationChannel` 接口，负责具体的通知发送策略。
 
-**文件**: [`hub/src/push/pushNotificationChannel.ts`](/hub/src/push/pushNotificationChannel.ts)
+**文件**: [`packages/hub/src/push/pushNotificationChannel.ts`](/packages/hub/src/push/pushNotificationChannel.ts)
 
 详细文档: [推送服务](../push/README.md) | [通知通道](../push/notification-channel.md)
 
@@ -111,7 +111,7 @@ flowchart TB
 
 ## 组装过程
 
-在 `hub/src/index.ts` 中组装：
+在 `packages/hub/src/index.ts` 中组装：
 
 ```
 PushService ←── vapidKeys + store

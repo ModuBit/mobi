@@ -4,7 +4,7 @@
 
 ## 编码规范
 
-→ [docs/conventions/shared.md](../docs/conventions/shared.md)
+→ [docs/conventions/shared.md](../../docs/conventions/shared.md)
 
 ## 关键文件
 
@@ -18,7 +18,7 @@
 
 ## 测试
 
-→ [docs/conventions/testing.md](../docs/conventions/testing.md)
+→ [docs/conventions/testing.md](../../docs/conventions/testing.md)
 
 - 框架：vitest
 - 运行：`bun test`

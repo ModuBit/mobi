@@ -37,7 +37,7 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 
 ## 第 2 步：CLI 转换（SDKToLogConverter）
 
-**文件**：`cli/src/claude/utils/sdkToLogConverter.ts`
+**文件**：`packages/cli/src/claude/utils/sdkToLogConverter.ts`
 
 将 `SDKMessage` 转换为 Hub 可存储的 `RawJSONLines` 格式。
 
@@ -87,11 +87,11 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 
 ## 第 3 步：Hub 存储与同步
 
-**存储**：`hub/src/store/index.ts` — SQLite WAL 模式
+**存储**：`packages/hub/src/store/index.ts` — SQLite WAL 模式
 
 转换后的 `RawJSONLines` 通过 `OutgoingMessageQueue` 发送到 Hub，存入 `messages` 表。
 
-**同步**：`hub/src/sync/syncEngine.ts` — SSE 推送
+**同步**：`packages/hub/src/sync/syncEngine.ts` — SSE 推送
 
 Hub 通过 SSE 向 Web 端推送 `SyncEvent`：
 - `session-updated`：会话状态变化（心跳、agent state）
@@ -104,7 +104,7 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 
 ## 第 4 步：Web 标准化（normalize）
 
-**入口**：`web/src/chat/normalize.ts` → `normalizeDecryptedMessage()`
+**入口**：`packages/web/src/chat/normalize.ts` → `normalizeDecryptedMessage()`
 
 将 API 返回的 `DecryptedMessage` 转换为 `NormalizedMessage`。
 
@@ -152,7 +152,7 @@ flowchart TD
 
 ### normalizeAgentRecord 处理
 
-**文件**：`web/src/chat/normalizeAgent.ts`
+**文件**：`packages/web/src/chat/normalizeAgent.ts`
 
 根据 `content` 的具体结构分发处理：
 
@@ -179,7 +179,7 @@ result 消息在整个管线中有三层处理：
 
 ### normalizeUserRecord 处理
 
-**文件**：`web/src/chat/normalizeUser.ts`
+**文件**：`packages/web/src/chat/normalizeUser.ts`
 
 | 输入 | 输出 |
 |------|------|
@@ -208,7 +208,7 @@ result 消息在整个管线中有三层处理：
 
 ## 第 5 步：Web 归约（reduce）
 
-**文件**：`web/src/chat/reducer.ts` → `reduceChatBlocks()`
+**文件**：`packages/web/src/chat/reducer.ts` → `reduceChatBlocks()`
 
 将 `NormalizedMessage[]` 转换为可渲染的 `ChatBlock[]`。
 
@@ -225,7 +225,7 @@ NormalizedMessage[]
 
 ### reduceTimeline 转换规则
 
-**文件**：`web/src/chat/reducerTimeline.ts`
+**文件**：`packages/web/src/chat/reducerTimeline.ts`
 
 | NormalizedMessage | ChatBlock | 说明 |
 |-------------------|-----------|------|
@@ -255,7 +255,7 @@ type ChatBlock =
 
 ## 第 6 步：Web 渲染（render）
 
-**文件**：`web/src/components/chat/ChatContainer.tsx`
+**文件**：`packages/web/src/components/chat/ChatContainer.tsx`
 
 `renderChatBlock()` 根据 `block.kind` 选择渲染组件：
 
@@ -322,18 +322,18 @@ type ChatBlock =
 | 层级 | 文件 | 职责 |
 |------|------|------|
 | SDK 类型 | `@anthropic-ai/claude-agent-sdk` | SDKMessage 类型定义 |
-| CLI 转换 | `cli/src/claude/utils/sdkToLogConverter.ts` | SDK → RawJSONLines |
-| CLI 类型 | `cli/src/claude/types.ts` | RawJSONLines Schema 定义 |
-| CLI 启动 | `cli/src/claude/claudeRemoteLauncher.ts` | 创建 Converter，管理消息流 |
-| CLI 循环 | `cli/src/claude/claudeRemote.ts` | 处理 result 控制信号 |
-| Hub 存储 | `hub/src/store/index.ts` | SQLite 消息持久化 |
-| Hub 同步 | `hub/src/sync/syncEngine.ts` | SSE 推送 |
-| Web SSE | `web/src/providers/SSEProvider.tsx` | 接收实时事件 |
-| Web 标准化入口 | `web/src/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
-| Web Agent 标准化 | `web/src/chat/normalizeAgent.ts` | Agent 消息详细解析 |
-| Web User 标准化 | `web/src/chat/normalizeUser.ts` | User 消息解析 |
-| Web 类型 | `web/src/chat/types.ts` | NormalizedMessage / ChatBlock 类型 |
-| Web 归约 | `web/src/chat/reducer.ts` | NormalizedMessage[] → ChatBlock[] |
-| Web 时间线归约 | `web/src/chat/reducerTimeline.ts` | 时间线 → ChatBlock 转换 |
-| Web 渲染 | `web/src/components/chat/ChatContainer.tsx` | ChatBlock → UI 组件 |
-| 共享工具 | `shared/src/messages.ts` | unwrapRole / isSkippable / isVisible |
+| CLI 转换 | `packages/cli/src/claude/utils/sdkToLogConverter.ts` | SDK → RawJSONLines |
+| CLI 类型 | `packages/cli/src/claude/types.ts` | RawJSONLines Schema 定义 |
+| CLI 启动 | `packages/cli/src/claude/claudeRemoteLauncher.ts` | 创建 Converter，管理消息流 |
+| CLI 循环 | `packages/cli/src/claude/claudeRemote.ts` | 处理 result 控制信号 |
+| Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化 |
+| Hub 同步 | `packages/hub/src/sync/syncEngine.ts` | SSE 推送 |
+| Web SSE | `packages/web/src/providers/SSEProvider.tsx` | 接收实时事件 |
+| Web 标准化入口 | `packages/web/src/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
+| Web Agent 标准化 | `packages/web/src/chat/normalizeAgent.ts` | Agent 消息详细解析 |
+| Web User 标准化 | `packages/web/src/chat/normalizeUser.ts` | User 消息解析 |
+| Web 类型 | `packages/web/src/chat/types.ts` | NormalizedMessage / ChatBlock 类型 |
+| Web 归约 | `packages/web/src/chat/reducer.ts` | NormalizedMessage[] → ChatBlock[] |
+| Web 时间线归约 | `packages/web/src/chat/reducerTimeline.ts` | 时间线 → ChatBlock 转换 |
+| Web 渲染 | `packages/web/src/components/chat/ChatContainer.tsx` | ChatBlock → UI 组件 |
+| 共享工具 | `packages/shared/src/messages.ts` | unwrapRole / isSkippable / isVisible |

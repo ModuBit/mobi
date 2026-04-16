@@ -49,13 +49,13 @@ export type Session = z.infer<typeof SessionSchema>
 import { Session, SessionSchema } from '@mobi/shared'
 
 // ❌ 错误：直接引用内部文件
-import { Session } from '@mobi/shared/src/schemas'
+import { Session } from '@mobi/packages/shared/src/schemas'
 ```
 
 ## 变更影响
 
 shared 是所有包的公共依赖，修改后需检查：
 
-- 修改 Schema 字段 → 检查 `hub/src/`、`cli/src/`、`web/src/` 中的消费方
+- 修改 Schema 字段 → 检查 `packages/hub/src/`、`packages/cli/src/`、`packages/web/src/` 中的消费方
 - 新增导出 → 在 `index.ts` 和 `types.ts` 中同步添加
 - 删除导出 → 全局搜索确认无引用

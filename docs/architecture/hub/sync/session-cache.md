@@ -1,6 +1,6 @@
 # SessionCache
 
-**文件**: [`hub/src/sync/sessionCache.ts`](/hub/src/sync/sessionCache.ts)
+**文件**: [`packages/hub/src/sync/sessionCache.ts`](/packages/hub/src/sync/sessionCache.ts)
 
 会话缓存层，管理会话的内存状态和生命周期。
 

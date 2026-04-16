@@ -1,6 +1,6 @@
 # RPC 框架
 
-**文件**: [`hub/src/socket/rpcRegistry.ts`](/hub/src/socket/rpcRegistry.ts)
+**文件**: [`packages/hub/src/socket/rpcRegistry.ts`](/packages/hub/src/socket/rpcRegistry.ts)
 
 RpcRegistry 管理 CLI 注册的 RPC 方法，使 Web 端可以通过 Hub 远程调用 CLI 的方法。
 

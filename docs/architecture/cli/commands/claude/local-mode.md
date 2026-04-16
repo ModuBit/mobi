@@ -39,7 +39,7 @@ flowchart TB
 
 ### claudeLocalLauncher
 
-**文件**: `cli/src/claude/claudeLocalLauncher.ts`
+**文件**: `packages/cli/src/claude/claudeLocalLauncher.ts`
 
 ```mermaid
 flowchart TB
@@ -63,7 +63,7 @@ Launcher 配置：
 
 ### BaseLocalLauncher.run()
 
-**文件**: `cli/src/modules/common/launcher/BaseLocalLauncher.ts`
+**文件**: `packages/cli/src/modules/common/launcher/BaseLocalLauncher.ts`
 
 ```mermaid
 flowchart TB
@@ -92,7 +92,7 @@ flowchart TB
 
 ## claudeLocal — Spawn Claude 进程
 
-**文件**: `cli/src/claude/claudeLocal.ts`
+**文件**: `packages/cli/src/claude/claudeLocal.ts`
 
 ```mermaid
 flowchart TB
@@ -139,7 +139,7 @@ flowchart TB
 
 ## SessionScanner — JSONL 监听
 
-**文件**: `cli/src/claude/utils/sessionScanner.ts`
+**文件**: `packages/cli/src/claude/utils/sessionScanner.ts`
 
 SessionScanner 在 Local 模式下监听 Claude 写入的 JSONL 会话文件，将消息转发到 Hub：
 

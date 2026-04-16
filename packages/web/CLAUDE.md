@@ -4,7 +4,7 @@
 
 ## 编码规范
 
-→ [docs/conventions/web.md](../docs/conventions/web.md)
+→ [docs/conventions/web.md](../../docs/conventions/web.md)
 
 ## 关键文件
 
@@ -27,11 +27,11 @@
 
 ## 测试
 
-→ [docs/conventions/testing.md](../docs/conventions/testing.md)
+→ [docs/conventions/testing.md](../../docs/conventions/testing.md)
 
 - 框架：vitest + @testing-library/react + jsdom
 - 运行：`bun test`
 
 ## 架构文档
 
-→ [docs/architecture/web/](../docs/architecture/web/)
+→ [docs/architecture/web/](../../docs/architecture/web/)

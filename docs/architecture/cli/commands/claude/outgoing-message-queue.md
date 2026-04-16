@@ -2,7 +2,7 @@
 
 一个严格保序的出站消息队列，确保 Claude 的流式输出按接收顺序发送给 Hub，并支持 tool call 的延迟释放机制。
 
-**文件**: [`cli/src/claude/utils/OutgoingMessageQueue.ts`](/cli/src/claude/utils/OutgoingMessageQueue.ts)
+**文件**: [`packages/cli/src/claude/utils/OutgoingMessageQueue.ts`](/packages/cli/src/claude/utils/OutgoingMessageQueue.ts)
 
 ---
 
@@ -119,7 +119,7 @@ sequenceDiagram
 
 ### 3. AsyncLock 互斥
 
-使用 [`AsyncLock`](/cli/src/utils/lock.ts)（信号量实现）保护队列操作，防止以下并发竞争：
+使用 [`AsyncLock`](/packages/cli/src/utils/lock.ts)（信号量实现）保护队列操作，防止以下并发竞争：
 
 | 来源 | 触发方式 |
 |------|---------|
@@ -134,7 +134,7 @@ sequenceDiagram
 
 ## 在 claudeRemoteLauncher 中的使用
 
-**文件**: [`cli/src/claude/claudeRemoteLauncher.ts`](/cli/src/claude/claudeRemoteLauncher.ts)
+**文件**: [`packages/cli/src/claude/claudeRemoteLauncher.ts`](/packages/cli/src/claude/claudeRemoteLauncher.ts)
 
 ### 初始化
 
@@ -219,4 +219,4 @@ Claude SDK 的消息流中，assistant（含 tool_use）和 user（含 tool_resu
 | **延迟机制** | 无 | delay + release（tool call 配对） |
 | **线程安全** | 无锁（单线程事件循环） | AsyncLock 互斥 |
 | **使用模式** | Remote + Local | 仅 Remote |
-| **文件位置** | `cli/src/utils/` | `cli/src/claude/utils/` |
+| **文件位置** | `packages/cli/src/utils/` | `packages/cli/src/claude/utils/` |

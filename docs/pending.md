@@ -7,9 +7,9 @@
 ## 1. 消息推送逻辑与 VisibilityTracker 配合
 
 **相关文件**：
-- `hub/src/push/pushNotificationChannel.ts`
-- `hub/src/push/pushService.ts`
-- `hub/src/visibility/visibilityTracker.ts`
+- `packages/hub/src/push/pushNotificationChannel.ts`
+- `packages/hub/src/push/pushService.ts`
+- `packages/hub/src/visibility/visibilityTracker.ts`
 
 **待确认**：
 - Web Push 订阅流程
@@ -22,9 +22,9 @@
 ## 2. Web 端与 VisibilityTracker 配合
 
 **相关文件**：
-- `hub/src/visibility/visibilityTracker.ts`
-- `hub/src/web/routes/events.ts`（`POST /api/visibility`）
-- `web/src/`（前端实现）
+- `packages/hub/src/visibility/visibilityTracker.ts`
+- `packages/hub/src/web/routes/events.ts`（`POST /api/visibility`）
+- `packages/web/src/`（前端实现）
 
 **待确认**：
 - 前端如何监听页面可见性变化
@@ -37,7 +37,7 @@
 ## 3. Web 端 SSE 断连重连
 
 **相关文件**：
-- `web/src/`（前端实现）
+- `packages/web/src/`（前端实现）
 
 **待确认**：
 - 前端如何监听 SSE 连接状态
@@ -49,7 +49,7 @@
 ## 4. CLI 触发 Socket 事件的场景
 
 **相关文件**：
-- `cli/src/`（CLI 客户端实现）
+- `packages/cli/src/`（CLI 客户端实现）
 
 **待确认**：
 - CLI 在什么场景下触发 `message`、`update-metadata`、`update-state` 等 Socket 事件
@@ -61,11 +61,11 @@
 ## 5. CLI - Hub - SyncEngine 事件流转整体流程
 
 **相关文件**：
-- `cli/src/`（CLI 客户端）
-- `hub/src/socket/`（Socket.IO 服务器）
-- `hub/src/sync/syncEngine.ts`（同步引擎）
-- `hub/src/sync/eventPublisher.ts`（事件发布）
-- `hub/src/sse/sseManager.ts`（SSE 推送）
+- `packages/cli/src/`（CLI 客户端）
+- `packages/hub/src/socket/`（Socket.IO 服务器）
+- `packages/hub/src/sync/syncEngine.ts`（同步引擎）
+- `packages/hub/src/sync/eventPublisher.ts`（事件发布）
+- `packages/hub/src/sse/sseManager.ts`（SSE 推送）
 
 **待确认**：
 - CLI 发送 Socket 事件 → Hub 接收 → SyncEngine 处理 → EventPublisher 广播 → SSE 推送 的完整链路
@@ -77,8 +77,8 @@
 ## 6. CLI 端 RPC 注册与响应
 
 **相关文件**：
-- `cli/src/api/`（CLI 客户端）
-- `hub/src/socket/rpcRegistry.ts`（Hub 端注册表）
+- `packages/cli/src/api/`（CLI 客户端）
+- `packages/hub/src/socket/rpcRegistry.ts`（Hub 端注册表）
 
 **待确认**：
 - CLI 如何注册 RPC 方法（`rpc-register` 事件）
@@ -91,9 +91,9 @@
 ## 7. 前端 Web Push 订阅与 VisibilityTracker 配合
 
 **相关文件**：
-- `web/src/`（前端实现）
-- `hub/src/web/routes/push.ts`（Push API）
-- `hub/src/visibility/visibilityTracker.ts`
+- `packages/web/src/`（前端实现）
+- `packages/hub/src/web/routes/push.ts`（Push API）
+- `packages/hub/src/visibility/visibilityTracker.ts`
 
 **待确认**：
 - 前端如何调用 `/api/push/subscribe` 和 `/api/push/vapid-public-key`
@@ -106,14 +106,14 @@
 ## 8. hub/cli 在编译嵌入模式下的使用方式
 
 **相关文件**：
-- `hub/cli/src/index.ts`（入口，引用不存在的 `./commands/runCli`）
-- `hub/cli/src/bootstrap.ts`（编译产物入口）
-- `hub/cli/src/configuration.ts`（CLI 端配置适配）
-- `hub/cli/src/persistence.ts`（CLI 端持久化适配）
+- `hub/packages/cli/src/index.ts`（入口，引用不存在的 `./commands/runCli`）
+- `hub/packages/cli/src/bootstrap.ts`（编译产物入口）
+- `hub/packages/cli/src/configuration.ts`（CLI 端配置适配）
+- `hub/packages/cli/src/persistence.ts`（CLI 端持久化适配）
 
 **待确认**：
 - Hub 编译为独立可执行文件时，`hub/cli/` 如何与 `cli/` 的代码合并打包
-- `hub/cli/src/index.ts` 中 `import { runCli } from './commands/runCli'` 在编译时如何解析到 `cli/` 的代码
+- `hub/packages/cli/src/index.ts` 中 `import { runCli } from './commands/runCli'` 在编译时如何解析到 `cli/` 的代码
 - `hub/cli/` 的 `configuration.ts` 和 `persistence.ts` 与 `cli/` 中同名文件的覆盖/合并关系
 - `bootstrap.ts` 中禁用 Ink devtools 的原因和编译上下文
 
@@ -122,9 +122,9 @@
 ## 9. Mobi 系统中的 Web Server 盘点
 
 **相关文件**：
-- `hub/src/index.ts`（Hub 入口）
-- `cli/src/runner/controlServer.ts`（Runner ControlServer）
-- `cli/src/commands/hook.ts`（Hook Server）
+- `packages/hub/src/index.ts`（Hub 入口）
+- `packages/cli/src/runner/controlServer.ts`（Runner ControlServer）
+- `packages/cli/src/commands/hook.ts`（Hook Server）
 
 **已知信息**：
 
@@ -154,16 +154,16 @@
 - **Hub 端**：继续使用 Hono（功能强，适合服务端）
 
 **改造范围**：
-- `cli/src/claude/utils/startHookServer.ts` — 从 Node `http` 迁移到 Fastify
+- `packages/cli/src/claude/utils/startHookServer.ts` — 从 Node `http` 迁移到 Fastify
 
 ---
 
 ## 11. Local 模式下 SubAgent 消息缺失
 
 **相关文件**：
-- `cli/src/claude/utils/sessionScanner.ts` — SessionScanner 实现
-- `cli/src/claude/claudeLocalLauncher.ts` — Local 模式启动器
-- `cli/src/claude/claudeRemote.ts` — Remote 模式（对比参照）
+- `packages/cli/src/claude/utils/sessionScanner.ts` — SessionScanner 实现
+- `packages/cli/src/claude/claudeLocalLauncher.ts` — Local 模式启动器
+- `packages/cli/src/claude/claudeRemote.ts` — Remote 模式（对比参照）
 
 **待确认**：
 - SessionScanner 只监听主 agent 的 JSONL 文件（`~/.claude/projects/{hash}/{sessionId}.jsonl`），不监听 subagent 消息
@@ -176,9 +176,9 @@
 ## 12. SDK 流式输出支持
 
 **相关文件**：
-- `cli/src/claude/claudeRemote.ts` — Remote 模式主循环
-- `cli/src/claude/utils/sdkToLogConverter.ts` — 消息转换
-- `web/src/` — 前端消息展示
+- `packages/cli/src/claude/claudeRemote.ts` — Remote 模式主循环
+- `packages/cli/src/claude/utils/sdkToLogConverter.ts` — 消息转换
+- `packages/web/src/` — 前端消息展示
 
 **当前状态**：
 - `query()` 默认只返回完整的 `SDKAssistantMessage`（一轮完整输出）
@@ -194,10 +194,10 @@
 ## 13. Web 端权限审批"本次会话允许"功能未生效
 
 **相关文件**：
-- `web/src/components/ToolCard/PermissionFooter.tsx` — 权限审批 UI
-- `web/src/api/client.ts:138-143` — API 调用（approve/deny）
-- `hub/src/sync/rpcGateway.ts:70-86` — Hub 转发 RPC
-- `cli/src/claude/utils/permissionHandler.ts:270-281` — CLI 端判断逻辑
+- `packages/web/src/components/ToolCard/PermissionFooter.tsx` — 权限审批 UI
+- `packages/web/src/api/client.ts:138-143` — API 调用（approve/deny）
+- `packages/hub/src/sync/rpcGateway.ts:70-86` — Hub 转发 RPC
+- `packages/cli/src/claude/utils/permissionHandler.ts:270-281` — CLI 端判断逻辑
 
 **现状**：
 - UI 上有三个按钮："允许一次"、"本次会话允许"、"拒绝"
@@ -216,12 +216,12 @@
 ## 14. Permission 系统重构
 
 **相关文件**：
-- `cli/src/claude/utils/permissionHandler.ts` — Claude 专用权限处理器
-- `cli/src/modules/common/permission/BasePermissionHandler.ts` — 通用权限基类
-- `cli/src/claude/claudeRemote.ts` — SDK 集成点
-- `cli/src/claude/claudeRemoteLauncher.ts` — 生命周期管理
-- `web/src/components/ToolCard/PermissionFooter.tsx` — Web 端审批 UI
-- `web/src/api/client.ts` — API 客户端
+- `packages/cli/src/claude/utils/permissionHandler.ts` — Claude 专用权限处理器
+- `packages/cli/src/modules/common/permission/BasePermissionHandler.ts` — 通用权限基类
+- `packages/cli/src/claude/claudeRemote.ts` — SDK 集成点
+- `packages/cli/src/claude/claudeRemoteLauncher.ts` — 生命周期管理
+- `packages/web/src/components/ToolCard/PermissionFooter.tsx` — Web 端审批 UI
+- `packages/web/src/api/client.ts` — API 客户端
 
 **现状问题**：
 
@@ -276,9 +276,9 @@
 ## 15. Task 工具 prompt 展示应由前端处理
 
 **相关文件**：
-- `cli/src/claude/claudeRemoteLauncher.ts:287-299` — 生成虚拟 user 消息
-- `cli/src/claude/utils/sdkToLogConverter.ts:237-257` — `convertSidechainUserMessage` 方法
-- `web/src/` — 前端渲染
+- `packages/cli/src/claude/claudeRemoteLauncher.ts:287-299` — 生成虚拟 user 消息
+- `packages/cli/src/claude/utils/sdkToLogConverter.ts:237-257` — `convertSidechainUserMessage` 方法
+- `packages/web/src/` — 前端渲染
 
 **现状**：
 - CLI 在检测到 `Task` 工具调用时，从 `tool_use.input.prompt` 提取内容，生成一条虚拟 sidechain user 消息发送到 Hub
@@ -300,8 +300,8 @@
 ## 16. Web Worker 优化 SSE 后台连接稳定性
 
 **相关文件**：
-- `web/src/realtime/sseClient.ts` — SSE 客户端
-- `web/src/providers/SSEProvider.tsx` — SSE Provider
+- `packages/web/src/realtime/sseClient.ts` — SSE 客户端
+- `packages/web/src/providers/SSEProvider.tsx` — SSE Provider
 
 **现状问题**：
 - 浏览器在 Tab 失焦/最小化时会节流甚至静默断开 SSE 连接
@@ -327,17 +327,17 @@
 ```
 
 **改造范围**：
-- 新建 `web/src/realtime/sseWorker.ts`：Worker 入口，封装 SSEClient
-- 修改 `web/src/realtime/sseClient.ts`：抽取为 Worker 兼容的独立类
-- 修改 `web/src/providers/SSEProvider.tsx`：通过 Worker 管理连接
+- 新建 `packages/web/src/realtime/sseWorker.ts`：Worker 入口，封装 SSEClient
+- 修改 `packages/web/src/realtime/sseClient.ts`：抽取为 Worker 兼容的独立类
+- 修改 `packages/web/src/providers/SSEProvider.tsx`：通过 Worker 管理连接
 
 ---
 
 ## 17. `-c`（continue）模式未复用已有 mobi session
 
 **相关文件**：
-- `cli/src/agent/sessionFactory.ts:127-137` — `extractResumeSessionId` 只识别 `--resume` / `-r`
-- `cli/src/commands/claude.ts:137-141` — claude 参数透传
+- `packages/cli/src/agent/sessionFactory.ts:127-137` — `extractResumeSessionId` 只识别 `--resume` / `-r`
+- `packages/cli/src/commands/claude.ts:137-141` — claude 参数透传
 
 **现状**：
 - `mobi --resume <sessionId>` 会通过 `extractResumeSessionId` 解析出 claudeSessionId，查找已有 Hub session 并复用其 tag
@@ -357,9 +357,9 @@
 ## 18. Web 端支持渲染 Claude Code 的 Recap 消息
 
 **相关文件**：
-- `web/src/components/chat/ChatContainer.tsx` — 消息渲染
-- `web/src/chat/` — 消息解析与归约
-- `cli/src/claude/utils/sdkToLogConverter.ts` — SDK 消息转换
+- `packages/web/src/components/chat/ChatContainer.tsx` — 消息渲染
+- `packages/web/src/chat/` — 消息解析与归约
+- `packages/cli/src/claude/utils/sdkToLogConverter.ts` — SDK 消息转换
 
 **待确认**：
 - Claude Code 在 resume 会话时会生成 recap 消息（对话摘要），当前 Web 端是否已正确识别和渲染
@@ -373,9 +373,9 @@
 ## extractSDKMetadata 功能评估
 
 **相关文件**：
-- `cli/src/claude/sdk/metadataExtractor.ts`
-- `cli/src/claude/runClaude.ts`
-- `shared/src/schemas.ts`
+- `packages/cli/src/claude/sdk/metadataExtractor.ts`
+- `packages/cli/src/claude/runClaude.ts`
+- `packages/shared/src/schemas.ts`
 
 **待确认**：
 - `extractSDKMetadata` 会启动一个额外的 Claude 会话（消耗 token、产生临时 session 文件），仅用于提取 `sdkMetadata`

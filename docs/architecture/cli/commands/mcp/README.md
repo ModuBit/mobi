@@ -1,8 +1,8 @@
 # MCP — HTTP Server
 
 文件
-- [`cli/src/claude/utils/startMobiServer.ts`](/cli/src/claude/utils/startMobiServer.ts)
-- [`cli/src/mcp/mobiMcpStdioBridge.ts`](/cli/src/mcp/mobiMcpStdioBridge.ts)（未使用）
+- [`packages/cli/src/claude/utils/startMobiServer.ts`](/packages/cli/src/claude/utils/startMobiServer.ts)
+- [`packages/cli/src/mcp/mobiMcpStdioBridge.ts`](/packages/cli/src/mcp/mobiMcpStdioBridge.ts)（未使用）
 
 MCP 系统的核心是随 Claude 会话启动的 HTTP MCP Server，对外暴露 `change_title` 工具，让 Claude Code 能够修改当前会话标题。
 
@@ -22,8 +22,8 @@ flowchart LR
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| **HTTP MCP Server** | [`claude/utils/startMobiServer.ts`](/cli/src/claude/utils/startMobiServer.ts) | 随 Claude 会话启动的本地 HTTP MCP 服务，注册 `change_title` 工具 |
-| ~~Stdio Bridge~~ | [`mcp/mobiMcpStdioBridge.ts`](/cli/src/mcp/mobiMcpStdioBridge.ts) | 未使用。`mobi mcp` 命令将 stdio 转发到 HTTP，但当前架构中无实际场景 |
+| **HTTP MCP Server** | [`claude/utils/startMobiServer.ts`](/packages/cli/src/claude/utils/startMobiServer.ts) | 随 Claude 会话启动的本地 HTTP MCP 服务，注册 `change_title` 工具 |
+| ~~Stdio Bridge~~ | [`mcp/mobiMcpStdioBridge.ts`](/packages/cli/src/mcp/mobiMcpStdioBridge.ts) | 未使用。`mobi mcp` 命令将 stdio 转发到 HTTP，但当前架构中无实际场景 |
 
 ## 完整流程
 
@@ -98,7 +98,7 @@ flowchart TB
 ## 代码结构
 
 ```
-cli/src/
+packages/cli/src/
 ├── commands/
 │   └── mcp.ts                             # mcp 命令入口（未使用）
 ├── mcp/
@@ -111,5 +111,5 @@ cli/src/
 
 | 文件 | 入口 |
 |------|------|
-| `cli/src/claude/utils/startMobiServer.ts` | [`startMobiServer()`](/cli/src/claude/utils/startMobiServer.ts) |
-| `cli/src/mcp/mobiMcpStdioBridge.ts` | [`runMobiMcpStdioBridge()`](/cli/src/mcp/mobiMcpStdioBridge.ts)（未使用） |
+| `packages/cli/src/claude/utils/startMobiServer.ts` | [`startMobiServer()`](/packages/cli/src/claude/utils/startMobiServer.ts) |
+| `packages/cli/src/mcp/mobiMcpStdioBridge.ts` | [`runMobiMcpStdioBridge()`](/packages/cli/src/mcp/mobiMcpStdioBridge.ts)（未使用） |

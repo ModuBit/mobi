@@ -11,8 +11,8 @@ graph TB
     end
 
     subgraph "权限拦截层"
-        PH["PermissionHandler<br/>cli/src/claude/utils/"]
-        BASE["BasePermissionHandler<br/>cli/src/modules/common/permission/"]
+        PH["PermissionHandler<br/>packages/cli/src/claude/utils/"]
+        BASE["BasePermissionHandler<br/>packages/cli/src/modules/common/permission/"]
     end
 
     subgraph "状态与通信层"
@@ -35,7 +35,7 @@ graph TB
 
 ### BasePermissionHandler（通用基类）
 
-**路径**: `cli/src/modules/common/permission/BasePermissionHandler.ts`
+**路径**: `packages/cli/src/modules/common/permission/BasePermissionHandler.ts`
 
 提供所有权限处理器的通用基础设施，与具体 Agent 类型无关：
 
@@ -57,7 +57,7 @@ bypassPermissions 模式 → 所有工具自动 approved_for_session
 
 ### PermissionHandler（Claude 专用实现）
 
-**路径**: `cli/src/claude/utils/permissionHandler.ts`
+**路径**: `packages/cli/src/claude/utils/permissionHandler.ts`
 
 继承 `BasePermissionHandler`，实现 Claude Code 特有的权限逻辑：
 
@@ -237,10 +237,10 @@ permissionHandler.reset();
 
 | 文件 | 职责 |
 |------|------|
-| `cli/src/claude/utils/permissionHandler.ts` | Claude 专用权限处理器，工具调用追踪和白名单管理 |
-| `cli/src/modules/common/permission/BasePermissionHandler.ts` | 通用权限基类，RPC 注册、请求生命周期、自动审批 |
-| `cli/src/claude/claudeRemote.ts` | SDK 集成点，注册 `canUseTool` 回调 |
-| `cli/src/claude/claudeRemoteLauncher.ts` | 生命周期管理，创建和重置 PermissionHandler |
-| `cli/src/claude/sdk/types.ts` | `PermissionResult` 等类型定义 |
-| `cli/src/claude/utils/getToolDescriptor.ts` | 工具描述符（判断编辑类/Plan 模式工具） |
-| `cli/src/api/rpc/RpcHandlerManager.ts` | RPC 方法注册和请求分发 |
+| `packages/cli/src/claude/utils/permissionHandler.ts` | Claude 专用权限处理器，工具调用追踪和白名单管理 |
+| `packages/cli/src/modules/common/permission/BasePermissionHandler.ts` | 通用权限基类，RPC 注册、请求生命周期、自动审批 |
+| `packages/cli/src/claude/claudeRemote.ts` | SDK 集成点，注册 `canUseTool` 回调 |
+| `packages/cli/src/claude/claudeRemoteLauncher.ts` | 生命周期管理，创建和重置 PermissionHandler |
+| `packages/cli/src/claude/sdk/types.ts` | `PermissionResult` 等类型定义 |
+| `packages/cli/src/claude/utils/getToolDescriptor.ts` | 工具描述符（判断编辑类/Plan 模式工具） |
+| `packages/cli/src/api/rpc/RpcHandlerManager.ts` | RPC 方法注册和请求分发 |

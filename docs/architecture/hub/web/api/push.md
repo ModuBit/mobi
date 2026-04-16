@@ -1,6 +1,6 @@
 # Web Push API
 
-**文件**: [`hub/src/web/routes/push.ts`](/hub/src/web/routes/push.ts)
+**文件**: [`packages/hub/src/web/routes/push.ts`](/packages/hub/src/web/routes/push.ts)
 
 Web Push 用于在页面不可见时推送通知。
 

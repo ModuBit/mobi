@@ -2,8 +2,8 @@
 
 Runner 通过同步方式启动，作为前台进程运行，仅用于内部调用或不暴露给用户。
 
-- **入口**: `cli/src/commands/runner.ts:95-98`
-- **核心逻辑**: `cli/src/runner/run.ts:40-833`
+- **入口**: `packages/cli/src/commands/runner.ts:95-98`
+- **核心逻辑**: `packages/cli/src/runner/run.ts:40-833`
 - **用途**: 同步启动 Runner，供 `mobi runner start` 内部调用
 
 ## 防重复启动机制
@@ -24,7 +24,7 @@ flowchart TB
 
 ### 1. 版本检查
 
-**文件**: `cli/src/runner/run.ts:115-123`
+**文件**: `packages/cli/src/runner/run.ts:115-123`
 
 检查是否已有 Runner 运行，且版本与当前 CLI 匹配：
 
@@ -42,7 +42,7 @@ if (!runningRunnerVersionMatches) {
 
 ### 2. 文件锁
 
-**文件**: `cli/src/runner/run.ts:126-130`
+**文件**: `packages/cli/src/runner/run.ts:126-130`
 
 确保同一时间只有一个 Runner 进程：
 
@@ -75,7 +75,7 @@ flowchart TB
 
 ## 信号处理
 
-**文件**: `cli/src/runner/run.ts:70-108`
+**文件**: `packages/cli/src/runner/run.ts:70-108`
 
 Runner 注册了完整的信号和异常处理器，所有处理器最终触发同一个 `requestShutdown` 函数：
 
@@ -133,7 +133,7 @@ requestShutdown = (source, errorMessage) => {
 
 ## Shutdown 来源分类
 
-**文件**: `cli/src/runner/run.ts:50-51`
+**文件**: `packages/cli/src/runner/run.ts:50-51`
 
 四种关闭来源，贯穿整个关闭流程：
 
@@ -161,7 +161,7 @@ exception: 运行时异常 → process.on('uncaughtException') → requestShutdo
 
 ## 内部状态
 
-**文件**: `cli/src/runner/run.ts:142-159`
+**文件**: `packages/cli/src/runner/run.ts:142-159`
 
 Runner 核心运行时状态，全部在 `startRunner` 函数作用域内：
 
@@ -205,7 +205,7 @@ Runner 的 `ApiMachineClient` 注册了三层 RPC，供 Hub 远程调用：
 
 ### 第一层：通用 RPC（构造函数）
 
-**文件**: `cli/src/api/apiMachine.ts:96`
+**文件**: `packages/cli/src/api/apiMachine.ts:96`
 
 ```typescript
 registerCommonHandlers(this.rpcHandlerManager, process.cwd())
@@ -233,7 +233,7 @@ registerCommonHandlers(this.rpcHandlerManager, process.cwd())
 
 ### 第二层：Machine 独有 RPC（构造函数）
 
-**文件**: `cli/src/api/apiMachine.ts:98-115`
+**文件**: `packages/cli/src/api/apiMachine.ts:98-115`
 
 ```typescript
 this.rpcHandlerManager.registerHandler('path-exists', async (params) => {
@@ -248,7 +248,7 @@ this.rpcHandlerManager.registerHandler('path-exists', async (params) => {
 
 ### 第三层：Machine 生命周期 RPC（setRPCHandlers）
 
-**文件**: `cli/src/runner/run.ts:660-664`
+**文件**: `packages/cli/src/runner/run.ts:660-664`
 
 Runner 连接 Hub 后，通过 `apiMachine.setRPCHandlers` 注册 3 个管理 RPC：
 
@@ -283,7 +283,7 @@ apiMachine.setRPCHandlers({
 
 ## reportSpawnOutcomeToHub
 
-**文件**: `cli/src/runner/run.ts:669-705`
+**文件**: `packages/cli/src/runner/run.ts:669-705`
 
 Spawn 结果上报机制，通过 `apiMachine.updateRunnerState` 将 spawn 结果同步到 Hub：
 
@@ -328,7 +328,7 @@ reportSpawnOutcomeToHub = (outcome) => {
 
 ## 心跳与健康检查
 
-**文件**: `cli/src/runner/run.ts:707-791`
+**文件**: `packages/cli/src/runner/run.ts:707-791`
 
 定时心跳循环，负责会话清理、版本自检和状态写入：
 
@@ -397,7 +397,7 @@ if (runnerState && runnerState.pid !== process.pid) {
 
 ## 关闭流程
 
-**文件**: `cli/src/runner/run.ts:794-821`
+**文件**: `packages/cli/src/runner/run.ts:794-821`
 
 所有四种 shutdown 来源最终汇聚到 `cleanupAndShutdown`：
 
@@ -437,5 +437,5 @@ flowchart TB
 
 ## 代码入口
 
-- **命令入口**: `cli/src/commands/runner.ts:95-98`
-- **核心逻辑**: `cli/src/runner/run.ts:40-833`
+- **命令入口**: `packages/cli/src/commands/runner.ts:95-98`
+- **核心逻辑**: `packages/cli/src/runner/run.ts:40-833`

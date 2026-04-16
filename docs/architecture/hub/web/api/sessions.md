@@ -1,8 +1,8 @@
 # Sessions API
 
 **文件**：
-- [`hub/src/web/routes/sessions.ts`](/hub/src/web/routes/sessions.ts)
-- [`hub/src/web/routes/sessionGroups.ts`](/hub/src/web/routes/sessionGroups.ts)
+- [`packages/hub/src/web/routes/sessions.ts`](/packages/hub/src/web/routes/sessions.ts)
+- [`packages/hub/src/web/routes/sessionGroups.ts`](/packages/hub/src/web/routes/sessionGroups.ts)
 
 会话相关的 HTTP API，包括会话管理和分组查询。
 
@@ -157,7 +157,7 @@ flowchart TB
 
 ## 守卫函数
 
-**文件**：[`hub/src/web/routes/guards.ts`](/hub/src/web/routes/guards.ts)
+**文件**：[`packages/hub/src/web/routes/guards.ts`](/packages/hub/src/web/routes/guards.ts)
 
 | 函数 | 作用 |
 |------|------|

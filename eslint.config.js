@@ -5,7 +5,7 @@
  */
 const js = require('@eslint/js')
 const tseslint = require('typescript-eslint')
-const customRules = require('./eslint-rules')
+const customRules = require('./tools/eslint-rules')
 
 module.exports = tseslint.config(
   // 基础推荐配置
@@ -24,12 +24,12 @@ module.exports = tseslint.config(
     ],
   },
 
-  // 自定义规则：作用于 shared/src/ hub/src/ cli/src/ web/src/
+  // 自定义规则：作用于 packages/*/src/
   {
-    files: ['shared/src/**/*.ts', 'shared/src/**/*.tsx',
-            'hub/src/**/*.ts', 'hub/src/**/*.tsx',
-            'cli/src/**/*.ts', 'cli/src/**/*.tsx',
-            'web/src/**/*.ts', 'web/src/**/*.tsx'],
+    files: ['packages/shared/src/**/*.ts', 'packages/shared/src/**/*.tsx',
+            'packages/hub/src/**/*.ts', 'packages/hub/src/**/*.tsx',
+            'packages/cli/src/**/*.ts', 'packages/cli/src/**/*.tsx',
+            'packages/web/src/**/*.ts', 'packages/web/src/**/*.tsx'],
     plugins: {
       'mobi': customRules,
     },

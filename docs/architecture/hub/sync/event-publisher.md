@@ -1,6 +1,6 @@
 # EventPublisher
 
-**文件**: [`hub/src/sync/eventPublisher.ts`](/hub/src/sync/eventPublisher.ts)
+**文件**: [`packages/hub/src/sync/eventPublisher.ts`](/packages/hub/src/sync/eventPublisher.ts)
 
 事件发布器，负责将事件分发给内部监听器和 Web 客户端。
 

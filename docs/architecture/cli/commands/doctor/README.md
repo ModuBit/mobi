@@ -1,6 +1,6 @@
 # Doctor 系统诊断
 
-文件 [`cli/src/commands/doctor.ts`](/cli/src/commands/doctor.ts)
+文件 [`packages/cli/src/commands/doctor.ts`](/packages/cli/src/commands/doctor.ts)
 
 Doctor 提供 CLI 环境的诊断检查和进程清理功能，帮助排查问题。
 
@@ -107,7 +107,7 @@ flowchart TB
 
 ## 进程发现与分类
 
-**文件**: [`cli/src/runner/doctor.ts`](/cli/src/runner/doctor.ts)
+**文件**: [`packages/cli/src/runner/doctor.ts`](/packages/cli/src/runner/doctor.ts)
 
 通过 `ps-list` 枚举系统进程，识别 mobi 相关进程：
 
@@ -162,7 +162,7 @@ flowchart TB
 ## 代码结构
 
 ```
-cli/src/
+packages/cli/src/
 ├── commands/
 │   └── doctor.ts                # doctor 命令入口
 ├── ui/
@@ -173,6 +173,6 @@ cli/src/
 
 | 文件 | 入口 |
 |------|------|
-| `cli/src/commands/doctor.ts` | [`doctorCommand`](/cli/src/commands/doctor.ts) |
-| `cli/src/ui/doctor.ts` | [`runDoctorCommand()`](/cli/src/ui/doctor.ts) |
-| `cli/src/runner/doctor.ts` | [`findAllMobiProcesses()` / `killRunawayMobiProcesses()`](/cli/src/runner/doctor.ts) |
+| `packages/cli/src/commands/doctor.ts` | [`doctorCommand`](/packages/cli/src/commands/doctor.ts) |
+| `packages/cli/src/ui/doctor.ts` | [`runDoctorCommand()`](/packages/cli/src/ui/doctor.ts) |
+| `packages/cli/src/runner/doctor.ts` | [`findAllMobiProcesses()` / `killRunawayMobiProcesses()`](/packages/cli/src/runner/doctor.ts) |

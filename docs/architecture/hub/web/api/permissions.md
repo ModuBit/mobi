@@ -1,6 +1,6 @@
 # 权限 API
 
-**文件**: [`hub/src/web/routes/permissions.ts`](/hub/src/web/routes/permissions.ts)
+**文件**: [`packages/hub/src/web/routes/permissions.ts`](/packages/hub/src/web/routes/permissions.ts)
 
 ## 端点
 

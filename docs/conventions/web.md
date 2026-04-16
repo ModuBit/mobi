@@ -111,7 +111,7 @@ import { queryKeys } from '@/lib/query-keys'
 ## 测试
 
 - 测试框架：Vitest
-- 测试目录：`web/tests/`（与源码分离）
+- 测试目录：`packages/web/tests/`（与源码分离）
 - 测试运行：`bun run test`（根目录）
 
 ## 国际化

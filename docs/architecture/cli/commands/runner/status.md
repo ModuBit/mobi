@@ -41,6 +41,6 @@ sequenceDiagram
 
 ## 代码入口
 
-- **命令入口**: [`cli/src/commands/runner.ts:106-109`](/cli/src/commands/runner.ts)
-- **诊断实现**: [`cli/src/ui/doctor.ts`](/cli/src/ui/doctor.ts) — `runDoctorCommand()`
-- **进程发现**: [`cli/src/runner/doctor.ts`](/cli/src/runner/doctor.ts) — `findAllMobiProcesses()`
+- **命令入口**: [`packages/cli/src/commands/runner.ts:106-109`](/packages/cli/src/commands/runner.ts)
+- **诊断实现**: [`packages/cli/src/ui/doctor.ts`](/packages/cli/src/ui/doctor.ts) — `runDoctorCommand()`
+- **进程发现**: [`packages/cli/src/runner/doctor.ts`](/packages/cli/src/runner/doctor.ts) — `findAllMobiProcesses()`

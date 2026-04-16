@@ -49,7 +49,7 @@ interface ConversionContext {
 
 ### RawJSONLines（输出格式）
 
-由 `cli/src/claude/types.ts` 定义，`RawJSONLinesSchema` 是一个 discriminated union：
+由 `packages/cli/src/claude/types.ts` 定义，`RawJSONLinesSchema` 是一个 discriminated union：
 
 | 类型 | 必填字段 | 说明 |
 |------|----------|------|
@@ -165,7 +165,7 @@ sequenceDiagram
 
 | 文件 | 职责 |
 |------|------|
-| `cli/src/claude/utils/sdkToLogConverter.ts` | SDK 消息 → 日志格式转换 |
-| `cli/src/claude/types.ts` | `RawJSONLines` 类型定义和 Zod schema |
-| `cli/src/claude/claudeRemoteLauncher.ts` | 创建和使用 SDKToLogConverter |
-| `cli/src/claude/utils/OutgoingMessageQueue.ts` | 转换结果的有序发送 |
+| `packages/cli/src/claude/utils/sdkToLogConverter.ts` | SDK 消息 → 日志格式转换 |
+| `packages/cli/src/claude/types.ts` | `RawJSONLines` 类型定义和 Zod schema |
+| `packages/cli/src/claude/claudeRemoteLauncher.ts` | 创建和使用 SDKToLogConverter |
+| `packages/cli/src/claude/utils/OutgoingMessageQueue.ts` | 转换结果的有序发送 |

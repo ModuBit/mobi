@@ -1,12 +1,12 @@
 # API 共享类型
 
-各 API 端点共用的类型定义，源码位于 `shared/src/schemas.ts` 和 `shared/src/modes.ts`。
+各 API 端点共用的类型定义，源码位于 `packages/shared/src/schemas.ts` 和 `packages/shared/src/modes.ts`。
 
 ## PermissionMode
 
 权限模式，控制 CLI 的自动审批行为。
 
-**源码**: `shared/src/modes.ts`
+**源码**: `packages/shared/src/modes.ts`
 
 ```typescript
 type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
@@ -37,7 +37,7 @@ type PermissionModeOption = {
 
 已解密的消息，客户端发送或服务端存储的消息格式。
 
-**源码**: `shared/src/schemas.ts`
+**源码**: `packages/shared/src/schemas.ts`
 
 ```typescript
 interface DecryptedMessage {
@@ -53,7 +53,7 @@ interface DecryptedMessage {
 
 附件元数据，描述上传文件的信息。
 
-**源码**: `shared/src/schemas.ts`
+**源码**: `packages/shared/src/schemas.ts`
 
 ```typescript
 interface AttachmentMetadata {
@@ -70,7 +70,7 @@ interface AttachmentMetadata {
 
 Agent 会话，对应 CLI 的一次运行实例。
 
-**源码**: `shared/src/schemas.ts`
+**源码**: `packages/shared/src/schemas.ts`
 
 ```typescript
 interface Session {
@@ -98,7 +98,7 @@ interface Session {
 
 SyncEngine 产生的事件，用于组件间通信。
 
-**源码**: `shared/src/schemas.ts`
+**源码**: `packages/shared/src/schemas.ts`
 
 ```typescript
 type SyncEvent =

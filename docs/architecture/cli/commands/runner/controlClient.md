@@ -2,7 +2,7 @@
 
 CLI 侧与 Runner 进程通信的 HTTP 客户端封装。所有 CLI 命令通过它与 Runner 进程内的 ControlServer 交互。
 
-**文件**: [`cli/src/runner/controlClient.ts`](/cli/src/runner/controlClient.ts)
+**文件**: [`packages/cli/src/runner/controlClient.ts`](/packages/cli/src/runner/controlClient.ts)
 
 ## 定位
 
@@ -155,20 +155,20 @@ stopRunner()
 ## 调用方汇总
 
 ```typescript
-// cli/src/commands/runner.ts — 所有 runner 子命令
+// packages/cli/src/commands/runner.ts — 所有 runner 子命令
 import { listRunnerSessions, stopRunnerSession, spawnRunnerSession, stopRunner,
          checkIfRunnerRunningAndCleanupStaleState } from '@/runner/controlClient'
 
-// cli/src/agent/sessionFactory.ts — 会话创建后通知
+// packages/cli/src/agent/sessionFactory.ts — 会话创建后通知
 import { notifyRunnerSessionStarted } from '@/runner/controlClient'
 
-// cli/src/ui/doctor.ts — 诊断检查
+// packages/cli/src/ui/doctor.ts — 诊断检查
 import { checkIfRunnerRunningAndCleanupStaleState } from '@/runner/controlClient'
 
-// cli/src/commands/claude.ts — claude 命令中检查版本
+// packages/cli/src/commands/claude.ts — claude 命令中检查版本
 import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@/runner/controlClient'
 
-// cli/src/runner/run.ts — Runner 内部使用状态管理和版本检测
+// packages/cli/src/runner/run.ts — Runner 内部使用状态管理和版本检测
 import { cleanupRunnerState, getInstalledCliMtimeMs,
          isRunnerRunningCurrentlyInstalledMobiVersion, stopRunner } from './controlClient'
 ```

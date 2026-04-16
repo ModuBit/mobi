@@ -1,9 +1,9 @@
 # Hook 系统 — SessionStart Hook 转发
 
 文件 
-- [`cli/src/commands/hookForwarder.ts`](/cli/src/commands/hookForwarder.ts)
-- [`cli/src/claude/utils/startHookServer.ts`](/cli/src/claude/utils/startHookServer.ts)
-- [`cli/src/modules/common/hooks/generateHookSettings.ts`](/cli/src/modules/common/hooks/generateHookSettings.ts)
+- [`packages/cli/src/commands/hookForwarder.ts`](/packages/cli/src/commands/hookForwarder.ts)
+- [`packages/cli/src/claude/utils/startHookServer.ts`](/packages/cli/src/claude/utils/startHookServer.ts)
+- [`packages/cli/src/modules/common/hooks/generateHookSettings.ts`](/packages/cli/src/modules/common/hooks/generateHookSettings.ts)
 
 Hook 系统将 Claude Code 的 SessionStart hook 通知转发给主 CLI 进程，用于感知 Claude 会话 ID 的变化（新建、恢复、压缩、分叉等）。由三个协作组件构成：Hook Server、Hook Settings、Hook Forwarder。
 
@@ -20,9 +20,9 @@ flowchart LR
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| **Hook Server** | [`claude/utils/startHookServer.ts`](/cli/src/claude/utils/startHookServer.ts) | 本地 HTTP 服务器，接收 `/hook/session-start` POST 请求 |
-| **Hook Settings** | [`modules/common/hooks/generateHookSettings.ts`](/cli/src/modules/common/hooks/generateHookSettings.ts) | 生成 Claude Code hooks 配置文件 |
-| **Hook Forwarder** | [`claude/utils/sessionHookForwarder.ts`](/cli/src/claude/utils/sessionHookForwarder.ts) | Claude Code 实际执行的 hook 命令，读 stdin → HTTP POST 转发 |
+| **Hook Server** | [`claude/utils/startHookServer.ts`](/packages/cli/src/claude/utils/startHookServer.ts) | 本地 HTTP 服务器，接收 `/hook/session-start` POST 请求 |
+| **Hook Settings** | [`modules/common/hooks/generateHookSettings.ts`](/packages/cli/src/modules/common/hooks/generateHookSettings.ts) | 生成 Claude Code hooks 配置文件 |
+| **Hook Forwarder** | [`claude/utils/sessionHookForwarder.ts`](/packages/cli/src/claude/utils/sessionHookForwarder.ts) | Claude Code 实际执行的 hook 命令，读 stdin → HTTP POST 转发 |
 
 ## 为什么需要 Forwarder？
 
@@ -103,7 +103,7 @@ flowchart TB
 
 ## Hook Server
 
-**文件**: [`cli/src/claude/utils/startHookServer.ts`](/cli/src/claude/utils/startHookServer.ts)
+**文件**: [`packages/cli/src/claude/utils/startHookServer.ts`](/packages/cli/src/claude/utils/startHookServer.ts)
 
 ### 请求处理
 
@@ -140,7 +140,7 @@ session ID 优先使用 `session_id`，备选 `sessionId`。
 
 ## Hook Forwarder 命令
 
-**文件**: [`cli/src/claude/utils/sessionHookForwarder.ts`](/cli/src/claude/utils/sessionHookForwarder.ts)
+**文件**: [`packages/cli/src/claude/utils/sessionHookForwarder.ts`](/packages/cli/src/claude/utils/sessionHookForwarder.ts)
 
 ### 参数解析
 
@@ -173,7 +173,7 @@ flowchart TB
 
 ## Hook Settings 生成
 
-**文件**: [`cli/src/modules/common/hooks/generateHookSettings.ts`](/cli/src/modules/common/hooks/generateHookSettings.ts)
+**文件**: [`packages/cli/src/modules/common/hooks/generateHookSettings.ts`](/packages/cli/src/modules/common/hooks/generateHookSettings.ts)
 
 ### 配置文件结构
 
@@ -213,7 +213,7 @@ flowchart TB
 ## 代码结构
 
 ```
-cli/src/
+packages/cli/src/
 ├── commands/
 │   └── hookForwarder.ts                    # hook-forwarder 命令入口
 ├── claude/
@@ -227,10 +227,10 @@ cli/src/
 
 | 文件 | 入口 |
 |------|------|
-| `cli/src/commands/hookForwarder.ts` | [`hookForwarderCommand`](/cli/src/commands/hookForwarder.ts) |
-| `cli/src/claude/utils/startHookServer.ts` | [`startHookServer()`](/cli/src/claude/utils/startHookServer.ts) |
-| `cli/src/claude/utils/sessionHookForwarder.ts` | [`runSessionHookForwarder()`](/cli/src/claude/utils/sessionHookForwarder.ts) |
-| `cli/src/modules/common/hooks/generateHookSettings.ts` | [`generateHookSettingsFile()` / `cleanupHookSettingsFile()`](/cli/src/modules/common/hooks/generateHookSettings.ts) |
+| `packages/cli/src/commands/hookForwarder.ts` | [`hookForwarderCommand`](/packages/cli/src/commands/hookForwarder.ts) |
+| `packages/cli/src/claude/utils/startHookServer.ts` | [`startHookServer()`](/packages/cli/src/claude/utils/startHookServer.ts) |
+| `packages/cli/src/claude/utils/sessionHookForwarder.ts` | [`runSessionHookForwarder()`](/packages/cli/src/claude/utils/sessionHookForwarder.ts) |
+| `packages/cli/src/modules/common/hooks/generateHookSettings.ts` | [`generateHookSettingsFile()` / `cleanupHookSettingsFile()`](/packages/cli/src/modules/common/hooks/generateHookSettings.ts) |
 
 ## 临时文件
 

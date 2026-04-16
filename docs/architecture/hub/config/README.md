@@ -1,8 +1,8 @@
 # Configuration 配置系统
 
 **文件**:
-- [`hub/src/configuration.ts`](/hub/src/configuration.ts) — 配置入口，单例管理
-- [`hub/src/config/`](/hub/src/config/) — 各配置项的生成与持久化
+- [`packages/hub/src/configuration.ts`](/packages/hub/src/configuration.ts) — 配置入口，单例管理
+- [`packages/hub/src/config/`](/packages/hub/src/config/) — 各配置项的生成与持久化
 
 Configuration 管理 Hub 的所有运行时配置，遵循统一的优先级策略，确保配置可追溯、可持久化。
 
@@ -72,7 +72,7 @@ configuration.listenPort
 
 ### 服务器设置（ServerSettings）
 
-**文件**: [`hub/src/config/serverSettings.ts`](/hub/src/config/serverSettings.ts)
+**文件**: [`packages/hub/src/config/serverSettings.ts`](/packages/hub/src/config/serverSettings.ts)
 
 加载 `listenHost`、`listenPort`、`publicUrl`、`corsOrigins` 四项配置：
 
@@ -99,7 +99,7 @@ flowchart TB
 
 ### CLI API Token
 
-**文件**: [`hub/src/config/cliApiToken.ts`](/hub/src/config/cliApiToken.ts)
+**文件**: [`packages/hub/src/config/cliApiToken.ts`](/packages/hub/src/config/cliApiToken.ts)
 
 CLI 客户端认证用的共享密钥，三级来源：
 
@@ -132,7 +132,7 @@ flowchart TB
 
 ### JWT Secret
 
-**文件**: [`hub/src/config/jwtSecret.ts`](/hub/src/config/jwtSecret.ts)
+**文件**: [`packages/hub/src/config/jwtSecret.ts`](/packages/hub/src/config/jwtSecret.ts)
 
 Web 端 JWT 签名密钥，独立存储在 `jwt-secret.json` 中：
 
@@ -145,7 +145,7 @@ Web 端 JWT 签名密钥，独立存储在 `jwt-secret.json` 中：
 
 ### VAPID Keys
 
-**文件**: [`hub/src/config/vapidKeys.ts`](/hub/src/config/vapidKeys.ts)
+**文件**: [`packages/hub/src/config/vapidKeys.ts`](/packages/hub/src/config/vapidKeys.ts)
 
 Web Push 通知的 VAPID 密钥对，存储在 `settings.json` 中：
 
@@ -157,7 +157,7 @@ Web Push 通知的 VAPID 密钥对，存储在 `settings.json` 中：
 
 ### Owner ID
 
-**文件**: [`hub/src/config/ownerId.ts`](/hub/src/config/ownerId.ts)
+**文件**: [`packages/hub/src/config/ownerId.ts`](/packages/hub/src/config/ownerId.ts)
 
 Hub 所有者的数字标识，用于 CLI 认证：
 
@@ -172,7 +172,7 @@ Hub 所有者的数字标识，用于 CLI 认证：
 
 ### getOrCreateSettingsValue
 
-**文件**: [`hub/src/config/generators.ts`](/hub/src/config/generators.ts)
+**文件**: [`packages/hub/src/config/generators.ts`](/packages/hub/src/config/generators.ts)
 
 "存在则读取，不存在则生成并保存"的通用模式，操作 `settings.json` 中的字段：
 
@@ -203,7 +203,7 @@ flowchart TB
 
 ### Settings 读写
 
-**文件**: [`hub/src/config/settings.ts`](/hub/src/config/settings.ts)
+**文件**: [`packages/hub/src/config/settings.ts`](/packages/hub/src/config/settings.ts)
 
 `settings.json` 的底层读写：
 
@@ -216,7 +216,7 @@ flowchart TB
 ## 代码结构
 
 ```
-hub/src/
+packages/hub/src/
 ├── configuration.ts          # Configuration 单例 + createConfiguration()
 └── config/
     ├── cliApiToken.ts        # CLI API Token 管理

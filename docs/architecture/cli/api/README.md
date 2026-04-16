@@ -1,4 +1,4 @@
-# API 通信层 (`cli/src/api/`)
+# API 通信层 (`packages/cli/src/api/`)
 
 CLI 与 Hub 之间的双向通信层，承载 Session / Machine 的生命周期管理、消息同步和 RPC 调用。
 
@@ -6,7 +6,7 @@ CLI 与 Hub 之间的双向通信层，承载 Session / Machine 的生命周期�
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                     cli/src/api/                              │
+│                     packages/cli/src/api/                              │
 │                                                              │
 │  ┌──────────┐  HTTP  ┌─────────────────┐                    │
 │  │ ApiClient │──────▶│ Hub REST API     │                    │

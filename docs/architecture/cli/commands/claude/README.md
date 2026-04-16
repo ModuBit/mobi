@@ -2,7 +2,7 @@
 
 CLI 的主要使用方式：`mobi [options]`，所有未匹配子命令的参数都走此命令。启动 Claude Code 会话并通过 Hub 实现远程控制。
 
-**入口文件**: [`cli/src/commands/claude.ts`](/cli/src/commands/claude.ts)
+**入口文件**: [`packages/cli/src/commands/claude.ts`](/packages/cli/src/commands/claude.ts)
 
 ---
 
@@ -61,17 +61,17 @@ CLI 的主要使用方式：`mobi [options]`，所有未匹配子命令的参数
 ```mermaid
 graph TB
     subgraph Entry["入口层"]
-        Cmd["claudeCommand<br/>cli/src/commands/claude.ts"]
+        Cmd["claudeCommand<br/>packages/cli/src/commands/claude.ts"]
     end
 
     subgraph Core["核心层"]
-        RunClaude["runClaude()<br/>cli/src/claude/runClaude.ts"]
-        Bootstrap["bootstrapSession()<br/>cli/src/agent/sessionFactory.ts"]
-        Loop["loop()<br/>cli/src/claude/loop.ts"]
+        RunClaude["runClaude()<br/>packages/cli/src/claude/runClaude.ts"]
+        Bootstrap["bootstrapSession()<br/>packages/cli/src/agent/sessionFactory.ts"]
+        Loop["loop()<br/>packages/cli/src/claude/loop.ts"]
     end
 
     subgraph LoopEngine["模式循环引擎"]
-        LoopBase["runLocalRemoteSession()<br/>cli/src/agent/loopBase.ts"]
+        LoopBase["runLocalRemoteSession()<br/>packages/cli/src/agent/loopBase.ts"]
     end
 
     subgraph LocalMode["Local 模式"]
@@ -88,7 +88,7 @@ graph TB
     end
 
     subgraph Support["支撑组件"]
-        Session["Session<br/>cli/src/claude/session.ts"]
+        Session["Session<br/>packages/cli/src/claude/session.ts"]
         MCP["Mobi MCP Server"]
         HookServer["Hook Server"]
         MessageQ["MessageQueue"]
@@ -135,7 +135,7 @@ flowchart TB
 
 ### 阶段一：入口初始化（`claude.ts`）
 
-**文件**: `cli/src/commands/claude.ts`
+**文件**: `packages/cli/src/commands/claude.ts`
 
 1. **参数解析** — 提取 mobi 特有参数（`--yolo`、`--model`、`--mobi-starting-mode`、`--started-by`），其余透传给 Claude
 2. **Token 初始化** — `initializeToken()` 确保 CLI_API_TOKEN 可用
@@ -156,7 +156,7 @@ flowchart TB
 
 ### 阶段二：会话启动（`runClaude.ts`）
 
-**文件**: `cli/src/claude/runClaude.ts:49-385`
+**文件**: `packages/cli/src/claude/runClaude.ts:49-385`
 
 ```mermaid
 flowchart TB
@@ -178,17 +178,17 @@ flowchart TB
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| **ApiClient** | `cli/src/api/api.ts` | HTTP 客户端，与 Hub REST API 通信 |
-| **ApiSessionClient** | `cli/src/api/apiSession.ts` | Socket.IO 客户端，实时通信 |
-| **Session** | `cli/src/claude/session.ts` | 会话状态管理（ID、mode、model 等） |
-| **MCP Server** | `cli/src/claude/utils/startMobiMcpServer.ts` | 暴露 `change_title` 等工具 |
-| **Hook Server** | `cli/src/claude/utils/startHookServer.ts` | 接收 Claude SessionStart 通知 |
-| **MessageQueue** | `cli/src/utils/MessageQueue.ts` | 带模式 hash 的消息队列 |
-| **RunnerLifecycle** | `cli/src/agent/runnerLifecycle.ts` | 进程信号处理和清理 |
+| **ApiClient** | `packages/cli/src/api/api.ts` | HTTP 客户端，与 Hub REST API 通信 |
+| **ApiSessionClient** | `packages/cli/src/api/apiSession.ts` | Socket.IO 客户端，实时通信 |
+| **Session** | `packages/cli/src/claude/session.ts` | 会话状态管理（ID、mode、model 等） |
+| **MCP Server** | `packages/cli/src/claude/utils/startMobiMcpServer.ts` | 暴露 `change_title` 等工具 |
+| **Hook Server** | `packages/cli/src/claude/utils/startHookServer.ts` | 接收 Claude SessionStart 通知 |
+| **MessageQueue** | `packages/cli/src/utils/MessageQueue.ts` | 带模式 hash 的消息队列 |
+| **RunnerLifecycle** | `packages/cli/src/agent/runnerLifecycle.ts` | 进程信号处理和清理 |
 
 ### 阶段三：模式循环（`loop.ts` + `loopBase.ts`）
 
-**文件**: `cli/src/claude/loop.ts:58-92` → `cli/src/agent/loopBase.ts`
+**文件**: `packages/cli/src/claude/loop.ts:58-92` → `packages/cli/src/agent/loopBase.ts`
 
 ```mermaid
 flowchart TB
@@ -243,7 +243,7 @@ flowchart LR
 
 ### 创建（bootstrapSession）
 
-**文件**: `cli/src/agent/sessionFactory.ts`
+**文件**: `packages/cli/src/agent/sessionFactory.ts`
 
 ```
 bootstrapSession({ flavor, startedBy, workingDirectory, ... })
@@ -258,7 +258,7 @@ bootstrapSession({ flavor, startedBy, workingDirectory, ... })
 
 ### 关闭（cleanupAndExit）
 
-**文件**: `cli/src/agent/runnerLifecycle.ts`
+**文件**: `packages/cli/src/agent/runnerLifecycle.ts`
 
 关闭顺序：
 
@@ -345,7 +345,7 @@ flowchart TB
 ## 代码结构
 
 ```
-cli/src/
+packages/cli/src/
 ├── commands/
 │   └── claude.ts                         # 命令入口，参数解析、降级策略
 ├── claude/

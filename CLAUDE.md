@@ -6,10 +6,10 @@ Mobi — Claude Code 远程控制工具，通过浏览器远程与本地 Claude 
 
 | 包 | 职责 |
 |---|---|
-| [shared/](shared/) | 协议定义（Zod Schema） |
-| [hub/](hub/) | 服务器（Hono + Socket.IO + SQLite） |
-| [cli/](cli/) | 客户端（Bun + Ink + Claude Agent SDK） |
-| [web/](web/) | 前端（React + Ant Design X + TanStack） |
+| [shared/](packages/shared/) | 协议定义（Zod Schema） |
+| [hub/](packages/hub/) | 服务器（Hono + Socket.IO + SQLite） |
+| [cli/](packages/cli/) | 客户端（Bun + Ink + Claude Agent SDK） |
+| [web/](packages/web/) | 前端（React + Ant Design X + TanStack） |
 
 各包目录下有 `CLAUDE.md`，进入对应目录时自动加载。
 

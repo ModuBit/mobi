@@ -1,6 +1,6 @@
 # PushService 架构
 
-**文件**: [`hub/src/push/pushService.ts`](/hub/src/push/pushService.ts)
+**文件**: [`packages/hub/src/push/pushService.ts`](/packages/hub/src/push/pushService.ts)
 
 Web Push 通知服务，基于 [web-push](https://github.com/web-push-libs/web-push) 库实现。
 
@@ -124,7 +124,7 @@ Hub 发送推送：
 
 ### Web API
 
-**文件**: [`hub/src/web/routes/push.ts`](/hub/src/web/routes/push.ts)
+**文件**: [`packages/hub/src/web/routes/push.ts`](/packages/hub/src/web/routes/push.ts)
 
 | 方法 | 路径 | 功能 | 说明 |
 |------|------|------|------|

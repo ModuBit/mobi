@@ -4,7 +4,7 @@
 
 ## 编码规范
 
-→ [docs/conventions/cli.md](../docs/conventions/cli.md)
+→ [docs/conventions/cli.md](../../docs/conventions/cli.md)
 
 ## 关键文件
 
@@ -18,11 +18,11 @@
 
 ## 测试
 
-→ [docs/conventions/testing.md](../docs/conventions/testing.md)
+→ [docs/conventions/testing.md](../../docs/conventions/testing.md)
 
 - 框架：vitest
 - 运行：`bun test`
 
 ## 架构文档
 
-→ [docs/architecture/cli/](../docs/architecture/cli/)
+→ [docs/architecture/cli/](../../docs/architecture/cli/)

@@ -2,7 +2,7 @@
 
 一个泛型、mode-aware 的异步消息队列，按 mode hash 将连续消息分批处理，是 Claude 命令消息流转的核心组件。
 
-**文件**: [`cli/src/utils/MessageQueue.ts`](/cli/src/utils/MessageQueue.ts)
+**文件**: [`packages/cli/src/utils/MessageQueue.ts`](/packages/cli/src/utils/MessageQueue.ts)
 
 ---
 
@@ -60,7 +60,7 @@ interface QueueItem<T> {
 
 ### EnhancedMode
 
-在 Claude 命令中使用的具体 mode 类型，定义在 [`cli/src/claude/loop.ts`](/cli/src/claude/loop.ts)：
+在 Claude 命令中使用的具体 mode 类型，定义在 [`packages/cli/src/claude/loop.ts`](/packages/cli/src/claude/loop.ts)：
 
 ```typescript
 interface EnhancedMode {
@@ -76,7 +76,7 @@ interface EnhancedMode {
 
 ### Mode Hash 计算
 
-使用 [`hashObject()`](/cli/src/utils/deterministicJson.ts)（基于 SHA-256 的确定性 JSON 序列化）对 mode 对象计算哈希。在 `runClaude.ts` 中构造 modeHasher 时，将 `isPlan`（从 permissionMode 派生）也纳入哈希：
+使用 [`hashObject()`](/packages/cli/src/utils/deterministicJson.ts)（基于 SHA-256 的确定性 JSON 序列化）对 mode 对象计算哈希。在 `runClaude.ts` 中构造 modeHasher 时，将 `isPlan`（从 permissionMode 派生）也纳入哈希：
 
 ```typescript
 const messageQueue = new MessageQueue<EnhancedMode>(mode => hashObject({
@@ -180,14 +180,14 @@ MessageQueue 是单生产者-单消费者模型：
 | 维度 | MessageQueue（本组件） | OutgoingMessageQueue |
 |------|----------------------|---------------------|
 | **方向** | Hub → CLI → Claude（入站） | Claude → CLI → Hub（出站） |
-| **文件** | `cli/src/utils/MessageQueue.ts` | `cli/src/claude/utils/OutgoingMessageQueue.ts` |
+| **文件** | `packages/cli/src/utils/MessageQueue.ts` | `packages/cli/src/claude/utils/OutgoingMessageQueue.ts` |
 | **功能** | 按 mode 分批收集用户消息 | 有序发送 Claude 输出到 Hub |
 | **模式** | 仅 Remote 模式 | 仅 Remote 模式 |
 | **核心关注** | 模式一致性 | 消息顺序和完整性（tool call 配对） |
 
 ## 测试覆盖
 
-**文件**: [`cli/src/utils/MessageQueue.test.ts`](/cli/src/utils/MessageQueue.test.ts)
+**文件**: [`packages/cli/src/utils/MessageQueue.test.ts`](/packages/cli/src/utils/MessageQueue.test.ts)
 
 覆盖场景：
 - 基本 push/pop 和 mode 分批

@@ -1,6 +1,6 @@
 # SSE 事件推送
 
-**文件**: [`hub/src/web/routes/events.ts`](/hub/src/web/routes/events.ts)
+**文件**: [`packages/hub/src/web/routes/events.ts`](/packages/hub/src/web/routes/events.ts)
 
 Server-Sent Events（SSE）用于向 Web 客户端推送实时事件。
 

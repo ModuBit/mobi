@@ -104,6 +104,6 @@ import { extractErrorInfo } from '@/lib'
 ## 测试
 
 - 测试框架：Vitest
-- 测试目录：`cli/tests/`（与源码分离）
+- 测试目录：`packages/cli/tests/`（与源码分离）
 - Mock 外部依赖（SDK、Socket.IO）
 - 测试运行：`bun run test`（根目录）

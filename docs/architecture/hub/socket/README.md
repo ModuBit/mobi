@@ -1,6 +1,6 @@
 # SocketServer
 
-**文件**: [`hub/src/socket/server.ts`](/hub/src/socket/server.ts)
+**文件**: [`packages/hub/src/socket/server.ts`](/packages/hub/src/socket/server.ts)
 
 SocketServer 是 Hub 的实时通信层，基于 Socket.IO，负责 CLI 客户端和 Web 前端之间的双向实时通信。
 
@@ -223,7 +223,7 @@ CLI → SocketServer（通过回调）→ SyncEngine → SSEManager → Web
 ## 代码结构
 
 ```
-hub/src/socket/
+packages/hub/src/socket/
 ├── server.ts                  # 入口：创建 Socket.IO Server，配置 namespace
 ├── socketTypes.ts             # 类型定义：SocketData、SocketServer 等
 ├── rpcRegistry.ts             # RPC 方法注册表

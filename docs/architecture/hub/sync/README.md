@@ -1,6 +1,6 @@
 # SyncEngine 架构
 
-**文件**: [`hub/src/sync/syncEngine.ts`](/hub/src/sync/syncEngine.ts)
+**文件**: [`packages/hub/src/sync/syncEngine.ts`](/packages/hub/src/sync/syncEngine.ts)
 
 SyncEngine 是 Hub 的核心协调层，统一管理会话、机器、消息和事件。
 
@@ -231,7 +231,7 @@ flowchart LR
 ## 代码入口
 
 ```
-hub/src/sync/
+packages/hub/src/sync/
 ├── syncEngine.ts       # 主入口
 ├── eventPublisher.ts   # 事件发布
 ├── sessionCache.ts     # 会话缓存

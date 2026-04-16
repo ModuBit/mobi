@@ -7,7 +7,7 @@
 每个模块一个目录，入口为 `index.ts`：
 
 ```
-hub/src/
+packages/hub/src/
 ├── sync/
 │   ├── index.ts          # 导出 SyncEngine
 │   ├── syncEngine.ts     # 核心实现
@@ -129,6 +129,6 @@ db.prepare('INSERT INTO sessions (...) VALUES (...)').run({ ... })
 ## 测试
 
 - 测试框架：`bun:test`（`describe`、`test`、`expect`）
-- 测试目录：`hub/tests/`（与源码分离）
+- 测试目录：`packages/hub/tests/`（与源码分离）
 - 数据库：测试使用 `:memory:` SQLite
 - 测试运行：`bun run test`（根目录）

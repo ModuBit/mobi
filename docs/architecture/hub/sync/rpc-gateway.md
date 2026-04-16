@@ -1,8 +1,8 @@
 # RpcGateway
 
 **文件**:
-- [`hub/src/sync/rpcGateway.ts`](/hub/src/sync/rpcGateway.ts)
-- [`hub/src/socket/rpcRegistry.ts`](/hub/src/socket/rpcRegistry.ts)
+- [`packages/hub/src/sync/rpcGateway.ts`](/packages/hub/src/sync/rpcGateway.ts)
+- [`packages/hub/src/socket/rpcRegistry.ts`](/packages/hub/src/socket/rpcRegistry.ts)
 
 RPC 网关，通过 Socket.IO 调用 CLI 的功能。
 

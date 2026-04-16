@@ -2,7 +2,7 @@
 
 Runner 是 Mobi 的后台进程管理器，负责 Claude 会话的生命周期管理，允许用户离开终端后会话继续运行。
 
-**入口文件**: [`cli/src/commands/runner.ts`](/cli/src/commands/runner.ts)
+**入口文件**: [`packages/cli/src/commands/runner.ts`](/packages/cli/src/commands/runner.ts)
 
 ---
 
@@ -163,7 +163,7 @@ Runner 追踪两种来源的会话：
 ## 文件结构
 
 ```
-cli/src/
+packages/cli/src/
 ├── commands/
 │   └── runner.ts              # 命令入口，路由子命令
 ├── runner/

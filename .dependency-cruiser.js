@@ -19,10 +19,10 @@ module.exports = {
       comment: 'shared 是最底层包，不允许依赖 hub/cli/web',
       severity: 'error',
       from: {
-        path: '^shared/src/',
+        path: '^packages/shared/src/',
       },
       to: {
-        path: '^(hub|cli|web)/src/',
+        path: '^packages/(hub|cli|web)/src/',
         pathNot: 'node_modules',
       },
     },
@@ -33,10 +33,10 @@ module.exports = {
       comment: 'hub 只能依赖 shared，不允许依赖 cli/web',
       severity: 'error',
       from: {
-        path: '^hub/src/',
+        path: '^packages/hub/src/',
       },
       to: {
-        path: '^(cli|web)/src/',
+        path: '^packages/(cli|web)/src/',
         pathNot: 'node_modules',
       },
     },
@@ -48,10 +48,10 @@ module.exports = {
       comment: 'cli 只能依赖 shared，不允许依赖 hub/web',
       severity: 'warn',
       from: {
-        path: '^cli/src/',
+        path: '^packages/cli/src/',
       },
       to: {
-        path: '^(hub|web)/src/',
+        path: '^packages/(hub|web)/src/',
         pathNot: 'node_modules',
       },
     },
@@ -62,10 +62,10 @@ module.exports = {
       comment: 'web 只能依赖 shared，不允许依赖 hub/cli',
       severity: 'error',
       from: {
-        path: '^web/src/',
+        path: '^packages/web/src/',
       },
       to: {
-        path: '^(hub|cli)/src/',
+        path: '^packages/(hub|cli)/src/',
         pathNot: 'node_modules',
       },
     },

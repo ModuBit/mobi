@@ -1,6 +1,6 @@
 # Auth 认证系统
 
-文件 [`cli/src/commands/auth.ts`](/cli/src/commands/auth.ts)
+文件 [`packages/cli/src/commands/auth.ts`](/packages/cli/src/commands/auth.ts)
 
 CLI 的认证系统管理 API Token 和机器身份，确保 CLI 能安全连接 Hub。
 
@@ -176,7 +176,7 @@ Host:            my-machine
 
 ## Configuration 单例
 
-**文件**: [`cli/src/configuration.ts`](/cli/src/configuration.ts)
+**文件**: [`packages/cli/src/configuration.ts`](/packages/cli/src/configuration.ts)
 
 全局配置单例，在模块加载时同步创建：
 
@@ -194,7 +194,7 @@ Host:            my-machine
 
 ## Persistence 持久化
 
-**文件**: [`cli/src/persistence.ts`](/cli/src/persistence.ts)
+**文件**: [`packages/cli/src/persistence.ts`](/packages/cli/src/persistence.ts)
 
 ### Settings 文件操作
 
@@ -243,7 +243,7 @@ interface Settings {
 ## 代码结构
 
 ```
-cli/src/
+packages/cli/src/
 ├── commands/
 │   └── auth.ts                # auth 命令：login / logout / status
 ├── ui/

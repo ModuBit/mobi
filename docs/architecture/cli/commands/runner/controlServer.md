@@ -2,7 +2,7 @@
 
 Runner 内置的 HTTP 控制服务器，基于 Fastify 构建，提供本地管理接口。
 
-**文件**: [`cli/src/runner/controlServer.ts`](/cli/src/runner/controlServer.ts)
+**文件**: [`packages/cli/src/runner/controlServer.ts`](/packages/cli/src/runner/controlServer.ts)
 
 ## 为什么用 Fastify
 
@@ -60,7 +60,7 @@ flowchart LR
 `startRunnerControlServer()` 接收 5 个回调函数，由 `run.ts` 在 Runner 启动时注入：
 
 ```typescript
-// cli/src/runner/run.ts:600-607
+// packages/cli/src/runner/run.ts:600-607
 const { port: controlPort, stop: stopControlServer } = await startRunnerControlServer({
   getChildren,      // () => TrackedSession[]    获取当前追踪的会话列表
   stopSession,      // (sessionId) => boolean     停止指定会话
@@ -216,8 +216,8 @@ sequenceDiagram
 
 | 文件 | 说明 |
 |------|------|
-| [`controlServer.ts`](/cli/src/runner/controlServer.ts) | 服务端定义 |
-| [`controlClient.ts`](/cli/src/runner/controlClient.ts) | 客户端封装 |
-| [`run.ts:600-607`](/cli/src/runner/run.ts) | 服务端初始化与回调注入 |
-| [`types.ts`](/cli/src/runner/types.ts) | `TrackedSession` 类型定义 |
-| [`rpcTypes.ts`](/cli/src/modules/common/rpcTypes.ts) | `SpawnSessionOptions` / `SpawnSessionResult` 类型 |
+| [`controlServer.ts`](/packages/cli/src/runner/controlServer.ts) | 服务端定义 |
+| [`controlClient.ts`](/packages/cli/src/runner/controlClient.ts) | 客户端封装 |
+| [`run.ts:600-607`](/packages/cli/src/runner/run.ts) | 服务端初始化与回调注入 |
+| [`types.ts`](/packages/cli/src/runner/types.ts) | `TrackedSession` 类型定义 |
+| [`rpcTypes.ts`](/packages/cli/src/modules/common/rpcTypes.ts) | `SpawnSessionOptions` / `SpawnSessionResult` 类型 |

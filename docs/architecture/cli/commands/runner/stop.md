@@ -30,7 +30,7 @@ sequenceDiagram
 
 ## 两阶段停止
 
-**文件**: `cli/src/runner/controlClient.ts:233-265`
+**文件**: `packages/cli/src/runner/controlClient.ts:233-265`
 
 ### 第一阶段: 优雅关闭
 
@@ -69,6 +69,6 @@ waitForProcessDeath(pid, 2000)
 
 ## 代码入口
 
-- **命令入口**: [`cli/src/commands/runner.ts:101-104`](/cli/src/commands/runner.ts)
-- **核心逻辑**: [`cli/src/runner/controlClient.ts:233-265`](/cli/src/runner/controlClient.ts) — `stopRunner()`
-- **服务端处理**: [`cli/src/runner/controlServer.ts`](/cli/src/runner/controlServer.ts) — `POST /stop`
+- **命令入口**: [`packages/cli/src/commands/runner.ts:101-104`](/packages/cli/src/commands/runner.ts)
+- **核心逻辑**: [`packages/cli/src/runner/controlClient.ts:233-265`](/packages/cli/src/runner/controlClient.ts) — `stopRunner()`
+- **服务端处理**: [`packages/cli/src/runner/controlServer.ts`](/packages/cli/src/runner/controlServer.ts) — `POST /stop`

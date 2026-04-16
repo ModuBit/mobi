@@ -32,7 +32,7 @@ sequenceDiagram
 
 ## stopSession 实现
 
-**文件**: [`cli/src/runner/run.ts:559-592`](/cli/src/runner/run.ts)
+**文件**: [`packages/cli/src/runner/run.ts:559-592`](/packages/cli/src/runner/run.ts)
 
 ### 查找策略
 
@@ -78,7 +78,7 @@ flowchart TB
 
 ## 代码入口
 
-- **命令入口**: [`cli/src/commands/runner.ts:53-67`](/cli/src/commands/runner.ts)
-- **客户端调用**: [`cli/src/runner/controlClient.ts:113-116`](/cli/src/runner/controlClient.ts) — `stopRunnerSession()`
-- **Runner 侧实现**: [`cli/src/runner/run.ts:559-592`](/cli/src/runner/run.ts) — `stopSession()`
-- **服务端端点**: [`cli/src/runner/controlServer.ts`](/cli/src/runner/controlServer.ts) — `POST /stop-session`
+- **命令入口**: [`packages/cli/src/commands/runner.ts:53-67`](/packages/cli/src/commands/runner.ts)
+- **客户端调用**: [`packages/cli/src/runner/controlClient.ts:113-116`](/packages/cli/src/runner/controlClient.ts) — `stopRunnerSession()`
+- **Runner 侧实现**: [`packages/cli/src/runner/run.ts:559-592`](/packages/cli/src/runner/run.ts) — `stopSession()`
+- **服务端端点**: [`packages/cli/src/runner/controlServer.ts`](/packages/cli/src/runner/controlServer.ts) — `POST /stop-session`

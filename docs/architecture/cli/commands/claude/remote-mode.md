@@ -54,7 +54,7 @@ flowchart TB
 
 ## ClaudeRemoteLauncher
 
-**文件**: `cli/src/claude/claudeRemoteLauncher.ts`（440 行）
+**文件**: `packages/cli/src/claude/claudeRemoteLauncher.ts`（440 行）
 
 `ClaudeRemoteLauncher` 继承自 `RemoteLauncherBase`，是 Remote 模式的核心编排器。
 
@@ -156,7 +156,7 @@ flowchart TB
 
 ## claudeRemote — SDK 集成
 
-**文件**: `cli/src/claude/claudeRemote.ts`（300 行）
+**文件**: `packages/cli/src/claude/claudeRemote.ts`（300 行）
 
 `claudeRemote` 是与 Claude Code SDK 交互的核心函数，通过 `query()` 驱动 Claude。
 
@@ -244,7 +244,7 @@ const sdkOptions: Options = {
 
 ## PermissionHandler — 工具权限审批
 
-**文件**: `cli/src/claude/utils/permissionHandler.ts`（506 行）
+**文件**: `packages/cli/src/claude/utils/permissionHandler.ts`（506 行）
 
 Remote 模式下，Claude 的所有工具调用都需经过 `PermissionHandler` 审批。
 
@@ -294,7 +294,7 @@ allowedTools: string[]
 
 ## SDKToLogConverter — 消息格式转换
 
-**文件**: `cli/src/claude/utils/sdkToLogConverter.ts`
+**文件**: `packages/cli/src/claude/utils/sdkToLogConverter.ts`
 
 将 Claude Code SDK 的 `SDKMessage` 转换为 Hub 可理解的日志格式：
 
@@ -333,7 +333,7 @@ assistant (tool_use: Task, input.prompt)
 
 ## OutgoingMessageQueue — 有序消息发送
 
-**文件**: `cli/src/claude/utils/OutgoingMessageQueue.ts`（207 行）
+**文件**: `packages/cli/src/claude/utils/OutgoingMessageQueue.ts`（207 行）
 
 确保发送到 Hub 的消息有序且完整。
 
@@ -392,7 +392,7 @@ flowchart TB
 
 Remote 模式使用 Ink 渲染终端界面：
 
-**组件**: `RemoteModeDisplay`（`cli/src/ui/ink/RemoteModeDisplay.tsx`）
+**组件**: `RemoteModeDisplay`（`packages/cli/src/ui/ink/RemoteModeDisplay.tsx`）
 
 ```
 ┌──────────────────────────────────────┐

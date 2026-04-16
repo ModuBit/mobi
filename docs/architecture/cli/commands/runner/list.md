@@ -56,6 +56,6 @@ children.filter(child => child.MobiSessionId !== undefined)
 
 ## 代码入口
 
-- **命令入口**: [`cli/src/commands/runner.ts:37-51`](/cli/src/commands/runner.ts)
-- **客户端调用**: [`cli/src/runner/controlClient.ts:108-111`](/cli/src/runner/controlClient.ts) — `listRunnerSessions()`
-- **服务端端点**: [`cli/src/runner/controlServer.ts`](/cli/src/runner/controlServer.ts) — `POST /list`
+- **命令入口**: [`packages/cli/src/commands/runner.ts:37-51`](/packages/cli/src/commands/runner.ts)
+- **客户端调用**: [`packages/cli/src/runner/controlClient.ts:108-111`](/packages/cli/src/runner/controlClient.ts) — `listRunnerSessions()`
+- **服务端端点**: [`packages/cli/src/runner/controlServer.ts`](/packages/cli/src/runner/controlServer.ts) — `POST /list`

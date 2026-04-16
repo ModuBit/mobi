@@ -24,8 +24,8 @@ BOLD='\033[1m'
 RESET='\033[0m'
 
 # ─── 全局变量 ─────────────────────────────────────────────────────────────────
-# monorepo 根目录（脚本位于 scripts/ 下）
-readonly MOBI_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# monorepo 根目录（脚本位于 tools/scripts/ 下）
+readonly MOBI_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 HUB_PID=""
 WEB_PID=""
@@ -122,9 +122,9 @@ main() {
     log_info "MOBI_HOME=${E2E_TMPDIR}"
     log_info "CLI_API_TOKEN=${CLI_API_TOKEN}"
 
-    # 从 hub/ 目录启动
+    # 从 packages/hub/ 目录启动
     (
-        cd "${MOBI_ROOT}/hub" && \
+        cd "${MOBI_ROOT}/packages/hub" && \
         MOBI_HOME="${E2E_TMPDIR}" \
         CLI_API_TOKEN="${CLI_API_TOKEN}" \
         bun run dev &>/tmp/mobi-e2e-hub.log
@@ -146,9 +146,9 @@ main() {
     # 5. 启动 Web Dev Server
     log_section "启动 Web Dev Server"
 
-    # 从 web/ 目录启动
+    # 从 packages/web/ 目录启动
     (
-        cd "${MOBI_ROOT}/web" && \
+        cd "${MOBI_ROOT}/packages/web" && \
         bun run dev &>/tmp/mobi-e2e-web.log
     ) &
     WEB_PID="${!}"
