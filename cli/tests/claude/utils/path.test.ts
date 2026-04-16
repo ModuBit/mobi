@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getProjectPath } from './path';
+import { getProjectPath } from '@/claude/utils/path';
 import { join } from 'node:path';
 
 vi.mock('node:os', () => ({

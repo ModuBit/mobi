@@ -65,7 +65,7 @@ describe('spawnMobiCli windowsHide behavior', () => {
 
   it('sets windowsHide=true when platform is win32 and detached=true', async () => {
     setPlatform('win32');
-    const { spawnMobiCli } = await import('./spawnMobiCli');
+    const { spawnMobiCli } = await import('@/utils/spawnMobiCli');
 
     spawnMobiCli(['runner', 'start-sync'], {
       detached: true,
@@ -79,7 +79,7 @@ describe('spawnMobiCli windowsHide behavior', () => {
 
   it('does not set windowsHide when platform is win32 but detached is false', async () => {
     setPlatform('win32');
-    const { spawnMobiCli } = await import('./spawnMobiCli');
+    const { spawnMobiCli } = await import('@/utils/spawnMobiCli');
 
     spawnMobiCli(['runner', 'start-sync'], {
       detached: false,
@@ -93,7 +93,7 @@ describe('spawnMobiCli windowsHide behavior', () => {
 
   it('does not set windowsHide on non-win32 even when detached=true', async () => {
     setPlatform('linux');
-    const { spawnMobiCli } = await import('./spawnMobiCli');
+    const { spawnMobiCli } = await import('@/utils/spawnMobiCli');
 
     spawnMobiCli(['runner', 'start-sync'], {
       detached: true,

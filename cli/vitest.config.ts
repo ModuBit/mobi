@@ -19,7 +19,7 @@ import { resolve } from 'node:path'
 
 export default defineConfig({
     test: {
-        include: ['src/**/*.test.ts'],
+        include: ['tests/**/*.test.ts'],
         exclude: ['node_modules', 'dist']
     },
     resolve: {

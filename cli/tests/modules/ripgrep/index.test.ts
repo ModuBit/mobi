@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { run } from './index'
+import { run } from '@/modules/ripgrep'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { platform } from 'os'

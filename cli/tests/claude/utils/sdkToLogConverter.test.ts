@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { SDKToLogConverter, convertSDKToLog } from './sdkToLogConverter'
+import { SDKToLogConverter, convertSDKToLog } from '@/claude/utils/sdkToLogConverter'
 import type { SDKMessage, SDKUserMessage, SDKAssistantMessage, SDKSystemMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { ClaudePermissionMode } from '@mobi/shared/types'
 

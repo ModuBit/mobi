@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { PushableAsyncIterable } from './PushableAsyncIterable'
+import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable'
 
 describe('PushableAsyncIterable', () => {
     it('should push and consume values', async () => {

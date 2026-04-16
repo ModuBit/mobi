@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { request } from 'node:http'
-import { startHookServer, type SessionHookData } from './startHookServer'
+import { startHookServer, type SessionHookData } from '@/claude/utils/startHookServer'
 
 const sendHookRequest = async (port: number, body: string, token?: string): Promise<{ statusCode?: number; body: string }> => {
     return await new Promise((resolve, reject) => {

@@ -18,7 +18,7 @@ import React, { act, useEffect } from 'react';
 import { PassThrough } from 'node:stream';
 import { render, type Instance } from 'ink';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useSwitchControls, type ConfirmationMode, type ActionInProgress } from './useSwitchControls';
+import { useSwitchControls, type ConfirmationMode, type ActionInProgress } from '@/ui/ink/useSwitchControls';
 
 type Key = {
     ctrl?: boolean;

@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { listSkills } from './skills'
+import { listSkills } from '@/modules/common/skills'
 
 async function writeSkill(skillDir: string, name: string, description: string): Promise<void> {
     await mkdir(skillDir, { recursive: true })

@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseCompact, parseClear, parseSpecialCommand } from './specialCommands';
+import { parseCompact, parseClear, parseSpecialCommand } from '@/parsers/specialCommands';
 
 describe('parseCompact', () => {
     it('should parse /compact command with argument', () => {

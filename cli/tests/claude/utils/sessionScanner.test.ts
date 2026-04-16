@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { createSessionScanner } from './sessionScanner'
-import { RawJSONLines } from '../types'
+import { createSessionScanner } from '@/claude/utils/sessionScanner'
+import { RawJSONLines } from '@/claude/types'
 import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir, homedir } from 'node:os'

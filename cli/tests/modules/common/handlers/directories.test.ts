@@ -18,8 +18,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { mkdir, rm, symlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { RpcHandlerManager } from '../../../api/rpc/RpcHandlerManager'
-import { registerDirectoryHandlers } from './directories'
+import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { registerDirectoryHandlers } from '@/modules/common/handlers/directories'
 
 async function createTempDir(prefix: string): Promise<string> {
     const base = tmpdir()

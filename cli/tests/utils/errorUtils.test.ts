@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { extractErrorInfo, apiValidationError } from './errorUtils'
+import { extractErrorInfo, apiValidationError } from '@/utils/errorUtils'
 
 describe('extractErrorInfo', () => {
     it('extracts serverProtocolVersion from axios-style response header', () => {

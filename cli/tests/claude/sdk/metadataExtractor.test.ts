@@ -47,7 +47,7 @@ vi.mock('@/ui/logger', () => ({
 vi.mock('@mobi/shared', () => ({}))
 
 // 在 mock 设置之后 import
-import { extractSDKMetadata, extractSDKMetadataAsync } from './metadataExtractor'
+import { extractSDKMetadata, extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor'
 
 // 构造模拟的 initializationResult 响应
 function makeInitResponse(overrides?: Record<string, unknown>) {

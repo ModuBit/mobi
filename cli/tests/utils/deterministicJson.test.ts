@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { deterministicStringify, hashObject, deepEqual, objectKey } from './deterministicJson';
+import { deterministicStringify, hashObject, deepEqual, objectKey } from '@/utils/deterministicJson';
 
 describe('deterministicStringify', () => {
     it('should produce consistent output for objects with different key orders', () => {

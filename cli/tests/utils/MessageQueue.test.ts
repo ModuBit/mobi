@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { MessageQueue } from './MessageQueue';
-import { hashObject } from './deterministicJson';
+import { MessageQueue } from '@/utils/MessageQueue';
+import { hashObject } from '@/utils/deterministicJson';
 
 describe('MessageQueue', () => {
     it('should create a queue', () => {

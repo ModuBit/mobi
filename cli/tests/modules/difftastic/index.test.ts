@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { run } from './index';
+import { run } from '@/modules/difftastic';
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { tmpdir, platform } from 'os';
