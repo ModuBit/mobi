@@ -119,10 +119,7 @@ export function MobileMenuDrawer() {
             open={mobileMenuOpen}
             onClose={handleClose}
             placement="bottom"
-            styles={{
-                body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', maxHeight: '85vh', overflow: 'auto' },
-                wrapper: { height: 'auto', maxHeight: '85vh' },
-            }}
+            styles={{ body: { padding: 0 } }}
         >
             <MenuContent $token={token}>
                 {mobileNavItems.map((item) => (

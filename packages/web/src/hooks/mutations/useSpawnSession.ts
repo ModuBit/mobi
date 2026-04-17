@@ -15,43 +15,32 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import { queryKeys } from '@/lib/query-keys'
 import type { SpawnResponse } from '@/api/types'
+import type { AgentType, SessionType } from '@/components/NewSession/types'
 
-/**
- * 创建会话的输入参数
- */
 export interface SpawnInput {
-    /** 机器 ID */
     machineId: string
-    /** 工作目录 */
     directory: string
-    /** Agent 类型（Mobi 当前仅支持 Claude） */
-    agent?: 'claude'
-    /** 模型 */
+    agent?: AgentType
     model?: string
-    /** 推理强度（保留用于 API 兼容） */
     modelReasoningEffort?: string
-    /** 是否启用 YOLO 模式 */
     yolo?: boolean
-    /** 会话类型 */
-    sessionType?: 'simple' | 'worktree'
-    /** Worktree 名称 */
+    sessionType?: SessionType
     worktreeName?: string
 }
 
 export type { SpawnResponse }
 
-/**
- * 创建新会话的 Hook
- */
 export function useSpawnSession(): {
     spawnSession: (input: SpawnInput) => Promise<SpawnResponse>
     isPending: boolean
     error: string | null
 } {
+    const { t } = useTranslation()
     const { token } = useAuthStore()
     const api = useMobiApi(token)
     const queryClient = useQueryClient()
@@ -59,7 +48,7 @@ export function useSpawnSession(): {
     const mutation = useMutation({
         mutationFn: async (input: SpawnInput): Promise<SpawnResponse> => {
             if (!token) {
-                return { type: 'error', message: '未授权' }
+                return { type: 'error', message: t('newSession.createFailed') }
             }
 
             try {
@@ -73,19 +62,17 @@ export function useSpawnSession(): {
                     input.worktreeName
                 )
 
-                // 假设 API 返回 { sessionId: string }
                 return {
                     type: 'success',
                     sessionId: res.data?.sessionId
                 }
             } catch (e) {
-                const message = e instanceof Error ? e.message : '创建会话失败'
+                const message = e instanceof Error ? e.message : t('newSession.createFailed')
                 return { type: 'error', message }
             }
         },
         onSuccess: (result) => {
             if (result.type === 'success') {
-                // 刷新会话列表
                 void queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
             }
         },
@@ -94,6 +81,6 @@ export function useSpawnSession(): {
     return {
         spawnSession: mutation.mutateAsync,
         isPending: mutation.isPending,
-        error: mutation.error instanceof Error ? mutation.error.message : mutation.error ? '创建会话失败' : null,
+        error: mutation.error instanceof Error ? mutation.error.message : mutation.error ? String(mutation.error) : null,
     }
 }

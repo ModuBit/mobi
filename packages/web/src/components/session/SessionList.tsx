@@ -450,9 +450,9 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                     open={!!actionSheetSessionId}
                     onClose={() => { if (!actionSheetLoadingKey) setActionSheetSessionId(null) }}
                     closable={false}
+                    rootClassName="action-sheet-drawer"
                     styles={{
-                        wrapper: { height: 'auto', maxHeight: '60vh' },
-                        body: { padding: '8px 0', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' },
+                        body: { padding: '8px 0' },
                     }}
                 >
                     {actionSheetItems.map((item, index) =>

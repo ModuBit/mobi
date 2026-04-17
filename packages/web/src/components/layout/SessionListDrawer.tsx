@@ -24,19 +24,8 @@ import { SessionList } from '@/components/session/SessionList'
 import { NewSession } from '@/components/NewSession'
 import { Plus } from 'lucide-react'
 
-// 移动端 Drawer 样式常量
-const MOBILE_LIST_STYLES = {
-    body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'hidden', display: 'flex' as const, flexDirection: 'column' as const },
-    wrapper: { height: 'auto', maxHeight: '85vh' },
-}
-
-const MOBILE_NEW_STYLES = {
-    body: { padding: 0, paddingBottom: 'max(24px, env(safe-area-inset-bottom))', overflow: 'auto', display: 'flex' as const, flexDirection: 'column' as const },
-    wrapper: { height: 'auto', maxHeight: '85vh' },
-}
-
-const PC_LIST_BODY_STYLES = { padding: 0, overflow: 'hidden', display: 'flex' as const, flexDirection: 'column' as const }
-const PC_NEW_BODY_STYLES = { padding: 0, overflow: 'auto', display: 'flex' as const, flexDirection: 'column' as const }
+// Session List Drawer：body 不滚动，由 SessionList 自管滚动
+const LIST_BODY_STYLES = { padding: 0, overflow: 'hidden' as const, display: 'flex' as const, flexDirection: 'column' as const }
 
 export function SessionListDrawer() {
     const { t } = useTranslation()
@@ -106,10 +95,7 @@ export function SessionListDrawer() {
             placement={isMobile ? 'bottom' : 'right'}
             size={360}
             destroyOnClose
-            styles={{
-                body: isMobile ? MOBILE_NEW_STYLES.body : PC_NEW_BODY_STYLES,
-                wrapper: isMobile ? MOBILE_NEW_STYLES.wrapper : undefined,
-            }}
+            styles={{ body: { padding: 0 } }}
         >
             {newSessionContent}
         </Drawer>
@@ -124,7 +110,7 @@ export function SessionListDrawer() {
                     open={sessionListDrawerOpen}
                     onClose={handleCloseList}
                     placement="bottom"
-                    styles={MOBILE_LIST_STYLES}
+                    styles={{ body: LIST_BODY_STYLES }}
                 >
                     {listDrawerContent}
                     <Drawer
@@ -133,7 +119,7 @@ export function SessionListDrawer() {
                         onClose={handleCloseNew}
                         placement="bottom"
                         destroyOnClose
-                        styles={MOBILE_NEW_STYLES}
+                        styles={{ body: { padding: 0 } }}
                     >
                         {newSessionContent}
                     </Drawer>
@@ -152,7 +138,7 @@ export function SessionListDrawer() {
                 onClose={handleCloseList}
                 placement="right"
                 size={300}
-                styles={{ body: PC_LIST_BODY_STYLES }}
+                styles={{ body: LIST_BODY_STYLES }}
             >
                 {listDrawerContent}
                 <Drawer
@@ -162,7 +148,7 @@ export function SessionListDrawer() {
                     placement="right"
                     size={360}
                     destroyOnClose
-                    styles={{ body: PC_NEW_BODY_STYLES }}
+                    styles={{ body: { padding: 0 } }}
                 >
                     {newSessionContent}
                 </Drawer>

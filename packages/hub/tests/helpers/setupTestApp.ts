@@ -1,0 +1,64 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import type { afterEach } from 'bun:test'
+import { Store } from '../../src/store'
+import { createWebApp } from '../../src/web/server'
+import { createConfiguration, resetConfiguration } from '../../src/configuration'
+import type { SSEManager } from '../../src/sse/sseManager'
+import type { VisibilityTracker } from '../../src/visibility/visibilityTracker'
+import type { SyncEngine } from '../../src/sync/syncEngine'
+
+export const testJwtSecret = new Uint8Array(32)
+crypto.getRandomValues(testJwtSecret)
+
+export const testCliApiToken = 'test-cli-api-token'
+
+export async function setupTestApp(syncEngine: SyncEngine | null = null) {
+    const store = new Store(':memory:')
+    process.env.CLI_API_TOKEN = testCliApiToken
+    resetConfiguration()
+    await createConfiguration()
+
+    const app = createWebApp({
+        getSyncEngine: () => (syncEngine ?? null) as SyncEngine,
+        getSseManager: () => null as unknown as SSEManager,
+        getVisibilityTracker: () => null as unknown as VisibilityTracker,
+        jwtSecret: testJwtSecret,
+        store,
+        vapidPublicKey: 'test-vapid-public-key',
+        corsOrigins: ['*'],
+        embeddedAssetMap: null,
+    })
+
+    const cleanup = () => {
+        store.close()
+        delete process.env.CLI_API_TOKEN
+        resetConfiguration()
+    }
+
+    return { store, app, cleanup }
+}
+
+export async function getAuthToken(app: ReturnType<typeof createWebApp>): Promise<string> {
+    const res = await app.request('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: testCliApiToken }),
+    })
+    const body = await res.json() as { token: string }
+    return body.token
+}

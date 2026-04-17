@@ -16,9 +16,8 @@
 
 /**
  * Agent 类型定义
- * Mobi 当前仅支持 Claude Code
  */
-export type AgentType = 'claude'
+export type AgentType = 'claude' | 'codex'
 
 /**
  * 会话类型
@@ -28,17 +27,18 @@ export type SessionType = 'simple' | 'worktree'
 /**
  * Claude 模型选项
  */
-export const CLAUDE_MODEL_OPTIONS: { value: string; label: string }[] = [
-    { value: 'auto', label: '自动' },
-    { value: 'opus', label: 'Opus' },
-    { value: 'opus[1m]', label: 'Opus 1M' },
-    { value: 'sonnet', label: 'Sonnet' },
-    { value: 'sonnet[1m]', label: 'Sonnet 1M' },
+export const CLAUDE_MODEL_OPTIONS: { value: string; i18nKey?: string }[] = [
+    { value: 'auto', i18nKey: 'newSession.modelAuto' },
+    { value: 'opus' },
+    { value: 'opus[1m]' },
+    { value: 'sonnet' },
+    { value: 'sonnet[1m]' },
 ]
 
 /**
  * 各 Agent 支持的模型选项
  */
-export const MODEL_OPTIONS: Record<AgentType, { value: string; label: string }[]> = {
+export const MODEL_OPTIONS: Record<AgentType, { value: string; i18nKey?: string }[]> = {
     claude: CLAUDE_MODEL_OPTIONS,
+    codex: [],
 }

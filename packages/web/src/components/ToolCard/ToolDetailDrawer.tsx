@@ -178,15 +178,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
             title={titleContent}
             placement={isMobile ? 'bottom' : 'right'}
             width={isMobile ? undefined : 400}
-            height={isMobile ? 'auto' : undefined}
-            styles={{
-                body: {
-                    padding: 0,
-                    paddingBottom: isMobile ? `max(24px, env(safe-area-inset-bottom))` : 0,
-                    overflowY: 'auto',
-                },
-                wrapper: isMobile ? { height: 'auto', maxHeight: '85vh', display: 'flex', flexDirection: 'column' } : undefined,
-            }}
+            styles={{ body: { padding: 0 } }}
         >
             {/* 输入区 */}
             <div style={sectionStyle}>

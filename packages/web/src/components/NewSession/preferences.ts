@@ -19,7 +19,7 @@ import type { AgentType } from './types'
 const AGENT_STORAGE_KEY = 'mobi:newSession:agent'
 const YOLO_STORAGE_KEY = 'mobi:newSession:yolo'
 
-const VALID_AGENTS: AgentType[] = ['claude']
+const VALID_AGENTS: AgentType[] = ['claude', 'codex']
 
 /**
  * 加载首选 Agent

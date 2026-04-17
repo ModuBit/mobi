@@ -66,6 +66,14 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Invalid body' }, 400)
         }
 
+        const homeDir = machine.metadata?.homeDir
+        if (homeDir) {
+            const validation = validateHomeDirPath(parsed.data.directory, homeDir)
+            if (!validation.valid) {
+                return c.json({ error: validation.error }, 403)
+            }
+        }
+
         const result = await engine.spawnSession(
             machineId,
             parsed.data.directory,

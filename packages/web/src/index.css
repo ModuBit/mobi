@@ -225,11 +225,38 @@ html[data-theme='dark'] .x-markdown tbody tr:hover {
     justify-content: flex-end !important;
 }
 
+/* Drawer 滚动支持 */
+.ant-drawer-content-wrapper {
+    overflow: auto;
+}
+
+/* 移动端底部 Drawer：高度自适应，上限 85vh */
+.ant-drawer-bottom .ant-drawer-content-wrapper {
+    height: auto !important;
+    max-height: 85vh !important;
+}
+
+/* 移动端底部 Drawer 安全区 */
+.ant-drawer-bottom .ant-drawer-body {
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+/* ActionSheet Drawer 更矮 */
+.action-sheet-drawer .ant-drawer-content-wrapper {
+    max-height: 60vh !important;
+}
+
 /* Drawer body 隐藏滚动条 */
 .ant-drawer-body {
     scrollbar-width: none !important;
 }
 .ant-drawer-body::-webkit-scrollbar {
+    display: none !important;
+}
+.ant-drawer-content-wrapper {
+    scrollbar-width: none !important;
+}
+.ant-drawer-content-wrapper::-webkit-scrollbar {
     display: none !important;
 }
 

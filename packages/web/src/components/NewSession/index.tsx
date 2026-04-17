@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
     Alert,
     AutoComplete,
@@ -26,6 +27,7 @@ import {
     Spin,
     Switch,
     Tag,
+    Tooltip,
     Typography,
 } from 'antd'
 import { DesktopOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
@@ -68,6 +70,7 @@ function getMachineTitle(machine: Machine): string {
  * 新建会话组件
  */
 export function NewSession(props: NewSessionProps) {
+    const { t } = useTranslation()
     const { data: sessionsData } = useSessions()
 
     const { machines: fetchedMachines, isLoading: machinesLoading } = useMachines()
@@ -153,9 +156,9 @@ export function NewSession(props: NewSessionProps) {
                 props.onSuccess(result.sessionId)
                 return
             }
-            setError(result.type === 'error' ? (result.message ?? '创建会话失败') : '创建会话失败')
+            setError(result.type === 'error' ? (result.message ?? t('newSession.createFailed')) : t('newSession.createFailed'))
         } catch (e) {
-            setError(e instanceof Error ? e.message : '创建会话失败')
+            setError(e instanceof Error ? e.message : t('newSession.createFailed'))
         }
     }
 
@@ -226,15 +229,14 @@ export function NewSession(props: NewSessionProps) {
 
     return (
         <Form layout="vertical" style={{ padding: '16px' }} requiredMark={false}>
-            {/* 机器选择 */}
-            <Form.Item label={<><DesktopOutlined style={{ marginRight: 4 }} />机器</>}>
+            <Form.Item label={<><DesktopOutlined style={{ marginRight: 4 }} />{t('newSession.machine')}</>}>
                 <Select
                     value={machineId ?? undefined}
                     onChange={handleMachineChange}
                     disabled={isFormDisabled}
                     loading={isLoading}
-                    placeholder={isLoading ? '加载中...' : '选择机器'}
-                    notFoundContent={isLoading ? <Spin size="small" /> : '暂无可用机器'}
+                    placeholder={isLoading ? t('newSession.machineLoading') : t('newSession.machinePlaceholder')}
+                    notFoundContent={isLoading ? <Spin size="small" /> : t('newSession.machineEmpty')}
                     options={machines.map(m => ({
                         value: m.id,
                         label: (
@@ -247,11 +249,10 @@ export function NewSession(props: NewSessionProps) {
                 />
             </Form.Item>
 
-            {/* 工作目录 */}
-            <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />工作目录</>}>
+            <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />{t('newSession.workDirectory')}</>}>
                 <AutoComplete
                     options={autoCompleteOptions}
-                    placeholder="输入工作目录路径"
+                    placeholder={t('newSession.directoryPlaceholder')}
                     value={directory}
                     onChange={(value) => setDirectory(value)}
                     onSelect={(value) => setDirectory(value)}
@@ -261,7 +262,6 @@ export function NewSession(props: NewSessionProps) {
                     style={{ width: '100%' }}
                     popupMatchSelectWidth={false}
                 />
-                {/* 最近路径 */}
                 {recentPaths.length > 0 && (
                     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                         {recentPaths.slice(0, 5).map((path) => (
@@ -277,28 +277,27 @@ export function NewSession(props: NewSessionProps) {
                 )}
             </Form.Item>
 
-            {/* 会话类型 */}
-            <Form.Item label="会话类型">
+            <Form.Item label={t('newSession.sessionType')}>
                 <Radio.Group
                     value={sessionType}
                     onChange={(e) => setSessionType(e.target.value)}
                     disabled={isFormDisabled}
                 >
                     <Radio value="simple">
-                        <span>普通会话</span>
+                        {t('newSession.simpleSession')}
                         <br />
-                        <Text type="secondary" style={{ fontSize: 12 }}>在指定目录中直接运行</Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>{t('newSession.simpleSessionDesc')}</Text>
                     </Radio>
                     <Radio value="worktree" style={{ marginTop: 8 }}>
-                        <span>Worktree 会话</span>
+                        {t('newSession.worktreeSession')}
                         <br />
-                        <Text type="secondary" style={{ fontSize: 12 }}>在 git worktree 中运行，隔离工作区</Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>{t('newSession.worktreeSessionDesc')}</Text>
                     </Radio>
                 </Radio.Group>
                 {sessionType === 'worktree' && (
                     <Input
                         ref={worktreeInputRef}
-                        placeholder="输入 worktree 名称"
+                        placeholder={t('newSession.worktreeNamePlaceholder')}
                         value={worktreeName}
                         onChange={(e) => setWorktreeName(e.target.value)}
                         disabled={isFormDisabled}
@@ -307,44 +306,43 @@ export function NewSession(props: NewSessionProps) {
                 )}
             </Form.Item>
 
-            {/* Agent 选择 */}
-            <Form.Item label="Agent">
+            <Form.Item label={t('newSession.agent')}>
                 <Radio.Group
                     value={agent}
                     onChange={(e) => setAgent(e.target.value)}
                     disabled={isFormDisabled}
                 >
                     <Radio value="claude">Claude</Radio>
+                    <Tooltip title={t('newSession.codexComingSoon')}>
+                        <Radio value="codex" disabled>Codex</Radio>
+                    </Tooltip>
                 </Radio.Group>
             </Form.Item>
 
-            {/* 模型选择 */}
             {MODEL_OPTIONS[agent] && MODEL_OPTIONS[agent].length > 0 && (
-                <Form.Item label={<span>模型 <Text type="secondary" style={{ fontWeight: 400 }}>(可选)</Text></span>}>
+                <Form.Item label={<span>{t('newSession.model')} <Text type="secondary" style={{ fontWeight: 400 }}>({t('newSession.modelOptional')})</Text></span>}>
                     <Select
                         value={model}
                         onChange={setModel}
                         disabled={isFormDisabled}
                         options={MODEL_OPTIONS[agent].map(opt => ({
                             value: opt.value,
-                            label: opt.label,
+                            label: opt.i18nKey ? t(opt.i18nKey) : opt.value,
                         }))}
                     />
                 </Form.Item>
             )}
 
-            {/* YOLO 模式 */}
-            <Form.Item label="自动模式">
+            <Form.Item label={t('newSession.autoMode')}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
-                        <div>YOLO 模式</div>
-                        <Text type="secondary" style={{ fontSize: 12 }}>启用后自动执行所有操作，无需确认</Text>
+                        <div>{t('newSession.yoloMode')}</div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>{t('newSession.yoloModeDesc')}</Text>
                     </div>
                     <Switch checked={yoloMode} onChange={setYoloMode} disabled={isFormDisabled} />
                 </div>
             </Form.Item>
 
-            {/* 错误提示 */}
             {(error ?? spawnError) && (
                 <Alert
                     message={error ?? spawnError}
@@ -354,11 +352,10 @@ export function NewSession(props: NewSessionProps) {
                 />
             )}
 
-            {/* 操作按钮 */}
             <Form.Item style={{ marginBottom: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <Button onClick={props.onCancel} disabled={isFormDisabled}>
-                        取消
+                        {t('common.cancel')}
                     </Button>
                     <Button
                         type="primary"
@@ -366,7 +363,7 @@ export function NewSession(props: NewSessionProps) {
                         disabled={!canCreate}
                         loading={isPending}
                     >
-                        创建会话
+                        {t('newSession.create')}
                     </Button>
                 </div>
             </Form.Item>

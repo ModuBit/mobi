@@ -16,51 +16,20 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { jwtVerify } from 'jose'
-import { Store } from '../../src/store'
-import { createWebApp } from '../../src/web/server'
-import { createConfiguration, resetConfiguration } from '../../src/configuration'
-import type { SSEManager } from '../../src/sse/sseManager'
-import type { VisibilityTracker } from '../../src/visibility/visibilityTracker'
-import type { SyncEngine } from '../../src/sync/syncEngine'
-
-// 测试用的 JWT secret
-const testJwtSecret = new Uint8Array(32)
-crypto.getRandomValues(testJwtSecret)
-
-// 测试用的 CLI API Token
-const testCliApiToken = 'test-cli-api-token-12345-for-testing-only'
+import { setupTestApp, getAuthToken, testJwtSecret } from '../helpers/setupTestApp'
 
 describe('Auth API', () => {
-    let store: Store
-    let app: ReturnType<typeof createWebApp>
+    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+    let cleanup: () => void
 
     beforeEach(async () => {
-        store = new Store(':memory:')
-
-        // 设置测试用的 CLI_API_TOKEN 环境变量
-        process.env.CLI_API_TOKEN = testCliApiToken
-
-        // 重置并初始化配置
-        resetConfiguration()
-        await createConfiguration()
-
-        // 创建 web app
-        app = createWebApp({
-            getSyncEngine: () => null as unknown as SyncEngine,
-            getSseManager: () => null as unknown as SSEManager,
-            getVisibilityTracker: () => null as unknown as VisibilityTracker,
-            jwtSecret: testJwtSecret,
-            store,
-            vapidPublicKey: 'test-vapid-public-key',
-            corsOrigins: ['*'],
-            embeddedAssetMap: null
-        })
+        const setup = await setupTestApp()
+        app = setup.app
+        cleanup = setup.cleanup
     })
 
     afterEach(() => {
-        store.close()
-        delete process.env.CLI_API_TOKEN
-        resetConfiguration()
+        cleanup()
     })
 
     test('POST /api/auth 无效的 access token 返回 401', async () => {
@@ -79,7 +48,7 @@ describe('Auth API', () => {
         const res = await app.request('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: testCliApiToken })
+            body: JSON.stringify({ accessToken: 'test-cli-api-token' })
         })
 
         expect(res.status).toBe(200)
@@ -88,7 +57,6 @@ describe('Auth API', () => {
         expect(body).toHaveProperty('user')
         expect(body.user).toHaveProperty('id')
 
-        // 验证 JWT 是有效的
         const { payload } = await jwtVerify(body.token, testJwtSecret)
         expect(payload).toHaveProperty('uid')
         expect(payload).toHaveProperty('ns')
@@ -98,14 +66,13 @@ describe('Auth API', () => {
         const res = await app.request('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: `${testCliApiToken}:my-namespace` })
+            body: JSON.stringify({ accessToken: 'test-cli-api-token:my-namespace' })
         })
 
         expect(res.status).toBe(200)
         const body = await res.json() as { token: string }
         expect(body).toHaveProperty('token')
 
-        // 验证 JWT 中的命名空间
         const { payload } = await jwtVerify(body.token, testJwtSecret)
         expect(payload).toHaveProperty('ns', 'my-namespace')
     })
@@ -129,15 +96,8 @@ describe('Auth API', () => {
     })
 
     test('GET /api/auth/status 有效 JWT 返回 authenticated: true', async () => {
-        // 首先登录获取有效的 JWT
-        const loginRes = await app.request('/api/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: testCliApiToken })
-        })
-        const { token } = await loginRes.json() as { token: string }
+        const token = await getAuthToken(app)
 
-        // 使用 JWT 查询状态
         const statusRes = await app.request('/api/auth/status', {
             headers: { Authorization: `Bearer ${token}` }
         })
