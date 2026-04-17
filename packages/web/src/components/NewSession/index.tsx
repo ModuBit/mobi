@@ -32,10 +32,9 @@ import { DesktopOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, Loading
 import type { InputRef } from 'antd'
 import type { AutoCompleteProps } from 'antd'
 import type { Machine } from '@/api/types'
-import type { Session } from '@mobi/shared'
 import { useSessions } from '@/hooks/queries/useSessions'
 import { useMachines } from '@/hooks/queries/useMachines'
-import { useSpawnSession, type SpawnInput } from '@/hooks/mutations/useSpawnSession'
+import { useSpawnSession } from '@/hooks/mutations/useSpawnSession'
 import { useDirectoryListing } from './useDirectoryListing'
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from './types'
@@ -54,7 +53,7 @@ export interface NewSessionProps {
     onCancel: () => void
 }
 
-const { Text, Paragraph } = Typography
+const { Text } = Typography
 
 /**
  * 获取机器显示名称
@@ -70,7 +69,6 @@ function getMachineTitle(machine: Machine): string {
  */
 export function NewSession(props: NewSessionProps) {
     const { data: sessionsData } = useSessions()
-    const sessions: Session[] = sessionsData ?? []
 
     const { machines: fetchedMachines, isLoading: machinesLoading } = useMachines()
     const machines = props.machines ?? fetchedMachines
