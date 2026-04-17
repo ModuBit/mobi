@@ -109,6 +109,7 @@ export type Machine = {
         host: string
         platform: string
         displayName?: string
+        homeDir?: string
     } | null
     runnerState?: RunnerState | null
 }
