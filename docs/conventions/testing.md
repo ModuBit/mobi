@@ -116,17 +116,6 @@ function renderWithProviders(ui: React.ReactElement) {
 
 使用 Chrome DevTools MCP 进行端到端验证。
 
-### 引导脚本
-
-| 脚本 | 用途 |
-|---|---|
-| `scripts/e2e-bootstrap.sh` | 启动 E2E 测试环境（Hub + Web） |
-| `scripts/e2e-cleanup.sh` | 清理 E2E 测试环境 |
-
 ### 执行方式
 
-E2E 测试通过 `run-tests` Skill 触发，agent 根据变更范围自行判断验证范围：
-
-- 仅 Web UI 变更 → 启动 E2E 环境验证
-- 仅后端变更 → 跳过 E2E
-- 全栈变更 → 启动 E2E 环境验证
+E2E 测试通过 `run-tests` Skill 触发，Skill 内含环境启动、清理和验证的完整流程，无需关心脚本细节。
