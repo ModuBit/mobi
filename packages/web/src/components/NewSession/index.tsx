@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
     Alert,
+    AutoComplete,
     Button,
     Form,
     Input,
@@ -27,15 +28,15 @@ import {
     Tag,
     Typography,
 } from 'antd'
-import { DesktopOutlined, FolderOutlined } from '@ant-design/icons'
+import { DesktopOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { InputRef } from 'antd'
+import type { AutoCompleteProps } from 'antd'
 import type { Machine } from '@/api/types'
 import type { Session } from '@mobi/shared'
 import { useSessions } from '@/hooks/queries/useSessions'
 import { useMachines } from '@/hooks/queries/useMachines'
 import { useSpawnSession, type SpawnInput } from '@/hooks/mutations/useSpawnSession'
-import { useActiveSuggestions, type Suggestion } from './useActiveSuggestions'
-import { useDirectorySuggestions } from './useDirectorySuggestions'
+import { useDirectoryListing } from './useDirectoryListing'
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from './types'
 import { MODEL_OPTIONS } from './types'
@@ -83,8 +84,6 @@ export function NewSession(props: NewSessionProps) {
     // 表单状态
     const [machineId, setMachineId] = useState<string | null>(null)
     const [directory, setDirectory] = useState('')
-    const [suppressSuggestions, setSuppressSuggestions] = useState(false)
-    const [isDirectoryFocused, setIsDirectoryFocused] = useState(false)
     const [agent, setAgent] = useState<AgentType>(loadPreferredAgent)
     const [model, setModel] = useState('auto')
     const [yoloMode, setYoloMode] = useState(loadPreferredYoloMode)
@@ -125,20 +124,9 @@ export function NewSession(props: NewSessionProps) {
     // 最近路径 & 目录建议
     const recentPaths = useMemo(() => getRecentPaths(machineId), [getRecentPaths, machineId])
     const trimmedDirectory = directory.trim()
-    const allPaths = useDirectorySuggestions(machineId, sessions, recentPaths)
-
-    const getSuggestions = useCallback(async (query: string): Promise<Suggestion[]> => {
-        const lowered = query.toLowerCase()
-        return allPaths
-            .filter((path) => path.toLowerCase().includes(lowered))
-            .slice(0, 8)
-            .map((path) => ({ key: path, text: path, label: path }))
-    }, [allPaths])
-
-    const activeQuery = (!isDirectoryFocused || suppressSuggestions) ? null : directory
-    const [suggestions, selectedIndex, moveUp, moveDown, clearSuggestions] = useActiveSuggestions(
-        activeQuery, getSuggestions, { allowEmptyQuery: true, autoSelectFirst: false }
-    )
+    const { options: directoryOptions, isLoading: isDirectoryLoading } = useDirectoryListing(machineId, directory)
+    const currentMachine = machines.find((m: Machine) => m.id === machineId)
+    const machineHomeDir = currentMachine?.metadata?.homeDir
 
     // 机器变化
     const handleMachineChange = useCallback((newMachineId: string) => {
@@ -146,26 +134,6 @@ export function NewSession(props: NewSessionProps) {
         const paths = getRecentPaths(newMachineId)
         setDirectory(paths[0] || '')
     }, [getRecentPaths])
-
-    // 目录建议选择
-    const handleSuggestionSelect = useCallback((index: number) => {
-        const suggestion = suggestions[index]
-        if (suggestion) {
-            setDirectory(suggestion.text)
-            clearSuggestions()
-            setSuppressSuggestions(true)
-        }
-    }, [suggestions, clearSuggestions])
-
-    const handleDirectoryKeyDown = useCallback((event: ReactKeyboardEvent<HTMLInputElement>) => {
-        if (suggestions.length === 0) return
-        if (event.key === 'ArrowUp') { event.preventDefault(); moveUp() }
-        if (event.key === 'ArrowDown') { event.preventDefault(); moveDown() }
-        if ((event.key === 'Enter' || event.key === 'Tab') && selectedIndex >= 0) {
-            event.preventDefault(); handleSuggestionSelect(selectedIndex)
-        }
-        if (event.key === 'Escape') clearSuggestions()
-    }, [suggestions, selectedIndex, moveUp, moveDown, clearSuggestions, handleSuggestionSelect])
 
     // 创建会话
     async function handleCreate() {
@@ -192,6 +160,51 @@ export function NewSession(props: NewSessionProps) {
             setError(e instanceof Error ? e.message : '创建会话失败')
         }
     }
+
+    const autoCompleteOptions: AutoCompleteProps['options'] = useMemo(() => {
+        if (!directory.trim()) {
+            // 空输入：homeDir 始终第一 + 最近使用路径
+            const items: Array<{ value: string; label: React.ReactNode }> = []
+
+            if (machineHomeDir) {
+                items.push({
+                    value: machineHomeDir,
+                    label: (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <HomeOutlined style={{ color: 'var(--ant-colorPrimary)' }} />
+                            <span>{machineHomeDir}</span>
+                        </div>
+                    ),
+                })
+            }
+
+            const recentItems = recentPaths
+                .filter((path) => path !== machineHomeDir)
+                .slice(0, 5)
+                .map((path) => ({
+                    value: path,
+                    label: (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <HistoryOutlined style={{ color: 'var(--ant-colorTextSecondary)' }} />
+                            <span>{path}</span>
+                        </div>
+                    ),
+                }))
+
+            return [...items, ...recentItems]
+        }
+
+        // 有输入：显示 API 返回的子目录
+        return directoryOptions.map((opt) => ({
+            value: opt.value,
+            label: (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <FolderOutlined style={{ color: 'var(--ant-colorTextSecondary)' }} />
+                    <span>{opt.label}</span>
+                </div>
+            ),
+        }))
+    }, [directory, recentPaths, directoryOptions, machineHomeDir])
 
     const canCreate = Boolean(machineId && trimmedDirectory && !isFormDisabled)
 
@@ -220,45 +233,17 @@ export function NewSession(props: NewSessionProps) {
 
             {/* 工作目录 */}
             <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />工作目录</>}>
-                <div style={{ position: 'relative' }}>
-                    <Input
-                        placeholder="输入工作目录路径"
-                        value={directory}
-                        onChange={(e) => { setSuppressSuggestions(false); setDirectory(e.target.value) }}
-                        onKeyDown={handleDirectoryKeyDown}
-                        onFocus={() => { setSuppressSuggestions(false); setIsDirectoryFocused(true) }}
-                        onBlur={() => setIsDirectoryFocused(false)}
-                        disabled={isFormDisabled}
-                    />
-                    {/* 目录建议下拉 */}
-                    {suggestions.length > 0 && (
-                        <div style={{
-                            position: 'absolute', top: '100%', left: 0, right: 0,
-                            zIndex: 10, marginTop: 4,
-                            background: 'var(--ant-colorBgContainer)',
-                            border: '1px solid var(--ant-colorBorder)',
-                            borderRadius: 6,
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-                            maxHeight: 192, overflow: 'auto',
-                        }}>
-                            {suggestions.map((suggestion, index) => (
-                                <div
-                                    key={suggestion.key}
-                                    onClick={() => handleSuggestionSelect(index)}
-                                    style={{
-                                        padding: '6px 12px',
-                                        cursor: 'pointer',
-                                        fontSize: 13,
-                                        background: index === selectedIndex ? 'var(--ant-colorPrimaryBg)' : 'transparent',
-                                        color: index === selectedIndex ? 'var(--ant-colorPrimary)' : 'inherit',
-                                    }}
-                                >
-                                    {suggestion.text}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                <AutoComplete
+                    options={autoCompleteOptions}
+                    placeholder="输入工作目录路径"
+                    value={directory}
+                    onChange={(value) => setDirectory(value)}
+                    onSelect={(value) => setDirectory(value)}
+                    suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}
+                    disabled={isFormDisabled}
+                    style={{ width: '100%' }}
+                    popupMatchSelectWidth={false}
+                />
                 {/* 最近路径 */}
                 {recentPaths.length > 0 && (
                     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -373,9 +358,5 @@ export function NewSession(props: NewSessionProps) {
 }
 
 // 导出子组件和类型
-export { useActiveWord, useCursorPosition } from './useActiveWord'
-export { useActiveSuggestions } from './useActiveSuggestions'
-export { useDirectorySuggestions } from './useDirectorySuggestions'
 export { useRecentPaths } from './useRecentPaths'
-export type { Suggestion } from './useActiveSuggestions'
 export type { AgentType, SessionType } from './types'

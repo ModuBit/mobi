@@ -16,7 +16,24 @@
 
 import { memo, useEffect, useRef } from 'react'
 import { theme } from 'antd'
-import type { Suggestion } from '@/components/NewSession/useActiveSuggestions'
+
+/**
+ * 自动完成建议项
+ */
+export interface Suggestion {
+    /** 唯一标识 */
+    key: string
+    /** 显示文本 */
+    text: string
+    /** 标签（用于搜索匹配） */
+    label: string
+    /** 描述（可选） */
+    description?: string
+    /** 展开内容（可选） */
+    content?: string
+    /** 来源类型 */
+    source?: 'builtin' | 'user' | 'plugin' | 'project'
+}
 
 interface AutoCompleteProps {
     /** 建议列表 */
