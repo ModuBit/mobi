@@ -15,8 +15,8 @@
  */
 
 import { Hono } from 'hono'
-import { resolve, sep } from 'path'
 import { z } from 'zod'
+import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
@@ -133,11 +133,9 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         // 安全校验：path 必须在 homeDir 内
-        const resolvedPath = resolve(path)
-        const resolvedHome = resolve(homeDir)
-        const homePrefix = resolvedHome.endsWith(sep) ? resolvedHome : resolvedHome + sep
-        if (resolvedPath !== resolvedHome && !resolvedPath.startsWith(homePrefix)) {
-            return c.json({ success: false, error: 'Path is outside the home directory' }, 403)
+        const validation = validateHomeDirPath(path, homeDir)
+        if (!validation.valid) {
+            return c.json({ success: false, error: validation.error }, 403)
         }
 
         try {
