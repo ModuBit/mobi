@@ -431,6 +431,10 @@ export class SyncEngine {
         return await this.rpcGateway.listDirectory(sessionId, path)
     }
 
+    async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
+        return await this.rpcGateway.listMachineDirectory(machineId, path, homeDir)
+    }
+
     async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
         return await this.rpcGateway.uploadFile(sessionId, filename, content, mimeType)
     }
