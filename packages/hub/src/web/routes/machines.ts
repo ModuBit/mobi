@@ -15,6 +15,7 @@
  */
 
 import { Hono } from 'hono'
+import { resolve, sep } from 'path'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
@@ -105,6 +106,45 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ exists })
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to check paths' }, 500)
+        }
+    })
+
+    app.get('/machines/:id/list-directory', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        // 获取 homeDir
+        const homeDir = machine.metadata?.homeDir
+        if (!homeDir) {
+            return c.json({ success: false, error: 'Machine homeDir not available' }, 400)
+        }
+
+        const path = c.req.query('path') ?? ''
+        if (!path) {
+            return c.json({ success: false, error: 'Path parameter is required' }, 400)
+        }
+
+        // 安全校验：path 必须在 homeDir 内
+        const resolvedPath = resolve(path)
+        const resolvedHome = resolve(homeDir)
+        const homePrefix = resolvedHome.endsWith(sep) ? resolvedHome : resolvedHome + sep
+        if (resolvedPath !== resolvedHome && !resolvedPath.startsWith(homePrefix)) {
+            return c.json({ success: false, error: 'Path is outside the home directory' }, 403)
+        }
+
+        try {
+            const result = await engine.listMachineDirectory(machineId, path, homeDir)
+            return c.json(result)
+        } catch (error) {
+            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list directory' }, 500)
         }
     })
 
