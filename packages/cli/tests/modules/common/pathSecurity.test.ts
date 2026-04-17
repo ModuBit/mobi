@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePath } from '@/modules/common/pathSecurity';
+import { validatePath, validateHomeDirPath } from '@/modules/common/pathSecurity';
 
 describe('validatePath', () => {
     const workingDir = '/home/user/project';
@@ -55,3 +55,32 @@ describe('validatePath', () => {
         expect(validatePath(workingDir, workingDir).valid).toBe(true);
     });
 });
+
+describe('validateHomeDirPath', () => {
+    const homeDir = '/home/user'
+
+    it('允许 homeDir 内的路径', () => {
+        expect(validateHomeDirPath('/home/user/projects', homeDir).valid).toBe(true)
+        expect(validateHomeDirPath('/home/user', homeDir).valid).toBe(true)
+    })
+
+    it('拒绝 homeDir 外的路径', () => {
+        const result = validateHomeDirPath('/etc/passwd', homeDir)
+        expect(result.valid).toBe(false)
+        expect(result.error).toContain('outside the home directory')
+    })
+
+    it('阻止路径穿越攻击', () => {
+        const result = validateHomeDirPath('/home/user/../../etc/passwd', homeDir)
+        expect(result.valid).toBe(false)
+    })
+
+    it('拒绝同级目录', () => {
+        expect(validateHomeDirPath('/home/other', homeDir).valid).toBe(false)
+    })
+
+    it('homeDir 为空时拒绝', () => {
+        const result = validateHomeDirPath('/home/user', '')
+        expect(result.valid).toBe(false)
+    })
+})

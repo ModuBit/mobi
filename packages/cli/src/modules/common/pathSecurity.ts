@@ -47,3 +47,27 @@ export function validatePath(targetPath: string, workingDirectory: string): Path
 
     return { valid: true };
 }
+
+/**
+ * 校验路径是否在 homeDir 范围内
+ * @param targetPath 目标路径（绝对路径）
+ * @param homeDir 用户 home 目录（绝对路径）
+ */
+export function validateHomeDirPath(targetPath: string, homeDir: string): PathValidationResult {
+    if (!homeDir) {
+        return { valid: false, error: 'Home directory not configured' }
+    }
+
+    const resolvedTarget = resolve(targetPath)
+    const resolvedHome = resolve(homeDir)
+
+    const normalizedTarget = process.platform === 'win32' ? resolvedTarget.toLowerCase() : resolvedTarget
+    const normalizedHome = process.platform === 'win32' ? resolvedHome.toLowerCase() : resolvedHome
+    const homePrefix = normalizedHome.endsWith(sep) ? normalizedHome : normalizedHome + sep
+
+    if (normalizedTarget !== normalizedHome && !normalizedTarget.startsWith(homePrefix)) {
+        return { valid: false, error: `Access denied: Path '${targetPath}' is outside the home directory` }
+    }
+
+    return { valid: true }
+}
