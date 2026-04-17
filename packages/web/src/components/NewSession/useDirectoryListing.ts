@@ -80,7 +80,7 @@ export function useDirectoryListing(
 
             const lowerPrefix = prefix.toLowerCase()
             const filtered = data.entries
-                .filter((entry) => entry.type === 'directory' && entry.name.toLowerCase().startsWith(lowerPrefix))
+                .filter((entry) => entry.name.toLowerCase().startsWith(lowerPrefix))
                 .map((entry) => {
                     const fullPath = parentPath === '/' ? `/${entry.name}` : `${parentPath}/${entry.name}`
                     return { value: fullPath, label: entry.name }
