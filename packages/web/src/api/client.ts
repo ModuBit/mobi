@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, SessionGroup, SessionGroupsResponse, GroupSessionsResponse, Machine } from './types'
+import type { Session, DecryptedMessage, SessionGroup, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse } from './types'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -186,6 +186,8 @@ export function createMobiApi(token: string | null) {
                 client.post(`/api/machines/${machineId}/spawn`, { directory, agent, model, yolo, sessionType, worktreeName }),
             checkPathsExist: (machineId: string, paths: string[]) =>
                 client.post<{ exists: Record<string, boolean> }>(`/api/machines/${machineId}/paths/exists`, { paths }),
+            listDirectory: (machineId: string, path: string) =>
+                client.get<ListDirectoryResponse>(`/api/machines/${machineId}/list-directory`, { params: { path } }),
         },
     }
 }
