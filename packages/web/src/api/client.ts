@@ -186,8 +186,8 @@ export function createMobiApi(token: string | null) {
                 client.post(`/api/machines/${machineId}/spawn`, { directory, agent, model, yolo, sessionType, worktreeName }),
             checkPathsExist: (machineId: string, paths: string[]) =>
                 client.post<{ exists: Record<string, boolean> }>(`/api/machines/${machineId}/paths/exists`, { paths }),
-            listDirectory: (machineId: string, path: string) =>
-                client.get<ListDirectoryResponse>(`/api/machines/${machineId}/list-directory`, { params: { path } }),
+            listDirectory: (machineId: string, path: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListDirectoryResponse>(`/api/machines/${machineId}/list-directory`, { params: { path }, signal: opts?.signal }),
         },
     }
 }

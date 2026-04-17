@@ -26,12 +26,15 @@ export interface DirectoryOption {
     label: string
 }
 
+function isHiddenDir(name: string): boolean {
+    return name.startsWith('.')
+}
+
 /**
- * 解析输入路径，提取父目录和前缀
- * /home/ad → { parentPath: '/home', prefix: 'ad' }
- * /home/admin/ → { parentPath: '/home/admin', prefix: '' }
+ * 解析路径的最后一段为前缀
+ * /home/admin/git → { parentPath: '/home/admin', prefix: 'git' }
  */
-function parsePathInput(input: string): { parentPath: string; prefix: string } | null {
+export function parsePrefixInput(input: string): { parentPath: string; prefix: string } | null {
     if (!input.startsWith('/')) return null
 
     const lastSlash = input.lastIndexOf('/')
@@ -45,7 +48,12 @@ function parsePathInput(input: string): { parentPath: string; prefix: string } |
 }
 
 /**
- * 防抖异步获取目录子目录列表
+ * 目录列表缓存 + 本地过滤
+ *
+ * - 仅当路径以 / 结尾时请求 API（如 /home/admin/）
+ * - 请求结果按父路径缓存
+ * - 输入前缀时从缓存本地过滤（如 /home/admin/git → 从 /home/admin 缓存中过滤 git）
+ * - 隐藏目录默认不展示，仅当前缀以 . 开头时展示
  */
 export function useDirectoryListing(
     machineId: string | null,
@@ -61,15 +69,25 @@ export function useDirectoryListing(
     const [isLoading, setIsLoading] = useState(false)
     const abortRef = useRef<AbortController | null>(null)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const cacheRef = useRef<Map<string, DirectoryOption[]>>(new Map())
+    const prevMachineIdRef = useRef<string | null>(machineId)
 
-    const fetchDirectories = useCallback(async (mId: string, parentPath: string, prefix: string) => {
+    // machineId 变化时清空缓存
+    useEffect(() => {
+        if (prevMachineIdRef.current !== machineId) {
+            cacheRef.current.clear()
+            prevMachineIdRef.current = machineId
+        }
+    }, [machineId])
+
+    const fetchDirectories = useCallback(async (mId: string, parentPath: string) => {
         abortRef.current?.abort()
         const controller = new AbortController()
         abortRef.current = controller
 
         setIsLoading(true)
         try {
-            const res = await api.machines.listDirectory(mId, parentPath)
+            const res = await api.machines.listDirectory(mId, parentPath, { signal: controller.signal })
             if (controller.signal.aborted) return
 
             const data = res.data as ListDirectoryResponse
@@ -78,15 +96,13 @@ export function useDirectoryListing(
                 return
             }
 
-            const lowerPrefix = prefix.toLowerCase()
-            const filtered = data.entries
-                .filter((entry) => entry.name.toLowerCase().startsWith(lowerPrefix))
-                .map((entry) => {
-                    const fullPath = parentPath === '/' ? `/${entry.name}` : `${parentPath}/${entry.name}`
-                    return { value: fullPath, label: entry.name }
-                })
+            const entries = data.entries.map((entry) => {
+                const fullPath = parentPath === '/' ? `/${entry.name}` : `${parentPath}/${entry.name}`
+                return { value: fullPath, label: entry.name }
+            })
 
-            setOptions(filtered)
+            cacheRef.current.set(parentPath, entries)
+            setOptions(entries.filter((e) => !isHiddenDir(e.label)))
         } catch {
             if (!controller.signal.aborted) {
                 setOptions([])
@@ -110,16 +126,41 @@ export function useDirectoryListing(
             return
         }
 
-        const parsed = parsePathInput(directory)
-        if (!parsed) {
-            setOptions([])
-            return
-        }
+        if (directory.endsWith('/')) {
+            const parentPath = directory.slice(0, -1) || '/'
 
-        // 300ms 防抖
-        timerRef.current = setTimeout(() => {
-            fetchDirectories(machineId, parsed.parentPath, parsed.prefix)
-        }, 300)
+            const cached = cacheRef.current.get(parentPath)
+            if (cached) {
+                setOptions(cached.filter((e) => !isHiddenDir(e.label)))
+                return
+            }
+
+            timerRef.current = setTimeout(() => {
+                fetchDirectories(machineId, parentPath)
+            }, 300)
+        } else {
+            const parsed = parsePrefixInput(directory)
+            if (!parsed) {
+                setOptions([])
+                return
+            }
+
+            const { parentPath, prefix } = parsed
+            const cached = cacheRef.current.get(parentPath)
+            if (!cached) {
+                setOptions([])
+                return
+            }
+
+            const lowerPrefix = prefix.toLowerCase()
+            const showHidden = isHiddenDir(prefix)
+            const filtered = cached.filter((entry) => {
+                if (!entry.label.toLowerCase().startsWith(lowerPrefix)) return false
+                if (!showHidden && isHiddenDir(entry.label)) return false
+                return true
+            })
+            setOptions(filtered)
+        }
 
         return () => {
             if (timerRef.current) {

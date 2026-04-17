@@ -35,7 +35,7 @@ import type { Machine } from '@/api/types'
 import { useSessions } from '@/hooks/queries/useSessions'
 import { useMachines } from '@/hooks/queries/useMachines'
 import { useSpawnSession } from '@/hooks/mutations/useSpawnSession'
-import { useDirectoryListing } from './useDirectoryListing'
+import { useDirectoryListing, parsePrefixInput } from './useDirectoryListing'
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from './types'
 import { MODEL_OPTIONS } from './types'
@@ -192,16 +192,34 @@ export function NewSession(props: NewSessionProps) {
             return [...items, ...recentItems]
         }
 
-        // 有输入：显示 API 返回的子目录
-        return directoryOptions.map((opt) => ({
-            value: opt.value,
-            label: (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <FolderOutlined style={{ color: 'var(--ant-colorTextSecondary)' }} />
-                    <span>{opt.label}</span>
-                </div>
-            ),
-        }))
+        // 有输入：显示子目录，高亮匹配前缀
+        const parsed = parsePrefixInput(directory)
+        const currentPrefix = parsed?.prefix ?? ''
+        const lowerPrefix = currentPrefix.toLowerCase()
+
+        return directoryOptions.map((opt) => {
+            const labelLower = opt.label.toLowerCase()
+            const matchLen = lowerPrefix && labelLower.startsWith(lowerPrefix) ? lowerPrefix.length : 0
+
+            return {
+                value: opt.value,
+                label: (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <FolderOutlined style={{ color: 'var(--ant-colorTextSecondary)' }} />
+                        {matchLen > 0 ? (
+                            <span>
+                                <span style={{ fontWeight: 600, color: 'var(--ant-colorPrimary)' }}>
+                                    {opt.label.slice(0, matchLen)}
+                                </span>
+                                <span>{opt.label.slice(matchLen)}</span>
+                            </span>
+                        ) : (
+                            <span>{opt.label}</span>
+                        )}
+                    </div>
+                ),
+            }
+        })
     }, [directory, recentPaths, directoryOptions, machineHomeDir])
 
     const canCreate = Boolean(machineId && trimmedDirectory && !isFormDisabled)
@@ -237,6 +255,7 @@ export function NewSession(props: NewSessionProps) {
                     value={directory}
                     onChange={(value) => setDirectory(value)}
                     onSelect={(value) => setDirectory(value)}
+                    defaultActiveFirstOption
                     suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}
                     disabled={isFormDisabled}
                     style={{ width: '100%' }}
