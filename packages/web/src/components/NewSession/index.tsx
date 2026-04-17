@@ -82,6 +82,7 @@ export function NewSession(props: NewSessionProps) {
     // 表单状态
     const [machineId, setMachineId] = useState<string | null>(null)
     const [directory, setDirectory] = useState('')
+    const [isDirectoryFocused, setIsDirectoryFocused] = useState(false)
     const [agent, setAgent] = useState<AgentType>(loadPreferredAgent)
     const [model, setModel] = useState('auto')
     const [yoloMode, setYoloMode] = useState(loadPreferredYoloMode)
@@ -235,8 +236,11 @@ export function NewSession(props: NewSessionProps) {
                     options={autoCompleteOptions}
                     placeholder="输入工作目录路径"
                     value={directory}
+                    open={isDirectoryFocused && autoCompleteOptions.length > 0 ? true : undefined}
                     onChange={(value) => setDirectory(value)}
-                    onSelect={(value) => setDirectory(value)}
+                    onSelect={(value) => { setDirectory(value); setIsDirectoryFocused(false) }}
+                    onFocus={() => setIsDirectoryFocused(true)}
+                    onBlur={() => setIsDirectoryFocused(false)}
                     suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}
                     disabled={isFormDisabled}
                     style={{ width: '100%' }}
