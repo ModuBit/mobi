@@ -19,9 +19,7 @@ import { mkdir, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { readdir } from 'node:fs/promises'
-import { resolve } from 'node:path'
-import { validateHomeDirPath } from '@/modules/common/pathSecurity'
+import { registerMachineDirectoryHandler } from '@/modules/common/handlers/machineDirectory'
 
 async function createTempDir(prefix: string): Promise<string> {
     const base = tmpdir()
@@ -46,35 +44,10 @@ describe('machine list-directory RPC handler', () => {
         await writeFile(join(homeDir, 'README.md'), '# test')
 
         rpc = new RpcHandlerManager({ scopePrefix })
-        rpc.registerHandler<{ path: string; homeDir: string }, { success: boolean; entries?: Array<{ name: string }>; error?: string }>('list-directory', async (params) => {
-            const { path: targetPath, homeDir } = params ?? {}
-
-            if (!targetPath || !homeDir) {
-                return { success: false, error: 'Path and homeDir are required' }
-            }
-
-            const validation = validateHomeDirPath(targetPath, homeDir)
-            if (!validation.valid) {
-                return { success: false, error: validation.error }
-            }
-
-            try {
-                const resolvedPath = resolve(targetPath)
-                const entries = await readdir(resolvedPath, { withFileTypes: true })
-
-                const directories = entries
-                    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
-                    .map((entry) => ({ name: entry.name }))
-                    .sort((a, b) => a.name.localeCompare(b.name))
-
-                return { success: true, entries: directories }
-            } catch (error) {
-                return { success: false, error: error instanceof Error ? error.message : 'Failed to list directory' }
-            }
-        })
+        registerMachineDirectoryHandler(rpc)
     })
 
-    it('仅返回目录且过滤隐藏文件', async () => {
+    it('仅返回目录（含隐藏目录），不含文件', async () => {
         const response = await rpc.handleRequest({
             method: `${scopePrefix}:list-directory`,
             params: JSON.stringify({ path: homeDir, homeDir })
@@ -88,8 +61,8 @@ describe('machine list-directory RPC handler', () => {
 
         const names = (parsed.entries ?? []).map((e) => e.name)
         expect(names).toContain('projects')
+        expect(names).toContain('.config')
         expect(names).not.toContain('README.md')
-        expect(names).not.toContain('.config')
     })
 
     it('拒绝访问 homeDir 外的路径', async () => {
