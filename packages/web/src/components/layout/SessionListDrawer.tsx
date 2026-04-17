@@ -105,6 +105,7 @@ export function SessionListDrawer() {
             onClose={handleCloseNew}
             placement={isMobile ? 'bottom' : 'right'}
             size={360}
+            destroyOnClose
             styles={{
                 body: isMobile ? MOBILE_NEW_STYLES.body : PC_NEW_BODY_STYLES,
                 wrapper: isMobile ? MOBILE_NEW_STYLES.wrapper : undefined,
@@ -131,6 +132,7 @@ export function SessionListDrawer() {
                         open={newSessionDrawerOpen}
                         onClose={handleCloseNew}
                         placement="bottom"
+                        destroyOnClose
                         styles={MOBILE_NEW_STYLES}
                     >
                         {newSessionContent}
@@ -159,6 +161,7 @@ export function SessionListDrawer() {
                     onClose={handleCloseNew}
                     placement="right"
                     size={360}
+                    destroyOnClose
                     styles={{ body: PC_NEW_BODY_STYLES }}
                 >
                     {newSessionContent}

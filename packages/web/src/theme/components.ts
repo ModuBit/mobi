@@ -37,8 +37,8 @@ export const shadcnLightComponents = {
         borderRadius: 6,
     },
     Select: {
-        optionSelectedBg: '#f4f4f5',
-        optionActiveBg: '#fafafa',
+        optionSelectedBg: '#e4e4e7',
+        optionActiveBg: '#f4f4f5',
         optionSelectedFontWeight: 500,
         borderRadius: 6,
     },
@@ -104,8 +104,8 @@ export const shadcnDarkComponents = {
         borderRadius: 6,
     },
     Select: {
-        optionSelectedBg: '#27272a',
-        optionActiveBg: '#18181b',
+        optionSelectedBg: '#3f3f46',
+        optionActiveBg: '#363639',
         optionSelectedFontWeight: 500,
         borderRadius: 6,
     },
