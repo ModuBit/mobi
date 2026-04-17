@@ -26,7 +26,7 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 |------------|------|----------|
 | `user` | 用户输入 / tool_result | `message.content`（string 或 ContentBlock 数组） |
 | `assistant` | Claude 回复 | `message.content`（text / thinking / tool_use）+ `message.usage` |
-| `system` | SDK 系统事件 | `subtype`（`init` / `api_error` / `turn_duration` / `compact_boundary` 等）+ `model` / `tools` |
+| `system` | SDK 系统事件 | `subtype`（`init` / `api_error` / `api_retry` / `turn_duration` / `compact_boundary` 等）+ `model` / `tools` |
 | `result` | 轮次结束标记 | `subtype`、`terminal_reason`、`is_error`、`num_turns`、`duration_ms`、`usage`、`result`（echo） |
 
 **关键点**：`result` 是 SDK 的内部控制消息，不是对话内容。它标志一轮 agent loop 的结束，用于传递 token 用量、中断原因等元数据。
@@ -91,6 +91,8 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 
 转换后的 `RawJSONLines` 通过 `OutgoingMessageQueue` 发送到 Hub，存入 `messages` 表。
 
+**OutgoingMessageQueue**（`packages/cli/src/claude/utils/OutgoingMessageQueue.ts`）：透传所有消息，不做过滤。消息过滤由前端 `isClaudeChatVisibleMessage()` 等逻辑负责，这样如果后续有消息未渲染，在前端更容易发现。
+
 **同步**：`packages/hub/src/sync/syncEngine.ts` — SSE 推送
 
 Hub 通过 SSE 向 Web 端推送 `SyncEvent`：
@@ -148,7 +150,7 @@ flowchart TD
 | `isClaudeChatVisibleMessage()` 返回 false | 跳过 |
 | 以上均不满足 | 不跳过，进入 normalizeAgentRecord |
 
-**`isClaudeChatVisibleMessage()`**：只要 `type` 不是 `system` 就返回 true。因此 `user`、`assistant`、`result` 类型都"可见"。
+**`isClaudeChatVisibleMessage()`**：只要 `type` 不是 `system` 就返回 true。对于 `system` 类型，只有以下 subtype 可见：`api_error`、`api_retry`、`turn_duration`、`microcompact_boundary`、`compact_boundary`。其他 system subtype（如 `init`）被跳过。
 
 ### normalizeAgentRecord 处理
 
@@ -161,7 +163,7 @@ flowchart TD
 | `content.type === 'text'` | 提取文本 → `role: 'agent'` + text blocks |
 | `content.type === 'assistant'`（assistant output） | 解析 message.content 中的 text / thinking / tool_use blocks |
 | `content.type === 'user'`（user output） | 解析 message.content 中的 text / tool_result blocks；sidechain 字符串 → `sidechain` block |
-| `content.type === 'system'` | 分发到具体 subtype：`init` → ready event，`api_error` → api-error event，`turn_duration` → turn-duration event 等 |
+| `content.type === 'system'` | 分发到具体 subtype：`init` → ready event，`api_error` → api-error event，`api_retry` → api-retry event，`turn_duration` → turn-duration event 等 |
 | `content.type === 'output'` + `data.type === 'result'` | **aborted** → aborted event；**error** → execution-error event；**success** → `null`（静默忽略） |
 | `content.type === 'output'` + 其他 data.type | 打印 warning，返回 null |
 | `content.type === 'event'` | 解析为 AgentEvent |
@@ -276,6 +278,7 @@ type ChatBlock =
 |------------|-------|-------|---------|
 | `turn-duration` | left | default | false |
 | `api-error` | — | error | true |
+| `api-retry` | — | error | true |
 | `execution-error` | — | error | true |
 | 其他 | — | default | true |
 
@@ -291,7 +294,7 @@ type ChatBlock =
 | SDK `result` (漏过 CLI 的) | Web `normalize.ts` 兜底 | 防御性检查 |
 | `isMeta === true` | Web `normalizeAgent.ts` | 元数据消息 |
 | `isCompactSummary === true` | Web `normalizeAgent.ts` | 压缩摘要 |
-| System 非可见 subtype | Web `normalizeAgent.ts` | 如非 `api_error`/`turn_duration`/`compact_boundary` 等 |
+| System 非可见 subtype | Web `normalizeAgent.ts` | 如非 `api_error`/`api_retry`/`turn_duration`/`compact_boundary` 等 |
 
 ### 转换为事件（不直接展示文本）
 
@@ -300,6 +303,7 @@ type ChatBlock =
 | SDK `result` (aborted) | `AgentEvent { type: 'aborted', numTurns }` |
 | SDK `result` (error) | `AgentEvent { type: 'execution-error', subtype, errors, numTurns }` |
 | System `api_error` | `AgentEvent { type: 'api-error', retryAttempt, maxRetries, error }` |
+| System `api_retry` | `AgentEvent { type: 'api-retry', attempt, maxRetries, retryDelayMs, errorStatus, error }`（连续重试去重，只保留最新一条） |
 | System `turn_duration` | `AgentEvent { type: 'turn-duration', durationMs }` |
 | System `compact_boundary` | `AgentEvent { type: 'compact', trigger, preTokens }` |
 | System `init` (model: ready) | 不输出（标记 hasReadyEvent） |
@@ -325,6 +329,7 @@ type ChatBlock =
 | CLI 转换 | `packages/cli/src/claude/utils/sdkToLogConverter.ts` | SDK → RawJSONLines |
 | CLI 类型 | `packages/cli/src/claude/types.ts` | RawJSONLines Schema 定义 |
 | CLI 启动 | `packages/cli/src/claude/claudeRemoteLauncher.ts` | 创建 Converter，管理消息流 |
+| CLI 队列 | `packages/cli/src/claude/utils/OutgoingMessageQueue.ts` | 消息发送队列（保序、延迟发送、透传） |
 | CLI 循环 | `packages/cli/src/claude/claudeRemote.ts` | 处理 result 控制信号 |
 | Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化 |
 | Hub 同步 | `packages/hub/src/sync/syncEngine.ts` | SSE 推送 |

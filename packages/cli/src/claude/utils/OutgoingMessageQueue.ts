@@ -137,9 +137,7 @@ export class OutgoingMessageQueue {
             
             // Send if not already sent
             if (!item.sent) {
-                if (item.logMessage.type !== 'system') {
-                    this.sendFunction(item.logMessage);
-                }
+                this.sendFunction(item.logMessage);
                 item.sent = true;
             }
             

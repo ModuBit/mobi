@@ -118,4 +118,4 @@ function renderWithProviders(ui: React.ReactElement) {
 
 ### 执行方式
 
-E2E 测试通过 `run-tests` Skill 触发，Skill 内含环境启动、清理和验证的完整流程，无需关心脚本细节。
+E2E 测试通过 `run-tests` Skill 触发，Skill 内含环境启动、清理和验证的完整流程。

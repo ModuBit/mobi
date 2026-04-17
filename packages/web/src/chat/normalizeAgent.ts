@@ -218,6 +218,24 @@ export function normalizeAgentRecord(
                 meta
             }
         }
+        if (data.type === 'system' && data.subtype === 'api_retry') {
+            return {
+                id: messageId,
+                localId,
+                createdAt,
+                role: 'event',
+                content: {
+                    type: 'api-retry',
+                    attempt: asNumber(data.attempt) ?? 0,
+                    maxRetries: asNumber(data.max_retries) ?? 0,
+                    retryDelayMs: asNumber(data.retry_delay_ms) ?? 0,
+                    errorStatus: asNumber(data.error_status) ?? 0,
+                    error: asString(data.error) ?? ''
+                },
+                isSidechain: false,
+                meta
+            }
+        }
         if (data.type === 'system' && data.subtype === 'api_error') {
             return {
                 id: messageId,

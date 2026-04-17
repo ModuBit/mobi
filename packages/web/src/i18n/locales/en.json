@@ -78,6 +78,8 @@
         "inputPlaceholder": "Type a message... (Shift+Enter for new line)",
         "sessionEnded": "Session ended",
         "apiError": "API Error",
+        "apiRateLimit": "API Rate Limited",
+        "retryDelay": "Retrying in {{seconds}}s",
         "duration": "Duration",
         "durationValue": "Duration: {{value}}",
         "retry": "Retry",

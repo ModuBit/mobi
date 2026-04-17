@@ -317,6 +317,26 @@ function parseSystemEvent(
 ): ParsedMessage | null {
   const subtype = asString(data.subtype)
 
+  if (subtype === 'api_retry') {
+    return {
+      id: messageId,
+      localId,
+      createdAt,
+      role: 'system',
+      content: [{
+        type: 'event',
+        event: {
+          type: 'api-retry',
+          attempt: asNumber(data.attempt) ?? 0,
+          maxRetries: asNumber(data.max_retries) ?? 0,
+          retryDelayMs: asNumber(data.retry_delay_ms) ?? 0,
+          errorStatus: asNumber(data.error_status) ?? 0,
+          error: asString(data.error) ?? ''
+        }
+      }]
+    }
+  }
+
   if (subtype === 'api_error') {
     return {
       id: messageId,

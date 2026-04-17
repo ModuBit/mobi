@@ -78,6 +78,8 @@
         "inputPlaceholder": "输入消息... (Shift+Enter 换行)",
         "sessionEnded": "会话已结束",
         "apiError": "API 错误",
+        "apiRateLimit": "API 限流",
+        "retryDelay": "{{seconds}} 秒后重试",
         "duration": "耗时",
         "durationValue": "耗时: {{value}}",
         "retry": "重试",

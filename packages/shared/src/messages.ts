@@ -25,6 +25,7 @@ type RoleWrappedRecord = {
 // Claude 系统消息中可见的子类型
 const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'api_error',
+    'api_retry',
     'turn_duration',
     'microcompact_boundary',
     'compact_boundary'

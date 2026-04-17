@@ -40,6 +40,8 @@ e2e_load_profile() {
         E2E_TMPDIR="${HOME}/.mobi-e2e"
     fi
 
+    # 展开 ~ 为 $HOME
+    E2E_TMPDIR="${E2E_TMPDIR/#\~/$HOME}"
     RUNNER_STATE_FILE="${E2E_TMPDIR}/runner.state.json"
 }
 

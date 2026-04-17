@@ -110,7 +110,7 @@ export function dedupeAgentEvents(blocks: ChatBlock[]): ChatBlock[] {
 }
 
 /**
- * 折叠连续的 api-error 事件，只保留最新状态
+ * 折叠连续的 api-error / api-retry 事件，只保留最新状态
  */
 export function foldApiErrorEvents(blocks: ChatBlock[]): ChatBlock[] {
     const result: ChatBlock[] = []
@@ -122,13 +122,13 @@ export function foldApiErrorEvents(blocks: ChatBlock[]): ChatBlock[] {
         }
 
         const event = block.event as { type: string }
-        if (event.type !== 'api-error') {
+        if (event.type !== 'api-error' && event.type !== 'api-retry') {
             result.push(block)
             continue
         }
 
         const prev = result[result.length - 1] as { kind: string; event: { type: string } } | undefined
-        if (prev?.kind === 'agent-event' && prev.event.type === 'api-error') {
+        if (prev?.kind === 'agent-event' && (prev.event.type === 'api-error' || prev.event.type === 'api-retry')) {
             result[result.length - 1] = block
         } else {
             result.push(block)

@@ -364,6 +364,43 @@ describe('messageParser', () => {
       }
     })
 
+    it('应该解析 api_retry 系统消息', () => {
+      const message: DecryptedMessage = {
+        id: 'msg-retry',
+        seq: 12,
+        localId: null,
+        createdAt: Date.now(),
+        content: {
+          type: 'output',
+          data: {
+            type: 'system',
+            subtype: 'api_retry',
+            attempt: 5,
+            max_retries: 10,
+            retry_delay_ms: 30000,
+            error_status: 429,
+            error: 'rate_limit'
+          }
+        }
+      }
+
+      const result = parseMessage(message)
+      expect(result).not.toBeNull()
+      expect(result?.role).toBe('system')
+      expect(result?.content).toHaveLength(1)
+
+      const eventBlock = result?.content[0]
+      expect(eventBlock?.type).toBe('event')
+      if (eventBlock?.type === 'event') {
+        expect(eventBlock.event.type).toBe('api-retry')
+        expect(eventBlock.event.attempt).toBe(5)
+        expect(eventBlock.event.maxRetries).toBe(10)
+        expect(eventBlock.event.retryDelayMs).toBe(30000)
+        expect(eventBlock.event.errorStatus).toBe(429)
+        expect(eventBlock.event.error).toBe('rate_limit')
+      }
+    })
+
     it('应该解析 turn_duration 系统消息', () => {
       const message: DecryptedMessage = {
         id: 'msg-duration',

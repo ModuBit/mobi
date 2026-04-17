@@ -1,6 +1,6 @@
 ---
 name: run-tests
-description: 代码变更完成后，检查并执行测试验证 — typecheck、单测、lint、E2E
+description: 代码变更完成后，检查并执行测试验证 — typecheck、单测、lint、E2E。当用户要求运行 E2E 测试、验证浏览器流程、测试 Web UI 时，也使用此 skill。
 ---
 
 # run-tests
@@ -35,14 +35,9 @@ description: 代码变更完成后，检查并执行测试验证 — typecheck�
     ↓ 失败 → 按提示修复
 
 第 4 步：E2E 验证（按需）
-    根据变更影响范围判断是否需要 E2E：
-    - 仅 Web UI 变更 → 启动 E2E 环境验证
-    - 仅后端变更 → 跳过
-    - 全栈变更 → 启动 E2E 环境验证
-
-    启动：bash scripts/e2e-bootstrap.sh（前台运行，Ctrl+C 或 SIGTERM 触发自动清理）
-    清理：bash scripts/e2e-cleanup.sh（单独清理进程、数据目录、日志）
-    验证：使用 Chrome DevTools MCP 工具操作浏览器
+    判断是否需要 E2E：不仅限于 UI 变更，任何影响用户通过 Web 使用
+    Mobi 的改动（Hub API、协议、Runner 等）都需要 E2E 验证。
+    详见 references/e2e.md
 
 输出测试摘要
 ```
@@ -55,11 +50,11 @@ description: 代码变更完成后，检查并执行测试验证 — typecheck�
 - ✅ typecheck — 通过
 - ✅ 单测 (shared: 60/60, hub: 19/19, cli: 147/147, web: 127/127) — 全部通过
 - ✅ lint — 通过
-- ⏭️ E2E — 跳过（本次变更不涉及 Web UI）
+- ⏭️ E2E — 跳过（本次变更不影响用户使用）
 ```
 
 ## 注意事项
 
 - 先执行 run-tests，后执行 /sync-docs（代码正确优先）
-- E2E 脚本位于 skill 目录的 `scripts/` 下，与 SKILL.md 共同维护
 - 测试规范详见 docs/conventions/testing.md
+- E2E 验证详见 references/e2e.md（环境启动、Chrome DevTools 操作、验证流程）

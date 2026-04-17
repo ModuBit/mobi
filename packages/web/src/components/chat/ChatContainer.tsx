@@ -124,9 +124,6 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
             footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
         }> = []
 
-        // 用于 api-error 去重的 error code 跟踪
-        const apiErrorCodeMap = new Map<string, string | null>()
-
         // 用于判断是否是最后一个 assistant 块（typing 动画）
         let lastAssistantBlockKey: string | null = null
         for (let i = chatBlocks.length - 1; i >= 0; i--) {
@@ -140,28 +137,6 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
         for (const block of chatBlocks) {
             const content = renderChatBlock(block, { metadata, isThinking: !!session?.thinking })
             if (content === null) continue
-
-            // 处理 api-error 去重
-            if (block.kind === 'agent-event') {
-                const isApiError = block.event.type === 'api-error'
-                if (isApiError && items.length > 0) {
-                    const lastKey = items[items.length - 1].key
-                    const prevCode = apiErrorCodeMap.get(lastKey)
-                    if (prevCode) {
-                        const curCode = getApiErrorCode('error' in block.event ? block.event.error : undefined)
-                        if (prevCode === curCode) {
-                            items[items.length - 1] = {
-                                key: block.id, role: 'system', content, variant: 'borderless',
-                            }
-                            apiErrorCodeMap.set(block.id, curCode)
-                            continue
-                        }
-                    }
-                }
-                if (isApiError) {
-                    apiErrorCodeMap.set(block.id, getApiErrorCode('error' in block.event ? block.event.error : undefined))
-                }
-            }
 
             // 确定角色
             let role: 'assistant' | 'user' | 'system' = 'user'
@@ -428,6 +403,19 @@ function renderChatBlock(block: ChatBlock, ctx: {
 // 格式化事件
 function formatEvent(event: { type: string; [key: string]: unknown }, t: (key: string, params?: Record<string, unknown>) => string): React.ReactNode {
     switch (event.type) {
+        case 'api-retry': {
+            const attempt = Number(event.attempt) || 0
+            const maxRetries = Number(event.maxRetries) || 0
+            const delaySec = Math.ceil((Number(event.retryDelayMs) || 0) / 1000)
+            const errorStatus = Number(event.errorStatus) || 0
+            const errorLabel = errorStatus === 429 ? t('chat.apiRateLimit') : t('chat.apiError')
+            return (
+                <div>
+                    <div>{errorLabel}{attempt > 0 ? ` (${t('chat.retry')} ${attempt}/${maxRetries})` : ''}</div>
+                    {delaySec > 0 && <div style={{ marginTop: 2 }}>{t('chat.retryDelay', { seconds: delaySec })}</div>}
+                </div>
+            )
+        }
         case 'api-error': {
             const detail = extractApiErrorDetail(event.error)
             const retryAttempt = Number(event.retryAttempt) || 0
@@ -511,24 +499,6 @@ function extractApiErrorDetail(error: unknown): string | null {
             if (code || message) return `${code ? `[${code}] ` : ''}${message}`
         }
     }
-    return null
-}
-
-// 从 error 对象中提取 error code，用于去重判断
-// error 结构: { error: { error: { code, message } } } 或 { status }
-function getApiErrorCode(error: unknown): string | null {
-    if (!error || typeof error !== 'object') return null
-    const err = error as Record<string, unknown>
-    // 嵌套 error.error.code
-    if (err.error && typeof err.error === 'object') {
-        const inner = err.error as Record<string, unknown>
-        if (inner.error && typeof inner.error === 'object') {
-            const deepest = inner.error as Record<string, unknown>
-            if (typeof deepest.code === 'string') return deepest.code
-        }
-    }
-    // 退回到 status code
-    if (typeof err.status === 'number') return String(err.status)
     return null
 }
 

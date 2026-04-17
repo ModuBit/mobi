@@ -456,6 +456,41 @@ describe('normalizeDecryptedMessage', () => {
         expect(content.maxRetries).toBe(5)
     })
 
+    it('应解析 api_retry 系统事件', () => {
+        const message: DecryptedMessage = {
+            id: 'msg-api-retry',
+            seq: 18,
+            localId: null,
+            createdAt: 18000,
+            content: {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'system',
+                        subtype: 'api_retry',
+                        attempt: 3,
+                        max_retries: 10,
+                        retry_delay_ms: 15000,
+                        error_status: 429,
+                        error: 'rate_limit',
+                    },
+                },
+            },
+        }
+
+        const result = normalizeDecryptedMessage(message)
+        expect(result).not.toBeNull()
+        expect(result!.role).toBe('event')
+        const content = result!.content as { type: string; attempt: number; maxRetries: number; retryDelayMs: number; errorStatus: number; error: string }
+        expect(content.type).toBe('api-retry')
+        expect(content.attempt).toBe(3)
+        expect(content.maxRetries).toBe(10)
+        expect(content.retryDelayMs).toBe(15000)
+        expect(content.errorStatus).toBe(429)
+        expect(content.error).toBe('rate_limit')
+    })
+
     it('应处理无法识别的 user content 类型（兜底 JSON dump）', () => {
         const message: DecryptedMessage = {
             id: 'msg-unknown-user',

@@ -87,6 +87,10 @@ describe('isClaudeChatVisibleSystemSubtype', () => {
         expect(isClaudeChatVisibleSystemSubtype('api_error')).toBe(true)
     })
 
+    it('api_retry 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('api_retry')).toBe(true)
+    })
+
     it('compact_boundary 返回 true', () => {
         expect(isClaudeChatVisibleSystemSubtype('compact_boundary')).toBe(true)
     })
