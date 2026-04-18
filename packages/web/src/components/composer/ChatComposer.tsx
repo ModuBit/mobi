@@ -27,6 +27,9 @@ import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import { useSessionFileListing } from './useSessionFileListing'
 import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
+import { useSlashCommandSuggestion } from './useSlashCommandSuggestion'
+import { isSlashTrigger } from './slashCommandHelper'
+import type { SlashCommandSuggestionItem } from './slashCommandHelper'
 import type { FileAttachment } from '@/lib/fileAttachments'
 import { createFileAttachment } from '@/lib/fileAttachments'
 
@@ -124,6 +127,17 @@ export function ChatComposer(props: ChatComposerProps) {
     const [activeIndex, setActiveIndex] = useState(0)
     const wrapperRef = useRef<HTMLDivElement>(null)
 
+    // slash command 状态
+    const [slashOpen, setSlashOpen] = useState(false)
+    const [slashFilter, setSlashFilter] = useState('')
+    const [slashActiveIndex, setSlashActiveIndex] = useState(0)
+
+    const { items: slashCommands, isLoading: slashLoading } = useSlashCommandSuggestion(
+        slashOpen ? (sessionId ?? null) : null,
+        slashOpen,
+        slashFilter,
+    )
+
     const { items: fileEntries, isLoading: fileListLoading } = useSessionFileListing(
         suggestionOpen ? (sessionId ?? null) : null,
         mentionInput,
@@ -149,19 +163,39 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // 点击外部关闭下拉
     useEffect(() => {
-        if (!suggestionOpen) return
+        if (!suggestionOpen && !slashOpen) return
         const handler = (e: MouseEvent) => {
             if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
                 setSuggestionOpen(false)
                 setMentionInput(null)
+                setSlashOpen(false)
+                setSlashFilter('')
             }
         }
         document.addEventListener('mousedown', handler)
         return () => document.removeEventListener('mousedown', handler)
-    }, [suggestionOpen])
+    }, [suggestionOpen, slashOpen])
 
     const handleChange = useCallback((value: string) => {
         setText(value)
+
+        // 检测 / 触发（行首）
+        if (isSlashTrigger(value)) {
+            const filter = value.slice(1) // 去掉 / 前缀
+            setSlashFilter(filter)
+            setSlashOpen(true)
+            setSlashActiveIndex(0)
+            // 关闭 @mention 下拉（互斥）
+            setSuggestionOpen(false)
+            setMentionInput(null)
+            return
+        }
+
+        // 关闭 slash 下拉
+        if (slashOpen) {
+            setSlashOpen(false)
+            setSlashFilter('')
+        }
 
         // 检测 @ 触发
         const atIdx = value.lastIndexOf('@')
@@ -181,7 +215,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
         setSuggestionOpen(false)
         setMentionInput(null)
-    }, [workingDir])
+    }, [workingDir, slashOpen])
 
     const handleItemSelect = useCallback((item: FileSuggestionItem) => {
         if (!mentionInput) return
@@ -215,6 +249,12 @@ export function ChatComposer(props: ChatComposerProps) {
         }
     }, [mentionInput, text])
 
+    const handleSlashSelect = useCallback((item: SlashCommandSuggestionItem) => {
+        setText(`${item.value} `)
+        setSlashOpen(false)
+        setSlashFilter('')
+    }, [])
+
     // 原生捕获阶段拦截 Tab，避免 Sender 内部先消费导致焦点跳走
     useEffect(() => {
         const wrapper = wrapperRef.current
@@ -232,8 +272,51 @@ export function ChatComposer(props: ChatComposerProps) {
         return () => wrapper.removeEventListener('keydown', handler, true)
     }, [suggestionOpen, fileEntries, activeIndex, handleItemSelect])
 
+    // Tab 键选中 slash command
+    useEffect(() => {
+        const wrapper = wrapperRef.current
+        if (!wrapper || !slashOpen) return
+
+        const handler = (e: KeyboardEvent) => {
+            if (e.key !== 'Tab') return
+            if (slashCommands.length === 0) return
+            e.preventDefault()
+            e.stopPropagation()
+            handleSlashSelect(slashCommands[slashActiveIndex])
+        }
+
+        wrapper.addEventListener('keydown', handler, true)
+        return () => wrapper.removeEventListener('keydown', handler, true)
+    }, [slashOpen, slashCommands, slashActiveIndex, handleSlashSelect])
+
     // 键盘导航
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        // slash command 下拉导航
+        if (slashOpen && slashCommands.length > 0) {
+            switch (e.key) {
+                case 'ArrowDown':
+                    e.preventDefault()
+                    setSlashActiveIndex(prev => (prev + 1) % slashCommands.length)
+                    break
+                case 'ArrowUp':
+                    e.preventDefault()
+                    setSlashActiveIndex(prev => (prev - 1 + slashCommands.length) % slashCommands.length)
+                    break
+                case 'Enter':
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleSlashSelect(slashCommands[slashActiveIndex])
+                    break
+                case 'Escape':
+                    e.preventDefault()
+                    setSlashOpen(false)
+                    setSlashFilter('')
+                    break
+            }
+            return
+        }
+
+        // @mention 下拉导航
         if (!suggestionOpen || fileEntries.length === 0) return
 
         switch (e.key) {
@@ -256,15 +339,15 @@ export function ChatComposer(props: ChatComposerProps) {
                 setMentionInput(null)
                 break
         }
-    }, [suggestionOpen, fileEntries, activeIndex, handleItemSelect])
+    }, [slashOpen, slashCommands, slashActiveIndex, handleSlashSelect, suggestionOpen, fileEntries, activeIndex, handleItemSelect])
 
     const handleSubmit = useCallback((content: string) => {
         if (!canSend) return
-        if (suggestionOpen) return
+        if (suggestionOpen || slashOpen) return
         onSend(content.trim())
         setText('')
         setAttachments([])
-    }, [canSend, onSend, suggestionOpen])
+    }, [canSend, onSend, suggestionOpen, slashOpen])
 
     const handleAttach = useCallback(() => {
         const input = document.createElement('input')
@@ -426,6 +509,65 @@ export function ChatComposer(props: ChatComposerProps) {
                                 {item.isDirectory && (
                                     <span style={{ color: 'var(--ant-color-text-quaternary)', fontSize: 12 }}>/</span>
                                 )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* slash command 下拉列表 */}
+                {slashOpen && (slashCommands.length > 0 || slashLoading) && (
+                    <div
+                        role="listbox"
+                        style={{
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: 0,
+                            right: 0,
+                            maxHeight: 240,
+                            overflowY: 'auto',
+                            backgroundColor: 'var(--ant-color-bg-elevated)',
+                            borderRadius: 'var(--ant-border-radius)',
+                            boxShadow: 'var(--ant-box-shadow-secondary)',
+                            zIndex: 50,
+                            marginBottom: 4,
+                        }}
+                    >
+                        {slashLoading && slashCommands.length === 0 ? (
+                            <div style={{ padding: '8px 12px', color: 'var(--ant-color-text-tertiary)', fontSize: 14 }}>
+                                {t('common.loading')}
+                            </div>
+                        ) : slashCommands.map((item, index) => (
+                            <div
+                                key={item.value}
+                                role="option"
+                                aria-selected={index === slashActiveIndex}
+                                onClick={() => handleSlashSelect(item)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    backgroundColor: index === slashActiveIndex
+                                        ? 'var(--ant-color-bg-text-hover)'
+                                        : 'transparent',
+                                    fontSize: 14,
+                                }}
+                                onMouseEnter={() => setSlashActiveIndex(index)}
+                            >
+                                <span style={{ fontWeight: 500 }}>{item.label}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    {item.description && (
+                                        <span style={{ color: 'var(--ant-color-text-tertiary)', fontSize: 12 }}>
+                                            {item.description}
+                                        </span>
+                                    )}
+                                    {item.source && (
+                                        <span style={{ color: 'var(--ant-color-text-quaternary)', fontSize: 11 }}>
+                                            {item.source}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>
