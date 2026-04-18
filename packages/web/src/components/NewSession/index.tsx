@@ -125,9 +125,20 @@ export function NewSession(props: NewSessionProps) {
     // 最近路径 & 目录建议
     const recentPaths = useMemo(() => getRecentPaths(machineId), [getRecentPaths, machineId])
     const trimmedDirectory = directory.trim()
-    const { options: directoryOptions, isLoading: isDirectoryLoading } = useDirectoryListing(machineId, directory)
     const currentMachine = machines.find((m: Machine) => m.id === machineId)
     const machineHomeDir = currentMachine?.metadata?.homeDir
+    const { options: directoryOptions, isLoading: isDirectoryLoading } = useDirectoryListing(machineId, directory, machineHomeDir)
+
+    // 目录下拉受控：选中目录后子目录加载完成时自动展开
+    const [directoryOpen, setDirectoryOpen] = useState(false)
+    const pendingOpenRef = useRef(false)
+
+    useEffect(() => {
+        if (pendingOpenRef.current && directoryOptions.length > 0) {
+            pendingOpenRef.current = false
+            setDirectoryOpen(true)
+        }
+    }, [directoryOptions])
 
     // 机器变化
     const handleMachineChange = useCallback((newMachineId: string) => {
@@ -251,11 +262,19 @@ export function NewSession(props: NewSessionProps) {
 
             <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />{t('newSession.workDirectory')}</>}>
                 <AutoComplete
+                    open={directoryOpen && autoCompleteOptions.length > 0}
+                    onOpenChange={setDirectoryOpen}
                     options={autoCompleteOptions}
                     placeholder={t('newSession.directoryPlaceholder')}
                     value={directory}
-                    onChange={(value) => setDirectory(value)}
-                    onSelect={(value) => setDirectory(value)}
+                    onChange={(value) => {
+                        setDirectory(value)
+                        pendingOpenRef.current = false
+                    }}
+                    onSelect={(value) => {
+                        setDirectory(value)
+                        pendingOpenRef.current = true
+                    }}
                     defaultActiveFirstOption
                     suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}
                     disabled={isFormDisabled}

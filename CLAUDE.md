@@ -15,6 +15,7 @@ Mobi — Claude Code 远程控制工具，通过浏览器远程与本地 Claude 
 
 ## 全局约束
 
+- **架构优先**: 接手任务时先查阅 `docs/architecture/` 中相关模块的架构文档，再深入代码细节
 - **运行时**: bun（不是 npm/node）
 - **TypeScript**: 严格模式
 - **注释**: 中文
@@ -41,6 +42,10 @@ bun run test         # 测试
 bun run lint         # ESLint 检查
 bun run lint:deps    # 依赖方向检查
 ```
+
+## 测试
+
+- **端到端测试**: 必须使用 `/run-tests` skill 启动 E2E 环境
 
 ## 文档索引
 

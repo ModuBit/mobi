@@ -48,16 +48,34 @@ export function parsePrefixInput(input: string): { parentPath: string; prefix: s
 }
 
 /**
+ * 检查输入是否精确匹配缓存中的某个目录（即输入了一个完整有效的目录路径）
+ */
+function isExactDirectoryMatch(
+    input: string,
+    cache: Map<string, DirectoryOption[]>,
+): boolean {
+    const parsed = parsePrefixInput(input)
+    if (!parsed) return false
+    const { parentPath, prefix } = parsed
+    const parentEntries = cache.get(parentPath)
+    if (!parentEntries) return false
+    return parentEntries.some((e) => e.label === prefix)
+}
+
+/**
  * 目录列表缓存 + 本地过滤
  *
- * - 仅当路径以 / 结尾时请求 API（如 /home/admin/）
+ * - 路径以 / 结尾时请求 API（如 /home/admin/）
+ * - 输入精确匹配缓存中的目录时也请求 API，展示其子目录
+ * - homeDir 视为已知目录，直接请求子目录
  * - 请求结果按父路径缓存
  * - 输入前缀时从缓存本地过滤（如 /home/admin/git → 从 /home/admin 缓存中过滤 git）
  * - 隐藏目录默认不展示，仅当前缀以 . 开头时展示
  */
 export function useDirectoryListing(
     machineId: string | null,
-    directory: string
+    directory: string,
+    homeDir?: string,
 ): {
     options: DirectoryOption[]
     isLoading: boolean
@@ -126,8 +144,15 @@ export function useDirectoryListing(
             return
         }
 
-        if (directory.endsWith('/')) {
-            const parentPath = directory.slice(0, -1) || '/'
+        // 判断是否需要请求子目录：以 / 结尾，或精确匹配缓存目录，或等于 homeDir
+        const shouldFetchChildren = directory.endsWith('/')
+            || isExactDirectoryMatch(directory, cacheRef.current)
+            || (Boolean(homeDir) && directory === homeDir)
+
+        if (shouldFetchChildren) {
+            const parentPath = directory.endsWith('/')
+                ? (directory.slice(0, -1) || '/')
+                : directory
 
             const cached = cacheRef.current.get(parentPath)
             if (cached) {
