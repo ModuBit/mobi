@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { Button, Tooltip, Space } from 'antd'
 import { PaperClipOutlined, SettingOutlined, StopOutlined, PlayCircleOutlined, SwapOutlined } from '@ant-design/icons'
-import { Sender } from '@ant-design/x'
+import { Sender, Suggestion } from '@ant-design/x'
+import type { SlotConfigType } from '@ant-design/x/es/sender'
+import type { SuggestionItem } from '@ant-design/x/es/suggestion'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, PermissionMode, Session } from '@mobi/shared'
 import {
@@ -25,6 +27,8 @@ import {
 } from '@mobi/shared'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
+import { useSessionFileListing } from './useSessionFileListing'
+import type { FileListingInput } from './useSessionFileListing'
 import type { FileAttachment } from '@/lib/fileAttachments'
 import { createFileAttachment } from '@/lib/fileAttachments'
 
@@ -51,6 +55,8 @@ interface ChatComposerProps {
     sessionId?: string
     /** 会话运行模式 */
     mode?: Session['mode']
+    /** 会话工作目录 */
+    workingDir?: string
     /** 额外的底部按钮（渲染在 Sender footer 区域） */
     extraLeftButtons?: React.ReactNode
     /** 权限模式变更回调 */
@@ -72,6 +78,18 @@ interface ChatComposerProps {
 }
 
 /**
+ * 解析 @ 引用的完整路径
+ */
+function resolveMentionPath(mentionInput: string, selectedName: string, workingDir: string): string {
+    const lastSlash = mentionInput.lastIndexOf('/')
+    const dirPart = lastSlash !== -1 ? mentionInput.slice(0, lastSlash + 1) : ''
+    const relativePath = dirPart + selectedName
+
+    if (relativePath.startsWith('/')) return relativePath
+    return `${workingDir}/${relativePath}`.replace(/\/+/g, '/')
+}
+
+/**
  * 聊天输入组件
  * 基于 antd X 的 Sender 组件，支持多行输入、附件上传
  */
@@ -90,6 +108,7 @@ export function ChatComposer(props: ChatComposerProps) {
         agentFlavor,
         sessionId,
         mode,
+        workingDir,
         extraLeftButtons,
         onPermissionModeChange,
         onSend,
@@ -103,6 +122,16 @@ export function ChatComposer(props: ChatComposerProps) {
     // 输入状态
     const [text, setText] = useState('')
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
+
+    // @ 文件引用状态
+    const [suggestionOpen, setSuggestionOpen] = useState(false)
+    const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
+    const senderRef = useRef<any>(null)
+
+    const { items: fileItems } = useSessionFileListing(
+        suggestionOpen ? (sessionId ?? null) : null,
+        mentionInput,
+    )
 
     // 计算是否禁用控制
     const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
@@ -122,7 +151,74 @@ export function ChatComposer(props: ChatComposerProps) {
     // 显示设置按钮
     const showSettingsButton = Boolean(onPermissionModeChange && permissionModeOptions.length > 0)
 
-    const handleSubmit = useCallback((content: string) => {
+    const handleChange = useCallback((value: string) => {
+        setText(value)
+
+        // 检测 @ 触发
+        const atIdx = value.lastIndexOf('@')
+        if (atIdx !== -1) {
+            const afterAt = value.slice(atIdx + 1)
+            // @ 后面只包含路径字符时才触发
+            if (/^[a-zA-Z0-9.\/_\-]*$/.test(afterAt)) {
+                setMentionInput({
+                    mentionInput: afterAt,
+                    workingDir: workingDir ?? '',
+                })
+                if (!suggestionOpen) {
+                    setSuggestionOpen(true)
+                }
+                return
+            }
+        }
+
+        setSuggestionOpen(false)
+        setMentionInput(null)
+    }, [suggestionOpen, workingDir])
+
+    const handleFileSelect = useCallback((value: string, info: SuggestionItem[]) => {
+        if (!mentionInput || !senderRef.current) return
+
+        const selectedItem = info[info.length - 1]
+        if (!selectedItem) return
+
+        const isDir = Boolean((selectedItem as any).isDirectory)
+
+        if (isDir) {
+            // 目录：更新前缀继续浏览
+            const currentAfterAt = mentionInput.mentionInput
+            const lastSlash = currentAfterAt.lastIndexOf('/')
+            const dirPart = lastSlash !== -1 ? currentAfterAt.slice(0, lastSlash + 1) : ''
+            const newInput = dirPart + value + '/'
+
+            const atIdx = text.lastIndexOf('@')
+            if (atIdx !== -1) {
+                setText(text.slice(0, atIdx + 1) + newInput)
+            }
+            setMentionInput({
+                mentionInput: newInput,
+                workingDir: mentionInput.workingDir,
+            })
+        } else {
+            // 文件：插入词槽，关闭 Suggestion
+            const fullPath = resolveMentionPath(mentionInput.mentionInput, value, mentionInput.workingDir)
+
+            const atIdx = text.lastIndexOf('@')
+            const beforeAt = atIdx !== -1 ? text.slice(0, atIdx) : text
+            setText(beforeAt)
+
+            senderRef.current.insert([{
+                type: 'tag' as const,
+                key: `file-${fullPath}-${Date.now()}`,
+                props: { label: fullPath, value: fullPath },
+                formatResult: () => `@${fullPath}`,
+            }])
+
+            setSuggestionOpen(false)
+            setMentionInput(null)
+        }
+    }, [mentionInput, text])
+
+    const handleSubmit = useCallback((content: string, slotConfig?: SlotConfigType[]) => {
         if (!canSend) return
         onSend(content.trim())
         setText('')
@@ -171,74 +267,85 @@ export function ChatComposer(props: ChatComposerProps) {
 
             {/* Sender 输入组件 */}
             <div style={{ position: 'relative' }}>
-                <Sender
-                    value={text}
-                    onChange={setText}
-                    onSubmit={handleSubmit}
-                    onCancel={onAbort}
-                    placeholder={t('composer.placeholder')}
-                    disabled={controlsDisabled || showInactiveCover || showLocalModeCover}
-                    loading={thinking}
-                    autoSize={{ minRows: 1, maxRows: 5 }}
-                    header={
-                        hasAttachments ? (
-                            <AttachmentList
-                                attachments={attachments}
-                                onRemove={handleRemoveAttachment}
-                            />
-                        ) : null
-                    }
-                    suffix={false}
-                    footer={(oriNode) => (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <Space size={4}>
-                                {/* 附件按钮 */}
-                                <Tooltip title={t('composer.attach')}>
-                                    <Button
-                                        type="text"
-                                        size="small"
-                                        icon={<PaperClipOutlined />}
-                                        onClick={handleAttach}
-                                        disabled={controlsDisabled || showLocalModeCover}
-                                        style={{ borderRadius: '50%' }}
+                <Suggestion
+                    open={suggestionOpen}
+                    onOpenChange={setSuggestionOpen}
+                    items={fileItems}
+                    onSelect={handleFileSelect}
+                >
+                    {({ onKeyDown }) => (
+                        <Sender
+                            ref={senderRef}
+                            value={text}
+                            onChange={handleChange}
+                            onSubmit={handleSubmit}
+                            onCancel={onAbort}
+                            placeholder={t('composer.placeholder')}
+                            disabled={controlsDisabled || showInactiveCover || showLocalModeCover}
+                            loading={thinking}
+                            autoSize={{ minRows: 1, maxRows: 5 }}
+                            header={
+                                hasAttachments ? (
+                                    <AttachmentList
+                                        attachments={attachments}
+                                        onRemove={handleRemoveAttachment}
                                     />
-                                </Tooltip>
+                                ) : null
+                            }
+                            suffix={false}
+                            onKeyDown={onKeyDown}
+                            footer={(oriNode) => (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Space size={4}>
+                                        {/* 附件按钮 */}
+                                        <Tooltip title={t('composer.attach')}>
+                                            <Button
+                                                type="text"
+                                                size="small"
+                                                icon={<PaperClipOutlined />}
+                                                onClick={handleAttach}
+                                                disabled={controlsDisabled || showLocalModeCover}
+                                                style={{ borderRadius: '50%' }}
+                                            />
+                                        </Tooltip>
 
-                                {/* 设置按钮 */}
-                                {showSettingsButton && (
-                                    <Tooltip title={t('composer.settings')}>
-                                        <Button
-                                            type="text"
-                                            size="small"
-                                            icon={<SettingOutlined />}
-                                            disabled={controlsDisabled || showLocalModeCover}
-                                            style={{ borderRadius: '50%' }}
-                                        />
-                                    </Tooltip>
-                                )}
+                                        {/* 设置按钮 */}
+                                        {showSettingsButton && (
+                                            <Tooltip title={t('composer.settings')}>
+                                                <Button
+                                                    type="text"
+                                                    size="small"
+                                                    icon={<SettingOutlined />}
+                                                    disabled={controlsDisabled || showLocalModeCover}
+                                                    style={{ borderRadius: '50%' }}
+                                                />
+                                            </Tooltip>
+                                        )}
 
-                                {/* 中断按钮 */}
-                                {thinking && (
-                                    <Tooltip title={t('composer.abort')}>
-                                        <Button
-                                            type="text"
-                                            size="small"
-                                            icon={<StopOutlined />}
-                                            onClick={onAbort}
-                                            style={{ borderRadius: '50%', color: 'var(--ant-color-error)' }}
-                                        />
-                                    </Tooltip>
-                                )}
+                                        {/* 中断按钮 */}
+                                        {thinking && (
+                                            <Tooltip title={t('composer.abort')}>
+                                                <Button
+                                                    type="text"
+                                                    size="small"
+                                                    icon={<StopOutlined />}
+                                                    onClick={onAbort}
+                                                    style={{ borderRadius: '50%', color: 'var(--ant-color-error)' }}
+                                                />
+                                            </Tooltip>
+                                        )}
 
-                                {/* 额外按钮（视图切换等） */}
-                                {extraLeftButtons}
-                            </Space>
+                                        {/* 额外按钮（视图切换等） */}
+                                        {extraLeftButtons}
+                                    </Space>
 
-                            {/* 发送按钮 */}
-                            {showLocalModeCover ? null : oriNode}
-                        </div>
+                                    {/* 发送按钮 */}
+                                    {showLocalModeCover ? null : oriNode}
+                                </div>
+                            )}
+                        />
                     )}
-                />
+                </Suggestion>
 
                 {/* 未激活覆盖层 */}
                 {showInactiveCover && (

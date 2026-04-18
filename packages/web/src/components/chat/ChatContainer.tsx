@@ -267,6 +267,7 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
                 contextSize={undefined} // TODO: 从消息中计算上下文大小
                 agentFlavor={agentFlavor}
                 mode={session?.mode}
+                workingDir={session?.metadata?.path}
                 onPermissionModeChange={handlePermissionModeChange}
                 onSend={handleSend}
                 onAbort={handleAbort}

@@ -55,6 +55,7 @@ function toSuggestionItems(entries: CachedEntry[]): SuggestionItem[] {
         label: e.name,
         value: e.name,
         icon: e.type === 'directory' ? <FolderOutlined /> : <FileOutlined />,
+        isDirectory: e.type === 'directory',
     }))
 }
 
