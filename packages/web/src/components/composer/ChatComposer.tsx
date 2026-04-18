@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Tooltip, Space } from 'antd'
-import { PaperClipOutlined, SettingOutlined, StopOutlined, PlayCircleOutlined, SwapOutlined } from '@ant-design/icons'
-import { Sender, Suggestion } from '@ant-design/x'
-import type { SuggestionItem } from '@ant-design/x/es/suggestion'
+import { PaperClipOutlined, SettingOutlined, StopOutlined, PlayCircleOutlined, SwapOutlined, FolderOutlined, FileOutlined } from '@ant-design/icons'
+import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, PermissionMode, Session } from '@mobi/shared'
 import {
@@ -77,20 +76,23 @@ interface ChatComposerProps {
 }
 
 /**
- * 解析 @ 引用的完整路径
+ * 拼接 @ 引用路径（保留用户输入的相对形式）
  */
-function resolveMentionPath(mentionInput: string, selectedName: string, workingDir: string): string {
+function buildMentionPath(mentionInput: string, selectedName: string): string {
     const lastSlash = mentionInput.lastIndexOf('/')
     const dirPart = lastSlash !== -1 ? mentionInput.slice(0, lastSlash + 1) : ''
-    const relativePath = dirPart + selectedName
+    return dirPart + selectedName
+}
 
-    if (relativePath.startsWith('/')) return relativePath
-    return `${workingDir}/${relativePath}`.replace(/\/+/g, '/')
+interface FileItem {
+    label: string
+    value: string
+    isDirectory: boolean
 }
 
 /**
  * 聊天输入组件
- * 基于 antd X 的 Sender 组件，支持多行输入、附件上传
+ * 基于 antd X 的 Sender 组件，支持多行输入、附件上传、@文件引用
  */
 export function ChatComposer(props: ChatComposerProps) {
     const { t } = useTranslation()
@@ -125,11 +127,22 @@ export function ChatComposer(props: ChatComposerProps) {
     // @ 文件引用状态
     const [suggestionOpen, setSuggestionOpen] = useState(false)
     const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
+    const [activeIndex, setActiveIndex] = useState(0)
+    const wrapperRef = useRef<HTMLDivElement>(null)
 
     const { items: fileItems } = useSessionFileListing(
         suggestionOpen ? (sessionId ?? null) : null,
         mentionInput,
     )
+
+    // 提取带 isDirectory 标记的条目
+    const fileEntries: FileItem[] = useMemo(() =>
+        fileItems.map(item => ({
+            label: item.label as string,
+            value: item.value as string,
+            isDirectory: Boolean((item as any).isDirectory),
+        })),
+    [fileItems])
 
     // 计算是否禁用控制
     const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
@@ -149,6 +162,19 @@ export function ChatComposer(props: ChatComposerProps) {
     // 显示设置按钮
     const showSettingsButton = Boolean(onPermissionModeChange && permissionModeOptions.length > 0)
 
+    // 点击外部关闭下拉
+    useEffect(() => {
+        if (!suggestionOpen) return
+        const handler = (e: MouseEvent) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+                setSuggestionOpen(false)
+                setMentionInput(null)
+            }
+        }
+        document.addEventListener('mousedown', handler)
+        return () => document.removeEventListener('mousedown', handler)
+    }, [suggestionOpen])
+
     const handleChange = useCallback((value: string) => {
         setText(value)
 
@@ -163,6 +189,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     workingDir: workingDir ?? '',
                 })
                 setSuggestionOpen(true)
+                setActiveIndex(0)
                 return
             }
         }
@@ -171,20 +198,15 @@ export function ChatComposer(props: ChatComposerProps) {
         setMentionInput(null)
     }, [workingDir])
 
-    const handleFileSelect = useCallback((value: string, info: SuggestionItem[]) => {
+    const handleItemSelect = useCallback((item: FileItem) => {
         if (!mentionInput) return
 
-        const selectedItem = info[info.length - 1]
-        if (!selectedItem) return
-
-        const isDir = Boolean((selectedItem as any).isDirectory)
-
-        if (isDir) {
+        if (item.isDirectory) {
             // 目录：更新前缀继续浏览
             const currentAfterAt = mentionInput.mentionInput
             const lastSlash = currentAfterAt.lastIndexOf('/')
             const dirPart = lastSlash !== -1 ? currentAfterAt.slice(0, lastSlash + 1) : ''
-            const newInput = dirPart + value + '/'
+            const newInput = dirPart + item.value + '/'
 
             const atIdx = text.lastIndexOf('@')
             if (atIdx !== -1) {
@@ -194,27 +216,70 @@ export function ChatComposer(props: ChatComposerProps) {
                 mentionInput: newInput,
                 workingDir: mentionInput.workingDir,
             })
-            // 保持弹窗打开，等列表加载后重新显示
-            setTimeout(() => setSuggestionOpen(true), 0)
+            setActiveIndex(0)
         } else {
-            // 文件：用纯文本替换 @xxx，关闭 Suggestion
-            const fullPath = resolveMentionPath(mentionInput.mentionInput, value, mentionInput.workingDir)
+            // 文件：用纯文本替换 @xxx，关闭下拉
+            const mentionPath = buildMentionPath(mentionInput.mentionInput, item.value)
 
             const atIdx = text.lastIndexOf('@')
             const beforeAt = atIdx !== -1 ? text.slice(0, atIdx) : text
-            setText(`${beforeAt}@${fullPath} `)
+            setText(`${beforeAt}@${mentionPath} `)
 
             setSuggestionOpen(false)
             setMentionInput(null)
         }
     }, [mentionInput, text])
 
+    // 原生捕获阶段拦截 Tab，避免 Sender 内部先消费导致焦点跳走
+    useEffect(() => {
+        const wrapper = wrapperRef.current
+        if (!wrapper || !suggestionOpen) return
+
+        const handler = (e: KeyboardEvent) => {
+            if (e.key !== 'Tab') return
+            if (fileEntries.length === 0) return
+            e.preventDefault()
+            e.stopPropagation()
+            handleItemSelect(fileEntries[activeIndex])
+        }
+
+        wrapper.addEventListener('keydown', handler, true)
+        return () => wrapper.removeEventListener('keydown', handler, true)
+    }, [suggestionOpen, fileEntries, activeIndex, handleItemSelect])
+
+    // 键盘导航
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (!suggestionOpen || fileEntries.length === 0) return
+
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault()
+                setActiveIndex(prev => (prev + 1) % fileEntries.length)
+                break
+            case 'ArrowUp':
+                e.preventDefault()
+                setActiveIndex(prev => (prev - 1 + fileEntries.length) % fileEntries.length)
+                break
+            case 'Enter':
+                e.preventDefault()
+                e.stopPropagation()
+                handleItemSelect(fileEntries[activeIndex])
+                break
+            case 'Escape':
+                e.preventDefault()
+                setSuggestionOpen(false)
+                setMentionInput(null)
+                break
+        }
+    }, [suggestionOpen, fileEntries, activeIndex, handleItemSelect])
+
     const handleSubmit = useCallback((content: string) => {
         if (!canSend) return
+        if (suggestionOpen) return
         onSend(content.trim())
         setText('')
         setAttachments([])
-    }, [canSend, onSend])
+    }, [canSend, onSend, suggestionOpen])
 
     const handleAttach = useCallback(() => {
         const input = document.createElement('input')
@@ -257,87 +322,122 @@ export function ChatComposer(props: ChatComposerProps) {
             />
 
             {/* Sender 输入组件 */}
-            <div style={{ position: 'relative' }}>
-                <Suggestion
-                    open={suggestionOpen}
-                    onOpenChange={(open) => {
-                        setSuggestionOpen(open)
-                    }}
-                    items={fileItems}
-                    onSelect={handleFileSelect}
-                >
-                    {({ onKeyDown }) => (
-                        <Sender
-                            value={text}
-                            onChange={handleChange}
-                            onSubmit={handleSubmit}
-                            onCancel={onAbort}
-                            placeholder={t('composer.placeholder')}
-                            disabled={controlsDisabled || showInactiveCover || showLocalModeCover}
-                            loading={thinking}
-                            autoSize={{ minRows: 1, maxRows: 5 }}
-                            header={
-                                hasAttachments ? (
-                                    <AttachmentList
-                                        attachments={attachments}
-                                        onRemove={handleRemoveAttachment}
+            <div ref={wrapperRef} style={{ position: 'relative' }}>
+                <Sender
+                    value={text}
+                    onChange={handleChange}
+                    onSubmit={handleSubmit}
+                    onCancel={onAbort}
+                    placeholder={t('composer.placeholder')}
+                    disabled={controlsDisabled || showInactiveCover || showLocalModeCover}
+                    loading={thinking}
+                    autoSize={{ minRows: 1, maxRows: 5 }}
+                    onKeyDown={handleKeyDown}
+                    header={
+                        hasAttachments ? (
+                            <AttachmentList
+                                attachments={attachments}
+                                onRemove={handleRemoveAttachment}
+                            />
+                        ) : null
+                    }
+                    suffix={false}
+                    footer={(oriNode) => (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Space size={4}>
+                                {/* 附件按钮 */}
+                                <Tooltip title={t('composer.attach')}>
+                                    <Button
+                                        type="text"
+                                        size="small"
+                                        icon={<PaperClipOutlined />}
+                                        onClick={handleAttach}
+                                        disabled={controlsDisabled || showLocalModeCover}
+                                        style={{ borderRadius: '50%' }}
                                     />
-                                ) : null
-                            }
-                            suffix={false}
-                            onKeyDown={onKeyDown}
-                            footer={(oriNode) => (
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <Space size={4}>
-                                        {/* 附件按钮 */}
-                                        <Tooltip title={t('composer.attach')}>
-                                            <Button
-                                                type="text"
-                                                size="small"
-                                                icon={<PaperClipOutlined />}
-                                                onClick={handleAttach}
-                                                disabled={controlsDisabled || showLocalModeCover}
-                                                style={{ borderRadius: '50%' }}
-                                            />
-                                        </Tooltip>
+                                </Tooltip>
 
-                                        {/* 设置按钮 */}
-                                        {showSettingsButton && (
-                                            <Tooltip title={t('composer.settings')}>
-                                                <Button
-                                                    type="text"
-                                                    size="small"
-                                                    icon={<SettingOutlined />}
-                                                    disabled={controlsDisabled || showLocalModeCover}
-                                                    style={{ borderRadius: '50%' }}
-                                                />
-                                            </Tooltip>
-                                        )}
+                                {/* 设置按钮 */}
+                                {showSettingsButton && (
+                                    <Tooltip title={t('composer.settings')}>
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            icon={<SettingOutlined />}
+                                            disabled={controlsDisabled || showLocalModeCover}
+                                            style={{ borderRadius: '50%' }}
+                                        />
+                                    </Tooltip>
+                                )}
 
-                                        {/* 中断按钮 */}
-                                        {thinking && (
-                                            <Tooltip title={t('composer.abort')}>
-                                                <Button
-                                                    type="text"
-                                                    size="small"
-                                                    icon={<StopOutlined />}
-                                                    onClick={onAbort}
-                                                    style={{ borderRadius: '50%', color: 'var(--ant-color-error)' }}
-                                                />
-                                            </Tooltip>
-                                        )}
+                                {/* 中断按钮 */}
+                                {thinking && (
+                                    <Tooltip title={t('composer.abort')}>
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            icon={<StopOutlined />}
+                                            onClick={onAbort}
+                                            style={{ borderRadius: '50%', color: 'var(--ant-color-error)' }}
+                                        />
+                                    </Tooltip>
+                                )}
 
-                                        {/* 额外按钮（视图切换等） */}
-                                        {extraLeftButtons}
-                                    </Space>
+                                {/* 额外按钮（视图切换等） */}
+                                {extraLeftButtons}
+                            </Space>
 
-                                    {/* 发送按钮 */}
-                                    {showLocalModeCover ? null : oriNode}
-                                </div>
-                            )}
-                        />
+                            {/* 发送按钮 */}
+                            {showLocalModeCover ? null : oriNode}
+                        </div>
                     )}
-                </Suggestion>
+                />
+
+                {/* @ 文件引用下拉列表 */}
+                {suggestionOpen && fileEntries.length > 0 && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: 0,
+                            right: 0,
+                            maxHeight: 240,
+                            overflowY: 'auto',
+                            backgroundColor: 'var(--ant-color-bg-elevated)',
+                            borderRadius: 'var(--ant-border-radius)',
+                            boxShadow: 'var(--ant-box-shadow-secondary)',
+                            zIndex: 50,
+                            marginBottom: 4,
+                        }}
+                    >
+                        {fileEntries.map((item, index) => (
+                            <div
+                                key={item.value}
+                                onClick={() => handleItemSelect(item)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    backgroundColor: index === activeIndex
+                                        ? 'var(--ant-color-bg-text-hover)'
+                                        : 'transparent',
+                                    fontSize: 14,
+                                }}
+                                onMouseEnter={() => setActiveIndex(index)}
+                            >
+                                {item.isDirectory
+                                    ? <FolderOutlined style={{ color: 'var(--ant-color-text-tertiary)' }} />
+                                    : <FileOutlined style={{ color: 'var(--ant-color-text-tertiary)' }} />}
+                                <span>{item.label}</span>
+                                {item.isDirectory && (
+                                    <span style={{ color: 'var(--ant-color-text-quaternary)', fontSize: 12 }}>/</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {/* 未激活覆盖层 */}
                 {showInactiveCover && (
