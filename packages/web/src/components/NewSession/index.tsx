@@ -37,7 +37,7 @@ import type { Machine } from '@/api/types'
 import { useSessions } from '@/hooks/queries/useSessions'
 import { useMachines } from '@/hooks/queries/useMachines'
 import { useSpawnSession } from '@/hooks/mutations/useSpawnSession'
-import { useDirectoryListing, parsePrefixInput } from './useDirectoryListing'
+import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirectoryListing'
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from './types'
 import { MODEL_OPTIONS } from './types'
@@ -127,7 +127,7 @@ export function NewSession(props: NewSessionProps) {
     const trimmedDirectory = directory.trim()
     const currentMachine = machines.find((m: Machine) => m.id === machineId)
     const machineHomeDir = currentMachine?.metadata?.homeDir
-    const { options: directoryOptions, isLoading: isDirectoryLoading } = useDirectoryListing(machineId, directory, machineHomeDir)
+    const { options: directoryOptions, isLoading: isDirectoryLoading } = useMachineDirectoryListing(machineId, directory, machineHomeDir)
 
     // 目录下拉受控：选中目录后子目录加载完成时自动展开
     const [directoryOpen, setDirectoryOpen] = useState(false)
