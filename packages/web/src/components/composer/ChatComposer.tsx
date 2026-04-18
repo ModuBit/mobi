@@ -265,7 +265,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         if (!open && mentionInput) return
                         setSuggestionOpen(open)
                     }}
-                    items={fileItems}
+                    items={() => fileItems}
                     onSelect={handleFileSelect}
                 >
                     {({ onKeyDown }) => (
