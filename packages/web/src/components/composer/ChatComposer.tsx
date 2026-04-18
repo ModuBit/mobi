@@ -26,7 +26,7 @@ import {
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import { useSessionFileListing } from './useSessionFileListing'
-import type { FileListingInput } from './useSessionFileListing'
+import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
 import type { FileAttachment } from '@/lib/fileAttachments'
 import { createFileAttachment } from '@/lib/fileAttachments'
 
@@ -84,12 +84,6 @@ function buildMentionPath(mentionInput: string, selectedName: string): string {
     return dirPart + selectedName
 }
 
-interface FileItem {
-    label: string
-    value: string
-    isDirectory: boolean
-}
-
 /**
  * 聊天输入组件
  * 基于 antd X 的 Sender 组件，支持多行输入、附件上传、@文件引用
@@ -130,19 +124,10 @@ export function ChatComposer(props: ChatComposerProps) {
     const [activeIndex, setActiveIndex] = useState(0)
     const wrapperRef = useRef<HTMLDivElement>(null)
 
-    const { items: fileItems } = useSessionFileListing(
+    const { items: fileEntries, isLoading: fileListLoading } = useSessionFileListing(
         suggestionOpen ? (sessionId ?? null) : null,
         mentionInput,
     )
-
-    // 提取带 isDirectory 标记的条目
-    const fileEntries: FileItem[] = useMemo(() =>
-        fileItems.map(item => ({
-            label: item.label as string,
-            value: item.value as string,
-            isDirectory: Boolean((item as any).isDirectory),
-        })),
-    [fileItems])
 
     // 计算是否禁用控制
     const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
@@ -198,7 +183,7 @@ export function ChatComposer(props: ChatComposerProps) {
         setMentionInput(null)
     }, [workingDir])
 
-    const handleItemSelect = useCallback((item: FileItem) => {
+    const handleItemSelect = useCallback((item: FileSuggestionItem) => {
         if (!mentionInput) return
 
         if (item.isDirectory) {
@@ -394,8 +379,9 @@ export function ChatComposer(props: ChatComposerProps) {
                 />
 
                 {/* @ 文件引用下拉列表 */}
-                {suggestionOpen && fileEntries.length > 0 && (
+                {suggestionOpen && (fileEntries.length > 0 || fileListLoading) && (
                     <div
+                        role="listbox"
                         style={{
                             position: 'absolute',
                             bottom: '100%',
@@ -410,9 +396,15 @@ export function ChatComposer(props: ChatComposerProps) {
                             marginBottom: 4,
                         }}
                     >
-                        {fileEntries.map((item, index) => (
+                        {fileListLoading && fileEntries.length === 0 ? (
+                            <div style={{ padding: '8px 12px', color: 'var(--ant-color-text-tertiary)', fontSize: 14 }}>
+                                {t('common.loading')}
+                            </div>
+                        ) : fileEntries.map((item, index) => (
                             <div
                                 key={item.value}
+                                role="option"
+                                aria-selected={index === activeIndex}
                                 onClick={() => handleItemSelect(item)}
                                 style={{
                                     display: 'flex',

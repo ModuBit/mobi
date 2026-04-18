@@ -15,8 +15,6 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { SuggestionItem } from '@ant-design/x/es/suggestion'
-import { FolderOutlined, FileOutlined } from '@ant-design/icons'
 import { useMobiApi } from '@/api/client'
 import { useAuthStore } from '@/stores/authStore'
 import type { ListFilesResponse } from '@/api/types'
@@ -26,6 +24,12 @@ export interface FileListingInput {
     mentionInput: string
     /** session 工作目录，用于解析相对路径 */
     workingDir: string
+}
+
+export interface FileSuggestionItem {
+    label: string
+    value: string
+    isDirectory: boolean
 }
 
 interface CachedEntry {
@@ -50,13 +54,18 @@ function resolveListPath(input: string): { listPath: string; prefix: string } {
     return { listPath: dirPart, prefix: prefixPart }
 }
 
-function toSuggestionItems(entries: CachedEntry[]): SuggestionItem[] {
+function toSuggestionItems(entries: CachedEntry[]): FileSuggestionItem[] {
     return entries.map(e => ({
         label: e.name,
         value: e.name,
-        icon: e.type === 'directory' ? <FolderOutlined /> : <FileOutlined />,
         isDirectory: e.type === 'directory',
     }))
+}
+
+function filterByPrefix(entries: CachedEntry[], prefix: string): CachedEntry[] {
+    if (!prefix) return entries
+    const lower = prefix.toLowerCase()
+    return entries.filter(e => e.name.toLowerCase().startsWith(lower))
 }
 
 /**
@@ -67,13 +76,13 @@ export function useSessionFileListing(
     sessionId: string | null,
     input: FileListingInput | null,
 ): {
-    items: SuggestionItem[]
+    items: FileSuggestionItem[]
     isLoading: boolean
 } {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
 
-    const [items, setItems] = useState<SuggestionItem[]>([])
+    const [items, setItems] = useState<FileSuggestionItem[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const abortRef = useRef<AbortController | null>(null)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -112,11 +121,7 @@ export function useSessionFileListing(
             cacheRef.current.set(listPath, entries)
 
             // 应用当前前缀过滤
-            const prefix = currentPrefixRef.current
-            const filtered = prefix
-                ? entries.filter(e => e.name.toLowerCase().startsWith(prefix.toLowerCase()))
-                : entries
-            setItems(toSuggestionItems(filtered))
+            setItems(toSuggestionItems(filterByPrefix(entries, currentPrefixRef.current)))
         } catch {
             if (!controller.signal.aborted) {
                 setItems([])
@@ -146,10 +151,7 @@ export function useSessionFileListing(
         // 尝试从缓存中过滤
         const cached = cacheRef.current.get(listPath)
         if (cached) {
-            const filtered = prefix
-                ? cached.filter(e => e.name.toLowerCase().startsWith(prefix.toLowerCase()))
-                : cached
-            setItems(toSuggestionItems(filtered))
+            setItems(toSuggestionItems(filterByPrefix(cached, prefix)))
             return
         }
 
