@@ -85,6 +85,7 @@ export function mergeCommandsAndSkills(
 
 /**
  * 过滤命令列表（不区分大小写的 contains 匹配）
+ * @param filter 不含 / 前缀的过滤文本
  */
 export function filterCommands(
     items: SlashCommandSuggestionItem[],
@@ -92,9 +93,5 @@ export function filterCommands(
 ): SlashCommandSuggestionItem[] {
     if (!filter) return items
     const lower = filter.toLowerCase()
-    return items.filter(
-        (item) =>
-            item.label.toLowerCase().includes(lower) ||
-            item.value.toLowerCase().includes(lower),
-    )
+    return items.filter(item => item.label.toLowerCase().includes(lower))
 }

@@ -30,7 +30,7 @@ import {
  *
  * @param sessionId 会话 ID
  * @param isOpen 下拉是否打开（关闭时禁用数据获取）
- * @param filterText 过滤文本
+ * @param filterText 过滤文本（不含 / 前缀）
  */
 export function useSlashCommandSuggestion(
     sessionId: string | null,
