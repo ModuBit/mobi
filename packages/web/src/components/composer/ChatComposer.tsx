@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Button, Tooltip, Space } from 'antd'
 import { PaperClipOutlined, SettingOutlined, StopOutlined, PlayCircleOutlined, SwapOutlined } from '@ant-design/icons'
 import { Sender, Suggestion } from '@ant-design/x'
-import type { SlotConfigType } from '@ant-design/x/es/sender'
 import type { SuggestionItem } from '@ant-design/x/es/suggestion'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, PermissionMode, Session } from '@mobi/shared'
@@ -126,7 +125,6 @@ export function ChatComposer(props: ChatComposerProps) {
     // @ 文件引用状态
     const [suggestionOpen, setSuggestionOpen] = useState(false)
     const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
-    const senderRef = useRef<any>(null)
 
     const { items: fileItems } = useSessionFileListing(
         suggestionOpen ? (sessionId ?? null) : null,
@@ -164,19 +162,17 @@ export function ChatComposer(props: ChatComposerProps) {
                     mentionInput: afterAt,
                     workingDir: workingDir ?? '',
                 })
-                if (!suggestionOpen) {
-                    setSuggestionOpen(true)
-                }
+                setSuggestionOpen(true)
                 return
             }
         }
 
         setSuggestionOpen(false)
         setMentionInput(null)
-    }, [suggestionOpen, workingDir])
+    }, [workingDir])
 
     const handleFileSelect = useCallback((value: string, info: SuggestionItem[]) => {
-        if (!mentionInput || !senderRef.current) return
+        if (!mentionInput) return
 
         const selectedItem = info[info.length - 1]
         if (!selectedItem) return
@@ -198,27 +194,22 @@ export function ChatComposer(props: ChatComposerProps) {
                 mentionInput: newInput,
                 workingDir: mentionInput.workingDir,
             })
+            // 保持弹窗打开，等列表加载后重新显示
+            setTimeout(() => setSuggestionOpen(true), 0)
         } else {
-            // 文件：插入词槽，关闭 Suggestion
+            // 文件：用纯文本替换 @xxx，关闭 Suggestion
             const fullPath = resolveMentionPath(mentionInput.mentionInput, value, mentionInput.workingDir)
 
             const atIdx = text.lastIndexOf('@')
             const beforeAt = atIdx !== -1 ? text.slice(0, atIdx) : text
-            setText(beforeAt)
-
-            senderRef.current.insert([{
-                type: 'tag' as const,
-                key: `file-${fullPath}-${Date.now()}`,
-                props: { label: fullPath, value: fullPath },
-                formatResult: () => `@${fullPath}`,
-            }])
+            setText(`${beforeAt}@${fullPath} `)
 
             setSuggestionOpen(false)
             setMentionInput(null)
         }
     }, [mentionInput, text])
 
-    const handleSubmit = useCallback((content: string, slotConfig?: SlotConfigType[]) => {
+    const handleSubmit = useCallback((content: string) => {
         if (!canSend) return
         onSend(content.trim())
         setText('')
@@ -269,13 +260,16 @@ export function ChatComposer(props: ChatComposerProps) {
             <div style={{ position: 'relative' }}>
                 <Suggestion
                     open={suggestionOpen}
-                    onOpenChange={setSuggestionOpen}
+                    onOpenChange={(open) => {
+                        // 选择目录时阻止自动关闭
+                        if (!open && mentionInput) return
+                        setSuggestionOpen(open)
+                    }}
                     items={fileItems}
                     onSelect={handleFileSelect}
                 >
                     {({ onKeyDown }) => (
                         <Sender
-                            ref={senderRef}
                             value={text}
                             onChange={handleChange}
                             onSubmit={handleSubmit}
