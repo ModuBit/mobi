@@ -79,6 +79,7 @@ export function useSessionFileListing(
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const cacheRef = useRef<Map<string, CachedEntry[]>>(new Map())
     const prevSessionIdRef = useRef<string | null>(sessionId)
+    const currentPrefixRef = useRef<string>('')
 
     // sessionId 变化时清空缓存
     useEffect(() => {
@@ -109,7 +110,13 @@ export function useSessionFileListing(
                 .map(e => ({ name: e.name, type: e.type }))
 
             cacheRef.current.set(listPath, entries)
-            setItems(toSuggestionItems(entries))
+
+            // 应用当前前缀过滤
+            const prefix = currentPrefixRef.current
+            const filtered = prefix
+                ? entries.filter(e => e.name.toLowerCase().startsWith(prefix.toLowerCase()))
+                : entries
+            setItems(toSuggestionItems(filtered))
         } catch {
             if (!controller.signal.aborted) {
                 setItems([])
@@ -134,6 +141,7 @@ export function useSessionFileListing(
         }
 
         const { listPath, prefix } = resolveListPath(input.mentionInput)
+        currentPrefixRef.current = prefix
 
         // 尝试从缓存中过滤
         const cached = cacheRef.current.get(listPath)

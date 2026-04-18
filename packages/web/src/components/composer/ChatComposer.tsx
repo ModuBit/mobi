@@ -261,11 +261,9 @@ export function ChatComposer(props: ChatComposerProps) {
                 <Suggestion
                     open={suggestionOpen}
                     onOpenChange={(open) => {
-                        // 选择目录时阻止自动关闭
-                        if (!open && mentionInput) return
                         setSuggestionOpen(open)
                     }}
-                    items={() => fileItems}
+                    items={fileItems}
                     onSelect={handleFileSelect}
                 >
                     {({ onKeyDown }) => (
