@@ -206,6 +206,10 @@ export class RpcGateway {
         return await this.sessionRpc(sessionId, 'listDirectory', { path }) as RpcListDirectoryResponse
     }
 
+    async listSessionFiles(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
+        return await this.sessionRpc(sessionId, 'listSessionFiles', { path }) as RpcListDirectoryResponse
+    }
+
     async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
         return await this.machineRpc(machineId, 'list-directory', { path, homeDir }) as RpcListDirectoryResponse
     }
