@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, SessionGroup, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse } from './types'
+import type { Session, DecryptedMessage, SessionGroup, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse, ListFilesResponse } from './types'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -108,6 +108,9 @@ export function createMobiApi(token: string | null) {
             // 斜杠命令和技能
             slashCommands: (sessionId: string) => client.get(`/api/sessions/${sessionId}/slash-commands`),
             skills: (sessionId: string) => client.get(`/api/sessions/${sessionId}/skills`),
+            // 文件列表（@ 引用）
+            listFiles: (sessionId: string, path: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListFilesResponse>(`/api/sessions/${sessionId}/list-files`, { params: { path }, signal: opts?.signal }),
         },
 
         // Messages

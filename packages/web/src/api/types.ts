@@ -214,6 +214,19 @@ export type ListDirectoryResponse = {
     error?: string
 }
 
+export type ListFilesEntry = {
+    name: string
+    type: 'file' | 'directory' | 'other'
+    size?: number
+    modified?: number
+}
+
+export type ListFilesResponse = {
+    success: boolean
+    entries?: ListFilesEntry[]
+    error?: string
+}
+
 export type FileReadResponse = {
     success: boolean
     content?: string
