@@ -45,7 +45,8 @@ bun run lint:deps    # 依赖方向检查
 
 ## 测试
 
-- **端到端测试**: 必须使用 `/run-tests` skill 启动 E2E 环境
+- **代码变更后验证**: 必须使用 `/run-tests` skill 执行测试验证（typecheck → 单测 → lint → E2E）
+- **端到端测试**: 必须使用 `/run-tests` skill 启动 E2E 环境，禁止手动 `bun run dev` 进行浏览器测试
 
 ## 文档索引
 
