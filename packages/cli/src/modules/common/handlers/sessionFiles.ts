@@ -72,18 +72,14 @@ export function parseRipgrepOutput(output: string, limit: number): FileEntry[] {
 }
 
 /**
- * 使用 ripgrep 模糊搜索文件
+ * 使用 ripgrep 模糊搜索文件（路径子串匹配）
  * @param workingDirectory 工作目录
- * @param query 搜索关键词
+ * @param query 搜索关键词（在完整路径中做子串匹配）
  */
 async function searchFiles(workingDirectory: string, query: string): Promise<FileEntry[]> {
     try {
-        const args = ['--files']
-        if (query && query !== '.') {
-            args.push('--iglob', `*${query}*`)
-        }
-
-        const result = await runRipgrep(args, { cwd: workingDirectory })
+        // --files 列出所有文件，不做 glob 过滤
+        const result = await runRipgrep(['--files'], { cwd: workingDirectory })
 
         // exit code 0 = 有结果，1 = 无匹配，均正常
         if (result.exitCode !== 0 && result.exitCode !== 1) {
@@ -91,7 +87,13 @@ async function searchFiles(workingDirectory: string, query: string): Promise<Fil
             return []
         }
 
-        return parseRipgrepOutput(result.stdout, MAX_RESULTS)
+        // 在完整路径中做子串匹配（不区分大小写）
+        const lowerQuery = query.toLowerCase()
+        const matchedLines = result.stdout
+            .split('\n')
+            .filter(line => line.length > 0 && line.toLowerCase().includes(lowerQuery))
+
+        return parseRipgrepOutput(matchedLines.join('\n'), MAX_RESULTS)
     } catch (error) {
         logger.debug('ripgrep 搜索失败:', error)
         return []

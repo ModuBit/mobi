@@ -41,7 +41,18 @@ interface CachedEntry {
 }
 
 /**
- * 解析路径：提取父目录和前缀
+ * 判断输入是否应触发 ripgrep 搜索（与后端 isSearchQuery 逻辑一致）
+ * 非空、非 "."、非绝对路径、不含 ".."
+ */
+function isSearchInput(input: string): boolean {
+    if (!input || input === '.') return false
+    if (input.startsWith('/')) return false
+    if (input.includes('..')) return false
+    return true
+}
+
+/**
+ * 解析路径：提取父目录和前缀（仅目录浏览模式使用）
  * 返回用于 API 请求的路径（相对于 workingDir）
  */
 function resolveListPath(input: string): { listPath: string; prefix: string } {
@@ -149,17 +160,35 @@ export function useSessionFileListing(
             return
         }
 
-        const { listPath, prefix } = resolveListPath(input.mentionInput)
+        const mentionInput = input.mentionInput
+
+        // 搜索模式：直接发送完整输入触发 ripgrep
+        if (isSearchInput(mentionInput)) {
+            currentPrefixRef.current = ''
+
+            // 搜索结果不缓存（结果随 query 变化）
+            timerRef.current = setTimeout(() => {
+                fetchFiles(sessionId, mentionInput)
+            }, 300)
+
+            return () => {
+                if (timerRef.current) {
+                    clearTimeout(timerRef.current)
+                }
+                abortRef.current?.abort()
+            }
+        }
+
+        // 目录浏览模式：解析路径并缓存
+        const { listPath, prefix } = resolveListPath(mentionInput)
         currentPrefixRef.current = prefix
 
-        // 尝试从缓存中过滤
         const cached = cacheRef.current.get(listPath)
         if (cached) {
             setItems(toSuggestionItems(filterByPrefix(cached, prefix)))
             return
         }
 
-        // 防抖请求
         timerRef.current = setTimeout(() => {
             fetchFiles(sessionId, listPath)
         }, 300)
