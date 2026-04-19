@@ -336,11 +336,9 @@ export class SyncEngine {
         }
 
         // Mobi 当前仅支持 Claude
+        // claudeSessionId 可能为空（会话创建后未发送消息就退出），
+        // 此时 fallback 为新会话而非 resume
         const resumeToken = metadata.claudeSessionId
-
-        if (!resumeToken) {
-            return { type: 'error', message: 'Resume session ID unavailable', code: 'resume_unavailable' }
-        }
 
         const onlineMachines = this.machineCache.getOnlineMachinesByNamespace(namespace)
         if (onlineMachines.length === 0) {

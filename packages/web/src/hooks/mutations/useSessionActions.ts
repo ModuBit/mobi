@@ -15,6 +15,7 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import { queryKeys } from '@/lib/query-keys'
@@ -39,6 +40,7 @@ export function useSessionActions(sessionId: string | null): {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
     const queryClient = useQueryClient()
+    const navigate = useNavigate()
 
     const invalidateSession = async () => {
         if (!sessionId) return
@@ -86,9 +88,15 @@ export function useSessionActions(sessionId: string | null): {
                 throw new Error('Session unavailable')
             }
             const res = await api.sessions.resume(sessionId)
-            return res.data.sessionId
+            return res.data.sessionId as string
         },
-        onSuccess: () => void invalidateSession(),
+        onSuccess: async (newSessionId) => {
+            await invalidateSession()
+            // resume 后后端可能 mergeSessions，新 session ID 会变化
+            if (newSessionId && newSessionId !== sessionId) {
+                await navigate({ to: '/sessions/$sessionId', params: { sessionId: newSessionId }, replace: true })
+            }
+        },
     })
 
     // 设置权限模式

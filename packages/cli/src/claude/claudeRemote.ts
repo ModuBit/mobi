@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { randomUUID } from 'node:crypto'
 import { EnhancedMode } from "./loop";
 import {
     query,
@@ -80,6 +81,11 @@ export async function claudeRemote(opts: {
                     if (!nextArg.startsWith('-') && nextArg.includes('-')) {
                         startFrom = nextArg;
                         logger.debug(`[claudeRemote] Found --resume with session ID: ${startFrom}`);
+                        // 验证 session 文件是否存在，不存在则忽略
+                        if (!claudeCheckSession(startFrom, opts.path)) {
+                            logger.debug(`[claudeRemote] Session file not found for ${startFrom}, ignoring --resume`);
+                            startFrom = null;
+                        }
                         break;
                     } else {
                         // Just --resume without UUID - SDK doesn't support this
@@ -102,6 +108,14 @@ export async function claudeRemote(opts: {
         });
     }
     process.env.DISABLE_AUTOUPDATER = '1';
+
+    // 预生成 claudeSessionId，让上游（metadata）立即可用
+    // SDK 支持 Options.sessionId 指定自定义 session ID
+    const pregeneratedSessionId = !startFrom ? randomUUID() : undefined
+    if (pregeneratedSessionId) {
+        logger.debug(`[claudeRemote] Pregenerated session ID: ${pregeneratedSessionId}`)
+        opts.onSessionFound(pregeneratedSessionId)
+    }
 
     // Get initial message
     const initial = await opts.nextMessage();
@@ -138,6 +152,7 @@ export async function claudeRemote(opts: {
     const sdkOptions: Options = {
         cwd: opts.path,
         resume: startFrom ?? undefined,
+        sessionId: pregeneratedSessionId,
         mcpServers: opts.mcpServers,
         permissionMode: initial.mode.permissionMode,
         model: initial.mode.model,
