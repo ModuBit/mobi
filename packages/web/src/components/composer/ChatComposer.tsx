@@ -197,20 +197,16 @@ export function ChatComposer(props: ChatComposerProps) {
             setSlashFilter('')
         }
 
-        // 检测 @ 触发
-        const atIdx = value.lastIndexOf('@')
-        if (atIdx !== -1) {
-            const afterAt = value.slice(atIdx + 1)
-            // @ 后面只包含路径字符时才触发
-            if (/^[a-zA-Z0-9.\/_\-]*$/.test(afterAt)) {
-                setMentionInput({
-                    mentionInput: afterAt,
-                    workingDir: workingDir ?? '',
-                })
-                setSuggestionOpen(true)
-                setActiveIndex(0)
-                return
-            }
+        // 检测 @ 触发（@ 必须是独立词：前面为行首或空白，后面为行尾）
+        const mentionMatch = value.match(/(?:^|\s)@([a-zA-Z0-9.\/_\-]*)$/)
+        if (mentionMatch) {
+            setMentionInput({
+                mentionInput: mentionMatch[1],
+                workingDir: workingDir ?? '',
+            })
+            setSuggestionOpen(true)
+            setActiveIndex(0)
+            return
         }
 
         setSuggestionOpen(false)
@@ -222,27 +218,27 @@ export function ChatComposer(props: ChatComposerProps) {
 
         if (item.isDirectory) {
             // 目录：更新前缀继续浏览
-            const currentAfterAt = mentionInput.mentionInput
-            const lastSlash = currentAfterAt.lastIndexOf('/')
-            const dirPart = lastSlash !== -1 ? currentAfterAt.slice(0, lastSlash + 1) : ''
-            const newInput = dirPart + item.value + '/'
+            const dirPath = item.path ? item.path + '/' : buildMentionPath(mentionInput.mentionInput, item.value) + '/'
 
-            const atIdx = text.lastIndexOf('@')
-            if (atIdx !== -1) {
-                setText(text.slice(0, atIdx + 1) + newInput)
+            const mentionMatch = text.match(/(?:^|\s)@([a-zA-Z0-9.\/_\-]*)$/)
+            if (mentionMatch && mentionMatch.index != null) {
+                const beforeMention = text.slice(0, mentionMatch.index)
+                const prefix = beforeMention.length > 0 && !beforeMention.endsWith(' ') ? ' ' : ''
+                setText(`${beforeMention}${prefix}@${dirPath}`)
             }
             setMentionInput({
-                mentionInput: newInput,
+                mentionInput: dirPath,
                 workingDir: mentionInput.workingDir,
             })
             setActiveIndex(0)
         } else {
             // 文件：用纯文本替换 @xxx，关闭下拉
-            const mentionPath = buildMentionPath(mentionInput.mentionInput, item.value)
+            const mentionPath = item.path ?? buildMentionPath(mentionInput.mentionInput, item.value)
 
-            const atIdx = text.lastIndexOf('@')
-            const beforeAt = atIdx !== -1 ? text.slice(0, atIdx) : text
-            setText(`${beforeAt}@${mentionPath} `)
+            const mentionMatch = text.match(/(?:^|\s)@([a-zA-Z0-9.\/_\-]*)$/)
+            const beforeMention = mentionMatch && mentionMatch.index != null ? text.slice(0, mentionMatch.index) : text
+            const prefix = beforeMention.length > 0 && !beforeMention.endsWith(' ') ? ' ' : ''
+            setText(`${beforeMention}${prefix}@${mentionPath} `)
 
             setSuggestionOpen(false)
             setMentionInput(null)

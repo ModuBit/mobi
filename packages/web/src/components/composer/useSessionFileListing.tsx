@@ -30,11 +30,14 @@ export interface FileSuggestionItem {
     label: string
     value: string
     isDirectory: boolean
+    /** 完整相对路径（ripgrep 模式时返回） */
+    path?: string
 }
 
 interface CachedEntry {
     name: string
     type: 'file' | 'directory' | 'other'
+    path?: string
 }
 
 /**
@@ -56,9 +59,10 @@ function resolveListPath(input: string): { listPath: string; prefix: string } {
 
 function toSuggestionItems(entries: CachedEntry[]): FileSuggestionItem[] {
     return entries.map(e => ({
-        label: e.name,
-        value: e.name,
+        label: e.path ?? e.name,
+        value: e.path ?? e.name,
         isDirectory: e.type === 'directory',
+        path: e.path,
     }))
 }
 
@@ -116,7 +120,7 @@ export function useSessionFileListing(
 
             const entries: CachedEntry[] = data.entries
                 .filter(e => e.type === 'file' || e.type === 'directory')
-                .map(e => ({ name: e.name, type: e.type }))
+                .map(e => ({ name: e.name, type: e.type, path: e.path }))
 
             cacheRef.current.set(listPath, entries)
 

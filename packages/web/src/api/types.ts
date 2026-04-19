@@ -219,6 +219,8 @@ export type ListFilesEntry = {
     type: 'file' | 'directory' | 'other'
     size?: number
     modified?: number
+    /** 完整相对路径（ripgrep 模式时返回） */
+    path?: string
 }
 
 export type ListFilesResponse = {
