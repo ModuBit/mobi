@@ -18,6 +18,7 @@ import { logger } from '@/ui/logger'
 import { readdir, stat } from 'fs/promises'
 import { join, resolve } from 'path'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { validatePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { run as runRipgrep } from '@/modules/ripgrep/index'
 
@@ -51,7 +52,7 @@ interface ListSessionFilesResponse {
  * - 其余 → true（使用 ripgrep 模糊搜索）
  */
 export function isSearchQuery(path: string): boolean {
-    if (path === '') return false
+    if (path === '' || path === '.') return false
     if (path.startsWith('/')) return false
     if (path.includes('..')) return false
     return true
@@ -153,6 +154,10 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
 
             // 目录浏览
             const targetPath = data.path || '.'
+            const validation = validatePath(targetPath, workingDirectory)
+            if (!validation.valid) {
+                return rpcError(validation.error ?? 'Invalid path')
+            }
             const resolvedPath = resolve(workingDirectory, targetPath)
             const entries = await listDirectory(resolvedPath)
             return { success: true, entries }

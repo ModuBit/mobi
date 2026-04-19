@@ -26,8 +26,8 @@ describe('isSearchQuery', () => {
         expect(isSearchQuery('docs/plan')).toBe(true)
     })
 
-    it('点号应触发搜索', () => {
-        expect(isSearchQuery('.')).toBe(true)
+    it('点号应走目录浏览', () => {
+        expect(isSearchQuery('.')).toBe(false)
     })
 
     it('空字符串不触发搜索', () => {
