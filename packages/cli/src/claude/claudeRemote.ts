@@ -209,6 +209,7 @@ export async function claudeRemote(opts: {
     });
 
     // Start the loop
+    let queryStarted = false;
     const response = query({
         prompt: messages,
         options: sdkOptions,
@@ -222,6 +223,10 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
+            if (!queryStarted) {
+                queryStarted = true;
+                logger.debug(`[claudeRemote] First message received from SDK: ${message.type}/${message.subtype || '-'}`);
+            }
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
 
             // Handle messages
@@ -286,6 +291,16 @@ export async function claudeRemote(opts: {
             }
 
         }
+
+        // for await 正常结束（迭代器耗尽，无异常）
+        logger.debug(`[claudeRemote] Response iteration ended normally. queryStarted=${queryStarted}`);
+    } catch (e) {
+        // 增强错误日志：捕获 SDK 抛出的非标准错误对象
+        const errorInfo = e instanceof Error
+            ? { name: e.name, message: e.message, stack: e.stack?.substring(0, 500) }
+            : { type: typeof e, value: String(e), keys: typeof e === 'object' && e !== null ? Object.keys(e) : [] };
+        logger.debug(`[claudeRemote] Error iterating response:`, errorInfo);
+        throw e;
     } finally {
         updateThinking(false);
     }
