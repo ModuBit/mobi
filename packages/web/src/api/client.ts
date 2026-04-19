@@ -108,9 +108,11 @@ export function createMobiApi(token: string | null) {
             // 斜杠命令和技能
             slashCommands: (sessionId: string) => client.get(`/api/sessions/${sessionId}/slash-commands`),
             skills: (sessionId: string) => client.get(`/api/sessions/${sessionId}/skills`),
-            // 文件列表（@ 引用）
-            listFiles: (sessionId: string, path: string, opts?: { signal?: AbortSignal }) =>
-                client.get<ListFilesResponse>(`/api/sessions/${sessionId}/list-files`, { params: { path }, signal: opts?.signal }),
+            // 文件搜索和目录列表（@ 引用）
+            searchFiles: (sessionId: string, query: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListFilesResponse>(`/api/sessions/${sessionId}/search-files`, { params: { query }, signal: opts?.signal }),
+            listDirectory: (sessionId: string, path: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListFilesResponse>(`/api/sessions/${sessionId}/list-directory`, { params: { path }, signal: opts?.signal }),
         },
 
         // Messages

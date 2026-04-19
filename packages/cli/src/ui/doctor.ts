@@ -238,7 +238,7 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
 
         if (filter === 'all' && allProcesses.length > 1) { // More than just current process
             console.log(chalk.bold('\n💡 Process Management'));
-            console.log(chalk.gray('To clean up runaway processes: mobi doctor clean'));
+            console.log(chalk.gray('To clean up runaway processes: mobi doctor clean [profile]'));
         }
     } catch (error) {
         console.log(chalk.red('❌ Error checking runner status'));

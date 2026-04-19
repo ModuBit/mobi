@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isSearchQuery, parseRipgrepOutput } from '@/modules/common/handlers/sessionFiles'
+import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery } from '@/modules/common/handlers/sessionFiles'
 
 describe('isSearchQuery', () => {
     it('普通文件名应触发搜索', () => {
@@ -48,6 +48,12 @@ describe('isSearchQuery', () => {
 
     it('/tmp 不触发搜索', () => {
         expect(isSearchQuery('/tmp')).toBe(false)
+    })
+
+    it('~ 开头不触发搜索', () => {
+        expect(isSearchQuery('~')).toBe(false)
+        expect(isSearchQuery('~/')).toBe(false)
+        expect(isSearchQuery('~/Documents')).toBe(false)
     })
 })
 
@@ -85,5 +91,31 @@ describe('parseRipgrepOutput', () => {
     it('空字符串返回空数组', () => {
         const result = parseRipgrepOutput('', 50)
         expect(result).toEqual([])
+    })
+})
+
+describe('pathMatchesQuery', () => {
+    it('单段匹配', () => {
+        expect(pathMatchesQuery('docs/conventions/hub.md', ['hub'])).toBe(true)
+    })
+
+    it('多段有序匹配', () => {
+        expect(pathMatchesQuery('docs/conventions/hub.md', ['docs', 'hub'])).toBe(true)
+    })
+
+    it('多段顺序不对不匹配', () => {
+        expect(pathMatchesQuery('docs/conventions/hub.md', ['hub', 'docs'])).toBe(false)
+    })
+
+    it('段不存在不匹配', () => {
+        expect(pathMatchesQuery('docs/conventions/hub.md', ['docs', 'xyz'])).toBe(false)
+    })
+
+    it('单段部分匹配目录名', () => {
+        expect(pathMatchesQuery('docs/conventions/cli.md', ['conv'])).toBe(true)
+    })
+
+    it('路径段跨层级匹配', () => {
+        expect(pathMatchesQuery('packages/cli/src/index.ts', ['cli', 'index'])).toBe(true)
     })
 })

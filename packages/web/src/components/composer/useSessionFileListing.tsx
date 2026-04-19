@@ -20,7 +20,7 @@ import { useAuthStore } from '@/stores/authStore'
 import type { ListFilesResponse } from '@/api/types'
 
 export interface FileListingInput {
-    /** @ 后面的文本，如 "src/" 或 "../" */
+    /** @ 后面的文本，如 "src/" 或 "~/.mobi" */
     mentionInput: string
     /** session 工作目录，用于解析相对路径 */
     workingDir: string
@@ -41,19 +41,30 @@ interface CachedEntry {
 }
 
 /**
- * 判断输入是否应触发 ripgrep 搜索（与后端 isSearchQuery 逻辑一致）
- * 非空、非 "."、非绝对路径、不含 ".."
+ * 判断输入是否在工作目录范围内
+ * 绝对路径、home 目录、父级引用均视为非工作目录
  */
-function isSearchInput(input: string): boolean {
-    if (!input || input === '.') return false
+function isInsideWorkingDir(input: string): boolean {
+    if (!input) return true
     if (input.startsWith('/')) return false
+    if (input.startsWith('~')) return false
     if (input.includes('..')) return false
     return true
 }
 
 /**
- * 解析路径：提取父目录和前缀（仅目录浏览模式使用）
- * 返回用于 API 请求的路径（相对于 workingDir）
+ * 判断输入是否应触发 ripgrep 搜索（仅工作目录内使用）
+ * 非空、非 "."、非绝对路径、非 home 目录、不含 ".."
+ */
+function isSearchInput(input: string): boolean {
+    if (!input || input === '.') return false
+    return isInsideWorkingDir(input)
+}
+
+/**
+ * 解析路径：提取父目录和前缀
+ * ~/.mobi → { listPath: '~', prefix: '.mobi' }
+ * src/com → { listPath: 'src', prefix: 'com' }
  */
 function resolveListPath(input: string): { listPath: string; prefix: string } {
     if (!input) return { listPath: '.', prefix: '' }
@@ -85,7 +96,9 @@ function filterByPrefix(entries: CachedEntry[], prefix: string): CachedEntry[] {
 
 /**
  * Session 维度文件列表 hook
- * 基于 @ 后的输入动态加载文件和目录列表
+ * 前端区分 workingDir / 非workingDir：
+ * - 工作目录内：ripgrep 模糊搜索
+ * - 非工作目录：以 / 结尾 → 列目录内容；否则 → 列父目录按前缀过滤
  */
 export function useSessionFileListing(
     sessionId: string | null,
@@ -113,14 +126,15 @@ export function useSessionFileListing(
         }
     }, [sessionId])
 
-    const fetchFiles = useCallback(async (sId: string, listPath: string) => {
+    // 搜索文件（ripgrep）
+    const doSearch = useCallback(async (sId: string, query: string) => {
         abortRef.current?.abort()
         const controller = new AbortController()
         abortRef.current = controller
 
         setIsLoading(true)
         try {
-            const res = await api.sessions.listFiles(sId, listPath, { signal: controller.signal })
+            const res = await api.sessions.searchFiles(sId, query, { signal: controller.signal })
             if (controller.signal.aborted) return
 
             const data = res.data as ListFilesResponse
@@ -133,7 +147,40 @@ export function useSessionFileListing(
                 .filter(e => e.type === 'file' || e.type === 'directory')
                 .map(e => ({ name: e.name, type: e.type, path: e.path }))
 
-            cacheRef.current.set(listPath, entries)
+            setItems(toSuggestionItems(entries))
+        } catch {
+            if (!controller.signal.aborted) {
+                setItems([])
+            }
+        } finally {
+            if (!controller.signal.aborted) {
+                setIsLoading(false)
+            }
+        }
+    }, [api.sessions])
+
+    // 列目录
+    const doListDirectory = useCallback(async (sId: string, dirPath: string) => {
+        abortRef.current?.abort()
+        const controller = new AbortController()
+        abortRef.current = controller
+
+        setIsLoading(true)
+        try {
+            const res = await api.sessions.listDirectory(sId, dirPath, { signal: controller.signal })
+            if (controller.signal.aborted) return
+
+            const data = res.data as ListFilesResponse
+            if (!data.success || !data.entries) {
+                setItems([])
+                return
+            }
+
+            const entries: CachedEntry[] = data.entries
+                .filter(e => e.type === 'file' || e.type === 'directory')
+                .map(e => ({ name: e.name, type: e.type, path: e.path }))
+
+            cacheRef.current.set(dirPath, entries)
 
             // 应用当前前缀过滤
             setItems(toSuggestionItems(filterByPrefix(entries, currentPrefixRef.current)))
@@ -162,24 +209,21 @@ export function useSessionFileListing(
 
         const mentionInput = input.mentionInput
 
-        // 搜索模式：直接发送完整输入触发 ripgrep
+        // 工作目录内：搜索模式（ripgrep）
         if (isSearchInput(mentionInput)) {
             currentPrefixRef.current = ''
 
-            // 搜索结果不缓存（结果随 query 变化）
             timerRef.current = setTimeout(() => {
-                fetchFiles(sessionId, mentionInput)
+                doSearch(sessionId, mentionInput)
             }, 300)
 
             return () => {
-                if (timerRef.current) {
-                    clearTimeout(timerRef.current)
-                }
+                if (timerRef.current) clearTimeout(timerRef.current)
                 abortRef.current?.abort()
             }
         }
 
-        // 目录浏览模式：解析路径并缓存
+        // 非工作目录 + 工作目录内 browse：目录浏览模式
         const { listPath, prefix } = resolveListPath(mentionInput)
         currentPrefixRef.current = prefix
 
@@ -190,16 +234,14 @@ export function useSessionFileListing(
         }
 
         timerRef.current = setTimeout(() => {
-            fetchFiles(sessionId, listPath)
+            doListDirectory(sessionId, listPath)
         }, 300)
 
         return () => {
-            if (timerRef.current) {
-                clearTimeout(timerRef.current)
-            }
+            if (timerRef.current) clearTimeout(timerRef.current)
             abortRef.current?.abort()
         }
-    }, [sessionId, input, fetchFiles])
+    }, [sessionId, input, doSearch, doListDirectory])
 
     return { items, isLoading }
 }

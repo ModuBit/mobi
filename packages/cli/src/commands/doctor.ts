@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import chalk from 'chalk'
 import { killRunawayMobiProcesses } from '@/runner/doctor'
 import { runDoctorCommand } from '@/ui/doctor'
 import type { CommandDefinition } from './types'
@@ -23,7 +24,18 @@ export const doctorCommand: CommandDefinition = {
     requiresRuntimeAssets: true,
     run: async ({ commandArgs }) => {
         if (commandArgs[0] === 'clean') {
-            const result = await killRunawayMobiProcesses()
+            // mobi doctor clean [profile]
+            // mobi doctor clean        → 清理全部
+            // mobi doctor clean e2e    → 只清理 e2e profile
+            const profile = commandArgs[1]
+
+            if (profile) {
+                console.log(`Cleaning up runaway processes for profile: ${chalk.cyan(profile)}`)
+            } else {
+                console.log('Cleaning up all runaway processes')
+            }
+
+            const result = await killRunawayMobiProcesses(profile)
             console.log(`Cleaned up ${result.killed} runaway processes`)
             if (result.errors.length > 0) {
                 console.log('Errors:', result.errors)

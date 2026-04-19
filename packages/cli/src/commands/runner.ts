@@ -128,11 +128,11 @@ ${chalk.bold('Usage:')}
   mobi runner list               List active sessions
 
   If you want to kill all mobi related processes run
-  ${chalk.cyan('mobi doctor clean')}
+  ${chalk.cyan('mobi doctor clean')} or ${chalk.cyan('mobi doctor clean <profile>')}
 
 ${chalk.bold('Note:')} The runner runs in the background and manages Claude sessions.
 
-${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('mobi doctor clean')}
+${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('mobi doctor clean [profile]')}
 `)
     }
 }

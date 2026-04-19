@@ -88,6 +88,34 @@ function buildMentionPath(mentionInput: string, selectedName: string): string {
 }
 
 /**
+ * 在完整文本中找到包含光标位置的 @mention 模式
+ * @xxx 必须是独立词（@ 前为行首或空白，xxx 后为空白或行尾）
+ * 光标必须在 @ 和 xxx 末尾之间
+ */
+function detectMentionAtCursor(
+    fullText: string,
+    cursorPos: number,
+): { atIndex: number; afterAt: string } | null {
+    const regex = /(^|\s)@([a-zA-Z0-9.\/_\-~]*)(?=$|\s)/g
+    let match: RegExpExecArray | null
+    while ((match = regex.exec(fullText)) !== null) {
+        const atIndex = match.index + match[1].length
+        const mentionEnd = atIndex + 1 + match[2].length
+        if (cursorPos >= atIndex && cursorPos <= mentionEnd) {
+            return { atIndex, afterAt: match[2] }
+        }
+    }
+    return null
+}
+
+/**
+ * 获取 wrapper 内的 textarea 元素
+ */
+function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
+    return wrapper?.querySelector('textarea') ?? null
+}
+
+/**
  * 聊天输入组件
  * 基于 antd X 的 Sender 组件，支持多行输入、附件上传、@文件引用
  */
@@ -126,6 +154,13 @@ export function ChatComposer(props: ChatComposerProps) {
     const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
     const [activeIndex, setActiveIndex] = useState(0)
     const wrapperRef = useRef<HTMLDivElement>(null)
+    const mentionAtIndexRef = useRef(-1)
+    const pendingCursorRef = useRef<number | null>(null)
+
+    // 滚动到活跃项
+    const scrollIntoActive = useCallback((node: HTMLDivElement | null) => {
+        node?.scrollIntoView({ block: 'nearest' })
+    }, [])
 
     // slash command 状态
     const [slashOpen, setSlashOpen] = useState(false)
@@ -176,6 +211,18 @@ export function ChatComposer(props: ChatComposerProps) {
         return () => document.removeEventListener('mousedown', handler)
     }, [suggestionOpen, slashOpen])
 
+    // 目录选择后恢复光标位置
+    useEffect(() => {
+        if (pendingCursorRef.current != null) {
+            const textarea = getTextarea(wrapperRef.current)
+            if (textarea) {
+                textarea.selectionStart = textarea.selectionEnd = pendingCursorRef.current
+                textarea.focus()
+            }
+            pendingCursorRef.current = null
+        }
+    })
+
     const handleChange = useCallback((value: string) => {
         setText(value)
 
@@ -197,11 +244,14 @@ export function ChatComposer(props: ChatComposerProps) {
             setSlashFilter('')
         }
 
-        // 检测 @ 触发（@ 必须是独立词：前面为行首或空白，后面为行尾）
-        const mentionMatch = value.match(/(?:^|\s)@([a-zA-Z0-9.\/_\-]*)$/)
-        if (mentionMatch) {
+        // 基于光标位置检测 @mention
+        const textarea = getTextarea(wrapperRef.current)
+        const cursorPos = textarea?.selectionStart ?? value.length
+        const mention = detectMentionAtCursor(value, cursorPos)
+        if (mention) {
+            mentionAtIndexRef.current = mention.atIndex
             setMentionInput({
-                mentionInput: mentionMatch[1],
+                mentionInput: mention.afterAt,
                 workingDir: workingDir ?? '',
             })
             setSuggestionOpen(true)
@@ -216,30 +266,24 @@ export function ChatComposer(props: ChatComposerProps) {
     const handleItemSelect = useCallback((item: FileSuggestionItem) => {
         if (!mentionInput) return
 
-        if (item.isDirectory) {
-            // 目录：更新前缀继续浏览
-            const dirPath = item.path ? item.path + '/' : buildMentionPath(mentionInput.mentionInput, item.value) + '/'
+        const atIndex = mentionAtIndexRef.current
+        const afterLen = mentionInput.mentionInput.length
+        const before = atIndex >= 0 ? text.slice(0, atIndex) : text
+        const after = atIndex >= 0 ? text.slice(atIndex + 1 + afterLen) : ''
 
-            const mentionMatch = text.match(/(?:^|\s)@([a-zA-Z0-9.\/_\-]*)$/)
-            if (mentionMatch && mentionMatch.index != null) {
-                const beforeMention = text.slice(0, mentionMatch.index)
-                const prefix = beforeMention.length > 0 && !beforeMention.endsWith(' ') ? ' ' : ''
-                setText(`${beforeMention}${prefix}@${dirPath}`)
-            }
+        if (item.isDirectory) {
+            const dirPath = item.path ? item.path + '/' : buildMentionPath(mentionInput.mentionInput, item.value) + '/'
+            setText(`${before}@${dirPath}${after}`)
+            mentionAtIndexRef.current = atIndex
+            pendingCursorRef.current = atIndex + 1 + dirPath.length
             setMentionInput({
                 mentionInput: dirPath,
                 workingDir: mentionInput.workingDir,
             })
             setActiveIndex(0)
         } else {
-            // 文件：用纯文本替换 @xxx，关闭下拉
             const mentionPath = item.path ?? buildMentionPath(mentionInput.mentionInput, item.value)
-
-            const mentionMatch = text.match(/(?:^|\s)@([a-zA-Z0-9.\/_\-]*)$/)
-            const beforeMention = mentionMatch && mentionMatch.index != null ? text.slice(0, mentionMatch.index) : text
-            const prefix = beforeMention.length > 0 && !beforeMention.endsWith(' ') ? ' ' : ''
-            setText(`${beforeMention}${prefix}@${mentionPath} `)
-
+            setText(`${before}@${mentionPath} ${after}`)
             setSuggestionOpen(false)
             setMentionInput(null)
         }
@@ -482,6 +526,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         ) : fileEntries.map((item, index) => (
                             <div
                                 key={item.value}
+                                ref={index === activeIndex ? scrollIntoActive : undefined}
                                 role="option"
                                 aria-selected={index === activeIndex}
                                 onClick={() => handleItemSelect(item)}
@@ -535,6 +580,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         ) : slashCommands.map((item, index) => (
                             <div
                                 key={item.value}
+                                ref={index === slashActiveIndex ? scrollIntoActive : undefined}
                                 role="option"
                                 aria-selected={index === slashActiveIndex}
                                 onClick={() => handleSlashSelect(item)}

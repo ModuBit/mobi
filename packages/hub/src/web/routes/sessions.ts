@@ -356,7 +356,34 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
-    app.get('/sessions/:id/list-files', async (c) => {
+    app.get('/sessions/:id/search-files', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const query = c.req.query('query') ?? ''
+        if (!query) {
+            return c.json({ success: false, error: 'Query parameter is required' }, 400)
+        }
+
+        try {
+            const result = await engine.searchSessionFiles(sessionResult.sessionId, query)
+            return c.json(result)
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to search files'
+            }, 500)
+        }
+    })
+
+    app.get('/sessions/:id/list-directory', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
@@ -373,12 +400,12 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         try {
-            const result = await engine.listSessionFiles(sessionResult.sessionId, path)
+            const result = await engine.listSessionDirectory(sessionResult.sessionId, path)
             return c.json(result)
         } catch (error) {
             return c.json({
                 success: false,
-                error: error instanceof Error ? error.message : 'Failed to list files'
+                error: error instanceof Error ? error.message : 'Failed to list directory'
             }, 500)
         }
     })
