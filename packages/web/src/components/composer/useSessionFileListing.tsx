@@ -40,10 +40,6 @@ interface CachedEntry {
     path?: string
 }
 
-/**
- * 判断输入是否在工作目录范围内
- * 绝对路径、home 目录、父级引用均视为非工作目录
- */
 function isInsideWorkingDir(input: string): boolean {
     if (!input) return true
     if (input.startsWith('/')) return false
@@ -52,20 +48,11 @@ function isInsideWorkingDir(input: string): boolean {
     return true
 }
 
-/**
- * 判断输入是否应触发 ripgrep 搜索（仅工作目录内使用）
- * 非空、非 "."、非绝对路径、非 home 目录、不含 ".."
- */
 function isSearchInput(input: string): boolean {
     if (!input || input === '.') return false
     return isInsideWorkingDir(input)
 }
 
-/**
- * 解析路径：提取父目录和前缀
- * ~/.mobi → { listPath: '~', prefix: '.mobi' }
- * src/com → { listPath: 'src', prefix: 'com' }
- */
 function resolveListPath(input: string): { listPath: string; prefix: string } {
     if (!input) return { listPath: '.', prefix: '' }
 
@@ -88,18 +75,14 @@ function toSuggestionItems(entries: CachedEntry[]): FileSuggestionItem[] {
     }))
 }
 
-function filterByPrefix(entries: CachedEntry[], prefix: string): CachedEntry[] {
+function filterEntries(entries: CachedEntry[], prefix: string, useContains: boolean): CachedEntry[] {
     if (!prefix) return entries
     const lower = prefix.toLowerCase()
-    return entries.filter(e => e.name.toLowerCase().startsWith(lower))
+    return useContains
+        ? entries.filter(e => e.name.toLowerCase().includes(lower))
+        : entries.filter(e => e.name.toLowerCase().startsWith(lower))
 }
 
-/**
- * Session 维度文件列表 hook
- * 前端区分 workingDir / 非workingDir：
- * - 工作目录内：ripgrep 模糊搜索
- * - 非工作目录：以 / 结尾 → 列目录内容；否则 → 列父目录按前缀过滤
- */
 export function useSessionFileListing(
     sessionId: string | null,
     input: FileListingInput | null,
@@ -117,8 +100,8 @@ export function useSessionFileListing(
     const cacheRef = useRef<Map<string, CachedEntry[]>>(new Map())
     const prevSessionIdRef = useRef<string | null>(sessionId)
     const currentPrefixRef = useRef<string>('')
+    const filterContainsRef = useRef(false)
 
-    // sessionId 变化时清空缓存
     useEffect(() => {
         if (prevSessionIdRef.current !== sessionId) {
             cacheRef.current.clear()
@@ -126,7 +109,6 @@ export function useSessionFileListing(
         }
     }, [sessionId])
 
-    // 搜索文件（ripgrep）
     const doSearch = useCallback(async (sId: string, query: string) => {
         abortRef.current?.abort()
         const controller = new AbortController()
@@ -159,7 +141,6 @@ export function useSessionFileListing(
         }
     }, [api.sessions])
 
-    // 列目录
     const doListDirectory = useCallback(async (sId: string, dirPath: string) => {
         abortRef.current?.abort()
         const controller = new AbortController()
@@ -182,8 +163,7 @@ export function useSessionFileListing(
 
             cacheRef.current.set(dirPath, entries)
 
-            // 应用当前前缀过滤
-            setItems(toSuggestionItems(filterByPrefix(entries, currentPrefixRef.current)))
+            setItems(toSuggestionItems(filterEntries(entries, currentPrefixRef.current, filterContainsRef.current)))
         } catch {
             if (!controller.signal.aborted) {
                 setItems([])
@@ -209,7 +189,6 @@ export function useSessionFileListing(
 
         const mentionInput = input.mentionInput
 
-        // 工作目录内：搜索模式（ripgrep）
         if (isSearchInput(mentionInput)) {
             currentPrefixRef.current = ''
 
@@ -223,13 +202,13 @@ export function useSessionFileListing(
             }
         }
 
-        // 非工作目录 + 工作目录内 browse：目录浏览模式
         const { listPath, prefix } = resolveListPath(mentionInput)
         currentPrefixRef.current = prefix
+        filterContainsRef.current = !isInsideWorkingDir(mentionInput)
 
         const cached = cacheRef.current.get(listPath)
         if (cached) {
-            setItems(toSuggestionItems(filterByPrefix(cached, prefix)))
+            setItems(toSuggestionItems(filterEntries(cached, prefix, filterContainsRef.current)))
             return
         }
 

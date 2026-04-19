@@ -180,7 +180,7 @@ export function useMachineDirectoryListing(
             const lowerPrefix = prefix.toLowerCase()
             const showHidden = isHiddenDir(prefix)
             const filtered = cached.filter((entry) => {
-                if (!entry.label.toLowerCase().startsWith(lowerPrefix)) return false
+                if (!entry.label.toLowerCase().includes(lowerPrefix)) return false
                 if (!showHidden && isHiddenDir(entry.label)) return false
                 return true
             })

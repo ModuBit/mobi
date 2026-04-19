@@ -89,30 +89,52 @@ function buildMentionPath(mentionInput: string, selectedName: string): string {
 
 /**
  * 在完整文本中找到包含光标位置的 @mention 模式
- * @xxx 必须是独立词（@ 前为行首或空白，xxx 后为空白或行尾）
- * 光标必须在 @ 和 xxx 末尾之间
+ * 从光标位置向前查找最近的 @，验证其是否为独立词
  */
 function detectMentionAtCursor(
     fullText: string,
     cursorPos: number,
 ): { atIndex: number; afterAt: string } | null {
-    const regex = /(^|\s)@([a-zA-Z0-9.\/_\-~]*)(?=$|\s)/g
-    let match: RegExpExecArray | null
-    while ((match = regex.exec(fullText)) !== null) {
-        const atIndex = match.index + match[1].length
-        const mentionEnd = atIndex + 1 + match[2].length
-        if (cursorPos >= atIndex && cursorPos <= mentionEnd) {
-            return { atIndex, afterAt: match[2] }
+    // 从光标位置向前查找 @
+    let searchFrom = cursorPos
+    while (searchFrom > 0) {
+        const atPos = fullText.lastIndexOf('@', searchFrom - 1)
+        if (atPos === -1) return null
+
+        // @ 前必须是行首或空白
+        if (atPos > 0 && !/\s/.test(fullText[atPos - 1])) {
+            searchFrom = atPos
+            continue
         }
+
+        // 提取 @ 后的内容，直到空白或行尾
+        const afterAt = fullText.slice(atPos + 1, cursorPos)
+        if (/^[a-zA-Z0-9.\/_\-~]*$/.test(afterAt)) {
+            return { atIndex: atPos, afterAt }
+        }
+
+        searchFrom = atPos
     }
     return null
 }
 
-/**
- * 获取 wrapper 内的 textarea 元素
- */
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
     return wrapper?.querySelector('textarea') ?? null
+}
+
+/** 下拉列表容器共享样式 */
+const DROPDOWN_STYLE: React.CSSProperties = {
+    position: 'absolute',
+    bottom: '100%',
+    left: 0,
+    right: 0,
+    maxHeight: 240,
+    overflowY: 'auto',
+    backgroundColor: 'var(--ant-color-bg-elevated)',
+    borderRadius: 'var(--ant-border-radius)',
+    boxShadow: 'var(--ant-box-shadow-secondary)',
+    zIndex: 50,
+    marginBottom: 4,
 }
 
 /**
@@ -145,11 +167,9 @@ export function ChatComposer(props: ChatComposerProps) {
         switchPending = false,
     } = props
 
-    // 输入状态
     const [text, setText] = useState('')
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
 
-    // @ 文件引用状态
     const [suggestionOpen, setSuggestionOpen] = useState(false)
     const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
     const [activeIndex, setActiveIndex] = useState(0)
@@ -157,12 +177,10 @@ export function ChatComposer(props: ChatComposerProps) {
     const mentionAtIndexRef = useRef(-1)
     const pendingCursorRef = useRef<number | null>(null)
 
-    // 滚动到活跃项
     const scrollIntoActive = useCallback((node: HTMLDivElement | null) => {
         node?.scrollIntoView({ block: 'nearest' })
     }, [])
 
-    // slash command 状态
     const [slashOpen, setSlashOpen] = useState(false)
     const [slashFilter, setSlashFilter] = useState('')
     const [slashActiveIndex, setSlashActiveIndex] = useState(0)
@@ -178,25 +196,20 @@ export function ChatComposer(props: ChatComposerProps) {
         mentionInput,
     )
 
-    // 计算是否禁用控制
     const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
     const trimmed = text.trim()
     const hasText = trimmed.length > 0
     const hasAttachments = attachments.length > 0
 
-    // 是否可以发送
     const canSend = (hasText || hasAttachments) && !controlsDisabled && !thinking
 
-    // 权限模式选项
     const permissionModeOptions = useMemo(
         () => getPermissionModeOptionsForFlavor(agentFlavor),
         [agentFlavor]
     )
 
-    // 显示设置按钮
     const showSettingsButton = Boolean(onPermissionModeChange && permissionModeOptions.length > 0)
 
-    // 点击外部关闭下拉
     useEffect(() => {
         if (!suggestionOpen && !slashOpen) return
         const handler = (e: MouseEvent) => {
@@ -211,7 +224,6 @@ export function ChatComposer(props: ChatComposerProps) {
         return () => document.removeEventListener('mousedown', handler)
     }, [suggestionOpen, slashOpen])
 
-    // 目录选择后恢复光标位置
     useEffect(() => {
         if (pendingCursorRef.current != null) {
             const textarea = getTextarea(wrapperRef.current)
@@ -226,25 +238,21 @@ export function ChatComposer(props: ChatComposerProps) {
     const handleChange = useCallback((value: string) => {
         setText(value)
 
-        // 检测 / 触发（行首）
         if (isSlashTrigger(value)) {
-            const filter = value.slice(1) // 去掉 / 前缀
+            const filter = value.slice(1)
             setSlashFilter(filter)
             setSlashOpen(true)
             setSlashActiveIndex(0)
-            // 关闭 @mention 下拉（互斥）
             setSuggestionOpen(false)
             setMentionInput(null)
             return
         }
 
-        // 关闭 slash 下拉
         if (slashOpen) {
             setSlashOpen(false)
             setSlashFilter('')
         }
 
-        // 基于光标位置检测 @mention
         const textarea = getTextarea(wrapperRef.current)
         const cursorPos = textarea?.selectionStart ?? value.length
         const mention = detectMentionAtCursor(value, cursorPos)
@@ -409,10 +417,8 @@ export function ChatComposer(props: ChatComposerProps) {
         setAttachments(prev => prev.filter(a => a.id !== id))
     }, [])
 
-    // 会话未激活时的覆盖层
     const showInactiveCover = !active && !allowSendWhenInactive
 
-    // 本地模式时的覆盖层（保留 footer 中的 file/terminal 按钮）
     const showLocalModeCover = active && mode === 'local'
 
     return (
@@ -505,19 +511,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 {suggestionOpen && (fileEntries.length > 0 || fileListLoading) && (
                     <div
                         role="listbox"
-                        style={{
-                            position: 'absolute',
-                            bottom: '100%',
-                            left: 0,
-                            right: 0,
-                            maxHeight: 240,
-                            overflowY: 'auto',
-                            backgroundColor: 'var(--ant-color-bg-elevated)',
-                            borderRadius: 'var(--ant-border-radius)',
-                            boxShadow: 'var(--ant-box-shadow-secondary)',
-                            zIndex: 50,
-                            marginBottom: 4,
-                        }}
+                        style={DROPDOWN_STYLE}
                     >
                         {fileListLoading && fileEntries.length === 0 ? (
                             <div style={{ padding: '8px 12px', color: 'var(--ant-color-text-tertiary)', fontSize: 14 }}>
@@ -559,19 +553,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 {slashOpen && (slashCommands.length > 0 || slashLoading) && (
                     <div
                         role="listbox"
-                        style={{
-                            position: 'absolute',
-                            bottom: '100%',
-                            left: 0,
-                            right: 0,
-                            maxHeight: 240,
-                            overflowY: 'auto',
-                            backgroundColor: 'var(--ant-color-bg-elevated)',
-                            borderRadius: 'var(--ant-border-radius)',
-                            boxShadow: 'var(--ant-box-shadow-secondary)',
-                            zIndex: 50,
-                            marginBottom: 4,
-                        }}
+                        style={DROPDOWN_STYLE}
                     >
                         {slashLoading && slashCommands.length === 0 ? (
                             <div style={{ padding: '8px 12px', color: 'var(--ant-color-text-tertiary)', fontSize: 14 }}>

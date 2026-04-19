@@ -32,25 +32,17 @@ export interface MobiProcess {
   pid: number
   command: string
   type: string
-  /** 进程所属 profile（从 MOBI_HOME 环境变量或 runner state 推断） */
   profile?: string
 }
 
 const DEFAULT_MOBI_HOME = join(homedir(), '.mobi')
 
-/**
- * 根据名称获取 MOBI_HOME 路径
- * default → ~/.mobi，dev → ~/.mobi-dev，e2e → ~/.mobi-e2e
- */
 export function getMobiHomeForProfile(profile: string): string {
   return profile === 'default'
     ? DEFAULT_MOBI_HOME
     : join(homedir(), `.mobi-${profile}`)
 }
 
-/**
- * 从 runner state 文件读取 runner PID
- */
 async function readRunnerPid(mobiHome: string): Promise<number | undefined> {
   try {
     const statePath = join(mobiHome, 'runner.state.json')
@@ -63,11 +55,13 @@ async function readRunnerPid(mobiHome: string): Promise<number | undefined> {
 }
 
 /**
- * 从 /proc/<pid>/environ 读取 MOBI_HOME 并反推 profile 名称
- * 注意：/proc/<pid>/environ 是 exec 时的快照，运行时 process.env 修改不会反映
- * 对于 Runner 的子进程（session CLI），MOBI_HOME 在 exec 时就已设置（继承自父进程）
+ * 从 /proc/<pid>/environ 反推进程所属 profile
+ * /proc/<pid>/environ 是 exec 时的快照（非运行时 process.env）
+ * ⚠️ 仅 Linux 有效（macOS 无 /proc 文件系统）
  */
 async function getProcessProfile(pid: number): Promise<string | undefined> {
+  if (process.platform !== 'linux') return undefined
+
   try {
     const environ = await readFile(`/proc/${pid}/environ`, 'utf8')
     const mobiHome = environ.split('\0')
@@ -90,13 +84,10 @@ const RUNNABLE_TYPES = new Set([
   'runner-version-check', 'dev-runner-version-check',
 ])
 
-/**
- * Find all MOBI CLI processes (including current process)
- */
 export async function findAllMobiProcesses(): Promise<MobiProcess[]> {
   try {
     const processes = await psList();
-    const allProcesses: MobiProcess[] = [];
+    const candidates: Array<{ proc: typeof processes[0]; cmd: string; name: string; type: string }> = [];
 
     for (const proc of processes) {
       const cmd = proc.cmd || '';
@@ -129,37 +120,32 @@ export async function findAllMobiProcesses(): Promise<MobiProcess[]> {
         type = isDevMode ? 'dev-related' : 'user-session';
       }
 
-      const profile = await getProcessProfile(proc.pid)
-      allProcesses.push({ pid: proc.pid, command: cmd || name, type, profile });
+      candidates.push({ proc, cmd, name, type });
     }
 
-    return allProcesses;
+    const profiles = await Promise.all(candidates.map(c => getProcessProfile(c.proc.pid)))
+
+    return candidates.map((c, i) => ({
+      pid: c.proc.pid,
+      command: c.cmd || c.name,
+      type: c.type,
+      profile: profiles[i],
+    }));
   } catch (error) {
     return [];
   }
 }
 
-/**
- * 匹配进程是否属于指定 profile
- * 策略：environ 检测 + runner state PID 匹配
- */
 function matchesProfile(proc: MobiProcess, profile: string, runnerPids: Set<number>): boolean {
-  // 1. environ 中 MOBI_HOME 匹配（子进程有效）
   if (proc.profile === profile) return true
-  // 2. Runner state 文件中的 PID 匹配（Runner 进程本身）
   if (runnerPids.has(proc.pid)) return true
   return false
 }
 
-/**
- * Find all runaway MOBI CLI processes that should be killed
- * @param profile 只清理指定 profile 的进程，不传则清理全部
- */
 export async function findRunawayMobiProcesses(profile?: string): Promise<Array<{ pid: number, command: string }>> {
   const allProcesses = await findAllMobiProcesses();
 
-  // 通过 runner state 文件关联 Runner PID 到 profile
-  let runnerPids = new Set<number>()
+  const runnerPids = new Set<number>()
   if (profile) {
     const mobiHome = getMobiHomeForProfile(profile)
     const pid = await readRunnerPid(mobiHome)
@@ -175,10 +161,6 @@ export async function findRunawayMobiProcesses(profile?: string): Promise<Array<
     .map(p => ({ pid: p.pid, command: p.command }));
 }
 
-/**
- * Kill all runaway MOBI CLI processes
- * @param profile 只清理指定 profile 的进程，不传则清理全部
- */
 export async function killRunawayMobiProcesses(profile?: string): Promise<{ killed: number, errors: Array<{ pid: number, error: string }> }> {
   const runawayProcesses = await findRunawayMobiProcesses(profile);
   const errors: Array<{ pid: number, error: string }> = [];

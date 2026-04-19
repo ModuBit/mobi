@@ -66,6 +66,11 @@ function getMachineTitle(machine: Machine): string {
     return machine.id.slice(0, 8)
 }
 
+function startEllipsis(path: string, maxLen = 40): string {
+    if (path.length <= maxLen) return path
+    return `...${path.slice(-(maxLen - 3))}`
+}
+
 /**
  * 新建会话组件
  */
@@ -272,7 +277,7 @@ export function NewSession(props: NewSessionProps) {
                         pendingOpenRef.current = false
                     }}
                     onSelect={(value) => {
-                        setDirectory(value)
+                        setDirectory(value.endsWith('/') ? value : `${value}/`)
                         pendingOpenRef.current = true
                     }}
                     defaultActiveFirstOption
@@ -282,15 +287,16 @@ export function NewSession(props: NewSessionProps) {
                     popupMatchSelectWidth={false}
                 />
                 {recentPaths.length > 0 && (
-                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    <div style={{ marginTop: 8, lineHeight: '2em' }}>
                         {recentPaths.slice(0, 5).map((path) => (
-                            <Tag
-                                key={path}
-                                onClick={() => setDirectory(path)}
-                                style={{ cursor: 'pointer', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}
-                            >
-                                {path}
-                            </Tag>
+                            <Tooltip key={path} title={path} mouseEnterDelay={0.3}>
+                                <Tag
+                                    onClick={() => setDirectory(path)}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    {startEllipsis(path)}
+                                </Tag>
+                            </Tooltip>
                         ))}
                     </div>
                 )}

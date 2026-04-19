@@ -16,15 +16,15 @@
 
 import { logger } from '@/ui/logger'
 import { readdir, stat } from 'fs/promises'
-import { join, resolve } from 'path'
+import { join, resolve, isAbsolute } from 'path'
 import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validatePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { run as runRipgrep } from '@/modules/ripgrep/index'
 
-/** 最大返回条目数 */
 const MAX_RESULTS = 50
+const MAX_SEARCH_DEPTH = 10
 
 interface ListSessionFilesRequest {
     path: string
@@ -67,11 +67,19 @@ export function isSearchQuery(path: string): boolean {
  * @param limit 最大返回条目数
  */
 export function parseRipgrepOutput(output: string, limit: number): FileEntry[] {
-    const lines = output.split('\n').filter(line => line.length > 0)
-    return lines.slice(0, limit).map(line => {
-        const name = line.includes('/') ? line.slice(line.lastIndexOf('/') + 1) : line
-        return { name, type: 'file' as const, path: line }
-    })
+    const results: FileEntry[] = []
+    let start = 0
+    while (start < output.length && results.length < limit) {
+        let end = output.indexOf('\n', start)
+        if (end === -1) end = output.length
+        const line = output.slice(start, end)
+        if (line.length > 0) {
+            const name = line.includes('/') ? line.slice(line.lastIndexOf('/') + 1) : line
+            results.push({ name, type: 'file' as const, path: line })
+        }
+        start = end + 1
+    }
+    return results
 }
 
 /**
@@ -121,7 +129,7 @@ function extractMatchingDirs(
  */
 async function searchFiles(workingDirectory: string, query: string): Promise<FileEntry[]> {
     try {
-        const result = await runRipgrep(['--files'], { cwd: workingDirectory })
+        const result = await runRipgrep(['--files', '--max-depth', String(MAX_SEARCH_DEPTH)], { cwd: workingDirectory })
 
         if (result.exitCode !== 0 && result.exitCode !== 1) {
             logger.debug(`ripgrep 异常退出 (code=${result.exitCode}): ${result.stderr}`)
@@ -132,9 +140,21 @@ async function searchFiles(workingDirectory: string, query: string): Promise<Fil
         // 如 "docs/hub" → ['docs','hub']，匹配 "docs/conventions/hub.md"
         const queryParts = query.toLowerCase().split('/').filter(p => p.length > 0)
 
-        const matchedLines = result.stdout
-            .split('\n')
-            .filter(line => line.length > 0 && pathMatchesQuery(line.toLowerCase(), queryParts))
+        const matchedLines: string[] = []
+        let scanStart = 0
+        const maxScanLines = MAX_RESULTS * 2
+        let scannedLines = 0
+        while (scanStart < result.stdout.length && matchedLines.length < MAX_RESULTS && scannedLines < maxScanLines) {
+            let lineEnd = result.stdout.indexOf('\n', scanStart)
+            if (lineEnd === -1) lineEnd = result.stdout.length
+            const line = result.stdout.slice(scanStart, lineEnd)
+            scanStart = lineEnd + 1
+            scannedLines++
+
+            if (line.length > 0 && pathMatchesQuery(line.toLowerCase(), queryParts)) {
+                matchedLines.push(line)
+            }
+        }
 
         const dirEntries = extractMatchingDirs(matchedLines, queryParts)
         const fileEntries = parseRipgrepOutput(matchedLines.join('\n'), MAX_RESULTS)
@@ -146,10 +166,6 @@ async function searchFiles(workingDirectory: string, query: string): Promise<Fil
     }
 }
 
-/**
- * 列出指定目录下的文件和子目录
- * @param targetPath 目标目录的绝对路径
- */
 async function listDirectory(targetPath: string): Promise<FileEntry[]> {
     const entries = await readdir(targetPath, { withFileTypes: true })
 
@@ -178,20 +194,15 @@ async function listDirectory(targetPath: string): Promise<FileEntry[]> {
         })
     )
 
-    // 目录优先，同类型按名称排序
     fileEntries.sort((a, b) => {
         if (a.type === 'directory' && b.type !== 'directory') return -1
         if (a.type !== 'directory' && b.type === 'directory') return 1
         return a.name.localeCompare(b.name)
     })
 
-    // 限制返回条目数
     return fileEntries.slice(0, MAX_RESULTS)
 }
 
-/**
- * 判断路径是否在工作目录范围内
- */
 function isWithinWorkingDir(targetPath: string, workingDirectory: string): boolean {
     const resolved = resolve(workingDirectory, targetPath)
     const normalizedTarget = process.platform === 'win32' ? resolved.toLowerCase() : resolved
@@ -225,15 +236,29 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
                 targetPath = join(homedir(), targetPath.slice(1))
             }
 
+            // 解析为绝对路径：已是绝对路径时直接使用，否则相对 workingDirectory 解析
+            const resolvedPath = isAbsolute(targetPath)
+                ? targetPath
+                : resolve(workingDirectory, targetPath)
+
             // 工作目录内：校验路径安全性
-            if (isWithinWorkingDir(targetPath, workingDirectory)) {
-                const validation = validatePath(targetPath, workingDirectory)
+            if (isWithinWorkingDir(resolvedPath, workingDirectory)) {
+                const validation = validatePath(resolvedPath, workingDirectory)
                 if (!validation.valid) {
                     return rpcError(validation.error ?? 'Invalid path')
                 }
+            } else {
+                // 工作目录外：验证目标是存在的目录
+                try {
+                    const stats = await stat(resolvedPath)
+                    if (!stats.isDirectory()) {
+                        return rpcError('Path is not a directory')
+                    }
+                } catch {
+                    return rpcError('Directory does not exist or is not accessible')
+                }
             }
 
-            const resolvedPath = resolve(workingDirectory, targetPath)
             const entries = await listDirectory(resolvedPath)
             return { success: true, entries }
         } catch (error) {

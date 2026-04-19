@@ -39,6 +39,10 @@ export function isSlashTrigger(text: string): boolean {
     return text[0] === '/' && (text.length === 1 || !/\s/.test(text.slice(1)))
 }
 
+function ensureSlashPrefix(name: string): string {
+    return name.startsWith('/') ? name : `/${name}`
+}
+
 /**
  * 合并 SlashCommand 和 Skill 列表并去重
  * 同名时保留 SlashCommand，每项 label/value 加 / 前缀
@@ -50,9 +54,8 @@ export function mergeCommandsAndSkills(
     const seen = new Set<string>()
     const result: SlashCommandSuggestionItem[] = []
 
-    // 先处理 commands（优先级高）
     for (const cmd of commands) {
-        const name = cmd.name.startsWith('/') ? cmd.name : `/${cmd.name}`
+        const name = ensureSlashPrefix(cmd.name)
         const key = name.toLowerCase()
         if (!seen.has(key)) {
             seen.add(key)
@@ -65,9 +68,8 @@ export function mergeCommandsAndSkills(
         }
     }
 
-    // 再处理 skills（跳过与 command 同名的）
     for (const skill of skills) {
-        const name = skill.name.startsWith('/') ? skill.name : `/${skill.name}`
+        const name = ensureSlashPrefix(skill.name)
         const key = name.toLowerCase()
         if (!seen.has(key)) {
             seen.add(key)
