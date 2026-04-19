@@ -21,7 +21,7 @@ import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validatePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
-import { run as runRipgrep } from '@/modules/ripgrep/index'
+import { runStream as runRipgrepStream } from '@/modules/ripgrep/index'
 
 const MAX_RESULTS = 50
 const MAX_SEARCH_DEPTH = 10
@@ -123,41 +123,67 @@ function extractMatchingDirs(
 }
 
 /**
+ * 从 query 中解析最长已存在的目录前缀
+ * 如 "docs/architecture/hu" → { dirPrefix: "docs/architecture", matchParts: ["hu"] }
+ * 如 "hub" → { dirPrefix: "", matchParts: ["hub"] }
+ */
+async function resolveDirPrefix(
+    workingDirectory: string,
+    queryParts: string[],
+): Promise<{ dirPrefix: string; matchParts: string[] }> {
+    if (queryParts.length <= 1) {
+        return { dirPrefix: '', matchParts: queryParts }
+    }
+
+    let dirPrefix = ''
+    let consumedParts = 0
+    for (let i = 0; i < queryParts.length - 1; i++) {
+        const candidate = dirPrefix ? `${dirPrefix}/${queryParts[i]}` : queryParts[i]
+        try {
+            const s = await stat(join(workingDirectory, candidate))
+            if (!s.isDirectory()) break
+            dirPrefix = candidate
+            consumedParts = i + 1
+        } catch {
+            break
+        }
+    }
+
+    return { dirPrefix, matchParts: queryParts.slice(consumedParts) }
+}
+
+/**
  * 使用 ripgrep 模糊搜索文件和目录（路径子串匹配）
- * @param workingDirectory 工作目录
- * @param query 搜索关键词（在完整路径中做子串匹配）
  */
 async function searchFiles(workingDirectory: string, query: string): Promise<FileEntry[]> {
     try {
-        const result = await runRipgrep(['--files', '--max-depth', String(MAX_SEARCH_DEPTH)], { cwd: workingDirectory })
+        const allParts = query.toLowerCase().split('/').filter(p => p.length > 0)
+        const { dirPrefix, matchParts } = await resolveDirPrefix(workingDirectory, allParts)
 
-        if (result.exitCode !== 0 && result.exitCode !== 1) {
-            logger.debug(`ripgrep 异常退出 (code=${result.exitCode}): ${result.stderr}`)
-            return []
-        }
-
-        // 按路径段拆分 query，做有序匹配
-        // 如 "docs/hub" → ['docs','hub']，匹配 "docs/conventions/hub.md"
-        const queryParts = query.toLowerCase().split('/').filter(p => p.length > 0)
+        const rgCwd = dirPrefix ? join(workingDirectory, dirPrefix) : workingDirectory
+        const prefixPath = dirPrefix ? dirPrefix + '/' : ''
 
         const matchedLines: string[] = []
-        let scanStart = 0
-        const maxScanLines = MAX_RESULTS * 2
-        let scannedLines = 0
-        while (scanStart < result.stdout.length && matchedLines.length < MAX_RESULTS && scannedLines < maxScanLines) {
-            let lineEnd = result.stdout.indexOf('\n', scanStart)
-            if (lineEnd === -1) lineEnd = result.stdout.length
-            const line = result.stdout.slice(scanStart, lineEnd)
-            scanStart = lineEnd + 1
-            scannedLines++
+        const maxCollect = MAX_RESULTS * 2
 
-            if (line.length > 0 && pathMatchesQuery(line.toLowerCase(), queryParts)) {
-                matchedLines.push(line)
-            }
-        }
+        await runRipgrepStream(
+            ['--files', '--max-depth', String(MAX_SEARCH_DEPTH)],
+            (line) => {
+                if (matchParts.length === 0 || pathMatchesQuery(line.toLowerCase(), matchParts)) {
+                    matchedLines.push(line)
+                }
+                return matchedLines.length < maxCollect
+            },
+            { cwd: rgCwd },
+        )
 
-        const dirEntries = extractMatchingDirs(matchedLines, queryParts)
-        const fileEntries = parseRipgrepOutput(matchedLines.join('\n'), MAX_RESULTS)
+        const fullPaths = matchedLines.map(l => prefixPath + l)
+        const dirEntries = extractMatchingDirs(fullPaths, allParts)
+        const fileEntries = fullPaths.slice(0, MAX_RESULTS).map(p => ({
+            name: p.includes('/') ? p.slice(p.lastIndexOf('/') + 1) : p,
+            type: 'file' as const,
+            path: p,
+        }))
 
         return [...dirEntries, ...fileEntries].slice(0, MAX_RESULTS)
     } catch (error) {
