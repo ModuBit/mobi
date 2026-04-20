@@ -76,19 +76,36 @@ export function parseCliOutputText(text: string) { ... }
 
 | 职责 | 归属 | 示例 |
 |------|------|------|
-| 纯数据解析、格式化（无 React 依赖） | `domain/` | `parseCliOutputText`、`formatEvent`、`hasBashTags` |
+| 纯数据解析、格式化（无 React 依赖） | `domain/` | `parseCliOutputText`、`detectMentionAtCursor`、`buildMentionPath` |
 | 通用工具函数 | `core/utils/` | `formatMessageTime`、`path.ts` |
 | UI 渲染、React hooks | `components/` | `CliOutputBlock`、`ToolCallRenderer` |
 | 数据获取、状态管理 | `core/data/` | `useMessages`、`useAuthStore` |
 
 ### 容器组件模式
 
-容器组件（如 `ChatContainer`）只负责三件事：
+容器组件（如 `ChatContainer`、`ChatComposer`）只负责三件事：
 1. **数据获取** — 调用 hooks 获取数据
 2. **编排调度** — 将数据转换为子组件可用的 props
 3. **事件处理** — 转发用户操作
 
 具体的渲染逻辑、解析逻辑、格式化逻辑一律下沉到对应层级。
+
+### 交互组件拆分
+
+容器组件中内联的交互子组件（下拉面板、弹窗、卡片等）必须抽为独立文件，与容器同目录：
+
+```
+components/composer/
+├── ChatComposer.tsx          ← 编排层（状态管理 + 键盘导航 + 布局）
+├── MentionDropdown.tsx       ← @ 文件引用下拉
+├── SlashCommandDropdown.tsx  ← 斜杠命令下拉
+└── ...
+```
+
+判断标准：如果一段 JSX 满足以下任一条件，就应拆出：
+- 有自己的 Props 接口
+- 包含独立的列表渲染逻辑（map + 样式 + 事件）
+- 可能在其他地方复用
 
 ### 模块内 blocks 模式
 
