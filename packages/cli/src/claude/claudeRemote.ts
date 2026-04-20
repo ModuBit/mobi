@@ -301,7 +301,7 @@ export async function claudeRemote(opts: {
         for await (const message of response) {
             if (!queryStarted) {
                 queryStarted = true;
-                logger.debug(`[claudeRemote] First message received from SDK: ${message.type}/${message.subtype || '-'}`);
+                logger.debug(`[claudeRemote] First message received from SDK: ${message.type}/${('subtype' in message ? (message as { subtype: string }).subtype : '-')}`);
             }
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
 
