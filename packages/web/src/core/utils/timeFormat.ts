@@ -52,3 +52,21 @@ export function formatRelativeTime(timestamp: number): string {
         return `${years}年前`
     }
 }
+
+/** 格式化消息时间：当天 HH:mm，非当天 MM/DD HH:mm，非当年 YYYY/MM/DD HH:mm */
+export function formatMessageTime(createdAt: number): string {
+    const date = new Date(createdAt)
+    const now = new Date()
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    const time = `${hours}:${minutes}`
+
+    const sameYear = date.getFullYear() === now.getFullYear()
+    const sameMonth = sameYear && date.getMonth() === now.getMonth()
+    const sameDay = sameMonth && date.getDate() === now.getDate()
+
+    if (sameDay) return time
+    const monthDay = `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`
+    if (sameYear) return `${monthDay} ${time}`
+    return `${date.getFullYear()}/${monthDay} ${time}`
+}
