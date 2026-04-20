@@ -23,7 +23,7 @@ import {
     getPermissionModeTone,
     isPermissionModeAllowedForFlavor
 } from '@mobi/shared'
-import { getContextBudgetTokens } from '@/chat/modelConfig'
+import { getContextBudgetTokens } from '@/domain/chat/modelConfig'
 import { PixelAvatar } from '@/components/PixelAvatar/PixelAvatar'
 import type { AgentStatus } from '@/components/PixelAvatar/types'
 

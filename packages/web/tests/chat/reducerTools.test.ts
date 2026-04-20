@@ -26,8 +26,8 @@ import {
     collectToolIdsFromMessages,
     isChangeTitleToolName,
     extractTitleFromChangeTitleInput,
-} from '@/chat/reducerTools'
-import type { ToolCallBlock, NormalizedMessage } from '@/chat/types'
+} from '@/domain/chat/reducerTools'
+import type { ToolCallBlock, NormalizedMessage } from '@/domain/chat/types'
 import type { AgentState } from '@/core/data/api/types'
 
 describe('ensureToolBlock', () => {

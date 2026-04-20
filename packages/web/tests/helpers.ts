@@ -19,7 +19,7 @@
  * 为各测试文件提供统一的测试数据构造工具
  */
 
-import type { NormalizedMessage, ToolCallBlock, ChatToolCall } from '@/chat/types'
+import type { NormalizedMessage, ToolCallBlock, ChatToolCall } from '@/domain/chat/types'
 import type { DecryptedMessage } from '@mobi/shared'
 
 /**

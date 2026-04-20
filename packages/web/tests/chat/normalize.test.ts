@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { normalizeDecryptedMessage } from '@/chat/normalize'
+import { normalizeDecryptedMessage } from '@/domain/chat/normalize'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 // 抑制 console.warn 输出
