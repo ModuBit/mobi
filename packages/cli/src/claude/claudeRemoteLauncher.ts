@@ -407,8 +407,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         : `Non-Error thrown: type=${typeof e}, value=${JSON.stringify(e)}, keys=${typeof e === 'object' && e !== null ? Object.keys(e).join(',') : 'N/A'}`;
                     logger.debug(`[remote]: launch error: ${errorDetail}`);
                     if (!this.exitReason) {
-                        session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
-                        continue;
+                        session.client.sendSessionEvent({ type: 'message', message: `Process exited unexpectedly: ${e instanceof Error ? e.message : String(e)}` });
+                        // claude 进程崩溃，退出 session 避免僵尸进程
+                        this.exitReason = 'exit';
                     }
                 } finally {
                     logger.debug('[remote]: launch finally');
