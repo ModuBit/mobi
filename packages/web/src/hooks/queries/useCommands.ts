@@ -18,25 +18,24 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useMobiApi } from '@/api/client'
 import { queryKeys } from '@/lib/query-keys'
-import type { SkillSummary } from '@/api/types'
+import type { Command } from '@/api/types'
 
-/** 技能（保持 Skill 别名以兼容现有使用） */
-export type Skill = SkillSummary
+export type { Command }
 
 /**
- * 获取会话可用的技能列表
+ * 获取会话可用的命令列表（slash commands + skills）
  */
-export function useSkills(sessionId: string | null) {
+export function useCommands(sessionId: string | null) {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: sessionId ? queryKeys.skills(sessionId) : ['skills', 'disabled'],
-        queryFn: async (): Promise<Skill[]> => {
+        queryKey: sessionId ? queryKeys.commands(sessionId) : ['commands', 'disabled'],
+        queryFn: async (): Promise<Command[]> => {
             if (!sessionId) return []
 
-            const res = await api.sessions.skills(sessionId)
-            return res.data?.skills ?? []
+            const res = await api.sessions.commands(sessionId)
+            return res.data?.commands ?? []
         },
         enabled: !!token && !!sessionId,
         staleTime: 60_000, // 1 分钟内不重新获取

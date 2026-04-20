@@ -48,8 +48,6 @@ export const queryKeys = {
         path,
         staged ? 'staged' : 'unstaged'
     ] as const,
-    /** 斜杠命令 */
-    slashCommands: (sessionId: string) => ['slash-commands', sessionId] as const,
-    /** 技能列表 */
-    skills: (sessionId: string) => ['skills', sessionId] as const,
+    /** 命令列表（slash commands + skills） */
+    commands: (sessionId: string) => ['commands', sessionId] as const,
 }

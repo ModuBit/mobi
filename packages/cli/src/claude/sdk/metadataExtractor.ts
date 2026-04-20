@@ -57,6 +57,7 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
                 abortController,
                 allowedTools: ['Bash(echo)'],
                 pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
+                persistSession: false,
             }
         })
 

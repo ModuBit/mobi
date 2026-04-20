@@ -410,7 +410,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
-    app.get('/sessions/:id/slash-commands', async (c) => {
+    app.get('/sessions/:id/commands', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
@@ -422,39 +422,26 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return sessionResult
         }
 
-        // Get agent type from session metadata, default to 'claude'
-        const agent = sessionResult.session.metadata?.flavor ?? 'claude'
+        // 优先从 DB 中的 sdkMetadata 获取（metadataExtractor 在会话启动时已提取）
+        const sdkCommands = sessionResult.session.metadata?.sdkMetadata?.commands
+        if (sdkCommands && sdkCommands.length > 0) {
+            return c.json({ success: true, commands: sdkCommands })
+        }
 
+        // Fallback: RPC 让 CLI 通过 SDK 提取
         try {
-            const result = await engine.listSlashCommands(sessionResult.sessionId, agent)
+            const result = await engine.listCommands(sessionResult.sessionId)
+
+            // 成功后存入 DB，下次可直接读取
+            if (result.success && result.commands && result.commands.length > 0) {
+                engine.updateSDKMetadata(sessionResult.sessionId, result.commands)
+            }
+
             return c.json(result)
         } catch (error) {
             return c.json({
                 success: false,
-                error: error instanceof Error ? error.message : 'Failed to list slash commands'
-            })
-        }
-    })
-
-    app.get('/sessions/:id/skills', async (c) => {
-        const engine = requireSyncEngine(c, getSyncEngine)
-        if (engine instanceof Response) {
-            return engine
-        }
-
-        // Session must exist but doesn't need to be active
-        const sessionResult = requireSessionFromParam(c, engine)
-        if (sessionResult instanceof Response) {
-            return sessionResult
-        }
-
-        try {
-            const result = await engine.listSkills(sessionResult.sessionId)
-            return c.json(result)
-        } catch (error) {
-            return c.json({
-                success: false,
-                error: error instanceof Error ? error.message : 'Failed to list skills'
+                error: error instanceof Error ? error.message : 'Failed to list commands'
             })
         }
     })

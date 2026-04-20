@@ -116,15 +116,9 @@ describe('queryKeys', () => {
             expect(key).toEqual(['git-file-diff', 'sess-1', 'file.ts', 'unstaged'])
         })
 
-        it('slashCommands(sessionId) 应返回正确元组', () => {
-            const key = queryKeys.slashCommands('sess-1')
-            expect(key).toEqual(['slash-commands', 'sess-1'])
-            expect(key).toHaveLength(2)
-        })
-
-        it('skills(sessionId) 应返回正确元组', () => {
-            const key = queryKeys.skills('sess-1')
-            expect(key).toEqual(['skills', 'sess-1'])
+        it('commands(sessionId) 应返回正确元组', () => {
+            const key = queryKeys.commands('sess-1')
+            expect(key).toEqual(['commands', 'sess-1'])
             expect(key).toHaveLength(2)
         })
     })
@@ -141,8 +135,7 @@ describe('queryKeys', () => {
                 queryKeys.session('a'),
                 queryKeys.messages('a'),
                 queryKeys.gitStatus('a'),
-                queryKeys.slashCommands('a'),
-                queryKeys.skills('a'),
+                queryKeys.commands('a'),
             ]
 
             // 所有 key 都应互不相同

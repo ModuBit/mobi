@@ -19,11 +19,10 @@
  * 从源码中 re-export 纯函数供测试使用
  */
 export {
-    isSlashTrigger,
-    mergeCommandsAndSkills,
+    detectSlashAtCursor,
+    toCommandSuggestions,
     filterCommands,
     type SlashCommandSuggestionItem,
 } from '@/components/composer/slashCommandHelper'
 
-export type { SlashCommand } from '@/api/types'
-export type { Skill } from '@/hooks/queries/useSkills'
+export type { Command } from '@/api/types'

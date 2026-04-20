@@ -24,9 +24,11 @@ import { MachineCache, type Machine } from './machineCache'
 import { MessageService } from './messageService'
 import {
     RpcGateway,
+    type RpcCommandEntry,
     type RpcCommandResponse,
     type RpcDeleteUploadResponse,
     type RpcListDirectoryResponse,
+    type RpcListCommandsResponse,
     type RpcPathExistsResponse,
     type RpcReadFileResponse,
     type RpcUploadFileResponse
@@ -453,19 +455,11 @@ export class SyncEngine {
         return await this.rpcGateway.runRipgrep(sessionId, args, cwd)
     }
 
-    async listSlashCommands(sessionId: string, agent: string): Promise<{
-        success: boolean
-        commands?: Array<{ name: string; description?: string; source: 'builtin' | 'user' | 'plugin' | 'project' }>
-        error?: string
-    }> {
-        return await this.rpcGateway.listSlashCommands(sessionId, agent)
+    async listCommands(sessionId: string): Promise<RpcListCommandsResponse> {
+        return await this.rpcGateway.listCommands(sessionId)
     }
 
-    async listSkills(sessionId: string): Promise<{
-        success: boolean
-        skills?: Array<{ name: string; description?: string }>
-        error?: string
-    }> {
-        return await this.rpcGateway.listSkills(sessionId)
+    updateSDKMetadata(sessionId: string, commands: RpcCommandEntry[]): void {
+        this.sessionCache.updateSDKMetadata(sessionId, commands)
     }
 }

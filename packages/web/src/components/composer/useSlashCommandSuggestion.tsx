@@ -15,10 +15,9 @@
  */
 
 import { useMemo } from 'react'
-import { useSlashCommands } from '@/hooks/queries/useSlashCommands'
-import { useSkills } from '@/hooks/queries/useSkills'
+import { useCommands } from '@/hooks/queries/useCommands'
 import {
-    mergeCommandsAndSkills,
+    toCommandSuggestions,
     filterCommands,
     type SlashCommandSuggestionItem,
 } from './slashCommandHelper'
@@ -26,16 +25,18 @@ import {
 /**
  * 斜杠命令建议 Hook
  *
- * 合并 SlashCommand 和 Skill 数据源，根据过滤文本返回建议列表
+ * 根据过滤文本返回建议列表，按使用频率排序
  *
  * @param sessionId 会话 ID
  * @param isOpen 下拉是否打开（关闭时禁用数据获取）
  * @param filterText 过滤文本（不含 / 前缀）
+ * @param workingDir 当前工作目录，用于绑定使用统计
  */
 export function useSlashCommandSuggestion(
     sessionId: string | null,
     isOpen: boolean,
     filterText: string,
+    workingDir?: string,
 ): {
     items: SlashCommandSuggestionItem[]
     isLoading: boolean
@@ -43,17 +44,13 @@ export function useSlashCommandSuggestion(
     // isOpen 为 false 时传 null，禁用查询
     const effectiveSessionId = isOpen ? sessionId : null
 
-    const commandsQuery = useSlashCommands(effectiveSessionId)
-    const skillsQuery = useSkills(effectiveSessionId)
-
-    const isLoading = commandsQuery.isLoading || skillsQuery.isLoading
+    const commandsQuery = useCommands(effectiveSessionId)
 
     const items = useMemo(() => {
         const commands = commandsQuery.data ?? []
-        const skills = skillsQuery.data ?? []
-        const merged = mergeCommandsAndSkills(commands, skills)
-        return filterCommands(merged, filterText)
-    }, [commandsQuery.data, skillsQuery.data, filterText])
+        const suggestions = toCommandSuggestions(commands, workingDir)
+        return filterCommands(suggestions, filterText)
+    }, [commandsQuery.data, filterText, workingDir])
 
-    return { items, isLoading }
+    return { items, isLoading: commandsQuery.isLoading }
 }

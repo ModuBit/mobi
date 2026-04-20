@@ -16,13 +16,12 @@
 
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { registerBashHandlers } from './handlers/bash'
+import { registerCommandHandlers } from './handlers/commands'
 import { registerDirectoryHandlers } from './handlers/directories'
 import { registerDifftasticHandlers } from './handlers/difftastic'
 import { registerFileHandlers } from './handlers/files'
 import { registerGitHandlers } from './handlers/git'
 import { registerRipgrepHandlers } from './handlers/ripgrep'
-import { registerSlashCommandHandlers } from './handlers/slashCommands'
-import { registerSkillsHandlers } from './handlers/skills'
 import { registerSessionFilesHandler } from './handlers/sessionFiles'
 import { registerUploadHandlers } from './handlers/uploads'
 
@@ -32,8 +31,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
     registerDirectoryHandlers(rpcHandlerManager, workingDirectory)
     registerRipgrepHandlers(rpcHandlerManager, workingDirectory)
     registerDifftasticHandlers(rpcHandlerManager, workingDirectory)
-    registerSlashCommandHandlers(rpcHandlerManager, workingDirectory)
-    registerSkillsHandlers(rpcHandlerManager, workingDirectory)
+    registerCommandHandlers(rpcHandlerManager)
     registerGitHandlers(rpcHandlerManager, workingDirectory)
     registerUploadHandlers(rpcHandlerManager)
     registerSessionFilesHandler(rpcHandlerManager, workingDirectory)

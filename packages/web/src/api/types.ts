@@ -266,26 +266,18 @@ export interface GroupSessionsResponse {
     hasMore: boolean
 }
 
-// ============ 斜杠命令 & 技能 ============
+// ============ 命令（slash commands + skills，来自 SDK） ============
 
-export type SlashCommand = {
+export type Command = {
     name: string
-    description?: string
-    source: 'builtin' | 'user' | 'plugin' | 'project'
-    content?: string
-    pluginName?: string
+    description: string
+    argumentHint: string
 }
 
-export type SlashCommandsResponse = {
+export type CommandsResponse = {
     success: boolean
-    commands?: SlashCommand[]
+    commands?: Command[]
     error?: string
-}
-
-export type SkillSummary = {
-    name: string
-    description?: string
-    source?: 'builtin' | 'user' | 'plugin' | 'project'
 }
 
 /** 文件树节点 */
@@ -293,10 +285,4 @@ export type FileNode = {
     name: string
     path: string
     type: 'file' | 'directory'
-}
-
-export type SkillsResponse = {
-    success: boolean
-    skills?: SkillSummary[]
-    error?: string
 }

@@ -20,127 +20,101 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-    isSlashTrigger,
-    mergeCommandsAndSkills,
+    detectSlashAtCursor,
+    toCommandSuggestions,
     filterCommands,
 } from './useSlashCommandSuggestion.test-helper'
-import type { SlashCommand, Skill } from './useSlashCommandSuggestion.test-helper'
+import type { Command } from './useSlashCommandSuggestion.test-helper'
 
-// ========== isSlashTrigger ==========
+// ========== detectSlashAtCursor ==========
 
-describe('isSlashTrigger', () => {
-    it('单独 / 触发', () => {
-        expect(isSlashTrigger('/')).toBe(true)
+describe('detectSlashAtCursor', () => {
+    it('单独 /，光标在末尾 → 触发，filter 为空', () => {
+        expect(detectSlashAtCursor('/', 1)).toBe('')
     })
 
-    it('/ 后跟文字触发', () => {
-        expect(isSlashTrigger('/help')).toBe(true)
+    it('/help，光标在末尾 → 触发，filter 为 help', () => {
+        expect(detectSlashAtCursor('/help', 5)).toBe('help')
+    })
+
+    it('/help，光标在 / 后 → 触发，filter 为空', () => {
+        expect(detectSlashAtCursor('/help', 1)).toBe('')
+    })
+
+    it('/help，光标在 h 后 → 触发，filter 为 h', () => {
+        expect(detectSlashAtCursor('/help', 2)).toBe('h')
     })
 
     it('/ 后跟空白不触发', () => {
-        expect(isSlashTrigger('/ ')).toBe(false)
-        expect(isSlashTrigger('/\t')).toBe(false)
-        expect(isSlashTrigger('/\n')).toBe(false)
-        expect(isSlashTrigger('/ hello')).toBe(false)
+        expect(detectSlashAtCursor('/ ', 2)).toBeNull()
+        expect(detectSlashAtCursor('/\t', 2)).toBeNull()
+        expect(detectSlashAtCursor('/ hello', 2)).toBeNull()
+    })
+
+    it('/ abc 光标在 abc 后不触发', () => {
+        expect(detectSlashAtCursor('/ abc', 5)).toBeNull()
+    })
+
+    it('/super abc 光标在 super 后触发', () => {
+        expect(detectSlashAtCursor('/super abc', 6)).toBe('super')
     })
 
     it('空字符串不触发', () => {
-        expect(isSlashTrigger('')).toBe(false)
+        expect(detectSlashAtCursor('', 0)).toBeNull()
     })
 
     it('非 / 开头不触发', () => {
-        expect(isSlashTrigger('help')).toBe(false)
-        expect(isSlashTrigger(' /help')).toBe(false)
+        expect(detectSlashAtCursor('help', 4)).toBeNull()
+        expect(detectSlashAtCursor(' /help', 6)).toBeNull()
     })
 })
 
-// ========== mergeCommandsAndSkills ==========
+// ========== toCommandSuggestions ==========
 
-describe('mergeCommandsAndSkills', () => {
+describe('toCommandSuggestions', () => {
     it('空列表返回空数组', () => {
-        expect(mergeCommandsAndSkills([], [])).toEqual([])
+        expect(toCommandSuggestions([])).toEqual([])
     })
 
-    it('仅有 commands', () => {
-        const commands: SlashCommand[] = [
-            { name: 'help', description: '帮助', source: 'builtin' },
+    it('单个命令', () => {
+        const commands: Command[] = [
+            { name: 'help', description: '帮助', argumentHint: '' },
         ]
-        const result = mergeCommandsAndSkills(commands, [])
+        const result = toCommandSuggestions(commands)
         expect(result).toHaveLength(1)
         expect(result[0]).toEqual({
             label: '/help',
             value: '/help',
             description: '帮助',
-            source: 'builtin',
         })
     })
 
-    it('仅有 skills', () => {
-        const skills: Skill[] = [
-            { name: 'test', description: '测试', source: 'user' },
+    it('多个命令', () => {
+        const commands: Command[] = [
+            { name: 'help', description: '帮助', argumentHint: '' },
+            { name: 'test', description: '测试', argumentHint: '<arg>' },
         ]
-        const result = mergeCommandsAndSkills([], skills)
-        expect(result).toHaveLength(1)
-        expect(result[0]).toEqual({
-            label: '/test',
-            value: '/test',
-            description: '测试',
-            source: 'user',
-        })
-    })
-
-    it('合并 commands 和 skills', () => {
-        const commands: SlashCommand[] = [
-            { name: 'help', description: '帮助', source: 'builtin' },
-        ]
-        const skills: Skill[] = [
-            { name: 'test', description: '测试', source: 'user' },
-        ]
-        const result = mergeCommandsAndSkills(commands, skills)
+        const result = toCommandSuggestions(commands)
         expect(result).toHaveLength(2)
     })
 
-    it('同名时保留 command，丢弃 skill', () => {
-        const commands: SlashCommand[] = [
-            { name: 'help', description: '命令帮助', source: 'builtin' },
+    it('同名去重（不区分大小写）', () => {
+        const commands: Command[] = [
+            { name: 'Help', description: '帮助1', argumentHint: '' },
+            { name: 'help', description: '帮助2', argumentHint: '' },
         ]
-        const skills: Skill[] = [
-            { name: 'help', description: '技能帮助', source: 'user' },
-        ]
-        const result = mergeCommandsAndSkills(commands, skills)
+        const result = toCommandSuggestions(commands)
         expect(result).toHaveLength(1)
-        expect(result[0]?.description).toBe('命令帮助')
-        expect(result[0]?.source).toBe('builtin')
-    })
-
-    it('同名不区分大小写（去重 key 统一小写）', () => {
-        const commands: SlashCommand[] = [
-            { name: 'Help', description: '命令', source: 'builtin' },
-        ]
-        const skills: Skill[] = [
-            { name: 'help', description: '技能', source: 'user' },
-        ]
-        const result = mergeCommandsAndSkills(commands, skills)
-        expect(result).toHaveLength(1)
+        expect(result[0]?.description).toBe('帮助1')
     })
 
     it('name 已有 / 前缀不重复添加', () => {
-        const commands: SlashCommand[] = [
-            { name: '/help', description: '帮助', source: 'builtin' },
+        const commands: Command[] = [
+            { name: '/help', description: '帮助', argumentHint: '' },
         ]
-        const result = mergeCommandsAndSkills(commands, [])
+        const result = toCommandSuggestions(commands)
         expect(result[0]?.label).toBe('/help')
         expect(result[0]?.value).toBe('/help')
-    })
-
-    it('多个 commands 去重', () => {
-        const commands: SlashCommand[] = [
-            { name: 'help', description: '帮助1', source: 'builtin' },
-            { name: 'help', description: '帮助2', source: 'user' },
-        ]
-        const result = mergeCommandsAndSkills(commands, [])
-        expect(result).toHaveLength(1)
-        expect(result[0]?.description).toBe('帮助1')
     })
 })
 
@@ -148,9 +122,9 @@ describe('mergeCommandsAndSkills', () => {
 
 describe('filterCommands', () => {
     const items = [
-        { label: '/help', value: '/help', description: '帮助', source: 'builtin' as const },
-        { label: '/test', value: '/test', description: '测试', source: 'user' as const },
-        { label: '/deploy', value: '/deploy', description: '部署', source: 'plugin' as const },
+        { label: '/help', value: '/help', description: '帮助' },
+        { label: '/test', value: '/test', description: '测试' },
+        { label: '/deploy', value: '/deploy', description: '部署' },
     ]
 
     it('空 filter 返回全部', () => {

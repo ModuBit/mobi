@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import type { SlashCommand } from '@/api/types'
-import type { Skill } from '@/hooks/queries/useSkills'
+import type { Command } from '@/api/types'
+import { getCommandsOrderByScore } from '@/lib/commandUsage'
 
 /**
  * 斜杠命令建议项
@@ -27,16 +27,21 @@ export interface SlashCommandSuggestionItem {
     value: string
     /** 描述信息 */
     description?: string
-    /** 来源 */
-    source?: 'builtin' | 'user' | 'plugin' | 'project'
 }
 
 /**
- * 判断输入文本是否触发斜杠命令下拉
- * 规则：第一个字符是 /，且 / 后面不含空白字符
+ * 检测光标位置是否处于斜杠命令模式
+ * 规则：/ 位于文本起始位置，光标在 /xxx 模式内（/ 到首个空白之间）
+ * @returns 过滤文本（不含 / 前缀），或 null 表示不触发
  */
-export function isSlashTrigger(text: string): boolean {
-    return text[0] === '/' && (text.length === 1 || !/\s/.test(text.slice(1)))
+export function detectSlashAtCursor(text: string, cursorPos: number): string | null {
+    if (!text.startsWith('/')) return null
+
+    // 从 / 后到光标位置的文本不含空白，说明光标仍在命令词内
+    const beforeCursor = text.slice(1, cursorPos)
+    if (/\s/.test(beforeCursor)) return null
+
+    return beforeCursor
 }
 
 function ensureSlashPrefix(name: string): string {
@@ -44,13 +49,10 @@ function ensureSlashPrefix(name: string): string {
 }
 
 /**
- * 合并 SlashCommand 和 Skill 列表并去重
- * 同名时保留 SlashCommand，每项 label/value 加 / 前缀
+ * 将 Command[] 转换为建议项列表（去重，按使用频率排序）
+ * @param workingDir 当前工作目录，用于绑定使用统计
  */
-export function mergeCommandsAndSkills(
-    commands: SlashCommand[],
-    skills: Skill[],
-): SlashCommandSuggestionItem[] {
+export function toCommandSuggestions(commands: Command[], workingDir?: string): SlashCommandSuggestionItem[] {
     const seen = new Set<string>()
     const result: SlashCommandSuggestionItem[] = []
 
@@ -63,23 +65,15 @@ export function mergeCommandsAndSkills(
                 label: name,
                 value: name,
                 description: cmd.description,
-                source: cmd.source,
             })
         }
     }
 
-    for (const skill of skills) {
-        const name = ensureSlashPrefix(skill.name)
-        const key = name.toLowerCase()
-        if (!seen.has(key)) {
-            seen.add(key)
-            result.push({
-                label: name,
-                value: name,
-                description: skill.description,
-                source: skill.source,
-            })
-        }
+    // 按使用统计排序（高分在前），未使用的保持原序
+    if (workingDir && result.length > 1) {
+        const ordered = getCommandsOrderByScore(workingDir, result.map(r => r.value))
+        const byValue = new Map(result.map(r => [r.value, r]))
+        return ordered.map(v => byValue.get(v)!).filter(Boolean)
     }
 
     return result

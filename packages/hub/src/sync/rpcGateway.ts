@@ -18,6 +18,14 @@ import type { PermissionMode } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
+export type RpcCommandEntry = { name: string; description: string; argumentHint: string }
+
+export type RpcListCommandsResponse = {
+    success: boolean
+    commands?: RpcCommandEntry[]
+    error?: string
+}
+
 export type RpcCommandResponse = {
     success: boolean
     stdout?: string
@@ -230,28 +238,8 @@ export class RpcGateway {
         return await this.sessionRpc(sessionId, 'ripgrep', { args, cwd }) as RpcCommandResponse
     }
 
-    async listSlashCommands(sessionId: string, agent: string): Promise<{
-        success: boolean
-        commands?: Array<{ name: string; description?: string; source: 'builtin' | 'user' | 'plugin' | 'project' }>
-        error?: string
-    }> {
-        return await this.sessionRpc(sessionId, 'listSlashCommands', { agent }) as {
-            success: boolean
-            commands?: Array<{ name: string; description?: string; source: 'builtin' | 'user' | 'plugin' | 'project' }>
-            error?: string
-        }
-    }
-
-    async listSkills(sessionId: string): Promise<{
-        success: boolean
-        skills?: Array<{ name: string; description?: string }>
-        error?: string
-    }> {
-        return await this.sessionRpc(sessionId, 'listSkills', {}) as {
-            success: boolean
-            skills?: Array<{ name: string; description?: string }>
-            error?: string
-        }
+    async listCommands(sessionId: string): Promise<RpcListCommandsResponse> {
+        return await this.sessionRpc(sessionId, 'listCommands', {}) as RpcListCommandsResponse
     }
 
     private async sessionRpc(sessionId: string, method: string, params: unknown): Promise<unknown> {

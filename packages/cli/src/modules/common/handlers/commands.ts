@@ -16,19 +16,25 @@
 
 import { logger } from '@/ui/logger'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { listSlashCommands, type ListSlashCommandsRequest, type ListSlashCommandsResponse } from '../slashCommands'
+import { extractSDKMetadata, type SlashCommand } from '@/claude/sdk/metadataExtractor'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 
-export function registerSlashCommandHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
-    rpcHandlerManager.registerHandler<ListSlashCommandsRequest, ListSlashCommandsResponse>('listSlashCommands', async (data) => {
-        logger.debug('List slash commands request for agent:', data.agent)
+interface ListCommandsResponse {
+    success: boolean
+    commands?: SlashCommand[]
+    error?: string
+}
+
+export function registerCommandHandlers(rpcHandlerManager: RpcHandlerManager): void {
+    rpcHandlerManager.registerHandler<void, ListCommandsResponse>('listCommands', async () => {
+        logger.debug('List commands request via SDK metadata')
 
         try {
-            const commands = await listSlashCommands(data.agent, workingDirectory)
-            return { success: true, commands }
+            const metadata = await extractSDKMetadata()
+            return { success: true, commands: metadata.commands ?? [] }
         } catch (error) {
-            logger.debug('Failed to list slash commands:', error)
-            return rpcError(getErrorMessage(error, 'Failed to list slash commands'))
+            logger.debug('Failed to extract SDK metadata for commands:', error)
+            return rpcError(getErrorMessage(error, 'Failed to list commands'))
         }
     })
 }

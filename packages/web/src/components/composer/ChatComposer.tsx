@@ -28,10 +28,11 @@ import { AttachmentList } from './AttachmentItem'
 import { useSessionFileListing } from './useSessionFileListing'
 import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
 import { useSlashCommandSuggestion } from './useSlashCommandSuggestion'
-import { isSlashTrigger } from './slashCommandHelper'
+import { detectSlashAtCursor } from './slashCommandHelper'
 import type { SlashCommandSuggestionItem } from './slashCommandHelper'
 import type { FileAttachment } from '@/lib/fileAttachments'
 import { createFileAttachment } from '@/lib/fileAttachments'
+import { recordCommandUsage } from '@/lib/commandUsage'
 
 interface ChatComposerProps {
     /** 是否禁用 */
@@ -189,6 +190,7 @@ export function ChatComposer(props: ChatComposerProps) {
         slashOpen ? (sessionId ?? null) : null,
         slashOpen,
         slashFilter,
+        workingDir,
     )
 
     const { items: fileEntries, isLoading: fileListLoading } = useSessionFileListing(
@@ -238,9 +240,12 @@ export function ChatComposer(props: ChatComposerProps) {
     const handleChange = useCallback((value: string) => {
         setText(value)
 
-        if (isSlashTrigger(value)) {
-            const filter = value.slice(1)
-            setSlashFilter(filter)
+        const textarea = getTextarea(wrapperRef.current)
+        const cursorPos = textarea?.selectionStart ?? value.length
+
+        const slashFilter = detectSlashAtCursor(value, cursorPos)
+        if (slashFilter !== null) {
+            setSlashFilter(slashFilter)
             setSlashOpen(true)
             setSlashActiveIndex(0)
             setSuggestionOpen(false)
@@ -253,8 +258,6 @@ export function ChatComposer(props: ChatComposerProps) {
             setSlashFilter('')
         }
 
-        const textarea = getTextarea(wrapperRef.current)
-        const cursorPos = textarea?.selectionStart ?? value.length
         const mention = detectMentionAtCursor(value, cursorPos)
         if (mention) {
             mentionAtIndexRef.current = mention.atIndex
@@ -298,10 +301,18 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [mentionInput, text])
 
     const handleSlashSelect = useCallback((item: SlashCommandSuggestionItem) => {
-        setText(`${item.value} `)
+        // 替换 /xxx 部分（从位置 0 到命令词结束），保留后面的文本
+        const slashEnd = 1 + slashFilter.length
+        const after = text.slice(slashEnd)
+        setText(`${item.value} ${after}`)
         setSlashOpen(false)
         setSlashFilter('')
-    }, [])
+
+        // 记录使用统计
+        if (workingDir) {
+            recordCommandUsage(workingDir, item.value)
+        }
+    }, [slashFilter, text, workingDir])
 
     // 原生捕获阶段拦截 Tab，避免 Sender 内部先消费导致焦点跳走
     useEffect(() => {
@@ -569,7 +580,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'space-between',
+                                    gap: 12,
                                     padding: '6px 12px',
                                     cursor: 'pointer',
                                     backgroundColor: index === slashActiveIndex
@@ -579,19 +590,18 @@ export function ChatComposer(props: ChatComposerProps) {
                                 }}
                                 onMouseEnter={() => setSlashActiveIndex(index)}
                             >
-                                <span style={{ fontWeight: 500 }}>{item.label}</span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    {item.description && (
-                                        <span style={{ color: 'var(--ant-color-text-tertiary)', fontSize: 12 }}>
-                                            {item.description}
-                                        </span>
-                                    )}
-                                    {item.source && (
-                                        <span style={{ color: 'var(--ant-color-text-quaternary)', fontSize: 11 }}>
-                                            {item.source}
-                                        </span>
-                                    )}
-                                </div>
+                                <span style={{ fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }}>{item.label}</span>
+                                {item.description && (
+                                    <span style={{
+                                        color: 'var(--ant-color-text-tertiary)',
+                                        fontSize: 12,
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                    }}>
+                                        {item.description}
+                                    </span>
+                                )}
                             </div>
                         ))}
                     </div>
