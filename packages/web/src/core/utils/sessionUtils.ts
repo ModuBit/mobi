@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Session } from '@/api/types'
+import type { Session } from '@/core/data/api/types'
 
 interface SessionMetadata {
     name?: string

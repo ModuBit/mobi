@@ -15,29 +15,26 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/stores/authStore'
-import { useMobiApi } from '@/api/client'
-import { queryKeys } from '@/lib/query-keys'
-import type { Command } from '@/api/types'
-
-export type { Command }
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
+import type { GitStatusResponse } from '@/core/data/api/types'
+import { queryKeys } from '@/core/lib/query-keys'
 
 /**
- * 获取会话可用的命令列表（slash commands + skills）
+ * 获取会话的 Git 状态
  */
-export function useCommands(sessionId: string | null) {
+export function useGitStatus(sessionId: string | null) {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: sessionId ? queryKeys.commands(sessionId) : ['commands', 'disabled'],
-        queryFn: async (): Promise<Command[]> => {
-            if (!sessionId) return []
-
-            const res = await api.sessions.commands(sessionId)
-            return res.data?.commands ?? []
+        queryKey: queryKeys.gitStatus(sessionId!),
+        queryFn: async () => {
+            if (!sessionId) return null
+            const res = await api.git.status(sessionId)
+            return res.data as GitStatusResponse
         },
         enabled: !!token && !!sessionId,
-        staleTime: 60_000, // 1 分钟内不重新获取
+        refetchInterval: 10_000, // 每 10 秒自动刷新
     })
 }

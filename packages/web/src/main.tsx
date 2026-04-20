@@ -20,7 +20,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { HelmetProvider } from 'react-helmet-async'
 import { router } from './router'
-import { ThemeProvider } from './theme/ThemeProvider'
+import { ThemeProvider } from './core/config/theme/ThemeProvider'
 import './index.css'
 
 const queryClient = new QueryClient({

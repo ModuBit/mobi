@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useGitDiff } from '@/hooks/queries/useGitDiff'
+import { useGitDiff } from '@/core/data/hooks/queries/useGitDiff'
 import { Spin, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 

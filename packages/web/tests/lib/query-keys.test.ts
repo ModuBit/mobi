@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { queryKeys } from '@/lib/query-keys'
+import { queryKeys } from '@/core/lib/query-keys'
 
 describe('queryKeys', () => {
     describe('静态 key', () => {

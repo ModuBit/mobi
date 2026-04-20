@@ -19,10 +19,10 @@ import { Bubble, Think } from '@ant-design/x'
 import { Spin, Empty, Button, theme as antTheme } from 'antd'
 import { DownOutlined, CodeOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { useMessages } from '@/hooks/queries/useMessages'
-import { useSession } from '@/hooks/queries/useSession'
-import { useSendMessage } from '@/hooks/mutations/useSendMessage'
-import { useSessionActions } from '@/hooks/mutations/useSessionActions'
+import { useMessages } from '@/core/data/hooks/queries/useMessages'
+import { useSession } from '@/core/data/hooks/queries/useSession'
+import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
+import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { reduceChatBlocks, normalizeDecryptedMessage } from '@/chat'
 import { PermissionRequest } from './PermissionRequest'
 import { ToolDetailDrawer } from '@/components/ToolCard/ToolDetailDrawer'
@@ -36,7 +36,7 @@ import { XMarkdown } from '@ant-design/x-markdown'
 
 import type { ChatBlock } from '@/chat'
 import type { AgentEventBlock as AgentEventBlockType } from '@/chat/types'
-import type { SessionMetadataSummary } from '@/api/types'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 const { useToken } = antTheme
 
@@ -370,12 +370,13 @@ const CliOutputBlock = memo(function CliOutputBlock({ text }: { text: string }) 
                         <OverflowContainer
                             maxHeight={200}
                             className="hide-scrollbar"
+                            onClickExpand={() => setDrawerOpen(true)}
                             style={{
                                 fontFamily: 'var(--font-mono)',
                                 fontSize: 12,
                                 lineHeight: 1.6,
                                 whiteSpace: 'pre',
-                                overflowX: 'auto',
+                                overflowX: 'hidden',
                             }}
                         >
                             {stdout && <span style={{ color: token.colorTextSecondary }}>{stdout}</span>}
@@ -386,18 +387,6 @@ const CliOutputBlock = memo(function CliOutputBlock({ text }: { text: string }) 
                                 </span>
                             )}
                         </OverflowContainer>
-                        <div
-                            onClick={(e) => { e.stopPropagation(); setDrawerOpen(true) }}
-                            style={{
-                                textAlign: 'center',
-                                padding: '6px 0',
-                                color: token.colorPrimary,
-                                fontSize: 12,
-                                cursor: 'pointer',
-                            }}
-                        >
-                            {t('chat.tool.viewDetail')} →
-                        </div>
                     </div>
                 ) : (
                     <div style={{ marginTop: 4, fontSize: 12, color: token.colorTextQuaternary, fontStyle: 'italic' }}>
@@ -652,9 +641,6 @@ function ToolCallPreviewContent({
     metadata: SessionMetadataSummary | null
     onViewDetail: () => void
 }) {
-    const { token } = useToken()
-    const { t } = useTranslation()
-
     const tool = toolCallBlock.tool
     const ResultView = useMemo(() => getToolResultViewComponent(tool.name), [tool.name])
 
@@ -709,21 +695,9 @@ function ToolCallPreviewContent({
 
     return (
         <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
-            <OverflowContainer maxHeight={100}>
+            <OverflowContainer maxHeight={100} onClickExpand={onViewDetail}>
                 <ResultView block={adaptedBlock} metadata={metadata} />
             </OverflowContainer>
-            <div
-                onClick={(e) => { e.stopPropagation(); onViewDetail() }}
-                style={{
-                    textAlign: 'center',
-                    padding: '6px 0',
-                    color: token.colorPrimary,
-                    fontSize: 12,
-                    cursor: 'pointer',
-                }}
-            >
-                {t('chat.tool.viewDetail')} →
-            </div>
         </div>
     )
 }

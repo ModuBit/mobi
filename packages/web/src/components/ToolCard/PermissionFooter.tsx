@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import type { MobiApi } from '@/api/client'
-import type { SessionMetadataSummary } from '@/api/types'
+import type { MobiApi } from '@/core/data/api/client'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolInfo, ToolPermission } from './types'
 import { memo, useMemo, useState } from 'react'
 import { Button, theme as antTheme, Typography, Spin } from 'antd'
 import { CheckOutlined, CloseOutlined, StopOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { getInputStringAny } from '@/lib/toolInputUtils'
+import { getInputStringAny } from '@/core/lib/toolInputUtils'
 
 const { Text } = Typography
 const { useToken } = antTheme

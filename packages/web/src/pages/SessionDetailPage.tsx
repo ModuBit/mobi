@@ -17,7 +17,7 @@
 import { useParams } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { SessionDetail } from '@/components/session/SessionDetail'
-import { useUiStore } from '@/stores/uiStore'
+import { useUiStore } from '@/core/data/stores/uiStore'
 
 /**
  * 会话详情页

@@ -16,9 +16,9 @@
 
 import { Button, Empty, Layout, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useUiStore } from '@/stores/uiStore'
-import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
-import { useIsMobile } from '@/hooks/useMediaQuery'
+import { useUiStore } from '@/core/data/stores/uiStore'
+import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { IconButton } from '@/components/ui/IconButton'

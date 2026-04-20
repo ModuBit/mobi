@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AttachmentMetadata, MessageStatus } from '@/api/types'
+import type { AttachmentMetadata, MessageStatus } from '@/core/data/api/types'
 
 /** 消息元数据 */
 export type MessageMeta = {

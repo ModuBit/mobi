@@ -23,14 +23,14 @@ import { useMemo, memo, type CSSProperties } from 'react'
 import { theme as antTheme, Typography } from 'antd'
 import { safeStringify } from '@mobi/shared'
 import { useTranslation } from 'react-i18next'
-import type { SessionMetadataSummary } from '@/api/types'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolCallBlock } from './types'
 import type { ChatBlock } from '@/chat'
 import { getToolPresentation } from './knownTools'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { getToolIcon, StatusStateIcon, ICON_STYLE_LG } from './toolIcons'
-import { truncate } from '@/lib/toolInputUtils'
+import { truncate } from '@/core/lib/toolInputUtils'
 import { ContentDrawer } from '@/components/ui/ContentDrawer'
 
 const { Text } = Typography
@@ -214,7 +214,9 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
                         ) : null}
                     </div>
                 </div>
-                <ResultView block={adaptedBlock} metadata={metadata} />
+                <div style={{ overflowX: 'auto' }}>
+                    <ResultView block={adaptedBlock} metadata={metadata} />
+                </div>
             </div>
         </ContentDrawer>
     )

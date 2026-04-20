@@ -15,8 +15,8 @@
  */
 
 import type { ToolInfo, ToolCallBlock } from './types'
-import type { MobiApi } from '@/api/client'
-import type { SessionMetadataSummary } from '@/api/types'
+import type { MobiApi } from '@/core/data/api/client'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { isObject, safeStringify } from '@mobi/shared'
 import { Card, Typography, Tag, Modal, Button, Collapse, theme as antTheme } from 'antd'
@@ -46,7 +46,7 @@ import { isRequestUserInputToolName } from './requestUserInput'
 import { getToolPresentation } from './knownTools'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
-import { getInputString, getInputStringAny, truncate } from '@/lib/toolInputUtils'
+import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 import { useTranslation } from 'react-i18next'
 
 import ReactMarkdown from 'react-markdown'

@@ -30,9 +30,9 @@ import type { FileListingInput, FileSuggestionItem } from './useSessionFileListi
 import { useSlashCommandSuggestion } from './useSlashCommandSuggestion'
 import { detectSlashAtCursor } from './slashCommandHelper'
 import type { SlashCommandSuggestionItem } from './slashCommandHelper'
-import type { FileAttachment } from '@/lib/fileAttachments'
-import { createFileAttachment } from '@/lib/fileAttachments'
-import { recordCommandUsage } from '@/lib/commandUsage'
+import type { FileAttachment } from '@/core/lib/fileAttachments'
+import { createFileAttachment } from '@/core/lib/fileAttachments'
+import { recordCommandUsage } from '@/core/lib/commandUsage'
 
 interface ChatComposerProps {
     /** 是否禁用 */

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SessionMetadataSummary } from '@/api/types'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 /**
  * 解析显示路径（相对于项目根目录）

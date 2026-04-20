@@ -20,8 +20,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isUserMessage, mergeMessages, makeClientSideId } from '@/lib/messages'
-import type { DecryptedMessage } from '@/api/types'
+import { isUserMessage, mergeMessages, makeClientSideId } from '@/core/lib/messages'
+import type { DecryptedMessage } from '@/core/data/api/types'
 
 /** 创建 mock DecryptedMessage */
 function createMessage(overrides: Partial<DecryptedMessage> = {}): DecryptedMessage {

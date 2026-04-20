@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { io, type Socket } from 'socket.io-client'
-import { useAuthStore } from '@/stores/authStore'
+import { useAuthStore } from '@/core/data/stores/authStore'
 
 interface UseTerminalSocketOptions {
     sessionId: string

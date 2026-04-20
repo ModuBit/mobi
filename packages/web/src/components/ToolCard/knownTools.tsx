@@ -15,7 +15,7 @@
  */
 
 import type { ReactNode } from 'react'
-import type { SessionMetadataSummary } from '@/api/types'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { isObject } from '@mobi/shared'
 import {
     CodeOutlined,
@@ -35,8 +35,8 @@ import {
 } from '@ant-design/icons'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
-import { basename, resolveDisplayPath } from '@/utils/path'
-import { getInputStringAny, truncate } from '@/lib/toolInputUtils'
+import { basename, resolveDisplayPath } from '@/core/utils/path'
+import { getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
 

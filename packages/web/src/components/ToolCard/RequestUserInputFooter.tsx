@@ -25,10 +25,10 @@ import {
     formatRequestUserInputAnswers,
     type RequestUserInputQuestion
 } from './requestUserInput'
-import { useAuthStore } from '@/stores/authStore'
-import { useMobiApi } from '@/api/client'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
-import { queryKeys } from '@/lib/query-keys'
+import { queryKeys } from '@/core/lib/query-keys'
 
 const { useToken } = antTheme
 const { TextArea } = Input

@@ -15,9 +15,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useMobiApi } from '@/api/client'
-import { useAuthStore } from '@/stores/authStore'
-import type { ListFilesResponse } from '@/api/types'
+import { useMobiApi } from '@/core/data/api/client'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import type { ListFilesResponse } from '@/core/data/api/types'
 
 export interface FileListingInput {
     /** @ 后面的文本，如 "src/" 或 "~/.mobi" */

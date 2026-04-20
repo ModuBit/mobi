@@ -16,7 +16,7 @@
 
 import { Layout, Tabs } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useUiStore } from '@/stores/uiStore'
+import { useUiStore } from '@/core/data/stores/uiStore'
 import FileTree from './FileTree'
 import GitStatus from '@/components/git/GitStatus'
 import { PageHeader } from '@/components/layout/PageHeader'

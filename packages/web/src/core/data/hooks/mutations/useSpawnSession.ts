@@ -16,10 +16,10 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@/stores/authStore'
-import { useMobiApi } from '@/api/client'
-import { queryKeys } from '@/lib/query-keys'
-import type { SpawnResponse } from '@/api/types'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
+import { queryKeys } from '@/core/lib/query-keys'
+import type { SpawnResponse } from '@/core/data/api/types'
 import type { AgentType, SessionType } from '@/components/NewSession/types'
 
 export interface SpawnInput {

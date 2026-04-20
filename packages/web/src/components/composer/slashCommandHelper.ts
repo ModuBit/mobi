@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import type { Command } from '@/api/types'
-import { getCommandsOrderByScore } from '@/lib/commandUsage'
+import type { Command } from '@/core/data/api/types'
+import { getCommandsOrderByScore } from '@/core/lib/commandUsage'
 
 /**
  * 斜杠命令建议项

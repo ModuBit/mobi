@@ -15,25 +15,24 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/stores/authStore'
-import { useMobiApi } from '@/api/client'
-import type { GitDiffResponse } from '@/api/types'
-import { queryKeys } from '@/lib/query-keys'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
+import type { SessionGroup } from '@/core/data/api/types'
+import { queryKeys } from '@/core/lib/query-keys'
 
 /**
- * 获取指定文件的 Git diff
+ * 获取会话分组列表
  */
-export function useGitDiff(sessionId: string | null, filePath: string | null) {
+export function useSessionGroups() {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: queryKeys.gitDiff(sessionId!, filePath!),
+        queryKey: queryKeys.sessionGroups,
         queryFn: async () => {
-            if (!sessionId || !filePath) return ''
-            const res = await api.git.diff(sessionId, filePath)
-            return (res.data as GitDiffResponse)?.diff || ''
+            const res = await api.sessionGroups.list()
+            return res.data.groups as SessionGroup[]
         },
-        enabled: !!token && !!sessionId && !!filePath,
+        enabled: !!token,
     })
 }

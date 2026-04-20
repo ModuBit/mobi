@@ -28,7 +28,7 @@ import {
     extractTitleFromChangeTitleInput,
 } from '@/chat/reducerTools'
 import type { ToolCallBlock, NormalizedMessage } from '@/chat/types'
-import type { AgentState } from '@/api/types'
+import type { AgentState } from '@/core/data/api/types'
 
 describe('ensureToolBlock', () => {
     describe('首次创建', () => {

@@ -17,11 +17,11 @@
 import { Button, Space, Typography, Tag, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
-import type { Session } from '@/api/types'
-import { useAuthStore } from '@/stores/authStore'
-import { useMobiApi } from '@/api/client'
+import type { Session } from '@/core/data/api/types'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { queryKeys } from '@/lib/query-keys'
+import { queryKeys } from '@/core/lib/query-keys'
 
 const { Text } = Typography
 const { useToken } = antTheme

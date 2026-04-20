@@ -29,18 +29,18 @@ import {
     CloseOutlined,
     MoreOutlined,
 } from '@ant-design/icons'
-import { useSessionGroups } from '@/hooks/queries/useSessionGroups'
-import { useAuthStore } from '@/stores/authStore'
-import { useMobiApi } from '@/api/client'
-import { useSessionActions } from '@/hooks/mutations/useSessionActions'
-import { queryKeys } from '@/lib/query-keys'
-import { getSessionDisplayName } from '@/utils/sessionUtils'
+import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
+import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { queryKeys } from '@/core/lib/query-keys'
+import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { PixelAvatar } from '@/components/PixelAvatar/PixelAvatar'
 import type { AgentStatus, StatusStyle } from '@/components/PixelAvatar/types'
-import { useUiStore } from '@/stores/uiStore'
-import { useIsMobile } from '@/hooks/useMediaQuery'
+import { useUiStore } from '@/core/data/stores/uiStore'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import styled from '@emotion/styled'
-import type { Session, SessionMetadataSummary } from '@/api/types'
+import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 
 function getSessionAvatarStatus(session: Session): AgentStatus {
     if (!session.active) return 'inactive'

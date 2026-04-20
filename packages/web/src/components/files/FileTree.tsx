@@ -17,7 +17,7 @@
 import { Tree, Spin, Empty, Typography, Skeleton, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { FolderOutlined, FileOutlined } from '@ant-design/icons'
-import { useFileTree, useFileContent } from '@/hooks/queries/useFileTree'
+import { useFileTree, useFileContent } from '@/core/data/hooks/queries/useFileTree'
 import { useState, useMemo } from 'react'
 import type { DataNode } from 'antd/es/tree'
 

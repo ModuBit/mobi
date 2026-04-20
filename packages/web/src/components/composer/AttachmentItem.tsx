@@ -17,8 +17,8 @@
 import { memo } from 'react'
 import { Tag, theme, Spin } from 'antd'
 import { CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
-import type { FileAttachment } from '@/lib/fileAttachments'
-import { isImageMimeType } from '@/lib/fileAttachments'
+import type { FileAttachment } from '@/core/lib/fileAttachments'
+import { isImageMimeType } from '@/core/lib/fileAttachments'
 
 interface AttachmentItemProps {
     /** 附件信息 */

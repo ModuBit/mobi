@@ -16,7 +16,7 @@
 
 import { List, Tag, Spin, Empty, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useGitStatus } from '@/hooks/queries/useGitStatus'
+import { useGitStatus } from '@/core/data/hooks/queries/useGitStatus'
 import { useState } from 'react'
 import DiffView from './DiffView'
 

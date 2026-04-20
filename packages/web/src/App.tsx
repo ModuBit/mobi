@@ -15,11 +15,11 @@
  */
 
 import { Outlet } from '@tanstack/react-router'
-import { SSEProvider } from '@/providers/SSEProvider'
-import { useAuthStore } from '@/stores/authStore'
+import { SSEProvider } from '@/core/providers/SSEProvider'
+import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect } from 'react'
-import { setUnauthorizedHandler } from '@/api/client'
+import { setUnauthorizedHandler } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export function App() {

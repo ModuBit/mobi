@@ -16,7 +16,7 @@
 
 import { theme as antTheme, Layout, Typography, Divider, Select } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useUiStore } from '@/stores/uiStore'
+import { useUiStore } from '@/core/data/stores/uiStore'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Globe, Palette } from 'lucide-react'

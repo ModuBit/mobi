@@ -21,7 +21,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { normalizeDecryptedMessage } from '@/chat/normalize'
-import type { DecryptedMessage } from '@/api/types'
+import type { DecryptedMessage } from '@/core/data/api/types'
 
 // 抑制 console.warn 输出
 describe('normalizeDecryptedMessage', () => {

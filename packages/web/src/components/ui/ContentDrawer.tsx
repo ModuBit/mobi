@@ -21,7 +21,7 @@
 
 import { memo, type CSSProperties, type ReactNode } from 'react'
 import { Drawer } from 'antd'
-import { useIsMobile } from '@/hooks/useMediaQuery'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 interface ContentDrawerProps {
     /** 标题 */

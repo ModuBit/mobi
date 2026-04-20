@@ -19,8 +19,8 @@ import { App, Button, Form, Input, Layout, Select, Spin, Typography, theme as an
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowLeftOutlined, FolderOutlined } from '@ant-design/icons'
-import { useMachines } from '@/hooks/queries/useMachines'
-import { useSpawnSession, type SpawnInput } from '@/hooks/mutations/useSpawnSession'
+import { useMachines } from '@/core/data/hooks/queries/useMachines'
+import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
 import { PageHeader } from '@/components/layout/PageHeader'
 import styled from '@emotion/styled'
 

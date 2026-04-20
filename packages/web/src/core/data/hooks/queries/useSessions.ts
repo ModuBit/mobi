@@ -15,25 +15,24 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/stores/authStore'
-import { useMobiApi } from '@/api/client'
-import type { DecryptedMessage } from '@/api/types'
-import { queryKeys } from '@/lib/query-keys'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
+import type { Session } from '@/core/data/api/types'
+import { queryKeys } from '@/core/lib/query-keys'
 
 /**
- * 获取会话消息列表
+ * 获取所有会话列表
  */
-export function useMessages(sessionId: string | null) {
+export function useSessions() {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: queryKeys.messages(sessionId!),
+        queryKey: queryKeys.sessions,
         queryFn: async () => {
-            if (!sessionId) return []
-            const res = await api.messages.list(sessionId)
-            return res.data.messages as DecryptedMessage[]
+            const res = await api.sessions.list()
+            return res.data.sessions as Session[]
         },
-        enabled: !!token && !!sessionId,
+        enabled: !!token,
     })
 }

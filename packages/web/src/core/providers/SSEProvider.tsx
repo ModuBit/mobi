@@ -16,13 +16,13 @@
 
 import { useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { SSEClient } from '@/realtime/sseClient'
-import { useAuthStore } from '@/stores/authStore'
+import { SSEClient } from '@/core/data/realtime/sseClient'
+import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate } from '@tanstack/react-router'
-import { queryKeys } from '@/lib/query-keys'
+import { queryKeys } from '@/core/lib/query-keys'
 import { useTranslation } from 'react-i18next'
-import { useNotify } from '@/hooks/useNotify'
-import { useMobiApi } from '@/api/client'
+import { useNotify } from '@/core/data/hooks/useNotify'
+import { useMobiApi } from '@/core/data/api/client'
 import { App, Button } from 'antd'
 import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
 

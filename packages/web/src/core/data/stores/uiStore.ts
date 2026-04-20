@@ -16,7 +16,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import i18n from '@/i18n'
+import i18n from '@/core/config/i18n'
 
 // 会话视图模式
 type SessionViewMode = 'chat' | 'files' | 'terminal'

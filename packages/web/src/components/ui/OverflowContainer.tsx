@@ -32,6 +32,8 @@ interface OverflowContainerProps {
     gradientHeight?: number
     /** 点击"查看更多"回调，不传则不显示按钮 */
     onClickExpand?: () => void
+    /** 溢出状态变更回调 */
+    onOverflowChange?: (overflowing: boolean) => void
     /** 额外样式 */
     style?: CSSProperties
     /** 额外 class */
@@ -43,6 +45,7 @@ function OverflowContainerInner({
     children,
     gradientHeight = 48,
     onClickExpand,
+    onOverflowChange,
     style,
     className,
 }: OverflowContainerProps) {
@@ -51,15 +54,26 @@ function OverflowContainerInner({
     const contentRef = useRef<HTMLDivElement>(null)
     const [isOverflowing, setIsOverflowing] = useState(false)
 
+    // 缓存回调引用，避免 useEffect 频繁重建
+    const onOverflowChangeRef = useRef(onOverflowChange)
+    onOverflowChangeRef.current = onOverflowChange
+
     // ResizeObserver 只需挂载一次，由浏览器自动监听尺寸变化
     useEffect(() => {
         const el = contentRef.current
         if (!el) return
 
-        const observer = new ResizeObserver(() => {
-            setIsOverflowing(el.scrollHeight > el.clientHeight)
-        })
+        const update = () => {
+            const overflowing = el.scrollHeight > el.clientHeight
+            setIsOverflowing(prev => {
+                if (prev !== overflowing) {
+                    onOverflowChangeRef.current?.(overflowing)
+                }
+                return overflowing
+            })
+        }
 
+        const observer = new ResizeObserver(update)
         observer.observe(el)
         return () => observer.disconnect()
     }, [])
@@ -83,7 +97,7 @@ function OverflowContainerInner({
                     onClick={(e) => { e.stopPropagation(); onClickExpand() }}
                     style={{
                         position: 'absolute',
-                        bottom: 0,
+                        bottom: -1,
                         left: 0,
                         right: 0,
                         textAlign: 'center',

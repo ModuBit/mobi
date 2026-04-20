@@ -25,4 +25,4 @@ export {
     type SlashCommandSuggestionItem,
 } from '@/components/composer/slashCommandHelper'
 
-export type { Command } from '@/api/types'
+export type { Command } from '@/core/data/api/types'

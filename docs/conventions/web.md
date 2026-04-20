@@ -53,7 +53,7 @@ export function useSendMessage(sessionId: string) {
 
 ### 缓存 Key
 
-所有 queryKey 必须在 `src/lib/query-keys.ts` 中集中定义，禁止硬编码：
+所有 queryKey 必须在 `src/core/lib/query-keys.ts` 中集中定义，禁止硬编码：
 
 ```typescript
 // ✅ 正确
@@ -95,7 +95,7 @@ export const useUiStore = create<UiState>()(
 
 ## API 层
 
-- **类型定义**：所有类型集中在 `src/api/types.ts`，不在组件中重复定义
+- **类型定义**：所有类型集中在 `src/core/data/api/types.ts`，不在组件中重复定义
 - **API 客户端**：通过 `useMobiApi(token)` 获取实例，不在组件外创建
 - **错误处理**：401 由全局 handler 自动处理，组件只需处理业务错误
 
@@ -104,8 +104,8 @@ export const useUiStore = create<UiState>()(
 使用 `@/` 映射到 `src/`：
 
 ```typescript
-import { useAuthStore } from '@/stores/authStore'
-import { queryKeys } from '@/lib/query-keys'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { queryKeys } from '@/core/lib/query-keys'
 ```
 
 ## 测试
@@ -116,5 +116,5 @@ import { queryKeys } from '@/lib/query-keys'
 
 ## 国际化
 
-- 使用 i18next，翻译文件在 `src/i18n/locales/`（`en.json`、`zh.json`）
+- 使用 i18next，翻译文件在 `src/core/config/i18n/locales/`（`en.json`、`zh.json`）
 - UI 中使用 `t('key')` 而非硬编码文本

@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-import type { MobiApi } from '@/api/client'
+import type { MobiApi } from '@/core/data/api/client'
 import type { ToolInfo } from './types'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { Button, theme as antTheme, Typography, Tag, Spin, Input } from 'antd'
 import { CheckOutlined, LeftOutlined, RightOutlined, LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from './askUserQuestion'
-import { getInputStringAny } from '@/lib/toolInputUtils'
-import { useAuthStore } from '@/stores/authStore'
+import { getInputStringAny } from '@/core/lib/toolInputUtils'
+import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { queryKeys } from '@/lib/query-keys'
+import { queryKeys } from '@/core/lib/query-keys'
 
 const { Text } = Typography
 const { useToken } = antTheme

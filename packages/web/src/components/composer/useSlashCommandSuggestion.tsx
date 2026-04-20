@@ -15,7 +15,7 @@
  */
 
 import { useMemo } from 'react'
-import { useCommands } from '@/hooks/queries/useCommands'
+import { useCommands } from '@/core/data/hooks/queries/useCommands'
 import {
     toCommandSuggestions,
     filterCommands,

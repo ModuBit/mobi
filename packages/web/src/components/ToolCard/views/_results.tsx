@@ -18,14 +18,14 @@ import type { ToolViewComponent, ToolViewProps } from '@/components/ToolCard/vie
 import { isObject, safeStringify } from '@mobi/shared'
 import { theme as antTheme, Typography } from 'antd'
 import { ChecklistList, extractTodoChecklist } from '@/components/ToolCard/checklist'
-import { basename, resolveDisplayPath } from '@/utils/path'
+import { basename, resolveDisplayPath } from '@/core/utils/path'
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import type { ToolPermission } from '../types'
 
-import type { SessionMetadataSummary } from '@/api/types'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -224,7 +224,7 @@ function CodeBlock(props: { code: string; language?: string }) {
             padding: 8,
             borderRadius: 4,
             fontSize: 12,
-            overflowX: 'auto',
+            overflowX: 'hidden',
             margin: '4px 0',
             border: `1px solid ${token.colorBorder}`,
             whiteSpace: 'pre-wrap',

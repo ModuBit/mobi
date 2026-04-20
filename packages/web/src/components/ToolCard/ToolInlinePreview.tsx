@@ -19,18 +19,18 @@
  * 在消息流中展示工具调用的简要信息，点击后可打开详情抽屉
  */
 
-import { useMemo, memo, type CSSProperties } from 'react'
+import { useMemo, useState, memo, type CSSProperties } from 'react'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { theme as antTheme, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
-import type { SessionMetadataSummary } from '@/api/types'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolCallBlock } from './types'
 import type { MergedToolCallBlock } from '@/components/chat/messageParser'
 import { getToolPresentation } from './knownTools'
 import { getToolResultViewComponent } from './views/_results'
 import { getToolIcon, StatusStateIcon } from './toolIcons'
-import { truncate } from '@/lib/toolInputUtils'
-import { useIsMobile } from '@/hooks/useMediaQuery'
+import { truncate } from '@/core/lib/toolInputUtils'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import styled from '@emotion/styled'
 
 const { Text } = Typography
@@ -112,6 +112,9 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
     // 是否显示预览内容区（运行中或无结果时不显示）
     const showPreview = block.state !== 'running' && block.result !== undefined
 
+    // 预览区溢出状态
+    const [isOverflowing, setIsOverflowing] = useState(false)
+
     // 预览区最大高度
     const previewMaxHeight = isMobile ? 100 : 120
 
@@ -162,15 +165,17 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
 
             {/* 预览内容区 */}
             {showPreview ? (
-                <OverflowContainer maxHeight={previewMaxHeight} style={{ padding: '8px 12px' }}>
+                <OverflowContainer maxHeight={previewMaxHeight} style={{ padding: '8px 12px' }} onOverflowChange={setIsOverflowing}>
                     <ResultView block={adaptedBlock} metadata={metadata} />
                 </OverflowContainer>
             ) : null}
 
-            {/* 底部提示 */}
-            <div style={footerStyle}>
-                {t('chat.tool.viewDetail')} →
-            </div>
+            {/* 底部提示（仅溢出时显示） */}
+            {isOverflowing && (
+                <div style={footerStyle}>
+                    {t('chat.tool.viewDetail')} →
+                </div>
+            )}
         </HoverableContainer>
     )
 }

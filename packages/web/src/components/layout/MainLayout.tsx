@@ -15,7 +15,7 @@
  */
 
 import { theme as antTheme, ConfigProvider, Layout } from 'antd'
-import { useUiStore, resolveTheme } from '@/stores/uiStore'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { RailNav } from './RailNav'
 import { MobileMenuDrawer } from './MobileMenu'
 import { SessionListDrawer } from './SessionListDrawer'
