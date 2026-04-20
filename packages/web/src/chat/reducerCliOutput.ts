@@ -16,9 +16,11 @@
 
 import type { ChatBlock, CliOutputBlock, MessageMeta } from './types'
 
-const CLI_TAG_REGEX = /<(?:local-command-[a-z-]+|command-(?:name|message|args))>/i
+const CLI_TAG_REGEX = /<(?:local-command-[a-z-]+|command-(?:name|message|args)|bash-(?:input|stdout|stderr))>/i
 const CLI_COMMAND_NAME_REGEX = /<command-name>/i
 const CLI_COMMAND_STDOUT_REGEX = /<local-command-stdout>/i
+const BASH_INPUT_REGEX = /<bash-input>/i
+const BASH_STDOUT_REGEX = /<bash-stdout>/i
 
 function getMetaSentFrom(meta: unknown): string | null {
     if (!meta || typeof meta !== 'object') return null
@@ -38,8 +40,16 @@ function hasLocalCommandStdoutTag(text: string): boolean {
     return CLI_COMMAND_STDOUT_REGEX.test(text)
 }
 
-export function isCliOutputText(text: string, meta: unknown): boolean {
-    return getMetaSentFrom(meta) === 'cli' && hasCliOutputTags(text)
+function hasBashInputTag(text: string): boolean {
+    return BASH_INPUT_REGEX.test(text)
+}
+
+function hasBashStdoutTag(text: string): boolean {
+    return BASH_STDOUT_REGEX.test(text)
+}
+
+export function isCliOutputText(text: string, meta?: unknown): boolean {
+    return hasCliOutputTags(text)
 }
 
 export function createCliOutputBlock(props: {
@@ -75,9 +85,12 @@ export function mergeCliOutputBlocks(blocks: ChatBlock[]): ChatBlock[] {
             prev
             && prev.kind === 'cli-output'
             && prev.source === block.source
-            && hasCommandNameTag(prev.text)
-            && !hasLocalCommandStdoutTag(prev.text)
-            && hasLocalCommandStdoutTag(block.text)
+            // command-name + local-command-stdout 合并
+            && (
+                (hasCommandNameTag(prev.text) && !hasLocalCommandStdoutTag(prev.text) && hasLocalCommandStdoutTag(block.text))
+                // bash-input + bash-stdout 合并
+                || (hasBashInputTag(prev.text) && !hasBashStdoutTag(prev.text) && hasBashStdoutTag(block.text))
+            )
         ) {
             const separator = prev.text.endsWith('\n') || block.text.startsWith('\n') ? '' : '\n'
             merged[merged.length - 1] = { ...prev, text: `${prev.text}${separator}${block.text}` }

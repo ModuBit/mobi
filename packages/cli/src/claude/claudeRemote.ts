@@ -15,6 +15,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { exec } from 'node:child_process'
+import { promisify } from 'node:util'
 import { EnhancedMode } from "./loop";
 import {
     query,
@@ -37,6 +39,8 @@ import type { PermissionResult } from "./sdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import { getMobiBlobsDir } from "@/constants/uploadPaths";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
+
+const execAsync = promisify(exec)
 
 export async function claudeRemote(opts: {
 
@@ -152,6 +156,62 @@ export async function claudeRemote(opts: {
         if (opts.onCompletionEvent) {
             opts.onCompletionEvent('Compaction started');
         }
+    }
+
+    // Handle ! command (bash mode) - 本地执行 shell 命令，不走 SDK
+    if (specialCommand.type === 'bash' && specialCommand.command) {
+        logger.debug(`[claudeRemote] Bash command detected: ${specialCommand.command}`)
+
+        opts.onThinkingChange?.(true)
+
+        // 发送 local-command-caveat meta 消息，标识后续为 bash 输出
+        opts.onMessage({
+            type: 'system',
+            subtype: 'local_command_caveat',
+            session_id: '',
+        } as unknown as SDKSystemMessage)
+
+        // 发送 bash-input 消息（与 Claude Code local 模式一致）
+        opts.onMessage({
+            type: 'user',
+            message: {
+                role: 'user',
+                content: `<bash-input>${specialCommand.command}</bash-input>`,
+            },
+            parent_tool_use_id: null,
+            session_id: '',
+        } as unknown as SDKUserMessage)
+
+        // 执行命令
+        let stdout = ''
+        let stderr = ''
+        try {
+            const result = await execAsync(specialCommand.command, {
+                cwd: opts.path,
+                timeout: 30000,
+            })
+            stdout = result.stdout?.toString() ?? ''
+            stderr = result.stderr?.toString() ?? ''
+        } catch (error) {
+            const execError = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string }
+            stdout = execError.stdout?.toString() ?? ''
+            stderr = execError.stderr?.toString() ?? execError.message ?? 'Command failed'
+        }
+
+        // 发送 bash-stdout/stderr 消息（与 Claude Code local 模式一致）
+        opts.onMessage({
+            type: 'user',
+            message: {
+                role: 'user',
+                content: `<bash-stdout>${stdout}</bash-stdout><bash-stderr>${stderr}</bash-stderr>`,
+            },
+            parent_tool_use_id: null,
+            session_id: '',
+        } as unknown as SDKUserMessage)
+
+        opts.onThinkingChange?.(false)
+        opts.onReady()
+        return
     }
 
     // Prepare SDK options

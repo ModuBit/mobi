@@ -432,6 +432,9 @@ export function ChatComposer(props: ChatComposerProps) {
 
     const showLocalModeCover = active && mode === 'local'
 
+    // Bash 模式检测：输入以 "! " 开头时激活
+    const isBashMode = text.startsWith('! ')
+
     return (
         <div style={{ padding: '0 12px 12px' }}>
             {/* 状态栏 */}
@@ -447,13 +450,20 @@ export function ChatComposer(props: ChatComposerProps) {
             />
 
             {/* Sender 输入组件 */}
-            <div ref={wrapperRef} style={{ position: 'relative' }}>
+            <div ref={wrapperRef} style={{
+                position: 'relative',
+                ...(isBashMode ? {
+                    borderColor: 'rgba(232, 112, 58, 0.6)',
+                    boxShadow: '0 0 0 2px rgba(232, 112, 58, 0.15)',
+                    borderRadius: 'inherit',
+                } : {}),
+            }}>
                 <Sender
                     value={text}
                     onChange={handleChange}
                     onSubmit={handleSubmit}
                     onCancel={onAbort}
-                    placeholder={t('composer.placeholder')}
+                    placeholder={isBashMode ? t('composer.bashPlaceholder') : t('composer.placeholder')}
                     disabled={controlsDisabled || showInactiveCover || showLocalModeCover}
                     loading={thinking}
                     autoSize={{ minRows: 1, maxRows: 5 }}

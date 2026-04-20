@@ -163,6 +163,7 @@
     },
     "composer": {
         "placeholder": "Type a message... (Shift+Enter for new line)",
+        "bashPlaceholder": "Enter shell command...",
         "attach": "Add attachment",
         "settings": "Settings",
         "abort": "Abort",

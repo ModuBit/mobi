@@ -27,9 +27,15 @@ export interface ClearCommandResult {
     isClear: boolean;
 }
 
+export interface BashCommandResult {
+    isBash: boolean;
+    command: string;
+}
+
 export interface SpecialCommandResult {
-    type: 'compact' | 'clear' | null;
+    type: 'compact' | 'clear' | 'bash' | null;
     originalMessage?: string;
+    command?: string;
 }
 
 /**
@@ -72,6 +78,26 @@ export function parseClear(message: string): ClearCommandResult {
 }
 
 /**
+ * Parse ! command (bash mode)
+ * 检测 "! command" 格式：! 必须是第一个字符，后跟空格，空格后为命令内容
+ */
+export function parseBash(message: string): BashCommandResult {
+    const trimmed = message.trim();
+
+    if (trimmed.startsWith('! ') && trimmed.length > 2) {
+        return {
+            isBash: true,
+            command: trimmed.slice(2),
+        };
+    }
+
+    return {
+        isBash: false,
+        command: '',
+    };
+}
+
+/**
  * Unified parser for special commands
  * Returns the type of command and original message if applicable
  */
@@ -83,14 +109,22 @@ export function parseSpecialCommand(message: string): SpecialCommandResult {
             originalMessage: compactResult.originalMessage
         };
     }
-    
+
     const clearResult = parseClear(message);
     if (clearResult.isClear) {
         return {
             type: 'clear'
         };
     }
-    
+
+    const bashResult = parseBash(message);
+    if (bashResult.isBash) {
+        return {
+            type: 'bash',
+            command: bashResult.command
+        };
+    }
+
     return {
         type: null
     };

@@ -145,7 +145,8 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
             } else if (block.kind === 'agent-event') {
                 role = 'system'
             } else if (block.kind === 'cli-output') {
-                role = block.source === 'assistant' ? 'assistant' : 'user'
+                // bash 模式输出始终用 assistant 角色渲染
+                role = (block.source === 'assistant' || hasBashTags(block.text)) ? 'assistant' : 'user'
             }
 
             // 判断是否需要 typing 动画
@@ -281,8 +282,27 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
     )
 }
 
+// 检测 bash 标签
+function hasBashTags(text: string): boolean {
+    return /<bash-(?:input|stdout|stderr)>/i.test(text)
+}
+
 // 解析 CLI 输出文本，提取命令和输出
-function parseCliOutputText(text: string): { command: string | null, stdout: string | null } {
+function parseCliOutputText(text: string): { command: string | null, stdout: string | null, stderr: string | null } {
+    // bash-input / bash-stdout / bash-stderr 标签
+    const bashInputMatch = text.match(/<bash-input>([\s\S]*?)<\/bash-input>/i)
+    const bashStdoutMatch = text.match(/<bash-stdout>([\s\S]*?)<\/bash-stdout>/i)
+    const bashStderrMatch = text.match(/<bash-stderr>([\s\S]*?)<\/bash-stderr>/i)
+
+    if (bashInputMatch) {
+        return {
+            command: `$ ${bashInputMatch[1].trim()}`,
+            stdout: bashStdoutMatch ? bashStdoutMatch[1].trim() : null,
+            stderr: bashStderrMatch ? bashStderrMatch[1].trim() : null,
+        }
+    }
+
+    // 兼容原有 command-name / local-command-stdout 标签
     const commandMatch = text.match(/<command-name>([\s\S]*?)<\/command-name>/i)
     const stdoutMatch = text.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/i)
 
@@ -294,7 +314,7 @@ function parseCliOutputText(text: string): { command: string | null, stdout: str
         String.fromCharCode(parseInt(hex, 16))
     ).replace(/\x1B\[[0-9;]*m/g, '').trim() : null
 
-    return { command, stdout }
+    return { command, stdout, stderr: null }
 }
 
 // 渲染文本块（user-text / agent-text 共用）
@@ -312,7 +332,8 @@ const TextBlock = memo(function TextBlock({ text, isSynthetic }: { text: string;
 // CLI 输出渲染
 const CliOutputBlock = memo(function CliOutputBlock({ text }: { text: string }) {
     const { token } = useToken()
-    const { command, stdout } = parseCliOutputText(text)
+    const { command, stdout, stderr } = parseCliOutputText(text)
+    const hasError = !!stderr
     return (
         <div style={{
             fontFamily: 'var(--font-mono)',
@@ -320,7 +341,7 @@ const CliOutputBlock = memo(function CliOutputBlock({ text }: { text: string }) 
             lineHeight: 1.6,
         }}>
             {command && (
-                <div style={{ fontWeight: 500, marginBottom: stdout ? 4 : 0 }}>{command}</div>
+                <div style={{ fontWeight: 500, marginBottom: (stdout || stderr) ? 4 : 0 }}>{command}</div>
             )}
             {stdout && (
                 <div style={{
@@ -336,6 +357,23 @@ const CliOutputBlock = memo(function CliOutputBlock({ text }: { text: string }) 
                         }}>└ </span>
                     )}
                     {stdout}
+                </div>
+            )}
+            {stderr && (
+                <div style={{
+                    color: token.colorError,
+                    paddingLeft: command ? 16 : 0,
+                    position: 'relative',
+                    marginTop: stdout ? 2 : 0,
+                }}>
+                    {command && !stdout && (
+                        <span style={{
+                            position: 'absolute',
+                            left: 0,
+                            color: token.colorTextTertiary,
+                        }}>└ </span>
+                    )}
+                    {stderr}
                 </div>
             )}
         </div>
