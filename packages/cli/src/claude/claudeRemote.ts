@@ -43,8 +43,17 @@ import { getDefaultClaudeCodePath } from "./sdk/utils";
 const execAsync = promisify(exec)
 
 // ! 命令安全约束
-const BASH_COMMAND_MAX_LENGTH = 4096
 const BASH_OUTPUT_MAX_BUFFER = 4 * 1024 * 1024 // 4MB
+
+// 构造模拟 SDK 用户消息（字段不完整，仅用于前端渲染）
+function createSDKUserMessage(content: string): SDKUserMessage {
+    return {
+        type: 'user',
+        message: { role: 'user', content },
+        parent_tool_use_id: null,
+        session_id: '',
+    } as unknown as SDKUserMessage
+}
 
 export async function claudeRemote(opts: {
 
@@ -166,63 +175,29 @@ export async function claudeRemote(opts: {
     // 设计意图：与 Claude Code CLI 的 ! 模式一致，用户可执行任意 shell 命令。
     // 安全边界：高危命令检测拦截、限制命令长度、输出缓冲区大小和执行超时。
     if (specialCommand.type === 'bash' && specialCommand.command) {
-        const command = specialCommand.command.trim()
+        const command = specialCommand.command
         logger.debug(`[claudeRemote] Bash command detected: ${command}`)
 
         // 高危命令拦截
         const dangerCheck = checkDangerousCommand(command)
         if (dangerCheck.isDangerous) {
             logger.warn(`[claudeRemote] Dangerous command blocked: ${command} (${dangerCheck.reason})`)
-
-            // 构造模拟 SDK 消息，前端渲染为 CLI 输出中的错误
-            opts.onMessage({
-                type: 'user',
-                message: {
-                    role: 'user',
-                    content: `<bash-input>${command}</bash-input>`,
-                },
-                parent_tool_use_id: null,
-                session_id: '',
-            } as unknown as SDKUserMessage)
-
-            opts.onMessage({
-                type: 'user',
-                message: {
-                    role: 'user',
-                    content: `<bash-stdout></bash-stdout><bash-stderr>⚠ 命令已拦截：${dangerCheck.reason}</bash-stderr>`,
-                },
-                parent_tool_use_id: null,
-                session_id: '',
-            } as unknown as SDKUserMessage)
-
+            opts.onMessage(createSDKUserMessage(`<bash-input>${command}</bash-input>`))
+            opts.onMessage(createSDKUserMessage(`<bash-stdout></bash-stdout><bash-stderr>⚠ 命令已拦截：${dangerCheck.reason}</bash-stderr>`))
             opts.onReady()
             return
         }
 
-        // 命令长度限制
-        if (command.length > BASH_COMMAND_MAX_LENGTH) {
-            logger.warn(`[claudeRemote] Bash command exceeds max length (${command.length} > ${BASH_COMMAND_MAX_LENGTH})`)
-        }
-
         opts.onThinkingChange?.(true)
 
-        // 构造模拟 SDK 消息（字段不完整，仅用于前端渲染）
-        // session_id 由前端 reducer 从 session context 获取，此处留空
+        // local-command-caveat 标识后续为 bash 输出
         opts.onMessage({
             type: 'system',
             subtype: 'local_command_caveat',
             session_id: '',
         } as unknown as SDKSystemMessage)
 
-        opts.onMessage({
-            type: 'user',
-            message: {
-                role: 'user',
-                content: `<bash-input>${command}</bash-input>`,
-            },
-            parent_tool_use_id: null,
-            session_id: '',
-        } as unknown as SDKUserMessage)
+        opts.onMessage(createSDKUserMessage(`<bash-input>${command}</bash-input>`))
 
         // 在用户工作目录下执行命令
         let stdout = ''
@@ -241,15 +216,7 @@ export async function claudeRemote(opts: {
             stderr = execError.stderr?.toString() ?? execError.message ?? 'Command failed'
         }
 
-        opts.onMessage({
-            type: 'user',
-            message: {
-                role: 'user',
-                content: `<bash-stdout>${stdout}</bash-stdout><bash-stderr>${stderr}</bash-stderr>`,
-            },
-            parent_tool_use_id: null,
-            session_id: '',
-        } as unknown as SDKUserMessage)
+        opts.onMessage(createSDKUserMessage(`<bash-stdout>${stdout}</bash-stdout><bash-stderr>${stderr}</bash-stderr>`))
 
         opts.onThinkingChange?.(false)
         opts.onReady()

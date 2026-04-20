@@ -296,9 +296,10 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
     )
 }
 
-// 检测 bash 标签
+const BASH_TAGS_REGEX = /<bash-(?:input|stdout|stderr)>/i
+
 function hasBashTags(text: string): boolean {
-    return /<bash-(?:input|stdout|stderr)>/i.test(text)
+    return BASH_TAGS_REGEX.test(text)
 }
 
 // 解析 CLI 输出文本，提取命令和输出
@@ -470,22 +471,13 @@ function renderChatBlock(block: ChatBlock, ctx: {
             return <CliOutputBlock text={block.text} />
         case 'tool-call':
             return <ToolCallRenderer block={block} metadata={ctx.metadata} />
-        case 'agent-event': {
-            // formatEvent 返回 null 的事件（如 title-changed）不渲染
-            if (isEventHidden(block.event)) return null
+        case 'agent-event':
             return <AgentEventBlock block={block} />
-        }
         default:
             return null
     }
 }
 
-// 需要隐藏的事件类型列表
-// 注意：此列表必须与 formatEvent 中返回 null 的 case 保持同步
-const HIDDEN_EVENT_TYPES = new Set(['title-changed'])
-function isEventHidden(event: { type: string }) {
-    return HIDDEN_EVENT_TYPES.has(event.type)
-}
 
 // 格式化事件
 function formatEvent(event: { type: string; [key: string]: unknown }, t: (key: string, params?: Record<string, unknown>) => string): React.ReactNode {

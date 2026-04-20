@@ -51,6 +51,7 @@ function OverflowContainerInner({
     const contentRef = useRef<HTMLDivElement>(null)
     const [isOverflowing, setIsOverflowing] = useState(false)
 
+    // ResizeObserver 只需挂载一次，由浏览器自动监听尺寸变化
     useEffect(() => {
         const el = contentRef.current
         if (!el) return
@@ -61,7 +62,7 @@ function OverflowContainerInner({
 
         observer.observe(el)
         return () => observer.disconnect()
-    }, [children])
+    }, [])
 
     return (
         <div className={className} style={{ position: 'relative', maxHeight, overflow: 'hidden', ...style }} ref={contentRef}>
