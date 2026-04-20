@@ -15,12 +15,12 @@
  */
 
 import type { MobiApi } from '@/core/data/api/client'
-import type { ToolInfo } from './types'
+import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { Button, theme as antTheme, Typography, Tag, Spin, Input } from 'antd'
 import { CheckOutlined, LeftOutlined, RightOutlined, LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from './askUserQuestion'
+import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMutation, useQueryClient } from '@tanstack/react-query'

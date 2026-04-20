@@ -23,6 +23,6 @@ export {
     toCommandSuggestions,
     filterCommands,
     type SlashCommandSuggestionItem,
-} from '@/components/composer/slashCommandHelper'
+} from '@/domain/command/slashCommandHelper'
 
 export type { Command } from '@/core/data/api/types'

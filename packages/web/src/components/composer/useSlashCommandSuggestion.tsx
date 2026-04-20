@@ -20,7 +20,7 @@ import {
     toCommandSuggestions,
     filterCommands,
     type SlashCommandSuggestionItem,
-} from './slashCommandHelper'
+} from '@/domain/command/slashCommandHelper'
 
 /**
  * 斜杠命令建议 Hook

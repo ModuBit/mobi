@@ -39,14 +39,14 @@ import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useSpawnSession } from '@/core/data/hooks/mutations/useSpawnSession'
 import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirectoryListing'
 import { useRecentPaths } from './useRecentPaths'
-import type { AgentType, SessionType } from './types'
-import { MODEL_OPTIONS } from './types'
+import type { AgentType, SessionType } from '@/domain/session/types'
+import { MODEL_OPTIONS } from '@/domain/session/types'
 import {
     loadPreferredAgent,
     loadPreferredYoloMode,
     savePreferredAgent,
     savePreferredYoloMode,
-} from './preferences'
+} from '@/domain/session/preferences'
 
 export interface NewSessionProps {
     machines?: Machine[]
@@ -398,4 +398,4 @@ export function NewSession(props: NewSessionProps) {
 
 // 导出子组件和类型
 export { useRecentPaths } from './useRecentPaths'
-export type { AgentType, SessionType } from './types'
+export type { AgentType, SessionType } from '@/domain/session/types'

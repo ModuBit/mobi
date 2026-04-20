@@ -20,7 +20,7 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { SpawnResponse } from '@/core/data/api/types'
-import type { AgentType, SessionType } from '@/components/NewSession/types'
+import type { AgentType, SessionType } from '@/domain/session/types'
 
 export interface SpawnInput {
     machineId: string

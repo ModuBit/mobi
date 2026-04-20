@@ -18,7 +18,7 @@ import type { ToolViewProps } from '@/components/ToolCard/views/_all'
 import {
     parseRequestUserInputInput,
     parseRequestUserInputAnswers
-} from '@/components/ToolCard/requestUserInput'
+} from '@/domain/tool/requestUserInput'
 import { theme as antTheme } from 'antd'
 
 function getSelectionMark(isSelected: boolean): string {

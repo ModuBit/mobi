@@ -17,7 +17,7 @@
 import { Collapse, Tag, Typography, Empty, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { CodeOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
-import type { ParsedToolCallBlock, ParsedToolResultBlock } from './messageParser'
+import type { ParsedToolCallBlock, ParsedToolResultBlock } from '@/domain/chat/messageParser'
 
 const { Text } = Typography
 const { useToken } = antTheme

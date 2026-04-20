@@ -20,7 +20,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { DecryptedMessage } from '@mobi/shared'
-import { isSkippableMessage, parseMessage, parseMessages } from '@/components/chat/messageParser'
+import { isSkippableMessage, parseMessage, parseMessages } from '@/domain/chat/messageParser'
 
 describe('messageParser', () => {
   describe('isSkippableMessage', () => {

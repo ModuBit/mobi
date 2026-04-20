@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ToolInfo, ToolCallBlock } from './types'
+import type { ToolInfo, ToolCallBlock } from '@/domain/tool/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -41,8 +41,8 @@ import {
 import { PermissionFooter } from './PermissionFooter'
 import { AskUserQuestionFooter } from './AskUserQuestionFooter'
 import { RequestUserInputFooter } from './RequestUserInputFooter'
-import { isAskUserQuestionToolName } from './askUserQuestion'
-import { isRequestUserInputToolName } from './requestUserInput'
+import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
+import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { getToolPresentation } from './knownTools'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
@@ -54,7 +54,7 @@ import remarkGfm from 'remark-gfm'
 
 
 // 重新导出 types 以供其他组件使用
-export type { ToolCallBlock, ToolPermission } from './types'
+export type { ToolCallBlock, ToolPermission } from '@/domain/tool/types'
 
 const { Text } = Typography
 const { useToken } = antTheme

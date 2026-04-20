@@ -20,13 +20,13 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { mergeToolResults } from '@/components/chat/toolMerger'
+import { mergeToolResults } from '@/domain/chat/toolMerger'
 import type {
     ParsedMessage,
     ParsedToolCallBlock,
     ParsedToolResultBlock,
     MergedToolCallBlock,
-} from '@/components/chat/messageParser'
+} from '@/domain/chat/messageParser'
 
 describe('mergeToolResults', () => {
     /** 创建 assistant 消息的工具调用块 */

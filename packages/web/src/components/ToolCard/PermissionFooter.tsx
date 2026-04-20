@@ -16,7 +16,7 @@
 
 import type { MobiApi } from '@/core/data/api/client'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import type { ToolInfo, ToolPermission } from './types'
+import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
 import { memo, useMemo, useState } from 'react'
 import { Button, theme as antTheme, Typography, Spin } from 'antd'
 import { CheckOutlined, CloseOutlined, StopOutlined } from '@ant-design/icons'

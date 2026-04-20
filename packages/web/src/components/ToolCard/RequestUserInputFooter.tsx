@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ToolInfo } from './types'
+import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { Button, theme as antTheme, Tag, Input } from 'antd'
 import { CheckOutlined, LeftOutlined, RightOutlined, LoadingOutlined } from '@ant-design/icons'
@@ -24,7 +24,7 @@ import {
     parseRequestUserInputInput,
     formatRequestUserInputAnswers,
     type RequestUserInputQuestion
-} from './requestUserInput'
+} from '@/domain/tool/requestUserInput'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'

@@ -20,7 +20,7 @@
  * 参考 HAPI 的 reducerTimeline.ts + reducerTools.ts 的 ensureToolBlock 模式
  */
 
-import type { ToolCallBlock } from '@/components/ToolCard/types'
+import type { ToolCallBlock } from '@/domain/tool/types'
 import type {
   ParsedMessage,
   ParsedContentBlock,
