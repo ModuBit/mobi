@@ -2,6 +2,40 @@
 
 适用于 `web/` 包（React 19 + Ant Design X + TanStack）。
 
+## 目录结构
+
+```
+src/
+├── core/                    ← 基础设施
+│   ├── data/                ← 数据层
+│   │   ├── api/             ← API 客户端与类型
+│   │   ├── stores/          ← Zustand 全局状态
+│   │   ├── realtime/        ← SSE 客户端
+│   │   └── hooks/           ← TanStack Query 封装（queries/ + mutations/）
+│   ├── config/              ← 应用配置
+│   │   ├── i18n/            ← 国际化
+│   │   └── theme/           ← 主题系统
+│   ├── lib/                 ← 业务辅助逻辑
+│   ├── utils/               ← 纯工具函数
+│   └── providers/           ← React Context Provider
+├── domain/                  ← 领域逻辑（纯数据，不依赖 React）
+│   ├── chat/                ← 聊天（消息解析、reducer、工具合并）
+│   ├── command/             ← 命令（斜杠命令处理）
+│   ├── session/             ← 会话（类型定义、用户偏好）
+│   └── tool/                ← 工具（输入解析、类型定义）
+├── components/              ← UI 组件
+├── pages/                   ← 页面路由
+├── App.tsx
+├── main.tsx
+└── router.tsx
+```
+
+### 领域逻辑 vs UI 组件的边界
+
+- **`domain/`** 放纯数据处理和业务规则，不依赖 React（无 hooks、无 JSX）
+- **`components/`** 放 UI 渲染和 React hooks
+- 新增领域逻辑时，如果文件不导入 React，应放入 `domain/` 对应子目录
+
 ## 组件
 
 - **导出方式**：`export function` 或 `export default function` 均可
