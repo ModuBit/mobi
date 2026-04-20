@@ -23,14 +23,18 @@
  * 结论：SDK 不会将 "! pwd" 视为本地命令，而是作为普通用户消息发送给 Claude。
  * "! command" 是 CLI 交互层的功能，不属于 SDK/Agent 层。
  *
+ * 注意：此测试依赖本地 Claude Code SDK 环境，CI 中自动跳过
  * 运行方式：bun test tests/claude/sdk/exclamationCommand.test.ts
  */
 
 import { describe, it, expect } from 'vitest'
+
+// CI 环境下跳过（需要本地 Claude Code SDK 环境）
+const skip = !!process.env.CI
 import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 
 describe('SDK ! command 行为探索', () => {
-    it('发送 "! pwd" 不会产生 local_command_output，而是走正常 API 流程', { timeout: 30_000 }, async () => {
+    it('发送 "! pwd" 不会产生 local_command_output，而是走正常 API 流程', { timeout: 30_000, skip }, async () => {
         const messages: SDKMessage[] = []
         let gotInit = false
 

@@ -31,7 +31,7 @@ import { getToolPresentation } from '@/components/ToolCard/knownTools'
 import { getToolResultViewComponent } from '@/components/ToolCard/views/_results'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
-import { ContentDrawer } from '@/components/ui/ContentDrawer'
+import { CliOutputDetailDrawer } from './CliOutputDetailDrawer'
 import { XMarkdown } from '@ant-design/x-markdown'
 
 import type { ChatBlock } from '@/chat'
@@ -364,7 +364,7 @@ const CliOutputBlock = memo(function CliOutputBlock({ text }: { text: string }) 
                 expanded={expanded}
                 onExpand={setExpanded}
             >
-                {hasOutput && (
+                {hasOutput ? (
                     <div style={{ position: 'relative', marginTop: 4 }}>
                         <OverflowContainer
                             maxHeight={200}
@@ -398,62 +398,19 @@ const CliOutputBlock = memo(function CliOutputBlock({ text }: { text: string }) 
                             {t('chat.tool.viewDetail')} →
                         </div>
                     </div>
+                ) : (
+                    <div style={{ marginTop: 4, fontSize: 12, color: token.colorTextQuaternary, fontStyle: 'italic' }}>
+                        {t('chat.tool.noOutput')}
+                    </div>
                 )}
             </Think>
-            <ContentDrawer
+            <CliOutputDetailDrawer
                 title={command}
+                stdout={stdout}
+                stderr={stderr}
                 open={drawerOpen}
                 onClose={() => setDrawerOpen(false)}
-                bodyStyle={{ padding: 0 }}
-            >
-                {/* 输出区 */}
-                {stdout && (
-                    <div style={{ padding: '12px 16px' }}>
-                        <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
-                            {t('chat.tool.output')}
-                        </div>
-                        <pre style={{
-                            background: token.colorBgContainer,
-                            padding: 8,
-                            borderRadius: 4,
-                            fontSize: 12,
-                            overflowX: 'auto',
-                            margin: '4px 0',
-                            border: `1px solid ${token.colorBorder}`,
-                            whiteSpace: 'pre',
-                            fontFamily: 'var(--font-mono)',
-                        }}>
-                            {stdout}
-                        </pre>
-                    </div>
-                )}
-                {/* 分隔线 */}
-                {stdout && stderr && (
-                    <div style={{ borderBottom: `1px solid ${token.colorBorderSecondary}`, margin: '0 16px' }} />
-                )}
-                {/* 错误区 */}
-                {stderr && (
-                    <div style={{ padding: '12px 16px' }}>
-                        <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
-                            stderr
-                        </div>
-                        <pre style={{
-                            background: token.colorBgContainer,
-                            padding: 8,
-                            borderRadius: 4,
-                            fontSize: 12,
-                            overflowX: 'auto',
-                            margin: '4px 0',
-                            border: `1px solid ${token.colorBorder}`,
-                            whiteSpace: 'pre',
-                            fontFamily: 'var(--font-mono)',
-                            color: token.colorError,
-                        }}>
-                            {stderr}
-                        </pre>
-                    </div>
-                )}
-            </ContentDrawer>
+            />
         </>
     )
 })
@@ -523,7 +480,8 @@ function renderChatBlock(block: ChatBlock, ctx: {
     }
 }
 
-// 判断事件是否应隐藏（formatEvent 返回 null 的事件类型）
+// 需要隐藏的事件类型列表
+// 注意：此列表必须与 formatEvent 中返回 null 的 case 保持同步
 const HIDDEN_EVENT_TYPES = new Set(['title-changed'])
 function isEventHidden(event: { type: string }) {
     return HIDDEN_EVENT_TYPES.has(event.type)

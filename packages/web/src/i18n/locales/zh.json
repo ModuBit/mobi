@@ -120,6 +120,7 @@
             "description": "描述:",
             "noContent": "无内容",
             "viewDetail": "查看详情",
+            "noOutput": "无输出",
             "statusDone": "完成",
             "statusError": "出错",
             "statusRunning": "运行中"

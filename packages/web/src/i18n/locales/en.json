@@ -120,6 +120,7 @@
             "description": "Description:",
             "noContent": "No content",
             "viewDetail": "View details",
+            "noOutput": "No output",
             "statusDone": "Done",
             "statusError": "Error",
             "statusRunning": "Running"

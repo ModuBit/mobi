@@ -29,7 +29,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
-import { parseSpecialCommand } from "@/parsers/specialCommands";
+import { parseSpecialCommand, checkDangerousCommand } from "@/parsers/specialCommands";
 import { logger } from "@/lib";
 import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
@@ -41,6 +41,10 @@ import { getMobiBlobsDir } from "@/constants/uploadPaths";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
 
 const execAsync = promisify(exec)
+
+// ! 命令安全约束
+const BASH_COMMAND_MAX_LENGTH = 4096
+const BASH_OUTPUT_MAX_BUFFER = 4 * 1024 * 1024 // 4MB
 
 export async function claudeRemote(opts: {
 
@@ -159,36 +163,75 @@ export async function claudeRemote(opts: {
     }
 
     // Handle ! command (bash mode) - 本地执行 shell 命令，不走 SDK
+    // 设计意图：与 Claude Code CLI 的 ! 模式一致，用户可执行任意 shell 命令。
+    // 安全边界：高危命令检测拦截、限制命令长度、输出缓冲区大小和执行超时。
     if (specialCommand.type === 'bash' && specialCommand.command) {
-        logger.debug(`[claudeRemote] Bash command detected: ${specialCommand.command}`)
+        const command = specialCommand.command.trim()
+        logger.debug(`[claudeRemote] Bash command detected: ${command}`)
+
+        // 高危命令拦截
+        const dangerCheck = checkDangerousCommand(command)
+        if (dangerCheck.isDangerous) {
+            logger.warn(`[claudeRemote] Dangerous command blocked: ${command} (${dangerCheck.reason})`)
+
+            // 构造模拟 SDK 消息，前端渲染为 CLI 输出中的错误
+            opts.onMessage({
+                type: 'user',
+                message: {
+                    role: 'user',
+                    content: `<bash-input>${command}</bash-input>`,
+                },
+                parent_tool_use_id: null,
+                session_id: '',
+            } as unknown as SDKUserMessage)
+
+            opts.onMessage({
+                type: 'user',
+                message: {
+                    role: 'user',
+                    content: `<bash-stdout></bash-stdout><bash-stderr>⚠ 命令已拦截：${dangerCheck.reason}</bash-stderr>`,
+                },
+                parent_tool_use_id: null,
+                session_id: '',
+            } as unknown as SDKUserMessage)
+
+            opts.onReady()
+            return
+        }
+
+        // 命令长度限制
+        if (command.length > BASH_COMMAND_MAX_LENGTH) {
+            logger.warn(`[claudeRemote] Bash command exceeds max length (${command.length} > ${BASH_COMMAND_MAX_LENGTH})`)
+        }
 
         opts.onThinkingChange?.(true)
 
-        // 发送 local-command-caveat meta 消息，标识后续为 bash 输出
+        // 构造模拟 SDK 消息（字段不完整，仅用于前端渲染）
+        // session_id 由前端 reducer 从 session context 获取，此处留空
         opts.onMessage({
             type: 'system',
             subtype: 'local_command_caveat',
             session_id: '',
         } as unknown as SDKSystemMessage)
 
-        // 发送 bash-input 消息（与 Claude Code local 模式一致）
         opts.onMessage({
             type: 'user',
             message: {
                 role: 'user',
-                content: `<bash-input>${specialCommand.command}</bash-input>`,
+                content: `<bash-input>${command}</bash-input>`,
             },
             parent_tool_use_id: null,
             session_id: '',
         } as unknown as SDKUserMessage)
 
-        // 执行命令
+        // 在用户工作目录下执行命令
         let stdout = ''
         let stderr = ''
         try {
-            const result = await execAsync(specialCommand.command, {
+            const result = await execAsync(command, {
                 cwd: opts.path,
                 timeout: 30000,
+                maxBuffer: BASH_OUTPUT_MAX_BUFFER,
             })
             stdout = result.stdout?.toString() ?? ''
             stderr = result.stderr?.toString() ?? ''
@@ -198,7 +241,6 @@ export async function claudeRemote(opts: {
             stderr = execError.stderr?.toString() ?? execError.message ?? 'Command failed'
         }
 
-        // 发送 bash-stdout/stderr 消息（与 Claude Code local 模式一致）
         opts.onMessage({
             type: 'user',
             message: {

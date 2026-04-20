@@ -344,7 +344,8 @@ html[data-theme='dark'] .sender-overlay {
 
 /* Bash 模式：Sender 发光边框 */
 .bash-mode .ant-sender {
-    border-color: rgba(232, 112, 58, 0.6) !important;
-    box-shadow: 0 0 0 2px rgba(232, 112, 58, 0.15),
-                0 0 12px rgba(232, 112, 58, 0.1);
+    --bash-glow: 232, 112, 58;
+    border-color: rgba(var(--bash-glow), 0.6) !important;
+    box-shadow: 0 0 0 2px rgba(var(--bash-glow), 0.15),
+                0 0 12px rgba(var(--bash-glow), 0.1);
 }
