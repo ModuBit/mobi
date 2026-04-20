@@ -20,7 +20,7 @@
  */
 
 import { useMemo, memo, type CSSProperties } from 'react'
-import { Drawer, theme as antTheme, Typography } from 'antd'
+import { theme as antTheme, Typography } from 'antd'
 import { safeStringify } from '@mobi/shared'
 import { useTranslation } from 'react-i18next'
 import type { SessionMetadataSummary } from '@/api/types'
@@ -31,7 +31,7 @@ import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { getToolIcon, StatusStateIcon, ICON_STYLE_LG } from './toolIcons'
 import { truncate } from '@/lib/toolInputUtils'
-import { useIsMobile } from '@/hooks/useMediaQuery'
+import { ContentDrawer } from '@/components/ui/ContentDrawer'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -101,7 +101,6 @@ function getStatusText(state: 'pending' | 'running' | 'completed' | 'error', t: 
 function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDrawerProps) {
     const { t } = useTranslation()
     const { token } = useToken()
-    const isMobile = useIsMobile()
 
     const tool = block.tool
 
@@ -172,13 +171,10 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
     )
 
     return (
-        <Drawer
+        <ContentDrawer
             open={open}
             onClose={onClose}
             title={titleContent}
-            placement={isMobile ? 'bottom' : 'right'}
-            width={isMobile ? undefined : 400}
-            styles={{ body: { padding: 0 } }}
         >
             {/* 输入区 */}
             <div style={sectionStyle}>
@@ -220,7 +216,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
                 </div>
                 <ResultView block={adaptedBlock} metadata={metadata} />
             </div>
-        </Drawer>
+        </ContentDrawer>
     )
 }
 

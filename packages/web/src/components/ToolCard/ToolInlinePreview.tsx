@@ -19,7 +19,8 @@
  * 在消息流中展示工具调用的简要信息，点击后可打开详情抽屉
  */
 
-import { useEffect, useMemo, useRef, useState, memo, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, memo, type CSSProperties } from 'react'
+import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { theme as antTheme, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { SessionMetadataSummary } from '@/api/types'
@@ -103,22 +104,6 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
     // 将 MergedToolCallBlock 转为 ToolCallBlock 以适配视图接口
     const adaptedBlock = useMemo(() => mergedToToolCallBlock(block), [block])
 
-    // 溢出检测
-    const contentRef = useRef<HTMLDivElement>(null)
-    const [isOverflowing, setIsOverflowing] = useState(false)
-
-    useEffect(() => {
-        const el = contentRef.current
-        if (!el) return
-
-        const observer = new ResizeObserver(() => {
-            setIsOverflowing(el.scrollHeight > el.clientHeight)
-        })
-
-        observer.observe(el)
-        return () => observer.disconnect()
-    }, [ResultView, block.result])
-
     // 副标题截断到 80 字
     const truncatedSubtitle = presentation.subtitle
         ? truncate(presentation.subtitle, 80)
@@ -138,25 +123,6 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
         padding: '8px 12px',
         borderBottom: `1px solid ${token.colorBorderSecondary}`,
         overflow: 'hidden',
-    }
-
-    // 预览内容区样式
-    const previewStyle: CSSProperties = {
-        position: 'relative',
-        maxHeight: previewMaxHeight,
-        overflow: 'hidden',
-        padding: '8px 12px',
-    }
-
-    // 渐变遮罩样式
-    const gradientStyle: CSSProperties = {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 48,
-        background: `linear-gradient(transparent, ${token.colorBgContainer})`,
-        pointerEvents: 'none',
     }
 
     // 底部提示样式
@@ -196,11 +162,9 @@ function ToolInlinePreviewInner({ block, metadata, onClick }: ToolInlinePreviewP
 
             {/* 预览内容区 */}
             {showPreview ? (
-                <div style={previewStyle} ref={contentRef}>
+                <OverflowContainer maxHeight={previewMaxHeight} style={{ padding: '8px 12px' }}>
                     <ResultView block={adaptedBlock} metadata={metadata} />
-                    {/* 渐变遮罩 */}
-                    {isOverflowing ? <div style={gradientStyle} /> : null}
-                </div>
+                </OverflowContainer>
             ) : null}
 
             {/* 底部提示 */}

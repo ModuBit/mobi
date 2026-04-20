@@ -17,7 +17,7 @@
 import { useRef, useEffect, useMemo, useState, useCallback, memo } from 'react'
 import { Bubble, Think } from '@ant-design/x'
 import { Spin, Empty, Button, theme as antTheme } from 'antd'
-import { DownOutlined } from '@ant-design/icons'
+import { DownOutlined, CodeOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/hooks/queries/useMessages'
 import { useSession } from '@/hooks/queries/useSession'
@@ -30,6 +30,8 @@ import { getToolIcon, StatusStateIcon } from '@/components/ToolCard/toolIcons'
 import { getToolPresentation } from '@/components/ToolCard/knownTools'
 import { getToolResultViewComponent } from '@/components/ToolCard/views/_results'
 import { ChatComposer } from '@/components/composer/ChatComposer'
+import { OverflowContainer } from '@/components/ui/OverflowContainer'
+import { ContentDrawer } from '@/components/ui/ContentDrawer'
 import { XMarkdown } from '@ant-design/x-markdown'
 
 import type { ChatBlock } from '@/chat'
@@ -134,7 +136,19 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
             }
         }
 
-        for (const block of chatBlocks) {
+        for (let i = 0; i < chatBlocks.length; i++) {
+            const block = chatBlocks[i]
+            const nextBlock = chatBlocks[i + 1]
+
+            // bash 模式：跳过紧跟 bash cli-output 之前的用户消息（如 '! tree .'）
+            if (
+                block.kind === 'user-text'
+                && nextBlock?.kind === 'cli-output'
+                && hasBashTags((nextBlock as { text: string }).text)
+            ) {
+                continue
+            }
+
             const content = renderChatBlock(block, { metadata, isThinking: !!session?.thinking })
             if (content === null) continue
 
@@ -329,54 +343,118 @@ const TextBlock = memo(function TextBlock({ text, isSynthetic }: { text: string;
     )
 })
 
-// CLI 输出渲染
+// CLI 输出渲染（使用 Think 组件，与 ToolCall 渲染风格统一）
 const CliOutputBlock = memo(function CliOutputBlock({ text }: { text: string }) {
     const { token } = useToken()
+    const { t } = useTranslation()
+    const [expanded, setExpanded] = useState(true)
+    const [drawerOpen, setDrawerOpen] = useState(false)
     const { command, stdout, stderr } = parseCliOutputText(text)
-    const hasError = !!stderr
+    const hasOutput = !!stdout || !!stderr
+
     return (
-        <div style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 12,
-            lineHeight: 1.6,
-        }}>
-            {command && (
-                <div style={{ fontWeight: 500, marginBottom: (stdout || stderr) ? 4 : 0 }}>{command}</div>
-            )}
-            {stdout && (
-                <div style={{
-                    color: token.colorTextSecondary,
-                    paddingLeft: command ? 16 : 0,
-                    position: 'relative',
-                }}>
-                    {command && (
-                        <span style={{
-                            position: 'absolute',
-                            left: 0,
-                            color: token.colorTextTertiary,
-                        }}>└ </span>
-                    )}
-                    {stdout}
-                </div>
-            )}
-            {stderr && (
-                <div style={{
-                    color: token.colorError,
-                    paddingLeft: command ? 16 : 0,
-                    position: 'relative',
-                    marginTop: stdout ? 2 : 0,
-                }}>
-                    {command && !stdout && (
-                        <span style={{
-                            position: 'absolute',
-                            left: 0,
-                            color: token.colorTextTertiary,
-                        }}>└ </span>
-                    )}
-                    {stderr}
-                </div>
-            )}
-        </div>
+        <>
+            <Think
+                icon={<CodeOutlined />}
+                title={
+                    <span style={{ fontWeight: 500, fontSize: 13, fontFamily: 'var(--font-mono)' }}>
+                        {command}
+                    </span>
+                }
+                expanded={expanded}
+                onExpand={setExpanded}
+            >
+                {hasOutput && (
+                    <div style={{ position: 'relative', marginTop: 4 }}>
+                        <OverflowContainer
+                            maxHeight={200}
+                            className="hide-scrollbar"
+                            style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: 12,
+                                lineHeight: 1.6,
+                                whiteSpace: 'pre',
+                                overflowX: 'auto',
+                            }}
+                        >
+                            {stdout && <span style={{ color: token.colorTextSecondary }}>{stdout}</span>}
+                            {stderr && (
+                                <span style={{ color: token.colorError }}>
+                                    {stdout ? '\n' : ''}
+                                    {stderr}
+                                </span>
+                            )}
+                        </OverflowContainer>
+                        <div
+                            onClick={(e) => { e.stopPropagation(); setDrawerOpen(true) }}
+                            style={{
+                                textAlign: 'center',
+                                padding: '6px 0',
+                                color: token.colorPrimary,
+                                fontSize: 12,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            {t('chat.tool.viewDetail')} →
+                        </div>
+                    </div>
+                )}
+            </Think>
+            <ContentDrawer
+                title={command}
+                open={drawerOpen}
+                onClose={() => setDrawerOpen(false)}
+                bodyStyle={{ padding: 0 }}
+            >
+                {/* 输出区 */}
+                {stdout && (
+                    <div style={{ padding: '12px 16px' }}>
+                        <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
+                            {t('chat.tool.output')}
+                        </div>
+                        <pre style={{
+                            background: token.colorBgContainer,
+                            padding: 8,
+                            borderRadius: 4,
+                            fontSize: 12,
+                            overflowX: 'auto',
+                            margin: '4px 0',
+                            border: `1px solid ${token.colorBorder}`,
+                            whiteSpace: 'pre',
+                            fontFamily: 'var(--font-mono)',
+                        }}>
+                            {stdout}
+                        </pre>
+                    </div>
+                )}
+                {/* 分隔线 */}
+                {stdout && stderr && (
+                    <div style={{ borderBottom: `1px solid ${token.colorBorderSecondary}`, margin: '0 16px' }} />
+                )}
+                {/* 错误区 */}
+                {stderr && (
+                    <div style={{ padding: '12px 16px' }}>
+                        <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
+                            stderr
+                        </div>
+                        <pre style={{
+                            background: token.colorBgContainer,
+                            padding: 8,
+                            borderRadius: 4,
+                            fontSize: 12,
+                            overflowX: 'auto',
+                            margin: '4px 0',
+                            border: `1px solid ${token.colorBorder}`,
+                            whiteSpace: 'pre',
+                            fontFamily: 'var(--font-mono)',
+                            color: token.colorError,
+                        }}>
+                            {stderr}
+                        </pre>
+                    </div>
+                )}
+            </ContentDrawer>
+        </>
     )
 })
 
@@ -397,6 +475,9 @@ const AgentEventBlock = memo(function AgentEventBlock({ block }: { block: AgentE
         )
     }
 
+    const content = formatEvent(block.event, t)
+    if (content === null) return null
+
     const d = block.display
     const alignClass = d?.align ? `event-align-${d.align}` : undefined
     const colorValue = d?.color === 'error' || d?.color === 'warning'
@@ -411,7 +492,7 @@ const AgentEventBlock = memo(function AgentEventBlock({ block }: { block: AgentE
                 color: colorValue,
             }}
         >
-            {formatEvent(block.event, t)}
+            {content}
         </div>
     )
 })
@@ -432,11 +513,20 @@ function renderChatBlock(block: ChatBlock, ctx: {
             return <CliOutputBlock text={block.text} />
         case 'tool-call':
             return <ToolCallRenderer block={block} metadata={ctx.metadata} />
-        case 'agent-event':
+        case 'agent-event': {
+            // formatEvent 返回 null 的事件（如 title-changed）不渲染
+            if (isEventHidden(block.event)) return null
             return <AgentEventBlock block={block} />
+        }
         default:
             return null
     }
+}
+
+// 判断事件是否应隐藏（formatEvent 返回 null 的事件类型）
+const HIDDEN_EVENT_TYPES = new Set(['title-changed'])
+function isEventHidden(event: { type: string }) {
+    return HIDDEN_EVENT_TYPES.has(event.type)
 }
 
 // 格式化事件
@@ -614,8 +704,6 @@ function ToolCallPreviewContent({
 }) {
     const { token } = useToken()
     const { t } = useTranslation()
-    const contentRef = useRef<HTMLDivElement>(null)
-    const [isOverflowing, setIsOverflowing] = useState(false)
 
     const tool = toolCallBlock.tool
     const ResultView = useMemo(() => getToolResultViewComponent(tool.name), [tool.name])
@@ -667,35 +755,21 @@ function ToolCallPreviewContent({
 
     const showPreview = tool.state !== 'running' && tool.result !== undefined
 
-    // 溢出检测
-    useEffect(() => {
-        const el = contentRef.current
-        if (!el) return
-        const observer = new ResizeObserver(() => {
-            setIsOverflowing(el.scrollHeight > el.clientHeight)
-        })
-        observer.observe(el)
-        return () => observer.disconnect()
-    }, [ResultView, tool.result])
-
     if (!showPreview) return null
 
-    const maxContentHeight = 100
-
     return (
-        <div
-            style={{ position: 'relative', marginTop: 4, cursor: 'pointer', paddingLeft: 12, paddingRight: 12, paddingBottom: 24 }}
-        >
-            <div style={{ maxHeight: maxContentHeight, overflow: 'hidden' }} ref={contentRef}>
+        <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+            <OverflowContainer maxHeight={100}>
                 <ResultView block={adaptedBlock} metadata={metadata} />
-            </div>
+            </OverflowContainer>
             <div
                 onClick={(e) => { e.stopPropagation(); onViewDetail() }}
                 style={{
-                    position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
-                    background: `linear-gradient(transparent 0%, transparent 30%, ${token.colorBgContainer} 85%)`,
-                    display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-                    paddingBottom: 4, color: token.colorPrimary, fontSize: 12,
+                    textAlign: 'center',
+                    padding: '6px 0',
+                    color: token.colorPrimary,
+                    fontSize: 12,
+                    cursor: 'pointer',
                 }}
             >
                 {t('chat.tool.viewDetail')} →

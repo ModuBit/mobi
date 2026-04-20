@@ -309,6 +309,15 @@ html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
     background: #52525b;
 }
 
+/* 隐藏滚动条但保留滚动能力 */
+.hide-scrollbar {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+}
+.hide-scrollbar::-webkit-scrollbar {
+    display: none !important;
+}
+
 /* Dark 模式下 solid 按钮文字颜色修复 */
 html[data-theme='dark'] .ant-btn-variant-solid {
     color: #18181b !important;
@@ -331,4 +340,11 @@ html[data-theme='dark'] .ant-btn-variant-solid:active {
 
 html[data-theme='dark'] .sender-overlay {
     background: rgba(0, 0, 0, 0.55);
+}
+
+/* Bash 模式：Sender 发光边框 */
+.bash-mode .ant-sender {
+    border-color: rgba(232, 112, 58, 0.6) !important;
+    box-shadow: 0 0 0 2px rgba(232, 112, 58, 0.15),
+                0 0 12px rgba(232, 112, 58, 0.1);
 }

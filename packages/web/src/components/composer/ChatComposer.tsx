@@ -238,6 +238,13 @@ export function ChatComposer(props: ChatComposerProps) {
     })
 
     const handleChange = useCallback((value: string) => {
+        // 中文「！」后紧跟空格自动转英文「!」
+        if (value.startsWith('！ ')) {
+            const textarea = getTextarea(wrapperRef.current)
+            pendingCursorRef.current = textarea?.selectionStart ?? value.length
+            value = '! ' + value.slice(2)
+        }
+
         setText(value)
 
         const textarea = getTextarea(wrapperRef.current)
@@ -450,13 +457,8 @@ export function ChatComposer(props: ChatComposerProps) {
             />
 
             {/* Sender 输入组件 */}
-            <div ref={wrapperRef} style={{
+            <div ref={wrapperRef} className={isBashMode ? 'bash-mode' : undefined} style={{
                 position: 'relative',
-                ...(isBashMode ? {
-                    borderColor: 'rgba(232, 112, 58, 0.6)',
-                    boxShadow: '0 0 0 2px rgba(232, 112, 58, 0.15)',
-                    borderRadius: 'inherit',
-                } : {}),
             }}>
                 <Sender
                     value={text}
