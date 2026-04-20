@@ -38,6 +38,75 @@ src/
 
 ## 组件
 
+### 单一职责
+
+**一个文件只做一件事。** 不允许在容器组件中内联定义多个子组件或工具函数。
+
+反例（禁止）：
+```typescript
+// ❌ ChatContainer.tsx 内联了 6 个子组件 + 6 个工具函数
+function ChatContainer() {
+    // ...
+}
+function CliOutputBlock() { ... }
+function ToolCallRenderer() { ... }
+function parseCliOutputText() { ... }
+function formatMessageTime() { ... }
+```
+
+正例（拆分）：
+```typescript
+// ✅ ChatContainer.tsx 只做编排
+import { renderChatBlock } from './blocks'
+import { hasBashTags } from '@/domain/chat'
+import { formatMessageTime } from '@/core/utils/timeFormat'
+
+function ChatContainer() { ... }
+
+// ✅ blocks/CliOutputBlock.tsx
+export const CliOutputBlock = memo(function CliOutputBlock() { ... })
+
+// ✅ domain/chat/cliParser.ts
+export function parseCliOutputText(text: string) { ... }
+```
+
+### 分层规则
+
+组件中的逻辑按职责下沉到对应层级，**禁止在组件文件中保留应属于 domain 或 utils 的纯函数**：
+
+| 职责 | 归属 | 示例 |
+|------|------|------|
+| 纯数据解析、格式化（无 React 依赖） | `domain/` | `parseCliOutputText`、`formatEvent`、`hasBashTags` |
+| 通用工具函数 | `core/utils/` | `formatMessageTime`、`path.ts` |
+| UI 渲染、React hooks | `components/` | `CliOutputBlock`、`ToolCallRenderer` |
+| 数据获取、状态管理 | `core/data/` | `useMessages`、`useAuthStore` |
+
+### 容器组件模式
+
+容器组件（如 `ChatContainer`）只负责三件事：
+1. **数据获取** — 调用 hooks 获取数据
+2. **编排调度** — 将数据转换为子组件可用的 props
+3. **事件处理** — 转发用户操作
+
+具体的渲染逻辑、解析逻辑、格式化逻辑一律下沉到对应层级。
+
+### 模块内 blocks 模式
+
+当一个模块需要渲染多种类型的块/卡片时，使用 `blocks/` 子目录组织：
+
+```
+components/chat/
+├── ChatContainer.tsx      ← 编排层
+├── blocks/                ← 各类型渲染器
+│   ├── index.tsx          ← renderChatBlock 调度器
+│   ├── TextBlock.tsx
+│   ├── CliOutputBlock.tsx
+│   └── ...
+└── ...其他子组件
+```
+
+新增类型时只需：在 `blocks/` 下加一个文件 → 在 `index.tsx` 的 switch 中加一行。
+
 - **导出方式**：`export function` 或 `export default function` 均可
 - **文件命名**：PascalCase（如 `ChatContainer.tsx`、`ToolCard.tsx`）
 - **组件定义**：函数组件 + Hooks，不使用 class 组件
