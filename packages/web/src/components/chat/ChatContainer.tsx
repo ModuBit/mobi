@@ -34,8 +34,7 @@ import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { CliOutputDetailDrawer } from './CliOutputDetailDrawer'
 import { XMarkdown } from '@ant-design/x-markdown'
 
-import type { ChatBlock } from '@/domain/chat'
-import type { AgentEventBlock as AgentEventBlockType } from '@/domain/chat/types'
+import type { ChatBlock, AgentEventBlock as AgentEventBlockType } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 const { useToken } = antTheme

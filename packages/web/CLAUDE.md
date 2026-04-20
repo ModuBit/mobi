@@ -13,7 +13,7 @@
 | `src/router.tsx` | 路由配置 |
 | `src/core/providers/SSEProvider.tsx` | SSE 连接管理 |
 | `src/core/data/api/types.ts` | API 类型定义 |
-| `src/components/chat/messageParser.ts` | 消息解析器 |
+| `src/domain/chat/messageParser.ts` | 消息解析器 |
 | `src/components/ToolCard/knownTools.tsx` | 工具卡片注册 |
 | `src/core/lib/query-keys.ts` | 查询缓存 Key |
 
