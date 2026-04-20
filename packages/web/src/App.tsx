@@ -20,7 +20,7 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { setUnauthorizedHandler } from '@/core/data/api/client'
-import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 export function App() {
     const { token, logout } = useAuthStore()

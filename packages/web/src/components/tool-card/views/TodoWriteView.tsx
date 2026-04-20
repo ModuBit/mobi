@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-import type { ToolViewProps } from '@/components/ToolCard/views/_all'
-import { ChecklistList, extractUpdatePlanChecklist } from '@/components/ToolCard/checklist'
+import type { ToolViewProps } from '@/components/tool-card/views/_all'
+import { ChecklistList, extractTodoChecklist } from '@/components/tool-card/checklist'
 
 /**
- * UpdatePlan 工具视图
+ * TodoWrite 工具视图
  */
-export function UpdatePlanView(props: ToolViewProps) {
-    const steps = extractUpdatePlanChecklist(props.block.tool.input, props.block.tool.result)
-    return <ChecklistList items={steps} />
+export function TodoWriteView(props: ToolViewProps) {
+    const todos = extractTodoChecklist(props.block.tool.input, props.block.tool.result)
+    return <ChecklistList items={todos} />
 }

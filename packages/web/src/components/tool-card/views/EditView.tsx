@@ -11,27 +11,28 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
-* limitations under the License.
+ * limitations under the License.
  */
 
-import type { ToolViewProps } from '@/components/ToolCard/views/_all'
+import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
-import { DiffView } from '@/components/ToolCard/views/DiffView'
+import { DiffView } from '@/components/tool-card/views/DiffView'
 
 /**
- * Write 工具视图
+ * Edit 工具视图
  */
-export function WriteView(props: ToolViewProps) {
+export function EditView(props: ToolViewProps) {
     const input = props.block.tool.input
     if (!isObject(input)) return null
 
-    const content = typeof input.content === 'string' ? input.content : typeof input.text === 'string' ? input.text : null
-    if (content === null) return null
+    const oldString = typeof input.old_string === 'string' ? input.old_string : null
+    const newString = typeof input.new_string === 'string' ? input.new_string : null
+    if (oldString === null || newString === null) return null
 
     return (
         <DiffView
-            oldString=""
-            newString={content}
+            oldString={oldString}
+            newString={newString}
             variant="inline"
         />
     )

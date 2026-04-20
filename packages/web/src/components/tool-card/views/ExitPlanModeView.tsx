@@ -14,26 +14,25 @@
  * limitations under the License.
  */
 
-import type { ToolViewProps } from '@/components/ToolCard/views/_all'
+import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
-import { DiffView } from '@/components/ToolCard/views/DiffView'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 /**
- * Edit 工具视图
+ * ExitPlanMode 工具视图
  */
-export function EditView(props: ToolViewProps) {
+export function ExitPlanModeView(props: ToolViewProps) {
     const input = props.block.tool.input
     if (!isObject(input)) return null
-
-    const oldString = typeof input.old_string === 'string' ? input.old_string : null
-    const newString = typeof input.new_string === 'string' ? input.new_string : null
-    if (oldString === null || newString === null) return null
+    const plan = typeof input.plan === 'string' ? input.plan : null
+    if (!plan) return null
 
     return (
-        <DiffView
-            oldString={oldString}
-            newString={newString}
-            variant="inline"
-        />
+        <div style={{ maxWidth: '100%' }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {plan || ''}
+            </ReactMarkdown>
+        </div>
     )
 }

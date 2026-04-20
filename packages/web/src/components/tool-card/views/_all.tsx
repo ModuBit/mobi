@@ -15,16 +15,16 @@
  */
 
 import type { ComponentType } from 'react'
-import type { ToolCallBlock } from '../types'
+import type { ToolCallBlock } from '@/domain/tool/types'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import { EditView } from '@/components/ToolCard/views/EditView'
-import { AskUserQuestionView } from '@/components/ToolCard/views/AskUserQuestionView'
-import { RequestUserInputView } from '@/components/ToolCard/views/RequestUserInputView'
-import { ExitPlanModeView } from '@/components/ToolCard/views/ExitPlanModeView'
-import { MultiEditFullView, MultiEditView } from '@/components/ToolCard/views/MultiEditView'
-import { TodoWriteView } from '@/components/ToolCard/views/TodoWriteView'
-import { UpdatePlanView } from '@/components/ToolCard/views/UpdatePlanView'
-import { WriteView } from '@/components/ToolCard/views/WriteView'
+import { EditView } from '@/components/tool-card/views/EditView'
+import { AskUserQuestionView } from '@/components/tool-card/views/AskUserQuestionView'
+import { RequestUserInputView } from '@/components/tool-card/views/RequestUserInputView'
+import { ExitPlanModeView } from '@/components/tool-card/views/ExitPlanModeView'
+import { MultiEditFullView, MultiEditView } from '@/components/tool-card/views/MultiEditView'
+import { TodoWriteView } from '@/components/tool-card/views/TodoWriteView'
+import { UpdatePlanView } from '@/components/tool-card/views/UpdatePlanView'
+import { WriteView } from '@/components/tool-card/views/WriteView'
 
 export type ToolViewProps = {
     block: ToolCallBlock

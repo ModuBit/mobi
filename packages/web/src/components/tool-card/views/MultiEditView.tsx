@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import type { ToolViewProps } from '@/components/ToolCard/views/_all'
+import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
-import { DiffView } from '@/components/ToolCard/views/DiffView'
+import { DiffView } from '@/components/tool-card/views/DiffView'
 
 type Edit = { old_string: string; new_string: string }
 

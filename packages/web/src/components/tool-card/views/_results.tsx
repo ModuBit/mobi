@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-import type { ToolViewComponent, ToolViewProps } from '@/components/ToolCard/views/_all'
+import type { ToolViewComponent, ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject, safeStringify } from '@mobi/shared'
 import { theme as antTheme, Typography } from 'antd'
-import { ChecklistList, extractTodoChecklist } from '@/components/ToolCard/checklist'
+import { ChecklistList, extractTodoChecklist } from '@/components/tool-card/checklist'
 import { basename, resolveDisplayPath } from '@/core/utils/path'
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import type { ToolPermission } from '../types'
+import type { ToolPermission } from '@/domain/tool/types'
 
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 

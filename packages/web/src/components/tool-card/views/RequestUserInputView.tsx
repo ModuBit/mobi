@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ToolViewProps } from '@/components/ToolCard/views/_all'
+import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import {
     parseRequestUserInputInput,
     parseRequestUserInputAnswers

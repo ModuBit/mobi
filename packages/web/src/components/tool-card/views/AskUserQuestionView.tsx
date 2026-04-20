@@ -15,7 +15,7 @@
  */
 
 import type { ReactNode } from 'react'
-import type { ToolViewProps } from '@/components/ToolCard/views/_all'
+import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { parseAskUserQuestionInput } from '@/domain/tool/askUserQuestion'
 import { theme as antTheme } from 'antd'
 

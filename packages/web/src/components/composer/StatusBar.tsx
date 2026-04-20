@@ -24,8 +24,8 @@ import {
     isPermissionModeAllowedForFlavor
 } from '@mobi/shared'
 import { getContextBudgetTokens } from '@/domain/chat'
-import { PixelAvatar } from '@/components/PixelAvatar/PixelAvatar'
-import type { AgentStatus } from '@/components/PixelAvatar/types'
+import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import type { AgentStatus } from '@/components/pixel-avatar/types'
 
 // 思考状态随机消息
 const VIBING_MESSAGES = [

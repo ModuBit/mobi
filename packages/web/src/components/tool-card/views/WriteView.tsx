@@ -11,28 +11,28 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License.
+* limitations under the License.
  */
 
-import type { ToolViewProps } from '@/components/ToolCard/views/_all'
+import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { DiffView } from '@/components/tool-card/views/DiffView'
 
 /**
- * ExitPlanMode 工具视图
+ * Write 工具视图
  */
-export function ExitPlanModeView(props: ToolViewProps) {
+export function WriteView(props: ToolViewProps) {
     const input = props.block.tool.input
     if (!isObject(input)) return null
-    const plan = typeof input.plan === 'string' ? input.plan : null
-    if (!plan) return null
+
+    const content = typeof input.content === 'string' ? input.content : typeof input.text === 'string' ? input.text : null
+    if (content === null) return null
 
     return (
-        <div style={{ maxWidth: '100%' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {plan || ''}
-            </ReactMarkdown>
-        </div>
+        <DiffView
+            oldString=""
+            newString={content}
+            variant="inline"
+        />
     )
 }

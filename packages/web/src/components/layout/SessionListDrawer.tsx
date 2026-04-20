@@ -21,7 +21,7 @@ import { useUiStore } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
 import { SessionList } from '@/components/session/SessionList'
-import { NewSession } from '@/components/NewSession'
+import { NewSession } from '@/components/session/NewSessionForm'
 import { Plus } from 'lucide-react'
 
 // Session List Drawer：body 不滚动，由 SessionList 自管滚动
