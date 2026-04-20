@@ -15,21 +15,7 @@
  */
 
 import type { SlashCommandSuggestionItem } from '@/domain/command/slashCommandHelper'
-
-/** 下拉列表容器共享样式 */
-const DROPDOWN_STYLE: React.CSSProperties = {
-    position: 'absolute',
-    bottom: '100%',
-    left: 0,
-    right: 0,
-    maxHeight: 240,
-    overflowY: 'auto',
-    backgroundColor: 'var(--ant-color-bg-elevated)',
-    borderRadius: 'var(--ant-border-radius)',
-    boxShadow: 'var(--ant-box-shadow-secondary)',
-    zIndex: 50,
-    marginBottom: 4,
-}
+import { DropdownContainer } from './DropdownContainer'
 
 interface SlashCommandDropdownProps {
     items: SlashCommandSuggestionItem[]
@@ -49,15 +35,9 @@ export function SlashCommandDropdown({
     onSelect,
     onHover,
 }: SlashCommandDropdownProps) {
-    if (items.length === 0 && !loading) return null
-
     return (
-        <div role="listbox" style={DROPDOWN_STYLE}>
-            {loading && items.length === 0 ? (
-                <div style={{ padding: '8px 12px', color: 'var(--ant-color-text-tertiary)', fontSize: 14 }}>
-                    ...
-                </div>
-            ) : items.map((item, index) => (
+        <DropdownContainer loading={loading} hasItems={items.length > 0}>
+            {items.map((item, index) => (
                 <div
                     key={item.value}
                     ref={index === activeIndex ? scrollIntoActive : undefined}
@@ -91,6 +71,6 @@ export function SlashCommandDropdown({
                     )}
                 </div>
             ))}
-        </div>
+        </DropdownContainer>
     )
 }

@@ -58,8 +58,8 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId)
     const sessionActions = useSessionActions(sessionId)
-    const bottomRef = useRef<HTMLDivElement>(null)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
+    const scrollBoxRef = useRef<HTMLElement | null>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
@@ -76,37 +76,36 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
         return reduceChatBlocks(normalized, session?.agentState)
     }, [messages, session?.agentState])
 
-    // 监听 Bubble.List 内部滚动容器的滚动位置
-    // Bubble.List 使用 column-reverse 布局，scrollTop 为负值表示已滚动到上方
+    // 缓存 Bubble.List 的实际滚动容器
     useEffect(() => {
         const el = scrollContainerRef.current
         if (!el) return
+        scrollBoxRef.current = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
+    }, [chatBlocks.length])
 
-        // Bubble.List 的实际滚动容器是 .ant-bubble-list-scroll-box
-        const scrollBox = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
+    // 监听滚动位置，column-reverse 布局下 scrollTop 为负值表示已滚到上方
+    useEffect(() => {
+        const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
 
         const handleScroll = () => {
-            const threshold = 20
-            // column-reverse: scrollTop=0 表示在底部，负值表示滚到了上方
-            setShowScrollBottom(scrollBox.scrollTop < -threshold)
+            setShowScrollBottom(scrollBox.scrollTop < -20)
         }
 
         scrollBox.addEventListener('scroll', handleScroll, { passive: true })
         return () => scrollBox.removeEventListener('scroll', handleScroll)
     }, [chatBlocks.length])
 
-    // 跳到底部（column-reverse: scrollTop=0 即底部）
+    // 自动滚动到底部
+    useEffect(() => {
+        scrollBoxRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    }, [chatBlocks.length])
+
+    // 手动跳到底部
     const handleScrollToBottom = useCallback(() => {
-        const el = scrollContainerRef.current
-        if (!el) return
-        const scrollBox = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
-        if (scrollBox) {
-            scrollBox.scrollTo({ top: 0, behavior: 'smooth' })
-        }
+        scrollBoxRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
     }, [])
 
-    // 将 ChatBlock 转换为 Bubble.List items
     const bubbleItems = useMemo(() => {
         const items: Array<{
             key: string
@@ -178,10 +177,6 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
     }, [chatBlocks, session?.thinking, token, t, metadata])
 
     // 自动滚动到底部
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [chatBlocks.length])
-
     // 发送消息
     const handleSend = (text: string) => {
         if (!text.trim()) return

@@ -94,6 +94,6 @@ export function formatEvent(
             )
         }
         default:
-            return `${event.type}`
+            return null
     }
 }
