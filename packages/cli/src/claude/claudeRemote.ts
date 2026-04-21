@@ -15,8 +15,6 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { exec } from 'node:child_process'
-import { promisify } from 'node:util'
 import { EnhancedMode } from "./loop";
 import {
     query,
@@ -39,11 +37,7 @@ import type { PermissionResult } from "./sdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import { getMobiBlobsDir } from "@/constants/uploadPaths";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
-
-const execAsync = promisify(exec)
-
-// ! 命令安全约束
-const BASH_OUTPUT_MAX_BUFFER = 4 * 1024 * 1024 // 4MB
+import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 
 // 构造模拟 SDK 用户消息（字段不完整，仅用于前端渲染）
 function createSDKUserMessage(content: string): SDKUserMessage {
@@ -141,6 +135,56 @@ export async function claudeRemote(opts: {
         opts.onSessionFound(pregeneratedSessionId)
     }
 
+    // !bash: 本地执行 shell 命令，不走 SDK
+    // 安全边界：高危命令检测拦截、沙箱隔离、超时控制
+    const executeBashCommand = async (command: string): Promise<void> => {
+        logger.debug(`[claudeRemote] Bash command detected: ${command}`)
+
+        // 高危命令拦截
+        const dangerCheck = checkDangerousCommand(command)
+        if (dangerCheck.isDangerous) {
+            logger.warn(`[claudeRemote] Dangerous command blocked: ${command} (${dangerCheck.reason})`)
+            opts.onMessage(createSDKUserMessage(`<bash-input>${command}</bash-input>`))
+            opts.onMessage(createSDKUserMessage(`<bash-stdout></bash-stdout><bash-stderr>⚠ 命令已拦截：${dangerCheck.reason}</bash-stderr>`))
+            return
+        }
+
+        opts.onThinkingChange?.(true)
+
+        // local-command-caveat 标识后续为 bash 输出
+        opts.onMessage({
+            type: 'system',
+            subtype: 'local_command_caveat',
+            session_id: '',
+        } as unknown as SDKSystemMessage)
+
+        opts.onMessage(createSDKUserMessage(`<bash-input>${command}</bash-input>`))
+
+        // 在用户工作目录下执行命令（沙箱隔离 + spawn 流式）
+        let stdout = ''
+        let stderr = ''
+        try {
+            const sandboxedCommand = await wrapCommand(command)
+            const result = await spawnWithTimeout(sandboxedCommand, {
+                cwd: opts.path,
+                timeout: 30000,
+            })
+            stdout = result.stdout
+            stderr = result.stderr
+            if (result.timedOut) {
+                stderr += (stderr ? '\n' : '') + '命令执行超时（30s）'
+            }
+        } catch (error) {
+            stderr = error instanceof Error ? error.message : String(error)
+        } finally {
+            cleanupSandbox()
+        }
+
+        opts.onMessage(createSDKUserMessage(`<bash-stdout>${stdout}</bash-stdout><bash-stderr>${stderr}</bash-stderr>`))
+
+        opts.onThinkingChange?.(false)
+    }
+
     // Get initial message
     const initial = await opts.nextMessage();
     if (!initial) { // No initial message - exit
@@ -172,53 +216,9 @@ export async function claudeRemote(opts: {
     }
 
     // Handle ! command (bash mode) - 本地执行 shell 命令，不走 SDK
-    // 设计意图：与 Claude Code CLI 的 ! 模式一致，用户可执行任意 shell 命令。
-    // 安全边界：高危命令检测拦截、限制命令长度、输出缓冲区大小和执行超时。
+    // 安全边界：高危命令检测拦截、沙箱隔离、超时控制
     if (specialCommand.type === 'bash' && specialCommand.command) {
-        const command = specialCommand.command
-        logger.debug(`[claudeRemote] Bash command detected: ${command}`)
-
-        // 高危命令拦截
-        const dangerCheck = checkDangerousCommand(command)
-        if (dangerCheck.isDangerous) {
-            logger.warn(`[claudeRemote] Dangerous command blocked: ${command} (${dangerCheck.reason})`)
-            opts.onMessage(createSDKUserMessage(`<bash-input>${command}</bash-input>`))
-            opts.onMessage(createSDKUserMessage(`<bash-stdout></bash-stdout><bash-stderr>⚠ 命令已拦截：${dangerCheck.reason}</bash-stderr>`))
-            opts.onReady()
-            return
-        }
-
-        opts.onThinkingChange?.(true)
-
-        // local-command-caveat 标识后续为 bash 输出
-        opts.onMessage({
-            type: 'system',
-            subtype: 'local_command_caveat',
-            session_id: '',
-        } as unknown as SDKSystemMessage)
-
-        opts.onMessage(createSDKUserMessage(`<bash-input>${command}</bash-input>`))
-
-        // 在用户工作目录下执行命令
-        let stdout = ''
-        let stderr = ''
-        try {
-            const result = await execAsync(command, {
-                cwd: opts.path,
-                timeout: 30000,
-                maxBuffer: BASH_OUTPUT_MAX_BUFFER,
-            })
-            stdout = result.stdout?.toString() ?? ''
-            stderr = result.stderr?.toString() ?? ''
-        } catch (error) {
-            const execError = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string }
-            stdout = execError.stdout?.toString() ?? ''
-            stderr = execError.stderr?.toString() ?? execError.message ?? 'Command failed'
-        }
-
-        opts.onMessage(createSDKUserMessage(`<bash-stdout>${stdout}</bash-stdout><bash-stderr>${stderr}</bash-stderr>`))
-
-        opts.onThinkingChange?.(false)
+        await executeBashCommand(specialCommand.command)
         opts.onReady()
         return
     }
@@ -316,7 +316,6 @@ export async function claudeRemote(opts: {
                 const systemInit = message as SDKSystemMessage;
 
                 // Session id is still in memory, wait until session file is written to disk
-                // Start a watcher for to detect the session id
                 if (systemInit.session_id) {
                     logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`);
                     const projectDir = getProjectPath(opts.path);
@@ -352,11 +351,20 @@ export async function claudeRemote(opts: {
                 opts.onReady();
 
                 // Push next message
-                const next = await opts.nextMessage();
+                let next = await opts.nextMessage();
+                // !bash 不走 SDK，本地执行后继续等下一条
+                while (next) {
+                    const nextSpecial = parseSpecialCommand(next.message);
+                    if (nextSpecial.type !== 'bash' || !nextSpecial.command) break;
+                    await executeBashCommand(nextSpecial.command);
+                    opts.onReady();
+                    next = await opts.nextMessage();
+                }
                 if (!next) {
                     messages.end();
                     return;
                 }
+
                 mode = next.mode;
                 messages.push({
                     type: 'user',

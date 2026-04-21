@@ -35,6 +35,7 @@ import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { formatMessageWithAttachments } from '@/utils/attachmentFormatter';
 import { normalizeClaudeSessionModel } from './model';
 import { getInvokedCwd } from '@/utils/invokedCwd';
+import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
 
 export interface StartOptions {
     model?: string
@@ -202,7 +203,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         // Resolve custom system prompt - use message.meta.customSystemPrompt if provided, otherwise use current
         let messageCustomSystemPrompt = currentCustomSystemPrompt;
-        if (message.meta?.hasOwnProperty('customSystemPrompt')) {
+        if (message.meta && 'customSystemPrompt' in message.meta) {
             messageCustomSystemPrompt = message.meta.customSystemPrompt || undefined; // null becomes undefined
             currentCustomSystemPrompt = messageCustomSystemPrompt;
             logger.debug(`[loop] Custom system prompt updated from user message: ${messageCustomSystemPrompt ? 'set' : 'reset to none'}`);
@@ -212,7 +213,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         // Resolve fallback model - use message.meta.fallbackModel if provided, otherwise use current fallback model
         let messageFallbackModel = currentFallbackModel;
-        if (message.meta?.hasOwnProperty('fallbackModel')) {
+        if (message.meta && 'fallbackModel' in message.meta) {
             messageFallbackModel = message.meta.fallbackModel || undefined; // null becomes undefined
             currentFallbackModel = messageFallbackModel;
             logger.debug(`[loop] Fallback model updated from user message: ${messageFallbackModel || 'reset to none'}`);
@@ -222,7 +223,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         // Resolve append system prompt - use message.meta.appendSystemPrompt if provided, otherwise use current
         let messageAppendSystemPrompt = currentAppendSystemPrompt;
-        if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
+        if (message.meta && 'appendSystemPrompt' in message.meta) {
             messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined; // null becomes undefined
             currentAppendSystemPrompt = messageAppendSystemPrompt;
             logger.debug(`[loop] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
@@ -232,7 +233,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         // Resolve allowed tools - use message.meta.allowedTools if provided, otherwise use current
         let messageAllowedTools = currentAllowedTools;
-        if (message.meta?.hasOwnProperty('allowedTools')) {
+        if (message.meta && 'allowedTools' in message.meta) {
             messageAllowedTools = message.meta.allowedTools || undefined; // null becomes undefined
             currentAllowedTools = messageAllowedTools;
             logger.debug(`[loop] Allowed tools updated from user message: ${messageAllowedTools ? messageAllowedTools.join(', ') : 'reset to none'}`);
@@ -242,7 +243,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         // Resolve disallowed tools - use message.meta.disallowedTools if provided, otherwise use current
         let messageDisallowedTools = currentDisallowedTools;
-        if (message.meta?.hasOwnProperty('disallowedTools')) {
+        if (message.meta && 'disallowedTools' in message.meta) {
             messageDisallowedTools = message.meta.disallowedTools || undefined; // null becomes undefined
             currentDisallowedTools = messageDisallowedTools;
             logger.debug(`[loop] Disallowed tools updated from user message: ${messageDisallowedTools ? messageDisallowedTools.join(', ') : 'reset to none'}`);
@@ -256,43 +257,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         // Format message text with attachments for Claude
         const formattedText = formatMessageWithAttachments(message.content.text, message.content.attachments);
 
-        if (specialCommand.type === 'compact') {
-            logger.debug('[start] Detected /compact command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode ?? 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
-            };
-            // Use raw text only, ignore attachments for special commands
-            const commandText = specialCommand.originalMessage || message.content.text;
-            messageQueue.pushIsolateAndClear(commandText, enhancedMode);
-            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
-            return;
-        }
-
-        if (specialCommand.type === 'clear') {
-            logger.debug('[start] Detected /clear command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode ?? 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
-            };
-            // Use raw text only, ignore attachments for special commands
-            const commandText = specialCommand.originalMessage || message.content.text;
-            messageQueue.pushIsolateAndClear(commandText, enhancedMode);
-            logger.debugLargeJson('[start] /clear command pushed to queue:', message);
-            return;
-        }
-
-        // Push with resolved permission mode, model, system prompts, and tools
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode ?? 'default',
             model: messageModel,
@@ -302,6 +266,24 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             allowedTools: messageAllowedTools,
             disallowedTools: messageDisallowedTools
         };
+
+        if (specialCommand.type === 'compact') {
+            logger.debug('[start] Detected /compact command');
+            const commandText = specialCommand.originalMessage || message.content.text;
+            messageQueue.pushIsolateAndClear(commandText, enhancedMode);
+            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+            return;
+        }
+
+        if (specialCommand.type === 'clear') {
+            logger.debug('[start] Detected /clear command');
+            const commandText = specialCommand.originalMessage || message.content.text;
+            messageQueue.pushIsolateAndClear(commandText, enhancedMode);
+            logger.debugLargeJson('[start] /clear command pushed to queue:', message);
+            return;
+        }
+
+        // Push with resolved permission mode, model, system prompts, and tools
         messageQueue.push(formattedText, enhancedMode);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
@@ -347,6 +329,9 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     let loopError: unknown = null;
     let loopFailed = false;
     try {
+        // 初始化沙箱（如果可用），为 !bash 命令提供隔离
+        await initializeSandbox(workingDirectory)
+
         await loop({
             path: workingDirectory,
             model: currentModel,

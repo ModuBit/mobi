@@ -383,3 +383,33 @@
 - 斜杠命令通过 RPC `listSlashCommands` 从活跃会话实时获取，不依赖 `sdkMetadata`
 - **结论**：当前实现是多余的，后续应考虑移除或从正式会话中复用元数据
 -->
+
+## 19. Remote 模式下 /clear /compact 命令的原生支持确认
+
+**相关文件**：
+- `packages/cli/src/claude/claudeRemote.ts` — Remote 模式主循环
+
+**待确认**：
+- Claude Agent SDK 的 `query()` 是否原生支持 `/clear` 和 `/compact` 命令（直接作为用户消息推送到 iterable）
+- 当前实现在第一条消息时对 `/clear` 做了特殊处理（直接 return），对 `/compact` 设置标记后正常推送
+- 如果 SDK 原生支持，这些特殊处理是否可以移除，统一作为普通消息推送
+
+---
+
+## 20. Remote 模式首条消息延迟优化（SDK 预热）
+
+**相关文件**：
+- `packages/cli/src/claude/claudeRemote.ts` — Remote 模式主循环
+- `packages/cli/src/claude/claudeRemoteLauncher.ts` — Remote 启动器
+
+**现状**：
+- 切换到 remote 模式后，需要等用户发送第一条消息才会 `query()` spawn Claude Code 进程
+- Claude Code 进程启动 + SessionStart hooks 执行需要数秒，导致首条消息响应延迟明显
+- 曾尝试 SDK 预热（commit c0000e0）：用 `defaultMode` 立即调用 `query({ prompt: emptyAsyncIterable })`
+- **预热失败原因**：AsyncIterable 模式下 SDK 不会发送 `init` 消息，直到第一条用户消息被推送到 iterable 并被 Claude Code 接收；而代码在 `init` handler 中等第一条用户消息，形成循环等待死锁
+- 回滚预热，恢复原始流程
+
+**待解决**：
+- 找到正确的预热方案：在用户发送第一条消息前 spawn Claude Code 进程，消息到达后直接推送
+- 关键约束：`init` 消息由 Claude Code 在收到第一条用户消息后才发送，预热方案不能依赖 `init` 作为消息注入时机
+- 可能方向：并发等待第一条消息（与 for-await 并行），消息到达后推送到 iterable，SDK 读取后 Claude Code 发 init，for-await 正常处理
