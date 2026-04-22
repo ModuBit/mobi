@@ -187,8 +187,8 @@ export class SessionCache {
             metadataVersion: stored.metadataVersion,
             agentState,
             agentStateVersion: stored.agentStateVersion,
-            thinking: existing?.thinking ?? false,
-            thinkingAt: existing?.thinkingAt ?? 0,
+            running: existing?.running ?? false,
+            runningAt: existing?.runningAt ?? 0,
             runtimeState,
             permissionMode: existing?.permissionMode,
             mode: existing?.mode,
@@ -218,7 +218,7 @@ export class SessionCache {
     handleSessionAlive(payload: {
         sid: string
         time: number
-        thinking?: boolean
+        running?: boolean
         mode?: 'local' | 'remote'
         permissionMode?: PermissionMode
         model?: string | null
@@ -230,15 +230,15 @@ export class SessionCache {
         if (!session) return
 
         const wasActive = session.active
-        const wasThinking = session.thinking
+        const wasRunning = session.running
         const previousPermissionMode = session.permissionMode
         const previousModel = session.runtimeState?.model
         const previousMode = session.mode
 
         session.active = true
         session.activeAt = Math.max(session.activeAt, t)
-        session.thinking = Boolean(payload.thinking)
-        session.thinkingAt = t
+        session.running = Boolean(payload.running)
+        session.runningAt = t
         if (payload.mode !== undefined) {
             session.mode = payload.mode
         }
@@ -262,7 +262,7 @@ export class SessionCache {
         const lastBroadcastAt = this.lastBroadcastAtBySessionId.get(session.id) ?? 0
         const modeChanged = previousPermissionMode !== session.permissionMode || previousModel !== session.runtimeState?.model || previousMode !== session.mode
         const shouldBroadcast = (!wasActive && session.active)
-            || (wasThinking !== session.thinking)
+            || (wasRunning !== session.running)
             || modeChanged
             || (now - lastBroadcastAt > 10_000)
 
@@ -274,7 +274,7 @@ export class SessionCache {
                 data: {
                     active: true,
                     activeAt: session.activeAt,
-                    thinking: session.thinking,
+                    running: session.running,
                     mode: session.mode,
                     permissionMode: session.permissionMode,
                     model: session.runtimeState?.model
@@ -289,15 +289,15 @@ export class SessionCache {
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
         if (!session) return
 
-        if (!session.active && !session.thinking) {
+        if (!session.active && !session.running) {
             return
         }
 
         session.active = false
-        session.thinking = false
-        session.thinkingAt = t
+        session.running = false
+        session.runningAt = t
 
-        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false, thinking: false, mode: session.mode } })
+        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false, running: false, mode: session.mode } })
     }
 
     expireInactive(now: number = Date.now()): void {
@@ -307,7 +307,7 @@ export class SessionCache {
             if (!session.active) continue
             if (now - session.activeAt <= sessionTimeoutMs) continue
             session.active = false
-            session.thinking = false
+            session.running = false
             this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false } })
         }
     }

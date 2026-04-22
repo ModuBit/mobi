@@ -187,7 +187,7 @@ export class SyncEngine {
     handleSessionAlive(payload: {
         sid: string
         time: number
-        thinking?: boolean
+        running?: boolean
         mode?: 'local' | 'remote'
         permissionMode?: PermissionMode
         model?: string | null

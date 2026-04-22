@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, memo } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { Think } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 
@@ -22,6 +22,12 @@ import { useTranslation } from 'react-i18next'
 export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking }: { text: string; thinking: boolean }) {
     const { t } = useTranslation()
     const [expanded, setExpanded] = useState(thinking)
+
+    // thinking 结束时自动折叠（不影响初始状态）
+    useEffect(() => {
+        if (!thinking) setExpanded(false)
+    }, [thinking])
+
     return (
         <Think
             title={thinking ? t('chat.thinking') : t('chat.thought')}

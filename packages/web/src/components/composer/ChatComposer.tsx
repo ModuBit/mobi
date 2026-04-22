@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Tooltip, Space } from 'antd'
-import { PaperClipOutlined, SettingOutlined, StopOutlined, PlayCircleOutlined, SwapOutlined } from '@ant-design/icons'
+import { PaperClipOutlined, SettingOutlined, StopOutlined, PlayCircleOutlined, SwapOutlined, LoadingOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, PermissionMode, Session } from '@mobi/shared'
@@ -39,11 +39,12 @@ import { CommandHintBar } from './CommandHintBar'
 
 interface ChatComposerProps {
     disabled?: boolean
+    sending?: boolean
     permissionMode?: PermissionMode
     model?: string | null
     active?: boolean
     allowSendWhenInactive?: boolean
-    thinking?: boolean
+    running?: boolean
     agentState?: AgentState | null
     contextSize?: number
     agentFlavor?: string | null
@@ -74,11 +75,12 @@ export function ChatComposer(props: ChatComposerProps) {
 
     const {
         disabled = false,
+        sending = false,
         permissionMode = 'default',
         model = null,
         active = true,
         allowSendWhenInactive = false,
-        thinking = false,
+        running = false,
         agentState,
         contextSize,
         agentFlavor,
@@ -134,7 +136,7 @@ export function ChatComposer(props: ChatComposerProps) {
     const trimmed = text.trim()
     const hasText = trimmed.length > 0
     const hasAttachments = attachments.length > 0
-    const canSend = (hasText || hasAttachments) && !controlsDisabled && !thinking
+    const canSend = (hasText || hasAttachments) && !controlsDisabled && !running && !sending
 
     // 是否展示命令参数幽灵提示
     const showGhostHint = !!activeCommand?.hint
@@ -415,7 +417,7 @@ export function ChatComposer(props: ChatComposerProps) {
             <StatusBar
                 sessionId={sessionId ?? ''}
                 active={active}
-                thinking={thinking}
+                running={running}
                 agentState={agentState}
                 contextSize={contextSize}
                 model={model}
@@ -431,7 +433,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     onCancel={onAbort}
                     placeholder={isBashMode ? t('composer.bashPlaceholder') : t('composer.placeholder')}
                     disabled={controlsDisabled || showInactiveCover || showLocalModeCover}
-                    loading={thinking}
+                    loading={sending}
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
                     header={headerNodes.length > 0 ? headerNodes : null}
@@ -462,22 +464,23 @@ export function ChatComposer(props: ChatComposerProps) {
                                     </Tooltip>
                                 )}
 
-                                {thinking && (
+                                {extraLeftButtons}
+                            </Space>
+
+                            <Space size={4}>
+                                {running && (
                                     <Tooltip title={t('composer.abort')}>
                                         <Button
                                             type="text"
                                             size="small"
-                                            icon={<StopOutlined />}
+                                            icon={<LoadingOutlined />}
                                             onClick={onAbort}
                                             style={{ borderRadius: '50%', color: 'var(--ant-color-error)' }}
                                         />
                                     </Tooltip>
                                 )}
-
-                                {extraLeftButtons}
+                                {showLocalModeCover ? null : oriNode}
                             </Space>
-
-                            {showLocalModeCover ? null : oriNode}
                         </div>
                     )}
                 />

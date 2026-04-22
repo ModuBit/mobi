@@ -162,7 +162,7 @@ export function reduceTimeline(
                     blocks.push(createEventBlock({
                         id: `${msg.id}:${idx}`,
                         createdAt: msg.createdAt,
-                        event: { type: 'message', message: c.summary },
+                        event: { type: 'summary', message: c.summary },
                         meta: msg.meta
                     }))
                     continue

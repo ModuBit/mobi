@@ -67,7 +67,7 @@ export async function claudeRemote(opts: {
 
     // Callbacks
     onSessionFound: (id: string) => void,
-    onThinkingChange?: (thinking: boolean) => void,
+    onRunningChange?: (running: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
@@ -149,7 +149,7 @@ export async function claudeRemote(opts: {
             return
         }
 
-        opts.onThinkingChange?.(true)
+        opts.onRunningChange?.(true)
 
         // local-command-caveat 标识后续为 bash 输出
         opts.onMessage({
@@ -182,7 +182,7 @@ export async function claudeRemote(opts: {
 
         opts.onMessage(createSDKUserMessage(`<bash-stdout>${stdout}</bash-stdout><bash-stderr>${stderr}</bash-stderr>`))
 
-        opts.onThinkingChange?.(false)
+        opts.onRunningChange?.(false)
     }
 
     // Get initial message
@@ -260,14 +260,14 @@ export async function claudeRemote(opts: {
         additionalDirectories: [getMobiBlobsDir()],
     }
 
-    // Track thinking state
-    let thinking = false;
-    const updateThinking = (newThinking: boolean) => {
-        if (thinking !== newThinking) {
-            thinking = newThinking;
-            logger.debug(`[claudeRemote] Thinking state changed to: ${thinking}`);
-            if (opts.onThinkingChange) {
-                opts.onThinkingChange(thinking);
+    // Track running state
+    let running = false;
+    const updateRunning = (newRunning: boolean) => {
+        if (running !== newRunning) {
+            running = newRunning;
+            logger.debug(`[claudeRemote] Running state changed to: ${running}`);
+            if (opts.onRunningChange) {
+                opts.onRunningChange(running);
             }
         }
     };
@@ -294,7 +294,7 @@ export async function claudeRemote(opts: {
     // 把 Query 引用传给外部，用于 interrupt/close 控制
     opts.onQueryReady?.(response);
 
-    updateThinking(true);
+    updateRunning(true);
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
@@ -310,8 +310,8 @@ export async function claudeRemote(opts: {
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
-                // Start thinking when session initializes
-                updateThinking(true);
+                // Start running when session initializes
+                updateRunning(true);
 
                 const systemInit = message as SDKSystemMessage;
 
@@ -327,7 +327,7 @@ export async function claudeRemote(opts: {
 
             // Handle result messages
             if (message.type === 'result') {
-                updateThinking(false);
+                updateRunning(false);
                 const resultMsg = message as SDKResultMessage;
                 const terminalReason = resultMsg.terminal_reason;
                 const isInterrupt = terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools';
@@ -386,6 +386,6 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Error iterating response:`, errorInfo);
         throw e;
     } finally {
-        updateThinking(false);
+        updateRunning(false);
     }
 }

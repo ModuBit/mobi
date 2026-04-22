@@ -75,8 +75,8 @@ export class ApiClient {
                 metadataVersion: raw.metadataVersion,
                 agentState,
                 agentStateVersion: raw.agentStateVersion,
-                thinking: raw.thinking,
-                thinkingAt: raw.thinkingAt,
+                running: raw.running,
+                runningAt: raw.runningAt,
                 runtimeState: raw.runtimeState,
                 permissionMode: raw.permissionMode,
                 tag: raw.tag
@@ -144,8 +144,8 @@ export class ApiClient {
             metadataVersion: raw.metadataVersion,
             agentState,
             agentStateVersion: raw.agentStateVersion,
-            thinking: raw.thinking,
-            thinkingAt: raw.thinkingAt,
+            running: raw.running,
+            runningAt: raw.runningAt,
             runtimeState: raw.runtimeState,
             permissionMode: raw.permissionMode,
             tag: raw.tag

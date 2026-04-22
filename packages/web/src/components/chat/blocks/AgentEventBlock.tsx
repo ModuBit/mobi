@@ -25,7 +25,7 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block }: { block:
     const { token } = antTheme.useToken()
     const { t } = useTranslation()
 
-    if (block.event.type === 'message') {
+    if (block.event.type === 'message' || block.event.type === 'summary') {
         return (
             <div style={{
                 padding: '4px 0',

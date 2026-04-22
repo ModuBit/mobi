@@ -59,8 +59,8 @@ interface StatusBarProps {
     sessionId: string
     /** 会话是否活跃 */
     active: boolean
-    /** 是否正在思考 */
-    thinking: boolean
+    /** 是否正在运行 */
+    running: boolean
     /** Agent 状态 */
     agentState?: AgentState | null
     /** 上下文大小 */
@@ -84,7 +84,7 @@ export function StatusBar(props: StatusBarProps) {
     const {
         sessionId,
         active,
-        thinking,
+        running,
         agentState,
         contextSize,
         model,
@@ -110,7 +110,7 @@ export function StatusBar(props: StatusBarProps) {
             }
         }
 
-        if (thinking) {
+        if (running) {
             // 使用 sessionId 做 hash 确定性选择，避免每次重算时闪烁
             const seed = sessionId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
             const vibingMessage = VIBING_MESSAGES[seed % VIBING_MESSAGES.length].toLowerCase() + '…'
@@ -124,7 +124,7 @@ export function StatusBar(props: StatusBarProps) {
             text: t('status.online'),
             agentStatus: 'idle' as AgentStatus,
         }
-    }, [active, thinking, agentState, t, sessionId])
+    }, [active, running, agentState, t, sessionId])
 
     // 计算上下文警告
     const contextWarning = useMemo(() => {

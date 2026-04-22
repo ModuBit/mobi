@@ -45,7 +45,7 @@ export class AgentSessionBase<Mode> {
 
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
-    thinking: boolean = false;
+    running: boolean = false;
 
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
     private readonly applySessionIdToMetadata: (metadata: Metadata, sessionId: string) => Metadata;
@@ -70,21 +70,21 @@ export class AgentSessionBase<Mode> {
         this.permissionMode = opts.permissionMode;
         this.model = opts.model;
 
-        this.client.keepAlive(this.thinking, this.mode, this.getKeepAliveRuntime());
+        this.client.keepAlive(this.running, this.mode, this.getKeepAliveRuntime());
         this.keepAliveInterval = setInterval(() => {
-            this.client.keepAlive(this.thinking, this.mode, this.getKeepAliveRuntime());
+            this.client.keepAlive(this.running, this.mode, this.getKeepAliveRuntime());
         }, 2000);
 
     }
 
-    onThinkingChange = (thinking: boolean) => {
-        this.thinking = thinking;
-        this.client.keepAlive(thinking, this.mode, this.getKeepAliveRuntime());
+    onRunningChange = (running: boolean) => {
+        this.running = running;
+        this.client.keepAlive(running, this.mode, this.getKeepAliveRuntime());
     };
 
     onModeChange = (mode: 'local' | 'remote') => {
         this.mode = mode;
-        this.client.keepAlive(this.thinking, mode, this.getKeepAliveRuntime());
+        this.client.keepAlive(this.running, mode, this.getKeepAliveRuntime());
         const permissionLabel = this.permissionMode ?? 'unset';
         const modelLabel = this.model === undefined ? 'unset' : (this.model ?? 'auto');
         logger.debug(`[${this.sessionLabel}] Mode switched to ${mode} (permissionMode=${permissionLabel}, model=${modelLabel})`);

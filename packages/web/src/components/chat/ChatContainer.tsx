@@ -140,7 +140,10 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
                 continue
             }
 
-            const content = renderChatBlock(block, { metadata, isThinking: !!session?.thinking })
+            // 是否为最后一个 assistant block 且 session 正在运行
+            const isLastRunningBlock = block.id === lastAssistantBlockKey && !!session?.running
+
+            const content = renderChatBlock(block, { metadata, isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock })
             if (content === null) continue
 
             // 确定角色
@@ -157,8 +160,7 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
             // 判断是否需要 typing 动画
             const isTyping = role === 'assistant' &&
                 (block.kind === 'agent-text' || block.kind === 'agent-reasoning') &&
-                block.id === lastAssistantBlockKey &&
-                !!session?.thinking
+                isLastRunningBlock
 
             items.push({
                 key: block.id,
@@ -174,7 +176,7 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
         }
 
         return items
-    }, [chatBlocks, session?.thinking, token, t, metadata])
+    }, [chatBlocks, session?.running, token, t, metadata])
 
     // 自动滚动到底部
     // 发送消息
@@ -217,7 +219,7 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
                             role={BUBBLE_ROLES}
                             style={{ height: '100%' }}
                         />
-                        {session?.thinking && (
+                        {session?.running && (
                             <div style={{ padding: '8px 16px' }}>
                                 <Bubble
                                     placement="start"
@@ -260,11 +262,12 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
             <ChatComposer
                 sessionId={sessionId}
                 disabled={sendMutation.isPending}
+                sending={sendMutation.isPending}
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
                 active={session?.active ?? false}
                 allowSendWhenInactive={false}
-                thinking={session?.thinking ?? false}
+                running={session?.running ?? false}
                 agentState={session?.agentState}
                 contextSize={undefined} // TODO: 从消息中计算上下文大小
                 agentFlavor={agentFlavor}

@@ -59,7 +59,7 @@ function toSummary(s: StoredSession, liveSessionMap: Map<string, Session>): Sess
     const liveSession = liveSessionMap.get(s.id)
     const active = liveSession?.active ?? false
     const activeAt = liveSession?.activeAt ?? 0
-    const thinking = liveSession?.thinking ?? false
+    const running = liveSession?.running ?? false
 
     const metadata = s.metadata as {
         path?: string
@@ -93,7 +93,7 @@ function toSummary(s: StoredSession, liveSessionMap: Map<string, Session>): Sess
     return {
         id: s.id,
         active,
-        thinking,
+        running,
         activeAt,
         updatedAt: s.updatedAt,
         metadata: summaryMetadata,

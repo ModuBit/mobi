@@ -376,7 +376,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onSessionFound: (sessionId) => {
                             session.onSessionFound(sessionId);
                         },
-                        onThinkingChange: session.onThinkingChange,
+                        onRunningChange: session.onRunningChange,
                         claudeEnvVars: session.claudeEnvVars,
                         claudeArgs: session.claudeArgs,
                         onMessage,

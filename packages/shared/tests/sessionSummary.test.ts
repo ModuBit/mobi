@@ -32,8 +32,8 @@ function makeSession(overrides: Partial<Session> = {}): Session {
         metadataVersion: 0,
         agentState: null,
         agentStateVersion: 0,
-        thinking: false,
-        thinkingAt: 0,
+        running: false,
+        runningAt: 0,
         ...overrides,
     }
 }
@@ -45,7 +45,7 @@ describe('toSessionSummary', () => {
 
         expect(summary.id).toBe('session-1')
         expect(summary.active).toBe(true)
-        expect(summary.thinking).toBe(false)
+        expect(summary.running).toBe(false)
         expect(summary.activeAt).toBe(1500)
         expect(summary.updatedAt).toBe(2000)
         expect(summary.metadata).toBeNull()

@@ -141,8 +141,8 @@ describe('SessionSchema', () => {
             metadataVersion: 0,
             agentState: null,
             agentStateVersion: 0,
-            thinking: false,
-            thinkingAt: 0,
+            running: false,
+            runningAt: 0,
             ...overrides,
         }
     }

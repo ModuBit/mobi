@@ -46,7 +46,7 @@ function getSessionAvatarStatus(session: Session): AgentStatus {
     if (!session.active) return 'inactive'
     const pendingRequests = session.agentState?.requests
     if (pendingRequests && Object.keys(pendingRequests).length > 0) return 'awaiting_auth'
-    if (session.thinking) return 'outputting'
+    if (session.running) return 'outputting'
     return 'idle'
 }
 

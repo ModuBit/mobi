@@ -152,7 +152,7 @@ export interface ClientToServerEvents {
     'session-alive': (data: {
         sid: string
         time: number
-        thinking: boolean
+        running: boolean
         mode?: 'local' | 'remote'
         permissionMode?: PermissionMode
         model?: string | null

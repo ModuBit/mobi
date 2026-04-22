@@ -17,11 +17,12 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
+import { ConfigProvider } from 'antd'
 import { CommandHintBar } from '@/components/composer/CommandHintBar'
 
 describe('CommandHintBar', () => {
     it('渲染提示文本', () => {
-        render(<CommandHintBar hint="<message>" />)
+        render(<ConfigProvider><CommandHintBar hint="<message>" /></ConfigProvider>)
         expect(screen.getByText('<message>')).toBeInTheDocument()
     })
 })
