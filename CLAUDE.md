@@ -49,6 +49,12 @@ bun run lint:deps    # 依赖方向检查
 - **代码变更后验证**: 必须使用 `/run-tests` skill 执行测试验证（typecheck → 单测 → lint → E2E）
 - **端到端测试**: 必须使用 `/run-tests` skill 启动 E2E 环境，禁止手动 `bun run dev` 进行浏览器测试
 
+## 看板
+
+- 使用 `/board` skill 管理项目事项
+- 完成功能开发后，询问用户是否更新看板状态
+- 接手新任务前，读取看板了解当前进度
+
 ## 文档索引
 
 | 需要 | 去哪里 |
@@ -56,6 +62,7 @@ bun run lint:deps    # 依赖方向检查
 | 系统架构总览 | [docs/architecture/README.md](docs/architecture/README.md) |
 | 各模块架构 | [docs/architecture/](docs/architecture/)（hub/ cli/ web/） |
 | 编码规范 | [docs/conventions/](docs/conventions/) |
+| 项目看板 | [docs/board/board.md](docs/board/board.md)（`/board` skill） |
 | 待处理项 | [docs/pending.md](docs/pending.md) |
 
 ## 文档同步
