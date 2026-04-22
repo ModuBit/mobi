@@ -14,17 +14,27 @@
  * limitations under the License.
  */
 
-import { defineConfig } from 'vitest/config'
-import path from 'path'
+import { theme } from 'antd'
 
-export default defineConfig({
-    resolve: {
-        alias: {
-            '@': path.resolve(__dirname, 'src'),
-        },
-    },
-    test: {
-        include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-        environment: 'node',
-    },
-})
+interface CommandHintBarProps {
+    /** 参数提示文本（如 <message>） */
+    hint: string
+}
+
+/**
+ * Slash Command 参数提示条
+ * 在 Sender header 区域展示选中命令的参数提示
+ */
+export function CommandHintBar({ hint }: CommandHintBarProps) {
+    const { token } = theme.useToken()
+
+    return (
+        <div style={{
+            padding: '4px 16px',
+            fontSize: 12,
+            color: token.colorTextTertiary,
+        }}>
+            {hint}
+        </div>
+    )
+}
