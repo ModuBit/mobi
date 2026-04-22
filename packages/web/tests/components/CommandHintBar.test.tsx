@@ -24,11 +24,4 @@ describe('CommandHintBar', () => {
         render(<CommandHintBar hint="<message>" />)
         expect(screen.getByText('<message>')).toBeInTheDocument()
     })
-
-    it('使用 tertiary 样式（灰色）', () => {
-        render(<CommandHintBar hint="<file>" />)
-        const el = screen.getByText('<file>')
-        // 组件应使用 antd token 的 colorTextTertiary
-        expect(el).toBeTruthy()
-    })
 })

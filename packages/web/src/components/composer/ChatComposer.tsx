@@ -201,6 +201,12 @@ export function ChatComposer(props: ChatComposerProps) {
             setSlashFilter('')
         }
 
+        // 文本不再匹配已选命令时，清理提示状态
+        if (activeCommandValue && value !== `${activeCommandValue} `) {
+            setActiveCommandValue(null)
+            setActiveCommandHint(null)
+        }
+
         // 检测 @ mention
         const mention = detectMentionAtCursor(value, cursorPos)
         if (mention) {
@@ -216,7 +222,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
         setSuggestionOpen(false)
         setMentionInput(null)
-    }, [workingDir, slashOpen])
+    }, [workingDir, slashOpen, activeCommandValue])
 
     // @ mention 选择
     const handleItemSelect = useCallback((item: FileSuggestionItem) => {
@@ -379,6 +385,20 @@ export function ChatComposer(props: ChatComposerProps) {
     const showLocalModeCover = active && mode === 'local'
     const isBashMode = text.startsWith('! ')
 
+    // Sender header 区域内容（可组合，多条可共存）
+    const headerNodes = [
+        showGhostHint && (
+            <CommandHintBar key="hint" hint={activeCommandHint!} />
+        ),
+        hasAttachments && (
+            <AttachmentList
+                key="attachments"
+                attachments={attachments}
+                onRemove={handleRemoveAttachment}
+            />
+        ),
+    ].filter(Boolean)
+
     return (
         <div style={{ padding: '0 12px 12px' }}>
             <StatusBar
@@ -404,21 +424,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
                     header={
-                        (() => {
-                            const nodes = [
-                                showGhostHint && activeCommandHint && (
-                                    <CommandHintBar key="hint" hint={activeCommandHint} />
-                                ),
-                                hasAttachments && (
-                                    <AttachmentList
-                                        key="attachments"
-                                        attachments={attachments}
-                                        onRemove={handleRemoveAttachment}
-                                    />
-                                ),
-                            ].filter(Boolean)
-                            return nodes.length > 0 ? <>{nodes}</> : null
-                        })()
+                        headerNodes.length > 0 ? <>{headerNodes}</> : null
                     }
                     suffix={false}
                     footer={(oriNode) => (
