@@ -34,6 +34,7 @@ import { createFileAttachment } from '@/core/lib/fileAttachments'
 import { recordCommandUsage } from '@/core/lib/commandUsage'
 import { MentionDropdown } from './MentionDropdown'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
+import { CommandHintBar } from './CommandHintBar'
 
 interface ChatComposerProps {
     disabled?: boolean
@@ -96,6 +97,9 @@ export function ChatComposer(props: ChatComposerProps) {
     const [text, setText] = useState('')
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
 
+    const [activeCommandValue, setActiveCommandValue] = useState<string | null>(null)
+    const [activeCommandHint, setActiveCommandHint] = useState<string | null>(null)
+
     const [suggestionOpen, setSuggestionOpen] = useState(false)
     const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
     const [activeIndex, setActiveIndex] = useState(0)
@@ -128,6 +132,12 @@ export function ChatComposer(props: ChatComposerProps) {
     const hasText = trimmed.length > 0
     const hasAttachments = attachments.length > 0
     const canSend = (hasText || hasAttachments) && !controlsDisabled && !thinking
+
+    // 是否展示命令参数幽灵提示
+    const showGhostHint = !!activeCommandHint
+        && !!activeCommandValue
+        && text === `${activeCommandValue} `
+        && !slashOpen
 
     const permissionModeOptions = useMemo(
         () => getPermissionModeOptionsForFlavor(agentFlavor),
@@ -240,6 +250,8 @@ export function ChatComposer(props: ChatComposerProps) {
         const slashEnd = 1 + slashFilter.length
         const after = text.slice(slashEnd)
         setText(`${item.value} ${after}`)
+        setActiveCommandValue(item.value)
+        setActiveCommandHint(item.argumentHint || null)
         setSlashOpen(false)
         setSlashFilter('')
 
@@ -340,6 +352,8 @@ export function ChatComposer(props: ChatComposerProps) {
         onSend(content.trim())
         setText('')
         setAttachments([])
+        setActiveCommandValue(null)
+        setActiveCommandHint(null)
     }, [canSend, onSend, suggestionOpen, slashOpen])
 
     const handleAttach = useCallback(() => {
@@ -390,12 +404,21 @@ export function ChatComposer(props: ChatComposerProps) {
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
                     header={
-                        hasAttachments ? (
-                            <AttachmentList
-                                attachments={attachments}
-                                onRemove={handleRemoveAttachment}
-                            />
-                        ) : null
+                        (() => {
+                            const nodes = [
+                                showGhostHint && activeCommandHint && (
+                                    <CommandHintBar key="hint" hint={activeCommandHint} />
+                                ),
+                                hasAttachments && (
+                                    <AttachmentList
+                                        key="attachments"
+                                        attachments={attachments}
+                                        onRemove={handleRemoveAttachment}
+                                    />
+                                ),
+                            ].filter(Boolean)
+                            return nodes.length > 0 ? <>{nodes}</> : null
+                        })()
                     }
                     suffix={false}
                     footer={(oriNode) => (
