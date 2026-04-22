@@ -97,8 +97,7 @@ export function ChatComposer(props: ChatComposerProps) {
     const [text, setText] = useState('')
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
 
-    const [activeCommandValue, setActiveCommandValue] = useState<string | null>(null)
-    const [activeCommandHint, setActiveCommandHint] = useState<string | null>(null)
+    const [activeCommand, setActiveCommand] = useState<{ value: string; hint: string } | null>(null)
 
     const [suggestionOpen, setSuggestionOpen] = useState(false)
     const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
@@ -134,9 +133,8 @@ export function ChatComposer(props: ChatComposerProps) {
     const canSend = (hasText || hasAttachments) && !controlsDisabled && !thinking
 
     // 是否展示命令参数幽灵提示
-    const showGhostHint = !!activeCommandHint
-        && !!activeCommandValue
-        && text === `${activeCommandValue} `
+    const showGhostHint = !!activeCommand?.hint
+        && text === `${activeCommand.value} `
         && !slashOpen
 
     const permissionModeOptions = useMemo(
@@ -202,9 +200,8 @@ export function ChatComposer(props: ChatComposerProps) {
         }
 
         // 文本不再匹配已选命令时，清理提示状态
-        if (activeCommandValue && value !== `${activeCommandValue} `) {
-            setActiveCommandValue(null)
-            setActiveCommandHint(null)
+        if (activeCommand && value !== `${activeCommand.value} `) {
+            setActiveCommand(null)
         }
 
         // 检测 @ mention
@@ -222,7 +219,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
         setSuggestionOpen(false)
         setMentionInput(null)
-    }, [workingDir, slashOpen, activeCommandValue])
+    }, [workingDir, slashOpen, activeCommand])
 
     // @ mention 选择
     const handleItemSelect = useCallback((item: FileSuggestionItem) => {
@@ -256,8 +253,7 @@ export function ChatComposer(props: ChatComposerProps) {
         const slashEnd = 1 + slashFilter.length
         const after = text.slice(slashEnd)
         setText(`${item.value} ${after}`)
-        setActiveCommandValue(item.value)
-        setActiveCommandHint(item.argumentHint || null)
+        setActiveCommand(item.argumentHint ? { value: item.value, hint: item.argumentHint } : null)
         setSlashOpen(false)
         setSlashFilter('')
 
@@ -358,8 +354,7 @@ export function ChatComposer(props: ChatComposerProps) {
         onSend(content.trim())
         setText('')
         setAttachments([])
-        setActiveCommandValue(null)
-        setActiveCommandHint(null)
+        setActiveCommand(null)
     }, [canSend, onSend, suggestionOpen, slashOpen])
 
     const handleAttach = useCallback(() => {
@@ -387,8 +382,8 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // Sender header 区域内容（可组合，多条可共存）
     const headerNodes = [
-        showGhostHint && (
-            <CommandHintBar key="hint" hint={activeCommandHint!} />
+        showGhostHint && activeCommand && (
+            <CommandHintBar key="hint" hint={activeCommand.hint} />
         ),
         hasAttachments && (
             <AttachmentList
@@ -423,9 +418,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     loading={thinking}
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
-                    header={
-                        headerNodes.length > 0 ? <>{headerNodes}</> : null
-                    }
+                    header={headerNodes.length > 0 ? headerNodes : null}
                     suffix={false}
                     footer={(oriNode) => (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
