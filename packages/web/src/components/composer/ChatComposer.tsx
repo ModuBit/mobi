@@ -32,6 +32,7 @@ import type { SlashCommandSuggestionItem } from '@/domain/command/slashCommandHe
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { createFileAttachment } from '@/core/lib/fileAttachments'
 import { recordCommandUsage } from '@/core/lib/commandUsage'
+import { useCommands } from '@/core/data/hooks/queries/useCommands'
 import { MentionDropdown } from './MentionDropdown'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { CommandHintBar } from './CommandHintBar'
@@ -98,6 +99,9 @@ export function ChatComposer(props: ChatComposerProps) {
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
 
     const [activeCommand, setActiveCommand] = useState<{ value: string; hint: string } | null>(null)
+
+    // 命令列表（复用 React Query 缓存，用于手动输入时匹配参数提示）
+    const { data: commandsData } = useCommands(sessionId ?? null)
 
     const [suggestionOpen, setSuggestionOpen] = useState(false)
     const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
@@ -204,6 +208,18 @@ export function ChatComposer(props: ChatComposerProps) {
             setActiveCommand(null)
         }
 
+        // 手动输入 /command + 空格后，匹配参数提示
+        const cmdMatch = value.match(/^\/(\S+) $/)
+        if (cmdMatch && !activeCommand) {
+            const cmdName = `/${cmdMatch[1]}`
+            const cmd = commandsData?.find(c =>
+                (c.name.startsWith('/') ? c.name : `/${c.name}`) === cmdName
+            )
+            if (cmd?.argumentHint) {
+                setActiveCommand({ value: cmdName, hint: cmd.argumentHint })
+            }
+        }
+
         // 检测 @ mention
         const mention = detectMentionAtCursor(value, cursorPos)
         if (mention) {
@@ -219,7 +235,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
         setSuggestionOpen(false)
         setMentionInput(null)
-    }, [workingDir, slashOpen, activeCommand])
+    }, [workingDir, slashOpen, activeCommand, commandsData])
 
     // @ mention 选择
     const handleItemSelect = useCallback((item: FileSuggestionItem) => {
