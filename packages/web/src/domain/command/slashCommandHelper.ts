@@ -27,6 +27,8 @@ export interface SlashCommandSuggestionItem {
     value: string
     /** 描述信息 */
     description?: string
+    /** 参数提示（如 <message>） */
+    argumentHint?: string
 }
 
 /**
@@ -65,6 +67,7 @@ export function toCommandSuggestions(commands: Command[], workingDir?: string): 
                 label: name,
                 value: name,
                 description: cmd.description,
+                argumentHint: cmd.argumentHint || undefined,
             })
         }
     }

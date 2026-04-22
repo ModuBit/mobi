@@ -116,6 +116,16 @@ describe('toCommandSuggestions', () => {
         expect(result[0]?.label).toBe('/help')
         expect(result[0]?.value).toBe('/help')
     })
+
+    it('透传 argumentHint', () => {
+        const commands: Command[] = [
+            { name: 'commit', description: '提交', argumentHint: '<message>' },
+            { name: 'help', description: '帮助', argumentHint: '' },
+        ]
+        const result = toCommandSuggestions(commands)
+        expect(result[0]?.argumentHint).toBe('<message>')
+        expect(result[1]?.argumentHint).toBeUndefined()
+    })
 })
 
 // ========== filterCommands ==========
