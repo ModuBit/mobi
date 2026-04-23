@@ -50,12 +50,12 @@ export const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
     bypassPermissions: 'Yolo'
 }
 
-export type PermissionModeTone = 'neutral' | 'info' | 'warning' | 'danger'
+export type PermissionModeTone = 'neutral' | 'info' | 'warning' | 'danger' | 'success'
 
 export const PERMISSION_MODE_TONES: Record<PermissionMode, PermissionModeTone> = {
     default: 'neutral',
     acceptEdits: 'warning',
-    plan: 'info',
+    plan: 'success',
     bypassPermissions: 'danger'
 }
 

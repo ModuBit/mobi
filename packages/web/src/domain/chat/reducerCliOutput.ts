@@ -21,6 +21,7 @@ const CLI_COMMAND_NAME_REGEX = /<command-name>/i
 const CLI_COMMAND_STDOUT_REGEX = /<local-command-stdout>/i
 const BASH_INPUT_REGEX = /<bash-input>/i
 const BASH_STDOUT_REGEX = /<bash-stdout>/i
+const LOCAL_COMMAND_STDOUT_EXTRACT = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/i
 
 function getMetaSentFrom(meta: unknown): string | null {
     if (!meta || typeof meta !== 'object') return null
@@ -50,6 +51,17 @@ function hasBashStdoutTag(text: string): boolean {
 
 export function isCliOutputText(text: string, meta?: unknown): boolean {
     return hasCliOutputTags(text)
+}
+
+/** 提取纯 local-command-stdout 内容（无 command-name），返回文本或 null */
+export function extractStandaloneStdout(text: string): string | null {
+    if (!hasLocalCommandStdoutTag(text) || hasCommandNameTag(text) || hasBashInputTag(text)) {
+        return null
+    }
+    const match = text.match(LOCAL_COMMAND_STDOUT_EXTRACT)
+    return match ? match[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
+        String.fromCharCode(parseInt(hex, 16))
+    ).replace(/\x1B\[[0-9;]*m/g, '').trim() : null
 }
 
 export function createCliOutputBlock(props: {

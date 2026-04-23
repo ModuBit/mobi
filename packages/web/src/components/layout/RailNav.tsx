@@ -21,7 +21,8 @@ import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mainNavItems, bottomNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
-import { User } from 'lucide-react'
+import { useThemeLocaleToggle } from './useThemeLocaleToggle'
+import { User, Sun, Moon } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
 
@@ -93,6 +94,7 @@ export function RailNav() {
     const navigate = useNavigate()
     const location = useLocation()
     const { logout } = useAuthStore()
+    const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
     const isMobile = useIsMobile()
 
     // 用户菜单项 - 使用 useMemo 避免每次渲染重新创建（必须在条件返回之前）
@@ -168,6 +170,36 @@ export function RailNav() {
                     </NavItem>
                 </Tooltip>
             ))}
+
+            {/* 主题切换 */}
+            <Tooltip
+                title={resolvedTheme === 'dark' ? t('nav.themeLight') : t('nav.themeDark')}
+                placement="right"
+            >
+                <NavItem
+                    $active={false}
+                    $token={token}
+                    onClick={toggleTheme}
+                >
+                    {resolvedTheme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                </NavItem>
+            </Tooltip>
+
+            {/* 语言切换 */}
+            <Tooltip
+                title={locale === 'zh' ? 'English' : '中文'}
+                placement="right"
+            >
+                <NavItem
+                    $active={false}
+                    $token={token}
+                    onClick={toggleLocale}
+                >
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>
+                        {locale === 'zh' ? 'En' : '中'}
+                    </span>
+                </NavItem>
+            </Tooltip>
 
             {/* 用户菜单 */}
             <Dropdown

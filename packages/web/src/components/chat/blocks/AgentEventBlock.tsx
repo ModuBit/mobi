@@ -42,9 +42,11 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block }: { block:
 
     const d = block.display
     const alignClass = d?.align ? `event-align-${d.align}` : undefined
-    const colorValue = d?.color === 'error' || d?.color === 'warning'
-        ? 'rgba(239, 68, 68, 0.45)'
-        : token.colorTextQuaternary
+    const colorValue = d?.color === 'error'
+        ? token.colorError
+        : d?.color === 'warning'
+            ? token.colorWarning
+            : token.colorTextQuaternary
     return (
         <div
             className={alignClass}

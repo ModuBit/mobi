@@ -28,6 +28,7 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { renderChatBlock } from './blocks'
 import { PermissionRequest } from './PermissionRequest'
 import { ChatComposer } from '@/components/composer/ChatComposer'
+import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 const { useToken } = antTheme
@@ -49,11 +50,13 @@ const BUBBLE_ROLES = {
 
 interface ChatContainerProps {
     sessionId: string
-    /** 传递给 ChatComposer 的额外按钮 */
+    /** 传递给 ChatComposer 的额外按钮（已废弃，请使用 extraComposerItems） */
     extraComposerButtons?: React.ReactNode
+    /** 传递给 ChatComposer 的额外操作项 */
+    extraComposerItems?: ActionItem[]
 }
 
-export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainerProps) {
+export function ChatContainer({ sessionId, extraComposerButtons, extraComposerItems }: ChatContainerProps) {
     const { data: messages = [], isLoading: messagesLoading } = useMessages(sessionId)
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId)
@@ -190,9 +193,21 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
         await sessionActions.abortSession()
     }
 
+    // 退出会话
+    const handleArchive = async () => {
+        await sessionActions.archiveSession()
+    }
+
     // 权限模式变更
     const handlePermissionModeChange = async (mode: string) => {
         await sessionActions.setPermissionMode(mode)
+    }
+
+    // 模型变更
+    const handleModelChange = async (model: string | null) => {
+        if (model) {
+            await sessionActions.setModelMode(model)
+        }
     }
 
     // Agent 类型
@@ -274,13 +289,18 @@ export function ChatContainer({ sessionId, extraComposerButtons }: ChatContainer
                 mode={session?.mode}
                 workingDir={session?.metadata?.path}
                 onPermissionModeChange={handlePermissionModeChange}
+                onModelChange={handleModelChange}
                 onSend={handleSend}
                 onAbort={handleAbort}
+                abortPending={sessionActions.isAbortPending}
+                onArchive={handleArchive}
+                archivePending={sessionActions.isArchivePending}
                 onActivate={() => sessionActions.resumeSession()}
                 activatePending={sessionActions.isResumePending}
                 onSwitchToRemote={() => sessionActions.switchSession()}
                 switchPending={sessionActions.isSwitchPending}
                 extraLeftButtons={extraComposerButtons}
+                extraItems={extraComposerItems}
             />
         </div>
     )

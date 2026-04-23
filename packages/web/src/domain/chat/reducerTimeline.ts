@@ -16,7 +16,7 @@
 
 import type { AgentEventBlock, ChatBlock, EventDisplay, MessageMeta, ToolCallBlock, ToolPermission } from './types'
 import type { TracedMessage } from './tracer'
-import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks } from './reducerCliOutput'
+import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
 import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, type PermissionEntry } from './reducerTools'
 
@@ -24,6 +24,7 @@ import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolNam
 function getEventDisplay(event: { type: string }): EventDisplay | undefined {
     switch (event.type) {
         case 'turn-duration': return { align: 'left', padding: false }
+        case 'api-retry': return { color: 'warning' }
         case 'api-error': return { color: 'error' }
         case 'execution-error': return { color: 'error' }
         default: return undefined
@@ -93,6 +94,17 @@ export function reduceTimeline(
 
         if (msg.role === 'user') {
             if (isCliOutputText(msg.content.text, msg.meta)) {
+                // 纯 local-command-stdout（如 setModel 确认）→ 系统事件消息
+                const standaloneText = extractStandaloneStdout(msg.content.text)
+                if (standaloneText !== null) {
+                    blocks.push(createEventBlock({
+                        id: msg.id,
+                        createdAt: msg.createdAt,
+                        event: { type: 'message', message: standaloneText },
+                        meta: msg.meta
+                    }))
+                    continue
+                }
                 blocks.push(createCliOutputBlock({
                     id: msg.id,
                     localId: msg.localId,

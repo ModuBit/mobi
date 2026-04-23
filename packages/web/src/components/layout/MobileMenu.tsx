@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Drawer } from 'antd'
+import { theme as antTheme, Drawer, Divider } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
-import { Menu } from 'lucide-react'
+import { useThemeLocaleToggle } from './useThemeLocaleToggle'
+import { Menu, Sun, Moon, Languages } from 'lucide-react'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -97,6 +98,7 @@ export function MobileMenuDrawer() {
     const { mobileMenuOpen, setMobileMenuOpen } = useUiStore()
     const { logout } = useAuthStore()
     const isMobile = useIsMobile()
+    const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
@@ -133,6 +135,30 @@ export function MobileMenuDrawer() {
                         <span>{t(item.labelKey)}</span>
                     </MenuItem>
                 ))}
+
+                {/* 主题 & 语言切换 */}
+                <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                    <MenuItem
+                        $active={false}
+                        $token={token}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={toggleTheme}
+                    >
+                        {resolvedTheme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                        <span>{resolvedTheme === 'dark' ? t('nav.themeLight') : t('nav.themeDark')}</span>
+                    </MenuItem>
+                    <Divider type="vertical" style={{ margin: '8px 0' }} />
+                    <MenuItem
+                        $active={false}
+                        $token={token}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={toggleLocale}
+                    >
+                        <Languages size={20} />
+                        <span>{locale === 'zh' ? 'English' : '中文'}</span>
+                    </MenuItem>
+                </div>
+
                 <MenuItem
                     $active={false}
                     $danger={true}

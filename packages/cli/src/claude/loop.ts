@@ -25,7 +25,15 @@ import { ApiClient } from "@/lib"
 import type { SessionModel } from "@/api/types"
 import type { ClaudePermissionMode } from "@mobi/shared/types"
 
-export type PermissionMode = ClaudePermissionMode;
+export type PermissionMode = ClaudePermissionMode
+
+/** SDK Query 动态控制引用，用于 setModel/setPermissionMode */
+export type QueryControlRef = {
+    current: {
+        setPermissionMode: (m: PermissionMode) => Promise<void>
+        setModel: (m?: string) => Promise<void>
+    } | null
+}
 
 export interface EnhancedMode {
     permissionMode: PermissionMode;
@@ -54,6 +62,7 @@ interface LoopOptions {
     onSessionReady?: (session: Session) => void
     hookSettingsPath: string
     processCleanupRef?: { current: (() => void) | null }
+    queryControlRef?: QueryControlRef
 }
 
 export async function loop(opts: LoopOptions) {
@@ -83,13 +92,14 @@ export async function loop(opts: LoopOptions) {
     });
 
     const cleanup = opts.processCleanupRef;
+    const queryControl = opts.queryControlRef;
 
     await runLocalRemoteSession({
         session,
         startingMode: opts.startingMode,
         logTag: 'loop',
         runLocal: (s) => claudeLocalLauncher(s, cleanup),
-        runRemote: (s) => claudeRemoteLauncher(s, cleanup),
+        runRemote: (s) => claudeRemoteLauncher(s, cleanup, queryControl),
         onSessionReady: opts.onSessionReady
     });
 }

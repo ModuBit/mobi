@@ -93,7 +93,7 @@ export function createMobiApi(token: string | null) {
             setPermissionMode: (sessionId: string, mode: string) =>
                 client.post(`/api/sessions/${sessionId}/permission-mode`, { mode }),
             setModelMode: (sessionId: string, mode: string) =>
-                client.post(`/api/sessions/${sessionId}/model-mode`, { mode }),
+                client.post(`/api/sessions/${sessionId}/model`, { model: mode }),
             // 会话操作
             archive: (sessionId: string) => client.post(`/api/sessions/${sessionId}/archive`),
             abort: (sessionId: string) => client.post(`/api/sessions/${sessionId}/abort`),

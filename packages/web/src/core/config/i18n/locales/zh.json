@@ -28,7 +28,9 @@
         "mcp": "MCP",
         "settings": "设置",
         "logout": "退出登录",
-        "menu": "菜单"
+        "menu": "菜单",
+        "themeLight": "浅色模式",
+        "themeDark": "深色模式"
     },
     "home": {
         "title": "会话列表",
@@ -152,15 +154,10 @@
     },
     "settings": {
         "title": "设置",
-        "general": "通用",
         "account": "账户",
         "notifications": "通知",
         "about": "关于",
-        "language": "语言",
-        "theme": "主题",
-        "themeLight": "浅色",
-        "themeDark": "深色",
-        "themeSystem": "跟随系统"
+        "comingSoon": "更多设置敬请期待..."
     },
     "composer": {
         "placeholder": "输入消息... (Shift+Enter 换行)",
@@ -170,6 +167,12 @@
         "abort": "中断",
         "send": "发送",
         "permissionMode": "权限模式",
+        "permissionModes": {
+            "default": "默认",
+            "acceptEdits": "接受编辑",
+            "plan": "计划模式",
+            "bypassPermissions": "YOLO"
+        },
         "activate": "恢复会话",
         "switchToRemote": "切换到远程模式"
     },

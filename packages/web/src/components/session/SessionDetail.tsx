@@ -15,11 +15,13 @@
  */
 
 import { Layout, Spin, Result, Button, Tooltip } from 'antd'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { ChatContainer } from '@/components/chat/ChatContainer'
+import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import { FileView } from '@/components/files/FileView'
 import TerminalView from '@/components/terminal/TerminalView'
 import { IconButton } from '@/components/ui/IconButton'
@@ -86,34 +88,28 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
 
     const displayName = getSessionDisplayName(session)
 
-    const viewModeButtons = (
-        <>
-            <Tooltip title={t('session.tabs.files')}>
+    const viewModeItems: ActionItem[] = useMemo(() => ([
+        { key: 'files', labelKey: 'session.tabs.files', Icon: Folder, mode: 'files' as const },
+        { key: 'terminal', labelKey: 'session.tabs.terminal', Icon: Terminal, mode: 'terminal' as const },
+    ].map(({ key, labelKey, Icon, mode }) => ({
+        key,
+        width: 36,
+        label: t(labelKey),
+        render: () => (
+            <Tooltip title={t(labelKey)}>
                 <Button
                     type="text"
                     size="small"
-                    icon={<Folder size={14} />}
-                    onClick={() => setSessionViewMode(sessionViewMode === 'files' ? 'chat' : 'files')}
+                    icon={<Icon size={14} />}
+                    onClick={() => setSessionViewMode(sessionViewMode === mode ? 'chat' : mode)}
                     style={{
                         borderRadius: '50%',
-                        color: sessionViewMode === 'files' ? 'var(--ant-color-primary)' : undefined,
+                        color: sessionViewMode === mode ? 'var(--ant-color-primary)' : undefined,
                     }}
                 />
             </Tooltip>
-            <Tooltip title={t('session.tabs.terminal')}>
-                <Button
-                    type="text"
-                    size="small"
-                    icon={<Terminal size={14} />}
-                    onClick={() => setSessionViewMode(sessionViewMode === 'terminal' ? 'chat' : 'terminal')}
-                    style={{
-                        borderRadius: '50%',
-                        color: sessionViewMode === 'terminal' ? 'var(--ant-color-primary)' : undefined,
-                    }}
-                />
-            </Tooltip>
-        </>
-    )
+        ),
+    }))), [t, sessionViewMode])
 
     return (
         <Layout style={{ height: '100%' }}>
@@ -146,7 +142,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                 {/* 聊天视图：条件渲染，非可见时不挂载以节省资源 */}
                 {sessionViewMode === 'chat' && (
                     <ChatWrapper>
-                        <ChatContainer sessionId={sessionId} extraComposerButtons={viewModeButtons} />
+                        <ChatContainer sessionId={sessionId} extraComposerItems={viewModeItems} />
                     </ChatWrapper>
                 )}
 

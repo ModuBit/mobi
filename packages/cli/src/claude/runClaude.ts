@@ -17,7 +17,7 @@
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
 import { AgentState, SessionModel } from '@/api/types';
-import { EnhancedMode, PermissionMode } from './loop';
+import { EnhancedMode, PermissionMode, type QueryControlRef } from './loop';
 import { MessageQueue } from '@/utils/MessageQueue';
 import { hashObject } from '@/utils/deterministicJson';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
@@ -160,9 +160,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     setControlledByUser(apiSession, startingMode);
 
     // Import MessageQueue and create message queue
+    // model/permissionMode 不纳入 hash，通过 SDK Query 动态切换
     const messageQueue = new MessageQueue<EnhancedMode>(mode => hashObject({
-        isPlan: mode.permissionMode === 'plan',
-        model: mode.model,
         fallbackModel: mode.fallbackModel,
         customSystemPrompt: mode.customSystemPrompt,
         appendSystemPrompt: mode.appendSystemPrompt,
@@ -179,6 +178,9 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
 
+    // SDK Query 动态控制引用，用于 setModel/setPermissionMode
+    const queryControlRef: QueryControlRef = { current: null };
+
     const syncSessionModes = () => {
         const sessionInstance = currentSessionRef.current;
         if (!sessionInstance) {
@@ -186,6 +188,22 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         }
         sessionInstance.setPermissionMode(currentPermissionMode);
         sessionInstance.setModel(currentModel);
+
+        // 仅在值实际变更时调用 SDK Query（避免每条消息都发控制消息）
+        const prevMode = sessionInstance.getPermissionMode();
+        const prevModel = sessionInstance.getModel();
+        const control = queryControlRef.current;
+        if (control && (prevMode !== currentPermissionMode || prevModel !== currentModel)) {
+            const promises: Promise<void>[] = [];
+            if (prevMode !== currentPermissionMode) {
+                promises.push(control.setPermissionMode(currentPermissionMode));
+            }
+            if (prevModel !== currentModel) {
+                promises.push(control.setModel(currentModel ?? undefined));
+            }
+            Promise.all(promises).catch(err => logger.debug(`[loop] dynamic config apply failed: ${err}`));
+        }
+
         logger.debug(`[loop] Synced session config for keepalive: permissionMode=${currentPermissionMode}, model=${currentModel ?? 'auto'}`);
     };
     apiSession.onUserMessage((message) => {
@@ -356,7 +374,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             claudeArgs: options.claudeArgs,
             startedBy,
             hookSettingsPath,
-            processCleanupRef
+            processCleanupRef,
+            queryControlRef
         });
     } catch (error) {
         loopError = error;

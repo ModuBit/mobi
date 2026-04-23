@@ -15,12 +15,13 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { Button, Tooltip, Space } from 'antd'
-import { PaperClipOutlined, SettingOutlined, StopOutlined, PlayCircleOutlined, SwapOutlined, LoadingOutlined } from '@ant-design/icons'
+import { Button, Tooltip, Select, theme } from 'antd'
+import { PaperClipOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, PermissionMode, Session } from '@mobi/shared'
-import { getPermissionModeOptionsForFlavor } from '@mobi/shared'
+import { getPermissionModeOptionsForFlavor, getPermissionModeTone, CLAUDE_MODEL_LABELS } from '@mobi/shared'
+import { CLAUDE_MODEL_OPTIONS } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import { useSessionFileListing } from './useSessionFileListing'
@@ -36,6 +37,8 @@ import { useCommands } from '@/core/data/hooks/queries/useCommands'
 import { MentionDropdown } from './MentionDropdown'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { CommandHintBar } from './CommandHintBar'
+import { ResponsiveActionBar, type ActionItem } from './ResponsiveActionBar'
+import { getPermissionModeColor } from './permissionModeColors'
 
 interface ChatComposerProps {
     disabled?: boolean
@@ -52,10 +55,14 @@ interface ChatComposerProps {
     mode?: Session['mode']
     workingDir?: string
     extraLeftButtons?: React.ReactNode
+    extraItems?: ActionItem[]
     onPermissionModeChange?: (mode: PermissionMode) => void
     onModelChange?: (model: string | null) => void
     onSend: (text: string) => void
     onAbort?: () => void
+    abortPending?: boolean
+    onArchive?: () => void
+    archivePending?: boolean
     onActivate?: () => void
     activatePending?: boolean
     onSwitchToRemote?: () => void
@@ -72,6 +79,7 @@ function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null
  */
 export function ChatComposer(props: ChatComposerProps) {
     const { t } = useTranslation()
+    const { token } = theme.useToken()
 
     const {
         disabled = false,
@@ -88,9 +96,14 @@ export function ChatComposer(props: ChatComposerProps) {
         mode,
         workingDir,
         extraLeftButtons,
+        extraItems,
         onPermissionModeChange,
+        onModelChange,
         onSend,
         onAbort,
+        abortPending = false,
+        onArchive,
+        archivePending = false,
         onActivate,
         activatePending = false,
         onSwitchToRemote,
@@ -148,6 +161,29 @@ export function ChatComposer(props: ChatComposerProps) {
         [agentFlavor]
     )
     const showSettingsButton = Boolean(onPermissionModeChange && permissionModeOptions.length > 0)
+
+    const modelSelectOptions = useMemo(
+        () => CLAUDE_MODEL_OPTIONS.map(opt => ({
+            value: opt.value,
+            label: opt.i18nKey ? t(opt.i18nKey) : (CLAUDE_MODEL_LABELS[opt.value as keyof typeof CLAUDE_MODEL_LABELS] ?? opt.value),
+        })),
+        [t]
+    )
+
+    const permissionSelectOptions = useMemo(
+        () => permissionModeOptions.map(opt => {
+            const color = opt.tone !== 'neutral'
+                ? getPermissionModeColor(token, opt.tone)
+                : undefined
+            return {
+                value: opt.mode,
+                label: color
+                    ? <span style={{ color }}>{t(`composer.permissionModes.${opt.mode}`)}</span>
+                    : t(`composer.permissionModes.${opt.mode}`),
+            }
+        }),
+        [permissionModeOptions, t, token]
+    )
 
     // 点击外部关闭下拉
     useEffect(() => {
@@ -316,6 +352,40 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // 键盘导航
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        // Ctrl+C：有内容则清空，无内容且 running 则 abort
+        if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
+            if (text.length > 0) {
+                e.preventDefault()
+                setText('')
+                setActiveCommand(null)
+                setSlashOpen(false)
+                setSlashFilter('')
+                setSuggestionOpen(false)
+                setMentionInput(null)
+            } else if (running && onAbort && !abortPending) {
+                e.preventDefault()
+                onAbort()
+            }
+            return
+        }
+
+        // Escape：先关闭 dropdown，再 abort
+        if (e.key === 'Escape') {
+            if (slashOpen) {
+                e.preventDefault()
+                setSlashOpen(false)
+                setSlashFilter('')
+            } else if (suggestionOpen) {
+                e.preventDefault()
+                setSuggestionOpen(false)
+                setMentionInput(null)
+            } else if (running && onAbort && !abortPending) {
+                e.preventDefault()
+                onAbort()
+            }
+            return
+        }
+
         // slash command 下拉导航
         if (slashOpen && slashCommands.length > 0) {
             switch (e.key) {
@@ -331,11 +401,6 @@ export function ChatComposer(props: ChatComposerProps) {
                     e.preventDefault()
                     e.stopPropagation()
                     handleSlashSelect(slashCommands[slashActiveIndex])
-                    break
-                case 'Escape':
-                    e.preventDefault()
-                    setSlashOpen(false)
-                    setSlashFilter('')
                     break
             }
             return
@@ -358,13 +423,26 @@ export function ChatComposer(props: ChatComposerProps) {
                 e.stopPropagation()
                 handleItemSelect(fileEntries[activeIndex])
                 break
-            case 'Escape':
-                e.preventDefault()
-                setSuggestionOpen(false)
-                setMentionInput(null)
-                break
         }
-    }, [slashOpen, slashCommands, slashActiveIndex, handleSlashSelect, suggestionOpen, fileEntries, activeIndex, handleItemSelect])
+    }, [text, running, onAbort, abortPending, slashOpen, slashCommands, slashActiveIndex, handleSlashSelect, suggestionOpen, fileEntries, activeIndex, handleItemSelect])
+
+    const shouldRefocusRef = useRef(false)
+
+    const refocusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+    // 发送后重新聚焦输入框
+    useEffect(() => {
+        return () => clearTimeout(refocusTimerRef.current)
+    }, [])
+
+    useEffect(() => {
+        if (shouldRefocusRef.current) {
+            shouldRefocusRef.current = false
+            refocusTimerRef.current = setTimeout(() => {
+                getTextarea(wrapperRef.current)?.focus()
+            }, 200)
+        }
+    })
 
     const handleSubmit = useCallback((content: string) => {
         if (!canSend) return
@@ -373,6 +451,7 @@ export function ChatComposer(props: ChatComposerProps) {
         setText('')
         setAttachments([])
         setActiveCommand(null)
+        shouldRefocusRef.current = true
     }, [canSend, onSend, suggestionOpen, slashOpen])
 
     const handleAttach = useCallback(() => {
@@ -397,6 +476,10 @@ export function ChatComposer(props: ChatComposerProps) {
     const showInactiveCover = !active && !allowSendWhenInactive
     const showLocalModeCover = active && mode === 'local'
     const isBashMode = text.startsWith('! ')
+
+    // permission mode 颜色
+    const permissionModeTone = permissionMode !== 'default' ? getPermissionModeTone(permissionMode) : null
+    const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
 
     // Sender header 区域内容（可组合，多条可共存）
     const headerNodes = [
@@ -423,6 +506,8 @@ export function ChatComposer(props: ChatComposerProps) {
                 model={model}
                 permissionMode={permissionMode}
                 agentFlavor={agentFlavor}
+                onAbort={onAbort}
+                abortPending={abortPending}
             />
 
             <div ref={wrapperRef} className={isBashMode ? 'bash-mode' : undefined} style={{ position: 'relative' }}>
@@ -430,6 +515,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     value={text}
                     onChange={handleChange}
                     onSubmit={handleSubmit}
+                    submitType="shiftEnter"
                     onCancel={onAbort}
                     placeholder={isBashMode ? t('composer.bashPlaceholder') : t('composer.placeholder')}
                     disabled={controlsDisabled || showInactiveCover || showLocalModeCover}
@@ -437,51 +523,94 @@ export function ChatComposer(props: ChatComposerProps) {
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
                     header={headerNodes.length > 0 ? headerNodes : null}
-                    suffix={false}
+                    suffix={(_, { components: { ClearButton } }) => hasText ? (
+                        <ClearButton
+                            size="small"
+                            onClick={() => {
+                                setText('')
+                                setActiveCommand(null)
+                            }}
+                        />
+                    ) : false}
                     footer={(oriNode) => (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <Space size={4}>
-                                <Tooltip title={t('composer.attach')}>
-                                    <Button
-                                        type="text"
-                                        size="small"
-                                        icon={<PaperClipOutlined />}
-                                        onClick={handleAttach}
-                                        disabled={controlsDisabled || showLocalModeCover}
-                                        style={{ borderRadius: '50%' }}
-                                    />
-                                </Tooltip>
-
-                                {showSettingsButton && (
-                                    <Tooltip title={t('composer.settings')}>
-                                        <Button
-                                            type="text"
+                        <ResponsiveActionBar
+                            items={[
+                                {
+                                    key: 'attach',
+                                    width: 36,
+                                    label: t('composer.attach'),
+                                    render: () => (
+                                        <Tooltip title={t('composer.attach')}>
+                                            <Button
+                                                type="text"
+                                                size="small"
+                                                icon={<PaperClipOutlined />}
+                                                onClick={handleAttach}
+                                                disabled={controlsDisabled || showLocalModeCover}
+                                                style={{ borderRadius: '50%' }}
+                                            />
+                                        </Tooltip>
+                                    ),
+                                },
+                                ...(onModelChange ? [{
+                                    key: 'model',
+                                    width: 100,
+                                    render: () => (
+                                        <Select
                                             size="small"
-                                            icon={<SettingOutlined />}
+                                            variant="borderless"
+                                            value={model ?? 'auto'}
+                                            onChange={onModelChange}
                                             disabled={controlsDisabled || showLocalModeCover}
-                                            style={{ borderRadius: '50%' }}
+                                            options={modelSelectOptions}
+                                            popupMatchSelectWidth={false}
+                                            style={{ width: '100%' }}
                                         />
-                                    </Tooltip>
-                                )}
-
-                                {extraLeftButtons}
-                            </Space>
-
-                            <Space size={4}>
-                                {running && (
-                                    <Tooltip title={t('composer.abort')}>
-                                        <Button
-                                            type="text"
+                                    ),
+                                }] : []),
+                                ...(showSettingsButton ? [{
+                                    key: 'permission',
+                                    width: 100,
+                                    render: () => (
+                                        <Select
                                             size="small"
-                                            icon={<LoadingOutlined />}
-                                            onClick={onAbort}
-                                            style={{ borderRadius: '50%', color: 'var(--ant-color-error)' }}
+                                            variant="borderless"
+                                            value={permissionMode ?? 'default'}
+                                            onChange={onPermissionModeChange}
+                                            disabled={controlsDisabled || showLocalModeCover}
+                                            options={permissionSelectOptions}
+                                            popupMatchSelectWidth={false}
+                                            style={{ width: '100%', color: permissionModeColor }}
                                         />
-                                    </Tooltip>
-                                )}
-                                {showLocalModeCover ? null : oriNode}
-                            </Space>
-                        </div>
+                                    ),
+                                }] : []),
+                                ...(onArchive && active ? [{
+                                    key: 'archive',
+                                    width: 36,
+                                    label: t('session.actions.archive'),
+                                    render: () => (
+                                        <Tooltip title={t('session.actions.archive')}>
+                                            <Button
+                                                type="text"
+                                                size="small"
+                                                icon={<LogoutOutlined />}
+                                                loading={archivePending}
+                                                onClick={onArchive}
+                                                style={{ borderRadius: '50%' }}
+                                            />
+                                        </Tooltip>
+                                    ),
+                                }] : []),
+                                ...(extraItems ?? []),
+                                ...(extraLeftButtons && !extraItems ? [{
+                                    key: 'extra',
+                                    width: 36,
+                                    render: () => extraLeftButtons,
+                                }] : []),
+                            ]}
+                            suffix={showLocalModeCover ? null : oriNode}
+                            gap={4}
+                        />
                     )}
                 />
 

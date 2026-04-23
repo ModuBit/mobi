@@ -28,7 +28,9 @@
         "mcp": "MCP",
         "settings": "Settings",
         "logout": "Logout",
-        "menu": "Menu"
+        "menu": "Menu",
+        "themeLight": "Light Mode",
+        "themeDark": "Dark Mode"
     },
     "home": {
         "title": "Sessions",
@@ -152,15 +154,10 @@
     },
     "settings": {
         "title": "Settings",
-        "general": "General",
         "account": "Account",
         "notifications": "Notifications",
         "about": "About",
-        "language": "Language",
-        "theme": "Theme",
-        "themeLight": "Light",
-        "themeDark": "Dark",
-        "themeSystem": "System"
+        "comingSoon": "More settings coming soon..."
     },
     "composer": {
         "placeholder": "Type a message... (Shift+Enter for new line)",
@@ -170,6 +167,12 @@
         "abort": "Abort",
         "send": "Send",
         "permissionMode": "Permission Mode",
+        "permissionModes": {
+            "default": "Default",
+            "acceptEdits": "Accept Edits",
+            "plan": "Plan Mode",
+            "bypassPermissions": "YOLO"
+        },
         "activate": "Resume",
         "switchToRemote": "Switch to Remote Mode"
     },

@@ -34,6 +34,8 @@ export function useSessionActions(sessionId: string | null): {
     renameSession: (name: string) => Promise<void>
     deleteSession: () => Promise<void>
     isPending: boolean
+    isAbortPending: boolean
+    isArchivePending: boolean
     isResumePending: boolean
     isSwitchPending: boolean
 } {
@@ -168,6 +170,8 @@ export function useSessionActions(sessionId: string | null): {
             modelMutation.isPending ||
             renameMutation.isPending ||
             deleteMutation.isPending,
+        isAbortPending: abortMutation.isPending,
+        isArchivePending: archiveMutation.isPending,
         isResumePending: resumeMutation.isPending,
         isSwitchPending: switchMutation.isPending,
     }

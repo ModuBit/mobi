@@ -25,7 +25,7 @@ import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
-import { EnhancedMode } from "./loop";
+import { EnhancedMode, type QueryControlRef } from "./loop";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
@@ -44,6 +44,7 @@ interface PermissionsField {
 class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private readonly session: Session;
     private readonly processCleanupRef?: { current: (() => void) | null };
+    private readonly queryControlRef?: QueryControlRef;
     private abortController: AbortController | null = null;
     private abortFuture: Future<void> | null = null;
     private permissionHandler: PermissionHandler | null = null;
@@ -51,10 +52,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // SDK Query 引用，用于 interrupt/close 控制
     private queryRef: Query | null = null;
 
-    constructor(session: Session, processCleanupRef?: { current: (() => void) | null }) {
+    constructor(
+        session: Session,
+        processCleanupRef?: { current: (() => void) | null },
+        queryControlRef?: QueryControlRef,
+    ) {
         super(process.env.DEBUG ? session.logPath : undefined);
         this.session = session;
         this.processCleanupRef = processCleanupRef;
+        this.queryControlRef = queryControlRef;
     }
 
     protected createDisplay(context: RemoteLauncherDisplayContext): React.ReactElement {
@@ -339,10 +345,17 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         canCallTool: permissionHandler.handleToolCall,
                         onQueryReady: (query) => {
                             this.queryRef = query;
+                            // 暴露给外部用于动态 setModel/setPermissionMode
+                            if (this.queryControlRef) {
+                                this.queryControlRef.current = query;
+                            }
                             if (this.processCleanupRef) {
                                 this.processCleanupRef.current = () => {
                                     query.close();
                                     this.queryRef = null;
+                                    if (this.queryControlRef) {
+                                        this.queryControlRef.current = null;
+                                    }
                                 };
                             }
                         },
@@ -432,6 +445,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     this.abortFuture?.resolve(undefined);
                     this.abortFuture = null;
                     this.queryRef = null;
+                    if (this.queryControlRef) {
+                        this.queryControlRef.current = null;
+                    }
                     logger.debug('[remote]: launch done');
                     permissionHandler.resetForNewTurn();
                     modeHash = null;
@@ -469,8 +485,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
 export async function claudeRemoteLauncher(
     session: Session,
-    processCleanupRef?: { current: (() => void) | null }
+    processCleanupRef?: { current: (() => void) | null },
+    queryControlRef?: QueryControlRef,
 ): Promise<'switch' | 'exit'> {
-    const launcher = new ClaudeRemoteLauncher(session, processCleanupRef);
+    const launcher = new ClaudeRemoteLauncher(session, processCleanupRef, queryControlRef);
     return launcher.launch();
 }
