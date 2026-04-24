@@ -24,7 +24,7 @@ export interface ActionItem {
   key: string
   width: number
   render: () => ReactNode
-  label?: string
+  label?: ReactNode
 }
 
 export interface ResponsiveActionBarProps {

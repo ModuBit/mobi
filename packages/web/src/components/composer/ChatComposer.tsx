@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Tooltip, Select, theme } from 'antd'
-import { PaperClipOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined } from '@ant-design/icons'
+import { PaperClipOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, RobotOutlined, SafetyOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import type { AgentState, PermissionMode, Session } from '@mobi/shared'
@@ -554,34 +554,42 @@ export function ChatComposer(props: ChatComposerProps) {
                                 },
                                 ...(onModelChange ? [{
                                     key: 'model',
-                                    width: 100,
+                                    width: 130,
+                                    label: <><RobotOutlined style={{ marginRight: 6 }} />{t('composer.model')}</>,
                                     render: () => (
-                                        <Select
-                                            size="small"
-                                            variant="borderless"
-                                            value={model ?? 'auto'}
-                                            onChange={onModelChange}
-                                            disabled={controlsDisabled || showLocalModeCover}
-                                            options={modelSelectOptions}
-                                            popupMatchSelectWidth={false}
-                                            style={{ width: '100%' }}
-                                        />
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                            <RobotOutlined style={{ fontSize: 14, opacity: 0.55, flexShrink: 0 }} />
+                                            <Select
+                                                size="small"
+                                                variant="borderless"
+                                                value={model ?? 'auto'}
+                                                onChange={onModelChange}
+                                                disabled={controlsDisabled || showLocalModeCover}
+                                                options={modelSelectOptions}
+                                                popupMatchSelectWidth={false}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </span>
                                     ),
                                 }] : []),
                                 ...(showSettingsButton ? [{
                                     key: 'permission',
-                                    width: 100,
+                                    width: 130,
+                                    label: <><SafetyOutlined style={{ marginRight: 6 }} />{t('composer.permission')}</>,
                                     render: () => (
-                                        <Select
-                                            size="small"
-                                            variant="borderless"
-                                            value={permissionMode ?? 'default'}
-                                            onChange={onPermissionModeChange}
-                                            disabled={controlsDisabled || showLocalModeCover}
-                                            options={permissionSelectOptions}
-                                            popupMatchSelectWidth={false}
-                                            style={{ width: '100%', color: permissionModeColor }}
-                                        />
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                            <SafetyOutlined style={{ fontSize: 14, opacity: 0.55, color: permissionModeColor, flexShrink: 0 }} />
+                                            <Select
+                                                size="small"
+                                                variant="borderless"
+                                                value={permissionMode ?? 'default'}
+                                                onChange={onPermissionModeChange}
+                                                disabled={controlsDisabled || showLocalModeCover}
+                                                options={permissionSelectOptions}
+                                                popupMatchSelectWidth={false}
+                                                style={{ width: '100%', color: permissionModeColor }}
+                                            />
+                                        </span>
                                     ),
                                 }] : []),
                                 ...(onArchive && active ? [{

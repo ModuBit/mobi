@@ -166,6 +166,8 @@
         "settings": "设置",
         "abort": "中断",
         "send": "发送",
+        "model": "模型",
+        "permission": "权限",
         "permissionMode": "权限模式",
         "permissionModes": {
             "default": "默认",

@@ -166,6 +166,8 @@
         "settings": "Settings",
         "abort": "Abort",
         "send": "Send",
+        "model": "Model",
+        "permission": "Permission",
         "permissionMode": "Permission Mode",
         "permissionModes": {
             "default": "Default",
