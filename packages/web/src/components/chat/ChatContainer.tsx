@@ -146,7 +146,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // 是否为最后一个 assistant block 且 session 正在运行
             const isLastRunningBlock = block.id === lastAssistantBlockKey && !!session?.running
 
-            const content = renderChatBlock(block, { metadata, isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock })
+            const content = renderChatBlock(
+                isLastRunningBlock && (block.kind === 'agent-text' || block.kind === 'agent-reasoning')
+                    ? { ...block, isStreaming: true }
+                    : block,
+                { metadata, isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock }
+            )
             if (content === null) continue
 
             // 确定角色

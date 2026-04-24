@@ -16,15 +16,23 @@
 
 import { memo } from 'react'
 import { XMarkdown } from '@ant-design/x-markdown'
+import { STREAMING_CONFIG } from './index'
 
 /** 渲染文本块（user-text / agent-text 共用） */
-export const TextBlock = memo(function TextBlock({ text, isSynthetic }: { text: string; isSynthetic?: boolean }) {
+export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreaming }: {
+    text: string
+    isSynthetic?: boolean
+    isStreaming?: boolean
+}) {
     if (isSynthetic) {
         return <span style={{ fontSize: 12, opacity: 0.5 }}>{text}</span>
     }
     return (
         <div style={{ maxWidth: '100%' }}>
-            <XMarkdown content={text || ''} />
+            <XMarkdown
+                content={text || ''}
+                streaming={isStreaming ? STREAMING_CONFIG : undefined}
+            />
         </div>
     )
 })

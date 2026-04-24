@@ -102,34 +102,35 @@ export class SDKToLogConverter {
         this.context.parentUuid = null
     }
 
-    /**
-     * Convert SDK message to log format
-     */
-    convert(sdkMessage: SDKMessage): RawJSONLines | null {
-        // 优先使用 SDK 自带的 uuid（resume 时保持不变，可用于 DB 去重），
-        // 仅在 SDK 未提供时回退到自生成
-        const uuid = (sdkMessage as any).uuid || randomUUID()
-        const timestamp = new Date().toISOString()
-        let parentUuid = this.lastUuid;
-        let isSidechain = false;
-        // 检查是否有 parent_tool_use_id（仅存在于 user 和 assistant 消息）
-        const msgWithParent = sdkMessage as SDKUserMessage | SDKAssistantMessage;
-        if (msgWithParent.parent_tool_use_id) {
-            isSidechain = true;
-            parentUuid = this.sidechainLastUUID.get(msgWithParent.parent_tool_use_id) ?? null;
-            this.sidechainLastUUID.set(msgWithParent.parent_tool_use_id, uuid);
-        }
-        const baseFields = {
-            parentUuid: parentUuid,
-            isSidechain: isSidechain,
+    /** 构造所有 RawJSONLines 共用的基础字段 */
+    private buildBaseFields(uuid: string, parentUuid: string | null, isSidechain: boolean) {
+        return {
+            parentUuid,
+            isSidechain,
             userType: 'external' as const,
             cwd: this.context.cwd,
             sessionId: this.context.sessionId,
             version: this.context.version,
             gitBranch: this.context.gitBranch,
             uuid,
-            timestamp
+            timestamp: new Date().toISOString(),
         }
+    }
+
+    /**
+     * Convert SDK message to log format
+     */
+    convert(sdkMessage: SDKMessage): RawJSONLines | null {
+        const uuid = (sdkMessage as any).uuid || randomUUID()
+        let parentUuid = this.lastUuid;
+        let isSidechain = false;
+        const msgWithParent = sdkMessage as SDKUserMessage | SDKAssistantMessage;
+        if (msgWithParent.parent_tool_use_id) {
+            isSidechain = true;
+            parentUuid = this.sidechainLastUUID.get(msgWithParent.parent_tool_use_id) ?? null;
+            this.sidechainLastUUID.set(msgWithParent.parent_tool_use_id, uuid);
+        }
+        const baseFields = this.buildBaseFields(uuid, parentUuid, isSidechain)
 
         let logMessage: RawJSONLines | null = null
 
@@ -226,28 +227,44 @@ export class SDKToLogConverter {
     }
 
     /**
+     * 将累积的 content blocks 转换为 snapshot 格式的 RawJSONLines
+     * 与 convert(assistantMessage) 生成的结构一致，确保前端 snapshot 和完整消息格式相同
+     */
+    convertSnapshot(
+        contentBlocks: Array<{ type: 'text'; text: string } | { type: 'thinking'; thinking: string }>,
+        opts?: { parentToolUseId?: string; model?: string },
+    ): RawJSONLines {
+        const uuid = randomUUID()
+        const parentToolUseId = opts?.parentToolUseId
+        const parentUuid = parentToolUseId
+            ? this.sidechainLastUUID.get(parentToolUseId) ?? null
+            : this.lastUuid
+
+        return {
+            ...this.buildBaseFields(uuid, parentUuid, !!parentToolUseId),
+            type: 'assistant',
+            message: {
+                role: 'assistant',
+                content: contentBlocks,
+                model: opts?.model,
+            },
+        } as RawJSONLines
+    }
+
+    /**
      * Convert a simple string content to a sidechain user message
      * Used for Task tool sub-agent prompts
      */
     convertSidechainUserMessage(toolUseId: string, content: string): RawJSONLines {
         const uuid = randomUUID()
-        const timestamp = new Date().toISOString()
         this.sidechainLastUUID.set(toolUseId, uuid);
         return {
-            parentUuid: null,
-            isSidechain: true,
-            userType: 'external' as const,
-            cwd: this.context.cwd,
-            sessionId: this.context.sessionId,
-            version: this.context.version,
-            gitBranch: this.context.gitBranch,
+            ...this.buildBaseFields(uuid, null, true),
             type: 'user',
             message: {
                 role: 'user',
                 content: content
             },
-            uuid,
-            timestamp
         }
     }
 
@@ -259,25 +276,20 @@ export class SDKToLogConverter {
      */
     generateInterruptedToolResult(toolUseId: string, parentToolUseId?: string | null): RawJSONLines {
         const uuid = randomUUID()
-        const timestamp = new Date().toISOString()
         const errorMessage = "[Request interrupted by user for tool use]"
-        
-        // Determine if this is a sidechain and get parent UUID
+
         let isSidechain = false
         let parentUuid: string | null = this.lastUuid
-        
+
         if (parentToolUseId) {
             isSidechain = true
-            // Look up the parent tool's UUID
             parentUuid = this.sidechainLastUUID.get(parentToolUseId) ?? null
-            // Track this tool in the sidechain map
             this.sidechainLastUUID.set(parentToolUseId, uuid)
         }
-        
+
         const logMessage: RawJSONLines = {
+            ...this.buildBaseFields(uuid, parentUuid, isSidechain),
             type: 'user',
-            isSidechain: isSidechain,
-            uuid,
             message: {
                 role: 'user',
                 content: [
@@ -289,13 +301,6 @@ export class SDKToLogConverter {
                     }
                 ]
             },
-            parentUuid: parentUuid,
-            userType: 'external' as const,
-            cwd: this.context.cwd,
-            sessionId: this.context.sessionId,
-            version: this.context.version,
-            gitBranch: this.context.gitBranch,
-            timestamp,
             toolUseResult: `Error: ${errorMessage}`
         } as any
         

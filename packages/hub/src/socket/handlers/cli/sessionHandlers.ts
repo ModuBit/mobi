@@ -15,6 +15,7 @@
  */
 
 import type { ClientToServerEvents } from '@mobi/shared'
+import { SNAPSHOT_PLACEHOLDER_ID } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import type { PermissionMode, RuntimeState, TeamState } from '@mobi/shared/types'
@@ -49,7 +50,8 @@ type UpdateStateHandler = ClientToServerEvents['update-state']
 const messageSchema = z.object({
     sid: z.string(),
     message: z.union([z.string(), z.unknown()]),
-    localId: z.string().optional()
+    localId: z.string().optional(),
+    snapshot: z.boolean().optional()
 })
 
 const updateMetadataSchema = z.object({
@@ -82,7 +84,30 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
 
-        const { sid, localId } = parsed.data
+        const { sid, localId, snapshot } = parsed.data
+
+        // 快照消息：不落库，直接透传给 Web
+        if (snapshot) {
+            const sessionAccess = resolveSessionAccess(sid)
+            if (!sessionAccess.ok) {
+                emitAccessError('session', sid, sessionAccess.reason)
+                return
+            }
+            const content = parsed.data.message
+            onWebappEvent?.({
+                type: 'message-snapshot',
+                sessionId: sid,
+                message: {
+                    id: SNAPSHOT_PLACEHOLDER_ID,
+                    seq: null,
+                    localId: localId ?? null,
+                    content,
+                    createdAt: Date.now(),
+                },
+            })
+            return
+        }
+
         const raw = parsed.data.message
 
         const content = typeof raw === 'string'

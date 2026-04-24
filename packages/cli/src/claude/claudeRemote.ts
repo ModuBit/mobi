@@ -38,6 +38,7 @@ import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import { getMobiBlobsDir } from "@/constants/uploadPaths";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
+import { StreamSnapshotSender } from './utils/streamSnapshotSender'
 
 // 构造模拟 SDK 用户消息（字段不完整，仅用于前端渲染）
 function createSDKUserMessage(content: string): SDKUserMessage {
@@ -69,6 +70,9 @@ export async function claudeRemote(opts: {
     onSessionFound: (id: string) => void,
     onRunningChange?: (running: boolean) => void,
     onMessage: (message: SDKMessage) => void,
+    onSnapshot: (msg: import('@mobi/shared').DecryptedMessage) => void,
+    /** Snapshot converter，用于生成与最终消息一致的 DecryptedMessage */
+    getConverter: () => import('./utils/sdkToLogConverter').SDKToLogConverter,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
@@ -227,6 +231,7 @@ export async function claudeRemote(opts: {
     let mode = initial.mode;
     const sdkOptions: Options = {
         cwd: opts.path,
+        includePartialMessages: true,
         resume: startFrom ?? undefined,
         sessionId: pregeneratedSessionId,
         mcpServers: opts.mcpServers,
@@ -295,6 +300,16 @@ export async function claudeRemote(opts: {
     opts.onQueryReady?.(response);
 
     updateRunning(true);
+
+    // 流式输出：Snapshot 发送器
+    let contentBlockIndex = 0;
+    const converter = opts.getConverter()
+    const snapshotSender = new StreamSnapshotSender(
+        opts.onSnapshot,
+        converter,
+    );
+    snapshotSender.start();
+
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
@@ -304,6 +319,47 @@ export async function claudeRemote(opts: {
                 logger.debug(`[claudeRemote] First message received from SDK: ${message.type}/${('subtype' in message ? (message as { subtype: string }).subtype : '-')}`);
             }
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
+
+            // 处理流式事件：累积 delta 到 snapshot sender
+            if (message.type === 'stream_event') {
+                const event = message.event;
+                const parentToolUseId = (message as any).parent_tool_use_id;
+
+                if (event.type === 'message_start') {
+                    // 新消息开始，清除旧 buffer、重置 block index
+                    contentBlockIndex = 0;
+                    snapshotSender.clearBuffers();
+                    const msgStart = (event as any).message;
+                    snapshotSender.setSnapshotOpts({
+                        parentToolUseId: parentToolUseId || undefined,
+                        model: msgStart?.model || initial.mode.model,
+                    });
+                } else if (event.type === 'message_stop') {
+                    // 消息结束，刷新剩余快照
+                    snapshotSender.flush();
+                } else if (event.type === 'content_block_start') {
+                    const block = (event as any).content_block;
+                    if (block?.type === 'text') {
+                        snapshotSender.startBlock(contentBlockIndex, 'text');
+                    } else if (block?.type === 'thinking') {
+                        snapshotSender.startBlock(contentBlockIndex, 'thinking');
+                    }
+                    contentBlockIndex++;
+                } else if (event.type === 'content_block_delta') {
+                    const delta = (event as any).delta;
+                    if (delta?.type === 'text_delta') {
+                        snapshotSender.append(contentBlockIndex - 1, delta.text);
+                    } else if (delta?.type === 'thinking_delta') {
+                        snapshotSender.append(contentBlockIndex - 1, delta.thinking);
+                    }
+                }
+                continue;
+            }
+
+            // 收到完整 assistant 消息时刷新快照（不重置 index，由 message_start 处理）
+            if (message.type === 'assistant') {
+                snapshotSender.flush();
+            }
 
             // Handle messages
             opts.onMessage(message);
@@ -386,6 +442,7 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Error iterating response:`, errorInfo);
         throw e;
     } finally {
+        snapshotSender.destroy();
         updateRunning(false);
     }
 }

@@ -163,6 +163,8 @@ export type AgentTextBlock = {
     meta?: MessageMeta
     /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
     isSynthetic?: boolean
+    /** 是否正在流式输出 */
+    isStreaming?: boolean
 }
 
 export type AgentReasoningBlock = {
@@ -172,6 +174,8 @@ export type AgentReasoningBlock = {
     createdAt: number
     text: string
     meta?: MessageMeta
+    /** 是否正在流式输出 */
+    isStreaming?: boolean
 }
 
 export type CliOutputBlock = {

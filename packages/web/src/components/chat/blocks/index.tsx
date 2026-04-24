@@ -23,6 +23,14 @@ import { CliOutputBlock } from './CliOutputBlock'
 import { AgentEventBlock } from './AgentEventBlock'
 import { ToolCallRenderer } from './ToolCallBlock'
 
+/** XMarkdown 流式渲染配置 */
+export const STREAMING_CONFIG = {
+    hasNextChunk: true,
+    enableAnimation: true,
+    tail: { content: '▋' },
+    animationConfig: { fadeDuration: 200 },
+} as const
+
 /** 根据 block 类型渲染对应组件 */
 export function renderChatBlock(block: ChatBlock, ctx: {
     metadata: SessionMetadataSummary | null
@@ -32,9 +40,9 @@ export function renderChatBlock(block: ChatBlock, ctx: {
         case 'user-text':
             return <TextBlock text={block.text} isSynthetic={block.isSynthetic} />
         case 'agent-text':
-            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} />
+            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} />
         case 'agent-reasoning':
-            return <ReasoningBlock text={block.text} thinking={ctx.isThinking} />
+            return <ReasoningBlock text={block.text} thinking={ctx.isThinking} isStreaming={block.isStreaming} />
         case 'cli-output':
             return <CliOutputBlock text={block.text} />
         case 'tool-call':

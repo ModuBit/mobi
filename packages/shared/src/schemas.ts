@@ -244,6 +244,9 @@ export const DecryptedMessageSchema = z.object({
 
 export type DecryptedMessage = z.infer<typeof DecryptedMessageSchema>
 
+/** Snapshot placeholder 的固定 ID，CLI/Hub/Web 三端共用 */
+export const SNAPSHOT_PLACEHOLDER_ID = 'snapshot-placeholder'
+
 export const SessionSchema = z.object({
     id: z.string(),
     namespace: z.string(),
@@ -308,6 +311,10 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
             sessionId: z.string(),
             url: z.string()
         })
+    }),
+    SessionChangedSchema.extend({
+        type: z.literal('message-snapshot'),
+        message: DecryptedMessageSchema
     }),
     SessionEventBaseSchema.extend({
         type: z.literal('heartbeat'),

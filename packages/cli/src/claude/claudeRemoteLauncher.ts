@@ -166,21 +166,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 let umessage = message as SDKAssistantMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
                     for (let c of umessage.message.content) {
-                        if (c.type === 'tool_use' && (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode')) {
-                            logger.debug('[remote]: detected plan mode tool call ' + c.id!);
-                            planModeToolCalls.add(c.id! as string);
-                        }
-                    }
-                }
-            }
-
-            if (message.type === 'assistant') {
-                let umessage = message as SDKAssistantMessage;
-                if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                    for (let c of umessage.message.content) {
                         if (c.type === 'tool_use') {
                             logger.debug('[remote]: detected tool use ' + c.id! + ' parent: ' + umessage.parent_tool_use_id);
                             ongoingToolCalls.set(c.id!, { parentToolCallId: umessage.parent_tool_use_id ?? null });
+                            if (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode') {
+                                logger.debug('[remote]: detected plan mode tool call ' + c.id!);
+                                planModeToolCalls.add(c.id! as string);
+                            }
                         }
                     }
                 }
@@ -406,6 +398,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 session.client.sendSessionEvent({ type: 'ready' });
                             }
                         },
+                        onSnapshot: (msg) => {
+                            session.client.sendContentSnapshot(msg);
+                        },
+                        getConverter: () => sdkToLogConverter,
                     });
 
                     session.consumeOneTimeFlags();

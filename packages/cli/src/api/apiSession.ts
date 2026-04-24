@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, ServerToClientEvents, Update } from '@mobi/shared'
+import type { ClientToServerEvents, DecryptedMessage, ServerToClientEvents, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -386,6 +386,16 @@ export class ApiSessionClient extends EventEmitter {
                 }
             }))
         }
+    }
+
+    /** 发送流式内容快照（不落库，Hub 直接透传给 Web） */
+    sendContentSnapshot(message: DecryptedMessage): void {
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: message.content,
+            localId: message.localId ?? undefined,
+            snapshot: true,
+        })
     }
 
     sendUserMessage(text: string, meta?: MessageMeta): void {
