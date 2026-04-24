@@ -63,6 +63,29 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const { sessionViewMode, setSessionViewMode, setSessionListDrawerOpen } = useUiStore()
     const isMobile = useIsMobile()
 
+    const viewModeItems: ActionItem[] = useMemo(() => ([
+        { key: 'files', labelKey: 'session.tabs.files', Icon: Folder, mode: 'files' as const },
+        { key: 'terminal', labelKey: 'session.tabs.terminal', Icon: Terminal, mode: 'terminal' as const },
+    ].map(({ key, labelKey, Icon, mode }) => ({
+        key,
+        width: 36,
+        label: t(labelKey),
+        render: () => (
+            <Tooltip title={t(labelKey)}>
+                <Button
+                    type="text"
+                    size="small"
+                    icon={<Icon size={14} />}
+                    onClick={() => setSessionViewMode(sessionViewMode === mode ? 'chat' : mode)}
+                    style={{
+                        borderRadius: '50%',
+                        color: sessionViewMode === mode ? 'var(--ant-color-primary)' : undefined,
+                    }}
+                />
+            </Tooltip>
+        ),
+    }))), [t, sessionViewMode])
+
     if (isLoading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
@@ -87,29 +110,6 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     }
 
     const displayName = getSessionDisplayName(session)
-
-    const viewModeItems: ActionItem[] = useMemo(() => ([
-        { key: 'files', labelKey: 'session.tabs.files', Icon: Folder, mode: 'files' as const },
-        { key: 'terminal', labelKey: 'session.tabs.terminal', Icon: Terminal, mode: 'terminal' as const },
-    ].map(({ key, labelKey, Icon, mode }) => ({
-        key,
-        width: 36,
-        label: t(labelKey),
-        render: () => (
-            <Tooltip title={t(labelKey)}>
-                <Button
-                    type="text"
-                    size="small"
-                    icon={<Icon size={14} />}
-                    onClick={() => setSessionViewMode(sessionViewMode === mode ? 'chat' : mode)}
-                    style={{
-                        borderRadius: '50%',
-                        color: sessionViewMode === mode ? 'var(--ant-color-primary)' : undefined,
-                    }}
-                />
-            </Tooltip>
-        ),
-    }))), [t, sessionViewMode])
 
     return (
         <Layout style={{ height: '100%' }}>
