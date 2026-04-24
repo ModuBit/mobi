@@ -38,7 +38,9 @@ export const HeaderRight = styled.div`
     gap: 8px;
 `
 
-const StyledHeader = styled(Layout.Header)<{ $bg: string; $border: string }>`
+const StyledHeader = styled(Layout.Header, {
+    shouldForwardProp: (prop) => !prop.startsWith('$'),
+})<{ $bg: string; $border: string }>`
     display: flex;
     align-items: center;
     justify-content: space-between;
