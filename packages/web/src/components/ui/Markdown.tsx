@@ -17,6 +17,7 @@
 import { memo, useEffect, useMemo, useState, type CSSProperties, type FC } from 'react'
 import { CodeHighlighter } from '@ant-design/x'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
+import Latex from '@ant-design/x-markdown/plugins/Latex'
 import oneDark from 'react-syntax-highlighter/dist/esm/styles/prism/one-dark'
 import oneLight from 'react-syntax-highlighter/dist/esm/styles/prism/one-light'
 import { detectLanguage, FALLBACK_LANGUAGE, getCachedDetectedLanguage } from '@/core/utils/codeLanguageDetect'
@@ -47,6 +48,9 @@ function withZeroMargin(base: PrismTheme): PrismTheme {
 }
 const ONE_DARK_THEME = withZeroMargin(oneDark as PrismTheme)
 const ONE_LIGHT_THEME = withZeroMargin(oneLight as PrismTheme)
+
+/** 默认启用的 x-markdown 扩展（LaTeX 公式渲染） */
+const LATEX_EXTENSIONS = Latex()
 
 /**
  * 块级代码自动检测语言渲染：
@@ -137,6 +141,7 @@ export const Markdown = memo(function Markdown({
     paragraphTag,
     className,
     style,
+    config,
     ...rest
 }: MarkdownProps) {
     const mergedComponents = useMemo(
@@ -154,6 +159,17 @@ export const Markdown = memo(function Markdown({
         [className],
     )
 
+    const mergedConfig = useMemo(() => {
+        if (!config) return { extensions: LATEX_EXTENSIONS }
+        return {
+            ...config,
+            extensions: [
+                ...(Array.isArray(config.extensions) ? config.extensions : []),
+                ...LATEX_EXTENSIONS,
+            ],
+        }
+    }, [config])
+
     return (
         <div className={mergedClassName} style={{ maxWidth: '100%', ...style }}>
             <XMarkdown
@@ -162,6 +178,7 @@ export const Markdown = memo(function Markdown({
                 streaming={streamingOption}
                 components={mergedComponents}
                 paragraphTag={paragraphTag}
+                config={mergedConfig}
             />
         </div>
     )

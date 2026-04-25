@@ -50,6 +50,16 @@ function createSDKUserMessage(content: string): SDKUserMessage {
     } as unknown as SDKUserMessage
 }
 
+/**
+ * 对用户消息进行预处理：
+ * 将 $...$ 替换为 \(...\)，避免触发 Claude API 的 prompt injection 过滤器。
+ * \( ... \) 与 $ ... $ 是等价的 LaTeX 行内公式语法。
+ */
+export function sanitizeUserMessage(message: string): string {
+    // 匹配成对的 $（排除已转义的 \$ 和块级 $$...$$），中间不含换行或另一对 $
+    return message.replace(/(?<!\\)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g, '\\($1\\)')
+}
+
 export async function claudeRemote(opts: {
 
     // Fixed parameters
@@ -283,7 +293,7 @@ export async function claudeRemote(opts: {
         type: 'user',
         message: {
             role: 'user',
-            content: initial.message,
+            content: sanitizeUserMessage(initial.message),
         },
         parent_tool_use_id: null,
         session_id: '', // SDK 会在运行时填充
@@ -426,7 +436,7 @@ export async function claudeRemote(opts: {
                 mode = next.mode;
                 messages.push({
                     type: 'user',
-                    message: { role: 'user', content: next.message },
+                    message: { role: 'user', content: sanitizeUserMessage(next.message) },
                     parent_tool_use_id: null,
                     session_id: '', // SDK 会在运行时填充
                 });

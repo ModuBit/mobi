@@ -18,6 +18,7 @@ import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { Bubble } from '@ant-design/x'
 import { Spin, Empty, Button, theme as antTheme } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
+import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
@@ -28,10 +29,22 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { renderChatBlock } from './blocks'
 import { PermissionRequest } from './PermissionRequest'
 import { ChatComposer } from '@/components/composer/ChatComposer'
+import { CopyButton } from './CopyButton'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 const { useToken } = antTheme
+
+/** 用户消息气泡 hover 时显示 header 中的复制按钮 */
+const bubbleCopyStyles = css`
+    .user-msg-bubble .msg-copy-btn {
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    .user-msg-bubble:hover .msg-copy-btn {
+        opacity: 1;
+    }
+`
 
 // Bubble.List role 配置
 const BUBBLE_ROLES = {
@@ -116,8 +129,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             content: React.ReactNode
             typing?: boolean
             variant?: 'borderless'
+            header?: React.ReactNode
             footer?: React.ReactNode
             footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
+            classNames?: { root?: string }
         }> = []
 
         // 用于判断是否是最后一个 assistant 块（typing 动画）
@@ -178,6 +193,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 content,
                 typing: isTyping,
                 variant: (role === 'system' || role === 'assistant') ? 'borderless' : undefined,
+                header: block.kind === 'user-text' ? (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <div className="msg-copy-btn">
+                            <CopyButton text={block.text} size={16} />
+                        </div>
+                    </div>
+                ) : undefined,
+                classNames: block.kind === 'user-text' ? { root: 'user-msg-bubble' } : undefined,
                 footer: block.kind === 'user-text' ? (
                     <span style={{ fontSize: 11, opacity: 0.6 }}>{formatMessageTime(block.createdAt)}</span>
                 ) : undefined,
@@ -230,6 +253,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Global styles={bubbleCopyStyles} />
             {/* 消息列表 */}
             <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (

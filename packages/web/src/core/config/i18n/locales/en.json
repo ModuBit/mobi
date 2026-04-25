@@ -116,6 +116,8 @@
             "title": "Permission Required",
             "toolRequest": "Tool {{tool}} requests execution permission"
         },
+        "copy": "Copy",
+        "copied": "Copied",
         "tool": {
             "input": "Input:",
             "output": "Output:",

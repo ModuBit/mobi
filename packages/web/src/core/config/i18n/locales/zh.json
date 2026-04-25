@@ -116,6 +116,8 @@
             "title": "需要权限确认",
             "toolRequest": "工具 {{tool}} 请求执行权限"
         },
+        "copy": "复制",
+        "copied": "已复制",
         "tool": {
             "input": "输入:",
             "output": "输出:",
