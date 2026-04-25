@@ -16,8 +16,7 @@
 
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { Markdown } from '@/components/ui/Markdown'
 
 /**
  * ExitPlanMode 工具视图
@@ -28,11 +27,5 @@ export function ExitPlanModeView(props: ToolViewProps) {
     const plan = typeof input.plan === 'string' ? input.plan : null
     if (!plan) return null
 
-    return (
-        <div style={{ maxWidth: '100%' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {plan || ''}
-            </ReactMarkdown>
-        </div>
-    )
+    return <Markdown content={plan} />
 }

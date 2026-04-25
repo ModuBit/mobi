@@ -35,9 +35,7 @@
         "react-dom": "^19.2.5",
         "react-helmet-async": "^3.0.0",
         "react-i18next": "^17.0.4",
-        "react-markdown": "^10.1.0",
         "react-syntax-highlighter": "^16.1.1",
-        "remark-gfm": "^4.0.1",
         "socket.io-client": "^4.8.3",
         "zustand": "^5.0.12"
     },

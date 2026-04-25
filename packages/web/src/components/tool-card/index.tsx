@@ -48,9 +48,7 @@ import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 import { useTranslation } from 'react-i18next'
-
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { Markdown } from '@/components/ui/Markdown'
 
 
 // 重新导出 types 以供其他组件使用
@@ -168,7 +166,7 @@ function renderToolInput(block: ToolCallBlock, token: GlobalToken): ReactNode {
     const input = block.tool.input
 
     if (toolName === 'Task' && isObject(input) && typeof input.prompt === 'string') {
-        return <MarkdownContent content={input.prompt} />
+        return <Markdown content={input.prompt} />
     }
 
     if (toolName === 'Edit') {
@@ -261,7 +259,7 @@ function renderExitPlanModeInput(input: unknown): ReactNode | null {
     if (!isObject(input)) return null
     const plan = getInputString(input, 'plan')
     if (!plan) return null
-    return <MarkdownContent content={plan} />
+    return <Markdown content={plan} />
 }
 
 // 状态图标
@@ -287,16 +285,6 @@ function statusColorClass(state: ToolCallBlock['tool']['state'], token: ReturnTy
     return token.colorTextSecondary
 }
 
-// Markdown 内容渲染
-function MarkdownContent(props: { content: string }) {
-    return (
-        <div className="x-markdown" style={{ maxWidth: '100%' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {props.content || ''}
-            </ReactMarkdown>
-        </div>
-    )
-}
 
 // 代码块组件
 function CodeBlock(props: { code: string; language?: string }) {

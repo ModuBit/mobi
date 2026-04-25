@@ -19,9 +19,7 @@ import { isObject, safeStringify } from '@mobi/shared'
 import { theme as antTheme, Typography } from 'antd'
 import { ChecklistList, extractTodoChecklist } from '@/components/tool-card/checklist'
 import { basename, resolveDisplayPath } from '@/core/utils/path'
-
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { Markdown } from '@/components/ui/Markdown'
 
 import type { ToolPermission } from '@/domain/tool/types'
 
@@ -133,7 +131,7 @@ function renderText(text: string, opts: { mode: 'markdown' | 'code' | 'auto'; la
         return <CodeBlock code={text} language={opts.language ?? 'text'} />
     }
     if (opts.mode === 'markdown') {
-        return <MarkdownContent content={text} />
+        return <Markdown content={text} />
     }
     // auto 模式：优先尝试 JSON 解析（含多层 unwrap），再降级 HTML/markdown
     const jsonResult = tryParseJson(text)
@@ -143,7 +141,7 @@ function renderText(text: string, opts: { mode: 'markdown' | 'code' | 'auto'; la
     if (looksLikeHtml(text)) {
         return <CodeBlock code={text} language="html" />
     }
-    return <MarkdownContent content={text} />
+    return <Markdown content={text} />
 }
 function placeholderForState(state: ToolViewProps['block']['tool']['state']): string {
     if (state === 'pending') return 'Waiting for permission…';
@@ -204,16 +202,6 @@ function extractLineList(text: string): string[] {
 function isProbablyMarkdownList(text: string): boolean {
     const trimmed = text.trimStart()
     return trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('1. ')
-}
-// Markdown 内容渲染
-function MarkdownContent(props: { content: string }) {
-    return (
-        <div className="x-markdown" style={{ maxWidth: '100%' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {props.content || ''}
-            </ReactMarkdown>
-        </div>
-    )
 }
 // 代码块组件
 function CodeBlock(props: { code: string; language?: string }) {
@@ -328,7 +316,7 @@ const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
     if (isProbablyMarkdownList(text)) {
         return (
             <>
-                <MarkdownContent content={text} />
+                <Markdown content={text} />
                 <RawJsonDevOnly value={result} />
             </>
         )
