@@ -81,6 +81,13 @@ export class StreamSnapshotSender {
         buffer.dirty = true
     }
 
+    /** 内容块结束（content_block_stop），刷新剩余内容后移除缓冲区 */
+    endBlock(index: number): void {
+        if (this.destroyed) return
+        this.flush()
+        this.buffers.delete(index)
+    }
+
     /** 开始节流发送 */
     start(): void {
         if (this.destroyed || this.timer) return

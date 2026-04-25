@@ -364,6 +364,10 @@ export async function claudeRemote(opts: {
                     } else if (delta?.type === 'thinking_delta') {
                         snapshotSender.append(eventIndex, delta.thinking);
                     }
+                } else if (event.type === 'content_block_stop') {
+                    // 内容块结束，刷新并发送最终内容，移除缓冲区
+                    // 避免后续 flush 带上已完成的内容块（如 thinking 完成后不再包含在 text 阶段的 snapshot 中）
+                    snapshotSender.endBlock(eventIndex);
                 }
                 continue;
             }
