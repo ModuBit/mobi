@@ -120,6 +120,7 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
     if (hiddenItems.length === 0) return null
     return (
       <div
+        data-in-dropdown
         onMouseDown={e => e.stopPropagation()}
         style={{
           background: token.colorBgContainer,

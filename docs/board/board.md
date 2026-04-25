@@ -9,6 +9,7 @@
 - `B005` Tool Use 内联预览卡片遮罩优化 · P3
 - `B007` 实现 /btw 命令 · P2
 - `B008` 实现 /rewind 命令 · P2
+- `B009` 长期不活跃的激活 session 自动退出 · P2
 
 ## In Progress
 

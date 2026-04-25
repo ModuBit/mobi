@@ -18,7 +18,7 @@ import type { AgentState } from '@/core/data/api/types'
 import type { ChatBlock, NormalizedMessage, UsageData } from './types'
 import { traceMessages, type TracedMessage } from './tracer'
 import { dedupeAgentEvents, foldApiErrorEvents } from './reducerEvents'
-import { collectTitleChanges, collectToolIdsFromMessages, ensureToolBlock, getPermissions } from './reducerTools'
+import { collectHiddenToolUseIds, collectTitleChanges, collectToolIdsFromMessages, ensureToolBlock, getPermissions } from './reducerTools'
 import { reduceTimeline } from './reducerTimeline'
 
 /**
@@ -49,6 +49,7 @@ export function reduceChatBlocks(
     const permissionsById = getPermissions(agentState)
     const toolIdsInMessages = collectToolIdsFromMessages(normalized)
     const titleChangesByToolUseId = collectTitleChanges(normalized)
+    const hiddenToolUseIds = collectHiddenToolUseIds(normalized)
 
     const traced = traceMessages(normalized)
     const groups = new Map<string, TracedMessage[]>()
@@ -66,7 +67,7 @@ export function reduceChatBlocks(
 
     const consumedGroupIds = new Set<string>()
     const emittedTitleChangeToolUseIds = new Set<string>()
-    const reducerContext = { permissionsById, groups, consumedGroupIds, titleChangesByToolUseId, emittedTitleChangeToolUseIds }
+    const reducerContext = { permissionsById, groups, consumedGroupIds, titleChangesByToolUseId, emittedTitleChangeToolUseIds, hiddenToolUseIds }
     const rootResult = reduceTimeline(root, reducerContext)
     let hasReadyEvent = rootResult.hasReadyEvent
 

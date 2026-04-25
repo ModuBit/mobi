@@ -162,7 +162,7 @@
         "comingSoon": "更多设置敬请期待..."
     },
     "composer": {
-        "placeholder": "输入消息... (Shift+Enter 换行)",
+        "placeholder": "输入消息... (Shift+Enter 发送)",
         "bashPlaceholder": "输入 Shell 命令...",
         "attach": "添加附件",
         "settings": "设置",

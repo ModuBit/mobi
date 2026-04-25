@@ -188,6 +188,24 @@ export function isHiddenTool(name: string): boolean {
         || name === 'mobi__change_title'
 }
 
+/**
+ * 收集所有隐藏工具的 tool_use_id
+ * 用于在 tool-result 阶段过滤掉对应结果（这类工具不一定走权限流程，无法从 permissionsById 反查工具名）
+ */
+export function collectHiddenToolUseIds(messages: NormalizedMessage[]): Set<string> {
+    const ids = new Set<string>()
+    for (const msg of messages) {
+        if (msg.role !== 'agent') continue
+        for (const content of msg.content) {
+            if (content.type !== 'tool-call') continue
+            if (isHiddenTool(content.name)) {
+                ids.add(content.id)
+            }
+        }
+    }
+    return ids
+}
+
 /** 改标题的工具名（isHiddenTool 的子集，需要额外提取标题） */
 export function isChangeTitleToolName(name: string): boolean {
     return name === 'mcp__mobi__change_title' || name === 'mobi__change_title'

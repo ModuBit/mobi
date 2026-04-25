@@ -101,7 +101,7 @@
         "empty": "No messages",
         "thinking": "Thinking...",
         "thought": "Thought",
-        "inputPlaceholder": "Type a message... (Shift+Enter for new line)",
+        "inputPlaceholder": "Type a message... (Shift+Enter to send)",
         "sessionEnded": "Session ended",
         "apiError": "API Error",
         "apiRateLimit": "API Rate Limited",
@@ -162,7 +162,7 @@
         "comingSoon": "More settings coming soon..."
     },
     "composer": {
-        "placeholder": "Type a message... (Shift+Enter for new line)",
+        "placeholder": "Type a message... (Shift+Enter to send)",
         "bashPlaceholder": "Enter shell command...",
         "attach": "Add attachment",
         "settings": "Settings",

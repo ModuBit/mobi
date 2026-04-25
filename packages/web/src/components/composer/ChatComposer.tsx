@@ -19,6 +19,7 @@ import { Button, Tooltip, Select, theme } from 'antd'
 import { PaperClipOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, RobotOutlined, SafetyOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
+import styled from '@emotion/styled'
 import type { AgentState, PermissionMode, Session } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, CLAUDE_MODEL_LABELS } from '@mobi/shared'
 import { CLAUDE_MODEL_OPTIONS } from '@/domain/session/types'
@@ -72,6 +73,20 @@ interface ChatComposerProps {
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
     return wrapper?.querySelector('textarea') ?? null
 }
+
+// 带有 hover 背景的 borderless Select，与 Button type="text" 的 hover 效果保持一致
+const HoverSelect = styled(Select)<{
+    $token: ReturnType<typeof theme.useToken>['token']
+}>`
+    &.ant-select-borderless:not(.ant-select-disabled):hover {
+        background: ${props => props.$token.colorBgTextHover};
+    }
+    [data-in-dropdown] &.ant-select-borderless:not(.ant-select-disabled):hover {
+        background: transparent;
+    }
+    border-radius: ${props => props.$token.borderRadiusSM}px;
+    transition: background 0.2s;
+`
 
 /**
  * 聊天输入组件
@@ -555,41 +570,37 @@ export function ChatComposer(props: ChatComposerProps) {
                                 ...(onModelChange ? [{
                                     key: 'model',
                                     width: 130,
-                                    label: <><RobotOutlined style={{ marginRight: 6 }} />{t('composer.model')}</>,
                                     render: () => (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                            <RobotOutlined style={{ fontSize: 14, opacity: 0.55, flexShrink: 0 }} />
-                                            <Select
-                                                size="small"
-                                                variant="borderless"
-                                                value={model ?? 'auto'}
-                                                onChange={onModelChange}
-                                                disabled={controlsDisabled || showLocalModeCover}
-                                                options={modelSelectOptions}
-                                                popupMatchSelectWidth={false}
-                                                style={{ width: '100%' }}
-                                            />
-                                        </span>
+                                        <HoverSelect
+                                            $token={token}
+                                            size="small"
+                                            variant="borderless"
+                                            prefix={<RobotOutlined style={{ fontSize: 14, opacity: 0.55 }} />}
+                                            value={model ?? 'auto'}
+                                            onChange={v => onModelChange(v as string | null)}
+                                            disabled={controlsDisabled || showLocalModeCover}
+                                            options={modelSelectOptions}
+                                            popupMatchSelectWidth={false}
+                                            style={{ width: '100%' }}
+                                        />
                                     ),
                                 }] : []),
                                 ...(showSettingsButton ? [{
                                     key: 'permission',
                                     width: 130,
-                                    label: <><SafetyOutlined style={{ marginRight: 6 }} />{t('composer.permission')}</>,
                                     render: () => (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                            <SafetyOutlined style={{ fontSize: 14, opacity: 0.55, color: permissionModeColor, flexShrink: 0 }} />
-                                            <Select
-                                                size="small"
-                                                variant="borderless"
-                                                value={permissionMode ?? 'default'}
-                                                onChange={onPermissionModeChange}
-                                                disabled={controlsDisabled || showLocalModeCover}
-                                                options={permissionSelectOptions}
-                                                popupMatchSelectWidth={false}
-                                                style={{ width: '100%', color: permissionModeColor }}
-                                            />
-                                        </span>
+                                        <HoverSelect
+                                            $token={token}
+                                            size="small"
+                                            variant="borderless"
+                                            prefix={<SafetyOutlined style={{ fontSize: 14, opacity: 0.55, color: permissionModeColor }} />}
+                                            value={permissionMode ?? 'default'}
+                                            onChange={v => onPermissionModeChange?.(v as PermissionMode)}
+                                            disabled={controlsDisabled || showLocalModeCover}
+                                            options={permissionSelectOptions}
+                                            popupMatchSelectWidth={false}
+                                            style={{ width: '100%', color: permissionModeColor }}
+                                        />
                                     ),
                                 }] : []),
                                 ...(onArchive && active ? [{

@@ -60,6 +60,7 @@ export function reduceTimeline(
         consumedGroupIds: Set<string>
         titleChangesByToolUseId: Map<string, string>
         emittedTitleChangeToolUseIds: Set<string>
+        hiddenToolUseIds: Set<string>
     }
 ): { blocks: ChatBlock[]; toolBlocksById: Map<string, ToolCallBlock>; hasReadyEvent: boolean } {
     const blocks: ChatBlock[] = []
@@ -238,6 +239,7 @@ export function reduceTimeline(
                 }
 
                 if (c.type === 'tool-result') {
+                    if (context.hiddenToolUseIds.has(c.tool_use_id)) continue
                     {
                         const permEntry = context.permissionsById.get(c.tool_use_id)
                         if (permEntry && isHiddenTool(permEntry.toolName)) continue
