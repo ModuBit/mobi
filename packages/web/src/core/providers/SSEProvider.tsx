@@ -54,15 +54,25 @@ function upsertMessageCache(
             // 因为 SDK stream_event uuid ≠ raw JSON line uuid，snapshot 与 full message id 不同，
             // 需要通过 parentUuid 关联同一轮次的消息来实现 snapshot 清理
             let base = old
+            let preservedId: string | null = null
             if (!msg.snapshot) {
                 const parentUuid = extractParentUuid(msg.content)
                 if (parentUuid) {
+                    // 查找匹配的 snapshot，继承其 id 以保持 block.id 稳定
+                    // 避免 snapshot → full message 过渡时 React key 变化导致卸载重建闪烁
+                    const matching = old.find(m => m.snapshot && extractParentUuid(m.content) === parentUuid)
+                    if (matching) {
+                        preservedId = matching.id
+                    }
                     const filtered = old.filter(m => !m.snapshot || extractParentUuid(m.content) !== parentUuid)
                     if (filtered.length !== old.length) base = filtered
                 }
             }
 
-            const existingIdx = base.findIndex(m => m.id === msg.id)
+            // 继承 snapshot 的 id，使 block.id 在 snapshot → full message 过渡中保持不变
+            const effectiveMsg = preservedId ? { ...msg, id: preservedId } : msg
+
+            const existingIdx = base.findIndex(m => m.id === effectiveMsg.id)
             if (existingIdx !== -1) {
                 if (options?.skipIfNotSnapshot && !base[existingIdx].snapshot) {
                     // 真正的重复消息（SSE retry / Hub 去重）
@@ -70,10 +80,10 @@ function upsertMessageCache(
                 }
                 // snapshot 原地更新，或 snapshot → full message 替换
                 const updated = base.slice()
-                updated[existingIdx] = msg
+                updated[existingIdx] = effectiveMsg
                 return updated
             }
-            return [...base, msg]
+            return [...base, effectiveMsg]
         },
     )
 }

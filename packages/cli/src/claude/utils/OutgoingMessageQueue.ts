@@ -59,9 +59,9 @@ export class OutgoingMessageQueue {
                 released: !options?.delay,  // Not delayed = already released
                 sent: false
             };
-            
+
             this.queue.push(item);
-            
+
             // If delayed, set timer to release it
             if (item.delayed) {
                 const timer = setTimeout(() => {
@@ -69,10 +69,10 @@ export class OutgoingMessageQueue {
                 }, item.delayMs);
                 this.delayTimers.set(item.id, timer);
             }
+
+            // 在锁内调度处理，确保 item 已入队后再触发 processQueue
+            this.scheduleProcessing();
         });
-        
-        // Try to process queue
-        this.scheduleProcessing();
     }
     
     /**
