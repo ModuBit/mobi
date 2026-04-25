@@ -323,7 +323,7 @@ export async function claudeRemote(opts: {
             if (message.type === 'stream_event') {
                 const event = message.event;
                 const parentToolUseId = (message as any).parent_tool_use_id;
-                // SDK stream_event 自带 uuid，与完整 assistant 消息的 uuid 一致
+                // SDK stream_event 的 uuid 仅用于标识本次流式消息，与最终 assistant 消息的 uuid 不同
                 const sdkUuid = (message as any).uuid;
                 // 使用 SDK 事件自带的 index，避免手动追踪
                 const eventIndex = (event as any).index;
