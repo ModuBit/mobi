@@ -16,9 +16,8 @@
 
 import { useState, useEffect, memo } from 'react'
 import { Think } from '@ant-design/x'
-import { XMarkdown } from '@ant-design/x-markdown'
 import { useTranslation } from 'react-i18next'
-import { STREAMING_CONFIG } from './index'
+import { Markdown } from '@/components/ui/Markdown'
 
 /** 思考过程渲染 */
 export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isStreaming }: {
@@ -42,10 +41,7 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
             onExpand={setExpanded}
         >
             <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                <XMarkdown
-                    content={text || ''}
-                    streaming={isStreaming ? STREAMING_CONFIG : undefined}
-                />
+                <Markdown content={text} streaming={isStreaming} />
             </div>
         </Think>
     )

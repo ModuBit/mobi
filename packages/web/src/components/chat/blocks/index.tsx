@@ -23,14 +23,6 @@ import { CliOutputBlock } from './CliOutputBlock'
 import { AgentEventBlock } from './AgentEventBlock'
 import { ToolCallRenderer } from './ToolCallBlock'
 
-/** XMarkdown 流式渲染配置 */
-export const STREAMING_CONFIG = {
-    hasNextChunk: true,
-    enableAnimation: true,
-    tail: { content: '▋' },
-    animationConfig: { fadeDuration: 500 },
-} as const
-
 /** 根据 block 类型渲染对应组件 */
 export function renderChatBlock(block: ChatBlock, ctx: {
     metadata: SessionMetadataSummary | null
