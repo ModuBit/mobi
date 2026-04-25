@@ -112,6 +112,8 @@ export type NormalizedMessage = ({
     originalText?: string
     /** 非用户主动输入的消息（如 SDK 自动生成的中断消息），渲染时使用柔和样式 */
     isSynthetic?: boolean
+    /** 流式快照消息（未落库，Hub 直接透传） */
+    snapshot?: boolean
 }
 
 export type ToolPermission = {
@@ -165,6 +167,8 @@ export type AgentTextBlock = {
     isSynthetic?: boolean
     /** 是否正在流式输出 */
     isStreaming?: boolean
+    /** 是否为流式 snapshot（snapshot 字段由 Hub 透传，尚未落库） */
+    isSnapshot?: boolean
 }
 
 export type AgentReasoningBlock = {
@@ -176,6 +180,8 @@ export type AgentReasoningBlock = {
     meta?: MessageMeta
     /** 是否正在流式输出 */
     isStreaming?: boolean
+    /** 是否为流式 snapshot（snapshot 字段由 Hub 透传，尚未落库） */
+    isSnapshot?: boolean
 }
 
 export type CliOutputBlock = {

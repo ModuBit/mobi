@@ -131,6 +131,7 @@ export function reduceTimeline(
         }
 
         if (msg.role === 'agent') {
+            const isSnapshot = msg.snapshot === true
             for (let idx = 0; idx < msg.content.length; idx += 1) {
                 const c = msg.content[idx]
                 if (c.type === 'text') {
@@ -152,7 +153,8 @@ export function reduceTimeline(
                         createdAt: msg.createdAt,
                         text: c.text,
                         meta: msg.meta,
-                        isSynthetic: msg.isSynthetic
+                        isSynthetic: msg.isSynthetic,
+                        isSnapshot,
                     })
                     continue
                 }
@@ -164,7 +166,8 @@ export function reduceTimeline(
                         localId: msg.localId,
                         createdAt: msg.createdAt,
                         text: c.text,
-                        meta: msg.meta
+                        meta: msg.meta,
+                        isSnapshot,
                     })
                     continue
                 }

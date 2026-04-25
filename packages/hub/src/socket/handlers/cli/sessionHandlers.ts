@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-import type { ClientToServerEvents } from '@mobi/shared'
-import { SNAPSHOT_PLACEHOLDER_ID } from '@mobi/shared'
+import { SNAPSHOT_PENDING_ID, type ClientToServerEvents } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import type { PermissionMode, RuntimeState, TeamState } from '@mobi/shared/types'
@@ -98,9 +97,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 type: 'message-snapshot',
                 sessionId: sid,
                 message: {
-                    id: SNAPSHOT_PLACEHOLDER_ID,
+                    id: localId ?? SNAPSHOT_PENDING_ID,
                     seq: null,
                     localId: localId ?? null,
+                    snapshot: true,
                     content,
                     createdAt: Date.now(),
                 },

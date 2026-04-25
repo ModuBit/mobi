@@ -70,7 +70,7 @@ export function addMessage(
     ).get(sessionId) as { nextSeq: number }
     const msgSeq = msgSeqRow.nextSeq
 
-    const id = randomUUID()
+    const id = localId ?? randomUUID()
     const json = JSON.stringify(content)
 
     db.prepare(`

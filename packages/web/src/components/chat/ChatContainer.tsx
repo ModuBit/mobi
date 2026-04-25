@@ -145,9 +145,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             // 是否为最后一个 assistant block 且 session 正在运行
             const isLastRunningBlock = block.id === lastAssistantBlockKey && !!session?.running
+            // 流式光标仅对 snapshot 生效（snapshot 字段由 Hub 透传）
+            const isSnapshot = (block.kind === 'agent-text' || block.kind === 'agent-reasoning') && block.isSnapshot
 
             const content = renderChatBlock(
-                isLastRunningBlock && (block.kind === 'agent-text' || block.kind === 'agent-reasoning')
+                isLastRunningBlock && isSnapshot
                     ? { ...block, isStreaming: true }
                     : block,
                 { metadata, isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock }

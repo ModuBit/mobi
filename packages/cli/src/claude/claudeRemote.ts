@@ -302,7 +302,6 @@ export async function claudeRemote(opts: {
     updateRunning(true);
 
     // 流式输出：Snapshot 发送器
-    let contentBlockIndex = 0;
     const converter = opts.getConverter()
     const snapshotSender = new StreamSnapshotSender(
         opts.onSnapshot,
@@ -324,15 +323,19 @@ export async function claudeRemote(opts: {
             if (message.type === 'stream_event') {
                 const event = message.event;
                 const parentToolUseId = (message as any).parent_tool_use_id;
+                // SDK stream_event 自带 uuid，与完整 assistant 消息的 uuid 一致
+                const sdkUuid = (message as any).uuid;
+                // 使用 SDK 事件自带的 index，避免手动追踪
+                const eventIndex = (event as any).index;
 
                 if (event.type === 'message_start') {
-                    // 新消息开始，清除旧 buffer、重置 block index
-                    contentBlockIndex = 0;
+                    // 新消息开始，清除旧 buffer
                     snapshotSender.clearBuffers();
                     const msgStart = (event as any).message;
                     snapshotSender.setSnapshotOpts({
                         parentToolUseId: parentToolUseId || undefined,
                         model: msgStart?.model || initial.mode.model,
+                        sdkUuid,
                     });
                 } else if (event.type === 'message_stop') {
                     // 消息结束，刷新剩余快照
@@ -340,17 +343,16 @@ export async function claudeRemote(opts: {
                 } else if (event.type === 'content_block_start') {
                     const block = (event as any).content_block;
                     if (block?.type === 'text') {
-                        snapshotSender.startBlock(contentBlockIndex, 'text');
+                        snapshotSender.startBlock(eventIndex, 'text');
                     } else if (block?.type === 'thinking') {
-                        snapshotSender.startBlock(contentBlockIndex, 'thinking');
+                        snapshotSender.startBlock(eventIndex, 'thinking');
                     }
-                    contentBlockIndex++;
                 } else if (event.type === 'content_block_delta') {
                     const delta = (event as any).delta;
                     if (delta?.type === 'text_delta') {
-                        snapshotSender.append(contentBlockIndex - 1, delta.text);
+                        snapshotSender.append(eventIndex, delta.text);
                     } else if (delta?.type === 'thinking_delta') {
-                        snapshotSender.append(contentBlockIndex - 1, delta.thinking);
+                        snapshotSender.append(eventIndex, delta.thinking);
                     }
                 }
                 continue;

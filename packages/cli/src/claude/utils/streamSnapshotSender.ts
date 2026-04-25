@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-import type { DecryptedMessage } from '@mobi/shared'
-import { SNAPSHOT_PLACEHOLDER_ID } from '@mobi/shared'
+import { SNAPSHOT_PENDING_ID, type DecryptedMessage } from '@mobi/shared'
 import type { RawJSONLines } from '@/claude/types'
 import type { SDKToLogConverter } from './sdkToLogConverter'
 
@@ -37,6 +36,8 @@ type ContentBlock =
  *
  * 累积 SDK StreamEvent 中的 text_delta / thinking_delta，
  * 每 500ms 通过 SDKToLogConverter 转换为 DecryptedMessage 发送。
+ * 使用 SDK 的 uuid 作为 snapshot id，与完整消息共享同一 localId，
+ * 前端据此实现平滑的 snapshot → full message 过渡。
  */
 export class StreamSnapshotSender {
     private readonly buffers: Map<number, ContentBlockBuffer> = new Map()
@@ -44,8 +45,8 @@ export class StreamSnapshotSender {
     private destroyed = false
     /** 当前消息的快照选项 */
     private snapshotOpts: { parentToolUseId?: string; model?: string } = {}
-    /** snapshot placeholder 的固定 ID，前端用于匹配 */
-    private snapshotMsgId = SNAPSHOT_PLACEHOLDER_ID
+    /** SDK 为当前消息分配的 uuid，snapshot 和完整消息一致 */
+    private sdkUuid: string | null = null
 
     constructor(
         private readonly transport: SnapshotTransport,
@@ -54,8 +55,9 @@ export class StreamSnapshotSender {
     ) {}
 
     /** 设置消息级别选项（在 message_start 时调用） */
-    setSnapshotOpts(opts: { parentToolUseId?: string; model?: string }): void {
+    setSnapshotOpts(opts: { parentToolUseId?: string; model?: string; sdkUuid?: string }): void {
         this.snapshotOpts = opts
+        if (opts.sdkUuid) this.sdkUuid = opts.sdkUuid
     }
 
     /** 清除所有 buffer（新消息开始时调用） */
@@ -117,9 +119,10 @@ export class StreamSnapshotSender {
     /** 将 RawJSONLines 包装为 DecryptedMessage（与 sendClaudeSessionMessage 一致的角色信封格式） */
     private wrapAsDecryptedMessage(rawLog: RawJSONLines): DecryptedMessage {
         return {
-            id: this.snapshotMsgId,
+            id: this.sdkUuid ?? SNAPSHOT_PENDING_ID,
             seq: null,
-            localId: null,
+            localId: this.sdkUuid ?? null,
+            snapshot: true,
             content: {
                 role: 'agent',
                 content: {

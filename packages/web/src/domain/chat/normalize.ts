@@ -26,6 +26,7 @@ import { normalizeUserRecord } from './normalizeUser'
  * 将原始消息转换为统一的 NormalizedMessage 格式
  */
 export function normalizeDecryptedMessage(message: DecryptedMessage): NormalizedMessage | null {
+    const snapshot = message.snapshot
     const record = unwrapRoleWrappedRecordEnvelope(message.content)
     if (!record) {
         return {
@@ -36,14 +37,15 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
             isSidechain: false,
             content: [{ type: 'text', text: safeStringify(message.content), uuid: message.id, parentUUID: null }],
             status: message.status,
-            originalText: message.originalText
+            originalText: message.originalText,
+            snapshot,
         }
     }
 
     if (record.role === 'user') {
         const normalized = normalizeUserRecord(message.id, message.localId, message.createdAt, record.content, record.meta as MessageMeta | undefined)
         return normalized
-            ? { ...normalized, status: message.status, originalText: message.originalText }
+            ? { ...normalized, status: message.status, originalText: message.originalText, snapshot }
             : {
                 id: message.id,
                 localId: message.localId,
@@ -53,7 +55,8 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
                 content: { type: 'text', text: safeStringify(record.content) },
                 meta: record.meta as MessageMeta | undefined,
                 status: message.status,
-                originalText: message.originalText
+                originalText: message.originalText,
+                snapshot,
             }
     }
     if (record.role === 'agent') {
@@ -62,7 +65,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
         }
         const normalized = normalizeAgentRecord(message.id, message.localId, message.createdAt, record.content, record.meta as MessageMeta | undefined)
         if (normalized) {
-            return { ...normalized, status: message.status, originalText: message.originalText }
+            return { ...normalized, status: message.status, originalText: message.originalText, snapshot }
         }
         // normalizeAgentRecord 对 result/success 等消息返回 null 属于正常跳过，
         // 不应走 JSON dump fallback，仅当确实是未知类型时才兜底
@@ -82,7 +85,8 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
             content: [{ type: 'text', text: safeStringify(record.content), uuid: message.id, parentUUID: null }],
             meta: record.meta as MessageMeta | undefined,
             status: message.status,
-            originalText: message.originalText
+            originalText: message.originalText,
+            snapshot,
         }
     }
 
@@ -95,6 +99,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
         content: [{ type: 'text', text: safeStringify(record.content), uuid: message.id, parentUUID: null }],
         meta: record.meta as MessageMeta | undefined,
         status: message.status,
-        originalText: message.originalText
+        originalText: message.originalText,
+        snapshot,
     }
 }

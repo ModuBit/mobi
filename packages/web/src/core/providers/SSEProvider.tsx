@@ -25,7 +25,33 @@ import { useNotify } from '@/core/data/hooks/useNotify'
 import { useMobiApi } from '@/core/data/api/client'
 import { App, Button } from 'antd'
 import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
-import { SNAPSHOT_PLACEHOLDER_ID } from '@mobi/shared'
+
+/** 更新消息缓存：upsert 模式，同 id 消息原地替换，否则追加 */
+function upsertMessageCache(
+    queryClient: ReturnType<typeof useQueryClient>,
+    sessionId: string,
+    msg: DecryptedMessage,
+    options?: { skipIfNotSnapshot?: boolean },
+) {
+    queryClient.setQueryData<DecryptedMessage[]>(
+        queryKeys.messages(sessionId),
+        (old) => {
+            if (!old) return [msg]
+            const existingIdx = old.findIndex(m => m.id === msg.id)
+            if (existingIdx !== -1) {
+                if (options?.skipIfNotSnapshot && !old[existingIdx].snapshot) {
+                    // 真正的重复消息（SSE retry / Hub 去重）
+                    return old
+                }
+                // snapshot 原地更新，或 snapshot → full message 替换
+                const updated = old.slice()
+                updated[existingIdx] = msg
+                return updated
+            }
+            return [...old, msg]
+        },
+    )
+}
 
 /**
  * 使用 setQueryData 直接更新 session 缓存
@@ -263,44 +289,15 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 queueSessionListInvalidation()
                 break
             case 'message-received':
-                // 追加消息到缓存，按 id 去重防止重复显示
                 if (event.message) {
                     const msg = event.message as DecryptedMessage
-                    queryClient.setQueryData<DecryptedMessage[]>(
-                        queryKeys.messages(event.sessionId),
-                        (old) => {
-                            if (!old) return [msg]
-                            if (old.some(m => m.id === msg.id)) return old
-
-                            // 移除 snapshot placeholder（完整消息已到达）
-                            const filtered = old.filter(m =>
-                                !m.id?.startsWith(SNAPSHOT_PLACEHOLDER_ID)
-                            )
-
-                            return [...filtered, msg]
-                        },
-                    )
+                    upsertMessageCache(queryClient, event.sessionId, msg, { skipIfNotSnapshot: true })
                 }
                 break
             case 'message-snapshot':
                 if (event.message && event.sessionId) {
                     const msg = event.message as DecryptedMessage
-                    queryClient.setQueryData<DecryptedMessage[]>(
-                        queryKeys.messages(event.sessionId),
-                        (old) => {
-                            if (!old) return [msg]
-
-                            // placeholder 始终在末尾，从末尾反向查找
-                            const existingIdx = old.reduce((found, m, i) => m.id === msg.id ? i : found, -1)
-                            if (existingIdx !== -1) {
-                                const updated = old.slice()
-                                updated[existingIdx] = msg
-                                return updated
-                            }
-
-                            return [...old, msg]
-                        },
-                    )
+                    upsertMessageCache(queryClient, event.sessionId, msg)
                 }
                 break
             case 'machine-updated':

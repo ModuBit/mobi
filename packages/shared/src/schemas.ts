@@ -234,18 +234,20 @@ export const AttachmentMetadataSchema = z.object({
 
 export type AttachmentMetadata = z.infer<typeof AttachmentMetadataSchema>
 
+/** SDK uuid 尚未就绪时的 snapshot fallback id */
+export const SNAPSHOT_PENDING_ID = 'snapshot-pending'
+
 export const DecryptedMessageSchema = z.object({
     id: z.string(),
     seq: z.number().nullable(),
     localId: z.string().nullable(),
     content: z.unknown(),
-    createdAt: z.number()
+    createdAt: z.number(),
+    /** 标识流式快照消息（未落库，Hub 直接透传给 Web） */
+    snapshot: z.boolean().optional(),
 })
 
 export type DecryptedMessage = z.infer<typeof DecryptedMessageSchema>
-
-/** Snapshot placeholder 的固定 ID，CLI/Hub/Web 三端共用 */
-export const SNAPSHOT_PLACEHOLDER_ID = 'snapshot-placeholder'
 
 export const SessionSchema = z.object({
     id: z.string(),
