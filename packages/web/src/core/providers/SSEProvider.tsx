@@ -26,6 +26,18 @@ import { useMobiApi } from '@/core/data/api/client'
 import { App, Button } from 'antd'
 import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
 
+/** 从 DecryptedMessage.content 信封中提取 parentUuid，用于关联 snapshot 与 full message */
+function extractParentUuid(content: unknown): string | null {
+    if (!content || typeof content !== 'object') return null
+    const envelope = content as Record<string, unknown>
+    const inner = envelope.content
+    if (!inner || typeof inner !== 'object') return null
+    const data = (inner as Record<string, unknown>).data
+    if (!data || typeof data !== 'object') return null
+    const parentUuid = (data as Record<string, unknown>).parentUuid
+    return typeof parentUuid === 'string' ? parentUuid : null
+}
+
 /** 更新消息缓存：upsert 模式，同 id 消息原地替换，否则追加 */
 function upsertMessageCache(
     queryClient: ReturnType<typeof useQueryClient>,
@@ -37,18 +49,31 @@ function upsertMessageCache(
         queryKeys.messages(sessionId),
         (old) => {
             if (!old) return [msg]
-            const existingIdx = old.findIndex(m => m.id === msg.id)
+
+            // 当非 snapshot 消息到达时，移除相同 parentUuid 的 snapshot
+            // 因为 SDK stream_event uuid ≠ raw JSON line uuid，snapshot 与 full message id 不同，
+            // 需要通过 parentUuid 关联同一轮次的消息来实现 snapshot 清理
+            let base = old
+            if (!msg.snapshot) {
+                const parentUuid = extractParentUuid(msg.content)
+                if (parentUuid) {
+                    const filtered = old.filter(m => !m.snapshot || extractParentUuid(m.content) !== parentUuid)
+                    if (filtered.length !== old.length) base = filtered
+                }
+            }
+
+            const existingIdx = base.findIndex(m => m.id === msg.id)
             if (existingIdx !== -1) {
-                if (options?.skipIfNotSnapshot && !old[existingIdx].snapshot) {
+                if (options?.skipIfNotSnapshot && !base[existingIdx].snapshot) {
                     // 真正的重复消息（SSE retry / Hub 去重）
-                    return old
+                    return base
                 }
                 // snapshot 原地更新，或 snapshot → full message 替换
-                const updated = old.slice()
+                const updated = base.slice()
                 updated[existingIdx] = msg
                 return updated
             }
-            return [...old, msg]
+            return [...base, msg]
         },
     )
 }
