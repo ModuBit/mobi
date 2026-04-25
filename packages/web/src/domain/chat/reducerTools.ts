@@ -185,6 +185,11 @@ export function isChangeTitleToolName(name: string): boolean {
     return name === 'mcp__mobi__change_title' || name === 'mobi__change_title'
 }
 
+/** 不需要渲染的内部工具（SDK 自动调用的工具搜索等） */
+export function isHiddenToolName(name: string): boolean {
+    return name === 'ToolSearch'
+}
+
 /**
  * 从更改标题工具输入中提取标题
  */

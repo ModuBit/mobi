@@ -18,7 +18,7 @@ import type { AgentEventBlock, ChatBlock, EventDisplay, MessageMeta, ToolCallBlo
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
-import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, type PermissionEntry } from './reducerTools'
+import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, isHiddenToolName, type PermissionEntry } from './reducerTools'
 
 // 根据事件类型获取渲染提示
 function getEventDisplay(event: { type: string }): EventDisplay | undefined {
@@ -198,6 +198,8 @@ export function reduceTimeline(
                         continue
                     }
 
+                    if (isHiddenToolName(c.name)) continue
+
                     const permission = context.permissionsById.get(c.id)?.permission
 
                     let block = ensureToolBlock(blocks, toolBlocksById, c.id, {
@@ -236,6 +238,10 @@ export function reduceTimeline(
                 }
 
                 if (c.type === 'tool-result') {
+                    {
+                        const permEntry = context.permissionsById.get(c.tool_use_id)
+                        if (permEntry && isHiddenToolName(permEntry.toolName)) continue
+                    }
                     const title = context.titleChangesByToolUseId.get(c.tool_use_id) ?? null
                     if (title) {
                         if (!context.emittedTitleChangeToolUseIds.has(c.tool_use_id)) {
