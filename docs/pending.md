@@ -413,3 +413,30 @@
 - 找到正确的预热方案：在用户发送第一条消息前 spawn Claude Code 进程，消息到达后直接推送
 - 关键约束：`init` 消息由 Claude Code 在收到第一条用户消息后才发送，预热方案不能依赖 `init` 作为消息注入时机
 - 可能方向：并发等待第一条消息（与 for-await 并行），消息到达后推送到 iterable，SDK 读取后 Claude Code 发 init，for-await 正常处理
+
+---
+
+## 21. Snapshot 全量推送的带宽优化
+
+**相关文件**：
+- `packages/cli/src/claude/utils/streamSnapshotSender.ts` — Snapshot 生成与发送
+- `packages/web/src/components/ui/Markdown.tsx` — 前端逐字揭示渲染
+
+**现状**：
+- CLI 每 500ms 发送一次完整累积内容的 snapshot（非 delta），保证断线重连/刷新后内容完整
+- 典型场景（5000 字符回复、20 个 snapshot）实际传输量约为增量的 20 倍
+- 本地/局域网场景下带宽开销可忽略，可靠性收益远大于传输成本
+
+**待优化场景**：
+- Hub 部署到云端或同时有大量客户端连接时，重复传输会成为瓶颈
+- 超长回复（5 万字符+ tool output）累积传输量可达 MB 级别
+
+**优化方向（delta + checkpoint）**：
+- 常规 snapshot 发送增量 delta（仅新增内容），客户端本地累积拼接
+- 每隔 N 次（如 5 次）发送一次全量 checkpoint，用于客户端校验和断线恢复
+- 客户端断线重连时，从最近 checkpoint 恢复后继续接收 delta
+- 增加客户端累积状态管理和 delta 校验逻辑，复杂度中等
+
+**优先级**：
+- 低优先级，当前本地/局域网场景无需优化
+- 当 Hub 上云或多客户端并发时再实施

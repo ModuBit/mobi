@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { memo, useEffect, useMemo, useState, type CSSProperties, type FC } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
 import { CodeHighlighter } from '@ant-design/x'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
 import Latex from '@ant-design/x-markdown/plugins/Latex'
@@ -26,12 +26,77 @@ import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 /** 流式渲染选项类型（从 XMarkdownProps 推断，因 x-markdown 未顶层导出） */
 type StreamingOption = NonNullable<XMarkdownProps['streaming']>
 
-/** 流式渲染默认配置：尾部光标 + 块级淡入 */
+/** 流式渲染默认配置：逐字揭示 + 短淡入 */
 export const MARKDOWN_STREAMING_CONFIG: StreamingOption = {
     hasNextChunk: true,
     enableAnimation: true,
-    tail: { content: '▋' },
-    animationConfig: { fadeDuration: 500 },
+    animationConfig: { fadeDuration: 100 },
+}
+
+/** 逐字揭示基础速率（字符/毫秒），~120 chars/sec */
+const STREAM_BASE_RATE = 0.1
+/** 积压阈值：超过此字符数时自适应加速 */
+const STREAM_CATCHUP_THRESHOLD = 50
+/** 积压追赶帧数（≈30帧 ≈ 500ms，即一个 snapshot 间隔内追完） */
+const STREAM_CATCHUP_FRAMES = 30
+
+/**
+ * 流式内容逐字揭示 hook。
+ * 将批量到达的 snapshot 内容拆分为逐字显示，模拟打字机效果。
+ * 自适应速率：积压时自动加速追平，追上后回落到基础速率。
+ */
+function useStreamingContent(target: string, streaming?: boolean): string {
+    const [display, setDisplay] = useState(target)
+    const targetRef = useRef(target)
+    const revealedRef = useRef(target.length)
+    const rafRef = useRef(0)
+
+    useEffect(() => {
+        targetRef.current = target
+
+        // 非流式或新消息（内容缩短）→ 立即显示全部
+        if (!streaming || target.length < revealedRef.current) {
+            cancelAnimationFrame(rafRef.current)
+            rafRef.current = 0
+            revealedRef.current = target.length
+            setDisplay(target)
+            return
+        }
+
+        // 有未揭示内容且动画未在运行 → 启动
+        if (revealedRef.current < target.length && rafRef.current === 0) {
+            let lastTime = performance.now()
+            let lastRender = lastTime
+            const tick = (now: number) => {
+                const dt = Math.max(now - lastTime, 1)
+                lastTime = now
+
+                const gap = targetRef.current.length - revealedRef.current
+                const rate = gap > STREAM_CATCHUP_THRESHOLD
+                    ? Math.max(STREAM_BASE_RATE, gap / STREAM_CATCHUP_FRAMES)
+                    : STREAM_BASE_RATE
+                const chars = Math.max(1, Math.round(rate * dt))
+                revealedRef.current = Math.min(revealedRef.current + chars, targetRef.current.length)
+
+                // 节流 DOM 更新到 ~20fps，避免 XMarkdown 高频重解析
+                if (now - lastRender >= 50 || revealedRef.current >= targetRef.current.length) {
+                    lastRender = now
+                    setDisplay(targetRef.current.slice(0, revealedRef.current))
+                }
+
+                if (revealedRef.current < targetRef.current.length) {
+                    rafRef.current = requestAnimationFrame(tick)
+                } else {
+                    rafRef.current = 0
+                }
+            }
+            rafRef.current = requestAnimationFrame(tick)
+        }
+    }, [target, streaming])
+
+    useEffect(() => () => cancelAnimationFrame(rafRef.current), [])
+
+    return display
 }
 
 /** 修正 prism 主题中 pre 默认 margin（与 CodeHighlighter 内部 customOneLight 一致） */
@@ -122,6 +187,12 @@ export interface MarkdownProps extends Omit<XMarkdownProps, 'streaming' | 'conte
      * - 省略 / `false` / `undefined`：非流式
      */
     streaming?: boolean | StreamingOption
+    /**
+     * 流式模式下是否启用逐字打字机效果：
+     * - `true`（默认）：将 snapshot 批量内容逐字揭示，自适应速率
+     * - `false`：直接传递完整内容，由 XMarkdown 的 enableAnimation 处理整体渐显
+     */
+    typing?: boolean
     /** 包裹容器的内联样式（默认 maxWidth: 100%） */
     style?: CSSProperties
 }
@@ -137,6 +208,7 @@ export interface MarkdownProps extends Omit<XMarkdownProps, 'streaming' | 'conte
 export const Markdown = memo(function Markdown({
     content,
     streaming,
+    typing = true,
     components,
     paragraphTag,
     className,
@@ -144,15 +216,18 @@ export const Markdown = memo(function Markdown({
     config,
     ...rest
 }: MarkdownProps) {
-    const mergedComponents = useMemo(
-        () => ({ code: DefaultCode, ...(components ?? {}) }),
-        [components],
-    )
+    const useDrip = !!streaming && typing !== false
+    const displayContent = useStreamingContent(content ?? '', useDrip)
 
     const streamingOption: StreamingOption | undefined = useMemo(() => {
         if (streaming === true) return MARKDOWN_STREAMING_CONFIG
         return streaming || undefined
     }, [streaming])
+
+    const mergedComponents = useMemo(
+        () => ({ code: DefaultCode, ...(components ?? {}) }),
+        [components],
+    )
 
     const mergedClassName = useMemo(
         () => ['x-markdown', className].filter(Boolean).join(' '),
@@ -170,11 +245,13 @@ export const Markdown = memo(function Markdown({
         }
     }, [config])
 
+    const finalContent = useDrip ? displayContent : (content ?? '')
+
     return (
         <div className={mergedClassName} style={{ maxWidth: '100%', ...style }}>
             <XMarkdown
                 {...rest}
-                content={content ?? ''}
+                content={finalContent}
                 streaming={streamingOption}
                 components={mergedComponents}
                 paragraphTag={paragraphTag}
