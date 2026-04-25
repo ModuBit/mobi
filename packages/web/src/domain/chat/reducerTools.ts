@@ -181,13 +181,16 @@ export function collectToolIdsFromMessages(messages: NormalizedMessage[]): Set<s
 /**
  * 检查是否为更改标题的工具名称
  */
-export function isChangeTitleToolName(name: string): boolean {
-    return name === 'mcp__mobi__change_title' || name === 'mobi__change_title'
+/** 不需要渲染的内部工具 */
+export function isHiddenTool(name: string): boolean {
+    return name === 'ToolSearch'
+        || name === 'mcp__mobi__change_title'
+        || name === 'mobi__change_title'
 }
 
-/** 不需要渲染的内部工具（SDK 自动调用的工具搜索等） */
-export function isHiddenToolName(name: string): boolean {
-    return name === 'ToolSearch'
+/** 改标题的工具名（isHiddenTool 的子集，需要额外提取标题） */
+export function isChangeTitleToolName(name: string): boolean {
+    return name === 'mcp__mobi__change_title' || name === 'mobi__change_title'
 }
 
 /**

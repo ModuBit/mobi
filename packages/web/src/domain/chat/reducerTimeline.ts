@@ -18,7 +18,7 @@ import type { AgentEventBlock, ChatBlock, EventDisplay, MessageMeta, ToolCallBlo
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
-import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, isHiddenToolName, type PermissionEntry } from './reducerTools'
+import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, isHiddenTool, type PermissionEntry } from './reducerTools'
 
 // 根据事件类型获取渲染提示
 function getEventDisplay(event: { type: string }): EventDisplay | undefined {
@@ -184,21 +184,21 @@ export function reduceTimeline(
                 }
 
                 if (c.type === 'tool-call') {
-                    if (isChangeTitleToolName(c.name)) {
-                        const title = context.titleChangesByToolUseId.get(c.id) ?? extractTitleFromChangeTitleInput(c.input)
-                        if (title && !context.emittedTitleChangeToolUseIds.has(c.id)) {
-                            context.emittedTitleChangeToolUseIds.add(c.id)
-                            blocks.push(createEventBlock({
-                                id: `${msg.id}:${idx}`,
-                                createdAt: msg.createdAt,
-                                event: { type: 'title-changed', title },
-                                meta: msg.meta
-                            }))
+                    if (isHiddenTool(c.name)) {
+                        if (isChangeTitleToolName(c.name)) {
+                            const title = context.titleChangesByToolUseId.get(c.id) ?? extractTitleFromChangeTitleInput(c.input)
+                            if (title && !context.emittedTitleChangeToolUseIds.has(c.id)) {
+                                context.emittedTitleChangeToolUseIds.add(c.id)
+                                blocks.push(createEventBlock({
+                                    id: `${msg.id}:${idx}`,
+                                    createdAt: msg.createdAt,
+                                    event: { type: 'title-changed', title },
+                                    meta: msg.meta
+                                }))
+                            }
                         }
                         continue
                     }
-
-                    if (isHiddenToolName(c.name)) continue
 
                     const permission = context.permissionsById.get(c.id)?.permission
 
@@ -240,7 +240,7 @@ export function reduceTimeline(
                 if (c.type === 'tool-result') {
                     {
                         const permEntry = context.permissionsById.get(c.tool_use_id)
-                        if (permEntry && isHiddenToolName(permEntry.toolName)) continue
+                        if (permEntry && isHiddenTool(permEntry.toolName)) continue
                     }
                     const title = context.titleChangesByToolUseId.get(c.tool_use_id) ?? null
                     if (title) {
