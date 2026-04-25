@@ -50,7 +50,6 @@ import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInpu
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
 
-
 // 重新导出 types 以供其他组件使用
 export type { ToolCallBlock, ToolPermission } from '@/domain/tool/types'
 
