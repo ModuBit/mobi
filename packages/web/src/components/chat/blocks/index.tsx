@@ -28,7 +28,7 @@ export const STREAMING_CONFIG = {
     hasNextChunk: true,
     enableAnimation: true,
     tail: { content: '▋' },
-    animationConfig: { fadeDuration: 200 },
+    animationConfig: { fadeDuration: 500 },
 } as const
 
 /** 根据 block 类型渲染对应组件 */

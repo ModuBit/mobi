@@ -56,7 +56,7 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 ```typescript
 {
     uuid: string           // 消息唯一标识（优先用 SDK 自带 uuid）
-    parentUuid: string     // 父消息 UUID（链式结构）
+    parentUuid: string     // 上一条消息的 UUID（链式结构，指向 lastUuid）
     isSidechain: boolean   // 是否子链（Task 工具的 subagent）
     userType: 'external'   // 固定值
     cwd: string            // 工作目录
@@ -74,6 +74,33 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 子链：sidechainLastUUID 追踪，按 parent_tool_use_id 分组
       子链消息不影响主链的 lastUuid
 ```
+
+**注意**：`parentUuid` 命名容易误解为"父节点 UUID"，实际语义是**上一条消息的 UUID**（`this.lastUuid`），本质是链表的 prev 指针。
+
+### 流式 Snapshot（StreamSnapshotSender）
+
+**文件**：`packages/cli/src/claude/utils/streamSnapshotSender.ts`
+
+在等待完整 assistant 消息期间，CLI 通过 `StreamSnapshotSender` 向 Web 端发送实时快照，实现打字机效果。
+
+**流程**：
+
+```
+SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送 snapshot
+                                                       ↓
+                                               Hub 透传（不落库）
+                                                       ↓
+                                               Web 接收并渲染
+```
+
+**关键设计**：
+
+| 要点 | 说明 |
+|------|------|
+| snapshot id | 使用 SDK `stream_event` 的 uuid，与最终 assistant 消息的 uuid **不同**（它们是两条不同的 JSON 日志行） |
+| snapshot 标识 | `DecryptedMessage.snapshot = true` 区分快照和正式消息 |
+| Hub 处理 | snapshot 不写入 SQLite，直接通过 SSE `message-snapshot` 事件透传给 Web |
+| 关联清理 | Web 端通过 `parentUuid` 关联同一轮次的 snapshot 和 full message；snapshot 和 full message 共享相同的 `parentUuid`（因为 `convertSnapshot` 不更新 `this.lastUuid`） |
 
 ### 特殊方法
 
@@ -93,14 +120,30 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 
 **OutgoingMessageQueue**（`packages/cli/src/claude/utils/OutgoingMessageQueue.ts`）：透传所有消息，不做过滤。消息过滤由前端 `isClaudeChatVisibleMessage()` 等逻辑负责，这样如果后续有消息未渲染，在前端更容易发现。
 
+**主键策略**：Hub 的 `addMessage` 使用 `localId ?? randomUUID()` 作为消息 `id`，即优先使用 CLI 提供的 SDK uuid，仅当无 `localId` 时才生成随机 UUID。
+
 **同步**：`packages/hub/src/sync/syncEngine.ts` — SSE 推送
 
 Hub 通过 SSE 向 Web 端推送 `SyncEvent`：
 - `session-updated`：会话状态变化（心跳、agent state）
-- `message-received`：新消息到达
+- `message-received`：新消息到达（落库后的完整消息）
+- `message-snapshot`：流式快照透传（不落库，`snapshot: true`）
 - `session-added` / `session-removed`：会话增删
 
 Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新。
+
+### SSE 消息缓存更新
+
+**文件**：`packages/web/src/core/providers/SSEProvider.tsx`
+
+`SSEProvider` 使用 `upsertMessageCache` 辅助函数统一处理消息缓存更新：
+
+| 事件类型 | 处理方式 |
+|----------|----------|
+| `message-snapshot` | 同 id 原地更新（覆盖旧 snapshot），新 id 追加 |
+| `message-received` | 先通过 `parentUuid` 清除同轮次的残留 snapshot，再 upsert |
+
+**snapshot 清理机制**：由于 SDK `stream_event` uuid ≠ 最终 `assistant` 消息 uuid，snapshot 和 full message 的 id 不同，无法通过 id 匹配替换。因此通过提取 raw content 中的 `parentUuid`（`content.content.data.parentUuid`）关联同一轮次的消息——同一轮次的 snapshot 和第一条 full message 共享相同的 `parentUuid`。
 
 ---
 
@@ -236,7 +279,7 @@ NormalizedMessage[]
 | `role: 'event'` (其他) | `AgentEventBlock (kind: 'agent-event')` | 系统事件 |
 | `role: 'agent'` + text block | `AgentTextBlock (kind: 'agent-text')` | 文本合并到已有 block 或新建 |
 | `role: 'agent'` + reasoning block | `AgentReasoningBlock (kind: 'agent-reasoning')` | 思考过程 |
-| `role: 'agent'` + tool-call block | `ToolCallBlock (kind: 'tool-call')` | 工具调用（含子 block） |
+| `role: 'agent'` + tool-call block | `ToolCallBlock (kind: 'tool-call')` | 工具调用（含子 block）；`isHiddenTool()` 返回 true 的工具跳过不渲染 |
 | `role: 'agent'` + tool-result block | 嵌入对应 ToolCallBlock | 作为工具调用的子节点 |
 | `role: 'agent'` + sidechain block | `AgentTextBlock (kind: 'agent-text')` | subagent prompt 展示 |
 | `role: 'agent'` + summary block | `AgentTextBlock (kind: 'agent-text')` | 摘要文本 |
@@ -294,6 +337,7 @@ type ChatBlock =
 | SDK `result` (漏过 CLI 的) | Web `normalize.ts` 兜底 | 防御性检查 |
 | `isMeta === true` | Web `normalizeAgent.ts` | 元数据消息 |
 | `isCompactSummary === true` | Web `normalizeAgent.ts` | 压缩摘要 |
+| 隐藏工具（ToolSearch 等） | Web `reducerTimeline.ts` | `isHiddenTool()` 返回 true 的 tool-call/tool-result 不渲染 |
 | System 非可见 subtype | Web `normalizeAgent.ts` | 如非 `api_error`/`api_retry`/`turn_duration`/`compact_boundary` 等 |
 
 ### 转换为事件（不直接展示文本）
@@ -307,6 +351,27 @@ type ChatBlock =
 | System `turn_duration` | `AgentEvent { type: 'turn-duration', durationMs }` |
 | System `compact_boundary` | `AgentEvent { type: 'compact', trigger, preTokens }` |
 | System `init` (model: ready) | 不输出（标记 hasReadyEvent） |
+
+### 流式 Snapshot 生命周期
+
+| 阶段 | 事件 | 处理 |
+|------|------|------|
+| SDK stream_event 到达 | CLI `StreamSnapshotSender` 累积 delta | 每 500ms 生成 snapshot |
+| Snapshot 发送 | Hub 收到 `snapshot: true` 的消息 | 不落库，直接 SSE `message-snapshot` 透传 |
+| Web 收到 snapshot | `SSEProvider` → `upsertMessageCache` | 同 id 原地更新，新 id 追加 |
+| Web 渲染 snapshot | `reducerTimeline` → `isSnapshot` 标记 | `AgentTextBlock` / `AgentReasoningBlock` 带 `isSnapshot` 标记，ChatContainer 对最后一个 running snapshot 启用 typing 光标 |
+| Full message 到达 | `SSEProvider` → `upsertMessageCache` | 通过 `parentUuid` 清除同轮次 snapshot，full message 正常 upsert |
+
+### 隐藏工具
+
+**文件**：`packages/web/src/domain/chat/reducerTools.ts` → `isHiddenTool()`
+
+部分工具是 SDK 内部调用，不需要渲染：
+
+| 工具名 | 说明 | 额外处理 |
+|--------|------|----------|
+| `ToolSearch` | SDK 自动调用的工具搜索 | 无 |
+| `mcp__mobi__change_title` / `mobi__change_title` | 改标题工具 | 提取标题，生成 `title-changed` 事件（不渲染工具卡片本身） |
 
 ### 正常渲染
 
@@ -330,15 +395,17 @@ type ChatBlock =
 | CLI 类型 | `packages/cli/src/claude/types.ts` | RawJSONLines Schema 定义 |
 | CLI 启动 | `packages/cli/src/claude/claudeRemoteLauncher.ts` | 创建 Converter，管理消息流 |
 | CLI 队列 | `packages/cli/src/claude/utils/OutgoingMessageQueue.ts` | 消息发送队列（保序、延迟发送、透传） |
-| CLI 循环 | `packages/cli/src/claude/claudeRemote.ts` | 处理 result 控制信号 |
+| CLI 循环 | `packages/cli/src/claude/claudeRemote.ts` | 处理 result 控制信号、流式 snapshot 事件分发 |
+| CLI 快照发送 | `packages/cli/src/claude/utils/streamSnapshotSender.ts` | 累积 stream_event delta，定时发送 snapshot |
 | Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化 |
 | Hub 同步 | `packages/hub/src/sync/syncEngine.ts` | SSE 推送 |
-| Web SSE | `packages/web/src/providers/SSEProvider.tsx` | 接收实时事件 |
+| Web SSE | `packages/web/src/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + parentUuid 关联清理） |
 | Web 标准化入口 | `packages/web/src/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
 | Web Agent 标准化 | `packages/web/src/chat/normalizeAgent.ts` | Agent 消息详细解析 |
 | Web User 标准化 | `packages/web/src/chat/normalizeUser.ts` | User 消息解析 |
 | Web 类型 | `packages/web/src/chat/types.ts` | NormalizedMessage / ChatBlock 类型 |
 | Web 归约 | `packages/web/src/chat/reducer.ts` | NormalizedMessage[] → ChatBlock[] |
-| Web 时间线归约 | `packages/web/src/chat/reducerTimeline.ts` | 时间线 → ChatBlock 转换 |
+| Web 时间线归约 | `packages/web/src/chat/reducerTimeline.ts` | 时间线 → ChatBlock 转换、隐藏工具过滤（isHiddenTool） |
+| Web 工具过滤 | `packages/web/src/chat/reducerTools.ts` | isHiddenTool / isChangeTitleToolName 判断 |
 | Web 渲染 | `packages/web/src/components/chat/ChatContainer.tsx` | ChatBlock → UI 组件 |
 | 共享工具 | `packages/shared/src/messages.ts` | unwrapRole / isSkippable / isVisible |
