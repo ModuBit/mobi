@@ -96,6 +96,7 @@ export type PermissionCompletion = {
     status: 'approved' | 'denied' | 'canceled';
     reason?: string;
     mode?: string;
+    /** @deprecated 未使用，权限范围由 allowTools 和 mode 决定 */
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
     allowTools?: string[];
     answers?: Record<string, string[]> | Record<string, { answers: string[] }>;

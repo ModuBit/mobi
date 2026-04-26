@@ -194,22 +194,17 @@
 ## 13. Web 端权限审批"本次会话允许"功能未生效
 
 **相关文件**：
-- `packages/web/src/components/ToolCard/PermissionFooter.tsx` — 权限审批 UI
+- `packages/web/src/components/tool-card/PermissionFooter.tsx` — 权限审批 UI
 - `packages/web/src/api/client.ts:138-143` — API 调用（approve/deny）
 - `packages/hub/src/sync/rpcGateway.ts:70-86` — Hub 转发 RPC
 - `packages/cli/src/claude/utils/permissionHandler.ts:270-281` — CLI 端判断逻辑
 
-**现状**：
-- UI 上有三个按钮："允许一次"、"本次会话允许"、"拒绝"
-- 但三个按钮都调用同一个 `api.permissions.approve(sessionId, requestId)`，无额外参数
-- Hub 的 `approvePermission` 支持 `allowTools` 参数，但 Web 端从未传入
-- CLI 端通过 `response.allowTools` 区分 `user_permanent` vs `user_temporary`，但永远收到 `undefined`
-- **结论：三个按钮效果完全一样，都是"允许一次"**
+**状态**：✅ 已修复
 
-**待修复**：
-- `PermissionFooter.tsx` 的 `approveForSession` 回调（line 141-148）需将 `toolIdentifier` 作为 `allowTools` 传入 API
-- `approveAllEdits` 回调（line 134-139）需传入 `mode: 'acceptEdits'`
-- `api/client.ts` 的 `approve` 方法签名需支持 `allowTools` 和 `mode` 参数
+**修复内容**：
+- `PermissionFooter.tsx` 的 `approveForSession` 回调现在传递 `allowTools` 参数
+- `approveAllEdits` 回调现在传递 `mode: 'acceptEdits'` 参数
+- 移除了冗余的 `PermissionRequest.tsx`，权限按钮统一在 `ToolCallRenderer` 中渲染
 
 ---
 
@@ -220,22 +215,15 @@
 - `packages/cli/src/modules/common/permission/BasePermissionHandler.ts` — 通用权限基类
 - `packages/cli/src/claude/claudeRemote.ts` — SDK 集成点
 - `packages/cli/src/claude/claudeRemoteLauncher.ts` — 生命周期管理
-- `packages/web/src/components/ToolCard/PermissionFooter.tsx` — Web 端审批 UI
+- `packages/web/src/components/tool-card/PermissionFooter.tsx` — Web 端审批 UI
 - `packages/web/src/api/client.ts` — API 客户端
 
 **现状问题**：
 
-### 14.1 Web 端"本次会话允许"功能未生效（原 #13）
+### 14.1 Web 端"本次会话允许"功能未生效（原 #13）✅ 已修复
 
-- UI 三个按钮（允许一次、本次会话允许、允许所有编辑）调用同一个 API，无 `allowTools` / `mode` 参数
-- Hub `approvePermission` 支持 `allowTools` 和 `mode` 参数，但 Web 端从未传入
-- CLI 端通过 `response.allowTools` 区分 `user_permanent` vs `user_temporary`，但永远收到 `undefined`
-- **结论：三个按钮效果完全一样，都是"允许一次"**
-
-**待修复**：
-- `PermissionFooter.tsx` 的 `approveForSession` 回调需将 `toolIdentifier` 作为 `allowTools` 传入
-- `approveAllEdits` 回调需传入 `mode: 'acceptEdits'`
-- `api/client.ts` 的 `approve` 方法签名需支持 `allowTools` 和 `mode` 参数
+- UI 三个按钮现在正确传递 `allowTools` / `mode` 参数
+- `decision` 字段已标记为 deprecated，权限范围由 `allowTools` 和 `mode` 决定
 
 ### 14.2 ExitPlanMode 模式丢失
 
@@ -440,3 +428,27 @@
 **优先级**：
 - 低优先级，当前本地/局域网场景无需优化
 - 当 Hub 上云或多客户端并发时再实施
+
+---
+
+## 22. Web 端权限审批支持 "Always Allow"（永久允许）
+
+**相关文件**：
+- `packages/web/src/components/chat/PermissionRequest.tsx` — 权限审批 UI
+- `packages/web/src/components/tool-card/PermissionFooter.tsx` — 工具卡片内权限 UI
+- `packages/cli/src/claude/utils/permissionHandler.ts` — CLI 端权限处理
+
+**现状**：
+- Web 端权限审批只支持：
+  - 普通工具：Allow / Allow for session / Deny
+  - Edit 工具：Allow / Allow all edits / Deny
+- CLI 端支持 "Always allow"（写入项目/用户配置文件），Web 端暂不支持
+
+**待实现**：
+- Web 端增加 "Always allow" 选项
+- 通过 SDK 的 `updatedPermissions` + `destination: 'projectSettings'` 持久化权限规则
+- 需确认前端 UI 设计（避免选项过多）
+
+**优先级**：
+- 低优先级，当前会话内授权满足基本需求
+- 后续根据用户反馈决定是否实现

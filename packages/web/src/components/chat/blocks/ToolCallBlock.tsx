@@ -20,11 +20,13 @@ import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { ChatBlock } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
+import type { MobiApi } from '@/core/data/api/client'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { getToolPresentation } from '@/components/tool-card/knownTools'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
+import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
 
 /** 工具预览内容（在 Think 展开区域内渲染） */
 function ToolCallPreviewContent({
@@ -98,9 +100,13 @@ function ToolCallPreviewContent({
 }
 
 /** 渲染 ToolCallBlock（来自 reduceChatBlocks） */
-export function ToolCallRenderer({ block, metadata }: {
+export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, onDone }: {
     block: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
+    api?: MobiApi
+    sessionId?: string
+    disabled?: boolean
+    onDone?: () => void
 }) {
     const { token } = antTheme.useToken()
     const { t } = useTranslation()
@@ -109,6 +115,8 @@ export function ToolCallRenderer({ block, metadata }: {
 
     const tool = block.tool
     const isLoading = tool.state === 'running'
+    const isPending = tool.state === 'pending'
+    const hasPermission = tool.permission && tool.permission.status === 'pending'
     const toolPresentation = getToolPresentation({
         toolName: tool.name,
         input: tool.input,
@@ -117,6 +125,25 @@ export function ToolCallRenderer({ block, metadata }: {
         description: tool.description ?? null,
         metadata
     })
+
+    // 转换为 PermissionFooter 需要的 tool 格式
+    const toolForPermission = useMemo(() => ({
+        name: tool.name,
+        input: tool.input,
+        result: tool.result,
+        state: tool.state,
+        description: tool.description,
+        startedAt: tool.startedAt,
+        createdAt: tool.createdAt,
+        permission: tool.permission ? {
+            id: tool.permission.id,
+            status: tool.permission.status,
+            reason: tool.permission.reason,
+            mode: tool.permission.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
+            allowedTools: tool.permission.allowedTools,
+            answers: tool.permission.answers,
+        } : null,
+    }), [tool])
 
     return (
         <>
@@ -147,6 +174,19 @@ export function ToolCallRenderer({ block, metadata }: {
                     metadata={metadata}
                     onViewDetail={() => setDrawerOpen(true)}
                 />
+                {/* pending 状态显示权限操作按钮 */}
+                {hasPermission && api && sessionId ? (
+                    <div style={{ marginTop: 8, paddingLeft: 12, paddingRight: 12 }}>
+                        <PermissionFooter
+                            api={api}
+                            sessionId={sessionId}
+                            metadata={metadata}
+                            tool={toolForPermission}
+                            disabled={disabled ?? false}
+                            onDone={onDone ?? (() => {})}
+                        />
+                    </div>
+                ) : null}
             </Think>
             <ToolDetailDrawer
                 block={block}

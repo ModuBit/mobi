@@ -27,9 +27,10 @@ import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions
 import { reduceChatBlocks, normalizeDecryptedMessage, hasBashTags } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { renderChatBlock } from './blocks'
-import { PermissionRequest } from './PermissionRequest'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CopyButton } from './CopyButton'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
@@ -79,6 +80,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
+    const { token: authToken } = useAuthStore()
+    const api = useMobiApi(authToken)
 
     // 工具渲染所需的元数据
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
@@ -167,7 +170,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 isLastRunningBlock && isSnapshot
                     ? { ...block, isStreaming: true }
                     : block,
-                { metadata, isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock }
+                {
+                    metadata,
+                    isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock,
+                    api,
+                    sessionId,
+                    disabled: sendMutation.isPending,
+                }
             )
             if (content === null) continue
 
@@ -297,12 +306,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     />
                 )}
             </div>
-
-            {/* 权限请求提示 */}
-            <PermissionRequest
-                sessionId={sessionId}
-                session={session}
-            />
 
             {/* Composer 输入组件 */}
             <ChatComposer

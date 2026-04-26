@@ -134,7 +134,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const approveAllEdits = async () => {
         if (!isPending || !canAllowAllEdits || loading || loadingAllEdits || loadingForSession) return
         setLoadingAllEdits(true)
-        await run(() => props.api.permissions.approve(props.sessionId, permission.id))
+        // 传递 mode: 'acceptEdits' 参数，切换到 acceptEdits 模式
+        await run(() => props.api.permissions.approve(props.sessionId, permission.id, { mode: 'acceptEdits' }))
         setLoadingAllEdits(false)
     }
 
@@ -143,7 +144,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
         setLoadingForSession(true)
         const command = toolName === 'Bash' ? getInputStringAny(props.tool.input, ['command', 'cmd']) : null
         const toolIdentifier = toolName === 'Bash' && command ? `Bash(${command})` : toolName
-        await run(() => props.api.permissions.approve(props.sessionId, permission.id))
+        // 传递 allowTools 参数，让 CLI 在会话内自动允许该工具
+        await run(() => props.api.permissions.approve(props.sessionId, permission.id, { allowTools: [toolIdentifier] }))
         setLoadingForSession(false)
     }
 

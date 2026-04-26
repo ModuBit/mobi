@@ -46,6 +46,8 @@ interface PermissionResponse {
     allowTools?: string[];
     answers?: Record<string, string[]> | Record<string, { answers: string[] }>;
     receivedAt?: number;
+    /** @deprecated 未使用，权限范围由 allowTools 和 mode 决定 */
+    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
 }
 
 const PLAN_EXIT_MODES: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions'];
