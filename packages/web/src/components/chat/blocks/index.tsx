@@ -17,6 +17,7 @@
 import type React from 'react'
 import type { ChatBlock } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
+import type { MobiApi } from '@/core/data/api/client'
 import { TextBlock } from './TextBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
@@ -27,6 +28,14 @@ import { ToolCallRenderer } from './ToolCallBlock'
 export type ChatBlockContext = {
     metadata: SessionMetadataSummary | null
     isThinking: boolean
+    /** API 客户端（用于权限操作） */
+    api?: MobiApi
+    /** 会话 ID（用于权限操作） */
+    sessionId?: string
+    /** 是否禁用操作 */
+    disabled?: boolean
+    /** 操作完成回调 */
+    onDone?: () => void
 }
 
 /** 根据 block 类型渲染对应组件 */
@@ -41,7 +50,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
         case 'cli-output':
             return <CliOutputBlock text={block.text} />
         case 'tool-call':
-            return <ToolCallRenderer block={block} metadata={ctx.metadata} />
+            return <ToolCallRenderer block={block} metadata={ctx.metadata} api={ctx.api} sessionId={ctx.sessionId} disabled={ctx.disabled} onDone={ctx.onDone} />
         case 'agent-event':
             return <AgentEventBlock block={block} />
         default:
