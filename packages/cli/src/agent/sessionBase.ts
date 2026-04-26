@@ -88,6 +88,14 @@ export class AgentSessionBase<Mode> {
         const permissionLabel = this.permissionMode ?? 'unset';
         const modelLabel = this.model === undefined ? 'unset' : (this.model ?? 'auto');
         logger.debug(`[${this.sessionLabel}] Mode switched to ${mode} (permissionMode=${permissionLabel}, model=${modelLabel})`);
+
+        // 模式切换时控制 IdleTimer
+        if (mode === 'remote') {
+            this.client.startIdleTimer();
+        } else {
+            this.client.stopIdleTimer();
+        }
+
         this._onModeChange(mode);
     };
 
