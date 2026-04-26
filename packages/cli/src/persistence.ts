@@ -26,7 +26,7 @@ import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
 import { configuration } from '@/configuration'
 import { isProcessAlive } from '@/utils/process';
 
-interface Settings {
+export interface Settings {
   // This ID is used as the actual database ID on the server
   // All machine operations use this ID
   machineId?: string
@@ -37,6 +37,10 @@ interface Settings {
   apiUrl?: string
   // Legacy field name (for migration, read-only)
   serverUrl?: string
+  // 超时配置
+  disconnectTimeoutMs?: number   // 连接断开超时
+  idleTimeoutMs?: number         // 交互不活跃超时
+  timeoutWarningMs?: number      // 预警提前时间
 }
 
 const defaultSettings: Settings = {}

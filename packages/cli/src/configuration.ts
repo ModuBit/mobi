@@ -21,11 +21,12 @@
  * Environment files should be loaded using Node's --env-file flag
  */
 
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import packageJson from '../package.json'
 import { getCliArgs } from '@/utils/cliArgs'
+import type { Settings } from '@/persistence'
 
 class Configuration {
     private _apiUrl: string
@@ -43,6 +44,9 @@ class Configuration {
     public readonly currentCliVersion: string
 
     public readonly isExperimentalEnabled: boolean
+
+    // 配置文件中的设置
+    private settings: Pick<Settings, 'disconnectTimeoutMs' | 'idleTimeoutMs' | 'timeoutWarningMs'> = {}
 
     constructor() {
         // Server configuration
@@ -80,6 +84,21 @@ class Configuration {
         if (!existsSync(this.logsDir)) {
             mkdirSync(this.logsDir, { recursive: true })
         }
+
+        // 同步读取 settings.json（如果存在）
+        try {
+            if (existsSync(this.settingsFile)) {
+                const content = readFileSync(this.settingsFile, 'utf8')
+                const parsed = JSON.parse(content)
+                this.settings = {
+                    disconnectTimeoutMs: parsed.disconnectTimeoutMs,
+                    idleTimeoutMs: parsed.idleTimeoutMs,
+                    timeoutWarningMs: parsed.timeoutWarningMs,
+                }
+            }
+        } catch {
+            // 忽略读取错误，使用默认值
+        }
     }
 
     get apiUrl(): string {
@@ -96,6 +115,59 @@ class Configuration {
 
     _setCliApiToken(token: string): void {
         this._cliApiToken = token
+    }
+
+    // 超时配置（带环境变量和配置文件优先级）
+    // 优先级：环境变量 > 配置文件 > 默认值
+    get disconnectTimeoutMs(): number {
+        // 1. 环境变量优先
+        const env = process.env.MOBI_DISCONNECT_TIMEOUT_MS
+        if (env) {
+            const parsed = parseInt(env, 10)
+            if (!isNaN(parsed) && parsed > 0) {
+                return parsed
+            }
+        }
+        // 2. 配置文件次之
+        if (this.settings.disconnectTimeoutMs && this.settings.disconnectTimeoutMs > 0) {
+            return this.settings.disconnectTimeoutMs
+        }
+        // 3. 默认值
+        return 600000 // 默认 10 分钟
+    }
+
+    get idleTimeoutMs(): number {
+        // 1. 环境变量优先
+        const env = process.env.MOBI_IDLE_TIMEOUT_MS
+        if (env) {
+            const parsed = parseInt(env, 10)
+            if (!isNaN(parsed) && parsed > 0) {
+                return parsed
+            }
+        }
+        // 2. 配置文件次之
+        if (this.settings.idleTimeoutMs && this.settings.idleTimeoutMs > 0) {
+            return this.settings.idleTimeoutMs
+        }
+        // 3. 默认值
+        return 86400000 // 默认 1 天
+    }
+
+    get timeoutWarningMs(): number {
+        // 1. 环境变量优先
+        const env = process.env.MOBI_TIMEOUT_WARNING_MS
+        if (env) {
+            const parsed = parseInt(env, 10)
+            if (!isNaN(parsed) && parsed > 0) {
+                return parsed
+            }
+        }
+        // 2. 配置文件次之
+        if (this.settings.timeoutWarningMs && this.settings.timeoutWarningMs > 0) {
+            return this.settings.timeoutWarningMs
+        }
+        // 3. 默认值
+        return 300000 // 默认 5 分钟
     }
 }
 
