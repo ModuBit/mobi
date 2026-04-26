@@ -20,7 +20,7 @@
  */
 
 import { logger as defaultLogger } from '@/ui/logger'
-import type { RpcHandler, RpcHandlerConfig, RpcHandlerMap, RpcRequest } from './types'
+import type { RpcHandler, RpcHandlerConfig, RpcHandlerMap, RpcRequest, RpcHandlerOptions } from './types'
 import type { Socket } from 'socket.io-client'
 
 function safeJsonParse(value: string): unknown {
@@ -31,24 +31,41 @@ function safeJsonParse(value: string): unknown {
     }
 }
 
+/**
+ * 处理器条目，包含处理器和选项
+ */
+type HandlerEntry = {
+    handler: RpcHandler;
+    options?: RpcHandlerOptions;
+};
+
 export class RpcHandlerManager {
-    private handlers: RpcHandlerMap = new Map()
+    private handlers: Map<string, HandlerEntry> = new Map()
     private readonly scopePrefix: string
     private readonly logger: (message: string, data?: any) => void
     private socket: Socket | null = null
+    private onRpcCalled?: () => void
 
     constructor(config: RpcHandlerConfig) {
         this.scopePrefix = config.scopePrefix
         this.logger = config.logger || ((msg, data) => defaultLogger.debug(msg, data))
     }
 
+    /**
+     * 设置 RPC 调用回调（用于重置空闲计时器）
+     */
+    setOnRpcCalled(callback: (() => void) | undefined): void {
+        this.onRpcCalled = callback;
+    }
+
     registerHandler<TRequest = any, TResponse = any>(
         method: string,
-        handler: RpcHandler<TRequest, TResponse>
+        handler: RpcHandler<TRequest, TResponse>,
+        options?: RpcHandlerOptions
     ): void {
         const prefixedMethod = this.getPrefixedMethod(method)
 
-        this.handlers.set(prefixedMethod, handler)
+        this.handlers.set(prefixedMethod, { handler, options })
 
         if (this.socket) {
             this.socket.emit('rpc-register', { method: prefixedMethod })
@@ -57,14 +74,19 @@ export class RpcHandlerManager {
 
     async handleRequest(request: RpcRequest): Promise<string> {
         try {
-            const handler = this.handlers.get(request.method)
-            if (!handler) {
+            const entry = this.handlers.get(request.method)
+            if (!entry) {
                 this.logger('[RPC] [ERROR] Method not found', { method: request.method })
                 return JSON.stringify({ error: 'Method not found' })
             }
 
+            // 检查是否跳过计时器重置
+            if (!entry.options?.skipIdleTimerReset && this.onRpcCalled) {
+                this.onRpcCalled()
+            }
+
             const params = safeJsonParse(request.params)
-            const result = await handler(params as any)
+            const result = await entry.handler(params as any)
             return JSON.stringify(result)
         } catch (error) {
             const details = error instanceof Error

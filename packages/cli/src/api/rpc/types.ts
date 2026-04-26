@@ -54,6 +54,14 @@ export interface RpcHandlerConfig {
 }
 
 /**
+ * RPC 处理器选项
+ */
+export interface RpcHandlerOptions {
+    /** 是否跳过空闲计时器重置，默认 false */
+    skipIdleTimerReset?: boolean;
+}
+
+/**
  * Result of RPC handler execution
  */
 export type RpcHandlerResult<T = any> =
