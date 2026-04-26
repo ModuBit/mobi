@@ -155,6 +155,19 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     lifecycle.registerProcessHandlers();
     registerKillSessionHandler(apiSession.rpcHandlerManager, lifecycle.cleanupAndExit);
 
+    // 监听超时事件
+    apiSession.on('disconnect-timeout', () => {
+        logger.debug('[Session] Disconnect timeout, archiving and exiting');
+        lifecycle.setArchiveReason('Disconnect timeout');
+        void lifecycle.cleanupAndExit();
+    });
+
+    apiSession.on('idle-timeout', () => {
+        logger.debug('[Session] Idle timeout, archiving and exiting');
+        lifecycle.setArchiveReason('Idle timeout');
+        void lifecycle.cleanupAndExit();
+    });
+
     // Set initial agent state
     const startingMode = options.startingMode ?? (startedBy === 'runner' ? 'remote' : 'local');
     setControlledByUser(apiSession, startingMode);
