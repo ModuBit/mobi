@@ -170,54 +170,64 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
         </div>
     )
 
+    // 是否有专用视图组件（Edit、Bash 等有专门的 diff/terminal 视图）
+    const hasSpecialView = !!(FullView || CompactView)
+
     return (
         <ContentDrawer
             open={open}
             onClose={onClose}
             title={titleContent}
         >
-            {/* 输入区 */}
-            <div style={sectionStyle}>
-                <div style={labelStyle}>{t('chat.tool.input')}</div>
-                {FullView ? (
-                    <FullView block={adaptedBlock} metadata={metadata} />
-                ) : CompactView ? (
-                    <CompactView block={adaptedBlock} metadata={metadata} />
-                ) : (
-                    <pre style={{
-                        background: token.colorBgContainer,
-                        padding: 8,
-                        borderRadius: 4,
-                        fontSize: 12,
-                        overflowX: 'auto',
-                        margin: '4px 0',
-                        border: `1px solid ${token.colorBorder}`,
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                    }}>
-                        {safeStringify(tool.input)}
-                    </pre>
-                )}
-            </div>
-
-            {/* 分隔线 */}
-            <div style={{ ...dividerStyle, marginLeft: 16, marginRight: 16 }} />
-
-            {/* 输出区 */}
-            <div style={sectionStyle}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <div style={labelStyle}>{t('chat.tool.output')}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <StatusStateIcon state={tool.state} style={{ fontSize: 12 }} />
-                        {statusText ? (
-                            <Text type="secondary" style={{ fontSize: 11 }}>{statusText}</Text>
-                        ) : null}
+            {/* 有专用视图时直接展示，不分 Input/Output */}
+            {hasSpecialView ? (
+                <div style={sectionStyle}>
+                    {FullView ? (
+                        <FullView block={adaptedBlock} metadata={metadata} />
+                    ) : CompactView ? (
+                        <CompactView block={adaptedBlock} metadata={metadata} />
+                    ) : null}
+                </div>
+            ) : (
+                <>
+                    {/* 输入区 */}
+                    <div style={sectionStyle}>
+                        <div style={labelStyle}>{t('chat.tool.input')}</div>
+                        <pre style={{
+                            background: token.colorBgContainer,
+                            padding: 8,
+                            borderRadius: 4,
+                            fontSize: 12,
+                            overflowX: 'auto',
+                            margin: '4px 0',
+                            border: `1px solid ${token.colorBorder}`,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                        }}>
+                            {safeStringify(tool.input)}
+                        </pre>
                     </div>
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                    <ResultView block={adaptedBlock} metadata={metadata} />
-                </div>
-            </div>
+
+                    {/* 分隔线 */}
+                    <div style={{ ...dividerStyle, marginLeft: 16, marginRight: 16 }} />
+
+                    {/* 输出区 */}
+                    <div style={sectionStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <div style={labelStyle}>{t('chat.tool.output')}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <StatusStateIcon state={tool.state} style={{ fontSize: 12 }} />
+                                {statusText ? (
+                                    <Text type="secondary" style={{ fontSize: 11 }}>{statusText}</Text>
+                                ) : null}
+                            </div>
+                        </div>
+                        <div style={{ overflowX: 'auto' }}>
+                            <ResultView block={adaptedBlock} metadata={metadata} />
+                        </div>
+                    </div>
+                </>
+            )}
         </ContentDrawer>
     )
 }
