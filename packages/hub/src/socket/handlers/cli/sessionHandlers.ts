@@ -39,6 +39,12 @@ type SessionEndPayload = {
     time: number
 }
 
+type IdleTimeoutWarningPayload = {
+    sid: string
+    timeoutAt: number
+    remainingMs: number
+}
+
 type ResolveSessionAccess = (sessionId: string) => AccessResult<StoredSession>
 
 type EmitAccessError = (scope: 'session' | 'machine', id: string, reason: AccessErrorReason) => void
@@ -301,5 +307,24 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
         onSessionEnd?.(data)
+    })
+
+    socket.on('idle-timeout-warning', (data: IdleTimeoutWarningPayload) => {
+        if (!data || typeof data.sid !== 'string' || typeof data.timeoutAt !== 'number' || typeof data.remainingMs !== 'number') {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        onWebappEvent?.({
+            type: 'idle-timeout-warning',
+            sessionId: data.sid,
+            data: {
+                timeoutAt: data.timeoutAt,
+                remainingMs: data.remainingMs
+            }
+        })
     })
 }
