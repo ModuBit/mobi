@@ -65,13 +65,15 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
     const initialState: AgentState = {};
     const initialModel = normalizeClaudeSessionModel(options.model);
+    const startingMode = options.startingMode ?? (startedBy === 'runner' ? 'remote' : 'local');
     const { api, apiSession, sessionInfo } = await bootstrapSession({
         flavor: 'claude',
         startedBy,
         workingDirectory,
         agentState: initialState,
         model: initialModel ?? undefined,
-        claudeArgs: options.claudeArgs   // 用于 --resume 时复用 Hub session
+        claudeArgs: options.claudeArgs,   // 用于 --resume 时复用 Hub session
+        startingMode
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
 
@@ -166,7 +168,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     apiSession.on('idle-timeout', () => handleTimeout('Idle timeout'));
 
     // Set initial agent state
-    const startingMode = options.startingMode ?? (startedBy === 'runner' ? 'remote' : 'local');
     setControlledByUser(apiSession, startingMode);
 
     // Import MessageQueue and create message queue

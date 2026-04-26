@@ -39,6 +39,7 @@ export type SessionBootstrapOptions = {
     agentState?: AgentState | null
     model?: string
     claudeArgs?: string[]   // 用于解析 --resume，从而复用已有 Hub session
+    startingMode?: 'local' | 'remote'
 }
 
 export type SessionBootstrapResult = {
@@ -182,7 +183,8 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
     const sessionInfo = await api.getOrCreateSession({
         tag: sessionTag,
         metadata,
-        state: agentState
+        state: agentState,
+        mode: options.startingMode
     })
 
     const apiSession = api.sessionSyncClient(sessionInfo)

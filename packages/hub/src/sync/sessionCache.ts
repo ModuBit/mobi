@@ -134,9 +134,16 @@ export class SessionCache {
         return this.getSessions().filter((session) => session.active)
     }
 
-    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string): Session {
+    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, mode?: 'local' | 'remote'): Session {
         const stored = this.store.sessions.getOrCreateSession(tag, metadata, agentState, namespace)
-        return this.refreshSession(stored.id) ?? (() => { throw new Error('Failed to load session') })()
+        const session = this.refreshSession(stored.id) ?? (() => { throw new Error('Failed to load session') })()
+
+        // 如果传入了 mode 且 session 当前没有 mode，设置初始 mode
+        if (mode !== undefined && session.mode === undefined) {
+            session.mode = mode
+        }
+
+        return session
     }
 
     getSessionByClaudeSessionId(claudeSessionId: string, namespace: string): Session | null {

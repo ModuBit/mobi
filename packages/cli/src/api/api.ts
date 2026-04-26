@@ -96,13 +96,15 @@ export class ApiClient {
         tag: string
         metadata: Metadata
         state: AgentState | null
+        mode?: 'local' | 'remote'
     }): Promise<Session> {
         const response = await axios.post<CreateSessionResponse>(
             `${configuration.apiUrl}/cli/sessions`,
             {
                 tag: opts.tag,
                 metadata: opts.metadata,
-                agentState: opts.state
+                agentState: opts.state,
+                mode: opts.mode
             },
             {
                 headers: {
