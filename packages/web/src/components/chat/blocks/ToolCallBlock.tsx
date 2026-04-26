@@ -33,14 +33,21 @@ import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
 function ToolCallPreviewContent({
     toolCallBlock,
     metadata,
-    onViewDetail
+    onViewDetail,
+    showInput
 }: {
     toolCallBlock: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
     onViewDetail: () => void
+    showInput?: boolean
 }) {
     const tool = toolCallBlock.tool
-    const ResultView = useMemo(() => getToolResultViewComponent(tool.name), [tool.name])
+    const ViewComponent = useMemo(() => {
+        if (showInput) {
+            return getToolViewComponent(tool.name)
+        }
+        return getToolResultViewComponent(tool.name)
+    }, [showInput, tool.name])
 
     // 转换为 ToolCard/types.ToolCallBlock 格式
     const adaptedBlock = useMemo(() => {
@@ -60,7 +67,7 @@ function ToolCallPreviewContent({
             tool: {
                 name: tool.name,
                 input: tool.input,
-                result: tool.result ?? undefined,
+                result: showInput ? undefined : (tool.result ?? undefined),
                 state: tool.state,
                 description: tool.description,
                 startedAt: tool.startedAt,
@@ -85,16 +92,18 @@ function ToolCallPreviewContent({
                     children: [],
                 })),
         }
-    }, [toolCallBlock, tool])
+    }, [toolCallBlock, tool, showInput])
 
-    const showPreview = tool.state !== 'running' && tool.result !== undefined
+    // 输入预览：有权限请求时显示
+    // 结果预览：非运行状态且有结果时显示
+    const showPreview = showInput || (tool.state !== 'running' && tool.result !== undefined)
 
-    if (!showPreview) return null
+    if (!showPreview || !ViewComponent) return null
 
     return (
         <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
             <OverflowContainer maxHeight={100} onClickExpand={onViewDetail}>
-                <ResultView block={adaptedBlock} metadata={metadata} />
+                <ViewComponent block={adaptedBlock} metadata={metadata} />
             </OverflowContainer>
         </div>
     )
@@ -116,7 +125,6 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
 
     const tool = block.tool
     const isLoading = tool.state === 'running'
-    const isPending = tool.state === 'pending'
     const hasPermission = tool.permission && tool.permission.status === 'pending'
     const toolPresentation = getToolPresentation({
         toolName: tool.name,
@@ -146,36 +154,6 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         } : null,
     }), [tool])
 
-    // 有待审批权限请求时显示工具输入预览（如 Edit 的 diff）
-    const InputView = useMemo(() => {
-        if (!hasPermission) return null
-        return getToolViewComponent(tool.name)
-    }, [hasPermission, tool.name])
-
-    // 转换为 InputView 需要的 block 格式
-    const adaptedBlockForInput = useMemo(() => ({
-        id: block.id,
-        kind: 'tool-call' as const,
-        tool: {
-            name: tool.name,
-            input: tool.input,
-            result: undefined,
-            state: tool.state,
-            description: tool.description,
-            startedAt: tool.startedAt,
-            createdAt: tool.createdAt,
-            permission: tool.permission ? {
-                id: tool.permission.id,
-                status: tool.permission.status,
-                reason: tool.permission.reason,
-                mode: tool.permission.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
-                allowedTools: tool.permission.allowedTools,
-                answers: tool.permission.answers,
-            } : null,
-        },
-        children: [],
-    }), [block.id, tool])
-
     return (
         <>
             <Think
@@ -200,22 +178,12 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                 expanded={expanded}
                 onExpand={setExpanded}
             >
-                {/* 有待审批权限请求时显示输入预览 */}
-                {hasPermission && InputView ? (
-                    <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
-                        <OverflowContainer maxHeight={100} onClickExpand={() => setDrawerOpen(true)}>
-                            <InputView block={adaptedBlockForInput} metadata={metadata} />
-                        </OverflowContainer>
-                    </div>
-                ) : null}
-                {/* 无权限请求时显示结果预览 */}
-                {!hasPermission ? (
-                    <ToolCallPreviewContent
-                        toolCallBlock={block}
-                        metadata={metadata}
-                        onViewDetail={() => setDrawerOpen(true)}
-                    />
-                ) : null}
+                <ToolCallPreviewContent
+                    toolCallBlock={block}
+                    metadata={metadata}
+                    onViewDetail={() => setDrawerOpen(true)}
+                    showInput={hasPermission}
+                />
                 {/* pending 状态显示权限操作按钮 */}
                 {hasPermission && api && sessionId ? (
                     <div style={{ marginTop: 8, paddingLeft: 12, paddingRight: 12 }}>
