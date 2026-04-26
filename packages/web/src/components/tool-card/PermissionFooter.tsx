@@ -157,16 +157,16 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     }
 
     return (
-        <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{summary}</div>
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ color: token.colorTextSecondary }}>{summary}</div>
 
             {error ? (
-                <div style={{ marginTop: 8, fontSize: 12, color: token.colorError }}>
+                <div style={{ color: token.colorError }}>
                     {error}
                 </div>
             ) : null}
 
-            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <Button
                     type="primary"
                     size="small"
