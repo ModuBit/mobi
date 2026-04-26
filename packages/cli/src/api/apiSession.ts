@@ -507,6 +507,9 @@ export class ApiSessionClient extends EventEmitter {
 
     updateMetadata(handler: (metadata: Metadata) => Metadata): void {
         this.metadataLock.inLock(async () => {
+            // 重置空闲计时器（状态更新）
+            this.idleTimer?.reset()
+
             await backoff(async () => {
                 const current = this.metadata ?? ({} as Metadata)
                 const updated = handler(current)
@@ -543,6 +546,9 @@ export class ApiSessionClient extends EventEmitter {
 
     updateAgentState(handler: (state: AgentState) => AgentState): void {
         this.agentStateLock.inLock(async () => {
+            // 重置空闲计时器（状态更新）
+            this.idleTimer?.reset()
+
             await backoff(async () => {
                 const current = this.agentState ?? ({} as AgentState)
                 const updated = handler(current)
