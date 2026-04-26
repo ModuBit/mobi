@@ -158,10 +158,10 @@ function PermissionFooterInner(props: PermissionFooterProps) {
 
     return (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ color: token.colorTextSecondary }}>{summary}</div>
+            <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{summary}</div>
 
             {error ? (
-                <div style={{ color: token.colorError }}>
+                <div style={{ fontSize: 12, color: token.colorError }}>
                     {error}
                 </div>
             ) : null}
@@ -174,7 +174,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                     disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
                     loading={loading === 'allow'}
                     onClick={approve}
-                    style={{ justifyContent: 'flex-start' }}
+                    style={{ justifyContent: 'flex-start', fontSize: 12 }}
                 >
                     {t('chat.tool.allow')}
                 </Button>
@@ -186,7 +186,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
                         loading={loadingForSession}
                         onClick={approveForSession}
-                        style={{ justifyContent: 'flex-start' }}
+                        style={{ justifyContent: 'flex-start', fontSize: 12 }}
                     >
                         {t('chat.tool.allowForSession')}
                     </Button>
@@ -199,7 +199,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
                         loading={loadingAllEdits}
                         onClick={approveAllEdits}
-                        style={{ justifyContent: 'flex-start' }}
+                        style={{ justifyContent: 'flex-start', fontSize: 12 }}
                     >
                         {t('chat.tool.allowAll')}
                     </Button>
@@ -212,7 +212,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                     disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
                     loading={loading === 'deny'}
                     onClick={deny}
-                    style={{ justifyContent: 'flex-start' }}
+                    style={{ justifyContent: 'flex-start', fontSize: 12 }}
                 >
                     {t('chat.tool.deny')}
                 </Button>
