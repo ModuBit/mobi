@@ -537,6 +537,8 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     protected onResponseReceived(response: PermissionResponse): void {
         logger.debug(`Permission response: ${JSON.stringify(response)}`);
         this.responses.set(response.id, { ...response, receivedAt: Date.now() });
+        // 重置空闲计时器（权限审批响应）
+        this.session.client.resetIdleTimer();
     }
 
     protected onRequestRegistered(toolCallId: string): void {

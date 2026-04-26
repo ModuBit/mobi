@@ -109,7 +109,8 @@ export class ApiSessionClient extends EventEmitter {
             onReady: (payload: any) => this.socket.emit('terminal:ready', payload),
             onOutput: (payload: any) => this.socket.emit('terminal:output', payload),
             onExit: (payload: any) => this.socket.emit('terminal:exit', payload),
-            onError: (payload: any) => this.socket.emit('terminal:error', payload)
+            onError: (payload: any) => this.socket.emit('terminal:error', payload),
+            onTerminalInput: () => this.idleTimer?.reset()
         })
 
         // 初始化 IdleTimer

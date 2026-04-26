@@ -159,6 +159,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
 
         function onMessage(message: SDKMessage) {
+            // 重置空闲计时器（Agent 输出）
+            session.client.resetIdleTimer();
+
             formatClaudeMessageForInk(message, messageBuffer);
             permissionHandler.onMessage(message);
 
@@ -362,6 +365,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
 
                             if (msg) {
+                                // 重置空闲计时器（用户发送消息）
+                                session.client.resetIdleTimer();
+
                                 if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
                                     logger.debug('[remote]: mode has changed, pending message');
                                     pending = msg;

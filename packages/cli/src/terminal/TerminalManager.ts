@@ -38,6 +38,7 @@ type TerminalManagerOptions = {
     onError: (payload: TerminalErrorPayload) => void
     idleTimeoutMs?: number
     maxTerminals?: number
+    onTerminalInput?: () => void
 }
 
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
@@ -97,6 +98,7 @@ export class TerminalManager {
     private readonly maxTerminals: number
     private readonly terminals: Map<string, TerminalRuntime> = new Map()
     private readonly filteredEnv: NodeJS.ProcessEnv
+    private readonly onTerminalInput?: () => void
 
     constructor(options: TerminalManagerOptions) {
         this.sessionId = options.sessionId
@@ -108,6 +110,7 @@ export class TerminalManager {
         this.idleTimeoutMs = options.idleTimeoutMs ?? resolveEnvNumber('MOBI_TERMINAL_IDLE_TIMEOUT_MS', DEFAULT_IDLE_TIMEOUT_MS)
         this.maxTerminals = options.maxTerminals ?? resolveEnvNumber('MOBI_TERMINAL_MAX_TERMINALS', DEFAULT_MAX_TERMINALS)
         this.filteredEnv = buildFilteredEnv()
+        this.onTerminalInput = options.onTerminalInput
     }
 
     create(terminalId: string, cols: number, rows: number): void {
@@ -210,6 +213,8 @@ export class TerminalManager {
             this.emitError(terminalId, 'Terminal not found.')
             return
         }
+        // 重置空闲计时器（终端输入）
+        this.onTerminalInput?.()
         runtime.terminal.write(data)
         this.markActivity(runtime)
     }
