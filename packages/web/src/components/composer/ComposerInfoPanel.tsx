@@ -15,37 +15,41 @@
  */
 
 /**
- * 权限请求组件
- * 在主对话框中展示所有 pending 权限请求（包括 subagent 的）
- * 与 PermissionFooter 配合使用：PermissionFooter 跟随工具 bubble，PermissionRequest 处理全局权限请求
+ * Composer 信息面板
+ * 在 StatusBar 上方展示各种状态信息：权限请求、任务列表、文件修改等
  */
 
 import { useMemo } from 'react'
 import { Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
-import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
+import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
 
 const { Text } = Typography
 const { useToken } = antTheme
 
-interface PermissionRequestProps {
-    sessionId: string
-    session: Session | null | undefined
+/** 权限请求面板 */
+function PermissionPanel({
+    requests,
+    metadata,
+    api,
+    sessionId,
+    disabled,
+    onDone
+}: {
+    requests: AgentState['requests']
     metadata: SessionMetadataSummary | null
     api: MobiApi
-    disabled?: boolean
-    onDone?: () => void
-}
-
-export function PermissionRequest({ sessionId, session, metadata, api, disabled, onDone }: PermissionRequestProps) {
+    sessionId: string
+    disabled: boolean
+    onDone: () => void
+}) {
     const { token } = useToken()
     const { t } = useTranslation()
 
-    const requests = session?.agentState?.requests || {}
-    const pendingRequests = Object.entries(requests)
+    const pendingRequests = requests ? Object.entries(requests) : []
 
     // 转换为 PermissionFooter 需要的格式
     const permissionTools = useMemo(() => {
@@ -74,7 +78,7 @@ export function PermissionRequest({ sessionId, session, metadata, api, disabled,
     if (pendingRequests.length === 0) return null
 
     return (
-        <div style={{ margin: '8px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {permissionTools.map(({ id, tool }) => (
                 <div key={id} style={{
                     padding: 12,
@@ -96,11 +100,53 @@ export function PermissionRequest({ sessionId, session, metadata, api, disabled,
                         sessionId={sessionId}
                         metadata={metadata}
                         tool={tool}
-                        disabled={disabled ?? false}
-                        onDone={onDone ?? (() => {})}
+                        disabled={disabled}
+                        onDone={onDone}
                     />
                 </div>
             ))}
+        </div>
+    )
+}
+
+export type ComposerInfoPanelProps = {
+    sessionId: string
+    agentState: AgentState | null | undefined
+    metadata: SessionMetadataSummary | null
+    api: MobiApi
+    disabled: boolean
+    onPermissionDone: () => void
+}
+
+/**
+ * Composer 信息面板
+ * 在 StatusBar 上方展示各种状态信息
+ */
+export function ComposerInfoPanel({
+    sessionId,
+    agentState,
+    metadata,
+    api,
+    disabled,
+    onPermissionDone
+}: ComposerInfoPanelProps) {
+    const hasContent = agentState?.requests && Object.keys(agentState.requests).length > 0
+
+    if (!hasContent) return null
+
+    return (
+        <div style={{ padding: '8px 16px 0' }}>
+            {/* 权限请求 */}
+            <PermissionPanel
+                requests={agentState?.requests}
+                metadata={metadata}
+                api={api}
+                sessionId={sessionId}
+                disabled={disabled}
+                onDone={onPermissionDone}
+            />
+
+            {/* 未来扩展：任务列表、文件修改等 */}
         </div>
     )
 }

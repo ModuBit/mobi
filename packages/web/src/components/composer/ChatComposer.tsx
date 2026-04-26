@@ -26,6 +26,11 @@ import { CLAUDE_MODEL_OPTIONS } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import { useSessionFileListing } from './useSessionFileListing'
+import { ComposerInfoPanel } from './ComposerInfoPanel'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
+import type { MobiApi } from '@/core/data/api/client'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
 import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
 import { useSlashCommandSuggestion } from './useSlashCommandSuggestion'
 import { detectSlashAtCursor } from '@/domain/command/slashCommandHelper'
@@ -42,6 +47,7 @@ import { ResponsiveActionBar, type ActionItem } from './ResponsiveActionBar'
 import { getPermissionModeColor } from './permissionModeColors'
 
 interface ChatComposerProps {
+    sessionId: string
     disabled?: boolean
     sending?: boolean
     permissionMode?: PermissionMode
@@ -50,9 +56,9 @@ interface ChatComposerProps {
     allowSendWhenInactive?: boolean
     running?: boolean
     agentState?: AgentState | null
+    metadata?: SessionMetadataSummary | null
     contextSize?: number
     agentFlavor?: string | null
-    sessionId?: string
     mode?: Session['mode']
     workingDir?: string
     extraLeftButtons?: React.ReactNode
@@ -95,8 +101,11 @@ const HoverSelect = styled(Select)<{
 export function ChatComposer(props: ChatComposerProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
+    const authToken = useAuthStore((state) => state.token)
+    const api = useMobiApi(authToken)
 
     const {
+        sessionId,
         disabled = false,
         sending = false,
         permissionMode = 'default',
@@ -105,9 +114,9 @@ export function ChatComposer(props: ChatComposerProps) {
         allowSendWhenInactive = false,
         running = false,
         agentState,
+        metadata,
         contextSize,
         agentFlavor,
-        sessionId,
         mode,
         workingDir,
         extraLeftButtons,
@@ -514,6 +523,18 @@ export function ChatComposer(props: ChatComposerProps) {
 
     return (
         <div style={{ padding: '0 12px 12px' }}>
+            {/* 信息面板：权限请求、任务列表等 */}
+            <ComposerInfoPanel
+                sessionId={sessionId}
+                agentState={agentState}
+                metadata={metadata ?? null}
+                api={api}
+                disabled={disabled || sending}
+                onPermissionDone={() => {
+                    // 权限操作完成后，session 会通过 SSE 更新
+                }}
+            />
+
             <StatusBar
                 sessionId={sessionId ?? ''}
                 active={active}

@@ -29,9 +29,6 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { renderChatBlock } from './blocks'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CopyButton } from './CopyButton'
-import { PermissionRequest } from './PermissionRequest'
-import { useAuthStore } from '@/core/data/stores/authStore'
-import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
@@ -81,8 +78,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
-    const { token: authToken } = useAuthStore()
-    const api = useMobiApi(authToken)
 
     // 工具渲染所需的元数据
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
@@ -174,9 +169,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 {
                     metadata,
                     isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock,
-                    api,
-                    sessionId,
-                    disabled: sendMutation.isPending,
                 }
             )
             if (content === null) continue
@@ -308,18 +300,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 )}
             </div>
 
-            {/* 权限请求（包括 subagent 的） */}
-            <PermissionRequest
-                sessionId={sessionId}
-                session={session}
-                metadata={metadata}
-                api={api}
-                disabled={sendMutation.isPending}
-                onDone={() => {
-                    // 权限操作完成后，session 会通过 SSE 更新，无需额外处理
-                }}
-            />
-
             {/* Composer 输入组件 */}
             <ChatComposer
                 sessionId={sessionId}
@@ -331,6 +311,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 allowSendWhenInactive={false}
                 running={session?.running ?? false}
                 agentState={session?.agentState}
+                metadata={metadata}
                 contextSize={undefined} // TODO: 从消息中计算上下文大小
                 agentFlavor={agentFlavor}
                 mode={session?.mode}
