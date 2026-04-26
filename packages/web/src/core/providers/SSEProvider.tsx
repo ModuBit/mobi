@@ -383,6 +383,18 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'toast':
                 // Toast 通知，由外部处理
                 break
+            case 'idle-timeout-warning':
+                // 空闲超时预警
+                if (event.data?.remainingMs) {
+                    const remainingMinutes = Math.ceil(event.data.remainingMs / 60000)
+                    notify.warning({
+                        key: `idle-timeout-${event.sessionId}`,
+                        message: t('notification.idleTimeoutWarning'),
+                        description: t('notification.idleTimeoutWarningDesc', { minutes: remainingMinutes }),
+                        duration: 0,
+                    })
+                }
+                break
         }
     }, [queryClient, queueSessionListInvalidation, queueSessionDetailInvalidation, queueMachinesInvalidation, notify, t])
 
