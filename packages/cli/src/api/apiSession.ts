@@ -683,6 +683,7 @@ export class ApiSessionClient extends EventEmitter {
      * 启动空闲计时器（Remote 模式）
      */
     startIdleTimer(): void {
+        logger.debug(`[API] startIdleTimer() called, idleTimer=${this.idleTimer ? 'exists' : 'null'}`)
         this.idleTimer?.start()
     }
 
@@ -690,6 +691,7 @@ export class ApiSessionClient extends EventEmitter {
      * 停止空闲计时器（切换到 Local 模式）
      */
     stopIdleTimer(): void {
+        logger.debug(`[API] stopIdleTimer() called, idleTimer=${this.idleTimer ? 'exists' : 'null'}`)
         this.idleTimer?.stop()
     }
 

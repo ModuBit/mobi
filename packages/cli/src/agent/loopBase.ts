@@ -51,6 +51,7 @@ export async function runLocalRemoteLoop<TSession extends AgentSessionBase<any>>
 
     // 初始化时根据 startingMode 启动 IdleTimer
     if (mode === 'remote') {
+        logger.debug(`[${opts.logTag}] Initial mode is remote, calling onModeChange('remote')`);
         opts.session.onModeChange(mode);
     }
 
