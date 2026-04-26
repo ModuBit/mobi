@@ -30,6 +30,11 @@ interface RpcHandlerConfig {
     scopePrefix: string   // 作用域前缀（sessionId 或 machineId）
     logger?: (msg, data?) => void
 }
+
+// RPC 处理器选项
+interface RpcHandlerOptions {
+    skipIdleTimerReset?: boolean  // 是否跳过空闲计时器重置，默认 false
+}
 ```
 
 ## RpcHandlerManager
@@ -38,10 +43,11 @@ interface RpcHandlerConfig {
 
 | 方法 | 说明 |
 |------|------|
-| `registerHandler(method, handler)` | 注册方法处理函数 |
+| `registerHandler(method, handler, options?)` | 注册方法处理函数，支持 skipIdleTimerReset 元数据 |
 | `handleRequest(request)` | 接收并执行 RPC 请求 |
 | `onSocketConnect(socket)` | Socket 连接后批量注册方法 |
 | `onSocketDisconnect()` | Socket 断开后清理引用 |
+| `setOnRpcCalled(callback)` | 设置 RPC 调用回调（用于重置空闲计时器） |
 | `getHandlerCount()` | 已注册方法数 |
 | `hasHandler(method)` | 检查方法是否已注册 |
 | `clearHandlers()` | 清空所有注册 |

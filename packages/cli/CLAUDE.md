@@ -15,6 +15,7 @@
 | `src/commands/registry.ts` | 命令注册表 |
 | `src/commands/claude.ts` | 默认命令，启动 Claude 会话 |
 | `src/claude/loop.ts` | 会话循环（Local/Remote 模式切换） |
+| `src/modules/common/idleTimer.ts` | Session 自动超时计时器 |
 
 ## 测试
 

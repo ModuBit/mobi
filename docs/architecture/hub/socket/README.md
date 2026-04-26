@@ -53,6 +53,7 @@ CLI 连接后，通过事件与 Hub 交互。事件按职责分为四组：
 | `session-end` | CLI → Hub | 会话结束，触发清理 |
 | `update-metadata` | CLI ⇄ Hub | 更新会话元数据（名称等），带乐观锁 |
 | `update-state` | CLI ⇄ Hub | 更新 Agent 状态（requests 等），带乐观锁 |
+| `idle-timeout-warning` | CLI → Hub | 空闲超时预警，广播到 Web 端 |
 
 **机器事件**（`machineHandlers.ts`）
 

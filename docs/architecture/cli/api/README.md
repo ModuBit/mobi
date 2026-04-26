@@ -62,6 +62,12 @@ CLI 与 Hub 之间的双向通信层，承载 Session / Machine 的生命周期�
 | `rpc/RpcHandlerManager.ts` | RPC 方法注册与分发 | - | [rpc.md](./rpc.md) |
 | `rpc/types.ts` | RPC 类型定义 | - | 同上 |
 
+## 模块清单
+
+| 模块 | 职责 |
+|------|------|
+| `modules/common/idleTimer.ts` | Session 自动超时计时器 |
+
 ## 通信协议
 
 ### HTTP（REST）

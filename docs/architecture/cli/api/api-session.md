@@ -145,6 +145,49 @@ Session 级 RPC 通过 `RpcHandlerManager` 管理：
 | `permission-mode-changed` | `{ mode }` | 权限模式变更 |
 | `ready` | - | Session 就绪 |
 
+## IdleTimer 集成
+
+ApiSessionClient 集成 `IdleTimer` 实现 Session 自动超时关闭：
+
+### 超时类型
+
+| 类型 | 触发条件 | 默认超时 |
+|------|---------|---------|
+| 连接断开超时 | Socket.IO 断开且重连失败 | 10 分钟 |
+| 交互不活跃超时 | 无任何信息流活动 | 1 天 |
+
+### 核心方法
+
+| 方法 | 说明 |
+|------|------|
+| `startIdleTimer()` | 启动计时器（Remote 模式） |
+| `stopIdleTimer()` | 停止计时器（Local 模式） |
+| `resetIdleTimer()` | 重置计时器（有活动时） |
+
+### 事件发射
+
+| 事件 | 触发时机 |
+|------|---------|
+| `disconnect-timeout` | 连接断开超时 |
+| `idle-timeout` | 交互不活跃超时 |
+
+### 活动重置触发点
+
+- 用户发送消息（`nextMessage` 回调）
+- Agent 输出（`onMessage` 回调）
+- 权限审批响应
+- 终端输入
+- RPC 调用（通过 `setOnRpcCalled` 回调）
+- 状态更新（`updateMetadata` / `updateAgentState`）
+
+### 预警通知
+
+交互不活跃超时提前 5 分钟发送预警：
+
+```
+socket.emit('idle-timeout-warning', { sid, timeoutAt, remainingMs })
+```
+
 ## 生命周期
 
 ```
