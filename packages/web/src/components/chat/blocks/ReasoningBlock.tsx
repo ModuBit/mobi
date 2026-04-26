@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useEffect, memo } from 'react'
+import { useState, useEffect, memo, useRef } from 'react'
 import { Think } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
@@ -27,11 +27,19 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
 }) {
     const { t } = useTranslation()
     const [expanded, setExpanded] = useState(thinking)
+    const contentRef = useRef<HTMLDivElement>(null)
 
     // thinking 结束时自动折叠（不影响初始状态）
     useEffect(() => {
         if (!thinking) setExpanded(false)
     }, [thinking])
+
+    // streaming 期间内容更新时自动滚动到底部
+    useEffect(() => {
+        if (isStreaming && contentRef.current) {
+            contentRef.current.scrollTop = contentRef.current.scrollHeight
+        }
+    }, [text, isStreaming])
 
     return (
         <Think
@@ -40,7 +48,7 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
             expanded={expanded}
             onExpand={setExpanded}
         >
-            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            <div ref={contentRef} style={{ maxHeight: 200, overflowY: 'auto' }}>
                 <Markdown content={text} streaming={isStreaming} />
             </div>
         </Think>
