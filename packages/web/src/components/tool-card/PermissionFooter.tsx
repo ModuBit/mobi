@@ -52,20 +52,20 @@ function formatPermissionSummary(
     toolInput: unknown,
     t: (key: string) => string
 ): string {
-    if (permission.status === 'pending') return t('tool.waitingForApproval')
-    if (permission.status === 'canceled') return permission.reason ? `${t('tool.canceled')}: ${permission.reason}` : t('tool.canceled')
+    if (permission.status === 'pending') return t('chat.tool.waitingForApproval')
+    if (permission.status === 'canceled') return permission.reason ? `${t('chat.tool.canceled')}: ${permission.reason}` : t('chat.tool.canceled')
 
     if (permission.status === 'approved') {
-        if (permission.mode === 'acceptEdits') return t('tool.approvedAllowAllEdits')
-        if (isToolAllowedForSession(toolName, toolInput, permission.allowedTools)) return t('tool.approvedForSession')
-        return t('tool.approved')
+        if (permission.mode === 'acceptEdits') return t('chat.tool.approvedAllowAllEdits')
+        if (isToolAllowedForSession(toolName, toolInput, permission.allowedTools)) return t('chat.tool.approvedForSession')
+        return t('chat.tool.approved')
     }
 
     if (permission.status === 'denied') {
-        return permission.reason ? `${t('tool.deny')}: ${permission.reason}` : t('tool.deny')
+        return permission.reason ? `${t('chat.tool.deny')}: ${permission.reason}` : t('chat.tool.deny')
     }
 
-    return t('tool.allow')
+    return t('chat.tool.allow')
 }
 
 type PermissionFooterProps = {
@@ -120,7 +120,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
             await action()
             props.onDone()
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('tool.requestFailed'))
+            setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
         }
     }
 
@@ -176,7 +176,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                     onClick={approve}
                     style={{ justifyContent: 'flex-start' }}
                 >
-                    {t('tool.allow')}
+                    {t('chat.tool.allow')}
                 </Button>
 
                 {canAllowForSession ? (
@@ -188,7 +188,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         onClick={approveForSession}
                         style={{ justifyContent: 'flex-start' }}
                     >
-                        {t('tool.allowForSession')}
+                        {t('chat.tool.allowForSession')}
                     </Button>
                 ) : null}
 
@@ -201,7 +201,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         onClick={approveAllEdits}
                         style={{ justifyContent: 'flex-start' }}
                     >
-                        {t('tool.allowAll')}
+                        {t('chat.tool.allowAll')}
                     </Button>
                 ) : null}
 
@@ -214,7 +214,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                     onClick={deny}
                     style={{ justifyContent: 'flex-start' }}
                 >
-                    {t('tool.deny')}
+                    {t('chat.tool.deny')}
                 </Button>
             </div>
         </div>
