@@ -127,7 +127,17 @@
             "noOutput": "No output",
             "statusDone": "Done",
             "statusError": "Error",
-            "statusRunning": "Running"
+            "statusRunning": "Running",
+            "waitingForApproval": "Waiting for approval...",
+            "canceled": "Canceled",
+            "approved": "Approved",
+            "approvedAllowAllEdits": "Approved all edits",
+            "approvedForSession": "Approved for session",
+            "deny": "Deny",
+            "allow": "Allow",
+            "allowForSession": "Allow for session",
+            "allowAll": "Allow all",
+            "requestFailed": "Request failed"
         }
     },
     "files": {

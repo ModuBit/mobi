@@ -127,7 +127,17 @@
             "noOutput": "无输出",
             "statusDone": "完成",
             "statusError": "出错",
-            "statusRunning": "运行中"
+            "statusRunning": "运行中",
+            "waitingForApproval": "等待审批...",
+            "canceled": "已取消",
+            "approved": "已批准",
+            "approvedAllowAllEdits": "已批准所有编辑",
+            "approvedForSession": "本次会话已批准",
+            "deny": "拒绝",
+            "allow": "允许",
+            "allowForSession": "本次会话允许",
+            "allowAll": "允许所有",
+            "requestFailed": "请求失败"
         }
     },
     "files": {
