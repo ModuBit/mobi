@@ -135,7 +135,7 @@ export function ComposerInfoPanel({
     if (!hasContent) return null
 
     return (
-        <div style={{ padding: '8px 16px 0' }}>
+        <div style={{ padding: '8px 16px', marginBottom: 4 }}>
             {/* 权限请求 */}
             <PermissionPanel
                 requests={agentState?.requests}
