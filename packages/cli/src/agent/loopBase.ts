@@ -49,10 +49,10 @@ export async function runLocalRemoteLoop<TSession extends AgentSessionBase<any>>
 }): Promise<void> {
     let mode: 'local' | 'remote' = opts.startingMode ?? 'local';
 
-    // 初始化时根据 startingMode 启动 IdleTimer
+    // 初始化时根据 startingMode 启动 IdleTimer（不发送 switch 事件）
     if (mode === 'remote') {
-        logger.debug(`[${opts.logTag}] Initial mode is remote, calling onModeChange('remote')`);
-        opts.session.onModeChange(mode);
+        logger.debug(`[${opts.logTag}] Initial mode is remote, starting IdleTimer`);
+        opts.session.client.startIdleTimer();
     }
 
     while (true) {

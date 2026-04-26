@@ -91,10 +91,8 @@ export class AgentSessionBase<Mode> {
 
         // 模式切换时控制 IdleTimer
         if (mode === 'remote') {
-            logger.debug(`[${this.sessionLabel}] Calling startIdleTimer()`);
             this.client.startIdleTimer();
         } else {
-            logger.debug(`[${this.sessionLabel}] Calling stopIdleTimer()`);
             this.client.stopIdleTimer();
         }
 

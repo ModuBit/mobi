@@ -70,13 +70,12 @@ export class IdleTimer {
      */
     start(): void {
         if (this.state !== 'stopped') {
-            logger.debug(`[IdleTimer] start() called but state=${this.state}, skipping`);
             return;
         }
 
         this.state = 'running';
         this.scheduleIdleTimers();
-        logger.debug(`[IdleTimer] Started (idleTimeout=${this.idleTimeoutMs}ms, warning=${this.warningMs}ms)`);
+        logger.debug('[IdleTimer] Started');
     }
 
     /**
@@ -94,13 +93,11 @@ export class IdleTimer {
      */
     reset(): void {
         if (this.state === 'stopped') {
-            logger.debug('[IdleTimer] reset() called but state=stopped, skipping');
             return;
         }
 
         // 如果已断开连接，不重置（断开有独立计时）
         if (this.isDisconnected) {
-            logger.debug('[IdleTimer] reset() called but disconnected, skipping');
             return;
         }
 
