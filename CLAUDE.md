@@ -62,6 +62,7 @@ bun run lint:deps    # 依赖方向检查
 | 系统架构总览 | [docs/architecture/README.md](docs/architecture/README.md) |
 | 各模块架构 | [docs/architecture/](docs/architecture/)（hub/ cli/ web/） |
 | 编码规范 | [docs/conventions/](docs/conventions/) |
+| 配置指南 | [docs/configuration.md](docs/configuration.md) |
 | 项目看板 | [docs/board/board.md](docs/board/board.md)（`/board` skill） |
 | 待处理项 | [docs/pending.md](docs/pending.md) |
 
