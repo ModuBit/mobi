@@ -203,7 +203,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                 {/* 有待审批权限请求时显示输入预览 */}
                 {hasPermission && InputView ? (
                     <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
-                        <InputView block={adaptedBlockForInput} metadata={metadata} />
+                        <OverflowContainer maxHeight={100} onClickExpand={() => setDrawerOpen(true)}>
+                            <InputView block={adaptedBlockForInput} metadata={metadata} />
+                        </OverflowContainer>
                     </div>
                 ) : null}
                 {/* 无权限请求时显示结果预览 */}
