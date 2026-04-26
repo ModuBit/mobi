@@ -117,57 +117,49 @@ class Configuration {
         this._cliApiToken = token
     }
 
-    // 超时配置（带环境变量和配置文件优先级）
-    // 优先级：环境变量 > 配置文件 > 默认值
-    get disconnectTimeoutMs(): number {
-        // 1. 环境变量优先
-        const env = process.env.MOBI_DISCONNECT_TIMEOUT_MS
+    /**
+     * 解析超时配置（环境变量 > 配置文件 > 默认值）
+     */
+    private resolveTimeoutConfig(
+        envKey: string,
+        configValue: number | undefined,
+        defaultValue: number
+    ): number {
+        const env = process.env[envKey]
         if (env) {
             const parsed = parseInt(env, 10)
             if (!isNaN(parsed) && parsed > 0) {
                 return parsed
             }
         }
-        // 2. 配置文件次之
-        if (this.settings.disconnectTimeoutMs && this.settings.disconnectTimeoutMs > 0) {
-            return this.settings.disconnectTimeoutMs
+        if (configValue && configValue > 0) {
+            return configValue
         }
-        // 3. 默认值
-        return 600000 // 默认 10 分钟
+        return defaultValue
+    }
+
+    get disconnectTimeoutMs(): number {
+        return this.resolveTimeoutConfig(
+            'MOBI_DISCONNECT_TIMEOUT_MS',
+            this.settings.disconnectTimeoutMs,
+            600000 // 默认 10 分钟
+        )
     }
 
     get idleTimeoutMs(): number {
-        // 1. 环境变量优先
-        const env = process.env.MOBI_IDLE_TIMEOUT_MS
-        if (env) {
-            const parsed = parseInt(env, 10)
-            if (!isNaN(parsed) && parsed > 0) {
-                return parsed
-            }
-        }
-        // 2. 配置文件次之
-        if (this.settings.idleTimeoutMs && this.settings.idleTimeoutMs > 0) {
-            return this.settings.idleTimeoutMs
-        }
-        // 3. 默认值
-        return 86400000 // 默认 1 天
+        return this.resolveTimeoutConfig(
+            'MOBI_IDLE_TIMEOUT_MS',
+            this.settings.idleTimeoutMs,
+            86400000 // 默认 1 天
+        )
     }
 
     get timeoutWarningMs(): number {
-        // 1. 环境变量优先
-        const env = process.env.MOBI_TIMEOUT_WARNING_MS
-        if (env) {
-            const parsed = parseInt(env, 10)
-            if (!isNaN(parsed) && parsed > 0) {
-                return parsed
-            }
-        }
-        // 2. 配置文件次之
-        if (this.settings.timeoutWarningMs && this.settings.timeoutWarningMs > 0) {
-            return this.settings.timeoutWarningMs
-        }
-        // 3. 默认值
-        return 300000 // 默认 5 分钟
+        return this.resolveTimeoutConfig(
+            'MOBI_TIMEOUT_WARNING_MS',
+            this.settings.timeoutWarningMs,
+            300000 // 默认 5 分钟
+        )
     }
 }
 
