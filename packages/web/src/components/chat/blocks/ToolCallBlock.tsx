@@ -146,11 +146,11 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         } : null,
     }), [tool])
 
-    // pending 状态时显示工具输入预览（如 Edit 的 diff）
+    // 有待审批权限请求时显示工具输入预览（如 Edit 的 diff）
     const InputView = useMemo(() => {
-        if (!isPending) return null
+        if (!hasPermission) return null
         return getToolViewComponent(tool.name)
-    }, [isPending, tool.name])
+    }, [hasPermission, tool.name])
 
     // 转换为 InputView 需要的 block 格式
     const adaptedBlockForInput = useMemo(() => ({
@@ -200,14 +200,14 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                 expanded={expanded}
                 onExpand={setExpanded}
             >
-                {/* pending 状态显示输入预览 */}
-                {isPending && InputView ? (
+                {/* 有待审批权限请求时显示输入预览 */}
+                {hasPermission && InputView ? (
                     <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
                         <InputView block={adaptedBlockForInput} metadata={metadata} />
                     </div>
                 ) : null}
-                {/* 非 pending 状态显示结果预览 */}
-                {!isPending ? (
+                {/* 无权限请求时显示结果预览 */}
+                {!hasPermission ? (
                     <ToolCallPreviewContent
                         toolCallBlock={block}
                         metadata={metadata}
