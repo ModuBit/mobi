@@ -164,7 +164,9 @@ export function ChatComposer(props: ChatComposerProps) {
     const trimmed = text.trim()
     const hasText = trimmed.length > 0
     const hasAttachments = attachments.length > 0
-    const canSend = (hasText || hasAttachments) && !controlsDisabled && !running && !sending
+    // 有 pending 权限请求时禁用发送
+    const hasPendingPermission = Boolean(agentState?.requests && Object.keys(agentState.requests).length > 0)
+    const canSend = (hasText || hasAttachments) && !controlsDisabled && !running && !sending && !hasPendingPermission
 
     // 是否展示命令参数幽灵提示
     const showGhostHint = !!activeCommand?.hint
@@ -533,7 +535,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     submitType="shiftEnter"
                     onCancel={onAbort}
                     placeholder={isBashMode ? t('composer.bashPlaceholder') : t('composer.placeholder')}
-                    disabled={controlsDisabled || showInactiveCover || showLocalModeCover}
+                    disabled={controlsDisabled || showInactiveCover || showLocalModeCover || hasPendingPermission}
                     loading={sending}
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
@@ -561,7 +563,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                                 size="small"
                                                 icon={<PaperClipOutlined />}
                                                 onClick={handleAttach}
-                                                disabled={controlsDisabled || showLocalModeCover}
+                                                disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
                                                 style={{ borderRadius: '50%' }}
                                             />
                                         </Tooltip>
