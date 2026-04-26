@@ -24,6 +24,7 @@ import type { MobiApi } from '@/core/data/api/client'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { getToolPresentation } from '@/components/tool-card/knownTools'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
+import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
@@ -145,6 +146,36 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         } : null,
     }), [tool])
 
+    // pending 状态时显示工具输入预览（如 Edit 的 diff）
+    const InputView = useMemo(() => {
+        if (!isPending) return null
+        return getToolViewComponent(tool.name)
+    }, [isPending, tool.name])
+
+    // 转换为 InputView 需要的 block 格式
+    const adaptedBlockForInput = useMemo(() => ({
+        id: block.id,
+        kind: 'tool-call' as const,
+        tool: {
+            name: tool.name,
+            input: tool.input,
+            result: undefined,
+            state: tool.state,
+            description: tool.description,
+            startedAt: tool.startedAt,
+            createdAt: tool.createdAt,
+            permission: tool.permission ? {
+                id: tool.permission.id,
+                status: tool.permission.status,
+                reason: tool.permission.reason,
+                mode: tool.permission.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
+                allowedTools: tool.permission.allowedTools,
+                answers: tool.permission.answers,
+            } : null,
+        },
+        children: [],
+    }), [block.id, tool])
+
     return (
         <>
             <Think
@@ -169,11 +200,20 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                 expanded={expanded}
                 onExpand={setExpanded}
             >
-                <ToolCallPreviewContent
-                    toolCallBlock={block}
-                    metadata={metadata}
-                    onViewDetail={() => setDrawerOpen(true)}
-                />
+                {/* pending 状态显示输入预览 */}
+                {isPending && InputView ? (
+                    <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                        <InputView block={adaptedBlockForInput} metadata={metadata} />
+                    </div>
+                ) : null}
+                {/* 非 pending 状态显示结果预览 */}
+                {!isPending ? (
+                    <ToolCallPreviewContent
+                        toolCallBlock={block}
+                        metadata={metadata}
+                        onViewDetail={() => setDrawerOpen(true)}
+                    />
+                ) : null}
                 {/* pending 状态显示权限操作按钮 */}
                 {hasPermission && api && sessionId ? (
                     <div style={{ marginTop: 8, paddingLeft: 12, paddingRight: 12 }}>
