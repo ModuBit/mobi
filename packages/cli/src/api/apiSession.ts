@@ -48,6 +48,7 @@ import { registerCommonHandlers } from '../modules/common/registerCommonHandlers
 import { cleanupUploadDir } from '../modules/common/handlers/uploads'
 import { TerminalManager } from '@/terminal/TerminalManager'
 import { applyVersionedAck } from './versionedUpdate'
+import { IdleTimer } from '@/modules/common/idleTimer'
 
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string
@@ -65,6 +66,7 @@ export class ApiSessionClient extends EventEmitter {
     private hasConnectedOnce = false
     readonly rpcHandlerManager: RpcHandlerManager
     private readonly terminalManager: TerminalManager
+    private idleTimer: IdleTimer | null = null
     private agentStateLock = new AsyncLock()
     private metadataLock = new AsyncLock()
 
@@ -110,9 +112,25 @@ export class ApiSessionClient extends EventEmitter {
             onError: (payload: any) => this.socket.emit('terminal:error', payload)
         })
 
+        // 初始化 IdleTimer
+        this.idleTimer = new IdleTimer({
+            disconnectTimeoutMs: configuration.disconnectTimeoutMs,
+            idleTimeoutMs: configuration.idleTimeoutMs,
+            warningMs: configuration.timeoutWarningMs,
+            onWarning: () => this.handleIdleWarning(),
+            onDisconnectTimeout: () => this.handleDisconnectTimeout(),
+            onIdleTimeout: () => this.handleIdleTimeout()
+        })
+
+        // 设置 RPC 调用回调
+        this.rpcHandlerManager.setOnRpcCalled(() => {
+            this.idleTimer?.reset()
+        })
+
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully')
             this.rpcHandlerManager.onSocketConnect(this.socket)
+            this.idleTimer?.onReconnect()
             if (this.hasConnectedOnce) {
                 this.needsBackfill = true
             }
@@ -133,6 +151,7 @@ export class ApiSessionClient extends EventEmitter {
             logger.debug('[API] Socket disconnected:', reason)
             this.rpcHandlerManager.onSocketDisconnect()
             this.terminalManager.closeAll()
+            this.idleTimer?.onDisconnect()
             if (this.hasConnectedOnce) {
                 this.needsBackfill = true
             }
@@ -141,6 +160,7 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.on('connect_error', (error) => {
             logger.debug('[API] Socket connection error:', error)
             this.rpcHandlerManager.onSocketDisconnect()
+            this.idleTimer?.onDisconnect()
         })
 
         this.socket.on('error', (payload) => {
@@ -645,8 +665,54 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     close(): void {
+        this.rpcHandlerManager.setOnRpcCalled(undefined)
         this.rpcHandlerManager.onSocketDisconnect()
         this.terminalManager.closeAll()
+        this.idleTimer?.destroy()
         this.socket.disconnect()
+    }
+
+    /**
+     * 启动空闲计时器（Remote 模式）
+     */
+    startIdleTimer(): void {
+        this.idleTimer?.start()
+    }
+
+    /**
+     * 停止空闲计时器（切换到 Local 模式）
+     */
+    stopIdleTimer(): void {
+        this.idleTimer?.stop()
+    }
+
+    /**
+     * 重置空闲计时器（有活动时）
+     */
+    resetIdleTimer(): void {
+        this.idleTimer?.reset()
+    }
+
+    private handleIdleWarning(): void {
+        if (!this.socket.connected) {
+            logger.debug('[API] Socket not connected, skipping idle warning')
+            return
+        }
+        this.socket.emit('idle-timeout-warning', {
+            sid: this.sessionId,
+            timeoutAt: Date.now() + configuration.timeoutWarningMs,
+            remainingMs: configuration.timeoutWarningMs
+        })
+        logger.debug('[API] Idle timeout warning sent')
+    }
+
+    private handleDisconnectTimeout(): void {
+        logger.debug('[API] Disconnect timeout, exiting')
+        this.emit('disconnect-timeout')
+    }
+
+    private handleIdleTimeout(): void {
+        logger.debug('[API] Idle timeout, exiting')
+        this.emit('idle-timeout')
     }
 }

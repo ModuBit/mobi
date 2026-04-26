@@ -215,4 +215,5 @@ export interface ClientToServerEvents {
     'terminal:error': (data: TerminalErrorPayload) => void
     ping: (callback: () => void) => void
     'usage-report': (data: unknown) => void
+    'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
 }
