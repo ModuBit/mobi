@@ -29,6 +29,7 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { renderChatBlock } from './blocks'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CopyButton } from './CopyButton'
+import { PermissionRequest } from './PermissionRequest'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
@@ -306,6 +307,18 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     />
                 )}
             </div>
+
+            {/* 权限请求（包括 subagent 的） */}
+            <PermissionRequest
+                sessionId={sessionId}
+                session={session}
+                metadata={metadata}
+                api={api}
+                disabled={sendMutation.isPending}
+                onDone={() => {
+                    // 权限操作完成后，session 会通过 SSE 更新，无需额外处理
+                }}
+            />
 
             {/* Composer 输入组件 */}
             <ChatComposer
