@@ -36,23 +36,6 @@ import { ContentDrawer, DRAWER_WIDTH_PRESETS, type DrawerWidthConfig } from '@/c
 const { Text } = Typography
 const { useToken } = antTheme
 
-/** 需要宽 Drawer 的工具列表（代码类工具） */
-const WIDE_DRAWER_TOOLS = new Set([
-    'Edit',
-    'MultiEdit',
-    'Write',
-    'Bash',
-    'Read',
-    'NotebookRead',
-])
-
-/**
- * 判断工具是否需要宽 Drawer
- */
-function needsWideDrawer(toolName: string): boolean {
-    return WIDE_DRAWER_TOOLS.has(toolName)
-}
-
 /**
  * 抽屉详情组件属性
  */
@@ -190,8 +173,8 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
     // 是否有专用视图组件（Edit、Bash 等有专门的 diff/terminal 视图）
     const hasSpecialView = !!(FullView || CompactView)
 
-    // 根据工具类型选择 Drawer 宽度
-    const drawerWidth: DrawerWidthConfig = needsWideDrawer(tool.name)
+    // 根据工具类型选择 Drawer 宽度（从 presentation 获取配置）
+    const drawerWidth: DrawerWidthConfig = presentation.wideDrawer
         ? DRAWER_WIDTH_PRESETS.wide
         : DRAWER_WIDTH_PRESETS.narrow
 

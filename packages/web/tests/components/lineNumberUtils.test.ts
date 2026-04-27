@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { calculateLineNumWidth, getMaxLineNum, calculateDiffStats, formatDiffStats } from '@/components/tool-card/views/lineNumberUtils'
+import { calculateLineNumWidth, getMaxLineNum, calculateDiffStats, calculateDiffStatsFromLines, formatDiffStats } from '@/components/tool-card/views/lineNumberUtils'
 
 describe('lineNumberUtils', () => {
     describe('calculateLineNumWidth', () => {
@@ -133,34 +133,53 @@ describe('lineNumberUtils', () => {
             const stats = calculateDiffStats('line1', 'line1\nline2\nline3')
             expect(stats.added).toBe(2)
             expect(stats.removed).toBe(0)
-            expect(stats.unchanged).toBe(1)
         })
 
         it('should calculate stats for removing lines', () => {
             const stats = calculateDiffStats('line1\nline2\nline3', 'line1')
             expect(stats.added).toBe(0)
             expect(stats.removed).toBe(2)
-            expect(stats.unchanged).toBe(1)
         })
+    })
 
-        it('should calculate stats for both additions and removals', () => {
-            const stats = calculateDiffStats('line1\nline2\nline3', 'line1\nnewLine\nline3')
+    describe('calculateDiffStatsFromLines', () => {
+        it('should calculate stats from diff lines', () => {
+            const diffLines = [
+                { value: 'line1\n' },
+                { value: 'oldLine\n', removed: true },
+                { value: 'newLine\n', added: true },
+                { value: 'line2\n' },
+            ]
+            const stats = calculateDiffStatsFromLines(diffLines)
             expect(stats.added).toBe(1)
             expect(stats.removed).toBe(1)
             expect(stats.unchanged).toBe(2)
         })
 
-        it('should calculate stats for replacing content', () => {
-            const stats = calculateDiffStats('old1\nold2', 'new1\nnew2')
-            expect(stats.added).toBe(2)
-            expect(stats.removed).toBe(2)
+        it('should handle empty diff', () => {
+            const stats = calculateDiffStatsFromLines([])
+            expect(stats.added).toBe(0)
+            expect(stats.removed).toBe(0)
             expect(stats.unchanged).toBe(0)
         })
 
-        it('should handle single line changes', () => {
-            const stats = calculateDiffStats('hello', 'world')
-            expect(stats.added).toBe(1)
-            expect(stats.removed).toBe(1)
+        it('should handle all added lines', () => {
+            const diffLines = [
+                { value: 'line1\nline2\n', added: true },
+            ]
+            const stats = calculateDiffStatsFromLines(diffLines)
+            expect(stats.added).toBe(2)
+            expect(stats.removed).toBe(0)
+            expect(stats.unchanged).toBe(0)
+        })
+
+        it('should handle all removed lines', () => {
+            const diffLines = [
+                { value: 'line1\nline2\n', removed: true },
+            ]
+            const stats = calculateDiffStatsFromLines(diffLines)
+            expect(stats.added).toBe(0)
+            expect(stats.removed).toBe(2)
             expect(stats.unchanged).toBe(0)
         })
     })

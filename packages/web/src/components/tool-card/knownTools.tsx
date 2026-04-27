@@ -46,6 +46,8 @@ export type ToolPresentation = {
     title: string
     subtitle: string | null
     minimal: boolean
+    /** 是否需要宽 Drawer（代码类工具） */
+    wideDrawer?: boolean
 }
 
 function countLines(text: string): number {
@@ -143,6 +145,8 @@ export const knownTools: Record<string, {
     title: (opts: ToolOpts) => string
     subtitle?: (opts: ToolOpts) => string | null
     minimal?: boolean | ((opts: ToolOpts) => boolean)
+    /** 是否需要宽 Drawer（代码类工具） */
+    wideDrawer?: boolean
 }> = {
     Task: {
         icon: () => <RocketOutlined style={DEFAULT_ICON_STYLE} />,
@@ -189,7 +193,7 @@ export const knownTools: Record<string, {
         },
         minimal: true
     },
-    Bash: terminalToolConfig,
+    Bash: { ...terminalToolConfig, wideDrawer: true },
     Glob: {
         icon: () => <SearchOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => getInputStringAny(opts.input, ['pattern']) ?? 'Search files',
@@ -248,7 +252,8 @@ export const knownTools: Record<string, {
 
             return basePath
         },
-        minimal: true
+        minimal: true,
+        wideDrawer: true
     },
     Edit: {
         icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
@@ -258,7 +263,8 @@ export const knownTools: Record<string, {
             const path = resolveDisplayPath(file, opts.metadata)
             return truncatePathLeft(path, 40)
         },
-        minimal: true
+        minimal: true,
+        wideDrawer: true
     },
     MultiEdit: {
         icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
@@ -271,7 +277,8 @@ export const knownTools: Record<string, {
             const truncated = truncatePathLeft(path, 35)
             return count > 1 ? `${truncated} (${count} edits)` : truncated
         },
-        minimal: true
+        minimal: true,
+        wideDrawer: true
     },
     Write: {
         icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
@@ -287,7 +294,8 @@ export const knownTools: Record<string, {
             const lines = countLines(content)
             return lines > 1 ? `${lines} lines` : `${content.length} chars`
         },
-        minimal: true
+        minimal: true,
+        wideDrawer: true
     },
     WebFetch: {
         icon: () => <GlobalOutlined style={DEFAULT_ICON_STYLE} />,
@@ -322,7 +330,8 @@ export const knownTools: Record<string, {
             const path = getInputStringAny(opts.input, ['notebook_path'])
             return path ? resolveDisplayPath(path, opts.metadata) : 'Read notebook'
         },
-        minimal: true
+        minimal: true,
+        wideDrawer: true
     },
     NotebookEdit: {
         icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
@@ -377,7 +386,8 @@ export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadat
             icon: known.icon(opts),
             title: known.title(opts),
             subtitle: known.subtitle ? known.subtitle(opts) : null,
-            minimal
+            minimal,
+            wideDrawer: known.wideDrawer ?? false
         }
     }
 

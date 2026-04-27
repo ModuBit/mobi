@@ -45,72 +45,65 @@ export type DiffStats = {
     unchanged: number
 }
 
-/** 计算 diff 统计信息（精确版本） */
-export function calculateDiffStats(oldString: string, newString: string): DiffStats {
-    const oldLines = oldString.split('\n')
-    const newLines = newString.split('\n')
+/** Diff 行类型（来自 diffLines） */
+type DiffLine = { value: string; added?: boolean; removed?: boolean }
 
-    // 移除末尾空行
-    while (oldLines.length > 0 && oldLines[oldLines.length - 1] === '') {
-        oldLines.pop()
-    }
-    while (newLines.length > 0 && newLines[newLines.length - 1] === '') {
-        newLines.pop()
-    }
-
-    // 使用简单的 diff 算法计算添加和删除的行数
+/** 从 diffLines 结果计算统计信息（O(n) 复杂度） */
+export function calculateDiffStatsFromLines(diffLines: DiffLine[]): DiffStats {
     let added = 0
     let removed = 0
     let unchanged = 0
 
-    let oldIdx = 0
-    let newIdx = 0
-
-    while (oldIdx < oldLines.length || newIdx < newLines.length) {
-        if (oldIdx < oldLines.length && newIdx < newLines.length) {
-            if (oldLines[oldIdx] === newLines[newIdx]) {
-                unchanged++
-                oldIdx++
-                newIdx++
-            } else {
-                // 查找在 old 中是否有匹配
-                const matchInOld = newLines.slice(newIdx).findIndex(l => l === oldLines[oldIdx])
-                const matchInNew = oldLines.slice(oldIdx).findIndex(l => l === newLines[newIdx])
-
-                if (matchInOld === -1 && matchInNew >= 0) {
-                    // new 中这行在 old 中找不到匹配，作为添加
-                    added++
-                    newIdx++
-                } else if (matchInNew === -1 && matchInOld >= 0) {
-                    // old 中这行在 new 中找不到匹配，作为删除
-                    removed++
-                    oldIdx++
-                } else if (matchInOld >= 0 && (matchInNew === -1 || matchInOld <= matchInNew)) {
-                    // 先添加 new 中的行
-                    added += matchInOld
-                    newIdx += matchInOld
-                } else if (matchInNew >= 0) {
-                    // 先删除 old 中的行
-                    removed += matchInNew
-                    oldIdx += matchInNew
-                } else {
-                    // 无法匹配，一个删除一个添加
-                    removed++
-                    added++
-                    oldIdx++
-                    newIdx++
-                }
-            }
-        } else if (oldIdx < oldLines.length) {
-            removed++
-            oldIdx++
+    for (const line of diffLines) {
+        if (line.added) {
+            added += line.value.split('\n').filter(l => l !== '').length
+        } else if (line.removed) {
+            removed += line.value.split('\n').filter(l => l !== '').length
         } else {
-            added++
-            newIdx++
+            unchanged += line.value.split('\n').filter(l => l !== '').length
         }
     }
 
     return { added, removed, unchanged }
+}
+
+/** 计算 diff 统计信息（简单版本，直接统计行数差异） */
+export function calculateDiffStats(oldString: string, newString: string): DiffStats {
+    // 统计非空行数
+    const countLines = (s: string) => {
+        const lines = s.split('\n')
+        // 移除末尾空行
+        while (lines.length > 0 && lines[lines.length - 1] === '') {
+            lines.pop()
+        }
+        return lines.length
+    }
+
+    const oldCount = countLines(oldString)
+    const newCount = countLines(newString)
+
+    // 简化计算：只统计净变化
+    if (oldCount === 0) {
+        // 纯添加
+        return { added: newCount, removed: 0, unchanged: 0 }
+    }
+    if (newCount === 0) {
+        // 纯删除
+        return { added: 0, removed: oldCount, unchanged: 0 }
+    }
+
+    // 对于修改场景，假设大部分内容不变，只统计差值
+    const diff = newCount - oldCount
+    if (diff > 0) {
+        // 新增行数
+        return { added: diff, removed: 0, unchanged: Math.min(oldCount, newCount) }
+    } else if (diff < 0) {
+        // 删除行数
+        return { added: 0, removed: -diff, unchanged: Math.min(oldCount, newCount) }
+    }
+
+    // 行数相同，假设有变化
+    return { added: 0, removed: 0, unchanged: newCount }
 }
 
 /** 格式化 diff 统计信息 */

@@ -17,7 +17,7 @@
 import { useMemo, useState } from 'react'
 import { Modal, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { calculateLineNumWidth, getMaxLineNum, calculateDiffStats, formatDiffStats } from './lineNumberUtils'
+import { calculateLineNumWidth, getMaxLineNum, calculateDiffStatsFromLines, formatDiffStats } from './lineNumberUtils'
 import { truncatePathLeft } from '@/core/utils/path'
 
 const { useToken } = antTheme
@@ -96,11 +96,11 @@ function DiffInlineView(props: {
     const { token } = useToken()
     const diff = useMemo(() => diffLines(props.oldString, props.newString), [props.oldString, props.newString])
 
-    // 计算 diff 统计
+    // 计算 diff 统计（复用 diff 结果，O(n) 复杂度）
     const diffStats = useMemo(() => {
-        const stats = calculateDiffStats(props.oldString, props.newString)
+        const stats = calculateDiffStatsFromLines(diff)
         return formatDiffStats(stats, props.statsType ?? 'edit')
-    }, [props.oldString, props.newString, props.statsType])
+    }, [diff, props.statsType])
 
     // 计算每行的行号（基于 newString 的行号）
     const linesWithNumbers = useMemo(() => {
@@ -158,7 +158,6 @@ function DiffInlineView(props: {
                     color: token.colorTextSecondary,
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
-                    textOverflow: 'ellipsis',
                 }}>
                     {props.filePath ? truncatePathLeft(props.filePath, 50) : 'Diff'}
                 </div>
