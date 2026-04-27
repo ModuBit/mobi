@@ -17,7 +17,7 @@
 import { useMemo, useState } from 'react'
 import { Modal, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { calculateLineNumWidth, getMaxLineNum } from './lineNumberUtils'
+import { calculateLineNumWidth, getMaxLineNum, calculateDiffStats, formatDiffStats } from './lineNumberUtils'
 
 const { useToken } = antTheme
 
@@ -90,9 +90,16 @@ function DiffInlineView(props: {
     oldString: string
     newString: string
     filePath?: string
+    statsType?: 'edit' | 'write'
 }) {
     const { token } = useToken()
     const diff = useMemo(() => diffLines(props.oldString, props.newString), [props.oldString, props.newString])
+
+    // 计算 diff 统计
+    const diffStats = useMemo(() => {
+        const stats = calculateDiffStats(props.oldString, props.newString)
+        return formatDiffStats(stats, props.statsType ?? 'edit')
+    }, [props.oldString, props.newString, props.statsType])
 
     // 计算每行的行号（基于 newString 的行号）
     const linesWithNumbers = useMemo(() => {
@@ -133,20 +140,36 @@ function DiffInlineView(props: {
             border: `1px solid ${token.colorBorder}`,
             background: token.colorBgContainer
         }}>
-            {props.filePath ? (
+            {/* 头部：文件路径 + 统计信息 */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderBottom: `1px solid ${token.colorBorder}`,
+                background: token.colorBgLayout,
+                padding: '4px 8px',
+                gap: 8,
+            }}>
                 <div style={{
-                    borderBottom: `1px solid ${token.colorBorder}`,
-                    background: token.colorBgLayout,
-                    padding: '4px 8px',
+                    flex: 1,
+                    minWidth: 0,
                     fontSize: 11,
                     color: token.colorTextSecondary,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap'
                 }}>
-                    {props.filePath}
+                    {props.filePath ?? 'Diff'}
                 </div>
-            ) : null}
+                <div style={{
+                    flexShrink: 0,
+                    fontSize: 11,
+                    color: token.colorTextTertiary,
+                    fontFamily: 'var(--font-mono)',
+                }}>
+                    {diffStats}
+                </div>
+            </div>
 
             {/* 整体容器，横向滚动 */}
             <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
@@ -208,6 +231,7 @@ export function DiffView(props: {
     newString: string
     filePath?: string
     variant?: 'preview' | 'inline'
+    statsType?: 'edit' | 'write'
 }) {
     const { t } = useTranslation()
     const { token } = useToken()
@@ -229,6 +253,7 @@ export function DiffView(props: {
             oldString={props.oldString}
             newString={props.newString}
             filePath={props.filePath}
+            statsType={props.statsType}
         />
     )
 

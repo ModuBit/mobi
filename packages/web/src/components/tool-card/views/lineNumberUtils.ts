@@ -37,3 +37,77 @@ export function getMaxLineNum(lines: Array<{ lineNum?: number } | null | undefin
     const max = lines.reduce((m, l) => Math.max(m, l?.lineNum ?? 0), 0)
     return max > 0 ? max : 1
 }
+
+/** Diff 统计信息 */
+export type DiffStats = {
+    added: number
+    removed: number
+    unchanged: number
+}
+
+/** 计算 diff 统计信息 */
+export function calculateDiffStats(oldString: string, newString: string): DiffStats {
+    const oldLines = oldString.split('\n').filter(line => line.length > 0 || oldString.endsWith('\n'))
+    const newLines = newString.split('\n').filter(line => line.length > 0 || newString.endsWith('\n'))
+
+    // 处理空字符串情况
+    const oldCount = oldString === '' ? 0 : oldString.split('\n').length - (oldString.endsWith('\n') ? 1 : 0)
+    const newCount = newString === '' ? 0 : newString.split('\n').length - (newString.endsWith('\n') ? 1 : 0)
+
+    // 简化计算：基于行数差异
+    // 对于精确统计需要完整 diff 算法，这里用简化版本
+    const oldLineCount = countLines(oldString)
+    const newLineCount = countLines(newString)
+
+    // 使用 LCS 思想估算：unchanged = min(old, new) - |diff|
+    // 简化：假设变更行数 = |newLines - oldLines|，其余为 unchanged
+    const lineDiff = Math.abs(newLineCount - oldLineCount)
+
+    if (newLineCount >= oldLineCount) {
+        // 新增行数 >= 删除行数
+        return {
+            added: newLineCount - oldLineCount,
+            removed: 0,
+            unchanged: oldLineCount
+        }
+    } else {
+        // 删除行数 > 新增行数
+        return {
+            added: 0,
+            removed: oldLineCount - newLineCount,
+            unchanged: newLineCount
+        }
+    }
+}
+
+/** 计算字符串的行数（非空行） */
+function countLines(text: string): number {
+    if (text === '') return 0
+    const lines = text.split('\n')
+    // 移除末尾空行
+    while (lines.length > 0 && lines[lines.length - 1] === '') {
+        lines.pop()
+    }
+    return lines.length
+}
+
+/** 格式化 diff 统计信息 */
+export function formatDiffStats(stats: DiffStats, type: 'edit' | 'write'): string {
+    const parts: string[] = []
+
+    if (type === 'write') {
+        // Write 工具：显示写入行数
+        const total = stats.added + stats.unchanged
+        return `wrote ${total} line${total !== 1 ? 's' : ''}`
+    }
+
+    // Edit/MultiEdit 工具：显示添加和删除
+    if (stats.added > 0) {
+        parts.push(`added ${stats.added} line${stats.added !== 1 ? 's' : ''}`)
+    }
+    if (stats.removed > 0) {
+        parts.push(`removed ${stats.removed} line${stats.removed !== 1 ? 's' : ''}`)
+    }
+
+    return parts.join(', ') || 'no changes'
+}

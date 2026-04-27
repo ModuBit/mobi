@@ -37,8 +37,11 @@ function extractEdits(input: unknown): Edit[] {
  * MultiEdit 紧凑视图
  */
 export function MultiEditView(props: ToolViewProps) {
-    const edits = extractEdits(props.block.tool.input)
+    const input = props.block.tool.input
+    const edits = extractEdits(input)
     if (edits.length === 0) return null
+
+    const filePath = isObject(input) && typeof input.file_path === 'string' ? input.file_path : null
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -47,6 +50,8 @@ export function MultiEditView(props: ToolViewProps) {
                     key={idx}
                     oldString={edit.old_string}
                     newString={edit.new_string}
+                    filePath={idx === 0 ? filePath ?? undefined : undefined}
+                    statsType="edit"
                 />
             ))}
             {edits.length > MAX_COMPACT_EDITS ? (
@@ -62,8 +67,11 @@ export function MultiEditView(props: ToolViewProps) {
  * MultiEdit 完整视图
  */
 export function MultiEditFullView(props: ToolViewProps) {
-    const edits = extractEdits(props.block.tool.input)
+    const input = props.block.tool.input
+    const edits = extractEdits(input)
     if (edits.length === 0) return null
+
+    const filePath = isObject(input) && typeof input.file_path === 'string' ? input.file_path : null
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -72,7 +80,9 @@ export function MultiEditFullView(props: ToolViewProps) {
                     key={idx}
                     oldString={edit.old_string}
                     newString={edit.new_string}
+                    filePath={idx === 0 ? filePath ?? undefined : undefined}
                     variant="inline"
+                    statsType="edit"
                 />
             ))}
         </div>

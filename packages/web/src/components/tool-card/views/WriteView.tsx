@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
-* limitations under the License.
+ * limitations under the License.
  */
 
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
@@ -25,6 +25,7 @@ export function WriteView(props: ToolViewProps) {
     const input = props.block.tool.input
     if (!isObject(input)) return null
 
+    const filePath = typeof input.file_path === 'string' ? input.file_path : null
     const content = typeof input.content === 'string' ? input.content : typeof input.text === 'string' ? input.text : null
     if (content === null) return null
 
@@ -32,7 +33,9 @@ export function WriteView(props: ToolViewProps) {
         <DiffView
             oldString=""
             newString={content}
+            filePath={filePath ?? undefined}
             variant="inline"
+            statsType="write"
         />
     )
 }

@@ -25,6 +25,7 @@ export function EditView(props: ToolViewProps) {
     const input = props.block.tool.input
     if (!isObject(input)) return null
 
+    const filePath = typeof input.file_path === 'string' ? input.file_path : null
     const oldString = typeof input.old_string === 'string' ? input.old_string : null
     const newString = typeof input.new_string === 'string' ? input.new_string : null
     if (oldString === null || newString === null) return null
@@ -33,7 +34,9 @@ export function EditView(props: ToolViewProps) {
         <DiffView
             oldString={oldString}
             newString={newString}
+            filePath={filePath ?? undefined}
             variant="inline"
+            statsType="edit"
         />
     )
 }

@@ -434,6 +434,7 @@ const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
         return <MutationResultView {...props} />
     }
 
+    const filePath = typeof input.file_path === 'string' ? input.file_path : null
     const oldString = typeof input.old_string === 'string' ? input.old_string : null
     const newString = typeof input.new_string === 'string' ? input.new_string : null
 
@@ -443,7 +444,13 @@ const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
 
     return (
         <>
-            <DiffView oldString={oldString} newString={newString} variant="inline" />
+            <DiffView
+                oldString={oldString}
+                newString={newString}
+                filePath={filePath ?? undefined}
+                variant="inline"
+                statsType="edit"
+            />
             <RawJsonDevOnly value={result} />
         </>
     )
@@ -462,6 +469,7 @@ const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
         return <MutationResultView {...props} />
     }
 
+    const filePath = typeof input.file_path === 'string' ? input.file_path : null
     const content = typeof input.content === 'string' ? input.content : typeof input.text === 'string' ? input.text : null
 
     if (content === null) {
@@ -470,7 +478,13 @@ const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
 
     return (
         <>
-            <DiffView oldString="" newString={content} variant="inline" />
+            <DiffView
+                oldString=""
+                newString={content}
+                filePath={filePath ?? undefined}
+                variant="inline"
+                statsType="write"
+            />
             <RawJsonDevOnly value={result} />
         </>
     )
@@ -489,6 +503,7 @@ const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
         return <MutationResultView {...props} />
     }
 
+    const filePath = typeof input.file_path === 'string' ? input.file_path : null
     const edits = Array.isArray(input.edits) ? input.edits : null
 
     if (!edits || edits.length === 0) {
@@ -503,7 +518,16 @@ const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
                     const oldString = typeof edit.old_string === 'string' ? edit.old_string : null
                     const newString = typeof edit.new_string === 'string' ? edit.new_string : null
                     if (oldString === null || newString === null) return null
-                    return <DiffView key={idx} oldString={oldString} newString={newString} variant="inline" />
+                    return (
+                        <DiffView
+                            key={idx}
+                            oldString={oldString}
+                            newString={newString}
+                            filePath={idx === 0 ? filePath ?? undefined : undefined}
+                            variant="inline"
+                            statsType="edit"
+                        />
+                    )
                 })}
             </div>
             <RawJsonDevOnly value={result} />

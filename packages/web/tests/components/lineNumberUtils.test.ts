@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { calculateLineNumWidth, getMaxLineNum } from '@/components/tool-card/views/lineNumberUtils'
+import { calculateLineNumWidth, getMaxLineNum, calculateDiffStats, formatDiffStats } from '@/components/tool-card/views/lineNumberUtils'
 
 describe('lineNumberUtils', () => {
     describe('calculateLineNumWidth', () => {
@@ -97,6 +97,71 @@ describe('lineNumberUtils', () => {
                 {},
                 { lineNum: 200 }
             ])).toBe(200)
+        })
+    })
+
+    describe('calculateDiffStats', () => {
+        it('should return zero stats for empty strings', () => {
+            const stats = calculateDiffStats('', '')
+            expect(stats.added).toBe(0)
+            expect(stats.removed).toBe(0)
+            expect(stats.unchanged).toBe(0)
+        })
+
+        it('should calculate stats for adding lines', () => {
+            const stats = calculateDiffStats('', 'line1\nline2\nline3')
+            expect(stats.added).toBe(3)
+            expect(stats.removed).toBe(0)
+        })
+
+        it('should calculate stats for removing lines', () => {
+            const stats = calculateDiffStats('line1\nline2\nline3', '')
+            expect(stats.added).toBe(0)
+            expect(stats.removed).toBe(3)
+        })
+
+        it('should calculate stats for equal content', () => {
+            const stats = calculateDiffStats('line1\nline2', 'line1\nline2')
+            expect(stats.added).toBe(0)
+            expect(stats.removed).toBe(0)
+            expect(stats.unchanged).toBe(2)
+        })
+
+        it('should calculate stats for adding more lines', () => {
+            const stats = calculateDiffStats('line1', 'line1\nline2\nline3')
+            expect(stats.added).toBe(2)
+            expect(stats.removed).toBe(0)
+        })
+
+        it('should calculate stats for removing lines', () => {
+            const stats = calculateDiffStats('line1\nline2\nline3', 'line1')
+            expect(stats.added).toBe(0)
+            expect(stats.removed).toBe(2)
+        })
+    })
+
+    describe('formatDiffStats', () => {
+        it('should format write stats', () => {
+            expect(formatDiffStats({ added: 5, removed: 0, unchanged: 0 }, 'write')).toBe('wrote 5 lines')
+            expect(formatDiffStats({ added: 1, removed: 0, unchanged: 0 }, 'write')).toBe('wrote 1 line')
+        })
+
+        it('should format edit stats with additions', () => {
+            expect(formatDiffStats({ added: 3, removed: 0, unchanged: 2 }, 'edit')).toBe('added 3 lines')
+            expect(formatDiffStats({ added: 1, removed: 0, unchanged: 2 }, 'edit')).toBe('added 1 line')
+        })
+
+        it('should format edit stats with removals', () => {
+            expect(formatDiffStats({ added: 0, removed: 3, unchanged: 2 }, 'edit')).toBe('removed 3 lines')
+            expect(formatDiffStats({ added: 0, removed: 1, unchanged: 2 }, 'edit')).toBe('removed 1 line')
+        })
+
+        it('should format edit stats with both additions and removals', () => {
+            expect(formatDiffStats({ added: 2, removed: 3, unchanged: 5 }, 'edit')).toBe('added 2 lines, removed 3 lines')
+        })
+
+        it('should format no changes', () => {
+            expect(formatDiffStats({ added: 0, removed: 0, unchanged: 5 }, 'edit')).toBe('no changes')
         })
     })
 })
