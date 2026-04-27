@@ -17,6 +17,7 @@
 /**
  * Read 工具详情视图
  * 在详情抽屉中展示带行号的内容，不折行
+ * 行号列固定，内容列可横向滚动
  */
 
 import { useMemo } from 'react'
@@ -43,22 +44,33 @@ function extractReadContent(result: unknown): string | null {
     return null
 }
 
-/** 从 input 中提取起始行号 */
-function extractStartLine(input: unknown): number {
-    if (!isObject(input)) return 1
-    const offset = typeof input.offset === 'number' ? input.offset : null
-    return offset !== null ? offset + 1 : 1
+/** 解析带行号前缀的行（如 "55\t### Python" → { lineNum: 55, content: "### Python" }） */
+function parseLineWithNumber(line: string): { lineNum: number; content: string } | null {
+    // 匹配行首的数字和制表符/空格
+    const match = line.match(/^(\d+)(?:\t|  )(.*)$/)
+    if (match) {
+        return {
+            lineNum: parseInt(match[1], 10),
+            content: match[2],
+        }
+    }
+    return null
 }
 
 export function ReadDetailView(props: ToolViewProps) {
     const { token } = useToken()
     const result = props.block.tool.result
-    const input = props.block.tool.input
 
     const content = useMemo(() => extractReadContent(result), [result])
-    const startLine = useMemo(() => extractStartLine(input), [input])
 
-    if (!content) {
+    // 解析所有行，提取行号和内容
+    const parsedLines = useMemo(() => {
+        if (!content) return []
+        const lines = content.split('\n')
+        return lines.map((line) => parseLineWithNumber(line))
+    }, [content])
+
+    if (!content || parsedLines.length === 0) {
         return (
             <div style={{ fontSize: 13, color: token.colorTextTertiary }}>
                 (no content)
@@ -66,52 +78,58 @@ export function ReadDetailView(props: ToolViewProps) {
         )
     }
 
-    const lines = content.split('\n')
-
     return (
         <div style={{
+            display: 'flex',
             background: token.colorBgContainer,
             border: `1px solid ${token.colorBorder}`,
             borderRadius: 6,
             overflow: 'hidden',
         }}>
-            <pre style={{
-                margin: 0,
-                padding: 0,
-                fontSize: 12,
-                fontFamily: 'var(--font-mono)',
-                lineHeight: 1.6,
-                overflowX: 'auto',
+            {/* 行号列 - 固定不动 */}
+            <div style={{
+                flexShrink: 0,
+                background: token.colorBgLayout,
+                borderRight: `1px solid ${token.colorBorderSecondary}`,
+                padding: '8px 0',
             }}>
-                <code style={{ display: 'block' }}>
-                    {lines.map((line, idx) => {
-                        const lineNum = startLine + idx
-                        return (
-                            <div key={idx} style={{ display: 'flex' }}>
-                                <span style={{
-                                    width: 48,
-                                    minWidth: 48,
-                                    padding: '0 8px',
-                                    textAlign: 'right',
-                                    color: token.colorTextTertiary,
-                                    userSelect: 'none',
-                                    borderRight: `1px solid ${token.colorBorderSecondary}`,
-                                    background: token.colorBgLayout,
-                                }}>
-                                    {lineNum}
-                                </span>
-                                <span style={{
-                                    padding: '0 12px',
-                                    whiteSpace: 'pre',
-                                    color: token.colorText,
-                                }}>
-                                    {line || ' '}
-                                </span>
-                            </div>
-                        )
-                    })}
-                </code>
-            </pre>
+                {parsedLines.map((parsed, idx) => (
+                    <div key={idx} style={{
+                        width: 48,
+                        padding: '0 8px',
+                        textAlign: 'right',
+                        fontSize: 12,
+                        fontFamily: 'var(--font-mono)',
+                        lineHeight: 1.6,
+                        color: token.colorTextTertiary,
+                        userSelect: 'none',
+                    }}>
+                        {parsed?.lineNum ?? ''}
+                    </div>
+                ))}
+            </div>
+
+            {/* 内容列 - 可横向滚动 */}
+            <div style={{
+                flex: 1,
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                padding: '8px 0',
+            }}>
+                <pre style={{
+                    margin: 0,
+                    padding: '0 12px',
+                    fontSize: 12,
+                    fontFamily: 'var(--font-mono)',
+                    lineHeight: 1.6,
+                }}>
+                    {parsedLines.map((parsed, idx) => (
+                        <div key={idx} style={{ whiteSpace: 'pre' }}>
+                            {parsed?.content ?? ''}
+                        </div>
+                    ))}
+                </pre>
+            </div>
         </div>
     )
 }
