@@ -18,6 +18,7 @@ import { useMemo, useState } from 'react'
 import { Modal, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { calculateLineNumWidth, getMaxLineNum, calculateDiffStats, formatDiffStats } from './lineNumberUtils'
+import { truncatePathLeft } from '@/core/utils/path'
 
 const { useToken } = antTheme
 
@@ -157,18 +158,9 @@ function DiffInlineView(props: {
                     color: token.colorTextSecondary,
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis',
                 }}>
-                    <span style={{
-                        display: 'inline-block',
-                        maxWidth: '100%',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        direction: 'rtl',
-                        unicodeBidi: 'plaintext',
-                    }}>
-                        {props.filePath ?? 'Diff'}
-                    </span>
+                    {props.filePath ? truncatePathLeft(props.filePath, 50) : 'Diff'}
                 </div>
                 <div style={{
                     flexShrink: 0,

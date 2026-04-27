@@ -45,3 +45,24 @@ export function basename(path: string): string {
     const parts = normalized.split('/').filter(Boolean)
     return parts.length > 0 ? parts[parts.length - 1] : path
 }
+
+/**
+ * 截断路径左侧（保留文件名和右侧路径部分）
+ * 例如: "a/b/c/d/file.ts" -> "...c/d/file.ts"
+ */
+export function truncatePathLeft(path: string, maxLen: number): string {
+    if (path.length <= maxLen) return path
+
+    // 确保至少保留文件名
+    const name = basename(path)
+    const ellipsis = '...'
+
+    // 如果文件名本身就很长，直接截断
+    if (name.length >= maxLen - ellipsis.length) {
+        return ellipsis + name.slice(-(maxLen - ellipsis.length))
+    }
+
+    // 从左侧开始截断，保留右侧路径
+    const keepLen = maxLen - ellipsis.length
+    return ellipsis + path.slice(-keepLen)
+}
