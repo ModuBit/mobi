@@ -70,6 +70,16 @@ export function ReadDetailView(props: ToolViewProps) {
         return lines.map((line) => parseLineWithNumber(line))
     }, [content])
 
+    // 计算行号列宽度（根据最大行号）
+    const maxLineNum = useMemo(() => {
+        const max = Math.max(...parsedLines.map(l => l?.lineNum ?? 0))
+        return max > 0 ? max : 1
+    }, [parsedLines])
+    const lineNumWidth = useMemo(() => {
+        const digits = String(maxLineNum).length
+        return Math.max(40, digits * 8 + 16)
+    }, [maxLineNum])
+
     if (!content || parsedLines.length === 0) {
         return (
             <div style={{ fontSize: 13, color: token.colorTextTertiary }}>
@@ -80,55 +90,50 @@ export function ReadDetailView(props: ToolViewProps) {
 
     return (
         <div style={{
-            display: 'flex',
+            overflow: 'hidden',
             background: token.colorBgContainer,
             border: `1px solid ${token.colorBorder}`,
             borderRadius: 6,
-            overflow: 'hidden',
         }}>
-            {/* 行号列 - 固定不动 */}
-            <div style={{
-                flexShrink: 0,
-                background: token.colorBgLayout,
-                borderRight: `1px solid ${token.colorBorderSecondary}`,
-                padding: '8px 0',
-            }}>
-                {parsedLines.map((parsed, idx) => (
-                    <div key={idx} style={{
-                        width: 48,
-                        padding: '0 8px',
-                        textAlign: 'right',
-                        fontSize: 12,
-                        fontFamily: 'var(--font-mono)',
-                        lineHeight: 1.6,
-                        color: token.colorTextTertiary,
-                        userSelect: 'none',
-                    }}>
-                        {parsed?.lineNum ?? ''}
-                    </div>
-                ))}
-            </div>
-
-            {/* 内容列 - 可横向滚动 */}
-            <div style={{
-                flex: 1,
-                overflowX: 'auto',
-                overflowY: 'hidden',
-                padding: '8px 0',
-            }}>
-                <pre style={{
-                    margin: 0,
-                    padding: '0 12px',
-                    fontSize: 12,
-                    fontFamily: 'var(--font-mono)',
-                    lineHeight: 1.6,
-                }}>
+            {/* 整体容器，横向滚动 */}
+            <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+                <div style={{ display: 'table', minWidth: '100%' }}>
                     {parsedLines.map((parsed, idx) => (
-                        <div key={idx} style={{ whiteSpace: 'pre' }}>
-                            {parsed?.content ?? ''}
+                        <div key={idx} style={{
+                            display: 'table-row',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 12,
+                            lineHeight: 1.6,
+                        }}>
+                            {/* 行号列 - 固定 */}
+                            <div style={{
+                                display: 'table-cell',
+                                width: lineNumWidth,
+                                minWidth: lineNumWidth,
+                                padding: '0 8px',
+                                textAlign: 'right',
+                                color: token.colorTextTertiary,
+                                userSelect: 'none',
+                                background: token.colorBgLayout,
+                                borderRight: `1px solid ${token.colorBorderSecondary}`,
+                                position: 'sticky',
+                                left: 0,
+                                zIndex: 1,
+                            }}>
+                                {parsed?.lineNum ?? ''}
+                            </div>
+                            {/* 内容列 */}
+                            <div style={{
+                                display: 'table-cell',
+                                padding: '0 12px',
+                                whiteSpace: 'pre',
+                                color: token.colorText,
+                            }}>
+                                {parsed?.content ?? ''}
+                            </div>
                         </div>
                     ))}
-                </pre>
+                </div>
             </div>
         </div>
     )

@@ -149,6 +149,13 @@ function placeholderForState(state: ToolViewProps['block']['tool']['state']): st
     if (state === 'running') return 'Running...'
     return '(no output)'
 }
+
+/** 无结果时的占位组件 */
+function ResultPlaceholder({ state }: { state: ToolViewProps['block']['tool']['state'] }) {
+    const { token } = useToken()
+    return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(state)}</div>
+}
+
 function RawJsonDevOnly(props: { value: unknown }) {
     const { token } = useToken()
     if (!import.meta.env.DEV) return null
@@ -414,13 +421,12 @@ const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
 
 /** Edit 工具结果视图 - 显示 diff */
 const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
-    const { token } = useToken()
     const input = props.block.tool.input
     const { state, result } = props.block.tool
 
     // 执行中或无结果时显示占位
     if (result === undefined || result === null) {
-        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(state)}</div>
+        return <ResultPlaceholder state={state} />
     }
 
     // 从 input 提取 diff 内容
@@ -445,12 +451,11 @@ const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
 
 /** Write 工具结果视图 - 显示写入内容 */
 const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
-    const { token } = useToken()
     const input = props.block.tool.input
     const { state, result } = props.block.tool
 
     if (result === undefined || result === null) {
-        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(state)}</div>
+        return <ResultPlaceholder state={state} />
     }
 
     if (!isObject(input)) {
@@ -473,12 +478,11 @@ const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
 
 /** MultiEdit 工具结果视图 - 显示多个 diff */
 const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
-    const { token } = useToken()
     const input = props.block.tool.input
     const { state, result } = props.block.tool
 
     if (result === undefined || result === null) {
-        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(state)}</div>
+        return <ResultPlaceholder state={state} />
     }
 
     if (!isObject(input)) {
