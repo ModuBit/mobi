@@ -1,0 +1,150 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { describe, it, expect, vi } from 'vitest'
+import {
+    handleSpecialCommand,
+    createSpecialCommandContext,
+    type SpecialCommandContext
+} from '../src/claude/claudeRemote'
+
+describe('handleSpecialCommand', () => {
+    const createMockContext = (): SpecialCommandContext => {
+        const calls = {
+            clear: 0,
+            compact: 0,
+            bash: [] as string[],
+            ready: 0,
+        }
+        return {
+            onClear: () => { calls.clear += 1 },
+            onCompactStart: () => { calls.compact += 1 },
+            executeBash: async (cmd: string) => { calls.bash.push(cmd) },
+            onReady: () => { calls.ready += 1 },
+            // 添加 getter 用于测试验证
+            _calls: calls,
+        } as SpecialCommandContext & { _calls: typeof calls }
+    }
+
+    it('should handle /clear command', async () => {
+        const ctx = createMockContext() as ReturnType<typeof createMockContext>
+        const result = await handleSpecialCommand('/clear', ctx)
+
+        expect(result).toEqual({
+            handled: true,
+            shouldExit: true,
+            isCompact: false,
+        })
+        expect(ctx._calls.clear).toBe(1)
+        expect(ctx._calls.compact).toBe(0)
+        expect(ctx._calls.bash).toHaveLength(0)
+    })
+
+    it('should handle /compact command', async () => {
+        const ctx = createMockContext() as ReturnType<typeof createMockContext>
+        const result = await handleSpecialCommand('/compact', ctx)
+
+        expect(result).toEqual({
+            handled: true,
+            shouldExit: false,
+            isCompact: true,
+        })
+        expect(ctx._calls.clear).toBe(0)
+        expect(ctx._calls.compact).toBe(1)
+        expect(ctx._calls.bash).toHaveLength(0)
+    })
+
+    it('should handle !bash command', async () => {
+        const ctx = createMockContext() as ReturnType<typeof createMockContext>
+        const result = await handleSpecialCommand('! echo hello', ctx)
+
+        expect(result).toEqual({
+            handled: true,
+            shouldExit: false,
+            isCompact: false,
+        })
+        expect(ctx._calls.clear).toBe(0)
+        expect(ctx._calls.compact).toBe(0)
+        expect(ctx._calls.bash).toEqual(['echo hello'])
+        expect(ctx._calls.ready).toBe(1)
+    })
+
+    it('should return unhandled for normal message', async () => {
+        const ctx = createMockContext() as ReturnType<typeof createMockContext>
+        const result = await handleSpecialCommand('Hello, Claude!', ctx)
+
+        expect(result).toEqual({
+            handled: false,
+            shouldExit: false,
+            isCompact: false,
+        })
+        expect(ctx._calls.clear).toBe(0)
+        expect(ctx._calls.compact).toBe(0)
+        expect(ctx._calls.bash).toHaveLength(0)
+    })
+
+    it('should handle /clear with extra whitespace', async () => {
+        const ctx = createMockContext() as ReturnType<typeof createMockContext>
+        const result = await handleSpecialCommand('/clear  ', ctx)
+
+        expect(result.handled).toBe(true)
+        expect(result.shouldExit).toBe(true)
+    })
+})
+
+describe('createSpecialCommandContext', () => {
+    it('should create context with all callbacks', () => {
+        const onCompletionEvent = vi.fn()
+        const onSessionReset = vi.fn()
+        const onReady = vi.fn()
+        const executeBash = vi.fn()
+
+        const ctx = createSpecialCommandContext(
+            { onCompletionEvent, onSessionReset, onReady },
+            executeBash
+        )
+
+        // Test onClear
+        ctx.onClear()
+        expect(onCompletionEvent).toHaveBeenCalledWith('Context was reset')
+        expect(onSessionReset).toHaveBeenCalled()
+
+        // Test onCompactStart
+        ctx.onCompactStart()
+        expect(onCompletionEvent).toHaveBeenCalledWith('Compaction started')
+
+        // Test onReady
+        ctx.onReady()
+        expect(onReady).toHaveBeenCalled()
+    })
+
+    it('should work with optional callbacks undefined', () => {
+        const onReady = vi.fn()
+        const executeBash = vi.fn()
+
+        const ctx = createSpecialCommandContext(
+            { onReady },
+            executeBash
+        )
+
+        // Should not throw
+        ctx.onClear()
+        ctx.onCompactStart()
+        ctx.onReady()
+
+        expect(onReady).toHaveBeenCalled()
+    })
+})

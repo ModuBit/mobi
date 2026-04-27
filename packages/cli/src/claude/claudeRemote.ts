@@ -43,7 +43,7 @@ import { StreamSnapshotSender } from './utils/streamSnapshotSender'
 /**
  * 特殊命令处理结果
  */
-type SpecialCommandResult = {
+export type SpecialCommandResult = {
     /** 是否已处理（不需要继续发送给 SDK） */
     handled: boolean
     /** 是否需要退出（如 /clear） */
@@ -55,7 +55,7 @@ type SpecialCommandResult = {
 /**
  * 特殊命令处理上下文
  */
-type SpecialCommandContext = {
+export type SpecialCommandContext = {
     onClear: () => void
     onCompactStart: () => void
     executeBash: (cmd: string) => Promise<void>
@@ -65,7 +65,7 @@ type SpecialCommandContext = {
 /**
  * 创建特殊命令处理上下文
  */
-function createSpecialCommandContext(
+export function createSpecialCommandContext(
     opts: {
         onCompletionEvent?: (message: string) => void
         onSessionReset?: () => void
@@ -92,7 +92,7 @@ function createSpecialCommandContext(
  * @param context 处理上下文
  * @returns 处理结果
  */
-async function handleSpecialCommand(
+export async function handleSpecialCommand(
     message: string,
     context: SpecialCommandContext
 ): Promise<SpecialCommandResult> {

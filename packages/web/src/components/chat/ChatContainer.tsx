@@ -36,6 +36,9 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 const { useToken } = antTheme
 
+/** assistant 角色 block kinds */
+const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
+
 /** 用户消息气泡 hover 时显示 header 中的复制按钮 */
 const bubbleCopyStyles = css`
     .user-msg-bubble .msg-copy-btn {
@@ -182,7 +185,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             // 确定角色
             let role: 'assistant' | 'user' | 'system' = 'user'
-            if (block.kind === 'agent-text' || block.kind === 'agent-reasoning' || block.kind === 'tool-call' || block.kind === 'compact-summary') {
+            if (ASSISTANT_BLOCK_KINDS.has(block.kind)) {
                 role = 'assistant'
             } else if (block.kind === 'agent-event') {
                 role = 'system'
