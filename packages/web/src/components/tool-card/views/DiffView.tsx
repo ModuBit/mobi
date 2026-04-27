@@ -156,10 +156,19 @@ function DiffInlineView(props: {
                     fontSize: 11,
                     color: token.colorTextSecondary,
                     overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
+                    whiteSpace: 'nowrap',
                 }}>
-                    {props.filePath ?? 'Diff'}
+                    <span style={{
+                        display: 'inline-block',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        direction: 'rtl',
+                        unicodeBidi: 'plaintext',
+                    }}>
+                        {props.filePath ?? 'Diff'}
+                    </span>
                 </div>
                 <div style={{
                     flexShrink: 0,
