@@ -23,6 +23,20 @@ import { memo, type CSSProperties, type ReactNode } from 'react'
 import { Drawer } from 'antd'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
+/** Drawer 宽度配置 */
+export type DrawerWidthConfig = {
+    /** 默认宽度（像素值） */
+    default: number
+}
+
+/** 预设宽度配置 */
+export const DRAWER_WIDTH_PRESETS = {
+    /** 窄宽度：适用于普通工具 */
+    narrow: { default: 480 } as DrawerWidthConfig,
+    /** 宽宽度：适用于代码类工具（Edit/Write/Bash/Read 等） */
+    wide: { default: 720 } as DrawerWidthConfig,
+}
+
 interface ContentDrawerProps {
     /** 标题 */
     title?: ReactNode
@@ -34,10 +48,15 @@ interface ContentDrawerProps {
     bodyStyle?: CSSProperties
     /** 内容 */
     children: ReactNode
+    /** 宽度配置（仅 PC 端生效） */
+    widthConfig?: DrawerWidthConfig
 }
 
-function ContentDrawerInner({ title, open, onClose, bodyStyle, children }: ContentDrawerProps) {
+function ContentDrawerInner({ title, open, onClose, bodyStyle, children, widthConfig }: ContentDrawerProps) {
     const isMobile = useIsMobile()
+
+    // 默认使用窄宽度
+    const config = widthConfig ?? DRAWER_WIDTH_PRESETS.narrow
 
     return (
         <Drawer
@@ -45,7 +64,7 @@ function ContentDrawerInner({ title, open, onClose, bodyStyle, children }: Conte
             onClose={onClose}
             title={title}
             placement={isMobile ? 'bottom' : 'right'}
-            width={isMobile ? undefined : 400}
+            width={isMobile ? undefined : config.default}
             styles={{
                 wrapper: isMobile ? { height: 'auto', maxHeight: '85vh' } : undefined,
                 body: {
