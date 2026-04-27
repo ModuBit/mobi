@@ -24,6 +24,7 @@ import { useMemo } from 'react'
 import { theme as antTheme } from 'antd'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
+import { calculateLineNumWidth, getMaxLineNum } from './lineNumberUtils'
 
 const { useToken } = antTheme
 
@@ -71,14 +72,8 @@ export function ReadDetailView(props: ToolViewProps) {
     }, [content])
 
     // 计算行号列宽度（根据最大行号）
-    const maxLineNum = useMemo(() => {
-        const max = Math.max(...parsedLines.map(l => l?.lineNum ?? 0))
-        return max > 0 ? max : 1
-    }, [parsedLines])
-    const lineNumWidth = useMemo(() => {
-        const digits = String(maxLineNum).length
-        return Math.max(40, digits * 8 + 16)
-    }, [maxLineNum])
+    const maxLineNum = useMemo(() => getMaxLineNum(parsedLines), [parsedLines])
+    const lineNumWidth = useMemo(() => calculateLineNumWidth(maxLineNum), [maxLineNum])
 
     if (!content || parsedLines.length === 0) {
         return (
