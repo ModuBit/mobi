@@ -25,6 +25,7 @@ import { MultiEditFullView, MultiEditView } from '@/components/tool-card/views/M
 import { TodoWriteView } from '@/components/tool-card/views/TodoWriteView'
 import { UpdatePlanView } from '@/components/tool-card/views/UpdatePlanView'
 import { WriteView } from '@/components/tool-card/views/WriteView'
+import { ReadDetailView } from '@/components/tool-card/views/ReadDetailView'
 
 export type ToolViewProps = {
     block: ToolCallBlock
@@ -50,6 +51,7 @@ export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     Edit: EditView,
     MultiEdit: MultiEditFullView,
     Write: WriteView,
+    Read: ReadDetailView,
     AskUserQuestion: AskUserQuestionView,
     ExitPlanMode: ExitPlanModeView,
     ask_user_question: AskUserQuestionView,
