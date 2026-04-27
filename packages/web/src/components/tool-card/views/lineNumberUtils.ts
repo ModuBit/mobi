@@ -18,14 +18,22 @@
  * 行号相关工具函数
  */
 
+/** 最小行号列宽度 */
+const MIN_LINE_NUM_WIDTH = 40
+/** 等宽字体中每个数字的宽度 */
+const DIGIT_WIDTH = 8
+/** 行号列左右 padding 总和 */
+const LINE_NUM_PADDING = 16
+
 /** 计算行号列宽度（根据最大行号） */
 export function calculateLineNumWidth(maxLineNum: number): number {
     const digits = String(maxLineNum).length
-    return Math.max(40, digits * 8 + 16)
+    return Math.max(MIN_LINE_NUM_WIDTH, digits * DIGIT_WIDTH + LINE_NUM_PADDING)
 }
 
 /** 计算数组中的最大行号（避免栈溢出） */
 export function getMaxLineNum(lines: Array<{ lineNum?: number } | null | undefined>): number {
+    if (lines.length === 0) return 1
     const max = lines.reduce((m, l) => Math.max(m, l?.lineNum ?? 0), 0)
     return max > 0 ? max : 1
 }
