@@ -35,7 +35,7 @@ import {
 } from '@ant-design/icons'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
-import { basename, resolveDisplayPath } from '@/core/utils/path'
+import { basename, resolveDisplayPath, truncatePathLeft } from '@/core/utils/path'
 import { getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
@@ -254,7 +254,9 @@ export const knownTools: Record<string, {
         icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
-            return file ? resolveDisplayPath(file, opts.metadata) : 'Edit file'
+            if (!file) return 'Edit file'
+            const path = resolveDisplayPath(file, opts.metadata)
+            return truncatePathLeft(path, 40)
         },
         minimal: true
     },
@@ -266,7 +268,8 @@ export const knownTools: Record<string, {
             const edits = isObject(opts.input) && Array.isArray(opts.input.edits) ? opts.input.edits : null
             const count = edits ? edits.length : 0
             const path = resolveDisplayPath(file, opts.metadata)
-            return count > 1 ? `${path} (${count} edits)` : path
+            const truncated = truncatePathLeft(path, 35)
+            return count > 1 ? `${truncated} (${count} edits)` : truncated
         },
         minimal: true
     },
@@ -274,7 +277,9 @@ export const knownTools: Record<string, {
         icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
-            return file ? resolveDisplayPath(file, opts.metadata) : 'Write file'
+            if (!file) return 'Write file'
+            const path = resolveDisplayPath(file, opts.metadata)
+            return truncatePathLeft(path, 40)
         },
         subtitle: (opts) => {
             const content = getInputStringAny(opts.input, ['content', 'text'])
