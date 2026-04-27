@@ -93,9 +93,6 @@ function PermissionPanel({
                             <ExclamationCircleOutlined style={{ color: token.colorWarningText, marginRight: 8 }} />
                             {t('chat.permission.title')}
                         </Text>
-                        <Text type="secondary" style={{ marginLeft: 8 }}>
-                            {description || tool.name}
-                        </Text>
                     </div>
                     <PermissionFooter
                         api={api}
