@@ -21,7 +21,7 @@ import { memo, useMemo, useState } from 'react'
 import { Button, theme as antTheme, Typography, Spin } from 'antd'
 import { CheckOutlined, CloseOutlined, StopOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { getInputStringAny } from '@/core/lib/toolInputUtils'
+import { getInputStringAny, getPermissionDescription } from '@/core/lib/toolInputUtils'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -52,7 +52,10 @@ function formatPermissionSummary(
     toolInput: unknown,
     t: (key: string) => string
 ): string {
-    if (permission.status === 'pending') return t('chat.tool.waitingForApproval')
+    if (permission.status === 'pending') {
+        const desc = getPermissionDescription(toolName, toolInput)
+        return desc ? `${t('chat.tool.waitingForApproval')} ${desc}` : t('chat.tool.waitingForApproval')
+    }
     if (permission.status === 'canceled') return permission.reason ? `${t('chat.tool.canceled')}: ${permission.reason}` : t('chat.tool.canceled')
 
     if (permission.status === 'approved') {

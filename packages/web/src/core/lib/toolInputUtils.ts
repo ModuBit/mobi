@@ -43,3 +43,64 @@ export function truncate(text: string, maxLen: number): string {
     if (text.length <= maxLen) return text
     return text.slice(0, maxLen - 3) + '...'
 }
+
+/**
+ * 生成权限请求的友好描述
+ * 返回格式如: "Edit: src/file.ts" 或 "Bash: npm install" 或 "Read: README.md"
+ */
+export function getPermissionDescription(toolName: string, input: unknown): string | null {
+    if (!isObject(input)) return null
+
+    switch (toolName) {
+        case 'Edit':
+        case 'MultiEdit': {
+            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+            return filePath ? `Edit: ${filePath}` : null
+        }
+        case 'Write': {
+            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+            return filePath ? `Write: ${filePath}` : null
+        }
+        case 'Read': {
+            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+            return filePath ? `Read: ${filePath}` : null
+        }
+        case 'NotebookEdit': {
+            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+            return filePath ? `Notebook: ${filePath}` : null
+        }
+        case 'Bash': {
+            const command = getInputString(input, 'command') || getInputString(input, 'cmd')
+            if (command) {
+                const truncated = truncate(command, 50)
+                return `Bash: ${truncated}`
+            }
+            return null
+        }
+        case 'Task': {
+            const description = getInputString(input, 'description')
+            const prompt = getInputString(input, 'prompt')
+            if (description) return `Task: ${truncate(description, 40)}`
+            if (prompt) return `Task: ${truncate(prompt, 40)}`
+            return null
+        }
+        case 'WebFetch':
+        case 'WebSearch': {
+            const url = getInputString(input, 'url') || getInputString(input, 'query')
+            return url ? `${toolName}: ${truncate(url, 40)}` : null
+        }
+        default: {
+            // 尝试从常见字段获取描述
+            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+            if (filePath) return `${toolName}: ${filePath}`
+
+            const command = getInputString(input, 'command') || getInputString(input, 'cmd')
+            if (command) return `${toolName}: ${truncate(command, 40)}`
+
+            const url = getInputString(input, 'url')
+            if (url) return `${toolName}: ${truncate(url, 40)}`
+
+            return null
+        }
+    }
+}

@@ -26,6 +26,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+import { getPermissionDescription } from '@/core/lib/toolInputUtils'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -70,7 +71,8 @@ function PermissionPanel({
                         status: 'pending' as const,
                         createdAt: req.createdAt ?? null
                     }
-                }
+                },
+                description: getPermissionDescription(req.tool || 'Unknown', req.arguments)
             }
         })
     }, [pendingRequests])
@@ -79,7 +81,7 @@ function PermissionPanel({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {permissionTools.map(({ id, tool }) => (
+            {permissionTools.map(({ id, tool, description }) => (
                 <div key={id} style={{
                     padding: 12,
                     background: token.colorWarningBg,
@@ -92,7 +94,7 @@ function PermissionPanel({
                             {t('chat.permission.title')}
                         </Text>
                         <Text type="secondary" style={{ marginLeft: 8 }}>
-                            {tool.name}
+                            {description || tool.name}
                         </Text>
                     </div>
                     <PermissionFooter
