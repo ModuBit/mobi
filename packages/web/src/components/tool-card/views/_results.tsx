@@ -345,41 +345,8 @@ const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
     )
 }
 const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
-    const { token } = useToken()
-    const result = props.block.tool.result
-    if (result === undefined || result === null) {
-        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
-    }
-    const file = extractReadFileContent(result)
-    if (file) {
-        const path = file.filePath ? resolveDisplayPath(file.filePath, props.metadata) : null
-        return (
-            <>
-                {path ? (
-                    <div style={{ marginBottom: 8, fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
-                        {basename(path)}
-                    </div>
-                ) : null}
-                <CodeBlock code={file.content} language="text" />
-                <RawJsonDevOnly value={result} />
-            </>
-        )
-    }
-    const text = extractTextFromResult(result)
-    if (text) {
-        return (
-            <>
-                {renderText(text, { mode: 'code', language: 'text' })}
-                <RawJsonDevOnly value={result} />
-            </>
-        )
-    }
-    return (
-        <>
-            <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
-            <RawJsonDevOnly value={result} />
-        </>
-    )
+    // Read 工具不需要展示内容，行范围信息已在 title 中显示
+    return null
 }
 const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { token } = useToken()

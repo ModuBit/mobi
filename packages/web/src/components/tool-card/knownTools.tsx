@@ -216,7 +216,37 @@ export const knownTools: Record<string, {
         icon: () => <EyeOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path', 'file'])
-            return file ? resolveDisplayPath(file, opts.metadata) : 'Read file'
+            const basePath = file ? resolveDisplayPath(file, opts.metadata) : 'Read file'
+
+            // 从 input 提取 limit 和 offset
+            const limit = isObject(opts.input) && typeof opts.input.limit === 'number' ? opts.input.limit : null
+            const offset = isObject(opts.input) && typeof opts.input.offset === 'number' ? opts.input.offset : null
+
+            // 从 result 提取实际读取的行数
+            let resultLineCount: number | null = null
+            if (typeof opts.result === 'string') {
+                resultLineCount = opts.result.split('\n').filter(line => line.trim().length > 0).length
+            }
+
+            // 构建行范围信息
+            if (offset !== null && resultLineCount !== null) {
+                const startLine = offset + 1
+                const endLine = offset + resultLineCount
+                return `${basePath} (L${startLine}-${endLine})`
+            }
+            if (offset !== null && limit !== null) {
+                const startLine = offset + 1
+                const endLine = offset + limit
+                return `${basePath} (L${startLine}-${endLine})`
+            }
+            if (resultLineCount !== null) {
+                return `${basePath} (${resultLineCount} lines)`
+            }
+            if (limit !== null) {
+                return `${basePath} (${limit} lines)`
+            }
+
+            return basePath
         },
         minimal: true
     },
