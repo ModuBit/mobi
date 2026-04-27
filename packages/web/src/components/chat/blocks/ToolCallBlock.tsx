@@ -17,9 +17,10 @@
 import { useMemo, useState } from 'react'
 import { Think } from '@ant-design/x'
 import { theme as antTheme } from 'antd'
-import type { ChatBlock } from '@/domain/chat'
+import type { ChatBlock, ChatToolCall } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
+import type { ToolPermission } from '@/domain/tool/types'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { getToolPresentation } from '@/components/tool-card/knownTools'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
@@ -27,6 +28,19 @@ import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+
+/** 转换权限对象格式 */
+function convertPermission(perm: NonNullable<ChatToolCall['permission']>): ToolPermission {
+    return {
+        id: perm.id,
+        status: perm.status,
+        reason: perm.reason,
+        decision: perm.decision === 'denied' ? 'abort' as const : perm.decision === 'approved_for_session' ? 'approved_for_session' as const : perm.decision === 'approved' ? 'approved' as const : undefined,
+        mode: perm.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
+        allowedTools: perm.allowedTools,
+        answers: perm.answers,
+    }
+}
 
 /** 工具预览内容（在 Think 展开区域内渲染） */
 function ToolCallPreviewContent({
@@ -50,16 +64,6 @@ function ToolCallPreviewContent({
 
     // 转换为 ToolCard/types.ToolCallBlock 格式
     const adaptedBlock = useMemo(() => {
-        type ChatToolPermission = NonNullable<typeof tool.permission>
-        const convertPerm = (perm: ChatToolPermission) => ({
-            id: perm.id,
-            status: perm.status,
-            reason: perm.reason,
-            decision: perm.decision === 'denied' ? 'abort' as const : perm.decision === 'approved_for_session' ? 'approved_for_session' as const : perm.decision === 'approved' ? 'approved' as const : undefined,
-            mode: perm.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
-            allowedTools: perm.allowedTools,
-            answers: perm.answers,
-        })
         return {
             id: toolCallBlock.id,
             kind: 'tool-call' as const,
@@ -71,7 +75,7 @@ function ToolCallPreviewContent({
                 description: tool.description,
                 startedAt: tool.startedAt,
                 createdAt: tool.createdAt,
-                permission: tool.permission ? convertPerm(tool.permission) : null,
+                permission: tool.permission ? convertPermission(tool.permission) : null,
             },
             children: toolCallBlock.children
                 .filter((b): b is Extract<ChatBlock, { kind: 'tool-call' }> => b.kind === 'tool-call')
@@ -86,7 +90,7 @@ function ToolCallPreviewContent({
                         description: child.tool.description,
                         startedAt: child.tool.startedAt,
                         createdAt: child.tool.createdAt,
-                        permission: child.tool.permission ? convertPerm(child.tool.permission) : null,
+                        permission: child.tool.permission ? convertPermission(child.tool.permission) : null,
                     },
                     children: [],
                 })),
@@ -142,14 +146,7 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         description: tool.description,
         startedAt: tool.startedAt,
         createdAt: tool.createdAt,
-        permission: tool.permission ? {
-            id: tool.permission.id,
-            status: tool.permission.status,
-            reason: tool.permission.reason,
-            mode: tool.permission.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
-            allowedTools: tool.permission.allowedTools,
-            answers: tool.permission.answers,
-        } : null,
+        permission: tool.permission ? convertPermission(tool.permission) : null,
     }), [tool])
 
     return (

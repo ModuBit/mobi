@@ -49,11 +49,10 @@ function PermissionPanel({
     const { token } = useToken()
     const { t } = useTranslation()
 
-    const pendingRequests = requests ? Object.entries(requests) : []
-
     // 转换为 PermissionFooter 需要的格式
     const permissionTools = useMemo(() => {
-        return pendingRequests.map(([requestId, request]) => {
+        if (!requests) return []
+        return Object.entries(requests).map(([requestId, request]) => {
             const req = request as { tool?: string; arguments?: unknown; createdAt?: number | null }
             return {
                 id: requestId,
@@ -73,9 +72,9 @@ function PermissionPanel({
                 }
             }
         })
-    }, [pendingRequests])
+    }, [requests])
 
-    if (pendingRequests.length === 0) return null
+    if (permissionTools.length === 0) return null
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
