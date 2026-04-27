@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentEventBlock, ChatBlock, EventDisplay, MessageMeta, ToolCallBlock, ToolPermission } from './types'
+import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, EventDisplay, MessageMeta, ToolCallBlock, ToolPermission } from './types'
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
@@ -67,11 +67,20 @@ export function reduceTimeline(
     const toolBlocksById = new Map<string, ToolCallBlock>()
     let hasReadyEvent = false
 
+    // 追踪 compact 事件，用于识别下一条 compact 总结消息
+    let pendingCompactMetadata: { preTokens: number; postTokens: number; durationMs: number } | null = null
+
     for (const msg of messages) {
         if (msg.role === 'event') {
             if (msg.content.type === 'ready') {
                 hasReadyEvent = true
                 continue
+            }
+            // 检测 compact 事件，记录 metadata 用于下一条 user 消息
+            if (msg.content.type === 'compact') {
+                // AgentEvent 是联合类型，需要提取 compact 特有字段
+                const { preTokens, postTokens, durationMs } = msg.content as Extract<AgentEvent, { type: 'compact' }>
+                pendingCompactMetadata = { preTokens, postTokens, durationMs }
             }
             blocks.push(createEventBlock({
                 id: msg.id,
@@ -94,6 +103,24 @@ export function reduceTimeline(
         }
 
         if (msg.role === 'user') {
+            // 检测 compact 总结消息：来自 CLI 且之前有 compact 事件
+            if (pendingCompactMetadata && msg.meta?.sentFrom === 'cli') {
+                const compactBlock: CompactSummaryBlock = {
+                    kind: 'compact-summary',
+                    id: msg.id,
+                    localId: msg.localId,
+                    createdAt: msg.createdAt,
+                    text: msg.content.text,
+                    preTokens: pendingCompactMetadata.preTokens,
+                    postTokens: pendingCompactMetadata.postTokens,
+                    durationMs: pendingCompactMetadata.durationMs,
+                    meta: msg.meta
+                }
+                blocks.push(compactBlock)
+                pendingCompactMetadata = null
+                continue
+            }
+
             if (isCliOutputText(msg.content.text, msg.meta)) {
                 // 纯 local-command-stdout（如 setModel 确认）→ 系统事件消息
                 const standaloneText = extractStandaloneStdout(msg.content.text)

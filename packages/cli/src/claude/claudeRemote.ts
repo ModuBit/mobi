@@ -40,6 +40,88 @@ import { getDefaultClaudeCodePath } from "./sdk/utils";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender } from './utils/streamSnapshotSender'
 
+/**
+ * 特殊命令处理结果
+ */
+type SpecialCommandResult = {
+    /** 是否已处理（不需要继续发送给 SDK） */
+    handled: boolean
+    /** 是否需要退出（如 /clear） */
+    shouldExit: boolean
+    /** 是否是 /compact 命令 */
+    isCompact: boolean
+}
+
+/**
+ * 特殊命令处理上下文
+ */
+type SpecialCommandContext = {
+    onClear: () => void
+    onCompactStart: () => void
+    executeBash: (cmd: string) => Promise<void>
+    onReady: () => void
+}
+
+/**
+ * 创建特殊命令处理上下文
+ */
+function createSpecialCommandContext(
+    opts: {
+        onCompletionEvent?: (message: string) => void
+        onSessionReset?: () => void
+        onReady: () => void
+    },
+    executeBash: (cmd: string) => Promise<void>
+): SpecialCommandContext {
+    return {
+        onClear: () => {
+            opts.onCompletionEvent?.('Context was reset')
+            opts.onSessionReset?.()
+        },
+        onCompactStart: () => {
+            opts.onCompletionEvent?.('Compaction started')
+        },
+        executeBash,
+        onReady: opts.onReady,
+    }
+}
+
+/**
+ * 统一处理特殊命令（/clear、/compact、!bash）
+ * @param message 用户消息
+ * @param context 处理上下文
+ * @returns 处理结果
+ */
+async function handleSpecialCommand(
+    message: string,
+    context: SpecialCommandContext
+): Promise<SpecialCommandResult> {
+    const special = parseSpecialCommand(message)
+
+    // /clear: 重置 session，退出当前循环
+    if (special.type === 'clear') {
+        context.onClear()
+        return { handled: true, shouldExit: true, isCompact: false }
+    }
+
+    // /compact: 标记为 compact 命令，继续发送给 SDK
+    if (special.type === 'compact') {
+        logger.debug('[claudeRemote] /compact command detected')
+        context.onCompactStart()
+        return { handled: true, shouldExit: false, isCompact: true }
+    }
+
+    // !bash: 本地执行，继续等待下一条消息
+    if (special.type === 'bash' && special.command) {
+        await context.executeBash(special.command)
+        context.onReady()
+        return { handled: true, shouldExit: false, isCompact: false }
+    }
+
+    // 普通消息，发送给 SDK
+    return { handled: false, shouldExit: false, isCompact: false }
+}
+
 // 构造模拟 SDK 用户消息（字段不完整，仅用于前端渲染）
 function createSDKUserMessage(content: string): SDKUserMessage {
     return {
@@ -205,40 +287,22 @@ export async function claudeRemote(opts: {
         return;
     }
 
-    // Handle special commands
-    const specialCommand = parseSpecialCommand(initial.message);
+    // Handle special commands for initial message
+    const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
+    const initialResult = await handleSpecialCommand(initial.message, specialCommandCtx)
 
-    // Handle /clear command
-    if (specialCommand.type === 'clear') {
-        if (opts.onCompletionEvent) {
-            opts.onCompletionEvent('Context was reset');
-        }
-        if (opts.onSessionReset) {
-            opts.onSessionReset();
-        }
-        return;
+    if (initialResult.shouldExit) {
+        return
     }
 
-    // Handle /compact command
-    let isCompactCommand = false;
-    if (specialCommand.type === 'compact') {
-        logger.debug('[claudeRemote] /compact command detected - will process as normal but with compaction behavior');
-        isCompactCommand = true;
-        if (opts.onCompletionEvent) {
-            opts.onCompletionEvent('Compaction started');
-        }
-    }
-
-    // Handle ! command (bash mode) - 本地执行 shell 命令，不走 SDK
-    // 安全边界：高危命令检测拦截、沙箱隔离、超时控制
-    if (specialCommand.type === 'bash' && specialCommand.command) {
-        await executeBashCommand(specialCommand.command)
-        opts.onReady()
+    // 如果是 !bash，已经执行完毕，等待下一条消息
+    if (initialResult.handled && !initialResult.isCompact) {
         return
     }
 
     // Prepare SDK options
     let mode = initial.mode;
+    let isCompactCommand = initialResult.isCompact;
     const sdkOptions: Options = {
         cwd: opts.path,
         includePartialMessages: true,
@@ -422,16 +486,30 @@ export async function claudeRemote(opts: {
                 // Send ready event
                 opts.onReady();
 
-                // Push next message
+                // Push next message - 处理特殊命令
                 let next = await opts.nextMessage();
-                // !bash 不走 SDK，本地执行后继续等下一条
                 while (next) {
-                    const nextSpecial = parseSpecialCommand(next.message);
-                    if (nextSpecial.type !== 'bash' || !nextSpecial.command) break;
-                    await executeBashCommand(nextSpecial.command);
-                    opts.onReady();
-                    next = await opts.nextMessage();
+                    const result = await handleSpecialCommand(next.message, specialCommandCtx)
+
+                    if (result.shouldExit) {
+                        messages.end()
+                        return
+                    }
+
+                    if (result.isCompact) {
+                        isCompactCommand = true
+                    }
+
+                    // 如果已处理但不是 compact（即 bash），继续等待下一条
+                    if (result.handled && !result.isCompact) {
+                        next = await opts.nextMessage()
+                        continue
+                    }
+
+                    // 普通消息或 compact，跳出循环发送给 SDK
+                    break
                 }
+
                 if (!next) {
                     messages.end();
                     return;

@@ -41,7 +41,7 @@ export type AgentEvent =
     | { type: 'api-retry'; attempt: number; maxRetries: number; retryDelayMs: number; errorStatus: number; error: string }
     | { type: 'turn-duration'; durationMs: number }
     | { type: 'microcompact'; trigger: string; preTokens: number; tokensSaved: number }
-    | { type: 'compact'; trigger: string; preTokens: number }
+    | { type: 'compact'; trigger: string; preTokens: number; postTokens: number; durationMs: number }
     | { type: 'aborted'; numTurns: number | null }
     | { type: 'execution-error'; subtype: string; errors: string[]; numTurns: number | null }
     | ({ type: string } & Record<string, unknown>)
@@ -194,6 +194,22 @@ export type CliOutputBlock = {
     meta?: MessageMeta
 }
 
+/** Compact 总结消息块 */
+export type CompactSummaryBlock = {
+    kind: 'compact-summary'
+    id: string
+    localId: string | null
+    createdAt: number
+    text: string
+    /** 压缩前 token 数 */
+    preTokens: number
+    /** 压缩后 token 数 */
+    postTokens: number
+    /** 压缩耗时（毫秒） */
+    durationMs: number
+    meta?: MessageMeta
+}
+
 /** 事件渲染提示，由 reducer 层设置，渲染层只负责执行 */
 export type EventDisplay = {
     /** 内容对齐方式 */
@@ -224,4 +240,4 @@ export type ToolCallBlock = {
     meta?: MessageMeta
 }
 
-export type ChatBlock = UserTextBlock | AgentTextBlock | AgentReasoningBlock | CliOutputBlock | ToolCallBlock | AgentEventBlock
+export type ChatBlock = UserTextBlock | AgentTextBlock | AgentReasoningBlock | CliOutputBlock | CompactSummaryBlock | ToolCallBlock | AgentEventBlock

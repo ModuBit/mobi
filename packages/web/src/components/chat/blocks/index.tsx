@@ -23,6 +23,7 @@ import { ReasoningBlock } from './ReasoningBlock'
 import { CliOutputBlock } from './CliOutputBlock'
 import { AgentEventBlock } from './AgentEventBlock'
 import { ToolCallRenderer } from './ToolCallBlock'
+import { CompactSummaryBlockComponent } from './CompactSummaryBlock'
 
 /** 渲染 chat block 的上下文 */
 export type ChatBlockContext = {
@@ -49,6 +50,8 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
             return <ReasoningBlock text={block.text} thinking={ctx.isThinking} isStreaming={block.isStreaming} />
         case 'cli-output':
             return <CliOutputBlock text={block.text} />
+        case 'compact-summary':
+            return <CompactSummaryBlockComponent block={block} />
         case 'tool-call':
             return <ToolCallRenderer block={block} metadata={ctx.metadata} api={ctx.api} sessionId={ctx.sessionId} disabled={ctx.disabled} onDone={ctx.onDone} />
         case 'agent-event':

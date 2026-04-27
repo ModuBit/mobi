@@ -239,6 +239,11 @@ function reconcileBlock(block: ChatBlock, prevById: ChatBlocksById): ChatBlock {
         return areAgentReasoningBlocksEqual(prevBlock, block) ? prevBlock : block
     }
 
+    if (block.kind === 'compact-summary') {
+        // compact-summary 消息不需要特殊处理，直接返回
+        return block
+    }
+
     const prevBlock = prev as AgentEventBlock
     return areAgentEventBlocksEqual(prevBlock, block) ? prevBlock : block
 }
