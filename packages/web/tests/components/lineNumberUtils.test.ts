@@ -112,12 +112,14 @@ describe('lineNumberUtils', () => {
             const stats = calculateDiffStats('', 'line1\nline2\nline3')
             expect(stats.added).toBe(3)
             expect(stats.removed).toBe(0)
+            expect(stats.unchanged).toBe(0)
         })
 
         it('should calculate stats for removing lines', () => {
             const stats = calculateDiffStats('line1\nline2\nline3', '')
             expect(stats.added).toBe(0)
             expect(stats.removed).toBe(3)
+            expect(stats.unchanged).toBe(0)
         })
 
         it('should calculate stats for equal content', () => {
@@ -131,12 +133,35 @@ describe('lineNumberUtils', () => {
             const stats = calculateDiffStats('line1', 'line1\nline2\nline3')
             expect(stats.added).toBe(2)
             expect(stats.removed).toBe(0)
+            expect(stats.unchanged).toBe(1)
         })
 
         it('should calculate stats for removing lines', () => {
             const stats = calculateDiffStats('line1\nline2\nline3', 'line1')
             expect(stats.added).toBe(0)
             expect(stats.removed).toBe(2)
+            expect(stats.unchanged).toBe(1)
+        })
+
+        it('should calculate stats for both additions and removals', () => {
+            const stats = calculateDiffStats('line1\nline2\nline3', 'line1\nnewLine\nline3')
+            expect(stats.added).toBe(1)
+            expect(stats.removed).toBe(1)
+            expect(stats.unchanged).toBe(2)
+        })
+
+        it('should calculate stats for replacing content', () => {
+            const stats = calculateDiffStats('old1\nold2', 'new1\nnew2')
+            expect(stats.added).toBe(2)
+            expect(stats.removed).toBe(2)
+            expect(stats.unchanged).toBe(0)
+        })
+
+        it('should handle single line changes', () => {
+            const stats = calculateDiffStats('hello', 'world')
+            expect(stats.added).toBe(1)
+            expect(stats.removed).toBe(1)
+            expect(stats.unchanged).toBe(0)
         })
     })
 
