@@ -51,56 +51,34 @@ export function truncate(text: string, maxLen: number): string {
 export function getPermissionDescription(toolName: string, input: unknown): string | null {
     if (!isObject(input)) return null
 
+    // 提取常见字段
+    const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+    const command = getInputString(input, 'command') || getInputString(input, 'cmd')
+    const url = getInputString(input, 'url')
+
     switch (toolName) {
         case 'Edit':
-        case 'MultiEdit': {
-            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+        case 'MultiEdit':
             return filePath ? `Edit: ${filePath}` : null
-        }
-        case 'Write': {
-            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+        case 'Write':
             return filePath ? `Write: ${filePath}` : null
-        }
-        case 'Read': {
-            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+        case 'Read':
             return filePath ? `Read: ${filePath}` : null
-        }
-        case 'NotebookEdit': {
-            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+        case 'NotebookEdit':
             return filePath ? `Notebook: ${filePath}` : null
-        }
-        case 'Bash': {
-            const command = getInputString(input, 'command') || getInputString(input, 'cmd')
-            if (command) {
-                const truncated = truncate(command, 50)
-                return `Bash: ${truncated}`
-            }
-            return null
-        }
+        case 'Bash':
+            return command ? `Bash: ${truncate(command, 50)}` : null
         case 'Task': {
-            const description = getInputString(input, 'description')
-            const prompt = getInputString(input, 'prompt')
-            if (description) return `Task: ${truncate(description, 40)}`
-            if (prompt) return `Task: ${truncate(prompt, 40)}`
-            return null
+            const desc = getInputString(input, 'description') || getInputString(input, 'prompt')
+            return desc ? `Task: ${truncate(desc, 40)}` : null
         }
         case 'WebFetch':
-        case 'WebSearch': {
-            const url = getInputString(input, 'url') || getInputString(input, 'query')
-            return url ? `${toolName}: ${truncate(url, 40)}` : null
-        }
-        default: {
-            // 尝试从常见字段获取描述
-            const filePath = getInputString(input, 'file_path') || getInputString(input, 'filePath')
+        case 'WebSearch':
+            return (url || getInputString(input, 'query')) ? `${toolName}: ${truncate(url || getInputString(input, 'query')!, 40)}` : null
+        default:
             if (filePath) return `${toolName}: ${filePath}`
-
-            const command = getInputString(input, 'command') || getInputString(input, 'cmd')
             if (command) return `${toolName}: ${truncate(command, 40)}`
-
-            const url = getInputString(input, 'url')
             if (url) return `${toolName}: ${truncate(url, 40)}`
-
             return null
-        }
     }
 }
