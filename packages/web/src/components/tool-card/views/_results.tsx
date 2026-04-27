@@ -20,6 +20,7 @@ import { theme as antTheme, Typography } from 'antd'
 import { ChecklistList, extractTodoChecklist } from '@/components/tool-card/checklist'
 import { basename, resolveDisplayPath } from '@/core/utils/path'
 import { Markdown } from '@/components/ui/Markdown'
+import { DiffView } from '@/components/tool-card/views/DiffView'
 
 import type { ToolPermission } from '@/domain/tool/types'
 
@@ -410,6 +411,101 @@ const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
         </>
     )
 }
+
+/** Edit 工具结果视图 - 显示 diff */
+const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
+    const input = props.block.tool.input
+    const { state, result } = props.block.tool
+
+    // 执行中或无结果时显示占位
+    if (result === undefined || result === null) {
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(state)}</div>
+    }
+
+    // 从 input 提取 diff 内容
+    if (!isObject(input)) {
+        return <MutationResultView {...props} />
+    }
+
+    const oldString = typeof input.old_string === 'string' ? input.old_string : null
+    const newString = typeof input.new_string === 'string' ? input.new_string : null
+
+    if (oldString === null || newString === null) {
+        return <MutationResultView {...props} />
+    }
+
+    return (
+        <>
+            <DiffView oldString={oldString} newString={newString} variant="inline" />
+            <RawJsonDevOnly value={result} />
+        </>
+    )
+}
+
+/** Write 工具结果视图 - 显示写入内容 */
+const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
+    const input = props.block.tool.input
+    const { state, result } = props.block.tool
+
+    if (result === undefined || result === null) {
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(state)}</div>
+    }
+
+    if (!isObject(input)) {
+        return <MutationResultView {...props} />
+    }
+
+    const content = typeof input.content === 'string' ? input.content : typeof input.text === 'string' ? input.text : null
+
+    if (content === null) {
+        return <MutationResultView {...props} />
+    }
+
+    return (
+        <>
+            <DiffView oldString="" newString={content} variant="inline" />
+            <RawJsonDevOnly value={result} />
+        </>
+    )
+}
+
+/** MultiEdit 工具结果视图 - 显示多个 diff */
+const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
+    const input = props.block.tool.input
+    const { state, result } = props.block.tool
+
+    if (result === undefined || result === null) {
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(state)}</div>
+    }
+
+    if (!isObject(input)) {
+        return <MutationResultView {...props} />
+    }
+
+    const edits = Array.isArray(input.edits) ? input.edits : null
+
+    if (!edits || edits.length === 0) {
+        return <MutationResultView {...props} />
+    }
+
+    return (
+        <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {edits.map((edit: unknown, idx: number) => {
+                    if (!isObject(edit)) return null
+                    const oldString = typeof edit.old_string === 'string' ? edit.old_string : null
+                    const newString = typeof edit.new_string === 'string' ? edit.new_string : null
+                    if (oldString === null || newString === null) return null
+                    return <DiffView key={idx} oldString={oldString} newString={newString} variant="inline" />
+                })}
+            </div>
+            <RawJsonDevOnly value={result} />
+        </>
+    )
+}
 const TodoWriteResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { token } = useToken()
     const todos = extractTodoChecklist(props.block.tool.input, props.block.tool.result)
@@ -445,9 +541,9 @@ export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     Grep: LineListResultView,
     LS: LineListResultView,
     Read: ReadResultView,
-    Edit: MutationResultView,
-    MultiEdit: MutationResultView,
-    Write: MutationResultView,
+    Edit: EditResultView,
+    MultiEdit: MultiEditResultView,
+    Write: WriteResultView,
     WebFetch: MarkdownResultView,
     WebSearch: MarkdownResultView,
     NotebookRead: ReadResultView,
