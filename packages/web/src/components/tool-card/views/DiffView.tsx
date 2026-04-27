@@ -153,54 +153,48 @@ function DiffInlineView(props: {
                 </div>
             ) : null}
 
-            <div style={{ display: 'flex' }}>
-                {/* 行号列 - 固定 */}
-                <div style={{
-                    flexShrink: 0,
-                    width: lineNumWidth,
-                    background: token.colorBgLayout,
-                    borderRight: `1px solid ${token.colorBorderSecondary}`,
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 12,
-                }}>
-                    {linesWithNumbers.map((line, i) => (
-                        <div key={i} style={{
-                            height: 19.2, // lineHeight 1.6 * fontSize 12
-                            lineHeight: 1.6,
-                            padding: '0 8px',
-                            textAlign: 'right',
-                            color: token.colorTextTertiary,
-                            userSelect: 'none',
-                            background: line.added ? token.colorSuccessBg : line.removed ? token.colorErrorBg : 'transparent',
-                        }}>
-                            {line.lineNum ?? ''}
-                        </div>
-                    ))}
-                </div>
-
-                {/* 内容列 - 可横向滚动 */}
-                <div style={{
-                    flex: 1,
-                    overflowX: 'auto',
-                    overflowY: 'hidden',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 12,
-                }}>
+            {/* 整体容器，横向滚动 */}
+            <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+                <div style={{ display: 'table', minWidth: '100%' }}>
                     {linesWithNumbers.map((line, i) => {
                         const prefix = line.added ? '+' : line.removed ? '-' : ' '
-                        const colorStyle = {
-                            background: line.added ? token.colorSuccessBg : line.removed ? token.colorErrorBg : 'transparent',
-                            color: line.added ? token.colorSuccess : line.removed ? token.colorError : token.colorText,
-                        }
+                        const bgColor = line.added ? token.colorSuccessBg : line.removed ? token.colorErrorBg : 'transparent'
+                        const textColor = line.added ? token.colorSuccess : line.removed ? token.colorError : token.colorText
 
                         return (
                             <div key={i} style={{
-                                ...colorStyle,
-                                whiteSpace: 'pre',
-                                padding: '0 8px',
+                                display: 'table-row',
+                                background: bgColor,
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: 12,
                                 lineHeight: 1.6,
                             }}>
-                                {prefix} {line.value || ' '}
+                                {/* 行号列 */}
+                                <div style={{
+                                    display: 'table-cell',
+                                    width: lineNumWidth,
+                                    minWidth: lineNumWidth,
+                                    padding: '0 8px',
+                                    textAlign: 'right',
+                                    color: token.colorTextTertiary,
+                                    userSelect: 'none',
+                                    background: token.colorBgLayout,
+                                    borderRight: `1px solid ${token.colorBorderSecondary}`,
+                                    position: 'sticky',
+                                    left: 0,
+                                    zIndex: 1,
+                                }}>
+                                    {line.lineNum ?? ''}
+                                </div>
+                                {/* 内容列 */}
+                                <div style={{
+                                    display: 'table-cell',
+                                    padding: '0 8px',
+                                    whiteSpace: 'pre',
+                                    color: textColor,
+                                }}>
+                                    {prefix} {line.value || ' '}
+                                </div>
                             </div>
                         )
                     })}
