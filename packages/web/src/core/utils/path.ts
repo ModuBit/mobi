@@ -16,6 +16,16 @@
 
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
+/** 路径截断长度常量 */
+export const PATH_TRUNCATE = {
+    /** 短截断：工具卡片标题 */
+    SHORT: 35,
+    /** 中等截断：工具卡片标题 */
+    MEDIUM: 40,
+    /** 长截断：DiffView 头部 */
+    LONG: 50,
+} as const
+
 /**
  * 解析显示路径（相对于项目根目录）
  */

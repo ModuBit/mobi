@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { calculateLineNumWidth, getMaxLineNum, calculateDiffStats, calculateDiffStatsFromLines, formatDiffStats } from '@/components/tool-card/views/lineNumberUtils'
+import { calculateLineNumWidth, getMaxLineNum, calculateDiffStatsFromLines, formatDiffStats } from '@/components/tool-card/views/lineNumberUtils'
 
 describe('lineNumberUtils', () => {
     describe('calculateLineNumWidth', () => {
@@ -100,48 +100,6 @@ describe('lineNumberUtils', () => {
         })
     })
 
-    describe('calculateDiffStats', () => {
-        it('should return zero stats for empty strings', () => {
-            const stats = calculateDiffStats('', '')
-            expect(stats.added).toBe(0)
-            expect(stats.removed).toBe(0)
-            expect(stats.unchanged).toBe(0)
-        })
-
-        it('should calculate stats for adding lines', () => {
-            const stats = calculateDiffStats('', 'line1\nline2\nline3')
-            expect(stats.added).toBe(3)
-            expect(stats.removed).toBe(0)
-            expect(stats.unchanged).toBe(0)
-        })
-
-        it('should calculate stats for removing lines', () => {
-            const stats = calculateDiffStats('line1\nline2\nline3', '')
-            expect(stats.added).toBe(0)
-            expect(stats.removed).toBe(3)
-            expect(stats.unchanged).toBe(0)
-        })
-
-        it('should calculate stats for equal content', () => {
-            const stats = calculateDiffStats('line1\nline2', 'line1\nline2')
-            expect(stats.added).toBe(0)
-            expect(stats.removed).toBe(0)
-            expect(stats.unchanged).toBe(2)
-        })
-
-        it('should calculate stats for adding more lines', () => {
-            const stats = calculateDiffStats('line1', 'line1\nline2\nline3')
-            expect(stats.added).toBe(2)
-            expect(stats.removed).toBe(0)
-        })
-
-        it('should calculate stats for removing lines', () => {
-            const stats = calculateDiffStats('line1\nline2\nline3', 'line1')
-            expect(stats.added).toBe(0)
-            expect(stats.removed).toBe(2)
-        })
-    })
-
     describe('calculateDiffStatsFromLines', () => {
         it('should calculate stats from diff lines', () => {
             const diffLines = [
@@ -180,6 +138,16 @@ describe('lineNumberUtils', () => {
             const stats = calculateDiffStatsFromLines(diffLines)
             expect(stats.added).toBe(0)
             expect(stats.removed).toBe(2)
+            expect(stats.unchanged).toBe(0)
+        })
+
+        it('should filter empty lines in the middle', () => {
+            const diffLines = [
+                { value: 'line1\n\nline2\n', added: true },
+            ]
+            const stats = calculateDiffStatsFromLines(diffLines)
+            expect(stats.added).toBe(2) // line1 and line2, empty line filtered
+            expect(stats.removed).toBe(0)
             expect(stats.unchanged).toBe(0)
         })
     })

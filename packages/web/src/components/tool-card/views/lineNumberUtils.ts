@@ -48,6 +48,11 @@ export type DiffStats = {
 /** Diff 行类型（来自 diffLines） */
 type DiffLine = { value: string; added?: boolean; removed?: boolean }
 
+/** 统计非空行数（移除所有空行） */
+function countNonEmptyLines(s: string): number {
+    return s.split('\n').filter(l => l !== '').length
+}
+
 /** 从 diffLines 结果计算统计信息（O(n) 复杂度） */
 export function calculateDiffStatsFromLines(diffLines: DiffLine[]): DiffStats {
     let added = 0
@@ -55,55 +60,17 @@ export function calculateDiffStatsFromLines(diffLines: DiffLine[]): DiffStats {
     let unchanged = 0
 
     for (const line of diffLines) {
+        const count = countNonEmptyLines(line.value)
         if (line.added) {
-            added += line.value.split('\n').filter(l => l !== '').length
+            added += count
         } else if (line.removed) {
-            removed += line.value.split('\n').filter(l => l !== '').length
+            removed += count
         } else {
-            unchanged += line.value.split('\n').filter(l => l !== '').length
+            unchanged += count
         }
     }
 
     return { added, removed, unchanged }
-}
-
-/** 计算 diff 统计信息（简单版本，直接统计行数差异） */
-export function calculateDiffStats(oldString: string, newString: string): DiffStats {
-    // 统计非空行数
-    const countLines = (s: string) => {
-        const lines = s.split('\n')
-        // 移除末尾空行
-        while (lines.length > 0 && lines[lines.length - 1] === '') {
-            lines.pop()
-        }
-        return lines.length
-    }
-
-    const oldCount = countLines(oldString)
-    const newCount = countLines(newString)
-
-    // 简化计算：只统计净变化
-    if (oldCount === 0) {
-        // 纯添加
-        return { added: newCount, removed: 0, unchanged: 0 }
-    }
-    if (newCount === 0) {
-        // 纯删除
-        return { added: 0, removed: oldCount, unchanged: 0 }
-    }
-
-    // 对于修改场景，假设大部分内容不变，只统计差值
-    const diff = newCount - oldCount
-    if (diff > 0) {
-        // 新增行数
-        return { added: diff, removed: 0, unchanged: Math.min(oldCount, newCount) }
-    } else if (diff < 0) {
-        // 删除行数
-        return { added: 0, removed: -diff, unchanged: Math.min(oldCount, newCount) }
-    }
-
-    // 行数相同，假设有变化
-    return { added: 0, removed: 0, unchanged: newCount }
 }
 
 /** 格式化 diff 统计信息 */

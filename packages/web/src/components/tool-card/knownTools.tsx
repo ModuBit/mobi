@@ -35,7 +35,7 @@ import {
 } from '@ant-design/icons'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
-import { basename, resolveDisplayPath, truncatePathLeft } from '@/core/utils/path'
+import { basename, resolveDisplayPath, truncatePathLeft, PATH_TRUNCATE } from '@/core/utils/path'
 import { getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
@@ -261,7 +261,7 @@ export const knownTools: Record<string, {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
             if (!file) return 'Edit file'
             const path = resolveDisplayPath(file, opts.metadata)
-            return truncatePathLeft(path, 40)
+            return truncatePathLeft(path, PATH_TRUNCATE.MEDIUM)
         },
         minimal: true,
         wideDrawer: true
@@ -274,7 +274,7 @@ export const knownTools: Record<string, {
             const edits = isObject(opts.input) && Array.isArray(opts.input.edits) ? opts.input.edits : null
             const count = edits ? edits.length : 0
             const path = resolveDisplayPath(file, opts.metadata)
-            const truncated = truncatePathLeft(path, 35)
+            const truncated = truncatePathLeft(path, PATH_TRUNCATE.SHORT)
             return count > 1 ? `${truncated} (${count} edits)` : truncated
         },
         minimal: true,
@@ -286,7 +286,7 @@ export const knownTools: Record<string, {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
             if (!file) return 'Write file'
             const path = resolveDisplayPath(file, opts.metadata)
-            return truncatePathLeft(path, 40)
+            return truncatePathLeft(path, PATH_TRUNCATE.MEDIUM)
         },
         subtitle: (opts) => {
             const content = getInputStringAny(opts.input, ['content', 'text'])
