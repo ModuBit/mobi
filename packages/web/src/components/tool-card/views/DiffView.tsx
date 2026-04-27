@@ -93,6 +93,44 @@ function DiffInlineView(props: {
     const { token } = useToken()
     const diff = useMemo(() => diffLines(props.oldString, props.newString), [props.oldString, props.newString])
 
+    // 计算每行的行号（基于 newString 的行号）
+    const linesWithNumbers = useMemo(() => {
+        const result: Array<{ value: string; added?: boolean; removed?: boolean; lineNum?: number }> = []
+        let newLineNum = 1
+
+        for (const part of diff) {
+            const lines = part.value.split('\n')
+            if (lines.length > 0 && lines[lines.length - 1] === '') {
+                lines.pop()
+            }
+
+            for (const line of lines) {
+                result.push({
+                    value: line,
+                    added: part.added,
+                    removed: part.removed,
+                    // 删除行不显示行号，添加/不变行显示 new 文件的行号
+                    lineNum: part.removed ? undefined : newLineNum,
+                })
+                if (!part.removed) {
+                    newLineNum++
+                }
+            }
+        }
+
+        return result
+    }, [diff])
+
+    // 计算行号列宽度（根据最大行号）
+    const maxLineNum = useMemo(() => {
+        const max = Math.max(...linesWithNumbers.map(l => l.lineNum ?? 0))
+        return max > 0 ? max : 1
+    }, [linesWithNumbers])
+    const lineNumWidth = useMemo(() => {
+        const digits = String(maxLineNum).length
+        return Math.max(40, digits * 8 + 16) // 最小 40px，每个数字约 8px
+    }, [maxLineNum])
+
     return (
         <div style={{
             overflow: 'hidden',
@@ -115,29 +153,58 @@ function DiffInlineView(props: {
                 </div>
             ) : null}
 
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                {diff.map((part, i) => {
-                    const lines = part.value.split('\n')
-                    if (lines.length > 0 && lines[lines.length - 1] === '') {
-                        lines.pop()
-                    }
-
-                    const prefix = part.added ? '+' : part.removed ? '-' : ' '
-                    const bgStyle: React.CSSProperties = {
-                        background: part.added ? token.colorSuccessBg : part.removed ? token.colorErrorBg : 'transparent',
-                        color: part.added ? token.colorSuccess : part.removed ? token.colorError : token.colorText
-                    }
-
-                    return (
-                        <div key={i} style={bgStyle}>
-                            {lines.map((line, j) => (
-                                <div key={j} style={{ whiteSpace: 'pre-wrap', padding: '0 8px' }}>
-                                    {prefix} {line}
-                                </div>
-                            ))}
+            <div style={{ display: 'flex' }}>
+                {/* 行号列 - 固定 */}
+                <div style={{
+                    flexShrink: 0,
+                    width: lineNumWidth,
+                    background: token.colorBgLayout,
+                    borderRight: `1px solid ${token.colorBorderSecondary}`,
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 12,
+                }}>
+                    {linesWithNumbers.map((line, i) => (
+                        <div key={i} style={{
+                            height: 19.2, // lineHeight 1.6 * fontSize 12
+                            lineHeight: 1.6,
+                            padding: '0 8px',
+                            textAlign: 'right',
+                            color: token.colorTextTertiary,
+                            userSelect: 'none',
+                            background: line.added ? token.colorSuccessBg : line.removed ? token.colorErrorBg : 'transparent',
+                        }}>
+                            {line.lineNum ?? ''}
                         </div>
-                    )
-                })}
+                    ))}
+                </div>
+
+                {/* 内容列 - 可横向滚动 */}
+                <div style={{
+                    flex: 1,
+                    overflowX: 'auto',
+                    overflowY: 'hidden',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 12,
+                }}>
+                    {linesWithNumbers.map((line, i) => {
+                        const prefix = line.added ? '+' : line.removed ? '-' : ' '
+                        const colorStyle = {
+                            background: line.added ? token.colorSuccessBg : line.removed ? token.colorErrorBg : 'transparent',
+                            color: line.added ? token.colorSuccess : line.removed ? token.colorError : token.colorText,
+                        }
+
+                        return (
+                            <div key={i} style={{
+                                ...colorStyle,
+                                whiteSpace: 'pre',
+                                padding: '0 8px',
+                                lineHeight: 1.6,
+                            }}>
+                                {prefix} {line.value || ' '}
+                            </div>
+                        )
+                    })}
+                </div>
             </div>
         </div>
     )
