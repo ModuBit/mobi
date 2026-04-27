@@ -299,7 +299,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
             const commandText = specialCommand.originalMessage || message.content.text;
-            messageQueue.pushIsolateAndClear(commandText, enhancedMode);
+            messageQueue.pushAndClear(commandText, enhancedMode);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }

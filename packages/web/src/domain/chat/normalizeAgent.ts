@@ -362,9 +362,14 @@ export function normalizeAgentRecord(
         if (data.isMeta || data.isCompactSummary) return null
         if (!isClaudeChatVisibleMessage({ type: data.type, subtype: data.subtype })) return null
 
-        // 构建注册表 key
+        // 构建注册表 key，优先精确匹配 type:subtype，回退到 type
         const key = data.subtype ? `${data.type}:${data.subtype}` : data.type
-        const handler = outputHandlers.get(key)
+        let handler = outputHandlers.get(key)
+
+        // 如果精确匹配失败，尝试只用 type
+        if (!handler && data.subtype) {
+            handler = outputHandlers.get(data.type)
+        }
 
         if (handler) {
             return handler(data as Record<string, unknown>, ctx)

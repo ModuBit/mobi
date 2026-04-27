@@ -93,42 +93,57 @@ export class MessageQueue<T> {
     }
 
     /**
+     * Push a message after clearing the queue.
+     * Clears any pending messages but does NOT set isolate flag.
+     * Used for commands like /compact that need a clean queue but should be processed normally.
+     */
+    pushAndClear(message: string, mode: T): void {
+        this.pushAfterClear(message, mode, false);
+    }
+
+    /**
      * Push a message that must be processed in complete isolation.
      * Clears any pending messages and ensures this message is never batched with others.
-     * Used for special commands that require dedicated processing.
+     * Used for special commands that require dedicated processing (e.g., /clear).
      */
     pushIsolateAndClear(message: string, mode: T): void {
+        this.pushAfterClear(message, mode, true);
+    }
+
+    /**
+     * 内部方法：清空队列后推送消息
+     * @param isolate - true 表示隔离处理（触发 claudeRemote 重启），false 表示正常处理
+     */
+    private pushAfterClear(message: string, mode: T, isolate: boolean): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
 
         const modeHash = this.modeHasher(mode);
-        logger.debug(`[MessageQueue] pushIsolateAndClear() called with mode hash: ${modeHash} - clearing ${this.queue.length} pending messages`);
+        const methodName = isolate ? 'pushIsolateAndClear' : 'pushAndClear';
+        logger.debug(`[MessageQueue] ${methodName}() mode=${modeHash}, clearing ${this.queue.length} messages`);
 
-        // Clear any pending messages to ensure this message is processed in complete isolation
         this.queue = [];
 
         this.queue.push({
             message,
             mode,
             modeHash,
-            isolate: true
+            isolate
         });
 
-        // Trigger message handler if set
         if (this.onMessageHandler) {
             this.onMessageHandler(message, mode);
         }
 
-        // Notify waiter if any
         if (this.waiter) {
-            logger.debug(`[MessageQueue] Notifying waiter for isolated message`);
+            logger.debug(`[MessageQueue] Notifying waiter`);
             const waiter = this.waiter;
             this.waiter = null;
             waiter(true);
         }
 
-        logger.debug(`[MessageQueue] pushIsolateAndClear() completed. Queue size: ${this.queue.length}`);
+        logger.debug(`[MessageQueue] ${methodName}() done, queue.size=${this.queue.length}`);
     }
 
     /**
