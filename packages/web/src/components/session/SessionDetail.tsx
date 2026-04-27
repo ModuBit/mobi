@@ -126,7 +126,18 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                                 />
                             </>
                         )}
-                        <span style={{ fontWeight: 500 }}>{displayName}</span>
+                        <span
+                            style={{
+                                fontWeight: 500,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                minWidth: 0,
+                                flex: '1 1 auto',
+                            }}
+                        >
+                            {displayName}
+                        </span>
                     </>
                 }
                 right={

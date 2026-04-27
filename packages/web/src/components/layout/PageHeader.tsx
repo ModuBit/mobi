@@ -27,6 +27,9 @@ export const HeaderLeft = styled.div`
     display: flex;
     align-items: center;
     gap: 12px;
+    overflow: hidden;
+    flex: 1 1 auto;
+    min-width: 0;
 `
 
 /**
@@ -36,6 +39,7 @@ export const HeaderRight = styled.div`
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
 `
 
 const StyledHeader = styled(Layout.Header, {
