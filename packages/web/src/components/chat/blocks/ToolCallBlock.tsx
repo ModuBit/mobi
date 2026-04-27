@@ -122,7 +122,8 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
     onDone?: () => void
 }) {
     const { token } = antTheme.useToken()
-    const [expanded, setExpanded] = useState(true)
+    // Read 工具默认收起，其他工具默认展开
+    const [expanded, setExpanded] = useState(block.tool.name !== 'Read')
     const [drawerOpen, setDrawerOpen] = useState(false)
 
     const tool = block.tool
