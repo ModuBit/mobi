@@ -48,6 +48,14 @@ function createEventBlock(params: {
     }
 }
 
+/** 在 blocks 数组中找到指定 ID 的块并替换 */
+function replaceBlockById(blocks: ChatBlock[], id: string, newBlock: ChatBlock): void {
+    const index = blocks.findIndex(b => b.id === id)
+    if (index !== -1) {
+        blocks[index] = newBlock
+    }
+}
+
 /**
  * 归约时间线
  * 将追踪后的消息转换为聊天块
@@ -241,16 +249,10 @@ export function reduceTimeline(
                     })
 
                     if (block.tool.state === 'pending') {
-                        // 创建浅拷贝以保持不可变性
                         block = { ...block, tool: { ...block.tool } }
                         block.tool.state = 'running'
                         block.tool.startedAt = msg.createdAt
-                        // 找到正确的块在 blocks 数组中的索引并替换
-                        // 不能用 blocks.length - 1，因为 ensureToolBlock 可能返回已存在的块
-                        const blockIndex = blocks.findIndex(b => b.id === c.id)
-                        if (blockIndex !== -1) {
-                            blocks[blockIndex] = block
-                        }
+                        replaceBlockById(blocks, c.id, block)
                         toolBlocksById.set(c.id, block)
                     }
 
@@ -260,13 +262,8 @@ export function reduceTimeline(
                             context.consumedGroupIds.add(msg.id)
                             const child = reduceTimeline(sidechain, context)
                             hasReadyEvent = hasReadyEvent || child.hasReadyEvent
-                            // 创建浅拷贝以保持不可变性
                             const taskBlock = { ...block, children: child.blocks }
-                            // 找到正确的块在 blocks 数组中的索引并替换
-                            const blockIndex = blocks.findIndex(b => b.id === c.id)
-                            if (blockIndex !== -1) {
-                                blocks[blockIndex] = taskBlock
-                            }
+                            replaceBlockById(blocks, c.id, taskBlock)
                             toolBlocksById.set(c.id, taskBlock)
                         }
                     }
@@ -325,18 +322,11 @@ export function reduceTimeline(
                         permission
                     })
 
-                    // 创建浅拷贝以保持不可变性
                     const completedBlock = { ...block, tool: { ...block.tool } }
                     completedBlock.tool.result = c.content
                     completedBlock.tool.completedAt = msg.createdAt
                     completedBlock.tool.state = c.is_error ? 'error' : 'completed'
-
-                    // 找到正确的块在 blocks 数组中的索引并替换
-                    // 不能用 blocks.length - 1，因为并行工具执行时最后一个块可能不是当前工具
-                    const blockIndex = blocks.findIndex(b => b.id === c.tool_use_id)
-                    if (blockIndex !== -1) {
-                        blocks[blockIndex] = completedBlock
-                    }
+                    replaceBlockById(blocks, c.tool_use_id, completedBlock)
                     toolBlocksById.set(c.tool_use_id, completedBlock)
                     continue
                 }
