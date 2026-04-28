@@ -85,7 +85,8 @@ export function ensureToolBlock(
         input: unknown
         description: string | null
         permission?: ToolPermission
-    }
+    },
+    blockIndexById?: Map<string, number>
 ): ToolCallBlock {
     const existing = toolBlocksById.get(id)
     if (existing) {
@@ -157,6 +158,7 @@ export function ensureToolBlock(
 
     toolBlocksById.set(id, block)
     blocks.push(block)
+    blockIndexById?.set(id, blocks.length - 1)
     return block
 }
 

@@ -48,10 +48,15 @@ function createEventBlock(params: {
     }
 }
 
-/** 在 blocks 数组中找到指定 ID 的块并替换 */
-function replaceBlockById(blocks: ChatBlock[], id: string, newBlock: ChatBlock): void {
-    const index = blocks.findIndex(b => b.id === id)
-    if (index !== -1) {
+/** 在 blocks 数组中找到指定 ID 的块并替换，使用索引 Map 实现 O(1) 查找 */
+function replaceBlockById(
+    blocks: ChatBlock[],
+    blockIndexById: Map<string, number>,
+    id: string,
+    newBlock: ChatBlock
+): void {
+    const index = blockIndexById.get(id)
+    if (index !== undefined) {
         blocks[index] = newBlock
     }
 }
@@ -73,6 +78,7 @@ export function reduceTimeline(
 ): { blocks: ChatBlock[]; toolBlocksById: Map<string, ToolCallBlock>; hasReadyEvent: boolean } {
     const blocks: ChatBlock[] = []
     const toolBlocksById = new Map<string, ToolCallBlock>()
+    const blockIndexById = new Map<string, number>()
     let hasReadyEvent = false
 
     // 追踪 compact 事件，用于识别下一条 compact 总结消息
@@ -246,13 +252,13 @@ export function reduceTimeline(
                         input: c.input,
                         description: c.description,
                         permission
-                    })
+                    }, blockIndexById)
 
                     if (block.tool.state === 'pending') {
                         block = { ...block, tool: { ...block.tool } }
                         block.tool.state = 'running'
                         block.tool.startedAt = msg.createdAt
-                        replaceBlockById(blocks, c.id, block)
+                        replaceBlockById(blocks, blockIndexById, c.id, block)
                         toolBlocksById.set(c.id, block)
                     }
 
@@ -263,7 +269,7 @@ export function reduceTimeline(
                             const child = reduceTimeline(sidechain, context)
                             hasReadyEvent = hasReadyEvent || child.hasReadyEvent
                             const taskBlock = { ...block, children: child.blocks }
-                            replaceBlockById(blocks, c.id, taskBlock)
+                            replaceBlockById(blocks, blockIndexById, c.id, taskBlock)
                             toolBlocksById.set(c.id, taskBlock)
                         }
                     }
@@ -320,13 +326,13 @@ export function reduceTimeline(
                         input: permissionEntry?.input ?? null,
                         description: null,
                         permission
-                    })
+                    }, blockIndexById)
 
                     const completedBlock = { ...block, tool: { ...block.tool } }
                     completedBlock.tool.result = c.content
                     completedBlock.tool.completedAt = msg.createdAt
                     completedBlock.tool.state = c.is_error ? 'error' : 'completed'
-                    replaceBlockById(blocks, c.tool_use_id, completedBlock)
+                    replaceBlockById(blocks, blockIndexById, c.tool_use_id, completedBlock)
                     toolBlocksById.set(c.tool_use_id, completedBlock)
                     continue
                 }
