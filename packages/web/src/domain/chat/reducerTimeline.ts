@@ -245,8 +245,12 @@ export function reduceTimeline(
                         block = { ...block, tool: { ...block.tool } }
                         block.tool.state = 'running'
                         block.tool.startedAt = msg.createdAt
-                        // 更新 blocks 数组中的引用
-                        blocks[blocks.length - 1] = block
+                        // 找到正确的块在 blocks 数组中的索引并替换
+                        // 不能用 blocks.length - 1，因为 ensureToolBlock 可能返回已存在的块
+                        const blockIndex = blocks.findIndex(b => b.id === c.id)
+                        if (blockIndex !== -1) {
+                            blocks[blockIndex] = block
+                        }
                         toolBlocksById.set(c.id, block)
                     }
 
@@ -258,7 +262,11 @@ export function reduceTimeline(
                             hasReadyEvent = hasReadyEvent || child.hasReadyEvent
                             // 创建浅拷贝以保持不可变性
                             const taskBlock = { ...block, children: child.blocks }
-                            blocks[blocks.length - 1] = taskBlock
+                            // 找到正确的块在 blocks 数组中的索引并替换
+                            const blockIndex = blocks.findIndex(b => b.id === c.id)
+                            if (blockIndex !== -1) {
+                                blocks[blockIndex] = taskBlock
+                            }
                             toolBlocksById.set(c.id, taskBlock)
                         }
                     }
