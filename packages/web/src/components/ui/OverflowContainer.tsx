@@ -82,15 +82,26 @@ function OverflowContainerInner({
         <div className={className} style={{ position: 'relative', maxHeight, overflow: 'hidden', ...style }} ref={contentRef}>
             {children}
             {isOverflowing && (
-                <div style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    height: gradientHeight,
-                    background: `linear-gradient(transparent, ${token.colorBgContainer})`,
-                    pointerEvents: 'none',
-                }} />
+                <div
+                    onClick={onClickExpand ? (e) => { e.stopPropagation(); onClickExpand() } : undefined}
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        cursor: onClickExpand ? 'pointer' : undefined,
+                    }}
+                >
+                    <div style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: gradientHeight,
+                        background: `linear-gradient(transparent, ${token.colorBgContainer})`,
+                    }} />
+                </div>
             )}
             {isOverflowing && onClickExpand && (
                 <div

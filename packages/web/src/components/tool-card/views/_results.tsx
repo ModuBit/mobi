@@ -157,21 +157,6 @@ function ResultPlaceholder({ state }: { state: ToolViewProps['block']['tool']['s
     return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(state)}</div>
 }
 
-function RawJsonDevOnly(props: { value: unknown }) {
-    const { token } = useToken()
-    if (!import.meta.env.DEV) return null
-    if (props.value === null || props.value === undefined) return null
-    return (
-        <details style={{ marginTop: 12 }}>
-            <summary style={{ cursor: 'pointer', fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
-                Raw JSON
-            </summary>
-            <div style={{ marginTop: 8 }}>
-                <CodeBlock code={safeStringify(props.value)} language="json" />
-            </div>
-        </details>
-    )
-}
 function extractReadFileContent(result: unknown): { filePath: string | null; content: string } | null {
     if (!isObject(result)) return null
     const file = isObject(result.file) ? result.file : null
@@ -232,19 +217,9 @@ const MarkdownResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
     const text = extractTextFromResult(result)
     if (text) {
-        return (
-            <>
-                {renderText(text, { mode: 'auto' })}
-                <RawJsonDevOnly value={result} />
-            </>
-        )
+        return renderText(text, { mode: 'auto' })
     }
-    return (
-        <>
-            <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
-            <RawJsonDevOnly value={result} />
-        </>
-    )
+    return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
 }
 const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { token } = useToken()
@@ -254,41 +229,23 @@ const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
     const text = extractTextFromResult(result)
     if (!text) {
-        return (
-            <>
-                <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
-                <RawJsonDevOnly value={result} />
-            </>
-        )
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
     }
     if (isProbablyMarkdownList(text)) {
-        return (
-            <>
-                <Markdown content={text} />
-                <RawJsonDevOnly value={result} />
-            </>
-        )
+        return <Markdown content={text} />
     }
     const lines = extractLineList(text)
     if (lines.length === 0) {
-        return (
-            <>
-                <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
-                <RawJsonDevOnly value={result} />
-            </>
-        )
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
     }
     return (
-        <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {lines.map((line) => (
-                    <div key={line} style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: token.colorText, wordBreak: 'break-all' }}>
-                        {line}
-                    </div>
-                ))}
-            </div>
-            <RawJsonDevOnly value={result} />
-        </>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {lines.map((line) => (
+                <div key={line} style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: token.colorText, wordBreak: 'break-all' }}>
+                    {line}
+                </div>
+            ))}
+        </div>
     )
 }
 const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
@@ -301,32 +258,21 @@ const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
     if (file) {
         const path = file.filePath ? resolveDisplayPath(file.filePath, props.metadata) : null
         return (
-            <>
+            <div>
                 {path ? (
                     <div style={{ marginBottom: 8, fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
                         {basename(path)}
                     </div>
                 ) : null}
                 <CodeBlock code={file.content} language="text" />
-                <RawJsonDevOnly value={result} />
-            </>
+            </div>
         )
     }
     const text = extractTextFromResult(result)
     if (text) {
-        return (
-            <>
-                {renderText(text, { mode: 'code', language: 'text' })}
-                <RawJsonDevOnly value={result} />
-            </>
-        )
+        return renderText(text, { mode: 'code', language: 'text' })
     }
-    return (
-        <>
-            <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
-            <RawJsonDevOnly value={result} />
-        </>
-    )
+    return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
 }
 const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { token } = useToken()
@@ -341,21 +287,15 @@ const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
     if (typeof text === 'string' && text.trim().length > 0) {
         const color = state === 'error' ? token.colorError : token.colorText
         return (
-            <>
-                <div style={{ fontSize: 13, color }}>
-                    {renderText(text, { mode: state === 'error' ? 'code' : 'auto' })}
-                </div>
-                <RawJsonDevOnly value={result} />
-            </>
+            <div style={{ fontSize: 13, color }}>
+                {renderText(text, { mode: state === 'error' ? 'code' : 'auto' })}
+            </div>
         )
     }
     return (
-        <>
-            <div style={{ fontSize: 13, color: token.colorTextTertiary }}>
-                {state === 'completed' ? 'Done' : '(no output)'}
-            </div>
-            <RawJsonDevOnly value={result} />
-        </>
+        <div style={{ fontSize: 13, color: token.colorTextTertiary }}>
+            {state === 'completed' ? 'Done' : '(no output)'}
+        </div>
     )
 }
 
@@ -383,16 +323,13 @@ const EditResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
 
     return (
-        <>
-            <DiffView
-                oldString={oldString}
-                newString={newString}
-                filePath={filePath ?? undefined}
-                variant="inline"
-                statsType="edit"
-            />
-            <RawJsonDevOnly value={result} />
-        </>
+        <DiffView
+            oldString={oldString}
+            newString={newString}
+            filePath={filePath ?? undefined}
+            variant="inline"
+            statsType="edit"
+        />
     )
 }
 
@@ -417,16 +354,13 @@ const WriteResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
 
     return (
-        <>
-            <DiffView
-                oldString=""
-                newString={content}
-                filePath={filePath ?? undefined}
-                variant="inline"
-                statsType="write"
-            />
-            <RawJsonDevOnly value={result} />
-        </>
+        <DiffView
+            oldString=""
+            newString={content}
+            filePath={filePath ?? undefined}
+            variant="inline"
+            statsType="write"
+        />
     )
 }
 
@@ -451,27 +385,24 @@ const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
 
     return (
-        <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {edits.map((edit: unknown, idx: number) => {
-                    if (!isObject(edit)) return null
-                    const oldString = typeof edit.old_string === 'string' ? edit.old_string : null
-                    const newString = typeof edit.new_string === 'string' ? edit.new_string : null
-                    if (oldString === null || newString === null) return null
-                    return (
-                        <DiffView
-                            key={idx}
-                            oldString={oldString}
-                            newString={newString}
-                            filePath={idx === 0 ? filePath ?? undefined : undefined}
-                            variant="inline"
-                            statsType="edit"
-                        />
-                    )
-                })}
-            </div>
-            <RawJsonDevOnly value={result} />
-        </>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {edits.map((edit: unknown, idx: number) => {
+                if (!isObject(edit)) return null
+                const oldString = typeof edit.old_string === 'string' ? edit.old_string : null
+                const newString = typeof edit.new_string === 'string' ? edit.new_string : null
+                if (oldString === null || newString === null) return null
+                return (
+                    <DiffView
+                        key={idx}
+                        oldString={oldString}
+                        newString={newString}
+                        filePath={idx === 0 ? filePath ?? undefined : undefined}
+                        variant="inline"
+                        statsType="edit"
+                    />
+                )
+            })}
+        </div>
     )
 }
 const TodoWriteResultView: ToolViewComponent = (props: ToolViewProps) => {
@@ -490,12 +421,7 @@ const GenericResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
     const text = extractTextFromResult(result)
     if (text) {
-        return (
-            <>
-                {renderText(text, { mode: 'auto' })}
-                {typeof result === 'object' ? <RawJsonDevOnly value={result} /> : null}
-            </>
-        )
+        return renderText(text, { mode: 'auto' })
     }
     if (typeof result === 'string') {
         return renderText(result, { mode: 'auto' })

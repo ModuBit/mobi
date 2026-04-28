@@ -27,11 +27,13 @@ import { getToolResultViewComponent } from '@/components/tool-card/views/_result
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
+import { FilePathText } from '@/components/ui/FilePathText'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
 
 /** 预览卡片最大高度 */
 const PREVIEW_MAX_HEIGHT = {
     DEFAULT: 100,
+    FILE: 200,
     TERMINAL: 160,
 } as const
 
@@ -48,17 +50,18 @@ function convertPermission(perm: NonNullable<ChatToolCall['permission']>): ToolP
     }
 }
 
-/** 工具预览内容（在 Think 展开区域内渲染） */
 function ToolCallPreviewContent({
     toolCallBlock,
     metadata,
     onViewDetail,
-    showInput
+    showInput,
+    maxHeight
 }: {
     toolCallBlock: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
     onViewDetail: () => void
     showInput?: boolean
+    maxHeight: number
 }) {
     const tool = toolCallBlock.tool
     const ViewComponent = useMemo(() => {
@@ -108,8 +111,6 @@ function ToolCallPreviewContent({
     const showPreview = showInput || (tool.state !== 'running' && tool.result !== undefined)
 
     if (!showPreview || !ViewComponent) return null
-
-    const maxHeight = isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL : PREVIEW_MAX_HEIGHT.DEFAULT
 
     return (
         <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
@@ -169,9 +170,13 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                 icon={getToolIcon(tool.name)}
                 title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
-                        <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0', minWidth: 0 }}>
-                            {toolPresentation.title}
-                        </span>
+                        {toolPresentation.isFilePath ? (
+                            <FilePathText path={toolPresentation.title} />
+                        ) : (
+                            <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0', minWidth: 0 }}>
+                                {toolPresentation.title}
+                            </span>
+                        )}
                         {!titleContainsDescription && tool.description && (
                             <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0, maxWidth: '40%' }}>
                                 {tool.description.length > 60 ? `${tool.description.slice(0, 60)}...` : tool.description}
@@ -191,6 +196,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                     metadata={metadata}
                     onViewDetail={() => setDrawerOpen(true)}
                     showInput={hasPermission}
+                    maxHeight={toolPresentation.isFilePath ? PREVIEW_MAX_HEIGHT.FILE
+                        : isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
+                        : PREVIEW_MAX_HEIGHT.DEFAULT}
                 />
                 {/* pending 状态显示权限操作按钮 */}
                 {hasPermission && api && sessionId ? (

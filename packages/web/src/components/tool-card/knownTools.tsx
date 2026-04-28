@@ -35,7 +35,7 @@ import {
 } from '@ant-design/icons'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
-import { basename, resolveDisplayPath, truncatePathLeft, PATH_TRUNCATE } from '@/core/utils/path'
+import { basename, resolveDisplayPath } from '@/core/utils/path'
 import { getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
@@ -56,6 +56,8 @@ export type ToolPresentation = {
     minimal: boolean
     /** 是否需要宽 Drawer（代码类工具） */
     wideDrawer?: boolean
+    /** title 是否为文件路径（启用中间省略） */
+    isFilePath?: boolean
 }
 
 function countLines(text: string): number {
@@ -155,6 +157,8 @@ export const knownTools: Record<string, {
     minimal?: boolean | ((opts: ToolOpts) => boolean)
     /** 是否需要宽 Drawer（代码类工具） */
     wideDrawer?: boolean
+    /** title 是否为文件路径（启用中间省略） */
+    isFilePath?: boolean
 }> = {
     Task: {
         icon: () => <RocketOutlined style={DEFAULT_ICON_STYLE} />,
@@ -268,11 +272,11 @@ export const knownTools: Record<string, {
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
             if (!file) return 'Edit file'
-            const path = resolveDisplayPath(file, opts.metadata)
-            return truncatePathLeft(path, PATH_TRUNCATE.MEDIUM)
+            return resolveDisplayPath(file, opts.metadata)
         },
         minimal: true,
-        wideDrawer: true
+        wideDrawer: true,
+        isFilePath: true
     },
     MultiEdit: {
         icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
@@ -282,19 +286,18 @@ export const knownTools: Record<string, {
             const edits = isObject(opts.input) && Array.isArray(opts.input.edits) ? opts.input.edits : null
             const count = edits ? edits.length : 0
             const path = resolveDisplayPath(file, opts.metadata)
-            const truncated = truncatePathLeft(path, PATH_TRUNCATE.SHORT)
-            return count > 1 ? `${truncated} (${count} edits)` : truncated
+            return count > 1 ? `${path} (${count} edits)` : path
         },
         minimal: true,
-        wideDrawer: true
+        wideDrawer: true,
+        isFilePath: true
     },
     Write: {
         icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
             if (!file) return 'Write file'
-            const path = resolveDisplayPath(file, opts.metadata)
-            return truncatePathLeft(path, PATH_TRUNCATE.MEDIUM)
+            return resolveDisplayPath(file, opts.metadata)
         },
         subtitle: (opts) => {
             const content = getInputStringAny(opts.input, ['content', 'text'])
@@ -303,7 +306,8 @@ export const knownTools: Record<string, {
             return lines > 1 ? `${lines} lines` : `${content.length} chars`
         },
         minimal: true,
-        wideDrawer: true
+        wideDrawer: true,
+        isFilePath: true
     },
     WebFetch: {
         icon: () => <GlobalOutlined style={DEFAULT_ICON_STYLE} />,
@@ -395,7 +399,8 @@ export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadat
             title: known.title(opts),
             subtitle: known.subtitle ? known.subtitle(opts) : null,
             minimal,
-            wideDrawer: known.wideDrawer ?? false
+            wideDrawer: known.wideDrawer ?? false,
+            isFilePath: known.isFilePath ?? false
         }
     }
 

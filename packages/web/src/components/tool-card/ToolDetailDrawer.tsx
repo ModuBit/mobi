@@ -32,6 +32,7 @@ import { getToolResultViewComponent } from './views/_results'
 import { getToolIcon, StatusStateIcon, ICON_STYLE_LG } from './toolIcons'
 import { truncate } from '@/core/lib/toolInputUtils'
 import { ContentDrawer, DRAWER_WIDTH_PRESETS, type DrawerWidthConfig } from '@/components/ui/ContentDrawer'
+import { FilePathText } from '@/components/ui/FilePathText'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -156,9 +157,13 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
                 {getToolIcon(tool.name, ICON_STYLE_LG)}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-                <Text strong style={{ fontSize: 14, wordBreak: 'break-word' }}>
-                    {presentation.title}
-                </Text>
+                {presentation.isFilePath ? (
+                    <FilePathText path={presentation.title} strong style={{ fontSize: 14 }} />
+                ) : (
+                    <Text strong style={{ fontSize: 14, wordBreak: 'break-word' }}>
+                        {presentation.title}
+                    </Text>
+                )}
                 {truncatedSubtitle ? (
                     <div>
                         <Text type="secondary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

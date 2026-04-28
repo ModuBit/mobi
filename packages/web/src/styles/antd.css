@@ -1,6 +1,25 @@
 /* ==================== Ant Design 组件覆盖 ==================== */
 
-/* 消息气泡紧凑间距 */
+/* 隐藏滚动条 */
+.ant-bubble-list-scroll-box,
+.ant-bubble-list-scroll-box *,
+.ant-drawer-content-wrapper,
+.ant-drawer-body,
+.ant-conversations {
+    scrollbar-width: none !important;
+}
+.ant-bubble-list-scroll-box::-webkit-scrollbar,
+.ant-bubble-list-scroll-box *::-webkit-scrollbar,
+.ant-drawer-content-wrapper::-webkit-scrollbar,
+.ant-drawer-body::-webkit-scrollbar,
+.ant-conversations::-webkit-scrollbar {
+    display: none !important;
+}
+
+/* assistant 气泡右侧空间压缩到 5% */
+.ant-bubble-list .ant-bubble-start:not(.ant-bubble-divider):not(.ant-bubble-system) {
+    padding-inline-end: 5% !important;
+}
 .ant-bubble {
     padding-block: 6px !important;
 }
@@ -8,6 +27,11 @@
 /* Duration 气泡去除内边距 */
 .ant-bubble-content-borderless {
     padding-inline: 0 !important;
+}
+
+/* 包含工具卡片的 assistant 气泡，最小宽度 80% */
+.ant-bubble:has(.tool-call-think) > .ant-bubble-body {
+    min-width: 80% !important;
 }
 
 /* Think 内容区上间距收紧 */
@@ -72,39 +96,9 @@
     max-height: 60vh !important;
 }
 
-/* Drawer body 隐藏滚动条 */
-.ant-drawer-body {
-    scrollbar-width: none !important;
-}
-.ant-drawer-body::-webkit-scrollbar {
-    display: none !important;
-}
-.ant-drawer-content-wrapper {
-    scrollbar-width: none !important;
-}
-.ant-drawer-content-wrapper::-webkit-scrollbar {
-    display: none !important;
-}
-
 /* Bubble footer 间距缩小 */
 .ant-bubble-footer {
     margin-block-start: 4px !important;
-}
-
-/* Bubble.List 滚动容器隐藏滚动条 */
-.ant-bubble-list-scroll-box::-webkit-scrollbar {
-    display: none !important;
-}
-.ant-bubble-list-scroll-box {
-    scrollbar-width: none !important;
-}
-
-/* Session 列表隐藏滚动条 */
-.ant-conversations::-webkit-scrollbar {
-    display: none !important;
-}
-.ant-conversations {
-    scrollbar-width: none !important;
 }
 
 /* Dark 模式下 solid 按钮文字颜色修复 */

@@ -18,7 +18,7 @@ import { useMemo, useState } from 'react'
 import { Modal, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { calculateLineNumWidth, getMaxLineNum, calculateDiffStatsFromLines, formatDiffStats } from './lineNumberUtils'
-import { truncatePathLeft, PATH_TRUNCATE } from '@/core/utils/path'
+import { FilePathText } from '@/components/ui/FilePathText'
 
 const { useToken } = antTheme
 
@@ -143,29 +143,29 @@ function DiffInlineView(props: {
         }}>
             {/* 头部：文件路径 + 统计信息 */}
             <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
                 borderBottom: `1px solid ${token.colorBorder}`,
                 background: token.colorBgLayout,
                 padding: '4px 8px',
-                gap: 8,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
             }}>
                 <div style={{
-                    flex: 1,
-                    minWidth: 0,
                     fontSize: 11,
                     color: token.colorTextSecondary,
-                    overflow: 'hidden',
-                    whiteSpace: 'nowrap',
                 }}>
-                    {props.filePath ? truncatePathLeft(props.filePath, PATH_TRUNCATE.LONG) : 'Diff'}
+                    {props.filePath ? (
+                        <FilePathText path={props.filePath} style={{ fontSize: 11 }} />
+                    ) : 'Diff'}
                 </div>
                 <div style={{
-                    flexShrink: 0,
                     fontSize: 11,
                     color: token.colorTextTertiary,
                     fontFamily: 'var(--font-mono)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
                 }}>
                     {diffStats}
                 </div>
@@ -295,11 +295,8 @@ export function DiffView(props: {
                             padding: '4px 8px',
                             fontSize: 11,
                             color: token.colorTextSecondary,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
                         }}>
-                            {props.filePath}
+                            <FilePathText path={props.filePath} style={{ fontSize: 11 }} />
                         </div>
                     ) : null}
                     <div style={{ padding: 8 }}>
