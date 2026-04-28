@@ -1,0 +1,38 @@
+/* ==================== 滚动条样式 ==================== */
+
+/* 滚动条样式 - Light 模式 */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #d9d9d9;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #bfbfbf;
+}
+
+/* 滚动条样式 - Dark 模式 */
+html[data-theme='dark'] ::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+}
+
+html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+    background: #52525b;
+}
+
+/* 隐藏滚动条但保留滚动能力 */
+.hide-scrollbar {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+}
+.hide-scrollbar::-webkit-scrollbar {
+    display: none !important;
+}

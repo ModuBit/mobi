@@ -22,12 +22,18 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
-import { getToolPresentation } from '@/components/tool-card/knownTools'
+import { getToolPresentation, isTerminalTool } from '@/components/tool-card/knownTools'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+
+/** 预览卡片最大高度 */
+const PREVIEW_MAX_HEIGHT = {
+    DEFAULT: 100,
+    TERMINAL: 160,
+} as const
 
 /** 转换权限对象格式 */
 function convertPermission(perm: NonNullable<ChatToolCall['permission']>): ToolPermission {
@@ -103,9 +109,11 @@ function ToolCallPreviewContent({
 
     if (!showPreview || !ViewComponent) return null
 
+    const maxHeight = isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL : PREVIEW_MAX_HEIGHT.DEFAULT
+
     return (
         <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
-            <OverflowContainer maxHeight={100} onClickExpand={onViewDetail}>
+            <OverflowContainer maxHeight={maxHeight} onClickExpand={onViewDetail}>
                 <ViewComponent block={adaptedBlock} metadata={metadata} />
             </OverflowContainer>
         </div>
@@ -150,6 +158,10 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         permission: tool.permission ? convertPermission(tool.permission) : null,
     }), [tool])
 
+    // 判断 title 是否已包含 description 信息（如 Bash 工具）
+    // 如果 title 等于 description，则不再单独显示 description
+    const titleContainsDescription = tool.description && toolPresentation.title === tool.description
+
     return (
         <>
             <Think
@@ -160,7 +172,7 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                         <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0', minWidth: 0 }}>
                             {toolPresentation.title}
                         </span>
-                        {tool.description && (
+                        {!titleContainsDescription && tool.description && (
                             <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0, maxWidth: '40%' }}>
                                 {tool.description.length > 60 ? `${tool.description.slice(0, 60)}...` : tool.description}
                             </span>

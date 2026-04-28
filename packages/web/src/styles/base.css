@@ -1,0 +1,46 @@
+/* ==================== 全局样式 ==================== */
+
+* {
+    box-sizing: border-box;
+}
+
+html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    /* Light 模式背景（默认） */
+    background: #fafafa;
+}
+
+html[data-theme='dark'] {
+    /* Dark 模式背景 */
+    background: #09090b;
+}
+
+body {
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    /* 透明背景，跟随 html */
+    background: transparent;
+    color: #18181b;
+}
+
+html[data-theme='dark'] body {
+    color: #fafafa;
+}
+
+/* 移动端安全区适配 */
+@supports (padding: max(0px)) {
+    .safe-area-bottom {
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+}
+
+/* 代码块样式 */
+pre, code {
+    font-family: var(--font-mono);
+}

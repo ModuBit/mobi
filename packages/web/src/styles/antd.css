@@ -1,0 +1,121 @@
+/* ==================== Ant Design 组件覆盖 ==================== */
+
+/* 消息气泡紧凑间距 */
+.ant-bubble {
+    padding-block: 6px !important;
+}
+
+/* Duration 气泡去除内边距 */
+.ant-bubble-content-borderless {
+    padding-inline: 0 !important;
+}
+
+/* Think 内容区上间距收紧 */
+.ant-think-content {
+    margin-top: 6px !important;
+}
+
+/* 工具卡片 Think 内容区去掉左 padding */
+.tool-call-think .ant-think-content {
+    padding-left: 0 !important;
+}
+
+/* 工具卡片 Think 标题区截断省略 */
+.tool-call-think {
+    overflow: hidden !important;
+    min-width: 0 !important;
+}
+
+.tool-call-think .ant-think-status-wrapper {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+}
+
+.tool-call-think .ant-think-status-text {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+}
+
+/* 系统消息气泡更紧凑 */
+.ant-bubble-system {
+    padding-block: 2px !important;
+}
+
+/* 事件对齐控制（覆盖 system 角色默认的居中） */
+.ant-bubble:has(.event-align-left) {
+    justify-content: flex-start !important;
+}
+.ant-bubble:has(.event-align-right) {
+    justify-content: flex-end !important;
+}
+
+/* Drawer 滚动支持 */
+.ant-drawer-content-wrapper {
+    overflow: auto;
+}
+
+/* 移动端底部 Drawer：高度自适应，上限 85vh */
+.ant-drawer-bottom .ant-drawer-content-wrapper {
+    height: auto !important;
+    max-height: 85vh !important;
+}
+
+/* 移动端底部 Drawer 安全区 */
+.ant-drawer-bottom .ant-drawer-body {
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+/* ActionSheet Drawer 更矮 */
+.action-sheet-drawer .ant-drawer-content-wrapper {
+    max-height: 60vh !important;
+}
+
+/* Drawer body 隐藏滚动条 */
+.ant-drawer-body {
+    scrollbar-width: none !important;
+}
+.ant-drawer-body::-webkit-scrollbar {
+    display: none !important;
+}
+.ant-drawer-content-wrapper {
+    scrollbar-width: none !important;
+}
+.ant-drawer-content-wrapper::-webkit-scrollbar {
+    display: none !important;
+}
+
+/* Bubble footer 间距缩小 */
+.ant-bubble-footer {
+    margin-block-start: 4px !important;
+}
+
+/* Bubble.List 滚动容器隐藏滚动条 */
+.ant-bubble-list-scroll-box::-webkit-scrollbar {
+    display: none !important;
+}
+.ant-bubble-list-scroll-box {
+    scrollbar-width: none !important;
+}
+
+/* Session 列表隐藏滚动条 */
+.ant-conversations::-webkit-scrollbar {
+    display: none !important;
+}
+.ant-conversations {
+    scrollbar-width: none !important;
+}
+
+/* Dark 模式下 solid 按钮文字颜色修复 */
+html[data-theme='dark'] .ant-btn-variant-solid {
+    color: #18181b !important;
+}
+
+html[data-theme='dark'] .ant-btn-variant-solid:hover {
+    color: #18181b !important;
+}
+
+html[data-theme='dark'] .ant-btn-variant-solid:active {
+    color: #18181b !important;
+}

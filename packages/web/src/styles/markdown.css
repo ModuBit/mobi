@@ -1,0 +1,74 @@
+/* ==================== Markdown 样式 ==================== */
+
+/* XMarkdown inline code 背景色 */
+.x-markdown code {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme='dark'] .x-markdown code {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* XMarkdown 表格样式 - Light 模式 */
+.x-markdown table {
+    border-collapse: collapse;
+    border: 1px solid #e5e7eb;
+    margin: 0.75em 0;
+    width: 100%;
+    border-radius: 6px;
+    font-size: 0.875em;
+    line-height: 1.5;
+    table-layout: auto;
+}
+
+.x-markdown thead {
+    background: #f9fafb;
+}
+
+.x-markdown th {
+    font-weight: 600;
+    padding: 8px 12px;
+    border: 1px solid #e5e7eb;
+    text-align: left;
+    white-space: nowrap;
+    background: #f3f4f6;
+}
+
+.x-markdown td {
+    padding: 6px 12px;
+    border: 1px solid #e5e7eb;
+}
+
+.x-markdown tbody tr:nth-child(even) {
+    background: #f9fafb;
+}
+
+.x-markdown tbody tr:hover {
+    background: #f0f1f3;
+}
+
+/* XMarkdown 表格样式 - Dark 模式 */
+html[data-theme='dark'] .x-markdown table {
+    border-color: #3f3f46;
+}
+
+html[data-theme='dark'] .x-markdown thead {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+html[data-theme='dark'] .x-markdown th {
+    border-color: #3f3f46;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme='dark'] .x-markdown td {
+    border-color: #3f3f46;
+}
+
+html[data-theme='dark'] .x-markdown tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+html[data-theme='dark'] .x-markdown tbody tr:hover {
+    background: rgba(255, 255, 255, 0.06);
+}

@@ -1,0 +1,20 @@
+/* ==================== 特殊模式样式 ==================== */
+
+/* Sender 磨砂遮罩层 */
+.sender-overlay {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(1px) saturate(1.4);
+    -webkit-backdrop-filter: blur(1px) saturate(1.4);
+}
+
+html[data-theme='dark'] .sender-overlay {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+/* Bash 模式：Sender 发光边框 */
+.bash-mode .ant-sender {
+    --bash-glow: 232, 112, 58;
+    border-color: rgba(var(--bash-glow), 0.6) !important;
+    box-shadow: 0 0 0 2px rgba(var(--bash-glow), 0.15),
+                0 0 12px rgba(var(--bash-glow), 0.1);
+}

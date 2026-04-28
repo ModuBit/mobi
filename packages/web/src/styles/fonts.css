@@ -1,0 +1,46 @@
+/* ==================== 字体定义 ==================== */
+
+/* 正文：阿里巴巴普惠体 3.0 (GB2312 子集) */
+@font-face {
+    font-family: 'Alibaba PuHuiTi 3.0';
+    src: url('/fonts/alibaba-puhuiti/AlibabaPuHuiTi-3-55-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    unicode-range: U+0020-007E, U+00A0-00FF, U+2000-206F, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+}
+
+@font-face {
+    font-family: 'Alibaba PuHuiTi 3.0';
+    src: url('/fonts/alibaba-puhuiti/AlibabaPuHuiTi-3-65-Medium.woff2') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+    unicode-range: U+0020-007E, U+00A0-00FF, U+2000-206F, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+}
+
+@font-face {
+    font-family: 'Alibaba PuHuiTi 3.0';
+    src: url('/fonts/alibaba-puhuiti/AlibabaPuHuiTi-3-85-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+    unicode-range: U+0020-007E, U+00A0-00FF, U+2000-206F, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+}
+
+/* 等宽：JetBrains Mono */
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/jetbrains-mono/JetBrainsMono-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}

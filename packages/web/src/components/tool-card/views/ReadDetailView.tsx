@@ -48,7 +48,7 @@ function extractReadContent(result: unknown): string | null {
 /** 解析带行号前缀的行（如 "55\t### Python" → { lineNum: 55, content: "### Python" }） */
 function parseLineWithNumber(line: string): { lineNum: number; content: string } | null {
     // 匹配行首的数字和制表符/空格
-    const match = line.match(/^(\d+)(?:\t|  )(.*)$/)
+    const match = line.match(/^(\d+)(?:\t| {2})(.*)$/)
     if (match) {
         return {
             lineNum: parseInt(match[1], 10),

@@ -26,6 +26,7 @@ import { TodoWriteView } from '@/components/tool-card/views/TodoWriteView'
 import { UpdatePlanView } from '@/components/tool-card/views/UpdatePlanView'
 import { WriteView } from '@/components/tool-card/views/WriteView'
 import { ReadDetailView } from '@/components/tool-card/views/ReadDetailView'
+import { BashView } from '@/components/tool-card/views/BashView'
 
 export type ToolViewProps = {
     block: ToolCallBlock
@@ -35,6 +36,8 @@ export type ToolViewProps = {
 export type ToolViewComponent = ComponentType<ToolViewProps>
 
 export const toolViewRegistry: Record<string, ToolViewComponent> = {
+    Bash: BashView,
+    shell_command: BashView,
     Edit: EditView,
     MultiEdit: MultiEditView,
     Write: WriteView,

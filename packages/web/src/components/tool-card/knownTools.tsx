@@ -40,6 +40,14 @@ import { getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
 
+/** 终端工具名称列表 */
+export const TERMINAL_TOOL_NAMES = ['Bash', 'shell_command'] as const
+
+/** 判断是否为终端工具 */
+export function isTerminalTool(toolName: string): boolean {
+    return TERMINAL_TOOL_NAMES.includes(toolName as typeof TERMINAL_TOOL_NAMES[number])
+}
+
 // Tool presentation 类型
 export type ToolPresentation = {
     icon: ReactNode
