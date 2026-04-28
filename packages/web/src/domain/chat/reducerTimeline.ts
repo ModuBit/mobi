@@ -322,7 +322,13 @@ export function reduceTimeline(
                     completedBlock.tool.result = c.content
                     completedBlock.tool.completedAt = msg.createdAt
                     completedBlock.tool.state = c.is_error ? 'error' : 'completed'
-                    blocks[blocks.length - 1] = completedBlock
+
+                    // 找到正确的块在 blocks 数组中的索引并替换
+                    // 不能用 blocks.length - 1，因为并行工具执行时最后一个块可能不是当前工具
+                    const blockIndex = blocks.findIndex(b => b.id === c.tool_use_id)
+                    if (blockIndex !== -1) {
+                        blocks[blockIndex] = completedBlock
+                    }
                     toolBlocksById.set(c.tool_use_id, completedBlock)
                     continue
                 }
