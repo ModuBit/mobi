@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import type { SDKUIHints } from '@mobi/shared'
+
 /**
  * 工具权限类型
  */
@@ -39,6 +41,7 @@ export type ToolInfo = {
     startedAt: number | null
     createdAt: number
     permission: ToolPermission | null
+    sdkHints?: SDKUIHints
 }
 
 /**

@@ -179,10 +179,8 @@ describe('extractSDKMetadataAsync', () => {
 
         extractSDKMetadataAsync(onComplete)
 
-        // 等待异步完成
-        await vi.waitFor(() => {
-            expect(onComplete).toHaveBeenCalledOnce()
-        })
+        await new Promise(r => setTimeout(r, 50))
+        expect(onComplete).toHaveBeenCalledOnce()
 
         const metadata = onComplete.mock.calls[0][0]
         expect(metadata.agents).toHaveLength(1)
@@ -197,9 +195,8 @@ describe('extractSDKMetadataAsync', () => {
 
         extractSDKMetadataAsync(onComplete)
 
-        await vi.waitFor(() => {
-            expect(onComplete).toHaveBeenCalledOnce()
-        })
+        await new Promise(r => setTimeout(r, 50))
+        expect(onComplete).toHaveBeenCalledOnce()
 
         const metadata = onComplete.mock.calls[0][0]
         expect(metadata.commands).toHaveLength(1)

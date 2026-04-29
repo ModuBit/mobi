@@ -24,6 +24,7 @@
 import { logger } from "@/lib";
 import type { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "../sdk/types";
+import type { SDKUIHints } from "@mobi/shared";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { deepEqual } from "@/utils/deepEqual";
@@ -297,7 +298,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     /**
      * Creates the canCallTool callback for the SDK
      */
-    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string }): Promise<PermissionResult> => {
+    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints): Promise<PermissionResult> => {
         const isQuestionTool = isQuestionToolName(toolName);
 
         // Check if tool is explicitly allowed
@@ -347,7 +348,11 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                 throw new Error(`Could not resolve tool call ID for ${toolName}`);
             }
         }
-        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, { suggestions: options.suggestions, toolUseID: options.toolUseID });
+        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, {
+            suggestions: options.suggestions,
+            toolUseID: options.toolUseID,
+            sdkHints: options,
+        });
     }
 
     /**
@@ -358,7 +363,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         toolName: string,
         input: unknown,
         signal: AbortSignal,
-        extra?: { suggestions?: PermissionUpdate[]; toolUseID?: string }
+        extra?: { suggestions?: PermissionUpdate[]; toolUseID?: string; sdkHints?: SDKUIHints }
     ): Promise<PermissionResult> {
         return new Promise<PermissionResult>((resolve, reject) => {
             // Set up abort signal handling
@@ -379,7 +384,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                     signal.removeEventListener('abort', abortHandler);
                     reject(error);
                 }
-            }, { suggestions: extra?.suggestions, toolUseID: extra?.toolUseID });
+            }, { suggestions: extra?.suggestions, toolUseID: extra?.toolUseID, sdkHints: extra?.sdkHints });
 
             logger.debug(`Permission request sent for tool call ${id}: ${toolName}`);
         });

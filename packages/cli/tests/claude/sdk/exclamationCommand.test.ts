@@ -29,13 +29,15 @@
 
 import { describe, it, expect } from 'vitest'
 
-// CI 环境下跳过（需要本地 Claude Code SDK 环境）
-const skip = !!process.env.CI
-import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+// 需要本地 Claude Code SDK 环境且会产生 API 调用，仅在明确设置 ENABLE_SDK_TESTS 时运行
+const shouldSkip = !process.env.ENABLE_SDK_TESTS
 
-describe('SDK ! command 行为探索', () => {
-    it('发送 "! pwd" 不会产生 local_command_output，而是走正常 API 流程', { timeout: 30_000, skip }, async () => {
-        const messages: SDKMessage[] = []
+const describeIfEnabled = shouldSkip ? describe.skip : describe
+
+describeIfEnabled('SDK ! command 行为探索', () => {
+    it('发送 "! pwd" 不会产生 local_command_output，而是走正常 API 流程', { timeout: 30_000, skip: shouldSkip }, async () => {
+        const { query } = await import('@anthropic-ai/claude-agent-sdk')
+        const messages: unknown[] = []
         let gotInit = false
 
         const response = query({

@@ -17,6 +17,7 @@
 import type { MobiApi } from '@/core/data/api/client'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
+import type { SDKUIHints } from '@mobi/shared'
 import { memo, useMemo, useState } from 'react'
 import { Button, theme as antTheme, Typography, Spin } from 'antd'
 import { CheckOutlined, CloseOutlined, StopOutlined } from '@ant-design/icons'
@@ -45,14 +46,20 @@ function isToolAllowedForSession(toolName: string, toolInput: unknown, allowedTo
 
 /**
  * 格式化权限摘要
+ * 优先使用 SDK 提供的 UI 提示字段，回退到从 toolName + input 推断
  */
 function formatPermissionSummary(
     permission: ToolPermission,
     toolName: string,
     toolInput: unknown,
-    t: (key: string) => string
+    t: (key: string) => string,
+    sdkHints?: SDKUIHints
 ): string {
     if (permission.status === 'pending') {
+        // 优先使用 SDK 提供的 UI 提示字段
+        const sdkDesc = sdkHints?.title || sdkHints?.description || sdkHints?.displayName
+        if (sdkDesc) return `${t('chat.tool.waitingForApproval')} ${sdkDesc}`
+        // 回退到自行推断
         const desc = getPermissionDescription(toolName, toolInput)
         return desc ? `${t('chat.tool.waitingForApproval')} ${desc}` : t('chat.tool.waitingForApproval')
     }
@@ -99,8 +106,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
 
     const summary = useMemo(() => {
         if (!permission) return ''
-        return formatPermissionSummary(permission, toolName, props.tool.input, t)
-    }, [permission, toolName, props.tool.input, t])
+        return formatPermissionSummary(permission, toolName, props.tool.input, t, props.tool.sdkHints)
+    }, [permission, toolName, props.tool.input, t, props.tool.sdkHints])
 
     if (!permission) return null
 

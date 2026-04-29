@@ -27,12 +27,14 @@
 import { describe, it, expect } from 'vitest'
 
 // CI 或无 API key 环境下跳过
-const skip = !!process.env.CI || !process.env.ANTHROPIC_API_KEY
-import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+const shouldSkip = !!process.env.CI || !process.env.ANTHROPIC_API_KEY
 
-describe('SDK LaTeX $...$ prompt injection 过滤器', () => {
-    it('发送包含 $a^2 + b^2 = c^2$ 的消息会触发 API 异常（超时或无响应）', { timeout: 30_000, skip }, async () => {
-        const messages: SDKMessage[] = []
+const describeIfEnabled = shouldSkip ? describe.skip : describe
+
+describeIfEnabled('SDK LaTeX $...$ prompt injection 过滤器', () => {
+    it('发送包含 $a^2 + b^2 = c^2$ 的消息会触发 API 异常（超时或无响应）', { timeout: 30_000 }, async () => {
+        const { query } = await import('@anthropic-ai/claude-agent-sdk')
+        const messages: unknown[] = []
         let gotAssistant = false
 
         const response = query({
@@ -101,10 +103,11 @@ describe('SDK LaTeX $...$ prompt injection 过滤器', () => {
         }
     })
 
-    it('发送 \\(...\\) 语法的等价消息可正常通过', { timeout: 30_000, skip }, async () => {
-        const messages: SDKMessage[] = []
-        let assistantMsg: SDKMessage | null = null
-        let resultMsg: SDKMessage | null = null
+    it('发送 \\(...\\) 语法的等价消息可正常通过', { timeout: 30_000 }, async () => {
+        const { query } = await import('@anthropic-ai/claude-agent-sdk')
+        const messages: unknown[] = []
+        let assistantMsg: unknown = null
+        let resultMsg: unknown = null
 
         const response = query({
             prompt: '使用 latex 推导一下勾股定理 \\(a^2 + b^2 = c^2\\)',

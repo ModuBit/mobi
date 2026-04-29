@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
+import type { SDKUIHints } from '@mobi/shared'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
 
 const { Text } = Typography
@@ -53,7 +54,10 @@ function PermissionPanel({
     const permissionTools = useMemo(() => {
         if (!requests) return []
         return Object.entries(requests).map(([requestId, request]) => {
-            const req = request as { tool?: string; arguments?: unknown; createdAt?: number | null }
+            const req = request as {
+                tool?: string; arguments?: unknown; createdAt?: number | null
+                sdkHints?: SDKUIHints
+            }
             return {
                 id: requestId,
                 tool: {
@@ -68,7 +72,8 @@ function PermissionPanel({
                         id: requestId,
                         status: 'pending' as const,
                         createdAt: req.createdAt ?? null
-                    }
+                    },
+                    sdkHints: req.sdkHints,
                 }
             }
         })
@@ -88,7 +93,9 @@ function PermissionPanel({
                     <div style={{ marginBottom: 8 }}>
                         <Text strong>
                             <ExclamationCircleOutlined style={{ color: token.colorWarningText, marginRight: 8 }} />
-                            {t('chat.permission.title')}
+                            {tool.sdkHints?.displayName
+                                ? t('chat.permission.toolRequest', { tool: tool.sdkHints.displayName })
+                                : t('chat.permission.title')}
                         </Text>
                     </div>
                     <PermissionFooter

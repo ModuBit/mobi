@@ -124,10 +124,22 @@ export const MetadataSchema = z.object({
 
 export type Metadata = z.infer<typeof MetadataSchema>
 
+export const SDKUIHintsSchema = z.object({
+    title: z.string().optional(),
+    displayName: z.string().optional(),
+    description: z.string().optional(),
+    decisionReason: z.string().optional(),
+    blockedPath: z.string().optional(),
+    agentID: z.string().optional(),
+})
+
+export type SDKUIHints = z.infer<typeof SDKUIHintsSchema>
+
 export const AgentStateRequestSchema = z.object({
     tool: z.string(),
     arguments: z.unknown(),
-    createdAt: z.number().nullish()
+    createdAt: z.number().nullish(),
+    sdkHints: SDKUIHintsSchema.optional(),
 })
 
 export type AgentStateRequest = z.infer<typeof AgentStateRequestSchema>

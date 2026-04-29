@@ -21,14 +21,18 @@
 import { describe, it, expect } from 'vitest'
 import { run } from '@/modules/ripgrep'
 import { existsSync } from 'fs'
-import { join, resolve } from 'path'
+import { join, resolve, dirname } from 'path'
 import { platform } from 'os'
-import { runtimePath } from '@/projectPath'
+import { fileURLToPath } from 'url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const testDir = __dirname
+const projectRoot = resolve(__dirname, '../../..')
 
 // 检查 ripgrep 二进制文件是否存在
 function isRipgrepAvailable(): boolean {
     const binaryName = platform() === 'win32' ? 'rg.exe' : 'rg'
-    const binaryPath = resolve(join(runtimePath(), 'tools', 'unpacked', binaryName))
+    const binaryPath = resolve(join(projectRoot, 'tools', 'unpacked', binaryName))
     return existsSync(binaryPath)
 }
 
@@ -42,19 +46,19 @@ describeIfAvailable('ripgrep low-level wrapper', () => {
     })
     
     it('should search for pattern', async () => {
-        const result = await run(['describe', 'src/modules/ripgrep/index.test.ts'])
+        const result = await run(['describe', resolve(testDir, 'index.test.ts')])
         expect(result.exitCode).toBe(0)
         expect(result.stdout).toContain('describe')
     })
     
     it('should return exit code 1 for no matches', async () => {
-        const result = await run(['ThisPatternShouldNeverMatch999', 'package.json'])
+        const result = await run(['ThisPatternShouldNeverMatch999', resolve(projectRoot, 'package.json')])
         expect(result.exitCode).toBe(1)
         expect(result.stdout).toBe('')
     })
     
     it('should handle JSON output', async () => {
-        const result = await run(['--json', 'describe', 'src/modules/ripgrep/index.test.ts'])
+        const result = await run(['--json', 'describe', resolve(testDir, 'index.test.ts')])
         expect(result.exitCode).toBe(0)
         
         // Parse first line to check it's valid JSON
@@ -64,7 +68,7 @@ describeIfAvailable('ripgrep low-level wrapper', () => {
     })
     
     it('should respect custom working directory', async () => {
-        const result = await run(['describe', 'index.test.ts'], { cwd: 'src/modules/ripgrep' })
+        const result = await run(['describe', 'index.test.ts'], { cwd: testDir })
         expect(result.exitCode).toBe(0)
         expect(result.stdout).toContain('describe')
     })

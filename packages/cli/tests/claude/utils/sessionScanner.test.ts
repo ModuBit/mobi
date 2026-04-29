@@ -18,8 +18,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createSessionScanner } from '@/claude/utils/sessionScanner'
 import { RawJSONLines } from '@/claude/types'
 import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { tmpdir, homedir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
 
 describe('sessionScanner', () => {
@@ -31,11 +31,17 @@ describe('sessionScanner', () => {
   beforeEach(async () => {
     testDir = join(tmpdir(), `scanner-test-${Date.now()}`)
     await mkdir(testDir, { recursive: true })
-    
-    const projectName = testDir.replace(/\//g, '-')
-    projectDir = join(homedir(), '.claude', 'projects', projectName)
+
+    // 设置 CLAUDE_CONFIG_DIR 避免 homedir mock 污染
+    const claudeConfigDir = join(tmpdir(), `scanner-test-claude-${Date.now()}`)
+    await mkdir(join(claudeConfigDir, 'projects'), { recursive: true })
+    process.env.CLAUDE_CONFIG_DIR = claudeConfigDir
+
+    // 与 getProjectPath 内部逻辑一致：resolve + replace 非字母数字
+    const projectId = resolve(testDir).replace(/[^a-zA-Z0-9]/g, '-')
+    projectDir = join(claudeConfigDir, 'projects', projectId)
     await mkdir(projectDir, { recursive: true })
-    
+
     collectedMessages = []
   })
   
@@ -45,12 +51,14 @@ describe('sessionScanner', () => {
       await scanner.cleanup()
       scanner = null
     }
-    
+
     if (existsSync(testDir)) {
       await rm(testDir, { recursive: true, force: true })
     }
-    if (existsSync(projectDir)) {
-      await rm(projectDir, { recursive: true, force: true })
+    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR
+    delete process.env.CLAUDE_CONFIG_DIR
+    if (claudeConfigDir && existsSync(claudeConfigDir)) {
+      await rm(claudeConfigDir, { recursive: true, force: true })
     }
   })
   
