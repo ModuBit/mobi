@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentEvent, NormalizedAgentContent, NormalizedMessage, ToolResultPermission, MessageMeta } from './types'
+import type { AgentEvent, NormalizedAgentContent, NormalizedMessage, ToolResult, ToolResultPermission, MessageMeta } from './types'
 import { asNumber, asString, isObject } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 
@@ -52,6 +52,27 @@ function normalizeToolResultPermissions(value: unknown): ToolResultPermission | 
 function normalizeAgentEvent(value: unknown): AgentEvent | null {
     if (!isObject(value) || typeof value.type !== 'string') return null
     return value as AgentEvent
+}
+
+function buildToolResultBlock(
+    block: Record<string, unknown>,
+    uuid: string,
+    parentUUID: string | null,
+    contentOverride?: unknown,
+    permissions?: ToolResultPermission,
+): ToolResult | null {
+    if (typeof block.tool_use_id !== 'string') return null
+    const isError = Boolean(block.is_error)
+    const rawContent = 'content' in block ? (block as Record<string, unknown>).content : undefined
+    return {
+        type: 'tool-result',
+        tool_use_id: block.tool_use_id,
+        content: contentOverride ?? rawContent,
+        is_error: isError,
+        uuid,
+        parentUUID,
+        ...(permissions && { permissions }),
+    }
 }
 
 // ============================================================================
@@ -95,11 +116,16 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
                 blocks.push({ type: 'reasoning', text: block.thinking, uuid, parentUUID })
                 continue
             }
-            if (block.type === 'tool_use' && typeof block.id === 'string') {
+            if ((block.type === 'tool_use' || block.type === 'server_tool_use') && typeof block.id === 'string') {
                 const name = asString(block.name) ?? 'Tool'
                 const input = 'input' in block ? (block as Record<string, unknown>).input : undefined
                 const description = isObject(input) && typeof input.description === 'string' ? input.description : null
                 blocks.push({ type: 'tool-call', id: block.id, name, input, description, uuid, parentUUID })
+            }
+            // 部分模型在 assistant 消息中返回 tool_result
+            if (block.type === 'tool_result') {
+                const result = buildToolResultBlock(block as Record<string, unknown>, uuid, parentUUID)
+                if (result) blocks.push(result)
             }
         }
     }
@@ -177,20 +203,17 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
                 blocks.push({ type: 'text', text: block.text, uuid, parentUUID })
                 continue
             }
-            if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-                const isError = Boolean(block.is_error)
-                const rawContent = 'content' in block ? (block as Record<string, unknown>).content : undefined
+            if (block.type === 'tool_result') {
                 const embeddedToolUseResult = 'toolUseResult' in data ? (data as Record<string, unknown>).toolUseResult : null
                 const permissions = normalizeToolResultPermissions(block.permissions)
-                blocks.push({
-                    type: 'tool-result',
-                    tool_use_id: block.tool_use_id,
-                    content: embeddedToolUseResult ?? rawContent,
-                    is_error: isError,
+                const result = buildToolResultBlock(
+                    block as Record<string, unknown>,
                     uuid,
                     parentUUID,
-                    permissions
-                })
+                    embeddedToolUseResult ?? undefined,
+                    permissions,
+                )
+                if (result) blocks.push(result)
             }
         }
     }
