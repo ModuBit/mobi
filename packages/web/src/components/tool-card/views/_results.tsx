@@ -49,7 +49,7 @@ function extractTextFromContentBlock(block: unknown): string | null {
     if (typeof block.text === 'string') return block.text
     return null
 }
-function extractTextFromResult(result: unknown, depth: number = 0): string | null {
+export function extractTextFromResult(result: unknown, depth: number = 0): string | null {
     if (depth > 2) return null
     if (result === null || result === undefined) return null
     if (typeof result === 'string') {
@@ -145,7 +145,7 @@ function renderText(text: string, opts: { mode: 'markdown' | 'code' | 'auto'; la
     }
     return <Markdown content={text} />
 }
-function placeholderForState(state: ToolViewProps['block']['tool']['state']): string {
+export function placeholderForState(state: ToolViewProps['block']['tool']['state']): string {
     if (state === 'pending') return 'Waiting for permission…';
     if (state === 'running') return 'Running...'
     return '(no output)'

@@ -43,8 +43,8 @@ import { AskUserQuestionFooter } from './AskUserQuestionFooter'
 import { RequestUserInputFooter } from './RequestUserInputFooter'
 import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
-import { getToolPresentation } from './knownTools'
-import { getToolFullViewComponent, getToolViewComponent, SELF_CONTAINED_FULL_VIEWS } from './views/_all'
+import { getToolPresentation, isTerminalTool } from './knownTools'
+import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 import { useTranslation } from 'react-i18next'
@@ -517,7 +517,7 @@ function ToolCardInner(props: ToolCardProps) {
                                     renderToolInput(props.block, token)
                                 )}
                             </div>
-                            {!(FullToolView && SELF_CONTAINED_FULL_VIEWS.has(toolName)) && !isQuestionToolWithAnswers && (
+                            {!isQuestionToolWithAnswers && !(FullToolView && isTerminalTool(toolName)) && (
                                 <div>
                                     <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
                                     <ResultToolView block={props.block} metadata={props.metadata} />

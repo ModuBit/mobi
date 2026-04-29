@@ -15,44 +15,18 @@
  */
 
 import { useMemo } from 'react'
-import { theme as antTheme, Typography } from 'antd'
+import { theme as antTheme } from 'antd'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
+import { extractTextFromResult, placeholderForState } from './_results'
 
 hljs.registerLanguage('bash', bash)
 
 const { useToken } = antTheme
-const { Text } = Typography
-
-/** 从 result 中提取输出文本 */
-function extractOutputText(result: unknown): string | null {
-    if (result === null || result === undefined) return null
-    if (typeof result === 'string') {
-        const match = result.match(/<tool_use_error>(.*?)<\/tool_use_error>/s)
-        if (match) return match[1]?.trim() ?? ''
-        return result
-    }
-    if (!isObject(result)) return null
-
-    const stdout = typeof result.stdout === 'string' ? result.stdout : null
-    const stderr = typeof result.stderr === 'string' ? result.stderr : null
-    if (stdout !== null || stderr !== null) {
-        const parts: string[] = []
-        if (stdout) parts.push(stdout)
-        if (stderr) parts.push(stderr)
-        return parts.join('\n')
-    }
-    if (typeof result.content === 'string') return result.content
-    if (typeof result.text === 'string') return result.text
-    if (typeof result.output === 'string') return result.output
-    if (typeof result.error === 'string') return result.error
-    if (typeof result.message === 'string') return result.message
-    return null
-}
 
 function isErrorResult(result: unknown): boolean {
     if (!isObject(result)) return false
@@ -62,12 +36,16 @@ function isErrorResult(result: unknown): boolean {
     return false
 }
 
-/** 状态占位文本 */
-function statusText(state: string): string {
-    if (state === 'pending') return 'Waiting for permission…'
-    if (state === 'running') return 'Running…'
-    return '(no output)'
-}
+/** header 栏样式（command 高亮展示） */
+const HEADER_STYLE = {
+    borderBottom: '1px solid var(--border-color)',
+    background: 'var(--bg-layout)',
+    padding: '4px 10px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 12,
+    lineHeight: 1.6,
+    overflow: 'auto',
+} as const
 
 /**
  * Bash 工具视图（DiffView 风格）
@@ -79,19 +57,20 @@ export function BashView(props: ToolViewProps) {
 
     const command = typeof input === 'string' ? input : getInputStringAny(input, ['command', 'cmd'])
     const isFinished = state === 'completed' || state === 'error'
-    const output = isFinished ? extractOutputText(result) : null
+    const output = isFinished ? extractTextFromResult(result) : null
     const isError = isFinished && (isErrorResult(result) || state === 'error')
 
-    const displayText = command || props.block.tool.description || statusText(state)
-
+    // 仅对 command 做语法高亮，description/fallback 不需要
     const highlighted = useMemo(() => {
-        if (!displayText) return ''
+        if (!command) return ''
         try {
-            return hljs.highlight(displayText, { language: 'bash' }).value
+            return hljs.highlight(command, { language: 'bash' }).value
         } catch {
-            return displayText
+            return command
         }
-    }, [displayText])
+    }, [command])
+
+    const headerText = command || props.block.tool.description
 
     return (
         <div style={{
@@ -100,23 +79,20 @@ export function BashView(props: ToolViewProps) {
             border: `1px solid ${token.colorBorder}`,
             background: token.colorBgContainer,
         }}>
-            {/* header: command */}
-            {displayText && (
+            {headerText && (
                 <div style={{
+                    ...HEADER_STYLE,
                     borderBottom: `1px solid ${token.colorBorder}`,
                     background: token.colorBgLayout,
-                    padding: '4px 10px',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 12,
-                    lineHeight: 1.6,
-                    overflow: 'auto',
                 }}>
                     <span style={{ color: token.colorPrimary }}>$ </span>
-                    <span dangerouslySetInnerHTML={{ __html: highlighted }} />
+                    {command
+                        ? <span dangerouslySetInnerHTML={{ __html: highlighted }} />
+                        : headerText
+                    }
                 </div>
             )}
 
-            {/* body: output */}
             {output ? (
                 <OverflowContainer
                     maxHeight={200}
@@ -134,12 +110,8 @@ export function BashView(props: ToolViewProps) {
                     {output}
                 </OverflowContainer>
             ) : (
-                <div style={{
-                    padding: '6px 10px',
-                    fontSize: 12,
-                    color: token.colorTextTertiary,
-                }}>
-                    {statusText(state)}
+                <div style={{ padding: '6px 10px', fontSize: 12, color: token.colorTextTertiary }}>
+                    {placeholderForState(state)}
                 </div>
             )}
         </div>
