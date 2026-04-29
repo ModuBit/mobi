@@ -36,18 +36,7 @@ function isErrorResult(result: unknown): boolean {
     return false
 }
 
-/** header 栏样式（command 高亮展示） */
-const HEADER_STYLE = {
-    borderBottom: '1px solid var(--border-color)',
-    background: 'var(--bg-layout)',
-    padding: '4px 10px',
-    fontFamily: 'var(--font-mono)',
-    fontSize: 12,
-    lineHeight: 1.6,
-    overflow: 'auto',
-} as const
-
-/**
+/** Bash 工具视图（DiffView 风格）
  * Bash 工具视图（DiffView 风格）
  * command 作为 header 栏，output 作为 body
  */
@@ -81,9 +70,13 @@ export function BashView(props: ToolViewProps) {
         }}>
             {headerText && (
                 <div style={{
-                    ...HEADER_STYLE,
                     borderBottom: `1px solid ${token.colorBorder}`,
                     background: token.colorBgLayout,
+                    padding: '4px 10px',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    overflow: 'auto',
                 }}>
                     <span style={{ color: token.colorPrimary }}>$ </span>
                     {command
