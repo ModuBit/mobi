@@ -78,17 +78,20 @@ export function BashView(props: ToolViewProps) {
     const { input, result, state } = props.block.tool
 
     const command = typeof input === 'string' ? input : getInputStringAny(input, ['command', 'cmd'])
-    const output = state === 'completed' || state === 'error' ? extractOutputText(result) : null
-    const isError = isErrorResult(result) || state === 'error'
+    const isFinished = state === 'completed' || state === 'error'
+    const output = isFinished ? extractOutputText(result) : null
+    const isError = isFinished && (isErrorResult(result) || state === 'error')
+
+    const displayText = command || props.block.tool.description || statusText(state)
 
     const highlighted = useMemo(() => {
-        if (!command) return ''
+        if (!displayText) return ''
         try {
-            return hljs.highlight(command, { language: 'bash' }).value
+            return hljs.highlight(displayText, { language: 'bash' }).value
         } catch {
-            return command
+            return displayText
         }
-    }, [command])
+    }, [displayText])
 
     return (
         <div style={{
@@ -98,18 +101,20 @@ export function BashView(props: ToolViewProps) {
             background: token.colorBgContainer,
         }}>
             {/* header: command */}
-            <div style={{
-                borderBottom: `1px solid ${token.colorBorder}`,
-                background: token.colorBgLayout,
-                padding: '4px 10px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 12,
-                lineHeight: 1.6,
-                overflow: 'auto',
-            }}>
-                <span style={{ color: token.colorPrimary }}>$ </span>
-                <span dangerouslySetInnerHTML={{ __html: highlighted }} />
-            </div>
+            {displayText && (
+                <div style={{
+                    borderBottom: `1px solid ${token.colorBorder}`,
+                    background: token.colorBgLayout,
+                    padding: '4px 10px',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    overflow: 'auto',
+                }}>
+                    <span style={{ color: token.colorPrimary }}>$ </span>
+                    <span dangerouslySetInnerHTML={{ __html: highlighted }} />
+                </div>
+            )}
 
             {/* body: output */}
             {output ? (

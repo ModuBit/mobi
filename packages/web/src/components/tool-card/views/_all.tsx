@@ -50,6 +50,9 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     request_user_input: RequestUserInputView
 }
 
+/** 自包含的 FullView：input + result 统一渲染，Modal 中跳过独立 result 区域 */
+export const SELF_CONTAINED_FULL_VIEWS = new Set(['Bash', 'shell_command'])
+
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     Bash: BashView,
     shell_command: BashView,
