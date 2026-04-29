@@ -14,29 +14,9 @@
  * limitations under the License.
  */
 
-const BASH_TAGS_REGEX = /<bash-(?:input|stdout|stderr)>/i
-
-/** 检测文本是否包含 bash 标签 */
-export function hasBashTags(text: string): boolean {
-    return BASH_TAGS_REGEX.test(text)
-}
-
 /** 解析 CLI 输出文本，提取命令和输出 */
 export function parseCliOutputText(text: string): { command: string | null, stdout: string | null, stderr: string | null } {
-    // bash-input / bash-stdout / bash-stderr 标签
-    const bashInputMatch = text.match(/<bash-input>([\s\S]*?)<\/bash-input>/i)
-    const bashStdoutMatch = text.match(/<bash-stdout>([\s\S]*?)<\/bash-stdout>/i)
-    const bashStderrMatch = text.match(/<bash-stderr>([\s\S]*?)<\/bash-stderr>/i)
-
-    if (bashInputMatch) {
-        return {
-            command: `$ ${bashInputMatch[1].trim()}`,
-            stdout: bashStdoutMatch ? bashStdoutMatch[1].trim() : null,
-            stderr: bashStderrMatch ? bashStderrMatch[1].trim() : null,
-        }
-    }
-
-    // 兼容原有 command-name / local-command-stdout 标签
+    // command-name / local-command-stdout 标签
     const commandMatch = text.match(/<command-name>([\s\S]*?)<\/command-name>/i)
     const stdoutMatch = text.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/i)
 

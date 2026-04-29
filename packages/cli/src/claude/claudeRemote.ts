@@ -23,6 +23,7 @@ import {
     type SDKMessage,
     type SDKSystemMessage,
     type SDKUserMessage,
+    type SDKAssistantMessage,
     type SDKResultMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import { claudeCheckSession } from "./utils/claudeCheckSession";
@@ -122,11 +123,34 @@ export async function handleSpecialCommand(
     return { handled: false, shouldExit: false, isCompact: false }
 }
 
-// 构造模拟 SDK 用户消息（字段不完整，仅用于前端渲染）
-function createSDKUserMessage(content: string): SDKUserMessage {
+/** !bash 合成 tool call ID 的前缀 */
+const BASH_TOOL_CALL_PREFIX = '!bash_'
+
+// 仅填充 sdkToLogConverter/normalizeAgent 所需的 message.content，其余字段省略
+function createBashToolUseMessage(toolCallId: string, command: string): SDKAssistantMessage {
+    return {
+        type: 'assistant',
+        message: {
+            role: 'assistant',
+            content: [{ type: 'tool_use', id: toolCallId, name: 'Bash', input: { command } }],
+        },
+        parent_tool_use_id: null,
+        session_id: '',
+    } as unknown as SDKAssistantMessage
+}
+
+// 仅填充 sdkToLogConverter/normalizeAgent 所需的 message.content，其余字段省略
+function createBashToolResultMessage(
+    toolCallId: string,
+    content: string,
+    isError: boolean,
+): SDKUserMessage {
     return {
         type: 'user',
-        message: { role: 'user', content },
+        message: {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: toolCallId, content, is_error: isError }],
+        },
         parent_tool_use_id: null,
         session_id: '',
     } as unknown as SDKUserMessage
@@ -231,34 +255,32 @@ export async function claudeRemote(opts: {
         opts.onSessionFound(pregeneratedSessionId)
     }
 
-    // !bash: 本地执行 shell 命令，不走 SDK
-    // 安全边界：高危命令检测拦截、沙箱隔离、超时控制
+    // !bash: 本地执行 shell 命令，不走 SDK，生成 tool_use/tool_result 消息对
     const executeBashCommand = async (command: string): Promise<void> => {
         logger.debug(`[claudeRemote] Bash command detected: ${command}`)
+
+        const toolCallId = `${BASH_TOOL_CALL_PREFIX}${randomUUID()}`
 
         // 高危命令拦截
         const dangerCheck = checkDangerousCommand(command)
         if (dangerCheck.isDangerous) {
             logger.warn(`[claudeRemote] Dangerous command blocked: ${command} (${dangerCheck.reason})`)
-            opts.onMessage(createSDKUserMessage(`<bash-input>${command}</bash-input>`))
-            opts.onMessage(createSDKUserMessage(`<bash-stdout></bash-stdout><bash-stderr>⚠ 命令已拦截：${dangerCheck.reason}</bash-stderr>`))
+            opts.onMessage(createBashToolUseMessage(toolCallId, command))
+            opts.onMessage(createBashToolResultMessage(
+                toolCallId,
+                `⚠ 命令已拦截：${dangerCheck.reason}`,
+                true,
+            ))
             return
         }
 
         opts.onRunningChange?.(true)
+        opts.onMessage(createBashToolUseMessage(toolCallId, command))
 
-        // local-command-caveat 标识后续为 bash 输出
-        opts.onMessage({
-            type: 'system',
-            subtype: 'local_command_caveat',
-            session_id: '',
-        } as unknown as SDKSystemMessage)
-
-        opts.onMessage(createSDKUserMessage(`<bash-input>${command}</bash-input>`))
-
-        // 在用户工作目录下执行命令（沙箱隔离 + spawn 流式）
+        // 在用户工作目录下执行命令（沙箱隔离 + 超时控制）
         let stdout = ''
         let stderr = ''
+        let hasError = false
         try {
             const sandboxedCommand = await wrapCommand(command)
             const result = await spawnWithTimeout(sandboxedCommand, {
@@ -268,15 +290,21 @@ export async function claudeRemote(opts: {
             stdout = result.stdout
             stderr = result.stderr
             if (result.timedOut) {
+                hasError = true
                 stderr += (stderr ? '\n' : '') + '命令执行超时（30s）'
             }
         } catch (error) {
+            hasError = true
             stderr = error instanceof Error ? error.message : String(error)
         } finally {
             cleanupSandbox()
         }
 
-        opts.onMessage(createSDKUserMessage(`<bash-stdout>${stdout}</bash-stdout><bash-stderr>${stderr}</bash-stderr>`))
+        const output = stdout && stderr
+            ? `${stdout}\n${stderr}`
+            : stdout || stderr
+
+        opts.onMessage(createBashToolResultMessage(toolCallId, output, hasError))
 
         opts.onRunningChange?.(false)
     }

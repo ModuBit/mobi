@@ -64,7 +64,7 @@ export { formatEvent, extractApiErrorDetail } from './eventFormatter'
 
 // CLI 输出处理
 export { isCliOutputText, createCliOutputBlock, mergeCliOutputBlocks } from './reducerCliOutput'
-export { hasBashTags, parseCliOutputText } from './cliParser'
+export { parseCliOutputText } from './cliParser'
 
 // 块协调
 export type { ChatBlocksById } from './reconcile'

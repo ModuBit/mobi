@@ -16,11 +16,9 @@
 
 import type { ChatBlock, CliOutputBlock, MessageMeta } from './types'
 
-const CLI_TAG_REGEX = /<(?:local-command-[a-z-]+|command-(?:name|message|args)|bash-(?:input|stdout|stderr))>/i
+const CLI_TAG_REGEX = /<(?:local-command-[a-z-]+|command-(?:name|message|args))>/i
 const CLI_COMMAND_NAME_REGEX = /<command-name>/i
 const CLI_COMMAND_STDOUT_REGEX = /<local-command-stdout>/i
-const BASH_INPUT_REGEX = /<bash-input>/i
-const BASH_STDOUT_REGEX = /<bash-stdout>/i
 const LOCAL_COMMAND_STDOUT_EXTRACT = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/i
 
 function getMetaSentFrom(meta: unknown): string | null {
@@ -41,21 +39,13 @@ function hasLocalCommandStdoutTag(text: string): boolean {
     return CLI_COMMAND_STDOUT_REGEX.test(text)
 }
 
-function hasBashInputTag(text: string): boolean {
-    return BASH_INPUT_REGEX.test(text)
-}
-
-function hasBashStdoutTag(text: string): boolean {
-    return BASH_STDOUT_REGEX.test(text)
-}
-
 export function isCliOutputText(text: string, meta?: unknown): boolean {
     return hasCliOutputTags(text)
 }
 
 /** 提取纯 local-command-stdout 内容（无 command-name），返回文本或 null */
 export function extractStandaloneStdout(text: string): string | null {
-    if (!hasLocalCommandStdoutTag(text) || hasCommandNameTag(text) || hasBashInputTag(text)) {
+    if (!hasLocalCommandStdoutTag(text) || hasCommandNameTag(text)) {
         return null
     }
     const match = text.match(LOCAL_COMMAND_STDOUT_EXTRACT)
@@ -98,11 +88,7 @@ export function mergeCliOutputBlocks(blocks: ChatBlock[]): ChatBlock[] {
             && prev.kind === 'cli-output'
             && prev.source === block.source
             // command-name + local-command-stdout 合并
-            && (
-                (hasCommandNameTag(prev.text) && !hasLocalCommandStdoutTag(prev.text) && hasLocalCommandStdoutTag(block.text))
-                // bash-input + bash-stdout 合并
-                || (hasBashInputTag(prev.text) && !hasBashStdoutTag(prev.text) && hasBashStdoutTag(block.text))
-            )
+            && hasCommandNameTag(prev.text) && !hasLocalCommandStdoutTag(prev.text) && hasLocalCommandStdoutTag(block.text)
         ) {
             const separator = prev.text.endsWith('\n') || block.text.startsWith('\n') ? '' : '\n'
             merged[merged.length - 1] = { ...prev, text: `${prev.text}${separator}${block.text}` }

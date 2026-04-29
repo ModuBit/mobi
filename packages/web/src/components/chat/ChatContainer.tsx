@@ -24,7 +24,7 @@ import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { reduceChatBlocks, normalizeDecryptedMessage, hasBashTags } from '@/domain/chat'
+import { reduceChatBlocks, normalizeDecryptedMessage } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { renderChatBlock } from './blocks'
 import { ChatComposer } from '@/components/composer/ChatComposer'
@@ -153,16 +153,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
         for (let i = 0; i < chatBlocks.length; i++) {
             const block = chatBlocks[i]
-            const nextBlock = chatBlocks[i + 1]
-
-            // bash 模式：跳过紧跟 bash cli-output 之前的用户消息（如 '! tree .'）
-            if (
-                block.kind === 'user-text'
-                && nextBlock?.kind === 'cli-output'
-                && hasBashTags((nextBlock as { text: string }).text)
-            ) {
-                continue
-            }
 
             // 是否为最后一个 assistant block 且 session 正在运行
             const isLastRunningBlock = block.id === lastAssistantBlockKey && !!session?.running
@@ -190,8 +180,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             } else if (block.kind === 'agent-event') {
                 role = 'system'
             } else if (block.kind === 'cli-output') {
-                // bash 模式输出始终用 assistant 角色渲染
-                role = (block.source === 'assistant' || hasBashTags(block.text)) ? 'assistant' : 'user'
+                role = block.source === 'assistant' ? 'assistant' : 'user'
             }
 
             // 判断是否需要 typing 动画
