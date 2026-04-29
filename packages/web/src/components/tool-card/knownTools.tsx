@@ -101,8 +101,7 @@ type ToolOpts = {
 const terminalToolConfig = {
     icon: () => <CodeOutlined style={DEFAULT_ICON_STYLE} />,
     title: (opts: ToolOpts) => opts.description ?? 'Terminal',
-    subtitle: (opts: ToolOpts) => getInputStringAny(opts.input, ['command', 'cmd']),
-    minimal: true
+    minimal: false
 }
 
 // 退出计划模式工具配置（ExitPlanMode / exit_plan_mode 共用）

@@ -517,7 +517,7 @@ function ToolCardInner(props: ToolCardProps) {
                                     renderToolInput(props.block, token)
                                 )}
                             </div>
-                            {!isQuestionToolWithAnswers && (
+                            {!FullToolView && !isQuestionToolWithAnswers && (
                                 <div>
                                     <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
                                     <ResultToolView block={props.block} metadata={props.metadata} />

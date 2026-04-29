@@ -51,6 +51,8 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
 }
 
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
+    Bash: BashView,
+    shell_command: BashView,
     Edit: EditView,
     MultiEdit: MultiEditFullView,
     Write: WriteView,
