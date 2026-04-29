@@ -536,10 +536,7 @@ export function ChatComposer(props: ChatComposerProps) {
             />
 
             <StatusBar
-                sessionId={sessionId ?? ''}
-                active={active}
                 running={running}
-                agentState={agentState}
                 contextSize={contextSize}
                 model={model}
                 permissionMode={permissionMode}

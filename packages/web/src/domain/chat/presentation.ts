@@ -82,6 +82,9 @@ export function getEventPresentation(event: AgentEvent): EventPresentation {
     if (event.type === 'compact') {
         return { icon: '📦', text: 'Conversation compacted' }
     }
+    if (event.type === 'context-cleared') {
+        return { icon: null, text: 'Context was reset' }
+    }
     try {
         return { icon: null, text: JSON.stringify(event) }
     } catch {

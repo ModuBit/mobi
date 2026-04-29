@@ -17,44 +17,17 @@
 import { useMemo } from 'react'
 import { Button, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import type { AgentState, PermissionMode } from '@mobi/shared'
+import type { PermissionMode } from '@mobi/shared'
 import {
     getPermissionModeTone,
     isPermissionModeAllowedForFlavor
 } from '@mobi/shared'
 import { getContextBudgetTokens } from '@/domain/chat'
-import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { getPermissionModeColor } from './permissionModeColors'
 
-// 思考状态随机消息
-const VIBING_MESSAGES = [
-    "Accomplishing", "Actioning", "Actualizing", "Baking", "Booping", "Brewing",
-    "Calculating", "Cerebrating", "Channelling", "Churning", "Clauding", "Coalescing",
-    "Cogitating", "Computing", "Combobulating", "Concocting", "Conjuring", "Considering",
-    "Contemplating", "Cooking", "Crafting", "Creating", "Crunching", "Deciphering",
-    "Deliberating", "Determining", "Discombobulating", "Divining", "Doing", "Effecting",
-    "Elucidating", "Enchanting", "Envisioning", "Finagling", "Flibbertigibbeting",
-    "Forging", "Forming", "Frolicking", "Generating", "Germinating", "Hatching",
-    "Herding", "Honking", "Ideating", "Imagining", "Incubating", "Inferring",
-    "Manifesting", "Marinating", "Meandering", "Moseying", "Mulling", "Mustering",
-    "Musing", "Noodling", "Percolating", "Perusing", "Philosophising", "Pontificating",
-    "Pondering", "Processing", "Puttering", "Puzzling", "Reticulating", "Ruminating",
-    "Scheming", "Schlepping", "Shimmying", "Simmering", "Smooshing", "Spelunking",
-    "Spinning", "Stewing", "Sussing", "Synthesizing", "Thinking", "Tinkering",
-    "Transmuting", "Unfurling", "Unravelling", "Vibing", "Wandering", "Whirring",
-    "Wibbling", "Wizarding", "Working", "Wrangling"
-]
-
 interface StatusBarProps {
-    /** 会话 ID，用于生成一致的动态头像 */
-    sessionId: string
-    /** 会话是否活跃 */
-    active: boolean
     /** 是否正在运行 */
     running: boolean
-    /** Agent 状态 */
-    agentState?: AgentState | null
     /** 上下文大小 */
     contextSize?: number
     /** 当前模型 */
@@ -94,10 +67,7 @@ export function StatusBar(props: StatusBarProps) {
     const { token } = theme.useToken()
 
     const {
-        sessionId,
-        active,
         running,
-        agentState,
         contextSize,
         model,
         permissionMode,
@@ -105,40 +75,6 @@ export function StatusBar(props: StatusBarProps) {
         onAbort,
         abortPending = false,
     } = props
-
-    // 计算连接状态
-    const connectionStatus = useMemo(() => {
-        const hasPermissions = agentState?.requests && Object.keys(agentState.requests).length > 0
-
-        if (!active) {
-            return {
-                text: t('status.offline'),
-                agentStatus: 'inactive' as AgentStatus,
-            }
-        }
-
-        if (hasPermissions) {
-            return {
-                text: t('status.permissionRequired'),
-                agentStatus: 'awaiting_auth' as AgentStatus,
-            }
-        }
-
-        if (running) {
-            // 使用 sessionId 做 hash 确定性选择，避免每次重算时闪烁
-            const seed = sessionId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-            const vibingMessage = VIBING_MESSAGES[seed % VIBING_MESSAGES.length].toLowerCase() + '…'
-            return {
-                text: vibingMessage,
-                agentStatus: 'outputting' as AgentStatus,
-            }
-        }
-
-        return {
-            text: t('status.online'),
-            agentStatus: 'idle' as AgentStatus,
-        }
-    }, [active, running, agentState, t, sessionId])
 
     // 计算上下文警告
     const contextWarning = useMemo(() => {
@@ -178,14 +114,8 @@ export function StatusBar(props: StatusBarProps) {
             padding: '0 8px 4px',
             fontSize: 12
         }}>
-            {/* 左侧：动态头像 + 连接状态和上下文 */}
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <PixelAvatar name={sessionId} status={connectionStatus.agentStatus} size={18} />
-                    <span style={{ color: token.colorTextSecondary, fontSize: 11 }}>
-                        {connectionStatus.text}
-                    </span>
-                </div>
+            {/* 左侧：上下文使用量 */}
+            <div>
                 {contextWarning && (
                     <span style={{ fontSize: 10, color: contextWarning.color }}>
                         {contextWarning.text}

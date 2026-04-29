@@ -108,18 +108,19 @@ describe('handleSpecialCommand', () => {
 describe('createSpecialCommandContext', () => {
     it('should create context with all callbacks', () => {
         const onCompletionEvent = vi.fn()
+        const onContextCleared = vi.fn()
         const onSessionReset = vi.fn()
         const onReady = vi.fn()
         const executeBash = vi.fn()
 
         const ctx = createSpecialCommandContext(
-            { onCompletionEvent, onSessionReset, onReady },
+            { onCompletionEvent, onContextCleared, onSessionReset, onReady },
             executeBash
         )
 
         // Test onClear
         ctx.onClear()
-        expect(onCompletionEvent).toHaveBeenCalledWith('Context was reset')
+        expect(onContextCleared).toHaveBeenCalled()
         expect(onSessionReset).toHaveBeenCalled()
 
         // Test onCompactStart
@@ -146,5 +147,20 @@ describe('createSpecialCommandContext', () => {
         ctx.onReady()
 
         expect(onReady).toHaveBeenCalled()
+    })
+
+    it('should fallback to onCompletionEvent when onContextCleared is not provided', () => {
+        const onCompletionEvent = vi.fn()
+        const onSessionReset = vi.fn()
+        const onReady = vi.fn()
+
+        const ctx = createSpecialCommandContext(
+            { onCompletionEvent, onSessionReset, onReady },
+            vi.fn()
+        )
+
+        ctx.onClear()
+        expect(onCompletionEvent).toHaveBeenCalledWith('Context was reset')
+        expect(onSessionReset).toHaveBeenCalled()
     })
 })

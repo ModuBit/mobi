@@ -27,6 +27,8 @@ import TerminalView from '@/components/terminal/TerminalView'
 import { IconButton } from '@/components/ui/IconButton'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import { getAgentStatus } from '@/components/pixel-avatar/types'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { Folder, Terminal, ArrowLeft, List } from 'lucide-react'
@@ -86,6 +88,15 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         ),
     }))), [t, sessionViewMode])
 
+    const agentStatus = useMemo(
+        () => getAgentStatus({
+            active: session?.active ?? false,
+            running: session?.running ?? false,
+            agentState: session?.agentState ?? null,
+        }),
+        [session?.active, session?.running, session?.agentState],
+    )
+
     if (isLoading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
@@ -126,6 +137,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                                 />
                             </>
                         )}
+                        <PixelAvatar name={sessionId} status={agentStatus} size={18} />
                         <span
                             style={{
                                 fontWeight: 500,

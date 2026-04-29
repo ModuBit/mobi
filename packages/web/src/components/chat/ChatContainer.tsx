@@ -24,10 +24,11 @@ import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { reduceChatBlocks, normalizeDecryptedMessage } from '@/domain/chat'
+import { reduceChatBlocks, normalizeDecryptedMessage, getEventPresentation } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { renderChatBlock } from './blocks'
 import { ChatComposer } from '@/components/composer/ChatComposer'
+import { AgentLoadingBubble } from './AgentLoadingBubble'
 import { CopyButton } from './CopyButton'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
@@ -63,6 +64,7 @@ const BUBBLE_ROLES = {
         variant: 'borderless' as const,
         styles: { content: { paddingBlock: 0, minHeight: 'auto' } },
     },
+    divider: {},
 }
 
 interface ChatContainerProps {
@@ -131,7 +133,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const bubbleItems = useMemo(() => {
         const items: Array<{
             key: string
-            role: 'assistant' | 'user' | 'system'
+            role: 'assistant' | 'user' | 'system' | 'divider'
             content: React.ReactNode
             typing?: boolean
             variant?: 'borderless'
@@ -153,6 +155,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
         for (let i = 0; i < chatBlocks.length; i++) {
             const block = chatBlocks[i]
+
+            if (block.kind === 'agent-event' && block.event.type === 'context-cleared') {
+                const { text } = getEventPresentation(block.event)
+                items.push({
+                    key: block.id,
+                    role: 'divider' as const,
+                    content: text,
+                })
+                continue
+            }
 
             // 是否为最后一个 assistant block 且 session 正在运行
             const isLastRunningBlock = block.id === lastAssistantBlockKey && !!session?.running
@@ -206,6 +218,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     <span style={{ fontSize: 11, opacity: 0.6 }}>{formatMessageTime(block.createdAt)}</span>
                 ) : undefined,
                 footerPlacement: 'outer-end',
+            })
+        }
+
+        // running 时在列表末尾追加 loading 气泡
+        if (session?.running) {
+            items.push({
+                key: '__loading__',
+                role: 'assistant',
+                content: <AgentLoadingBubble sessionId={sessionId} />,
+                variant: 'borderless',
             })
         }
 
@@ -266,16 +288,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                             role={BUBBLE_ROLES}
                             style={{ height: '100%' }}
                         />
-                        {session?.running && (
-                            <div style={{ padding: '8px 16px' }}>
-                                <Bubble
-                                    placement="start"
-                                    variant="borderless"
-                                    loading
-                                    content=""
-                                />
-                            </div>
-                        )}
                     </>
                 )}
                 {showScrollBottom && (

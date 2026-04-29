@@ -16,6 +16,19 @@
 
 export type AgentStatus = 'outputting' | 'awaiting_auth' | 'idle' | 'inactive';
 
+/** 根据 session 状态计算 AgentStatus */
+export function getAgentStatus(opts: {
+    active: boolean
+    running: boolean
+    agentState?: { requests?: Record<string, unknown> | null } | null
+}): AgentStatus {
+    const hasPermissions = opts.agentState?.requests && Object.keys(opts.agentState.requests).length > 0
+    if (!opts.active) return 'inactive'
+    if (hasPermissions) return 'awaiting_auth'
+    if (opts.running) return 'outputting'
+    return 'idle'
+}
+
 export type PixelColor = string;
 
 export interface SpritePart {

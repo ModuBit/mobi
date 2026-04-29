@@ -69,6 +69,7 @@ export type SpecialCommandContext = {
 export function createSpecialCommandContext(
     opts: {
         onCompletionEvent?: (message: string) => void
+        onContextCleared?: () => void
         onSessionReset?: () => void
         onReady: () => void
     },
@@ -76,7 +77,11 @@ export function createSpecialCommandContext(
 ): SpecialCommandContext {
     return {
         onClear: () => {
-            opts.onCompletionEvent?.('Context was reset')
+            if (opts.onContextCleared) {
+                opts.onContextCleared()
+            } else {
+                opts.onCompletionEvent?.('Context was reset')
+            }
             opts.onSessionReset?.()
         },
         onCompactStart: () => {
@@ -190,6 +195,7 @@ export async function claudeRemote(opts: {
     /** Snapshot converter，用于生成与最终消息一致的 DecryptedMessage */
     getConverter: () => import('./utils/sdkToLogConverter').SDKToLogConverter,
     onCompletionEvent?: (message: string) => void,
+    onContextCleared?: () => void,
     onSessionReset?: () => void,
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
     onQueryReady?: (query: Query) => void,
