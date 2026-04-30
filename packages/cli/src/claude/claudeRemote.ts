@@ -27,6 +27,7 @@ import {
     type SDKUserMessage,
     type SDKAssistantMessage,
     type SDKResultMessage,
+    type SDKPartialAssistantMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
@@ -174,6 +175,68 @@ export function sanitizeUserMessage(message: string): string {
     return message.replace(/(?<!\\)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g, '\\($1\\)')
 }
 
+function resolveResumeSessionId(claudeArgs: string[] | undefined, cwd: string): string | null {
+    if (!claudeArgs) return null;
+
+    for (let i = 0; i < claudeArgs.length; i++) {
+        if (claudeArgs[i] !== '--resume' && claudeArgs[i] !== '-r') continue;
+
+        const nextArg = claudeArgs[i + 1];
+        if (nextArg && !nextArg.startsWith('-') && nextArg.includes('-')) {
+            if (claudeCheckSession(nextArg, cwd)) {
+                logger.debug(`[claudeRemote] Found --resume with session ID: ${nextArg}`);
+                return nextArg;
+            }
+            logger.debug(`[claudeRemote] Session file not found for ${nextArg}, ignoring --resume`);
+            return null;
+        }
+
+        logger.debug('[claudeRemote] Found --resume without session ID - not supported in remote mode');
+        return null;
+    }
+
+    return null;
+}
+
+function handleStreamEvent(
+    message: SDKPartialAssistantMessage,
+    snapshotSender: StreamSnapshotSender,
+    fallbackModel?: string,
+): void {
+    const event = message.event;
+    const parentToolUseId = message.parent_tool_use_id;
+    const sdkUuid = message.uuid;
+    const eventIndex = (event as any).index;
+
+    if (event.type === 'message_start') {
+        snapshotSender.clearBuffers();
+        const msgStart = (event as any).message;
+        snapshotSender.setSnapshotOpts({
+            parentToolUseId: parentToolUseId || undefined,
+            model: msgStart?.model || fallbackModel,
+            sdkUuid,
+        });
+    } else if (event.type === 'message_stop') {
+        snapshotSender.flush();
+    } else if (event.type === 'content_block_start') {
+        const block = (event as any).content_block;
+        if (block?.type === 'text') {
+            snapshotSender.startBlock(eventIndex, 'text');
+        } else if (block?.type === 'thinking') {
+            snapshotSender.startBlock(eventIndex, 'thinking');
+        }
+    } else if (event.type === 'content_block_delta') {
+        const delta = (event as any).delta;
+        if (delta?.type === 'text_delta') {
+            snapshotSender.append(eventIndex, delta.text);
+        } else if (delta?.type === 'thinking_delta') {
+            snapshotSender.append(eventIndex, delta.thinking);
+        }
+    } else if (event.type === 'content_block_stop') {
+        snapshotSender.endBlock(eventIndex);
+    }
+}
+
 export async function claudeRemote(opts: {
 
     // Fixed parameters
@@ -212,35 +275,8 @@ export async function claudeRemote(opts: {
         startFrom = null;
     }
 
-    // Extract --resume from claudeArgs if present (for first spawn)
-    if (!startFrom && opts.claudeArgs) {
-        for (let i = 0; i < opts.claudeArgs.length; i++) {
-            if (opts.claudeArgs[i] === '--resume' || opts.claudeArgs[i] === '-r') {
-                // Check if next arg exists and looks like a session ID
-                if (i + 1 < opts.claudeArgs.length) {
-                    const nextArg = opts.claudeArgs[i + 1];
-                    // If next arg doesn't start with dash and contains dashes, it's likely a UUID
-                    if (!nextArg.startsWith('-') && nextArg.includes('-')) {
-                        startFrom = nextArg;
-                        logger.debug(`[claudeRemote] Found --resume with session ID: ${startFrom}`);
-                        // 验证 session 文件是否存在，不存在则忽略
-                        if (!claudeCheckSession(startFrom, opts.path)) {
-                            logger.debug(`[claudeRemote] Session file not found for ${startFrom}, ignoring --resume`);
-                            startFrom = null;
-                        }
-                        break;
-                    } else {
-                        // Just --resume without UUID - SDK doesn't support this
-                        logger.debug('[claudeRemote] Found --resume without session ID - not supported in remote mode');
-                        break;
-                    }
-                } else {
-                    // --resume at end of args - SDK doesn't support this
-                    logger.debug('[claudeRemote] Found --resume without session ID - not supported in remote mode');
-                    break;
-                }
-            }
-        }
+    if (!startFrom) {
+        startFrom = resolveResumeSessionId(opts.claudeArgs, opts.path);
     }
 
     // Set environment variables for Claude Code SDK
@@ -358,19 +394,16 @@ export async function claudeRemote(opts: {
         opts.nextMessage(),
     ])
 
-    // 统一赋值到 warmRef，后续统一通过 warmRef 操作
     if (warmSettled.status === 'fulfilled') {
         warmRef = warmSettled.value
     }
 
-    // 无首条消息 → 关闭预热进程，退出
     if (msgSettled.status !== 'fulfilled' || !msgSettled.value) {
         warmRef?.close()
         return
     }
     const initial = msgSettled.value
 
-    // 处理特殊命令
     const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
     const initialResult = await handleSpecialCommand(initial.message, specialCommandCtx)
 
@@ -410,7 +443,6 @@ export async function claudeRemote(opts: {
         session_id: '', // SDK 会在运行时填充
     });
 
-    // 启动查询：优先使用预热进程，降级到直接 query()
     let queryStarted = false;
     let warmConsumed = false;
     let response: Query;
@@ -452,44 +484,7 @@ export async function claudeRemote(opts: {
 
             // 处理流式事件：累积 delta 到 snapshot sender
             if (message.type === 'stream_event') {
-                const event = message.event;
-                const parentToolUseId = (message as any).parent_tool_use_id;
-                // SDK stream_event 的 uuid 仅用于标识本次流式消息，与最终 assistant 消息的 uuid 不同
-                const sdkUuid = (message as any).uuid;
-                // 使用 SDK 事件自带的 index，避免手动追踪
-                const eventIndex = (event as any).index;
-
-                if (event.type === 'message_start') {
-                    // 新消息开始，清除旧 buffer
-                    snapshotSender.clearBuffers();
-                    const msgStart = (event as any).message;
-                    snapshotSender.setSnapshotOpts({
-                        parentToolUseId: parentToolUseId || undefined,
-                        model: msgStart?.model || initial.mode.model,
-                        sdkUuid,
-                    });
-                } else if (event.type === 'message_stop') {
-                    // 消息结束，刷新剩余快照
-                    snapshotSender.flush();
-                } else if (event.type === 'content_block_start') {
-                    const block = (event as any).content_block;
-                    if (block?.type === 'text') {
-                        snapshotSender.startBlock(eventIndex, 'text');
-                    } else if (block?.type === 'thinking') {
-                        snapshotSender.startBlock(eventIndex, 'thinking');
-                    }
-                } else if (event.type === 'content_block_delta') {
-                    const delta = (event as any).delta;
-                    if (delta?.type === 'text_delta') {
-                        snapshotSender.append(eventIndex, delta.text);
-                    } else if (delta?.type === 'thinking_delta') {
-                        snapshotSender.append(eventIndex, delta.thinking);
-                    }
-                } else if (event.type === 'content_block_stop') {
-                    // 内容块结束，刷新并发送最终内容，移除缓冲区
-                    // 避免后续 flush 带上已完成的内容块（如 thinking 完成后不再包含在 text 阶段的 snapshot 中）
-                    snapshotSender.endBlock(eventIndex);
-                }
+                handleStreamEvent(message, snapshotSender, initial.mode.model);
                 continue;
             }
 

@@ -198,20 +198,25 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             return;
         }
 
-        // 先读取旧值，再更新 session，才能正确检测变更
         const prevMode = sessionInstance.getPermissionMode();
         const prevModel = sessionInstance.getModel();
+        const modeChanged = prevMode !== currentPermissionMode;
+        const modelChanged = prevModel !== currentModel;
+
+        if (!modeChanged && !modelChanged) {
+            return;
+        }
+
         sessionInstance.setPermissionMode(currentPermissionMode);
         sessionInstance.setModel(currentModel);
 
-        // 仅在值实际变更时调用 SDK Query（避免每条消息都发控制消息）
         const control = queryControlRef.current;
-        if (control && (prevMode !== currentPermissionMode || prevModel !== currentModel)) {
+        if (control) {
             const promises: Promise<void>[] = [];
-            if (prevMode !== currentPermissionMode) {
+            if (modeChanged) {
                 promises.push(control.setPermissionMode(currentPermissionMode));
             }
-            if (prevModel !== currentModel) {
+            if (modelChanged) {
                 promises.push(control.setModel(currentModel ?? undefined));
             }
             Promise.all(promises).catch(err => logger.debug(`[loop] dynamic config apply failed: ${err}`));
