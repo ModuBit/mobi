@@ -41,6 +41,7 @@ import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirect
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from '@/domain/session/types'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
+import { EFFORT_LEVELS, EFFORT_LABELS, type EffortLevel } from '@mobi/shared'
 import {
     loadPreferredAgent,
     loadPreferredYoloMode,
@@ -71,6 +72,26 @@ function startEllipsis(path: string, maxLen = 40): string {
     return `...${path.slice(-(maxLen - 3))}`
 }
 
+// ============ Effort localStorage 持久化 ============
+
+const EFFORT_STORAGE_KEY = 'mobi-preferred-effort'
+
+function loadPreferredEffort(): EffortLevel {
+    try {
+        const stored = localStorage.getItem(EFFORT_STORAGE_KEY)
+        if (stored && EFFORT_LEVELS.includes(stored as EffortLevel)) {
+            return stored as EffortLevel
+        }
+    } catch { /* noop */ }
+    return 'medium'
+}
+
+function savePreferredEffort(effort: EffortLevel): void {
+    try {
+        localStorage.setItem(EFFORT_STORAGE_KEY, effort)
+    } catch { /* noop */ }
+}
+
 /**
  * 新建会话组件
  */
@@ -93,6 +114,7 @@ export function NewSession(props: NewSessionProps) {
     const [agent, setAgent] = useState<AgentType>(loadPreferredAgent)
     const [model, setModel] = useState('auto')
     const [yoloMode, setYoloMode] = useState(loadPreferredYoloMode)
+    const [effort, setEffort] = useState<EffortLevel>(loadPreferredEffort)
     const [sessionType, setSessionType] = useState<SessionType>('simple')
     const [worktreeName, setWorktreeName] = useState('')
     const [error, setError] = useState<string | null>(null)
@@ -111,6 +133,7 @@ export function NewSession(props: NewSessionProps) {
     // 保存偏好设置
     useEffect(() => { savePreferredAgent(agent) }, [agent])
     useEffect(() => { savePreferredYoloMode(yoloMode) }, [yoloMode])
+    useEffect(() => { savePreferredEffort(effort) }, [effort])
 
     // 初始化机器选择
     useEffect(() => {
@@ -162,6 +185,7 @@ export function NewSession(props: NewSessionProps) {
                 directory: trimmedDirectory,
                 agent,
                 model: model !== 'auto' ? model : undefined,
+                effort,
                 yolo: yoloMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined
@@ -354,6 +378,21 @@ export function NewSession(props: NewSessionProps) {
                             value: opt.value,
                             label: opt.displayName,
                         }))}
+                    />
+                </Form.Item>
+            )}
+
+            {agent === 'claude' && (
+                <Form.Item label={t('newSession.effort')}>
+                    <Select
+                        value={effort}
+                        onChange={setEffort}
+                        options={EFFORT_LEVELS.map(e => ({
+                            value: e,
+                            label: EFFORT_LABELS[e],
+                        }))}
+                        style={{ width: '100%' }}
+                        disabled={isFormDisabled}
                     />
                 </Form.Item>
             )}

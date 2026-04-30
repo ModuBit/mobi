@@ -20,6 +20,7 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { SpawnResponse } from '@/core/data/api/types'
+import type { EffortLevel } from '@mobi/shared'
 import type { AgentType, SessionType } from '@/domain/session/types'
 
 export interface SpawnInput {
@@ -27,7 +28,7 @@ export interface SpawnInput {
     directory: string
     agent?: AgentType
     model?: string
-    modelReasoningEffort?: string
+    effort?: EffortLevel
     yolo?: boolean
     sessionType?: SessionType
     worktreeName?: string
@@ -59,7 +60,8 @@ export function useSpawnSession(): {
                     input.model,
                     input.yolo,
                     input.sessionType,
-                    input.worktreeName
+                    input.worktreeName,
+                    input.effort
                 )
 
                 return {

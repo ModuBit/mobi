@@ -55,6 +55,7 @@
         "model": "模型",
         "modelOptional": "可选",
         "modelAuto": "自动",
+        "effort": "推理深度",
         "autoMode": "自动模式",
         "yoloMode": "YOLO 模式",
         "yoloModeDesc": "启用后自动执行所有操作，无需确认",

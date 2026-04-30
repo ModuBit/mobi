@@ -55,6 +55,7 @@
         "model": "Model",
         "modelOptional": "optional",
         "modelAuto": "Auto",
+        "effort": "Reasoning Effort",
         "autoMode": "Auto Mode",
         "yoloMode": "YOLO Mode",
         "yoloModeDesc": "Automatically execute all operations without confirmation",
