@@ -30,31 +30,9 @@ export type PermissionEntry = {
 export function getPermissions(agentState: AgentState | null | undefined): Map<string, PermissionEntry> {
     const map = new Map<string, PermissionEntry>()
 
-    const completed = agentState?.completedRequests ?? null
-    if (completed) {
-        for (const [id, entry] of Object.entries(completed)) {
-            map.set(id, {
-                toolName: entry.tool,
-                input: entry.arguments,
-                permission: {
-                    id,
-                    status: entry.status,
-                    reason: entry.reason ?? undefined,
-                    mode: entry.mode ?? undefined,
-                    decision: entry.decision ?? undefined,
-                    allowedTools: entry.allowTools,
-                    answers: entry.answers,
-                    createdAt: entry.createdAt ?? null,
-                    completedAt: entry.completedAt ?? null
-                }
-            })
-        }
-    }
-
     const requests = agentState?.requests ?? null
     if (requests) {
         for (const [id, request] of Object.entries(requests)) {
-            if (map.has(id)) continue
             map.set(id, {
                 toolName: request.tool,
                 input: request.arguments,

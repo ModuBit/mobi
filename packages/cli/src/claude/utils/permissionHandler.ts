@@ -369,7 +369,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             // Set up abort signal handling
             const abortHandler = () => {
                 this.pendingRequests.delete(id);
-                this.finalizeRequest(id, { status: 'canceled', reason: 'Permission request aborted' });
+                this.finalizeRequest(id);
                 reject(new Error('Permission request aborted'));
             };
             signal.addEventListener('abort', abortHandler, { once: true });
@@ -509,7 +509,6 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         this.responses.clear();
 
         this.cancelPendingRequests({
-            completedReason: 'Turn ended',
             rejectMessage: 'Turn reset'
         });
     }
@@ -525,7 +524,6 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         this.allowedBashPrefixes.clear();
 
         this.cancelPendingRequests({
-            completedReason: 'Session switched to local mode',
             rejectMessage: 'Session reset'
         });
     }

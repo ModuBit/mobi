@@ -96,16 +96,12 @@ export type PermissionCompletion = {
     status: 'approved' | 'denied' | 'canceled';
     reason?: string;
     mode?: string;
-    /** @deprecated 未使用，权限范围由 allowTools 和 mode 决定 */
-    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
     allowTools?: string[];
     answers?: Record<string, string[]> | Record<string, { answers: string[] }>;
 };
 
 export type CancelPendingRequestOptions = {
-    completedReason: string;
     rejectMessage: string;
-    decision?: PermissionCompletion['decision'];
 };
 
 export abstract class BasePermissionHandler<TResponse extends { id: string }, TResult> {
@@ -169,7 +165,7 @@ export abstract class BasePermissionHandler<TResponse extends { id: string }, TR
         }));
     }
 
-    protected finalizeRequest(id: string, completion: PermissionCompletion): void {
+    protected finalizeRequest(id: string): void {
         this.client.updateAgentState((currentState) => {
             const request = currentState.requests?.[id];
             if (!request) return currentState;
@@ -179,20 +175,7 @@ export abstract class BasePermissionHandler<TResponse extends { id: string }, TR
 
             return {
                 ...currentState,
-                requests: nextRequests,
-                completedRequests: {
-                    ...currentState.completedRequests,
-                    [id]: {
-                        ...request,
-                        completedAt: Date.now(),
-                        status: completion.status,
-                        reason: completion.reason,
-                        mode: completion.mode,
-                        decision: completion.decision,
-                        allowTools: completion.allowTools,
-                        answers: completion.answers
-                    }
-                }
+                requests: nextRequests
             };
         });
     }
@@ -204,23 +187,9 @@ export abstract class BasePermissionHandler<TResponse extends { id: string }, TR
         this.pendingRequests.clear();
 
         this.client.updateAgentState((currentState) => {
-            const pendingRequests = currentState.requests || {};
-            const completedRequests = { ...currentState.completedRequests };
-
-            for (const [id, request] of Object.entries(pendingRequests)) {
-                completedRequests[id] = {
-                    ...request,
-                    completedAt: Date.now(),
-                    status: 'canceled',
-                    reason: options.completedReason,
-                    decision: options.decision
-                };
-            }
-
             return {
                 ...currentState,
-                requests: {},
-                completedRequests
+                requests: {}
             };
         });
     }
@@ -237,8 +206,8 @@ export abstract class BasePermissionHandler<TResponse extends { id: string }, TR
             this.onResponseReceived(response);
             this.pendingRequests.delete(response.id);
 
-            const completion = await this.handlePermissionResponse(response, pending);
-            this.finalizeRequest(response.id, completion);
+            await this.handlePermissionResponse(response, pending);
+            this.finalizeRequest(response.id);
         });
     }
 }

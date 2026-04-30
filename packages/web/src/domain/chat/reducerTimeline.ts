@@ -306,17 +306,7 @@ export function reduceTimeline(
                         decision: c.permissions.decision
                     } satisfies ToolPermission) : undefined
 
-                    const permission = (() => {
-                        if (permissionFromResult && permissionEntry?.permission) {
-                            return {
-                                ...permissionEntry.permission,
-                                ...permissionFromResult,
-                                allowedTools: permissionFromResult.allowedTools ?? permissionEntry.permission.allowedTools,
-                                decision: permissionFromResult.decision ?? permissionEntry.permission.decision
-                            } satisfies ToolPermission
-                        }
-                        return permissionFromResult ?? permissionEntry?.permission
-                    })()
+                    const permission = permissionFromResult ?? permissionEntry?.permission
 
                     const block = ensureToolBlock(blocks, toolBlocksById, c.tool_use_id, {
                         createdAt: msg.createdAt,

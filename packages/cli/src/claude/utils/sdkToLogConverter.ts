@@ -297,7 +297,11 @@ export class SDKToLogConverter {
                         type: 'tool_result',
                         content: errorMessage,
                         is_error: true,
-                        tool_use_id: toolUseId
+                        tool_use_id: toolUseId,
+                        permissions: {
+                            result: 'denied',
+                            date: Date.now()
+                        }
                     }
                 ]
             },

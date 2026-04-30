@@ -608,33 +608,6 @@ describe('ensureToolBlock', () => {
 })
 
 describe('getPermissions', () => {
-    it('应从 AgentState 提取 completed 权限', () => {
-        const agentState: AgentState = {
-            completedRequests: {
-                'tool-1': {
-                    tool: 'Bash',
-                    arguments: { command: 'ls' },
-                    status: 'approved',
-                    mode: 'auto',
-                    createdAt: 1000,
-                    completedAt: 2000,
-                },
-            },
-        }
-
-        const result = getPermissions(agentState)
-        expect(result.size).toBe(1)
-
-        const entry = result.get('tool-1')
-        expect(entry).toBeDefined()
-        expect(entry?.toolName).toBe('Bash')
-        expect(entry?.input).toEqual({ command: 'ls' })
-        expect(entry?.permission.status).toBe('approved')
-        expect(entry?.permission.mode).toBe('auto')
-        expect(entry?.permission.createdAt).toBe(1000)
-        expect(entry?.permission.completedAt).toBe(2000)
-    })
-
     it('应从 AgentState 提取 pending 请求', () => {
         const agentState: AgentState = {
             requests: {
@@ -656,52 +629,25 @@ describe('getPermissions', () => {
         expect(entry?.permission.createdAt).toBe(3000)
     })
 
-    it('completed 应优先于 pending（相同 id）', () => {
+    it('应返回多个 pending 请求', () => {
         const agentState: AgentState = {
-            completedRequests: {
-                'tool-1': {
-                    tool: 'Bash',
-                    arguments: { command: 'ls' },
-                    status: 'approved',
-                },
-            },
             requests: {
-                'tool-1': {
-                    tool: 'Bash',
-                    arguments: { command: 'ls' },
-                },
-            },
-        }
-
-        const result = getPermissions(agentState)
-        expect(result.size).toBe(1)
-
-        // 应取 completed 版本
-        const entry = result.get('tool-1')
-        expect(entry?.permission.status).toBe('approved')
-    })
-
-    it('应同时返回 completed 和 pending（不同 id）', () => {
-        const agentState: AgentState = {
-            completedRequests: {
                 'tool-1': {
                     tool: 'Bash',
                     arguments: {},
-                    status: 'denied',
-                    reason: '危险操作',
+                    createdAt: 1000,
                 },
-            },
-            requests: {
                 'tool-2': {
                     tool: 'Read',
                     arguments: {},
+                    createdAt: 2000,
                 },
             },
         }
 
         const result = getPermissions(agentState)
         expect(result.size).toBe(2)
-        expect(result.get('tool-1')?.permission.status).toBe('denied')
+        expect(result.get('tool-1')?.permission.status).toBe('pending')
         expect(result.get('tool-2')?.permission.status).toBe('pending')
     })
 

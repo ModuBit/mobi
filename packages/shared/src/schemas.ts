@@ -144,30 +144,9 @@ export const AgentStateRequestSchema = z.object({
 
 export type AgentStateRequest = z.infer<typeof AgentStateRequestSchema>
 
-export const AgentStateCompletedRequestSchema = z.object({
-    tool: z.string(),
-    arguments: z.unknown(),
-    createdAt: z.number().nullish(),
-    completedAt: z.number().nullish(),
-    status: z.enum(['canceled', 'denied', 'approved']),
-    reason: z.string().optional(),
-    mode: z.string().optional(),
-    decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).optional(),
-    allowTools: z.array(z.string()).optional(),
-    // Flat format: Record<string, string[]> (AskUserQuestion)
-    // Nested format: Record<string, { answers: string[] }> (request_user_input)
-    answers: z.union([
-        z.record(z.string(), z.array(z.string())),
-        z.record(z.string(), z.object({ answers: z.array(z.string()) }))
-    ]).optional()
-})
-
-export type AgentStateCompletedRequest = z.infer<typeof AgentStateCompletedRequestSchema>
-
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),
-    requests: z.record(z.string(), AgentStateRequestSchema).nullish(),
-    completedRequests: z.record(z.string(), AgentStateCompletedRequestSchema).nullish()
+    requests: z.record(z.string(), AgentStateRequestSchema).nullish()
 })
 
 export type AgentState = z.infer<typeof AgentStateSchema>

@@ -71,7 +71,7 @@ export function reduceChatBlocks(
     const rootResult = reduceTimeline(root, reducerContext)
     let hasReadyEvent = rootResult.hasReadyEvent
 
-    // 只在没有工具调用/结果时创建仅权限的工具卡片
+    // 只在没有工具调用/结果时创建仅权限的工具卡片（仅 pending 状态）
     // 同时跳过比当前视图中最旧消息更早的权限，避免分页时混合新旧工具卡片
     const oldestMessageTime = normalized.length > 0
         ? normalized.reduce((min, m) => Math.min(min, m.createdAt), Infinity)
@@ -84,12 +84,11 @@ export function reduceChatBlocks(
         const createdAt = entry.permission.createdAt ?? Date.now()
 
         // 跳过比当前视图中最旧消息更早的权限
-        // 这些会在用户加载更旧消息时显示
         if (oldestMessageTime !== null && createdAt < oldestMessageTime) {
             continue
         }
 
-        const block = ensureToolBlock(rootResult.blocks, rootResult.toolBlocksById, id, {
+        ensureToolBlock(rootResult.blocks, rootResult.toolBlocksById, id, {
             createdAt,
             localId: null,
             name: entry.toolName,
@@ -97,20 +96,6 @@ export function reduceChatBlocks(
             description: null,
             permission: entry.permission
         })
-
-        if (entry.permission.status === 'approved') {
-            block.tool.state = 'completed'
-            block.tool.completedAt = entry.permission.completedAt ?? createdAt
-            if (block.tool.result === undefined) {
-                block.tool.result = 'Approved'
-            }
-        } else if (entry.permission.status === 'denied' || entry.permission.status === 'canceled') {
-            block.tool.state = 'error'
-            block.tool.completedAt = entry.permission.completedAt ?? createdAt
-            if (block.tool.result === undefined && entry.permission.reason) {
-                block.tool.result = { error: entry.permission.reason }
-            }
-        }
     }
 
     // 从消息中计算最新使用情况（找到最近有使用数据的消息）
