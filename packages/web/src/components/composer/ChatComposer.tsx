@@ -16,12 +16,12 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Tooltip, Select, theme, Typography } from 'antd'
-import { PaperClipOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, RobotOutlined, SafetyOutlined } from '@ant-design/icons'
+import { PaperClipOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, RobotOutlined, SafetyOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import type { AgentState, PermissionMode, Session } from '@mobi/shared'
-import { getPermissionModeOptionsForFlavor, getPermissionModeTone } from '@mobi/shared'
+import type { AgentState, EffortLevel, PermissionMode, Session } from '@mobi/shared'
+import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
@@ -64,6 +64,8 @@ interface ChatComposerProps {
     workingDir?: string
     extraLeftButtons?: React.ReactNode
     extraItems?: ActionItem[]
+    effort?: EffortLevel
+    onEffortChange?: (effort: EffortLevel) => void
     onPermissionModeChange?: (mode: PermissionMode) => void
     onModelChange?: (model: string | null) => void
     onSend: (text: string) => void
@@ -120,6 +122,8 @@ export function ChatComposer(props: ChatComposerProps) {
         agentFlavor,
         mode,
         workingDir,
+        effort = 'medium',
+        onEffortChange,
         extraLeftButtons,
         extraItems,
         onPermissionModeChange,
@@ -553,6 +557,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 agentFlavor={agentFlavor}
                 onAbort={onAbort}
                 abortPending={abortPending}
+                effort={effort}
             />
 
             <div ref={wrapperRef} className={isBashMode ? 'bash-mode' : undefined} style={{ position: 'relative' }}>
@@ -627,6 +632,27 @@ export function ChatComposer(props: ChatComposerProps) {
                                                     </div>
                                                 )
                                             }}
+                                            popupMatchSelectWidth={false}
+                                            style={{ width: '100%' }}
+                                        />
+                                    ),
+                                }] : []),
+                                ...(onEffortChange ? [{
+                                    key: 'effort',
+                                    width: 130,
+                                    render: () => (
+                                        <HoverSelect
+                                            $token={token}
+                                            size="small"
+                                            variant="borderless"
+                                            prefix={<ThunderboltOutlined style={{ fontSize: 14, opacity: 0.55 }} />}
+                                            value={effort}
+                                            onChange={v => onEffortChange(v as EffortLevel)}
+                                            disabled={controlsDisabled || showLocalModeCover}
+                                            options={EFFORT_LEVELS.map(e => ({
+                                                value: e,
+                                                label: EFFORT_LABELS[e]
+                                            }))}
                                             popupMatchSelectWidth={false}
                                             style={{ width: '100%' }}
                                         />

@@ -31,6 +31,7 @@ export function useSessionActions(sessionId: string | null): {
     resumeSession: () => Promise<string>
     setPermissionMode: (mode: string) => Promise<void>
     setModelMode: (mode: string) => Promise<void>
+    setEffort: (effort: string) => Promise<void>
     renameSession: (name: string) => Promise<void>
     deleteSession: () => Promise<void>
     isPending: boolean
@@ -112,6 +113,17 @@ export function useSessionActions(sessionId: string | null): {
         onSuccess: () => void invalidateSession(),
     })
 
+    // 设置思考深度
+    const effortMutation = useMutation({
+        mutationFn: async (effort: string) => {
+            if (!sessionId) {
+                throw new Error('Session unavailable')
+            }
+            await api.sessions.setEffort(sessionId, effort)
+        },
+        onSuccess: () => void invalidateSession(),
+    })
+
     // 设置模型模式
     const modelMutation = useMutation({
         mutationFn: async (mode: string) => {
@@ -159,6 +171,7 @@ export function useSessionActions(sessionId: string | null): {
         resumeSession: resumeMutation.mutateAsync,
         setPermissionMode: permissionMutation.mutateAsync,
         setModelMode: modelMutation.mutateAsync,
+        setEffort: effortMutation.mutateAsync,
         renameSession: renameMutation.mutateAsync,
         deleteSession: deleteMutation.mutateAsync,
         isPending:
@@ -168,6 +181,7 @@ export function useSessionActions(sessionId: string | null): {
             resumeMutation.isPending ||
             permissionMutation.isPending ||
             modelMutation.isPending ||
+            effortMutation.isPending ||
             renameMutation.isPending ||
             deleteMutation.isPending,
         isAbortPending: abortMutation.isPending,

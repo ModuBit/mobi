@@ -263,6 +263,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }
 
+    // 思考深度变更
+    const handleEffortChange = async (effort: string) => {
+        await sessionActions.setEffort(effort)
+    }
+
     // Agent 类型
     const agentFlavor = session?.metadata?.flavor ?? null
 
@@ -327,6 +332,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 agentFlavor={agentFlavor}
                 mode={session?.mode}
                 workingDir={session?.metadata?.path}
+                effort={session?.runtimeState?.effort}
+                onEffortChange={handleEffortChange}
                 onPermissionModeChange={handlePermissionModeChange}
                 onModelChange={handleModelChange}
                 onSend={handleSend}
