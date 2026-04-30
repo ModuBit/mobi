@@ -32,6 +32,7 @@ export type QueryControlRef = {
     current: {
         setPermissionMode: (m: PermissionMode) => Promise<void>
         setModel: (m?: string) => Promise<void>
+        applyFlagSettings: (settings: Record<string, unknown>) => Promise<void>
     } | null
 }
 

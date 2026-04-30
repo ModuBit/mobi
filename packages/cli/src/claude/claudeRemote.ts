@@ -368,6 +368,8 @@ export async function claudeRemote(opts: {
         mcpServers: opts.mcpServers,
         permissionMode: baseConfig.permissionMode,
         model: baseConfig.model,
+        // effort 依赖 thinking 默认值 { type: 'adaptive' } 才能生效，SDK 默认即为 adaptive
+        effort: baseConfig.effort,
         fallbackModel: baseConfig.fallbackModel,
         systemPrompt: baseConfig.customSystemPrompt
             ? baseConfig.customSystemPrompt + '\n\n' + systemPrompt
@@ -455,6 +457,7 @@ export async function claudeRemote(opts: {
             ...sdkOptions,
             permissionMode: fallbackConfig.permissionMode,
             model: fallbackConfig.model,
+            effort: fallbackConfig.effort,
         }
         response = query({ prompt: messages, options: fallbackOptions })
     }

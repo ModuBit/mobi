@@ -229,7 +229,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             if (effortChanged) {
                 // effort 通过 applyFlagSettings 动态修改
                 // effort 依赖 adaptive thinking（SDK thinking 默认为 { type: 'adaptive' }）
-                promises.push((control as any).applyFlagSettings({ effortLevel: currentEffort }));
+                promises.push(control.applyFlagSettings({ effortLevel: currentEffort }));
             }
             Promise.all(promises).catch(err => logger.debug(`[loop] dynamic config apply failed: ${err}`));
         }
