@@ -63,9 +63,12 @@ function patchSessionCache(
         for (const key of ['active', 'activeAt', 'running', 'runningAt', 'permissionMode', 'mode', 'metadata', 'agentState', 'agentStateVersion']) {
             if (key in delta) patch[key] = delta[key]
         }
-        // model 在心跳数据中是顶层字段，但属于 session.runtimeState
+        // model 和 effort 在心跳数据中是顶层字段，但属于 session.runtimeState
         if ('model' in delta) {
             runtimeStatePatch = { model: delta.model }
+        }
+        if ('effort' in delta) {
+            runtimeStatePatch = { ...runtimeStatePatch, effort: delta.effort }
         }
     }
 
