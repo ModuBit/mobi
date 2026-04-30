@@ -218,14 +218,6 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         logger.debug(`[loop] Synced session config for keepalive: permissionMode=${currentPermissionMode}, model=${currentModel ?? 'auto'}`);
     };
     apiSession.onUserMessage((message) => {
-        const sessionPermissionMode = currentSessionRef.current?.getPermissionMode();
-        if (sessionPermissionMode && isPermissionModeAllowedForFlavor(sessionPermissionMode, 'claude')) {
-            currentPermissionMode = sessionPermissionMode as PermissionMode;
-        }
-        const sessionModel = currentSessionRef.current?.getModel();
-        if (sessionModel !== undefined) {
-            currentModel = sessionModel;
-        }
         const messagePermissionMode = currentPermissionMode;
         const messageModel = currentModel ?? undefined;
         logger.debug(`[loop] User message received with permission mode: ${currentPermissionMode}, model: ${currentModel ?? 'auto'}`);
