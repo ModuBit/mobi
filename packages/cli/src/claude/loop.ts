@@ -63,6 +63,8 @@ interface LoopOptions {
     hookSettingsPath: string
     processCleanupRef?: { current: (() => void) | null }
     queryControlRef?: QueryControlRef
+    getSessionConfig?: () => EnhancedMode
+    flushConfig?: () => void
 }
 
 export async function loop(opts: LoopOptions) {
@@ -99,7 +101,7 @@ export async function loop(opts: LoopOptions) {
         startingMode: opts.startingMode,
         logTag: 'loop',
         runLocal: (s) => claudeLocalLauncher(s, cleanup),
-        runRemote: (s) => claudeRemoteLauncher(s, cleanup, queryControl),
+        runRemote: (s) => claudeRemoteLauncher(s, cleanup, queryControl, opts.getSessionConfig, opts.flushConfig),
         onSessionReady: opts.onSessionReady
     });
 }

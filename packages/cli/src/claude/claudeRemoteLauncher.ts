@@ -45,6 +45,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private readonly session: Session;
     private readonly processCleanupRef?: { current: (() => void) | null };
     private readonly queryControlRef?: QueryControlRef;
+    private readonly getSessionConfig: () => EnhancedMode;
+    private readonly flushConfig: () => void;
     private abortController: AbortController | null = null;
     private abortFuture: Future<void> | null = null;
     private permissionHandler: PermissionHandler | null = null;
@@ -56,11 +58,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         session: Session,
         processCleanupRef?: { current: (() => void) | null },
         queryControlRef?: QueryControlRef,
+        getSessionConfig: () => EnhancedMode = () => ({ permissionMode: 'default' }),
+        flushConfig: () => void = () => {},
     ) {
         super(process.env.DEBUG ? session.logPath : undefined);
         this.session = session;
         this.processCleanupRef = processCleanupRef;
         this.queryControlRef = queryControlRef;
+        this.getSessionConfig = getSessionConfig;
+        this.flushConfig = flushConfig;
     }
 
     protected createDisplay(context: RemoteLauncherDisplayContext): React.ReactElement {
@@ -337,6 +343,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         allowedTools: session.allowedTools ?? [],
                         mcpServers: session.mcpServers,
                         hookSettingsPath: session.hookSettingsPath,
+                        getSessionConfig: this.getSessionConfig,
+                        flushConfig: this.flushConfig,
                         canCallTool: permissionHandler.handleToolCall,
                         onQueryReady: (query) => {
                             this.queryRef = query;
@@ -344,6 +352,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             if (this.queryControlRef) {
                                 this.queryControlRef.current = query;
                             }
+                            // 修复配置漂移：将预热期间积累的配置变更同步到 Query
+                            this.flushConfig();
                             if (this.processCleanupRef) {
                                 this.processCleanupRef.current = () => {
                                     query.close();
@@ -493,7 +503,15 @@ export async function claudeRemoteLauncher(
     session: Session,
     processCleanupRef?: { current: (() => void) | null },
     queryControlRef?: QueryControlRef,
+    getSessionConfig?: () => EnhancedMode,
+    flushConfig?: () => void,
 ): Promise<'switch' | 'exit'> {
-    const launcher = new ClaudeRemoteLauncher(session, processCleanupRef, queryControlRef);
+    const launcher = new ClaudeRemoteLauncher(
+        session,
+        processCleanupRef,
+        queryControlRef,
+        getSessionConfig ?? (() => ({ permissionMode: 'default' as const })),
+        flushConfig ?? (() => {}),
+    );
     return launcher.launch();
 }

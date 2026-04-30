@@ -378,7 +378,17 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             startedBy,
             hookSettingsPath,
             processCleanupRef,
-            queryControlRef
+            queryControlRef,
+            getSessionConfig: () => ({
+                permissionMode: currentPermissionMode,
+                model: currentModel ?? undefined,
+                fallbackModel: currentFallbackModel,
+                customSystemPrompt: currentCustomSystemPrompt,
+                appendSystemPrompt: currentAppendSystemPrompt,
+                allowedTools: currentAllowedTools,
+                disallowedTools: currentDisallowedTools,
+            }),
+            flushConfig: syncSessionModes,
         });
     } catch (error) {
         loopError = error;

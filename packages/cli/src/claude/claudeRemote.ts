@@ -17,9 +17,11 @@
 import { randomUUID } from 'node:crypto'
 import { EnhancedMode } from "./loop";
 import {
+    startup,
     query,
     type Options,
     type Query,
+    type WarmQuery,
     type SDKMessage,
     type SDKSystemMessage,
     type SDKUserMessage,
@@ -182,6 +184,8 @@ export async function claudeRemote(opts: {
     claudeArgs?: string[],
     allowedTools: string[],
     hookSettingsPath: string,
+    getSessionConfig: () => EnhancedMode,
+    flushConfig?: () => void,
     canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>,
 
     // Dynamic parameters
@@ -316,59 +320,71 @@ export async function claudeRemote(opts: {
         opts.onRunningChange?.(false)
     }
 
-    // Get initial message
-    const initial = await opts.nextMessage();
-    if (!initial) { // No initial message - exit
-        return;
-    }
+    // 并行：预热子进程 + 等待用户首条消息
+    let warmRef: WarmQuery | null = null
 
-    // Handle special commands for initial message
-    const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
-    const initialResult = await handleSpecialCommand(initial.message, specialCommandCtx)
-
-    if (initialResult.shouldExit) {
-        return
-    }
-
-    // 如果是 !bash，已经执行完毕，等待下一条消息
-    if (initialResult.handled && !initialResult.isCompact) {
-        return
-    }
-
-    // Prepare SDK options
-    let mode = initial.mode;
-    let isCompactCommand = initialResult.isCompact;
+    const baseConfig = opts.getSessionConfig()
     const sdkOptions: Options = {
         cwd: opts.path,
         includePartialMessages: true,
         resume: startFrom ?? undefined,
         sessionId: pregeneratedSessionId,
         mcpServers: opts.mcpServers,
-        permissionMode: initial.mode.permissionMode,
-        model: initial.mode.model,
-        fallbackModel: initial.mode.fallbackModel,
-        // 使用 systemPrompt 配置（官方 SDK 格式）
-        systemPrompt: initial.mode.customSystemPrompt
-            ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt
+        permissionMode: baseConfig.permissionMode,
+        model: baseConfig.model,
+        fallbackModel: baseConfig.fallbackModel,
+        systemPrompt: baseConfig.customSystemPrompt
+            ? baseConfig.customSystemPrompt + '\n\n' + systemPrompt
             : {
                 type: 'preset' as const,
                 preset: 'claude_code' as const,
-                append: initial.mode.appendSystemPrompt
-                    ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt
+                append: baseConfig.appendSystemPrompt
+                    ? baseConfig.appendSystemPrompt + '\n\n' + systemPrompt
                     : systemPrompt,
             },
-        allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
-        disallowedTools: initial.mode.disallowedTools,
-        // canUseTool 回调
+        allowedTools: baseConfig.allowedTools ? baseConfig.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
+        disallowedTools: baseConfig.disallowedTools,
         canUseTool: async (toolName, input, options) => {
             const result = await opts.canCallTool(toolName, input, options);
-            // 直接返回完整的 PermissionResult，透传 updatedPermissions 等字段
             return result;
         },
         pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
         settings: opts.hookSettingsPath,
         additionalDirectories: [getMobiBlobsDir()],
     }
+
+    const [warmSettled, msgSettled] = await Promise.allSettled([
+        startup({ options: sdkOptions }),
+        opts.nextMessage(),
+    ])
+
+    // 无首条消息 → 关闭预热进程，退出
+    if (msgSettled.status !== 'fulfilled' || !msgSettled.value) {
+        if (warmSettled.status === 'fulfilled') warmSettled.value.close()
+        return
+    }
+    const initial = msgSettled.value
+
+    // 处理特殊命令
+    const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
+    const initialResult = await handleSpecialCommand(initial.message, specialCommandCtx)
+
+    if (initialResult.shouldExit) {
+        if (warmSettled.status === 'fulfilled') warmSettled.value.close()
+        return
+    }
+
+    if (initialResult.handled && !initialResult.isCompact) {
+        if (warmSettled.status === 'fulfilled') warmSettled.value.close()
+        return
+    }
+
+    // 确认 warm 可用
+    if (warmSettled.status === 'fulfilled') {
+        warmRef = warmSettled.value
+    }
+
+    let isCompactCommand = initialResult.isCompact;
 
     // Track running state
     let running = false;
@@ -394,12 +410,22 @@ export async function claudeRemote(opts: {
         session_id: '', // SDK 会在运行时填充
     });
 
-    // Start the loop
+    // 启动查询：优先使用预热进程，降级到直接 query()
     let queryStarted = false;
-    const response = query({
-        prompt: messages,
-        options: sdkOptions,
-    });
+    let response: Query;
+    if (warmRef) {
+        response = warmRef.query(messages)
+        // warmRef 只能用一次，标记为已消费（不置 null，避免 TS 类型窄化）
+        warmRef = null as unknown as WarmQuery | null
+    } else {
+        const fallbackConfig = opts.getSessionConfig()
+        const fallbackOptions: Options = {
+            ...sdkOptions,
+            permissionMode: fallbackConfig.permissionMode,
+            model: fallbackConfig.model,
+        }
+        response = query({ prompt: messages, options: fallbackOptions })
+    }
 
     // 把 Query 引用传给外部，用于 interrupt/close 控制
     opts.onQueryReady?.(response);
@@ -546,7 +572,6 @@ export async function claudeRemote(opts: {
                     return;
                 }
 
-                mode = next.mode;
                 messages.push({
                     type: 'user',
                     message: { role: 'user', content: sanitizeUserMessage(next.message) },
@@ -569,5 +594,6 @@ export async function claudeRemote(opts: {
     } finally {
         snapshotSender.destroy();
         updateRunning(false);
+        warmRef?.close();
     }
 }
