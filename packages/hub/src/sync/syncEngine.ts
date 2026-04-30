@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { DecryptedMessage, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
+import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { RpcRegistry } from '../socket/rpcRegistry'
@@ -190,6 +190,7 @@ export class SyncEngine {
         mode?: 'local' | 'remote'
         permissionMode?: PermissionMode
         model?: string | null
+        effort?: EffortLevel
     }): void {
         this.sessionCache.handleSessionAlive(payload)
     }
@@ -288,13 +289,14 @@ export class SyncEngine {
         config: {
             permissionMode?: PermissionMode
             model?: string | null
+            effort?: EffortLevel
         }
     ): Promise<void> {
         const result = await this.rpcGateway.requestSessionConfig(sessionId, config)
         if (!result || typeof result !== 'object') {
             throw new Error('Invalid response from session config RPC')
         }
-        const obj = result as { applied?: { permissionMode?: Session['permissionMode']; model?: string | null } }
+        const obj = result as { applied?: { permissionMode?: Session['permissionMode']; model?: string | null; effort?: EffortLevel } }
         const applied = obj.applied
         if (!applied || typeof applied !== 'object') {
             throw new Error('Missing applied session config')
@@ -311,9 +313,13 @@ export class SyncEngine {
         yolo?: boolean,
         sessionType?: 'simple' | 'worktree',
         worktreeName?: string,
-        resumeSessionId?: string
+        resumeSessionId?: string,
+        effort?: string,
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
-        return await this.rpcGateway.spawnSession(machineId, directory, agent, model, yolo, sessionType, worktreeName, resumeSessionId)
+        return await this.rpcGateway.spawnSession(
+            machineId, directory, agent, model, yolo,
+            sessionType, worktreeName, resumeSessionId, effort
+        )
     }
 
     async resumeSession(sessionId: string, namespace: string): Promise<ResumeSessionResult> {

@@ -15,6 +15,7 @@
  */
 
 import { getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
+import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -295,6 +296,36 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to apply model'
             return c.json({ error: message }, 409)
+        }
+    })
+
+    const effortSchema = z.object({
+        effort: z.enum(EFFORT_LEVELS)
+    })
+
+    app.post('/sessions/:id/effort', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = effortSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        try {
+            await engine.applySessionConfig(sessionResult.sessionId, { effort: parsed.data.effort })
+            return c.json({ ok: true })
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to apply effort'
+            return c.json({ error: message }, 500)
         }
     })
 

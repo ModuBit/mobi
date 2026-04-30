@@ -17,6 +17,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
+import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
@@ -25,6 +26,7 @@ const spawnBodySchema = z.object({
     directory: z.string().min(1),
     agent: z.enum(['claude']).optional(),  // Mobi 当前仅支持 Claude
     model: z.string().optional(),
+    effort: z.enum(EFFORT_LEVELS).optional(),
     yolo: z.boolean().optional(),
     sessionType: z.enum(['simple', 'worktree']).optional(),
     worktreeName: z.string().optional()
@@ -81,7 +83,9 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             parsed.data.model,
             parsed.data.yolo,
             parsed.data.sessionType,
-            parsed.data.worktreeName
+            parsed.data.worktreeName,
+            undefined, // resumeSessionId
+            parsed.data.effort
         )
         return c.json(result)
     })

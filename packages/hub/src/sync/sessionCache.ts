@@ -15,7 +15,7 @@
  */
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
-import type { PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
+import type { EffortLevel, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
@@ -228,6 +228,7 @@ export class SessionCache {
         mode?: 'local' | 'remote'
         permissionMode?: PermissionMode
         model?: string | null
+        effort?: EffortLevel
     }): void {
         const t = clampAliveTime(payload.time)
         if (!t) return
@@ -239,6 +240,7 @@ export class SessionCache {
         const wasRunning = session.running
         const previousPermissionMode = session.permissionMode
         const previousModel = session.runtimeState?.model
+        const previousEffort = session.runtimeState?.effort
         const previousMode = session.mode
 
         session.active = true
@@ -263,10 +265,24 @@ export class SessionCache {
                 session.runtimeState = newRuntimeState
             }
         }
+        if (payload.effort !== undefined) {
+            const currentEffort = session.runtimeState?.effort
+            if (payload.effort !== currentEffort) {
+                const newRuntimeState = {
+                    ...session.runtimeState,
+                    effort: payload.effort
+                }
+                this.store.sessions.setRuntimeState(payload.sid, newRuntimeState, t, session.namespace)
+                session.runtimeState = newRuntimeState
+            }
+        }
 
         const now = Date.now()
         const lastBroadcastAt = this.lastBroadcastAtBySessionId.get(session.id) ?? 0
-        const modeChanged = previousPermissionMode !== session.permissionMode || previousModel !== session.runtimeState?.model || previousMode !== session.mode
+        const modeChanged = previousPermissionMode !== session.permissionMode
+            || previousModel !== session.runtimeState?.model
+            || session.runtimeState?.effort !== previousEffort
+            || previousMode !== session.mode
         const shouldBroadcast = (!wasActive && session.active)
             || (wasRunning !== session.running)
             || modeChanged
@@ -318,7 +334,7 @@ export class SessionCache {
         }
     }
 
-    applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null }): void {
+    applySessionConfig(sessionId: string, config: { permissionMode?: PermissionMode; model?: string | null; effort?: EffortLevel }): void {
         const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
         if (!session) {
             return
@@ -343,6 +359,25 @@ export class SessionCache {
                 )
                 if (!updated) {
                     throw new Error('Failed to update session model')
+                }
+                session.runtimeState = newRuntimeState
+            }
+        }
+        if (config.effort !== undefined) {
+            const currentEffort = session.runtimeState?.effort
+            if (config.effort !== currentEffort) {
+                const newRuntimeState = {
+                    ...session.runtimeState,
+                    effort: config.effort
+                }
+                const updated = this.store.sessions.setRuntimeState(
+                    sessionId,
+                    newRuntimeState,
+                    Date.now(),
+                    session.namespace
+                )
+                if (!updated) {
+                    throw new Error('Failed to update session effort')
                 }
                 session.runtimeState = newRuntimeState
             }

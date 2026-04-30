@@ -116,6 +116,7 @@ export class RpcGateway {
         config: {
             permissionMode?: PermissionMode
             model?: string | null
+            effort?: string
         }
     ): Promise<unknown> {
         return await this.sessionRpc(sessionId, 'set-session-config', config)
@@ -133,13 +134,14 @@ export class RpcGateway {
         yolo?: boolean,
         sessionType?: 'simple' | 'worktree',
         worktreeName?: string,
-        resumeSessionId?: string
+        resumeSessionId?: string,
+        effort?: string,
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
         try {
             const result = await this.machineRpc(
                 machineId,
                 'spawn-mobi-session',
-                { type: 'spawn-in-directory', directory, agent, model, yolo, sessionType, worktreeName, resumeSessionId }
+                { type: 'spawn-in-directory', directory, agent, model, yolo, sessionType, worktreeName, resumeSessionId, effort }
             )
             if (result && typeof result === 'object') {
                 const obj = result as Record<string, unknown>
