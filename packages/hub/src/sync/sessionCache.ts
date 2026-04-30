@@ -299,7 +299,8 @@ export class SessionCache {
                     running: session.running,
                     mode: session.mode,
                     permissionMode: session.permissionMode,
-                    model: session.runtimeState?.model
+                    model: session.runtimeState?.model,
+                    effort: session.runtimeState?.effort
                 }
             })
         }
@@ -559,6 +560,11 @@ export class SessionCache {
         // 合并 model（如果新会话没有 model，保留旧会话的 model）
         if (oldState.model !== undefined && newState.model === undefined) {
             merged.model = oldState.model
+        }
+
+        // 合并 effort（如果新会话没有 effort，保留旧会话的 effort）
+        if (oldState.effort !== undefined && newState.effort === undefined) {
+            merged.effort = oldState.effort
         }
 
         return merged
