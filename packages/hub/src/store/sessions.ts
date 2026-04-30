@@ -80,7 +80,8 @@ export function getOrCreateSession(
     tag: string,
     metadata: unknown,
     agentState: unknown,
-    namespace: string
+    namespace: string,
+    runtimeState?: unknown
 ): StoredSession {
     const existing = db.prepare(
         'SELECT * FROM sessions WHERE tag = ? AND namespace = ? ORDER BY created_at DESC LIMIT 1'
@@ -95,6 +96,7 @@ export function getOrCreateSession(
 
     const metadataJson = JSON.stringify(metadata)
     const agentStateJson = agentState === null || agentState === undefined ? null : JSON.stringify(agentState)
+    const runtimeStateJson = runtimeState ? JSON.stringify(runtimeState) : null
 
     // 计算 groupKey
     const metadataObj = metadata as { path?: string } | null
@@ -111,7 +113,7 @@ export function getOrCreateSession(
             @id, @tag, @namespace, NULL, @created_at, @updated_at,
             @metadata, 1,
             @agent_state, 1,
-            NULL, NULL,
+            @runtime_state, @runtime_state_updated_at,
             @group_key, 0
         )
     `).run({
@@ -122,6 +124,8 @@ export function getOrCreateSession(
         updated_at: now,
         metadata: metadataJson,
         agent_state: agentStateJson,
+        runtime_state: runtimeStateJson,
+        runtime_state_updated_at: runtimeState ? now : null,
         group_key: groupKey
     })
 

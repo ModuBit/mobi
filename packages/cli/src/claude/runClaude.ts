@@ -73,6 +73,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         workingDirectory,
         agentState: initialState,
         model: initialModel ?? undefined,
+        effort: options.effort,
         claudeArgs: options.claudeArgs,   // 用于 --resume 时复用 Hub session
         startingMode
     });

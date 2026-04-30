@@ -42,8 +42,8 @@ export class SessionStore {
         this.db = db
     }
 
-    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string): StoredSession {
-        return getOrCreateSession(this.db, tag, metadata, agentState, namespace)
+    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, runtimeState?: unknown): StoredSession {
+        return getOrCreateSession(this.db, tag, metadata, agentState, namespace, runtimeState)
     }
 
     updateSessionMetadata(

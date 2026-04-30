@@ -21,6 +21,7 @@ import { resolve } from 'node:path'
 import { ApiClient } from '@/api/api'
 import type { ApiSessionClient } from '@/api/apiSession'
 import type { AgentState, MachineMetadata, Metadata, Session } from '@/api/types'
+import type { EffortLevel } from '@mobi/shared'
 import { notifyRunnerSessionStarted } from '@/runner/controlClient'
 import { readSettings } from '@/persistence'
 import { configuration } from '@/configuration'
@@ -38,6 +39,7 @@ export type SessionBootstrapOptions = {
     tag?: string
     agentState?: AgentState | null
     model?: string
+    effort?: EffortLevel
     claudeArgs?: string[]   // 用于解析 --resume，从而复用已有 Hub session
     startingMode?: 'local' | 'remote'
 }
@@ -184,7 +186,8 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         tag: sessionTag,
         metadata,
         state: agentState,
-        mode: options.startingMode
+        mode: options.startingMode,
+        runtimeState: options.effort ? { effort: options.effort } : undefined
     })
 
     const apiSession = api.sessionSyncClient(sessionInfo)

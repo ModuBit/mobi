@@ -213,8 +213,8 @@ export class SyncEngine {
         this.machineCache.warmupCache()
     }
 
-    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, mode?: 'local' | 'remote'): Session {
-        return this.sessionCache.getOrCreateSession(tag, metadata, agentState, namespace, mode)
+    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, mode?: 'local' | 'remote', runtimeState?: unknown): Session {
+        return this.sessionCache.getOrCreateSession(tag, metadata, agentState, namespace, mode, runtimeState)
     }
 
     getSessionByClaudeSessionId(claudeSessionId: string, namespace: string): Session | null {

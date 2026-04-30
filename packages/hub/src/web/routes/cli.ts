@@ -28,7 +28,8 @@ const createOrLoadSessionSchema = z.object({
     tag: z.string().min(1),
     metadata: z.unknown(),
     agentState: z.unknown().nullable().optional(),
-    mode: z.enum(['local', 'remote']).optional()
+    mode: z.enum(['local', 'remote']).optional(),
+    runtimeState: z.unknown().optional()
 })
 
 const createOrLoadMachineSchema = z.object({
@@ -117,7 +118,7 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         }
 
         const namespace = c.get('namespace')
-        const session = engine.getOrCreateSession(parsed.data.tag, parsed.data.metadata, parsed.data.agentState ?? null, namespace, parsed.data.mode)
+        const session = engine.getOrCreateSession(parsed.data.tag, parsed.data.metadata, parsed.data.agentState ?? null, namespace, parsed.data.mode, parsed.data.runtimeState)
         return c.json({ session })
     })
 
