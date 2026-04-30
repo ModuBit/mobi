@@ -412,11 +412,11 @@ export async function claudeRemote(opts: {
 
     // 启动查询：优先使用预热进程，降级到直接 query()
     let queryStarted = false;
+    let warmConsumed = false;
     let response: Query;
     if (warmRef) {
         response = warmRef.query(messages)
-        // warmRef 只能用一次，标记为已消费（不置 null，避免 TS 类型窄化）
-        warmRef = null as unknown as WarmQuery | null
+        warmConsumed = true
     } else {
         const fallbackConfig = opts.getSessionConfig()
         const fallbackOptions: Options = {
@@ -594,6 +594,6 @@ export async function claudeRemote(opts: {
     } finally {
         snapshotSender.destroy();
         updateRunning(false);
-        warmRef?.close();
+        if (!warmConsumed) warmRef?.close();
     }
 }
