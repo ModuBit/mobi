@@ -15,9 +15,8 @@
  */
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
-import type { PermissionMode, RuntimeState, Session } from '@mobi/shared/types'
+import type { PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
 import type { Store } from '../store'
-import type { RpcCommandEntry } from './rpcGateway'
 import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
 import { extractTodoWriteTodosFromMessageContent } from './todos'
@@ -530,12 +529,12 @@ export class SessionCache {
         return merged
     }
 
-    updateSDKMetadata(sessionId: string, commands: RpcCommandEntry[]): void {
+    updateSDKMetadata(sessionId: string, sdkMetadata: SDKMetadata): void {
         const session = this.sessions.get(sessionId)
         if (!session) return
 
         const currentMetadata = (session.metadata ?? { path: '', host: '' }) as Record<string, unknown>
-        const newMetadata = { ...currentMetadata, sdkMetadata: { ...((currentMetadata.sdkMetadata as Record<string, unknown>) ?? {}), commands } }
+        const newMetadata = { ...currentMetadata, sdkMetadata }
 
         const result = this.store.sessions.updateSessionMetadata(
             sessionId,

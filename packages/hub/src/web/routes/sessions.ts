@@ -410,7 +410,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
-    app.get('/sessions/:id/commands', async (c) => {
+    app.get('/sessions/:id/metadata', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
@@ -422,26 +422,26 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return sessionResult
         }
 
-        // 优先从 DB 中的 sdkMetadata 获取（metadataExtractor 在会话启动时已提取）
-        const sdkCommands = sessionResult.session.metadata?.sdkMetadata?.commands
-        if (sdkCommands && sdkCommands.length > 0) {
-            return c.json({ success: true, commands: sdkCommands })
+        // 优先从 DB 中获取完整 sdkMetadata
+        const sdkMetadata = sessionResult.session.metadata?.sdkMetadata
+        if (sdkMetadata && Object.keys(sdkMetadata).length > 0) {
+            return c.json({ success: true, metadata: sdkMetadata })
         }
 
-        // Fallback: RPC 让 CLI 通过 SDK 提取
+        // Fallback: RPC 让 CLI 通过 SDK 提取完整 metadata
         try {
-            const result = await engine.listCommands(sessionResult.sessionId)
+            const result = await engine.refreshMetadata(sessionResult.sessionId)
 
-            // 成功后存入 DB，下次可直接读取
-            if (result.success && result.commands && result.commands.length > 0) {
-                engine.updateSDKMetadata(sessionResult.sessionId, result.commands)
+            // 存入完整 metadata，后续所有字段都可直接从 DB 读取
+            if (result.success && result.metadata) {
+                engine.updateSDKMetadata(sessionResult.sessionId, result.metadata)
             }
 
-            return c.json(result)
+            return c.json({ success: true, metadata: result.metadata ?? {} })
         } catch (error) {
             return c.json({
                 success: false,
-                error: error instanceof Error ? error.message : 'Failed to list commands'
+                error: error instanceof Error ? error.message : 'Failed to get metadata'
             })
         }
     })

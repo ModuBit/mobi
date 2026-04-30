@@ -37,9 +37,8 @@ export type {
 /**
  * 使用官方 SDK 的 initializationResult() 方法提取元数据
  *
- * 注意：必须使用非空 prompt + maxTurns >= 1，否则子进程会立即退出，
- * 导致 initializationResult() 永远无法获取响应。
- * 通过 allowedTools 限制工具范围以最小化开销。
+ * 通过空 AsyncIterable 作为 prompt，子进程完成初始化后等待消息但不触发 API 调用，
+ * 此时 initializationResult() 已可用。拿到后立即 close()，零 token 消耗。
  *
  * @returns SDK 元数据，包含完整的初始化响应信息
  */
@@ -49,19 +48,23 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
     try {
         logger.debug('[metadataExtractor] Starting SDK metadata extraction')
 
-        // 使用最小化配置创建查询，确保子进程存活足够久
+        // 空 async iterable：子进程启动并初始化，但永远不触发模型调用
+        const emptyPrompt: AsyncIterable<never> = {
+            [Symbol.asyncIterator]() {
+                return { next: () => new Promise<never>(() => {}) }
+            }
+        }
+
         const sdkQuery = query({
-            prompt: 'echo hi',
+            prompt: emptyPrompt,
             options: {
-                maxTurns: 1,
                 abortController,
-                allowedTools: ['Bash(echo)'],
                 pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
                 persistSession: false,
             }
         })
 
-        // 使用官方 SDK 的 initializationResult() 方法
+        // 子进程初始化完成后即可获取元数据，无需等待模型响应
         const init = await sdkQuery.initializationResult()
 
         logger.debug('[metadataExtractor] Captured SDK metadata:', init)

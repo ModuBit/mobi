@@ -91,13 +91,6 @@ describe('extractSDKMetadata', () => {
         expect(callArgs.prompt).not.toBe('')
     })
 
-    it('设置 maxTurns >= 1 以确保子进程存活', async () => {
-        await extractSDKMetadata()
-
-        const callArgs = mockQuery.mock.calls[0][0]
-        expect(callArgs.options.maxTurns).toBeGreaterThanOrEqual(1)
-    })
-
     it('传递 pathToClaudeCodeExecutable', async () => {
         await extractSDKMetadata()
 
@@ -105,12 +98,21 @@ describe('extractSDKMetadata', () => {
         expect(callArgs.options.pathToClaudeCodeExecutable).toBe('/usr/local/bin/claude')
     })
 
-    it('使用 allowedTools 限制工具范围', async () => {
+    it('使用空 AsyncIterable 作为 prompt 避免触发 API 调用', async () => {
         await extractSDKMetadata()
 
         const callArgs = mockQuery.mock.calls[0][0]
-        expect(callArgs.options.allowedTools).toBeDefined()
-        expect(callArgs.options.allowedTools.length).toBeGreaterThan(0)
+        // prompt 应该是 AsyncIterable 而非字符串
+        expect(typeof callArgs.prompt).toBe('object')
+        expect(callArgs.prompt[Symbol.asyncIterator]).toBeDefined()
+    })
+
+    it('不设置 maxTurns 和 allowedTools（空 prompt 无需限制）', async () => {
+        await extractSDKMetadata()
+
+        const callArgs = mockQuery.mock.calls[0][0]
+        expect(callArgs.options.maxTurns).toBeUndefined()
+        expect(callArgs.options.allowedTools).toBeUndefined()
     })
 
     it('正确映射 initializationResult 到 SDKMetadata', async () => {

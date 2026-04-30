@@ -14,30 +14,27 @@
  * limitations under the License.
  */
 
-import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
-import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { useMemo } from 'react'
+import { useSDKMetadata } from './useSDKMetadata'
 import type { Command } from '@/core/data/api/types'
 
 export type { Command }
 
 /**
  * 获取会话可用的命令列表（slash commands + skills）
+ *
+ * 从 useSDKMetadata 缓存中派生，不单独发请求。
  */
 export function useCommands(sessionId: string | null) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const metadataQuery = useSDKMetadata(sessionId)
 
-    return useQuery({
-        queryKey: sessionId ? queryKeys.commands(sessionId) : ['commands', 'disabled'],
-        queryFn: async (): Promise<Command[]> => {
-            if (!sessionId) return []
+    const commands = useMemo<Command[]>(
+        () => metadataQuery.data?.commands ?? [],
+        [metadataQuery.data?.commands]
+    )
 
-            const res = await api.sessions.commands(sessionId)
-            return res.data?.commands ?? []
-        },
-        enabled: !!token && !!sessionId,
-        staleTime: 60_000, // 1 分钟内不重新获取
-    })
+    return {
+        ...metadataQuery,
+        data: commands,
+    }
 }

@@ -42,3 +42,12 @@ export type {
     PermissionModeOption,
     PermissionModeTone
 } from './modes'
+
+export type {
+    AccountInfo,
+    AgentInfo,
+    FastModeState,
+    ModelInfo,
+    SDKMetadata,
+    SlashCommand
+} from './schemas'

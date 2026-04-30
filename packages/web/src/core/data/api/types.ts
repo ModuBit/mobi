@@ -266,17 +266,25 @@ export interface GroupSessionsResponse {
     hasMore: boolean
 }
 
-// ============ 命令（slash commands + skills，来自 SDK） ============
+// ============ SDK 元数据（来自 SDK initializationResult） ============
 
-export type Command = {
-    name: string
-    description: string
-    argumentHint: string
-}
+import type {
+    SDKMetadata as SDKMetadataBase,
+    SlashCommand,
+    ModelInfo,
+    AgentInfo as AgentInfoBase,
+    AccountInfo as AccountInfoBase
+} from '@mobi/shared'
 
-export type CommandsResponse = {
+export type SDKMetadata = SDKMetadataBase
+export type Command = SlashCommand
+export type ModelOption = ModelInfo
+export type AgentInfo = AgentInfoBase
+export type AccountInfo = AccountInfoBase
+
+export type SDKMetadataResponse = {
     success: boolean
-    commands?: Command[]
+    metadata?: SDKMetadata
     error?: string
 }
 

@@ -48,6 +48,6 @@ export const queryKeys = {
         path,
         staged ? 'staged' : 'unstaged'
     ] as const,
-    /** 命令列表（slash commands + skills） */
-    commands: (sessionId: string) => ['commands', sessionId] as const,
+    /** SDK 元数据（commands, models, agents 等） */
+    sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,
 }

@@ -14,15 +14,13 @@
  * limitations under the License.
  */
 
-import type { PermissionMode } from '@mobi/shared/types'
+import type { PermissionMode, SDKMetadata } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
-export type RpcCommandEntry = { name: string; description: string; argumentHint: string }
-
-export type RpcListCommandsResponse = {
+export type RpcRefreshMetadataResponse = {
     success: boolean
-    commands?: RpcCommandEntry[]
+    metadata?: SDKMetadata
     error?: string
 }
 
@@ -238,8 +236,8 @@ export class RpcGateway {
         return await this.sessionRpc(sessionId, 'ripgrep', { args, cwd }) as RpcCommandResponse
     }
 
-    async listCommands(sessionId: string): Promise<RpcListCommandsResponse> {
-        return await this.sessionRpc(sessionId, 'listCommands', {}) as RpcListCommandsResponse
+    async refreshMetadata(sessionId: string): Promise<RpcRefreshMetadataResponse> {
+        return await this.sessionRpc(sessionId, 'refreshMetadata', {}) as RpcRefreshMetadataResponse
     }
 
     private async sessionRpc(sessionId: string, method: string, params: unknown): Promise<unknown> {

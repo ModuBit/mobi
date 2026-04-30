@@ -15,14 +15,14 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { Button, Tooltip, Select, theme } from 'antd'
+import { Button, Tooltip, Select, theme, Typography } from 'antd'
 import { PaperClipOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, RobotOutlined, SafetyOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { AgentState, PermissionMode, Session } from '@mobi/shared'
-import { getPermissionModeOptionsForFlavor, getPermissionModeTone, CLAUDE_MODEL_LABELS } from '@mobi/shared'
-import { CLAUDE_MODEL_OPTIONS } from '@/domain/session/types'
+import { getPermissionModeOptionsForFlavor, getPermissionModeTone } from '@mobi/shared'
+import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import { useSessionFileListing } from './useSessionFileListing'
@@ -40,6 +40,7 @@ import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { createFileAttachment } from '@/core/lib/fileAttachments'
 import { recordCommandUsage } from '@/core/lib/commandUsage'
 import { useCommands } from '@/core/data/hooks/queries/useCommands'
+import { useSDKMetadata, type ModelOption } from '@/core/data/hooks/queries/useSDKMetadata'
 import { MentionDropdown } from './MentionDropdown'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { CommandHintBar } from './CommandHintBar'
@@ -142,6 +143,9 @@ export function ChatComposer(props: ChatComposerProps) {
     // 命令列表（复用 React Query 缓存，用于手动输入时匹配参数提示）
     const { data: commandsData } = useCommands(sessionId ?? null)
 
+    // SDK 元数据（模型列表等）
+    const { data: sdkMetadata } = useSDKMetadata(sessionId ?? null)
+
     const [suggestionOpen, setSuggestionOpen] = useState(false)
     const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
     const [activeIndex, setActiveIndex] = useState(0)
@@ -188,13 +192,19 @@ export function ChatComposer(props: ChatComposerProps) {
     )
     const showSettingsButton = Boolean(onPermissionModeChange && permissionModeOptions.length > 0)
 
-    const modelSelectOptions = useMemo(
-        () => CLAUDE_MODEL_OPTIONS.map(opt => ({
+    const modelSelectOptions = useMemo(() => {
+        if (sdkMetadata?.models && sdkMetadata.models.length > 0) {
+            return sdkMetadata.models.map((m: ModelOption) => ({
+                value: m.value,
+                label: m.displayName,
+                description: m.description,
+            }))
+        }
+        return CLAUDE_MODEL_FALLBACK.map(opt => ({
             value: opt.value,
-            label: opt.i18nKey ? t(opt.i18nKey) : (CLAUDE_MODEL_LABELS[opt.value as keyof typeof CLAUDE_MODEL_LABELS] ?? opt.value),
-        })),
-        [t]
-    )
+            label: opt.displayName,
+        }))
+    }, [sdkMetadata?.models])
 
     const permissionSelectOptions = useMemo(
         () => permissionModeOptions.map(opt => {
@@ -600,6 +610,23 @@ export function ChatComposer(props: ChatComposerProps) {
                                             onChange={v => onModelChange(v as string | null)}
                                             disabled={controlsDisabled || showLocalModeCover}
                                             options={modelSelectOptions}
+                                            optionRender={(option) => {
+                                                const desc = (option.data as { description?: string })?.description
+                                                return (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 240, overflow: 'hidden' }}>
+                                                        <span>{option.label}</span>
+                                                        {desc && (
+                                                            <Typography.Text
+                                                                type="secondary"
+                                                                ellipsis={{ tooltip: desc }}
+                                                                style={{ fontSize: 11, lineHeight: '16px' }}
+                                                            >
+                                                                {desc}
+                                                            </Typography.Text>
+                                                        )}
+                                                    </div>
+                                                )
+                                            }}
                                             popupMatchSelectWidth={false}
                                             style={{ width: '100%' }}
                                         />

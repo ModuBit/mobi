@@ -105,8 +105,8 @@ export function createMobiApi(token: string | null) {
                 client.post(`/api/sessions/${sessionId}/upload`, { filename, content, mimeType }),
             deleteUpload: (sessionId: string, path: string) =>
                 client.post(`/api/sessions/${sessionId}/upload/delete`, { path }),
-            // 命令（slash commands + skills）
-            commands: (sessionId: string) => client.get(`/api/sessions/${sessionId}/commands`),
+            // SDK 元数据（commands, models, agents, account 等）
+            metadata: (sessionId: string) => client.get(`/api/sessions/${sessionId}/metadata`),
             // 文件搜索和目录列表（@ 引用）
             searchFiles: (sessionId: string, query: string, opts?: { signal?: AbortSignal }) =>
                 client.get<ListFilesResponse>(`/api/sessions/${sessionId}/search-files`, { params: { query }, signal: opts?.signal }),

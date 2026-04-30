@@ -25,20 +25,11 @@ export type AgentType = 'claude' | 'codex'
 export type SessionType = 'simple' | 'worktree'
 
 /**
- * Claude 模型选项
+ * Claude 模型 fallback 选项（metadata 不可用时使用）
  */
-export const CLAUDE_MODEL_OPTIONS: { value: string; i18nKey?: string }[] = [
-    { value: 'auto', i18nKey: 'newSession.modelAuto' },
-    { value: 'opus' },
-    { value: 'opus[1m]' },
-    { value: 'sonnet' },
-    { value: 'sonnet[1m]' },
+export const CLAUDE_MODEL_FALLBACK: { value: string; displayName: string }[] = [
+    { value: 'auto', displayName: 'Auto' },
+    { value: 'opus', displayName: 'Opus' },
+    { value: 'sonnet', displayName: 'Sonnet' },
+    { value: 'haiku', displayName: 'Haiku' },
 ]
-
-/**
- * 各 Agent 支持的模型选项
- */
-export const MODEL_OPTIONS: Record<AgentType, { value: string; i18nKey?: string }[]> = {
-    claude: CLAUDE_MODEL_OPTIONS,
-    codex: [],
-}

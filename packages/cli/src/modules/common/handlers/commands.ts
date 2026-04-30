@@ -16,25 +16,25 @@
 
 import { logger } from '@/ui/logger'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { extractSDKMetadata, type SlashCommand } from '@/claude/sdk/metadataExtractor'
+import { extractSDKMetadata, type SDKMetadata } from '@/claude/sdk/metadataExtractor'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 
-interface ListCommandsResponse {
+export type RefreshMetadataResponse = {
     success: boolean
-    commands?: SlashCommand[]
+    metadata?: SDKMetadata
     error?: string
 }
 
 export function registerCommandHandlers(rpcHandlerManager: RpcHandlerManager): void {
-    rpcHandlerManager.registerHandler<void, ListCommandsResponse>('listCommands', async () => {
-        logger.debug('List commands request via SDK metadata')
+    rpcHandlerManager.registerHandler<void, RefreshMetadataResponse>('refreshMetadata', async () => {
+        logger.debug('[refreshMetadata] Refreshing full SDK metadata')
 
         try {
             const metadata = await extractSDKMetadata()
-            return { success: true, commands: metadata.commands ?? [] }
+            return { success: true, metadata }
         } catch (error) {
-            logger.debug('Failed to extract SDK metadata for commands:', error)
-            return rpcError(getErrorMessage(error, 'Failed to list commands'))
+            logger.debug('[refreshMetadata] Failed to extract SDK metadata:', error)
+            return rpcError(getErrorMessage(error, 'Failed to refresh metadata'))
         }
     })
 }

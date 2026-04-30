@@ -40,7 +40,7 @@ import { useSpawnSession } from '@/core/data/hooks/mutations/useSpawnSession'
 import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirectoryListing'
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from '@/domain/session/types'
-import { MODEL_OPTIONS } from '@/domain/session/types'
+import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import {
     loadPreferredAgent,
     loadPreferredYoloMode,
@@ -344,15 +344,15 @@ export function NewSession(props: NewSessionProps) {
                 </Radio.Group>
             </Form.Item>
 
-            {MODEL_OPTIONS[agent] && MODEL_OPTIONS[agent].length > 0 && (
+            {agent === 'claude' && (
                 <Form.Item label={<span>{t('newSession.model')} <Text type="secondary" style={{ fontWeight: 400 }}>({t('newSession.modelOptional')})</Text></span>}>
                     <Select
                         value={model}
                         onChange={setModel}
                         disabled={isFormDisabled}
-                        options={MODEL_OPTIONS[agent].map(opt => ({
+                        options={CLAUDE_MODEL_FALLBACK.map(opt => ({
                             value: opt.value,
-                            label: opt.i18nKey ? t(opt.i18nKey) : opt.value,
+                            label: opt.displayName,
                         }))}
                     />
                 </Form.Item>

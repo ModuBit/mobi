@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { DecryptedMessage, PermissionMode, Session, SyncEvent } from '@mobi/shared/types'
+import type { DecryptedMessage, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { RpcRegistry } from '../socket/rpcRegistry'
@@ -24,11 +24,10 @@ import { MachineCache, type Machine } from './machineCache'
 import { MessageService } from './messageService'
 import {
     RpcGateway,
-    type RpcCommandEntry,
     type RpcCommandResponse,
     type RpcDeleteUploadResponse,
     type RpcListDirectoryResponse,
-    type RpcListCommandsResponse,
+    type RpcRefreshMetadataResponse,
     type RpcPathExistsResponse,
     type RpcReadFileResponse,
     type RpcUploadFileResponse
@@ -455,11 +454,11 @@ export class SyncEngine {
         return await this.rpcGateway.runRipgrep(sessionId, args, cwd)
     }
 
-    async listCommands(sessionId: string): Promise<RpcListCommandsResponse> {
-        return await this.rpcGateway.listCommands(sessionId)
+    async refreshMetadata(sessionId: string): Promise<RpcRefreshMetadataResponse> {
+        return await this.rpcGateway.refreshMetadata(sessionId)
     }
 
-    updateSDKMetadata(sessionId: string, commands: RpcCommandEntry[]): void {
-        this.sessionCache.updateSDKMetadata(sessionId, commands)
+    updateSDKMetadata(sessionId: string, metadata: SDKMetadata): void {
+        this.sessionCache.updateSDKMetadata(sessionId, metadata)
     }
 }
