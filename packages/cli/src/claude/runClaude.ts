@@ -30,7 +30,7 @@ import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '@/agent/sessionFactory';
 import { createModeChangeHandler, createRunnerLifecycle, setControlledByUser } from '@/agent/runnerLifecycle';
-import { isPermissionModeAllowedForFlavor } from '@mobi/shared';
+import { type EffortLevel, isPermissionModeAllowedForFlavor } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { formatMessageWithAttachments } from '@/utils/attachmentFormatter';
 import { normalizeClaudeSessionModel } from './model';
@@ -40,6 +40,7 @@ import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
 export interface StartOptions {
     model?: string
     permissionMode?: PermissionMode
+    effort?: EffortLevel
     startingMode?: 'local' | 'remote'
     shouldStartRunner?: boolean
     claudeEnvVars?: Record<string, string>
@@ -181,6 +182,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     }));
 
     // Forward messages to the queue
+    let currentEffort: EffortLevel = options.effort ?? 'medium';
     let currentPermissionMode: PermissionMode = options.permissionMode ?? 'default';
     let currentModel: SessionModel = initialModel;
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model

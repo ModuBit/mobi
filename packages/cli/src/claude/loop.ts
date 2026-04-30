@@ -23,7 +23,7 @@ import { claudeLocalLauncher } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { SessionModel } from "@/api/types"
-import type { ClaudePermissionMode } from "@mobi/shared/types"
+import type { ClaudePermissionMode, EffortLevel } from "@mobi/shared/types"
 
 export type PermissionMode = ClaudePermissionMode
 
@@ -38,6 +38,7 @@ export type QueryControlRef = {
 export interface EnhancedMode {
     permissionMode: PermissionMode;
     model?: string;
+    effort?: EffortLevel;
     fallbackModel?: string;
     customSystemPrompt?: string;
     appendSystemPrompt?: string;

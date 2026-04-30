@@ -37,6 +37,7 @@ export type {
     AgentFlavor,
     ClaudePermissionMode,
     ClaudeModelPreset,
+    EffortLevel,
     PermissionMode,
     PermissionModeOption,
     PermissionModeTone
