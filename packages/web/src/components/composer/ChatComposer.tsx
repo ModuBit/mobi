@@ -565,7 +565,6 @@ export function ChatComposer(props: ChatComposerProps) {
                 agentFlavor={agentFlavor}
                 onAbort={onAbort}
                 abortPending={abortPending}
-                effort={effort}
             />
 
             <div ref={wrapperRef} className={isBashMode ? 'bash-mode' : undefined} style={{ position: 'relative' }}>

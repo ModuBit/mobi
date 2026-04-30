@@ -15,13 +15,12 @@
  */
 
 import { useMemo } from 'react'
-import { Button, Tag, theme } from 'antd'
+import { Button, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import type { EffortLevel, PermissionMode } from '@mobi/shared'
+import type { PermissionMode } from '@mobi/shared'
 import {
     getPermissionModeTone,
     isPermissionModeAllowedForFlavor,
-    EFFORT_LABELS
 } from '@mobi/shared'
 import { getContextBudgetTokens } from '@/domain/chat'
 import { getPermissionModeColor } from './permissionModeColors'
@@ -41,8 +40,6 @@ interface StatusBarProps {
     onAbort?: () => void
     /** 中止请求中 */
     abortPending?: boolean
-    /** 思考深度 */
-    effort?: EffortLevel
 }
 
 /** 中止按钮图标：外圈旋转 + 内嵌实心方框（同 Ant Design X StopLoadingIcon） */
@@ -77,7 +74,6 @@ export function StatusBar(props: StatusBarProps) {
         agentFlavor,
         onAbort,
         abortPending = false,
-        effort,
     } = props
 
     // 计算上下文警告
@@ -104,11 +100,6 @@ export function StatusBar(props: StatusBarProps) {
         && permissionMode !== 'default'
         && isPermissionModeAllowedForFlavor(permissionMode, agentFlavor)
         ? permissionMode
-        : null
-
-    // 显示的思考深度（非默认值时才显示）
-    const displayEffort = !running && effort && effort !== 'medium'
-        ? effort
         : null
 
     const permissionModeLabel = displayPermissionMode ? t(`composer.permissionModes.${displayPermissionMode}`) : null
@@ -161,9 +152,6 @@ export function StatusBar(props: StatusBarProps) {
                         {permissionModeLabel}
                     </span>
                 ) : null}
-                {displayEffort && (
-                    <Tag style={{ fontSize: 11, marginRight: 0 }}>{EFFORT_LABELS[displayEffort]}</Tag>
-                )}
             </div>
         </div>
     )

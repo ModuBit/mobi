@@ -32,6 +32,7 @@ import { AgentLoadingBubble } from './AgentLoadingBubble'
 import { CopyButton } from './CopyButton'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
+import { loadPreferredEffort } from '@/domain/session/preferences'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
@@ -331,7 +332,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 agentFlavor={agentFlavor}
                 mode={session?.mode}
                 workingDir={session?.metadata?.path}
-                effort={session?.runtimeState?.effort}
+                effort={session?.runtimeState?.effort ?? loadPreferredEffort()}
                 onEffortChange={handleEffortChange}
                 onPermissionModeChange={handlePermissionModeChange}
                 onModelChange={handleModelChange}
