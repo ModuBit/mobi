@@ -182,7 +182,7 @@ export async function claudeRemote(opts: {
     claudeArgs?: string[],
     allowedTools: string[],
     hookSettingsPath: string,
-    canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>,
+    canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>,
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
@@ -361,7 +361,7 @@ export async function claudeRemote(opts: {
         disallowedTools: initial.mode.disallowedTools,
         // canUseTool 回调
         canUseTool: async (toolName, input, options) => {
-            const result = await opts.canCallTool(toolName, input, mode, options);
+            const result = await opts.canCallTool(toolName, input, options);
             // 直接返回完整的 PermissionResult，透传 updatedPermissions 等字段
             return result;
         },

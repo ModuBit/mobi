@@ -29,7 +29,7 @@ import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { deepEqual } from "@/utils/deepEqual";
 import { getToolName } from "./getToolName";
-import { EnhancedMode, PermissionMode } from "../loop";
+import { PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { delay } from "@/utils/time";
 import { isObject } from "@mobi/shared";
@@ -298,7 +298,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     /**
      * Creates the canCallTool callback for the SDK
      */
-    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints): Promise<PermissionResult> => {
+    handleToolCall = async (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints): Promise<PermissionResult> => {
         const isQuestionTool = isQuestionToolName(toolName);
 
         // Check if tool is explicitly allowed
