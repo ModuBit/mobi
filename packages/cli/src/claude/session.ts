@@ -19,6 +19,7 @@ import { MessageQueue } from '@/utils/MessageQueue';
 import { logger } from '@/ui/logger';
 import { AgentSessionBase } from '@/agent/sessionBase';
 import type { SessionModel } from '@/api/types';
+import type { EffortLevel } from '@mobi/shared';
 import type { EnhancedMode } from './loop';
 import type { PermissionMode } from './loop';
 import type { LocalLaunchExitReason } from '@/agent/localLaunchPolicy';
@@ -56,6 +57,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         hookSettingsPath: string;
         permissionMode?: PermissionMode;
         model?: SessionModel;
+        effort?: EffortLevel;
     }) {
         super({
             api: opts.api,
@@ -73,7 +75,8 @@ export class Session extends AgentSessionBase<EnhancedMode> {
                 claudeSessionId: sessionId
             }),
             permissionMode: opts.permissionMode,
-            model: opts.model
+            model: opts.model,
+            effort: opts.effort,
         });
 
         this.claudeEnvVars = opts.claudeEnvVars;
@@ -85,6 +88,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         this.startingMode = opts.startingMode;
         this.permissionMode = opts.permissionMode;
         this.model = opts.model;
+        this.effort = opts.effort;
     }
 
     setPermissionMode = (mode: PermissionMode): void => {
@@ -93,6 +97,10 @@ export class Session extends AgentSessionBase<EnhancedMode> {
 
     setModel = (model: SessionModel): void => {
         this.model = model;
+    };
+
+    setEffort = (effort: EffortLevel): void => {
+        this.effort = effort;
     };
 
     recordLocalLaunchFailure = (message: string, exitReason: LocalLaunchExitReason): void => {

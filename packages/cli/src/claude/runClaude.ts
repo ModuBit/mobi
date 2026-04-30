@@ -30,7 +30,7 @@ import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '@/agent/sessionFactory';
 import { createModeChangeHandler, createRunnerLifecycle, setControlledByUser } from '@/agent/runnerLifecycle';
-import { type EffortLevel, isPermissionModeAllowedForFlavor } from '@mobi/shared';
+import { EFFORT_LEVELS, type EffortLevel, isPermissionModeAllowedForFlavor } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
 import { formatMessageWithAttachments } from '@/utils/attachmentFormatter';
 import { normalizeClaudeSessionModel } from './model';
@@ -202,15 +202,20 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         const prevMode = sessionInstance.getPermissionMode();
         const prevModel = sessionInstance.getModel();
+        const prevEffort = sessionInstance.getEffort();
         const modeChanged = prevMode !== currentPermissionMode;
         const modelChanged = prevModel !== currentModel;
+        const effortChanged = prevEffort !== currentEffort;
 
-        if (!modeChanged && !modelChanged) {
+        if (!modeChanged && !modelChanged && !effortChanged) {
             return;
         }
 
         sessionInstance.setPermissionMode(currentPermissionMode);
         sessionInstance.setModel(currentModel);
+        if (effortChanged) {
+            sessionInstance.setEffort(currentEffort);
+        }
 
         const control = queryControlRef.current;
         if (control) {
@@ -221,10 +226,15 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             if (modelChanged) {
                 promises.push(control.setModel(currentModel ?? undefined));
             }
+            if (effortChanged) {
+                // effort 通过 applyFlagSettings 动态修改
+                // effort 依赖 adaptive thinking（SDK thinking 默认为 { type: 'adaptive' }）
+                promises.push((control as any).applyFlagSettings({ effortLevel: currentEffort }));
+            }
             Promise.all(promises).catch(err => logger.debug(`[loop] dynamic config apply failed: ${err}`));
         }
 
-        logger.debug(`[loop] Synced session config for keepalive: permissionMode=${currentPermissionMode}, model=${currentModel ?? 'auto'}`);
+        logger.debug(`[loop] Synced session config: permissionMode=${currentPermissionMode}, model=${currentModel ?? 'auto'}, effort=${currentEffort}`);
     };
     apiSession.onUserMessage((message) => {
         const messagePermissionMode = currentPermissionMode;
@@ -342,7 +352,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         if (!payload || typeof payload !== 'object') {
             throw new Error('Invalid session config payload');
         }
-        const config = payload as { permissionMode?: unknown; model?: unknown };
+        const config = payload as { permissionMode?: unknown; model?: unknown; effort?: unknown };
 
         if (config.permissionMode !== undefined) {
             currentPermissionMode = resolvePermissionMode(config.permissionMode);
@@ -352,8 +362,15 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             currentModel = resolveModel(config.model);
         }
 
+        if (config.effort !== undefined) {
+            if (typeof config.effort !== 'string' || !EFFORT_LEVELS.includes(config.effort as EffortLevel)) {
+                throw new Error('Invalid effort level');
+            }
+            currentEffort = config.effort as EffortLevel;
+        }
+
         syncSessionModes();
-        return { applied: { permissionMode: currentPermissionMode, model: currentModel } };
+        return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort } };
     });
 
     let loopError: unknown = null;
@@ -391,6 +408,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             getSessionConfig: () => ({
                 permissionMode: currentPermissionMode,
                 model: currentModel ?? undefined,
+                effort: currentEffort,
                 fallbackModel: currentFallbackModel,
                 customSystemPrompt: currentCustomSystemPrompt,
                 appendSystemPrompt: currentAppendSystemPrompt,
