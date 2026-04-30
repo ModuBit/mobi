@@ -64,7 +64,6 @@ async function runLocalMode(options: StartOptions): Promise<void> {
         claudeArgs.push('--model', options.model)
     }
 
-    // 添加推理深度
     if (options.effort && !claudeArgs.some(arg => arg === '--effort')) {
         claudeArgs.push('--effort', options.effort)
     }
@@ -136,7 +135,6 @@ export const claudeCommand: CommandDefinition = {
                 options.model = model
                 unknownArgs.push('--model', model)
             } else if (arg === '--effort') {
-                // 设置推理深度
                 const effort = args[++i]
                 if (!effort) {
                     throw new Error('Missing --effort value')

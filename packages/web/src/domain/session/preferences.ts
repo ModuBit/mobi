@@ -15,9 +15,11 @@
  */
 
 import type { AgentType } from './types'
+import { EFFORT_LEVELS, type EffortLevel } from '@mobi/shared'
 
 const AGENT_STORAGE_KEY = 'mobi:newSession:agent'
 const YOLO_STORAGE_KEY = 'mobi:newSession:yolo'
+const EFFORT_STORAGE_KEY = 'mobi:newSession:effort'
 
 const VALID_AGENTS: AgentType[] = ['claude', 'codex']
 
@@ -67,4 +69,26 @@ export function savePreferredYoloMode(enabled: boolean): void {
     } catch {
         // 忽略存储错误
     }
+}
+
+/**
+ * 加载首选 Effort
+ */
+export function loadPreferredEffort(): EffortLevel {
+    try {
+        const stored = localStorage.getItem(EFFORT_STORAGE_KEY)
+        if (stored && EFFORT_LEVELS.includes(stored as EffortLevel)) {
+            return stored as EffortLevel
+        }
+    } catch { /* noop */ }
+    return 'medium'
+}
+
+/**
+ * 保存首选 Effort
+ */
+export function savePreferredEffort(effort: EffortLevel): void {
+    try {
+        localStorage.setItem(EFFORT_STORAGE_KEY, effort)
+    } catch { /* noop */ }
 }

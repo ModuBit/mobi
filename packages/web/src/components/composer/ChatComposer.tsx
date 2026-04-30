@@ -210,6 +210,14 @@ export function ChatComposer(props: ChatComposerProps) {
         }))
     }, [sdkMetadata?.models])
 
+    const effortSelectOptions = useMemo(
+        () => EFFORT_LEVELS.map(e => ({
+            value: e,
+            label: EFFORT_LABELS[e],
+        })),
+        []
+    )
+
     const permissionSelectOptions = useMemo(
         () => permissionModeOptions.map(opt => {
             const color = opt.tone !== 'neutral'
@@ -649,10 +657,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                             value={effort}
                                             onChange={v => onEffortChange(v as EffortLevel)}
                                             disabled={controlsDisabled || showLocalModeCover}
-                                            options={EFFORT_LEVELS.map(e => ({
-                                                value: e,
-                                                label: EFFORT_LABELS[e]
-                                            }))}
+                                            options={effortSelectOptions}
                                             popupMatchSelectWidth={false}
                                             style={{ width: '100%' }}
                                         />

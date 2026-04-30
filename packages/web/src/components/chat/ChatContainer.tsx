@@ -263,7 +263,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }
 
-    // 思考深度变更
     const handleEffortChange = async (effort: string) => {
         await sessionActions.setEffort(effort)
     }

@@ -86,9 +86,6 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         this.hookSettingsPath = opts.hookSettingsPath;
         this.startedBy = opts.startedBy;
         this.startingMode = opts.startingMode;
-        this.permissionMode = opts.permissionMode;
-        this.model = opts.model;
-        this.effort = opts.effort;
     }
 
     setPermissionMode = (mode: PermissionMode): void => {

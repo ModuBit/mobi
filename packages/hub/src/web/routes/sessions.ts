@@ -325,7 +325,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ ok: true })
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to apply effort'
-            return c.json({ error: message }, 500)
+            return c.json({ error: message }, 409)
         }
     })
 

@@ -113,7 +113,6 @@ export function useSessionActions(sessionId: string | null): {
         onSuccess: () => void invalidateSession(),
     })
 
-    // 设置思考深度
     const effortMutation = useMutation({
         mutationFn: async (effort: string) => {
             if (!sessionId) {

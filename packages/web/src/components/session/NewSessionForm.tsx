@@ -44,8 +44,10 @@ import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { EFFORT_LEVELS, EFFORT_LABELS, type EffortLevel } from '@mobi/shared'
 import {
     loadPreferredAgent,
+    loadPreferredEffort,
     loadPreferredYoloMode,
     savePreferredAgent,
+    savePreferredEffort,
     savePreferredYoloMode,
 } from '@/domain/session/preferences'
 
@@ -70,26 +72,6 @@ function getMachineTitle(machine: Machine): string {
 function startEllipsis(path: string, maxLen = 40): string {
     if (path.length <= maxLen) return path
     return `...${path.slice(-(maxLen - 3))}`
-}
-
-// ============ Effort localStorage 持久化 ============
-
-const EFFORT_STORAGE_KEY = 'mobi-preferred-effort'
-
-function loadPreferredEffort(): EffortLevel {
-    try {
-        const stored = localStorage.getItem(EFFORT_STORAGE_KEY)
-        if (stored && EFFORT_LEVELS.includes(stored as EffortLevel)) {
-            return stored as EffortLevel
-        }
-    } catch { /* noop */ }
-    return 'medium'
-}
-
-function savePreferredEffort(effort: EffortLevel): void {
-    try {
-        localStorage.setItem(EFFORT_STORAGE_KEY, effort)
-    } catch { /* noop */ }
 }
 
 /**

@@ -211,8 +211,12 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             return;
         }
 
-        sessionInstance.setPermissionMode(currentPermissionMode);
-        sessionInstance.setModel(currentModel);
+        if (modeChanged) {
+            sessionInstance.setPermissionMode(currentPermissionMode);
+        }
+        if (modelChanged) {
+            sessionInstance.setModel(currentModel);
+        }
         if (effortChanged) {
             sessionInstance.setEffort(currentEffort);
         }
