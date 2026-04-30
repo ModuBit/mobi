@@ -17,7 +17,7 @@
 import chalk from 'chalk'
 import { execFileSync, spawn } from 'node:child_process'
 import { z } from 'zod'
-import { PROTOCOL_VERSION } from '@mobi/shared'
+import { PROTOCOL_VERSION, type EffortLevel } from '@mobi/shared'
 import type { StartOptions } from '@/claude/runClaude'
 import { configuration } from '@/configuration'
 import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@/runner/controlClient'
@@ -62,6 +62,11 @@ async function runLocalMode(options: StartOptions): Promise<void> {
     // 添加模型
     if (options.model && !claudeArgs.some(arg => arg === '--model' || arg === '-m')) {
         claudeArgs.push('--model', options.model)
+    }
+
+    // 添加推理深度
+    if (options.effort && !claudeArgs.some(arg => arg === '--effort')) {
+        claudeArgs.push('--effort', options.effort)
     }
 
     logger.debug(`[LOCAL] Starting Claude with args:`, claudeArgs)
@@ -130,6 +135,14 @@ export const claudeCommand: CommandDefinition = {
                 }
                 options.model = model
                 unknownArgs.push('--model', model)
+            } else if (arg === '--effort') {
+                // 设置推理深度
+                const effort = args[++i]
+                if (!effort) {
+                    throw new Error('Missing --effort value')
+                }
+                options.effort = effort as EffortLevel
+                unknownArgs.push('--effort', effort)
             } else if (arg === '--started-by') {
                 // 设置启动来源
                 options.startedBy = args[++i] as 'runner' | 'terminal'

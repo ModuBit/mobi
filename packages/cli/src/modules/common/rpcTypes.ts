@@ -22,6 +22,7 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean
     agent?: 'claude'  // Mobi 当前仅支持 Claude
     model?: string
+    effort?: string       // reasoning effort (low | medium | high)
     yolo?: boolean
     token?: string
     sessionType?: 'simple' | 'worktree'
