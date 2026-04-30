@@ -105,6 +105,10 @@ export function getClaudeModelLabel(model: string): string | null {
 
 // ============ Effort 级别 ============
 
+// 注意：不包含 'max' 级别
+// SDK Options.effort 接受 'max'，但 applyFlagSettings（运行时动态修改）的
+// effortLevel 类型为 'low' | 'medium' | 'high' | 'xhigh'，不含 'max'
+// 为保持启动时和运行时一致，仅列出四个级别
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh'] as const
 export type EffortLevel = typeof EFFORT_LEVELS[number]
 

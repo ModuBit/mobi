@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, DecryptedMessage, ServerToClientEvents, Update } from '@mobi/shared'
+import type { ClientToServerEvents, DecryptedMessage, EffortLevel, ServerToClientEvents, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -491,7 +491,7 @@ export class ApiSessionClient extends EventEmitter {
     keepAlive(
         running: boolean,
         mode: 'local' | 'remote',
-        runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel }
+        runtime?: { permissionMode?: SessionPermissionMode; model?: SessionModel; effort?: EffortLevel }
     ): void {
         this.socket.volatile.emit('session-alive', {
             sid: this.sessionId,
