@@ -197,12 +197,14 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         if (!sessionInstance) {
             return;
         }
+
+        // 先读取旧值，再更新 session，才能正确检测变更
+        const prevMode = sessionInstance.getPermissionMode();
+        const prevModel = sessionInstance.getModel();
         sessionInstance.setPermissionMode(currentPermissionMode);
         sessionInstance.setModel(currentModel);
 
         // 仅在值实际变更时调用 SDK Query（避免每条消息都发控制消息）
-        const prevMode = sessionInstance.getPermissionMode();
-        const prevModel = sessionInstance.getModel();
         const control = queryControlRef.current;
         if (control && (prevMode !== currentPermissionMode || prevModel !== currentModel)) {
             const promises: Promise<void>[] = [];

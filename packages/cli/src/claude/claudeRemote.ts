@@ -358,9 +358,14 @@ export async function claudeRemote(opts: {
         opts.nextMessage(),
     ])
 
+    // 统一赋值到 warmRef，后续统一通过 warmRef 操作
+    if (warmSettled.status === 'fulfilled') {
+        warmRef = warmSettled.value
+    }
+
     // 无首条消息 → 关闭预热进程，退出
     if (msgSettled.status !== 'fulfilled' || !msgSettled.value) {
-        if (warmSettled.status === 'fulfilled') warmSettled.value.close()
+        warmRef?.close()
         return
     }
     const initial = msgSettled.value
@@ -370,18 +375,13 @@ export async function claudeRemote(opts: {
     const initialResult = await handleSpecialCommand(initial.message, specialCommandCtx)
 
     if (initialResult.shouldExit) {
-        if (warmSettled.status === 'fulfilled') warmSettled.value.close()
+        warmRef?.close()
         return
     }
 
     if (initialResult.handled && !initialResult.isCompact) {
-        if (warmSettled.status === 'fulfilled') warmSettled.value.close()
+        warmRef?.close()
         return
-    }
-
-    // 确认 warm 可用
-    if (warmSettled.status === 'fulfilled') {
-        warmRef = warmSettled.value
     }
 
     let isCompactCommand = initialResult.isCompact;
