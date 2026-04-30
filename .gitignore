@@ -41,3 +41,4 @@ logs/
 docs/superpowers/
 docs/claude-agent-sdk/
 docs/test-reports/
+.worktrees/
