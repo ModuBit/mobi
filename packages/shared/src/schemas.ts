@@ -15,7 +15,7 @@
  */
 
 import { z } from 'zod'
-import { PERMISSION_MODES } from './modes'
+import { PERMISSION_MODES, EFFORT_LEVELS } from './modes'
 
 export const PermissionModeSchema = z.enum(PERMISSION_MODES)
 
@@ -208,8 +208,8 @@ export type TeamState = z.infer<typeof TeamStateSchema>
 export const RuntimeStateSchema = z.object({
     todos: TodosSchema.optional(),
     teamState: TeamStateSchema.optional(),
-    model: z.string().nullable().optional()
-    // 未来可扩展：fooState: FooStateSchema.optional()
+    model: z.string().nullable().optional(),
+    effort: z.enum(EFFORT_LEVELS).optional()
 })
 
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>

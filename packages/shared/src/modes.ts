@@ -102,3 +102,15 @@ export function getClaudeModelLabel(model: string): string | null {
 
     return CLAUDE_MODEL_LABELS[trimmedModel as ClaudeModelPreset] ?? null
 }
+
+// ============ Effort 级别 ============
+
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh'] as const
+export type EffortLevel = typeof EFFORT_LEVELS[number]
+
+export const EFFORT_LABELS: Record<EffortLevel, string> = {
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'X-High',
+}
