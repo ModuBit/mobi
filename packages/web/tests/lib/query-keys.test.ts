@@ -116,9 +116,9 @@ describe('queryKeys', () => {
             expect(key).toEqual(['git-file-diff', 'sess-1', 'file.ts', 'unstaged'])
         })
 
-        it('commands(sessionId) 应返回正确元组', () => {
-            const key = queryKeys.commands('sess-1')
-            expect(key).toEqual(['commands', 'sess-1'])
+        it('sdkMetadata(sessionId) 应返回正确元组', () => {
+            const key = queryKeys.sdkMetadata('sess-1')
+            expect(key).toEqual(['sdkMetadata', 'sess-1'])
             expect(key).toHaveLength(2)
         })
     })
@@ -135,7 +135,7 @@ describe('queryKeys', () => {
                 queryKeys.session('a'),
                 queryKeys.messages('a'),
                 queryKeys.gitStatus('a'),
-                queryKeys.commands('a'),
+                queryKeys.sdkMetadata('a'),
             ]
 
             // 所有 key 都应互不相同
