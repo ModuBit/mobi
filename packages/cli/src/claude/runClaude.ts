@@ -388,6 +388,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             path: workingDirectory,
             model: currentModel,
             permissionMode: options.permissionMode,
+            effort: currentEffort,
             startingMode,
             messageQueue,
             api,

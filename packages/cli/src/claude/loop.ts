@@ -51,6 +51,7 @@ interface LoopOptions {
     path: string
     model?: SessionModel
     permissionMode?: PermissionMode
+    effort?: EffortLevel
     startingMode?: 'local' | 'remote'
     startedBy?: 'runner' | 'terminal'
     onModeChange: (mode: 'local' | 'remote') => void
@@ -92,7 +93,8 @@ export async function loop(opts: LoopOptions) {
         startingMode,
         hookSettingsPath: opts.hookSettingsPath,
         permissionMode: opts.permissionMode ?? 'default',
-        model: opts.model
+        model: opts.model,
+        effort: opts.effort
     });
 
     const cleanup = opts.processCleanupRef;
