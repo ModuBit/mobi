@@ -103,10 +103,11 @@ export class SDKToLogConverter {
     }
 
     /** 构造所有 RawJSONLines 共用的基础字段 */
-    private buildBaseFields(uuid: string, parentUuid: string | null, isSidechain: boolean) {
+    private buildBaseFields(uuid: string, parentUuid: string | null, isSidechain: boolean, parentToolUseId?: string) {
         return {
             parentUuid,
             isSidechain,
+            parentToolUseId,
             userType: 'external' as const,
             cwd: this.context.cwd,
             sessionId: this.context.sessionId,
@@ -124,13 +125,15 @@ export class SDKToLogConverter {
         const uuid = (sdkMessage as any).uuid || randomUUID()
         let parentUuid = this.lastUuid;
         let isSidechain = false;
+        let parentToolUseId: string | undefined;
         const msgWithParent = sdkMessage as SDKUserMessage | SDKAssistantMessage;
         if (msgWithParent.parent_tool_use_id) {
             isSidechain = true;
-            parentUuid = this.sidechainLastUUID.get(msgWithParent.parent_tool_use_id) ?? null;
-            this.sidechainLastUUID.set(msgWithParent.parent_tool_use_id, uuid);
+            parentToolUseId = msgWithParent.parent_tool_use_id;
+            parentUuid = this.sidechainLastUUID.get(parentToolUseId) ?? null;
+            this.sidechainLastUUID.set(parentToolUseId, uuid);
         }
-        const baseFields = this.buildBaseFields(uuid, parentUuid, isSidechain)
+        const baseFields = this.buildBaseFields(uuid, parentUuid, isSidechain, parentToolUseId)
 
         let logMessage: RawJSONLines | null = null
 
@@ -241,7 +244,7 @@ export class SDKToLogConverter {
             : this.lastUuid
 
         return {
-            ...this.buildBaseFields(uuid, parentUuid, !!parentToolUseId),
+            ...this.buildBaseFields(uuid, parentUuid, !!parentToolUseId, parentToolUseId),
             type: 'assistant',
             message: {
                 role: 'assistant',
@@ -259,7 +262,7 @@ export class SDKToLogConverter {
         const uuid = randomUUID()
         this.sidechainLastUUID.set(toolUseId, uuid);
         return {
-            ...this.buildBaseFields(uuid, null, true),
+            ...this.buildBaseFields(uuid, null, true, toolUseId),
             type: 'user',
             message: {
                 role: 'user',
@@ -288,7 +291,7 @@ export class SDKToLogConverter {
         }
 
         const logMessage: RawJSONLines = {
-            ...this.buildBaseFields(uuid, parentUuid, isSidechain),
+            ...this.buildBaseFields(uuid, parentUuid, isSidechain, parentToolUseId ?? undefined),
             type: 'user',
             message: {
                 role: 'user',
