@@ -169,6 +169,10 @@ export class SyncEngine {
         return this.messageService.getMessagesAfter(sessionId, options)
     }
 
+    getSidechainMessages(sessionId: string, parentToolUseId: string): DecryptedMessage[] {
+        return this.messageService.getSidechainMessages(sessionId, parentToolUseId)
+    }
+
     handleRealtimeEvent(event: SyncEvent): void {
         if (event.type === 'session-updated' && event.sessionId) {
             this.sessionCache.refreshSession(event.sessionId)

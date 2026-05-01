@@ -79,6 +79,17 @@ export class MessageService {
         }))
     }
 
+    getSidechainMessages(sessionId: string, parentToolUseId: string): DecryptedMessage[] {
+        const stored = this.store.messages.getSidechainMessages(sessionId, parentToolUseId)
+        return stored.map((message) => ({
+            id: message.id,
+            seq: message.seq,
+            localId: message.localId,
+            content: message.content,
+            createdAt: message.createdAt,
+        }))
+    }
+
     async sendMessage(
         sessionId: string,
         payload: {

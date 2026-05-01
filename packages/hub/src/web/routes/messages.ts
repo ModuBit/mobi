@@ -26,6 +26,10 @@ const querySchema = z.object({
     beforeSeq: z.coerce.number().int().min(1).optional()
 })
 
+const sidechainQuerySchema = z.object({
+    parentToolUseId: z.string().min(1),
+})
+
 const sendMessageBodySchema = z.object({
     text: z.string(),
     localId: z.string().min(1).optional(),
@@ -51,6 +55,27 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const limit = parsed.success ? (parsed.data.limit ?? 50) : 50
         const beforeSeq = parsed.success ? (parsed.data.beforeSeq ?? null) : null
         return c.json(engine.getMessagesPage(sessionId, { limit, beforeSeq }))
+    })
+
+    app.get('/sessions/:id/sidechain-messages', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+        const sessionId = sessionResult.sessionId
+
+        const parsed = sidechainQuerySchema.safeParse(c.req.query())
+        if (!parsed.success) {
+            return c.json({ error: 'parentToolUseId is required' }, 400)
+        }
+
+        const messages = engine.getSidechainMessages(sessionId, parsed.data.parentToolUseId)
+        return c.json({ messages })
     })
 
     app.post('/sessions/:id/messages', async (c) => {
