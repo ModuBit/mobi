@@ -132,15 +132,6 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
     disableDrawer?: boolean
 }) {
     const { token } = antTheme.useToken()
-    // 文件操作和 Bash 相关工具默认展开，其他默认收起
-    const defaultExpanded = ['Bash', 'shell_command', 'Read', 'Edit', 'MultiEdit', 'Write'].includes(block.tool.name)
-    const [expanded, setExpanded] = useState(defaultExpanded)
-    const [drawerOpen, setDrawerOpen] = useState(false)
-    const handleViewDetail = useCallback(() => {
-        if (disableDrawer) return
-        setDrawerOpen(true)
-    }, [disableDrawer])
-
     const tool = block.tool
     const isLoading = tool.state === 'running'
     const hasPermission = tool.permission && tool.permission.status === 'pending'
@@ -152,6 +143,15 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         description: tool.description ?? null,
         metadata
     })
+
+    // Agent 工具和最小化工具默认收起，其他默认展开
+    const defaultExpanded = !isAgentTool(tool.name) && !toolPresentation.minimal
+    const [expanded, setExpanded] = useState(defaultExpanded)
+    const [drawerOpen, setDrawerOpen] = useState(false)
+    const handleViewDetail = useCallback(() => {
+        if (disableDrawer) return
+        setDrawerOpen(true)
+    }, [disableDrawer])
 
     // 转换为 PermissionFooter 需要的 tool 格式
     const toolForPermission = useMemo(() => ({
@@ -165,9 +165,10 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         permission: tool.permission ? convertPermission(tool.permission) : null,
     }), [tool])
 
-    // 判断 title 是否已包含 description 信息（如 Bash 工具）
-    // 如果 title 等于 description，则不再单独显示 description
+    // 判断 title 是否已包含 description 信息
+    // Agent 工具的 title 由 getAgentTitle 动态生成，不含 description 字段，或 title 等于 description 时跳过
     const titleContainsDescription = isAgentTool(tool.name)
+        || (tool.description != null && toolPresentation.title === tool.description)
 
     return (
         <>

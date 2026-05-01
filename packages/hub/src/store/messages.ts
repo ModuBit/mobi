@@ -31,7 +31,10 @@ type DbMessageRow = {
     parent_tool_use_id: string | null
 }
 
-/** 从 content 中提取 isSidechain 标记 */
+/**
+ * 从 content（RawJSONLines 对象）中提取 isSidechain 标记
+ * content 结构为 { content: { data: { isSidechain: boolean } }, parentToolUseId: string, ... }
+ */
 function extractIsSidechain(content: unknown): boolean {
     const c = content as { content?: { data?: { isSidechain?: boolean } } } | undefined
     return c?.content?.data?.isSidechain === true
@@ -125,15 +128,15 @@ export function getMessages(
     excludeSidechain: boolean = false
 ): StoredMessage[] {
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(200, limit)) : 200
-    const sidechainFilter = excludeSidechain ? ' AND is_sidechain = 0' : ''
 
+    // 参数化查询，避免 SQL 拼接
     const rows = (beforeSeq !== undefined && beforeSeq !== null && Number.isFinite(beforeSeq))
-        ? db.prepare(
-            `SELECT * FROM messages WHERE session_id = ? AND seq < ?${sidechainFilter} ORDER BY seq DESC LIMIT ?`
-        ).all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
-        : db.prepare(
-            `SELECT * FROM messages WHERE session_id = ?${sidechainFilter} ORDER BY seq DESC LIMIT ?`
-        ).all(sessionId, safeLimit) as DbMessageRow[]
+        ? excludeSidechain
+            ? db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
+            : db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
+        : excludeSidechain
+            ? db.prepare('SELECT * FROM messages WHERE session_id = ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
+            : db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
 
     return rows.reverse().map(toStoredMessage)
 }

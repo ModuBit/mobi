@@ -183,11 +183,19 @@ export const knownTools: Record<string, {
             if (name && teamName) return `Agent: ${name}`
             return getAgentTitle(opts.input, 'Task')
         },
+        subtitle: (opts) => {
+            const prompt = getInputStringAny(opts.input, ['prompt'])
+            return prompt ? truncate(prompt, 120) : null
+        },
         minimal: false
     },
     Agent: {
         icon: () => <RocketOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => getAgentTitle(opts.input),
+        subtitle: (opts) => {
+            const prompt = getInputStringAny(opts.input, ['prompt'])
+            return prompt ? truncate(prompt, 120) : null
+        },
         minimal: false
     },
     TeamCreate: {

@@ -103,10 +103,10 @@ type ToolIconOpts = {
  * Agent/Task 工具在提供 id + state 时返回 PixelAvatar 动态头像
  */
 export function getToolIcon(name: string, opts: CSSProperties | ToolIconOpts = ICON_STYLE): ReactNode {
-    // 兼容旧的 style 参数
-    const resolved: ToolIconOpts = opts && typeof opts === 'object' && ('fontSize' in opts || 'padding' in opts || 'color' in opts)
-        ? { style: opts as CSSProperties }
-        : opts as ToolIconOpts
+    // CSSProperties 直接传入时没有 id/state 字段，转为 ToolIconOpts
+    const hasOptsFields = typeof opts === 'object' && opts !== null && ('id' in opts || 'state' in opts || 'style' in opts)
+        && !('fontSize' in opts && !('id' in opts) && !('state' in opts) && !('style' in opts))
+    const resolved: ToolIconOpts = hasOptsFields ? opts as ToolIconOpts : { style: opts as CSSProperties }
     const style = resolved.style ?? ICON_STYLE
 
     // Agent/Task 工具：有 id 和 state 时使用 PixelAvatar
