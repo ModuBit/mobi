@@ -160,16 +160,19 @@ function formatTaskChildLabel(child: ToolCallBlock, metadata: SessionMetadataSum
     return presentation.title
 }
 
+/** 提取 Agent 工具的 prompt 文本 */
+function getAgentPrompt(input: unknown): string | null {
+    return isObject(input) && typeof input.prompt === 'string' ? input.prompt : null
+}
+
 // 渲染 Agent 工具输入（运行中显示 prompt，完成后显示 result）
 function renderAgentInput(block: ToolCallBlock, ResultView: ToolViewComponent, metadata: SessionMetadataSummary | null): ReactNode {
-    const input = block.tool.input
-    if (isObject(input) && typeof input.prompt === 'string') {
-        if (block.tool.state === 'running' || block.tool.state === 'pending') {
-            return <Markdown content={input.prompt} />
-        }
-        return <ResultView block={block} metadata={metadata} />
+    const prompt = getAgentPrompt(block.tool.input)
+    if (!prompt) return null
+    if (block.tool.state === 'running' || block.tool.state === 'pending') {
+        return <Markdown content={prompt} />
     }
-    return null
+    return <ResultView block={block} metadata={metadata} />
 }
 
 // 渲染工具输入
@@ -523,8 +526,7 @@ function ToolCardInner(props: ToolCardProps) {
 
                     // Agent 工具：展示 Prompt 和 Result
                     if (isAgentToolCard) {
-                        const agentPrompt = isObject(props.block.tool.input) && typeof props.block.tool.input.prompt === 'string'
-                            ? props.block.tool.input.prompt : null
+                        const agentPrompt = getAgentPrompt(props.block.tool.input)
                         return (
                             <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
                                 {agentPrompt ? (

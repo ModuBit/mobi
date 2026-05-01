@@ -16,12 +16,11 @@
 
 import type { AttachmentMetadata, DecryptedMessage } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
-import type { Store } from '../store'
+import type { Store, StoredMessage } from '../store'
 import { EventPublisher } from './eventPublisher'
 
 export class MessageService {
-    /** StoredMessage → DecryptedMessage 统一映射 */
-    private static toDecrypted(message: { id: string; seq: number; localId: string | null; content: unknown; createdAt: number }): DecryptedMessage {
+    private static toDecrypted(message: StoredMessage): DecryptedMessage {
         return { id: message.id, seq: message.seq, localId: message.localId, content: message.content, createdAt: message.createdAt }
     }
 
