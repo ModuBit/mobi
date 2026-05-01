@@ -37,6 +37,8 @@ export type ChatBlockContext = {
     disabled?: boolean
     /** 操作完成回调 */
     onDone?: () => void
+    /** 禁止打开详情 Drawer（Agent Drawer 内的工具卡片不应再开 Drawer） */
+    disableDrawer?: boolean
 }
 
 /** 根据 block 类型渲染对应组件 */

@@ -48,6 +48,7 @@ type ToolDetailDrawerProps = {
     metadata: SessionMetadataSummary | null
     open: boolean
     onClose: () => void
+    sessionId?: string
 }
 
 /**
@@ -102,7 +103,7 @@ function getStatusText(state: 'pending' | 'running' | 'completed' | 'error', t: 
  * 抽屉详情组件
  * 展示工具调用的完整输入和输出信息，桌面端从右侧滑出，移动端从底部弹出
  */
-function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDrawerProps) {
+function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: ToolDetailDrawerProps) {
     const { t } = useTranslation()
     const { token } = useToken()
 

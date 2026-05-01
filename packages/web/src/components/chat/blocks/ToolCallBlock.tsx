@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { Think } from '@ant-design/x'
 import { theme as antTheme } from 'antd'
 import type { ChatBlock, ChatToolCall } from '@/domain/chat'
@@ -122,19 +122,24 @@ function ToolCallPreviewContent({
 }
 
 /** 渲染 ToolCallBlock（来自 reduceChatBlocks） */
-export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, onDone }: {
+export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, onDone, disableDrawer }: {
     block: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
     api?: MobiApi
     sessionId?: string
     disabled?: boolean
     onDone?: () => void
+    disableDrawer?: boolean
 }) {
     const { token } = antTheme.useToken()
     // 文件操作和 Bash 相关工具默认展开，其他默认收起
     const defaultExpanded = ['Bash', 'shell_command', 'Read', 'Edit', 'MultiEdit', 'Write'].includes(block.tool.name)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const [drawerOpen, setDrawerOpen] = useState(false)
+    const handleViewDetail = useCallback(() => {
+        if (disableDrawer) return
+        setDrawerOpen(true)
+    }, [disableDrawer])
 
     const tool = block.tool
     const isLoading = tool.state === 'running'
@@ -195,7 +200,7 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                 <ToolCallPreviewContent
                     toolCallBlock={block}
                     metadata={metadata}
-                    onViewDetail={() => setDrawerOpen(true)}
+                    onViewDetail={handleViewDetail}
                     showInput={hasPermission}
                     maxHeight={toolPresentation.isFilePath ? PREVIEW_MAX_HEIGHT.FILE
                         : isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
@@ -215,12 +220,15 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                     </div>
                 ) : null}
             </Think>
-            <ToolDetailDrawer
-                block={block}
-                metadata={metadata}
-                open={drawerOpen}
-                onClose={() => setDrawerOpen(false)}
-            />
+            {!disableDrawer && (
+                <ToolDetailDrawer
+                    block={block}
+                    metadata={metadata}
+                    open={drawerOpen}
+                    onClose={() => setDrawerOpen(false)}
+                    sessionId={sessionId}
+                />
+            )}
         </>
     )
 }
