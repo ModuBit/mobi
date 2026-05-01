@@ -1,5 +1,29 @@
 /* ==================== Markdown 样式 ==================== */
 
+/* Heading 样式：缩小字号和间距 */
+.x-markdown h1 {
+    font-size: 1.25em;
+    margin: 1.2em 0 0.6em;
+}
+
+.x-markdown h2 {
+    font-size: 1.1em;
+    margin: 1em 0 0.6em;
+}
+
+.x-markdown h3,
+.x-markdown h4,
+.x-markdown h5,
+.x-markdown h6 {
+    font-size: 1em;
+    margin: 1em 0 0.6em;
+}
+
+/* 段落间距 */
+.x-markdown p {
+    margin: 0 0 0.6em;
+}
+
 /* XMarkdown inline code 背景色 */
 .x-markdown code {
     background: rgba(0, 0, 0, 0.06);

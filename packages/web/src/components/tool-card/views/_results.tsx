@@ -430,6 +430,7 @@ const GenericResultView: ToolViewComponent = (props: ToolViewProps) => {
 }
 export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     Task: MarkdownResultView,
+    Agent: MarkdownResultView,
     Bash: BashView,
     shell_command: BashView,
     Glob: LineListResultView,

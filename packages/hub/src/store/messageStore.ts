@@ -30,8 +30,8 @@ export class MessageStore {
         return addMessage(this.db, sessionId, content, localId)
     }
 
-    getMessages(sessionId: string, limit: number = 200, beforeSeq?: number): StoredMessage[] {
-        return getMessages(this.db, sessionId, limit, beforeSeq)
+    getMessages(sessionId: string, limit: number = 200, beforeSeq?: number, excludeSidechain: boolean = false): StoredMessage[] {
+        return getMessages(this.db, sessionId, limit, beforeSeq, excludeSidechain)
     }
 
     getMessagesAfter(sessionId: string, afterSeq: number, limit: number = 200): StoredMessage[] {

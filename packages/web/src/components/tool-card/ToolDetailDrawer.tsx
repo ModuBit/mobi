@@ -26,11 +26,14 @@ import { useTranslation } from 'react-i18next'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolCallBlock } from '@/domain/tool/types'
 import type { ChatBlock } from '@/domain/chat'
-import { getToolPresentation } from './knownTools'
+import { getToolPresentation, isAgentTool, getAgentTitle } from './knownTools'
+import { getToolIcon, ICON_STYLE_LG } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
-import { getToolIcon, StatusStateIcon, ICON_STYLE_LG } from './toolIcons'
-import { truncate } from '@/core/lib/toolInputUtils'
+import { StatusStateIcon } from './toolIcons'
+import { truncate, getInputStringAny } from '@/core/lib/toolInputUtils'
+import { isObject } from '@mobi/shared'
+import { Markdown } from '@/components/ui/Markdown'
 import { ContentDrawer, DRAWER_WIDTH_PRESETS, type DrawerWidthConfig } from '@/components/ui/ContentDrawer'
 import { FilePathText } from '@/components/ui/FilePathText'
 
@@ -151,17 +154,19 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
     }
 
     // 标题栏
+    const agentTitleOverride = isAgentTool(tool.name) ? getAgentTitle(tool.input) : null
+    const drawerTitle = agentTitleOverride ?? presentation.title
     const titleContent = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: token.colorTextSecondary }}>
-                {getToolIcon(tool.name, ICON_STYLE_LG)}
+                {getToolIcon(tool.name, { style: ICON_STYLE_LG, id: block.id, state: tool.state })}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
                 {presentation.isFilePath ? (
                     <FilePathText path={presentation.title} strong style={{ fontSize: 14 }} />
                 ) : (
                     <Text strong style={{ fontSize: 14, wordBreak: 'break-word' }}>
-                        {presentation.title}
+                        {drawerTitle}
                     </Text>
                 )}
                 {truncatedSubtitle ? (
@@ -190,8 +195,45 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose }: ToolDetailDra
             title={titleContent}
             widthConfig={drawerWidth}
         >
-            {/* 有专用视图时直接展示，不分 Input/Output */}
-            {hasSpecialView ? (
+            {/* Agent 工具：展示 Prompt 和 Result */}
+            {isAgentTool(tool.name) ? (
+                <>
+                    {/* Prompt 区 */}
+                    {(() => {
+                        const prompt = isObject(tool.input) && typeof tool.input.prompt === 'string'
+                            ? tool.input.prompt : null
+                        return prompt ? (
+                            <div style={sectionStyle}>
+                                <div style={labelStyle}>Prompt</div>
+                                <div style={{ overflowX: 'auto' }}>
+                                    <Markdown content={prompt} />
+                                </div>
+                            </div>
+                        ) : null
+                    })()}
+
+                    {/* 分隔线 */}
+                    {isObject(tool.input) && typeof tool.input.prompt === 'string' ? (
+                        <div style={{ ...dividerStyle, marginLeft: 16, marginRight: 16 }} />
+                    ) : null}
+
+                    {/* Result 区 */}
+                    <div style={sectionStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <div style={labelStyle}>Result</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <StatusStateIcon state={tool.state} style={{ fontSize: 12 }} />
+                                {statusText ? (
+                                    <Text type="secondary" style={{ fontSize: 11 }}>{statusText}</Text>
+                                ) : null}
+                            </div>
+                        </div>
+                        <div style={{ overflowX: 'auto' }}>
+                            <ResultView block={adaptedBlock} metadata={metadata} />
+                        </div>
+                    </div>
+                </>
+            ) : hasSpecialView ? (
                 <div style={sectionStyle}>
                     {FullView ? (
                         <FullView block={adaptedBlock} metadata={metadata} />

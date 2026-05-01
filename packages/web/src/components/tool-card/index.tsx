@@ -43,8 +43,9 @@ import { AskUserQuestionFooter } from './AskUserQuestionFooter'
 import { RequestUserInputFooter } from './RequestUserInputFooter'
 import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
-import { getToolPresentation, isTerminalTool } from './knownTools'
-import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
+import { getToolPresentation, isTerminalTool, isAgentTool } from './knownTools'
+import { getToolIcon } from './toolIcons'
+import { getToolFullViewComponent, getToolViewComponent, type ToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 import { useTranslation } from 'react-i18next'
@@ -96,7 +97,7 @@ function TaskStateIcon(props: { state: ToolCallBlock['tool']['state'] }) {
 
 // 获取 Task 子任务摘要
 function getTaskSummaryChildren(block: ToolCallBlock): { visible: ToolCallBlock[]; remaining: number } | null {
-    if (block.tool.name !== 'Task') return null
+    if (!isAgentTool(block.tool.name)) return null
 
     const children = block.children
         .filter((child): child is ToolCallBlock => child.kind === 'tool-call')
@@ -160,12 +161,15 @@ function formatTaskChildLabel(child: ToolCallBlock, metadata: SessionMetadataSum
 }
 
 // 渲染工具输入
-function renderToolInput(block: ToolCallBlock, token: GlobalToken): ReactNode {
+function renderToolInput(block: ToolCallBlock, token: GlobalToken, ResultView: ToolViewComponent, metadata: SessionMetadataSummary | null): ReactNode {
     const toolName = block.tool.name
     const input = block.tool.input
 
-    if (toolName === 'Task' && isObject(input) && typeof input.prompt === 'string') {
-        return <Markdown content={input.prompt} />
+    if (isAgentTool(toolName) && isObject(input) && typeof input.prompt === 'string') {
+        if (block.tool.state === 'running' || block.tool.state === 'pending') {
+            return <Markdown content={input.prompt} />
+        }
+        return <ResultView block={block} metadata={metadata} />
     }
 
     if (toolName === 'Edit') {
@@ -379,7 +383,7 @@ function ToolCardInner(props: ToolCardProps) {
     const subtitle = presentation.subtitle ?? props.block.tool.description
     const taskSummary = renderTaskSummary(props.block, props.metadata, token)
     const runningFrom = props.block.tool.startedAt ?? props.block.tool.createdAt
-    const showInline = !presentation.minimal && toolName !== 'Task'
+    const showInline = !presentation.minimal && !isAgentTool(toolName)
     const CompactToolView = showInline ? getToolViewComponent(toolName) : null
     const FullToolView = getToolFullViewComponent(toolName)
     const ResultToolView = getToolResultViewComponent(toolName)
@@ -391,7 +395,8 @@ function ToolCardInner(props: ToolCardProps) {
         permission.status === 'pending'
         || ((permission.status === 'denied' || permission.status === 'canceled') && Boolean(permission.reason))
     ))
-    const hasBody = showInline || taskSummary !== null || showsPermissionFooter
+    const isAgentToolCard = isAgentTool(toolName)
+    const hasBody = showInline || isAgentToolCard || taskSummary !== null || showsPermissionFooter
     const stateColor = statusColorClass(props.block.tool.state, token)
 
     const [modalOpen, setModalOpen] = useState(false)
@@ -401,7 +406,7 @@ function ToolCardInner(props: ToolCardProps) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: token.colorTextSecondary }}>
-                        {presentation.icon}
+                        {getToolIcon(toolName, { id: props.block.id, state: props.block.tool.state })}
                     </div>
                     <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0' }}>
                         {toolTitle}
@@ -446,6 +451,12 @@ function ToolCardInner(props: ToolCardProps) {
                         </div>
                     ) : null}
 
+                    {isAgentToolCard ? (
+                        <div style={{ marginTop: 12 }}>
+                            {renderToolInput(props.block, token, ResultToolView, props.metadata)}
+                        </div>
+                    ) : null}
+
                     {showInline ? (
                         CompactToolView ? (
                             <div style={{ marginTop: 12 }}>
@@ -455,8 +466,7 @@ function ToolCardInner(props: ToolCardProps) {
                             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
                                 <div>
                                     <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.input')}</div>
-                                    {renderToolInput(props.block, token)}
-                                </div>
+                                    {renderToolInput(props.block, token, ResultToolView, props.metadata)}                                </div>
                                 <div>
                                     <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
                                     <ResultToolView block={props.block} metadata={props.metadata} />
@@ -505,6 +515,22 @@ function ToolCardInner(props: ToolCardProps) {
                         && permission?.answers
                         && Object.keys(permission.answers).length > 0
 
+                    // Agent 工具：展示 Prompt 和 Result
+                    if (isAgentToolCard) {
+                        return (
+                            <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
+                                <div>
+                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>Prompt</div>
+                                    {renderToolInput(props.block, token, ResultToolView, props.metadata)}
+                                </div>
+                                <div>
+                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
+                                    <ResultToolView block={props.block} metadata={props.metadata} />
+                                </div>
+                            </div>
+                        )
+                    }
+
                     return (
                         <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
                             <div>
@@ -514,7 +540,7 @@ function ToolCardInner(props: ToolCardProps) {
                                 {FullToolView ? (
                                     <FullToolView block={props.block} metadata={props.metadata} />
                                 ) : (
-                                    renderToolInput(props.block, token)
+                                    renderToolInput(props.block, token, ResultToolView, props.metadata)
                                 )}
                             </div>
                             {!isQuestionToolWithAnswers && !(FullToolView && isTerminalTool(toolName)) && (

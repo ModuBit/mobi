@@ -40,6 +40,8 @@ import {
     LoadingOutlined,
 } from '@ant-design/icons'
 import { theme as antTheme } from 'antd'
+import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import type { AgentStatus } from '@/components/pixel-avatar/types'
 
 /** 小尺寸图标样式（14px） */
 export const ICON_STYLE: CSSProperties = { fontSize: 14 }
@@ -51,6 +53,7 @@ export const ICON_STYLE_LG: CSSProperties = { fontSize: 16 }
  * 工具名称到图标组件的映射表
  */
 const TOOL_ICON_MAP: Record<string, typeof ToolOutlined> = {
+    Agent: RocketOutlined,
     Task: RocketOutlined,
     TeamCreate: TeamOutlined,
     TeamDelete: TeamOutlined,
@@ -77,12 +80,40 @@ const TOOL_ICON_MAP: Record<string, typeof ToolOutlined> = {
     NotebookEdit: EditOutlined,
 }
 
+/** Agent/Task 工具名 */
+const AGENT_TOOL_NAMES = new Set(['Task', 'Agent'])
+
+/** 将工具状态映射为 PixelAvatar 状态 */
+function toolStateToAvatarStatus(state: ToolCallState): AgentStatus {
+    if (state === 'running') return 'outputting'
+    if (state === 'pending') return 'awaiting_auth'
+    return 'inactive'
+}
+
+type ToolIconOpts = {
+    style?: CSSProperties
+    /** Agent 工具的 tool_use_id，用于生成头像 */
+    id?: string
+    /** 工具状态，Agent 工具用于控制动态/静态头像 */
+    state?: ToolCallState
+}
+
 /**
  * 根据工具名返回对应的图标
- * @param name 工具名称
- * @param style 图标样式，默认使用 ICON_STYLE
+ * Agent/Task 工具在提供 id + state 时返回 PixelAvatar 动态头像
  */
-export function getToolIcon(name: string, style: CSSProperties = ICON_STYLE): ReactNode {
+export function getToolIcon(name: string, opts: CSSProperties | ToolIconOpts = ICON_STYLE): ReactNode {
+    // 兼容旧的 style 参数
+    const resolved: ToolIconOpts = opts && typeof opts === 'object' && ('fontSize' in opts || 'padding' in opts || 'color' in opts)
+        ? { style: opts as CSSProperties }
+        : opts as ToolIconOpts
+    const style = resolved.style ?? ICON_STYLE
+
+    // Agent/Task 工具：有 id 和 state 时使用 PixelAvatar
+    if (AGENT_TOOL_NAMES.has(name) && resolved.id && resolved.state) {
+        return <PixelAvatar name={resolved.id} status={toolStateToAvatarStatus(resolved.state)} size={typeof style.fontSize === 'number' ? style.fontSize + 4 : 18} />
+    }
+
     // mcp__ 前缀的工具使用方块图标
     if (name.startsWith('mcp__')) {
         return <AppstoreOutlined style={style} />

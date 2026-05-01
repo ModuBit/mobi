@@ -27,6 +27,13 @@ type DbMessageRow = {
     created_at: number
     seq: number
     local_id: string | null
+    is_sidechain: number
+}
+
+/** 从 content 中提取 isSidechain 标记 */
+function extractIsSidechain(content: unknown): boolean {
+    const c = content as { content?: { data?: { isSidechain?: boolean } } } | undefined
+    return c?.content?.data?.isSidechain === true
 }
 
 function toStoredMessage(row: DbMessageRow): StoredMessage {
@@ -36,7 +43,8 @@ function toStoredMessage(row: DbMessageRow): StoredMessage {
         content: safeJsonParse(row.content),
         createdAt: row.created_at,
         seq: row.seq,
-        localId: row.local_id
+        localId: row.local_id,
+        isSidechain: row.is_sidechain === 1
     }
 }
 
@@ -72,12 +80,13 @@ export function addMessage(
 
     const id = localId ?? randomUUID()
     const json = JSON.stringify(content)
+    const isSidechain = extractIsSidechain(content) ? 1 : 0
 
     db.prepare(`
         INSERT INTO messages (
-            id, session_id, content, created_at, seq, local_id
+            id, session_id, content, created_at, seq, local_id, is_sidechain
         ) VALUES (
-            @id, @session_id, @content, @created_at, @seq, @local_id
+            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain
         )
     `).run({
         id,
@@ -85,7 +94,8 @@ export function addMessage(
         content: json,
         created_at: now,
         seq: msgSeq,
-        local_id: localId ?? null
+        local_id: localId ?? null,
+        is_sidechain: isSidechain
     })
 
     const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as DbMessageRow | undefined
@@ -99,16 +109,18 @@ export function getMessages(
     db: Database,
     sessionId: string,
     limit: number = 200,
-    beforeSeq?: number
+    beforeSeq?: number,
+    excludeSidechain: boolean = false
 ): StoredMessage[] {
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(200, limit)) : 200
+    const sidechainFilter = excludeSidechain ? ' AND is_sidechain = 0' : ''
 
     const rows = (beforeSeq !== undefined && beforeSeq !== null && Number.isFinite(beforeSeq))
         ? db.prepare(
-            'SELECT * FROM messages WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?'
+            `SELECT * FROM messages WHERE session_id = ? AND seq < ?${sidechainFilter} ORDER BY seq DESC LIMIT ?`
         ).all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
         : db.prepare(
-            'SELECT * FROM messages WHERE session_id = ? ORDER BY seq DESC LIMIT ?'
+            `SELECT * FROM messages WHERE session_id = ?${sidechainFilter} ORDER BY seq DESC LIMIT ?`
         ).all(sessionId, safeLimit) as DbMessageRow[]
 
     return rows.reverse().map(toStoredMessage)

@@ -40,6 +40,22 @@ import { getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
 
+/** 判断是否为 Agent/Task 类工具 */
+export function isAgentTool(name: string): boolean {
+    return name === 'Task' || name === 'Agent'
+}
+
+/** 构建 Agent 工具标题：subagent_type · description */
+export function getAgentTitle(input: unknown, fallback = 'Agent'): string {
+    if (!isObject(input)) return fallback
+    const subagentType = getInputStringAny(input, ['subagent_type'])
+    const description = getInputStringAny(input, ['description'])
+    if (subagentType && description) return `${subagentType} · ${description}`
+    if (description) return description
+    if (subagentType) return subagentType
+    return fallback
+}
+
 /** 终端工具名称列表 */
 export const TERMINAL_TOOL_NAMES = ['Bash', 'shell_command'] as const
 
@@ -165,14 +181,14 @@ export const knownTools: Record<string, {
             const name = getInputStringAny(opts.input, ['name'])
             const teamName = getInputStringAny(opts.input, ['team_name'])
             if (name && teamName) return `Agent: ${name}`
-            const description = getInputStringAny(opts.input, ['description'])
-            return description ?? 'Task'
+            return getAgentTitle(opts.input, 'Task')
         },
-        subtitle: (opts) => {
-            const prompt = getInputStringAny(opts.input, ['prompt'])
-            return prompt ? truncate(prompt, 120) : null
-        },
-        minimal: (opts) => opts.childrenCount === 0
+        minimal: false
+    },
+    Agent: {
+        icon: () => <RocketOutlined style={DEFAULT_ICON_STYLE} />,
+        title: (opts) => getAgentTitle(opts.input),
+        minimal: false
     },
     TeamCreate: {
         icon: () => <TeamOutlined style={DEFAULT_ICON_STYLE} />,

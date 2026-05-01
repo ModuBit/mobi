@@ -173,6 +173,26 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
             content: [{ type: 'sidechain', uuid, prompt: messageContent }]
         }
     }
+    // Sidechain 数组内容（agent prompt 以数组形式发送）
+    if (isSidechain && Array.isArray(messageContent)) {
+        const hasToolResult = messageContent.some(b => isObject(b) && b.type === 'tool_result')
+        if (!hasToolResult) {
+            const prompt = messageContent
+                .filter((b): b is Record<string, unknown> & { type: string } => isObject(b) && b.type === 'text' && typeof b.text === 'string')
+                .map(b => b.text as string)
+                .join('\n')
+            if (prompt) {
+                return {
+                    id: ctx.messageId,
+                    localId: ctx.localId,
+                    createdAt: ctx.createdAt,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{ type: 'sidechain', uuid, prompt }]
+                }
+            }
+        }
+    }
 
     // 简单字符串内容
     if (typeof messageContent === 'string') {

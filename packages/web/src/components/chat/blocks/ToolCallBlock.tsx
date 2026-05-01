@@ -22,7 +22,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
-import { getToolPresentation, isTerminalTool } from '@/components/tool-card/knownTools'
+import { getToolPresentation, isTerminalTool, isAgentTool } from '@/components/tool-card/knownTools'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
@@ -131,8 +131,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
     onDone?: () => void
 }) {
     const { token } = antTheme.useToken()
-    // Read 工具默认收起，其他工具默认展开
-    const [expanded, setExpanded] = useState(block.tool.name !== 'Read')
+    // 文件操作和 Bash 相关工具默认展开，其他默认收起
+    const defaultExpanded = ['Bash', 'shell_command', 'Read', 'Edit', 'MultiEdit', 'Write'].includes(block.tool.name)
+    const [expanded, setExpanded] = useState(defaultExpanded)
     const [drawerOpen, setDrawerOpen] = useState(false)
 
     const tool = block.tool
@@ -161,13 +162,13 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
 
     // 判断 title 是否已包含 description 信息（如 Bash 工具）
     // 如果 title 等于 description，则不再单独显示 description
-    const titleContainsDescription = tool.description && toolPresentation.title === tool.description
+    const titleContainsDescription = isAgentTool(tool.name)
 
     return (
         <>
             <Think
                 className="tool-call-think"
-                icon={getToolIcon(tool.name)}
+                icon={getToolIcon(tool.name, { id: block.id, state: tool.state })}
                 title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                         {toolPresentation.isFilePath ? (
