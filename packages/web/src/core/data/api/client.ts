@@ -122,6 +122,11 @@ export function createMobiApi(token: string | null) {
                 client.get<{ messages: DecryptedMessage[] }>(`/api/sessions/${sessionId}/messages`, { params }),
             send: (sessionId: string, text: string, localId?: string) =>
                 client.post(`/api/sessions/${sessionId}/messages`, { text, localId }),
+            sidechain: (sessionId: string, parentToolUseId: string, opts?: { signal?: AbortSignal }) =>
+                client.get<{ messages: DecryptedMessage[] }>(`/api/sessions/${sessionId}/sidechain-messages`, {
+                    params: { parentToolUseId },
+                    signal: opts?.signal,
+                }),
         },
 
         // Git
