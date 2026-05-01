@@ -40,6 +40,7 @@ import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import type { AgentStatus, StatusStyle } from '@/components/pixel-avatar/types'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { mergeSessions } from '@/core/data/cache/sessionCache'
 import styled from '@emotion/styled'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 
@@ -130,14 +131,9 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                 const res = await api.sessionGroups.getSessions(group.key, undefined, 100)
 
                 // upsert 到全局 sessions 缓存
-                queryClient.setQueryData<Session[]>(queryKeys.sessions, (old) => {
-                    const sessionMap = new Map<string, Session>(old?.map(s => [s.id, s]))
-                    for (const s of res.data.sessions) {
-                        const existing = sessionMap.get(s.id)
-                        sessionMap.set(s.id, existing ? { ...existing, ...s } : s)
-                    }
-                    return Array.from(sessionMap.values())
-                })
+                queryClient.setQueryData<Session[]>(queryKeys.sessions, (old) =>
+                    mergeSessions(old, res.data.sessions)
+                )
 
                 return { sessionIds: res.data.sessions.map(s => s.id), groupKey: group.key }
             },
