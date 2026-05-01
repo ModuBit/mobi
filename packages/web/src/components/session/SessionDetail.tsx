@@ -70,7 +70,6 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         { key: 'terminal', labelKey: 'session.tabs.terminal', Icon: Terminal, mode: 'terminal' as const },
     ].map(({ key, labelKey, Icon, mode }) => ({
         key,
-        width: 36,
         label: t(labelKey),
         render: () => (
             <Tooltip title={t(labelKey)}>

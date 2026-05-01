@@ -47,6 +47,7 @@ import { CommandHintBar } from './CommandHintBar'
 import { ResponsiveActionBar, type ActionItem } from './ResponsiveActionBar'
 import { getPermissionModeColor } from './permissionModeColors'
 
+
 interface ChatComposerProps {
     sessionId: string
     disabled?: boolean
@@ -86,6 +87,7 @@ function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null
 // 带有 hover 背景的 borderless Select，与 Button type="text" 的 hover 效果保持一致
 const HoverSelect = styled(Select)<{
     $token: ReturnType<typeof theme.useToken>['token']
+    $compact?: boolean
 }>`
     &.ant-select-borderless:not(.ant-select-disabled):hover {
         background: ${props => props.$token.colorBgTextHover};
@@ -95,7 +97,21 @@ const HoverSelect = styled(Select)<{
     }
     border-radius: ${props => props.$token.borderRadiusSM}px;
     transition: background 0.2s;
+    ${props => props.$compact && `
+        &&& .ant-select-selector,
+        &&& .ant-select-selector .ant-select-selection-item,
+        &&& .ant-select-selector .ant-select-selection-placeholder,
+        &&& .ant-select-selector .ant-select-selection-search-input {
+            font-size: 12px !important;
+            line-height: 18px !important;
+            padding-inline-start: 2px !important;
+            padding-inline-end: 2px !important;
+        }
+    `}
 `
+
+// 缩小 dropdown 弹出层的 option 字体
+const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'
 
 /**
  * 聊天输入组件
@@ -545,6 +561,8 @@ export function ChatComposer(props: ChatComposerProps) {
 
     return (
         <div style={{ padding: '0 12px 12px' }}>
+            {/* 缩小 Select dropdown option 字体 */}
+            <style>{`.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }`}</style>
             {/* 信息面板：权限请求、任务列表等 */}
             <ComposerInfoPanel
                 sessionId={sessionId}
@@ -592,9 +610,9 @@ export function ChatComposer(props: ChatComposerProps) {
                     footer={(oriNode) => (
                         <ResponsiveActionBar
                             items={[
+                                // 附件
                                 {
                                     key: 'attach',
-                                    width: 36,
                                     label: t('composer.attach'),
                                     render: () => (
                                         <Tooltip title={t('composer.attach')}>
@@ -609,15 +627,36 @@ export function ChatComposer(props: ChatComposerProps) {
                                         </Tooltip>
                                     ),
                                 },
-                                ...(onModelChange ? [{
-                                    key: 'model',
-                                    width: 130,
+                                // permissionmode
+                                ...(showSettingsButton ? [{
+                                    key: 'permission',
                                     render: () => (
                                         <HoverSelect
                                             $token={token}
+                                            $compact
                                             size="small"
                                             variant="borderless"
-                                            prefix={<RobotOutlined style={{ fontSize: 14, opacity: 0.55 }} />}
+                                            prefix={<SafetyOutlined style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
+                                            value={permissionMode ?? 'default'}
+                                            onChange={v => onPermissionModeChange?.(v as PermissionMode)}
+                                            disabled={controlsDisabled || showLocalModeCover}
+                                            options={permissionSelectOptions}
+                                            popupMatchSelectWidth={false}
+                                            popupClassName={COMPACT_DROPDOWN_CLASS}
+                                            style={{ color: permissionModeColor }}
+                                        />
+                                    ),
+                                }] : []),
+                                // model
+                                ...(onModelChange ? [{
+                                    key: 'model',
+                                    render: () => (
+                                        <HoverSelect
+                                            $token={token}
+                                            $compact
+                                            size="small"
+                                            variant="borderless"
+                                            prefix={<RobotOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
                                             value={model ?? 'auto'}
                                             onChange={v => onModelChange(v as string | null)}
                                             disabled={controlsDisabled || showLocalModeCover}
@@ -640,49 +679,34 @@ export function ChatComposer(props: ChatComposerProps) {
                                                 )
                                             }}
                                             popupMatchSelectWidth={false}
-                                            style={{ width: '100%' }}
+                                            popupClassName={COMPACT_DROPDOWN_CLASS}
                                         />
                                     ),
                                 }] : []),
+                                // effort
                                 ...(onEffortChange ? [{
                                     key: 'effort',
-                                    width: 130,
                                     render: () => (
                                         <HoverSelect
                                             $token={token}
+                                            $compact
                                             size="small"
                                             variant="borderless"
-                                            prefix={<ThunderboltOutlined style={{ fontSize: 14, opacity: 0.55 }} />}
+                                            prefix={<ThunderboltOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
                                             value={effort}
                                             onChange={v => onEffortChange(v as EffortLevel)}
                                             disabled={controlsDisabled || showLocalModeCover}
                                             options={effortSelectOptions}
                                             popupMatchSelectWidth={false}
-                                            style={{ width: '100%' }}
+                                            popupClassName={COMPACT_DROPDOWN_CLASS}
                                         />
                                     ),
                                 }] : []),
-                                ...(showSettingsButton ? [{
-                                    key: 'permission',
-                                    width: 130,
-                                    render: () => (
-                                        <HoverSelect
-                                            $token={token}
-                                            size="small"
-                                            variant="borderless"
-                                            prefix={<SafetyOutlined style={{ fontSize: 14, opacity: 0.55, color: permissionModeColor }} />}
-                                            value={permissionMode ?? 'default'}
-                                            onChange={v => onPermissionModeChange?.(v as PermissionMode)}
-                                            disabled={controlsDisabled || showLocalModeCover}
-                                            options={permissionSelectOptions}
-                                            popupMatchSelectWidth={false}
-                                            style={{ width: '100%', color: permissionModeColor }}
-                                        />
-                                    ),
-                                }] : []),
+                                // file terminal
+                                ...(extraItems ?? []),
+                                // exit
                                 ...(onArchive && active ? [{
                                     key: 'archive',
-                                    width: 36,
                                     label: t('session.actions.archive'),
                                     render: () => (
                                         <Tooltip title={t('session.actions.archive')}>
@@ -697,10 +721,9 @@ export function ChatComposer(props: ChatComposerProps) {
                                         </Tooltip>
                                     ),
                                 }] : []),
-                                ...(extraItems ?? []),
+                                // 已废弃：extraLeftButtons 回退
                                 ...(extraLeftButtons && !extraItems ? [{
                                     key: 'extra',
-                                    width: 36,
                                     render: () => extraLeftButtons,
                                 }] : []),
                             ]}

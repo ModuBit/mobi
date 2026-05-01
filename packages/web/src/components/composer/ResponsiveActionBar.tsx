@@ -22,7 +22,6 @@ import styled from '@emotion/styled'
 
 export interface ActionItem {
   key: string
-  width: number
   render: () => ReactNode
   label?: ReactNode
 }
@@ -50,18 +49,21 @@ const DropdownItem = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['
 
 /**
  * 响应式操作栏
- * 根据容器宽度自动折叠溢出的操作项到 Dropdown 中
+ * 先将所有项渲染到隐藏测量层获取实际 DOM 宽度，再根据容器宽度决定可见项
  */
 export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
   const { items, prefix, suffix, gap = 4 } = props
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const prefixRef = useRef<HTMLDivElement>(null)
   const suffixRef = useRef<HTMLDivElement>(null)
+  // 测量层：每个 item 的测量容器
+  const measureRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   const [containerWidth, setContainerWidth] = useState(0)
+  // 记录每个 item 的实际 DOM 宽度
+  const [measuredWidths, setMeasuredWidths] = useState<Map<string, number>>(new Map())
 
-  // 用 ResizeObserver 监听容器宽度变化
+  // 监听容器宽度
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
@@ -76,31 +78,39 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
     return () => observer.disconnect()
   }, [])
 
-  // 测量 prefix 和 suffix 的实际 DOM 宽度
-  const prefixWidth = prefixRef.current?.getBoundingClientRect().width ?? 0
+  // 测量所有 item 的实际宽度
+  useEffect(() => {
+    const map = new Map<string, number>()
+    let changed = false
+    for (const item of items) {
+      const el = measureRefs.current.get(item.key)
+      if (el) {
+        const w = el.getBoundingClientRect().width
+        if (measuredWidths.get(item.key) !== w) changed = true
+        map.set(item.key, w)
+      }
+    }
+    if (changed) setMeasuredWidths(map)
+  })
+
   const suffixWidth = suffixRef.current?.getBoundingClientRect().width ?? 0
 
-  // 计算可用宽度
-  const availableWidth = useMemo(() => {
-    if (containerWidth === 0) return 0
-    return containerWidth - prefixWidth - suffixWidth - MORE_BUTTON_WIDTH - gap
-  }, [containerWidth, prefixWidth, suffixWidth, gap])
-
-  // 从左到右累加 items 的 width + gap，超出时停止
-  // 初始 containerWidth=0 时返回全部，避免首帧跳动
+  // 计算可见项数量
   const visibleCount = useMemo(() => {
-    if (availableWidth <= 0) return items.length
+    if (containerWidth === 0 || measuredWidths.size === 0) return items.length
 
+    const available = containerWidth - suffixWidth - MORE_BUTTON_WIDTH - gap
     let total = 0
     let count = 0
     for (const item of items) {
-      const itemWidth = count === 0 ? item.width : item.width + gap
-      if (total + itemWidth > availableWidth) break
-      total += itemWidth
+      const w = measuredWidths.get(item.key) ?? 0
+      const cost = count === 0 ? w : w + gap
+      if (total + cost > available) break
+      total += cost
       count++
     }
     return count
-  }, [items, availableWidth, gap])
+  }, [items, containerWidth, measuredWidths, suffixWidth, gap])
 
   const visibleItems = items.slice(0, visibleCount)
   const hiddenItems = items.slice(visibleCount)
@@ -144,7 +154,7 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
               <div style={{ padding: '4px 8px', minWidth: 140, width: '100%', display: 'flex', alignItems: 'center', gap: 8 }}>
                 {item.render()}
                 {item.label && (
-                  <span style={{ fontSize: 13, color: token.colorText }}>{item.label}</span>
+                  <span style={{ fontSize: 12, color: token.colorText }}>{item.label}</span>
                 )}
               </div>
             </DropdownItem>
@@ -167,18 +177,11 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
         width: '100%',
       }}
     >
-      {/* 左侧：prefix + 可见项 + 更多按钮 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap }}>
-        {prefix && (
-          <div ref={prefixRef} data-role="prefix">
-            {prefix}
-          </div>
-        )}
-
+      {/* 左侧：可见项 + 更多按钮 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap, flexWrap: 'nowrap', overflow: 'hidden' }}>
         {visibleItems.map((item) => (
           <div key={item.key}>{item.render()}</div>
         ))}
-
         {hiddenItems.length > 0 && dropdownContent && (
           <Dropdown dropdownRender={() => dropdownContent} placement="topLeft">
             {moreButton()}
@@ -192,6 +195,33 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
           {suffix}
         </div>
       )}
+
+      {/* 隐藏测量层：渲染所有 item 获取真实宽度 */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          visibility: 'hidden',
+          pointerEvents: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap,
+          whiteSpace: 'nowrap',
+          top: -9999,
+          left: -9999,
+        }}
+      >
+        {items.map((item) => (
+          <div
+            key={item.key}
+            ref={(el) => {
+              if (el) measureRefs.current.set(item.key, el)
+            }}
+          >
+            {item.render()}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

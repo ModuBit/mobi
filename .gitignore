@@ -42,3 +42,5 @@ docs/superpowers/
 docs/claude-agent-sdk/
 docs/test-reports/
 .worktrees/
+# Added by code-review-graph
+.code-review-graph/
