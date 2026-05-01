@@ -14,33 +14,55 @@
  * limitations under the License.
  */
 
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
-import type { Session } from '@/core/data/api/types'
+import type { Session, GroupSessionsPage } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
 
 const PAGE_SIZE = 20
 
-interface GroupSessionsPage {
-    sessions: Session[]
-    nextCursor: number | null
-    hasMore: boolean
+/**
+ * 将 Session 数组 upsert 到全局 sessions 缓存
+ * 已存在的 session 做增量合并，不存在的直接添加
+ */
+function upsertSessionsToCache(
+    queryClient: ReturnType<typeof useQueryClient>,
+    sessions: Session[],
+): void {
+    queryClient.setQueryData<Session[]>(queryKeys.sessions, (old) => {
+        const sessionMap = new Map<string, Session>(old?.map(s => [s.id, s]))
+        for (const s of sessions) {
+            const existing = sessionMap.get(s.id)
+            sessionMap.set(s.id, existing ? { ...existing, ...s } : s)
+        }
+        return Array.from(sessionMap.values())
+    })
 }
 
 /**
  * 获取分组内的会话列表（分页）
+ * 返回只含 sessionId 的数据，完整 Session 数据 upsert 到全局 sessions 缓存
  */
 export function useGroupSessions(groupKey: string | null) {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
+    const queryClient = useQueryClient()
 
     return useInfiniteQuery<GroupSessionsPage>({
         queryKey: queryKeys.groupSessions(groupKey!),
         queryFn: async ({ pageParam }) => {
             const cursor = pageParam as number | undefined
             const res = await api.sessionGroups.getSessions(groupKey!, cursor, PAGE_SIZE)
-            return res.data
+
+            // 将完整 Session 数据 upsert 到全局 sessions 缓存
+            upsertSessionsToCache(queryClient, res.data.sessions)
+
+            return {
+                sessionIds: res.data.sessions.map(s => s.id),
+                nextCursor: res.data.nextCursor,
+                hasMore: res.data.hasMore,
+            }
         },
         initialPageParam: undefined,
         getNextPageParam: (lastPage) => {

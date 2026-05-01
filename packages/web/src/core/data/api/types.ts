@@ -266,6 +266,13 @@ export interface GroupSessionsResponse {
     hasMore: boolean
 }
 
+// 用于 hook 内部的归一化数据结构（groupSessions 缓存只存 ID）
+export interface GroupSessionsPage {
+    sessionIds: string[]
+    nextCursor: number | null
+    hasMore: boolean
+}
+
 // ============ SDK 元数据（来自 SDK initializationResult） ============
 
 import type {
