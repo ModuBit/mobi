@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { detectSlashAtCursor, type SlashCommandSuggestionItem } from '@/domain/command/slashCommandHelper'
 import { useSlashCommandSuggestion } from './useSlashCommandSuggestion'
 import { recordCommandUsage } from '@/core/lib/commandUsage'
@@ -23,7 +23,6 @@ import type { Command } from '@/core/data/api/types'
 export interface SlashSelectionResult {
     text: string
     cursorPos: number | null
-    activeCommand: { value: string; hint: string } | null
 }
 
 interface UseSlashCommandInteractionParams {
@@ -57,8 +56,6 @@ export function useSlashCommandInteraction({
         node?.scrollIntoView({ block: 'nearest' })
     }, [])
 
-    // 从 handleChange 调用：检测 slash 触发，更新内部状态
-    // 同时处理 slash 关闭、activeCommand 清理、argumentHint 匹配
     const processChange = useCallback((text: string, cursorPos: number): boolean => {
         const slashFilter = detectSlashAtCursor(text, cursorPos)
         if (slashFilter !== null) {
@@ -68,7 +65,6 @@ export function useSlashCommandInteraction({
             return true
         }
 
-        // 文本不再匹配 slash pattern 时关闭
         if (isOpen) {
             setIsOpen(false)
             setFilter('')
@@ -94,17 +90,14 @@ export function useSlashCommandInteraction({
         return false
     }, [isOpen, activeCommand, commandsData])
 
-    // 选中当前 activeIndex 项（Enter/Tab/click）
-    const selectCurrent = useCallback((text: string): SlashSelectionResult | null => {
-        if (!isOpen || items.length === 0) return null
+    const selectItem = useCallback((item: SlashCommandSuggestionItem, text: string): SlashSelectionResult | null => {
+        if (!isOpen) return null
 
-        const item = items[activeIndex]
         const slashEnd = 1 + filter.length
         const after = text.slice(slashEnd)
         const newText = `${item.value} ${after}`
 
-        const newCommand = item.argumentHint ? { value: item.value, hint: item.argumentHint } : null
-        setActiveCommand(newCommand)
+        setActiveCommand(item.argumentHint ? { value: item.value, hint: item.argumentHint } : null)
         setIsOpen(false)
         setFilter('')
 
@@ -115,11 +108,14 @@ export function useSlashCommandInteraction({
         return {
             text: newText,
             cursorPos: null,
-            activeCommand: newCommand,
         }
-    }, [isOpen, items, activeIndex, filter, workingDir])
+    }, [isOpen, filter, workingDir])
 
-    // 键盘导航（ArrowUp/Down/Enter/Escape）
+    const selectCurrent = useCallback((text: string): SlashSelectionResult | null => {
+        if (!isOpen || items.length === 0) return null
+        return selectItem(items[activeIndex], text)
+    }, [isOpen, items, activeIndex, selectItem])
+
     const handleKeyDown = useCallback((e: React.KeyboardEvent): boolean => {
         if (!isOpen || items.length === 0) return false
 
@@ -131,10 +127,6 @@ export function useSlashCommandInteraction({
             case 'ArrowUp':
                 e.preventDefault()
                 setActiveIndex(prev => (prev - 1 + items.length) % items.length)
-                return true
-            case 'Enter':
-                e.preventDefault()
-                e.stopPropagation()
                 return true
             case 'Escape':
                 e.preventDefault()
@@ -150,7 +142,13 @@ export function useSlashCommandInteraction({
         setFilter('')
     }, [])
 
-    return {
+    const reset = useCallback(() => {
+        setIsOpen(false)
+        setFilter('')
+        setActiveCommand(null)
+    }, [])
+
+    return useMemo(() => ({
         isOpen,
         items,
         isLoading,
@@ -159,8 +157,10 @@ export function useSlashCommandInteraction({
         setActiveIndex,
         scrollIntoActive,
         processChange,
+        selectItem,
         selectCurrent,
         handleKeyDown,
         close,
-    } as const
+        reset,
+    }), [isOpen, items, isLoading, activeIndex, activeCommand, setActiveIndex, scrollIntoActive, processChange, selectItem, selectCurrent, handleKeyDown, close, reset])
 }

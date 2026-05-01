@@ -25,20 +25,14 @@ import { getPermissionModeOptionsForFlavor, getPermissionModeTone, getEffortOpti
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
-import { useSessionFileListing } from './useSessionFileListing'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import type { MobiApi } from '@/core/data/api/client'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
-import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
-import { useSlashCommandSuggestion } from './useSlashCommandSuggestion'
-import { detectSlashAtCursor } from '@/domain/command/slashCommandHelper'
-import { detectMentionAtCursor, buildMentionPath } from '@/domain/command/mentionParser'
-import type { SlashCommandSuggestionItem } from '@/domain/command/slashCommandHelper'
+import { useMentionInteraction } from './useMentionInteraction'
+import { useSlashCommandInteraction } from './useSlashCommandInteraction'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { createFileAttachment } from '@/core/lib/fileAttachments'
-import { recordCommandUsage } from '@/core/lib/commandUsage'
 import { useCommands } from '@/core/data/hooks/queries/useCommands'
 import { useSDKMetadata, type ModelOption } from '@/core/data/hooks/queries/useSDKMetadata'
 import { MentionDropdown } from './MentionDropdown'
@@ -175,40 +169,27 @@ export function ChatComposer(props: ChatComposerProps) {
     const [text, setText] = useState('')
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
 
-    const [activeCommand, setActiveCommand] = useState<{ value: string; hint: string } | null>(null)
-
     // 命令列表（复用 React Query 缓存，用于手动输入时匹配参数提示）
     const { data: commandsData } = useCommands(sessionId ?? null)
 
     // SDK 元数据（模型列表等）
     const { data: sdkMetadata } = useSDKMetadata(sessionId ?? null)
 
-    const [suggestionOpen, setSuggestionOpen] = useState(false)
-    const [mentionInput, setMentionInput] = useState<FileListingInput | null>(null)
-    const [activeIndex, setActiveIndex] = useState(0)
     const wrapperRef = useRef<HTMLDivElement>(null)
-    const mentionAtIndexRef = useRef(-1)
     const pendingCursorRef = useRef<number | null>(null)
 
-    const scrollIntoActive = useCallback((node: HTMLDivElement | null) => {
-        node?.scrollIntoView({ block: 'nearest' })
-    }, [])
-
-    const [slashOpen, setSlashOpen] = useState(false)
-    const [slashFilter, setSlashFilter] = useState('')
-    const [slashActiveIndex, setSlashActiveIndex] = useState(0)
-
-    const { items: slashCommands, isLoading: slashLoading } = useSlashCommandSuggestion(
-        slashOpen ? (sessionId ?? null) : null,
-        slashOpen,
-        slashFilter,
+    // @ 文件引用交互
+    const mention = useMentionInteraction({
+        sessionId,
         workingDir,
-    )
+    })
 
-    const { items: fileEntries, isLoading: fileListLoading } = useSessionFileListing(
-        suggestionOpen ? (sessionId ?? null) : null,
-        mentionInput,
-    )
+    // / 斜杠命令交互
+    const slash = useSlashCommandInteraction({
+        sessionId,
+        workingDir,
+        commandsData,
+    })
 
     const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
     const trimmed = text.trim()
@@ -219,9 +200,9 @@ export function ChatComposer(props: ChatComposerProps) {
     const canSend = (hasText || hasAttachments) && !controlsDisabled && !running && !sending && !hasPendingPermission
 
     // 是否展示命令参数幽灵提示
-    const showGhostHint = !!activeCommand?.hint
-        && text === `${activeCommand.value} `
-        && !slashOpen
+    const showGhostHint = !!slash.activeCommand?.hint
+        && text === `${slash.activeCommand.value} `
+        && !slash.isOpen
 
     const permissionModeOptions = useMemo(
         () => getPermissionModeOptionsForFlavor(agentFlavor),
@@ -262,20 +243,18 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // 点击外部关闭下拉
     useEffect(() => {
-        if (!suggestionOpen && !slashOpen) return
+        if (!mention.isOpen && !slash.isOpen) return
         const handler = (e: MouseEvent) => {
             if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-                setSuggestionOpen(false)
-                setMentionInput(null)
-                setSlashOpen(false)
-                setSlashFilter('')
+                mention.close()
+                slash.close()
             }
         }
         document.addEventListener('mousedown', handler)
         return () => document.removeEventListener('mousedown', handler)
-    }, [suggestionOpen, slashOpen])
+    }, [mention.isOpen, slash.isOpen, mention, slash])
 
-    // 光标位置恢复
+    // 光标位置恢复（无 deps：需要在每次 React commit 后检查 pending 状态）
     useEffect(() => {
         if (pendingCursorRef.current != null) {
             const textarea = getTextarea(wrapperRef.current)
@@ -300,143 +279,57 @@ export function ChatComposer(props: ChatComposerProps) {
         const textarea = getTextarea(wrapperRef.current)
         const cursorPos = textarea?.selectionStart ?? value.length
 
-        // 检测 slash 命令
-        const slashFilter = detectSlashAtCursor(value, cursorPos)
-        if (slashFilter !== null) {
-            setSlashFilter(slashFilter)
-            setSlashOpen(true)
-            setSlashActiveIndex(0)
-            setSuggestionOpen(false)
-            setMentionInput(null)
+        // Slash 检测优先（内部同时处理 activeCommand 管理）
+        if (slash.processChange(value, cursorPos)) {
+            mention.close()
             return
         }
 
-        if (slashOpen) {
-            setSlashOpen(false)
-            setSlashFilter('')
+        // Mention 检测
+        if (mention.processChange(value, cursorPos)) {
+            return
         }
+        mention.close()
+    }, [mention, slash])
 
-        // 文本不再匹配已选命令时，清理提示状态
-        if (activeCommand && value !== `${activeCommand.value} `) {
-            setActiveCommand(null)
-        }
+    // Tab 键选中（需用 native listener 因为 Sender 的 onKeyDown 会先消费 Tab）
+    const textRef = useRef(text)
+    textRef.current = text
 
-        // 手动输入 /command + 空格后，匹配参数提示
-        const cmdMatch = value.match(/^\/(\S+) $/)
-        if (cmdMatch && !activeCommand) {
-            const cmdName = `/${cmdMatch[1]}`
-            const cmd = commandsData?.find(c =>
-                (c.name.startsWith('/') ? c.name : `/${c.name}`) === cmdName
-            )
-            if (cmd?.argumentHint) {
-                setActiveCommand({ value: cmdName, hint: cmd.argumentHint })
+    useEffect(() => {
+        const wrapper = wrapperRef.current
+        if (!wrapper) return
+        if (!mention.isOpen && !slash.isOpen) return
+
+        const handler = (e: KeyboardEvent) => {
+            if (e.key !== 'Tab') return
+            e.preventDefault()
+            e.stopPropagation()
+            if (slash.isOpen && slash.items.length > 0) {
+                const result = slash.selectCurrent(textRef.current)
+                if (result) setText(result.text)
+            } else if (mention.isOpen && mention.items.length > 0) {
+                const result = mention.selectCurrent(textRef.current)
+                if (result) {
+                    setText(result.text)
+                    pendingCursorRef.current = result.cursorPos
+                }
             }
         }
 
-        // 检测 @ mention
-        const mention = detectMentionAtCursor(value, cursorPos)
-        if (mention) {
-            mentionAtIndexRef.current = mention.atIndex
-            setMentionInput({
-                mentionInput: mention.afterAt,
-                workingDir: workingDir ?? '',
-            })
-            setSuggestionOpen(true)
-            setActiveIndex(0)
-            return
-        }
-
-        setSuggestionOpen(false)
-        setMentionInput(null)
-    }, [workingDir, slashOpen, activeCommand, commandsData])
-
-    // @ mention 选择
-    const handleItemSelect = useCallback((item: FileSuggestionItem) => {
-        if (!mentionInput) return
-
-        const atIndex = mentionAtIndexRef.current
-        const afterLen = mentionInput.mentionInput.length
-        const before = atIndex >= 0 ? text.slice(0, atIndex) : text
-        const after = atIndex >= 0 ? text.slice(atIndex + 1 + afterLen) : ''
-
-        if (item.isDirectory) {
-            const dirPath = item.path ? item.path + '/' : buildMentionPath(mentionInput.mentionInput, item.value) + '/'
-            setText(`${before}@${dirPath}${after}`)
-            mentionAtIndexRef.current = atIndex
-            pendingCursorRef.current = atIndex + 1 + dirPath.length
-            setMentionInput({
-                mentionInput: dirPath,
-                workingDir: mentionInput.workingDir,
-            })
-            setActiveIndex(0)
-        } else {
-            const mentionPath = item.path ?? buildMentionPath(mentionInput.mentionInput, item.value)
-            setText(`${before}@${mentionPath} ${after}`)
-            setSuggestionOpen(false)
-            setMentionInput(null)
-        }
-    }, [mentionInput, text])
-
-    // slash command 选择
-    const handleSlashSelect = useCallback((item: SlashCommandSuggestionItem) => {
-        const slashEnd = 1 + slashFilter.length
-        const after = text.slice(slashEnd)
-        setText(`${item.value} ${after}`)
-        setActiveCommand(item.argumentHint ? { value: item.value, hint: item.argumentHint } : null)
-        setSlashOpen(false)
-        setSlashFilter('')
-
-        if (workingDir) {
-            recordCommandUsage(workingDir, item.value)
-        }
-    }, [slashFilter, text, workingDir])
-
-    // Tab 键选中 @ mention
-    useEffect(() => {
-        const wrapper = wrapperRef.current
-        if (!wrapper || !suggestionOpen) return
-
-        const handler = (e: KeyboardEvent) => {
-            if (e.key !== 'Tab') return
-            if (fileEntries.length === 0) return
-            e.preventDefault()
-            e.stopPropagation()
-            handleItemSelect(fileEntries[activeIndex])
-        }
-
         wrapper.addEventListener('keydown', handler, true)
         return () => wrapper.removeEventListener('keydown', handler, true)
-    }, [suggestionOpen, fileEntries, activeIndex, handleItemSelect])
-
-    // Tab 键选中 slash command
-    useEffect(() => {
-        const wrapper = wrapperRef.current
-        if (!wrapper || !slashOpen) return
-
-        const handler = (e: KeyboardEvent) => {
-            if (e.key !== 'Tab') return
-            if (slashCommands.length === 0) return
-            e.preventDefault()
-            e.stopPropagation()
-            handleSlashSelect(slashCommands[slashActiveIndex])
-        }
-
-        wrapper.addEventListener('keydown', handler, true)
-        return () => wrapper.removeEventListener('keydown', handler, true)
-    }, [slashOpen, slashCommands, slashActiveIndex, handleSlashSelect])
+    }, [mention.isOpen, mention, slash.isOpen, slash])
 
     // 键盘导航
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         // Ctrl+C：有内容则清空，无内容且 running 则 abort
         if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
-            if (text.length > 0) {
+            if (textRef.current.length > 0) {
                 e.preventDefault()
                 setText('')
-                setActiveCommand(null)
-                setSlashOpen(false)
-                setSlashFilter('')
-                setSuggestionOpen(false)
-                setMentionInput(null)
+                mention.close()
+                slash.reset()
             } else if (running && onAbort && !abortPending) {
                 e.preventDefault()
                 onAbort()
@@ -444,62 +337,43 @@ export function ChatComposer(props: ChatComposerProps) {
             return
         }
 
-        // Escape：先关闭 dropdown，再 abort
+        // Escape：先委托给各 hook，都未消费则 abort
         if (e.key === 'Escape') {
-            if (slashOpen) {
-                e.preventDefault()
-                setSlashOpen(false)
-                setSlashFilter('')
-            } else if (suggestionOpen) {
-                e.preventDefault()
-                setSuggestionOpen(false)
-                setMentionInput(null)
-            } else if (running && onAbort && !abortPending) {
+            if (slash.handleKeyDown(e)) return
+            if (mention.handleKeyDown(e)) return
+            if (running && onAbort && !abortPending) {
                 e.preventDefault()
                 onAbort()
             }
             return
         }
 
-        // slash command 下拉导航
-        if (slashOpen && slashCommands.length > 0) {
-            switch (e.key) {
-                case 'ArrowDown':
-                    e.preventDefault()
-                    setSlashActiveIndex(prev => (prev + 1) % slashCommands.length)
-                    break
-                case 'ArrowUp':
-                    e.preventDefault()
-                    setSlashActiveIndex(prev => (prev - 1 + slashCommands.length) % slashCommands.length)
-                    break
-                case 'Enter':
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleSlashSelect(slashCommands[slashActiveIndex])
-                    break
-            }
-            return
-        }
-
-        // @mention 下拉导航
-        if (!suggestionOpen || fileEntries.length === 0) return
-
-        switch (e.key) {
-            case 'ArrowDown':
-                e.preventDefault()
-                setActiveIndex(prev => (prev + 1) % fileEntries.length)
-                break
-            case 'ArrowUp':
-                e.preventDefault()
-                setActiveIndex(prev => (prev - 1 + fileEntries.length) % fileEntries.length)
-                break
-            case 'Enter':
+        // Enter 键选中
+        if (e.key === 'Enter') {
+            if (slash.isOpen && slash.items.length > 0) {
                 e.preventDefault()
                 e.stopPropagation()
-                handleItemSelect(fileEntries[activeIndex])
-                break
+                const result = slash.selectCurrent(textRef.current)
+                if (result) setText(result.text)
+                return
+            }
+            if (mention.isOpen && mention.items.length > 0) {
+                e.preventDefault()
+                e.stopPropagation()
+                const result = mention.selectCurrent(textRef.current)
+                if (result) {
+                    setText(result.text)
+                    pendingCursorRef.current = result.cursorPos
+                }
+                return
+            }
+            return
         }
-    }, [text, running, onAbort, abortPending, slashOpen, slashCommands, slashActiveIndex, handleSlashSelect, suggestionOpen, fileEntries, activeIndex, handleItemSelect])
+
+        // Arrow 键导航
+        if (slash.handleKeyDown(e)) return
+        if (mention.handleKeyDown(e)) return
+    }, [running, onAbort, abortPending, mention, slash])
 
     const needsRefocusRef = useRef(false)
 
@@ -515,13 +389,12 @@ export function ChatComposer(props: ChatComposerProps) {
 
     const handleSubmit = useCallback((content: string) => {
         if (!canSend) return
-        if (suggestionOpen || slashOpen) return
+        if (mention.isOpen || slash.isOpen) return
         onSend(content.trim())
         setText('')
         setAttachments([])
-        setActiveCommand(null)
         needsRefocusRef.current = true
-    }, [canSend, onSend, suggestionOpen, slashOpen])
+    }, [canSend, onSend, mention.isOpen, slash.isOpen])
 
     const handleAttach = useCallback(() => {
         const input = document.createElement('input')
@@ -546,14 +419,13 @@ export function ChatComposer(props: ChatComposerProps) {
     const showLocalModeCover = active && mode === 'local'
     const isBashMode = text.startsWith('! ')
 
-    // permission mode 颜色
     const permissionModeTone = permissionMode !== 'default' ? getPermissionModeTone(permissionMode) : null
     const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
 
     // Sender header 区域内容（可组合，多条可共存）
     const headerNodes = [
-        showGhostHint && activeCommand && (
-            <CommandHintBar key="hint" hint={activeCommand.hint} />
+        showGhostHint && slash.activeCommand && (
+            <CommandHintBar key="hint" hint={slash.activeCommand.hint} />
         ),
         hasAttachments && (
             <AttachmentList
@@ -608,7 +480,8 @@ export function ChatComposer(props: ChatComposerProps) {
                             size="small"
                             onClick={() => {
                                 setText('')
-                                setActiveCommand(null)
+                                mention.close()
+                                slash.reset()
                             }}
                         />
                     ) : false}
@@ -724,26 +597,35 @@ export function ChatComposer(props: ChatComposerProps) {
                 />
 
                 {/* @ 文件引用下拉 */}
-                {suggestionOpen && (
+                {mention.isOpen && (
                     <MentionDropdown
-                        items={fileEntries}
-                        loading={fileListLoading}
-                        activeIndex={activeIndex}
-                        scrollIntoActive={scrollIntoActive}
-                        onSelect={handleItemSelect}
-                        onHover={setActiveIndex}
+                        items={mention.items}
+                        loading={mention.isLoading}
+                        activeIndex={mention.activeIndex}
+                        scrollIntoActive={mention.scrollIntoActive}
+                        onSelect={(item) => {
+                            const result = mention.selectItem(item, text)
+                            if (result) {
+                                setText(result.text)
+                                pendingCursorRef.current = result.cursorPos
+                            }
+                        }}
+                        onHover={mention.setActiveIndex}
                     />
                 )}
 
                 {/* slash command 下拉 */}
-                {slashOpen && (
+                {slash.isOpen && (
                     <SlashCommandDropdown
-                        items={slashCommands}
-                        loading={slashLoading}
-                        activeIndex={slashActiveIndex}
-                        scrollIntoActive={scrollIntoActive}
-                        onSelect={handleSlashSelect}
-                        onHover={setSlashActiveIndex}
+                        items={slash.items}
+                        loading={slash.isLoading}
+                        activeIndex={slash.activeIndex}
+                        scrollIntoActive={slash.scrollIntoActive}
+                        onSelect={(item) => {
+                            const result = slash.selectItem(item, text)
+                            if (result) setText(result.text)
+                        }}
+                        onHover={slash.setActiveIndex}
                     />
                 )}
 

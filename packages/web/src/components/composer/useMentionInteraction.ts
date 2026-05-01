@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useRef, type RefObject } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { detectMentionAtCursor, buildMentionPath } from '@/domain/command/mentionParser'
 import { useSessionFileListing, type FileListingInput, type FileSuggestionItem } from './useSessionFileListing'
 
@@ -26,7 +26,6 @@ export interface MentionSelectionResult {
 interface UseMentionInteractionParams {
     sessionId: string | null
     workingDir: string | undefined
-    wrapperRef: RefObject<HTMLDivElement | null>
 }
 
 /**
@@ -51,7 +50,6 @@ export function useMentionInteraction({
         node?.scrollIntoView({ block: 'nearest' })
     }, [])
 
-    // 从 handleChange 调用：检测 mention 触发，更新内部状态
     const processChange = useCallback((text: string, cursorPos: number): boolean => {
         const mention = detectMentionAtCursor(text, cursorPos)
         if (mention) {
@@ -67,11 +65,9 @@ export function useMentionInteraction({
         return false
     }, [workingDir])
 
-    // 选中当前 activeIndex 项（Enter/Tab/click）
-    const selectCurrent = useCallback((text: string): MentionSelectionResult | null => {
-        if (!isOpen || items.length === 0 || !mentionInput) return null
+    const selectItem = useCallback((item: FileSuggestionItem, text: string): MentionSelectionResult | null => {
+        if (!isOpen || !mentionInput) return null
 
-        const item = items[activeIndex]
         const atIndex = mentionAtIndexRef.current
         const afterLen = mentionInput.mentionInput.length
         const before = atIndex >= 0 ? text.slice(0, atIndex) : text
@@ -98,9 +94,13 @@ export function useMentionInteraction({
             text: `${before}@${mentionPath} ${after}`,
             cursorPos: null,
         }
-    }, [isOpen, items, activeIndex, mentionInput])
+    }, [isOpen, mentionInput])
 
-    // 键盘导航（ArrowUp/Down/Enter/Escape）
+    const selectCurrent = useCallback((text: string): MentionSelectionResult | null => {
+        if (!isOpen || items.length === 0) return null
+        return selectItem(items[activeIndex], text)
+    }, [isOpen, items, activeIndex, selectItem])
+
     const handleKeyDown = useCallback((e: React.KeyboardEvent): boolean => {
         if (!isOpen || items.length === 0) return false
 
@@ -112,10 +112,6 @@ export function useMentionInteraction({
             case 'ArrowUp':
                 e.preventDefault()
                 setActiveIndex(prev => (prev - 1 + items.length) % items.length)
-                return true
-            case 'Enter':
-                e.preventDefault()
-                e.stopPropagation()
                 return true
             case 'Escape':
                 e.preventDefault()
@@ -129,9 +125,10 @@ export function useMentionInteraction({
     const close = useCallback(() => {
         setIsOpen(false)
         setMentionInput(null)
+        mentionAtIndexRef.current = -1
     }, [])
 
-    return {
+    return useMemo(() => ({
         isOpen,
         items,
         isLoading,
@@ -139,8 +136,9 @@ export function useMentionInteraction({
         setActiveIndex,
         scrollIntoActive,
         processChange,
+        selectItem,
         selectCurrent,
         handleKeyDown,
         close,
-    } as const
+    }), [isOpen, items, isLoading, activeIndex, setActiveIndex, scrollIntoActive, processChange, selectItem, selectCurrent, handleKeyDown, close])
 }
