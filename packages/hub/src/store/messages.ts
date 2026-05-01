@@ -28,12 +28,19 @@ type DbMessageRow = {
     seq: number
     local_id: string | null
     is_sidechain: number
+    parent_tool_use_id: string | null
 }
 
 /** 从 content 中提取 isSidechain 标记 */
 function extractIsSidechain(content: unknown): boolean {
     const c = content as { content?: { data?: { isSidechain?: boolean } } } | undefined
     return c?.content?.data?.isSidechain === true
+}
+
+/** 从 content 中提取 parentToolUseId */
+function extractParentToolUseId(content: unknown): string | null {
+    const c = content as { parentToolUseId?: string } | undefined
+    return c?.parentToolUseId ?? null
 }
 
 function toStoredMessage(row: DbMessageRow): StoredMessage {
@@ -44,7 +51,8 @@ function toStoredMessage(row: DbMessageRow): StoredMessage {
         createdAt: row.created_at,
         seq: row.seq,
         localId: row.local_id,
-        isSidechain: row.is_sidechain === 1
+        isSidechain: row.is_sidechain === 1,
+        parentToolUseId: row.parent_tool_use_id,
     }
 }
 
@@ -62,10 +70,12 @@ export function addMessage(
         ).get(sessionId, localId) as DbMessageRow | undefined
         if (existing) {
             // 相同 localId：更新内容（resume 场景下内容可能有增量变化）
+            const parentToolUseId = extractParentToolUseId(content)
             db.prepare(
-                'UPDATE messages SET content = @content WHERE id = @id'
+                'UPDATE messages SET content = @content, parent_tool_use_id = @parent_tool_use_id WHERE id = @id'
             ).run({
                 content: JSON.stringify(content),
+                parent_tool_use_id: parentToolUseId,
                 id: existing.id
             })
             const updated = db.prepare('SELECT * FROM messages WHERE id = ?').get(existing.id) as DbMessageRow
@@ -81,12 +91,13 @@ export function addMessage(
     const id = localId ?? randomUUID()
     const json = JSON.stringify(content)
     const isSidechain = extractIsSidechain(content) ? 1 : 0
+    const parentToolUseId = extractParentToolUseId(content)
 
     db.prepare(`
         INSERT INTO messages (
-            id, session_id, content, created_at, seq, local_id, is_sidechain
+            id, session_id, content, created_at, seq, local_id, is_sidechain, parent_tool_use_id
         ) VALUES (
-            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain
+            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain, @parent_tool_use_id
         )
     `).run({
         id,
@@ -95,7 +106,8 @@ export function addMessage(
         created_at: now,
         seq: msgSeq,
         local_id: localId ?? null,
-        is_sidechain: isSidechain
+        is_sidechain: isSidechain,
+        parent_tool_use_id: parentToolUseId,
     })
 
     const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as DbMessageRow | undefined
@@ -139,6 +151,17 @@ export function getMessagesAfter(
         'SELECT * FROM messages WHERE session_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?'
     ).all(sessionId, safeAfterSeq, safeLimit) as DbMessageRow[]
 
+    return rows.map(toStoredMessage)
+}
+
+export function getSidechainMessages(
+    db: Database,
+    sessionId: string,
+    parentToolUseId: string
+): StoredMessage[] {
+    const rows = db.prepare(
+        'SELECT * FROM messages WHERE session_id = ? AND parent_tool_use_id = ? ORDER BY seq ASC'
+    ).all(sessionId, parentToolUseId) as DbMessageRow[]
     return rows.map(toStoredMessage)
 }
 

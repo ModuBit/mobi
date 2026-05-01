@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 
 import type { StoredMessage } from './types'
-import { addMessage, getMessages, getMessagesAfter, mergeSessionMessages } from './messages'
+import { addMessage, getMessages, getMessagesAfter, getSidechainMessages, mergeSessionMessages } from './messages'
 
 export class MessageStore {
     private readonly db: Database
@@ -36,6 +36,10 @@ export class MessageStore {
 
     getMessagesAfter(sessionId: string, afterSeq: number, limit: number = 200): StoredMessage[] {
         return getMessagesAfter(this.db, sessionId, afterSeq, limit)
+    }
+
+    getSidechainMessages(sessionId: string, parentToolUseId: string): StoredMessage[] {
+        return getSidechainMessages(this.db, sessionId, parentToolUseId)
     }
 
     mergeSessionMessages(fromSessionId: string, toSessionId: string): { moved: number; oldMaxSeq: number; newMaxSeq: number } {

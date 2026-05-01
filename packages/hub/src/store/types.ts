@@ -53,6 +53,7 @@ export type StoredMessage = {
     seq: number
     localId: string | null
     isSidechain: boolean
+    parentToolUseId: string | null
 }
 
 export type StoredUser = {
