@@ -114,6 +114,7 @@ function patchSessionCache(
     })
 
     // 更新会话列表缓存中对应的 session（仅当值实际变化时）
+    // groupSessions 缓存只存 sessionId，无需更新
     queryClient.setQueryData<Session[]>(queryKeys.sessions, (old) => {
         if (!old) return old
         const idx = old.findIndex(s => s.id === sessionId)
@@ -127,54 +128,6 @@ function patchSessionCache(
             ...applyRuntimeStatePatch(target, runtimeStatePatch),
         }
         return updated
-    })
-
-    // 更新 groupSessions 缓存中对应的 session
-    // 支持两种数据格式：无限查询 { pages: [...] } 和普通查询 { sessions: [...] }
-    queryClient.getQueriesData({
-        queryKey: ['groupSessions'],
-    }).forEach(([queryKey, data]) => {
-        if (!data || typeof data !== 'object') return
-
-        // 无限查询格式：{ pages: [{ sessions: [...] }] }
-        if ('pages' in data && Array.isArray((data as { pages: unknown[] }).pages)) {
-            const pagesData = data as { pages: Array<{ sessions: Session[] }> }
-            let changed = false
-            const newPages = pagesData.pages.map(page => {
-                const sessionIdx = page.sessions.findIndex(s => s.id === sessionId)
-                if (sessionIdx === -1) return page
-                const target = page.sessions[sessionIdx]
-                if (!hasSessionChanges(target, patch, runtimeStatePatch)) return page
-                changed = true
-                const newSessions = [...page.sessions]
-                newSessions[sessionIdx] = {
-                    ...target,
-                    ...patch,
-                    ...applyRuntimeStatePatch(target, runtimeStatePatch),
-                }
-                return { ...page, sessions: newSessions }
-            })
-            if (changed) {
-                queryClient.setQueryData(queryKey, { ...data, pages: newPages })
-            }
-            return
-        }
-
-        // 普通查询格式：{ sessions: [...], groupKey: string }
-        if ('sessions' in data && Array.isArray((data as { sessions: unknown[] }).sessions)) {
-            const sessionsData = data as { sessions: Session[]; [key: string]: unknown }
-            const sessionIdx = sessionsData.sessions.findIndex(s => s.id === sessionId)
-            if (sessionIdx === -1) return
-            const target = sessionsData.sessions[sessionIdx]
-            if (!hasSessionChanges(target, patch, runtimeStatePatch)) return
-            const newSessions = [...sessionsData.sessions]
-            newSessions[sessionIdx] = {
-                ...target,
-                ...patch,
-                ...applyRuntimeStatePatch(target, runtimeStatePatch),
-            }
-            queryClient.setQueryData(queryKey, { ...data, sessions: newSessions })
-        }
     })
 }
 
