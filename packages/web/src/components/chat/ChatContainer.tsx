@@ -52,7 +52,7 @@ const bubbleCopyStyles = css`
 `
 
 // Bubble.List role 配置
-const BUBBLE_ROLES = {
+export const BUBBLE_ROLES = {
     assistant: {
         placement: 'start' as const,
         variant: 'borderless' as const,

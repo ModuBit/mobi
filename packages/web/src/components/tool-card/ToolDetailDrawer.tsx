@@ -19,26 +19,33 @@
  * 点击内联预览后弹出，展示工具调用的完整输入和输出信息
  */
 
-import { useMemo, memo, type CSSProperties } from 'react'
-import { theme as antTheme, Typography } from 'antd'
+import { useMemo, useRef, useState, useCallback, useEffect, memo, type CSSProperties } from 'react'
+import { theme as antTheme, Typography, Button } from 'antd'
+import { DownOutlined } from '@ant-design/icons'
+import { Bubble } from '@ant-design/x'
 import { safeStringify } from '@mobi/shared'
 import { useTranslation } from 'react-i18next'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolCallBlock } from '@/domain/tool/types'
-import type { ChatBlock } from '@/domain/chat'
+import type { ChatBlock, NormalizedMessage } from '@/domain/chat'
+import { normalizeDecryptedMessage, reduceChatBlocks } from '@/domain/chat'
 import { getToolPresentation, isAgentTool, getAgentTitle } from './knownTools'
-import { getToolIcon, ICON_STYLE_LG } from './toolIcons'
+import { getToolIcon, ICON_STYLE_LG, StatusStateIcon } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
-import { StatusStateIcon } from './toolIcons'
-import { truncate, getInputStringAny } from '@/core/lib/toolInputUtils'
+import { truncate } from '@/core/lib/toolInputUtils'
 import { isObject } from '@mobi/shared'
 import { Markdown } from '@/components/ui/Markdown'
 import { ContentDrawer, DRAWER_WIDTH_PRESETS, type DrawerWidthConfig } from '@/components/ui/ContentDrawer'
 import { FilePathText } from '@/components/ui/FilePathText'
+import { renderChatBlock, type ChatBlockContext } from '@/components/chat/blocks'
+import { BUBBLE_ROLES } from '@/components/chat/ChatContainer'
+import { useSidechainMessages } from '@/core/data/hooks/queries/useSidechainMessages'
 
 const { Text } = Typography
 const { useToken } = antTheme
+
+const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
 
 /**
  * 抽屉详情组件属性
@@ -55,7 +62,6 @@ type ToolDetailDrawerProps = {
  * 将 ChatBlock.ToolCallBlock 转换为 ToolCard/types.ToolCallBlock，以适配视图组件接口
  */
 function chatBlockToToolCardBlock(block: Extract<ChatBlock, { kind: 'tool-call' }>): ToolCallBlock {
-    // 转换 ToolPermission 类型
     const convertPermission = (perm: NonNullable<typeof block.tool.permission>): ToolCallBlock['tool']['permission'] => {
         return {
             id: perm.id,
@@ -97,6 +103,144 @@ function getStatusText(state: 'pending' | 'running' | 'completed' | 'error', t: 
         case 'running': return t('chat.tool.statusRunning')
         case 'pending': return ''
     }
+}
+
+/** Agent 工具的 Drawer 内容：BubbleList 渲染 sidechain 对话 */
+function AgentDrawerContent({ block, metadata, sessionId }: {
+    block: Extract<ChatBlock, { kind: 'tool-call' }>
+    metadata: SessionMetadataSummary | null
+    sessionId?: string
+}) {
+    const { token } = antTheme.useToken()
+    const scrollRef = useRef<HTMLDivElement>(null)
+    const [showScrollBottom, setShowScrollBottom] = useState(false)
+
+    const tool = block.tool
+    const hasChildren = block.children.length > 0
+
+    // 实时会话 children 已有数据，历史会话从 API 补载
+    const { data: sidechainMessages = [] } = useSidechainMessages(
+        hasChildren ? null : (sessionId ?? null),
+        hasChildren ? null : block.id,
+    )
+
+    const childrenBlocks = useMemo(() => {
+        if (hasChildren) return block.children
+        if (sidechainMessages.length === 0) return []
+
+        const normalized = sidechainMessages
+            .map((msg) => normalizeDecryptedMessage(msg))
+            .filter((m): m is NormalizedMessage => m !== null)
+        const { blocks } = reduceChatBlocks(normalized, null)
+        return blocks
+    }, [hasChildren, block.children, sidechainMessages])
+
+    const bubbleItems = useMemo(() => {
+        const ctx: ChatBlockContext = {
+            metadata,
+            isThinking: false,
+            disableDrawer: true,
+        }
+        const items: Array<{
+            key: string
+            role: 'assistant' | 'user' | 'system' | 'divider'
+            content: React.ReactNode
+            variant?: 'borderless'
+        }> = []
+
+        for (const child of childrenBlocks) {
+            const content = renderChatBlock(child, ctx)
+            if (content === null) continue
+
+            let role: 'assistant' | 'user' | 'system' = 'user'
+            if (ASSISTANT_BLOCK_KINDS.has(child.kind)) {
+                role = 'assistant'
+            } else if (child.kind === 'agent-event') {
+                role = 'system'
+            }
+
+            items.push({
+                key: child.id,
+                role,
+                content,
+                variant: (role === 'system' || role === 'assistant') ? 'borderless' : undefined,
+            })
+        }
+
+        // Divider: Result
+        items.push({
+            key: '__result-divider__',
+            role: 'divider',
+            content: 'Result',
+        })
+
+        // Result bubble
+        if (tool.result !== undefined && tool.result !== null) {
+            const resultText = typeof tool.result === 'string'
+                ? tool.result
+                : safeStringify(tool.result)
+            items.push({
+                key: '__result__',
+                role: 'assistant',
+                content: <Markdown content={resultText} />,
+                variant: 'borderless',
+            })
+        }
+
+        return items
+    }, [childrenBlocks, tool.result, metadata])
+
+    // 滚动到底部
+    useEffect(() => {
+        const scrollBox = scrollRef.current
+        if (!scrollBox) return
+        scrollBox.scrollTo({ top: 0, behavior: 'smooth' })
+    }, [childrenBlocks.length])
+
+    useEffect(() => {
+        const scrollBox = scrollRef.current
+        if (!scrollBox) return
+        const handleScroll = () => {
+            setShowScrollBottom(scrollBox.scrollTop < -20)
+        }
+        scrollBox.addEventListener('scroll', handleScroll, { passive: true })
+        return () => scrollBox.removeEventListener('scroll', handleScroll)
+    }, [childrenBlocks.length])
+
+    const handleScrollToBottom = useCallback(() => {
+        scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    }, [])
+
+    return (
+        <div style={{ position: 'relative', height: '100%' }}>
+            <div ref={scrollRef} style={{ height: '100%', overflow: 'auto' }}>
+                <Bubble.List
+                    items={bubbleItems}
+                    role={BUBBLE_ROLES}
+                    style={{ height: '100%' }}
+                />
+            </div>
+            {showScrollBottom && (
+                <Button
+                    type="default"
+                    shape="circle"
+                    size="middle"
+                    icon={<DownOutlined />}
+                    onClick={handleScrollToBottom}
+                    style={{
+                        position: 'absolute',
+                        left: '50%',
+                        bottom: 16,
+                        transform: 'translateX(-50%)',
+                        zIndex: 10,
+                        boxShadow: token.boxShadowSecondary,
+                        minWidth: 36,
+                        minHeight: 36,
+                    }}
+                />
+            )}
+        </div>
+    )
 }
 
 /**
@@ -184,8 +328,8 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
     // 是否有专用视图组件（Edit、Bash 等有专门的 diff/terminal 视图）
     const hasSpecialView = !!(FullView || CompactView)
 
-    // 根据工具类型选择 Drawer 宽度（从 presentation 获取配置）
-    const drawerWidth: DrawerWidthConfig = presentation.wideDrawer
+    // Agent 工具使用 wide 模式，其他按 presentation 配置
+    const drawerWidth: DrawerWidthConfig = isAgentTool(tool.name) || presentation.wideDrawer
         ? DRAWER_WIDTH_PRESETS.wide
         : DRAWER_WIDTH_PRESETS.narrow
 
@@ -196,44 +340,9 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
             title={titleContent}
             widthConfig={drawerWidth}
         >
-            {/* Agent 工具：展示 Prompt 和 Result */}
+            {/* Agent 工具：BubbleList 渲染 sidechain 对话 */}
             {isAgentTool(tool.name) ? (
-                <>
-                    {/* Prompt 区 */}
-                    {(() => {
-                        const prompt = isObject(tool.input) && typeof tool.input.prompt === 'string'
-                            ? tool.input.prompt : null
-                        return prompt ? (
-                            <div style={sectionStyle}>
-                                <div style={labelStyle}>Prompt</div>
-                                <div style={{ overflowX: 'auto' }}>
-                                    <Markdown content={prompt} />
-                                </div>
-                            </div>
-                        ) : null
-                    })()}
-
-                    {/* 分隔线 */}
-                    {isObject(tool.input) && typeof tool.input.prompt === 'string' ? (
-                        <div style={{ ...dividerStyle, marginLeft: 16, marginRight: 16 }} />
-                    ) : null}
-
-                    {/* Result 区 */}
-                    <div style={sectionStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                            <div style={labelStyle}>Result</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <StatusStateIcon state={tool.state} style={{ fontSize: 12 }} />
-                                {statusText ? (
-                                    <Text type="secondary" style={{ fontSize: 11 }}>{statusText}</Text>
-                                ) : null}
-                            </div>
-                        </div>
-                        <div style={{ overflowX: 'auto' }}>
-                            <ResultView block={adaptedBlock} metadata={metadata} />
-                        </div>
-                    </div>
-                </>
+                <AgentDrawerContent block={block} metadata={metadata} sessionId={sessionId} />
             ) : hasSpecialView ? (
                 <div style={sectionStyle}>
                     {FullView ? (
