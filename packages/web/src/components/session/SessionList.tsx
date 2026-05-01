@@ -176,6 +176,9 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
     const items = useMemo(() => {
         const result: ConversationsProps['items'] = []
 
+        // 构建 id → session 查找表，避免嵌套循环中 O(n) 的 find 调用
+        const sessionMap = new Map(allSessions?.map(s => [s.id, s]))
+
         for (let i = 0; i < groupQueries.length; i++) {
             const query = groupQueries[i]
             if (!query.data) continue
@@ -184,7 +187,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
             const group = groups[i]
 
             for (const sessionId of sessionIds) {
-                const session = allSessions?.find(s => s.id === sessionId)
+                const session = sessionMap.get(sessionId)
                 if (!session) continue
 
                 const isRenaming = renamingSessionId === session.id
