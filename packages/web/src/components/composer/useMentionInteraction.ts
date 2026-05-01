@@ -92,7 +92,7 @@ export function useMentionInteraction({
         setMentionInput(null)
         return {
             text: `${before}@${mentionPath} ${after}`,
-            cursorPos: null,
+            cursorPos: before.length + 1 + mentionPath.length + 1,
         }
     }, [isOpen, mentionInput])
 

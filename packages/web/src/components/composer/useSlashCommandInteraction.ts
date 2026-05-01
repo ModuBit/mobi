@@ -107,7 +107,7 @@ export function useSlashCommandInteraction({
 
         return {
             text: newText,
-            cursorPos: null,
+            cursorPos: item.value.length + 1,
         }
     }, [isOpen, filter, workingDir])
 

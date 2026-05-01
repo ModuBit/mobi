@@ -307,7 +307,10 @@ export function ChatComposer(props: ChatComposerProps) {
             e.stopPropagation()
             if (slash.isOpen && slash.items.length > 0) {
                 const result = slash.selectCurrent(textRef.current)
-                if (result) setText(result.text)
+                if (result) {
+                    setText(result.text)
+                    pendingCursorRef.current = result.cursorPos
+                }
             } else if (mention.isOpen && mention.items.length > 0) {
                 const result = mention.selectCurrent(textRef.current)
                 if (result) {
@@ -354,7 +357,10 @@ export function ChatComposer(props: ChatComposerProps) {
                 e.preventDefault()
                 e.stopPropagation()
                 const result = slash.selectCurrent(textRef.current)
-                if (result) setText(result.text)
+                if (result) {
+                    setText(result.text)
+                    pendingCursorRef.current = result.cursorPos
+                }
                 return
             }
             if (mention.isOpen && mention.items.length > 0) {
@@ -623,7 +629,10 @@ export function ChatComposer(props: ChatComposerProps) {
                         scrollIntoActive={slash.scrollIntoActive}
                         onSelect={(item) => {
                             const result = slash.selectItem(item, text)
-                            if (result) setText(result.text)
+                            if (result) {
+                                setText(result.text)
+                                pendingCursorRef.current = result.cursorPos
+                            }
                         }}
                         onHover={slash.setActiveIndex}
                     />
