@@ -91,7 +91,8 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
       }
     }
     if (changed) setMeasuredWidths(map)
-  })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items])
 
   const suffixWidth = suffixRef.current?.getBoundingClientRect().width ?? 0
 

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import type { EffortLevel } from '@mobi/shared'
+
 export interface SpawnSessionOptions {
     machineId?: string
     directory: string
@@ -22,7 +24,7 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean
     agent?: 'claude'  // Mobi 当前仅支持 Claude
     model?: string
-    effort?: string       // reasoning effort (low | medium | high)
+    effort?: EffortLevel  // reasoning effort (low | medium | high | xhigh)
     yolo?: boolean
     token?: string
     sessionType?: 'simple' | 'worktree'

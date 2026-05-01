@@ -353,7 +353,7 @@ export async function startRunner(): Promise<void> {
         if (options.model) {
           args.push('--model', options.model);
         }
-        if (effort) {
+        if (effort !== undefined) {
           args.push('--effort', effort);
         }
         if (yolo) {

@@ -112,6 +112,9 @@ const HoverSelect = styled(Select)<{
 
 // 缩小 dropdown 弹出层的 option 字体
 const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'
+const COMPACT_DROPDOWN_STYLE = (
+    <style>{`.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }`}</style>
+)
 
 /**
  * 聊天输入组件
@@ -562,7 +565,7 @@ export function ChatComposer(props: ChatComposerProps) {
     return (
         <div style={{ padding: '0 12px 12px' }}>
             {/* 缩小 Select dropdown option 字体 */}
-            <style>{`.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }`}</style>
+            {COMPACT_DROPDOWN_STYLE}
             {/* 信息面板：权限请求、任务列表等 */}
             <ComposerInfoPanel
                 sessionId={sessionId}
