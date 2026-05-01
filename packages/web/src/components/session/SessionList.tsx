@@ -30,6 +30,7 @@ import {
     MoreOutlined,
 } from '@ant-design/icons'
 import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
+import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
@@ -127,11 +128,25 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
             queryKey: queryKeys.groupSessions(group.key),
             queryFn: async () => {
                 const res = await api.sessionGroups.getSessions(group.key, undefined, 100)
-                return { sessions: res.data.sessions as Session[], groupKey: group.key }
+
+                // upsert 到全局 sessions 缓存
+                queryClient.setQueryData<Session[]>(queryKeys.sessions, (old) => {
+                    const sessionMap = new Map<string, Session>(old?.map(s => [s.id, s]))
+                    for (const s of res.data.sessions) {
+                        const existing = sessionMap.get(s.id)
+                        sessionMap.set(s.id, existing ? { ...existing, ...s } : s)
+                    }
+                    return Array.from(sessionMap.values())
+                })
+
+                return { sessionIds: res.data.sessions.map(s => s.id), groupKey: group.key }
             },
             enabled: !!authToken && !!group.key,
         })),
     })
+
+    // 从全局 sessions 缓存获取完整数据
+    const { data: allSessions } = useSessions()
 
     // 使缓存失效
     const invalidateAll = useCallback(async (sessionId: string) => {
@@ -169,10 +184,13 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
             const query = groupQueries[i]
             if (!query.data) continue
 
-            const { sessions, groupKey } = query.data
+            const { sessionIds, groupKey } = query.data
             const group = groups[i]
 
-            for (const session of sessions) {
+            for (const sessionId of sessionIds) {
+                const session = allSessions?.find(s => s.id === sessionId)
+                if (!session) continue
+
                 const isRenaming = renamingSessionId === session.id
                 result.push({
                     key: session.id,
@@ -215,7 +233,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         }
 
         return result
-    }, [groupQueries, groups, renamingSessionId, renameValue, setRenameValue, handleRenameConfirm, cancelRename, isMobile, setActionSheetSessionId])
+    }, [groupQueries, groups, allSessions, renamingSessionId, renameValue, setRenameValue, handleRenameConfirm, cancelRename, isMobile, setActionSheetSessionId])
 
     // 默认展开有活跃会话的分组
     const defaultExpandedKeys = useMemo(() => {
@@ -230,13 +248,8 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
 
     // 查找 session 数据
     const findSession = useCallback((sessionId: string): Session | undefined => {
-        for (const query of groupQueries) {
-            if (!query.data) continue
-            const found = query.data.sessions.find(s => s.id === sessionId)
-            if (found) return found
-        }
-        return undefined
-    }, [groupQueries])
+        return allSessions?.find(s => s.id === sessionId)
+    }, [allSessions])
 
     // 从 session metadata 中提取显示名称
     const getSessionName = useCallback((session: Session) => {
