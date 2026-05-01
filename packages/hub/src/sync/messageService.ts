@@ -20,6 +20,11 @@ import type { Store } from '../store'
 import { EventPublisher } from './eventPublisher'
 
 export class MessageService {
+    /** StoredMessage → DecryptedMessage 统一映射 */
+    private static toDecrypted(message: { id: string; seq: number; localId: string | null; content: unknown; createdAt: number }): DecryptedMessage {
+        return { id: message.id, seq: message.seq, localId: message.localId, content: message.content, createdAt: message.createdAt }
+    }
+
     constructor(
         private readonly store: Store,
         private readonly io: Server,
@@ -37,13 +42,7 @@ export class MessageService {
         }
     } {
         const stored = this.store.messages.getMessages(sessionId, options.limit, options.beforeSeq ?? undefined, true)
-        const messages: DecryptedMessage[] = stored.map((message) => ({
-            id: message.id,
-            seq: message.seq,
-            localId: message.localId,
-            content: message.content,
-            createdAt: message.createdAt
-        }))
+        const messages: DecryptedMessage[] = stored.map(MessageService.toDecrypted)
 
         let oldestSeq: number | null = null
         for (const message of messages) {
@@ -70,24 +69,12 @@ export class MessageService {
 
     getMessagesAfter(sessionId: string, options: { afterSeq: number; limit: number }): DecryptedMessage[] {
         const stored = this.store.messages.getMessagesAfter(sessionId, options.afterSeq, options.limit)
-        return stored.map((message) => ({
-            id: message.id,
-            seq: message.seq,
-            localId: message.localId,
-            content: message.content,
-            createdAt: message.createdAt
-        }))
+        return stored.map(MessageService.toDecrypted)
     }
 
     getSidechainMessages(sessionId: string, parentToolUseId: string): DecryptedMessage[] {
         const stored = this.store.messages.getSidechainMessages(sessionId, parentToolUseId)
-        return stored.map((message) => ({
-            id: message.id,
-            seq: message.seq,
-            localId: message.localId,
-            content: message.content,
-            createdAt: message.createdAt,
-        }))
+        return stored.map(MessageService.toDecrypted)
     }
 
     async sendMessage(

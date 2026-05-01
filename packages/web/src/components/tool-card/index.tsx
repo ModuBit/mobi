@@ -523,12 +523,16 @@ function ToolCardInner(props: ToolCardProps) {
 
                     // Agent 工具：展示 Prompt 和 Result
                     if (isAgentToolCard) {
+                        const agentPrompt = isObject(props.block.tool.input) && typeof props.block.tool.input.prompt === 'string'
+                            ? props.block.tool.input.prompt : null
                         return (
                             <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
-                                <div>
-                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>Prompt</div>
-                                    {renderAgentInput(props.block, ResultToolView, props.metadata)}
-                                </div>
+                                {agentPrompt ? (
+                                    <div>
+                                        <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>Prompt</div>
+                                        <Markdown content={agentPrompt} />
+                                    </div>
+                                ) : null}
                                 <div>
                                     <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
                                     <ResultToolView block={props.block} metadata={props.metadata} />

@@ -56,6 +56,12 @@ export function getAgentTitle(input: unknown, fallback = 'Agent'): string {
     return fallback
 }
 
+/** Agent 工具 subtitle：截断 prompt */
+const agentSubtitle = (opts: ToolOpts) => {
+    const prompt = getInputStringAny(opts.input, ['prompt'])
+    return prompt ? truncate(prompt, 120) : null
+}
+
 /** 终端工具名称列表 */
 export const TERMINAL_TOOL_NAMES = ['Bash', 'shell_command'] as const
 
@@ -183,19 +189,13 @@ export const knownTools: Record<string, {
             if (name && teamName) return `Agent: ${name}`
             return getAgentTitle(opts.input, 'Task')
         },
-        subtitle: (opts) => {
-            const prompt = getInputStringAny(opts.input, ['prompt'])
-            return prompt ? truncate(prompt, 120) : null
-        },
+        subtitle: agentSubtitle,
         minimal: false
     },
     Agent: {
         icon: () => <RocketOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => getAgentTitle(opts.input),
-        subtitle: (opts) => {
-            const prompt = getInputStringAny(opts.input, ['prompt'])
-            return prompt ? truncate(prompt, 120) : null
-        },
+        subtitle: agentSubtitle,
         minimal: false
     },
     TeamCreate: {

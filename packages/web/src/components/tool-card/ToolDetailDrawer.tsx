@@ -152,8 +152,6 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
     }
 
     // 标题栏
-    const agentTitleOverride = isAgentTool(tool.name) ? getAgentTitle(tool.input) : null
-    const drawerTitle = agentTitleOverride ?? presentation.title
     const titleContent = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: token.colorTextSecondary }}>
@@ -164,7 +162,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
                     <FilePathText path={presentation.title} strong style={{ fontSize: 14 }} />
                 ) : (
                     <Text strong style={{ fontSize: 14, wordBreak: 'break-word' }}>
-                        {drawerTitle}
+                        {isAgentTool(tool.name) ? getAgentTitle(tool.input) : presentation.title}
                     </Text>
                 )}
                 {truncatedSubtitle ? (

@@ -128,15 +128,23 @@ export function getMessages(
     excludeSidechain: boolean = false
 ): StoredMessage[] {
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(200, limit)) : 200
+    const hasBefore = beforeSeq !== undefined && beforeSeq !== null && Number.isFinite(beforeSeq)
 
-    // 参数化查询，避免 SQL 拼接
-    const rows = (beforeSeq !== undefined && beforeSeq !== null && Number.isFinite(beforeSeq))
-        ? excludeSidechain
-            ? db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
-            : db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
-        : excludeSidechain
-            ? db.prepare('SELECT * FROM messages WHERE session_id = ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
-            : db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
+    let sql: string
+    let rows: DbMessageRow[]
+    if (hasBefore && excludeSidechain) {
+        sql = 'SELECT * FROM messages WHERE session_id = ? AND seq < ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?'
+        rows = db.prepare(sql).all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
+    } else if (hasBefore) {
+        sql = 'SELECT * FROM messages WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?'
+        rows = db.prepare(sql).all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
+    } else if (excludeSidechain) {
+        sql = 'SELECT * FROM messages WHERE session_id = ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?'
+        rows = db.prepare(sql).all(sessionId, safeLimit) as DbMessageRow[]
+    } else {
+        sql = 'SELECT * FROM messages WHERE session_id = ? ORDER BY seq DESC LIMIT ?'
+        rows = db.prepare(sql).all(sessionId, safeLimit) as DbMessageRow[]
+    }
 
     return rows.reverse().map(toStoredMessage)
 }

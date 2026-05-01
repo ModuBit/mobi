@@ -129,7 +129,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         }
         scrollBox.addEventListener('scroll', handleScroll, { passive: true })
         return () => scrollBox.removeEventListener('scroll', handleScroll)
-    }, [childrenBlocks.length])
+    }, [])
 
     const handleScrollToBottom = useCallback(() => {
         scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
