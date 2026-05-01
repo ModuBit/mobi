@@ -44,15 +44,12 @@ function upsertMessageCache(
  * 使用 setQueryData 直接更新 session 缓存
  * 避免因 session-updated 心跳事件触发不必要的 API 请求
  */
-function applyRuntimeStatePatch<T extends { runtimeState?: Record<string, unknown> | null }>(
-    obj: T,
+function buildRuntimeStateUpdate(
+    oldRuntime: Record<string, unknown> | null | undefined,
     patch: Record<string, unknown> | null,
-): T {
-    if (!patch) return obj
-    return {
-        ...obj,
-        runtimeState: { ...obj.runtimeState, ...patch },
-    } as T
+): { runtimeState: Record<string, unknown> } | Record<string, never> {
+    if (!patch) return {}
+    return { runtimeState: { ...oldRuntime, ...patch } }
 }
 
 function hasSessionChanges(
@@ -109,7 +106,7 @@ function patchSessionCache(
         return {
             ...old,
             ...patch,
-            ...applyRuntimeStatePatch(old, runtimeStatePatch),
+            ...buildRuntimeStateUpdate(old.runtimeState, runtimeStatePatch),
         }
     })
 
@@ -125,7 +122,7 @@ function patchSessionCache(
         updated[idx] = {
             ...target,
             ...patch,
-            ...applyRuntimeStatePatch(target, runtimeStatePatch),
+            ...buildRuntimeStateUpdate(target.runtimeState, runtimeStatePatch),
         }
         return updated
     })

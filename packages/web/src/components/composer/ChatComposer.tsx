@@ -501,23 +501,17 @@ export function ChatComposer(props: ChatComposerProps) {
         }
     }, [text, running, onAbort, abortPending, slashOpen, slashCommands, slashActiveIndex, handleSlashSelect, suggestionOpen, fileEntries, activeIndex, handleItemSelect])
 
-    const shouldRefocusRef = useRef(false)
+    const needsRefocusRef = useRef(false)
 
-    const refocusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-
-    // 发送后重新聚焦输入框
+    // disabled 结束后恢复焦点（发送 mutation 完成时 disabled 从 true 变回 false）
     useEffect(() => {
-        return () => clearTimeout(refocusTimerRef.current)
-    }, [])
-
-    useEffect(() => {
-        if (shouldRefocusRef.current) {
-            shouldRefocusRef.current = false
-            refocusTimerRef.current = setTimeout(() => {
+        if (!controlsDisabled && needsRefocusRef.current) {
+            needsRefocusRef.current = false
+            requestAnimationFrame(() => {
                 getTextarea(wrapperRef.current)?.focus()
-            }, 200)
+            })
         }
-    })
+    }, [controlsDisabled])
 
     const handleSubmit = useCallback((content: string) => {
         if (!canSend) return
@@ -526,7 +520,7 @@ export function ChatComposer(props: ChatComposerProps) {
         setText('')
         setAttachments([])
         setActiveCommand(null)
-        shouldRefocusRef.current = true
+        needsRefocusRef.current = true
     }, [canSend, onSend, suggestionOpen, slashOpen])
 
     const handleAttach = useCallback(() => {
