@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { PermissionMode, SDKMetadata } from '@mobi/shared/types'
+import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
@@ -116,7 +116,7 @@ export class RpcGateway {
         config: {
             permissionMode?: PermissionMode
             model?: string | null
-            effort?: string
+            effort?: EffortLevel
         }
     ): Promise<unknown> {
         return await this.sessionRpc(sessionId, 'set-session-config', config)

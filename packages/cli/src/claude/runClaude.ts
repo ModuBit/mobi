@@ -232,8 +232,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 promises.push(control.setModel(currentModel ?? undefined));
             }
             if (effortChanged) {
-                // effort 通过 applyFlagSettings 动态修改
-                // effort 依赖 adaptive thinking（SDK thinking 默认为 { type: 'adaptive' }）
+                // effort 不在 SDK Query 构造函数选项中，运行时只能通过 applyFlagSettings 修改
                 promises.push(control.applyFlagSettings({ effortLevel: currentEffort }));
             }
             Promise.all(promises).catch(err => logger.debug(`[loop] dynamic config apply failed: ${err}`));

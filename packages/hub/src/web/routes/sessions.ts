@@ -114,10 +114,11 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const namespace = c.get('namespace')
         const result = await engine.resumeSession(sessionResult.sessionId, namespace)
         if (result.type === 'error') {
-            const status = result.code === 'no_machine_online' ? 503
-                : result.code === 'access_denied' ? 403
-                    : result.code === 'session_not_found' ? 404
-                        : 500
+            const status: 200 | 401 | 403 | 404 | 500 | 503 =
+                result.code === 'no_machine_online' ? 503
+                    : result.code === 'access_denied' ? 403
+                        : result.code === 'session_not_found' ? 404
+                            : 500
             return c.json({ error: result.message, code: result.code }, status)
         }
 

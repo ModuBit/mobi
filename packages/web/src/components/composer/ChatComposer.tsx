@@ -21,7 +21,7 @@ import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { AgentState, EffortLevel, PermissionMode, Session } from '@mobi/shared'
-import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
+import { getPermissionModeOptionsForFlavor, getPermissionModeTone, getEffortOptions } from '@mobi/shared'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
@@ -115,6 +115,20 @@ const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'
 const COMPACT_DROPDOWN_STYLE = (
     <style>{`.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }`}</style>
 )
+
+// 预配置的紧凑 Select，复用共享样式属性
+function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>, 'size' | 'variant' | 'popupMatchSelectWidth' | '$compact'>) {
+    return (
+        <HoverSelect
+            {...props}
+            $compact
+            size="small"
+            variant="borderless"
+            popupMatchSelectWidth={false}
+            popupClassName={COMPACT_DROPDOWN_CLASS}
+        />
+    )
+}
 
 /**
  * 聊天输入组件
@@ -229,13 +243,7 @@ export function ChatComposer(props: ChatComposerProps) {
         }))
     }, [sdkMetadata?.models])
 
-    const effortSelectOptions = useMemo(
-        () => EFFORT_LEVELS.map(e => ({
-            value: e,
-            label: EFFORT_LABELS[e],
-        })),
-        []
-    )
+    const effortSelectOptions = useMemo(() => getEffortOptions(), [])
 
     const permissionSelectOptions = useMemo(
         () => permissionModeOptions.map(opt => {
@@ -634,18 +642,13 @@ export function ChatComposer(props: ChatComposerProps) {
                                 ...(showSettingsButton ? [{
                                     key: 'permission',
                                     render: () => (
-                                        <HoverSelect
+                                        <CompactHoverSelect
                                             $token={token}
-                                            $compact
-                                            size="small"
-                                            variant="borderless"
                                             prefix={<SafetyOutlined style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
                                             value={permissionMode ?? 'default'}
                                             onChange={v => onPermissionModeChange?.(v as PermissionMode)}
                                             disabled={controlsDisabled || showLocalModeCover}
                                             options={permissionSelectOptions}
-                                            popupMatchSelectWidth={false}
-                                            popupClassName={COMPACT_DROPDOWN_CLASS}
                                             style={{ color: permissionModeColor }}
                                         />
                                     ),
@@ -654,11 +657,8 @@ export function ChatComposer(props: ChatComposerProps) {
                                 ...(onModelChange ? [{
                                     key: 'model',
                                     render: () => (
-                                        <HoverSelect
+                                        <CompactHoverSelect
                                             $token={token}
-                                            $compact
-                                            size="small"
-                                            variant="borderless"
                                             prefix={<RobotOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
                                             value={model ?? 'auto'}
                                             onChange={v => onModelChange(v as string | null)}
@@ -681,8 +681,6 @@ export function ChatComposer(props: ChatComposerProps) {
                                                     </div>
                                                 )
                                             }}
-                                            popupMatchSelectWidth={false}
-                                            popupClassName={COMPACT_DROPDOWN_CLASS}
                                         />
                                     ),
                                 }] : []),
@@ -690,18 +688,13 @@ export function ChatComposer(props: ChatComposerProps) {
                                 ...(onEffortChange ? [{
                                     key: 'effort',
                                     render: () => (
-                                        <HoverSelect
+                                        <CompactHoverSelect
                                             $token={token}
-                                            $compact
-                                            size="small"
-                                            variant="borderless"
                                             prefix={<ThunderboltOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
                                             value={effort}
                                             onChange={v => onEffortChange(v as EffortLevel)}
                                             disabled={controlsDisabled || showLocalModeCover}
                                             options={effortSelectOptions}
-                                            popupMatchSelectWidth={false}
-                                            popupClassName={COMPACT_DROPDOWN_CLASS}
                                         />
                                     ),
                                 }] : []),

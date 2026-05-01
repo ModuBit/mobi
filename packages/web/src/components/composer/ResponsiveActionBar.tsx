@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
 import { Button, Dropdown, Divider, theme as antTheme } from 'antd'
 import { MoreOutlined } from '@ant-design/icons'
 import type { ReactNode } from 'react'
@@ -28,7 +28,6 @@ export interface ActionItem {
 
 export interface ResponsiveActionBarProps {
   items: ActionItem[]
-  prefix?: ReactNode
   suffix?: ReactNode
   gap?: number
 }
@@ -52,7 +51,7 @@ const DropdownItem = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['
  * 先将所有项渲染到隐藏测量层获取实际 DOM 宽度，再根据容器宽度决定可见项
  */
 export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
-  const { items, prefix, suffix, gap = 4 } = props
+  const { items, suffix, gap = 4 } = props
 
   const containerRef = useRef<HTMLDivElement>(null)
   const suffixRef = useRef<HTMLDivElement>(null)
@@ -78,8 +77,21 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
     return () => observer.disconnect()
   }, [])
 
-  // 测量所有 item 的实际宽度
-  useEffect(() => {
+  const lastKeysRef = useRef('')
+
+  // 测量所有 item 的实际宽度，并清理已移除 item 的 ref
+  // 使用 useLayoutEffect 无依赖数组，通过 key 列表追踪避免 parent 重建数组导致的无效测量
+  useLayoutEffect(() => {
+    const keys = items.map(i => i.key).join(',')
+    // key 列表未变且所有 item 都已测量 → 跳过（parent 重建数组不会触发重复测量）
+    if (keys === lastKeysRef.current && measuredWidths.size === items.length) return
+    lastKeysRef.current = keys
+
+    const validKeys = new Set(items.map(i => i.key))
+    for (const key of measureRefs.current.keys()) {
+      if (!validKeys.has(key)) measureRefs.current.delete(key)
+    }
+
     const map = new Map<string, number>()
     let changed = false
     for (const item of items) {
@@ -91,8 +103,7 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
       }
     }
     if (changed) setMeasuredWidths(map)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items])
+  })
 
   const suffixWidth = suffixRef.current?.getBoundingClientRect().width ?? 0
 

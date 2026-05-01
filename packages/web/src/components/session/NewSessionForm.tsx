@@ -41,7 +41,7 @@ import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirect
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from '@/domain/session/types'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
-import { EFFORT_LEVELS, EFFORT_LABELS, type EffortLevel } from '@mobi/shared'
+import { getEffortOptions, type EffortLevel } from '@mobi/shared'
 import {
     loadPreferredAgent,
     loadPreferredEffort,
@@ -369,10 +369,7 @@ export function NewSession(props: NewSessionProps) {
                     <Select
                         value={effort}
                         onChange={setEffort}
-                        options={EFFORT_LEVELS.map(e => ({
-                            value: e,
-                            label: EFFORT_LABELS[e],
-                        }))}
+                        options={getEffortOptions()}
                         style={{ width: '100%' }}
                         disabled={isFormDisabled}
                     />

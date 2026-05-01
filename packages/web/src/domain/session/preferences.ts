@@ -23,30 +23,38 @@ const EFFORT_STORAGE_KEY = 'mobi:newSession:effort'
 
 const VALID_AGENTS: AgentType[] = ['claude', 'codex']
 
-/**
- * 加载首选 Agent
- */
-export function loadPreferredAgent(): AgentType {
+function loadPreference<T extends string>(key: string, validate: (v: string) => v is T, fallback: T): T {
     try {
-        const stored = localStorage.getItem(AGENT_STORAGE_KEY)
-        if (stored && VALID_AGENTS.includes(stored as AgentType)) {
-            return stored as AgentType
+        const stored = localStorage.getItem(key)
+        if (stored && validate(stored)) {
+            return stored
         }
     } catch {
         // 忽略存储错误
     }
-    return 'claude'
+    return fallback
+}
+
+function savePreference(key: string, value: string): void {
+    try {
+        localStorage.setItem(key, value)
+    } catch {
+        // 忽略存储错误
+    }
+}
+
+/**
+ * 加载首选 Agent
+ */
+export function loadPreferredAgent(): AgentType {
+    return loadPreference(AGENT_STORAGE_KEY, (v): v is AgentType => (VALID_AGENTS as readonly string[]).includes(v), 'claude')
 }
 
 /**
  * 保存首选 Agent
  */
 export function savePreferredAgent(agent: AgentType): void {
-    try {
-        localStorage.setItem(AGENT_STORAGE_KEY, agent)
-    } catch {
-        // 忽略存储错误
-    }
+    savePreference(AGENT_STORAGE_KEY, agent)
 }
 
 /**
@@ -64,31 +72,19 @@ export function loadPreferredYoloMode(): boolean {
  * 保存 YOLO 模式偏好
  */
 export function savePreferredYoloMode(enabled: boolean): void {
-    try {
-        localStorage.setItem(YOLO_STORAGE_KEY, enabled ? 'true' : 'false')
-    } catch {
-        // 忽略存储错误
-    }
+    savePreference(YOLO_STORAGE_KEY, enabled ? 'true' : 'false')
 }
 
 /**
  * 加载首选 Effort
  */
 export function loadPreferredEffort(): EffortLevel {
-    try {
-        const stored = localStorage.getItem(EFFORT_STORAGE_KEY)
-        if (stored && EFFORT_LEVELS.includes(stored as EffortLevel)) {
-            return stored as EffortLevel
-        }
-    } catch { /* noop */ }
-    return 'medium'
+    return loadPreference(EFFORT_STORAGE_KEY, (v): v is EffortLevel => EFFORT_LEVELS.includes(v as EffortLevel), 'medium')
 }
 
 /**
  * 保存首选 Effort
  */
 export function savePreferredEffort(effort: EffortLevel): void {
-    try {
-        localStorage.setItem(EFFORT_STORAGE_KEY, effort)
-    } catch { /* noop */ }
+    savePreference(EFFORT_STORAGE_KEY, effort)
 }

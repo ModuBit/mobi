@@ -254,34 +254,17 @@ export class SessionCache {
             session.permissionMode = payload.permissionMode
         }
         if (payload.model !== undefined) {
-            const currentModel = session.runtimeState?.model
-            if (payload.model !== currentModel) {
-                // 更新 runtimeState 中的 model
-                const newRuntimeState = {
-                    ...session.runtimeState,
-                    model: payload.model
-                }
-                this.store.sessions.setRuntimeState(payload.sid, newRuntimeState, t, session.namespace)
-                session.runtimeState = newRuntimeState
-            }
+            this.updateRuntimeStateField(session, payload.sid, 'model', payload.model, t, session.namespace)
         }
         if (payload.effort !== undefined) {
-            const currentEffort = session.runtimeState?.effort
-            if (payload.effort !== currentEffort) {
-                const newRuntimeState = {
-                    ...session.runtimeState,
-                    effort: payload.effort
-                }
-                this.store.sessions.setRuntimeState(payload.sid, newRuntimeState, t, session.namespace)
-                session.runtimeState = newRuntimeState
-            }
+            this.updateRuntimeStateField(session, payload.sid, 'effort', payload.effort, t, session.namespace)
         }
 
         const now = Date.now()
         const lastBroadcastAt = this.lastBroadcastAtBySessionId.get(session.id) ?? 0
         const modeChanged = previousPermissionMode !== session.permissionMode
             || previousModel !== session.runtimeState?.model
-            || session.runtimeState?.effort !== previousEffort
+            || previousEffort !== session.runtimeState?.effort
             || previousMode !== session.mode
         const shouldBroadcast = (!wasActive && session.active)
             || (wasRunning !== session.running)
@@ -304,6 +287,24 @@ export class SessionCache {
                 }
             })
         }
+    }
+
+    private updateRuntimeStateField<K extends keyof RuntimeState>(
+        session: Session,
+        sessionId: string,
+        field: K,
+        value: RuntimeState[K],
+        timestamp: number,
+        namespace: string
+    ): void {
+        const current = session.runtimeState?.[field]
+        if (value === current) return
+        const newRuntimeState = { ...session.runtimeState, [field]: value }
+        const updated = this.store.sessions.setRuntimeState(sessionId, newRuntimeState, timestamp, namespace)
+        if (!updated) {
+            throw new Error(`Failed to update session ${String(field)}`)
+        }
+        session.runtimeState = newRuntimeState
     }
 
     handleSessionEnd(payload: { sid: string; time: number }): void {
@@ -345,43 +346,10 @@ export class SessionCache {
             session.permissionMode = config.permissionMode
         }
         if (config.model !== undefined) {
-            const currentModel = session.runtimeState?.model
-            if (config.model !== currentModel) {
-                // 更新 runtimeState 中的 model
-                const newRuntimeState = {
-                    ...session.runtimeState,
-                    model: config.model
-                }
-                const updated = this.store.sessions.setRuntimeState(
-                    sessionId,
-                    newRuntimeState,
-                    Date.now(),
-                    session.namespace
-                )
-                if (!updated) {
-                    throw new Error('Failed to update session model')
-                }
-                session.runtimeState = newRuntimeState
-            }
+            this.updateRuntimeStateField(session, sessionId, 'model', config.model, Date.now(), session.namespace)
         }
         if (config.effort !== undefined) {
-            const currentEffort = session.runtimeState?.effort
-            if (config.effort !== currentEffort) {
-                const newRuntimeState = {
-                    ...session.runtimeState,
-                    effort: config.effort
-                }
-                const updated = this.store.sessions.setRuntimeState(
-                    sessionId,
-                    newRuntimeState,
-                    Date.now(),
-                    session.namespace
-                )
-                if (!updated) {
-                    throw new Error('Failed to update session effort')
-                }
-                session.runtimeState = newRuntimeState
-            }
+            this.updateRuntimeStateField(session, sessionId, 'effort', config.effort, Date.now(), session.namespace)
         }
 
         this.publisher.emit({ type: 'session-updated', sessionId, data: session })

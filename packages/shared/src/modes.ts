@@ -118,3 +118,7 @@ export const EFFORT_LABELS: Record<EffortLevel, string> = {
     high: 'High',
     xhigh: 'X-High',
 }
+
+export function getEffortOptions(): Array<{ value: EffortLevel; label: string }> {
+    return EFFORT_LEVELS.map(e => ({ value: e, label: EFFORT_LABELS[e] }))
+}
