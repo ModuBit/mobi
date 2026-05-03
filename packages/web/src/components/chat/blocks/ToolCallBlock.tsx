@@ -29,6 +29,8 @@ import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { FilePathText } from '@/components/ui/FilePathText'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+import { Markdown } from '@/components/ui/Markdown'
+import { getAgentPrompt } from '@/components/tool-card/index'
 
 /** 预览卡片最大高度 */
 const PREVIEW_MAX_HEIGHT = {
@@ -108,9 +110,27 @@ function ToolCallPreviewContent({
 
     // 输入预览：有权限请求时显示
     // 结果预览：非运行状态且有结果时显示
-    const showPreview = showInput || (tool.state !== 'running' && tool.result !== undefined)
+    // Agent 工具：运行中显示 prompt，完成后显示 result
+    const isAgent = isAgentTool(tool.name)
+    const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
+    const showPreview = showInput || (tool.state !== 'running' && tool.result !== undefined) || agentRunning
 
-    if (!showPreview || !ViewComponent) return null
+    if (!showPreview) return null
+
+    // Agent 工具运行中：直接渲染 prompt
+    if (agentRunning) {
+        const prompt = getAgentPrompt(tool.input)
+        if (!prompt) return null
+        return (
+            <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                <OverflowContainer maxHeight={maxHeight} onClickExpand={onViewDetail}>
+                    <Markdown content={prompt} />
+                </OverflowContainer>
+            </div>
+        )
+    }
+
+    if (!ViewComponent) return null
 
     return (
         <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
@@ -144,8 +164,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         metadata
     })
 
-    // Agent 工具和最小化工具默认收起，其他默认展开
-    const defaultExpanded = !isAgentTool(tool.name) && !toolPresentation.minimal
+    // 默认展开白名单，其余收起
+    const defaultExpanded = isAgentTool(tool.name)
+        || ['Edit', 'MultiEdit', 'Write', 'Bash', 'shell_command', 'NotebookEdit'].includes(tool.name)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const [drawerOpen, setDrawerOpen] = useState(false)
     const handleViewDetail = useCallback(() => {
@@ -174,7 +195,12 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         <>
             <Think
                 className="tool-call-think"
-                icon={getToolIcon(tool.name, { id: block.id, state: tool.state })}
+                icon={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {getToolIcon(tool.name, { id: block.id, state: tool.state })}
+                        <StatusStateIcon state={tool.state} />
+                    </span>
+                }
                 title={
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                         {toolPresentation.isFilePath ? (
@@ -189,9 +215,6 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                                 {tool.description.length > 60 ? `${tool.description.slice(0, 60)}...` : tool.description}
                             </span>
                         )}
-                        <span style={{ color: tool.state === 'completed' ? token.colorSuccess : tool.state === 'error' ? token.colorError : token.colorTextSecondary, display: 'inline-flex', alignItems: 'center', marginLeft: 'auto', flexShrink: 0 }}>
-                            <StatusStateIcon state={tool.state} />
-                        </span>
                     </div>
                 }
                 blink={isLoading}

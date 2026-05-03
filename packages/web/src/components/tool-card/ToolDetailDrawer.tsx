@@ -230,7 +230,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                             <div style={labelStyle}>{t('chat.tool.output')}</div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <StatusStateIcon state={tool.state} style={{ fontSize: 12 }} />
+                                <StatusStateIcon state={tool.state} />
                                 {statusText ? (
                                     <Text type="secondary" style={{ fontSize: 11 }}>{statusText}</Text>
                                 ) : null}

@@ -34,12 +34,7 @@ import {
     BulbOutlined,
     AppstoreOutlined,
     ToolOutlined,
-    CheckCircleOutlined,
-    CloseCircleOutlined,
-    PlayCircleOutlined,
-    LoadingOutlined,
 } from '@ant-design/icons'
-import { theme as antTheme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 
@@ -141,26 +136,27 @@ type StatusStateIconProps = {
     style?: CSSProperties
 }
 
+const STATUS_DOT_COLORS: Record<ToolCallState, string> = {
+    running: 'var(--ant-color-primary)',
+    pending: 'var(--ant-color-warning)',
+    completed: 'var(--ant-color-success)',
+    error: 'var(--ant-color-error)',
+}
+
 /**
- * 根据工具状态渲染对应的状态图标
- * - completed: 绿色勾选
- * - error: 红色叉号
- * - pending: 播放图标
- * - running: 旋转加载图标
+ * 状态小圆点：running/pending 时有呼吸动画
  */
 export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNode {
-    const { token } = antTheme.useToken()
-
-    const mergedStyle: CSSProperties = { ...ICON_STYLE, ...style }
-
-    switch (state) {
-        case 'completed':
-            return <CheckCircleOutlined style={{ ...mergedStyle, color: token.colorSuccess }} />
-        case 'error':
-            return <CloseCircleOutlined style={{ ...mergedStyle, color: token.colorError }} />
-        case 'pending':
-            return <PlayCircleOutlined style={{ ...mergedStyle, color: token.colorWarning }} />
-        case 'running':
-            return <LoadingOutlined style={{ ...mergedStyle, color: token.colorPrimary }} spin />
+    const isActive = state === 'running' || state === 'pending'
+    const dotStyle: CSSProperties = {
+        width: 6,
+        height: 6,
+        borderRadius: '50%',
+        background: STATUS_DOT_COLORS[state],
+        display: 'inline-block',
+        flexShrink: 0,
+        animation: isActive ? 'status-dot-breathe 1.5s ease-in-out infinite' : undefined,
+        ...style,
     }
+    return <span style={dotStyle} />
 }

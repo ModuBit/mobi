@@ -161,7 +161,7 @@ function formatTaskChildLabel(child: ToolCallBlock, metadata: SessionMetadataSum
 }
 
 /** 提取 Agent 工具的 prompt 文本 */
-function getAgentPrompt(input: unknown): string | null {
+export function getAgentPrompt(input: unknown): string | null {
     return isObject(input) && typeof input.prompt === 'string' ? input.prompt : null
 }
 
