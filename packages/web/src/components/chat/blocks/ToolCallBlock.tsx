@@ -39,6 +39,9 @@ const PREVIEW_MAX_HEIGHT = {
     TERMINAL: 160,
 } as const
 
+/** 默认展开的工具名 */
+const EXPANDED_TOOL_NAMES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
+
 /** 转换权限对象格式 */
 function convertPermission(perm: NonNullable<ChatToolCall['permission']>): ToolPermission {
     return {
@@ -164,9 +167,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         metadata
     })
 
-    // 默认展开白名单，其余收起
     const defaultExpanded = isAgentTool(tool.name)
-        || ['Edit', 'MultiEdit', 'Write', 'Bash', 'shell_command', 'NotebookEdit'].includes(tool.name)
+        || isTerminalTool(tool.name)
+        || EXPANDED_TOOL_NAMES.has(tool.name)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const [drawerOpen, setDrawerOpen] = useState(false)
     const handleViewDetail = useCallback(() => {

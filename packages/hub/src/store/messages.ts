@@ -42,8 +42,8 @@ function extractIsSidechain(content: unknown): boolean {
 
 /** 从 content 中提取 parentToolUseId */
 function extractParentToolUseId(content: unknown): string | null {
-    const c = content as { parentToolUseId?: string } | undefined
-    return c?.parentToolUseId ?? null
+    const c = content as { parentToolUseId?: string; content?: { data?: { parentToolUseId?: string } } } | undefined
+    return c?.parentToolUseId ?? c?.content?.data?.parentToolUseId ?? null
 }
 
 function toStoredMessage(row: DbMessageRow): StoredMessage {

@@ -165,13 +165,11 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
                         {isAgentTool(tool.name) ? getAgentTitle(tool.input) : presentation.title}
                     </Text>
                 )}
-                {truncatedSubtitle ? (
-                    <div>
-                        <Text type="secondary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {truncatedSubtitle}
-                        </Text>
-                    </div>
-                ) : null}
+                {!isAgentTool(tool.name) && truncatedSubtitle && (
+                    <Text type="secondary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {truncatedSubtitle}
+                    </Text>
+                )}
             </div>
         </div>
     )

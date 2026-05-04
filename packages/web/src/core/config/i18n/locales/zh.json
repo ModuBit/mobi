@@ -138,7 +138,8 @@
             "allow": "允许",
             "allowForSession": "本次会话允许",
             "allowAll": "允许所有",
-            "requestFailed": "请求失败"
+            "requestFailed": "请求失败",
+            "result": "结果"
         }
     },
     "files": {

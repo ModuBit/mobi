@@ -18,16 +18,46 @@ import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import { theme as antTheme, Button } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import { Bubble } from '@ant-design/x'
+import { Global, css } from '@emotion/react'
+import { useTranslation } from 'react-i18next'
 import { safeStringify } from '@mobi/shared'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ChatBlock, NormalizedMessage } from '@/domain/chat'
 import { normalizeDecryptedMessage, reduceChatBlocks } from '@/domain/chat'
 import { Markdown } from '@/components/ui/Markdown'
 import { renderChatBlock, type ChatBlockContext } from '@/components/chat/blocks'
-import { BUBBLE_ROLES } from '@/components/chat/ChatContainer'
+import { BUBBLE_ROLES } from '@/components/chat/bubbleRoles'
 import { useSidechainMessages } from '@/core/data/hooks/queries/useSidechainMessages'
+import { extractTextFromResult } from '@/components/tool-card/views/_results'
 
 const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
+
+/** Drawer 场景下覆盖全局 CSS 对 Bubble.List 的副作用 */
+const drawerBubbleStyles = css`
+    .drawer-chat-bubbles .ant-bubble-end:not(.ant-bubble-divider):not(.ant-bubble-system) {
+        padding-inline-start: 0 !important;
+    }
+    .drawer-chat-bubbles .ant-bubble-end .ant-bubble-content-borderless {
+        padding: 6px 10px !important;
+    }
+    .drawer-chat-bubbles .ant-bubble-start:not(.ant-bubble-divider):not(.ant-bubble-system) {
+        padding-inline-end: 0 !important;
+    }
+`
+
+/** Drawer 场景下的 Bubble.List role 配置 */
+const DRAWER_BUBBLE_ROLES = {
+    ...BUBBLE_ROLES,
+    user: {
+        placement: 'end' as const,
+        variant: 'borderless' as const,
+        styles: { content: { background: 'var(--ant-color-bg-text-hover)', padding: '6px 10px', borderRadius: 6 } },
+    },
+    divider: {
+        variant: 'borderless' as const,
+        styles: { content: { paddingBlock: 0, minHeight: 'auto' } },
+    },
+}
 
 /** Agent 工具的 Drawer 内容：BubbleList 渲染 sidechain 对话 */
 export function AgentDrawerContent({ block, metadata, sessionId }: {
@@ -36,6 +66,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
     sessionId?: string
 }) {
     const { token } = antTheme.useToken()
+    const { t } = useTranslation()
     const scrollRef = useRef<HTMLDivElement>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
 
@@ -45,7 +76,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
     // 实时会话 children 已有数据，历史会话从 API 补载
     const { data: sidechainMessages = [] } = useSidechainMessages(
         hasChildren ? null : (sessionId ?? null),
-        hasChildren ? null : block.id,
+        hasChildren ? null : tool.id,
     )
 
     const childrenBlocks = useMemo(() => {
@@ -55,6 +86,8 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         const normalized = sidechainMessages
             .map((msg) => normalizeDecryptedMessage(msg))
             .filter((m): m is NormalizedMessage => m !== null)
+            // 去掉 isSidechain 标记，让 traceMessages 将它们视为根消息处理
+            .map(m => ({ ...m, isSidechain: false as const }))
         const { blocks } = reduceChatBlocks(normalized, null)
         return blocks
     }, [hasChildren, block.children, sidechainMessages])
@@ -91,18 +124,18 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
             })
         }
 
-        // Result 分隔线
         items.push({
             key: '__result-divider__',
             role: 'divider',
-            content: 'Result',
+            content: (
+                <span style={{ fontSize: 11, color: token.colorTextTertiary, letterSpacing: 0.5 }}>
+                    {t('chat.tool.result')}
+                </span>
+            ),
         })
 
-        // Result bubble
         if (tool.result !== undefined && tool.result !== null) {
-            const resultText = typeof tool.result === 'string'
-                ? tool.result
-                : safeStringify(tool.result)
+            const resultText = extractTextFromResult(tool.result) ?? safeStringify(tool.result)
             items.push({
                 key: '__result__',
                 role: 'assistant',
@@ -112,7 +145,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         }
 
         return items
-    }, [childrenBlocks, tool.result, metadata])
+    }, [childrenBlocks, tool.result, metadata, token.colorTextTertiary])
 
     // 新消息到来时滚动到最新位置
     useEffect(() => {
@@ -137,10 +170,15 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
 
     return (
         <div style={{ position: 'relative', height: '100%' }}>
-            <div ref={scrollRef} style={{ height: '100%', overflow: 'auto' }}>
+            <Global styles={drawerBubbleStyles} />
+            <div ref={scrollRef} style={{ height: '100%', overflow: 'auto', padding: '0 8px' }}>
                 <Bubble.List
+                    className="drawer-chat-bubbles"
                     items={bubbleItems}
-                    role={BUBBLE_ROLES}
+                    role={DRAWER_BUBBLE_ROLES}
+                    styles={{
+                        bubble: { paddingBlock: '2px' },
+                    }}
                     style={{ height: '100%' }}
                 />
             </div>

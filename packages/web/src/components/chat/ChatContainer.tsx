@@ -51,21 +51,9 @@ const bubbleCopyStyles = css`
     }
 `
 
-// Bubble.List role 配置
-export const BUBBLE_ROLES = {
-    assistant: {
-        placement: 'start' as const,
-        variant: 'borderless' as const,
-    },
-    user: {
-        placement: 'end' as const,
-    },
-    system: {
-        variant: 'borderless' as const,
-        styles: { content: { paddingBlock: 0, minHeight: 'auto' } },
-    },
-    divider: {},
-}
+import { BUBBLE_ROLES } from './bubbleRoles'
+
+export { BUBBLE_ROLES }
 
 interface ChatContainerProps {
     sessionId: string

@@ -138,7 +138,8 @@
             "allow": "Allow",
             "allowForSession": "Allow for session",
             "allowAll": "Allow all",
-            "requestFailed": "Request failed"
+            "requestFailed": "Request failed",
+            "result": "Result"
         }
     },
     "files": {
