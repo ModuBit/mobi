@@ -48,6 +48,11 @@ const bubbleCopyStyles = css`
     }
 `
 
+/** column-reverse 布局下的滚动阈值 */
+const SCROLL_BOTTOM_VISIBLE_THRESHOLD = -20
+const HISTORY_PREFETCH_DISTANCE = 200
+const AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD = -50
+
 import { BUBBLE_ROLES } from './bubbleRoles'
 
 export { BUBBLE_ROLES }
@@ -74,6 +79,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const scrollBoxRef = useRef<HTMLElement | null>(null)
     const scrollTopBeforeFetch = useRef<number>(0)
+    const prevFetchingRef = useRef(isFetchingNextPage)
+    const prevShowRef = useRef(false)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
@@ -84,22 +91,21 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
 
     // 使用 reduceChatBlocks 处理消息（包含 CLI 输出合并）
-    const { blocks: rawBlocks, incompleteToolCallIds } = useMemo(() => {
-        // 先标准化消息，然后归约为聊天块
+    const { blocks: rawBlocks } = useMemo(() => {
         const normalized = messages
             .map(normalizeDecryptedMessage)
             .filter((m): m is Exclude<typeof m, null> => m !== null)
         return reduceChatBlocks(normalized, session?.agentState)
     }, [messages, session?.agentState])
 
-    // 保形渲染：当还有更多历史消息时，过滤掉不完整的 tool-call block
+    // 保形渲染：当还有更多历史消息时，过滤掉不完整的 tool-call block（state === 'running'）
     const chatBlocks = useMemo(() => {
         if (!hasNextPage) return rawBlocks
         return rawBlocks.filter((block) => {
             if (block.kind !== 'tool-call') return true
-            return !incompleteToolCallIds.has(block.id)
+            return block.tool.state !== 'running'
         })
-    }, [rawBlocks, hasNextPage, incompleteToolCallIds])
+    }, [rawBlocks, hasNextPage])
 
     // 缓存 Bubble.List 的实际滚动容器
     useEffect(() => {
@@ -108,50 +114,59 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         scrollBoxRef.current = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
     }, [chatBlocks.length])
 
-    // 监听滚动位置，column-reverse 布局下 scrollTop 为负值表示已滚到上方
+    // 用 ref 持有滚动监听所需的值，避免频繁 rebind
+    const hasNextPageRef = useRef(hasNextPage)
+    hasNextPageRef.current = hasNextPage
+    const isFetchingNextPageRef = useRef(isFetchingNextPage)
+    isFetchingNextPageRef.current = isFetchingNextPage
+    const fetchNextPageRef = useRef(fetchNextPage)
+    fetchNextPageRef.current = fetchNextPage
+
+    // 监听滚动位置
+    // column-reverse 布局下 scrollTop 为负值：0 = 底部，负方向 = 向上滚动
     useEffect(() => {
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
 
         const handleScroll = () => {
             const scrollTop = scrollBox.scrollTop
-            setShowScrollBottom(scrollTop < -20)
+
+            const shouldShow = scrollTop < SCROLL_BOTTOM_VISIBLE_THRESHOLD
+            if (shouldShow !== prevShowRef.current) {
+                prevShowRef.current = shouldShow
+                setShowScrollBottom(shouldShow)
+            }
 
             // 距离顶部 200px 时预加载历史消息
-            // column-reverse 布局下：scrollHeight + scrollTop - clientHeight 表示距离顶部的距离
-            const scrollHeight = scrollBox.scrollHeight
-            const clientHeight = scrollBox.clientHeight
-            const distanceToTop = scrollHeight + scrollTop - clientHeight
-            if (distanceToTop < 200 && hasNextPage && !isFetchingNextPage) {
+            // column-reverse 布局下：scrollHeight + scrollTop - clientHeight = 距离顶部的距离
+            const distanceToTop = scrollBox.scrollHeight + scrollTop - scrollBox.clientHeight
+            if (distanceToTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
                 scrollTopBeforeFetch.current = scrollTop
-                fetchNextPage()
+                fetchNextPageRef.current()
             }
         }
 
         scrollBox.addEventListener('scroll', handleScroll, { passive: true })
         return () => scrollBox.removeEventListener('scroll', handleScroll)
-    }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+    }, [])
 
-    // 加载历史消息时记录滚动位置
+    // 滚动位置保持 + 新消息自动滚动
     useEffect(() => {
-        if (isFetchingNextPage) {
-            scrollTopBeforeFetch.current = scrollBoxRef.current?.scrollTop ?? 0
-        }
-    }, [isFetchingNextPage])
+        const wasFetching = prevFetchingRef.current
+        prevFetchingRef.current = isFetchingNextPage
 
-    // 加载历史完成后恢复滚动位置
-    useEffect(() => {
-        if (!isFetchingNextPage && scrollBoxRef.current) {
+        // 加载历史完成后恢复滚动位置
+        if (!isFetchingNextPage && wasFetching && scrollBoxRef.current) {
             scrollBoxRef.current.scrollTop = scrollTopBeforeFetch.current
+            return
         }
-    }, [isFetchingNextPage])
 
-    // 新消息到达时自动滚动到底部（仅在用户已在底部附近时）
-    useEffect(() => {
-        const scrollBox = scrollBoxRef.current
-        if (!scrollBox || isFetchingNextPage) return
-        if (scrollBox.scrollTop > -50) {
-            scrollBox.scrollTo({ top: 0, behavior: 'smooth' })
+        // 新消息到达时自动滚动到底部（仅在用户已在底部附近时）
+        if (!isFetchingNextPage && !wasFetching) {
+            const scrollBox = scrollBoxRef.current
+            if (scrollBox && scrollBox.scrollTop > AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD) {
+                scrollBox.scrollTo({ top: 0, behavior: 'smooth' })
+            }
         }
     }, [chatBlocks.length, isFetchingNextPage])
 
@@ -160,10 +175,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         scrollBoxRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
     }, [])
 
-    // FIXME: 长列表性能优化 —— Bubble.List 没有虚拟滚动，消息量持续增长时 DOM 节点线性增加。
-    // 当实际使用中出现滚动卡顿时，考虑：1) 渲染窗口控制 2) 引入 rc-virtual-list 虚拟滚动。
-    // 详见 docs/pending.md #23。
-    const bubbleItems = useMemo(() => {
+    const decoratedItems = useMemo(() => {
         const baseItems = buildChatBubbleItems(
             chatBlocks,
             { metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending },
@@ -171,21 +183,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             { contextResetLabel: t('chat.contextReset') },
         )
 
-        // 加载历史消息时在列表顶部插入 Skeleton
-        const skeletonItems: BubbleItemBase[] = isFetchingNextPage
-            ? [{
-                key: '__loading-skeleton__',
-                role: 'system',
-                content: <Skeleton active avatar paragraph={{ rows: 2 }} />,
-            }]
-            : []
-
-        const items: Array<BubbleItemBase & {
-            header?: React.ReactNode
-            footer?: React.ReactNode
-            footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
-            classNames?: { root?: string }
-        }> = [...skeletonItems, ...baseItems].map(item => {
+        return baseItems.map(item => {
             const block = item.block
             const isUserText = block?.kind === 'user-text'
 
@@ -205,8 +203,28 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 footerPlacement: 'outer-end' as const,
             }
         })
+    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t])
 
-        // running 时在列表末尾追加 loading 气泡
+    // FIXME: 长列表性能优化 —— Bubble.List 没有虚拟滚动，消息量持续增长时 DOM 节点线性增加。
+    // 当实际使用中出现滚动卡顿时，考虑：1) 渲染窗口控制 2) 引入 rc-virtual-list 虚拟滚动。
+    // 详见 docs/pending.md #23。
+    const bubbleItems = useMemo(() => {
+        const items: Array<BubbleItemBase & {
+            header?: React.ReactNode
+            footer?: React.ReactNode
+            footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
+            classNames?: { root?: string }
+        }> = [
+            ...(isFetchingNextPage
+                ? [{
+                    key: '__loading-skeleton__',
+                    role: 'system' as const,
+                    content: <Skeleton active avatar paragraph={{ rows: 2 }} />,
+                }]
+                : []),
+            ...decoratedItems,
+        ]
+
         if (session?.running) {
             items.push({
                 key: '__loading__',
@@ -217,31 +235,25 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
 
         return items
-    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t, isFetchingNextPage])
+    }, [decoratedItems, isFetchingNextPage, session?.running, sessionId])
 
-    // 自动滚动到底部
-    // 发送消息
     const handleSend = (text: string) => {
         if (!text.trim()) return
         sendMutation.mutate(text)
     }
 
-    // 中断会话
     const handleAbort = async () => {
         await sessionActions.abortSession()
     }
 
-    // 退出会话
     const handleArchive = async () => {
         await sessionActions.archiveSession()
     }
 
-    // 权限模式变更
     const handlePermissionModeChange = async (mode: string) => {
         await sessionActions.setPermissionMode(mode)
     }
 
-    // 模型变更
     const handleModelChange = async (model: string | null) => {
         if (model) {
             await sessionActions.setModelMode(model)
@@ -252,7 +264,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         await sessionActions.setEffort(effort)
     }
 
-    // Agent 类型
     const agentFlavor = session?.metadata?.flavor ?? null
 
     if (messagesLoading) {
@@ -266,18 +277,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Global styles={bubbleCopyStyles} />
-            {/* 消息列表 */}
             <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (
                     <Empty description={t('chat.empty')} style={{ marginTop: 40 }} />
                 ) : (
-                    <>
-                        <Bubble.List
-                            items={bubbleItems}
-                            role={BUBBLE_ROLES}
-                            style={{ height: '100%' }}
-                        />
-                    </>
+                    <Bubble.List
+                        items={bubbleItems}
+                        role={BUBBLE_ROLES}
+                        style={{ height: '100%' }}
+                    />
                 )}
                 {showScrollBottom && (
                     <Button
@@ -300,7 +308,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 )}
             </div>
 
-            {/* Composer 输入组件 */}
             <ChatComposer
                 sessionId={sessionId}
                 disabled={sendMutation.isPending}
@@ -312,7 +319,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 running={session?.running ?? false}
                 agentState={session?.agentState}
                 metadata={metadata}
-                contextSize={undefined} // TODO: 从消息中计算上下文大小
+                contextSize={undefined}
                 agentFlavor={agentFlavor}
                 mode={session?.mode}
                 workingDir={session?.metadata?.path}
