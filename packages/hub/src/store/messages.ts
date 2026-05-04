@@ -166,9 +166,9 @@ export function getSidechainMessages(
     parentToolUseId: string
 ): StoredMessage[] {
     const rows = db.prepare(
-        'SELECT * FROM messages WHERE session_id = ? AND parent_tool_use_id = ? ORDER BY seq ASC'
+        'SELECT * FROM messages WHERE session_id = ? AND parent_tool_use_id = ? ORDER BY seq DESC LIMIT 200'
     ).all(sessionId, parentToolUseId) as DbMessageRow[]
-    return rows.map(toStoredMessage)
+    return rows.reverse().map(toStoredMessage)
 }
 
 export function getMaxSeq(db: Database, sessionId: string): number {
