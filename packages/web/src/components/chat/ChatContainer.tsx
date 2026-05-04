@@ -160,6 +160,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         scrollBoxRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
     }, [])
 
+    // FIXME: 长列表性能优化 —— Bubble.List 没有虚拟滚动，消息量持续增长时 DOM 节点线性增加。
+    // 当实际使用中出现滚动卡顿时，考虑：1) 渲染窗口控制 2) 引入 rc-virtual-list 虚拟滚动。
+    // 详见 docs/pending.md #23。
     const bubbleItems = useMemo(() => {
         const baseItems = buildChatBubbleItems(
             chatBlocks,

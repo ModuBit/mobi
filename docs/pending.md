@@ -452,3 +452,23 @@
 **优先级**：
 - 低优先级，当前会话内授权满足基本需求
 - 后续根据用户反馈决定是否实现
+
+---
+
+## 23. Web 端消息列表长列表性能优化
+
+**相关文件**：
+- `packages/web/src/components/chat/ChatContainer.tsx`
+- `packages/web/src/components/chat/buildBubbleItems.tsx`
+
+**现状**：
+- Ant Design X 的 `Bubble.List` 没有虚拟滚动，直接 `items.map()` 全量渲染
+- 消息量持续增长时 DOM 节点线性增加，滚动卡顿
+
+**优化方向**：
+- 方案 A：渲染窗口控制（超出视口范围的消息从 DOM 移除，保留在内存中）
+- 方案 B：引入 `rc-virtual-list` 虚拟滚动（需改造 Bubble.List）
+
+**触发条件**：
+- 实际使用中出现明显滚动卡顿时再实施
+- 代码中标记 FIXME 提醒
