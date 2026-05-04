@@ -73,6 +73,15 @@ export function calculateDiffStatsFromLines(diffLines: DiffLine[]): DiffStats {
     return { added, removed, unchanged }
 }
 
+/** 格式化行范围统计标签 */
+export function formatLineRangeStats(offset: number | null, lineCount: number): string | null {
+    if (lineCount <= 0) return null
+    if (offset !== null) {
+        return `L${offset + 1}-${offset + lineCount} · ${lineCount} lines`
+    }
+    return `${lineCount} lines`
+}
+
 /** 格式化 diff 统计信息 */
 export function formatDiffStats(stats: DiffStats, type: 'edit' | 'write'): string {
     const parts: string[] = []

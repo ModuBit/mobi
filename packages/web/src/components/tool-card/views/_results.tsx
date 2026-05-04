@@ -22,6 +22,7 @@ import { isObject, safeStringify } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { theme as antTheme, Typography } from 'antd'
 import { ChecklistList, extractTodoChecklist } from '@/components/tool-card/checklist'
+import { formatLineRangeStats } from '@/components/tool-card/views/lineNumberUtils'
 import { basename, resolveDisplayPath } from '@/core/utils/path'
 import { Markdown } from '@/components/ui/Markdown'
 import { DiffView } from '@/components/tool-card/views/DiffView'
@@ -261,21 +262,26 @@ const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
         return raw ? resolveDisplayPath(raw, props.metadata) : null
     }, [input, props.metadata])
 
+    const content = useMemo(() => {
+        if (result === undefined || result === null) return null
+        const file = extractReadFileContent(result)
+        return file ? file.content : extractTextFromResult(result)
+    }, [result])
+
+    const statsLabel = useMemo(() => {
+        if (!content) return null
+        const offset = isObject(input) && typeof input.offset === 'number' ? input.offset : null
+        const lineCount = content.split('\n').filter(l => l.trim().length > 0).length
+        return formatLineRangeStats(offset, lineCount)
+    }, [input, content])
+
     if (result === undefined || result === null) {
         return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
     }
 
-    const file = extractReadFileContent(result)
-    const content = file ? file.content : extractTextFromResult(result)
     if (!content) {
         return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
     }
-
-    const offset = isObject(input) && typeof input.offset === 'number' ? input.offset : null
-    const lines = content.split('\n').filter(l => l.trim().length > 0).length
-    const statsLabel = offset !== null
-        ? `L${offset + 1}-${offset + lines} · ${lines} lines`
-        : `${lines} lines`
 
     return (
         <ToolViewPanel

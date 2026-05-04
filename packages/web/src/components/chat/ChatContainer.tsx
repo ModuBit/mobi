@@ -123,15 +123,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             { contextResetLabel: t('chat.contextReset') },
         )
 
-        const blockById = new Map(chatBlocks.map(b => [b.id, b]))
-
         const items: Array<BubbleItemBase & {
             header?: React.ReactNode
             footer?: React.ReactNode
             footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
             classNames?: { root?: string }
         }> = baseItems.map(item => {
-            const block = blockById.get(item.key)
+            const block = item.block
             const isUserText = block?.kind === 'user-text'
 
             return {

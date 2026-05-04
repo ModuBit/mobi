@@ -32,6 +32,8 @@ export type BubbleItemBase = {
     content: React.ReactNode
     typing?: boolean
     variant?: 'borderless'
+    /** 关联的原始 ChatBlock（divider 项可能为 undefined） */
+    block?: ChatBlock
 }
 
 /**
@@ -63,6 +65,7 @@ export function buildChatBubbleItems(
                 key: block.id,
                 role: 'divider',
                 content: <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{options.contextResetLabel}</span>,
+                block,
             })
             continue
         }
@@ -102,6 +105,7 @@ export function buildChatBubbleItems(
             content,
             typing: isTyping,
             variant: (role === 'system' || role === 'assistant') ? 'borderless' : undefined,
+            block,
         })
     }
 

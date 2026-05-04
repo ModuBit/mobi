@@ -167,9 +167,7 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         metadata
     })
 
-    const defaultExpanded = isAgentTool(tool.name)
-        || isTerminalTool(tool.name)
-        || EXPANDED_TOOL_NAMES.has(tool.name)
+    const defaultExpanded = EXPANDED_TOOL_NAMES.has(tool.name)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const [drawerOpen, setDrawerOpen] = useState(false)
     const handleViewDetail = useCallback(() => {

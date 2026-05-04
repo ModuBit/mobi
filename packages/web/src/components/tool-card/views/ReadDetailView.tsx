@@ -20,7 +20,7 @@ import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { resolveDisplayPath } from '@/core/utils/path'
-import { calculateLineNumWidth, getMaxLineNum } from './lineNumberUtils'
+import { calculateLineNumWidth, getMaxLineNum, formatLineRangeStats } from './lineNumberUtils'
 import { ToolViewPanel } from './ToolViewPanel'
 
 const { useToken } = antTheme
@@ -72,14 +72,12 @@ export function ReadDetailView(props: ToolViewProps) {
     const maxLineNum = useMemo(() => getMaxLineNum(parsedLines), [parsedLines])
     const lineNumWidth = useMemo(() => calculateLineNumWidth(maxLineNum), [maxLineNum])
 
+    const lineCount = useMemo(() => parsedLines.filter(p => p !== null).length, [parsedLines])
+
     const statsLabel = useMemo(() => {
         const offset = isObject(input) && typeof input.offset === 'number' ? input.offset : null
-        const lineCount = parsedLines.filter(p => p !== null).length
-        if (offset !== null && lineCount > 0) {
-            return `L${offset + 1}-${offset + lineCount} · ${lineCount} lines`
-        }
-        return lineCount > 0 ? `${lineCount} lines` : null
-    }, [input, parsedLines])
+        return formatLineRangeStats(offset, lineCount)
+    }, [input, lineCount])
 
     if (!content || parsedLines.length === 0) {
         return (
