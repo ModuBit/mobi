@@ -142,6 +142,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const distanceToTop = scrollBox.scrollHeight + scrollTop - scrollBox.clientHeight
             if (distanceToTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
                 scrollTopBeforeFetch.current = scrollTop
+                // 立即设 true 阻断同帧内的重复 scroll 事件
+                isFetchingNextPageRef.current = true
                 fetchNextPageRef.current()
             }
         }

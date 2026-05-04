@@ -118,7 +118,7 @@ export function createMobiApi(token: string | null) {
 
         // Messages
         messages: {
-            list: (sessionId: string, params?: { before?: number; limit?: number }) =>
+            list: (sessionId: string, params?: { beforeSeq?: number; limit?: number }) =>
                 client.get<MessagesResponse>(`/api/sessions/${sessionId}/messages`, { params }),
             send: (sessionId: string, text: string, localId?: string) =>
                 client.post(`/api/sessions/${sessionId}/messages`, { text, localId }),

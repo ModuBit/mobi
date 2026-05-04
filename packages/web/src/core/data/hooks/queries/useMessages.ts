@@ -38,7 +38,7 @@ export function useMessages(sessionId: string | null) {
                 }
             }
             const res = await api.messages.list(sessionId, {
-                before: pageParam as number | undefined,
+                beforeSeq: pageParam as number | undefined,
             })
             return res.data
         },
