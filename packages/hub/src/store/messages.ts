@@ -160,14 +160,17 @@ export function getMessagesAfter(
     return rows.map(toStoredMessage)
 }
 
+/** sidechain 消息查询上限 */
+const SIDECHAIN_MESSAGE_LIMIT = 200
+
 export function getSidechainMessages(
     db: Database,
     sessionId: string,
     parentToolUseId: string
 ): StoredMessage[] {
     const rows = db.prepare(
-        'SELECT * FROM messages WHERE session_id = ? AND parent_tool_use_id = ? ORDER BY seq DESC LIMIT 200'
-    ).all(sessionId, parentToolUseId) as DbMessageRow[]
+        'SELECT * FROM messages WHERE session_id = ? AND parent_tool_use_id = ? ORDER BY seq DESC LIMIT ?'
+    ).all(sessionId, parentToolUseId, SIDECHAIN_MESSAGE_LIMIT) as DbMessageRow[]
     return rows.reverse().map(toStoredMessage)
 }
 
