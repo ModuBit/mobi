@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, SessionGroup, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse, ListFilesResponse } from './types'
+import type { Session, DecryptedMessage, MessagesResponse, SessionGroup, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse, ListFilesResponse } from './types'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -119,7 +119,7 @@ export function createMobiApi(token: string | null) {
         // Messages
         messages: {
             list: (sessionId: string, params?: { before?: number; limit?: number }) =>
-                client.get<{ messages: DecryptedMessage[] }>(`/api/sessions/${sessionId}/messages`, { params }),
+                client.get<MessagesResponse>(`/api/sessions/${sessionId}/messages`, { params }),
             send: (sessionId: string, text: string, localId?: string) =>
                 client.post(`/api/sessions/${sessionId}/messages`, { text, localId }),
             sidechain: (sessionId: string, parentToolUseId: string, opts?: { signal?: AbortSignal }) =>
