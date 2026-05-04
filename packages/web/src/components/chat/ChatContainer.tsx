@@ -172,20 +172,20 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         )
 
         // 加载历史消息时在列表顶部插入 Skeleton
-        if (isFetchingNextPage) {
-            baseItems.unshift({
+        const skeletonItems: BubbleItemBase[] = isFetchingNextPage
+            ? [{
                 key: '__loading-skeleton__',
                 role: 'system',
                 content: <Skeleton active avatar paragraph={{ rows: 2 }} />,
-            })
-        }
+            }]
+            : []
 
         const items: Array<BubbleItemBase & {
             header?: React.ReactNode
             footer?: React.ReactNode
             footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
             classNames?: { root?: string }
-        }> = baseItems.map(item => {
+        }> = [...skeletonItems, ...baseItems].map(item => {
             const block = item.block
             const isUserText = block?.kind === 'user-text'
 

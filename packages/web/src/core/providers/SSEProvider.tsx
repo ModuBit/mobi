@@ -40,14 +40,9 @@ function upsertMessageCache(
         queryKeys.messages(sessionId),
         (old) => {
             if (!old || old.pages.length === 0) {
-                // 无缓存时创建单页结构
-                return {
-                    pages: [{
-                        messages: [msg],
-                        page: { limit: 1, beforeSeq: msg.seq, nextBeforeSeq: null, hasMore: false },
-                    }],
-                    pageParams: [undefined],
-                }
+                // 无缓存时不创建单页结构，让 useInfiniteQuery 挂载时自己获取完整数据
+                // 避免创建 hasMore: false 的缓存导致用户看不到历史消息
+                return undefined
             }
 
             const pages = old.pages.slice()
