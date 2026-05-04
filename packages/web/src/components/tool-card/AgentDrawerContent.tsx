@@ -15,7 +15,7 @@
  */
 
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
-import { theme as antTheme, Button } from 'antd'
+import { theme as antTheme, Button, Skeleton } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import { Bubble } from '@ant-design/x'
 import { Global, css } from '@emotion/react'
@@ -72,7 +72,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
     const hasChildren = block.children.length > 0
 
     // 实时会话 children 已有数据，历史会话从 API 补载
-    const { data: sidechainMessages = [] } = useSidechainMessages(
+    const { data: sidechainMessages = [], isPending } = useSidechainMessages(
         hasChildren ? null : (sessionId ?? null),
         hasChildren ? null : tool.id,
     )
@@ -149,15 +149,27 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         <div style={{ position: 'relative', height: '100%' }}>
             <Global styles={drawerBubbleStyles} />
             <div ref={scrollRef} style={{ height: '100%', overflow: 'auto', padding: '0 8px' }}>
-                <Bubble.List
-                    className="drawer-chat-bubbles"
-                    items={bubbleItems}
-                    role={DRAWER_BUBBLE_ROLES}
-                    styles={{
-                        bubble: { paddingBlock: '2px' },
-                    }}
-                    style={{ height: '100%' }}
-                />
+                {isPending ? (
+                    <div style={{ padding: '16px 8px' }}>
+                        <Skeleton active avatar paragraph={{ rows: 2 }} />
+                        <div style={{ marginTop: 16 }}>
+                            <Skeleton active avatar={{ style: { marginLeft: 'auto' } }} paragraph={{ rows: 2 }} />
+                        </div>
+                        <div style={{ marginTop: 16 }}>
+                            <Skeleton active avatar paragraph={{ rows: 1 }} />
+                        </div>
+                    </div>
+                ) : (
+                    <Bubble.List
+                        className="drawer-chat-bubbles"
+                        items={bubbleItems}
+                        role={DRAWER_BUBBLE_ROLES}
+                        styles={{
+                            bubble: { paddingBlock: '2px' },
+                        }}
+                        style={{ height: '100%' }}
+                    />
+                )}
             </div>
             {showScrollBottom && (
                 <Button
