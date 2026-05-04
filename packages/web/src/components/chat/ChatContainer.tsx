@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
+import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react'
 import { Bubble } from '@ant-design/x'
 import { Spin, Empty, Button, Skeleton, theme as antTheme } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
@@ -80,6 +80,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const scrollBoxRef = useRef<HTMLElement | null>(null)
     const scrollTopBeforeFetch = useRef<number>(0)
     const scrollHeightBeforeFetch = useRef<number>(0)
+    const isRestoringScrollRef = useRef(false)
     const prevFetchingRef = useRef(isFetchingNextPage)
     const prevShowRef = useRef(false)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
@@ -130,6 +131,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         if (!scrollBox) return
 
         const handleScroll = () => {
+            // 正在恢复滚动位置时跳过，避免触发新的 fetchNextPage
+            if (isRestoringScrollRef.current) return
+
             const scrollTop = scrollBox.scrollTop
 
             const shouldShow = scrollTop < SCROLL_BOTTOM_VISIBLE_THRESHOLD
@@ -154,8 +158,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return () => scrollBox.removeEventListener('scroll', handleScroll)
     }, [chatBlocks.length])
 
-    // 滚动位置保持 + 新消息自动滚动
-    useEffect(() => {
+    // 滚动位置保持（在浏览器绘制前同步恢复，避免用户看到跳动）
+    useLayoutEffect(() => {
         const wasFetching = prevFetchingRef.current
         prevFetchingRef.current = isFetchingNextPage
 
@@ -163,12 +167,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         if (!isFetchingNextPage && wasFetching && scrollBoxRef.current) {
             // column-reverse 布局下内容插入顶部会使 scrollHeight 增加
             // scrollTop_new = scrollTop_old - (scrollHeight_new - scrollHeight_old)
-            // 用 rAF 确保新内容布局完成后读取 scrollHeight
+            const scrollBox = scrollBoxRef.current
+            const delta = scrollBox.scrollHeight - scrollHeightBeforeFetch.current
+            // 设置恢复标志，阻止 scroll 事件触发新的 fetchNextPage
+            isRestoringScrollRef.current = true
+            scrollBox.scrollTop = scrollTopBeforeFetch.current - delta
+            // 延迟清标志，确保此帧内的 scroll 事件被跳过
             requestAnimationFrame(() => {
-                const scrollBox = scrollBoxRef.current
-                if (!scrollBox) return
-                const delta = scrollBox.scrollHeight - scrollHeightBeforeFetch.current
-                scrollBox.scrollTop = scrollTopBeforeFetch.current - delta
+                isRestoringScrollRef.current = false
             })
             return
         }
