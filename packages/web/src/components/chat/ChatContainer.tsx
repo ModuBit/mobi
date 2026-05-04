@@ -79,6 +79,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const scrollBoxRef = useRef<HTMLElement | null>(null)
     const scrollTopBeforeFetch = useRef<number>(0)
+    const scrollHeightBeforeFetch = useRef<number>(0)
     const prevFetchingRef = useRef(isFetchingNextPage)
     const prevShowRef = useRef(false)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
@@ -142,6 +143,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const distanceToTop = scrollBox.scrollHeight + scrollTop - scrollBox.clientHeight
             if (distanceToTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
                 scrollTopBeforeFetch.current = scrollTop
+                scrollHeightBeforeFetch.current = scrollBox.scrollHeight
                 // 立即设 true 阻断同帧内的重复 scroll 事件
                 isFetchingNextPageRef.current = true
                 fetchNextPageRef.current()
@@ -159,7 +161,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
         // 加载历史完成后恢复滚动位置
         if (!isFetchingNextPage && wasFetching && scrollBoxRef.current) {
-            scrollBoxRef.current.scrollTop = scrollTopBeforeFetch.current
+            // column-reverse 布局下内容插入顶部会使 scrollHeight 增加
+            // scrollTop_new = scrollTop_old - (scrollHeight_new - scrollHeight_old)
+            // 用 rAF 确保新内容布局完成后读取 scrollHeight
+            requestAnimationFrame(() => {
+                const scrollBox = scrollBoxRef.current
+                if (!scrollBox) return
+                const delta = scrollBox.scrollHeight - scrollHeightBeforeFetch.current
+                scrollBox.scrollTop = scrollTopBeforeFetch.current - delta
+            })
             return
         }
 
