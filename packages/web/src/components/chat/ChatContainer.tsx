@@ -16,7 +16,7 @@
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { Bubble } from '@ant-design/x'
-import { Spin, Empty, Button, theme as antTheme } from 'antd'
+import { Spin, Empty, Button, Skeleton, theme as antTheme } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
@@ -61,12 +61,19 @@ interface ChatContainerProps {
 }
 
 export function ChatContainer({ sessionId, extraComposerButtons, extraComposerItems }: ChatContainerProps) {
-    const { data: messages = [], isLoading: messagesLoading } = useMessages(sessionId)
+    const {
+        data: messages = [],
+        isLoading: messagesLoading,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+    } = useMessages(sessionId)
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId)
     const sessionActions = useSessionActions(sessionId)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const scrollBoxRef = useRef<HTMLElement | null>(null)
+    const scrollTopBeforeFetch = useRef<number>(0)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
@@ -77,13 +84,22 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
 
     // 使用 reduceChatBlocks 处理消息（包含 CLI 输出合并）
-    const { blocks: chatBlocks } = useMemo(() => {
+    const { blocks: rawBlocks, incompleteToolCallIds } = useMemo(() => {
         // 先标准化消息，然后归约为聊天块
         const normalized = messages
             .map(normalizeDecryptedMessage)
             .filter((m): m is Exclude<typeof m, null> => m !== null)
         return reduceChatBlocks(normalized, session?.agentState)
     }, [messages, session?.agentState])
+
+    // 保形渲染：当还有更多历史消息时，过滤掉不完整的 tool-call block
+    const chatBlocks = useMemo(() => {
+        if (!hasNextPage) return rawBlocks
+        return rawBlocks.filter((block) => {
+            if (block.kind !== 'tool-call') return true
+            return !incompleteToolCallIds.has(block.id)
+        })
+    }, [rawBlocks, hasNextPage, incompleteToolCallIds])
 
     // 缓存 Bubble.List 的实际滚动容器
     useEffect(() => {
@@ -98,17 +114,46 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         if (!scrollBox) return
 
         const handleScroll = () => {
-            setShowScrollBottom(scrollBox.scrollTop < -20)
+            const scrollTop = scrollBox.scrollTop
+            setShowScrollBottom(scrollTop < -20)
+
+            // 距离顶部 200px 时预加载历史消息
+            // column-reverse 布局下：scrollHeight + scrollTop - clientHeight 表示距离顶部的距离
+            const scrollHeight = scrollBox.scrollHeight
+            const clientHeight = scrollBox.clientHeight
+            const distanceToTop = scrollHeight + scrollTop - clientHeight
+            if (distanceToTop < 200 && hasNextPage && !isFetchingNextPage) {
+                scrollTopBeforeFetch.current = scrollTop
+                fetchNextPage()
+            }
         }
 
         scrollBox.addEventListener('scroll', handleScroll, { passive: true })
         return () => scrollBox.removeEventListener('scroll', handleScroll)
-    }, [chatBlocks.length])
+    }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-    // 自动滚动到底部
+    // 加载历史消息时记录滚动位置
     useEffect(() => {
-        scrollBoxRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-    }, [chatBlocks.length])
+        if (isFetchingNextPage) {
+            scrollTopBeforeFetch.current = scrollBoxRef.current?.scrollTop ?? 0
+        }
+    }, [isFetchingNextPage])
+
+    // 加载历史完成后恢复滚动位置
+    useEffect(() => {
+        if (!isFetchingNextPage && scrollBoxRef.current) {
+            scrollBoxRef.current.scrollTop = scrollTopBeforeFetch.current
+        }
+    }, [isFetchingNextPage])
+
+    // 新消息到达时自动滚动到底部（仅在用户已在底部附近时）
+    useEffect(() => {
+        const scrollBox = scrollBoxRef.current
+        if (!scrollBox || isFetchingNextPage) return
+        if (scrollBox.scrollTop > -50) {
+            scrollBox.scrollTo({ top: 0, behavior: 'smooth' })
+        }
+    }, [chatBlocks.length, isFetchingNextPage])
 
     // 手动跳到底部
     const handleScrollToBottom = useCallback(() => {
@@ -122,6 +167,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             !!session?.running,
             { contextResetLabel: t('chat.contextReset') },
         )
+
+        // 加载历史消息时在列表顶部插入 Skeleton
+        if (isFetchingNextPage) {
+            baseItems.unshift({
+                key: '__loading-skeleton__',
+                role: 'system',
+                content: <Skeleton active avatar paragraph={{ rows: 2 }} />,
+            })
+        }
 
         const items: Array<BubbleItemBase & {
             header?: React.ReactNode
@@ -160,7 +214,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
 
         return items
-    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t])
+    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t, isFetchingNextPage])
 
     // 自动滚动到底部
     // 发送消息
