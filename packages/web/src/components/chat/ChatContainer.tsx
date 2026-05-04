@@ -148,7 +148,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
         scrollBox.addEventListener('scroll', handleScroll, { passive: true })
         return () => scrollBox.removeEventListener('scroll', handleScroll)
-    }, [])
+    }, [chatBlocks.length])
 
     // 滚动位置保持 + 新消息自动滚动
     useEffect(() => {
