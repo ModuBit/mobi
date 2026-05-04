@@ -160,7 +160,6 @@ export function getMessagesAfter(
     return rows.map(toStoredMessage)
 }
 
-/** sidechain 消息查询上限 */
 const SIDECHAIN_MESSAGE_LIMIT = 200
 
 export function getSidechainMessages(

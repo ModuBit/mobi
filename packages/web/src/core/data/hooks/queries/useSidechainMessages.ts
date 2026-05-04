@@ -32,6 +32,5 @@ export function useSidechainMessages(sessionId: string | null, parentToolUseId: 
             return res.data.messages
         },
         enabled: !!token && !!sessionId && !!parentToolUseId,
-        staleTime: 0,
     })
 }

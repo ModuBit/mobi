@@ -57,6 +57,21 @@ const DRAWER_BUBBLE_ROLES = {
     },
 }
 
+/** Sidechain 消息加载骨架屏 */
+function SidechainSkeleton() {
+    return (
+        <div style={{ padding: '16px 8px' }}>
+            <Skeleton active avatar paragraph={{ rows: 2 }} />
+            <div style={{ marginTop: 16 }}>
+                <Skeleton active avatar={{ style: { marginLeft: 'auto' } }} paragraph={{ rows: 2 }} />
+            </div>
+            <div style={{ marginTop: 16 }}>
+                <Skeleton active avatar paragraph={{ rows: 1 }} />
+            </div>
+        </div>
+    )
+}
+
 /** Agent 工具的 Drawer 内容：BubbleList 渲染 sidechain 对话 */
 export function AgentDrawerContent({ block, metadata, sessionId }: {
     block: Extract<ChatBlock, { kind: 'tool-call' }>
@@ -150,15 +165,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
             <Global styles={drawerBubbleStyles} />
             <div ref={scrollRef} style={{ height: '100%', overflow: 'auto', padding: '0 8px' }}>
                 {isPending ? (
-                    <div style={{ padding: '16px 8px' }}>
-                        <Skeleton active avatar paragraph={{ rows: 2 }} />
-                        <div style={{ marginTop: 16 }}>
-                            <Skeleton active avatar={{ style: { marginLeft: 'auto' } }} paragraph={{ rows: 2 }} />
-                        </div>
-                        <div style={{ marginTop: 16 }}>
-                            <Skeleton active avatar paragraph={{ rows: 1 }} />
-                        </div>
-                    </div>
+                    <SidechainSkeleton />
                 ) : (
                     <Bubble.List
                         className="drawer-chat-bubbles"
