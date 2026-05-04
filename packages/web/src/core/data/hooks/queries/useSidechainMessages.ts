@@ -32,5 +32,7 @@ export function useSidechainMessages(sessionId: string | null, parentToolUseId: 
             return res.data.messages
         },
         enabled: !!token && !!sessionId && !!parentToolUseId,
+        // 全局 staleTime 为 30s，但 sidechain 消息需要每次打开 drawer 都获取最新
+        staleTime: 0,
     })
 }
