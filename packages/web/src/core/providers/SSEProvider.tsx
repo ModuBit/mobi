@@ -16,6 +16,7 @@
 
 import { useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import type { InfiniteData } from '@tanstack/react-query'
 import { SSEClient } from '@/core/data/realtime/sseClient'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate } from '@tanstack/react-router'
@@ -25,18 +26,43 @@ import { useNotify } from '@/core/data/hooks/useNotify'
 import { useMobiApi } from '@/core/data/api/client'
 import { App, Button } from 'antd'
 import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
+import type { MessagesResponse } from '@/core/data/api/types'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 
-/** 更新消息缓存：upsert 模式，同 id 消息原地替换，否则追加 */
+/** 更新消息缓存：upsert 模式，新消息插入最新页（pages[0]） */
 function upsertMessageCache(
     queryClient: ReturnType<typeof useQueryClient>,
     sessionId: string,
     msg: DecryptedMessage,
     options?: { skipIfNotSnapshot?: boolean },
 ) {
-    queryClient.setQueryData<DecryptedMessage[]>(
+    queryClient.setQueryData<InfiniteData<MessagesResponse>>(
         queryKeys.messages(sessionId),
-        (old) => resolveMessageCache(old, msg, options),
+        (old) => {
+            if (!old || old.pages.length === 0) {
+                // 无缓存时创建单页结构
+                return {
+                    pages: [{
+                        messages: [msg],
+                        page: { limit: 1, beforeSeq: msg.seq, nextBeforeSeq: null, hasMore: false },
+                    }],
+                    pageParams: [undefined],
+                }
+            }
+
+            const pages = old.pages.slice()
+            const firstPage = pages[0]
+
+            // 使用 resolveMessageCache 处理 snapshot 清理和消息合并
+            const mergedMessages = resolveMessageCache(firstPage.messages, msg, options)
+
+            pages[0] = {
+                ...firstPage,
+                messages: mergedMessages,
+            }
+
+            return { ...old, pages }
+        },
     )
 }
 
