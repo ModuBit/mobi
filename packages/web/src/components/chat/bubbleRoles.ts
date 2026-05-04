@@ -27,5 +27,10 @@ export const BUBBLE_ROLES = {
         variant: 'borderless' as const,
         styles: { content: { paddingBlock: 0, minHeight: 'auto' } },
     },
-    divider: {},
+    divider: {
+        dividerProps: {
+            variant: 'dashed' as const,
+            style: { borderColor: 'var(--ant-color-border)' },
+        },
+    },
 }

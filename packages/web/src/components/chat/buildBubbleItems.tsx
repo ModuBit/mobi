@@ -17,6 +17,7 @@
 import type React from 'react'
 import type { ChatBlock } from '@/domain/chat'
 import { getEventPresentation } from '@/domain/chat'
+import i18n from 'i18next'
 import type { ChatBlockContext } from './blocks'
 import { renderChatBlock } from './blocks'
 
@@ -55,7 +56,11 @@ export function buildChatBubbleItems(
         // context-cleared 事件渲染为分隔线
         if (block.kind === 'agent-event' && block.event.type === 'context-cleared') {
             const { text } = getEventPresentation(block.event)
-            items.push({ key: block.id, role: 'divider', content: text })
+            items.push({
+                key: block.id,
+                role: 'divider',
+                content: <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{i18n.t('chat.contextReset')}</span>,
+            })
             continue
         }
 

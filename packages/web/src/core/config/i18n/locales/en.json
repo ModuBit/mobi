@@ -102,6 +102,7 @@
         "empty": "No messages",
         "thinking": "Thinking...",
         "thought": "Thought",
+        "contextReset": "Context was reset",
         "inputPlaceholder": "Type a message... (Shift+Enter to send)",
         "sessionEnded": "Session ended",
         "apiError": "API Error",

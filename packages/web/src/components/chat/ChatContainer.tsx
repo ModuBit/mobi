@@ -161,7 +161,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
 
         return items
-    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending])
+    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t])
 
     // 自动滚动到底部
     // 发送消息

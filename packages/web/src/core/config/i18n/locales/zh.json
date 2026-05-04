@@ -102,6 +102,7 @@
         "empty": "暂无消息",
         "thinking": "思考中...",
         "thought": "思考完成",
+        "contextReset": "上下文已重置",
         "inputPlaceholder": "输入消息... (Shift+Enter 换行)",
         "sessionEnded": "会话已结束",
         "apiError": "API 错误",
