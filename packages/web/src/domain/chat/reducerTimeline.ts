@@ -75,7 +75,7 @@ export function reduceTimeline(
         emittedTitleChangeToolUseIds: Set<string>
         hiddenToolUseIds: Set<string>
     }
-): { blocks: ChatBlock[]; toolBlocksById: Map<string, ToolCallBlock>; hasReadyEvent: boolean } {
+): { blocks: ChatBlock[]; toolBlocksById: Map<string, ToolCallBlock>; hasReadyEvent: boolean; incompleteToolCallIds: Set<string> } {
     const blocks: ChatBlock[] = []
     const toolBlocksById = new Map<string, ToolCallBlock>()
     const blockIndexById = new Map<string, number>()
@@ -340,5 +340,12 @@ export function reduceTimeline(
         }
     }
 
-    return { blocks: mergeCliOutputBlocks(blocks), toolBlocksById, hasReadyEvent }
+    const incompleteToolCallIds = new Set<string>()
+    for (const [id, block] of toolBlocksById) {
+        if (block.tool.state === 'running') {
+            incompleteToolCallIds.add(id)
+        }
+    }
+
+    return { blocks: mergeCliOutputBlocks(blocks), toolBlocksById, hasReadyEvent, incompleteToolCallIds }
 }

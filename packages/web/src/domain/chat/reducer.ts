@@ -45,7 +45,7 @@ export type LatestUsage = {
 export function reduceChatBlocks(
     normalized: NormalizedMessage[],
     agentState: AgentState | null | undefined
-): { blocks: ChatBlock[]; hasReadyEvent: boolean; latestUsage: LatestUsage | null } {
+): { blocks: ChatBlock[]; hasReadyEvent: boolean; latestUsage: LatestUsage | null; incompleteToolCallIds: Set<string> } {
     const permissionsById = getPermissions(agentState)
     const toolIdsInMessages = collectToolIdsFromMessages(normalized)
     const titleChangesByToolUseId = collectTitleChanges(normalized)
@@ -115,5 +115,10 @@ export function reduceChatBlocks(
         }
     }
 
-    return { blocks: dedupeAgentEvents(foldApiErrorEvents(rootResult.blocks)), hasReadyEvent, latestUsage }
+    return {
+        blocks: dedupeAgentEvents(foldApiErrorEvents(rootResult.blocks)),
+        hasReadyEvent,
+        latestUsage,
+        incompleteToolCallIds: rootResult.incompleteToolCallIds,
+    }
 }
