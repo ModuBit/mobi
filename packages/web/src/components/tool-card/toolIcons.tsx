@@ -38,7 +38,7 @@ import {
     ToolOutlined,
 } from '@ant-design/icons'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import type { AgentStatus } from '@/components/pixel-avatar/types'
+import type { AgentStatus, StatusStyle } from '@/components/pixel-avatar/types'
 
 /** 小尺寸图标样式（14px） */
 export const ICON_STYLE: CSSProperties = { fontSize: 14 }
@@ -80,6 +80,14 @@ const TOOL_ICON_MAP: Record<string, typeof ToolOutlined> = {
 /** Agent/Task 工具名 */
 const AGENT_TOOL_NAMES = new Set(['Task', 'Agent'])
 
+/** Agent 工具图标：禁用背景色和发光 */
+const TOOL_AVATAR_STYLES: Partial<Record<AgentStatus, StatusStyle>> = {
+    outputting: { background: 'none', glow: 'none' },
+    awaiting_auth: { background: 'none', glow: 'none' },
+    idle: { background: 'none', glow: 'none' },
+    inactive: { background: 'none', glow: 'none' },
+}
+
 /** 将工具状态映射为 PixelAvatar 状态 */
 function toolStateToAvatarStatus(state: ToolCallState): AgentStatus {
     if (state === 'running') return 'outputting'
@@ -108,7 +116,7 @@ export function getToolIcon(name: string, opts: CSSProperties | ToolIconOpts = I
 
     // Agent/Task 工具：有 id 和 state 时使用 PixelAvatar
     if (AGENT_TOOL_NAMES.has(name) && resolved.id && resolved.state) {
-        return <PixelAvatar name={resolved.id} status={toolStateToAvatarStatus(resolved.state)} size={typeof style.fontSize === 'number' ? style.fontSize + 4 : 18} />
+        return <PixelAvatar name={resolved.id} status={toolStateToAvatarStatus(resolved.state)} size={typeof style.fontSize === 'number' ? style.fontSize + 4 : 18} statusStyles={TOOL_AVATAR_STYLES} />
     }
 
     // mcp__ 前缀的工具使用方块图标

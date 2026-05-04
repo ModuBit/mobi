@@ -101,17 +101,16 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
 
         const items = [...baseItems]
 
-        items.push({
-            key: '__result-divider__',
-            role: 'divider',
-            content: (
-                <span style={{ fontSize: 11, color: token.colorTextTertiary, letterSpacing: 0.5 }}>
-                    {t('chat.tool.result')}
-                </span>
-            ),
-        })
-
         if (tool.result !== undefined && tool.result !== null) {
+            items.push({
+                key: '__result-divider__',
+                role: 'divider',
+                content: (
+                    <span style={{ fontSize: 11, color: token.colorTextTertiary, letterSpacing: 0.5 }}>
+                        {t('chat.tool.result')}
+                    </span>
+                ),
+            })
             const resultText = extractTextFromResult(tool.result) ?? safeStringify(tool.result)
             items.push({
                 key: '__result__',
