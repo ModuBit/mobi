@@ -16,10 +16,13 @@
 
 import type React from 'react'
 import type { ChatBlock } from '@/domain/chat'
-import { getEventPresentation } from '@/domain/chat'
-import i18n from 'i18next'
 import type { ChatBlockContext } from './blocks'
 import { renderChatBlock } from './blocks'
+
+export type BuildBubbleOptions = {
+    /** context-cleared 分隔线的翻译文本 */
+    contextResetLabel: string
+}
 
 const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
 
@@ -39,6 +42,7 @@ export function buildChatBubbleItems(
     blocks: ChatBlock[],
     ctx: ChatBlockContext,
     isRunning: boolean,
+    options: BuildBubbleOptions,
 ): BubbleItemBase[] {
     // 找到最后一个 assistant block（用于 typing 动画）
     let lastAssistantBlockKey: string | null = null
@@ -55,11 +59,10 @@ export function buildChatBubbleItems(
     for (const block of blocks) {
         // context-cleared 事件渲染为分隔线
         if (block.kind === 'agent-event' && block.event.type === 'context-cleared') {
-            const { text } = getEventPresentation(block.event)
             items.push({
                 key: block.id,
                 role: 'divider',
-                content: <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{i18n.t('chat.contextReset')}</span>,
+                content: <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{options.contextResetLabel}</span>,
             })
             continue
         }

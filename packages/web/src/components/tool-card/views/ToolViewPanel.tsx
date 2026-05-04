@@ -22,25 +22,31 @@ const { useToken } = antTheme
 export type ToolViewPanelProps = {
     header?: ReactNode
     style?: CSSProperties
+    className?: string
+    /** hover 时的背景色，设置后启用 hover 过渡动画 */
+    hoverBackground?: string
     children: ReactNode
-} & Pick<React.HTMLAttributes<HTMLDivElement>, 'onMouseOver' | 'onMouseOut'>
+}
 
 /**
  * 工具视图通用面板：header(灰色标题栏) + content(内容区)
  */
-export function ToolViewPanel({ header, style, children, ...rest }: ToolViewPanelProps) {
+export function ToolViewPanel({ header, style, className, hoverBackground, children }: ToolViewPanelProps) {
     const { token } = useToken()
 
     return (
         <div
+            className={className}
             style={{
                 overflow: 'hidden',
                 borderRadius: 4,
                 border: `1px solid ${token.colorBorder}`,
                 background: token.colorBgContainer,
+                transition: hoverBackground ? 'background 0.2s' : undefined,
                 ...style,
             }}
-            {...rest}
+            onMouseEnter={hoverBackground ? (e) => { e.currentTarget.style.background = hoverBackground } : undefined}
+            onMouseLeave={hoverBackground ? (e) => { e.currentTarget.style.background = token.colorBgContainer } : undefined}
         >
             {header && (
                 <div style={{

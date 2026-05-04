@@ -269,10 +269,7 @@ export function DiffView(props: {
             >
                 <ToolViewPanel
                     header={props.filePath ? <FilePathText path={props.filePath} style={{ fontSize: 11 }} /> : undefined}
-                    style={{ transition: 'background 0.2s' }}
-                    // eslint-disable-next-line jsx-a11y/mouse-events-have-key-events
-                    onMouseOver={(e) => e.currentTarget.style.background = token.colorBgTextHover}
-                    onMouseOut={(e) => e.currentTarget.style.background = token.colorBgContainer}
+                    hoverBackground={token.colorBgTextHover}
                 >
                     <div style={{ padding: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

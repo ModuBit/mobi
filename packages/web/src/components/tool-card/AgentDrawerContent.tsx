@@ -97,6 +97,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
             childrenBlocks,
             { metadata, isThinking: false, disableDrawer: true },
             isRunning,
+            { contextResetLabel: t('chat.contextReset') },
         )
 
         const items = [...baseItems]
@@ -121,7 +122,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         }
 
         return items
-    }, [childrenBlocks, tool.result, tool.state, metadata, token.colorTextTertiary, t, isRunning])
+    }, [childrenBlocks, tool.result, tool.state, metadata, token.colorTextTertiary, t])
 
     // 新消息到来时滚动到最新位置
     useEffect(() => {

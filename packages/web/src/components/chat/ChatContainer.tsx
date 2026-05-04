@@ -120,6 +120,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             chatBlocks,
             { metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending },
             !!session?.running,
+            { contextResetLabel: t('chat.contextReset') },
         )
 
         const blockById = new Map(chatBlocks.map(b => [b.id, b]))

@@ -15,6 +15,7 @@
  */
 
 import type { ToolViewComponent, ToolViewProps } from '@/components/tool-card/views/_all'
+import { useMemo } from 'react'
 import { BashView } from '@/components/tool-card/views/BashView'
 import { GlobView } from '@/components/tool-card/views/GlobView'
 import { isObject, safeStringify } from '@mobi/shared'
@@ -255,10 +256,10 @@ const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { token } = useToken()
     const { input, result } = props.block.tool
 
-    const filePath = (() => {
+    const filePath = useMemo(() => {
         const raw = getInputStringAny(input, ['file_path', 'path', 'file'])
         return raw ? resolveDisplayPath(raw, props.metadata) : null
-    })()
+    }, [input, props.metadata])
 
     if (result === undefined || result === null) {
         return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
