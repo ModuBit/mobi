@@ -50,9 +50,11 @@ interface ContentDrawerProps {
     children: ReactNode
     /** 宽度配置（仅 PC 端生效） */
     widthConfig?: DrawerWidthConfig
+    /** 关闭时是否销毁子元素 */
+    destroyOnClose?: boolean
 }
 
-function ContentDrawerInner({ title, open, onClose, bodyStyle, children, widthConfig }: ContentDrawerProps) {
+function ContentDrawerInner({ title, open, onClose, bodyStyle, children, widthConfig, destroyOnClose }: ContentDrawerProps) {
     const isMobile = useIsMobile()
 
     // 默认使用窄宽度
@@ -65,6 +67,7 @@ function ContentDrawerInner({ title, open, onClose, bodyStyle, children, widthCo
             title={title}
             placement={isMobile ? 'bottom' : 'right'}
             width={isMobile ? undefined : config.default}
+            destroyOnClose={destroyOnClose}
             styles={{
                 wrapper: isMobile ? { height: 'auto', maxHeight: '85vh' } : undefined,
                 body: {

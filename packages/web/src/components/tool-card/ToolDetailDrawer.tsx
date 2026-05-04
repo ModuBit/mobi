@@ -188,6 +188,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
             onClose={onClose}
             title={titleContent}
             widthConfig={drawerWidth}
+            destroyOnClose={true}
         >
             {/* Agent 工具：BubbleList 渲染 sidechain 对话 */}
             {isAgentTool(tool.name) ? (
