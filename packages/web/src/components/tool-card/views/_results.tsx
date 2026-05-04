@@ -16,12 +16,15 @@
 
 import type { ToolViewComponent, ToolViewProps } from '@/components/tool-card/views/_all'
 import { BashView } from '@/components/tool-card/views/BashView'
+import { GlobView } from '@/components/tool-card/views/GlobView'
 import { isObject, safeStringify } from '@mobi/shared'
+import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { theme as antTheme, Typography } from 'antd'
 import { ChecklistList, extractTodoChecklist } from '@/components/tool-card/checklist'
 import { basename, resolveDisplayPath } from '@/core/utils/path'
 import { Markdown } from '@/components/ui/Markdown'
 import { DiffView } from '@/components/tool-card/views/DiffView'
+import { ToolViewPanel } from '@/components/tool-card/views/ToolViewPanel'
 
 import type { ToolPermission } from '@/domain/tool/types'
 
@@ -250,29 +253,61 @@ const LineListResultView: ToolViewComponent = (props: ToolViewProps) => {
 }
 const ReadResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { token } = useToken()
-    const result = props.block.tool.result
+    const { input, result } = props.block.tool
+
+    const filePath = (() => {
+        const raw = getInputStringAny(input, ['file_path', 'path', 'file'])
+        return raw ? resolveDisplayPath(raw, props.metadata) : null
+    })()
+
     if (result === undefined || result === null) {
         return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
     }
+
     const file = extractReadFileContent(result)
-    if (file) {
-        const path = file.filePath ? resolveDisplayPath(file.filePath, props.metadata) : null
-        return (
-            <div>
-                {path ? (
-                    <div style={{ marginBottom: 8, fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
-                        {basename(path)}
+    const content = file ? file.content : extractTextFromResult(result)
+    if (!content) {
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
+    }
+
+    const offset = isObject(input) && typeof input.offset === 'number' ? input.offset : null
+    const lines = content.split('\n').filter(l => l.trim().length > 0).length
+    const statsLabel = offset !== null
+        ? `L${offset + 1}-${offset + lines} · ${lines} lines`
+        : `${lines} lines`
+
+    return (
+        <ToolViewPanel
+            header={filePath ? (
+                <>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {filePath}
                     </div>
-                ) : null}
-                <CodeBlock code={file.content} language="text" />
+                    <div style={{
+                        fontSize: 11,
+                        color: token.colorTextTertiary,
+                        fontFamily: 'var(--font-mono)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    }}>
+                        {statsLabel}
+                    </div>
+                </>
+            ) : undefined}
+        >
+            <div style={{
+                padding: '4px 10px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                lineHeight: 1.5,
+                whiteSpace: 'pre',
+                overflowX: 'auto',
+            }}>
+                {content}
             </div>
-        )
-    }
-    const text = extractTextFromResult(result)
-    if (text) {
-        return renderText(text, { mode: 'code', language: 'text' })
-    }
-    return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>(no output)</div>
+        </ToolViewPanel>
+    )
 }
 const MutationResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { token } = useToken()
@@ -433,7 +468,7 @@ export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     Agent: MarkdownResultView,
     Bash: BashView,
     shell_command: BashView,
-    Glob: LineListResultView,
+    Glob: GlobView,
     Grep: LineListResultView,
     LS: LineListResultView,
     Read: ReadResultView,

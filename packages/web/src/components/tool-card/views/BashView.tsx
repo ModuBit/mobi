@@ -23,6 +23,7 @@ import { isObject } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { extractTextFromResult, placeholderForState } from './_results'
+import { ToolViewPanel } from './ToolViewPanel'
 
 hljs.registerLanguage('bash', bash)
 
@@ -36,10 +37,7 @@ function isErrorResult(result: unknown): boolean {
     return false
 }
 
-/** Bash 工具视图（DiffView 风格）
- * Bash 工具视图（DiffView 风格）
- * command 作为 header 栏，output 作为 body
- */
+/** Bash 工具视图 */
 export function BashView(props: ToolViewProps) {
     const { token } = useToken()
     const { input, result, state } = props.block.tool
@@ -49,7 +47,6 @@ export function BashView(props: ToolViewProps) {
     const output = isFinished ? extractTextFromResult(result) : null
     const isError = isFinished && (isErrorResult(result) || state === 'error')
 
-    // 仅对 command 做语法高亮，description/fallback 不需要
     const highlighted = useMemo(() => {
         if (!command) return ''
         try {
@@ -62,30 +59,17 @@ export function BashView(props: ToolViewProps) {
     const headerText = command || props.block.tool.description
 
     return (
-        <div style={{
-            overflow: 'hidden',
-            borderRadius: 4,
-            border: `1px solid ${token.colorBorder}`,
-            background: token.colorBgContainer,
-        }}>
-            {headerText && (
-                <div style={{
-                    borderBottom: `1px solid ${token.colorBorder}`,
-                    background: token.colorBgLayout,
-                    padding: '4px 10px',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 12,
-                    lineHeight: 1.6,
-                    overflow: 'auto',
-                }}>
+        <ToolViewPanel
+            header={headerText && (
+                <>
                     <span style={{ color: token.colorPrimary }}>$ </span>
                     {command
                         ? <span dangerouslySetInnerHTML={{ __html: highlighted }} />
                         : headerText
                     }
-                </div>
+                </>
             )}
-
+        >
             {output ? (
                 <OverflowContainer
                     maxHeight={200}
@@ -107,6 +91,6 @@ export function BashView(props: ToolViewProps) {
                     {placeholderForState(state)}
                 </div>
             )}
-        </div>
+        </ToolViewPanel>
     )
 }

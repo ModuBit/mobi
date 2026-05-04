@@ -20,8 +20,10 @@ import { isObject } from '@mobi/shared'
 import {
     CodeOutlined,
     SearchOutlined,
+    FileSearchOutlined,
     EyeOutlined,
     EditOutlined,
+    SignatureOutlined,
     GlobalOutlined,
     BulbOutlined,
     RocketOutlined,
@@ -80,6 +82,8 @@ export type ToolPresentation = {
     wideDrawer?: boolean
     /** title 是否为文件路径（启用中间省略） */
     isFilePath?: boolean
+    /** 预览卡片最大高度（px） */
+    previewMaxHeight?: number
 }
 
 function countLines(text: string): number {
@@ -180,6 +184,8 @@ export const knownTools: Record<string, {
     wideDrawer?: boolean
     /** title 是否为文件路径（启用中间省略） */
     isFilePath?: boolean
+    /** 预览卡片最大高度（px） */
+    previewMaxHeight?: number
 }> = {
     Task: {
         icon: () => <RocketOutlined style={DEFAULT_ICON_STYLE} />,
@@ -230,23 +236,27 @@ export const knownTools: Record<string, {
     },
     Bash: { ...terminalToolConfig, wideDrawer: true },
     Glob: {
-        icon: () => <SearchOutlined style={DEFAULT_ICON_STYLE} />,
-        title: (opts) => getInputStringAny(opts.input, ['pattern']) ?? 'Search files',
-        minimal: true
-    },
-    Grep: {
-        icon: () => <EyeOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => <FileSearchOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const pattern = getInputStringAny(opts.input, ['pattern'])
-            return pattern ? `grep(pattern: ${pattern})` : 'Search content'
+            return pattern ? `Glob(${pattern})` : 'Glob'
+        },
+        minimal: true,
+        previewMaxHeight: 160
+    },
+    Grep: {
+        icon: () => <FileSearchOutlined style={DEFAULT_ICON_STYLE} />,
+        title: (opts) => {
+            const pattern = getInputStringAny(opts.input, ['pattern'])
+            return pattern ? `Grep(${pattern})` : 'Grep'
         },
         minimal: true
     },
     LS: {
-        icon: () => <SearchOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => <FileSearchOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const path = getInputStringAny(opts.input, ['path'])
-            return path ? resolveDisplayPath(path, opts.metadata) : 'List files'
+            return path ? `LS(${resolveDisplayPath(path, opts.metadata)})` : 'LS'
         },
         minimal: true
     },
@@ -255,72 +265,61 @@ export const knownTools: Record<string, {
         icon: () => <EyeOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path', 'file'])
-            const basePath = file ? resolveDisplayPath(file, opts.metadata) : 'Read file'
+            if (!file) return 'Read'
+            const basePath = resolveDisplayPath(file, opts.metadata)
 
-            // 从 input 提取 limit 和 offset
             const limit = isObject(opts.input) && typeof opts.input.limit === 'number' ? opts.input.limit : null
             const offset = isObject(opts.input) && typeof opts.input.offset === 'number' ? opts.input.offset : null
 
-            // 从 result 提取实际读取的行数
             let resultLineCount: number | null = null
             if (typeof opts.result === 'string') {
                 resultLineCount = opts.result.split('\n').filter(line => line.trim().length > 0).length
             }
 
-            // 构建行范围信息
             if (offset !== null && resultLineCount !== null) {
-                const startLine = offset + 1
-                const endLine = offset + resultLineCount
-                return `${basePath} (L${startLine}-${endLine})`
+                return `Read(${basePath}, L${offset + 1}-${offset + resultLineCount})`
             }
             if (offset !== null && limit !== null) {
-                const startLine = offset + 1
-                const endLine = offset + limit
-                return `${basePath} (L${startLine}-${endLine})`
-            }
-            if (resultLineCount !== null) {
-                return `${basePath} (${resultLineCount} lines)`
-            }
-            if (limit !== null) {
-                return `${basePath} (${limit} lines)`
+                return `Read(${basePath}, L${offset + 1}-${offset + limit})`
             }
 
-            return basePath
-        },
-        minimal: true,
-        wideDrawer: true
-    },
-    Edit: {
-        icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
-        title: (opts) => {
-            const file = getInputStringAny(opts.input, ['file_path', 'path'])
-            if (!file) return 'Edit file'
-            return resolveDisplayPath(file, opts.metadata)
+            return `Read(${basePath})`
         },
         minimal: true,
         wideDrawer: true,
-        isFilePath: true
+        previewMaxHeight: 200
     },
-    MultiEdit: {
-        icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
+    Edit: {
+        icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
-            if (!file) return 'Edit file'
+            return file ? `Edit(${resolveDisplayPath(file, opts.metadata)})` : 'Edit'
+        },
+        minimal: true,
+        wideDrawer: true,
+        isFilePath: false,
+        previewMaxHeight: 160
+    },
+    MultiEdit: {
+        icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
+        title: (opts) => {
+            const file = getInputStringAny(opts.input, ['file_path', 'path'])
+            if (!file) return 'MultiEdit'
             const edits = isObject(opts.input) && Array.isArray(opts.input.edits) ? opts.input.edits : null
             const count = edits ? edits.length : 0
             const path = resolveDisplayPath(file, opts.metadata)
-            return count > 1 ? `${path} (${count} edits)` : path
+            return count > 1 ? `MultiEdit(${path}, ${count} edits)` : `MultiEdit(${path})`
         },
         minimal: true,
         wideDrawer: true,
-        isFilePath: true
+        isFilePath: false,
+        previewMaxHeight: 200
     },
     Write: {
-        icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
-            if (!file) return 'Write file'
-            return resolveDisplayPath(file, opts.metadata)
+            return file ? `Write(${resolveDisplayPath(file, opts.metadata)})` : 'Write'
         },
         subtitle: (opts) => {
             const content = getInputStringAny(opts.input, ['content', 'text'])
@@ -330,7 +329,8 @@ export const knownTools: Record<string, {
         },
         minimal: true,
         wideDrawer: true,
-        isFilePath: true
+        isFilePath: false,
+        previewMaxHeight: 200
     },
     WebFetch: {
         icon: () => <GlobalOutlined style={DEFAULT_ICON_STYLE} />,
@@ -363,16 +363,16 @@ export const knownTools: Record<string, {
         icon: () => <EyeOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const path = getInputStringAny(opts.input, ['notebook_path'])
-            return path ? resolveDisplayPath(path, opts.metadata) : 'Read notebook'
+            return path ? `NotebookRead(${resolveDisplayPath(path, opts.metadata)})` : 'NotebookRead'
         },
         minimal: true,
         wideDrawer: true
     },
     NotebookEdit: {
-        icon: () => <EditOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => {
             const path = getInputStringAny(opts.input, ['notebook_path'])
-            return path ? resolveDisplayPath(path, opts.metadata) : 'Edit notebook'
+            return path ? `NotebookEdit(${resolveDisplayPath(path, opts.metadata)})` : 'NotebookEdit'
         },
         subtitle: (opts) => {
             const mode = getInputStringAny(opts.input, ['edit_mode'])
@@ -423,7 +423,8 @@ export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadat
             subtitle: known.subtitle ? known.subtitle(opts) : null,
             minimal,
             wideDrawer: known.wideDrawer ?? false,
-            isFilePath: known.isFilePath ?? false
+            isFilePath: known.isFilePath ?? false,
+            previewMaxHeight: known.previewMaxHeight
         }
     }
 

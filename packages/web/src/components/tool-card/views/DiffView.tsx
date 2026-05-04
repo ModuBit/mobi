@@ -19,6 +19,7 @@ import { Modal, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { calculateLineNumWidth, getMaxLineNum, calculateDiffStatsFromLines, formatDiffStats } from './lineNumberUtils'
 import { FilePathText } from '@/components/ui/FilePathText'
+import { ToolViewPanel } from './ToolViewPanel'
 
 const { useToken } = antTheme
 
@@ -135,43 +136,33 @@ function DiffInlineView(props: {
     const lineNumWidth = useMemo(() => calculateLineNumWidth(maxLineNum), [maxLineNum])
 
     return (
-        <div style={{
-            overflow: 'hidden',
-            borderRadius: 4,
-            border: `1px solid ${token.colorBorder}`,
-            background: token.colorBgContainer
-        }}>
-            {/* 头部：文件路径 + 统计信息 */}
-            <div style={{
-                borderBottom: `1px solid ${token.colorBorder}`,
-                background: token.colorBgLayout,
-                padding: '4px 8px',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 2,
-            }}>
-                <div style={{
-                    fontSize: 11,
-                    color: token.colorTextSecondary,
-                }}>
-                    {props.filePath ? (
-                        <FilePathText path={props.filePath} style={{ fontSize: 11 }} />
-                    ) : 'Diff'}
-                </div>
-                <div style={{
-                    fontSize: 11,
-                    color: token.colorTextTertiary,
-                    fontFamily: 'var(--font-mono)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                }}>
-                    {diffStats}
-                </div>
-            </div>
-
-            {/* 整体容器，横向滚动 */}
+        <ToolViewPanel
+            header={
+                <>
+                    <div style={{
+                        fontSize: 11,
+                        color: token.colorTextSecondary,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    }}>
+                        {props.filePath ? (
+                            <FilePathText path={props.filePath} style={{ fontSize: 11 }} />
+                        ) : 'Diff'}
+                    </div>
+                    <div style={{
+                        fontSize: 11,
+                        color: token.colorTextTertiary,
+                        fontFamily: 'var(--font-mono)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    }}>
+                        {diffStats}
+                    </div>
+                </>
+            }
+        >
             <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
                 <div style={{ display: 'table', minWidth: '100%' }}>
                     {linesWithNumbers.map((line, i) => {
@@ -187,7 +178,6 @@ function DiffInlineView(props: {
                                 fontSize: 12,
                                 lineHeight: 1.6,
                             }}>
-                                {/* 行号列 */}
                                 <div style={{
                                     display: 'table-cell',
                                     width: lineNumWidth,
@@ -204,7 +194,6 @@ function DiffInlineView(props: {
                                 }}>
                                     {line.lineNum ?? ''}
                                 </div>
-                                {/* 内容列 */}
                                 <div style={{
                                     display: 'table-cell',
                                     padding: '0 8px',
@@ -218,7 +207,7 @@ function DiffInlineView(props: {
                     })}
                 </div>
             </div>
-        </div>
+        </ToolViewPanel>
     )
 }
 
@@ -278,27 +267,13 @@ export function DiffView(props: {
                     cursor: 'pointer'
                 }}
             >
-                <div style={{
-                    overflow: 'hidden',
-                    borderRadius: 4,
-                    border: `1px solid ${token.colorBorder}`,
-                    background: token.colorBgContainer,
-                    transition: 'background 0.2s'
-                }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = token.colorBgTextHover}
-                    onMouseLeave={(e) => e.currentTarget.style.background = token.colorBgContainer}
+                <ToolViewPanel
+                    header={props.filePath ? <FilePathText path={props.filePath} style={{ fontSize: 11 }} /> : undefined}
+                    style={{ transition: 'background 0.2s' }}
+                    // eslint-disable-next-line jsx-a11y/mouse-events-have-key-events
+                    onMouseOver={(e) => e.currentTarget.style.background = token.colorBgTextHover}
+                    onMouseOut={(e) => e.currentTarget.style.background = token.colorBgContainer}
                 >
-                    {props.filePath ? (
-                        <div style={{
-                            borderBottom: `1px solid ${token.colorBorder}`,
-                            background: token.colorBgLayout,
-                            padding: '4px 8px',
-                            fontSize: 11,
-                            color: token.colorTextSecondary,
-                        }}>
-                            <FilePathText path={props.filePath} style={{ fontSize: 11 }} />
-                        </div>
-                    ) : null}
                     <div style={{ padding: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                             <div style={{
@@ -317,7 +292,7 @@ export function DiffView(props: {
                             </div>
                         </div>
                     </div>
-                </div>
+                </ToolViewPanel>
             </button>
 
             <Modal

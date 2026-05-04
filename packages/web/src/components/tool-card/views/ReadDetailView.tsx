@@ -14,17 +14,14 @@
  * limitations under the License.
  */
 
-/**
- * Read 工具详情视图
- * 在详情抽屉中展示带行号的内容，不折行
- * 行号列固定，内容列可横向滚动
- */
-
 import { useMemo } from 'react'
 import { theme as antTheme } from 'antd'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
+import { getInputStringAny } from '@/core/lib/toolInputUtils'
+import { resolveDisplayPath } from '@/core/utils/path'
 import { calculateLineNumWidth, getMaxLineNum } from './lineNumberUtils'
+import { ToolViewPanel } from './ToolViewPanel'
 
 const { useToken } = antTheme
 
@@ -33,11 +30,9 @@ function extractReadContent(result: unknown): string | null {
     if (typeof result === 'string') return result
     if (!isObject(result)) return null
 
-    // 尝试从 file.content 提取
     const file = isObject(result.file) ? result.file : null
     if (file && typeof file.content === 'string') return file.content
 
-    // 尝试从 content/text/output 提取
     if (typeof result.content === 'string') return result.content
     if (typeof result.text === 'string') return result.text
     if (typeof result.output === 'string') return result.output
@@ -45,9 +40,8 @@ function extractReadContent(result: unknown): string | null {
     return null
 }
 
-/** 解析带行号前缀的行（如 "55\t### Python" → { lineNum: 55, content: "### Python" }） */
+/** 解析带行号前缀的行 */
 function parseLineWithNumber(line: string): { lineNum: number; content: string } | null {
-    // 匹配行首的数字和制表符/空格
     const match = line.match(/^(\d+)(?:\t| {2})(.*)$/)
     if (match) {
         return {
@@ -60,20 +54,32 @@ function parseLineWithNumber(line: string): { lineNum: number; content: string }
 
 export function ReadDetailView(props: ToolViewProps) {
     const { token } = useToken()
-    const result = props.block.tool.result
+    const { input, result } = props.block.tool
+
+    const filePath = useMemo(() => {
+        const raw = getInputStringAny(input, ['file_path', 'path', 'file'])
+        return raw ? resolveDisplayPath(raw, props.metadata) : null
+    }, [input, props.metadata])
 
     const content = useMemo(() => extractReadContent(result), [result])
 
-    // 解析所有行，提取行号和内容
     const parsedLines = useMemo(() => {
         if (!content) return []
         const lines = content.split('\n')
         return lines.map((line) => parseLineWithNumber(line))
     }, [content])
 
-    // 计算行号列宽度（根据最大行号）
     const maxLineNum = useMemo(() => getMaxLineNum(parsedLines), [parsedLines])
     const lineNumWidth = useMemo(() => calculateLineNumWidth(maxLineNum), [maxLineNum])
+
+    const statsLabel = useMemo(() => {
+        const offset = isObject(input) && typeof input.offset === 'number' ? input.offset : null
+        const lineCount = parsedLines.filter(p => p !== null).length
+        if (offset !== null && lineCount > 0) {
+            return `L${offset + 1}-${offset + lineCount} · ${lineCount} lines`
+        }
+        return lineCount > 0 ? `${lineCount} lines` : null
+    }, [input, parsedLines])
 
     if (!content || parsedLines.length === 0) {
         return (
@@ -84,13 +90,27 @@ export function ReadDetailView(props: ToolViewProps) {
     }
 
     return (
-        <div style={{
-            overflow: 'hidden',
-            background: token.colorBgContainer,
-            border: `1px solid ${token.colorBorder}`,
-            borderRadius: 6,
-        }}>
-            {/* 整体容器，横向滚动 */}
+        <ToolViewPanel
+            header={filePath ? (
+                <>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {filePath}
+                    </div>
+                    {statsLabel && (
+                        <div style={{
+                            fontSize: 11,
+                            color: token.colorTextTertiary,
+                            fontFamily: 'var(--font-mono)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                        }}>
+                            {statsLabel}
+                        </div>
+                    )}
+                </>
+            ) : undefined}
+        >
             <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
                 <div style={{ display: 'table', minWidth: '100%' }}>
                     {parsedLines.map((parsed, idx) => (
@@ -100,7 +120,6 @@ export function ReadDetailView(props: ToolViewProps) {
                             fontSize: 12,
                             lineHeight: 1.6,
                         }}>
-                            {/* 行号列 - 固定 */}
                             <div style={{
                                 display: 'table-cell',
                                 width: lineNumWidth,
@@ -117,7 +136,6 @@ export function ReadDetailView(props: ToolViewProps) {
                             }}>
                                 {parsed?.lineNum ?? ''}
                             </div>
-                            {/* 内容列 */}
                             <div style={{
                                 display: 'table-cell',
                                 padding: '0 12px',
@@ -130,6 +148,6 @@ export function ReadDetailView(props: ToolViewProps) {
                     ))}
                 </div>
             </div>
-        </div>
+        </ToolViewPanel>
     )
 }

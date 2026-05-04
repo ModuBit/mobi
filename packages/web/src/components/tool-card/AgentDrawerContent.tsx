@@ -25,12 +25,10 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ChatBlock, NormalizedMessage } from '@/domain/chat'
 import { normalizeDecryptedMessage, reduceChatBlocks } from '@/domain/chat'
 import { Markdown } from '@/components/ui/Markdown'
-import { renderChatBlock, type ChatBlockContext } from '@/components/chat/blocks'
+import { buildChatBubbleItems } from '@/components/chat/buildBubbleItems'
 import { BUBBLE_ROLES } from '@/components/chat/bubbleRoles'
 import { useSidechainMessages } from '@/core/data/hooks/queries/useSidechainMessages'
 import { extractTextFromResult } from '@/components/tool-card/views/_results'
-
-const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
 
 /** Drawer 场景下覆盖全局 CSS 对 Bubble.List 的副作用 */
 const drawerBubbleStyles = css`
@@ -92,37 +90,16 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         return blocks
     }, [hasChildren, block.children, sidechainMessages])
 
+    const isRunning = tool.state === 'running' || tool.state === 'pending'
+
     const bubbleItems = useMemo(() => {
-        const ctx: ChatBlockContext = {
-            metadata,
-            isThinking: false,
-            disableDrawer: true,
-        }
-        const items: Array<{
-            key: string
-            role: 'assistant' | 'user' | 'system' | 'divider'
-            content: React.ReactNode
-            variant?: 'borderless'
-        }> = []
+        const baseItems = buildChatBubbleItems(
+            childrenBlocks,
+            { metadata, isThinking: false, disableDrawer: true },
+            isRunning,
+        )
 
-        for (const child of childrenBlocks) {
-            const content = renderChatBlock(child, ctx)
-            if (content === null) continue
-
-            let role: 'assistant' | 'user' | 'system' = 'user'
-            if (ASSISTANT_BLOCK_KINDS.has(child.kind)) {
-                role = 'assistant'
-            } else if (child.kind === 'agent-event') {
-                role = 'system'
-            }
-
-            items.push({
-                key: child.id,
-                role,
-                content,
-                variant: (role === 'system' || role === 'assistant') ? 'borderless' : undefined,
-            })
-        }
+        const items = [...baseItems]
 
         items.push({
             key: '__result-divider__',
@@ -145,7 +122,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         }
 
         return items
-    }, [childrenBlocks, tool.result, metadata, token.colorTextTertiary])
+    }, [childrenBlocks, tool.result, tool.state, metadata, token.colorTextTertiary, t, isRunning])
 
     // 新消息到来时滚动到最新位置
     useEffect(() => {

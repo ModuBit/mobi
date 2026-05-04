@@ -24,9 +24,9 @@ import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { reduceChatBlocks, normalizeDecryptedMessage, getEventPresentation } from '@/domain/chat'
+import { reduceChatBlocks, normalizeDecryptedMessage } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
-import { renderChatBlock } from './blocks'
+import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { AgentLoadingBubble } from './AgentLoadingBubble'
 import { CopyButton } from './CopyButton'
@@ -36,9 +36,6 @@ import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 const { useToken } = antTheme
-
-/** assistant 角色 block kinds */
-const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
 
 /** 用户消息气泡 hover 时显示 header 中的复制按钮 */
 const bubbleCopyStyles = css`
@@ -119,95 +116,39 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [])
 
     const bubbleItems = useMemo(() => {
-        const items: Array<{
-            key: string
-            role: 'assistant' | 'user' | 'system' | 'divider'
-            content: React.ReactNode
-            typing?: boolean
-            variant?: 'borderless'
+        const baseItems = buildChatBubbleItems(
+            chatBlocks,
+            { metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending },
+            !!session?.running,
+        )
+
+        const blockById = new Map(chatBlocks.map(b => [b.id, b]))
+
+        const items: Array<BubbleItemBase & {
             header?: React.ReactNode
             footer?: React.ReactNode
             footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
             classNames?: { root?: string }
-        }> = []
+        }> = baseItems.map(item => {
+            const block = blockById.get(item.key)
+            const isUserText = block?.kind === 'user-text'
 
-        // 用于判断是否是最后一个 assistant 块（typing 动画）
-        let lastAssistantBlockKey: string | null = null
-        for (let i = chatBlocks.length - 1; i >= 0; i--) {
-            const block = chatBlocks[i]
-            if (block.kind === 'agent-text' || block.kind === 'agent-reasoning') {
-                lastAssistantBlockKey = block.id
-                break
-            }
-        }
-
-        for (let i = 0; i < chatBlocks.length; i++) {
-            const block = chatBlocks[i]
-
-            if (block.kind === 'agent-event' && block.event.type === 'context-cleared') {
-                const { text } = getEventPresentation(block.event)
-                items.push({
-                    key: block.id,
-                    role: 'divider' as const,
-                    content: text,
-                })
-                continue
-            }
-
-            // 是否为最后一个 assistant block 且 session 正在运行
-            const isLastRunningBlock = block.id === lastAssistantBlockKey && !!session?.running
-            // 流式光标仅对 snapshot 生效（snapshot 字段由 Hub 透传）
-            const isSnapshot = (block.kind === 'agent-text' || block.kind === 'agent-reasoning') && block.isSnapshot
-
-            const content = renderChatBlock(
-                isLastRunningBlock && isSnapshot
-                    ? { ...block, isStreaming: true }
-                    : block,
-                {
-                    metadata,
-                    isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock,
-                    api,
-                    sessionId,
-                    disabled: sendMutation.isPending,
-                }
-            )
-            if (content === null) continue
-
-            // 确定角色
-            let role: 'assistant' | 'user' | 'system' = 'user'
-            if (ASSISTANT_BLOCK_KINDS.has(block.kind)) {
-                role = 'assistant'
-            } else if (block.kind === 'agent-event') {
-                role = 'system'
-            } else if (block.kind === 'cli-output') {
-                role = block.source === 'assistant' ? 'assistant' : 'user'
-            }
-
-            // 判断是否需要 typing 动画
-            const isTyping = role === 'assistant' &&
-                (block.kind === 'agent-text' || block.kind === 'agent-reasoning') &&
-                isLastRunningBlock
-
-            items.push({
-                key: block.id,
-                role,
-                content,
-                typing: isTyping,
-                variant: (role === 'system' || role === 'assistant') ? 'borderless' : undefined,
-                header: block.kind === 'user-text' ? (
+            return {
+                ...item,
+                header: isUserText ? (
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                         <div className="msg-copy-btn">
-                            <CopyButton text={block.text} size={16} />
+                            <CopyButton text={block && 'text' in block ? (block as { text: string }).text : ''} size={16} />
                         </div>
                     </div>
                 ) : undefined,
-                classNames: block.kind === 'user-text' ? { root: 'user-msg-bubble' } : undefined,
-                footer: block.kind === 'user-text' ? (
+                classNames: isUserText ? { root: 'user-msg-bubble' } : undefined,
+                footer: isUserText && block ? (
                     <span style={{ fontSize: 11, opacity: 0.6 }}>{formatMessageTime(block.createdAt)}</span>
                 ) : undefined,
-                footerPlacement: 'outer-end',
-            })
-        }
+                footerPlacement: 'outer-end' as const,
+            }
+        })
 
         // running 时在列表末尾追加 loading 气泡
         if (session?.running) {
@@ -220,7 +161,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
 
         return items
-    }, [chatBlocks, session?.running, token, t, metadata])
+    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending])
 
     // 自动滚动到底部
     // 发送消息

@@ -40,7 +40,7 @@ const PREVIEW_MAX_HEIGHT = {
 } as const
 
 /** 默认展开的工具名 */
-const EXPANDED_TOOL_NAMES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
+const EXPANDED_TOOL_NAMES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash', 'shell_command'])
 
 /** 转换权限对象格式 */
 function convertPermission(perm: NonNullable<ChatToolCall['permission']>): ToolPermission {
@@ -167,9 +167,7 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         metadata
     })
 
-    const defaultExpanded = isAgentTool(tool.name)
-        || isTerminalTool(tool.name)
-        || EXPANDED_TOOL_NAMES.has(tool.name)
+    const defaultExpanded = EXPANDED_TOOL_NAMES.has(tool.name)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const [drawerOpen, setDrawerOpen] = useState(false)
     const handleViewDetail = useCallback(() => {
@@ -200,8 +198,8 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                 className="tool-call-think"
                 icon={
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        {getToolIcon(tool.name, { id: block.id, state: tool.state })}
                         <StatusStateIcon state={tool.state} />
+                        {getToolIcon(tool.name, { id: block.id, state: tool.state })}
                     </span>
                 }
                 title={
@@ -229,9 +227,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                     metadata={metadata}
                     onViewDetail={handleViewDetail}
                     showInput={hasPermission}
-                    maxHeight={toolPresentation.isFilePath ? PREVIEW_MAX_HEIGHT.FILE
-                        : isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
-                        : PREVIEW_MAX_HEIGHT.DEFAULT}
+                    maxHeight={toolPresentation.previewMaxHeight
+                        ?? (isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
+                        : PREVIEW_MAX_HEIGHT.DEFAULT)}
                 />
                 {/* pending 状态显示权限操作按钮 */}
                 {hasPermission && api && sessionId ? (
