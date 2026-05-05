@@ -262,9 +262,10 @@ export class SyncEngine {
     async denyPermission(
         sessionId: string,
         requestId: string,
-        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort'
+        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
+        reason?: string
     ): Promise<void> {
-        await this.rpcGateway.denyPermission(sessionId, requestId, decision)
+        await this.rpcGateway.denyPermission(sessionId, requestId, decision, reason)
     }
 
     async abortSession(sessionId: string): Promise<void> {

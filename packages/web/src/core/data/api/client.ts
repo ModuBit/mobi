@@ -154,7 +154,7 @@ export function createMobiApi(token: string | null) {
                 answers?: Record<string, string[]> | Record<string, { answers: string[] }>
             }) =>
                 client.post(`/api/sessions/${sessionId}/permissions/${requestId}/approve`, body),
-            deny: (sessionId: string, requestId: string, body?: { decision?: string }) =>
+            deny: (sessionId: string, requestId: string, body?: { decision?: string; reason?: string }) =>
                 client.post(`/api/sessions/${sessionId}/permissions/${requestId}/deny`, body),
         },
 

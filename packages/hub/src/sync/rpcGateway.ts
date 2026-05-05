@@ -94,12 +94,14 @@ export class RpcGateway {
     async denyPermission(
         sessionId: string,
         requestId: string,
-        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort'
+        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
+        reason?: string
     ): Promise<void> {
         await this.sessionRpc(sessionId, 'permission', {
             id: requestId,
             approved: false,
-            decision
+            decision,
+            reason
         })
     }
 
