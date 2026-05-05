@@ -18,7 +18,7 @@ import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, Event
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
-import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, isHiddenTool, type PermissionEntry } from './reducerTools'
+import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, isHiddenTool, isPlanModeEnterTool, type PermissionEntry } from './reducerTools'
 
 // 根据事件类型获取渲染提示
 function getEventDisplay(event: { type: string }): EventDisplay | undefined {
@@ -73,7 +73,7 @@ export function reduceTimeline(
         consumedGroupIds: Set<string>
         titleChangesByToolUseId: Map<string, string>
         emittedTitleChangeToolUseIds: Set<string>
-        hiddenToolUseIds: Set<string>
+        hiddenToolUseIds: Map<string, string>
     }
 ): { blocks: ChatBlock[]; toolBlocksById: Map<string, ToolCallBlock>; hasReadyEvent: boolean } {
     const blocks: ChatBlock[] = []
@@ -239,6 +239,14 @@ export function reduceTimeline(
                                 }))
                             }
                         }
+                        if (isPlanModeEnterTool(c.name)) {
+                            blocks.push(createEventBlock({
+                                id: `${msg.id}:${idx}`,
+                                createdAt: msg.createdAt,
+                                event: { type: 'enter-plan-mode' },
+                                meta: msg.meta
+                            }))
+                        }
                         continue
                     }
 
@@ -277,10 +285,35 @@ export function reduceTimeline(
                 }
 
                 if (c.type === 'tool-result') {
-                    if (context.hiddenToolUseIds.has(c.tool_use_id)) continue
+                    if (context.hiddenToolUseIds.has(c.tool_use_id)) {
+                        const hiddenToolName = context.hiddenToolUseIds.get(c.tool_use_id)
+                        if (hiddenToolName && isPlanModeEnterTool(hiddenToolName)) {
+                            blocks.push(createEventBlock({
+                                id: `${msg.id}:${idx}`,
+                                createdAt: msg.createdAt,
+                                event: c.is_error
+                                    ? { type: 'plan-mode-enter-failed' }
+                                    : { type: 'plan-mode-entered' },
+                                meta: msg.meta
+                            }))
+                        }
+                        continue
+                    }
                     {
                         const permEntry = context.permissionsById.get(c.tool_use_id)
-                        if (permEntry && isHiddenTool(permEntry.toolName)) continue
+                        if (permEntry && isHiddenTool(permEntry.toolName)) {
+                            if (isPlanModeEnterTool(permEntry.toolName)) {
+                                blocks.push(createEventBlock({
+                                    id: `${msg.id}:${idx}`,
+                                    createdAt: msg.createdAt,
+                                    event: c.is_error
+                                        ? { type: 'plan-mode-enter-failed' }
+                                        : { type: 'plan-mode-entered' },
+                                    meta: msg.meta
+                                }))
+                            }
+                            continue
+                        }
                     }
                     const title = context.titleChangesByToolUseId.get(c.tool_use_id) ?? null
                     if (title) {
