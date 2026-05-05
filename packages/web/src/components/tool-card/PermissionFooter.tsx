@@ -19,7 +19,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
 import type { SDKUIHints } from '@mobi/shared'
 import { memo, useMemo, useState } from 'react'
-import { Button, theme as antTheme, Typography, Spin } from 'antd'
+import { Button, Input, Spin, theme as antTheme, Typography } from 'antd'
 import { CheckOutlined, CloseOutlined, StopOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { getInputStringAny, getPermissionDescription } from '@/core/lib/toolInputUtils'
@@ -95,10 +95,13 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const [loadingForSession, setLoadingForSession] = useState(false)
     const [loadingAllEdits, setLoadingAllEdits] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [showFeedback, setShowFeedback] = useState(false)
+    const [feedback, setFeedback] = useState('')
 
     const toolName = props.tool.name
     const isEditTool = toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit'
-    const hideAllowForSession = isEditTool || toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode'
+    const isExitPlanMode = toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode'
+    const hideAllowForSession = isEditTool || isExitPlanMode
 
     const isPending = permission?.status === 'pending'
     const canAllowForSession = isPending && !hideAllowForSession
@@ -141,6 +144,16 @@ function PermissionFooterInner(props: PermissionFooterProps) {
         setLoading(null)
     }
 
+    const approveWithMode = async (mode: 'acceptEdits' | 'default') => {
+        if (!isPending || loading || loadingAllEdits || loadingForSession) return
+        setLoading('allow')
+        await run(async () => {
+            await props.api.permissions.approve(props.sessionId, permission.id, { mode })
+            await props.api.sessions.setPermissionMode(props.sessionId, mode)
+        })
+        setLoading(null)
+    }
+
     const approveAllEdits = async () => {
         if (!isPending || !canAllowAllEdits || loading || loadingAllEdits || loadingForSession) return
         setLoadingAllEdits(true)
@@ -166,6 +179,15 @@ function PermissionFooterInner(props: PermissionFooterProps) {
         setLoading(null)
     }
 
+    const denyWithFeedback = async () => {
+        if (!isPending || loading || loadingAllEdits || loadingForSession) return
+        setLoading('deny')
+        await run(() => props.api.permissions.deny(props.sessionId, permission.id, {
+            reason: feedback.trim() || undefined
+        }))
+        setLoading(null)
+    }
+
     return (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{summary}</div>
@@ -177,55 +199,120 @@ function PermissionFooterInner(props: PermissionFooterProps) {
             ) : null}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <Button
-                    type="primary"
-                    size="small"
-                    icon={loading === 'allow' ? <Spin size="small" /> : <CheckOutlined />}
-                    disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
-                    loading={loading === 'allow'}
-                    onClick={approve}
-                    style={{ justifyContent: 'flex-start', fontSize: 12 }}
-                >
-                    {t('chat.tool.allow')}
-                </Button>
+                {isExitPlanMode ? (
+                    <>
+                        {/* 自动接受编辑 */}
+                        <Button
+                            type="primary"
+                            size="small"
+                            icon={loading === 'allow' ? <Spin size="small" /> : <CheckOutlined />}
+                            disabled={props.disabled || loading !== null}
+                            loading={loading === 'allow'}
+                            onClick={() => approveWithMode('acceptEdits')}
+                            style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                        >
+                            {t('chat.tool.approveAutoAccept')}
+                        </Button>
+                        {/* 手动审批 */}
+                        <Button
+                            size="small"
+                            icon={loading === 'allow' ? <Spin size="small" /> : <CheckOutlined />}
+                            disabled={props.disabled || loading !== null}
+                            loading={loading === 'allow'}
+                            onClick={() => approveWithMode('default')}
+                            style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                        >
+                            {t('chat.tool.approveManual')}
+                        </Button>
+                        {/* 继续规划 */}
+                        <Button
+                            size="small"
+                            danger
+                            icon={loading === 'deny' ? <Spin size="small" /> : <CloseOutlined />}
+                            disabled={props.disabled || loading !== null}
+                            loading={loading === 'deny'}
+                            onClick={showFeedback ? denyWithFeedback : () => setShowFeedback(true)}
+                            style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                        >
+                            {t('chat.tool.keepPlanning')}
+                        </Button>
+                        {/* 反馈输入区域 */}
+                        {showFeedback && (
+                            <div style={{ marginTop: 4 }}>
+                                <Input.TextArea
+                                    value={feedback}
+                                    onChange={e => setFeedback(e.target.value)}
+                                    placeholder={t('chat.tool.keepPlanningPlaceholder')}
+                                    rows={3}
+                                    style={{ fontSize: 12 }}
+                                    autoFocus
+                                />
+                                <Button
+                                    size="small"
+                                    danger
+                                    style={{ marginTop: 4, justifyContent: 'flex-start', fontSize: 12 }}
+                                    onClick={denyWithFeedback}
+                                    loading={loading === 'deny'}
+                                    disabled={props.disabled || loading !== null}
+                                >
+                                    {t('chat.tool.sendFeedback')}
+                                </Button>
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <Button
+                            type="primary"
+                            size="small"
+                            icon={loading === 'allow' ? <Spin size="small" /> : <CheckOutlined />}
+                            disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
+                            loading={loading === 'allow'}
+                            onClick={approve}
+                            style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                        >
+                            {t('chat.tool.allow')}
+                        </Button>
 
-                {canAllowForSession ? (
-                    <Button
-                        size="small"
-                        icon={loadingForSession ? <Spin size="small" /> : null}
-                        disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
-                        loading={loadingForSession}
-                        onClick={approveForSession}
-                        style={{ justifyContent: 'flex-start', fontSize: 12 }}
-                    >
-                        {t('chat.tool.allowForSession')}
-                    </Button>
-                ) : null}
+                        {canAllowForSession ? (
+                            <Button
+                                size="small"
+                                icon={loadingForSession ? <Spin size="small" /> : null}
+                                disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
+                                loading={loadingForSession}
+                                onClick={approveForSession}
+                                style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                            >
+                                {t('chat.tool.allowForSession')}
+                            </Button>
+                        ) : null}
 
-                {canAllowAllEdits ? (
-                    <Button
-                        size="small"
-                        icon={loadingAllEdits ? <Spin size="small" /> : null}
-                        disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
-                        loading={loadingAllEdits}
-                        onClick={approveAllEdits}
-                        style={{ justifyContent: 'flex-start', fontSize: 12 }}
-                    >
-                        {t('chat.tool.allowAll')}
-                    </Button>
-                ) : null}
+                        {canAllowAllEdits ? (
+                            <Button
+                                size="small"
+                                icon={loadingAllEdits ? <Spin size="small" /> : null}
+                                disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
+                                loading={loadingAllEdits}
+                                onClick={approveAllEdits}
+                                style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                            >
+                                {t('chat.tool.allowAll')}
+                            </Button>
+                        ) : null}
 
-                <Button
-                    size="small"
-                    danger
-                    icon={loading === 'deny' ? <Spin size="small" /> : <CloseOutlined />}
-                    disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
-                    loading={loading === 'deny'}
-                    onClick={deny}
-                    style={{ justifyContent: 'flex-start', fontSize: 12 }}
-                >
-                    {t('chat.tool.deny')}
-                </Button>
+                        <Button
+                            size="small"
+                            danger
+                            icon={loading === 'deny' ? <Spin size="small" /> : <CloseOutlined />}
+                            disabled={props.disabled || loading !== null || loadingAllEdits || loadingForSession}
+                            loading={loading === 'deny'}
+                            onClick={deny}
+                            style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                        >
+                            {t('chat.tool.deny')}
+                        </Button>
+                    </>
+                )}
             </div>
         </div>
     )
