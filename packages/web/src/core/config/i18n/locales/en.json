@@ -145,10 +145,10 @@
             "keepPlanning": "Keep Planning",
             "keepPlanningPlaceholder": "Tell Claude what you want it to do next...",
             "sendFeedback": "Send Feedback",
-            "result": "Result"
+            "result": "Result",
+            "planReadyForReview": "Plan ready for review"
         },
         "planMode": {
-            "entering": "Entering plan mode...",
             "entered": "Entered plan mode",
             "enterFailed": "Failed to enter plan mode"
         }

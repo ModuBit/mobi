@@ -239,14 +239,6 @@ export function reduceTimeline(
                                 }))
                             }
                         }
-                        if (isPlanModeEnterTool(c.name)) {
-                            blocks.push(createEventBlock({
-                                id: `${msg.id}:${idx}`,
-                                createdAt: msg.createdAt,
-                                event: { type: 'enter-plan-mode' },
-                                meta: msg.meta
-                            }))
-                        }
                         continue
                     }
 

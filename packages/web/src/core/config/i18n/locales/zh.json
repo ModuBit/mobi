@@ -145,10 +145,10 @@
             "keepPlanning": "继续规划",
             "keepPlanningPlaceholder": "告诉 Claude 你希望它接下来做什么...",
             "sendFeedback": "发送反馈",
-            "result": "结果"
+            "result": "结果",
+            "planReadyForReview": "Claude 已完成规划，等待确认"
         },
         "planMode": {
-            "entering": "正在进入计划模式...",
             "entered": "已进入计划模式",
             "enterFailed": "进入计划模式失败"
         }

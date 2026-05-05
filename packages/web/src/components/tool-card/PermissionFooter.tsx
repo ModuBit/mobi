@@ -109,8 +109,9 @@ function PermissionFooterInner(props: PermissionFooterProps) {
 
     const summary = useMemo(() => {
         if (!permission) return ''
+        if (isExitPlanMode && isPending) return t('chat.tool.planReadyForReview')
         return formatPermissionSummary(permission, toolName, props.tool.input, t, props.tool.sdkHints)
-    }, [permission, toolName, props.tool.input, t, props.tool.sdkHints])
+    }, [permission, toolName, props.tool.input, t, props.tool.sdkHints, isExitPlanMode, isPending])
 
     if (!permission) return null
 
