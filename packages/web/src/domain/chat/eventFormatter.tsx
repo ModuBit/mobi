@@ -93,6 +93,15 @@ export function formatEvent(
                 </div>
             )
         }
+        case 'enter-plan-mode': {
+            return t('chat.planMode.entering')
+        }
+        case 'plan-mode-entered': {
+            return t('chat.planMode.entered')
+        }
+        case 'plan-mode-enter-failed': {
+            return t('chat.planMode.enterFailed')
+        }
         default:
             return null
     }
