@@ -146,6 +146,11 @@
             "keepPlanningPlaceholder": "告诉 Claude 你希望它接下来做什么...",
             "sendFeedback": "发送反馈",
             "result": "结果"
+        },
+        "planMode": {
+            "entering": "正在进入计划模式...",
+            "entered": "已进入计划模式",
+            "enterFailed": "进入计划模式失败"
         }
     },
     "files": {
