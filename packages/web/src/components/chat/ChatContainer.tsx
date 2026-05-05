@@ -87,6 +87,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         scrollHeight: number
         blocksLength: number
     } | null>(null)
+    // 已处理的 plan-mode-entered 事件 ID 集合，避免重复调用 API
+    const processedPlanModeEventsRef = useRef<Set<string>>(new Set())
+    const setPermissionModeRef = useRef(sessionActions.setPermissionMode)
+    setPermissionModeRef.current = sessionActions.setPermissionMode
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
@@ -206,6 +210,18 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 首次加载消息时滚动到底部（sessionId 变化时重置）
     const initialScrollRef = useRef(true)
     useEffect(() => { initialScrollRef.current = true }, [sessionId])
+    useEffect(() => { processedPlanModeEventsRef.current = new Set() }, [sessionId])
+
+    // 检测 EnterPlanMode 执行成功事件，同步 session permissionMode
+    useEffect(() => {
+        for (const block of chatBlocks) {
+            if (block.kind !== 'agent-event') continue
+            if (block.event.type === 'plan-mode-entered' && !processedPlanModeEventsRef.current.has(block.id)) {
+                processedPlanModeEventsRef.current.add(block.id)
+                setPermissionModeRef.current('plan')
+            }
+        }
+    }, [chatBlocks])
     useLayoutEffect(() => {
         if (initialScrollRef.current && chatBlocks.length > 0 && scrollBoxRef.current) {
             initialScrollRef.current = false
