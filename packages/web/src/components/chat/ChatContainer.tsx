@@ -52,6 +52,8 @@ const bubbleCopyStyles = css`
 const HISTORY_PREFETCH_DISTANCE = 200
 const AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD = 50
 const SCROLL_BOTTOM_VISIBLE_THRESHOLD = 60
+// 补偿完成后屏蔽滚动事件的时间窗口（覆盖 ResizeObserver + rAF 双帧延迟）
+const RESTORE_SCROLL_GUARD_MS = 100
 
 import { BUBBLE_ROLES } from './bubbleRoles'
 
@@ -80,7 +82,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const scrollBoxRef = useRef<HTMLElement | null>(null)
     const isRestoringScrollRef = useRef(false)
     const prevShowRef = useRef(false)
-    // 历史消息加载的滚动恢复状态
     const pendingRestoreRef = useRef<{
         scrollTop: number
         scrollHeight: number
@@ -92,10 +93,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const { token: authToken } = useAuthStore()
     const api = useMobiApi(authToken)
 
-    // 工具渲染所需的元数据
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
 
-    // 使用 reduceChatBlocks 处理消息（包含 CLI 输出合并）
     const { blocks: rawBlocks } = useMemo(() => {
         const normalized = messages
             .map(normalizeDecryptedMessage)
@@ -103,7 +102,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return reduceChatBlocks(normalized, session?.agentState)
     }, [messages, session?.agentState])
 
-    // 保形渲染：当还有更多历史消息时，过滤掉不完整的 tool-call block（state === 'running'）
+    // 有更多历史页时，过滤掉不完整的 tool-call block 避免闪烁
     const chatBlocks = useMemo(() => {
         if (!hasNextPage) return rawBlocks
         return rawBlocks.filter((block) => {
@@ -112,18 +111,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         })
     }, [rawBlocks, hasNextPage])
 
-    // 用 ref 跟踪 chatBlocks 长度，供滚动 handler 读取
     const chatBlocksLengthRef = useRef(chatBlocks.length)
     chatBlocksLengthRef.current = chatBlocks.length
 
-    // 缓存 Bubble.List 的实际滚动容器（useLayoutEffect 确保在滚动处理之前更新）
     useLayoutEffect(() => {
         const el = scrollContainerRef.current
         if (!el) return
         scrollBoxRef.current = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
     }, [chatBlocks.length])
 
-    // 用 ref 持有滚动监听所需的值，避免频繁 rebind
     const hasNextPageRef = useRef(hasNextPage)
     hasNextPageRef.current = hasNextPage
     const isFetchingNextPageRef = useRef(isFetchingNextPage)
@@ -131,8 +127,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const fetchNextPageRef = useRef(fetchNextPage)
     fetchNextPageRef.current = fetchNextPage
 
-    // 监听滚动位置（autoScroll=false，正常 flex column）
-    // 同时通过 ResizeObserver 实现流式输出自动跟随（替代 autoScroll）
     useEffect(() => {
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
@@ -153,7 +147,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 setShowScrollBottom(shouldShow)
             }
 
-            // 距离顶部 200px 时预加载历史消息
             if (scrollTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
                 pendingRestoreRef.current = {
                     scrollTop,
@@ -165,7 +158,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             }
         }
 
-        // ResizeObserver：流式输出内容增长时自动跟随（用户在底部附近才触发）
         let resizeObserver: ResizeObserver | null = null
         if (contentEl) {
             resizeObserver = new ResizeObserver(() => {
@@ -181,10 +173,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             scrollBox.removeEventListener('scroll', handleScroll)
             resizeObserver?.disconnect()
         }
+    // 依赖 chatBlocks.length：仅在 block 数量变化时重新绑定 scroll 监听和 ResizeObserver。
+    // 内容增长（如流式输出追加文本）由 ResizeObserver 感知，无需 rebind。
+    // scrollBox DOM 替换由上方 useLayoutEffect 负责更新 scrollBoxRef。
     }, [chatBlocks.length])
 
-    // 历史消息加载时的滚动位置保持
-    // 每次渲染检测 scrollHeight 变化并增量补偿，覆盖 Skeleton 出现/消失和内容加载
     useLayoutEffect(() => {
         const pending = pendingRestoreRef.current
         if (!pending) return
@@ -193,6 +186,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
         const delta = scrollBox.scrollHeight - pending.scrollHeight
         if (delta !== 0) {
+            isRestoringScrollRef.current = true
             scrollBox.scrollTop = pending.scrollTop + delta
             pending.scrollTop = scrollBox.scrollTop
             pending.scrollHeight = scrollBox.scrollHeight
@@ -200,7 +194,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         if (chatBlocks.length > pending.blocksLength || !isFetchingNextPage) {
             pendingRestoreRef.current = null
             isRestoringScrollRef.current = true
-            setTimeout(() => { isRestoringScrollRef.current = false }, 100)
+            setTimeout(() => { isRestoringScrollRef.current = false }, RESTORE_SCROLL_GUARD_MS)
         }
     }, [chatBlocks.length, isFetchingNextPage])
 
@@ -209,8 +203,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         if (scrollBox) scrollBox.scrollTo({ top: scrollBox.scrollHeight, behavior: 'smooth' })
     }, [])
 
-    // 首次加载消息时滚动到底部
+    // 首次加载消息时滚动到底部（sessionId 变化时重置）
     const initialScrollRef = useRef(true)
+    useEffect(() => { initialScrollRef.current = true }, [sessionId])
     useLayoutEffect(() => {
         if (initialScrollRef.current && chatBlocks.length > 0 && scrollBoxRef.current) {
             initialScrollRef.current = false

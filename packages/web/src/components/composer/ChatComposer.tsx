@@ -35,6 +35,7 @@ import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { createFileAttachment } from '@/core/lib/fileAttachments'
 import { useCommands } from '@/core/data/hooks/queries/useCommands'
 import { useSDKMetadata, type ModelOption } from '@/core/data/hooks/queries/useSDKMetadata'
+import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
 import { MentionDropdown } from './MentionDropdown'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { CommandHintBar } from './CommandHintBar'
@@ -80,7 +81,7 @@ function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null
 
 // 带有 hover 背景的 borderless Select，与 Button type="text" 的 hover 效果保持一致
 const HoverSelect = styled(Select, {
-    shouldForwardProp: prop => !prop.startsWith('$'),
+    shouldForwardProp: shouldNotForwardDollarProps,
 })<{
     $token: ReturnType<typeof theme.useToken>['token']
     $compact?: boolean

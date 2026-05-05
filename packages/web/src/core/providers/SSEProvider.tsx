@@ -326,11 +326,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     })
                     // 刷新所有消息缓存，补齐断线期间遗漏的消息
                     queryClient.invalidateQueries({ queryKey: queryKeys.sessions }).catch(() => {})
-                    queryClient.getQueriesData<DecryptedMessage[]>({
-                        queryKey: ['messages'],
-                    }).forEach(([queryKey]) => {
-                        queryClient.invalidateQueries({ queryKey }).catch(() => {})
-                    })
+                    queryClient.invalidateQueries({ queryKey: ['messages'] }).catch(() => {})
                 }
                 break
             case 'toast':

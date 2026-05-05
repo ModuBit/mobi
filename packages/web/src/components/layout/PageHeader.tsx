@@ -17,6 +17,7 @@
 import type { ReactNode } from 'react'
 import { Layout, theme as antTheme } from 'antd'
 import styled from '@emotion/styled'
+import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
 
 const { useToken } = antTheme
 
@@ -43,7 +44,7 @@ export const HeaderRight = styled.div`
 `
 
 const StyledHeader = styled(Layout.Header, {
-    shouldForwardProp: (prop) => !prop.startsWith('$'),
+    shouldForwardProp: shouldNotForwardDollarProps,
 })<{ $bg: string; $border: string }>`
     display: flex;
     align-items: center;
