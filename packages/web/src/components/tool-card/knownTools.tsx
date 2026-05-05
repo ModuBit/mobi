@@ -26,6 +26,7 @@ import {
     SignatureOutlined,
     GlobalOutlined,
     BulbOutlined,
+    ApiOutlined,
     RocketOutlined,
     ToolOutlined,
     QuestionCircleOutlined,
@@ -400,6 +401,14 @@ export const knownTools: Record<string, {
         icon: () => <QuestionCircleOutlined style={DEFAULT_ICON_STYLE} />,
         title: (opts) => askUserQuestionTitle(opts, 'id'),
         subtitle: (opts) => askUserQuestionSubtitle(opts),
+        minimal: true
+    },
+    Skill: {
+        icon: () => <ApiOutlined style={DEFAULT_ICON_STYLE} />,
+        title: (opts) => {
+            const skill = getInputStringAny(opts.input, ['skill'])
+            return skill ? `Skill(${skill})` : 'Skill'
+        },
         minimal: true
     }
 }

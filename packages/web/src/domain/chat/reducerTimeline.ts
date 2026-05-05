@@ -177,6 +177,11 @@ export function reduceTimeline(
             for (let idx = 0; idx < msg.content.length; idx += 1) {
                 const c = msg.content[idx]
                 if (c.type === 'text') {
+                    // isSynthetic text 是 SDK/CLI 内部产生的消息（如 Skill 加载内容），
+                    // 不应展示为独立对话气泡。若未来有需要展示的 synthetic text 类型，
+                    // 需在此处按 content 特征做更细粒度的过滤
+                    if (msg.isSynthetic) continue
+
                     if (isCliOutputText(c.text, msg.meta)) {
                         blocks.push(createCliOutputBlock({
                             id: `${msg.id}:${idx}`,
@@ -344,7 +349,10 @@ export function reduceTimeline(
                     }, blockIndexById)
 
                     const completedBlock = { ...block, tool: { ...block.tool } }
-                    completedBlock.tool.result = c.content
+                    // Skill 工具完成后将 "Launching" 替换为 "Launched"
+                    completedBlock.tool.result = block.tool.name === 'Skill' && typeof c.content === 'string'
+                        ? c.content.replace(/^Launching/, 'Launched')
+                        : c.content
                     completedBlock.tool.completedAt = msg.createdAt
                     completedBlock.tool.state = c.is_error ? 'error' : 'completed'
                     replaceBlockById(blocks, blockIndexById, c.tool_use_id, completedBlock)

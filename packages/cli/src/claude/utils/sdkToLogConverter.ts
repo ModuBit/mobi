@@ -142,8 +142,8 @@ export class SDKToLogConverter {
                 const userMsg = sdkMessage as SDKUserMessage
                 logMessage = {
                     ...baseFields,
+                    ...userMsg,
                     type: 'user',
-                    message: userMsg.message
                 }
 
                 // Check if this is a tool result and add mode if available
@@ -166,10 +166,9 @@ export class SDKToLogConverter {
                 const assistantMsg = sdkMessage as SDKAssistantMessage
                 logMessage = {
                     ...baseFields,
+                    // Include all other fields
+                    ...assistantMsg,
                     type: 'assistant',
-                    message: assistantMsg.message as any,
-                    // Assistant messages often have additional fields
-                    requestId: (assistantMsg as any).requestId
                 }
                 break
             }
@@ -186,12 +185,9 @@ export class SDKToLogConverter {
                 // but we can convert them if needed
                 logMessage = {
                     ...baseFields,
-                    type: 'system',
-                    subtype: systemMsg.subtype,
-                    model: systemMsg.model,
-                    tools: systemMsg.tools,
                     // Include all other fields
-                    ...(systemMsg as any)
+                    ...systemMsg,
+                    type: 'system',
                 }
                 break
             }

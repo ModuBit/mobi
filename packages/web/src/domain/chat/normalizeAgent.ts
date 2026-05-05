@@ -246,7 +246,7 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
         isSidechain,
         content: blocks,
         meta: ctx.meta,
-        isSynthetic: hasInterruptedText
+        isSynthetic: Boolean(data.isSynthetic) || hasInterruptedText
     }
 }
 
