@@ -149,7 +149,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
         setLoading('allow')
         await run(async () => {
             await props.api.permissions.approve(props.sessionId, permission.id, { mode })
-            await props.api.sessions.setPermissionMode(props.sessionId, mode)
+            await props.api.sessions.setPermissionMode(props.sessionId, mode).catch(() => {})
         })
         setLoading(null)
     }
@@ -231,7 +231,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                             icon={loading === 'deny' ? <Spin size="small" /> : <CloseOutlined />}
                             disabled={props.disabled || loading !== null}
                             loading={loading === 'deny'}
-                            onClick={showFeedback ? denyWithFeedback : () => setShowFeedback(true)}
+                            onClick={() => { if (!showFeedback) setShowFeedback(true) }}
                             style={{ justifyContent: 'flex-start', fontSize: 12 }}
                         >
                             {t('chat.tool.keepPlanning')}
