@@ -22,7 +22,7 @@ import { memo, useMemo, useState } from 'react'
 import { Button, Input, Spin, theme as antTheme, Typography } from 'antd'
 import { CheckOutlined, CloseOutlined, StopOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { getInputStringAny, getPermissionDescription } from '@/core/lib/toolInputUtils'
+import { getInputStringAny, getCustomPermissionTitleKey, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -100,18 +100,19 @@ function PermissionFooterInner(props: PermissionFooterProps) {
 
     const toolName = props.tool.name
     const isEditTool = toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit'
-    const isExitPlanMode = toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode'
+    const isExitPlanMode = isExitPlanModeTool(toolName)
     const hideAllowForSession = isEditTool || isExitPlanMode
 
     const isPending = permission?.status === 'pending'
     const canAllowForSession = isPending && !hideAllowForSession
     const canAllowAllEdits = isPending && isEditTool
 
+    const customTitleKey = useMemo(() => getCustomPermissionTitleKey(toolName), [toolName])
     const summary = useMemo(() => {
         if (!permission) return ''
-        if (isExitPlanMode && isPending) return t('chat.tool.planReadyForReview')
+        if (isPending && customTitleKey) return t(customTitleKey)
         return formatPermissionSummary(permission, toolName, props.tool.input, t, props.tool.sdkHints)
-    }, [permission, toolName, props.tool.input, t, props.tool.sdkHints, isExitPlanMode, isPending])
+    }, [permission, toolName, props.tool.input, t, props.tool.sdkHints, isPending, customTitleKey])
 
     if (!permission) return null
 

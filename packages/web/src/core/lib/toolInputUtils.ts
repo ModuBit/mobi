@@ -82,3 +82,17 @@ export function getPermissionDescription(toolName: string, input: unknown): stri
             return null
     }
 }
+
+/** 判断是否为 ExitPlanMode 工具 */
+export function isExitPlanModeTool(name: string): boolean {
+    return name === 'exit_plan_mode' || name === 'ExitPlanMode'
+}
+
+/**
+ * 获取工具的自定义权限提示 i18n key
+ * 返回 null 表示使用默认文案
+ */
+export function getCustomPermissionTitleKey(toolName: string): string | null {
+    if (isExitPlanModeTool(toolName)) return 'chat.tool.planReadyForReview'
+    return null
+}

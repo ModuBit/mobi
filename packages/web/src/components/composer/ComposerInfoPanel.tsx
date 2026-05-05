@@ -24,6 +24,7 @@ import { Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
+import { getCustomPermissionTitleKey } from '@/core/lib/toolInputUtils'
 import type { MobiApi } from '@/core/data/api/client'
 import type { SDKUIHints } from '@mobi/shared'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
@@ -93,11 +94,13 @@ function PermissionPanel({
                     <div style={{ marginBottom: 8 }}>
                         <Text strong>
                             <ExclamationCircleOutlined style={{ color: token.colorWarningText, marginRight: 8 }} />
-                            {(tool.name === 'exit_plan_mode' || tool.name === 'ExitPlanMode')
-                                ? t('chat.tool.planReadyForReview')
-                                : tool.sdkHints?.displayName
+                            {(() => {
+                                const customKey = getCustomPermissionTitleKey(tool.name)
+                                if (customKey) return t(customKey)
+                                return tool.sdkHints?.displayName
                                     ? t('chat.permission.toolRequest', { tool: tool.sdkHints.displayName })
-                                    : t('chat.permission.title')}
+                                    : t('chat.permission.title')
+                            })()}
                         </Text>
                     </div>
                     <PermissionFooter
