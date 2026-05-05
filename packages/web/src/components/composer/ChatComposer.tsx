@@ -79,7 +79,9 @@ function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null
 }
 
 // 带有 hover 背景的 borderless Select，与 Button type="text" 的 hover 效果保持一致
-const HoverSelect = styled(Select)<{
+const HoverSelect = styled(Select, {
+    shouldForwardProp: prop => !prop.startsWith('$'),
+})<{
     $token: ReturnType<typeof theme.useToken>['token']
     $compact?: boolean
 }>`
@@ -119,7 +121,7 @@ function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>
             size="small"
             variant="borderless"
             popupMatchSelectWidth={false}
-            popupClassName={COMPACT_DROPDOWN_CLASS}
+            classNames={{ popup: { root: COMPACT_DROPDOWN_CLASS } }}
         />
     )
 }

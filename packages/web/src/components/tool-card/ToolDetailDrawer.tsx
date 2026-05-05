@@ -31,7 +31,7 @@ import { getToolIcon, ICON_STYLE_LG, StatusStateIcon } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { truncate } from '@/core/lib/toolInputUtils'
-import { ContentDrawer, DRAWER_WIDTH_PRESETS, type DrawerWidthConfig } from '@/components/ui/ContentDrawer'
+import { ContentDrawer, DRAWER_WIDTH_PRESETS } from '@/components/ui/ContentDrawer'
 import { FilePathText } from '@/components/ui/FilePathText'
 import { AgentDrawerContent } from './AgentDrawerContent'
 
@@ -178,7 +178,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
     const hasSpecialView = !!(FullView || CompactView)
 
     // Agent 工具使用 wide 模式，其他按 presentation 配置
-    const drawerWidth: DrawerWidthConfig = isAgentTool(tool.name) || presentation.wideDrawer
+    const drawerSize = isAgentTool(tool.name) || presentation.wideDrawer
         ? DRAWER_WIDTH_PRESETS.wide
         : DRAWER_WIDTH_PRESETS.narrow
 
@@ -187,7 +187,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
             open={open}
             onClose={onClose}
             title={titleContent}
-            widthConfig={drawerWidth}
+            size={drawerSize}
             destroyOnClose={true}
         >
             {/* Agent 工具：BubbleList 渲染 sidechain 对话 */}

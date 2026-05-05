@@ -48,10 +48,10 @@ const bubbleCopyStyles = css`
     }
 `
 
-/** column-reverse 布局下的滚动阈值 */
-const SCROLL_BOTTOM_VISIBLE_THRESHOLD = -20
+/** 滚动相关阈值（autoScroll=false，正常 flex column 布局） */
 const HISTORY_PREFETCH_DISTANCE = 200
-const AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD = -50
+const AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD = 50
+const SCROLL_BOTTOM_VISIBLE_THRESHOLD = 60
 
 import { BUBBLE_ROLES } from './bubbleRoles'
 
@@ -78,11 +78,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const sessionActions = useSessionActions(sessionId)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const scrollBoxRef = useRef<HTMLElement | null>(null)
-    const scrollTopBeforeFetch = useRef<number>(0)
-    const scrollHeightBeforeFetch = useRef<number>(0)
     const isRestoringScrollRef = useRef(false)
-    const prevFetchingRef = useRef(isFetchingNextPage)
     const prevShowRef = useRef(false)
+    // 历史消息加载的滚动恢复状态
+    const pendingRestoreRef = useRef<{
+        scrollTop: number
+        scrollHeight: number
+        blocksLength: number
+    } | null>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
@@ -109,8 +112,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         })
     }, [rawBlocks, hasNextPage])
 
-    // 缓存 Bubble.List 的实际滚动容器
-    useEffect(() => {
+    // 用 ref 跟踪 chatBlocks 长度，供滚动 handler 读取
+    const chatBlocksLengthRef = useRef(chatBlocks.length)
+    chatBlocksLengthRef.current = chatBlocks.length
+
+    // 缓存 Bubble.List 的实际滚动容器（useLayoutEffect 确保在滚动处理之前更新）
+    useLayoutEffect(() => {
         const el = scrollContainerRef.current
         if (!el) return
         scrollBoxRef.current = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
@@ -124,74 +131,92 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const fetchNextPageRef = useRef(fetchNextPage)
     fetchNextPageRef.current = fetchNextPage
 
-    // 监听滚动位置
-    // column-reverse 布局下 scrollTop 为负值：0 = 底部，负方向 = 向上滚动
+    // 监听滚动位置（autoScroll=false，正常 flex column）
+    // 同时通过 ResizeObserver 实现流式输出自动跟随（替代 autoScroll）
     useEffect(() => {
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
+        const contentEl = scrollBox.querySelector('.ant-bubble-list-scroll-content') as HTMLElement | null
+
+        let isNearBottom = true
 
         const handleScroll = () => {
-            // 正在恢复滚动位置时跳过，避免触发新的 fetchNextPage
             if (isRestoringScrollRef.current) return
 
-            const scrollTop = scrollBox.scrollTop
+            const { scrollTop, scrollHeight, clientHeight } = scrollBox
+            const distanceToBottom = scrollHeight - scrollTop - clientHeight
+            isNearBottom = distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD
 
-            const shouldShow = scrollTop < SCROLL_BOTTOM_VISIBLE_THRESHOLD
+            const shouldShow = distanceToBottom > SCROLL_BOTTOM_VISIBLE_THRESHOLD
             if (shouldShow !== prevShowRef.current) {
                 prevShowRef.current = shouldShow
                 setShowScrollBottom(shouldShow)
             }
 
             // 距离顶部 200px 时预加载历史消息
-            // column-reverse 布局下：scrollHeight + scrollTop - clientHeight = 距离顶部的距离
-            const distanceToTop = scrollBox.scrollHeight + scrollTop - scrollBox.clientHeight
-            if (distanceToTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
-                scrollTopBeforeFetch.current = scrollTop
-                scrollHeightBeforeFetch.current = scrollBox.scrollHeight
-                // 立即设 true 阻断同帧内的重复 scroll 事件
+            if (scrollTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
+                pendingRestoreRef.current = {
+                    scrollTop,
+                    scrollHeight,
+                    blocksLength: chatBlocksLengthRef.current,
+                }
                 isFetchingNextPageRef.current = true
                 fetchNextPageRef.current()
             }
         }
 
-        scrollBox.addEventListener('scroll', handleScroll, { passive: true })
-        return () => scrollBox.removeEventListener('scroll', handleScroll)
-    }, [chatBlocks.length])
-
-    // 滚动位置保持（在浏览器绘制前同步恢复，避免用户看到跳动）
-    useLayoutEffect(() => {
-        const wasFetching = prevFetchingRef.current
-        prevFetchingRef.current = isFetchingNextPage
-
-        // 加载历史完成后恢复滚动位置
-        if (!isFetchingNextPage && wasFetching && scrollBoxRef.current) {
-            // column-reverse 布局下内容插入顶部会使 scrollHeight 增加
-            // scrollTop_new = scrollTop_old - (scrollHeight_new - scrollHeight_old)
-            const scrollBox = scrollBoxRef.current
-            const delta = scrollBox.scrollHeight - scrollHeightBeforeFetch.current
-            // 设置恢复标志，阻止 scroll 事件触发新的 fetchNextPage
-            isRestoringScrollRef.current = true
-            scrollBox.scrollTop = scrollTopBeforeFetch.current - delta
-            // 延迟清标志，确保此帧内的 scroll 事件被跳过
-            requestAnimationFrame(() => {
-                isRestoringScrollRef.current = false
+        // ResizeObserver：流式输出内容增长时自动跟随（用户在底部附近才触发）
+        let resizeObserver: ResizeObserver | null = null
+        if (contentEl) {
+            resizeObserver = new ResizeObserver(() => {
+                if (isNearBottom && !isRestoringScrollRef.current) {
+                    scrollBox.scrollTop = scrollBox.scrollHeight
+                }
             })
-            return
+            resizeObserver.observe(contentEl)
         }
 
-        // 新消息到达时自动滚动到底部（仅在用户已在底部附近时）
-        if (!isFetchingNextPage && !wasFetching) {
-            const scrollBox = scrollBoxRef.current
-            if (scrollBox && scrollBox.scrollTop > AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD) {
-                scrollBox.scrollTo({ top: 0, behavior: 'smooth' })
-            }
+        scrollBox.addEventListener('scroll', handleScroll, { passive: true })
+        return () => {
+            scrollBox.removeEventListener('scroll', handleScroll)
+            resizeObserver?.disconnect()
+        }
+    }, [chatBlocks.length])
+
+    // 历史消息加载时的滚动位置保持
+    // 每次渲染检测 scrollHeight 变化并增量补偿，覆盖 Skeleton 出现/消失和内容加载
+    useLayoutEffect(() => {
+        const pending = pendingRestoreRef.current
+        if (!pending) return
+        const scrollBox = scrollBoxRef.current
+        if (!scrollBox) return
+
+        const delta = scrollBox.scrollHeight - pending.scrollHeight
+        if (delta !== 0) {
+            scrollBox.scrollTop = pending.scrollTop + delta
+            pending.scrollTop = scrollBox.scrollTop
+            pending.scrollHeight = scrollBox.scrollHeight
+        }
+        if (chatBlocks.length > pending.blocksLength || !isFetchingNextPage) {
+            pendingRestoreRef.current = null
+            isRestoringScrollRef.current = true
+            setTimeout(() => { isRestoringScrollRef.current = false }, 100)
         }
     }, [chatBlocks.length, isFetchingNextPage])
 
-    // 手动跳到底部
     const handleScrollToBottom = useCallback(() => {
-        scrollBoxRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+        const scrollBox = scrollBoxRef.current
+        if (scrollBox) scrollBox.scrollTo({ top: scrollBox.scrollHeight, behavior: 'smooth' })
     }, [])
+
+    // 首次加载消息时滚动到底部
+    const initialScrollRef = useRef(true)
+    useLayoutEffect(() => {
+        if (initialScrollRef.current && chatBlocks.length > 0 && scrollBoxRef.current) {
+            initialScrollRef.current = false
+            scrollBoxRef.current.scrollTop = scrollBoxRef.current.scrollHeight
+        }
+    }, [chatBlocks.length])
 
     const decoratedItems = useMemo(() => {
         const baseItems = buildChatBubbleItems(
@@ -299,11 +324,20 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 {chatBlocks.length === 0 ? (
                     <Empty description={t('chat.empty')} style={{ marginTop: 40 }} />
                 ) : (
-                    <Bubble.List
-                        items={bubbleItems}
-                        role={BUBBLE_ROLES}
-                        style={{ height: '100%' }}
-                    />
+                    <>
+                        {/* autoScroll=false：不使用 Bubble.List 的 autoScroll。
+                          autoScroll 启用 column-reverse 布局和 useCompatibleScroll，
+                          后者通过 ResizeObserver + enforceScrollLock 独立管理视口位置。
+                          加载历史消息时，enforceScrollLock 与手动 scrollTop 恢复存在时序冲突，
+                          且 shouldLock 在用户靠近哨兵时为 false 导致跳过锁定。
+                          因此禁用 autoScroll，改用下方 ResizeObserver 自行实现流式跟随。 */}
+                        <Bubble.List
+                            items={bubbleItems}
+                            role={BUBBLE_ROLES}
+                            style={{ height: '100%' }}
+                            autoScroll={false}
+                        />
+                    </>
                 )}
                 {showScrollBottom && (
                     <Button
