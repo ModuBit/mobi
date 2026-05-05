@@ -34,6 +34,7 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
+import { getAgentStatus } from '@/components/pixel-avatar/types'
 
 const { useToken } = antTheme
 
@@ -87,10 +88,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         scrollHeight: number
         blocksLength: number
     } | null>(null)
-    // 已处理的 plan-mode-entered 事件 ID 集合，避免重复调用 API
-    const processedPlanModeEventsRef = useRef<Set<string>>(new Set())
-    const setPermissionModeRef = useRef(sessionActions.setPermissionMode)
-    setPermissionModeRef.current = sessionActions.setPermissionMode
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
@@ -210,18 +207,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 首次加载消息时滚动到底部（sessionId 变化时重置）
     const initialScrollRef = useRef(true)
     useEffect(() => { initialScrollRef.current = true }, [sessionId])
-    useEffect(() => { processedPlanModeEventsRef.current = new Set() }, [sessionId])
 
-    // 检测 EnterPlanMode 执行成功事件，同步 session permissionMode
-    useEffect(() => {
-        for (const block of chatBlocks) {
-            if (block.kind !== 'agent-event') continue
-            if (block.event.type === 'plan-mode-entered' && !processedPlanModeEventsRef.current.has(block.id)) {
-                processedPlanModeEventsRef.current.add(block.id)
-                setPermissionModeRef.current('plan')
-            }
-        }
-    }, [chatBlocks])
     useLayoutEffect(() => {
         if (initialScrollRef.current && chatBlocks.length > 0 && scrollBoxRef.current) {
             initialScrollRef.current = false
@@ -280,16 +266,21 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         ]
 
         if (session?.running) {
+            const loadingStatus = getAgentStatus({
+                active: session.active ?? false,
+                running: session.running,
+                agentState: session.agentState,
+            })
             items.push({
                 key: '__loading__',
                 role: 'assistant',
-                content: <AgentLoadingBubble sessionId={sessionId} />,
+                content: <AgentLoadingBubble sessionId={sessionId} status={loadingStatus} />,
                 variant: 'borderless',
             })
         }
 
         return items
-    }, [decoratedItems, isFetchingNextPage, session?.running, sessionId])
+    }, [decoratedItems, isFetchingNextPage, session?.running, session?.agentState?.requests, sessionId])
 
     const handleSend = (text: string) => {
         if (!text.trim()) return

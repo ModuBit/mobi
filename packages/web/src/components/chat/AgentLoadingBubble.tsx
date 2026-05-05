@@ -16,20 +16,22 @@
 
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { getVibingMessage, hashSessionId } from '@/components/pixel-avatar/vibingMessages'
 
 interface AgentLoadingBubbleProps {
     sessionId: string
+    status: AgentStatus
 }
 
-export function AgentLoadingBubble({ sessionId }: AgentLoadingBubbleProps) {
+export function AgentLoadingBubble({ sessionId, status }: AgentLoadingBubbleProps) {
     const { token } = theme.useToken()
 
     const vibingMsg = getVibingMessage(hashSessionId(sessionId))
 
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <PixelAvatar name={sessionId} status="outputting" size={18} />
+            <PixelAvatar name={sessionId} status={status} size={18} />
             <span style={{ color: token.colorTextSecondary, fontSize: 13 }}>
                 {vibingMsg}
             </span>

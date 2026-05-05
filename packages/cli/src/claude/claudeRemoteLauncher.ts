@@ -160,6 +160,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 当用户批准 plan mode 退出时，permissionHandler 会故意返回 deny + PLAN_FAKE_REJECT 来"欺骗" SDK
         // 此处需要拦截 PLAN_FAKE_REJECT 并替换为正常结果，同时 SDK 会处理注入的 PLAN_FAKE_RESTART 消息
         let planModeToolCalls = new Set<string>();
+        // 跟踪 enter_plan_mode 工具调用，成功后同步 permissionMode 为 plan
+        let enterPlanModeToolCalls = new Set<string>();
         // 跟踪所有正在执行中的工具调用，记录 parentToolCallId 用于处理嵌套工具调用场景
         // 工具开始执行时添加，收到 tool_result 时移除
         let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
@@ -181,6 +183,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             if (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode') {
                                 logger.debug('[remote]: detected plan mode tool call ' + c.id!);
                                 planModeToolCalls.add(c.id! as string);
+                            }
+                            if (c.name === 'enter_plan_mode' || c.name === 'EnterPlanMode') {
+                                logger.debug('[remote]: detected enter plan mode tool call ' + c.id!);
+                                enterPlanModeToolCalls.add(c.id! as string);
                             }
                         }
                     }
@@ -209,6 +215,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             ...umessage.message,
                             content: umessage.message.content.map((c: any) => {
                                 if (c.type === 'tool_result' && c.tool_use_id && planModeToolCalls.has(c.tool_use_id!)) {
+                                    planModeToolCalls.delete(c.tool_use_id!);
                                     if (c.content === PLAN_FAKE_REJECT) {
                                         logger.debug('[remote]: hack plan mode exit');
                                         logger.debugLargeJson('[remote]: hack plan mode exit', c);
@@ -218,9 +225,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                             content: 'Plan approved',
                                             mode: c.mode
                                         };
-                                    } else {
-                                        return c;
                                     }
+                                    return c;
+                                }
+                                if (c.type === 'tool_result' && c.tool_use_id && enterPlanModeToolCalls.has(c.tool_use_id!)) {
+                                    enterPlanModeToolCalls.delete(c.tool_use_id!);
+                                    if (!c.is_error) {
+                                        logger.debug('[remote]: enter plan mode succeeded, syncing permissionMode');
+                                        permissionHandler.handleModeChange('plan');
+                                    }
+                                    return c;
                                 }
                                 return c;
                             })

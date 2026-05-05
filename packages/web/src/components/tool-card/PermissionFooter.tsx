@@ -246,6 +246,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     onChange={e => setFeedback(e.target.value)}
                                     placeholder={t('chat.tool.keepPlanningPlaceholder')}
                                     rows={3}
+                                    status="error"
                                     style={{ fontSize: 12 }}
                                     autoFocus
                                 />
