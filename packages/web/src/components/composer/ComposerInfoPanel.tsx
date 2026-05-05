@@ -93,9 +93,11 @@ function PermissionPanel({
                     <div style={{ marginBottom: 8 }}>
                         <Text strong>
                             <ExclamationCircleOutlined style={{ color: token.colorWarningText, marginRight: 8 }} />
-                            {tool.sdkHints?.displayName
-                                ? t('chat.permission.toolRequest', { tool: tool.sdkHints.displayName })
-                                : t('chat.permission.title')}
+                            {(tool.name === 'exit_plan_mode' || tool.name === 'ExitPlanMode')
+                                ? t('chat.tool.planReadyForReview')
+                                : tool.sdkHints?.displayName
+                                    ? t('chat.permission.toolRequest', { tool: tool.sdkHints.displayName })
+                                    : t('chat.permission.title')}
                         </Text>
                     </div>
                     <PermissionFooter
