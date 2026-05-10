@@ -182,6 +182,9 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     apiRef.current = api
     const { notification } = App.useApp()
     const { t } = useTranslation()
+    // 用 ref 持有 t，避免语言切换触发 SSE 重连
+    const tRef = useRef(t)
+    tRef.current = t
 
     // 批处理失效相关 refs
     const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -313,8 +316,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     // SSE 断开 → 显示警告通知
                     notify.warning({
                         key: 'sse-disconnected',
-                        message: t('notification.sseDisconnected'),
-                        description: t('notification.sseDisconnectedDesc'),
+                        message: tRef.current('notification.sseDisconnected'),
+                        description: tRef.current('notification.sseDisconnectedDesc'),
                         duration: 0,
                     })
                 }
@@ -323,8 +326,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     notify.destroy('sse-disconnected')
                     // 重连成功 → 显示成功通知
                     notify.success({
-                        message: t('notification.sseReconnected'),
-                        description: t('notification.sseReconnectedDesc'),
+                        message: tRef.current('notification.sseReconnected'),
+                        description: tRef.current('notification.sseReconnectedDesc'),
                         duration: 5,
                     })
                     // 刷新所有消息缓存，补齐断线期间遗漏的消息
@@ -341,14 +344,14 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     const remainingMinutes = Math.ceil(event.data.remainingMs / 60000)
                     notify.warning({
                         key: `idle-timeout-${event.sessionId}`,
-                        message: t('notification.idleTimeoutWarning'),
-                        description: t('notification.idleTimeoutWarningDesc', { minutes: remainingMinutes }),
+                        message: tRef.current('notification.idleTimeoutWarning'),
+                        description: tRef.current('notification.idleTimeoutWarningDesc', { minutes: remainingMinutes }),
                         duration: 0,
                     })
                 }
                 break
         }
-    }, [queryClient, queueSessionListInvalidation, queueSessionDetailInvalidation, queueMachinesInvalidation, notify, t])
+    }, [queryClient, queueSessionListInvalidation, queueSessionDetailInvalidation, queueMachinesInvalidation, notify])
 
     // 浏览器通知权限管理
     // 模块级变量控制：同一页面生命周期内只检查一次，刷新后重置
