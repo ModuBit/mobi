@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { App } from 'antd'
 
 /** 通知选项 */
@@ -78,11 +78,10 @@ export function useNotify(): NotifyAPI {
         notification.destroy(key)
     }, [notification])
 
-    return {
-        success: useCallback((options: NotifyOptions) => dispatch('success', options), [dispatch]),
-        warning: useCallback((options: NotifyOptions) => dispatch('warning', options), [dispatch]),
-        error: useCallback((options: NotifyOptions) => dispatch('error', options), [dispatch]),
-        info: useCallback((options: NotifyOptions) => dispatch('info', options), [dispatch]),
-        destroy,
-    }
+    const success = useCallback((options: NotifyOptions) => dispatch('success', options), [dispatch])
+    const warning = useCallback((options: NotifyOptions) => dispatch('warning', options), [dispatch])
+    const error = useCallback((options: NotifyOptions) => dispatch('error', options), [dispatch])
+    const info = useCallback((options: NotifyOptions) => dispatch('info', options), [dispatch])
+
+    return useMemo(() => ({ success, warning, error, info, destroy }), [success, warning, error, info, destroy])
 }
