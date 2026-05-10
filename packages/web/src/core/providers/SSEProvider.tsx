@@ -173,6 +173,9 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const clientRef = useRef<SSEClient | null>(null)
     const subscriptionIdRef = useRef<string | null>(null)
     const navigate = useNavigate()
+    // 用 ref 持有 navigate，避免路由跳转触发 SSE 重连
+    const navigateRef = useRef(navigate)
+    navigateRef.current = navigate
     const notify = useNotify()
     const api = useMobiApi(token)
     const apiRef = useRef(api)
@@ -398,7 +401,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             // 清除认证状态
             logout()
             // 跳转到登录页
-            navigate({ to: '/login' })
+            navigateRef.current({ to: '/login' })
         }
 
         const client = new SSEClient(
@@ -450,7 +453,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 sessionIds: new Set(),
             }
         }
-    }, [token, logout, navigate, handleSyncEvent])
+    }, [token, logout, handleSyncEvent])
 
     return <>{children}</>
 }
