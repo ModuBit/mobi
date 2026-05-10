@@ -19,7 +19,6 @@ dist/
 *.generated.d.ts
 
 # IDE / Editor
-.vscode/
 .idea/
 
 # OS files

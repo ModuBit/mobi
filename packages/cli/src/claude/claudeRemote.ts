@@ -44,6 +44,7 @@ import { getMobiBlobsDir } from "@/constants/uploadPaths";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender } from './utils/streamSnapshotSender'
+import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 
 /**
  * 特殊命令处理结果
@@ -287,12 +288,8 @@ export async function claudeRemote(opts: {
     }
     process.env.DISABLE_AUTOUPDATER = '1';
 
-    // 清理 IDE 调试器环境变量，避免子进程继承后冲突
-    // BUN_INSPECT 会导致 claude 进程尝试绑定已占用的 socket 而 EADDRINUSE 崩溃
-    delete process.env.BUN_INSPECT;
-    delete process.env.BUN_INSPECT_NOTIFY;
-    delete process.env.BUN_DEBUG_QUIET_LOGS;
-    delete process.env.BUN_QUIET_DEBUG_LOGS;
+    // 清理 IDE 调试器环境变量，避免 SDK spawn 的 claude 子进程继承后冲突
+    stripBunDebuggerEnv(process.env as Record<string, string | undefined>);
 
     // 预生成 claudeSessionId，让上游（metadata）立即可用
     // SDK 支持 Options.sessionId 指定自定义 session ID

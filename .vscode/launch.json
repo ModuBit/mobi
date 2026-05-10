@@ -1,0 +1,42 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug: Hub Server (dev profile)",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/packages/cli/src/index.ts",
+      "cwd": "${workspaceFolder}/packages/cli",
+      "args": ["--profile", "dev", "hub"],
+      "env": {
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "name": "Debug: CLI Runner Start-Sync (dev profile)",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/packages/cli/src/index.ts",
+      "cwd": "${workspaceFolder}/packages/cli",
+      "args": ["--profile", "dev", "runner", "start-sync"],
+      "env": {
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "name": "Debug: Web Dev Server (dev profile)",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/packages/web/src/dev.ts",
+      "cwd": "${workspaceFolder}/packages/web",
+      "args": ["--profile", "dev"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug: Hub + CLI Runner + Web (dev profile)",
+      "configurations": ["Debug: Hub Server (dev profile)", "Debug: CLI Runner Start-Sync (dev profile)", "Debug: Web Dev Server (dev profile)"],
+      "stopAll": true
+    }
+  ]
+}

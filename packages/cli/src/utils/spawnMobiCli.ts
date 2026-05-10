@@ -48,6 +48,25 @@ import { logger } from '@/ui/logger';
 import { existsSync } from 'node:fs';
 
 /**
+ * Bun 调试器环境变量 key 列表
+ * 清理这些变量可避免子进程继承后绑定同一 socket 导致 EADDRINUSE
+ * （Bun 的调试器在 JS 代码执行前初始化，进程内 delete process.env 来不及阻止）
+ */
+export const BUN_DEBUGGER_ENV_KEYS = [
+  'BUN_INSPECT',
+  'BUN_INSPECT_NOTIFY',
+  'BUN_DEBUG_QUIET_LOGS',
+  'BUN_QUIET_DEBUG_LOGS',
+] as const;
+
+/** 从环境变量中移除 Bun 调试器变量 */
+export function stripBunDebuggerEnv(env: Record<string, string | undefined>): void {
+  for (const key of BUN_DEBUGGER_ENV_KEYS) {
+    delete env[key];
+  }
+}
+
+/**
  * Resolve the TypeScript entrypoint for development mode.
  */
 function resolveEntrypoint(projectRoot: string): string {
@@ -127,5 +146,11 @@ export function spawnMobiCli(args: string[], options: SpawnOptions = {}): ChildP
   if (process.platform === 'win32' && options.detached) {
     finalOptions.windowsHide = true;
   }
+
+  // 清理 IDE 调试器环境变量，避免子进程继承后绑定同一 socket 导致 EADDRINUSE
+  const childEnv = { ...(finalOptions.env ?? process.env) } as Record<string, string | undefined>;
+  stripBunDebuggerEnv(childEnv);
+  finalOptions.env = childEnv;
+
   return spawn(spawnCommand, spawnArgs, finalOptions);
 }
