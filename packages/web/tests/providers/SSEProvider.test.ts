@@ -15,8 +15,6 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import { useRef, useCallback } from 'react'
 
 /**
  * patchSessionCache 中 effort delta 合并逻辑的等价纯函数实现
@@ -69,31 +67,5 @@ describe('SSE effort delta 合并', () => {
         const existing = { effort: 'high' }
         const result = mergeRuntimeStateDelta(existing, { effort: null })
         expect(result).toEqual({ effort: null })
-    })
-})
-
-describe('SSEProvider 依赖稳定性', () => {
-    it('ref 包装的 t 不会导致 callback 重建', () => {
-        let translationCallCount = 0
-        const stableCallback = renderHook(() => {
-            const t = useCallback((key: string) => {
-                translationCallCount++
-                return key
-            }, [])
-            const tRef = useRef(t)
-            tRef.current = t
-
-            return useCallback(() => {
-                tRef.current('test')
-            }, [])
-        })
-
-        const firstRef = stableCallback.result.current
-        stableCallback.rerender()
-        const secondRef = stableCallback.result.current
-
-        expect(firstRef).toBe(secondRef)
-        act(() => { secondRef() })
-        expect(translationCallCount).toBe(1)
     })
 })

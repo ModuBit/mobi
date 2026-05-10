@@ -41,6 +41,7 @@ import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { CommandHintBar } from './CommandHintBar'
 import { ResponsiveActionBar, type ActionItem } from './ResponsiveActionBar'
 import { getPermissionModeColor } from './permissionModeColors'
+import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 
 
 interface ChatComposerProps {
@@ -136,6 +137,7 @@ export function ChatComposer(props: ChatComposerProps) {
     const { token } = theme.useToken()
     const authToken = useAuthStore((state) => state.token)
     const api = useMobiApi(authToken)
+    const hasFinePointer = useHasFinePointer()
 
     const {
         sessionId,
@@ -180,6 +182,10 @@ export function ChatComposer(props: ChatComposerProps) {
 
     const wrapperRef = useRef<HTMLDivElement>(null)
     const pendingCursorRef = useRef<number | null>(null)
+
+    // 随机 placeholder 索引，每次挂载只选一次
+    const placeholders = t('composer.placeholders', { returnObjects: true }) as string[]
+    const placeholderIdx = useRef(Math.floor(Math.random() * placeholders.length))
 
     // @ 文件引用交互
     const mention = useMentionInteraction({
@@ -476,9 +482,9 @@ export function ChatComposer(props: ChatComposerProps) {
                     value={text}
                     onChange={handleChange}
                     onSubmit={handleSubmit}
-                    submitType="shiftEnter"
+                    submitType={hasFinePointer ? 'enter' : 'shiftEnter'}
                     onCancel={onAbort}
-                    placeholder={isBashMode ? t('composer.bashPlaceholder') : t('composer.placeholder')}
+                    placeholder={isBashMode ? t('composer.bashPlaceholder') : t(`composer.placeholders.${placeholderIdx.current}`)}
                     disabled={controlsDisabled || showInactiveCover || showLocalModeCover || hasPendingPermission}
                     loading={sending}
                     autoSize={{ minRows: 1, maxRows: 5 }}

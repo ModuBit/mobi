@@ -103,7 +103,6 @@
         "thinking": "思考中...",
         "thought": "思考完成",
         "contextReset": "上下文已重置",
-        "inputPlaceholder": "输入消息... (Shift+Enter 换行)",
         "sessionEnded": "会话已结束",
         "apiError": "API 错误",
         "apiRateLimit": "API 限流",
@@ -185,7 +184,13 @@
         "comingSoon": "更多设置敬请期待..."
     },
     "composer": {
-        "placeholder": "输入消息... (Shift+Enter 发送)",
+        "placeholders": [
+            "今天想做什么？",
+            "Mobi 能帮你什么？",
+            "有什么我可以帮你的？",
+            "准备好了，随时开始！",
+            "聊聊你的想法吧"
+        ],
         "bashPlaceholder": "输入 Shell 命令...",
         "attach": "添加附件",
         "settings": "设置",

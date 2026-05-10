@@ -65,3 +65,12 @@ export function useIsMobile(): boolean {
 export function useIsDesktop(): boolean {
     return useMediaQuery(`(min-width: ${BREAKPOINTS.md}px)`)
 }
+
+/**
+ * 是否有精确指针设备（鼠标/触控板）
+ * 有精确指针意味着设备有物理键盘，适合 Enter 发送
+ * 触屏设备（手机/平板）为 coarse，依赖虚拟键盘
+ */
+export function useHasFinePointer(): boolean {
+    return useMediaQuery('(pointer: fine)')
+}
