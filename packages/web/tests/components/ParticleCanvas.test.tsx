@@ -23,8 +23,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { ParticleCanvas } from '@/components/ui/ParticleCanvas'
 
-// Mock Three.js 以避免 jsdom 环境下的 WebGL 错误
-// 注意：使用 function 关键字以确保可以作为构造函数调用
+// 使用 function 关键字以确保可以作为构造函数调用
 vi.mock('three', () => {
   const Scene = vi.fn(function () {
     return { add: vi.fn() }
@@ -115,7 +114,6 @@ vi.mock('three/examples/jsm/loaders/GLTFLoader.js', () => ({
   }),
 }))
 
-// Mock requestAnimationFrame / cancelAnimationFrame
 beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', vi.fn(function () {
     return 1
@@ -149,11 +147,9 @@ describe('ParticleCanvas', () => {
   })
 
   it('使用默认 props 渲染', () => {
-    // 验证不带任何 props 时组件正常渲染
     const { container } = render(<ParticleCanvas />)
     const div = container.firstChild as HTMLElement
     expect(div).toBeTruthy()
-    // 默认 style 包含 width: 100%, height: 100%
     expect(div.style.width).toBe('100%')
     expect(div.style.height).toBe('100%')
   })

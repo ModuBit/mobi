@@ -404,13 +404,8 @@ function generateShapePoints(
   return points
 }
 
-/**
- * 纹理数据缓存
- */
-const textureDataCache = new Map<
-  string,
-  ImageData | null
->()
+const textureDataCache = new Map<string, ImageData | null>()
+const MAX_TEXTURE_CACHE_SIZE = 16
 
 /**
  * 纹理图片数据接口（Three.js Texture.image 的最小类型约束）
@@ -437,6 +432,10 @@ function getTextureData(texture: THREE.Texture): ImageData | null {
   if (!ctx) return null
   ctx.drawImage(texture.image as CanvasImageSource, 0, 0)
   const data = ctx.getImageData(0, 0, image.width, image.height)
+  if (textureDataCache.size >= MAX_TEXTURE_CACHE_SIZE) {
+    const firstKey = textureDataCache.keys().next().value
+    if (firstKey !== undefined) textureDataCache.delete(firstKey)
+  }
   textureDataCache.set(cacheKey, data)
   return data
 }
@@ -524,8 +523,9 @@ export function ParticleCanvas({
     explosionTriggered: false,
     explosionTime: 0,
   })
+  const destroyedRef = useRef(false)
+  const pendingImageRef = useRef<HTMLImageElement | null>(null)
 
-  // 同步 props 到 ref
   propsRef.current = {
     shape,
     effect,
@@ -584,10 +584,13 @@ export function ParticleCanvas({
    */
   const processImage = (sd: SceneData, url: string) => {
     if (!url) return
+    if (pendingImageRef.current) pendingImageRef.current.onload = null
     const img = new Image()
     img.crossOrigin = 'anonymous'
+    pendingImageRef.current = img
     img.src = url
     img.onload = () => {
+      if (destroyedRef.current) return
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
       const resolution = 200
@@ -673,29 +676,31 @@ export function ParticleCanvas({
         const meshColor =
           (material as THREE.MeshStandardMaterial)?.color ??
           new THREE.Color(0xffffff)
+        const reusableVec = new THREE.Vector3()
+        const reusableCol = new THREE.Color(1, 1, 1)
         for (let i = 0; i < posAttr.count; i++) {
-          const v = new THREE.Vector3().fromBufferAttribute(posAttr, i)
-          v.applyMatrix4(mesh.matrixWorld)
-          positions.push(v.x, v.y, v.z)
-          const col = new THREE.Color(1, 1, 1)
+          reusableVec.fromBufferAttribute(posAttr, i)
+          reusableVec.applyMatrix4(mesh.matrixWorld)
+          positions.push(reusableVec.x, reusableVec.y, reusableVec.z)
+          reusableCol.set(1, 1, 1)
           if (imageData && uvAttr) {
             const u = ((uvAttr.getX(i) % 1) + 1) % 1
             const uv = ((uvAttr.getY(i) % 1) + 1) % 1
             const px = Math.floor(u * (imageData.width - 1))
             const py = Math.floor((1 - uv) * (imageData.height - 1))
             const idx = (py * imageData.width + px) * 4
-            col.setRGB(
+            reusableCol.setRGB(
               imageData.data[idx] / 255,
               imageData.data[idx + 1] / 255,
               imageData.data[idx + 2] / 255,
             )
-            col.multiply(meshColor)
+            reusableCol.multiply(meshColor)
           } else if (colorAttr) {
-            col.fromBufferAttribute(colorAttr, i)
+            reusableCol.fromBufferAttribute(colorAttr, i)
           } else {
-            col.copy(meshColor)
+            reusableCol.copy(meshColor)
           }
-          colors.push(col.r, col.g, col.b)
+          colors.push(reusableCol.r, reusableCol.g, reusableCol.b)
         }
       })
       if (positions.length > 0) {
@@ -740,14 +745,14 @@ export function ParticleCanvas({
 
     const currentParticleCount = propsRef.current.particleCount
 
-    // 创建场景
+    
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 1000)
     camera.position.z = 45
     interactionStateRef.current.target = new THREE.Vector3(0, 0, 0)
     updateCameraFromState(camera)
 
-    // 创建渲染器
+    
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: true,
@@ -758,7 +763,7 @@ export function ParticleCanvas({
     renderer.setClearColor(0x000000, 0)
     container.appendChild(renderer.domElement)
 
-    // 创建粒子几何体
+    
     const geometry = new THREE.BufferGeometry()
     const positions = new Float32Array(currentParticleCount * 3)
     const targetPositions = new Float32Array(currentParticleCount * 3)
@@ -814,7 +819,7 @@ export function ParticleCanvas({
       new THREE.BufferAttribute(randomOffsets, 3),
     )
 
-    // 创建着色器材质
+    
     const material = new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
       fragmentShader: FRAGMENT_SHADER,
@@ -834,7 +839,7 @@ export function ParticleCanvas({
     const points = new THREE.Points(geometry, material)
     scene.add(points)
 
-    // 存储场景数据
+    
     const sd: SceneData = {
       scene,
       camera,
@@ -860,8 +865,9 @@ export function ParticleCanvas({
       applyShape(sd, shapePoints)
     }
 
-    // 动画循环
+    
     const animate = () => {
+      if (destroyedRef.current) return
       animationIdRef.current = requestAnimationFrame(animate)
       const anim = animStateRef.current
       const props = propsRef.current
@@ -871,7 +877,7 @@ export function ParticleCanvas({
 
       const { renderer: r, scene: sc, camera: cam, points: pts, material: mat } = sceneDataRef.current
 
-      // 自动旋转或交互控制
+      
       if (props.interactionEnabled) {
         updateCameraFromState(cam)
       } else {
@@ -893,8 +899,6 @@ export function ParticleCanvas({
       anim.effectIntensity +=
         (anim.targetEffectIntensity - anim.effectIntensity) * 0.08
       mat.uniforms.uEffectIntensity.value = anim.effectIntensity
-      mat.uniforms.uEffectMode.value =
-        EFFECT_MODE_MAP[props.effect] ?? 0
       if (anim.explosionTriggered) {
         anim.explosionTime += 0.016
         if (anim.explosionTime > 2.0) anim.explosionTime = 0
@@ -905,7 +909,7 @@ export function ParticleCanvas({
     }
     animate()
 
-    // 窗口大小变化
+    
     const handleResize = () => {
       if (!sceneDataRef.current || !container) return
       const w = container.clientWidth
@@ -916,7 +920,7 @@ export function ParticleCanvas({
     }
     window.addEventListener('resize', handleResize)
 
-    // 交互事件处理
+    
     const handleMouseDown = (e: MouseEvent) => {
       if (!propsRef.current.interactionEnabled) return
       const s = interactionStateRef.current
@@ -982,9 +986,11 @@ export function ParticleCanvas({
     })
     renderer.domElement.addEventListener('contextmenu', handleContextMenu)
 
-    // 清理
+    
     return () => {
+      destroyedRef.current = true
       cancelAnimationFrame(animationIdRef.current)
+      if (pendingImageRef.current) pendingImageRef.current.onload = null
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
@@ -1009,13 +1015,13 @@ export function ParticleCanvas({
     const { shape: s, effect: e, imageUrl: iUrl, modelUrl: mUrl, particleSize: ps } = propsRef.current
     const count = sd.targetPositions.length / 3
 
-    // 更新粒子大小
+    
     sd.material.uniforms.uPointSize.value = ps
 
-    // 更新特效模式
+    
     sd.material.uniforms.uEffectMode.value = EFFECT_MODE_MAP[e] ?? 0
 
-    // 处理爆炸特效触发
+    
     if (e === 'explode') {
       animStateRef.current.explosionTriggered = true
       animStateRef.current.targetEffectIntensity = 1
@@ -1025,7 +1031,7 @@ export function ParticleCanvas({
         e === 'default' ? 0 : 1
     }
 
-    // 按优先级更新内容
+    
     if (mUrl) {
       processModel(sd, mUrl)
     } else if (iUrl) {
@@ -1049,7 +1055,7 @@ export function ParticleCanvas({
       sd.geometry.attributes.targetPosition.needsUpdate = true
       sd.geometry.attributes.targetColor.needsUpdate = true
     }
-  }, [shape, effect, particleSize, particleCount, imageUrl, modelUrl, interactionEnabled])
+  }, [shape, effect, particleSize, imageUrl, modelUrl, interactionEnabled])
 
   return (
     <div
