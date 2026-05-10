@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
 
 /**
  * 发送消息 Mutation Hook
@@ -25,16 +24,11 @@ import { queryKeys } from '@/core/lib/query-keys'
 export function useSendMessage(sessionId: string) {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
-    const queryClient = useQueryClient()
 
     return useMutation({
         mutationFn: (text: string) => {
             const localId = `local-${crypto.randomUUID()}`
             return api.messages.send(sessionId, text, localId)
-        },
-        onSuccess: () => {
-            // 发送成功后刷新消息列表
-            queryClient.invalidateQueries({ queryKey: queryKeys.messages(sessionId) })
         },
         onError: (error) => {
             // SSE 会推送正确状态，此处仅记录错误
