@@ -150,6 +150,12 @@
         "planMode": {
             "entered": "Entered plan mode",
             "enterFailed": "Failed to enter plan mode"
+        },
+        "welcome": {
+            "morning": "Good morning",
+            "afternoon": "Good afternoon",
+            "evening": "Good evening",
+            "subtitle": "How can I help you today?"
         }
     },
     "files": {

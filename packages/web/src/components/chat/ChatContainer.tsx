@@ -16,7 +16,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react'
 import { Bubble } from '@ant-design/x'
-import { Spin, Empty, Button, Skeleton, theme as antTheme } from 'antd'
+import { Spin, Button, Skeleton, theme as antTheme } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
@@ -29,6 +29,7 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { AgentLoadingBubble } from './AgentLoadingBubble'
+import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
@@ -324,7 +325,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={bubbleCopyStyles} />
             <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (
-                    <Empty description={t('chat.empty')} style={{ marginTop: 40 }} />
+                    <ChatWelcome />
                 ) : (
                     <>
                         {/* autoScroll=false：不使用 Bubble.List 的 autoScroll。
