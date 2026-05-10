@@ -16,12 +16,13 @@
 
 /**
  * ParticleCanvas 组件测试
- * 测试粒子动画画布的渲染、props 传递和资源清理
+ * 测试粒子动画画布的渲染、props 传递、资源清理和 effect 切换
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen } from '@testing-library/react'
 import { ParticleCanvas } from '@/components/ui/ParticleCanvas'
+import type { ParticleEffect, ParticleShape } from '@/components/ui/particle/types'
 
 // 使用 function 关键字以确保可以作为构造函数调用
 vi.mock('three', () => {
@@ -121,6 +122,10 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', vi.fn())
 })
 
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
 describe('ParticleCanvas', () => {
   it('渲染容器 div', () => {
     const { container } = render(<ParticleCanvas />)
@@ -155,7 +160,7 @@ describe('ParticleCanvas', () => {
   })
 
   it('接受不同的 shape prop', () => {
-    const shapes = ['heart', 'butterfly', 'rose', 'cube', 'pyramid', 'spiral', 'star', 'sphere', 'dna', 'infinity'] as const
+    const shapes: ParticleShape[] = ['heart', 'butterfly', 'rose', 'cube', 'pyramid', 'spiral', 'star', 'sphere', 'dna', 'infinity']
     for (const shape of shapes) {
       const { unmount, container } = render(
         <ParticleCanvas shape={shape} />,
@@ -163,6 +168,52 @@ describe('ParticleCanvas', () => {
       const div = container.firstChild as HTMLElement
       expect(div).toBeTruthy()
       unmount()
+    }
+  })
+
+  it('接受不同的 effect prop', () => {
+    const effects: ParticleEffect[] = ['default', 'scatter', 'explode', 'vortex', 'pulse', 'wave']
+    for (const effect of effects) {
+      const { unmount, container } = render(
+        <ParticleCanvas effect={effect} />,
+      )
+      const div = container.firstChild as HTMLElement
+      expect(div).toBeTruthy()
+      unmount()
+    }
+  })
+
+  it('接受 imageUrl prop', () => {
+    const { unmount, container } = render(
+      <ParticleCanvas imageUrl="/logo.svg" />,
+    )
+    const div = container.firstChild as HTMLElement
+    expect(div).toBeTruthy()
+    unmount()
+  })
+
+  it('接受自定义 particleSize 和 particleCount', () => {
+    const { unmount, container } = render(
+      <ParticleCanvas particleSize={300} particleCount={50000} />,
+    )
+    const div = container.firstChild as HTMLElement
+    expect(div).toBeTruthy()
+    unmount()
+  })
+
+  it('interactionEnabled 不影响渲染', () => {
+    const { unmount, container } = render(
+      <ParticleCanvas interactionEnabled />,
+    )
+    const div = container.firstChild as HTMLElement
+    expect(div).toBeTruthy()
+    unmount()
+  })
+
+  it('多次挂载/卸载不会泄漏', () => {
+    for (let i = 0; i < 5; i++) {
+      const { unmount } = render(<ParticleCanvas shape="heart" effect="pulse" />)
+      expect(() => unmount()).not.toThrow()
     }
   })
 })
