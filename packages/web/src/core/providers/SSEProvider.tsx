@@ -367,8 +367,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // 需要用户手势才能触发浏览器授权弹窗，使用带按钮的页面通知
                 notification.info({
                     key: 'notification-permission-request',
-                    title: t('notification.permissionRequest'),
-                    description: t('notification.permissionRequestDesc'),
+                    title: tRef.current('notification.permissionRequest'),
+                    description: tRef.current('notification.permissionRequestDesc'),
                     duration: 0,
                     actions: [
                         <Button
@@ -380,22 +380,22 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                                 notification.destroy('notification-permission-request')
                             }}
                         >
-                            {t('notification.permissionRequestBtn')}
+                            {tRef.current('notification.permissionRequestBtn')}
                         </Button>
                     ],
                 })
             } else if (Notification.permission === 'denied') {
                 notification.info({
                     key: 'notification-permission-guide',
-                    title: t('notification.permissionGuide'),
-                    description: t('notification.permissionGuideDesc'),
+                    title: tRef.current('notification.permissionGuide'),
+                    description: tRef.current('notification.permissionGuideDesc'),
                     duration: 10,
                 })
             }
         }, 2000)
 
         return () => clearTimeout(timerId)
-    }, [token, notification, t])
+    }, [token, notification])
 
     useEffect(() => {
         if (!token) return
