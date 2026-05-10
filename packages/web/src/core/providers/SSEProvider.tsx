@@ -173,16 +173,18 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const clientRef = useRef<SSEClient | null>(null)
     const subscriptionIdRef = useRef<string | null>(null)
     const navigate = useNavigate()
-    // 用 ref 持有 navigate，避免路由跳转触发 SSE 重连
     const navigateRef = useRef(navigate)
     navigateRef.current = navigate
     const notify = useNotify()
+    const notifyRef = useRef(notify)
+    notifyRef.current = notify
     const api = useMobiApi(token)
     const apiRef = useRef(api)
     apiRef.current = api
+    const queryClientRef = useRef(queryClient)
+    queryClientRef.current = queryClient
     const { notification } = App.useApp()
     const { t } = useTranslation()
-    // 用 ref 持有 t，避免语言切换触发 SSE 重连
     const tRef = useRef(t)
     tRef.current = t
 
@@ -195,126 +197,90 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         sessionIds: new Set(),
     })
 
-    // 执行批处理失效
-    const flushInvalidations = useCallback(() => {
+    // 批处理失效：将失效请求合并到同一微任务中，减少重复 API 调用
+    function scheduleInvalidation(scope: 'sessions' | 'machines', sessionId?: string) {
         const pending = pendingInvalidationsRef.current
-        if (!pending.sessions && !pending.sessionGroups && !pending.machines && pending.sessionIds.size === 0) {
-            return
+        if (scope === 'sessions') {
+            pending.sessions = true
+            pending.sessionGroups = true
+        } else {
+            pending.machines = true
+        }
+        if (sessionId) {
+            pending.sessionIds.add(sessionId)
         }
 
-        const shouldInvalidateSessions = pending.sessions
-        const shouldInvalidateSessionGroups = pending.sessionGroups
-        const shouldInvalidateMachines = pending.machines
-        const sessionIds = Array.from(pending.sessionIds)
-
-        // 重置待处理状态
-        pending.sessions = false
-        pending.sessionGroups = false
-        pending.machines = false
-        pending.sessionIds.clear()
-
-        // 执行失效操作
-        const tasks: Array<Promise<unknown>> = []
-        if (shouldInvalidateSessions) {
-            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.sessions }))
-        }
-        if (shouldInvalidateSessionGroups) {
-            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.sessionGroups }))
-            tasks.push(queryClient.invalidateQueries({ queryKey: ['groupSessions'] }))
-        }
-        if (shouldInvalidateMachines) {
-            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.machines }))
-        }
-        for (const sessionId of sessionIds) {
-            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }))
-            tasks.push(queryClient.invalidateQueries({ queryKey: queryKeys.messages(sessionId) }))
-        }
-
-        if (tasks.length > 0) {
-            void Promise.all(tasks).catch(() => { })
-        }
-    }, [queryClient])
-
-    // 调度批处理失效
-    const scheduleInvalidationFlush = useCallback(() => {
-        if (invalidationTimerRef.current) {
-            return
-        }
+        if (invalidationTimerRef.current) return
         invalidationTimerRef.current = setTimeout(() => {
             invalidationTimerRef.current = null
-            flushInvalidations()
+            const p = pendingInvalidationsRef.current
+            const qc = queryClientRef.current
+            if (!p.sessions && !p.sessionGroups && !p.machines && p.sessionIds.size === 0) return
+
+            const tasks: Array<Promise<unknown>> = []
+            if (p.sessions) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessions }))
+            if (p.sessionGroups) {
+                tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessionGroups }))
+                tasks.push(qc.invalidateQueries({ queryKey: ['groupSessions'] }))
+            }
+            if (p.machines) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.machines }))
+            for (const sid of Array.from(p.sessionIds)) {
+                tasks.push(qc.invalidateQueries({ queryKey: queryKeys.session(sid) }))
+                tasks.push(qc.invalidateQueries({ queryKey: queryKeys.messages(sid) }))
+            }
+
+            p.sessions = false
+            p.sessionGroups = false
+            p.machines = false
+            p.sessionIds.clear()
+            if (tasks.length > 0) void Promise.all(tasks).catch(() => {})
         }, INVALIDATION_BATCH_MS)
-    }, [flushInvalidations])
+    }
 
-    // 添加会话列表到待失效队列
-    const queueSessionListInvalidation = useCallback(() => {
-        pendingInvalidationsRef.current.sessions = true
-        pendingInvalidationsRef.current.sessionGroups = true
-        scheduleInvalidationFlush()
-    }, [scheduleInvalidationFlush])
-
-    // 添加单个会话到待失效队列
-    const queueSessionDetailInvalidation = useCallback((sessionId: string) => {
-        pendingInvalidationsRef.current.sessionIds.add(sessionId)
-        scheduleInvalidationFlush()
-    }, [scheduleInvalidationFlush])
-
-    // 添加机器列表到待失效队列
-    const queueMachinesInvalidation = useCallback(() => {
-        pendingInvalidationsRef.current.machines = true
-        scheduleInvalidationFlush()
-    }, [scheduleInvalidationFlush])
-
-    // 处理同步事件
+    // 所有依赖通过 ref 访问，确保回调引用稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const handleSyncEvent = useCallback((event: SyncEvent) => {
+        const qc = queryClientRef.current
+        const nt = notifyRef.current
+
         switch (event.type) {
             case 'session-added':
-                // 新会话加入，刷新列表（不需要刷新消息）
-                queueSessionListInvalidation()
+                scheduleInvalidation('sessions')
                 break
             case 'session-updated':
-                // 使用 setQueryData 直接更新缓存，避免心跳触发 API 请求
-                patchSessionCache(queryClient, event.sessionId, event.data)
+                patchSessionCache(qc, event.sessionId, event.data)
                 break
             case 'session-removed':
-                // 删除时移除缓存
-                queryClient.removeQueries({ queryKey: queryKeys.session(event.sessionId) })
-                queryClient.removeQueries({ queryKey: queryKeys.messages(event.sessionId) })
-                queueSessionListInvalidation()
+                qc.removeQueries({ queryKey: queryKeys.session(event.sessionId) })
+                qc.removeQueries({ queryKey: queryKeys.messages(event.sessionId) })
+                scheduleInvalidation('sessions')
                 break
             case 'message-received':
                 if (event.message) {
-                    const msg = event.message as DecryptedMessage
-                    upsertMessageCache(queryClient, event.sessionId, msg, { skipIfNotSnapshot: true })
+                    upsertMessageCache(qc, event.sessionId, event.message as DecryptedMessage, { skipIfNotSnapshot: true })
                 }
                 break
             case 'message-snapshot':
                 if (event.message && event.sessionId) {
-                    const msg = event.message as DecryptedMessage
-                    upsertMessageCache(queryClient, event.sessionId, msg)
+                    upsertMessageCache(qc, event.sessionId, event.message as DecryptedMessage)
                 }
                 break
             case 'machine-updated':
-                queueMachinesInvalidation()
+                scheduleInvalidation('machines')
                 break
             case 'heartbeat':
-                // 心跳事件，无需处理
                 break
             case 'connection-changed':
-                // 从服务端初始事件中提取 subscriptionId（每次连接/重连都会收到）
                 if (event.data?.subscriptionId) {
                     subscriptionIdRef.current = event.data.subscriptionId
-                    // 收到新 subscriptionId 后立即上报当前可见性
                     apiRef.current.visibility.report(
                         event.data.subscriptionId,
                         document.hidden ? 'hidden' : 'visible'
                     ).catch(() => {})
                 }
                 if (event.connected === false) {
-                    // 断连时服务端已 removeConnection，清除本地 subscriptionId
                     subscriptionIdRef.current = null
-                    // SSE 断开 → 显示警告通知
-                    notify.warning({
+                    nt.warning({
                         key: 'sse-disconnected',
                         message: tRef.current('notification.sseDisconnected'),
                         description: tRef.current('notification.sseDisconnectedDesc'),
@@ -322,27 +288,22 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     })
                 }
                 if (event.reconnected) {
-                    // 关闭断连通知
-                    notify.destroy('sse-disconnected')
-                    // 重连成功 → 显示成功通知
-                    notify.success({
+                    nt.destroy('sse-disconnected')
+                    nt.success({
                         message: tRef.current('notification.sseReconnected'),
                         description: tRef.current('notification.sseReconnectedDesc'),
                         duration: 5,
                     })
-                    // 刷新所有消息缓存，补齐断线期间遗漏的消息
-                    queryClient.invalidateQueries({ queryKey: queryKeys.sessions }).catch(() => {})
-                    queryClient.invalidateQueries({ queryKey: ['messages'] }).catch(() => {})
+                    qc.invalidateQueries({ queryKey: queryKeys.sessions }).catch(() => {})
+                    qc.invalidateQueries({ queryKey: ['messages'] }).catch(() => {})
                 }
                 break
             case 'toast':
-                // Toast 通知，由外部处理
                 break
             case 'idle-timeout-warning':
-                // 空闲超时预警
                 if (event.data?.remainingMs) {
                     const remainingMinutes = Math.ceil(event.data.remainingMs / 60000)
-                    notify.warning({
+                    nt.warning({
                         key: `idle-timeout-${event.sessionId}`,
                         message: tRef.current('notification.idleTimeoutWarning'),
                         description: tRef.current('notification.idleTimeoutWarningDesc', { minutes: remainingMinutes }),
@@ -351,7 +312,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 }
                 break
         }
-    }, [queryClient, queueSessionListInvalidation, queueSessionDetailInvalidation, queueMachinesInvalidation, notify])
+    }, [])
 
     // 浏览器通知权限管理
     // 模块级变量控制：同一页面生命周期内只检查一次，刷新后重置
