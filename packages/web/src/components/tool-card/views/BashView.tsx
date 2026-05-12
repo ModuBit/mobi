@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import { useMemo } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import { theme as antTheme } from 'antd'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { isObject } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
-import { OverflowContainer } from '@/components/ui/OverflowContainer'
+import { ansiToHtml } from '@/core/lib/ansiUtils'
 import { extractTextFromResult, placeholderForState } from './_results'
 import { ToolViewPanel } from './ToolViewPanel'
 
@@ -36,6 +36,17 @@ function isErrorResult(result: unknown): boolean {
     if (result.error !== undefined && result.error !== null) return true
     return false
 }
+
+const outputStyle = (isError: boolean, token: ReturnType<typeof useToken>['token']): CSSProperties => ({
+    padding: '4px 10px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: isError ? token.colorError : token.colorText,
+    background: isError ? token.colorErrorBg : 'transparent',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+})
 
 /** Bash 工具视图 */
 export function BashView(props: ToolViewProps) {
@@ -56,6 +67,8 @@ export function BashView(props: ToolViewProps) {
         }
     }, [command])
 
+    const outputHtml = useMemo(() => output ? ansiToHtml(output) : '', [output])
+
     const headerText = command || props.block.tool.description
 
     return (
@@ -71,21 +84,7 @@ export function BashView(props: ToolViewProps) {
             )}
         >
             {output ? (
-                <OverflowContainer
-                    maxHeight={200}
-                    style={{
-                        padding: '4px 10px',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 12,
-                        lineHeight: 1.5,
-                        color: isError ? token.colorError : token.colorText,
-                        background: isError ? token.colorErrorBg : 'transparent',
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                    }}
-                >
-                    {output}
-                </OverflowContainer>
+                <div style={outputStyle(isError, token)} dangerouslySetInnerHTML={{ __html: outputHtml }} />
             ) : (
                 <div style={{ padding: '6px 10px', fontSize: 12, color: token.colorTextTertiary }}>
                     {placeholderForState(state)}

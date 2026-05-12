@@ -259,7 +259,7 @@ export function reduceTimeline(
                         permission
                     }, blockIndexById)
 
-                    if (block.tool.state === 'pending') {
+                    if (block.tool.state === 'pending' && block.tool.permission?.status !== 'pending') {
                         block = { ...block, tool: { ...block.tool } }
                         block.tool.state = 'running'
                         block.tool.startedAt = msg.createdAt

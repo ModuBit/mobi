@@ -19,10 +19,11 @@
  * 在 Drawer 中展示完整的 stdout/stderr 输出
  */
 
-import { memo, type CSSProperties } from 'react'
+import { memo, useMemo, type CSSProperties } from 'react'
 import { theme } from 'antd'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import { useTranslation } from 'react-i18next'
+import { ansiToHtml } from '@/core/lib/ansiUtils'
 import { ContentDrawer } from '@/components/ui/ContentDrawer'
 
 // 用于 pre 标签的通用样式
@@ -34,7 +35,7 @@ const preStyle = (token: GlobalToken, extra?: CSSProperties): CSSProperties => (
     overflowX: 'auto',
     margin: '4px 0',
     border: `1px solid ${token.colorBorder}`,
-    whiteSpace: 'pre' as const,
+    whiteSpace: 'pre',
     fontFamily: 'var(--font-mono)',
     ...extra,
 })
@@ -57,6 +58,9 @@ export const CliOutputDetailDrawer = memo(function CliOutputDetailDrawer({
     const { token } = theme.useToken()
     const { t } = useTranslation()
 
+    const stdoutHtml = useMemo(() => stdout ? ansiToHtml(stdout) : '', [stdout])
+    const stderrHtml = useMemo(() => stderr ? ansiToHtml(stderr) : '', [stderr])
+
     return (
         <ContentDrawer
             title={title}
@@ -68,7 +72,7 @@ export const CliOutputDetailDrawer = memo(function CliOutputDetailDrawer({
                     <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
                         {t('chat.tool.output')}
                     </div>
-                    <pre style={preStyle(token)}>{stdout}</pre>
+                    <pre style={preStyle(token)} dangerouslySetInnerHTML={{ __html: stdoutHtml }} />
                 </div>
             )}
             {stdout && stderr && (
@@ -79,7 +83,7 @@ export const CliOutputDetailDrawer = memo(function CliOutputDetailDrawer({
                     <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
                         stderr
                     </div>
-                    <pre style={preStyle(token, { color: token.colorError })}>{stderr}</pre>
+                    <pre style={preStyle(token, { color: token.colorError })} dangerouslySetInnerHTML={{ __html: stderrHtml }} />
                 </div>
             )}
         </ContentDrawer>
