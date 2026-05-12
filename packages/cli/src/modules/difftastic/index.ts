@@ -19,9 +19,7 @@
  */
 
 import { spawn } from 'child_process';
-import { join, resolve } from 'path';
-import { platform, arch } from 'os';
-import { runtimePath } from '@/projectPath';
+import { resolveBinaryPath } from '@/utils/resolveBinaryPath';
 
 export interface DifftasticResult {
     exitCode: number
@@ -34,30 +32,17 @@ export interface DifftasticOptions {
 }
 
 /**
- * Get the platform-specific binary path
- */
-function getBinaryPath(): string {
-    const platformName = platform();
-    const binaryName = platformName === 'win32' ? 'difft.exe' : 'difft';
-    return resolve(join(runtimePath(), 'tools', 'unpacked', binaryName));
-}
-
-/**
  * Run difftastic with the given arguments
- * @param args - Array of command line arguments to pass to difftastic
- * @param options - Options for difftastic execution
- * @returns Promise with exit code, stdout and stderr
  */
 export function run(args: string[], options?: DifftasticOptions): Promise<DifftasticResult> {
-    const binaryPath = getBinaryPath();
-    
+    const binaryPath = resolveBinaryPath('difft');
+
     return new Promise((resolve, reject) => {
         const child = spawn(binaryPath, args, {
             stdio: ['pipe', 'pipe', 'pipe'],
             cwd: options?.cwd,
             env: {
                 ...process.env,
-                // Force color output when needed
                 FORCE_COLOR: '1'
             }
         });

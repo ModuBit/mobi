@@ -41,5 +41,10 @@ docs/superpowers/
 docs/claude-agent-sdk/
 docs/test-reports/
 .worktrees/
+
+# CLI tools (unpacked locally via tools:unpack)
+packages/cli/tools/archives/
+packages/cli/tools/unpacked/
+
 # Added by code-review-graph
 .code-review-graph/

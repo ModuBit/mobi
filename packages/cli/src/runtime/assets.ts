@@ -21,6 +21,7 @@ import * as tar from 'tar';
 import packageJson from '../../package.json';
 import type { EmbeddedAsset } from '#embedded-assets';
 import { isBunCompiled, runtimePath } from '@/projectPath';
+import { UNPACKED_PLATFORM_MARKER } from '@/utils/resolveBinaryPath';
 
 const RUNTIME_MARKER = '.runtime-version';
 
@@ -158,5 +159,6 @@ export async function ensureRuntimeAssets(): Promise<void> {
     }
 
     unpackTools(runtimeRoot);
+    writeFileSync(join(runtimeRoot, 'tools', 'unpacked', UNPACKED_PLATFORM_MARKER), getPlatformDir(), 'utf-8');
     writeFileSync(markerPath, packageJson.version, 'utf-8');
 }

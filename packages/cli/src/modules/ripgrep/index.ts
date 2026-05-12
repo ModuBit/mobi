@@ -19,9 +19,7 @@
  */
 
 import { spawn } from 'child_process';
-import { join, resolve } from 'path';
-import { platform } from 'os';
-import { runtimePath } from '@/projectPath';
+import { resolveBinaryPath } from '@/utils/resolveBinaryPath';
 import { withBunRuntimeEnv } from '@/utils/bunRuntime';
 
 export interface RipgrepResult {
@@ -34,14 +32,8 @@ export interface RipgrepOptions {
     cwd?: string
 }
 
-function getBinaryPath(): string {
-    const platformName = platform();
-    const binaryName = platformName === 'win32' ? 'rg.exe' : 'rg';
-    return resolve(join(runtimePath(), 'tools', 'unpacked', binaryName));
-}
-
 function spawnRipgrep(args: string[], cwd?: string) {
-    return spawn(getBinaryPath(), args, {
+    return spawn(resolveBinaryPath('rg'), args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd,
         env: withBunRuntimeEnv()
