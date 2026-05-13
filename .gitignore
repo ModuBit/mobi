@@ -40,6 +40,7 @@ logs/
 docs/superpowers/
 docs/claude-agent-sdk/
 docs/test-reports/
+docs/temp/
 .worktrees/
 
 # CLI tools (unpacked locally via tools:unpack)

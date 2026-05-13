@@ -14,8 +14,9 @@
         "typecheck:hub": "cd packages/hub && bun run typecheck",
         "typecheck:cli": "cd packages/cli && bun run typecheck",
         "typecheck:web": "cd packages/web && bun run typecheck",
-        "test": "bun run test:hub && bun run test:web",
+        "test": "bun run test:hub && bun run test:cli && bun run test:web",
         "test:hub": "cd packages/hub && bun run test",
+        "test:cli": "cd packages/cli && bun run test",
         "test:web": "cd packages/web && bun run test",
         "lint": "eslint packages/shared/src packages/hub/src packages/cli/src packages/web/src",
         "lint:deps": "depcruise packages/shared/src packages/hub/src packages/cli/src packages/web/src"
