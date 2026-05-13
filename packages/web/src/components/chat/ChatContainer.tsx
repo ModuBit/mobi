@@ -130,18 +130,32 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     fetchNextPageRef.current = fetchNextPage
 
     useEffect(() => {
-        const scrollBox = scrollBoxRef.current
+        const el = scrollContainerRef.current
+        if (!el) return
+        // 直接查询 DOM：子组件 useEffect 先于父组件 useEffect 运行，
+        // 此时 Bubble.List 内部创建的滚动容器应当已就绪
+        const scrollBox = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
         if (!scrollBox) return
+        scrollBoxRef.current = scrollBox
         const contentEl = scrollBox.querySelector('.ant-bubble-list-scroll-content') as HTMLElement | null
 
         let isNearBottom = true
+        let prevScrollTop = scrollBox.scrollTop
 
         const handleScroll = () => {
             if (isRestoringScrollRef.current) return
 
             const { scrollTop, scrollHeight, clientHeight } = scrollBox
             const distanceToBottom = scrollHeight - scrollTop - clientHeight
-            isNearBottom = distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD
+
+            // 只在用户向上滚动（scrollTop 减小）时更新 isNearBottom，
+            // 内容增长导致的 scrollTop 变化不应打破底部锁定
+            if (scrollTop < prevScrollTop - 2) {
+                isNearBottom = distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD
+            } else if (distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD) {
+                isNearBottom = true
+            }
+            prevScrollTop = scrollTop
 
             const shouldShow = distanceToBottom > SCROLL_BOTTOM_VISIBLE_THRESHOLD
             if (shouldShow !== prevShowRef.current) {
@@ -160,20 +174,33 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             }
         }
 
+        const handleAutoScroll = () => {
+            if (isNearBottom && !isRestoringScrollRef.current) {
+                scrollBox.scrollTop = scrollBox.scrollHeight
+            }
+        }
+
         let resizeObserver: ResizeObserver | null = null
         if (contentEl) {
-            resizeObserver = new ResizeObserver(() => {
-                if (isNearBottom && !isRestoringScrollRef.current) {
-                    scrollBox.scrollTop = scrollBox.scrollHeight
-                }
-            })
+            resizeObserver = new ResizeObserver(handleAutoScroll)
             resizeObserver.observe(contentEl)
+        }
+
+        // 监听视口尺寸变化（如 ComposerInfoPanel 展开/收起导致 scrollContainer 高度变化）
+        const viewportObserver = new ResizeObserver(handleAutoScroll)
+        viewportObserver.observe(scrollBox)
+
+        // useLayoutEffect 的初始滚动可能在布局未稳定时执行，此处（paint 后）再次校正
+        if (postPaintCorrectionRef.current && chatBlocksLengthRef.current > 0) {
+            postPaintCorrectionRef.current = false
+            scrollBox.scrollTop = scrollBox.scrollHeight
         }
 
         scrollBox.addEventListener('scroll', handleScroll, { passive: true })
         return () => {
             scrollBox.removeEventListener('scroll', handleScroll)
             resizeObserver?.disconnect()
+            viewportObserver.disconnect()
         }
     // 依赖 chatBlocks.length：仅在 block 数量变化时重新绑定 scroll 监听和 ResizeObserver。
     // 内容增长（如流式输出追加文本）由 ResizeObserver 感知，无需 rebind。
@@ -207,11 +234,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 首次加载消息时滚动到底部（sessionId 变化时重置）
     const initialScrollRef = useRef(true)
+    const postPaintCorrectionRef = useRef(false)
     useEffect(() => { initialScrollRef.current = true }, [sessionId])
 
     useLayoutEffect(() => {
         if (initialScrollRef.current && chatBlocks.length > 0 && scrollBoxRef.current) {
             initialScrollRef.current = false
+            postPaintCorrectionRef.current = true
             scrollBoxRef.current.scrollTop = scrollBoxRef.current.scrollHeight
         }
     }, [chatBlocks.length])

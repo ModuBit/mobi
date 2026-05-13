@@ -87,6 +87,9 @@ export type ToolPresentation = {
     previewMaxHeight?: number
 }
 
+/** 代码/文件操作工具的内联预览最大高度 */
+const CODE_PREVIEW_MAX_HEIGHT = 320
+
 function countLines(text: string): number {
     return text.split('\n').length
 }
@@ -243,7 +246,7 @@ export const knownTools: Record<string, {
             return pattern ? `Glob(${pattern})` : 'Glob'
         },
         minimal: true,
-        previewMaxHeight: 160
+        previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     Grep: {
         icon: () => <FileSearchOutlined style={DEFAULT_ICON_STYLE} />,
@@ -288,7 +291,7 @@ export const knownTools: Record<string, {
         },
         minimal: true,
         wideDrawer: true,
-        previewMaxHeight: 200
+        previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     Edit: {
         icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
@@ -299,7 +302,7 @@ export const knownTools: Record<string, {
         minimal: true,
         wideDrawer: true,
         isFilePath: false,
-        previewMaxHeight: 160
+        previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     MultiEdit: {
         icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
@@ -314,7 +317,7 @@ export const knownTools: Record<string, {
         minimal: true,
         wideDrawer: true,
         isFilePath: false,
-        previewMaxHeight: 200
+        previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     Write: {
         icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
@@ -331,7 +334,7 @@ export const knownTools: Record<string, {
         minimal: true,
         wideDrawer: true,
         isFilePath: false,
-        previewMaxHeight: 200
+        previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     WebFetch: {
         icon: () => <GlobalOutlined style={DEFAULT_ICON_STYLE} />,

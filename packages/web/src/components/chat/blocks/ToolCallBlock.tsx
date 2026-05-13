@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { Think } from '@ant-design/x'
 import { theme as antTheme } from 'antd'
 import type { ChatBlock, ChatToolCall } from '@/domain/chat'
@@ -23,6 +23,7 @@ import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { getToolPresentation, isTerminalTool, isAgentTool } from '@/components/tool-card/knownTools'
+import { isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
@@ -69,12 +70,15 @@ function ToolCallPreviewContent({
     maxHeight: number
 }) {
     const tool = toolCallBlock.tool
+    const terminalRunning = isTerminalTool(tool.name) && tool.state === 'running'
+    const showToolInput = showInput || terminalRunning
+
     const ViewComponent = useMemo(() => {
-        if (showInput) {
+        if (showToolInput) {
             return getToolViewComponent(tool.name)
         }
         return getToolResultViewComponent(tool.name)
-    }, [showInput, tool.name])
+    }, [showToolInput, tool.name])
 
     // 转换为 ToolCard/types.ToolCallBlock 格式
     const adaptedBlock = useMemo(() => {
@@ -84,7 +88,7 @@ function ToolCallPreviewContent({
             tool: {
                 name: tool.name,
                 input: tool.input,
-                result: showInput ? undefined : (tool.result ?? undefined),
+                result: showToolInput ? undefined : tool.result,
                 state: tool.state,
                 description: tool.description,
                 startedAt: tool.startedAt,
@@ -109,14 +113,12 @@ function ToolCallPreviewContent({
                     children: [],
                 })),
         }
-    }, [toolCallBlock, tool, showInput])
+    }, [toolCallBlock, tool, showToolInput])
 
-    // 输入预览：有权限请求时显示
-    // 结果预览：非运行状态且有结果时显示
-    // Agent 工具：运行中显示 prompt，完成后显示 result
+    // 有权限请求 / 有结果 / Agent运行中 / 终端运行中 → 显示预览
     const isAgent = isAgentTool(tool.name)
     const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
-    const showPreview = showInput || (tool.state !== 'running' && tool.result !== undefined) || agentRunning
+    const showPreview = showInput || (tool.state !== 'running' && tool.result !== undefined) || agentRunning || terminalRunning
 
     if (!showPreview) return null
 
@@ -167,8 +169,21 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         metadata
     })
 
-    const defaultExpanded = EXPANDED_TOOL_NAMES.has(tool.name)
+    const expandOnPermission = isExitPlanModeTool(tool.name)
+    const permissionDrivenExpand = expandOnPermission && hasPermission
+    const defaultExpanded = EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand
     const [expanded, setExpanded] = useState(defaultExpanded)
+    const prevPermissionDrivenExpand = useRef(permissionDrivenExpand)
+
+    // 审批结束后自动收起
+    useEffect(() => {
+        if (!expandOnPermission) return
+        if (prevPermissionDrivenExpand.current && !permissionDrivenExpand) {
+            setExpanded(false)
+        }
+        prevPermissionDrivenExpand.current = permissionDrivenExpand
+    }, [expandOnPermission, permissionDrivenExpand])
+
     const [drawerOpen, setDrawerOpen] = useState(false)
     const handleViewDetail = useCallback(() => {
         if (disableDrawer) return
