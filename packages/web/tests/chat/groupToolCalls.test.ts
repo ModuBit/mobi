@@ -165,6 +165,60 @@ describe('groupCollapsibleToolCalls', () => {
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({ kind: 'tool-call-group' })
   })
+
+  it('空数组返回空数组', () => {
+    expect(groupCollapsibleToolCalls([])).toEqual([])
+  })
+
+  it('pending 状态等同于 running，不参与折叠', () => {
+    const tc1 = makeToolCall({ id: 'tc1', name: 'Bash', state: 'completed' })
+    const tc2 = makeToolCall({ id: 'tc2', name: 'Bash', state: 'pending' })
+    const tc3 = makeToolCall({ id: 'tc3', name: 'Bash', state: 'completed' })
+    const result = groupCollapsibleToolCalls([tc1, tc2, tc3])
+    // completed(tc1, tc3) 归入折叠，pending(tc2) 排在后面
+    expect(result).toHaveLength(2)
+    expect(result[0]).toMatchObject({
+      kind: 'tool-call-group',
+      blocks: [tc1, tc3],
+    })
+    expect(result[1]).toEqual(tc2)
+  })
+
+  it('混合工具名在同一 Zone 内折叠', () => {
+    const bash = makeToolCall({ id: 'b1', name: 'Bash' })
+    const read = makeToolCall({ id: 'r1', name: 'Read' })
+    const grep = makeToolCall({ id: 'g1', name: 'Grep' })
+    const glob = makeToolCall({ id: 'gl1', name: 'Glob' })
+    const result = groupCollapsibleToolCalls([bash, read, grep, glob])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      kind: 'tool-call-group',
+      id: 'group-b1',
+      blocks: [bash, read, grep, glob],
+    })
+  })
+
+  it('Glob 和 Grep 是可折叠工具', () => {
+    const g1 = makeToolCall({ id: 'g1', name: 'Glob' })
+    const g2 = makeToolCall({ id: 'g2', name: 'Grep' })
+    const result = groupCollapsibleToolCalls([g1, g2])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ kind: 'tool-call-group' })
+  })
+
+  it('多个 Zone 的 group ID 互不相同', () => {
+    const b1 = makeToolCall({ id: 'b1', name: 'Bash' })
+    const b2 = makeToolCall({ id: 'b2', name: 'Bash' })
+    const text = makeTextBlock('t1')
+    const r1 = makeToolCall({ id: 'r1', name: 'Read' })
+    const r2 = makeToolCall({ id: 'r2', name: 'Read' })
+    const result = groupCollapsibleToolCalls([b1, b2, text, r1, r2])
+    const group1 = result[0] as Extract<typeof result[0], { kind: 'tool-call-group' }>
+    const group2 = result[2] as Extract<typeof result[2], { kind: 'tool-call-group' }>
+    expect(group1.id).toBe('group-b1')
+    expect(group2.id).toBe('group-r1')
+    expect(group1.id).not.toBe(group2.id)
+  })
 })
 
 describe('formatGroupTitle', () => {
@@ -190,5 +244,30 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'g2', name: 'Grep' }),
     ]
     expect(formatGroupTitle(blocks)).toBe('Find 1 pattern, search 1 pattern')
+  })
+
+  it('全四类混合', () => {
+    const blocks = [
+      makeToolCall({ id: 'b1', name: 'Bash' }),
+      makeToolCall({ id: 'r1', name: 'Read' }),
+      makeToolCall({ id: 'r2', name: 'Read' }),
+      makeToolCall({ id: 'gl1', name: 'Glob' }),
+      makeToolCall({ id: 'gr1', name: 'Grep' }),
+      makeToolCall({ id: 'gr2', name: 'Grep' }),
+    ]
+    expect(formatGroupTitle(blocks)).toBe('Run 1 shell command, read 2 files, find 1 pattern, search 2 patterns')
+  })
+
+  it('空数组返回空字符串', () => {
+    expect(formatGroupTitle([])).toBe('')
+  })
+
+  it('复数形式正确', () => {
+    const blocks = [
+      makeToolCall({ id: 'b1', name: 'Bash' }),
+      makeToolCall({ id: 'b2', name: 'Bash' }),
+      makeToolCall({ id: 'b3', name: 'Bash' }),
+    ]
+    expect(formatGroupTitle(blocks)).toBe('Run 3 shell commands')
   })
 })
