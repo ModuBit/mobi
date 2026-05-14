@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ChatBlock } from '@/domain/chat'
+import type { ChatBlock, ToolCallBlock } from '@/domain/chat'
 
 /** 可折叠工具名称 */
 const COLLAPSIBLE_TOOL_NAMES = new Set([
@@ -27,7 +27,7 @@ const COLLAPSIBLE_TOOL_NAMES = new Set([
 export type ToolCallGroup = {
   kind: 'tool-call-group'
   id: string
-  blocks: Extract<ChatBlock, { kind: 'tool-call' }>[]
+  blocks: ToolCallBlock[]
 }
 
 /** 分组后的消息块 */
@@ -44,7 +44,7 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
 }
 
 /** 格式化折叠组标题 */
-export function formatGroupTitle(blocks: Extract<ChatBlock, { kind: 'tool-call' }>[]): string {
+export function formatGroupTitle(blocks: ToolCallBlock[]): string {
   const counts: Partial<Record<ToolCategory, number>> = {}
   for (const block of blocks) {
     const cat = TOOL_CATEGORY_MAP[block.tool.name]
@@ -76,6 +76,11 @@ export function formatGroupTitle(blocks: Extract<ChatBlock, { kind: 'tool-call' 
   return joined.charAt(0).toUpperCase() + joined.slice(1)
 }
 
+/** 判断是否为可折叠工具 */
+function isCollapsibleTool(block: ChatBlock): block is ToolCallBlock {
+  return block.kind === 'tool-call' && COLLAPSIBLE_TOOL_NAMES.has(block.tool.name)
+}
+
 /** 检测连续可折叠工具 Zone 并分组 */
 export function groupCollapsibleToolCalls(blocks: ChatBlock[]): GroupedBlock[] {
   const result: GroupedBlock[] = []
@@ -84,21 +89,13 @@ export function groupCollapsibleToolCalls(blocks: ChatBlock[]): GroupedBlock[] {
   while (i < blocks.length) {
     const block = blocks[i]
 
-    // 检测是否为可折叠工具
-    if (
-      block.kind === 'tool-call' &&
-      COLLAPSIBLE_TOOL_NAMES.has(block.tool.name)
-    ) {
+    if (isCollapsibleTool(block)) {
       // 收集连续可折叠工具（不论状态）→ Zone
-      const zone: Extract<ChatBlock, { kind: 'tool-call' }>[] = []
-      while (
-        i < blocks.length &&
-        blocks[i].kind === 'tool-call' &&
-        COLLAPSIBLE_TOOL_NAMES.has(
-          (blocks[i] as Extract<ChatBlock, { kind: 'tool-call' }>).tool.name,
-        )
-      ) {
-        zone.push(blocks[i] as Extract<ChatBlock, { kind: 'tool-call' }>)
+      const zone: ToolCallBlock[] = []
+      while (i < blocks.length) {
+        const current = blocks[i]
+        if (!isCollapsibleTool(current)) break
+        zone.push(current)
         i++
       }
 
@@ -112,10 +109,8 @@ export function groupCollapsibleToolCalls(blocks: ChatBlock[]): GroupedBlock[] {
           id: `group-${completed[0].id}`,
           blocks: completed,
         })
-        // 非完成的工具排在折叠组后面
         result.push(...others)
       } else {
-        // completed < 2，全部单独展示（保持原始顺序）
         result.push(...zone)
       }
     } else {

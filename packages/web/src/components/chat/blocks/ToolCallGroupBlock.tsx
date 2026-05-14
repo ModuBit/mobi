@@ -14,25 +14,22 @@
  * limitations under the License.
  */
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Think } from '@ant-design/x'
 import { CheckCircleOutlined } from '@ant-design/icons'
-import type { ChatBlock } from '@/domain/chat'
+import type { ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
 import { ToolCallRenderer } from './ToolCallBlock'
 import { formatGroupTitle } from '@/domain/chat/groupToolCalls'
-
-type ToolCallBlockType = Extract<ChatBlock, { kind: 'tool-call' }>
 
 export function ToolCallGroupRenderer({
   blocks,
   ...ctx
 }: {
-  blocks: ToolCallBlockType[]
+  blocks: ToolCallBlock[]
 } & ChatBlockContext) {
   const [expanded, setExpanded] = useState(false)
-
-  const title = useMemo(() => formatGroupTitle(blocks), [blocks])
+  const title = formatGroupTitle(blocks)
 
   return (
     <Think
@@ -50,12 +47,7 @@ export function ToolCallGroupRenderer({
         <ToolCallRenderer
           key={block.id}
           block={block}
-          metadata={ctx.metadata}
-          api={ctx.api}
-          sessionId={ctx.sessionId}
-          disabled={ctx.disabled}
-          onDone={ctx.onDone}
-          disableDrawer={ctx.disableDrawer}
+          {...ctx}
         />
       ))}
     </Think>
