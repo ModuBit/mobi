@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Think } from '@ant-design/x'
 import type { ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
@@ -29,7 +29,7 @@ export function ToolCallGroupRenderer({
   blocks: ToolCallBlock[]
 } & ChatBlockContext) {
   const [expanded, setExpanded] = useState(false)
-  const title = formatGroupTitle(blocks)
+  const title = useMemo(() => formatGroupTitle(blocks), [blocks])
 
   return (
     <Think

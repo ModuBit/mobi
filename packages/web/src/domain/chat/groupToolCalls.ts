@@ -15,6 +15,7 @@
  */
 
 import type { ChatBlock, ToolCallBlock } from '@/domain/chat'
+import { capitalize } from '@/core/utils/sessionUtils'
 
 type ToolCategory = 'shell' | 'read' | 'glob' | 'grep'
 
@@ -66,9 +67,7 @@ export function formatGroupTitle(blocks: ToolCallBlock[]): string {
     parts.push(`search ${n} pattern${n !== 1 ? 's' : ''}`)
   }
 
-  // 首字母大写
-  const joined = parts.join(', ')
-  return joined.charAt(0).toUpperCase() + joined.slice(1)
+  return capitalize(parts.join(', '))
 }
 
 /** 判断是否为可折叠工具 */

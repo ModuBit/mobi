@@ -52,6 +52,8 @@ const bubbleCopyStyles = css`
 `
 
 /** 滚动相关阈值（autoScroll=false，正常 flex column 布局） */
+const COMPACT_COMMAND = '/compact'
+
 const HISTORY_PREFETCH_DISTANCE = 200
 const AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD = 50
 const SCROLL_BOTTOM_VISIBLE_THRESHOLD = 60
@@ -116,11 +118,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 从 chatBlocks 推导压缩状态：最后一条 user-text 是 /compact 且后面没有 compact-summary
     const isCompressing = useMemo(() => {
-        for (let i = chatBlocks.length - 1; i >= 0; i--) {
+        const start = Math.max(0, chatBlocks.length - 10)
+        for (let i = chatBlocks.length - 1; i >= start; i--) {
             const block = chatBlocks[i]
             if (block.kind === 'compact-summary') return false
             if (block.kind === 'user-text') {
-                return block.text.trim() === '/compact'
+                return block.text.trim() === COMPACT_COMMAND
             }
         }
         return false

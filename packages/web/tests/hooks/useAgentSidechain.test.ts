@@ -143,7 +143,7 @@ describe('useAgentSidechain', () => {
             expect(result.current.isLoading).toBe(false)
         })
 
-        it('无 sessionId 时 query 禁用，isLoading=false', () => {
+        it('无 sessionId 时 query 禁用，isLoading 仍为 true（无数据且 query 永远不会完成）', () => {
             const block = createBlock()
 
             mockUseSidechainMessages.mockReturnValue({

@@ -48,7 +48,6 @@ export function buildChatBubbleItems(
     isRunning: boolean,
     options: BuildBubbleOptions,
 ): BubbleItemBase[] {
-    // 将连续可折叠工具调用分组
     const grouped = groupCollapsibleToolCalls(blocks)
 
     // 找到最后一个 assistant block（用于 typing 动画和思考状态判断）
