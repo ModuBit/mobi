@@ -16,12 +16,17 @@
 
 import type { ChatBlock, ToolCallBlock } from '@/domain/chat'
 
-/** 可折叠工具名称 */
-const COLLAPSIBLE_TOOL_NAMES = new Set([
-  'Bash', 'shell_command',
-  'Glob', 'Grep',
-  'Read',
-])
+type ToolCategory = 'shell' | 'read' | 'glob' | 'grep'
+
+const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
+  Bash: 'shell',
+  shell_command: 'shell',
+  Read: 'read',
+  Glob: 'glob',
+  Grep: 'grep',
+}
+
+const COLLAPSIBLE_TOOL_NAMES = new Set(Object.keys(TOOL_CATEGORY_MAP))
 
 /** 工具调用折叠组 */
 export type ToolCallGroup = {
@@ -32,16 +37,6 @@ export type ToolCallGroup = {
 
 /** 分组后的消息块 */
 export type GroupedBlock = ChatBlock | ToolCallGroup
-
-type ToolCategory = 'shell' | 'read' | 'glob' | 'grep'
-
-const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
-  Bash: 'shell',
-  shell_command: 'shell',
-  Read: 'read',
-  Glob: 'glob',
-  Grep: 'grep',
-}
 
 /** 格式化折叠组标题 */
 export function formatGroupTitle(blocks: ToolCallBlock[]): string {

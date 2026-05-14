@@ -16,9 +16,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { groupCollapsibleToolCalls, formatGroupTitle } from '@/domain/chat/groupToolCalls'
+import type { ToolCallBlock } from '@/domain/chat'
 import type { ChatBlock } from '@/domain/chat'
-
-type ToolCallBlock = Extract<ChatBlock, { kind: 'tool-call' }>
 
 function makeToolCall(overrides: Partial<{
   id: string
