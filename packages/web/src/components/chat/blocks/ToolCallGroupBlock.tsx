@@ -16,10 +16,10 @@
 
 import { useState } from 'react'
 import { Think } from '@ant-design/x'
-import { CheckCircleOutlined } from '@ant-design/icons'
 import type { ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
 import { ToolCallRenderer } from './ToolCallBlock'
+import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { formatGroupTitle } from '@/domain/chat/groupToolCalls'
 
 export function ToolCallGroupRenderer({
@@ -34,7 +34,7 @@ export function ToolCallGroupRenderer({
   return (
     <Think
       className="tool-call-think"
-      icon={<CheckCircleOutlined style={{ fontSize: 14, color: 'var(--ant-color-success)' }} />}
+      icon={<StatusStateIcon state="completed" />}
       title={
         <span style={{ fontWeight: 500, fontSize: 13 }}>
           {title}
@@ -43,13 +43,15 @@ export function ToolCallGroupRenderer({
       expanded={expanded}
       onExpand={setExpanded}
     >
-      {blocks.map(block => (
-        <ToolCallRenderer
-          key={block.id}
-          block={block}
-          {...ctx}
-        />
-      ))}
+      <div style={{ paddingLeft: 12, paddingRight: 12 }}>
+        {blocks.map(block => (
+          <ToolCallRenderer
+            key={block.id}
+            block={block}
+            {...ctx}
+          />
+        ))}
+      </div>
     </Think>
   )
 }
