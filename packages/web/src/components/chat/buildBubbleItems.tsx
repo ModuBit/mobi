@@ -17,7 +17,9 @@
 import type React from 'react'
 import type { ChatBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './blocks'
+import { groupCollapsibleToolCalls } from '@/domain/chat/groupToolCalls'
 import { renderChatBlock } from './blocks'
+import { ToolCallGroupRenderer } from './blocks/ToolCallGroupBlock'
 
 export type BuildBubbleOptions = {
     /** context-cleared 分隔线的翻译文本 */
@@ -46,10 +48,13 @@ export function buildChatBubbleItems(
     isRunning: boolean,
     options: BuildBubbleOptions,
 ): BubbleItemBase[] {
+    // 将连续可折叠工具调用分组
+    const grouped = groupCollapsibleToolCalls(blocks)
+
     // 找到最后一个 assistant block（用于 typing 动画）
     let lastAssistantBlockKey: string | null = null
-    for (let i = blocks.length - 1; i >= 0; i--) {
-        const block = blocks[i]
+    for (let i = grouped.length - 1; i >= 0; i--) {
+        const block = grouped[i]
         if (block.kind === 'agent-text' || block.kind === 'agent-reasoning') {
             lastAssistantBlockKey = block.id
             break
@@ -58,7 +63,18 @@ export function buildChatBubbleItems(
 
     const items: BubbleItemBase[] = []
 
-    for (const block of blocks) {
+    for (const block of grouped) {
+        // 折叠组
+        if (block.kind === 'tool-call-group') {
+            items.push({
+                key: block.id,
+                role: 'assistant',
+                content: <ToolCallGroupRenderer blocks={block.blocks} {...ctx} />,
+                variant: 'borderless',
+            })
+            continue
+        }
+
         // context-cleared 事件渲染为分隔线
         if (block.kind === 'agent-event' && block.event.type === 'context-cleared') {
             items.push({
