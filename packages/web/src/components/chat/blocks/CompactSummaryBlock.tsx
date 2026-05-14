@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { CompressOutlined } from '@ant-design/icons'
 import { Think } from '@ant-design/x'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -54,12 +53,7 @@ export function CompactSummaryBlockComponent(props: { block: CompactSummaryBlock
 
     return (
         <Think
-            icon={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <StatusStateIcon state="completed" />
-                    <CompressOutlined style={{ color: 'var(--color-success)' }} />
-                </span>
-            }
+            icon={<StatusStateIcon state="completed" />}
             title={title}
             expanded={expanded}
             onExpand={setExpanded}

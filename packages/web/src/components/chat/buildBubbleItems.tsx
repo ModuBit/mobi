@@ -51,11 +51,11 @@ export function buildChatBubbleItems(
     // 将连续可折叠工具调用分组
     const grouped = groupCollapsibleToolCalls(blocks)
 
-    // 找到最后一个 assistant block（用于 typing 动画）
+    // 找到最后一个 assistant block（用于 typing 动画和思考状态判断）
     let lastAssistantBlockKey: string | null = null
     for (let i = grouped.length - 1; i >= 0; i--) {
         const block = grouped[i]
-        if (block.kind === 'agent-text' || block.kind === 'agent-reasoning') {
+        if (block.kind === 'agent-text' || block.kind === 'agent-reasoning' || block.kind === 'tool-call' || block.kind === 'tool-call-group') {
             lastAssistantBlockKey = block.id
             break
         }

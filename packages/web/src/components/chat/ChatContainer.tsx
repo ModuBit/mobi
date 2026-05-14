@@ -91,7 +91,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         blocksLength: number
     } | null>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
-    const [isCompressing, setIsCompressing] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
     const { token: authToken } = useAuthStore()
@@ -115,25 +114,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         })
     }, [rawBlocks, hasNextPage])
 
-    // CompactSummaryBlock 出现后清除压缩状态
-    useEffect(() => {
-        if (isCompressing && chatBlocks.some(b => b.kind === 'compact-summary')) {
-            setIsCompressing(false)
-            compressingSawRunningRef.current = false
+    // 从 chatBlocks 推导压缩状态：最后一条 user-text 是 /compact 且后面没有 compact-summary
+    const isCompressing = useMemo(() => {
+        for (let i = chatBlocks.length - 1; i >= 0; i--) {
+            const block = chatBlocks[i]
+            if (block.kind === 'compact-summary') return false
+            if (block.kind === 'user-text') {
+                return block.text.trim() === '/compact'
+            }
         }
-    }, [chatBlocks, isCompressing])
-
-    // session running 经历 true→false 时清除（兜底）
-    const compressingSawRunningRef = useRef(false)
-    useEffect(() => {
-        if (isCompressing && session?.running) {
-            compressingSawRunningRef.current = true
-        }
-        if (isCompressing && compressingSawRunningRef.current && !session?.running) {
-            setIsCompressing(false)
-            compressingSawRunningRef.current = false
-        }
-    }, [session?.running, isCompressing])
+        return false
+    }, [chatBlocks])
 
     const chatBlocksLengthRef = useRef(chatBlocks.length)
     chatBlocksLengthRef.current = chatBlocks.length
@@ -343,7 +334,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     const handleSend = (text: string) => {
         if (!text.trim()) return
-        if (text.trim() === '/compact') setIsCompressing(true)
         sendMutation.mutate(text)
     }
 
