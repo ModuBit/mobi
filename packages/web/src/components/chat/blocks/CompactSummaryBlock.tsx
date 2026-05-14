@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-import { Collapse, Typography } from 'antd'
-import { CompressOutlined, NumberOutlined } from '@ant-design/icons'
+import { CompressOutlined } from '@ant-design/icons'
+import { Think } from '@ant-design/x'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { CompactSummaryBlock } from '@/domain/chat/types'
 import { Markdown } from '@/components/ui/Markdown'
+import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useMemo } from 'react'
-
-const { Text } = Typography
 
 /** 格式化 token 数量 */
 function formatTokens(tokens: number): string {
@@ -33,8 +34,9 @@ function formatTokens(tokens: number): string {
 /** 渲染 Compact 总结消息块 */
 export function CompactSummaryBlockComponent(props: { block: CompactSummaryBlock }) {
     const { block } = props
+    const { t } = useTranslation()
+    const [expanded, setExpanded] = useState(false)
 
-    // 提取 Summary 部分（如果存在）
     const summaryContent = useMemo(() => {
         const text = block.text
         const summaryMatch = text.match(/Summary:\n([\s\S]*)/)
@@ -44,50 +46,27 @@ export function CompactSummaryBlockComponent(props: { block: CompactSummaryBlock
         return text
     }, [block.text])
 
-    // 计算压缩率
     const compressionRatio = block.preTokens > 0
         ? ((block.preTokens - block.postTokens) / block.preTokens * 100).toFixed(0)
         : '0'
 
-    const header = (
-        <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            minWidth: 0, // 允许收缩
-        }}>
-            <CompressOutlined style={{ color: 'var(--color-success)', flexShrink: 0 }} />
-            <Text type="secondary" ellipsis style={{ minWidth: 0 }}>
-                对话已压缩
-            </Text>
-            <Text type="success" style={{ fontSize: '12px', flexShrink: 0 }}>
-                -{compressionRatio}%
-            </Text>
-            <Text type="secondary" style={{ fontSize: '11px', flexShrink: 0 }}>
-                {formatTokens(block.preTokens)}→{formatTokens(block.postTokens)}
-            </Text>
-        </div>
-    )
+    const title = `${t('chat.compactSummary')} -${compressionRatio}% ${formatTokens(block.preTokens)}→${formatTokens(block.postTokens)}`
 
     return (
-        <Collapse
-            size="small"
-            items={[{
-                key: 'summary',
-                label: header,
-                children: (
-                    <div style={{
-                        maxHeight: '400px',
-                        overflow: 'auto',
-                        padding: '8px 12px',
-                        background: 'var(--color-bg-layout)',
-                        borderRadius: '6px',
-                    }}>
-                        <Markdown content={summaryContent} />
-                    </div>
-                ),
-            }]}
-            defaultActiveKey={[]}
-        />
+        <Think
+            icon={
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <StatusStateIcon state="completed" />
+                    <CompressOutlined style={{ color: 'var(--color-success)' }} />
+                </span>
+            }
+            title={title}
+            expanded={expanded}
+            onExpand={setExpanded}
+        >
+            <div style={{ maxHeight: 400, overflow: 'auto' }}>
+                <Markdown content={summaryContent} />
+            </div>
+        </Think>
     )
 }

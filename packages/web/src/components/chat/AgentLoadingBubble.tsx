@@ -20,18 +20,18 @@ import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { getVibingMessage, hashSessionId } from '@/components/pixel-avatar/vibingMessages'
 
 interface AgentLoadingBubbleProps {
-    sessionId: string
+    agentId: string
     status: AgentStatus
 }
 
-export function AgentLoadingBubble({ sessionId, status }: AgentLoadingBubbleProps) {
+export function AgentLoadingBubble({ agentId, status }: AgentLoadingBubbleProps) {
     const { token } = theme.useToken()
 
-    const vibingMsg = getVibingMessage(hashSessionId(sessionId))
+    const vibingMsg = getVibingMessage(hashSessionId(agentId))
 
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <PixelAvatar name={sessionId} status={status} size={18} />
+            <PixelAvatar name={agentId} status={status} size={18} />
             <span style={{ color: token.colorTextSecondary, fontSize: 13 }}>
                 {vibingMsg}
             </span>

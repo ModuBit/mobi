@@ -103,6 +103,8 @@
         "thinking": "Thinking...",
         "thought": "Thought",
         "contextReset": "Context was reset",
+        "compactSummary": "Conversation compressed",
+        "compacting": "Compressing conversation...",
         "sessionEnded": "Session ended",
         "apiError": "API Error",
         "apiRateLimit": "API Rate Limited",

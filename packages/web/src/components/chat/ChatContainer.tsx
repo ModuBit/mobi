@@ -29,6 +29,7 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { AgentLoadingBubble } from './AgentLoadingBubble'
+import { CompactProgressBubble } from './CompactProgressBubble'
 import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
 import { useAuthStore } from '@/core/data/stores/authStore'
@@ -90,6 +91,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         blocksLength: number
     } | null>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
+    const [isCompressing, setIsCompressing] = useState(false)
     const { token } = useToken()
     const { t } = useTranslation()
     const { token: authToken } = useAuthStore()
@@ -112,6 +114,26 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             return block.tool.state !== 'running'
         })
     }, [rawBlocks, hasNextPage])
+
+    // CompactSummaryBlock 出现后清除压缩状态
+    useEffect(() => {
+        if (isCompressing && chatBlocks.some(b => b.kind === 'compact-summary')) {
+            setIsCompressing(false)
+            compressingSawRunningRef.current = false
+        }
+    }, [chatBlocks, isCompressing])
+
+    // session running 经历 true→false 时清除（兜底）
+    const compressingSawRunningRef = useRef(false)
+    useEffect(() => {
+        if (isCompressing && session?.running) {
+            compressingSawRunningRef.current = true
+        }
+        if (isCompressing && compressingSawRunningRef.current && !session?.running) {
+            setIsCompressing(false)
+            compressingSawRunningRef.current = false
+        }
+    }, [session?.running, isCompressing])
 
     const chatBlocksLengthRef = useRef(chatBlocks.length)
     chatBlocksLengthRef.current = chatBlocks.length
@@ -295,7 +317,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             ...decoratedItems,
         ]
 
-        if (session?.running) {
+        if (isCompressing) {
+            items.push({
+                key: '__compressing__',
+                role: 'assistant',
+                content: <CompactProgressBubble />,
+                variant: 'borderless',
+            })
+        } else if (session?.running) {
             const loadingStatus = getAgentStatus({
                 active: session.active ?? false,
                 running: session.running,
@@ -304,16 +333,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             items.push({
                 key: '__loading__',
                 role: 'assistant',
-                content: <AgentLoadingBubble sessionId={sessionId} status={loadingStatus} />,
+                content: <AgentLoadingBubble agentId={sessionId} status={loadingStatus} />,
                 variant: 'borderless',
             })
         }
 
         return items
-    }, [decoratedItems, isFetchingNextPage, session?.running, session?.agentState?.requests, sessionId])
+    }, [decoratedItems, isFetchingNextPage, isCompressing, session?.running, session?.agentState?.requests, sessionId])
 
     const handleSend = (text: string) => {
         if (!text.trim()) return
+        if (text.trim() === '/compact') setIsCompressing(true)
         sendMutation.mutate(text)
     }
 
@@ -394,7 +424,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             <ChatComposer
                 sessionId={sessionId}
-                disabled={sendMutation.isPending}
+                disabled={sendMutation.isPending || isCompressing}
                 sending={sendMutation.isPending}
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}

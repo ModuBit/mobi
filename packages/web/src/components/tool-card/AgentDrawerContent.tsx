@@ -22,13 +22,13 @@ import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { safeStringify } from '@mobi/shared'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import type { ChatBlock, NormalizedMessage } from '@/domain/chat'
-import { normalizeDecryptedMessage, reduceChatBlocks } from '@/domain/chat'
+import type { ChatBlock } from '@/domain/chat'
 import { Markdown } from '@/components/ui/Markdown'
 import { buildChatBubbleItems } from '@/components/chat/buildBubbleItems'
 import { BUBBLE_ROLES } from '@/components/chat/bubbleRoles'
-import { useSidechainMessages } from '@/core/data/hooks/queries/useSidechainMessages'
+import { useAgentSidechain } from './useAgentSidechain'
 import { extractTextFromResult } from '@/components/tool-card/views/_results'
+import { AgentLoadingBubble } from '@/components/chat/AgentLoadingBubble'
 
 /** Drawer 场景下覆盖全局 CSS 对 Bubble.List 的副作用 */
 const drawerBubbleStyles = css`
@@ -84,26 +84,9 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
     const [showScrollBottom, setShowScrollBottom] = useState(false)
 
     const tool = block.tool
-    const hasChildren = block.children.length > 0
 
-    // 实时会话 children 已有数据，历史会话从 API 补载
-    const { data: sidechainMessages = [], isPending } = useSidechainMessages(
-        hasChildren ? null : (sessionId ?? null),
-        hasChildren ? null : tool.id,
-    )
-
-    const childrenBlocks = useMemo(() => {
-        if (hasChildren) return block.children
-        if (sidechainMessages.length === 0) return []
-
-        const normalized = sidechainMessages
-            .map((msg) => normalizeDecryptedMessage(msg))
-            .filter((m): m is NormalizedMessage => m !== null)
-            // 去掉 isSidechain 标记，让 traceMessages 将它们视为根消息处理
-            .map(m => ({ ...m, isSidechain: false as const }))
-        const { blocks } = reduceChatBlocks(normalized, null)
-        return blocks
-    }, [hasChildren, block.children, sidechainMessages])
+    // 两条数据路径封装在 hook 中：SSE 实时（block.children）/ API 历史（sidechain-messages）
+    const { blocks: childrenBlocks, isLoading: showSkeleton } = useAgentSidechain(block, sessionId)
 
     const isRunning = tool.state === 'running' || tool.state === 'pending'
 
@@ -116,6 +99,16 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         )
 
         const items = [...baseItems]
+
+        // agent 运行期间追加 loading 消息，使用子 agent 的 pixelavatar
+        if (isRunning) {
+            items.push({
+                key: '__loading__',
+                role: 'assistant',
+                content: <AgentLoadingBubble agentId={tool.id} status="outputting" />,
+                variant: 'borderless',
+            })
+        }
 
         if (tool.result !== undefined && tool.result !== null) {
             items.push({
@@ -164,7 +157,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         <div style={{ position: 'relative', height: '100%' }}>
             <Global styles={drawerBubbleStyles} />
             <div ref={scrollRef} style={{ height: '100%', overflow: 'auto', padding: '0 8px' }}>
-                {isPending ? (
+                {showSkeleton ? (
                     <SidechainSkeleton />
                 ) : (
                     <Bubble.List
