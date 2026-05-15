@@ -388,7 +388,7 @@ export const knownTools: Record<string, {
         icon: () => <BulbOutlined style={DEFAULT_ICON_STYLE} />,
         title: () => 'Todo list',
         subtitle: (opts) => formatChecklistCount(extractTodoChecklist(opts.input, opts.result), 'item'),
-        minimal: (opts) => extractTodoChecklist(opts.input, opts.result).length === 0
+        minimal: () => true
     },
     update_plan: {
         icon: () => <FileTextOutlined style={DEFAULT_ICON_STYLE} />,

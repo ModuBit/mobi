@@ -21,7 +21,6 @@ import { GlobView } from '@/components/tool-card/views/GlobView'
 import { isObject, safeStringify } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { theme as antTheme, Typography } from 'antd'
-import { ChecklistList, extractTodoChecklist } from '@/components/tool-card/checklist'
 import { formatLineRangeStats } from '@/components/tool-card/views/lineNumberUtils'
 import { basename, resolveDisplayPath } from '@/core/utils/path'
 import { Markdown } from '@/components/ui/Markdown'
@@ -447,14 +446,6 @@ const MultiEditResultView: ToolViewComponent = (props: ToolViewProps) => {
         </div>
     )
 }
-const TodoWriteResultView: ToolViewComponent = (props: ToolViewProps) => {
-    const { token } = useToken()
-    const todos = extractTodoChecklist(props.block.tool.input, props.block.tool.result)
-    if (todos.length === 0) {
-        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
-    }
-    return <ChecklistList items={todos} />
-}
 const GenericResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { token } = useToken()
     const result = props.block.tool.result
@@ -486,7 +477,6 @@ export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     WebSearch: MarkdownResultView,
     NotebookRead: ReadResultView,
     NotebookEdit: MutationResultView,
-    TodoWrite: TodoWriteResultView,
     AskUserQuestion: AskUserQuestionResultView,
     ExitPlanMode: MarkdownResultView,
     ask_user_question: AskUserQuestionResultView,

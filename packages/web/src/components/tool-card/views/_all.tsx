@@ -22,7 +22,6 @@ import { AskUserQuestionView } from '@/components/tool-card/views/AskUserQuestio
 import { RequestUserInputView } from '@/components/tool-card/views/RequestUserInputView'
 import { ExitPlanModeView } from '@/components/tool-card/views/ExitPlanModeView'
 import { MultiEditFullView, MultiEditView } from '@/components/tool-card/views/MultiEditView'
-import { TodoWriteView } from '@/components/tool-card/views/TodoWriteView'
 import { UpdatePlanView } from '@/components/tool-card/views/UpdatePlanView'
 import { WriteView } from '@/components/tool-card/views/WriteView'
 import { ReadDetailView } from '@/components/tool-card/views/ReadDetailView'
@@ -42,7 +41,6 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     Edit: EditView,
     MultiEdit: MultiEditView,
     Write: WriteView,
-    TodoWrite: TodoWriteView,
     update_plan: UpdatePlanView,
     AskUserQuestion: AskUserQuestionView,
     ExitPlanMode: ExitPlanModeView,
