@@ -20,7 +20,7 @@ import { PaperClipOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, Ro
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import type { AgentState, EffortLevel, PermissionMode, Session } from '@mobi/shared'
+import type { AgentState, EffortLevel, PermissionMode, Session, TodoItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, getEffortOptions } from '@mobi/shared'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
@@ -74,6 +74,7 @@ interface ChatComposerProps {
     activatePending?: boolean
     onSwitchToRemote?: () => void
     switchPending?: boolean
+    todos?: TodoItem[]
 }
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
@@ -169,6 +170,7 @@ export function ChatComposer(props: ChatComposerProps) {
         activatePending = false,
         onSwitchToRemote,
         switchPending = false,
+        todos,
     } = props
 
     const [text, setText] = useState('')
@@ -465,6 +467,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 onPermissionDone={() => {
                     // 权限操作完成后，session 会通过 SSE 更新
                 }}
+                todos={todos}
             />
 
             <StatusBar

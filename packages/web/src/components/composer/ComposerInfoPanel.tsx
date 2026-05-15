@@ -26,8 +26,9 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
 import { getCustomPermissionTitleKey } from '@/core/lib/toolInputUtils'
 import type { MobiApi } from '@/core/data/api/client'
-import type { SDKUIHints } from '@mobi/shared'
+import type { SDKUIHints, TodoItem } from '@mobi/shared'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+import { TodoPanel } from './TodoPanel'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -124,6 +125,7 @@ export type ComposerInfoPanelProps = {
     api: MobiApi
     disabled: boolean
     onPermissionDone: () => void
+    todos?: TodoItem[]
 }
 
 /**
@@ -136,15 +138,16 @@ export function ComposerInfoPanel({
     metadata,
     api,
     disabled,
-    onPermissionDone
+    onPermissionDone,
+    todos
 }: ComposerInfoPanelProps) {
-    const hasContent = agentState?.requests && Object.keys(agentState.requests).length > 0
+    const hasPermissionRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
+    const hasTodos = todos && todos.length > 0
 
-    if (!hasContent) return null
+    if (!hasPermissionRequests && !hasTodos) return null
 
     return (
         <div style={{ padding: '8px 16px', marginBottom: 4 }}>
-            {/* 权限请求 */}
             <PermissionPanel
                 requests={agentState?.requests}
                 metadata={metadata}
@@ -154,7 +157,7 @@ export function ComposerInfoPanel({
                 onDone={onPermissionDone}
             />
 
-            {/* 未来扩展：任务列表、文件修改等 */}
+            <TodoPanel todos={todos} />
         </div>
     )
 }

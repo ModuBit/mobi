@@ -431,6 +431,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 mode={session?.mode}
                 workingDir={session?.metadata?.path}
                 effort={session?.runtimeState?.effort}
+                todos={session?.runtimeState?.todos}
                 onEffortChange={handleEffortChange}
                 onPermissionModeChange={handlePermissionModeChange}
                 onModelChange={handleModelChange}
