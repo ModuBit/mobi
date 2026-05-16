@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto'
 import type { PermissionMode, RuntimeState, TeamState } from '@mobi/shared/types'
 import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
+import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
 import { extractTeamStateFromMessageContent, applyTeamStateDelta } from '../../../sync/teams'
 import type { CliSocketWithData } from '../../socketTypes'
@@ -83,6 +84,9 @@ export type SessionHandlersDeps = {
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
     const { store, resolveSessionAccess, emitAccessError, onSessionAlive, onSessionEnd, onWebappEvent } = deps
 
+    // session 连接级别的 PendingTaskMap，在连接生命周期内持续存在
+    const pendingTaskMap = new PendingTaskMap()
+
     socket.on('message', (data: unknown) => {
         const parsed = messageSchema.safeParse(data)
         if (!parsed.success) {
@@ -135,11 +139,12 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
         const msg = store.messages.addMessage(sid, content, localId)
 
-        // 提取并更新 runtimeState（todos、teamState 等）
+        // 提取并更新 runtimeState（todos、tasks、teamState 等）
         const todos = extractTodoWriteTodosFromMessageContent(content)
+        const taskDelta = extractTaskDeltasFromMessageContent(content, pendingTaskMap)
         const teamDelta = extractTeamStateFromMessageContent(content)
 
-        if (todos || teamDelta) {
+        if (todos || taskDelta || teamDelta) {
             const existingSession = store.sessions.getSession(sid)
             const existingRuntimeState = (existingSession?.runtimeState as RuntimeState) ?? {}
 
@@ -148,10 +153,25 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 existingRuntimeState.todos = todos
             }
 
+            // 合并 tasks
+            if (taskDelta) {
+                existingRuntimeState.tasks = applyTaskDelta(existingRuntimeState.tasks, taskDelta)
+            }
+
             // 合并 teamState
             if (teamDelta) {
                 const existingTeamState = existingRuntimeState.teamState ?? null
                 existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamDelta) ?? undefined
+            }
+
+            // 自动清除：todos 全部完成
+            if (existingRuntimeState.todos?.every(t => t.status === 'completed')) {
+                existingRuntimeState.todos = undefined
+            }
+
+            // 自动清除：tasks 全部完成或删除
+            if (existingRuntimeState.tasks?.every(t => t.status === 'completed' || t.status === 'deleted')) {
+                existingRuntimeState.tasks = undefined
             }
 
             const updated = store.sessions.setRuntimeState(sid, existingRuntimeState, msg.createdAt, session.namespace)

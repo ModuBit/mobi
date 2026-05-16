@@ -16,9 +16,11 @@
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
 import type { EffortLevel, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
+import type { TaskItem } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
+import { extractTaskDeltasFromMessageContent, PendingTaskMap, applyTaskDelta } from './tasks'
 import { extractTodoWriteTodosFromMessageContent } from './todos'
 import { extractTeamStateFromMessageContent, applyTeamStateDelta } from './teams'
 
@@ -46,6 +48,23 @@ export function backfillRuntimeStateFromMessages(
             runtimeState.todos = todos
             break
         }
+    }
+
+    // 提取 tasks（通过重放所有消息的 tool_use + tool_result 配对）
+    const pendingMap = new PendingTaskMap()
+    let tasks: TaskItem[] | undefined
+    for (const message of messages) {
+        const delta = extractTaskDeltasFromMessageContent(message.content, pendingMap)
+        if (delta) {
+            tasks = applyTaskDelta(tasks, delta)
+        }
+    }
+    // 全部完成的 tasks 自动清除
+    if (tasks?.every(t => t.status === 'completed' || t.status === 'deleted')) {
+        tasks = undefined
+    }
+    if (tasks) {
+        runtimeState.tasks = tasks
     }
 
     // 提取 teamState（从消息中增量构建）
@@ -518,6 +537,11 @@ export class SessionCache {
         // 合并 todos（优先使用更新的）
         if (oldState.todos && !newState.todos) {
             merged.todos = oldState.todos
+        }
+
+        // 合并 tasks（优先使用更新的）
+        if (oldState.tasks && !newState.tasks) {
+            merged.tasks = oldState.tasks
         }
 
         // 合并 teamState
