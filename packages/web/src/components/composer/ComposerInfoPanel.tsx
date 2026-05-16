@@ -26,9 +26,10 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
 import { getCustomPermissionTitleKey } from '@/core/lib/toolInputUtils'
 import type { MobiApi } from '@/core/data/api/client'
-import type { SDKUIHints, TodoItem } from '@mobi/shared'
+import type { SDKUIHints, TodoItem, TaskItem } from '@mobi/shared'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
 import { TodoPanel } from './TodoPanel'
+import { TaskPanel } from './TaskPanel'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -126,6 +127,7 @@ export type ComposerInfoPanelProps = {
     disabled: boolean
     onPermissionDone: () => void
     todos?: TodoItem[]
+    tasks?: TaskItem[]
 }
 
 /**
@@ -139,10 +141,12 @@ export function ComposerInfoPanel({
     api,
     disabled,
     onPermissionDone,
-    todos
+    todos,
+    tasks
 }: ComposerInfoPanelProps) {
     const hasPermissionRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
     const hasTodos = todos && todos.length > 0
+    const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
     const { token } = useToken()
 
     const scrollRef = useRef<HTMLDivElement>(null)
@@ -159,7 +163,7 @@ export function ComposerInfoPanel({
         return () => observer.disconnect()
     }, [])
 
-    if (!hasPermissionRequests && !hasTodos) return null
+    if (!hasPermissionRequests && !hasTodos && !hasTasks) return null
 
     return (
         <div style={{ position: 'relative', padding: '8px 0', marginBottom: 4 }}>
@@ -179,6 +183,7 @@ export function ComposerInfoPanel({
                     />
 
                     <TodoPanel todos={todos} />
+                    <TaskPanel tasks={tasks} />
                 </Space>
             </div>
             {showFade && (
