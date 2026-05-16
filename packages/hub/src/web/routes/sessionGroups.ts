@@ -71,7 +71,7 @@ function toSummary(s: StoredSession, liveSessionMap: Map<string, Session>): Sess
     } | null
 
     const agentState = s.agentState as { requests?: Record<string, unknown> } | null
-    const runtimeState = s.runtimeState as { todos?: Array<{ status: string }> } | null
+    const runtimeState = s.runtimeState as { todos?: Array<{ status: string }>; tasks?: Array<{ status: string }> } | null
 
     const pendingRequestsCount = agentState?.requests ? Object.keys(agentState.requests).length : 0
 
@@ -90,6 +90,11 @@ function toSummary(s: StoredSession, liveSessionMap: Map<string, Session>): Sess
         total: runtimeState.todos.length
     } : null
 
+    const taskProgress = runtimeState?.tasks?.length ? {
+        completed: runtimeState.tasks.filter(t => t.status === 'completed').length,
+        total: runtimeState.tasks.length
+    } : null
+
     return {
         id: s.id,
         active,
@@ -98,6 +103,7 @@ function toSummary(s: StoredSession, liveSessionMap: Map<string, Session>): Sess
         updatedAt: s.updatedAt,
         metadata: summaryMetadata,
         todoProgress,
+        taskProgress,
         pendingRequestsCount
     }
 }

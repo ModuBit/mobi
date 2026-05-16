@@ -154,4 +154,27 @@ describe('toSessionSummary', () => {
         const summary = toSessionSummary(session)
         expect(summary.mode).toBeUndefined()
     })
+
+    it('含 runtimeState.tasks 正确计算 taskProgress', () => {
+        const session = makeSession({
+            runtimeState: {
+                tasks: [
+                    { id: 't1', subject: '任务1', status: 'completed' },
+                    { id: 't2', subject: '任务2', status: 'in_progress' },
+                    { id: 't3', subject: '任务3', status: 'pending' },
+                    { id: 't4', subject: '任务4', status: 'completed' },
+                ],
+            },
+        })
+        const summary = toSessionSummary(session)
+        expect(summary.taskProgress).toEqual({ completed: 2, total: 4 })
+    })
+
+    it('runtimeState.tasks 为空数组时 taskProgress 为 null', () => {
+        const session = makeSession({
+            runtimeState: { tasks: [] },
+        })
+        const summary = toSessionSummary(session)
+        expect(summary.taskProgress).toBeNull()
+    })
 })

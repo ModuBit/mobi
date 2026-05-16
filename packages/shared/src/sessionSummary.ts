@@ -33,6 +33,7 @@ export type SessionSummary = {
     updatedAt: number
     metadata: SessionSummaryMetadata | null
     todoProgress: { completed: number; total: number } | null
+    taskProgress: { completed: number; total: number } | null
     pendingRequestsCount: number
     model?: string | null
     mode?: 'local' | 'remote'
@@ -55,6 +56,11 @@ export function toSessionSummary(session: Session): SessionSummary {
         total: session.runtimeState.todos.length
     } : null
 
+    const taskProgress = session.runtimeState?.tasks?.length ? {
+        completed: session.runtimeState.tasks.filter(t => t.status === 'completed').length,
+        total: session.runtimeState.tasks.length
+    } : null
+
     return {
         id: session.id,
         active: session.active,
@@ -63,6 +69,7 @@ export function toSessionSummary(session: Session): SessionSummary {
         updatedAt: session.updatedAt,
         metadata,
         todoProgress,
+        taskProgress,
         pendingRequestsCount,
         model: session.runtimeState?.model,
         mode: session.mode,
