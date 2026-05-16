@@ -94,9 +94,9 @@ export function TodoPanel({ todos }: TodoPanelProps) {
             label: header,
             children: (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {sortedTodos.map((todo, idx) => (
+                    {sortedTodos.map((todo) => (
                         <div
-                            key={idx}
+                            key={todo.content}
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
