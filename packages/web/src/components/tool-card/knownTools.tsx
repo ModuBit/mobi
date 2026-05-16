@@ -34,7 +34,8 @@ import {
     MessageOutlined,
     AppstoreOutlined,
     FileTextOutlined,
-    PlayCircleOutlined
+    PlayCircleOutlined,
+    CheckCircleOutlined
 } from '@ant-design/icons'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
@@ -388,6 +389,30 @@ export const knownTools: Record<string, {
         icon: () => <BulbOutlined style={DEFAULT_ICON_STYLE} />,
         title: () => 'Todo list',
         subtitle: (opts) => formatChecklistCount(extractTodoChecklist(opts.input, opts.result), 'item'),
+        minimal: () => true
+    },
+    TaskCreate: {
+        icon: () => null,
+        title: () => '',
+        subtitle: () => null,
+        minimal: () => true
+    },
+    TaskUpdate: {
+        icon: () => null,
+        title: () => '',
+        subtitle: () => null,
+        minimal: () => true
+    },
+    TaskList: {
+        icon: () => <CheckCircleOutlined style={DEFAULT_ICON_STYLE} />,
+        title: () => 'Task list',
+        subtitle: () => null,
+        minimal: () => true
+    },
+    TaskGet: {
+        icon: () => <CheckCircleOutlined style={DEFAULT_ICON_STYLE} />,
+        title: () => 'Get task',
+        subtitle: () => null,
         minimal: () => true
     },
     update_plan: {

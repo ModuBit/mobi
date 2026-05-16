@@ -34,6 +34,7 @@ import {
     QuestionCircleOutlined,
     FileTextOutlined,
     BulbOutlined,
+    CheckCircleOutlined,
     AppstoreOutlined,
     ToolOutlined,
 } from '@ant-design/icons'
@@ -73,6 +74,8 @@ const TOOL_ICON_MAP: Record<string, typeof ToolOutlined> = {
     exit_plan_mode: FileTextOutlined,
     update_plan: BulbOutlined,
     TodoWrite: BulbOutlined,
+    TaskList: CheckCircleOutlined,
+    TaskGet: CheckCircleOutlined,
     NotebookRead: EyeOutlined,
     NotebookEdit: EditOutlined,
 }
