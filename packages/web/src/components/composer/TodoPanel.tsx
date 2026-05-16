@@ -26,6 +26,12 @@ import { BlinkText } from '@/components/ui/BlinkText'
 const TODO_ORANGE = '#e8825c'
 const TODO_GREEN = '#52c41a'
 
+const STATUS_ORDER: Record<TodoItem['status'], number> = {
+    in_progress: 0,
+    pending: 1,
+    completed: 2,
+}
+
 const StyledCheckbox = styled(Checkbox)<{ $status: TodoItem['status'] }>`
     .ant-checkbox-inner {
         border-radius: 4px;
@@ -47,21 +53,18 @@ export function TodoPanel({ todos }: TodoPanelProps) {
 
     if (!todos || todos.length === 0) return null
 
-    // 按状态排序：运行中 → 等待运行 → 已完成，同状态保持原始顺序
-    const statusOrder: Record<TodoItem['status'], number> = {
-        in_progress: 0,
-        pending: 1,
-        completed: 2,
-    }
     const sortedTodos = todos
         .map((todo, idx) => ({ todo, idx }))
-        .sort((a, b) => statusOrder[a.todo.status] - statusOrder[b.todo.status] || a.idx - b.idx)
+        .sort((a, b) => STATUS_ORDER[a.todo.status] - STATUS_ORDER[b.todo.status] || a.idx - b.idx)
         .map(({ todo }) => todo)
 
+    let completed = 0, inProgress = 0
+    let activeTodo: TodoItem | undefined
+    for (const t of todos) {
+        if (t.status === 'completed') completed++
+        else if (t.status === 'in_progress') { inProgress++; activeTodo = t }
+    }
     const total = todos.length
-    const completed = todos.filter(t => t.status === 'completed').length
-    const inProgress = todos.filter(t => t.status === 'in_progress').length
-    const activeTodo = todos.find(t => t.status === 'in_progress')
 
     const header = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
@@ -93,7 +96,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {sortedTodos.map((todo, idx) => (
                         <div
-                            key={String(idx)}
+                            key={idx}
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -126,6 +129,8 @@ export function TodoPanel({ todos }: TodoPanelProps) {
 }
 
 function TodoText({ todo }: { todo: TodoItem }) {
+    const { token } = theme.useToken()
+
     if (todo.status === 'in_progress') {
         return (
             <BlinkText
@@ -140,11 +145,11 @@ function TodoText({ todo }: { todo: TodoItem }) {
 
     if (todo.status === 'completed') {
         return (
-            <span style={{ textDecoration: 'line-through', color: '#999' }}>
+            <span style={{ textDecoration: 'line-through', color: token.colorTextQuaternary }}>
                 {todo.content}
             </span>
         )
     }
 
-    return <span style={{ color: '#666' }}>{todo.content}</span>
+    return <span style={{ color: token.colorTextTertiary }}>{todo.content}</span>
 }

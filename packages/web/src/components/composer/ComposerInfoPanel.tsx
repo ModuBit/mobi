@@ -19,7 +19,7 @@
  * 在 StatusBar 上方展示各种状态信息：权限请求、任务列表、文件修改等
  */
 
-import { useMemo, useRef, useState, useCallback } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { Space, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
@@ -148,14 +148,16 @@ export function ComposerInfoPanel({
     const scrollRef = useRef<HTMLDivElement>(null)
     const [showFade, setShowFade] = useState(false)
 
-    const checkOverflow = useCallback(() => {
+    // ResizeObserver 检测内容溢出，比 setTimeout + useMemo 更可靠
+    useEffect(() => {
         const el = scrollRef.current
         if (!el) return
-        setShowFade(el.scrollHeight > el.clientHeight)
+        const observer = new ResizeObserver(() => {
+            setShowFade(el.scrollHeight > el.clientHeight)
+        })
+        observer.observe(el)
+        return () => observer.disconnect()
     }, [])
-
-    // 内容变化时检测是否溢出
-    useMemo(() => { setTimeout(checkOverflow, 0) }, [todos, agentState?.requests, checkOverflow])
 
     if (!hasPermissionRequests && !hasTodos) return null
 
@@ -165,9 +167,8 @@ export function ComposerInfoPanel({
                 ref={scrollRef}
                 className="hide-scrollbar"
                 style={{ maxHeight: '40vh', overflow: 'auto' }}
-                onScroll={checkOverflow}
             >
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Space orientation="vertical" size={8} style={{ width: '100%' }}>
                     <PermissionPanel
                         requests={agentState?.requests}
                         metadata={metadata}

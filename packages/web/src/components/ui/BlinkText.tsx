@@ -18,21 +18,6 @@ import { keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 import { theme } from 'antd'
 
-/** 将颜色转为低透明度版本 */
-function dimColor(color: string, alpha: number): string {
-    if (color.startsWith('#') && (color.length === 7 || color.length === 4)) {
-        const hex = color.replace('#', '')
-        const expanded = hex.length === 3
-            ? hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
-            : hex
-        const r = parseInt(expanded.substring(0, 2), 16)
-        const g = parseInt(expanded.substring(2, 4), 16)
-        const b = parseInt(expanded.substring(4, 6), 16)
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`
-    }
-    return color
-}
-
 /** 从左到右循环扫光 */
 const blinkSweep = keyframes`
   0% { background-position-x: -200%; }
@@ -71,15 +56,12 @@ export function BlinkText({
         return <span className={className} style={style}>{children}</span>
     }
 
-    const color = textColor ?? token.colorText
-    const highlight = color
-    const base = dimColor(color, 0.8)
+    const highlight = textColor ?? token.colorText
 
     return (
         <BlinkSpan
             className={className}
             style={style}
-            $base={base}
             $highlight={highlight}
             $duration={duration}
         >
@@ -88,10 +70,10 @@ export function BlinkText({
     )
 }
 
-const BlinkSpan = styled.span<{ $base: string; $highlight: string; $duration: number }>`
+const BlinkSpan = styled.span<{ $highlight: string; $duration: number }>`
     background-clip: text;
     -webkit-background-clip: text;
-    color: ${p => p.$base};
+    color: color-mix(in srgb, ${p => p.$highlight} 40%, transparent);
     background-image: linear-gradient(90deg, transparent, ${p => p.$highlight}, transparent);
     background-size: 50%;
     background-repeat: no-repeat;
