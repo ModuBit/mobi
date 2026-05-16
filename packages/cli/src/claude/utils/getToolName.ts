@@ -44,6 +44,10 @@ const STANDARD_TOOLS: Record<string, string> = {
     'TodoWrite': 'Update Tasks',
     'TodoRead': 'Read Tasks',
     'Task': 'Launch Agent',
+    'TaskCreate': 'Create Task',
+    'TaskUpdate': 'Update Task',
+    'TaskList': 'List Tasks',
+    'TaskGet': 'Get Task',
 
     // Team management
     'TeamCreate': 'Create Team',
