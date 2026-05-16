@@ -28,6 +28,7 @@ export type {
     TeamState,
     TeamTask,
     TodoItem,
+    TaskItem,
     WorktreeMetadata
 } from './schemas'
 

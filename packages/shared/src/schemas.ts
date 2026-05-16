@@ -161,6 +161,20 @@ export type TodoItem = z.infer<typeof TodoItemSchema>
 
 export const TodosSchema = z.array(TodoItemSchema)
 
+export const TaskItemSchema = z.object({
+    id: z.string(),
+    subject: z.string(),
+    description: z.string().optional(),
+    status: z.enum(['pending', 'in_progress', 'completed', 'deleted']),
+    activeForm: z.string().optional(),
+    owner: z.string().optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+})
+
+export type TaskItem = z.infer<typeof TaskItemSchema>
+
+export const TasksSchema = z.array(TaskItemSchema)
+
 export const TeamMemberSchema = z.object({
     name: z.string(),
     agentType: z.string().optional(),
@@ -206,6 +220,7 @@ export type TeamState = z.infer<typeof TeamStateSchema>
  */
 export const RuntimeStateSchema = z.object({
     todos: TodosSchema.optional(),
+    tasks: TasksSchema.optional(),
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
     effort: z.enum(EFFORT_LEVELS).optional()
