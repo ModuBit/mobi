@@ -238,7 +238,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     }
 
     // 所有依赖通过 ref 访问，确保回调引用稳定
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     const handleSyncEvent = useCallback((event: SyncEvent) => {
         const qc = queryClientRef.current
         const nt = notifyRef.current
