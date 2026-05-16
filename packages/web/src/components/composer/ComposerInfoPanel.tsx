@@ -19,8 +19,8 @@
  * 在 StatusBar 上方展示各种状态信息：权限请求、任务列表、文件修改等
  */
 
-import { useMemo } from 'react'
-import { Typography, theme as antTheme } from 'antd'
+import { useMemo, useRef, useState, useCallback } from 'react'
+import { Space, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
@@ -143,21 +143,54 @@ export function ComposerInfoPanel({
 }: ComposerInfoPanelProps) {
     const hasPermissionRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
     const hasTodos = todos && todos.length > 0
+    const { token } = useToken()
+
+    const scrollRef = useRef<HTMLDivElement>(null)
+    const [showFade, setShowFade] = useState(false)
+
+    const checkOverflow = useCallback(() => {
+        const el = scrollRef.current
+        if (!el) return
+        setShowFade(el.scrollHeight > el.clientHeight)
+    }, [])
+
+    // 内容变化时检测是否溢出
+    useMemo(() => { setTimeout(checkOverflow, 0) }, [todos, agentState?.requests, checkOverflow])
 
     if (!hasPermissionRequests && !hasTodos) return null
 
     return (
-        <div style={{ padding: '8px 16px', marginBottom: 4 }}>
-            <PermissionPanel
-                requests={agentState?.requests}
-                metadata={metadata}
-                api={api}
-                sessionId={sessionId}
-                disabled={disabled}
-                onDone={onPermissionDone}
-            />
+        <div style={{ position: 'relative', padding: '8px 0', marginBottom: 4 }}>
+            <div
+                ref={scrollRef}
+                className="hide-scrollbar"
+                style={{ maxHeight: '40vh', overflow: 'auto' }}
+                onScroll={checkOverflow}
+            >
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <PermissionPanel
+                        requests={agentState?.requests}
+                        metadata={metadata}
+                        api={api}
+                        sessionId={sessionId}
+                        disabled={disabled}
+                        onDone={onPermissionDone}
+                    />
 
-            <TodoPanel todos={todos} />
+                    <TodoPanel todos={todos} />
+                </Space>
+            </div>
+            {showFade && (
+                <div style={{
+                    position: 'absolute',
+                    bottom: 4,
+                    left: 0,
+                    right: 0,
+                    height: 24,
+                    background: `linear-gradient(transparent, ${token.colorBgLayout})`,
+                    pointerEvents: 'none',
+                }} />
+            )}
         </div>
     )
 }

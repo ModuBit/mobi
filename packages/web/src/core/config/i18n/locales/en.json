@@ -1,238 +1,243 @@
 {
-    "siteTitle": "MOBI | Vibe Coding Anywhere",
-    "common": {
-        "loading": "Loading...",
-        "noData": "No data",
-        "confirm": "Confirm",
-        "cancel": "Cancel",
-        "approve": "Approve",
-        "reject": "Reject",
-        "back": "Back",
-        "backHome": "Back to Home",
-        "error": "Error",
-        "success": "Success",
-        "save": "Save"
-    },
-    "login": {
-        "title": "MOBI",
-        "subtitle": "Vibe Coding Anywhere",
-        "tokenPlaceholder": "Access Token",
-        "tokenRequired": "Please enter access token",
-        "connect": "Connect",
-        "connectSuccess": "Connected",
-        "authFailed": "Authentication failed, please check your token"
-    },
-    "nav": {
-        "sessions": "Sessions",
-        "skills": "Skills",
-        "mcp": "MCP",
-        "settings": "Settings",
-        "logout": "Logout",
-        "menu": "Menu",
-        "themeLight": "Light Mode",
-        "themeDark": "Dark Mode"
-    },
-    "home": {
-        "title": "Sessions",
-        "newSession": "New Session",
-        "logout": "Logout"
-    },
-    "newSession": {
-        "machine": "Machine",
-        "machinePlaceholder": "Select machine",
-        "machineLoading": "Loading...",
-        "machineEmpty": "No machines available",
-        "workDirectory": "Work Directory",
-        "directoryPlaceholder": "Enter work directory path",
-        "sessionType": "Session Type",
-        "simpleSession": "Simple Session",
-        "simpleSessionDesc": "Run directly in the specified directory",
-        "worktreeSession": "Worktree Session",
-        "worktreeSessionDesc": "Run in a git worktree with isolated workspace",
-        "worktreeNamePlaceholder": "Enter worktree name",
-        "agent": "Agent",
-        "codexComingSoon": "Coming soon",
-        "model": "Model",
-        "modelOptional": "optional",
-        "modelAuto": "Auto",
-        "effort": "Reasoning Effort",
-        "autoMode": "Auto Mode",
-        "yoloMode": "YOLO Mode",
-        "yoloModeDesc": "Automatically execute all operations without confirmation",
-        "createFailed": "Failed to create session",
-        "create": "Create Session"
-    },
-    "session": {
-        "loadFailed": "Failed to load session",
-        "notFound": "Session not found or has been deleted",
-        "tabs": {
-            "chat": "Chat",
-            "files": "Files",
-            "git": "Git",
-            "terminal": "Terminal"
-        },
-        "status": {
-            "thinking": "Thinking",
-            "active": "Active",
-            "ended": "Ended"
-        },
-        "empty": "No sessions yet. Start a new conversation.",
-        "newSession": "New Session",
-        "selectToView": "Select a session to view details",
-        "actions": {
-            "more": "More Actions",
-            "rename": "Rename",
-            "archive": "Exit",
-            "delete": "Delete",
-            "abort": "Abort",
-            "resume": "Resume",
-            "switch": "Switch Mode",
-            "deleteConfirmTitle": "Delete Session",
-            "deleteConfirmContent": "Are you sure you want to delete this session? This action cannot be undone.",
-            "namePlaceholder": "Enter session name",
-            "nameRequired": "Please enter a session name"
-        }
-    },
-    "sessionGroup": {
-        "active": "active",
-        "total": "{{count}} total",
-        "loadMore": "Load More"
-    },
-    "chat": {
-        "empty": "No messages",
-        "thinking": "Thinking...",
-        "thought": "Thought",
-        "contextReset": "Context was reset",
-        "compactSummary": "Conversation compressed",
-        "compacting": "Compressing conversation...",
-        "sessionEnded": "Session ended",
-        "apiError": "API Error",
-        "apiRateLimit": "API Rate Limited",
-        "retryDelay": "Retrying in {{seconds}}s",
-        "duration": "Duration",
-        "durationValue": "Duration: {{value}}",
-        "retry": "Retry",
-        "switchMode": "Switch to {{mode}} mode",
-        "aborted": "Session aborted",
-        "executionError": "Execution error",
-        "permission": {
-            "title": "Permission Required",
-            "toolRequest": "Tool {{tool}} requests execution permission"
-        },
-        "copy": "Copy",
-        "copied": "Copied",
-        "tool": {
-            "input": "Input:",
-            "output": "Output:",
-            "description": "Description:",
-            "noContent": "No content",
-            "viewDetail": "View details",
-            "noOutput": "No output",
-            "statusDone": "Done",
-            "statusError": "Error",
-            "statusRunning": "Running",
-            "waitingForApproval": "Waiting for approval...",
-            "canceled": "Canceled",
-            "approved": "Approved",
-            "approvedAllowAllEdits": "Approved all edits",
-            "approvedForSession": "Approved for session",
-            "deny": "Deny",
-            "allow": "Allow",
-            "allowForSession": "Allow for session",
-            "allowAll": "Allow all",
-            "requestFailed": "Request failed",
-            "approveAutoAccept": "Approve (Auto Accept Edits)",
-            "approveManual": "Approve (Manual Review)",
-            "keepPlanning": "Keep Planning",
-            "keepPlanningPlaceholder": "Tell Claude what you want it to do next...",
-            "sendFeedback": "Send Feedback",
-            "result": "Result",
-            "planReadyForReview": "Plan ready for review"
-        },
-        "planMode": {
-            "entered": "Entered plan mode",
-            "enterFailed": "Failed to enter plan mode"
-        },
-        "welcome": {
-            "morning": "Good morning",
-            "afternoon": "Good afternoon",
-            "evening": "Good evening",
-            "subtitle": "How can I help you today?"
-        }
-    },
-    "files": {
-        "title": "File Explorer",
-        "empty": "No file changes in this session",
-        "selectToView": "Select a file to view content"
-    },
-    "git": {
-        "filesChanged": "{{count}} files changed",
-        "empty": "No pending changes",
-        "selectToView": "Select a file to view diff",
-        "loadFailed": "Failed to load diff",
-        "status": {
-            "added": "Added",
-            "modified": "Modified",
-            "deleted": "Deleted",
-            "renamed": "Renamed",
-            "untracked": "Untracked"
-        }
-    },
-    "terminal": {
-        "title": "Terminal",
-        "connected": "Terminal connected",
-        "exited": "Process exited with code: {{code}}",
-        "reconnect": "Reconnect"
-    },
-    "settings": {
-        "title": "Settings",
-        "account": "Account",
-        "notifications": "Notifications",
-        "about": "About",
-        "comingSoon": "More settings coming soon..."
-    },
-    "composer": {
-        "placeholders": [
-            "How can Mobi help you today?",
-            "What would you like to work on?",
-            "Ask me anything...",
-            "What's on your mind?",
-            "Ready when you are!"
-        ],
-        "bashPlaceholder": "Enter shell command...",
-        "attach": "Add attachment",
-        "settings": "Settings",
-        "abort": "Abort",
-        "send": "Send",
-        "model": "Model",
-        "permission": "Permission",
-        "permissionMode": "Permission Mode",
-        "permissionModes": {
-            "default": "Default",
-            "acceptEdits": "Accept Edits",
-            "plan": "Plan Mode",
-            "bypassPermissions": "YOLO"
-        },
-        "activate": "Resume",
-        "switchToRemote": "Switch to Remote Mode"
+  "siteTitle": "MOBI | Vibe Coding Anywhere",
+  "common": {
+    "loading": "Loading...",
+    "noData": "No data",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "approve": "Approve",
+    "reject": "Reject",
+    "back": "Back",
+    "backHome": "Back to Home",
+    "error": "Error",
+    "success": "Success",
+    "save": "Save"
+  },
+  "login": {
+    "title": "MOBI",
+    "subtitle": "Vibe Coding Anywhere",
+    "tokenPlaceholder": "Access Token",
+    "tokenRequired": "Please enter access token",
+    "connect": "Connect",
+    "connectSuccess": "Connected",
+    "authFailed": "Authentication failed, please check your token"
+  },
+  "nav": {
+    "sessions": "Sessions",
+    "skills": "Skills",
+    "mcp": "MCP",
+    "settings": "Settings",
+    "logout": "Logout",
+    "menu": "Menu",
+    "themeLight": "Light Mode",
+    "themeDark": "Dark Mode"
+  },
+  "home": {
+    "title": "Sessions",
+    "newSession": "New Session",
+    "logout": "Logout"
+  },
+  "newSession": {
+    "machine": "Machine",
+    "machinePlaceholder": "Select machine",
+    "machineLoading": "Loading...",
+    "machineEmpty": "No machines available",
+    "workDirectory": "Work Directory",
+    "directoryPlaceholder": "Enter work directory path",
+    "sessionType": "Session Type",
+    "simpleSession": "Simple Session",
+    "simpleSessionDesc": "Run directly in the specified directory",
+    "worktreeSession": "Worktree Session",
+    "worktreeSessionDesc": "Run in a git worktree with isolated workspace",
+    "worktreeNamePlaceholder": "Enter worktree name",
+    "agent": "Agent",
+    "codexComingSoon": "Coming soon",
+    "model": "Model",
+    "modelOptional": "optional",
+    "modelAuto": "Auto",
+    "effort": "Reasoning Effort",
+    "autoMode": "Auto Mode",
+    "yoloMode": "YOLO Mode",
+    "yoloModeDesc": "Automatically execute all operations without confirmation",
+    "createFailed": "Failed to create session",
+    "create": "Create Session"
+  },
+  "session": {
+    "loadFailed": "Failed to load session",
+    "notFound": "Session not found or has been deleted",
+    "tabs": {
+      "chat": "Chat",
+      "files": "Files",
+      "git": "Git",
+      "terminal": "Terminal"
     },
     "status": {
-        "online": "Online",
-        "offline": "Offline",
-        "permissionRequired": "Permission Required",
-        "percentLeft": "{{percent}}% left"
+      "thinking": "Thinking",
+      "active": "Active",
+      "ended": "Ended"
     },
-    "notification": {
-        "sseDisconnected": "Connection Lost",
-        "sseDisconnectedDesc": "Disconnected from server, attempting to reconnect...",
-        "sseReconnected": "Connection Restored",
-        "sseReconnectedDesc": "Successfully reconnected to server",
-        "permissionRequest": "Enable Notifications",
-        "permissionRequestDesc": "Allow browser notifications to get timely alerts when SSE connection disconnects or restores",
-        "permissionRequestBtn": "Allow Notifications",
-        "permissionGuide": "Notifications Blocked",
-        "permissionGuideDesc": "Browser has blocked notifications. Please enable manually: Click the icon in address bar → Site settings → Notifications → Allow",
-        "idleTimeoutWarning": "Session Timeout Warning",
-        "idleTimeoutWarningDesc": "Session will close automatically in {{minutes}} minutes. Send a message to keep it active"
+    "empty": "No sessions yet. Start a new conversation.",
+    "newSession": "New Session",
+    "selectToView": "Select a session to view details",
+    "actions": {
+      "more": "More Actions",
+      "rename": "Rename",
+      "archive": "Exit",
+      "delete": "Delete",
+      "abort": "Abort",
+      "resume": "Resume",
+      "switch": "Switch Mode",
+      "deleteConfirmTitle": "Delete Session",
+      "deleteConfirmContent": "Are you sure you want to delete this session? This action cannot be undone.",
+      "namePlaceholder": "Enter session name",
+      "nameRequired": "Please enter a session name"
     }
+  },
+  "sessionGroup": {
+    "active": "active",
+    "total": "{{count}} total",
+    "loadMore": "Load More"
+  },
+  "chat": {
+    "empty": "No messages",
+    "thinking": "Thinking...",
+    "thought": "Thought",
+    "contextReset": "Context was reset",
+    "compactSummary": "Conversation compressed",
+    "compacting": "Compressing conversation...",
+    "sessionEnded": "Session ended",
+    "apiError": "API Error",
+    "apiRateLimit": "API Rate Limited",
+    "retryDelay": "Retrying in {{seconds}}s",
+    "duration": "Duration",
+    "durationValue": "Duration: {{value}}",
+    "retry": "Retry",
+    "switchMode": "Switch to {{mode}} mode",
+    "aborted": "Session aborted",
+    "executionError": "Execution error",
+    "permission": {
+      "title": "Permission Required",
+      "toolRequest": "Tool {{tool}} requests execution permission"
+    },
+    "copy": "Copy",
+    "copied": "Copied",
+    "tool": {
+      "input": "Input:",
+      "output": "Output:",
+      "description": "Description:",
+      "noContent": "No content",
+      "viewDetail": "View details",
+      "noOutput": "No output",
+      "statusDone": "Done",
+      "statusError": "Error",
+      "statusRunning": "Running",
+      "waitingForApproval": "Waiting for approval...",
+      "canceled": "Canceled",
+      "approved": "Approved",
+      "approvedAllowAllEdits": "Approved all edits",
+      "approvedForSession": "Approved for session",
+      "deny": "Deny",
+      "allow": "Allow",
+      "allowForSession": "Allow for session",
+      "allowAll": "Allow all",
+      "requestFailed": "Request failed",
+      "approveAutoAccept": "Approve (Auto Accept Edits)",
+      "approveManual": "Approve (Manual Review)",
+      "keepPlanning": "Keep Planning",
+      "keepPlanningPlaceholder": "Tell Claude what you want it to do next...",
+      "sendFeedback": "Send Feedback",
+      "result": "Result",
+      "planReadyForReview": "Plan ready for review"
+    },
+    "planMode": {
+      "entered": "Entered plan mode",
+      "enterFailed": "Failed to enter plan mode"
+    },
+    "welcome": {
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening",
+      "subtitle": "How can I help you today?"
+    },
+    "todo": {
+      "allCompleted": "All completed",
+      "completed": "completed",
+      "inProgress": "in progress"
+    }
+  },
+  "files": {
+    "title": "File Explorer",
+    "empty": "No file changes in this session",
+    "selectToView": "Select a file to view content"
+  },
+  "git": {
+    "filesChanged": "{{count}} files changed",
+    "empty": "No pending changes",
+    "selectToView": "Select a file to view diff",
+    "loadFailed": "Failed to load diff",
+    "status": {
+      "added": "Added",
+      "modified": "Modified",
+      "deleted": "Deleted",
+      "renamed": "Renamed",
+      "untracked": "Untracked"
+    }
+  },
+  "terminal": {
+    "title": "Terminal",
+    "connected": "Terminal connected",
+    "exited": "Process exited with code: {{code}}",
+    "reconnect": "Reconnect"
+  },
+  "settings": {
+    "title": "Settings",
+    "account": "Account",
+    "notifications": "Notifications",
+    "about": "About",
+    "comingSoon": "More settings coming soon..."
+  },
+  "composer": {
+    "placeholders": [
+      "How can Mobi help you today?",
+      "What would you like to work on?",
+      "Ask me anything...",
+      "What's on your mind?",
+      "Ready when you are!"
+    ],
+    "bashPlaceholder": "Enter shell command...",
+    "attach": "Add attachment",
+    "settings": "Settings",
+    "abort": "Abort",
+    "send": "Send",
+    "model": "Model",
+    "permission": "Permission",
+    "permissionMode": "Permission Mode",
+    "permissionModes": {
+      "default": "Default",
+      "acceptEdits": "Accept Edits",
+      "plan": "Plan Mode",
+      "bypassPermissions": "YOLO"
+    },
+    "activate": "Resume",
+    "switchToRemote": "Switch to Remote Mode"
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "permissionRequired": "Permission Required",
+    "percentLeft": "{{percent}}% left"
+  },
+  "notification": {
+    "sseDisconnected": "Connection Lost",
+    "sseDisconnectedDesc": "Disconnected from server, attempting to reconnect...",
+    "sseReconnected": "Connection Restored",
+    "sseReconnectedDesc": "Successfully reconnected to server",
+    "permissionRequest": "Enable Notifications",
+    "permissionRequestDesc": "Allow browser notifications to get timely alerts when SSE connection disconnects or restores",
+    "permissionRequestBtn": "Allow Notifications",
+    "permissionGuide": "Notifications Blocked",
+    "permissionGuideDesc": "Browser has blocked notifications. Please enable manually: Click the icon in address bar → Site settings → Notifications → Allow",
+    "idleTimeoutWarning": "Session Timeout Warning",
+    "idleTimeoutWarningDesc": "Session will close automatically in {{minutes}} minutes. Send a message to keep it active"
+  }
 }

@@ -1,238 +1,243 @@
 {
-    "siteTitle": "MOBI | 随时随地 Vibe Coding",
-    "common": {
-        "loading": "加载中...",
-        "noData": "暂无数据",
-        "confirm": "确认",
-        "cancel": "取消",
-        "approve": "批准",
-        "reject": "拒绝",
-        "back": "返回",
-        "backHome": "返回首页",
-        "error": "错误",
-        "success": "成功",
-        "save": "保存"
-    },
-    "login": {
-        "title": "MOBI",
-        "subtitle": "随时随地 Vibe Coding",
-        "tokenPlaceholder": "访问令牌",
-        "tokenRequired": "请输入访问令牌",
-        "connect": "连接",
-        "connectSuccess": "连接成功",
-        "authFailed": "认证失败，请检查 Token 是否正确"
-    },
-    "nav": {
-        "sessions": "会话",
-        "skills": "技能",
-        "mcp": "MCP",
-        "settings": "设置",
-        "logout": "退出登录",
-        "menu": "菜单",
-        "themeLight": "浅色模式",
-        "themeDark": "深色模式"
-    },
-    "home": {
-        "title": "会话列表",
-        "newSession": "新建会话",
-        "logout": "退出"
-    },
-    "newSession": {
-        "machine": "机器",
-        "machinePlaceholder": "选择机器",
-        "machineLoading": "加载中...",
-        "machineEmpty": "暂无可用机器",
-        "workDirectory": "工作目录",
-        "directoryPlaceholder": "输入工作目录路径",
-        "sessionType": "会话类型",
-        "simpleSession": "普通会话",
-        "simpleSessionDesc": "在指定目录中直接运行",
-        "worktreeSession": "Worktree 会话",
-        "worktreeSessionDesc": "在 git worktree 中运行，隔离工作区",
-        "worktreeNamePlaceholder": "输入 worktree 名称",
-        "agent": "Agent",
-        "codexComingSoon": "即将支持",
-        "model": "模型",
-        "modelOptional": "可选",
-        "modelAuto": "自动",
-        "effort": "推理深度",
-        "autoMode": "自动模式",
-        "yoloMode": "YOLO 模式",
-        "yoloModeDesc": "启用后自动执行所有操作，无需确认",
-        "createFailed": "创建会话失败",
-        "create": "创建会话"
-    },
-    "session": {
-        "loadFailed": "加载会话失败",
-        "notFound": "会话不存在或已被删除",
-        "tabs": {
-            "chat": "对话",
-            "files": "文件",
-            "git": "Git",
-            "terminal": "终端"
-        },
-        "status": {
-            "thinking": "思考中",
-            "active": "活跃",
-            "ended": "已结束"
-        },
-        "empty": "暂无会话，点击新建开始对话",
-        "newSession": "新建会话",
-        "selectToView": "选择会话查看详情",
-        "actions": {
-            "more": "更多操作",
-            "rename": "重命名",
-            "archive": "退出",
-            "delete": "删除",
-            "abort": "中断",
-            "resume": "恢复",
-            "switch": "切换模式",
-            "deleteConfirmTitle": "删除会话",
-            "deleteConfirmContent": "确定要删除此会话吗？此操作无法撤销。",
-            "namePlaceholder": "请输入会话名称",
-            "nameRequired": "请输入会话名称"
-        }
-    },
-    "sessionGroup": {
-        "active": "活跃",
-        "total": "共 {{count}} 个",
-        "loadMore": "加载更多"
-    },
-    "chat": {
-        "empty": "暂无消息",
-        "thinking": "思考中...",
-        "thought": "思考完成",
-        "contextReset": "上下文已重置",
-        "compactSummary": "对话已压缩",
-        "compacting": "正在压缩对话...",
-        "sessionEnded": "会话已结束",
-        "apiError": "API 错误",
-        "apiRateLimit": "API 限流",
-        "retryDelay": "{{seconds}} 秒后重试",
-        "duration": "耗时",
-        "durationValue": "耗时: {{value}}",
-        "retry": "重试",
-        "switchMode": "切换到 {{mode}} 模式",
-        "aborted": "会话已中断",
-        "executionError": "执行出错",
-        "permission": {
-            "title": "需要权限确认",
-            "toolRequest": "工具 {{tool}} 请求执行权限"
-        },
-        "copy": "复制",
-        "copied": "已复制",
-        "tool": {
-            "input": "输入:",
-            "output": "输出:",
-            "description": "描述:",
-            "noContent": "无内容",
-            "viewDetail": "查看详情",
-            "noOutput": "无输出",
-            "statusDone": "完成",
-            "statusError": "出错",
-            "statusRunning": "运行中",
-            "waitingForApproval": "等待审批...",
-            "canceled": "已取消",
-            "approved": "已批准",
-            "approvedAllowAllEdits": "已批准所有编辑",
-            "approvedForSession": "本次会话已批准",
-            "deny": "拒绝",
-            "allow": "允许",
-            "allowForSession": "本次会话允许",
-            "allowAll": "允许所有",
-            "requestFailed": "请求失败",
-            "approveAutoAccept": "批准（自动接受编辑）",
-            "approveManual": "批准（手动审批）",
-            "keepPlanning": "继续规划",
-            "keepPlanningPlaceholder": "告诉 Claude 你希望它接下来做什么...",
-            "sendFeedback": "发送反馈",
-            "result": "结果",
-            "planReadyForReview": "Claude 已完成规划，等待确认"
-        },
-        "planMode": {
-            "entered": "已进入计划模式",
-            "enterFailed": "进入计划模式失败"
-        },
-        "welcome": {
-            "morning": "早上好",
-            "afternoon": "下午好",
-            "evening": "晚上好",
-            "subtitle": "有什么我可以帮你的？"
-        }
-    },
-    "files": {
-        "title": "文件浏览器",
-        "empty": "当前会话无文件变更",
-        "selectToView": "选择文件查看内容"
-    },
-    "git": {
-        "filesChanged": "{{count}} 个文件变更",
-        "empty": "没有待提交的更改",
-        "selectToView": "选择文件查看 Diff",
-        "loadFailed": "无法加载 Diff",
-        "status": {
-            "added": "新增",
-            "modified": "修改",
-            "deleted": "删除",
-            "renamed": "重命名",
-            "untracked": "未跟踪"
-        }
-    },
-    "terminal": {
-        "title": "终端",
-        "connected": "终端已连接",
-        "exited": "进程已退出，代码: {{code}}",
-        "reconnect": "重连"
-    },
-    "settings": {
-        "title": "设置",
-        "account": "账户",
-        "notifications": "通知",
-        "about": "关于",
-        "comingSoon": "更多设置敬请期待..."
-    },
-    "composer": {
-        "placeholders": [
-            "今天想做什么？",
-            "Mobi 能帮你什么？",
-            "有什么我可以帮你的？",
-            "准备好了，随时开始！",
-            "聊聊你的想法吧"
-        ],
-        "bashPlaceholder": "输入 Shell 命令...",
-        "attach": "添加附件",
-        "settings": "设置",
-        "abort": "中断",
-        "send": "发送",
-        "model": "模型",
-        "permission": "权限",
-        "permissionMode": "权限模式",
-        "permissionModes": {
-            "default": "默认",
-            "acceptEdits": "接受编辑",
-            "plan": "计划模式",
-            "bypassPermissions": "YOLO"
-        },
-        "activate": "恢复会话",
-        "switchToRemote": "切换到远程模式"
+  "siteTitle": "MOBI | 随时随地 Vibe Coding",
+  "common": {
+    "loading": "加载中...",
+    "noData": "暂无数据",
+    "confirm": "确认",
+    "cancel": "取消",
+    "approve": "批准",
+    "reject": "拒绝",
+    "back": "返回",
+    "backHome": "返回首页",
+    "error": "错误",
+    "success": "成功",
+    "save": "保存"
+  },
+  "login": {
+    "title": "MOBI",
+    "subtitle": "随时随地 Vibe Coding",
+    "tokenPlaceholder": "访问令牌",
+    "tokenRequired": "请输入访问令牌",
+    "connect": "连接",
+    "connectSuccess": "连接成功",
+    "authFailed": "认证失败，请检查 Token 是否正确"
+  },
+  "nav": {
+    "sessions": "会话",
+    "skills": "技能",
+    "mcp": "MCP",
+    "settings": "设置",
+    "logout": "退出登录",
+    "menu": "菜单",
+    "themeLight": "浅色模式",
+    "themeDark": "深色模式"
+  },
+  "home": {
+    "title": "会话列表",
+    "newSession": "新建会话",
+    "logout": "退出"
+  },
+  "newSession": {
+    "machine": "机器",
+    "machinePlaceholder": "选择机器",
+    "machineLoading": "加载中...",
+    "machineEmpty": "暂无可用机器",
+    "workDirectory": "工作目录",
+    "directoryPlaceholder": "输入工作目录路径",
+    "sessionType": "会话类型",
+    "simpleSession": "普通会话",
+    "simpleSessionDesc": "在指定目录中直接运行",
+    "worktreeSession": "Worktree 会话",
+    "worktreeSessionDesc": "在 git worktree 中运行，隔离工作区",
+    "worktreeNamePlaceholder": "输入 worktree 名称",
+    "agent": "Agent",
+    "codexComingSoon": "即将支持",
+    "model": "模型",
+    "modelOptional": "可选",
+    "modelAuto": "自动",
+    "effort": "推理深度",
+    "autoMode": "自动模式",
+    "yoloMode": "YOLO 模式",
+    "yoloModeDesc": "启用后自动执行所有操作，无需确认",
+    "createFailed": "创建会话失败",
+    "create": "创建会话"
+  },
+  "session": {
+    "loadFailed": "加载会话失败",
+    "notFound": "会话不存在或已被删除",
+    "tabs": {
+      "chat": "对话",
+      "files": "文件",
+      "git": "Git",
+      "terminal": "终端"
     },
     "status": {
-        "online": "在线",
-        "offline": "离线",
-        "permissionRequired": "需要权限确认",
-        "percentLeft": "{{percent}}% 剩余"
+      "thinking": "思考中",
+      "active": "活跃",
+      "ended": "已结束"
     },
-    "notification": {
-        "sseDisconnected": "连接已断开",
-        "sseDisconnectedDesc": "与服务器断开连接，正在尝试重连...",
-        "sseReconnected": "连接已恢复",
-        "sseReconnectedDesc": "已重新连接到服务器",
-        "permissionRequest": "开启通知",
-        "permissionRequestDesc": "允许浏览器通知，以便在 SSE 连接断开/恢复时及时收到提醒",
-        "permissionRequestBtn": "允许通知",
-        "permissionGuide": "通知权限被阻止",
-        "permissionGuideDesc": "浏览器已阻止通知权限，请在浏览器设置中手动开启：点击地址栏左侧图标 → 站点设置 → 通知 → 允许",
-        "idleTimeoutWarning": "会话即将超时",
-        "idleTimeoutWarningDesc": "会话将在 {{minutes}} 分钟后自动关闭，请发送消息保持活跃"
+    "empty": "暂无会话，点击新建开始对话",
+    "newSession": "新建会话",
+    "selectToView": "选择会话查看详情",
+    "actions": {
+      "more": "更多操作",
+      "rename": "重命名",
+      "archive": "退出",
+      "delete": "删除",
+      "abort": "中断",
+      "resume": "恢复",
+      "switch": "切换模式",
+      "deleteConfirmTitle": "删除会话",
+      "deleteConfirmContent": "确定要删除此会话吗？此操作无法撤销。",
+      "namePlaceholder": "请输入会话名称",
+      "nameRequired": "请输入会话名称"
     }
+  },
+  "sessionGroup": {
+    "active": "活跃",
+    "total": "共 {{count}} 个",
+    "loadMore": "加载更多"
+  },
+  "chat": {
+    "empty": "暂无消息",
+    "thinking": "思考中...",
+    "thought": "思考完成",
+    "contextReset": "上下文已重置",
+    "compactSummary": "对话已压缩",
+    "compacting": "正在压缩对话...",
+    "sessionEnded": "会话已结束",
+    "apiError": "API 错误",
+    "apiRateLimit": "API 限流",
+    "retryDelay": "{{seconds}} 秒后重试",
+    "duration": "耗时",
+    "durationValue": "耗时: {{value}}",
+    "retry": "重试",
+    "switchMode": "切换到 {{mode}} 模式",
+    "aborted": "会话已中断",
+    "executionError": "执行出错",
+    "permission": {
+      "title": "需要权限确认",
+      "toolRequest": "工具 {{tool}} 请求执行权限"
+    },
+    "copy": "复制",
+    "copied": "已复制",
+    "tool": {
+      "input": "输入:",
+      "output": "输出:",
+      "description": "描述:",
+      "noContent": "无内容",
+      "viewDetail": "查看详情",
+      "noOutput": "无输出",
+      "statusDone": "完成",
+      "statusError": "出错",
+      "statusRunning": "运行中",
+      "waitingForApproval": "等待审批...",
+      "canceled": "已取消",
+      "approved": "已批准",
+      "approvedAllowAllEdits": "已批准所有编辑",
+      "approvedForSession": "本次会话已批准",
+      "deny": "拒绝",
+      "allow": "允许",
+      "allowForSession": "本次会话允许",
+      "allowAll": "允许所有",
+      "requestFailed": "请求失败",
+      "approveAutoAccept": "批准（自动接受编辑）",
+      "approveManual": "批准（手动审批）",
+      "keepPlanning": "继续规划",
+      "keepPlanningPlaceholder": "告诉 Claude 你希望它接下来做什么...",
+      "sendFeedback": "发送反馈",
+      "result": "结果",
+      "planReadyForReview": "Claude 已完成规划，等待确认"
+    },
+    "planMode": {
+      "entered": "已进入计划模式",
+      "enterFailed": "进入计划模式失败"
+    },
+    "welcome": {
+      "morning": "早上好",
+      "afternoon": "下午好",
+      "evening": "晚上好",
+      "subtitle": "有什么我可以帮你的？"
+    },
+    "todo": {
+      "allCompleted": "全部完成",
+      "completed": "已完成",
+      "inProgress": "进行中"
+    }
+  },
+  "files": {
+    "title": "文件浏览器",
+    "empty": "当前会话无文件变更",
+    "selectToView": "选择文件查看内容"
+  },
+  "git": {
+    "filesChanged": "{{count}} 个文件变更",
+    "empty": "没有待提交的更改",
+    "selectToView": "选择文件查看 Diff",
+    "loadFailed": "无法加载 Diff",
+    "status": {
+      "added": "新增",
+      "modified": "修改",
+      "deleted": "删除",
+      "renamed": "重命名",
+      "untracked": "未跟踪"
+    }
+  },
+  "terminal": {
+    "title": "终端",
+    "connected": "终端已连接",
+    "exited": "进程已退出，代码: {{code}}",
+    "reconnect": "重连"
+  },
+  "settings": {
+    "title": "设置",
+    "account": "账户",
+    "notifications": "通知",
+    "about": "关于",
+    "comingSoon": "更多设置敬请期待..."
+  },
+  "composer": {
+    "placeholders": [
+      "今天想做什么？",
+      "Mobi 能帮你什么？",
+      "有什么我可以帮你的？",
+      "准备好了，随时开始！",
+      "聊聊你的想法吧"
+    ],
+    "bashPlaceholder": "输入 Shell 命令...",
+    "attach": "添加附件",
+    "settings": "设置",
+    "abort": "中断",
+    "send": "发送",
+    "model": "模型",
+    "permission": "权限",
+    "permissionMode": "权限模式",
+    "permissionModes": {
+      "default": "默认",
+      "acceptEdits": "接受编辑",
+      "plan": "计划模式",
+      "bypassPermissions": "YOLO"
+    },
+    "activate": "恢复会话",
+    "switchToRemote": "切换到远程模式"
+  },
+  "status": {
+    "online": "在线",
+    "offline": "离线",
+    "permissionRequired": "需要权限确认",
+    "percentLeft": "{{percent}}% 剩余"
+  },
+  "notification": {
+    "sseDisconnected": "连接已断开",
+    "sseDisconnectedDesc": "与服务器断开连接，正在尝试重连...",
+    "sseReconnected": "连接已恢复",
+    "sseReconnectedDesc": "已重新连接到服务器",
+    "permissionRequest": "开启通知",
+    "permissionRequestDesc": "允许浏览器通知，以便在 SSE 连接断开/恢复时及时收到提醒",
+    "permissionRequestBtn": "允许通知",
+    "permissionGuide": "通知权限被阻止",
+    "permissionGuideDesc": "浏览器已阻止通知权限，请在浏览器设置中手动开启：点击地址栏左侧图标 → 站点设置 → 通知 → 允许",
+    "idleTimeoutWarning": "会话即将超时",
+    "idleTimeoutWarningDesc": "会话将在 {{minutes}} 分钟后自动关闭，请发送消息保持活跃"
+  }
 }

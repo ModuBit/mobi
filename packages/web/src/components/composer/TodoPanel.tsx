@@ -17,6 +17,7 @@
 import { useState } from 'react'
 import { Collapse, Checkbox, theme } from 'antd'
 import { BulbOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TodoItem } from '@mobi/shared'
 import { BlinkText } from '@/components/ui/BlinkText'
@@ -41,9 +42,21 @@ export type TodoPanelProps = {
 
 export function TodoPanel({ todos }: TodoPanelProps) {
     const { token } = theme.useToken()
-    const [activeKeys, setActiveKeys] = useState<string[]>(['todo'])
+    const { t } = useTranslation()
+    const [activeKeys, setActiveKeys] = useState<string[]>([])
 
     if (!todos || todos.length === 0) return null
+
+    // 按状态排序：运行中 → 等待运行 → 已完成，同状态保持原始顺序
+    const statusOrder: Record<TodoItem['status'], number> = {
+        in_progress: 0,
+        pending: 1,
+        completed: 2,
+    }
+    const sortedTodos = todos
+        .map((todo, idx) => ({ todo, idx }))
+        .sort((a, b) => statusOrder[a.todo.status] - statusOrder[b.todo.status] || a.idx - b.idx)
+        .map(({ todo }) => todo)
 
     const total = todos.length
     const completed = todos.filter(t => t.status === 'completed').length
@@ -54,18 +67,18 @@ export function TodoPanel({ todos }: TodoPanelProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <BulbOutlined style={{ color: TODO_ORANGE }} />
             {activeTodo ? (
-                <BlinkText blinking highlightColor={TODO_ORANGE}>
+                <BlinkText blinking color={TODO_ORANGE}>
                     {activeTodo.activeForm}
                 </BlinkText>
             ) : completed === total ? (
-                <span style={{ color: TODO_GREEN, fontWeight: 500 }}>✓ 全部完成</span>
+                <span style={{ color: TODO_GREEN, fontWeight: 500 }}>✓ {t('chat.todo.allCompleted')}</span>
             ) : null}
             <span style={{ fontSize: 12, color: token.colorTextTertiary, marginLeft: 4 }}>
-                <span style={{ color: token.colorTextSecondary, fontWeight: 500 }}>{completed}/{total}</span> 已完成
+                <span style={{ color: token.colorTextSecondary, fontWeight: 500 }}>{completed}/{total}</span> {t('chat.todo.completed')}
                 {inProgress > 0 && (
                     <>
                         {' · '}
-                        <span style={{ color: TODO_ORANGE, fontWeight: 500 }}>{inProgress}</span> 进行中
+                        <span style={{ color: TODO_ORANGE, fontWeight: 500 }}>{inProgress}</span> {t('chat.todo.inProgress')}
                     </>
                 )}
             </span>
@@ -78,7 +91,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
             label: header,
             children: (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {todos.map((todo, idx) => (
+                    {sortedTodos.map((todo, idx) => (
                         <div
                             key={String(idx)}
                             style={{
@@ -105,9 +118,9 @@ export function TodoPanel({ todos }: TodoPanelProps) {
         <Collapse
             activeKey={activeKeys}
             onChange={(keys) => setActiveKeys(Array.isArray(keys) ? keys : [keys])}
+            bordered={false}
             size="small"
             items={items}
-            style={{ marginBottom: 4 }}
         />
     )
 }
@@ -117,8 +130,8 @@ function TodoText({ todo }: { todo: TodoItem }) {
         return (
             <BlinkText
                 blinking
-                highlightColor={TODO_ORANGE}
-                style={{ fontWeight: 600, color: TODO_ORANGE }}
+                color={TODO_ORANGE}
+                style={{ fontWeight: 600 }}
             >
                 {todo.content}
             </BlinkText>

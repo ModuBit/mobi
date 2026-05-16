@@ -18,7 +18,22 @@ import { keyframes } from '@emotion/react'
 import styled from '@emotion/styled'
 import { theme } from 'antd'
 
-/** 扫光关键帧：背景渐变从左到右移动 */
+/** 将颜色转为低透明度版本 */
+function dimColor(color: string, alpha: number): string {
+    if (color.startsWith('#') && (color.length === 7 || color.length === 4)) {
+        const hex = color.replace('#', '')
+        const expanded = hex.length === 3
+            ? hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
+            : hex
+        const r = parseInt(expanded.substring(0, 2), 16)
+        const g = parseInt(expanded.substring(2, 4), 16)
+        const b = parseInt(expanded.substring(4, 6), 16)
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`
+    }
+    return color
+}
+
+/** 从左到右循环扫光 */
 const blinkSweep = keyframes`
   0% { background-position-x: -200%; }
   100% { background-position-x: 200%; }
@@ -27,12 +42,9 @@ const blinkSweep = keyframes`
 export interface BlinkTextProps {
     /** 是否启用闪烁 */
     blinking: boolean
-    /**
-     * 高亮色（扫光颜色），默认使用 antd token.colorText
-     * 渐变为 currentColor → highlightColor → currentColor
-     */
-    highlightColor?: string
-    /** 动画周期（秒），默认 1.5 */
+    /** 文字颜色，默认使用 antd token.colorText */
+    color?: string
+    /** 动画周期（秒），默认 1.5s */
     duration?: number
     children: React.ReactNode
     className?: string
@@ -40,25 +52,14 @@ export interface BlinkTextProps {
 }
 
 /**
- * 文字扫光闪烁组件
+ * 文字扫光闪烁组件（基于 antd-x Think blinkMotion）
  *
- * 在保持原有文字样式（字号、字体、颜色等）的基础上，添加渐变扫光效果。
- *
- * 原理：
- * 1. -webkit-text-fill-color: transparent 使文字填充透明
- * 2. background-clip: text 将背景裁剪到文字形状
- * 3. 渐变两端为 currentColor（继承原色），中间为高亮色
- * 4. 动画移动 backgroundPositionX，形成扫光效果
- *
- * 用法：
- * ```tsx
- * <BlinkText blinking={isLoading}>思考中...</BlinkText>
- * <BlinkText blinking={isActive} highlightColor="#fff" duration={2}>处理中</BlinkText>
- * ```
+ * 文字始终可见（dim 底色），高亮色从左到右循环扫过形成闪烁。
+ * 适用于浅色/深色主题。
  */
 export function BlinkText({
     blinking,
-    highlightColor,
+    color: textColor,
     duration = 1.5,
     children,
     className,
@@ -70,11 +71,16 @@ export function BlinkText({
         return <span className={className} style={style}>{children}</span>
     }
 
+    const color = textColor ?? token.colorText
+    const highlight = color
+    const base = dimColor(color, 0.8)
+
     return (
         <BlinkSpan
             className={className}
             style={style}
-            $highlight={highlightColor ?? token.colorText}
+            $base={base}
+            $highlight={highlight}
             $duration={duration}
         >
             {children}
@@ -82,11 +88,11 @@ export function BlinkText({
     )
 }
 
-const BlinkSpan = styled.span<{ $highlight: string; $duration: number }>`
-    -webkit-text-fill-color: transparent;
+const BlinkSpan = styled.span<{ $base: string; $highlight: string; $duration: number }>`
     background-clip: text;
     -webkit-background-clip: text;
-    background-image: linear-gradient(90deg, currentColor, ${p => p.$highlight}, currentColor);
+    color: ${p => p.$base};
+    background-image: linear-gradient(90deg, transparent, ${p => p.$highlight}, transparent);
     background-size: 50%;
     background-repeat: no-repeat;
     animation: ${blinkSweep} ${p => p.$duration}s linear infinite;
