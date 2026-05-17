@@ -16,7 +16,7 @@
 
 import { useState } from 'react'
 import { Collapse, Checkbox, theme } from 'antd'
-import { BulbOutlined } from '@ant-design/icons'
+import { Lightbulb } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TodoItem } from '@mobi/shared'
@@ -68,7 +68,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
 
     const header = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <BulbOutlined style={{ color: TODO_ORANGE }} />
+            <Lightbulb size={14} color={TODO_ORANGE} />
             {activeTodo ? (
                 <BlinkText blinking color={TODO_ORANGE}>
                     {activeTodo.activeForm}

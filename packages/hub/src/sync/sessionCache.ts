@@ -45,7 +45,10 @@ export function backfillRuntimeStateFromMessages(
         const message = messages[i]
         const todos = extractTodoWriteTodosFromMessageContent(message.content)
         if (todos) {
-            runtimeState.todos = todos
+            // 全部完成的 todos 自动清除（与实时处理逻辑一致）
+            if (!todos.every(t => t.status === 'completed')) {
+                runtimeState.todos = todos
+            }
             break
         }
     }
