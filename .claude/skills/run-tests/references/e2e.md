@@ -53,7 +53,21 @@ bootstrap 在后台运行，等待输出中出现 `E2E 测试环境就绪` 后�
 2. 如果端口仍被占用，手动 kill：`kill $(lsof -ti :5175)` 或 `kill $(lsof -ti :2224)`
 3. 重新 bootstrap
 
-## 2. 浏览器连接
+## 2. 加载浏览器操作工具（必须）
+
+**在执行任何浏览器操作之前，必须先通过 `ToolSearch` 加载所有需要用到的 Chrome DevTools MCP 工具。** 这些工具是 deferred 的，如果不先加载，调用时会报 InputValidationError，或者模型在不知道工具存在时陷入重复调用已知工具的死循环（例如反复 `click` 而不知道可以用 `type_text`）。
+
+一次性加载所有常用工具：
+
+```
+ToolSearch("select:mcp__plugin_chrome-devtools-mcp_chrome-devtools__new_page,mcp__plugin_chrome-devtools-mcp_chrome-devtools__navigate_page,mcp__plugin_chrome-devtools-mcp_chrome-devtools__list_pages,mcp__plugin_chrome-devtools-mcp_chrome-devtools__close_page,mcp__plugin_chrome-devtools-mcp_chrome-devtools__click,mcp__plugin_chrome-devtools-mcp_chrome-devtools__type_text,mcp__plugin_chrome-devtools-mcp_chrome-devtools__press_key,mcp__plugin_chrome-devtools-mcp_chrome-devtools__take_snapshot,mcp__plugin_chrome-devtools-mcp_chrome-devtools__take_screenshot,mcp__plugin_chrome-devtools-mcp_chrome-devtools__fill,mcp__plugin_chrome-devtools-mcp_chrome-devtools__wait_for")
+```
+
+如果操作中需要用到未在上述列表中的工具（如 `evaluate_script`、`hover`、`drag` 等），在调用前先用 `ToolSearch` 按名加载。
+
+**这一步不可跳过。每次进入 E2E 流程时都必须执行。**
+
+## 3. 浏览器连接
 
 Chrome DevTools MCP 首次调用时自动启动 Chrome，后续复用。按以下顺序尝试：
 
@@ -68,7 +82,7 @@ Chrome DevTools MCP 首次调用时自动启动 Chrome，后续复用。按以�
    ```
    然后重试 `new_page`
 
-## 3. 页面操作规范
+## 4. 页面操作规范
 
 只用 Chrome DevTools MCP 工具操作浏览器。不要用 `analyze_image` 等工具访问 localhost 页面（它们不支持 localhost URL）。
 
@@ -91,7 +105,7 @@ Chrome DevTools MCP 首次调用时自动启动 Chrome，后续复用。按以�
 
 不要使用 `fill` — 它对自定义输入框经常超时失败。不要直接 `type_text` 不全选 — 它会追加而非替换，导致内容重复。
 
-## 4. 典型验证流程
+## 5. 典型验证流程
 
 使用 profile `e2e` 中的 token `e2e-test-token-mobi`。
 
@@ -127,7 +141,7 @@ Chrome DevTools MCP 首次调用时自动启动 Chrome，后续复用。按以�
 
 根据实际变更内容，可以重点验证特定环节，不必每次都走完整流程。
 
-## 5. 清理
+## 6. 清理
 
 验证完成后按顺序清理：
 
