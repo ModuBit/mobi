@@ -26,6 +26,7 @@ import { useNotify } from '@/core/data/hooks/useNotify'
 import { useMobiApi } from '@/core/data/api/client'
 import { App, Button } from 'antd'
 import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
+import { isObject } from '@mobi/shared'
 import type { MessagesResponse } from '@/core/data/api/types'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 
@@ -68,21 +69,42 @@ function upsertMessageCache(
 function buildRuntimeStateUpdate(
     oldRuntime: Record<string, unknown> | null | undefined,
     patch: Record<string, unknown> | null,
+    replace: boolean = false,
 ): { runtimeState: Record<string, unknown> } | Record<string, never> {
     if (!patch) return {}
-    return { runtimeState: { ...oldRuntime, ...patch } }
+    if (replace) return { runtimeState: patch }
+    const merged: Record<string, unknown> = { ...oldRuntime }
+    for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) {
+            delete merged[key]
+        } else {
+            merged[key] = value
+        }
+    }
+    return { runtimeState: merged }
 }
 
 function hasSessionChanges(
     oldSession: Session | undefined,
     patch: Record<string, unknown>,
     runtimeStatePatch: Record<string, unknown> | null,
+    runtimeStateReplace = false,
 ): boolean {
     if (!oldSession) return true
     for (const [key, value] of Object.entries(patch)) {
         if (oldSession[key as keyof Session] !== value) return true
     }
     if (runtimeStatePatch) {
+        if (runtimeStateReplace) {
+            // replace 模式：新旧 key 集合不同即为变化
+            const oldRuntime = oldSession.runtimeState as Record<string, unknown> | null | undefined
+            const oldKeys = oldRuntime ? Object.keys(oldRuntime) : []
+            const newKeys = Object.keys(runtimeStatePatch)
+            if (oldKeys.length !== newKeys.length) return true
+            for (const key of oldKeys) {
+                if (!(key in runtimeStatePatch)) return true
+            }
+        }
         const oldRuntime: Record<string, unknown> = { ...oldSession.runtimeState }
         for (const [key, value] of Object.entries(runtimeStatePatch)) {
             if (oldRuntime[key] !== value) return true
@@ -101,6 +123,7 @@ function patchSessionCache(
     const delta = data as Record<string, unknown>
     const patch: Record<string, unknown> = {}
     let runtimeStatePatch: Record<string, unknown> | null = null
+    let runtimeStateReplace = false
 
     if ('id' in delta && delta.id === sessionId) {
         // 完整 session 对象（如 applySessionConfig 场景）
@@ -117,17 +140,22 @@ function patchSessionCache(
         if ('effort' in delta) {
             runtimeStatePatch = { ...runtimeStatePatch, effort: delta.effort }
         }
+        // Hub runtimeState 完整更新（todos/tasks/teamState 等），直接替换
+        if ('runtimeState' in delta && isObject(delta.runtimeState)) {
+            runtimeStatePatch = delta.runtimeState as Record<string, unknown>
+            runtimeStateReplace = true
+        }
     }
 
     if (Object.keys(patch).length === 0 && !runtimeStatePatch) return
 
     // 更新单个会话详情缓存（仅当值实际变化时）
     queryClient.setQueryData<Session>(queryKeys.session(sessionId), (old) => {
-        if (!old || !hasSessionChanges(old, patch, runtimeStatePatch)) return old
+        if (!old || !hasSessionChanges(old, patch, runtimeStatePatch, runtimeStateReplace)) return old
         return {
             ...old,
             ...patch,
-            ...buildRuntimeStateUpdate(old.runtimeState, runtimeStatePatch),
+            ...buildRuntimeStateUpdate(old.runtimeState, runtimeStatePatch, runtimeStateReplace),
         }
     })
 
@@ -138,12 +166,12 @@ function patchSessionCache(
         const idx = old.findIndex(s => s.id === sessionId)
         if (idx === -1) return old
         const target = old[idx]
-        if (!hasSessionChanges(target, patch, runtimeStatePatch)) return old
+        if (!hasSessionChanges(target, patch, runtimeStatePatch, runtimeStateReplace)) return old
         const updated = [...old]
         updated[idx] = {
             ...target,
             ...patch,
-            ...buildRuntimeStateUpdate(target.runtimeState, runtimeStatePatch),
+            ...buildRuntimeStateUpdate(target.runtimeState, runtimeStatePatch, runtimeStateReplace),
         }
         return updated
     })
