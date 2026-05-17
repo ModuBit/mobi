@@ -19,7 +19,8 @@
  * 用于 ToolInlinePreview 和 ToolDetailDrawer
  */
 
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, ComponentType, ReactNode } from 'react'
+import { CheckCheck } from 'lucide-react'
 import {
     RocketOutlined,
     TeamOutlined,
@@ -50,7 +51,7 @@ export const ICON_STYLE_LG: CSSProperties = { fontSize: 16 }
 /**
  * 工具名称到图标组件的映射表
  */
-const TOOL_ICON_MAP: Record<string, typeof ToolOutlined> = {
+const TOOL_ICON_MAP: Record<string, ComponentType<{ style?: CSSProperties; size?: number }>> = {
     Agent: RocketOutlined,
     Task: RocketOutlined,
     TeamCreate: TeamOutlined,
@@ -74,11 +75,14 @@ const TOOL_ICON_MAP: Record<string, typeof ToolOutlined> = {
     exit_plan_mode: FileTextOutlined,
     update_plan: BulbOutlined,
     TodoWrite: BulbOutlined,
-    TaskList: CheckCircleOutlined,
-    TaskGet: CheckCircleOutlined,
+    TaskList: CheckCheck,
+    TaskGet: CheckCheck,
     NotebookRead: EyeOutlined,
     NotebookEdit: EditOutlined,
 }
+
+/** Lucide 图标工具名 */
+const LUCIDE_TOOL_NAMES = new Set(['TaskList', 'TaskGet'])
 
 /** Agent/Task 工具名 */
 const AGENT_TOOL_NAMES = new Set(['Task', 'Agent'])
@@ -129,6 +133,11 @@ export function getToolIcon(name: string, opts: CSSProperties | ToolIconOpts = I
 
     const IconComponent = TOOL_ICON_MAP[name]
     if (IconComponent) {
+        // Lucide 图标使用 size prop，Ant Design 图标使用 style.fontSize
+        if (LUCIDE_TOOL_NAMES.has(name)) {
+            const iconSize = typeof style.fontSize === 'number' ? style.fontSize : 14
+            return <IconComponent size={iconSize} />
+        }
         return <IconComponent style={style} />
     }
 

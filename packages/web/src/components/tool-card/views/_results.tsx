@@ -461,6 +461,19 @@ const GenericResultView: ToolViewComponent = (props: ToolViewProps) => {
     }
     return <CodeBlock code={safeStringify(result)} language="json" />
 }
+/** Task 工具结果视图：保留换行的纯文本 */
+const TaskTextView: ToolViewComponent = (props: ToolViewProps) => {
+    const { token } = useToken()
+    const text = extractTextFromResult(props.block.tool.result)
+    if (!text) {
+        return <div style={{ fontSize: 13, color: token.colorTextTertiary }}>{placeholderForState(props.block.tool.state)}</div>
+    }
+    return (
+        <div style={{ whiteSpace: 'pre-line', fontSize: 13, color: token.colorTextTertiary, lineHeight: 1.6 }}>
+            {text}
+        </div>
+    )
+}
 export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     Task: MarkdownResultView,
     Agent: MarkdownResultView,
@@ -480,7 +493,9 @@ export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     AskUserQuestion: AskUserQuestionResultView,
     ExitPlanMode: MarkdownResultView,
     ask_user_question: AskUserQuestionResultView,
-    exit_plan_mode: MarkdownResultView
+    exit_plan_mode: MarkdownResultView,
+    TaskList: TaskTextView,
+    TaskGet: TaskTextView,
 }
 export function getToolResultViewComponent(toolName: string): ToolViewComponent {
     if (toolName.startsWith('mcp__')) {

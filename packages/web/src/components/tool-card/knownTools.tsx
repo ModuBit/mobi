@@ -16,6 +16,7 @@
 
 import type { ReactNode } from 'react'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
+import { CheckCheck } from 'lucide-react'
 import { isObject } from '@mobi/shared'
 import {
     CodeOutlined,
@@ -404,14 +405,26 @@ export const knownTools: Record<string, {
         minimal: () => true
     },
     TaskList: {
-        icon: () => <CheckCircleOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => <CheckCheck size={14} />,
         title: () => 'Task list',
         subtitle: () => null,
         minimal: () => true
     },
     TaskGet: {
-        icon: () => <CheckCircleOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => <CheckCheck size={14} />,
         title: () => 'Get task',
+        subtitle: () => null,
+        minimal: () => true
+    },
+    TaskOutput: {
+        icon: () => <CheckCheck size={14} />,
+        title: () => 'Task output',
+        subtitle: () => null,
+        minimal: () => true
+    },
+    TaskStop: {
+        icon: () => <CheckCheck size={14} />,
+        title: () => 'Stop task',
         subtitle: () => null,
         minimal: () => true
     },
