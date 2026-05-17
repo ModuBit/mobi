@@ -48,6 +48,8 @@ const STANDARD_TOOLS: Record<string, string> = {
     'TaskUpdate': 'Update Task',
     'TaskList': 'List Tasks',
     'TaskGet': 'Get Task',
+    'TaskOutput': 'Get Task Output',
+    'TaskStop': 'Stop Task',
 
     // Team management
     'TeamCreate': 'Create Team',
