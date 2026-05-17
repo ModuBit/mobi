@@ -35,8 +35,7 @@ import {
     MessageOutlined,
     AppstoreOutlined,
     FileTextOutlined,
-    PlayCircleOutlined,
-    CheckCircleOutlined
+    PlayCircleOutlined
 } from '@ant-design/icons'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'

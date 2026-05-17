@@ -15,6 +15,7 @@
  */
 
 import { isObject } from '@mobi/shared'
+import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
 import { TaskItemSchema, TasksSchema } from '@mobi/shared/schemas'
 import type { TaskItem } from '@mobi/shared/types'
 
@@ -204,7 +205,6 @@ function processWriteToolResult(
         else if (typeof taskData.description === 'string') task.description = taskData.description
         if (typeof input.activeForm === 'string') task.activeForm = input.activeForm
         else if (typeof taskData.activeForm === 'string') task.activeForm = taskData.activeForm
-        if (typeof taskData.subject === 'string' && !task.subject) task.subject = taskData.subject
 
         const metadata = input.metadata
         if (isObject(metadata)) task.metadata = metadata as Record<string, unknown>
@@ -299,24 +299,21 @@ export function extractTaskDeltasFromMessageContent(
     messageContent: unknown,
     pendingMap: PendingTaskMap
 ): TaskDelta | null {
-    if (!isObject(messageContent)) return null
+    const record = unwrapRoleWrappedRecordEnvelope(messageContent)
+    if (!record) return null
 
-    // CLI 发来的消息统一用 { role: "agent", content: { type: "output", data: {...} } } 格式
-    // 外层 role 始终是 "agent"，需要看内层 data.type 区分 assistant/user
-    const content = isObject(messageContent.content) ? messageContent.content as Record<string, unknown> : null
-    if (!content || content.type !== 'output') return null
+    const content = record.content
+    if (!isObject(content) || content.type !== 'output') return null
 
     const data = isObject(content.data) ? content.data as Record<string, unknown> : null
     if (!data) return null
 
     if (data.type === 'assistant') {
-        // assistant 消息：暂存 tool_use
         processAssistantToolUses(content, pendingMap)
         return null
     }
 
     if (data.type === 'user') {
-        // user 消息：配对 tool_result
         return processUserToolResults(content, pendingMap)
     }
 
