@@ -88,6 +88,20 @@ export function isExitPlanModeTool(name: string): boolean {
     return name === 'exit_plan_mode' || name === 'ExitPlanMode'
 }
 
+/** 从 MCP 工具名中解析 server 和 tool 名称 */
+export function parseMCPToolName(toolName: string): { server: string, tool: string } | null {
+    if (!toolName.startsWith('mcp__')) return null
+    const withoutPrefix = toolName.slice(5)
+    const idx = withoutPrefix.indexOf('__')
+    if (idx === -1) return { server: withoutPrefix, tool: '' }
+    return { server: withoutPrefix.slice(0, idx), tool: withoutPrefix.slice(idx + 2) }
+}
+
+/** 将 MCP server 名称中的 _ 替换为 : 用于显示 */
+export function formatMCPServerDisplay(server: string): string {
+    return server.replace(/_/g, ':')
+}
+
 /**
  * 获取工具的自定义权限提示 i18n key
  * 返回 null 表示使用默认文案

@@ -219,6 +219,71 @@ describe('groupCollapsibleToolCalls', () => {
     expect(group2.id).toBe('group-r1')
     expect(group1.id).not.toBe(group2.id)
   })
+
+  describe('MCP 工具折叠', () => {
+    it('两个同 server 的 MCP 工具折叠为一组', () => {
+      const tc1 = makeToolCall({ id: 'tc1', name: 'mcp__github__search' })
+      const tc2 = makeToolCall({ id: 'tc2', name: 'mcp__github__read' })
+      const result = groupCollapsibleToolCalls([tc1, tc2])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        kind: 'tool-call-group',
+        id: 'group-tc1',
+        blocks: [tc1, tc2],
+      })
+    })
+
+    it('不同 server 的 MCP 工具在同一 Zone 内折叠', () => {
+      const tc1 = makeToolCall({ id: 'tc1', name: 'mcp__serverA__tool1' })
+      const tc2 = makeToolCall({ id: 'tc2', name: 'mcp__serverB__tool2' })
+      const result = groupCollapsibleToolCalls([tc1, tc2])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        kind: 'tool-call-group',
+        blocks: [tc1, tc2],
+      })
+    })
+
+    it('MCP 工具与内置工具在同一 Zone 内折叠', () => {
+      const bash = makeToolCall({ id: 'b1', name: 'Bash' })
+      const mcp = makeToolCall({ id: 'm1', name: 'mcp__github__search' })
+      const result = groupCollapsibleToolCalls([bash, mcp])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        kind: 'tool-call-group',
+        blocks: [bash, mcp],
+      })
+    })
+
+    it('MCP 工具被非可折叠工具打断为两个 Zone', () => {
+      const tc1 = makeToolCall({ id: 'tc1', name: 'mcp__github__search' })
+      const edit = makeToolCall({ id: 'edit1', name: 'Edit' })
+      const tc2 = makeToolCall({ id: 'tc2', name: 'mcp__github__read' })
+      const result = groupCollapsibleToolCalls([tc1, edit, tc2])
+      expect(result).toHaveLength(3)
+      expect(result[0]).toEqual(tc1)
+      expect(result[1]).toEqual(edit)
+      expect(result[2]).toEqual(tc2)
+    })
+
+    it('MCP running 状态不参与折叠', () => {
+      const tc1 = makeToolCall({ id: 'tc1', name: 'mcp__github__search', state: 'completed' })
+      const tc2 = makeToolCall({ id: 'tc2', name: 'mcp__github__read', state: 'running' })
+      const result = groupCollapsibleToolCalls([tc1, tc2])
+      // completed < 2，不折叠
+      expect(result).toHaveLength(2)
+      expect(result[0]).toEqual(tc1)
+      expect(result[1]).toEqual(tc2)
+    })
+
+    it('Plugin MCP 工具名正确识别', () => {
+      const tc1 = makeToolCall({ id: 'tc1', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__click' })
+      const tc2 = makeToolCall({ id: 'tc2', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__screenshot' })
+      const result = groupCollapsibleToolCalls([tc1, tc2])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ kind: 'tool-call-group' })
+    })
+  })
 })
 
 describe('formatGroupTitle', () => {
@@ -269,5 +334,53 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'b3', name: 'Bash' }),
     ]
     expect(formatGroupTitle(blocks)).toBe('Run 3 shell commands')
+  })
+
+  describe('MCP 标题格式', () => {
+    it('单个 MCP server 计数', () => {
+      const blocks = [
+        makeToolCall({ id: 'm1', name: 'mcp__github__search' }),
+        makeToolCall({ id: 'm2', name: 'mcp__github__read' }),
+        makeToolCall({ id: 'm3', name: 'mcp__github__write' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Called github 3 times')
+    })
+
+    it('多个 MCP server 分别计数', () => {
+      const blocks = [
+        makeToolCall({ id: 'm1', name: 'mcp__serverA__tool1' }),
+        makeToolCall({ id: 'm2', name: 'mcp__serverA__tool2' }),
+        makeToolCall({ id: 'm3', name: 'mcp__serverB__tool1' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Called serverA 2 times, called serverB 1 time')
+    })
+
+    it('Plugin MCP server 显示名用冒号分隔', () => {
+      const blocks = [
+        makeToolCall({ id: 'm1', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__click' }),
+        makeToolCall({ id: 'm2', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__screenshot' }),
+        makeToolCall({ id: 'm3', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__navigate' }),
+        makeToolCall({ id: 'm4', name: 'mcp__plugin_chrome-devtools-mcp_chrome-devtools__type' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Called plugin:chrome-devtools-mcp:chrome-devtools 4 times')
+    })
+
+    it('MCP + 内置工具混合计数', () => {
+      const blocks = [
+        makeToolCall({ id: 'b1', name: 'Bash' }),
+        makeToolCall({ id: 'm1', name: 'mcp__github__search' }),
+        makeToolCall({ id: 'm2', name: 'mcp__github__read' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Run 1 shell command, called github 2 times')
+    })
+
+    it('非 MCP 工具不影响现有行为', () => {
+      const blocks = [
+        makeToolCall({ id: 'r1', name: 'Read' }),
+        makeToolCall({ id: 'r2', name: 'Read' }),
+        makeToolCall({ id: 'r3', name: 'Read' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Read 3 files')
+    })
   })
 })

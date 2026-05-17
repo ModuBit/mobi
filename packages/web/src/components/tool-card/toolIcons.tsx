@@ -20,7 +20,7 @@
  */
 
 import type { CSSProperties, ComponentType, ReactNode } from 'react'
-import { CheckCheck } from 'lucide-react'
+import { CheckCheck, LineSquiggle } from 'lucide-react'
 import {
     RocketOutlined,
     TeamOutlined,
@@ -36,7 +36,6 @@ import {
     FileTextOutlined,
     BulbOutlined,
     CheckCircleOutlined,
-    AppstoreOutlined,
     ToolOutlined,
 } from '@ant-design/icons'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
@@ -126,9 +125,10 @@ export function getToolIcon(name: string, opts: CSSProperties | ToolIconOpts = I
         return <PixelAvatar name={resolved.id} status={toolStateToAvatarStatus(resolved.state)} size={typeof style.fontSize === 'number' ? style.fontSize + 4 : 18} statusStyles={TOOL_AVATAR_STYLES} />
     }
 
-    // mcp__ 前缀的工具使用方块图标
+    // mcp__ 前缀的工具使用 LineSquiggle 图标
     if (name.startsWith('mcp__')) {
-        return <AppstoreOutlined style={style} />
+        const iconSize = typeof style.fontSize === 'number' ? style.fontSize : 14
+        return <LineSquiggle size={iconSize} />
     }
 
     const IconComponent = TOOL_ICON_MAP[name]

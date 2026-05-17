@@ -16,6 +16,7 @@
 
 import type { ChatBlock, ToolCallBlock } from '@/domain/chat'
 import { capitalize } from '@/core/utils/sessionUtils'
+import { parseMCPToolName, formatMCPServerDisplay } from '@/core/lib/toolInputUtils'
 
 type ToolCategory = 'shell' | 'read' | 'glob' | 'grep'
 
@@ -42,10 +43,16 @@ export type GroupedBlock = ChatBlock | ToolCallGroup
 /** 格式化折叠组标题 */
 export function formatGroupTitle(blocks: ToolCallBlock[]): string {
   const counts: Partial<Record<ToolCategory, number>> = {}
+  const mcpCounts: Record<string, number> = {}
   for (const block of blocks) {
     const cat = TOOL_CATEGORY_MAP[block.tool.name]
     if (cat) {
       counts[cat] = (counts[cat] ?? 0) + 1
+    } else {
+      const parsed = parseMCPToolName(block.tool.name)
+      if (parsed) {
+        mcpCounts[parsed.server] = (mcpCounts[parsed.server] ?? 0) + 1
+      }
     }
   }
 
@@ -66,13 +73,18 @@ export function formatGroupTitle(blocks: ToolCallBlock[]): string {
     const n = counts.grep
     parts.push(`search ${n} pattern${n !== 1 ? 's' : ''}`)
   }
+  for (const [server, n] of Object.entries(mcpCounts)) {
+    parts.push(`called ${formatMCPServerDisplay(server)} ${n} time${n !== 1 ? 's' : ''}`)
+  }
 
   return capitalize(parts.join(', '))
 }
 
 /** 判断是否为可折叠工具 */
 function isCollapsibleTool(block: ChatBlock): block is ToolCallBlock {
-  return block.kind === 'tool-call' && COLLAPSIBLE_TOOL_NAMES.has(block.tool.name)
+  if (block.kind !== 'tool-call') return false
+  const name = block.tool.name
+  return COLLAPSIBLE_TOOL_NAMES.has(name) || name.startsWith('mcp__')
 }
 
 /** 检测连续可折叠工具 Zone 并分组 */

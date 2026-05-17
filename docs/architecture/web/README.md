@@ -281,6 +281,59 @@ flowchart LR
 | `summary` | 会话摘要 |
 | `event` | 系统事件（API 错误、耗时统计） |
 
+### 工具调用折叠
+
+消息渲染管线中，工具调用经过两层过滤后再展示：
+
+#### 隐藏层（reducer 阶段）
+
+`reducerTools.ts` 的 `isHiddenTool()` 在消息归约时直接跳过以下工具，不生成 `tool-call` block：
+
+- `ToolSearch`、`EnterPlanMode` / `exit_plan_mode`
+- `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` / `TaskOutput` / `TaskStop`
+- `mcp__mobi__change_title` / `mobi__change_title`
+
+其中 `change_title` 转为 `title-changed` 事件，`EnterPlanMode` 转为 `plan-mode-entered` 事件，其余静默忽略。
+
+#### 折叠层（渲染阶段）
+
+`domain/chat/groupToolCalls.ts` 的 `groupCollapsibleToolCalls()` 对连续的可折叠工具调用进行合并收起：
+
+**可折叠工具**：`Bash`、`shell_command`、`Read`、`Glob`、`Grep`，以及所有 `mcp__` 前缀的 MCP 工具
+
+MCP 工具按 server 分组计数，标题格式为 `"Called {server} N times"`（server 名称中 `_` 替换为 `:`），如 `"Called plugin:chrome-devtools-mcp:chrome-devtools 4 times"`。
+
+**核心概念 — Zone**：连续相邻的可折叠工具调用（不论状态）。Zone 边界由非可折叠工具或非 tool-call block 打断，边界稳定，不随工具状态变化而分裂或合并。
+
+**分组规则**：
+
+| 状态 | 处理 |
+|------|------|
+| `completed`（≥ 2 条） | 合并为 `ToolCallGroup`，默认收起 |
+| `completed`（< 2 条） | 单独展示 |
+| `running` / `pending` / `error` | 在折叠组之后单独展示 |
+
+**渲染顺序**：`[Fold(completed)] + [non-completed 逐个展示]`，各自保持原始相对顺序。
+
+**折叠组标题**：按类别统计 completed 工具，生成自然语言摘要（如 "Run 3 shell commands, read 2 files"），由 `formatGroupTitle()` 格式化。
+
+**数据流**：
+
+```
+ChatBlock[]
+  → groupCollapsibleToolCalls()    // 纯函数，O(n) 扫描
+  → GroupedBlock[]                 // ChatBlock | ToolCallGroup
+  → buildBubbleItems()             // 遍历 GroupedBlock[]
+  → BubbleItemBase[]
+```
+
+| 文件 | 职责 |
+|------|------|
+| `domain/chat/groupToolCalls.ts` | Zone 检测 + 分组算法 + 标题格式化 |
+| `domain/chat/reducerTools.ts` | `isHiddenTool()` 隐藏判断 |
+| `components/chat/blocks/ToolCallGroupBlock.tsx` | 折叠组渲染（Think 组件，默认收起） |
+| `components/chat/buildBubbleItems.tsx` | 调用分组函数，分发到渲染器 |
+
 ### API 交互
 
 ```mermaid

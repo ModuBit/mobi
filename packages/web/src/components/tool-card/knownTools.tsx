@@ -33,14 +33,14 @@ import {
     QuestionCircleOutlined,
     TeamOutlined,
     MessageOutlined,
-    AppstoreOutlined,
     FileTextOutlined,
     PlayCircleOutlined
 } from '@ant-design/icons'
+import { LineSquiggle } from 'lucide-react'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
 import { basename, resolveDisplayPath } from '@/core/utils/path'
-import { getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
+import { getInputStringAny, truncate, parseMCPToolName, formatMCPServerDisplay } from '@/core/lib/toolInputUtils'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
 
@@ -111,14 +111,9 @@ function snakeToTitleWithSpaces(value: string): string {
 }
 
 function formatMCPTitle(toolName: string): string {
-    const withoutPrefix = toolName.replace(/^mcp__/, '')
-    const parts = withoutPrefix.split('__')
-    if (parts.length >= 2) {
-        const serverName = parts[0]
-        const toolPart = parts.slice(1).join('_')
-        return `(MCP) ${serverName}:${toolPart}`
-    }
-    return `(MCP) ${withoutPrefix}`
+    const { server, tool } = parseMCPToolName(toolName)!
+    const display = formatMCPServerDisplay(server)
+    return tool ? `(MCP) ${display}:${tool}` : `(MCP) ${display}`
 }
 
 type ToolOpts = {
@@ -428,7 +423,7 @@ export const knownTools: Record<string, {
 export function getToolPresentation(opts: Omit<ToolOpts, 'metadata'> & { metadata: SessionMetadataSummary | null }): ToolPresentation {
     if (opts.toolName.startsWith('mcp__')) {
         return {
-            icon: <AppstoreOutlined style={DEFAULT_ICON_STYLE} />,
+            icon: <LineSquiggle size={14} />,
             title: formatMCPTitle(opts.toolName),
             subtitle: null,
             minimal: true
