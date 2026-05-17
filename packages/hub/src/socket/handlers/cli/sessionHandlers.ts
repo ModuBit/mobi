@@ -164,11 +164,6 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamDelta) ?? undefined
             }
 
-            // 自动清除：todos 全部完成
-            if (existingRuntimeState.todos?.every(t => t.status === 'completed')) {
-                existingRuntimeState.todos = undefined
-            }
-
             // 自动清除：tasks 全部完成或删除
             if (existingRuntimeState.tasks?.every(t => t.status === 'completed' || t.status === 'deleted')) {
                 delete existingRuntimeState.tasks

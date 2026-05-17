@@ -45,6 +45,8 @@ import { getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
 
+const HIDDEN_TOOL_STUB = { icon: () => null, title: () => '', subtitle: () => null, minimal: () => true as const }
+
 /** 判断是否为 Agent/Task 类工具 */
 export function isAgentTool(name: string): boolean {
     return name === 'Task' || name === 'Agent'
@@ -392,42 +394,12 @@ export const knownTools: Record<string, {
         subtitle: (opts) => formatChecklistCount(extractTodoChecklist(opts.input, opts.result), 'item'),
         minimal: () => true
     },
-    TaskCreate: {
-        icon: () => null,
-        title: () => '',
-        subtitle: () => null,
-        minimal: () => true
-    },
-    TaskUpdate: {
-        icon: () => null,
-        title: () => '',
-        subtitle: () => null,
-        minimal: () => true
-    },
-    TaskList: {
-        icon: () => <CheckCheck size={14} />,
-        title: () => 'Task list',
-        subtitle: () => null,
-        minimal: () => true
-    },
-    TaskGet: {
-        icon: () => <CheckCheck size={14} />,
-        title: () => 'Get task',
-        subtitle: () => null,
-        minimal: () => true
-    },
-    TaskOutput: {
-        icon: () => <CheckCheck size={14} />,
-        title: () => 'Task output',
-        subtitle: () => null,
-        minimal: () => true
-    },
-    TaskStop: {
-        icon: () => <CheckCheck size={14} />,
-        title: () => 'Stop task',
-        subtitle: () => null,
-        minimal: () => true
-    },
+    TaskCreate: HIDDEN_TOOL_STUB,
+    TaskUpdate: HIDDEN_TOOL_STUB,
+    TaskList: { icon: () => <CheckCheck size={14} />, title: () => 'Task list', subtitle: () => null, minimal: () => true },
+    TaskGet: { icon: () => <CheckCheck size={14} />, title: () => 'Get task', subtitle: () => null, minimal: () => true },
+    TaskOutput: { icon: () => <CheckCheck size={14} />, title: () => 'Task output', subtitle: () => null, minimal: () => true },
+    TaskStop: { icon: () => <CheckCheck size={14} />, title: () => 'Stop task', subtitle: () => null, minimal: () => true },
     update_plan: {
         icon: () => <FileTextOutlined style={DEFAULT_ICON_STYLE} />,
         title: () => 'Plan',
