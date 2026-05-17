@@ -73,7 +73,7 @@ export function BlinkText({
 const BlinkSpan = styled.span<{ $highlight: string; $duration: number }>`
     background-clip: text;
     -webkit-background-clip: text;
-    color: color-mix(in srgb, ${p => p.$highlight} 40%, transparent);
+    color: color-mix(in srgb, ${p => p.$highlight} 70%, transparent);
     background-image: linear-gradient(90deg, transparent, ${p => p.$highlight}, transparent);
     background-size: 50%;
     background-repeat: no-repeat;

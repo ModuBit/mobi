@@ -26,9 +26,10 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({
         t: (key: string) => {
             const map: Record<string, string> = {
-                'chat.todo.allCompleted': '全部完成',
-                'chat.todo.completed': '已完成',
-                'chat.todo.inProgress': '进行中',
+                'chat.task.allCompleted': '全部完成',
+                'chat.task.completed': '已完成',
+                'chat.task.inProgress': '进行中',
+                'chat.task.pendingCount': '{{count}} 个待执行',
             }
             return map[key] ?? key
         },

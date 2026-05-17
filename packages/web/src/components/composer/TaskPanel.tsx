@@ -15,8 +15,8 @@
  */
 
 import { useState } from 'react'
-import { Collapse, Checkbox, theme } from 'antd'
-import { CheckCircleOutlined } from '@ant-design/icons'
+import { Collapse, Checkbox, Typography, theme } from 'antd'
+import { CheckCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TaskItem } from '@mobi/shared'
@@ -38,8 +38,15 @@ const StyledCheckbox = styled(Checkbox)<{ $status: TaskItem['status'] }>`
         border-radius: 4px;
     }
     &.ant-checkbox-checked .ant-checkbox-inner {
-        background-color: ${p => p.$status === 'completed' ? TASK_GREEN : TASK_ORANGE};
-        border-color: ${p => p.$status === 'completed' ? TASK_GREEN : TASK_ORANGE};
+        background-color: ${TASK_GREEN};
+        border-color: ${TASK_GREEN};
+    }
+    &.ant-checkbox-indeterminate .ant-checkbox-inner {
+        background-color: ${TASK_ORANGE};
+        border-color: ${TASK_ORANGE};
+    }
+    &.ant-checkbox-indeterminate .ant-checkbox-inner::after {
+        background: #fff;
     }
 `
 
@@ -71,20 +78,24 @@ export function TaskPanel({ tasks }: TaskPanelProps) {
 
     const header = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <CheckCircleOutlined style={{ color: TASK_ORANGE }} />
+            <CheckCheck size={14} color={TASK_ORANGE} />
             {activeTask ? (
                 <BlinkText blinking color={TASK_ORANGE}>
                     {activeTask.activeForm ?? activeTask.subject}
                 </BlinkText>
             ) : completed === total ? (
-                <span style={{ color: TASK_GREEN, fontWeight: 500 }}>✓ {t('chat.todo.allCompleted')}</span>
-            ) : null}
+                <span style={{ color: TASK_GREEN, fontWeight: 500 }}>✓ {t('chat.task.allCompleted')}</span>
+            ) : (
+                <span style={{ color: token.colorTextTertiary }}>
+                    {t('chat.task.pendingCount', { count: total - completed })}
+                </span>
+            )}
             <span style={{ fontSize: 12, color: token.colorTextTertiary, marginLeft: 4 }}>
-                <span style={{ color: token.colorTextSecondary, fontWeight: 500 }}>{completed}/{total}</span> {t('chat.todo.completed')}
+                <span style={{ color: token.colorTextSecondary, fontWeight: 500 }}>{completed}/{total}</span> {t('chat.task.completed')}
                 {inProgress > 0 && (
                     <>
                         {' · '}
-                        <span style={{ color: TASK_ORANGE, fontWeight: 500 }}>{inProgress}</span> {t('chat.todo.inProgress')}
+                        <span style={{ color: TASK_ORANGE, fontWeight: 500 }}>{inProgress}</span> {t('chat.task.inProgress')}
                     </>
                 )}
             </span>
@@ -100,14 +111,19 @@ export function TaskPanel({ tasks }: TaskPanelProps) {
                     {sortedTasks.map((task) => (
                         <div
                             key={task.id}
-                            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}
+                            style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13 }}
                         >
                             <StyledCheckbox
-                                checked={task.status === 'completed' || task.status === 'in_progress'}
+                                checked={task.status === 'completed'}
+                                indeterminate={task.status === 'in_progress'}
                                 disabled
                                 $status={task.status}
+                                style={{ lineHeight: '22px' }}
                             />
-                            <TaskText task={task} />
+                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                <TaskText task={task} />
+                                {task.description && <TaskDescription task={task} />}
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -126,13 +142,18 @@ export function TaskPanel({ tasks }: TaskPanelProps) {
     )
 }
 
+function taskLabel(task: TaskItem) {
+    return `#${task.id}: ${task.subject}`
+}
+
 function TaskText({ task }: { task: TaskItem }) {
     const { token } = theme.useToken()
+    const label = taskLabel(task)
 
     if (task.status === 'in_progress') {
         return (
             <BlinkText blinking color={TASK_ORANGE} style={{ fontWeight: 600 }}>
-                {task.subject}
+                {label}
             </BlinkText>
         )
     }
@@ -140,10 +161,30 @@ function TaskText({ task }: { task: TaskItem }) {
     if (task.status === 'completed') {
         return (
             <span style={{ textDecoration: 'line-through', color: token.colorTextQuaternary }}>
-                {task.subject}
+                {label}
             </span>
         )
     }
 
-    return <span style={{ color: token.colorTextTertiary }}>{task.subject}</span>
+    return <span style={{ color: token.colorTextTertiary }}>{label}</span>
+}
+
+const { Text } = Typography
+
+function TaskDescription({ task }: { task: TaskItem }) {
+    const { token } = theme.useToken()
+
+    return (
+        <Text
+            style={{
+                fontSize: 12,
+                color: token.colorTextQuaternary,
+                lineHeight: '18px',
+                textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+            }}
+            ellipsis
+        >
+            {task.description}
+        </Text>
+    )
 }

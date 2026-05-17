@@ -163,6 +163,12 @@
       "allCompleted": "All completed",
       "completed": "completed",
       "inProgress": "in progress"
+    },
+    "task": {
+      "completed": "completed",
+      "inProgress": "in progress",
+      "allCompleted": "All completed",
+      "pendingCount": "{{count}} pending"
     }
   },
   "files": {

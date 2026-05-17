@@ -163,6 +163,12 @@
       "allCompleted": "全部完成",
       "completed": "已完成",
       "inProgress": "进行中"
+    },
+    "task": {
+      "completed": "已完成",
+      "inProgress": "进行中",
+      "allCompleted": "全部完成",
+      "pendingCount": "{{count}} 个待执行"
     }
   },
   "files": {
