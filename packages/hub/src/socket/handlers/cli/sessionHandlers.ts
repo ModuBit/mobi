@@ -171,12 +171,17 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
             // 自动清除：tasks 全部完成或删除
             if (existingRuntimeState.tasks?.every(t => t.status === 'completed' || t.status === 'deleted')) {
-                existingRuntimeState.tasks = undefined
+                delete existingRuntimeState.tasks
+            }
+
+            // 自动清除：todos 全部完成
+            if (existingRuntimeState.todos?.every(t => t.status === 'completed')) {
+                delete existingRuntimeState.todos
             }
 
             const updated = store.sessions.setRuntimeState(sid, existingRuntimeState, msg.createdAt, session.namespace)
             if (updated) {
-                onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid } })
+                onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid, runtimeState: existingRuntimeState } })
             }
         }
 
