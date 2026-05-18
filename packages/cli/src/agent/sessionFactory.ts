@@ -27,7 +27,7 @@ import { readSettings } from '@/persistence'
 import { configuration } from '@/configuration'
 import { logger } from '@/ui/logger'
 import { runtimePath } from '@/projectPath'
-import { readWorktreeEnv } from '@/utils/worktreeEnv'
+import { readWorktreeEnv, readGitBranch } from '@/utils/worktreeEnv'
 import packageJson from '../../package.json'
 
 export type SessionStartedBy = 'runner' | 'terminal'
@@ -74,6 +74,7 @@ export function buildSessionMetadata(options: {
 }): Metadata {
     const mobiLibDir = runtimePath()
     const worktreeInfo = readWorktreeEnv()
+    const gitBranch = readGitBranch(options.workingDirectory)
     const now = options.now ?? Date.now()
 
     return {
@@ -92,7 +93,8 @@ export function buildSessionMetadata(options: {
         lifecycleState: 'running',
         lifecycleStateSince: now,
         flavor: options.flavor,
-        worktree: worktreeInfo ?? undefined
+        worktree: worktreeInfo ?? undefined,
+        gitBranch: gitBranch ?? undefined,
     }
 }
 
