@@ -19,6 +19,7 @@ import { MessageQueue } from '@/utils/MessageQueue';
 import type { Metadata, SessionModel, SessionPermissionMode } from '@/api/types';
 import type { EffortLevel } from '@mobi/shared';
 import { logger } from '@/ui/logger';
+import { readGitBranch } from '@/utils/worktreeEnv';
 
 export type AgentSessionBaseOptions<Mode> = {
     api: ApiClient;
@@ -96,6 +97,12 @@ export class AgentSessionBase<Mode> {
         // 模式切换时控制 IdleTimer
         if (mode === 'remote') {
             this.client.startIdleTimer();
+            // 切换到 remote 时刷新 git 分支信息
+            const gitBranch = readGitBranch(this.path);
+            this.client.updateMetadata((metadata) => ({
+                ...metadata,
+                ...(gitBranch != null ? { gitBranch } : {}),
+            }));
         } else {
             this.client.stopIdleTimer();
         }
