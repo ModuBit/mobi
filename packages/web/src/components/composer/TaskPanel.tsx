@@ -143,7 +143,7 @@ export function TaskPanel({ tasks }: TaskPanelProps) {
 }
 
 function taskLabel(task: TaskItem) {
-    return `#${task.id}: ${task.subject}`
+    return `${task.id}: ${task.subject}`
 }
 
 function TaskText({ task }: { task: TaskItem }) {

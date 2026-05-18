@@ -14,22 +14,23 @@
  * limitations under the License.
  */
 
-import { keyframes } from '@emotion/react'
-import styled from '@emotion/styled'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+    motion,
+    useMotionValue,
+    useAnimationFrame,
+    useTransform,
+} from 'motion/react'
 import { theme } from 'antd'
-
-/** 从左到右循环扫光 */
-const blinkSweep = keyframes`
-  0% { background-position-x: -200%; }
-  100% { background-position-x: 200%; }
-`
 
 export interface BlinkTextProps {
     /** 是否启用闪烁 */
     blinking: boolean
     /** 文字颜色，默认使用 antd token.colorText */
     color?: string
-    /** 动画周期（秒），默认 1.5s */
+    /** 高亮光泽色，默认从底色自动衍生柔和高亮 */
+    shineColor?: string
+    /** 动画周期（秒），默认 2s */
     duration?: number
     children: React.ReactNode
     className?: string
@@ -37,45 +38,96 @@ export interface BlinkTextProps {
 }
 
 /**
- * 文字扫光闪烁组件（基于 antd-x Think blinkMotion）
+ * 文字光泽闪烁组件（基于 ReactBits ShinyText）
  *
- * 文字始终可见（dim 底色），高亮色从左到右循环扫过形成闪烁。
- * 适用于浅色/深色主题。
+ * 当 blinking=true 时，高亮光泽从左到右循环扫过文字形成闪烁效果。
+ * 当 blinking=false 时，渲染为普通文字。适用于浅色/深色主题。
  */
 export function BlinkText({
     blinking,
     color: textColor,
-    duration = 1.5,
+    shineColor,
+    duration = 2,
     children,
     className,
     style,
 }: BlinkTextProps) {
     const { token } = theme.useToken()
+    const [isPaused, setIsPaused] = useState(false)
+    const progress = useMotionValue(0)
+    const elapsedRef = useRef(0)
+    const lastTimeRef = useRef<number | null>(null)
+
+    const baseColor = textColor ?? token.colorText
+    // 默认从底色混合 50% 白色，生成柔和自然的高亮；避免 antd dark mode 下 token 颜色错误
+    const highlightColor = shineColor ?? `color-mix(in srgb, ${baseColor} 50%, #ffffff)`
+    const animationDuration = duration * 1000
+
+    useAnimationFrame(time => {
+        if (!blinking || isPaused) {
+            lastTimeRef.current = null
+            return
+        }
+
+        if (lastTimeRef.current === null) {
+            lastTimeRef.current = time
+            return
+        }
+
+        const deltaTime = time - lastTimeRef.current
+        lastTimeRef.current = time
+        elapsedRef.current += deltaTime
+
+        const cycleTime = elapsedRef.current % animationDuration
+        const p = (cycleTime / animationDuration) * 100
+        progress.set(p)
+    })
+
+    useEffect(() => {
+        elapsedRef.current = 0
+        progress.set(0)
+    }, [blinking, progress])
+
+    // 进度映射为背景位置：0% → 150%（右侧屏外），100% → -50%（左侧屏外）
+    const backgroundPosition = useTransform(
+        progress,
+        p => `${150 - p * 2}% center`,
+    )
+
+    const handleMouseEnter = useCallback(() => {
+        setIsPaused(true)
+    }, [])
+
+    const handleMouseLeave = useCallback(() => {
+        setIsPaused(false)
+    }, [])
 
     if (!blinking) {
-        return <span className={className} style={style}>{children}</span>
+        return (
+            <span className={className} style={style}>
+                {children}
+            </span>
+        )
     }
 
-    const highlight = textColor ?? token.colorText
+    const gradientStyle: React.CSSProperties = {
+        ...style,
+        display: 'inline-block',
+        backgroundImage: `linear-gradient(120deg, ${baseColor} 0%, ${baseColor} 35%, ${highlightColor} 50%, ${baseColor} 65%, ${baseColor} 100%)`,
+        backgroundSize: '200% auto',
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+    }
 
     return (
-        <BlinkSpan
+        <motion.span
             className={className}
-            style={style}
-            $highlight={highlight}
-            $duration={duration}
+            style={{ ...gradientStyle, backgroundPosition }}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
         >
             {children}
-        </BlinkSpan>
+        </motion.span>
     )
 }
-
-const BlinkSpan = styled.span<{ $highlight: string; $duration: number }>`
-    background-clip: text;
-    -webkit-background-clip: text;
-    color: color-mix(in srgb, ${p => p.$highlight} 70%, transparent);
-    background-image: linear-gradient(90deg, transparent, ${p => p.$highlight}, transparent);
-    background-size: 50%;
-    background-repeat: no-repeat;
-    animation: ${blinkSweep} ${p => p.$duration}s linear infinite;
-`

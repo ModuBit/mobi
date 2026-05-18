@@ -37,8 +37,15 @@ const StyledCheckbox = styled(Checkbox)<{ $status: TodoItem['status'] }>`
         border-radius: 4px;
     }
     &.ant-checkbox-checked .ant-checkbox-inner {
-        background-color: ${p => p.$status === 'completed' ? TODO_GREEN : TODO_ORANGE};
-        border-color: ${p => p.$status === 'completed' ? TODO_GREEN : TODO_ORANGE};
+        background-color: ${TODO_GREEN};
+        border-color: ${TODO_GREEN};
+    }
+    &.ant-checkbox-indeterminate .ant-checkbox-inner {
+        background-color: ${TODO_ORANGE};
+        border-color: ${TODO_ORANGE};
+    }
+    &.ant-checkbox-indeterminate .ant-checkbox-inner::after {
+        background: #fff;
     }
 `
 
@@ -105,7 +112,8 @@ export function TodoPanel({ todos }: TodoPanelProps) {
                             }}
                         >
                             <StyledCheckbox
-                                checked={todo.status === 'completed' || todo.status === 'in_progress'}
+                                checked={todo.status === 'completed'}
+                                indeterminate={todo.status === 'in_progress'}
                                 disabled
                                 $status={todo.status}
                             />
