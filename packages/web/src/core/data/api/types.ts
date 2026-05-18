@@ -65,6 +65,7 @@ export type SessionMetadataSummary = {
     tools?: string[]
     flavor?: string | null
     worktree?: WorktreeMetadata
+    gitBranch?: string
 }
 
 // 会话列表响应
