@@ -50,18 +50,6 @@ const SummaryRow = styled.div`
     font-size: 11px;
 `
 
-const DetailRow = styled.div<{ $visible: boolean }>`
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: ${({ $visible }) => $visible ? '4px' : '0'};
-    max-height: ${({ $visible }) => $visible ? '40px' : '0'};
-    opacity: ${({ $visible }) => $visible ? 1 : 0};
-    overflow: hidden;
-    transition: all 0.3s ease;
-`
-
 const Tag = styled.span<{ $variant: 'path' | 'branch' | 'worktree' }>`
     font-size: 11px;
     padding: 1px 6px;
@@ -107,7 +95,7 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const isPinnedRef = useRef(false)
 
-    const hasContent = Boolean(metadata && (metadata.gitBranch || metadata.worktree))
+    const hasContent = Boolean(metadata && metadata.path)
 
     const startCollapseTimer = useCallback(() => {
         if (timerRef.current) clearTimeout(timerRef.current)
@@ -167,6 +155,11 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
         >
             <SummaryRow>
                 <Chevron $expanded={expanded}>▼</Chevron>
+                {path && (
+                    <Tag $variant="path">
+                        📁 {path}
+                    </Tag>
+                )}
                 {gitBranch && (
                     <Tag $variant="branch">
                         <GitBranch size={11} />
@@ -180,13 +173,6 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
                     </Tag>
                 )}
             </SummaryRow>
-            <DetailRow $visible={expanded}>
-                {path && (
-                    <Tag $variant="path">
-                        📁 {path}
-                    </Tag>
-                )}
-            </DetailRow>
         </BarContainer>
     )
 }

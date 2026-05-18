@@ -61,16 +61,14 @@ describe('SessionContextBar', () => {
         expect(container.firstChild).toBeNull()
     })
 
-    it('无 gitBranch 且无 worktree 时不渲染', () => {
+    it('无 gitBranch 且无 worktree 时仍然渲染并显示 workdir', () => {
         const metadata: SessionMetadataSummary = {
             path: '/home/user/project',
             host: 'localhost',
         }
-        const { container } = render(
-            <SessionContextBar metadata={metadata} />,
-            { wrapper },
-        )
-        expect(container.firstChild).toBeNull()
+        render(<SessionContextBar metadata={metadata} />, { wrapper })
+        // 非 git 目录也展示工作目录
+        expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
     })
 
     it('有 gitBranch 时渲染信息条', () => {
