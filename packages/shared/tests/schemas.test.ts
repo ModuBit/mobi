@@ -124,6 +124,35 @@ describe('MetadataSchema', () => {
         // 空对象
         expect(() => MetadataSchema.parse({})).toThrow()
     })
+
+    it('解析包含 gitBranch 的完整 metadata', () => {
+        const metadata = {
+            path: '/home/user/project',
+            host: 'myhost',
+            gitBranch: 'feature/auth',
+        }
+        const result = MetadataSchema.parse(metadata)
+        expect(result.gitBranch).toBe('feature/auth')
+    })
+
+    it('gitBranch 可选，缺失时不报错', () => {
+        const metadata = {
+            path: '/home/user/project',
+            host: 'myhost',
+        }
+        const result = MetadataSchema.parse(metadata)
+        expect(result.gitBranch).toBeUndefined()
+    })
+
+    it('gitBranch 为 undefined 时不报错', () => {
+        const metadata = {
+            path: '/home/user/project',
+            host: 'myhost',
+            gitBranch: undefined,
+        }
+        const result = MetadataSchema.parse(metadata)
+        expect(result.gitBranch).toBeUndefined()
+    })
 })
 
 describe('SessionSchema', () => {

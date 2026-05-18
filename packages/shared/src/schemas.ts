@@ -119,7 +119,9 @@ export const MetadataSchema = z.object({
     archivedBy: z.string().optional(),
     archiveReason: z.string().optional(),
     flavor: z.string().nullish(),
-    worktree: WorktreeMetadataSchema.optional()
+    worktree: WorktreeMetadataSchema.optional(),
+    /** Git 当前分支（仅在 session 启动时采集一次，非实时） */
+    gitBranch: z.string().optional(),
 })
 
 export type Metadata = z.infer<typeof MetadataSchema>
