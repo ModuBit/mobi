@@ -158,6 +158,31 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         let isNearBottom = true
         let prevScrollTop = scrollBox.scrollTop
 
+        /** 触发加载上一页历史消息，并记录滚动位置用于恢复 */
+        const triggerFetchNextPage = (scrollTop: number, scrollHeight: number) => {
+            pendingRestoreRef.current = {
+                scrollTop,
+                scrollHeight,
+                blocksLength: chatBlocksLengthRef.current,
+            }
+            isFetchingNextPageRef.current = true
+            fetchNextPageRef.current()
+        }
+
+        /**
+         * 内容未溢出时主动加载历史消息
+         * 窗口足够高时消息列表无需滚动，scroll 事件永远不会触发，
+         * 导致历史消息无法加载。需要在布局稳定后主动检查并触发加载。
+         * 同时响应窗口尺寸变化：用户拉高窗口使内容不再溢出时自动继续加载。
+         */
+        const checkOverflowAndFetch = () => {
+            if (!hasNextPageRef.current || isFetchingNextPageRef.current) return
+            const { scrollHeight, clientHeight, scrollTop } = scrollBox
+            if (scrollHeight <= clientHeight) {
+                triggerFetchNextPage(scrollTop, scrollHeight)
+            }
+        }
+
         const handleScroll = () => {
             if (isRestoringScrollRef.current) return
 
@@ -180,13 +205,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             }
 
             if (scrollTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
-                pendingRestoreRef.current = {
-                    scrollTop,
-                    scrollHeight,
-                    blocksLength: chatBlocksLengthRef.current,
-                }
-                isFetchingNextPageRef.current = true
-                fetchNextPageRef.current()
+                triggerFetchNextPage(scrollTop, scrollHeight)
             }
         }
 
@@ -202,8 +221,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             resizeObserver.observe(contentEl)
         }
 
-        // 监听视口尺寸变化（如 ComposerInfoPanel 展开/收起导致 scrollContainer 高度变化）
-        const viewportObserver = new ResizeObserver(handleAutoScroll)
+        // 监听视口尺寸变化：内容跟随底部 + 窗口拉高时触发溢出检测
+        const viewportObserver = new ResizeObserver(() => {
+            handleAutoScroll()
+            checkOverflowAndFetch()
+        })
         viewportObserver.observe(scrollBox)
 
         // useLayoutEffect 的初始滚动可能在布局未稳定时执行，此处（paint 后）再次校正
@@ -211,6 +233,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             postPaintCorrectionRef.current = false
             scrollBox.scrollTop = scrollBox.scrollHeight
         }
+
+        // 初始加载时检查溢出
+        checkOverflowAndFetch()
 
         scrollBox.addEventListener('scroll', handleScroll, { passive: true })
         return () => {
