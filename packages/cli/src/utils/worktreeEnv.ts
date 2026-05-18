@@ -100,6 +100,23 @@ function readWorktreeFromGit(): WorktreeInfo | null {
     }
 }
 
+/**
+ * 读取指定目录的 git 分支名
+ *
+ * 当前仅在 session 启动时采集一次 gitBranch 信息。
+ * 覆盖 95% 使用场景（分支切换通常意味着重启会话）。
+ * 若后续需要实时更新，可复用 CLI 已有的 startFileWatcher 监听 .git/HEAD 文件变化，
+ * 通过 client.updateMetadata() 推送，无需改动 Hub 和 Web。
+ */
+export function readGitBranch(cwd: string): string | null {
+    try {
+        return runGit(['symbolic-ref', '--short', 'HEAD'], cwd)
+            ?? runGit(['rev-parse', '--short', 'HEAD'], cwd)
+    } catch {
+        return null
+    }
+}
+
 function runGit(args: string[], cwd: string): string | null {
     try {
         const output = execFileSync('git', args, {
