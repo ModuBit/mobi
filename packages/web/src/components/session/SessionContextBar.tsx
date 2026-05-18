@@ -61,6 +61,8 @@ const InfoItem = styled.span<{ $variant: 'path' | 'branch' | 'worktree' }>`
                 return `color: var(--ant-color-success);`
             case 'worktree':
                 return `color: var(--ant-color-warning-text);`
+            default:
+                return ''
         }
     }}
 `

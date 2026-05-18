@@ -92,6 +92,26 @@ describe('Store', () => {
         expect(session2.metadataVersion).toBe(session1.metadataVersion + 1)
     })
 
+    test('metadata 无变化时跳过写入', () => {
+        const session1 = store.sessions.getOrCreateSession(
+            'skip-tag',
+            { name: 'skip-test', path: '/home/user/project' },
+            null,
+            'default'
+        )
+
+        // 恢复时携带完全相同的 metadata
+        const session2 = store.sessions.getOrCreateSession(
+            'skip-tag',
+            { name: 'skip-test', path: '/home/user/project' },
+            null,
+            'default'
+        )
+
+        // 版本未递增，说明跳过了 UPDATE
+        expect(session2.metadataVersion).toBe(session1.metadataVersion)
+    })
+
     test('通过 ID 获取会话', () => {
         const created = store.sessions.getOrCreateSession(
             'test-tag-3',

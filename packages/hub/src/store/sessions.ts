@@ -89,9 +89,15 @@ export function getOrCreateSession(
 
     if (existing) {
         // 合并新 metadata 到已有 session（新增/更新字段覆盖旧值，旧字段保留）
-        const existingMetadata = safeJsonParse(existing.metadata) as Record<string, unknown> ?? {}
+        const existingMetadata = (safeJsonParse(existing.metadata) as Record<string, unknown>) ?? {}
         const newMetadata = (metadata as Record<string, unknown>) ?? {}
         const merged = { ...existingMetadata, ...newMetadata }
+
+        // 无变化时跳过写入，避免高频重连产生无意义的 DB 更新和 SSE 通知
+        if (JSON.stringify(merged) === JSON.stringify(existingMetadata)) {
+            return toStoredSession(existing)
+        }
+
         const updatedAt = Date.now()
 
         db.prepare(`
