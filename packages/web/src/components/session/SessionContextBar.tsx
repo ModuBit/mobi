@@ -15,69 +15,66 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { GitBranch, FolderTree } from 'lucide-react'
+import { GitBranch, FolderTree, Folder, ChevronDown } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 /** 自动收起延迟（毫秒） */
 const AUTO_COLLAPSE_DELAY = 3000
-
-/** 标签颜色常量 */
-const TAG_COLORS = {
-    path: { color: '#6366f1', bg: 'rgba(99, 102, 241, 0.1)' },
-    branch: { color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' },
-    worktree: { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
-} as const
 
 const BarContainer = styled.div<{ $expanded: boolean }>`
     display: flex;
     flex-direction: column;
     padding: ${({ $expanded }) => $expanded ? '6px 12px' : '2px 12px'};
-    background: ${TAG_COLORS.path.bg};
-    border-bottom: 1px solid var(--ant-color-border);
+    background: var(--ant-color-bg-layout);
+    border-bottom: 1px solid var(--ant-color-border-secondary);
     cursor: pointer;
     overflow: hidden;
     user-select: none;
-    transition: padding 0.3s ease;
+    transition: padding 0.2s ease;
 `
 
-const SummaryRow = styled.div`
+const ContentRow = styled.div`
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    min-width: 0;
-    overflow: hidden;
+    gap: 4px 8px;
     font-size: 11px;
+    color: var(--ant-color-text-tertiary);
 `
 
-const Tag = styled.span<{ $variant: 'path' | 'branch' | 'worktree' }>`
-    font-size: 11px;
-    padding: 1px 6px;
-    border-radius: 3px;
+const InfoItem = styled.span<{ $variant: 'path' | 'branch' | 'worktree' }>`
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    white-space: nowrap;
+    gap: 4px;
+    font-size: 11px;
+    min-width: 0;
 
     ${({ $variant }) => {
-        const { color, bg } = TAG_COLORS[$variant]
-        const base = `color: ${color}; background: ${bg};`
-        if ($variant === 'path') {
-            // 路径标签：固定最大宽度，允许收缩，ellipsis 截断
-            return `${base} font-family: monospace; overflow: hidden; text-overflow: ellipsis; max-width: min(200px, 50vw); flex-shrink: 1; min-width: 60px;`
+        switch ($variant) {
+            case 'path':
+                return `
+                    color: var(--ant-color-text-secondary);
+                    font-family: var(--ant-font-family-code);
+                `
+            case 'branch':
+                return `color: var(--ant-color-success);`
+            case 'worktree':
+                return `color: var(--ant-color-warning-text);`
         }
-        // branch/worktree 标签：不收缩优先，但超长时允许截断
-        return `${base} overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0;`
     }}
 `
 
-const Chevron = styled.span<{ $expanded: boolean }>`
-    font-size: 10px;
-    opacity: 0.4;
+const StyledChevron = styled(ChevronDown)<{ $expanded: boolean }>`
+    opacity: 0.3;
     flex-shrink: 0;
-    transition: transform 0.3s ease;
+    transition: transform 0.2s ease;
     transform: rotate(${({ $expanded }) => $expanded ? '180deg' : '0deg'});
+`
+
+const Separator = styled.span`
+    color: var(--ant-color-text-quaternary);
+    flex-shrink: 0;
 `
 
 interface SessionContextBarProps {
@@ -88,57 +85,45 @@ interface SessionContextBarProps {
  * Session 上下文信息条（吊顶效果）
  *
  * 展示当前 session 的环境上下文：工作目录、Git 分支、Worktree 状态。
- * 初始展开，3 秒后自动收起为紧凑模式。
- * 桌面端 hover 展开，移动端 tap 切换。
+ * PC 和移动端行为一致：
+ * 1. 进入 session 默认展开，3 秒后自动收起
+ * 2. 点击切换展开/收起
  */
 export function SessionContextBar({ metadata }: SessionContextBarProps) {
-    const isMobile = useIsMobile()
     const [expanded, setExpanded] = useState(true)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const isPinnedRef = useRef(false)
+    const userToggledRef = useRef(false)
 
     const hasContent = Boolean(metadata && metadata.path)
 
-    const startCollapseTimer = useCallback(() => {
-        if (timerRef.current) clearTimeout(timerRef.current)
-        timerRef.current = setTimeout(() => {
-            if (!isPinnedRef.current) {
-                setExpanded(false)
-            }
-        }, AUTO_COLLAPSE_DELAY)
+    const clearCollapseTimer = useCallback(() => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current)
+            timerRef.current = null
+        }
     }, [])
+
+    const startCollapseTimer = useCallback(() => {
+        clearCollapseTimer()
+        timerRef.current = setTimeout(() => {
+            setExpanded(false)
+        }, AUTO_COLLAPSE_DELAY)
+    }, [clearCollapseTimer])
 
     // 初始展开，3 秒后收起
     useEffect(() => {
         if (!hasContent) return
         setExpanded(true)
-        isPinnedRef.current = false
+        userToggledRef.current = false
         startCollapseTimer()
-        return () => {
-            if (timerRef.current) clearTimeout(timerRef.current)
-        }
-    }, [hasContent, startCollapseTimer])
-
-    const handleMouseEnter = useCallback(() => {
-        if (isMobile) return
-        if (timerRef.current) clearTimeout(timerRef.current)
-        setExpanded(true)
-    }, [isMobile])
-
-    const handleMouseLeave = useCallback(() => {
-        if (isMobile) return
-        if (!isPinnedRef.current) {
-            startCollapseTimer()
-        }
-    }, [isMobile, startCollapseTimer])
+        return clearCollapseTimer
+    }, [hasContent, startCollapseTimer, clearCollapseTimer])
 
     const handleClick = useCallback(() => {
-        if (!isMobile) return
-        setExpanded(prev => {
-            isPinnedRef.current = !prev
-            return !prev
-        })
-    }, [isMobile])
+        clearCollapseTimer()
+        setExpanded(prev => !prev)
+        userToggledRef.current = true
+    }, [clearCollapseTimer])
 
     if (!hasContent) return null
 
@@ -151,30 +136,35 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
             $expanded={expanded}
             role="button"
             aria-label="session-context"
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
             onClick={handleClick}
         >
-            <SummaryRow>
-                <Chevron $expanded={expanded}>▼</Chevron>
+            <ContentRow>
+                <StyledChevron $expanded={expanded} size={14} />
                 {path && (
-                    <Tag $variant="path">
-                        📁 {path}
-                    </Tag>
+                    <InfoItem $variant="path">
+                        <Folder size={12} />
+                        {path}
+                    </InfoItem>
                 )}
                 {gitBranch && (
-                    <Tag $variant="branch">
-                        <GitBranch size={11} />
-                        {gitBranch}
-                    </Tag>
+                    <>
+                        <Separator>·</Separator>
+                        <InfoItem $variant="branch">
+                            <GitBranch size={12} />
+                            {gitBranch}
+                        </InfoItem>
+                    </>
                 )}
                 {worktree && (
-                    <Tag $variant="worktree">
-                        <FolderTree size={11} />
-                        {worktree.name}
-                    </Tag>
+                    <>
+                        <Separator>·</Separator>
+                        <InfoItem $variant="worktree">
+                            <FolderTree size={12} />
+                            {worktree.name}
+                        </InfoItem>
+                    </>
                 )}
-            </SummaryRow>
+            </ContentRow>
         </BarContainer>
     )
 }

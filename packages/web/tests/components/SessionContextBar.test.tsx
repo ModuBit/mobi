@@ -26,12 +26,6 @@ vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-// mock useIsMobile
-let mockIsMobile = false
-vi.mock('@/core/data/hooks/useMediaQuery', () => ({
-    useIsMobile: () => mockIsMobile,
-}))
-
 // jsdom 没有 ResizeObserver
 beforeAll(() => {
     // @ts-expect-error jsdom 环境没有 ResizeObserver
@@ -45,7 +39,6 @@ beforeAll(() => {
 afterEach(() => {
     cleanup()
     vi.useRealTimers()
-    mockIsMobile = false
 })
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -67,11 +60,10 @@ describe('SessionContextBar', () => {
             host: 'localhost',
         }
         render(<SessionContextBar metadata={metadata} />, { wrapper })
-        // 非 git 目录也展示工作目录
         expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
     })
 
-    it('有 gitBranch 时渲染信息条', () => {
+    it('有 gitBranch 时渲染分支信息', () => {
         const metadata: SessionMetadataSummary = {
             path: '/home/user/project',
             host: 'localhost',
@@ -81,7 +73,7 @@ describe('SessionContextBar', () => {
         expect(screen.getByText('feature/auth')).toBeInTheDocument()
     })
 
-    it('有 worktree 时渲染 worktree 标签', () => {
+    it('有 worktree 时渲染 worktree 信息', () => {
         const metadata: SessionMetadataSummary = {
             path: '/home/user/project',
             host: 'localhost',
@@ -97,7 +89,7 @@ describe('SessionContextBar', () => {
         expect(screen.getByText('auth-worktree')).toBeInTheDocument()
     })
 
-    it('初始态展开，显示 work dir 路径', () => {
+    it('初始态展开，显示 workdir 路径', () => {
         const metadata: SessionMetadataSummary = {
             path: '/home/user/project',
             host: 'localhost',
@@ -107,53 +99,42 @@ describe('SessionContextBar', () => {
         expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
     })
 
-    it('桌面端 hover 时展开/收起', () => {
+    it('3 秒后自动收起', () => {
         const metadata: SessionMetadataSummary = {
             path: '/home/user/project',
             host: 'localhost',
             gitBranch: 'main',
         }
-        mockIsMobile = false
 
         vi.useFakeTimers()
         render(<SessionContextBar metadata={metadata} />, { wrapper })
 
-        // 初始展开
         expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
 
         // 3 秒后收起
         vi.advanceTimersByTime(3000)
-
-        // hover 恢复展开
-        const bar = screen.getByRole('button', { name: /session-context/i })
-        fireEvent.mouseEnter(bar)
-        expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
-
-        // 移出鼠标
-        fireEvent.mouseLeave(bar)
     })
 
-    it('移动端 tap 切换展开/收起', () => {
+    it('点击切换展开/收起', () => {
         const metadata: SessionMetadataSummary = {
             path: '/home/user/project',
             host: 'localhost',
             gitBranch: 'main',
         }
-        mockIsMobile = true
 
         vi.useFakeTimers()
         render(<SessionContextBar metadata={metadata} />, { wrapper })
 
-        // 3 秒后收起
+        // 3 秒后自动收起
         vi.advanceTimersByTime(3000)
 
         const bar = screen.getByRole('button', { name: /session-context/i })
 
-        // tap 展开
+        // 点击展开
         fireEvent.click(bar)
         expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
 
-        // 再 tap 收起
+        // 再点击收起
         fireEvent.click(bar)
     })
 })
