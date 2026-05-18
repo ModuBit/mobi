@@ -115,7 +115,7 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const isPinnedRef = useRef(false)
 
-    const hasContent = !!(metadata && (metadata.gitBranch || metadata.worktree))
+    const hasContent = Boolean(metadata && (metadata.gitBranch || metadata.worktree))
 
     const startCollapseTimer = useCallback(() => {
         if (timerRef.current) clearTimeout(timerRef.current)

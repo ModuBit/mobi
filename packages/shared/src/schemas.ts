@@ -120,7 +120,7 @@ export const MetadataSchema = z.object({
     archiveReason: z.string().optional(),
     flavor: z.string().nullish(),
     worktree: WorktreeMetadataSchema.optional(),
-    /** Git 当前分支（仅在 session 启动时采集一次，非实时） */
+    /** Git 当前分支（session 启动及 local→remote 切换时采集） */
     gitBranch: z.string().optional(),
 })
 

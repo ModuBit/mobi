@@ -101,7 +101,7 @@ export class AgentSessionBase<Mode> {
             const gitBranch = readGitBranch(this.path);
             this.client.updateMetadata((metadata) => ({
                 ...metadata,
-                ...(gitBranch != null ? { gitBranch } : {}),
+                gitBranch: gitBranch ?? undefined,
             }));
         } else {
             this.client.stopIdleTimer();
