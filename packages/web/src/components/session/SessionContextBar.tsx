@@ -47,6 +47,7 @@ const SummaryRow = styled.div`
     align-items: center;
     gap: 6px;
     min-width: 0;
+    overflow: hidden;
     font-size: 11px;
 `
 
@@ -58,15 +59,16 @@ const Tag = styled.span<{ $variant: 'path' | 'branch' | 'worktree' }>`
     align-items: center;
     gap: 3px;
     white-space: nowrap;
-    flex-shrink: 0;
 
     ${({ $variant }) => {
         const { color, bg } = TAG_COLORS[$variant]
         const base = `color: ${color}; background: ${bg};`
         if ($variant === 'path') {
-            return `${base} font-family: monospace; overflow: hidden; text-overflow: ellipsis; max-width: min(200px, 50vw);`
+            // 路径标签：固定最大宽度，允许收缩，ellipsis 截断
+            return `${base} font-family: monospace; overflow: hidden; text-overflow: ellipsis; max-width: min(200px, 50vw); flex-shrink: 1; min-width: 60px;`
         }
-        return base
+        // branch/worktree 标签：不收缩优先，但超长时允许截断
+        return `${base} overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0;`
     }}
 `
 
