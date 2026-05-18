@@ -92,7 +92,6 @@ interface SessionContextBarProps {
 export function SessionContextBar({ metadata }: SessionContextBarProps) {
     const [expanded, setExpanded] = useState(true)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const userToggledRef = useRef(false)
 
     const hasContent = Boolean(metadata && metadata.path)
 
@@ -114,7 +113,6 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
     useEffect(() => {
         if (!hasContent) return
         setExpanded(true)
-        userToggledRef.current = false
         startCollapseTimer()
         return clearCollapseTimer
     }, [hasContent, startCollapseTimer, clearCollapseTimer])
@@ -122,7 +120,6 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
     const handleClick = useCallback(() => {
         clearCollapseTimer()
         setExpanded(prev => !prev)
-        userToggledRef.current = true
     }, [clearCollapseTimer])
 
     if (!hasContent) return null
@@ -136,6 +133,7 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
             $expanded={expanded}
             role="button"
             aria-label="session-context"
+            data-expanded={expanded}
             onClick={handleClick}
         >
             <ContentRow>

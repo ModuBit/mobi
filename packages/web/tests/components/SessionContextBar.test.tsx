@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { SessionContextBar } from '@/components/session/SessionContextBar'
@@ -109,10 +109,13 @@ describe('SessionContextBar', () => {
         vi.useFakeTimers()
         render(<SessionContextBar metadata={metadata} />, { wrapper })
 
-        expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
+        // 初始展开
+        const bar = screen.getByRole('button', { name: /session-context/i })
+        expect(bar).toHaveAttribute('data-expanded', 'true')
 
         // 3 秒后收起
-        vi.advanceTimersByTime(3000)
+        act(() => { vi.advanceTimersByTime(3000) })
+        expect(bar).toHaveAttribute('data-expanded', 'false')
     })
 
     it('点击切换展开/收起', () => {
@@ -126,15 +129,17 @@ describe('SessionContextBar', () => {
         render(<SessionContextBar metadata={metadata} />, { wrapper })
 
         // 3 秒后自动收起
-        vi.advanceTimersByTime(3000)
+        act(() => { vi.advanceTimersByTime(3000) })
 
         const bar = screen.getByRole('button', { name: /session-context/i })
+        expect(bar).toHaveAttribute('data-expanded', 'false')
 
         // 点击展开
         fireEvent.click(bar)
-        expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
+        expect(bar).toHaveAttribute('data-expanded', 'true')
 
         // 再点击收起
         fireEvent.click(bar)
+        expect(bar).toHaveAttribute('data-expanded', 'false')
     })
 })
