@@ -88,7 +88,27 @@ export function getOrCreateSession(
     ).get(tag, namespace) as DbSessionRow | undefined
 
     if (existing) {
-        return toStoredSession(existing)
+        // 合并新 metadata 到已有 session（新增/更新字段覆盖旧值，旧字段保留）
+        // 确保恢复 session 时也能更新 gitBranch 等新增字段
+        const existingMetadata = safeJsonParse(existing.metadata) as Record<string, unknown> ?? {}
+        const newMetadata = (metadata as Record<string, unknown>) ?? {}
+        const merged = { ...existingMetadata, ...newMetadata }
+
+        db.prepare(`
+            UPDATE sessions
+            SET metadata = @metadata,
+                metadata_version = metadata_version + 1,
+                updated_at = @updated_at,
+                seq = seq + 1
+            WHERE id = @id
+        `).run({
+            id: existing.id,
+            metadata: JSON.stringify(merged),
+            updated_at: Date.now()
+        })
+
+        const updated = getSession(db, existing.id)
+        return updated ?? toStoredSession(existing)
     }
 
     const now = Date.now()

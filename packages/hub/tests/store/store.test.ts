@@ -58,6 +58,40 @@ describe('Store', () => {
         expect(session2.id).toBe(session1.id)
     })
 
+    test('恢复已有会话时合并 metadata 新字段', () => {
+        // 首次创建，无 gitBranch
+        const session1 = store.sessions.getOrCreateSession(
+            'resume-tag',
+            { name: 'resume-test', path: '/home/user/project' },
+            null,
+            'default'
+        )
+        expect(session1.metadata).toMatchObject({
+            name: 'resume-test',
+            path: '/home/user/project'
+        })
+        expect(session1.metadata).not.toHaveProperty('gitBranch')
+
+        // 恢复（相同 tag），携带新字段 gitBranch
+        const session2 = store.sessions.getOrCreateSession(
+            'resume-tag',
+            { name: 'resume-test', path: '/home/user/project', gitBranch: 'main' },
+            null,
+            'default'
+        )
+
+        // 同一个 session
+        expect(session2.id).toBe(session1.id)
+        // 新字段被合并，旧字段保留
+        expect(session2.metadata).toMatchObject({
+            name: 'resume-test',
+            path: '/home/user/project',
+            gitBranch: 'main'
+        })
+        // metadata_version 递增
+        expect(session2.metadataVersion).toBe(session1.metadataVersion + 1)
+    })
+
     test('通过 ID 获取会话', () => {
         const created = store.sessions.getOrCreateSession(
             'test-tag-3',
