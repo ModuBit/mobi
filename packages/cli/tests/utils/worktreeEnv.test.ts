@@ -17,7 +17,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // mock child_process 的 execFileSync
-const mockExecFileSync = vi.fn()
+const { mockExecFileSync } = vi.hoisted(() => ({
+    mockExecFileSync: vi.fn(),
+}))
 vi.mock('node:child_process', () => ({
     execFileSync: mockExecFileSync,
 }))
