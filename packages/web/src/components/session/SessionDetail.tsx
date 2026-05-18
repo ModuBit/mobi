@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useUiStore } from '@/core/data/stores/uiStore'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { ChatContainer } from '@/components/chat/ChatContainer'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import { FileView } from '@/components/files/FileView'
@@ -27,6 +28,7 @@ import TerminalView from '@/components/terminal/TerminalView'
 import { IconButton } from '@/components/ui/IconButton'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { SessionContextBar } from '@/components/session/SessionContextBar'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { getAgentStatus } from '@/components/pixel-avatar/types'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -159,6 +161,8 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                     />
                 }
             />
+
+            <SessionContextBar metadata={session.metadata as SessionMetadataSummary | null} />
 
             <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
                 {/* 聊天视图：条件渲染，非可见时不挂载以节省资源 */}
