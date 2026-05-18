@@ -109,12 +109,8 @@ function readWorktreeFromGit(): WorktreeInfo | null {
  * 通过 client.updateMetadata() 推送，无需改动 Hub 和 Web。
  */
 export function readGitBranch(cwd: string): string | null {
-    try {
-        return runGit(['symbolic-ref', '--short', 'HEAD'], cwd)
-            ?? runGit(['rev-parse', '--short', 'HEAD'], cwd)
-    } catch {
-        return null
-    }
+    return runGit(['symbolic-ref', '--short', 'HEAD'], cwd)
+        ?? runGit(['rev-parse', '--short', 'HEAD'], cwd)
 }
 
 function runGit(args: string[], cwd: string): string | null {

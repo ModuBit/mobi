@@ -106,7 +106,7 @@ describe('SessionContextBar', () => {
             gitBranch: 'main',
         }
         render(<SessionContextBar metadata={metadata} />, { wrapper })
-        expect(screen.getAllByText(/home\/user\/project/).length).toBeGreaterThan(0)
+        expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
     })
 
     it('桌面端 hover 时展开/收起', () => {
@@ -121,16 +121,15 @@ describe('SessionContextBar', () => {
         render(<SessionContextBar metadata={metadata} />, { wrapper })
 
         // 初始展开
-        expect(screen.getAllByText(/home\/user\/project/).length).toBeGreaterThan(0)
+        expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
 
         // 3 秒后收起
         vi.advanceTimersByTime(3000)
 
         // hover 恢复展开
-        const bars = screen.getAllByRole('button', { name: /session-context/i })
-        const bar = bars[bars.length - 1]
+        const bar = screen.getByRole('button', { name: /session-context/i })
         fireEvent.mouseEnter(bar)
-        expect(screen.getAllByText(/home\/user\/project/).length).toBeGreaterThan(0)
+        expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
 
         // 移出鼠标
         fireEvent.mouseLeave(bar)
@@ -150,12 +149,11 @@ describe('SessionContextBar', () => {
         // 3 秒后收起
         vi.advanceTimersByTime(3000)
 
-        const bars = screen.getAllByRole('button', { name: /session-context/i })
-        const bar = bars[bars.length - 1]
+        const bar = screen.getByRole('button', { name: /session-context/i })
 
         // tap 展开
         fireEvent.click(bar)
-        expect(screen.getAllByText(/home\/user\/project/).length).toBeGreaterThan(0)
+        expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
 
         // 再 tap 收起
         fireEvent.click(bar)

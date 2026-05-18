@@ -23,11 +23,18 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 /** 自动收起延迟（毫秒） */
 const AUTO_COLLAPSE_DELAY = 3000
 
+/** 标签颜色常量 */
+const TAG_COLORS = {
+    path: { color: '#6366f1', bg: 'rgba(99, 102, 241, 0.1)' },
+    branch: { color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' },
+    worktree: { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+} as const
+
 const BarContainer = styled.div<{ $expanded: boolean }>`
     display: flex;
     flex-direction: column;
     padding: ${({ $expanded }) => $expanded ? '6px 12px' : '2px 12px'};
-    background: rgba(99, 102, 241, 0.04);
+    background: ${TAG_COLORS.path.bg};
     border-bottom: 1px solid var(--ant-color-border);
     cursor: pointer;
     overflow: hidden;
@@ -66,27 +73,12 @@ const Tag = styled.span<{ $variant: 'path' | 'branch' | 'worktree' }>`
     flex-shrink: 0;
 
     ${({ $variant }) => {
-        switch ($variant) {
-            case 'path':
-                return `
-                    color: #6366f1;
-                    background: rgba(99, 102, 241, 0.1);
-                    font-family: monospace;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    max-width: 200px;
-                `
-            case 'branch':
-                return `
-                    color: #22c55e;
-                    background: rgba(34, 197, 94, 0.1);
-                `
-            case 'worktree':
-                return `
-                    color: #f59e0b;
-                    background: rgba(245, 158, 11, 0.1);
-                `
+        const { color, bg } = TAG_COLORS[$variant]
+        const base = `color: ${color}; background: ${bg};`
+        if ($variant === 'path') {
+            return `${base} font-family: monospace; overflow: hidden; text-overflow: ellipsis; max-width: min(200px, 50vw);`
         }
+        return base
     }}
 `
 
