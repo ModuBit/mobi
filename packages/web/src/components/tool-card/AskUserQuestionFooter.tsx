@@ -21,6 +21,7 @@ import { Button, theme as antTheme, Typography, Input, Tabs } from 'antd'
 import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
+import { OptionPreview } from './OptionPreview'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
 
@@ -45,10 +46,12 @@ function OptionRow(props: {
     disabled: boolean
     title: string
     description?: string | null
+    preview?: string | null
     onClick: () => void
 }) {
     const { token } = useToken()
-    return (
+
+    const inner = (
         <button
             type="button"
             onClick={props.onClick}
@@ -79,6 +82,37 @@ function OptionRow(props: {
                 ) : null}
             </span>
         </button>
+    )
+
+    if (!props.preview) return inner
+
+    return (
+        <div style={{
+            display: 'flex',
+            width: '100%',
+            alignItems: 'flex-start',
+            gap: 8,
+            borderRadius: 6,
+            padding: 8,
+            background: props.checked ? token.colorBgTextHover : 'transparent',
+            cursor: props.disabled ? 'not-allowed' : 'pointer',
+            opacity: props.disabled ? 0.5 : 1,
+            transition: 'background 0.2s'
+        }}
+            onClick={props.onClick}
+        >
+            <SelectionMark checked={props.checked} mode={props.mode} />
+            <OptionPreview preview={props.preview}>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 500, color: token.colorText, wordBreak: 'break-word' }}>{props.title}</div>
+                    {props.description ? (
+                        <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
+                            {props.description}
+                        </div>
+                    ) : null}
+                </span>
+            </OptionPreview>
+        </div>
     )
 }
 
@@ -291,6 +325,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                             disabled={props.disabled || loading}
                             title={opt.label}
                             description={opt.description}
+                            preview={opt.preview}
                             onClick={() => toggleOption(qIdx, optIdx)}
                         />
                     )
