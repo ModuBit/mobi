@@ -51,7 +51,22 @@ function OptionRow(props: {
 }) {
     const { token } = useToken()
 
-    const inner = (
+    const labelContent = (
+        <span style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 500, color: token.colorText, wordBreak: 'break-word' }}>{props.title}</div>
+            {props.description ? (
+                <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
+                    {props.description}
+                </div>
+            ) : null}
+        </span>
+    )
+
+    const content = props.preview
+        ? <OptionPreview preview={props.preview}>{labelContent}</OptionPreview>
+        : labelContent
+
+    return (
         <button
             type="button"
             onClick={props.onClick}
@@ -73,46 +88,8 @@ function OptionRow(props: {
             }}
         >
             <SelectionMark checked={props.checked} mode={props.mode} />
-            <span style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 500, color: token.colorText, wordBreak: 'break-word' }}>{props.title}</div>
-                {props.description ? (
-                    <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
-                        {props.description}
-                    </div>
-                ) : null}
-            </span>
+            {content}
         </button>
-    )
-
-    if (!props.preview) return inner
-
-    return (
-        <div style={{
-            display: 'flex',
-            width: '100%',
-            alignItems: 'flex-start',
-            gap: 8,
-            borderRadius: 6,
-            padding: 8,
-            background: props.checked ? token.colorBgTextHover : 'transparent',
-            cursor: props.disabled ? 'not-allowed' : 'pointer',
-            opacity: props.disabled ? 0.5 : 1,
-            transition: 'background 0.2s'
-        }}
-            onClick={props.onClick}
-        >
-            <SelectionMark checked={props.checked} mode={props.mode} />
-            <OptionPreview preview={props.preview}>
-                <span style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontWeight: 500, color: token.colorText, wordBreak: 'break-word' }}>{props.title}</div>
-                    {props.description ? (
-                        <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
-                            {props.description}
-                        </div>
-                    ) : null}
-                </span>
-            </OptionPreview>
-        </div>
     )
 }
 

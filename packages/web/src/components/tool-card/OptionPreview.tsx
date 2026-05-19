@@ -19,7 +19,7 @@ import { Popover } from 'antd'
 import { Eye } from 'lucide-react'
 import { Markdown } from '@/components/ui/Markdown'
 
-export function isHtmlContent(content: string): boolean {
+function isHtmlContent(content: string): boolean {
     return /^<[a-zA-Z]/s.test(content)
 }
 
