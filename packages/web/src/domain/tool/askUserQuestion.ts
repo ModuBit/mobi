@@ -19,6 +19,7 @@ import { isObject } from '@mobi/shared'
 export type AskUserQuestionOption = {
     label: string
     description: string | null
+    preview: string | null
 }
 
 /** AskUserQuestion / RequestUserInput 的 answers 格式 */
@@ -82,7 +83,8 @@ export function parseAskUserQuestionInput(input: unknown): { questions: AskUserQ
             const label = typeof opt.label === 'string' ? opt.label.trim() : ''
             if (!label) continue
             const description = typeof opt.description === 'string' ? opt.description.trim() : null
-            options.push({ label, description })
+            const preview = typeof opt.preview === 'string' ? opt.preview.trim() : null
+            options.push({ label, description, preview })
         }
 
         if (!question && options.length === 0) continue
