@@ -19,6 +19,7 @@ import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { parseAskUserQuestionInput, normalizeAnswers } from '@/domain/tool/askUserQuestion'
 import type { AnswersFormat } from '@/domain/tool/askUserQuestion'
 import { theme as antTheme } from 'antd'
+import { OptionPreview } from '../OptionPreview'
 
 function isAnswerSelected(
     answers: Record<string, string[]> | undefined,
@@ -160,6 +161,25 @@ export function AskUserQuestionView(props: ToolViewProps) {
                             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 {q.options.map((opt, optIdx) => {
                                     const isSelected = isAnswerSelected(answers, q.question, opt.label)
+
+                                    const labelContent = (
+                                        <div style={{ minWidth: 0, flex: 1 }}>
+                                            <div style={{
+                                                fontSize: 14,
+                                                wordBreak: 'break-word',
+                                                color: isSelected ? '#237804' : token.colorText,
+                                                fontWeight: isSelected ? 500 : 400
+                                            }}>
+                                                {opt.label}
+                                            </div>
+                                            {opt.description ? (
+                                                <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
+                                                    {opt.description}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    )
+
                                     return (
                                         <div
                                             key={optIdx}
@@ -180,21 +200,9 @@ export function AskUserQuestionView(props: ToolViewProps) {
                                                         {getSelectionMark(isMulti, isSelected)}
                                                     </span>
                                                 )}
-                                                <div style={{ minWidth: 0, flex: 1 }}>
-                                                    <div style={{
-                                                        fontSize: 14,
-                                                        wordBreak: 'break-word',
-                                                        color: isSelected ? '#237804' : token.colorText,
-                                                        fontWeight: isSelected ? 500 : 400
-                                                    }}>
-                                                        {opt.label}
-                                                    </div>
-                                                    {opt.description ? (
-                                                        <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
-                                                            {opt.description}
-                                                        </div>
-                                                    ) : null}
-                                                </div>
+                                                {opt.preview ? (
+                                                    <OptionPreview preview={opt.preview}>{labelContent}</OptionPreview>
+                                                ) : labelContent}
                                             </div>
                                         </div>
                                     )
