@@ -30,6 +30,8 @@ import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { FilePathText } from '@/components/ui/FilePathText'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFooter'
+import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { Markdown } from '@/components/ui/Markdown'
 import { getAgentPrompt } from '@/components/tool-card/index'
 
@@ -169,13 +171,14 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         metadata
     })
 
+    const isAskUserQuestion = isAskUserQuestionToolName(tool.name)
     const expandOnPermission = isExitPlanModeTool(tool.name)
     const permissionDrivenExpand = expandOnPermission && hasPermission
     const defaultExpanded = EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand
     const [expanded, setExpanded] = useState(defaultExpanded)
     const prevPermissionDrivenExpand = useRef(permissionDrivenExpand)
 
-    // 审批结束后自动收起
+    // ExitPlanMode: 审批结束后自动收起
     useEffect(() => {
         if (!expandOnPermission) return
         if (prevPermissionDrivenExpand.current && !permissionDrivenExpand) {
@@ -183,6 +186,18 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         }
         prevPermissionDrivenExpand.current = permissionDrivenExpand
     }, [expandOnPermission, permissionDrivenExpand])
+
+    // AskUserQuestion: pending 时收起，回答/拒绝/中断后展开
+    const prevAskUserQuestionPending = useRef(isAskUserQuestion && hasPermission)
+    useEffect(() => {
+        if (!isAskUserQuestion) return
+        const wasPending = prevAskUserQuestionPending.current
+        const isPending = hasPermission
+        prevAskUserQuestionPending.current = isPending
+        if (wasPending && !isPending) {
+            setExpanded(true)
+        }
+    }, [isAskUserQuestion, hasPermission])
 
     const [drawerOpen, setDrawerOpen] = useState(false)
     const handleViewDetail = useCallback(() => {
@@ -237,26 +252,39 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                 expanded={expanded}
                 onExpand={setExpanded}
             >
-                <ToolCallPreviewContent
-                    toolCallBlock={block}
-                    metadata={metadata}
-                    onViewDetail={handleViewDetail}
-                    showInput={hasPermission}
-                    maxHeight={toolPresentation.previewMaxHeight
-                        ?? (isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
-                        : PREVIEW_MAX_HEIGHT.DEFAULT)}
-                />
-                {/* pending 状态显示权限操作按钮 */}
+                {/* AskUserQuestion pending 时跳过默认预览，由 AskUserQuestionFooter 接管 */}
+                {!(isAskUserQuestion && hasPermission) && (
+                    <ToolCallPreviewContent
+                        toolCallBlock={block}
+                        metadata={metadata}
+                        onViewDetail={handleViewDetail}
+                        showInput={hasPermission}
+                        maxHeight={toolPresentation.previewMaxHeight
+                            ?? (isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
+                            : PREVIEW_MAX_HEIGHT.DEFAULT)}
+                    />
+                )}
+                {/* pending 状态显示操作按钮 */}
                 {hasPermission && api && sessionId ? (
                     <div style={{ marginTop: 8, paddingLeft: 12, paddingRight: 12 }}>
-                        <PermissionFooter
-                            api={api}
-                            sessionId={sessionId}
-                            metadata={metadata}
-                            tool={toolForPermission}
-                            disabled={disabled ?? false}
-                            onDone={onDone ?? (() => {})}
-                        />
+                        {isAskUserQuestion ? (
+                            <AskUserQuestionFooter
+                                api={api}
+                                sessionId={sessionId}
+                                tool={toolForPermission}
+                                disabled={disabled ?? false}
+                                onDone={onDone ?? (() => {})}
+                            />
+                        ) : (
+                            <PermissionFooter
+                                api={api}
+                                sessionId={sessionId}
+                                metadata={metadata}
+                                tool={toolForPermission}
+                                disabled={disabled ?? false}
+                                onDone={onDone ?? (() => {})}
+                            />
+                        )}
                     </div>
                 ) : null}
             </Think>

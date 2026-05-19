@@ -459,15 +459,15 @@ export function ChatComposer(props: ChatComposerProps) {
         <div style={{ padding: '0 12px 12px' }}>
             {/* 缩小 Select dropdown option 字体 */}
             {COMPACT_DROPDOWN_STYLE}
-            {/* 信息面板：权限请求、任务列表等 */}
+            {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel
                 sessionId={sessionId}
                 agentState={agentState}
                 metadata={metadata ?? null}
                 api={api}
                 disabled={disabled || sending}
-                onPermissionDone={() => {
-                    // 权限操作完成后，session 会通过 SSE 更新
+                onRequestDone={() => {
+                    // 请求交互完成后，session 会通过 SSE 更新
                 }}
                 todos={todos}
                 tasks={tasks}

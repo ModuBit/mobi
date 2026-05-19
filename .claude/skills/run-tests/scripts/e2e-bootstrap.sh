@@ -25,16 +25,45 @@ WEB_PID=""
 RUNNER_PID=""
 CLEANUP_DONE=false
 
-# 检查端口是否被占用，是则输出占用进程并退出
+# 自动清理占用端口的进程
+auto_cleanup_port() {
+    local port=$1
+    local pids
+    pids=$(lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
+    if [[ -z "${pids}" ]]; then
+        return 0
+    fi
+
+    e2e_log_warn "端口 ${port} 被占用，自动清理残留进程..."
+    for pid in ${pids}; do
+        e2e_log_info "终止进程 (PID: ${pid})"
+        kill -9 "${pid}" 2>/dev/null || true
+    done
+
+    # 等待端口释放
+    local waited=0
+    while (( waited < 10 )); do
+        local remaining
+        remaining=$(lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
+        if [[ -z "${remaining}" ]]; then
+            e2e_log_info "端口 ${port} 已释放 ✓"
+            return 0
+        fi
+        sleep 0.5
+        waited=$((waited + 1))
+    done
+
+    e2e_log_error "端口 ${port} 清理失败，仍有进程占用"
+    exit 1
+}
+
+# 检查端口是否被占用，是则自动清理
 check_port() {
     local port=$1
     local output
-    output=$(lsof -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)
+    output=$(lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
     if [[ -n "${output}" ]]; then
-        e2e_log_error "端口 ${port} 已被占用，无法启动 E2E 测试环境"
-        e2e_log_error "占用进程："
-        echo "${output}"
-        exit 1
+        auto_cleanup_port "${port}"
     fi
 }
 

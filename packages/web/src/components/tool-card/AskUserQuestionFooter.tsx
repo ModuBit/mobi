@@ -17,12 +17,10 @@
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Button, theme as antTheme, Typography, Tag, Spin, Input } from 'antd'
-import { CheckOutlined, LeftOutlined, RightOutlined, LoadingOutlined } from '@ant-design/icons'
+import { Button, theme as antTheme, Typography, Input, Tabs } from 'antd'
+import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
-import { getInputStringAny } from '@/core/lib/toolInputUtils'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
 
@@ -140,26 +138,10 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         setFallbackText('')
         setLoading(false)
         setError(null)
-    }, [props.tool.name])
+    }, [props.tool.input])
 
     if (!permission || permission.status !== 'pending') return null
     if (!isAskUserQuestionToolName(props.tool.name)) return null
-
-    const run = async (action: () => Promise<void>) => {
-        if (props.disabled) return
-        setError(null)
-        try {
-            await action()
-            props.onDone()
-        } catch (e) {
-            setError(e instanceof Error ? e.message : t('dialog.error.default'))
-        }
-    }
-
-    const total = Math.max(1, questions.length)
-    const clampedStep = Math.min(Math.max(step, 0), total - 1)
-
-    const mode: 'single' | 'multi' = questions[clampedStep]?.multiSelect ? 'multi' : 'single'
 
     const validateQuestion = (idx: number): string[] | null => {
         if (questions.length === 0) {
@@ -185,7 +167,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         if (questions.length === 0) {
             const a0 = validateQuestion(0)
             if (!a0) {
-                setError(t('tool.selectOption'))
+                setError(t('chat.tool.selectOption'))
                 return
             }
             answers['0'] = a0
@@ -193,7 +175,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             for (let i = 0; i < questions.length; i += 1) {
                 const a = validateQuestion(i)
                 if (!a) {
-                    setError(t('tool.selectOption'))
+                    setError(t('chat.tool.selectOption'))
                     setStep(i)
                     return
                 }
@@ -207,26 +189,10 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
             props.onDone()
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('tool.requestFailed'))
+            setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
         } finally {
             setLoading(false)
         }
-    }
-
-    const next = () => {
-        if (questions.length === 0) return
-        const a = validateQuestion(clampedStep)
-        if (!a) {
-            setError(t('tool.selectOption'))
-            return
-        }
-        setError(null)
-        setStep((s) => Math.min(s + 1, questions.length - 1))
-    }
-
-    const prev = () => {
-        setError(null)
-        setStep((s) => Math.max(s - 1, 0))
     }
 
     const toggleOption = (qIdx: number, optIdx: number) => {
@@ -293,148 +259,137 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                 nextOther[qIdx] = true
                 return nextOther
             })
+            if (!questions[qIdx]?.multiSelect) {
+                setSelectedByQuestion((prevSelected) => {
+                    const nextSelected = prevSelected.slice()
+                    nextSelected[qIdx] = []
+                    return nextSelected
+                })
+            }
         }
+    }
+
+    // 渲染单个问题的选项列表（不含 header）
+    const renderQuestionOptions = (qIdx: number) => {
+        const question = questions[qIdx]
+        if (!question) return null
+        const m: 'single' | 'multi' = question.multiSelect ? 'multi' : 'single'
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {question.question ? (
+                    <div style={{ fontSize: 14, color: token.colorText, wordBreak: 'break-word', marginBottom: 8 }}>
+                        {question.question}
+                    </div>
+                ) : null}
+                {question.options.map((opt, optIdx) => {
+                    const selected = (selectedByQuestion[qIdx] ?? []).includes(optIdx)
+                    return (
+                        <OptionRow
+                            key={optIdx}
+                            checked={selected}
+                            mode={m}
+                            disabled={props.disabled || loading}
+                            title={opt.label}
+                            description={opt.description}
+                            onClick={() => toggleOption(qIdx, optIdx)}
+                        />
+                    )
+                })}
+                <OptionRow
+                    checked={otherSelectedByQuestion[qIdx] ?? false}
+                    mode={m}
+                    disabled={props.disabled || loading}
+                    title={t('chat.tool.other')}
+                    description={t('chat.tool.otherDescription')}
+                    onClick={() => toggleOther(qIdx)}
+                />
+                {(otherSelectedByQuestion[qIdx] ?? false) ? (
+                    <TextArea
+                        value={otherTextByQuestion[qIdx] ?? ''}
+                        onChange={(e) => updateOtherText(qIdx, e.target.value)}
+                        disabled={props.disabled || loading}
+                        placeholder={t('chat.tool.askUserQuestion.otherPlaceholder')}
+                        rows={3}
+                        style={{ marginTop: 8 }}
+                    />
+                ) : null}
+            </div>
+        )
     }
 
     return (
         <div style={{
-            marginTop: 12,
-            borderRadius: 8,
-            border: `1px solid ${token.colorBorder}`,
-            background: token.colorBgContainer,
-            padding: 12
+            marginTop: 8,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8
         }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Tag color="orange">{t('tool.question')}</Tag>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: token.colorTextSecondary }}>
-                            [{clampedStep + 1}/{total}]
-                        </span>
-                    </div>
-                </div>
-            </div>
-
             {error ? (
-                <div style={{ marginTop: 8, fontSize: 12, color: token.colorError }}>
+                <div style={{ fontSize: 12, color: token.colorError }}>
                     {error}
                 </div>
             ) : null}
 
             {questions.length === 0 ? (
-                <div style={{ marginTop: 12 }}>
+                <div>
                     <div style={{ fontSize: 14, color: token.colorTextSecondary }}>
-                        {t('tool.askUserQuestion.fallback')}
+                        {t('chat.tool.askUserQuestion.fallback')}
                     </div>
                     <TextArea
                         value={fallbackText}
                         onChange={(e) => setFallbackText(e.target.value)}
                         disabled={props.disabled || loading}
-                        placeholder={t('tool.askUserQuestion.placeholder')}
+                        placeholder={t('chat.tool.askUserQuestion.placeholder')}
                         rows={4}
                         style={{ marginTop: 8 }}
                     />
                 </div>
+            ) : questions.length === 1 ? (
+                /* 单题：直接展示选项 */
+                <div>
+                    {renderQuestionOptions(0)}
+                    <Button
+                        type="primary"
+                        block
+                        disabled={props.disabled || loading}
+                        onClick={submit}
+                        loading={loading}
+                        icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
+                        style={{ marginTop: 12 }}
+                    >
+                        {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
+                    </Button>
+                </div>
             ) : (
-                <div style={{ marginTop: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                            {questions[clampedStep]?.header ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <Tag color="orange">{questions[clampedStep].header}</Tag>
-                                </div>
-                            ) : null}
-                            {questions[clampedStep]?.question ? (
-                                <div style={{
-                                    fontSize: 14,
-                                    color: token.colorText,
-                                    wordBreak: 'break-word',
-                                    marginTop: questions[clampedStep]?.header ? 8 : 0
-                                }}>
-                                    {questions[clampedStep].question}
-                                </div>
-                            ) : null}
-                        </div>
-                    </div>
-
-                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {questions[clampedStep].options.map((opt, optIdx) => {
-                            const selected = (selectedByQuestion[clampedStep] ?? []).includes(optIdx)
-                            return (
-                                <OptionRow
-                                    key={optIdx}
-                                    checked={selected}
-                                    mode={mode}
-                                    disabled={props.disabled || loading}
-                                    title={opt.label}
-                                    description={opt.description}
-                                    onClick={() => toggleOption(clampedStep, optIdx)}
-                                />
-                            )
-                        })}
-
-                        <OptionRow
-                            checked={otherSelectedByQuestion[clampedStep] ?? false}
-                            mode={mode}
-                            disabled={props.disabled || loading}
-                            title={t('tool.other')}
-                            description={t('tool.otherDescription')}
-                            onClick={() => toggleOther(clampedStep)}
-                        />
-
-                        {(otherSelectedByQuestion[clampedStep] ?? false) ? (
-                            <TextArea
-                                value={otherTextByQuestion[clampedStep] ?? ''}
-                                onChange={(e) => updateOtherText(clampedStep, e.target.value)}
-                                disabled={props.disabled || loading}
-                                placeholder={t('tool.askUserQuestion.otherPlaceholder')}
-                                rows={3}
-                                style={{ marginTop: 8 }}
-                            />
-                        ) : null}
-                    </div>
-                </div>
+                /* 多题：使用 Tabs 组件 */
+                <Tabs
+                    activeKey={String(step)}
+                    onChange={(key) => { setError(null); setStep(Number(key)) }}
+                    size="small"
+                    items={questions.map((q, idx) => ({
+                        key: String(idx),
+                        label: q.header || t('chat.tool.askUserQuestion.questionN', { n: idx + 1 }),
+                        children: (
+                            <div>
+                                {renderQuestionOptions(idx)}
+                                {idx === questions.length - 1 ? (
+                                    <Button
+                                        type="primary"
+                                        block
+                                        disabled={props.disabled || loading}
+                                        onClick={submit}
+                                        loading={loading}
+                                        icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
+                                        style={{ marginTop: 12 }}
+                                    >
+                                        {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
+                                    </Button>
+                                ) : null}
+                            </div>
+                        )
+                    }))}
+                />
             )}
-
-            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <div>
-                    {questions.length > 1 ? (
-                        <Button
-                            size="small"
-                            disabled={props.disabled || loading || clampedStep === 0}
-                            onClick={prev}
-                            icon={<LeftOutlined />}
-                        >
-                            {t('tool.prev')}
-                        </Button>
-                    ) : null}
-                </div>
-
-                <div>
-                    {questions.length > 1 && clampedStep < questions.length - 1 ? (
-                        <Button
-                            type="primary"
-                            size="small"
-                            disabled={props.disabled || loading}
-                            onClick={next}
-                            icon={<RightOutlined />}
-                        >
-                            {t('tool.next')}
-                        </Button>
-                    ) : (
-                        <Button
-                            type="primary"
-                            size="small"
-                            disabled={props.disabled || loading}
-                            onClick={submit}
-                            loading={loading}
-                            icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
-                        >
-                            {loading ? t('tool.submitting') : t('tool.submit')}
-                        </Button>
-                    )}
-                </div>
-            </div>
         </div>
     )
 }

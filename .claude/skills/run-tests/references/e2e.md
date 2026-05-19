@@ -45,6 +45,12 @@ bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh
 
 bootstrap 在后台运行，等待输出中出现 `E2E 测试环境就绪` 后继续。如果启动失败，检查日志 `~/.mobi-e2e/logs/` 下的对应文件。
 
+### 环境操作规范（重要）
+
+- **启动/重启必须使用脚本**：禁止手动 `nohup bun run dev` 或 `kill` + 手动启动。脚本已处理端口冲突、profile 加载、进程管理等所有边界情况，手动操作必然踩坑
+- **修改代码后**：Vite 支持源码 HMR，大多数改动自动热更新；但如果 i18n JSON 翻译未生效，需要刷新浏览器页面（`navigate_page` 重新加载）
+- **故障排查**：先看脚本日志 `~/.mobi-e2e/logs/` 下的文件，不要猜测原因
+
 ### 环境故障恢复
 
 测试过程中环境可能出问题（Hub 挂掉、端口被占等）。恢复步骤：

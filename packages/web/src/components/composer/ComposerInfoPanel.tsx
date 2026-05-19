@@ -16,7 +16,7 @@
 
 /**
  * Composer 信息面板
- * 在 StatusBar 上方展示各种状态信息：权限请求、任务列表、文件修改等
+ * 在 StatusBar 上方展示各种状态信息：工具交互请求、任务列表、文件修改等
  */
 
 import { useMemo, useRef, useState, useEffect } from 'react'
@@ -28,14 +28,18 @@ import { getCustomPermissionTitleKey } from '@/core/lib/toolInputUtils'
 import type { MobiApi } from '@/core/data/api/client'
 import type { SDKUIHints, TodoItem, TaskItem } from '@mobi/shared'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFooter'
+import { RequestUserInputFooter } from '@/components/tool-card/RequestUserInputFooter'
+import { isAskUserQuestionToolName, parseAskUserQuestionInput } from '@/domain/tool/askUserQuestion'
+import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { TodoPanel } from './TodoPanel'
 import { TaskPanel } from './TaskPanel'
 
 const { Text } = Typography
 const { useToken } = antTheme
 
-/** 权限请求面板 */
-function PermissionPanel({
+/** 工具交互请求面板：根据工具类型分发不同的交互组件 */
+function ToolInteractionPanel({
     requests,
     metadata,
     api,
@@ -53,58 +57,63 @@ function PermissionPanel({
     const { token } = useToken()
     const { t } = useTranslation()
 
-    // 转换为 PermissionFooter 需要的格式
-    const permissionTools = useMemo(() => {
+    // 转换为各 Footer 组件需要的格式
+    const pendingRequests = useMemo(() => {
         if (!requests) return []
         return Object.entries(requests).map(([requestId, request]) => {
             const req = request as {
                 tool?: string; arguments?: unknown; createdAt?: number | null
                 sdkHints?: SDKUIHints
             }
+            const toolName = req.tool || 'Unknown'
+            const tool = {
+                name: toolName,
+                input: req.arguments,
+                result: undefined,
+                state: 'running' as const,
+                description: null,
+                startedAt: null,
+                createdAt: req.createdAt ?? Date.now(),
+                permission: {
+                    id: requestId,
+                    status: 'pending' as const,
+                    createdAt: req.createdAt ?? null
+                },
+                sdkHints: req.sdkHints,
+            }
             return {
                 id: requestId,
-                tool: {
-                    name: req.tool || 'Unknown',
-                    input: req.arguments,
-                    result: undefined,
-                    state: 'running' as const,
-                    description: null,
-                    startedAt: null,
-                    createdAt: req.createdAt ?? Date.now(),
-                    permission: {
-                        id: requestId,
-                        status: 'pending' as const,
-                        createdAt: req.createdAt ?? null
-                    },
-                    sdkHints: req.sdkHints,
-                }
+                tool,
+                isAskUserQuestion: isAskUserQuestionToolName(toolName),
+                isRequestUserInput: isRequestUserInputToolName(toolName),
+                askUserQuestionHeader: isAskUserQuestionToolName(toolName)
+                    ? parseAskUserQuestionInput(req.arguments).questions[0]?.header
+                    : undefined,
             }
         })
     }, [requests])
 
-    if (permissionTools.length === 0) return null
+    if (pendingRequests.length === 0) return null
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {permissionTools.map(({ id, tool }) => (
-                <div key={id} style={{
-                    padding: 12,
-                    background: token.colorWarningBg,
-                    border: `1px solid ${token.colorWarningBorder}`,
-                    borderRadius: 8
-                }}>
-                    <div style={{ marginBottom: 8 }}>
-                        <Text strong>
-                            <ExclamationCircleOutlined style={{ color: token.colorWarningText, marginRight: 8 }} />
-                            {(() => {
-                                const customKey = getCustomPermissionTitleKey(tool.name)
-                                if (customKey) return t(customKey)
-                                return tool.sdkHints?.displayName
-                                    ? t('chat.permission.toolRequest', { tool: tool.sdkHints.displayName })
-                                    : t('chat.permission.title')
-                            })()}
-                        </Text>
-                    </div>
+            {pendingRequests.map(({ id, tool, isAskUserQuestion, isRequestUserInput, askUserQuestionHeader }) => {
+                const footerNode = isAskUserQuestion ? (
+                    <AskUserQuestionFooter
+                        api={api}
+                        sessionId={sessionId}
+                        tool={tool}
+                        disabled={disabled}
+                        onDone={onDone}
+                    />
+                ) : isRequestUserInput ? (
+                    <RequestUserInputFooter
+                        sessionId={sessionId}
+                        tool={tool}
+                        disabled={disabled}
+                        onDone={onDone}
+                    />
+                ) : (
                     <PermissionFooter
                         api={api}
                         sessionId={sessionId}
@@ -113,8 +122,35 @@ function PermissionPanel({
                         disabled={disabled}
                         onDone={onDone}
                     />
-                </div>
-            ))}
+                )
+
+                const titleText = isAskUserQuestion
+                    ? (askUserQuestionHeader || t('chat.tool.askUserQuestion.title'))
+                    : (() => {
+                        const customKey = getCustomPermissionTitleKey(tool.name)
+                        if (customKey) return t(customKey)
+                        return tool.sdkHints?.displayName
+                            ? t('chat.permission.toolRequest', { tool: tool.sdkHints.displayName })
+                            : t('chat.permission.title')
+                    })()
+
+                return (
+                    <div key={id} style={{
+                        padding: 12,
+                        background: token.colorWarningBg,
+                        border: `1px solid ${token.colorWarningBorder}`,
+                        borderRadius: 8
+                    }}>
+                        <div style={{ marginBottom: 8 }}>
+                            <Text strong>
+                                <ExclamationCircleOutlined style={{ color: token.colorWarningText, marginRight: 8 }} />
+                                {titleText}
+                            </Text>
+                        </div>
+                        {footerNode}
+                    </div>
+                )
+            })}
         </div>
     )
 }
@@ -125,7 +161,7 @@ export type ComposerInfoPanelProps = {
     metadata: SessionMetadataSummary | null
     api: MobiApi
     disabled: boolean
-    onPermissionDone: () => void
+    onRequestDone: () => void
     todos?: TodoItem[]
     tasks?: TaskItem[]
 }
@@ -140,11 +176,11 @@ export function ComposerInfoPanel({
     metadata,
     api,
     disabled,
-    onPermissionDone,
+    onRequestDone,
     todos,
     tasks
 }: ComposerInfoPanelProps) {
-    const hasPermissionRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
+    const hasPendingRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
     const hasTodos = todos && todos.length > 0
     const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
     const { token } = useToken()
@@ -163,7 +199,7 @@ export function ComposerInfoPanel({
         return () => observer.disconnect()
     }, [])
 
-    if (!hasPermissionRequests && !hasTodos && !hasTasks) return null
+    if (!hasPendingRequests && !hasTodos && !hasTasks) return null
 
     return (
         <div style={{ position: 'relative', padding: '8px 0', marginBottom: 4 }}>
@@ -173,13 +209,13 @@ export function ComposerInfoPanel({
                 style={{ maxHeight: '40vh', overflow: 'auto' }}
             >
                 <Space orientation="vertical" size={8} style={{ width: '100%' }}>
-                    <PermissionPanel
+                    <ToolInteractionPanel
                         requests={agentState?.requests}
                         metadata={metadata}
                         api={api}
                         sessionId={sessionId}
                         disabled={disabled}
-                        onDone={onPermissionDone}
+                        onDone={onRequestDone}
                     />
 
                     <TodoPanel todos={todos} />

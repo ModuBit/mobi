@@ -147,7 +147,27 @@
       "keepPlanningPlaceholder": "Tell Claude what you want it to do next...",
       "sendFeedback": "Send Feedback",
       "result": "Result",
-      "planReadyForReview": "Plan ready for review"
+      "questionsAnswers": "Questions & Answers",
+      "planReadyForReview": "Plan ready for review",
+      "question": "Question",
+      "selectOption": "Please select at least one option",
+      "submit": "Submit",
+      "submitting": "Submitting...",
+      "prev": "Previous",
+      "next": "Next",
+      "other": "Other",
+      "otherDescription": "Select this to enter a custom answer",
+      "askUserQuestion": {
+        "title": "Claude needs your feedback",
+        "questionN": "Question {{n}}",
+        "fallback": "Please enter your answer:",
+        "placeholder": "Type here...",
+        "otherPlaceholder": "Enter custom answer..."
+      },
+      "requestUserInput": "Claude needs your input",
+      "requestUserInput.noteLabel": "Note (optional)",
+      "requestUserInput.notePlaceholder": "Enter a note...",
+      "requestUserInput.textPlaceholder": "Type here..."
     },
     "planMode": {
       "entered": "Entered plan mode",

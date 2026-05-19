@@ -95,7 +95,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
         for (let i = 0; i < questions.length; i++) {
             const q = questions[i]
             if (!validateQuestion(q)) {
-                setError(t('tool.selectOption'))
+                setError(t('chat.tool.selectOption'))
                 setStep(i)
                 return
             }
@@ -107,7 +107,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
             queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
             props.onDone()
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('tool.requestFailed'))
+            setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
         } finally {
             setLoading(false)
         }
@@ -116,7 +116,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
     const next = () => {
         if (!currentQuestion) return
         if (!validateQuestion(currentQuestion)) {
-            setError(t('tool.selectOption'))
+            setError(t('chat.tool.selectOption'))
             return
         }
         setError(null)
@@ -151,7 +151,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
             padding: 12
         }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Tag color="orange">{t('tool.question')}</Tag>
+                <Tag color="orange">{t('chat.tool.question')}</Tag>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: token.colorTextSecondary }}>
                     [{clampedStep + 1}/{total}]
                 </span>
@@ -174,7 +174,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                             value={currentState?.userNote ?? ''}
                             onChange={e => updateUserNote(currentQuestion.id, e.target.value)}
                             disabled={props.disabled || loading}
-                            placeholder={t('tool.requestUserInput.textPlaceholder')}
+                            placeholder={t('chat.tool.requestUserInput.textPlaceholder')}
                             rows={4}
                             style={{ marginTop: 12 }}
                         />
@@ -219,13 +219,13 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                             </div>
                             <div style={{ marginTop: 12 }}>
                                 <div style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4 }}>
-                                    {t('tool.requestUserInput.noteLabel')}
+                                    {t('chat.tool.requestUserInput.noteLabel')}
                                 </div>
                                 <TextArea
                                     value={currentState?.userNote ?? ''}
                                     onChange={e => updateUserNote(currentQuestion.id, e.target.value)}
                                     disabled={props.disabled || loading}
-                                    placeholder={t('tool.requestUserInput.notePlaceholder')}
+                                    placeholder={t('chat.tool.requestUserInput.notePlaceholder')}
                                     rows={3}
                                 />
                             </div>
@@ -238,18 +238,18 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
                 <div>
                     {questions.length > 1 && (
                         <Button size="small" disabled={props.disabled || loading || clampedStep === 0} onClick={prev} icon={<LeftOutlined />}>
-                            {t('tool.prev')}
+                            {t('chat.tool.prev')}
                         </Button>
                     )}
                 </div>
                 <div>
                     {questions.length > 1 && clampedStep < questions.length - 1 ? (
                         <Button type="primary" size="small" disabled={props.disabled || loading} onClick={next} icon={<RightOutlined />}>
-                            {t('tool.next')}
+                            {t('chat.tool.next')}
                         </Button>
                     ) : (
                         <Button type="primary" size="small" disabled={props.disabled || loading} onClick={submit} icon={loading ? <LoadingOutlined /> : <CheckOutlined />}>
-                            {loading ? t('tool.submitting') : t('tool.submit')}
+                            {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
                         </Button>
                     )}
                 </div>

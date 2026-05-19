@@ -147,7 +147,27 @@
       "keepPlanningPlaceholder": "告诉 Claude 你希望它接下来做什么...",
       "sendFeedback": "发送反馈",
       "result": "结果",
-      "planReadyForReview": "Claude 已完成规划，等待确认"
+      "questionsAnswers": "问答记录",
+      "planReadyForReview": "Claude 已完成规划，等待确认",
+      "question": "问题",
+      "selectOption": "请至少选择一个选项",
+      "submit": "提交",
+      "submitting": "提交中...",
+      "prev": "上一步",
+      "next": "下一步",
+      "other": "其他",
+      "otherDescription": "选择此项可自由输入答案",
+      "askUserQuestion": {
+        "title": "Claude 需要你的反馈",
+        "questionN": "问题 {{n}}",
+        "fallback": "请输入你的回答：",
+        "placeholder": "在此输入...",
+        "otherPlaceholder": "输入自定义答案..."
+      },
+      "requestUserInput": "Claude 需要你输入信息",
+      "requestUserInput.noteLabel": "备注（可选）",
+      "requestUserInput.notePlaceholder": "输入备注...",
+      "requestUserInput.textPlaceholder": "在此输入..."
     },
     "planMode": {
       "entered": "已进入计划模式",

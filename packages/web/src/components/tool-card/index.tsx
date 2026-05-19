@@ -391,20 +391,22 @@ function ToolCardInner(props: ToolCardProps) {
     const subtitle = presentation.subtitle ?? props.block.tool.description
     const taskSummary = renderTaskSummary(props.block, props.metadata, token)
     const runningFrom = props.block.tool.startedAt ?? props.block.tool.createdAt
-    const showInline = !presentation.minimal && !isAgentTool(toolName)
-    const CompactToolView = showInline ? getToolViewComponent(toolName) : null
-    const FullToolView = getToolFullViewComponent(toolName)
-    const ResultToolView = getToolResultViewComponent(toolName)
     const permission = props.block.tool.permission
     const isAskUserQuestion = isAskUserQuestionToolName(toolName)
     const isRequestUserInput = isRequestUserInputToolName(toolName)
     const isQuestionTool = isAskUserQuestion || isRequestUserInput
-    const showsPermissionFooter = Boolean(permission && (
+    const showsToolFooter = Boolean(permission && (
         permission.status === 'pending'
         || ((permission.status === 'denied' || permission.status === 'canceled') && Boolean(permission.reason))
     ))
     const isAgentToolCard = isAgentTool(toolName)
-    const hasBody = showInline || isAgentToolCard || taskSummary !== null || showsPermissionFooter
+    const showInline = !presentation.minimal && !isAgentTool(toolName) && !isAskUserQuestion
+    const CompactToolView = showInline ? getToolViewComponent(toolName) : null
+    const FullToolView = getToolFullViewComponent(toolName)
+    const ResultToolView = getToolResultViewComponent(toolName)
+    const hasBody = isAskUserQuestion
+        ? showsToolFooter
+        : showInline || isAgentToolCard || taskSummary !== null || showsToolFooter
     const stateColor = statusColorClass(props.block.tool.state, token)
 
     const [modalOpen, setModalOpen] = useState(false)
@@ -473,11 +475,11 @@ function ToolCardInner(props: ToolCardProps) {
                         ) : (
                             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
                                 <div>
-                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.input')}</div>
+                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('chat.tool.input')}</div>
                                     {renderToolInput(props.block, token)}
                                 </div>
                                 <div>
-                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
+                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('chat.tool.result')}</div>
                                     <ResultToolView block={props.block} metadata={props.metadata} />
                                 </div>
                             </div>
@@ -536,7 +538,7 @@ function ToolCardInner(props: ToolCardProps) {
                                     </div>
                                 ) : null}
                                 <div>
-                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
+                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('chat.tool.result')}</div>
                                     <ResultToolView block={props.block} metadata={props.metadata} />
                                 </div>
                             </div>
@@ -547,7 +549,7 @@ function ToolCardInner(props: ToolCardProps) {
                         <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
                             <div>
                                 <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
-                                    {isQuestionToolWithAnswers ? t('tool.questionsAnswers') : t('tool.input')}
+                                    {isQuestionToolWithAnswers ? t('chat.tool.questionsAnswers') : t('chat.tool.input')}
                                 </div>
                                 {FullToolView ? (
                                     <FullToolView block={props.block} metadata={props.metadata} />
@@ -557,7 +559,7 @@ function ToolCardInner(props: ToolCardProps) {
                             </div>
                             {!isQuestionToolWithAnswers && !(FullToolView && isTerminalTool(toolName)) && (
                                 <div>
-                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('tool.result')}</div>
+                                    <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>{t('chat.tool.result')}</div>
                                     <ResultToolView block={props.block} metadata={props.metadata} />
                                 </div>
                             )}

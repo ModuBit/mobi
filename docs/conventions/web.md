@@ -238,3 +238,17 @@ import { queryKeys } from '@/core/lib/query-keys'
 
 - 使用 i18next，翻译文件在 `src/core/config/i18n/locales/`（`en.json`、`zh.json`）
 - UI 中使用 `t('key')` 而非硬编码文本
+- **key 路径必须包含完整的命名空间前缀**：i18n 资源按页面/模块嵌套，key 必须从顶层开始。例如 `chat` 下的工具翻译 key 是 `chat.tool.xxx`，不是 `tool.xxx`
+
+```typescript
+// ✅ 正确 — 包含完整路径
+t('chat.tool.submit')
+t('chat.tool.other')
+t('chat.tool.askUserQuestion.title')
+
+// ❌ 错误 — 缺少命名空间前缀，会显示字面量
+t('tool.submit')
+t('tool.other')
+```
+
+新增组件中的 `t()` 调用应参照同目录已有组件（如 `PermissionFooter` 使用 `t('chat.tool.xxx')`）。

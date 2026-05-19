@@ -103,8 +103,9 @@ export function formatMCPServerDisplay(server: string): string {
 }
 
 /**
- * 获取工具的自定义权限提示 i18n key
+ * 获取工具的自定义交互提示 i18n key
  * 返回 null 表示使用默认文案
+ * 注：AskUserQuestion / RequestUserInput 的标题在 ToolInteractionPanel 中直接处理
  */
 export function getCustomPermissionTitleKey(toolName: string): string | null {
     if (isExitPlanModeTool(toolName)) return 'chat.tool.planReadyForReview'
