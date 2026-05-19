@@ -23,7 +23,7 @@ function isHtmlContent(content: string): boolean {
     return /^<[a-zA-Z]/s.test(content)
 }
 
-export function PreviewContent({ content }: { content: string }) {
+function PreviewContent({ content }: { content: string }) {
     if (isHtmlContent(content)) {
         return (
             <div

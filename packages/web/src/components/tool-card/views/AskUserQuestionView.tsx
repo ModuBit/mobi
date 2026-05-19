@@ -17,7 +17,6 @@
 import type { ReactNode } from 'react'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { parseAskUserQuestionInput, normalizeAnswers } from '@/domain/tool/askUserQuestion'
-import type { AnswersFormat } from '@/domain/tool/askUserQuestion'
 import { theme as antTheme } from 'antd'
 import { OptionPreview } from '../OptionPreview'
 
@@ -163,7 +162,7 @@ export function AskUserQuestionView(props: ToolViewProps) {
                                     const isSelected = isAnswerSelected(answers, q.question, opt.label)
 
                                     const labelContent = (
-                                        <div style={{ minWidth: 0, flex: 1 }}>
+                                        <span style={{ minWidth: 0, flex: 1 }}>
                                             <div style={{
                                                 fontSize: 14,
                                                 wordBreak: 'break-word',
@@ -177,7 +176,7 @@ export function AskUserQuestionView(props: ToolViewProps) {
                                                     {opt.description}
                                                 </div>
                                             ) : null}
-                                        </div>
+                                        </span>
                                     )
 
                                     return (
