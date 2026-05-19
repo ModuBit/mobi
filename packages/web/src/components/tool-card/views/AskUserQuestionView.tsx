@@ -18,6 +18,7 @@ import type { ReactNode } from 'react'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { parseAskUserQuestionInput, normalizeAnswers } from '@/domain/tool/askUserQuestion'
 import { theme as antTheme } from 'antd'
+import { Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
 import { OptionPreview } from '../OptionPreview'
 
 function isAnswerSelected(
@@ -31,11 +32,11 @@ function isAnswerSelected(
     return questionAnswers.some(a => a.trim() === optionLabel.trim())
 }
 
-function getSelectionMark(isMulti: boolean, isSelected: boolean): string {
+function renderSelectionMark(isMulti: boolean, isSelected: boolean): ReactNode {
     if (isMulti) {
-        return isSelected ? '☑' : '☐'
+        return isSelected ? <SquareCheck size={14} /> : <Square size={14} />
     }
-    return isSelected ? '●' : '○'
+    return isSelected ? <CircleCheck size={14} /> : <Circle size={14} />
 }
 
 function renderOtherAnswers(
@@ -194,9 +195,11 @@ export function AskUserQuestionView(props: ToolViewProps) {
                                                     <span style={{
                                                         flexShrink: 0,
                                                         fontSize: 14,
-                                                        color: isSelected ? '#52c41a' : token.colorTextDisabled
+                                                        color: isSelected ? '#52c41a' : token.colorTextDisabled,
+                                                        display: 'flex',
+                                                        alignItems: 'center'
                                                     }}>
-                                                        {getSelectionMark(isMulti, isSelected)}
+                                                        {renderSelectionMark(isMulti, isSelected)}
                                                     </span>
                                                 )}
                                                 {opt.preview ? (

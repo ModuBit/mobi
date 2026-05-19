@@ -19,6 +19,7 @@ import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { Button, theme as antTheme, Typography, Input, Tabs } from 'antd'
 import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
+import { Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 import { OptionPreview } from './OptionPreview'
@@ -30,12 +31,12 @@ const { useToken } = antTheme
 const { TextArea } = Input
 
 function SelectionMark(props: { checked: boolean; mode: 'single' | 'multi' }) {
-    const mark = props.mode === 'multi'
-        ? (props.checked ? '☑' : '☐')
-        : (props.checked ? '●' : '○')
+    const icon = props.mode === 'multi'
+        ? (props.checked ? <SquareCheck size={16} /> : <Square size={16} />)
+        : (props.checked ? <CircleCheck size={16} /> : <Circle size={16} />)
     return (
-        <span style={{ marginTop: 2, width: 16, flexShrink: 0, textAlign: 'center', color: '#999' }}>
-            {mark}
+        <span style={{ marginTop: 2, width: 16, flexShrink: 0, textAlign: 'center', color: '#999', display: 'flex', alignItems: 'center' }}>
+            {icon}
         </span>
     )
 }
