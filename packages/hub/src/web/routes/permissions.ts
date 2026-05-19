@@ -27,7 +27,7 @@ const decisionSchema = z.enum(['approved', 'approved_for_session', 'denied', 'ab
 // Flat format: Record<string, string[]> (AskUserQuestion)
 // Nested format: Record<string, { answers: string[] }> (request_user_input)
 const answersSchema = z.union([
-    z.record(z.string(), z.array(z.string())),
+    z.record(z.string(), z.union([z.string(), z.array(z.string())])),
     z.record(z.string(), z.object({ answers: z.array(z.string()) }))
 ])
 

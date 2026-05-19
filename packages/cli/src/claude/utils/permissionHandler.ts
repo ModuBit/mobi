@@ -28,7 +28,6 @@ import type { SDKUIHints } from "@mobi/shared";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { deepEqual } from "@/utils/deepEqual";
-import { getToolName } from "./getToolName";
 import { PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { delay } from "@/utils/time";
@@ -45,7 +44,7 @@ interface PermissionResponse {
     reason?: string;
     mode?: PermissionMode;
     allowTools?: string[];
-    answers?: Record<string, string[]> | Record<string, { answers: string[] }>;
+    answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>;
     receivedAt?: number;
     /** @deprecated 未使用，权限范围由 allowTools 和 mode 决定 */
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
@@ -65,78 +64,30 @@ function isQuestionToolName(toolName: string): boolean {
     return isAskUserQuestionToolName(toolName) || isRequestUserInputToolName(toolName);
 }
 
-function formatAskUserQuestionAnswers(answers: Record<string, string[]> | Record<string, { answers: string[] }>, input: unknown): string {
-    // Normalize nested format to flat format for display
-    const flatAnswers: Record<string, string[]> = {};
+function buildAskUserQuestionUpdatedInput(input: unknown, answers: Record<string, string | string[]> | Record<string, { answers: string[] }>): Record<string, unknown> {
+    // 归一化为 flat 格式并转为 SDK 要求的 string value
+    const sdkAnswers: Record<string, string> = {};
     for (const [key, value] of Object.entries(answers)) {
-        if (Array.isArray(value)) {
-            flatAnswers[key] = value;
+        let flat: string[];
+        if (typeof value === 'string') {
+            flat = [value];
+        } else if (Array.isArray(value)) {
+            flat = value;
         } else if (value && typeof value === 'object' && 'answers' in value) {
-            flatAnswers[key] = value.answers;
+            flat = value.answers;
+        } else {
+            continue;
         }
-    }
-
-    const questions = (() => {
-        if (!isObject(input)) return null;
-        const raw = input.questions;
-        if (!Array.isArray(raw)) return null;
-        return raw.filter((q) => isObject(q));
-    })();
-
-    const keys = Object.keys(flatAnswers).sort((a, b) => {
-        const aNum = Number.parseInt(a, 10);
-        const bNum = Number.parseInt(b, 10);
-        if (Number.isFinite(aNum) && Number.isFinite(bNum)) return aNum - bNum;
-        if (Number.isFinite(aNum)) return -1;
-        if (Number.isFinite(bNum)) return 1;
-        return a.localeCompare(b);
-    });
-
-    const lines = keys.map((key) => {
-        const idx = Number.parseInt(key, 10);
-        const q = questions && Number.isFinite(idx) ? questions[idx] : null;
-        const header = q && typeof q.header === 'string' && q.header.trim().length > 0
-            ? q.header.trim()
-            : Number.isFinite(idx)
-                ? `Question ${idx + 1}`
-                : `Question ${key}`;
-        const value = flatAnswers[key] ?? [];
-        const joined = value.map((v) => String(v)).filter((v) => v.trim().length > 0).join(', ');
-        return `${header}: ${joined || '(no answer)'}`;
-    });
-
-    const rawJson = (() => {
-        try {
-            return JSON.stringify(answers);
-        } catch {
-            return null;
-        }
-    })();
-
-    const body = lines.length > 0 ? lines.join('\n') : '(no answers)';
-    return rawJson
-        ? `User answered:\n${body}\n\nRaw answers JSON:\n${rawJson}`
-        : `User answered:\n${body}`;
-}
-
-function buildAskUserQuestionUpdatedInput(input: unknown, answers: Record<string, string[]> | Record<string, { answers: string[] }>): Record<string, unknown> {
-    // Normalize to flat format for AskUserQuestion
-    const flatAnswers: Record<string, string[]> = {};
-    for (const [key, value] of Object.entries(answers)) {
-        if (Array.isArray(value)) {
-            flatAnswers[key] = value;
-        } else if (value && typeof value === 'object' && 'answers' in value) {
-            flatAnswers[key] = value.answers;
-        }
+        sdkAnswers[key] = flat.join(', ');
     }
 
     if (!isObject(input)) {
-        return { answers: flatAnswers };
+        return { answers: sdkAnswers };
     }
 
     return {
         ...input,
-        answers: flatAnswers
+        answers: sdkAnswers
     };
 }
 

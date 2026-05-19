@@ -254,7 +254,7 @@ export class SyncEngine {
         mode?: PermissionMode,
         allowTools?: string[],
         decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
-        answers?: Record<string, string[]> | Record<string, { answers: string[] }>
+        answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>
     ): Promise<void> {
         await this.rpcGateway.approvePermission(sessionId, requestId, mode, allowTools, decision, answers)
     }

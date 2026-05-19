@@ -26,7 +26,7 @@ export type ToolPermission = {
     decision?: 'approved' | 'approved_for_session' | 'abort' | 'acceptEdits'
     mode?: 'acceptEdits'
     allowedTools?: string[]
-    answers?: Record<string, string[]> | Record<string, { answers: string[] }>
+    answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>
 }
 
 /**

@@ -170,7 +170,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                 setError(t('chat.tool.selectOption'))
                 return
             }
-            answers['0'] = a0
+            answers[''] = a0
         } else {
             for (let i = 0; i < questions.length; i += 1) {
                 const a = validateQuestion(i)
@@ -179,7 +179,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     setStep(i)
                     return
                 }
-                answers[String(i)] = a
+                answers[questions[i].question] = a
             }
         }
 

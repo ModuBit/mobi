@@ -21,6 +21,30 @@ export type AskUserQuestionOption = {
     description: string | null
 }
 
+/** AskUserQuestion / RequestUserInput 的 answers 格式 */
+export type AnswersFormat = Record<string, string | string[]> | Record<string, { answers: string[] }>
+
+/** 将单条 answer entry 标准化为 string[] */
+export function normalizeAnswerEntry(entry: string | string[] | { answers: string[] }): string[] {
+    if (typeof entry === 'string') {
+        return [entry]
+    }
+    if (Array.isArray(entry)) {
+        return entry
+    }
+    return entry.answers ?? []
+}
+
+/** 将整个 answers 对象标准化为扁平格式: Record<string, string[]> */
+export function normalizeAnswers(answers: AnswersFormat | undefined): Record<string, string[]> | undefined {
+    if (!answers) return undefined
+    const result: Record<string, string[]> = {}
+    for (const [key, value] of Object.entries(answers)) {
+        result[key] = normalizeAnswerEntry(value as string | string[] | { answers: string[] })
+    }
+    return result
+}
+
 export type AskUserQuestionQuestion = {
     header: string | null
     question: string

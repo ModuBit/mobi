@@ -16,34 +16,17 @@
 
 import type { ReactNode } from 'react'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
-import { parseAskUserQuestionInput } from '@/domain/tool/askUserQuestion'
+import { parseAskUserQuestionInput, normalizeAnswers } from '@/domain/tool/askUserQuestion'
+import type { AnswersFormat } from '@/domain/tool/askUserQuestion'
 import { theme as antTheme } from 'antd'
-
-type AnswersFormat = Record<string, string[]> | Record<string, { answers: string[] }>
-
-/**
- * 将答案标准化为扁平格式: Record<string, string[]>
- */
-function normalizeAnswers(answers: AnswersFormat | undefined): Record<string, string[]> | undefined {
-    if (!answers) return undefined
-    const result: Record<string, string[]> = {}
-    for (const [key, value] of Object.entries(answers)) {
-        if (Array.isArray(value)) {
-            result[key] = value
-        } else if (value && typeof value === 'object' && 'answers' in value) {
-            result[key] = value.answers
-        }
-    }
-    return result
-}
 
 function isAnswerSelected(
     answers: Record<string, string[]> | undefined,
-    questionIdx: number,
+    questionText: string,
     optionLabel: string
 ): boolean {
     if (!answers) return false
-    const questionAnswers = answers[String(questionIdx)]
+    const questionAnswers = answers[questionText]
     if (!questionAnswers || !Array.isArray(questionAnswers)) return false
     return questionAnswers.some(a => a.trim() === optionLabel.trim())
 }
@@ -57,11 +40,11 @@ function getSelectionMark(isMulti: boolean, isSelected: boolean): string {
 
 function renderOtherAnswers(
     answers: Record<string, string[]>,
-    questionIdx: number,
+    questionText: string,
     options: { label: string }[],
     isMulti: boolean
 ): ReactNode {
-    const questionAnswers = answers[String(questionIdx)]
+    const questionAnswers = answers[questionText]
     if (!questionAnswers || !Array.isArray(questionAnswers)) return null
 
     const optionLabels = new Set(options.map(o => o.label.trim()))
@@ -102,9 +85,9 @@ function renderOtherAnswers(
 
 function renderFreeformAnswers(
     answers: Record<string, string[]>,
-    questionIdx: number
+    questionText: string
 ): ReactNode {
-    const questionAnswers = answers[String(questionIdx)]
+    const questionAnswers = answers[questionText]
     if (!questionAnswers || !Array.isArray(questionAnswers)) return null
 
     const cleaned = questionAnswers.map(a => a.trim()).filter(a => a.length > 0)
@@ -147,7 +130,7 @@ export function AskUserQuestionView(props: ToolViewProps) {
     // 当问题数组为空但答案存在时（备用路径），直接渲染答案
     if (questions.length === 0) {
         if (hasAnswers && answers) {
-            return renderFreeformAnswers(answers, 0)
+            return renderFreeformAnswers(answers, '')
         }
         return null
     }
@@ -176,7 +159,7 @@ export function AskUserQuestionView(props: ToolViewProps) {
                         {q.options.length > 0 ? (
                             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 {q.options.map((opt, optIdx) => {
-                                    const isSelected = isAnswerSelected(answers, idx, opt.label)
+                                    const isSelected = isAnswerSelected(answers, q.question, opt.label)
                                     return (
                                         <div
                                             key={optIdx}
@@ -217,11 +200,11 @@ export function AskUserQuestionView(props: ToolViewProps) {
                                     )
                                 })}
 
-                                {hasAnswers && renderOtherAnswers(answers, idx, q.options, isMulti)}
+                                {hasAnswers && renderOtherAnswers(answers, q.question, q.options, isMulti)}
                             </div>
                         ) : hasAnswers && answers ? (
                             // 自由格式问题（无选项）- 直接显示答案
-                            renderFreeformAnswers(answers, idx)
+                            renderFreeformAnswers(answers, q.question)
                         ) : null}
                     </div>
                 )

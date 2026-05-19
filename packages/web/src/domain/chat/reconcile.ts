@@ -48,14 +48,8 @@ function areStringArraysEqual(left?: string[] | null, right?: string[] | null): 
     return true
 }
 
-type AnswersFormat = Record<string, string[]> | Record<string, { answers: string[] }>
-
-function normalizeAnswerEntry(entry: string[] | { answers: string[] }): string[] {
-    if (Array.isArray(entry)) {
-        return entry
-    }
-    return entry.answers ?? []
-}
+import type { AnswersFormat } from '@/domain/tool/askUserQuestion'
+import { normalizeAnswerEntry } from '@/domain/tool/askUserQuestion'
 
 function areAnswersEqual(
     left?: AnswersFormat | null,
