@@ -386,6 +386,9 @@ export async function claudeRemote(opts: {
         pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
         settings: opts.hookSettingsPath,
         additionalDirectories: [getMobiBlobsDir()],
+        toolConfig: {
+            askUserQuestion: { previewFormat: 'html' }
+        },
     }
 
     const [warmSettled, msgSettled] = await Promise.allSettled([
