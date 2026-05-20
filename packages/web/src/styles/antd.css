@@ -113,3 +113,7 @@ html[data-theme='dark'] .ant-btn-variant-solid:hover {
 html[data-theme='dark'] .ant-btn-variant-solid:active {
     color: #18181b !important;
 }
+
+html[data-theme='dark'] .ant-btn-variant-solid:disabled {
+    color: var(--ant-color-text-tertiary) !important;
+}
