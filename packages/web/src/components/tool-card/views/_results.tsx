@@ -30,6 +30,8 @@ import { ToolViewPanel } from '@/components/tool-card/views/ToolViewPanel'
 import type { ToolPermission } from '@/domain/tool/types'
 
 import type { SessionMetadataSummary } from '@/core/data/api/types'
+import { parseAskUserQuestionInput, normalizeAnswers, parseAnswersFromResultText } from '@/domain/tool/askUserQuestion'
+import { useTranslation } from 'react-i18next'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -204,13 +206,44 @@ function CodeBlock(props: { code: string; language?: string }) {
     )
 }
 const AskUserQuestionResultView: ToolViewComponent = (props: ToolViewProps) => {
-    const answers = props.block.tool.permission?.answers ?? null
-    // If answers exist, AskUserQuestionView already shows them with highlighting
-    // Return null to avoid duplicate display
-    if (answers && Object.keys(answers).length > 0) {
-        return null
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const permission = props.block.tool.permission
+
+    // 被拒绝：展示拒绝原因
+    if (permission?.decision === 'abort') {
+        return (
+            <div style={{ fontSize: 13, color: token.colorTextSecondary }}>
+                {permission.reason || t('chat.tool.rejected')}
+            </div>
+        )
     }
-    // Fallback for tools without structured answers
+
+    // 优先从 permission.answers 获取，fallback 从 result 文本解析
+    const answers = normalizeAnswers(permission?.answers) ?? parseAnswersFromResultText(extractTextFromResult(props.block.tool.result))
+    const hasAnswers = answers && Object.keys(answers).length > 0
+
+    if (hasAnswers) {
+        const parsed = parseAskUserQuestionInput(props.block.tool.input)
+        // 有结构化 questions 时按顺序展示
+        const entries = parsed.questions.length > 0
+            ? parsed.questions.map(q => [q.question, answers[q.question] ?? []] as const)
+            : Object.entries(answers).map(([q, a]) => [q, a] as const)
+
+        return (
+            <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {entries.map(([question, ans], idx) => (
+                    <li key={idx} style={{ fontSize: 13 }}>
+                        <span style={{ color: token.colorTextTertiary }}>{question} → </span>
+                        <span style={{ color: token.colorTextSecondary, fontWeight: 500 }}>
+                            {ans.join(', ')}
+                        </span>
+                    </li>
+                ))}
+            </ul>
+        )
+    }
+
     return <MarkdownResultView {...props} />
 }
 const MarkdownResultView: ToolViewComponent = (props: ToolViewProps) => {

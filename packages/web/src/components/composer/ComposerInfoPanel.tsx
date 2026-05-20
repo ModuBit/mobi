@@ -30,7 +30,7 @@ import type { SDKUIHints, TodoItem, TaskItem } from '@mobi/shared'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
 import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFooter'
 import { RequestUserInputFooter } from '@/components/tool-card/RequestUserInputFooter'
-import { isAskUserQuestionToolName, parseAskUserQuestionInput } from '@/domain/tool/askUserQuestion'
+import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { TodoPanel } from './TodoPanel'
 import { TaskPanel } from './TaskPanel'
@@ -87,7 +87,7 @@ function ToolInteractionPanel({
                 isAskUserQuestion: isAskUserQuestionToolName(toolName),
                 isRequestUserInput: isRequestUserInputToolName(toolName),
                 askUserQuestionHeader: isAskUserQuestionToolName(toolName)
-                    ? parseAskUserQuestionInput(req.arguments).questions[0]?.header
+                    ? joinQuestionHeaders(req.arguments) ?? undefined
                     : undefined,
             }
         })

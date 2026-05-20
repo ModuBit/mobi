@@ -177,6 +177,23 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
     // 是否有专用视图组件（Edit、Bash 等有专门的 diff/terminal 视图）
     const hasSpecialView = !!(FullView || CompactView)
 
+    const renderOutputSection = () => (
+        <div style={sectionStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div style={labelStyle}>{t('chat.tool.output')}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <StatusStateIcon state={tool.state} />
+                    {statusText ? (
+                        <Text type="secondary" style={{ fontSize: 11 }}>{statusText}</Text>
+                    ) : null}
+                </div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+                <ResultView block={adaptedBlock} metadata={metadata} />
+            </div>
+        </div>
+    )
+
     // Agent 工具使用 wide 模式，其他按 presentation 配置
     const drawerSize = isAgentTool(tool.name) || presentation.wideDrawer
         ? DRAWER_WIDTH_PRESETS.wide
@@ -194,13 +211,21 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
             {isAgentTool(tool.name) ? (
                 <AgentDrawerContent block={block} metadata={metadata} sessionId={sessionId} />
             ) : hasSpecialView ? (
-                <div style={sectionStyle}>
-                    {FullView ? (
-                        <FullView block={adaptedBlock} metadata={metadata} />
-                    ) : CompactView ? (
-                        <CompactView block={adaptedBlock} metadata={metadata} />
-                    ) : null}
-                </div>
+                <>
+                    <div style={sectionStyle}>
+                        {FullView ? (
+                            <FullView block={adaptedBlock} metadata={metadata} />
+                        ) : CompactView ? (
+                            <CompactView block={adaptedBlock} metadata={metadata} />
+                        ) : null}
+                    </div>
+                    {tool.state === 'error' && (
+                        <>
+                            <div style={{ ...dividerStyle, marginLeft: 16, marginRight: 16 }} />
+                            {renderOutputSection()}
+                        </>
+                    )}
+                </>
             ) : (
                 <>
                     {/* 输入区 */}
@@ -225,20 +250,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
                     <div style={{ ...dividerStyle, marginLeft: 16, marginRight: 16 }} />
 
                     {/* 输出区 */}
-                    <div style={sectionStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                            <div style={labelStyle}>{t('chat.tool.output')}</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <StatusStateIcon state={tool.state} />
-                                {statusText ? (
-                                    <Text type="secondary" style={{ fontSize: 11 }}>{statusText}</Text>
-                                ) : null}
-                            </div>
-                        </div>
-                        <div style={{ overflowX: 'auto' }}>
-                            <ResultView block={adaptedBlock} metadata={metadata} />
-                        </div>
-                    </div>
+                    {renderOutputSection()}
                 </>
             )}
         </ContentDrawer>

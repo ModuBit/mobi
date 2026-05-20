@@ -18,6 +18,7 @@ import type { ReactNode } from 'react'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { CheckCheck } from 'lucide-react'
 import { isObject } from '@mobi/shared'
+import { joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import {
     CodeOutlined,
     SearchOutlined,
@@ -140,18 +141,8 @@ const exitPlanModeConfig = {
 }
 
 // 用户提问工具标题生成（AskUserQuestion / ask_user_question / request_user_input 共用）
-function askUserQuestionTitle(opts: ToolOpts, titleField: 'header' | 'id' = 'header'): string {
-    const questions = isObject(opts.input) && Array.isArray(opts.input.questions)
-        ? opts.input.questions : []
-    const count = questions.length
-    const first = questions[0] ?? null
-    const titleValue = isObject(first) && typeof first[titleField] === 'string'
-        ? (first[titleField] as string).trim() : ''
-
-    if (count > 1) {
-        return `${count} Questions`
-    }
-    return titleValue.length > 0 ? titleValue : 'Question'
+function askUserQuestionTitle(opts: ToolOpts, titleField: 'header' | 'question' = 'header'): string {
+    return joinQuestionHeaders(opts.input, titleField) ?? 'Question'
 }
 
 // 用户提问工具副标题生成（共用）
@@ -406,7 +397,7 @@ export const knownTools: Record<string, {
     ask_user_question: askUserQuestionConfig,
     request_user_input: {
         icon: () => <QuestionCircleOutlined style={DEFAULT_ICON_STYLE} />,
-        title: (opts) => askUserQuestionTitle(opts, 'id'),
+        title: (opts) => askUserQuestionTitle(opts, 'question'),
         subtitle: (opts) => askUserQuestionSubtitle(opts),
         minimal: true
     },

@@ -172,11 +172,21 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
     })
 
     const isAskUserQuestion = isAskUserQuestionToolName(tool.name)
+    const askUserQuestionDone = isAskUserQuestion && !hasPermission
     const expandOnPermission = isExitPlanModeTool(tool.name)
     const permissionDrivenExpand = expandOnPermission && hasPermission
-    const defaultExpanded = EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand
+    const isError = tool.state === 'error'
+    const defaultExpanded = !isError && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const prevPermissionDrivenExpand = useRef(permissionDrivenExpand)
+
+    const prevIsError = useRef(isError)
+    useEffect(() => {
+        if (isError && !prevIsError.current) {
+            setExpanded(false)
+        }
+        prevIsError.current = isError
+    }, [isError])
 
     // ExitPlanMode: 审批结束后自动收起
     useEffect(() => {
@@ -194,7 +204,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         const wasPending = prevAskUserQuestionPending.current
         const isPending = hasPermission
         prevAskUserQuestionPending.current = isPending
-        if (wasPending && !isPending) {
+        if (isPending) {
+            setExpanded(false)
+        } else if (wasPending && !isPending) {
             setExpanded(true)
         }
     }, [isAskUserQuestion, hasPermission])

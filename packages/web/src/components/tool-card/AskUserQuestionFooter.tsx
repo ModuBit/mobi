@@ -31,11 +31,12 @@ const { useToken } = antTheme
 const { TextArea } = Input
 
 function SelectionMark(props: { checked: boolean; mode: 'single' | 'multi' }) {
+    const { token } = useToken()
     const icon = props.mode === 'multi'
         ? (props.checked ? <SquareCheck size={16} /> : <Square size={16} />)
         : (props.checked ? <CircleCheck size={16} /> : <Circle size={16} />)
     return (
-        <span style={{ marginTop: 2, width: 16, flexShrink: 0, textAlign: 'center', color: '#999', display: 'flex', alignItems: 'center' }}>
+        <span style={{ marginTop: 2, width: 16, flexShrink: 0, textAlign: 'center', color: props.checked ? token.colorPrimary : token.colorTextQuaternary, display: 'flex', alignItems: 'center' }}>
             {icon}
         </span>
     )
@@ -52,10 +53,11 @@ function OptionRow(props: {
 }) {
     const { token } = useToken()
 
+    const showDescription = props.description && props.description !== props.title
     const labelContent = (
         <span style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: 500, color: token.colorText, wordBreak: 'break-word' }}>{props.title}</div>
-            {props.description ? (
+            {showDescription ? (
                 <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
                     {props.description}
                 </div>
@@ -78,7 +80,7 @@ function OptionRow(props: {
                 alignItems: 'flex-start',
                 gap: 8,
                 borderRadius: 6,
-                padding: 8,
+                padding: '4px 8px',
                 textAlign: 'left',
                 fontSize: 14,
                 border: 'none',
@@ -172,6 +174,24 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         return answers.length > 0 ? answers : null
     }
 
+    const canSubmit = questions.length === 0
+        ? fallbackText.trim().length > 0
+        : questions.every((_, i) => validateQuestion(i) !== null)
+
+    const renderSubmitButton = () => (
+        <Button
+            type="primary"
+            block
+            disabled={props.disabled || loading || !canSubmit}
+            onClick={submit}
+            loading={loading}
+            icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
+            style={{ marginTop: 8 }}
+        >
+            {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
+        </Button>
+    )
+
     const submit = async () => {
         if (loading) return
 
@@ -239,14 +259,17 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         if (!q) return
 
         if (!q.multiSelect) {
-            setSelectedByQuestion((prevSelected) => {
-                const nextSelected = prevSelected.slice()
-                nextSelected[qIdx] = []
-                return nextSelected
-            })
+            const isCurrentlySelected = otherSelectedByQuestion[qIdx]
+            if (!isCurrentlySelected) {
+                setSelectedByQuestion((prevSelected) => {
+                    const nextSelected = prevSelected.slice()
+                    nextSelected[qIdx] = []
+                    return nextSelected
+                })
+            }
             setOtherSelectedByQuestion((prevOther) => {
                 const nextOther = prevOther.slice()
-                nextOther[qIdx] = true
+                nextOther[qIdx] = !isCurrentlySelected
                 return nextOther
             })
             return
@@ -287,9 +310,9 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         if (!question) return null
         const m: 'single' | 'multi' = question.multiSelect ? 'multi' : 'single'
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {question.question ? (
-                    <div style={{ fontSize: 14, color: token.colorText, wordBreak: 'break-word', marginBottom: 8 }}>
+                    <div style={{ fontSize: 14, color: token.colorText, wordBreak: 'break-word', marginBottom: 4 }}>
                         {question.question}
                     </div>
                 ) : null}
@@ -323,7 +346,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                         disabled={props.disabled || loading}
                         placeholder={t('chat.tool.askUserQuestion.otherPlaceholder')}
                         rows={3}
-                        style={{ marginTop: 8 }}
+                        style={{ marginTop: 4 }}
                     />
                 ) : null}
             </div>
@@ -356,22 +379,13 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                         rows={4}
                         style={{ marginTop: 8 }}
                     />
+                    {renderSubmitButton()}
                 </div>
             ) : questions.length === 1 ? (
                 /* 单题：直接展示选项 */
                 <div>
                     {renderQuestionOptions(0)}
-                    <Button
-                        type="primary"
-                        block
-                        disabled={props.disabled || loading}
-                        onClick={submit}
-                        loading={loading}
-                        icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
-                        style={{ marginTop: 12 }}
-                    >
-                        {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
-                    </Button>
+                    {renderSubmitButton()}
                 </div>
             ) : (
                 /* 多题：使用 Tabs 组件 */
@@ -385,19 +399,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                         children: (
                             <div>
                                 {renderQuestionOptions(idx)}
-                                {idx === questions.length - 1 ? (
-                                    <Button
-                                        type="primary"
-                                        block
-                                        disabled={props.disabled || loading}
-                                        onClick={submit}
-                                        loading={loading}
-                                        icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
-                                        style={{ marginTop: 12 }}
-                                    >
-                                        {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
-                                    </Button>
-                                ) : null}
+                                {idx === questions.length - 1 ? renderSubmitButton() : null}
                             </div>
                         )
                     }))}

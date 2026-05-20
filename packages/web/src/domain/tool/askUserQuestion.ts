@@ -100,6 +100,26 @@ export function parseAskUserQuestionInput(input: unknown): { questions: AskUserQ
     return { questions }
 }
 
+/** 从 questions 中提取 header/question 字段并用 ' / ' 连接，无有效值时返回 null */
+export function joinQuestionHeaders(input: unknown, field: 'header' | 'question' = 'header'): string | null {
+    const parsed = parseAskUserQuestionInput(input)
+    const headers = parsed.questions
+        .map(q => field === 'header' ? q.header : q.question)
+        .filter((h): h is string => h !== null && h.length > 0)
+    if (headers.length === 0) return null
+    return headers.join(' / ')
+}
+
+/** 从 result 文本中解析 "question"="answer" 对 */
+export function parseAnswersFromResultText(text: string | null): Record<string, string[]> | null {
+    if (!text) return null
+    const answers: Record<string, string[]> = {}
+    for (const match of text.matchAll(/"([^"]+)"="([^"]+)"/g)) {
+        answers[match[1]] = [match[2]]
+    }
+    return Object.keys(answers).length > 0 ? answers : null
+}
+
 export function extractAskUserQuestionQuestionsInfo(input: unknown): AskUserQuestionQuestionInfo[] | null {
     if (!isObject(input)) return null
     const raw = input.questions
