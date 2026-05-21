@@ -2,16 +2,12 @@
   "siteTitle": "MOBI | Vibe Coding Anywhere",
   "common": {
     "loading": "Loading...",
-    "noData": "No data",
     "confirm": "Confirm",
     "cancel": "Cancel",
-    "approve": "Approve",
-    "reject": "Reject",
     "back": "Back",
     "backHome": "Back to Home",
     "error": "Error",
-    "success": "Success",
-    "save": "Save"
+    "success": "Success"
   },
   "login": {
     "brand": "MOBI",
@@ -42,9 +38,7 @@
     "themeDark": "Dark Mode"
   },
   "home": {
-    "title": "Sessions",
-    "newSession": "New Session",
-    "logout": "Logout"
+    "newSession": "New Session"
   },
   "newSession": {
     "machine": "Machine",
@@ -63,7 +57,6 @@
     "codexComingSoon": "Coming soon",
     "model": "Model",
     "modelOptional": "optional",
-    "modelAuto": "Auto",
     "effort": "Reasoning Effort",
     "autoMode": "Auto Mode",
     "yoloMode": "YOLO Mode",
@@ -75,50 +68,32 @@
     "loadFailed": "Failed to load session",
     "notFound": "Session not found or has been deleted",
     "tabs": {
-      "chat": "Chat",
       "files": "Files",
       "git": "Git",
       "terminal": "Terminal"
-    },
-    "status": {
-      "thinking": "Thinking",
-      "active": "Active",
-      "ended": "Ended"
     },
     "empty": "No sessions yet. Start a new conversation.",
     "newSession": "New Session",
     "selectToView": "Select a session to view details",
     "actions": {
-      "more": "More Actions",
       "rename": "Rename",
       "archive": "Exit",
       "delete": "Delete",
-      "abort": "Abort",
       "resume": "Resume",
-      "switch": "Switch Mode",
       "deleteConfirmTitle": "Delete Session",
       "deleteConfirmContent": "Are you sure you want to delete this session? This action cannot be undone.",
-      "namePlaceholder": "Enter session name",
       "nameRequired": "Please enter a session name"
     }
   },
-  "sessionGroup": {
-    "active": "active",
-    "total": "{{count}} total",
-    "loadMore": "Load More"
-  },
   "chat": {
-    "empty": "No messages",
     "thinking": "Thinking...",
     "thought": "Thought",
     "contextReset": "Context was reset",
     "compactSummary": "Conversation compressed",
     "compacting": "Compressing conversation...",
-    "sessionEnded": "Session ended",
     "apiError": "API Error",
     "apiRateLimit": "API Rate Limited",
     "retryDelay": "Retrying in {{seconds}}s",
-    "duration": "Duration",
     "durationValue": "Duration: {{value}}",
     "retry": "Retry",
     "switchMode": "Switch to {{mode}} mode",
@@ -133,8 +108,6 @@
     "tool": {
       "input": "Input:",
       "output": "Output:",
-      "description": "Description:",
-      "noContent": "No content",
       "viewDetail": "View details",
       "noOutput": "No output",
       "statusDone": "Done",
@@ -174,7 +147,6 @@
         "placeholder": "Type here...",
         "otherPlaceholder": "Enter custom answer..."
       },
-      "requestUserInput": "Claude needs your input",
       "requestUserInput.noteLabel": "Note (optional)",
       "requestUserInput.notePlaceholder": "Enter a note...",
       "requestUserInput.textPlaceholder": "Type here..."
@@ -221,15 +193,10 @@
   },
   "terminal": {
     "title": "Terminal",
-    "connected": "Terminal connected",
-    "exited": "Process exited with code: {{code}}",
     "reconnect": "Reconnect"
   },
   "settings": {
     "title": "Settings",
-    "account": "Account",
-    "notifications": "Notifications",
-    "about": "About",
     "comingSoon": "More settings coming soon..."
   },
   "composer": {
@@ -242,12 +209,8 @@
     ],
     "bashPlaceholder": "Enter shell command...",
     "attach": "Add attachment",
-    "settings": "Settings",
     "abort": "Abort",
     "send": "Send",
-    "model": "Model",
-    "permission": "Permission",
-    "permissionMode": "Permission Mode",
     "permissionModes": {
       "default": "Default",
       "acceptEdits": "Accept Edits",
@@ -258,9 +221,6 @@
     "switchToRemote": "Switch to Remote Mode"
   },
   "status": {
-    "online": "Online",
-    "offline": "Offline",
-    "permissionRequired": "Permission Required",
     "percentLeft": "{{percent}}% left"
   },
   "notification": {

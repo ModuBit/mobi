@@ -2,16 +2,12 @@
   "siteTitle": "MOBI | 随时随地 Vibe Coding",
   "common": {
     "loading": "加载中...",
-    "noData": "暂无数据",
     "confirm": "确认",
     "cancel": "取消",
-    "approve": "批准",
-    "reject": "拒绝",
     "back": "返回",
     "backHome": "返回首页",
     "error": "错误",
-    "success": "成功",
-    "save": "保存"
+    "success": "成功"
   },
   "login": {
     "brand": "MOBI",
@@ -42,9 +38,7 @@
     "themeDark": "深色模式"
   },
   "home": {
-    "title": "会话列表",
-    "newSession": "新建会话",
-    "logout": "退出"
+    "newSession": "新建会话"
   },
   "newSession": {
     "machine": "机器",
@@ -63,7 +57,6 @@
     "codexComingSoon": "即将支持",
     "model": "模型",
     "modelOptional": "可选",
-    "modelAuto": "自动",
     "effort": "推理深度",
     "autoMode": "自动模式",
     "yoloMode": "YOLO 模式",
@@ -75,50 +68,32 @@
     "loadFailed": "加载会话失败",
     "notFound": "会话不存在或已被删除",
     "tabs": {
-      "chat": "对话",
       "files": "文件",
       "git": "Git",
       "terminal": "终端"
-    },
-    "status": {
-      "thinking": "思考中",
-      "active": "活跃",
-      "ended": "已结束"
     },
     "empty": "暂无会话，点击新建开始对话",
     "newSession": "新建会话",
     "selectToView": "选择会话查看详情",
     "actions": {
-      "more": "更多操作",
       "rename": "重命名",
       "archive": "退出",
       "delete": "删除",
-      "abort": "中断",
       "resume": "恢复",
-      "switch": "切换模式",
       "deleteConfirmTitle": "删除会话",
       "deleteConfirmContent": "确定要删除此会话吗？此操作无法撤销。",
-      "namePlaceholder": "请输入会话名称",
       "nameRequired": "请输入会话名称"
     }
   },
-  "sessionGroup": {
-    "active": "活跃",
-    "total": "共 {{count}} 个",
-    "loadMore": "加载更多"
-  },
   "chat": {
-    "empty": "暂无消息",
     "thinking": "思考中...",
     "thought": "思考完成",
     "contextReset": "上下文已重置",
     "compactSummary": "对话已压缩",
     "compacting": "正在压缩对话...",
-    "sessionEnded": "会话已结束",
     "apiError": "API 错误",
     "apiRateLimit": "API 限流",
     "retryDelay": "{{seconds}} 秒后重试",
-    "duration": "耗时",
     "durationValue": "耗时: {{value}}",
     "retry": "重试",
     "switchMode": "切换到 {{mode}} 模式",
@@ -133,8 +108,6 @@
     "tool": {
       "input": "输入:",
       "output": "输出:",
-      "description": "描述:",
-      "noContent": "无内容",
       "viewDetail": "查看详情",
       "noOutput": "无输出",
       "statusDone": "完成",
@@ -174,7 +147,6 @@
         "placeholder": "在此输入...",
         "otherPlaceholder": "输入自定义答案..."
       },
-      "requestUserInput": "Claude 需要你输入信息",
       "requestUserInput.noteLabel": "备注（可选）",
       "requestUserInput.notePlaceholder": "输入备注...",
       "requestUserInput.textPlaceholder": "在此输入..."
@@ -221,15 +193,10 @@
   },
   "terminal": {
     "title": "终端",
-    "connected": "终端已连接",
-    "exited": "进程已退出，代码: {{code}}",
     "reconnect": "重连"
   },
   "settings": {
     "title": "设置",
-    "account": "账户",
-    "notifications": "通知",
-    "about": "关于",
     "comingSoon": "更多设置敬请期待..."
   },
   "composer": {
@@ -242,12 +209,8 @@
     ],
     "bashPlaceholder": "输入 Shell 命令...",
     "attach": "添加附件",
-    "settings": "设置",
     "abort": "中断",
     "send": "发送",
-    "model": "模型",
-    "permission": "权限",
-    "permissionMode": "权限模式",
     "permissionModes": {
       "default": "默认",
       "acceptEdits": "接受编辑",
@@ -258,9 +221,6 @@
     "switchToRemote": "切换到远程模式"
   },
   "status": {
-    "online": "在线",
-    "offline": "离线",
-    "permissionRequired": "需要权限确认",
     "percentLeft": "{{percent}}% 剩余"
   },
   "notification": {
