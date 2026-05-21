@@ -14,35 +14,218 @@
  * limitations under the License.
  */
 
-import { Form, Input, Button, Typography, Space, App, ConfigProvider, theme as antTheme } from 'antd'
-import { SunOutlined, MoonOutlined } from '@ant-design/icons'
+import { Form, Input, Button, App } from 'antd'
+import { SunOutlined, MoonOutlined, GithubOutlined } from '@ant-design/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/core/data/stores/authStore'
-import { useUiStore } from '@/core/data/stores/uiStore'
+import { useThemeLocaleToggle } from '@/components/layout/useThemeLocaleToggle'
 import { Helmet } from 'react-helmet-async'
 import axios from 'axios'
 import { useState } from 'react'
 import styled from '@emotion/styled'
-import { ParticleCanvas } from '@/components/ui/ParticleCanvas'
-import { shadcnDarkToken } from '@/core/config/theme/tokens'
-import { shadcnDarkComponents } from '@/core/config/theme/components'
 
-const { Title, Text } = Typography
+const CURRENT_YEAR = new Date().getFullYear()
 
-/** 登录页面全屏容器 */
+const FEATURES = [
+    { titleKey: 'feature1Title', descKey: 'feature1Desc' },
+    { titleKey: 'feature2Title', descKey: 'feature2Desc' },
+    { titleKey: 'feature3Title', descKey: 'feature3Desc' },
+] as const
+
+/** 全屏容器：左右分栏 */
 const PageContainer = styled.div`
-    position: relative;
+    display: flex;
+    width: 100%;
     min-height: 100vh;
+`
+
+/**
+ * 左面板：品牌展示（仅 PC 端可见）
+ * 通过 html[data-theme] 选择器适配 dark/light 主题
+ */
+const BrandPanel = styled.div`
+    display: none;
+
+    @media (min-width: 1024px) {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        width: 50%;
+        padding: 48px;
+        position: relative;
+        overflow: hidden;
+        background: #fafafa;
+        border-right: 1px solid #e4e4e7;
+
+        html[data-theme='dark'] & {
+            background: #09090b;
+            border-right-color: #27272a;
+        }
+    }
+`
+
+/** 网格纹理 */
+const GridPattern = styled.div`
+    position: absolute;
+    inset: 0;
+    opacity: 0.03;
+    pointer-events: none;
+    background-image: linear-gradient(#000 1px, transparent 1px),
+        linear-gradient(90deg, #000 1px, transparent 1px);
+    background-size: 60px 60px;
+
+    html[data-theme='dark'] & {
+        background-image: linear-gradient(#fff 1px, transparent 1px),
+            linear-gradient(90deg, #fff 1px, transparent 1px);
+    }
+`
+
+/** 装饰光晕 */
+const GlowOrb = styled.div`
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    filter: blur(100px);
+    background: radial-gradient(circle, rgba(228, 228, 231, 0.4), transparent);
+
+    html[data-theme='dark'] & {
+        background: radial-gradient(
+            circle,
+            rgba(39, 39, 42, 0.3),
+            transparent
+        );
+    }
+`
+
+/** Logo 图片 */
+const LogoImg = styled.img`
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+`
+
+/** 品牌名 */
+const BrandName = styled.span`
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: #18181b;
+
+    html[data-theme='dark'] & {
+        color: #fafafa;
+    }
+`
+
+/** 品牌标语 */
+const Tagline = styled.h2`
+    font-size: 20px;
+    font-weight: 300;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+    color: #52525b;
+    margin: 0;
+
+    html[data-theme='dark'] & {
+        color: #d4d4d8;
+    }
+`
+
+/** 品牌描述 */
+const Description = styled.p`
+    font-size: 14px;
+    line-height: 1.7;
+    color: #71717a;
+    margin: 16px 0 0;
+
+    html[data-theme='dark'] & {
+        color: #a1a1aa;
+    }
+`
+
+/** 特性列表 */
+const FeatureList = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 32px;
+`
+
+/** 特性项 */
+const FeatureItem = styled.div`
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+
+    .feature-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #18181b;
+        margin-top: 7px;
+        flex-shrink: 0;
+
+        html[data-theme='dark'] & {
+            background: #fafafa;
+        }
+    }
+
+    .feature-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: #3f3f46;
+
+        html[data-theme='dark'] & {
+            color: #e4e4e7;
+        }
+    }
+
+    .feature-desc {
+        font-size: 12px;
+        color: #a1a1aa;
+        margin-top: 2px;
+
+        html[data-theme='dark'] & {
+            color: #71717a;
+        }
+    }
+`
+
+/** 底部版权 */
+const FooterMeta = styled.div`
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #a1a1aa;
+
+    html[data-theme='dark'] & {
+        color: #52525b;
+    }
+`
+
+/** 右面板：登录表单 */
+const LoginPanel = styled.div`
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #000;
+    width: 100%;
+    padding: 32px;
+    position: relative;
+    background: #fff;
+
+    html[data-theme='dark'] & {
+        background: #000;
+    }
+
+    @media (min-width: 1024px) {
+        width: 50%;
+    }
 `
 
-/** 右上角固定按钮组 */
+/** 右上角操作按钮 */
 const TopActions = styled.div`
-    position: fixed;
+    position: absolute;
     top: 16px;
     right: 16px;
     display: flex;
@@ -67,8 +250,13 @@ const ActiveLocale = styled.span`
     z-index: 2;
     padding: 0 3px;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.85);
-    color: #18181b;
+    background: rgba(24, 24, 27, 0.9);
+    color: #fafafa;
+
+    html[data-theme='dark'] & {
+        background: rgba(255, 255, 255, 0.85);
+        color: #18181b;
+    }
 `
 
 const InactiveLocale = styled.span`
@@ -82,69 +270,92 @@ const InactiveLocale = styled.span`
     padding: 0 2px;
     border-radius: 2px;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    color: rgba(255, 255, 255, 0.45);
+    border: 1px solid rgba(24, 24, 27, 0.2);
+    color: rgba(24, 24, 27, 0.4);
+
+    html[data-theme='dark'] & {
+        border-color: rgba(255, 255, 255, 0.25);
+        color: rgba(255, 255, 255, 0.45);
+    }
 `
 
-/** 表单容器：极轻的深色衬底，保证可读性 */
-const LoginForm = styled.div`
-    position: relative;
-    z-index: 1;
+/** 移动端 Logo */
+const MobileLogo = styled.div`
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    @media (min-width: 1024px) {
+        display: none;
+    }
+`
+
+/** 表单区域 */
+const FormArea = styled.div`
     width: 100%;
-    max-width: 340px;
-    padding: 32px 28px;
-    background: rgba(0, 0, 0, 0.35);
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-
-    .ant-input-affix-wrapper {
-        background: rgba(255, 255, 255, 0.12);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        border-radius: 8px;
-
-        &:hover {
-            border-color: rgba(255, 255, 255, 0.45);
-        }
-
-        &-focused {
-            border-color: rgba(255, 255, 255, 0.6);
-            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
-        }
-
-        input {
-            background: transparent;
-            color: rgba(255, 255, 255, 0.9);
-
-            &::placeholder {
-                color: rgba(255, 255, 255, 0.55);
-            }
-        }
-
-        .ant-input-suffix {
-            color: rgba(255, 255, 255, 0.5);
-        }
-    }
-
-    .ant-btn-primary {
-        height: 40px;
-        border-radius: 8px;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-    }
+    max-width: 380px;
 `
 
-/** 标题区域 */
-const Header = styled.div`
+/** 欢迎标题 */
+const WelcomeTitle = styled.h1`
+    font-size: 24px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px;
     text-align: center;
-    margin-bottom: 28px;
+    color: #18181b;
+
+    html[data-theme='dark'] & {
+        color: #fafafa;
+    }
 `
 
-/** 副标题 */
-const Subtitle = styled(Text)`
-    display: block;
-    margin-top: 8px;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.65);
+/** 欢迎副标题 */
+const WelcomeSubtitle = styled.p`
+    font-size: 14px;
+    margin: 0;
+    text-align: center;
+    color: #a1a1aa;
+
+    html[data-theme='dark'] & {
+        color: #71717a;
+    }
+`
+
+/** 帮助链接 */
+const HelpLink = styled.a`
+    position: absolute;
+    bottom: 32px;
+    right: 32px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #a1a1aa;
+    text-decoration: none;
+    transition: color 0.2s;
+
+    html[data-theme='dark'] & {
+        color: #52525b;
+    }
+
+    &:hover {
+        color: #52525b;
+
+        html[data-theme='dark'] & {
+            color: #a1a1aa;
+        }
+    }
+
+    @media (max-width: 1023px) {
+        position: static;
+        margin-top: 24px;
+        justify-content: center;
+    }
 `
 
 export function LoginPage() {
@@ -152,16 +363,9 @@ export function LoginPage() {
     const { setToken } = useAuthStore()
     const [form] = Form.useForm()
     const [loading, setLoading] = useState(false)
-    const { theme, setTheme, locale, setLocale } = useUiStore()
+    const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
+    const isDark = resolvedTheme === 'dark'
     const { message } = App.useApp()
-
-    const handleToggleTheme = () => {
-        setTheme(theme === 'dark' ? 'light' : 'dark')
-    }
-
-    const handleToggleLocale = () => {
-        setLocale(locale === 'zh' ? 'en' : 'zh')
-    }
     const { t } = useTranslation()
 
     const baseUrl = window.location.origin
@@ -170,7 +374,7 @@ export function LoginPage() {
         setLoading(true)
         try {
             const authRes = await axios.post(`${baseUrl}/api/auth`, {
-                accessToken: values.token
+                accessToken: values.token,
             })
 
             if (!authRes.data?.token) {
@@ -183,7 +387,9 @@ export function LoginPage() {
         } catch (err) {
             console.error('Login error:', err)
             if (axios.isAxiosError(err) && err.response?.data?.error) {
-                message.error(`${t('login.authFailed')}：${err.response.data.error}`)
+                message.error(
+                    `${t('login.authFailed')}：${err.response.data.error}`,
+                )
             } else {
                 message.error(t('login.authFailed'))
             }
@@ -193,21 +399,89 @@ export function LoginPage() {
     }
 
     return (
-        <ConfigProvider theme={{ algorithm: antTheme.darkAlgorithm, token: shadcnDarkToken, components: shadcnDarkComponents }}>
+        <PageContainer>
             <Helmet>
                 <title>{t('siteTitle')}</title>
             </Helmet>
-            <PageContainer>
-                <ParticleCanvas
-                    imageUrl="/logo.svg"
-                    style={{ position: 'absolute', inset: 0, zIndex: 0 }}
+
+            <BrandPanel>
+                <GridPattern />
+                <GlowOrb
+                    style={{
+                        top: '-20%',
+                        left: '-20%',
+                        width: '80%',
+                        height: '80%',
+                    }}
                 />
+                <GlowOrb
+                    style={{
+                        bottom: '-10%',
+                        right: '-10%',
+                        width: '60%',
+                        height: '60%',
+                    }}
+                />
+
+                <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <LogoImg src="/logo.svg" alt="Mobi" />
+                    <BrandName>{t('login.brand')}</BrandName>
+                </div>
+
+                <div
+                    style={{
+                        position: 'relative',
+                        zIndex: 1,
+                        maxWidth: 480,
+                    }}
+                >
+                    <Tagline>{t('login.subtitle')}</Tagline>
+                    <Description>{t('login.description')}</Description>
+                    <FeatureList>
+                        {FEATURES.map(({ titleKey, descKey }) => (
+                            <FeatureItem key={titleKey}>
+                                <div className="feature-dot" />
+                                <div>
+                                    <div className="feature-title">
+                                        {t(`login.${titleKey}`)}
+                                    </div>
+                                    <div className="feature-desc">
+                                        {t(`login.${descKey}`)}
+                                    </div>
+                                </div>
+                            </FeatureItem>
+                        ))}
+                    </FeatureList>
+                </div>
+
+                <div style={{ position: 'relative', zIndex: 1 }}>
+                    <FooterMeta>© {CURRENT_YEAR} Mobi</FooterMeta>
+                </div>
+            </BrandPanel>
+
+            <LoginPanel>
+                <MobileLogo>
+                    <LogoImg src="/logo.svg" alt="Mobi" style={{ width: 24, height: 24 }} />
+                    <BrandName>{t('login.brand')}</BrandName>
+                </MobileLogo>
+
                 <TopActions>
                     <Button
                         type="text"
-                        onClick={handleToggleLocale}
-                        title={locale === 'zh' ? 'Switch to English' : '切换到中文'}
-                        style={{ padding: 0, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        onClick={toggleLocale}
+                        title={
+                            locale === 'zh'
+                                ? 'Switch to English'
+                                : '切换到中文'
+                        }
+                        style={{
+                            padding: 0,
+                            width: 32,
+                            height: 32,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
                     >
                         <LocaleSwitchIcon>
                             <ActiveLocale>
@@ -221,47 +495,61 @@ export function LoginPage() {
                     <Button
                         shape="circle"
                         type="text"
-                        icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-                        onClick={handleToggleTheme}
+                        icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+                        onClick={toggleTheme}
                     />
                 </TopActions>
-                <LoginForm>
-                    <Space orientation="vertical" style={{ width: '100%' }} size="large">
-                        <Header>
-                            <Title level={2} style={{ marginBottom: 0, fontWeight: 600, letterSpacing: '-0.02em' }}>
-                                {t('login.title')}
-                            </Title>
-                            <Subtitle>{t('login.subtitle')}</Subtitle>
-                        </Header>
-                        <Form
-                            form={form}
-                            layout="vertical"
-                            onFinish={handleSubmit}
+
+                <FormArea>
+                    <div style={{ marginBottom: 32 }}>
+                        <WelcomeTitle>{t('login.welcome')}</WelcomeTitle>
+                        <WelcomeSubtitle>
+                            {t('login.welcomeSubtitle')}
+                        </WelcomeSubtitle>
+                    </div>
+
+                    <Form
+                        form={form}
+                        layout="vertical"
+                        onFinish={handleSubmit}
+                    >
+                        <Form.Item
+                            name="token"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: t('login.tokenRequired'),
+                                },
+                            ]}
                         >
-                            <Form.Item
-                                name="token"
-                                rules={[{ required: true, message: t('login.tokenRequired') }]}
+                            <Input.Password
+                                placeholder={t('login.tokenPlaceholder')}
+                                size="large"
+                            />
+                        </Form.Item>
+                        <Form.Item style={{ marginBottom: 0 }}>
+                            <Button
+                                type="primary"
+                                htmlType="submit"
+                                block
+                                size="large"
+                                loading={loading}
                             >
-                                <Input.Password
-                                    placeholder={t('login.tokenPlaceholder')}
-                                    size="large"
-                                />
-                            </Form.Item>
-                            <Form.Item style={{ marginBottom: 0 }}>
-                                <Button
-                                    type="primary"
-                                    htmlType="submit"
-                                    block
-                                    size="large"
-                                    loading={loading}
-                                >
-                                    {t('login.connect')}
-                                </Button>
-                            </Form.Item>
-                        </Form>
-                    </Space>
-                </LoginForm>
-            </PageContainer>
-        </ConfigProvider>
+                                {t('login.connect')}
+                            </Button>
+                        </Form.Item>
+                    </Form>
+                </FormArea>
+
+                <HelpLink
+                    href="https://github.com/modubit/mobi"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    <GithubOutlined style={{ fontSize: 14 }} />
+                    GitHub
+                </HelpLink>
+            </LoginPanel>
+        </PageContainer>
     )
 }
