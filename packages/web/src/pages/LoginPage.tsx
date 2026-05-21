@@ -352,9 +352,11 @@ const HelpLink = styled.a`
     }
 
     @media (max-width: 1023px) {
-        position: static;
-        margin-top: 24px;
-        justify-content: center;
+        position: absolute;
+        bottom: 32px;
+        right: auto;
+        left: 50%;
+        transform: translateX(-50%);
     }
 `
 
