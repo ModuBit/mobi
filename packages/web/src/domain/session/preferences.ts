@@ -15,11 +15,15 @@
  */
 
 import type { AgentType } from './types'
+import { CLAUDE_MODEL_FALLBACK } from './types'
 import { EFFORT_LEVELS, type EffortLevel } from '@mobi/shared'
 
 const AGENT_STORAGE_KEY = 'mobi:newSession:agent'
+const MODEL_STORAGE_KEY = 'mobi:newSession:model'
 const YOLO_STORAGE_KEY = 'mobi:newSession:yolo'
 const EFFORT_STORAGE_KEY = 'mobi:newSession:effort'
+
+const VALID_MODELS = CLAUDE_MODEL_FALLBACK.map(m => m.value)
 
 const VALID_AGENTS: AgentType[] = ['claude', 'codex']
 
@@ -55,6 +59,20 @@ export function loadPreferredAgent(): AgentType {
  */
 export function savePreferredAgent(agent: AgentType): void {
     savePreference(AGENT_STORAGE_KEY, agent)
+}
+
+/**
+ * 加载首选 Model
+ */
+export function loadPreferredModel(): string {
+    return loadPreference(MODEL_STORAGE_KEY, (v): v is string => VALID_MODELS.includes(v), 'auto')
+}
+
+/**
+ * 保存首选 Model
+ */
+export function savePreferredModel(model: string): void {
+    savePreference(MODEL_STORAGE_KEY, model)
 }
 
 /**

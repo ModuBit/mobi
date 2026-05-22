@@ -45,9 +45,11 @@ import { getEffortOptions, type EffortLevel } from '@mobi/shared'
 import {
     loadPreferredAgent,
     loadPreferredEffort,
+    loadPreferredModel,
     loadPreferredYoloMode,
     savePreferredAgent,
     savePreferredEffort,
+    savePreferredModel,
     savePreferredYoloMode,
 } from '@/domain/session/preferences'
 
@@ -94,7 +96,7 @@ export function NewSession(props: NewSessionProps) {
     const [machineId, setMachineId] = useState<string | null>(null)
     const [directory, setDirectory] = useState('')
     const [agent, setAgent] = useState<AgentType>(loadPreferredAgent)
-    const [model, setModel] = useState('auto')
+    const [model, setModel] = useState(loadPreferredModel)
     const [yoloMode, setYoloMode] = useState(loadPreferredYoloMode)
     const [effort, setEffort] = useState<EffortLevel>(loadPreferredEffort)
     const [sessionType, setSessionType] = useState<SessionType>('simple')
@@ -114,6 +116,7 @@ export function NewSession(props: NewSessionProps) {
 
     // 保存偏好设置
     useEffect(() => { savePreferredAgent(agent) }, [agent])
+    useEffect(() => { savePreferredModel(model) }, [model])
     useEffect(() => { savePreferredYoloMode(yoloMode) }, [yoloMode])
     useEffect(() => { savePreferredEffort(effort) }, [effort])
 
