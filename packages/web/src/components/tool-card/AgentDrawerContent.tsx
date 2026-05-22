@@ -105,7 +105,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
             items.push({
                 key: '__loading__',
                 role: 'assistant',
-                content: <AgentLoadingBubble agentId={tool.id} status="outputting" />,
+                content: <AgentLoadingBubble agentId={tool.id} status="outputting" startedAt={tool.startedAt ?? tool.createdAt} />,
                 variant: 'borderless',
             })
         }

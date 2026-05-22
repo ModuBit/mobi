@@ -53,6 +53,29 @@ export function formatRelativeTime(timestamp: number): string {
     }
 }
 
+/**
+ * 格式化运行时长
+ * @param startedAt 开始时间戳（毫秒）
+ * @param now 当前时间戳（毫秒），默认 Date.now()
+ * @returns 格式化时长，如 "34s"、"2m 12s"、"1h 12m 58s"
+ */
+export function formatElapsedTime(startedAt: number, now: number = Date.now()): string {
+    const diffMs = Math.max(0, now - startedAt)
+    const totalSeconds = Math.floor(diffMs / 1000)
+
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ${seconds}s`
+    }
+    if (minutes > 0) {
+        return `${minutes}m ${seconds}s`
+    }
+    return `${seconds}s`
+}
+
 /** 格式化消息时间：当天 HH:mm，非当天 MM/DD HH:mm，非当年 YYYY/MM/DD HH:mm */
 export function formatMessageTime(createdAt: number): string {
     const date = new Date(createdAt)

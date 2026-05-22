@@ -15,7 +15,7 @@
  */
 
 // 思考状态随机消息
-const VIBING_MESSAGES = [
+export const VIBING_MESSAGES: readonly string[] = [
     "Accomplishing", "Actioning", "Actualizing", "Baking", "Booping", "Brewing",
     "Calculating", "Cerebrating", "Channelling", "Churning", "Clauding", "Coalescing",
     "Cogitating", "Computing", "Combobulating", "Concocting", "Conjuring", "Considering",
@@ -33,12 +33,3 @@ const VIBING_MESSAGES = [
     "Wibbling", "Wizarding", "Working", "Wrangling"
 ]
 
-/** 基于 seed 确定性选择 vibing 消息 */
-export function getVibingMessage(seed: number): string {
-    return VIBING_MESSAGES[Math.abs(seed) % VIBING_MESSAGES.length].toLowerCase() + '…'
-}
-
-/** 基于 sessionId 字符串生成 seed */
-export function hashSessionId(sessionId: string): number {
-    return sessionId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-}
