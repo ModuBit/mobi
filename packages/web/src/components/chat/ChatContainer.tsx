@@ -402,7 +402,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={bubbleCopyStyles} />
             <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (
-                    <ChatWelcome />
+                    <ChatWelcome sessionId={sessionId} />
                 ) : (
                     <>
                         {/* autoScroll=false：不使用 Bubble.List 的 autoScroll。

@@ -29,7 +29,7 @@ function getTimeOfDay(): 'morning' | 'afternoon' | 'evening' {
     return 'evening'
 }
 
-export function ChatWelcome() {
+export function ChatWelcome({ sessionId }: { sessionId?: string }) {
     const { t } = useTranslation()
 
     const { greeting, subtitle } = useMemo(() => {
@@ -48,7 +48,7 @@ export function ChatWelcome() {
             style={{ height: '100%', userSelect: 'none' }}
             gap="middle"
         >
-            <PixelAvatar status="idle" size={72} />
+            <PixelAvatar name={sessionId} status="idle" size={72} />
             <Text strong style={{ fontSize: 22, opacity: 0.85 }}>{greeting}</Text>
             <Text style={{ fontSize: 14, opacity: 0.5 }}>{subtitle}</Text>
         </Flex>

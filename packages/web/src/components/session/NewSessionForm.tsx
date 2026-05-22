@@ -111,8 +111,8 @@ export function NewSession(props: NewSessionProps) {
         }
     }, [sessionType])
 
-    // Agent 变化时重置模型
-    useEffect(() => { setModel('auto') }, [agent])
+    // Agent 变化时加载该 agent 的模型偏好
+    useEffect(() => { setModel(loadPreferredModel()) }, [agent])
 
     // 保存偏好设置
     useEffect(() => { savePreferredAgent(agent) }, [agent])

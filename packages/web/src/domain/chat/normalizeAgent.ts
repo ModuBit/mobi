@@ -113,6 +113,8 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
                 continue
             }
             if (block.type === 'thinking' && typeof block.thinking === 'string') {
+                // 空思考内容不渲染
+                if (block.thinking.trim() === '') continue
                 blocks.push({ type: 'reasoning', text: block.thinking, uuid, parentUUID })
                 continue
             }

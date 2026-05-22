@@ -53,6 +53,74 @@ describe('normalizeAgentRecord', () => {
         ])
     })
 
+    it('should skip empty thinking content', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'thinking', thinking: '', signature: '' },
+                        ],
+                    },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.content).toEqual([])
+    })
+
+    it('should skip whitespace-only thinking content', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'thinking', thinking: '   \n\t  ', signature: '' },
+                        ],
+                    },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.content).toEqual([])
+    })
+
+    it('should preserve non-empty thinking content', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'thinking', thinking: 'Let me analyze this...', signature: '' },
+                        ],
+                    },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.content).toEqual([
+            { type: 'reasoning', text: 'Let me analyze this...', uuid: baseParams.messageId, parentUUID: null }
+        ])
+    })
+
     it('should handle user output', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,
