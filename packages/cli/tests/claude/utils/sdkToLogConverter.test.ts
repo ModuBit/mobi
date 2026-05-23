@@ -207,19 +207,21 @@ describe('SDKToLogConverter', () => {
     })
 
     describe('Result messages', () => {
-        it('should not convert result messages', () => {
+        it('should convert success result messages', () => {
             const sdkMessage = {
                 type: 'result',
                 subtype: 'success',
                 result: 'Task completed',
                 num_turns: 5,
                 usage: {
-                    input_tokens: 100,
-                    output_tokens: 200
+                    input_tokens: 12300,
+                    output_tokens: 4500,
+                    cache_creation_input_tokens: null,
+                    cache_read_input_tokens: null,
                 },
                 total_cost_usd: 0.05,
-                duration_ms: 3000,
-                duration_api_ms: 2500,
+                duration_ms: 134000,
+                duration_api_ms: 120000,
                 is_error: false,
                 session_id: 'result-session',
                 stop_reason: null,
@@ -230,31 +232,44 @@ describe('SDKToLogConverter', () => {
 
             const logMessage = converter.convert(sdkMessage)
 
-            expect(logMessage).toBeNull()
+            expect(logMessage).not.toBeNull()
+            expect(logMessage?.type).toBe('system')
+            expect(logMessage?.subtype).toBe('turn_result')
+            expect(logMessage?.duration_ms).toBe(134000)
+            expect(logMessage?.usage).toEqual({
+                input_tokens: 12300,
+                output_tokens: 4500,
+                cache_creation_input_tokens: null,
+                cache_read_input_tokens: null,
+            })
+            expect(logMessage?.is_error).toBe(false)
         })
 
-        it('should not convert error results', () => {
+        it('should convert error result messages with errors array', () => {
             const sdkMessage = {
                 type: 'result',
                 subtype: 'error_max_turns',
                 num_turns: 10,
                 total_cost_usd: 0.1,
-                duration_ms: 5000,
-                duration_api_ms: 4500,
+                duration_ms: 45200,
+                duration_api_ms: 40000,
                 is_error: true,
                 session_id: 'error-session',
                 stop_reason: null,
-                usage: { input_tokens: 100, output_tokens: 200 },
+                usage: { input_tokens: 8100, output_tokens: 2200 },
                 modelUsage: {},
                 permission_denials: [],
-                errors: [],
+                errors: ['reached maximum turns (15)'],
                 uuid: '00000000-0000-0000-0000-000000000006',
             } as unknown as SDKResultMessage
 
             const logMessage = converter.convert(sdkMessage)
 
-            // Error results are not converted to summaries
-            expect(logMessage).toBeFalsy()
+            expect(logMessage).not.toBeNull()
+            expect(logMessage?.type).toBe('system')
+            expect(logMessage?.subtype).toBe('turn_result')
+            expect(logMessage?.is_error).toBe(true)
+            expect(logMessage?.errors).toEqual(['reached maximum turns (15)'])
         })
     })
 
