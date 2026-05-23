@@ -111,10 +111,8 @@ export function formatEvent(
                 : `${tokens} tokens`
 
             return (
-                <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}>
-                    <span style={{ color: 'var(--ant-color-text-secondary)' }}>
-                        {durationText} · {tokensText}
-                    </span>
+                <div style={{ fontFamily: 'var(--font-mono)' }}>
+                    {durationText} · {tokensText}
                     {error && (
                         <div style={{
                             marginTop: 2,
