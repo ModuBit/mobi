@@ -27,6 +27,7 @@ Thumbs.db
 
 # Claude / Superpowers (local config)
 .claude/settings.local.json
+.claude/worktrees/
 .qoder
 .superpowers/
 
