@@ -193,19 +193,10 @@ export class SDKToLogConverter {
             }
 
             case 'result': {
-                const resultMsg = sdkMessage as SDKResultMessage
                 logMessage = {
                     ...baseFields,
-                    type: 'system',
-                    subtype: 'turn_result',
-                    duration_ms: resultMsg.duration_ms,
-                    num_turns: resultMsg.num_turns,
-                    total_cost_usd: resultMsg.total_cost_usd,
-                    usage: resultMsg.usage,
-                    is_error: resultMsg.is_error,
-                    stop_reason: resultMsg.stop_reason,
-                    ...('errors' in resultMsg && resultMsg.errors && { errors: resultMsg.errors }),
-                } as RawJSONLines
+                    ...(sdkMessage as SDKResultMessage),
+                } as any
                 break
             }
 

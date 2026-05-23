@@ -233,9 +233,10 @@ describe('SDKToLogConverter', () => {
             const logMessage = converter.convert(sdkMessage)
 
             expect(logMessage).not.toBeNull()
-            expect(logMessage?.type).toBe('system')
-            expect(logMessage?.subtype).toBe('turn_result')
+            expect(logMessage?.type).toBe('result')
+            expect(logMessage?.subtype).toBe('success')
             expect(logMessage?.duration_ms).toBe(134000)
+            expect(logMessage?.duration_api_ms).toBe(120000)
             expect(logMessage?.usage).toEqual({
                 input_tokens: 12300,
                 output_tokens: 4500,
@@ -269,8 +270,8 @@ describe('SDKToLogConverter', () => {
             const logMessage = converter.convert(sdkMessage)
 
             expect(logMessage).not.toBeNull()
-            expect(logMessage?.type).toBe('system')
-            expect(logMessage?.subtype).toBe('turn_result')
+            expect(logMessage?.type).toBe('result')
+            expect(logMessage?.subtype).toBe('error_max_turns')
             expect(logMessage?.is_error).toBe(true)
             expect(logMessage?.errors).toEqual(['reached maximum turns (15)'])
         })
