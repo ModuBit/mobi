@@ -238,6 +238,171 @@ function handleStreamEvent(
     }
 }
 
+/**
+ * 将 Promise 与 AbortSignal 竞争，signal abort 时返回 fallback
+ */
+function abortable<T>(promise: Promise<T>, signal: AbortSignal, fallback: T): Promise<T> {
+    if (signal.aborted) return Promise.resolve(fallback)
+    return Promise.race([
+        promise,
+        new Promise<T>((resolve) => {
+            signal.addEventListener('abort', () => resolve(fallback), { once: true })
+        }),
+    ])
+}
+
+/**
+ * 双循环共享上下文，用于 sdkOutputLoop 和 userInputLoop 之间通信
+ */
+export interface LoopContext {
+    /** 是否为 /compact 命令（sdkOutputLoop 读取后重置） */
+    isCompactCommand: boolean
+}
+
+/**
+ * SDK 输出循环：持续拉取 SDK 消息并分发
+ * 不再阻塞等待用户输入，后台任务产生的消息可被即时处理
+ */
+export async function sdkOutputLoop(
+    response: Query,
+    ctx: LoopContext,
+    opts: {
+        initialModel?: string
+        path: string
+        onMessage: (message: SDKMessage) => void
+        snapshotSender: StreamSnapshotSender
+        onSessionFound: (id: string) => void
+        onReady: () => void
+        onRunningChange: (running: boolean) => void
+        onCompletionEvent?: (message: string) => void
+        /** 中止信号，外部调用 abort() 时停止迭代 */
+        signal?: AbortSignal
+    },
+): Promise<void> {
+    let queryStarted = false;
+
+    for await (const message of response) {
+        // 外部中止时立即退出迭代
+        if (opts.signal?.aborted) break
+
+        if (!queryStarted) {
+            queryStarted = true;
+            logger.debug(`[sdkOutputLoop] First message received from SDK: ${message.type}/${('subtype' in message ? (message as { subtype: string }).subtype : '-')}`);
+        }
+        logger.debugLargeJson(`[sdkOutputLoop] Message ${message.type}`, message);
+
+        // 处理流式事件：累积 delta 到 snapshot sender
+        if (message.type === 'stream_event') {
+            handleStreamEvent(message, opts.snapshotSender, opts.initialModel);
+            continue;
+        }
+
+        // 收到完整 assistant 消息时刷新快照（不重置 index，由 message_start 处理）
+        if (message.type === 'assistant') {
+            opts.snapshotSender.flush();
+        }
+
+        // 分发消息
+        opts.onMessage(message);
+
+        // 处理 system/init 消息
+        if (message.type === 'system' && message.subtype === 'init') {
+            opts.onRunningChange(true);
+
+            const systemInit = message as SDKSystemMessage;
+
+            // 等待 session 文件写入磁盘
+            if (systemInit.session_id) {
+                logger.debug(`[sdkOutputLoop] Waiting for session file: ${systemInit.session_id}`);
+                const projectDir = getProjectPath(opts.path);
+                const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`));
+                logger.debug(`[sdkOutputLoop] Session file found: ${systemInit.session_id} ${found}`);
+                opts.onSessionFound(systemInit.session_id);
+            }
+        }
+
+        // 处理 result 消息：不阻塞，直接继续拉取后台消息
+        if (message.type === 'result') {
+            opts.onRunningChange(false);
+            const { terminal_reason } = message as SDKResultMessage;
+            const isInterrupt = terminal_reason === 'aborted_streaming' || terminal_reason === 'aborted_tools';
+
+            if (isInterrupt) {
+                logger.debug('[sdkOutputLoop] Interrupted');
+            } else {
+                logger.debug('[sdkOutputLoop] Result received');
+            }
+
+            // 读取并重置 isCompactCommand
+            if (ctx.isCompactCommand) {
+                logger.debug('[sdkOutputLoop] Compaction completed');
+                opts.onCompletionEvent?.('Compaction completed');
+                ctx.isCompactCommand = false;
+            }
+
+            // 通知就绪
+            opts.onReady();
+        }
+    }
+
+    logger.debug(`[sdkOutputLoop] Response iteration ended normally. queryStarted=${queryStarted}`);
+}
+
+/**
+ * 用户输入循环：独立等待用户消息并推送到 PushableAsyncIterable
+ * 与 sdkOutputLoop 并行运行，互不阻塞
+ */
+export async function userInputLoop(
+    messages: PushableAsyncIterable<SDKUserMessage>,
+    ctx: LoopContext,
+    opts: {
+        nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>
+        specialCommandCtx: SpecialCommandContext
+        /** 中止信号，外部调用 abort() 时退出循环 */
+        signal?: AbortSignal
+    },
+): Promise<void> {
+    while (!opts.signal?.aborted) {
+        // 将 nextMessage 与 abort 信号竞争，避免 sdkOutputLoop 结束后永远挂起
+        const next = await (opts.signal
+            ? abortable(opts.nextMessage(), opts.signal, null)
+            : opts.nextMessage()
+        )
+
+        // null 或已中止 → 结束
+        if (!next || opts.signal?.aborted) {
+            messages.end();
+            return;
+        }
+
+        const result = await handleSpecialCommand(next.message, opts.specialCommandCtx);
+
+        // 需要退出（如 /clear）
+        if (result.shouldExit) {
+            messages.end();
+            return;
+        }
+
+        // /compact 命令：设置标记并继续发送给 SDK
+        if (result.isCompact) {
+            ctx.isCompactCommand = true;
+        }
+
+        // 已处理但非 compact（即 bash），继续等待下一条
+        if (result.handled && !result.isCompact) {
+            continue;
+        }
+
+        // 普通消息或 compact，推送到 messages
+        messages.push({
+            type: 'user',
+            message: { role: 'user', content: sanitizeUserMessage(next.message) },
+            parent_tool_use_id: null,
+            session_id: '',
+        });
+    }
+}
+
 export async function claudeRemote(opts: {
 
     // Fixed parameters
@@ -445,7 +610,6 @@ export async function claudeRemote(opts: {
         session_id: '', // SDK 会在运行时填充
     });
 
-    let queryStarted = false;
     let warmConsumed = false;
     let response: Query;
     if (warmRef) {
@@ -475,113 +639,32 @@ export async function claudeRemote(opts: {
     );
     snapshotSender.start();
 
+    const loopCtx: LoopContext = {
+        isCompactCommand,
+    }
+
+    // 双循环协调：任一退出时 abort 通知另一个终止
+    const loopAbort = new AbortController()
+
     try {
-        logger.debug(`[claudeRemote] Starting to iterate over response`);
-
-        for await (const message of response) {
-            if (!queryStarted) {
-                queryStarted = true;
-                logger.debug(`[claudeRemote] First message received from SDK: ${message.type}/${('subtype' in message ? (message as { subtype: string }).subtype : '-')}`);
-            }
-            logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
-
-            // 处理流式事件：累积 delta 到 snapshot sender
-            if (message.type === 'stream_event') {
-                handleStreamEvent(message, snapshotSender, initial.mode.model);
-                continue;
-            }
-
-            // 收到完整 assistant 消息时刷新快照（不重置 index，由 message_start 处理）
-            if (message.type === 'assistant') {
-                snapshotSender.flush();
-            }
-
-            // Handle messages
-            opts.onMessage(message);
-
-            // Handle special system messages
-            if (message.type === 'system' && message.subtype === 'init') {
-                // Start running when session initializes
-                updateRunning(true);
-
-                const systemInit = message as SDKSystemMessage;
-
-                // Session id is still in memory, wait until session file is written to disk
-                if (systemInit.session_id) {
-                    logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`);
-                    const projectDir = getProjectPath(opts.path);
-                    const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`));
-                    logger.debug(`[claudeRemote] Session file found: ${systemInit.session_id} ${found}`);
-                    opts.onSessionFound(systemInit.session_id);
-                }
-            }
-
-            // Handle result messages
-            if (message.type === 'result') {
-                updateRunning(false);
-                const resultMsg = message as SDKResultMessage;
-                const terminalReason = resultMsg.terminal_reason;
-                const isInterrupt = terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools';
-
-                if (isInterrupt) {
-                    logger.debug('[claudeRemote] Interrupted, waiting for next message');
-                } else {
-                    logger.debug('[claudeRemote] Result received, waiting for next message');
-                }
-
-                // Send completion messages
-                if (isCompactCommand) {
-                    logger.debug('[claudeRemote] Compaction completed');
-                    if (opts.onCompletionEvent) {
-                        opts.onCompletionEvent('Compaction completed');
-                    }
-                    isCompactCommand = false;
-                }
-
-                // Send ready event
-                opts.onReady();
-
-                // Push next message - 处理特殊命令
-                let next = await opts.nextMessage();
-                while (next) {
-                    const result = await handleSpecialCommand(next.message, specialCommandCtx)
-
-                    if (result.shouldExit) {
-                        messages.end()
-                        return
-                    }
-
-                    if (result.isCompact) {
-                        isCompactCommand = true
-                    }
-
-                    // 如果已处理但不是 compact（即 bash），继续等待下一条
-                    if (result.handled && !result.isCompact) {
-                        next = await opts.nextMessage()
-                        continue
-                    }
-
-                    // 普通消息或 compact，跳出循环发送给 SDK
-                    break
-                }
-
-                if (!next) {
-                    messages.end();
-                    return;
-                }
-
-                messages.push({
-                    type: 'user',
-                    message: { role: 'user', content: sanitizeUserMessage(next.message) },
-                    parent_tool_use_id: null,
-                    session_id: '', // SDK 会在运行时填充
-                });
-            }
-
-        }
-
-        // for await 正常结束（迭代器耗尽，无异常）
-        logger.debug(`[claudeRemote] Response iteration ended normally. queryStarted=${queryStarted}`);
+        await Promise.race([
+            sdkOutputLoop(response, loopCtx, {
+                initialModel: initial.mode.model,
+                path: opts.path,
+                onMessage: opts.onMessage,
+                snapshotSender,
+                onSessionFound: opts.onSessionFound,
+                onReady: opts.onReady,
+                onRunningChange: updateRunning,
+                onCompletionEvent: opts.onCompletionEvent,
+                signal: loopAbort.signal,
+            }),
+            userInputLoop(messages, loopCtx, {
+                nextMessage: opts.nextMessage,
+                specialCommandCtx,
+                signal: loopAbort.signal,
+            }),
+        ])
     } catch (e) {
         // 增强错误日志：捕获 SDK 抛出的非标准错误对象
         const errorInfo = e instanceof Error
@@ -590,6 +673,12 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Error iterating response:`, errorInfo);
         throw e;
     } finally {
+        // 通知未退出的循环终止
+        loopAbort.abort()
+        // 关闭 SDK 输出，确保 sdkOutputLoop 停止迭代
+        try { response.close() } catch (e) {
+            logger.debug(`[claudeRemote] Error closing response:`, e)
+        }
         snapshotSender.destroy();
         updateRunning(false);
         if (!warmConsumed) warmRef?.close();
