@@ -105,7 +105,9 @@ export function buildChatBubbleItems(
         if (ASSISTANT_BLOCK_KINDS.has(block.kind)) {
             role = 'assistant'
         } else if (block.kind === 'agent-event') {
-            role = 'system'
+            // turn-result 事件映射为 assistant 角色（独立 bubble）
+            // 其他事件仍为 system 角色（无边框系统行）
+            role = block.event.type === 'turn-result' ? 'assistant' : 'system'
         } else if (block.kind === 'cli-output') {
             role = block.source === 'assistant' ? 'assistant' : 'user'
         }
