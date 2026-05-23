@@ -17,7 +17,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
 import { CodeHighlighter } from '@ant-design/x'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
-import Latex from '@ant-design/x-markdown/plugins/Latex'
+import Latex from './latexPlugin'
 import oneDark from 'react-syntax-highlighter/dist/esm/styles/prism/one-dark'
 import oneLight from 'react-syntax-highlighter/dist/esm/styles/prism/one-light'
 import { detectLanguage, FALLBACK_LANGUAGE, getCachedDetectedLanguage } from '@/core/utils/codeLanguageDetect'
@@ -235,8 +235,9 @@ export const Markdown = memo(function Markdown({
     )
 
     const mergedConfig = useMemo(() => {
-        if (!config) return { extensions: LATEX_EXTENSIONS }
+        if (!config) return { breaks: true, extensions: LATEX_EXTENSIONS }
         return {
+            breaks: true,
             ...config,
             extensions: [
                 ...(Array.isArray(config.extensions) ? config.extensions : []),
