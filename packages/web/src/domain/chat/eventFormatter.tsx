@@ -99,6 +99,43 @@ export function formatEvent(
         case 'plan-mode-enter-failed': {
             return t('chat.planMode.enterFailed')
         }
+        case 'turn-result': {
+            const durationMs = Number(event.durationMs) || 0
+            const tokens = Number(event.tokens) || 0
+            const error = typeof event.error === 'string' ? event.error : null
+
+            let durationText: string
+            if (durationMs >= 60000) {
+                const min = Math.floor(durationMs / 60000)
+                const sec = Math.floor((durationMs % 60000) / 1000)
+                durationText = `${min}m ${sec}s`
+            } else if (durationMs >= 1000) {
+                durationText = `${(durationMs / 1000).toFixed(1)}s`
+            } else {
+                durationText = `${durationMs}ms`
+            }
+
+            const tokensText = tokens >= 1000
+                ? `${(tokens / 1000).toFixed(1)}k tokens`
+                : `${tokens} tokens`
+
+            return (
+                <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}>
+                    <span style={{ color: 'var(--ant-color-text-secondary)' }}>
+                        {durationText} · {tokensText}
+                    </span>
+                    {error && (
+                        <div style={{
+                            marginTop: 2,
+                            color: 'rgba(255, 77, 79, 0.63)',
+                            fontFamily: 'var(--font-sans)',
+                        }}>
+                            {error}
+                        </div>
+                    )}
+                </div>
+            )
+        }
         default:
             return null
     }
