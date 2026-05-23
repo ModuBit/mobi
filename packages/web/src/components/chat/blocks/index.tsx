@@ -45,7 +45,7 @@ export type ChatBlockContext = {
 export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.ReactNode {
     switch (block.kind) {
         case 'user-text':
-            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} />
+            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} enableSlashCommand />
         case 'agent-text':
             return <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} />
         case 'agent-reasoning':

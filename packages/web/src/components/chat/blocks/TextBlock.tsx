@@ -18,13 +18,14 @@ import { memo } from 'react'
 import { Markdown } from '@/components/ui/Markdown'
 
 /** 渲染文本块（user-text / agent-text 共用） */
-export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreaming }: {
+export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreaming, enableSlashCommand }: {
     text: string
     isSynthetic?: boolean
     isStreaming?: boolean
+    enableSlashCommand?: boolean
 }) {
     if (isSynthetic) {
         return <span style={{ fontSize: 12, opacity: 0.5 }}>{text}</span>
     }
-    return <Markdown content={text} streaming={isStreaming} />
+    return <Markdown content={text} streaming={isStreaming} enableSlashCommand={enableSlashCommand} />
 })

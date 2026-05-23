@@ -18,6 +18,7 @@ import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC
 import { CodeHighlighter } from '@ant-design/x'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
 import Latex from './latexPlugin'
+import slashCommand from './slashCommandPlugin'
 import oneDark from 'react-syntax-highlighter/dist/esm/styles/prism/one-dark'
 import oneLight from 'react-syntax-highlighter/dist/esm/styles/prism/one-light'
 import { detectLanguage, FALLBACK_LANGUAGE, getCachedDetectedLanguage } from '@/core/utils/codeLanguageDetect'
@@ -117,6 +118,9 @@ const ONE_LIGHT_THEME = withZeroMargin(oneLight as PrismTheme)
 /** 默认启用的 x-markdown 扩展（LaTeX 公式渲染） */
 const LATEX_EXTENSIONS = Latex()
 
+/** slash command badge 扩展 */
+const SLASH_COMMAND_EXTENSIONS = [slashCommand()]
+
 /**
  * 块级代码自动检测语言渲染：
  * - 显式 lang 优先
@@ -195,6 +199,12 @@ export interface MarkdownProps extends Omit<XMarkdownProps, 'streaming' | 'conte
     typing?: boolean
     /** 包裹容器的内联样式（默认 maxWidth: 100%） */
     style?: CSSProperties
+    /**
+     * 是否启用 slash command badge 渲染（如 `/compact`、`/board`）。
+     * 仅在用户消息场景启用，避免工具输出中的 `/` 路径被误渲染。
+     * 默认 `false`。
+     */
+    enableSlashCommand?: boolean
 }
 
 /**
@@ -214,6 +224,7 @@ export const Markdown = memo(function Markdown({
     className,
     style,
     config,
+    enableSlashCommand = false,
     ...rest
 }: MarkdownProps) {
     const useDrip = !!streaming && typing !== false
@@ -235,16 +246,18 @@ export const Markdown = memo(function Markdown({
     )
 
     const mergedConfig = useMemo(() => {
-        if (!config) return { breaks: true, extensions: LATEX_EXTENSIONS }
+        const slashExts = enableSlashCommand ? SLASH_COMMAND_EXTENSIONS : []
+        if (!config) return { breaks: true, extensions: [...slashExts, ...LATEX_EXTENSIONS] }
         return {
             breaks: true,
             ...config,
             extensions: [
                 ...(Array.isArray(config.extensions) ? config.extensions : []),
+                ...slashExts,
                 ...LATEX_EXTENSIONS,
             ],
         }
-    }, [config])
+    }, [config, enableSlashCommand])
 
     const finalContent = useDrip ? displayContent : (content ?? '')
 

@@ -96,3 +96,22 @@ html[data-theme='dark'] .x-markdown tbody tr:nth-child(even) {
 html[data-theme='dark'] .x-markdown tbody tr:hover {
     background: rgba(255, 255, 255, 0.06);
 }
+
+/* Slash Command Badge */
+.x-markdown .slash-command-badge {
+    display: inline-block;
+    background: rgba(22, 119, 255, 0.04);
+    color: #1677ff;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 0.85em;
+    font-weight: 500;
+    vertical-align: baseline;
+    white-space: nowrap;
+}
+
+html[data-theme='dark'] .x-markdown .slash-command-badge {
+    background: rgba(64, 150, 255, 0.08);
+    color: #4096ff;
+}
