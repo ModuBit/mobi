@@ -25,6 +25,7 @@ import type { TodoItem } from '@mobi/shared'
 
 // mock i18next
 vi.mock('react-i18next', () => ({
+    initReactI18next: { type: '3rdParty', init: vi.fn() },
     useTranslation: () => ({
         t: (key: string) => {
             const map: Record<string, string> = {

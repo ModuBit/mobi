@@ -76,12 +76,13 @@ const TOOL_ICON_MAP: Record<string, ComponentType<{ style?: CSSProperties; size?
     TodoWrite: BulbOutlined,
     TaskList: CheckCheck,
     TaskGet: CheckCheck,
+    TaskOutput: CheckCheck,
     NotebookRead: EyeOutlined,
     NotebookEdit: EditOutlined,
 }
 
 /** Lucide 图标工具名 */
-const LUCIDE_TOOL_NAMES = new Set(['TaskList', 'TaskGet'])
+const LUCIDE_TOOL_NAMES = new Set(['TaskList', 'TaskGet', 'TaskOutput'])
 
 /** Agent/Task 工具名 */
 const AGENT_TOOL_NAMES = new Set(['Task', 'Agent'])

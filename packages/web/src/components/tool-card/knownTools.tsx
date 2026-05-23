@@ -383,7 +383,15 @@ export const knownTools: Record<string, {
     TaskUpdate: HIDDEN_TOOL_STUB,
     TaskList: { icon: () => <CheckCheck size={14} />, title: () => 'Task list', subtitle: () => null, minimal: () => true },
     TaskGet: { icon: () => <CheckCheck size={14} />, title: () => 'Get task', subtitle: () => null, minimal: () => true },
-    TaskOutput: { icon: () => <CheckCheck size={14} />, title: () => 'Task output', subtitle: () => null, minimal: () => true },
+    TaskOutput: {
+        icon: () => <CheckCheck size={14} />,
+        title: () => 'Task output',
+        subtitle: (opts) => {
+            const input = opts.input as { task_id?: string } | undefined
+            return input?.task_id ? `#${input.task_id.slice(0, 8)}` : null
+        },
+        minimal: () => true
+    },
     TaskStop: { icon: () => <CheckCheck size={14} />, title: () => 'Stop task', subtitle: () => null, minimal: () => true },
     update_plan: {
         icon: () => <FileTextOutlined style={DEFAULT_ICON_STYLE} />,

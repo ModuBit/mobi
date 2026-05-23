@@ -170,7 +170,6 @@ export function isHiddenTool(name: string): boolean {
         || name === 'enter_plan_mode'
         || name === 'TaskCreate'
         || name === 'TaskUpdate'
-        || name === 'TaskOutput'
         || name === 'TaskStop'
         || name === 'TaskList'
         || name === 'TaskGet'

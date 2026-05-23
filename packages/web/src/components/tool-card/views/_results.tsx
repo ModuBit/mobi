@@ -529,6 +529,7 @@ export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     exit_plan_mode: MarkdownResultView,
     TaskList: TaskTextView,
     TaskGet: TaskTextView,
+    TaskOutput: MarkdownResultView,
 }
 export function getToolResultViewComponent(toolName: string): ToolViewComponent {
     if (toolName.startsWith('mcp__')) {
