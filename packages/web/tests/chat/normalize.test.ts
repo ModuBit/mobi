@@ -375,7 +375,7 @@ describe('normalizeDecryptedMessage', () => {
         expect(content.numTurns).toBe(5)
     })
 
-    it('应解析 result 类型的 error 消息为 event', () => {
+    it('应解析 result 类型的 error 消息为 turn-result event', () => {
         const message: DecryptedMessage = {
             id: 'msg-exec-error',
             seq: 14,
@@ -399,12 +399,12 @@ describe('normalizeDecryptedMessage', () => {
         const result = normalizeDecryptedMessage(message)
         expect(result).not.toBeNull()
         expect(result!.role).toBe('event')
-        const content = result!.content as { type: string; errors: string[] }
-        expect(content.type).toBe('execution-error')
-        expect(content.errors).toEqual(['发生错误'])
+        const content = result!.content as { type: string; error: string }
+        expect(content.type).toBe('turn-result')
+        expect(content.error).toBe('发生错误')
     })
 
-    it('应跳过正常完成的 result 消息（返回 null）', () => {
+    it('应解析正常完成的 result 消息为 turn-result event', () => {
         const message: DecryptedMessage = {
             id: 'msg-result-ok',
             seq: 15,
@@ -417,13 +417,24 @@ describe('normalizeDecryptedMessage', () => {
                     data: {
                         type: 'result',
                         subtype: 'success',
+                        duration_ms: 5000,
+                        usage: {
+                            input_tokens: 1000,
+                            output_tokens: 500,
+                        },
                     },
                 },
             },
         }
 
         const result = normalizeDecryptedMessage(message)
-        expect(result).toBeNull()
+        expect(result).not.toBeNull()
+        expect(result!.role).toBe('event')
+        const content = result!.content as { type: string; durationMs: number; tokens: number; error?: string }
+        expect(content.type).toBe('turn-result')
+        expect(content.durationMs).toBe(5000)
+        expect(content.tokens).toBe(1500)
+        expect(content.error).toBeUndefined()
     })
 
     it('应解析 api_error 系统事件', () => {

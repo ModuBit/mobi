@@ -346,16 +346,28 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
         return createEventMessage(ctx, { type: 'aborted', numTurns })
     }
 
-    // 错误结果
+    // 提取耗时和 token
+    const durationMs = asNumber(data.duration_ms) ?? asNumber(data.durationMs) ?? 0
+    const usage = isObject(data.usage) ? data.usage : null
+    const inputTokens = usage ? (asNumber(usage.input_tokens) ?? 0) : 0
+    const outputTokens = usage ? (asNumber(usage.output_tokens) ?? 0) : 0
+    const tokens = inputTokens + outputTokens
+
+    // 提取错误信息
+    let error: string | undefined
     if (isError || subtype === 'error_during_execution') {
         const errors = Array.isArray(data.errors)
             ? (data.errors as unknown[]).filter((e): e is string => typeof e === 'string')
             : []
-        return createEventMessage(ctx, { type: 'execution-error', subtype: subtype ?? 'unknown', errors, numTurns })
+        error = errors.length > 0 ? errors.join(', ') : subtype ?? 'unknown error'
     }
 
-    // 正常完成，静默忽略
-    return null
+    return createEventMessage(ctx, {
+        type: 'turn-result',
+        durationMs,
+        tokens,
+        ...(error && { error }),
+    })
 }
 
 // ============================================================================

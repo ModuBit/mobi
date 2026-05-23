@@ -255,6 +255,75 @@ describe('normalizeAgentRecord', () => {
         }
     })
 
+    it('should handle result with success and return turn-result event', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result',
+                    subtype: 'success',
+                    duration_ms: 134000,
+                    num_turns: 5,
+                    total_cost_usd: 0.05,
+                    usage: {
+                        input_tokens: 12300,
+                        output_tokens: 4500,
+                        cache_creation_input_tokens: null,
+                        cache_read_input_tokens: null,
+                    },
+                    is_error: false,
+                    stop_reason: null,
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('turn-result')
+            expect(result.content.durationMs).toBe(134000)
+            expect(result.content.tokens).toBe(16800) // 12300 + 4500
+            expect(result.content.error).toBeUndefined()
+        }
+    })
+
+    it('should handle result with error and return turn-result event with error', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result',
+                    subtype: 'error_max_turns',
+                    duration_ms: 45200,
+                    num_turns: 10,
+                    total_cost_usd: 0.1,
+                    usage: {
+                        input_tokens: 8100,
+                        output_tokens: 2200,
+                    },
+                    is_error: true,
+                    stop_reason: null,
+                    errors: ['reached maximum turns (15)'],
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('turn-result')
+            expect(result.content.durationMs).toBe(45200)
+            expect(result.content.tokens).toBe(10300) // 8100 + 2200
+            expect(result.content.error).toBe('reached maximum turns (15)')
+        }
+    })
+
     it('should handle event type content', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,
