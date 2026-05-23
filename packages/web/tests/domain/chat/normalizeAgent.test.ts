@@ -340,6 +340,58 @@ describe('normalizeAgentRecord', () => {
         expect(result).not.toBeNull()
         expect(result?.role).toBe('event')
     })
+
+    it('should handle result with error but empty errors array', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result',
+                    subtype: 'error_during_execution',
+                    duration_ms: 5000,
+                    usage: { input_tokens: 500, output_tokens: 200 },
+                    is_error: true,
+                    errors: [],
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('turn-result')
+            expect(result.content.durationMs).toBe(5000)
+            expect(result.content.tokens).toBe(700)
+            expect(result.content.error).toBe('error_during_execution') // fallback to subtype
+        }
+    })
+
+    it('should handle result with error but no errors field', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result',
+                    is_error: true,
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('turn-result')
+            expect(result.content.durationMs).toBe(0) // default when missing
+            expect(result.content.tokens).toBe(0) // default when missing
+            expect(result.content.error).toBe('unknown error') // final fallback
+        }
+    })
 })
 
 describe('isSkippableAgentContent', () => {
