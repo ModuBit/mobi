@@ -42,7 +42,7 @@ export type AgentEvent =
     | { type: 'turn-duration'; durationMs: number }
     | { type: 'microcompact'; trigger: string; preTokens: number; tokensSaved: number }
     | { type: 'compact'; trigger: string; preTokens: number; postTokens: number; durationMs: number }
-    | { type: 'aborted'; numTurns: number | null }
+    | { type: 'aborted'; numTurns: number | null; durationMs?: number; tokens?: number }
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string }
     | ({ type: string } & Record<string, unknown>)
 

@@ -79,7 +79,33 @@ export function formatEvent(
             return t('chat.switchMode', { mode })
         }
         case 'aborted': {
-            return t('chat.aborted')
+            const durationMs = Number(event.durationMs) || 0
+            const tokens = Number(event.tokens) || 0
+            const hasMetrics = durationMs > 0 || tokens > 0
+
+            const parts: string[] = [t('chat.aborted')]
+            if (hasMetrics) {
+                let durationText: string
+                if (durationMs >= 60000) {
+                    const min = Math.floor(durationMs / 60000)
+                    const sec = Math.floor((durationMs % 60000) / 1000)
+                    durationText = `${min}m ${sec}s`
+                } else if (durationMs >= 1000) {
+                    durationText = `${(durationMs / 1000).toFixed(1)}s`
+                } else {
+                    durationText = `${durationMs}ms`
+                }
+                const tokensText = tokens >= 1000
+                    ? `${(tokens / 1000).toFixed(1)}k tokens`
+                    : `${tokens} tokens`
+                parts.push(durationText, tokensText)
+            }
+
+            return (
+                <div style={{ fontFamily: 'var(--font-mono)' }}>
+                    {parts.join(' · ')}
+                </div>
+            )
         }
         case 'title-changed': {
             return null

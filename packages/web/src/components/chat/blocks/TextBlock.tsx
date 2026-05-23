@@ -17,6 +17,9 @@
 import { memo } from 'react'
 import { Markdown } from '@/components/ui/Markdown'
 
+/** 匹配中断消息，如 [Request interrupted by user] 或 [Request interrupted by user for tool use] */
+const INTERRUPTED_RE = /\[Request interrupted by user.*\]/
+
 /** 渲染文本块（user-text / agent-text 共用） */
 export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreaming, enableSlashCommand }: {
     text: string
@@ -24,7 +27,7 @@ export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreamin
     isStreaming?: boolean
     enableSlashCommand?: boolean
 }) {
-    if (isSynthetic) {
+    if (isSynthetic || INTERRUPTED_RE.test(text)) {
         return <span style={{ fontSize: 12, opacity: 0.5 }}>{text}</span>
     }
     return <Markdown content={text} streaming={isStreaming} enableSlashCommand={enableSlashCommand} />

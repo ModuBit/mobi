@@ -342,9 +342,7 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
     const numTurns = asNumber(data.num_turns) ?? asNumber(data.numTurns)
 
     // 中断
-    if (terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools') {
-        return createEventMessage(ctx, { type: 'aborted', numTurns })
-    }
+    const isAborted = terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools'
 
     // 提取耗时和 token
     const durationMs = asNumber(data.duration_ms) ?? asNumber(data.durationMs) ?? 0
@@ -352,6 +350,10 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
     const inputTokens = usage ? (asNumber(usage.input_tokens) ?? 0) : 0
     const outputTokens = usage ? (asNumber(usage.output_tokens) ?? 0) : 0
     const tokens = inputTokens + outputTokens
+
+    if (isAborted) {
+        return createEventMessage(ctx, { type: 'aborted', numTurns, durationMs, tokens })
+    }
 
     // 提取错误信息
     let error: string | undefined
