@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Tooltip, Select, theme, Typography } from 'antd'
-import { PaperClipOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, RobotOutlined, SafetyOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { PlusOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, RobotOutlined, SafetyOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -82,19 +82,13 @@ function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null
     return wrapper?.querySelector('textarea') ?? null
 }
 
-// 带有 hover 背景的 borderless Select，与 Button type="text" 的 hover 效果保持一致
+// 带 filled 背景的紧凑 Select
 const HoverSelect = styled(Select, {
     shouldForwardProp: shouldNotForwardDollarProps,
 })<{
     $token: ReturnType<typeof theme.useToken>['token']
     $compact?: boolean
 }>`
-    &.ant-select-borderless:not(.ant-select-disabled):hover {
-        background: ${props => props.$token.colorBgTextHover};
-    }
-    [data-in-dropdown] &.ant-select-borderless:not(.ant-select-disabled):hover {
-        background: transparent;
-    }
     border-radius: ${props => props.$token.borderRadiusSM}px;
     transition: background 0.2s;
     ${props => props.$compact && `
@@ -110,20 +104,33 @@ const HoverSelect = styled(Select, {
     `}
 `
 
-// 缩小 dropdown 弹出层的 option 字体
+// 缩小 dropdown 弹出层的 option 字体（全局注入一次）
 const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'
-const COMPACT_DROPDOWN_STYLE = (
-    <style>{`.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }`}</style>
-)
+let compactStyleInjected = false
+function useCompactDropdownStyle() {
+    if (!compactStyleInjected && typeof document !== 'undefined') {
+        const style = document.createElement('style')
+        style.textContent = `.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }`
+        document.head.appendChild(style)
+        compactStyleInjected = true
+    }
+}
+
+// Footer Bar / Sub Bar 中 icon 按钮的统一样式
+const ACTION_BUTTON_STYLE: React.CSSProperties = {
+    borderRadius: 'var(--ant-border-radius-sm, 6px)',
+    background: 'var(--ant-color-fill-tertiary, rgba(0,0,0,0.06))',
+} as const
 
 // 预配置的紧凑 Select，复用共享样式属性
 function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>, 'size' | 'variant' | 'popupMatchSelectWidth' | '$compact'>) {
+    useCompactDropdownStyle()
     return (
         <HoverSelect
             {...props}
             $compact
             size="small"
-            variant="borderless"
+            variant="filled"
             popupMatchSelectWidth={false}
             classNames={{ popup: { root: COMPACT_DROPDOWN_CLASS } }}
         />
@@ -211,6 +218,7 @@ export function ChatComposer(props: ChatComposerProps) {
     // 有 pending 权限请求时禁用发送
     const hasPendingPermission = Boolean(agentState?.requests && Object.keys(agentState.requests).length > 0)
     const canSend = (hasText || hasAttachments) && !controlsDisabled && !running && !sending && !hasPendingPermission
+    const hasSubBar = !!onEffortChange || !!extraItems?.length || !!(onArchive && active) || !!(extraLeftButtons && !extraItems)
 
     // 是否展示命令参数幽灵提示
     const showGhostHint = !!slash.activeCommand?.hint
@@ -227,7 +235,7 @@ export function ChatComposer(props: ChatComposerProps) {
         if (sdkMetadata?.models && sdkMetadata.models.length > 0) {
             return sdkMetadata.models.map((m: ModelOption) => ({
                 value: m.value,
-                label: m.displayName,
+                label: m.displayName.replace(/\s*\([^()]*\)\s*$/, ''),
                 description: m.description,
             }))
         }
@@ -457,8 +465,6 @@ export function ChatComposer(props: ChatComposerProps) {
 
     return (
         <div style={{ padding: '0 12px 12px' }}>
-            {/* 缩小 Select dropdown option 字体 */}
-            {COMPACT_DROPDOWN_STYLE}
             {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel
                 sessionId={sessionId}
@@ -496,16 +502,12 @@ export function ChatComposer(props: ChatComposerProps) {
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
                     header={headerNodes.length > 0 ? headerNodes : null}
-                    suffix={(_, { components: { ClearButton } }) => hasText ? (
-                        <ClearButton
-                            size="small"
-                            onClick={() => {
-                                setText('')
-                                mention.close()
-                                slash.reset()
-                            }}
-                        />
-                    ) : false}
+                    suffix={false}
+                    style={hasSubBar ? {
+                        position: 'relative',
+                        zIndex: 1,
+                        background: 'var(--ant-color-bg-container)',
+                    } : undefined}
                     footer={(oriNode) => (
                         <ResponsiveActionBar
                             items={[
@@ -518,10 +520,10 @@ export function ChatComposer(props: ChatComposerProps) {
                                             <Button
                                                 type="text"
                                                 size="small"
-                                                icon={<PaperClipOutlined />}
+                                                icon={<PlusOutlined />}
                                                 onClick={handleAttach}
                                                 disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
-                                                style={{ borderRadius: '50%' }}
+                                                style={ACTION_BUTTON_STYLE}
                                             />
                                         </Tooltip>
                                     ),
@@ -572,6 +574,27 @@ export function ChatComposer(props: ChatComposerProps) {
                                         />
                                     ),
                                 }] : []),
+                            ]}
+                            suffix={showLocalModeCover ? null : oriNode}
+                            gap={4}
+                        />
+                    )}
+                />
+
+                {/* Sub Bar：Sender 下方次要操作，宽度不够时自动收起 */}
+                {hasSubBar && (
+                    <div style={{
+                        background: 'var(--ant-color-fill-tertiary)',
+                        borderBottomLeftRadius: 'var(--ant-border-radius, 8px)',
+                        borderBottomRightRadius: 'var(--ant-border-radius, 8px)',
+                        // marginTop 需覆盖 Sender 底部圆角区域，与 Sender 的 borderRadius 保持一致
+                        padding: '16px 6px 6px',
+                        margin: '-12px 6px 0',
+                        position: 'relative',
+                        zIndex: 0,
+                    }}>
+                        <ResponsiveActionBar
+                            items={[
                                 // effort
                                 ...(onEffortChange ? [{
                                     key: 'effort',
@@ -588,7 +611,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                 }] : []),
                                 // file terminal
                                 ...(extraItems ?? []),
-                                // exit
+                                // archive
                                 ...(onArchive && active ? [{
                                     key: 'archive',
                                     label: t('session.actions.archive'),
@@ -600,7 +623,7 @@ export function ChatComposer(props: ChatComposerProps) {
                                                 icon={<LogoutOutlined />}
                                                 loading={archivePending}
                                                 onClick={onArchive}
-                                                style={{ borderRadius: '50%' }}
+                                                style={ACTION_BUTTON_STYLE}
                                             />
                                         </Tooltip>
                                     ),
@@ -611,11 +634,10 @@ export function ChatComposer(props: ChatComposerProps) {
                                     render: () => extraLeftButtons,
                                 }] : []),
                             ]}
-                            suffix={showLocalModeCover ? null : oriNode}
                             gap={4}
                         />
-                    )}
-                />
+                    </div>
+                )}
 
                 {/* @ 文件引用下拉 */}
                 {mention.isOpen && (

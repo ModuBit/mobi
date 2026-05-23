@@ -81,7 +81,10 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                     icon={<Icon size={14} />}
                     onClick={() => setSessionViewMode(sessionViewMode === mode ? 'chat' : mode)}
                     style={{
-                        borderRadius: '50%',
+                        borderRadius: 'var(--ant-border-radius-sm, 6px)',
+                        background: sessionViewMode === mode
+                            ? 'var(--ant-color-primary-bg, rgba(0,0,0,0.06))'
+                            : 'var(--ant-color-fill-tertiary, rgba(0,0,0,0.06))',
                         color: sessionViewMode === mode ? 'var(--ant-color-primary)' : undefined,
                     }}
                 />
