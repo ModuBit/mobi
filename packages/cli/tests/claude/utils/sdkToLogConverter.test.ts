@@ -243,6 +243,9 @@ describe('SDKToLogConverter', () => {
                 cache_read_input_tokens: null,
             })
             expect(logMessage?.is_error).toBe(false)
+            expect(logMessage?.num_turns).toBe(5)
+            expect(logMessage?.total_cost_usd).toBe(0.05)
+            expect(logMessage?.stop_reason).toBeNull()
         })
 
         it('should convert error result messages with errors array', () => {
@@ -298,6 +301,38 @@ describe('SDKToLogConverter', () => {
             const log2 = converter.convert(msg2)
 
             expect(log2?.parentUuid).toBeNull()
+        })
+
+        it('should update parent UUID after result message', () => {
+            const userMsg = createUserMessage('Hello')
+            const assistantMsg = createAssistantMessage([{ type: 'text', text: 'Hi' }])
+            const resultMsg = {
+                type: 'result',
+                subtype: 'success',
+                result: 'Done',
+                num_turns: 1,
+                usage: { input_tokens: 100, output_tokens: 50 },
+                total_cost_usd: 0.01,
+                duration_ms: 1000,
+                duration_api_ms: 800,
+                is_error: false,
+                session_id: 'test-session',
+                stop_reason: null,
+                modelUsage: {},
+                permission_denials: [],
+                uuid: 'result-uuid-123',
+            } as unknown as SDKResultMessage
+            const nextUserMsg = createUserMessage('Next question')
+
+            const log1 = converter.convert(userMsg)
+            const log2 = converter.convert(assistantMsg)
+            const log3 = converter.convert(resultMsg)
+            const log4 = converter.convert(nextUserMsg)
+
+            expect(log1?.parentUuid).toBeNull()
+            expect(log2?.parentUuid).toBe(log1?.uuid)
+            expect(log3?.parentUuid).toBe(log2?.uuid)
+            expect(log4?.parentUuid).toBe(log3?.uuid) // result message is now in the parent chain
         })
     })
 
