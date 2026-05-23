@@ -98,7 +98,6 @@
     "retry": "重试",
     "switchMode": "切换到 {{mode}} 模式",
     "aborted": "会话已中断",
-    "executionError": "执行出错",
     "permission": {
       "title": "需要权限确认",
       "toolRequest": "工具 {{tool}} 请求执行权限"

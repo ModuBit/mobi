@@ -26,7 +26,6 @@ function getEventDisplay(event: { type: string }): EventDisplay | undefined {
         case 'turn-duration': return { align: 'left', padding: false }
         case 'api-retry': return { color: 'warning' }
         case 'api-error': return { color: 'error' }
-        case 'execution-error': return { color: 'error' }
         case 'turn-result': return { align: 'left' }
         default: return undefined
     }

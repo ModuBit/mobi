@@ -98,7 +98,6 @@
     "retry": "Retry",
     "switchMode": "Switch to {{mode}} mode",
     "aborted": "Session aborted",
-    "executionError": "Execution error",
     "permission": {
       "title": "Permission Required",
       "toolRequest": "Tool {{tool}} requests execution permission"

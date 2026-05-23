@@ -84,15 +84,6 @@ export function formatEvent(
         case 'title-changed': {
             return null
         }
-        case 'execution-error': {
-            const errors = Array.isArray(event.errors) ? event.errors.join(', ') : ''
-            return (
-                <div>
-                    <div>{t('chat.executionError')}</div>
-                    {errors && <div style={{ marginTop: 2 }}>{errors}</div>}
-                </div>
-            )
-        }
         case 'plan-mode-entered': {
             return t('chat.planMode.entered')
         }
