@@ -16,7 +16,7 @@
 
 import type { ReactNode } from 'react'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import { CheckCheck } from 'lucide-react'
+import { CalendarClock, CheckCheck } from 'lucide-react'
 import { isObject } from '@mobi/shared'
 import { joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import {
@@ -414,6 +414,29 @@ export const knownTools: Record<string, {
         title: (opts) => {
             const skill = getInputStringAny(opts.input, ['skill'])
             return skill ? `Skill(${skill})` : 'Skill'
+        },
+        minimal: true
+    },
+    CronCreate: {
+        icon: () => <CalendarClock size={14} />,
+        title: (opts) => {
+            const cron = getInputStringAny(opts.input, ['cron'])
+            const prompt = getInputStringAny(opts.input, ['prompt'])
+            if (cron && prompt) return `CronCreate(${cron} ${truncate(prompt, 40)})`
+            if (cron) return `CronCreate(${cron})`
+            return 'CronCreate'
+        },
+        subtitle: (opts) => {
+            const recurring = isObject(opts.input) && opts.input.recurring === true
+            return recurring ? 'Recurring' : 'One-shot'
+        },
+        minimal: true
+    },
+    CronDelete: {
+        icon: () => <CalendarClock size={14} />,
+        title: (opts) => {
+            const id = getInputStringAny(opts.input, ['id'])
+            return id ? `CronDelete(${id})` : 'CronDelete'
         },
         minimal: true
     }
