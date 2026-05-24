@@ -14,15 +14,21 @@
  * limitations under the License.
  */
 
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
-import { CodeHighlighter } from '@ant-design/x'
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
+import { CodeHighlighter, Sources } from '@ant-design/x'
+import { Popover, Tag } from 'antd'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
+import { useTranslation } from 'react-i18next'
 import Latex from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
+import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
 import oneDark from 'react-syntax-highlighter/dist/esm/styles/prism/one-dark'
 import oneLight from 'react-syntax-highlighter/dist/esm/styles/prism/one-light'
 import { detectLanguage, FALLBACK_LANGUAGE, getCachedDetectedLanguage } from '@/core/utils/codeLanguageDetect'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+
+/** 脚注数据 Context，Markdown 组件注入，FootnoteRef 消费 */
+const FootnoteContext = createContext<Map<number, FootnoteItem>>(new Map())
 
 /** 流式渲染选项类型（从 XMarkdownProps 推断，因 x-markdown 未顶层导出） */
 type StreamingOption = NonNullable<XMarkdownProps['streaming']>
@@ -121,6 +127,9 @@ const LATEX_EXTENSIONS = Latex()
 /** slash command badge 扩展 */
 const SLASH_COMMAND_EXTENSIONS = [slashCommand()]
 
+/** 脚注引用扩展（稳定引用，不依赖运行时数据） */
+const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
+
 /**
  * 块级代码自动检测语言渲染：
  * - 显式 lang 优先
@@ -162,6 +171,67 @@ const AutoDetectCodeBlock: FC<{ code: string; explicitLang?: string }> = ({ code
         >
             {code}
         </CodeHighlighter>
+    )
+}
+
+/** 脚注引用组件：tag 样式 + hover 展示 title + 点击打开链接 */
+const FootnoteRef: FC<ComponentProps<{ 'data-num'?: string }>> = ({ 'data-num': dataNum, children }) => {
+    const footnotesMap = useContext(FootnoteContext)
+    const num = parseInt(dataNum ?? '0', 10)
+    const fn = footnotesMap.get(num)
+    const title = fn?.title
+    const href = fn?.url
+
+    const handleClick = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        if (href) window.open(href, '_blank', 'noopener,noreferrer')
+    }
+
+    const tag = (
+        <sup className="footnote-ref" onClick={handleClick}>
+            <Tag color="blue" style={{
+                padding: '0 0.3em',
+                marginLeft: '0.1em',
+                lineHeight: '1.2em',
+                cursor: href ? 'pointer' : 'default',
+                textDecoration: 'none',
+                userSelect: 'none',
+                transition: 'background-color 0.2s',
+            }}>
+                {children}
+            </Tag>
+        </sup>
+    )
+
+    if (!title) return tag
+
+    return (
+        <Popover content={title} trigger="hover">
+            {tag}
+        </Popover>
+    )
+}
+
+/** 脚注定义列表组件：使用 antx Sources 渲染 */
+const FootnoteSources: FC<{ footnotes: FootnoteItem[] }> = ({ footnotes }) => {
+    const { t } = useTranslation()
+    const items = useMemo(
+        () => footnotes.map((fn) => ({
+            key: fn.key,
+            title: `${fn.num}. ${fn.title}`,
+            url: fn.url,
+            description: fn.description,
+        })),
+        [footnotes],
+    )
+
+    return (
+        <Sources
+            style={{ marginTop: 8 }}
+            title={t('chat.footnoteSources')}
+            items={items}
+            defaultExpanded
+        />
     )
 }
 
@@ -236,7 +306,11 @@ export const Markdown = memo(function Markdown({
     }, [streaming])
 
     const mergedComponents = useMemo(
-        () => ({ code: DefaultCode, ...(components ?? {}) }),
+        () => ({
+            code: DefaultCode,
+            'footnote-ref': FootnoteRef,
+            ...(components ?? {}),
+        }),
         [components],
     )
 
@@ -245,32 +319,55 @@ export const Markdown = memo(function Markdown({
         [className],
     )
 
+    const finalContent = useDrip ? displayContent : (content ?? '')
+
+    // 提取脚注定义，清洗正文
+    const { cleanContent, footnotes } = useMemo(
+        () => extractFootnotes(finalContent),
+        [finalContent],
+    )
+
+    // 仅在脚注数据实质变化时重建 Map，流式渲染期间保持稳定引用
+    const footnotesRef = useRef(footnotes)
+    const footnotesMapRef = useRef(new Map<number, FootnoteItem>())
+    if (
+        footnotes.length !== footnotesRef.current.length
+        || footnotes.some((fn, i) =>
+            fn.num !== footnotesRef.current[i]?.num
+            || fn.title !== footnotesRef.current[i]?.title
+            || fn.url !== footnotesRef.current[i]?.url)
+    ) {
+        footnotesMapRef.current = new Map(footnotes.map(fn => [fn.num, fn]))
+        footnotesRef.current = footnotes
+    }
+
     const mergedConfig = useMemo(() => {
         const slashExts = enableSlashCommand ? SLASH_COMMAND_EXTENSIONS : []
-        if (!config) return { breaks: true, extensions: [...slashExts, ...LATEX_EXTENSIONS] }
+        const baseExts = [...FOOTNOTE_REF_EXTENSIONS, ...slashExts, ...LATEX_EXTENSIONS]
+        if (!config) return { breaks: true, extensions: baseExts }
         return {
             breaks: true,
             ...config,
             extensions: [
                 ...(Array.isArray(config.extensions) ? config.extensions : []),
-                ...slashExts,
-                ...LATEX_EXTENSIONS,
+                ...baseExts,
             ],
         }
     }, [config, enableSlashCommand])
 
-    const finalContent = useDrip ? displayContent : (content ?? '')
-
     return (
-        <div className={mergedClassName} style={{ maxWidth: '100%', ...style }}>
-            <XMarkdown
-                {...rest}
-                content={finalContent}
-                streaming={streamingOption}
-                components={mergedComponents}
-                paragraphTag={paragraphTag}
-                config={mergedConfig}
-            />
-        </div>
+        <FootnoteContext.Provider value={footnotesMapRef.current}>
+            <div className={mergedClassName} style={{ maxWidth: '100%', ...style }}>
+                <XMarkdown
+                    {...rest}
+                    content={cleanContent}
+                    streaming={streamingOption}
+                    components={mergedComponents}
+                    paragraphTag={paragraphTag}
+                    config={mergedConfig}
+                />
+                {footnotes.length > 0 && <FootnoteSources footnotes={footnotes} />}
+            </div>
+        </FootnoteContext.Provider>
     )
 })

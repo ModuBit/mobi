@@ -24,6 +24,58 @@
     margin: 0 0 0.6em;
 }
 
+/* 链接样式 */
+.x-markdown a {
+    color: #0958d9;
+    text-decoration: none;
+    transition: opacity 0.2s;
+}
+
+.x-markdown a:hover {
+    opacity: 0.75;
+}
+
+html[data-theme='dark'] .x-markdown a {
+    color: #4096ff;
+}
+
+/* Sources 组件内链接需要更高优先级覆盖 antd 样式 */
+.x-markdown .ant-sources a,
+.x-markdown .ant-sources .ant-sources-link-title {
+    color: #0958d9;
+}
+
+.x-markdown .ant-sources a:hover,
+.x-markdown .ant-sources .ant-sources-link:hover {
+    color: #0958d9;
+    opacity: 0.75;
+}
+
+html[data-theme='dark'] .x-markdown .ant-sources a,
+html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-link-title {
+    color: #4096ff;
+}
+
+html[data-theme='dark'] .x-markdown .ant-sources a:hover,
+html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-link:hover {
+    color: #4096ff;
+}
+
+/* Sources 组件：缩小字体 */
+.x-markdown .ant-sources {
+    font-size: 0.85em;
+}
+
+.x-markdown .ant-sources .ant-sources-list-item {
+    list-style: none;
+    border-left: 3px solid #d4d4d8;
+    padding-left: 10px;
+}
+
+html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-list-item {
+    border-left-color: #52525b;
+}
+
 /* XMarkdown inline code 背景色 */
 .x-markdown code {
     background: rgba(0, 0, 0, 0.06);

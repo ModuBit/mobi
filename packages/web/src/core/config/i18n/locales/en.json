@@ -170,7 +170,8 @@
       "inProgress": "in progress",
       "allCompleted": "All completed",
       "pendingCount": "{{count}} pending"
-    }
+    },
+    "footnoteSources": "References"
   },
   "files": {
     "title": "File Explorer",

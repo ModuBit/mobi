@@ -170,7 +170,8 @@
       "inProgress": "进行中",
       "allCompleted": "全部完成",
       "pendingCount": "{{count}} 个待执行"
-    }
+    },
+    "footnoteSources": "引用来源"
   },
   "files": {
     "title": "文件浏览器",
