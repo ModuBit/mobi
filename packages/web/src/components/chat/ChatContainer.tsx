@@ -112,6 +112,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     useEffect(() => {
         const agents = extractRunningAgents(rawBlocks)
         useRunningAgentsStore.getState().setAgents(sessionId, agents)
+        return () => {
+            useRunningAgentsStore.getState().clearSession(sessionId)
+        }
     }, [rawBlocks, sessionId])
 
     // 有更多历史页时，过滤掉不完整的 tool-call block 避免闪烁
