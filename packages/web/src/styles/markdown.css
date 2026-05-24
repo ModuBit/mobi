@@ -62,8 +62,24 @@ html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-link:hover {
 }
 
 /* Sources 组件：缩小字体 */
-.x-markdown .ant-sources {
+.x-markdown .ant-sources, .x-markdown .ant-sources-title {
     font-size: 0.85em;
+}
+
+/* Sources 图标与文字对齐 */
+.x-markdown .ant-sources .ant-sources-link {
+    align-items: center;
+}
+
+.x-markdown .ant-sources .ant-sources-link-icon {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+
+.x-markdown .ant-sources .ant-sources-link-icon svg {
+    width: 1em;
+    height: 1em;
 }
 
 .x-markdown .ant-sources .ant-sources-list-item {

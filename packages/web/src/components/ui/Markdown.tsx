@@ -21,6 +21,7 @@ import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design
 import { useTranslation } from 'react-i18next'
 import Latex from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
+import { getSourceIcon } from './sourceIcon'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
 import oneDark from 'react-syntax-highlighter/dist/esm/styles/prism/one-dark'
 import oneLight from 'react-syntax-highlighter/dist/esm/styles/prism/one-light'
@@ -220,6 +221,7 @@ const FootnoteSources: FC<{ footnotes: FootnoteItem[] }> = ({ footnotes }) => {
             key: fn.key,
             title: `${fn.num}. ${fn.title}`,
             url: fn.url,
+            icon: getSourceIcon(fn),
             description: fn.description,
         })),
         [footnotes],
