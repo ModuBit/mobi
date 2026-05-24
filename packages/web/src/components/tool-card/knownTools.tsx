@@ -16,34 +16,25 @@
 
 import type { ReactNode } from 'react'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import { CalendarClock, CheckCheck } from 'lucide-react'
 import { isObject } from '@mobi/shared'
 import { joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
-import {
-    CodeOutlined,
-    SearchOutlined,
-    FileSearchOutlined,
-    EyeOutlined,
-    EditOutlined,
-    SignatureOutlined,
-    GlobalOutlined,
-    BulbOutlined,
-    ApiOutlined,
-    RocketOutlined,
-    ToolOutlined,
-    QuestionCircleOutlined,
-    TeamOutlined,
-    MessageOutlined,
-    FileTextOutlined,
-    PlayCircleOutlined
-} from '@ant-design/icons'
+import { ToolOutlined } from '@ant-design/icons'
 import { LineSquiggle } from 'lucide-react'
 import type { ChecklistItem } from './checklist'
 import { extractTodoChecklist, extractUpdatePlanChecklist } from './checklist'
-import { basename, resolveDisplayPath } from '@/core/utils/path'
+import { resolveDisplayPath } from '@/core/utils/path'
 import { getInputStringAny, truncate, parseMCPToolName, formatMCPServerDisplay } from '@/core/lib/toolInputUtils'
+import { TOOL_ICON_MAP, LUCIDE_TOOL_NAMES } from './toolIcons'
 
 const DEFAULT_ICON_STYLE: React.CSSProperties = { fontSize: 14 }
+
+/** 从共享 TOOL_ICON_MAP 渲染图标，保持与内联气泡图标一致 */
+function renderToolIcon(name: string): ReactNode {
+    const Comp = TOOL_ICON_MAP[name]
+    if (!Comp) return <ToolOutlined style={DEFAULT_ICON_STYLE} />
+    if (LUCIDE_TOOL_NAMES.has(name)) return <Comp size={14} />
+    return <Comp style={DEFAULT_ICON_STYLE} />
+}
 
 const HIDDEN_TOOL_STUB = { icon: () => null, title: () => '', subtitle: () => null, minimal: () => true as const }
 
@@ -128,14 +119,14 @@ type ToolOpts = {
 
 // 通用终端工具配置（Bash / shell_command 共用）
 const terminalToolConfig = {
-    icon: () => <CodeOutlined style={DEFAULT_ICON_STYLE} />,
+    icon: () => renderToolIcon('Bash'),
     title: (opts: ToolOpts) => opts.description ?? 'Terminal',
     minimal: false
 }
 
 // 退出计划模式工具配置（ExitPlanMode / exit_plan_mode 共用）
 const exitPlanModeConfig = {
-    icon: () => <FileTextOutlined style={DEFAULT_ICON_STYLE} />,
+    icon: () => renderToolIcon('ExitPlanMode'),
     title: () => 'Plan proposal',
     minimal: false
 }
@@ -162,7 +153,7 @@ function askUserQuestionSubtitle(opts: ToolOpts): string | null {
 
 // AskUserQuestion 和 ask_user_question 共用配置（基于 header 字段）
 const askUserQuestionConfig = {
-    icon: () => <QuestionCircleOutlined style={DEFAULT_ICON_STYLE} />,
+    icon: () => renderToolIcon('AskUserQuestion'),
     title: (opts: ToolOpts) => askUserQuestionTitle(opts, 'header'),
     subtitle: (opts: ToolOpts) => askUserQuestionSubtitle(opts),
     minimal: true
@@ -181,7 +172,7 @@ export const knownTools: Record<string, {
     previewMaxHeight?: number
 }> = {
     Task: {
-        icon: () => <RocketOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('Task'),
         title: (opts) => {
             const name = getInputStringAny(opts.input, ['name'])
             const teamName = getInputStringAny(opts.input, ['team_name'])
@@ -192,13 +183,13 @@ export const knownTools: Record<string, {
         minimal: false
     },
     Agent: {
-        icon: () => <RocketOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('Agent'),
         title: (opts) => getAgentTitle(opts.input),
         subtitle: agentSubtitle,
         minimal: false
     },
     TeamCreate: {
-        icon: () => <TeamOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('TeamCreate'),
         title: (opts) => {
             const teamName = getInputStringAny(opts.input, ['team_name'])
             return teamName ? `Team: ${teamName}` : 'Create Team'
@@ -207,12 +198,12 @@ export const knownTools: Record<string, {
         minimal: false
     },
     TeamDelete: {
-        icon: () => <TeamOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('TeamDelete'),
         title: () => 'Delete Team',
         minimal: true
     },
     SendMessage: {
-        icon: () => <MessageOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('SendMessage'),
         title: (opts) => {
             const recipient = getInputStringAny(opts.input, ['recipient'])
             const msgType = getInputStringAny(opts.input, ['type'])
@@ -229,7 +220,7 @@ export const knownTools: Record<string, {
     },
     Bash: { ...terminalToolConfig, wideDrawer: true },
     Glob: {
-        icon: () => <FileSearchOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('Glob'),
         title: (opts) => {
             const pattern = getInputStringAny(opts.input, ['pattern'])
             return pattern ? `Glob(${pattern})` : 'Glob'
@@ -238,7 +229,7 @@ export const knownTools: Record<string, {
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     Grep: {
-        icon: () => <FileSearchOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('Grep'),
         title: (opts) => {
             const pattern = getInputStringAny(opts.input, ['pattern'])
             return pattern ? `Grep(${pattern})` : 'Grep'
@@ -246,7 +237,7 @@ export const knownTools: Record<string, {
         minimal: true
     },
     LS: {
-        icon: () => <FileSearchOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('LS'),
         title: (opts) => {
             const path = getInputStringAny(opts.input, ['path'])
             return path ? `LS(${resolveDisplayPath(path, opts.metadata)})` : 'LS'
@@ -255,7 +246,7 @@ export const knownTools: Record<string, {
     },
     shell_command: terminalToolConfig,
     Read: {
-        icon: () => <EyeOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('Read'),
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path', 'file'])
             if (!file) return 'Read'
@@ -283,7 +274,7 @@ export const knownTools: Record<string, {
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     Edit: {
-        icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('Edit'),
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
             return file ? `Edit(${resolveDisplayPath(file, opts.metadata)})` : 'Edit'
@@ -294,7 +285,7 @@ export const knownTools: Record<string, {
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     MultiEdit: {
-        icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('MultiEdit'),
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
             if (!file) return 'MultiEdit'
@@ -309,7 +300,7 @@ export const knownTools: Record<string, {
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     Write: {
-        icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('Write'),
         title: (opts) => {
             const file = getInputStringAny(opts.input, ['file_path', 'path'])
             return file ? `Write(${resolveDisplayPath(file, opts.metadata)})` : 'Write'
@@ -326,7 +317,7 @@ export const knownTools: Record<string, {
         previewMaxHeight: CODE_PREVIEW_MAX_HEIGHT
     },
     WebFetch: {
-        icon: () => <GlobalOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('WebFetch'),
         title: (opts) => {
             const url = getInputStringAny(opts.input, ['url'])
             if (!url) return 'Web fetch'
@@ -344,7 +335,7 @@ export const knownTools: Record<string, {
         minimal: true
     },
     WebSearch: {
-        icon: () => <GlobalOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('WebSearch'),
         title: (opts) => getInputStringAny(opts.input, ['query']) ?? 'Web search',
         subtitle: (opts) => {
             const query = getInputStringAny(opts.input, ['query'])
@@ -353,7 +344,7 @@ export const knownTools: Record<string, {
         minimal: true
     },
     NotebookRead: {
-        icon: () => <EyeOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('NotebookRead'),
         title: (opts) => {
             const path = getInputStringAny(opts.input, ['notebook_path'])
             return path ? `NotebookRead(${resolveDisplayPath(path, opts.metadata)})` : 'NotebookRead'
@@ -362,7 +353,7 @@ export const knownTools: Record<string, {
         wideDrawer: true
     },
     NotebookEdit: {
-        icon: () => <SignatureOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('NotebookEdit'),
         title: (opts) => {
             const path = getInputStringAny(opts.input, ['notebook_path'])
             return path ? `NotebookEdit(${resolveDisplayPath(path, opts.metadata)})` : 'NotebookEdit'
@@ -374,17 +365,17 @@ export const knownTools: Record<string, {
         minimal: false
     },
     TodoWrite: {
-        icon: () => <BulbOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('TodoWrite'),
         title: () => 'Todo list',
         subtitle: (opts) => formatChecklistCount(extractTodoChecklist(opts.input, opts.result), 'item'),
         minimal: () => true
     },
     TaskCreate: HIDDEN_TOOL_STUB,
     TaskUpdate: HIDDEN_TOOL_STUB,
-    TaskList: { icon: () => <CheckCheck size={14} />, title: () => 'Task list', subtitle: () => null, minimal: () => true },
-    TaskGet: { icon: () => <CheckCheck size={14} />, title: () => 'Get task', subtitle: () => null, minimal: () => true },
+    TaskList: { icon: () => renderToolIcon('TaskList'), title: () => 'Task list', subtitle: () => null, minimal: () => true },
+    TaskGet: { icon: () => renderToolIcon('TaskGet'), title: () => 'Get task', subtitle: () => null, minimal: () => true },
     TaskOutput: {
-        icon: () => <CheckCheck size={14} />,
+        icon: () => renderToolIcon('TaskOutput'),
         title: () => 'Task output',
         subtitle: (opts) => {
             const input = opts.input as { task_id?: string } | undefined
@@ -392,9 +383,9 @@ export const knownTools: Record<string, {
         },
         minimal: () => true
     },
-    TaskStop: { icon: () => <CheckCheck size={14} />, title: () => 'Stop task', subtitle: () => null, minimal: () => true },
+    TaskStop: { icon: () => renderToolIcon('TaskStop'), title: () => 'Stop task', subtitle: () => null, minimal: () => true },
     update_plan: {
-        icon: () => <FileTextOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('update_plan'),
         title: () => 'Plan',
         subtitle: (opts) => formatChecklistCount(extractUpdatePlanChecklist(opts.input, opts.result), 'step'),
         minimal: (opts) => extractUpdatePlanChecklist(opts.input, opts.result).length === 0
@@ -404,13 +395,13 @@ export const knownTools: Record<string, {
     AskUserQuestion: askUserQuestionConfig,
     ask_user_question: askUserQuestionConfig,
     request_user_input: {
-        icon: () => <QuestionCircleOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('request_user_input'),
         title: (opts) => askUserQuestionTitle(opts, 'question'),
         subtitle: (opts) => askUserQuestionSubtitle(opts),
         minimal: true
     },
     Skill: {
-        icon: () => <ApiOutlined style={DEFAULT_ICON_STYLE} />,
+        icon: () => renderToolIcon('Skill'),
         title: (opts) => {
             const skill = getInputStringAny(opts.input, ['skill'])
             return skill ? `Skill(${skill})` : 'Skill'
@@ -418,7 +409,7 @@ export const knownTools: Record<string, {
         minimal: true
     },
     CronCreate: {
-        icon: () => <CalendarClock size={14} />,
+        icon: () => renderToolIcon('CronCreate'),
         title: (opts) => {
             const cron = getInputStringAny(opts.input, ['cron'])
             const prompt = getInputStringAny(opts.input, ['prompt'])
@@ -433,10 +424,34 @@ export const knownTools: Record<string, {
         minimal: true
     },
     CronDelete: {
-        icon: () => <CalendarClock size={14} />,
+        icon: () => renderToolIcon('CronDelete'),
         title: (opts) => {
             const id = getInputStringAny(opts.input, ['id'])
             return id ? `CronDelete(${id})` : 'CronDelete'
+        },
+        minimal: true
+    },
+    ScheduleWakeup: {
+        icon: () => renderToolIcon('ScheduleWakeup'),
+        title: (opts) => {
+            const delaySeconds = isObject(opts.input) && typeof opts.input.delaySeconds === 'number'
+                ? opts.input.delaySeconds as number : null
+            const reason = getInputStringAny(opts.input, ['reason'])
+
+            let formattedDelay = ''
+            if (delaySeconds !== null) {
+                if (delaySeconds >= 60) {
+                    const mins = Math.floor(delaySeconds / 60)
+                    const secs = Math.round(delaySeconds % 60)
+                    formattedDelay = secs > 0 ? `${mins}m ${secs}s` : `${mins}m`
+                } else {
+                    formattedDelay = `${delaySeconds}s`
+                }
+            }
+
+            if (formattedDelay && reason) return `ScheduleWakeup(${formattedDelay} ${truncate(reason, 40)})`
+            if (formattedDelay) return `ScheduleWakeup(${formattedDelay})`
+            return 'ScheduleWakeup'
         },
         minimal: true
     }

@@ -27,15 +27,13 @@ import {
     MessageOutlined,
     CodeOutlined,
     EyeOutlined,
-    EditOutlined,
     SignatureOutlined,
-    SearchOutlined,
     FileSearchOutlined,
     GlobalOutlined,
     QuestionCircleOutlined,
     FileTextOutlined,
     BulbOutlined,
-    CheckCircleOutlined,
+    ApiOutlined,
     ToolOutlined,
 } from '@ant-design/icons'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
@@ -50,7 +48,7 @@ export const ICON_STYLE_LG: CSSProperties = { fontSize: 16 }
 /**
  * 工具名称到图标组件的映射表
  */
-const TOOL_ICON_MAP: Record<string, ComponentType<{ style?: CSSProperties; size?: number }>> = {
+export const TOOL_ICON_MAP: Record<string, ComponentType<{ style?: CSSProperties; size?: number }>> = {
     Agent: RocketOutlined,
     Task: RocketOutlined,
     TeamCreate: TeamOutlined,
@@ -72,20 +70,23 @@ const TOOL_ICON_MAP: Record<string, ComponentType<{ style?: CSSProperties; size?
     request_user_input: QuestionCircleOutlined,
     ExitPlanMode: FileTextOutlined,
     exit_plan_mode: FileTextOutlined,
-    update_plan: BulbOutlined,
+    update_plan: FileTextOutlined,
     TodoWrite: BulbOutlined,
     TaskList: CheckCheck,
     TaskGet: CheckCheck,
     TaskOutput: CheckCheck,
+    TaskStop: CheckCheck,
     NotebookRead: EyeOutlined,
-    NotebookEdit: EditOutlined,
+    NotebookEdit: SignatureOutlined,
     CronCreate: CalendarClock,
     CronDelete: CalendarClock,
     CronList: CalendarClock,
+    ScheduleWakeup: CalendarClock,
+    Skill: ApiOutlined,
 }
 
 /** Lucide 图标工具名 */
-const LUCIDE_TOOL_NAMES = new Set(['TaskList', 'TaskGet', 'TaskOutput', 'CronCreate', 'CronDelete', 'CronList'])
+export const LUCIDE_TOOL_NAMES = new Set(['TaskList', 'TaskGet', 'TaskOutput', 'TaskStop', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'])
 
 /** Agent/Task 工具名 */
 const AGENT_TOOL_NAMES = new Set(['Task', 'Agent'])
