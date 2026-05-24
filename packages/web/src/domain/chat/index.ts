@@ -76,3 +76,7 @@ export { formatUnixTimestamp, getEventPresentation, renderEventLabel } from './p
 
 // 模型配置
 export { getContextBudgetTokens } from './modelConfig'
+
+// Agent 提取
+export type { RunningAgent } from './extractRunningAgents'
+export { extractRunningAgents } from './extractRunningAgents'

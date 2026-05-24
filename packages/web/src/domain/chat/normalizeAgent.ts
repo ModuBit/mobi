@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { AgentEvent, NormalizedAgentContent, NormalizedMessage, ToolResult, ToolResultPermission, MessageMeta } from './types'
+import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, ToolResult, ToolResultPermission, MessageMeta } from './types'
 import { asNumber, asString, isObject } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 
@@ -60,6 +60,7 @@ function buildToolResultBlock(
     parentUUID: string | null,
     contentOverride?: unknown,
     permissions?: ToolResultPermission,
+    agentMetrics?: AgentMetrics,
 ): ToolResult | null {
     if (typeof block.tool_use_id !== 'string') return null
     const isError = Boolean(block.is_error)
@@ -72,6 +73,7 @@ function buildToolResultBlock(
         uuid,
         parentUUID,
         ...(permissions && { permissions }),
+        ...(agentMetrics && { agentMetrics }),
     }
 }
 
@@ -226,14 +228,31 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
                 continue
             }
             if (block.type === 'tool_result') {
-                const embeddedToolUseResult = 'toolUseResult' in data ? (data as Record<string, unknown>).toolUseResult : null
+                // 兼容 tool_use_result（下划线）和 toolUseResult（驼峰）
+                const rawData = data as Record<string, unknown>
+                const toolUseResult = isObject(rawData.tool_use_result) ? rawData.tool_use_result
+                    : isObject(rawData.toolUseResult) ? rawData.toolUseResult
+                    : null
                 const permissions = normalizeToolResultPermissions(block.permissions)
+
+                // 从 tool_use_result 提取 Agent 完成指标
+                let agentMetrics: AgentMetrics | undefined
+                if (toolUseResult) {
+                    const tokens = asNumber(toolUseResult.totalTokens) ?? asNumber(toolUseResult.total_tokens)
+                    const toolUses = asNumber(toolUseResult.totalToolUseCount) ?? asNumber(toolUseResult.tool_uses)
+                    const durationMs = asNumber(toolUseResult.totalDurationMs) ?? asNumber(toolUseResult.duration_ms)
+                    if (tokens || toolUses || durationMs) {
+                        agentMetrics = { tokens: tokens ?? 0, toolUses: toolUses ?? 0, durationMs: durationMs ?? 0 }
+                    }
+                }
+
                 const result = buildToolResultBlock(
                     block as Record<string, unknown>,
                     uuid,
                     parentUUID,
-                    embeddedToolUseResult ?? undefined,
+                    toolUseResult ?? undefined,
                     permissions,
+                    agentMetrics,
                 )
                 if (result) blocks.push(result)
             }
@@ -334,6 +353,40 @@ const handleCompactBoundaryOutput: OutputHandler = (data, ctx) => {
     })
 }
 
+/** 处理 system:task_progress 消息 */
+const handleTaskProgressOutput: OutputHandler = (data, ctx) => {
+    const toolUseId = asString(data.tool_use_id)
+    if (!toolUseId) return null
+
+    const usage = isObject(data.usage) ? data.usage : null
+    return createEventMessage(ctx, {
+        type: 'agent-progress',
+        toolUseId,
+        metrics: {
+            tokens: asNumber(usage?.total_tokens) ?? 0,
+            toolUses: asNumber(usage?.tool_uses) ?? 0,
+            durationMs: asNumber(usage?.duration_ms) ?? 0,
+        }
+    })
+}
+
+/** 处理 system:task_notification 消息 */
+const handleTaskNotificationOutput: OutputHandler = (data, ctx) => {
+    const toolUseId = asString(data.tool_use_id)
+    if (!toolUseId) return null
+
+    const usage = isObject(data.usage) ? data.usage : null
+    return createEventMessage(ctx, {
+        type: 'agent-progress',
+        toolUseId,
+        metrics: {
+            tokens: asNumber(usage?.total_tokens) ?? 0,
+            toolUses: asNumber(usage?.tool_uses) ?? 0,
+            durationMs: asNumber(usage?.duration_ms) ?? 0,
+        }
+    })
+}
+
 /** 处理 result 消息 */
 const handleResultOutput: OutputHandler = (data, ctx) => {
     const subtype = asString(data.subtype)
@@ -386,6 +439,8 @@ const outputHandlers = new Map<string, OutputHandler>([
     ['system:turn_duration', handleTurnDurationOutput],
     ['system:microcompact_boundary', handleMicrocompactBoundaryOutput],
     ['system:compact_boundary', handleCompactBoundaryOutput],
+    ['system:task_progress', handleTaskProgressOutput],
+    ['system:task_notification', handleTaskNotificationOutput],
     ['result', handleResultOutput],
 ])
 

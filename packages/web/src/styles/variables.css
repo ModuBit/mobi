@@ -5,4 +5,13 @@
     --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
     /* 聊天气泡：mono 优先，PuHuiTi 兜底中文 */
     --font-chat: 'JetBrains Mono', 'Alibaba PuHuiTi 3.0', -apple-system, BlinkMacSystemFont, sans-serif;
+
+    /* AgentCard 宽度 */
+    --agent-card-width: 200px;
+}
+
+@media (max-width: 768px) {
+    :root {
+        --agent-card-width: 130px;
+    }
 }

@@ -44,6 +44,7 @@ export type AgentEvent =
     | { type: 'compact'; trigger: string; preTokens: number; postTokens: number; durationMs: number }
     | { type: 'aborted'; numTurns: number | null; durationMs?: number; tokens?: number }
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string }
+    | { type: 'agent-progress'; toolUseId: string; metrics: AgentMetrics }
     | ({ type: string } & Record<string, unknown>)
 
 export type ToolResultPermission = {
@@ -52,6 +53,13 @@ export type ToolResultPermission = {
     mode?: string
     allowedTools?: string[]
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort'
+}
+
+/** Agent 工具执行的实时指标 */
+export type AgentMetrics = {
+    tokens: number
+    toolUses: number
+    durationMs: number
 }
 
 export type ToolUse = {
@@ -72,6 +80,8 @@ export type ToolResult = {
     uuid: string
     parentUUID: string | null
     permissions?: ToolResultPermission
+    /** Agent 工具的完成指标（来自 tool_use_result） */
+    agentMetrics?: AgentMetrics
 }
 
 export type NormalizedAgentContent =
@@ -140,6 +150,7 @@ export type ChatToolCall = {
     description: string | null
     result?: unknown
     permission?: ToolPermission
+    agentMetrics?: AgentMetrics
 }
 
 export type UserTextBlock = {

@@ -91,6 +91,20 @@ export function reduceTimeline(
                 hasReadyEvent = true
                 continue
             }
+            // agent-progress 事件：更新对应 ToolCallBlock 的指标
+            if (msg.content.type === 'agent-progress') {
+                const { toolUseId, metrics } = msg.content as Extract<AgentEvent, { type: 'agent-progress' }>
+                const existingBlock = toolBlocksById.get(toolUseId)
+                if (existingBlock) {
+                    const updatedBlock = {
+                        ...existingBlock,
+                        tool: { ...existingBlock.tool, agentMetrics: metrics }
+                    }
+                    replaceBlockById(blocks, blockIndexById, toolUseId, updatedBlock)
+                    toolBlocksById.set(toolUseId, updatedBlock)
+                }
+                continue
+            }
             // 检测 compact 事件，记录 metadata 用于下一条 user 消息
             if (msg.content.type === 'compact') {
                 // AgentEvent 是联合类型，需要提取 compact 特有字段
@@ -356,6 +370,10 @@ export function reduceTimeline(
                         : c.content
                     completedBlock.tool.completedAt = msg.createdAt
                     completedBlock.tool.state = c.is_error ? 'error' : 'completed'
+                    // tool-result 携带的 Agent 完成指标
+                    if (c.agentMetrics) {
+                        completedBlock.tool.agentMetrics = c.agentMetrics
+                    }
                     replaceBlockById(blocks, blockIndexById, c.tool_use_id, completedBlock)
                     toolBlocksById.set(c.tool_use_id, completedBlock)
                     continue

@@ -24,7 +24,7 @@ import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { reduceChatBlocks, normalizeDecryptedMessage } from '@/domain/chat'
+import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer } from '@/components/composer/ChatComposer'
@@ -37,6 +37,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { getAgentStatus } from '@/components/pixel-avatar/types'
+import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
 
 const { useToken } = antTheme
 
@@ -106,6 +107,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             .filter((m): m is Exclude<typeof m, null> => m !== null)
         return reduceChatBlocks(normalized, session?.agentState)
     }, [messages, session?.agentState])
+
+    // 同步 running agents 到 store，供 AgentPanel 订阅
+    useEffect(() => {
+        const agents = extractRunningAgents(rawBlocks)
+        useRunningAgentsStore.getState().setAgents(sessionId, agents)
+    }, [rawBlocks, sessionId])
 
     // 有更多历史页时，过滤掉不完整的 tool-call block 避免闪烁
     const chatBlocks = useMemo(() => {

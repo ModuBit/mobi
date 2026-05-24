@@ -50,3 +50,22 @@ pre, code {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
 }
+
+/* AgentCard 呼吸动画 */
+@keyframes agent-breathe-running {
+    0%, 100% { background: rgba(255, 255, 255, 0.03); }
+    50% { background: rgba(255, 255, 255, 0.08); }
+}
+@keyframes agent-breathe-pending {
+    0%, 100% { background: rgba(255, 255, 255, 0.02); }
+    50% { background: rgba(255, 255, 255, 0.05); }
+}
+.agent-card-breathing.agent-card-running {
+    animation: agent-breathe-running 3s ease-in-out infinite;
+}
+.agent-card-breathing.agent-card-pending {
+    animation: agent-breathe-pending 4s ease-in-out infinite;
+}
+.agent-card-breathing:hover {
+    background: rgba(255, 255, 255, 0.10) !important;
+}

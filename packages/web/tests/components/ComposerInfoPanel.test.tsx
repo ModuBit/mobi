@@ -15,6 +15,23 @@
  */
 
 import { describe, it, expect, vi, beforeAll } from 'vitest'
+
+// Bun jsdom 环境下 navigator.language 未定义，uiStore 初始化需要
+// 使用 vi.hoisted 确保在任何模块导入之前执行
+vi.hoisted(() => {
+    try {
+        if (!(globalThis as Record<string, unknown>).navigator || !(navigator as Record<string, unknown>).language) {
+            Object.defineProperty(navigator, 'language', { value: 'zh-CN', configurable: true })
+        }
+    } catch {
+        Object.defineProperty(globalThis, 'navigator', {
+            value: { language: 'zh-CN', languages: ['zh-CN', 'en'] },
+            writable: true,
+            configurable: true,
+        })
+    }
+})
+
 import { render } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
@@ -37,6 +54,11 @@ vi.mock('react-i18next', () => ({
             return map[key] ?? key
         },
     }),
+}))
+
+// mock PixelAvatar，jsdom 不支持 canvas
+vi.mock('@/components/pixel-avatar/PixelAvatar', () => ({
+    PixelAvatar: () => null,
 }))
 
 // mock MobiApi
@@ -115,5 +137,39 @@ describe('ComposerInfoPanel', () => {
         const scrollEl = container.querySelector('.hide-scrollbar') as HTMLElement
         expect(scrollEl).toBeTruthy()
         expect(scrollEl.style.maxHeight).toBe('40vh')
+    })
+
+    it('有 running agents 时渲染面板', async () => {
+        const { useRunningAgentsStore } = await import('@/core/data/stores/runningAgentsStore')
+        const mockBlock = {
+            kind: 'tool-call' as const,
+            id: 'agent-1',
+            localId: null,
+            createdAt: Date.now(),
+            tool: {
+                id: 'agent-1',
+                name: 'Task',
+                state: 'running' as const,
+                input: { subagent_type: 'Explore', description: '测试' },
+                createdAt: Date.now(),
+                startedAt: Date.now(),
+                completedAt: null,
+                description: null,
+            },
+            children: [],
+        }
+        useRunningAgentsStore.getState().setAgents('test-session', [{
+            block: mockBlock,
+            subagentType: 'Explore',
+            description: '测试',
+        }])
+
+        const { container, unmount } = render(
+            <ComposerInfoPanel {...defaultProps} />,
+            { wrapper }
+        )
+        expect(container.innerHTML).not.toBe('')
+        unmount()
+        useRunningAgentsStore.getState().clearSession('test-session')
     })
 })

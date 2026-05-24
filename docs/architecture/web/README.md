@@ -281,6 +281,12 @@ flowchart LR
 | `summary` | 会话摘要 |
 | `event` | 系统事件（API 错误、耗时统计） |
 
+### Agent 消息渲染
+
+Agent 工具（`Task` / `Agent`）是渲染复杂度最高的部分，有内联渲染和 Drawer 详情两条路径，sidechain 子对话通过双数据路径获取。
+
+详细架构见 [→ Agent 消息渲染](agent-rendering.md)
+
 ### 工具调用折叠
 
 消息渲染管线中，工具调用经过两层过滤后再展示：

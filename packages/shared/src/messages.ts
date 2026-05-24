@@ -28,7 +28,9 @@ const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'api_retry',
     'turn_duration',
     'microcompact_boundary',
-    'compact_boundary'
+    'compact_boundary',
+    'task_progress',
+    'task_notification',
 ])
 
 export function isRoleWrappedRecord(value: unknown): value is RoleWrappedRecord {

@@ -32,6 +32,10 @@ import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFoo
 import { RequestUserInputFooter } from '@/components/tool-card/RequestUserInputFooter'
 import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
+import { AgentPanel } from './AgentPanel'
+import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
+import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
+import type { ToolCallBlock } from '@/domain/chat/types'
 import { TodoPanel } from './TodoPanel'
 import { TaskPanel } from './TaskPanel'
 
@@ -180,9 +184,12 @@ export function ComposerInfoPanel({
     todos,
     tasks
 }: ComposerInfoPanelProps) {
+    const [drawerBlock, setDrawerBlock] = useState<ToolCallBlock | null>(null)
     const hasPendingRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
     const hasTodos = todos && todos.length > 0
     const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
+    const agents = useRunningAgents(sessionId)
+    const hasAgents = agents.length > 0
     const { token } = useToken()
 
     const scrollRef = useRef<HTMLDivElement>(null)
@@ -199,7 +206,7 @@ export function ComposerInfoPanel({
         return () => observer.disconnect()
     }, [])
 
-    if (!hasPendingRequests && !hasTodos && !hasTasks) return null
+    if (!hasPendingRequests && !hasTodos && !hasTasks && !hasAgents) return null
 
     return (
         <div style={{ position: 'relative', padding: '8px 0', marginBottom: 4 }}>
@@ -218,6 +225,11 @@ export function ComposerInfoPanel({
                         onDone={onRequestDone}
                     />
 
+                    <AgentPanel
+                        sessionId={sessionId}
+                        onAgentClick={(block) => setDrawerBlock(block)}
+                    />
+
                     <TodoPanel todos={todos} />
                     <TaskPanel tasks={tasks} />
                 </Space>
@@ -232,6 +244,15 @@ export function ComposerInfoPanel({
                     background: `linear-gradient(transparent, ${token.colorBgLayout})`,
                     pointerEvents: 'none',
                 }} />
+            )}
+            {drawerBlock && (
+                <ToolDetailDrawer
+                    block={drawerBlock}
+                    metadata={metadata}
+                    open={!!drawerBlock}
+                    onClose={() => setDrawerBlock(null)}
+                    sessionId={sessionId}
+                />
             )}
         </div>
     )
