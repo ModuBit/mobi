@@ -454,6 +454,22 @@ export const knownTools: Record<string, {
             return 'ScheduleWakeup'
         },
         minimal: true
+    },
+    EnterWorktree: {
+        icon: () => renderToolIcon('EnterWorktree'),
+        title: (opts) => {
+            const name = getInputStringAny(opts.input, ['name'])
+            return name ? `Enter worktree: ${name}` : 'Enter worktree'
+        },
+        minimal: true
+    },
+    ExitWorktree: {
+        icon: () => renderToolIcon('ExitWorktree'),
+        title: (opts) => {
+            const action = getInputStringAny(opts.input, ['action'])
+            return action ? `Exit worktree (${action})` : 'Exit worktree'
+        },
+        minimal: true
     }
 }
 

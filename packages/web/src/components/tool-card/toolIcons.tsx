@@ -20,7 +20,7 @@
  */
 
 import type { CSSProperties, ComponentType, ReactNode } from 'react'
-import { CalendarClock, CheckCheck, LineSquiggle } from 'lucide-react'
+import { CalendarClock, CheckCheck, FolderGit2, LineSquiggle } from 'lucide-react'
 import {
     RocketOutlined,
     TeamOutlined,
@@ -83,10 +83,12 @@ export const TOOL_ICON_MAP: Record<string, ComponentType<{ style?: CSSProperties
     CronList: CalendarClock,
     ScheduleWakeup: CalendarClock,
     Skill: ApiOutlined,
+    EnterWorktree: FolderGit2,
+    ExitWorktree: FolderGit2,
 }
 
 /** Lucide 图标工具名 */
-export const LUCIDE_TOOL_NAMES = new Set(['TaskList', 'TaskGet', 'TaskOutput', 'TaskStop', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'])
+export const LUCIDE_TOOL_NAMES = new Set(['TaskList', 'TaskGet', 'TaskOutput', 'TaskStop', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'EnterWorktree', 'ExitWorktree'])
 
 /** Agent/Task 工具名 */
 const AGENT_TOOL_NAMES = new Set(['Task', 'Agent'])
