@@ -34,32 +34,7 @@ import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFoo
 import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { Markdown } from '@/components/ui/Markdown'
 import { getAgentPrompt } from '@/components/tool-card/index'
-import type { AgentMetrics } from '@/domain/chat/types'
-
-/** 格式化毫秒时长 */
-function formatDuration(ms: number): string {
-    if (ms >= 60000) {
-        const min = Math.floor(ms / 60000)
-        const sec = Math.floor((ms % 60000) / 1000)
-        return sec > 0 ? `${min}m ${sec}s` : `${min}m`
-    }
-    if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`
-    return `${ms}ms`
-}
-
-/** 格式化 token 数量 */
-function formatTokens(tokens: number): string {
-    return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : `${tokens}`
-}
-
-/** 将 AgentMetrics 格式化为显示字符串 */
-function formatAgentMetrics(metrics: AgentMetrics): string {
-    const parts: string[] = []
-    if (metrics.durationMs > 0) parts.push(formatDuration(metrics.durationMs))
-    if (metrics.tokens > 0) parts.push(`${formatTokens(metrics.tokens)} tokens`)
-    if (metrics.toolUses > 0) parts.push(`${metrics.toolUses} tools`)
-    return parts.join(' · ')
-}
+import { formatAgentMetrics } from '@/core/lib/metricsFormat'
 
 /** 预览卡片最大高度 */
 const PREVIEW_MAX_HEIGHT = {

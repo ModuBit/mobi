@@ -34,16 +34,16 @@ export function AgentPanel({ sessionId, onAgentClick }: {
     const scrollRef = useRef<HTMLDivElement>(null)
     const [showFade, setShowFade] = useState(false)
 
-    // 监听容器尺寸变化，判断是否需要渐变遮罩
+    // 监听容器尺寸变化和 agent 数量变化，判断是否需要渐变遮罩
     useEffect(() => {
         const el = scrollRef.current
         if (!el) return
-        const observer = new ResizeObserver(() => {
-            setShowFade(el.scrollHeight > el.clientHeight)
-        })
+        const checkOverflow = () => setShowFade(el.scrollHeight > el.clientHeight)
+        checkOverflow()
+        const observer = new ResizeObserver(checkOverflow)
         observer.observe(el)
         return () => observer.disconnect()
-    }, [])
+    }, [agents.length])
 
     if (agents.length === 0) return null
 

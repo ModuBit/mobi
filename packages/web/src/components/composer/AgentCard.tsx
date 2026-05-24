@@ -14,27 +14,11 @@
  * limitations under the License.
  */
 
-import { useMemo } from 'react'
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
 import type { RunningAgent } from '@/domain/chat/extractRunningAgents'
 import type { AgentMetrics } from '@/domain/chat/types'
-
-/** 格式化持续时间 */
-function formatDuration(ms: number): string {
-    if (ms >= 60000) {
-        const min = Math.floor(ms / 60000)
-        const sec = Math.floor((ms % 60000) / 1000)
-        return sec > 0 ? `${min}m ${sec}s` : `${min}m`
-    }
-    if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`
-    return `${ms}ms`
-}
-
-/** 格式化 Token 数量 */
-function formatTokens(tokens: number): string {
-    return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : `${tokens}`
-}
 
 /** 格式化指标信息 */
 function formatMetrics(metrics: AgentMetrics | undefined): string {
@@ -60,12 +44,7 @@ export function AgentCard({ agent, onClick }: {
     const isPending = tool.state === 'pending'
 
     const status = isPending ? 'idle' : 'outputting'
-    const avatarName = tool.id
-
-    const metricsText = useMemo(
-        () => formatMetrics(tool.agentMetrics),
-        [tool.agentMetrics],
-    )
+    const metricsText = formatMetrics(tool.agentMetrics)
 
     return (
         <div
@@ -83,13 +62,13 @@ export function AgentCard({ agent, onClick }: {
                 opacity: isPending ? 0.7 : 1,
                 background: 'transparent',
                 transition: 'background 0.3s, opacity 0.3s',
-                boxSizing: 'border-box' as const,
+                boxSizing: 'border-box',
             }}
             className={`agent-card-breathing agent-card-${tool.state}`}
         >
             <div style={{ flexShrink: 0, lineHeight: 0 }}>
                 <PixelAvatar
-                    name={avatarName}
+                    name={tool.id}
                     status={status}
                     size={24}
                 />
