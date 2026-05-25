@@ -140,7 +140,9 @@ export function PixelCard({
     const rafRef = useRef<number | null>(null)
     const prevTimeRef = useRef(performance.now())
     const reducedMotion = useRef(
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        typeof window !== 'undefined' && window.matchMedia
+            ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            : false,
     ).current
 
     const initPixels = () => {
