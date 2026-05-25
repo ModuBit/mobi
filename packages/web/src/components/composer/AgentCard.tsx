@@ -16,7 +16,6 @@
 
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import { PixelCard } from '@/components/ui/PixelCard'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
 import type { RunningAgent } from '@/domain/chat/extractRunningAgents'
 import type { AgentMetrics } from '@/domain/chat/types'
@@ -34,7 +33,6 @@ function formatMetrics(metrics: AgentMetrics | undefined): string {
 /**
  * Agent 卡片组件
  * 展示单个 Agent 的状态、头像、描述和指标
- * 鼠标悬停时有像素粒子扩散效果
  */
 export function AgentCard({ agent, onClick }: {
     agent: RunningAgent
@@ -48,73 +46,62 @@ export function AgentCard({ agent, onClick }: {
     const status = isPending ? 'idle' : 'outputting'
     const metricsText = formatMetrics(tool.agentMetrics)
 
-    // 根据主题选择像素颜色
-    const pixelColors = `${token.colorBorderSecondary},${token.colorBorder},${token.colorTextQuaternary}`
-
     return (
-        <PixelCard
-            gap={4}
-            speed={40}
-            colors={pixelColors}
+        <div
+            onClick={onClick}
             style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
                 width: 'var(--agent-card-width, 200px)',
                 height: 40,
+                padding: '4px 8px',
                 borderRadius: 8,
                 cursor: 'pointer',
+                border: 'none',
                 opacity: isPending ? 0.7 : 1,
+                background: token.colorBgTextHover,
                 transition: 'opacity 0.3s',
                 boxSizing: 'border-box',
             }}
         >
-            <div
-                onClick={onClick}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    height: '100%',
-                    padding: '4px 8px',
-                    boxSizing: 'border-box',
-                }}
-            >
-                <div style={{ flexShrink: 0, lineHeight: 0 }}>
-                    <PixelAvatar
-                        name={tool.id}
-                        status={status}
-                        size={24}
-                    />
+            <div style={{ flexShrink: 0, lineHeight: 0 }}>
+                <PixelAvatar
+                    name={tool.id}
+                    status={status}
+                    size={24}
+                />
+            </div>
+            <div style={{
+                flex: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1,
+            }}>
+                <div style={{
+                    fontSize: 11,
+                    color: token.colorTextSecondary,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    lineHeight: '1.3',
+                }}>
+                    {agent.description ?? agent.subagentType ?? 'Agent'}
                 </div>
                 <div style={{
-                    flex: 1,
-                    minWidth: 0,
+                    fontSize: 9,
+                    color: token.colorTextQuaternary,
+                    fontFamily: 'var(--font-mono)',
+                    whiteSpace: 'nowrap',
                     overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 1,
+                    textOverflow: 'ellipsis',
+                    lineHeight: '1.3',
                 }}>
-                    <div style={{
-                        fontSize: 11,
-                        color: token.colorTextSecondary,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        lineHeight: '1.3',
-                    }}>
-                        {agent.description ?? agent.subagentType ?? 'Agent'}
-                    </div>
-                    <div style={{
-                        fontSize: 9,
-                        color: token.colorTextQuaternary,
-                        fontFamily: 'var(--font-mono)',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        lineHeight: '1.3',
-                    }}>
-                        {metricsText}
-                    </div>
+                    {metricsText}
                 </div>
             </div>
-        </PixelCard>
+        </div>
     )
 }

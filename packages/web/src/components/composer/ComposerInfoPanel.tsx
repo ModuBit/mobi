@@ -35,7 +35,6 @@ import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { AgentPanel } from './AgentPanel'
 import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
-import type { ToolCallBlock } from '@/domain/chat/types'
 import { TodoPanel } from './TodoPanel'
 import { TaskPanel } from './TaskPanel'
 
@@ -184,11 +183,16 @@ export function ComposerInfoPanel({
     todos,
     tasks
 }: ComposerInfoPanelProps) {
-    const [drawerBlock, setDrawerBlock] = useState<ToolCallBlock | null>(null)
+    const [drawerBlockId, setDrawerBlockId] = useState<string | null>(null)
     const hasPendingRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
     const hasTodos = todos && todos.length > 0
     const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
     const agents = useRunningAgents(sessionId)
+
+    // 从 store 派生最新 block，避免 useState 快照过时
+    const drawerBlock = drawerBlockId
+        ? agents.find(a => a.block.id === drawerBlockId)?.block ?? null
+        : null
     const hasAgents = agents.length > 0
     const { token } = useToken()
 
@@ -227,7 +231,7 @@ export function ComposerInfoPanel({
 
                     <AgentPanel
                         sessionId={sessionId}
-                        onAgentClick={(block) => setDrawerBlock(block)}
+                        onAgentClick={(block) => setDrawerBlockId(block.id)}
                     />
 
                     <TodoPanel todos={todos} />
@@ -250,7 +254,7 @@ export function ComposerInfoPanel({
                     block={drawerBlock}
                     metadata={metadata}
                     open={!!drawerBlock}
-                    onClose={() => setDrawerBlock(null)}
+                    onClose={() => setDrawerBlockId(null)}
                     sessionId={sessionId}
                 />
             )}
