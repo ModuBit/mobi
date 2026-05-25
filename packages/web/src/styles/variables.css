@@ -8,17 +8,6 @@
 
     /* AgentCard 宽度 */
     --agent-card-width: 200px;
-
-    /* AgentCard 呼吸动画颜色（Light 模式） */
-    --agent-breathe-color: rgba(0, 0, 0, 0.04);
-    --agent-breathe-color-peak: rgba(0, 0, 0, 0.08);
-    --agent-breathe-hover: rgba(0, 0, 0, 0.10);
-}
-
-html[data-theme='dark'] {
-    --agent-breathe-color: rgba(255, 255, 255, 0.03);
-    --agent-breathe-color-peak: rgba(255, 255, 255, 0.08);
-    --agent-breathe-hover: rgba(255, 255, 255, 0.10);
 }
 
 @media (max-width: 768px) {

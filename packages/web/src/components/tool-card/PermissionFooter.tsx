@@ -56,8 +56,12 @@ function formatPermissionSummary(
     sdkHints?: SDKUIHints
 ): string {
     if (permission.status === 'pending') {
-        // 优先使用 SDK 提供的 UI 提示字段
-        const sdkDesc = sdkHints?.title || sdkHints?.description || sdkHints?.displayName
+        // 组合 SDK 提供的 UI 提示字段：displayName + title/description
+        const parts: string[] = []
+        if (sdkHints?.displayName) parts.push(sdkHints.displayName)
+        if (sdkHints?.title && sdkHints.title !== sdkHints.displayName) parts.push(sdkHints.title)
+        else if (sdkHints?.description && sdkHints.description !== sdkHints.displayName) parts.push(sdkHints.description)
+        const sdkDesc = parts.join(' · ')
         if (sdkDesc) return `${t('chat.tool.waitingForApproval')} ${sdkDesc}`
         // 回退到自行推断
         const desc = getPermissionDescription(toolName, toolInput)
@@ -99,6 +103,13 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const [feedback, setFeedback] = useState('')
 
     const toolName = props.tool.name
+    // 从 sdkHints 获取 agent 信息（CLI 端在 task_started 时注入）
+    const sdkAgentDesc = props.tool.sdkHints?.agentDescription
+    const sdkAgentType = props.tool.sdkHints?.agentSubagentType
+    const agentInfo = props.tool.sdkHints?.agentID && (sdkAgentDesc || sdkAgentType) ? {
+        description: sdkAgentDesc,
+        subagentType: sdkAgentType,
+    } : null
     const isEditTool = toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit'
     const isExitPlanMode = isExitPlanModeTool(toolName)
     const hideAllowForSession = isEditTool || isExitPlanMode
@@ -192,6 +203,28 @@ function PermissionFooterInner(props: PermissionFooterProps) {
 
     return (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Agent 来源标识 */}
+            {agentInfo && (
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    background: token.colorBgTextHover,
+                    fontSize: 11,
+                    color: token.colorTextTertiary,
+                }}>
+                    <span style={{ opacity: 0.7 }}>Agent:</span>
+                    <span style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    }}>
+                        {agentInfo.description ?? agentInfo.subagentType ?? 'Agent'}
+                    </span>
+                </div>
+            )}
             <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{summary}</div>
 
             {error ? (

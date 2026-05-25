@@ -22,7 +22,7 @@
  */
 
 import { logger } from "@/lib";
-import type { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKAssistantMessage, SDKMessage, SDKTaskStartedMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "../sdk/types";
 import type { SDKUIHints } from "@mobi/shared";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
@@ -118,6 +118,8 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
     private onPermissionRequestCallback?: (toolCallId: string) => void;
+    /** agentID → { description, subagentType }，从 task_started 系统消息中提取 */
+    private agentInfoMap = new Map<string, { description: string; subagentType?: string }>();
 
     constructor(session: Session) {
         super(session.client);
@@ -299,10 +301,26 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                 throw new Error(`Could not resolve tool call ID for ${toolName}`);
             }
         }
+        // 注入 agent 信息到 sdkHints（只拷贝 SDKUIHints 已知字段，排除 signal 等）
+        const sdkHints: SDKUIHints = {
+            title: options.title,
+            displayName: options.displayName,
+            description: options.description,
+            decisionReason: options.decisionReason,
+            blockedPath: options.blockedPath,
+            agentID: options.agentID,
+        }
+        if (options.agentID) {
+            const agentInfo = this.agentInfoMap.get(options.agentID)
+            if (agentInfo) {
+                sdkHints.agentDescription = agentInfo.description
+                sdkHints.agentSubagentType = agentInfo.subagentType
+            }
+        }
         return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, {
             suggestions: options.suggestions,
             toolUseID: options.toolUseID,
-            sdkHints: options,
+            sdkHints,
         });
     }
 
@@ -392,7 +410,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     }
 
     /**
-     * Handles messages to track tool calls
+     * Handles messages to track tool calls and agent info
      */
     onMessage(message: SDKMessage): void {
         if (message.type === 'assistant') {
@@ -430,6 +448,16 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                 }
             }
         }
+        // 追踪 task_started 系统消息，记录 agent 信息
+        if (message.type === 'system') {
+            const sysMsg = message as SDKTaskStartedMessage;
+            if (sysMsg.subtype === 'task_started' && sysMsg.task_id && sysMsg.description) {
+                this.agentInfoMap.set(sysMsg.task_id, {
+                    description: sysMsg.description,
+                    subagentType: sysMsg.subagent_type,
+                });
+            }
+        }
     }
 
     /**
@@ -458,6 +486,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     resetForNewTurn(): void {
         this.toolCalls = [];
         this.responses.clear();
+        this.agentInfoMap.clear();
 
         this.cancelPendingRequests({
             rejectMessage: 'Turn reset'
@@ -473,6 +502,7 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
+        this.agentInfoMap.clear();
 
         this.cancelPendingRequests({
             rejectMessage: 'Session reset'

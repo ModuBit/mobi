@@ -133,6 +133,8 @@ export const SDKUIHintsSchema = z.object({
     decisionReason: z.string().optional(),
     blockedPath: z.string().optional(),
     agentID: z.string().optional(),
+    agentDescription: z.string().optional(),
+    agentSubagentType: z.string().optional(),
 })
 
 export type SDKUIHints = z.infer<typeof SDKUIHintsSchema>
