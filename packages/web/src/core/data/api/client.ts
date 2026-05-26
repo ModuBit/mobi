@@ -101,6 +101,9 @@ export function createMobiApi(token: string | null) {
             abort: (sessionId: string) => client.post(`/api/sessions/${sessionId}/abort`),
             switch: (sessionId: string) => client.post(`/api/sessions/${sessionId}/switch`),
             resume: (sessionId: string) => client.post<{ sessionId: string }>(`/api/sessions/${sessionId}/resume`),
+            // 停止后台任务
+            stopTask: (sessionId: string, taskId: string) =>
+                client.post(`/api/sessions/${sessionId}/stop-task`, { taskId }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
             // 上传文件
             upload: (sessionId: string, filename: string, content: string, mimeType: string) =>

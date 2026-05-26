@@ -55,8 +55,7 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick }: {
     const handleStop = async (e: React.MouseEvent, task: BackgroundTask) => {
         e.stopPropagation()
         try {
-            // stopTask 方法将在后续任务中添加到 API client
-            await (api.sessions as any).stopTask?.(sessionId, task.taskId)
+            await api.sessions.stopTask(sessionId, task.taskId)
         } catch { /* 静默忽略 */ }
     }
 

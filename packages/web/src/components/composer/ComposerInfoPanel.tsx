@@ -37,6 +37,11 @@ import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { TodoPanel } from './TodoPanel'
 import { TaskPanel } from './TaskPanel'
+import { BackgroundTaskPanel } from './BackgroundTaskPanel'
+import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
+import type { BackgroundTask } from '@/domain/chat/types'
+import { ContentDrawer } from '@/components/ui/ContentDrawer'
+import { BashDrawerContent } from '@/components/tool-card/BashDrawerContent'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -184,10 +189,13 @@ export function ComposerInfoPanel({
     tasks
 }: ComposerInfoPanelProps) {
     const [drawerBlockId, setDrawerBlockId] = useState<string | null>(null)
+    const [bgDrawerTask, setBgDrawerTask] = useState<BackgroundTask | null>(null)
     const hasPendingRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
     const hasTodos = todos && todos.length > 0
     const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
     const agents = useRunningAgents(sessionId)
+    const bgTasks = useBackgroundTasks(sessionId)
+    const hasBgTasks = bgTasks.length > 0
 
     // 从 store 派生最新 block，避免 useState 快照过时
     const drawerBlock = drawerBlockId
@@ -210,7 +218,7 @@ export function ComposerInfoPanel({
         return () => observer.disconnect()
     }, [])
 
-    if (!hasPendingRequests && !hasTodos && !hasTasks && !hasAgents) return null
+    if (!hasPendingRequests && !hasTodos && !hasTasks && !hasAgents && !hasBgTasks) return null
 
     return (
         <div style={{ position: 'relative', padding: '8px 0', marginBottom: 4 }}>
@@ -233,6 +241,14 @@ export function ComposerInfoPanel({
                         sessionId={sessionId}
                         onAgentClick={(block) => setDrawerBlockId(block.id)}
                     />
+
+                    {hasBgTasks && (
+                        <BackgroundTaskPanel
+                            sessionId={sessionId}
+                            api={api}
+                            onTaskClick={(task) => setBgDrawerTask(task)}
+                        />
+                    )}
 
                     <TodoPanel todos={todos} />
                     <TaskPanel tasks={tasks} />
@@ -257,6 +273,15 @@ export function ComposerInfoPanel({
                     onClose={() => setDrawerBlockId(null)}
                     sessionId={sessionId}
                 />
+            )}
+            {bgDrawerTask && bgDrawerTask.toolName === 'Bash' && (
+                <ContentDrawer
+                    title={bgDrawerTask.description}
+                    open={!!bgDrawerTask}
+                    onClose={() => setBgDrawerTask(null)}
+                >
+                    <BashDrawerContent task={bgDrawerTask} sessionId={sessionId} api={api} />
+                </ContentDrawer>
             )}
         </div>
     )
