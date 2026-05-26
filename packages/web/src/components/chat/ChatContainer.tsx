@@ -38,6 +38,7 @@ import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { getAgentStatus } from '@/components/pixel-avatar/types'
 import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
+import { useBackgroundTasksStore } from '@/core/data/stores/backgroundTasksStore'
 
 const { useToken } = antTheme
 
@@ -116,6 +117,21 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             useRunningAgentsStore.getState().clearSession(sessionId)
         }
     }, [rawBlocks, sessionId])
+
+    // 同步 backgroundTasks 从 session cache 到 Zustand store，供 BackgroundTaskPanel 订阅
+    const bgTasks = session?.runtimeState?.backgroundTasks
+    useEffect(() => {
+        if (bgTasks) {
+            // BackgroundTaskItem.toolUseId 为 string|null|undefined，需要映射为 string|null
+            const mapped = bgTasks.map(t => ({ ...t, toolUseId: t.toolUseId ?? null }))
+            useBackgroundTasksStore.getState().setTasks(sessionId, mapped)
+        } else {
+            useBackgroundTasksStore.getState().setTasks(sessionId, [])
+        }
+        return () => {
+            useBackgroundTasksStore.getState().clearSession(sessionId)
+        }
+    }, [bgTasks, sessionId])
 
     // 有更多历史页时，过滤掉不完整的 tool-call block 避免闪烁
     const chatBlocks = useMemo(() => {
