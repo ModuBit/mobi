@@ -171,7 +171,11 @@
       "allCompleted": "All completed",
       "pendingCount": "{{count}} pending"
     },
-    "footnoteSources": "References"
+    "footnoteSources": "References",
+    "backgroundTask": {
+      "completed": "Background task completed: {{description}}",
+      "failed": "Background task failed: {{description}}"
+    }
   },
   "files": {
     "title": "File Explorer",

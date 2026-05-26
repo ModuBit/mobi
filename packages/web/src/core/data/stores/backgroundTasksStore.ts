@@ -17,20 +17,48 @@
 import { create } from 'zustand'
 import type { BackgroundTask } from '@/domain/chat/types'
 
-interface BackgroundTasksState {
-    tasksBySession: Map<string, BackgroundTask[]>
-    setTasks: (sessionId: string, tasks: BackgroundTask[]) => void
-    clearSession: (sessionId: string) => void
+/** 被移除的后台任务通知 */
+export type BackgroundTaskRemovedNotification = {
+    taskId: string
+    description: string
+    toolName: 'Bash' | 'Agent'
 }
 
-export const useBackgroundTasksStore = create<BackgroundTasksState>((set) => ({
+interface BackgroundTasksState {
+    tasksBySession: Map<string, BackgroundTask[]>
+    /** 被移除的任务通知队列，组件通过 consumeRemoved 排空 */
+    removedQueue: BackgroundTaskRemovedNotification[]
+    setTasks: (sessionId: string, tasks: BackgroundTask[]) => void
+    clearSession: (sessionId: string) => void
+    consumeRemoved: () => BackgroundTaskRemovedNotification[]
+}
+
+export const useBackgroundTasksStore = create<BackgroundTasksState>((set, get) => ({
     tasksBySession: new Map(),
+    removedQueue: [],
 
     setTasks: (sessionId, tasks) =>
         set((state) => {
+            const prev = state.tasksBySession.get(sessionId) ?? []
             const next = new Map(state.tasksBySession)
             next.set(sessionId, tasks)
-            return { tasksBySession: next }
+
+            // 检测被移除的任务（存在于之前但不存在于之后）
+            const removedIds = new Set(tasks.map(t => t.taskId))
+            const removed = prev
+                .filter(t => !removedIds.has(t.taskId))
+                .map(t => ({
+                    taskId: t.taskId,
+                    description: t.description,
+                    toolName: t.toolName,
+                }))
+
+            return {
+                tasksBySession: next,
+                removedQueue: removed.length > 0
+                    ? [...state.removedQueue, ...removed]
+                    : state.removedQueue,
+            }
         }),
 
     clearSession: (sessionId) =>
@@ -39,6 +67,13 @@ export const useBackgroundTasksStore = create<BackgroundTasksState>((set) => ({
             next.delete(sessionId)
             return { tasksBySession: next }
         }),
+
+    consumeRemoved: () => {
+        const queue = get().removedQueue
+        if (queue.length === 0) return []
+        set({ removedQueue: [] })
+        return queue
+    },
 }))
 
 // 空数组常量，避免每次 selector 返回新引用导致 React 19 无限渲染

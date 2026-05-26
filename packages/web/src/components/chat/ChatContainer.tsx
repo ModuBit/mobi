@@ -16,7 +16,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react'
 import { Bubble } from '@ant-design/x'
-import { Spin, Button, Skeleton, theme as antTheme } from 'antd'
+import { Spin, Button, Skeleton, theme as antTheme, message } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
@@ -132,6 +132,19 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             useBackgroundTasksStore.getState().clearSession(sessionId)
         }
     }, [bgTasks, sessionId])
+
+    // 后台任务完成时显示 Toast 通知
+    const [messageApi, contextHolder] = message.useMessage()
+    useEffect(() => {
+        const removed = useBackgroundTasksStore.getState().consumeRemoved()
+        for (const task of removed) {
+            messageApi.open({
+                type: 'success',
+                content: t('chat.backgroundTask.completed', { description: task.description }),
+                duration: 3,
+            })
+        }
+    }, [bgTasks, messageApi, t])
 
     // 有更多历史页时，过滤掉不完整的 tool-call block 避免闪烁
     const chatBlocks = useMemo(() => {
@@ -425,6 +438,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            {contextHolder}
             <Global styles={bubbleCopyStyles} />
             <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (
