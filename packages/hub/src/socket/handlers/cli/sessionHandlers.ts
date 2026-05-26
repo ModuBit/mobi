@@ -23,6 +23,10 @@ import type { SyncEvent } from '../../../sync/syncEngine'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
 import { extractTeamStateFromMessageContent, applyTeamStateDelta } from '../../../sync/teams'
+import {
+    extractBackgroundTaskDeltasFromMessageContent,
+    applyBackgroundTaskDelta,
+} from '../../../sync/backgroundTasks'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
 
@@ -143,8 +147,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         const todos = extractTodoWriteTodosFromMessageContent(content)
         const taskDelta = extractTaskDeltasFromMessageContent(content, pendingTaskMap)
         const teamDelta = extractTeamStateFromMessageContent(content)
+        const bgTaskDelta = extractBackgroundTaskDeltasFromMessageContent(content)
 
-        if (todos || taskDelta || teamDelta) {
+        if (todos || taskDelta || teamDelta || bgTaskDelta) {
             const existingSession = store.sessions.getSession(sid)
             const existingRuntimeState = (existingSession?.runtimeState as RuntimeState) ?? {}
 
@@ -162,6 +167,17 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             if (teamDelta) {
                 const existingTeamState = existingRuntimeState.teamState ?? null
                 existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamDelta) ?? undefined
+            }
+
+            // 合并 backgroundTasks
+            if (bgTaskDelta) {
+                existingRuntimeState.backgroundTasks = applyBackgroundTaskDelta(
+                    existingRuntimeState.backgroundTasks,
+                    bgTaskDelta,
+                )
+                if (existingRuntimeState.backgroundTasks.length === 0) {
+                    delete (existingRuntimeState as Record<string, unknown>).backgroundTasks
+                }
             }
 
             // 自动清除：tasks 全部完成或删除
