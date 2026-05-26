@@ -179,6 +179,28 @@ export type TaskItem = z.infer<typeof TaskItemSchema>
 
 export const TasksSchema = z.array(TaskItemSchema)
 
+/** 后台任务项 */
+export const BackgroundTaskItemSchema = z.object({
+    taskId: z.string(),
+    toolUseId: z.string().nullable().optional(),
+    toolName: z.enum(['Bash', 'Agent']),
+    description: z.string(),
+    subagentType: z.string().optional(),
+    status: z.enum(['running', 'completed', 'failed', 'stopped']),
+    metrics: z.object({
+        tokens: z.number(),
+        toolUses: z.number(),
+        durationMs: z.number(),
+    }).optional(),
+    summary: z.string().optional(),
+    startedAt: z.number(),
+    completedAt: z.number().optional(),
+})
+
+export type BackgroundTaskItem = z.infer<typeof BackgroundTaskItemSchema>
+
+export const BackgroundTasksSchema = z.array(BackgroundTaskItemSchema)
+
 export const TeamMemberSchema = z.object({
     name: z.string(),
     agentType: z.string().optional(),
@@ -225,6 +247,7 @@ export type TeamState = z.infer<typeof TeamStateSchema>
 export const RuntimeStateSchema = z.object({
     todos: TodosSchema.optional(),
     tasks: TasksSchema.optional(),
+    backgroundTasks: BackgroundTasksSchema.optional(),
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
     effort: z.enum(EFFORT_LEVELS).optional()

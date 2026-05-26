@@ -21,6 +21,8 @@ import {
     MetadataSchema,
     SessionSchema,
     SyncEventSchema,
+    BackgroundTaskItemSchema,
+    RuntimeStateSchema,
 } from '../src/schemas'
 
 describe('PermissionModeSchema', () => {
@@ -266,5 +268,51 @@ describe('SyncEventSchema', () => {
 
     it('缺少 type 字段抛错', () => {
         expect(() => SyncEventSchema.parse({ sessionId: 'session-1' })).toThrow()
+    })
+})
+
+describe('BackgroundTaskItemSchema', () => {
+    it('解析有效的 background task', () => {
+        const task = {
+            taskId: 'bg-1',
+            toolName: 'Bash',
+            description: 'npm test',
+            status: 'running',
+            startedAt: Date.now(),
+        }
+        const result = BackgroundTaskItemSchema.parse(task)
+        expect(result.taskId).toBe('bg-1')
+        expect(result.toolName).toBe('Bash')
+    })
+
+    it('解析含可选字段的 background task', () => {
+        const task = {
+            taskId: 'bg-2',
+            toolName: 'Agent',
+            description: 'researcher',
+            subagentType: 'Explore',
+            status: 'running',
+            metrics: { tokens: 100, toolUses: 3, durationMs: 5000 },
+            startedAt: Date.now(),
+        }
+        const result = BackgroundTaskItemSchema.parse(task)
+        expect(result.metrics?.tokens).toBe(100)
+    })
+})
+
+describe('RuntimeStateSchema with backgroundTasks', () => {
+    it('包含 backgroundTasks 字段', () => {
+        const state = {
+            backgroundTasks: [
+                { taskId: 'bg-1', toolName: 'Bash', description: 'test', status: 'running', startedAt: 0 },
+            ],
+        }
+        const result = RuntimeStateSchema.parse(state)
+        expect(result.backgroundTasks).toHaveLength(1)
+    })
+
+    it('backgroundTasks 可选', () => {
+        const result = RuntimeStateSchema.parse({})
+        expect(result.backgroundTasks).toBeUndefined()
     })
 })

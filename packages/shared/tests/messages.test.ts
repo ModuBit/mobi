@@ -103,6 +103,14 @@ describe('isClaudeChatVisibleSystemSubtype', () => {
         expect(isClaudeChatVisibleSystemSubtype('microcompact_boundary')).toBe(true)
     })
 
+    it('task_started 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('task_started')).toBe(true)
+    })
+
+    it('task_updated 返回 true', () => {
+        expect(isClaudeChatVisibleSystemSubtype('task_updated')).toBe(true)
+    })
+
     it('init 返回 false', () => {
         expect(isClaudeChatVisibleSystemSubtype('init')).toBe(false)
     })
