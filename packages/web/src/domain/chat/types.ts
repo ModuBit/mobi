@@ -45,6 +45,11 @@ export type AgentEvent =
     | { type: 'aborted'; numTurns: number | null; durationMs?: number; tokens?: number }
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string }
     | { type: 'agent-progress'; toolUseId: string; metrics: AgentMetrics }
+    // 后台任务事件
+    | { type: 'bg-task-started'; taskId: string; toolUseId: string | null; toolName: 'Bash' | 'Agent'; description: string; subagentType?: string }
+    | { type: 'bg-task-progress'; taskId: string; metrics: AgentMetrics; summary?: string }
+    | { type: 'bg-task-completed'; taskId: string; status: 'completed' | 'failed' | 'stopped'; summary?: string; metrics?: AgentMetrics }
+    | { type: 'bg-task-updated'; taskId: string; patch: Record<string, unknown> }
     | ({ type: string } & Record<string, unknown>)
 
 export type ToolResultPermission = {
@@ -60,6 +65,20 @@ export type AgentMetrics = {
     tokens: number
     toolUses: number
     durationMs: number
+}
+
+/** 后台任务状态 */
+export type BackgroundTask = {
+    taskId: string
+    toolUseId: string | null
+    toolName: 'Bash' | 'Agent'
+    description: string
+    subagentType?: string
+    status: 'running' | 'completed' | 'failed' | 'stopped'
+    metrics?: AgentMetrics
+    summary?: string
+    startedAt: number
+    completedAt?: number
 }
 
 export type ToolUse = {

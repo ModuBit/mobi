@@ -392,6 +392,30 @@ describe('normalizeAgentRecord', () => {
             expect(result.content.error).toBe('unknown error') // final fallback
         }
     })
+
+    it('should handle system:task_started', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            { type: 'output', data: { type: 'system', subtype: 'task_started', task_id: 'bg-1', description: 'npm test', uuid: 'u1', session_id: 's1' } }
+        )
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('bg-task-started')
+            if ('taskId' in result.content) expect(result.content.taskId).toBe('bg-1')
+        }
+    })
+
+    it('should handle system:task_updated', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            { type: 'output', data: { type: 'system', subtype: 'task_updated', task_id: 'bg-1', patch: { status: 'running' }, uuid: 'u1', session_id: 's1' } }
+        )
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('bg-task-updated')
+            if ('taskId' in result.content) expect(result.content.taskId).toBe('bg-1')
+        }
+    })
 })
 
 describe('isSkippableAgentContent', () => {

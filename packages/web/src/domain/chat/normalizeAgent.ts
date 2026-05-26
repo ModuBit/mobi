@@ -387,6 +387,31 @@ const handleTaskNotificationOutput: OutputHandler = (data, ctx) => {
     })
 }
 
+/** 处理 system:task_started 消息（后台任务启动） */
+const handleBgTaskStartedOutput: OutputHandler = (data, ctx) => {
+    const taskId = asString(data.task_id)
+    if (!taskId) return null
+    return createEventMessage(ctx, {
+        type: 'bg-task-started',
+        taskId,
+        toolUseId: asString(data.tool_use_id) ?? null,
+        toolName: asString(data.subagent_type) ? 'Agent' : 'Bash',
+        description: asString(data.description) ?? 'Background task',
+        subagentType: asString(data.subagent_type) ?? undefined,
+    })
+}
+
+/** 处理 system:task_updated 消息（后台任务状态更新） */
+const handleBgTaskUpdatedOutput: OutputHandler = (data, ctx) => {
+    const taskId = asString(data.task_id)
+    if (!taskId) return null
+    return createEventMessage(ctx, {
+        type: 'bg-task-updated',
+        taskId,
+        patch: isObject(data.patch) ? data.patch as Record<string, unknown> : {},
+    })
+}
+
 /** 处理 result 消息 */
 const handleResultOutput: OutputHandler = (data, ctx) => {
     const subtype = asString(data.subtype)
@@ -441,6 +466,8 @@ const outputHandlers = new Map<string, OutputHandler>([
     ['system:compact_boundary', handleCompactBoundaryOutput],
     ['system:task_progress', handleTaskProgressOutput],
     ['system:task_notification', handleTaskNotificationOutput],
+    ['system:task_started', handleBgTaskStartedOutput],
+    ['system:task_updated', handleBgTaskUpdatedOutput],
     ['result', handleResultOutput],
 ])
 
