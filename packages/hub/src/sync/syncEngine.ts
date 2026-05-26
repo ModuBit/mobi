@@ -272,6 +272,11 @@ export class SyncEngine {
         await this.rpcGateway.abortSession(sessionId)
     }
 
+    // 停止后台任务
+    async stopTask(sessionId: string, taskId: string): Promise<void> {
+        await this.rpcGateway.stopTask(sessionId, taskId)
+    }
+
     async archiveSession(sessionId: string): Promise<void> {
         await this.rpcGateway.killSession(sessionId)
         this.handleSessionEnd({ sid: sessionId, time: Date.now() })

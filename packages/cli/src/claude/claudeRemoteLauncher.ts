@@ -133,6 +133,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             onSwitch: () => this.handleSwitchRequest()
         });
 
+        // 注册 stop-task RPC 处理器，用于远程停止后台任务
+        session.client.rpcHandlerManager.registerHandler('stop-task', async (params: string) => {
+            const { taskId } = JSON.parse(params)
+            if (this.queryRef) {
+                await this.queryRef.stopTask(taskId)
+            }
+        });
+
         const permissionHandler = new PermissionHandler(session);
         this.permissionHandler = permissionHandler;
 

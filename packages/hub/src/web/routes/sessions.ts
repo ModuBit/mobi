@@ -206,6 +206,21 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return c.json({ ok: true })
     })
 
+    // 停止后台任务
+    app.post('/sessions/:id/stop-task', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        if (sessionResult instanceof Response) return sessionResult
+
+        const body = await c.req.json().catch(() => ({}))
+        const taskId = z.string().parse(body?.taskId)
+
+        await engine.stopTask(sessionResult.sessionId, taskId)
+        return c.json({ ok: true })
+    })
+
     app.post('/sessions/:id/archive', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {

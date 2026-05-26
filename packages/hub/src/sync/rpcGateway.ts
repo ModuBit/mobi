@@ -244,6 +244,11 @@ export class RpcGateway {
         return await this.sessionRpc(sessionId, 'refreshMetadata', {}) as RpcRefreshMetadataResponse
     }
 
+    // 停止后台任务
+    async stopTask(sessionId: string, taskId: string): Promise<void> {
+        await this.sessionRpc(sessionId, 'stop-task', { taskId })
+    }
+
     private async sessionRpc(sessionId: string, method: string, params: unknown): Promise<unknown> {
         return await this.rpcCall(`${sessionId}:${method}`, params)
     }
