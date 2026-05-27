@@ -129,22 +129,23 @@ function processAssistantToolUses(
 function processUserToolResults(
     messageContent: unknown,
     pendingMap: PendingTaskMap
-): TaskDelta | null {
-    if (!isObject(messageContent)) return null
-    if (messageContent.type !== 'output') return null
+): TaskDelta[] {
+    if (!isObject(messageContent)) return []
+    if (messageContent.type !== 'output') return []
 
     const data = isObject(messageContent.data) ? messageContent.data : null
-    if (!data || data.type !== 'user') return null
+    if (!data || data.type !== 'user') return []
 
     const message = isObject(data.message) ? data.message : null
-    if (!message) return null
+    if (!message) return []
 
     const modelContent = message.content
-    if (!Array.isArray(modelContent)) return null
+    if (!Array.isArray(modelContent)) return []
 
     // tool_use_result 与 message 同级，包含工具的结构化结果
     const toolUseResult = isObject(data.tool_use_result) ? data.tool_use_result : null
 
+    const deltas: TaskDelta[] = []
     for (const block of modelContent) {
         if (!isObject(block) || block.type !== 'tool_result') continue
 
@@ -158,18 +159,21 @@ function processUserToolResults(
         const pendingEntry = pendingMap.get(toolUseId)
         if (pendingEntry) {
             pendingMap.delete(toolUseId)
-            return processWriteToolResult(pendingEntry.toolName, pendingEntry.input, block.content, toolUseResult)
+            const delta = processWriteToolResult(pendingEntry.toolName, pendingEntry.input, block.content, toolUseResult)
+            if (delta) deltas.push(delta)
+            continue
         }
 
         // 尝试配对 TaskList/TaskGet 的暂存
         const readOnlyName = pendingMap.getToolName(toolUseId)
         if (readOnlyName) {
             pendingMap.delete(toolUseId)
-            return processReadOnlyToolResult(readOnlyName, block.content, toolUseResult)
+            const delta = processReadOnlyToolResult(readOnlyName, block.content, toolUseResult)
+            if (delta) deltas.push(delta)
         }
     }
 
-    return null
+    return deltas
 }
 
 /** 处理 TaskCreate/TaskUpdate 的 tool_result */
@@ -292,32 +296,32 @@ function processReadOnlyToolResult(
 
 /**
  * 从消息内容中提取 Task 增量。
- * assistant 消息：暂存 tool_use，返回 null。
- * user 消息：配对 tool_result，返回 TaskDelta。
+ * assistant 消息：暂存 tool_use，返回 []。
+ * user 消息：配对 tool_result，返回 TaskDelta[]。
  */
 export function extractTaskDeltasFromMessageContent(
     messageContent: unknown,
     pendingMap: PendingTaskMap
-): TaskDelta | null {
+): TaskDelta[] {
     const record = unwrapRoleWrappedRecordEnvelope(messageContent)
-    if (!record) return null
+    if (!record) return []
 
     const content = record.content
-    if (!isObject(content) || content.type !== 'output') return null
+    if (!isObject(content) || content.type !== 'output') return []
 
     const data = isObject(content.data) ? content.data as Record<string, unknown> : null
-    if (!data) return null
+    if (!data) return []
 
     if (data.type === 'assistant') {
         processAssistantToolUses(content, pendingMap)
-        return null
+        return []
     }
 
     if (data.type === 'user') {
         return processUserToolResults(content, pendingMap)
     }
 
-    return null
+    return []
 }
 
 /**

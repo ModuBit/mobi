@@ -57,8 +57,8 @@ export function backfillRuntimeStateFromMessages(
     const pendingMap = new PendingTaskMap()
     let tasks: TaskItem[] | undefined
     for (const message of messages) {
-        const delta = extractTaskDeltasFromMessageContent(message.content, pendingMap)
-        if (delta) {
+        const deltas = extractTaskDeltasFromMessageContent(message.content, pendingMap)
+        for (const delta of deltas) {
             tasks = applyTaskDelta(tasks, delta)
         }
     }
@@ -348,6 +348,7 @@ export class SessionCache {
 
     expireInactive(now: number = Date.now()): void {
         const sessionTimeoutMs = 30_000
+        const evictionMs = 3_600_000 // 1 小时
 
         for (const session of this.sessions.values()) {
             if (!session.active) continue
@@ -355,6 +356,14 @@ export class SessionCache {
             session.active = false
             session.running = false
             this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false } })
+        }
+
+        // 驱逐长时间 inactive 的 session（仍在 DB 中，按需重新加载）
+        for (const [id, session] of this.sessions) {
+            if (!session.active && now - session.activeAt > evictionMs) {
+                this.sessions.delete(id)
+                this.lastBroadcastAtBySessionId.delete(id)
+            }
         }
     }
 

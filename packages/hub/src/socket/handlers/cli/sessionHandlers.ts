@@ -152,7 +152,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
         // 提取并更新 runtimeState（todos、tasks、teamState 等）
         const todos = extractTodoWriteTodosFromMessageContent(content)
-        const taskDelta = extractTaskDeltasFromMessageContent(content, pendingTaskMap)
+        const taskDeltas = extractTaskDeltasFromMessageContent(content, pendingTaskMap)
         const teamDelta = extractTeamStateFromMessageContent(content)
 
         // 先收集后台工具 ID（从 assistant 消息的 tool_use blocks），再提取后台任务增量
@@ -169,7 +169,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             }
         }
 
-        if (todos || taskDelta || teamDelta || bgTaskDelta) {
+        if (todos || taskDeltas.length > 0 || teamDelta || bgTaskDelta) {
             const existingSession = store.sessions.getSession(sid)
             const existingRuntimeState = (existingSession?.runtimeState as RuntimeState) ?? {}
 
@@ -179,7 +179,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             }
 
             // 合并 tasks
-            if (taskDelta) {
+            for (const taskDelta of taskDeltas) {
                 existingRuntimeState.tasks = applyTaskDelta(existingRuntimeState.tasks, taskDelta)
             }
 

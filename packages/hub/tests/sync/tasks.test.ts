@@ -136,7 +136,7 @@ describe('extractTaskDeltasFromMessageContent', () => {
                 description: '详细描述',
             })
             const result1 = extractTaskDeltasFromMessageContent(assistantMsg, map)
-            expect(result1).toBeNull()
+            expect(result1).toEqual([])
             expect(map.get('tu-1')).toBeDefined()
 
             // 2. user 消息配对 tool_result
@@ -144,10 +144,10 @@ describe('extractTaskDeltasFromMessageContent', () => {
                 task: { id: 'task-001', subject: '实现功能 X' }
             })
             const result2 = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result2).not.toBeNull()
-            expect(result2!.type).toBe('create')
+            expect(result2).toHaveLength(1)
+            expect(result2[0].type).toBe('create')
 
-            const delta = result2 as Extract<TaskDelta, { type: 'create' }>
+            const delta = result2[0] as Extract<TaskDelta, { type: 'create' }>
             expect(delta.task.id).toBe('task-001')
             expect(delta.task.subject).toBe('实现功能 X')
             expect(delta.task.description).toBe('详细描述')
@@ -172,8 +172,8 @@ describe('extractTaskDeltasFromMessageContent', () => {
             })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
 
-            expect(result).not.toBeNull()
-            const delta = result as Extract<TaskDelta, { type: 'create' }>
+            expect(result).toHaveLength(1)
+            const delta = result[0] as Extract<TaskDelta, { type: 'create' }>
             expect(delta.task.activeForm).toBe('正在实现功能 Y')
             expect(delta.task.metadata).toEqual({ priority: 'high' })
         })
@@ -188,7 +188,7 @@ describe('extractTaskDeltasFromMessageContent', () => {
 
             const userMsg = makeUserToolResult('tu-2', { error: '创建失败' }, true)
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result).toBeNull()
+            expect(result).toEqual([])
         })
     })
 
@@ -205,10 +205,10 @@ describe('extractTaskDeltasFromMessageContent', () => {
             const userMsg = makeUserToolResult('tu-3', { success: true })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
 
-            expect(result).not.toBeNull()
-            expect(result!.type).toBe('update')
+            expect(result).toHaveLength(1)
+            expect(result[0].type).toBe('update')
 
-            const delta = result as Extract<TaskDelta, { type: 'update' }>
+            const delta = result[0] as Extract<TaskDelta, { type: 'update' }>
             expect(delta.taskId).toBe('task-001')
             expect(delta.updates.status).toBe('in_progress')
         })
@@ -227,7 +227,7 @@ describe('extractTaskDeltasFromMessageContent', () => {
             const userMsg = makeUserToolResult('tu-4', { success: true })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
 
-            const delta = result as Extract<TaskDelta, { type: 'update' }>
+            const delta = result[0] as Extract<TaskDelta, { type: 'update' }>
             expect(delta.updates.status).toBe('completed')
             expect(delta.updates.subject).toBe('更新后的标题')
             expect(delta.updates.description).toBe('更新后的描述')
@@ -244,7 +244,7 @@ describe('extractTaskDeltasFromMessageContent', () => {
 
             const userMsg = makeUserToolResult('tu-5', { error: '更新失败' }, true)
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result).toBeNull()
+            expect(result).toEqual([])
         })
     })
 
@@ -265,10 +265,10 @@ describe('extractTaskDeltasFromMessageContent', () => {
             })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
 
-            expect(result).not.toBeNull()
-            expect(result!.type).toBe('calibration')
+            expect(result).toHaveLength(1)
+            expect(result[0].type).toBe('calibration')
 
-            const delta = result as Extract<TaskDelta, { type: 'calibration' }>
+            const delta = result[0] as Extract<TaskDelta, { type: 'calibration' }>
             expect(delta.tasks).toHaveLength(2)
             expect(delta.tasks[0].id).toBe('task-001')
             expect(delta.tasks[1].status).toBe('in_progress')
@@ -289,10 +289,10 @@ describe('extractTaskDeltasFromMessageContent', () => {
             })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
 
-            expect(result).not.toBeNull()
-            expect(result!.type).toBe('single-calibration')
+            expect(result).toHaveLength(1)
+            expect(result[0].type).toBe('single-calibration')
 
-            const delta = result as Extract<TaskDelta, { type: 'single-calibration' }>
+            const delta = result[0] as Extract<TaskDelta, { type: 'single-calibration' }>
             expect(delta.task.id).toBe('task-001')
             expect(delta.task.status).toBe('in_progress')
         })
@@ -303,18 +303,18 @@ describe('extractTaskDeltasFromMessageContent', () => {
             const map = new PendingTaskMap()
             const msg = makeOtherRoleMessage('system')
             const result = extractTaskDeltasFromMessageContent(msg, map)
-            expect(result).toBeNull()
+            expect(result).toEqual([])
         })
 
-        test('不含 Task 工具调用的 assistant 消息返回 null', () => {
+        test('不含 Task 工具调用的 assistant 消息返回空数组', () => {
             const map = new PendingTaskMap()
             const msg = makeAssistantToolUse('tu-x', 'OtherTool', { foo: 'bar' })
             const result = extractTaskDeltasFromMessageContent(msg, map)
-            expect(result).toBeNull()
+            expect(result).toEqual([])
             expect(map.get('tu-x')).toBeUndefined()
         })
 
-        test('不含 tool_result 的 user 消息返回 null', () => {
+        test('不含 tool_result 的 user 消息返回空数组', () => {
             const map = new PendingTaskMap()
             const msg = {
                 role: 'user',
@@ -329,14 +329,14 @@ describe('extractTaskDeltasFromMessageContent', () => {
                 }
             }
             const result = extractTaskDeltasFromMessageContent(msg, map)
-            expect(result).toBeNull()
+            expect(result).toEqual([])
         })
 
-        test('无法解包的消息返回 null', () => {
+        test('无法解包的消息返回空数组', () => {
             const map = new PendingTaskMap()
-            expect(extractTaskDeltasFromMessageContent('not-an-object', map)).toBeNull()
-            expect(extractTaskDeltasFromMessageContent(null, map)).toBeNull()
-            expect(extractTaskDeltasFromMessageContent(undefined, map)).toBeNull()
+            expect(extractTaskDeltasFromMessageContent('not-an-object', map)).toEqual([])
+            expect(extractTaskDeltasFromMessageContent(null, map)).toEqual([])
+            expect(extractTaskDeltasFromMessageContent(undefined, map)).toEqual([])
         })
 
         test('tool_result 的 content 为 JSON 字符串时可正常解析', () => {
@@ -353,8 +353,8 @@ describe('extractTaskDeltasFromMessageContent', () => {
             })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
 
-            expect(result).not.toBeNull()
-            const delta = result as Extract<TaskDelta, { type: 'create' }>
+            expect(result).toHaveLength(1)
+            const delta = result[0] as Extract<TaskDelta, { type: 'create' }>
             expect(delta.task.id).toBe('task-str-1')
         })
 
@@ -365,10 +365,10 @@ describe('extractTaskDeltasFromMessageContent', () => {
                 task: { id: 'task-999', subject: '未知' }
             })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result).toBeNull()
+            expect(result).toEqual([])
         })
 
-        test('TaskUpdate 缺少 taskId 时返回 null', () => {
+        test('TaskUpdate 缺少 taskId 时返回空数组', () => {
             const map = new PendingTaskMap()
 
             const assistantMsg = makeAssistantToolUse('tu-notaskid', 'TaskUpdate', {
@@ -378,10 +378,10 @@ describe('extractTaskDeltasFromMessageContent', () => {
 
             const userMsg = makeUserToolResult('tu-notaskid', { success: true })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result).toBeNull()
+            expect(result).toEqual([])
         })
 
-        test('TaskUpdate 无更新字段时返回 null', () => {
+        test('TaskUpdate 无更新字段时返回空数组', () => {
             const map = new PendingTaskMap()
 
             const assistantMsg = makeAssistantToolUse('tu-nofields', 'TaskUpdate', {
@@ -391,7 +391,7 @@ describe('extractTaskDeltasFromMessageContent', () => {
 
             const userMsg = makeUserToolResult('tu-nofields', { success: true })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result).toBeNull()
+            expect(result).toEqual([])
         })
     })
 
@@ -414,10 +414,10 @@ describe('extractTaskDeltasFromMessageContent', () => {
                 { task: { id: '4', subject: '创建 /tmp/e2e-test-task/src 目录' } }
             )
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result).not.toBeNull()
-            expect(result!.type).toBe('create')
+            expect(result).toHaveLength(1)
+            expect(result[0].type).toBe('create')
 
-            const delta = result as Extract<TaskDelta, { type: 'create' }>
+            const delta = result[0] as Extract<TaskDelta, { type: 'create' }>
             expect(delta.task.id).toBe('4')
             expect(delta.task.subject).toBe('创建 src 目录')
             expect(delta.task.description).toBe('创建 /tmp/e2e-test-task/src 目录')
@@ -437,9 +437,9 @@ describe('extractTaskDeltasFromMessageContent', () => {
                 task: { id: 'task-fallback', subject: '回退测试' }
             })
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result).not.toBeNull()
+            expect(result).toHaveLength(1)
 
-            const delta = result as Extract<TaskDelta, { type: 'create' }>
+            const delta = result[0] as Extract<TaskDelta, { type: 'create' }>
             expect(delta.task.id).toBe('task-fallback')
             expect(delta.task.subject).toBe('回退测试')
         })
@@ -457,10 +457,10 @@ describe('extractTaskDeltasFromMessageContent', () => {
                 { task: { id: 'task-get-1', subject: '校准任务', status: 'in_progress' } }
             )
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result).not.toBeNull()
-            expect(result!.type).toBe('single-calibration')
+            expect(result).toHaveLength(1)
+            expect(result[0].type).toBe('single-calibration')
 
-            const delta = result as Extract<TaskDelta, { type: 'single-calibration' }>
+            const delta = result[0] as Extract<TaskDelta, { type: 'single-calibration' }>
             expect(delta.task.id).toBe('task-get-1')
             expect(delta.task.subject).toBe('校准任务')
             expect(delta.task.status).toBe('in_progress')
@@ -482,10 +482,10 @@ describe('extractTaskDeltasFromMessageContent', () => {
                 ] }
             )
             const result = extractTaskDeltasFromMessageContent(userMsg, map)
-            expect(result).not.toBeNull()
-            expect(result!.type).toBe('calibration')
+            expect(result).toHaveLength(1)
+            expect(result[0].type).toBe('calibration')
 
-            const delta = result as Extract<TaskDelta, { type: 'calibration' }>
+            const delta = result[0] as Extract<TaskDelta, { type: 'calibration' }>
             expect(delta.tasks).toHaveLength(2)
             expect(delta.tasks[0].subject).toBe('任务A')
             expect(delta.tasks[1].subject).toBe('任务B')

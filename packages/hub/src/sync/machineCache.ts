@@ -98,6 +98,7 @@ export class MachineCache {
         const stored = this.store.machines.getMachine(machineId)
         if (!stored) {
             const existed = this.machines.delete(machineId)
+            this.lastBroadcastAtByMachineId.delete(machineId)
             if (existed) {
                 this.publisher.emit({ type: 'machine-updated', machineId, data: null })
             }
@@ -144,6 +145,8 @@ export class MachineCache {
     }
 
     warmupCache(): void {
+        this.machines.clear()
+        this.lastBroadcastAtByMachineId.clear()
         const machines = this.store.machines.getMachines()
         for (const machine of machines) {
             this.refreshMachine(machine.id)
@@ -172,12 +175,21 @@ export class MachineCache {
 
     expireInactive(now: number = Date.now()): void {
         const machineTimeoutMs = 45_000
+        const evictionMs = 3_600_000 // 1 小时
 
         for (const machine of this.machines.values()) {
             if (!machine.active) continue
             if (now - machine.activeAt <= machineTimeoutMs) continue
             machine.active = false
             this.publisher.emit({ type: 'machine-updated', machineId: machine.id, data: { active: false } })
+        }
+
+        // 驱逐长时间 inactive 的 machine（仍在 DB 中，按需重新加载）
+        for (const [id, machine] of this.machines) {
+            if (!machine.active && now - machine.activeAt > evictionMs) {
+                this.machines.delete(id)
+                this.lastBroadcastAtByMachineId.delete(id)
+            }
         }
     }
 }
