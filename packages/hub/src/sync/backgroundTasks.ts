@@ -33,21 +33,82 @@ export type BackgroundTaskDelta =
     | { type: 'progress'; taskId: string; metrics: AgentMetrics; summary?: string }
     | { type: 'completed'; taskId: string; status: 'completed' | 'failed' | 'stopped'; summary?: string }
 
+/** 后台工具名称 */
+export type BackgroundToolName = 'Bash' | 'Agent' | 'Monitor'
+
 /**
- * 根据 subagent_type 推断工具名称。
- * 若 subagent_type 非空则为 Agent，否则为 Bash。
+ * 工具名称 → 后台工具名称映射。
+ * SDK tool_use block 的 name 字段与 BackgroundTaskItem.toolName 的对应关系。
  */
-export function inferToolName(data: Record<string, unknown>): 'Agent' | 'Bash' {
-    const subagentType = asString(data.subagent_type)
-    return subagentType ? 'Agent' : 'Bash'
+const TOOL_NAME_MAP: Record<string, BackgroundToolName | undefined> = {
+    Bash: 'Bash',
+    Agent: 'Agent',
+    Monitor: 'Monitor',
+}
+
+/**
+ * 从 assistant 消息中收集后台工具的 toolUseId。
+ * 判定条件：
+ *   - Bash: input.run_in_background === true
+ *   - Agent: input.run_in_background === true
+ *   - Monitor: 始终后台（无 run_in_background 字段）
+ *
+ * 结果存入 backgroundToolUseIds Map（key=toolUseId, value=toolName）。
+ */
+export function collectBackgroundToolUseIds(
+    content: unknown,
+    backgroundToolUseIds: Map<string, BackgroundToolName>,
+): void {
+    const record = unwrapRoleWrappedRecordEnvelope(content)
+    if (!record) return
+
+    // 仅处理 assistant 消息（含 tool_use blocks）
+    if (record.role !== 'assistant') return
+
+    const msgContent = record.content
+    if (!isObject(msgContent) || msgContent.type !== 'output') return
+
+    const data = isObject(msgContent.data) ? msgContent.data : null
+    if (!data || data.type !== 'assistant') return
+
+    const message = isObject(data.message) ? data.message : null
+    if (!message) return
+
+    const blocks = message.content
+    if (!Array.isArray(blocks)) return
+
+    for (const block of blocks) {
+        if (!isObject(block) || block.type !== 'tool_use') continue
+
+        const toolUseId = typeof block.id === 'string' ? block.id : null
+        if (!toolUseId) continue
+
+        const rawName = typeof block.name === 'string' ? block.name : null
+        const bgToolName = rawName ? TOOL_NAME_MAP[rawName] : undefined
+        if (!bgToolName) continue
+
+        const input = isObject(block.input) ? block.input : null
+
+        if (bgToolName === 'Monitor') {
+            // Monitor 始终后台
+            backgroundToolUseIds.set(toolUseId, 'Monitor')
+        } else if (input?.run_in_background === true) {
+            // Bash/Agent 仅当 run_in_background === true
+            backgroundToolUseIds.set(toolUseId, bgToolName)
+        }
+    }
 }
 
 /**
  * 从消息内容中提取后台任务增量。
  * 后台任务增量来自 system 类型的消息（task_started / task_progress / task_notification）。
+ * - task_started 仅当 tool_use_id 在 backgroundToolUseIds 中时才创建 delta
+ * - task_progress / task_notification 仅当 taskId 在 knownTaskIds 中时才创建 delta
  */
 export function extractBackgroundTaskDeltasFromMessageContent(
     content: unknown,
+    backgroundToolUseIds?: Map<string, BackgroundToolName>,
+    knownTaskIds?: Set<string>,
 ): BackgroundTaskDelta | null {
     const record = unwrapRoleWrappedRecordEnvelope(content)
     if (!record) return null
@@ -68,10 +129,21 @@ export function extractBackgroundTaskDeltasFromMessageContent(
         const taskId = asString(data.task_id)
         if (!taskId) return null
 
-        const description = asString(data.description) ?? ''
         const toolUseId = asString(data.tool_use_id) ?? null
-        const toolName = inferToolName(data)
+
+        // 检查是否为后台任务
+        if (backgroundToolUseIds !== undefined) {
+            if (!toolUseId || !backgroundToolUseIds.has(toolUseId)) return null
+        }
+
+        const description = asString(data.description) ?? ''
         const subagentType = asString(data.subagent_type) ?? undefined
+
+        // 使用收集到的 toolName，兜底用 subagent_type 推断（向后兼容：无 Map 时无法识别 Monitor）
+        let toolName: BackgroundToolName = subagentType ? 'Agent' : 'Bash'
+        if (toolUseId && backgroundToolUseIds?.has(toolUseId)) {
+            toolName = backgroundToolUseIds.get(toolUseId)!
+        }
 
         const task: BackgroundTaskItem = {
             taskId,
@@ -91,6 +163,9 @@ export function extractBackgroundTaskDeltasFromMessageContent(
         const taskId = asString(data.task_id)
         if (!taskId) return null
 
+        // 过滤非后台任务
+        if (knownTaskIds !== undefined && !knownTaskIds.has(taskId)) return null
+
         const usage = isObject(data.usage) ? data.usage : null
         const metrics: AgentMetrics = {
             tokens: asNumber(usage?.total_tokens) ?? 0,
@@ -108,6 +183,9 @@ export function extractBackgroundTaskDeltasFromMessageContent(
         const taskId = asString(data.task_id)
         if (!taskId) return null
 
+        // 过滤非后台任务
+        if (knownTaskIds !== undefined && !knownTaskIds.has(taskId)) return null
+
         const status = asString(data.status)
         if (status !== 'completed' && status !== 'failed' && status !== 'stopped') return null
 
@@ -124,7 +202,7 @@ export function extractBackgroundTaskDeltasFromMessageContent(
  * 将后台任务增量应用到现有列表。
  * - started：按 taskId upsert（新增或覆盖）
  * - progress：按 taskId 查找并合并 metrics 和 summary
- * - completed：按 taskId 从列表中移除
+ * - completed：按 taskId 标记为终态（供 Web 端检测状态变化后自行清理）
  */
 export function applyBackgroundTaskDelta(
     existing: BackgroundTaskItem[] | undefined,

@@ -24,8 +24,10 @@ import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } f
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
 import { extractTeamStateFromMessageContent, applyTeamStateDelta } from '../../../sync/teams'
 import {
+    collectBackgroundToolUseIds,
     extractBackgroundTaskDeltasFromMessageContent,
     applyBackgroundTaskDelta,
+    type BackgroundToolName,
 } from '../../../sync/backgroundTasks'
 import type { CliSocketWithData } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
@@ -91,6 +93,11 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     // session 连接级别的 PendingTaskMap，在连接生命周期内持续存在
     const pendingTaskMap = new PendingTaskMap()
 
+    // session 连接级别的后台工具 ID 映射（toolUseId → toolName），用于区分前后台任务
+    const backgroundToolUseIds = new Map<string, BackgroundToolName>()
+    // 已确认的后台任务 ID 集合，用于过滤 task_progress / task_notification
+    const backgroundTaskIds = new Set<string>()
+
     socket.on('message', (data: unknown) => {
         const parsed = messageSchema.safeParse(data)
         if (!parsed.success) {
@@ -147,7 +154,20 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         const todos = extractTodoWriteTodosFromMessageContent(content)
         const taskDelta = extractTaskDeltasFromMessageContent(content, pendingTaskMap)
         const teamDelta = extractTeamStateFromMessageContent(content)
-        const bgTaskDelta = extractBackgroundTaskDeltasFromMessageContent(content)
+
+        // 先收集后台工具 ID（从 assistant 消息的 tool_use blocks），再提取后台任务增量
+        collectBackgroundToolUseIds(content, backgroundToolUseIds)
+        const bgTaskDelta = extractBackgroundTaskDeltasFromMessageContent(content, backgroundToolUseIds, backgroundTaskIds)
+
+        // 维护后台任务追踪集合：started 时注册并清理 Map，completed 时移除
+        if (bgTaskDelta) {
+            if (bgTaskDelta.type === 'started') {
+                if (bgTaskDelta.task.toolUseId) backgroundToolUseIds.delete(bgTaskDelta.task.toolUseId)
+                backgroundTaskIds.add(bgTaskDelta.task.taskId)
+            } else if (bgTaskDelta.type === 'completed') {
+                backgroundTaskIds.delete(bgTaskDelta.taskId)
+            }
+        }
 
         if (todos || taskDelta || teamDelta || bgTaskDelta) {
             const existingSession = store.sessions.getSession(sid)

@@ -183,7 +183,7 @@ export const TasksSchema = z.array(TaskItemSchema)
 export const BackgroundTaskItemSchema = z.object({
     taskId: z.string(),
     toolUseId: z.string().nullable().optional(),
-    toolName: z.enum(['Bash', 'Agent']),
+    toolName: z.enum(['Bash', 'Agent', 'Monitor']),
     description: z.string(),
     subagentType: z.string().optional(),
     status: z.enum(['running', 'completed', 'failed', 'stopped']),

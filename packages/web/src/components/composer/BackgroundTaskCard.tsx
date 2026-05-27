@@ -16,7 +16,7 @@
 
 import { useState } from 'react'
 import { theme } from 'antd'
-import { Terminal, CircleStop } from 'lucide-react'
+import { Terminal, CircleStop, Eye } from 'lucide-react'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
@@ -63,7 +63,9 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                         alignItems: 'center', justifyContent: 'center',
                         borderRadius: 4,
                     }}>
-                        <Terminal size={16} style={{ color: token.colorTextSecondary }} />
+                        {task.toolName === 'Monitor'
+                            ? <Eye size={16} style={{ color: token.colorTextSecondary }} />
+                            : <Terminal size={16} style={{ color: token.colorTextSecondary }} />}
                     </div>
                 )}
             </div>

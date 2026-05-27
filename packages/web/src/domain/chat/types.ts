@@ -46,7 +46,7 @@ export type AgentEvent =
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string }
     | { type: 'agent-progress'; toolUseId: string; metrics: AgentMetrics }
     // 后台任务事件
-    | { type: 'bg-task-started'; taskId: string; toolUseId: string | null; toolName: 'Bash' | 'Agent'; description: string; subagentType?: string }
+    | { type: 'bg-task-started'; taskId: string; toolUseId: string | null; toolName: 'Bash' | 'Agent' | 'Monitor'; description: string; subagentType?: string }
     | { type: 'bg-task-progress'; taskId: string; metrics: AgentMetrics; summary?: string }
     | { type: 'bg-task-completed'; taskId: string; status: 'completed' | 'failed' | 'stopped'; summary?: string; metrics?: AgentMetrics }
     | { type: 'bg-task-updated'; taskId: string; patch: Record<string, unknown> }
@@ -71,7 +71,7 @@ export type AgentMetrics = {
 export type BackgroundTask = {
     taskId: string
     toolUseId: string | null
-    toolName: 'Bash' | 'Agent'
+    toolName: 'Bash' | 'Agent' | 'Monitor'
     description: string
     subagentType?: string
     status: 'running' | 'completed' | 'failed' | 'stopped'

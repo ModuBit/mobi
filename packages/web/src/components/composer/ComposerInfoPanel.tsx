@@ -288,7 +288,7 @@ export function ComposerInfoPanel({
                     sessionId={sessionId}
                 />
             )}
-            {bgDrawerTask && bgDrawerTask.toolName === 'Bash' && (
+            {bgDrawerTask && bgDrawerTask.toolName !== 'Agent' && (
                 <ContentDrawer
                     title={bgDrawerTask.description}
                     open={!!bgDrawerTask}
