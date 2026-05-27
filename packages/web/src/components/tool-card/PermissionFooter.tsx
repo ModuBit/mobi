@@ -22,6 +22,8 @@ import { memo, useMemo, useState } from 'react'
 import { Button, Input, Spin, theme as antTheme, Typography } from 'antd'
 import { CheckOutlined, CloseOutlined, StopOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
+import { agentCardBg } from '@/components/composer/agentPalette'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { getInputStringAny, getCustomPermissionTitleKey, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 
 const { Text } = Typography
@@ -94,6 +96,7 @@ type PermissionFooterProps = {
 function PermissionFooterInner(props: PermissionFooterProps) {
     const { t } = useTranslation()
     const { token } = useToken()
+    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const permission = props.tool.permission
     const [loading, setLoading] = useState<'allow' | 'deny' | null>(null)
     const [loadingForSession, setLoadingForSession] = useState(false)
@@ -211,7 +214,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                     gap: 6,
                     padding: '4px 8px',
                     borderRadius: 6,
-                    background: token.colorBgTextHover,
+                    background: agentCardBg(agentInfo.description ?? agentInfo.subagentType ?? 'Agent', isDark),
                     fontSize: 11,
                     color: token.colorTextTertiary,
                 }}>

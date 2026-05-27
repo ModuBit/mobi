@@ -16,6 +16,8 @@
 
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import { agentCardBg } from '@/components/composer/agentPalette'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
 import type { RunningAgent } from '@/domain/chat/extractRunningAgents'
 import type { AgentMetrics } from '@/domain/chat/types'
@@ -39,12 +41,14 @@ export function AgentCard({ agent, onClick }: {
     onClick: () => void
 }) {
     const { token } = theme.useToken()
+    const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const { block } = agent
     const tool = block.tool
     const isPending = tool.state === 'pending'
 
     const status = isPending ? 'idle' : 'outputting'
     const metricsText = formatMetrics(tool.agentMetrics)
+    const agentName = agent.description ?? agent.subagentType ?? tool.id ?? 'Agent'
 
     return (
         <div
@@ -60,7 +64,7 @@ export function AgentCard({ agent, onClick }: {
                 cursor: 'pointer',
                 border: 'none',
                 opacity: isPending ? 0.7 : 1,
-                background: token.colorBgTextHover,
+                background: agentCardBg(agentName, isDark),
                 transition: 'opacity 0.3s',
                 boxSizing: 'border-box',
             }}
