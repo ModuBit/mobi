@@ -342,7 +342,7 @@ describe('applyBackgroundTaskDelta', () => {
         expect(result[0].summary).toBeUndefined()
     })
 
-    test('completed: 从数组中移除', () => {
+    test('completed: 更新任务状态为终态（不移除）', () => {
         const existing: BackgroundTaskItem[] = [
             makeSampleBackgroundTask({ taskId: 'bt-001' }),
             makeSampleBackgroundTask({ taskId: 'bt-002' }),
@@ -351,10 +351,17 @@ describe('applyBackgroundTaskDelta', () => {
             type: 'completed',
             taskId: 'bt-001',
             status: 'completed',
+            summary: '构建成功',
         }
         const result = applyBackgroundTaskDelta(existing, delta)
-        expect(result).toHaveLength(1)
-        expect(result[0].taskId).toBe('bt-002')
+        expect(result).toHaveLength(2)
+        expect(result[0].taskId).toBe('bt-001')
+        expect(result[0].status).toBe('completed')
+        expect(result[0].summary).toBe('构建成功')
+        expect(result[0].completedAt).toBeGreaterThan(0)
+        // 未变更的任务保持不变
+        expect(result[1].taskId).toBe('bt-002')
+        expect(result[1].status).toBe('running')
     })
 
     test('progress: 不存在的 task 返回数组不变', () => {
@@ -373,7 +380,7 @@ describe('applyBackgroundTaskDelta', () => {
         expect(result[0].metrics).toBeUndefined()
     })
 
-    test('completed: 空数组返回空数组', () => {
+    test('completed: 不存在的 task 返回空数组', () => {
         const delta: BackgroundTaskDelta = {
             type: 'completed',
             taskId: 'bt-001',

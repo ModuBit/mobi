@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useState } from 'react'
 import { theme } from 'antd'
 import { Terminal, CircleStop } from 'lucide-react'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
@@ -43,6 +44,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
     const { token } = theme.useToken()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const name = task.description ?? 'Background task'
+    const [stopHovered, setStopHovered] = useState(false)
 
     return (
         <div style={{
@@ -86,21 +88,19 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
             </div>
             <div
                 onClick={onStop}
+                onMouseEnter={() => setStopHovered(true)}
+                onMouseLeave={() => setStopHovered(false)}
                 style={{
                     flexShrink: 0, width: 22, height: 22,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     borderRadius: 4, cursor: 'pointer', transition: 'background 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                    e.currentTarget.style.background = token.colorErrorBg
-                    e.currentTarget.querySelector('svg')?.setAttribute('color', token.colorError)
-                }}
-                onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent'
-                    e.currentTarget.querySelector('svg')?.setAttribute('color', String(token.colorTextQuaternary))
+                    background: stopHovered ? token.colorErrorBg : 'transparent',
                 }}
             >
-                <CircleStop size={14} style={{ color: token.colorTextQuaternary, transition: 'color 0.2s' }} />
+                <CircleStop size={14} style={{
+                    color: stopHovered ? token.colorError : token.colorTextQuaternary,
+                    transition: 'color 0.2s',
+                }} />
             </div>
         </div>
     )

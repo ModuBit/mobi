@@ -175,6 +175,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     existingRuntimeState.backgroundTasks,
                     bgTaskDelta,
                 )
+                // 清理非 running 任务（已被 Web 端消费终态信息后移除）
+                existingRuntimeState.backgroundTasks = existingRuntimeState.backgroundTasks
+                    .filter(t => t.status === 'running')
                 if (existingRuntimeState.backgroundTasks.length === 0) {
                     delete (existingRuntimeState as Record<string, unknown>).backgroundTasks
                 }

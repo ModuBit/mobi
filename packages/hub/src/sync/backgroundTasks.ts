@@ -157,8 +157,16 @@ export function applyBackgroundTaskDelta(
         }
 
         case 'completed': {
-            // 移除已完成的任务
-            return tasks.filter(t => t.taskId !== delta.taskId)
+            // 标记任务为终态（不移除），供 Web 端检测状态变化后自行清理
+            return tasks.map(t => {
+                if (t.taskId !== delta.taskId) return t
+                return {
+                    ...t,
+                    status: delta.status,
+                    ...(delta.summary !== undefined ? { summary: delta.summary } : {}),
+                    completedAt: Date.now(),
+                }
+            })
         }
     }
 }

@@ -138,9 +138,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     useEffect(() => {
         const removed = useBackgroundTasksStore.getState().consumeRemoved()
         for (const task of removed) {
+            if (task.status === 'stopped') continue
             messageApi.open({
-                type: 'success',
-                content: t('chat.backgroundTask.completed', { description: task.description }),
+                type: task.status === 'failed' ? 'error' : 'success',
+                content: t(
+                    task.status === 'failed'
+                        ? 'chat.backgroundTask.failed'
+                        : 'chat.backgroundTask.completed',
+                    { description: task.description },
+                ),
                 duration: 3,
             })
         }

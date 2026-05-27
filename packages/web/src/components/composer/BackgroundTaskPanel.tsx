@@ -21,12 +21,15 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { theme } from 'antd'
+import { Global, css } from '@emotion/react'
 import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { BackgroundTaskCard } from './BackgroundTaskCard'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import type { BackgroundTask } from '@/domain/chat/types'
 import type { MobiApi } from '@/core/data/api/client'
+
+const spinKeyframes = css`@keyframes bgtask-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`
 
 export function BackgroundTaskPanel({ sessionId, api, onTaskClick }: {
     sessionId: string
@@ -61,6 +64,7 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick }: {
 
     return (
         <div>
+            <Global styles={spinKeyframes} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
                 <Loader size={12} style={{
                     color: token.colorTextQuaternary,
@@ -97,7 +101,6 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick }: {
                     }} />
                 )}
             </div>
-            <style>{`@keyframes bgtask-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
         </div>
     )
 }

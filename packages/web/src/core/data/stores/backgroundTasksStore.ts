@@ -22,6 +22,7 @@ export type BackgroundTaskRemovedNotification = {
     taskId: string
     description: string
     toolName: 'Bash' | 'Agent'
+    status: 'completed' | 'failed' | 'stopped'
 }
 
 interface BackgroundTasksState {
@@ -33,6 +34,8 @@ interface BackgroundTasksState {
     consumeRemoved: () => BackgroundTaskRemovedNotification[]
 }
 
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'stopped'])
+
 export const useBackgroundTasksStore = create<BackgroundTasksState>((set, get) => ({
     tasksBySession: new Map(),
     removedQueue: [],
@@ -40,23 +43,31 @@ export const useBackgroundTasksStore = create<BackgroundTasksState>((set, get) =
     setTasks: (sessionId, tasks) =>
         set((state) => {
             const prev = state.tasksBySession.get(sessionId) ?? []
-            const next = new Map(state.tasksBySession)
-            next.set(sessionId, tasks)
+            const prevMap = new Map(prev.map(t => [t.taskId, t]))
 
-            // 检测被移除的任务（存在于之前但不存在于之后）
-            const removedIds = new Set(tasks.map(t => t.taskId))
-            const removed = prev
-                .filter(t => !removedIds.has(t.taskId))
-                .map(t => ({
-                    taskId: t.taskId,
-                    description: t.description,
-                    toolName: t.toolName,
-                }))
+            // 检测 status 从 running → terminal 的变化
+            const completed: BackgroundTaskRemovedNotification[] = []
+            for (const task of tasks) {
+                const prevTask = prevMap.get(task.taskId)
+                if (prevTask && prevTask.status === 'running' && TERMINAL_STATUSES.has(task.status)) {
+                    completed.push({
+                        taskId: task.taskId,
+                        description: task.description,
+                        toolName: task.toolName,
+                        status: task.status as BackgroundTaskRemovedNotification['status'],
+                    })
+                }
+            }
+
+            // 只存储 running 任务，过滤 terminal 任务
+            const runningTasks = tasks.filter(t => t.status === 'running')
+            const next = new Map(state.tasksBySession)
+            next.set(sessionId, runningTasks)
 
             return {
                 tasksBySession: next,
-                removedQueue: removed.length > 0
-                    ? [...state.removedQueue, ...removed]
+                removedQueue: completed.length > 0
+                    ? [...state.removedQueue, ...completed]
                     : state.removedQueue,
             }
         }),
