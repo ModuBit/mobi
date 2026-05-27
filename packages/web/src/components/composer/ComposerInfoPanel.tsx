@@ -34,12 +34,13 @@ import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/as
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { AgentPanel } from './AgentPanel'
 import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
+import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { TodoPanel } from './TodoPanel'
 import { TaskPanel } from './TaskPanel'
 import { BackgroundTaskPanel } from './BackgroundTaskPanel'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
-import type { BackgroundTask } from '@/domain/chat/types'
+import type { BackgroundTask, ToolCallBlock } from '@/domain/chat/types'
 import { ContentDrawer } from '@/components/ui/ContentDrawer'
 import { BashDrawerContent } from '@/components/tool-card/BashDrawerContent'
 
@@ -194,13 +195,18 @@ export function ComposerInfoPanel({
     const hasTodos = todos && todos.length > 0
     const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
     const agents = useRunningAgents(sessionId)
+    const byIdMap = useChatBlocksById(sessionId)
     const bgTasks = useBackgroundTasks(sessionId)
     const hasBgTasks = bgTasks.length > 0
 
-    // 从 store 派生最新 block，避免 useState 快照过时
-    const drawerBlock = drawerBlockId
-        ? agents.find(a => a.block.id === drawerBlockId)?.block ?? null
-        : null
+    // 从 store 派生最新 block：先查 running agents，再查 byId（覆盖后台 Agent 任务）
+    const drawerBlock: ToolCallBlock | null = (() => {
+        if (!drawerBlockId) return null
+        const fromAgents = agents.find(a => a.block.id === drawerBlockId)?.block
+        if (fromAgents) return fromAgents
+        const fromById = byIdMap.get(drawerBlockId)
+        return fromById?.kind === 'tool-call' ? fromById : null
+    })()
     const hasAgents = agents.length > 0
     const { token } = useToken()
 
@@ -246,7 +252,15 @@ export function ComposerInfoPanel({
                         <BackgroundTaskPanel
                             sessionId={sessionId}
                             api={api}
-                            onTaskClick={(task) => setBgDrawerTask(task)}
+                            onTaskClick={(task) => {
+                                if (task.toolName === 'Agent' && task.toolUseId) {
+                                    setDrawerBlockId(task.toolUseId)
+                                    setBgDrawerTask(null)
+                                } else {
+                                    setBgDrawerTask(task)
+                                    setDrawerBlockId(null)
+                                }
+                            }}
                         />
                     )}
 
@@ -274,7 +288,7 @@ export function ComposerInfoPanel({
                     sessionId={sessionId}
                 />
             )}
-            {bgDrawerTask && (
+            {bgDrawerTask && bgDrawerTask.toolName === 'Bash' && (
                 <ContentDrawer
                     title={bgDrawerTask.description}
                     open={!!bgDrawerTask}

@@ -16,6 +16,7 @@
 
 import type { AgentState } from '@/core/data/api/types'
 import type { ChatBlock, NormalizedMessage, UsageData } from './types'
+import { indexBlocks, type ChatBlocksById } from './reconcile'
 import { traceMessages, type TracedMessage } from './tracer'
 import { dedupeAgentEvents, foldApiErrorEvents } from './reducerEvents'
 import { collectHiddenToolUseIds, collectTitleChanges, collectToolIdsFromMessages, ensureToolBlock, getPermissions } from './reducerTools'
@@ -45,7 +46,7 @@ export type LatestUsage = {
 export function reduceChatBlocks(
     normalized: NormalizedMessage[],
     agentState: AgentState | null | undefined
-): { blocks: ChatBlock[]; hasReadyEvent: boolean; latestUsage: LatestUsage | null } {
+): { blocks: ChatBlock[]; byId: ChatBlocksById; hasReadyEvent: boolean; latestUsage: LatestUsage | null } {
     const permissionsById = getPermissions(agentState)
     const toolIdsInMessages = collectToolIdsFromMessages(normalized)
     const titleChangesByToolUseId = collectTitleChanges(normalized)
@@ -115,5 +116,8 @@ export function reduceChatBlocks(
         }
     }
 
-    return { blocks: dedupeAgentEvents(foldApiErrorEvents(rootResult.blocks)), hasReadyEvent, latestUsage }
+    const finalBlocks = dedupeAgentEvents(foldApiErrorEvents(rootResult.blocks))
+    const byId: ChatBlocksById = new Map()
+    indexBlocks(finalBlocks, byId)
+    return { blocks: finalBlocks, byId, hasReadyEvent, latestUsage }
 }

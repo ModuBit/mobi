@@ -39,6 +39,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { getAgentStatus } from '@/components/pixel-avatar/types'
 import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
 import { useBackgroundTasksStore } from '@/core/data/stores/backgroundTasksStore'
+import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 
 const { useToken } = antTheme
 
@@ -102,7 +103,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
 
-    const { blocks: rawBlocks } = useMemo(() => {
+    const { blocks: rawBlocks, byId } = useMemo(() => {
         const normalized = messages
             .map(normalizeDecryptedMessage)
             .filter((m): m is Exclude<typeof m, null> => m !== null)
@@ -117,6 +118,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             useRunningAgentsStore.getState().clearSession(sessionId)
         }
     }, [rawBlocks, sessionId])
+
+    // 同步 chatBlocks byId 到 store，供 ComposerInfoPanel 查找 block
+    useEffect(() => {
+        useChatBlocksByIdStore.getState().setById(sessionId, byId)
+        return () => {
+            useChatBlocksByIdStore.getState().clearSession(sessionId)
+        }
+    }, [byId, sessionId])
 
     // 同步 backgroundTasks 从 session cache 到 Zustand store，供 BackgroundTaskPanel 订阅
     const bgTasks = session?.runtimeState?.backgroundTasks

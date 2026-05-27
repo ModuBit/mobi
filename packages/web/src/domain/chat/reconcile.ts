@@ -29,7 +29,7 @@ import type {
 
 export type ChatBlocksById = Map<string, ChatBlock>
 
-function indexBlocks(blocks: ChatBlock[], map: ChatBlocksById): void {
+export function indexBlocks(blocks: ChatBlock[], map: ChatBlocksById): void {
     for (const block of blocks) {
         map.set(block.id, block)
         if (block.kind === 'tool-call') {
