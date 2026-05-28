@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { theme } from 'antd'
 import { Terminal, CircleStop, Eye } from 'lucide-react'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
@@ -45,6 +45,23 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const name = task.description ?? 'Background task'
     const [stopHovered, setStopHovered] = useState(false)
+
+    const prevSummaryRef = useRef(task.summary)
+    const [displaySummary, setDisplaySummary] = useState(task.summary)
+    const [fading, setFading] = useState(false)
+
+    useEffect(() => {
+        if (task.summary !== prevSummaryRef.current) {
+            setFading(true)
+            const timer = setTimeout(() => {
+                setDisplaySummary(task.summary)
+                setFading(false)
+            }, 150)
+            prevSummaryRef.current = task.summary
+            return () => clearTimeout(timer)
+        }
+        return undefined
+    }, [task.summary])
 
     return (
         <div style={{
@@ -84,8 +101,12 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                     fontSize: 9, color: token.colorTextQuaternary,
                     fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
                     overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.3',
+                    opacity: fading ? 0 : 1,
+                    transition: 'opacity 0.15s',
                 }}>
-                    {formatMetrics(task)}
+                    {displaySummary
+                        ? `${task.metrics?.durationMs ? formatDuration(task.metrics.durationMs) : ''} · ${displaySummary}`
+                        : formatMetrics(task)}
                 </div>
             </div>
             <div
