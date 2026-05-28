@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useEffect, useRef, useState } from 'react'
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/components/composer/agentPalette'
@@ -49,6 +50,23 @@ export function AgentCard({ agent, onClick }: {
     const status = isPending ? 'idle' : 'outputting'
     const metricsText = formatMetrics(tool.agentMetrics)
     const agentName = agent.description ?? agent.subagentType ?? tool.id ?? 'Agent'
+
+    const prevSummaryRef = useRef(agent.summary)
+    const [displaySummary, setDisplaySummary] = useState(agent.summary)
+    const [fading, setFading] = useState(false)
+
+    useEffect(() => {
+        if (agent.summary !== prevSummaryRef.current) {
+            setFading(true)
+            const timer = setTimeout(() => {
+                setDisplaySummary(agent.summary)
+                setFading(false)
+            }, 150)
+            prevSummaryRef.current = agent.summary
+            return () => clearTimeout(timer)
+        }
+        return undefined
+    }, [agent.summary])
 
     return (
         <div
@@ -102,8 +120,12 @@ export function AgentCard({ agent, onClick }: {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     lineHeight: '1.3',
+                    opacity: fading ? 0 : 1,
+                    transition: 'opacity 0.15s',
                 }}>
-                    {metricsText}
+                    {displaySummary
+                        ? `${formatDuration(tool.agentMetrics?.durationMs ?? 0)} · ${displaySummary}`
+                        : metricsText}
                 </div>
             </div>
         </div>
