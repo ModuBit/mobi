@@ -142,12 +142,24 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }, [bgTasks, sessionId])
 
-    // 后台任务完成时显示 Toast 通知
+    // 后台任务完成时显示 Toast 通知 + 收集完成卡片信息
     const [messageApi, contextHolder] = message.useMessage()
+    const [bgCompletedTasks, setBgCompletedTasks] = useState<Array<{
+        taskId: string; description: string; summary?: string; status: string; toolName: string
+    }>>([])
     useEffect(() => {
         const removed = useBackgroundTasksStore.getState().consumeRemoved()
-        for (const task of removed) {
-            if (task.status === 'stopped') continue
+        if (removed.length === 0) return
+        const completed = removed
+            .filter(t => t.status !== 'stopped')
+            .map(t => ({
+                taskId: t.taskId,
+                description: t.description ?? 'Background task',
+                summary: t.summary,
+                status: t.status,
+                toolName: t.toolName,
+            }))
+        for (const task of completed) {
             messageApi.open({
                 type: task.status === 'failed' ? 'error' : 'success',
                 content: t(
@@ -159,16 +171,38 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 duration: 3,
             })
         }
+        if (completed.length > 0) {
+            setBgCompletedTasks(prev => [...prev, ...completed])
+        }
     }, [bgTasks, messageApi, t])
 
     // 有更多历史页时，过滤掉不完整的 tool-call block 避免闪烁
     const chatBlocks = useMemo(() => {
-        if (!hasNextPage) return rawBlocks
-        return rawBlocks.filter((block) => {
-            if (block.kind !== 'tool-call') return true
-            return block.tool.state !== 'running'
-        })
-    }, [rawBlocks, hasNextPage])
+        let blocks = hasNextPage
+            ? rawBlocks.filter((block) => {
+                if (block.kind !== 'tool-call') return true
+                return block.tool.state !== 'running'
+            })
+            : rawBlocks
+        // 追加后台任务完成卡片
+        if (bgCompletedTasks.length > 0) {
+            blocks = [...blocks, ...bgCompletedTasks.map((task, i) => ({
+                kind: 'agent-event' as const,
+                id: `bg-completed-${task.taskId}-${i}`,
+                createdAt: Date.now() + i,
+                event: {
+                    type: 'bg-task-completed',
+                    taskId: task.taskId,
+                    status: task.status as 'completed' | 'failed' | 'stopped',
+                    summary: task.summary,
+                    description: task.description,
+                    toolName: task.toolName,
+                } as const,
+                meta: undefined,
+            }))]
+        }
+        return blocks
+    }, [rawBlocks, hasNextPage, bgCompletedTasks])
 
     // 从 chatBlocks 推导压缩状态：最后一条 user-text 是 /compact 且后面没有 compact-summary
     const isCompressing = useMemo(() => {

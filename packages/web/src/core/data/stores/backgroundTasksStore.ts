@@ -23,6 +23,8 @@ export type BackgroundTaskRemovedNotification = {
     description: string
     toolName: 'Bash' | 'Agent' | 'Monitor'
     status: 'completed' | 'failed' | 'stopped'
+    /** 后台任务完成摘要 */
+    summary?: string
 }
 
 interface BackgroundTasksState {
@@ -55,6 +57,7 @@ export const useBackgroundTasksStore = create<BackgroundTasksState>((set, get) =
                         description: task.description,
                         toolName: task.toolName,
                         status: task.status as BackgroundTaskRemovedNotification['status'],
+                        summary: task.summary,
                     })
                 }
             }

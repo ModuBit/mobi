@@ -25,6 +25,36 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block }: { block:
     const { token } = antTheme.useToken()
     const { t } = useTranslation()
 
+    // 后台任务完成卡片
+    if (block.event.type === 'bg-task-completed') {
+        const evt = block.event as { type: string; [k: string]: unknown }
+        const status = String(evt.status ?? 'completed')
+        const summary = typeof evt.summary === 'string' ? evt.summary : undefined
+        const description = typeof evt.description === 'string' ? evt.description : 'Background task'
+        return (
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 12px', margin: '4px 0',
+                borderRadius: 8, background: token.colorBgContainer,
+                border: `1px solid ${token.colorBorderSecondary}`,
+            }}>
+                <span style={{ fontSize: 14 }}>
+                    {status === 'completed' ? '✓' : status === 'failed' ? '✗' : '■'}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: token.colorText }}>
+                        {description}
+                    </div>
+                    {summary && (
+                        <div style={{ fontSize: 11, color: token.colorTextSecondary, marginTop: 2 }}>
+                            {summary}
+                        </div>
+                    )}
+                </div>
+            </div>
+        )
+    }
+
     if (block.event.type === 'message' || block.event.type === 'summary') {
         return (
             <div style={{
