@@ -35,6 +35,7 @@ import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { Markdown } from '@/components/ui/Markdown'
 import { getAgentPrompt } from '@/components/tool-card/index'
 import { formatAgentMetrics } from '@/core/lib/metricsFormat'
+import { useTranslation } from 'react-i18next'
 
 /** 预览卡片最大高度 */
 const PREVIEW_MAX_HEIGHT = {
@@ -72,6 +73,8 @@ function ToolCallPreviewContent({
     showInput?: boolean
     maxHeight: number
 }) {
+    const { t } = useTranslation()
+    const { token } = antTheme.useToken()
     const tool = toolCallBlock.tool
     const terminalRunning = isTerminalTool(tool.name) && tool.state === 'running'
     const showToolInput = showInput || terminalRunning
@@ -125,8 +128,32 @@ function ToolCallPreviewContent({
 
     if (!showPreview) return null
 
-    // Agent 工具运行中：直接渲染 prompt
+    // Agent 工具运行中：有 summary 时显示 summary + 查看详情按钮，否则显示 prompt
     if (agentRunning) {
+        const summary = toolCallBlock.tool.agentSummary
+        if (summary) {
+            return (
+                <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                    <div style={{
+                        fontSize: 13, lineHeight: 1.5,
+                        color: token.colorTextSecondary,
+                        transition: 'opacity 0.15s',
+                    }}>
+                        {summary}
+                    </div>
+                    <div
+                        onClick={(e) => { e.stopPropagation(); onViewDetail() }}
+                        style={{
+                            marginTop: 8, fontSize: 12,
+                            color: token.colorPrimary,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        {t('chat.tool.viewDetail')} →
+                    </div>
+                </div>
+            )
+        }
         const prompt = getAgentPrompt(tool.input)
         if (!prompt) return null
         return (
@@ -177,7 +204,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
     const expandOnPermission = isExitPlanModeTool(tool.name)
     const permissionDrivenExpand = expandOnPermission && hasPermission
     const isError = tool.state === 'error'
-    const defaultExpanded = !isError && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone)
+    const isAgent = isAgentTool(tool.name)
+    const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
+    const defaultExpanded = !isError && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const prevPermissionDrivenExpand = useRef(permissionDrivenExpand)
 
@@ -188,6 +217,15 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         }
         prevIsError.current = isError
     }, [isError])
+
+    // Agent 完成时自动收起
+    const prevAgentRunning = useRef(agentRunning)
+    useEffect(() => {
+        if (prevAgentRunning.current && !agentRunning) {
+            setExpanded(false)
+        }
+        prevAgentRunning.current = agentRunning
+    }, [agentRunning])
 
     // ExitPlanMode: 审批结束后自动收起
     useEffect(() => {
