@@ -359,6 +359,7 @@ const handleTaskProgressOutput: OutputHandler = (data, ctx) => {
     if (!toolUseId) return null
 
     const usage = isObject(data.usage) ? data.usage : null
+    const summary = asString(data.summary) ?? undefined
     return createEventMessage(ctx, {
         type: 'agent-progress',
         toolUseId,
@@ -366,7 +367,8 @@ const handleTaskProgressOutput: OutputHandler = (data, ctx) => {
             tokens: asNumber(usage?.total_tokens) ?? 0,
             toolUses: asNumber(usage?.tool_uses) ?? 0,
             durationMs: asNumber(usage?.duration_ms) ?? 0,
-        }
+        },
+        ...(summary && { summary }),
     })
 }
 

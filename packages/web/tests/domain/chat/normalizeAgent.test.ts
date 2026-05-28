@@ -416,6 +416,49 @@ describe('normalizeAgentRecord', () => {
             if ('taskId' in result.content) expect(result.content.taskId).toBe('bg-1')
         }
     })
+
+    it('should extract summary from task_progress', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'system',
+                    subtype: 'task_progress',
+                    tool_use_id: 'tool-123',
+                    usage: { total_tokens: 100, tool_uses: 5, duration_ms: 2000 },
+                    summary: 'Analyzing codebase structure',
+                },
+            }
+        )
+
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('agent-progress')
+            expect((result.content as any).summary).toBe('Analyzing codebase structure')
+        }
+    })
+
+    it('should handle task_progress without summary', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'system',
+                    subtype: 'task_progress',
+                    tool_use_id: 'tool-456',
+                    usage: { total_tokens: 50, tool_uses: 2, duration_ms: 1000 },
+                },
+            }
+        )
+
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('agent-progress')
+            expect((result.content as any).summary).toBeUndefined()
+        }
+    })
 })
 
 describe('isSkippableAgentContent', () => {
