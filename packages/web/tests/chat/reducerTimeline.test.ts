@@ -186,6 +186,82 @@ describe('reduceTimeline', () => {
         })
     })
 
+    describe('agent-progress agentSummary', () => {
+        it('agent-progress 事件更新 ToolCallBlock 的 agentSummary', () => {
+            const toolCall = createToolCallMessage('tool-1', 'Agent', {
+                subagent_type: 'Explore',
+                description: '探索项目',
+                prompt: 'Explore the codebase',
+            })
+            const progressEvent: TracedMessage = {
+                id: 'evt-1',
+                localId: null,
+                createdAt: Date.now(),
+                role: 'event',
+                isSidechain: false,
+                content: {
+                    type: 'agent-progress',
+                    toolUseId: 'tool-1',
+                    metrics: { tokens: 100, toolUses: 5, durationMs: 3000 },
+                    summary: 'Analyzing codebase structure',
+                },
+            }
+            const result = reduceTimeline([toolCall, progressEvent], {
+                permissionsById: new Map(),
+                groups: new Map(),
+                consumedGroupIds: new Set(),
+                titleChangesByToolUseId: new Map(),
+                emittedTitleChangeToolUseIds: new Set(),
+                hiddenToolUseIds: new Map(),
+            })
+            const toolBlock = result.blocks.find(b => b.kind === 'tool-call') as Extract<import('@/domain/chat/types').ChatBlock, { kind: 'tool-call' }> | undefined
+            expect(toolBlock).toBeDefined()
+            expect(toolBlock!.tool.agentSummary).toBe('Analyzing codebase structure')
+        })
+
+        it('agent-progress 无 summary 时保留上次 agentSummary', () => {
+            const toolCall = createToolCallMessage('tool-1', 'Agent', {
+                subagent_type: 'Explore',
+                prompt: 'Explore',
+            })
+            const progress1: TracedMessage = {
+                id: 'evt-1',
+                localId: null,
+                createdAt: Date.now(),
+                role: 'event',
+                isSidechain: false,
+                content: {
+                    type: 'agent-progress',
+                    toolUseId: 'tool-1',
+                    metrics: { tokens: 100, toolUses: 5, durationMs: 3000 },
+                    summary: 'First summary',
+                },
+            }
+            const progress2: TracedMessage = {
+                id: 'evt-2',
+                localId: null,
+                createdAt: Date.now(),
+                role: 'event',
+                isSidechain: false,
+                content: {
+                    type: 'agent-progress',
+                    toolUseId: 'tool-1',
+                    metrics: { tokens: 200, toolUses: 10, durationMs: 6000 },
+                },
+            }
+            const result = reduceTimeline([toolCall, progress1, progress2], {
+                permissionsById: new Map(),
+                groups: new Map(),
+                consumedGroupIds: new Set(),
+                titleChangesByToolUseId: new Map(),
+                emittedTitleChangeToolUseIds: new Set(),
+                hiddenToolUseIds: new Map(),
+            })
+            const toolBlock = result.blocks.find(b => b.kind === 'tool-call') as Extract<import('@/domain/chat/types').ChatBlock, { kind: 'tool-call' }> | undefined
+            expect(toolBlock!.tool.agentSummary).toBe('First summary')
+        })
+    })
+
     describe('错误处理', () => {
         it('应正确标记错误的 tool-result', () => {
             const messages: TracedMessage[] = [

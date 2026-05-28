@@ -93,12 +93,16 @@ export function reduceTimeline(
             }
             // agent-progress 事件：更新对应 ToolCallBlock 的指标
             if (msg.content.type === 'agent-progress') {
-                const { toolUseId, metrics } = msg.content as Extract<AgentEvent, { type: 'agent-progress' }>
+                const { toolUseId, metrics, summary } = msg.content as Extract<AgentEvent, { type: 'agent-progress' }>
                 const existingBlock = toolBlocksById.get(toolUseId)
                 if (existingBlock) {
                     const updatedBlock = {
                         ...existingBlock,
-                        tool: { ...existingBlock.tool, agentMetrics: metrics }
+                        tool: {
+                            ...existingBlock.tool,
+                            agentMetrics: metrics,
+                            ...(summary !== undefined && { agentSummary: summary }),
+                        }
                     }
                     replaceBlockById(blocks, blockIndexById, toolUseId, updatedBlock)
                     toolBlocksById.set(toolUseId, updatedBlock)
