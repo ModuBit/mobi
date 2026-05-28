@@ -44,7 +44,7 @@ export type AgentEvent =
     | { type: 'compact'; trigger: string; preTokens: number; postTokens: number; durationMs: number }
     | { type: 'aborted'; numTurns: number | null; durationMs?: number; tokens?: number }
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string }
-    | { type: 'agent-progress'; toolUseId: string; metrics: AgentMetrics }
+    | { type: 'agent-progress'; toolUseId: string; metrics: AgentMetrics; summary?: string }
     // 后台任务事件
     | { type: 'bg-task-started'; taskId: string; toolUseId: string | null; toolName: 'Bash' | 'Agent' | 'Monitor'; description: string; subagentType?: string }
     | { type: 'bg-task-progress'; taskId: string; metrics: AgentMetrics; summary?: string }
@@ -170,6 +170,7 @@ export type ChatToolCall = {
     result?: unknown
     permission?: ToolPermission
     agentMetrics?: AgentMetrics
+    agentSummary?: string
 }
 
 export type UserTextBlock = {

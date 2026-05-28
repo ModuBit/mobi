@@ -25,6 +25,7 @@ function makeAgentBlock(overrides: {
     state?: 'pending' | 'running' | 'completed' | 'error'
     input?: Record<string, unknown>
     description?: string | null
+    agentSummary?: string
 }): ChatBlock {
     return {
         kind: 'tool-call',
@@ -40,6 +41,7 @@ function makeAgentBlock(overrides: {
             startedAt: Date.now(),
             completedAt: null,
             description: overrides.description ?? null,
+            ...(overrides.agentSummary && { agentSummary: overrides.agentSummary }),
         },
         children: [],
     }
@@ -111,5 +113,19 @@ describe('extractRunningAgents', () => {
         const result = extractRunningAgents(blocks)
         expect(result).toHaveLength(2)
         expect(result.map(r => r.block.id)).toEqual(['a1', 'a2'])
+    })
+
+    it('从 block.tool.agentSummary 提取 summary', () => {
+        const block = makeAgentBlock({ state: 'running', agentSummary: 'Analyzing code' })
+        const result = extractRunningAgents([block])
+        expect(result).toHaveLength(1)
+        expect(result[0].summary).toBe('Analyzing code')
+    })
+
+    it('agentSummary 不存在时 summary 为 null', () => {
+        const block = makeAgentBlock({ state: 'running' })
+        const result = extractRunningAgents([block])
+        expect(result).toHaveLength(1)
+        expect(result[0].summary).toBeNull()
     })
 })

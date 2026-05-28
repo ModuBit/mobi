@@ -23,6 +23,7 @@ export type RunningAgent = {
     block: Extract<ChatBlock, { kind: 'tool-call' }>
     subagentType: string | null
     description: string | null
+    summary: string | null
 }
 
 /**
@@ -39,6 +40,7 @@ export function extractRunningAgents(blocks: ChatBlock[]): RunningAgent[] {
             block,
             subagentType: getInputStringAny(block.tool.input, ['subagent_type', 'subagentType']),
             description: getInputStringAny(block.tool.input, ['description']),
+            summary: block.tool.agentSummary ?? null,
         })
     }
     return result
