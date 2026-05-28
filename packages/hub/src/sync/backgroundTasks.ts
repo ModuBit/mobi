@@ -62,12 +62,11 @@ export function collectBackgroundToolUseIds(
     const record = unwrapRoleWrappedRecordEnvelope(content)
     if (!record) return
 
-    // 仅处理 assistant 消息（含 tool_use blocks）
-    if (record.role !== 'assistant') return
-
     const msgContent = record.content
     if (!isObject(msgContent) || msgContent.type !== 'output') return
 
+    // 仅处理 assistant 消息（含 tool_use blocks），通过 data.type 判断而非外层 role
+    // CLI 将所有消息包装为 role:'agent'，实际类型由 data.type 区分
     const data = isObject(msgContent.data) ? msgContent.data : null
     if (!data || data.type !== 'assistant') return
 

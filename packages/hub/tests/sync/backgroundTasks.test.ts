@@ -39,10 +39,10 @@ function makeSystemMessage(subtype: string, extra: Record<string, unknown> = {})
     }
 }
 
-/** 构造 assistant 消息（含 tool_use blocks） */
+/** 构造 assistant 消息（含 tool_use blocks），模拟 CLI 的 role:'agent' 包装 */
 function makeAssistantMessage(blocks: Array<Record<string, unknown>>) {
     return {
-        role: 'assistant',
+        role: 'agent',
         content: {
             type: 'output',
             data: {
@@ -133,6 +133,28 @@ describe('collectBackgroundToolUseIds', () => {
         const map = new Map()
         collectBackgroundToolUseIds(msg, map)
         expect(map.size).toBe(0)
+    })
+
+    test('role:agent 包装的 assistant 消息能正确收集（回归）', () => {
+        // CLI 将所有消息包装为 role:'agent'，data.type 才是实际消息类型
+        const msg = {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'tool_use', id: 'toolu-real', name: 'Agent', input: { prompt: '分析', run_in_background: true } },
+                        ],
+                    },
+                },
+            },
+        }
+        const map = new Map()
+        collectBackgroundToolUseIds(msg, map)
+        expect(map.size).toBe(1)
+        expect(map.get('toolu-real')).toBe('Agent')
     })
 
     test('多个 tool_use blocks 混合收集', () => {

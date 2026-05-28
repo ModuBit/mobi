@@ -525,6 +525,7 @@ export async function claudeRemote(opts: {
     const sdkOptions: Options = {
         cwd: opts.path,
         includePartialMessages: true,
+        agentProgressSummaries: true,
         resume: startFrom ?? undefined,
         sessionId: pregeneratedSessionId,
         mcpServers: opts.mcpServers,
