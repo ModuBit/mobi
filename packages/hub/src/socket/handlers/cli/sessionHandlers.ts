@@ -212,15 +212,6 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             if (updated) {
                 onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid, runtimeState: existingRuntimeState } })
             }
-
-            // SSE 推送后清理终态 backgroundTasks（Web 端已收到 terminal 状态）
-            if (bgTaskDelta && existingRuntimeState.backgroundTasks) {
-                existingRuntimeState.backgroundTasks = existingRuntimeState.backgroundTasks
-                    .filter(t => t.status === 'running')
-                if (existingRuntimeState.backgroundTasks.length === 0) {
-                    delete (existingRuntimeState as Record<string, unknown>).backgroundTasks
-                }
-            }
         }
 
         const update = {

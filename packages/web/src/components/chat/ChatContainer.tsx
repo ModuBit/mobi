@@ -174,7 +174,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             })
         }
         if (completed.length > 0) {
-            setBgCompletedTasks(prev => [...prev, ...completed])
+            setBgCompletedTasks(prev => [...prev, ...completed].slice(-50))
         }
     }, [bgTasks, messageApi, t])
 
