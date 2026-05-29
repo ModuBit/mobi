@@ -80,3 +80,4 @@ bun run lint:deps    # 依赖方向检查
 ## Git 规范
 
 - **禁止**在提交信息中包含 `Co-Authored-By` 信息
+- **禁止**提交 `.gitignore` 排除的文件：禁止 `git add -f`，禁止 staging 任何被 gitignore 的路径（如 `docs/superpowers/`、`.superpowers/`）。子代理派遣时必须包含此约束，子代理 commit 后必须验证 `git show --stat`
