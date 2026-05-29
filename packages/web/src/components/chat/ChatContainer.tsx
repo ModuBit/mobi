@@ -147,6 +147,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const [bgCompletedTasks, setBgCompletedTasks] = useState<Array<{
         taskId: string; description: string; summary?: string; status: string; toolName: string
     }>>([])
+    // sessionId 变化时清空，防止跨会话泄漏
+    useEffect(() => { setBgCompletedTasks([]) }, [sessionId])
     useEffect(() => {
         const removed = useBackgroundTasksStore.getState().consumeRemoved()
         if (removed.length === 0) return
@@ -186,10 +188,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             : rawBlocks
         // 追加后台任务完成卡片
         if (bgCompletedTasks.length > 0) {
+            const lastCreatedAt = blocks.length > 0 ? blocks[blocks.length - 1].createdAt : Date.now()
             blocks = [...blocks, ...bgCompletedTasks.map((task, i) => ({
                 kind: 'agent-event' as const,
                 id: `bg-completed-${task.taskId}-${i}`,
-                createdAt: Date.now() + i,
+                createdAt: lastCreatedAt + i + 1,
                 event: {
                     type: 'bg-task-completed',
                     taskId: task.taskId,

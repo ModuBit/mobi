@@ -621,13 +621,18 @@ describe('applyBackgroundTaskDelta', () => {
         expect(result[0].metrics).toBeUndefined()
     })
 
-    test('completed: 不存在的 task 返回空数组', () => {
+    test('completed: 不存在的 task 创建最小终态条目', () => {
         const delta: BackgroundTaskDelta = {
             type: 'completed',
             taskId: 'bt-001',
             status: 'completed',
+            summary: 'Task done',
         }
         const result = applyBackgroundTaskDelta(undefined, delta)
-        expect(result).toHaveLength(0)
+        expect(result).toHaveLength(1)
+        expect(result[0].taskId).toBe('bt-001')
+        expect(result[0].status).toBe('completed')
+        expect(result[0].summary).toBe('Task done')
+        expect(result[0].completedAt).toBeGreaterThan(0)
     })
 })

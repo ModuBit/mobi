@@ -195,12 +195,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     existingRuntimeState.backgroundTasks,
                     bgTaskDelta,
                 )
-                // 清理非 running 任务（已被 Web 端消费终态信息后移除）
-                existingRuntimeState.backgroundTasks = existingRuntimeState.backgroundTasks
-                    .filter(t => t.status === 'running')
-                if (existingRuntimeState.backgroundTasks.length === 0) {
-                    delete (existingRuntimeState as Record<string, unknown>).backgroundTasks
-                }
+                // 终态任务保留至 SSE 推送后清理，Web 端需要接收 terminal 状态以检测 running→terminal 转换
             }
 
             // 自动清除：tasks 全部完成或删除
@@ -216,6 +211,15 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             const updated = store.sessions.setRuntimeState(sid, existingRuntimeState, msg.createdAt, session.namespace)
             if (updated) {
                 onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid, runtimeState: existingRuntimeState } })
+            }
+
+            // SSE 推送后清理终态 backgroundTasks（Web 端已收到 terminal 状态）
+            if (bgTaskDelta && existingRuntimeState.backgroundTasks) {
+                existingRuntimeState.backgroundTasks = existingRuntimeState.backgroundTasks
+                    .filter(t => t.status === 'running')
+                if (existingRuntimeState.backgroundTasks.length === 0) {
+                    delete (existingRuntimeState as Record<string, unknown>).backgroundTasks
+                }
             }
         }
 

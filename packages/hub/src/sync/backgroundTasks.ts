@@ -235,15 +235,28 @@ export function applyBackgroundTaskDelta(
 
         case 'completed': {
             // 标记任务为终态（不移除），供 Web 端检测状态变化后自行清理
-            return tasks.map(t => {
-                if (t.taskId !== delta.taskId) return t
-                return {
-                    ...t,
+            const idx = tasks.findIndex(t => t.taskId === delta.taskId)
+            if (idx < 0) {
+                // 无匹配任务（消息乱序）：创建最小终态条目
+                tasks.push({
+                    taskId: delta.taskId,
+                    toolUseId: null,
+                    toolName: 'Bash',
+                    description: '',
+                    startedAt: 0,
+                    status: delta.status,
+                    ...(delta.summary !== undefined ? { summary: delta.summary } : {}),
+                    completedAt: Date.now(),
+                })
+            } else {
+                tasks[idx] = {
+                    ...tasks[idx],
                     status: delta.status,
                     ...(delta.summary !== undefined ? { summary: delta.summary } : {}),
                     completedAt: Date.now(),
                 }
-            })
+            }
+            return tasks
         }
     }
 }

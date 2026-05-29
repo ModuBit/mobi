@@ -105,7 +105,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                     transition: 'opacity 0.15s',
                 }}>
                     {displaySummary
-                        ? `${task.metrics?.durationMs ? formatDuration(task.metrics.durationMs) : ''} · ${displaySummary}`
+                        ? `${task.metrics?.durationMs != null ? formatDuration(task.metrics.durationMs) : ''} · ${displaySummary}`
                         : formatMetrics(task)}
                 </div>
             </div>

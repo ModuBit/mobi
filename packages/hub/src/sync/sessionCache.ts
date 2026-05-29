@@ -210,7 +210,8 @@ export class SessionCache {
             updatedAt: stored.updatedAt,
             // active 和 activeAt 只从内存获取，不存储在数据库中
             active: existing?.active ?? false,
-            activeAt: existing?.activeAt ?? stored.createdAt,
+            // 重载时使用当前时间避免立即被 expireInactive 驱逐
+            activeAt: existing?.activeAt ?? Date.now(),
             metadata,
             metadataVersion: stored.metadataVersion,
             agentState,
