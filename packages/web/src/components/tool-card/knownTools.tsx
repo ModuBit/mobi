@@ -43,6 +43,11 @@ export function isAgentTool(name: string): boolean {
     return name === 'Task' || name === 'Agent'
 }
 
+/** 判断是否为后台 Agent 工具（run_in_background=true） */
+export function isBackgroundAgentTool(name: string, input: unknown): boolean {
+    return isAgentTool(name) && isObject(input) && input.run_in_background === true
+}
+
 /** 构建 Agent 工具标题：subagent_type · description */
 export function getAgentTitle(input: unknown, fallback = 'Agent'): string {
     if (!isObject(input)) return fallback

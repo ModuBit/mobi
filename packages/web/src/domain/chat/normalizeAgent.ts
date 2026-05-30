@@ -359,7 +359,8 @@ const handleTaskProgressOutput: OutputHandler = (data, ctx) => {
     if (!toolUseId) return null
 
     const usage = isObject(data.usage) ? data.usage : null
-    const summary = asString(data.summary) ?? undefined
+    // summary 仅在 agentProgressSummaries 开启时有值，否则用 description 兜底
+    const summary = asString(data.summary) || asString(data.description) || undefined
     return createEventMessage(ctx, {
         type: 'agent-progress',
         toolUseId,
@@ -378,6 +379,7 @@ const handleTaskNotificationOutput: OutputHandler = (data, ctx) => {
     if (!toolUseId) return null
 
     const usage = isObject(data.usage) ? data.usage : null
+    const summary = asString(data.summary) || undefined
     return createEventMessage(ctx, {
         type: 'agent-progress',
         toolUseId,
@@ -385,7 +387,8 @@ const handleTaskNotificationOutput: OutputHandler = (data, ctx) => {
             tokens: asNumber(usage?.total_tokens) ?? 0,
             toolUses: asNumber(usage?.tool_uses) ?? 0,
             durationMs: asNumber(usage?.duration_ms) ?? 0,
-        }
+        },
+        ...(summary && { summary }),
     })
 }
 

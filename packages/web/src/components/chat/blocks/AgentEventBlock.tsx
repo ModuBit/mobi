@@ -67,7 +67,7 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block }: { block:
         )
     }
 
-    const content = formatEvent(block.event, t)
+    const content = formatEvent(block.event, t, block.createdAt)
     if (content === null) return null
 
     const d = block.display

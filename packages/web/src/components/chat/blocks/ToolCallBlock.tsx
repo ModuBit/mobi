@@ -17,12 +17,13 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { Think } from '@ant-design/x'
 import { theme as antTheme } from 'antd'
+import { Zap } from 'lucide-react'
 import type { ChatBlock, ChatToolCall } from '@/domain/chat'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
-import { getToolPresentation, isTerminalTool, isAgentTool } from '@/components/tool-card/knownTools'
+import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool } from '@/components/tool-card/knownTools'
 import { isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
@@ -165,6 +166,23 @@ function ToolCallPreviewContent({
         )
     }
 
+    // 后台 Agent：tool_result 快速返回后 state=completed，但任务仍在后台执行
+    // 展示 agentSummary（来自 task_progress/task_notification），无 summary 时展示状态
+    // 后台 agent 暂不支持 drawer
+    if (isBackgroundAgentTool(tool.name, tool.input)) {
+        const summary = toolCallBlock.tool.agentSummary
+        return (
+            <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                <div style={{
+                    fontSize: 13, lineHeight: 1.5,
+                    color: token.colorTextSecondary,
+                }}>
+                    {summary ?? t('chat.backgroundTask.running', 'Running...')}
+                </div>
+            </div>
+        )
+    }
+
     if (!ViewComponent) return null
 
     return (
@@ -205,8 +223,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
     const permissionDrivenExpand = expandOnPermission && hasPermission
     const isError = tool.state === 'error'
     const isAgent = isAgentTool(tool.name)
+    const isBgAgent = isBackgroundAgentTool(tool.name, tool.input)
     const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
-    const defaultExpanded = !isError && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning)
+    const defaultExpanded = !isError && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning || isBgAgent)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const prevPermissionDrivenExpand = useRef(permissionDrivenExpand)
 
@@ -218,14 +237,14 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         prevIsError.current = isError
     }, [isError])
 
-    // Agent 完成时自动收起
+    // 前台 Agent 完成时自动收起（后台 agent 不收起，保留 summary 展示）
     const prevAgentRunning = useRef(agentRunning)
     useEffect(() => {
-        if (prevAgentRunning.current && !agentRunning) {
+        if (prevAgentRunning.current && !agentRunning && !isBgAgent) {
             setExpanded(false)
         }
         prevAgentRunning.current = agentRunning
-    }, [agentRunning])
+    }, [agentRunning, isBgAgent])
 
     // ExitPlanMode: 审批结束后自动收起
     useEffect(() => {
@@ -251,10 +270,11 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
     }, [isAskUserQuestion, hasPermission])
 
     const [drawerOpen, setDrawerOpen] = useState(false)
+    const drawerDisabled = disableDrawer || isBgAgent
     const handleViewDetail = useCallback(() => {
-        if (disableDrawer) return
+        if (drawerDisabled) return
         setDrawerOpen(true)
-    }, [disableDrawer])
+    }, [drawerDisabled])
 
     // 转换为 PermissionFooter 需要的 tool 格式
     const toolForPermission = useMemo(() => ({
@@ -291,6 +311,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                             <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0', minWidth: 0 }}>
                                 {toolPresentation.title}
                             </span>
+                        )}
+                        {isBgAgent && (
+                            <Zap size={12} style={{ flexShrink: 0, color: token.colorInfo }} />
                         )}
                         {!titleContainsDescription && tool.description && (
                             <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0, maxWidth: '40%' }}>
@@ -344,7 +367,7 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                     </div>
                 ) : null}
             </Think>
-            {!disableDrawer && (
+            {!drawerDisabled && (
                 <ToolDetailDrawer
                     block={block}
                     metadata={metadata}

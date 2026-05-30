@@ -40,9 +40,7 @@ import { TodoPanel } from './TodoPanel'
 import { TaskPanel } from './TaskPanel'
 import { BackgroundTaskPanel } from './BackgroundTaskPanel'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
-import type { BackgroundTask, ToolCallBlock } from '@/domain/chat/types'
-import { ContentDrawer } from '@/components/ui/ContentDrawer'
-import { BashDrawerContent } from '@/components/tool-card/BashDrawerContent'
+import type { ToolCallBlock } from '@/domain/chat/types'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -190,7 +188,6 @@ export function ComposerInfoPanel({
     tasks
 }: ComposerInfoPanelProps) {
     const [drawerBlockId, setDrawerBlockId] = useState<string | null>(null)
-    const [bgDrawerTask, setBgDrawerTask] = useState<BackgroundTask | null>(null)
     const hasPendingRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
     const hasTodos = todos && todos.length > 0
     const hasTasks = tasks && tasks.some(t => t.status !== 'deleted')
@@ -252,15 +249,7 @@ export function ComposerInfoPanel({
                         <BackgroundTaskPanel
                             sessionId={sessionId}
                             api={api}
-                            onTaskClick={(task) => {
-                                if (task.toolName === 'Agent' && task.toolUseId) {
-                                    setDrawerBlockId(task.toolUseId)
-                                    setBgDrawerTask(null)
-                                } else {
-                                    setBgDrawerTask(task)
-                                    setDrawerBlockId(null)
-                                }
-                            }}
+                            onTaskClick={() => {}}
                         />
                     )}
 
@@ -287,15 +276,6 @@ export function ComposerInfoPanel({
                     onClose={() => setDrawerBlockId(null)}
                     sessionId={sessionId}
                 />
-            )}
-            {bgDrawerTask && bgDrawerTask.toolName !== 'Agent' && (
-                <ContentDrawer
-                    title={bgDrawerTask.description}
-                    open={!!bgDrawerTask}
-                    onClose={() => setBgDrawerTask(null)}
-                >
-                    <BashDrawerContent task={bgDrawerTask} sessionId={sessionId} api={api} />
-                </ContentDrawer>
             )}
         </div>
     )

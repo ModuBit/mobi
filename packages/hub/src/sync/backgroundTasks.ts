@@ -172,7 +172,8 @@ export function extractBackgroundTaskDeltasFromMessageContent(
             durationMs: asNumber(usage?.duration_ms) ?? 0,
         }
 
-        const summary = asString(data.summary) ?? undefined
+        // summary 仅在 agentProgressSummaries 开启时有值，否则用 description 兜底
+        const summary = asString(data.summary) || asString(data.description) || undefined
 
         return { type: 'progress', taskId, metrics, summary }
     }

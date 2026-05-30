@@ -15,6 +15,7 @@
  */
 
 import type React from 'react'
+import { formatMessageTime } from '@/core/utils/timeFormat'
 
 /** 从嵌套 error 对象中提取错误详情 */
 export function extractApiErrorDetail(error: unknown): string | null {
@@ -35,7 +36,8 @@ export function extractApiErrorDetail(error: unknown): string | null {
 /** 格式化 Agent 事件为可渲染内容 */
 export function formatEvent(
     event: { type: string; [key: string]: unknown },
-    t: (key: string, params?: Record<string, unknown>) => string
+    t: (key: string, params?: Record<string, unknown>) => string,
+    createdAt?: number,
 ): React.ReactNode {
     switch (event.type) {
         case 'api-retry': {
@@ -101,9 +103,12 @@ export function formatEvent(
                 parts.push(durationText, tokensText)
             }
 
+            const time = createdAt ? formatMessageTime(createdAt) : null
+
             return (
                 <div style={{ fontFamily: 'var(--font-mono)' }}>
                     {parts.join(' · ')}
+                    {time && <span style={{ marginLeft: 8 }}>{time}</span>}
                 </div>
             )
         }
@@ -136,9 +141,12 @@ export function formatEvent(
                 ? `${(tokens / 1000).toFixed(1)}k tokens`
                 : `${tokens} tokens`
 
+            const time = createdAt ? formatMessageTime(createdAt) : null
+
             return (
                 <div style={{ fontFamily: 'var(--font-mono)' }}>
                     {durationText} · {tokensText}
+                    {time && <span style={{ marginLeft: 8, opacity: 0.6 }}>{time}</span>}
                     {error && (
                         <div style={{
                             marginTop: 2,
