@@ -99,9 +99,9 @@ function checklistTone(item: ChecklistItem): string {
 }
 
 function checklistColor(item: ChecklistItem): string {
-    if (item.status === 'completed') return '#52c41a'
-    if (item.status === 'in_progress') return '#1677ff'
-    return '#999'
+    if (item.status === 'completed') return '#3f7a3a'
+    if (item.status === 'in_progress') return '#3d3d3a'
+    return '#b0aea5'
 }
 
 function checklistIcon(item: ChecklistItem): string {
@@ -112,7 +112,7 @@ function checklistIcon(item: ChecklistItem): string {
 export function ChecklistList(props: { items: ChecklistItem[]; emptyLabel?: string | null }) {
     if (props.items.length === 0) {
         return props.emptyLabel ? (
-            <div style={{ fontSize: 13, color: '#999' }}>{props.emptyLabel}</div>
+            <div style={{ fontSize: 13, color: '#b0aea5' }}>{props.emptyLabel}</div>
         ) : null
     }
 

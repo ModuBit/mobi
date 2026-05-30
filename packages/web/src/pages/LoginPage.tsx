@@ -55,12 +55,12 @@ const BrandPanel = styled.div`
         padding: 48px;
         position: relative;
         overflow: hidden;
-        background: #fafafa;
-        border-right: 1px solid #e4e4e7;
+        background: #faf9f5;
+        border-right: 1px solid #f0eee6;
 
         html[data-theme='dark'] & {
-            background: #09090b;
-            border-right-color: #27272a;
+            background: #141413;
+            border-right-color: #30302e;
         }
     }
 `
@@ -87,12 +87,12 @@ const GlowOrb = styled.div`
     border-radius: 50%;
     pointer-events: none;
     filter: blur(100px);
-    background: radial-gradient(circle, rgba(228, 228, 231, 0.4), transparent);
+    background: radial-gradient(circle, rgba(232, 230, 220, 0.4), transparent);
 
     html[data-theme='dark'] & {
         background: radial-gradient(
             circle,
-            rgba(39, 39, 42, 0.3),
+            rgba(48, 48, 46, 0.3),
             transparent
         );
     }
@@ -111,10 +111,10 @@ const BrandName = styled.span`
     font-size: 18px;
     font-weight: 600;
     letter-spacing: -0.03em;
-    color: #18181b;
+    color: #141413;
 
     html[data-theme='dark'] & {
-        color: #fafafa;
+        color: #faf9f5;
     }
 `
 
@@ -125,11 +125,11 @@ const Tagline = styled.h2`
     font-weight: 300;
     line-height: 1.6;
     letter-spacing: -0.01em;
-    color: #52525b;
+    color: #87867f;
     margin: 0;
 
     html[data-theme='dark'] & {
-        color: #d4d4d8;
+        color: #d1cfc5;
     }
 `
 
@@ -137,11 +137,11 @@ const Tagline = styled.h2`
 const Description = styled.p`
     font-size: 14px;
     line-height: 1.7;
-    color: #71717a;
+    color: #87867f;
     margin: 16px 0 0;
 
     html[data-theme='dark'] & {
-        color: #a1a1aa;
+        color: #b0aea5;
     }
 `
 
@@ -163,12 +163,12 @@ const FeatureItem = styled.div`
         width: 6px;
         height: 6px;
         border-radius: 50%;
-        background: #18181b;
+        background: #141413;
         margin-top: 7px;
         flex-shrink: 0;
 
         html[data-theme='dark'] & {
-            background: #fafafa;
+            background: #faf9f5;
         }
     }
 
@@ -176,20 +176,20 @@ const FeatureItem = styled.div`
         font-family: var(--font-serif);
         font-size: 13px;
         font-weight: 500;
-        color: #3f3f46;
+        color: #4d4c48;
 
         html[data-theme='dark'] & {
-            color: #e4e4e7;
+            color: #d1cfc5;
         }
     }
 
     .feature-desc {
         font-size: 12px;
-        color: #a1a1aa;
+        color: #b0aea5;
         margin-top: 2px;
 
         html[data-theme='dark'] & {
-            color: #71717a;
+            color: #87867f;
         }
     }
 `
@@ -200,10 +200,10 @@ const FooterMeta = styled.div`
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #a1a1aa;
+    color: #b0aea5;
 
     html[data-theme='dark'] & {
-        color: #52525b;
+        color: #5e5d59;
     }
 `
 
@@ -215,10 +215,10 @@ const LoginPanel = styled.div`
     width: 100%;
     padding: 32px;
     position: relative;
-    background: #fff;
+    background: #faf9f5;
 
     html[data-theme='dark'] & {
-        background: #000;
+        background: #141413;
     }
 
     @media (min-width: 1024px) {
@@ -253,12 +253,12 @@ const ActiveLocale = styled.span`
     z-index: 2;
     padding: 0 3px;
     border-radius: 3px;
-    background: rgba(24, 24, 27, 0.9);
-    color: #fafafa;
+    background: rgba(20, 20, 19, 0.9);
+    color: #faf9f5;
 
     html[data-theme='dark'] & {
-        background: rgba(255, 255, 255, 0.85);
-        color: #18181b;
+        background: rgba(250, 249, 245, 0.85);
+        color: #141413;
     }
 `
 
@@ -273,12 +273,12 @@ const InactiveLocale = styled.span`
     padding: 0 2px;
     border-radius: 2px;
     background: transparent;
-    border: 1px solid rgba(24, 24, 27, 0.2);
-    color: rgba(24, 24, 27, 0.4);
+    border: 1px solid rgba(20, 20, 19, 0.2);
+    color: rgba(20, 20, 19, 0.4);
 
     html[data-theme='dark'] & {
-        border-color: rgba(255, 255, 255, 0.25);
-        color: rgba(255, 255, 255, 0.45);
+        border-color: rgba(250, 249, 245, 0.25);
+        color: rgba(250, 249, 245, 0.45);
     }
 `
 
@@ -310,10 +310,10 @@ const WelcomeTitle = styled.h1`
     letter-spacing: -0.02em;
     margin: 0 0 8px;
     text-align: center;
-    color: #18181b;
+    color: #141413;
 
     html[data-theme='dark'] & {
-        color: #fafafa;
+        color: #faf9f5;
     }
 `
 
@@ -322,10 +322,10 @@ const WelcomeSubtitle = styled.p`
     font-size: 14px;
     margin: 0;
     text-align: center;
-    color: #a1a1aa;
+    color: #b0aea5;
 
     html[data-theme='dark'] & {
-        color: #71717a;
+        color: #87867f;
     }
 `
 
@@ -339,19 +339,19 @@ const HelpLink = styled.a`
     gap: 6px;
     font-size: 12px;
     font-weight: 500;
-    color: #a1a1aa;
+    color: #b0aea5;
     text-decoration: none;
     transition: color 0.2s;
 
     html[data-theme='dark'] & {
-        color: #52525b;
+        color: #5e5d59;
     }
 
     &:hover {
-        color: #52525b;
+        color: #87867f;
 
         html[data-theme='dark'] & {
-            color: #a1a1aa;
+            color: #87867f;
         }
     }
 

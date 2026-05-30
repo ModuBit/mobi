@@ -34,7 +34,7 @@ const preStyle = (token: GlobalToken, extra?: CSSProperties): CSSProperties => (
     fontSize: 12,
     overflowX: 'auto',
     margin: '4px 0',
-    boxShadow: `inset 0px 0px 0px 1px ${token.colorBorderSecondary}`,
+    boxShadow: `inset 0px 0px 0px 1px ${token.colorBorder}`,
     whiteSpace: 'pre',
     fontFamily: 'var(--font-mono)',
     ...extra,

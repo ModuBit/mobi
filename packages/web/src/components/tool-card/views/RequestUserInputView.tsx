@@ -81,14 +81,14 @@ export function RequestUserInputView(props: ToolViewProps) {
                                 <div style={{ marginTop: 12 }}>
                                     <div style={{
                                         borderRadius: 6,
-                                        border: '1px solid #52c41a',
-                                        background: '#f6ffed',
+                                        border: `1px solid ${token.colorSuccessBorder}`,
+                                        background: token.colorSuccessBg,
                                         padding: 8
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                                            <span style={{ flexShrink: 0, fontSize: 14, color: '#52c41a' }}>●</span>
+                                            <span style={{ flexShrink: 0, fontSize: 14, color: token.colorSuccess }}>●</span>
                                             <div style={{ minWidth: 0, flex: 1 }}>
-                                                <div style={{ fontSize: 14, color: '#237804', fontWeight: 500, wordBreak: 'break-word' }}>
+                                                <div style={{ fontSize: 14, color: token.colorSuccessText, fontWeight: 500, wordBreak: 'break-word' }}>
                                                     {answer.userNote}
                                                 </div>
                                             </div>
@@ -107,8 +107,8 @@ export function RequestUserInputView(props: ToolViewProps) {
                                             key={optIdx}
                                             style={{
                                                 borderRadius: 6,
-                                                border: `1px solid ${isSelected ? '#52c41a' : token.colorBorder}`,
-                                                background: isSelected ? '#f6ffed' : 'transparent',
+                                                border: `1px solid ${isSelected ? token.colorSuccessBorder : token.colorBorder}`,
+                                                background: isSelected ? token.colorSuccessBg : 'transparent',
                                                 padding: 8
                                             }}
                                         >
@@ -117,7 +117,7 @@ export function RequestUserInputView(props: ToolViewProps) {
                                                     <span style={{
                                                         flexShrink: 0,
                                                         fontSize: 14,
-                                                        color: isSelected ? '#52c41a' : token.colorTextDisabled
+                                                        color: isSelected ? token.colorSuccess : token.colorTextDisabled
                                                     }}>
                                                         {getSelectionMark(isSelected)}
                                                     </span>
@@ -126,7 +126,7 @@ export function RequestUserInputView(props: ToolViewProps) {
                                                     <div style={{
                                                         fontSize: 14,
                                                         wordBreak: 'break-word',
-                                                        color: isSelected ? '#237804' : token.colorText,
+                                                        color: isSelected ? token.colorSuccessText : token.colorText,
                                                         fontWeight: isSelected ? 500 : 400
                                                     }}>
                                                         {opt.label}
@@ -147,15 +147,15 @@ export function RequestUserInputView(props: ToolViewProps) {
                                     <div style={{
                                         marginTop: 8,
                                         borderRadius: 6,
-                                        border: '1px solid #69b1ff',
-                                        background: '#e6f4ff',
+                                        border: `1px solid ${token.colorPrimaryBorder}`,
+                                        background: token.colorPrimaryBg,
                                         padding: 8
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                                            <span style={{ flexShrink: 0, fontSize: 12, color: '#1677ff' }}>📝</span>
+                                            <span style={{ flexShrink: 0, fontSize: 12, color: token.colorPrimary }}>📝</span>
                                             <div style={{ minWidth: 0, flex: 1 }}>
                                                 <div style={{ fontSize: 12, color: token.colorTextSecondary }}>Note:</div>
-                                                <div style={{ fontSize: 14, color: '#1677ff', wordBreak: 'break-word' }}>
+                                                <div style={{ fontSize: 14, color: token.colorPrimary, wordBreak: 'break-word' }}>
                                                     {answer.userNote}
                                                 </div>
                                             </div>
