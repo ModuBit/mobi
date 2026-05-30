@@ -67,7 +67,7 @@ const InfoItem = styled.span<{ $variant: 'path' | 'branch' | 'worktree' }>`
     }}
 `
 
-const StyledChevron = styled(ChevronDown)<{ $expanded: boolean }>`
+const StyledChevron = styled(ChevronDown, { shouldForwardProp: (p) => !p.startsWith('$') })<{ $expanded: boolean }>`
     opacity: 0.3;
     flex-shrink: 0;
     transition: transform 0.2s ease;

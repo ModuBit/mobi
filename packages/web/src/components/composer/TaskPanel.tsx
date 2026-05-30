@@ -102,13 +102,11 @@ export function TaskPanel({ tasks, sessionId, onClear }: TaskPanelProps) {
                     </>
                 )}
             </span>
-            <span style={{ marginLeft: 'auto' }}>
-                <ClearStateButton
-                    sessionId={sessionId}
-                    clearField="tasks"
-                    onClear={onClear}
-                />
-            </span>
+            <ClearStateButton
+                sessionId={sessionId}
+                clearField="tasks"
+                onClear={onClear}
+            />
         </div>
     )
 

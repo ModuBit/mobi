@@ -95,13 +95,11 @@ export function TodoPanel({ todos, sessionId, onClear }: TodoPanelProps) {
                     </>
                 )}
             </span>
-            <span style={{ marginLeft: 'auto' }}>
-                <ClearStateButton
-                    sessionId={sessionId}
-                    clearField="todos"
-                    onClear={onClear}
-                />
-            </span>
+            <ClearStateButton
+                sessionId={sessionId}
+                clearField="todos"
+                onClear={onClear}
+            />
         </div>
     )
 

@@ -16,7 +16,7 @@
 
 import { useState, useCallback } from 'react'
 import { Popconfirm, Drawer, Button, theme } from 'antd'
-import { CloseCircleOutlined } from '@ant-design/icons'
+import { BrushCleaning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
@@ -32,9 +32,9 @@ export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateB
     const isMobile = useIsMobile()
     const [loading, setLoading] = useState(false)
     const [drawerOpen, setDrawerOpen] = useState(false)
+    const [hovered, setHovered] = useState(false)
 
-    const confirmKey = `chat.clearState.${clearField}` as const
-    const confirmText = t(confirmKey)
+    const confirmText = t(`chat.clearState.${clearField}`)
     const doClear = useCallback(async () => {
         setLoading(true)
         try {
@@ -45,13 +45,38 @@ export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateB
         }
     }, [sessionId, clearField, onClear])
 
+    const triggerStyle: React.CSSProperties = {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 20,
+        height: 20,
+        borderRadius: 4,
+        border: 'none',
+        background: hovered ? token.colorErrorBg : 'transparent',
+        color: hovered ? token.colorError : token.colorTextQuaternary,
+        cursor: loading ? 'not-allowed' : 'pointer',
+        opacity: loading ? 0.5 : 1,
+        transition: 'all 0.2s',
+        padding: 0,
+    }
+
+    const trigger = (
+        <button
+            style={triggerStyle}
+            onClick={(e) => { e.stopPropagation(); if (isMobile) setDrawerOpen(true) }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            type="button"
+        >
+            <BrushCleaning size={11} />
+        </button>
+    )
+
     if (isMobile) {
         return (
             <>
-                <CloseCircleOutlined
-                    style={{ fontSize: 12, color: token.colorTextQuaternary, cursor: 'pointer' }}
-                    onClick={(e) => { e.stopPropagation(); setDrawerOpen(true) }}
-                />
+                {trigger}
                 <Drawer
                     placement="bottom"
                     open={drawerOpen}
@@ -95,10 +120,7 @@ export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateB
             okButtonProps={{ danger: true, loading }}
             onCancel={(e) => e?.stopPropagation()}
         >
-            <CloseCircleOutlined
-                style={{ fontSize: 12, color: token.colorTextQuaternary, cursor: 'pointer' }}
-                onClick={(e) => e.stopPropagation()}
-            />
+            {trigger}
         </Popconfirm>
     )
 }
