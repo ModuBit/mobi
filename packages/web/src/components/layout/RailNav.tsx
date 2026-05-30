@@ -33,7 +33,6 @@ const SidebarContainer = styled.div<{ $token: ReturnType<typeof useToken>['token
     width: 56px;
     height: 100vh;
     background: ${props => props.$token.colorBgContainer};
-    border-right: 1px solid ${props => props.$token.colorBorder};
     display: flex;
     flex-direction: column;
     align-items: center;

@@ -45,7 +45,7 @@ export const HeaderRight = styled.div`
 
 const StyledHeader = styled(Layout.Header, {
     shouldForwardProp: shouldNotForwardDollarProps,
-})<{ $bg: string; $border: string }>`
+})<{ $bg: string }>`
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -54,7 +54,7 @@ const StyledHeader = styled(Layout.Header, {
     min-height: 48px;
     line-height: normal;
     background: ${p => p.$bg};
-    border-bottom: 1px solid ${p => p.$border};
+    margin-bottom: 2px;
 `
 
 interface PageHeaderProps {
@@ -69,7 +69,7 @@ export function PageHeader({ left, right }: PageHeaderProps) {
     const { token } = useToken()
 
     return (
-        <StyledHeader $bg={token.colorBgContainer} $border={token.colorBorder}>
+        <StyledHeader $bg={token.colorBgContainer}>
             <HeaderLeft>{left}</HeaderLeft>
             {right && <HeaderRight>{right}</HeaderRight>}
         </StyledHeader>
