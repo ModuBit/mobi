@@ -265,4 +265,62 @@ describe('Store', () => {
         // 取 updated_at 最新的一条
         expect(found?.id).toBe(newer.id)
     })
+
+    test('clearRuntimeStateFields 清除指定字段', () => {
+        const session = store.sessions.getOrCreateSession(
+            'test-tag-clear',
+            { name: 'test' },
+            null,
+            'default'
+        )
+
+        // 设置包含多个字段的 runtimeState
+        const runtimeState = {
+            todos: [{ content: 'test', status: 'completed' }],
+            tasks: [{ id: '1', subject: 'test', status: 'completed' }],
+            backgroundTasks: [{ taskId: 'bg1', status: 'completed' }],
+            model: 'claude-sonnet-4-6',
+        }
+        store.sessions.setRuntimeState(session.id, runtimeState, Date.now(), 'default')
+
+        // 清除 todos 和 backgroundTasks
+        const result = store.sessions.clearRuntimeStateFields(
+            session.id,
+            ['todos', 'backgroundTasks'],
+            'default'
+        )
+        expect(result).toBe(true)
+
+        // 验证清理后的状态
+        const updated = store.sessions.getSession(session.id)!
+        const state = updated.runtimeState as Record<string, unknown>
+        expect(state.todos).toBeUndefined()
+        expect(state.backgroundTasks).toBeUndefined()
+        expect(state.tasks).toBeDefined()
+        expect(state.model).toBe('claude-sonnet-4-6')
+    })
+
+    test('clearRuntimeStateFields 不存在的 session 返回 false', () => {
+        const result = store.sessions.clearRuntimeStateFields(
+            'non-existent-id',
+            ['todos'],
+            'default'
+        )
+        expect(result).toBe(false)
+    })
+
+    test('clearRuntimeStateFields 无 runtimeState 时返回 false', () => {
+        const session = store.sessions.getOrCreateSession(
+            'test-tag-no-rs',
+            { name: 'test' },
+            null,
+            'default'
+        )
+        const result = store.sessions.clearRuntimeStateFields(
+            session.id,
+            ['todos'],
+            'default'
+        )
+        expect(result).toBe(false)
+    })
 })

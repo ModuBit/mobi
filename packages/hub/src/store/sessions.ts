@@ -265,6 +265,53 @@ export function setRuntimeState(
     }
 }
 
+/** 合法的 runtimeState 可清理字段 */
+const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(['todos', 'tasks', 'backgroundTasks'])
+
+/**
+ * 清除 runtimeState 中的指定字段
+ * 仅允许清除 CLEARABLE_RUNTIME_STATE_FIELDS 中的字段
+ */
+export function clearRuntimeStateFields(
+    db: Database,
+    id: string,
+    fields: string[],
+    namespace: string
+): boolean {
+    const row = getSessionByNamespace(db, id, namespace)
+    if (!row || !row.runtimeState) return false
+
+    const runtimeState = row.runtimeState as Record<string, unknown>
+    let changed = false
+
+    for (const field of fields) {
+        if (CLEARABLE_RUNTIME_STATE_FIELDS.has(field) && field in runtimeState) {
+            delete runtimeState[field]
+            changed = true
+        }
+    }
+
+    if (!changed) return false
+
+    const now = Date.now()
+    try {
+        const result = db.prepare(`
+            UPDATE sessions
+            SET runtime_state = @runtime_state,
+                updated_at = @updated_at,
+                seq = seq + 1
+            WHERE id = @id
+        `).run({
+            id,
+            runtime_state: JSON.stringify(runtimeState),
+            updated_at: now,
+        })
+        return result.changes === 1
+    } catch {
+        return false
+    }
+}
+
 export function getSessionByClaudeSessionId(
     db: Database,
     claudeSessionId: string,

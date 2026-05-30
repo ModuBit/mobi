@@ -29,6 +29,7 @@ import {
     getSessionGroups as getSessionGroupsFromDb,
     getSessionsByGroup as getSessionsByGroupFromDb,
     setRuntimeState,
+    clearRuntimeStateFields,
     updateSessionAgentState,
     updateSessionMetadata,
     type SessionGroup,
@@ -70,6 +71,13 @@ export class SessionStore {
      */
     setRuntimeState(id: string, runtimeState: unknown, updatedAt: number, namespace: string): boolean {
         return setRuntimeState(this.db, id, runtimeState, updatedAt, namespace)
+    }
+
+    /**
+     * 清除 runtimeState 中的指定字段
+     */
+    clearRuntimeStateFields(id: string, fields: string[], namespace: string): boolean {
+        return clearRuntimeStateFields(this.db, id, fields, namespace)
     }
 
     getSession(id: string): StoredSession | null {
