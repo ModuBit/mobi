@@ -134,12 +134,16 @@ html[data-theme='dark'] .x-markdown code {
     border: 1px solid #e8e6dc;
 }
 
+.x-markdown tbody tr:nth-child(odd) {
+    background: #faf9f5;
+}
+
 .x-markdown tbody tr:nth-child(even) {
-    background: #f5f4ed;
+    background: #f0eee6;
 }
 
 .x-markdown tbody tr:hover {
-    background: #f0eee6;
+    background: #e8e6dc;
 }
 
 /* XMarkdown 表格样式 - Dark 模式 */
