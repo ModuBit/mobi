@@ -30,11 +30,11 @@ import { ContentDrawer } from '@/components/ui/ContentDrawer'
 const preStyle = (token: GlobalToken, extra?: CSSProperties): CSSProperties => ({
     background: token.colorBgContainer,
     padding: 8,
-    borderRadius: 4,
+    borderRadius: 6,
     fontSize: 12,
     overflowX: 'auto',
     margin: '4px 0',
-    border: `1px solid ${token.colorBorder}`,
+    boxShadow: `inset 0px 0px 0px 1px ${token.colorBorderSecondary}`,
     whiteSpace: 'pre',
     fontFamily: 'var(--font-mono)',
     ...extra,

@@ -37,9 +37,8 @@ export const FloatingOverlay = memo(function FloatingOverlay(props: FloatingOver
             style={{
                 overflow: 'hidden',
                 borderRadius: 12,
-                border: `1px solid ${token.colorBorderSecondary}`,
                 backgroundColor: token.colorBgContainer,
-                boxShadow: token.boxShadowSecondary,
+                boxShadow: `rgba(0,0,0,0.05) 0px 4px 24px, 0px 0px 0px 1px ${token.colorBorder}`,
                 maxHeight
             }}
         >
