@@ -166,10 +166,10 @@ type StatusStateIconProps = {
 }
 
 const STATUS_DOT_COLORS: Record<ToolCallState, string> = {
-    running: 'var(--ant-color-primary)',
-    pending: 'var(--ant-color-warning)',
-    completed: 'var(--ant-color-success)',
-    error: 'var(--ant-color-error)',
+    running: '#4dabf7',
+    pending: '#ffa726',
+    completed: '#66bb6a',
+    error: '#ef5350',
 }
 
 /**
