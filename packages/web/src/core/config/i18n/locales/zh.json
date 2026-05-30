@@ -175,6 +175,13 @@
     "backgroundTask": {
       "completed": "后台任务已完成：{{description}}",
       "failed": "后台任务失败：{{description}}"
+    },
+    "clearState": {
+      "todos": "清理待办列表？",
+      "tasks": "清理任务列表？",
+      "backgroundTasks": "清理后台任务？",
+      "confirm": "确认清理",
+      "cancel": "取消"
     }
   },
   "files": {

@@ -175,6 +175,13 @@
     "backgroundTask": {
       "completed": "Background task completed: {{description}}",
       "failed": "Background task failed: {{description}}"
+    },
+    "clearState": {
+      "todos": "Clear stale todos?",
+      "tasks": "Clear stale tasks?",
+      "backgroundTasks": "Clear stale background tasks?",
+      "confirm": "Clear",
+      "cancel": "Cancel"
     }
   },
   "files": {
