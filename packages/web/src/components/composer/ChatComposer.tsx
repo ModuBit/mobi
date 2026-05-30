@@ -15,13 +15,13 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { Button, Tooltip, Select, theme, Typography } from 'antd'
-import { PlusOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, RobotOutlined, SafetyOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { Button, Tooltip, Select, theme, Typography, Popover } from 'antd'
+import { PlusOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, SafetyOutlined, RightOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { AgentState, EffortLevel, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
-import { getPermissionModeOptionsForFlavor, getPermissionModeTone, getEffortOptions } from '@mobi/shared'
+import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
@@ -101,11 +101,23 @@ const HoverSelect = styled(Select, {
 
 // 缩小 dropdown 弹出层的 option 字体（全局注入一次）
 const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'
+const MODEL_DROPDOWN_CLASS = 'model-select-dropdown'
 let compactStyleInjected = false
 function useCompactDropdownStyle() {
     if (!compactStyleInjected && typeof document !== 'undefined') {
         const style = document.createElement('style')
-        style.textContent = `.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }`
+        style.textContent = `
+.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }
+.${COMPACT_DROPDOWN_CLASS} { max-width: 100vw !important; }
+@media (max-width: 640px) {
+    .${MODEL_DROPDOWN_CLASS} { right: auto !important; left: 12px !important; max-width: calc(100vw - 24px) !important; }
+}
+.effort-popover .ant-popover-container { padding: 4px 0 !important; }
+.effort-popover .ant-popover-arrow { display: none !important; }
+.effort-popover .effort-item:hover { background: var(--ant-color-bg-text-hover) !important; }
+.effort-popover .effort-arrow { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; border-radius: 4px; }
+.effort-popover .effort-arrow:hover { background: var(--ant-color-bg-text-hover); }
+`
         document.head.appendChild(style)
         compactStyleInjected = true
     }
@@ -120,15 +132,71 @@ const ACTION_BUTTON_STYLE: React.CSSProperties = {
 // 预配置的紧凑 Select，复用共享样式属性
 function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>, 'size' | 'variant' | 'popupMatchSelectWidth' | '$compact'>) {
     useCompactDropdownStyle()
+    const { classNames: propsClassNames, ...rest } = props
+    const extraPopupRoot = (propsClassNames as any)?.popup?.root as string | undefined
     return (
         <HoverSelect
-            {...props}
+            {...rest}
             $compact
             size="small"
             variant="filled"
             popupMatchSelectWidth={false}
-            classNames={{ popup: { root: COMPACT_DROPDOWN_CLASS } }}
+            classNames={{ popup: { root: [COMPACT_DROPDOWN_CLASS, extraPopupRoot].filter(Boolean).join(' ') } }}
         />
+    )
+}
+
+// ============ Effort 级别颜色 ============
+const EFFORT_COLORS: Record<EffortLevel, string> = {
+    low: 'var(--ant-color-text-quaternary)',
+    medium: 'var(--ant-color-info)',
+    high: 'var(--ant-color-warning)',
+    xhigh: 'var(--ant-color-error)',
+}
+
+function EffortDot({ level }: { level: EffortLevel }) {
+    return (
+        <span style={{
+            display: 'inline-block',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: EFFORT_COLORS[level],
+            flexShrink: 0,
+        }} />
+    )
+}
+
+// model option 中的 effort 选择 Popover 内容
+function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
+    modelValue: string
+    effort: EffortLevel
+    onEffortSelect: (model: string, effort: EffortLevel) => void
+}) {
+    const { token } = theme.useToken()
+    const [hovered, setHovered] = useState<string | null>(null)
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 100 }}>
+            {EFFORT_LEVELS.map(e => (
+                <div
+                    key={e}
+                    onClick={(ev) => { ev.stopPropagation(); onEffortSelect(modelValue, e) }}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '4px 8px', margin: '0 4px', borderRadius: token.borderRadiusSM,
+                        cursor: 'pointer',
+                        background: e === effort ? token.colorBgTextHover
+                            : hovered === e ? token.colorBgTextHover : undefined,
+                        transition: 'background 0.2s',
+                    }}
+                    onMouseEnter={() => setHovered(e)}
+                    onMouseLeave={() => setHovered(null)}
+                >
+                    <EffortDot level={e} />
+                    <span style={{ fontSize: 12 }}>{EFFORT_LABELS[e]}</span>
+                </div>
+            ))}
+        </div>
     )
 }
 
@@ -179,6 +247,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
     const [text, setText] = useState('')
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
+    const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
     // 命令列表（复用 React Query 缓存，用于手动输入时匹配参数提示）
     const { data: commandsData } = useCommands(sessionId ?? null)
@@ -213,7 +282,7 @@ export function ChatComposer(props: ChatComposerProps) {
     // 有 pending 权限请求时禁用发送
     const hasPendingPermission = Boolean(agentState?.requests && Object.keys(agentState.requests).length > 0)
     const canSend = (hasText || hasAttachments) && !controlsDisabled && !running && !sending && !hasPendingPermission
-    const hasSubBar = !!onEffortChange || !!extraItems?.length || !!(onArchive && active) || !!(extraLeftButtons && !extraItems)
+    const hasSubBar = !!extraItems?.length || !!(onArchive && active) || !!(extraLeftButtons && !extraItems)
 
     // 是否展示命令参数幽灵提示
     const showGhostHint = !!slash.activeCommand?.hint
@@ -240,7 +309,15 @@ export function ChatComposer(props: ChatComposerProps) {
         }))
     }, [sdkMetadata?.models])
 
-    const effortSelectOptions = useMemo(() => getEffortOptions(), [])
+    // model + effort 合并选择
+    const handleModelEffortSelect = useCallback((selectedModel: string, selectedEffort: EffortLevel) => {
+        if (selectedModel !== model) onModelChange?.(selectedModel)
+        if (selectedEffort !== effort) onEffortChange?.(selectedEffort)
+    }, [model, effort, onModelChange, onEffortChange])
+
+    const handleModelSelect = useCallback((v: string) => {
+        if (v !== model) onModelChange?.(v)
+    }, [model, onModelChange])
 
     const permissionSelectOptions = useMemo(
         () => permissionModeOptions.map(opt => {
@@ -538,30 +615,66 @@ export function ChatComposer(props: ChatComposerProps) {
                                         />
                                     ),
                                 }] : []),
-                                // model
+                                // model + effort
                                 ...(onModelChange ? [{
                                     key: 'model',
                                     render: () => (
                                         <CompactHoverSelect
                                             $token={token}
-                                            prefix={<RobotOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
+                                            prefix={<EffortDot level={effort ?? 'medium'} />}
                                             value={model ?? 'auto'}
-                                            onChange={v => onModelChange(v as string | null)}
+                                            onChange={v => handleModelSelect(v as string)}
                                             disabled={controlsDisabled || showLocalModeCover}
                                             options={modelSelectOptions}
+                                            classNames={{ popup: { root: MODEL_DROPDOWN_CLASS } }}
                                             optionRender={(option) => {
                                                 const desc = (option.data as { description?: string })?.description
+                                                const modelValue = option.value as string
                                                 return (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 240, overflow: 'hidden' }}>
-                                                        <span>{option.label}</span>
-                                                        {desc && (
-                                                            <Typography.Text
-                                                                type="secondary"
-                                                                ellipsis={{ tooltip: desc }}
-                                                                style={{ fontSize: 11, lineHeight: '16px' }}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                                                            <span>{option.label}</span>
+                                                            {desc && (
+                                                                <Typography.Text
+                                                                    type="secondary"
+                                                                    ellipsis={{ tooltip: desc }}
+                                                                    style={{ fontSize: 11, lineHeight: '16px' }}
+                                                                >
+                                                                    {desc}
+                                                                </Typography.Text>
+                                                            )}
+                                                        </div>
+                                                        {onEffortChange && (
+                                                            <Popover
+                                                                open={effortPopoverModel === modelValue}
+                                                                onOpenChange={(open) => setEffortPopoverModel(open ? modelValue : null)}
+                                                                placement="leftTop"
+                                                                trigger={hasFinePointer ? 'hover' : 'click'}
+                                                                mouseEnterDelay={0.1}
+                                                                mouseLeaveDelay={0.3}
+                                                                zIndex={1051}
+                                                                rootClassName="effort-popover"
+                                                                content={
+                                                                    <EffortPopoverContent
+                                                                        modelValue={modelValue}
+                                                                        effort={effort ?? 'medium'}
+                                                                        onEffortSelect={(m, e) => {
+                                                                            handleModelEffortSelect(m, e)
+                                                                            setEffortPopoverModel(null)
+                                                                        }}
+                                                                    />
+                                                                }
                                                             >
-                                                                {desc}
-                                                            </Typography.Text>
+                                                                <span
+                                                                    style={{
+                                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                        minWidth: 24, minHeight: 24, borderRadius: 4, cursor: 'pointer',
+                                                                    }}
+                                                                    onClick={(ev) => ev.stopPropagation()}
+                                                                >
+                                                                    <RightOutlined style={{ fontSize: 10, opacity: 0.4 }} />
+                                                                </span>
+                                                            </Popover>
                                                         )}
                                                     </div>
                                                 )
@@ -590,20 +703,6 @@ export function ChatComposer(props: ChatComposerProps) {
                     }}>
                         <ResponsiveActionBar
                             items={[
-                                // effort
-                                ...(onEffortChange ? [{
-                                    key: 'effort',
-                                    render: () => (
-                                        <CompactHoverSelect
-                                            $token={token}
-                                            prefix={<ThunderboltOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
-                                            value={effort}
-                                            onChange={v => onEffortChange(v as EffortLevel)}
-                                            disabled={controlsDisabled || showLocalModeCover}
-                                            options={effortSelectOptions}
-                                        />
-                                    ),
-                                }] : []),
                                 // file terminal
                                 ...(extraItems ?? []),
                                 // archive
