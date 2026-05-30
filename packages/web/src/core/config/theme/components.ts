@@ -14,43 +14,43 @@
  * limitations under the License.
  */
 
-// Shadcn 风格组件配置 - Light 模式
+// Claude 暖调组件配置 - Light 模式
 export const shadcnLightComponents = {
     Button: {
         primaryShadow: 'none',
         defaultShadow: 'none',
         dangerShadow: 'none',
-        defaultBorderColor: '#e4e4e7',
-        defaultColor: '#18181b',
-        defaultBg: '#ffffff',
-        defaultHoverBg: '#f4f4f5',
-        defaultHoverBorderColor: '#d4d4d8',
-        defaultHoverColor: '#18181b',
-        defaultActiveBg: '#e4e4e7',
-        defaultActiveBorderColor: '#d4d4d8',
-        borderRadius: 6,
+        defaultBorderColor: '#e8e6dc',
+        defaultColor: '#4d4c48',
+        defaultBg: '#e8e6dc',
+        defaultHoverBg: '#d1cfc5',
+        defaultHoverBorderColor: '#d1cfc5',
+        defaultHoverColor: '#141413',
+        defaultActiveBg: '#b0aea5',
+        defaultActiveBorderColor: '#b0aea5',
+        borderRadius: 8,
     },
     Input: {
         activeShadow: 'none',
-        hoverBorderColor: '#a1a1aa',
-        activeBorderColor: '#18181b',
-        borderRadius: 6,
+        hoverBorderColor: '#b0aea5',
+        activeBorderColor: '#3d3d3a',
+        borderRadius: 8,
     },
     Select: {
-        optionSelectedBg: '#e4e4e7',
-        optionActiveBg: '#f4f4f5',
+        optionSelectedBg: '#e8e6dc',
+        optionActiveBg: '#f0eee6',
         optionSelectedFontWeight: 500,
-        borderRadius: 6,
+        borderRadius: 8,
     },
     Alert: {
         borderRadiusLG: 8,
     },
     Modal: {
-        borderRadiusLG: 12,
+        borderRadiusLG: 14,
     },
     Progress: {
-        defaultColor: '#18181b',
-        remainingColor: '#f4f4f5',
+        defaultColor: '#3d3d3a',
+        remainingColor: '#f0eee6',
     },
     Steps: {
         iconSize: 32,
@@ -65,59 +65,58 @@ export const shadcnLightComponents = {
         borderRadiusSM: 4,
     },
     Slider: {
-        trackBg: '#f4f4f5',
-        trackHoverBg: '#e4e4e7',
+        trackBg: '#f0eee6',
+        trackHoverBg: '#e8e6dc',
         handleSize: 18,
         handleSizeHover: 20,
         railSize: 6,
     },
     ColorPicker: {
-        borderRadius: 6,
+        borderRadius: 8,
     },
     Card: {
-        borderRadiusLG: 12,
+        borderRadiusLG: 14,
     },
 }
 
-// Shadcn 风格组件配置 - Dark 模式
+// Claude 暖调组件配置 - Dark 模式
 export const shadcnDarkComponents = {
     Button: {
         primaryShadow: 'none',
         defaultShadow: 'none',
         dangerShadow: 'none',
-        defaultBorderColor: '#27272a',
-        defaultColor: '#fafafa',
-        defaultBg: '#18181b',
-        defaultHoverBg: '#27272a',
-        defaultHoverBorderColor: '#3f3f46',
-        defaultHoverColor: '#fafafa',
-        defaultActiveBg: '#3f3f46',
-        defaultActiveBorderColor: '#52525b',
-        borderRadius: 6,
-        // Primary solid 按钮在 dark 模式下：背景浅色，文字深色
-        primaryColor: '#18181b',
+        defaultBorderColor: '#30302e',
+        defaultColor: '#d1cfc5',
+        defaultBg: '#30302e',
+        defaultHoverBg: '#3d3d3a',
+        defaultHoverBorderColor: '#3d3d3a',
+        defaultHoverColor: '#faf9f5',
+        defaultActiveBg: '#4d4c48',
+        defaultActiveBorderColor: '#4d4c48',
+        borderRadius: 8,
+        primaryColor: '#141413',
     },
     Input: {
         activeShadow: 'none',
-        hoverBorderColor: '#52525b',
-        activeBorderColor: '#fafafa',
-        borderRadius: 6,
+        hoverBorderColor: '#5e5d59',
+        activeBorderColor: '#faf9f5',
+        borderRadius: 8,
     },
     Select: {
-        optionSelectedBg: '#3f3f46',
-        optionActiveBg: '#363639',
+        optionSelectedBg: '#3d3d3a',
+        optionActiveBg: '#30302e',
         optionSelectedFontWeight: 500,
-        borderRadius: 6,
+        borderRadius: 8,
     },
     Alert: {
         borderRadiusLG: 8,
     },
     Modal: {
-        borderRadiusLG: 12,
+        borderRadiusLG: 14,
     },
     Progress: {
-        defaultColor: '#fafafa',
-        remainingColor: '#27272a',
+        defaultColor: '#faf9f5',
+        remainingColor: '#30302e',
     },
     Steps: {
         iconSize: 32,
@@ -132,16 +131,16 @@ export const shadcnDarkComponents = {
         borderRadiusSM: 4,
     },
     Slider: {
-        trackBg: '#27272a',
-        trackHoverBg: '#3f3f46',
+        trackBg: '#30302e',
+        trackHoverBg: '#3d3d3a',
         handleSize: 18,
         handleSizeHover: 20,
         railSize: 6,
     },
     ColorPicker: {
-        borderRadius: 6,
+        borderRadius: 8,
     },
     Card: {
-        borderRadiusLG: 12,
+        borderRadiusLG: 14,
     },
 }
