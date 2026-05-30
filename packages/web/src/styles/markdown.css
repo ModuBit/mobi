@@ -164,12 +164,16 @@ html[data-theme='dark'] .x-markdown td {
     border-color: #30302e;
 }
 
+html[data-theme='dark'] .x-markdown tbody tr:nth-child(odd) {
+    background: #1a1a18;
+}
+
 html[data-theme='dark'] .x-markdown tbody tr:nth-child(even) {
     background: #1e1e1c;
 }
 
 html[data-theme='dark'] .x-markdown tbody tr:hover {
-    background: #232320;
+    background: #2a2a28;
 }
 
 /* Slash Command Badge */
