@@ -575,6 +575,29 @@ export class SessionCache {
         return merged
     }
 
+    /**
+     * 清除 session runtimeState 中的指定字段并推送 SSE 更新
+     */
+    clearRuntimeStateFields(sessionId: string, fields: string[], namespace: string): boolean {
+        const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
+        if (!session || session.namespace !== namespace) return false
+
+        const result = this.store.sessions.clearRuntimeStateFields(sessionId, fields, namespace)
+        if (result) {
+            // 刷新缓存并推送 SSE
+            this.refreshSession(sessionId)
+            const updated = this.sessions.get(sessionId)
+            if (updated) {
+                this.publisher.emit({
+                    type: 'session-updated',
+                    sessionId,
+                    data: { sid: sessionId, runtimeState: updated.runtimeState },
+                })
+            }
+        }
+        return result
+    }
+
     updateSDKMetadata(sessionId: string, sdkMetadata: SDKMetadata): void {
         const session = this.sessions.get(sessionId)
         if (!session) return

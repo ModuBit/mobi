@@ -345,6 +345,38 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
+    // 清除 session runtimeState 中的指定字段
+    app.patch('/sessions/:id/runtime-state', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const validFields = ['todos', 'tasks', 'backgroundTasks']
+        const schema = z.object({
+            clearFields: z.array(z.enum(validFields as [string, ...string[]])).min(1),
+        })
+        const parsed = schema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body: clearFields must be a non-empty array of valid field names (todos, tasks, backgroundTasks)' }, 400)
+        }
+
+        const namespace = c.get('namespace')
+        const cleared = engine.clearRuntimeStateFields(
+            sessionResult.sessionId,
+            parsed.data.clearFields,
+            namespace
+        )
+
+        return c.json({ ok: cleared })
+    })
+
     app.patch('/sessions/:id', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {

@@ -43,6 +43,7 @@ const mockSyncEngine = {
         session: mockSession,
     }),
     applySessionConfig: async () => undefined,
+    clearRuntimeStateFields: (_sessionId: string, _fields: string[], _namespace: string) => true,
 } as unknown as SyncEngine
 
 describe('Sessions API', () => {
@@ -57,6 +58,65 @@ describe('Sessions API', () => {
 
     afterEach(() => {
         cleanup()
+    })
+
+    describe('PATCH /api/sessions/:id/runtime-state', () => {
+        test('清除指定字段返回 ok', async () => {
+            const token = await getAuthToken(app)
+
+            const res = await app.request('/api/sessions/test-session-1/runtime-state', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ clearFields: ['todos', 'backgroundTasks'] }),
+            })
+
+            expect(res.status).toBe(200)
+            const body = await res.json() as { ok: boolean }
+            expect(body.ok).toBe(true)
+        })
+
+        test('空 clearFields 返回 400', async () => {
+            const token = await getAuthToken(app)
+
+            const res = await app.request('/api/sessions/test-session-1/runtime-state', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ clearFields: [] }),
+            })
+
+            expect(res.status).toBe(400)
+        })
+
+        test('非法字段名返回 400', async () => {
+            const token = await getAuthToken(app)
+
+            const res = await app.request('/api/sessions/test-session-1/runtime-state', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ clearFields: ['invalidField'] }),
+            })
+
+            expect(res.status).toBe(400)
+        })
+
+        test('未认证返回 401', async () => {
+            const res = await app.request('/api/sessions/test-session-1/runtime-state', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clearFields: ['todos'] }),
+            })
+
+            expect(res.status).toBe(401)
+        })
     })
 
     describe('POST /api/sessions/:id/effort', () => {

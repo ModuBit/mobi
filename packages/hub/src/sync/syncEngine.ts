@@ -286,6 +286,13 @@ export class SyncEngine {
         await this.rpcGateway.switchSession(sessionId, to)
     }
 
+    /**
+     * 清除 session runtimeState 中的指定字段并推送 SSE 更新
+     */
+    clearRuntimeStateFields(sessionId: string, fields: string[], namespace: string): boolean {
+        return this.sessionCache.clearRuntimeStateFields(sessionId, fields, namespace)
+    }
+
     async renameSession(sessionId: string, name: string): Promise<void> {
         await this.sessionCache.renameSession(sessionId, name)
     }
