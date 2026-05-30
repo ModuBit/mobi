@@ -211,7 +211,6 @@ export function PixelCard({
             observer.disconnect()
             if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [gap, speed, colors])
 
     return (
