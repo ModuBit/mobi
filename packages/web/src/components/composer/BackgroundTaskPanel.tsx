@@ -25,16 +25,18 @@ import { Global, css } from '@emotion/react'
 import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { BackgroundTaskCard } from './BackgroundTaskCard'
+import { ClearStateButton } from './ClearStateButton'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import type { BackgroundTask } from '@/domain/chat/types'
 import type { MobiApi } from '@/core/data/api/client'
 
 const spinKeyframes = css`@keyframes bgtask-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`
 
-export function BackgroundTaskPanel({ sessionId, api, onTaskClick }: {
+export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
     sessionId: string
     api: MobiApi
     onTaskClick: (task: BackgroundTask) => void
+    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks')[]) => Promise<void>
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
@@ -79,6 +81,13 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick }: {
                     padding: '0 4px', borderRadius: 4,
                 }}>
                     {tasks.length}
+                </span>
+                <span style={{ marginLeft: 'auto' }}>
+                    <ClearStateButton
+                        sessionId={sessionId}
+                        clearField="backgroundTasks"
+                        onClear={onClear}
+                    />
                 </span>
             </div>
             <div ref={containerRef} style={{ maxHeight: 96, overflow: 'hidden', position: 'relative' }}>

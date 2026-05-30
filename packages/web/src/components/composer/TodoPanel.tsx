@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TodoItem } from '@mobi/shared'
 import { BlinkText } from '@/components/ui/BlinkText'
+import { ClearStateButton } from './ClearStateButton'
 
 /** 任务橙色，参考 Claude Code */
 const TODO_ORANGE = '#e8825c'
@@ -51,9 +52,11 @@ const StyledCheckbox = styled(Checkbox)<{ $status: TodoItem['status'] }>`
 
 export type TodoPanelProps = {
     todos: TodoItem[] | undefined
+    sessionId: string
+    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks')[]) => Promise<void>
 }
 
-export function TodoPanel({ todos }: TodoPanelProps) {
+export function TodoPanel({ todos, sessionId, onClear }: TodoPanelProps) {
     const { token } = theme.useToken()
     const { t } = useTranslation()
     const [activeKeys, setActiveKeys] = useState<string[]>([])
@@ -91,6 +94,13 @@ export function TodoPanel({ todos }: TodoPanelProps) {
                         <span style={{ color: TODO_ORANGE, fontWeight: 500 }}>{inProgress}</span> {t('chat.todo.inProgress')}
                     </>
                 )}
+            </span>
+            <span style={{ marginLeft: 'auto' }}>
+                <ClearStateButton
+                    sessionId={sessionId}
+                    clearField="todos"
+                    onClear={onClear}
+                />
             </span>
         </div>
     )

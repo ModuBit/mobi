@@ -19,7 +19,7 @@
  * 在 StatusBar 上方展示各种状态信息：工具交互请求、任务列表、文件修改等
  */
 
-import { useMemo, useRef, useState, useEffect } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import { Space, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
@@ -221,6 +221,11 @@ export function ComposerInfoPanel({
         return () => observer.disconnect()
     }, [])
 
+    // 清理运行时状态字段的回调
+    const handleClearState = useCallback(async (clearSessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks')[]) => {
+        await api.sessions.clearRuntimeStateFields(clearSessionId, clearFields)
+    }, [api])
+
     if (!hasPendingRequests && !hasTodos && !hasTasks && !hasAgents && !hasBgTasks) return null
 
     return (
@@ -250,11 +255,12 @@ export function ComposerInfoPanel({
                             sessionId={sessionId}
                             api={api}
                             onTaskClick={() => {}}
+                            onClear={handleClearState}
                         />
                     )}
 
-                    <TodoPanel todos={todos} />
-                    <TaskPanel tasks={tasks} />
+                    <TodoPanel todos={todos} sessionId={sessionId} onClear={handleClearState} />
+                    <TaskPanel tasks={tasks} sessionId={sessionId} onClear={handleClearState} />
                 </Space>
             </div>
             {showFade && (

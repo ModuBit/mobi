@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TaskItem } from '@mobi/shared'
 import { BlinkText } from '@/components/ui/BlinkText'
+import { ClearStateButton } from './ClearStateButton'
 
 /** 任务橙色，参考 Claude Code */
 const TASK_ORANGE = '#e8825c'
@@ -52,9 +53,11 @@ const StyledCheckbox = styled(Checkbox)<{ $status: TaskItem['status'] }>`
 
 export type TaskPanelProps = {
     tasks: TaskItem[] | undefined
+    sessionId: string
+    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks')[]) => Promise<void>
 }
 
-export function TaskPanel({ tasks }: TaskPanelProps) {
+export function TaskPanel({ tasks, sessionId, onClear }: TaskPanelProps) {
     const { token } = theme.useToken()
     const { t } = useTranslation()
     const [activeKeys, setActiveKeys] = useState<string[]>([])
@@ -98,6 +101,13 @@ export function TaskPanel({ tasks }: TaskPanelProps) {
                         <span style={{ color: TASK_ORANGE, fontWeight: 500 }}>{inProgress}</span> {t('chat.task.inProgress')}
                     </>
                 )}
+            </span>
+            <span style={{ marginLeft: 'auto' }}>
+                <ClearStateButton
+                    sessionId={sessionId}
+                    clearField="tasks"
+                    onClear={onClear}
+                />
             </span>
         </div>
     )
