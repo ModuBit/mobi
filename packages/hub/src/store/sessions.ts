@@ -298,12 +298,17 @@ export function clearRuntimeStateFields(
         const result = db.prepare(`
             UPDATE sessions
             SET runtime_state = @runtime_state,
-                updated_at = @updated_at,
+                runtime_state_updated_at = @runtime_state_updated_at,
+                updated_at = CASE WHEN updated_at > @updated_at THEN updated_at ELSE @updated_at END,
                 seq = seq + 1
             WHERE id = @id
+              AND namespace = @namespace
+              AND (runtime_state_updated_at IS NULL OR runtime_state_updated_at < @runtime_state_updated_at)
         `).run({
             id,
+            namespace,
             runtime_state: JSON.stringify(runtimeState),
+            runtime_state_updated_at: now,
             updated_at: now,
         })
         return result.changes === 1

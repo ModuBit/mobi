@@ -194,7 +194,10 @@ export function extractBackgroundTaskDeltasFromMessageContent(
             : asString((isObject(data.patch) ? data.patch : null)?.status)
         if (status !== 'completed' && status !== 'failed' && status !== 'stopped') return null
 
-        const summary = asString(data.summary) ?? undefined
+        // task_notification 从 data.summary 取，task_updated 优先从 data.patch.summary 取
+        const summary = (subtype === 'task_updated'
+            ? asString((isObject(data.patch) ? data.patch : null)?.summary)
+            : null) || asString(data.summary) || undefined
 
         return { type: 'completed', taskId, status, summary }
     }

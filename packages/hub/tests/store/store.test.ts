@@ -281,7 +281,8 @@ describe('Store', () => {
             backgroundTasks: [{ taskId: 'bg1', status: 'completed' }],
             model: 'claude-sonnet-4-6',
         }
-        store.sessions.setRuntimeState(session.id, runtimeState, Date.now(), 'default')
+        // 使用过去的时间戳，确保 clearRuntimeStateFields 的 timestamp guard 生效
+        store.sessions.setRuntimeState(session.id, runtimeState, Date.now() - 1, 'default')
 
         // 清除 todos 和 backgroundTasks
         const result = store.sessions.clearRuntimeStateFields(

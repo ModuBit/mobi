@@ -197,10 +197,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 )
             }
 
-            // 自动清除：backgroundTasks 全部终态
-            if (existingRuntimeState.backgroundTasks?.every(t => t.status !== 'running')) {
-                delete existingRuntimeState.backgroundTasks
-            }
+            // 检测 backgroundTasks 是否全部终态（稍后在推送终态后再清理）
+            const shouldAutoClearBgTasks = existingRuntimeState.backgroundTasks?.every(t => t.status !== 'running')
 
             // 自动清除：tasks 全部完成或删除
             if (existingRuntimeState.tasks?.every(t => t.status === 'completed' || t.status === 'deleted')) {
@@ -215,6 +213,16 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             const updated = store.sessions.setRuntimeState(sid, existingRuntimeState, msg.createdAt, session.namespace)
             if (updated) {
                 onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid, runtimeState: existingRuntimeState } })
+            }
+
+            // 自动清除 backgroundTasks：先推送含终态的状态让 Web 端检测到 running→terminal 转换，
+            // 再清理并推送空状态
+            if (updated && shouldAutoClearBgTasks && existingRuntimeState.backgroundTasks) {
+                delete existingRuntimeState.backgroundTasks
+                const cleared = store.sessions.setRuntimeState(sid, existingRuntimeState, Date.now(), session.namespace)
+                if (cleared) {
+                    onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid, runtimeState: existingRuntimeState } })
+                }
             }
         }
 

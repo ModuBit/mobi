@@ -14,18 +14,19 @@
  * limitations under the License.
  */
 
-import { defineConfig } from 'vitest/config'
-import path from 'path'
+import { vi } from 'vitest'
 
-export default defineConfig({
-    resolve: {
-        alias: {
-            '@': path.resolve(__dirname, 'src'),
-        },
-    },
-    test: {
-        include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-        environment: 'jsdom',
-        setupFiles: ['tests/setup.ts'],
-    },
+// jsdom 不实现 window.matchMedia，为使用 useMediaQuery 的组件提供 mock
+Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+    })),
 })
