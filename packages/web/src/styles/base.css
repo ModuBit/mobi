@@ -12,12 +12,12 @@ html, body, #root {
 
 html {
     /* Light 模式背景（默认） */
-    background: #fafafa;
+    background: #f5f4ed;
 }
 
 html[data-theme='dark'] {
     /* Dark 模式背景 */
-    background: #09090b;
+    background: #141413;
 }
 
 body {
@@ -26,11 +26,11 @@ body {
     overflow: hidden;
     /* 透明背景，跟随 html */
     background: transparent;
-    color: #18181b;
+    color: #141413;
 }
 
 html[data-theme='dark'] body {
-    color: #fafafa;
+    color: #faf9f5;
 }
 
 /* 移动端安全区适配 */

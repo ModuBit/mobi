@@ -103,15 +103,15 @@
 
 /* Dark 模式下 solid 按钮文字颜色修复 */
 html[data-theme='dark'] .ant-btn-variant-solid {
-    color: #18181b !important;
+    color: #141413 !important;
 }
 
 html[data-theme='dark'] .ant-btn-variant-solid:hover {
-    color: #18181b !important;
+    color: #141413 !important;
 }
 
 html[data-theme='dark'] .ant-btn-variant-solid:active {
-    color: #18181b !important;
+    color: #141413 !important;
 }
 
 html[data-theme='dark'] .ant-btn-variant-solid:disabled {
