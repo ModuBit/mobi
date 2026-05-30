@@ -14,6 +14,31 @@
  * limitations under the License.
  */
 
+/** 驼峰 → 下划线 (parentUuid → parent_uuid) */
+function camelToSnake(key: string): string {
+    return key.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`)
+}
+
+/** 下划线 → 驼峰 (parent_uuid → parentUuid) */
+function snakeToCamel(key: string): string {
+    return key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())
+}
+
+/**
+ * 从对象中取值，兼容下划线和驼峰两种 key 格式。
+ * 传入任一格式的 key，自动尝试另一种格式。
+ *
+ * @example
+ * getField(data, 'parentUuid')   // 尝试 parentUuid → parent_uuid
+ * getField(data, 'tool_use_result') // 尝试 tool_use_result → toolUseResult
+ */
+export function getField<T = unknown>(obj: Record<string, unknown>, key: string): T | undefined {
+    if (key in obj) return obj[key] as T
+    const alt = key.includes('_') ? snakeToCamel(key) : camelToSnake(key)
+    if (alt in obj) return obj[alt] as T
+    return undefined
+}
+
 export function isObject(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === 'object'
 }

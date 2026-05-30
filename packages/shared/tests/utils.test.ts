@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { isObject, asString, asNumber, safeStringify } from '../src/utils'
+import { isObject, asString, asNumber, safeStringify, getField } from '../src/utils'
 
 describe('isObject', () => {
     it('普通对象返回 true', () => {
@@ -102,5 +102,37 @@ describe('safeStringify', () => {
         // 不应抛错，返回降级字符串
         const result = safeStringify(obj)
         expect(typeof result).toBe('string')
+    })
+})
+
+describe('getField', () => {
+    it('直接匹配驼峰 key', () => {
+        expect(getField({ parentUuid: 'abc' }, 'parentUuid')).toBe('abc')
+    })
+
+    it('直接匹配下划线 key', () => {
+        expect(getField({ tool_use_result: { stdout: 'ok' } }, 'tool_use_result')).toEqual({ stdout: 'ok' })
+    })
+
+    it('驼峰 key 自动回退到下划线', () => {
+        expect(getField({ parent_uuid: 'abc' }, 'parentUuid')).toBe('abc')
+    })
+
+    it('下划线 key 自动回退到驼峰', () => {
+        expect(getField({ toolUseResult: 'yes' }, 'tool_use_result')).toBe('yes')
+    })
+
+    it('两种格式都不存在返回 undefined', () => {
+        expect(getField({ foo: 1 }, 'parentUuid')).toBeUndefined()
+    })
+
+    it('值存在但为 falsy 时仍返回', () => {
+        expect(getField({ count: 0 }, 'count')).toBe(0)
+        expect(getField({ name: '' }, 'name')).toBe('')
+    })
+
+    it('多段下划线字段也能转换', () => {
+        expect(getField({ total_tool_use_count: 5 }, 'totalToolUseCount')).toBe(5)
+        expect(getField({ totalToolUseCount: 5 }, 'total_tool_use_count')).toBe(5)
     })
 })

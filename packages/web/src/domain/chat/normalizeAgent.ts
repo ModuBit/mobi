@@ -15,7 +15,7 @@
  */
 
 import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, ToolResult, ToolResultPermission, MessageMeta } from './types'
-import { asNumber, asString, isObject } from '@mobi/shared'
+import { asNumber, asString, getField, isObject } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 
 // 中断消息的正则匹配
@@ -97,8 +97,8 @@ type OutputHandler = (data: Record<string, unknown>, ctx: HandlerContext) => Nor
 /** 处理 assistant 消息 */
 const handleAssistantOutput: OutputHandler = (data, ctx) => {
     const uuid = asString(data.uuid) ?? ctx.messageId
-    const parentUUID = asString(data.parentUuid) ?? null
-    const isSidechain = Boolean(data.isSidechain)
+    const parentUUID = asString(getField(data, 'parentUuid')) ?? null
+    const isSidechain = Boolean(getField(data, 'isSidechain'))
     const message = isObject(data.message) ? data.message : null
     if (!message) return null
 
@@ -135,8 +135,8 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
     }
 
     const usage = isObject(message.usage) ? (message.usage as Record<string, unknown>) : null
-    const inputTokens = usage ? asNumber(usage.input_tokens) : null
-    const outputTokens = usage ? asNumber(usage.output_tokens) : null
+    const inputTokens = usage ? asNumber(getField(usage, 'input_tokens')) : null
+    const outputTokens = usage ? asNumber(getField(usage, 'output_tokens')) : null
 
     return {
         id: ctx.messageId,
@@ -149,9 +149,9 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
         usage: inputTokens !== null && outputTokens !== null ? {
             input_tokens: inputTokens,
             output_tokens: outputTokens,
-            cache_creation_input_tokens: asNumber(usage?.cache_creation_input_tokens) ?? undefined,
-            cache_read_input_tokens: asNumber(usage?.cache_read_input_tokens) ?? undefined,
-            service_tier: asString(usage?.service_tier) ?? undefined
+            cache_creation_input_tokens: asNumber(getField(usage ?? {}, 'cache_creation_input_tokens')) ?? undefined,
+            cache_read_input_tokens: asNumber(getField(usage ?? {}, 'cache_read_input_tokens')) ?? undefined,
+            service_tier: asString(getField(usage ?? {}, 'service_tier')) ?? undefined
         } : undefined
     }
 }
@@ -159,8 +159,8 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
 /** 处理 user 消息 */
 const handleUserOutput: OutputHandler = (data, ctx) => {
     const uuid = asString(data.uuid) ?? ctx.messageId
-    const parentUUID = asString(data.parentUuid) ?? null
-    const isSidechain = Boolean(data.isSidechain)
+    const parentUUID = asString(getField(data, 'parentUuid')) ?? null
+    const isSidechain = Boolean(getField(data, 'isSidechain'))
     const message = isObject(data.message) ? data.message : null
     if (!message) return null
 
@@ -228,19 +228,17 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
                 continue
             }
             if (block.type === 'tool_result') {
-                // 兼容 tool_use_result（下划线）和 toolUseResult（驼峰）
                 const rawData = data as Record<string, unknown>
-                const toolUseResult = isObject(rawData.tool_use_result) ? rawData.tool_use_result
-                    : isObject(rawData.toolUseResult) ? rawData.toolUseResult
-                    : null
+                const rawToolUseResult = getField<Record<string, unknown>>(rawData, 'tool_use_result')
+                const toolUseResult = isObject(rawToolUseResult) ? rawToolUseResult : null
                 const permissions = normalizeToolResultPermissions(block.permissions)
 
                 // 从 tool_use_result 提取 Agent 完成指标
                 let agentMetrics: AgentMetrics | undefined
                 if (toolUseResult) {
-                    const tokens = asNumber(toolUseResult.totalTokens) ?? asNumber(toolUseResult.total_tokens)
-                    const toolUses = asNumber(toolUseResult.totalToolUseCount) ?? asNumber(toolUseResult.tool_uses)
-                    const durationMs = asNumber(toolUseResult.totalDurationMs) ?? asNumber(toolUseResult.duration_ms)
+                    const tokens = asNumber(getField(toolUseResult, 'totalTokens'))
+                    const toolUses = asNumber(getField(toolUseResult, 'totalToolUseCount'))
+                    const durationMs = asNumber(getField(toolUseResult, 'totalDurationMs'))
                     if (tokens || toolUses || durationMs) {
                         agentMetrics = { tokens: tokens ?? 0, toolUses: toolUses ?? 0, durationMs: durationMs ?? 0 }
                     }
@@ -250,7 +248,7 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
                     block as Record<string, unknown>,
                     uuid,
                     parentUUID,
-                    toolUseResult ?? undefined,
+                    undefined,
                     permissions,
                     agentMetrics,
                 )
@@ -302,11 +300,11 @@ function createEventMessage(ctx: HandlerContext, content: AgentEvent): Normalize
 const handleApiRetryOutput: OutputHandler = (data, ctx) => {
     return createEventMessage(ctx, {
         type: 'api-retry',
-        attempt: asNumber(data.attempt) ?? 0,
-        maxRetries: asNumber(data.max_retries) ?? 0,
-        retryDelayMs: asNumber(data.retry_delay_ms) ?? 0,
-        errorStatus: asNumber(data.error_status) ?? 0,
-        error: asString(data.error) ?? ''
+        attempt: asNumber(getField(data, 'attempt')) ?? 0,
+        maxRetries: asNumber(getField(data, 'maxRetries')) ?? 0,
+        retryDelayMs: asNumber(getField(data, 'retryDelayMs')) ?? 0,
+        errorStatus: asNumber(getField(data, 'errorStatus')) ?? 0,
+        error: asString(getField(data, 'error')) ?? ''
     })
 }
 
@@ -314,8 +312,8 @@ const handleApiRetryOutput: OutputHandler = (data, ctx) => {
 const handleApiErrorOutput: OutputHandler = (data, ctx) => {
     return createEventMessage(ctx, {
         type: 'api-error',
-        retryAttempt: asNumber(data.retryAttempt) ?? 0,
-        maxRetries: asNumber(data.maxRetries) ?? 0,
+        retryAttempt: asNumber(getField(data, 'retryAttempt')) ?? 0,
+        maxRetries: asNumber(getField(data, 'maxRetries')) ?? 0,
         error: data.error
     })
 }
@@ -365,9 +363,9 @@ const handleTaskProgressOutput: OutputHandler = (data, ctx) => {
         type: 'agent-progress',
         toolUseId,
         metrics: {
-            tokens: asNumber(usage?.total_tokens) ?? 0,
-            toolUses: asNumber(usage?.tool_uses) ?? 0,
-            durationMs: asNumber(usage?.duration_ms) ?? 0,
+            tokens: asNumber(getField(usage ?? {}, 'totalTokens')) ?? 0,
+            toolUses: asNumber(getField(usage ?? {}, 'totalToolUseCount')) ?? 0,
+            durationMs: asNumber(getField(usage ?? {}, 'totalDurationMs')) ?? 0,
         },
         ...(summary && { summary }),
     })
@@ -384,9 +382,9 @@ const handleTaskNotificationOutput: OutputHandler = (data, ctx) => {
         type: 'agent-progress',
         toolUseId,
         metrics: {
-            tokens: asNumber(usage?.total_tokens) ?? 0,
-            toolUses: asNumber(usage?.tool_uses) ?? 0,
-            durationMs: asNumber(usage?.duration_ms) ?? 0,
+            tokens: asNumber(getField(usage ?? {}, 'totalTokens')) ?? 0,
+            toolUses: asNumber(getField(usage ?? {}, 'totalToolUseCount')) ?? 0,
+            durationMs: asNumber(getField(usage ?? {}, 'totalDurationMs')) ?? 0,
         },
         ...(summary && { summary }),
     })

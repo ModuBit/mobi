@@ -141,6 +141,49 @@ describe('normalizeAgentRecord', () => {
         expect(result?.role).toBe('user')
     })
 
+    it('should use block.content as tool-result content, not tool_use_result object', () => {
+        // 回归：tool_use_result 是结构化元数据（stdout/stderr），不应覆盖 block.content
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'user',
+                    message: {
+                        role: 'user',
+                        content: [
+                            {
+                                tool_use_id: 'call_abc123',
+                                type: 'tool_result',
+                                content: '/Users/manerfan/workspace/demo',
+                                is_error: false,
+                            },
+                        ],
+                    },
+                    tool_use_result: {
+                        stdout: '/Users/manerfan/workspace/demo',
+                        stderr: '',
+                        interrupted: false,
+                        isImage: false,
+                        noOutputExpected: false,
+                    },
+                },
+            }
+        )
+
+        expect(result).not.toBeNull()
+        expect(result?.role).toBe('agent')
+        if (result && result.role === 'agent') {
+            expect(result.content).toHaveLength(1)
+            const block = result.content[0]
+            expect(block.type).toBe('tool-result')
+            // content 应该是字符串，而不是 tool_use_result 对象
+            expect(block.content).toBe('/Users/manerfan/workspace/demo')
+        }
+    })
+
     it('should handle system:compact_boundary with snake_case metadata', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,
