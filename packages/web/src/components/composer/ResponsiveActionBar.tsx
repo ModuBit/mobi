@@ -34,6 +34,12 @@ export interface ResponsiveActionBarProps {
 
 const MORE_BUTTON_WIDTH = 28
 
+const ActionBarContainer = styled.div`
+  & *:not(.anticon):not(.anticon *) {
+    font-size: 12px !important;
+  }
+`
+
 const DropdownItem = styled.div<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
   display: flex;
   align-items: center;
@@ -180,7 +186,7 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
   }, [hiddenItems, token])
 
   return (
-    <div
+    <ActionBarContainer
       ref={containerRef}
       style={{
         display: 'flex',
@@ -234,6 +240,6 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
           </div>
         ))}
       </div>
-    </div>
+    </ActionBarContainer>
   )
 }

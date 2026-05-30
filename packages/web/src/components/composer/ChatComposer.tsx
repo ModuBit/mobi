@@ -92,14 +92,9 @@ const HoverSelect = styled(Select, {
     border-radius: ${props => props.$token.borderRadiusSM}px;
     transition: background 0.2s;
     ${props => props.$compact && `
-        &&& .ant-select-selector,
-        &&& .ant-select-selector .ant-select-selection-item,
-        &&& .ant-select-selector .ant-select-selection-placeholder,
-        &&& .ant-select-selector .ant-select-selection-search-input {
+        height: 24px !important;
+        &&& .ant-select-input {
             font-size: 12px !important;
-            line-height: 18px !important;
-            padding-inline-start: 2px !important;
-            padding-inline-end: 2px !important;
         }
     `}
 `
