@@ -104,6 +104,9 @@ export function createMobiApi(token: string | null) {
             // 停止后台任务
             stopTask: (sessionId: string, taskId: string) =>
                 client.post(`/api/sessions/${sessionId}/stop-task`, { taskId }),
+            // 清理 runtimeState 指定字段
+            clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks')[]) =>
+                client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
             // 上传文件
             upload: (sessionId: string, filename: string, content: string, mimeType: string) =>
