@@ -178,15 +178,20 @@ export function extractBackgroundTaskDeltasFromMessageContent(
         return { type: 'progress', taskId, metrics, summary }
     }
 
-    // task_notification：后台任务完成/失败/停止
-    if (subtype === 'task_notification') {
+    // 后台任务完成/失败/停止：可能通过 task_notification 或 task_updated 到达
+    // - task_notification：携带 data.status 和 data.summary（Agent 任务典型路径）
+    // - task_updated：携带 data.patch.status（Bash 后台任务典型路径，也可用于其他类型）
+    if (subtype === 'task_notification' || subtype === 'task_updated') {
         const taskId = asString(data.task_id)
         if (!taskId) return null
 
         // 过滤非后台任务
         if (knownTaskIds !== undefined && !knownTaskIds.has(taskId)) return null
 
-        const status = asString(data.status)
+        // task_notification 从 data.status 取终态，task_updated 从 data.patch.status 取终态
+        const status = subtype === 'task_notification'
+            ? asString(data.status)
+            : asString((isObject(data.patch) ? data.patch : null)?.status)
         if (status !== 'completed' && status !== 'failed' && status !== 'stopped') return null
 
         const summary = asString(data.summary) ?? undefined

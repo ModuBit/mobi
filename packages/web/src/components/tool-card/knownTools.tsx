@@ -48,6 +48,16 @@ export function isBackgroundAgentTool(name: string, input: unknown): boolean {
     return isAgentTool(name) && isObject(input) && input.run_in_background === true
 }
 
+/** 判断是否为后台 Bash 工具（run_in_background=true） */
+export function isBackgroundBashTool(name: string, input: unknown): boolean {
+    return isTerminalTool(name) && isObject(input) && input.run_in_background === true
+}
+
+/** 判断是否为任何后台工具 */
+export function isBackgroundTool(name: string, input: unknown): boolean {
+    return isBackgroundAgentTool(name, input) || isBackgroundBashTool(name, input)
+}
+
 /** 构建 Agent 工具标题：subagent_type · description */
 export function getAgentTitle(input: unknown, fallback = 'Agent'): string {
     if (!isObject(input)) return fallback

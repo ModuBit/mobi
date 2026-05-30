@@ -195,7 +195,11 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     existingRuntimeState.backgroundTasks,
                     bgTaskDelta,
                 )
-                // 终态任务保留至 SSE 推送后清理，Web 端需要接收 terminal 状态以检测 running→terminal 转换
+            }
+
+            // 自动清除：backgroundTasks 全部终态
+            if (existingRuntimeState.backgroundTasks?.every(t => t.status !== 'running')) {
+                delete existingRuntimeState.backgroundTasks
             }
 
             // 自动清除：tasks 全部完成或删除

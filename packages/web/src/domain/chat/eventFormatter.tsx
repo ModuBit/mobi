@@ -146,7 +146,7 @@ export function formatEvent(
             return (
                 <div style={{ fontFamily: 'var(--font-mono)' }}>
                     {durationText} · {tokensText}
-                    {time && <span style={{ marginLeft: 8, opacity: 0.6 }}>{time}</span>}
+                    {time && <span style={{ marginLeft: 8 }}>{time}</span>}
                     {error && (
                         <div style={{
                             marginTop: 2,
