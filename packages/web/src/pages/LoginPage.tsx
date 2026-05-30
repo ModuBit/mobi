@@ -107,6 +107,7 @@ const LogoImg = styled.img`
 
 /** 品牌名 */
 const BrandName = styled.span`
+    font-family: var(--font-serif);
     font-size: 18px;
     font-weight: 600;
     letter-spacing: -0.03em;
@@ -119,6 +120,7 @@ const BrandName = styled.span`
 
 /** 品牌标语 */
 const Tagline = styled.h2`
+    font-family: var(--font-serif);
     font-size: 20px;
     font-weight: 300;
     line-height: 1.6;
@@ -171,6 +173,7 @@ const FeatureItem = styled.div`
     }
 
     .feature-title {
+        font-family: var(--font-serif);
         font-size: 13px;
         font-weight: 500;
         color: #3f3f46;
@@ -301,6 +304,7 @@ const FormArea = styled.div`
 
 /** 欢迎标题 */
 const WelcomeTitle = styled.h1`
+    font-family: var(--font-serif);
     font-size: 24px;
     font-weight: 500;
     letter-spacing: -0.02em;

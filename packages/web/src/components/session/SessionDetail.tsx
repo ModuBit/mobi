@@ -144,6 +144,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                         <PixelAvatar name={sessionId} status={agentStatus} size={18} />
                         <span
                             style={{
+                                fontFamily: 'var(--font-serif)',
                                 fontWeight: 500,
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
