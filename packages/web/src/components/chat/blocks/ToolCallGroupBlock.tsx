@@ -43,7 +43,7 @@ export function ToolCallGroupRenderer({
       expanded={expanded}
       onExpand={setExpanded}
     >
-      <div style={{ paddingLeft: 12, paddingRight: 12 }}>
+      <div style={{ paddingLeft: 12, paddingRight: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {blocks.map(block => (
           <ToolCallRenderer
             key={block.id}
