@@ -26,8 +26,10 @@
 
 /* 链接样式 */
 .x-markdown a {
-    color: #0958d9;
-    text-decoration: none;
+    color: #3d3d3a;
+    text-decoration: underline;
+    text-decoration-color: rgba(61, 61, 58, 0.3);
+    text-underline-offset: 2px;
     transition: opacity 0.2s;
 }
 
@@ -36,29 +38,30 @@
 }
 
 html[data-theme='dark'] .x-markdown a {
-    color: #4096ff;
+    color: #d1cfc5;
+    text-decoration-color: rgba(209, 207, 197, 0.3);
 }
 
 /* Sources 组件内链接需要更高优先级覆盖 antd 样式 */
 .x-markdown .ant-sources a,
 .x-markdown .ant-sources .ant-sources-link-title {
-    color: #0958d9;
+    color: #3d3d3a;
 }
 
 .x-markdown .ant-sources a:hover,
 .x-markdown .ant-sources .ant-sources-link:hover {
-    color: #0958d9;
+    color: #3d3d3a;
     opacity: 0.75;
 }
 
 html[data-theme='dark'] .x-markdown .ant-sources a,
 html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-link-title {
-    color: #4096ff;
+    color: #d1cfc5;
 }
 
 html[data-theme='dark'] .x-markdown .ant-sources a:hover,
 html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-link:hover {
-    color: #4096ff;
+    color: #d1cfc5;
 }
 
 /* Sources 组件：缩小字体 */
@@ -84,12 +87,12 @@ html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-link:hover {
 
 .x-markdown .ant-sources .ant-sources-list-item {
     list-style: none;
-    border-left: 3px solid #d4d4d8;
+    border-left: 3px solid #b0aea5;
     padding-left: 10px;
 }
 
 html[data-theme='dark'] .x-markdown .ant-sources .ant-sources-list-item {
-    border-left-color: #52525b;
+    border-left-color: #5e5d59;
 }
 
 /* XMarkdown inline code 背景色 */
@@ -104,7 +107,7 @@ html[data-theme='dark'] .x-markdown code {
 /* XMarkdown 表格样式 - Light 模式 */
 .x-markdown table {
     border-collapse: collapse;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #e8e6dc;
     margin: 0.75em 0;
     width: 100%;
     border-radius: 6px;
@@ -114,62 +117,62 @@ html[data-theme='dark'] .x-markdown code {
 }
 
 .x-markdown thead {
-    background: #f9fafb;
+    background: #f0eee6;
 }
 
 .x-markdown th {
     font-weight: 600;
     padding: 8px 12px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #e8e6dc;
     text-align: left;
     white-space: nowrap;
-    background: #f3f4f6;
+    background: #e8e6dc;
 }
 
 .x-markdown td {
     padding: 6px 12px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #e8e6dc;
 }
 
 .x-markdown tbody tr:nth-child(even) {
-    background: #f9fafb;
+    background: #f5f4ed;
 }
 
 .x-markdown tbody tr:hover {
-    background: #f0f1f3;
+    background: #f0eee6;
 }
 
 /* XMarkdown 表格样式 - Dark 模式 */
 html[data-theme='dark'] .x-markdown table {
-    border-color: #3f3f46;
+    border-color: #30302e;
 }
 
 html[data-theme='dark'] .x-markdown thead {
-    background: rgba(255, 255, 255, 0.04);
+    background: #1e1e1c;
 }
 
 html[data-theme='dark'] .x-markdown th {
-    border-color: #3f3f46;
-    background: rgba(255, 255, 255, 0.06);
+    border-color: #30302e;
+    background: #232320;
 }
 
 html[data-theme='dark'] .x-markdown td {
-    border-color: #3f3f46;
+    border-color: #30302e;
 }
 
 html[data-theme='dark'] .x-markdown tbody tr:nth-child(even) {
-    background: rgba(255, 255, 255, 0.03);
+    background: #1e1e1c;
 }
 
 html[data-theme='dark'] .x-markdown tbody tr:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: #232320;
 }
 
 /* Slash Command Badge */
 .x-markdown .slash-command-badge {
     display: inline-block;
-    background: rgba(22, 119, 255, 0.04);
-    color: #1677ff;
+    background: #e8e6dc;
+    color: #4d4c48;
     border-radius: 4px;
     padding: 1px 6px;
     font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
@@ -180,6 +183,6 @@ html[data-theme='dark'] .x-markdown tbody tr:hover {
 }
 
 html[data-theme='dark'] .x-markdown .slash-command-badge {
-    background: rgba(64, 150, 255, 0.08);
-    color: #4096ff;
+    background: #30302e;
+    color: #d1cfc5;
 }
