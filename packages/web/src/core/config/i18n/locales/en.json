@@ -174,9 +174,13 @@
     "footnoteSources": "References",
     "backgroundTask": {
       "completed": "Background task completed: {{description}}",
-      "failed": "Background task failed: {{description}}"
+      "failed": "Background task failed: {{description}}",
+      "stopConfirm": "Stop this background task?",
+      "stop": "Stop",
+      "panelTitle": "Background Tasks"
     },
     "clearState": {
+      "label": "Clear",
       "todos": "Clear stale todos?",
       "tasks": "Clear stale tasks?",
       "backgroundTasks": "Clear stale background tasks?",

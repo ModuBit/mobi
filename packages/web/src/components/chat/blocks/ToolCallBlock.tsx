@@ -19,11 +19,12 @@ import { Think } from '@ant-design/x'
 import { theme as antTheme } from 'antd'
 import { Zap } from 'lucide-react'
 import type { ChatBlock, ChatToolCall } from '@/domain/chat'
+import { isObject } from '@mobi/shared'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
-import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool } from '@/components/tool-card/knownTools'
+import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool, isBackgroundTool } from '@/components/tool-card/knownTools'
 import { isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
@@ -183,6 +184,23 @@ function ToolCallPreviewContent({
         )
     }
 
+    // 后台 Bash：仅展示命令，不展示 output
+    if (isTerminalTool(tool.name) && isObject(tool.input) && tool.input.run_in_background === true) {
+        const command = typeof tool.input.command === 'string' ? tool.input.command : ''
+        return (
+            <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                <div style={{
+                    fontSize: 13, lineHeight: 1.5,
+                    color: token.colorTextSecondary,
+                    fontFamily: 'var(--font-mono)',
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                }}>
+                    {command || t('chat.backgroundTask.running', 'Running...')}
+                </div>
+            </div>
+        )
+    }
+
     if (!ViewComponent) return null
 
     return (
@@ -223,7 +241,7 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
     const permissionDrivenExpand = expandOnPermission && hasPermission
     const isError = tool.state === 'error'
     const isAgent = isAgentTool(tool.name)
-    const isBgAgent = isBackgroundAgentTool(tool.name, tool.input)
+    const isBgAgent = isBackgroundTool(tool.name, tool.input)
     const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
     const defaultExpanded = !isError && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning || isBgAgent)
     const [expanded, setExpanded] = useState(defaultExpanded)
@@ -313,7 +331,7 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                             </span>
                         )}
                         {isBgAgent && (
-                            <Zap size={12} style={{ flexShrink: 0, color: token.colorInfo }} />
+                            <Zap size={12} style={{ flexShrink: 0, color: '#f5b800' }} />
                         )}
                         {!titleContainsDescription && tool.description && (
                             <span style={{ fontSize: 11, color: token.colorTextTertiary, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0, maxWidth: '40%' }}>

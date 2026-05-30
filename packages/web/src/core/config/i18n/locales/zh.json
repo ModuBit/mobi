@@ -174,9 +174,13 @@
     "footnoteSources": "引用来源",
     "backgroundTask": {
       "completed": "后台任务已完成：{{description}}",
-      "failed": "后台任务失败：{{description}}"
+      "failed": "后台任务失败：{{description}}",
+      "stopConfirm": "确定停止该后台任务？",
+      "stop": "停止",
+      "panelTitle": "后台任务"
     },
     "clearState": {
+      "label": "清理",
       "todos": "清理待办列表？",
       "tasks": "清理任务列表？",
       "backgroundTasks": "清理后台任务？",

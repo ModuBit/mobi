@@ -62,10 +62,9 @@ export const useBackgroundTasksStore = create<BackgroundTasksState>((set, get) =
                 }
             }
 
-            // 只存储 running 任务，过滤 terminal 任务
-            const runningTasks = tasks.filter(t => t.status === 'running')
+            // 存储所有任务（包含终态），供 BackgroundTaskPanel 展示
             const next = new Map(state.tasksBySession)
-            next.set(sessionId, runningTasks)
+            next.set(sessionId, tasks)
 
             return {
                 tasksBySession: next,

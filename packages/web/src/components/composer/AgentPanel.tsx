@@ -31,8 +31,21 @@ export function AgentPanel({ sessionId, onAgentClick }: {
 }) {
     const { token } = theme.useToken()
     const agents = useRunningAgents(sessionId)
+    const wrapperRef = useRef<HTMLDivElement>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
     const [showFade, setShowFade] = useState(false)
+    const [narrow, setNarrow] = useState(false)
+
+    // 监听容器宽度，窄于阈值时卡片撑满纵向排列
+    useEffect(() => {
+        const el = wrapperRef.current
+        if (!el) return
+        const observer = new ResizeObserver(() => {
+            setNarrow(el.clientWidth < 460)
+        })
+        observer.observe(el)
+        return () => observer.disconnect()
+    }, [])
 
     // 监听容器尺寸变化和 agent 数量变化，判断是否需要渐变遮罩
     useEffect(() => {
@@ -48,13 +61,17 @@ export function AgentPanel({ sessionId, onAgentClick }: {
     if (agents.length === 0) return null
 
     return (
-        <div style={{ position: 'relative' }}>
+        <div ref={wrapperRef} style={{ position: 'relative' }}>
             <div
                 ref={scrollRef}
                 className="hide-scrollbar"
                 style={{ maxHeight: 96, overflowY: 'auto' }}
             >
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <div style={{
+                    display: 'flex', gap: 6, flexWrap: 'wrap',
+                    flexDirection: narrow ? 'column' : 'row',
+                    '--agent-card-width': narrow ? '100%' : '200px',
+                } as React.CSSProperties}>
                     {agents.map((agent) => (
                         <AgentCard
                             key={agent.block.id}

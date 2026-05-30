@@ -16,7 +16,7 @@
 
 /**
  * 后台任务面板
- * 在 ComposerInfoPanel 中展示正在运行的后台任务卡片列表
+ * 在 ComposerInfoPanel 中展示所有后台任务卡片列表（运行中 + 终态）
  */
 
 import { useRef, useState, useEffect } from 'react'
@@ -30,7 +30,16 @@ import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import type { BackgroundTask } from '@/domain/chat/types'
 import type { MobiApi } from '@/core/data/api/client'
 
-const spinKeyframes = css`@keyframes bgtask-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`
+const STATUS_ORDER: Record<BackgroundTask['status'], number> = {
+    running: 0,
+    completed: 1,
+    failed: 2,
+    stopped: 3,
+}
+
+const spinKeyframes = css`
+@keyframes bgtask-panel-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+`
 
 export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
     sessionId: string
@@ -41,10 +50,22 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const tasks = useBackgroundTasks(sessionId)
+    const wrapperRef = useRef<HTMLDivElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const [hasOverflow, setHasOverflow] = useState(false)
+    const [narrow, setNarrow] = useState(false)
 
-    // 监听容器尺寸变化，判断是否需要渐变遮罩
+    // 监听容器宽度，窄于阈值时卡片撑满纵向排列
+    useEffect(() => {
+        const el = wrapperRef.current
+        if (!el) return
+        const observer = new ResizeObserver(() => {
+            setNarrow(el.clientWidth < 460)
+        })
+        observer.observe(el)
+        return () => observer.disconnect()
+    }, [])
+
     useEffect(() => {
         const el = containerRef.current
         if (!el) return
@@ -57,6 +78,15 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
 
     if (tasks.length === 0) return null
 
+    const sortedTasks = [...tasks].sort(
+        (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status],
+    )
+
+    let running = 0
+    for (const t of tasks) {
+        if (t.status === 'running') running++
+    }
+
     const handleStop = async (e: React.MouseEvent, task: BackgroundTask) => {
         e.stopPropagation()
         try {
@@ -65,13 +95,15 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
     }
 
     return (
-        <div>
+        <div ref={wrapperRef}>
             <Global styles={spinKeyframes} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                <Loader size={12} style={{
-                    color: token.colorTextQuaternary,
-                    animation: 'bgtask-spin 1s linear infinite',
-                }} />
+                {running > 0 && (
+                    <Loader size={12} style={{
+                        color: token.colorTextQuaternary,
+                        animation: 'bgtask-panel-spin 1s linear infinite',
+                    }} />
+                )}
                 <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
                     {t('chat.backgroundTask.panelTitle', 'Background Tasks')}
                 </span>
@@ -82,22 +114,24 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
                 }}>
                     {tasks.length}
                 </span>
-                <span style={{ marginLeft: 'auto' }}>
-                    <ClearStateButton
-                        sessionId={sessionId}
-                        clearField="backgroundTasks"
-                        onClear={onClear}
-                    />
-                </span>
+                <ClearStateButton
+                    sessionId={sessionId}
+                    clearField="backgroundTasks"
+                    onClear={onClear}
+                />
             </div>
             <div ref={containerRef} style={{ maxHeight: 96, overflow: 'hidden', position: 'relative' }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {tasks.map(task => (
+                <div style={{
+                    display: 'flex', gap: 6, flexWrap: 'wrap',
+                    flexDirection: narrow ? 'column' : 'row',
+                    '--agent-card-width': narrow ? '100%' : '200px',
+                } as React.CSSProperties}>
+                    {sortedTasks.map(task => (
                         <BackgroundTaskCard
                             key={task.taskId}
                             task={task}
                             onClick={() => onTaskClick(task)}
-                            onStop={(e) => handleStop(e, task)}
+                            onStop={task.status === 'running' ? (e) => handleStop(e, task) : undefined}
                         />
                     ))}
                 </div>

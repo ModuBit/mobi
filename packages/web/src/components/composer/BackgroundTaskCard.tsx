@@ -15,13 +15,25 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { theme, Tooltip } from 'antd'
+import { theme, Tooltip, Popconfirm, Drawer, Button } from 'antd'
+import type { GlobalToken } from 'antd/es/theme/interface'
 import { Terminal, CircleStop, Eye } from 'lucide-react'
+import { Global, css } from '@emotion/react'
+import { useTranslation } from 'react-i18next'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
 import type { BackgroundTask } from '@/domain/chat/types'
+import type { AgentStatus } from '@/components/pixel-avatar/types'
+
+const spinKeyframes = css`
+@keyframes bgtask-icon-spin {
+    from { transform: rotate(0deg) }
+    to { transform: rotate(360deg) }
+}
+`
 
 /** 格式化后台任务指标信息 */
 function formatMetrics(task: BackgroundTask): string {
@@ -32,6 +44,17 @@ function formatMetrics(task: BackgroundTask): string {
     return parts.join(' · ') || 'pending'
 }
 
+function taskAvatarStatus(status: BackgroundTask['status']): AgentStatus {
+    return status === 'running' ? 'outputting' : 'inactive'
+}
+
+/** 终态图标颜色 */
+function terminalIconColor(status: BackgroundTask['status'], token: GlobalToken): string {
+    if (status === 'completed') return '#52c41a'
+    if (status === 'failed') return token.colorError
+    return token.colorTextQuaternary
+}
+
 /**
  * 后台任务卡片组件
  * 展示单个后台任务的状态、图标、描述和指标
@@ -39,12 +62,18 @@ function formatMetrics(task: BackgroundTask): string {
 export function BackgroundTaskCard({ task, onClick, onStop }: {
     task: BackgroundTask
     onClick: () => void
-    onStop: (e: React.MouseEvent) => void
+    onStop?: (e: React.MouseEvent) => void
 }) {
+    const { t } = useTranslation()
     const { token } = theme.useToken()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
+    const isMobile = useIsMobile()
+    const isRunning = task.status === 'running'
     const name = task.description ?? 'Background task'
+
     const [stopHovered, setStopHovered] = useState(false)
+    const [drawerOpen, setDrawerOpen] = useState(false)
+    const [stopping, setStopping] = useState(false)
 
     const prevSummaryRef = useRef(task.summary)
     const [displaySummary, setDisplaySummary] = useState(task.summary)
@@ -56,54 +85,83 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
         }
     }, [task.summary])
 
-    return (
-        <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            width: 'var(--agent-card-width, 200px)', height: 40,
-            padding: '4px 8px', borderRadius: 8, cursor: 'pointer',
-            border: 'none', background: agentCardBg(name, isDark),
-            boxSizing: 'border-box',
-        }} onClick={onClick}>
-            <div style={{ flexShrink: 0, lineHeight: 0 }}>
-                {task.toolName === 'Agent' ? (
-                    <PixelAvatar name={task.taskId} status="outputting" size={24} />
-                ) : (
-                    <div style={{
-                        width: 24, height: 24, display: 'flex',
-                        alignItems: 'center', justifyContent: 'center',
-                        borderRadius: 4,
-                    }}>
-                        {task.toolName === 'Monitor'
-                            ? <Eye size={16} style={{ color: token.colorTextSecondary }} />
-                            : <Terminal size={16} style={{ color: token.colorTextSecondary }} />}
-                    </div>
-                )}
+    const handleStop = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        if (!onStop) return
+        if (isMobile) {
+            setDrawerOpen(true)
+        }
+    }
+
+    const doStop = async () => {
+        if (!onStop) return
+        setStopping(true)
+        try {
+            // 构造一个模拟事件给外部 handler
+            await onStop({ stopPropagation: () => {} } as React.MouseEvent)
+        } finally {
+            setStopping(false)
+            setDrawerOpen(false)
+        }
+    }
+
+    // stop 按钮（仅运行中任务显示）
+    const showStop = onStop && isRunning
+
+    // stop 确认 Drawer（移动端）
+    const stopDrawer = isMobile && showStop ? (
+        <Drawer
+            placement="bottom"
+            open={drawerOpen}
+            onClose={() => { if (!stopping) setDrawerOpen(false) }}
+            closable={false}
+            styles={{
+                wrapper: { height: 'auto' },
+                body: { padding: '8px 0', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' },
+            }}
+        >
+            <div style={{ padding: '12px 20px', fontSize: 14, color: token.colorTextSecondary }}>
+                {t('chat.backgroundTask.stopConfirm')}
             </div>
-            <div style={{
-                flex: 1, minWidth: 0, overflow: 'hidden',
-                display: 'flex', flexDirection: 'column', gap: 1,
-            }}>
-                <div style={{
-                    fontSize: 11, color: token.colorTextSecondary,
-                    whiteSpace: 'nowrap', overflow: 'hidden',
-                    textOverflow: 'ellipsis', lineHeight: '1.3',
-                }}>
-                    {name}
-                </div>
-                <Tooltip title={displaySummary || undefined} placement="top" mouseEnterDelay={0.5}>
-                    <div style={{
-                        fontSize: 9, color: token.colorTextQuaternary,
-                        fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
-                        overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.3',
-                    }}>
-                        {displaySummary
-                            ? `${task.metrics?.durationMs != null ? formatDuration(task.metrics.durationMs) : ''} · ${displaySummary}`
-                            : formatMetrics(task)}
-                    </div>
-                </Tooltip>
-            </div>
+            <Button
+                type="text" block danger loading={stopping}
+                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                onClick={doStop}
+            >
+                {t('chat.backgroundTask.stop')}
+            </Button>
+            <Button
+                type="text" block disabled={stopping}
+                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                onClick={() => setDrawerOpen(false)}
+            >
+                {t('chat.clearState.cancel')}
+            </Button>
+        </Drawer>
+    ) : null
+
+    // stop 按钮区域：桌面端用 Popconfirm 包裹，移动端直接渲染按钮
+    const stopElement = !showStop ? null : isMobile ? (
+        <div
+            onClick={handleStop}
+            style={{
+                flexShrink: 0, width: 22, height: 22,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 4, cursor: 'pointer',
+            }}
+        >
+            <CircleStop size={14} style={{ color: token.colorTextQuaternary }} />
+        </div>
+    ) : (
+        <Popconfirm
+            title={t('chat.backgroundTask.stopConfirm')}
+            onConfirm={doStop}
+            okText={t('chat.backgroundTask.stop')}
+            cancelText={t('chat.clearState.cancel')}
+            okButtonProps={{ danger: true, loading: stopping }}
+            onCancel={(e) => e?.stopPropagation()}
+        >
             <div
-                onClick={onStop}
                 onMouseEnter={() => setStopHovered(true)}
                 onMouseLeave={() => setStopHovered(false)}
                 style={{
@@ -117,6 +175,108 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                     color: stopHovered ? token.colorError : token.colorTextQuaternary,
                     transition: 'color 0.2s',
                 }} />
+            </div>
+        </Popconfirm>
+    )
+
+    return (
+        <>
+            <Global styles={spinKeyframes} />
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                width: 'var(--agent-card-width, 200px)', height: 40,
+                padding: '4px 8px', borderRadius: 8, cursor: 'pointer',
+                border: 'none', background: agentCardBg(name, isDark),
+                boxSizing: 'border-box',
+                opacity: isRunning ? 1 : 0.75,
+            }} onClick={onClick}>
+                <div style={{ flexShrink: 0, lineHeight: 0 }}>
+                    {task.toolName === 'Agent' ? (
+                        <PixelAvatar name={task.taskId} status={taskAvatarStatus(task.status)} size={24} />
+                    ) : (
+                        <ToolIcon toolName={task.toolName} status={task.status} bgColor={agentCardBg(name, isDark)} />
+                    )}
+                </div>
+                <div style={{
+                    flex: 1, minWidth: 0, overflow: 'hidden',
+                    display: 'flex', flexDirection: 'column', gap: 1,
+                }}>
+                    <div style={{
+                        fontSize: 11, color: token.colorTextSecondary,
+                        whiteSpace: 'nowrap', overflow: 'hidden',
+                        textOverflow: 'ellipsis', lineHeight: '1.3',
+                        textDecoration: !isRunning ? 'line-through' : 'none',
+                    }}>
+                        {name}
+                    </div>
+                    <Tooltip title={displaySummary || undefined} placement="top" mouseEnterDelay={0.5}>
+                        <div style={{
+                            fontSize: 9, color: token.colorTextQuaternary,
+                            fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                            overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.3',
+                        }}>
+                            {displaySummary
+                                ? `${task.metrics?.durationMs != null ? formatDuration(task.metrics.durationMs) : ''} · ${displaySummary}`
+                                : formatMetrics(task)}
+                        </div>
+                    </Tooltip>
+                </div>
+                {stopElement}
+                {stopDrawer}
+            </div>
+        </>
+    )
+}
+
+/** 非Agent工具图标，运行中时带旋转渐变圆环 */
+function ToolIcon({ toolName, status, bgColor }: { toolName: string; status: BackgroundTask['status']; bgColor: string }) {
+    const { token } = theme.useToken()
+    const isRunning = status === 'running'
+
+    if (toolName === 'Monitor') {
+        return (
+            <div style={{
+                width: 24, height: 24, display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                borderRadius: 4,
+            }}>
+                <Eye size={16} style={{ color: terminalIconColor(status, token) }} />
+            </div>
+        )
+    }
+
+    const icon = <Terminal size={isRunning ? 12 : 16} style={{ color: isRunning ? token.colorTextSecondary : terminalIconColor(status, token) }} />
+
+    if (!isRunning) {
+        return (
+            <div style={{
+                width: 24, height: 24, display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                borderRadius: 12,
+                border: `1.5px solid ${terminalIconColor(status, token)}`,
+            }}>
+                {icon}
+            </div>
+        )
+    }
+
+    // 运行中：细渐变环（1px conic-gradient 旋转），整体缩小保持视觉平衡
+    return (
+        <div style={{ width: 24, height: 24, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{
+                width: 18, height: 18,
+                position: 'absolute',
+                borderRadius: 9,
+                background: `conic-gradient(from 0deg, transparent 0%, ${token.colorPrimary} 30%, transparent 60%)`,
+                animation: 'bgtask-icon-spin 1.5s linear infinite',
+            }} />
+            <div style={{
+                width: 16, height: 16, borderRadius: 8,
+                background: bgColor,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                position: 'relative',
+            }}>
+                {icon}
             </div>
         </div>
     )
