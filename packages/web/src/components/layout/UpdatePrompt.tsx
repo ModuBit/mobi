@@ -54,9 +54,9 @@ interface UpdatePromptProps {
 }
 
 export function UpdatePrompt({ onUpdate }: UpdatePromptProps) {
-    if (!onUpdate) return null
-
     const { t } = useTranslation()
+
+    if (!onUpdate) return null
 
     return (
         <Banner>

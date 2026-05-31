@@ -183,7 +183,7 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
         hubName = settings.hubName
         sources.hubName = 'file'
     } else {
-        hubName = hostname()
+        hubName = hostname() || 'mobi'
         sources.hubName = 'default'
     }
 

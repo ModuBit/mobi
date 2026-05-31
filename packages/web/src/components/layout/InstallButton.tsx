@@ -42,12 +42,31 @@ const NavItem = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
     }
 `
 
+const MenuItem = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    cursor: pointer;
+    color: ${props => props.$token.colorText};
+    background: transparent;
+    transition: all 0.2s;
+
+    &:hover {
+        background: ${props => props.$token.colorPrimaryBg};
+    }
+`
+
 interface BeforeInstallPromptEvent extends Event {
     prompt: () => Promise<void>
     userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-export function InstallButton() {
+interface InstallButtonProps {
+    variant?: 'nav' | 'menu'
+}
+
+export function InstallButton({ variant = 'nav' }: InstallButtonProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null)
@@ -66,6 +85,15 @@ export function InstallButton() {
     const handleInstall = async () => {
         await installEvent.prompt()
         setInstallEvent(null)
+    }
+
+    if (variant === 'menu') {
+        return (
+            <MenuItem $token={token} onClick={handleInstall}>
+                <Download size={20} />
+                <span>{t('notification.pwa.install')}</span>
+            </MenuItem>
+        )
     }
 
     return (

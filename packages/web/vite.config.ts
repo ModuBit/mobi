@@ -28,6 +28,8 @@ export default defineConfig({
         react(),
         VitePWA({
             registerType: 'prompt',
+            // 使用自定义 SW 注册逻辑，禁用插件自动注入
+            injectRegister: false,
             // 不生成静态 manifest 文件，由 Hub 动态提供
             manifest: false,
             workbox: {

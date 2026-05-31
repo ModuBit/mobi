@@ -23,6 +23,7 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
 import { Menu, Sun, Moon, Languages } from 'lucide-react'
+import { InstallButton } from './InstallButton'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -135,6 +136,9 @@ export function MobileMenuDrawer() {
                         <span>{t(item.labelKey)}</span>
                     </MenuItem>
                 ))}
+
+                {/* PWA 安装按钮 */}
+                <InstallButton variant="menu" />
 
                 {/* 主题 & 语言切换 */}
                 <div style={{ display: 'flex', alignItems: 'stretch' }}>
