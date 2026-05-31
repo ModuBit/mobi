@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -205,6 +205,9 @@ async function main(): Promise<void> {
 
     const distExeDir = join(projectRoot, 'dist-exe');
     const npmDir = join(projectRoot, 'npm');
+
+    // 清理旧的构建产物，避免残留过时的平台包
+    rmSync(npmDir, { recursive: true, force: true });
 
     let hasErrors = false;
 

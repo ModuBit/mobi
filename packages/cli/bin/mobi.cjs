@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
 const platform = process.platform;
@@ -114,13 +115,21 @@ function main() {
         process.exit(1);
     }
 
+    // 当平台包缺失时，为 --version/--help 提供兜底
+    const args = process.argv.slice(2);
     const binPath = getBinaryPath();
     if (!binPath) {
+        if (args.includes('--version') || args.includes('-v')) {
+            try {
+                const pkgPath = path.join(__dirname, '..', 'package.json');
+                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+                console.log(pkg.version);
+                process.exit(0);
+            } catch { }
+        }
         reportMissingPlatformPackage();
         process.exit(1);
     }
-
-    const args = process.argv.slice(2);
 
     try {
         execFileSync(binPath, args, { stdio: 'inherit' });
