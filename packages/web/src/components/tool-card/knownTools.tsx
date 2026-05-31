@@ -16,7 +16,7 @@
 
 import type { ReactNode } from 'react'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import { isObject } from '@mobi/shared'
+import { getField, isObject } from '@mobi/shared'
 import { joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { ToolOutlined } from '@ant-design/icons'
 import { LineSquiggle } from 'lucide-react'
@@ -251,18 +251,24 @@ export const knownTools: Record<string, {
     SendMessage: {
         icon: () => renderToolIcon('SendMessage'),
         title: (opts) => {
-            const recipient = getInputStringAny(opts.input, ['recipient'])
-            const msgType = getInputStringAny(opts.input, ['type'])
-            if (msgType === 'broadcast') return 'Broadcast'
-            if (msgType === 'shutdown_request') return `Shutdown: ${recipient ?? 'agent'}`
-            if (msgType === 'shutdown_response') return 'Shutdown Response'
-            return recipient ? `Message: ${recipient}` : 'Send Message'
+            const recipient = getInputStringAny(opts.input, ['recipient', 'to'])
+            // 错误状态：result 包含 <tool_use_error>
+            const resultText = typeof opts.result === 'string' ? opts.result : ''
+            const isError = resultText.includes('<tool_use_error>')
+            if (isError) return recipient ? `To: ${recipient}` : 'Send Message'
+            // 成功：优先展示 summary
+            const resultObj = parseResultJson(opts.result)
+            const routing = resultObj ? getField<Record<string, unknown>>(resultObj, 'routing') : null
+            const summary = (routing ? getField<string>(routing, 'summary') : null) ?? getInputStringAny(opts.input, ['summary'])
+            if (summary) return summary
+            return recipient ? `Message to ${recipient}` : 'Send Message'
         },
         subtitle: (opts) => {
-            const summary = getInputStringAny(opts.input, ['summary'])
-            return summary ? truncate(summary, 120) : null
+            const recipient = getInputStringAny(opts.input, ['recipient', 'to'])
+            return recipient ?? null
         },
-        minimal: true
+        minimal: false,
+        previewMaxHeight: Number.MAX_SAFE_INTEGER,
     },
     Bash: { ...terminalToolConfig, wideDrawer: true },
     Glob: {

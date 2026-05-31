@@ -20,6 +20,7 @@ import { BashView } from '@/components/tool-card/views/BashView'
 import { GlobView } from '@/components/tool-card/views/GlobView'
 import { TeamCreateView } from '@/components/tool-card/views/TeamCreateView'
 import { TeamDeleteView } from '@/components/tool-card/views/TeamDeleteView'
+import { SendMessageView } from '@/components/tool-card/views/SendMessageView'
 import { isObject, safeStringify } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { theme as antTheme, Typography } from 'antd'
@@ -534,6 +535,7 @@ export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     TaskOutput: MarkdownResultView,
     TeamCreate: TeamCreateView,
     TeamDelete: TeamDeleteView,
+    SendMessage: SendMessageView,
 }
 export function getToolResultViewComponent(toolName: string): ToolViewComponent {
     if (toolName.startsWith('mcp__')) {

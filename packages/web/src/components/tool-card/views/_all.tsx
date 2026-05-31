@@ -29,6 +29,7 @@ import { BashView } from '@/components/tool-card/views/BashView'
 import { GlobView } from '@/components/tool-card/views/GlobView'
 import { TeamCreateView } from '@/components/tool-card/views/TeamCreateView'
 import { TeamDeleteView } from '@/components/tool-card/views/TeamDeleteView'
+import { SendMessageView } from '@/components/tool-card/views/SendMessageView'
 
 export type ToolViewProps = {
     block: ToolCallBlock
@@ -51,6 +52,7 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     request_user_input: RequestUserInputView,
     TeamCreate: TeamCreateView,
     TeamDelete: TeamDeleteView,
+    SendMessage: SendMessageView,
 }
 
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
@@ -68,6 +70,7 @@ export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     request_user_input: RequestUserInputView,
     TeamCreate: TeamCreateView,
     TeamDelete: TeamDeleteView,
+    SendMessage: SendMessageView,
 }
 
 export function getToolViewComponent(toolName: string): ToolViewComponent | null {
