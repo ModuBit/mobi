@@ -343,7 +343,17 @@ export function applyTeamStateDelta(
     }
 
     // update: merge into existing
-    if (!existing) return null
+    // 如果 existing 为 null（自动清理后或首次 update），从 delta 隐式重建
+    if (!existing) {
+        if (!delta.members && !delta.tasks) return null
+        return {
+            teamName: '',
+            members: delta.members ?? [],
+            tasks: delta.tasks ?? [],
+            messages: delta.messages ?? [],
+            updatedAt: delta.updatedAt ?? Date.now(),
+        }
+    }
 
     const updated = { ...existing }
 

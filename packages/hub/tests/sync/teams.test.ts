@@ -239,6 +239,44 @@ describe('applyTeamStateDelta 自动清理', () => {
         // 所有 members shutdown + 所有 tasks completed → 自动清理
         expect(state).toBeNull()
     })
+
+    test('自动清理后，新的 update delta 隐式重建 teamState', () => {
+        // 1. 创建 team + member + task → 自动清理
+        const createDelta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'TeamCreate', { team_name: 'test-team' })
+        )
+        let state = applyTeamStateDelta(null, createDelta!)
+
+        const memberDelta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-2', 'Task', {
+                team_name: 'test-team', name: 'researcher', description: '研究',
+            })
+        )
+        state = applyTeamStateDelta(state, memberDelta!)
+
+        // member idle + task completed → 自动清理
+        state = applyTeamStateDelta(state, {
+            _action: 'update' as const,
+            members: [{ name: 'researcher', status: 'idle' as const }],
+            tasks: [{ id: 'agent:researcher', status: 'completed' as const }],
+            updatedAt: Date.now(),
+        })
+        expect(state).toBeNull()
+
+        // 2. 新的 Agent tool_use（_action:'update'）不应被丢弃
+        const newAgentDelta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-3', 'Agent', {
+                team_name: 'test-team', name: 'coder', subagent_type: 'general-purpose',
+                description: '编码任务',
+            })
+        )
+        state = applyTeamStateDelta(null, newAgentDelta!)
+        expect(state).not.toBeNull()
+        expect(state!.members).toHaveLength(1)
+        expect(state!.members![0].name).toBe('coder')
+        expect(state!.tasks).toHaveLength(1)
+        expect(state!.tasks![0].title).toBe('编码任务')
+    })
 })
 
 // ============ TeamDelete 仍能清除 teamState 测试 ============

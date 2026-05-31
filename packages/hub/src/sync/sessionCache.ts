@@ -369,9 +369,11 @@ export class SessionCache {
         if (runtimeState?.teamState) {
             const teamName = (runtimeState.teamState as { teamName: string }).teamName
             const endedTeamState = handleTeamSessionEnd(runtimeState.teamState as Parameters<typeof handleTeamSessionEnd>[0])
-            if (endedTeamState) {
-                runtimeState.teamState = endedTeamState
-            }
+            // 标记 completed 后走 applyTeamStateDelta 自动清理（all-done → null）
+            runtimeState.teamState = applyTeamStateDelta(null, {
+                _action: 'update',
+                ...endedTeamState,
+            }) ?? undefined
             // 完成该 team 创建的 runtime_state.tasks
             const tasks = runtimeState.tasks as Array<Record<string, unknown>> | undefined
             if (tasks) {
@@ -386,12 +388,8 @@ export class SessionCache {
             this.store.sessions.setRuntimeState(session.id, runtimeState, Date.now(), session.namespace)
         }
 
-        // 广播包含更新后的 teamState
-        const eventData: Record<string, unknown> = { active: false, running: false, mode: session.mode }
-        if (runtimeState?.teamState) {
-            eventData.runtimeState = runtimeState
-        }
-        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: eventData })
+        // 广播（teamState 已自动清理，无需额外包含 runtimeState）
+        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false, running: false, mode: session.mode } })
     }
 
     expireInactive(now: number = Date.now()): void {

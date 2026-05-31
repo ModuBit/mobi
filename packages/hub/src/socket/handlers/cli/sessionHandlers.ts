@@ -183,27 +183,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 existingRuntimeState.todos = todos
             }
 
-            // 合并 tasks
-            for (const taskDelta of taskDeltas) {
-                existingRuntimeState.tasks = applyTaskDelta(existingRuntimeState.tasks, taskDelta)
-            }
-
-            // 如果有活跃 team，为新建的 task 打上 team 标签
-            if (existingRuntimeState.teamState && existingRuntimeState.tasks) {
-                const currentTeamName = (existingRuntimeState.teamState as { teamName: string }).teamName
-                const createdIds = new Set(
-                    taskDeltas.filter((d): d is Extract<typeof d, { type: 'create' }> => d.type === 'create').map(d => d.task.id)
-                )
-                if (createdIds.size > 0) {
-                    existingRuntimeState.tasks = existingRuntimeState.tasks.map(t =>
-                        createdIds.has(t.id)
-                            ? { ...t, metadata: { ...t.metadata, _teamName: currentTeamName } }
-                            : t
-                    )
-                }
-            }
-
-            // 合并 teamState
+            // 合并 teamState（必须在 task 打标签之前，确保 teamState 已更新）
             if (teamDelta) {
                 const existingTeamState = existingRuntimeState.teamState ?? null
 
@@ -228,6 +208,26 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             if (teamSystemDelta) {
                 const existingTeamState = existingRuntimeState.teamState ?? null
                 existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamSystemDelta) ?? undefined
+            }
+
+            // 合并 tasks
+            for (const taskDelta of taskDeltas) {
+                existingRuntimeState.tasks = applyTaskDelta(existingRuntimeState.tasks, taskDelta)
+            }
+
+            // 如果有活跃 team，为新建的 task 打上 team 标签（此时 teamState 已是最新）
+            if (existingRuntimeState.teamState && existingRuntimeState.tasks) {
+                const currentTeamName = (existingRuntimeState.teamState as { teamName: string }).teamName
+                const createdIds = new Set(
+                    taskDeltas.filter((d): d is Extract<typeof d, { type: 'create' }> => d.type === 'create').map(d => d.task.id)
+                )
+                if (createdIds.size > 0) {
+                    existingRuntimeState.tasks = existingRuntimeState.tasks.map(t =>
+                        createdIds.has(t.id)
+                            ? { ...t, metadata: { ...t.metadata, _teamName: currentTeamName } }
+                            : t
+                    )
+                }
             }
 
             // 合并 backgroundTasks
