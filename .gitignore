@@ -19,6 +19,9 @@ dev-dist/
 *.generated.ts
 *.generated.d.ts
 
+# CLI build output
+dist-exe/
+
 # IDE / Editor
 .idea/
 

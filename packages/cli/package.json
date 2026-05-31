@@ -13,7 +13,9 @@
         "dev": "bun src/index.ts",
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
-        "build:exe": "bun run scripts/build-executable.ts",
+        "build:exe": "bun run scripts/build-executable.ts --with-web-assets",
+        "build:exe:raw": "bun run scripts/build-executable.ts",
+        "prepare-npm": "bun run scripts/prepare-npm-packages.ts",
         "postinstall": "bun run scripts/unpack-tools.ts",
         "tools:unpack": "bun run scripts/unpack-tools.ts"
     },
