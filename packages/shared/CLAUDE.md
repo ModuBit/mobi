@@ -21,7 +21,7 @@
 → [docs/conventions/testing.md](../../docs/conventions/testing.md)
 
 - 框架：vitest
-- 运行：`bun test`
+- 运行：`vitest run`
 
 ## 约束
 

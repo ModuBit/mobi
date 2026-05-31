@@ -46,7 +46,7 @@ isObject(rawData.tool_use_result) ? rawData.tool_use_result : isObject(rawData.t
 → [docs/conventions/testing.md](../../docs/conventions/testing.md)
 
 - 框架：vitest + @testing-library/react + jsdom
-- 运行：`bun test`
+- 运行：`vitest run`（禁止 `bun test`，会忽略 vitest.config.ts 的 jsdom 配置）
 
 ## 架构文档
 
