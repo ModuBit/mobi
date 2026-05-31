@@ -35,13 +35,13 @@ describe('Manifest API', () => {
         const res = await app.request('/manifest.webmanifest')
         expect(res.status).toBe(200)
 
-        const body = await res.json()
+        const body = await res.json() as Record<string, unknown>
         expect(body.name).toMatch(/^Mobi/)
         expect(body.id).toBeTruthy()
         expect(body.start_url).toBe('/?from=pwa')
         expect(body.display).toBe('standalone')
         expect(body.icons).toBeInstanceOf(Array)
-        expect(body.icons.length).toBeGreaterThan(0)
+        expect((body.icons as unknown[]).length).toBeGreaterThan(0)
     })
 
     test('GET /manifest.webmanifest Content-Type 为 application/manifest+json', async () => {
@@ -51,7 +51,7 @@ describe('Manifest API', () => {
 
     test('GET /manifest.webmanifest name 包含 hubName', async () => {
         const res = await app.request('/manifest.webmanifest')
-        const body = await res.json()
+        const body = await res.json() as Record<string, unknown>
         expect(body.name).toMatch(/^Mobi - /)
     })
 })
