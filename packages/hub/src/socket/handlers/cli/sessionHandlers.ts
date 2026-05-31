@@ -22,7 +22,7 @@ import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
-import { extractTeamStateFromMessageContent, applyTeamStateDelta } from '../../../sync/teams'
+import { extractTeamStateFromMessageContent, extractTeamSystemDeltasFromMessageContent, applyTeamStateDelta } from '../../../sync/teams'
 import {
     collectBackgroundToolUseIds,
     extractBackgroundTaskDeltasFromMessageContent,
@@ -169,9 +169,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             }
         }
 
-        if (todos || taskDeltas.length > 0 || teamDelta || bgTaskDelta) {
-            const existingSession = store.sessions.getSession(sid)
-            const existingRuntimeState = (existingSession?.runtimeState as RuntimeState) ?? {}
+        // 获取当前 runtimeState（team system message 可能独立于其他 delta 到达）
+        const existingSession = store.sessions.getSession(sid)
+        const existingRuntimeState = (existingSession?.runtimeState as RuntimeState) ?? {}
+
+        // team system message 路由（仅当 teamState 非空时生效）
+        const teamSystemDelta = extractTeamSystemDeltasFromMessageContent(content, existingRuntimeState.teamState)
+
+        if (todos || taskDeltas.length > 0 || teamDelta || bgTaskDelta || teamSystemDelta) {
 
             // 合并 todos
             if (todos) {
@@ -187,6 +192,12 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             if (teamDelta) {
                 const existingTeamState = existingRuntimeState.teamState ?? null
                 existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamDelta) ?? undefined
+            }
+
+            // 合并 team system delta（task_started/task_progress）
+            if (teamSystemDelta) {
+                const existingTeamState = existingRuntimeState.teamState ?? null
+                existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamSystemDelta) ?? undefined
             }
 
             // 合并 backgroundTasks

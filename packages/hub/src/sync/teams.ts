@@ -72,32 +72,34 @@ function processTaskToolWithTeam(input: Record<string, unknown>): TeamStateDelta
     if (!teamName || !name) return null
 
     const agentType = typeof input.subagent_type === 'string' ? input.subagent_type : undefined
+    const prompt = typeof input.prompt === 'string' ? input.prompt : undefined
     const description = typeof input.description === 'string' ? input.description : null
 
-    const delta: TeamStateDelta = {
+    return {
         _action: 'update',
-        members: [{ name, agentType, status: 'active' }],
-        updatedAt: Date.now()
-    }
-
-    // Also track the spawned agent's work as a task
-    if (description) {
-        delta.tasks = [{
+        members: [{
+            name,
+            agentType,
+            status: 'running',
+            prompt,
+            startedAt: Date.now(),
+        }],
+        tasks: description ? [{
             id: `agent:${name}`,
             title: description,
             status: 'in_progress',
-            owner: name
-        }]
+            owner: name,
+        }] : undefined,
+        updatedAt: Date.now()
     }
-
-    return delta
 }
 
 function processTaskCreate(input: Record<string, unknown>): TeamStateDelta | null {
     const id = typeof input.task_id === 'string' ? input.task_id
         : typeof input.id === 'string' ? input.id
         : null
-    const title = typeof input.title === 'string' ? input.title
+    const title = typeof input.subject === 'string' ? input.subject
+        : typeof input.title === 'string' ? input.title
         : typeof input.content === 'string' ? input.content
         : null
     if (!id || !title) return null
@@ -108,18 +110,20 @@ function processTaskCreate(input: Record<string, unknown>): TeamStateDelta | nul
 
     return {
         _action: 'update',
-        tasks: [{ id, title, description, status, owner }],
+        tasks: [{ id, title, description, status, owner, createdAt: Date.now() }],
         updatedAt: Date.now()
     }
 }
 
 function processTaskUpdate(input: Record<string, unknown>): TeamStateDelta | null {
-    const id = typeof input.task_id === 'string' ? input.task_id
+    const id = typeof input.taskId === 'string' ? input.taskId
+        : typeof input.task_id === 'string' ? input.task_id
         : typeof input.id === 'string' ? input.id
         : null
     if (!id) return null
 
     const task: Record<string, unknown> = { id }
+    if (typeof input.subject === 'string') task.title = input.subject
     if (typeof input.title === 'string') task.title = input.title
     if (typeof input.status === 'string') task.status = input.status
     if (typeof input.owner === 'string') task.owner = input.owner
@@ -236,6 +240,97 @@ function mergeDelta(base: TeamStateDelta, incoming: TeamStateDelta): TeamStateDe
     return merged
 }
 
+/**
+ * 从 system message 中提取 team 相关增量（task_started/task_progress）。
+ * 仅当 session 有活跃 teamState 时才产生 delta。
+ */
+export function extractTeamSystemDeltasFromMessageContent(
+    messageContent: unknown,
+    existingTeamState: TeamState | null | undefined,
+): TeamStateDelta | null {
+    if (!existingTeamState) return null
+
+    const record = unwrapRoleWrappedRecordEnvelope(messageContent)
+    if (!record) return null
+    if (record.role !== 'agent') return null
+    if (!isObject(record.content) || record.content.type !== 'output') return null
+
+    const data = isObject(record.content.data) ? record.content.data : null
+    if (!data || data.type !== 'system') return null
+
+    const subtype = typeof data.subtype === 'string' ? data.subtype : null
+
+    // task_started: 关联 task_id 到对应 teammate
+    if (subtype === 'task_started') {
+        const taskType = typeof data.task_type === 'string' ? data.task_type : null
+        if (taskType !== 'in_process_teammate') return null
+
+        const taskId = typeof data.task_id === 'string' ? data.task_id : null
+        if (!taskId) return null
+
+        // SDK 按序调度 teammate，task_started 与最近一个 Agent tool_use 对应，
+        // 因此取第一个 running/active 的 member 是正确的
+        const member = existingTeamState.members?.find(m =>
+            m.status === 'running' || m.status === 'active'
+        )
+        if (!member) return null
+
+        const existingTaskIds = member.taskIds ?? []
+
+        return {
+            _action: 'update',
+            members: [{
+                name: member.name,
+                taskIds: [...existingTaskIds, taskId],
+            }],
+            updatedAt: Date.now()
+        }
+    }
+
+    // task_progress: 更新 teammate 的 lastProgressAt
+    if (subtype === 'task_progress') {
+        const taskId = typeof data.task_id === 'string' ? data.task_id : null
+        if (!taskId) return null
+
+        // 找到拥有此 taskId 的 member
+        const member = existingTeamState.members?.find(m =>
+            m.taskIds?.includes(taskId)
+        )
+        if (!member) return null
+
+        return {
+            _action: 'update',
+            members: [{
+                name: member.name,
+                lastProgressAt: Date.now(),
+            }],
+            updatedAt: Date.now()
+        }
+    }
+
+    return null
+}
+
+/**
+ * Session 结束时，标记所有 members 为 completed，所有 tasks 为 completed。
+ */
+export function handleTeamSessionEnd(existingTeamState: TeamState | null | undefined): TeamState | null {
+    if (!existingTeamState) return null
+
+    return {
+        ...existingTeamState,
+        members: existingTeamState.members?.map(m => ({
+            ...m,
+            status: 'completed' as const,
+        })),
+        tasks: existingTeamState.tasks?.map(t => ({
+            ...t,
+            status: 'completed' as const,
+        })),
+        updatedAt: Date.now(),
+    }
+}
+
 export function applyTeamStateDelta(
     existing: TeamState | null | undefined,
     delta: TeamStateDelta
@@ -289,11 +384,13 @@ export function applyTeamStateDelta(
         updated.updatedAt = delta.updatedAt
     }
 
-    // 自动清理：所有 members 都 idle/shutdown + 所有 tasks 都 completed → 删除 teamState
+    // 自动清理：所有 members 都不在运行 + 所有 tasks 都已完成
     const allMembersDone = !updated.members || updated.members.length === 0 ||
-        updated.members.every(m => m.status === 'idle' || m.status === 'shutdown')
+        updated.members.every(m =>
+            m.status === 'idle' || m.status === 'shutdown' || m.status === 'completed'
+        )
     const allTasksDone = !updated.tasks || updated.tasks.length === 0 ||
-        updated.tasks.every(t => t.status === 'completed')
+        updated.tasks.every(t => t.status === 'completed' || t.status === 'deleted')
     if (allMembersDone && allTasksDone) return null
 
     return updated

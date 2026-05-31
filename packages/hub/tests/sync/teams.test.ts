@@ -17,7 +17,9 @@
 import { describe, test, expect } from 'bun:test'
 import {
     extractTeamStateFromMessageContent,
+    extractTeamSystemDeltasFromMessageContent,
     applyTeamStateDelta,
+    handleTeamSessionEnd,
 } from '../../src/sync/teams'
 import type { TeamState } from '@mobi/shared/types'
 
@@ -271,5 +273,119 @@ describe('extractTeamStateFromMessageContent 兼容性', () => {
         )
         expect(delta).not.toBeNull()
         expect(delta!._action).toBe('create')
+    })
+})
+
+// ============ Agent tool_use 提取完整 member 信息 ============
+
+describe('Agent tool_use 提取完整 member 信息', () => {
+    test('提取 prompt 和 startedAt 字段', () => {
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', {
+                team_name: 'test-team',
+                name: 'analyzer',
+                subagent_type: 'general-purpose',
+                prompt: '分析项目结构',
+                description: '项目分析',
+            })
+        )
+        expect(delta).not.toBeNull()
+        expect(delta!.members![0].prompt).toBe('分析项目结构')
+        expect(delta!.members![0].status).toBe('running')
+        expect(delta!.members![0].startedAt).toBeTypeOf('number')
+    })
+})
+
+// ============ extractTeamSystemDeltasFromMessageContent 测试 ============
+
+/** 构造 system message（task_started/task_progress） */
+function makeSystemMessage(subtype: string, extra: Record<string, unknown>) {
+    return {
+        role: 'agent',
+        content: {
+            type: 'output',
+            data: { type: 'system', subtype, ...extra },
+        },
+    }
+}
+
+describe('extractTeamSystemDeltasFromMessageContent', () => {
+    test('无 teamState 时返回 null', () => {
+        const result = extractTeamSystemDeltasFromMessageContent(
+            makeSystemMessage('task_started', { task_id: 't1', task_type: 'in_process_teammate' }),
+            null,
+        )
+        expect(result).toBeNull()
+    })
+
+    test('task_started (in_process_teammate) 关联 taskId 到 running member', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'running' }],
+        })
+        const result = extractTeamSystemDeltasFromMessageContent(
+            makeSystemMessage('task_started', {
+                task_id: 't1',
+                task_type: 'in_process_teammate',
+                description: 'analyzer: 分析中',
+            }),
+            state,
+        )
+        expect(result).not.toBeNull()
+        expect(result!.members).toHaveLength(1)
+        expect(result!.members![0].taskIds).toContain('t1')
+    })
+
+    test('task_progress 更新 member 的 lastProgressAt', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'running', taskIds: ['t1'] }],
+        })
+        const result = extractTeamSystemDeltasFromMessageContent(
+            makeSystemMessage('task_progress', {
+                task_id: 't1',
+                usage: { input_tokens: 100 },
+                summary: '分析中',
+            }),
+            state,
+        )
+        expect(result).not.toBeNull()
+        expect(result!.members![0].lastProgressAt).toBeTypeOf('number')
+    })
+
+    test('非 in_process_teammate 的 task_started 被忽略', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'running' }],
+        })
+        const result = extractTeamSystemDeltasFromMessageContent(
+            makeSystemMessage('task_started', {
+                task_id: 't1',
+                task_type: 'other_type',
+            }),
+            state,
+        )
+        expect(result).toBeNull()
+    })
+})
+
+// ============ handleTeamSessionEnd 测试 ============
+
+describe('handleTeamSessionEnd', () => {
+    test('标记所有 members 为 completed', () => {
+        const state = makeTeamState({
+            members: [
+                { name: 'analyzer', status: 'running' as const },
+                { name: 'optimizer', status: 'idle' as const },
+            ],
+            tasks: [
+                { id: 't1', title: '分析', status: 'in_progress' as const },
+            ],
+        })
+        const result = handleTeamSessionEnd(state)
+        expect(result).not.toBeNull()
+        expect(result!.members!.every(m => m.status === 'completed')).toBe(true)
+        expect(result!.tasks!.every(t => t.status === 'completed')).toBe(true)
+    })
+
+    test('null 时返回 null', () => {
+        expect(handleTeamSessionEnd(null)).toBeNull()
     })
 })
