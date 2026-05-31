@@ -85,6 +85,9 @@ function resolveTarget(target?: string): string {
 
     const variantPart = parts[3];
     if (!variantPart) {
+        if (platformPart === 'linux' && archPart === 'x64') {
+            return `bun-${platformPart}-${archPart}-baseline`;
+        }
         return `bun-${platformPart}-${archPart}`;
     }
 

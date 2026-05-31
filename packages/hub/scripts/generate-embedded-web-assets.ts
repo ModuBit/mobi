@@ -100,8 +100,11 @@ function main(): void {
         const importName = `asset${index}`;
         const mimeType = resolveMimeType(filePath);
 
-        imports.push(`import ${importName} from '${importPath}' assert { type: 'file' };`);
-        manifestLines.push(`    { path: '${requestPath}', sourcePath: ${importName}, mimeType: '${mimeType}' },`);
+        const safeImportPath = importPath.replace(/'/g, "\\'");
+        const safeRequestPath = requestPath.replace(/'/g, "\\'");
+        const safeMimeType = mimeType.replace(/'/g, "\\'");
+        imports.push(`import ${importName} from '${safeImportPath}' assert { type: 'file' };`);
+        manifestLines.push(`    { path: '${safeRequestPath}', sourcePath: ${importName}, mimeType: '${safeMimeType}' },`);
     });
 
     const output = [

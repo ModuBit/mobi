@@ -173,9 +173,7 @@ async function preparePlatform(
     const destBin = join(binDir, platform.binName);
 
     if (!existsSync(srcBin)) {
-        console.warn(`Warning: Binary not found: ${srcBin}`);
-        console.warn(`  Run 'bun run build:exe --all --with-web-assets' first to build binaries.`);
-        return;
+        throw new Error(`Binary not found: ${srcBin}. Run 'bun run build:exe --all --with-web-assets' first.`);
     }
 
     copyFileSync(srcBin, destBin);
@@ -193,7 +191,7 @@ function updateMainPackageOptionalDeps(version: string): void {
 
     pkg.optionalDependencies = buildOptionalDependencies(version);
 
-    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
     console.log(`Updated optionalDependencies in package.json to version ${version}`);
 }
 
