@@ -19,6 +19,12 @@
         "postinstall": "bun run scripts/unpack-tools.ts",
         "tools:unpack": "bun run scripts/unpack-tools.ts"
     },
+    "imports": {
+        "#embedded-assets": {
+            "bun": "./src/runtime/embeddedAssets.bun.ts",
+            "default": "./src/runtime/embeddedAssets.stub.ts"
+        }
+    },
     "bugs": "https://github.com/modu/mobi/issues",
     "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.3.144",
@@ -34,6 +40,7 @@
         "ink": "^7.0.3",
         "ps-list": "^9.0.0",
         "react": "^19.2.6",
+        "react-devtools-core": "file:./stubs/react-devtools-core",
         "socket.io-client": "^4.8.3",
         "tar": "^7.5.15",
         "yaml": "^2.9.0",
