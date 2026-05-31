@@ -53,13 +53,41 @@ export function backfillRuntimeStateFromMessages(
         }
     }
 
-    // 提取 tasks（通过重放所有消息的 tool_use + tool_result 配对）
+    // 交错提取 tasks 和 teamState，以便在创建 task 时打上 team 标签
     const pendingMap = new PendingTaskMap()
     let tasks: TaskItem[] | undefined
+    let teamState = existingRuntimeState?.teamState ?? null
+
     for (const message of messages) {
+        // 先处理 teamState（确认当前是否在 team 上下文中）
+        const teamDelta = extractTeamStateFromMessageContent(message.content)
+        if (teamDelta) {
+            const beforeTeamName = teamState ? (teamState as { teamName: string }).teamName : null
+            teamState = applyTeamStateDelta(teamState, teamDelta)
+            // TeamDelete 时，完成该 team 创建的 tasks
+            if (teamDelta._action === 'delete' && beforeTeamName && tasks) {
+                tasks = tasks.map(t =>
+                    t.metadata?._teamName === beforeTeamName
+                        && t.status !== 'completed' && t.status !== 'deleted'
+                        ? { ...t, status: 'completed' as const }
+                        : t
+                )
+            }
+        }
+
+        // 再处理 tasks（在已知 team 上下文的情况下）
         const deltas = extractTaskDeltasFromMessageContent(message.content, pendingMap)
         for (const delta of deltas) {
             tasks = applyTaskDelta(tasks, delta)
+            // 为新建的 task 打上当前 team 标签
+            if (delta.type === 'create' && teamState) {
+                const currentTeamName = (teamState as { teamName: string }).teamName
+                tasks = tasks!.map(t =>
+                    t.id === delta.task.id
+                        ? { ...t, metadata: { ...t.metadata, _teamName: currentTeamName } }
+                        : t
+                )
+            }
         }
     }
     // 全部完成的 tasks 自动清除
@@ -70,14 +98,6 @@ export function backfillRuntimeStateFromMessages(
         runtimeState.tasks = tasks
     }
 
-    // 提取 teamState（从消息中增量构建）
-    let teamState = existingRuntimeState?.teamState ?? null
-    for (const message of messages) {
-        const delta = extractTeamStateFromMessageContent(message.content)
-        if (delta) {
-            teamState = applyTeamStateDelta(teamState, delta)
-        }
-    }
     if (teamState) {
         runtimeState.teamState = teamState
     }
@@ -347,12 +367,23 @@ export class SessionCache {
         // Session 结束时标记 team members/tasks 为 completed
         const runtimeState = session.runtimeState as Record<string, unknown> | undefined
         if (runtimeState?.teamState) {
+            const teamName = (runtimeState.teamState as { teamName: string }).teamName
             const endedTeamState = handleTeamSessionEnd(runtimeState.teamState as Parameters<typeof handleTeamSessionEnd>[0])
             if (endedTeamState) {
                 runtimeState.teamState = endedTeamState
-                // 持久化更新后的 teamState
-                this.store.sessions.setRuntimeState(session.id, runtimeState, Date.now(), session.namespace)
             }
+            // 完成该 team 创建的 runtime_state.tasks
+            const tasks = runtimeState.tasks as Array<Record<string, unknown>> | undefined
+            if (tasks) {
+                runtimeState.tasks = tasks.map(t =>
+                    (t.metadata as Record<string, unknown>)?._teamName === teamName
+                        && t.status !== 'completed' && t.status !== 'deleted'
+                        ? { ...t, status: 'completed' }
+                        : t
+                )
+            }
+            // 持久化更新
+            this.store.sessions.setRuntimeState(session.id, runtimeState, Date.now(), session.namespace)
         }
 
         // 广播包含更新后的 teamState

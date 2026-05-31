@@ -188,10 +188,40 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 existingRuntimeState.tasks = applyTaskDelta(existingRuntimeState.tasks, taskDelta)
             }
 
+            // 如果有活跃 team，为新建的 task 打上 team 标签
+            if (existingRuntimeState.teamState && existingRuntimeState.tasks) {
+                const currentTeamName = (existingRuntimeState.teamState as { teamName: string }).teamName
+                const createdIds = new Set(
+                    taskDeltas.filter((d): d is Extract<typeof d, { type: 'create' }> => d.type === 'create').map(d => d.task.id)
+                )
+                if (createdIds.size > 0) {
+                    existingRuntimeState.tasks = existingRuntimeState.tasks.map(t =>
+                        createdIds.has(t.id)
+                            ? { ...t, metadata: { ...t.metadata, _teamName: currentTeamName } }
+                            : t
+                    )
+                }
+            }
+
             // 合并 teamState
             if (teamDelta) {
                 const existingTeamState = existingRuntimeState.teamState ?? null
+
+                // TeamDelete 时先记录 teamName，再应用 delta
+                const deletedTeamName = teamDelta._action === 'delete' && existingTeamState
+                    ? (existingTeamState as { teamName: string }).teamName : null
+
                 existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamDelta) ?? undefined
+
+                // TeamDelete 时，完成该 team 创建的 tasks
+                if (deletedTeamName && existingRuntimeState.tasks) {
+                    existingRuntimeState.tasks = existingRuntimeState.tasks.map(t =>
+                        t.metadata?._teamName === deletedTeamName
+                            && t.status !== 'completed' && t.status !== 'deleted'
+                            ? { ...t, status: 'completed' as const }
+                            : t
+                    )
+                }
             }
 
             // 合并 team system delta（task_started/task_progress）
