@@ -20,9 +20,11 @@ import { RailNav } from './RailNav'
 import { MobileMenuDrawer } from './MobileMenu'
 import { SessionListDrawer } from './SessionListDrawer'
 import { Outlet } from '@tanstack/react-router'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Helmet } from 'react-helmet-async'
+import { UpdatePrompt } from './UpdatePrompt'
+import { registerServiceWorker } from '@/core/pwa/registerSW'
 
 /**
  * 主布局组件
@@ -35,10 +37,21 @@ export function MainLayout() {
     // 缓存解析后的主题值
     const resolvedTheme = useMemo(() => resolveTheme(theme), [theme])
 
+    // PWA 更新回调
+    const [updateReload, setUpdateReload] = useState<(() => void) | null>(null)
+
     // 应用主题
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', resolvedTheme)
     }, [resolvedTheme])
+
+    // 注册 Service Worker
+    useEffect(() => {
+        const unregister = registerServiceWorker((reload) => {
+            setUpdateReload(() => reload)
+        })
+        return unregister
+    }, [])
 
     return (
         <ConfigProvider
@@ -49,6 +62,7 @@ export function MainLayout() {
             <Helmet>
                 <title>{t('siteTitle')}</title>
             </Helmet>
+            <UpdatePrompt onUpdate={updateReload} />
             <Layout style={{ height: '100vh', overflow: 'hidden', flexDirection: 'row' }}>
                 <RailNav />
                 <Layout.Content style={{ flex: 1, display: 'flex', overflow: 'hidden', minWidth: 0 }}>

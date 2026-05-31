@@ -22,6 +22,7 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mainNavItems, bottomNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
+import { InstallButton } from './InstallButton'
 import { User, Sun, Moon } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
@@ -152,6 +153,9 @@ export function RailNav() {
             ))}
 
             <Spacer />
+
+            {/* PWA 安装按钮 */}
+            <InstallButton />
 
             {/* 底部导航 */}
             {bottomNavItems.map((item) => (
