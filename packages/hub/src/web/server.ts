@@ -34,6 +34,7 @@ import { createMachinesRoutes } from './routes/machines'
 import { createGitRoutes } from './routes/git'
 import { createCliRoutes } from './routes/cli'
 import { createPushRoutes } from './routes/push'
+import { createManifestRoutes } from './routes/manifest'
 import type { SSEManager } from '../sse/sseManager'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
 import type { Server as BunServer } from 'bun'
@@ -108,6 +109,9 @@ export function createWebApp(options: {
     app.route('/api', createMachinesRoutes(options.getSyncEngine))
     app.route('/api', createGitRoutes(options.getSyncEngine))
     app.route('/api', createPushRoutes(options.store, options.vapidPublicKey))
+
+    // PWA Manifest（不需要认证）
+    app.route('/', createManifestRoutes())
 
     if (options.embeddedAssetMap) {
         const embeddedAssetMap = options.embeddedAssetMap
