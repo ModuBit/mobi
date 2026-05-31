@@ -53,19 +53,12 @@ export function AgentCard({ agent, onClick }: {
 
     const prevSummaryRef = useRef(agent.summary)
     const [displaySummary, setDisplaySummary] = useState(agent.summary)
-    const [fading, setFading] = useState(false)
 
     useEffect(() => {
         if (agent.summary !== prevSummaryRef.current) {
-            setFading(true)
-            const timer = setTimeout(() => {
-                setDisplaySummary(agent.summary)
-                setFading(false)
-            }, 150)
+            setDisplaySummary(agent.summary)
             prevSummaryRef.current = agent.summary
-            return () => clearTimeout(timer)
         }
-        return undefined
     }, [agent.summary])
 
     return (
@@ -120,8 +113,6 @@ export function AgentCard({ agent, onClick }: {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     lineHeight: '1.3',
-                    opacity: fading ? 0 : 1,
-                    transition: 'opacity 0.15s',
                 }}>
                     {displaySummary
                         ? `${formatDuration(tool.agentMetrics?.durationMs ?? 0)} · ${displaySummary}`

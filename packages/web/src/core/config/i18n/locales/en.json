@@ -184,6 +184,7 @@
       "todos": "Clear stale todos?",
       "tasks": "Clear stale tasks?",
       "backgroundTasks": "Clear stale background tasks?",
+      "teamState": "Clear team state?",
       "confirm": "Clear",
       "cancel": "Cancel"
     }

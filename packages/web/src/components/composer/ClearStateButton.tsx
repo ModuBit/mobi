@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback } from 'react'
-import { Popconfirm, Drawer, Button, theme } from 'antd'
+import { Popconfirm, Drawer, Button, Tooltip, theme } from 'antd'
 import { BrushCleaning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -112,15 +112,17 @@ export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateB
     }
 
     return (
-        <Popconfirm
-            title={confirmText}
-            onConfirm={doClear}
-            okText={t('chat.clearState.confirm')}
-            cancelText={t('chat.clearState.cancel')}
-            okButtonProps={{ danger: true, loading }}
-            onCancel={(e) => e?.stopPropagation()}
-        >
-            {trigger}
-        </Popconfirm>
+        <Tooltip title={t('chat.clearState.label')} mouseEnterDelay={0.5}>
+            <Popconfirm
+                title={confirmText}
+                onConfirm={doClear}
+                okText={t('chat.clearState.confirm')}
+                cancelText={t('chat.clearState.cancel')}
+                okButtonProps={{ danger: true, loading }}
+                onCancel={(e) => e?.stopPropagation()}
+            >
+                {trigger}
+            </Popconfirm>
+        </Tooltip>
     )
 }

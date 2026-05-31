@@ -153,30 +153,32 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
             <CircleStop size={14} style={{ color: token.colorTextQuaternary }} />
         </div>
     ) : (
-        <Popconfirm
-            title={t('chat.backgroundTask.stopConfirm')}
-            onConfirm={doStop}
-            okText={t('chat.backgroundTask.stop')}
-            cancelText={t('chat.clearState.cancel')}
-            okButtonProps={{ danger: true, loading: stopping }}
-            onCancel={(e) => e?.stopPropagation()}
-        >
-            <div
-                onMouseEnter={() => setStopHovered(true)}
-                onMouseLeave={() => setStopHovered(false)}
-                style={{
-                    flexShrink: 0, width: 22, height: 22,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: 4, cursor: 'pointer', transition: 'background 0.2s',
-                    background: stopHovered ? token.colorErrorBg : 'transparent',
-                }}
+        <Tooltip title={t('chat.backgroundTask.stop')} mouseEnterDelay={0.5}>
+            <Popconfirm
+                title={t('chat.backgroundTask.stopConfirm')}
+                onConfirm={doStop}
+                okText={t('chat.backgroundTask.stop')}
+                cancelText={t('chat.clearState.cancel')}
+                okButtonProps={{ danger: true, loading: stopping }}
+                onCancel={(e) => e?.stopPropagation()}
             >
-                <CircleStop size={14} style={{
-                    color: stopHovered ? token.colorError : token.colorTextQuaternary,
-                    transition: 'color 0.2s',
-                }} />
-            </div>
-        </Popconfirm>
+                <div
+                    onMouseEnter={() => setStopHovered(true)}
+                    onMouseLeave={() => setStopHovered(false)}
+                    style={{
+                        flexShrink: 0, width: 22, height: 22,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: 4, cursor: 'pointer', transition: 'background 0.2s',
+                        background: stopHovered ? token.colorErrorBg : 'transparent',
+                    }}
+                >
+                    <CircleStop size={14} style={{
+                        color: stopHovered ? token.colorError : token.colorTextQuaternary,
+                        transition: 'color 0.2s',
+                    }} />
+                </div>
+            </Popconfirm>
+        </Tooltip>
     )
 
     return (

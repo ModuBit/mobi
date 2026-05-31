@@ -184,6 +184,7 @@
       "todos": "清理待办列表？",
       "tasks": "清理任务列表？",
       "backgroundTasks": "清理后台任务？",
+      "teamState": "清理团队状态？",
       "confirm": "确认清理",
       "cancel": "取消"
     }
