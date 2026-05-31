@@ -39,28 +39,6 @@ function makeAssistantToolUse(toolUseId: string, name: string, input: Record<str
     }
 }
 
-/** 构造 hook_started 事件消息 */
-function makeHookStartedMessage(
-    hookEventName: string,
-    input: Record<string, unknown>,
-    sessionId = 'session-001',
-    cwd = '/test/project',
-) {
-    return {
-        role: 'agent',
-        content: {
-            type: 'output',
-            data: {
-                type: 'hook_started',
-                hook_event_name: hookEventName,
-                input,
-                session_id: sessionId,
-                cwd,
-            }
-        }
-    }
-}
-
 /** 构造一个初始 TeamState */
 function makeTeamState(overrides?: Partial<TeamState>): TeamState {
     return {
@@ -73,135 +51,22 @@ function makeTeamState(overrides?: Partial<TeamState>): TeamState {
     }
 }
 
-// ============ processTeammateIdle 测试 ============
+// ============ Agent tool name 匹配测试 ============
 
-describe('processTeammateIdle', () => {
-    test('TeammateIdle hook 事件将 member 状态更新为 idle', () => {
-        // 1. 创建 team
-        const createDelta = extractTeamStateFromMessageContent(
-            makeAssistantToolUse('tu-1', 'TeamCreate', {
+describe('Agent tool name 匹配', () => {
+    test('Agent tool_use 与 Task tool_use 一样触发 processTaskToolWithTeam', () => {
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', {
                 team_name: 'test-team',
-                description: '测试团队',
-            })
-        )
-        expect(createDelta).not.toBeNull()
-        expect(createDelta!._action).toBe('create')
-        let state = applyTeamStateDelta(null, createDelta!)
-        expect(state).not.toBeNull()
-        expect(state!.teamName).toBe('test-team')
-
-        // 2. 添加 member(active) 通过 Task 工具
-        const taskDelta = extractTeamStateFromMessageContent(
-            makeAssistantToolUse('tu-2', 'Task', {
-                team_name: 'test-team',
-                name: 'researcher',
+                name: 'analyzer',
                 subagent_type: 'general-purpose',
-                description: '研究任务',
+                description: '分析任务',
             })
         )
-        expect(taskDelta).not.toBeNull()
-        state = applyTeamStateDelta(state, taskDelta!)
-        expect(state!.members).toHaveLength(1)
-        expect(state!.members![0].name).toBe('researcher')
-        expect(state!.members![0].status).toBe('active')
-
-        // 3. TeammateIdle hook 事件
-        const idleDelta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TeammateIdle', {
-                teammate_name: 'researcher',
-            })
-        )
-        expect(idleDelta).not.toBeNull()
-        expect(idleDelta!._action).toBe('update')
-        expect(idleDelta!.members).toHaveLength(1)
-        expect(idleDelta!.members![0].name).toBe('researcher')
-        expect(idleDelta!.members![0].status).toBe('idle')
-
-        state = applyTeamStateDelta(state, idleDelta!)
-        expect(state!.members![0].status).toBe('idle')
-    })
-
-    test('TeammateIdle 缺少 teammate_name 时返回 null', () => {
-        const delta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TeammateIdle', {})
-        )
-        expect(delta).toBeNull()
-    })
-
-    test('TeammateIdle teammate_name 非字符串时返回 null', () => {
-        const delta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TeammateIdle', {
-                teammate_name: 123,
-            })
-        )
-        expect(delta).toBeNull()
-    })
-})
-
-// ============ processTaskCompleted 测试 ============
-
-describe('processTaskCompleted', () => {
-    test('TaskCompleted hook 事件将 task 状态更新为 completed', () => {
-        // 1. 创建 team
-        const createDelta = extractTeamStateFromMessageContent(
-            makeAssistantToolUse('tu-1', 'TeamCreate', {
-                team_name: 'test-team',
-                description: '测试团队',
-            })
-        )
-        let state = applyTeamStateDelta(null, createDelta!)
-
-        // 2. 添加 member + task
-        const memberDelta = extractTeamStateFromMessageContent(
-            makeAssistantToolUse('tu-2', 'Task', {
-                team_name: 'test-team',
-                name: 'researcher',
-                subagent_type: 'general-purpose',
-                description: '研究任务',
-            })
-        )
-        state = applyTeamStateDelta(state, memberDelta!)
-        expect(state!.members).toHaveLength(1)
-        expect(state!.tasks).toHaveLength(1)
-        expect(state!.tasks![0].status).toBe('in_progress')
-
-        // 3. TaskCompleted hook 事件
-        const completedDelta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TaskCompleted', {
-                task_id: state!.tasks![0].id,
-                task_subject: '研究任务',
-                teammate_name: 'researcher',
-                team_name: 'test-team',
-            })
-        )
-        expect(completedDelta).not.toBeNull()
-        expect(completedDelta!._action).toBe('update')
-        expect(completedDelta!.tasks).toHaveLength(1)
-        expect(completedDelta!.tasks![0].status).toBe('completed')
-
-        state = applyTeamStateDelta(state, completedDelta!)
-        expect(state!.tasks![0].status).toBe('completed')
-        expect(state!.tasks![0].owner).toBe('researcher')
-    })
-
-    test('TaskCompleted 缺少 task_id 时返回 null', () => {
-        const delta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TaskCompleted', {
-                task_subject: '某个任务',
-                team_name: 'test-team',
-            })
-        )
-        expect(delta).toBeNull()
-    })
-
-    test('TaskCompleted 无 team_name 时返回 null（非 team 事件）', () => {
-        const delta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TaskCompleted', {
-                task_id: 'task-001',
-                task_subject: '某个任务',
-            })
-        )
-        expect(delta).toBeNull()
+        expect(delta).not.toBeNull()
+        expect(delta!._action).toBe('update')
+        expect(delta!.members).toHaveLength(1)
+        expect(delta!.members![0].name).toBe('analyzer')
     })
 })
 
@@ -232,28 +97,30 @@ describe('applyTeamStateDelta 自动清理', () => {
         expect(state!.members).toHaveLength(1)
         expect(state!.tasks).toHaveLength(1)
 
-        // 3. TeammateIdle → member idle
-        const idleDelta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TeammateIdle', {
-                teammate_name: 'researcher',
-            })
-        )
-        state = applyTeamStateDelta(state, idleDelta!)
+        // 3. TeammateIdle → member idle（直接构造 delta）
+        const idleDelta = {
+            _action: 'update' as const,
+            members: [{ name: 'researcher', status: 'idle' as const }],
+            updatedAt: Date.now(),
+        }
+        state = applyTeamStateDelta(state, idleDelta)
 
         // member idle 但 task 还 in_progress → 不清理
         expect(state).not.toBeNull()
         expect(state!.members![0].status).toBe('idle')
 
-        // 4. TaskCompleted → task completed
-        const completedDelta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TaskCompleted', {
-                task_id: state!.tasks![0].id,
-                task_subject: '研究任务',
-                teammate_name: 'researcher',
-                team_name: 'test-team',
-            })
-        )
-        state = applyTeamStateDelta(state, completedDelta!)
+        // 4. TaskCompleted → task completed（直接构造 delta）
+        const completedDelta = {
+            _action: 'update' as const,
+            tasks: [{
+                id: state!.tasks![0].id,
+                title: '研究任务',
+                status: 'completed' as const,
+                owner: 'researcher',
+            }],
+            updatedAt: Date.now(),
+        }
+        state = applyTeamStateDelta(state, completedDelta)
 
         // 所有 members idle + 所有 tasks completed → 自动清理
         expect(state).toBeNull()
@@ -288,24 +155,26 @@ describe('applyTeamStateDelta 自动清理', () => {
         )
         state = applyTeamStateDelta(state, taskDelta2!)
 
-        // TeammateIdle: researcher
-        const idleDelta1 = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TeammateIdle', {
-                teammate_name: 'researcher',
-            })
-        )
-        state = applyTeamStateDelta(state, idleDelta1!)
+        // TeammateIdle: researcher（直接构造 delta）
+        const idleDelta1 = {
+            _action: 'update' as const,
+            members: [{ name: 'researcher', status: 'idle' as const }],
+            updatedAt: Date.now(),
+        }
+        state = applyTeamStateDelta(state, idleDelta1)
 
-        // TaskCompleted: researcher 的任务
-        const completedDelta1 = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TaskCompleted', {
-                task_id: `agent:researcher`,
-                task_subject: '研究任务',
-                teammate_name: 'researcher',
-                team_name: 'test-team',
-            })
-        )
-        state = applyTeamStateDelta(state, completedDelta1!)
+        // TaskCompleted: researcher 的任务（直接构造 delta）
+        const completedDelta1 = {
+            _action: 'update' as const,
+            tasks: [{
+                id: 'agent:researcher',
+                title: '研究任务',
+                status: 'completed' as const,
+                owner: 'researcher',
+            }],
+            updatedAt: Date.now(),
+        }
+        state = applyTeamStateDelta(state, completedDelta1)
 
         // member1 idle + task1 completed，但 coder 仍 active → 不清理
         expect(state).not.toBeNull()
@@ -341,16 +210,18 @@ describe('applyTeamStateDelta 自动清理', () => {
         )
         state = applyTeamStateDelta(state, taskDelta!)
 
-        // TaskCompleted → task completed
-        const completedDelta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TaskCompleted', {
-                task_id: `agent:researcher`,
-                task_subject: '研究任务',
-                teammate_name: 'researcher',
-                team_name: 'test-team',
-            })
-        )
-        state = applyTeamStateDelta(state, completedDelta!)
+        // TaskCompleted → task completed（直接构造 delta）
+        const completedDelta = {
+            _action: 'update' as const,
+            tasks: [{
+                id: 'agent:researcher',
+                title: '研究任务',
+                status: 'completed' as const,
+                owner: 'researcher',
+            }],
+            updatedAt: Date.now(),
+        }
+        state = applyTeamStateDelta(state, completedDelta)
 
         // task completed 但 member 还 active → 不清理
         expect(state).not.toBeNull()
@@ -365,49 +236,6 @@ describe('applyTeamStateDelta 自动清理', () => {
 
         // 所有 members shutdown + 所有 tasks completed → 自动清理
         expect(state).toBeNull()
-    })
-})
-
-// ============ 非 team hook 事件被忽略测试 ============
-
-describe('非 team hook 事件被忽略', () => {
-    test('其他 hook_event_name 不生成 delta', () => {
-        const delta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('SomeOtherEvent', {
-                foo: 'bar',
-            })
-        )
-        expect(delta).toBeNull()
-    })
-
-    test('hook_started 但 data.type 不匹配时被忽略', () => {
-        // 非 hook_started 的 data.type
-        const msg = {
-            role: 'agent',
-            content: {
-                type: 'output',
-                data: {
-                    type: 'other_type',
-                    hook_event_name: 'TeammateIdle',
-                    input: { teammate_name: 'researcher' },
-                }
-            }
-        }
-        const delta = extractTeamStateFromMessageContent(msg)
-        // 不会命中 hook_started 处理，会走 extractToolBlocks 返回 null
-        expect(delta).toBeNull()
-    })
-
-    test('TaskCompleted 无 team_name 被忽略', () => {
-        const delta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TaskCompleted', {
-                task_id: 'task-001',
-                task_subject: '某个任务',
-                teammate_name: 'researcher',
-                // 无 team_name
-            })
-        )
-        expect(delta).toBeNull()
     })
 })
 
@@ -431,7 +259,7 @@ describe('TeamDelete 仍然能清除 teamState', () => {
     })
 })
 
-// ============ extractToolBlocks 与 hook_started 共存测试 ============
+// ============ extractTeamStateFromMessageContent 兼容性测试 ============
 
 describe('extractTeamStateFromMessageContent 兼容性', () => {
     test('标准 tool_use 消息仍正常工作', () => {
@@ -443,32 +271,5 @@ describe('extractTeamStateFromMessageContent 兼容性', () => {
         )
         expect(delta).not.toBeNull()
         expect(delta!._action).toBe('create')
-    })
-
-    test('hook_started 消息不干扰 tool_use 消息', () => {
-        // hook_started 消息走不同路径，不影响 extractToolBlocks 逻辑
-        const hookDelta = extractTeamStateFromMessageContent(
-            makeHookStartedMessage('TeammateIdle', {
-                teammate_name: 'researcher',
-            })
-        )
-        expect(hookDelta).not.toBeNull()
-        expect(hookDelta!._action).toBe('update')
-    })
-
-    test('非 agent 角色的 hook_started 消息被忽略', () => {
-        const msg = {
-            role: 'user',
-            content: {
-                type: 'output',
-                data: {
-                    type: 'hook_started',
-                    hook_event_name: 'TeammateIdle',
-                    input: { teammate_name: 'researcher' },
-                }
-            }
-        }
-        const delta = extractTeamStateFromMessageContent(msg)
-        expect(delta).toBeNull()
     })
 })
