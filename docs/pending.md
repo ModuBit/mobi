@@ -472,3 +472,65 @@
 **触发条件**：
 - 实际使用中出现明显滚动卡顿时再实施
 - 代码中标记 FIXME 提醒
+
+---
+
+## 24. Team Agent UI 支持 — Hook 状态追踪方案待实现
+
+**相关文件**：
+- `packages/hub/src/sync/teams.ts` — Hook 事件处理代码（已实现，待激活）
+- `packages/hub/tests/sync/teams.test.ts` — Hook 处理测试（已通过）
+- `packages/cli/src/claude/claudeRemote.ts` — SDK `hooks` option 配置点
+- `packages/web/src/core/data/stores/teamAgentsStore.ts` — 待创建
+- `packages/web/src/components/composer/TeamAgentPanel.tsx` — 待创建
+- `packages/web/src/components/composer/TeamAgentCard.tsx` — 待创建
+
+**设计文档**：`docs/superpowers/specs/2026-05-31-team-agent-support-design.md`（本地，gitignored）
+**实施计划**：`docs/superpowers/plans/2026-05-31-team-agent-ui-support.md`（本地，gitignored）
+
+**现状**：
+- Hub 已实现 team state 提取（TeamCreate/Agent(team_name)/TaskUpdate/SendMessage），Task 1（hook 事件处理 + 测试）已完成并提交
+- Web UI 组件（store + panel + card + 集成）尚未实现
+- Team agent 的 **idle/completed 状态追踪**依赖 hook 事件输入数据
+
+**核心问题 — SDK Hook 输入数据获取**：
+
+| 方案 | 可行性 | 说明 |
+|------|--------|------|
+| `includeHookEvents: true` | ❌ 不可行 | `SDKHookStartedMessage` 只有事件名（`hook_event`），不含输入数据（`teammate_name`、`team_name` 等） |
+| SDK `hooks` option JS 回调 | ✅ 可行 | 回调直接收到完整 `HookInput`（`TeammateIdleHookInput`/`TaskCompletedHookInput`），类型安全 |
+| HTTP Hook Server 扩展 | ⚠️ 可行但重 | 需 shell 进程 + HTTP 中转，比 JS 回调重得多 |
+
+**SDK `hooks` option 实现方式**：
+```typescript
+// claudeRemote.ts sdkOptions.hooks
+hooks: {
+  TeammateIdle: [{
+    hooks: [async (input) => {
+      // input: { hook_event_name: "TeammateIdle", teammate_name, team_name, session_id, ... }
+      // 转发到 Hub
+      return { continue: true }
+    }]
+  }],
+  TaskCompleted: [{
+    hooks: [async (input) => {
+      // input: { hook_event_name: "TaskCompleted", task_id, task_subject, teammate_name?, team_name?, ... }
+      // 转发到 Hub
+      return { continue: true }
+    }]
+  }]
+}
+```
+
+**暂停原因**：hooks 回调方案实现复杂度高（回调闭包 onMessage、IPC 双向通信、最小化阻塞等）
+
+**无 hook 时的降级行为**：
+- Member 生命周期：active → shutdown（无 idle）
+- Task 生命周期：in_progress → completed（通过 TaskUpdate）
+- 自动清理仅在 TeamDelete 时触发
+
+**待完成（按实施计划顺序）**：
+1. ~~Task 1: Hub teams.ts hook 处理~~ ✅ 已完成
+2. Task 2: CLI 开启 hooks 回调并转发 team 相关事件
+3. Task 3-8: Web 端 store + UI 组件 + 集成
+4. Task 9: 集成验证

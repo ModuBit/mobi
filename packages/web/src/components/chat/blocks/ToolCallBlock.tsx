@@ -24,7 +24,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
-import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool, isBackgroundTool } from '@/components/tool-card/knownTools'
+import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool, isBackgroundTool, isTeamAgentTool } from '@/components/tool-card/knownTools'
 import { isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
@@ -180,6 +180,32 @@ function ToolCallPreviewContent({
                 }}>
                     {summary ?? t('chat.backgroundTask.running', 'Running...')}
                 </div>
+            </div>
+        )
+    }
+
+    // Team agent: 展示 agent name + team name + description
+    if (isTeamAgentTool(tool.name, tool.input)) {
+        const input = isObject(tool.input) ? tool.input : {}
+        const agentName = typeof input.name === 'string' ? input.name : 'Agent'
+        const teamName = typeof input.team_name === 'string' ? input.team_name : ''
+        const description = typeof input.description === 'string' ? input.description : null
+
+        return (
+            <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: token.colorText }}>
+                    {agentName}
+                    {teamName && (
+                        <span style={{ fontSize: 11, fontWeight: 400, color: token.colorTextSecondary }}>
+                            {' '}@ {teamName}
+                        </span>
+                    )}
+                </div>
+                {description && (
+                    <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 2 }}>
+                        {description}
+                    </div>
+                )}
             </div>
         )
     }

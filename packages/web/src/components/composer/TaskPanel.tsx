@@ -54,7 +54,7 @@ const StyledCheckbox = styled(Checkbox)<{ $status: TaskItem['status'] }>`
 export type TaskPanelProps = {
     tasks: TaskItem[] | undefined
     sessionId: string
-    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks')[]) => Promise<void>
+    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) => Promise<void>
 }
 
 export function TaskPanel({ tasks, sessionId, onClear }: TaskPanelProps) {

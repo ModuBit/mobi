@@ -40,6 +40,8 @@ import { TodoPanel } from './TodoPanel'
 import { TaskPanel } from './TaskPanel'
 import { BackgroundTaskPanel } from './BackgroundTaskPanel'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
+import { TeamAgentPanel } from './TeamAgentPanel'
+import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 import type { ToolCallBlock } from '@/domain/chat/types'
 
 const { Text } = Typography
@@ -195,6 +197,9 @@ export function ComposerInfoPanel({
     const byIdMap = useChatBlocksById(sessionId)
     const bgTasks = useBackgroundTasks(sessionId)
     const hasBgTasks = bgTasks.length > 0
+    const teamAgents = useTeamMembers(sessionId)
+    const teamName = useTeamName(sessionId)
+    const hasTeamAgents = teamAgents.length > 0 && !!teamName
 
     // 从 store 派生最新 block：先查 running agents，再查 byId（覆盖后台 Agent 任务）
     const drawerBlock: ToolCallBlock | null = (() => {
@@ -222,11 +227,11 @@ export function ComposerInfoPanel({
     }, [])
 
     // 清理运行时状态字段的回调
-    const handleClearState = useCallback(async (clearSessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks')[]) => {
+    const handleClearState = useCallback(async (clearSessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) => {
         await api.sessions.clearRuntimeStateFields(clearSessionId, clearFields)
     }, [api])
 
-    if (!hasPendingRequests && !hasTodos && !hasTasks && !hasAgents && !hasBgTasks) return null
+    if (!hasPendingRequests && !hasTodos && !hasTasks && !hasAgents && !hasBgTasks && !hasTeamAgents) return null
 
     return (
         <div style={{ position: 'relative', padding: '8px 0', marginBottom: 4 }}>
@@ -249,6 +254,8 @@ export function ComposerInfoPanel({
                         sessionId={sessionId}
                         onAgentClick={(block) => setDrawerBlockId(block.id)}
                     />
+
+                    <TeamAgentPanel sessionId={sessionId} onClear={handleClearState} />
 
                     {hasBgTasks && (
                         <BackgroundTaskPanel

@@ -40,6 +40,7 @@ import { getAgentStatus } from '@/components/pixel-avatar/types'
 import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
 import { useBackgroundTasksStore } from '@/core/data/stores/backgroundTasksStore'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
+import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
 
 const { useToken } = antTheme
 
@@ -141,6 +142,23 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             useBackgroundTasksStore.getState().clearSession(sessionId)
         }
     }, [bgTasks, sessionId])
+
+    // 同步 teamState 从 session cache 到 Zustand store，供 TeamAgentPanel 订阅
+    const teamState = session?.runtimeState?.teamState
+    useEffect(() => {
+        if (teamState) {
+            useTeamAgentsStore.getState().setTeamState(
+                sessionId,
+                teamState.members ?? [],
+                teamState.teamName ?? null,
+            )
+        } else {
+            useTeamAgentsStore.getState().clearSession(sessionId)
+        }
+        return () => {
+            useTeamAgentsStore.getState().clearSession(sessionId)
+        }
+    }, [teamState, sessionId])
 
     // 后台任务完成时显示 Toast 通知 + 收集完成卡片信息
     const [messageApi, contextHolder] = message.useMessage()

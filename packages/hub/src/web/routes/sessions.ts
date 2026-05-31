@@ -358,13 +358,13 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const body = await c.req.json().catch(() => null)
-        const validFields = ['todos', 'tasks', 'backgroundTasks']
+        const validFields = ['todos', 'tasks', 'backgroundTasks', 'teamState']
         const schema = z.object({
             clearFields: z.array(z.enum(validFields as [string, ...string[]])).min(1),
         })
         const parsed = schema.safeParse(body)
         if (!parsed.success) {
-            return c.json({ error: 'Invalid body: clearFields must be a non-empty array of valid field names (todos, tasks, backgroundTasks)' }, 400)
+            return c.json({ error: 'Invalid body: clearFields must be a non-empty array of valid field names (todos, tasks, backgroundTasks, teamState)' }, 400)
         }
 
         const namespace = c.get('namespace')

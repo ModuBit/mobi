@@ -15,8 +15,8 @@
  */
 
 /**
- * 后台任务面板
- * 在 ComposerInfoPanel 中展示所有后台任务卡片列表（运行中 + 终态）
+ * 团队成员面板
+ * 在 ComposerInfoPanel 中展示所有团队成员卡片列表
  */
 
 import { useRef, useState, useEffect } from 'react'
@@ -24,32 +24,28 @@ import { theme } from 'antd'
 import { Global, css } from '@emotion/react'
 import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { BackgroundTaskCard } from './BackgroundTaskCard'
+import { TeamAgentCard } from './TeamAgentCard'
 import { ClearStateButton } from './ClearStateButton'
-import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
-import type { BackgroundTask } from '@/domain/chat/types'
-import type { MobiApi } from '@/core/data/api/client'
+import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 
-const STATUS_ORDER: Record<BackgroundTask['status'], number> = {
-    running: 0,
-    completed: 1,
-    failed: 2,
-    stopped: 3,
+const STATUS_ORDER: Record<string, number> = {
+    active: 0,
+    idle: 1,
+    shutdown: 2,
 }
 
 const spinKeyframes = css`
-@keyframes bgtask-panel-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+@keyframes teamagent-panel-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
 `
 
-export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
+export function TeamAgentPanel({ sessionId, onClear }: {
     sessionId: string
-    api: MobiApi
-    onTaskClick: (task: BackgroundTask) => void
     onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) => Promise<void>
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
-    const tasks = useBackgroundTasks(sessionId)
+    const members = useTeamMembers(sessionId)
+    const teamName = useTeamName(sessionId)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const [hasOverflow, setHasOverflow] = useState(false)
@@ -59,9 +55,7 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
     useEffect(() => {
         const el = wrapperRef.current
         if (!el) return
-        const observer = new ResizeObserver(() => {
-            setNarrow(el.clientWidth < 460)
-        })
+        const observer = new ResizeObserver(() => setNarrow(el.clientWidth < 460))
         observer.observe(el)
         return () => observer.disconnect()
     }, [])
@@ -69,54 +63,45 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
     useEffect(() => {
         const el = containerRef.current
         if (!el) return
-        const observer = new ResizeObserver(() => {
-            setHasOverflow(el.scrollHeight > el.clientHeight)
-        })
+        const observer = new ResizeObserver(() => setHasOverflow(el.scrollHeight > el.clientHeight))
         observer.observe(el)
         return () => observer.disconnect()
     }, [])
 
-    if (tasks.length === 0) return null
+    if (members.length === 0 || !teamName) return null
 
-    const sortedTasks = [...tasks].sort(
-        (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status],
+    const sortedMembers = [...members].sort(
+        (a, b) => (STATUS_ORDER[a.status ?? 'active'] ?? 2) - (STATUS_ORDER[b.status ?? 'active'] ?? 2),
     )
 
-    let running = 0
-    for (const t of tasks) {
-        if (t.status === 'running') running++
-    }
-
-    const handleStop = async (e: React.MouseEvent, task: BackgroundTask) => {
-        e.stopPropagation()
-        try {
-            await api.sessions.stopTask(sessionId, task.taskId)
-        } catch { /* 静默忽略 */ }
+    let activeCount = 0
+    for (const m of members) {
+        if (m.status === 'active' || !m.status) activeCount++
     }
 
     return (
         <div ref={wrapperRef}>
             <Global styles={spinKeyframes} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                {running > 0 && (
+                {activeCount > 0 && (
                     <Loader size={12} style={{
                         color: token.colorTextQuaternary,
-                        animation: 'bgtask-panel-spin 1s linear infinite',
+                        animation: 'teamagent-panel-spin 1s linear infinite',
                     }} />
                 )}
                 <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
-                    {t('chat.backgroundTask.panelTitle', 'Background Tasks')}
+                    {t('chat.team.panelTitle', 'Team')}: {teamName}
                 </span>
                 <span style={{
                     fontSize: 10, color: token.colorTextQuaternary,
                     background: token.colorBgTextHover,
                     padding: '0 4px', borderRadius: 4,
                 }}>
-                    {tasks.length}
+                    {members.length}
                 </span>
                 <ClearStateButton
                     sessionId={sessionId}
-                    clearField="backgroundTasks"
+                    clearField="teamState"
                     onClear={onClear}
                 />
             </div>
@@ -126,13 +111,8 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
                     flexDirection: narrow ? 'column' : 'row',
                     '--agent-card-width': narrow ? '100%' : '200px',
                 } as React.CSSProperties}>
-                    {sortedTasks.map(task => (
-                        <BackgroundTaskCard
-                            key={task.taskId}
-                            task={task}
-                            onClick={() => onTaskClick(task)}
-                            onStop={task.status === 'running' ? (e) => handleStop(e, task) : undefined}
-                        />
+                    {sortedMembers.map(member => (
+                        <TeamAgentCard key={member.name} member={member} teamName={teamName} />
                     ))}
                 </div>
                 {hasOverflow && (

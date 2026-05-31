@@ -53,7 +53,7 @@ const StyledCheckbox = styled(Checkbox)<{ $status: TodoItem['status'] }>`
 export type TodoPanelProps = {
     todos: TodoItem[] | undefined
     sessionId: string
-    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks')[]) => Promise<void>
+    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) => Promise<void>
 }
 
 export function TodoPanel({ todos, sessionId, onClear }: TodoPanelProps) {

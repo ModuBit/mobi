@@ -48,6 +48,13 @@ export function isBackgroundAgentTool(name: string, input: unknown): boolean {
     return isAgentTool(name) && isObject(input) && input.run_in_background === true
 }
 
+/** 判断是否为 Team Agent 工具（Agent/Task 带 team_name，非后台） */
+export function isTeamAgentTool(name: string, input: unknown): boolean {
+    if (!isAgentTool(name)) return false
+    if (isBackgroundAgentTool(name, input)) return false
+    return isObject(input) && typeof input.team_name === 'string'
+}
+
 /** 判断是否为后台 Bash 工具（run_in_background=true） */
 export function isBackgroundBashTool(name: string, input: unknown): boolean {
     return isTerminalTool(name) && isObject(input) && input.run_in_background === true
@@ -227,8 +234,25 @@ export const knownTools: Record<string, {
     },
     Agent: {
         icon: () => renderToolIcon('Agent'),
-        title: (opts) => getAgentTitle(opts.input),
-        subtitle: agentSubtitle,
+        title: (opts) => {
+            // team agent: 显示 agent name + team name
+            if (isTeamAgentTool('Agent', opts.input)) {
+                const agentName = getInputStringAny(opts.input, ['name'])
+                const teamName = getInputStringAny(opts.input, ['team_name'])
+                if (agentName && teamName) return `${agentName} (${teamName})`
+                if (agentName) return agentName
+                return 'Team Agent'
+            }
+            return getAgentTitle(opts.input)
+        },
+        subtitle: (opts) => {
+            // team agent: 显示 description
+            if (isTeamAgentTool('Agent', opts.input)) {
+                const description = getInputStringAny(opts.input, ['description'])
+                return description ? truncate(description, 120) : null
+            }
+            return agentSubtitle(opts)
+        },
         minimal: false
     },
     TeamCreate: {
