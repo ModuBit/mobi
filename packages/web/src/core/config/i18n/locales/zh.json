@@ -250,6 +250,12 @@
     "permissionGuide": "通知权限被阻止",
     "permissionGuideDesc": "浏览器已阻止通知权限，请在浏览器设置中手动开启：点击地址栏左侧图标 → 站点设置 → 通知 → 允许",
     "idleTimeoutWarning": "会话即将超时",
-    "idleTimeoutWarningDesc": "会话将在 {{minutes}} 分钟后自动关闭，请发送消息保持活跃"
+    "idleTimeoutWarningDesc": "会话将在 {{minutes}} 分钟后自动关闭，请发送消息保持活跃",
+    "pwa": {
+      "updateAvailable": "发现新版本",
+      "updateAction": "刷新",
+      "install": "安装到本地",
+      "installPrompt": "安装 Mobi 到本地，随时快速访问"
+    }
   }
 }

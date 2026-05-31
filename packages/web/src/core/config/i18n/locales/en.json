@@ -250,6 +250,12 @@
     "permissionGuide": "Notifications Blocked",
     "permissionGuideDesc": "Browser has blocked notifications. Please enable manually: Click the icon in address bar → Site settings → Notifications → Allow",
     "idleTimeoutWarning": "Session Timeout Warning",
-    "idleTimeoutWarningDesc": "Session will close automatically in {{minutes}} minutes. Send a message to keep it active"
+    "idleTimeoutWarningDesc": "Session will close automatically in {{minutes}} minutes. Send a message to keep it active",
+    "pwa": {
+      "updateAvailable": "Update available",
+      "updateAction": "Refresh",
+      "install": "Install",
+      "installPrompt": "Install Mobi locally for quick access anytime"
+    }
   }
 }
