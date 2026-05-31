@@ -26,11 +26,13 @@ import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { TeamAgentCard } from './TeamAgentCard'
 import { ClearStateButton } from './ClearStateButton'
-import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
+import { useTeamMembers, useTeamName, useTeamTasks } from '@/core/data/stores/teamAgentsStore'
 
 const STATUS_ORDER: Record<string, number> = {
+    running: 0,
     active: 0,
     idle: 1,
+    completed: 2,
     shutdown: 2,
 }
 
@@ -46,6 +48,7 @@ export function TeamAgentPanel({ sessionId, onClear }: {
     const { token } = theme.useToken()
     const members = useTeamMembers(sessionId)
     const teamName = useTeamName(sessionId)
+    const tasks = useTeamTasks(sessionId)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const [hasOverflow, setHasOverflow] = useState(false)
@@ -76,7 +79,7 @@ export function TeamAgentPanel({ sessionId, onClear }: {
 
     let activeCount = 0
     for (const m of members) {
-        if (m.status === 'active' || !m.status) activeCount++
+        if (m.status === 'running' || m.status === 'active' || !m.status) activeCount++
     }
 
     return (
@@ -124,6 +127,39 @@ export function TeamAgentPanel({ sessionId, onClear }: {
                     }} />
                 )}
             </div>
+            {tasks.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                    {tasks.map(task => {
+                        const taskStatus = task.status ?? 'pending'
+                        const taskColor = taskStatus === 'completed' ? '#8c8c8c'
+                            : taskStatus === 'in_progress' ? '#52c41a'
+                            : '#faad14'
+                        return (
+                            <div key={task.id} style={{
+                                display: 'flex', alignItems: 'center', gap: 4,
+                                padding: '2px 0', fontSize: 11,
+                                color: taskStatus === 'completed' ? token.colorTextQuaternary : token.colorTextSecondary,
+                            }}>
+                                <span style={{
+                                    width: 6, height: 6, borderRadius: '50%',
+                                    background: taskColor, flexShrink: 0,
+                                }} />
+                                <span style={{
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    flex: 1,
+                                }}>
+                                    {task.title ?? task.subject ?? task.id}
+                                </span>
+                                {task.owner && (
+                                    <span style={{ fontSize: 10, color: token.colorTextQuaternary, flexShrink: 0 }}>
+                                        {task.owner}
+                                    </span>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
         </div>
     )
 }

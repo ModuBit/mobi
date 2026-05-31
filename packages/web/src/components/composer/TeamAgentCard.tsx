@@ -24,8 +24,10 @@ export type TeamAgentCardProps = {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+    running: { label: 'running', color: '#52c41a' },
     active: { label: 'running', color: '#52c41a' },
     idle: { label: 'idle', color: '#faad14' },
+    completed: { label: 'done', color: '#8c8c8c' },
     shutdown: { label: 'stopped', color: '#ff4d4f' },
 }
 
@@ -37,7 +39,7 @@ export function TeamAgentCard({ member, teamName }: TeamAgentCardProps) {
     const { token } = theme.useToken()
     const status = member.status ?? 'active'
     const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.active
-    const isActive = status === 'active'
+    const isActive = status === 'running' || status === 'active'
 
     return (
         <div style={{

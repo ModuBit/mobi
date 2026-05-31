@@ -150,6 +150,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             useTeamAgentsStore.getState().setTeamState(
                 sessionId,
                 teamState.members ?? [],
+                teamState.tasks ?? [],
                 teamState.teamName ?? null,
             )
         } else {
