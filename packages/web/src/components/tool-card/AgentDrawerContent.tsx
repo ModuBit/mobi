@@ -20,7 +20,7 @@ import { DownOutlined } from '@ant-design/icons'
 import { Bubble } from '@ant-design/x'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
-import { safeStringify } from '@mobi/shared'
+import { isObject, safeStringify } from '@mobi/shared'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ChatBlock } from '@/domain/chat'
 import { Markdown } from '@/components/ui/Markdown'
@@ -29,6 +29,7 @@ import { BUBBLE_ROLES } from '@/components/chat/bubbleRoles'
 import { useAgentSidechain } from './useAgentSidechain'
 import { extractTextFromResult } from '@/components/tool-card/views/_results'
 import { AgentLoadingBubble } from '@/components/chat/AgentLoadingBubble'
+import { isTeamAgentTool } from './knownTools'
 
 /** Drawer 场景下覆盖全局 CSS 对 Bubble.List 的副作用 */
 const drawerBubbleStyles = css`
@@ -90,6 +91,10 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
 
     const isRunning = tool.state === 'running' || tool.state === 'pending'
 
+    // team agent 使用 input.name 作为 PixelAvatar 标识，与 TeamAgentCard 保持一致
+    const agentAvatarName = isTeamAgentTool(tool.name, tool.input) && isObject(tool.input) && typeof tool.input.name === 'string'
+        ? tool.input.name : tool.id
+
     const bubbleItems = useMemo(() => {
         const baseItems = buildChatBubbleItems(
             childrenBlocks,
@@ -105,7 +110,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
             items.push({
                 key: '__loading__',
                 role: 'assistant',
-                content: <AgentLoadingBubble agentId={tool.id} status="outputting" startedAt={tool.startedAt ?? tool.createdAt} />,
+                content: <AgentLoadingBubble agentId={agentAvatarName} status="outputting" startedAt={tool.startedAt ?? tool.createdAt} />,
                 variant: 'borderless',
             })
         }
@@ -130,7 +135,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
         }
 
         return items
-    }, [childrenBlocks, tool.result, tool.state, metadata, token.colorTextTertiary, t])
+    }, [childrenBlocks, tool.result, tool.state, metadata, token.colorTextTertiary, agentAvatarName, tool.startedAt, tool.createdAt, t])
 
     // 新消息到来时滚动到最新位置
     useEffect(() => {

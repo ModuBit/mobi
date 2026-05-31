@@ -261,6 +261,7 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
         metadata
     })
 
+    const isTeamAgent = isTeamAgentTool(tool.name, tool.input)
     const isAskUserQuestion = isAskUserQuestionToolName(tool.name)
     const askUserQuestionDone = isAskUserQuestion && !hasPermission
     const expandOnPermission = isExitPlanModeTool(tool.name)
@@ -344,7 +345,11 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
                 icon={
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <StatusStateIcon state={tool.state} />
-                        {getToolIcon(tool.name, { id: block.id, state: tool.state })}
+                        {getToolIcon(tool.name, {
+                            id: isTeamAgent && isObject(tool.input) && typeof tool.input.name === 'string'
+                                ? tool.input.name : block.id,
+                            state: tool.state,
+                        })}
                     </span>
                 }
                 title={
