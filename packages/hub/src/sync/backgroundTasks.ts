@@ -91,8 +91,9 @@ export function collectBackgroundToolUseIds(
         if (bgToolName === 'Monitor') {
             // Monitor 始终后台
             backgroundToolUseIds.set(toolUseId, 'Monitor')
-        } else if (input?.run_in_background === true) {
-            // Bash/Agent 仅当 run_in_background === true
+        } else if (input?.run_in_background === true && !input?.team_name) {
+            // Bash/Agent 仅当 run_in_background === true 且非 team agent
+            // team agent（有 team_name）由 teams.ts 管理，不纳入后台任务
             backgroundToolUseIds.set(toolUseId, bgToolName)
         }
     }
@@ -125,6 +126,10 @@ export function extractBackgroundTaskDeltasFromMessageContent(
 
     // task_started：后台任务启动
     if (subtype === 'task_started') {
+        // team agent（in_process_teammate）由 teams.ts 管理，不纳入后台任务
+        const taskType = asString(data.task_type)
+        if (taskType === 'in_process_teammate') return null
+
         const taskId = asString(data.task_id)
         if (!taskId) return null
 
