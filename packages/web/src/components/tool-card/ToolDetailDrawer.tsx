@@ -219,7 +219,8 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
                             <CompactView block={adaptedBlock} metadata={metadata} />
                         ) : null}
                     </div>
-                    {tool.state === 'error' && (
+                    {/* 避免错误状态下重复渲染同一组件（FullView 与 ResultView 相同时） */}
+                    {tool.state === 'error' && ResultView !== FullView && ResultView !== CompactView && (
                         <>
                             <div style={{ ...dividerStyle, marginLeft: 16, marginRight: 16 }} />
                             {renderOutputSection()}

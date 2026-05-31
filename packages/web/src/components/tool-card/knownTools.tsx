@@ -100,20 +100,25 @@ export type ToolPresentation = {
 /** 代码/文件操作工具的内联预览最大高度 */
 const CODE_PREVIEW_MAX_HEIGHT = 320
 
+/** 从 result 中提取原始文本 */
+function extractRawText(result: unknown): string {
+    if (!result) return ''
+    if (typeof result === 'string') return result
+    if (Array.isArray(result)) {
+        for (const block of result) {
+            if (isObject(block) && typeof block.text === 'string') return block.text
+        }
+        return ''
+    }
+    if (!isObject(result)) return ''
+    if (typeof result.text === 'string') return result.text
+    if (typeof result.content === 'string') return result.content
+    return ''
+}
+
 /** 从 result 中解析出结构化对象 */
 function parseResultJson(result: unknown): Record<string, unknown> | null {
-    if (!result) return null
-    // result 可能是 content array [{type: "text", text: "...JSON..."}]
-    let text: string | null = null
-    if (typeof result === 'string') {
-        text = result
-    } else if (Array.isArray(result)) {
-        for (const block of result) {
-            if (isObject(block) && typeof block.text === 'string') { text = block.text; break }
-        }
-    } else if (isObject(result) && typeof result.text === 'string') {
-        text = result.text
-    }
+    const text = extractRawText(result)
     if (!text) return null
     try {
         const parsed = JSON.parse(text)
@@ -243,7 +248,7 @@ export const knownTools: Record<string, {
         title: (opts) => {
             const resultObj = parseResultJson(opts.result)
             const teamName = resultObj ? getInputStringAny(resultObj, ['team_name']) : null
-            return teamName ?? 'TeamDelete'
+            return teamName ?? 'Delete Team'
         },
         minimal: false,
         previewMaxHeight: Number.MAX_SAFE_INTEGER,
@@ -252,10 +257,15 @@ export const knownTools: Record<string, {
         icon: () => renderToolIcon('SendMessage'),
         title: (opts) => {
             const recipient = getInputStringAny(opts.input, ['recipient', 'to'])
+            const msgType = getInputStringAny(opts.input, ['type'])
             // 错误状态：result 包含 <tool_use_error>
-            const resultText = typeof opts.result === 'string' ? opts.result : ''
-            const isError = resultText.includes('<tool_use_error>')
+            const rawText = extractRawText(opts.result)
+            const isError = rawText.includes('<tool_use_error>')
             if (isError) return recipient ? `To: ${recipient}` : 'Send Message'
+            // 消息类型区分
+            if (msgType === 'broadcast') return 'Broadcast'
+            if (msgType === 'shutdown_request') return `Shutdown: ${recipient ?? 'agent'}`
+            if (msgType === 'shutdown_response') return 'Shutdown Response'
             // 成功：优先展示 summary
             const resultObj = parseResultJson(opts.result)
             const routing = resultObj ? getField<Record<string, unknown>>(resultObj, 'routing') : null
