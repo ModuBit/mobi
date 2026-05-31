@@ -135,6 +135,33 @@ function processTaskUpdate(input: Record<string, unknown>): TeamStateDelta | nul
     }
 }
 
+/** 处理 TeammateIdle hook 事件，更新 member 状态为 idle */
+function processTeammateIdle(input: Record<string, unknown>): TeamStateDelta | null {
+    const teammateName = typeof input.teammate_name === 'string' ? input.teammate_name : null
+    if (!teammateName) return null
+    return {
+        _action: 'update',
+        members: [{ name: teammateName, status: 'idle' }],
+        updatedAt: Date.now(),
+    }
+}
+
+/** 处理 TaskCompleted hook 事件，更新 task 状态为 completed */
+function processTaskCompleted(input: Record<string, unknown>): TeamStateDelta | null {
+    const taskId = typeof input.task_id === 'string' ? input.task_id : null
+    if (!taskId) return null
+    return {
+        _action: 'update',
+        tasks: [{
+            id: taskId,
+            title: typeof input.task_subject === 'string' ? input.task_subject : '',
+            status: 'completed',
+            owner: typeof input.teammate_name === 'string' ? input.teammate_name : undefined,
+        }],
+        updatedAt: Date.now(),
+    }
+}
+
 function processSendMessage(input: Record<string, unknown>): TeamStateDelta | null {
     const type = typeof input.type === 'string' ? input.type : null
     if (!type) return null
@@ -173,6 +200,24 @@ export function extractTeamStateFromMessageContent(messageContent: unknown): Tea
 
     if (record.role !== 'agent' && record.role !== 'assistant') return null
     if (!isObject(record.content) || typeof record.content.type !== 'string') return null
+
+    // 处理 hook_started 事件（TeammateIdle、TaskCompleted 等）
+    if (record.content.type === 'output') {
+        const data = isObject(record.content.data) ? record.content.data : null
+        if (data && data.type === 'hook_started') {
+            const hookEventName = typeof data.hook_event_name === 'string' ? data.hook_event_name : null
+            const hookInput = isObject(data.input) ? data.input as Record<string, unknown> : null
+
+            if (hookEventName === 'TeammateIdle' && hookInput) {
+                return processTeammateIdle(hookInput)
+            }
+            if (hookEventName === 'TaskCompleted' && hookInput && hookInput.team_name) {
+                return processTaskCompleted(hookInput)
+            }
+            // 其他 hook_started 事件忽略
+            return null
+        }
+    }
 
     const blocks = extractToolBlocks(record.content)
     if (blocks.length === 0) return null
@@ -287,6 +332,13 @@ export function applyTeamStateDelta(
     if (delta.updatedAt) {
         updated.updatedAt = delta.updatedAt
     }
+
+    // 自动清理：所有 members 都 idle/shutdown + 所有 tasks 都 completed → 删除 teamState
+    const allMembersDone = !updated.members || updated.members.length === 0 ||
+        updated.members.every(m => m.status === 'idle' || m.status === 'shutdown')
+    const allTasksDone = !updated.tasks || updated.tasks.length === 0 ||
+        updated.tasks.every(t => t.status === 'completed')
+    if (allMembersDone && allTasksDone) return null
 
     return updated
 }
