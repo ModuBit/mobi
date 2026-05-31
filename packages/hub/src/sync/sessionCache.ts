@@ -22,7 +22,7 @@ import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
 import { extractTaskDeltasFromMessageContent, PendingTaskMap, applyTaskDelta } from './tasks'
 import { extractTodoWriteTodosFromMessageContent } from './todos'
-import { extractTeamStateFromMessageContent, applyTeamStateDelta } from './teams'
+import { extractTeamStateFromMessageContent, applyTeamStateDelta, handleTeamSessionEnd } from './teams'
 
 /**
  * 从消息中回填 runtimeState（todos、teamState 等）
@@ -344,7 +344,23 @@ export class SessionCache {
         session.running = false
         session.runningAt = t
 
-        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: { active: false, running: false, mode: session.mode } })
+        // Session 结束时标记 team members/tasks 为 completed
+        const runtimeState = session.runtimeState as Record<string, unknown> | undefined
+        if (runtimeState?.teamState) {
+            const endedTeamState = handleTeamSessionEnd(runtimeState.teamState as Parameters<typeof handleTeamSessionEnd>[0])
+            if (endedTeamState) {
+                runtimeState.teamState = endedTeamState
+                // 持久化更新后的 teamState
+                this.store.sessions.setRuntimeState(session.id, runtimeState, Date.now(), session.namespace)
+            }
+        }
+
+        // 广播包含更新后的 teamState
+        const eventData: Record<string, unknown> = { active: false, running: false, mode: session.mode }
+        if (runtimeState?.teamState) {
+            eventData.runtimeState = runtimeState
+        }
+        this.publisher.emit({ type: 'session-updated', sessionId: session.id, data: eventData })
     }
 
     expireInactive(now: number = Date.now()): void {
