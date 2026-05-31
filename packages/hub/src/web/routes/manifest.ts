@@ -38,8 +38,8 @@ export function createManifestRoutes(): Hono {
             start_url: '/?from=pwa',
             scope: '/',
             display: 'standalone',
-            theme_color: '#1677ff',
-            background_color: '#ffffff',
+            theme_color: '#3d3d3a',
+            background_color: '#faf9f5',
             icons: [
                 {
                     src: '/logo.svg',

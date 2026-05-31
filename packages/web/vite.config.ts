@@ -49,7 +49,7 @@ export default defineConfig({
                 ],
             },
             devOptions: {
-                enabled: false,
+                enabled: true,
             },
         }),
     ],
@@ -65,7 +65,8 @@ export default defineConfig({
             '/socket.io': {
                 target: hubUrl,
                 ws: true
-            }
+            },
+            '/manifest.webmanifest': hubUrl,
         }
     }
 })

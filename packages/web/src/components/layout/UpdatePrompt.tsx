@@ -28,16 +28,16 @@ const Banner = styled.div`
     justify-content: center;
     gap: 12px;
     padding: 8px 16px;
-    background: var(--ant-color-primary);
-    color: #fff;
+    background: #3d3d3a;
+    color: #faf9f5;
     font-size: 13px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 `
 
 const RefreshButton = styled.button`
-    background: rgba(255, 255, 255, 0.2);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    background: rgba(250, 249, 245, 0.15);
+    color: #faf9f5;
+    border: 1px solid rgba(250, 249, 245, 0.3);
     border-radius: 4px;
     padding: 2px 12px;
     font-size: 13px;
@@ -45,7 +45,7 @@ const RefreshButton = styled.button`
     transition: background 0.2s;
 
     &:hover {
-        background: rgba(255, 255, 255, 0.3);
+        background: rgba(250, 249, 245, 0.25);
     }
 `
 
