@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Disable Ink devtools in compiled binaries to avoid optional dependencies.
+// 在编译后的二进制中禁用 Ink devtools，避免引入可选依赖
 process.env.DEV = 'false';
 
 await import('./index');
