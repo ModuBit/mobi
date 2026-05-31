@@ -18,6 +18,7 @@ import type { ToolViewComponent, ToolViewProps } from '@/components/tool-card/vi
 import { useMemo } from 'react'
 import { BashView } from '@/components/tool-card/views/BashView'
 import { GlobView } from '@/components/tool-card/views/GlobView'
+import { TeamCreateView } from '@/components/tool-card/views/TeamCreateView'
 import { isObject, safeStringify } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { theme as antTheme, Typography } from 'antd'
@@ -530,6 +531,7 @@ export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     TaskList: TaskTextView,
     TaskGet: TaskTextView,
     TaskOutput: MarkdownResultView,
+    TeamCreate: TeamCreateView,
 }
 export function getToolResultViewComponent(toolName: string): ToolViewComponent {
     if (toolName.startsWith('mcp__')) {

@@ -307,9 +307,9 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
     }), [tool])
 
     // 判断 title 是否已包含 description 信息
-    // Agent 工具的 title 由 getAgentTitle 动态生成，不含 description 字段，或 title 等于 description 时跳过
+    // Agent 工具的 title 由 getAgentTitle 动态生成，不含 description 字段，或 title 等于/以 description 开头时跳过
     const titleContainsDescription = isAgentTool(tool.name)
-        || (tool.description != null && toolPresentation.title === tool.description)
+        || (tool.description != null && (toolPresentation.title === tool.description || toolPresentation.title.startsWith(tool.description)))
 
     return (
         <>

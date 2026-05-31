@@ -207,10 +207,13 @@ export const knownTools: Record<string, {
         icon: () => renderToolIcon('TeamCreate'),
         title: (opts) => {
             const teamName = getInputStringAny(opts.input, ['team_name'])
+            const description = getInputStringAny(opts.input, ['description'])
+            if (description && teamName) return `${description} (${teamName})`
+            if (description) return description
             return teamName ? `Team: ${teamName}` : 'Create Team'
         },
-        subtitle: (opts) => getInputStringAny(opts.input, ['description']) ?? null,
-        minimal: false
+        minimal: false,
+        previewMaxHeight: Number.MAX_SAFE_INTEGER,
     },
     TeamDelete: {
         icon: () => renderToolIcon('TeamDelete'),
