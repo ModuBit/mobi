@@ -46,6 +46,7 @@ export interface ConfigSources {
     listenPort: ConfigSource
     publicUrl: ConfigSource
     corsOrigins: ConfigSource
+    hubName: ConfigSource
     cliApiToken: 'env' | 'file' | 'generated'
 }
 
@@ -80,6 +81,9 @@ class Configuration {
     /** Allowed CORS origins for Web App + Socket.IO (comma-separated env override) */
     public readonly corsOrigins: string[]
 
+    /** Hub 实例名称，用于 PWA 实例标识 */
+    public readonly hubName: string
+
     /** Sources of each configuration value */
     public readonly sources: ConfigSources
 
@@ -99,6 +103,7 @@ class Configuration {
         this.listenPort = serverSettings.listenPort
         this.publicUrl = serverSettings.publicUrl
         this.corsOrigins = serverSettings.corsOrigins
+        this.hubName = serverSettings.hubName
 
         // CLI API token - will be set by _setCliApiToken() before create() returns
         this.cliApiToken = ''

@@ -32,6 +32,7 @@ export interface Settings {
     listenPort?: number
     publicUrl?: string
     corsOrigins?: string[]
+    hubName?: string
 }
 
 export function getSettingsFile(dataDir: string): string {

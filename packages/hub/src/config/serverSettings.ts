@@ -24,6 +24,8 @@
  * it will be saved to settings.json for future use
  */
 
+import { hostname } from 'node:os'
+
 import { getSettingsFile, readSettings, writeSettings } from './settings'
 
 export interface ServerSettings {
@@ -31,6 +33,7 @@ export interface ServerSettings {
     listenPort: number
     publicUrl: string
     corsOrigins: string[]
+    hubName: string
 }
 
 export interface ServerSettingsResult {
@@ -40,6 +43,7 @@ export interface ServerSettingsResult {
         listenPort: 'env' | 'file' | 'default'
         publicUrl: 'env' | 'file' | 'default'
         corsOrigins: 'env' | 'file' | 'default'
+        hubName: 'env' | 'file' | 'default'
     }
     savedToFile: boolean
 }
@@ -101,6 +105,7 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
         listenPort: 'default',
         publicUrl: 'default',
         corsOrigins: 'default',
+        hubName: 'default',
     }
 
     // listenHost: env > file > default
@@ -165,6 +170,23 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
         corsOrigins = deriveCorsOrigins(publicUrl)
     }
 
+    // hubName: env > file > os.hostname()
+    let hubName: string
+    if (process.env.MOBI_HUB_NAME) {
+        hubName = process.env.MOBI_HUB_NAME
+        sources.hubName = 'env'
+        if (settings.hubName === undefined) {
+            settings.hubName = hubName
+            needsSave = true
+        }
+    } else if (settings.hubName !== undefined) {
+        hubName = settings.hubName
+        sources.hubName = 'file'
+    } else {
+        hubName = hostname()
+        sources.hubName = 'default'
+    }
+
     // Save settings if any new values were added
     if (needsSave) {
         await writeSettings(settingsFile, settings)
@@ -176,6 +198,7 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
             listenPort,
             publicUrl,
             corsOrigins,
+            hubName,
         },
         sources,
         savedToFile: needsSave,
