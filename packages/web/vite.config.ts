@@ -17,13 +17,42 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // 从环境变量读取配置，支持 profile 机制覆盖
 const hubUrl = process.env.MOBI_API_URL || 'http://localhost:2222'
 const webPort = parseInt(process.env.MOBI_WEB_PORT || '5173', 10)
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [
+        react(),
+        VitePWA({
+            registerType: 'prompt',
+            // 不生成静态 manifest 文件，由 Hub 动态提供
+            manifest: false,
+            workbox: {
+                // 允许预缓存较大的 JS chunk（默认 2 MiB 不够）
+                maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+                navigateFallback: null,
+                globPatterns: ['**/*.{js,css,woff2,png,svg,ico,gif}'],
+                runtimeCaching: [
+                    {
+                        // API 请求：始终走网络
+                        urlPattern: /^\/api\/.*/,
+                        handler: 'NetworkOnly',
+                    },
+                    {
+                        // Socket.IO：始终走网络
+                        urlPattern: /^\/socket\.io\/.*/,
+                        handler: 'NetworkOnly',
+                    },
+                ],
+            },
+            devOptions: {
+                enabled: false,
+            },
+        }),
+    ],
     resolve: {
         alias: {
             '@': resolve(__dirname, 'src')
