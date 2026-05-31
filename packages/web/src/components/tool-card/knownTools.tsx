@@ -100,6 +100,29 @@ export type ToolPresentation = {
 /** 代码/文件操作工具的内联预览最大高度 */
 const CODE_PREVIEW_MAX_HEIGHT = 320
 
+/** 从 result 中解析出结构化对象 */
+function parseResultJson(result: unknown): Record<string, unknown> | null {
+    if (!result) return null
+    // result 可能是 content array [{type: "text", text: "...JSON..."}]
+    let text: string | null = null
+    if (typeof result === 'string') {
+        text = result
+    } else if (Array.isArray(result)) {
+        for (const block of result) {
+            if (isObject(block) && typeof block.text === 'string') { text = block.text; break }
+        }
+    } else if (isObject(result) && typeof result.text === 'string') {
+        text = result.text
+    }
+    if (!text) return null
+    try {
+        const parsed = JSON.parse(text)
+        return isObject(parsed) ? parsed : null
+    } catch {
+        return null
+    }
+}
+
 function countLines(text: string): number {
     return text.split('\n').length
 }
@@ -217,8 +240,13 @@ export const knownTools: Record<string, {
     },
     TeamDelete: {
         icon: () => renderToolIcon('TeamDelete'),
-        title: () => 'Delete Team',
-        minimal: true
+        title: (opts) => {
+            const resultObj = parseResultJson(opts.result)
+            const teamName = resultObj ? getInputStringAny(resultObj, ['team_name']) : null
+            return teamName ?? 'TeamDelete'
+        },
+        minimal: false,
+        previewMaxHeight: Number.MAX_SAFE_INTEGER,
     },
     SendMessage: {
         icon: () => renderToolIcon('SendMessage'),

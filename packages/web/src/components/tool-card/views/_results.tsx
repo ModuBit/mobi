@@ -19,6 +19,7 @@ import { useMemo } from 'react'
 import { BashView } from '@/components/tool-card/views/BashView'
 import { GlobView } from '@/components/tool-card/views/GlobView'
 import { TeamCreateView } from '@/components/tool-card/views/TeamCreateView'
+import { TeamDeleteView } from '@/components/tool-card/views/TeamDeleteView'
 import { isObject, safeStringify } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 import { theme as antTheme, Typography } from 'antd'
@@ -532,6 +533,7 @@ export const toolResultViewRegistry: Record<string, ToolViewComponent> = {
     TaskGet: TaskTextView,
     TaskOutput: MarkdownResultView,
     TeamCreate: TeamCreateView,
+    TeamDelete: TeamDeleteView,
 }
 export function getToolResultViewComponent(toolName: string): ToolViewComponent {
     if (toolName.startsWith('mcp__')) {

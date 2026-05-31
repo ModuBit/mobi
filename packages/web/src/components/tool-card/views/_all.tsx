@@ -28,6 +28,7 @@ import { ReadDetailView } from '@/components/tool-card/views/ReadDetailView'
 import { BashView } from '@/components/tool-card/views/BashView'
 import { GlobView } from '@/components/tool-card/views/GlobView'
 import { TeamCreateView } from '@/components/tool-card/views/TeamCreateView'
+import { TeamDeleteView } from '@/components/tool-card/views/TeamDeleteView'
 
 export type ToolViewProps = {
     block: ToolCallBlock
@@ -49,6 +50,7 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     exit_plan_mode: ExitPlanModeView,
     request_user_input: RequestUserInputView,
     TeamCreate: TeamCreateView,
+    TeamDelete: TeamDeleteView,
 }
 
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
@@ -65,6 +67,7 @@ export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     exit_plan_mode: ExitPlanModeView,
     request_user_input: RequestUserInputView,
     TeamCreate: TeamCreateView,
+    TeamDelete: TeamDeleteView,
 }
 
 export function getToolViewComponent(toolName: string): ToolViewComponent | null {
