@@ -43,6 +43,7 @@ UI → API Client → Hub REST → RpcGateway → Socket.IO → CLI RPC Handler 
 - **[工具权限审批流](tool-permission.md)**：SDK 工具调用的用户授权机制，包括普通工具、ExitPlanMode、AskUserQuestion 三种场景
 - **认证**：JWT（Web ↔ Hub），Token（CLI ↔ Hub）
 - **终端**：CLI ↔ Socket.IO(/terminal) ↔ Web，实时双向，独立于 SyncEngine
+- **[单文件打包](packaging.md)**：Bun `--compile` 原理、构建流水线、资产嵌入、工具提取、分发模式
 
 ## 核心组件关系
 
