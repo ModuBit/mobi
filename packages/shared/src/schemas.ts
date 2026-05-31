@@ -203,18 +203,25 @@ export const BackgroundTasksSchema = z.array(BackgroundTaskItemSchema)
 
 export const TeamMemberSchema = z.object({
     name: z.string(),
+    agentId: z.string().optional(),
     agentType: z.string().optional(),
-    status: z.enum(['active', 'idle', 'shutdown']).optional()
+    status: z.enum(['active', 'idle', 'shutdown', 'running', 'completed']).optional(),
+    prompt: z.string().optional(),
+    startedAt: z.number().optional(),
+    lastProgressAt: z.number().optional(),
+    taskIds: z.array(z.string()).optional(),
 })
 
 export type TeamMember = z.infer<typeof TeamMemberSchema>
 
 export const TeamTaskSchema = z.object({
     id: z.string(),
-    title: z.string(),
+    title: z.string().optional(),
+    subject: z.string().optional(),
     description: z.string().optional(),
-    status: z.enum(['pending', 'in_progress', 'completed', 'blocked']).optional(),
-    owner: z.string().optional()
+    status: z.enum(['pending', 'in_progress', 'completed', 'blocked', 'deleted']).optional(),
+    owner: z.string().optional(),
+    createdAt: z.number().optional(),
 })
 
 export type TeamTask = z.infer<typeof TeamTaskSchema>
