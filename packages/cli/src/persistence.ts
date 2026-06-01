@@ -41,6 +41,8 @@ export interface Settings {
   disconnectTimeoutMs?: number   // 连接断开超时
   idleTimeoutMs?: number         // 交互不活跃超时
   timeoutWarningMs?: number      // 预警提前时间
+  // 升级 channel: 'stable' | 'rc'，默认 'stable'
+  updateChannel?: 'stable' | 'rc'
 }
 
 const defaultSettings: Settings = {}

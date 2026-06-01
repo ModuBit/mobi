@@ -21,6 +21,7 @@ import { doctorCommand } from './doctor'
 import { mcpCommand } from './mcp'
 import { hubCommand } from './hub'
 import { hookForwarderCommand } from './hookForwarder'
+import { versionCommand } from './version'
 import type { CommandContext, CommandDefinition } from './types'
 
 // Mobi 只支持 Claude Code，移除了 codex, cursor, gemini, opencode 等多 Agent 命令
@@ -30,6 +31,7 @@ const COMMANDS: CommandDefinition[] = [
     hubCommand,
     doctorCommand,
     runnerCommand,
+    versionCommand,
     hookForwarderCommand // 用于转发 Claude 的 SessionStart hook
 ]
 
