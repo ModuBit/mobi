@@ -42,7 +42,7 @@ if "%EXPECTED_HASH%"=="" (
     goto :cleanup
 )
 
-for /f "tokens=1" %%a in ('certutil -hashfile "%TMP_DIR%\%BINARY_FILE%" SHA256 ^| findstr /v ":" ^| findstr /v "CertUtil"') do set ACTUAL_HASH=%%a
+for /f "delims=" %%a in ('certutil -hashfile "%TMP_DIR%\%BINARY_FILE%" SHA256 ^| findstr /v ":" ^| findstr /v "CertUtil"') do set ACTUAL_HASH=%%a
 set ACTUAL_HASH=%ACTUAL_HASH: =%
 
 if /i not "%EXPECTED_HASH%"=="%ACTUAL_HASH%" (

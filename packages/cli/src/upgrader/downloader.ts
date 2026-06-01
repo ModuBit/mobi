@@ -15,10 +15,11 @@
  */
 
 import { createHash } from 'node:crypto'
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
-import { CHECKSUMS_FILENAME } from './constants'
+import { CHECKSUMS_FILENAME, PLATFORM_BINARY_NAME } from './constants'
 import type { GitHubReleaseAsset } from './checker'
 
 export { type GitHubReleaseAsset }
@@ -93,4 +94,33 @@ export async function downloadBinary(asset: GitHubReleaseAsset, destDir?: string
     writeFileSync(destPath, Buffer.from(buffer))
 
     return destPath
+}
+
+/**
+ * 从 zip 归档中解压二进制文件，返回解压后的二进制路径
+ */
+export function extractBinaryFromZip(zipPath: string): string {
+    const extractDir = join(dirname(zipPath), 'extracted')
+    if (existsSync(extractDir)) {
+        rmSync(extractDir, { recursive: true, force: true })
+    }
+    mkdirSync(extractDir, { recursive: true })
+
+    if (process.platform === 'win32') {
+        // Windows: 使用 PowerShell Expand-Archive
+        execFileSync('powershell', [
+            '-command',
+            `Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force`,
+        ], { stdio: 'pipe' })
+    } else {
+        // POSIX: 使用 unzip
+        execFileSync('unzip', ['-o', '-q', zipPath, '-d', extractDir], { stdio: 'pipe' })
+    }
+
+    const binaryPath = join(extractDir, PLATFORM_BINARY_NAME)
+    if (!existsSync(binaryPath)) {
+        throw new Error(`Binary not found in archive: ${PLATFORM_BINARY_NAME}`)
+    }
+
+    return binaryPath
 }

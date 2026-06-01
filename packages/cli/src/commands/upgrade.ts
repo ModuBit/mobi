@@ -20,7 +20,7 @@ import packageJson from '../../package.json'
 import { readSettings, updateSettings } from '@/persistence'
 import { getPlatformAssetName, INSTALL_DIR, type Channel } from '@/upgrader/constants'
 import { fetchLatestRelease, fetchReleaseByTag, type GitHubRelease } from '@/upgrader/checker'
-import { downloadBinary, downloadChecksums, verifyChecksum } from '@/upgrader/downloader'
+import { downloadBinary, downloadChecksums, verifyChecksum, extractBinaryFromZip } from '@/upgrader/downloader'
 import { replaceBinary, isInstalledViaInstallScript } from '@/upgrader/replacer'
 import { detectActiveProcesses, restartProcesses, formatActiveProcessesPrompt, hasActiveProcesses } from '@/upgrader/processRestarter'
 import type { CommandContext, CommandDefinition } from './types'
@@ -130,9 +130,13 @@ async function runUpgrade(context: CommandContext): Promise<void> {
         process.exit(1)
     }
 
+    // 解压
+    console.log(chalk.gray('Extracting binary...'))
+    const binaryPath = extractBinaryFromZip(downloadedPath)
+
     // 原子替换
     console.log(chalk.gray('Replacing binary...'))
-    replaceBinary(downloadedPath, currentBinary)
+    replaceBinary(binaryPath, currentBinary)
 
     // 更新 channel 设置
     if (channelFlag && channelFlag !== currentChannel) {

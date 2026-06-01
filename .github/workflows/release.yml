@@ -51,7 +51,7 @@ jobs:
         run: |
           cd packages/cli/dist-exe/${{ matrix.target }}
           if [ "${{ matrix.target }}" = "bun-windows-x64" ]; then
-            zip ${{ matrix.asset_name }} mobi.exe
+            powershell -command "Compress-Archive -Path mobi.exe -DestinationPath ${{ matrix.asset_name }} -Force"
           else
             zip ${{ matrix.asset_name }} mobi
           fi
