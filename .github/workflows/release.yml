@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: bun-darwin-arm64
+            platform: macos-latest
+            asset_name: mobi-darwin-arm64.zip
+          - target: bun-darwin-x64
+            platform: macos-latest
+            asset_name: mobi-darwin-x64.zip
+          - target: bun-linux-x64-baseline
+            platform: ubuntu-latest
+            asset_name: mobi-linux-x64.zip
+          - target: bun-linux-arm64
+            platform: ubuntu-latest
+            asset_name: mobi-linux-arm64.zip
+          - target: bun-windows-x64
+            platform: windows-latest
+            asset_name: mobi-windows-x64.zip
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+
+      - name: Build web assets
+        run: bun run build:web
+
+      - name: Generate embedded web assets
+        run: cd packages/hub && bun run generate:embedded-web-assets
+
+      - name: Build binary
+        run: cd packages/cli && bun run build:exe:raw -- --target ${{ matrix.target }}
+
+      - name: Package binary
+        shell: bash
+        run: |
+          cd packages/cli/dist-exe/${{ matrix.target }}
+          if [ "${{ matrix.target }}" = "bun-windows-x64" ]; then
+            zip ${{ matrix.asset_name }} mobi.exe
+          else
+            zip ${{ matrix.asset_name }} mobi
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: packages/cli/dist-exe/${{ matrix.target }}/${{ matrix.asset_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -name "*.zip" -exec sha256sum {} \; | sed 's|  .*/|  |' > checksums.txt
+          cat checksums.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*.zip
+            artifacts/checksums.txt
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-rc.') }}
