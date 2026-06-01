@@ -3,19 +3,12 @@
     "version": "0.1.0",
     "description": "Mobi CLI - Claude Code On the Go",
     "type": "module",
-    "bin": {
-        "mobi": "bin/mobi.cjs"
-    },
-    "files": [
-        "bin/mobi.cjs"
-    ],
     "scripts": {
         "dev": "bun src/index.ts",
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
         "build:exe": "bun run scripts/build-executable.ts --with-web-assets",
         "build:exe:raw": "bun run scripts/build-executable.ts",
-        "prepare-npm": "bun run scripts/prepare-npm-packages.ts",
         "postinstall": "bun run scripts/unpack-tools.ts",
         "tools:unpack": "bun run scripts/unpack-tools.ts"
     },
