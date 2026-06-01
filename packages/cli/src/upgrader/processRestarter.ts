@@ -48,6 +48,26 @@ export async function detectActiveProcesses(): Promise<ActiveProcesses> {
 }
 
 /**
+ * 轮询 hub /health 端点直到就绪，超时返回 false
+ */
+async function waitForHubReady(host: string, port: number, timeoutMs = 10_000): Promise<boolean> {
+    const url = `http://${host}:${port}/health`
+    const deadline = Date.now() + timeoutMs
+
+    while (Date.now() < deadline) {
+        try {
+            const response = await fetch(url, { signal: AbortSignal.timeout(2000) })
+            if (response.ok) return true
+        } catch {
+            // hub 尚未就绪，继续轮询
+        }
+        await new Promise(resolve => setTimeout(resolve, 500))
+    }
+
+    return false
+}
+
+/**
  * 按顺序重启 hub 和 runner
  * 顺序：先停 runner（依赖 hub）→ 停 hub → 启动 hub → 启动 runner
  */
@@ -74,8 +94,14 @@ export async function restartProcesses(): Promise<void> {
     })
     hubChild.unref()
 
-    // 等待 hub 就绪
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    // 轮询 hub /health 端点直到就绪
+    const host = hubState?.listenHost ?? '127.0.0.1'
+    const port = hubState?.listenPort ?? 2222
+    const ready = await waitForHubReady(host, port)
+    if (!ready) {
+        console.error(chalk.yellow('Hub did not become ready in time, skipping runner start'))
+        return
+    }
 
     // 4. 启动 runner
     console.log(chalk.gray('Starting runner...'))

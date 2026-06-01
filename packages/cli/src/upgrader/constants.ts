@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { homedir } from 'node:os'
+
 /** GitHub 仓库信息 */
 export const GITHUB_OWNER = 'modu'
 export const GITHUB_REPO = 'mobi'
@@ -47,7 +49,7 @@ export function getPlatformAssetName(): string {
 /** 安装路径 */
 export const INSTALL_DIR = process.platform === 'win32'
     ? `${process.env.USERPROFILE}\\.local\\bin`
-    : `${require('node:os').homedir()}/.local/bin`
+    : `${homedir()}/.local/bin`
 
 /** checksums 文件名 */
 export const CHECKSUMS_FILENAME = 'checksums.txt'

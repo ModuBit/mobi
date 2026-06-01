@@ -19,7 +19,7 @@ import { createInterface } from 'node:readline'
 import packageJson from '../../package.json'
 import { readSettings, updateSettings } from '@/persistence'
 import { getPlatformAssetName, INSTALL_DIR, type Channel } from '@/upgrader/constants'
-import { fetchLatestRelease, fetchReleaseByTag, type GitHubRelease } from '@/upgrader/checker'
+import { fetchLatestRelease, fetchReleaseByTag, isNewerVersion, type GitHubRelease } from '@/upgrader/checker'
 import { downloadBinary, downloadChecksums, verifyChecksum, extractBinaryFromZip } from '@/upgrader/downloader'
 import { replaceBinary, isInstalledViaInstallScript } from '@/upgrader/replacer'
 import { detectActiveProcesses, restartProcesses, formatActiveProcessesPrompt, hasActiveProcesses } from '@/upgrader/processRestarter'
@@ -103,6 +103,16 @@ async function runUpgrade(context: CommandContext): Promise<void> {
     if (targetTag === currentVersion) {
         console.log(chalk.green(`Already up to date (${currentVersion})`))
         return
+    }
+
+    const isDowngrade = !isNewerVersion(currentVersion, targetTag)
+    if (isDowngrade) {
+        console.log(chalk.yellow(`Warning: ${targetTag} is older than current ${currentVersion}`))
+        const shouldContinue = await askYesNo('Continue with downgrade?')
+        if (!shouldContinue) {
+            console.log(chalk.gray('Upgrade cancelled'))
+            return
+        }
     }
 
     console.log(`Upgrading ${chalk.cyan(currentVersion)} → ${chalk.cyan(targetTag)}`)

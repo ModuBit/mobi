@@ -16,10 +16,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createHash } from 'node:crypto'
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { downloadBinary, verifyChecksum, type GitHubReleaseAsset } from '@/upgrader/downloader'
+import { downloadBinary, verifyChecksum, extractBinaryFromZip, type GitHubReleaseAsset } from '@/upgrader/downloader'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -94,5 +95,28 @@ describe('downloadBinary', () => {
         })
 
         await expect(downloadBinary(asset, tmpDir)).rejects.toThrow('Failed to download')
+    })
+})
+
+describe('extractBinaryFromZip', () => {
+    it('extracts binary from zip archive', () => {
+        const zipPath = join(tmpDir, 'test-archive.zip')
+        const binaryContent = 'fake-mobi-binary'
+
+        writeFileSync(join(tmpDir, 'mobi'), binaryContent)
+        execFileSync('zip', [zipPath, 'mobi'], { cwd: tmpDir, stdio: 'pipe' })
+
+        const result = extractBinaryFromZip(zipPath)
+        expect(result).toContain('mobi')
+        expect(result).toContain('extracted')
+        expect(readFileSync(result, 'utf-8')).toBe(binaryContent)
+    })
+
+    it('throws when binary not found in archive', () => {
+        const zipPath = join(tmpDir, 'empty-archive.zip')
+        writeFileSync(join(tmpDir, 'dummy.txt'), 'not-mobi')
+        execFileSync('zip', [zipPath, 'dummy.txt'], { cwd: tmpDir, stdio: 'pipe' })
+
+        expect(() => extractBinaryFromZip(zipPath)).toThrow('Binary not found in archive')
     })
 })
