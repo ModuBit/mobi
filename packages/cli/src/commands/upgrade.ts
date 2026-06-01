@@ -15,60 +15,67 @@
  */
 
 import chalk from 'chalk'
-import { createInterface } from 'node:readline'
+import { accessSync, constants } from 'node:fs'
+import { dirname } from 'node:path'
 import packageJson from '../../package.json'
 import { readSettings, updateSettings } from '@/persistence'
-import { getPlatformAssetName, INSTALL_DIR, type Channel } from '@/upgrader/constants'
+import { getPlatformAssetName, type Channel } from '@/upgrader/constants'
 import { fetchLatestRelease, fetchReleaseByTag, isNewerVersion, type GitHubRelease } from '@/upgrader/checker'
 import { downloadBinary, downloadChecksums, verifyChecksum, extractBinaryFromZip } from '@/upgrader/downloader'
-import { replaceBinary, isInstalledViaInstallScript } from '@/upgrader/replacer'
+import { replaceBinary } from '@/upgrader/replacer'
 import { detectActiveProcesses, restartProcesses, formatActiveProcessesPrompt, hasActiveProcesses } from '@/upgrader/processRestarter'
+import { askYesNo } from '@/setup/prompts'
 import type { CommandContext, CommandDefinition } from './types'
-
-function askYesNo(question: string): Promise<boolean> {
-    return new Promise((resolve) => {
-        const rl = createInterface({
-            input: process.stdin,
-            output: process.stdout,
-        })
-        rl.question(`${question} [Y/n] `, (answer) => {
-            rl.close()
-            const normalized = answer.trim().toLowerCase()
-            resolve(normalized === '' || normalized === 'y' || normalized === 'yes')
-        })
-    })
-}
 
 function parseUpgradeArgs(args: string[]): {
     targetVersion?: string
     channel?: Channel
+    yes?: boolean
 } {
     let targetVersion: string | undefined
     let channel: Channel | undefined
+    let yes: boolean | undefined
 
     for (const arg of args) {
         if (arg === '--rc') {
             channel = 'rc'
+        } else if (arg === '--yes' || arg === '-y') {
+            yes = true
         } else if (arg.startsWith('v')) {
             targetVersion = arg
         }
     }
 
-    return { targetVersion, channel }
+    return { targetVersion, channel, yes }
 }
 
 async function runUpgrade(context: CommandContext): Promise<void> {
-    const { targetVersion, channel: channelFlag } = parseUpgradeArgs(context.commandArgs)
+    if (context.commandArgs.includes('-h') || context.commandArgs.includes('--help')) {
+        console.log(`
+${chalk.bold('mobi upgrade')} - Upgrade to latest version
 
-    // 检测安装路径
+${chalk.bold('Usage:')}
+  mobi upgrade              Upgrade to latest stable version
+  mobi upgrade --rc         Upgrade to latest rc version
+  mobi upgrade v0.2.0       Upgrade to a specific version
+  mobi upgrade --yes        Skip confirmation prompts
+`)
+        return
+    }
+
+    const { targetVersion, channel: channelFlag, yes: autoYes } = parseUpgradeArgs(context.commandArgs)
+
+    // 检测当前二进制路径
     const currentBinary = process.execPath
-    if (!isInstalledViaInstallScript(currentBinary)) {
-        console.error(chalk.yellow(
-            `Mobi was not installed via the install script (expected in ${INSTALL_DIR}).`
-        ))
-        console.error(chalk.gray(
-            'Please download the latest version manually from https://github.com/modu/mobi/releases'
-        ))
+
+    // 检测目标目录是否可写（renameSync 需要目录写权限）
+    const targetDir = dirname(currentBinary)
+    try {
+        accessSync(targetDir, constants.W_OK)
+    } catch {
+        console.error(chalk.red('Cannot write to the binary directory:'))
+        console.error(chalk.gray(`  ${targetDir}`))
+        console.error(chalk.gray('Try running with sudo or move mobi to a writable directory.'))
         process.exit(1)
     }
 
@@ -108,7 +115,7 @@ async function runUpgrade(context: CommandContext): Promise<void> {
     const isDowngrade = !isNewerVersion(currentVersion, targetTag)
     if (isDowngrade) {
         console.log(chalk.yellow(`Warning: ${targetTag} is older than current ${currentVersion}`))
-        const shouldContinue = await askYesNo('Continue with downgrade?')
+        const shouldContinue = autoYes || await askYesNo('Continue with downgrade?')
         if (!shouldContinue) {
             console.log(chalk.gray('Upgrade cancelled'))
             return
@@ -160,7 +167,7 @@ async function runUpgrade(context: CommandContext): Promise<void> {
     const processes = await detectActiveProcesses()
     if (hasActiveProcesses(processes)) {
         const prompt = formatActiveProcessesPrompt(processes)
-        const shouldRestart = await askYesNo(prompt)
+        const shouldRestart = autoYes || await askYesNo(prompt)
         if (shouldRestart) {
             await restartProcesses()
         } else {

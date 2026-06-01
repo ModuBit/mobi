@@ -141,7 +141,7 @@ async function shouldAutoStartServer(): Promise<boolean> {
  * Start hub as a child process (will exit when CLI exits)
  */
 function startServerAsChild(): void {
-    const serverProcess = spawnMobiCli(['hub'], {
+    const serverProcess = spawnMobiCli(['hub', 'start-sync'], {
         detached: false,
         stdio: 'ignore',
         env: process.env
@@ -174,7 +174,7 @@ export async function maybeAutoStartServer(): Promise<void> {
 
         if (!isReady) {
             console.log(chalk.yellow('Warning: Hub did not start within expected time'))
-            console.log(chalk.gray('  Try running `mobi hub` manually to see errors'))
+            console.log(chalk.gray('  Try running `mobi hub start` manually to see errors'))
             return
         }
 

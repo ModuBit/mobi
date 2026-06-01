@@ -24,15 +24,38 @@ import {
 } from '@/runner/controlClient'
 import { getLatestRunnerLog } from '@/ui/logger'
 import { spawnMobiCli } from '@/utils/spawnMobiCli'
-import { runDoctorCommand } from '@/ui/doctor'
+import { isProcessAlive } from '@/utils/process'
+import { readRunnerState } from '@/persistence'
 import { initializeToken } from '@/ui/tokenInit'
 import type { CommandDefinition } from './types'
+
+function showRunnerHelp(): void {
+    console.log(`
+${chalk.bold('mobi runner')} - Manage background runner
+
+${chalk.bold('Usage:')}
+  mobi runner start                Start runner in background
+  mobi runner stop                 Stop runner (sessions stay alive)
+  mobi runner restart              Restart runner
+  mobi runner status               Show runner status
+  mobi runner list                 List active sessions
+  mobi runner logs                 Show latest log file path
+  mobi runner stop-session <id>    Stop a specific session
+
+${chalk.gray('Clean up all mobi processes:')} ${chalk.cyan('mobi doctor clean')}
+`)
+}
 
 export const runnerCommand: CommandDefinition = {
     name: 'runner',
     requiresRuntimeAssets: true,
     run: async ({ commandArgs }) => {
         const runnerSubcommand = commandArgs[0]
+
+        if (runnerSubcommand === '-h' || runnerSubcommand === '--help') {
+            showRunnerHelp()
+            return
+        }
 
         if (runnerSubcommand === 'list') {
             try {
@@ -84,9 +107,9 @@ export const runnerCommand: CommandDefinition = {
             }
 
             if (started) {
-                console.log('Runner started successfully')
+                console.log(chalk.green(`Runner started (PID ${child.pid})`))
             } else {
-                console.error('Failed to start runner')
+                console.error(chalk.red('Failed to start runner'))
                 process.exit(1)
             }
             process.exit(0)
@@ -99,12 +122,93 @@ export const runnerCommand: CommandDefinition = {
         }
 
         if (runnerSubcommand === 'stop') {
-            await stopRunner()
+            const state = await readRunnerState()
+            if (!state) {
+                console.log(chalk.yellow('Runner is not running'))
+                process.exit(0)
+            }
+            if (!isProcessAlive(state.pid)) {
+                console.log(chalk.yellow('Runner is not running'))
+                console.log(chalk.gray(`  Process (PID ${state.pid}) is dead`))
+                process.exit(0)
+            }
+
+            console.log(`Stopping runner (PID ${state.pid})...`)
+            try {
+                await stopRunner()
+                console.log(chalk.green('Runner stopped'))
+            } catch {
+                console.error(chalk.red('Failed to stop runner'))
+                process.exit(1)
+            }
+            process.exit(0)
+        }
+
+        if (runnerSubcommand === 'restart') {
+            // stop
+            const state = await readRunnerState()
+            if (state && isProcessAlive(state.pid)) {
+                console.log(`Stopping runner (PID ${state.pid})...`)
+                try {
+                    await stopRunner()
+                    console.log(chalk.green('Runner stopped'))
+                } catch {
+                    console.error(chalk.red('Cannot restart: failed to stop runner'))
+                    process.exit(1)
+                }
+            }
+
+            // start
+            const child = spawnMobiCli(['runner', 'start-sync'], {
+                detached: true,
+                stdio: 'ignore',
+                env: process.env
+            })
+            child.unref()
+
+            let started = false
+            for (let i = 0; i < 50; i++) {
+                if (await checkIfRunnerRunningAndCleanupStaleState()) {
+                    started = true
+                    break
+                }
+                await new Promise(resolve => setTimeout(resolve, 100))
+            }
+
+            if (started) {
+                console.log(chalk.green('Runner restarted successfully'))
+            } else {
+                console.error(chalk.red('Failed to start runner'))
+                process.exit(1)
+            }
             process.exit(0)
         }
 
         if (runnerSubcommand === 'status') {
-            await runDoctorCommand('runner')
+            const state = await readRunnerState()
+
+            if (!state) {
+                console.log(chalk.yellow('Runner is not running'))
+                console.log(chalk.gray('  No runner state file found'))
+                process.exit(0)
+            }
+
+            if (!isProcessAlive(state.pid)) {
+                console.log(chalk.yellow('Runner is not running'))
+                console.log(chalk.gray(`  Process (PID ${state.pid}) is dead`))
+                process.exit(0)
+            }
+
+            console.log(chalk.green('Runner is running'))
+            console.log(`  PID:       ${state.pid}`)
+            console.log(`  Port:      ${state.httpPort}`)
+            console.log(`  Started:   ${state.startTime}`)
+            if (state.lastHeartbeat) {
+                console.log(`  Heartbeat: ${state.lastHeartbeat}`)
+            }
+            if (state.runnerLogPath) {
+                console.log(`  Log:       ${state.runnerLogPath}`)
+            }
             process.exit(0)
         }
 
@@ -118,21 +222,6 @@ export const runnerCommand: CommandDefinition = {
             process.exit(0)
         }
 
-        console.log(`
-${chalk.bold('mobi runner')} - Runner management
-
-${chalk.bold('Usage:')}
-  mobi runner start              Start the runner (detached)
-  mobi runner stop               Stop the runner (sessions stay alive)
-  mobi runner status             Show runner status
-  mobi runner list               List active sessions
-
-  If you want to kill all mobi related processes run
-  ${chalk.cyan('mobi doctor clean')} or ${chalk.cyan('mobi doctor clean <profile>')}
-
-${chalk.bold('Note:')} The runner runs in the background and manages Claude sessions.
-
-${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('mobi doctor clean [profile]')}
-`)
+        showRunnerHelp()
     }
 }

@@ -51,35 +51,46 @@ function replaceBinaryPosix(newBinaryPath: string, targetPath: string): void {
 }
 
 function replaceBinaryWindows(newBinaryPath: string, targetPath: string): void {
-    const backupPath = targetPath + '.bak'
-
-    // 清理旧备份
-    if (existsSync(backupPath)) {
-        try { unlinkSync(backupPath) } catch { /* ignore */ }
-    }
-
-    // 备份当前二进制
-    renameSync(targetPath, backupPath)
-
+    // Windows 上运行中进程锁住 exe，无法 rename
+    // 直接 copyFile 覆盖（写入已映射文件的镜像，下次启动生效）
     try {
-        // 写入新二进制
         copyFileSync(newBinaryPath, targetPath)
         chmodSync(targetPath, 0o755)
+    } catch {
+        // copyFile 也失败（罕见），尝试备份+替换
+        const backupPath = targetPath + '.bak'
+        if (existsSync(backupPath)) {
+            try { unlinkSync(backupPath) } catch { /* ignore */ }
+        }
 
-        // 清理新二进制临时文件
-        try { unlinkSync(newBinaryPath) } catch { /* ignore */ }
-    } catch (error) {
-        // 恢复备份
         try {
-            if (existsSync(backupPath)) {
-                renameSync(backupPath, targetPath)
-            }
-        } catch { /* ignore */ }
-        throw error
+            renameSync(targetPath, backupPath)
+        } catch {
+            throw new Error(
+                'Cannot replace the running binary. ' +
+                'Please stop all mobi processes and run `mobi upgrade` again.'
+            )
+        }
+
+        try {
+            copyFileSync(newBinaryPath, targetPath)
+            chmodSync(targetPath, 0o755)
+        } catch (error) {
+            // 恢复备份
+            try {
+                if (existsSync(backupPath)) {
+                    renameSync(backupPath, targetPath)
+                }
+            } catch { /* ignore */ }
+            throw error
+        }
+
+        // 延迟清理备份
+        setTimeout(() => {
+            try { unlinkSync(backupPath) } catch { /* ignore */ }
+        }, 10_000)
     }
 
-    // 延迟清理备份文件（Windows 上运行中进程可能还需要旧文件）
-    setTimeout(() => {
-        try { unlinkSync(backupPath) } catch { /* ignore */ }
-    }, 10_000)
+    // 清理下载的临时文件
+    try { unlinkSync(newBinaryPath) } catch { /* ignore */ }
 }

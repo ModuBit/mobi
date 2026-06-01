@@ -2,12 +2,12 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug: Hub Server (dev profile)",
+      "name": "Debug: Hub Start-Sync (dev profile)",
       "type": "bun",
       "request": "launch",
       "program": "${workspaceFolder}/packages/cli/src/index.ts",
       "cwd": "${workspaceFolder}/packages/cli",
-      "args": ["--profile", "dev", "hub"],
+      "args": ["--profile", "dev", "hub", "start-sync"],
       "env": {
         "NODE_ENV": "development"
       }
@@ -35,7 +35,7 @@
   "compounds": [
     {
       "name": "Debug: Hub + CLI Runner + Web (dev profile)",
-      "configurations": ["Debug: Hub Server (dev profile)", "Debug: CLI Runner Start-Sync (dev profile)", "Debug: Web Dev Server (dev profile)"],
+      "configurations": ["Debug: Hub Start-Sync (dev profile)", "Debug: CLI Runner Start-Sync (dev profile)", "Debug: Web Dev Server (dev profile)"],
       "stopAll": true
     }
   ]

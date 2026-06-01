@@ -45,12 +45,9 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
 
         if (!hasToken) {
             console.log('')
-            console.log(chalk.yellow('  Token not configured. To get your token:'))
-            console.log(chalk.gray('    1. Check the server startup logs (first run shows generated token)'))
-            console.log(chalk.gray('    2. Read ~/.mobi/settings.json on the server'))
-            console.log(chalk.gray('    3. Ask your server administrator (if token is set via env var)'))
-            console.log('')
-            console.log(chalk.gray('  Then run: mobi auth login'))
+            console.log(chalk.yellow('  Token not configured.'))
+            console.log(chalk.gray('    Run mobi setup settings to auto-generate a token'))
+            console.log(chalk.gray('    Or run mobi auth login to enter one manually'))
         }
         return
     }
@@ -102,17 +99,15 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
 
 function showHelp(): void {
     console.log(`
-${chalk.bold('mobi auth')} - Authentication management
+${chalk.bold('mobi auth')} - Manage authentication
 
 ${chalk.bold('Usage:')}
-  mobi auth status            Show current configuration
+  mobi auth status            Show current auth configuration
   mobi auth login             Enter and save CLI_API_TOKEN
   mobi auth logout            Clear saved credentials
 
-${chalk.bold('Token priority (highest to lowest):')}
-  1. CLI_API_TOKEN environment variable
-  2. ~/.mobi/settings.json
-  3. Interactive prompt (on first run)
+${chalk.gray('For initial setup, use:')} ${chalk.cyan('mobi setup settings')}
+${chalk.gray('Token priority:')} env CLI_API_TOKEN > ~/.mobi/settings.json > auto-generated
 `)
 }
 

@@ -43,6 +43,9 @@ export interface Settings {
   timeoutWarningMs?: number      // 预警提前时间
   // 升级 channel: 'stable' | 'rc'，默认 'stable'
   updateChannel?: 'stable' | 'rc'
+  // Hub 配置（与 hub 共享 settings.json）
+  listenHost?: string
+  listenPort?: number
 }
 
 const defaultSettings: Settings = {}

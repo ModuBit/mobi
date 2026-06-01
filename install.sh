@@ -77,6 +77,21 @@ main() {
     fi
     info "Latest version: v${version}"
 
+    # 检查已安装的版本
+    local installed_bin="${INSTALL_DIR}/${BINARY_NAME}"
+    if [ -x "$installed_bin" ]; then
+        local installed_version
+        installed_version="$("$installed_bin" version 2>/dev/null | head -1 | sed 's/^v//')"
+        if [ -n "$installed_version" ] && [ "$installed_version" = "$version" ]; then
+            info "mobi v${version} is already installed"
+            exit 0
+        fi
+        if [ -n "$installed_version" ]; then
+            info "Upgrading mobi v${installed_version} → v${version}..."
+            exec "$installed_bin" upgrade --yes
+        fi
+    fi
+
     local tmp_dir
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' EXIT

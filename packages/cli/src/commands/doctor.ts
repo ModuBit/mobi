@@ -23,6 +23,20 @@ export const doctorCommand: CommandDefinition = {
     name: 'doctor',
     requiresRuntimeAssets: true,
     run: async ({ commandArgs }) => {
+        if (commandArgs[0] === '-h' || commandArgs[0] === '--help') {
+            console.log(`
+${chalk.bold('mobi doctor')} - System diagnostics & troubleshooting
+
+${chalk.bold('Usage:')}
+  mobi doctor                 Run diagnostics
+  mobi doctor hub             Diagnose hub issues
+  mobi doctor runner          Diagnose runner issues
+  mobi doctor clean           Clean up all runaway processes
+  mobi doctor clean [profile] Clean up processes for a specific profile
+`)
+            return
+        }
+
         if (commandArgs[0] === 'clean') {
             // mobi doctor clean [profile]
             // mobi doctor clean        → 清理全部
@@ -32,7 +46,7 @@ export const doctorCommand: CommandDefinition = {
             if (profile) {
                 console.log(`Cleaning up runaway processes for profile: ${chalk.cyan(profile)}`)
             } else {
-                console.log('Cleaning up all runaway processes')
+                console.log('Cleaning up all mobi processes (hub, runner, sessions)')
             }
 
             const result = await killRunawayMobiProcesses(profile)

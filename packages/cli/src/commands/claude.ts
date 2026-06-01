@@ -165,28 +165,29 @@ export const claudeCommand: CommandDefinition = {
 ${chalk.bold('mobi')} - Claude Code On the Go
 
 ${chalk.bold('Usage:')}
-  mobi [options]         Start Claude with remote control
-  mobi auth              Manage authentication
-  mobi mcp               Start MCP stdio bridge
-  mobi hub               Start the API + web hub
-  mobi hub --relay       Start with public relay
-  mobi server            Alias for mobi hub
-  mobi runner            Manage background service that allows
-                            to spawn new sessions away from your computer
-  mobi doctor            System diagnostics & troubleshooting
+  mobi [options]           Start Claude with remote control
+
+${chalk.bold('Commands:')}
+  mobi setup               Interactive setup wizard (first-time)
+  mobi service <action>    Manage hub + runner service
+  mobi hub <action>        Manage hub server
+  mobi runner <action>     Manage background runner
+  mobi auth <action>       Manage authentication
+  mobi mcp                 Start MCP stdio bridge
+  mobi version             Show version info
+  mobi upgrade             Upgrade to latest version
+  mobi doctor              System diagnostics & troubleshooting
+
+${chalk.bold('Getting started:')}
+  mobi setup               Configure and start mobi interactively
 
 ${chalk.bold('Examples:')}
-  mobi                    Start session (will prompt for token if not set)
-  mobi auth login         Configure CLI_API_TOKEN interactively
-  mobi --yolo             Start with bypassing permissions
-                            mobi sugar for --dangerously-skip-permissions
-  mobi auth status        Show direct-connect status
-  mobi doctor             Run diagnostics
+  mobi                      Start a Claude session
+  mobi --yolo               Start with --dangerously-skip-permissions
+  mobi --resume             Resume last session
 
 ${chalk.bold('mobi supports ALL Claude options!')}
-  Use any claude flag with mobi as you would with claude. Our favorite:
-
-  mobi --resume
+  Use any claude flag with mobi as you would with claude.
 
 ${chalk.gray('─'.repeat(60))}
 ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}

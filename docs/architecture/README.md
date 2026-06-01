@@ -44,6 +44,7 @@ UI → API Client → Hub REST → RpcGateway → Socket.IO → CLI RPC Handler 
 - **认证**：JWT（Web ↔ Hub），Token（CLI ↔ Hub）
 - **终端**：CLI ↔ Socket.IO(/terminal) ↔ Web，实时双向，独立于 SyncEngine
 - **[单文件打包](packaging.md)**：Bun `--compile` 原理、构建流水线、资产嵌入、工具提取、分发模式
+- **[CLI 命令体系](cli-commands.md)**：所有 mobi 命令的用法、子命令、内部实现与公共约定
 
 ## 核心组件关系
 

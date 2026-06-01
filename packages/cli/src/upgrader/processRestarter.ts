@@ -16,8 +16,7 @@
 
 import chalk from 'chalk'
 import { readHubState, readRunnerState } from '@/persistence'
-import { isProcessAlive, killProcess } from '@/utils/process'
-import { spawnMobiCli } from '@/utils/spawnMobiCli'
+import { isProcessAlive } from '@/utils/process'
 
 export interface ProcessInfo {
     pid: number
@@ -48,68 +47,31 @@ export async function detectActiveProcesses(): Promise<ActiveProcesses> {
 }
 
 /**
- * 轮询 hub /health 端点直到就绪，超时返回 false
- */
-async function waitForHubReady(host: string, port: number, timeoutMs = 10_000): Promise<boolean> {
-    const url = `http://${host}:${port}/health`
-    const deadline = Date.now() + timeoutMs
-
-    while (Date.now() < deadline) {
-        try {
-            const response = await fetch(url, { signal: AbortSignal.timeout(2000) })
-            if (response.ok) return true
-        } catch {
-            // hub 尚未就绪，继续轮询
-        }
-        await new Promise(resolve => setTimeout(resolve, 500))
-    }
-
-    return false
-}
-
-/**
- * 按顺序重启 hub 和 runner
- * 顺序：先停 runner（依赖 hub）→ 停 hub → 启动 hub → 启动 runner
+ * 重启 hub 和 runner
+ * 使用 mobi service restart 子命令
  */
 export async function restartProcesses(): Promise<void> {
-    // 1. 停止 runner
-    const runnerState = await readRunnerState()
-    if (runnerState && isProcessAlive(runnerState.pid)) {
-        console.log(chalk.gray('Stopping runner...'))
-        await killProcess(runnerState.pid)
-    }
+    console.log(chalk.gray('Restarting service...'))
+    const { execFileSync } = await import('node:child_process')
+    const { getMobiCliCommand } = await import('@/utils/spawnMobiCli')
 
-    // 2. 停止 hub
+    // 获取 hub 的 host/port 透传给 service restart
     const hubState = await readHubState()
-    if (hubState && isProcessAlive(hubState.pid)) {
-        console.log(chalk.gray('Stopping hub...'))
-        await killProcess(hubState.pid)
+    const args = ['service', 'restart']
+    if (hubState?.listenHost && hubState.listenHost !== '127.0.0.1') {
+        args.push('--host', hubState.listenHost)
+    }
+    if (hubState?.listenPort && hubState.listenPort !== 2222) {
+        args.push('--port', String(hubState.listenPort))
     }
 
-    // 3. 启动 hub
-    console.log(chalk.gray('Starting hub...'))
-    const hubChild = spawnMobiCli(['hub'], {
-        detached: true,
-        stdio: 'ignore',
-    })
-    hubChild.unref()
-
-    // 轮询 hub /health 端点直到就绪
-    const host = hubState?.listenHost ?? '127.0.0.1'
-    const port = hubState?.listenPort ?? 2222
-    const ready = await waitForHubReady(host, port)
-    if (!ready) {
-        console.error(chalk.yellow('Hub did not become ready in time, skipping runner start'))
+    const cmd = getMobiCliCommand(args)
+    try {
+        execFileSync(cmd.command, cmd.args, { stdio: 'pipe', timeout: 30_000 })
+    } catch {
+        console.error(chalk.yellow('Service restart failed'))
         return
     }
-
-    // 4. 启动 runner
-    console.log(chalk.gray('Starting runner...'))
-    const runnerChild = spawnMobiCli(['runner', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-    })
-    runnerChild.unref()
 
     console.log(chalk.green('Hub and runner restarted'))
 }

@@ -73,6 +73,19 @@ export const versionCommand: CommandDefinition = {
     run: async (context: CommandContext) => {
         const subcommand = context.commandArgs[0]
 
+        if (subcommand === '-h' || subcommand === '--help') {
+            console.log(`
+${chalk.bold('mobi version')} - Show version info
+
+${chalk.bold('Usage:')}
+  mobi version              Show current version
+  mobi version list         List available versions
+  mobi version list --all   List stable + rc versions
+  mobi version list rc      List rc versions only
+`)
+            return
+        }
+
         if (subcommand === 'list') {
             const filter = context.commandArgs[1]
             const showAll = filter === '--all'

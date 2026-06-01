@@ -17,6 +17,7 @@
 import chalk from 'chalk'
 import { readHubState, type HubLocallyPersistedState } from '@/persistence'
 import { isProcessAlive, killProcess } from '@/utils/process'
+import { spawnMobiCli } from '@/utils/spawnMobiCli'
 import type { CommandDefinition, CommandContext } from './types'
 
 function parseHubArgs(args: string[]): { host?: string; port?: string } {
@@ -50,10 +51,19 @@ async function fetchHubHealth(host: string, port: number): Promise<{ status: str
     }
 }
 
-/**
- * 读取 Hub 状态并校验进程是否存活
- * 供 status/stop 子命令复用
- */
+function showHubHelp(): void {
+    console.log(`
+${chalk.bold('mobi hub')} - Manage hub server
+
+${chalk.bold('Usage:')}
+  mobi hub start [--host <host>] [--port <port>]
+                            Start hub in background
+  mobi hub stop             Stop hub
+  mobi hub restart          Restart hub
+  mobi hub status           Show hub status
+`)
+}
+
 async function getLiveHubState(): Promise<HubLocallyPersistedState | null> {
     const state = await readHubState()
 
@@ -72,6 +82,68 @@ async function getLiveHubState(): Promise<HubLocallyPersistedState | null> {
     return state
 }
 
+async function waitForHubReady(host: string, port: number, timeoutMs = 10_000): Promise<boolean> {
+    const url = `http://${host}:${port}/health`
+    const deadline = Date.now() + timeoutMs
+
+    while (Date.now() < deadline) {
+        try {
+            const response = await fetch(url, { signal: AbortSignal.timeout(2000) })
+            if (response.ok) return true
+        } catch {
+            // hub 尚未就绪，继续轮询
+        }
+        await new Promise(resolve => setTimeout(resolve, 200))
+    }
+
+    return false
+}
+
+async function runHubStart(commandArgs: string[]): Promise<void> {
+    const { host: hostFlag, port: portFlag } = parseHubArgs(commandArgs)
+
+    // 校验 port 参数
+    if (portFlag) {
+        const portNum = parseInt(portFlag, 10)
+        if (!Number.isFinite(portNum) || portNum < 1 || portNum > 65535) {
+            console.error(chalk.red(`Invalid port: ${portFlag}. Must be a number between 1 and 65535`))
+            process.exit(1)
+        }
+    }
+
+    const env = { ...process.env }
+    if (hostFlag) env.MOBI_LISTEN_HOST = hostFlag
+    if (portFlag) env.MOBI_LISTEN_PORT = portFlag
+
+    const child = spawnMobiCli(['hub', 'start-sync'], {
+        detached: true,
+        stdio: 'ignore',
+        env,
+    })
+    child.unref()
+
+    console.log(chalk.gray('Starting hub...'))
+
+    // 确定目标 host/port 用于健康检查
+    const host = hostFlag ?? '127.0.0.1'
+    const port = portFlag ? parseInt(portFlag, 10) : 2222
+
+    const ready = await waitForHubReady(host, port)
+    if (!ready) {
+        console.error(chalk.red('Failed to start hub'))
+        process.exit(1)
+    }
+
+    const health = await fetchHubHealth(host, port)
+    console.log(chalk.green(`Hub started (PID ${child.pid})`))
+    console.log(`  Web URL:   ${chalk.cyan(`http://localhost:${port}`)}`)
+    if (health) {
+        console.log(`  Health:    ${chalk.green(health.status)}`)
+        console.log(`  Protocol:  v${health.protocolVersion}`)
+    }
+    process.exit(0)
+}
+
 async function runHubStatus(): Promise<void> {
     const state = await getLiveHubState()
     if (!state) return
@@ -81,7 +153,7 @@ async function runHubStatus(): Promise<void> {
     console.log(chalk.green('Hub is running'))
     console.log(`  PID:         ${state.pid}`)
     console.log(`  Listen:      ${state.listenHost}:${state.listenPort}`)
-    console.log(`  Local URL:   http://localhost:${state.listenPort}`)
+    console.log(`  Web URL:     ${chalk.cyan(`http://localhost:${state.listenPort}`)}`)
     console.log(`  Started at:  ${state.startTime}`)
     if (health) {
         console.log(`  Health:      ${chalk.green(health.status)}`)
@@ -89,14 +161,19 @@ async function runHubStatus(): Promise<void> {
     }
 }
 
-async function runHubStop(): Promise<void> {
+async function runHubStop(): Promise<boolean> {
     const state = await getLiveHubState()
-    if (!state) return
+    if (!state) return true
 
     console.log(`Stopping hub (PID ${state.pid})...`)
 
     const killed = await killProcess(state.pid)
-    console.log(killed ? chalk.green('Hub stopped') : chalk.red('Failed to stop hub'))
+    if (killed) {
+        console.log(chalk.green('Hub stopped'))
+    } else {
+        console.log(chalk.red('Failed to stop hub'))
+    }
+    return killed
 }
 
 export const hubCommand: CommandDefinition = {
@@ -105,32 +182,44 @@ export const hubCommand: CommandDefinition = {
     run: async (context: CommandContext) => {
         const subcommand = context.commandArgs[0]
 
+        if (subcommand === '-h' || subcommand === '--help') {
+            showHubHelp()
+            return
+        }
+
+        if (subcommand === 'start') {
+            await runHubStart(context.commandArgs.slice(1))
+            return
+        }
+
+        if (subcommand === 'start-sync') {
+            const { host, port } = parseHubArgs(context.commandArgs.slice(1))
+            if (host) process.env.MOBI_LISTEN_HOST = host
+            if (port) process.env.MOBI_LISTEN_PORT = port
+            await import('../../../hub/src/index')
+            return
+        }
+
         if (subcommand === 'status') {
             await runHubStatus()
             process.exit(0)
         }
 
         if (subcommand === 'stop') {
-            await runHubStop()
-            process.exit(0)
+            const stopped = await runHubStop()
+            process.exit(stopped ? 0 : 1)
         }
 
-        try {
-            const { host, port } = parseHubArgs(context.commandArgs)
-
-            if (host) {
-                process.env.MOBI_LISTEN_HOST = host
+        if (subcommand === 'restart') {
+            const stopped = await runHubStop()
+            if (!stopped) {
+                console.error(chalk.red('Cannot restart: failed to stop hub'))
+                process.exit(1)
             }
-            if (port) {
-                process.env.MOBI_LISTEN_PORT = port
-            }
-            await import('../../../hub/src/index')
-        } catch (error) {
-            console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-            if (process.env.DEBUG) {
-                console.error(error)
-            }
-            process.exit(1)
+            await runHubStart(context.commandArgs.slice(1))
+            return
         }
+
+        showHubHelp()
     }
 }

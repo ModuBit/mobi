@@ -22,6 +22,26 @@ if "%VERSION%"=="" (
 
 echo [info] Latest version: %VERSION%
 
+REM Check if already installed with same version
+set INSTALLED_VERSION=
+if exist "%INSTALL_DIR%\%BINARY_NAME%" (
+    for /f "tokens=1" %%v in ('"%INSTALL_DIR%\%BINARY_NAME%" version 2^>nul') do (
+        set INSTALLED_VERSION=%%v
+        goto :version_check
+    )
+)
+:version_check
+if not "%INSTALLED_VERSION%"=="" (
+    set "INSTALLED_VERSION_NO_V=%INSTALLED_VERSION:v=%"
+    if "!INSTALLED_VERSION_NO_V!"=="%VERSION:v=%" (
+        echo [info] mobi %INSTALLED_VERSION% is already installed
+        goto :cleanup
+    )
+    echo [info] Upgrading mobi !INSTALLED_VERSION! to v%VERSION:v=%...
+    "%INSTALL_DIR%\%BINARY_NAME%" upgrade --yes
+    goto :cleanup
+)
+
 set TMP_DIR=%TEMP%\mobi-install-%RANDOM%
 mkdir %TMP_DIR%
 

@@ -80,6 +80,7 @@ async function getProcessProfile(pid: number): Promise<string | undefined> {
 
 const RUNNABLE_TYPES = new Set([
   'runner', 'dev-runner',
+  'hub', 'dev-hub',
   'runner-spawned-session', 'dev-runner-spawned',
   'runner-version-check', 'dev-runner-version-check',
 ])
@@ -110,6 +111,8 @@ export async function findAllMobiProcesses(): Promise<MobiProcess[]> {
         type = isDevMode ? 'dev-runner-version-check' : 'runner-version-check';
       } else if (cmd.includes('runner start-sync') || cmd.includes('runner start')) {
         type = isDevMode ? 'dev-runner' : 'runner';
+      } else if (cmd.includes('hub start-sync') || cmd.includes('hub start')) {
+        type = isDevMode ? 'dev-hub' : 'hub';
       } else if (cmd.includes('--started-by runner')) {
         type = isDevMode ? 'dev-runner-spawned' : 'runner-spawned-session';
       } else if (cmd.includes('doctor')) {
