@@ -40,7 +40,6 @@ import { systemPrompt } from "./utils/systemPrompt";
 import type { PermissionResult } from "./sdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUIHints } from "@mobi/shared";
-import { getMobiBlobsDir } from "@/constants/uploadPaths";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender } from './utils/streamSnapshotSender'
@@ -551,7 +550,7 @@ export async function claudeRemote(opts: {
         },
         pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
         settings: opts.hookSettingsPath,
-        additionalDirectories: [getMobiBlobsDir()],
+        additionalDirectories: [join(opts.path, '.mobi')],
         toolConfig: {
             askUserQuestion: { previewFormat: 'html' }
         },

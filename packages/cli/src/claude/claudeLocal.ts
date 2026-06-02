@@ -15,6 +15,7 @@
  */
 
 import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { logger } from "@/ui/logger";
 import { restoreTerminalState } from "@/ui/terminalState";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
@@ -23,7 +24,6 @@ import { appendMcpConfigArg } from "./utils/mcpConfig";
 import { systemPrompt } from "./utils/systemPrompt";
 import { withBunRuntimeEnv } from "@/utils/bunRuntime";
 import { spawnWithAbort } from "@/utils/spawnWithAbort";
-import { getMobiBlobsDir } from "@/constants/uploadPaths";
 import { stripNewlinesForWindowsShellArg } from "@/utils/shellEscape";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
 
@@ -87,9 +87,10 @@ export async function claudeLocal(opts: {
     args.push('--settings', opts.hookSettingsPath);
     logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettingsPath}`);
 
-    // Add blobs directory for file upload access
-    args.push('--add-dir', getMobiBlobsDir());
-    logger.debug(`[ClaudeLocal] Adding blobs directory: ${getMobiBlobsDir()}`);
+    // 添加项目 .mobi 目录，使 Claude 可访问上传的附件
+    const mobiDir = join(opts.path, '.mobi')
+    args.push('--add-dir', mobiDir)
+    logger.debug(`[ClaudeLocal] Adding mobi directory: ${mobiDir}`)
 
     // Prepare environment variables
     // Note: Local mode uses global Claude installation
