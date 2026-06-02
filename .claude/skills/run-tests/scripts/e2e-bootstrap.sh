@@ -138,7 +138,7 @@ main() {
 
     (
         cd "${MOBI_ROOT}" && \
-        bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" hub &>"${E2E_TMPDIR}/logs/hub.log"
+        bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" hub start &>"${E2E_TMPDIR}/logs/hub.log"
     ) &
     HUB_PID="${!}"
     disown
