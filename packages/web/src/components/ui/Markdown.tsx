@@ -19,6 +19,7 @@ import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design
 import Latex from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
+import { attachmentInlineExtension } from './attachmentPlugin'
 import { useStreamingContent } from './useStreamingContent'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { FootnoteContext, FootnoteRef, FootnoteSources } from './FootnoteComponents'
@@ -41,6 +42,9 @@ const SLASH_COMMAND_EXTENSIONS = [slashCommand()]
 
 /** 脚注引用扩展（稳定引用，不依赖运行时数据） */
 const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
+
+/** 附件引用扩展 */
+const ATTACHMENT_EXTENSIONS = [attachmentInlineExtension()]
 
 /** 所有链接在新标签页打开 */
 const ExternalLink: FC<ComponentProps<{ href?: string }>> = (
@@ -65,6 +69,38 @@ const DefaultCode: FC<ComponentProps> = ({ block, lang, className, children }) =
         || undefined
 
     return <AutoDetectCodeBlock code={children} explicitLang={explicit} />
+}
+
+/** 附件引用渲染组件 */
+const AttachmentRefComponent: FC<ComponentProps<{ 'data-path'?: string; 'data-filename'?: string; 'data-icon'?: string }>> = (
+    { domNode, ...rest },
+) => {
+    const path = (rest as any)['data-path'] ?? ''
+    const filename = (rest as any)['data-filename'] ?? 'file'
+    const icon = (rest as any)['data-icon'] ?? '📎'
+
+    return (
+        <span
+            style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 8px',
+                margin: '0 2px',
+                borderRadius: 6,
+                background: 'var(--ant-color-fill-secondary)',
+                fontSize: '0.9em',
+                cursor: 'default',
+                verticalAlign: 'middle',
+            }}
+            title={path}
+        >
+            <span>{icon}</span>
+            <span style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {filename}
+            </span>
+        </span>
+    )
 }
 
 export interface MarkdownProps extends Omit<XMarkdownProps, 'streaming' | 'content' | 'children'> {
@@ -126,6 +162,7 @@ export const Markdown = memo(function Markdown({
             code: DefaultCode,
             a: ExternalLink,
             'footnote-ref': FootnoteRef,
+            'attachment-ref': AttachmentRefComponent,
             ...(components ?? {}),
         }),
         [components],
@@ -160,7 +197,7 @@ export const Markdown = memo(function Markdown({
 
     const mergedConfig = useMemo(() => {
         const slashExts = enableSlashCommand ? SLASH_COMMAND_EXTENSIONS : []
-        const baseExts = [...FOOTNOTE_REF_EXTENSIONS, ...slashExts, ...LATEX_EXTENSIONS]
+        const baseExts = [...ATTACHMENT_EXTENSIONS, ...FOOTNOTE_REF_EXTENSIONS, ...slashExts, ...LATEX_EXTENSIONS]
         if (!config) return { breaks: true, extensions: baseExts }
         return {
             breaks: true,
