@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { Button, Tooltip, Select, theme, Typography, Popover } from 'antd'
+import { Button, Tooltip, Select, theme, Typography, Popover, message } from 'antd'
 import { PlusOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, SafetyOutlined, RightOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
@@ -26,13 +26,13 @@ import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
-import type { SessionMetadataSummary } from '@/core/data/api/types'
+import type { SessionMetadataSummary, UploadFileResponse } from '@/core/data/api/types'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useMentionInteraction } from './useMentionInteraction'
 import { useSlashCommandInteraction } from './useSlashCommandInteraction'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
-import { createFileAttachment } from '@/core/lib/fileAttachments'
+import { createFileAttachment, validateFile, getAcceptExtensions } from '@/core/lib/fileAttachments'
 import { useCommands } from '@/core/data/hooks/queries/useCommands'
 import { useSDKMetadata, type ModelOption } from '@/core/data/hooks/queries/useSDKMetadata'
 import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
@@ -489,30 +489,124 @@ export function ChatComposer(props: ChatComposerProps) {
     const handleSubmit = useCallback((content: string) => {
         if (!canSend) return
         if (mention.isOpen || slash.isOpen) return
-        onSend(content.trim())
+
+        // 检查是否有未完成上传的附件
+        const pendingUploads = attachments.filter(a => a.status === 'uploading')
+        if (pendingUploads.length > 0) {
+            message.warning('请等待文件上传完成')
+            return
+        }
+
+        // 拼接附件路径到消息文本
+        const completedAttachments = attachments.filter(a => a.status === 'complete' && a.path)
+        const attachmentPaths = completedAttachments.map(a => `@${a.path}`).join('\n')
+        const finalText = attachmentPaths
+            ? `${content.trim()}\n${attachmentPaths}`
+            : content.trim()
+
+        if (!finalText) return
+
+        onSend(finalText)
         setText('')
         setAttachments([])
         needsRefocusRef.current = true
-    }, [canSend, onSend, mention.isOpen, slash.isOpen])
+    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments])
+
+    // 上传附件到服务器
+    const uploadAttachment = useCallback(async (attachmentId: string, file: File) => {
+        try {
+            const response = await api.sessions.upload(sessionId, file)
+            const data = response.data as UploadFileResponse
+            if (data.success && data.path) {
+                setAttachments(prev => prev.map(a =>
+                    a.id === attachmentId
+                        ? { ...a, status: 'complete' as const, path: data.path }
+                        : a
+                ))
+            } else {
+                setAttachments(prev => prev.map(a =>
+                    a.id === attachmentId
+                        ? { ...a, status: 'error' as const, error: data.error || '上传失败' }
+                        : a
+                ))
+            }
+        } catch (err) {
+            setAttachments(prev => prev.map(a =>
+                a.id === attachmentId
+                    ? { ...a, status: 'error' as const, error: err instanceof Error ? err.message : '上传失败' }
+                    : a
+            ))
+        }
+    }, [api, sessionId])
 
     const handleAttach = useCallback(() => {
         const input = document.createElement('input')
         input.type = 'file'
         input.multiple = true
+        input.accept = getAcceptExtensions()
         input.onchange = (e) => {
             const files = (e.target as HTMLInputElement).files
             if (!files) return
             for (const file of Array.from(files)) {
+                const error = validateFile(file)
+                if (error) {
+                    message.warning(error)
+                    continue
+                }
                 const attachment = createFileAttachment(file)
                 setAttachments(prev => [...prev, attachment])
+                uploadAttachment(attachment.id, file)
             }
         }
         input.click()
-    }, [])
+    }, [uploadAttachment])
 
     const handleRemoveAttachment = useCallback((id: string) => {
-        setAttachments(prev => prev.filter(a => a.id !== id))
-    }, [])
+        setAttachments(prev => {
+            const attachment = prev.find(a => a.id === id)
+            // 如果文件已上传成功，通知服务器删除
+            if (attachment?.status === 'complete' && attachment.path) {
+                api.sessions.deleteUpload(sessionId, attachment.path).catch(() => {
+                    // 删除失败静默处理
+                })
+            }
+            return prev.filter(a => a.id !== id)
+        })
+    }, [api, sessionId])
+
+    // 粘贴上传处理
+    const handlePaste = useCallback((e: React.ClipboardEvent) => {
+        const items = e.clipboardData?.items
+        if (!items) return
+
+        for (const item of Array.from(items)) {
+            if (item.kind === 'file') {
+                const file = item.getAsFile()
+                if (!file) continue
+
+                // 为粘贴的文件生成文件名
+                const isImage = file.type.startsWith('image/')
+                const fileName = isImage
+                    ? `paste-${Date.now()}.png`
+                    : `paste-${Date.now()}-${file.name || 'file'}`
+
+                // 创建新的 File 对象以设置文件名
+                const namedFile = new File([file], fileName, { type: file.type })
+
+                // 校验
+                const error = validateFile(namedFile)
+                if (error) {
+                    message.warning(error)
+                    continue
+                }
+
+                // 创建附件并上传
+                const attachment = createFileAttachment(namedFile)
+                setAttachments(prev => [...prev, attachment])
+                uploadAttachment(attachment.id, namedFile)
+            }
+        }
+    }, [uploadAttachment])
 
     const showInactiveCover = !active && !allowSendWhenInactive
     const showLocalModeCover = active && mode === 'local'
@@ -573,6 +667,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     loading={sending}
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
                     header={headerNodes.length > 0 ? headerNodes : null}
                     suffix={false}
                     style={hasSubBar ? {
