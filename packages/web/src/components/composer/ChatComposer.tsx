@@ -146,6 +146,21 @@ function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>
     )
 }
 
+// ============ 粘贴图片 MIME → 扩展名 ============
+const MIME_TO_EXT: Record<string, string> = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+    'image/svg+xml': '.svg',
+    'image/bmp': '.bmp',
+}
+
+/** 从图片 MIME 类型推断文件扩展名，未知类型回退到 .png */
+function imageExtFromMime(mimeType: string): string {
+    return MIME_TO_EXT[mimeType] ?? '.png'
+}
+
 // ============ Effort 级别颜色 ============
 const EFFORT_COLORS: Record<EffortLevel, string> = {
     low: 'var(--ant-color-text-quaternary)',
@@ -604,10 +619,11 @@ export function ChatComposer(props: ChatComposerProps) {
             const file = item.getAsFile()
             if (!file) continue
 
-            // 为粘贴的文件生成文件名
+            // 为粘贴的文件生成文件名（从 MIME 推断扩展名）
             const isImage = file.type.startsWith('image/')
+            const ext = isImage ? imageExtFromMime(file.type) : ''
             const fileName = isImage
-                ? `paste-${Date.now()}.png`
+                ? `paste-${Date.now()}${ext}`
                 : `paste-${Date.now()}-${file.name || 'file'}`
 
             // 创建新的 File 对象以设置文件名

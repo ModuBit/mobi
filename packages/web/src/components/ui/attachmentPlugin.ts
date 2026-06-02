@@ -20,6 +20,17 @@ import type { TokenizerAndRendererExtension } from 'marked'
 const ATTACHMENT_RE = /@(\.mobi\/(?:uploads|artifacts)\/\d{4}-\d{2}\/[\w\-\.]+)/
 
 /**
+ * HTML 属性转义，防止注入
+ */
+function escapeAttr(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+}
+
+/**
  * 根据文件扩展名获取文件类型图标
  */
 function getFileTypeIcon(filename: string): string {
@@ -79,7 +90,7 @@ export function attachmentInlineExtension(): TokenizerAndRendererExtension {
                 filename: string
                 icon: string
             }
-            return `<attachment-ref data-path="${path}" data-filename="${filename}" data-icon="${icon}">${icon} ${filename}</attachment-ref>`
+            return `<attachment-ref data-path="${escapeAttr(path)}" data-filename="${escapeAttr(filename)}" data-icon="${escapeAttr(icon)}">${escapeAttr(icon)} ${escapeAttr(filename)}</attachment-ref>`
         },
     }
 }
