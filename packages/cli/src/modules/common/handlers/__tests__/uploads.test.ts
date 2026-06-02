@@ -171,6 +171,34 @@ describe('uploadFile handler', () => {
         expect(fullPath.startsWith(uploadsDir)).toBe(true)
     })
 
+    it('应清理文件名中的特殊字符（+、括号等）', async () => {
+        const result = await mockRpc.call('uploadFile', {
+            filename: 'data+analysis(1).xlsx',
+            content: toBase64('excel'),
+            mimeType: 'application/vnd.ms-excel',
+        })
+
+        expect(result.success).toBe(true)
+        // 文件名中的 + 和括号应被替换为 _
+        const filename = result.path!.split('/').pop()!
+        expect(filename).not.toContain('+')
+        expect(filename).not.toContain('(')
+        expect(filename).not.toContain(')')
+    })
+
+    it('应清理 CJK 字符文件名', async () => {
+        const result = await mockRpc.call('uploadFile', {
+            filename: '报告.pdf',
+            content: toBase64('pdf'),
+            mimeType: 'application/pdf',
+        })
+
+        expect(result.success).toBe(true)
+        // CJK 字符应被替换为 _
+        const filename = result.path!.split('/').pop()!
+        expect(filename).toMatch(/^[A-Za-z0-9_\-\.]+$/)
+    })
+
     it('应拒绝黑名单文件类型（可执行文件）', async () => {
         const blockedExtensions = ['.exe', '.bat', '.cmd', '.com', '.vbs', '.ps1']
 

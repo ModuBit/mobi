@@ -63,5 +63,23 @@ describe('attachmentPlugin', () => {
             expect(html).toContain('data-path=".mobi/uploads/2026-06/123-test.txt"')
             expect(html).toContain('data-filename="test.txt"')
         })
+
+        it('应该匹配 @.mobi/artifacts/YYYY-MM/filename', () => {
+            const src = '@.mobi/artifacts/2026-06/1748900000000-image.png'
+            const start = ext.start?.(src, undefined as any)
+            expect(start).toBe(0)
+
+            const token = ext.tokenizer?.call({} as any, src)
+            expect(token).toBeDefined()
+            expect(token?.raw).toBe('@.mobi/artifacts/2026-06/1748900000000-image.png')
+        })
+
+        it('renderer 应该正确渲染 artifacts 路径', () => {
+            const src = '@.mobi/artifacts/2026-06/123-chart.png'
+            const token = ext.tokenizer?.call({} as any, src) as any
+            const html = ext.renderer?.call({} as any, token)
+            expect(html).toContain('data-path=".mobi/artifacts/2026-06/123-chart.png"')
+            expect(html).toContain('data-filename="chart.png"')
+        })
     })
 })

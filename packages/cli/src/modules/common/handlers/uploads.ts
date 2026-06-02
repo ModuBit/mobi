@@ -21,6 +21,7 @@ import { join, resolve, relative, extname, sep } from 'path'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { getUploadsDir } from '@/constants/uploadPaths'
+import { ALLOWED_EXTENSIONS_SET, BLOCKED_EXTENSIONS_SET, MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 
 interface UploadFileRequest {
     filename: string
@@ -43,53 +44,6 @@ interface DeleteUploadResponse {
     error?: string
 }
 
-/** 最大上传大小：50MB */
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-
-/**
- * 文件扩展名白名单
- *
- * 包含：图片、文档、代码、音频、视频、压缩包
- */
-const ALLOWED_EXTENSIONS = new Set([
-    // 图片
-    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.tiff', '.tif',
-    // 文档
-    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-    '.txt', '.md', '.csv', '.rtf', '.odt', '.ods', '.odp',
-    // 代码
-    '.js', '.ts', '.tsx', '.jsx', '.py', '.java', '.c', '.cpp', '.h',
-    '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.scala',
-    '.html', '.css', '.scss', '.less', '.json', '.xml', '.yaml', '.yml',
-    '.toml', '.ini', '.cfg', '.conf', '.sh', '.bash', '.zsh',
-    '.sql', '.graphql', '.proto', '.dockerfile',
-    '.vue', '.svelte', '.astro',
-    // 音频
-    '.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma',
-    // 视频
-    '.mp4', '.webm', '.avi', '.mov', '.mkv', '.wmv', '.flv',
-    // 压缩包
-    '.zip', '.tar', '.gz', '.bz2', '.xz', '.7z', '.rar',
-])
-
-/**
- * 文件扩展名黑名单
- *
- * 可执行文件，安全风险高
- */
-const BLOCKED_EXTENSIONS = new Set([
-    // Windows 可执行文件
-    '.exe', '.bat', '.cmd', '.msi', '.com', '.scr',
-    // 动态链接库
-    '.dll', '.so', '.dylib',
-    // macOS
-    '.app', '.dmg',
-    // Linux 包
-    '.deb', '.rpm',
-    // 光盘映像
-    '.iso',
-])
-
 /**
  * 校验文件扩展名是否合法
  *
@@ -103,12 +57,12 @@ function validateFileExtension(filename: string): string | null {
         return 'File must have an extension'
     }
 
-    if (BLOCKED_EXTENSIONS.has(ext)) {
+    if (BLOCKED_EXTENSIONS_SET.has(ext)) {
         return `File type "${ext}" is not allowed (executable)`
     }
 
     // 白名单校验：不在白名单中的扩展名也拒绝
-    if (!ALLOWED_EXTENSIONS.has(ext)) {
+    if (!ALLOWED_EXTENSIONS_SET.has(ext)) {
         return `File type "${ext}" is not supported`
     }
 
@@ -124,9 +78,8 @@ function validateFileExtension(filename: string): string | null {
  */
 function sanitizeFilename(filename: string): string {
     const sanitized = filename
-        .replace(/[/\\]/g, '_')
-        .replace(/\.\./g, '_')
-        .replace(/\s+/g, '_')
+        .replace(/[/\\]/g, '_')        // 路径分隔符
+        .replace(/[^\w\-\.]/g, '_')    // 非安全字符替换为 _（对齐 ATTACHMENT_RE 的 [\w\-\.]）
         .slice(0, 255)
 
     // 如果清理后文件名为空，使用默认名
@@ -143,6 +96,9 @@ function estimateBase64Bytes(base64: string): number {
     return Math.floor((len * 3) / 4) - padding
 }
 
+/** 上传目录就绪缓存，避免同月重复 stat + readFile */
+const uploadDirCache = new Map<string, string>()
+
 /**
  * 确保上传目录存在并创建 .mobi/.gitignore
  *
@@ -157,6 +113,11 @@ async function ensureUploadDir(projectRoot: string): Promise<string> {
     // 按月组织：YYYY-MM
     const now = new Date()
     const monthDir = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+    // 缓存命中则直接返回
+    const cacheKey = `${projectRoot}:${monthDir}`
+    const cached = uploadDirCache.get(cacheKey)
+    if (cached) return cached
 
     const uploadsRoot = getUploadsDir(projectRoot)
     const uploadDir = join(uploadsRoot, monthDir)
@@ -187,6 +148,8 @@ async function ensureUploadDir(projectRoot: string): Promise<string> {
         }
     }
 
+    // 缓存已就绪的目录路径
+    uploadDirCache.set(cacheKey, uploadDir)
     return uploadDir
 }
 

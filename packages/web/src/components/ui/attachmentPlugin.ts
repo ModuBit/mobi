@@ -16,8 +16,8 @@
 
 import type { TokenizerAndRendererExtension } from 'marked'
 
-/** 匹配 @.mobi/uploads/YYYY-MM/filename */
-const ATTACHMENT_RE = /@(\.mobi\/uploads\/\d{4}-\d{2}\/[\w\-\.]+)/
+/** 匹配 @.mobi/uploads/YYYY-MM/filename 或 @.mobi/artifacts/YYYY-MM/filename */
+const ATTACHMENT_RE = /@(\.mobi\/(?:uploads|artifacts)\/\d{4}-\d{2}\/[\w\-\.]+)/
 
 /**
  * 根据文件扩展名获取文件类型图标
@@ -47,7 +47,7 @@ function extractFilename(path: string): string {
 }
 
 /**
- * Markdown inline 扩展：将 @.mobi/uploads/... 渲染为 <attachment-ref> 标签
+ * Markdown inline 扩展：将 @.mobi/uploads/... 或 @.mobi/artifacts/... 渲染为 <attachment-ref> 标签
  */
 export function attachmentInlineExtension(): TokenizerAndRendererExtension {
     return {

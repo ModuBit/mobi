@@ -15,6 +15,7 @@
  */
 
 import type { UploadFileResponse } from '@/core/data/api/types'
+import { ALLOWED_EXTENSIONS_SET, ALLOWED_EXTENSIONS, BLOCKED_EXTENSIONS_SET, MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 
 /**
  * 文件附件类型
@@ -37,46 +38,19 @@ export type FileAttachment = {
  */
 export type UploadFunction = (sessionId: string, file: File) => Promise<UploadFileResponse>
 
-// 文件扩展名白名单
-const ALLOWED_EXTENSIONS = new Set([
-    // 图片
-    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico',
-    // 文档
-    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.csv', '.rtf',
-    // 代码
-    '.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp',
-    '.css', '.html', '.json', '.yaml', '.yml', '.xml', '.toml', '.sh', '.sql', '.rb', '.php',
-    '.swift', '.kt', '.dart', '.lua', '.r', '.vue', '.svelte', '.scss', '.less',
-    '.conf', '.ini', '.env', '.properties', '.gradle', '.cmake',
-    // 音频
-    '.mp3', '.wav', '.ogg', '.aac', '.flac', '.m4a',
-    // 视频
-    '.mp4', '.webm', '.mov', '.avi', '.mkv',
-    // 压缩包
-    '.zip', '.tar', '.gz', '.bz2', '.xz', '.7z', '.rar',
-])
-
-// 文件扩展名黑名单（优先于白名单）
-const BLOCKED_EXTENSIONS = new Set([
-    '.exe', '.bat', '.cmd', '.msi', '.com', '.scr',
-    '.dll', '.so', '.dylib', '.app', '.dmg', '.deb', '.rpm', '.iso',
-])
-
-const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
-
 /**
  * 校验文件是否允许上传
  * @returns 错误信息，null 表示通过
  */
 export function validateFile(file: File): string | null {
     const ext = getExtension(file.name)
-    if (BLOCKED_EXTENSIONS.has(ext)) {
+    if (BLOCKED_EXTENSIONS_SET.has(ext)) {
         return `文件类型 "${ext}" 不允许上传`
     }
-    if (!ALLOWED_EXTENSIONS.has(ext)) {
+    if (!ALLOWED_EXTENSIONS_SET.has(ext)) {
         return `文件类型 "${ext}" 暂不支持`
     }
-    if (file.size > MAX_FILE_SIZE) {
+    if (file.size > MAX_UPLOAD_BYTES) {
         return `文件大小超过限制（最大 50MB）`
     }
     if (file.size === 0) {

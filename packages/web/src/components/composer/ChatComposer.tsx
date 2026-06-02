@@ -247,6 +247,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
     const [text, setText] = useState('')
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
+    const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
     // 命令列表（复用 React Query 缓存，用于手动输入时匹配参数提示）
@@ -514,8 +515,10 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // 上传附件到服务器
     const uploadAttachment = useCallback(async (attachmentId: string, file: File) => {
+        const controller = new AbortController()
+        abortControllersRef.current.set(attachmentId, controller)
         try {
-            const response = await api.sessions.upload(sessionId, file)
+            const response = await api.sessions.upload(sessionId, file, { signal: controller.signal })
             const data = response.data as UploadFileResponse
             if (data.success && data.path) {
                 setAttachments(prev => prev.map(a =>
@@ -531,11 +534,15 @@ export function ChatComposer(props: ChatComposerProps) {
                 ))
             }
         } catch (err) {
+            // 被取消的上传静默忽略
+            if (controller.signal.aborted) return
             setAttachments(prev => prev.map(a =>
                 a.id === attachmentId
                     ? { ...a, status: 'error' as const, error: err instanceof Error ? err.message : '上传失败' }
                     : a
             ))
+        } finally {
+            abortControllersRef.current.delete(attachmentId)
         }
     }, [api, sessionId])
 
@@ -562,6 +569,13 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [uploadAttachment])
 
     const handleRemoveAttachment = useCallback((id: string) => {
+        // 取消进行中的上传
+        const controller = abortControllersRef.current.get(id)
+        if (controller) {
+            controller.abort()
+            abortControllersRef.current.delete(id)
+        }
+
         setAttachments(prev => {
             const attachment = prev.find(a => a.id === id)
             // 如果文件已上传成功，通知服务器删除
@@ -579,32 +593,37 @@ export function ChatComposer(props: ChatComposerProps) {
         const items = e.clipboardData?.items
         if (!items) return
 
-        for (const item of Array.from(items)) {
-            if (item.kind === 'file') {
-                const file = item.getAsFile()
-                if (!file) continue
+        // 检测是否有文件项
+        const fileItems = Array.from(items).filter(item => item.kind === 'file')
+        if (fileItems.length === 0) return
 
-                // 为粘贴的文件生成文件名
-                const isImage = file.type.startsWith('image/')
-                const fileName = isImage
-                    ? `paste-${Date.now()}.png`
-                    : `paste-${Date.now()}-${file.name || 'file'}`
+        // 阻止浏览器默认粘贴行为，避免文件名等文本被插入 textarea
+        e.preventDefault()
 
-                // 创建新的 File 对象以设置文件名
-                const namedFile = new File([file], fileName, { type: file.type })
+        for (const item of fileItems) {
+            const file = item.getAsFile()
+            if (!file) continue
 
-                // 校验
-                const error = validateFile(namedFile)
-                if (error) {
-                    message.warning(error)
-                    continue
-                }
+            // 为粘贴的文件生成文件名
+            const isImage = file.type.startsWith('image/')
+            const fileName = isImage
+                ? `paste-${Date.now()}.png`
+                : `paste-${Date.now()}-${file.name || 'file'}`
 
-                // 创建附件并上传
-                const attachment = createFileAttachment(namedFile)
-                setAttachments(prev => [...prev, attachment])
-                uploadAttachment(attachment.id, namedFile)
+            // 创建新的 File 对象以设置文件名
+            const namedFile = new File([file], fileName, { type: file.type })
+
+            // 校验
+            const error = validateFile(namedFile)
+            if (error) {
+                message.warning(error)
+                continue
             }
+
+            // 创建附件并上传
+            const attachment = createFileAttachment(namedFile)
+            setAttachments(prev => [...prev, attachment])
+            uploadAttachment(attachment.id, namedFile)
         }
     }, [uploadAttachment])
 

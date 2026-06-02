@@ -15,9 +15,6 @@
  */
 
 import { join } from 'path'
-import { tmpdir } from 'os'
-
-export const MOBI_BLOBS_DIR_NAME = 'mobi-blobs'
 
 /**
  * 获取项目根目录下的 uploads 目录路径
@@ -26,11 +23,4 @@ export const MOBI_BLOBS_DIR_NAME = 'mobi-blobs'
  */
 export function getUploadsDir(projectRoot: string): string {
     return join(projectRoot, '.mobi', 'uploads')
-}
-
-/**
- * @deprecated 使用 getUploadsDir 代替，新上传路径为项目内 .mobi/uploads/
- */
-export function getMobiBlobsDir(): string {
-    return join(tmpdir(), MOBI_BLOBS_DIR_NAME)
 }

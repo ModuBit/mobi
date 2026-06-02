@@ -11,7 +11,8 @@
         "./types": "./src/types.ts",
         "./messages": "./src/messages.ts",
         "./profile": "./src/profile.ts",
-        "./pathSecurity": "./src/pathSecurity.ts"
+        "./pathSecurity": "./src/pathSecurity.ts",
+        "./upload": "./src/upload.ts"
     },
     "scripts": {
         "test": "vitest run",

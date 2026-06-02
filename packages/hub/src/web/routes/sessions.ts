@@ -17,6 +17,7 @@
 import { getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
+import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { SyncEngine, Session } from '../../sync/syncEngine'
@@ -38,8 +39,6 @@ const renameSessionSchema = z.object({
 const uploadDeleteSchema = z.object({
     path: z.string().min(1)
 })
-
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
@@ -147,6 +146,9 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
                 base64Content,
                 file.type,
             )
+            if (!result.success) {
+                return c.json(result, 400)
+            }
             return c.json(result)
         } catch (error) {
             return c.json({
@@ -175,6 +177,9 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
         try {
             const result = await engine.deleteUploadFile(sessionResult.sessionId, parsed.data.path)
+            if (!result.success) {
+                return c.json(result, 400)
+            }
             return c.json(result)
         } catch (error) {
             return c.json({

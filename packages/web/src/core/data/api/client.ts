@@ -109,11 +109,12 @@ export function createMobiApi(token: string | null) {
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
             // 上传文件（FormData）
-            upload: (sessionId: string, file: File) => {
+            upload: (sessionId: string, file: File, opts?: { signal?: AbortSignal }) => {
                 const formData = new FormData()
                 formData.append('file', file)
                 return client.post(`/api/sessions/${sessionId}/upload`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
+                    signal: opts?.signal,
                 })
             },
             deleteUpload: (sessionId: string, path: string) =>
