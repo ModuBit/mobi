@@ -16,6 +16,8 @@
 | `src/domain/chat/messageParser.ts` | 消息解析器 |
 | `src/components/ToolCard/knownTools.tsx` | 工具卡片注册 |
 | `src/core/lib/query-keys.ts` | 查询缓存 Key |
+| `src/core/lib/fileAttachments.ts` | 文件附件类型与上传校验 |
+| `src/components/ui/attachmentPlugin.ts` | Markdown 附件引用扩展（`@.mobi/...` → FileCard） |
 
 ## 移动端 Drawer 规范
 

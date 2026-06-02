@@ -1,18 +1,18 @@
 # Uploads Handler (`handlers/uploads.ts`)
 
-远程文件上传管理，支持文件的上传和删除。存储在 CLI 侧的临时 blobs 目录中。
+远程文件上传管理，支持文件的上传和删除。文件持久化存储在项目根目录 `.mobi/attachments/` 下，跨 session 共享。
 
-> **注意**: 这是唯一不需要 `workingDirectory` 的 Handler。文件存储在独立的 blobs 目录，不受路径沙箱限制。
+> **依赖**: 此 Handler 需要 `workingDirectory` 参数（项目根目录），用于确定 `.mobi/` 的位置。通过 `registerCommonHandlers` 统一传入。
 
 ## RPC 方法
 
 ### `uploadFile`
 
-上传文件到 CLI 侧临时目录。
+上传文件到项目 `.mobi/attachments/YYYY-MM/` 目录。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `sessionId` | string | 否 | Session ID（用于目录隔离） |
+| `sessionId` | string | 否 | Session ID（预留，当前未使用） |
 | `filename` | string | 是 | 原始文件名 |
 | `content` | string | 是 | Base64 编码的文件内容 |
 | `mimeType` | string | 是 | MIME 类型 |
@@ -20,7 +20,7 @@
 **响应**:
 
 ```typescript
-{ success: true, path: string }   // 文件在 CLI 侧的绝对路径
+{ success: true, path: string }   // 文件的项目相对路径（如 .mobi/attachments/2026-06/1748900000000-report.pdf）
 // 或
 { success: false, error: string }
 ```
@@ -29,15 +29,17 @@
 ```
 校验 filename 和 content
     ↓
+文件类型校验（黑名单 + 白名单）
+    ↓
 估算 Base64 解码后大小 → 上限 50MB
     ↓
-getOrCreateUploadDir(sessionId) → 创建或复用临时目录
+ensureUploadDir(projectRoot) → 创建 .mobi/attachments/YYYY-MM/ 和 .gitignore
     ↓
-sanitizeFilename + 时间戳 → 生成唯一文件名
+sanitizeFilename + 时间戳前缀 → 生成唯一文件名
     ↓
 Buffer.from(content, 'base64') → writeFile
     ↓
-二次校验实际 buffer 大小 → 返回文件路径
+二次校验实际 buffer 大小 → 返回项目相对路径
 ```
 
 ### `deleteUpload`
@@ -46,8 +48,8 @@ Buffer.from(content, 'base64') → writeFile
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `sessionId` | string | 否 | Session ID |
-| `path` | string | 是 | 要删除的文件路径 |
+| `sessionId` | string | 否 | Session ID（预留） |
+| `path` | string | 是 | 文件的项目相对路径 |
 
 **响应**:
 
@@ -57,49 +59,56 @@ Buffer.from(content, 'base64') → writeFile
 { success: false, error: string }
 ```
 
-## 目录管理
+## 存储架构
 
-### 目录创建策略
+### 目录结构
+
+```
+项目根/
+├── .mobi/
+│   ├── .gitignore              # 内容: attachments/
+│   └── attachments/
+│       └── 2026-06/            # 按月分组
+│           ├── 1748900000000-screenshot.png
+│           └── 1748900001000-report.pdf
+```
+
+- 使用 `getAttachmentsDir(projectRoot)` 返回 `.mobi/attachments` 路径
+- 按月自动创建子目录（`YYYY-MM` 格式）
+- `.mobi/.gitignore` 自动创建，内容为 `attachments/`，排除附件目录
+
+### 路径常量
 
 ```typescript
-// 每按 session 一个临时目录
-getMobiBlobsDir() / `${sessionKey}-XXXXXXXX/`
+// packages/cli/src/constants/uploadPaths.ts
+getAttachmentsDir(projectRoot: string): string  // 返回 join(projectRoot, '.mobi', 'attachments')
 ```
 
-- 使用 `mkdtemp` 创建唯一临时目录
-- 目录名格式: `{sessionId}-{random}`
-- 通过 Map 缓存已创建的目录，避免重复创建
-
-### 并发控制
-
-```typescript
-const uploadDirs = new Map<string, string>()           // sessionKey → 目录路径
-const uploadDirPromises = new Map<string, Promise<string>>()  // 防止并发创建
-```
-
-- 多个并发上传请求共享同一个目录创建 Promise
-- 防止同一 session 同时创建多个临时目录
-
-### 清理机制
-
-三种清理路径：
-
-| 时机 | 方法 | 说明 |
-|------|------|------|
-| Session 结束 | `cleanupUploadDir(sessionId)` | 异步清理，由 `ApiSessionClient.sendSessionDeath()` 调用 |
-| 进程退出 | `cleanupUploadDirsSync()` | 同步清理所有目录，通过 `process.once('exit')` 注册 |
-| 取消竞态 | `uploadDirCleanupRequested` | 防止在清理请求后仍然创建目录 |
+### 文件名策略
 
 ```
-cleanupUploadDir(sessionId)
-    │
-    ├── 标记 cleanupRequested
-    ├── 等待进行中的创建 Promise 完成
-    ├── 删除目录引用
-    └── rm(dir, { recursive: true, force: true })
+{timestamp}-{sanitizedOriginalName}
 ```
+
+- 时间戳前缀避免冲突
+- 文件名清理：移除 `/`、`\`、`..`、空白字符，截断至 255 字符
 
 ## 安全机制
+
+### 文件类型校验
+
+双重检查：黑名单优先于白名单。
+
+**黑名单**（明确拒绝）：
+`.exe` `.bat` `.cmd` `.msi` `.com` `.scr` `.dll` `.so` `.dylib` `.app` `.dmg` `.deb` `.rpm` `.iso`
+
+**白名单**（允许的类型）：
+- 图片：`.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` `.bmp` `.ico`
+- 文档：`.pdf` `.doc` `.docx` `.xls` `.xlsx` `.ppt` `.pptx` `.txt` `.md` `.csv` `.rtf`
+- 代码：`.ts` `.tsx` `.js` `.jsx` `.py` `.java` `.go` `.rs` `.c` `.cpp` `.h` 等
+- 音频：`.mp3` `.wav` `.ogg` `.aac` `.flac` `.m4a`
+- 视频：`.mp4` `.webm` `.mov` `.avi` `.mkv`
+- 压缩包：`.zip` `.tar` `.gz` `.bz2` `.xz` `.7z` `.rar`
 
 ### 文件名消毒
 
@@ -125,16 +134,15 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024  // 50MB
 ### 路径校验（删除时）
 
 ```typescript
-isPathWithinUploadDir(path, sessionId)
+isPathWithinAttachments(projectRoot, relativePath)
 ```
 
-确保删除操作只能删除上传目录内的文件，不能删除系统文件。
+确保删除操作只能删除 `.mobi/attachments/` 目录内的文件。支持相对路径（通过 `resolve(projectRoot, relativePath)` 解析）。
 
-## Base64 大小估算
+## Claude 访问
 
-```typescript
-estimateBase64Bytes(base64) → number
-// 公式: floor(len * 3 / 4) - padding
-```
+上传的文件通过以下方式让 Claude Agent SDK 可访问：
 
-快速估算解码后字节数，避免提前解码大文件浪费内存。
+- **Local 模式**：`--add-dir` 参数添加 `.mobi/` 目录
+- **Remote 模式**：`additionalDirectories` 选项添加 `.mobi/` 目录
+- 消息中使用 `@.mobi/attachments/YYYY-MM/filename` 引用文件
