@@ -21,7 +21,8 @@ export type UpdateCallback = (reload: () => void) => void
  * 返回注销函数
  */
 export function registerServiceWorker(onUpdate: UpdateCallback): () => void {
-    if (!('serviceWorker' in navigator)) {
+    // 开发模式下无 sw.js，跳过注册避免 MIME type 错误
+    if (!('serviceWorker' in navigator) || import.meta.env.DEV) {
         return () => {}
     }
 
