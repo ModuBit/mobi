@@ -33,6 +33,6 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
     registerDifftasticHandlers(rpcHandlerManager, workingDirectory)
     registerCommandHandlers(rpcHandlerManager)
     registerGitHandlers(rpcHandlerManager, workingDirectory)
-    registerUploadHandlers(rpcHandlerManager)
+    registerUploadHandlers(rpcHandlerManager, workingDirectory)
     registerSessionFilesHandler(rpcHandlerManager, workingDirectory)
 }

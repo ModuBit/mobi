@@ -19,6 +19,18 @@ import { tmpdir } from 'os'
 
 export const MOBI_BLOBS_DIR_NAME = 'mobi-blobs'
 
+/**
+ * 获取项目根目录下的 attachments 目录路径
+ * @param projectRoot 项目根目录
+ * @returns .mobi/attachments 目录的绝对路径
+ */
+export function getAttachmentsDir(projectRoot: string): string {
+    return join(projectRoot, '.mobi', 'attachments')
+}
+
+/**
+ * @deprecated 使用 getAttachmentsDir 代替，新上传路径为项目内 .mobi/attachments/
+ */
 export function getMobiBlobsDir(): string {
     return join(tmpdir(), MOBI_BLOBS_DIR_NAME)
 }
