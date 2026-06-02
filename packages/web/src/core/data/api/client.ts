@@ -108,9 +108,14 @@ export function createMobiApi(token: string | null) {
             clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) =>
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
-            // 上传文件
-            upload: (sessionId: string, filename: string, content: string, mimeType: string) =>
-                client.post(`/api/sessions/${sessionId}/upload`, { filename, content, mimeType }),
+            // 上传文件（FormData）
+            upload: (sessionId: string, file: File) => {
+                const formData = new FormData()
+                formData.append('file', file)
+                return client.post(`/api/sessions/${sessionId}/upload`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                })
+            },
             deleteUpload: (sessionId: string, path: string) =>
                 client.post(`/api/sessions/${sessionId}/upload/delete`, { path }),
             // SDK 元数据（commands, models, agents, account 等）
