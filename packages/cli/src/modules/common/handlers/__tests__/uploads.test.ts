@@ -18,7 +18,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { join, resolve, relative } from 'path'
 import { existsSync, readFileSync, rmSync, mkdirSync } from 'fs'
 import { tmpdir } from 'os'
-import { getAttachmentsDir } from '@/constants/uploadPaths'
+import { getUploadsDir } from '@/constants/uploadPaths'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { registerUploadHandlers } from '../uploads'
 
@@ -26,9 +26,9 @@ import { registerUploadHandlers } from '../uploads'
  * uploads handler 测试
  *
  * 验证：
- * - getAttachmentsDir 返回正确路径
- * - uploadFile 存储到 .mobi/attachments/YYYY-MM/
- * - .mobi/.gitignore 自动创建且内容为 "attachments/"
+ * - getUploadsDir 返回正确路径
+ * - uploadFile 存储到 .mobi/uploads/YYYY-MM/
+ * - .mobi/.gitignore 自动创建且内容包含 "uploads/" 和 "artifacts/"
  * - 黑名单文件类型被拒绝
  * - 文件名清理（移除 .. 和 /）
  * - 返回项目相对路径
@@ -61,18 +61,18 @@ function toBase64(content: string): string {
     return Buffer.from(content).toString('base64')
 }
 
-describe('getAttachmentsDir', () => {
-    it('应返回 projectRoot/.mobi/attachments 路径', () => {
+describe('getUploadsDir', () => {
+    it('应返回 projectRoot/.mobi/uploads 路径', () => {
         const projectRoot = '/tmp/test-project'
-        const result = getAttachmentsDir(projectRoot)
-        expect(result).toBe(join(projectRoot, '.mobi', 'attachments'))
+        const result = getUploadsDir(projectRoot)
+        expect(result).toBe(join(projectRoot, '.mobi', 'uploads'))
     })
 
     it('不同 projectRoot 应返回不同路径', () => {
-        const result1 = getAttachmentsDir('/project/a')
-        const result2 = getAttachmentsDir('/project/b')
-        expect(result1).toBe(join('/project/a', '.mobi', 'attachments'))
-        expect(result2).toBe(join('/project/b', '.mobi', 'attachments'))
+        const result1 = getUploadsDir('/project/a')
+        const result2 = getUploadsDir('/project/b')
+        expect(result1).toBe(join('/project/a', '.mobi', 'uploads'))
+        expect(result2).toBe(join('/project/b', '.mobi', 'uploads'))
         expect(result1).not.toBe(result2)
     })
 })
@@ -96,7 +96,7 @@ describe('uploadFile handler', () => {
         }
     })
 
-    it('应将文件存储到 .mobi/attachments/YYYY-MM/ 目录', async () => {
+    it('应将文件存储到 .mobi/uploads/YYYY-MM/ 目录', async () => {
         const result = await mockRpc.call('uploadFile', {
             filename: 'test.png',
             content: toBase64('hello world'),
@@ -110,15 +110,15 @@ describe('uploadFile handler', () => {
         const fullPath = resolve(tempDir, result.path)
         expect(existsSync(fullPath)).toBe(true)
 
-        // 验证路径结构包含 .mobi/attachments/YYYY-MM
-        expect(result.path).toMatch(/\.mobi\/attachments\/\d{4}-\d{2}\//)
+        // 验证路径结构包含 .mobi/uploads/YYYY-MM
+        expect(result.path).toMatch(/\.mobi\/uploads\/\d{4}-\d{2}\//)
 
         // 验证文件内容
         const content = readFileSync(fullPath)
         expect(content.toString()).toBe('hello world')
     })
 
-    it('应自动创建 .mobi/.gitignore 且内容为 "attachments/"', async () => {
+    it('应自动创建 .mobi/.gitignore 且内容包含 "uploads/" 和 "artifacts/"', async () => {
         await mockRpc.call('uploadFile', {
             filename: 'test.png',
             content: toBase64('hello'),
@@ -129,7 +129,9 @@ describe('uploadFile handler', () => {
         expect(existsSync(gitignorePath)).toBe(true)
 
         const content = readFileSync(gitignorePath, 'utf-8')
-        expect(content.trim()).toBe('attachments/')
+        const lines = content.split('\n')
+        expect(lines).toContain('uploads/')
+        expect(lines).toContain('artifacts/')
     })
 
     it('应返回项目相对路径', async () => {
@@ -161,12 +163,12 @@ describe('uploadFile handler', () => {
 
         // 文件名中不应包含 .. 或原始路径分隔符
         const fullPath = resolve(tempDir, result.path)
-        // 验证文件确实在 attachments 目录内
-        expect(fullPath).toContain('.mobi/attachments')
+        // 验证文件确实在 uploads 目录内
+        expect(fullPath).toContain('.mobi/uploads')
 
         // 验证没有路径遍历
-        const attachmentsDir = join(tempDir, '.mobi', 'attachments')
-        expect(fullPath.startsWith(attachmentsDir)).toBe(true)
+        const uploadsDir = join(tempDir, '.mobi', 'uploads')
+        expect(fullPath.startsWith(uploadsDir)).toBe(true)
     })
 
     it('应拒绝黑名单文件类型（可执行文件）', async () => {
@@ -306,7 +308,7 @@ describe('deleteUpload handler', () => {
         expect(existsSync(fullPath)).toBe(false)
     })
 
-    it('应拒绝不在 attachments 目录内的路径', async () => {
+    it('应拒绝不在 uploads 目录内的路径', async () => {
         const result = await mockRpc.call('deleteUpload', {
             path: '../../../etc/passwd',
         })

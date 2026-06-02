@@ -15,12 +15,12 @@
  */
 
 import { logger } from '@/ui/logger'
-import { mkdir, writeFile, rm } from 'fs/promises'
+import { mkdir, writeFile, rm, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join, resolve, relative, extname, sep } from 'path'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from '../rpcResponses'
-import { getAttachmentsDir } from '@/constants/uploadPaths'
+import { getUploadsDir } from '@/constants/uploadPaths'
 
 interface UploadFileRequest {
     filename: string
@@ -147,8 +147,8 @@ function estimateBase64Bytes(base64: string): number {
  * 确保上传目录存在并创建 .mobi/.gitignore
  *
  * 创建目录结构：
- * - .mobi/attachments/YYYY-MM/ 按月归档
- * - .mobi/.gitignore 排除 attachments 目录
+ * - .mobi/uploads/YYYY-MM/ 按月归档
+ * - .mobi/.gitignore 排除 uploads 和 artifacts 目录
  *
  * @param projectRoot 项目根目录
  * @returns 当月上传目录的绝对路径
@@ -158,40 +158,55 @@ async function ensureUploadDir(projectRoot: string): Promise<string> {
     const now = new Date()
     const monthDir = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
-    const attachmentsRoot = getAttachmentsDir(projectRoot)
-    const uploadDir = join(attachmentsRoot, monthDir)
+    const uploadsRoot = getUploadsDir(projectRoot)
+    const uploadDir = join(uploadsRoot, monthDir)
 
     if (!existsSync(uploadDir)) {
         await mkdir(uploadDir, { recursive: true })
     }
 
-    // 确保 .mobi/.gitignore 存在，排除 attachments 目录
-    const gitignorePath = join(projectRoot, '.mobi', '.gitignore')
+    // 确保 .mobi/.gitignore 存在且包含 uploads/ 和 artifacts/
+    const mobiDir = join(projectRoot, '.mobi')
+    const gitignorePath = join(mobiDir, '.gitignore')
+    const requiredEntries = ['uploads/', 'artifacts/']
+
     if (!existsSync(gitignorePath)) {
-        await mkdir(join(projectRoot, '.mobi'), { recursive: true })
-        await writeFile(gitignorePath, 'attachments/\n', 'utf-8')
+        await mkdir(mobiDir, { recursive: true })
+        await writeFile(gitignorePath, requiredEntries.join('\n') + '\n', 'utf-8')
+    } else {
+        // 检查已有内容，补充缺失的条目
+        const content = await readFile(gitignorePath, 'utf-8')
+        const lines = content.split('\n')
+        const missing = requiredEntries.filter(entry => !lines.includes(entry))
+        if (missing.length > 0) {
+            // 在末尾追加缺失的条目
+            const newContent = content.endsWith('\n')
+                ? content + missing.join('\n') + '\n'
+                : content + '\n' + missing.join('\n') + '\n'
+            await writeFile(gitignorePath, newContent, 'utf-8')
+        }
     }
 
     return uploadDir
 }
 
 /**
- * 校验路径是否在 attachments 目录内（防止路径遍历攻击）
+ * 校验路径是否在 uploads 目录内（防止路径遍历攻击）
  */
-function isPathWithinAttachments(projectRoot: string, relativePath: string): boolean {
-    const attachmentsRoot = getAttachmentsDir(projectRoot)
+function isPathWithinUploads(projectRoot: string, relativePath: string): boolean {
+    const uploadsRoot = getUploadsDir(projectRoot)
     const resolvedPath = resolve(projectRoot, relativePath)
-    const normalizedAttachments = attachmentsRoot.endsWith(sep)
-        ? attachmentsRoot
-        : `${attachmentsRoot}${sep}`
+    const normalizedUploads = uploadsRoot.endsWith(sep)
+        ? uploadsRoot
+        : `${uploadsRoot}${sep}`
 
-    return resolvedPath.startsWith(normalizedAttachments)
+    return resolvedPath.startsWith(normalizedUploads)
 }
 
 /**
  * 清理上传目录（已废弃）
  *
- * 新版本使用 .mobi/attachments/ 持久化存储，不再需要按 session 清理。
+ * 新版本使用 .mobi/uploads/ 持久化存储，不再需要按 session 清理。
  * 此函数保留为空操作以兼容现有调用方（apiSession.sendSessionDeath），
  * 后续 Task 2 中会移除调用方并删除此函数。
  *
@@ -275,8 +290,8 @@ export function registerUploadHandlers(
                 return rpcError('Path is required')
             }
 
-            // 校验路径在 attachments 目录内
-            if (!isPathWithinAttachments(workingDirectory, path)) {
+            // 校验路径在 uploads 目录内
+            if (!isPathWithinUploads(workingDirectory, path)) {
                 return rpcError('Invalid upload path')
             }
 

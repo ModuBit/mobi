@@ -21,14 +21,14 @@ describe('attachmentPlugin', () => {
     describe('tokenizer', () => {
         const ext = attachmentInlineExtension()
 
-        it('应该匹配 @.mobi/attachments/YYYY-MM/filename', () => {
-            const src = '@.mobi/attachments/2026-06/1748900000000-report.pdf'
+        it('应该匹配 @.mobi/uploads/YYYY-MM/filename', () => {
+            const src = '@.mobi/uploads/2026-06/1748900000000-report.pdf'
             const start = ext.start?.(src, undefined as any)
             expect(start).toBe(0)
 
             const token = ext.tokenizer?.call({} as any, src)
             expect(token).toBeDefined()
-            expect(token?.raw).toBe('@.mobi/attachments/2026-06/1748900000000-report.pdf')
+            expect(token?.raw).toBe('@.mobi/uploads/2026-06/1748900000000-report.pdf')
         })
 
         it('不应匹配普通 @ 提及', () => {
@@ -38,29 +38,29 @@ describe('attachmentPlugin', () => {
         })
 
         it('应该在文本中间匹配附件路径', () => {
-            const src = 'see @.mobi/attachments/2026-06/file.png for details'
+            const src = 'see @.mobi/uploads/2026-06/file.png for details'
             const start = ext.start?.(src, undefined as any)
             expect(start).toBe(4)
         })
 
         it('应该从路径中提取文件名（移除时间戳前缀）', () => {
-            const src = '@.mobi/attachments/2026-06/1748900000000-report.pdf'
+            const src = '@.mobi/uploads/2026-06/1748900000000-report.pdf'
             const token = ext.tokenizer?.call({} as any, src) as any
             expect(token.filename).toBe('report.pdf')
         })
 
         it('应该根据扩展名返回正确的图标', () => {
-            const pdfSrc = '@.mobi/attachments/2026-06/123-doc.pdf'
+            const pdfSrc = '@.mobi/uploads/2026-06/123-doc.pdf'
             const token = ext.tokenizer?.call({} as any, pdfSrc) as any
             expect(token.icon).toBe('📄')
         })
 
         it('renderer 应该输出 attachment-ref 标签', () => {
-            const src = '@.mobi/attachments/2026-06/123-test.txt'
+            const src = '@.mobi/uploads/2026-06/123-test.txt'
             const token = ext.tokenizer?.call({} as any, src) as any
             const html = ext.renderer?.call({} as any, token)
             expect(html).toContain('<attachment-ref')
-            expect(html).toContain('data-path=".mobi/attachments/2026-06/123-test.txt"')
+            expect(html).toContain('data-path=".mobi/uploads/2026-06/123-test.txt"')
             expect(html).toContain('data-filename="test.txt"')
         })
     })

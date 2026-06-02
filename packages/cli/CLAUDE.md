@@ -16,7 +16,7 @@
 | `src/commands/claude.ts` | 默认命令，启动 Claude 会话 |
 | `src/claude/loop.ts` | 会话循环（Local/Remote 模式切换） |
 | `src/modules/common/idleTimer.ts` | Session 自动超时计时器 |
-| `src/constants/uploadPaths.ts` | 上传文件路径常量（`.mobi/attachments`） |
+| `src/constants/uploadPaths.ts` | 上传文件路径常量（`.mobi/uploads`） |
 | `src/modules/common/handlers/uploads.ts` | 文件上传/删除 RPC Handler |
 
 ## 测试
