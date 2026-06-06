@@ -24,7 +24,7 @@ import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents } from '@/domain/chat'
+import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer } from '@/components/composer/ChatComposer'
@@ -105,6 +105,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const observerCleanupRef = useRef<(() => void) | null>(null)
     // scroll restoration setTimeout ID，用于 session 切换/unmount 时清理
     const scrollRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定
+    const prevByIdRef = useRef<ChatBlocksById>(new Map())
     // 触发历史消息加载的函数引用（observer setup effect 中赋值）
     const triggerFetchRef = useRef<(scrollTop: number, scrollHeight: number) => void>(() => {})
     const { token } = useToken()
@@ -118,7 +120,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const normalized = messages
             .map(normalizeDecryptedMessage)
             .filter((m): m is Exclude<typeof m, null> => m !== null)
-        return reduceChatBlocks(normalized, session?.agentState)
+        const raw = reduceChatBlocks(normalized, session?.agentState)
+        // 结构化共享：未变化的 block 返回旧引用 → React.memo 生效
+        const { blocks, byId } = reconcileChatBlocks(raw.blocks, prevByIdRef.current)
+        prevByIdRef.current = byId
+        return { ...raw, blocks, byId }
     }, [messages, session?.agentState])
 
     // 同步 running agents 到 store，供 AgentPanel 订阅
@@ -269,6 +275,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     useEffect(() => {
         setupDoneRef.current = false
         isFillingRef.current = false
+        prevByIdRef.current = new Map()
         observerCleanupRef.current?.()
         observerCleanupRef.current = null
         if (scrollRestoreTimerRef.current) {
