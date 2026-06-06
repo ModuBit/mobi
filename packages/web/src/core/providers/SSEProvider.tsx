@@ -30,6 +30,77 @@ import { isObject } from '@mobi/shared'
 import type { MessagesResponse } from '@/core/data/api/types'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 
+// ── SSE 早到消息暂存缓冲区 ──────────────────────────────────
+// 页面刷新时 SSE 事件可能先于 API 响应到达，此时缓存为空，事件会被丢弃。
+// 暂存这些消息，等 API 响应填充缓存后自动合并，消除竞态丢消息的风险。
+
+/** 暂存消息条目 */
+type PendingMessage = {
+    msg: DecryptedMessage
+    options?: { skipIfNotSnapshot?: boolean }
+}
+
+/**
+ * 消息暂存缓冲区
+ * key: sessionId, value: 该 session 的暂存消息数组
+ */
+const pendingMessages = new Map<string, PendingMessage[]>()
+const MAX_PENDING_PER_SESSION = 50
+
+/** 暂存消息到缓冲区（缓存为空时调用） */
+function stashPendingMessage(
+    sessionId: string,
+    msg: DecryptedMessage,
+    options?: { skipIfNotSnapshot?: boolean },
+) {
+    let pending = pendingMessages.get(sessionId)
+    if (!pending) {
+        pending = []
+        pendingMessages.set(sessionId, pending)
+    }
+    // 去重：同 id 消息原地更新
+    const existingIdx = pending.findIndex(p => p.msg.id === msg.id)
+    if (existingIdx !== -1) {
+        if (options?.skipIfNotSnapshot && !pending[existingIdx].msg.snapshot) return
+        pending[existingIdx] = { msg, options }
+    } else {
+        pending.push({ msg, options })
+    }
+    // 容量保护
+    if (pending.length > MAX_PENDING_PER_SESSION) {
+        pending.splice(0, pending.length - MAX_PENDING_PER_SESSION)
+    }
+}
+
+/** 将暂存消息合并到已存在的缓存中 */
+function flushPendingIntoCache(
+    queryClient: ReturnType<typeof useQueryClient>,
+    sessionId: string,
+) {
+    const pending = pendingMessages.get(sessionId)
+    if (!pending || pending.length === 0) return
+
+    // 先删除 Map 条目，避免 setQueryData 同步触发 queryCache subscribe 时
+    // 检测到 pendingMessages.has(sid) 仍为 true 而排入冗余微任务
+    pendingMessages.delete(sessionId)
+
+    queryClient.setQueryData<InfiniteData<MessagesResponse>>(
+        queryKeys.messages(sessionId),
+        (old) => {
+            if (!old || old.pages.length === 0) return old
+            const pages = old.pages.slice()
+            const firstPage = pages[0]
+            let currentMessages = firstPage.messages
+            for (const p of pending) {
+                currentMessages = resolveMessageCache(currentMessages, p.msg, p.options)
+            }
+            pages[0] = { ...firstPage, messages: currentMessages }
+            return { ...old, pages }
+        },
+    )
+}
+// ── 暂存缓冲区结束 ──────────────────────────────────────────
+
 /** 更新消息缓存：upsert 模式，新消息插入最新页（pages[0]） */
 function upsertMessageCache(
     queryClient: ReturnType<typeof useQueryClient>,
@@ -41,16 +112,27 @@ function upsertMessageCache(
         queryKeys.messages(sessionId),
         (old) => {
             if (!old || old.pages.length === 0) {
-                // 无缓存时不创建单页结构，让 useInfiniteQuery 挂载时自己获取完整数据
-                // 避免创建 hasMore: false 的缓存导致用户看不到历史消息
+                // 缓存为空：暂存消息，等 API 响应后合并，而非直接丢弃
+                stashPendingMessage(sessionId, msg, options)
                 return undefined
             }
 
             const pages = old.pages.slice()
             const firstPage = pages[0]
 
+            // 兜底：合并该 session 的暂存消息
+            // 正常情况下由 queryCache subscribe 触发 flush，此处是防御性合并
+            const pending = pendingMessages.get(sessionId)
+            let currentMessages = firstPage.messages
+            if (pending && pending.length > 0) {
+                for (const p of pending) {
+                    currentMessages = resolveMessageCache(currentMessages, p.msg, p.options)
+                }
+                pendingMessages.delete(sessionId)
+            }
+
             // 使用 resolveMessageCache 处理 snapshot 清理和消息合并
-            const mergedMessages = resolveMessageCache(firstPage.messages, msg, options)
+            const mergedMessages = resolveMessageCache(currentMessages, msg, options)
 
             pages[0] = {
                 ...firstPage,
@@ -280,6 +362,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'session-removed':
                 qc.removeQueries({ queryKey: queryKeys.session(event.sessionId) })
                 qc.removeQueries({ queryKey: queryKeys.messages(event.sessionId) })
+                pendingMessages.delete(event.sessionId)
                 scheduleInvalidation('sessions')
                 break
             case 'message-received':
@@ -414,6 +497,19 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
         client.connect()
 
+        // 订阅 queryCache 变化：API 响应填充缓存后，自动 flush 暂存的早到消息
+        const unsubscribeCache = queryClient.getQueryCache().subscribe((event) => {
+            if (event?.type !== 'updated') return
+            const key = event.query.queryKey
+            if (!Array.isArray(key) || key[0] !== 'messages') return
+            const sid = key[1] as string
+            if (!pendingMessages.has(sid)) return
+            const data = event.query.state.data as InfiniteData<MessagesResponse> | undefined
+            if (!data?.pages?.length) return
+            // 延迟到微任务，确保 setQueryData 完成
+            queueMicrotask(() => flushPendingIntoCache(queryClient, sid))
+        })
+
         // 页面可见性变化时上报 Hub（仅在状态实际变化时发送）
         let lastHidden = document.hidden
         const handleVisibilityChange = () => {
@@ -427,6 +523,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange)
+            unsubscribeCache()
             unsubscribe()
             client.disconnect()
             // 清理 subscriptionId
@@ -443,6 +540,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 machines: false,
                 sessionIds: new Set(),
             }
+            // 清理暂存缓冲区
+            pendingMessages.clear()
         }
     }, [token, logout, handleSyncEvent])
 

@@ -534,3 +534,51 @@ hooks: {
 2. Task 2: CLI 开启 hooks 回调并转发 team 相关事件
 3. Task 3-8: Web 端 store + UI 组件 + 集成
 4. Task 9: 集成验证
+
+---
+
+## 25. Web 端消息列表渲染性能优化 — reconcile 与增量 reduce 的取舍
+
+**相关文件**：
+- `packages/web/src/components/chat/ChatContainer.tsx` — 消息渲染容器
+- `packages/web/src/components/chat/buildBubbleItems.tsx` — bubble 列表构建
+- `packages/web/src/domain/chat/reducer.ts` — `reduceChatBlocks` 全量归约
+- `packages/web/src/domain/chat/reconcile.ts` — `reconcileChatBlocks` 结构化共享（已实现，未接入）
+- `packages/web/src/domain/chat/groupToolCalls.ts` — 工具组折叠
+
+### 现状
+
+- SSE 每推送一条新消息 → `useMessages` 返回新数组 → `reduceChatBlocks` 对**全部消息**执行 normalize → trace → reduce
+- `reconcileChatBlocks` 已实现（逐字段对比新旧 block，未变化返回旧引用），但**调用者为 0**，从未接入渲染链路
+- `Bubble.List` 无虚拟滚动（见 #23），DOM 节点随消息量线性增长
+- 每次 SSE 事件产生全新 block 对象 → 下游 `React.memo`（`TextBlock` 等）无法生效 → 所有 bubble 重渲染
+
+### 优化方案对比
+
+| 方案 | 做法 | 对跨消息逻辑的影响 |
+|------|------|-------------------|
+| **Reconcile（结构化共享）** | 保持全量 `reduceChatBlocks` 不变，最后一步加 `reconcileChatBlocks` 做引用对比 | ❌ 无影响 — 所有逻辑不变 |
+| **增量 Reduce** | 只处理新增消息，跳过旧消息 | ⚠️ 有影响 — 需维护多种跨渲染状态 |
+
+### 增量 Reduce 不可行的原因
+
+`reduceChatBlocks` 是**纯函数**，每次从全部消息重建所有 block。其内部有 6 类**依赖多条消息综合结果**的逻辑，增量 reduce 会破坏这些逻辑：
+
+1. **Tool-call / Tool-result 配对**：`ensureToolBlock` 用 `toolBlocksById` Map 配对，tool-call 先到创建 block，tool-result 后到更新同一 block。增量模式需跨渲染保持 `toolBlocksById`
+2. **agentState 变更触发 block 状态更新**：`agentState` 变化时 `useMemo` 依赖触发全量重算，已有 tool-call block 的 `state` 从 `running` → `completed`。增量模式需重新评估所有 block
+3. **工具组折叠**（`groupCollapsibleToolCalls`）：新 block 可能导致旧 block 的分组边界变化（如连续 completed 达到 2 个触发折叠）。需始终看到完整 block 列表
+4. **Compact Summary 检测**：需先看到 `compact` 事件，再看到紧随的 `user` 消息，才能生成 `CompactSummaryBlock`。`pendingCompactMetadata` 是跨消息中间状态
+5. **Sidechain 消息聚合**：`traceMessages` 建立 parentUuid 树，sidechain 消息可能晚于主链 tool-call 到达，需累积 trace 状态
+6. **事件去重 / API Error 合并**（`dedupeAgentEvents` / `foldApiErrorEvents`）：`api-error` 和 `api-retry` 可能跨批次，增量模式会错过合并
+
+### 决策
+
+- **当前**：接入 `reconcileChatBlocks`，保持全量 reduce 不变。Block 引用稳定 → `React.memo` 生效 → 未变化的 bubble 不重渲染
+- **后续**（如全量 reduce 计算耗时成为瓶颈）：将 `reduceChatBlocks` 重构为 **stateful reducer**（维护 `toolBlocksById`、`pendingCompactMetadata`、trace 树等内部状态），实现真正的增量 reduce。这是一次大规模重构
+
+### 实施路径
+
+1. 补齐 `reconcile.ts` 和 `reducer.ts` 的单测
+2. 在 `ChatContainer` 的 `useMemo` 中接入 `reconcileChatBlocks`
+3. 确保 `buildChatBubbleItems` 及各 Block 组件的 `React.memo` 正确生效
+4. 单测全部通过
