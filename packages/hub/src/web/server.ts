@@ -21,7 +21,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { serveStatic } from 'hono/bun'
 import { configuration } from '../configuration'
-import { PROTOCOL_VERSION } from '@mobi/shared'
+import { PROTOCOL_VERSION, MAX_UPLOAD_BYTES } from '@mobi/shared'
 import type { SyncEngine } from '../sync/syncEngine'
 import { createAuthMiddleware, type WebAppEnv } from './middleware/auth'
 import { createAuthRoutes } from './routes/auth'
@@ -220,7 +220,8 @@ export async function startWebServer(options: {
         hostname: configuration.listenHost,
         port: configuration.listenPort,
         idleTimeout: Math.max(30, socketHandler.idleTimeout),
-        maxRequestBodySize: socketHandler.maxRequestBodySize,
+        // 使用应用层上传限制（50MB），而非 Socket.IO 引擎的默认值
+        maxRequestBodySize: Math.max(MAX_UPLOAD_BYTES, socketHandler.maxRequestBodySize ?? 0),
         websocket: socketHandler.websocket,
         fetch: (req, server) => {
             const url = new URL(req.url)

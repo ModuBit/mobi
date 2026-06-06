@@ -234,7 +234,9 @@
       "bypassPermissions": "YOLO"
     },
     "activate": "Resume",
-    "switchToRemote": "Switch to Remote Mode"
+    "switchToRemote": "Switch to Remote Mode",
+    "dropToUpload": "Drop files here to upload",
+    "uploadPendingWarning": "Please wait for file uploads to complete"
   },
   "status": {
     "percentLeft": "{{percent}}% left"

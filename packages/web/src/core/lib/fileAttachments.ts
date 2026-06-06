@@ -85,10 +85,3 @@ export function createFileAttachment(file: File): FileAttachment {
         status: 'uploading',
     }
 }
-
-/**
- * 判断是否为图片 MIME 类型
- */
-export function isImageMimeType(mimeType: string): boolean {
-    return mimeType.startsWith('image/')
-}

@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Tooltip, Select, theme, Typography, Popover, message } from 'antd'
-import { PlusOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, SafetyOutlined, RightOutlined } from '@ant-design/icons'
+import { PlusOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, SafetyOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -156,6 +156,24 @@ const MIME_TO_EXT: Record<string, string> = {
     'image/bmp': '.bmp',
 }
 
+// ============ 粘贴非图片 MIME → 扩展名 ============
+const NON_IMAGE_MIME_TO_EXT: Record<string, string> = {
+    'application/pdf': '.pdf',
+    'text/plain': '.txt',
+    'text/csv': '.csv',
+    'text/html': '.html',
+    'text/markdown': '.md',
+    'application/json': '.json',
+    'application/zip': '.zip',
+    'application/xml': '.xml',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+    'application/msword': '.doc',
+    'application/vnd.ms-excel': '.xls',
+    'application/vnd.ms-powerpoint': '.ppt',
+}
+
 /** 从图片 MIME 类型推断文件扩展名，未知类型回退到 .png */
 function imageExtFromMime(mimeType: string): string {
     return MIME_TO_EXT[mimeType] ?? '.png'
@@ -265,6 +283,10 @@ export function ChatComposer(props: ChatComposerProps) {
     const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
+    // 拖拽上传状态（计数器解决子元素间 dragenter/dragleave 频繁触发问题）
+    const [isDragOver, setIsDragOver] = useState(false)
+    const dragCounterRef = useRef(0)
+
     // 命令列表（复用 React Query 缓存，用于手动输入时匹配参数提示）
     const { data: commandsData } = useCommands(sessionId ?? null)
 
@@ -292,6 +314,15 @@ export function ChatComposer(props: ChatComposerProps) {
     })
 
     const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
+
+    // controlsDisabled 变更时重置拖拽状态，防止处理器被替换后计数器残留
+    useEffect(() => {
+        if (controlsDisabled) {
+            dragCounterRef.current = 0
+            setIsDragOver(false)
+        }
+    }, [controlsDisabled])
+
     const trimmed = text.trim()
     const hasText = trimmed.length > 0
     const hasAttachments = attachments.length > 0
@@ -509,7 +540,7 @@ export function ChatComposer(props: ChatComposerProps) {
         // 检查是否有未完成上传的附件
         const pendingUploads = attachments.filter(a => a.status === 'uploading')
         if (pendingUploads.length > 0) {
-            message.warning('请等待文件上传完成')
+            message.warning(t('composer.uploadPendingWarning'))
             return
         }
 
@@ -526,7 +557,7 @@ export function ChatComposer(props: ChatComposerProps) {
         setText('')
         setAttachments([])
         needsRefocusRef.current = true
-    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments])
+    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, t])
 
     // 上传附件到服务器
     const uploadAttachment = useCallback(async (attachmentId: string, file: File) => {
@@ -561,6 +592,20 @@ export function ChatComposer(props: ChatComposerProps) {
         }
     }, [api, sessionId])
 
+    // 校验并上传文件列表（粘贴 / 拖拽 / 选择文件共享）
+    const processFiles = useCallback((files: File[]) => {
+        for (const file of files) {
+            const error = validateFile(file)
+            if (error) {
+                message.warning(error)
+                continue
+            }
+            const attachment = createFileAttachment(file)
+            setAttachments(prev => [...prev, attachment])
+            uploadAttachment(attachment.id, file)
+        }
+    }, [uploadAttachment])
+
     const handleAttach = useCallback(() => {
         const input = document.createElement('input')
         input.type = 'file'
@@ -569,19 +614,10 @@ export function ChatComposer(props: ChatComposerProps) {
         input.onchange = (e) => {
             const files = (e.target as HTMLInputElement).files
             if (!files) return
-            for (const file of Array.from(files)) {
-                const error = validateFile(file)
-                if (error) {
-                    message.warning(error)
-                    continue
-                }
-                const attachment = createFileAttachment(file)
-                setAttachments(prev => [...prev, attachment])
-                uploadAttachment(attachment.id, file)
-            }
+            processFiles(Array.from(files))
         }
         input.click()
-    }, [uploadAttachment])
+    }, [processFiles])
 
     const handleRemoveAttachment = useCallback((id: string) => {
         // 取消进行中的上传
@@ -615,33 +651,69 @@ export function ChatComposer(props: ChatComposerProps) {
         // 阻止浏览器默认粘贴行为，避免文件名等文本被插入 textarea
         e.preventDefault()
 
+        // 粘贴的文件可能缺少有效文件名，需修正后交给 processFiles
+        const namedFiles: File[] = []
         for (const item of fileItems) {
             const file = item.getAsFile()
             if (!file) continue
 
-            // 为粘贴的文件生成文件名（从 MIME 推断扩展名）
+            // 为粘贴的文件生成文件名
+            // CLI 会在文件名后追加短 ID 保证唯一，这里只需提供语义化的基础名。
             const isImage = file.type.startsWith('image/')
-            const ext = isImage ? imageExtFromMime(file.type) : ''
-            const fileName = isImage
-                ? `paste-${Date.now()}${ext}`
-                : `paste-${Date.now()}-${file.name || 'file'}`
-
-            // 创建新的 File 对象以设置文件名
-            const namedFile = new File([file], fileName, { type: file.type })
-
-            // 校验
-            const error = validateFile(namedFile)
-            if (error) {
-                message.warning(error)
-                continue
+            const originalName = file.name
+            // 浏览器常见的粘贴图片占位名，不算有效文件名
+            const isPlaceholder = !originalName
+                || /^(image|screenshot|paste|clipboard|unknown)(\.\w+)?$/i.test(originalName)
+                || originalName === 'file'
+            let fileName: string
+            if (isPlaceholder) {
+                // 占位名：用简短语义名 + 扩展名，CLI 会追加唯一 ID
+                const ext = isImage
+                    ? imageExtFromMime(file.type)
+                    : (NON_IMAGE_MIME_TO_EXT[file.type] ?? '')
+                fileName = isImage ? `image${ext}` : `file${ext}`
+            } else {
+                // 浏览器提供了有效的原始文件名，直接使用
+                fileName = originalName
             }
 
-            // 创建附件并上传
-            const attachment = createFileAttachment(namedFile)
-            setAttachments(prev => [...prev, attachment])
-            uploadAttachment(attachment.id, namedFile)
+            namedFiles.push(new File([file], fileName, { type: file.type }))
         }
-    }, [uploadAttachment])
+
+        processFiles(namedFiles)
+    }, [processFiles])
+
+    // 拖拽上传事件处理
+    const handleDragEnter = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        dragCounterRef.current++
+        if (dragCounterRef.current === 1) {
+            setIsDragOver(true)
+        }
+    }, [])
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+    }, [])
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        dragCounterRef.current--
+        if (dragCounterRef.current === 0) {
+            setIsDragOver(false)
+        }
+    }, [])
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        dragCounterRef.current = 0
+        setIsDragOver(false)
+
+        const files = e.dataTransfer?.files
+        if (!files || files.length === 0) return
+
+        processFiles(Array.from(files))
+    }, [processFiles])
 
     const showInactiveCover = !active && !allowSendWhenInactive
     const showLocalModeCover = active && mode === 'local'
@@ -690,7 +762,15 @@ export function ChatComposer(props: ChatComposerProps) {
                 abortPending={abortPending}
             />
 
-            <div ref={wrapperRef} className={isBashMode ? 'bash-mode' : undefined} style={{ position: 'relative' }}>
+            <div
+                ref={wrapperRef}
+                className={isBashMode ? 'bash-mode' : undefined}
+                style={{ position: 'relative' }}
+                onDragEnter={controlsDisabled ? undefined : handleDragEnter}
+                onDragOver={controlsDisabled ? undefined : handleDragOver}
+                onDragLeave={controlsDisabled ? undefined : handleDragLeave}
+                onDrop={controlsDisabled ? undefined : handleDrop}
+            >
                 <Sender
                     value={text}
                     onChange={handleChange}
@@ -949,6 +1029,32 @@ export function ChatComposer(props: ChatComposerProps) {
                         >
                             {t('composer.switchToRemote')}
                         </Button>
+                    </div>
+                )}
+
+                {/* 拖拽上传覆盖层 */}
+                {isDragOver && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 8,
+                            borderRadius: 'var(--ant-border-radius)',
+                            zIndex: 20,
+                            background: `color-mix(in srgb, ${token.colorBgContainer} 85%, transparent)`,
+                            backdropFilter: 'blur(2px)',
+                            border: `2px dashed ${token.colorPrimary}`,
+                            pointerEvents: 'none',
+                        }}
+                    >
+                        <InboxOutlined style={{ fontSize: 28, color: token.colorPrimary }} />
+                        <span style={{ color: token.colorTextSecondary, fontSize: 13 }}>
+                            {t('composer.dropToUpload')}
+                        </span>
                     </div>
                 )}
             </div>

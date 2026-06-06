@@ -14,75 +14,342 @@
  * limitations under the License.
  */
 
-import { memo } from 'react'
-import { Tag, theme, Spin } from 'antd'
-import { CloseOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
+import { memo, useState, useEffect, type FC } from 'react'
+import { theme, Spin, Tooltip } from 'antd'
+import { CloseOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
+import {
+    File, FileText, FileSpreadsheet, FileImage, FileVideo,
+    FileAudio, FileArchive, FileType, FileCode, FileCode2,
+} from 'lucide-react'
+import type { LucideProps } from 'lucide-react'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
-import { isImageMimeType } from '@/core/lib/fileAttachments'
 
-interface AttachmentItemProps {
-    /** 附件信息 */
-    attachment: FileAttachment
-    /** 移除回调 */
-    onRemove: (id: string) => void
+/** 文件类别图标（对齐 AntX FileCard PresetIcons） */
+type FileCategory = 'default' | 'pdf' | 'word' | 'excel' | 'ppt' | 'image' | 'video' | 'audio' | 'zip' | 'markdown' | 'java' | 'javascript' | 'python' | 'code'
+
+const CATEGORY_ICON: Record<FileCategory, FC<LucideProps>> = {
+    default: File,
+    pdf: FileText,
+    word: FileType,
+    excel: FileSpreadsheet,
+    ppt: FileType,
+    image: FileImage,
+    video: FileVideo,
+    audio: FileAudio,
+    zip: FileArchive,
+    markdown: FileText,
+    java: FileCode,
+    javascript: FileCode2,
+    python: FileCode2,
+    code: FileCode,
+}
+
+/** 扩展名 → 文件类别 */
+const EXT_CATEGORY: Record<string, FileCategory> = {
+    pdf: 'pdf',
+    doc: 'word', docx: 'word', rtf: 'word',
+    xls: 'excel', xlsx: 'excel', csv: 'excel',
+    ppt: 'ppt', pptx: 'ppt',
+    zip: 'zip', tar: 'zip', gz: 'zip', bz2: 'zip', xz: 'zip', '7z': 'zip', rar: 'zip',
+    png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', webp: 'image', svg: 'image', bmp: 'image', ico: 'image',
+    mp4: 'video', webm: 'video', mov: 'video', avi: 'video', mkv: 'video',
+    mp3: 'audio', wav: 'audio', ogg: 'audio', aac: 'audio', flac: 'audio', m4a: 'audio',
+    md: 'markdown', mdx: 'markdown',
+    java: 'java', jar: 'java', kt: 'java', kts: 'java',
+    js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+    ts: 'javascript', tsx: 'javascript', mts: 'javascript', cts: 'javascript',
+    py: 'python', pyw: 'python', pyi: 'python',
+    // 其他代码文件 → 通用 code 类别
+    go: 'code',
+    rs: 'code',
+    c: 'code', h: 'code', cpp: 'code', hpp: 'code', cc: 'code', cxx: 'code',
+    cs: 'code',
+    rb: 'code',
+    php: 'code',
+    swift: 'code',
+    dart: 'code',
+    lua: 'code',
+    r: 'code',
+    scala: 'code',
+    sql: 'code',
+    sh: 'code', bash: 'code', zsh: 'code',
+    vue: 'code', svelte: 'code',
+    yaml: 'code', yml: 'code',
+    json: 'code', xml: 'code', toml: 'code', ini: 'code', conf: 'code',
+    html: 'code', css: 'code', scss: 'code', less: 'code',
+    txt: 'default',
+    log: 'default',
+    env: 'default',
+    lock: 'default',
+}
+
+/** 类别对应的主题色 */
+const CATEGORY_COLOR: Record<FileCategory, string> = {
+    default: '#8c8c8c',
+    pdf: '#f5222d',
+    word: '#1677ff',
+    excel: '#52c41a',
+    ppt: '#fa8c16',
+    image: '#eb2f96',
+    video: '#722ed1',
+    audio: '#13c2c2',
+    zip: '#faad14',
+    markdown: '#8c8c8c',
+    java: '#f5222d',
+    javascript: '#faad14',
+    python: '#1677ff',
+    code: '#597ef7',
 }
 
 /**
- * 附件项组件
+ * 从服务器路径提取文件名（取最后一段，移除 CLI 追加的短 ID）
+ *
+ * 当前格式：{原始文件名}-{shortId}.{ext}
+ * 其中 shortId = Date.now().toString(36)，约 6~9 个 base36 字符
+ *
+ * 旧格式（已弃用）：{timestamp}-{sanitized}.{ext}
+ * timestamp 为 13 位纯数字前缀
  */
-export const AttachmentItem = memo(function AttachmentItem(props: AttachmentItemProps) {
-    const { attachment, onRemove } = props
-    const { token } = theme.useToken()
+function getDisplayName(attachment: FileAttachment): string {
+    // 上传成功后，优先使用服务器返回的实际路径中的文件名
+    if (attachment.path) {
+        const parts = attachment.path.split('/')
+        const serverName = parts[parts.length - 1]
+        if (serverName) {
+            // 旧格式优先（13位数字时间戳前缀）
+            const legacyMatch = serverName.match(/^\d{13}-(.+)$/)
+            if (legacyMatch) return legacyMatch[1]
 
+            // 新格式：移除 base36 短 ID 后缀（-{shortId} 在扩展名之前）
+            const cleaned = serverName.replace(/-([a-z0-9]{6,9})(\.[a-z0-9]+)?$/i, '$2')
+            return cleaned || serverName
+        }
+    }
+    // 上传中或失败，使用原始文件名
+    return attachment.file.name
+}
+
+/** 根据文件名获取 Lucide 图标组件 */
+function getFileIcon(filename: string): FC<LucideProps> {
+    const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+    const category = EXT_CATEGORY[ext] ?? 'default'
+    return CATEGORY_ICON[category]
+}
+
+/** 根据文件名获取类别主题色 */
+function getCategoryColor(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+    const category = EXT_CATEGORY[ext] ?? 'default'
+    return CATEGORY_COLOR[category]
+}
+
+/** 判断附件是否为图片类型（MIME 优先，扩展名兜底） */
+function isImageAttachment(attachment: FileAttachment): boolean {
+    if (attachment.file.type.startsWith('image/')) return true
+    const ext = attachment.file.name.split('.').pop()?.toLowerCase() ?? ''
+    return EXT_CATEGORY[ext] === 'image'
+}
+
+/** 文件大小人性化格式化（B → KB → MB → GB） */
+function formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB']
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+    const value = bytes / (1024 ** i)
+    // 小于 10 显示 1 位小数，否则取整
+    return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
+}
+
+/** 卡片左侧图标区尺寸 */
+const THUMB_SIZE = 36
+
+/**
+ * 附件卡片组件：左侧预览图/图标 + 右侧文件名+大小 + 状态指示
+ *
+ * 统一布局，图片与非图片仅左侧内容不同：
+ * - 图片：缩略图预览
+ * - 非图片：彩色文件图标
+ */
+const AttachmentCard = memo(function AttachmentCard({
+    attachment,
+    onRemove,
+}: {
+    attachment: FileAttachment
+    onRemove: (id: string) => void
+}) {
+    const { token } = theme.useToken()
+    const isImage = isImageAttachment(attachment)
     const isUploading = attachment.status === 'uploading'
     const isError = attachment.status === 'error'
-    const isImage = isImageMimeType(attachment.file.type)
+    const displayName = getDisplayName(attachment)
+    const fileSize = formatFileSize(attachment.file.size)
+    const accentColor = getCategoryColor(displayName)
 
     return (
-        <Tag
-            style={{
-                display: 'inline-flex',
+        <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 8px',
+            borderRadius: token.borderRadiusLG,
+            border: `1px solid ${isError ? token.colorErrorBorder : token.colorBorderSecondary}`,
+            background: isError ? token.colorErrorBg : token.colorBgContainer,
+            maxWidth: 220,
+            position: 'relative',
+            // 错误状态左侧指示条
+            ...(isError ? { borderLeft: `3px solid ${token.colorError}` } : {}),
+        }}>
+            {/* 左侧：预览图或文件图标 */}
+            <div style={{
+                width: THUMB_SIZE,
+                height: THUMB_SIZE,
+                borderRadius: token.borderRadiusSM,
+                overflow: 'hidden',
+                flexShrink: 0,
+                display: 'flex',
                 alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
-                margin: 0,
-                borderRadius: 8,
-                background: token.colorFillSecondary,
-                border: isError ? `1px solid ${token.colorErrorBorder}` : undefined
-            }}
-        >
-            {/* 状态图标 */}
-            {isUploading && <Spin size="small" />}
-            {isError && (
-                <ExclamationCircleOutlined
-                    style={{ color: token.colorError }}
-                />
-            )}
+                justifyContent: 'center',
+                position: 'relative',
+                background: isImage ? token.colorFillQuaternary : `${accentColor}10`,
+            }}>
+                {isImage ? (
+                    <ImageThumb attachment={attachment} />
+                ) : (
+                    <FileIconSlot
+                        attachment={attachment}
+                        displayName={displayName}
+                        accentColor={accentColor}
+                    />
+                )}
 
-            {/* 文件名 */}
-            <span
-                style={{
-                    maxWidth: 150,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                }}
-            >
-                {attachment.file.name}
-            </span>
+                {/* 上传中覆盖 */}
+                {isUploading && (
+                    <div style={{
+                        position: 'absolute', inset: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(255, 255, 255, 0.7)',
+                        borderRadius: token.borderRadiusSM,
+                    }}>
+                        <Spin indicator={<LoadingOutlined style={{ fontSize: 14 }} spin />} />
+                    </div>
+                )}
+
+                {/* 错误覆盖 */}
+                {isError && (
+                    <div style={{
+                        position: 'absolute', inset: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: `${token.colorErrorBg}CC`,
+                        borderRadius: token.borderRadiusSM,
+                    }}>
+                        <ExclamationCircleOutlined style={{ color: token.colorError, fontSize: 14 }} />
+                    </div>
+                )}
+            </div>
+
+            {/* 右侧：文件名 + 大小 */}
+            <div style={{
+                flex: 1,
+                minWidth: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+            }}>
+                <Tooltip title={displayName}>
+                    <span style={{
+                        fontSize: 12,
+                        lineHeight: '16px',
+                        fontWeight: 500,
+                        color: isError ? token.colorError : token.colorText,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    }}>
+                        {displayName}
+                    </span>
+                </Tooltip>
+                <span style={{
+                    fontSize: 11,
+                    lineHeight: '14px',
+                    color: isError ? token.colorError : token.colorTextTertiary,
+                }}>
+                    {fileSize}
+                </span>
+            </div>
 
             {/* 移除按钮 */}
             <CloseOutlined
                 onClick={() => onRemove(attachment.id)}
                 style={{
                     fontSize: 10,
-                    color: token.colorTextSecondary,
+                    color: token.colorTextQuaternary,
                     cursor: 'pointer',
-                    marginLeft: 4
+                    flexShrink: 0,
+                    marginLeft: 2,
+                    transition: 'color 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = token.colorTextSecondary }}
+                onMouseLeave={e => { e.currentTarget.style.color = token.colorTextQuaternary }}
+            />
+        </div>
+    )
+})
+
+/** 图片缩略图子组件：管理 objectURL 生命周期 */
+const ImageThumb = memo(function ImageThumb({
+    attachment,
+}: {
+    attachment: FileAttachment
+}) {
+    const { token } = theme.useToken()
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+    const [imgError, setImgError] = useState(false)
+
+    // 创建 / 清理 objectURL，避免内存泄漏
+    useEffect(() => {
+        const url = URL.createObjectURL(attachment.file)
+        setPreviewUrl(url)
+        setImgError(false)
+        return () => URL.revokeObjectURL(url)
+    }, [attachment.file])
+
+    if (previewUrl && !imgError) {
+        return (
+            <img
+                src={previewUrl}
+                alt=""
+                onError={() => setImgError(true)}
+                style={{
+                    width: THUMB_SIZE,
+                    height: THUMB_SIZE,
+                    objectFit: 'cover',
+                    display: 'block',
                 }}
             />
-        </Tag>
-    )
+        )
+    }
+
+    // 图片加载失败回退
+    return <FileImage size={16} style={{ color: token.colorTextQuaternary }} />
+})
+
+/** 非图片文件图标子组件 */
+const FileIconSlot = memo(function FileIconSlot({
+    attachment,
+    displayName,
+    accentColor,
+}: {
+    attachment: FileAttachment
+    displayName: string
+    accentColor: string
+}) {
+    const isUploading = attachment.status === 'uploading'
+    const isError = attachment.status === 'error'
+    const Icon = !isUploading && !isError ? getFileIcon(displayName) : null
+
+    if (!Icon) return null
+
+    return <Icon size={18} style={{ color: accentColor, flexShrink: 0 }} />
 })
 
 interface AttachmentListProps {
@@ -93,7 +360,10 @@ interface AttachmentListProps {
 }
 
 /**
- * 附件列表组件
+ * 附件列表组件：统一卡片布局，保持上传顺序
+ *
+ * 图片左侧显示缩略图预览，非图片左侧显示彩色文件图标，
+ * 右侧统一显示文件名 + 人性化大小。
  */
 export const AttachmentList = memo(function AttachmentList(props: AttachmentListProps) {
     const { attachments, onRemove } = props
@@ -103,14 +373,9 @@ export const AttachmentList = memo(function AttachmentList(props: AttachmentList
     }
 
     return (
-        <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 8,
-            padding: '8px 16px 0'
-        }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 0' }}>
             {attachments.map(attachment => (
-                <AttachmentItem
+                <AttachmentCard
                     key={attachment.id}
                     attachment={attachment}
                     onRemove={onRemove}

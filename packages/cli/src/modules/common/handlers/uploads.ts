@@ -219,10 +219,15 @@ export function registerUploadHandlers(
                 // 确保上传目录存在
                 const uploadDir = await ensureUploadDir(workingDirectory)
 
-                // 清理文件名并添加时间戳避免冲突
+                // 清理文件名并生成唯一标识
+                // 格式：{原始文件名}-{短hash}.ext
+                // 使用 base36 压缩时间戳到 6~8 个字符，避免 13 位数字前缀
                 const sanitizedFilename = sanitizeFilename(data.filename)
-                const timestamp = Date.now()
-                const uniqueFilename = `${timestamp}-${sanitizedFilename}`
+                const shortId = Date.now().toString(36)
+                const dotIndex = sanitizedFilename.lastIndexOf('.')
+                const uniqueFilename = dotIndex > 0
+                    ? `${sanitizedFilename.slice(0, dotIndex)}-${shortId}${sanitizedFilename.slice(dotIndex)}`
+                    : `${sanitizedFilename}-${shortId}`
                 const filePath = join(uploadDir, uniqueFilename)
 
                 // 解码 base64 并写入文件
