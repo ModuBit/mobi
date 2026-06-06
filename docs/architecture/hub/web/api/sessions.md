@@ -45,6 +45,9 @@
         "namespace": "/Users/dev/project",
         "seq": 5,
         "active": true,
+        "running": true,
+        "runningAt": 1712000050000,
+        "mode": "local",
         "metadata": {
             "sessionName": "feature-auth",
             "workingDir": "/Users/dev/project"
@@ -66,6 +69,9 @@
     "seq": 5,
     "active": true,
     "activeAt": 1712000060000,
+    "running": true,
+    "runningAt": 1712000050000,
+    "mode": "local",
     "thinking": false,
     "metadata": { "sessionName": "feature-auth" },
     "runtimeState": { "model": "sonnet" },

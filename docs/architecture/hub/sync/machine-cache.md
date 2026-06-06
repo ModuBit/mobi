@@ -40,6 +40,8 @@ flowchart TB
 | `getMachinesByNamespace()` | 按命名空间获取 |
 | `getOnlineMachines()` | 获取在线机器 |
 | `getMachine()` | 获取单个机器 |
+| `getMachineByNamespace()` | 按命名空间获取单个机器 |
+| `getOnlineMachinesByNamespace()` | 按命名空间获取在线机器 |
 | `getOrCreateMachine()` | 获取或创建机器 |
 | `refreshMachine()` | 从数据库刷新到内存 |
 | `handleMachineAlive()` | 处理心跳 |
@@ -107,6 +109,7 @@ flowchart TB
 // 检查所有缓存中的机器，将超时未心跳的机器标记为离线
 expireInactive() {
     const machineTimeoutMs = 45_000  // 45 秒超时阈值（比 Session 的 30 秒更宽松）
+    const evictionMs = 3_600_000     // 1 小时驱逐阈值
 
     for (const machine of this.machines.values()) {
         if (!machine.active) continue                      // 跳过已离线的机器
@@ -118,6 +121,14 @@ expireInactive() {
             machineId: machine.id,
             data: { active: false }
         })
+    }
+
+    // 驱逐长时间 inactive 的 machine（仍在 DB 中，按需重新加载）
+    for (const [id, machine] of this.machines) {
+        if (!machine.active && now - machine.activeAt > evictionMs) {
+            this.machines.delete(id)
+            this.lastBroadcastAtByMachineId.delete(id)
+        }
     }
 }
 ```

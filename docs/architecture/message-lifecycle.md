@@ -129,6 +129,11 @@ Hub 通过 SSE 向 Web 端推送 `SyncEvent`：
 - `message-received`：新消息到达（落库后的完整消息）
 - `message-snapshot`：流式快照透传（不落库，`snapshot: true`）
 - `session-added` / `session-removed`：会话增删
+- `machine-updated`：机器状态变化
+- `toast`：通知消息
+- `heartbeat`：心跳
+- `connection-changed`：连接状态变化
+- `idle-timeout-warning`：空闲超时预警
 
 Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新。
 
@@ -149,7 +154,7 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 
 ## 第 4 步：Web 标准化（normalize）
 
-**入口**：`packages/web/src/chat/normalize.ts` → `normalizeDecryptedMessage()`
+**入口**：`packages/web/src/domain/chat/normalize.ts` → `normalizeDecryptedMessage()`
 
 将 API 返回的 `DecryptedMessage` 转换为 `NormalizedMessage`。
 
@@ -193,11 +198,11 @@ flowchart TD
 | `isClaudeChatVisibleMessage()` 返回 false | 跳过 |
 | 以上均不满足 | 不跳过，进入 normalizeAgentRecord |
 
-**`isClaudeChatVisibleMessage()`**：只要 `type` 不是 `system` 就返回 true。对于 `system` 类型，只有以下 subtype 可见：`api_error`、`api_retry`、`turn_duration`、`microcompact_boundary`、`compact_boundary`。其他 system subtype（如 `init`）被跳过。
+**`isClaudeChatVisibleMessage()`**：只要 `type` 不是 `system` 就返回 true。对于 `system` 类型，只有以下 subtype 可见：`api_error`、`api_retry`、`turn_duration`、`microcompact_boundary`、`compact_boundary`、`task_progress`、`task_notification`、`task_started`、`task_updated`。其他 system subtype（如 `init`）被跳过。
 
 ### normalizeAgentRecord 处理
 
-**文件**：`packages/web/src/chat/normalizeAgent.ts`
+**文件**：`packages/web/src/domain/chat/normalizeAgent.ts`
 
 根据 `content` 的具体结构分发处理：
 
@@ -224,7 +229,7 @@ result 消息在整个管线中有三层处理：
 
 ### normalizeUserRecord 处理
 
-**文件**：`packages/web/src/chat/normalizeUser.ts`
+**文件**：`packages/web/src/domain/chat/normalizeUser.ts`
 
 | 输入 | 输出 |
 |------|------|
@@ -253,7 +258,7 @@ result 消息在整个管线中有三层处理：
 
 ## 第 5 步：Web 归约（reduce）
 
-**文件**：`packages/web/src/chat/reducer.ts` → `reduceChatBlocks()`
+**文件**：`packages/web/src/domain/chat/reducer.ts` → `reduceChatBlocks()`
 
 将 `NormalizedMessage[]` 转换为可渲染的 `ChatBlock[]`。
 
@@ -270,7 +275,7 @@ NormalizedMessage[]
 
 ### reduceTimeline 转换规则
 
-**文件**：`packages/web/src/chat/reducerTimeline.ts`
+**文件**：`packages/web/src/domain/chat/reducerTimeline.ts`
 
 | NormalizedMessage | ChatBlock | 说明 |
 |-------------------|-----------|------|
@@ -338,7 +343,7 @@ type ChatBlock =
 | `isMeta === true` | Web `normalizeAgent.ts` | 元数据消息 |
 | `isCompactSummary === true` | Web `normalizeAgent.ts` | 压缩摘要 |
 | 隐藏工具（ToolSearch 等） | Web `reducerTimeline.ts` | `isHiddenTool()` 返回 true 的 tool-call/tool-result 不渲染 |
-| System 非可见 subtype | Web `normalizeAgent.ts` | 如非 `api_error`/`api_retry`/`turn_duration`/`compact_boundary` 等 |
+| System 非可见 subtype | Web `normalizeAgent.ts` | 如非 `api_error`/`api_retry`/`turn_duration`/`compact_boundary`/`task_progress`/`task_notification`/`task_started`/`task_updated` 等 |
 
 ### 转换为事件（不直接展示文本）
 
@@ -399,13 +404,13 @@ type ChatBlock =
 | CLI 快照发送 | `packages/cli/src/claude/utils/streamSnapshotSender.ts` | 累积 stream_event delta，定时发送 snapshot |
 | Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化 |
 | Hub 同步 | `packages/hub/src/sync/syncEngine.ts` | SSE 推送 |
-| Web SSE | `packages/web/src/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + parentUuid 关联清理） |
-| Web 标准化入口 | `packages/web/src/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
-| Web Agent 标准化 | `packages/web/src/chat/normalizeAgent.ts` | Agent 消息详细解析 |
-| Web User 标准化 | `packages/web/src/chat/normalizeUser.ts` | User 消息解析 |
-| Web 类型 | `packages/web/src/chat/types.ts` | NormalizedMessage / ChatBlock 类型 |
-| Web 归约 | `packages/web/src/chat/reducer.ts` | NormalizedMessage[] → ChatBlock[] |
-| Web 时间线归约 | `packages/web/src/chat/reducerTimeline.ts` | 时间线 → ChatBlock 转换、隐藏工具过滤（isHiddenTool） |
-| Web 工具过滤 | `packages/web/src/chat/reducerTools.ts` | isHiddenTool / isChangeTitleToolName 判断 |
+| Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + parentUuid 关联清理） |
+| Web 标准化入口 | `packages/web/src/domain/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
+| Web Agent 标准化 | `packages/web/src/domain/chat/normalizeAgent.ts` | Agent 消息详细解析 |
+| Web User 标准化 | `packages/web/src/domain/chat/normalizeUser.ts` | User 消息解析 |
+| Web 类型 | `packages/web/src/domain/chat/types.ts` | NormalizedMessage / ChatBlock 类型 |
+| Web 归约 | `packages/web/src/domain/chat/reducer.ts` | NormalizedMessage[] → ChatBlock[] |
+| Web 时间线归约 | `packages/web/src/domain/chat/reducerTimeline.ts` | 时间线 → ChatBlock 转换、隐藏工具过滤（isHiddenTool） |
+| Web 工具过滤 | `packages/web/src/domain/chat/reducerTools.ts` | isHiddenTool / isChangeTitleToolName 判断 |
 | Web 渲染 | `packages/web/src/components/chat/ChatContainer.tsx` | ChatBlock → UI 组件 |
 | 共享工具 | `packages/shared/src/messages.ts` | unwrapRole / isSkippable / isVisible |

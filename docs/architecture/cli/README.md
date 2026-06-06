@@ -17,17 +17,22 @@ graph TB
         CmdRunner["runner"]
         CmdMcp["mcp"]
         CmdDoctor["doctor"]
+        CmdService["service"]
+        CmdSetup["setup"]
+        CmdUpgrade["upgrade"]
+        CmdVersion["version"]
         CmdHook["hook-forwarder<br/>（内部）"]
     end
 
     Entry --> Registry
-    Registry --> CmdDefault & CmdAuth & CmdHub & CmdRunner & CmdMcp & CmdDoctor & CmdHook
+    Registry --> CmdDefault & CmdAuth & CmdHub & CmdRunner & CmdMcp & CmdDoctor & CmdService & CmdSetup & CmdUpgrade & CmdVersion & CmdHook
 
     CmdDefault -->|"远程模式"| Hub["Hub"]
     CmdDefault -->|"降级本地模式"| Claude["Claude Code"]
     CmdHub -->|"import"| Hub
     CmdRunner -->|"后台管理"| Hub
     CmdMcp -->|"stdio bridge"| Hub
+    CmdService -->|"系统服务"| Hub
 ```
 
 ## 命令体系
@@ -74,6 +79,10 @@ resolveCommand(args) → { command, context }
 | [`runner`](./commands/runner) | — | ✅ | 后台 Runner 管理（start / stop / list / status / logs） |
 | [`mcp`](./commands/mcp) | — | ❌ | MCP Server，暴露 `change_title` 工具（随 Claude 会话自动启动） |
 | [`doctor`](./commands/doctor) | — | ✅ | 系统诊断与故障排除 |
+| [`service`](./commands/service) | — | ✅ | 系统服务管理（start / stop / restart / status） |
+| [`setup`](./commands/setup) | — | ✅ | 交互式配置向导（settings / service / 完整 wizard） |
+| [`upgrade`](./commands/upgrade) | — | ❌ | 版本升级 |
+| [`version`](./commands/version) | — | ❌ | 版本信息（show / list） |
 | [`hook`](./commands/hook) | — | ❌ | 内部命令，转发 Claude SessionStart hook |
 
 ### 命令详解
@@ -165,6 +174,42 @@ Runner 在后台运行，管理 Claude 会话的生命周期，允许用户离�
 
 详见 [Hook 系统](./commands/hook)。
 
+#### service — 系统服务管理
+
+| 子命令 | 说明 |
+|--------|------|
+| `start` | 启动 Hub + Runner 系统服务 |
+| `stop` | 停止系统服务 |
+| `restart` | 重启系统服务 |
+| `status` | 显示系统服务状态 |
+
+将 Hub 和 Runner 作为后台服务统一管理，支持 `--host`/`--port` 参数。
+
+#### setup — 交互式配置向导
+
+| 子命令 | 说明 |
+|--------|------|
+| `settings` | 配置 API URL、Token 等 |
+| `service install` | 安装为系统服务（开机自启） |
+| `service remove` | 卸载系统服务 |
+| `service status` | 查看系统服务状态 |
+| (无) | 完整向导：settings + 选择启动方式 |
+
+首次使用时的引导式配置工具。
+
+#### upgrade — 版本升级
+
+检查并升级 Mobi CLI 到最新版本。
+
+#### version — 版本信息
+
+| 子命令 | 说明 |
+|--------|------|
+| (无) | 显示当前版本 |
+| `list` | 列出可用版本 |
+| `list --all` | 列出稳定版 + RC 版本 |
+| `list rc` | 仅列出 RC 版本 |
+
 ## API 通信层
 
 CLI 通过 `packages/cli/src/api/` 与 Hub 通信，包括 HTTP REST 和 Socket.IO WebSocket。
@@ -186,5 +231,9 @@ packages/cli/src/
 │   ├── runner.ts                # Runner 管理命令
 │   ├── mcp.ts                   # MCP 命令入口
 │   ├── doctor.ts                # 系统诊断命令
+│   ├── service.ts               # 系统服务管理命令
+│   ├── setup.ts                 # 交互式配置向导命令
+│   ├── upgrade.ts               # 版本升级命令
+│   ├── version.ts               # 版本信息命令
 │   └── hookForwarder.ts         # 内部 hook 转发命令
 ```

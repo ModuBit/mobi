@@ -1,7 +1,7 @@
 # MCP — HTTP Server
 
 文件
-- [`packages/cli/src/claude/utils/startMobiServer.ts`](/packages/cli/src/claude/utils/startMobiServer.ts)
+- [`packages/cli/src/claude/utils/startMobiMcpServer.ts`](/packages/cli/src/claude/utils/startMobiMcpServer.ts)
 - [`packages/cli/src/mcp/mobiMcpStdioBridge.ts`](/packages/cli/src/mcp/mobiMcpStdioBridge.ts)（未使用）
 
 MCP 系统的核心是随 Claude 会话启动的 HTTP MCP Server，对外暴露 `change_title` 工具，让 Claude Code 能够修改当前会话标题。
@@ -10,7 +10,7 @@ MCP 系统的核心是随 Claude 会话启动的 HTTP MCP Server，对外暴露 
 
 ```mermaid
 flowchart LR
-    Claude["Claude Code"] -->|"HTTP POST<br/>StreamableHTTP"| HTTP["HTTP MCP Server<br/>startMobiServer"]
+    Claude["Claude Code"] -->|"HTTP POST<br/>StreamableHTTP"| HTTP["HTTP MCP Server<br/>startMobiMcpServer"]
     HTTP -->|"sendClaudeSessionMessage<br/>type: summary"| Session["ApiSessionClient"]
     Session -->|"emit('message')"| Hub["Hub"]
 
@@ -22,7 +22,7 @@ flowchart LR
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| **HTTP MCP Server** | [`claude/utils/startMobiServer.ts`](/packages/cli/src/claude/utils/startMobiServer.ts) | 随 Claude 会话启动的本地 HTTP MCP 服务，注册 `change_title` 工具 |
+| **HTTP MCP Server** | [`claude/utils/startMobiMcpServer.ts`](/packages/cli/src/claude/utils/startMobiMcpServer.ts) | 随 Claude 会话启动的本地 HTTP MCP 服务，注册 `change_title` 工具 |
 | ~~Stdio Bridge~~ | [`mcp/mobiMcpStdioBridge.ts`](/packages/cli/src/mcp/mobiMcpStdioBridge.ts) | 未使用。`mobi mcp` 命令将 stdio 转发到 HTTP，但当前架构中无实际场景 |
 
 ## 完整流程
@@ -35,7 +35,7 @@ sequenceDiagram
     participant Session as ApiSessionClient
     participant Hub as Hub (Socket.IO)
 
-    RunClaude->>MobiServer: startMobiServer(session)
+    RunClaude->>MobiServer: startMobiMcpServer(session)
     MobiServer-->>RunClaude: { url: http://127.0.0.1:PORT, toolNames, stop() }
 
     RunClaude->>Claude: loop({ mcpServers: { mobi: { type: 'http', url } } })
@@ -54,7 +54,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    Start["runClaude()"] --> MobiServer["startMobiServer(session)"]
+    Start["runClaude()"] --> MobiServer["startMobiMcpServer(session)"]
     MobiServer --> Listen["HTTP 监听 127.0.0.1:0<br/>随机端口"]
     Listen --> Return["返回 { url, toolNames, stop() }"]
 
@@ -106,10 +106,10 @@ packages/cli/src/
 └── claude/
     ├── runClaude.ts                        # 启动 MCP Server + 注册到 Claude Code
     └── utils/
-        └── startMobiServer.ts             # HTTP MCP Server：注册工具 + 处理调用
+        └── startMobiMcpServer.ts             # HTTP MCP Server：注册工具 + 处理调用
 ```
 
 | 文件 | 入口 |
 |------|------|
-| `packages/cli/src/claude/utils/startMobiServer.ts` | [`startMobiServer()`](/packages/cli/src/claude/utils/startMobiServer.ts) |
+| `packages/cli/src/claude/utils/startMobiMcpServer.ts` | [`startMobiMcpServer()`](/packages/cli/src/claude/utils/startMobiMcpServer.ts) |
 | `packages/cli/src/mcp/mobiMcpStdioBridge.ts` | [`runMobiMcpStdioBridge()`](/packages/cli/src/mcp/mobiMcpStdioBridge.ts)（未使用） |

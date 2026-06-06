@@ -20,6 +20,9 @@ import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useThemeLocaleToggle } from '@/components/layout/useThemeLocaleToggle'
+import { Logo } from '@/components/layout/Logo'
+import { AnimateLogo } from '@/components/layout/AnimateLogo'
+import { IntroLogo } from '@/components/layout/IntroLogo'
 import { Helmet } from 'react-helmet-async'
 import axios from 'axios'
 import { useState } from 'react'
@@ -99,7 +102,7 @@ const GlowOrb = styled.div`
 `
 
 /** Logo 图片 */
-const LogoImg = styled.img`
+const LogoImg = styled.div`
     width: 32px;
     height: 32px;
     flex-shrink: 0;
@@ -107,9 +110,8 @@ const LogoImg = styled.img`
 
 /** 品牌名 */
 const BrandName = styled.span`
-    font-family: var(--font-serif);
     font-size: 18px;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: -0.03em;
     color: #141413;
 
@@ -120,9 +122,8 @@ const BrandName = styled.span`
 
 /** 品牌标语 */
 const Tagline = styled.h2`
-    font-family: var(--font-serif);
     font-size: 20px;
-    font-weight: 300;
+    font-weight: 400;
     line-height: 1.6;
     letter-spacing: -0.01em;
     color: #87867f;
@@ -173,7 +174,6 @@ const FeatureItem = styled.div`
     }
 
     .feature-title {
-        font-family: var(--font-serif);
         font-size: 13px;
         font-weight: 500;
         color: #4d4c48;
@@ -304,12 +304,35 @@ const FormArea = styled.div`
 
 /** 欢迎标题 */
 const WelcomeTitle = styled.h1`
-    font-family: var(--font-serif);
     font-size: 24px;
     font-weight: 500;
     letter-spacing: -0.02em;
     margin: 0 0 8px;
     text-align: center;
+    color: #141413;
+
+    html[data-theme='dark'] & {
+        color: #faf9f5;
+    }
+`
+
+/** 动画 Logo（表单区域） */
+const AnimatedLogoWrap = styled(AnimateLogo)`
+    display: block;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 16px;
+    color: #141413;
+
+    html[data-theme='dark'] & {
+        color: #faf9f5;
+    }
+`
+
+/** 开场动画 Logo（品牌区域） */
+const IntroLogoWrap = styled(IntroLogo)`
+    margin-bottom: 64px;
+    margin-left: -32px;
     color: #141413;
 
     html[data-theme='dark'] & {
@@ -430,7 +453,7 @@ export function LoginPage() {
                 />
 
                 <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <LogoImg src="/logo.svg" alt="Mobi" />
+                    <LogoImg as={Logo} />
                     <BrandName>{t('login.brand')}</BrandName>
                 </div>
 
@@ -441,6 +464,7 @@ export function LoginPage() {
                         maxWidth: 480,
                     }}
                 >
+                    <IntroLogoWrap />
                     <Tagline>{t('login.subtitle')}</Tagline>
                     <Description>{t('login.description')}</Description>
                     <FeatureList>
@@ -467,7 +491,7 @@ export function LoginPage() {
 
             <LoginPanel>
                 <MobileLogo>
-                    <LogoImg src="/logo.svg" alt="Mobi" style={{ width: 24, height: 24 }} />
+                    <LogoImg as={Logo} style={{ width: 24, height: 24 }} />
                     <BrandName>{t('login.brand')}</BrandName>
                 </MobileLogo>
 
@@ -508,6 +532,7 @@ export function LoginPage() {
 
                 <FormArea>
                     <div style={{ marginBottom: 32 }}>
+                        <AnimatedLogoWrap />
                         <WelcomeTitle>{t('login.welcome')}</WelcomeTitle>
                         <WelcomeSubtitle>
                             {t('login.welcomeSubtitle')}

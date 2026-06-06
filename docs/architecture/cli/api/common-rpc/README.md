@@ -23,9 +23,9 @@ registerCommonHandlers(rpcHandlerManager, workingDirectory)
 | git | `git-status`, `git-diff-numstat`, `git-diff-file` | Git 操作 | [git.md](./git.md) |
 | ripgrep | `ripgrep` | 代码搜索 | [ripgrep-difftastic.md](./ripgrep-difftastic.md) |
 | difftastic | `difftastic` | 差异对比 | 同上 |
-| slashCommands | `listSlashCommands` | 命令发现 | [slash-commands-skills.md](./slash-commands-skills.md) |
-| skills | `listSkills` | Skill 发现 | 同上 |
+| commands | `refreshMetadata` | SDK 元数据刷新 | [slash-commands-skills.md](./slash-commands-skills.md) |
 | uploads | `uploadFile`, `deleteUpload` | 文件上传 | [uploads.md](./uploads.md) |
+| sessionFiles | `searchSessionFiles`, `listSessionDirectory` | 会话文件搜索与目录浏览 | （内联） |
 
 ## 架构模式
 
@@ -59,7 +59,7 @@ validatePath(targetPath, workingDirectory): { valid: boolean; error?: string }
 - 阻止路径穿越攻击（`../`、符号链接等）
 - Windows 大小写不敏感处理
 
-**调用者**: bash(cwd)、files、directories、git(cwd)、ripgrep(cwd)、difftastic(cwd)
+**调用者**: bash(cwd)、files、directories、git(cwd)、ripgrep(cwd)、difftastic(cwd)、sessionFiles(cwd)
 
 ### 响应格式 (`rpcResponses.ts`)
 

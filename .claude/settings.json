@@ -1,3 +1,16 @@
 {
-  "hooks": {}
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/sync-docs-check.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
 }

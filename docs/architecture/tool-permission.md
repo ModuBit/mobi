@@ -2,13 +2,14 @@
 
 本文档描述当 Claude Agent SDK 调用工具需要用户授权时，请求如何到达 Web 端、用户操作后结果如何回传到 SDK 的完整链路。
 
-三种场景共用同一套基础设施，但在审批结果处理上各有差异：
+四种场景共用同一套基础设施，但在审批结果处理上各有差异：
 
 | 场景 | 核心差异 |
 |------|----------|
 | **普通工具** | allow/deny，`updatedInput` 原样透传 |
 | **ExitPlanMode** | 批准时"欺骗" SDK：deny + 注入重启消息，实现中途切换权限模式 |
 | **AskUserQuestion** | 批准时将用户答案注入 `updatedInput`，用权限通道传输数据 |
+| **RequestUserInput** | 与 AskUserQuestion 类似，但使用独立的 `RequestUserInputFooter` 组件，支持不同的问题格式 |
 
 ---
 
@@ -205,7 +206,7 @@ pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' 
 
 ## 场景三：AskUserQuestion
 
-**触发**：模型调用 `AskUserQuestion` 或 `RequestUserInput` 工具，携带问题列表。
+**触发**：模型调用 `AskUserQuestion` 工具，携带问题列表。
 
 **Web UI**：`AskUserQuestionFooter` — 渲染选项列表（单选 radio / 多选 checkbox），支持"其他"自由输入。
 
@@ -245,6 +246,18 @@ SDK 收到的最终工具输入变为：
 
 ---
 
+## 场景四：RequestUserInput
+
+**触发**：模型调用 `RequestUserInput` 工具，携带问题列表。
+
+**Web UI**：`RequestUserInputFooter` — 独立的 Footer 组件，渲染问题输入 UI。
+
+**处理方式**：与 AskUserQuestion 类似，审批时将用户答案注入 `updatedInput`，使用 `buildRequestUserInputUpdatedInput` 转换答案格式。CLI 端同样通过 `answers` 是否非空来决定 allow/deny。
+
+**区别**：`RequestUserInput` 有独立的 Footer 组件（`RequestUserInputFooter`）和 View 组件（`RequestUserInputView`），支持与 AskUserQuestion 不同的问题格式和交互方式。
+
+---
+
 ## 关键文件索引
 
 | 层 | 文件 | 职责 |
@@ -252,7 +265,7 @@ SDK 收到的最终工具输入变为：
 | **Shared** | `packages/shared/src/schemas.ts` | AgentState、AgentStateRequest、SDKUIHints Schema |
 | **Shared** | `packages/shared/src/modes.ts` | PermissionMode 枚举 |
 | **Shared** | `packages/shared/src/socket.ts` | Socket.IO 事件类型定义 |
-| **CLI** | `packages/cli/src/claude/utils/permissionHandler.ts` | 核心权限处理器，三种场景的审批结果处理 |
+| **CLI** | `packages/cli/src/claude/utils/permissionHandler.ts` | 核心权限处理器，四种场景的审批结果处理 |
 | **CLI** | `packages/cli/src/modules/common/permission/BasePermissionHandler.ts` | 抽象基类：pending 管理、RPC 注册、agentState 同步 |
 | **CLI** | `packages/cli/src/claude/claudeRemoteLauncher.ts` | SDK 接入、PLAN_FAKE_REJECT 拦截 |
 | **CLI** | `packages/cli/src/claude/claudeRemote.ts` | SDK `canUseTool` 配置 |
@@ -269,4 +282,5 @@ SDK 收到的最终工具输入变为：
 | **Web** | `packages/web/src/domain/chat/reducerTools.ts` | 从 agentState 提取权限映射 |
 | **Web** | `packages/web/src/components/tool-card/PermissionFooter.tsx` | 通用授权 UI + ExitPlanMode 特殊按钮 |
 | **Web** | `packages/web/src/components/tool-card/AskUserQuestionFooter.tsx` | AskUserQuestion 选项 UI |
+| **Web** | `packages/web/src/components/tool-card/RequestUserInputFooter.tsx` | RequestUserInput 输入 UI |
 | **Web** | `packages/web/src/components/chat/blocks/ToolCallBlock.tsx` | 工具调用块，判断 pending 状态渲染 Footer |

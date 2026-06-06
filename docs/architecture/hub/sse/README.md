@@ -78,7 +78,9 @@ broadcast(event: SyncEvent): void
 | 事件类型 | 发送对象 |
 |---------|---------|
 | `connection-changed` | 所有连接 |
-| `message-received` | 对应 session 的订阅者 |
+| `message-received` | all=true 或对应 session 的订阅者 |
+| `message-snapshot` | all=true 或对应 session 的订阅者 |
+| `idle-timeout-warning` | all=true 或对应 session 的订阅者 |
 | `session-updated` | all=true 或 session 匹配 |
 | `machine-updated` | all=true 或 machine 匹配 |
 
@@ -94,6 +96,8 @@ flowchart TB
 
     check -->|connection-changed| always[始终发送]
     check -->|message-received| session{匹配 sessionId}
+    check -->|message-snapshot| session
+    check -->|idle-timeout-warning| session
     check -->|all=true| all[发送所有事件]
     check -->|event.sessionId| match[匹配 sessionId]
     check -->|event.machineId| match[匹配 machineId]

@@ -11,6 +11,7 @@ flowchart TB
     subgraph MessageService
         getMessagesPage[getMessagesPage]
         getMessagesAfter[getMessagesAfter]
+        getSidechainMessages[getSidechainMessages]
         sendMessage[sendMessage]
     end
 
@@ -22,10 +23,12 @@ flowchart TB
 
     WebAPI[Web API] -->|分页查询| getMessagesPage
     WebAPI -->|增量获取| getMessagesAfter
+    WebAPI -->|Sidechain 查询| getSidechainMessages
     WebAPI -->|发送消息| sendMessage
 
     getMessagesPage --> Store
     getMessagesAfter --> Store
+    getSidechainMessages --> Store
     sendMessage --> Store
     sendMessage --> IO
     sendMessage --> Publisher
@@ -41,6 +44,7 @@ flowchart TB
 |------|------|
 | `getMessagesPage()` | 分页获取消息（支持向上翻页） |
 | `getMessagesAfter()` | 获取指定序号后的消息（增量同步） |
+| `getSidechainMessages()` | 获取指定 toolUseId 的 Sidechain 消息 |
 | `sendMessage()` | 发送消息 |
 
 ## 消息发送流程

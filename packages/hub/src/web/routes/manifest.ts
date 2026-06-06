@@ -48,8 +48,8 @@ export function createManifestRoutes(): Hono {
                     purpose: 'any',
                 },
                 {
-                    src: '/logo.png',
-                    sizes: '640x640',
+                    src: '/icon.png',
+                    sizes: '512x512',
                     type: 'image/png',
                     purpose: 'any',
                 },

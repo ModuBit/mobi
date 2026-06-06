@@ -239,6 +239,8 @@ packages/hub/src/sync/
 ├── messageService.ts   # 消息服务
 ├── rpcGateway.ts       # RPC 网关
 ├── aliveTime.ts        # 活跃时间计算
-├── teams.ts            # 团队相关
-└── todos.ts            # Todo 处理
+├── backgroundTasks.ts  # 后台任务增量提取与应用
+├── tasks.ts            # Task 工具增量提取（TaskCreate/TaskUpdate/TaskList/TaskGet）
+├── teams.ts            # Team 状态增量提取（TeamCreate/TeamDelete/Task tool with team）
+└── todos.ts            # TodoWrite 工具内容提取
 ```

@@ -50,12 +50,6 @@ bun run lint:deps    # 依赖方向检查
 - **代码变更后验证**: 必须使用 `/run-tests` skill 执行测试验证（typecheck → 单测 → lint → E2E）
 - **端到端测试**: 必须使用 `/run-tests` skill 启动 E2E 环境，禁止手动 `bun run dev` 进行浏览器测试
 
-## 看板
-
-- 使用 `/board` skill 管理项目事项
-- 完成功能开发后，询问用户是否更新看板状态
-- 接手新任务前，读取看板了解当前进度
-
 ## 文档索引
 
 | 需要 | 去哪里 |
@@ -64,18 +58,13 @@ bun run lint:deps    # 依赖方向检查
 | 各模块架构 | [docs/architecture/](docs/architecture/)（hub/ cli/ web/） |
 | 编码规范 | [docs/conventions/](docs/conventions/) |
 | 配置指南 | [docs/configuration.md](docs/configuration.md) |
-| 项目看板 | [docs/board/board.md](docs/board/board.md)（`/board` skill） |
 | 待处理项 | [docs/pending.md](docs/pending.md) |
 
 ## 文档同步
 
-代码变更涉及以下情况时，询问用户是否执行 `/sync-docs` 检查并更新受影响的项目文档：
+Stop hook 会在会话结束时自动检测是否有结构性代码变更（新增/删除文件、接口/API/协议修改），有则提醒执行 `/sync-docs`，无变更则完全静默。
 
-- 新增 / 删除 / 重命名了源文件或目录
-- 修改了模块接口、导出、API 端点
-- 修改了通信协议、数据流、消息格式
-
-修 bug、调样式、改注释等不影响结构的变更无需询问。
+收到提醒后，执行 `/sync-docs` 按映射表检查并更新受影响的文档。修 bug、调样式、改注释等不影响结构的变更不会触发提醒。
 
 ## Git 规范
 

@@ -24,6 +24,7 @@ HTTP 服务器，使用 Hono 框架。
 | `/api/events` | [JWT](./auth.md) | [SSE 事件推送](./api/sse-events.md) |
 | `/api/sessions/*` | [JWT](./auth.md) | [会话管理](./api/sessions.md) |
 | `/api/session-groups/*` | [JWT](./auth.md) | [会话分组](./api/sessions.md) |
+| `/manifest.webmanifest` | 无 | PWA Manifest |
 | `/api/messages/*` | [JWT](./auth.md) | [消息管理](./api/messages.md) |
 | `/api/permissions/*` | [JWT](./auth.md) | [权限操作](./api/permissions.md) |
 | `/api/machines/*` | [JWT](./auth.md) | 机器管理 |
@@ -55,6 +56,7 @@ flowchart TB
     submatch -->|/api/git| git[Git]
     submatch -->|/api/push| push[推送]
 
+    match -->|/manifest.webmanifest| manifest[PWA Manifest]
     match -->|其他| static[静态资源]
 ```
 

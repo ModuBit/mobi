@@ -89,6 +89,13 @@ flowchart LR
 | CLI 更新机器元数据 | `machine-update-metadata` | `machine-updated` |
 | CLI 更新机器状态 | `machine-update-state` | `machine-updated` |
 
+### 其他事件类型
+
+| 事件类型 | 说明 |
+|----------|------|
+| `message-snapshot` | 消息快照更新（如消息内容编辑后重新推送） |
+| `idle-timeout-warning` | 会话空闲超时预警，携带 `timeoutAt` 和 `remainingMs` |
+
 ## 订阅模式
 
 ```typescript

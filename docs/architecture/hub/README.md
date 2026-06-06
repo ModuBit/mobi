@@ -147,11 +147,15 @@ packages/hub/src/
 │   ├── jwtSecret.ts             # JWT 密钥
 │   └── vapidKeys.ts             # VAPID 密钥
 ├── sync/
-│   └── syncEngine.ts            # 同步引擎
+│   ├── syncEngine.ts            # 同步引擎
+│   ├── backgroundTasks.ts       # 后台任务增量提取
+│   └── tasks.ts                 # 任务增量提取与合并
 ├── socket/
 │   └── server.ts                # Socket.IO 服务器
 ├── web/
-│   └── server.ts                # HTTP 服务器
+│   ├── server.ts                # HTTP 服务器
+│   └── routes/
+│       └── manifest.ts          # PWA Manifest 路由
 ├── sse/
 │   └── sseManager.ts            # SSE 管理器
 ├── visibility/
@@ -160,6 +164,15 @@ packages/hub/src/
 │   └── pushService.ts           # Web Push 服务
 ├── notifications/
 │   └── notificationHub.ts       # 通知中心
-└── store/
-    └── index.ts                 # 数据存储
+├── store/
+│   ├── index.ts                 # 数据存储
+│   ├── json.ts                  # JSON 序列化/反序列化工具
+│   ├── versionedUpdates.ts      # 乐观锁版本化更新
+│   └── pushSubscriptions.ts     # 推送订阅存储
+├── utils/
+│   ├── accessToken.ts           # Access Token 工具
+│   ├── bunCompiled.ts           # 编译模式检测
+│   └── crypto.ts                # 加密工具
+└── types/
+    └── webAssetImports.d.ts     # Web 资源类型声明
 ```

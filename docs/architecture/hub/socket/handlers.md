@@ -131,7 +131,7 @@ flowchart TB
     Auth -->|失败| Error["emitAccessError"]
     Auth -->|通过| Parse["解析 message content<br/>（JSON 字符串 → 对象）"]
     Parse --> Store["store.messages.addMessage<br/>存入数据库"]
-    Store --> Extract["提取 runtimeState<br/>todos / teamState"]
+    Store --> Extract["提取 runtimeState<br/>todos / tasks / teamState / backgroundTasks"]
     Extract -->|有更新| UpdateRS["store.sessions.setRuntimeState"]
     UpdateRS --> WebEvent1["onWebappEvent<br/>session-updated"]
     Extract -->|无更新| Broadcast
@@ -143,7 +143,7 @@ flowchart TB
 1. `socket.to(room).emit('update', ...)` — 广播给同房间的其他 CLI 客户端
 2. `onWebappEvent(...)` — 转发给 SyncEngine，由 SyncEngine 通过 SSE 推送给 Web 端
 
-**runtimeState 提取**：从消息内容中自动提取 todos 和 teamState，合并到 session 的 runtimeState 中。
+**runtimeState 提取**：从消息内容中自动提取 todos、tasks、teamState 和 backgroundTasks，合并到 session 的 runtimeState 中。
 
 ### update-metadata / update-state：状态更新
 

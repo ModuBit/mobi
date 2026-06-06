@@ -28,7 +28,7 @@ flowchart TB
 | 职责 | 说明 |
 |------|------|
 | 内存缓存 | 维护 `sessions: Map<string, Session>` |
-| 活跃状态 | 管理 `active`、`thinking`（仅内存） |
+| 活跃状态 | 管理 `active`、`thinking`、`running`、`runningAt`（仅内存） |
 | 心跳处理 | 处理 CLI 心跳，更新活跃时间 |
 | 过期清理 | 30 秒无心跳标记为不活跃 |
 | 事件广播 | 通过 EventPublisher 广播变化 |
@@ -42,6 +42,9 @@ flowchart TB
 | `getSession()` | 获取单个会话（内存） |
 | `refreshSession()` | 从数据库刷新到内存 |
 | `getOrCreateSession()` | 获取或创建会话 |
+| `getSessionByNamespace()` | 按命名空间获取单个会话 |
+| `renameSession()` | 重命名会话（更新 metadata.name） |
+| `updateSDKMetadata()` | 更新 SDK 元数据 |
 | `handleSessionAlive()` | 处理心跳 |
 | `handleSessionEnd()` | 处理会话结束 |
 | `expireInactive()` | 清理不活跃会话 |
@@ -62,15 +65,15 @@ flowchart TB
 
 ## 活跃状态管理
 
-**重要**：`active`、`activeAt`、`thinking`、`thinkingAt` 只存在于内存，不持久化。
+**重要**：`active`、`activeAt`、`thinking`、`thinkingAt`、`running`、`runningAt` 只存在于内存，不持久化。
 
 ```mermaid
 stateDiagram-v2
     [*] --> Cached: refreshSession
     Cached --> Active: handleSessionAlive
-    Active --> Active: 心跳续期
-    Active --> Cached: handleSessionEnd
-    Active --> Cached: expireInactive<br/>（30s 无心跳）
+    Active --> Active: 心跳续期（含 running 状态）
+    Active --> Cached: handleSessionEnd<br/>（清除 active + running）
+    Active --> Cached: expireInactive<br/>（30s 无心跳，清除 active + running）
 ```
 
 ## 心跳流程
@@ -89,8 +92,9 @@ flowchart TB
 
 **广播条件**（节流 10 秒）：
 - 从不活跃变为活跃
+- running 状态变化
 - thinking 状态变化
-- permissionMode 或 model 变化
+- permissionMode、model、effort 或 mode 变化
 - 距上次广播超过 10 秒
 
 ## 过期清理
@@ -100,18 +104,27 @@ flowchart TB
 // 检查所有缓存中的会话，将超时未心跳的会话标记为不活跃
 expireInactive() {
     const sessionTimeoutMs = 30_000  // 30 秒超时阈值
+    const evictionMs = 3_600_000     // 1 小时驱逐阈值
 
     for (const session of this.sessions.values()) {
         if (!session.active) continue                    // 跳过已不活跃的会话
         if (now - session.activeAt <= sessionTimeoutMs) continue  // 未超时，跳过
 
         session.active = false                           // 标记为不活跃（仅内存）
-        session.thinking = false                         // 同时清除思考状态
+        session.running = false                          // 同时清除运行状态
         this.publisher.emit({                            // 广播状态变化
             type: 'session-updated',
             sessionId: session.id,
             data: { active: false }
         })
+    }
+
+    // 驱逐长时间 inactive 的 session（仍在 DB 中，按需重新加载）
+    for (const [id, session] of this.sessions) {
+        if (!session.active && now - session.activeAt > evictionMs) {
+            this.sessions.delete(id)
+            this.lastBroadcastAtBySessionId.delete(id)
+        }
     }
 }
 ```

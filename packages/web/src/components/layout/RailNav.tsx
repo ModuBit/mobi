@@ -22,6 +22,7 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mainNavItems, bottomNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
+import { Icon } from './Icon'
 import { InstallButton } from './InstallButton'
 import { User, Sun, Moon } from 'lucide-react'
 import type { MenuProps } from 'antd'
@@ -46,12 +47,11 @@ const LogoContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] 
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 16px;
     color: ${props => props.$token.colorPrimary};
     cursor: pointer;
 `
 
-const LogoImage = styled.img`
+const LogoImage = styled.div`
     width: 32px;
     height: 32px;
 `
@@ -129,7 +129,7 @@ export function RailNav() {
                 $token={token}
                 onClick={() => navigate({ to: '/sessions' })}
             >
-                <LogoImage src="/logo.svg" alt="Mobi" />
+                <LogoImage as={Icon} />
             </LogoContainer>
 
             <Divider $token={token} />

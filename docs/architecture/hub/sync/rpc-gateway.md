@@ -62,12 +62,18 @@ flowchart TB
 | `switchSession` | 切换 local/remote | `{sessionId}:switch` |
 | `requestSessionConfig` | 请求配置更新 | `{sessionId}:set-session-config` |
 | `killSession` | 杀死会话 | `{sessionId}:killSession` |
-| `spawnSession` | 创建新会话 | `{machineId}:spawn-mobi-session` |
+| `spawnSession` | 创建新会话（支持 `sessionType`/`worktreeName`/`resumeSessionId`/`effort` 参数） | `{machineId}:spawn-mobi-session` |
 | `checkPathsExist` | 检查路径是否存在 | `{machineId}:path-exists` |
 | `getGitStatus` | 获取 Git 状态 | `{sessionId}:git-status` |
 | `readSessionFile` | 读取文件 | `{sessionId}:readFile` |
 | `listDirectory` | 列出目录 | `{sessionId}:listDirectory` |
 | `uploadFile` | 上传文件 | `{sessionId}:uploadFile` |
+| `deleteUploadFile` | 删除上传文件 | `{sessionId}:deleteUpload` |
+| `searchSessionFiles` | 搜索会话文件 | `{sessionId}:searchSessionFiles` |
+| `listSessionDirectory` | 列出会话目录 | `{sessionId}:listSessionDirectory` |
+| `listMachineDirectory` | 列出机器目录 | `{machineId}:list-directory` |
+| `refreshMetadata` | 刷新 SDK 元数据 | `{sessionId}:refreshMetadata` |
+| `stopTask` | 停止后台任务 | `{sessionId}:stop-task` |
 | `runRipgrep` | 搜索代码 | `{sessionId}:ripgrep` |
 
 ## RPC 调用流程

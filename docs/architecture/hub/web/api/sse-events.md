@@ -60,7 +60,18 @@ sequenceDiagram
     data: {
         status: 'connected',
         subscriptionId: 'uuid'
-    }
+    },
+    connected: true
+}
+
+// 重连成功
+{
+    type: 'connection-changed',
+    data: {
+        status: 'connected',
+        subscriptionId: 'uuid'
+    },
+    reconnected: true
 }
 
 // 心跳
@@ -69,6 +80,30 @@ sequenceDiagram
     namespace: 'xxx',
     data: {
         timestamp: 1700000000000
+    }
+}
+
+// 消息快照（流式消息，未落库）
+{
+    type: 'message-snapshot',
+    sessionId: 'xxx',
+    message: {
+        id: 'snapshot-pending',
+        seq: null,
+        localId: null,
+        snapshot: true,
+        content: { ... },
+        createdAt: 1700000000000
+    }
+}
+
+// 空闲超时预警
+{
+    type: 'idle-timeout-warning',
+    sessionId: 'xxx',
+    data: {
+        timeoutAt: 1700000060000,
+        remainingMs: 120000
     }
 }
 

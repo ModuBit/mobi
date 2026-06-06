@@ -14,6 +14,13 @@
 | `src/types.ts` | 纯 TypeScript 类型重导出 |
 | `src/messages.ts` | 消息辅助函数（unwrapRole / isSkippable / isVisible） |
 | `src/socket.ts` | Socket.IO 事件类型定义 |
+| `src/modes.ts` | 权限模式定义（PermissionMode 等） |
+| `src/utils.ts` | 通用工具函数（isObject 等） |
+| `src/version.ts` | 版本常量 |
+| `src/pathSecurity.ts` | 路径安全校验工具 |
+| `src/profile.ts` | 用户配置 Schema 与类型 |
+| `src/sessionSummary.ts` | 会话摘要 Schema 与类型 |
+| `src/upload.ts` | 文件上传 Schema 与类型 |
 | `src/index.ts` | Barrel export |
 
 ## 测试
