@@ -252,3 +252,7 @@ t('tool.other')
 ```
 
 新增组件中的 `t()` 调用应参照同目录已有组件（如 `PermissionFooter` 使用 `t('chat.tool.xxx')`）。
+
+## 调试规范
+
+遵循 [docs/conventions/debugging.md](../../docs/conventions/debugging.md) 的通用方法论。

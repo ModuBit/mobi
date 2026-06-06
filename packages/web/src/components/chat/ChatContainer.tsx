@@ -97,6 +97,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         blocksLength: number
     } | null>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
+    // fill 级联模式：初始加载连续加载多页 beforeSeq，期间不做 scroll 补偿、不显示 skeleton
+    const isFillingRef = useRef(false)
+    // observer 绑定标记：避免 chatBlocks.length 变化时重复绑定
+    const setupDoneRef = useRef(false)
+    // observer 清理函数：不通过 effect cleanup 返回，由 session effect 统一管理
+    const observerCleanupRef = useRef<(() => void) | null>(null)
     const { token } = useToken()
     const { t } = useTranslation()
     const { token: authToken } = useAuthStore()
@@ -255,26 +261,46 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const fetchNextPageRef = useRef(fetchNextPage)
     fetchNextPageRef.current = fetchNextPage
 
+    // session 切换时重置 observer 绑定状态并清理
     useEffect(() => {
+        setupDoneRef.current = false
+        isFillingRef.current = false
+        observerCleanupRef.current?.()
+        observerCleanupRef.current = null
+        return () => {
+            observerCleanupRef.current?.()
+            observerCleanupRef.current = null
+        }
+    }, [sessionId])
+
+    // Observer 绑定 — setupDoneRef 确保只绑定一次，不随 chatBlocks.length 重复 teardown/rebuild
+    useEffect(() => {
+        if (setupDoneRef.current) return
+
         const el = scrollContainerRef.current
         if (!el) return
-        // 直接查询 DOM：子组件 useEffect 先于父组件 useEffect 运行，
-        // 此时 Bubble.List 内部创建的滚动容器应当已就绪
         const scrollBox = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
         if (!scrollBox) return
+
+        setupDoneRef.current = true
         scrollBoxRef.current = scrollBox
         const contentEl = scrollBox.querySelector('.ant-bubble-list-scroll-content') as HTMLElement | null
 
         let isNearBottom = true
         let prevScrollTop = scrollBox.scrollTop
+        let rafId = 0
 
-        /** 触发加载上一页历史消息，并记录滚动位置用于恢复 */
+        /** 触发加载上一页历史消息 */
         const triggerFetchNextPage = (scrollTop: number, scrollHeight: number) => {
-            pendingRestoreRef.current = {
-                scrollTop,
-                scrollHeight,
-                blocksLength: chatBlocksLengthRef.current,
+            if (!isFillingRef.current) {
+                // 用户主动加载历史：设置 pendingRestoreRef 保持 scroll 位置
+                pendingRestoreRef.current = {
+                    scrollTop,
+                    scrollHeight,
+                    blocksLength: chatBlocksLengthRef.current,
+                }
             }
+            // fill 模式下不设置 pendingRestoreRef，不做 scroll 补偿
             isFetchingNextPageRef.current = true
             fetchNextPageRef.current()
         }
@@ -283,13 +309,18 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
          * 内容未溢出时主动加载历史消息
          * 窗口足够高时消息列表无需滚动，scroll 事件永远不会触发，
          * 导致历史消息无法加载。需要在布局稳定后主动检查并触发加载。
-         * 同时响应窗口尺寸变化：用户拉高窗口使内容不再溢出时自动继续加载。
          */
         const checkOverflowAndFetch = () => {
             if (!hasNextPageRef.current || isFetchingNextPageRef.current) return
             const { scrollHeight, clientHeight, scrollTop } = scrollBox
             if (scrollHeight <= clientHeight) {
+                // 内容未溢出 → 进入 fill 模式，加载更多
+                isFillingRef.current = true
                 triggerFetchNextPage(scrollTop, scrollHeight)
+            } else if (isFillingRef.current) {
+                // Fill 结束：内容已溢出，滚到底部一次
+                isFillingRef.current = false
+                scrollBox.scrollTop = scrollBox.scrollHeight
             }
         }
 
@@ -299,8 +330,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const { scrollTop, scrollHeight, clientHeight } = scrollBox
             const distanceToBottom = scrollHeight - scrollTop - clientHeight
 
-            // 只在用户向上滚动（scrollTop 减小）时更新 isNearBottom，
-            // 内容增长导致的 scrollTop 变化不应打破底部锁定
             if (scrollTop < prevScrollTop - 2) {
                 isNearBottom = distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD
             } else if (distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD) {
@@ -315,26 +344,36 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             }
 
             if (scrollTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
+                // 用户主动滚动到顶部加载历史
+                isFillingRef.current = false
                 triggerFetchNextPage(scrollTop, scrollHeight)
             }
         }
 
         const handleAutoScroll = () => {
+            // fill 级联期间不做 scroll 补偿
+            if (isFillingRef.current) return
             if (isNearBottom && !isRestoringScrollRef.current) {
                 scrollBox.scrollTop = scrollBox.scrollHeight
             }
         }
 
+        // contentEl ResizeObserver：RAF 防抖，防止 thinking 动画每帧触发微抖
+        // 只处理 autoScroll，不调用 checkOverflowAndFetch（fill 级联由专属 effect 驱动）
         let resizeObserver: ResizeObserver | null = null
         if (contentEl) {
-            resizeObserver = new ResizeObserver(handleAutoScroll)
+            resizeObserver = new ResizeObserver(() => {
+                cancelAnimationFrame(rafId)
+                rafId = requestAnimationFrame(() => {
+                    handleAutoScroll()
+                })
+            })
             resizeObserver.observe(contentEl)
         }
 
-        // 监听视口尺寸变化：内容跟随底部 + 窗口拉高时触发溢出检测
+        // 监听视口尺寸变化：只处理 autoScroll
         const viewportObserver = new ResizeObserver(() => {
             handleAutoScroll()
-            checkOverflowAndFetch()
         })
         viewportObserver.observe(scrollBox)
 
@@ -348,15 +387,33 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         checkOverflowAndFetch()
 
         scrollBox.addEventListener('scroll', handleScroll, { passive: true })
-        return () => {
+
+        // 不返回 cleanup！保存到 ref，由 session effect 统一清理
+        observerCleanupRef.current = () => {
             scrollBox.removeEventListener('scroll', handleScroll)
             resizeObserver?.disconnect()
             viewportObserver.disconnect()
+            cancelAnimationFrame(rafId)
         }
-    // 依赖 chatBlocks.length：仅在 block 数量变化时重新绑定 scroll 监听和 ResizeObserver。
-    // 内容增长（如流式输出追加文本）由 ResizeObserver 感知，无需 rebind。
-    // scrollBox DOM 替换由上方 useLayoutEffect 负责更新 scrollBoxRef。
     }, [chatBlocks.length])
+
+    // fill 级联驱动：只在 isFillingRef 已为 true 时继续加载（初始 fill 由 observer setup 启动）
+    // 用户手动滚到顶部加载历史时 isFillingRef 为 false，级联不会接管
+    useEffect(() => {
+        const scrollBox = scrollBoxRef.current
+        if (!scrollBox) return
+        if (!isFillingRef.current) return
+        if (!hasNextPageRef.current || isFetchingNextPageRef.current) return
+
+        const { scrollHeight, clientHeight } = scrollBox
+        if (scrollHeight <= clientHeight) {
+            isFetchingNextPageRef.current = true
+            fetchNextPageRef.current()
+        } else {
+            isFillingRef.current = false
+            scrollBox.scrollTop = scrollBox.scrollHeight
+        }
+    }, [chatBlocks.length, isFetchingNextPage])
 
     useLayoutEffect(() => {
         const pending = pendingRestoreRef.current
@@ -372,9 +429,26 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             pending.scrollHeight = scrollBox.scrollHeight
         }
         if (chatBlocks.length > pending.blocksLength || !isFetchingNextPage) {
+            const restoredScrollTop = scrollBox.scrollTop
             pendingRestoreRef.current = null
             isRestoringScrollRef.current = true
-            setTimeout(() => { isRestoringScrollRef.current = false }, RESTORE_SCROLL_GUARD_MS)
+            setTimeout(() => {
+                isRestoringScrollRef.current = false
+                // scroll restoration 完成后仍在顶部附近 → 自动加载下一页
+                // 解决：手动滚到顶部加载一页后，scroll restoration 结束不再有 scroll 事件，
+                // 用户必须手动再滚一下才能触发下一页的问题
+                if (restoredScrollTop < HISTORY_PREFETCH_DISTANCE
+                    && hasNextPageRef.current && !isFetchingNextPageRef.current) {
+                    isFillingRef.current = false
+                    pendingRestoreRef.current = {
+                        scrollTop: scrollBox.scrollTop,
+                        scrollHeight: scrollBox.scrollHeight,
+                        blocksLength: chatBlocksLengthRef.current,
+                    }
+                    isFetchingNextPageRef.current = true
+                    fetchNextPageRef.current()
+                }
+            }, RESTORE_SCROLL_GUARD_MS)
         }
     }, [chatBlocks.length, isFetchingNextPage])
 
@@ -436,7 +510,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
             classNames?: { root?: string }
         }> = [
-            ...(isFetchingNextPage
+            // fill 级联模式下不显示 skeleton，避免高度来回跳动导致抖动
+            ...(isFetchingNextPage && !isFillingRef.current
                 ? [{
                     key: '__loading-skeleton__',
                     role: 'system' as const,
