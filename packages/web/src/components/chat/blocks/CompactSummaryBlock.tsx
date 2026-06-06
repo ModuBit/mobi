@@ -15,12 +15,11 @@
  */
 
 import { Think } from '@ant-design/x'
-import { useState } from 'react'
+import { useState, useMemo, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CompactSummaryBlock } from '@/domain/chat/types'
 import { Markdown } from '@/components/ui/Markdown'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
-import { useMemo } from 'react'
 
 /** 格式化 token 数量 */
 function formatTokens(tokens: number): string {
@@ -31,7 +30,7 @@ function formatTokens(tokens: number): string {
 }
 
 /** 渲染 Compact 总结消息块 */
-export function CompactSummaryBlockComponent(props: { block: CompactSummaryBlock }) {
+export const CompactSummaryBlockComponent = memo(function CompactSummaryBlockComponent(props: { block: CompactSummaryBlock }) {
     const { block } = props
     const { t } = useTranslation()
     const [expanded, setExpanded] = useState(false)
@@ -63,4 +62,4 @@ export function CompactSummaryBlockComponent(props: { block: CompactSummaryBlock
             </div>
         </Think>
     )
-}
+})

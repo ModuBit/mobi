@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
+import { useMemo, useState, useCallback, useEffect, useRef, memo } from 'react'
 import { Think } from '@ant-design/x'
 import { theme as antTheme } from 'antd'
 import { Zap } from 'lucide-react'
@@ -239,7 +239,7 @@ function ToolCallPreviewContent({
 }
 
 /** 渲染 ToolCallBlock（来自 reduceChatBlocks） */
-export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, onDone, disableDrawer }: {
+export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata, api, sessionId, disabled, onDone, disableDrawer }: {
     block: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
     api?: MobiApi
@@ -427,4 +427,4 @@ export function ToolCallRenderer({ block, metadata, api, sessionId, disabled, on
             )}
         </>
     )
-}
+})
