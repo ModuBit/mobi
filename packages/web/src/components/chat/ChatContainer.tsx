@@ -103,6 +103,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const setupDoneRef = useRef(false)
     // observer 清理函数：不通过 effect cleanup 返回，由 session effect 统一管理
     const observerCleanupRef = useRef<(() => void) | null>(null)
+    // scroll restoration setTimeout ID，用于 session 切换/unmount 时清理
+    const scrollRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // 触发历史消息加载的函数引用（observer setup effect 中赋值）
+    const triggerFetchRef = useRef<(scrollTop: number, scrollHeight: number) => void>(() => {})
     const { token } = useToken()
     const { t } = useTranslation()
     const { token: authToken } = useAuthStore()
@@ -267,9 +271,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         isFillingRef.current = false
         observerCleanupRef.current?.()
         observerCleanupRef.current = null
+        if (scrollRestoreTimerRef.current) {
+            clearTimeout(scrollRestoreTimerRef.current)
+            scrollRestoreTimerRef.current = null
+        }
         return () => {
             observerCleanupRef.current?.()
             observerCleanupRef.current = null
+            if (scrollRestoreTimerRef.current) {
+                clearTimeout(scrollRestoreTimerRef.current)
+                scrollRestoreTimerRef.current = null
+            }
         }
     }, [sessionId])
 
@@ -304,6 +316,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             isFetchingNextPageRef.current = true
             fetchNextPageRef.current()
         }
+        // 保存到 ref，供 auto-chain（scroll restoration useLayoutEffect）调用
+        triggerFetchRef.current = triggerFetchNextPage
 
         /**
          * 内容未溢出时主动加载历史消息
@@ -318,8 +332,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 isFillingRef.current = true
                 triggerFetchNextPage(scrollTop, scrollHeight)
             } else if (isFillingRef.current) {
-                // Fill 结束：内容已溢出，滚到底部一次
-                isFillingRef.current = false
+                // Fill 期间内容已溢出，滚到底部
+                // 不立即重置 isFillingRef，由 fill cascade effect 在 fetch 完成后统一重置
+                // 避免 isFillingRef=false + isFetchingNextPage=true 的缝隙导致 skeleton 闪烁
                 scrollBox.scrollTop = scrollBox.scrollHeight
             }
         }
@@ -371,9 +386,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             resizeObserver.observe(contentEl)
         }
 
-        // 监听视口尺寸变化：只处理 autoScroll
+        // 监听视口尺寸变化：autoScroll + 窗口拉高时检测溢出继续加载历史
         const viewportObserver = new ResizeObserver(() => {
             handleAutoScroll()
+            checkOverflowAndFetch()
         })
         viewportObserver.observe(scrollBox)
 
@@ -432,7 +448,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const restoredScrollTop = scrollBox.scrollTop
             pendingRestoreRef.current = null
             isRestoringScrollRef.current = true
-            setTimeout(() => {
+            // 清理上一个 restoration timer，防止 stale timeout
+            if (scrollRestoreTimerRef.current) {
+                clearTimeout(scrollRestoreTimerRef.current)
+            }
+            scrollRestoreTimerRef.current = setTimeout(() => {
+                scrollRestoreTimerRef.current = null
                 isRestoringScrollRef.current = false
                 // scroll restoration 完成后仍在顶部附近 → 自动加载下一页
                 // 解决：手动滚到顶部加载一页后，scroll restoration 结束不再有 scroll 事件，
@@ -440,13 +461,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 if (restoredScrollTop < HISTORY_PREFETCH_DISTANCE
                     && hasNextPageRef.current && !isFetchingNextPageRef.current) {
                     isFillingRef.current = false
-                    pendingRestoreRef.current = {
-                        scrollTop: scrollBox.scrollTop,
-                        scrollHeight: scrollBox.scrollHeight,
-                        blocksLength: chatBlocksLengthRef.current,
-                    }
-                    isFetchingNextPageRef.current = true
-                    fetchNextPageRef.current()
+                    triggerFetchRef.current(scrollBox.scrollTop, scrollBox.scrollHeight)
                 }
             }, RESTORE_SCROLL_GUARD_MS)
         }
