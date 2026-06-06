@@ -129,6 +129,7 @@ function areAgentTextBlocksEqual(left: AgentTextBlock, right: AgentTextBlock): b
         && left.createdAt === right.createdAt
         && left.meta === right.meta
         && left.isSynthetic === right.isSynthetic
+        && left.isSnapshot === right.isSnapshot
 }
 
 function areAgentReasoningBlocksEqual(left: AgentReasoningBlock, right: AgentReasoningBlock): boolean {
@@ -161,6 +162,28 @@ function areAgentEventBlocksEqual(left: AgentEventBlock, right: AgentEventBlock)
         && areAgentEventsEqual(left.event, right.event)
 }
 
+/** 深度比较两个值（用于 tool.input / tool.result 等对象） */
+function areDeepEqual(left: unknown, right: unknown): boolean {
+    if (left === right) return true
+    // 基本类型已由 === 处理，只有对象/数组需要序列化
+    if (typeof left !== 'object' || typeof right !== 'object') return false
+    if (left === null || right === null) return false
+    try {
+        return JSON.stringify(left) === JSON.stringify(right)
+    } catch {
+        return false
+    }
+}
+
+/** 深度比较 AgentMetrics（值对象：{ tokens, toolUses, durationMs }） */
+function areAgentMetricsEqual(left?: { tokens: number; toolUses: number; durationMs: number } | null, right?: { tokens: number; toolUses: number; durationMs: number } | null): boolean {
+    if (left === right) return true
+    if (!left || !right) return false
+    return left.tokens === right.tokens
+        && left.toolUses === right.toolUses
+        && left.durationMs === right.durationMs
+}
+
 function areToolCallsEqual(left: ToolCallBlock, right: ToolCallBlock, childrenSame: boolean): boolean {
     if (!childrenSame) return false
     return left.localId === right.localId
@@ -169,13 +192,15 @@ function areToolCallsEqual(left: ToolCallBlock, right: ToolCallBlock, childrenSa
         && left.tool.id === right.tool.id
         && left.tool.name === right.tool.name
         && left.tool.state === right.tool.state
-        && left.tool.input === right.tool.input
-        && left.tool.result === right.tool.result
+        && areDeepEqual(left.tool.input, right.tool.input)
+        && areDeepEqual(left.tool.result, right.tool.result)
         && left.tool.description === right.tool.description
         && left.tool.createdAt === right.tool.createdAt
         && left.tool.startedAt === right.tool.startedAt
         && left.tool.completedAt === right.tool.completedAt
         && arePermissionsEqual(left.tool.permission, right.tool.permission)
+        && areAgentMetricsEqual(left.tool.agentMetrics, right.tool.agentMetrics)
+        && left.tool.agentSummary === right.tool.agentSummary
 }
 
 function reconcileBlockList(blocks: ChatBlock[], prevById: ChatBlocksById): ChatBlock[] {
