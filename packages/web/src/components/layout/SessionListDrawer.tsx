@@ -41,6 +41,9 @@ export function SessionListDrawer() {
     const { data: groups = [] } = useSessionGroups()
     const hasSessions = groups.some(g => g.totalCount > 0)
 
+    // 桌面端不再渲染（会话列表已内嵌在 AppSidebar 中）
+    if (!isMobile) return null
+
     const handleCloseList = () => {
         setSessionListDrawerOpen(false)
         setNewSessionDrawerOpen(false)
@@ -101,34 +104,6 @@ export function SessionListDrawer() {
         </Drawer>
     )
 
-    if (isMobile) {
-        return (
-            <>
-                <Drawer
-                    title={t('nav.sessions')}
-                    extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
-                    open={sessionListDrawerOpen}
-                    onClose={handleCloseList}
-                    placement="bottom"
-                    styles={{ body: LIST_BODY_STYLES }}
-                >
-                    {listDrawerContent}
-                    <Drawer
-                        title={t('session.newSession')}
-                        open={newSessionDrawerOpen}
-                        onClose={handleCloseNew}
-                        placement="bottom"
-                        destroyOnClose
-                        styles={{ body: { padding: 0 } }}
-                    >
-                        {newSessionContent}
-                    </Drawer>
-                </Drawer>
-                {standaloneNewDrawer}
-            </>
-        )
-    }
-
     return (
         <>
             <Drawer
@@ -136,8 +111,7 @@ export function SessionListDrawer() {
                 extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
                 open={sessionListDrawerOpen}
                 onClose={handleCloseList}
-                placement="right"
-                size={300}
+                placement="bottom"
                 styles={{ body: LIST_BODY_STYLES }}
             >
                 {listDrawerContent}
@@ -145,14 +119,14 @@ export function SessionListDrawer() {
                     title={t('session.newSession')}
                     open={newSessionDrawerOpen}
                     onClose={handleCloseNew}
-                    placement="right"
-                    size={360}
+                    placement="bottom"
                     destroyOnClose
                     styles={{ body: { padding: 0 } }}
                 >
                     {newSessionContent}
                 </Drawer>
             </Drawer>
+            {/* 独立的 NewSession Drawer（session list 未打开时使用） */}
             {standaloneNewDrawer}
         </>
     )

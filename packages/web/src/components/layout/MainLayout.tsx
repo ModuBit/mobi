@@ -16,7 +16,8 @@
 
 import { theme as antTheme, ConfigProvider, Layout } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
-import { RailNav } from './RailNav'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { AppSidebar } from './AppSidebar'
 import { MobileMenuDrawer } from './MobileMenu'
 import { SessionListDrawer } from './SessionListDrawer'
 import { Outlet } from '@tanstack/react-router'
@@ -25,14 +26,46 @@ import { useTranslation } from 'react-i18next'
 import { Helmet } from 'react-helmet-async'
 import { UpdatePrompt } from './UpdatePrompt'
 import { registerServiceWorker } from '@/core/pwa/registerSW'
+import styled from '@emotion/styled'
+import { PanelLeft } from 'lucide-react'
+
+const { useToken } = antTheme
+
+// 侧边栏展开按钮（收起时显示）
+const ToggleButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: ${props => props.$token.colorBgContainer}cc;
+    color: ${props => props.$token.colorText};
+    transition: background 0.2s, transform 0.15s;
+
+    &:hover {
+        background: ${props => props.$token.colorBgTextHover};
+        transform: scale(1.05);
+    }
+`
 
 /**
  * 主布局组件
- * 使用 antd Layout 组件组织 RailNav + Content
+ * 使用 antd Layout 组件组织 AppSidebar + Content
  */
 export function MainLayout() {
     const { theme } = useUiStore()
     const { t } = useTranslation()
+    const { token } = useToken()
+    const isMobile = useIsMobile()
+    const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
+    const toggleSidebar = useUiStore((s) => s.toggleSidebar)
 
     // 缓存解析后的主题值
     const resolvedTheme = useMemo(() => resolveTheme(theme), [theme])
@@ -64,8 +97,13 @@ export function MainLayout() {
             </Helmet>
             <UpdatePrompt onUpdate={updateReload} />
             <Layout style={{ height: '100vh', overflow: 'hidden', flexDirection: 'row' }}>
-                <RailNav />
-                <Layout.Content style={{ flex: 1, display: 'flex', overflow: 'hidden', minWidth: 0 }}>
+                <AppSidebar />
+                <Layout.Content style={{ flex: 1, display: 'flex', overflow: 'hidden', minWidth: 0, position: 'relative' }}>
+                    {!sidebarExpanded && !isMobile && (
+                        <ToggleButton $token={token} onClick={toggleSidebar}>
+                            <PanelLeft size={18} />
+                        </ToggleButton>
+                    )}
                     <Outlet />
                 </Layout.Content>
             </Layout>
