@@ -365,7 +365,8 @@ export class ApiSessionClient extends EventEmitter {
 
     sendClaudeSessionMessage(body: RawJSONLines): void {
         // 在发送端分类，避免 Hub 重复分类
-        const category = classifyMessage(body.type, (body as Record<string, unknown>).subtype as string | undefined)
+        const subtype = body.type === 'system' ? body.subtype : undefined
+        const category = classifyMessage(body.type, subtype)
 
         let content: MessageContent
 
