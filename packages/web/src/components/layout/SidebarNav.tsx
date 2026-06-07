@@ -50,9 +50,11 @@ const NavItem = styled.button<{ $active: boolean; $disabled?: boolean; $token: R
     line-height: 1;
     transition: all 0.2s;
 
-    &:hover:not(:disabled) {
-        background: ${props => props.$token.colorPrimaryBg};
-        color: ${props => props.$token.colorPrimary};
+    &:hover {
+        ${props => !props.$disabled && `
+            background: ${props.$token.colorPrimaryBg};
+            color: ${props.$token.colorPrimary};
+        `}
     }
 `
 

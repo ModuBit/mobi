@@ -24,7 +24,6 @@ import {
     Sun,
     Moon,
     Download,
-    LogOut,
 } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
