@@ -15,9 +15,11 @@
  */
 
 import {
-    MessageSquare,
-    Zap,
+    PlusCircle,
+    Search,
     Plug,
+    Zap,
+    MessageSquare,
     Settings,
     LogOut,
     type LucideIcon,
@@ -31,22 +33,12 @@ export interface NavItemConfig {
     disabled?: boolean
 }
 
-// 主导航项（桌面端显示）
+// 主导航项（侧边栏显示）
 export const mainNavItems: NavItemConfig[] = [
-    { key: 'sessions', icon: MessageSquare, labelKey: 'nav.sessions' },
-    { key: 'skills', icon: Zap, labelKey: 'nav.skills', disabled: true },
+    { key: 'new-session', icon: PlusCircle, labelKey: 'nav.newSession' },
+    { key: 'search', icon: Search, labelKey: 'nav.search', disabled: true },
     { key: 'mcp', icon: Plug, labelKey: 'nav.mcp', disabled: true },
-]
-
-// 底部导航项（桌面端底部）
-export const bottomNavItems: NavItemConfig[] = [
-    { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
-]
-
-// 移动端菜单项（过滤掉 disabled 的项）
-export const mobileNavItems: NavItemConfig[] = [
-    { key: 'sessions', icon: MessageSquare, labelKey: 'nav.sessions' },
-    { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
+    { key: 'automation', icon: Zap, labelKey: 'nav.automation', disabled: true },
 ]
 
 // 退出登录项
@@ -58,14 +50,32 @@ export const logoutNavItem: NavItemConfig = {
 
 // 导航路径映射 - 统一管理所有导航路径
 export const navPathMap: Record<string, string> = {
+    'new-session': '/sessions/new',
     sessions: '/sessions',
     settings: '/settings',
 }
 
 // 根据当前路径判断导航项是否激活
 export function getNavActiveKey(pathname: string, key: string): boolean {
+    if (key === 'new-session') {
+        return pathname === '/sessions/new'
+    }
+    // 兼容旧版 sessions 键（RailNav / MobileMenu）
     if (key === 'sessions') {
         return pathname === '/' || pathname === '/sessions' || pathname.startsWith('/sessions/')
     }
     return pathname === `/${key}`
 }
+
+// ===== 旧版兼容导出（RailNav / MobileMenu 使用，Task 8 清理） =====
+
+// 底部导航项（旧版 RailNav 使用）
+export const bottomNavItems: NavItemConfig[] = [
+    { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
+]
+
+// 移动端菜单项（旧版 MobileMenu 使用）
+export const mobileNavItems: NavItemConfig[] = [
+    { key: 'sessions', icon: MessageSquare, labelKey: 'nav.sessions' },
+    { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
+]

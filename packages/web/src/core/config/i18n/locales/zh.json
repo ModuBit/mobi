@@ -29,6 +29,10 @@
   },
   "nav": {
     "sessions": "会话",
+    "newSession": "新对话",
+    "search": "搜索",
+    "automation": "自动化",
+    "installApp": "安装到本地",
     "skills": "技能",
     "mcp": "MCP",
     "settings": "设置",

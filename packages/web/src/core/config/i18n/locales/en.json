@@ -29,6 +29,10 @@
   },
   "nav": {
     "sessions": "Sessions",
+    "newSession": "New Chat",
+    "search": "Search",
+    "automation": "Automation",
+    "installApp": "Install App",
     "skills": "Skills",
     "mcp": "MCP",
     "settings": "Settings",
