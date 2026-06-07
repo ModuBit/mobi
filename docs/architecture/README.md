@@ -38,7 +38,7 @@ UI → API Client → Hub REST → RpcGateway → Socket.IO → CLI RPC Handler 
 
 ### 跨切面
 
-- **[消息生命周期](message-lifecycle.md)**：一条消息从 SDK 产生到 UI 渲染的完整路径（过滤、转换、标准化、归约、渲染）
+- **[消息生命周期](message-lifecycle.md)**：一条消息从 SDK 产生到 UI 渲染的完整路径（分类、过滤、转换、标准化、归约、渲染）
 - **[Agent 消息渲染](web/agent-rendering.md)**：Agent 工具（Task/Agent）的内联渲染和 Drawer 详情渲染架构，包括 sidechain 子对话
 - **[工具权限审批流](tool-permission.md)**：SDK 工具调用的用户授权机制，包括普通工具、ExitPlanMode、AskUserQuestion 三种场景
 - **认证**：JWT（Web ↔ Hub），Token（CLI ↔ Hub）

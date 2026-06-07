@@ -18,6 +18,88 @@ flowchart LR
 
 ---
 
+## 消息分类体系
+
+**设计文档**：`docs/superpowers/specs/2026-06-07-message-classification-filtering-design.md`
+**实现文件**：`packages/shared/src/messageClassification.ts`
+
+消息分类规则定义在 `@mobi/shared`，CLI 和 Hub 共享，单一事实来源。采用**黑名单**模式：只有明确匹配到 `discard` 或 `ephemeral` 规则的消息才会被特殊处理，**其余一律默认 `persistent`**。
+
+### 三级分类
+
+```typescript
+type MessageCategory = 'discard' | 'ephemeral' | 'persistent'
+```
+
+| 级别 | 含义 | CLI | Hub 存储 | Hub 历史查询 | SSE 推送 |
+|------|------|-----|---------|-------------|---------|
+| `discard` | 直接丢弃 | ✘ 不发送 | — | — | — |
+| `ephemeral` | 实时临时 | → 发送 | ✓ 存储 | ✘ 过滤 | ✓ 推送 |
+| `persistent` | 完整保留 | → 发送 | ✓ 存储 | ✓ 返回 | ✓ 推送 |
+
+### 分类规则
+
+**discard（CLI 直接丢弃，不发送到 Hub）**：
+
+| type | subtype | 说明 |
+|------|---------|------|
+| `system` | `thinking_tokens` | 内部 token 计数 |
+| `system` | `hook_started` | Hook 启动通知 |
+| `system` | `hook_progress` | Hook 执行输出 |
+| `system` | `hook_response` | Hook 执行结果 |
+| `system` | `plugin_install` | 插件安装进度 |
+| `system` | `files_persisted` | 文件检查点 |
+| `auth_status` | — | 认证流程状态 |
+| `rate_limit_event` | — | 限流事件 |
+
+**ephemeral（存 DB，历史查询时过滤，SSE 实时推送不变）**：
+
+| type | subtype | 说明 | Web 标准化结果 |
+|------|---------|------|---------------|
+| `system` | `task_progress` | 任务执行指标 | `AgentEvent { type: 'agent-progress' }` |
+| `system` | `task_started` | 后台任务启动 | `AgentEvent { type: 'bg-task-started' }` |
+| `system` | `task_updated` | 后台任务状态变更 | `AgentEvent { type: 'bg-task-updated' }` |
+| `system` | `task_notification` | 任务完成通知 | — |
+| `tool_progress` | — | 工具执行进度 | `AgentEvent { type: 'agent-progress', toolUseId, metrics, summary }` |
+| `tool_use_summary` | — | 工具使用汇总 | `AgentEvent { type: 'agent-progress', toolUseId, metrics, summary }` |
+| `prompt_suggestion` | — | 下一步建议 | — |
+| `system` | `status` | 压缩/权限状态 | — |
+
+**persistent（默认，完整保留）**：所有未命中上述黑名单的消息，包括 `assistant`、`user`、`system:init`、`system:compact_boundary`、`system:api_error`、`system:api_retry` 等。
+
+### 分类在管线中的位置
+
+```
+                         CLI                        Hub                        Web
+                    ┌──────────┐              ┌──────────────┐         ┌──────────┐
+ SDK 消息 ────────→ │ convert  │              │              │         │          │
+                    │   ↓      │              │  classify    │         │          │
+                    │ classify │              │   ↓          │         │          │
+                    │   ↓      │   discard    │  store +     │  SSE    │ 实时渲染 │
+                    │ discard? ├──────────────✘│  broadcast   ├────────→│ (不变)   │
+                    │   ↓      │   发送        │              │         │          │
+                    │ enqueue  ├──────────────→│  category=   │         │          │
+                    └──────────┘              │  ephemeral/  │         │          │
+                                              │  persistent  │         │          │
+                                              │      ↓       │         │          │
+                                              │  历史查询     │         │ 历史渲染 │
+                                              │  WHERE != '  ├────────→│ (更轻量) │
+                                              │  ephemeral'  │         │          │
+                                              └──────────────┘         └──────────┘
+```
+
+### 向后兼容
+
+| 保障点 | 机制 |
+|--------|------|
+| 未知消息 | `classifyMessage()` 未匹配任何规则 → `persistent` |
+| 提取失败 | Hub 提取 type/subtype 失败 → `persistent` |
+| 存量数据 | `ALTER TABLE ADD COLUMN DEFAULT 'persistent'`，自动填充 |
+| SSE 推送 | `ephemeral` 消息仍通过 SSE 实时推送，行为不变 |
+| Web 端 | 零改动，两层过滤（分类层 + Web 可见性白名单）互不干扰 |
+
+---
+
 ## 第 1 步：SDK 消息产生
 
 Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类型：
@@ -50,6 +132,15 @@ Claude Agent SDK 的 `query()` 异步迭代器产出 `SDKMessage`，共四种类
 | `system` (subtype=`init`) | `RawJSONLines (type=system)` | 更新 sessionId，全字段透传 |
 | `system` (其他) | `RawJSONLines (type=system)` | 全字段透传 |
 | **`result`** | **`null`（丢弃）** | 不生成日志消息 |
+
+### 消息分类过滤
+
+**文件**：`packages/cli/src/claude/claudeRemoteLauncher.ts`
+
+`onMessage` 回调中，`convert()` 之后、`enqueue()` 之前调用 `classifyMessage(type, subtype)`：
+- 分类为 `discard` 的消息直接 `return`，不发送到 Hub
+- 分类为 `ephemeral` / `persistent` 的消息正常入队
+- 过滤在 `convert()` 之后：确保格式转换完成，type/subtype 字段可被分类函数读取
 
 **输出格式** (`RawJSONLines`) 基础字段：
 
@@ -112,13 +203,34 @@ SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送 snap
 
 ---
 
-## 第 3 步：Hub 存储与同步
+## 第 3 步：Hub 存储、分类与同步
 
 **存储**：`packages/hub/src/store/index.ts` — SQLite WAL 模式
 
 转换后的 `RawJSONLines` 通过 `OutgoingMessageQueue` 发送到 Hub，存入 `messages` 表。
 
-**OutgoingMessageQueue**（`packages/cli/src/claude/utils/OutgoingMessageQueue.ts`）：透传所有消息，不做过滤。消息过滤由前端 `isClaudeChatVisibleMessage()` 等逻辑负责，这样如果后续有消息未渲染，在前端更容易发现。
+### 消息分类处理
+
+**分类文件**：`packages/shared/src/messageClassification.ts`（与 CLI 共享）
+**存储层**：`packages/hub/src/store/messages.ts`
+
+1. **接收时分类**：Hub 在 `message` handler 中解析消息内容，提取 `type`/`subtype`，调用 `classifyMessage()` 得到 `category`
+2. **带 category 存储**：`messages` 表有 `category TEXT NOT NULL DEFAULT 'persistent'` 列，新增索引 `idx_messages_session_category(session_id, category, seq)`
+3. **历史查询过滤**：`getMessages` / `getMessagesAfter` / `getSidechainMessages` 均加 `WHERE category != 'ephemeral'` 条件
+4. **SSE 推送不变**：`ephemeral` 消息照常通过 SSE 实时推送给 Web，与分类前行为完全一致
+
+### type/subtype 提取路径
+
+消息经 CLI `sendClaudeSessionMessage()` 包装后有两种结构，Hub 按优先级提取：
+
+| 优先级 | 提取路径 | 适用消息 |
+|--------|---------|---------|
+| 1 | `content.content.data.type` + `content.content.data.subtype` | agent output 消息 |
+| 2 | `content.content.type` + `content.content.subtype` | event 消息 |
+| 3 | `content.role` | 兜底（user/agent） |
+| 兜底 | 返回 `'persistent'` | 提取失败时 |
+
+### OutgoingMessageQueue（`packages/cli/src/claude/utils/OutgoingMessageQueue.ts`）：透传所有消息，不做过滤。消息过滤由前端 `isClaudeChatVisibleMessage()` 等逻辑负责，这样如果后续有消息未渲染，在前端更容易发现。
 
 **主键策略**：Hub 的 `addMessage` 使用 `localId ?? randomUUID()` 作为消息 `id`，即优先使用 CLI 提供的 SDK uuid，仅当无 `localId` 时才生成随机 UUID。
 
@@ -334,7 +446,25 @@ type ChatBlock =
 
 ## 消息命运总结
 
-### 完全丢弃（不进入任何后续流程）
+### 三层过滤
+
+消息在整个管线中经历三层过滤，各层职责独立：
+
+| 层 | 位置 | 职责 | 时机 |
+|----|------|------|------|
+| **分类层**（CLI + Hub） | CLI `onMessage` + Hub 存储 | 传输 + 存储 + 查询优化 | 数据链路层 |
+| **可见性白名单**（Web） | `isClaudeChatVisibleMessage()` | 渲染过滤 | 展示层 |
+| **隐藏工具**（Web） | `isHiddenTool()` | 隐藏内部工具调用 | 展示层 |
+
+### 第一层：分类层（discard / ephemeral / persistent）
+
+| 分类 | 消息 | 分类位置 | 效果 |
+|------|------|----------|------|
+| `discard` | `thinking_tokens`、`hook_*`、`plugin_install`、`files_persisted`、`auth_status`、`rate_limit_event` | CLI `onMessage` | 不发送到 Hub，全链路不可见 |
+| `ephemeral` | `task_progress`、`task_started`、`task_updated`、`task_notification`、`tool_progress`、`tool_use_summary`、`prompt_suggestion`、`system:status` | Hub 存储时标记 | 存 DB，SSE 实时推送，历史查询时过滤 |
+| `persistent` | 所有未命中上述规则的消息 | — | 完整保留，正常存储和查询 |
+
+### 第二层：完全丢弃（normalize 阶段，不进入后续流程）
 
 | 消息 | 丢弃位置 | 原因 |
 |------|----------|------|
@@ -414,3 +544,4 @@ type ChatBlock =
 | Web 工具过滤 | `packages/web/src/domain/chat/reducerTools.ts` | isHiddenTool / isChangeTitleToolName 判断 |
 | Web 渲染 | `packages/web/src/components/chat/ChatContainer.tsx` | ChatBlock → UI 组件 |
 | 共享工具 | `packages/shared/src/messages.ts` | unwrapRole / isSkippable / isVisible |
+| 共享分类 | `packages/shared/src/messageClassification.ts` | classifyMessage / shouldSendToHub / shouldIncludeInHistory |

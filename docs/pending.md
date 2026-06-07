@@ -4,146 +4,7 @@
 
 ---
 
-## 1. 消息推送逻辑与 VisibilityTracker 配合
-
-**相关文件**：
-- `packages/hub/src/push/pushNotificationChannel.ts`
-- `packages/hub/src/push/pushService.ts`
-- `packages/hub/src/visibility/visibilityTracker.ts`
-
-**待确认**：
-- Web Push 订阅流程
-- `sendToast` vs `broadcast` 的使用场景区分
-- VisibilityTracker 如何判断连接可见性
-- 通知降级策略的完整逻辑
-
----
-
-## 2. Web 端与 VisibilityTracker 配合
-
-**相关文件**：
-- `packages/hub/src/visibility/visibilityTracker.ts`
-- `packages/hub/src/web/routes/events.ts`（`POST /api/visibility`）
-- `packages/web/src/`（前端实现）
-
-**待确认**：
-- 前端如何监听页面可见性变化
-- 前端何时调用 `POST /api/visibility`
-- VisibilityTracker 的数据结构
-- `hasVisibleConnection()` 的判断逻辑
-
----
-
-## 3. Web 端 SSE 断连重连
-
-**相关文件**：
-- `packages/web/src/`（前端实现）
-
-**待确认**：
-- 前端如何监听 SSE 连接状态
-- 断连后的重连策略
-- 重连时的 token 处理
-
----
-
-## 4. CLI 触发 Socket 事件的场景
-
-**相关文件**：
-- `packages/cli/src/`（CLI 客户端实现）
-
-**待确认**：
-- CLI 在什么场景下触发 `message`、`update-metadata`、`update-state` 等 Socket 事件
-- CLI 在什么场景下触发 `machine-update-metadata`、`machine-update-state` 等 Socket 事件
-- 触发位置在 CLI 代码的哪些文件
-
----
-
-## 5. CLI - Hub - SyncEngine 事件流转整体流程
-
-**相关文件**：
-- `packages/cli/src/`（CLI 客户端）
-- `packages/hub/src/socket/`（Socket.IO 服务器）
-- `packages/hub/src/sync/syncEngine.ts`（同步引擎）
-- `packages/hub/src/sync/eventPublisher.ts`（事件发布）
-- `packages/hub/src/sse/sseManager.ts`（SSE 推送）
-
-**待确认**：
-- CLI 发送 Socket 事件 → Hub 接收 → SyncEngine 处理 → EventPublisher 广播 → SSE 推送 的完整链路
-- 各环节的数据格式转换
-- 事件类型在不同层级的映射关系
-
----
-
-## 6. CLI 端 RPC 注册与响应
-
-**相关文件**：
-- `packages/cli/src/api/`（CLI 客户端）
-- `packages/hub/src/socket/rpcRegistry.ts`（Hub 端注册表）
-
-**待确认**：
-- CLI 如何注册 RPC 方法（`rpc-register` 事件）
-- CLI 如何响应 RPC 请求（`rpc-request` 事件）
-- CLI 注册了哪些 RPC 方法
-- RPC 响应处理器的实现位置
-
----
-
-## 7. 前端 Web Push 订阅与 VisibilityTracker 配合
-
-**相关文件**：
-- `packages/web/src/`（前端实现）
-- `packages/hub/src/web/routes/push.ts`（Push API）
-- `packages/hub/src/visibility/visibilityTracker.ts`
-
-**待确认**：
-- 前端如何调用 `/api/push/subscribe` 和 `/api/push/vapid-public-key`
-- 前端何时创建 Web Push 订阅（Service Worker 注册时机）
-- VisibilityTracker 如何影响推送策略（页面可见时用 SSE，不可见时用 Web Push）
-- 前端监听 `visibilitychange` 事件后如何与 Push 订阅联动
-
----
-
-## 8. hub/cli 在编译嵌入模式下的使用方式
-
-**相关文件**：
-- `hub/packages/cli/src/index.ts`（入口，引用不存在的 `./commands/runCli`）
-- `hub/packages/cli/src/bootstrap.ts`（编译产物入口）
-- `hub/packages/cli/src/configuration.ts`（CLI 端配置适配）
-- `hub/packages/cli/src/persistence.ts`（CLI 端持久化适配）
-
-**待确认**：
-- Hub 编译为独立可执行文件时，`hub/cli/` 如何与 `cli/` 的代码合并打包
-- `hub/packages/cli/src/index.ts` 中 `import { runCli } from './commands/runCli'` 在编译时如何解析到 `cli/` 的代码
-- `hub/cli/` 的 `configuration.ts` 和 `persistence.ts` 与 `cli/` 中同名文件的覆盖/合并关系
-- `bootstrap.ts` 中禁用 Ink devtools 的原因和编译上下文
-
----
-
-## 9. Mobi 系统中的 Web Server 盘点
-
-**相关文件**：
-- `packages/hub/src/index.ts`（Hub 入口）
-- `packages/cli/src/runner/controlServer.ts`（Runner ControlServer）
-- `packages/cli/src/commands/hook.ts`（Hook Server）
-
-**已知信息**：
-
-| 所属模块 | Server | 类型 | 用途 |
-|----------|--------|------|------|
-| Hub | WebServer | HTTP (Bun.serve + Hono) | REST API，服务前端 |
-| Hub | Socket.IO Server | WebSocket | 与 CLI 双向实时通信 |
-| Runner（machine 维度） | ControlServer | HTTP (Fastify) | CLI 命令与 Runner 进程通信 |
-| CLI（session 维度） | HookServer | HTTP (Node `http`) | 接收 Claude SessionStart Hook 转发 |
-| CLI（session 维度） | MCP Server | stdio (FastMCP) | 暴露 `change_title` 工具，随 Claude 会话自动启动 |
-
-**待确认**：
-- 各 Server 的监听地址和端口配置
-- Hub 中 WebServer 和 Socket.IO Server 的启动顺序和依赖关系
-- 各 Server 的生命周期管理（启动、关闭、异常处理）
-
----
-
-## 10. 技术债：CLI 端 Web Server 框架不统一
+## 1. 技术债：CLI 端 Web Server 框架不统一
 
 **当前状态**：CLI 端两个 Server 使用不同实现
 - Runner ControlServer → Fastify（已有 Zod schema 验证、类型化路由）
@@ -158,7 +19,7 @@
 
 ---
 
-## 11. Local 模式下 SubAgent 消息缺失
+## 2. Local 模式下 SubAgent 消息缺失
 
 **相关文件**：
 - `packages/cli/src/claude/utils/sessionScanner.ts` — SessionScanner 实现
@@ -173,42 +34,7 @@
 
 ---
 
-## 12. SDK 流式输出支持
-
-**相关文件**：
-- `packages/cli/src/claude/claudeRemote.ts` — Remote 模式主循环
-- `packages/cli/src/claude/utils/sdkToLogConverter.ts` — 消息转换
-- `packages/web/src/` — 前端消息展示
-
-**当前状态**：
-- `query()` 默认只返回完整的 `SDKAssistantMessage`（一轮完整输出）
-- SDK 通过 `includePartialMessages: true` 选项支持流式输出
-- 开启后 `for await` 会收到 `SDKPartialAssistantMessage`（`type: 'stream_event'`），包含逐 token 的 `BetaRawMessageStreamEvent`
-
-**待确认**：
-- 当前消息推送链路（`sdkToLogConverter` → `OutgoingMessageQueue` → Socket）是否需要调整以支持高频流式消息
-- 前端消息渲染组件是否支持增量更新（逐 token 渲染）
-- 流式模式下 `onMessage` 回调的调用频率对性能的影响
-- Web 端实时打字效果的实现方案
-
-## 13. Web 端权限审批"本次会话允许"功能未生效
-
-**相关文件**：
-- `packages/web/src/components/tool-card/PermissionFooter.tsx` — 权限审批 UI
-- `packages/web/src/api/client.ts:138-143` — API 调用（approve/deny）
-- `packages/hub/src/sync/rpcGateway.ts:70-86` — Hub 转发 RPC
-- `packages/cli/src/claude/utils/permissionHandler.ts:270-281` — CLI 端判断逻辑
-
-**状态**：✅ 已修复
-
-**修复内容**：
-- `PermissionFooter.tsx` 的 `approveForSession` 回调现在传递 `allowTools` 参数
-- `approveAllEdits` 回调现在传递 `mode: 'acceptEdits'` 参数
-- 移除了冗余的 `PermissionRequest.tsx`，权限按钮统一在 `ToolCallRenderer` 中渲染
-
----
-
-## 14. Permission 系统重构
+## 3. Permission 系统重构
 
 **相关文件**：
 - `packages/cli/src/claude/utils/permissionHandler.ts` — Claude 专用权限处理器
@@ -220,48 +46,42 @@
 
 **现状问题**：
 
-### 14.1 Web 端"本次会话允许"功能未生效（原 #13）✅ 已修复
-
-- UI 三个按钮现在正确传递 `allowTools` / `mode` 参数
-- `decision` 字段已标记为 deprecated，权限范围由 `allowTools` 和 `mode` 决定
-
-### 14.2 ExitPlanMode 模式丢失
+### 3.1 ExitPlanMode 模式丢失
 
 - `ExitPlanMode` 被批准后，`PLAN_FAKE_RESTART` 的模式取自 `response.mode`
-- 由于 14.1 的问题，`response.mode` 永远为 `undefined`，硬编码为 `'default'`
+- 由于之前的问题，`response.mode` 永远为 `undefined`，硬编码为 `'default'`
 - 如果用户原来在 `acceptEdits` 模式，Claude 进 plan 后退出，模式被降级为 `default`
 - 应该记住进入 plan 前的原始模式，退出时恢复
 
-### 14.3 EnterPlanMode 未被追踪
+### 3.2 EnterPlanMode 未被追踪
 
 - Claude 在任何模式下都可能调用 `EnterPlanMode` 进入"软 plan 模式"
 - PermissionHandler 没有追踪这个状态转换，`this.permissionMode` 不变
 - 虽然 Claude 的 system prompt 会约束只使用只读工具，但 PermissionHandler 层面没有强制执行
 - 如果 Claude 违反约束调用写工具，不会被自动拦截
 
-### 14.4 "假拒绝"模式的可维护性
+### 3.3 "假拒绝"模式的可维护性
 
 - `PLAN_FAKE_REJECT` + `PLAN_FAKE_RESTART` 机制是理解门槛较高的 hack
 - `claudeRemoteLauncher.ts` 中需要额外拦截 `PLAN_FAKE_REJECT` 的 tool_result 并替换为 "Plan approved"
 - 多处代码需要感知 plan mode 的特殊处理（`permissionHandler.ts`、`claudeRemoteLauncher.ts`、`getToolDescriptor.ts`）
 - 散落在多个文件中的 plan mode 逻辑增加了维护负担
 
-### 14.5 SDK 消息有损转换
+### 3.4 SDK 消息有损转换
 
 - `sdkToLogConverter.ts` 的 `convert()` 方法丢弃了 `SDKUserMessage` 的 `isSynthetic`、`tool_use_result`、`priority` 字段
 - 被注释掉的 sidechain UUID 注册代码（line 168-174）应确认是否需要并清理
 - 考虑统一转换逻辑，避免静默丢弃字段
 
 **重构方向**：
-1. Web 端 API 补全 `allowTools` / `mode` 参数（优先级最高，修复 14.1 和 14.2）
-2. PermissionHandler 增加 plan mode 状态追踪，支持 `EnterPlanMode` / `ExitPlanMode` 对称处理
-3. 退出 plan 时自动恢复进入前的原始模式，而非硬编码 `'default'`
-4. 评估是否有更好的模式切换机制替代"假拒绝"（取决于 SDK 是否提供运行时模式切换能力）
-5. 清理 `sdkToLogConverter.ts` 中的注释代码和静默字段丢弃
+1. PermissionHandler 增加 plan mode 状态追踪，支持 `EnterPlanMode` / `ExitPlanMode` 对称处理
+2. 退出 plan 时自动恢复进入前的原始模式，而非硬编码 `'default'`
+3. 评估是否有更好的模式切换机制替代"假拒绝"（取决于 SDK 是否提供运行时模式切换能力）
+4. 清理 `sdkToLogConverter.ts` 中的注释代码和静默字段丢弃
 
 ---
 
-## 15. Task 工具 prompt 展示应由前端处理
+## 4. Task 工具 prompt 展示应由前端处理
 
 **相关文件**：
 - `packages/cli/src/claude/claudeRemoteLauncher.ts:287-299` — 生成虚拟 user 消息
@@ -285,7 +105,7 @@
 
 ---
 
-## 16. Web Worker 优化 SSE 后台连接稳定性
+## 5. Web Worker 优化 SSE 后台连接稳定性
 
 **相关文件**：
 - `packages/web/src/realtime/sseClient.ts` — SSE 客户端
@@ -321,7 +141,7 @@
 
 ---
 
-## 17. `-c`（continue）模式未复用已有 mobi session
+## 6. `-c`（continue）模式未复用已有 mobi session
 
 **相关文件**：
 - `packages/cli/src/agent/sessionFactory.ts:127-137` — `extractResumeSessionId` 只识别 `--resume` / `-r`
@@ -342,7 +162,7 @@
 
 ---
 
-## 18. Web 端支持渲染 Claude Code 的 Recap 消息
+## 7. Web 端支持渲染 Claude Code 的 Recap 消息
 
 **相关文件**：
 - `packages/web/src/components/chat/ChatContainer.tsx` — 消息渲染
@@ -357,54 +177,7 @@
 
 ---
 
-<!-- 模板：新增待确认项
-## extractSDKMetadata 功能评估
-
-**相关文件**：
-- `packages/cli/src/claude/sdk/metadataExtractor.ts`
-- `packages/cli/src/claude/runClaude.ts`
-- `packages/shared/src/schemas.ts`
-
-**待确认**：
-- `extractSDKMetadata` 会启动一个额外的 Claude 会话（消耗 token、产生临时 session 文件），仅用于提取 `sdkMetadata`
-- `sdkMetadata` 存储在 session metadata 中，但 hub 和 web 均未消费
-- 斜杠命令通过 RPC `listSlashCommands` 从活跃会话实时获取，不依赖 `sdkMetadata`
-- **结论**：当前实现是多余的，后续应考虑移除或从正式会话中复用元数据
--->
-
-## 19. Remote 模式下 /clear /compact 命令的原生支持确认
-
-**相关文件**：
-- `packages/cli/src/claude/claudeRemote.ts` — Remote 模式主循环
-
-**待确认**：
-- Claude Agent SDK 的 `query()` 是否原生支持 `/clear` 和 `/compact` 命令（直接作为用户消息推送到 iterable）
-- 当前实现在第一条消息时对 `/clear` 做了特殊处理（直接 return），对 `/compact` 设置标记后正常推送
-- 如果 SDK 原生支持，这些特殊处理是否可以移除，统一作为普通消息推送
-
----
-
-## 20. Remote 模式首条消息延迟优化（SDK 预热）
-
-**相关文件**：
-- `packages/cli/src/claude/claudeRemote.ts` — Remote 模式主循环
-- `packages/cli/src/claude/claudeRemoteLauncher.ts` — Remote 启动器
-
-**现状**：
-- 切换到 remote 模式后，需要等用户发送第一条消息才会 `query()` spawn Claude Code 进程
-- Claude Code 进程启动 + SessionStart hooks 执行需要数秒，导致首条消息响应延迟明显
-- 曾尝试 SDK 预热（commit c0000e0）：用 `defaultMode` 立即调用 `query({ prompt: emptyAsyncIterable })`
-- **预热失败原因**：AsyncIterable 模式下 SDK 不会发送 `init` 消息，直到第一条用户消息被推送到 iterable 并被 Claude Code 接收；而代码在 `init` handler 中等第一条用户消息，形成循环等待死锁
-- 回滚预热，恢复原始流程
-
-**待解决**：
-- 找到正确的预热方案：在用户发送第一条消息前 spawn Claude Code 进程，消息到达后直接推送
-- 关键约束：`init` 消息由 Claude Code 在收到第一条用户消息后才发送，预热方案不能依赖 `init` 作为消息注入时机
-- 可能方向：并发等待第一条消息（与 for-await 并行），消息到达后推送到 iterable，SDK 读取后 Claude Code 发 init，for-await 正常处理
-
----
-
-## 21. Snapshot 全量推送的带宽优化
+## 8. Snapshot 全量推送的带宽优化
 
 **相关文件**：
 - `packages/cli/src/claude/utils/streamSnapshotSender.ts` — Snapshot 生成与发送
@@ -431,7 +204,7 @@
 
 ---
 
-## 22. Web 端权限审批支持 "Always Allow"（永久允许）
+## 9. Web 端权限审批支持 "Always Allow"（永久允许）
 
 **相关文件**：
 - `packages/web/src/components/chat/PermissionRequest.tsx` — 权限审批 UI
@@ -455,7 +228,7 @@
 
 ---
 
-## 23. Web 端消息列表长列表性能优化
+## 10. Web 端消息列表长列表性能优化
 
 **相关文件**：
 - `packages/web/src/components/chat/ChatContainer.tsx`
@@ -475,7 +248,7 @@
 
 ---
 
-## 24. Team Agent UI 支持 — Hook 状态追踪方案待实现
+## 11. Team Agent UI 支持 — Hook 状态追踪方案待实现
 
 **相关文件**：
 - `packages/hub/src/sync/teams.ts` — Hook 事件处理代码（已实现，待激活）
@@ -537,7 +310,7 @@ hooks: {
 
 ---
 
-## 25. Web 端消息列表渲染性能优化 — reconcile 与增量 reduce 的取舍
+## 12. Web 端消息列表渲染性能优化 — reconcile 与增量 reduce 的取舍
 
 **相关文件**：
 - `packages/web/src/components/chat/ChatContainer.tsx` — 消息渲染容器
@@ -550,26 +323,8 @@ hooks: {
 
 - SSE 每推送一条新消息 → `useMessages` 返回新数组 → `reduceChatBlocks` 对**全部消息**执行 normalize → trace → reduce
 - `reconcileChatBlocks` 已实现（逐字段对比新旧 block，未变化返回旧引用），但**调用者为 0**，从未接入渲染链路
-- `Bubble.List` 无虚拟滚动（见 #23），DOM 节点随消息量线性增长
+- `Bubble.List` 无虚拟滚动（见 #10），DOM 节点随消息量线性增长
 - 每次 SSE 事件产生全新 block 对象 → 下游 `React.memo`（`TextBlock` 等）无法生效 → 所有 bubble 重渲染
-
-### 优化方案对比
-
-| 方案 | 做法 | 对跨消息逻辑的影响 |
-|------|------|-------------------|
-| **Reconcile（结构化共享）** | 保持全量 `reduceChatBlocks` 不变，最后一步加 `reconcileChatBlocks` 做引用对比 | ❌ 无影响 — 所有逻辑不变 |
-| **增量 Reduce** | 只处理新增消息，跳过旧消息 | ⚠️ 有影响 — 需维护多种跨渲染状态 |
-
-### 增量 Reduce 不可行的原因
-
-`reduceChatBlocks` 是**纯函数**，每次从全部消息重建所有 block。其内部有 6 类**依赖多条消息综合结果**的逻辑，增量 reduce 会破坏这些逻辑：
-
-1. **Tool-call / Tool-result 配对**：`ensureToolBlock` 用 `toolBlocksById` Map 配对，tool-call 先到创建 block，tool-result 后到更新同一 block。增量模式需跨渲染保持 `toolBlocksById`
-2. **agentState 变更触发 block 状态更新**：`agentState` 变化时 `useMemo` 依赖触发全量重算，已有 tool-call block 的 `state` 从 `running` → `completed`。增量模式需重新评估所有 block
-3. **工具组折叠**（`groupCollapsibleToolCalls`）：新 block 可能导致旧 block 的分组边界变化（如连续 completed 达到 2 个触发折叠）。需始终看到完整 block 列表
-4. **Compact Summary 检测**：需先看到 `compact` 事件，再看到紧随的 `user` 消息，才能生成 `CompactSummaryBlock`。`pendingCompactMetadata` 是跨消息中间状态
-5. **Sidechain 消息聚合**：`traceMessages` 建立 parentUuid 树，sidechain 消息可能晚于主链 tool-call 到达，需累积 trace 状态
-6. **事件去重 / API Error 合并**（`dedupeAgentEvents` / `foldApiErrorEvents`）：`api-error` 和 `api-retry` 可能跨批次，增量模式会错过合并
 
 ### 决策
 
@@ -582,3 +337,34 @@ hooks: {
 2. 在 `ChatContainer` 的 `useMemo` 中接入 `reconcileChatBlocks`
 3. 确保 `buildChatBubbleItems` 及各 Block 组件的 `React.memo` 正确生效
 4. 单测全部通过
+
+---
+
+## 13. 页面刷新后 Agent 执行状态丢失
+
+**相关文件**：
+- `packages/shared/src/messageClassification.ts` — `tool_progress` / `tool_use_summary` 分类为 `ephemeral`
+- `packages/web/src/domain/chat/reducerTimeline.ts:94-111` — `agent-progress` 事件更新 ToolCallBlock 的 metrics/summary
+- `packages/hub/src/sync/sessionCache.ts` — runtimeState（已有 backgroundTasks 同模式）
+
+**现状**：
+- `tool_progress` 和 `tool_use_summary` 被分类为 `ephemeral`：SSE 实时推送正常，历史查询时过滤
+- Web 端通过 SSE 实时收到 `agent-progress` 事件，更新对应 ToolCallBlock 的 `agentMetrics`（token 消耗、工具次数）和 `agentSummary`
+- **刷新页面后**：Hub 历史查询不返回 `ephemeral` 消息 → `agent-progress` 事件丢失 → ToolCallBlock 无 metrics/summary → 直到下一个实时 `tool_progress` 到来才恢复
+
+**影响**：
+- 功能无影响，仅体验上的小缺陷（agent 执行中间状态暂时空白）
+- agent 执行完成后，最终指标通过 `tool_result` 的 `agentMetrics` 字段持久化在 ToolResult 中，不受影响
+
+**评估过的方案**：
+
+| 方案 | 做法 | 成本 | 决定 |
+|------|------|------|------|
+| runtimeState 存储 agentProgress | 在 `runtimeState.agentProgress[toolUseId]` 存最新 metrics/summary，复用 backgroundTasks 同模式 | 低（~70 行 + 测试） | 暂不实施 |
+| 客户端缓存（localStorage） | 浏览器端缓存最新 agentProgress | 中，跨设备不一致 | 不采用 |
+| 保留最近 N 条 ephemeral | DB 中仅保留每类最近一条 | 高，需新清理逻辑 | 不采用 |
+
+**暂不实施原因**：
+- 需要每条 `tool_progress` 到达时频繁更新 runtimeState（写入 DB）
+- 需要额外清理逻辑（`tool_result` 到达时清除对应条目）
+- 当前体验缺陷可接受，等下一个 `tool_progress` 自然恢复
