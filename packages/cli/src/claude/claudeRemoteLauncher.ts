@@ -27,6 +27,7 @@ import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode, type QueryControlRef } from "./loop";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
+import { classifyMessage } from '@mobi/shared';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
     RemoteLauncherBase,
@@ -253,6 +254,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
             const logMessage = sdkToLogConverter.convert(msg);
             if (logMessage) {
+                // 过滤 discard 类消息，不发送到 Hub
+                if (classifyMessage(logMessage.type, (logMessage as any).subtype) === 'discard') {
+                    return
+                }
+
                 if (logMessage.type === 'user' && logMessage.message?.content) {
                     const content = Array.isArray(logMessage.message.content)
                         ? logMessage.message.content
