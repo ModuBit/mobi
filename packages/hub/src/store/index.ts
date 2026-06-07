@@ -38,7 +38,10 @@ export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 2
+const SCHEMA_VERSION: number = 1
+// 发布基线：0 表示未发布，schema 可直接修改无需迁移；
+// 首次发布后设为当前 SCHEMA_VERSION，后续变更必须编写迁移脚本
+const SCHEMA_RELEASE_BASELINE: number = 0
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
@@ -48,7 +51,7 @@ const REQUIRED_TABLES = [
 ] as const
 
 export class Store {
-    private db: Database
+    private readonly db: Database
     private readonly dbPath: string
 
     readonly sessions: SessionStore
@@ -65,6 +68,7 @@ export class Store {
             try {
                 chmodSync(dir, 0o700)
             } catch {
+                // 部分文件系统不支持权限设置（如 Docker volume），可安全忽略
             }
 
             if (!existsSync(dbPath)) {
@@ -72,6 +76,7 @@ export class Store {
                     const fd = openSync(dbPath, 'a', 0o600)
                     closeSync(fd)
                 } catch {
+                    // 文件可能已由并发进程创建，可安全忽略
                 }
             }
         }
@@ -88,6 +93,7 @@ export class Store {
                 try {
                     chmodSync(path, 0o600)
                 } catch {
+                    // 部分文件系统不支持权限设置（如 Docker volume），可安全忽略
                 }
             }
         }
@@ -111,46 +117,25 @@ export class Store {
             return
         }
 
-        // 数据迁移指南：
+        // 数据迁移指南（SCHEMA_RELEASE_BASELINE > 0 时生效）：
         // 当需要修改 schema 时，按以下步骤操作：
-        // 1. 递增 SCHEMA_VERSION 常量
-        // 2. 在此添加迁移逻辑，例如：
-        //    if (currentVersion === N && SCHEMA_VERSION === N+1) {
-        //        this.migrateFromVNToVNext()
-        //        this.setUserVersion(SCHEMA_VERSION)
-        //        return
-        //    }
-        // 3. 实现对应的 migrateFromVXToVY() 方法，使用 ALTER TABLE 或重建表
-        // 4. 对于复杂迁移，使用事务包裹：BEGIN -> 执行迁移 -> COMMIT/ROLLBACK
-
-        if (currentVersion === 1 && SCHEMA_VERSION === 2) {
-            this.migrateFromV1ToV2()
-            this.setUserVersion(SCHEMA_VERSION)
-            return
-        }
+        // 1. 使用 /db-schema change 生成迁移脚手架（自动递增 SCHEMA_VERSION）
+        // 2. 实现对应的 migrateFromV{N}ToV{N+1}() 方法，使用 ALTER TABLE 或重建表
+        // 3. 对于复杂迁移，使用事务包裹：BEGIN -> 执行迁移 -> COMMIT/ROLLBACK
+        // 4. 同步更新 createSchema() 的建表语句（新安装时使用）
+        //
+        // 迁移分支模板：
+        // if (currentVersion === N) {
+        //     this.migrateFromVNToVNext()
+        //     this.setUserVersion(SCHEMA_VERSION)
+        //     return
+        // }
 
         if (currentVersion !== SCHEMA_VERSION) {
             throw this.buildSchemaMismatchError(currentVersion)
         }
 
         this.assertRequiredTablesPresent()
-    }
-
-    private migrateFromV1ToV2(): void {
-        this.db.exec('BEGIN')
-        try {
-            // 安全添加列：幂等，重复执行不报错
-            const columns = this.db.prepare(
-                "SELECT name FROM pragma_table_info('messages') WHERE name = 'category'"
-            ).all() as Array<{ name: string }>
-            if (columns.length === 0) {
-                this.db.run("ALTER TABLE messages ADD COLUMN category TEXT NOT NULL DEFAULT 'persistent'")
-            }
-            this.db.exec('COMMIT')
-        } catch (error) {
-            this.db.exec('ROLLBACK')
-            throw error
-        }
     }
 
     private createSchema(): void {
@@ -237,14 +222,10 @@ export class Store {
     }
 
     private setUserVersion(version: number): void {
+        if (!Number.isInteger(version) || version < 0) {
+            throw new Error(`Invalid schema version: ${version}`)
+        }
         this.db.run(`PRAGMA user_version = ${version}`)
-    }
-
-    private hasAnyUserTables(): boolean {
-        const row = this.db.prepare(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1"
-        ).get() as { name?: string } | undefined
-        return Boolean(row?.name)
     }
 
     private assertRequiredTablesPresent(): void {
@@ -267,10 +248,14 @@ export class Store {
         const location = (this.dbPath === ':memory:' || this.dbPath.startsWith('file::memory:'))
             ? 'in-memory database'
             : this.dbPath
+        const base = `SQLite schema version mismatch for ${location}. Expected ${SCHEMA_VERSION}, found ${currentVersion}.`
+        if (SCHEMA_RELEASE_BASELINE === 0) {
+            return new Error(
+                `${base} Database was created with an unreleased schema — delete the database file and restart.`
+            )
+        }
         return new Error(
-            `SQLite schema version mismatch for ${location}. ` +
-            `Expected ${SCHEMA_VERSION}, found ${currentVersion}. ` +
-            'This build does not run compatibility migrations. ' +
+            `${base} This build does not run compatibility migrations. ` +
             'Back up and rebuild the database, or run an offline migration to the expected schema version.'
         )
     }
