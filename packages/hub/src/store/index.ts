@@ -137,8 +137,20 @@ export class Store {
     }
 
     private migrateFromV1ToV2(): void {
-        this.db.run("ALTER TABLE messages ADD COLUMN category TEXT NOT NULL DEFAULT 'persistent'")
-        this.db.run('CREATE INDEX IF NOT EXISTS idx_messages_session_category ON messages(session_id, category, seq)')
+        this.db.exec('BEGIN')
+        try {
+            // 安全添加列：幂等，重复执行不报错
+            const columns = this.db.prepare(
+                "SELECT name FROM pragma_table_info('messages') WHERE name = 'category'"
+            ).all() as Array<{ name: string }>
+            if (columns.length === 0) {
+                this.db.run("ALTER TABLE messages ADD COLUMN category TEXT NOT NULL DEFAULT 'persistent'")
+            }
+            this.db.exec('COMMIT')
+        } catch (error) {
+            this.db.exec('ROLLBACK')
+            throw error
+        }
     }
 
     private createSchema(): void {
@@ -192,7 +204,6 @@ export class Store {
             );
             CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
             CREATE INDEX IF NOT EXISTS idx_messages_session_main ON messages(session_id, seq, is_sidechain);
-            CREATE INDEX IF NOT EXISTS idx_messages_session_category ON messages(session_id, category, seq);
             CREATE INDEX IF NOT EXISTS idx_messages_parent_tool ON messages(parent_tool_use_id);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_local_id ON messages(session_id, local_id) WHERE local_id IS NOT NULL;
 

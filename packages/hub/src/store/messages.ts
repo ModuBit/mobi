@@ -34,6 +34,9 @@ type DbMessageRow = {
     category: string
 }
 
+/** 历史查询的 category 过滤条件（只返回 persistent 消息） */
+const HISTORY_CATEGORY_FILTER = "category = 'persistent'"
+
 /**
  * 从 content（RawJSONLines 对象）中提取 isSidechain 标记
  * content 结构为 { content: { data: { isSidechain: boolean } }, parentToolUseId: string, ... }
@@ -139,13 +142,13 @@ export function getMessages(
 
     let rows: DbMessageRow[]
     if (hasBefore && excludeSidechain) {
-        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? AND is_sidechain = 0 AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
+        rows = db.prepare(`SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? AND seq < ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?`).all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
     } else if (hasBefore) {
-        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
+        rows = db.prepare(`SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?`).all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
     } else if (excludeSidechain) {
-        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND is_sidechain = 0 AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
+        rows = db.prepare(`SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?`).all(sessionId, safeLimit) as DbMessageRow[]
     } else {
-        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
+        rows = db.prepare(`SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? ORDER BY seq DESC LIMIT ?`).all(sessionId, safeLimit) as DbMessageRow[]
     }
 
     return rows.reverse().map(toStoredMessage)
@@ -161,7 +164,7 @@ export function getMessagesAfter(
     const safeAfterSeq = Number.isFinite(afterSeq) ? afterSeq : 0
 
     const rows = db.prepare(
-        'SELECT * FROM messages WHERE session_id = ? AND seq > ? AND category != \'ephemeral\' ORDER BY seq ASC LIMIT ?'
+        `SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?`
     ).all(sessionId, safeAfterSeq, safeLimit) as DbMessageRow[]
 
     return rows.map(toStoredMessage)
@@ -175,7 +178,7 @@ export function getSidechainMessages(
     parentToolUseId: string
 ): StoredMessage[] {
     const rows = db.prepare(
-        'SELECT * FROM messages WHERE session_id = ? AND parent_tool_use_id = ? AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?'
+        `SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? AND parent_tool_use_id = ? ORDER BY seq DESC LIMIT ?`
     ).all(sessionId, parentToolUseId, SIDECHAIN_MESSAGE_LIMIT) as DbMessageRow[]
     return rows.reverse().map(toStoredMessage)
 }

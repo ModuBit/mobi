@@ -16,6 +16,7 @@
 
 import { z } from 'zod'
 import type { PermissionMode, EffortLevel } from './modes'
+import type { MessageCategory } from './messageClassification'
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
 
@@ -148,7 +149,7 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
-    message: (data: { sid: string; message: unknown; localId?: string; snapshot?: boolean }) => void
+    message: (data: { sid: string; message: unknown; localId?: string; snapshot?: boolean; category?: MessageCategory }) => void
     'session-alive': (data: {
         sid: string
         time: number

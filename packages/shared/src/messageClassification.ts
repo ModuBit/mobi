@@ -76,12 +76,3 @@ export function classifyMessage(type: string, subtype?: string | null): MessageC
     return 'persistent'
 }
 
-/** 判断消息是否应该发送到 Hub（非 discard） */
-export function shouldSendToHub(type: string, subtype?: string | null): boolean {
-    return classifyMessage(type, subtype) !== 'discard'
-}
-
-/** 判断消息是否应该在历史查询中返回（persistent） */
-export function shouldIncludeInHistory(category: MessageCategory): boolean {
-    return category === 'persistent'
-}

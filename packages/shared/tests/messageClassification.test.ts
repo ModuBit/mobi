@@ -15,8 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { classifyMessage, shouldSendToHub, shouldIncludeInHistory } from '../src/messageClassification'
-import type { MessageCategory } from '../src/messageClassification'
+import { classifyMessage } from '../src/messageClassification'
 
 describe('classifyMessage', () => {
     describe('discard 规则', () => {
@@ -153,33 +152,5 @@ describe('classifyMessage', () => {
         it('discard 优先于 ephemeral', () => {
             expect(classifyMessage('system', 'hook_started')).toBe('discard')
         })
-    })
-})
-
-describe('shouldSendToHub', () => {
-    it('discard → false', () => {
-        expect(shouldSendToHub('system', 'thinking_tokens')).toBe(false)
-    })
-
-    it('ephemeral → true', () => {
-        expect(shouldSendToHub('system', 'task_progress')).toBe(true)
-    })
-
-    it('persistent → true', () => {
-        expect(shouldSendToHub('assistant')).toBe(true)
-    })
-})
-
-describe('shouldIncludeInHistory', () => {
-    it('discard → false', () => {
-        expect(shouldIncludeInHistory('discard')).toBe(false)
-    })
-
-    it('ephemeral → false', () => {
-        expect(shouldIncludeInHistory('ephemeral')).toBe(false)
-    })
-
-    it('persistent → true', () => {
-        expect(shouldIncludeInHistory('persistent')).toBe(true)
     })
 })

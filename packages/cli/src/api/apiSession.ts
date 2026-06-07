@@ -30,7 +30,8 @@ import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
     TerminalResizePayloadSchema,
-    TerminalWritePayloadSchema
+    TerminalWritePayloadSchema,
+    classifyMessage
 } from '@mobi/shared'
 import type {
     AgentState,
@@ -363,6 +364,9 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     sendClaudeSessionMessage(body: RawJSONLines): void {
+        // 在发送端分类，避免 Hub 重复分类
+        const category = classifyMessage(body.type, (body as Record<string, unknown>).subtype as string | undefined)
+
         let content: MessageContent
 
         if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
@@ -394,7 +398,8 @@ export class ApiSessionClient extends EventEmitter {
             message: content,
             // 使用 Claude Code 的 uuid 作为 localId，供 Hub DB 去重
             // resume 场景下同一消息的 uuid 保持不变，Hub 可通过 localId 避免重复存储
-            localId: body.uuid
+            localId: body.uuid,
+            category
         })
 
         if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
