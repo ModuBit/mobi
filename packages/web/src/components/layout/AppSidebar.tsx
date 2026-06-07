@@ -20,6 +20,7 @@ import { useUiStore } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { SidebarHeader } from './SidebarHeader'
 import { SidebarNav } from './SidebarNav'
+import { SidebarProjects } from './SidebarProjects'
 import { SidebarFooter } from './SidebarFooter'
 
 const { useToken } = antTheme
@@ -59,7 +60,7 @@ export function AppSidebar() {
         <SidebarContainer $token={token}>
             <SidebarHeader />
             <SidebarNav />
-            {/* SidebarProjects 占位 — 后续 Task 实现 */}
+            <SidebarProjects />
             <Spacer />
             <SidebarFooter />
         </SidebarContainer>
