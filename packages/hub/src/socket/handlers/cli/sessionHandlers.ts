@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { SNAPSHOT_PENDING_ID, type ClientToServerEvents } from '@mobi/shared'
+import { SNAPSHOT_PENDING_ID, type ClientToServerEvents, classifyMessage } from '@mobi/shared'
+import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import type { PermissionMode, RuntimeState, TeamState } from '@mobi/shared/types'
@@ -77,6 +78,34 @@ const updateStateSchema = z.object({
     expectedVersion: z.number().int(),
     agentState: z.unknown().nullable()
 })
+
+/** 从消息 content 中提取 type/subtype 并分类，提取失败默认 persistent */
+function extractAndClassify(content: unknown): MessageCategory {
+    try {
+        const obj = content as Record<string, any>
+        const inner = obj?.content
+
+        // 路径 1: agent output 消息 — { role: 'agent', content: { type: 'output', data: { type, subtype } } }
+        const data = inner?.data
+        if (data?.type) {
+            return classifyMessage(data.type, data.subtype)
+        }
+
+        // 路径 2: event 消息 — { role: 'agent', content: { type: 'event', ... } }
+        if (inner?.type) {
+            return classifyMessage(inner.type, inner.subtype)
+        }
+
+        // 路径 3: user 消息 — { role: 'user', content: { type: 'text', ... } }
+        if (obj.role) {
+            return classifyMessage(obj.role)
+        }
+    } catch {
+        // 提取异常，安全降级
+    }
+
+    return 'persistent'
+}
 
 export type SessionHandlersDeps = {
     store: Store
@@ -148,7 +177,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
         const session = sessionAccess.value
 
-        const msg = store.messages.addMessage(sid, content, localId)
+        // 分类消息
+        const category = extractAndClassify(content)
+
+        const msg = store.messages.addMessage(sid, content, localId, category)
 
         // 提取并更新 runtimeState（todos、tasks、teamState 等）
         const todos = extractTodoWriteTodosFromMessageContent(content)
