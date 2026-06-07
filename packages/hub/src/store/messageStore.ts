@@ -16,6 +16,8 @@
 
 import type { Database } from 'bun:sqlite'
 
+import type { MessageCategory } from '@mobi/shared'
+
 import type { StoredMessage } from './types'
 import { addMessage, getMessages, getMessagesAfter, getSidechainMessages, mergeSessionMessages } from './messages'
 
@@ -26,8 +28,8 @@ export class MessageStore {
         this.db = db
     }
 
-    addMessage(sessionId: string, content: unknown, localId?: string): StoredMessage {
-        return addMessage(this.db, sessionId, content, localId)
+    addMessage(sessionId: string, content: unknown, localId?: string | null, category: MessageCategory = 'persistent'): StoredMessage {
+        return addMessage(this.db, sessionId, content, localId, category)
     }
 
     getMessages(sessionId: string, limit: number = 200, beforeSeq?: number, excludeSidechain: boolean = false): StoredMessage[] {

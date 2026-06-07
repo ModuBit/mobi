@@ -54,6 +54,7 @@ export type StoredMessage = {
     localId: string | null
     isSidechain: boolean
     parentToolUseId: string | null
+    category: string  // 'discard' | 'ephemeral' | 'persistent'
 }
 
 export type StoredUser = {

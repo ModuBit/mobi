@@ -17,6 +17,8 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
+import type { MessageCategory } from '@mobi/shared'
+
 import type { StoredMessage } from './types'
 import { safeJsonParse } from './json'
 
@@ -29,6 +31,7 @@ type DbMessageRow = {
     local_id: string | null
     is_sidechain: number
     parent_tool_use_id: string | null
+    category: string
 }
 
 /**
@@ -56,6 +59,7 @@ function toStoredMessage(row: DbMessageRow): StoredMessage {
         localId: row.local_id,
         isSidechain: row.is_sidechain === 1,
         parentToolUseId: row.parent_tool_use_id,
+        category: row.category,
     }
 }
 
@@ -63,7 +67,8 @@ export function addMessage(
     db: Database,
     sessionId: string,
     content: unknown,
-    localId?: string
+    localId: string | null | undefined,
+    category: MessageCategory = 'persistent',
 ): StoredMessage {
     const now = Date.now()
 
@@ -75,10 +80,11 @@ export function addMessage(
             // 相同 localId：更新内容（resume 场景下内容可能有增量变化）
             const parentToolUseId = extractParentToolUseId(content)
             db.prepare(
-                'UPDATE messages SET content = @content, parent_tool_use_id = @parent_tool_use_id WHERE id = @id'
+                'UPDATE messages SET content = @content, parent_tool_use_id = @parent_tool_use_id, category = @category WHERE id = @id'
             ).run({
                 content: JSON.stringify(content),
                 parent_tool_use_id: parentToolUseId,
+                category: category,
                 id: existing.id
             })
             const updated = db.prepare('SELECT * FROM messages WHERE id = ?').get(existing.id) as DbMessageRow
@@ -98,9 +104,9 @@ export function addMessage(
 
     db.prepare(`
         INSERT INTO messages (
-            id, session_id, content, created_at, seq, local_id, is_sidechain, parent_tool_use_id
+            id, session_id, content, created_at, seq, local_id, is_sidechain, parent_tool_use_id, category
         ) VALUES (
-            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain, @parent_tool_use_id
+            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain, @parent_tool_use_id, @category
         )
     `).run({
         id,
@@ -111,6 +117,7 @@ export function addMessage(
         local_id: localId ?? null,
         is_sidechain: isSidechain,
         parent_tool_use_id: parentToolUseId,
+        category: category,
     })
 
     const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as DbMessageRow | undefined
@@ -132,13 +139,13 @@ export function getMessages(
 
     let rows: DbMessageRow[]
     if (hasBefore && excludeSidechain) {
-        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
+        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? AND is_sidechain = 0 AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
     } else if (hasBefore) {
-        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
+        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND seq < ? AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?').all(sessionId, beforeSeq, safeLimit) as DbMessageRow[]
     } else if (excludeSidechain) {
-        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND is_sidechain = 0 ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
+        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND is_sidechain = 0 AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
     } else {
-        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
+        rows = db.prepare('SELECT * FROM messages WHERE session_id = ? AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?').all(sessionId, safeLimit) as DbMessageRow[]
     }
 
     return rows.reverse().map(toStoredMessage)
@@ -154,7 +161,7 @@ export function getMessagesAfter(
     const safeAfterSeq = Number.isFinite(afterSeq) ? afterSeq : 0
 
     const rows = db.prepare(
-        'SELECT * FROM messages WHERE session_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?'
+        'SELECT * FROM messages WHERE session_id = ? AND seq > ? AND category != \'ephemeral\' ORDER BY seq ASC LIMIT ?'
     ).all(sessionId, safeAfterSeq, safeLimit) as DbMessageRow[]
 
     return rows.map(toStoredMessage)
@@ -168,7 +175,7 @@ export function getSidechainMessages(
     parentToolUseId: string
 ): StoredMessage[] {
     const rows = db.prepare(
-        'SELECT * FROM messages WHERE session_id = ? AND parent_tool_use_id = ? ORDER BY seq DESC LIMIT ?'
+        'SELECT * FROM messages WHERE session_id = ? AND parent_tool_use_id = ? AND category != \'ephemeral\' ORDER BY seq DESC LIMIT ?'
     ).all(sessionId, parentToolUseId, SIDECHAIN_MESSAGE_LIMIT) as DbMessageRow[]
     return rows.reverse().map(toStoredMessage)
 }

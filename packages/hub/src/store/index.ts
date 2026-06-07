@@ -38,7 +38,7 @@ export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 1
+const SCHEMA_VERSION: number = 2
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
@@ -115,19 +115,30 @@ export class Store {
         // 当需要修改 schema 时，按以下步骤操作：
         // 1. 递增 SCHEMA_VERSION 常量
         // 2. 在此添加迁移逻辑，例如：
-        //    if (currentVersion === 1 && SCHEMA_VERSION === 2) {
-        //        this.migrateFromV1ToV2()
+        //    if (currentVersion === N && SCHEMA_VERSION === N+1) {
+        //        this.migrateFromVNToVNext()
         //        this.setUserVersion(SCHEMA_VERSION)
         //        return
         //    }
         // 3. 实现对应的 migrateFromVXToVY() 方法，使用 ALTER TABLE 或重建表
         // 4. 对于复杂迁移，使用事务包裹：BEGIN -> 执行迁移 -> COMMIT/ROLLBACK
 
+        if (currentVersion === 1 && SCHEMA_VERSION === 2) {
+            this.migrateFromV1ToV2()
+            this.setUserVersion(SCHEMA_VERSION)
+            return
+        }
+
         if (currentVersion !== SCHEMA_VERSION) {
             throw this.buildSchemaMismatchError(currentVersion)
         }
 
         this.assertRequiredTablesPresent()
+    }
+
+    private migrateFromV1ToV2(): void {
+        this.db.run("ALTER TABLE messages ADD COLUMN category TEXT NOT NULL DEFAULT 'persistent'")
+        this.db.run('CREATE INDEX IF NOT EXISTS idx_messages_session_category ON messages(session_id, category, seq)')
     }
 
     private createSchema(): void {
@@ -176,10 +187,12 @@ export class Store {
                 local_id TEXT,
                 is_sidechain INTEGER NOT NULL DEFAULT 0,
                 parent_tool_use_id TEXT,
+                category TEXT NOT NULL DEFAULT 'persistent',
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
             CREATE INDEX IF NOT EXISTS idx_messages_session_main ON messages(session_id, seq, is_sidechain);
+            CREATE INDEX IF NOT EXISTS idx_messages_session_category ON messages(session_id, category, seq);
             CREATE INDEX IF NOT EXISTS idx_messages_parent_tool ON messages(parent_tool_use_id);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_local_id ON messages(session_id, local_id) WHERE local_id IS NOT NULL;
 
