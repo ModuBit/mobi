@@ -19,7 +19,6 @@ import { App } from './App'
 import { LoginPage } from './pages/LoginPage'
 import { MainLayout } from './components/layout/MainLayout'
 import { SessionsLayout } from './pages/SessionsLayout'
-import { SessionsPage } from './pages/SessionsPage'
 import { SessionDetailPage } from './pages/SessionDetailPage'
 import { NewSessionPage } from './pages/NewSessionPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -43,27 +42,29 @@ const mainLayoutRoute = createRoute({
     component: MainLayout,
 })
 
-// 索引路由 - 重定向到会话列表
+// 索引路由 - 重定向到新对话
 const indexRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: '/',
     beforeLoad: () => {
-        throw redirect({ to: '/sessions' })
+        throw redirect({ to: '/sessions/new' })
     },
 })
 
-// 会话布局路由 - 包含侧边栏
+// 会话布局路由
 const sessionsLayoutRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'sessions',
     component: SessionsLayout,
 })
 
-// 会话列表页（索引）
+// 会话索引路由 - 重定向到新对话
 const sessionsIndexRoute = createRoute({
     getParentRoute: () => sessionsLayoutRoute,
     path: '/',
-    component: SessionsPage,
+    beforeLoad: () => {
+        throw redirect({ to: '/sessions/new' })
+    },
 })
 
 // 会话详情页
