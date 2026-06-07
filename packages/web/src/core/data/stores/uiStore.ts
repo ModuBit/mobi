@@ -54,6 +54,8 @@ interface UiState {
     mobileMenuOpen: boolean
     sessionListDrawerOpen: boolean
     newSessionDrawerOpen: boolean
+    // 侧边栏展开/收起（桌面端）
+    sidebarExpanded: boolean
     // 重命名
     renamingSessionId: string | null
     renameValue: string
@@ -65,6 +67,7 @@ interface UiState {
     setMobileMenuOpen: (open: boolean) => void
     setSessionListDrawerOpen: (open: boolean) => void
     setNewSessionDrawerOpen: (open: boolean) => void
+    toggleSidebar: () => void
     startRename: (sessionId: string, currentValue: string) => void
     setRenameValue: (value: string) => void
     cancelRename: () => void
@@ -80,6 +83,7 @@ export const useUiStore = create<UiState>()(
             mobileMenuOpen: false,
             sessionListDrawerOpen: false,
             newSessionDrawerOpen: false,
+            sidebarExpanded: true,
             renamingSessionId: null,
             renameValue: '',
             setSessionViewMode: (mode) => set({ sessionViewMode: mode }),
@@ -92,16 +96,18 @@ export const useUiStore = create<UiState>()(
             setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
             setSessionListDrawerOpen: (open) => set({ sessionListDrawerOpen: open }),
             setNewSessionDrawerOpen: (open) => set({ newSessionDrawerOpen: open }),
+            toggleSidebar: () => set((state) => ({ sidebarExpanded: !state.sidebarExpanded })),
             startRename: (sessionId, currentValue) => set({ renamingSessionId: sessionId, renameValue: currentValue }),
             setRenameValue: (value) => set({ renameValue: value }),
             cancelRename: () => set({ renamingSessionId: null, renameValue: '' }),
         }),
         {
             name: 'mobi-ui',
-            // 持久化 theme 和 locale
+            // 持久化 theme、locale 和 sidebarExpanded
             partialize: (state) => ({
                 theme: state.theme,
                 locale: state.locale,
+                sidebarExpanded: state.sidebarExpanded,
             }),
             // 合并时保留 store 默认值，防止 localStorage 中无该字段时为 undefined
             merge: (persistedState, currentState) => ({
