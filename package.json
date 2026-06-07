@@ -26,10 +26,10 @@
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
-        "concurrently": "^9.2.1",
-        "dependency-cruiser": "^17.4.0",
-        "eslint": "^10.4.0",
-        "typescript-eslint": "^8.59.4"
+        "concurrently": "^10.0.3",
+        "dependency-cruiser": "^17.4.3",
+        "eslint": "^10.4.1",
+        "typescript-eslint": "^8.60.1"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0"
