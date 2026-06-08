@@ -157,7 +157,7 @@ export function MobileMenuDrawer() {
                         {resolvedTheme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                         <span>{resolvedTheme === 'dark' ? t('nav.themeLight') : t('nav.themeDark')}</span>
                     </MenuItem>
-                    <Divider type="vertical" style={{ margin: '8px 0' }} />
+                    <Divider style={{ margin: '8px 0', borderColor: token.colorBorder, borderInlineStart: '1px solid' }} />
                     <MenuItem
                         $active={false}
                         $token={token}

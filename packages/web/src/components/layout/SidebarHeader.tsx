@@ -42,11 +42,6 @@ const LogoArea = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     color: ${props => props.$token.colorPrimary};
     border-radius: 6px;
     padding: 4px;
-    transition: background 0.2s;
-
-    &:hover {
-        background: ${props => props.$token.colorPrimaryBg};
-    }
 `
 
 // Logo 图标尺寸

@@ -15,8 +15,9 @@
  */
 
 import { useState, useCallback, useMemo } from 'react'
-import { App, AutoComplete, Input, Select, Spin, theme as antTheme } from 'antd'
-import { Send, FolderOpen } from 'lucide-react'
+import { App, theme as antTheme, Dropdown, Spin, AutoComplete, Popover } from 'antd'
+import { Sender } from '@ant-design/x'
+import { FolderOpen, Monitor, Cpu, ChevronDown } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
@@ -61,8 +62,8 @@ const PageContainer = styled.div`
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 100%;
     height: 100%;
-    padding: 24px;
     position: relative;
 `
 
@@ -73,78 +74,53 @@ const SidebarToggleWrapper = styled.div`
     z-index: 10;
 `
 
-const SenderCard = styled.div<{ $bg: string; $border: string }>`
+const ContentWrapper = styled.div`
     max-width: 720px;
     width: 100%;
-    background: ${props => props.$bg};
-    border: 1px solid ${props => props.$border};
-    border-radius: 16px;
-    overflow: hidden;
+    padding: 0 24px;
 `
 
 const TitleBar = styled.div<{ $color: string }>`
-    padding: 28px 28px 20px;
     text-align: center;
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 600;
     color: ${props => props.$color};
     line-height: 1.4;
+    margin-bottom: 32px;
 `
 
-const ConfigRow = styled.div<{ $border: string }>`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px 16px;
-    border-top: 1px solid ${props => props.$border};
+const PillButton = styled.button<{ $bg: string; $hoverBg: string; $color: string }>`
+    display: inline-flex;
     align-items: center;
-`
-
-const ConfigItem = styled.div<{ $color: string }>`
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 13px;
-    color: ${props => props.$color};
-
-    .ant-select {
-        min-width: 100px;
-    }
-`
-
-const InputRow = styled.div`
-    display: flex;
-    align-items: flex-end;
-    padding: 12px 16px;
-    gap: 8px;
-`
-
-const InputWrapper = styled.div`
-    flex: 1;
-`
-
-const SendButton = styled.button<{ $primary: string; $hover: string }>`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
+    gap: 3px;
+    padding: 3px 10px;
+    border-radius: 12px;
     border: none;
-    border-radius: 8px;
-    background: ${props => props.$primary};
-    color: #fff;
+    background: ${props => props.$bg};
+    color: ${props => props.$color};
+    font-size: 12px;
     cursor: pointer;
-    flex-shrink: 0;
-    transition: opacity 0.2s;
+    transition: background 0.2s;
+    white-space: nowrap;
 
     &:hover {
-        opacity: 0.85;
+        background: ${props => props.$hoverBg};
     }
+`
 
-    &:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
+const SubBar = styled.div<{ $bg: string }>`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+    align-items: center;
+    background: ${props => props.$bg};
+    border-bottom-left-radius: var(--ant-border-radius, 8px);
+    border-bottom-right-radius: var(--ant-border-radius, 8px);
+    margin: -10px 4px 0;
+    padding-top: 14px;
+    position: relative;
+    z-index: 0;
 `
 
 /* ========== 常量 ========== */
@@ -169,9 +145,84 @@ const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
     { value: 'codex', label: 'Codex' },
 ]
 
+/* ========== 紧凑药丸下拉 ========== */
+
+function PillDropdown({ value, options, onChange, icon, placeholder }: {
+    value: string
+    options: { value: string; label: string }[]
+    onChange: (v: string) => void
+    icon?: React.ReactNode
+    placeholder?: string
+}) {
+    const { token } = antTheme.useToken()
+    const selectedOption = options.find(o => o.value === value)
+    const label = selectedOption?.label ?? (placeholder || value)
+
+    return (
+        <Dropdown
+            menu={{
+                items: options.map(opt => ({ key: opt.value, label: opt.label })),
+                selectedKeys: value ? [value] : [],
+                onClick: ({ key }) => onChange(key as string),
+            }}
+            trigger={['click']}
+        >
+            <PillButton
+                $bg={token.colorFillTertiary}
+                $hoverBg={token.colorFillSecondary}
+                $color={token.colorTextSecondary}
+            >
+                {icon}
+                {label}
+                <ChevronDown size={10} style={{ opacity: 0.5 }} />
+            </PillButton>
+        </Dropdown>
+    )
+}
+
+/* ========== 目录选择药丸 ========== */
+
+function DirectoryPill({ value, onChange, options }: {
+    value: string
+    onChange: (v: string) => void
+    options: { value: string; label: string }[]
+}) {
+    const { token } = antTheme.useToken()
+    const displayName = value ? extractProjectName(value) : null
+
+    return (
+        <Popover
+            content={
+                <AutoComplete
+                    value={value}
+                    onChange={onChange}
+                    options={options}
+                    style={{ minWidth: 250 }}
+                    placeholder="输入项目/目录路径"
+                    autoFocus
+                />
+            }
+            trigger={['click']}
+            placement="bottomLeft"
+        >
+            <PillButton
+                $bg={token.colorFillTertiary}
+                $hoverBg={token.colorFillSecondary}
+                $color={token.colorTextSecondary}
+            >
+                <FolderOpen size={12} />
+                {displayName || '项目/目录'}
+                <ChevronDown size={10} style={{ opacity: 0.5 }} />
+            </PillButton>
+        </Popover>
+    )
+}
+
+/* ========== 页面组件 ========== */
+
 /**
  * 新建会话页面
- * 居中 sender 布局，配置项内嵌在 sender 上方
+ * 居中布局，参考 Codex 风格：输入框 → 功能配置行 → 环境配置灰条
  */
 export function NewSessionPage() {
     const { token } = useToken()
@@ -241,14 +292,6 @@ export function NewSessionPage() {
         permissionMode, isPending, spawnSession, navigate, message,
     ])
 
-    // Enter 发送，Shift+Enter 换行
-    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            void handleSend()
-        }
-    }, [handleSend])
-
     const canSend = inputText.trim().length > 0 && !!selectedMachineId && !isPending
 
     // 机器选项
@@ -271,113 +314,75 @@ export function NewSessionPage() {
                 <SidebarToggle />
                 <MobileMenuButton />
             </SidebarToggleWrapper>
-            <SenderCard $bg={token.colorBgContainer} $border={token.colorBorderSecondary}>
-                {/* 动态标题 */}
+            <ContentWrapper>
                 <TitleBar $color={token.colorText}>
                     {title}
                 </TitleBar>
 
-                {/* 配置栏第一行：功能配置 */}
-                <ConfigRow $border={token.colorBorderSecondary}>
-                    <ConfigItem $color={token.colorTextSecondary}>
-                        <span>权限</span>
-                        <Select
-                            size="small"
-                            value={permissionMode}
-                            onChange={setPermissionMode}
-                            options={PERMISSION_OPTIONS}
-                            style={{ minWidth: 130 }}
-                            popupMatchSelectWidth={false}
-                        />
-                    </ConfigItem>
-                    <ConfigItem $color={token.colorTextSecondary}>
-                        <span>推理</span>
-                        <Select
-                            size="small"
-                            value={effort}
-                            onChange={setEffort}
-                            options={EFFORT_OPTIONS}
-                            style={{ minWidth: 100 }}
-                        />
-                    </ConfigItem>
-                    <ConfigItem $color={token.colorTextSecondary}>
-                        <span>模型</span>
-                        <Select
-                            size="small"
-                            value={model}
-                            onChange={setModel}
-                            options={MODEL_OPTIONS}
-                            style={{ minWidth: 100 }}
-                        />
-                    </ConfigItem>
-                </ConfigRow>
+                <div style={{ position: 'relative' }}>
+                    {/* 输入框 + 功能配置行 */}
+                    <Sender
+                        value={inputText}
+                        onChange={setInputText}
+                        onSubmit={() => { handleSend() }}
+                        placeholder="随心输入..."
+                        autoSize={{ minRows: 1, maxRows: 6 }}
+                        loading={isPending}
+                        footer={(oriNode) => (
+                            <div style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 6,
+                                padding: '8px 12px',
+                                alignItems: 'center',
+                            }}>
+                                <PillDropdown
+                                    value={permissionMode}
+                                    options={PERMISSION_OPTIONS}
+                                    onChange={(v) => setPermissionMode(v as PermissionMode)}
+                                />
+                                <PillDropdown
+                                    value={effort}
+                                    options={EFFORT_OPTIONS}
+                                    onChange={(v) => setEffort(v as EffortLevel)}
+                                />
+                                <PillDropdown
+                                    value={model}
+                                    options={MODEL_OPTIONS}
+                                    onChange={setModel}
+                                />
+                                <div style={{ flex: 1 }} />
+                                {oriNode}
+                            </div>
+                        )}
+                    />
 
-                {/* 配置栏第二行：环境配置 */}
-                <ConfigRow $border={token.colorBorderSecondary}>
-                    <ConfigItem $color={token.colorTextSecondary}>
-                        <FolderOpen size={14} />
-                        <AutoComplete
-                            size="small"
-                            placeholder="项目/目录"
+                    {/* 环境配置灰条 */}
+                    <SubBar $bg={token.colorFillQuaternary}>
+                        <DirectoryPill
                             value={selectedDirectory}
                             onChange={setSelectedDirectory}
                             options={directoryOptions.map(d => ({
                                 value: d.value,
                                 label: d.label,
                             }))}
-                            style={{ minWidth: 200 }}
-                            popupMatchSelectWidth={false}
                         />
-                    </ConfigItem>
-                    <ConfigItem $color={token.colorTextSecondary}>
-                        <span>Agent</span>
-                        <Select
-                            size="small"
+                        <PillDropdown
                             value={agent}
-                            onChange={setAgent}
                             options={AGENT_OPTIONS}
-                            style={{ minWidth: 120 }}
+                            onChange={(v) => setAgent(v as AgentType)}
+                            icon={<Cpu size={12} />}
                         />
-                    </ConfigItem>
-                    <ConfigItem $color={token.colorTextSecondary}>
-                        <span>机器</span>
-                        <Select
-                            size="small"
-                            showSearch
-                            placeholder="选择机器"
-                            value={selectedMachineId || undefined}
-                            onChange={setSelectedMachineId}
+                        <PillDropdown
+                            value={selectedMachineId ?? ''}
                             options={machineOptions}
-                            style={{ minWidth: 140 }}
-                            popupMatchSelectWidth={false}
+                            onChange={setSelectedMachineId}
+                            placeholder="选择机器"
+                            icon={<Monitor size={12} />}
                         />
-                    </ConfigItem>
-                </ConfigRow>
-
-                {/* 输入框 + 发送按钮 */}
-                <InputRow>
-                    <InputWrapper>
-                        <Input.TextArea
-                            value={inputText}
-                            onChange={e => setInputText(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="随心输入..."
-                            autoSize={{ minRows: 1, maxRows: 6 }}
-                            style={{ borderRadius: 8 }}
-                            disabled={isPending}
-                        />
-                    </InputWrapper>
-                    <SendButton
-                        $primary={token.colorPrimary}
-                        $hover={token.colorPrimaryHover}
-                        onClick={handleSend}
-                        disabled={!canSend}
-                        aria-label="发送"
-                    >
-                        <Send size={16} />
-                    </SendButton>
-                </InputRow>
-            </SenderCard>
+                    </SubBar>
+                </div>
+            </ContentWrapper>
         </PageContainer>
     )
 }
