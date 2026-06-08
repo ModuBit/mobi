@@ -54,3 +54,5 @@ packages/cli/tools/unpacked/
 
 # Added by code-review-graph
 .code-review-graph/
+
+video-assets

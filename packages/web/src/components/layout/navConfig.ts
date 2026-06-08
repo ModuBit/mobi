@@ -60,21 +60,13 @@ export function getNavActiveKey(pathname: string, key: string): boolean {
     if (key === 'new-session') {
         return pathname === '/sessions/new'
     }
-    // 兼容旧版 sessions 键（RailNav / MobileMenu）
     if (key === 'sessions') {
         return pathname === '/' || pathname === '/sessions' || pathname.startsWith('/sessions/')
     }
     return pathname === `/${key}`
 }
 
-// ===== 旧版兼容导出（RailNav / MobileMenu 使用，Task 8 清理） =====
-
-// 底部导航项（旧版 RailNav 使用）
-export const bottomNavItems: NavItemConfig[] = [
-    { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
-]
-
-// 移动端菜单项（旧版 MobileMenu 使用）
+// 移动端菜单项（MobileMenu 使用）
 export const mobileNavItems: NavItemConfig[] = [
     { key: 'sessions', icon: MessageSquare, labelKey: 'nav.sessions' },
     { key: 'settings', icon: Settings, labelKey: 'nav.settings' },

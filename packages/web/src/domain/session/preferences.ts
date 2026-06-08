@@ -16,12 +16,13 @@
 
 import type { AgentType } from './types'
 import { CLAUDE_MODEL_FALLBACK } from './types'
-import { EFFORT_LEVELS, type EffortLevel } from '@mobi/shared'
+import { EFFORT_LEVELS, PERMISSION_MODES, type EffortLevel, type PermissionMode } from '@mobi/shared'
 
 const AGENT_STORAGE_KEY = 'mobi:newSession:agent'
 const MODEL_STORAGE_KEY = 'mobi:newSession:model'
 const YOLO_STORAGE_KEY = 'mobi:newSession:yolo'
 const EFFORT_STORAGE_KEY = 'mobi:newSession:effort'
+const PERMISSION_MODE_STORAGE_KEY = 'mobi:newSession:permissionMode'
 
 const VALID_MODELS = CLAUDE_MODEL_FALLBACK.map(m => m.value)
 
@@ -105,4 +106,22 @@ export function loadPreferredEffort(): EffortLevel {
  */
 export function savePreferredEffort(effort: EffortLevel): void {
     savePreference(EFFORT_STORAGE_KEY, effort)
+}
+
+/**
+ * 加载首选权限模式
+ */
+export function loadPreferredPermissionMode(): PermissionMode {
+    return loadPreference(
+        PERMISSION_MODE_STORAGE_KEY,
+        (v): v is PermissionMode => (PERMISSION_MODES as readonly string[]).includes(v),
+        'default'
+    )
+}
+
+/**
+ * 保存首选权限模式
+ */
+export function savePreferredPermissionMode(mode: PermissionMode): void {
+    savePreference(PERMISSION_MODE_STORAGE_KEY, mode)
 }

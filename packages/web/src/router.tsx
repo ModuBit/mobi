@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { createRootRoute, createRoute, createRouter, redirect, Outlet } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { App } from './App'
 import { LoginPage } from './pages/LoginPage'
 import { MainLayout } from './components/layout/MainLayout'
