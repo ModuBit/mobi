@@ -161,7 +161,7 @@ export function SidebarFooter() {
                     trigger={['click']}
                     placement="topRight"
                 >
-                    <UserButton $token={token} as="div">
+                    <UserButton $token={token} type="button">
                         <User size={18} />
                     </UserButton>
                 </Dropdown>
