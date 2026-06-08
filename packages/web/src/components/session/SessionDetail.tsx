@@ -27,6 +27,7 @@ import { FileView } from '@/components/files/FileView'
 import TerminalView from '@/components/terminal/TerminalView'
 import { IconButton } from '@/components/ui/IconButton'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
+import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SessionContextBar } from '@/components/session/SessionContextBar'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
@@ -131,6 +132,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
             <PageHeader
                 left={
                     <>
+                        <SidebarToggle />
                         {isMobile && (
                             <>
                                 <MobileMenuButton />

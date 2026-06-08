@@ -66,10 +66,8 @@ interface PageHeaderProps {
  * 统一的页面头部组件，基于 antd Layout.Header
  */
 export function PageHeader({ left, right }: PageHeaderProps) {
-    const { token } = useToken()
-
     return (
-        <StyledHeader $bg={token.colorBgContainer}>
+        <StyledHeader $bg="transparent">
             <HeaderLeft>{left}</HeaderLeft>
             {right && <HeaderRight>{right}</HeaderRight>}
         </StyledHeader>

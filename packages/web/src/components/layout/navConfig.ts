@@ -15,11 +15,11 @@
  */
 
 import {
-    PlusCircle,
+    SquarePen,
     Search,
-    Plug,
-    Zap,
-    MessageSquare,
+    Blocks,
+    Clock,
+    FolderOpen,
     Settings,
     LogOut,
     type LucideIcon,
@@ -35,10 +35,10 @@ export interface NavItemConfig {
 
 // 主导航项（侧边栏显示）
 export const mainNavItems: NavItemConfig[] = [
-    { key: 'new-session', icon: PlusCircle, labelKey: 'nav.newSession' },
+    { key: 'new-session', icon: SquarePen, labelKey: 'nav.newSession' },
     { key: 'search', icon: Search, labelKey: 'nav.search', disabled: true },
-    { key: 'mcp', icon: Plug, labelKey: 'nav.mcp', disabled: true },
-    { key: 'automation', icon: Zap, labelKey: 'nav.automation', disabled: true },
+    { key: 'plugins', icon: Blocks, labelKey: 'nav.plugins', disabled: true },
+    { key: 'automation', icon: Clock, labelKey: 'nav.automation', disabled: true },
 ]
 
 // 退出登录项
@@ -68,6 +68,7 @@ export function getNavActiveKey(pathname: string, key: string): boolean {
 
 // 移动端菜单项（MobileMenu 使用）
 export const mobileNavItems: NavItemConfig[] = [
-    { key: 'sessions', icon: MessageSquare, labelKey: 'nav.sessions' },
+    { key: 'new-session', icon: SquarePen, labelKey: 'nav.newSession' },
+    { key: 'projects', icon: FolderOpen, labelKey: 'nav.projects' },
     { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
 ]

@@ -20,6 +20,7 @@ import { useUiStore } from '@/core/data/stores/uiStore'
 import FileTree from './FileTree'
 import GitStatus from '@/components/git/GitStatus'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { IconButton } from '@/components/ui/IconButton'
 import { ArrowLeft, Folder, GitBranch } from 'lucide-react'
 
@@ -60,10 +61,13 @@ export function FileView({ sessionId }: FileViewProps) {
         <Layout style={{ height: '100%' }}>
             <PageHeader
                 left={
-                    <IconButton
-                        icon={<ArrowLeft size={18} />}
-                        onClick={handleBack}
-                    />
+                    <>
+                        <SidebarToggle />
+                        <IconButton
+                            icon={<ArrowLeft size={18} />}
+                            onClick={handleBack}
+                        />
+                    </>
                 }
                 right={
                     <Tabs

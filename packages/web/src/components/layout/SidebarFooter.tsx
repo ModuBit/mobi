@@ -19,75 +19,43 @@ import { useNavigate } from '@tanstack/react-router'
 import { Dropdown, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
-    User,
     Settings,
     Sun,
     Moon,
+    Languages,
     Download,
+    LogOut,
 } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
 import { usePwaInstall } from './usePwaInstall'
-import { logoutNavItem } from './navConfig'
 
 const { useToken } = antTheme
 
 // 底部容器
-const FooterContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+const FooterContainer = styled.div`
     display: flex;
     flex-direction: column;
-    border-top: 1px solid ${props => props.$token.colorBorder};
     flex-shrink: 0;
+    padding: 0 8px 12px;
 `
 
-// 主题/语言切换行
-const ToggleRow = styled.div`
+// 设置按钮，占满宽度
+const SettingsButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
     display: flex;
     align-items: center;
-    gap: 2px;
-    padding: 4px 8px;
-`
-
-// 切换按钮
-const ToggleButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
+    gap: 10px;
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
     border: none;
     background: transparent;
     color: ${props => props.$token.colorTextSecondary};
     border-radius: 6px;
     cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    transition: all 0.2s;
-
-    &:hover {
-        background: ${props => props.$token.colorPrimaryBg};
-        color: ${props => props.$token.colorPrimary};
-    }
-`
-
-// 用户菜单行
-const UserRow = styled.div`
-    padding: 4px 8px;
-`
-
-const UserButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border: none;
-    background: transparent;
-    color: ${props => props.$token.colorTextSecondary};
-    border-radius: 6px;
-    cursor: pointer;
+    font-size: 13px;
     transition: all 0.2s;
 
     &:hover {
@@ -98,7 +66,7 @@ const UserButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] 
 
 /**
  * 侧边栏底部区域
- * 包含主题/语言切换、用户菜单
+ * 设置按钮，点击弹出 Dropdown（设置/主题/语言/安装/退出）
  */
 export function SidebarFooter() {
     const { token } = useToken()
@@ -108,8 +76,8 @@ export function SidebarFooter() {
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
     const { canInstall, handleInstall } = usePwaInstall()
 
-    // 用户菜单项
-    const userMenuItems: MenuProps['items'] = useMemo(() => {
+    // Dropdown 菜单项
+    const menuItems: MenuProps['items'] = useMemo(() => {
         const items: MenuProps['items'] = [
             {
                 key: 'settings',
@@ -117,55 +85,59 @@ export function SidebarFooter() {
                 icon: <Settings size={16} />,
                 onClick: () => navigate({ to: '/settings' }),
             },
+            { type: 'divider' },
+            {
+                key: 'theme',
+                label: resolvedTheme === 'dark' ? t('nav.themeLight') : t('nav.themeDark'),
+                icon: resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />,
+                onClick: toggleTheme,
+            },
+            {
+                key: 'locale',
+                label: locale === 'zh' ? 'English' : '中文',
+                icon: <Languages size={16} />,
+                onClick: toggleLocale,
+            },
         ]
 
-        // PWA 安装选项（仅在可安装时显示）
+        // PWA 安装选项
         if (canInstall) {
-            items.push({
-                key: 'install',
-                label: t('nav.installApp'),
-                icon: <Download size={16} />,
-                onClick: handleInstall,
-            })
+            items.push(
+                { type: 'divider' },
+                {
+                    key: 'install',
+                    label: t('nav.installApp'),
+                    icon: <Download size={16} />,
+                    onClick: handleInstall,
+                },
+            )
         }
 
         items.push(
             { type: 'divider' },
             {
-                key: logoutNavItem.key,
-                label: t(logoutNavItem.labelKey),
-                icon: <logoutNavItem.icon size={16} />,
+                key: 'logout',
+                label: t('nav.logout'),
+                icon: <LogOut size={16} />,
                 onClick: logout,
             },
         )
 
         return items
-    }, [t, navigate, canInstall, handleInstall, logout])
+    }, [t, navigate, resolvedTheme, locale, toggleTheme, toggleLocale, canInstall, handleInstall, logout])
 
     return (
-        <FooterContainer $token={token}>
-            {/* 主题/语言切换 */}
-            <ToggleRow>
-                <ToggleButton $token={token} onClick={toggleTheme}>
-                    {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                </ToggleButton>
-                <ToggleButton $token={token} onClick={toggleLocale}>
-                    {locale === 'zh' ? 'En' : '中'}
-                </ToggleButton>
-            </ToggleRow>
-
-            {/* 用户菜单 */}
-            <UserRow>
-                <Dropdown
-                    menu={{ items: userMenuItems }}
-                    trigger={['click']}
-                    placement="topRight"
-                >
-                    <UserButton $token={token} type="button">
-                        <User size={18} />
-                    </UserButton>
-                </Dropdown>
-            </UserRow>
+        <FooterContainer>
+            <Dropdown
+                menu={{ items: menuItems }}
+                trigger={['click']}
+                placement="topLeft"
+            >
+                <SettingsButton $token={token} type="button">
+                    <Settings size={16} />
+                    <span>{t('nav.settings')}</span>
+                </SettingsButton>
+            </Dropdown>
         </FooterContainer>
     )
 }

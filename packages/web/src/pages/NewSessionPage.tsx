@@ -32,6 +32,8 @@ import {
     loadPreferredPermissionMode,
     savePreferredPermissionMode,
 } from '@/domain/session/preferences'
+import { SidebarToggle } from '@/components/layout/SidebarToggle'
+import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { type AgentType, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import {
     type EffortLevel,
@@ -61,6 +63,14 @@ const PageContainer = styled.div`
     justify-content: center;
     height: 100%;
     padding: 24px;
+    position: relative;
+`
+
+const SidebarToggleWrapper = styled.div`
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
 `
 
 const SenderCard = styled.div<{ $bg: string; $border: string }>`
@@ -257,6 +267,10 @@ export function NewSessionPage() {
 
     return (
         <PageContainer>
+            <SidebarToggleWrapper>
+                <SidebarToggle />
+                <MobileMenuButton />
+            </SidebarToggleWrapper>
             <SenderCard $bg={token.colorBgContainer} $border={token.colorBorderSecondary}>
                 {/* 动态标题 */}
                 <TitleBar $color={token.colorText}>

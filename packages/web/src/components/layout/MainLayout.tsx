@@ -26,34 +26,8 @@ import { useTranslation } from 'react-i18next'
 import { Helmet } from 'react-helmet-async'
 import { UpdatePrompt } from './UpdatePrompt'
 import { registerServiceWorker } from '@/core/pwa/registerSW'
-import styled from '@emotion/styled'
-import { PanelLeft } from 'lucide-react'
 
 const { useToken } = antTheme
-
-// 侧边栏展开按钮（收起时显示）
-const ToggleButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    background: ${props => props.$token.colorBgContainer}cc;
-    color: ${props => props.$token.colorText};
-    transition: background 0.2s, transform 0.15s;
-
-    &:hover {
-        background: ${props => props.$token.colorBgTextHover};
-        transform: scale(1.05);
-    }
-`
 
 /**
  * 主布局组件
@@ -65,9 +39,6 @@ export function MainLayout() {
     const { token } = useToken()
     const isMobile = useIsMobile()
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
-    const toggleSidebar = useUiStore((s) => s.toggleSidebar)
-
-    // 缓存解析后的主题值
     const resolvedTheme = useMemo(() => resolveTheme(theme), [theme])
 
     // PWA 更新回调
@@ -96,14 +67,22 @@ export function MainLayout() {
                 <title>{t('siteTitle')}</title>
             </Helmet>
             <UpdatePrompt onUpdate={updateReload} />
-            <Layout style={{ height: '100vh', overflow: 'hidden', flexDirection: 'row' }}>
+            <Layout style={{
+                height: '100vh',
+                overflow: 'hidden',
+                flexDirection: 'row',
+                background: token.colorBgContainer,
+            }}>
                 <AppSidebar />
-                <Layout.Content style={{ flex: 1, display: 'flex', overflow: 'hidden', minWidth: 0, position: 'relative' }}>
-                    {!sidebarExpanded && !isMobile && (
-                        <ToggleButton $token={token} onClick={toggleSidebar}>
-                            <PanelLeft size={18} />
-                        </ToggleButton>
-                    )}
+                <Layout.Content style={{
+                    flex: 1,
+                    display: 'flex',
+                    overflow: 'hidden',
+                    minWidth: 0,
+                    borderRadius: !isMobile && sidebarExpanded ? '12px 0 0 12px' : undefined,
+                    borderLeft: !isMobile && sidebarExpanded ? `1px solid ${token.colorBorder}` : undefined,
+                    background: token.colorBgLayout,
+                }}>
                     <Outlet />
                 </Layout.Content>
             </Layout>

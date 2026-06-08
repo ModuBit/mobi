@@ -11,13 +11,13 @@ html, body, #root {
 }
 
 html {
-    /* Light 模式背景（默认） */
-    background: #f5f4ed;
+    /* Light 模式背景 — 与 AppSidebar colorBgContainer 一致 */
+    background: #ffffff;
 }
 
 html[data-theme='dark'] {
     /* Dark 模式背景 */
-    background: #141413;
+    background: #141414;
 }
 
 body {

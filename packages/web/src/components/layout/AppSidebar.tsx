@@ -25,16 +25,31 @@ import { SidebarFooter } from './SidebarFooter'
 
 const { useToken } = antTheme
 
-// 侧边栏容器
-const SidebarContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    width: 240px;
+// 外层容器：负责宽度动画 + 裁剪
+const SidebarContainer = styled.div<{
+    $token: ReturnType<typeof useToken>['token']
+    $expanded: boolean
+}>`
+    width: ${props => props.$expanded ? '240px' : '0px'};
     flex-shrink: 0;
-    overflow-y: auto;
+    overflow: hidden;
+    height: 100%;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+`
+
+// 内层容器：固定宽度，内容不被挤压，只被外层裁剪
+const SidebarInner = styled.div<{
+    $token: ReturnType<typeof useToken>['token']
+    $expanded: boolean
+}>`
+    width: 240px;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    height: 100%;
     background: ${props => props.$token.colorBgContainer};
-    border-right: 1px solid ${props => props.$token.colorBorder};
+    opacity: ${props => props.$expanded ? 1 : 0};
+    transition: opacity 0.2s ease;
+    pointer-events: ${props => props.$expanded ? 'auto' : 'none'};
 `
 
 // 弹性占位
@@ -44,25 +59,28 @@ const Spacer = styled.div`
 
 /**
  * 侧边栏主组件
- * 桌面端 240px 宽侧边栏，包含 Logo、导航、会话列表（后续）、底部操作
+ * 桌面端 240px 宽侧边栏，包含 Logo、导航、会话列表、底部操作
+ * 收起时 width 动画过渡到 0px，内容不被挤压只被裁剪
  */
 export function AppSidebar() {
     const { token } = useToken()
     const isMobile = useIsMobile()
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
 
-    // 移动端或侧边栏收起时不渲染
-    if (isMobile || !sidebarExpanded) {
+    // 移动端不渲染（使用 Drawer）
+    if (isMobile) {
         return null
     }
 
     return (
-        <SidebarContainer $token={token}>
-            <SidebarHeader />
-            <SidebarNav />
-            <SidebarProjects />
-            <Spacer />
-            <SidebarFooter />
+        <SidebarContainer $token={token} $expanded={sidebarExpanded}>
+            <SidebarInner $token={token} $expanded={sidebarExpanded}>
+                <SidebarHeader />
+                <SidebarNav />
+                <SidebarProjects />
+                <Spacer />
+                <SidebarFooter />
+            </SidebarInner>
         </SidebarContainer>
     )
 }

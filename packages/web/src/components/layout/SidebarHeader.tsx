@@ -30,7 +30,6 @@ const HeaderContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'
     justify-content: space-between;
     height: 48px;
     padding: 0 12px;
-    border-bottom: 1px solid ${props => props.$token.colorBorder};
     flex-shrink: 0;
 `
 
@@ -54,6 +53,14 @@ const LogoArea = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
 const LogoIcon = styled(Icon)`
     width: 28px;
     height: 28px;
+`
+
+// 品牌名
+const BrandName = styled.span<{ $token: ReturnType<typeof useToken>['token'] }>`
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: ${props => props.$token.colorText};
 `
 
 // 收起按钮
@@ -93,6 +100,7 @@ export function SidebarHeader() {
                 onClick={() => navigate({ to: '/sessions/new' })}
             >
                 <LogoIcon />
+                <BrandName $token={token}>MOBI</BrandName>
             </LogoArea>
 
             {/* 收起侧边栏 */}

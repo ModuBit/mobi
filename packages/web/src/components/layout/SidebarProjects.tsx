@@ -16,6 +16,7 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
@@ -34,6 +35,14 @@ const Container = styled.div`
     overflow-y: auto;
     flex: 1;
     min-height: 0;
+`
+
+// 分区标题
+const SectionTitle = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    padding: 8px 8px 4px;
+    font-size: 13px;
+    font-weight: 500;
+    color: ${props => props.$token.colorTextQuaternary};
 `
 
 // 分组标题
@@ -162,14 +171,15 @@ function ProjectGroup({ groupKey, activeSessionId }: {
  * 展示按工作目录分组的会话列表，支持折叠/展开
  */
 export function SidebarProjects() {
+    const { token } = useToken()
+    const { t } = useTranslation()
     const { data: groups = [] } = useSessionGroups()
     const params = useParams({ strict: false })
     const activeSessionId = params.sessionId as string | undefined
 
-    if (groups.length === 0) return null
-
     return (
         <Container>
+            <SectionTitle $token={token}>{t('nav.projects')}</SectionTitle>
             {groups.map(group => (
                 <ProjectGroup
                     key={group.key}

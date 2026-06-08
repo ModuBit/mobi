@@ -17,6 +17,7 @@
 import { theme as antTheme, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
+import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PageHeader } from '@/components/layout/PageHeader'
 import styled from '@emotion/styled'
 
@@ -47,6 +48,7 @@ export function SettingsModule() {
         <SettingsContainer $token={token}>
             <PageHeader
                 left={<>
+                    <SidebarToggle />
                     <MobileMenuButton />
                     <Title level={5} style={{ margin: 0 }}>{t('settings.title')}</Title>
                 </>}

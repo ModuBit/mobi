@@ -96,7 +96,7 @@ export function MobileMenuDrawer() {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const location = useLocation()
-    const { mobileMenuOpen, setMobileMenuOpen } = useUiStore()
+    const { mobileMenuOpen, setMobileMenuOpen, setSessionListDrawerOpen } = useUiStore()
     const { logout } = useAuthStore()
     const isMobile = useIsMobile()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
@@ -104,8 +104,14 @@ export function MobileMenuDrawer() {
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
 
-    // 选择菜单项 - 使用路由导航
+    // 选择菜单项
     const handleSelect = (key: string) => {
+        if (key === 'projects') {
+            // 项目 → 打开会话列表 Drawer
+            handleClose()
+            setSessionListDrawerOpen(true)
+            return
+        }
         const path = navPathMap[key]
         if (path) {
             navigate({ to: path })
