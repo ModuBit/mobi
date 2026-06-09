@@ -211,6 +211,28 @@ export function createMobiApi(token: string | null) {
                 client.post<{ exists: Record<string, boolean> }>(`/api/machines/${machineId}/paths/exists`, { paths }),
             listDirectory: (machineId: string, path: string, opts?: { signal?: AbortSignal }) =>
                 client.get<ListDirectoryResponse>(`/api/machines/${machineId}/list-directory`, { params: { path }, signal: opts?.signal }),
+            // SDK metadata（slash 命令）
+            metadata: (machineId: string, cwd: string, opts?: { signal?: AbortSignal }) =>
+                client.get(`/api/machines/${machineId}/metadata`, { params: { cwd }, signal: opts?.signal }),
+            // 文件上传
+            upload: (machineId: string, cwd: string, file: File, opts?: { signal?: AbortSignal }) => {
+                const formData = new FormData()
+                formData.append('file', file)
+                formData.append('cwd', cwd)
+                return client.post(`/api/machines/${machineId}/upload`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                    signal: opts?.signal,
+                })
+            },
+            // 文件上传删除
+            deleteUpload: (machineId: string, cwd: string, path: string) =>
+                client.post(`/api/machines/${machineId}/upload/delete`, { cwd, path }),
+            // 文件搜索（@ 引用）
+            searchFiles: (machineId: string, cwd: string, query: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListFilesResponse>(`/api/machines/${machineId}/search-files`, { params: { cwd, query }, signal: opts?.signal }),
+            // 目录列表（@ 引用展开子目录）
+            listSessionDirectory: (machineId: string, cwd: string, path: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListFilesResponse>(`/api/machines/${machineId}/list-session-directory`, { params: { cwd, path }, signal: opts?.signal }),
         },
     }
 }

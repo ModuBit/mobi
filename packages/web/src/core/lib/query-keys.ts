@@ -33,6 +33,8 @@ export const queryKeys = {
     groupSessions: (groupKey: string) => ['groupSessions', groupKey] as const,
     /** 机器列表 */
     machines: ['machines'] as const,
+    /** 机器 SDK 元数据 */
+    machineMetadata: (machineId: string, cwd: string) => ['machineMetadata', machineId, cwd] as const,
     /** Git 状态 */
     gitStatus: (sessionId: string) => ['git-status', sessionId] as const,
     /** Git 差异 */
