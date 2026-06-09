@@ -40,9 +40,10 @@ export type {
  * 通过空 AsyncIterable 作为 prompt，子进程完成初始化后等待消息但不触发 API 调用，
  * 此时 initializationResult() 已可用。拿到后立即 close()，零 token 消耗。
  *
+ * @param cwd 可选的工作目录，传入后可获取项目级别的 .claude/commands 和 skills
  * @returns SDK 元数据，包含完整的初始化响应信息
  */
-export async function extractSDKMetadata(): Promise<SDKMetadata> {
+export async function extractSDKMetadata(cwd?: string): Promise<SDKMetadata> {
     const abortController = new AbortController()
 
     try {
@@ -55,13 +56,20 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
             }
         }
 
+        const options: Parameters<typeof query>[0]['options'] = {
+            abortController,
+            pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
+            persistSession: false,
+        }
+
+        // 传入 cwd 以支持项目级命令和 skills 发现
+        if (cwd) {
+            options.cwd = cwd
+        }
+
         const sdkQuery = query({
             prompt: emptyPrompt,
-            options: {
-                abortController,
-                pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
-                persistSession: false,
-            }
+            options,
         })
 
         // 子进程初始化完成后即可获取元数据，无需等待模型响应
@@ -95,11 +103,13 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
 }
 
 /**
- * Extract SDK metadata asynchronously without blocking
- * Fires the extraction and updates metadata when complete
+ * 异步提取 SDK 元数据，完成后回调通知
+ *
+ * @param onComplete 元数据就绪后的回调
+ * @param cwd 可选的工作目录，传入后可获取项目级别的 .claude/commands 和 skills
  */
-export function extractSDKMetadataAsync(onComplete: (metadata: SDKMetadata) => void): void {
-    extractSDKMetadata()
+export function extractSDKMetadataAsync(onComplete: (metadata: SDKMetadata) => void, cwd?: string): void {
+    extractSDKMetadata(cwd)
         .then(metadata => {
             if (metadata.agents || metadata.commands) {
                 onComplete(metadata)

@@ -79,7 +79,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
 
-    // Extract SDK metadata in background and update session when ready
+    // 提取 SDK 元数据（传入工作目录以发现项目级命令和 skills）
     extractSDKMetadataAsync(async (extractedMetadata) => {
         logger.debug('[start] SDK metadata extracted, updating session:', extractedMetadata);
         try {
@@ -92,7 +92,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         } catch (error) {
             logger.debug('[start] Failed to update session metadata:', error);
         }
-    });
+    }, workingDirectory);
 
     // Start MOBI MCP server
     const mobiMcpServer = await startMobiMcpServer(apiSession);

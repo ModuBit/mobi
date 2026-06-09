@@ -31,7 +31,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
     registerDirectoryHandlers(rpcHandlerManager, workingDirectory)
     registerRipgrepHandlers(rpcHandlerManager, workingDirectory)
     registerDifftasticHandlers(rpcHandlerManager, workingDirectory)
-    registerCommandHandlers(rpcHandlerManager)
+    registerCommandHandlers(rpcHandlerManager, workingDirectory)
     registerGitHandlers(rpcHandlerManager, workingDirectory)
     registerUploadHandlers(rpcHandlerManager, workingDirectory)
     registerSessionFilesHandler(rpcHandlerManager, workingDirectory)

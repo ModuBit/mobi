@@ -25,12 +25,14 @@ export type RefreshMetadataResponse = {
     error?: string
 }
 
-export function registerCommandHandlers(rpcHandlerManager: RpcHandlerManager): void {
-    rpcHandlerManager.registerHandler<void, RefreshMetadataResponse>('refreshMetadata', async () => {
-        logger.debug('[refreshMetadata] Refreshing full SDK metadata')
+export function registerCommandHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory?: string): void {
+    rpcHandlerManager.registerHandler<{ cwd?: string }, RefreshMetadataResponse>('refreshMetadata', async (params) => {
+        // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+        const effectiveCwd = params?.cwd || workingDirectory
+        logger.debug('[refreshMetadata] Refreshing full SDK metadata', { cwd: effectiveCwd })
 
         try {
-            const metadata = await extractSDKMetadata()
+            const metadata = await extractSDKMetadata(effectiveCwd)
             return { success: true, metadata }
         } catch (error) {
             logger.debug('[refreshMetadata] Failed to extract SDK metadata:', error)
