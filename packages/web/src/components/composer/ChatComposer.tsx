@@ -33,7 +33,8 @@ import { useMentionInteraction } from './useMentionInteraction'
 import { useSlashCommandInteraction } from './useSlashCommandInteraction'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { createFileAttachment, validateFile, getAcceptExtensions } from '@/core/lib/fileAttachments'
-import { useCommands } from '@/core/data/hooks/queries/useCommands'
+import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
+import { useDirectoryCommands } from './useDirectoryCommands'
 import { useSDKMetadata, type ModelOption } from '@/core/data/hooks/queries/useSDKMetadata'
 import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
 import { MentionDropdown } from './MentionDropdown'
@@ -287,8 +288,12 @@ export function ChatComposer(props: ChatComposerProps) {
     const [isDragOver, setIsDragOver] = useState(false)
     const dragCounterRef = useRef(0)
 
-    // 命令列表（复用 React Query 缓存，用于手动输入时匹配参数提示）
-    const { data: commandsData } = useCommands(sessionId ?? null)
+    // 构建目录能力目标，统一双通道 API
+    const capTarget: CapabilityTarget | null = sessionId
+        ? { kind: 'session', sessionId }
+        : null
+    const capabilities = useDirectoryCapabilities(capTarget)
+    const { data: commandsData } = useDirectoryCommands(capabilities)
 
     // SDK 元数据（模型列表等）
     const { data: sdkMetadata } = useSDKMetadata(sessionId ?? null)
@@ -302,15 +307,16 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // @ 文件引用交互
     const mention = useMentionInteraction({
-        sessionId,
+        target: capTarget,
+        searchFiles: capabilities.searchFiles,
+        listDirectory: capabilities.listDirectory,
         workingDir,
     })
 
     // / 斜杠命令交互
     const slash = useSlashCommandInteraction({
-        sessionId,
-        workingDir,
         commandsData,
+        workingDir,
     })
 
     const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
@@ -564,7 +570,7 @@ export function ChatComposer(props: ChatComposerProps) {
         const controller = new AbortController()
         abortControllersRef.current.set(attachmentId, controller)
         try {
-            const response = await api.sessions.upload(sessionId, file, { signal: controller.signal })
+            const response = await capabilities.uploadFile(file, { signal: controller.signal })
             const data = response.data as UploadFileResponse
             if (data.success && data.path) {
                 setAttachments(prev => prev.map(a =>
@@ -590,7 +596,7 @@ export function ChatComposer(props: ChatComposerProps) {
         } finally {
             abortControllersRef.current.delete(attachmentId)
         }
-    }, [api, sessionId])
+    }, [capabilities])
 
     // 校验并上传文件列表（粘贴 / 拖拽 / 选择文件共享）
     const processFiles = useCallback((files: File[]) => {
@@ -631,13 +637,13 @@ export function ChatComposer(props: ChatComposerProps) {
             const attachment = prev.find(a => a.id === id)
             // 如果文件已上传成功，通知服务器删除
             if (attachment?.status === 'complete' && attachment.path) {
-                api.sessions.deleteUpload(sessionId, attachment.path).catch(() => {
+                capabilities.deleteUpload(attachment.path).catch(() => {
                     // 删除失败静默处理
                 })
             }
             return prev.filter(a => a.id !== id)
         })
-    }, [api, sessionId])
+    }, [capabilities])
 
     // 粘贴上传处理
     const handlePaste = useCallback((e: React.ClipboardEvent) => {
