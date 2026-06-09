@@ -16,7 +16,9 @@
 
 import { useState, useCallback, useMemo, useRef } from 'react'
 import { detectMentionAtCursor, buildMentionPath } from '@/domain/command/mentionParser'
-import { useSessionFileListing, type FileListingInput, type FileSuggestionItem } from './useSessionFileListing'
+import type { CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
+import { useFileListing } from './useFileListing'
+import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
 
 export interface MentionSelectionResult {
     text: string
@@ -24,7 +26,9 @@ export interface MentionSelectionResult {
 }
 
 interface UseMentionInteractionParams {
-    sessionId: string | null
+    target: CapabilityTarget | null
+    searchFiles: ((query: string, opts?: { signal?: AbortSignal }) => Promise<any>) | null
+    listDirectory: ((path: string, opts?: { signal?: AbortSignal }) => Promise<any>) | null
     workingDir: string | undefined
 }
 
@@ -33,7 +37,9 @@ interface UseMentionInteractionParams {
  * 封装 mention 状态管理、检测、选择和键盘导航
  */
 export function useMentionInteraction({
-    sessionId,
+    target,
+    searchFiles,
+    listDirectory,
     workingDir,
 }: UseMentionInteractionParams) {
     const [isOpen, setIsOpen] = useState(false)
@@ -41,8 +47,10 @@ export function useMentionInteraction({
     const [activeIndex, setActiveIndex] = useState(0)
     const mentionAtIndexRef = useRef(-1)
 
-    const { items, isLoading } = useSessionFileListing(
-        isOpen ? sessionId : null,
+    const { items, isLoading } = useFileListing(
+        isOpen ? searchFiles : null,
+        isOpen ? listDirectory : null,
+        target,
         mentionInput,
     )
 

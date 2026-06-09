@@ -26,9 +26,8 @@ export interface SlashSelectionResult {
 }
 
 interface UseSlashCommandInteractionParams {
-    sessionId: string | null
+    commandsData: Command[]
     workingDir: string | undefined
-    commandsData: Command[] | undefined
 }
 
 /**
@@ -36,9 +35,8 @@ interface UseSlashCommandInteractionParams {
  * 封装 slash 命令状态管理、检测、选择和键盘导航
  */
 export function useSlashCommandInteraction({
-    sessionId,
-    workingDir,
     commandsData,
+    workingDir,
 }: UseSlashCommandInteractionParams) {
     const [isOpen, setIsOpen] = useState(false)
     const [filter, setFilter] = useState('')
@@ -46,7 +44,7 @@ export function useSlashCommandInteraction({
     const [activeCommand, setActiveCommand] = useState<{ value: string; hint: string } | null>(null)
 
     const { items, isLoading } = useSlashCommandSuggestion(
-        isOpen ? sessionId : null,
+        commandsData,
         isOpen,
         filter,
         workingDir,
@@ -79,7 +77,7 @@ export function useSlashCommandInteraction({
         const cmdMatch = text.match(/^\/(\S+) $/)
         if (cmdMatch && !activeCommand) {
             const cmdName = `/${cmdMatch[1]}`
-            const cmd = commandsData?.find(c =>
+            const cmd = commandsData.find(c =>
                 (c.name.startsWith('/') ? c.name : `/${c.name}`) === cmdName
             )
             if (cmd?.argumentHint) {
