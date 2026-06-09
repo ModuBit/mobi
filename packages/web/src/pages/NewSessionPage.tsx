@@ -14,15 +14,32 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo } from 'react'
-import { App, theme as antTheme, Dropdown, Spin, AutoComplete, Popover } from 'antd'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { App, Button, Dropdown, Tooltip, Select, Spin, AutoComplete, Popover, theme as antTheme } from 'antd'
 import { Sender } from '@ant-design/x'
-import { FolderOpen, Monitor, Cpu, ChevronDown } from 'lucide-react'
+import { PlusOutlined, InboxOutlined, SafetyOutlined, RightOutlined } from '@ant-design/icons'
+import { FolderOpen, Monitor, Cpu } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
+import type { EffortLevel, PermissionMode } from '@mobi/shared'
+import { EFFORT_LEVELS, EFFORT_LABELS, PERMISSION_MODES, PERMISSION_MODE_LABELS } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
+import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
+import { useDirectoryCommands } from '@/components/composer/useDirectoryCommands'
+import { useMentionInteraction } from '@/components/composer/useMentionInteraction'
+import { useSlashCommandInteraction } from '@/components/composer/useSlashCommandInteraction'
+import { MentionDropdown } from '@/components/composer/MentionDropdown'
+import { SlashCommandDropdown } from '@/components/composer/SlashCommandDropdown'
+import { AttachmentList } from '@/components/composer/AttachmentItem'
+import { ResponsiveActionBar, type ActionItem } from '@/components/composer/ResponsiveActionBar'
+import type { FileAttachment } from '@/core/lib/fileAttachments'
+import { createFileAttachment, validateFile, getAcceptExtensions } from '@/core/lib/fileAttachments'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
+import type { UploadFileResponse } from '@/core/data/api/types'
+import { type AgentType, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import {
     loadPreferredAgent,
     savePreferredAgent,
@@ -35,25 +52,85 @@ import {
 } from '@/domain/session/preferences'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
-import { type AgentType, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
-import {
-    type EffortLevel,
-    type PermissionMode,
-    EFFORT_LEVELS,
-    EFFORT_LABELS,
-    PERMISSION_MODES,
-    PERMISSION_MODE_LABELS,
-} from '@mobi/shared'
+import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
+import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
+import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
 
 const { useToken } = antTheme
 
-/**
- * 从目录路径提取项目名（取最后一段）
- */
-function extractProjectName(directory: string): string {
-    const trimmed = directory.replace(/\/+$/, '')
-    const lastSlash = trimmed.lastIndexOf('/')
-    return lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed
+/* ========== 常量 ========== */
+
+const PERMISSION_OPTIONS = PERMISSION_MODES.map(m => ({
+    value: m,
+    label: PERMISSION_MODE_LABELS[m],
+}))
+
+const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
+    { value: 'claude', label: 'Claude Code' },
+    { value: 'codex', label: 'Codex' },
+]
+
+const ACTION_BUTTON_STYLE: React.CSSProperties = {
+    borderRadius: 'var(--ant-border-radius-sm, 6px)',
+    background: 'var(--ant-color-fill-tertiary, rgba(0,0,0,0.06))',
+} as const
+
+// 粘贴图片 MIME → 扩展名
+const MIME_TO_EXT: Record<string, string> = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+    'image/svg+xml': '.svg',
+    'image/bmp': '.bmp',
+}
+
+// 粘贴非图片 MIME → 扩展名
+const NON_IMAGE_MIME_TO_EXT: Record<string, string> = {
+    'application/pdf': '.pdf',
+    'text/plain': '.txt',
+    'text/csv': '.csv',
+    'text/html': '.html',
+    'text/markdown': '.md',
+    'application/json': '.json',
+    'application/zip': '.zip',
+    'application/xml': '.xml',
+}
+
+function imageExtFromMime(mimeType: string): string {
+    return MIME_TO_EXT[mimeType] ?? '.png'
+}
+
+// Effort 级别颜色
+const EFFORT_COLORS: Record<EffortLevel, string> = {
+    low: 'var(--ant-color-text-quaternary)',
+    medium: 'var(--ant-color-info)',
+    high: 'var(--ant-color-warning)',
+    xhigh: 'var(--ant-color-error)',
+}
+
+// compact dropdown 样式注入（全局一次）
+const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'
+const MODEL_DROPDOWN_CLASS = 'model-select-dropdown'
+let compactStyleInjected = false
+function useCompactDropdownStyle() {
+    if (!compactStyleInjected && typeof document !== 'undefined') {
+        const style = document.createElement('style')
+        style.textContent = `
+.${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }
+.${COMPACT_DROPDOWN_CLASS} { max-width: 100vw !important; }
+@media (max-width: 640px) {
+    .${MODEL_DROPDOWN_CLASS} { right: auto !important; left: 12px !important; max-width: calc(100vw - 24px) !important; }
+}
+.effort-popover .ant-popover-container { padding: 4px 0 !important; }
+.effort-popover .ant-popover-arrow { display: none !important; }
+.effort-popover .effort-item:hover { background: var(--ant-color-bg-text-hover) !important; }
+.effort-popover .effort-arrow { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; border-radius: 4px; }
+.effort-popover .effort-arrow:hover { background: var(--ant-color-bg-text-hover); }
+`
+        document.head.appendChild(style)
+        compactStyleInjected = true
+    }
 }
 
 /* ========== 样式组件 ========== */
@@ -108,80 +185,97 @@ const PillButton = styled.button<{ $bg: string; $hoverBg: string; $color: string
     }
 `
 
-const SubBar = styled.div<{ $bg: string }>`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px 12px;
-    align-items: center;
-    background: ${props => props.$bg};
-    border-bottom-left-radius: var(--ant-border-radius, 8px);
-    border-bottom-right-radius: var(--ant-border-radius, 8px);
-    margin: -10px 4px 0;
-    padding-top: 14px;
-    position: relative;
-    z-index: 0;
+const HoverSelect = styled(Select, {
+    shouldForwardProp: shouldNotForwardDollarProps,
+})<{
+    $token: ReturnType<typeof antTheme.useToken>['token']
+    $compact?: boolean
+}>`
+    border-radius: ${props => props.$token.borderRadiusSM}px;
+    transition: background 0.2s;
+    ${props => props.$compact && `
+        height: 24px !important;
+        &&& .ant-select-input {
+            font-size: 12px !important;
+        }
+    `}
 `
 
-/* ========== 常量 ========== */
-
-const PERMISSION_OPTIONS = PERMISSION_MODES.map(m => ({
-    value: m,
-    label: PERMISSION_MODE_LABELS[m],
-}))
-
-const EFFORT_OPTIONS = EFFORT_LEVELS.map(e => ({
-    value: e,
-    label: EFFORT_LABELS[e],
-}))
-
-const MODEL_OPTIONS = CLAUDE_MODEL_FALLBACK.map(m => ({
-    value: m.value,
-    label: m.displayName,
-}))
-
-const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
-    { value: 'claude', label: 'Claude Code' },
-    { value: 'codex', label: 'Codex' },
-]
-
-/* ========== 紧凑药丸下拉 ========== */
-
-function PillDropdown({ value, options, onChange, icon, placeholder }: {
-    value: string
-    options: { value: string; label: string }[]
-    onChange: (v: string) => void
-    icon?: React.ReactNode
-    placeholder?: string
-}) {
-    const { token } = antTheme.useToken()
-    const selectedOption = options.find(o => o.value === value)
-    const label = selectedOption?.label ?? (placeholder || value)
-
+function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>, 'size' | 'variant' | 'popupMatchSelectWidth' | '$compact'>) {
+    useCompactDropdownStyle()
+    const { classNames: propsClassNames, ...rest } = props
+    const extraPopupRoot = (propsClassNames as any)?.popup?.root as string | undefined
     return (
-        <Dropdown
-            menu={{
-                items: options.map(opt => ({ key: opt.value, label: opt.label })),
-                selectedKeys: value ? [value] : [],
-                onClick: ({ key }) => onChange(key as string),
-            }}
-            trigger={['click']}
-        >
-            <PillButton
-                $bg={token.colorFillTertiary}
-                $hoverBg={token.colorFillSecondary}
-                $color={token.colorTextSecondary}
-            >
-                {icon}
-                {label}
-                <ChevronDown size={10} style={{ opacity: 0.5 }} />
-            </PillButton>
-        </Dropdown>
+        <HoverSelect
+            {...rest}
+            $compact
+            size="small"
+            variant="filled"
+            popupMatchSelectWidth={false}
+            classNames={{ popup: { root: [COMPACT_DROPDOWN_CLASS, extraPopupRoot].filter(Boolean).join(' ') } }}
+        />
     )
 }
 
-/* ========== 目录选择药丸 ========== */
+/* ========== 辅助组件 ========== */
 
+/**
+ * 从目录路径提取项目名（取最后一段）
+ */
+function extractProjectName(directory: string): string {
+    const trimmed = directory.replace(/\/+$/, '')
+    const lastSlash = trimmed.lastIndexOf('/')
+    return lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed
+}
+
+/** Effort 级别小圆点 */
+function EffortDot({ level }: { level: EffortLevel }) {
+    return (
+        <span style={{
+            display: 'inline-block',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: EFFORT_COLORS[level],
+            flexShrink: 0,
+        }} />
+    )
+}
+
+/** model option 中的 effort 选择 Popover 内容 */
+function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
+    modelValue: string
+    effort: EffortLevel
+    onEffortSelect: (model: string, effort: EffortLevel) => void
+}) {
+    const { token } = antTheme.useToken()
+    const [hovered, setHovered] = useState<string | null>(null)
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 100 }}>
+            {EFFORT_LEVELS.map(e => (
+                <div
+                    key={e}
+                    onClick={(ev) => { ev.stopPropagation(); onEffortSelect(modelValue, e) }}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '4px 8px', margin: '0 4px', borderRadius: token.borderRadiusSM,
+                        cursor: 'pointer',
+                        background: e === effort ? token.colorBgTextHover
+                            : hovered === e ? token.colorBgTextHover : undefined,
+                        transition: 'background 0.2s',
+                    }}
+                    onMouseEnter={() => setHovered(e)}
+                    onMouseLeave={() => setHovered(null)}
+                >
+                    <EffortDot level={e} />
+                    <span style={{ fontSize: 12 }}>{EFFORT_LABELS[e]}</span>
+                </div>
+            ))}
+        </div>
+    )
+}
+
+/** 目录选择药丸（AutoComplete + Popover） */
 function DirectoryPill({ value, onChange, options }: {
     value: string
     onChange: (v: string) => void
@@ -212,7 +306,6 @@ function DirectoryPill({ value, onChange, options }: {
             >
                 <FolderOpen size={12} />
                 {displayName || '项目/目录'}
-                <ChevronDown size={10} style={{ opacity: 0.5 }} />
             </PillButton>
         </Popover>
     )
@@ -222,12 +315,18 @@ function DirectoryPill({ value, onChange, options }: {
 
 /**
  * 新建会话页面
- * 居中布局，参考 Codex 风格：输入框 → 功能配置行 → 环境配置灰条
+ *
+ * 状态机：gate（未选机器+目录） → create（空输入） → send（有内容）
+ * 两步创建：spawnSession → sendMessage → navigate
+ * 两行 Sender 布局：Row 1 = 环境选择 | Row 2 = 配置 + 操作
  */
 export function NewSessionPage() {
     const { token } = useToken()
-    const { message } = App.useApp()
+    const { message: messageApi } = App.useApp()
     const navigate = useNavigate()
+    const authToken = useAuthStore((state) => state.token)
+    const api = useMobiApi(authToken)
+    const hasFinePointer = useHasFinePointer()
 
     // 偏好配置（初始化从 localStorage 加载）
     const [agent, setAgent] = useState<AgentType>(() => loadPreferredAgent())
@@ -239,10 +338,22 @@ export function NewSessionPage() {
     const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null)
     const [selectedDirectory, setSelectedDirectory] = useState('')
     const [inputText, setInputText] = useState('')
+    const [isPending, setIsPending] = useState(false)
+
+    // 附件状态
+    const [attachments, setAttachments] = useState<FileAttachment[]>([])
+    const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
+
+    // 拖拽状态
+    const [isDragOver, setIsDragOver] = useState(false)
+    const dragCounterRef = useRef(0)
+
+    // effort popover 状态
+    const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
     // 数据
     const { machines, isLoading: isLoadingMachines } = useMachines()
-    const { spawnSession, isPending } = useSpawnSession()
+    const { spawnSession } = useSpawnSession()
     const { options: directoryOptions } = useMachineDirectoryListing(
         selectedMachineId,
         selectedDirectory,
@@ -250,9 +361,38 @@ export function NewSessionPage() {
 
     const activeMachines = machines.filter(m => m.active)
 
+    // 能力目标（基于 machine + cwd）
+    const capTarget: CapabilityTarget | null = (selectedMachineId && selectedDirectory)
+        ? { kind: 'machine', machineId: selectedMachineId, cwd: selectedDirectory }
+        : null
+    const capabilities = useDirectoryCapabilities(capTarget)
+    const { data: commandsData } = useDirectoryCommands(capabilities)
+
+    // @ 文件引用交互
+    const mention = useMentionInteraction({
+        target: capTarget,
+        searchFiles: capabilities.searchFiles,
+        listDirectory: capabilities.listDirectory,
+        workingDir: selectedDirectory || undefined,
+    })
+
+    // / 斜杠命令交互
+    const slash = useSlashCommandInteraction({
+        commandsData,
+        workingDir: selectedDirectory || undefined,
+    })
+
+    const wrapperRef = useRef<HTMLDivElement>(null)
+    const pendingCursorRef = useRef<number | null>(null)
+
+    // Gate：是否已选好环境
+    const gatePassed = !!(selectedMachineId && selectedDirectory)
+    const hasContent = inputText.trim().length > 0
+    const hasAttachments = attachments.length > 0
+    const inputDisabled = !gatePassed
+
     // 动态标题
     const projectName = selectedDirectory ? extractProjectName(selectedDirectory) : null
-
     const title = useMemo(() => {
         const titles = projectName
             ? [`我们想在 ${projectName} 中构建什么？`, `来聊聊 ${projectName} 吧`, `在 ${projectName} 中开始新对话`]
@@ -260,9 +400,267 @@ export function NewSessionPage() {
         return titles[Math.floor(Math.random() * titles.length)]
     }, [projectName])
 
-    // 发送
-    const handleSend = useCallback(async () => {
-        if (!inputText.trim() || !selectedMachineId || isPending) return
+    // 是否展示命令参数幽灵提示
+    const showGhostHint = !!slash.activeCommand?.hint
+        && inputText === `${slash.activeCommand.value} `
+        && !slash.isOpen
+
+    // 点击外部关闭下拉
+    useEffect(() => {
+        if (!mention.isOpen && !slash.isOpen) return
+        const handler = (e: MouseEvent) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+                mention.close()
+                slash.close()
+            }
+        }
+        document.addEventListener('mousedown', handler)
+        return () => document.removeEventListener('mousedown', handler)
+    }, [mention.isOpen, slash.isOpen, mention, slash])
+
+    // 光标位置恢复
+    useEffect(() => {
+        if (pendingCursorRef.current != null) {
+            const textarea = wrapperRef.current?.querySelector('textarea')
+            if (textarea) {
+                textarea.selectionStart = textarea.selectionEnd = pendingCursorRef.current
+                textarea.focus()
+            }
+            pendingCursorRef.current = null
+        }
+    })
+
+    // ============ 文本变更处理 ============
+    const handleChange = useCallback((value: string) => {
+        setInputText(value)
+
+        const textarea = wrapperRef.current?.querySelector('textarea')
+        const cursorPos = textarea?.selectionStart ?? value.length
+
+        // Slash 检测优先
+        if (slash.processChange(value, cursorPos)) {
+            mention.close()
+            return
+        }
+
+        // Mention 检测
+        if (mention.processChange(value, cursorPos)) {
+            return
+        }
+        mention.close()
+    }, [mention, slash])
+
+    // Tab 键选中
+    const textRef = useRef(inputText)
+    textRef.current = inputText
+
+    useEffect(() => {
+        const wrapper = wrapperRef.current
+        if (!wrapper) return
+        if (!mention.isOpen && !slash.isOpen) return
+
+        const handler = (e: KeyboardEvent) => {
+            if (e.key !== 'Tab') return
+            e.preventDefault()
+            e.stopPropagation()
+            if (slash.isOpen && slash.items.length > 0) {
+                const result = slash.selectCurrent(textRef.current)
+                if (result) {
+                    setInputText(result.text)
+                    pendingCursorRef.current = result.cursorPos
+                }
+            } else if (mention.isOpen && mention.items.length > 0) {
+                const result = mention.selectCurrent(textRef.current)
+                if (result) {
+                    setInputText(result.text)
+                    pendingCursorRef.current = result.cursorPos
+                }
+            }
+        }
+
+        wrapper.addEventListener('keydown', handler, true)
+        return () => wrapper.removeEventListener('keydown', handler, true)
+    }, [mention.isOpen, mention, slash.isOpen, slash])
+
+    // 键盘导航
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            if (slash.handleKeyDown(e)) return
+            if (mention.handleKeyDown(e)) return
+            return
+        }
+
+        if (e.key === 'Enter') {
+            if (slash.isOpen && slash.items.length > 0) {
+                e.preventDefault()
+                e.stopPropagation()
+                const result = slash.selectCurrent(textRef.current)
+                if (result) {
+                    setInputText(result.text)
+                    pendingCursorRef.current = result.cursorPos
+                }
+                return
+            }
+            if (mention.isOpen && mention.items.length > 0) {
+                e.preventDefault()
+                e.stopPropagation()
+                const result = mention.selectCurrent(textRef.current)
+                if (result) {
+                    setInputText(result.text)
+                    pendingCursorRef.current = result.cursorPos
+                }
+                return
+            }
+            return
+        }
+
+        if (slash.handleKeyDown(e)) return
+        if (mention.handleKeyDown(e)) return
+    }, [mention, slash])
+
+    // ============ 附件处理 ============
+
+    // 上传附件到服务器
+    const uploadAttachment = useCallback(async (attachmentId: string, file: File) => {
+        const controller = new AbortController()
+        abortControllersRef.current.set(attachmentId, controller)
+        try {
+            const response = await capabilities.uploadFile(file, { signal: controller.signal })
+            const data = response.data as UploadFileResponse
+            if (data.success && data.path) {
+                setAttachments(prev => prev.map(a =>
+                    a.id === attachmentId
+                        ? { ...a, status: 'complete' as const, path: data.path }
+                        : a
+                ))
+            } else {
+                setAttachments(prev => prev.map(a =>
+                    a.id === attachmentId
+                        ? { ...a, status: 'error' as const, error: data.error || '上传失败' }
+                        : a
+                ))
+            }
+        } catch (err) {
+            if (controller.signal.aborted) return
+            setAttachments(prev => prev.map(a =>
+                a.id === attachmentId
+                    ? { ...a, status: 'error' as const, error: err instanceof Error ? err.message : '上传失败' }
+                    : a
+            ))
+        } finally {
+            abortControllersRef.current.delete(attachmentId)
+        }
+    }, [capabilities])
+
+    // 校验并上传文件列表
+    const processFiles = useCallback((files: File[]) => {
+        for (const file of files) {
+            const error = validateFile(file)
+            if (error) {
+                messageApi.warning(error)
+                continue
+            }
+            const attachment = createFileAttachment(file)
+            setAttachments(prev => [...prev, attachment])
+            uploadAttachment(attachment.id, file)
+        }
+    }, [uploadAttachment, messageApi])
+
+    const handleAttach = useCallback(() => {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.multiple = true
+        input.accept = getAcceptExtensions()
+        input.onchange = (e) => {
+            const files = (e.target as HTMLInputElement).files
+            if (!files) return
+            processFiles(Array.from(files))
+        }
+        input.click()
+    }, [processFiles])
+
+    const handleRemoveAttachment = useCallback((id: string) => {
+        const controller = abortControllersRef.current.get(id)
+        if (controller) {
+            controller.abort()
+            abortControllersRef.current.delete(id)
+        }
+        setAttachments(prev => {
+            const attachment = prev.find(a => a.id === id)
+            if (attachment?.status === 'complete' && attachment.path) {
+                capabilities.deleteUpload(attachment.path).catch(() => {})
+            }
+            return prev.filter(a => a.id !== id)
+        })
+    }, [capabilities])
+
+    // 粘贴上传
+    const handlePaste = useCallback((e: React.ClipboardEvent) => {
+        const items = e.clipboardData?.items
+        if (!items) return
+        const fileItems = Array.from(items).filter(item => item.kind === 'file')
+        if (fileItems.length === 0) return
+
+        e.preventDefault()
+
+        const namedFiles: File[] = []
+        for (const item of fileItems) {
+            const file = item.getAsFile()
+            if (!file) continue
+
+            const isImage = file.type.startsWith('image/')
+            const originalName = file.name
+            const isPlaceholder = !originalName
+                || /^(image|screenshot|paste|clipboard|unknown)(\.\w+)?$/i.test(originalName)
+                || originalName === 'file'
+            let fileName: string
+            if (isPlaceholder) {
+                const ext = isImage
+                    ? imageExtFromMime(file.type)
+                    : (NON_IMAGE_MIME_TO_EXT[file.type] ?? '')
+                fileName = isImage ? `image${ext}` : `file${ext}`
+            } else {
+                fileName = originalName
+            }
+
+            namedFiles.push(new File([file], fileName, { type: file.type }))
+        }
+
+        processFiles(namedFiles)
+    }, [processFiles])
+
+    // 拖拽上传
+    const handleDragEnter = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        dragCounterRef.current++
+        if (dragCounterRef.current === 1) setIsDragOver(true)
+    }, [])
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+    }, [])
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        dragCounterRef.current--
+        if (dragCounterRef.current === 0) setIsDragOver(false)
+    }, [])
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        dragCounterRef.current = 0
+        setIsDragOver(false)
+        const files = e.dataTransfer?.files
+        if (!files || files.length === 0) return
+        processFiles(Array.from(files))
+    }, [processFiles])
+
+    // ============ 提交处理 ============
+    const handleSubmit = useCallback(async () => {
+        if (!selectedMachineId || !selectedDirectory || isPending) return
+        // 空输入时不允许 Enter 触发（但允许按钮点击创建空会话）
+        // 注意：空输入 + 按钮点击 = 仅创建空会话；有内容 = 创建 + 发送
+        setIsPending(true)
 
         // 持久化配置
         savePreferredAgent(agent)
@@ -270,36 +668,300 @@ export function NewSessionPage() {
         savePreferredEffort(effort)
         savePreferredPermissionMode(permissionMode)
 
-        // 创建会话
-        const input: SpawnInput = {
-            machineId: selectedMachineId,
-            directory: selectedDirectory || '/',
-            agent,
-            model: model === 'auto' ? undefined : model,
-            effort,
-            yolo: permissionMode === 'bypassPermissions',
-        }
+        try {
+            const input: SpawnInput = {
+                machineId: selectedMachineId,
+                directory: selectedDirectory || '/',
+                agent,
+                model: model === 'auto' ? undefined : model,
+                effort,
+                yolo: permissionMode === 'bypassPermissions',
+            }
 
-        const result = await spawnSession(input)
+            const result = await spawnSession(input)
 
-        if (result.type === 'success' && result.sessionId) {
-            navigate({ to: '/sessions/$sessionId', params: { sessionId: result.sessionId } })
-        } else if (result.type === 'error') {
-            message.error(result.message || '创建会话失败')
+            if (result.type !== 'success' || !result.sessionId) {
+                messageApi.error(result.type === 'error' ? (result.message || '创建会话失败') : '创建会话失败')
+                return
+            }
+
+            const sessionId = result.sessionId
+
+            // 有内容时发送消息
+            if (hasContent || hasAttachments) {
+                try {
+                    // 拼接附件路径到消息文本（与 ChatComposer 一致）
+                    const completedAttachments = attachments.filter(a => a.status === 'complete' && a.path)
+                    const attachmentPaths = completedAttachments.map(a => `@${a.path}`).join('\n')
+                    const finalText = attachmentPaths
+                        ? `${inputText.trim()}\n${attachmentPaths}`
+                        : inputText.trim()
+
+                    if (finalText) {
+                        await api.messages.send(sessionId, finalText)
+                    }
+                } catch {
+                    // 发送失败仍然导航到详情页，用户可重试
+                }
+            }
+
+            navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+        } catch (e) {
+            messageApi.error(e instanceof Error ? e.message : '创建会话失败')
+        } finally {
+            setIsPending(false)
         }
     }, [
-        inputText, selectedMachineId, selectedDirectory, agent, model, effort,
-        permissionMode, isPending, spawnSession, navigate, message,
+        selectedMachineId, selectedDirectory, isPending,
+        agent, model, effort, permissionMode,
+        spawnSession, navigate, messageApi, api.messages,
+        hasContent, hasAttachments, attachments, inputText,
     ])
 
-    const canSend = inputText.trim().length > 0 && !!selectedMachineId && !isPending
+    // ============ 按钮文案 ============
+    const submitLabel = !gatePassed
+        ? '请先选择机器和目录'
+        : hasContent
+            ? '发送 ↑'
+            : '创建'
 
-    // 机器选项
+    // ============ 机器选项 ============
     const machineOptions = activeMachines.map(m => ({
         value: m.id,
         label: m.metadata?.displayName || m.metadata?.host || m.id,
     }))
 
+    // ============ model + effort 合并选择 ============
+    const modelSelectOptions = useMemo(() => {
+        return CLAUDE_MODEL_FALLBACK.map(opt => ({
+            value: opt.value,
+            label: opt.displayName,
+        }))
+    }, [])
+
+    const handleModelEffortSelect = useCallback((selectedModel: string, selectedEffort: EffortLevel) => {
+        if (selectedModel !== model) setModel(selectedModel)
+        if (selectedEffort !== effort) setEffort(selectedEffort)
+    }, [model, effort])
+
+    const handleModelSelect = useCallback((v: string) => {
+        if (v !== model) setModel(v)
+    }, [model])
+
+    // permission mode 选项（带颜色）
+    const permissionSelectOptions = useMemo(
+        () => PERMISSION_OPTIONS.map(opt => {
+            const mode = opt.value as PermissionMode
+            const tone = mode !== 'default' ? (
+                mode === 'bypassPermissions' ? 'danger' : 'warning'
+            ) : null
+            const color = tone ? getPermissionModeColor(token, tone) : undefined
+            return {
+                value: opt.value,
+                label: color
+                    ? <span style={{ color }}>{opt.label}</span>
+                    : opt.label,
+            }
+        }),
+        [token]
+    )
+
+    const permissionModeTone = permissionMode !== 'default' ? (
+        permissionMode === 'bypassPermissions' ? 'danger' : 'warning'
+    ) : null
+    const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
+
+    // ============ ActionItems ============
+
+    // Row 1: 环境选择（机器 + 目录）
+    const row1Items: ActionItem[] = useMemo(() => [
+        // 机器选择
+        {
+            key: 'machine',
+            render: () => (
+                <Dropdown
+                    menu={{
+                        items: machineOptions.map(opt => ({ key: opt.value, label: opt.label })),
+                        selectedKeys: selectedMachineId ? [selectedMachineId] : [],
+                        onClick: ({ key }) => setSelectedMachineId(key),
+                    }}
+                    trigger={['click']}
+                >
+                    <PillButton
+                        $bg={token.colorFillTertiary}
+                        $hoverBg={token.colorFillSecondary}
+                        $color={token.colorTextSecondary}
+                    >
+                        <Monitor size={12} />
+                        {selectedMachineId
+                            ? (machineOptions.find(m => m.value === selectedMachineId)?.label ?? '选择机器')
+                            : '选择机器'}
+                    </PillButton>
+                </Dropdown>
+            ),
+        },
+        // 目录选择
+        {
+            key: 'directory',
+            render: () => (
+                <DirectoryPill
+                    value={selectedDirectory}
+                    onChange={setSelectedDirectory}
+                    options={directoryOptions.map(d => ({
+                        value: d.value,
+                        label: d.label,
+                    }))}
+                />
+            ),
+        },
+    ], [selectedMachineId, selectedDirectory, machineOptions, directoryOptions, token])
+
+    // Row 2: 配置 + 操作
+    const row2Items: ActionItem[] = useMemo(() => [
+        // 附件按钮
+        {
+            key: 'attach',
+            label: '附件',
+            render: () => (
+                <Tooltip title="添加附件">
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onClick={handleAttach}
+                        disabled={inputDisabled}
+                        style={ACTION_BUTTON_STYLE}
+                    />
+                </Tooltip>
+            ),
+        },
+        // Agent 选择
+        {
+            key: 'agent',
+            label: 'Agent',
+            render: () => (
+                <CompactHoverSelect
+                    $token={token}
+                    prefix={<Cpu size={12} style={{ opacity: 0.55 }} />}
+                    value={agent}
+                    onChange={v => setAgent(v as AgentType)}
+                    disabled={inputDisabled}
+                    options={AGENT_OPTIONS.map(a => ({ value: a.value, label: a.label }))}
+                />
+            ),
+        },
+        // Model + Effort 选择
+        {
+            key: 'model',
+            label: '模型',
+            render: () => (
+                <CompactHoverSelect
+                    $token={token}
+                    prefix={<EffortDot level={effort} />}
+                    value={model}
+                    onChange={v => handleModelSelect(v as string)}
+                    disabled={inputDisabled}
+                    options={modelSelectOptions}
+                    classNames={{ popup: { root: MODEL_DROPDOWN_CLASS } }}
+                    optionRender={(option) => {
+                        const modelValue = option.value as string
+                        return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                                    <span>{option.label}</span>
+                                </div>
+                                <Popover
+                                    open={effortPopoverModel === modelValue}
+                                    onOpenChange={(open) => setEffortPopoverModel(open ? modelValue : null)}
+                                    placement="leftTop"
+                                    trigger={hasFinePointer ? 'hover' : 'click'}
+                                    mouseEnterDelay={0.1}
+                                    mouseLeaveDelay={0.3}
+                                    zIndex={1051}
+                                    rootClassName="effort-popover"
+                                    content={
+                                        <EffortPopoverContent
+                                            modelValue={modelValue}
+                                            effort={effort}
+                                            onEffortSelect={(m, e) => {
+                                                handleModelEffortSelect(m, e)
+                                                setEffortPopoverModel(null)
+                                            }}
+                                        />
+                                    }
+                                >
+                                    <span
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                            minWidth: 24, minHeight: 24, borderRadius: 4, cursor: 'pointer',
+                                        }}
+                                        onClick={(ev) => ev.stopPropagation()}
+                                    >
+                                        <RightOutlined style={{ fontSize: 10, opacity: 0.4 }} />
+                                    </span>
+                                </Popover>
+                            </div>
+                        )
+                    }}
+                />
+            ),
+        },
+        // 权限模式（overflow 项）
+        {
+            key: 'permission',
+            label: '权限',
+            render: () => (
+                <CompactHoverSelect
+                    $token={token}
+                    prefix={<SafetyOutlined style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
+                    value={permissionMode}
+                    onChange={v => setPermissionMode(v as PermissionMode)}
+                    disabled={inputDisabled}
+                    options={permissionSelectOptions}
+                    style={{ color: permissionModeColor }}
+                />
+            ),
+        },
+    ], [
+        token, inputDisabled, agent, model, effort, permissionMode,
+        permissionModeColor, permissionSelectOptions, modelSelectOptions,
+        handleAttach, handleModelSelect, handleModelEffortSelect, hasFinePointer,
+        effortPopoverModel,
+    ])
+
+    // ============ Sender header ============
+    const headerNodes = [
+        showGhostHint && slash.activeCommand && (
+            <div key="hint" style={{ padding: '4px 12px', fontSize: 12, color: token.colorTextTertiary }}>
+                {slash.activeCommand.hint}
+            </div>
+        ),
+        hasAttachments && (
+            <AttachmentList
+                key="attachments"
+                attachments={attachments}
+                onRemove={handleRemoveAttachment}
+            />
+        ),
+    ].filter(Boolean)
+
+    // ============ 提交按钮渲染 ============
+    const renderSubmitButton = useCallback((_oriNode: React.ReactNode) => {
+        return (
+            <Button
+                type="primary"
+                size="small"
+                loading={isPending}
+                disabled={!gatePassed || isPending}
+                onClick={() => handleSubmit()}
+                style={{ borderRadius: token.borderRadiusSM, fontSize: 12 }}
+            >
+                {submitLabel}
+            </Button>
+        )
+    }, [gatePassed, isPending, submitLabel, handleSubmit, token.borderRadiusSM])
+
+    // ============ 加载中 ============
     if (isLoadingMachines) {
         return (
             <PageContainer>
@@ -319,68 +981,131 @@ export function NewSessionPage() {
                     {title}
                 </TitleBar>
 
-                <div style={{ position: 'relative' }}>
-                    {/* 输入框 + 功能配置行 */}
+                <div
+                    ref={wrapperRef}
+                    style={{ position: 'relative' }}
+                    onDragEnter={inputDisabled ? undefined : handleDragEnter}
+                    onDragOver={inputDisabled ? undefined : handleDragOver}
+                    onDragLeave={inputDisabled ? undefined : handleDragLeave}
+                    onDrop={inputDisabled ? undefined : handleDrop}
+                >
                     <Sender
                         value={inputText}
-                        onChange={setInputText}
-                        onSubmit={() => { handleSend() }}
+                        onChange={handleChange}
+                        onSubmit={() => {
+                            // 有内容时才通过 Enter 提交
+                            if (hasContent && gatePassed && !isPending) {
+                                handleSubmit()
+                            }
+                        }}
+                        submitType={hasFinePointer ? 'enter' : 'shiftEnter'}
                         placeholder="随心输入..."
                         autoSize={{ minRows: 1, maxRows: 6 }}
                         loading={isPending}
+                        disabled={inputDisabled}
+                        onKeyDown={handleKeyDown}
+                        onPaste={inputDisabled ? undefined : handlePaste}
+                        header={headerNodes.length > 0 ? headerNodes : null}
+                        suffix={false}
                         footer={(oriNode) => (
-                            <div style={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                gap: 6,
-                                padding: '8px 12px',
-                                alignItems: 'center',
-                            }}>
-                                <PillDropdown
-                                    value={permissionMode}
-                                    options={PERMISSION_OPTIONS}
-                                    onChange={(v) => setPermissionMode(v as PermissionMode)}
-                                />
-                                <PillDropdown
-                                    value={effort}
-                                    options={EFFORT_OPTIONS}
-                                    onChange={(v) => setEffort(v as EffortLevel)}
-                                />
-                                <PillDropdown
-                                    value={model}
-                                    options={MODEL_OPTIONS}
-                                    onChange={setModel}
-                                />
-                                <div style={{ flex: 1 }} />
-                                {oriNode}
+                            <div>
+                                {/* Row 1: 环境选择 */}
+                                <div style={{
+                                    background: 'var(--ant-color-fill-tertiary)',
+                                    borderBottomLeftRadius: 0,
+                                    borderBottomRightRadius: 0,
+                                    padding: '8px 12px 6px',
+                                    margin: '-10px 4px 0',
+                                    position: 'relative',
+                                    zIndex: 0,
+                                }}>
+                                    <ResponsiveActionBar
+                                        items={row1Items}
+                                        gap={6}
+                                    />
+                                </div>
+
+                                {/* Row 2: 配置 + 操作 */}
+                                <div style={{
+                                    padding: '6px 12px 8px',
+                                    margin: '0 4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <ResponsiveActionBar
+                                            items={row2Items}
+                                            gap={4}
+                                            suffix={renderSubmitButton(oriNode)}
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         )}
                     />
 
-                    {/* 环境配置灰条 */}
-                    <SubBar $bg={token.colorFillQuaternary}>
-                        <DirectoryPill
-                            value={selectedDirectory}
-                            onChange={setSelectedDirectory}
-                            options={directoryOptions.map(d => ({
-                                value: d.value,
-                                label: d.label,
-                            }))}
+                    {/* @ 文件引用下拉 */}
+                    {mention.isOpen && (
+                        <MentionDropdown
+                            items={mention.items}
+                            loading={mention.isLoading}
+                            activeIndex={mention.activeIndex}
+                            scrollIntoActive={mention.scrollIntoActive}
+                            onSelect={(item) => {
+                                const result = mention.selectItem(item, inputText)
+                                if (result) {
+                                    setInputText(result.text)
+                                    pendingCursorRef.current = result.cursorPos
+                                }
+                            }}
+                            onHover={mention.setActiveIndex}
                         />
-                        <PillDropdown
-                            value={agent}
-                            options={AGENT_OPTIONS}
-                            onChange={(v) => setAgent(v as AgentType)}
-                            icon={<Cpu size={12} />}
+                    )}
+
+                    {/* slash command 下拉 */}
+                    {slash.isOpen && (
+                        <SlashCommandDropdown
+                            items={slash.items}
+                            loading={slash.isLoading}
+                            activeIndex={slash.activeIndex}
+                            scrollIntoActive={slash.scrollIntoActive}
+                            onSelect={(item) => {
+                                const result = slash.selectItem(item, inputText)
+                                if (result) {
+                                    setInputText(result.text)
+                                    pendingCursorRef.current = result.cursorPos
+                                }
+                            }}
+                            onHover={slash.setActiveIndex}
                         />
-                        <PillDropdown
-                            value={selectedMachineId ?? ''}
-                            options={machineOptions}
-                            onChange={setSelectedMachineId}
-                            placeholder="选择机器"
-                            icon={<Monitor size={12} />}
-                        />
-                    </SubBar>
+                    )}
+
+                    {/* 拖拽上传覆盖层 */}
+                    {isDragOver && (
+                        <div
+                            style={{
+                                position: 'absolute',
+                                inset: 0,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 8,
+                                borderRadius: 'var(--ant-border-radius)',
+                                zIndex: 20,
+                                background: `color-mix(in srgb, ${token.colorBgContainer} 85%, transparent)`,
+                                backdropFilter: 'blur(2px)',
+                                border: `2px dashed ${token.colorPrimary}`,
+                                pointerEvents: 'none',
+                            }}
+                        >
+                            <InboxOutlined style={{ fontSize: 28, color: token.colorPrimary }} />
+                            <span style={{ color: token.colorTextSecondary, fontSize: 13 }}>
+                                拖拽文件到此处上传
+                            </span>
+                        </div>
+                    )}
                 </div>
             </ContentWrapper>
         </PageContainer>
