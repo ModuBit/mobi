@@ -15,10 +15,10 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { App, Button, Dropdown, Tooltip, Select, Spin, AutoComplete, Popover, theme as antTheme } from 'antd'
+import { App, Button, Tooltip, Select, Spin, Popover, theme as antTheme } from 'antd'
 import { Sender } from '@ant-design/x'
 import { PlusOutlined, InboxOutlined, SafetyOutlined, RightOutlined } from '@ant-design/icons'
-import { FolderOpen, Monitor, Cpu } from 'lucide-react'
+import { Cpu } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
@@ -35,6 +35,7 @@ import { MentionDropdown } from '@/components/composer/MentionDropdown'
 import { SlashCommandDropdown } from '@/components/composer/SlashCommandDropdown'
 import { AttachmentList } from '@/components/composer/AttachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/components/composer/ResponsiveActionBar'
+import { EnvironmentBar, extractProjectName } from '@/components/composer/EnvironmentBar'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { type AgentType, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
@@ -138,25 +139,6 @@ const TitleBar = styled.div<{ $color: string }>`
     margin-bottom: 32px;
 `
 
-const PillButton = styled.button<{ $bg: string; $hoverBg: string; $color: string }>`
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    padding: 3px 10px;
-    border-radius: 12px;
-    border: none;
-    background: ${props => props.$bg};
-    color: ${props => props.$color};
-    font-size: 12px;
-    cursor: pointer;
-    transition: background 0.2s;
-    white-space: nowrap;
-
-    &:hover {
-        background: ${props => props.$hoverBg};
-    }
-`
-
 const HoverSelect = styled(Select, {
     shouldForwardProp: shouldNotForwardDollarProps,
 })<{
@@ -190,15 +172,6 @@ function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>
 }
 
 /* ========== 辅助组件 ========== */
-
-/**
- * 从目录路径提取项目名（取最后一段）
- */
-function extractProjectName(directory: string): string {
-    const trimmed = directory.replace(/\/+$/, '')
-    const lastSlash = trimmed.lastIndexOf('/')
-    return lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed
-}
 
 /** Effort 级别小圆点 */
 function EffortDot({ level }: { level: EffortLevel }) {
@@ -247,42 +220,6 @@ function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
     )
 }
 
-/** 目录选择药丸（AutoComplete + Popover） */
-function DirectoryPill({ value, onChange, options }: {
-    value: string
-    onChange: (v: string) => void
-    options: { value: string; label: string }[]
-}) {
-    const { token } = antTheme.useToken()
-    const displayName = value ? extractProjectName(value) : null
-
-    return (
-        <Popover
-            content={
-                <AutoComplete
-                    value={value}
-                    onChange={onChange}
-                    options={options}
-                    style={{ minWidth: 250 }}
-                    placeholder="输入项目/目录路径"
-                    autoFocus
-                />
-            }
-            trigger={['click']}
-            placement="bottomLeft"
-        >
-            <PillButton
-                $bg={token.colorFillTertiary}
-                $hoverBg={token.colorFillSecondary}
-                $color={token.colorTextSecondary}
-            >
-                <FolderOpen size={12} />
-                {displayName || '项目/目录'}
-            </PillButton>
-        </Popover>
-    )
-}
-
 /* ========== 页面组件 ========== */
 
 /**
@@ -325,10 +262,12 @@ export function NewSessionPage() {
 
     const activeMachines = machines.filter(m => m.active)
 
-    // 能力目标（基于 machine + cwd）
-    const capTarget: CapabilityTarget | null = (selectedMachineId && selectedDirectory)
-        ? { kind: 'machine', machineId: selectedMachineId, cwd: selectedDirectory }
-        : null
+    // 能力目标（基于 machine + cwd），useMemo 保证引用稳定，避免下游 useEffect 无限循环
+    const capTarget = useMemo<CapabilityTarget | null>(() => {
+        return (selectedMachineId && selectedDirectory)
+            ? { kind: 'machine', machineId: selectedMachineId, cwd: selectedDirectory }
+            : null
+    }, [selectedMachineId, selectedDirectory])
     const capabilities = useDirectoryCapabilities(capTarget)
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
@@ -617,49 +556,6 @@ export function NewSessionPage() {
 
     // ============ ActionItems ============
 
-    // Row 1: 环境选择（机器 + 目录）
-    const row1Items: ActionItem[] = useMemo(() => [
-        // 机器选择
-        {
-            key: 'machine',
-            render: () => (
-                <Dropdown
-                    menu={{
-                        items: machineOptions.map(opt => ({ key: opt.value, label: opt.label })),
-                        selectedKeys: selectedMachineId ? [selectedMachineId] : [],
-                        onClick: ({ key }) => setSelectedMachineId(key),
-                    }}
-                    trigger={['click']}
-                >
-                    <PillButton
-                        $bg={token.colorFillTertiary}
-                        $hoverBg={token.colorFillSecondary}
-                        $color={token.colorTextSecondary}
-                    >
-                        <Monitor size={12} />
-                        {selectedMachineId
-                            ? (machineOptions.find(m => m.value === selectedMachineId)?.label ?? '选择机器')
-                            : '选择机器'}
-                    </PillButton>
-                </Dropdown>
-            ),
-        },
-        // 目录选择
-        {
-            key: 'directory',
-            render: () => (
-                <DirectoryPill
-                    value={selectedDirectory}
-                    onChange={setSelectedDirectory}
-                    options={directoryOptions.map(d => ({
-                        value: d.value,
-                        label: d.label,
-                    }))}
-                />
-            ),
-        },
-    ], [selectedMachineId, selectedDirectory, machineOptions, directoryOptions, token])
-
     // Row 2: 配置 + 操作
     const row2Items: ActionItem[] = useMemo(() => [
         // 附件按钮
@@ -833,6 +729,17 @@ export function NewSessionPage() {
                     onDragLeave={inputDisabled ? undefined : handleDragLeave}
                     onDrop={inputDisabled ? undefined : handleDrop}
                 >
+                    <EnvironmentBar
+                        machineOptions={machineOptions}
+                        selectedMachineId={selectedMachineId}
+                        onMachineChange={setSelectedMachineId}
+                        directoryOptions={directoryOptions.map(d => ({
+                            value: d.value,
+                            label: d.label,
+                        }))}
+                        selectedDirectory={selectedDirectory}
+                        onDirectoryChange={setSelectedDirectory}
+                    />
                     <Sender
                         value={inputText}
                         onChange={handleChange}
@@ -850,26 +757,11 @@ export function NewSessionPage() {
                         onKeyDown={handleKeyDown}
                         onPaste={inputDisabled ? undefined : handlePaste}
                         header={headerNodes.length > 0 ? headerNodes : null}
+                        style={{ background: 'var(--ant-color-bg-container)' }}
                         suffix={false}
                         footer={(oriNode) => (
                             <div>
-                                {/* Row 1: 环境选择 */}
-                                <div style={{
-                                    background: 'var(--ant-color-fill-tertiary)',
-                                    borderBottomLeftRadius: 0,
-                                    borderBottomRightRadius: 0,
-                                    padding: '8px 12px 6px',
-                                    margin: '-10px 4px 0',
-                                    position: 'relative',
-                                    zIndex: 0,
-                                }}>
-                                    <ResponsiveActionBar
-                                        items={row1Items}
-                                        gap={6}
-                                    />
-                                </div>
-
-                                {/* Row 2: 配置 + 操作 */}
+                                {/* 配置 + 操作 */}
                                 <div style={{
                                     padding: '6px 12px 8px',
                                     margin: '0 4px',

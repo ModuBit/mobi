@@ -249,10 +249,11 @@ export function ChatComposer(props: ChatComposerProps) {
     const [text, setText] = useState('')
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
-    // 构建目录能力目标，统一双通道 API
-    const capTarget: CapabilityTarget | null = sessionId
-        ? { kind: 'session', sessionId }
-        : null
+    // 构建目录能力目标，useMemo 保证引用稳定，避免下游 useEffect 无限循环
+    const capTarget = useMemo<CapabilityTarget | null>(
+        () => sessionId ? { kind: 'session', sessionId } : null,
+        [sessionId],
+    )
     const capabilities = useDirectoryCapabilities(capTarget)
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
