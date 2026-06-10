@@ -14,23 +14,21 @@
  * limitations under the License.
  */
 
-import { useMemo } from 'react'
 import type { Command } from '@/core/data/api/types'
 import type { DirectoryCapabilities } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 
 /**
- * 从 DirectoryCapabilities 派生命令列表
+ * 从 DirectoryCapabilities 派生命令列表和加载状态
  *
- * 简单地将 capabilities.commands 透传为稳定的 Command[]，
- * 供 useSlashCommandSuggestion 等消费者使用
+ * 透传 capabilities.commands 和 metadataLoading，
+ * 供 useSlashCommandInteraction 等消费者使用
  */
 export function useDirectoryCommands(capabilities: DirectoryCapabilities): {
     data: Command[]
     isLoading: boolean
 } {
-    const data = useMemo<Command[]>(
-        () => capabilities.commands,
-        [capabilities.commands]
-    )
-    return { data, isLoading: capabilities.metadataLoading }
+    return {
+        data: capabilities.commands,
+        isLoading: capabilities.metadataLoading,
+    }
 }

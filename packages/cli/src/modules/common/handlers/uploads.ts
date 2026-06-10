@@ -18,10 +18,24 @@ import { logger } from '@/ui/logger'
 import { mkdir, writeFile, rm, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join, resolve, relative, extname, sep } from 'path'
+import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { getUploadsDir } from '@/constants/uploadPaths'
 import { ALLOWED_EXTENSIONS_SET, BLOCKED_EXTENSIONS_SET, MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
+
+/**
+ * 校验 RPC 参数中的 cwd 是否在安全范围内
+ * 纵深防御：即使 hub 侧已校验，CLI 侧也确保 cwd 在 home 目录内
+ */
+function validateRpcCwd(cwd: string): boolean {
+    const resolved = resolve(cwd)
+    const home = homedir()
+    const normalized = process.platform === 'win32' ? resolved.toLowerCase() : resolved
+    const normalizedHome = process.platform === 'win32' ? home.toLowerCase() : home
+    const homePrefix = normalizedHome.endsWith('/') ? normalizedHome : normalizedHome + '/'
+    return normalized === normalizedHome || normalized.startsWith(homePrefix)
+}
 
 interface UploadFileRequest {
     filename: string
@@ -201,6 +215,9 @@ export function registerUploadHandlers(
 
             // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
             const effectiveCwd = data.cwd || workingDirectory
+            if (data.cwd && !validateRpcCwd(data.cwd)) {
+                return rpcError('Invalid cwd: path is outside home directory')
+            }
 
             if (!data.filename) {
                 return rpcError('Filename is required')
@@ -262,6 +279,9 @@ export function registerUploadHandlers(
         async (data) => {
             // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
             const effectiveCwd = data.cwd || workingDirectory
+            if (data.cwd && !validateRpcCwd(data.cwd)) {
+                return rpcError('Invalid cwd: path is outside home directory')
+            }
 
             const path = data?.path?.trim()
             if (!path) {

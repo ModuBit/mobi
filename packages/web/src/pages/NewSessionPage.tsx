@@ -28,17 +28,15 @@ import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/us
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from '@/components/composer/useDirectoryCommands'
+import { useAttachmentHandling } from '@/components/composer/useAttachmentHandling'
 import { useMentionInteraction } from '@/components/composer/useMentionInteraction'
 import { useSlashCommandInteraction } from '@/components/composer/useSlashCommandInteraction'
 import { MentionDropdown } from '@/components/composer/MentionDropdown'
 import { SlashCommandDropdown } from '@/components/composer/SlashCommandDropdown'
 import { AttachmentList } from '@/components/composer/AttachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/components/composer/ResponsiveActionBar'
-import type { FileAttachment } from '@/core/lib/fileAttachments'
-import { createFileAttachment, validateFile, getAcceptExtensions } from '@/core/lib/fileAttachments'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
-import type { UploadFileResponse } from '@/core/data/api/types'
 import { type AgentType, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import {
     loadPreferredAgent,
@@ -74,32 +72,6 @@ const ACTION_BUTTON_STYLE: React.CSSProperties = {
     borderRadius: 'var(--ant-border-radius-sm, 6px)',
     background: 'var(--ant-color-fill-tertiary, rgba(0,0,0,0.06))',
 } as const
-
-// 粘贴图片 MIME → 扩展名
-const MIME_TO_EXT: Record<string, string> = {
-    'image/png': '.png',
-    'image/jpeg': '.jpg',
-    'image/gif': '.gif',
-    'image/webp': '.webp',
-    'image/svg+xml': '.svg',
-    'image/bmp': '.bmp',
-}
-
-// 粘贴非图片 MIME → 扩展名
-const NON_IMAGE_MIME_TO_EXT: Record<string, string> = {
-    'application/pdf': '.pdf',
-    'text/plain': '.txt',
-    'text/csv': '.csv',
-    'text/html': '.html',
-    'text/markdown': '.md',
-    'application/json': '.json',
-    'application/zip': '.zip',
-    'application/xml': '.xml',
-}
-
-function imageExtFromMime(mimeType: string): string {
-    return MIME_TO_EXT[mimeType] ?? '.png'
-}
 
 // Effort 级别颜色
 const EFFORT_COLORS: Record<EffortLevel, string> = {
@@ -340,14 +312,6 @@ export function NewSessionPage() {
     const [inputText, setInputText] = useState('')
     const [isPending, setIsPending] = useState(false)
 
-    // 附件状态
-    const [attachments, setAttachments] = useState<FileAttachment[]>([])
-    const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
-
-    // 拖拽状态
-    const [isDragOver, setIsDragOver] = useState(false)
-    const dragCounterRef = useRef(0)
-
     // effort popover 状态
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
@@ -366,7 +330,14 @@ export function NewSessionPage() {
         ? { kind: 'machine', machineId: selectedMachineId, cwd: selectedDirectory }
         : null
     const capabilities = useDirectoryCapabilities(capTarget)
-    const { data: commandsData } = useDirectoryCommands(capabilities)
+    const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
+
+    // 附件管理（共享 hook）
+    const {
+        attachments, isDragOver,
+        handleAttach, handleRemoveAttachment, handlePaste,
+        handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
+    } = useAttachmentHandling(capabilities)
 
     // @ 文件引用交互
     const mention = useMentionInteraction({
@@ -379,11 +350,18 @@ export function NewSessionPage() {
     // / 斜杠命令交互
     const slash = useSlashCommandInteraction({
         commandsData,
+        commandsLoading,
         workingDir: selectedDirectory || undefined,
     })
 
     const wrapperRef = useRef<HTMLDivElement>(null)
     const pendingCursorRef = useRef<number | null>(null)
+
+    // ref 持有最新值，避免 handleSubmit 因 attachments/inputText 变化而重建
+    const inputTextRef = useRef(inputText)
+    inputTextRef.current = inputText
+    const attachmentsRef = useRef(attachments)
+    attachmentsRef.current = attachments
 
     // Gate：是否已选好环境
     const gatePassed = !!(selectedMachineId && selectedDirectory)
@@ -518,149 +496,16 @@ export function NewSessionPage() {
         if (mention.handleKeyDown(e)) return
     }, [mention, slash])
 
-    // ============ 附件处理 ============
-
-    // 上传附件到服务器
-    const uploadAttachment = useCallback(async (attachmentId: string, file: File) => {
-        const controller = new AbortController()
-        abortControllersRef.current.set(attachmentId, controller)
-        try {
-            const response = await capabilities.uploadFile(file, { signal: controller.signal })
-            const data = response.data as UploadFileResponse
-            if (data.success && data.path) {
-                setAttachments(prev => prev.map(a =>
-                    a.id === attachmentId
-                        ? { ...a, status: 'complete' as const, path: data.path }
-                        : a
-                ))
-            } else {
-                setAttachments(prev => prev.map(a =>
-                    a.id === attachmentId
-                        ? { ...a, status: 'error' as const, error: data.error || '上传失败' }
-                        : a
-                ))
-            }
-        } catch (err) {
-            if (controller.signal.aborted) return
-            setAttachments(prev => prev.map(a =>
-                a.id === attachmentId
-                    ? { ...a, status: 'error' as const, error: err instanceof Error ? err.message : '上传失败' }
-                    : a
-            ))
-        } finally {
-            abortControllersRef.current.delete(attachmentId)
-        }
-    }, [capabilities])
-
-    // 校验并上传文件列表
-    const processFiles = useCallback((files: File[]) => {
-        for (const file of files) {
-            const error = validateFile(file)
-            if (error) {
-                messageApi.warning(error)
-                continue
-            }
-            const attachment = createFileAttachment(file)
-            setAttachments(prev => [...prev, attachment])
-            uploadAttachment(attachment.id, file)
-        }
-    }, [uploadAttachment, messageApi])
-
-    const handleAttach = useCallback(() => {
-        const input = document.createElement('input')
-        input.type = 'file'
-        input.multiple = true
-        input.accept = getAcceptExtensions()
-        input.onchange = (e) => {
-            const files = (e.target as HTMLInputElement).files
-            if (!files) return
-            processFiles(Array.from(files))
-        }
-        input.click()
-    }, [processFiles])
-
-    const handleRemoveAttachment = useCallback((id: string) => {
-        const controller = abortControllersRef.current.get(id)
-        if (controller) {
-            controller.abort()
-            abortControllersRef.current.delete(id)
-        }
-        setAttachments(prev => {
-            const attachment = prev.find(a => a.id === id)
-            if (attachment?.status === 'complete' && attachment.path) {
-                capabilities.deleteUpload(attachment.path).catch(() => {})
-            }
-            return prev.filter(a => a.id !== id)
-        })
-    }, [capabilities])
-
-    // 粘贴上传
-    const handlePaste = useCallback((e: React.ClipboardEvent) => {
-        const items = e.clipboardData?.items
-        if (!items) return
-        const fileItems = Array.from(items).filter(item => item.kind === 'file')
-        if (fileItems.length === 0) return
-
-        e.preventDefault()
-
-        const namedFiles: File[] = []
-        for (const item of fileItems) {
-            const file = item.getAsFile()
-            if (!file) continue
-
-            const isImage = file.type.startsWith('image/')
-            const originalName = file.name
-            const isPlaceholder = !originalName
-                || /^(image|screenshot|paste|clipboard|unknown)(\.\w+)?$/i.test(originalName)
-                || originalName === 'file'
-            let fileName: string
-            if (isPlaceholder) {
-                const ext = isImage
-                    ? imageExtFromMime(file.type)
-                    : (NON_IMAGE_MIME_TO_EXT[file.type] ?? '')
-                fileName = isImage ? `image${ext}` : `file${ext}`
-            } else {
-                fileName = originalName
-            }
-
-            namedFiles.push(new File([file], fileName, { type: file.type }))
-        }
-
-        processFiles(namedFiles)
-    }, [processFiles])
-
-    // 拖拽上传
-    const handleDragEnter = useCallback((e: React.DragEvent) => {
-        e.preventDefault()
-        dragCounterRef.current++
-        if (dragCounterRef.current === 1) setIsDragOver(true)
-    }, [])
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault()
-    }, [])
-
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
-        e.preventDefault()
-        dragCounterRef.current--
-        if (dragCounterRef.current === 0) setIsDragOver(false)
-    }, [])
-
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault()
-        dragCounterRef.current = 0
-        setIsDragOver(false)
-        const files = e.dataTransfer?.files
-        if (!files || files.length === 0) return
-        processFiles(Array.from(files))
-    }, [processFiles])
-
     // ============ 提交处理 ============
     const handleSubmit = useCallback(async () => {
         if (!selectedMachineId || !selectedDirectory || isPending) return
         // 空输入时不允许 Enter 触发（但允许按钮点击创建空会话）
         // 注意：空输入 + 按钮点击 = 仅创建空会话；有内容 = 创建 + 发送
         setIsPending(true)
+
+        // 从 ref 读取最新值
+        const currentText = inputTextRef.current.trim()
+        const currentAttachments = attachmentsRef.current
 
         // 持久化配置
         savePreferredAgent(agent)
@@ -688,14 +533,14 @@ export function NewSessionPage() {
             const sessionId = result.sessionId
 
             // 有内容时发送消息
-            if (hasContent || hasAttachments) {
+            if (currentText || currentAttachments.length > 0) {
                 try {
                     // 拼接附件路径到消息文本（与 ChatComposer 一致）
-                    const completedAttachments = attachments.filter(a => a.status === 'complete' && a.path)
+                    const completedAttachments = currentAttachments.filter(a => a.status === 'complete' && a.path)
                     const attachmentPaths = completedAttachments.map(a => `@${a.path}`).join('\n')
                     const finalText = attachmentPaths
-                        ? `${inputText.trim()}\n${attachmentPaths}`
-                        : inputText.trim()
+                        ? `${currentText}\n${attachmentPaths}`
+                        : currentText
 
                     if (finalText) {
                         await api.messages.send(sessionId, finalText)
@@ -715,7 +560,6 @@ export function NewSessionPage() {
         selectedMachineId, selectedDirectory, isPending,
         agent, model, effort, permissionMode,
         spawnSession, navigate, messageApi, api.messages,
-        hasContent, hasAttachments, attachments, inputText,
     ])
 
     // ============ 按钮文案 ============

@@ -110,5 +110,8 @@ export function useDirectoryCapabilities(target: CapabilityTarget | null): Direc
         return (path: string) => api.machines.deleteUpload(target.machineId, target.cwd, path)
     }, [target, token, api])
 
-    return { metadata, metadataLoading, commands, searchFiles, listDirectory, uploadFile, deleteUpload }
+    return useMemo(() => ({
+        metadata, metadataLoading, commands,
+        searchFiles, listDirectory, uploadFile, deleteUpload,
+    }), [metadata, metadataLoading, commands, searchFiles, listDirectory, uploadFile, deleteUpload])
 }

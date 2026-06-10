@@ -37,6 +37,21 @@ const pathsExistsSchema = z.object({
     paths: z.array(z.string().min(1)).max(1000)
 })
 
+/**
+ * 校验 cwd 必须在 machine 的 homeDir 范围内
+ * homeDir 缺失时拒绝请求（与 list-directory 路由保持一致）
+ */
+function validateCwd(cwd: string, homeDir: string | undefined): Response | null {
+    if (!homeDir) {
+        return new Response(JSON.stringify({ error: 'Machine homeDir not available' }), { status: 400 })
+    }
+    const validation = validateHomeDirPath(cwd, homeDir)
+    if (!validation.valid) {
+        return new Response(JSON.stringify({ error: validation.error }), { status: 403 })
+    }
+    return null
+}
+
 export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -69,6 +84,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Invalid body' }, 400)
         }
 
+        // 安全校验：directory 必须在 homeDir 内
         const homeDir = machine.metadata?.homeDir
         if (homeDir) {
             const validation = validateHomeDirPath(parsed.data.directory, homeDir)
@@ -177,14 +193,8 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'cwd parameter is required' }, 400)
         }
 
-        // 安全校验：cwd 必须在 homeDir 内
-        const homeDir = machine.metadata?.homeDir
-        if (homeDir) {
-            const validation = validateHomeDirPath(cwd, homeDir)
-            if (!validation.valid) {
-                return c.json({ error: validation.error }, 403)
-            }
-        }
+        const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
+        if (cwdError) return cwdError
 
         try {
             const result = await engine.machineRefreshMetadata(machineId, cwd)
@@ -213,14 +223,8 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'cwd field is required' }, 400)
         }
 
-        // 安全校验：cwd 必须在 homeDir 内
-        const homeDir = machine.metadata?.homeDir
-        if (homeDir) {
-            const validation = validateHomeDirPath(cwd, homeDir)
-            if (!validation.valid) {
-                return c.json({ error: validation.error }, 403)
-            }
-        }
+        const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
+        if (cwdError) return cwdError
 
         const file = body.file
         if (!file || !(file instanceof File)) {
@@ -262,14 +266,8 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'path and cwd fields are required' }, 400)
         }
 
-        // 安全校验：cwd 必须在 homeDir 内
-        const homeDir = machine.metadata?.homeDir
-        if (homeDir) {
-            const validation = validateHomeDirPath(body.cwd, homeDir)
-            if (!validation.valid) {
-                return c.json({ error: validation.error }, 403)
-            }
-        }
+        const cwdError = validateCwd(body.cwd, machine.metadata?.homeDir)
+        if (cwdError) return cwdError
 
         try {
             const result = await engine.machineDeleteUpload(machineId, body.cwd, body.path)
@@ -301,14 +299,8 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'query parameter is required' }, 400)
         }
 
-        // 安全校验：cwd 必须在 homeDir 内
-        const homeDir = machine.metadata?.homeDir
-        if (homeDir) {
-            const validation = validateHomeDirPath(cwd, homeDir)
-            if (!validation.valid) {
-                return c.json({ error: validation.error }, 403)
-            }
-        }
+        const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
+        if (cwdError) return cwdError
 
         try {
             const result = await engine.machineSearchFiles(machineId, cwd, query)
@@ -337,14 +329,8 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'cwd parameter is required' }, 400)
         }
 
-        // 安全校验：cwd 必须在 homeDir 内
-        const homeDir = machine.metadata?.homeDir
-        if (homeDir) {
-            const validation = validateHomeDirPath(cwd, homeDir)
-            if (!validation.valid) {
-                return c.json({ error: validation.error }, 403)
-            }
-        }
+        const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
+        if (cwdError) return cwdError
 
         try {
             const result = await engine.machineListSessionDirectory(machineId, cwd, path)

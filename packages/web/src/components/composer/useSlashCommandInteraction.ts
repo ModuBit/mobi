@@ -27,6 +27,7 @@ export interface SlashSelectionResult {
 
 interface UseSlashCommandInteractionParams {
     commandsData: Command[]
+    commandsLoading: boolean
     workingDir: string | undefined
 }
 
@@ -36,6 +37,7 @@ interface UseSlashCommandInteractionParams {
  */
 export function useSlashCommandInteraction({
     commandsData,
+    commandsLoading,
     workingDir,
 }: UseSlashCommandInteractionParams) {
     const [isOpen, setIsOpen] = useState(false)
@@ -45,6 +47,7 @@ export function useSlashCommandInteraction({
 
     const { items, isLoading } = useSlashCommandSuggestion(
         commandsData,
+        commandsLoading,
         isOpen,
         filter,
         workingDir,

@@ -237,11 +237,27 @@ function isWithinWorkingDir(targetPath: string, workingDirectory: string): boole
     return normalizedTarget === normalizedWorkingDir || normalizedTarget.startsWith(prefix)
 }
 
+/**
+ * 校验 RPC 参数中的 cwd 是否在安全范围内
+ * 纵深防御：即使 hub 侧已校验，CLI 侧也确保 cwd 在 home 目录内
+ */
+function validateRpcCwd(cwd: string): boolean {
+    const resolved = resolve(cwd)
+    const home = homedir()
+    const normalized = process.platform === 'win32' ? resolved.toLowerCase() : resolved
+    const normalizedHome = process.platform === 'win32' ? home.toLowerCase() : home
+    const homePrefix = normalizedHome.endsWith('/') ? normalizedHome : normalizedHome + '/'
+    return normalized === normalizedHome || normalized.startsWith(homePrefix)
+}
+
 export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // 接口 1：ripgrep 模糊搜索（工作目录内）
     rpcHandlerManager.registerHandler<{ query: string, cwd?: string }, ListSessionFilesResponse>('searchSessionFiles', async (data) => {
         // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
         const effectiveCwd = data.cwd || workingDirectory
+        if (data.cwd && !validateRpcCwd(data.cwd)) {
+            return rpcError('Invalid cwd: path is outside home directory')
+        }
         logger.debug('Search session files request:', data.query)
 
         try {
@@ -256,6 +272,9 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
     rpcHandlerManager.registerHandler<ListSessionFilesRequest & { cwd?: string }, ListSessionFilesResponse>('listSessionDirectory', async (data) => {
         // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
         const effectiveCwd = data.cwd || workingDirectory
+        if (data.cwd && !validateRpcCwd(data.cwd)) {
+            return rpcError('Invalid cwd: path is outside home directory')
+        }
         logger.debug('List session directory request:', data.path)
 
         try {

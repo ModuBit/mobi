@@ -28,12 +28,14 @@ import type { Command } from '@/core/data/api/types'
  * 根据过滤文本返回建议列表，按使用频率排序
  *
  * @param commands 命令列表（由调用方通过 useDirectoryCommands 获取）
+ * @param isLoading 命令列表是否仍在加载
  * @param isOpen 下拉是否打开（关闭时跳过过滤计算）
  * @param filterText 过滤文本（不含 / 前缀）
  * @param workingDir 当前工作目录，用于绑定使用统计
  */
 export function useSlashCommandSuggestion(
     commands: Command[],
+    isLoading: boolean,
     isOpen: boolean,
     filterText: string,
     workingDir?: string,
@@ -47,5 +49,5 @@ export function useSlashCommandSuggestion(
         return filterCommands(suggestions, filterText)
     }, [commands, isOpen, filterText, workingDir])
 
-    return { items, isLoading: false }
+    return { items, isLoading }
 }
