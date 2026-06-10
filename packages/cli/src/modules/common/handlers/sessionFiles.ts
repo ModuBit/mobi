@@ -239,11 +239,13 @@ function isWithinWorkingDir(targetPath: string, workingDirectory: string): boole
 
 export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // 接口 1：ripgrep 模糊搜索（工作目录内）
-    rpcHandlerManager.registerHandler<{ query: string }, ListSessionFilesResponse>('searchSessionFiles', async (data) => {
+    rpcHandlerManager.registerHandler<{ query: string, cwd?: string }, ListSessionFilesResponse>('searchSessionFiles', async (data) => {
+        // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+        const effectiveCwd = data.cwd || workingDirectory
         logger.debug('Search session files request:', data.query)
 
         try {
-            const entries = await searchFiles(workingDirectory, data.query)
+            const entries = await searchFiles(effectiveCwd, data.query)
             return { success: true, entries }
         } catch (error) {
             return rpcError(getErrorMessage(error, 'Failed to search files'))
@@ -251,7 +253,9 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
     })
 
     // 接口 2：目录列表（工作目录内 + 外）
-    rpcHandlerManager.registerHandler<ListSessionFilesRequest, ListSessionFilesResponse>('listSessionDirectory', async (data) => {
+    rpcHandlerManager.registerHandler<ListSessionFilesRequest & { cwd?: string }, ListSessionFilesResponse>('listSessionDirectory', async (data) => {
+        // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+        const effectiveCwd = data.cwd || workingDirectory
         logger.debug('List session directory request:', data.path)
 
         try {
@@ -262,14 +266,14 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
                 targetPath = join(homedir(), targetPath.slice(1))
             }
 
-            // 解析为绝对路径：已是绝对路径时直接使用，否则相对 workingDirectory 解析
+            // 解析为绝对路径：已是绝对路径时直接使用，否则相对 effectiveCwd 解析
             const resolvedPath = isAbsolute(targetPath)
                 ? targetPath
-                : resolve(workingDirectory, targetPath)
+                : resolve(effectiveCwd, targetPath)
 
             // 工作目录内：校验路径安全性
-            if (isWithinWorkingDir(resolvedPath, workingDirectory)) {
-                const validation = validatePath(resolvedPath, workingDirectory)
+            if (isWithinWorkingDir(resolvedPath, effectiveCwd)) {
+                const validation = validatePath(resolvedPath, effectiveCwd)
                 if (!validation.valid) {
                     return rpcError(validation.error ?? 'Invalid path')
                 }

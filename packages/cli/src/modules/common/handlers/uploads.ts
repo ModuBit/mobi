@@ -27,6 +27,8 @@ interface UploadFileRequest {
     filename: string
     content: string  // base64 编码
     mimeType: string
+    /** 覆盖工作目录（machine channel 传入） */
+    cwd?: string
 }
 
 interface UploadFileResponse {
@@ -37,6 +39,8 @@ interface UploadFileResponse {
 
 interface DeleteUploadRequest {
     path: string
+    /** 覆盖工作目录（machine channel 传入） */
+    cwd?: string
 }
 
 interface DeleteUploadResponse {
@@ -195,6 +199,9 @@ export function registerUploadHandlers(
         async (data) => {
             logger.debug('上传文件请求:', data.filename, 'mimeType:', data.mimeType)
 
+            // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+            const effectiveCwd = data.cwd || workingDirectory
+
             if (!data.filename) {
                 return rpcError('Filename is required')
             }
@@ -217,7 +224,7 @@ export function registerUploadHandlers(
                 }
 
                 // 确保上传目录存在
-                const uploadDir = await ensureUploadDir(workingDirectory)
+                const uploadDir = await ensureUploadDir(effectiveCwd)
 
                 // 清理文件名并生成唯一标识
                 // 格式：{原始文件名}-{短hash}.ext
@@ -238,7 +245,7 @@ export function registerUploadHandlers(
                 await writeFile(filePath, buffer)
 
                 // 返回项目相对路径
-                const relativePath = relative(workingDirectory, filePath)
+                const relativePath = relative(effectiveCwd, filePath)
 
                 logger.debug('文件上传成功:', relativePath)
                 return { success: true, path: relativePath }
@@ -253,18 +260,21 @@ export function registerUploadHandlers(
     rpcHandlerManager.registerHandler<DeleteUploadRequest, DeleteUploadResponse>(
         'deleteUpload',
         async (data) => {
+            // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
+            const effectiveCwd = data.cwd || workingDirectory
+
             const path = data?.path?.trim()
             if (!path) {
                 return rpcError('Path is required')
             }
 
             // 校验路径在 uploads 目录内
-            if (!isPathWithinUploads(workingDirectory, path)) {
+            if (!isPathWithinUploads(effectiveCwd, path)) {
                 return rpcError('Invalid upload path')
             }
 
             try {
-                const fullPath = resolve(workingDirectory, path)
+                const fullPath = resolve(effectiveCwd, path)
                 await rm(fullPath, { force: true })
                 return { success: true }
             } catch (error) {
