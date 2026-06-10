@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Drawer, Divider } from 'antd'
+import { theme as antTheme, Drawer } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
@@ -41,7 +41,14 @@ const MenuButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] 
     cursor: pointer;
     transition: all 0.2s;
 
-    &:hover {
+    @media (hover: hover) {
+        &:hover {
+            background: ${props => props.$token.colorPrimaryBg};
+            color: ${props => props.$token.colorPrimary};
+        }
+    }
+
+    &:active {
         background: ${props => props.$token.colorPrimaryBg};
         color: ${props => props.$token.colorPrimary};
     }
@@ -63,9 +70,15 @@ const MenuItem = styled.div<{ $active: boolean; $danger?: boolean; $token: Retur
     }};
     background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
     transition: all 0.2s;
-    ${props => props.$danger ? `border-top: 1px solid ${props.$token.colorBorder}; margin-top: 8px;` : ''}
+    ${props => props.$danger ? `border-top: 1px solid ${props.$token.colorBorder};` : ''}
 
-    &:hover {
+    @media (hover: hover) {
+        &:hover {
+            background: ${props => props.$token.colorPrimaryBg};
+        }
+    }
+
+    &:active {
         background: ${props => props.$token.colorPrimaryBg};
     }
 `
@@ -157,7 +170,7 @@ export function MobileMenuDrawer() {
                         {resolvedTheme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                         <span>{resolvedTheme === 'dark' ? t('nav.themeLight') : t('nav.themeDark')}</span>
                     </MenuItem>
-                    <Divider style={{ margin: '8px 0', borderColor: token.colorBorder, borderInlineStart: '1px solid' }} />
+                    <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorder, margin: '8px 0' }} />
                     <MenuItem
                         $active={false}
                         $token={token}

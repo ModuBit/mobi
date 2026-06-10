@@ -83,7 +83,7 @@
 /* 移动端底部 Drawer：高度自适应，上限 85vh */
 .ant-drawer-bottom .ant-drawer-content-wrapper {
     height: auto !important;
-    max-height: 85vh !important;
+    max-height: 90vh !important;
 }
 
 /* 移动端底部 Drawer 安全区 */

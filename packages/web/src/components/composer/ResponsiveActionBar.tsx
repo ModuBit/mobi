@@ -201,7 +201,7 @@ export function ResponsiveActionBar(props: ResponsiveActionBarProps) {
           <div key={item.key}>{item.render()}</div>
         ))}
         {hiddenItems.length > 0 && dropdownContent && (
-          <Dropdown dropdownRender={() => dropdownContent} placement="topLeft">
+          <Dropdown popupRender={() => dropdownContent} placement="topLeft">
             {moreButton()}
           </Dropdown>
         )}
