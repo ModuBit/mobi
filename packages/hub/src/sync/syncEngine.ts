@@ -43,6 +43,7 @@ export type {
     RpcListDirectoryResponse,
     RpcPathExistsResponse,
     RpcReadFileResponse,
+    RpcRefreshMetadataResponse,
     RpcUploadFileResponse
 } from './rpcGateway'
 
@@ -464,6 +465,26 @@ export class SyncEngine {
 
     async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
         return await this.rpcGateway.listMachineDirectory(machineId, path, homeDir)
+    }
+
+    async machineUploadFile(machineId: string, cwd: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
+        return await this.rpcGateway.machineUploadFile(machineId, cwd, filename, content, mimeType)
+    }
+
+    async machineDeleteUpload(machineId: string, cwd: string, path: string): Promise<RpcDeleteUploadResponse> {
+        return await this.rpcGateway.machineDeleteUpload(machineId, cwd, path)
+    }
+
+    async machineSearchFiles(machineId: string, cwd: string, query: string): Promise<RpcListDirectoryResponse> {
+        return await this.rpcGateway.machineSearchFiles(machineId, cwd, query)
+    }
+
+    async machineListSessionDirectory(machineId: string, cwd: string, path: string): Promise<RpcListDirectoryResponse> {
+        return await this.rpcGateway.machineListSessionDirectory(machineId, cwd, path)
+    }
+
+    async machineRefreshMetadata(machineId: string, cwd: string): Promise<RpcRefreshMetadataResponse> {
+        return await this.rpcGateway.machineRefreshMetadata(machineId, cwd)
     }
 
     async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {

@@ -228,6 +228,31 @@ export class RpcGateway {
         return await this.machineRpc(machineId, 'list-directory', { path, homeDir }) as RpcListDirectoryResponse
     }
 
+    // 文件上传到 machine 指定目录
+    async machineUploadFile(machineId: string, cwd: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
+        return await this.machineRpc(machineId, 'uploadFile', { cwd, filename, content, mimeType }) as RpcUploadFileResponse
+    }
+
+    // 删除 machine 上的已上传文件
+    async machineDeleteUpload(machineId: string, cwd: string, path: string): Promise<RpcDeleteUploadResponse> {
+        return await this.machineRpc(machineId, 'deleteUpload', { cwd, path }) as RpcDeleteUploadResponse
+    }
+
+    // 在 machine 上搜索文件
+    async machineSearchFiles(machineId: string, cwd: string, query: string): Promise<RpcListDirectoryResponse> {
+        return await this.machineRpc(machineId, 'searchSessionFiles', { cwd, query }) as RpcListDirectoryResponse
+    }
+
+    // 列出 machine 会话目录
+    async machineListSessionDirectory(machineId: string, cwd: string, path: string): Promise<RpcListDirectoryResponse> {
+        return await this.machineRpc(machineId, 'listSessionDirectory', { cwd, path }) as RpcListDirectoryResponse
+    }
+
+    // 刷新 machine 上的会话元数据
+    async machineRefreshMetadata(machineId: string, cwd: string): Promise<RpcRefreshMetadataResponse> {
+        return await this.machineRpc(machineId, 'refreshMetadata', { cwd }) as RpcRefreshMetadataResponse
+    }
+
     async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
         return await this.sessionRpc(sessionId, 'uploadFile', { sessionId, filename, content, mimeType }) as RpcUploadFileResponse
     }

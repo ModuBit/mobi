@@ -18,6 +18,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
+import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
@@ -155,6 +156,201 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json(result)
         } catch (error) {
             return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list directory' }, 500)
+        }
+    })
+
+    // 刷新 machine 上的会话元数据
+    app.get('/machines/:id/metadata', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        const cwd = c.req.query('cwd')
+        if (!cwd) {
+            return c.json({ error: 'cwd parameter is required' }, 400)
+        }
+
+        // 安全校验：cwd 必须在 homeDir 内
+        const homeDir = machine.metadata?.homeDir
+        if (homeDir) {
+            const validation = validateHomeDirPath(cwd, homeDir)
+            if (!validation.valid) {
+                return c.json({ error: validation.error }, 403)
+            }
+        }
+
+        try {
+            const result = await engine.machineRefreshMetadata(machineId, cwd)
+            return c.json({ success: true, metadata: result.metadata ?? {} })
+        } catch (error) {
+            return c.json({ error: error instanceof Error ? error.message : 'Failed to refresh metadata' }, 500)
+        }
+    })
+
+    // 文件上传到 machine 指定目录
+    app.post('/machines/:id/upload', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        const body = await c.req.parseBody()
+        const cwd = typeof body.cwd === 'string' ? body.cwd : ''
+        if (!cwd) {
+            return c.json({ error: 'cwd field is required' }, 400)
+        }
+
+        // 安全校验：cwd 必须在 homeDir 内
+        const homeDir = machine.metadata?.homeDir
+        if (homeDir) {
+            const validation = validateHomeDirPath(cwd, homeDir)
+            if (!validation.valid) {
+                return c.json({ error: validation.error }, 403)
+            }
+        }
+
+        const file = body.file
+        if (!file || !(file instanceof File)) {
+            return c.json({ error: 'file field is required' }, 400)
+        }
+
+        if (file.size > MAX_UPLOAD_BYTES) {
+            return c.json({ error: 'File too large' }, 413)
+        }
+
+        const filename = file.name
+        const mimeType = file.type || 'application/octet-stream'
+        const arrayBuffer = await file.arrayBuffer()
+        const base64Content = Buffer.from(arrayBuffer).toString('base64')
+
+        try {
+            const result = await engine.machineUploadFile(machineId, cwd, filename, base64Content, mimeType)
+            return c.json(result)
+        } catch (error) {
+            return c.json({ error: error instanceof Error ? error.message : 'Failed to upload file' }, 500)
+        }
+    })
+
+    // 删除 machine 上的已上传文件
+    app.post('/machines/:id/upload/delete', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        const body = await c.req.json().catch(() => null) as { path?: string; cwd?: string } | null
+        if (!body?.path || !body?.cwd) {
+            return c.json({ error: 'path and cwd fields are required' }, 400)
+        }
+
+        // 安全校验：cwd 必须在 homeDir 内
+        const homeDir = machine.metadata?.homeDir
+        if (homeDir) {
+            const validation = validateHomeDirPath(body.cwd, homeDir)
+            if (!validation.valid) {
+                return c.json({ error: validation.error }, 403)
+            }
+        }
+
+        try {
+            const result = await engine.machineDeleteUpload(machineId, body.cwd, body.path)
+            return c.json(result)
+        } catch (error) {
+            return c.json({ error: error instanceof Error ? error.message : 'Failed to delete upload' }, 500)
+        }
+    })
+
+    // 在 machine 上搜索文件
+    app.get('/machines/:id/search-files', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        const cwd = c.req.query('cwd')
+        const query = c.req.query('query')
+        if (!cwd) {
+            return c.json({ error: 'cwd parameter is required' }, 400)
+        }
+        if (!query) {
+            return c.json({ error: 'query parameter is required' }, 400)
+        }
+
+        // 安全校验：cwd 必须在 homeDir 内
+        const homeDir = machine.metadata?.homeDir
+        if (homeDir) {
+            const validation = validateHomeDirPath(cwd, homeDir)
+            if (!validation.valid) {
+                return c.json({ error: validation.error }, 403)
+            }
+        }
+
+        try {
+            const result = await engine.machineSearchFiles(machineId, cwd, query)
+            return c.json(result)
+        } catch (error) {
+            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to search files' }, 500)
+        }
+    })
+
+    // 列出 machine 会话目录
+    app.get('/machines/:id/list-session-directory', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        const cwd = c.req.query('cwd')
+        const path = c.req.query('path') ?? ''
+        if (!cwd) {
+            return c.json({ error: 'cwd parameter is required' }, 400)
+        }
+
+        // 安全校验：cwd 必须在 homeDir 内
+        const homeDir = machine.metadata?.homeDir
+        if (homeDir) {
+            const validation = validateHomeDirPath(cwd, homeDir)
+            if (!validation.valid) {
+                return c.json({ error: validation.error }, 403)
+            }
+        }
+
+        try {
+            const result = await engine.machineListSessionDirectory(machineId, cwd, path)
+            return c.json(result)
+        } catch (error) {
+            return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list session directory' }, 500)
         }
     })
 
