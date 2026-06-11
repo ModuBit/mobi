@@ -15,17 +15,19 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { App, Button, Tooltip, Select, Spin, Popover, theme as antTheme } from 'antd'
+import { App, Button, Input, Tooltip, Select, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
 import { Sender } from '@ant-design/x'
-import { PlusOutlined, InboxOutlined, SafetyOutlined, RightOutlined } from '@ant-design/icons'
+import { PlusOutlined, InboxOutlined, SafetyOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
-import { EFFORT_LEVELS, EFFORT_LABELS, PERMISSION_MODES, PERMISSION_MODE_LABELS } from '@mobi/shared'
+import { EFFORT_LEVELS, EFFORT_LABELS, getPermissionModeOptionsForFlavor, getPermissionModeTone } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
+import { useRecentPaths } from '@/components/session/useRecentPaths'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from '@/components/composer/useDirectoryCommands'
 import { useAttachmentHandling } from '@/components/composer/useAttachmentHandling'
@@ -38,7 +40,7 @@ import { ResponsiveActionBar, type ActionItem } from '@/components/composer/Resp
 import { EnvironmentBar, extractProjectName } from '@/components/composer/EnvironmentBar'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
-import { type AgentType, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
+import { type AgentType, type SessionType, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import {
     loadPreferredAgent,
     savePreferredAgent,
@@ -59,14 +61,14 @@ const { useToken } = antTheme
 
 /* ========== 常量 ========== */
 
-const PERMISSION_OPTIONS = PERMISSION_MODES.map(m => ({
-    value: m,
-    label: PERMISSION_MODE_LABELS[m],
-}))
-
-const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
+const AGENT_OPTIONS: { value: AgentType; label: string; disabled?: boolean }[] = [
     { value: 'claude', label: 'Claude Code' },
-    { value: 'codex', label: 'Codex' },
+    { value: 'codex', label: 'Codex', disabled: true },
+]
+
+const SESSION_TYPE_OPTIONS: { value: SessionType; label: string }[] = [
+    { value: 'simple', label: '普通' },
+    { value: 'worktree', label: 'Worktree' },
 ]
 
 const ACTION_BUTTON_STYLE: React.CSSProperties = {
@@ -93,7 +95,7 @@ function useCompactDropdownStyle() {
 .${COMPACT_DROPDOWN_CLASS} .ant-select-item-option { font-size: 12px !important; padding: 4px 8px !important; min-height: auto !important; }
 .${COMPACT_DROPDOWN_CLASS} { max-width: 100vw !important; }
 @media (max-width: 640px) {
-    .${MODEL_DROPDOWN_CLASS} { right: auto !important; left: 12px !important; max-width: calc(100vw - 24px) !important; }
+    .${MODEL_DROPDOWN_CLASS} { left: 12px !important; right: 12px !important; max-width: calc(100vw - 24px) !important; }
 }
 .effort-popover .ant-popover-container { padding: 4px 0 !important; }
 .effort-popover .ant-popover-arrow { display: none !important; }
@@ -132,11 +134,26 @@ const ContentWrapper = styled.div`
 
 const TitleBar = styled.div<{ $color: string }>`
     text-align: center;
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 500;
     color: ${props => props.$color};
     line-height: 1.4;
-    margin-bottom: 32px;
+    margin-bottom: 24px;
+`
+
+const InputCard = styled.div`
+    background: var(--ant-color-fill-tertiary);
+    border: 1px solid var(--ant-color-border-secondary);
+    border-radius: var(--ant-border-radius-lg, 12px);
+    padding: 8px;
+
+    /* Sender 在卡片内：白色背景 + 圆角，形成卡中卡 */
+    && .ant-sender {
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: var(--ant-border-radius, 8px) !important;
+        background: var(--ant-color-bg-container) !important;
+    }
 `
 
 const HoverSelect = styled(Select, {
@@ -230,6 +247,7 @@ function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
  * 两行 Sender 布局：Row 1 = 环境选择 | Row 2 = 配置 + 操作
  */
 export function NewSessionPage() {
+    const { t } = useTranslation()
     const { token } = useToken()
     const { message: messageApi } = App.useApp()
     const navigate = useNavigate()
@@ -246,8 +264,13 @@ export function NewSessionPage() {
     // 环境配置
     const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null)
     const [selectedDirectory, setSelectedDirectory] = useState('')
+    const [sessionType, setSessionType] = useState<SessionType>('simple')
+    const [worktreeName, setWorktreeName] = useState('')
     const [inputText, setInputText] = useState('')
     const [isPending, setIsPending] = useState(false)
+
+    // 延迟加载 metadata：首次输入 '/' 时才请求，避免每输入一个目录字符就触发 metadata 请求
+    const [metadataNeeded, setMetadataNeeded] = useState(false)
 
     // effort popover 状态
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
@@ -255,12 +278,36 @@ export function NewSessionPage() {
     // 数据
     const { machines, isLoading: isLoadingMachines } = useMachines()
     const { spawnSession } = useSpawnSession()
-    const { options: directoryOptions } = useMachineDirectoryListing(
+    const { getRecentPaths, addRecentPath, getLastUsedMachineId, setLastUsedMachineId } = useRecentPaths()
+    const activeMachines = machines.filter(m => m.active)
+
+    // 当前选中机器的 homeDir
+    const currentMachine = machines.find(m => m.id === selectedMachineId)
+    const machineHomeDir = currentMachine?.metadata?.homeDir as string | undefined
+
+    const { options: directoryOptions, isLoading: isDirectoryLoading } = useMachineDirectoryListing(
         selectedMachineId,
         selectedDirectory,
+        machineHomeDir,
     )
 
-    const activeMachines = machines.filter(m => m.active)
+    // 当前机器的最近路径
+    const recentPaths = useMemo(() => getRecentPaths(selectedMachineId), [getRecentPaths, selectedMachineId])
+
+    // 初始化机器选择（自动选择上次使用的机器）
+    useEffect(() => {
+        if (activeMachines.length === 0) return
+        if (selectedMachineId && activeMachines.find(m => m.id === selectedMachineId)) return
+        const lastUsed = getLastUsedMachineId()
+        const foundLast = lastUsed ? activeMachines.find(m => m.id === lastUsed) : null
+        if (foundLast) {
+            setSelectedMachineId(foundLast.id)
+            const paths = getRecentPaths(foundLast.id)
+            if (paths[0]) setSelectedDirectory(paths[0])
+        } else if (activeMachines[0]) {
+            setSelectedMachineId(activeMachines[0].id)
+        }
+    }, [activeMachines, selectedMachineId, getLastUsedMachineId, getRecentPaths])
 
     // 能力目标（基于 machine + cwd），useMemo 保证引用稳定，避免下游 useEffect 无限循环
     const capTarget = useMemo<CapabilityTarget | null>(() => {
@@ -268,7 +315,7 @@ export function NewSessionPage() {
             ? { kind: 'machine', machineId: selectedMachineId, cwd: selectedDirectory }
             : null
     }, [selectedMachineId, selectedDirectory])
-    const capabilities = useDirectoryCapabilities(capTarget)
+    const capabilities = useDirectoryCapabilities(capTarget, { metadataEnabled: metadataNeeded })
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
     // 附件管理（共享 hook）
@@ -351,6 +398,11 @@ export function NewSessionPage() {
     const handleChange = useCallback((value: string) => {
         setInputText(value)
 
+        // 首次输入 '/' 时触发 metadata 加载（slash commands 需要）
+        if (value.includes('/') && !metadataNeeded) {
+            setMetadataNeeded(true)
+        }
+
         const textarea = wrapperRef.current?.querySelector('textarea')
         const cursorPos = textarea?.selectionStart ?? value.length
 
@@ -365,7 +417,7 @@ export function NewSessionPage() {
             return
         }
         mention.close()
-    }, [mention, slash])
+    }, [mention, slash, metadataNeeded])
 
     // Tab 键选中
     const textRef = useRef(inputText)
@@ -460,6 +512,8 @@ export function NewSessionPage() {
                 model: model === 'auto' ? undefined : model,
                 effort,
                 yolo: permissionMode === 'bypassPermissions',
+                sessionType,
+                worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
             }
 
             const result = await spawnSession(input)
@@ -470,6 +524,14 @@ export function NewSessionPage() {
             }
 
             const sessionId = result.sessionId
+
+            // 记录最近使用的机器和路径
+            if (selectedMachineId) {
+                setLastUsedMachineId(selectedMachineId)
+                if (selectedDirectory.trim()) {
+                    addRecentPath(selectedMachineId, selectedDirectory.trim())
+                }
+            }
 
             // 有内容时发送消息
             if (currentText || currentAttachments.length > 0) {
@@ -497,28 +559,20 @@ export function NewSessionPage() {
         }
     }, [
         selectedMachineId, selectedDirectory, isPending,
-        agent, model, effort, permissionMode,
+        agent, model, effort, permissionMode, sessionType, worktreeName,
         spawnSession, navigate, messageApi, api.messages,
+        setLastUsedMachineId, addRecentPath,
     ])
 
-    // ============ 按钮文案 ============
-    const submitLabel = !gatePassed
-        ? '请先选择机器和目录'
-        : hasContent
-            ? '发送 ↑'
-            : '创建'
-
-    // ============ 机器选项 ============
-    const machineOptions = activeMachines.map(m => ({
-        value: m.id,
-        label: m.metadata?.displayName || m.metadata?.host || m.id,
-    }))
+    // ============ 按钮状态 ============
+    const canSubmit = gatePassed && !isPending
 
     // ============ model + effort 合并选择 ============
     const modelSelectOptions = useMemo(() => {
         return CLAUDE_MODEL_FALLBACK.map(opt => ({
             value: opt.value,
             label: opt.displayName,
+            description: opt.description,
         }))
     }, [])
 
@@ -531,39 +585,39 @@ export function NewSessionPage() {
         if (v !== model) setModel(v)
     }, [model])
 
-    // permission mode 选项（带颜色）
+    // permission mode 选项（带颜色 + 国际化，同 ChatComposer）
+    const permissionModeOptions = useMemo(
+        () => getPermissionModeOptionsForFlavor(),
+        []
+    )
     const permissionSelectOptions = useMemo(
-        () => PERMISSION_OPTIONS.map(opt => {
-            const mode = opt.value as PermissionMode
-            const tone = mode !== 'default' ? (
-                mode === 'bypassPermissions' ? 'danger' : 'warning'
-            ) : null
-            const color = tone ? getPermissionModeColor(token, tone) : undefined
+        () => permissionModeOptions.map(opt => {
+            const color = opt.tone !== 'neutral'
+                ? getPermissionModeColor(token, opt.tone)
+                : undefined
             return {
-                value: opt.value,
+                value: opt.mode,
                 label: color
-                    ? <span style={{ color }}>{opt.label}</span>
-                    : opt.label,
+                    ? <span style={{ color }}>{t(`composer.permissionModes.${opt.mode}`)}</span>
+                    : t(`composer.permissionModes.${opt.mode}`),
             }
         }),
-        [token]
+        [permissionModeOptions, t, token]
     )
 
-    const permissionModeTone = permissionMode !== 'default' ? (
-        permissionMode === 'bypassPermissions' ? 'danger' : 'warning'
-    ) : null
+    const permissionModeTone = permissionMode !== 'default' ? getPermissionModeTone(permissionMode) : null
     const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
 
     // ============ ActionItems ============
 
-    // Row 2: 配置 + 操作
-    const row2Items: ActionItem[] = useMemo(() => [
+    // Sender footer（内部）：attach + permission + model（同 ChatComposer）
+    const footerItems: ActionItem[] = useMemo(() => [
         // 附件按钮
         {
             key: 'attach',
-            label: '附件',
+            label: t('composer.attach'),
             render: () => (
-                <Tooltip title="添加附件">
+                <Tooltip title={t('composer.attach')}>
                     <Button
                         type="text"
                         size="small"
@@ -575,25 +629,24 @@ export function NewSessionPage() {
                 </Tooltip>
             ),
         },
-        // Agent 选择
+        // 权限模式
         {
-            key: 'agent',
-            label: 'Agent',
+            key: 'permission',
             render: () => (
                 <CompactHoverSelect
                     $token={token}
-                    prefix={<Cpu size={12} style={{ opacity: 0.55 }} />}
-                    value={agent}
-                    onChange={v => setAgent(v as AgentType)}
+                    prefix={<SafetyOutlined style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
+                    value={permissionMode}
+                    onChange={v => setPermissionMode(v as PermissionMode)}
                     disabled={inputDisabled}
-                    options={AGENT_OPTIONS.map(a => ({ value: a.value, label: a.label }))}
+                    options={permissionSelectOptions}
+                    style={{ color: permissionModeColor }}
                 />
             ),
         },
         // Model + Effort 选择
         {
             key: 'model',
-            label: '模型',
             render: () => (
                 <CompactHoverSelect
                     $token={token}
@@ -604,11 +657,21 @@ export function NewSessionPage() {
                     options={modelSelectOptions}
                     classNames={{ popup: { root: MODEL_DROPDOWN_CLASS } }}
                     optionRender={(option) => {
+                        const desc = (option.data as { description?: string })?.description
                         const modelValue = option.value as string
                         return (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
                                     <span>{option.label}</span>
+                                    {desc && (
+                                        <Typography.Text
+                                            type="secondary"
+                                            ellipsis={{ tooltip: desc }}
+                                            style={{ fontSize: 11, lineHeight: '16px' }}
+                                        >
+                                            {desc}
+                                        </Typography.Text>
+                                    )}
                                 </div>
                                 <Popover
                                     open={effortPopoverModel === modelValue}
@@ -646,28 +709,78 @@ export function NewSessionPage() {
                 />
             ),
         },
-        // 权限模式（overflow 项）
-        {
-            key: 'permission',
-            label: '权限',
-            render: () => (
-                <CompactHoverSelect
-                    $token={token}
-                    prefix={<SafetyOutlined style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
-                    value={permissionMode}
-                    onChange={v => setPermissionMode(v as PermissionMode)}
-                    disabled={inputDisabled}
-                    options={permissionSelectOptions}
-                    style={{ color: permissionModeColor }}
-                />
-            ),
-        },
     ], [
-        token, inputDisabled, agent, model, effort, permissionMode,
+        t, token, inputDisabled, effort, model, permissionMode,
         permissionModeColor, permissionSelectOptions, modelSelectOptions,
         handleAttach, handleModelSelect, handleModelEffortSelect, hasFinePointer,
         effortPopoverModel,
     ])
+
+    // SubBar（Sender 下方抽屉）：次要配置项
+    const subBarItems: ActionItem[] = useMemo(() => [
+        // Agent 选择（Codex disabled）
+        {
+            key: 'agent',
+            label: 'Agent',
+            render: () => (
+                <CompactHoverSelect
+                    $token={token}
+                    prefix={<Cpu size={12} style={{ opacity: 0.55 }} />}
+                    value={agent}
+                    onChange={v => setAgent(v as AgentType)}
+                    disabled={inputDisabled}
+                    options={AGENT_OPTIONS.map(a => ({ value: a.value, label: a.label, disabled: a.disabled }))}
+                />
+            ),
+        },
+        // 会话类型 + Worktree 名称（合并为一个 Popover item）
+        {
+            key: 'sessionType',
+            label: t('newSession.sessionType'),
+            render: () => (
+                <Popover
+                    trigger={['click']}
+                    placement="topLeft"
+                    content={
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 180 }}>
+                            <Segmented
+                                value={sessionType}
+                                onChange={v => setSessionType(v as SessionType)}
+                                options={SESSION_TYPE_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+                                size="small"
+                                block
+                            />
+                            {sessionType === 'worktree' && (
+                                <Input
+                                    size="small"
+                                    placeholder={t('newSession.worktreeNamePlaceholder')}
+                                    value={worktreeName}
+                                    onChange={e => setWorktreeName(e.target.value)}
+                                    autoFocus
+                                />
+                            )}
+                        </div>
+                    }
+                >
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<BranchesOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
+                        disabled={inputDisabled}
+                        style={{
+                            ...ACTION_BUTTON_STYLE,
+                            fontSize: 12,
+                            padding: '0 8px',
+                        }}
+                    >
+                        {sessionType === 'worktree'
+                            ? (worktreeName ? `Worktree: ${worktreeName}` : 'Worktree')
+                            : t('newSession.simpleSession')}
+                    </Button>
+                </Popover>
+            ),
+        },
+    ], [token, t, inputDisabled, agent, sessionType, worktreeName])
 
     // ============ Sender header ============
     const headerNodes = [
@@ -685,22 +798,6 @@ export function NewSessionPage() {
         ),
     ].filter(Boolean)
 
-    // ============ 提交按钮渲染 ============
-    const renderSubmitButton = useCallback((_oriNode: React.ReactNode) => {
-        return (
-            <Button
-                type="primary"
-                size="small"
-                loading={isPending}
-                disabled={!gatePassed || isPending}
-                onClick={() => handleSubmit()}
-                style={{ borderRadius: token.borderRadiusSM, fontSize: 12 }}
-            >
-                {submitLabel}
-            </Button>
-        )
-    }, [gatePassed, isPending, submitLabel, handleSubmit, token.borderRadiusSM])
-
     // ============ 加载中 ============
     if (isLoadingMachines) {
         return (
@@ -717,10 +814,11 @@ export function NewSessionPage() {
                 <MobileMenuButton />
             </SidebarToggleWrapper>
             <ContentWrapper>
-                <TitleBar $color={token.colorText}>
+                <TitleBar $color={token.colorTextSecondary}>
                     {title}
                 </TitleBar>
 
+                <InputCard>
                 <div
                     ref={wrapperRef}
                     style={{ position: 'relative' }}
@@ -730,24 +828,23 @@ export function NewSessionPage() {
                     onDrop={inputDisabled ? undefined : handleDrop}
                 >
                     <EnvironmentBar
-                        machineOptions={machineOptions}
+                        machines={machines}
+                        isLoading={isLoadingMachines}
                         selectedMachineId={selectedMachineId}
                         onMachineChange={setSelectedMachineId}
-                        directoryOptions={directoryOptions.map(d => ({
-                            value: d.value,
-                            label: d.label,
-                        }))}
+                        directoryOptions={directoryOptions}
+                        isDirectoryLoading={isDirectoryLoading}
                         selectedDirectory={selectedDirectory}
                         onDirectoryChange={setSelectedDirectory}
+                        recentPaths={recentPaths}
+                        machineHomeDir={machineHomeDir}
+                        disabled={false}
                     />
                     <Sender
                         value={inputText}
                         onChange={handleChange}
                         onSubmit={() => {
-                            // 有内容时才通过 Enter 提交
-                            if (hasContent && gatePassed && !isPending) {
-                                handleSubmit()
-                            }
+                            if (hasContent && canSubmit) handleSubmit()
                         }}
                         submitType={hasFinePointer ? 'enter' : 'shiftEnter'}
                         placeholder="随心输入..."
@@ -757,29 +854,41 @@ export function NewSessionPage() {
                         onKeyDown={handleKeyDown}
                         onPaste={inputDisabled ? undefined : handlePaste}
                         header={headerNodes.length > 0 ? headerNodes : null}
-                        style={{ background: 'var(--ant-color-bg-container)' }}
+                        style={{
+                            position: 'relative',
+                            zIndex: 1,
+                        }}
                         suffix={false}
-                        footer={(oriNode) => (
-                            <div>
-                                {/* 配置 + 操作 */}
-                                <div style={{
-                                    padding: '6px 12px 8px',
-                                    margin: '0 4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                }}>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <ResponsiveActionBar
-                                            items={row2Items}
-                                            gap={4}
-                                            suffix={renderSubmitButton(oriNode)}
+                        footer={(_oriNode, { components: { SendButton } }) => (
+                            <ResponsiveActionBar
+                                items={footerItems}
+                                gap={4}
+                                suffix={
+                                    hasContent ? (
+                                        <SendButton disabled={!canSubmit} />
+                                    ) : (
+                                        <SendButton
+                                            disabled={!canSubmit}
+                                            icon={<PlusOutlined />}
+                                            onClick={() => { if (canSubmit) handleSubmit() }}
                                         />
-                                    </div>
-                                </div>
-                            </div>
+                                    )
+                                }
+                            />
                         )}
                     />
+
+                    {/* SubBar：配置抽屉，从 Sender 底部滑出 */}
+                    <div style={{
+                        padding: '6px 6px 4px',
+                        position: 'relative',
+                        zIndex: 0,
+                    }}>
+                        <ResponsiveActionBar
+                            items={subBarItems}
+                            gap={4}
+                        />
+                    </div>
 
                     {/* @ 文件引用下拉 */}
                     {mention.isOpen && (
@@ -843,6 +952,7 @@ export function NewSessionPage() {
                         </div>
                     )}
                 </div>
+                </InputCard>
             </ContentWrapper>
         </PageContainer>
     )

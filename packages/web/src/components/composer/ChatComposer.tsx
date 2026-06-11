@@ -83,6 +83,21 @@ function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null
     return wrapper?.querySelector('textarea') ?? null
 }
 
+// Dock 容器：包裹整个 Composer 区域，和 BubbleList 形成视觉分隔
+const ComposerDock = styled.div`
+    background: var(--ant-color-fill-quaternary);
+    border-radius: var(--ant-border-radius-lg, 12px);
+    padding: 8px;
+
+    /* Sender 在 Dock 内：白色背景 + 圆角，卡中卡效果 */
+    && .ant-sender {
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: var(--ant-border-radius, 8px) !important;
+        background: var(--ant-color-bg-container) !important;
+    }
+`
+
 // 带 filled 背景的紧凑 Select
 const HoverSelect = styled(Select, {
     shouldForwardProp: shouldNotForwardDollarProps,
@@ -551,6 +566,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
     return (
         <div style={{ padding: '0 12px 12px' }}>
+            <ComposerDock>
             {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel
                 sessionId={sessionId}
@@ -601,7 +617,6 @@ export function ChatComposer(props: ChatComposerProps) {
                     style={hasSubBar ? {
                         position: 'relative',
                         zIndex: 1,
-                        background: 'var(--ant-color-bg-container)',
                     } : undefined}
                     footer={(oriNode) => (
                         <ResponsiveActionBar
@@ -715,12 +730,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 {/* Sub Bar：Sender 下方次要操作，宽度不够时自动收起 */}
                 {hasSubBar && (
                     <div style={{
-                        background: 'var(--ant-color-fill-tertiary)',
-                        borderBottomLeftRadius: 'var(--ant-border-radius, 8px)',
-                        borderBottomRightRadius: 'var(--ant-border-radius, 8px)',
-                        // marginTop 需覆盖 Sender 底部圆角区域，与 Sender 的 borderRadius 保持一致
-                        padding: '16px 6px 6px',
-                        margin: '-12px 6px 0',
+                        padding: '6px 6px 4px',
                         position: 'relative',
                         zIndex: 0,
                     }}>
@@ -871,6 +881,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     </div>
                 )}
             </div>
+            </ComposerDock>
         </div>
     )
 }

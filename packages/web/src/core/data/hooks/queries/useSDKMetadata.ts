@@ -28,7 +28,7 @@ export type { SDKMetadata, ModelOption, Command, AgentInfo, AccountInfo } from '
  * 打开 session detail 后请求一次，缓存在 TanStack Query 中，
  * 其他 hook（useCommands）通过 select 派生。
  */
-export function useSDKMetadata(sessionId: string | null) {
+export function useSDKMetadata(sessionId: string | null, enabled: boolean = true) {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
 
@@ -40,7 +40,7 @@ export function useSDKMetadata(sessionId: string | null) {
             const res = await api.sessions.metadata(sessionId)
             return (res.data as SDKMetadataResponse | undefined)?.metadata ?? null
         },
-        enabled: !!token && !!sessionId,
+        enabled: !!token && !!sessionId && enabled,
         staleTime: 60_000,
     })
 }

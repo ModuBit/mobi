@@ -23,8 +23,12 @@ import type { SDKMetadata, SDKMetadataResponse } from '@/core/data/api/types'
 /**
  * 通过 machine 通道获取 SDK metadata（无需活跃 session）
  * 选定目录后预取，staleTime 长缓存
+ *
+ * @param enabled 是否启用查询，默认 true。
+ *   NewSessionPage 中可延迟到用户首次输入 '/' 时再启用，
+ *   避免每输入一个目录字符就触发 metadata 请求
  */
-export function useMachineMetadata(machineId: string | null, cwd: string | null) {
+export function useMachineMetadata(machineId: string | null, cwd: string | null, enabled: boolean = true) {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
 
@@ -35,7 +39,7 @@ export function useMachineMetadata(machineId: string | null, cwd: string | null)
             const res = await api.machines.metadata(machineId, cwd)
             return (res.data as SDKMetadataResponse | undefined)?.metadata ?? null
         },
-        enabled: !!token && !!machineId && !!cwd,
+        enabled: !!token && !!machineId && !!cwd && enabled,
         staleTime: 5 * 60_000,
     })
 }

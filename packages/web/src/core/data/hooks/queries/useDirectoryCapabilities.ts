@@ -46,16 +46,28 @@ export interface DirectoryCapabilities {
  * 资源定位抽象 hook
  * 根据 CapabilityTarget 自动路由到 session 或 machine 通道，
  * 返回统一的 DirectoryCapabilities 接口
+ *
+ * @param options.metadataEnabled 是否启用 metadata 查询（含 commands），
+ *   默认 true。NewSessionPage 中可延迟到用户首次输入 '/' 时再启用，
+ *   避免每输入一个目录字符就触发 metadata 请求
  */
-export function useDirectoryCapabilities(target: CapabilityTarget | null): DirectoryCapabilities {
+export function useDirectoryCapabilities(
+    target: CapabilityTarget | null,
+    options?: { metadataEnabled?: boolean },
+): DirectoryCapabilities {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
+    const metadataEnabled = options?.metadataEnabled ?? true
 
     // 选择正确的 metadata 通道
-    const sessionMeta = useSDKMetadata(target?.kind === 'session' ? target.sessionId : null)
+    const sessionMeta = useSDKMetadata(
+        target?.kind === 'session' ? target.sessionId : null,
+        metadataEnabled,
+    )
     const machineMeta = useMachineMetadata(
         target?.kind === 'machine' ? target.machineId : null,
         target?.kind === 'machine' ? target.cwd : null,
+        metadataEnabled,
     )
 
     const metadata = target?.kind === 'session'
