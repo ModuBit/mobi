@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useEffect, useRef, useState } from 'react'
 import { AutoComplete, Select, Tag, Tooltip, theme } from 'antd'
 import { DesktopOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
 import { parsePrefixInput, type DirectoryOption } from '@/components/session/useMachineDirectoryListing'
@@ -132,12 +133,16 @@ interface EnvironmentBarProps {
     isDirectoryLoading?: boolean
     /** 当前选中的目录 */
     selectedDirectory: string
-    /** 目录选择变更 */
+    /** 目录选择变更（输入过程中实时触发） */
     onDirectoryChange: (dir: string) => void
+    /** 目录确认（blur / 点击最近路径等明确选定动作） */
+    onDirectoryConfirm?: (dir: string) => void
     /** 最近使用路径 */
     recentPaths: string[]
     /** 机器 homeDir */
     machineHomeDir?: string
+    /** 移除最近路径 */
+    onRemoveRecentPath?: (path: string) => void
     /** 是否禁用 */
     disabled?: boolean
 }
@@ -160,12 +165,25 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
         isDirectoryLoading = false,
         selectedDirectory,
         onDirectoryChange,
+        onDirectoryConfirm,
         recentPaths,
         machineHomeDir,
+        onRemoveRecentPath,
         disabled = false,
     } = props
 
     const activeMachines = machines.filter(m => m.active !== false)
+
+    // 目录下拉受控：选中目录后子目录加载完成时自动展开
+    const [directoryOpen, setDirectoryOpen] = useState(false)
+    const pendingOpenRef = useRef(false)
+
+    useEffect(() => {
+        if (pendingOpenRef.current && directoryOptions.length > 0) {
+            pendingOpenRef.current = false
+            setDirectoryOpen(true)
+        }
+    }, [directoryOptions])
 
     // AutoComplete 选项
     const autoCompleteOptions = buildDirectoryAutoCompleteOptions(
@@ -222,12 +240,31 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
             }}>
                 <FolderOutlined style={{ color: token.colorTextQuaternary, fontSize: 12, flexShrink: 0 }} />
                 <AutoComplete
+                    open={directoryOpen && autoCompleteOptions.length > 0}
+                    onOpenChange={(open) => {
+                        // 选中子目录后 Ant Design 自动关闭 dropdown，
+                        // 但用户可能继续选子目录，等新 options 加载后再展开
+                        if (!open && pendingOpenRef.current) return
+                        setDirectoryOpen(open)
+                    }}
                     options={autoCompleteOptions}
                     placeholder="输入项目/目录路径"
                     value={selectedDirectory}
-                    onChange={onDirectoryChange}
+                    onChange={(value: string) => {
+                        onDirectoryChange(value)
+                        pendingOpenRef.current = false
+                    }}
                     onSelect={(value: string) => {
-                        onDirectoryChange(value.endsWith('/') ? value : `${value}/`)
+                        const dir = value.endsWith('/') ? value : `${value}/`
+                        onDirectoryChange(dir)
+                        pendingOpenRef.current = true
+                    }}
+                    onBlur={() => {
+                        pendingOpenRef.current = false
+                        setDirectoryOpen(false)
+                        if (selectedDirectory.trim()) {
+                            onDirectoryConfirm?.(selectedDirectory)
+                        }
                     }}
                     defaultActiveFirstOption
                     suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}
@@ -251,7 +288,15 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                         <Tooltip key={path} title={path} mouseEnterDelay={0.3}>
                             <Tag
                                 variant="filled"
-                                onClick={() => onDirectoryChange(path)}
+                                closable={!!onRemoveRecentPath}
+                                onClose={(e) => {
+                                    e.stopPropagation()
+                                    onRemoveRecentPath?.(path)
+                                }}
+                                onClick={() => {
+                                    onDirectoryChange(path)
+                                    onDirectoryConfirm?.(path)
+                                }}
                                 style={{
                                     cursor: 'pointer',
                                     fontSize: 11,

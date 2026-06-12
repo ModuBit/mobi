@@ -19,6 +19,16 @@
 | `src/constants/uploadPaths.ts` | 上传文件路径常量（`.mobi/uploads`） |
 | `src/modules/common/handlers/uploads.ts` | 文件上传/删除 RPC Handler |
 
+## 已知陷阱
+
+### BUN_INSPECT 导致 Claude Code 子进程异常退出
+
+VS Code Bun 调试器会注入 `BUN_INSPECT` / `BUN_INSPECT_NOTIFY` 环境变量。这些变量被子进程继承后，子进程尝试绑定同一调试 socket，导致 exit code 1。
+
+**症状**：SDK `query()` spawn 的 Claude Code 子进程报 `"Claude Code process exited with code 1"`，无其他有用信息。
+
+**解法**：所有通过 SDK 或 `spawn` 启动子进程的地方，必须用 `stripBunDebuggerEnv` 清理传给子进程的 env。参考 `spawnMobiCli.ts`、`metadataExtractor.ts`、`claudeRemote.ts`。
+
 ## 测试
 
 → [docs/conventions/testing.md](../../docs/conventions/testing.md)

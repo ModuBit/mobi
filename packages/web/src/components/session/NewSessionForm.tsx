@@ -277,7 +277,10 @@ export function NewSession(props: NewSessionProps) {
             <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />{t('newSession.workDirectory')}</>}>
                 <AutoComplete
                     open={directoryOpen && autoCompleteOptions.length > 0}
-                    onOpenChange={setDirectoryOpen}
+                    onOpenChange={(open) => {
+                        if (!open && pendingOpenRef.current) return
+                        setDirectoryOpen(open)
+                    }}
                     options={autoCompleteOptions}
                     placeholder={t('newSession.directoryPlaceholder')}
                     value={directory}
@@ -288,6 +291,10 @@ export function NewSession(props: NewSessionProps) {
                     onSelect={(value) => {
                         setDirectory(value.endsWith('/') ? value : `${value}/`)
                         pendingOpenRef.current = true
+                    }}
+                    onBlur={() => {
+                        pendingOpenRef.current = false
+                        setDirectoryOpen(false)
                     }}
                     defaultActiveFirstOption
                     suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}

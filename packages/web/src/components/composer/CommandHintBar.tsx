@@ -14,27 +14,57 @@
  * limitations under the License.
  */
 
+import styled from '@emotion/styled'
 import { theme } from 'antd'
 
+const HintWrapper = styled.div<{ $visible: boolean }>`
+    overflow: hidden;
+    max-height: ${({ $visible }) => ($visible ? '60px' : '0')};
+    opacity: ${({ $visible }) => ($visible ? 1 : 0)};
+    padding-top: ${({ $visible }) => ($visible ? '6px' : '0')};
+    padding-bottom: ${({ $visible }) => ($visible ? '6px' : '0')};
+    transition: max-height 0.2s ease, opacity 0.2s ease, padding 0.2s ease;
+`
+
 interface CommandHintBarProps {
+    /** 是否可见 */
+    visible: boolean
     /** 参数提示文本（如 <message>） */
-    hint: string
+    hint?: string
+    /** 命令描述 */
+    description?: string
 }
 
 /**
  * Slash Command 参数提示条
- * 在 Sender header 区域展示选中命令的参数提示
+ * 在 Sender header 区域展示选中命令的参数提示和描述
+ * 始终挂载，通过 visible 控制展开/收起动画
  */
-export function CommandHintBar({ hint }: CommandHintBarProps) {
+export function CommandHintBar({ visible, hint, description }: CommandHintBarProps) {
     const { token } = theme.useToken()
 
     return (
-        <div style={{
-            padding: '4px 16px',
+        <HintWrapper $visible={visible} style={{
+            paddingLeft: 16,
+            paddingRight: 16,
             fontSize: 12,
-            color: token.colorTextTertiary,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
         }}>
-            {hint}
-        </div>
+            {hint && (
+                <span style={{
+                    color: token.colorTextSecondary,
+                    fontFamily: 'monospace',
+                }}>
+                    {hint}
+                </span>
+            )}
+            {description && (
+                <span style={{ color: token.colorTextTertiary }}>
+                    {description}
+                </span>
+            )}
+        </HintWrapper>
     )
 }

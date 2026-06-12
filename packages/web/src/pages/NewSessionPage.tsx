@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from 'react'
 import { App, Button, Input, Tooltip, Select, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
 import { Sender } from '@ant-design/x'
 import { PlusOutlined, InboxOutlined, SafetyOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
@@ -35,6 +35,7 @@ import { useMentionInteraction } from '@/components/composer/useMentionInteracti
 import { useSlashCommandInteraction } from '@/components/composer/useSlashCommandInteraction'
 import { MentionDropdown } from '@/components/composer/MentionDropdown'
 import { SlashCommandDropdown } from '@/components/composer/SlashCommandDropdown'
+import { CommandHintBar } from '@/components/composer/CommandHintBar'
 import { AttachmentList } from '@/components/composer/AttachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/components/composer/ResponsiveActionBar'
 import { EnvironmentBar, extractProjectName } from '@/components/composer/EnvironmentBar'
@@ -269,6 +270,10 @@ export function NewSessionPage() {
     const [inputText, setInputText] = useState('')
     const [isPending, setIsPending] = useState(false)
 
+    // 确认的目录：只有在用户明确选定（blur / 点击标签 / 初始化恢复）时才更新，
+    // 用于 metadata 请求，避免输入过程中每字符触发
+    const [confirmedDirectory, setConfirmedDirectory] = useState('')
+
     // 延迟加载 metadata：首次输入 '/' 时才请求，避免每输入一个目录字符就触发 metadata 请求
     const [metadataNeeded, setMetadataNeeded] = useState(false)
 
@@ -278,7 +283,7 @@ export function NewSessionPage() {
     // 数据
     const { machines, isLoading: isLoadingMachines } = useMachines()
     const { spawnSession } = useSpawnSession()
-    const { getRecentPaths, addRecentPath, getLastUsedMachineId, setLastUsedMachineId } = useRecentPaths()
+    const { getRecentPaths, addRecentPath, removeRecentPath, getLastUsedMachineId, setLastUsedMachineId } = useRecentPaths()
     const activeMachines = machines.filter(m => m.active)
 
     // 当前选中机器的 homeDir
@@ -303,18 +308,21 @@ export function NewSessionPage() {
         if (foundLast) {
             setSelectedMachineId(foundLast.id)
             const paths = getRecentPaths(foundLast.id)
-            if (paths[0]) setSelectedDirectory(paths[0])
+            if (paths[0]) {
+                setSelectedDirectory(paths[0])
+                setConfirmedDirectory(paths[0])
+            }
         } else if (activeMachines[0]) {
             setSelectedMachineId(activeMachines[0].id)
         }
     }, [activeMachines, selectedMachineId, getLastUsedMachineId, getRecentPaths])
 
-    // 能力目标（基于 machine + cwd），useMemo 保证引用稳定，避免下游 useEffect 无限循环
+    // 能力目标：用 confirmedDirectory 避免输入过程触发 metadata
     const capTarget = useMemo<CapabilityTarget | null>(() => {
-        return (selectedMachineId && selectedDirectory)
-            ? { kind: 'machine', machineId: selectedMachineId, cwd: selectedDirectory }
+        return (selectedMachineId && confirmedDirectory)
+            ? { kind: 'machine', machineId: selectedMachineId, cwd: confirmedDirectory }
             : null
-    }, [selectedMachineId, selectedDirectory])
+    }, [selectedMachineId, confirmedDirectory])
     const capabilities = useDirectoryCapabilities(capTarget, { metadataEnabled: metadataNeeded })
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
@@ -355,18 +363,40 @@ export function NewSessionPage() {
     const hasAttachments = attachments.length > 0
     const inputDisabled = !gatePassed
 
-    // 动态标题
-    const projectName = selectedDirectory ? extractProjectName(selectedDirectory) : null
+    // 动态标题：只在目录确认后更新，避免输入过程中频繁闪动
+    const confirmedProjectName = confirmedDirectory ? extractProjectName(confirmedDirectory) : null
     const title = useMemo(() => {
-        const titles = projectName
-            ? [`我们想在 ${projectName} 中构建什么？`, `来聊聊 ${projectName} 吧`, `在 ${projectName} 中开始新对话`]
-            : ['你想做什么？', '有什么新想法？', '开始一段新对话']
-        return titles[Math.floor(Math.random() * titles.length)]
-    }, [projectName])
+        const templates = confirmedProjectName
+            ? [
+                (name: ReactNode) => <>我们想在 {name} 中构建什么？</>,
+                (name: ReactNode) => <>来聊聊 {name} 吧</>,
+                (name: ReactNode) => <>在 {name} 中开始新对话</>,
+            ]
+            : null
+        if (!templates) {
+            const fallbacks = ['你想做什么？', '有什么新想法？', '开始一段新对话']
+            return fallbacks[Math.floor(Math.random() * fallbacks.length)]
+        }
+        const template = templates[Math.floor(Math.random() * templates.length)]
+        return template(
+            <span style={{
+                textDecoration: 'underline',
+                textDecorationColor: 'var(--ant-colorPrimary)',
+                textUnderlineOffset: 4,
+                textDecorationThickness: 2,
+            }}>
+                {confirmedProjectName}
+            </span>,
+        )
+    }, [confirmedProjectName])
 
-    // 是否展示命令参数幽灵提示
-    const showGhostHint = !!slash.activeCommand?.hint
-        && inputText === `${slash.activeCommand.value} `
+    // 随机 placeholder，与 session 详情页一致
+    const placeholders = t('composer.placeholders', { returnObjects: true }) as string[]
+    const placeholderIdx = useRef(Math.floor(Math.random() * placeholders.length))
+
+    // 是否展示命令提示（hint 或 description 任一存在即展示）
+    const showGhostHint = !!(slash.activeCommand?.hint || slash.activeCommand?.description)
+        && inputText === `${slash.activeCommand!.value} `
         && !slash.isOpen
 
     // 点击外部关闭下拉
@@ -784,11 +814,12 @@ export function NewSessionPage() {
 
     // ============ Sender header ============
     const headerNodes = [
-        showGhostHint && slash.activeCommand && (
-            <div key="hint" style={{ padding: '4px 12px', fontSize: 12, color: token.colorTextTertiary }}>
-                {slash.activeCommand.hint}
-            </div>
-        ),
+        <CommandHintBar
+            key="hint"
+            visible={!!(showGhostHint && slash.activeCommand)}
+            hint={slash.activeCommand?.hint}
+            description={slash.activeCommand?.description}
+        />,
         hasAttachments && (
             <AttachmentList
                 key="attachments"
@@ -836,18 +867,26 @@ export function NewSessionPage() {
                         isDirectoryLoading={isDirectoryLoading}
                         selectedDirectory={selectedDirectory}
                         onDirectoryChange={setSelectedDirectory}
+                        onDirectoryConfirm={setConfirmedDirectory}
                         recentPaths={recentPaths}
                         machineHomeDir={machineHomeDir}
+                        onRemoveRecentPath={selectedMachineId
+                            ? (path) => removeRecentPath(selectedMachineId, path)
+                            : undefined}
                         disabled={false}
                     />
+                    {/* Sender + Dropdowns：position: relative 使下拉定位于 Sender 上方 */}
+                    <div style={{ position: 'relative' }}>
                     <Sender
                         value={inputText}
                         onChange={handleChange}
                         onSubmit={() => {
+                            // dropdown 打开时 Enter 是选择，不是提交
+                            if (slash.isOpen || mention.isOpen) return
                             if (hasContent && canSubmit) handleSubmit()
                         }}
                         submitType={hasFinePointer ? 'enter' : 'shiftEnter'}
-                        placeholder="随心输入..."
+                        placeholder={t(`composer.placeholders.${placeholderIdx.current}`)}
                         autoSize={{ minRows: 1, maxRows: 6 }}
                         loading={isPending}
                         disabled={inputDisabled}
@@ -925,6 +964,7 @@ export function NewSessionPage() {
                             onHover={slash.setActiveIndex}
                         />
                     )}
+                    </div>
 
                     {/* 拖拽上传覆盖层 */}
                     {isDragOver && (

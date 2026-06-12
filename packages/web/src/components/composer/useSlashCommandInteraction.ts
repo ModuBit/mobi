@@ -43,7 +43,7 @@ export function useSlashCommandInteraction({
     const [isOpen, setIsOpen] = useState(false)
     const [filter, setFilter] = useState('')
     const [activeIndex, setActiveIndex] = useState(0)
-    const [activeCommand, setActiveCommand] = useState<{ value: string; hint: string } | null>(null)
+    const [activeCommand, setActiveCommand] = useState<{ value: string; hint: string; description?: string } | null>(null)
 
     const { items, isLoading } = useSlashCommandSuggestion(
         commandsData,
@@ -83,8 +83,8 @@ export function useSlashCommandInteraction({
             const cmd = commandsData.find(c =>
                 (c.name.startsWith('/') ? c.name : `/${c.name}`) === cmdName
             )
-            if (cmd?.argumentHint) {
-                setActiveCommand({ value: cmdName, hint: cmd.argumentHint })
+            if (cmd?.argumentHint || cmd?.description) {
+                setActiveCommand({ value: cmdName, hint: cmd.argumentHint ?? '', description: cmd.description })
             }
         }
 
@@ -98,7 +98,11 @@ export function useSlashCommandInteraction({
         const after = text.slice(slashEnd)
         const newText = `${item.value} ${after}`
 
-        setActiveCommand(item.argumentHint ? { value: item.value, hint: item.argumentHint } : null)
+        setActiveCommand(
+            (item.argumentHint || item.description)
+                ? { value: item.value, hint: item.argumentHint ?? '', description: item.description }
+                : null,
+        )
         setIsOpen(false)
         setFilter('')
 

@@ -315,9 +315,9 @@ export function ChatComposer(props: ChatComposerProps) {
     const canSend = (hasText || hasAttachments) && !controlsDisabled && !running && !sending && !hasPendingPermission
     const hasSubBar = !!extraItems?.length || !!(onArchive && active) || !!(extraLeftButtons && !extraItems)
 
-    // 是否展示命令参数幽灵提示
-    const showGhostHint = !!slash.activeCommand?.hint
-        && text === `${slash.activeCommand.value} `
+    // 是否展示命令提示（hint 或 description 任一存在即展示）
+    const showGhostHint = !!(slash.activeCommand?.hint || slash.activeCommand?.description)
+        && text === `${slash.activeCommand!.value} `
         && !slash.isOpen
 
     const permissionModeOptions = useMemo(
@@ -552,9 +552,12 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // Sender header 区域内容（可组合，多条可共存）
     const headerNodes = [
-        showGhostHint && slash.activeCommand && (
-            <CommandHintBar key="hint" hint={slash.activeCommand.hint} />
-        ),
+        <CommandHintBar
+            key="hint"
+            visible={!!(showGhostHint && slash.activeCommand)}
+            hint={slash.activeCommand?.hint}
+            description={slash.activeCommand?.description}
+        />,
         hasAttachments && (
             <AttachmentList
                 key="attachments"
@@ -600,6 +603,8 @@ export function ChatComposer(props: ChatComposerProps) {
                 onDragLeave={controlsDisabled ? undefined : handleDragLeave}
                 onDrop={controlsDisabled ? undefined : handleDrop}
             >
+                {/* Sender + Dropdowns：position: relative 使下拉定位于 Sender 上方 */}
+                <div style={{ position: 'relative' }}>
                 <Sender
                     value={text}
                     onChange={handleChange}
@@ -801,6 +806,7 @@ export function ChatComposer(props: ChatComposerProps) {
                         onHover={slash.setActiveIndex}
                     />
                 )}
+                </div>
 
                 {/* 未激活覆盖层 */}
                 {showInactiveCover && (

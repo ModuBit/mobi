@@ -21,8 +21,19 @@ import { ConfigProvider } from 'antd'
 import { CommandHintBar } from '@/components/composer/CommandHintBar'
 
 describe('CommandHintBar', () => {
-    it('渲染提示文本', () => {
-        render(<ConfigProvider><CommandHintBar hint="<message>" /></ConfigProvider>)
-        expect(screen.getByText('<message>')).toBeInTheDocument()
+    it('visible 时渲染提示文本', () => {
+        const { getByText } = render(<ConfigProvider><CommandHintBar visible hint="<message>" /></ConfigProvider>)
+        expect(getByText('<message>')).toBeInTheDocument()
+    })
+
+    it('同时渲染描述', () => {
+        const { getByText } = render(<ConfigProvider><CommandHintBar visible hint="<args>" description="Send a message" /></ConfigProvider>)
+        expect(getByText('<args>')).toBeInTheDocument()
+        expect(getByText('Send a message')).toBeInTheDocument()
+    })
+
+    it('visible=false 时仍在 DOM 中（用于退出动画）', () => {
+        const { getByText } = render(<ConfigProvider><CommandHintBar visible={false} hint="<hidden>" /></ConfigProvider>)
+        expect(getByText('<hidden>')).toBeInTheDocument()
     })
 })

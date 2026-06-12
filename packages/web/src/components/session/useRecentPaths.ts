@@ -100,10 +100,28 @@ export function useRecentPaths() {
         }
     }, [])
 
+    /**
+     * 移除指定机器的最近路径
+     */
+    const removeRecentPath = useCallback((machineId: string, path: string): void => {
+        setData((prev) => {
+            const existing = prev[machineId]
+            if (!existing) return prev
+
+            const updated = existing.filter((p) => p !== path)
+            if (updated.length === existing.length) return prev
+
+            const newData = { ...prev, [machineId]: updated }
+            saveRecentPaths(newData)
+            return newData
+        })
+    }, [])
+
     return useMemo(() => ({
         getRecentPaths,
         addRecentPath,
+        removeRecentPath,
         getLastUsedMachineId,
         setLastUsedMachineId,
-    }), [getRecentPaths, addRecentPath, getLastUsedMachineId, setLastUsedMachineId])
+    }), [getRecentPaths, addRecentPath, removeRecentPath, getLastUsedMachineId, setLastUsedMachineId])
 }
