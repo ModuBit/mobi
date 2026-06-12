@@ -19,9 +19,12 @@
  * 使用官方 SDK 的 initializationResult() 方法获取可用工具和命令
  */
 
+import { existsSync } from 'fs'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { logger } from '@/ui/logger'
+import { configuration } from '@/configuration'
 import { getDefaultClaudeCodePath } from '@/claude/sdk/utils'
+import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 import type { SDKMetadata } from '@mobi/shared'
 
 // 重新导出类型供其他模块使用
@@ -56,15 +59,24 @@ export async function extractSDKMetadata(cwd?: string): Promise<SDKMetadata> {
             }
         }
 
+        // 清理 IDE 调试器环境变量，避免子进程继承后绑定同一 socket 导致启动失败
+        const childEnv = { ...process.env } as Record<string, string | undefined>
+        stripBunDebuggerEnv(childEnv)
+
         const options: Parameters<typeof query>[0]['options'] = {
             abortController,
             pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
             persistSession: false,
+            env: childEnv,
         }
 
         // 传入 cwd 以支持项目级命令和 skills 发现
-        if (cwd) {
+        // 目录不存在时 fallback 到 mobi 配置目录，获取全局默认 metadata（不含项目级配置）
+        if (cwd && existsSync(cwd)) {
             options.cwd = cwd
+        } else if (cwd) {
+            logger.debug('[metadataExtractor] cwd does not exist, falling back to mobiHomeDir:', cwd)
+            options.cwd = configuration.mobiHomeDir
         }
 
         const sdkQuery = query({
