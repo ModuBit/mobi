@@ -81,7 +81,7 @@ export default function GitStatus({ sessionId }: GitStatusProps) {
     }
 
     return (
-        <div style={{ height: 'calc(100vh - 130px)', display: 'flex' }}>
+        <div style={{ height: 'calc(100dvh - 130px)', display: 'flex' }}>
             {/* 文件列表 */}
             <div style={{ width: '40%', borderRight: `1px solid ${token.colorBorder}`, overflow: 'auto' }}>
                 {/* 头部信息 */}

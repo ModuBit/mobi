@@ -118,6 +118,16 @@ const PageContainer = styled.div`
     width: 100%;
     height: 100%;
     position: relative;
+    overflow-y: auto;
+
+    /* 移动端键盘弹出时 viewport 缩小，允许滚动以保证输入框可达 */
+    @supports (height: 100dvh) {
+        @media (max-width: 640px) {
+            align-items: flex-start;
+            padding-top: max(10vh, 48px);
+            padding-bottom: 24px;
+        }
+    }
 `
 
 const SidebarToggleWrapper = styled.div`
@@ -779,54 +789,21 @@ export function NewSessionPage() {
                 />
             ),
         },
-        // 会话类型 + Worktree 名称（合并为一个 Popover item）
+        // 会话类型：内联 Segmented
         {
             key: 'sessionType',
             label: t('newSession.sessionType'),
             render: () => (
-                <Popover
-                    trigger={['click']}
-                    placement="topLeft"
-                    content={
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 180 }}>
-                            <Segmented
-                                value={sessionType}
-                                onChange={v => setSessionType(v as SessionType)}
-                                options={SESSION_TYPE_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
-                                size="small"
-                                block
-                            />
-                            {sessionType === 'worktree' && (
-                                <Input
-                                    size="small"
-                                    placeholder={t('newSession.worktreeNamePlaceholder')}
-                                    value={worktreeName}
-                                    onChange={e => setWorktreeName(e.target.value)}
-                                    autoFocus
-                                />
-                            )}
-                        </div>
-                    }
-                >
-                    <Button
-                        type="text"
-                        size="small"
-                        icon={<BranchesOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
-                        disabled={inputDisabled}
-                        style={{
-                            ...ACTION_BUTTON_STYLE,
-                            fontSize: 12,
-                            padding: '0 8px',
-                        }}
-                    >
-                        {sessionType === 'worktree'
-                            ? (worktreeName ? `Worktree: ${worktreeName}` : 'Worktree')
-                            : t('newSession.simpleSession')}
-                    </Button>
-                </Popover>
+                <Segmented
+                    value={sessionType}
+                    onChange={v => setSessionType(v as SessionType)}
+                    options={SESSION_TYPE_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+                    size="small"
+                    disabled={inputDisabled}
+                />
             ),
         },
-    ], [token, t, inputDisabled, agent, sessionType, worktreeName])
+    ], [token, t, inputDisabled, agent, sessionType])
 
     // ============ Sender header ============
     const headerNodes = [
@@ -943,6 +920,28 @@ export function NewSessionPage() {
                             items={subBarItems}
                             gap={4}
                         />
+                    </div>
+
+                    {/* Worktree 名称输入：独立行，不参与响应式折叠，确保用户可见 */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateRows: sessionType === 'worktree' ? '1fr' : '0fr',
+                        transition: 'grid-template-rows 0.2s ease',
+                    }}>
+                        <div style={{ overflow: 'hidden' }}>
+                            <div style={{ padding: '0 6px 4px' }}>
+                                <Input
+                                    size="small"
+                                    prefix={<BranchesOutlined style={{ fontSize: 12, opacity: 0.55 }} />}
+                                    placeholder={t('newSession.worktreeNamePlaceholder')}
+                                    value={worktreeName}
+                                    onChange={e => setWorktreeName(e.target.value)}
+                                    disabled={inputDisabled}
+                                    style={{ fontSize: 12 }}
+                                    allowClear
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     {/* @ 文件引用下拉 */}

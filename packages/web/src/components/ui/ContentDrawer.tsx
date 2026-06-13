@@ -16,12 +16,13 @@
 
 /**
  * 通用内容抽屉组件
- * 响应式 placement：移动端底部、桌面端右侧
+ * 响应式 placement：移动端底部（MobileDrawer）、桌面端右侧
  */
 
 import { memo, type CSSProperties, type ReactNode } from 'react'
 import { Drawer } from 'antd'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { MobileDrawer } from './MobileDrawer'
 
 /** Drawer 宽度配置 */
 export type DrawerWidthConfig = number | string
@@ -54,20 +55,38 @@ interface ContentDrawerProps {
 function ContentDrawerInner({ title, open, onClose, bodyStyle, children, size, destroyOnClose }: ContentDrawerProps) {
     const isMobile = useIsMobile()
 
+    if (isMobile) {
+        return (
+            <MobileDrawer
+                open={open}
+                onClose={onClose}
+                title={title}
+                destroyOnClose={destroyOnClose}
+                styles={{
+                    body: {
+                        padding: 0,
+                        ...bodyStyle,
+                        paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+                    },
+                }}
+            >
+                {children}
+            </MobileDrawer>
+        )
+    }
+
     return (
         <Drawer
             open={open}
             onClose={onClose}
             title={title}
-            placement={isMobile ? 'bottom' : 'right'}
-            size={isMobile ? undefined : (size ?? DRAWER_WIDTH_PRESETS.narrow)}
+            placement="right"
+            size={size ?? DRAWER_WIDTH_PRESETS.narrow}
             destroyOnClose={destroyOnClose}
             styles={{
-                wrapper: isMobile ? { height: 'auto', maxHeight: '85vh' } : undefined,
                 body: {
                     padding: 0,
                     ...bodyStyle,
-                    ...(isMobile ? { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' } : {}),
                 },
             }}
         >

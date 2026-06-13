@@ -1,0 +1,223 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * 移动端底部抽屉组件
+ * 统一行为：最大高度 85dvh、header 下拉手势关闭
+ */
+
+import { useRef, useCallback, useState } from 'react'
+import { Drawer, type DrawerProps } from 'antd'
+import { Global, css } from '@emotion/react'
+import styled from '@emotion/styled'
+
+/** 下拉关闭阈值（px） */
+const SWIPE_THRESHOLD = 60
+
+/** 手势关闭时禁用 antd 动画的 class */
+const SWIPE_CLOSING_CLASS = 'mobile-drawer-swipe-closing'
+
+/** 禁用 antd Drawer 关闭动画 */
+const swipeClosingStyles = css`
+    .${SWIPE_CLOSING_CLASS} .ant-drawer-content-wrapper {
+        transition: none !important;
+    }
+`
+
+/** 拖拽指示条 */
+const DragHandle = styled.div`
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--ant-color-text-quaternary);
+    margin: 0 auto;
+`
+
+/**
+ * 可拖拽的 header 区域
+ * 占满整个 header 宽度，touch-action: none 阻止浏览器默认滚动
+ */
+const DraggableArea = styled.div`
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+    padding: 12px 16px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-bottom: 1px solid var(--ant-color-border-secondary);
+
+    &:active {
+        cursor: grabbing;
+    }
+`
+
+const TitleRow = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 22px;
+    font-weight: 500;
+    font-size: 16px;
+`
+
+export interface MobileDrawerProps extends Omit<DrawerProps, 'placement' | 'width' | 'height'> {
+    /** 最大高度，默认 85dvh */
+    maxHeight?: string
+    /** 是否展示拖拽指示条，默认 true */
+    showDragHandle?: boolean
+}
+
+/**
+ * 移动端底部 Drawer
+ * - 从底部弹出，最大高度 85dvh
+ * - header 区域支持下拉手势关闭（跟手 + 阈值判定）
+ * - 顶部拖拽指示条提示可拖拽
+ */
+export function MobileDrawer({
+    open,
+    onClose,
+    title,
+    extra,
+    maxHeight = '85dvh',
+    showDragHandle = true,
+    styles: propStyles,
+    rootClassName,
+    children,
+    closable: _closable,
+    ...rest
+}: MobileDrawerProps) {
+    const startYRef = useRef<number | null>(null)
+    const deltaYRef = useRef(0)
+    const draggableRef = useRef<HTMLDivElement>(null)
+    // 手势关闭中：禁用 antd 动画，自行控制 translateY 滑出
+    const [swipeClosing, setSwipeClosing] = useState(false)
+
+    const getContentWrapper = useCallback((): HTMLElement | null => {
+        return draggableRef.current?.closest('.ant-drawer-content-wrapper') as HTMLElement | null
+    }, [])
+
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+        startYRef.current = e.touches[0].clientY
+        deltaYRef.current = 0
+    }, [])
+
+    const handleTouchMove = useCallback((e: React.TouchEvent) => {
+        if (startYRef.current === null) return
+        const currentY = e.touches[0].clientY
+        deltaYRef.current = currentY - startYRef.current
+
+        // 只响应向下拖动
+        if (deltaYRef.current > 0) {
+            const wrapper = getContentWrapper()
+            if (wrapper) {
+                wrapper.style.transition = 'none'
+                wrapper.style.transform = `translateY(${deltaYRef.current}px)`
+            }
+        }
+    }, [getContentWrapper])
+
+    const handleTouchEnd = useCallback(() => {
+        const wrapper = getContentWrapper()
+        if (wrapper) {
+            if (deltaYRef.current > SWIPE_THRESHOLD) {
+                // 超过阈值：先执行滑出动画
+                wrapper.style.transition = 'transform 0.2s ease'
+                wrapper.style.transform = 'translateY(100%)'
+                // 动画完成后：禁用 antd 关闭动画 + 触发关闭
+                setTimeout(() => {
+                    setSwipeClosing(true)
+                    // 等 class 生效后再调 onClose
+                    requestAnimationFrame(() => {
+                        onClose?.({} as any)
+                        setTimeout(() => {
+                            setSwipeClosing(false)
+                            wrapper.style.transform = ''
+                            wrapper.style.transition = ''
+                        }, 50)
+                    })
+                }, 200)
+            } else {
+                // 未超过阈值，弹回原位
+                wrapper.style.transition = 'transform 0.2s ease'
+                wrapper.style.transform = ''
+                setTimeout(() => {
+                    wrapper.style.transition = ''
+                }, 200)
+            }
+        }
+        startYRef.current = null
+        deltaYRef.current = 0
+    }, [onClose, getContentWrapper])
+
+    // 合并 wrapper styles（antd 5.x 运行时支持 styles.wrapper，类型定义缺失）
+    const mergedStyles = {
+        ...propStyles,
+        wrapper: {
+            height: 'auto',
+            maxHeight,
+            ...(propStyles as any)?.wrapper,
+        },
+        body: {
+            padding: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            ...(propStyles as any)?.body,
+        },
+    } as DrawerProps['styles']
+
+    // 手势关闭时追加特殊 class 禁用 antd 动画
+    const finalRootClassName = [rootClassName, swipeClosing ? SWIPE_CLOSING_CLASS : '']
+        .filter(Boolean).join(' ') || undefined
+
+    return (
+        <>
+            <Global styles={swipeClosingStyles} />
+            <Drawer
+                open={open}
+                onClose={onClose}
+                placement="bottom"
+                title={null}
+                closable={false}
+                styles={mergedStyles}
+                rootClassName={finalRootClassName}
+                {...rest}
+            >
+                {/* 自定义 header：拖拽区域 */}
+                <DraggableArea
+                    ref={draggableRef}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                >
+                    {showDragHandle && <DragHandle />}
+                    {(title || extra) && (
+                        <TitleRow>
+                            <span>{title}</span>
+                            {extra && <span>{extra}</span>}
+                        </TitleRow>
+                    )}
+                </DraggableArea>
+
+                {/* 内容区域 */}
+                <div style={{ flex: 1, overflow: 'auto' }}>
+                    {children}
+                </div>
+            </Drawer>
+        </>
+    )
+}

@@ -25,7 +25,6 @@ import { ChatContainer } from '@/components/chat/ChatContainer'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import { FileView } from '@/components/files/FileView'
 import TerminalView from '@/components/terminal/TerminalView'
-import { IconButton } from '@/components/ui/IconButton'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -34,7 +33,7 @@ import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { getAgentStatus } from '@/components/pixel-avatar/types'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { Folder, Terminal, ArrowLeft, List } from 'lucide-react'
+import { Folder, Terminal } from 'lucide-react'
 import styled from '@emotion/styled'
 
 const ContentArea = styled.div`
@@ -65,7 +64,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { data: session, isLoading, error } = useSession(sessionId)
-    const { sessionViewMode, setSessionViewMode, setSessionListDrawerOpen } = useUiStore()
+    const { sessionViewMode, setSessionViewMode } = useUiStore()
     const isMobile = useIsMobile()
 
     const viewModeItems: ActionItem[] = useMemo(() => ([
@@ -133,16 +132,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                 left={
                     <>
                         <SidebarToggle />
-                        {isMobile && (
-                            <>
-                                <MobileMenuButton />
-                                <IconButton
-                                    icon={<ArrowLeft size={18} />}
-                                    tooltip={t('common.back')}
-                                    onClick={() => navigate({ to: '/sessions' })}
-                                />
-                            </>
-                        )}
+                        {isMobile && <MobileMenuButton />}
                         <PixelAvatar name={sessionId} status={agentStatus} size={18} />
                         <span
                             style={{
@@ -158,13 +148,6 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                             {displayName}
                         </span>
                     </>
-                }
-                right={
-                    <IconButton
-                        icon={<List size={18} />}
-                        tooltip={t('nav.sessions')}
-                        onClick={() => setSessionListDrawerOpen(true)}
-                    />
                 }
             />
 

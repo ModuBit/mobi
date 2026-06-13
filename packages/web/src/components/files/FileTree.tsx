@@ -71,7 +71,7 @@ export default function FileTree({ sessionId }: FileTreeProps) {
     }
 
     return (
-        <div style={{ display: 'flex', height: 'calc(100vh - 130px)' }}>
+        <div style={{ display: 'flex', height: 'calc(100dvh - 130px)' }}>
             {/* 文件树 */}
             <div style={{ width: '40%', overflow: 'auto', borderRight: `1px solid ${token.colorBorder}`, padding: 8 }}>
                 <div style={{ padding: '8px 4px', borderBottom: `1px solid ${token.colorBorder}`, marginBottom: 8 }}>

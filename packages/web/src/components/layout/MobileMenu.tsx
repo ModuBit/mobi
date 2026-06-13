@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Drawer } from 'antd'
+import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
@@ -22,6 +22,8 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
+import { MobileProjectList } from './MobileProjectList'
+import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { Menu, Sun, Moon, Languages } from 'lucide-react'
 import { InstallButton } from './InstallButton'
 import styled from '@emotion/styled'
@@ -109,7 +111,7 @@ export function MobileMenuDrawer() {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const location = useLocation()
-    const { mobileMenuOpen, setMobileMenuOpen, setSessionListDrawerOpen } = useUiStore()
+    const { mobileMenuOpen, setMobileMenuOpen } = useUiStore()
     const { logout } = useAuthStore()
     const isMobile = useIsMobile()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
@@ -119,12 +121,6 @@ export function MobileMenuDrawer() {
 
     // 选择菜单项
     const handleSelect = (key: string) => {
-        if (key === 'projects') {
-            // 项目 → 打开会话列表 Drawer
-            handleClose()
-            setSessionListDrawerOpen(true)
-            return
-        }
         const path = navPathMap[key]
         if (path) {
             navigate({ to: path })
@@ -135,16 +131,36 @@ export function MobileMenuDrawer() {
     // 非移动端不渲染
     if (!isMobile) return null
 
+    // 将菜单项拆分为「新建会话」和「设置」两组，中间插入项目列表
+    const topItems = mobileNavItems.filter(item => item.key === 'new-session')
+    const bottomItems = mobileNavItems.filter(item => item.key !== 'new-session')
+
     return (
-        <Drawer
+        <MobileDrawer
             title={t('nav.menu')}
             open={mobileMenuOpen}
             onClose={handleClose}
-            placement="bottom"
-            styles={{ body: { padding: 0 } }}
+            styles={{ body: { padding: 0, overflow: 'auto' } }}
         >
             <MenuContent $token={token}>
-                {mobileNavItems.map((item) => (
+                {/* 新建会话 */}
+                {topItems.map((item) => (
+                    <MenuItem
+                        key={item.key}
+                        $active={getNavActiveKey(location.pathname, item.key)}
+                        $token={token}
+                        onClick={() => handleSelect(item.key)}
+                    >
+                        <item.icon size={20} />
+                        <span>{t(item.labelKey)}</span>
+                    </MenuItem>
+                ))}
+
+                {/* 项目列表 */}
+                <MobileProjectList onCloseMenu={handleClose} />
+
+                {/* 设置等 */}
+                {bottomItems.map((item) => (
                     <MenuItem
                         key={item.key}
                         $active={getNavActiveKey(location.pathname, item.key)}
@@ -195,6 +211,6 @@ export function MobileMenuDrawer() {
                     <span>{t(logoutNavItem.labelKey)}</span>
                 </MenuItem>
             </MenuContent>
-        </Drawer>
+        </MobileDrawer>
     )
 }

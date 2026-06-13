@@ -256,3 +256,48 @@ t('tool.other')
 ## 调试规范
 
 遵循 [docs/conventions/debugging.md](../../docs/conventions/debugging.md) 的通用方法论。
+
+## 移动端适配
+
+### 视口高度
+
+**禁止使用 `100vh`**，必须使用 `100dvh`（dynamic viewport height）。
+
+移动端浏览器（尤其 Chrome Android）有底部工具栏/地址栏，`100vh` 包含了被工具栏遮挡的区域，导致页面底部内容不可见。`100dvh` 始终等于实际可见区域高度，且在虚拟键盘弹出时自动缩小。
+
+```typescript
+// ✅ 正确
+height: '100dvh'
+height: 'calc(100dvh - 64px)'
+
+// ❌ 错误
+height: '100vh'
+height: 'calc(100vh - 64px)'
+```
+
+`dvh` 兼容性：Chrome 108+、Safari 15.4+、Firefox 101+，覆盖率 95%+，本项目不需要 fallback。
+
+### 避免 Popover 内嵌输入框
+
+移动端虚拟键盘弹出时，Popover 的绝对定位会导致布局错乱。需要用户输入的场景改用内联展示或 Drawer。
+
+## 动画与过渡
+
+### 尺寸变化必须有过渡动画
+
+当 UI 元素的出现/消失会导致周围布局跳动时，必须添加过渡动画。推荐使用 CSS Grid 的 `grid-template-rows` 方案实现高度展开/收起（不需要知道具体高度值）：
+
+```typescript
+// ✅ 丝滑展开/收起
+<div style={{
+    display: 'grid',
+    gridTemplateRows: visible ? '1fr' : '0fr',
+    transition: 'grid-template-rows 0.2s ease',
+}}>
+    <div style={{ overflow: 'hidden' }}>
+        {/* 内容 */}
+    </div>
+</div>
+```
+
+适用场景：条件渲染的表单行、可折叠面板、展开/收起的配置区域等。

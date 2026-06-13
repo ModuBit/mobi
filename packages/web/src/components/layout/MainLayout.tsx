@@ -68,7 +68,7 @@ export function MainLayout() {
             </Helmet>
             <UpdatePrompt onUpdate={updateReload} />
             <Layout style={{
-                height: '100vh',
+                height: '100dvh',
                 overflow: 'hidden',
                 flexDirection: 'row',
                 background: token.colorBgContainer,

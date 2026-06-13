@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Button, Drawer, Empty } from 'antd'
+import { Button, Empty } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
@@ -22,6 +22,7 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
 import { SessionList } from '@/components/session/SessionList'
 import { NewSession } from '@/components/session/NewSessionForm'
+import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { Plus } from 'lucide-react'
 
 // Session List Drawer：body 不滚动，由 SessionList 自管滚动
@@ -91,41 +92,37 @@ export function SessionListDrawer() {
 
     // 独立的 NewSession Drawer（session list 未打开时使用）
     const standaloneNewDrawer = !sessionListDrawerOpen && (
-        <Drawer
+        <MobileDrawer
             title={t('session.newSession')}
             open={newSessionDrawerOpen}
             onClose={handleCloseNew}
-            placement={isMobile ? 'bottom' : 'right'}
-            size={360}
             destroyOnClose
             styles={{ body: { padding: 0 } }}
         >
             {newSessionContent}
-        </Drawer>
+        </MobileDrawer>
     )
 
     return (
         <>
-            <Drawer
+            <MobileDrawer
                 title={t('nav.sessions')}
                 extra={<Button type="text" icon={<Plus size={16} />} onClick={handleOpenNew} />}
                 open={sessionListDrawerOpen}
                 onClose={handleCloseList}
-                placement="bottom"
                 styles={{ body: LIST_BODY_STYLES }}
             >
                 {listDrawerContent}
-                <Drawer
+                <MobileDrawer
                     title={t('session.newSession')}
                     open={newSessionDrawerOpen}
                     onClose={handleCloseNew}
-                    placement="bottom"
                     destroyOnClose
                     styles={{ body: { padding: 0 } }}
                 >
                     {newSessionContent}
-                </Drawer>
-            </Drawer>
+                </MobileDrawer>
+            </MobileDrawer>
             {/* 独立的 NewSession Drawer（session list 未打开时使用） */}
             {standaloneNewDrawer}
         </>

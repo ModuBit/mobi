@@ -169,7 +169,7 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
     }
 
     return (
-        <div style={{ height: 'calc(100vh - 130px)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ height: 'calc(100dvh - 130px)', display: 'flex', flexDirection: 'column' }}>
             {/* 工具栏 */}
             <div style={{
                 padding: '8px 16px',
