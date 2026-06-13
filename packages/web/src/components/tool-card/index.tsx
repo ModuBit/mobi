@@ -530,7 +530,7 @@ function ToolCardInner(props: ToolCardProps) {
                     if (isAgentToolCard) {
                         const agentPrompt = getAgentPrompt(props.block.tool.input)
                         return (
-                            <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
+                            <div style={{ marginTop: 12, display: 'flex', maxHeight: '75dvh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
                                 {agentPrompt ? (
                                     <div>
                                         <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>Prompt</div>
@@ -546,7 +546,7 @@ function ToolCardInner(props: ToolCardProps) {
                     }
 
                     return (
-                        <div style={{ marginTop: 12, display: 'flex', maxHeight: '75vh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
+                        <div style={{ marginTop: 12, display: 'flex', maxHeight: '75dvh', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
                             <div>
                                 <div style={{ marginBottom: 4, fontSize: 11, fontWeight: 500, color: token.colorTextSecondary }}>
                                     {isQuestionToolWithAnswers ? t('chat.tool.questionsAnswers') : t('chat.tool.input')}

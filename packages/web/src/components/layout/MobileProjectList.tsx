@@ -41,6 +41,7 @@ import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import type { StatusStyle } from '@/components/pixel-avatar/types'
+import { useLongPress } from '@/core/data/hooks/useLongPress'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 
 const { useToken } = antTheme
@@ -149,6 +150,10 @@ const SessionItem = styled.div<{ $active: boolean; $token: ReturnType<typeof use
     cursor: pointer;
     background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
     transition: background 0.15s;
+    /* 长按交互：禁止选中文本与系统长按菜单 */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 
     &:active {
         background: ${props => props.$active ? props.$token.colorPrimaryBg : props.$token.colorBgTextHover};
@@ -210,6 +215,52 @@ const ShowMoreBtn = styled.button<{ $token: ReturnType<typeof useToken>['token']
         color: ${props => props.$token.colorPrimary};
     }
 `
+
+// ========== 单个会话项 ==========
+
+interface MobileSessionItemProps {
+    session: Session
+    active: boolean
+    onClick: () => void
+    /** 长按或点击 ⋮ 触发的操作回调 */
+    onLongPress: () => void
+}
+
+/**
+ * 单个会话项
+ * 支持点击导航、长按弹出操作菜单（与点击 ⋮ 等效）
+ */
+function MobileSessionItem({ session, active, onClick, onLongPress }: MobileSessionItemProps) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const longPress = useLongPress(onLongPress)
+
+    const avatarStatus = getSessionAvatarStatus(session)
+    const displayName = getSessionDisplayName(session)
+    const relativeTime = formatRelativeTime(session.updatedAt, t)
+
+    return (
+        <SessionItem
+            $active={active}
+            $token={token}
+            onClick={longPress.withClickGuard(onClick)}
+            onTouchStart={longPress.onTouchStart}
+            onTouchEnd={longPress.onTouchEnd}
+            onTouchMove={longPress.onTouchMove}
+        >
+            <PixelAvatar name={session.id} status={avatarStatus} size={22} statusStyles={AVATAR_STYLES} />
+            <SessionName $token={token}>{displayName}</SessionName>
+            <TimeLabel $token={token}>{relativeTime}</TimeLabel>
+            <MoreButton
+                $token={token}
+                onClick={(e) => { e.stopPropagation(); onLongPress() }}
+                aria-label={t('common.more')}
+            >
+                <MoreOutlined style={{ fontSize: 16 }} />
+            </MoreButton>
+        </SessionItem>
+    )
+}
 
 // ========== 项目分组组件 ==========
 
@@ -304,31 +355,15 @@ function MobileProjectGroup({
             </GroupHeader>
             <SessionListWrapper $expanded={expanded && sessions.length > 0}>
                 <SessionListInner>
-                    {visibleSessions.map(session => {
-                        const avatarStatus = getSessionAvatarStatus(session)
-                        const displayName = getSessionDisplayName(session)
-                        const relativeTime = formatRelativeTime(session.updatedAt, t)
-
-                        return (
-                            <SessionItem
-                                key={session.id}
-                                $active={session.id === activeSessionId}
-                                $token={token}
-                                onClick={() => handleSessionClick(session.id)}
-                            >
-                                <PixelAvatar name={session.id} status={avatarStatus} size={22} statusStyles={AVATAR_STYLES} />
-                                <SessionName $token={token}>{displayName}</SessionName>
-                                <TimeLabel $token={token}>{relativeTime}</TimeLabel>
-                                <MoreButton
-                                    $token={token}
-                                    onClick={(e) => { e.stopPropagation(); onSessionAction(session.id) }}
-                                    aria-label={t('common.more')}
-                                >
-                                    <MoreOutlined style={{ fontSize: 16 }} />
-                                </MoreButton>
-                            </SessionItem>
-                        )
-                    })}
+                    {visibleSessions.map(session => (
+                        <MobileSessionItem
+                            key={session.id}
+                            session={session}
+                            active={session.id === activeSessionId}
+                            onClick={() => handleSessionClick(session.id)}
+                            onLongPress={() => onSessionAction(session.id)}
+                        />
+                    ))}
                     {hasMore && (
                         <ShowMoreBtn
                             $token={token}

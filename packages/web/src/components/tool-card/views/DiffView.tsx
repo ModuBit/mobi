@@ -302,7 +302,7 @@ export function DiffView(props: {
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: token.colorTextSecondary, marginBottom: 12 }}>
                     {stats.label}
                 </div>
-                <div style={{ maxHeight: '75vh', overflow: 'auto' }}>
+                <div style={{ maxHeight: '75dvh', overflow: 'auto' }}>
                     {DiffInline}
                 </div>
             </Modal>

@@ -124,7 +124,7 @@ const PageContainer = styled.div`
     @supports (height: 100dvh) {
         @media (max-width: 640px) {
             align-items: flex-start;
-            padding-top: max(10vh, 48px);
+            padding-top: max(10dvh, 48px);
             padding-bottom: 24px;
         }
     }

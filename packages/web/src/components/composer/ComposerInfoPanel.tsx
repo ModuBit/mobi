@@ -238,7 +238,7 @@ export function ComposerInfoPanel({
             <div
                 ref={scrollRef}
                 className="hide-scrollbar"
-                style={{ maxHeight: '40vh', overflow: 'auto' }}
+                style={{ maxHeight: '40dvh', overflow: 'auto' }}
             >
                 <Space orientation="vertical" size={8} style={{ width: '100%' }}>
                     <ToolInteractionPanel

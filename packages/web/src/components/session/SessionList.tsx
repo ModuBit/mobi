@@ -17,7 +17,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { Conversations } from '@ant-design/x'
 import type { ConversationsProps } from '@ant-design/x'
-import { Modal, Input, message, Skeleton, Empty, Button } from 'antd'
+import { Modal, Input, message, Skeleton, Empty, Button, Drawer } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -42,7 +42,6 @@ import type { StatusStyle } from '@/components/pixel-avatar/types'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mergeSessions } from '@/core/data/cache/sessionCache'
-import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import styled from '@emotion/styled'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 
@@ -451,7 +450,8 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
 
             {/* 移动端 ActionSheet */}
             {isMobile && (
-                <MobileDrawer
+                <Drawer
+                    placement="bottom"
                     open={!!actionSheetSessionId}
                     onClose={() => { if (!actionSheetLoadingKey) setActionSheetSessionId(null) }}
                     closable={false}
@@ -495,7 +495,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                     >
                         {t('common.cancel')}
                     </Button>
-                </MobileDrawer>
+                </Drawer>
             )}
         </>
     )

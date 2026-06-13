@@ -80,10 +80,10 @@
     overflow: auto;
 }
 
-/* 移动端底部 Drawer：高度自适应，上限 85vh */
+/* 移动端底部 Drawer：高度自适应，上限 85dvh（不加 !important，让 MobileDrawer 的 inline maxHeight 可覆盖） */
 .ant-drawer-bottom .ant-drawer-content-wrapper {
     height: auto !important;
-    max-height: 90vh !important;
+    max-height: 85dvh;
 }
 
 /* 移动端底部 Drawer 安全区 */
@@ -93,7 +93,7 @@
 
 /* ActionSheet Drawer 更矮 */
 .action-sheet-drawer .ant-drawer-content-wrapper {
-    max-height: 60vh !important;
+    max-height: 60dvh;
 }
 
 /* Bubble footer 间距缩小 */
