@@ -19,7 +19,7 @@ import { App, Button, Input, Tooltip, Select, Spin, Popover, Typography, Segment
 import { Sender } from '@ant-design/x'
 import { PlusOutlined, InboxOutlined, SafetyOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
@@ -252,6 +252,7 @@ export function NewSessionPage() {
     const { token } = useToken()
     const { message: messageApi } = App.useApp()
     const navigate = useNavigate()
+    const { cwd: initialCwd } = useSearch({ strict: false }) as { cwd?: string }
     const authToken = useAuthStore((state) => state.token)
     const api = useMobiApi(authToken)
     const hasFinePointer = useHasFinePointer()
@@ -299,7 +300,7 @@ export function NewSessionPage() {
     // 当前机器的最近路径
     const recentPaths = useMemo(() => getRecentPaths(selectedMachineId), [getRecentPaths, selectedMachineId])
 
-    // 初始化机器选择（自动选择上次使用的机器）
+    // 初始化机器选择（自动选择上次使用的机器，search param cwd 优先）
     useEffect(() => {
         if (activeMachines.length === 0) return
         if (selectedMachineId && activeMachines.find(m => m.id === selectedMachineId)) return
@@ -307,15 +308,30 @@ export function NewSessionPage() {
         const foundLast = lastUsed ? activeMachines.find(m => m.id === lastUsed) : null
         if (foundLast) {
             setSelectedMachineId(foundLast.id)
-            const paths = getRecentPaths(foundLast.id)
-            if (paths[0]) {
-                setSelectedDirectory(paths[0])
-                setConfirmedDirectory(paths[0])
+            // search param cwd 优先于最近路径
+            const dir = initialCwd || getRecentPaths(foundLast.id)[0]
+            if (dir) {
+                setSelectedDirectory(dir)
+                setConfirmedDirectory(dir)
             }
         } else if (activeMachines[0]) {
             setSelectedMachineId(activeMachines[0].id)
+            if (initialCwd) {
+                setSelectedDirectory(initialCwd)
+                setConfirmedDirectory(initialCwd)
+            }
         }
-    }, [activeMachines, selectedMachineId, getLastUsedMachineId, getRecentPaths])
+    }, [activeMachines, selectedMachineId, getLastUsedMachineId, getRecentPaths, initialCwd])
+
+    // search param cwd 变化时同步更新目录（响应式，非初始化场景）
+    const cwdAppliedRef = useRef<string | undefined>(undefined)
+    useEffect(() => {
+        if (!initialCwd || cwdAppliedRef.current === initialCwd) return
+        cwdAppliedRef.current = initialCwd
+        setSelectedDirectory(initialCwd)
+        setConfirmedDirectory(initialCwd)
+        setMetadataNeeded(true)
+    }, [initialCwd])
 
     // 能力目标：用 confirmedDirectory 避免输入过程触发 metadata
     const capTarget = useMemo<CapabilityTarget | null>(() => {

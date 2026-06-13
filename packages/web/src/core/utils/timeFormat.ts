@@ -14,12 +14,16 @@
  * limitations under the License.
  */
 
+/** i18n t 函数类型（避免引入 react-i18next 依赖） */
+type TFunction = (key: string, options?: Record<string, unknown>) => string
+
 /**
- * 格式化相对时间
+ * 格式化相对时间（国际化版本）
  * @param timestamp 时间戳（毫秒）
+ * @param t i18n 翻译函数
  * @returns 相对时间字符串，如 "3分钟前"、"2小时前"、"3天前"
  */
-export function formatRelativeTime(timestamp: number): string {
+export function formatRelativeTime(timestamp: number, t?: TFunction): string {
     const now = Date.now()
     const diff = now - timestamp
 
@@ -30,26 +34,31 @@ export function formatRelativeTime(timestamp: number): string {
     const month = 30 * day
     const year = 365 * day
 
+    // 无 t 函数时 fallback 到中文（兼容已有调用方）
+    if (!t) {
+        if (diff < minute) return '刚刚'
+        if (diff < hour) return `${Math.floor(diff / minute)}分钟前`
+        if (diff < day) return `${Math.floor(diff / hour)}小时前`
+        if (diff < week) return `${Math.floor(diff / day)}天前`
+        if (diff < month) return `${Math.floor(diff / week)}周前`
+        if (diff < year) return `${Math.floor(diff / month)}个月前`
+        return `${Math.floor(diff / year)}年前`
+    }
+
     if (diff < minute) {
-        return '刚刚'
+        return t('time.justNow')
     } else if (diff < hour) {
-        const minutes = Math.floor(diff / minute)
-        return `${minutes}分钟前`
+        return t('time.minutesAgo', { count: Math.floor(diff / minute) })
     } else if (diff < day) {
-        const hours = Math.floor(diff / hour)
-        return `${hours}小时前`
+        return t('time.hoursAgo', { count: Math.floor(diff / hour) })
     } else if (diff < week) {
-        const days = Math.floor(diff / day)
-        return `${days}天前`
+        return t('time.daysAgo', { count: Math.floor(diff / day) })
     } else if (diff < month) {
-        const weeks = Math.floor(diff / week)
-        return `${weeks}周前`
+        return t('time.weeksAgo', { count: Math.floor(diff / week) })
     } else if (diff < year) {
-        const months = Math.floor(diff / month)
-        return `${months}个月前`
+        return t('time.monthsAgo', { count: Math.floor(diff / month) })
     } else {
-        const years = Math.floor(diff / year)
-        return `${years}年前`
+        return t('time.yearsAgo', { count: Math.floor(diff / year) })
     }
 }
 

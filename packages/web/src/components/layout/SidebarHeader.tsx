@@ -92,7 +92,7 @@ export function SidebarHeader() {
             {/* Logo - 点击跳转新对话 */}
             <LogoArea
                 $token={token}
-                onClick={() => navigate({ to: '/sessions/new' })}
+                onClick={() => navigate({ to: '/sessions/new', search: { cwd: undefined } })}
             >
                 <LogoIcon />
                 <BrandName $token={token}>MOBI</BrandName>

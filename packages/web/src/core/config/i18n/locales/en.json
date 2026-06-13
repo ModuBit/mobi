@@ -9,6 +9,15 @@
     "error": "Error",
     "success": "Success"
   },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago",
+    "weeksAgo": "{{count}}w ago",
+    "monthsAgo": "{{count}}mo ago",
+    "yearsAgo": "{{count}}y ago"
+  },
   "login": {
     "brand": "MOBI",
     "subtitle": "Your AI, Always Within Reach",
@@ -40,7 +49,8 @@
     "logout": "Logout",
     "menu": "Menu",
     "themeLight": "Light Mode",
-    "themeDark": "Dark Mode"
+    "themeDark": "Dark Mode",
+    "showMore": "Show more ({{count}})"
   },
   "home": {
     "newSession": "New Session"

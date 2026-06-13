@@ -9,6 +9,15 @@
     "error": "错误",
     "success": "成功"
   },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}}分钟前",
+    "hoursAgo": "{{count}}小时前",
+    "daysAgo": "{{count}}天前",
+    "weeksAgo": "{{count}}周前",
+    "monthsAgo": "{{count}}个月前",
+    "yearsAgo": "{{count}}年前"
+  },
   "login": {
     "brand": "MOBI",
     "subtitle": "你的 AI，触手可及",
@@ -40,7 +49,8 @@
     "logout": "退出登录",
     "menu": "菜单",
     "themeLight": "浅色模式",
-    "themeDark": "深色模式"
+    "themeDark": "深色模式",
+    "showMore": "展开显示 ({{count}})"
   },
   "home": {
     "newSession": "新建会话"

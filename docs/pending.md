@@ -368,3 +368,25 @@ hooks: {
 - 需要每条 `tool_progress` 到达时频繁更新 runtimeState（写入 DB）
 - 需要额外清理逻辑（`tool_result` 到达时清除对应条目）
 - 当前体验缺陷可接受，等下一个 `tool_progress` 自然恢复
+
+---
+
+## 14. 增加项目实体，替代基于 session path 的分组
+
+**现状**：
+- 没有"项目"概念，`SessionGroup` 是从 session 的 `metadata.path` 用 `extractGroupKey` 截取最后两段（如 `github/modu`）group 出来的
+- `groupKey` 不是全路径，不能直接用作创建 session 的 `cwd`
+- 新建会话时需要从该分组下的第一个 session 的 `metadata.path` 反推完整项目路径
+- 当分组下没有任何 session 时，无法获取完整路径
+
+**相关文件**：
+- `packages/hub/src/store/sessions.ts` — `extractGroupKey` 截断路径逻辑
+- `packages/hub/src/web/routes/sessionGroups.ts` — 分组 API
+- `packages/web/src/core/data/api/types.ts` — `SessionGroup` 类型
+- `packages/web/src/components/layout/SidebarProjects.tsx` — 侧边栏项目列表（当前用 session metadata.path 反推）
+
+**改造方向**：
+- 新增 `Project` 实体（独立于 session），存储完整项目路径、名称等元信息
+- session 通过 `projectId` 关联项目，不再通过 path 截断 group
+- `SessionGroup` API 改为 `Project` API，直接返回完整路径
+- 侧边栏项目列表直接使用项目的全路径，无需反推
