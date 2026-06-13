@@ -19,7 +19,6 @@ import {
     Search,
     Blocks,
     Clock,
-    FolderOpen,
     Settings,
     LogOut,
     type LucideIcon,
@@ -66,9 +65,8 @@ export function getNavActiveKey(pathname: string, key: string): boolean {
     return pathname === `/${key}`
 }
 
-// 移动端菜单项（MobileMenu 使用）
+// 移动端菜单项（MobileMenu 使用，项目列表单独嵌入）
 export const mobileNavItems: NavItemConfig[] = [
     { key: 'new-session', icon: SquarePen, labelKey: 'nav.newSession' },
-    { key: 'projects', icon: FolderOpen, labelKey: 'nav.projects' },
     { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
 ]

@@ -61,6 +61,7 @@ export default defineConfig({
         }
     },
     server: {
+        host: true,
         port: webPort,
         proxy: {
             '/api': hubUrl,

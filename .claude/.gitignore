@@ -1,0 +1,5 @@
+worktrees/
+scripts/
+plans
+settings.local.json
+settings.json

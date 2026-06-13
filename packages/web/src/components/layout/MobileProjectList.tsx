@@ -1,0 +1,616 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { Button, Drawer, Input, Modal, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
+import styled from '@emotion/styled'
+import { useNavigate, useParams } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
+import { FolderClosed, FolderOpen, Plus } from 'lucide-react'
+import {
+    EditOutlined,
+    InboxOutlined,
+    DeleteOutlined,
+    PlayCircleOutlined,
+    MoreOutlined,
+    CloseOutlined,
+} from '@ant-design/icons'
+import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
+import { useGroupSessions } from '@/core/data/hooks/queries/useGroupSessions'
+import { useSessions } from '@/core/data/hooks/queries/useSessions'
+import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
+import { queryKeys } from '@/core/lib/query-keys'
+import { formatRelativeTime } from '@/core/utils/timeFormat'
+import { getSessionDisplayName } from '@/core/utils/sessionUtils'
+import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
+import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import type { StatusStyle } from '@/components/pixel-avatar/types'
+import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
+
+const { useToken } = antTheme
+
+/** 默认展示和每次加载更多的会话数 */
+const PAGE_SIZE = 5
+
+const AVATAR_STYLES: Partial<Record<string, StatusStyle>> = {}
+
+// ========== 样式组件 ==========
+
+const Container = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid ${props => props.$token.colorBorderSecondary};
+    border-bottom: 1px solid ${props => props.$token.colorBorderSecondary};
+    margin: 4px 0;
+    padding: 4px 0;
+    background: ${props => props.$token.colorBgLayout};
+`
+
+// 分区标题行
+const SectionHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: flex;
+    align-items: center;
+    padding: 8px 20px 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: ${props => props.$token.colorTextQuaternary};
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+`
+
+// 项目头
+const GroupHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 20px;
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &:active {
+        background: ${props => props.$token.colorPrimaryBg};
+    }
+`
+
+// 文件夹图标
+const FolderIcon = styled.span<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: inline-flex;
+    color: ${props => props.$token.colorTextTertiary};
+`
+
+// 项目名称
+const GroupName = styled.span<{ $token: ReturnType<typeof useToken>['token'] }>`
+    flex: 1;
+    font-size: 15px;
+    font-weight: 500;
+    color: ${props => props.$token.colorText};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+`
+
+// 新建会话按钮（常驻可见）
+const NewSessionBtn = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: ${props => props.$token.colorTextTertiary};
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+
+    &:active {
+        background: ${props => props.$token.colorBgTextHover};
+        color: ${props => props.$token.colorText};
+    }
+`
+
+// 会话列表动画容器（grid-row 高度动画）
+const SessionListWrapper = styled.div<{ $expanded: boolean }>`
+    display: grid;
+    grid-template-rows: ${props => props.$expanded ? '1fr' : '0fr'};
+    opacity: ${props => props.$expanded ? 1 : 0};
+    transition: grid-template-rows 0.2s ease, opacity 0.15s ease;
+`
+
+const SessionListInner = styled.div`
+    overflow: hidden;
+`
+
+// 单个会话项
+const SessionItem = styled.div<{ $active: boolean; $token: ReturnType<typeof useToken>['token'] }>`
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 12px 0 50px;
+    cursor: pointer;
+    background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
+    transition: background 0.15s;
+
+    &:active {
+        background: ${props => props.$active ? props.$token.colorPrimaryBg : props.$token.colorBgTextHover};
+    }
+`
+
+// 会话名称
+const SessionName = styled.span<{ $token: ReturnType<typeof useToken>['token'] }>`
+    flex: 1;
+    font-size: 14px;
+    color: ${props => props.$token.colorText};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+`
+
+// 相对时间
+const TimeLabel = styled.span<{ $token: ReturnType<typeof useToken>['token'] }>`
+    flex-shrink: 0;
+    font-size: 12px;
+    color: ${props => props.$token.colorTextQuaternary};
+    white-space: nowrap;
+`
+
+// ⋮ 更多按钮
+const MoreButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: ${props => props.$token.colorTextTertiary};
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+
+    &:active {
+        color: ${props => props.$token.colorText};
+    }
+`
+
+// "展开显示" 按钮
+const ShowMoreBtn = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: block;
+    width: 100%;
+    min-height: 36px;
+    padding: 0 12px 0 50px;
+    border: none;
+    background: transparent;
+    color: ${props => props.$token.colorTextTertiary};
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+
+    &:active {
+        color: ${props => props.$token.colorPrimary};
+    }
+`
+
+// ========== 项目分组组件 ==========
+
+interface MobileProjectGroupProps {
+    groupKey: string
+    activeSessionId: string | undefined
+    onSessionAction: (sessionId: string) => void
+    onCloseMenu: () => void
+}
+
+function MobileProjectGroup({
+    groupKey, activeSessionId, onSessionAction, onCloseMenu,
+}: MobileProjectGroupProps) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const navigate = useNavigate()
+    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+
+    // 获取该分组下的会话
+    const { data: groupSessionsPages } = useGroupSessions(groupKey)
+    const { data: allSessions } = useSessions()
+
+    // 从全局缓存中查找当前分组的会话
+    const sessions = useMemo<Session[]>(() => {
+        if (!groupSessionsPages?.pages || !allSessions) return []
+
+        const sessionIdSet = new Set<string>()
+        for (const page of groupSessionsPages.pages) {
+            for (const id of page.sessionIds) {
+                sessionIdSet.add(id)
+            }
+        }
+
+        return allSessions
+            .filter(s => sessionIdSet.has(s.id))
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+    }, [groupSessionsPages?.pages, allSessions])
+
+    // 判断是否包含活跃会话 → 默认展开
+    const containsActive = useMemo(() => {
+        return !!activeSessionId && sessions.some(s => s.id === activeSessionId)
+    }, [activeSessionId, sessions])
+
+    const [expanded, setExpanded] = useState(false)
+    const [autoExpanded, setAutoExpanded] = useState(false)
+    useEffect(() => {
+        if (containsActive && !autoExpanded) {
+            setExpanded(true)
+            setAutoExpanded(true)
+        }
+    }, [containsActive, autoExpanded])
+
+    const folderName = extractFolderName(groupKey)
+
+    // 从 session metadata 中提取完整项目路径
+    const fullProjectPath = useMemo(() => {
+        for (const s of sessions) {
+            const path = (s.metadata as { path?: string } | undefined)?.path
+            if (path) return path
+        }
+        return groupKey
+    }, [sessions, groupKey])
+
+    const visibleSessions = sessions.slice(0, visibleCount)
+    const hasMore = sessions.length > visibleCount
+
+    const handleHeaderClick = useCallback(() => {
+        setExpanded(prev => !prev)
+    }, [])
+
+    const handleNewSession = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation()
+        onCloseMenu()
+        navigate({ to: '/sessions/new', search: { cwd: fullProjectPath } })
+    }, [navigate, fullProjectPath, onCloseMenu])
+
+    const handleSessionClick = useCallback((sessionId: string) => {
+        onCloseMenu()
+        navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+    }, [navigate, onCloseMenu])
+
+    return (
+        <div>
+            <GroupHeader $token={token} onClick={handleHeaderClick}>
+                <FolderIcon $token={token}>
+                    {expanded ? <FolderOpen size={18} /> : <FolderClosed size={18} />}
+                </FolderIcon>
+                <GroupName $token={token}>{folderName}</GroupName>
+                <NewSessionBtn $token={token} onClick={handleNewSession} aria-label={t('nav.newSession')}>
+                    <Plus size={18} />
+                </NewSessionBtn>
+            </GroupHeader>
+            <SessionListWrapper $expanded={expanded && sessions.length > 0}>
+                <SessionListInner>
+                    {visibleSessions.map(session => {
+                        const avatarStatus = getSessionAvatarStatus(session)
+                        const displayName = getSessionDisplayName(session)
+                        const relativeTime = formatRelativeTime(session.updatedAt, t)
+
+                        return (
+                            <SessionItem
+                                key={session.id}
+                                $active={session.id === activeSessionId}
+                                $token={token}
+                                onClick={() => handleSessionClick(session.id)}
+                            >
+                                <PixelAvatar name={session.id} status={avatarStatus} size={22} statusStyles={AVATAR_STYLES} />
+                                <SessionName $token={token}>{displayName}</SessionName>
+                                <TimeLabel $token={token}>{relativeTime}</TimeLabel>
+                                <MoreButton
+                                    $token={token}
+                                    onClick={(e) => { e.stopPropagation(); onSessionAction(session.id) }}
+                                    aria-label={t('common.more')}
+                                >
+                                    <MoreOutlined style={{ fontSize: 16 }} />
+                                </MoreButton>
+                            </SessionItem>
+                        )
+                    })}
+                    {hasMore && (
+                        <ShowMoreBtn
+                            $token={token}
+                            onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
+                        >
+                            {t('nav.showMore', { count: sessions.length - visibleCount })}
+                        </ShowMoreBtn>
+                    )}
+                </SessionListInner>
+            </SessionListWrapper>
+        </div>
+    )
+}
+
+// ========== 主组件 ==========
+
+interface MobileProjectListProps {
+    /** 关闭菜单 Drawer 的回调 */
+    onCloseMenu: () => void
+}
+
+/**
+ * Mobile 端项目折叠列表
+ * 嵌入 MobileMenuDrawer，提供项目浏览和会话操作
+ */
+export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const navigate = useNavigate()
+    const queryClient = useQueryClient()
+    const authToken = useAuthStore((s) => s.token)
+    const api = useMobiApi(authToken)
+    const params = useParams({ strict: false })
+    const activeSessionId = params.sessionId as string | undefined
+
+    // ActionSheet 状态
+    const [actionSessionId, setActionSessionId] = useState<string | null>(null)
+    const [actionLoading, setActionLoading] = useState<string | null>(null)
+
+    // 重命名 Modal 状态
+    const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
+    const [renameValue, setRenameValue] = useState('')
+
+    const renameActions = useSessionActions(renameSessionId)
+
+    // 获取所有分组
+    const { data: groups = [] } = useSessionGroups()
+    // 获取所有会话（用于查找 ActionSheet 对应 session）
+    const { data: allSessions } = useSessions()
+
+    const findSession = useCallback((sessionId: string): Session | undefined => {
+        return allSessions?.find(s => s.id === sessionId)
+    }, [allSessions])
+
+    // 使缓存失效
+    const invalidateAll = useCallback(async (sessionId: string) => {
+        await Promise.all([
+            queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.sessionGroups }),
+            queryClient.invalidateQueries({ queryKey: ['groupSessions'] }),
+        ])
+    }, [queryClient])
+
+    // 关闭 ActionSheet
+    const closeActionSheet = useCallback(() => {
+        if (!actionLoading) setActionSessionId(null)
+    }, [actionLoading])
+
+    // 重命名
+    const handleRenameStart = useCallback(() => {
+        if (!actionSessionId) return
+        const session = findSession(actionSessionId)
+        if (!session) return
+        const metadata = session.metadata as SessionMetadataSummary | undefined
+        setRenameSessionId(actionSessionId)
+        setRenameValue(metadata?.name || '')
+        setActionSessionId(null)
+    }, [actionSessionId, findSession])
+
+    const handleRenameConfirm = useCallback(async () => {
+        if (!renameValue.trim() || !renameSessionId) return
+        try {
+            await renameActions.renameSession(renameValue.trim())
+            await invalidateAll(renameSessionId)
+            setRenameSessionId(null)
+            setRenameValue('')
+        } catch {
+            // 错误由 hook 内部处理
+        }
+    }, [renameValue, renameSessionId, renameActions, invalidateAll])
+
+    const handleRenameCancel = useCallback(() => {
+        setRenameSessionId(null)
+        setRenameValue('')
+    }, [])
+
+    // 归档
+    const handleArchive = useCallback(async () => {
+        if (!actionSessionId) return
+        setActionLoading('archive')
+        try {
+            await api.sessions.archive(actionSessionId)
+            await invalidateAll(actionSessionId)
+            setActionSessionId(null)
+        } catch {
+            // ignore
+        } finally {
+            setActionLoading(null)
+        }
+    }, [actionSessionId, api, invalidateAll])
+
+    // 恢复
+    const handleResume = useCallback(async () => {
+        if (!actionSessionId) return
+        setActionLoading('resume')
+        try {
+            const res = await api.sessions.resume(actionSessionId)
+            await invalidateAll(actionSessionId)
+            setActionSessionId(null)
+            onCloseMenu()
+            navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
+        } catch {
+            // ignore
+        } finally {
+            setActionLoading(null)
+        }
+    }, [actionSessionId, api, invalidateAll, onCloseMenu, navigate])
+
+    // 删除
+    const handleDelete = useCallback(() => {
+        if (!actionSessionId) return
+        const sessionId = actionSessionId
+        setActionLoading('delete')
+        Modal.confirm({
+            title: t('session.actions.deleteConfirmTitle'),
+            content: t('session.actions.deleteConfirmContent'),
+            okText: t('common.confirm'),
+            okButtonProps: { danger: true },
+            cancelText: t('common.cancel'),
+            onOk: async () => {
+                try {
+                    await api.sessions.delete(sessionId)
+                    queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
+                    queryClient.removeQueries({ queryKey: queryKeys.messages(sessionId) })
+                    await invalidateAll(sessionId)
+                    setActionSessionId(null)
+                    if (activeSessionId === sessionId) {
+                        onCloseMenu()
+                        navigate({ to: '/sessions' })
+                    }
+                } catch {
+                    // ignore
+                } finally {
+                    setActionLoading(null)
+                }
+            },
+            onCancel: () => {
+                setActionLoading(null)
+            },
+        })
+    }, [actionSessionId, api, queryClient, invalidateAll, activeSessionId, onCloseMenu, navigate, t])
+
+    // ActionSheet 当前操作的 session
+    const actionSession = actionSessionId ? findSession(actionSessionId) : null
+
+    return (
+        <>
+            <Container $token={token}>
+                <SectionHeader $token={token}>{t('nav.projects')}</SectionHeader>
+                {groups.map(group => (
+                    <MobileProjectGroup
+                        key={group.key}
+                        groupKey={group.key}
+                        activeSessionId={activeSessionId}
+                        onSessionAction={setActionSessionId}
+                        onCloseMenu={onCloseMenu}
+                    />
+                ))}
+            </Container>
+
+            {/* ActionSheet */}
+            <Drawer
+                placement="bottom"
+                open={!!actionSessionId}
+                onClose={closeActionSheet}
+                closable={false}
+                styles={{ body: { padding: '8px 0' } }}
+            >
+                {actionSession && (
+                    <>
+                        {/* 重命名 */}
+                        <Button
+                            type="text"
+                            block
+                            icon={<EditOutlined />}
+                            disabled={!!actionLoading}
+                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            onClick={handleRenameStart}
+                        >
+                            {t('session.actions.rename')}
+                        </Button>
+
+                        {/* 归档 / 恢复 */}
+                        {actionSession.active ? (
+                            <Button
+                                type="text"
+                                block
+                                icon={<InboxOutlined />}
+                                disabled={!!actionLoading}
+                                loading={actionLoading === 'archive'}
+                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                onClick={handleArchive}
+                            >
+                                {t('session.actions.archive')}
+                            </Button>
+                        ) : (
+                            <Button
+                                type="text"
+                                block
+                                icon={<PlayCircleOutlined />}
+                                disabled={!!actionLoading}
+                                loading={actionLoading === 'resume'}
+                                style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                                onClick={handleResume}
+                            >
+                                {t('session.actions.resume')}
+                            </Button>
+                        )}
+
+                        <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 16px' }} />
+
+                        {/* 删除 */}
+                        <Button
+                            type="text"
+                            block
+                            danger
+                            icon={<DeleteOutlined />}
+                            disabled={actionSession.active || !!actionLoading}
+                            loading={actionLoading === 'delete'}
+                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            onClick={handleDelete}
+                        >
+                            {t('session.actions.delete')}
+                        </Button>
+
+                        <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 16px' }} />
+
+                        {/* 取消 */}
+                        <Button
+                            type="text"
+                            block
+                            icon={<CloseOutlined />}
+                            disabled={!!actionLoading}
+                            style={{ height: 48, justifyContent: 'center', color: token.colorTextSecondary }}
+                            onClick={closeActionSheet}
+                        >
+                            {t('common.cancel')}
+                        </Button>
+                    </>
+                )}
+            </Drawer>
+
+            {/* 重命名 Modal */}
+            <Modal
+                title={t('session.actions.rename')}
+                open={!!renameSessionId}
+                onOk={handleRenameConfirm}
+                onCancel={handleRenameCancel}
+                confirmLoading={renameActions.isPending}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                destroyOnClose
+            >
+                <Input
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onPressEnter={handleRenameConfirm}
+                    placeholder={t('session.actions.rename')}
+                    autoFocus
+                />
+            </Modal>
+        </>
+    )
+}

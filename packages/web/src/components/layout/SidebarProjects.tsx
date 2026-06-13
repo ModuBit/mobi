@@ -33,24 +33,16 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import type { AgentStatus, StatusStyle } from '@/components/pixel-avatar/types'
+import type { StatusStyle } from '@/components/pixel-avatar/types'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
+import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
 
 const { useToken } = antTheme
 
 /** 默认展示和每次加载更多的会话数 */
 const PAGE_SIZE = 5
 
-// 会话头像状态映射
-function getSessionAvatarStatus(session: Session): AgentStatus {
-    if (!session.active) return 'inactive'
-    const pendingRequests = session.agentState?.requests
-    if (pendingRequests && Object.keys(pendingRequests).length > 0) return 'awaiting_auth'
-    if (session.running) return 'outputting'
-    return 'idle'
-}
-
-const AVATAR_STYLES: Partial<Record<AgentStatus, StatusStyle>> = {}
+const AVATAR_STYLES: Partial<Record<string, StatusStyle>> = {}
 
 // ========== 样式组件 ==========
 
@@ -285,12 +277,6 @@ const ShowMoreLink = styled.button<{ $token: ReturnType<typeof useToken>['token'
         color: ${props => props.$token.colorPrimary};
     }
 `
-
-/** 从 group.key 路径提取最后一段目录名 */
-function extractFolderName(key: string): string {
-    const parts = key.replace(/\/+$/, '').split('/')
-    return parts[parts.length - 1] || key
-}
 
 /** 从 session metadata 中取显示名称（用于重命名初始值） */
 function getSessionName(session: Session): string {
