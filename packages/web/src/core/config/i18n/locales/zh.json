@@ -268,6 +268,15 @@
     "permissionGuideDesc": "浏览器已阻止通知权限，请在浏览器设置中手动开启：点击地址栏左侧图标 → 站点设置 → 通知 → 允许",
     "idleTimeoutWarning": "会话即将超时",
     "idleTimeoutWarningDesc": "会话将在 {{minutes}} 分钟后自动关闭，请发送消息保持活跃",
+    "settings": {
+      "title": "通知",
+      "enabled": "已开启",
+      "enable": "开启通知",
+      "denied": "通知已被浏览器禁止，请到浏览器站点设置中开启",
+      "test": "发送测试通知",
+      "installPwa": "安装到主屏幕可获得离线通知",
+      "installPwaIos": "Safari 分享 → 添加到主屏幕"
+    },
     "pwa": {
       "updateAvailable": "发现新版本",
       "updateAction": "刷新",

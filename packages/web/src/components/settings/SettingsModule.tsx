@@ -19,9 +19,10 @@ import { useTranslation } from 'react-i18next'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { NotificationSettings } from './NotificationSettings'
 import styled from '@emotion/styled'
 
-const { Title, Text } = Typography
+const { Title } = Typography
 const { useToken } = antTheme
 
 const SettingsContainer = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
@@ -35,8 +36,6 @@ const SettingsContent = styled.div<{ $token: ReturnType<typeof useToken>['token'
     flex: 1;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
     padding: 24px;
 `
 
@@ -54,7 +53,11 @@ export function SettingsModule() {
                 </>}
             />
             <SettingsContent $token={token}>
-                <Text type="secondary">{t('settings.comingSoon')}</Text>
+                {/*
+                    namespace：hub 端从 token 自动解析，client 无需传值，
+                    传空串作为语义占位（useNotificationSetup 内部 void 标注）。
+                */}
+                <NotificationSettings namespace="" />
             </SettingsContent>
         </SettingsContainer>
     )
