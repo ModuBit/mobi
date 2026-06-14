@@ -184,7 +184,7 @@ export function createMobiApi(token: string | null) {
 
         // Push notifications
         push: {
-            getVapidKey: () => client.get<{ publicKey: string }>('/api/push/vapid-key'),
+            getVapidKey: () => client.get<{ publicKey: string }>('/api/push/vapid-public-key'),
             subscribe: (subscription: PushSubscriptionJSON) =>
                 client.post('/api/push/subscribe', subscription),
         },
