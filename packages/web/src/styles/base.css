@@ -4,6 +4,35 @@
     box-sizing: border-box;
 }
 
+/* 移动端：移除点击元素默认高亮块
+   触屏设备点击链接/按钮/可点击区域时，浏览器默认绘制半透明高亮（tap-highlight，
+   Android 常为蓝色/灰色），点击瞬间闪烁，体感粗糙。统一关闭；
+   交互反馈交由组件 :active / focus-visible 提供（antd 组件已内置），不影响可访问性 */
+html {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* 移动端：按压反馈
+   移除 tap-highlight 后，自定义可点击元素（div/span + onClick）无按压反馈。
+   用 :active + opacity 补充，**限定到可交互语义元素**（a/button/role/.tappable）。
+   关键：不能用 *:active——移动端 :active 会应用到 touch target 整条祖先链（含
+   html/body），*:active 会让 html/body 也 opacity → 整页闪白。限定到语义元素后，
+   html/body/布局容器不匹配选择器，只有被点击的交互元素本身淡化；opacity 作用于
+   元素整体（含 border-radius 裁剪区域），圆形元素得圆形反馈，不出现方形高亮块。
+   仅触屏（hover: none）生效，桌面端保留 hover。antd Button 自带 :active 背景
+   变化，与 opacity 叠加反馈更明显；自定义元素可加 .tappable 类获得相同样式 */
+@media (hover: none) and (pointer: coarse) {
+    a:active,
+    button:active,
+    [role="button"]:active,
+    [role="menuitem"]:active,
+    [role="option"]:active,
+    [role="tab"]:active,
+    .tappable:active {
+        opacity: 0.7;
+    }
+}
+
 html, body, #root {
     height: 100%;
     margin: 0;
