@@ -16,15 +16,13 @@
 
 import type { InfiniteData } from '@tanstack/react-query'
 import type { DecryptedMessage, MessagesResponse } from '@/core/data/api/types'
+import { uuid } from './uuid'
 
 /**
  * 生成客户端唯一 ID
  */
 export function makeClientSideId(prefix: string): string {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-        return `${prefix}-${crypto.randomUUID()}`
-    }
-    return `${prefix}-${Date.now()}-${Math.random()}`
+    return `${prefix}-${uuid()}`
 }
 
 /**

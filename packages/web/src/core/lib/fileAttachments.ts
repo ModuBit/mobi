@@ -16,6 +16,7 @@
 
 import type { UploadFileResponse } from '@/core/data/api/types'
 import { ALLOWED_EXTENSIONS_SET, ALLOWED_EXTENSIONS, BLOCKED_EXTENSIONS_SET, MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
+import { uuid } from './uuid'
 
 /**
  * 文件附件类型
@@ -80,7 +81,7 @@ export function getAcceptExtensions(): string {
  */
 export function createFileAttachment(file: File): FileAttachment {
     return {
-        id: crypto.randomUUID(),
+        id: uuid(),
         file,
         status: 'uploading',
     }

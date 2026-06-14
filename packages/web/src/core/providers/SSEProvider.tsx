@@ -398,12 +398,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     })
                 }
                 if (event.reconnected) {
+                    // 静默恢复：仅关闭断开提示 + 刷新数据，不再弹"连接已恢复" toast
+                    // 移动端后台→前台频繁触发重连，success 提示打扰用户且无信息价值；
+                    // 真实断网仍由上方 connected===false 的 warning 提示
                     nt.destroy('sse-disconnected')
-                    nt.success({
-                        message: tRef.current('notification.sseReconnected'),
-                        description: tRef.current('notification.sseReconnectedDesc'),
-                        duration: 5,
-                    })
                     qc.invalidateQueries({ queryKey: queryKeys.sessions }).catch(() => {})
                     qc.invalidateQueries({ queryKey: ['messages'] }).catch(() => {})
                 }

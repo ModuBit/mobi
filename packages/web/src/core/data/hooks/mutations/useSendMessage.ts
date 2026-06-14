@@ -17,6 +17,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
+import { makeClientSideId } from '@/core/lib/messages'
 
 /**
  * 发送消息 Mutation Hook
@@ -27,12 +28,16 @@ export function useSendMessage(sessionId: string) {
 
     return useMutation({
         mutationFn: (text: string) => {
-            const localId = `local-${crypto.randomUUID()}`
+            const localId = makeClientSideId('local')
+            if (import.meta.env.DEV) console.log('[Send] api.messages.send', { sessionId, localId, textLen: text.length })
             return api.messages.send(sessionId, text, localId)
+        },
+        onSuccess: () => {
+            if (import.meta.env.DEV) console.log('[Send] 发送请求成功')
         },
         onError: (error) => {
             // SSE 会推送正确状态，此处仅记录错误
-            console.error('[useSendMessage] 发送消息失败:', error)
+            console.error('[Send] 发送消息失败:', error)
         }
     })
 }

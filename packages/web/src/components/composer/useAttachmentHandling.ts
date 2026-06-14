@@ -75,6 +75,7 @@ export function useAttachmentHandling(capabilities: DirectoryCapabilities) {
         try {
             const response = await capabilities.uploadFile(file, { signal: controller.signal })
             const data = response.data as UploadFileResponse
+            if (import.meta.env.DEV) console.log('[Upload] 响应', attachmentId, data)
             if (data.success && data.path) {
                 setAttachments(prev => prev.map(a =>
                     a.id === attachmentId
@@ -89,6 +90,7 @@ export function useAttachmentHandling(capabilities: DirectoryCapabilities) {
                 ))
             }
         } catch (err) {
+            if (import.meta.env.DEV) console.error('[Upload] 上传失败', attachmentId, err)
             if (controller.signal.aborted) return
             setAttachments(prev => prev.map(a =>
                 a.id === attachmentId
@@ -102,6 +104,7 @@ export function useAttachmentHandling(capabilities: DirectoryCapabilities) {
 
     // 校验并上传文件列表（粘贴 / 拖拽 / 选择文件共享）
     const processFiles = useCallback((files: File[]) => {
+        if (import.meta.env.DEV) console.log('[Upload] processFiles', files.map(f => `${f.name}(${f.size})`))
         for (const file of files) {
             const error = validateFile(file)
             if (error) {
@@ -121,9 +124,11 @@ export function useAttachmentHandling(capabilities: DirectoryCapabilities) {
         input.accept = getAcceptExtensions()
         input.onchange = (e) => {
             const files = (e.target as HTMLInputElement).files
+            if (import.meta.env.DEV) console.log('[Upload] input.onchange 触发, files=', files?.length ?? 0)
             if (!files) return
             processFiles(Array.from(files))
         }
+        if (import.meta.env.DEV) console.log('[Upload] handleAttach → input.click()')
         input.click()
     }, [processFiles])
 
