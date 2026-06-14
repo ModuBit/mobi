@@ -302,6 +302,9 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const markUnread = useNotificationBadgeStore((s) => s.markUnread)
     const markUnreadRef = useRef(markUnread)
     markUnreadRef.current = markUnread
+    const clearAllBadges = useNotificationBadgeStore((s) => s.clearAll)
+    const clearAllBadgesRef = useRef(clearAllBadges)
+    clearAllBadgesRef.current = clearAllBadges
     const { t } = useTranslation()
     const tRef = useRef(t)
     tRef.current = t
@@ -471,6 +474,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 break
         }
     }, [])
+
+    // 登出(token 清空)时清理角标,避免换号残留上一用户的未读状态
+    useEffect(() => {
+        if (!token) clearAllBadgesRef.current()
+    }, [token])
 
     // 浏览器通知权限管理
     // 模块级变量控制：同一页面生命周期内只检查一次，刷新后重置
