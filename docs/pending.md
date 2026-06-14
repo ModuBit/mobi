@@ -105,7 +105,13 @@
 
 ---
 
-## 5. Web Worker 优化 SSE 后台连接稳定性
+## 5. ~~Web Worker 优化 SSE 后台连接稳定性~~ ✅ 已解决（commit dcacf0a）
+
+**真实根因**：`@microsoft/fetch-event-source` 默认 `openWhenHidden=false`，页面进入 hidden（切 tab / 最小化 / 切 app 触发 `visibilitychange`）时库内部主动 `abort()` 连接——是「切走即断」的**确定性原因**，与浏览器后台节流无关（原假设误判）。
+
+**修复**：`packages/web/src/core/data/realtime/sseClient.ts` 显式配置 `openWhenHidden: true`（一行），后台保持 SSE 长连接。Web Worker 方案不再必要，已放弃。回归测试 `packages/web/tests/realtime/sseClient.test.ts` 锁定该配置。
+
+> 以下为已废弃的原方案，保留备查（其中文件路径为重构前的旧路径）：
 
 **相关文件**：
 - `packages/web/src/realtime/sseClient.ts` — SSE 客户端
