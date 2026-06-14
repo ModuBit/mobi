@@ -33,6 +33,9 @@ const queryClient = new QueryClient({
     }
 })
 
+// 移动端调试面板（vConsole）：通过连点 NewSessionPage 品牌 Icon ≥5 次开启
+// 见 core/lib/vconsole.ts，桌面端不启用，未开启时不进 bundle
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
         <HelmetProvider>

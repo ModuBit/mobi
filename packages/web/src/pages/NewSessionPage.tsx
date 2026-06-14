@@ -53,6 +53,8 @@ import {
     savePreferredPermissionMode,
 } from '@/domain/session/preferences'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
+import { Icon } from '@/components/layout/Icon'
+import { enableVConsole } from '@/core/lib/vconsole'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
@@ -415,6 +417,25 @@ export function NewSessionPage() {
             </span>,
         )
     }, [confirmedProjectName])
+
+    // 连点品牌 Logo ≥5 次开启移动端调试面板（vConsole），隐蔽入口
+    // 1.5s 内连续点击累计到 5 次即触发；超时重置计数
+    const vconsoleTapRef = useRef({ count: 0, timer: null as ReturnType<typeof setTimeout> | null })
+    const handleLogoTap = useCallback(() => {
+        const state = vconsoleTapRef.current
+        state.count += 1
+        if (state.timer) clearTimeout(state.timer)
+        if (state.count >= 5) {
+            state.count = 0
+            state.timer = null
+            enableVConsole()
+            return
+        }
+        state.timer = setTimeout(() => {
+            state.count = 0
+            state.timer = null
+        }, 1500)
+    }, [])
 
     // 随机 placeholder，与 session 详情页一致
     const placeholders = t('composer.placeholders', { returnObjects: true }) as string[]
@@ -839,6 +860,9 @@ export function NewSessionPage() {
             </SidebarToggleWrapper>
             <ContentWrapper>
                 <TitleBar $color={token.colorTextSecondary}>
+                    <span onClick={handleLogoTap} style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 8 }}>
+                        <Icon style={{ width: 24, height: 24, color: 'var(--ant-colorPrimary)' }} />
+                    </span>
                     {title}
                 </TitleBar>
 
