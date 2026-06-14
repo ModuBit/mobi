@@ -14,10 +14,10 @@
 flowchart TB
     SE[SyncEngine] -->|订阅事件| NH[NotificationHub]
     NH -->|遍历 channel| PNC[PushNotificationChannel]
-    PNC --> VT{页面可见?}
-    VT -->|是| SSE[SSEManager<br/>sendToast]
-    VT -->|否| PS[PushService<br/>sendToNamespace]
-    SSE -->|未送达| PS
+    PNC --> Active{有活跃<br/>SSE 连接?}
+    Active -->|是| SSE[SSEManager<br/>sendToast<br/>发所有活跃连接]
+    Active -->|否| PS[PushService<br/>sendToNamespace<br/>Web Push]
+    SSE -->|前端本地判定| Branch[visible+当前 session→忽略<br/>visible+其他 session→页面 Toast+角标<br/>hidden→系统通知]
 
     subgraph notifications
         NH
@@ -105,9 +105,23 @@ flowchart TB
 详见 [通知通道文档](../push/notification-channel.md)
 
 ```
-页面可见 → SSE Toast 优先 → 未送达则 Web Push
-页面不可见 → 直接 Web Push
+有活跃 SSE 连接 → sendToast（发给该 namespace 所有活跃连接，含后台 hidden）
+无活跃 SSE 连接 → Web Push
 ```
+
+**通道选择由 Hub 判定**（`PushNotificationChannel` 调用 `sseManager.hasActiveConnection(namespace)`）：
+- **有活跃 SSE 连接**（visible 或 hidden）→ `sendToast` 投递给该 namespace 所有活跃连接；每条连接在前端本地决定如何展示。
+- **无活跃 SSE 连接** → `PushService.sendToNamespace` 发送 Web Push。
+
+**「要不要打扰」由前端本地判定**：收到 toast 后，前端 `decideToastAction(sessionId, { activeSessionId, isHidden })` 三分支：
+
+| 连接状态 + 当前路由 | 处理方式 |
+|------|---------|
+| visible 且当前路由在该 session | 忽略（用户已看到） |
+| visible 但不在该 session | 页面 Toast + 角标 |
+| hidden | 系统通知（Web Notification） |
+
+多设备天然支持：每个活跃 SSE 连接独立在前端判定展示方式，Hub 不需关心各连接的可见性。
 
 ## 组装过程
 
@@ -117,9 +131,11 @@ flowchart TB
 PushService ←── vapidKeys + store
 VisibilityTracker ←── new()
 SSEManager ←── heartbeat + VisibilityTracker
-PushNotificationChannel ←── PushService + SSEManager + VisibilityTracker
+PushNotificationChannel ←── PushService + SSEManager
 NotificationHub ←── SyncEngine + [PushNotificationChannel]
 ```
+
+> 注：`PushNotificationChannel` 不再依赖 `VisibilityTracker`（构造参数已移除）。通知链路通过 `sseManager.hasActiveConnection()` 判定通道选择。`VisibilityTracker` 仍被 SSEManager/WebServer 持有（一期保留不删），但通知链路不再消费它，作为后续清理项（见 [docs/pending.md](../../../pending.md) #17）。
 
 ## NotificationChannel 接口
 

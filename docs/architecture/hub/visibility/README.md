@@ -77,28 +77,30 @@ Web 端通过 `POST /api/visibility` 上报页面可见性变化：
 
 SSE 连接断开时调用 `removeConnection`，同时清理反向索引和可见连接集合。
 
-## 与通知系统的配合
+## 与通知系统的关系
 
-VisibilityTracker 是通知降级策略的核心依据：
+VisibilityTracker **不再被通知链路消费**。通知通道选择已改为基于「有无活跃 SSE 连接」（`sseManager.hasActiveConnection(namespace)`）：
 
 ```mermaid
 flowchart TB
     Event["SyncEngine 事件"] --> NH["NotificationHub"]
     NH --> PNC["PushNotificationChannel"]
-    PNC --> Check{"hasVisibleConnection()?"}
-    Check -->|"有可见连接"| SSE["SSEManager.sendToast()<br/>实时推送到页面"]
-    Check -->|"无可见连接"| Push["PushService.send()<br/>Web Push 离线推送"]
+    PNC --> Check{"hasActiveConnection()?"}
+    Check -->|"有活跃连接"| SSE["SSEManager.sendToast()<br/>发给所有活跃连接"]
+    Check -->|"无活跃连接"| Push["PushService.sendToNamespace()<br/>Web Push 推送"]
 ```
 
-**设计意图**：当用户正在查看页面时，SSE 实时推送延迟更低、体验更好；当页面在后台或关闭时，通过 Web Push 发送浏览器通知。
+「要不要打扰」由前端本地三分支判定（visible+当前 session→忽略 / visible+其他→页面 Toast+角标 / hidden→系统通知），不再由 Hub 端按可见性过滤。
+
+**当前状态**：VisibilityTracker 类一期保留不删（降风险），数据结构、生命周期、方法表均保留，但通知链路已不再注入它。后续清理项见 [docs/pending.md](../../../pending.md) #17。
 
 ## 与其他模块的关系
 
 | 模块 | 使用方式 |
 |------|----------|
-| SSEManager | 构造时注入，SSE 连接建立/断开时注册/移除 |
-| PushNotificationChannel | 构造时注入，发送通知前查询可见性 |
+| SSEManager | 构造时注入（一期保留），SSE 连接建立/断开时注册/移除 |
 | WebServer (events route) | SSE 连接和可见性变更时更新 |
+| PushNotificationChannel | **不再注入**（构造参数已移除，通知链路改为基于 `hasActiveConnection()`） |
 | SyncEngine | 不直接使用 |
 
-VisibilityTracker 在 `index.ts` 中创建，通过依赖注入传递给 SSEManager、WebServer 和 PushNotificationChannel。
+> 注：VisibilityTracker 当前仅被 SSEManager 和 WebServer 依赖，用于追踪连接可见性状态。通知链路已不再消费它（详见上文「与通知系统的关系」）。

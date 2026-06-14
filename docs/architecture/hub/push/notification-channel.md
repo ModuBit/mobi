@@ -11,8 +11,9 @@ flowchart LR
     PNC[PushNotificationChannel]
     PNC --> PS[PushService<br/>Web Push]
     PNC --> SSE[SSEManager<br/>实时推送]
-    PNC --> VT[VisibilityTracker<br/>可见性追踪]
 ```
+
+> 注：`PushNotificationChannel` 不再依赖 `VisibilityTracker`（构造参数已移除）。通道选择通过 `sseManager.hasActiveConnection(namespace)` 判定有无活跃连接。
 
 ## 核心职责
 
@@ -29,30 +30,36 @@ flowchart LR
 flowchart TB
     send[发送通知]
     active{会话活跃?}
-    visible{页面可见?}
-    sse[尝试 SSE Toast]
-    delivered{SSE 送达?}
+    connected{有活跃<br/>SSE 连接?}
+    sse[sendToast<br/>发所有活跃连接]
     push[Web Push]
     done[完成]
 
     send --> active
     active -->|否| done
-    active -->|是| visible
-    visible -->|是| sse
-    visible -->|否| push
-    sse --> delivered
-    delivered -->|是| done
-    delivered -->|否| push
+    active -->|是| connected
+    connected -->|是| sse
+    connected -->|否| push
+    sse --> done
     push --> done
 ```
 
-**优先级**：SSE Toast > Web Push
+**通道选择**（Hub 端）：基于 `sseManager.hasActiveConnection(namespace)` 判定，**不再依赖** `VisibilityTracker`。
 
 | 条件 | 通知方式 |
 |------|---------|
-| 页面可见 + SSE 送达 | SSE Toast（实时） |
-| 页面可见 + SSE 未送达 | Web Push |
-| 页面不可见 | Web Push |
+| 有活跃 SSE 连接（visible 或 hidden） | `sendToast` 发给该 namespace 所有活跃连接（含后台） |
+| 无活跃 SSE 连接 | Web Push |
+
+**「要不要打扰」由前端本地判定**：`decideToastAction(sessionId, { activeSessionId, isHidden })` 三分支：
+
+| 连接状态 + 当前路由 | 处理方式 |
+|------|---------|
+| visible 且当前路由在该 session | 忽略（用户已看到） |
+| visible 但不在该 session | 页面 Toast + 角标 |
+| hidden | 系统通知（Web Notification） |
+
+多设备天然支持：每个活跃 SSE 连接独立在前端判定展示方式。
 
 ## 通知类型
 
@@ -111,7 +118,8 @@ block-beta
         title: string,      // 通知标题
         body: string,       // 通知正文
         sessionId: string,  // 会话 ID
-        url: string         // 跳转路径
+        url: string,        // 跳转路径
+        kind: 'ready' | 'permission'  // 通知类型（ready=等待输入, permission=权限请求）
     }
 }
 ```
@@ -136,6 +144,5 @@ block-beta
 | 模块 | 交互方式 |
 |------|---------|
 | PushService | 调用 `sendToNamespace()` 发送 Web Push |
-| SSEManager | 调用 `sendToast()` 发送实时 Toast |
-| VisibilityTracker | 调用 `hasVisibleConnection()` 检查可见性 |
+| SSEManager | 调用 `hasActiveConnection()` 判定通道、`sendToast()` 发送实时 Toast |
 | SyncEngine | 作为 NotificationChannel 被调用 |

@@ -213,7 +213,7 @@ type SyncEvent =
     | { type: 'session-removed', sessionId: string, namespace?: string }
     | { type: 'message-received', sessionId: string, message: DecryptedMessage, namespace?: string }
     | { type: 'machine-updated', machineId: string, data?: unknown, namespace?: string }
-    | { type: 'toast', data: { title: string, body: string, sessionId: string, url: string }, namespace?: string }
+    | { type: 'toast', data: { title: string, body: string, sessionId: string, url: string, kind: 'ready' | 'permission' }, namespace?: string }
     | { type: 'message-snapshot', sessionId: string, message: DecryptedMessage, namespace?: string }
     | { type: 'heartbeat', data?: { timestamp: number }, namespace?: string }
     | { type: 'connection-changed', data?: { status: string, subscriptionId?: string }, connected?: boolean, reconnected?: boolean, namespace?: string }
@@ -227,7 +227,7 @@ type SyncEvent =
 | `session-removed` | 会话从缓存/数据库中删除 |
 | `message-received` | 收到新消息 |
 | `machine-updated` | 机器状态变化（上线/离线/心跳） |
-| `toast` | 需要展示 Toast 通知 |
+| `toast` | 需要展示 Toast 通知（`kind: 'ready'` = Agent 等待输入，`kind: 'permission'` = CLI 请求权限） |
 | `message-snapshot` | 流式快照消息（未落库，Hub 直接透传给 Web） |
 | `heartbeat` | 心跳事件 |
 | `connection-changed` | 连接状态变化 |

@@ -22,10 +22,11 @@ Web 是 Mobi 的浏览器前端，提供 Claude Code 会话的远程交互界面
 2. `src/router.tsx` — 路由结构，理解页面组织
 3. `src/core/data/api/` — API 层，理解与 Hub 的 HTTP 通信
 4. `src/core/providers/SSEProvider.tsx` — SSE 实时事件处理
-5. `src/domain/chat/` — 消息解析管线，理解 reducer → normalize → 分组流程
-6. `src/components/chat/` — 聊天视图，理解消息渲染管线
-7. `src/components/tool-card/` — 工具卡片，理解工具结果展示
-8. `src/core/data/hooks/` — 数据查询层，理解缓存策略
+5. `src/core/notifications/` — toast 通知三分支决策（收到 toast 后前端本地判定展示方式）
+6. `src/domain/chat/` — 消息解析管线，理解 reducer → normalize → 分组流程
+7. `src/components/chat/` — 聊天视图，理解消息渲染管线
+8. `src/components/tool-card/` — 工具卡片，理解工具结果展示
+9. `src/core/data/hooks/` — 数据查询层，理解缓存策略
 
 ### 术语表
 
@@ -69,7 +70,7 @@ graph TB
         API["api/client.ts<br/>MobiApi"]
         Types["api/types.ts<br/>类型定义"]
         SSEC["realtime/sseClient.ts<br/>SSE 传输"]
-        Stores["stores/<br/>Zustand（6 个）"]
+        Stores["stores/<br/>Zustand（7 个）"]
         Hooks["hooks/queries/ + mutations/<br/>TanStack Query"]
     end
 
@@ -115,13 +116,14 @@ packages/web/src/
 │   │   ├── api/                HTTP API
 │   │   │   ├── client.ts       createMobiApi() — 所有 REST 端点
 │   │   │   └── types.ts        统一类型定义（Web 前端唯一类型源）
-│   │   ├── stores/             Zustand 全局状态（6 个）
+│   │   ├── stores/             Zustand 全局状态（7 个）
 │   │   │   ├── authStore.ts    认证 token（localStorage 持久化）
 │   │   │   ├── uiStore.ts      UI 状态（主题、语言、侧边栏、视图模式）
 │   │   │   ├── chatBlocksByIdStore.ts   会话级 ChatBlock 缓存
 │   │   │   ├── backgroundTasksStore.ts  后台任务状态
 │   │   │   ├── runningAgentsStore.ts    运行中 Agent 状态
-│   │   │   └── teamAgentsStore.ts       Team Agent 状态
+│   │   │   ├── teamAgentsStore.ts       Team Agent 状态
+│   │   │   └── notificationBadgeStore.ts 通知角标未读状态
 │   │   ├── realtime/           实时通信
 │   │   │   └── sseClient.ts    SSE 传输层（fetch-event-source 封装）
 │   │   ├── cache/              缓存操作工具
@@ -147,7 +149,11 @@ packages/web/src/
 │   │       │   └── useSpawnSession.ts    启动新会话
 │   │       ├── useMediaQuery.ts          响应式断点
 │   │       ├── useTerminalSocket.ts      终端 WebSocket 连接
-│   │       └── useNotify.ts             通知 Hook
+│   │       ├── useNotify.ts             通知 Hook
+│   │       └── useNotificationSetup.ts   通知权限 + Web Push 订阅
+│   ├── notifications/          通知决策（纯函数）
+│   │   ├── toastDecision.ts    decideToastAction() — toast 三分支决策（忽略/页面 Toast+角标/系统通知）
+│   │   └── parseActiveSessionId.ts 从 URL 解析当前活跃 sessionId
 │   ├── config/                 应用配置
 │   │   ├── i18n/               国际化
 │   │   │   ├── index.ts        i18next 配置
@@ -176,7 +182,8 @@ packages/web/src/
 │   │   ├── findActiveWord.ts   光标位置单词查找
 │   │   └── codeLanguageDetect.ts 代码语言检测
 │   └── pwa/                    PWA 支持
-│       └── registerSW.ts       Service Worker 注册
+│       ├── registerSW.ts       Service Worker 注册
+│       └── sw.ts               自定义 Service Worker（处理 push / notificationclick）
 │
 ├── domain/                     领域逻辑（纯数据，不依赖 React）
 │   ├── chat/                   聊天领域
@@ -294,6 +301,7 @@ packages/web/src/
 │   │   ├── navConfig.ts        导航配置
 │   │   ├── InstallButton.tsx   PWA 安装按钮
 │   │   ├── UpdatePrompt.tsx    更新提示
+│   │   ├── usePwaMode.ts       PWA 运行环境检测（独立窗口/嵌入）
 │   │   └── useThemeLocaleToggle.ts 主题/语言切换 Hook
 │   ├── pixel-avatar/           像素头像动画
 │   │   ├── PixelAvatar.tsx     主组件
@@ -310,7 +318,8 @@ packages/web/src/
 │   ├── terminal/               终端视图
 │   │   └── TerminalView.tsx
 │   ├── settings/               设置页面
-│   │   └── SettingsModule.tsx
+│   │   ├── SettingsModule.tsx
+│   │   └── NotificationSettings.tsx 通知设置区块（权限开关、订阅状态）
 │   └── ui/                     共享 UI 原语
 │       ├── Markdown.tsx        Markdown 渲染器
 │       ├── AutoDetectCodeBlock.tsx 代码块语言检测
@@ -556,6 +565,7 @@ Web 端区分三种状态，使用不同的管理方案：
 | `useBackgroundTasksStore` | 后台任务状态 |
 | `useRunningAgentsStore` | 运行中 Agent 状态 |
 | `useTeamAgentsStore` | Team Agent 状态 |
+| `useNotificationBadgeStore` | 通知角标未读状态 |
 
 ## 布局体系
 

@@ -159,24 +159,32 @@ Hub 发送推送：
 ```mermaid
 flowchart TB
     need[需要通知用户]
-    visible{页面可见?}
-    sse[SSE 实时推送]
+    active{有活跃<br/>SSE 连接?}
+    sse[SSE Toast<br/>发所有活跃连接]
     push{Web Push 可用?}
     webpush[Web Push 通知]
     fallback[无通知<br/>用户需主动查看]
 
-    need --> visible
-    visible -->|是| sse
-    visible -->|否| push
+    need --> active
+    active -->|是| sse
+    active -->|否| push
     push -->|是| webpush
     push -->|否| fallback
 ```
 
-Mobi 已有 SSE 方案（`/api/events`），配合 `VisibilityTracker` 实现降级：
+Mobi 已有 SSE 方案（`/api/events`），通道选择基于**有无活跃 SSE 连接**：
 
-- **页面可见** → SSE 实时推送
-- **页面不可见 + Web Push 可用** → Web Push 通知
-- **页面不可见 + Web Push 不可用** → 无通知（用户下次打开时查看）
+- **有活跃 SSE 连接**（visible 或 hidden）→ `sendToast` 投递给该 namespace 所有活跃连接（含后台），前端本地决定展示方式
+- **无活跃 SSE 连接 + Web Push 可用** → Web Push 通知
+- **无活跃 SSE 连接 + Web Push 不可用** → 无通知（用户下次打开时查看）
+
+通道选择由 `PushNotificationChannel` 调用 `sseManager.hasActiveConnection(namespace)` 判定，**不再依赖** `VisibilityTracker`。「要不要打扰」由前端本地三分支判定：
+
+| 连接状态 + 当前路由 | 处理方式 |
+|------|---------|
+| visible 且当前路由在该 session | 忽略（用户已看到） |
+| visible 但不在该 session | 页面 Toast + 角标 |
+| hidden | 系统通知（Web Notification） |
 
 ## 依赖关系
 

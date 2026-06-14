@@ -25,14 +25,15 @@ flowchart TB
 | `subscribe()` | 注册 SSE 连接 |
 | `unsubscribe()` | 移除 SSE 连接 |
 | `broadcast()` | 广播事件给所有匹配的连接 |
-| `sendToast()` | 发送 toast 事件给可见连接 |
+| `sendToast()` | 发送 toast 事件给该 namespace 所有活跃连接（含后台 hidden） |
+| `hasActiveConnection()` | 查询某 namespace 是否有活跃连接（通知通道选择依据） |
 | `stop()` | 停止所有连接和心跳 |
 
 ## sendToast vs broadcast
 
 | | sendToast | broadcast |
 |--|-----------|-----------|
-| **可见性** | 只发给**可见**连接 | 发给**所有**匹配连接 |
+| **投递范围** | 该 namespace 所有活跃连接（含后台 hidden） | 所有匹配连接 |
 | **namespace** | 指定 namespace | 从 event 中提取 |
 | **返回值** | 返回成功送达数量 | 无返回值 |
 | **用途** | Toast 通知 | 广播事件 |
@@ -45,25 +46,22 @@ async sendToast(namespace: string, event): Promise<number>
 
 **发送条件**：
 1. namespace 匹配
-2. 连接**可见**（`isVisibleConnection`）
+2. 匹配该 namespace 的**所有活跃连接**（含后台 hidden，不再过滤可见性）
 
-**使用场景**：页面可见时发送 Toast，与 Web Push 配合实现降级
+**使用场景**：有活跃 SSE 连接时发送 Toast（通道选择由 `PushNotificationChannel` 调用 `hasActiveConnection()` 判定），前端据 `hidden` 标志决定页面 Toast 或系统通知。
 
 ```mermaid
 flowchart TB
     need[需要通知]
-    visible{页面可见?}
-    toast[sendToast]
-    delivered{送达?}
+    active{有活跃连接?}
+    toast[sendToast<br/>发给所有活跃连接]
     push[Web Push]
     done[完成]
 
-    need --> visible
-    visible -->|是| toast
-    visible -->|否| push
-    toast --> delivered
-    delivered -->|是| done
-    delivered -->|否| push
+    need --> active
+    active -->|是| toast
+    active -->|否| push
+    toast --> done
     push --> done
 ```
 
@@ -119,15 +117,8 @@ flowchart TB
     unsubscribe[无连接] --> stop[停止心跳]
 ```
 
-## 与 VisibilityTracker 配合
+## 与 VisibilityTracker 的关系
 
-`sendToast()` 只推送给**可见**的连接，其他事件则推送给所有匹配的连接。
+`sendToast()` 现投递该 namespace **所有活跃连接**（含后台 hidden），不再按可见性过滤。通知链路通过 `hasActiveConnection()` 判定有无活跃连接来选择通道（有 → sendToast；无 → Web Push），「要不要打扰」由前端本地三分支判定（visible+当前 session→忽略 / visible+其他→页面 Toast+角标 / hidden→系统通知）。
 
-```typescript
-// sendToast 只推送给可见连接
-if (!this.visibilityTracker.isVisibleConnection(connection.id)) {
-    continue  // 跳过不可见连接
-}
-```
-
-这样当用户离开页面时，可以改用 Web Push 通知。
+VisibilityTracker 类一期保留不删（降风险），但 SSEManager 的通知投递逻辑不再消费它。后续清理项见 [docs/pending.md](../../../../pending.md) #17。
