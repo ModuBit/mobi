@@ -15,7 +15,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, type ReactNode } from 'react'
-import { App, Input, Modal, Tooltip, message as messageApi, theme as antTheme } from 'antd'
+import { App, Badge, Input, Modal, Tooltip, message as messageApi, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { useNavigate, useParams } from '@tanstack/react-router'
@@ -27,6 +27,7 @@ import { useGroupSessions } from '@/core/data/hooks/queries/useGroupSessions'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useAuthStore } from '@/core/data/stores/authStore'
+import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -309,6 +310,8 @@ function SessionRow({
 }: SessionRowProps) {
     const { token } = useToken()
     const { t } = useTranslation()
+    const sessionBadge = useNotificationBadgeStore((s) => s.badges.get(session.id))
+    const hasUnread = Boolean(sessionBadge && (sessionBadge.ready || sessionBadge.permission))
 
     if (isRenaming) {
         return (
@@ -339,6 +342,7 @@ function SessionRow({
             <Tooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName>{displayName}</SessionName>
             </Tooltip>
+            {hasUnread && <Badge data-testid={`session-id-badge-${session.id}`} color="#fa541c" dot />}
             <TimeLabel $token={token} className="session-time">{relativeTime}</TimeLabel>
             <SessionActions className="session-actions">
                 <ActionButton $token={token} title={t('session.actions.rename')} onClick={(e) => { e.stopPropagation(); onRename() }}>
