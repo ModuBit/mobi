@@ -43,7 +43,7 @@ bash .claude/skills/run-tests/scripts/e2e-cleanup.sh
 bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh
 ```
 
-bootstrap 在后台运行，等待输出中出现 `E2E 测试环境就绪` 后继续。如果启动失败，检查日志 `~/.mobi-e2e/logs/` 下的对应文件。
+bootstrap 在后台运行。**判断就绪：轮询 `~/.mobi-e2e/ready.flag` 文件是否存在**（`test -f ~/.mobi-e2e/ready.flag`），**不要等 stdout echo**——stdout 在后台 bash 任务会被 tail 缓冲，看不到。超时（约 120s）仍无 ready.flag 则判定启动失败，查日志 `~/.mobi-e2e/logs/`（hub.log/web.log/runner.log）定位。
 
 ### 环境操作规范（重要）
 
@@ -115,12 +115,17 @@ Chrome DevTools MCP 首次调用时自动启动 Chrome，后续复用。按以�
 
 使用 profile `e2e` 中的 token `e2e-test-token-mobi`。
 
+> **⚠️ token 用途（重要，勿用错）**：`e2e-test-token-mobi` 是 **cliApiToken，仅在 web 登录框输入**。**不能**直接当 `Authorization: Bearer` 去 curl API（API 需要的是 web 登录后换取的 JWT）。诊断 API 用 health 端点（`/api/health`，不需 token）或先登录拿 JWT 再查询。
+
 ### 完整用户流程
 
-1. **登录**
+1. **登录**（步骤固定，避免自定义输入框超时）
    - `new_page` 打开 `http://localhost:5175` → 自动跳转到 `/login`
-   - 输入 `e2e-test-token-mobi`，点击 Connect
-   - 验证跳转到 `/sessions`
+   - `click` Access Token 输入框（聚焦）
+   - `press_key Control+A`（清空，输入框初始为空也执行，稳妥）
+   - `type_text` 输入 `e2e-test-token-mobi`，`submitKey: Enter`（提交）
+   - **禁用 `fill`**——对自定义输入框常超时失败
+   - 验证跳转到 `/sessions`（或 `/sessions/new`，无会话时）
 
 2. **创建会话**
    - 点击 "新建会话"
@@ -144,6 +149,32 @@ Chrome DevTools MCP 首次调用时自动启动 Chrome，后续复用。按以�
 - **工作目录限制**：只能选择 home 目录下的路径（Hub 安全限制），否则会 403
 - **权限审批**：Claude 可能请求工具执行权限，需要在浏览器中审批才能继续
 - **等待策略**：Claude 处理需要时间，用 `take_snapshot` 每 2-3 秒轮询，不要急于操作
+
+### 诊断与常见误判（环境异常时查，不要猜）
+
+**诊断命令**：
+- 端口监听：`lsof -nP -iTCP:2224 -sTCP:LISTEN`（2224=hub, 5175=web；用 `-nP` 避免 DNS/端口名解析干扰）
+- 进程命令行：`ps -p <PID> -o command=`（确认进程身份/参数）
+- 日志：`cat ~/.mobi-e2e/logs/{hub,web,runner}.log`
+- 就绪信号：`test -f ~/.mobi-e2e/ready.flag && echo ready`
+
+**常见误判（避免重复犯）**：
+
+| 误判 | 正解 |
+|---|---|
+| 看 hub.log 早期 banner 端口判冲突 | hub 早期 banner 可能打默认 2222（已修为读 env，但以 bootstrap 输出的 `HUB_PORT`=2224 为准） |
+| 把 cliApiToken 当 JWT 去 curl API | token 仅 web 登录框用；API 需先登录换 JWT |
+| 等 stdout echo 判就绪 | 轮询 `ready.flag` 或 `curl` 端口 |
+| 手动 `nohup bun run dev` 或 `kill` 管环境 | 必须用 `e2e-bootstrap.sh` / `e2e-cleanup.sh` 脚本 |
+| 用 `fill` 填 token 登录超时 | 用 `click` + `Control+A` + `type_text` + `Enter` |
+
+**端口隔离**（dev 与 e2e 完全隔离，配置上不冲突；若冲突说明环境异常）：
+
+| 环境 | hub | web |
+|---|---|---|
+| 默认 | 2222 | 5173 |
+| dev | 2223 | 5174 |
+| e2e | 2224 | 5175 |
 
 根据实际变更内容，可以重点验证特定环节，不必每次都走完整流程。
 

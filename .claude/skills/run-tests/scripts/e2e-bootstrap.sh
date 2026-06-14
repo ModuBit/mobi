@@ -95,6 +95,7 @@ cleanup() {
 
     e2e_log_section "清理 E2E 测试环境"
 
+    # 1. 优雅终止已记录的子进程（子 shell PID）
     if [[ -n "${HUB_PID}" ]] && kill -0 "${HUB_PID}" 2>/dev/null; then
         e2e_log_info "终止 Hub 进程 (PID: ${HUB_PID})"
         kill -TERM "${HUB_PID}" 2>/dev/null || true
@@ -109,6 +110,24 @@ cleanup() {
 
     e2e_stop_runner "${RUNNER_STATE_FILE}"
 
+    # 2. 端口兜底清理：杀孙进程（hub start-sync / web vite 监听端口，子 shell kill 会遗漏）
+    #    孙进程都监听端口，按端口 kill 必杀，避免孤儿残留
+    e2e_log_info "端口兜底清理（孙进程）..."
+    local control_port=""
+    if e2e_read_runner_state "${RUNNER_STATE_FILE}" 2>/dev/null && [[ -n "${RUNNER_HTTP_PORT}" ]]; then
+        control_port="${RUNNER_HTTP_PORT}"
+    fi
+    for port in "${HUB_PORT}" "${WEB_PORT}" ${control_port}; do
+        [[ -z "${port}" ]] && continue
+        local pids
+        pids=$(lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
+        for pid in ${pids}; do
+            e2e_log_info "端口兜底终止 ${port} (PID: ${pid})"
+            kill -9 "${pid}" 2>/dev/null || true
+        done
+    done
+
+    # 3. 清理数据目录（含 ready/failed flag）
     if [[ -d "${E2E_TMPDIR}" ]]; then
         e2e_log_info "清理数据目录: ${E2E_TMPDIR}"
         rm -rf "${E2E_TMPDIR}"
@@ -132,6 +151,8 @@ main() {
     # 2. 创建数据目录和日志目录
     e2e_log_info "创建数据目录: ${E2E_TMPDIR}"
     mkdir -p "${E2E_TMPDIR}/logs"
+    # 清理上次残留的就绪信号（mkdir -p 不删旧文件）
+    rm -f "${E2E_TMPDIR}/ready.flag"
 
     # 3. 启动 Hub
     e2e_log_section "启动 Hub"
@@ -206,6 +227,8 @@ main() {
 
     # 8. 输出服务信息
     e2e_log_section "E2E 测试环境就绪"
+    # 写就绪信号文件（Claude 轮询此文件判断就绪，不依赖 stdout echo——stdout 在后台任务会被 tail 缓冲）
+    touch "${E2E_TMPDIR}/ready.flag"
     echo -e "  ${BOLD}Hub${RESET}:          http://localhost:${HUB_PORT}"
     echo -e "  ${BOLD}Hub 健康检查${RESET}:  ${HUB_HEALTH_URL}"
     echo -e "  ${BOLD}Web${RESET}:          http://localhost:${WEB_PORT}"

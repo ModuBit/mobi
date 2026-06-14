@@ -48,7 +48,12 @@ main() {
     # 3. 端口兜底清理（始终执行，防止 doctor clean 遗漏子进程）
     e2e_log_info "端口兜底清理..."
     local cleaned=0
-    for port in "${HUB_PORT}" "${WEB_PORT}"; do
+    # 读 runner control server 端口（动态分配，doctor clean 可能遗漏）
+    local control_port=""
+    if e2e_read_runner_state "${RUNNER_STATE_FILE}" 2>/dev/null && [[ -n "${RUNNER_HTTP_PORT}" ]]; then
+        control_port="${RUNNER_HTTP_PORT}"
+    fi
+    for port in "${HUB_PORT}" "${WEB_PORT}" ${control_port}; do
         local pids
         pids=$(lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null || true)
         for pid in ${pids}; do

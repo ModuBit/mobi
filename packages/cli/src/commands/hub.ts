@@ -126,7 +126,10 @@ async function runHubStart(commandArgs: string[]): Promise<void> {
 
     // 确定目标 host/port 用于健康检查
     const host = hostFlag ?? '127.0.0.1'
-    const port = portFlag ? parseInt(portFlag, 10) : 2222
+    // 无 --port flag 时读 profile env（MOBI_LISTEN_PORT），避免早期 banner 打印默认 2222 误导
+    const port = portFlag
+        ? parseInt(portFlag, 10)
+        : (process.env.MOBI_LISTEN_PORT ? parseInt(process.env.MOBI_LISTEN_PORT, 10) : 2222)
 
     const ready = await waitForHubReady(host, port)
     if (!ready) {
