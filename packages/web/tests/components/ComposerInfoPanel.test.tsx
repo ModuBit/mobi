@@ -136,7 +136,7 @@ describe('ComposerInfoPanel', () => {
         )
         const scrollEl = container.querySelector('.hide-scrollbar') as HTMLElement
         expect(scrollEl).toBeTruthy()
-        expect(scrollEl.style.maxHeight).toBe('40vh')
+        expect(scrollEl.style.maxHeight).toBe('40dvh')
     })
 
     it('有 running agents 时渲染面板', async () => {

@@ -65,6 +65,7 @@ export class SSEClient {
                     }
 
                     if (this.hasConnected) {
+                        if (import.meta.env.DEV) console.log('[SSE] onopen 重连', { silent: this.isConnected })
                         if (this.isConnected) {
                             // 静默断开重连：浏览器后台断开未触发 onerror/onclose，
                             // isConnected 仍为 true，需要先通知断连再通知重连
@@ -88,8 +89,8 @@ export class SSEClient {
                     }
                 },
                 onerror: (error) => {
+                    if (import.meta.env.DEV) console.log('[SSE] onerror', error)
                     // 返回重连延迟（毫秒），或抛出错误停止重连
-                    console.error('SSE error:', error)
                     // 通知断开连接（仅首次断连时发射）
                     if (this.isConnected) {
                         this.isConnected = false
@@ -98,6 +99,7 @@ export class SSEClient {
                     return this.reconnectDelay
                 },
                 onclose: () => {
+                    if (import.meta.env.DEV) console.log('[SSE] onclose 连接关闭')
                     // 通知断开连接（仅首次断连时发射）
                     if (this.isConnected) {
                         this.isConnected = false
@@ -149,6 +151,7 @@ export class SSEClient {
     private scheduleReconnect(): void {
         if (this.reconnectTimer) return // 防止重复调度
 
+        if (import.meta.env.DEV) console.log(`[SSE] scheduleReconnect in ${this.reconnectDelay}ms`)
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null
             this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000)

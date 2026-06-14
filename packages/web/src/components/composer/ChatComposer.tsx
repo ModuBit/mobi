@@ -518,6 +518,7 @@ export function ChatComposer(props: ChatComposerProps) {
     }, [controlsDisabled])
 
     const handleSubmit = useCallback((content: string) => {
+        if (import.meta.env.DEV) console.log('[Send] handleSubmit', { contentLen: content.length, canSend, mentionOpen: mention.isOpen, slashOpen: slash.isOpen, uploading: attachments.filter(a => a.status === 'uploading').length })
         if (!canSend) return
         if (mention.isOpen || slash.isOpen) return
 

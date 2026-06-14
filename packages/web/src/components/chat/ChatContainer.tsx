@@ -568,8 +568,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [decoratedItems, isFetchingNextPage, isCompressing, session?.running, session?.agentState?.requests, sessionId])
 
     const handleSend = (text: string) => {
+        if (import.meta.env.DEV) console.log('[Send] handleSend', { textLen: text.length, hasTrim: !!text.trim() })
         if (!text.trim()) return
         sendMutation.mutate(text)
+        if (import.meta.env.DEV) console.log('[Send] sendMutation.mutate 已调用')
     }
 
     const handleAbort = async () => {
