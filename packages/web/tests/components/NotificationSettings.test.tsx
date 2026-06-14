@@ -117,4 +117,15 @@ describe('NotificationSettings', () => {
         fireEvent.click(btn)
         expect(mockState.enable).toHaveBeenCalled()
     })
+
+    it('点击「发送测试通知」触发 new Notification', async () => {
+        mockState.permission = 'granted'
+        const notifMock = vi.fn()
+        vi.stubGlobal('Notification', notifMock)
+        const { fireEvent } = await import('@testing-library/react')
+        await renderUi()
+        fireEvent.click(screen.getByText('notification.settings.test'))
+        expect(notifMock).toHaveBeenCalled()
+        vi.unstubAllGlobals()
+    })
 })

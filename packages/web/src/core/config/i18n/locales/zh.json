@@ -227,8 +227,7 @@
     "reconnect": "重连"
   },
   "settings": {
-    "title": "设置",
-    "comingSoon": "更多设置敬请期待..."
+    "title": "设置"
   },
   "composer": {
     "placeholders": [

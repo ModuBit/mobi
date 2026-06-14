@@ -31,19 +31,20 @@ interface NotificationSettingsProps {
  * 通知设置区块：持久的通知权限管理入口。
  *
  * - permission=default：显示「开启通知」按钮，点击触发授权 + push 订阅
- * - permission=granted：显示「已开启」 + 「发送测试通知」（让用户自验订阅链路是否真的工作）
+ * - permission=granted：显示「已开启」 + 「发送测试通知」（让用户自验 Notification API 是否可用）
  * - permission=denied：显示禁止提示（引导用户到浏览器站点设置）
  * - 非 PWA：附加 PWA 安装引导（Chrome/Edge/Android 显示 InstallButton，iOS 文字兜底）
  *
- * 「发送测试通知」是 Unit 7 的 Important 遗留方案：subscribe 失败时 useNotificationSetup
- * 仍返回 granted，用户可通过点击此按钮触发 `new Notification` 自验订阅链路是否畅通。
+ * 「发送测试通知」调 `new Notification`，仅验证浏览器通知权限层是否可用，
+ * 不覆盖 Web Push 订阅链路（subscribe → hub 存储 → 推送服务）。
+ * 作为 Unit 7 Important（subscribe 失败仍返回 granted）的轻量自验兜底。
  */
 export function NotificationSettings({ namespace }: NotificationSettingsProps) {
     const { t } = useTranslation()
     const { permission, enable } = useNotificationSetup(namespace)
     const isPwa = usePwaMode()
 
-    /** 发送测试通知（用户自验订阅链路是否通） */
+    /** 发送测试通知（自验 Notification API 权限层；不覆盖 Web Push 订阅链路） */
     const sendTest = () => {
         try {
             new Notification(t('notification.settings.title'), { body: '✓' })

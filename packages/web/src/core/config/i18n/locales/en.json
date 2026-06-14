@@ -227,8 +227,7 @@
     "reconnect": "Reconnect"
   },
   "settings": {
-    "title": "Settings",
-    "comingSoon": "More settings coming soon..."
+    "title": "Settings"
   },
   "composer": {
     "placeholders": [
