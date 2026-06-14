@@ -54,6 +54,10 @@ export class SSEClient {
         try {
             await fetchEventSource(url, {
                 signal: this.abortController.signal,
+                // 页面切走（切 tab / 最小化 / 切 app 触发 visibilitychange）时保持连接不断开。
+                // fetch-event-source 默认 openWhenHidden=false，会在页面 hidden 时主动 abort 连接，
+                // 这是「切走即断」的根因。显式设为 true，使后台仍维持长连接。
+                openWhenHidden: true,
                 onopen: async (response) => {
                     if (response.status === 401) {
                         // 认证失败，触发未授权回调
