@@ -57,6 +57,17 @@ export function basename(path: string): string {
 }
 
 /**
+ * 归一化目录路径：去除尾部斜杠（多个 / 或 \），根路径保留为 "/"
+ * 用于统一 cwd 作为缓存 key，避免 /a/b 与 /a/b/ 产生不同缓存条目
+ */
+export function normalizeDirectoryPath(path: string): string {
+    if (!path) return path
+    // 仅由斜杠组成的路径（如 "/"、"//"）归一化为根目录
+    if (/^[\\/]+$/.test(path)) return '/'
+    return path.replace(/[\\/]+$/, '')
+}
+
+/**
  * 截断路径左侧（保留文件名和右侧路径部分）
  * 例如: "a/b/c/d/file.ts" -> "...c/d/file.ts"
  */

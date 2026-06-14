@@ -16,6 +16,7 @@
 
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import type { Session } from '@/core/data/api/types'
+import { basename } from '@/core/utils/path'
 
 /**
  * 根据会话状态映射为头像状态
@@ -31,8 +32,8 @@ export function getSessionAvatarStatus(session: Session): AgentStatus {
 
 /**
  * 从 group.key 路径提取最后一段目录名（用于展示）
+ * 复用 path.basename（处理反斜杠与空段，更健壮）
  */
 export function extractFolderName(key: string): string {
-    const parts = key.replace(/\/+$/, '').split('/')
-    return parts[parts.length - 1] || key
+    return basename(key) || key
 }

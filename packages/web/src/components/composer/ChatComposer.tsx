@@ -29,6 +29,7 @@ import { ComposerInfoPanel } from './ComposerInfoPanel'
 import type { SessionMetadataSummary, UploadFileResponse } from '@/core/data/api/types'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
+import { consumeDraftText } from '@/core/lib/draftText'
 import { useMentionInteraction } from './useMentionInteraction'
 import { useSlashCommandInteraction } from './useSlashCommandInteraction'
 import { useAttachmentHandling } from './useAttachmentHandling'
@@ -264,6 +265,12 @@ export function ChatComposer(props: ChatComposerProps) {
     const [text, setText] = useState('')
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
+    // 读取跨页暂存的消息草稿（NewSessionPage 创建会话后发送失败时暂存），预填到输入框供用户重试 (#2)
+    useEffect(() => {
+        const draft = consumeDraftText()
+        if (draft) setText(draft)
+    }, [])
+
     // 构建目录能力目标，useMemo 保证引用稳定，避免下游 useEffect 无限循环
     const capTarget = useMemo<CapabilityTarget | null>(
         () => sessionId ? { kind: 'session', sessionId } : null,
@@ -272,13 +279,16 @@ export function ChatComposer(props: ChatComposerProps) {
     const capabilities = useDirectoryCapabilities(capTarget)
     const { data: commandsData, isLoading: commandsLoading } = useDirectoryCommands(capabilities)
 
+    // 控件禁用：会话失活/被归档时禁用输入与拖拽，并需重置拖拽计数避免覆盖层残留
+    const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
+
     // 附件管理（共享 hook）
     const {
         attachments, setAttachments, isDragOver,
         handleAttach, handleRemoveAttachment, handlePaste,
         handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
         resetAttachments,
-    } = useAttachmentHandling(capabilities)
+    } = useAttachmentHandling(capabilities, controlsDisabled)
 
     // SDK 元数据（模型列表等）
     const { data: sdkMetadata } = useSDKMetadata(sessionId ?? null)
@@ -304,8 +314,6 @@ export function ChatComposer(props: ChatComposerProps) {
         commandsLoading,
         workingDir,
     })
-
-    const controlsDisabled = disabled || (!active && !allowSendWhenInactive)
 
     const trimmed = text.trim()
     const hasText = trimmed.length > 0

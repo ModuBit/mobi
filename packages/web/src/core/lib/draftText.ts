@@ -1,0 +1,34 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+const DRAFT_KEY = 'mobi:draftText'
+
+/**
+ * 暂存跨页消息草稿
+ * NewSessionPage 创建会话后发送消息失败时暂存，详情页 sender 预填供用户重试 (#2)
+ */
+export function saveDraftText(text: string): void {
+    sessionStorage.setItem(DRAFT_KEY, text)
+}
+
+/**
+ * 读取并清除草稿；无草稿返回 null
+ */
+export function consumeDraftText(): string | null {
+    const draft = sessionStorage.getItem(DRAFT_KEY)
+    if (draft !== null) sessionStorage.removeItem(DRAFT_KEY)
+    return draft
+}

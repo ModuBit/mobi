@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { message } from 'antd'
 import type { DirectoryCapabilities } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
@@ -60,13 +60,29 @@ function imageExtFromMime(mimeType: string): string {
  * 封装上传、删除、粘贴、拖拽等附件操作，
  * 供 ChatComposer 和 NewSessionPage 共享
  */
-export function useAttachmentHandling(capabilities: DirectoryCapabilities) {
+export function useAttachmentHandling(capabilities: DirectoryCapabilities, controlsDisabled = false) {
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
     const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
 
     // 拖拽状态（计数器解决子元素间 dragenter/dragleave 频繁触发问题）
     const [isDragOver, setIsDragOver] = useState(false)
     const dragCounterRef = useRef(0)
+
+    // 组件卸载时中止所有进行中的上传，避免产生孤立文件 + setState on unmounted
+    useEffect(() => {
+        return () => {
+            abortControllersRef.current.forEach(c => c.abort())
+            abortControllersRef.current.clear()
+        }
+    }, [])
+
+    // 控件禁用（会话失活/归档）时重置拖拽计数，防止 handler 卸载后计数残留导致覆盖层永久失效
+    useEffect(() => {
+        if (controlsDisabled) {
+            dragCounterRef.current = 0
+            setIsDragOver(false)
+        }
+    }, [controlsDisabled])
 
     // 上传附件到服务器
     const uploadAttachment = useCallback(async (attachmentId: string, file: File) => {

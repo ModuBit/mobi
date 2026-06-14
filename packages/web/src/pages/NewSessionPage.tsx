@@ -57,6 +57,9 @@ import { Icon } from '@/components/layout/Icon'
 import { enableVConsole } from '@/core/lib/vconsole'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
+import { normalizeDirectoryPath } from '@/core/utils/path'
+import { makeClientSideId } from '@/core/lib/messages'
+import { saveDraftText } from '@/core/lib/draftText'
 import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
 import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
 
@@ -324,13 +327,13 @@ export function NewSessionPage() {
             const dir = initialCwd || getRecentPaths(foundLast.id)[0]
             if (dir) {
                 setSelectedDirectory(dir)
-                setConfirmedDirectory(dir)
+                setConfirmedDirectory(normalizeDirectoryPath(dir))
             }
         } else if (activeMachines[0]) {
             setSelectedMachineId(activeMachines[0].id)
             if (initialCwd) {
                 setSelectedDirectory(initialCwd)
-                setConfirmedDirectory(initialCwd)
+                setConfirmedDirectory(normalizeDirectoryPath(initialCwd))
             }
         }
     }, [activeMachines, selectedMachineId, getLastUsedMachineId, getRecentPaths, initialCwd])
@@ -341,7 +344,7 @@ export function NewSessionPage() {
         if (!initialCwd || cwdAppliedRef.current === initialCwd) return
         cwdAppliedRef.current = initialCwd
         setSelectedDirectory(initialCwd)
-        setConfirmedDirectory(initialCwd)
+        setConfirmedDirectory(normalizeDirectoryPath(initialCwd))
         setMetadataNeeded(true)
     }, [initialCwd])
 
@@ -384,6 +387,8 @@ export function NewSessionPage() {
     inputTextRef.current = inputText
     const attachmentsRef = useRef(attachments)
     attachmentsRef.current = attachments
+    // 同步防重入标志（ref 即时生效，弥补 isPending setState 的异步窗口）(#13)
+    const submittingRef = useRef(false)
 
     // Gate：是否已选好环境
     const gatePassed = !!(selectedMachineId && selectedDirectory)
@@ -566,9 +571,13 @@ export function NewSessionPage() {
 
     // ============ 提交处理 ============
     const handleSubmit = useCallback(async () => {
-        if (!selectedMachineId || !selectedDirectory || isPending) return
-        // 空输入时不允许 Enter 触发（但允许按钮点击创建空会话）
-        // 注意：空输入 + 按钮点击 = 仅创建空会话；有内容 = 创建 + 发送
+        if (!selectedMachineId || !selectedDirectory || isPending || submittingRef.current) return
+        // 附件上传中不允许提交（与 ChatComposer 一致），避免 uploading 附件被静默丢弃 (#1)
+        if (attachmentsRef.current.some(a => a.status === 'uploading')) {
+            messageApi.warning('附件上传中，请稍候')
+            return
+        }
+        submittingRef.current = true
         setIsPending(true)
 
         // 从 ref 读取最新值
@@ -612,19 +621,23 @@ export function NewSessionPage() {
 
             // 有内容时发送消息
             if (currentText || currentAttachments.length > 0) {
-                try {
-                    // 拼接附件路径到消息文本（与 ChatComposer 一致）
-                    const completedAttachments = currentAttachments.filter(a => a.status === 'complete' && a.path)
-                    const attachmentPaths = completedAttachments.map(a => `@${a.path}`).join('\n')
-                    const finalText = attachmentPaths
-                        ? `${currentText}\n${attachmentPaths}`
-                        : currentText
+                // 拼接附件路径到消息文本（与 ChatComposer 一致）
+                const completedAttachments = currentAttachments.filter(a => a.status === 'complete' && a.path)
+                const attachmentPaths = completedAttachments.map(a => `@${a.path}`).join('\n')
+                const finalText = attachmentPaths
+                    ? `${currentText}\n${attachmentPaths}`
+                    : currentText
 
-                    if (finalText) {
-                        await api.messages.send(sessionId, finalText)
+                if (finalText) {
+                    try {
+                        // 生成客户端 localId 供 SSE 早到消息去重（与 useSendMessage 一致）(#14)
+                        const localId = makeClientSideId('local')
+                        await api.messages.send(sessionId, finalText, localId)
+                    } catch {
+                        // 发送失败：把内容暂存，详情页 sender 预填供用户重试 (#2)
+                        // 会话已创建成功，仍导航到详情页（不留在 NewSessionPage）
+                        saveDraftText(finalText)
                     }
-                } catch {
-                    // 发送失败仍然导航到详情页，用户可重试
                 }
             }
 
@@ -632,6 +645,7 @@ export function NewSessionPage() {
         } catch (e) {
             messageApi.error(e instanceof Error ? e.message : '创建会话失败')
         } finally {
+            submittingRef.current = false
             setIsPending(false)
         }
     }, [
@@ -642,7 +656,7 @@ export function NewSessionPage() {
     ])
 
     // ============ 按钮状态 ============
-    const canSubmit = gatePassed && !isPending
+    const canSubmit = gatePassed && !isPending && attachments.every(a => a.status !== 'uploading')
 
     // ============ model + effort 合并选择 ============
     const modelSelectOptions = useMemo(() => {
@@ -884,7 +898,7 @@ export function NewSessionPage() {
                         isDirectoryLoading={isDirectoryLoading}
                         selectedDirectory={selectedDirectory}
                         onDirectoryChange={setSelectedDirectory}
-                        onDirectoryConfirm={setConfirmedDirectory}
+                        onDirectoryConfirm={(dir) => setConfirmedDirectory(normalizeDirectoryPath(dir))}
                         recentPaths={recentPaths}
                         machineHomeDir={machineHomeDir}
                         onRemoveRecentPath={selectedMachineId
