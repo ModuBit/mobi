@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { basename, truncatePathLeft } from '@/core/utils/path'
+import { basename, normalizeDirectoryPath, truncatePathLeft } from '@/core/utils/path'
 
 describe('path utils', () => {
     describe('basename', () => {
@@ -27,6 +27,31 @@ describe('path utils', () => {
 
         it('should handle Windows paths', () => {
             expect(basename('C:\\a\\b\\file.ts')).toBe('file.ts')
+        })
+    })
+
+    describe('normalizeDirectoryPath', () => {
+        it('应去除尾部斜杠（含多个）', () => {
+            expect(normalizeDirectoryPath('/a/b/')).toBe('/a/b')
+            expect(normalizeDirectoryPath('/a/b///')).toBe('/a/b')
+        })
+
+        it('无尾斜杠的路径保持不变', () => {
+            expect(normalizeDirectoryPath('/a/b')).toBe('/a/b')
+        })
+
+        it('根路径保留为 /', () => {
+            expect(normalizeDirectoryPath('/')).toBe('/')
+            expect(normalizeDirectoryPath('//')).toBe('/')
+        })
+
+        it('空字符串原样返回', () => {
+            expect(normalizeDirectoryPath('')).toBe('')
+        })
+
+        it('兼容反斜杠与混合尾分隔符', () => {
+            expect(normalizeDirectoryPath('C:\\a\\b\\')).toBe('C:\\a\\b')
+            expect(normalizeDirectoryPath('/a/b\\')).toBe('/a/b')
         })
     })
 

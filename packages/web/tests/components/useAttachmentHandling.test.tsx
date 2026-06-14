@@ -1,0 +1,91 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { describe, it, expect, vi } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { useAttachmentHandling } from '@/components/composer/useAttachmentHandling'
+import type { DirectoryCapabilities } from '@/core/data/hooks/queries/useDirectoryCapabilities'
+
+vi.mock('antd', () => ({ message: { warning: vi.fn(), error: vi.fn(), success: vi.fn() } }))
+
+// 绕过真实文件校验，直接让 processFiles 进入上传分支
+vi.mock('@/core/lib/fileAttachments', () => ({
+    validateFile: () => undefined,
+    createFileAttachment: (file: File) => ({
+        id: 'test-id',
+        file,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        status: 'uploading',
+    }),
+    getAcceptExtensions: () => '*',
+}))
+
+function makeCapabilities(uploadFile: ReturnType<typeof vi.fn>): DirectoryCapabilities {
+    return {
+        uploadFile,
+        deleteUpload: vi.fn().mockResolvedValue({ data: { success: true } }),
+        searchFiles: vi.fn(),
+        listDirectory: vi.fn(),
+    } as unknown as DirectoryCapabilities
+}
+
+describe('useAttachmentHandling', () => {
+    it('组件卸载时中止进行中的上传，避免孤立文件 (#6)', async () => {
+        let capturedSignal: AbortSignal | undefined
+        const uploadFile = vi.fn((_file: File, opts?: { signal?: AbortSignal }) => {
+            capturedSignal = opts?.signal
+            // 永不 resolve，模拟上传进行中
+            return new Promise(() => {})
+        })
+        const capabilities = makeCapabilities(uploadFile)
+        const { result, unmount } = renderHook(() => useAttachmentHandling(capabilities))
+
+        await act(async () => {
+            result.current.handleDrop({
+                preventDefault: () => {},
+                dataTransfer: { files: [new File(['x'], 'a.txt', { type: 'text/plain' })] },
+            } as any)
+        })
+
+        expect(uploadFile).toHaveBeenCalledTimes(1)
+        expect(capturedSignal).toBeDefined()
+        expect(capturedSignal!.aborted).toBe(false)
+
+        // 卸载组件，应触发 cleanup 中止上传
+        unmount()
+        expect(capturedSignal!.aborted).toBe(true)
+    })
+
+    it('controlsDisabled 置 true 时重置拖拽覆盖层 (#3)', () => {
+        const capabilities = makeCapabilities(vi.fn())
+        const { result, rerender } = renderHook(
+            ({ cd }: { cd: boolean }) => useAttachmentHandling(capabilities, cd),
+            { initialProps: { cd: false } },
+        )
+
+        // 拖拽进入 → 覆盖层显示
+        act(() => {
+            result.current.handleDragEnter({ preventDefault: () => {} } as any)
+        })
+        expect(result.current.isDragOver).toBe(true)
+
+        // 会话失活/归档 → 控件禁用 → 覆盖层应被重置
+        rerender({ cd: true })
+        expect(result.current.isDragOver).toBe(false)
+    })
+})
