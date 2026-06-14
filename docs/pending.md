@@ -408,3 +408,64 @@ hooks: {
 - 默认展示最近活跃的 N 个项目（如 10 个），其余折叠到"更多项目"入口
 - 或引入项目归档机制，归档后不在主列表展示
 - 待 Project 实体落地后根据实际数据量决定
+
+---
+
+## 16. 通知角标跨端同步
+
+**相关文件**：
+- `packages/web/src/core/data/stores/notificationBadgeStore.ts` — 角标状态（一期前端本地）
+- `packages/hub/src/notifications/` — 通知中心（未来扩展点）
+
+**现状（通知重设计一期）**：
+- ready/permission 角标仅在前端本地 store 维护（`sessionId → {ready, permission}`）
+- 进 session 详情页时清零；跨设备不同步
+- 多设备场景：设备1 收 toast 产生角标，设备2 不知道；用户在设备2 上看不到角标
+
+**后续方向**：
+- Hub 维护每个 session 的未读 ready/permission 计数（runtimeState 同模式）
+- 前端通过 SSE / session 查询获取，跨设备一致
+- 进详情页时上报"已读"，Hub 清零
+- 代价：Hub 写入 + 清理逻辑，约中等复杂度
+
+**触发条件**：多设备使用成为常态、用户反馈角标不一致时实施
+
+---
+
+## 17. VisibilityTracker 与 /api/visibility 清理
+
+**相关文件**：
+- `packages/hub/src/visibility/visibilityTracker.ts` — 可见性追踪
+- `packages/hub/src/web/routes/events.ts` — `/api/visibility` 上报路由
+- `packages/web/src/core/providers/SSEProvider.tsx` — 前端 visibilitychange 上报
+
+**现状（通知重设计一期）**：
+- 通知链路改为「前端判定」后，VisibilityTracker 不再被通知链路消费
+- channel 改用 SSEManager 的「有无活跃连接」判定 toast vs push
+- VisibilityTracker + `/api/visibility` 路由 + 前端 `visibilitychange` 上报逻辑保留未删（降风险）
+
+**待清理**：
+- 确认无其他模块依赖 VisibilityTracker（`sseManager` 仍注入但仅 `sendToast` 原过滤用它，改造后不再用）
+- 移除 `VisibilityTracker` 类、`/api/visibility` 路由、前端 visibility 上报
+- 清理 `sseManager` 中对 `visibilityTracker` 的依赖
+
+**优先级**：低，一期保留不影响功能；通知重设计稳定后作为独立清理 PR
+
+---
+
+## 18. 通知重设计收尾清理项
+
+通知重设计一期落地后的零散清理（均非阻塞，可独立小 PR）：
+
+**相关文件**：
+- `packages/web/src/components/layout/SidebarSessionItem.tsx` — 死代码组件
+- `packages/web/src/core/pwa/registerSW.ts` + `packages/web/vite.config.ts` — SW dev 调试矛盾
+- `packages/web/src/core/data/hooks/useNotificationSetup.ts` — namespace 死参数
+
+**待清理**：
+- **SidebarSessionItem 死代码**：全项目无引用（实际侧边栏用 `SessionList` 的 `@ant-design/x` `<Conversations>`）。删除避免未来误改（本次 Unit 5 曾误在其上加角标，review 才发现）
+- **SW dev 调试矛盾**：`vite.config.ts` `devOptions.enabled: true` 但 `registerSW.ts` 在 `import.meta.env.DEV` 跳过 SW 注册 → dev 模式 SW 构建但不注册。如需 dev 调试 SW（push），需对齐两者（pre-existing，非本次引入）
+- **useNotificationSetup namespace 参数**：当前 `void namespace` 占位（hub 从 token 解析 namespace，client 不传）。若确认未来 unsubscribe 也不需要 client 传 namespace，可删参数（YAGNI）；reviewer 评估为「尊重预留决策」，非必须改
+- **测试补充**：`usePwaMode` 的 change/unmount 路径、`useNotificationSetup` 的 subscribe 失败路径，可补测试锁死行为
+
+**优先级**：低，一期功能完整；稳定后逐项清理
