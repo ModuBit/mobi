@@ -22,6 +22,7 @@ import { ConfigProvider, App as AntdApp } from 'antd'
 // 可变 mock 状态：每个用例可单独设置 permission / isPwa
 const mockState = vi.hoisted(() => ({
     permission: 'default' as 'default' | 'granted' | 'denied',
+    subscribed: false,
     enable: vi.fn().mockResolvedValue('granted'),
     isPwa: false,
 }))
@@ -30,6 +31,7 @@ const mockState = vi.hoisted(() => ({
 vi.mock('@/core/data/hooks/useNotificationSetup', () => ({
     useNotificationSetup: () => ({
         permission: mockState.permission,
+        subscribed: mockState.subscribed,
         enable: mockState.enable,
     }),
 }))
@@ -63,6 +65,7 @@ describe('NotificationSettings', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         mockState.permission = 'default'
+        mockState.subscribed = false
         mockState.enable = vi.fn().mockResolvedValue('granted')
         mockState.isPwa = false
     })
@@ -127,5 +130,86 @@ describe('NotificationSettings', () => {
         fireEvent.click(screen.getByText('notification.settings.test'))
         expect(notifMock).toHaveBeenCalled()
         vi.unstubAllGlobals()
+    })
+
+    it('granted + 未订阅 显示「重新订阅」按钮', async () => {
+        mockState.permission = 'granted'
+        mockState.subscribed = false
+        await renderUi()
+        expect(screen.getByText('notification.settings.resubscribe')).toBeInTheDocument()
+    })
+
+    it('granted + 已订阅 不显示「重新订阅」按钮', async () => {
+        mockState.permission = 'granted'
+        mockState.subscribed = true
+        await renderUi()
+        expect(screen.queryByText('notification.settings.resubscribe')).not.toBeInTheDocument()
+    })
+
+    it('点击「重新订阅」触发 enable()', async () => {
+        mockState.permission = 'granted'
+        mockState.subscribed = false
+        const { fireEvent } = await import('@testing-library/react')
+        await renderUi()
+        fireEvent.click(screen.getByText('notification.settings.resubscribe'))
+        expect(mockState.enable).toHaveBeenCalled()
+    })
+
+    it('显示「如何允许浏览器通知」可折叠区块标题', async () => {
+        mockState.permission = 'default'
+        await renderUi()
+        expect(screen.getByText('notification.settings.howToAllow')).toBeInTheDocument()
+    })
+
+    it('denied 态默认展开说明区块(aria-expanded=true)', async () => {
+        mockState.permission = 'denied'
+        await renderUi()
+        const header = screen.getByRole('button', { name: 'notification.settings.howToAllow' })
+        expect(header).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    it('default 态默认收起,点击 header 后展开并显示步骤', async () => {
+        mockState.permission = 'default'
+        const { fireEvent } = await import('@testing-library/react')
+        await renderUi()
+        const header = screen.getByRole('button', { name: 'notification.settings.howToAllow' })
+        // 收起态
+        expect(header).toHaveAttribute('aria-expanded', 'false')
+        expect(screen.queryByText('notification.settings.stepMacWin1')).not.toBeInTheDocument()
+        // 点击展开
+        fireEvent.click(header)
+        expect(header).toHaveAttribute('aria-expanded', 'true')
+        expect(screen.getByText('notification.settings.stepMacWin1')).toBeInTheDocument()
+    })
+
+    it('展开后显示三平台步骤(mac/win、android、ios)', async () => {
+        mockState.permission = 'denied' // denied 默认展开
+        await renderUi()
+        expect(screen.getByText('notification.settings.stepMacWin1')).toBeInTheDocument()
+        expect(screen.getByText('notification.settings.stepAndroid1')).toBeInTheDocument()
+        expect(screen.getByText('notification.settings.stepIos1')).toBeInTheDocument()
+    })
+
+    it('PWA 卡显示「任意端」说明(installPwaDesc)', async () => {
+        mockState.permission = 'default'
+        mockState.isPwa = false
+        await renderUi()
+        expect(screen.getByText('notification.settings.installPwaDesc')).toBeInTheDocument()
+    })
+
+    it('展开后显示「浏览器」与「操作系统」两层标签', async () => {
+        mockState.permission = 'denied' // 默认展开
+        await renderUi()
+        expect(screen.getByText('notification.settings.layerBrowser')).toBeInTheDocument()
+        expect(screen.getByText('notification.settings.layerOs')).toBeInTheDocument()
+    })
+
+    it('展开后显示操作系统层四平台步骤', async () => {
+        mockState.permission = 'denied' // 默认展开
+        await renderUi()
+        expect(screen.getByText('notification.settings.osMac')).toBeInTheDocument()
+        expect(screen.getByText('notification.settings.osWindows')).toBeInTheDocument()
+        expect(screen.getByText('notification.settings.osAndroid')).toBeInTheDocument()
+        expect(screen.getByText('notification.settings.osIos')).toBeInTheDocument()
     })
 })

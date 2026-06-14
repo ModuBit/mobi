@@ -34,6 +34,8 @@ const SettingsContainer = styled.div<{ $token: ReturnType<typeof useToken>['toke
 
 const SettingsContent = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     flex: 1;
+    min-height: 0; /* flex 子项可缩小，overflow 才生效（父 Content overflow:hidden） */
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     padding: 24px;
