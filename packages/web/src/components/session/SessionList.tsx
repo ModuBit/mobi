@@ -17,7 +17,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { Conversations } from '@ant-design/x'
 import type { ConversationsProps } from '@ant-design/x'
-import { Modal, Input, message, Skeleton, Empty, Button, Drawer } from 'antd'
+import { Modal, Input, message, Skeleton, Empty, Button, Drawer, Badge } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -34,6 +34,7 @@ import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { queryKeys } from '@/core/lib/query-keys'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
@@ -149,6 +150,9 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
 
     const renameActions = useSessionActions(renamingSessionId)
 
+    // 订阅未读角标 Map —— 角标变化时触发组件重渲染并重算 items
+    const badges = useNotificationBadgeStore((s) => s.badges)
+
     // 确认重命名
     const handleRenameConfirm = useCallback(async () => {
         if (!renameValue.trim() || !renamingSessionId) {
@@ -184,6 +188,9 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                 if (!session) continue
 
                 const isRenaming = renamingSessionId === session.id
+                // 该 session 是否有未读角标（ready 或 permission 任一为 true）
+                const sessionBadge = badges.get(session.id)
+                const hasUnread = Boolean(sessionBadge && (sessionBadge.ready || sessionBadge.permission))
                 result.push({
                     key: session.id,
                     label: isRenaming
@@ -209,6 +216,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {getSessionDisplayName(session)}
                                 </span>
+                                {hasUnread && <Badge data-testid={`session-id-badge-${session.id}`} color="#fa541c" dot />}
                                 <MoreOutlined
                                     style={{ color: 'var(--ant-color-text-tertiary)', fontSize: 14, padding: '8px 4px', cursor: 'pointer', flexShrink: 0 }}
                                     onClick={(e) => {
@@ -217,7 +225,12 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                                     }}
                                 />
                             </div>
-                            : getSessionDisplayName(session),
+                            : <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {getSessionDisplayName(session)}
+                                </span>
+                                {hasUnread && <Badge data-testid={`session-id-badge-${session.id}`} color="#fa541c" dot />}
+                            </div>,
                     group: group?.name || groupKey,
                     icon: <PixelAvatar name={session.id} status={getSessionAvatarStatus(session)} size={24} statusStyles={SESSION_AVATAR_STYLES} />,
                 })
@@ -225,7 +238,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
         }
 
         return result
-    }, [groupQueries, groups, allSessions, renamingSessionId, renameValue, setRenameValue, handleRenameConfirm, cancelRename, isMobile, setActionSheetSessionId])
+    }, [groupQueries, groups, allSessions, renamingSessionId, renameValue, setRenameValue, handleRenameConfirm, cancelRename, isMobile, setActionSheetSessionId, badges])
 
     // 默认展开有活跃会话的分组
     const defaultExpandedKeys = useMemo(() => {

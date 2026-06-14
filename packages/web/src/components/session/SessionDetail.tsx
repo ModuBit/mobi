@@ -15,11 +15,12 @@
  */
 
 import { Layout, Spin, Result, Button, Tooltip } from 'antd'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useUiStore } from '@/core/data/stores/uiStore'
+import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { ChatContainer } from '@/components/chat/ChatContainer'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
@@ -66,6 +67,12 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const { data: session, isLoading, error } = useSession(sessionId)
     const { sessionViewMode, setSessionViewMode } = useUiStore()
     const isMobile = useIsMobile()
+
+    // 进入 session 详情页时清零未读角标
+    const clearBadge = useNotificationBadgeStore((s) => s.clearBadge)
+    useEffect(() => {
+        if (sessionId) clearBadge(sessionId)
+    }, [sessionId, clearBadge])
 
     const viewModeItems: ActionItem[] = useMemo(() => ([
         { key: 'files', labelKey: 'session.tabs.files', Icon: Folder, mode: 'files' as const },
