@@ -29,6 +29,9 @@ import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
 import type { MessagesResponse } from '@/core/data/api/types'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
+import { decideToastAction, parseActiveSessionId } from '@/core/notifications'
+import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
+import type { NotificationKind } from '@/core/data/stores/notificationBadgeStore'
 
 // ── SSE 早到消息暂存缓冲区 ──────────────────────────────────
 // 页面刷新时 SSE 事件可能先于 API 响应到达，此时缓存为空，事件会被丢弃。
@@ -294,6 +297,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const queryClientRef = useRef(queryClient)
     queryClientRef.current = queryClient
     const { notification } = App.useApp()
+    const notificationRef = useRef(notification)
+    notificationRef.current = notification
+    const markUnread = useNotificationBadgeStore((s) => s.markUnread)
+    const markUnreadRef = useRef(markUnread)
+    markUnreadRef.current = markUnread
     const { t } = useTranslation()
     const tRef = useRef(t)
     tRef.current = t
@@ -406,8 +414,50 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     qc.invalidateQueries({ queryKey: ['messages'] }).catch(() => {})
                 }
                 break
-            case 'toast':
+            case 'toast': {
+                if (!event.data) break
+                const { kind, sessionId, title, body, url } = event.data
+                const action = decideToastAction(sessionId, {
+                    activeSessionId: parseActiveSessionId(window.location.pathname),
+                    isHidden: document.hidden,
+                })
+                if (action === 'ignore') break
+
+                if (action === 'system-notification') {
+                    // 场景③ 后台:系统通知,点击跳转
+                    try {
+                        const n = new Notification(title, { body, icon: '/favicon.ico', tag: `${kind}-${sessionId}` })
+                        n.onclick = () => {
+                            window.focus()
+                            n.close()
+                            navigateRef.current({ to: url })
+                        }
+                    } catch {
+                        // 某些环境不支持,降级为页面通知(antd notification,支持 onClick)
+                        notificationRef.current.info({
+                            key: `${kind}-${sessionId}`,
+                            message: title,
+                            description: body,
+                            duration: 6,
+                            onClick: () => navigateRef.current({ to: url }),
+                        })
+                    }
+                    markUnreadRef.current(sessionId, kind as NotificationKind)
+                    break
+                }
+
+                // 场景② 前台但不在该 session:antd 页面 Toast(支持 onClick 跳转)+ 角标
+                // 关键:用 notificationRef(antd 原生),不用 nt(useNotify 封装 dispatch 不透传 onClick)
+                notificationRef.current.info({
+                    key: `${kind}-${sessionId}`,
+                    message: title,
+                    description: body,
+                    duration: 6,
+                    onClick: () => navigateRef.current({ to: url }),
+                })
+                markUnreadRef.current(sessionId, kind as NotificationKind)
                 break
+            }
             case 'idle-timeout-warning':
                 if (event.data?.remainingMs) {
                     const remainingMinutes = Math.ceil(event.data.remainingMs / 60000)

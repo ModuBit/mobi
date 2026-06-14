@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
+import { decideToastAction, parseActiveSessionId } from '@/core/notifications'
 
 /**
  * patchSessionCache 中 effort delta 合并逻辑的等价纯函数实现
@@ -67,5 +68,31 @@ describe('SSE effort delta 合并', () => {
         const existing = { effort: 'high' }
         const result = mergeRuntimeStateDelta(existing, { effort: null })
         expect(result).toEqual({ effort: null })
+    })
+})
+
+describe('toast 处理集成(decideToastAction + parseActiveSessionId)', () => {
+    it('前台且在该 session → ignore(不产生角标)', () => {
+        const action = decideToastAction('s1', {
+            activeSessionId: parseActiveSessionId('/sessions/s1'),
+            isHidden: false,
+        })
+        expect(action).toBe('ignore')
+    })
+
+    it('前台但路由在别的 session → page-toast', () => {
+        const action = decideToastAction('s1', {
+            activeSessionId: parseActiveSessionId('/sessions/s2'),
+            isHidden: false,
+        })
+        expect(action).toBe('page-toast')
+    })
+
+    it('后台 → system-notification', () => {
+        const action = decideToastAction('s1', {
+            activeSessionId: parseActiveSessionId('/sessions/s1'),
+            isHidden: true,
+        })
+        expect(action).toBe('system-notification')
     })
 })
