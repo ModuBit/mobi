@@ -16,7 +16,7 @@
 
 import { resolve, sep } from 'path';
 
-export { validateHomeDirPath } from '@mobi/shared/pathSecurity'
+export { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
 export type { PathValidationResult } from '@mobi/shared/pathSecurity'
 
 /**

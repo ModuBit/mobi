@@ -16,7 +16,7 @@
 
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
+import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import type { SyncEngine } from '../../sync/syncEngine'
@@ -48,6 +48,10 @@ function validateCwd(cwd: string, homeDir: string | undefined): Response | null 
     const validation = validateHomeDirPath(cwd, homeDir)
     if (!validation.valid) {
         return new Response(JSON.stringify({ error: validation.error }), { status: 403 })
+    }
+    // 拒绝风险目录（密钥/凭证/工具配置），防止 ripgrep/list 读取敏感文件
+    if (isWithinBlacklistedDir(cwd, homeDir)) {
+        return new Response(JSON.stringify({ error: 'Access denied: path is in a restricted directory' }), { status: 403 })
     }
     return null
 }

@@ -44,3 +44,39 @@ export function validateHomeDirPath(targetPath: string, homeDir: string): PathVa
 
     return { valid: true }
 }
+
+/**
+ * 默认风险目录黑名单（相对 home 的目录名）
+ * 含密钥/凭证/工具配置等敏感目录，禁止 ripgrep/list 访问
+ */
+export const DEFAULT_BLACKLISTED_DIR_NAMES = [
+    '.ssh', '.aws', '.gnupg', '.config', '.claude', '.agents', '.mobi',
+] as const
+
+/**
+ * 解析黑名单目录绝对路径（默认 + 环境变量扩展）
+ * 环境变量 MOBI_SEARCH_BLACKLIST 为逗号分隔的额外目录名（相对 home），如 ".secrets,private"
+ */
+export function resolveBlacklistedDirs(homeDir: string): string[] {
+    const extra = process.env.MOBI_SEARCH_BLACKLIST
+        ?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+    const names = [...DEFAULT_BLACKLISTED_DIR_NAMES, ...extra]
+    return [...new Set(names)].map(name => resolve(homeDir, name))
+}
+
+/**
+ * 校验路径是否落入风险目录黑名单（仅匹配 home 直接子级，避免误伤项目内同名目录）
+ * @returns true 表示路径被黑名单拦截
+ */
+export function isWithinBlacklistedDir(targetPath: string, homeDir: string): boolean {
+    if (!homeDir) return false
+    const normalizedTarget = resolve(targetPath)
+    const blocked = resolveBlacklistedDirs(homeDir)
+    const norm = (p: string) => process.platform === 'win32' ? p.toLowerCase() : p
+    const target = norm(normalizedTarget)
+    return blocked.some(dir => {
+        const normalizedDir = norm(dir)
+        const prefix = normalizedDir.endsWith(sep) ? normalizedDir : normalizedDir + sep
+        return target === normalizedDir || target.startsWith(prefix)
+    })
+}

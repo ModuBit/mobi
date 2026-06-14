@@ -19,7 +19,7 @@ import { readdir, stat } from 'fs/promises'
 import { join, resolve, isAbsolute } from 'path'
 import { homedir } from 'os'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { validatePath } from '../pathSecurity'
+import { validatePath, isWithinBlacklistedDir } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { runStream as runRipgrepStream } from '@/modules/ripgrep/index'
 
@@ -258,6 +258,9 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
         if (data.cwd && !validateRpcCwd(data.cwd)) {
             return rpcError('Invalid cwd: path is outside home directory')
         }
+        if (data.cwd && isWithinBlacklistedDir(data.cwd, homedir())) {
+            return rpcError('Access denied: path is in a restricted directory')
+        }
         logger.debug('Search session files request:', data.query)
 
         try {
@@ -274,6 +277,9 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
         const effectiveCwd = data.cwd || workingDirectory
         if (data.cwd && !validateRpcCwd(data.cwd)) {
             return rpcError('Invalid cwd: path is outside home directory')
+        }
+        if (data.cwd && isWithinBlacklistedDir(data.cwd, homedir())) {
+            return rpcError('Access denied: path is in a restricted directory')
         }
         logger.debug('List session directory request:', data.path)
 
