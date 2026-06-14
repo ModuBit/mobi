@@ -19,7 +19,7 @@
  * 统一行为：最大高度 85dvh、header 下拉手势关闭
  */
 
-import { useRef, useCallback, useState } from 'react'
+import { useRef, useCallback, useState, useLayoutEffect } from 'react'
 import { Drawer, type DrawerProps } from 'antd'
 import { Global, css } from '@emotion/react'
 import styled from '@emotion/styled'
@@ -30,10 +30,14 @@ const SWIPE_THRESHOLD = 60
 /** 手势关闭时禁用 antd 动画的 class */
 const SWIPE_CLOSING_CLASS = 'mobile-drawer-swipe-closing'
 
-/** 禁用 antd Drawer 关闭动画 */
+/** 禁用 antd Drawer 关闭动画，并锁定滑出位 */
 const swipeClosingStyles = css`
     .${SWIPE_CLOSING_CLASS} .ant-drawer-content-wrapper {
         transition: none !important;
+        /* 关键：onClose 后 antd motion-leave 会清除 inline transform、把 content-wrapper
+           重置回原位（translateY(0)），导致拖拽关闭时 drawer 从滑出位闪回原位再消失。
+           用 !important 锁定 translateY(100%)，覆盖 antd 的 inline transform，保持滑出位 */
+        transform: translateY(100%) !important;
     }
 `
 
@@ -110,6 +114,18 @@ export function MobileDrawer({
         return draggableRef.current?.closest('.ant-drawer-content-wrapper') as HTMLElement | null
     }, [])
 
+    // 滑出动画进行中标记。配合下方 useLayoutEffect，每次渲染重新应用 translateY(100%)，
+    // 防止父组件 re-render（如 session 详情页 SSE 消息流）触发 antd Drawer 重置
+    // content-wrapper 的 transform，导致 drawer 弹回原位再消失的闪动
+    const [isClosing, setIsClosing] = useState(false)
+    useLayoutEffect(() => {
+        if (!isClosing) return
+        const wrapper = getContentWrapper()
+        if (!wrapper) return
+        wrapper.style.transition = 'transform 0.2s ease'
+        wrapper.style.transform = 'translateY(100%)'
+    })
+
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
         startYRef.current = e.touches[0].clientY
         deltaYRef.current = 0
@@ -134,20 +150,27 @@ export function MobileDrawer({
         const wrapper = getContentWrapper()
         if (wrapper) {
             if (deltaYRef.current > SWIPE_THRESHOLD) {
-                // 超过阈值：先执行滑出动画
-                wrapper.style.transition = 'transform 0.2s ease'
-                wrapper.style.transform = 'translateY(100%)'
+                // 超过阈值：触发滑出动画（isClosing + useLayoutEffect 控制 transform）
+                setIsClosing(true)
                 // 动画完成后：禁用 antd 关闭动画 + 触发关闭
                 setTimeout(() => {
                     setSwipeClosing(true)
                     // 等 class 生效后再调 onClose
                     requestAnimationFrame(() => {
                         onClose?.({} as any)
+                        // 等 antd motion-leave 完成（~300ms）再清理状态。期间 swipeClosing CSS
+                        // 用 !important 锁定 transform translateY(100%)，防止 motion-leave 重置回原位闪动
                         setTimeout(() => {
                             setSwipeClosing(false)
-                            wrapper.style.transform = ''
-                            wrapper.style.transition = ''
-                        }, 50)
+                            setIsClosing(false)
+                            // 清除 inline transform/transition（此时 content 已 hidden，清除不影响视觉），
+                            // 避免残留 translateY(100%) 导致下次打开 drawer 时内容仍在滑出位（只见 mask 不见 drawer）
+                            const w = getContentWrapper()
+                            if (w) {
+                                w.style.transform = ''
+                                w.style.transition = ''
+                            }
+                        }, 350)
                     })
                 }, 200)
             } else {
