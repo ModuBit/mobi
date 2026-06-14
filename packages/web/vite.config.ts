@@ -32,23 +32,14 @@ export default defineConfig({
             injectRegister: false,
             // 不生成静态 manifest 文件，由 Hub 动态提供
             manifest: false,
-            workbox: {
+            // 自定义 SW:处理 push + notificationclick + 缓存
+            strategies: 'injectManifest',
+            srcDir: 'src/core/pwa',
+            filename: 'sw.ts',
+            injectManifest: {
                 // 允许预缓存较大的 JS chunk（默认 2 MiB 不够）
                 maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-                navigateFallback: null,
                 globPatterns: ['**/*.{js,css,woff2,png,svg,ico,gif}'],
-                runtimeCaching: [
-                    {
-                        // API 请求：始终走网络
-                        urlPattern: /^\/api\/.*/,
-                        handler: 'NetworkOnly',
-                    },
-                    {
-                        // Socket.IO：始终走网络
-                        urlPattern: /^\/socket\.io\/.*/,
-                        handler: 'NetworkOnly',
-                    },
-                ],
             },
             devOptions: {
                 enabled: true,
