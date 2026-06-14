@@ -18,14 +18,12 @@ import type { Session } from '../sync/syncEngine'
 import type { NotificationChannel } from '../notifications/notificationTypes'
 import { getAgentName, getSessionName } from '../notifications/sessionInfo'
 import type { SSEManager } from '../sse/sseManager'
-import type { VisibilityTracker } from '../visibility/visibilityTracker'
 import type { PushPayload, PushService } from './pushService'
 
 export class PushNotificationChannel implements NotificationChannel {
     constructor(
         private readonly pushService: PushService,
         private readonly sseManager: SSEManager,
-        private readonly visibilityTracker: VisibilityTracker,
         _appUrl: string
     ) {}
 
@@ -52,10 +50,11 @@ export class PushNotificationChannel implements NotificationChannel {
         }
 
         const url = payload.data?.url ?? this.buildSessionPath(session.id)
-        if (this.visibilityTracker.hasVisibleConnection(session.namespace)) {
+        if (this.sseManager.hasActiveConnection(session.namespace)) {
             const delivered = await this.sseManager.sendToast(session.namespace, {
                 type: 'toast',
                 data: {
+                    kind: 'permission',
                     title: payload.title,
                     body: payload.body,
                     sessionId: session.id,
@@ -90,10 +89,11 @@ export class PushNotificationChannel implements NotificationChannel {
         }
 
         const url = payload.data?.url ?? this.buildSessionPath(session.id)
-        if (this.visibilityTracker.hasVisibleConnection(session.namespace)) {
+        if (this.sseManager.hasActiveConnection(session.namespace)) {
             const delivered = await this.sseManager.sendToast(session.namespace, {
                 type: 'toast',
                 data: {
+                    kind: 'ready',
                     title: payload.title,
                     body: payload.body,
                     sessionId: session.id,

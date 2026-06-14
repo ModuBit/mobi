@@ -347,6 +347,8 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     SessionEventBaseSchema.extend({
         type: z.literal('toast'),
         data: z.object({
+            /** 通知种类:对话完成 / 需要授权 */
+            kind: z.enum(['ready', 'permission']),
             title: z.string(),
             body: z.string(),
             sessionId: z.string(),

@@ -92,9 +92,8 @@ export class SSEManager {
             if (connection.namespace !== namespace) {
                 continue
             }
-            if (!this.visibilityTracker.isVisibleConnection(connection.id)) {
-                continue
-            }
+            // 投递给该 namespace 所有活跃连接(含 hidden 后台):
+            // 后台 tab 由前端收到后,自行决定是否弹系统通知
 
             deliveries.push(
                 Promise.resolve(connection.send(event))
@@ -118,6 +117,16 @@ export class SSEManager {
         }
 
         return successCount
+    }
+
+    /** 该 namespace 是否有任何活跃 SSE 连接(无论 visible/hidden) */
+    hasActiveConnection(namespace: string): boolean {
+        for (const connection of this.connections.values()) {
+            if (connection.namespace === namespace) {
+                return true
+            }
+        }
+        return false
     }
 
     broadcast(event: SyncEvent): void {

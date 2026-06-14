@@ -114,7 +114,7 @@ async function main() {
 
     const notificationChannels: NotificationChannel[] = [
         // WEB端（SSE/WEB-PUSH)
-        new PushNotificationChannel(pushService, sseManager, visibilityTracker, config.publicUrl)
+        new PushNotificationChannel(pushService, sseManager, config.publicUrl)
     ]
 
     notificationHub = new NotificationHub(syncEngine, notificationChannels)
