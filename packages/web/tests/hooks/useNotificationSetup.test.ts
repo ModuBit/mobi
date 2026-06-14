@@ -36,10 +36,13 @@ vi.mock('@/core/data/stores/authStore', () => ({
 }))
 
 import { useNotificationSetup } from '@/core/data/hooks/useNotificationSetup'
+import { useNotificationStore } from '@/core/data/stores/notificationStore'
 
 describe('useNotificationSetup', () => {
     beforeEach(() => {
         vi.restoreAllMocks()
+        // store 模块级单例，跨用例隔离：重置为初始状态（default/false）
+        useNotificationStore.setState({ permission: 'default', subscribed: false })
     })
 
     it('enable: permission=default → requestPermission → granted → 订阅并上报', async () => {
@@ -128,5 +131,142 @@ describe('useNotificationSetup', () => {
         expect(Notification.requestPermission).not.toHaveBeenCalled()
         // 应直接订阅
         expect(subscribeMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('mount 时已有 push 订阅 → subscribed=true', async () => {
+        vi.stubGlobal('Notification', { permission: 'granted' })
+        vi.stubGlobal('navigator', {
+            serviceWorker: {
+                ready: Promise.resolve({
+                    pushManager: {
+                        getSubscription: () => Promise.resolve({ endpoint: 'https://push.test/existing' }),
+                        subscribe: vi.fn(),
+                    },
+                }),
+            },
+        })
+
+        const { result } = renderHook(() => useNotificationSetup('ns1'))
+        await act(async () => {})
+
+        expect(result.current.subscribed).toBe(true)
+    })
+
+    it('mount 时无 push 订阅 → subscribed=false', async () => {
+        vi.stubGlobal('Notification', { permission: 'default' })
+        vi.stubGlobal('navigator', {
+            serviceWorker: {
+                ready: Promise.resolve({
+                    pushManager: {
+                        getSubscription: () => Promise.resolve(null),
+                        subscribe: vi.fn(),
+                    },
+                }),
+            },
+        })
+
+        const { result } = renderHook(() => useNotificationSetup('ns1'))
+        await act(async () => {})
+
+        expect(result.current.subscribed).toBe(false)
+    })
+
+    it('enable 订阅成功后 → subscribed=true', async () => {
+        vi.stubGlobal('Notification', {
+            permission: 'default',
+            requestPermission: vi.fn().mockResolvedValue('granted'),
+        })
+        const subscribeMock = vi.fn().mockResolvedValue({
+            endpoint: 'https://push.test/ep1',
+            keys: { p256dh: 'p', auth: 'a' },
+            toJSON: () => ({
+                endpoint: 'https://push.test/ep1',
+                keys: { p256dh: 'p', auth: 'a' },
+                expirationTime: null,
+            }),
+        })
+        vi.stubGlobal('navigator', {
+            serviceWorker: {
+                ready: Promise.resolve({
+                    pushManager: { subscribe: subscribeMock, getSubscription: () => Promise.resolve(null) },
+                }),
+            },
+        })
+
+        const { result } = renderHook(() => useNotificationSetup('ns1'))
+        // mount effect: getSubscription=null → subscribed=false
+        await act(async () => {})
+        await act(async () => {
+            await result.current.enable()
+        })
+
+        expect(result.current.subscribed).toBe(true)
+    })
+
+    it('enable 订阅失败 → subscribed 保持 false', async () => {
+        vi.stubGlobal('Notification', {
+            permission: 'granted',
+            requestPermission: vi.fn(),
+        })
+        const subscribeMock = vi.fn().mockRejectedValue(new Error('subscribe failed'))
+        vi.stubGlobal('navigator', {
+            serviceWorker: {
+                ready: Promise.resolve({
+                    pushManager: { subscribe: subscribeMock, getSubscription: () => Promise.resolve(null) },
+                }),
+            },
+        })
+
+        const { result } = renderHook(() => useNotificationSetup('ns1'))
+        await act(async () => {})
+        await act(async () => {
+            await result.current.enable()
+        })
+
+        expect(result.current.subscribed).toBe(false)
+    })
+
+    it('多实例共享状态:A 实例授权后,B 实例无需刷新即同步为 granted', async () => {
+        // 场景：NotificationPermissionGate（全局）与 NotificationSettings（设置面板）各调一次 hook
+        // 修复前：各自独立 useState → Gate 授权后 Settings 仍 default，需刷新页面才生效
+        // 修复后：底层共享 store → 一处授权，所有订阅者同步
+        vi.stubGlobal('Notification', {
+            permission: 'default',
+            requestPermission: vi.fn().mockResolvedValue('granted'),
+        })
+        const subscribeMock = vi.fn().mockResolvedValue({
+            endpoint: 'https://push.test/ep',
+            keys: { p256dh: 'p', auth: 'a' },
+            toJSON: () => ({
+                endpoint: 'https://push.test/ep',
+                keys: { p256dh: 'p', auth: 'a' },
+                expirationTime: null,
+            }),
+        })
+        vi.stubGlobal('navigator', {
+            serviceWorker: {
+                ready: Promise.resolve({
+                    pushManager: { subscribe: subscribeMock, getSubscription: () => Promise.resolve(null) },
+                }),
+            },
+        })
+
+        const a = renderHook(() => useNotificationSetup('ns1'))
+        const b = renderHook(() => useNotificationSetup('ns2'))
+        await act(async () => {})
+
+        // 初始两实例都是 default
+        expect(a.result.current.permission).toBe('default')
+        expect(b.result.current.permission).toBe('default')
+
+        // 仅在 A 实例触发授权
+        await act(async () => {
+            await a.result.current.enable()
+        })
+
+        expect(a.result.current.permission).toBe('granted')
+        // 关键断言：B 实例从未调用 enable，但因共享 store，permission 同步变为 granted
+        expect(b.result.current.permission).toBe('granted')
+        expect(b.result.current.subscribed).toBe(true)
     })
 })

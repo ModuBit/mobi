@@ -24,7 +24,8 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { useTranslation } from 'react-i18next'
 import { useNotify } from '@/core/data/hooks/useNotify'
 import { useMobiApi } from '@/core/data/api/client'
-import { App, Button } from 'antd'
+import { App } from 'antd'
+import { NotificationPermissionGate } from '@/components/NotificationPermissionGate'
 import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
 import type { MessagesResponse } from '@/core/data/api/types'
@@ -265,10 +266,6 @@ function patchSessionCache(
 // 查询失效批处理间隔（毫秒）
 const INVALIDATION_BATCH_MS = 16
 
-// 模块级变量：页面刷新后自动重置，路由切换时保持
-// 用于控制通知权限检查只在本页面生命周期内执行一次
-let notificationPermissionChecked = false
-
 type PendingInvalidations = {
     sessions: boolean
     sessionGroups: boolean
@@ -480,50 +477,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         if (!token) clearAllBadgesRef.current()
     }, [token])
 
-    // 浏览器通知权限管理
-    // 模块级变量控制：同一页面生命周期内只检查一次，刷新后重置
-    useEffect(() => {
-        if (!token) return
-        if (!('Notification' in window)) return
-        if (notificationPermissionChecked) return
-        notificationPermissionChecked = true
-
-        // 延迟 2 秒执行，避免干扰页面加载
-        const timerId = setTimeout(() => {
-            if (Notification.permission === 'default') {
-                // 需要用户手势才能触发浏览器授权弹窗，使用带按钮的页面通知
-                notification.info({
-                    key: 'notification-permission-request',
-                    title: tRef.current('notification.permissionRequest'),
-                    description: tRef.current('notification.permissionRequestDesc'),
-                    duration: 0,
-                    actions: [
-                        <Button
-                            key="allow"
-                            type="primary"
-                            size="small"
-                            onClick={() => {
-                                Notification.requestPermission()
-                                notification.destroy('notification-permission-request')
-                            }}
-                        >
-                            {tRef.current('notification.permissionRequestBtn')}
-                        </Button>
-                    ],
-                })
-            } else if (Notification.permission === 'denied') {
-                notification.info({
-                    key: 'notification-permission-guide',
-                    title: tRef.current('notification.permissionGuide'),
-                    description: tRef.current('notification.permissionGuideDesc'),
-                    duration: 10,
-                })
-            }
-        }, 2000)
-
-        return () => clearTimeout(timerId)
-    }, [token, notification])
-
     useEffect(() => {
         if (!token) return
 
@@ -601,5 +554,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         }
     }, [token, logout, handleSyncEvent])
 
-    return <>{children}</>
+    return (
+        <>
+            {children}
+            {token && <NotificationPermissionGate />}
+        </>
+    )
 }

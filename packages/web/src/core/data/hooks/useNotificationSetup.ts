@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useMobiApi } from '@/core/data/api/client'
 import { useAuthStore } from '@/core/data/stores/authStore'
-
-/** 通知权限状态 */
-type Permission = 'default' | 'granted' | 'denied'
+import { useNotificationStore, type NotificationPermission } from '@/core/data/stores/notificationStore'
 
 /**
  * base64url → Uint8Array（VAPID key 转换）
@@ -40,6 +38,10 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 /**
  * 通知权限 + Web Push 订阅封装。
  *
+ * permission/subscribed 来自全局 useNotificationStore——NotificationPermissionGate（全局）
+ * 与 NotificationSettings（设置面板）等多消费方订阅同一份状态：一处 enable() 后所有调用方
+ * 同步刷新，无需重载页面（修复此前 Gate 授权后 Settings 不同步的问题）。
+ *
  * enable() 可重复调用（重新授权 / 重新订阅场景）：
  * - permission=default → requestPermission → granted → 订阅并上报
  * - permission=granted → 直接补订阅（不再请求权限）
@@ -56,11 +58,32 @@ export function useNotificationSetup(namespace: string) {
     // useMobiApi 需要 token（见 client.ts 第 246 行 useMobiApi(token)）
     const { token } = useAuthStore()
     const api = useMobiApi(token)
-    const [permission, setPermission] = useState<Permission>(
-        typeof Notification !== 'undefined' ? Notification.permission : 'default'
-    )
 
-    const enable = useCallback(async (): Promise<Permission> => {
+    // 共享 store：多消费方订阅同一份 permission/subscribed，一处授权全局同步
+    const permission = useNotificationStore((s) => s.permission)
+    const subscribed = useNotificationStore((s) => s.subscribed)
+    const setPermission = useNotificationStore((s) => s.setPermission)
+    const setSubscribed = useNotificationStore((s) => s.setSubscribed)
+
+    // mount 时查询是否已有 push 订阅（跨会话/跨设备可能已订阅过）。
+    // 用于决定 granted 状态下是否需要引导「重新订阅」
+    useEffect(() => {
+        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+        let active = true
+        navigator.serviceWorker.ready
+            .then((reg) => reg.pushManager.getSubscription())
+            .then((sub) => {
+                if (active) setSubscribed(!!sub)
+            })
+            .catch(() => {
+                if (active) setSubscribed(false)
+            })
+        return () => {
+            active = false
+        }
+    }, [setSubscribed])
+
+    const enable = useCallback(async (): Promise<NotificationPermission> => {
         if (typeof Notification === 'undefined') return 'denied'
 
         // 1. 权限阶段
@@ -80,11 +103,13 @@ export function useNotificationSetup(namespace: string) {
                 applicationServerKey: urlBase64ToUint8Array(data.publicKey),
             })
             await api.push.subscribe(subscription.toJSON())
+            setSubscribed(true)
         } catch (err) {
             console.error('[notification] push 订阅失败:', err)
+            setSubscribed(false)
         }
         return perm
-    }, [api])
+    }, [api, setPermission, setSubscribed])
 
-    return { permission, enable }
+    return { permission, subscribed, enable }
 }
