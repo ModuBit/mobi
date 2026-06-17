@@ -20,9 +20,18 @@ import type { SyncEvent } from '@mobi/shared'
 type SyncEventListener = (event: SyncEvent) => void
 type UnauthorizedHandler = () => void
 
+/** 3 个心跳周期(hub 每 30s 发心跳)无任何活动,视为连接半死(TCP 活着但无数据,移动端网络切换常见) */
+const HEARTBEAT_STALE_MS = 90_000
+/** 看门狗检查间隔,仅前台生效(hidden 跳过,避免移动端后台定时器节流误判) */
+const WATCHDOG_INTERVAL_MS = 10_000
+
 /**
  * SSE 客户端，用于接收 Hub 服务器的实时事件
  * 使用 @microsoft/fetch-event-source 实现，支持自定义 headers 和状态码检测
+ *
+ * 连接健康保障:
+ * - 心跳看门狗:前台每 10s 检查,90s 无活动(半死)主动重连
+ * - 回前台主动重连:页面从 hidden→visible 时,由 SSEProvider 调 reconnectIfStale() 立即检查
  */
 export class SSEClient {
     private listeners: Set<SyncEventListener> = new Set()
@@ -32,6 +41,12 @@ export class SSEClient {
     private isConnecting = false
     private hasConnected = false
     private isConnected = false
+    /** 最近一次收到活动(任意事件,含 heartbeat)的时间戳;0 表示尚未建立连接 */
+    private lastActivityAt = 0
+    /** 本次连接周期内是否已请求重连(防 watchdog 与回前台叠加;onopen 重置) */
+    private reconnectRequested = false
+    /** 心跳看门狗定时器 */
+    private watchdogTimer: ReturnType<typeof setInterval> | null = null
 
     constructor(
         private readonly getUrl: () => string | null,
@@ -47,9 +62,11 @@ export class SSEClient {
         const url = this.getUrl()
         if (!url) return
 
-        this.disconnect()
+        // 仅清理传输层,保留 hasConnected(重连走 onopen 重连分支,发 reconnected 触发补拉漏数据)
+        this.teardown()
         this.isConnecting = true
         this.abortController = new AbortController()
+        this.startWatchdog()
 
         try {
             await fetchEventSource(url, {
@@ -67,6 +84,10 @@ export class SSEClient {
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}`)
                     }
+
+                    // 连接建立:重置重连守卫 + 活动时间
+                    this.reconnectRequested = false
+                    this.lastActivityAt = Date.now()
 
                     if (this.hasConnected) {
                         if (import.meta.env.DEV) console.log('[SSE] onopen 重连', { silent: this.isConnected })
@@ -87,6 +108,8 @@ export class SSEClient {
                 onmessage: (event) => {
                     try {
                         const data = JSON.parse(event.data) as SyncEvent
+                        // 任意事件(含 heartbeat)刷新活动时间,防止看门狗误判半死
+                        this.lastActivityAt = Date.now()
                         this.listeners.forEach(listener => listener(data))
                     } catch {
                         // ignore parse errors
@@ -122,9 +145,23 @@ export class SSEClient {
     }
 
     /**
-     * 断开连接
+     * 断开连接并完全重置状态(用户主动断开/组件卸载)
      */
     disconnect(): void {
+        this.teardown()
+        this.stopWatchdog()
+        this.reconnectDelay = 1000
+        this.hasConnected = false
+        this.isConnected = false
+        this.lastActivityAt = 0
+        this.reconnectRequested = false
+    }
+
+    /**
+     * 清理传输层:abort 当前请求 + 清重连定时器。不重置 hasConnected/isConnected
+     * (内部重连复用 connect 时需保留,使 onopen 走重连分支发 reconnected)
+     */
+    private teardown(): void {
         if (this.abortController) {
             this.abortController.abort()
             this.abortController = null
@@ -133,11 +170,7 @@ export class SSEClient {
             clearTimeout(this.reconnectTimer)
             this.reconnectTimer = null
         }
-        // 重置状态
-        this.reconnectDelay = 1000
         this.isConnecting = false
-        this.hasConnected = false
-        this.isConnected = false
     }
 
     /**
@@ -161,5 +194,57 @@ export class SSEClient {
             this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000)
             this.connect()
         }, this.reconnectDelay)
+    }
+
+    /**
+     * 主动重连:断开半死连接并立即重连。
+     * reconnectRequested 守卫防止 watchdog 与回前台在同次连接周期内叠加(onopen 重置)。
+     * @returns 是否实际触发了重连(被守卫挡住则 false)
+     */
+    private forceReconnect(): boolean {
+        if (this.reconnectRequested) return false
+        this.reconnectRequested = true
+        this.teardown()
+        this.reconnectDelay = 1000
+        void this.connect()
+        return true
+    }
+
+    /**
+     * 连接是否半死:曾建立连接且超过 HEARTBEAT_STALE_MS 无任何活动
+     */
+    isStale(): boolean {
+        return this.lastActivityAt > 0 && Date.now() - this.lastActivityAt >= HEARTBEAT_STALE_MS
+    }
+
+    /**
+     * 若连接半死则立即重连(回前台时主动检查用)
+     * @returns 是否触发了重连
+     */
+    reconnectIfStale(): boolean {
+        if (!this.isStale()) return false
+        return this.forceReconnect()
+    }
+
+    /**
+     * 启动心跳看门狗:前台每 WATCHDOG_INTERVAL_MS 检查,半死则 forceReconnect。
+     * hidden 跳过(移动端后台定时器节流会误判);后台期间的半死由回前台逻辑兜底。
+     */
+    private startWatchdog(): void {
+        this.stopWatchdog()
+        this.watchdogTimer = setInterval(() => {
+            if (document.hidden) return
+            if (this.isStale()) {
+                if (import.meta.env.DEV) console.log('[SSE] watchdog 检测到连接半死,主动重连')
+                this.forceReconnect()
+            }
+        }, WATCHDOG_INTERVAL_MS)
+    }
+
+    private stopWatchdog(): void {
+        if (this.watchdogTimer) {
+            clearInterval(this.watchdogTimer)
+            this.watchdogTimer = null
+        }
     }
 }

@@ -525,8 +525,15 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             const id = subscriptionIdRef.current
             if (!id) return
             if (document.hidden === lastHidden) return
+            const wasHidden = lastHidden
             lastHidden = document.hidden
             apiRef.current.visibility.report(id, document.hidden ? 'hidden' : 'visible').catch(() => {})
+            // 回前台:hidden→visible 时主动检查连接健康,半死则立即重连。
+            // 后台期间 watchdog 跳过检查,连接可能在后台变半死(移动端网络切换),
+            // 回前台需立即恢复,不等下次 onerror/心跳。
+            if (wasHidden && !document.hidden) {
+                clientRef.current?.reconnectIfStale()
+            }
         }
         document.addEventListener('visibilitychange', handleVisibilityChange)
 
