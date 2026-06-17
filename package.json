@@ -11,6 +11,7 @@
         "build:exe:all": "bun run build:web && (cd packages/hub && bun run generate:embedded-web-assets) && (cd packages/cli && bun run build:exe --all)",
         "dev:hub": "cd packages/hub && bun run dev",
         "dev:web": "cd packages/web && bun run dev",
+        "dev:https": "MOBI_DEV_HTTPS=1 bun run dev",
         "typecheck": "bun run typecheck:shared && bun run typecheck:hub && bun run typecheck:cli && bun run typecheck:web",
         "typecheck:shared": "cd packages/shared && bun run typecheck",
         "typecheck:hub": "cd packages/hub && bun run typecheck",

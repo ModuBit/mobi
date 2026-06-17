@@ -30,7 +30,10 @@
       "request": "launch",
       "program": "${workspaceFolder}/packages/web/src/dev.ts",
       "cwd": "${workspaceFolder}/packages/web",
-      "args": ["--profile", "dev"]
+      "args": ["--profile", "dev"],
+      "env": {
+        "MOBI_DEV_HTTPS": "0"
+      }
     }
   ],
   "compounds": [
