@@ -14,9 +14,9 @@
 flowchart TB
     SE[SyncEngine] -->|订阅事件| NH[NotificationHub]
     NH -->|遍历 channel| PNC[PushNotificationChannel]
-    PNC --> Active{有活跃<br/>SSE 连接?}
-    Active -->|是| SSE[SSEManager<br/>sendToast<br/>发所有活跃连接]
-    Active -->|否| PS[PushService<br/>sendToNamespace<br/>Web Push]
+    PNC --> Decide{"hasVisible()?<br/>|| !hasSubscription()?"}
+    Decide -->|"是：前台 / 无订阅"| SSE[SSEManager<br/>sendToast<br/>投所有活跃连接]
+    Decide -->|"否：后台 + 有订阅"| PS[PushService<br/>sendToNamespace<br/>Web Push]
     SSE -->|前端本地判定| Branch[visible+当前 session→忽略<br/>visible+其他 session→页面 Toast+角标<br/>hidden→系统通知]
 
     subgraph notifications
@@ -105,13 +105,15 @@ flowchart TB
 详见 [通知通道文档](../push/notification-channel.md)
 
 ```
-有活跃 SSE 连接 → sendToast（发给该 namespace 所有活跃连接，含后台 hidden）
-无活跃 SSE 连接 → Web Push
+shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)
+  是（前台 / 无 push 订阅）→ sendToast（投该 namespace 所有活跃连接，含后台 hidden）
+  否（后台 + 有订阅）→ Web Push
 ```
 
-**通道选择由 Hub 判定**（`PushNotificationChannel` 调用 `sseManager.hasActiveConnection(namespace)`）：
-- **有活跃 SSE 连接**（visible 或 hidden）→ `sendToast` 投递给该 namespace 所有活跃连接；每条连接在前端本地决定如何展示。
-- **无活跃 SSE 连接** → `PushService.sendToNamespace` 发送 Web Push。
+**通道选择由 Hub 判定**（`PushNotificationChannel` 按 `shouldUseToast` 分级）：
+- **有可见连接**（用户在前台）→ `sendToast` 投递，不打扰。
+- **无 push 订阅**（无法走 Web Push）→ `sendToast` 兜底投递，前端转系统通知。
+- **后台 + 已订阅 push** → `PushService.sendToNamespace` 发送 Web Push（SW 独立线程，长时后台可靠）。
 
 **「要不要打扰」由前端本地判定**：收到 toast 后，前端 `decideToastAction(sessionId, { activeSessionId, isHidden })` 三分支：
 
@@ -135,7 +137,7 @@ PushNotificationChannel ←── PushService + SSEManager
 NotificationHub ←── SyncEngine + [PushNotificationChannel]
 ```
 
-> 注：`PushNotificationChannel` 不再依赖 `VisibilityTracker`（构造参数已移除）。通知链路通过 `sseManager.hasActiveConnection()` 判定通道选择。`VisibilityTracker` 仍被 SSEManager/WebServer 持有（一期保留不删），但通知链路不再消费它，作为后续清理项（见 [docs/pending.md](../../../pending.md) #17）。
+> 注：`PushNotificationChannel` 通过 `sseManager.hasVisibleConnection()` 间接消费 `VisibilityTracker`（构造未直接注入 VT），通道选择公式 `shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)`。VisibilityTracker、`/api/visibility` 上报、前端 visibilitychange 均为通知投递的核心依赖。
 
 ## NotificationChannel 接口
 

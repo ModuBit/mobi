@@ -26,7 +26,8 @@ flowchart TB
 | `unsubscribe()` | 移除 SSE 连接 |
 | `broadcast()` | 广播事件给所有匹配的连接 |
 | `sendToast()` | 发送 toast 事件给该 namespace 所有活跃连接（含后台 hidden） |
-| `hasActiveConnection()` | 查询某 namespace 是否有活跃连接（通知通道选择依据） |
+| `hasActiveConnection()` | 查询某 namespace 是否有任何活跃连接（visible 或 hidden） |
+| `hasVisibleConnection()` | 查询某 namespace 是否有可见连接（通知投递决策依据，转发 VisibilityTracker） |
 | `stop()` | 停止所有连接和心跳 |
 
 ## sendToast vs broadcast
@@ -46,21 +47,21 @@ async sendToast(namespace: string, event): Promise<number>
 
 **发送条件**：
 1. namespace 匹配
-2. 匹配该 namespace 的**所有活跃连接**（含后台 hidden，不再过滤可见性）
+2. 匹配该 namespace 的**所有活跃连接**（含后台 hidden）
 
-**使用场景**：有活跃 SSE 连接时发送 Toast（通道选择由 `PushNotificationChannel` 调用 `hasActiveConnection()` 判定），前端据 `hidden` 标志决定页面 Toast 或系统通知。
+**使用场景**：`PushNotificationChannel` 调用 `sendToast`（投递决策见 [push 架构](../push/README.md)），前端据 `hidden` 标志决定页面 Toast 或系统通知。
 
 ```mermaid
 flowchart TB
     need[需要通知]
-    active{有活跃连接?}
-    toast[sendToast<br/>发给所有活跃连接]
+    decide{"hasVisible()?<br/>|| !hasSubscription()?"}
+    toast[sendToast<br/>投所有活跃连接]
     push[Web Push]
     done[完成]
 
-    need --> active
-    active -->|是| toast
-    active -->|否| push
+    need --> decide
+    decide -->|"是（前台 / 无订阅）"| toast
+    decide -->|"否（后台 + 有订阅）"| push
     toast --> done
     push --> done
 ```
@@ -119,6 +120,6 @@ flowchart TB
 
 ## 与 VisibilityTracker 的关系
 
-`sendToast()` 现投递该 namespace **所有活跃连接**（含后台 hidden），不再按可见性过滤。通知链路通过 `hasActiveConnection()` 判定有无活跃连接来选择通道（有 → sendToast；无 → Web Push），「要不要打扰」由前端本地三分支判定（visible+当前 session→忽略 / visible+其他→页面 Toast+角标 / hidden→系统通知）。
+SSEManager 构造时注入 `VisibilityTracker`，暴露 `hasVisibleConnection(namespace)`（转发 `visibilityTracker.hasVisibleConnection`）作为通知投递决策依据。`PushNotificationChannel` 据此分级：`shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)`（有可见连接 → SSE toast 不打扰 / 无 push 订阅 → SSE toast 兜底 / 后台 + 有订阅 → Web Push）。
 
-VisibilityTracker 类一期保留不删（降风险），但 SSEManager 的通知投递逻辑不再消费它。后续清理项见 [docs/pending.md](../../../../pending.md) #17。
+`sendToast()` 本身投递该 namespace **所有活跃连接**（含后台 hidden），不按可见性过滤——「要不要打扰」由前端本地三分支判定（visible+当前 session→忽略 / visible+其他→页面 Toast+角标 / hidden→系统通知）。

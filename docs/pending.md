@@ -438,24 +438,18 @@ hooks: {
 
 ---
 
-## 17. VisibilityTracker 与 /api/visibility 清理
+## 17. ~~VisibilityTracker 与 /api/visibility 清理~~ ⛔ 不再适用（commit a56d549）
 
-**相关文件**：
+**原计划**（通知重设计一期）：通知链路曾改为「前端判定」，VisibilityTracker 一度不再被通知链路消费，计划移除 `VisibilityTracker` 类、`/api/visibility` 路由及前端 visibilitychange 上报。
+
+**为何不再适用**：P0 投递策略分级（commit a56d549）重新启用 visibility 决策——`PushNotificationChannel` 通过 `sseManager.hasVisibleConnection()` 判定「有可见连接 → SSE toast（不打扰）/ 后台 + 有 push 订阅 → Web Push（SW 独立线程，长时后台可靠）/ 无 push 订阅 → SSE toast 兜底」。决策公式：`shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)`。
+
+VisibilityTracker、`/api/visibility` 路由、前端 visibilitychange 上报已恢复为通知投递的**核心依赖**，不可清理。
+
+**相关文件**（均为核心依赖，保留）：
 - `packages/hub/src/visibility/visibilityTracker.ts` — 可见性追踪
 - `packages/hub/src/web/routes/events.ts` — `/api/visibility` 上报路由
 - `packages/web/src/core/providers/SSEProvider.tsx` — 前端 visibilitychange 上报
-
-**现状（通知重设计一期）**：
-- 通知链路改为「前端判定」后，VisibilityTracker 不再被通知链路消费
-- channel 改用 SSEManager 的「有无活跃连接」判定 toast vs push
-- VisibilityTracker + `/api/visibility` 路由 + 前端 `visibilitychange` 上报逻辑保留未删（降风险）
-
-**待清理**：
-- 确认无其他模块依赖 VisibilityTracker（`sseManager` 仍注入但仅 `sendToast` 原过滤用它，改造后不再用）
-- 移除 `VisibilityTracker` 类、`/api/visibility` 路由、前端 visibility 上报
-- 清理 `sseManager` 中对 `visibilityTracker` 的依赖
-
-**优先级**：低，一期保留不影响功能；通知重设计稳定后作为独立清理 PR
 
 ---
 

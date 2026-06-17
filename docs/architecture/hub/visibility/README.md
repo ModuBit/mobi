@@ -2,7 +2,7 @@
 
 **文件**: [`packages/hub/src/visibility/visibilityTracker.ts`](/packages/hub/src/visibility/visibilityTracker.ts)
 
-VisibilityTracker 追踪 SSE 连接的页面可见性状态，用于决定通知的投递策略：页面可见时走 SSE 实时推送，页面不可见时降级为 Web Push。
+VisibilityTracker 追踪 SSE 连接的页面可见性状态，是通知投递决策的核心依据：页面可见时走 SSE 实时推送，页面不可见且已订阅 push 时降级为 Web Push（无订阅则 SSE toast 兜底）。
 
 ## 架构
 
@@ -13,8 +13,8 @@ flowchart TB
     Events --> VT["VisibilityTracker"]
 
     VT -->|"hasVisibleConnection()"| PNC["PushNotificationChannel"]
-    PNC -->|"可见"| SSEPath["SSE 实时推送"]
-    PNC -->|"不可见"| PushPath["Web Push 推送"]
+    PNC -->|"可见 / 无订阅"| SSEPath["SSE toast"]
+    PNC -->|"后台 + 有订阅"| PushPath["Web Push"]
 ```
 
 VisibilityTracker 被 SSEManager、PushNotificationChannel 和 WebServer 共享依赖。
@@ -79,28 +79,30 @@ SSE 连接断开时调用 `removeConnection`，同时清理反向索引和可见
 
 ## 与通知系统的关系
 
-VisibilityTracker **不再被通知链路消费**。通知通道选择已改为基于「有无活跃 SSE 连接」（`sseManager.hasActiveConnection(namespace)`）：
+VisibilityTracker 是通知投递决策的核心依赖。`PushNotificationChannel` 通过 `sseManager.hasVisibleConnection()` 间接消费它，按「可见性 + push 订阅」分级选择投递路径：
 
 ```mermaid
 flowchart TB
     Event["SyncEngine 事件"] --> NH["NotificationHub"]
     NH --> PNC["PushNotificationChannel"]
-    PNC --> Check{"hasActiveConnection()?"}
-    Check -->|"有活跃连接"| SSE["SSEManager.sendToast()<br/>发给所有活跃连接"]
-    Check -->|"无活跃连接"| Push["PushService.sendToNamespace()<br/>Web Push 推送"]
+    PNC --> Check{"hasVisible()?<br/>|| !hasSubscription()?"}
+    Check -->|"是（前台 / 无 push 订阅）"| SSE["SSEManager.sendToast()<br/>投所有活跃连接"]
+    Check -->|"否（后台 + 有订阅）"| Push["PushService.sendToNamespace()<br/>Web Push（SW 独立线程）"]
 ```
 
-「要不要打扰」由前端本地三分支判定（visible+当前 session→忽略 / visible+其他→页面 Toast+角标 / hidden→系统通知），不再由 Hub 端按可见性过滤。
+决策公式：`shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)`
 
-**当前状态**：VisibilityTracker 类一期保留不删（降风险），数据结构、生命周期、方法表均保留，但通知链路已不再注入它。后续清理项见 [docs/pending.md](../../../pending.md) #17。
+- **有可见连接**（用户在前台）→ SSE toast，不打扰正在使用的用户
+- **无 push 订阅**（无法走 Web Push，如未装推送服务的环境）→ SSE toast 兜底，由前端收到后转系统通知
+- **后台 + 已订阅 push** → Web Push，经 Service Worker 独立线程投递，不依赖页面 JS 存活，长时后台仍可靠
+
+`sendToast()` 始终投递该 namespace **所有活跃连接（含后台 hidden）**；「要不要打扰」由前端本地三分支判定（visible+当前 session→忽略 / visible+其他→页面 Toast+角标 / hidden→系统通知）。
 
 ## 与其他模块的关系
 
 | 模块 | 使用方式 |
 |------|----------|
-| SSEManager | 构造时注入（一期保留），SSE 连接建立/断开时注册/移除 |
+| SSEManager | 构造时注入；连接建立/断开时 register/remove；暴露 `hasVisibleConnection()` 供 channel 决策 |
 | WebServer (events route) | SSE 连接和可见性变更时更新 |
-| PushNotificationChannel | **不再注入**（构造参数已移除，通知链路改为基于 `hasActiveConnection()`） |
+| PushNotificationChannel | 间接依赖——通过 `sseManager.hasVisibleConnection()` 消费（构造未直接注入 VT） |
 | SyncEngine | 不直接使用 |
-
-> 注：VisibilityTracker 当前仅被 SSEManager 和 WebServer 依赖，用于追踪连接可见性状态。通知链路已不再消费它（详见上文「与通知系统的关系」）。

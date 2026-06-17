@@ -13,7 +13,7 @@ flowchart LR
     PNC --> SSE[SSEManager<br/>实时推送]
 ```
 
-> 注：`PushNotificationChannel` 不再依赖 `VisibilityTracker`（构造参数已移除）。通道选择通过 `sseManager.hasActiveConnection(namespace)` 判定有无活跃连接。
+> 注：`PushNotificationChannel` 通过 `sseManager.hasVisibleConnection()`（间接消费 VisibilityTracker）与 `pushService.hasSubscription()` 分级判定通道选择。
 
 ## 核心职责
 
@@ -30,26 +30,27 @@ flowchart LR
 flowchart TB
     send[发送通知]
     active{会话活跃?}
-    connected{有活跃<br/>SSE 连接?}
-    sse[sendToast<br/>发所有活跃连接]
-    push[Web Push]
+    decide{"hasVisible()?<br/>|| !hasSubscription()?"}
+    sse[sendToast<br/>投所有活跃连接]
+    push[Web Push<br/>SW 独立线程]
     done[完成]
 
     send --> active
     active -->|否| done
-    active -->|是| connected
-    connected -->|是| sse
-    connected -->|否| push
+    active -->|是| decide
+    decide -->|"是：前台 / 无订阅"| sse
+    decide -->|"否：后台 + 有订阅"| push
     sse --> done
     push --> done
 ```
 
-**通道选择**（Hub 端）：基于 `sseManager.hasActiveConnection(namespace)` 判定，**不再依赖** `VisibilityTracker`。
+**通道选择**（Hub 端）：`shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)`（依赖 `sseManager.hasVisibleConnection` 间接消费 VisibilityTracker，与 `pushService.hasSubscription`）。
 
 | 条件 | 通知方式 |
 |------|---------|
-| 有活跃 SSE 连接（visible 或 hidden） | `sendToast` 发给该 namespace 所有活跃连接（含后台） |
-| 无活跃 SSE 连接 | Web Push |
+| 有可见连接（用户在前台） | `sendToast` 投所有活跃连接，不打扰 |
+| 无 push 订阅（无法 Web Push） | `sendToast` 投所有活跃连接（兜底，前端转系统通知） |
+| 后台 + 已订阅 push | Web Push（SW 独立线程，长时后台可靠） |
 
 **「要不要打扰」由前端本地判定**：`decideToastAction(sessionId, { activeSessionId, isHidden })` 三分支：
 
@@ -143,6 +144,6 @@ block-beta
 
 | 模块 | 交互方式 |
 |------|---------|
-| PushService | 调用 `sendToNamespace()` 发送 Web Push |
-| SSEManager | 调用 `hasActiveConnection()` 判定通道、`sendToast()` 发送实时 Toast |
+| PushService | 调用 `hasSubscription()` 判定订阅、`sendToNamespace()` 发送 Web Push |
+| SSEManager | 调用 `hasVisibleConnection()` 判定通道、`sendToast()` 发送实时 Toast |
 | SyncEngine | 作为 NotificationChannel 被调用 |

@@ -154,31 +154,30 @@ Hub 发送推送：
 }
 ```
 
-### Mobi 降级策略
+### Mobi 投递策略（按可见性 + push 订阅分级）
 
 ```mermaid
 flowchart TB
     need[需要通知用户]
-    active{有活跃<br/>SSE 连接?}
-    sse[SSE Toast<br/>发所有活跃连接]
-    push{Web Push 可用?}
-    webpush[Web Push 通知]
-    fallback[无通知<br/>用户需主动查看]
+    decide{"hasVisible()?<br/>|| !hasSubscription()?"}
+    sse[SSE Toast<br/>投所有活跃连接]
+    webpush[Web Push<br/>SW 独立线程]
+    done[完成]
 
-    need --> active
-    active -->|是| sse
-    active -->|否| push
-    push -->|是| webpush
-    push -->|否| fallback
+    need --> decide
+    decide -->|"是：前台 / 无 push 订阅"| sse
+    decide -->|"否：后台 + 有订阅"| webpush
+    sse --> done
+    webpush --> done
 ```
 
-Mobi 已有 SSE 方案（`/api/events`），通道选择基于**有无活跃 SSE 连接**：
+`PushNotificationChannel` 按 `shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)` 分级选择投递路径：
 
-- **有活跃 SSE 连接**（visible 或 hidden）→ `sendToast` 投递给该 namespace 所有活跃连接（含后台），前端本地决定展示方式
-- **无活跃 SSE 连接 + Web Push 可用** → Web Push 通知
-- **无活跃 SSE 连接 + Web Push 不可用** → 无通知（用户下次打开时查看）
+- **有可见连接**（用户在前台）→ SSE toast，不打扰正在使用的用户
+- **无 push 订阅**（无法走 Web Push，如未装推送服务的环境）→ SSE toast 兜底，由前端收到后转系统通知
+- **后台 + 已订阅 push** → Web Push，经 Service Worker 独立线程投递，不依赖页面 JS 存活，长时后台仍可靠
 
-通道选择由 `PushNotificationChannel` 调用 `sseManager.hasActiveConnection(namespace)` 判定，**不再依赖** `VisibilityTracker`。「要不要打扰」由前端本地三分支判定：
+通道选择**依赖** `sseManager.hasVisibleConnection(namespace)`（可见性，转发 VisibilityTracker）与 `pushService.hasSubscription(namespace)`（push 订阅）。`sendToast` 投递该 namespace 所有活跃连接（含后台 hidden），「要不要打扰」由前端本地三分支判定：
 
 | 连接状态 + 当前路由 | 处理方式 |
 |------|---------|
