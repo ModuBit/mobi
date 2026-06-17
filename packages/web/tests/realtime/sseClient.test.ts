@@ -254,3 +254,99 @@ describe('SSEClient reconnectIfStale / 防叠加', () => {
         expect(client.reconnectIfStale()).toBe(true)
     })
 })
+
+describe('SSEClient 重连退避与抖动', () => {
+    let randomSpy: ReturnType<typeof vi.spyOn>
+    beforeEach(() => {
+        resetFetchMock()
+        setHidden(false)
+        vi.useFakeTimers()
+        // 默认 jitter=0,精确验证退避;jitter 用例单独覆盖
+        randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0)
+    })
+    afterEach(() => {
+        randomSpy.mockRestore()
+        vi.useRealTimers()
+        setHidden(false)
+    })
+
+    it('onerror 抛错而非返回 delay(停止库内部重连,统一走 scheduleReconnect)', async () => {
+        const client = new SSEClient(() => 'url')
+        const events: SyncEvent[] = []
+        client.subscribe((e) => events.push(e))
+        await openConn(client) // isConnected=true
+        // onerror 应抛错:库 catch → reject → connect catch → scheduleReconnect 单一入口
+        expect(() => lastOptions.current.onerror(new Error('net'))).toThrow('net')
+        // 抛错前先通知断连
+        expect(events).toContainEqual({ type: 'connection-changed', connected: false })
+    })
+
+    it('连接错误(fetchEventSource reject)经 connect catch → scheduleReconnect 重连', async () => {
+        // 模拟库 reject(onerror throw 后的库行为)→ connect catch → scheduleReconnect
+        vi.mocked(fetchEventSource).mockImplementationOnce(async (_u: string, o?: any) => {
+            lastOptions.current = o ?? {}
+            throw new Error('rejected')
+        })
+        const client = new SSEClient(() => 'url')
+        await client.connect()
+        expect(fetchEventSource).toHaveBeenCalledTimes(1)
+        await vi.advanceTimersByTimeAsync(1000) // 首次退避 1s
+        expect(fetchEventSource).toHaveBeenCalledTimes(2) // 重连
+    })
+
+    it('连续失败指数退避:1s → 2s → 4s', async () => {
+        const client = new SSEClient(() => 'url')
+        await openConn(client)
+
+        // 第 1 次:delay=1s(attempt=0)
+        lastOptions.current.onclose()
+        await vi.advanceTimersByTimeAsync(999)
+        expect(fetchEventSource).toHaveBeenCalledTimes(1) // 未到
+        await vi.advanceTimersByTimeAsync(1)
+        expect(fetchEventSource).toHaveBeenCalledTimes(2) // attempt→1
+
+        // 第 2 次:delay=2s(attempt=1)
+        lastOptions.current.onclose()
+        await vi.advanceTimersByTimeAsync(1999)
+        expect(fetchEventSource).toHaveBeenCalledTimes(2)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(fetchEventSource).toHaveBeenCalledTimes(3) // attempt→2
+
+        // 第 3 次:delay=4s(attempt=2)
+        lastOptions.current.onclose()
+        await vi.advanceTimersByTimeAsync(3999)
+        expect(fetchEventSource).toHaveBeenCalledTimes(3)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(fetchEventSource).toHaveBeenCalledTimes(4) // attempt→3
+    })
+
+    it('重连含 jitter:delay = 退避值 + 0~500ms', async () => {
+        randomSpy.mockReturnValue(0.5) // jitter = 0.5 * 500 = 250ms
+        const client = new SSEClient(() => 'url')
+        await openConn(client)
+        lastOptions.current.onclose()
+        // delay = 1000 + 250 = 1250ms
+        await vi.advanceTimersByTimeAsync(1249)
+        expect(fetchEventSource).toHaveBeenCalledTimes(1) // 未到
+        await vi.advanceTimersByTimeAsync(1)
+        expect(fetchEventSource).toHaveBeenCalledTimes(2)
+    })
+
+    it('成功重连后 onopen 重置退避(下次 delay 回到 1s,非继续翻倍)', async () => {
+        const client = new SSEClient(() => 'url')
+        await openConn(client)
+        // 退避两次(attempt→2,delay 应为 4s)
+        lastOptions.current.onclose()
+        await vi.advanceTimersByTimeAsync(1000) // 重连,attempt→1
+        lastOptions.current.onclose()
+        await vi.advanceTimersByTimeAsync(2000) // 重连,attempt→2
+        // 成功 onopen → 退避归零
+        await lastOptions.current.onopen(makeResponse(200))
+        // 下次失败 delay 应回到 1s(若不重置则为 8s)
+        lastOptions.current.onclose()
+        await vi.advanceTimersByTimeAsync(999)
+        expect(fetchEventSource).toHaveBeenCalledTimes(3) // 1s 未到
+        await vi.advanceTimersByTimeAsync(1)
+        expect(fetchEventSource).toHaveBeenCalledTimes(4)
+    })
+})

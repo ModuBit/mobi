@@ -24,6 +24,10 @@ type UnauthorizedHandler = () => void
 const HEARTBEAT_STALE_MS = 90_000
 /** 看门狗检查间隔,仅前台生效(hidden 跳过,避免移动端后台定时器节流误判) */
 const WATCHDOG_INTERVAL_MS = 10_000
+/** 重连退避基数 / 上限 / 抖动(对齐指数退避 + jitter,避免多端同时重连) */
+const RECONNECT_BASE_DELAY_MS = 1000
+const RECONNECT_MAX_DELAY_MS = 30_000
+const RECONNECT_JITTER_MS = 500
 
 /**
  * SSE 客户端，用于接收 Hub 服务器的实时事件
@@ -37,7 +41,8 @@ export class SSEClient {
     private listeners: Set<SyncEventListener> = new Set()
     private abortController: AbortController | null = null
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-    private reconnectDelay = 1000
+    /** 连续重连失败次数(指数退避 2^attempt);成功 onopen 重置 */
+    private reconnectAttempt = 0
     private isConnecting = false
     private hasConnected = false
     private isConnected = false
@@ -85,8 +90,9 @@ export class SSEClient {
                         throw new Error(`HTTP ${response.status}`)
                     }
 
-                    // 连接建立:重置重连守卫 + 活动时间
+                    // 连接建立:重置重连守卫 + 活动时间 + 退避计数
                     this.reconnectRequested = false
+                    this.reconnectAttempt = 0
                     this.lastActivityAt = Date.now()
 
                     if (this.hasConnected) {
@@ -117,13 +123,13 @@ export class SSEClient {
                 },
                 onerror: (error) => {
                     if (import.meta.env.DEV) console.log('[SSE] onerror', error)
-                    // 返回重连延迟（毫秒），或抛出错误停止重连
                     // 通知断开连接（仅首次断连时发射）
                     if (this.isConnected) {
                         this.isConnected = false
                         this.listeners.forEach(listener => listener({ type: 'connection-changed', connected: false }))
                     }
-                    return this.reconnectDelay
+                    // 抛错让库停止内部重连,统一走 connect catch → scheduleReconnect（指数退避 + jitter）
+                    throw error
                 },
                 onclose: () => {
                     if (import.meta.env.DEV) console.log('[SSE] onclose 连接关闭')
@@ -150,7 +156,7 @@ export class SSEClient {
     disconnect(): void {
         this.teardown()
         this.stopWatchdog()
-        this.reconnectDelay = 1000
+        this.reconnectAttempt = 0
         this.hasConnected = false
         this.isConnected = false
         this.lastActivityAt = 0
@@ -188,12 +194,16 @@ export class SSEClient {
     private scheduleReconnect(): void {
         if (this.reconnectTimer) return // 防止重复调度
 
-        if (import.meta.env.DEV) console.log(`[SSE] scheduleReconnect in ${this.reconnectDelay}ms`)
+        // 指数退避:delay = min(30s, 1s × 2^attempt) + 0~500ms jitter。
+        // jitter 避免多端在服务重启时同时重连(thundering herd);attempt 连续失败递增,成功 onopen 重置。
+        const baseDelay = Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * (2 ** this.reconnectAttempt))
+        const jitter = Math.random() * RECONNECT_JITTER_MS
+        if (import.meta.env.DEV) console.log(`[SSE] scheduleReconnect in ${baseDelay}ms(+${Math.round(jitter)}ms jitter)`)
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null
-            this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000)
+            this.reconnectAttempt++ // 下次失败退避加倍(成功 onopen 会重置)
             this.connect()
-        }, this.reconnectDelay)
+        }, baseDelay + jitter)
     }
 
     /**
@@ -205,7 +215,7 @@ export class SSEClient {
         if (this.reconnectRequested) return false
         this.reconnectRequested = true
         this.teardown()
-        this.reconnectDelay = 1000
+        this.reconnectAttempt = 0
         void this.connect()
         return true
     }
