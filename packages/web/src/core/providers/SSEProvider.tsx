@@ -30,7 +30,7 @@ import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
 import type { MessagesResponse } from '@/core/data/api/types'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
-import { decideToastAction, parseActiveSessionId } from '@/core/notifications'
+import { decideToastAction, parseActiveSessionId, showSystemNotification } from '@/core/notifications'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import type { NotificationKind } from '@/core/data/stores/notificationBadgeStore'
 
@@ -424,16 +424,16 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 if (action === 'ignore') break
 
                 if (action === 'system-notification') {
-                    // 场景③ 后台:系统通知,点击跳转
-                    try {
-                        const n = new Notification(title, { body, icon: '/favicon.ico', tag: `${kind}-${sessionId}` })
-                        n.onclick = () => {
-                            window.focus()
-                            n.close()
-                            navigateRef.current({ to: url })
-                        }
-                    } catch {
-                        // 某些环境不支持,降级为页面通知(antd notification,支持 onClick)
+                    // 场景③ 后台:SW 系统通知（移动端不支持页面层 new Notification），
+                    // 点击跳转由 sw.ts notificationclick 处理（读 data.url）；SW 不可用则降级 antd
+                    void showSystemNotification({
+                        title,
+                        body,
+                        icon: '/favicon.ico',
+                        tag: `${kind}-${sessionId}`,
+                        data: { url },
+                    }).then((ok) => {
+                        if (ok) return
                         notificationRef.current.info({
                             key: `${kind}-${sessionId}`,
                             message: title,
@@ -441,7 +441,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                             duration: 6,
                             onClick: () => navigateRef.current({ to: url }),
                         })
-                    }
+                    })
                     markUnreadRef.current(sessionId, kind as NotificationKind)
                     break
                 }

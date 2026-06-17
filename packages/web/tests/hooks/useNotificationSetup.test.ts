@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
 // mock client 的 useMobiApi —— 接收任意参数（包括 token），返回带 push 的 API
@@ -41,8 +41,8 @@ import { useNotificationStore } from '@/core/data/stores/notificationStore'
 describe('useNotificationSetup', () => {
     beforeEach(() => {
         vi.restoreAllMocks()
-        // store 模块级单例，跨用例隔离：重置为初始状态（default/false）
-        useNotificationStore.setState({ permission: 'default', subscribed: false })
+        // store 模块级单例，跨用例隔离：重置为初始状态（default/false/error:null）
+        useNotificationStore.setState({ permission: 'default', subscribed: false, error: null })
     })
 
     it('enable: permission=default → requestPermission → granted → 订阅并上报', async () => {
@@ -268,5 +268,118 @@ describe('useNotificationSetup', () => {
         // 关键断言：B 实例从未调用 enable，但因共享 store，permission 同步变为 granted
         expect(b.result.current.permission).toBe('granted')
         expect(b.result.current.subscribed).toBe(true)
+    })
+})
+
+describe('ready 超时与失败反馈', () => {
+    beforeEach(() => {
+        vi.useFakeTimers()
+        vi.restoreAllMocks()
+        useNotificationStore.setState({ permission: 'default', subscribed: false, error: null })
+    })
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    it('enable: ready 永不 resolve → 超时 → error.kind=timeout', async () => {
+        vi.stubGlobal('Notification', { permission: 'granted' })
+        vi.stubGlobal('navigator', {
+            serviceWorker: {
+                ready: new Promise(() => {}), // controller 孤儿：永不 resolve/reject
+                pushManager: { subscribe: vi.fn(), getSubscription: () => Promise.resolve(null) },
+            },
+        })
+
+        const { result } = renderHook(() => useNotificationSetup('ns1'))
+        // flush mount effect 的 ready 超时（mount 也 awaitServiceWorkerReady，同时让 result.current 就绪）
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(10000)
+        })
+
+        // enable：advanceTimersByTimeAsync 推进 + flush microtask，触发 ready 超时 reject
+        await act(async () => {
+            const p = result.current.enable()
+            await vi.advanceTimersByTimeAsync(10000)
+            await p
+        })
+
+        expect(result.current.error?.kind).toBe('timeout')
+        expect(result.current.subscribed).toBe(false)
+    })
+
+    it('enable: subscribe 抛错 → error.kind=subscribe', async () => {
+        vi.stubGlobal('Notification', { permission: 'granted' })
+        vi.stubGlobal('navigator', {
+            serviceWorker: {
+                ready: Promise.resolve({
+                    pushManager: {
+                        subscribe: vi.fn().mockRejectedValue(new Error('subscribe failed')),
+                        getSubscription: () => Promise.resolve(null),
+                    },
+                }),
+            },
+        })
+
+        const { result } = renderHook(() => useNotificationSetup('ns1'))
+        // flush mount（ready resolve，microtask 需 flush 让 result.current 就绪）
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(10000)
+        })
+        await act(async () => {
+            await result.current.enable()
+        })
+
+        expect(result.current.error?.kind).toBe('subscribe')
+    })
+
+    it('enable: 成功路径 → error 清空（null）', async () => {
+        vi.stubGlobal('Notification', {
+            permission: 'default',
+            requestPermission: vi.fn().mockResolvedValue('granted'),
+        })
+        vi.stubGlobal('navigator', {
+            serviceWorker: {
+                ready: Promise.resolve({
+                    pushManager: {
+                        subscribe: vi.fn().mockResolvedValue({
+                            endpoint: 'https://push.test/ep',
+                            keys: { p256dh: 'p', auth: 'a' },
+                            toJSON: () => ({ endpoint: 'https://push.test/ep', keys: { p256dh: 'p', auth: 'a' }, expirationTime: null }),
+                        }),
+                        getSubscription: () => Promise.resolve(null),
+                    },
+                }),
+            },
+        })
+
+        const { result } = renderHook(() => useNotificationSetup('ns1'))
+        // 预置一个旧 error，enable 成功后应清空
+        useNotificationStore.setState({ error: { kind: 'subscribe' } })
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(10000)
+        })
+        await act(async () => {
+            await result.current.enable()
+        })
+
+        expect(result.current.error).toBeNull()
+        expect(result.current.subscribed).toBe(true)
+    })
+
+    it('mount effect: ready 永不 resolve → 超时不崩、subscribed 保持 false', async () => {
+        vi.stubGlobal('Notification', { permission: 'granted' })
+        vi.stubGlobal('navigator', {
+            serviceWorker: {
+                ready: new Promise(() => {}),
+                pushManager: { getSubscription: () => Promise.resolve(null) },
+            },
+        })
+
+        const { result } = renderHook(() => useNotificationSetup('ns1'))
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(10000)
+        })
+
+        expect(result.current.subscribed).toBe(false)
     })
 })

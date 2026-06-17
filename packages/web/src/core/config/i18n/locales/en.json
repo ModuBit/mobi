@@ -286,8 +286,8 @@
       "layerBrowserHint": "Allow the browser to send notifications to Mobi",
       "stepMacWin1": "Click the lock / settings icon left of the address bar",
       "stepMacWin2": "Select \"Notifications\" → \"Allow\"",
-      "stepAndroid1": "Chrome ⋮ menu → Settings → Site settings → Notifications",
-      "stepAndroid2": "Find Mobi → set to \"Allow\"",
+      "stepAndroid1": "Tap the 🔒 lock icon next to the address bar",
+      "stepAndroid2": "Permissions → Notifications → set to \"Allow\"",
       "stepIos1": "iOS Safari doesn't support web notifications",
       "stepIos2": "Install the PWA below first",
       "layerOs": "Operating System",
@@ -295,7 +295,11 @@
       "osMac": "System Settings → Notifications → select browser (Chrome / Safari) → Allow",
       "osWindows": "Settings → System → Notifications → allow browser (Chrome / Edge) to send",
       "osAndroid": "Settings → Apps → browser → Notifications → On",
-      "osIos": "Settings → Notifications → browser or PWA → Allow"
+      "osIos": "Settings → Notifications → browser or PWA → Allow",
+      "swReadyTimeout": "Service is warming up — refresh and retry",
+      "subscribeFailed": "Failed to subscribe, please retry",
+      "refreshPermission": "Re-check",
+      "testFailed": "Failed to send test notification, please retry"
     },
     "pwa": {
       "updateAvailable": "Update available",

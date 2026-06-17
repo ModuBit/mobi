@@ -57,13 +57,42 @@ const MenuItem = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     }
 `
 
+// 卡片内嵌的紧凑安装按钮（区别于侧边栏菜单项 menu variant：小 padding + 边框，移动端在 PwaCard 内换行全宽）
+const CardButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid ${p => p.$token.colorBorder};
+    border-radius: ${p => p.$token.borderRadius}px;
+    background: transparent;
+    color: ${p => p.$token.colorText};
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        border-color: ${p => p.$token.colorPrimary};
+        color: ${p => p.$token.colorPrimary};
+        background: ${p => p.$token.colorPrimaryBg};
+    }
+
+    /* 移动端：配合 PwaCard flex-wrap，换到下方独占整行 */
+    @media (max-width: 575px) {
+        width: 100%;
+    }
+`
+
 interface BeforeInstallPromptEvent extends Event {
     prompt: () => Promise<void>
     userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
 interface InstallButtonProps {
-    variant?: 'nav' | 'menu'
+    variant?: 'nav' | 'menu' | 'card'
 }
 
 export function InstallButton({ variant = 'nav' }: InstallButtonProps) {
@@ -93,6 +122,15 @@ export function InstallButton({ variant = 'nav' }: InstallButtonProps) {
                 <Download size={20} />
                 <span>{t('notification.pwa.install')}</span>
             </MenuItem>
+        )
+    }
+
+    if (variant === 'card') {
+        return (
+            <CardButton $token={token} onClick={handleInstall}>
+                <Download size={16} />
+                <span>{t('notification.pwa.install')}</span>
+            </CardButton>
         )
     }
 

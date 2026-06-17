@@ -286,8 +286,8 @@
       "layerBrowserHint": "允许浏览器向 Mobi 发送通知",
       "stepMacWin1": "点击地址栏左侧的锁形 / 设置图标",
       "stepMacWin2": "选择「通知」→ 设为「允许」",
-      "stepAndroid1": "Chrome 菜单 ⋮ → 设置 → 网站设置 → 通知",
-      "stepAndroid2": "找到 Mobi → 设为「允许」",
+      "stepAndroid1": "点击地址栏左侧的 🔒 锁形图标",
+      "stepAndroid2": "权限 → 通知 → 设为「允许」",
       "stepIos1": "iOS Safari 不支持网页通知",
       "stepIos2": "请先安装下方 PWA",
       "layerOs": "操作系统",
@@ -295,7 +295,11 @@
       "osMac": "系统设置 → 通知 → 选择浏览器（Chrome / Safari）→ 允许通知",
       "osWindows": "设置 → 系统 → 通知 → 允许浏览器（Chrome / Edge）发送通知",
       "osAndroid": "设置 → 应用 → 浏览器 → 通知 → 开启",
-      "osIos": "设置 → 通知 → 浏览器或 PWA → 允许通知"
+      "osIos": "设置 → 通知 → 浏览器或 PWA → 允许通知",
+      "swReadyTimeout": "服务正在准备中，请刷新页面重试",
+      "subscribeFailed": "订阅通知失败，请重试",
+      "refreshPermission": "重新检查",
+      "testFailed": "测试通知发送失败，请重试"
     },
     "pwa": {
       "updateAvailable": "发现新版本",

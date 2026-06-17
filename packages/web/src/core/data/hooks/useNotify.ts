@@ -16,6 +16,7 @@
 
 import { useCallback, useMemo } from 'react'
 import { App } from 'antd'
+import { showSystemNotification } from '@/core/notifications'
 
 /** 通知选项 */
 export interface NotifyOptions {
@@ -45,23 +46,28 @@ export interface NotifyAPI {
 /**
  * 统一通知 hook
  *
- * 已授权浏览器通知 → 使用系统通知 (new Notification)
+ * 已授权浏览器通知 → SW 系统通知（showSystemNotification，跨端一致）
  * 未授权 → 使用 antd notification (页面内通知)
  */
 export function useNotify(): NotifyAPI {
     const { notification } = App.useApp()
 
     const dispatch = useCallback((type: NotifyType, options: NotifyOptions) => {
-        // 已授权浏览器通知 → 发送系统通知
+        // 已授权浏览器通知 → SW 系统通知（移动端不支持页面层 new Notification），SW 失败降级 antd
         if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-                new Notification(options.message, {
-                    body: options.description ?? '',
-                    icon: '/favicon.ico',
+            void showSystemNotification({
+                title: options.message,
+                body: options.description ?? '',
+                icon: '/favicon.ico',
+            }).then((ok) => {
+                if (ok) return
+                notification[type]({
+                    key: options.key,
+                    message: options.message,
+                    description: options.description,
+                    duration: options.duration,
                 })
-            } catch {
-                // 某些环境不支持
-            }
+            })
             return
         }
 

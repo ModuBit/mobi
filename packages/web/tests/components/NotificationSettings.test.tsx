@@ -24,15 +24,22 @@ const mockState = vi.hoisted(() => ({
     permission: 'default' as 'default' | 'granted' | 'denied',
     subscribed: false,
     enable: vi.fn().mockResolvedValue('granted'),
+    refreshPermission: vi.fn().mockResolvedValue(undefined),
     isPwa: false,
+    error: null as { kind: 'timeout' | 'subscribe' } | null,
 }))
+
+// message.error spy：mock antd App.useApp，捕获失败反馈调用
+const messageErrorSpy = vi.hoisted(() => vi.fn())
 
 // mock useNotificationSetup(避免真实 pushManager/Service Worker)
 vi.mock('@/core/data/hooks/useNotificationSetup', () => ({
     useNotificationSetup: () => ({
         permission: mockState.permission,
         subscribed: mockState.subscribed,
+        error: mockState.error,
         enable: mockState.enable,
+        refreshPermission: mockState.refreshPermission,
     }),
 }))
 // mock usePwaMode
@@ -48,6 +55,18 @@ vi.mock('@/components/layout/InstallButton', () => ({
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }))
+
+// mock antd App.useApp：拦截 message.error，捕获失败反馈文案（其余 antd 真实，含 ConfigProvider/Button）
+vi.mock('antd', async (orig) => {
+    const actual = await orig()
+    return {
+        ...actual,
+        App: {
+            ...actual.App,
+            useApp: () => ({ message: { error: messageErrorSpy } }),
+        },
+    }
+})
 
 // 动态 import 让 vi.mock 在模块系统内先生效
 async function renderUi() {
@@ -67,7 +86,9 @@ describe('NotificationSettings', () => {
         mockState.permission = 'default'
         mockState.subscribed = false
         mockState.enable = vi.fn().mockResolvedValue('granted')
+        mockState.refreshPermission = vi.fn().mockResolvedValue(undefined)
         mockState.isPwa = false
+        mockState.error = null
     })
 
     afterEach(() => {
@@ -92,6 +113,15 @@ describe('NotificationSettings', () => {
         mockState.permission = 'denied'
         await renderUi()
         expect(screen.getByText('notification.settings.denied')).toBeInTheDocument()
+    })
+
+    it('permission=denied 显示「重新检查」按钮，点击触发 refreshPermission', async () => {
+        mockState.permission = 'denied'
+        const { fireEvent } = await import('@testing-library/react')
+        await renderUi()
+        const btn = screen.getByText('notification.settings.refreshPermission')
+        fireEvent.click(btn)
+        expect(mockState.refreshPermission).toHaveBeenCalled()
     })
 
     it('非 PWA 显示安装引导', async () => {
@@ -121,15 +151,37 @@ describe('NotificationSettings', () => {
         expect(mockState.enable).toHaveBeenCalled()
     })
 
-    it('点击「发送测试通知」触发 new Notification', async () => {
+    it('点击「发送测试通知」通过 SW showNotification 显示', async () => {
         mockState.permission = 'granted'
-        const notifMock = vi.fn()
-        vi.stubGlobal('Notification', notifMock)
+        const showNotification = vi.fn().mockResolvedValue(undefined)
+        const nav = navigator as any
+        const original = nav.serviceWorker
+        Object.defineProperty(nav, 'serviceWorker', {
+            value: { ready: Promise.resolve({ showNotification }) },
+            configurable: true,
+        })
         const { fireEvent } = await import('@testing-library/react')
         await renderUi()
         fireEvent.click(screen.getByText('notification.settings.test'))
-        expect(notifMock).toHaveBeenCalled()
-        vi.unstubAllGlobals()
+        await vi.waitFor(() => expect(showNotification).toHaveBeenCalled())
+        Object.defineProperty(nav, 'serviceWorker', { value: original, configurable: true })
+    })
+
+    it('测试通知发送失败时 message.error 提示', async () => {
+        mockState.permission = 'granted'
+        const nav = navigator as any
+        const original = nav.serviceWorker
+        Object.defineProperty(nav, 'serviceWorker', {
+            value: { ready: Promise.reject(new Error('sw down')) },
+            configurable: true,
+        })
+        const { fireEvent } = await import('@testing-library/react')
+        await renderUi()
+        fireEvent.click(screen.getByText('notification.settings.test'))
+        await vi.waitFor(() =>
+            expect(messageErrorSpy).toHaveBeenCalledWith('notification.settings.testFailed'),
+        )
+        Object.defineProperty(nav, 'serviceWorker', { value: original, configurable: true })
     })
 
     it('granted + 未订阅 显示「重新订阅」按钮', async () => {
@@ -211,5 +263,19 @@ describe('NotificationSettings', () => {
         expect(screen.getByText('notification.settings.osWindows')).toBeInTheDocument()
         expect(screen.getByText('notification.settings.osAndroid')).toBeInTheDocument()
         expect(screen.getByText('notification.settings.osIos')).toBeInTheDocument()
+    })
+
+    it('error.kind=timeout → message.error 显示 swReadyTimeout', async () => {
+        mockState.permission = 'granted'
+        mockState.error = { kind: 'timeout' }
+        await renderUi()
+        expect(messageErrorSpy).toHaveBeenCalledWith('notification.settings.swReadyTimeout')
+    })
+
+    it('error.kind=subscribe → message.error 显示 subscribeFailed', async () => {
+        mockState.permission = 'granted'
+        mockState.error = { kind: 'subscribe' }
+        await renderUi()
+        expect(messageErrorSpy).toHaveBeenCalledWith('notification.settings.subscribeFailed')
     })
 })

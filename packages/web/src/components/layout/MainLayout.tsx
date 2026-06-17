@@ -49,7 +49,7 @@ export function MainLayout() {
         document.documentElement.setAttribute('data-theme', resolvedTheme)
     }, [resolvedTheme])
 
-    // 注册 Service Worker
+    // 注册 Service Worker（DEV 也注册 dev-sw type:module，含 push handler；不再跳过）
     useEffect(() => {
         const unregister = registerServiceWorker((reload) => {
             setUpdateReload(() => reload)

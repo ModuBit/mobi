@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
-import { Button, theme as antTheme } from 'antd'
+import { useState, useEffect } from 'react'
+import { App, Button, theme as antTheme } from 'antd'
 import {
     BellOutlined,
     CloudOutlined,
@@ -283,6 +283,7 @@ const StepBullet = styled.span<{ $token: Token }>`
 // 虚线边框次级提示（最轻层级）
 const PwaCard = styled.div<{ $token: Token }>`
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: ${p => p.$token.marginSM}px;
     padding: 12px ${p => p.$token.padding}px;
@@ -330,17 +331,29 @@ const PwaIos = styled.span<{ $token: Token }>`
 export function NotificationSettings({ namespace }: NotificationSettingsProps) {
     const { token } = useToken()
     const { t } = useTranslation()
-    const { permission, subscribed, enable } = useNotificationSetup(namespace)
+    const { permission, subscribed, error, enable, refreshPermission } = useNotificationSetup(namespace)
     const isPwa = usePwaMode()
+    const { message } = App.useApp()
     // 说明区块折叠态：denied 时默认展开（被禁用户最需要指引）
     const [guideOpen, setGuideOpen] = useState(permission === 'denied')
 
-    /** 发送测试通知（自验 Notification API 权限层；不覆盖 Web Push 订阅链路） */
-    const sendTest = () => {
+    // 订阅失败反馈：error 变化时显示对应文案（ready 超时提示刷新，订阅异常提示重试）
+    useEffect(() => {
+        if (!error) return
+        message.error(
+            error.kind === 'timeout'
+                ? t('notification.settings.swReadyTimeout')
+                : t('notification.settings.subscribeFailed'),
+        )
+    }, [error, message, t])
+
+    /** 发送测试通知：通过 SW registration.showNotification（移动端 Android Chrome / iOS Safari 不支持页面层 new Notification，必须走 SW） */
+    const sendTest = async () => {
         try {
-            new Notification(t('notification.settings.title'), { body: '✓' })
+            const reg = await navigator.serviceWorker.ready
+            await reg.showNotification(t('notification.settings.title'), { body: '✓' })
         } catch {
-            // ignore（未授权或环境不支持）
+            message.error(t('notification.settings.testFailed'))
         }
     }
 
@@ -377,7 +390,12 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                             </Button>
                         )}
                         {permission === 'granted' && (
-                            <Button onClick={sendTest}>{t('notification.settings.test')}</Button>
+                            <Button onClick={() => { void sendTest() }}>{t('notification.settings.test')}</Button>
+                        )}
+                        {permission === 'denied' && (
+                            <Button onClick={() => { void refreshPermission() }}>
+                                {t('notification.settings.refreshPermission')}
+                            </Button>
                         )}
                     </Action>
                 </MainRow>
@@ -504,7 +522,7 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
                         <PwaDesc $token={token}>{t('notification.settings.installPwaDesc')}</PwaDesc>
                         <PwaIos $token={token}>{t('notification.settings.installPwaIos')}</PwaIos>
                     </PwaText>
-                    <InstallButton variant="menu" />
+                    <InstallButton variant="card" />
                 </PwaCard>
             )}
         </Wrap>

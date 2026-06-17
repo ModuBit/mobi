@@ -17,21 +17,30 @@
 export type UpdateCallback = (reload: () => void) => void
 
 /**
- * 注册 Service Worker 并监听更新
- * 返回注销函数
+ * 注册 Service Worker 并监听更新，返回注销函数。
+ *
+ * 为何不用 vite-plugin-pwa 的 virtual:pwa-register：1.3.0 的 dev 实现是空 noop（不注册），
+ * 且 vite 8 下该虚拟模块 500；插件自动注册又固定 type:'classic'，与 dev SW 的 ESM 输出冲突
+ * （dev-sw.js 含 import，classic 加载报 SyntaxError）。故手写注册，DEV 显式 type:'module'。
+ *
+ * - DEV：注册 /dev-sw.js?dev-sw（vite-plugin-pwa 用 esbuild 打包 sw.ts，ESM，含 push handler），
+ *   type:'module' 加载。这样 dev 也能完整测 Web Push（不再 controller 孤儿 ready 永久 pending）。
+ * - PROD：注册构建的 /sw.js（injectManifest rollup 合并 workbox，classic，自包含无 import）。
  */
 export function registerServiceWorker(onUpdate: UpdateCallback): () => void {
-    // 开发模式下无 sw.js，跳过注册避免 MIME type 错误
-    if (!('serviceWorker' in navigator) || import.meta.env.DEV) {
-        return () => {}
-    }
+    if (!('serviceWorker' in navigator)) return () => {}
+
+    const isDev = import.meta.env.DEV
+    const swUrl = isDev ? '/dev-sw.js?dev-sw' : '/sw.js'
+    // dev dev-sw 是 ESM（esbuild 保留 import），必须 type:'module'；prod sw.js classic
+    const swOptions: RegistrationOptions = isDev ? { type: 'module' } : {}
 
     // 记录是否有页面控制器（区分首次安装和更新）
     let hadController = !!navigator.serviceWorker.controller
     // 标记是否已发送 SKIP_WAITING（只在主动更新时监听 controllerchange）
     let skipWaitingSent = false
 
-    navigator.serviceWorker.register('/sw.js').then((reg) => {
+    navigator.serviceWorker.register(swUrl, swOptions).then((reg) => {
         // 检查是否有等待中的新 SW
         if (reg.waiting && hadController) {
             notifyUpdate(reg)
