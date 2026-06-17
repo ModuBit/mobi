@@ -46,6 +46,39 @@ describe('SSEManager', () => {
         expect(manager.hasActiveConnection('ns2')).toBe(false)
     })
 
+    test('hasVisibleConnection: 有可见连接返回 true,只有 hidden 或无连接返回 false', () => {
+        const tracker = new VisibilityTracker()
+        const manager = new SSEManager(0, tracker)
+        expect(manager.hasVisibleConnection('ns1')).toBe(false)
+
+        manager.subscribe({
+            id: 'c1', namespace: 'ns1', visibility: 'hidden',
+            send: () => {}, sendHeartbeat: () => {},
+        })
+        expect(manager.hasVisibleConnection('ns1')).toBe(false)
+
+        manager.subscribe({
+            id: 'c2', namespace: 'ns1', visibility: 'visible',
+            send: () => {}, sendHeartbeat: () => {},
+        })
+        expect(manager.hasVisibleConnection('ns1')).toBe(true)
+        expect(manager.hasVisibleConnection('ns2')).toBe(false)
+    })
+
+    test('hasVisibleConnection: 连接从 visible 切到 hidden 后变 false', () => {
+        const tracker = new VisibilityTracker()
+        const manager = new SSEManager(0, tracker)
+        manager.subscribe({
+            id: 'c1', namespace: 'ns1', visibility: 'visible',
+            send: () => {}, sendHeartbeat: () => {},
+        })
+        expect(manager.hasVisibleConnection('ns1')).toBe(true)
+
+        // 模拟前端上报 hidden(visibility 切换)
+        tracker.setVisibility('c1', 'ns1', 'hidden')
+        expect(manager.hasVisibleConnection('ns1')).toBe(false)
+    })
+
     test('sendToast 发给该 namespace 所有连接(含 hidden 后台)', async () => {
         const tracker = new VisibilityTracker()
         const manager = new SSEManager(0, tracker)

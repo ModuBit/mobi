@@ -31,47 +31,120 @@ function makeSession(overrides: Record<string, unknown> = {}) {
     } as never
 }
 
-function makeChannel({ hasActive }: { hasActive: boolean }) {
+/** 一个记录收到事件的测试连接 */
+function makeConnection(id: string, visibility: 'visible' | 'hidden') {
+    const calls: unknown[] = []
+    return {
+        id,
+        visibility,
+        send: mock((event: unknown) => { calls.push(event) }),
+        sendHeartbeat: mock(() => {}),
+        calls,
+    }
+}
+
+type TestConnection = ReturnType<typeof makeConnection>
+
+/** 组装 channel:真实 SSEManager(按需挂连接)+ mock pushService(控制订阅态) */
+function setup(opts: { connections?: TestConnection[]; hasPush?: boolean }) {
     const tracker = new VisibilityTracker()
     const manager = new SSEManager(0, tracker)
-    if (hasActive) {
-        manager.subscribe({ id: 'c1', namespace: 'ns1', visibility: 'hidden', send: () => {}, sendHeartbeat: () => {} })
+    for (const conn of (opts.connections ?? [])) {
+        manager.subscribe({
+            id: conn.id,
+            namespace: 'ns1',
+            visibility: conn.visibility,
+            send: conn.send,
+            sendHeartbeat: conn.sendHeartbeat,
+        })
     }
     const sendToNamespace = mock(() => Promise.resolve())
-    const pushService = { sendToNamespace } as unknown as PushService
+    const hasSubscription = mock(() => opts.hasPush ?? false)
+    const pushService = { sendToNamespace, hasSubscription } as unknown as PushService
     const channel = new PushNotificationChannel(pushService, manager, 'https://app.test')
-    return { channel, manager, sendToNamespace }
+    return { channel, sendToNamespace, hasSubscription }
+}
+
+/** 取连接收到的第一个 toast 的 data.kind */
+function toastKind(calls: unknown[]): string | undefined {
+    const event = calls[0] as { data?: { kind?: string } }
+    return event?.data?.kind
 }
 
 describe('PushNotificationChannel', () => {
-    test('sendReady:有活跃连接 → 发 toast(带 kind=ready),不走 push', async () => {
-        const { channel, sendToNamespace, manager } = makeChannel({ hasActive: true })
-        const spy = mock((e: unknown) => {})
-        manager.sendToast = mock(async (_ns: string, e: never) => { spy(e); return 1 }) as never
+    describe('投递决策(有可见连接 || 无 push 订阅 → SSE toast,否则 Web Push)', () => {
+        test('有可见连接:SSE toast 送达,不打扰(不走 Web Push)', async () => {
+            const conn = makeConnection('v1', 'visible')
+            const { channel, sendToNamespace } = setup({ connections: [conn], hasPush: true })
+
+            await channel.sendReady(makeSession())
+
+            expect(conn.calls).toHaveLength(1)
+            expect(sendToNamespace.mock.calls).toHaveLength(0)
+        })
+
+        test('仅 hidden 连接 + 有 push 订阅:走 Web Push,不投 SSE toast', async () => {
+            const conn = makeConnection('h1', 'hidden')
+            const { channel, sendToNamespace } = setup({ connections: [conn], hasPush: true })
+
+            await channel.sendReady(makeSession())
+
+            expect(conn.calls).toHaveLength(0)
+            expect(sendToNamespace.mock.calls).toHaveLength(1)
+        })
+
+        test('仅 hidden 连接 + 无 push 订阅:SSE toast 兜底投给 hidden 连接', async () => {
+            const conn = makeConnection('h1', 'hidden')
+            const { channel, sendToNamespace } = setup({ connections: [conn], hasPush: false })
+
+            await channel.sendReady(makeSession())
+
+            expect(conn.calls).toHaveLength(1)
+            expect(sendToNamespace.mock.calls).toHaveLength(0)
+        })
+
+        test('无活跃连接 + 有 push 订阅:走 Web Push', async () => {
+            const { channel, sendToNamespace } = setup({ connections: [], hasPush: true })
+
+            await channel.sendReady(makeSession())
+
+            expect(sendToNamespace.mock.calls).toHaveLength(1)
+        })
+
+        test('无活跃连接 + 无 push 订阅:toast 投递 0 后仍尝试 Web Push(无订阅静默丢弃)', async () => {
+            const { channel, sendToNamespace } = setup({ connections: [], hasPush: false })
+
+            await channel.sendReady(makeSession())
+
+            expect(sendToNamespace.mock.calls).toHaveLength(1)
+        })
+    })
+
+    test('sendReady 的 SSE toast 带 kind=ready', async () => {
+        const conn = makeConnection('v1', 'visible')
+        const { channel } = setup({ connections: [conn], hasPush: true })
 
         await channel.sendReady(makeSession())
 
-        expect(spy).toHaveBeenCalledTimes(1)
-        const event = spy.mock.calls[0][0] as { data: { kind: string } }
-        expect(event.data.kind).toBe('ready')
+        expect(toastKind(conn.calls)).toBe('ready')
+    })
+
+    test('sendPermissionRequest 的 SSE toast 带 kind=permission', async () => {
+        const conn = makeConnection('v1', 'visible')
+        const { channel } = setup({ connections: [conn], hasPush: true })
+
+        await channel.sendPermissionRequest(makeSession({ agentState: { requests: { r1: { tool: 'Bash' } } } }))
+
+        expect(toastKind(conn.calls)).toBe('permission')
+    })
+
+    test('session 非活跃时不发任何通知', async () => {
+        const conn = makeConnection('v1', 'visible')
+        const { channel, sendToNamespace } = setup({ connections: [conn], hasPush: true })
+
+        await channel.sendReady(makeSession({ active: false }))
+
+        expect(conn.calls).toHaveLength(0)
         expect(sendToNamespace.mock.calls).toHaveLength(0)
-    })
-
-    test('sendReady:无活跃连接 → 走 Web Push', async () => {
-        const { channel, sendToNamespace } = makeChannel({ hasActive: false })
-        await channel.sendReady(makeSession())
-        expect(sendToNamespace.mock.calls).toHaveLength(1)
-    })
-
-    test('sendPermissionRequest:toast 带 kind=permission', async () => {
-        const { channel, manager } = makeChannel({ hasActive: true })
-        const spy = mock((e: unknown) => {})
-        manager.sendToast = mock(async (_ns: string, e: never) => { spy(e); return 1 }) as never
-
-        const session = makeSession({ agentState: { requests: { r1: { tool: 'Bash' } } } })
-        await channel.sendPermissionRequest(session)
-
-        const event = spy.mock.calls[0][0] as { data: { kind: string } }
-        expect(event.data.kind).toBe('permission')
     })
 })

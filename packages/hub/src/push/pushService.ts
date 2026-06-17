@@ -64,6 +64,11 @@ export class PushService {
         }))
     }
 
+    /** 该 namespace 是否有已注册的 Web Push 订阅 */
+    hasSubscription(namespace: string): boolean {
+        return this.store.push.getPushSubscriptionsByNamespace(namespace).length > 0
+    }
+
     private async sendToSubscription(
         namespace: string,
         subscription: StoredSubscription,

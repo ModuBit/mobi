@@ -129,6 +129,11 @@ export class SSEManager {
         return false
     }
 
+    /** 该 namespace 是否有任何可见 SSE 连接(用户在前台) */
+    hasVisibleConnection(namespace: string): boolean {
+        return this.visibilityTracker.hasVisibleConnection(namespace)
+    }
+
     broadcast(event: SyncEvent): void {
         for (const connection of this.connections.values()) {
             if (!this.shouldSend(connection, event)) {
