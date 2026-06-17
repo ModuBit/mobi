@@ -469,3 +469,60 @@ VisibilityTracker、`/api/visibility` 路由、前端 visibilitychange 上报已
 - **测试补充**：`usePwaMode` 的 change/unmount 路径、`useNotificationSetup` 的 subscribe 失败路径，可补测试锁死行为
 
 **优先级**：低，一期功能完整；稳定后逐项清理
+
+---
+
+## 19. Web 端首屏加载体积优化
+
+**相关文件**：
+- `packages/web/vite.config.ts` — 构建配置（无 manualChunks 分包策略）
+- `packages/web/src/router.tsx` — 路由（静态 import 所有页面，无懒加载）
+- `packages/web/package.json` — 依赖清单（含 `three` 死依赖）
+- `packages/web/src/components/terminal/TerminalView.tsx` — 终端视图（`@xterm` + addons）
+- `packages/web/src/components/ui/Markdown.tsx` — markdown 渲染入口
+
+**现状**（实测 2026-06-16）：
+
+| 模式 | 体积 | 请求数 | 说明 |
+|------|------|--------|------|
+| dev（vite dev）| ~40MB | ~350 | 预构建不压缩/不分包/不 tree-shake，**正常现象，不代表线上** |
+| prod（dist）| 11MB | — | 主 JS `index-*.js` 3.4MB（gzip ≈ **1MB**）|
+
+**手机端慢的真实判断**：
+- dev 体积是 prod 的 ~4 倍，移动网络下加载 40MB 必然慢（1 分钟+）—— **不该用 dev 模式评估手机体验**
+- 但即便 prod，首屏 JS gzip ~1MB 对远程控制工具仍偏重，手机弱网/低端机下仍慢，有真实优化空间
+
+**dev 预构建体积大头**（`node_modules/.vite/deps` 实测）：
+
+| 文件 | dev 大小 | 说明 |
+|------|---------|------|
+| `es-CdRkq_LD.js` + `es-B4a07Xbr.js` | 3.1M + 2.3M | 疑架构图/可视化传递依赖（src 无直接引用，待定位归属）|
+| `@ant-design_x.js` | 1.3M | Ant Design X（AI 组件库，核心依赖）|
+| `lucide-react.js` | 1.1M | 图标库（dev 全量；prod 按需 import 会 tree-shake）|
+| `cytoscape.esm` | 848K | 图布局库（src 无直接引用，疑传递依赖）|
+| `motion` / `katex` | 520K / 484K | 动画 / 数学公式（+ 一组 KaTeX 字体）|
+| `@xterm/xterm` | 404K | 终端（仅终端页需要）|
+| `highlight.js` | 220K | 语法高亮 |
+
+**已确认的问题点**：
+1. **无路由懒加载**：`router.tsx` 静态 import `LoginPage`/`SessionDetailPage`/`NewSessionPage`/`SettingsPage`，所有页面代码进首屏
+2. **`three` 死依赖**：`package.json` 声明 `three`，`src` 无任何引用 → 直接删除
+3. **markdown/语法高亮栈重叠**：`marked` + `@ant-design/x-markdown` + `react-syntax-highlighter` + `highlight.js` 四套并存，有去重空间
+4. **`cytoscape` + `es-*` 体积最大**（dev 合计 ~6M），但 `src` 无直接引用 → 需定位是哪个库的传递依赖，评估是否必需
+
+**已做好的**：
+- `vconsole`（276K）通过动态 `import()` 按需加载，未触发不进 bundle ✅
+
+**优化方向（按 ROI 排序）**：
+1. **路由级懒加载**：`SessionDetailPage`/`NewSessionPage`/`SettingsPage` 改 `React.lazy` + `Suspense`，首屏只保留登录/列表必需代码
+2. **终端懒加载**：`@xterm` + addons 动态 import 到 `TerminalView`，非终端页不加载
+3. **删 `three` 死依赖**
+4. **定位 `cytoscape`/`es-*` 传递依赖来源**：用 `rollup-plugin-visualizer` 做 prod 产物分析，确认归属后按需/移除
+5. **markdown 栈去重**：评估四套库的重叠，统一到一套
+6. **确认 `lucide-react` 按需 import**（`import { X } from 'lucide-react'`，非 `import *`）
+
+**目标**：首屏 JS gzip 压到 400-500KB 以内。
+
+**优先级**：中。手机端（弱网/低端机）是核心场景，prod 首屏 ~1MB 在弱网下仍慢。
+
+**触发条件**：先用 `bun run build && bun run preview` 在手机验证 prod 真实体积（而非 dev），确认仍是痛点后再按 ROI 实施。
