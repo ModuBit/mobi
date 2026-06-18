@@ -305,7 +305,8 @@
       "updateAvailable": "Update available",
       "updateAction": "Refresh",
       "install": "Install",
-      "installPrompt": "Install Mobi locally for quick access anytime"
+      "installPrompt": "Install Mobi locally for quick access anytime",
+      "iosManual": "iPhone/iPad: tap Share → Add to Home Screen"
     }
   }
 }

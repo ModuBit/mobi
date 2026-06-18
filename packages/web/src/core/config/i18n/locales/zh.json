@@ -305,7 +305,8 @@
       "updateAvailable": "发现新版本",
       "updateAction": "刷新",
       "install": "安装到本地",
-      "installPrompt": "安装 Mobi 到本地，随时快速访问"
+      "installPrompt": "安装 Mobi 到本地，随时快速访问",
+      "iosManual": "iPhone/iPad：点底部「分享」→「添加到主屏幕」"
     }
   }
 }

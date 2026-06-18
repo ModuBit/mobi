@@ -34,6 +34,8 @@ interface NotificationState {
     setPermission: (permission: NotificationPermission) => void
     setSubscribed: (subscribed: boolean) => void
     setError: (error: NotificationSetupError | null) => void
+    /** 重置全部状态(换号 logout 时调用,避免新用户继承上一用户状态) */
+    reset: () => void
 }
 
 /** 模块加载时读取全局权限（生产=浏览器真实值；jsdom/SSR=default） */
@@ -62,4 +64,5 @@ export const useNotificationStore = create<NotificationState>((set) => ({
     setPermission: (permission) => set({ permission }),
     setSubscribed: (subscribed) => set({ subscribed }),
     setError: (error) => set({ error }),
+    reset: () => set({ permission: readInitialPermission(), subscribed: false, error: null }),
 }))

@@ -526,3 +526,18 @@ VisibilityTracker、`/api/visibility` 路由、前端 visibilitychange 上报已
 **优先级**：中。手机端（弱网/低端机）是核心场景，prod 首屏 ~1MB 在弱网下仍慢。
 
 **触发条件**：先用 `bun run build && bun run preview` 在手机验证 prod 真实体积（而非 dev），确认仍是痛点后再按 ROI 实施。
+
+## 20. 多 tab 同账号 sendToast 照投打扰（边缘场景，暂不处理）
+
+**现状**：`sseManager.sendToast` 投递给该 namespace 所有活跃连接（含 hidden），这是有意设计——后台 tab 由前端收到后转系统通知（单 tab 后台兜底，无 push 订阅时也能收到）。
+
+**边缘场景**：同账号开多 tab，visible tab 正盯某 session（`decideToastAction` 返回 ignore），hidden tab 仍弹系统通知，绕过 ignore 语义；或 visible+hidden 并存时同一事件收到 antd toast + 系统通知两次打扰。
+
+**为何暂不处理**：多 tab 同账号非 mobi 目标场景（个人单用户单 tab 为主）。改 `sendToast` 按 visible 过滤会破坏单 tab 后台兜底（需重新设计 `trySendToast` 决策树），投入产出比低。
+
+**触发条件**：多 tab 同账号成为常态、用户反馈后台 tab 误弹系统通知时实施。
+
+**相关文件**：
+- `packages/hub/src/sse/sseManager.ts` — `sendToast` 投递所有活跃连接
+- `packages/web/src/core/notifications/toastDecision.ts` — 前端三分支决策
+- `packages/web/src/core/providers/SSEProvider.tsx` — toast 处理分支

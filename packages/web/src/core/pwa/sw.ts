@@ -69,12 +69,22 @@ self.addEventListener('notificationclick', (event) => {
         (async () => {
             const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
             for (const client of allClients) {
-                if (client.url.includes(url) && 'focus' in client) {
+                // 精确比对 pathname(=== url 或 url/ 子路径),避免 includes 子串误匹配
+                // (如 sessionId abc 误中 abcd 的窗口)
+                let path: string
+                try {
+                    path = new URL(client.url).pathname
+                } catch {
+                    continue
+                }
+                if ((path === url || path.startsWith(`${url}/`)) && 'focus' in client) {
                     return client.focus()
                 }
             }
             if (self.clients.openWindow) {
-                return self.clients.openWindow(url)
+                // url 可能是相对路径(/sessions/x),按 SW origin 解析为绝对 URL,避免按 scope base 误解析
+                const absUrl = new URL(url, self.location.origin).href
+                return self.clients.openWindow(absUrl)
             }
             return undefined
         })()

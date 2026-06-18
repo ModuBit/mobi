@@ -50,6 +50,11 @@ export class SSEClient {
     private lastActivityAt = 0
     /** 本次连接周期内是否已请求重连(防 watchdog 与回前台叠加;onopen 重置) */
     private reconnectRequested = false
+    /**
+     * 连接代次:每次 connect 递增。finally/catch 仅处理属于当前代的连接,
+     * 避免 forceReconnect 时旧连接(被 abort)的 finally 覆盖新连接的 isConnecting 状态。
+     */
+    private connectGeneration = 0
     /** 心跳看门狗定时器 */
     private watchdogTimer: ReturnType<typeof setInterval> | null = null
 
@@ -70,6 +75,8 @@ export class SSEClient {
         // 仅清理传输层,保留 hasConnected(重连走 onopen 重连分支,发 reconnected 触发补拉漏数据)
         this.teardown()
         this.isConnecting = true
+        // 标记本次连接的代次:旧连接被 abort 后其 finally/catch 不再触碰新连接的状态
+        const generation = ++this.connectGeneration
         this.abortController = new AbortController()
         this.startWatchdog()
 
@@ -99,7 +106,8 @@ export class SSEClient {
                         if (import.meta.env.DEV) console.log('[SSE] onopen 重连', { silent: this.isConnected })
                         if (this.isConnected) {
                             // 静默断开重连：浏览器后台断开未触发 onerror/onclose，
-                            // isConnected 仍为 true，需要先通知断连再通知重连
+                            // isConnected 仍为 true,先标记断开再通知,消除"已发 false 但内部仍 true"的窗口
+                            this.isConnected = false
                             this.listeners.forEach(listener => listener({ type: 'connection-changed', connected: false }))
                         }
                         // 通知重连（无论是否静默断开）
@@ -143,10 +151,14 @@ export class SSEClient {
                 },
             })
         } catch {
-            // 连接失败，尝试重连
-            this.scheduleReconnect()
+            // 仅当本次连接仍是最新代时才调度重连(旧代被 abort/取代后不再驱动重连)
+            if (generation === this.connectGeneration) this.scheduleReconnect()
         } finally {
-            this.isConnecting = false
+            // 仅当本次连接仍是最新代时才复位 isConnecting,
+            // 否则旧连接(被 abort)的 finally 会覆盖新连接的 isConnecting=true(见 forceReconnect 竞态)
+            if (generation === this.connectGeneration) {
+                this.isConnecting = false
+            }
         }
     }
 

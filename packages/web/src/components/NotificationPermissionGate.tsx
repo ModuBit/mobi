@@ -26,6 +26,14 @@ import { useNotificationSetup } from '@/core/data/hooks/useNotificationSetup'
 let permissionPromptShown = false
 
 /**
+ * 重置引导 flag(换号 logout 时调用,让新用户重新获得首次引导)。
+ * flag 为模块级单例,SPA 内 logout→login 不刷新页面,不重置则新用户不再引导。
+ */
+export function resetPermissionPrompt() {
+    permissionPromptShown = false
+}
+
+/**
  * 首次通知权限引导。
  *
  * 页面加载 2s 后检查 Notification.permission：

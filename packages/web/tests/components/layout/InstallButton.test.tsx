@@ -82,4 +82,38 @@ describe('InstallButton', () => {
         fireBeforeInstall()
         expect(screen.getByText('notification.pwa.install')).toBeInTheDocument()
     })
+
+    it('card variant + iOS UA(无 beforeinstallprompt)→ 渲染手动指引按钮,不空白', () => {
+        const originalUa = Object.getOwnPropertyDescriptor(navigator, 'userAgent')
+        try {
+            Object.defineProperty(navigator, 'userAgent', {
+                value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+                configurable: true,
+            })
+            wrap(<InstallButton variant="card" />)
+            expect(screen.getByRole('button')).toBeInTheDocument()
+            expect(screen.getByText('notification.pwa.install')).toBeInTheDocument()
+        } finally {
+            // finally 还原,断言失败也不污染后续用例
+            if (originalUa) Object.defineProperty(navigator, 'userAgent', originalUa)
+        }
+    })
+
+    it('card variant + iPadOS 13+ 桌面化 UA(Macintosh + 触屏)→ 仍渲染手动指引(不空白)', () => {
+        const originalUa = Object.getOwnPropertyDescriptor(navigator, 'userAgent')
+        const originalTouch = Object.getOwnPropertyDescriptor(navigator, 'maxTouchPoints')
+        try {
+            Object.defineProperty(navigator, 'userAgent', {
+                value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15',
+                configurable: true,
+            })
+            Object.defineProperty(navigator, 'maxTouchPoints', { value: 5, configurable: true })
+            wrap(<InstallButton variant="card" />)
+            expect(screen.getByRole('button')).toBeInTheDocument()
+            expect(screen.getByText('notification.pwa.install')).toBeInTheDocument()
+        } finally {
+            if (originalUa) Object.defineProperty(navigator, 'userAgent', originalUa)
+            if (originalTouch) Object.defineProperty(navigator, 'maxTouchPoints', originalTouch)
+        }
+    })
 })

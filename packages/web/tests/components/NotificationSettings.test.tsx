@@ -32,7 +32,8 @@ const mockState = vi.hoisted(() => ({
 // message.error spy：mock antd App.useApp，捕获失败反馈调用
 const messageErrorSpy = vi.hoisted(() => vi.fn())
 
-// mock useNotificationSetup(避免真实 pushManager/Service Worker)
+// mock useNotificationSetup(避免真实 pushManager/Service Worker/hook 逻辑)。
+// awaitServiceWorkerReady 已移到独立模块(pwa/swReady),NotificationSettings 直接 import,真实可用。
 vi.mock('@/core/data/hooks/useNotificationSetup', () => ({
     useNotificationSetup: () => ({
         permission: mockState.permission,
@@ -265,17 +266,23 @@ describe('NotificationSettings', () => {
         expect(screen.getByText('notification.settings.osIos')).toBeInTheDocument()
     })
 
-    it('error.kind=timeout → message.error 显示 swReadyTimeout', async () => {
+    it('error.kind=timeout → message.error 带固定 key 去重 + swReadyTimeout 文案', async () => {
         mockState.permission = 'granted'
         mockState.error = { kind: 'timeout' }
         await renderUi()
-        expect(messageErrorSpy).toHaveBeenCalledWith('notification.settings.swReadyTimeout')
+        expect(messageErrorSpy).toHaveBeenCalledWith({
+            key: 'notification-subscribe-error',
+            content: 'notification.settings.swReadyTimeout',
+        })
     })
 
-    it('error.kind=subscribe → message.error 显示 subscribeFailed', async () => {
+    it('error.kind=subscribe → message.error 带固定 key 去重 + subscribeFailed 文案', async () => {
         mockState.permission = 'granted'
         mockState.error = { kind: 'subscribe' }
         await renderUi()
-        expect(messageErrorSpy).toHaveBeenCalledWith('notification.settings.subscribeFailed')
+        expect(messageErrorSpy).toHaveBeenCalledWith({
+            key: 'notification-subscribe-error',
+            content: 'notification.settings.subscribeFailed',
+        })
     })
 })

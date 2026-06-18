@@ -183,6 +183,7 @@ packages/web/src/
 │   │   └── codeLanguageDetect.ts 代码语言检测
 │   └── pwa/                    PWA 支持
 │       ├── registerSW.ts       Service Worker 注册
+│       ├── swReady.ts          SW ready 超时保护（awaitServiceWorkerReady）
 │       └── sw.ts               自定义 Service Worker（处理 push / notificationclick）
 │
 ├── domain/                     领域逻辑（纯数据，不依赖 React）
@@ -319,7 +320,8 @@ packages/web/src/
 │   │   └── TerminalView.tsx
 │   ├── settings/               设置页面
 │   │   ├── SettingsModule.tsx
-│   │   └── NotificationSettings.tsx 通知设置区块（权限开关、订阅状态）
+│   │   ├── NotificationSettings.tsx 通知设置区块（权限开关、订阅状态）
+│   │   └── blocks/             通知设置子组件（GuideSection 权限引导 / PwaCard PWA 卡）
 │   └── ui/                     共享 UI 原语
 │       ├── Markdown.tsx        Markdown 渲染器
 │       ├── AutoDetectCodeBlock.tsx 代码块语言检测

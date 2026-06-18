@@ -21,13 +21,15 @@ import { renderHook, act } from '@testing-library/react'
 // mock 返回结构与真实 axios 一致：AxiosResponse.data 才是 body
 // 用合法 base64url 字符串作为 VAPID 公钥（hook 会调用 atob 解码）
 const VAPID_KEY = 'BEl62iUYgUizxkuKYYMKAFo'
+// hoisted:测试可 per-test 重设(测 hub getSubscriptionStatus 返回 true/false)
+const mockPush = vi.hoisted(() => ({
+    getVapidKey: vi.fn(),
+    subscribe: vi.fn(),
+    getSubscriptionStatus: vi.fn(),
+}))
+
 vi.mock('@/core/data/api/client', () => ({
-    useMobiApi: () => ({
-        push: {
-            getVapidKey: () => Promise.resolve({ data: { publicKey: VAPID_KEY } }),
-            subscribe: vi.fn().mockResolvedValue({}),
-        },
-    }),
+    useMobiApi: () => ({ push: mockPush }),
 }))
 
 // mock authStore，避免真实 store 初始化
@@ -43,6 +45,10 @@ describe('useNotificationSetup', () => {
         vi.restoreAllMocks()
         // store 模块级单例，跨用例隔离：重置为初始状态（default/false/error:null）
         useNotificationStore.setState({ permission: 'default', subscribed: false, error: null })
+        // push mock 默认：VAPID key 有效 / 订阅上报成功 / hub 查询未订阅
+        mockPush.getVapidKey.mockResolvedValue({ data: { publicKey: VAPID_KEY } })
+        mockPush.subscribe.mockResolvedValue({})
+        mockPush.getSubscriptionStatus.mockResolvedValue({ data: { subscribed: false } })
     })
 
     it('enable: permission=default → requestPermission → granted → 订阅并上报', async () => {
@@ -133,18 +139,9 @@ describe('useNotificationSetup', () => {
         expect(subscribeMock).toHaveBeenCalledTimes(1)
     })
 
-    it('mount 时已有 push 订阅 → subscribed=true', async () => {
+    it('mount 时 hub 已有订阅(getSubscriptionStatus=true)→ subscribed=true', async () => {
         vi.stubGlobal('Notification', { permission: 'granted' })
-        vi.stubGlobal('navigator', {
-            serviceWorker: {
-                ready: Promise.resolve({
-                    pushManager: {
-                        getSubscription: () => Promise.resolve({ endpoint: 'https://push.test/existing' }),
-                        subscribe: vi.fn(),
-                    },
-                }),
-            },
-        })
+        mockPush.getSubscriptionStatus.mockResolvedValueOnce({ data: { subscribed: true } })
 
         const { result } = renderHook(() => useNotificationSetup('ns1'))
         await act(async () => {})
@@ -152,18 +149,8 @@ describe('useNotificationSetup', () => {
         expect(result.current.subscribed).toBe(true)
     })
 
-    it('mount 时无 push 订阅 → subscribed=false', async () => {
+    it('mount 时 hub 无订阅(默认)→ subscribed=false', async () => {
         vi.stubGlobal('Notification', { permission: 'default' })
-        vi.stubGlobal('navigator', {
-            serviceWorker: {
-                ready: Promise.resolve({
-                    pushManager: {
-                        getSubscription: () => Promise.resolve(null),
-                        subscribe: vi.fn(),
-                    },
-                }),
-            },
-        })
 
         const { result } = renderHook(() => useNotificationSetup('ns1'))
         await act(async () => {})
@@ -366,20 +353,15 @@ describe('ready 超时与失败反馈', () => {
         expect(result.current.subscribed).toBe(true)
     })
 
-    it('mount effect: ready 永不 resolve → 超时不崩、subscribed 保持 false', async () => {
+    it('mount effect: 查询 hub 订阅状态(mock 默认未订阅 → subscribed 保持 false)', async () => {
         vi.stubGlobal('Notification', { permission: 'granted' })
-        vi.stubGlobal('navigator', {
-            serviceWorker: {
-                ready: new Promise(() => {}),
-                pushManager: { getSubscription: () => Promise.resolve(null) },
-            },
-        })
 
         const { result } = renderHook(() => useNotificationSetup('ns1'))
         await act(async () => {
-            await vi.advanceTimersByTimeAsync(10000)
+            await vi.advanceTimersByTimeAsync(0)
         })
 
+        // mount effect 调 api.push.getSubscriptionStatus(mock 返回 subscribed:false)
         expect(result.current.subscribed).toBe(false)
     })
 })

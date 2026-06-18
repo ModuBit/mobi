@@ -25,14 +25,14 @@ import { useTranslation } from 'react-i18next'
 import { useNotify } from '@/core/data/hooks/useNotify'
 import { useMobiApi } from '@/core/data/api/client'
 import { App } from 'antd'
-import { NotificationPermissionGate } from '@/components/NotificationPermissionGate'
+import { NotificationPermissionGate, resetPermissionPrompt } from '@/components/NotificationPermissionGate'
+import { useNotificationStore } from '@/core/data/stores/notificationStore'
 import type { Session, SyncEvent, DecryptedMessage } from '@mobi/shared'
 import { isObject } from '@mobi/shared'
 import type { MessagesResponse } from '@/core/data/api/types'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 import { decideToastAction, parseActiveSessionId, showSystemNotification } from '@/core/notifications'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
-import type { NotificationKind } from '@/core/data/stores/notificationBadgeStore'
 
 // ── SSE 早到消息暂存缓冲区 ──────────────────────────────────
 // 页面刷新时 SSE 事件可能先于 API 响应到达，此时缓存为空，事件会被丢弃。
@@ -266,10 +266,16 @@ function patchSessionCache(
 // 查询失效批处理间隔（毫秒）
 const INVALIDATION_BATCH_MS = 16
 
+// toast 通知 key/tag 自增序号:同 session 连发同类通知时,每条用独立 key/tag,
+// 避免 SW replaceNotification / antd 同 key 更新吞掉前一条(角标 markUnread 幂等,不受影响)
+let toastSeq = 0
+
 type PendingInvalidations = {
     sessions: boolean
     sessionGroups: boolean
     machines: boolean
+    /** 全量 messages 失效(前缀 ['messages'],重连补拉漏数据用) */
+    messages: boolean
     sessionIds: Set<string>
 }
 
@@ -312,15 +318,18 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         sessions: false,
         sessionGroups: false,
         machines: false,
+        messages: false,
         sessionIds: new Set(),
     })
 
     // 批处理失效：将失效请求合并到同一微任务中，减少重复 API 调用
-    function scheduleInvalidation(scope: 'sessions' | 'machines', sessionId?: string) {
+    function scheduleInvalidation(scope: 'sessions' | 'machines' | 'messages', sessionId?: string) {
         const pending = pendingInvalidationsRef.current
         if (scope === 'sessions') {
             pending.sessions = true
             pending.sessionGroups = true
+        } else if (scope === 'messages') {
+            pending.messages = true
         } else {
             pending.machines = true
         }
@@ -333,7 +342,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             invalidationTimerRef.current = null
             const p = pendingInvalidationsRef.current
             const qc = queryClientRef.current
-            if (!p.sessions && !p.sessionGroups && !p.machines && p.sessionIds.size === 0) return
+            if (!p.sessions && !p.sessionGroups && !p.machines && !p.messages && p.sessionIds.size === 0) return
 
             const tasks: Array<Promise<unknown>> = []
             if (p.sessions) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessions }))
@@ -342,6 +351,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 tasks.push(qc.invalidateQueries({ queryKey: ['groupSessions'] }))
             }
             if (p.machines) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.machines }))
+            if (p.messages) tasks.push(qc.invalidateQueries({ queryKey: ['messages'] }))
             for (const sid of Array.from(p.sessionIds)) {
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.session(sid) }))
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.messages(sid) }))
@@ -350,6 +360,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             p.sessions = false
             p.sessionGroups = false
             p.machines = false
+            p.messages = false
             p.sessionIds.clear()
             if (tasks.length > 0) void Promise.all(tasks).catch(() => {})
         }, INVALIDATION_BATCH_MS)
@@ -410,8 +421,9 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     // 移动端后台→前台频繁触发重连，success 提示打扰用户且无信息价值；
                     // 真实断网仍由上方 connected===false 的 warning 提示
                     nt.destroy('sse-disconnected')
-                    qc.invalidateQueries({ queryKey: queryKeys.sessions }).catch(() => {})
-                    qc.invalidateQueries({ queryKey: ['messages'] }).catch(() => {})
+                    // sessions + 全 messages 失效并入批处理(16ms 合并),避免移动端高频前后台时绕过批处理
+                    scheduleInvalidation('sessions')
+                    scheduleInvalidation('messages')
                 }
                 break
             case 'toast': {
@@ -423,6 +435,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 })
                 if (action === 'ignore') break
 
+                // 序号去重:同 session 连发同类通知时,每条用独立 key/tag,
+                // 避免 SW replaceNotification / antd 同 key 更新吞掉前一条(角标幂等不受影响)
+                const notifyKey = `${kind}-${sessionId}-${++toastSeq}`
+
                 if (action === 'system-notification') {
                     // 场景③ 后台:SW 系统通知（移动端不支持页面层 new Notification），
                     // 点击跳转由 sw.ts notificationclick 处理（读 data.url）；SW 不可用则降级 antd
@@ -430,32 +446,32 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                         title,
                         body,
                         icon: '/favicon.ico',
-                        tag: `${kind}-${sessionId}`,
+                        tag: notifyKey,
                         data: { url },
                     }).then((ok) => {
                         if (ok) return
                         notificationRef.current.info({
-                            key: `${kind}-${sessionId}`,
+                            key: notifyKey,
                             message: title,
                             description: body,
                             duration: 6,
                             onClick: () => navigateRef.current({ to: url }),
                         })
                     })
-                    markUnreadRef.current(sessionId, kind as NotificationKind)
+                    markUnreadRef.current(sessionId, kind)
                     break
                 }
 
                 // 场景② 前台但不在该 session:antd 页面 Toast(支持 onClick 跳转)+ 角标
                 // 关键:用 notificationRef(antd 原生),不用 nt(useNotify 封装 dispatch 不透传 onClick)
                 notificationRef.current.info({
-                    key: `${kind}-${sessionId}`,
+                    key: notifyKey,
                     message: title,
                     description: body,
                     duration: 6,
                     onClick: () => navigateRef.current({ to: url }),
                 })
-                markUnreadRef.current(sessionId, kind as NotificationKind)
+                markUnreadRef.current(sessionId, kind)
                 break
             }
             case 'idle-timeout-warning':
@@ -472,9 +488,15 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         }
     }, [])
 
-    // 登出(token 清空)时清理角标,避免换号残留上一用户的未读状态
+    // 登出(token 清空)时清理角标 + 重置通知子系统,避免换号残留上一用户状态
     useEffect(() => {
-        if (!token) clearAllBadgesRef.current()
+        if (!token) {
+            clearAllBadgesRef.current()
+            // 重置 permission/subscribed/error + 引导 flag:SPA 内 logout→login 不刷新页面,
+            // 不重置则新用户继承上一用户状态/不再获得首次引导
+            useNotificationStore.getState().reset()
+            resetPermissionPrompt()
+        }
     }, [token])
 
     useEffect(() => {
@@ -554,6 +576,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 sessions: false,
                 sessionGroups: false,
                 machines: false,
+                messages: false,
                 sessionIds: new Set(),
             }
             // 清理暂存缓冲区

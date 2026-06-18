@@ -187,6 +187,7 @@ export function createMobiApi(token: string | null) {
             getVapidKey: () => client.get<{ publicKey: string }>('/api/push/vapid-public-key'),
             subscribe: (subscription: PushSubscriptionJSON) =>
                 client.post('/api/push/subscribe', subscription),
+            getSubscriptionStatus: () => client.get<{ subscribed: boolean }>('/api/push/subscription'),
         },
 
         // Session Groups

@@ -62,6 +62,27 @@ function setHidden(hidden: boolean): void {
     Object.defineProperty(document, 'hidden', { value: hidden, configurable: true })
 }
 
+/**
+ * 存活态 mock:返回 pending promise,仅 signal.abort 时 resolve(模拟真实库行为)。
+ *
+ * 默认 mock 立即 resolve,connect() 的 await 不保持 pending——无法表示"连接存活"这一
+ * watchdog/forceReconnect 竞态的前提。存活态 mock 让连接建立后 await 持续 pending(像真实连接),
+ * 仅在 disconnect/forceReconnect abort 时 settle,从而能复现"旧 connect 的 finally 与新 connect 竞态"。
+ */
+function useLiveMock() {
+    vi.mocked(fetchEventSource).mockImplementation((_url: string, options?: any) => {
+        lastOptions.current = options ?? {}
+        const signal = options?.signal as AbortSignal | undefined
+        return new Promise<void>((resolve) => {
+            if (signal?.aborted) {
+                resolve()
+                return
+            }
+            signal?.addEventListener('abort', () => resolve(), { once: true })
+        })
+    })
+}
+
 describe('SSEClient 后台连接稳定性', () => {
     beforeEach(() => {
         resetFetchMock()
@@ -348,5 +369,48 @@ describe('SSEClient 重连退避与抖动', () => {
         expect(fetchEventSource).toHaveBeenCalledTimes(3) // 1s 未到
         await vi.advanceTimersByTimeAsync(1)
         expect(fetchEventSource).toHaveBeenCalledTimes(4)
+    })
+})
+
+describe('SSEClient 连接存活态竞态(forceReconnect 不被旧 finally 破坏)', () => {
+    beforeEach(() => {
+        resetFetchMock()
+        useLiveMock()
+        setHidden(false)
+        vi.useFakeTimers()
+    })
+    afterEach(() => {
+        vi.useRealTimers()
+        setHidden(false)
+        resetFetchMock()
+    })
+
+    it('watchdog forceReconnect 后,旧连接 finally 不破坏新连接的 isConnecting 守卫', async () => {
+        const client = new SSEClient(() => 'url')
+        // 连接 A(存活态:fetchEventSource pending,仅 abort 才 resolve)
+        void client.connect()
+        await vi.advanceTimersByTimeAsync(0) // flush:A 调 fetchEventSource
+        await lastOptions.current.onopen(makeResponse(200)) // A 建立(lastActivityAt=now)
+        expect(fetchEventSource).toHaveBeenCalledTimes(1)
+        const signalA = lastOptions.current.signal // A 的 controller signal(forceReconnect 前保存)
+
+        // 推进 90s:watchdog 检测半死 → forceReconnect
+        // (teardown abort A → A 的 fetchEventSource resolve → A finally;connect B)
+        await vi.advanceTimersByTimeAsync(90_000)
+        await vi.advanceTimersByTimeAsync(0) // 充分 flush:A finally + B 启动
+        expect(fetchEventSource).toHaveBeenCalledTimes(2) // B 已调用
+        // 加强:直接验证状态机——A 已被 abort(清理)+ B 存活(新连接 signal 未破坏)
+        expect(signalA.aborted).toBe(true)
+        expect(lastOptions.current.signal.aborted).toBe(false)
+
+        // 关键:此时 B 存活,isConnecting 应仍为 true。
+        // 再调 connect() 模拟外部重复入口——守卫生效应被挡住,不启动第 3 个连接。
+        // #5 修复前:A 的 finally 把 isConnecting 复位为 false → connect() 绕过守卫 → 启动第 3 个(3 次)。
+        // #5 修复后:generation 校验,旧 finally 不复位 → connect() 被守卫挡(仍 2 次)。
+        void client.connect()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(fetchEventSource).toHaveBeenCalledTimes(2)
+
+        client.disconnect()
     })
 })

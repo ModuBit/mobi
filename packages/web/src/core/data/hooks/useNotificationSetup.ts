@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useMobiApi } from '@/core/data/api/client'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNotificationStore, type NotificationPermission } from '@/core/data/stores/notificationStore'
+import { awaitServiceWorkerReady, ServiceWorkerReadyTimeout } from '@/core/pwa/swReady'
 
 /**
  * base64url → Uint8Array（VAPID key 转换）
@@ -33,32 +34,6 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
     const arr = new Uint8Array(buffer)
     for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
     return arr
-}
-
-/** ready 超时时长（ms）：首装 SW 激活 + skipWaiting 可能到 5-8s，10s 给足余量又不至于让用户觉得卡死 */
-const SW_READY_TIMEOUT_MS = 10_000
-
-/** navigator.serviceWorker.ready 超时（controller 孤儿时 ready 永不 resolve 也不 reject） */
-class ServiceWorkerReadyTimeout extends Error {
-    constructor() {
-        super('serviceWorker.ready timeout')
-        this.name = 'ServiceWorkerReadyTimeout'
-    }
-}
-
-/**
- * 等 SW 就绪，超时则 reject ServiceWorkerReadyTimeout（避免 controller 孤儿时永久 pending）。
- * @param timeoutMs 超时（测试可传小值；生产用 SW_READY_TIMEOUT_MS）
- */
-function awaitServiceWorkerReady(
-    timeoutMs: number = SW_READY_TIMEOUT_MS,
-): Promise<ServiceWorkerRegistration> {
-    return Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise<ServiceWorkerRegistration>((_, reject) =>
-            setTimeout(() => reject(new ServiceWorkerReadyTimeout()), timeoutMs),
-        ),
-    ])
 }
 
 /**
@@ -87,6 +62,9 @@ export function useNotificationSetup(namespace: string) {
     // useMobiApi 需要 token（见 client.ts 第 246 行 useMobiApi(token)）
     const { token } = useAuthStore()
     const api = useMobiApi(token)
+    // api 可能随 token 变(换号),用 ref 让 mount effect 只在 mount 跑但读到最新 api
+    const apiRef = useRef(api)
+    apiRef.current = api
 
     // 共享 store：多消费方订阅同一份 permission/subscribed/error，一处授权/失败全局同步
     const permission = useNotificationStore((s) => s.permission)
@@ -96,15 +74,14 @@ export function useNotificationSetup(namespace: string) {
     const setSubscribed = useNotificationStore((s) => s.setSubscribed)
     const setError = useNotificationStore((s) => s.setError)
 
-    // mount 时查询是否已有 push 订阅（跨会话/跨设备可能已订阅过）。
-    // 用于决定 granted 状态下是否需要引导「重新订阅」。ready 超时则静默归 false（mount 仅查询，不报错）
+    // mount 时查询当前 namespace 在 hub 的订阅状态(而非浏览器站点级 getSubscription)。
+    // hub 按 namespace 查询:换号(namespace 变)后 subscribed 反映新 namespace,不被上一用户遗留的
+    // 浏览器订阅误判(Gate 换号重挂 → useNotificationSetup 重新 mount → 重查 hub)。
     useEffect(() => {
-        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
         let active = true
-        awaitServiceWorkerReady()
-            .then((reg) => reg.pushManager.getSubscription())
-            .then((sub) => {
-                if (active) setSubscribed(!!sub)
+        apiRef.current.push.getSubscriptionStatus()
+            .then(({ data }) => {
+                if (active) setSubscribed(data.subscribed)
             })
             .catch(() => {
                 if (active) setSubscribed(false)

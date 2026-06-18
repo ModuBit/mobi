@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Download } from 'lucide-react'
@@ -99,6 +99,8 @@ export function InstallButton({ variant = 'nav' }: InstallButtonProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null)
+    // iOS 手动指引 Tooltip 受控态:移动端无 hover,点击 toggle 显示步骤
+    const [iosTipOpen, setIosTipOpen] = useState(false)
 
     useEffect(() => {
         const handler = (e: Event) => {
@@ -109,12 +111,37 @@ export function InstallButton({ variant = 'nav' }: InstallButtonProps) {
         return () => window.removeEventListener('beforeinstallprompt', handler)
     }, [])
 
-    if (!installEvent) return null
+    // iOS Safari 不触发 beforeinstallprompt(installEvent 恒 null)。card 作为设置页主 CTA,
+    // 此时不空白,改显示手动安装指引(Tooltip 提示分享→添加到主屏幕)
+    const isIos = useMemo(() => {
+        if (typeof navigator === 'undefined') return false
+        const ua = navigator.userAgent
+        // iPhone/iPod 或旧 iPad(含 ipad 字样)
+        if (/iphone|ipad|ipod/i.test(ua)) return true
+        // iPadOS 13+ 默认「请求桌面网站」→ UA 变 Macintosh(无 ipad),用多点触屏兜底识别 iPad
+        if (navigator.maxTouchPoints > 1 && /macintosh|mac os x/i.test(ua)) return true
+        return false
+    }, [])
 
     const handleInstall = async () => {
+        if (!installEvent) return
         await installEvent.prompt()
         setInstallEvent(null)
     }
+
+    // card variant + iOS + 无 beforeinstallprompt → 手动指引按钮(受控 Tooltip,点击 toggle 显示步骤)
+    if (variant === 'card' && !installEvent && isIos) {
+        return (
+            <Tooltip title={t('notification.pwa.iosManual')} placement="top" open={iosTipOpen} onOpenChange={setIosTipOpen}>
+                <CardButton $token={token} type="button" onClick={() => setIosTipOpen(v => !v)}>
+                    <Download size={16} />
+                    <span>{t('notification.pwa.install')}</span>
+                </CardButton>
+            </Tooltip>
+        )
+    }
+
+    if (!installEvent) return null
 
     if (variant === 'menu') {
         return (
