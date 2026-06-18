@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider, App as AntdApp } from 'antd'
+import { NotificationSettings } from '@/components/settings/NotificationSettings'
 
 // 可变 mock 状态：每个用例可单独设置 permission / isPwa
 const mockState = vi.hoisted(() => ({
@@ -69,9 +70,10 @@ vi.mock('antd', async (orig) => {
     }
 })
 
-// 动态 import 让 vi.mock 在模块系统内先生效
-async function renderUi() {
-    const { NotificationSettings } = await import('@/components/settings/NotificationSettings')
+// vi.mock 是 hoisted（在所有 import 之前执行），顶层 import 时各 mock 已生效。
+// 用同步 render 避免 async import 在测试 timeout 后才 resolve、render 读到已被
+// 下个测试 beforeEach 改写的 mockState 而污染 DOM（flaky multiple-match）。
+function renderUi() {
     return render(
         <ConfigProvider>
             <AntdApp>
@@ -98,28 +100,28 @@ describe('NotificationSettings', () => {
 
     it('permission=default 显示「开启通知」按钮', async () => {
         mockState.permission = 'default'
-        await renderUi()
+        renderUi()
         // primary 按钮文案对应 enable key
         expect(screen.getByText('notification.settings.enable')).toBeInTheDocument()
     })
 
     it('permission=granted 显示「已开启」+「发送测试通知」', async () => {
         mockState.permission = 'granted'
-        await renderUi()
+        renderUi()
         expect(screen.getByText('notification.settings.enabled')).toBeInTheDocument()
         expect(screen.getByText('notification.settings.test')).toBeInTheDocument()
     })
 
     it('permission=denied 显示禁止提示', async () => {
         mockState.permission = 'denied'
-        await renderUi()
+        renderUi()
         expect(screen.getByText('notification.settings.denied')).toBeInTheDocument()
     })
 
     it('permission=denied 显示「重新检查」按钮，点击触发 refreshPermission', async () => {
         mockState.permission = 'denied'
         const { fireEvent } = await import('@testing-library/react')
-        await renderUi()
+        renderUi()
         const btn = screen.getByText('notification.settings.refreshPermission')
         fireEvent.click(btn)
         expect(mockState.refreshPermission).toHaveBeenCalled()
@@ -128,7 +130,7 @@ describe('NotificationSettings', () => {
     it('非 PWA 显示安装引导', async () => {
         mockState.permission = 'default'
         mockState.isPwa = false
-        await renderUi()
+        renderUi()
         expect(screen.getByText('notification.settings.installPwa')).toBeInTheDocument()
         expect(screen.getByTestId('install-button')).toBeInTheDocument()
         // iOS 文字兜底
@@ -138,7 +140,7 @@ describe('NotificationSettings', () => {
     it('PWA 模式不显示安装引导', async () => {
         mockState.permission = 'granted'
         mockState.isPwa = true
-        await renderUi()
+        renderUi()
         expect(screen.queryByText('notification.settings.installPwa')).not.toBeInTheDocument()
         expect(screen.queryByTestId('install-button')).not.toBeInTheDocument()
     })
@@ -146,7 +148,7 @@ describe('NotificationSettings', () => {
     it('点击「开启通知」触发 enable()', async () => {
         mockState.permission = 'default'
         const { fireEvent } = await import('@testing-library/react')
-        await renderUi()
+        renderUi()
         const btn = screen.getByText('notification.settings.enable')
         fireEvent.click(btn)
         expect(mockState.enable).toHaveBeenCalled()
@@ -162,7 +164,7 @@ describe('NotificationSettings', () => {
             configurable: true,
         })
         const { fireEvent } = await import('@testing-library/react')
-        await renderUi()
+        renderUi()
         fireEvent.click(screen.getByText('notification.settings.test'))
         await vi.waitFor(() => expect(showNotification).toHaveBeenCalled())
         Object.defineProperty(nav, 'serviceWorker', { value: original, configurable: true })
@@ -177,7 +179,7 @@ describe('NotificationSettings', () => {
             configurable: true,
         })
         const { fireEvent } = await import('@testing-library/react')
-        await renderUi()
+        renderUi()
         fireEvent.click(screen.getByText('notification.settings.test'))
         await vi.waitFor(() =>
             expect(messageErrorSpy).toHaveBeenCalledWith('notification.settings.testFailed'),
@@ -188,14 +190,14 @@ describe('NotificationSettings', () => {
     it('granted + 未订阅 显示「重新订阅」按钮', async () => {
         mockState.permission = 'granted'
         mockState.subscribed = false
-        await renderUi()
+        renderUi()
         expect(screen.getByText('notification.settings.resubscribe')).toBeInTheDocument()
     })
 
     it('granted + 已订阅 不显示「重新订阅」按钮', async () => {
         mockState.permission = 'granted'
         mockState.subscribed = true
-        await renderUi()
+        renderUi()
         expect(screen.queryByText('notification.settings.resubscribe')).not.toBeInTheDocument()
     })
 
@@ -203,20 +205,20 @@ describe('NotificationSettings', () => {
         mockState.permission = 'granted'
         mockState.subscribed = false
         const { fireEvent } = await import('@testing-library/react')
-        await renderUi()
+        renderUi()
         fireEvent.click(screen.getByText('notification.settings.resubscribe'))
         expect(mockState.enable).toHaveBeenCalled()
     })
 
     it('显示「如何允许浏览器通知」可折叠区块标题', async () => {
         mockState.permission = 'default'
-        await renderUi()
+        renderUi()
         expect(screen.getByText('notification.settings.howToAllow')).toBeInTheDocument()
     })
 
     it('denied 态默认展开说明区块(aria-expanded=true)', async () => {
         mockState.permission = 'denied'
-        await renderUi()
+        renderUi()
         const header = screen.getByRole('button', { name: 'notification.settings.howToAllow' })
         expect(header).toHaveAttribute('aria-expanded', 'true')
     })
@@ -224,7 +226,7 @@ describe('NotificationSettings', () => {
     it('default 态默认收起,点击 header 后展开并显示步骤', async () => {
         mockState.permission = 'default'
         const { fireEvent } = await import('@testing-library/react')
-        await renderUi()
+        renderUi()
         const header = screen.getByRole('button', { name: 'notification.settings.howToAllow' })
         // 收起态
         expect(header).toHaveAttribute('aria-expanded', 'false')
@@ -237,7 +239,7 @@ describe('NotificationSettings', () => {
 
     it('展开后显示三平台步骤(mac/win、android、ios)', async () => {
         mockState.permission = 'denied' // denied 默认展开
-        await renderUi()
+        renderUi()
         expect(screen.getByText('notification.settings.stepMacWin1')).toBeInTheDocument()
         expect(screen.getByText('notification.settings.stepAndroid1')).toBeInTheDocument()
         expect(screen.getByText('notification.settings.stepIos1')).toBeInTheDocument()
@@ -246,20 +248,20 @@ describe('NotificationSettings', () => {
     it('PWA 卡显示「任意端」说明(installPwaDesc)', async () => {
         mockState.permission = 'default'
         mockState.isPwa = false
-        await renderUi()
+        renderUi()
         expect(screen.getByText('notification.settings.installPwaDesc')).toBeInTheDocument()
     })
 
     it('展开后显示「浏览器」与「操作系统」两层标签', async () => {
         mockState.permission = 'denied' // 默认展开
-        await renderUi()
+        renderUi()
         expect(screen.getByText('notification.settings.layerBrowser')).toBeInTheDocument()
         expect(screen.getByText('notification.settings.layerOs')).toBeInTheDocument()
     })
 
     it('展开后显示操作系统层四平台步骤', async () => {
         mockState.permission = 'denied' // 默认展开
-        await renderUi()
+        renderUi()
         expect(screen.getByText('notification.settings.osMac')).toBeInTheDocument()
         expect(screen.getByText('notification.settings.osWindows')).toBeInTheDocument()
         expect(screen.getByText('notification.settings.osAndroid')).toBeInTheDocument()
@@ -269,7 +271,7 @@ describe('NotificationSettings', () => {
     it('error.kind=timeout → message.error 带固定 key 去重 + swReadyTimeout 文案', async () => {
         mockState.permission = 'granted'
         mockState.error = { kind: 'timeout' }
-        await renderUi()
+        renderUi()
         expect(messageErrorSpy).toHaveBeenCalledWith({
             key: 'notification-subscribe-error',
             content: 'notification.settings.swReadyTimeout',
@@ -279,7 +281,7 @@ describe('NotificationSettings', () => {
     it('error.kind=subscribe → message.error 带固定 key 去重 + subscribeFailed 文案', async () => {
         mockState.permission = 'granted'
         mockState.error = { kind: 'subscribe' }
-        await renderUi()
+        renderUi()
         expect(messageErrorSpy).toHaveBeenCalledWith({
             key: 'notification-subscribe-error',
             content: 'notification.settings.subscribeFailed',

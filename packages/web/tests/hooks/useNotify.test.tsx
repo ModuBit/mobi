@@ -26,6 +26,28 @@ vi.mock('@/core/notifications', () => ({
     showSystemNotification: showSpy,
 }))
 
+// mock antd App.useApp 的 notification 为 spy：
+// 真实 antd notification 实例会创建 duration 自动关闭定时器，在测试结束 jsdom
+// 销毁后触发，访问失效 window → "window is not defined" unhandled error。
+// 用 spy 避免真实实例，断言 dispatch 路由即可。
+const notificationApi = vi.hoisted(() => ({
+    success: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    destroy: vi.fn(),
+}))
+vi.mock('antd', async (orig) => {
+    const actual = await orig()
+    return {
+        ...actual,
+        App: {
+            ...actual.App,
+            useApp: () => ({ notification: notificationApi }),
+        },
+    }
+})
+
 function wrapper({ children }: { children: ReactNode }) {
     return (
         <ConfigProvider>
@@ -58,6 +80,10 @@ describe('useNotify', () => {
         const { result } = renderHook(() => useNotify(), { wrapper })
         result.current.success({ message: '标题' })
         expect(showSpy).not.toHaveBeenCalled()
+        // 未授权走 antd 页面通知（notification 已 mock 为 spy）
+        expect(notificationApi.success).toHaveBeenCalledWith(
+            expect.objectContaining({ message: '标题' }),
+        )
     })
 
     it('warning/error/info 同样在已授权时走 showSystemNotification', () => {
@@ -72,5 +98,6 @@ describe('useNotify', () => {
     it('destroy 透传不抛错', () => {
         const { result } = renderHook(() => useNotify(), { wrapper })
         expect(() => result.current.destroy('some-key')).not.toThrow()
+        expect(notificationApi.destroy).toHaveBeenCalledWith('some-key')
     })
 })
