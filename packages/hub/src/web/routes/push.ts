@@ -38,6 +38,13 @@ export function createPushRoutes(store: Store, vapidPublicKey: string): Hono<Web
         return c.json({ publicKey: vapidPublicKey })
     })
 
+    // 查询当前 namespace 是否已有 push 订阅。供前端 mount 时显示真实订阅状态
+    // (按 namespace 查,而非浏览器站点级 getSubscription,避免换号后被遗留订阅误判)
+    app.get('/push/subscription', (c) => {
+        const namespace = c.get('namespace')
+        return c.json({ subscribed: store.push.getPushSubscriptionsByNamespace(namespace).length > 0 })
+    })
+
     app.post('/push/subscribe', async (c) => {
         const json = await c.req.json().catch(() => null)
         const parsed = subscriptionSchema.safeParse(json)

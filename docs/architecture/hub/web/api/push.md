@@ -9,6 +9,7 @@ Web Push 用于在页面不可见时推送通知。
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/push/vapid-public-key` | 获取 VAPID 公钥 |
+| `GET` | `/api/push/subscription` | 查询当前 namespace 是否已订阅（按 namespace 查，非浏览器站点级） |
 | `POST` | `/api/push/subscribe` | 订阅推送 |
 | `DELETE` | `/api/push/subscribe` | 取消订阅 |
 
