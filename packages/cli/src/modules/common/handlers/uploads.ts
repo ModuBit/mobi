@@ -97,7 +97,7 @@ function validateFileExtension(filename: string): string | null {
 function sanitizeFilename(filename: string): string {
     const sanitized = filename
         .replace(/[/\\]/g, '_')        // 路径分隔符
-        .replace(/[^\w\-\.]/g, '_')    // 非安全字符替换为 _（对齐 ATTACHMENT_RE 的 [\w\-\.]）
+        .replace(/[^\w\-.]/g, '_')    // 非安全字符替换为 _（对齐 ATTACHMENT_RE 的 [\w-.]）
         .slice(0, 255)
 
     // 如果清理后文件名为空，使用默认名

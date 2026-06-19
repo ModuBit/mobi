@@ -135,7 +135,7 @@ export class SDKToLogConverter {
         }
         const baseFields = this.buildBaseFields(uuid, parentUuid, isSidechain, parentToolUseId)
 
-        let logMessage: RawJSONLines | null = null
+        let logMessage: RawJSONLines | null
 
         switch (sdkMessage.type) {
             case 'user': {

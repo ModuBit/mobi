@@ -17,9 +17,7 @@
 import { RpcHandlerManager } from "@/api/rpc/RpcHandlerManager";
 import { logger } from "@/lib";
 
-interface KillSessionRequest {
-    // No parameters needed
-}
+type KillSessionRequest = Record<string, never>;
 
 interface KillSessionResponse {
     success: boolean;

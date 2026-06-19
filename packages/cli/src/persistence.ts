@@ -134,9 +134,9 @@ export async function updateSettings(
         try {
           const stats = await stat(lockFile);
           if (Date.now() - stats.mtimeMs > STALE_LOCK_TIMEOUT_MS) {
-            await unlink(lockFile).catch(() => { });
+            await unlink(lockFile).catch(() => { /* 错误可忽略：锁文件可能已被其他进程清理 */ });
           }
-        } catch { }
+        } catch { /* 错误可忽略：stale lock 检查失败不阻塞获取锁 */ }
       } else {
         throw err;
       }
@@ -283,13 +283,13 @@ export async function acquireRunnerLock(
 export async function releaseRunnerLock(lockHandle: FileHandle): Promise<void> {
   try {
     await lockHandle.close();
-  } catch { }
+  } catch { /* 错误可忽略：handle 可能已关闭 */ }
 
   try {
     if (existsSync(configuration.runnerLockFile)) {
       unlinkSync(configuration.runnerLockFile);
     }
-  } catch { }
+  } catch { /* 错误可忽略：锁文件可能已被其他进程删除 */ }
 }
 
 //

@@ -52,7 +52,7 @@ async function runGit(args: string[], cwd: string): Promise<{ stdout: string; st
     const stderr = execError.stderr ? execError.stderr.toString() : '';
     const stdout = execError.stdout ? execError.stdout.toString() : '';
     const message = stderr.trim() || stdout.trim() || execError.message || 'Git command failed';
-    throw new Error(message);
+    throw new Error(message, { cause: error });
   }
 }
 

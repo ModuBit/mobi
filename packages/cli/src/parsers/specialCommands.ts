@@ -31,7 +31,7 @@ const DANGEROUS_COMMAND_RULES: ReadonlyArray<{
     // 直接写磁盘设备
     { pattern: /\bdd\s+.*of=\/dev\//, reason: '直接写入磁盘设备' },
     // fork bomb
-    { pattern: /\:\(\)\{\s*\:\|\:\&\s*\}\;\:/, reason: 'Fork bomb' },
+    { pattern: /:\(\)\{\s*:\|:&\s*\};:/, reason: 'Fork bomb' },
     // 全局权限开放
     { pattern: /\bchmod\s+.*-R\s+777\s+\/\s*$/, reason: '全局开放权限' },
     // 覆写磁盘设备

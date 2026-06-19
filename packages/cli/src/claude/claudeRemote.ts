@@ -487,7 +487,7 @@ export async function claudeRemote(opts: {
 
         // 在用户工作目录下执行命令（沙箱隔离 + 超时控制）
         let stdout = ''
-        let stderr = ''
+        let stderr: string
         let hasError = false
         try {
             const sandboxedCommand = await wrapCommand(command)

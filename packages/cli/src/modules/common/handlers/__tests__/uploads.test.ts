@@ -196,7 +196,7 @@ describe('uploadFile handler', () => {
         expect(result.success).toBe(true)
         // CJK 字符应被替换为 _
         const filename = result.path!.split('/').pop()!
-        expect(filename).toMatch(/^[A-Za-z0-9_\-\.]+$/)
+        expect(filename).toMatch(/^[A-Za-z0-9_\-.]+$/)
     })
 
     it('应拒绝黑名单文件类型（可执行文件）', async () => {

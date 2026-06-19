@@ -22,6 +22,7 @@
 import { existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { logger } from '@/ui/logger'
 
 /**
@@ -30,13 +31,12 @@ import { logger } from '@/ui/logger'
  */
 function findWindowsClaudePath(): string | null {
     const homeDir = homedir()
-    const path = require('node:path')
 
     // Known installation paths for Claude on Windows
     const candidates = [
-        path.join(homeDir, '.local', 'bin', 'claude.exe'),
-        path.join(homeDir, 'AppData', 'Local', 'Programs', 'claude', 'claude.exe'),
-        path.join(homeDir, 'AppData', 'Local', 'Microsoft', 'WinGet', 'Packages', 'Anthropic.claude-code_Microsoft.Winget.Source_8wekyb3d8bbwe', 'claude.exe'),
+        join(homeDir, '.local', 'bin', 'claude.exe'),
+        join(homeDir, 'AppData', 'Local', 'Programs', 'claude', 'claude.exe'),
+        join(homeDir, 'AppData', 'Local', 'Microsoft', 'WinGet', 'Packages', 'Anthropic.claude-code_Microsoft.Winget.Source_8wekyb3d8bbwe', 'claude.exe'),
     ]
 
     for (const candidate of candidates) {

@@ -294,7 +294,9 @@ export class MessageQueue<T> {
         return new Promise((resolve) => {
             let settled = false;
             let abortHandler: (() => void) | null = null;
-            let waiterFunc: (hasMessages: boolean) => void;
+            const waiterFunc: (hasMessages: boolean) => void = (hasMessages: boolean) => {
+                finish(hasMessages);
+            };
 
             const finish = (hasMessages: boolean) => {
                 if (settled) {
@@ -309,10 +311,6 @@ export class MessageQueue<T> {
                     abortSignal.removeEventListener('abort', abortHandler);
                 }
                 resolve(hasMessages);
-            };
-
-            waiterFunc = (hasMessages: boolean) => {
-                finish(hasMessages);
             };
 
             // Set up abort handler

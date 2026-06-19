@@ -293,7 +293,7 @@ export async function spawnWithTimeout(
             timedOut = true
             child.kill('SIGTERM')
             // SIGKILL 升级：3s 后进程仍存活则强制终止
-            setTimeout(() => { try { child.kill('SIGKILL') } catch {} }, 3000)
+            setTimeout(() => { try { child.kill('SIGKILL') } catch { /* 错误可忽略：进程可能已退出 */ } }, 3000)
         }
 
         // 超时
@@ -301,7 +301,7 @@ export async function spawnWithTimeout(
             timedOut = true
             child.kill('SIGTERM')
             // SIGKILL 升级：3s 后进程仍存活则强制终止
-            setTimeout(() => { try { child.kill('SIGKILL') } catch {} }, 3000)
+            setTimeout(() => { try { child.kill('SIGKILL') } catch { /* 错误可忽略：进程可能已退出 */ } }, 3000)
         }, timeout)
 
         // Abort signal

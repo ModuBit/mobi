@@ -43,7 +43,7 @@ export function detectMentionAtCursor(
 
         // 提取 @ 后的内容，直到空白或行尾
         const afterAt = fullText.slice(atPos + 1, cursorPos)
-        if (/^[a-zA-Z0-9.\/_\-~]*$/.test(afterAt)) {
+        if (/^[a-zA-Z0-9./_\-~]*$/.test(afterAt)) {
             return { atIndex: atPos, afterAt }
         }
 

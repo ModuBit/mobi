@@ -123,6 +123,7 @@ export abstract class RemoteLauncherBase {
             try {
                 process.stdin.pause();
             } catch {
+                // 错误可忽略：stdin 已关闭或不可暂停
             }
         }
         if (this.inkInstance) {

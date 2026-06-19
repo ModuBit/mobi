@@ -425,7 +425,7 @@ export async function startRunner(): Promise<void> {
         let observedExitCode: number | null = null;
         let observedExitSignal: NodeJS.Signals | null = null;
         const buildWebhookFailureMessage = (reason: 'timeout' | 'exit-before-webhook' | 'process-error-before-webhook'): string => {
-          let message = '';
+          let message: string;
           if (reason === 'exit-before-webhook') {
             message = `Session process exited before webhook for PID ${pid}`;
           } else if (reason === 'process-error-before-webhook') {
