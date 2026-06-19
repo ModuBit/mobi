@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SyncEvent } from '../sync/syncEngine'
+import type { SyncEvent } from '@mobi/shared/types'
 import type { VisibilityState } from '../visibility/visibilityTracker'
 import type { VisibilityTracker } from '../visibility/visibilityTracker'
 
