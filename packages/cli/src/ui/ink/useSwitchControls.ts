@@ -106,8 +106,10 @@ export function useSwitchControls(opts: {
         const sequence = keySequence ?? input;
         const sequenceString = typeof sequence === 'string' ? sequence : '';
         const isKeyRelease = sequenceString.length > 0
+            // eslint-disable-next-line no-control-regex -- Kitty 键盘协议序列解析（ESC 转义，业务必要）
             && /^\u001b\[[0-9;]*:3u$/.test(sequenceString);
         const csiUMatch = sequenceString.length > 0
+            // eslint-disable-next-line no-control-regex -- Kitty 键盘协议序列解析（ESC 转义，业务必要）
             ? sequenceString.match(/^\u001b\[(\d+)(?:;(\d+))?u$/)
             : null;
         const csiUCodepoint = csiUMatch ? Number(csiUMatch[1]) : null;

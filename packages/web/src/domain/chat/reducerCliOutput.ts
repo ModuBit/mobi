@@ -45,7 +45,10 @@ export function extractStandaloneStdout(text: string): string | null {
     const match = text.match(LOCAL_COMMAND_STDOUT_EXTRACT)
     return match ? match[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
         String.fromCharCode(parseInt(hex, 16))
-    ).replace(/\x1B\[[0-9;]*m/g, '').trim() : null
+    ).replace(
+        // eslint-disable-next-line no-control-regex -- 剥离终端 ANSI 颜色码（业务必要）
+        /\x1B\[[0-9;]*m/g, ''
+    ).trim() : null
 }
 
 export function createCliOutputBlock(props: {

@@ -26,7 +26,10 @@ export function parseCliOutputText(text: string): { command: string | null, stdo
 
     const stdout = stdoutMatch ? stdoutMatch[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
         String.fromCharCode(parseInt(hex, 16))
-    ).replace(/\x1B\[[0-9;]*m/g, '').trim() : null
+    ).replace(
+        // eslint-disable-next-line no-control-regex -- 剥离终端 ANSI 颜色码（业务必要）
+        /\x1B\[[0-9;]*m/g, ''
+    ).trim() : null
 
     return { command, stdout, stderr: null }
 }
