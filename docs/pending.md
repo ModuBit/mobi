@@ -541,3 +541,20 @@ VisibilityTracker、`/api/visibility` 路由、前端 visibilitychange 上报已
 - `packages/hub/src/sse/sseManager.ts` — `sendToast` 投递所有活跃连接
 - `packages/web/src/core/notifications/toastDecision.ts` — 前端三分支决策
 - `packages/web/src/core/providers/SSEProvider.tsx` — toast 处理分支
+
+---
+
+## 21. Lint P1 清理遗留的签名/契约不一致
+
+P1 lint 清理（commit `7c79400`~`b7a1fce`，lint 244→101）中，对 unused-vars 用 `_` 前缀掩盖了 2 处**既有的**签名/契约不一致（非 lint 引入，`_` 只是让它们不报警）。功能正常，但应单独排查：
+
+**I-1 签名/实现不对称**：`packages/cli/src/setup/serviceManager.ts` `generateLaunchdPlist(_host, _port)` — 签名带 host/port 参数，但 plist 模板不使用（host/port 在 wrapper script 生成时硬编码）。对比同文件 `generateSystemdUnit()`（无参）。建议改签名删参与 systemd 对齐，或确认 plist 确需 host/port 后补上逻辑。
+
+**I-2 prop 契约不一致**：`packages/web/src/components/layout/SidebarProjects.tsx` `handleRenameConfirm(_sessionId)` 与 `onRenameConfirm` prop 契约 `(sessionId: string) => void` 不符；同项目 `SessionList.tsx:157`、`MobileProjectList.tsx:447` 的同名 handler 均无参。建议统一契约（都带 sessionId 或都不带）。
+
+**可选小改进（非必须）**：
+- `registerKillSessionHandler.ts` `Record<string, never>` 可简化
+- `claudeRemote.ts` `let stderr: string` 类型注解可省（保留也合理）
+- `sandboxManager.ts` 两处相同 catch 注释可提取 helper
+
+**优先级**：低（非阻塞，功能正常；`_` 前缀已让 lint 通过）。
