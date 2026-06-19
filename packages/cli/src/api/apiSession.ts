@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, DecryptedMessage, EffortLevel, ServerToClientEvents, Update } from '@mobi/shared'
+import type { ClientToServerEvents, DecryptedMessage, EffortLevel, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -107,10 +107,10 @@ export class ApiSessionClient extends EventEmitter {
         this.terminalManager = new TerminalManager({
             sessionId: this.sessionId,
             getSessionPath: () => this.metadata?.path ?? null,
-            onReady: (payload: any) => this.socket.emit('terminal:ready', payload),
-            onOutput: (payload: any) => this.socket.emit('terminal:output', payload),
-            onExit: (payload: any) => this.socket.emit('terminal:exit', payload),
-            onError: (payload: any) => this.socket.emit('terminal:error', payload),
+            onReady: (payload: TerminalReadyPayload) => this.socket.emit('terminal:ready', payload),
+            onOutput: (payload: TerminalOutputPayload) => this.socket.emit('terminal:output', payload),
+            onExit: (payload: TerminalExitPayload) => this.socket.emit('terminal:exit', payload),
+            onError: (payload: TerminalErrorPayload) => this.socket.emit('terminal:error', payload),
             onTerminalInput: () => this.idleTimer?.reset()
         })
 

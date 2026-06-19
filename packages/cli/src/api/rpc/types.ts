@@ -23,7 +23,7 @@
  * @template TRequest - The request data type
  * @template TResponse - The response data type
  */
-export type RpcHandler<TRequest = any, TResponse = any> = (
+export type RpcHandler<TRequest = unknown, TResponse = unknown> = (
     data: TRequest
 ) => TResponse | Promise<TResponse>;
 
@@ -50,7 +50,7 @@ export type RpcResponseCallback = (response: string) => void;
  */
 export interface RpcHandlerConfig {
     scopePrefix: string;
-    logger?: (message: string, data?: any) => void;
+    logger?: (message: string, data?: unknown) => void;
 }
 
 /**
@@ -64,6 +64,6 @@ export interface RpcHandlerOptions {
 /**
  * Result of RPC handler execution
  */
-export type RpcHandlerResult<T = any> =
+export type RpcHandlerResult<T = unknown> =
     | { success: true; data: T }
     | { success: false; error: string };

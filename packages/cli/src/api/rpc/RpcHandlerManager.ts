@@ -42,7 +42,7 @@ type HandlerEntry = {
 export class RpcHandlerManager {
     private handlers: Map<string, HandlerEntry> = new Map()
     private readonly scopePrefix: string
-    private readonly logger: (message: string, data?: any) => void
+    private readonly logger: (message: string, data?: unknown) => void
     private socket: Socket | null = null
     private onRpcCalled?: () => void
 
@@ -58,14 +58,18 @@ export class RpcHandlerManager {
         this.onRpcCalled = callback;
     }
 
-    registerHandler<TRequest = any, TResponse = any>(
+    registerHandler<TRequest = unknown, TResponse = unknown>(
         method: string,
         handler: RpcHandler<TRequest, TResponse>,
         options?: RpcHandlerOptions
     ): void {
         const prefixedMethod = this.getPrefixedMethod(method)
 
-        this.handlers.set(prefixedMethod, { handler, options })
+        // RPC 边界：handler 泛型擦除为 unknown（params 来自 JSON 解析）
+        this.handlers.set(prefixedMethod, {
+            handler: handler as unknown as RpcHandler,
+            options
+        })
 
         if (this.socket) {
             this.socket.emit('rpc-register', { method: prefixedMethod })
@@ -86,7 +90,8 @@ export class RpcHandlerManager {
             }
 
             const params = safeJsonParse(request.params)
-            const result = await entry.handler(params as any)
+            // entry.handler 为 RpcHandler<unknown, unknown>，params 已是 unknown
+            const result = await entry.handler(params)
             return JSON.stringify(result)
         } catch (error) {
             const details = error instanceof Error

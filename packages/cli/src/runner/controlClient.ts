@@ -49,7 +49,7 @@ export function getInstalledCliMtimeMs(): number | undefined {
   }
 }
 
-async function runnerPost(path: string, body?: any): Promise<{ error?: string } | any> {
+async function runnerPost(path: string, body?: unknown): Promise<{ error?: string } | Record<string, unknown>> {
   const state = await readRunnerState();
   if (!state?.httpPort) {
     const errorMessage = 'No runner running, no state file found';
@@ -85,7 +85,7 @@ async function runnerPost(path: string, body?: any): Promise<{ error?: string } 
       };
     }
     
-    return await response.json();
+    return await response.json() as Record<string, unknown>;
   } catch (error) {
     const errorMessage = `Request failed: ${path}, ${error instanceof Error ? error.message : 'Unknown error'}`;
     logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
@@ -98,24 +98,25 @@ async function runnerPost(path: string, body?: any): Promise<{ error?: string } 
 export async function notifyRunnerSessionStarted(
   sessionId: string,
   metadata: Metadata
-): Promise<{ error?: string } | any> {
+): Promise<{ error?: string } | Record<string, unknown>> {
   return await runnerPost('/session-started', {
     sessionId,
     metadata
   });
 }
 
-export async function listRunnerSessions(): Promise<any[]> {
+export async function listRunnerSessions(): Promise<unknown[]> {
   const result = await runnerPost('/list');
-  return result.children || [];
+  const children = (result as { children?: unknown[] }).children;
+  return children || [];
 }
 
 export async function stopRunnerSession(sessionId: string): Promise<boolean> {
   const result = await runnerPost('/stop-session', { sessionId });
-  return result.success || false;
+  return (result as { success?: boolean }).success || false;
 }
 
-export async function spawnRunnerSession(directory: string, sessionId?: string): Promise<any> {
+export async function spawnRunnerSession(directory: string, sessionId?: string): Promise<{ error?: string } | Record<string, unknown>> {
   const result = await runnerPost('/spawn-session', { directory, sessionId });
   return result;
 }

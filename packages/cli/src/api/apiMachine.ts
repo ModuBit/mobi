@@ -22,12 +22,36 @@ import { io, type Socket } from 'socket.io-client'
 import { stat } from 'node:fs/promises'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
-import type { Update, UpdateMachineBody } from '@mobi/shared'
+import type { EffortLevel, Update, UpdateMachineBody } from '@mobi/shared'
 import type { RunnerState, Machine, MachineMetadata } from './types'
 import { RunnerStateSchema, MachineMetadataSchema } from './types'
 import { backoff } from '@/utils/time'
 import { RpcHandlerManager } from './rpc/RpcHandlerManager'
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers'
+
+/**
+ * spawn-mobi-session RPC 请求参数
+ * 与 SpawnSessionOptions 对齐（params 来自 hub 转发的 JSON）
+ */
+interface SpawnSessionRpcParams {
+    directory?: string
+    sessionId?: string
+    resumeSessionId?: string
+    machineId?: string
+    approvedNewDirectoryCreation?: boolean
+    agent?: 'claude'
+    model?: string
+    yolo?: boolean
+    token?: string
+    sessionType?: 'simple' | 'worktree'
+    worktreeName?: string
+    effort?: EffortLevel
+}
+
+/** stop-session RPC 请求参数 */
+interface StopSessionRpcParams {
+    sessionId?: string
+}
 import type { SpawnSessionOptions, SpawnSessionResult } from '../modules/common/rpcTypes'
 import { applyVersionedAck } from './versionedUpdate'
 import { registerMachineDirectoryHandler } from '../modules/common/handlers/machineDirectory'
@@ -119,8 +143,23 @@ export class ApiMachineClient {
     }
 
     setRPCHandlers({ spawnSession, stopSession, requestShutdown }: MachineRpcHandlers): void {
-        this.rpcHandlerManager.registerHandler('spawn-mobi-session', async (params: any) => {
-            const { directory, sessionId, resumeSessionId, machineId, approvedNewDirectoryCreation, agent, model, yolo, token, sessionType, worktreeName, effort } = params || {}
+        this.rpcHandlerManager.registerHandler<SpawnSessionRpcParams, SpawnSessionResult>(
+            'spawn-mobi-session',
+            async (params) => {
+                const {
+                    directory,
+                    sessionId,
+                    resumeSessionId,
+                    machineId,
+                    approvedNewDirectoryCreation,
+                    agent,
+                    model,
+                    yolo,
+                    token,
+                    sessionType,
+                    worktreeName,
+                    effort
+                } = params || {} as SpawnSessionRpcParams
 
             if (!directory) {
                 throw new Error('Directory is required')
@@ -149,12 +188,15 @@ export class ApiMachineClient {
                 case 'error':
                     return { type: 'error', errorMessage: result.errorMessage }
                 default:
-                    throw new Error(`Unknown result type: ${(result as any).type}`)
+                    // 兜底：未知 result.type
+                    throw new Error(`Unknown result type: ${String((result as { type?: string }).type)}`)
             }
         })
 
-        this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
-            const { sessionId } = params || {}
+        this.rpcHandlerManager.registerHandler<StopSessionRpcParams, { message: string }>(
+            'stop-session',
+            (params) => {
+                const { sessionId } = params || {} as StopSessionRpcParams
             if (!sessionId) {
                 throw new Error('Session ID is required')
             }
