@@ -19,6 +19,12 @@ import type { AgentSessionBase } from './sessionBase';
 
 export type LoopLauncher<TSession> = (session: TSession) => Promise<'switch' | 'exit'>;
 
+// 注：约束使用 any 而非 unknown 是刻意的——AgentSessionBase<Mode> 的 Mode
+// 仅出现在逆变位置（MessageQueue.onMessageHandler 回调参数），严格函数类型下
+// AgentSessionBase<EnhancedMode> 无法赋值给 AgentSessionBase<unknown>，会破坏
+// 所有上游调用（Session -> AgentSessionBase<EnhancedMode>）。改 unknown 需要重构
+// MessageQueue 的泛型方法签名（改成 method 而非 property），ROI 过低。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function runLocalRemoteSession<TSession extends AgentSessionBase<any>>(opts: {
     session: TSession;
     startingMode?: 'local' | 'remote';
@@ -40,6 +46,9 @@ export async function runLocalRemoteSession<TSession extends AgentSessionBase<an
     });
 }
 
+// 见上方 runLocalRemoteSession 注释：AgentSessionBase<Mode> 在严格函数类型下
+// 存在逆变约束，unknown 会导致上游 Session 赋值失败。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function runLocalRemoteLoop<TSession extends AgentSessionBase<any>>(opts: {
     session: TSession;
     startingMode?: 'local' | 'remote';

@@ -27,6 +27,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AddressInfo } from "node:net";
+import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import { z } from "zod";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
@@ -59,12 +60,18 @@ export async function startMobiMcpServer(client: ApiSessionClient) {
         version: "1.0.0",
     });
 
-    // Avoid TS instantiation depth issues by widening the schema type.
-    const changeTitleInputSchema: z.ZodTypeAny = z.object({
+    // MCP SDK 1.29 的 registerTool 泛型约束为 `ZodRawShapeCompat | AnySchema`，
+    // 其中 AnySchema = z3.ZodTypeAny | z4.$ZodType（联合）。本项目 zod 4.4.3 classic 的
+    // z.object(...) 推断为 ZodObject<...,$strip>，因 $strip catchall 的 index signature
+    // 缺失，既不满足 z3.ZodTypeAny 也不被联合识别为 z4.$ZodType（结构同型但联合不可分配）。
+    // 用 `as unknown as AnySchema` 断言桥接：仅对 inputSchema 做类型断言（runtime 由 SDK
+    // 的 zod-compat 正常解析），仍保留对 cb 返回类型的完整检查（优于 registerTool<any,any>
+    // 会整体退化为 any-any 而关闭 cb 检查）。
+    const changeTitleInputSchema = z.object({
         title: z.string().describe('The new title for the chat session'),
-    });
+    }) as unknown as AnySchema;
 
-    mcp.registerTool<any, any>('change_title', {
+    mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
         title: 'Change Chat Title',
         inputSchema: changeTitleInputSchema,

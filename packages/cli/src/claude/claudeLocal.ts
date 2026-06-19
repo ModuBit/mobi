@@ -26,11 +26,12 @@ import { withBunRuntimeEnv } from "@/utils/bunRuntime";
 import { spawnWithAbort } from "@/utils/spawnWithAbort";
 import { stripNewlinesForWindowsShellArg } from "@/utils/shellEscape";
 import { getDefaultClaudeCodePath } from "./sdk/utils";
+import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 
 export async function claudeLocal(opts: {
     abort: AbortSignal,
     sessionId: string | null,
-    mcpServers?: Record<string, any>,
+    mcpServers?: Record<string, McpServerConfig>,
     path: string,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[]

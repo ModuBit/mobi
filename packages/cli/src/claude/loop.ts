@@ -24,6 +24,7 @@ import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { SessionModel } from "@/api/types"
 import type { ClaudePermissionMode, EffortLevel } from "@mobi/shared/types"
+import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk"
 
 export type PermissionMode = ClaudePermissionMode
 
@@ -55,7 +56,7 @@ interface LoopOptions {
     startingMode?: 'local' | 'remote'
     startedBy?: 'runner' | 'terminal'
     onModeChange: (mode: 'local' | 'remote') => void
-    mcpServers: Record<string, any>
+    mcpServers: Record<string, McpServerConfig>
     apiSession: ApiSessionClient
     api: ApiClient,
     claudeEnvVars?: Record<string, string>

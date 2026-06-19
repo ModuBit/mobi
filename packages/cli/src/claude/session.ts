@@ -18,6 +18,7 @@ import { ApiClient, ApiSessionClient } from '@/lib';
 import { MessageQueue } from '@/utils/MessageQueue';
 import { logger } from '@/ui/logger';
 import { AgentSessionBase } from '@/agent/sessionBase';
+import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionModel } from '@/api/types';
 import type { EffortLevel } from '@mobi/shared';
 import type { EnhancedMode } from './loop';
@@ -32,7 +33,7 @@ type LocalLaunchFailure = {
 export class Session extends AgentSessionBase<EnhancedMode> {
     readonly claudeEnvVars?: Record<string, string>;
     claudeArgs?: string[];
-    readonly mcpServers: Record<string, any>;
+    readonly mcpServers: Record<string, McpServerConfig>;
     readonly allowedTools?: string[];
     readonly hookSettingsPath: string;
     readonly startedBy: 'runner' | 'terminal';
@@ -47,7 +48,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         sessionId: string | null;
         claudeEnvVars?: Record<string, string>;
         claudeArgs?: string[];
-        mcpServers: Record<string, any>;
+        mcpServers: Record<string, McpServerConfig>;
         messageQueue: MessageQueue<EnhancedMode>;
         onModeChange: (mode: 'local' | 'remote') => void;
         allowedTools?: string[];

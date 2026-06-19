@@ -21,6 +21,7 @@ import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import type { SDKAssistantMessage, SDKMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
+import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
@@ -223,23 +224,25 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         ...umessage,
                         message: {
                             ...umessage.message,
-                            content: umessage.message.content.map((c: any) => {
-                                if (c.type === 'tool_result' && c.tool_use_id && planModeToolCalls.has(c.tool_use_id!)) {
-                                    planModeToolCalls.delete(c.tool_use_id!);
+                            content: umessage.message.content.map((c: ContentBlockParam): ContentBlockParam => {
+                                if (c.type === 'tool_result' && c.tool_use_id && planModeToolCalls.has(c.tool_use_id)) {
+                                    planModeToolCalls.delete(c.tool_use_id);
                                     if (c.content === PLAN_FAKE_REJECT) {
                                         logger.debug('[remote]: hack plan mode exit');
                                         logger.debugLargeJson('[remote]: hack plan mode exit', c);
+                                        // 透传可能存在的自定义 mode 字段（permissions 相关），保持与历史行为一致
+                                        const mode = (c as ContentBlockParam & { mode?: unknown }).mode;
                                         return {
                                             ...c,
                                             is_error: false,
                                             content: 'Plan approved',
-                                            mode: c.mode
-                                        };
+                                            ...(mode !== undefined ? { mode } : {}),
+                                        } as ContentBlockParam;
                                     }
                                     return c;
                                 }
-                                if (c.type === 'tool_result' && c.tool_use_id && enterPlanModeToolCalls.has(c.tool_use_id!)) {
-                                    enterPlanModeToolCalls.delete(c.tool_use_id!);
+                                if (c.type === 'tool_result' && c.tool_use_id && enterPlanModeToolCalls.has(c.tool_use_id)) {
+                                    enterPlanModeToolCalls.delete(c.tool_use_id);
                                     if (!c.is_error) {
                                         logger.debug('[remote]: enter plan mode succeeded, syncing permissionMode');
                                         permissionHandler.handleModeChange('plan');
@@ -256,7 +259,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             const logMessage = sdkToLogConverter.convert(msg);
             if (logMessage) {
                 // 过滤 discard 类消息，不发送到 Hub
-                if (classifyMessage(logMessage.type, (logMessage as any).subtype) === 'discard') {
+                if (classifyMessage(logMessage.type, (logMessage as { subtype?: string }).subtype) === 'discard') {
                     return
                 }
 
@@ -326,8 +329,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 const umessage = message as SDKAssistantMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
                     for (const c of umessage.message.content) {
-                        if (c.type === 'tool_use' && c.name === 'Task' && c.input && typeof (c.input as any).prompt === 'string') {
-                            const logMessage2 = sdkToLogConverter.convertSidechainUserMessage(c.id!, (c.input as any).prompt);
+                        if (c.type === 'tool_use' && c.name === 'Task' && c.input && typeof (c.input as Record<string, unknown>).prompt === 'string') {
+                            const logMessage2 = sdkToLogConverter.convertSidechainUserMessage(c.id!, (c.input as Record<string, unknown>).prompt as string);
                             if (logMessage2) {
                                 messageQueue.enqueue(logMessage2);
                             }

@@ -28,7 +28,7 @@ import { logger } from '@/ui/logger';
 
 export interface ClaudeSettings {
   includeCoAuthoredBy?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**

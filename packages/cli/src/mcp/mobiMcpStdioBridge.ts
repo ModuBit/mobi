@@ -30,6 +30,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { AnySchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 
@@ -81,11 +83,14 @@ export async function runMobiMcpStdioBridge(argv: string[]): Promise<void> {
     });
 
     // Register the single tool and forward to HTTP MCP
-    const changeTitleInputSchema: z.ZodTypeAny = z.object({
+    // 见 startMobiMcpServer.ts 同款注释：MCP SDK 1.29 的 registerTool 泛型约束
+    // （ZodRawShapeCompat | AnySchema 联合）与 zod 4.4.3 classic 的 z.object(...) 推断
+    // 不兼容，用 `as unknown as AnySchema` 断言桥接（仅类型层面，runtime 由 SDK 解析）。
+    const changeTitleInputSchema = z.object({
       title: z.string().describe('The new title for the chat session'),
-    });
+    }) as unknown as AnySchema;
 
-    server.registerTool<any, any>(
+    server.registerTool(
       'change_title',
       {
         description: 'Change the title of the current chat session',
@@ -95,9 +100,9 @@ export async function runMobiMcpStdioBridge(argv: string[]): Promise<void> {
       async (args: Record<string, unknown>) => {
         try {
           const client = await ensureHttpClient();
-          const response = await client.callTool({ name: 'change_title', arguments: args });
-          // Pass-through response from HTTP server
-          return response as any;
+          // 直接透传 HTTP MCP 服务端返回的 CallToolResult
+          // client.callTool 的返回联合包含无 content 的边界分支，强转为 CallToolResult
+          return (await client.callTool({ name: 'change_title', arguments: args })) as CallToolResult;
         } catch (error) {
           return {
             content: [

@@ -157,9 +157,10 @@ function scrubBareGitRepoFiles(): void {
     for (const p of bareGitScrubPaths) {
         try {
             rmSync(p, { recursive: true })
-        } catch (e: any) {
-            if (e?.code !== 'ENOENT') {
-                logger.debug(`[sandbox] 清理失败: ${p}: ${e.message}`)
+        } catch (e: unknown) {
+            const err = e as { code?: string; message?: string }
+            if (err?.code !== 'ENOENT') {
+                logger.debug(`[sandbox] 清理失败: ${p}: ${err?.message ?? e}`)
             }
         }
     }
