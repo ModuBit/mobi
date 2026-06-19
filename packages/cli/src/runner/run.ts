@@ -238,20 +238,22 @@ export async function startRunner(): Promise<void> {
             await fs.mkdir(directory, { recursive: true });
             logger.debug(`[RUNNER RUN] Successfully created directory: ${directory}`);
             directoryCreated = true;
-          } catch (mkdirError: any) {
+          } catch (mkdirError: unknown) {
+            const errno = mkdirError as NodeJS.ErrnoException;
             let errorMessage = `Unable to create directory at '${directory}'. `;
 
             // Provide more helpful error messages based on the error code
-            if (mkdirError.code === 'EACCES') {
+            if (errno.code === 'EACCES') {
               errorMessage += `Permission denied. You don't have write access to create a folder at this location. Try using a different path or check your permissions.`;
-            } else if (mkdirError.code === 'ENOTDIR') {
+            } else if (errno.code === 'ENOTDIR') {
               errorMessage += `A file already exists at this path or in the parent path. Cannot create a directory here. Please choose a different location.`;
-            } else if (mkdirError.code === 'ENOSPC') {
+            } else if (errno.code === 'ENOSPC') {
               errorMessage += `No space left on device. Your disk is full. Please free up some space and try again.`;
-            } else if (mkdirError.code === 'EROFS') {
+            } else if (errno.code === 'EROFS') {
               errorMessage += `The file system is read-only. Cannot create directories here. Please choose a writable location.`;
             } else {
-              errorMessage += `System error: ${mkdirError.message || mkdirError}. Please verify the path is valid and you have the necessary permissions.`;
+              const errStr = errno.message || String(mkdirError);
+              errorMessage += `System error: ${errStr}. Please verify the path is valid and you have the necessary permissions.`;
             }
 
             logger.debug(`[RUNNER RUN] Directory creation failed: ${errorMessage}`);

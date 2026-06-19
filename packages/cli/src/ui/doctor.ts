@@ -38,7 +38,7 @@ import packageJson from '../../package.json'
 /**
  * Get relevant environment information for debugging
  */
-export function getEnvironmentInfo(): Record<string, any> {
+export function getEnvironmentInfo(): Record<string, string | number | boolean | string[] | undefined> {
     return {
         PWD: process.env.PWD,
         MOBI_HOME: process.env.MOBI_HOME,

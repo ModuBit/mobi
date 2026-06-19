@@ -34,23 +34,31 @@ import { registerUploadHandlers } from '../uploads'
  * - 返回项目相对路径
  */
 
+// 测试用的 handler 返回结构（upload/delete 共用 success/path/error 字段）
+interface MockHandlerResult {
+    success: boolean
+    path?: string
+    error?: string
+}
+
 // 模拟的 RpcHandlerManager，用于测试
 class MockRpcHandlerManager {
-    handlers = new Map<string, (data: any) => any>()
+    handlers = new Map<string, (data: unknown) => unknown>()
 
     registerHandler<TReq, TRes>(
         method: string,
         handler: (data: TReq) => TRes | Promise<TRes>,
     ): void {
-        this.handlers.set(method, handler)
+        // 测试 mock：异构 handler 存入同一 Map，擦除泛型
+        this.handlers.set(method, handler as (data: unknown) => unknown)
     }
 
-    async call(method: string, data: any): Promise<any> {
+    async call(method: string, data: unknown): Promise<MockHandlerResult> {
         const handler = this.handlers.get(method)
         if (!handler) {
             throw new Error(`No handler registered for method: ${method}`)
         }
-        return handler(data)
+        return Promise.resolve(handler(data)).then((r) => r as MockHandlerResult)
     }
 }
 
@@ -107,7 +115,7 @@ describe('uploadFile handler', () => {
         expect(result.path).toBeTruthy()
 
         // 验证返回的是相对路径
-        const fullPath = resolve(tempDir, result.path)
+        const fullPath = resolve(tempDir, result.path!)
         expect(existsSync(fullPath)).toBe(true)
 
         // 验证路径结构包含 .mobi/uploads/YYYY-MM
@@ -148,7 +156,7 @@ describe('uploadFile handler', () => {
         expect(result.path).not.toMatch(/^\//)
 
         // 解析后应该等于实际文件路径
-        const fullPath = resolve(tempDir, result.path)
+        const fullPath = resolve(tempDir, result.path!)
         expect(existsSync(fullPath)).toBe(true)
     })
 
@@ -162,7 +170,7 @@ describe('uploadFile handler', () => {
         expect(result.success).toBe(true)
 
         // 文件名中不应包含 .. 或原始路径分隔符
-        const fullPath = resolve(tempDir, result.path)
+        const fullPath = resolve(tempDir, result.path!)
         // 验证文件确实在 uploads 目录内
         expect(fullPath).toContain('.mobi/uploads')
 
@@ -293,8 +301,8 @@ describe('uploadFile handler', () => {
         expect(result2.success).toBe(true)
 
         // 两个文件应该在同一个 YYYY-MM 目录
-        const dir1 = result1.path.split('/').slice(0, 3).join('/')
-        const dir2 = result2.path.split('/').slice(0, 3).join('/')
+        const dir1 = result1.path!.split('/').slice(0, 3).join('/')
+        const dir2 = result2.path!.split('/').slice(0, 3).join('/')
         expect(dir1).toBe(dir2)
     })
 })
@@ -324,7 +332,7 @@ describe('deleteUpload handler', () => {
         })
 
         expect(uploadResult.success).toBe(true)
-        const fullPath = resolve(tempDir, uploadResult.path)
+        const fullPath = resolve(tempDir, uploadResult.path!)
         expect(existsSync(fullPath)).toBe(true)
 
         // 删除
