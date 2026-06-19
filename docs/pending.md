@@ -544,7 +544,16 @@ VisibilityTracker、`/api/visibility` 路由、前端 visibilitychange 上报已
 
 ---
 
-## 21. Lint P1 清理遗留的签名/契约不一致
+## 21. ~~Lint P1 清理遗留的签名/契约不一致~~ ✅ 已解决（commit `8874481`，2026-06-19）
+
+**已修复**：
+- **I-1**：`generateLaunchdPlist` / `installLaunchd` 删 host/port 死参（plist 模板不用，靠 wrapper script 传递），与 `generateSystemdUnit()` 无参对齐。host/port 现只流向真正消费它的 `generateWrapperScript`。
+- **I-2**：`SidebarProjects.handleRenameConfirm` 删 `_sessionId` 死参（用 `renamingSessionId` state），`ProjectGroup.onRenameConfirm` 改无参，与 `SessionList` / `MobileProjectList` 统一。
+- **M-1/M-2/M-3**：按 reviewer 评估跳过（`Record<string,never>` 合格、`let stderr: string` 保留更优、catch 注释内联更好）。
+
+验证：typecheck 0 error、test 全过（shared 155 / cli 277 / web 623）、lint 101 不变（`_` 参数本被 `^_` 抑制，删除不改变 warning 数）。
+
+> 以下为修复前的原记录，保留备查：
 
 P1 lint 清理（commit `7c79400`~`b7a1fce`，lint 244→101）中，对 unused-vars 用 `_` 前缀掩盖了 2 处**既有的**签名/契约不一致（非 lint 引入，`_` 只是让它们不报警）。功能正常，但应单独排查：
 
