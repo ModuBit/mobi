@@ -23,9 +23,9 @@
 
 import { AsyncLock } from '@/utils/lock';
 
-interface QueueItem {
+interface QueueItem<T> {
     id: number;                    // Incremental ID for ordering
-    logMessage: any;               
+    logMessage: T;
     delayed: boolean;              // Whether this message should be delayed
     delayMs: number;               // Delay duration (e.g., 250ms)
     toolCallIds?: string[];        // Tool calls to track for early release
@@ -33,24 +33,24 @@ interface QueueItem {
     sent: boolean;                 // Whether message has been sent
 }
 
-export class OutgoingMessageQueue {
-    private queue: QueueItem[] = [];
+export class OutgoingMessageQueue<T = unknown> {
+    private queue: QueueItem<T>[] = [];
     private nextId = 1;
     private lock = new AsyncLock();
     private processTimer?: NodeJS.Timeout;
     private delayTimers = new Map<number, NodeJS.Timeout>();
-    
-    constructor(private sendFunction: (message: any) => void) {}
-    
+
+    constructor(private sendFunction: (message: T) => void) {}
+
     /**
      * Add message to queue
      */
-    enqueue(logMessage: any, options?: {
+    enqueue(logMessage: T, options?: {
         delay?: number,
         toolCallIds?: string[]
     }) {
         this.lock.inLock(async () => {
-            const item: QueueItem = {
+            const item: QueueItem<T> = {
                 id: this.nextId++,
                 logMessage,
                 delayed: !!options?.delay,

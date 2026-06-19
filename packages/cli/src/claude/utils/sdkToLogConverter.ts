@@ -122,7 +122,11 @@ export class SDKToLogConverter {
      * Convert SDK message to log format
      */
     convert(sdkMessage: SDKMessage): RawJSONLines | null {
-        const uuid = (sdkMessage as any).uuid || randomUUID()
+        // SDKMessage 联合中大部分成员有 uuid，但 SDKUserMessage.uuid 可选、少数成员无此字段
+        // 用 in 守卫安全访问
+        const uuid = ('uuid' in sdkMessage && typeof sdkMessage.uuid === 'string')
+            ? sdkMessage.uuid
+            : randomUUID()
         let parentUuid = this.lastUuid;
         let isSidechain = false;
         let parentToolUseId: string | undefined;
@@ -140,7 +144,7 @@ export class SDKToLogConverter {
         switch (sdkMessage.type) {
             case 'user': {
                 const userMsg = sdkMessage as SDKUserMessage
-                logMessage = {
+                const userLog: RawJSONLines = {
                     ...baseFields,
                     ...userMsg,
                     type: 'user',
@@ -152,13 +156,18 @@ export class SDKToLogConverter {
                         if (content.type === 'tool_result' && content.tool_use_id && this.responses?.has(content.tool_use_id)) {
                             const response = this.responses.get(content.tool_use_id)
                             if (response?.mode) {
-                                (logMessage as any).mode = response.mode
+                                // userLog 类型为 RawJSONLines 联合(含 user/assistant/summary/system)，
+                                // 仅 user variant 定义了 mode? 字段，故先按 type 守卫 narrow 再赋值
+                                if (userLog.type === 'user') {
+                                    userLog.mode = response.mode
+                                }
                             }
                         }
                     }
                 } else if (typeof userMsg.message.content === 'string') {
                     // Simple string content, no tool result
                 }
+                logMessage = userLog
                 break
             }
 
@@ -193,20 +202,24 @@ export class SDKToLogConverter {
             }
 
             case 'result': {
+                // RawJSONLines schema 没有 'result' discriminant，但前端日志保留 result 消息的所有 SDK 字段
+                // 通过 unknown 中转表达跨边界类型映射（运行时由 RawJSONLinesSchema.loose() 兜底）
                 logMessage = {
                     ...baseFields,
                     ...(sdkMessage as SDKResultMessage),
-                } as any
+                } as unknown as RawJSONLines
                 break
             }
 
-            default:
-                // Unknown message type - pass through with all fields
+            default: {
+                // 未知消息类型，透传所有字段（type 字段由 SDK 消息自带，显式覆盖确保被写入）
+                const unknownMsg = sdkMessage as { type: string } & Record<string, unknown>
                 logMessage = {
                     ...baseFields,
-                    ...sdkMessage,
-                    type: (sdkMessage as any).type // Override type last to ensure it's set
-                } as any
+                    ...unknownMsg,
+                    type: unknownMsg.type,
+                } as unknown as RawJSONLines
+            }
         }
 
         // Update last UUID for parent tracking
@@ -287,9 +300,10 @@ export class SDKToLogConverter {
             this.sidechainLastUUID.set(parentToolUseId, uuid)
         }
 
-        const logMessage: RawJSONLines = {
+        // message.content 为 unknown，permissions 字段是业务侧附加元数据，不影响 schema loose 校验
+        const logMessage = {
             ...this.buildBaseFields(uuid, parentUuid, isSidechain, parentToolUseId ?? undefined),
-            type: 'user',
+            type: 'user' as const,
             message: {
                 role: 'user',
                 content: [
@@ -306,7 +320,7 @@ export class SDKToLogConverter {
                 ]
             },
             toolUseResult: `Error: ${errorMessage}`
-        } as any
+        } as RawJSONLines
         
         // Update last UUID for tracking
         this.lastUuid = uuid

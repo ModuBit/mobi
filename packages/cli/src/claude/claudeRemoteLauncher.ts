@@ -27,6 +27,7 @@ import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode, type QueryControlRef } from "./loop";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
+import type { RawJSONLines } from "./types";
 import { classifyMessage } from '@mobi/shared';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
@@ -145,7 +146,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         const permissionHandler = new PermissionHandler(session);
         this.permissionHandler = permissionHandler;
 
-        const messageQueue = new OutgoingMessageQueue(
+        const messageQueue = new OutgoingMessageQueue<RawJSONLines>(
             (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
         );
 

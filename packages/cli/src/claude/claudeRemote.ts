@@ -28,6 +28,7 @@ import {
     type SDKAssistantMessage,
     type SDKResultMessage,
     type SDKPartialAssistantMessage,
+    type McpServerConfig,
 } from '@anthropic-ai/claude-agent-sdk'
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
@@ -206,34 +207,33 @@ function handleStreamEvent(
     const event = message.event;
     const parentToolUseId = message.parent_tool_use_id;
     const sdkUuid = message.uuid;
-    const eventIndex = (event as any).index;
 
     if (event.type === 'message_start') {
         snapshotSender.clearBuffers();
-        const msgStart = (event as any).message;
         snapshotSender.setSnapshotOpts({
             parentToolUseId: parentToolUseId || undefined,
-            model: msgStart?.model || fallbackModel,
+            model: event.message.model || fallbackModel,
             sdkUuid,
         });
     } else if (event.type === 'message_stop') {
         snapshotSender.flush();
     } else if (event.type === 'content_block_start') {
-        const block = (event as any).content_block;
+        // narrow 后 event.index 必为 number
+        const block = event.content_block;
         if (block?.type === 'text') {
-            snapshotSender.startBlock(eventIndex, 'text');
+            snapshotSender.startBlock(event.index, 'text');
         } else if (block?.type === 'thinking') {
-            snapshotSender.startBlock(eventIndex, 'thinking');
+            snapshotSender.startBlock(event.index, 'thinking');
         }
     } else if (event.type === 'content_block_delta') {
-        const delta = (event as any).delta;
+        const delta = event.delta;
         if (delta?.type === 'text_delta') {
-            snapshotSender.append(eventIndex, delta.text);
+            snapshotSender.append(event.index, delta.text);
         } else if (delta?.type === 'thinking_delta') {
-            snapshotSender.append(eventIndex, delta.thinking);
+            snapshotSender.append(event.index, delta.thinking);
         }
     } else if (event.type === 'content_block_stop') {
-        snapshotSender.endBlock(eventIndex);
+        snapshotSender.endBlock(event.index);
     }
 }
 
@@ -407,7 +407,7 @@ export async function claudeRemote(opts: {
     // Fixed parameters
     sessionId: string | null,
     path: string,
-    mcpServers?: Record<string, any>,
+    mcpServers?: Record<string, McpServerConfig>,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
     allowedTools: string[],
