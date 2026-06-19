@@ -20,6 +20,7 @@
  */
 
 import { z } from "zod";
+import type { ClaudePermissionMode, EffortLevel } from "@mobi/shared/types";
 
 // Usage statistics for assistant messages - used in apiSession.ts
 export const UsageSchema = z.object({
@@ -95,3 +96,32 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
 ]);
 
 export type RawJSONLines = z.infer<typeof RawJSONLinesSchema>;
+
+// ============ 会话模式相关类型（从 loop.ts 抽出，消除循环依赖）============
+// 抽出原因：session/claudeRemote/claudeRemoteLauncher/permissionHandler/runClaude
+// 从 loop.ts 反向 import 这些类型，与 loop→下游 的正向调用互引成环（7 条）。
+// 下沉到本文件后，下游改从 ./types import，loop 不再被反向引用，环断开。
+// 详见 docs/temp/lint-audit-report.md §九 P3
+
+// claude 模块权限模式别名（绑定 Claude；保留可演化性：未来支持 non-claude agent 时分化）
+export type PermissionMode = ClaudePermissionMode
+
+/** SDK Query 动态控制引用，用于 setModel/setPermissionMode */
+export type QueryControlRef = {
+  current: {
+    setPermissionMode: (m: PermissionMode) => Promise<void>
+    setModel: (m?: string) => Promise<void>
+    applyFlagSettings: (settings: Record<string, unknown>) => Promise<void>
+  } | null
+}
+
+export interface EnhancedMode {
+  permissionMode: PermissionMode;
+  model?: string;
+  effort?: EffortLevel;
+  fallbackModel?: string;
+  customSystemPrompt?: string;
+  appendSystemPrompt?: string;
+  allowedTools?: string[];
+  disallowedTools?: string[];
+}

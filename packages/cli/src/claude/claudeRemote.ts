@@ -15,7 +15,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { EnhancedMode } from "./loop";
+import { EnhancedMode } from "./types";
 import {
     startup,
     query,

@@ -21,8 +21,7 @@ import { AgentSessionBase } from '@/agent/sessionBase';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionModel } from '@/api/types';
 import type { EffortLevel } from '@mobi/shared';
-import type { EnhancedMode } from './loop';
-import type { PermissionMode } from './loop';
+import type { EnhancedMode, PermissionMode } from './types';
 import type { LocalLaunchExitReason } from '@/agent/localLaunchPolicy';
 
 type LocalLaunchFailure = {

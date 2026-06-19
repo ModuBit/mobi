@@ -28,7 +28,7 @@ import type { SDKUIHints } from "@mobi/shared";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { deepEqual } from "@/utils/deepEqual";
-import { PermissionMode } from "../loop";
+import { PermissionMode } from "../types";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { delay } from "@/utils/time";
 import { isObject } from "@mobi/shared";

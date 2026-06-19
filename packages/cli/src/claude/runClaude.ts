@@ -17,7 +17,7 @@
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
 import { AgentState, SessionModel } from '@/api/types';
-import { EnhancedMode, PermissionMode, type QueryControlRef } from './loop';
+import { EnhancedMode, PermissionMode, type QueryControlRef } from './types';
 import { MessageQueue } from '@/utils/MessageQueue';
 import { hashObject } from '@/utils/deterministicJson';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';

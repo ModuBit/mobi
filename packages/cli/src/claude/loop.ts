@@ -23,30 +23,9 @@ import { claudeLocalLauncher } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { SessionModel } from "@/api/types"
-import type { ClaudePermissionMode, EffortLevel } from "@mobi/shared/types"
+import type { EffortLevel } from "@mobi/shared/types"
+import { PermissionMode, QueryControlRef, type EnhancedMode } from "./types"
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk"
-
-export type PermissionMode = ClaudePermissionMode
-
-/** SDK Query 动态控制引用，用于 setModel/setPermissionMode */
-export type QueryControlRef = {
-    current: {
-        setPermissionMode: (m: PermissionMode) => Promise<void>
-        setModel: (m?: string) => Promise<void>
-        applyFlagSettings: (settings: Record<string, unknown>) => Promise<void>
-    } | null
-}
-
-export interface EnhancedMode {
-    permissionMode: PermissionMode;
-    model?: string;
-    effort?: EffortLevel;
-    fallbackModel?: string;
-    customSystemPrompt?: string;
-    appendSystemPrompt?: string;
-    allowedTools?: string[];
-    disallowedTools?: string[];
-}
 
 interface LoopOptions {
     path: string
