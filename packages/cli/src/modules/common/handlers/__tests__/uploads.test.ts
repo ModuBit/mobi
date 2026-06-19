@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { join, resolve, relative } from 'path'
+import { join, resolve } from 'path'
 import { existsSync, readFileSync, rmSync, mkdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { getUploadsDir } from '@/constants/uploadPaths'

@@ -19,14 +19,13 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
 import type { SDKUIHints } from '@mobi/shared'
 import { memo, useMemo, useState } from 'react'
-import { Button, Input, Spin, theme as antTheme, Typography } from 'antd'
-import { CheckOutlined, CloseOutlined, StopOutlined } from '@ant-design/icons'
+import { Button, Input, Spin, theme as antTheme } from 'antd'
+import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { getInputStringAny, getCustomPermissionTitleKey, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 
-const { Text } = Typography
 const { useToken } = antTheme
 
 /**

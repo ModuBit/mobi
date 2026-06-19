@@ -23,20 +23,16 @@ import { TeamDeleteView } from '@/components/tool-card/views/TeamDeleteView'
 import { SendMessageView } from '@/components/tool-card/views/SendMessageView'
 import { isObject, safeStringify } from '@mobi/shared'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
-import { theme as antTheme, Typography } from 'antd'
+import { theme as antTheme } from 'antd'
 import { formatLineRangeStats } from '@/components/tool-card/views/lineNumberUtils'
-import { basename, resolveDisplayPath } from '@/core/utils/path'
+import { resolveDisplayPath } from '@/core/utils/path'
 import { Markdown } from '@/components/ui/Markdown'
 import { DiffView } from '@/components/tool-card/views/DiffView'
 import { ToolViewPanel } from '@/components/tool-card/views/ToolViewPanel'
 
-import type { ToolPermission } from '@/domain/tool/types'
-
-import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { parseAskUserQuestionInput, normalizeAnswers, parseAnswersFromResultText } from '@/domain/tool/askUserQuestion'
 import { useTranslation } from 'react-i18next'
 
-const { Text } = Typography
 const { useToken } = antTheme
 
 function parseToolUseError(message: string): { isToolUseError: boolean; errorMessage: string | null } {
@@ -110,10 +106,6 @@ function looksLikeHtml(text: string): boolean {
     const trimmed = text.trimStart()
     return trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html') || trimmed.startsWith('<div') || trimmed.startsWith('<span')
 }
-function looksLikeJson(text: string): boolean {
-    const trimmed = text.trim()
-    return (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))
-}
 // 递归解析多层编码的 JSON（如 JSON 字符串内嵌 JSON 字符串）
 // 最多 unwrap 3 层，防止死循环
 function tryParseJson(text: string, maxDepth = 3): { parsed: unknown; depth: number } | null {
@@ -137,7 +129,6 @@ function tryParseJson(text: string, maxDepth = 3): { parsed: unknown; depth: num
 }
 
 function renderText(text: string, opts: { mode: 'markdown' | 'code' | 'auto'; language?: string } = { mode: 'auto' }) {
-    const { token } = useToken()
     if (opts.mode === 'code') {
         return <CodeBlock code={text} language={opts.language ?? 'text'} />
     }

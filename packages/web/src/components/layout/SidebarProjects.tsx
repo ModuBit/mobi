@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import React, { useState, useMemo, useCallback, useEffect, type ReactNode } from 'react'
-import { App, Badge, Input, Modal, Tooltip, message as messageApi, theme as antTheme } from 'antd'
+import React, { useState, useMemo, useCallback, useEffect } from 'react'
+import { App, Badge, Input, Modal, Tooltip, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { useNavigate, useParams } from '@tanstack/react-router'
@@ -543,7 +543,7 @@ export function SidebarProjects() {
     }, [queryClient])
 
     // 确认重命名
-    const handleRenameConfirm = useCallback(async (sessionId: string) => {
+    const handleRenameConfirm = useCallback(async (_sessionId: string) => {
         if (!renameValue.trim() || !renamingSessionId) {
             messageApi.error(t('session.actions.nameRequired'))
             return

@@ -35,7 +35,7 @@ export function claudeCheckSession(sessionId: string, path: string) {
     const hasGoodMessage = !!sessionData.find((v) => {
         try {
             return typeof JSON.parse(v).uuid === 'string'
-        } catch (e) {
+        } catch (_e) {
             return false;
         }
     });

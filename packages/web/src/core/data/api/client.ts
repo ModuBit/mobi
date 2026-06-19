@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, MessagesResponse, SessionGroup, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse, ListFilesResponse } from './types'
+import type { Session, DecryptedMessage, MessagesResponse, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse, ListFilesResponse } from './types'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null

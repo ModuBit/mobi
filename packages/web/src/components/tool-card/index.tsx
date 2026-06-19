@@ -14,28 +14,18 @@
  * limitations under the License.
  */
 
-import type { ToolInfo, ToolCallBlock } from '@/domain/tool/types'
+import type { ToolCallBlock } from '@/domain/tool/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { isObject, safeStringify } from '@mobi/shared'
-import { Card, Typography, Tag, Modal, Button, Collapse, theme as antTheme } from 'antd'
+import { Card, Typography, Modal, theme as antTheme } from 'antd'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import {
-    CodeOutlined,
     CheckCircleOutlined,
     CloseCircleOutlined,
     LoadingOutlined,
-    FileTextOutlined,
-    EditOutlined,
-    SearchOutlined,
-    GlobalOutlined,
-    QuestionCircleOutlined,
-    BulbOutlined,
-    RocketOutlined,
-    ToolOutlined,
     LockOutlined,
-    PlayCircleOutlined,
     RightOutlined
 } from '@ant-design/icons'
 import { PermissionFooter } from './PermissionFooter'

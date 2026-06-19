@@ -81,7 +81,7 @@ function startEllipsis(path: string, maxLen = 40): string {
  */
 export function NewSession(props: NewSessionProps) {
     const { t } = useTranslation()
-    const { data: sessionsData } = useSessions()
+    useSessions()
 
     const { machines: fetchedMachines, isLoading: machinesLoading } = useMachines()
     const machines = props.machines ?? fetchedMachines

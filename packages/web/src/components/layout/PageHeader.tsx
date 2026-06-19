@@ -15,11 +15,9 @@
  */
 
 import type { ReactNode } from 'react'
-import { Layout, theme as antTheme } from 'antd'
+import { Layout } from 'antd'
 import styled from '@emotion/styled'
 import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
-
-const { useToken } = antTheme
 
 /**
  * 页面头部左侧区域

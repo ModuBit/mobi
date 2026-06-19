@@ -19,7 +19,7 @@
  * Provides endpoints for listing sessions, stopping sessions, and runner shutdown
  */
 
-import fastify, { FastifyInstance } from 'fastify';
+import fastify from 'fastify';
 import { z } from 'zod';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { logger } from '@/ui/logger';

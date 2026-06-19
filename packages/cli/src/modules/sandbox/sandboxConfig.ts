@@ -78,7 +78,7 @@ export function loadSandboxConfig(): SandboxConfig {
         denyWrite: parsed.filesystem?.denyWrite ?? defaults.filesystem.denyWrite,
       },
     }
-  } catch (e) {
+  } catch (_e) {
     logger.warn(`[sandboxConfig] 读取配置失败: ${CONFIG_PATH}，使用默认配置`)
     return defaults
   }

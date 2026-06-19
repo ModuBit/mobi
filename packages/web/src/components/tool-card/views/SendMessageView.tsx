@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Typography } from 'antd'
+import { theme as antTheme } from 'antd'
 import { ArrowRight, Mail } from 'lucide-react'
 import { getField, isObject } from '@mobi/shared'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { extractTextFromResult } from '@/components/tool-card/views/_results'
 
-const { Text } = Typography
 const { useToken } = antTheme
 
 /** 从 result 中解析出结构化对象 */

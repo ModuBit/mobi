@@ -28,7 +28,6 @@ import {
     type RpcDeleteUploadResponse,
     type RpcListDirectoryResponse,
     type RpcRefreshMetadataResponse,
-    type RpcPathExistsResponse,
     type RpcReadFileResponse,
     type RpcUploadFileResponse
 } from './rpcGateway'

@@ -38,7 +38,7 @@ export type RunnerLifecycle = {
 export function createRunnerLifecycle(options: RunnerLifecycleOptions): RunnerLifecycle {
     let exitCode = 0
     let archiveReason = 'User terminated'
-    let cleanupStarted = false
+    let _cleanupStarted = false
     let cleanupPromise: Promise<void> | null = null
 
     const logPrefix = `[${options.logTag}]`
@@ -62,7 +62,7 @@ export function createRunnerLifecycle(options: RunnerLifecycleOptions): RunnerLi
             return cleanupPromise
         }
 
-        cleanupStarted = true
+        _cleanupStarted = true
         cleanupPromise = (async () => {
             logger.debug(`${logPrefix} Cleanup start`)
             restoreTerminalState()

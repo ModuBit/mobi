@@ -43,7 +43,14 @@ module.exports = tseslint.config(
       'mobi/enforce-license-header': 'warn',
 
       // 已有代码大量触发，暂时降为 warn，后续逐步修复
-      '@typescript-eslint/no-unused-vars': 'warn',
+      // 约定：以 _ 开头的变量/参数/解构视为「有意未用」，不再报警（TS 标准 convention）
+      '@typescript-eslint/no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+        destructuredArrayIgnorePattern: '^_',
+        ignoreRestSiblings: true,
+      }],
 
       // 允许 any 类型（已有代码中大量使用）
       '@typescript-eslint/no-explicit-any': 'warn',

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import type { ReactNode } from 'react'
 import { isObject } from '@mobi/shared'
 
 export type ChecklistStatus = 'pending' | 'in_progress' | 'completed'

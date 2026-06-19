@@ -134,7 +134,7 @@ export async function findAllMobiProcesses(): Promise<MobiProcess[]> {
       type: c.type,
       profile: profiles[i],
     }));
-  } catch (error) {
+  } catch (_error) {
     return [];
   }
 }

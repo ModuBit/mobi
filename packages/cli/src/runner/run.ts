@@ -15,7 +15,6 @@
  */
 
 import fs from 'fs/promises';
-import os from 'os';
 
 import { ApiClient } from '@/api/api';
 import { TrackedSession } from './types';
@@ -34,7 +33,6 @@ import { isRetryableConnectionError } from '@/utils/errorUtils';
 import { cleanupRunnerState, getInstalledCliMtimeMs, isRunnerRunningCurrentlyInstalledMobiVersion, stopRunner } from './controlClient';
 import { startRunnerControlServer } from './controlServer';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
-import { join } from 'path';
 import { buildMachineMetadata } from '@/agent/sessionFactory';
 
 export async function startRunner(): Promise<void> {
@@ -208,8 +206,8 @@ export async function startRunner(): Promise<void> {
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[RUNNER RUN] Spawning session', options);
 
-      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
-      const agent = options.agent ?? 'claude';
+      const { directory, sessionId: _sessionId, machineId: _machineId, approvedNewDirectoryCreation = true } = options;
+      const _agent = options.agent ?? 'claude';
       const effort = options.effort;
       const yolo = options.yolo === true;
       const sessionType = options.sessionType ?? 'simple';
@@ -224,7 +222,7 @@ export async function startRunner(): Promise<void> {
         try {
           await fs.access(directory);
           logger.debug(`[RUNNER RUN] Directory exists: ${directory}`);
-        } catch (error) {
+        } catch (_error) {
           logger.debug(`[RUNNER RUN] Directory doesn't exist, creating: ${directory}`);
 
           // Check if directory creation is approved
@@ -267,7 +265,7 @@ export async function startRunner(): Promise<void> {
         try {
           await fs.access(directory);
           logger.debug(`[RUNNER RUN] Worktree base directory exists: ${directory}`);
-        } catch (error) {
+        } catch (_error) {
           logger.debug(`[RUNNER RUN] Worktree base directory missing: ${directory}`);
           return {
             type: 'error',

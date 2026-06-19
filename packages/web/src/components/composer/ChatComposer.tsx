@@ -26,14 +26,13 @@ import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
-import type { SessionMetadataSummary, UploadFileResponse } from '@/core/data/api/types'
+import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
 import { useMentionInteraction } from './useMentionInteraction'
 import { useSlashCommandInteraction } from './useSlashCommandInteraction'
 import { useAttachmentHandling } from './useAttachmentHandling'
-import type { FileAttachment } from '@/core/lib/fileAttachments'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from './useDirectoryCommands'
 import { useSDKMetadata, type ModelOption } from '@/core/data/hooks/queries/useSDKMetadata'
@@ -284,7 +283,8 @@ export function ChatComposer(props: ChatComposerProps) {
 
     // 附件管理（共享 hook）
     const {
-        attachments, setAttachments, isDragOver,
+        attachments,
+        isDragOver,
         handleAttach, handleRemoveAttachment, handlePaste,
         handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
         resetAttachments,

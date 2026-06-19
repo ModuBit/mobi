@@ -20,7 +20,7 @@
  */
 
 import { logger as defaultLogger } from '@/ui/logger'
-import type { RpcHandler, RpcHandlerConfig, RpcHandlerMap, RpcRequest, RpcHandlerOptions } from './types'
+import type { RpcHandler, RpcHandlerConfig, RpcRequest, RpcHandlerOptions } from './types'
 import type { Socket } from 'socket.io-client'
 
 function safeJsonParse(value: string): unknown {

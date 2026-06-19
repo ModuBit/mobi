@@ -102,7 +102,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
     const [actionSheetSessionId, setActionSheetSessionId] = useState<string | null>(null)
     const [actionSheetLoadingKey, setActionSheetLoadingKey] = useState<SessionActionKey | null>(null)
     // PC 菜单 loading 状态
-    const [menuLoadingKey, setMenuLoadingKey] = useState<SessionActionKey | null>(null)
+    const [, setMenuLoadingKey] = useState<SessionActionKey | null>(null)
     // 长按相关
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
     const lastTouchedKey = useRef<string | null>(null)

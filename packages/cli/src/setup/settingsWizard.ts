@@ -16,7 +16,6 @@
 
 import chalk from 'chalk'
 import { randomBytes } from 'node:crypto'
-import { configuration } from '@/configuration'
 import { readSettings, updateSettings } from '@/persistence'
 import { askYesNo, askInput, askPort } from './prompts'
 

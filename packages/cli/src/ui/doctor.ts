@@ -26,10 +26,9 @@ import { spawn } from 'node:child_process'
 import { configuration } from '@/configuration'
 import { readSettings } from '@/persistence'
 import { checkIfRunnerRunningAndCleanupStaleState } from '@/runner/controlClient'
-import { findRunawayMobiProcesses, findAllMobiProcesses } from '@/runner/doctor'
+import { findAllMobiProcesses } from '@/runner/doctor'
 import { readRunnerState } from '@/persistence'
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isBunCompiled, projectPath, runtimePath } from '@/projectPath'
 import { getDefaultClaudeCodePath } from '@/claude/sdk/utils'
@@ -147,12 +146,11 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
             // Hide cliApiToken in output for security
             const displaySettings = { ...settings, cliApiToken: settings.cliApiToken ? '***' : undefined };
             console.log(chalk.gray(JSON.stringify(displaySettings, null, 2)));
-        } catch (error) {
+        } catch (_error) {
             console.log(chalk.bold('\n📄 Settings:'));
             console.log(chalk.red('❌ Failed to read settings'));
             settings = {};
         }
-
         // Authentication status (direct-connect)
         console.log(chalk.bold('\n🔐 Direct Connect Auth'));
         const envToken = process.env.CLI_API_TOKEN;
@@ -240,7 +238,7 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
             console.log(chalk.bold('\n💡 Process Management'));
             console.log(chalk.gray('To clean up runaway processes: mobi doctor clean [profile]'));
         }
-    } catch (error) {
+    } catch (_error) {
         console.log(chalk.red('❌ Error checking runner status'));
     }
 

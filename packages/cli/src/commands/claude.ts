@@ -237,7 +237,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
             const { runClaude } = await import('@/claude/runClaude')
             await runClaude(options)
         } catch (error) {
-            const { message, messageLower, axiosCode, httpStatus, responseErrorText, serverProtocolVersion } = extractErrorInfo(error)
+            const { message, messageLower, axiosCode: _axiosCode, httpStatus, responseErrorText, serverProtocolVersion } = extractErrorInfo(error)
 
             // 连接错误 - 降级到本地模式
             if (isConnectionError(error)) {

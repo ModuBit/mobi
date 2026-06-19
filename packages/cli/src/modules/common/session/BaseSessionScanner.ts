@@ -176,13 +176,13 @@ export abstract class BaseSessionScanner<TEvent> {
             const { events, nextCursor } = await this.parseSessionFile(filePath, cursor);
             const newEvents: TEvent[] = [];
             const newKeys: string[] = [];
-            let skippedCount = 0;
+            let _skippedCount = 0;
             for (const entry of events) {
                 const key = this.generateEventKey(entry.event, { filePath, lineIndex: entry.lineIndex });
                 if (this.processedEventKeys.has(key)) {
                     // 跳过已处理的事件，防止重复处理
                     this.recordProcessedKey(key);
-                    skippedCount++;
+                    _skippedCount++;
                     continue;
                 }
                 newKeys.push(key);

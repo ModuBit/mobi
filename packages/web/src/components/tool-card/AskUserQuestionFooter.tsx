@@ -17,16 +17,15 @@
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Button, theme as antTheme, Typography, Input, Tabs } from 'antd'
+import { Button, theme as antTheme, Input, Tabs } from 'antd'
 import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
 import { Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 import { OptionPreview } from './OptionPreview'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
 
-const { Text } = Typography
 const { useToken } = antTheme
 const { TextArea } = Input
 

@@ -211,7 +211,7 @@ async function readSessionLog(filePath: string, startLine: number): Promise<{ ev
     let file: string;
     try {
         file = await readFile(filePath, 'utf-8');
-    } catch (error) {
+    } catch (_error) {
         logger.debug(`[SESSION_SCANNER] Session file not found: ${filePath}`);
         return { events: [], totalLines: startLine };
     }

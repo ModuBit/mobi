@@ -37,12 +37,6 @@ import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { Folder, Terminal } from 'lucide-react'
 import styled from '@emotion/styled'
 
-const ContentArea = styled.div`
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-`
-
 const ChatWrapper = styled.div`
     position: absolute;
     inset: 0;

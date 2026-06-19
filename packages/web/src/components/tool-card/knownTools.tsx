@@ -144,14 +144,6 @@ function formatChecklistCount(items: ChecklistItem[], noun: string): string | nu
     return `${items.length} ${noun}${items.length === 1 ? '' : 's'}`
 }
 
-function snakeToTitleWithSpaces(value: string): string {
-    return value
-        .split('_')
-        .filter((part) => part.length > 0)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-        .join(' ')
-}
-
 function formatMCPTitle(toolName: string): string {
     const { server, tool } = parseMCPToolName(toolName)!
     const display = formatMCPServerDisplay(server)

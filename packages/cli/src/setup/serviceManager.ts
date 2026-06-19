@@ -81,7 +81,7 @@ exec ${mobiBin} runner start-sync
 /**
  * 生成 macOS launchd plist
  */
-function generateLaunchdPlist(host: string, port: number): string {
+function generateLaunchdPlist(_host: string, _port: number): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
