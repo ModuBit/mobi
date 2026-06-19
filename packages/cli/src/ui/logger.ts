@@ -247,7 +247,7 @@ class Logger {
 }
 
 // Will be initialized immideately on startup
-export let logger = new Logger()
+export const logger = new Logger()
 
 /**
  * Information about a log file on disk

@@ -584,7 +584,7 @@ export async function claudeRemote(opts: {
         return
     }
 
-    let isCompactCommand = initialResult.isCompact;
+    const isCompactCommand = initialResult.isCompact;
 
     // Track running state
     let running = false;
@@ -599,7 +599,7 @@ export async function claudeRemote(opts: {
     };
 
     // Push initial message
-    let messages = new PushableAsyncIterable<SDKUserMessage>();
+    const messages = new PushableAsyncIterable<SDKUserMessage>();
     messages.push({
         type: 'user',
         message: {

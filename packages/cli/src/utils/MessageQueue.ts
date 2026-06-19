@@ -256,8 +256,8 @@ export class MessageQueue<T> {
 
         const firstItem = this.queue[0];
         const sameModeMessages: string[] = [];
-        let mode = firstItem.mode;
-        let isolate = firstItem.isolate ?? false;
+        const mode = firstItem.mode;
+        const isolate = firstItem.isolate ?? false;
         const targetModeHash = firstItem.modeHash;
 
         // If the first message requires isolation, only process it alone

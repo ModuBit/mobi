@@ -36,7 +36,7 @@ export function registerServiceWorker(onUpdate: UpdateCallback): () => void {
     const swOptions: RegistrationOptions = isDev ? { type: 'module' } : {}
 
     // 记录是否有页面控制器（区分首次安装和更新）
-    let hadController = !!navigator.serviceWorker.controller
+    const hadController = !!navigator.serviceWorker.controller
     // 标记是否已发送 SKIP_WAITING（只在主动更新时监听 controllerchange）
     let skipWaitingSent = false
 

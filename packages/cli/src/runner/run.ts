@@ -48,7 +48,7 @@ export async function startRunner(): Promise<void> {
   // In case the setup malfunctions - our signal handlers will not properly
   // shut down. We will force exit the process with code 1.
   let requestShutdown: (source: 'mobi-app' | 'mobi-cli' | 'os-signal' | 'exception', errorMessage?: string) => void;
-  let resolvesWhenShutdownRequested = new Promise<({ source: 'mobi-app' | 'mobi-cli' | 'os-signal' | 'exception', errorMessage?: string })>((resolve) => {
+  const resolvesWhenShutdownRequested = new Promise<({ source: 'mobi-app' | 'mobi-cli' | 'os-signal' | 'exception', errorMessage?: string })>((resolve) => {
     requestShutdown = (source, errorMessage) => {
       logger.debug(`[RUNNER RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
 

@@ -168,12 +168,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 跟踪 exit_plan_mode 工具调用的 ID，用于在收到 tool_result 时检测并处理 plan mode 退出逻辑
         // 当用户批准 plan mode 退出时，permissionHandler 会故意返回 deny + PLAN_FAKE_REJECT 来"欺骗" SDK
         // 此处需要拦截 PLAN_FAKE_REJECT 并替换为正常结果，同时 SDK 会处理注入的 PLAN_FAKE_RESTART 消息
-        let planModeToolCalls = new Set<string>();
+        const planModeToolCalls = new Set<string>();
         // 跟踪 enter_plan_mode 工具调用，成功后同步 permissionMode 为 plan
-        let enterPlanModeToolCalls = new Set<string>();
+        const enterPlanModeToolCalls = new Set<string>();
         // 跟踪所有正在执行中的工具调用，记录 parentToolCallId 用于处理嵌套工具调用场景
         // 工具开始执行时添加，收到 tool_result 时移除
-        let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
+        const ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
 
         function onMessage(message: SDKMessage) {
             // 重置空闲计时器（Agent 输出）
@@ -183,9 +183,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             permissionHandler.onMessage(message);
 
             if (message.type === 'assistant') {
-                let umessage = message as SDKAssistantMessage;
+                const umessage = message as SDKAssistantMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                    for (let c of umessage.message.content) {
+                    for (const c of umessage.message.content) {
                         if (c.type === 'tool_use') {
                             logger.debug('[remote]: detected tool use ' + c.id! + ' parent: ' + umessage.parent_tool_use_id);
                             ongoingToolCalls.set(c.id!, { parentToolCallId: umessage.parent_tool_use_id ?? null });
@@ -202,9 +202,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 }
             }
             if (message.type === 'user') {
-                let umessage = message as SDKUserMessage;
+                const umessage = message as SDKUserMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                    for (let c of umessage.message.content) {
+                    for (const c of umessage.message.content) {
                         if (c.type === 'tool_result' && c.tool_use_id) {
                             ongoingToolCalls.delete(c.tool_use_id);
                             messageQueue.releaseToolCall(c.tool_use_id);
@@ -216,7 +216,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             let msg = message;
 
             if (message.type === 'user') {
-                let umessage = message as SDKUserMessage;
+                const umessage = message as SDKUserMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
                     msg = {
                         ...umessage,
@@ -322,9 +322,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
 
             if (message.type === 'assistant') {
-                let umessage = message as SDKAssistantMessage;
+                const umessage = message as SDKAssistantMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                    for (let c of umessage.message.content) {
+                    for (const c of umessage.message.content) {
                         if (c.type === 'tool_use' && c.name === 'Task' && c.input && typeof (c.input as any).prompt === 'string') {
                             const logMessage2 = sdkToLogConverter.convertSidechainUserMessage(c.id!, (c.input as any).prompt);
                             if (logMessage2) {
@@ -394,13 +394,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         nextMessage: async () => {
                             if (pending) {
-                                let p = pending;
+                                const p = pending;
                                 pending = null;
                                 permissionHandler.handleModeChange(p.mode.permissionMode);
                                 return p;
                             }
 
-                            let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                            const msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
 
                             if (msg) {
                                 // 重置空闲计时器（用户发送消息）
@@ -471,7 +471,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 } finally {
                     logger.debug('[remote]: launch finally');
 
-                    for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
+                    for (const [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
                         const converted = sdkToLogConverter.generateInterruptedToolResult(toolCallId, parentToolCallId);
                         if (converted) {
                             logger.debug('[remote]: terminating tool call ' + toolCallId + ' parent: ' + parentToolCallId);

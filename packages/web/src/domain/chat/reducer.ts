@@ -70,7 +70,7 @@ export function reduceChatBlocks(
     const emittedTitleChangeToolUseIds = new Set<string>()
     const reducerContext = { permissionsById, groups, consumedGroupIds, titleChangesByToolUseId, emittedTitleChangeToolUseIds, hiddenToolUseIds }
     const rootResult = reduceTimeline(root, reducerContext)
-    let hasReadyEvent = rootResult.hasReadyEvent
+    const hasReadyEvent = rootResult.hasReadyEvent
 
     // 只在没有工具调用/结果时创建仅权限的工具卡片（仅 pending 状态）
     // 同时跳过比当前视图中最旧消息更早的权限，避免分页时混合新旧工具卡片

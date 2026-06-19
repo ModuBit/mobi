@@ -96,7 +96,7 @@ export class InvalidateSync {
      * - 遍历并执行所有 pending 回调，然后清空队列
      */
     private _notifyPendings = () => {
-        for (let pending of this._pendings) {
+        for (const pending of this._pendings) {
             pending();
         }
         this._pendings = [];

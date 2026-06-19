@@ -229,7 +229,7 @@ async function readSessionLog(filePath: string, startLine: number): Promise<{ ev
             if (l.trim() === '') {
                 continue;
             }
-            let message = JSON.parse(l);
+            const message = JSON.parse(l);
             
             // Silently skip known internal Claude Code events
             // These are state/tracking events, not conversation messages
@@ -237,7 +237,7 @@ async function readSessionLog(filePath: string, startLine: number): Promise<{ ev
                 continue;
             }
             
-            let parsed = RawJSONLinesSchema.safeParse(message);
+            const parsed = RawJSONLinesSchema.safeParse(message);
             if (!parsed.success) {
                 // Unknown message types are silently skipped.
                 continue;
