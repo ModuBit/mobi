@@ -21,8 +21,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install
-      # warning budget：超过基线 101 即失败，防止 warning 回潮
-      - run: bun run lint --max-warnings 101
+      # warning budget：P2 收窄后清零（any 97 全收窄 + control-regex 4 抑制），零容忍防回潮
+      - run: bun run lint --max-warnings 0
 
   test:
     runs-on: ubuntu-latest
