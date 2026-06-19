@@ -124,8 +124,8 @@ export async function updateSettings(
       // 'wx' = create exclusively, fail if exists (cross-platform compatible)
       fileHandle = await open(lockFile, 'wx');
       break;
-    } catch (err: any) {
-      if (err.code === 'EEXIST') {
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && (err as { code?: unknown }).code === 'EEXIST') {
         // Lock file exists, wait and retry
         attempts++;
         await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_INTERVAL_MS));
@@ -250,8 +250,8 @@ export async function acquireRunnerLock(
       // Write PID to lock file for debugging
       await fileHandle.writeFile(String(process.pid));
       return fileHandle;
-    } catch (error: any) {
-      if (error.code === 'EEXIST') {
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && (error as { code?: unknown }).code === 'EEXIST') {
         // Lock file exists, check if process is still running
         try {
           const lockPid = readFileSync(configuration.runnerLockFile, 'utf-8').trim();

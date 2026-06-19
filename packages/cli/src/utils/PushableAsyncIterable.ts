@@ -123,7 +123,7 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
     /**
      * AsyncIterableIterator return implementation
      */
-    async return(_value?: any): Promise<IteratorResult<T>> {
+    async return(_value?: unknown): Promise<IteratorResult<T>> {
         this.end()
         return { done: true, value: undefined }
     }
@@ -131,7 +131,7 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
     /**
      * AsyncIterableIterator throw implementation
      */
-    async throw(e: any): Promise<IteratorResult<T>> {
+    async throw(e: unknown): Promise<IteratorResult<T>> {
         this.setError(e instanceof Error ? e : new Error(String(e)))
         throw this.error
     }

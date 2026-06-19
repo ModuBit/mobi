@@ -37,7 +37,7 @@ export interface DeterministicJsonOptions {
     /** Whether to sort array contents (default: false) */
     sortArrays?: boolean;
     /** Custom replacer function */
-    replacer?: (key: string, value: any) => any;
+    replacer?: (key: string, value: unknown) => unknown;
     /** Whether to include Symbol properties (default: false) */
     includeSymbols?: boolean;
 }
@@ -50,7 +50,7 @@ export interface DeterministicJsonOptions {
  * @returns Deterministic JSON string
  */
 export function deterministicStringify(
-    obj: any,
+    obj: unknown,
     options: DeterministicJsonOptions = {}
 ): string {
     const {
@@ -60,9 +60,9 @@ export function deterministicStringify(
         includeSymbols = false
     } = options;
 
-    const seen = new WeakSet();
+    const seen = new WeakSet<object>();
 
-    function processValue(value: any, key?: string): any {
+    function processValue(value: unknown, key?: string): unknown {
         // Handle replacer function
         if (replacer && key !== undefined) {
             value = replacer(key, value);
@@ -98,17 +98,21 @@ export function deterministicStringify(
             return value.toString() + 'n';
         }
 
+        // 排除所有 primitive 后,value 必为 object。断言以继续属性访问
+        if (typeof value !== 'object') return undefined;
+        const obj = value as Record<string, unknown> & { constructor?: unknown };
+
         // Handle circular references
-        if (seen.has(value)) {
+        if (seen.has(obj)) {
             throw new Error('Circular reference detected');
         }
-        seen.add(value);
+        seen.add(obj);
 
         // Handle arrays
-        if (Array.isArray(value)) {
-            const processed = value.map((item, index) => processValue(item, String(index)))
+        if (Array.isArray(obj)) {
+            const processed = obj.map((item, index) => processValue(item, String(index)))
                 .filter(item => item !== undefined);
-            
+
             if (sortArrays) {
                 // Sort arrays by their stringified content for true determinism
                 processed.sort((a, b) => {
@@ -117,36 +121,36 @@ export function deterministicStringify(
                     return aStr.localeCompare(bStr);
                 });
             }
-            
-            seen.delete(value);
+
+            seen.delete(obj);
             return processed;
         }
 
         // Handle objects
-        if (value.constructor === Object || value.constructor === undefined) {
-            const processed: Record<string, any> = {};
-            const keys = Object.keys(value).sort();
+        if (obj.constructor === Object || obj.constructor === undefined) {
+            const processed: Record<string, unknown> = {};
+            const keys = Object.keys(obj).sort();
 
             for (const k of keys) {
-                const processedValue = processValue(value[k], k);
+                const processedValue = processValue(obj[k], k);
                 if (processedValue !== undefined) {
                     processed[k] = processedValue;
                 }
             }
 
-            seen.delete(value);
+            seen.delete(obj);
             return processed;
         }
 
         // Handle other object types (like class instances)
         // Try to convert to plain object
         try {
-            const plain = { ...value };
-            seen.delete(value);
+            const plain = { ...obj };
+            seen.delete(obj);
             return processValue(plain, key);
         } catch {
-            seen.delete(value);
-            return String(value);
+            seen.delete(obj);
+            return String(obj);
         }
     }
 
@@ -163,7 +167,7 @@ export function deterministicStringify(
  * @returns Hash string
  */
 export function hashObject(
-    obj: any,
+    obj: unknown,
     options?: DeterministicJsonOptions,
     encoding: 'hex' | 'base64' | 'base64url' = 'hex'
 ): string {
@@ -180,8 +184,8 @@ export function hashObject(
  * @returns True if objects are deeply equal
  */
 export function deepEqual(
-    a: any,
-    b: any,
+    a: unknown,
+    b: unknown,
     options?: DeterministicJsonOptions
 ): boolean {
     try {
@@ -199,7 +203,7 @@ export function deepEqual(
  * @returns Stable string key
  */
 export function objectKey(
-    obj: any,
+    obj: unknown,
     options?: DeterministicJsonOptions
 ): string {
     return hashObject(obj, options, 'base64url');
