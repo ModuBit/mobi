@@ -1,7 +1,7 @@
 set -e
 bunx lint-staged
-# 循环依赖硬卡：仅当暂存了 src 下文件时跑全项目 depcruise
-# （no-circular severity=error，回潮即 exit 非 0 阻止提交；非代码提交跳过避免延迟）
+# 暂存 src 下文件时：全量 typecheck + 循环依赖检查（全项目，仅代码提交触发避免无关延迟）
 if git diff --cached --name-only | grep -qE '^packages/[^/]+/src/'; then
+  bun run typecheck
   bun run lint:deps
 fi

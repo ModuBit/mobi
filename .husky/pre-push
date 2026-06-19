@@ -1,0 +1,2 @@
+# push 前跑全量测试（确保不破坏远程分支；慢可 git push --no-verify 跳过）
+bun run test
