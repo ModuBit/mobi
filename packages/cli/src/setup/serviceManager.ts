@@ -81,7 +81,7 @@ exec ${mobiBin} runner start-sync
 /**
  * 生成 macOS launchd plist
  */
-function generateLaunchdPlist(_host: string, _port: number): string {
+function generateLaunchdPlist(): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -172,13 +172,13 @@ export async function installService(host: string, port: number): Promise<void> 
     console.log(chalk.gray(`  Wrapper script: ${WRAPPER_SCRIPT}`))
 
     if (platform === 'darwin') {
-        installLaunchd(host, port)
+        installLaunchd()
     } else {
         installSystemd()
     }
 }
 
-function installLaunchd(host: string, port: number): void {
+function installLaunchd(): void {
     // 确保 LaunchAgents 目录存在
     const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
     if (!existsSync(launchAgentsDir)) {
@@ -186,7 +186,7 @@ function installLaunchd(host: string, port: number): void {
     }
 
     // 写入 plist
-    writeFileSync(LAUNCHD_PLIST, generateLaunchdPlist(host, port))
+    writeFileSync(LAUNCHD_PLIST, generateLaunchdPlist())
     console.log(chalk.gray(`  Plist: ${LAUNCHD_PLIST}`))
 
     // 加载并启动

@@ -373,7 +373,7 @@ interface ProjectGroupProps {
     renamingSessionId: string | null
     renameValue: string
     setRenameValue: (v: string) => void
-    onRenameConfirm: (sessionId: string) => void
+    onRenameConfirm: () => void
     onRenameCancel: () => void
     onArchive: (session: Session) => void
     onResume: (session: Session) => void
@@ -486,7 +486,7 @@ function ProjectGroup({
                                 isRenaming={renamingSessionId === session.id}
                                 renameValue={renameValue}
                                 onRenameValueChange={setRenameValue}
-                                onRenameConfirm={() => onRenameConfirm(session.id)}
+                                onRenameConfirm={onRenameConfirm}
                                 onRenameCancel={onRenameCancel}
                                 onRenameLoading={renameLoading}
                                 onClick={() => handleSessionClick(session.id)}
@@ -543,7 +543,7 @@ export function SidebarProjects() {
     }, [queryClient])
 
     // 确认重命名
-    const handleRenameConfirm = useCallback(async (_sessionId: string) => {
+    const handleRenameConfirm = useCallback(async () => {
         if (!renameValue.trim() || !renamingSessionId) {
             messageApi.error(t('session.actions.nameRequired'))
             return
