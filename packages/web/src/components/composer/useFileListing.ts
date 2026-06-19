@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ListFilesResponse } from '@/core/data/api/types'
-import type { CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
+import type { CapabilityTarget, SearchFilesFn, ListDirectoryFn } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
 
 interface CachedEntry {
@@ -80,8 +80,8 @@ function filterEntries(entries: CachedEntry[], prefix: string, useContains: bool
  * @param input @ 后面的输入信息，null 表示关闭
  */
 export function useFileListing(
-    searchFiles: ((query: string, opts?: { signal?: AbortSignal }) => Promise<any>) | null,
-    listDirectory: ((path: string, opts?: { signal?: AbortSignal }) => Promise<any>) | null,
+    searchFiles: SearchFilesFn | null,
+    listDirectory: ListDirectoryFn | null,
     target: CapabilityTarget | null,
     input: FileListingInput | null,
 ): {
@@ -107,7 +107,7 @@ export function useFileListing(
     }, [target])
 
     const doSearch = useCallback(async (
-        searchFn: (query: string, opts?: { signal?: AbortSignal }) => Promise<any>,
+        searchFn: SearchFilesFn,
         query: string,
     ) => {
         abortRef.current?.abort()
@@ -142,7 +142,7 @@ export function useFileListing(
     }, [])
 
     const doListDirectory = useCallback(async (
-        listFn: (path: string, opts?: { signal?: AbortSignal }) => Promise<any>,
+        listFn: ListDirectoryFn,
         dirPath: string,
     ) => {
         abortRef.current?.abort()

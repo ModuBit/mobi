@@ -149,7 +149,8 @@ const ACTION_BUTTON_STYLE: React.CSSProperties = {
 function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>, 'size' | 'variant' | 'popupMatchSelectWidth' | '$compact'>) {
     useCompactDropdownStyle()
     const { classNames: propsClassNames, ...rest } = props
-    const extraPopupRoot = (propsClassNames as any)?.popup?.root as string | undefined
+    // antd Select 的 classNames 是对象 | 函数联合；仅取对象式分支的 popup.root（函数式由 antd 内部消费）
+    const extraPopupRoot = typeof propsClassNames === 'object' ? propsClassNames?.popup?.root : undefined
     return (
         <HoverSelect
             {...rest}

@@ -29,6 +29,18 @@ import 'katex/dist/katex.min.css'
 import type { Tokens, TokenizerAndRendererExtension } from 'marked'
 import type { KatexOptions } from 'katex'
 
+/**
+ * marked 自定义 token 扩展类型
+ *
+ * `marked` 的 `Tokens.Generic` 是为扩展 token 留的开放类型，但缺少我们自定义的
+ * text/displayMode/isBlock 字段。这里收窄为精确接口，避免 any。
+ */
+interface KatexToken extends Tokens.Generic {
+    text: string
+    displayMode?: boolean
+    isBlock?: boolean
+}
+
 // 原始：[^$]{1,10000}? → 匹配包括换行在内的所有非 $ 字符
 // 修复：[^\n$]{1,10000}? → 排除换行，行内 $...$ 不能跨行
 export const INLINE_LATEX_RULE =
@@ -42,11 +54,13 @@ function replaceAlign(text: string) {
 }
 
 function createRenderer(options: KatexOptions, newlineAfter: boolean) {
-    return (token: Tokens.Generic) =>
-        katex.renderToString((token as any).text, {
+    return (token: Tokens.Generic) => {
+        const kt = token as KatexToken
+        return katex.renderToString(kt.text, {
             ...options,
-            displayMode: (token as any).displayMode,
+            displayMode: kt.displayMode,
         }) + (newlineAfter ? '\n' : '')
+    }
 }
 
 type RenderFn = ReturnType<typeof createRenderer>
@@ -80,7 +94,7 @@ function inlineKatex(renderer: RenderFn, replaceAlignStart: boolean): TokenizerA
         },
         renderer(token: Tokens.Generic) {
             const html = renderer(token)
-            if ((token as any).isBlock) {
+            if ((token as KatexToken).isBlock) {
                 return `<span class="block-katex">${html}</span>`
             }
             return `<span class="inline-katex">${html}</span>`

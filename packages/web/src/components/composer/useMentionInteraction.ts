@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useMemo, useRef } from 'react'
 import { detectMentionAtCursor, buildMentionPath } from '@/domain/command/mentionParser'
-import type { CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
+import type { CapabilityTarget, SearchFilesFn, ListDirectoryFn } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useFileListing } from './useFileListing'
 import type { FileListingInput, FileSuggestionItem } from './useSessionFileListing'
 
@@ -27,8 +27,8 @@ export interface MentionSelectionResult {
 
 interface UseMentionInteractionParams {
     target: CapabilityTarget | null
-    searchFiles: ((query: string, opts?: { signal?: AbortSignal }) => Promise<any>) | null
-    listDirectory: ((path: string, opts?: { signal?: AbortSignal }) => Promise<any>) | null
+    searchFiles: SearchFilesFn | null
+    listDirectory: ListDirectoryFn | null
     workingDir: string | undefined
 }
 

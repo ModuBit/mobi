@@ -184,7 +184,8 @@ export function MobileDrawer({
                     setSwipeClosing(true)
                     // 等 class 生效后再调 onClose
                     const raf = requestAnimationFrame(() => {
-                        onClose?.({} as any)
+                        // 手势关闭无真实事件，antd onClose 回调不读 e 字段，传空 MouseEvent 触发关闭
+                        onClose?.({} as React.MouseEvent)
                         // 等 antd motion-leave 完成（~300ms）再清理状态。期间 swipeClosing CSS
                         // 用 !important 锁定 transform translateY(100%)，防止 motion-leave 重置回原位闪动
                         const t2 = window.setTimeout(() => {
@@ -217,20 +218,22 @@ export function MobileDrawer({
         deltaYRef.current = 0
     }, [onClose, getContentWrapper, clearTimers])
 
-    // 合并 wrapper styles（antd 5.x 运行时支持 styles.wrapper，类型定义缺失）
+    // 合并 wrapper styles（antd 5.x 运行时支持 styles.wrapper，类型为 stylesAndFn 联合，
+    // 这里仅处理对象式配置，函数式由 antd 内部消费）
+    const userStyles = typeof propStyles === 'object' ? propStyles : undefined
     const mergedStyles = {
         ...propStyles,
         wrapper: {
             height: 'auto',
             maxHeight,
-            ...(propStyles as any)?.wrapper,
+            ...userStyles?.wrapper,
         },
         body: {
             padding: 0,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            ...(propStyles as any)?.body,
+            ...userStyles?.body,
         },
     } as DrawerProps['styles']
 

@@ -19,7 +19,7 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useSDKMetadata } from './useSDKMetadata'
 import { useMachineMetadata } from './useMachineMetadata'
-import type { SDKMetadata, Command } from '@/core/data/api/types'
+import type { SDKMetadata, Command, ListFilesResponse, UploadFileResponse, DeleteUploadResponse } from '@/core/data/api/types'
 
 /**
  * 资源定位目标：tagged union 区分 session 通道与 machine 通道
@@ -27,6 +27,19 @@ import type { SDKMetadata, Command } from '@/core/data/api/types'
 export type CapabilityTarget =
     | { kind: 'session'; sessionId: string }
     | { kind: 'machine'; machineId: string; cwd: string }
+
+/** searchFiles/listDirectory 返回体（@ 文件引用双通道共用） */
+export type FileSearchResult = { data: ListFilesResponse }
+/** uploadFile 返回体 */
+export type UploadResult = { data: UploadFileResponse }
+/** deleteUpload 返回体 */
+export type DeleteUploadResult = { data: DeleteUploadResponse }
+
+/** 统一的目录搜索/列表方法签名（session 与 machine 通道共用） */
+export type SearchFilesFn = (query: string, opts?: { signal?: AbortSignal }) => Promise<FileSearchResult>
+export type ListDirectoryFn = (path: string, opts?: { signal?: AbortSignal }) => Promise<FileSearchResult>
+export type UploadFileFn = (file: File, opts?: { signal?: AbortSignal }) => Promise<UploadResult>
+export type DeleteUploadFn = (path: string) => Promise<DeleteUploadResult>
 
 /**
  * 目录级能力的统一接口
@@ -36,10 +49,10 @@ export interface DirectoryCapabilities {
     metadata: SDKMetadata | null
     metadataLoading: boolean
     commands: Command[]
-    searchFiles: (query: string, opts?: { signal?: AbortSignal }) => Promise<any>
-    listDirectory: (path: string, opts?: { signal?: AbortSignal }) => Promise<any>
-    uploadFile: (file: File, opts?: { signal?: AbortSignal }) => Promise<any>
-    deleteUpload: (path: string) => Promise<any>
+    searchFiles: SearchFilesFn
+    listDirectory: ListDirectoryFn
+    uploadFile: UploadFileFn
+    deleteUpload: DeleteUploadFn
 }
 
 /**
