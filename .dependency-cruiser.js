@@ -42,17 +42,18 @@ module.exports = {
     },
 
     /* ===== cli: 只依赖 shared ===== */
-    // TODO: cli/src/commands/hub.ts 引用 hub/src/index.ts，后续重构修复后恢复 error
+    // 有意豁免 hub/src/index.ts：cli 嵌入式启动 hub server（hub.ts 动态 import），
+    // 单一二进制架构，非协议依赖；其余 cli→hub/src/* 路径仍违规
     {
       name: 'cli-only-shared',
-      comment: 'cli 只能依赖 shared，不允许依赖 hub/web',
+      comment: 'cli 只能依赖 shared，不允许依赖 hub/web（豁免 hub/src/index.ts：cli 嵌入式启动 hub server，单一二进制架构，非协议依赖）',
       severity: 'warn',
       from: {
         path: '^packages/cli/src/',
       },
       to: {
         path: '^packages/(hub|web)/src/',
-        pathNot: 'node_modules',
+        pathNot: ['node_modules', '^packages/hub/src/index\\.ts$'],
       },
     },
 
