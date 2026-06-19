@@ -134,10 +134,12 @@ const Step = styled.div<{ $token: Token }>`
     font-size: 12.5px;
     line-height: 1.55;
     color: ${p => p.$token.colorTextSecondary};
-    margin-top: 5px;
 
-    &:first-child {
-        margin-top: 0;
+    /* 相邻 Step 才加间距（首个 Step 紧贴 PlatformLabel）。
+       用 & + & 替代 :first-child——Step 前总有 PlatformLabel，:first-child 永不匹配（死规则），
+       且 emotion 对 :first-child 发 SSR 警告。与 PlatformGroup 的 & + & 模式一致 */
+    & + & {
+        margin-top: 5px;
     }
 `
 

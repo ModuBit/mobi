@@ -30,3 +30,19 @@ Object.defineProperty(window, 'matchMedia', {
         dispatchEvent: vi.fn(),
     })),
 })
+
+// jsdom 不实现 window.Notification（浏览器原生通知 API）。
+// antd/antdx 的 notification 组件检测它，缺失时发 "Notification API is not supported" 警告。
+// 补最小 stub：静态 permission 默认 denied（安全默认，避免测试误判已授权）。
+// configurable:true 让测试可用 vi.stubGlobal('Notification', ...) 覆盖。
+Object.defineProperty(window, 'Notification', {
+    writable: true,
+    configurable: true,
+    value: class NotificationStub {
+        static permission: NotificationPermission = 'denied'
+        static requestPermission = vi.fn(async (): Promise<NotificationPermission> => 'denied')
+        static maxActions = 0
+        close = vi.fn()
+        constructor(_title: string, _options?: NotificationOptions) {}
+    },
+})
