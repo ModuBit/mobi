@@ -21,6 +21,8 @@ module.exports = tseslint.config(
       '**/dist/**',
       '**/build/**',
       '**/.output/**',
+      '**/*.generated.ts',
+      '**/*.generated.d.ts',
     ],
   },
 
