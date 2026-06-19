@@ -137,53 +137,53 @@ export class ApiMachineClient {
                     effort
                 } = params || {}
 
-            if (!directory) {
-                throw new Error('Directory is required')
-            }
+                if (!directory) {
+                    throw new Error('Directory is required')
+                }
 
-            const result = await spawnSession({
-                directory,
-                sessionId,
-                resumeSessionId,
-                machineId,
-                approvedNewDirectoryCreation,
-                agent,
-                model,
-                yolo,
-                token,
-                sessionType,
-                worktreeName,
-                effort
+                const result = await spawnSession({
+                    directory,
+                    sessionId,
+                    resumeSessionId,
+                    machineId,
+                    approvedNewDirectoryCreation,
+                    agent,
+                    model,
+                    yolo,
+                    token,
+                    sessionType,
+                    worktreeName,
+                    effort
+                })
+
+                switch (result.type) {
+                    case 'success':
+                        return { type: 'success', sessionId: result.sessionId }
+                    case 'requestToApproveDirectoryCreation':
+                        return { type: 'requestToApproveDirectoryCreation', directory: result.directory }
+                    case 'error':
+                        return { type: 'error', errorMessage: result.errorMessage }
+                    default:
+                        // 兜底：未知 result.type
+                        throw new Error(`Unknown result type: ${String((result as { type?: string }).type)}`)
+                }
             })
-
-            switch (result.type) {
-                case 'success':
-                    return { type: 'success', sessionId: result.sessionId }
-                case 'requestToApproveDirectoryCreation':
-                    return { type: 'requestToApproveDirectoryCreation', directory: result.directory }
-                case 'error':
-                    return { type: 'error', errorMessage: result.errorMessage }
-                default:
-                    // 兜底：未知 result.type
-                    throw new Error(`Unknown result type: ${String((result as { type?: string }).type)}`)
-            }
-        })
 
         this.rpcHandlerManager.registerHandler<{ sessionId?: string }, { message: string }>(
             'stop-session',
             (params) => {
                 const { sessionId } = params || {}
-            if (!sessionId) {
-                throw new Error('Session ID is required')
-            }
+                if (!sessionId) {
+                    throw new Error('Session ID is required')
+                }
 
-            const success = stopSession(sessionId)
-            if (!success) {
-                throw new Error('Session not found or failed to stop')
-            }
+                const success = stopSession(sessionId)
+                if (!success) {
+                    throw new Error('Session not found or failed to stop')
+                }
 
-            return { message: 'Session stopped' }
-        })
+                return { message: 'Session stopped' }
+            })
 
         this.rpcHandlerManager.registerHandler('stop-runner', () => {
             setTimeout(() => requestShutdown(), 100)
