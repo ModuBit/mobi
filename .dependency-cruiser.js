@@ -2,11 +2,11 @@
 module.exports = {
   forbidden: [
     /* ===== 循环依赖 ===== */
-    // TODO: hub 和 cli 中存在现有循环依赖，后续重构修复后恢复 error
+    // P3 已消除全部 12 条循环依赖（hub/sync 5 + cli/claude 7），severity 恢复 error 硬卡防回潮
     {
       name: 'no-circular',
       comment: '禁止循环依赖',
-      severity: 'warn',
+      severity: 'error',
       from: {},
       to: {
         circular: true,

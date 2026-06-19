@@ -31,3 +31,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       - run: bun run test
+
+  deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      # 循环依赖硬卡：P3 已清零（hub/sync 5 + cli/claude 7），no-circular severity=error，回潮即 CI 失败
+      - run: bun run lint:deps
