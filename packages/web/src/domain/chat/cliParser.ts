@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { stripAnsi } from './ansi'
+
 /** 解析 CLI 输出文本，提取命令和输出 */
 export function parseCliOutputText(text: string): { command: string | null, stdout: string | null, stderr: string | null } {
     // command-name / local-command-stdout 标签
@@ -24,12 +26,9 @@ export function parseCliOutputText(text: string): { command: string | null, stdo
         String.fromCharCode(parseInt(hex, 16))
     ).trim() : null
 
-    const stdout = stdoutMatch ? stdoutMatch[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
+    const stdout = stdoutMatch ? stripAnsi(stdoutMatch[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
         String.fromCharCode(parseInt(hex, 16))
-    ).replace(
-        // eslint-disable-next-line no-control-regex -- 剥离终端 ANSI 颜色码（业务必要）
-        /\x1B\[[0-9;]*m/g, ''
-    ).trim() : null
+    )).trim() : null
 
     return { command, stdout, stderr: null }
 }

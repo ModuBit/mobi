@@ -206,8 +206,7 @@ export async function startRunner(): Promise<void> {
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[RUNNER RUN] Spawning session', options);
 
-      const { directory, sessionId: _sessionId, machineId: _machineId, approvedNewDirectoryCreation = true } = options;
-      const _agent = options.agent ?? 'claude';
+      const { directory, approvedNewDirectoryCreation = true } = options;
       const effort = options.effort;
       const yolo = options.yolo === true;
       const sessionType = options.sessionType ?? 'simple';

@@ -15,6 +15,7 @@
  */
 
 import type { ChatBlock, CliOutputBlock, MessageMeta } from './types'
+import { stripAnsi } from './ansi'
 
 const CLI_TAG_REGEX = /<(?:local-command-[a-z-]+|command-(?:name|message|args))>/i
 const CLI_COMMAND_NAME_REGEX = /<command-name>/i
@@ -43,12 +44,9 @@ export function extractStandaloneStdout(text: string): string | null {
         return null
     }
     const match = text.match(LOCAL_COMMAND_STDOUT_EXTRACT)
-    return match ? match[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
+    return match ? stripAnsi(match[1].replace(/&#x[0-9A-Fa-f]+;/g, (_, hex) =>
         String.fromCharCode(parseInt(hex, 16))
-    ).replace(
-        // eslint-disable-next-line no-control-regex -- 剥离终端 ANSI 颜色码（业务必要）
-        /\x1B\[[0-9;]*m/g, ''
-    ).trim() : null
+    )).trim() : null
 }
 
 export function createCliOutputBlock(props: {

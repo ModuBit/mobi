@@ -31,7 +31,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { AnySchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
+import { asMcpInputSchema } from './mcpSchemaCompat';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 
@@ -83,12 +83,9 @@ export async function runMobiMcpStdioBridge(argv: string[]): Promise<void> {
     });
 
     // Register the single tool and forward to HTTP MCP
-    // 见 startMobiMcpServer.ts 同款注释：MCP SDK 1.29 的 registerTool 泛型约束
-    // （ZodRawShapeCompat | AnySchema 联合）与 zod 4.4.3 classic 的 z.object(...) 推断
-    // 不兼容，用 `as unknown as AnySchema` 断言桥接（仅类型层面，runtime 由 SDK 解析）。
-    const changeTitleInputSchema = z.object({
+    const changeTitleInputSchema = asMcpInputSchema(z.object({
       title: z.string().describe('The new title for the chat session'),
-    }) as unknown as AnySchema;
+    }));
 
     server.registerTool(
       'change_title',

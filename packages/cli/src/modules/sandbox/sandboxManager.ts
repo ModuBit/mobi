@@ -30,7 +30,6 @@ import { loadSandboxConfig, type SandboxConfig } from './sandboxConfig'
 let available: boolean | null = null
 let initialized = false
 let initPromise: Promise<void> | null = null
-let _currentCwd = ''
 let bareGitScrubPaths: string[] = []
 
 // ─── 敏感环境变量（子进程中移除） ───
@@ -186,8 +185,6 @@ function buildSubprocessEnv(): NodeJS.ProcessEnv {
 export async function initializeSandbox(cwd: string): Promise<void> {
     if (initialized) return
     if (initPromise) return initPromise
-
-    _currentCwd = cwd
 
     initPromise = (async () => {
         if (!isSandboxAvailable()) return
