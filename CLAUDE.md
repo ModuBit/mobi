@@ -56,7 +56,7 @@ bun run lint:deps    # 依赖方向检查
 
 - **pre-commit**（husky + lint-staged）：提交时对暂存的 `packages/*/src/**/*.{ts,tsx}` 自动跑 `eslint --fix`，自动修复可修 warning（prefer-const、useless-escape、unused-vars 等）。不阻塞含存量 warning 的文件，渐进清理
 - **CI**（`.github/workflows/ci.yml`）：push 到 `main` / `fist-milestone` 或 PR 到 `main` 时，并行跑 `typecheck` + `lint`（warning budget）+ `test`
-- **lint warning budget**：CI 的 lint job 用 `--max-warnings` 设基线（当前 244 = 版权头合规后的 warning 总数）。新增任意 warning 即 CI 失败；清零一批后将基线下调
+- **lint warning budget**：CI 的 lint job 用 `--max-warnings` 设基线（当前 101 = P1 清理后的 warning 总数）。新增任意 warning 即 CI 失败；清零一批后将基线下调
 
 ## 文档索引
 
