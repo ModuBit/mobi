@@ -23,16 +23,22 @@
         "test:cli": "cd packages/cli && bun run test",
         "test:web": "cd packages/web && bun run test",
         "lint": "eslint packages/shared/src packages/hub/src packages/cli/src packages/web/src",
-        "lint:deps": "depcruise packages/shared/src packages/hub/src packages/cli/src packages/web/src"
+        "lint:deps": "depcruise packages/shared/src packages/hub/src packages/cli/src packages/web/src",
+        "prepare": "husky"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
         "concurrently": "^10.0.3",
         "dependency-cruiser": "^17.4.3",
         "eslint": "^10.5.0",
+        "husky": "^9.1.7",
+        "lint-staged": "^17.0.7",
         "typescript-eslint": "^8.61.0"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0"
+    },
+    "lint-staged": {
+        "packages/*/src/**/*.{ts,tsx}": "eslint --fix"
     }
 }
