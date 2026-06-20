@@ -59,13 +59,13 @@ const LeftFlex = styled.div`
     overflow: hidden;
 `
 
-/** 桌面右栏外层：width 动画 + 裁剪（与 AppSidebar 同款）。 */
-const RightClipOuter = styled.div<{ $width: string }>`
+/** 桌面右栏外层：width 动画 + 裁剪（与 AppSidebar 同款）。拖动时禁用过渡以跟手。 */
+const RightClipOuter = styled.div<{ $width: string; $dragging: boolean }>`
     height: 100%;
     width: ${p => p.$width};
     flex-shrink: 0;
     overflow: hidden;
-    transition: width ${DURATION} ${EASING};
+    transition: ${p => (p.$dragging ? 'none' : `width ${DURATION} ${EASING}`)};
 `
 
 /** 桌面右栏内层：固定宽度（展开时的真实宽度），不随外层动画重排。 */
@@ -186,7 +186,7 @@ export function SplitLayout({
                     aria-orientation="vertical"
                 />
             )}
-            <RightClipOuter $width={expanded ? `${rightFraction * 100}%` : '0'}>
+            <RightClipOuter $width={expanded ? `${rightFraction * 100}%` : '0'} $dragging={dragging}>
                 <RightClipInner
                     $width={Math.max(0, rightFraction * containerWidth)}
                     $visible={expanded}
