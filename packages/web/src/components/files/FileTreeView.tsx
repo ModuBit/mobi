@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Tree, Empty, Skeleton } from 'antd'
 import type { DataNode } from 'antd/es/tree'
 import { FolderOutlined, FileOutlined } from '@ant-design/icons'
@@ -23,6 +23,7 @@ import { useFileTree, parseDirectoryEntries } from '@/core/data/hooks/queries/us
 import type { FileNode } from '@/core/data/hooks/queries/useFileTree'
 import { useMobiApi } from '@/core/data/api/client'
 import { useAuthStore } from '@/core/data/stores/authStore'
+import { basename } from '@/core/utils/path'
 
 interface FileTreeViewProps {
     sessionId: string
@@ -39,9 +40,11 @@ export default function FileTreeView({ sessionId, onOpenFile }: FileTreeViewProp
     const { t } = useTranslation()
     const { token } = useAuthStore()
     const api = useMobiApi(token)
-    const { data: rootFiles, isLoading } = useFileTree(sessionId, '.')
+    const { data: rootFiles, isLoading, error } = useFileTree(sessionId, '.')
     /** 已懒加载的子目录：path -> FileNode[]（展开时填充） */
     const [childrenMap, setChildrenMap] = useState<Record<string, FileNode[]>>({})
+    /** 进行中的目录加载：防止连点/折叠再展开时并发请求与覆盖竞态 */
+    const loadingPaths = useRef<Set<string>>(new Set())
 
     const buildNodes = (files: FileNode[]): DataNode[] =>
         files
@@ -64,6 +67,11 @@ export default function FileTreeView({ sessionId, onOpenFile }: FileTreeViewProp
     if (isLoading) {
         return <Skeleton active paragraph={{ rows: 6 }} style={{ padding: 16 }} />
     }
+    // 读取失败（runner 未就绪/无权限等）：显示错误而非误导性的「无文件」
+    if (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        return <Empty description={msg || t('files.loadFailed')} style={{ marginTop: 40 }} />
+    }
     if (!rootFiles || rootFiles.length === 0) {
         return <Empty description={t('files.empty')} style={{ marginTop: 40 }} />
     }
@@ -77,17 +85,25 @@ export default function FileTreeView({ sessionId, onOpenFile }: FileTreeViewProp
                 style={{ fontSize: 13 }}
                 loadData={async (node) => {
                     const path = node.key as string
-                    if (childrenMap[path]) return
-                    const res = await api.files.list(sessionId, path)
-                    const files = parseDirectoryEntries(res.data as Parameters<typeof parseDirectoryEntries>[0], path)
-                    setChildrenMap((m) => ({ ...m, [path]: files }))
+                    // 已加载或正在加载：直接返回，避免并发请求与结果覆盖竞态
+                    if (childrenMap[path] || loadingPaths.current.has(path)) return
+                    loadingPaths.current.add(path)
+                    try {
+                        const res = await api.files.list(sessionId, path)
+                        const data = res.data as Parameters<typeof parseDirectoryEntries>[0]
+                        const files = parseDirectoryEntries(data, path)
+                        setChildrenMap((m) => ({ ...m, [path]: files }))
+                    } finally {
+                        loadingPaths.current.delete(path)
+                    }
                 }}
-                onSelect={(keys) => {
+                onSelect={(keys, info) => {
                     if (keys.length === 0) return
-                    const path = keys[0] as string
-                    const name = path.split('/').pop() ?? path
-                    const file = (rootFiles ?? []).find((f) => f.path === path)
-                    if (file && file.type === 'file') onOpenFile(path, name)
+                    // 用节点 isLeaf 判断叶子（覆盖子目录懒加载的文件，它们不在 rootFiles 里）
+                    if (info.node.isLeaf) {
+                        const path = keys[0] as string
+                        onOpenFile(path, basename(path))
+                    }
                 }}
             />
         </div>

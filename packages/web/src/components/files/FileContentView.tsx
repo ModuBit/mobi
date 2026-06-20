@@ -29,12 +29,15 @@ interface FileContentViewProps {
 export default function FileContentView({ sessionId, filePath }: FileContentViewProps) {
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
-    const { data: content, isLoading } = useFileContent(sessionId, filePath)
+    const { data: content, isLoading, error } = useFileContent(sessionId, filePath)
 
     return (
         <div style={{ height: '100%', overflow: 'auto', padding: 16, background: token.colorBgLayout }}>
             {isLoading ? (
                 <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+            ) : error ? (
+                // 读取失败（runner 未就绪/无权限等）：显示错误而非误导性的空白
+                <Empty description={error instanceof Error ? error.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
             ) : content != null ? (
                 <div>
                     <div style={{ marginBottom: 8, fontSize: 12 }}>

@@ -217,7 +217,8 @@
   "files": {
     "title": "File Explorer",
     "empty": "No file changes in this session",
-    "selectToView": "Select a file to view content"
+    "selectToView": "Select a file to view content",
+    "loadFailed": "Failed to load file"
   },
   "git": {
     "filesChanged": "{{count}} files changed",
