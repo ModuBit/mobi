@@ -487,6 +487,33 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
+    app.get('/sessions/:id/read-file', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const path = c.req.query('path') ?? ''
+        if (!path) {
+            return c.json({ success: false, error: 'Path parameter is required' }, 400)
+        }
+
+        try {
+            const result = await engine.readSessionFile(sessionResult.sessionId, path)
+            return c.json(result)
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to read file'
+            }, 500)
+        }
+    })
+
     app.get('/sessions/:id/metadata', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {

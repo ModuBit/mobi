@@ -152,9 +152,9 @@ export function createMobiApi(token: string | null) {
         // Files (via RPC)
         files: {
             list: (sessionId: string, path: string) =>
-                client.post(`/api/sessions/${sessionId}/rpc/list-directory`, { path }),
+                client.get(`/api/sessions/${sessionId}/list-directory`, { params: { path } }),
             read: (sessionId: string, path: string) =>
-                client.post(`/api/sessions/${sessionId}/rpc/read-file`, { path }),
+                client.get(`/api/sessions/${sessionId}/read-file`, { params: { path } }),
         },
 
         // Permissions

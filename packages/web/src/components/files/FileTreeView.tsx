@@ -19,7 +19,7 @@ import { Tree, Empty, Skeleton } from 'antd'
 import type { DataNode } from 'antd/es/tree'
 import { FolderOutlined, FileOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { useFileTree } from '@/core/data/hooks/queries/useFileTree'
+import { useFileTree, parseDirectoryEntries } from '@/core/data/hooks/queries/useFileTree'
 import type { FileNode } from '@/core/data/hooks/queries/useFileTree'
 import { useMobiApi } from '@/core/data/api/client'
 import { useAuthStore } from '@/core/data/stores/authStore'
@@ -79,8 +79,7 @@ export default function FileTreeView({ sessionId, onOpenFile }: FileTreeViewProp
                     const path = node.key as string
                     if (childrenMap[path]) return
                     const res = await api.files.list(sessionId, path)
-                    const data = res.data as { files?: FileNode[] } | FileNode[]
-                    const files = (Array.isArray(data) ? data : data.files || []) as FileNode[]
+                    const files = parseDirectoryEntries(res.data as Parameters<typeof parseDirectoryEntries>[0], path)
                     setChildrenMap((m) => ({ ...m, [path]: files }))
                 }}
                 onSelect={(keys) => {

@@ -29,9 +29,12 @@ beforeAll(() => {
     })
 })
 
-vi.mock('@/core/data/hooks/queries/useFileTree', () => ({
-    useFileTree: vi.fn(),
-}))
+vi.mock('@/core/data/hooks/queries/useFileTree', async () => {
+    const actual = await vi.importActual<typeof import('@/core/data/hooks/queries/useFileTree')>(
+        '@/core/data/hooks/queries/useFileTree',
+    )
+    return { useFileTree: vi.fn(), parseDirectoryEntries: actual.parseDirectoryEntries }
+})
 
 vi.mock('@/core/data/api/client', () => ({
     useMobiApi: vi.fn(() => ({ files: { list: vi.fn() } })),
@@ -82,7 +85,7 @@ describe('FileTreeView', () => {
             isLoading: false,
         } as any))
         const listFn = vi.fn().mockResolvedValue({
-            data: [{ name: 'inner.ts', path: 'src/inner.ts', type: 'file' }],
+            data: { success: true, entries: [{ name: 'inner.ts', type: 'file' as const }] },
         })
         mockedUseMobiApi.mockReturnValue({ files: { list: listFn } } as any)
 
