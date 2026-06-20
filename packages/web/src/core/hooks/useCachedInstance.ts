@@ -41,6 +41,18 @@ export function clearCachedInstance(key: string): void {
     cache.delete(key)
 }
 
+/**
+ * 清空全部缓存实例（登出/换号时调用）。
+ * 逐个调用注册时的 dispose 并移除条目；限制同 clearCachedInstance（refCount>0 时仍执行）。
+ */
+export function clearAllInstances(): void {
+    for (const [key, entry] of cache) {
+        disposers.get(key)?.(entry.instance)
+        disposers.delete(key)
+    }
+    cache.clear()
+}
+
 interface UseCachedInstanceResult<T> {
     instance: T | null
     isReady: boolean

@@ -133,17 +133,26 @@ export function createCachedTerminal({ sessionId }: CreateOptions): CachedTermin
 
     const reconnect = () => {
         terminal.clear()
-        if (socket?.connected) {
+        if (!socket) return
+        if (socket.connected) {
             const { cols, rows } = terminal
             socket.emit('terminal:open', { sessionId, terminalId: TERMINAL_ID, cols, rows })
             isOpen = true
+        } else {
+            // 掉线窗口期：主动重连，connect 事件会自动重发 terminal:open
+            socket.connect()
         }
     }
 
-    // 内部销毁：先移除监听（避免 disconnect 重连瞬间触发回调向已销毁 xterm 写屏），
-    // 再断 socket，最后销毁 xterm。仅由 disposeCachedTerminal → clearCachedInstance 触发。
+    // 内部销毁：先通知后端关闭 PTY（terminal:close），再移除监听（避免 disconnect 重连瞬间
+    // 触发回调向已销毁 xterm 写屏），再断 socket，最后销毁 xterm。
+    // 仅由 disposeCachedTerminal → clearCachedInstance（session 删除/登出）触发。
     const dispose = () => {
         try {
+            // 关闭后端 PTY（组件卸载不发，仅真正销毁实例时发）
+            if (socket?.connected) {
+                socket.emit('terminal:close', { sessionId, terminalId: TERMINAL_ID })
+            }
             socket?.removeAllListeners()
             socket?.disconnect()
         } catch {

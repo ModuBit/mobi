@@ -36,6 +36,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { queryKeys } from '@/core/lib/query-keys'
+import { clearSessionResources } from '@/core/lib/sessionResources'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
@@ -324,6 +325,8 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                             queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
                             queryClient.removeQueries({ queryKey: queryKeys.messages(sessionId) })
                             await invalidateAll(sessionId)
+                            // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
+                            clearSessionResources(sessionId)
                             ctx.onSuccess()
                             if (selectedSessionId === sessionId) {
                                 navigate({ to: '/sessions' })

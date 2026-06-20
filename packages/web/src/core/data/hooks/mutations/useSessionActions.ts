@@ -19,6 +19,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
+import { clearSessionResources } from '@/core/lib/sessionResources'
 
 /**
  * 会话操作 Hook
@@ -159,6 +160,8 @@ export function useSessionActions(sessionId: string | null): {
             queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
             // 同时移除消息缓存
             queryClient.removeQueries({ queryKey: queryKeys.messages(sessionId) })
+            // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
+            clearSessionResources(sessionId)
             await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
         },
     })

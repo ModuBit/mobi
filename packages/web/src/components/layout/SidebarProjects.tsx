@@ -31,6 +31,7 @@ import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeS
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
+import { clearSessionResources } from '@/core/lib/sessionResources'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
@@ -596,6 +597,8 @@ export function SidebarProjects() {
                     queryClient.removeQueries({ queryKey: queryKeys.session(session.id) })
                     queryClient.removeQueries({ queryKey: queryKeys.messages(session.id) })
                     await invalidateAll(session.id)
+                    // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
+                    clearSessionResources(session.id)
                     if (activeSessionId === session.id) {
                         navigate({ to: '/sessions' })
                     }

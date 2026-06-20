@@ -33,6 +33,7 @@ import type { MessagesResponse } from '@/core/data/api/types'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 import { decideToastAction, parseActiveSessionId, showSystemNotification } from '@/core/notifications'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
+import { clearAllSessionResources } from '@/core/lib/sessionResources'
 
 // ── SSE 早到消息暂存缓冲区 ──────────────────────────────────
 // 页面刷新时 SSE 事件可能先于 API 响应到达，此时缓存为空，事件会被丢弃。
@@ -496,6 +497,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             // 不重置则新用户继承上一用户状态/不再获得首次引导
             useNotificationStore.getState().reset()
             resetPermissionPrompt()
+            // 清空所有会话的检视面板状态 + 缓存终端（顺带关闭后端 PTY），避免换号残留
+            clearAllSessionResources()
         }
     }, [token])
 

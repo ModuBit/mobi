@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { useCachedInstance, clearCachedInstance } from '@/core/hooks/useCachedInstance'
+import { useCachedInstance, clearCachedInstance, clearAllInstances } from '@/core/hooks/useCachedInstance'
 import { renderHook } from '@testing-library/react'
 
 afterEach(() => {
@@ -87,5 +87,24 @@ describe('useCachedInstance', () => {
         const r = renderHook(() => useCachedInstance('k4', () => ({ x: 1 })))
         expect(r.result.current.isReady).toBe(true)
         r.unmount()
+    })
+
+    it('clearAllInstances 清空全部：逐个 dispose 并允许重建', () => {
+        const disposeA = vi.fn()
+        const disposeB = vi.fn()
+        const ra = renderHook(() => useCachedInstance('kall-a', () => ({ tag: 'a' }), disposeA))
+        const rb = renderHook(() => useCachedInstance('kall-b', () => ({ tag: 'b' }), disposeB))
+        const firstA = ra.result.current.instance
+        const firstB = rb.result.current.instance
+        ra.unmount()
+        rb.unmount()
+
+        clearAllInstances()
+        expect(disposeA).toHaveBeenCalledWith(firstA)
+        expect(disposeB).toHaveBeenCalledWith(firstB)
+
+        // 清空后重建得到新实例
+        const ra2 = renderHook(() => useCachedInstance('kall-a', () => ({ tag: 'a' })))
+        expect(ra2.result.current.instance).not.toBe(firstA)
     })
 })
