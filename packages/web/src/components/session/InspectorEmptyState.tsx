@@ -15,52 +15,41 @@
  */
 
 import { useTranslation } from 'react-i18next'
-import { Folder, Terminal, FileSearch } from 'lucide-react'
 import styled from '@emotion/styled'
 import { theme as antTheme } from 'antd'
+import { INSPECTOR_ACTIONS } from './inspectorActions'
 
 interface InspectorEmptyStateProps {
     /** 点「文件」 */
     onOpenFile: () => void
 }
 
-interface ActionItem {
-    key: string
-    icon: React.ReactNode
-    labelKey: string
-    disabled?: boolean
-    onClick?: () => void
-}
-
 /**
  * 空态：居中的卡片行列表（参考 macOS 菜单风格——图标 + 标签，浅灰圆角卡）。
- * 终端/审查 disabled（未支持）。仅「文件」可点。
+ * 动作清单与「+」下拉菜单共用 INSPECTOR_ACTIONS，避免两处能力漂移。
  */
 export function InspectorEmptyState({ onOpenFile }: InspectorEmptyStateProps) {
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
 
-    const items: ActionItem[] = [
-        { key: 'file', icon: <Folder size={18} />, labelKey: 'session.inspector.openFile', onClick: onOpenFile },
-        { key: 'terminal', icon: <Terminal size={18} />, labelKey: 'session.inspector.terminal', disabled: true },
-        { key: 'review', icon: <FileSearch size={18} />, labelKey: 'session.inspector.review', disabled: true },
-    ]
-
     return (
         <Wrap>
             <List role="list">
-                {items.map((item) => (
-                    <Row
-                        key={item.key}
-                        type="button"
-                        disabled={item.disabled}
-                        onClick={item.disabled ? undefined : item.onClick}
-                        $token={token}
-                    >
-                        <span className="icon">{item.icon}</span>
-                        <span className="label">{t(item.labelKey)}</span>
-                    </Row>
-                ))}
+                {INSPECTOR_ACTIONS.map((item) => {
+                    const { Icon } = item
+                    return (
+                        <Row
+                            key={item.key}
+                            type="button"
+                            disabled={item.disabled}
+                            onClick={item.disabled ? undefined : onOpenFile}
+                            $token={token}
+                        >
+                            <span className="icon"><Icon size={18} /></span>
+                            <span className="label">{t(item.labelKey)}</span>
+                        </Row>
+                    )
+                })}
             </List>
         </Wrap>
     )

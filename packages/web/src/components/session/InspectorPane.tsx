@@ -19,10 +19,12 @@ import { Layout, Tabs, Button, Tooltip, Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { PanelRightClose, Folder, Terminal, FileSearch, Maximize, Minimize, Plus, PlayCircle } from 'lucide-react'
+import { PanelRightClose, Folder, FileSearch, Maximize, Minimize, Plus } from 'lucide-react'
 import FileTreeView from '@/components/files/FileTreeView'
 import FileContentView from '@/components/files/FileContentView'
+import { ActivateCover } from '@/components/ui/ActivateCover'
 import { InspectorEmptyState } from './InspectorEmptyState'
+import { INSPECTOR_ACTIONS } from './inspectorActions'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useWorkspaceStore, type InspectorTabEntry } from '@/core/data/stores/workspaceStore'
@@ -131,7 +133,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
     if (!active) {
         return (
             <Layout style={{ height: '100%', position: 'relative' }}>
-                <ResumeCover loading={isResumePending} onResume={() => resumeSession()} label={t('composer.activate')} />
+                <ActivateCover loading={isResumePending} onActivate={() => resumeSession()} />
                 <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 2 }}>{rightChrome}</div>
             </Layout>
         )
@@ -149,16 +151,17 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
 
     if (!everExpanded) return <Layout style={{ height: '100%' }} />
 
-    const addMenuItems: MenuProps['items'] = [
-        {
-            key: 'file',
-            icon: <Folder size={14} />,
-            label: t('session.inspector.openFile'),
-            onClick: () => openFileTreeTab(sessionId),
-        },
-        { key: 'terminal', icon: <Terminal size={14} />, label: t('session.inspector.terminal'), disabled: true },
-        { key: 'review', icon: <FileSearch size={14} />, label: t('session.inspector.review'), disabled: true },
-    ]
+    // 「+」下拉菜单：与空态卡片共用 INSPECTOR_ACTIONS，仅「文件」可点
+    const addMenuItems: MenuProps['items'] = INSPECTOR_ACTIONS.map((action) => {
+        const { Icon } = action
+        return {
+            key: action.key,
+            icon: <Icon size={14} />,
+            label: t(action.labelKey),
+            disabled: action.disabled,
+            onClick: action.disabled ? undefined : () => openFileTreeTab(sessionId),
+        }
+    })
 
     const renderTabContent = (tab: InspectorTabEntry): ReactNode => {
         if (tab.mode === 'file' && tab.filePath) {
@@ -229,24 +232,6 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                 tabBarExtraContent={{ right: rightChrome }}
             />
         </Layout>
-    )
-}
-
-/** session 离线覆盖层：居中「恢复会话」按钮，覆盖整个检视面板内容区。 */
-function ResumeCover({ loading, onResume, label }: {
-    loading: boolean
-    onResume: () => void
-    label: string
-}) {
-    return (
-        <div style={{
-            position: 'absolute', inset: 0, zIndex: 1,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-            <Button type="primary" icon={<PlayCircle size={18} />} loading={loading} onClick={onResume}>
-                {label}
-            </Button>
-        </div>
     )
 }
 

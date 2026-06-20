@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Tooltip, Select, theme, Typography, Popover, message } from 'antd'
-import { PlusOutlined, PlayCircleOutlined, SwapOutlined, SafetyOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
+import { PlusOutlined, SwapOutlined, SafetyOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -41,6 +41,7 @@ import { MentionDropdown } from './MentionDropdown'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { CommandHintBar } from './CommandHintBar'
 import { ResponsiveActionBar, type ActionItem } from './ResponsiveActionBar'
+import { ActivateCover } from '@/components/ui/ActivateCover'
 import { getPermissionModeColor } from './permissionModeColors'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 
@@ -799,27 +800,12 @@ export function ChatComposer(props: ChatComposerProps) {
 
                 {/* 未激活覆盖层 */}
                 {showInactiveCover && (
-                    <div
+                    <ActivateCover
                         className="sender-overlay"
-                        style={{
-                            position: 'absolute',
-                            inset: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            borderRadius: 'var(--ant-border-radius)',
-                            zIndex: 10,
-                        }}
-                    >
-                        <Button
-                            type="primary"
-                            icon={<PlayCircleOutlined />}
-                            loading={activatePending}
-                            onClick={onActivate}
-                        >
-                            {t('composer.activate')}
-                        </Button>
-                    </div>
+                        loading={activatePending}
+                        onActivate={onActivate!}
+                        borderRadius="var(--ant-border-radius)"
+                    />
                 )}
 
                 {/* 本地模式覆盖层 */}

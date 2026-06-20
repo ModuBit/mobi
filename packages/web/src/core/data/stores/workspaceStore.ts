@@ -17,13 +17,9 @@
 import { create } from 'zustand'
 import { uuid } from '@/core/lib/uuid'
 
-/** tab 类型；'terminal' | 'review' 暂不接入（占位） */
-export type InspectorTabKind = 'files'
-
 /** 单个 tab：文件树视图或已打开的文件 */
 export interface InspectorTabEntry {
     id: string
-    kind: 'files'
     mode: 'tree' | 'file'
     /** mode='file'：相对路径（去重 key + tooltip） */
     filePath?: string
@@ -123,7 +119,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 next.set(sessionId, { ...cur, activeTabId: existedTree.id })
                 return { sessions: next }
             }
-            const entry: InspectorTabEntry = { id: uuid(), kind: 'files', mode: 'tree' }
+            const entry: InspectorTabEntry = { id: uuid(), mode: 'tree' }
             const tabs = [...cur.tabs, entry]
             const next = new Map(state.sessions)
             next.set(sessionId, { ...cur, tabs, activeTabId: entry.id })
