@@ -15,9 +15,7 @@
  */
 
 import { useParams } from '@tanstack/react-router'
-import { useEffect } from 'react'
 import { SessionDetail } from '@/components/session/SessionDetail'
-import { useUiStore } from '@/core/data/stores/uiStore'
 
 /**
  * 会话详情页
@@ -26,14 +24,6 @@ import { useUiStore } from '@/core/data/stores/uiStore'
 export function SessionDetailPage() {
     const params = useParams({ strict: false })
     const sessionId = params.sessionId as string
-    const { setSessionViewMode } = useUiStore()
-
-    // 切换会话时重置视图模式
-    useEffect(() => {
-        if (sessionId) {
-            setSessionViewMode('chat')
-        }
-    }, [sessionId, setSessionViewMode])
 
     return <SessionDetail sessionId={sessionId} />
 }

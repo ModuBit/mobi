@@ -14,76 +14,22 @@
  * limitations under the License.
  */
 
-import { Layout, Tabs } from 'antd'
-import { useTranslation } from 'react-i18next'
-import { useUiStore } from '@/core/data/stores/uiStore'
+import { Layout } from 'antd'
 import FileTree from './FileTree'
-import GitStatus from '@/components/git/GitStatus'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { SidebarToggle } from '@/components/layout/SidebarToggle'
-import { IconButton } from '@/components/ui/IconButton'
-import { ArrowLeft, Folder, GitBranch } from 'lucide-react'
 
 interface FileViewProps {
     sessionId: string
 }
 
+/**
+ * 文件视图：仅渲染文件树。
+ * 顶部 chrome（Tabs、收起按钮）由 InspectorPane 提供；Git 由顶层 InspectorTab 承载。
+ */
 export function FileView({ sessionId }: FileViewProps) {
-    const { t } = useTranslation()
-    const { fileViewTab, setFileViewTab, setSessionViewMode } = useUiStore()
-
-    const handleBack = () => {
-        setSessionViewMode('chat')
-    }
-
-    const tabItems = [
-        {
-            key: 'files',
-            label: (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Folder size={14} />
-                    {t('session.tabs.files')}
-                </span>
-            ),
-        },
-        {
-            key: 'git',
-            label: (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <GitBranch size={14} />
-                    {t('session.tabs.git')}
-                </span>
-            ),
-        },
-    ]
-
     return (
         <Layout style={{ height: '100%' }}>
-            <PageHeader
-                left={
-                    <>
-                        <SidebarToggle />
-                        <IconButton
-                            icon={<ArrowLeft size={18} />}
-                            onClick={handleBack}
-                        />
-                    </>
-                }
-                right={
-                    <Tabs
-                        activeKey={fileViewTab}
-                        onChange={(key) => setFileViewTab(key as 'files' | 'git')}
-                        items={tabItems}
-                        size="small"
-                    />
-                }
-            />
             <Layout.Content style={{ flex: 1, overflow: 'hidden' }}>
-                {fileViewTab === 'files' ? (
-                    <FileTree sessionId={sessionId} />
-                ) : (
-                    <GitStatus sessionId={sessionId} />
-                )}
+                <FileTree sessionId={sessionId} />
             </Layout.Content>
         </Layout>
     )

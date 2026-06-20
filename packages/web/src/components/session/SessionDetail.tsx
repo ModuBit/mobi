@@ -14,42 +14,17 @@
  * limitations under the License.
  */
 
-import { Layout, Spin, Result, Button, Tooltip } from 'antd'
+import { Spin, Result, Button } from 'antd'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSession } from '@/core/data/hooks/queries/useSession'
-import { useUiStore } from '@/core/data/stores/uiStore'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
-import type { SessionMetadataSummary } from '@/core/data/api/types'
-import { ChatContainer } from '@/components/chat/ChatContainer'
-import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
-import { FileView } from '@/components/files/FileView'
-import TerminalView from '@/components/terminal/TerminalView'
-import { MobileMenuButton } from '@/components/layout/MobileMenu'
-import { SidebarToggle } from '@/components/layout/SidebarToggle'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { SessionContextBar } from '@/components/session/SessionContextBar'
-import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import { ChatPane } from '@/components/session/ChatPane'
+import { InspectorPane } from '@/components/session/InspectorPane'
+import { WorkspaceSplitter } from '@/components/session/WorkspaceSplitter'
 import { getAgentStatus } from '@/components/pixel-avatar/types'
-import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { Folder, Terminal } from 'lucide-react'
-import styled from '@emotion/styled'
-
-const ChatWrapper = styled.div`
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-`
-
-const OverlayView = styled.div`
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-`
 
 interface SessionDetailProps {
     sessionId: string
@@ -59,8 +34,6 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { data: session, isLoading, error } = useSession(sessionId)
-    const { sessionViewMode, setSessionViewMode } = useUiStore()
-    const isMobile = useIsMobile()
 
     // 进入 session 详情页时清零未读角标
     const clearBadge = useNotificationBadgeStore((s) => s.clearBadge)
@@ -68,37 +41,13 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         if (sessionId) clearBadge(sessionId)
     }, [sessionId, clearBadge])
 
-    const viewModeItems: ActionItem[] = useMemo(() => ([
-        { key: 'files', labelKey: 'session.tabs.files', Icon: Folder, mode: 'files' as const },
-        { key: 'terminal', labelKey: 'session.tabs.terminal', Icon: Terminal, mode: 'terminal' as const },
-    ].map(({ key, labelKey, Icon, mode }) => ({
-        key,
-        label: t(labelKey),
-        render: () => (
-            <Tooltip title={t(labelKey)}>
-                <Button
-                    type="text"
-                    size="small"
-                    icon={<Icon size={14} />}
-                    onClick={() => setSessionViewMode(sessionViewMode === mode ? 'chat' : mode)}
-                    style={{
-                        borderRadius: 'var(--ant-border-radius-sm, 6px)',
-                        background: sessionViewMode === mode
-                            ? 'var(--ant-color-primary-bg, rgba(0,0,0,0.06))'
-                            : 'var(--ant-color-fill-tertiary, rgba(0,0,0,0.06))',
-                        color: sessionViewMode === mode ? 'var(--ant-color-primary)' : undefined,
-                    }}
-                />
-            </Tooltip>
-        ),
-    }))), [t, sessionViewMode])
-
     const agentStatus = useMemo(
-        () => getAgentStatus({
-            active: session?.active ?? false,
-            running: session?.running ?? false,
-            agentState: session?.agentState ?? null,
-        }),
+        () =>
+            getAgentStatus({
+                active: session?.active ?? false,
+                running: session?.running ?? false,
+                agentState: session?.agentState ?? null,
+            }),
         [session?.active, session?.running, session?.agentState],
     )
 
@@ -128,54 +77,17 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const displayName = getSessionDisplayName(session)
 
     return (
-        <Layout style={{ height: '100%' }}>
-            <PageHeader
-                left={
-                    <>
-                        <SidebarToggle />
-                        {isMobile && <MobileMenuButton />}
-                        <PixelAvatar name={sessionId} status={agentStatus} size={18} />
-                        <span
-                            style={{
-                                fontFamily: 'var(--font-body)',
-                                fontWeight: 500,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                minWidth: 0,
-                                flex: '1 1 auto',
-                            }}
-                        >
-                            {displayName}
-                        </span>
-                    </>
-                }
-            />
-
-            <SessionContextBar metadata={session.metadata as SessionMetadataSummary | null} />
-
-            <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
-                {/* 聊天视图：条件渲染，非可见时不挂载以节省资源 */}
-                {sessionViewMode === 'chat' && (
-                    <ChatWrapper>
-                        <ChatContainer sessionId={sessionId} extraComposerItems={viewModeItems} />
-                    </ChatWrapper>
-                )}
-
-                {/* 文件视图：全屏覆盖 */}
-                {sessionViewMode === 'files' && (
-                    <OverlayView>
-                        <FileView sessionId={sessionId} />
-                    </OverlayView>
-                )}
-
-                {/* 终端视图：全屏覆盖 */}
-                {sessionViewMode === 'terminal' && (
-                    <OverlayView>
-                        <TerminalView sessionId={sessionId} />
-                    </OverlayView>
-                )}
-            </Layout.Content>
-        </Layout>
+        <WorkspaceSplitter
+            sessionId={sessionId}
+            left={
+                <ChatPane
+                    sessionId={sessionId}
+                    session={session}
+                    displayName={displayName}
+                    agentStatus={agentStatus}
+                />
+            }
+            right={<InspectorPane sessionId={sessionId} />}
+        />
     )
 }
