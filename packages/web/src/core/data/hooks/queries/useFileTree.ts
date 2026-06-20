@@ -56,6 +56,9 @@ export function useFileTree(sessionId: string | null, path: string) {
             return parseDirectoryEntries(data, path)
         },
         enabled: !!token && !!sessionId,
+        // staleTime 0：目录需及时反映文件变化，每次挂载都后台 refetch；
+        // 缓存仍作 placeholder 先渲染（不闪 skeleton），gcTime 沿用全局 10min
+        staleTime: 0,
     })
 }
 
