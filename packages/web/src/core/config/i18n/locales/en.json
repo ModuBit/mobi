@@ -91,7 +91,11 @@
       "expand": "Open inspector",
       "collapse": "Close inspector",
       "maximize": "Maximize",
-      "restore": "Restore"
+      "restore": "Restore",
+      "openFile": "Open File",
+      "terminal": "Terminal",
+      "review": "Review",
+      "addTab": "Add"
     },
     "empty": "No sessions yet. Start a new conversation.",
     "newSession": "New Session",

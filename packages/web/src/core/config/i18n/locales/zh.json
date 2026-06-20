@@ -91,7 +91,11 @@
       "expand": "打开检视面板",
       "collapse": "收起检视面板",
       "maximize": "最大化",
-      "restore": "恢复"
+      "restore": "恢复",
+      "openFile": "打开文件",
+      "terminal": "终端",
+      "review": "审查",
+      "addTab": "新建"
     },
     "empty": "暂无会话，点击新建开始对话",
     "newSession": "新建会话",
