@@ -18,8 +18,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import i18n from '@/core/config/i18n'
 
-// 文件视图 Tab
-type FileViewTab = 'files' | 'git'
 // 主题（支持 system）
 type Theme = 'light' | 'dark' | 'system'
 // 语言
@@ -44,8 +42,6 @@ export function resolveTheme(theme: Theme): 'light' | 'dark' {
 }
 
 interface UiState {
-    // 会话视图状态
-    fileViewTab: FileViewTab
     theme: Theme
     locale: Locale
     mobileMenuOpen: boolean
@@ -57,7 +53,6 @@ interface UiState {
     renamingSessionId: string | null
     renameValue: string
     // 操作方法
-    setFileViewTab: (tab: FileViewTab) => void
     setTheme: (theme: Theme) => void
     setLocale: (locale: Locale) => void
     setMobileMenuOpen: (open: boolean) => void
@@ -72,7 +67,6 @@ interface UiState {
 export const useUiStore = create<UiState>()(
     persist(
         (set) => ({
-            fileViewTab: 'files',
             theme: 'dark',
             locale: getSystemLocale(),
             mobileMenuOpen: false,
@@ -81,7 +75,6 @@ export const useUiStore = create<UiState>()(
             sidebarExpanded: true,
             renamingSessionId: null,
             renameValue: '',
-            setFileViewTab: (tab) => set({ fileViewTab: tab }),
             setTheme: (theme) => set({ theme }),
             setLocale: (locale) => {
                 i18n.changeLanguage(locale)
