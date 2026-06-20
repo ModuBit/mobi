@@ -87,6 +87,10 @@
       "git": "Git",
       "terminal": "终端"
     },
+    "inspector": {
+      "expand": "打开检视面板",
+      "collapse": "收起检视面板"
+    },
     "empty": "暂无会话，点击新建开始对话",
     "newSession": "新建会话",
     "selectToView": "选择会话查看详情",

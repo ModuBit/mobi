@@ -87,6 +87,10 @@
       "git": "Git",
       "terminal": "Terminal"
     },
+    "inspector": {
+      "expand": "Open inspector",
+      "collapse": "Close inspector"
+    },
     "empty": "No sessions yet. Start a new conversation.",
     "newSession": "New Session",
     "selectToView": "Select a session to view details",
