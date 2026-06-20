@@ -77,17 +77,26 @@ const RightClipInner = styled.div<{ $width: number; $visible: boolean }>`
     transition: opacity 0.2s ease;
 `
 
-/** 可拖拽分隔条（仅桌面 + 展开时显示）。 */
-const Divider = styled.div<{ $active: boolean }>`
-    width: 4px;
+/**
+ * 可拖拽分隔条（仅桌面 + 展开时显示）。
+ * 命中区域 8px 宽松好抓，可见分割线 1px（伪元素居中）。
+ */
+const Divider = styled.div`
+    position: relative;
+    width: 8px;
     height: 100%;
     flex-shrink: 0;
     cursor: col-resize;
-    background: ${p => (p.$active
-        ? 'var(--ant-color-border)'
-        : 'var(--ant-color-border-secondary)')};
-    transition: background 0.15s ease;
-    &:hover {
+
+    /* 可见分割线 */
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 2px;
         background: var(--ant-color-border);
     }
 `
@@ -180,7 +189,6 @@ export function SplitLayout({
             <LeftFlex>{left}</LeftFlex>
             {expanded && (
                 <Divider
-                    $active={dragging}
                     onPointerDown={handleDividerPointerDown}
                     role="separator"
                     aria-orientation="vertical"
