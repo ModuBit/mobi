@@ -17,7 +17,7 @@
 import { useEffect, useState } from 'react'
 import { Layout, Tabs, Button, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { PanelRightClose, Folder, GitBranch, Terminal, Maximize2, Minimize2 } from 'lucide-react'
+import { PanelRightClose, Folder, GitBranch, Terminal, Maximize, Minimize } from 'lucide-react'
 import { FileView } from '@/components/files/FileView'
 import GitStatus from '@/components/git/GitStatus'
 import TerminalView from '@/components/terminal/TerminalView'
@@ -95,7 +95,7 @@ export function InspectorPane({ sessionId }: InspectorPaneProps) {
                                     <Button
                                         type="text"
                                         size="small"
-                                        icon={<Minimize2 size={16} />}
+                                        icon={<Minimize size={16} />}
                                         onClick={() => setChatHidden(sessionId, false)}
                                     />
                                 </Tooltip>
@@ -104,7 +104,7 @@ export function InspectorPane({ sessionId }: InspectorPaneProps) {
                                     <Button
                                         type="text"
                                         size="small"
-                                        icon={<Maximize2 size={16} />}
+                                        icon={<Maximize size={16} />}
                                         onClick={() => setChatHidden(sessionId, true)}
                                     />
                                 </Tooltip>
