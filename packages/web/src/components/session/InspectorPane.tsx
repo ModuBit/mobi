@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react'
-import { Layout, Tabs, Button, Tooltip } from 'antd'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Layout, Tabs, Button, Tooltip, Dropdown } from 'antd'
+import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { PanelRightClose, Folder, GitBranch, Terminal, Maximize, Minimize } from 'lucide-react'
-import { FileView } from '@/components/files/FileView'
-import GitStatus from '@/components/git/GitStatus'
-import TerminalView from '@/components/terminal/TerminalView'
+import { PanelRightClose, Folder, Terminal, FileSearch, Maximize, Minimize, Plus } from 'lucide-react'
+import FileTreeView from '@/components/files/FileTreeView'
+import FileContentView from '@/components/files/FileContentView'
+import { InspectorEmptyState } from './InspectorEmptyState'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { useWorkspaceStore, type InspectorTab } from '@/core/data/stores/workspaceStore'
+import { useWorkspaceStore, type InspectorTabEntry } from '@/core/data/stores/workspaceStore'
 
 export interface InspectorPaneProps {
     sessionId: string
@@ -32,97 +33,150 @@ export function InspectorPane({ sessionId }: InspectorPaneProps) {
     const { t } = useTranslation()
     const isMobile = useIsMobile()
     const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
-    const activeTab = useWorkspaceStore((s) => s.getSession(sessionId).activeTab)
+    const tabs = useWorkspaceStore((s) => s.getSession(sessionId).tabs)
+    const activeTabId = useWorkspaceStore((s) => s.getSession(sessionId).activeTabId)
     const chatHidden = useWorkspaceStore((s) => s.getSession(sessionId).chatHidden)
     const setExpanded = useWorkspaceStore((s) => s.setExpanded)
-    const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
     const setChatHidden = useWorkspaceStore((s) => s.setChatHidden)
+    const openFileTreeTab = useWorkspaceStore((s) => s.openFileTreeTab)
+    const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
+    const closeTab = useWorkspaceStore((s) => s.closeTab)
+    const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
 
-    // everExpanded：首次展开后才挂载 Tabs 内容（懒加载闸——避免 InspectorPane 一挂载就加载文件树/Git/终端）。
-    // 与下方 destroyOnHidden={false} 分工：前者管"首次何时挂载"，后者管"挂载后收起是否销毁（keepalive）"。
-    // 两者不可互相替代，缺任一都会退化（懒加载失效 / 终端滚屏丢失）。
+    // 首次展开才挂载内容（懒加载闸）；与 destroyOnHidden={false} 分工 keepalive。
     const [everExpanded, setEverExpanded] = useState(false)
     useEffect(() => {
         if (expanded) setEverExpanded(true)
     }, [expanded])
 
-    const tabItems = [
+    const rightChrome = useMemo(
+        () => (
+            <RightChrome
+                isMobile={isMobile}
+                chatHidden={chatHidden}
+                onToggleChat={(v) => setChatHidden(sessionId, v)}
+                onCollapse={() => setExpanded(sessionId, false)}
+                t={t}
+            />
+        ),
+        [isMobile, chatHidden, setChatHidden, setExpanded, sessionId, t],
+    )
+
+    // 空态：居中 3 按钮（仅展开且无 tab 时）
+    if (expanded && tabs.length === 0) {
+        return (
+            <Layout style={{ height: '100%', position: 'relative' }}>
+                <InspectorEmptyState onOpenFile={() => openFileTreeTab(sessionId)} />
+                {rightChrome}
+            </Layout>
+        )
+    }
+
+    if (!everExpanded) return <Layout style={{ height: '100%' }} />
+
+    const addMenuItems: MenuProps['items'] = [
         {
-            key: 'files' as InspectorTab,
-            label: (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Folder size={14} />
-                    {t('session.tabs.files')}
-                </span>
-            ),
-            children: <FileView sessionId={sessionId} />,
+            key: 'file',
+            icon: <Folder size={14} />,
+            label: t('session.inspector.openFile'),
+            onClick: () => openFileTreeTab(sessionId),
         },
-        {
-            key: 'git' as InspectorTab,
-            label: (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <GitBranch size={14} />
-                    {t('session.tabs.git')}
-                </span>
-            ),
-            children: <GitStatus sessionId={sessionId} />,
-        },
-        {
-            key: 'terminal' as InspectorTab,
-            label: (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Terminal size={14} />
-                    {t('session.tabs.terminal')}
-                </span>
-            ),
-            children: <TerminalView sessionId={sessionId} />,
-        },
+        { key: 'terminal', icon: <Terminal size={14} />, label: t('session.inspector.terminal'), disabled: true },
+        { key: 'review', icon: <FileSearch size={14} />, label: t('session.inspector.review'), disabled: true },
     ]
+
+    const renderTabContent = (tab: InspectorTabEntry): ReactNode => {
+        if (tab.mode === 'file' && tab.filePath) {
+            return <FileContentView sessionId={sessionId} filePath={tab.filePath} />
+        }
+        return (
+            <FileTreeView
+                sessionId={sessionId}
+                onOpenFile={(filePath, fileName) => openFileInTab(sessionId, tab.id, filePath, fileName)}
+            />
+        )
+    }
+
+    const tabItems = tabs.map((tab) => ({
+        key: tab.id,
+        label: (
+            <Tooltip title={tab.mode === 'file' ? tab.filePath : ''}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {tab.mode === 'file' ? <FileSearch size={14} /> : <Folder size={14} />}
+                    {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
+                </span>
+            </Tooltip>
+        ),
+        children: renderTabContent(tab),
+        closable: true,
+    }))
 
     return (
         <Layout style={{ height: '100%' }}>
             <Tabs
-                activeKey={activeTab}
-                onChange={(key) => setActiveTab(sessionId, key as InspectorTab)}
-                items={everExpanded ? tabItems : []}
+                type="editable-card"
+                hideAdd
+                activeKey={activeTabId ?? undefined}
+                onChange={(key) => setActiveTab(sessionId, key)}
+                items={tabItems}
                 size="small"
                 destroyOnHidden={false}
+                onEdit={(targetKey, action) => {
+                    if (action === 'remove' && typeof targetKey === 'string') {
+                        closeTab(sessionId, targetKey)
+                    }
+                }}
                 tabBarStyle={{ padding: '0 12px', margin: 0 }}
-                tabBarExtraContent={
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {/* 最大化/恢复：检视面板占满、聊天归零（仅桌面；移动端不提供） */}
-                        {!isMobile && (
-                            chatHidden ? (
-                                <Tooltip title={t('session.inspector.restore')}>
-                                    <Button
-                                        type="text"
-                                        size="small"
-                                        icon={<Minimize size={16} />}
-                                        onClick={() => setChatHidden(sessionId, false)}
-                                    />
-                                </Tooltip>
-                            ) : (
-                                <Tooltip title={t('session.inspector.maximize')}>
-                                    <Button
-                                        type="text"
-                                        size="small"
-                                        icon={<Maximize size={16} />}
-                                        onClick={() => setChatHidden(sessionId, true)}
-                                    />
-                                </Tooltip>
-                            )
-                        )}
-                        <Tooltip title={t('session.inspector.collapse')}>
-                            <Button
-                                type="text"
-                                size="small"
-                                icon={<PanelRightClose size={16} />}
-                                onClick={() => setExpanded(sessionId, false)}
-                            />
-                        </Tooltip>
-                    </div>
-                }
+                tabBarExtraContent={{
+                    right: (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Dropdown menu={{ items: addMenuItems }} trigger={['click']}>
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    icon={<Plus size={16} />}
+                                    aria-label={t('session.inspector.addTab')}
+                                />
+                            </Dropdown>
+                            {rightChrome}
+                        </div>
+                    ),
+                }}
             />
         </Layout>
+    )
+}
+
+/** 右上角 chrome：最大化/恢复 + 收起。空态与 Tab 态共用。 */
+function RightChrome({
+    isMobile,
+    chatHidden,
+    onToggleChat,
+    onCollapse,
+    t,
+}: {
+    isMobile: boolean
+    chatHidden: boolean
+    onToggleChat: (v: boolean) => void
+    onCollapse: () => void
+    t: (k: string) => string
+}) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {!isMobile && (
+                chatHidden ? (
+                    <Tooltip title={t('session.inspector.restore')}>
+                        <Button type="text" size="small" icon={<Minimize size={16} />} onClick={() => onToggleChat(false)} />
+                    </Tooltip>
+                ) : (
+                    <Tooltip title={t('session.inspector.maximize')}>
+                        <Button type="text" size="small" icon={<Maximize size={16} />} onClick={() => onToggleChat(true)} />
+                    </Tooltip>
+                )
+            )}
+            <Tooltip title={t('session.inspector.collapse')}>
+                <Button type="text" size="small" icon={<PanelRightClose size={16} />} onClick={onCollapse} />
+            </Tooltip>
+        </div>
     )
 }

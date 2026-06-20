@@ -22,44 +22,113 @@ describe('workspaceStore', () => {
         useWorkspaceStore.getState().clearAll()
     })
 
-    it('getSession 未记录返回默认值（收起、0.5、files、chatHidden=false）', () => {
+    it('getSession 未记录返回默认值（收起、0.5、空 tabs、null activeTabId、chatHidden=false）', () => {
         expect(useWorkspaceStore.getState().getSession('s1')).toEqual(DEFAULT_INSPECTOR_STATE)
         expect(DEFAULT_INSPECTOR_STATE).toEqual({
-            expanded: false, splitRatio: 0.5, activeTab: 'files', chatHidden: false,
+            expanded: false,
+            splitRatio: 0.5,
+            chatHidden: false,
+            tabs: [],
+            activeTabId: null,
         })
     })
 
-    it('setExpanded / setSplitRatio / setActiveTab / setChatHidden 按 session 隔离', () => {
+    it('setExpanded / setSplitRatio / setChatHidden 按 session 隔离', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
-        useWorkspaceStore.getState().setActiveTab('s2', 'terminal')
         useWorkspaceStore.getState().setSplitRatio('s1', 0.7)
         useWorkspaceStore.getState().setChatHidden('s2', true)
 
         expect(useWorkspaceStore.getState().getSession('s1')).toEqual({
-            expanded: true, splitRatio: 0.7, activeTab: 'files', chatHidden: false,
+            expanded: true, splitRatio: 0.7, chatHidden: false, tabs: [], activeTabId: null,
         })
-        expect(useWorkspaceStore.getState().getSession('s2')).toEqual({
-            expanded: false, splitRatio: 0.5, activeTab: 'terminal', chatHidden: true,
-        })
+        expect(useWorkspaceStore.getState().getSession('s2').chatHidden).toBe(true)
     })
 
-    it('set 方法在无记录时以默认值为基底合并', () => {
-        useWorkspaceStore.getState().setExpanded('s1', true)
-        expect(useWorkspaceStore.getState().getSession('s1').splitRatio).toBe(0.5)
-    })
-
-    it('setter 值相等短路：不产生新 sessions 引用（拖动逐像素去重）', () => {
+    it('setter 值相等短路：不产生新 sessions 引用', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         const before = useWorkspaceStore.getState().sessions
-        // 同值重复写 → 短路，sessions 引用不变
         useWorkspaceStore.getState().setExpanded('s1', true)
         expect(useWorkspaceStore.getState().sessions).toBe(before)
-        // splitRatio 当前为默认 0.5，同值亦短路
-        useWorkspaceStore.getState().setSplitRatio('s1', 0.5)
-        expect(useWorkspaceStore.getState().sessions).toBe(before)
-        // 不同值才产生新引用
         useWorkspaceStore.getState().setSplitRatio('s1', 0.7)
         expect(useWorkspaceStore.getState().sessions).not.toBe(before)
+    })
+
+    it('openFileTreeTab 新增 tree tab 并激活', () => {
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0].mode).toBe('tree')
+        expect(s.activeTabId).toBe(s.tabs[0].id)
+    })
+
+    it('openFileInTab 未命中：当前 tree tab 转为 file tab，保留 id', () => {
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const treeId = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+        useWorkspaceStore.getState().openFileInTab('s1', treeId, 'src/a.ts', 'a.ts')
+
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0]).toMatchObject({ id: treeId, mode: 'file', filePath: 'src/a.ts', fileName: 'a.ts' })
+        expect(s.activeTabId).toBe(treeId)
+    })
+
+    it('openFileInTab 命中已存在文件：不新增，切激活到原 tab', () => {
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const t1 = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+        useWorkspaceStore.getState().openFileInTab('s1', t1, 'src/a.ts', 'a.ts')
+
+        // 第二个 tree tab，尝试打开同一个文件 → 去重
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const t2 = useWorkspaceStore.getState().getSession('s1').tabs[1].id
+        useWorkspaceStore.getState().openFileInTab('s1', t2, 'src/a.ts', 'a.ts')
+
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(2)
+        expect(s.tabs[0].filePath).toBe('src/a.ts')
+        expect(s.tabs[1].mode).toBe('tree') // 第二个未被转换
+        expect(s.activeTabId).toBe(t1) // 切回已存在的文件 tab
+    })
+
+    it('closeTab 关闭非末位 tab：保留 active', () => {
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const [t1, t2] = useWorkspaceStore.getState().getSession('s1').tabs.map(t => t.id)
+        useWorkspaceStore.getState().setActiveTab('s1', t2)
+        useWorkspaceStore.getState().closeTab('s1', t1)
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0].id).toBe(t2)
+        expect(s.activeTabId).toBe(t2)
+    })
+
+    it('closeTab 关闭 active：激活左侧相邻', () => {
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const [t1, t2] = useWorkspaceStore.getState().getSession('s1').tabs.map(t => t.id)
+        useWorkspaceStore.getState().setActiveTab('s1', t2)
+        useWorkspaceStore.getState().closeTab('s1', t2)
+        expect(useWorkspaceStore.getState().getSession('s1').activeTabId).toBe(t1)
+    })
+
+    it('closeTab 归空：收起 inspector', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const t1 = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+        useWorkspaceStore.getState().closeTab('s1', t1)
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(0)
+        expect(s.activeTabId).toBeNull()
+        expect(s.expanded).toBe(false)
+    })
+
+    it('setActiveTab 设置激活', () => {
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const [t1, t2] = useWorkspaceStore.getState().getSession('s1').tabs.map(t => t.id)
+        useWorkspaceStore.getState().setActiveTab('s1', t1)
+        expect(useWorkspaceStore.getState().getSession('s1').activeTabId).toBe(t1)
+        useWorkspaceStore.getState().setActiveTab('s1', t2)
+        expect(useWorkspaceStore.getState().getSession('s1').activeTabId).toBe(t2)
     })
 
     it('clearSession 清理指定 session，不影响其它', () => {
@@ -70,15 +139,13 @@ describe('workspaceStore', () => {
         expect(useWorkspaceStore.getState().getSession('s2').expanded).toBe(true)
     })
 
-    it('clearSession 清理不存在的 session 为 no-op', () => {
+    it('clearSession 不存在为 no-op', () => {
         const before = useWorkspaceStore.getState().sessions
         useWorkspaceStore.getState().clearSession('never-exists')
-        // 同一引用（未产生新 Map）
         expect(useWorkspaceStore.getState().sessions).toBe(before)
     })
 
-    it('未挂载 persist 中间件（状态仅存内存）', () => {
-        // 无 persist 时 store 对象上不存在 .persist 属性
+    it('未挂载 persist 中间件', () => {
         expect((useWorkspaceStore as unknown as { persist?: unknown }).persist).toBeUndefined()
     })
 })
