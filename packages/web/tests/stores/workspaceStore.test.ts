@@ -22,6 +22,20 @@ describe('workspaceStore', () => {
         useWorkspaceStore.getState().clearAll()
     })
 
+    /**
+     * 构造两个 tab 的现实路径（openFileTreeTab 全局唯一 tree tab）：
+     * tree → 打开文件变为 file tab → 再开 tree（此时无 tree tab）得第二个 tab。
+     * 返回 [fileTabId, treeTabId]。
+     */
+    function openTwoTabs(sessionId: string) {
+        useWorkspaceStore.getState().openFileTreeTab(sessionId)
+        const t1 = useWorkspaceStore.getState().getSession(sessionId).tabs[0].id
+        useWorkspaceStore.getState().openFileInTab(sessionId, t1, 'a.ts', 'a.ts')
+        useWorkspaceStore.getState().openFileTreeTab(sessionId)
+        const t2 = useWorkspaceStore.getState().getSession(sessionId).tabs[1].id
+        return [t1, t2] as const
+    }
+
     it('getSession 未记录返回默认值（收起、0.5、空 tabs、null activeTabId、chatHidden=false）', () => {
         expect(useWorkspaceStore.getState().getSession('s1')).toEqual(DEFAULT_INSPECTOR_STATE)
         expect(DEFAULT_INSPECTOR_STATE).toEqual({
@@ -61,6 +75,17 @@ describe('workspaceStore', () => {
         expect(s.activeTabId).toBe(s.tabs[0].id)
     })
 
+    it('openFileTreeTab 全局唯一：已有 tree tab 时直接激活，不重复创建', () => {
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const treeId = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+        // 切到其它状态后再调用 → 不新增，激活原 tree tab
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0].id).toBe(treeId)
+        expect(s.activeTabId).toBe(treeId)
+    })
+
     it('openFileInTab 未命中：当前 tree tab 转为 file tab，保留 id', () => {
         useWorkspaceStore.getState().openFileTreeTab('s1')
         const treeId = useWorkspaceStore.getState().getSession('s1').tabs[0].id
@@ -90,9 +115,7 @@ describe('workspaceStore', () => {
     })
 
     it('closeTab 关闭非末位 tab：保留 active', () => {
-        useWorkspaceStore.getState().openFileTreeTab('s1')
-        useWorkspaceStore.getState().openFileTreeTab('s1')
-        const [t1, t2] = useWorkspaceStore.getState().getSession('s1').tabs.map(t => t.id)
+        const [t1, t2] = openTwoTabs('s1')
         useWorkspaceStore.getState().setActiveTab('s1', t2)
         useWorkspaceStore.getState().closeTab('s1', t1)
         const s = useWorkspaceStore.getState().getSession('s1')
@@ -102,9 +125,7 @@ describe('workspaceStore', () => {
     })
 
     it('closeTab 关闭 active：激活左侧相邻', () => {
-        useWorkspaceStore.getState().openFileTreeTab('s1')
-        useWorkspaceStore.getState().openFileTreeTab('s1')
-        const [t1, t2] = useWorkspaceStore.getState().getSession('s1').tabs.map(t => t.id)
+        const [t1, t2] = openTwoTabs('s1')
         useWorkspaceStore.getState().setActiveTab('s1', t2)
         useWorkspaceStore.getState().closeTab('s1', t2)
         expect(useWorkspaceStore.getState().getSession('s1').activeTabId).toBe(t1)
@@ -122,9 +143,7 @@ describe('workspaceStore', () => {
     })
 
     it('setActiveTab 设置激活', () => {
-        useWorkspaceStore.getState().openFileTreeTab('s1')
-        useWorkspaceStore.getState().openFileTreeTab('s1')
-        const [t1, t2] = useWorkspaceStore.getState().getSession('s1').tabs.map(t => t.id)
+        const [t1, t2] = openTwoTabs('s1')
         useWorkspaceStore.getState().setActiveTab('s1', t1)
         expect(useWorkspaceStore.getState().getSession('s1').activeTabId).toBe(t1)
         useWorkspaceStore.getState().setActiveTab('s1', t2)

@@ -111,9 +111,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     setChatHidden: (sessionId, chatHidden) => set((state) => applyPatch(state, sessionId, { chatHidden })),
 
+    /** 「文件」动作：新增一个文件树 tab 并激活；已有 tree tab 则直接激活（全局唯一） */
     openFileTreeTab: (sessionId) =>
         set((state) => {
             const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
+            // 已有「打开文件」(tree) tab → 直接激活，不重复创建
+            const existedTree = cur.tabs.find((t) => t.mode === 'tree')
+            if (existedTree) {
+                if (cur.activeTabId === existedTree.id) return state
+                const next = new Map(state.sessions)
+                next.set(sessionId, { ...cur, activeTabId: existedTree.id })
+                return { sessions: next }
+            }
             const entry: InspectorTabEntry = { id: uuid(), kind: 'files', mode: 'tree' }
             const tabs = [...cur.tabs, entry]
             const next = new Map(state.sessions)
