@@ -14,24 +14,25 @@
  * limitations under the License.
  */
 
-/** 左侧最小占比（安全宽度，左侧不可被拖到 0） */
-export const LEFT_MIN_RATIO = 0.2
+/** 左侧最小占比默认值（安全宽度，左侧不可被拖到 0） */
+export const DEFAULT_LEFT_MIN_RATIO = 0.2
 /** 右侧占比低于此阈值视为收起（拖到接近右边缘自动收起） */
 export const COLLAPSE_THRESHOLD = 0.02
 
 /**
  * 由指针 clientX 与容器矩形计算左侧占比（splitRatio）。
- * clamp 到 [LEFT_MIN_RATIO, 1]：左侧至少保留安全宽度，右侧最多占满。
+ * clamp 到 [minRatio, 1]：左侧至少保留安全宽度，右侧最多占满。
  * rectWidth <= 0 时返回最小占比，避免除零。
  */
 export function computeSplitRatio(
     clientX: number,
     rectLeft: number,
     rectWidth: number,
+    minRatio: number = DEFAULT_LEFT_MIN_RATIO,
 ): number {
-    if (rectWidth <= 0) return LEFT_MIN_RATIO
+    if (rectWidth <= 0) return minRatio
     const raw = (clientX - rectLeft) / rectWidth
-    return Math.min(1, Math.max(LEFT_MIN_RATIO, raw))
+    return Math.min(1, Math.max(minRatio, raw))
 }
 
 /**

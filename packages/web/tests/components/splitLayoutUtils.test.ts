@@ -18,18 +18,18 @@ import { describe, it, expect } from 'vitest'
 import {
     computeSplitRatio,
     shouldCollapseOnDrag,
-    LEFT_MIN_RATIO,
-} from '@/components/session/workspaceSplitterUtils'
+    DEFAULT_LEFT_MIN_RATIO,
+} from '@/components/ui/splitLayoutUtils'
 
-describe('workspaceSplitterUtils', () => {
+describe('splitLayoutUtils', () => {
     describe('computeSplitRatio', () => {
         it('容器中点返回 0.5', () => {
             expect(computeSplitRatio(500, 0, 1000)).toBe(0.5)
         })
 
-        it('指针在左边缘 clamp 到 LEFT_MIN_RATIO（不跌破安全宽度）', () => {
-            expect(computeSplitRatio(0, 0, 1000)).toBe(LEFT_MIN_RATIO)
-            expect(computeSplitRatio(-100, 0, 1000)).toBe(LEFT_MIN_RATIO)
+        it('指针在左边缘 clamp 到默认最小占比（不跌破安全宽度）', () => {
+            expect(computeSplitRatio(0, 0, 1000)).toBe(DEFAULT_LEFT_MIN_RATIO)
+            expect(computeSplitRatio(-100, 0, 1000)).toBe(DEFAULT_LEFT_MIN_RATIO)
         })
 
         it('指针在右边缘返回 1（右侧可收到 0）', () => {
@@ -43,7 +43,14 @@ describe('workspaceSplitterUtils', () => {
         })
 
         it('rectWidth<=0 返回最小占比，避免除零', () => {
-            expect(computeSplitRatio(500, 0, 0)).toBe(LEFT_MIN_RATIO)
+            expect(computeSplitRatio(500, 0, 0)).toBe(DEFAULT_LEFT_MIN_RATIO)
+        })
+
+        it('支持自定义最小占比', () => {
+            // minRatio=0.3：指针在 x=100（raw=0.1）应 clamp 到 0.3
+            expect(computeSplitRatio(100, 0, 1000, 0.3)).toBe(0.3)
+            // 中点不受 minRatio 影响
+            expect(computeSplitRatio(500, 0, 1000, 0.3)).toBe(0.5)
         })
     })
 
