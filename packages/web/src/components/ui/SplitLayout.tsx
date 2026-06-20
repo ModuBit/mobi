@@ -28,10 +28,11 @@
  * 受控组件：expanded / splitRatio / secondaryMaximized 由外部持有，通过回调变更。
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import styled from '@emotion/styled'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { computeSplitRatio, shouldCollapseOnDrag, DEFAULT_LEFT_MIN_RATIO } from './splitLayoutUtils'
+import { CLIP_DURATION, CLIP_EASING } from './clipConstants'
 
 export interface SplitLayoutProps {
     /** 左侧（主）面板内容 */
@@ -54,10 +55,6 @@ export interface SplitLayoutProps {
     defaultSplitRatio?: number
 }
 
-// 与 AppSidebar 一致的动画时长/缓动
-const DURATION = '0.3s'
-const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)'
-
 /**
  * 桌面左栏外层：flex 自适应（宽度随右栏外层动画而变）。
  * overflow hidden 裁剪内层固定宽度内容 → 归零时不挤压。
@@ -69,19 +66,20 @@ const LeftFlex = styled.div`
     overflow: hidden;
 `
 
-/** 桌面左栏内层：固定自然宽度，不随外层动画重排（裁剪而非挤压）。 */
-const LeftClipInner = styled.div<{ $width: number }>`
+/** 桌面左栏内层：宽度随展开/折叠过渡（与右栏外层 width 动画同步），内容平滑重排而非瞬跳；拖动时禁过渡跟手。 */
+const LeftClipInner = styled.div<{ $width: number; $dragging: boolean }>`
     width: ${p => p.$width}px;
     height: 100%;
+    transition: ${p => (p.$dragging ? 'none' : `width ${CLIP_DURATION} ${CLIP_EASING}`)};
 `
 
-/** 桌面右栏外层：width 动画 + 裁剪（与 AppSidebar 同款）。拖动时禁用过渡以跟手。 */
+// 桌面右栏外层：width 动画 + 裁剪（与 AppSidebar 同款）。拖动时禁用过渡以跟手。
 const RightClipOuter = styled.div<{ $width: string; $dragging: boolean }>`
     height: 100%;
     width: ${p => p.$width};
     flex-shrink: 0;
     overflow: hidden;
-    transition: ${p => (p.$dragging ? 'none' : `width ${DURATION} ${EASING}`)};
+    transition: ${p => (p.$dragging ? 'none' : `width ${CLIP_DURATION} ${CLIP_EASING}`)};
 `
 
 /** 桌面右栏内层：固定自然宽度，不随外层动画重排。 */
@@ -128,7 +126,7 @@ const MobilePane = styled.div<{ $tx: string }>`
     position: absolute;
     inset: 0;
     transform: translateX(${p => p.$tx});
-    transition: transform ${DURATION} ${EASING};
+    transition: transform ${CLIP_DURATION} ${CLIP_EASING};
     will-change: transform;
 `
 
@@ -147,9 +145,12 @@ export function SplitLayout({
     const containerRef = useRef<HTMLDivElement>(null)
     const [containerWidth, setContainerWidth] = useState(0)
     const [dragging, setDragging] = useState(false)
+    /** 进行中拖拽的清理句柄；卸载兜底用，避免 window 监听泄漏 */
+    const dragRef = useRef<{ teardown: () => void } | null>(null)
 
-    // 测量容器宽度（内层固定宽度需要）
-    useEffect(() => {
+    // 测量容器宽度（内层固定宽度需要）。用 useLayoutEffect 在首绘前同步测量，
+    // 避免 containerWidth 初值 0 导致首帧内层 0 宽闪现 / xterm 以 0 列初始化。
+    useLayoutEffect(() => {
         if (isMobile) return
         const el = containerRef.current
         if (!el) return
@@ -160,18 +161,31 @@ export function SplitLayout({
         return () => ro.disconnect()
     }, [isMobile])
 
-    // 拖拽分隔条：pointer 事件统一处理鼠标/触摸/触控笔
+    // 拖拽分隔条：pointer 事件统一处理鼠标/触摸/触控笔。
+    // rAF 节流：一帧最多落一次 store，避免逐像素 setState 造成 sessions Map 反复拷贝 + 整工作区重渲染。
     const handleDividerPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault()
         const el = containerRef.current
         if (!el) return
         const target = e.currentTarget
-        target.setPointerCapture(e.pointerId)
+        try {
+            target.setPointerCapture(e.pointerId)
+        } catch {
+            // 某些环境不支持 pointer capture，忽略
+        }
+        // 若上一次拖拽未正常结束（如中途卸载），先清理避免监听叠加
+        dragRef.current?.teardown()
         setDragging(true)
 
-        const handleMove = (ev: PointerEvent) => {
+        let pendingX: number | null = null
+        let raf: number | null = null
+        const flush = () => {
+            raf = null
+            if (pendingX == null) return
+            const x = pendingX
+            pendingX = null
             const rect = el.getBoundingClientRect()
-            const ratio = computeSplitRatio(ev.clientX, rect.left, rect.width, leftMinRatio)
+            const ratio = computeSplitRatio(x, rect.left, rect.width, leftMinRatio)
             if (shouldCollapseOnDrag(ratio)) {
                 // 拖到收起：重置占比为默认值，避免再次展开时右侧过窄
                 onExpandedChange(false)
@@ -181,15 +195,38 @@ export function SplitLayout({
                 onSplitRatioChange(ratio)
             }
         }
-        const handleUp = (ev: PointerEvent) => {
-            target.releasePointerCapture(ev.pointerId)
-            setDragging(false)
+        const handleMove = (ev: PointerEvent) => {
+            pendingX = ev.clientX
+            if (raf == null) raf = requestAnimationFrame(flush)
+        }
+        const teardown = () => {
+            if (raf != null) cancelAnimationFrame(raf)
+            raf = null
             window.removeEventListener('pointermove', handleMove)
             window.removeEventListener('pointerup', handleUp)
         }
+        const handleUp = (ev: PointerEvent) => {
+            try {
+                target.releasePointerCapture(ev.pointerId)
+            } catch {
+                // 拖到收起会卸载 Divider（showDivider 变 false），capture 目标已脱离 DOM，释放可忽略
+            }
+            teardown()
+            dragRef.current = null
+            setDragging(false)
+        }
         window.addEventListener('pointermove', handleMove)
         window.addEventListener('pointerup', handleUp)
+        dragRef.current = { teardown }
     }, [leftMinRatio, defaultSplitRatio, onExpandedChange, onSplitRatioChange])
+
+    // 卸载兜底：拖拽进行中组件被卸载（路由切走/会话删除）时清理 window 监听与未完成 rAF
+    useEffect(() => {
+        return () => {
+            dragRef.current?.teardown()
+            dragRef.current = null
+        }
+    }, [])
 
     if (isMobile) {
         // 移动端不支持最大化，仅展开/收起切换
@@ -218,7 +255,7 @@ export function SplitLayout({
     return (
         <div ref={containerRef} style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
             <LeftFlex>
-                <LeftClipInner $width={leftInnerPx}>{left}</LeftClipInner>
+                <LeftClipInner $width={leftInnerPx} $dragging={dragging}>{left}</LeftClipInner>
             </LeftFlex>
             {showDivider && (
                 <Divider

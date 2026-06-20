@@ -38,7 +38,9 @@ export function InspectorPane({ sessionId }: InspectorPaneProps) {
     const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
     const setChatHidden = useWorkspaceStore((s) => s.setChatHidden)
 
-    // everExpanded：首次展开后恒为 true，保证内容挂载后续由 destroyOnHidden 保留
+    // everExpanded：首次展开后才挂载 Tabs 内容（懒加载闸——避免 InspectorPane 一挂载就加载文件树/Git/终端）。
+    // 与下方 destroyOnHidden={false} 分工：前者管"首次何时挂载"，后者管"挂载后收起是否销毁（keepalive）"。
+    // 两者不可互相替代，缺任一都会退化（懒加载失效 / 终端滚屏丢失）。
     const [everExpanded, setEverExpanded] = useState(false)
     useEffect(() => {
         if (expanded) setEverExpanded(true)

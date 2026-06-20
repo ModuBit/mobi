@@ -48,6 +48,20 @@ describe('workspaceStore', () => {
         expect(useWorkspaceStore.getState().getSession('s1').splitRatio).toBe(0.5)
     })
 
+    it('setter 值相等短路：不产生新 sessions 引用（拖动逐像素去重）', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        const before = useWorkspaceStore.getState().sessions
+        // 同值重复写 → 短路，sessions 引用不变
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        expect(useWorkspaceStore.getState().sessions).toBe(before)
+        // splitRatio 当前为默认 0.5，同值亦短路
+        useWorkspaceStore.getState().setSplitRatio('s1', 0.5)
+        expect(useWorkspaceStore.getState().sessions).toBe(before)
+        // 不同值才产生新引用
+        useWorkspaceStore.getState().setSplitRatio('s1', 0.7)
+        expect(useWorkspaceStore.getState().sessions).not.toBe(before)
+    })
+
     it('clearSession 清理指定 session，不影响其它', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().setExpanded('s2', true)

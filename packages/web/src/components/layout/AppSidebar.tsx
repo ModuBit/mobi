@@ -22,6 +22,7 @@ import { SidebarHeader } from './SidebarHeader'
 import { SidebarNav } from './SidebarNav'
 import { SidebarProjects } from './SidebarProjects'
 import { SidebarFooter } from './SidebarFooter'
+import { CLIP_DURATION, CLIP_EASING } from '@/components/ui/clipConstants'
 
 const { useToken } = antTheme
 
@@ -34,7 +35,7 @@ const SidebarContainer = styled.div<{
     flex-shrink: 0;
     overflow: hidden;
     height: 100%;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width ${CLIP_DURATION} ${CLIP_EASING};
 `
 
 // 内层容器：固定宽度，内容不被挤压，只被外层裁剪

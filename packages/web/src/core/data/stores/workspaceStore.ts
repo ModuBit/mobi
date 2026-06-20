@@ -57,38 +57,43 @@ interface WorkspaceState {
     clearAll: () => void
 }
 
+/**
+ * 内部辅助：按 session 合并补丁并做值相等短路。
+ * 值未变时返回原 state（同引用），zustand 不触发订阅，避免拖动逐像素 setState 的无谓重渲染。
+ */
+function applyPatch<K extends keyof SessionInspectorState>(
+    state: WorkspaceState,
+    sessionId: string,
+    patch: Pick<SessionInspectorState, K>,
+): WorkspaceState | { sessions: Map<string, SessionInspectorState> } {
+    const cur = state.sessions.get(sessionId)
+    if (cur) {
+        let unchanged = true
+        for (const key in patch) {
+            if (cur[key] !== patch[key]) {
+                unchanged = false
+                break
+            }
+        }
+        if (unchanged) return state
+    }
+    const next = new Map(state.sessions)
+    next.set(sessionId, { ...(cur ?? DEFAULT_INSPECTOR_STATE), ...patch })
+    return { sessions: next }
+}
+
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     sessions: new Map(),
 
     getSession: (sessionId) => get().sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE,
 
-    setExpanded: (sessionId, expanded) =>
-        set((state) => {
-            const next = new Map(state.sessions)
-            next.set(sessionId, { ...(next.get(sessionId) ?? DEFAULT_INSPECTOR_STATE), expanded })
-            return { sessions: next }
-        }),
+    setExpanded: (sessionId, expanded) => set((state) => applyPatch(state, sessionId, { expanded })),
 
-    setSplitRatio: (sessionId, splitRatio) =>
-        set((state) => {
-            const next = new Map(state.sessions)
-            next.set(sessionId, { ...(next.get(sessionId) ?? DEFAULT_INSPECTOR_STATE), splitRatio })
-            return { sessions: next }
-        }),
+    setSplitRatio: (sessionId, splitRatio) => set((state) => applyPatch(state, sessionId, { splitRatio })),
 
-    setActiveTab: (sessionId, activeTab) =>
-        set((state) => {
-            const next = new Map(state.sessions)
-            next.set(sessionId, { ...(next.get(sessionId) ?? DEFAULT_INSPECTOR_STATE), activeTab })
-            return { sessions: next }
-        }),
+    setActiveTab: (sessionId, activeTab) => set((state) => applyPatch(state, sessionId, { activeTab })),
 
-    setChatHidden: (sessionId, chatHidden) =>
-        set((state) => {
-            const next = new Map(state.sessions)
-            next.set(sessionId, { ...(next.get(sessionId) ?? DEFAULT_INSPECTOR_STATE), chatHidden })
-            return { sessions: next }
-        }),
+    setChatHidden: (sessionId, chatHidden) => set((state) => applyPatch(state, sessionId, { chatHidden })),
 
     clearSession: (sessionId) =>
         set((state) => {
