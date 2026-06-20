@@ -58,6 +58,9 @@ const bubbleCopyStyles = css`
 /** 滚动相关阈值（autoScroll=false，正常 flex column 布局） */
 const COMPACT_COMMAND = '/compact'
 
+/** 聊天内容区最大宽度：超宽屏时限宽居中，避免用户/AI 气泡分列两端过于割裂；小屏自动 100% */
+const CHAT_MAX_WIDTH = 1200
+
 const HISTORY_PREFETCH_DISTANCE = 200
 const AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD = 50
 const SCROLL_BOTTOM_VISIBLE_THRESHOLD = 60
@@ -603,7 +606,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto' }}>
             {contextHolder}
             <Global styles={bubbleCopyStyles} />
             <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
