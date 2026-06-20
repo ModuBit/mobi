@@ -144,7 +144,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
         return (
             <Layout style={{ height: '100%', position: 'relative' }}>
                 <InspectorEmptyState onOpenFile={() => openFileTreeTab(sessionId)} />
-                {rightChrome}
+                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 2 }}>{rightChrome}</div>
             </Layout>
         )
     }

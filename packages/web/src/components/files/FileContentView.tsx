@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Spin, Empty, Typography, theme as antTheme } from 'antd'
+import { Spin, Empty, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useFileContent } from '@/core/data/hooks/queries/useFileTree'
 
@@ -28,11 +28,10 @@ interface FileContentViewProps {
 /** 只读文件内容视图（占满面板），顶部小字显示相对路径 */
 export default function FileContentView({ sessionId, filePath }: FileContentViewProps) {
     const { t } = useTranslation()
-    const { token } = antTheme.useToken()
     const { data: content, isLoading, error } = useFileContent(sessionId, filePath)
 
     return (
-        <div style={{ height: '100%', overflow: 'auto', padding: 16, background: token.colorBgLayout }}>
+        <div style={{ height: '100%', overflow: 'auto', padding: 16 }}>
             {isLoading ? (
                 <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
             ) : error ? (
@@ -45,8 +44,7 @@ export default function FileContentView({ sessionId, filePath }: FileContentView
                     </div>
                     <pre style={{
                         fontSize: 12, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                        fontFamily: 'var(--font-mono)', background: token.colorBgContainer,
-                        padding: 12, borderRadius: 4, border: `1px solid ${token.colorBorder}`,
+                        fontFamily: 'var(--font-mono)', padding: 12,
                     }}>
                         {content}
                     </pre>
