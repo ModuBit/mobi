@@ -87,7 +87,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                     agentStatus={agentStatus}
                 />
             }
-            right={<InspectorPane sessionId={sessionId} />}
+            right={<InspectorPane sessionId={sessionId} active={session?.active ?? false} />}
         />
     )
 }

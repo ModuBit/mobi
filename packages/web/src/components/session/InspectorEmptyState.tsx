@@ -14,42 +14,100 @@
  * limitations under the License.
  */
 
-import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Folder, Terminal, FileSearch } from 'lucide-react'
 import styled from '@emotion/styled'
-
-const Wrap = styled.div`
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-`
+import { theme as antTheme } from 'antd'
 
 interface InspectorEmptyStateProps {
     /** 点「文件」 */
     onOpenFile: () => void
 }
 
+interface ActionItem {
+    key: string
+    icon: React.ReactNode
+    labelKey: string
+    disabled?: boolean
+    onClick?: () => void
+}
+
 /**
- * 空态：垂直 + 水平居中的 3 个引导按钮。
+ * 空态：居中的卡片行列表（参考 macOS 菜单风格——图标 + 标签，浅灰圆角卡）。
  * 终端/审查 disabled（未支持）。仅「文件」可点。
  */
 export function InspectorEmptyState({ onOpenFile }: InspectorEmptyStateProps) {
     const { t } = useTranslation()
+    const { token } = antTheme.useToken()
+
+    const items: ActionItem[] = [
+        { key: 'file', icon: <Folder size={18} />, labelKey: 'session.inspector.openFile', onClick: onOpenFile },
+        { key: 'terminal', icon: <Terminal size={18} />, labelKey: 'session.inspector.terminal', disabled: true },
+        { key: 'review', icon: <FileSearch size={18} />, labelKey: 'session.inspector.review', disabled: true },
+    ]
+
     return (
         <Wrap>
-            <Button size="large" icon={<Folder size={18} />} onClick={onOpenFile}>
-                {t('session.inspector.openFile')}
-            </Button>
-            <Button size="large" icon={<Terminal size={18} />} disabled>
-                {t('session.inspector.terminal')}
-            </Button>
-            <Button size="large" icon={<FileSearch size={18} />} disabled>
-                {t('session.inspector.review')}
-            </Button>
+            <List role="list">
+                {items.map((item) => (
+                    <Row
+                        key={item.key}
+                        type="button"
+                        disabled={item.disabled}
+                        onClick={item.disabled ? undefined : item.onClick}
+                        $token={token}
+                    >
+                        <span className="icon">{item.icon}</span>
+                        <span className="label">{t(item.labelKey)}</span>
+                    </Row>
+                ))}
+            </List>
         </Wrap>
     )
 }
+
+const Wrap = styled.div`
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+`
+
+const List = styled.div`
+    width: 100%;
+    max-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+`
+
+const Row = styled.button<{ $token: ReturnType<typeof antTheme.useToken>['token'] }>`
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 8px;
+    background: ${(p) => p.$token.colorFillQuaternary};
+    color: ${(p) => p.$token.colorText};
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    .icon {
+        display: inline-flex;
+        color: ${(p) => p.$token.colorTextSecondary};
+    }
+
+    &:hover:not(:disabled) {
+        background: ${(p) => p.$token.colorFillTertiary};
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+    }
+`

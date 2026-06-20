@@ -32,6 +32,10 @@ vi.mock('@/core/data/hooks/queries/useFileTree', () => ({
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (key: string) => key }),
 }))
+const resumeSessionMock = vi.fn()
+vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
+    useSessionActions: () => ({ resumeSession: resumeSessionMock, isResumePending: false }),
+}))
 
 // jsdom 没有 ResizeObserver（antd Tabs 依赖）
 beforeAll(() => {
@@ -48,7 +52,10 @@ function renderWithClient(ui: React.ReactNode) {
 }
 
 describe('InspectorPane', () => {
-    beforeEach(() => useWorkspaceStore.getState().clearAll())
+    beforeEach(() => {
+        useWorkspaceStore.getState().clearAll()
+        resumeSessionMock.mockReset()
+    })
     afterEach(() => cleanup())
 
     it('空态：渲染 文件/终端/审查 三个按钮，终端审查 disabled', () => {
@@ -57,6 +64,17 @@ describe('InspectorPane', () => {
         expect(screen.getByRole('button', { name: 'session.inspector.openFile' })).toBeEnabled()
         expect(screen.getByRole('button', { name: 'session.inspector.terminal' })).toBeDisabled()
         expect(screen.getByRole('button', { name: 'session.inspector.review' })).toBeDisabled()
+    })
+
+    it('session 离线（active=false）：覆盖恢复层，点按钮调 resumeSession', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        renderWithClient(<InspectorPane sessionId="s1" active={false} />)
+        // 不渲染空态文件按钮
+        expect(screen.queryByRole('button', { name: 'session.inspector.openFile' })).toBeNull()
+        // 渲染恢复按钮
+        const resumeBtn = screen.getByRole('button', { name: 'composer.activate' })
+        fireEvent.click(resumeBtn)
+        expect(resumeSessionMock).toHaveBeenCalled()
     })
 
     it('点「文件」→ 出现 tree tab', () => {
