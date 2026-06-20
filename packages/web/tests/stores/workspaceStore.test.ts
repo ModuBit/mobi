@@ -22,21 +22,24 @@ describe('workspaceStore', () => {
         useWorkspaceStore.getState().clearAll()
     })
 
-    it('getSession 未记录返回默认值（收起、0.5、files）', () => {
+    it('getSession 未记录返回默认值（收起、0.5、files、chatHidden=false）', () => {
         expect(useWorkspaceStore.getState().getSession('s1')).toEqual(DEFAULT_INSPECTOR_STATE)
-        expect(DEFAULT_INSPECTOR_STATE).toEqual({ expanded: false, splitRatio: 0.5, activeTab: 'files' })
+        expect(DEFAULT_INSPECTOR_STATE).toEqual({
+            expanded: false, splitRatio: 0.5, activeTab: 'files', chatHidden: false,
+        })
     })
 
-    it('setExpanded / setSplitRatio / setActiveTab 按 session 隔离', () => {
+    it('setExpanded / setSplitRatio / setActiveTab / setChatHidden 按 session 隔离', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().setActiveTab('s2', 'terminal')
         useWorkspaceStore.getState().setSplitRatio('s1', 0.7)
+        useWorkspaceStore.getState().setChatHidden('s2', true)
 
         expect(useWorkspaceStore.getState().getSession('s1')).toEqual({
-            expanded: true, splitRatio: 0.7, activeTab: 'files',
+            expanded: true, splitRatio: 0.7, activeTab: 'files', chatHidden: false,
         })
         expect(useWorkspaceStore.getState().getSession('s2')).toEqual({
-            expanded: false, splitRatio: 0.5, activeTab: 'terminal',
+            expanded: false, splitRatio: 0.5, activeTab: 'terminal', chatHidden: true,
         })
     })
 

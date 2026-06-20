@@ -18,11 +18,14 @@
  * 通用两栏分栏布局（主面板 | 次要面板）。
  *
  * 设计要点（复刻 AppSidebar 的丝滑感，避免内容被挤压）：
- * - 桌面：左栏 flex 自适应 + 可拖拽分隔条 + 右栏「外层 width 动画 / 内层固定裁剪」。
- *   右栏内层固定为展开时的真实宽度，收起时外层 width 过渡到 0，内容只被裁剪不被挤压。
- * - 移动：两栏绝对定位全尺寸，靠 transform 平移切换，零宽度变化 → 零重排零挤压。
+ * - 桌面：两栏均「外层宽度动画 / 内层固定裁剪」。
+ *   内层固定为各自的自然宽度，外层收起/展开/最大化时 width 过渡，
+ *   内容只被裁剪不被挤压。
+ * - 可拖拽分隔条调整比例（主面板有最小占比保护，拖不到 0）。
+ * - 次要面板可「最大化」（主面板归零、次要占满），这是主面板归零的唯一途径。
+ * - 移动：两栏绝对定位全尺寸，transform 平移切换，零宽度变化 → 零重排零挤压。
  *
- * 受控组件：expanded / splitRatio 由外部持有，通过回调变更。
+ * 受控组件：expanded / splitRatio / secondaryMaximized 由外部持有，通过回调变更。
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -37,26 +40,39 @@ export interface SplitLayoutProps {
     right: ReactNode
     /** 右侧面板是否展开 */
     expanded: boolean
-    /** 左侧占比 0~1（展开时；移动端不适用） */
+    /** 左侧占比 0~1（展开且未最大化时；移动端不适用） */
     splitRatio: number
+    /** 右侧是否最大化（左侧归零、右侧占满；仅桌面 + 展开时生效） */
+    secondaryMaximized: boolean
     /** 展开/收起变更 */
     onExpandedChange: (expanded: boolean) => void
     /** 左侧占比变更（拖拽时触发） */
     onSplitRatioChange: (ratio: number) => void
-    /** 左侧最小占比，默认 0.2（安全宽度，不可拖到 0） */
+    /** 左侧最小占比，默认 0.2（安全宽度，拖动不可突破；最大化不受此限） */
     leftMinRatio?: number
+    /** 默认左侧占比，拖拽至收起后重新展开时恢复用，默认 0.5 */
+    defaultSplitRatio?: number
 }
 
 // 与 AppSidebar 一致的动画时长/缓动
 const DURATION = '0.3s'
 const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)'
 
-/** 桌面左栏：flex 自适应。内容随宽度重排（主面板通常是文字流，重排可接受）。 */
+/**
+ * 桌面左栏外层：flex 自适应（宽度随右栏外层动画而变）。
+ * overflow hidden 裁剪内层固定宽度内容 → 归零时不挤压。
+ */
 const LeftFlex = styled.div`
     height: 100%;
     flex: 1 1 0;
     min-width: 0;
     overflow: hidden;
+`
+
+/** 桌面左栏内层：固定自然宽度，不随外层动画重排（裁剪而非挤压）。 */
+const LeftClipInner = styled.div<{ $width: number }>`
+    width: ${p => p.$width}px;
+    height: 100%;
 `
 
 /** 桌面右栏外层：width 动画 + 裁剪（与 AppSidebar 同款）。拖动时禁用过渡以跟手。 */
@@ -68,7 +84,7 @@ const RightClipOuter = styled.div<{ $width: string; $dragging: boolean }>`
     transition: ${p => (p.$dragging ? 'none' : `width ${DURATION} ${EASING}`)};
 `
 
-/** 桌面右栏内层：固定宽度（展开时的真实宽度），不随外层动画重排。 */
+/** 桌面右栏内层：固定自然宽度，不随外层动画重排。 */
 const RightClipInner = styled.div<{ $width: number; $visible: boolean }>`
     width: ${p => p.$width}px;
     height: 100%;
@@ -78,8 +94,8 @@ const RightClipInner = styled.div<{ $width: number; $visible: boolean }>`
 `
 
 /**
- * 可拖拽分隔条（仅桌面 + 展开时显示）。
- * 命中区域 8px 宽松好抓，可见分割线 1px（伪元素居中）。
+ * 可拖拽分隔条（仅桌面 + 展开 + 未最大化时显示）。
+ * 命中区域 8px 宽松好抓，可见分割线 2px（伪元素居中）。
  */
 const Divider = styled.div`
     position: relative;
@@ -121,16 +137,18 @@ export function SplitLayout({
     right,
     expanded,
     splitRatio,
+    secondaryMaximized,
     onExpandedChange,
     onSplitRatioChange,
     leftMinRatio = DEFAULT_LEFT_MIN_RATIO,
+    defaultSplitRatio = 0.5,
 }: SplitLayoutProps) {
     const isMobile = useIsMobile()
     const containerRef = useRef<HTMLDivElement>(null)
     const [containerWidth, setContainerWidth] = useState(0)
     const [dragging, setDragging] = useState(false)
 
-    // 测量容器宽度（桌面右栏内层固定宽度需要）
+    // 测量容器宽度（内层固定宽度需要）
     useEffect(() => {
         if (isMobile) return
         const el = containerRef.current
@@ -141,8 +159,6 @@ export function SplitLayout({
         ro.observe(el)
         return () => ro.disconnect()
     }, [isMobile])
-
-    const rightFraction = 1 - splitRatio
 
     // 拖拽分隔条：pointer 事件统一处理鼠标/触摸/触控笔
     const handleDividerPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -157,7 +173,9 @@ export function SplitLayout({
             const rect = el.getBoundingClientRect()
             const ratio = computeSplitRatio(ev.clientX, rect.left, rect.width, leftMinRatio)
             if (shouldCollapseOnDrag(ratio)) {
+                // 拖到收起：重置占比为默认值，避免再次展开时右侧过窄
                 onExpandedChange(false)
+                onSplitRatioChange(defaultSplitRatio)
             } else {
                 onExpandedChange(true)
                 onSplitRatioChange(ratio)
@@ -171,9 +189,10 @@ export function SplitLayout({
         }
         window.addEventListener('pointermove', handleMove)
         window.addEventListener('pointerup', handleUp)
-    }, [leftMinRatio, onExpandedChange, onSplitRatioChange])
+    }, [leftMinRatio, defaultSplitRatio, onExpandedChange, onSplitRatioChange])
 
     if (isMobile) {
+        // 移动端不支持最大化，仅展开/收起切换
         return (
             <MobileContainer ref={containerRef}>
                 {/* 收起：左侧全屏；展开：左侧向左滑出 */}
@@ -184,21 +203,35 @@ export function SplitLayout({
         )
     }
 
+    // 右栏可见：展开或最大化（最大化隐含展开）
+    const rightVisible = expanded || secondaryMaximized
+    // 右栏外层宽度占比
+    const rightFraction = secondaryMaximized ? 1 : 1 - splitRatio
+    // 左栏内层自然宽度：展开（含最大化）时按 splitRatio，收起时占满
+    const leftInnerPx = expanded ? Math.max(0, splitRatio * containerWidth) : containerWidth
+    // 右栏内层自然宽度：最大化时占满，否则按 1-splitRatio（收起时也保持此宽度以被裁剪）
+    const rightInnerPx = secondaryMaximized
+        ? containerWidth
+        : Math.max(0, (1 - splitRatio) * containerWidth)
+    const showDivider = expanded && !secondaryMaximized
+
     return (
         <div ref={containerRef} style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-            <LeftFlex>{left}</LeftFlex>
-            {expanded && (
+            <LeftFlex>
+                <LeftClipInner $width={leftInnerPx}>{left}</LeftClipInner>
+            </LeftFlex>
+            {showDivider && (
                 <Divider
                     onPointerDown={handleDividerPointerDown}
                     role="separator"
                     aria-orientation="vertical"
                 />
             )}
-            <RightClipOuter $width={expanded ? `${rightFraction * 100}%` : '0'} $dragging={dragging}>
-                <RightClipInner
-                    $width={Math.max(0, rightFraction * containerWidth)}
-                    $visible={expanded}
-                >
+            <RightClipOuter
+                $width={rightVisible ? `${rightFraction * 100}%` : '0'}
+                $dragging={dragging}
+            >
+                <RightClipInner $width={rightInnerPx} $visible={rightVisible}>
                     {right}
                 </RightClipInner>
             </RightClipOuter>

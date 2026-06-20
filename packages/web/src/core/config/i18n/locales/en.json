@@ -89,7 +89,9 @@
     },
     "inspector": {
       "expand": "Open inspector",
-      "collapse": "Close inspector"
+      "collapse": "Close inspector",
+      "maximize": "Maximize",
+      "restore": "Restore"
     },
     "empty": "No sessions yet. Start a new conversation.",
     "newSession": "New Session",

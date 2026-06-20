@@ -32,6 +32,7 @@ export interface WorkspaceSplitterProps {
 export function WorkspaceSplitter({ sessionId, left, right }: WorkspaceSplitterProps) {
     const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
     const splitRatio = useWorkspaceStore((s) => s.getSession(sessionId).splitRatio)
+    const chatHidden = useWorkspaceStore((s) => s.getSession(sessionId).chatHidden)
     const setExpanded = useWorkspaceStore((s) => s.setExpanded)
     const setSplitRatio = useWorkspaceStore((s) => s.setSplitRatio)
 
@@ -41,6 +42,7 @@ export function WorkspaceSplitter({ sessionId, left, right }: WorkspaceSplitterP
             right={right}
             expanded={expanded}
             splitRatio={splitRatio}
+            secondaryMaximized={expanded && chatHidden}
             onExpandedChange={(v) => setExpanded(sessionId, v)}
             onSplitRatioChange={(v) => setSplitRatio(sessionId, v)}
         />

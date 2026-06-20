@@ -17,10 +17,11 @@
 import { useEffect, useState } from 'react'
 import { Layout, Tabs, Button, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { PanelRightClose, Folder, GitBranch, Terminal } from 'lucide-react'
+import { PanelRightClose, Folder, GitBranch, Terminal, Maximize2, Minimize2 } from 'lucide-react'
 import { FileView } from '@/components/files/FileView'
 import GitStatus from '@/components/git/GitStatus'
 import TerminalView from '@/components/terminal/TerminalView'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useWorkspaceStore, type InspectorTab } from '@/core/data/stores/workspaceStore'
 
 export interface InspectorPaneProps {
@@ -29,10 +30,13 @@ export interface InspectorPaneProps {
 
 export function InspectorPane({ sessionId }: InspectorPaneProps) {
     const { t } = useTranslation()
+    const isMobile = useIsMobile()
     const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
     const activeTab = useWorkspaceStore((s) => s.getSession(sessionId).activeTab)
+    const chatHidden = useWorkspaceStore((s) => s.getSession(sessionId).chatHidden)
     const setExpanded = useWorkspaceStore((s) => s.setExpanded)
     const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
+    const setChatHidden = useWorkspaceStore((s) => s.setChatHidden)
 
     // everExpanded：首次展开后恒为 true，保证内容挂载后续由 destroyOnHidden 保留
     const [everExpanded, setEverExpanded] = useState(false)
@@ -83,14 +87,38 @@ export function InspectorPane({ sessionId }: InspectorPaneProps) {
                 destroyOnHidden={false}
                 tabBarStyle={{ padding: '0 12px', margin: 0 }}
                 tabBarExtraContent={
-                    <Tooltip title={t('session.inspector.collapse')}>
-                        <Button
-                            type="text"
-                            size="small"
-                            icon={<PanelRightClose size={16} />}
-                            onClick={() => setExpanded(sessionId, false)}
-                        />
-                    </Tooltip>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {/* 最大化/恢复：检视面板占满、聊天归零（仅桌面；移动端不提供） */}
+                        {!isMobile && (
+                            chatHidden ? (
+                                <Tooltip title={t('session.inspector.restore')}>
+                                    <Button
+                                        type="text"
+                                        size="small"
+                                        icon={<Minimize2 size={16} />}
+                                        onClick={() => setChatHidden(sessionId, false)}
+                                    />
+                                </Tooltip>
+                            ) : (
+                                <Tooltip title={t('session.inspector.maximize')}>
+                                    <Button
+                                        type="text"
+                                        size="small"
+                                        icon={<Maximize2 size={16} />}
+                                        onClick={() => setChatHidden(sessionId, true)}
+                                    />
+                                </Tooltip>
+                            )
+                        )}
+                        <Tooltip title={t('session.inspector.collapse')}>
+                            <Button
+                                type="text"
+                                size="small"
+                                icon={<PanelRightClose size={16} />}
+                                onClick={() => setExpanded(sessionId, false)}
+                            />
+                        </Tooltip>
+                    </div>
                 }
             />
         </Layout>

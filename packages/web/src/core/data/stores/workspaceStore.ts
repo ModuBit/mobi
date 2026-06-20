@@ -27,6 +27,8 @@ export interface SessionInspectorState {
     splitRatio: number
     /** 当前激活的 Tab */
     activeTab: InspectorTab
+    /** 检视面板是否最大化（左侧聊天归零、检视占满；仅桌面生效） */
+    chatHidden: boolean
 }
 
 /**
@@ -37,6 +39,7 @@ export const DEFAULT_INSPECTOR_STATE: Readonly<SessionInspectorState> = Object.f
     expanded: false,
     splitRatio: 0.5,
     activeTab: 'files',
+    chatHidden: false,
 })
 
 interface WorkspaceState {
@@ -46,6 +49,8 @@ interface WorkspaceState {
     setExpanded: (sessionId: string, expanded: boolean) => void
     setSplitRatio: (sessionId: string, ratio: number) => void
     setActiveTab: (sessionId: string, tab: InspectorTab) => void
+    /** 切换检视面板最大化（隐藏聊天） */
+    setChatHidden: (sessionId: string, chatHidden: boolean) => void
     /** session 删除时清理 */
     clearSession: (sessionId: string) => void
     /** 清空全部（登出时） */
@@ -75,6 +80,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         set((state) => {
             const next = new Map(state.sessions)
             next.set(sessionId, { ...(next.get(sessionId) ?? DEFAULT_INSPECTOR_STATE), activeTab })
+            return { sessions: next }
+        }),
+
+    setChatHidden: (sessionId, chatHidden) =>
+        set((state) => {
+            const next = new Map(state.sessions)
+            next.set(sessionId, { ...(next.get(sessionId) ?? DEFAULT_INSPECTOR_STATE), chatHidden })
             return { sessions: next }
         }),
 
