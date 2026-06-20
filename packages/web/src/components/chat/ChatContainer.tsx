@@ -578,10 +578,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         await sessionActions.abortSession()
     }
 
-    const handleArchive = async () => {
-        await sessionActions.archiveSession()
-    }
-
     const handlePermissionModeChange = async (mode: string) => {
         await sessionActions.setPermissionMode(mode)
     }
@@ -674,8 +670,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 onSend={handleSend}
                 onAbort={handleAbort}
                 abortPending={sessionActions.isAbortPending}
-                onArchive={handleArchive}
-                archivePending={sessionActions.isArchivePending}
                 onActivate={() => sessionActions.resumeSession()}
                 activatePending={sessionActions.isResumePending}
                 onSwitchToRemote={() => sessionActions.switchSession()}

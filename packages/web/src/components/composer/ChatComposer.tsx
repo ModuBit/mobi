@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Tooltip, Select, theme, Typography, Popover, message } from 'antd'
-import { PlusOutlined, PlayCircleOutlined, SwapOutlined, LogoutOutlined, SafetyOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
+import { PlusOutlined, PlayCircleOutlined, SwapOutlined, SafetyOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -69,8 +69,6 @@ interface ChatComposerProps {
     onSend: (text: string) => void
     onAbort?: () => void
     abortPending?: boolean
-    onArchive?: () => void
-    archivePending?: boolean
     onActivate?: () => void
     activatePending?: boolean
     onSwitchToRemote?: () => void
@@ -252,8 +250,6 @@ export function ChatComposer(props: ChatComposerProps) {
         onSend,
         onAbort,
         abortPending = false,
-        onArchive,
-        archivePending = false,
         onActivate,
         activatePending = false,
         onSwitchToRemote,
@@ -322,7 +318,7 @@ export function ChatComposer(props: ChatComposerProps) {
     // 有 pending 权限请求时禁用发送
     const hasPendingPermission = Boolean(agentState?.requests && Object.keys(agentState.requests).length > 0)
     const canSend = (hasText || hasAttachments) && !controlsDisabled && !running && !sending && !hasPendingPermission
-    const hasSubBar = !!extraItems?.length || !!(onArchive && active) || !!(extraLeftButtons && !extraItems)
+    const hasSubBar = !!extraItems?.length || !!(extraLeftButtons && !extraItems)
 
     // 是否展示命令提示（hint 或 description 任一存在即展示）
     const showGhostHint = !!(slash.activeCommand?.hint || slash.activeCommand?.description)
@@ -753,23 +749,6 @@ export function ChatComposer(props: ChatComposerProps) {
                             items={[
                                 // file terminal
                                 ...(extraItems ?? []),
-                                // archive
-                                ...(onArchive && active ? [{
-                                    key: 'archive',
-                                    label: t('session.actions.archive'),
-                                    render: () => (
-                                        <Tooltip title={t('session.actions.archive')}>
-                                            <Button
-                                                type="text"
-                                                size="small"
-                                                icon={<LogoutOutlined />}
-                                                loading={archivePending}
-                                                onClick={onArchive}
-                                                style={ACTION_BUTTON_STYLE}
-                                            />
-                                        </Tooltip>
-                                    ),
-                                }] : []),
                                 // 已废弃：extraLeftButtons 回退
                                 ...(extraLeftButtons && !extraItems ? [{
                                     key: 'extra',
