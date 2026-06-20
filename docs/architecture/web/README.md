@@ -148,7 +148,6 @@ packages/web/src/
 │   │       │   ├── useSessionActions.ts  会话操作（归档/中止/切换/恢复/重命名）
 │   │       │   └── useSpawnSession.ts    启动新会话
 │   │       ├── useMediaQuery.ts          响应式断点
-│   │       ├── useTerminalSocket.ts      终端 WebSocket 连接
 │   │       ├── useNotify.ts             通知 Hook
 │   │       └── useNotificationSetup.ts   通知权限 + Web Push 订阅
 │   ├── notifications/          通知决策（纯函数）
@@ -317,7 +316,8 @@ packages/web/src/
 │   │   ├── GitStatus.tsx       Git 状态
 │   │   └── DiffView.tsx        Diff 视图
 │   ├── terminal/               终端视图
-│   │   └── TerminalView.tsx
+│   │   ├── TerminalView.tsx    终端视图（useCachedInstance 保活）
+│   │   └── cachedTerminal.ts   终端实例工厂（xterm + socket 常驻缓存）
 │   ├── settings/               设置页面
 │   │   ├── SettingsModule.tsx
 │   │   ├── NotificationSettings.tsx 通知设置区块（权限开关、订阅状态）

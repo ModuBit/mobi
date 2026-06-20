@@ -15,14 +15,16 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { WebLinksAddon } from '@xterm/addon-web-links'
-import { useTerminalSocket } from '@/core/data/hooks/useTerminalSocket'
 import { Button, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ReloadOutlined } from '@ant-design/icons'
 import '@xterm/xterm/css/xterm.css'
+import { useCachedInstance } from '@/core/hooks/useCachedInstance'
+import {
+    createCachedTerminal,
+    disposeCachedTerminal,
+    type CachedTerminal,
+} from '@/components/terminal/cachedTerminal'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -31,176 +33,86 @@ interface TerminalViewProps {
     sessionId: string
 }
 
-const TERMINAL_ID = 'main'
-
 export default function TerminalView({ sessionId }: TerminalViewProps) {
-    const containerRef = useRef<HTMLDivElement>(null)
-    const terminalRef = useRef<Terminal | null>(null)
-    const fitAddonRef = useRef<FitAddon | null>(null)
-    const hasOpenedRef = useRef(false)
     const { token } = useToken()
     const { t } = useTranslation()
+    const containerRef = useRef<HTMLDivElement>(null)
+    const attachedRef = useRef(false)
 
-    const { open, write, resize, close } = useTerminalSocket({
-        sessionId,
-        terminalId: TERMINAL_ID,
-        onData: (data) => {
-            terminalRef.current?.write(data)
-        },
-        onExit: (code) => {
-            // 终端消息保持原语言，因为它们是系统级的
-            terminalRef.current?.write(`\r\n\x1b[31m[Process exited, code: ${code}]\x1b[0m\r\n`)
-        },
-        onOpen: () => {
-            terminalRef.current?.write('\x1b[32m[Terminal connected]\x1b[0m\r\n')
-        }
-    })
+    const cacheKey = `terminal:${sessionId}`
 
-    // 初始化终端
+    const { instance } = useCachedInstance<CachedTerminal>(
+        cacheKey,
+        () =>
+            createCachedTerminal({
+                sessionId,
+            }),
+        disposeCachedTerminal,
+    )
+
+    // attach 缓存的 domNode 到可见容器
     useEffect(() => {
-        if (!containerRef.current || terminalRef.current) return
-
-        const terminal = new Terminal({
-            fontSize: 14,
-            fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Monaco, Menlo, Consolas, monospace',
-            theme: {
-                background: '#1e1e1e',
-                foreground: '#d4d4d4',
-                cursor: '#ffffff',
-                cursorAccent: '#1e1e1e',
-                selectionBackground: '#264f78',
-                black: '#000000',
-                red: '#cd3131',
-                green: '#0dbc79',
-                yellow: '#e5e510',
-                blue: '#2472c8',
-                magenta: '#bc3fbc',
-                cyan: '#11a8cd',
-                white: '#e5e5e5',
-                brightBlack: '#666666',
-                brightRed: '#f14c4c',
-                brightGreen: '#23d18b',
-                brightYellow: '#f5f543',
-                brightBlue: '#3b8eea',
-                brightMagenta: '#d670d6',
-                brightCyan: '#29b8db',
-                brightWhite: '#e5e5e5',
-            },
-            cursorBlink: true,
-            cursorStyle: 'block',
-            scrollback: 1000,
-            allowProposedApi: true,
-        })
-
-        const fitAddon = new FitAddon()
-        const webLinksAddon = new WebLinksAddon()
-
-        terminal.loadAddon(fitAddon)
-        terminal.loadAddon(webLinksAddon)
-        terminal.open(containerRef.current)
-
-        terminalRef.current = terminal
-        fitAddonRef.current = fitAddon
-
-        // 监听用户输入
-        terminal.onData((data) => {
-            write(data)
-        })
-
-        // 监听 resize
-        terminal.onResize(({ cols, rows }) => {
-            resize(cols, rows)
-        })
-
-        return () => {
-            close()
-            terminal.dispose()
-            terminalRef.current = null
-            fitAddonRef.current = null
+        if (!instance || !containerRef.current || attachedRef.current) return
+        containerRef.current.appendChild(instance.domNode)
+        attachedRef.current = true
+        try {
+            instance.fitAddon.fit()
+        } catch {
+            // 容器宽度为 0 时 fit 抛错，忽略
         }
-    }, [sessionId, write, resize, close])
+    }, [instance])
 
-    // 处理容器尺寸变化
+    // 监听可见容器尺寸变化 → fit（宽度 0 时跳过）
     useEffect(() => {
-        if (!containerRef.current || !fitAddonRef.current) return
-
-        const resizeObserver = new ResizeObserver(() => {
-            if (fitAddonRef.current && terminalRef.current) {
-                fitAddonRef.current.fit()
+        if (!containerRef.current || !instance) return
+        const el = containerRef.current
+        const ro = new ResizeObserver(() => {
+            if (el.clientWidth > 0 && el.clientHeight > 0) {
+                try {
+                    instance.fitAddon.fit()
+                } catch {
+                    // 忽略
+                }
             }
         })
-
-        resizeObserver.observe(containerRef.current)
-
-        return () => {
-            resizeObserver.disconnect()
-        }
-    }, [])
-
-    // 打开终端会话（首次）
-    useEffect(() => {
-        if (!terminalRef.current || !fitAddonRef.current || hasOpenedRef.current) return
-
-        const terminal = terminalRef.current
-        const fitAddon = fitAddonRef.current
-
-        // 延迟打开以确保容器已渲染
-        const timer = setTimeout(() => {
-            fitAddon.fit()
-            const { cols, rows } = terminal
-            open(cols, rows)
-            hasOpenedRef.current = true
-        }, 100)
-
-        return () => {
-            clearTimeout(timer)
-        }
-    }, [open])
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [instance])
 
     const handleReconnect = () => {
-        if (terminalRef.current && fitAddonRef.current) {
-            terminalRef.current.clear()
-            fitAddonRef.current.fit()
-            const { cols, rows } = terminalRef.current
-            hasOpenedRef.current = false
-            open(cols, rows)
-            hasOpenedRef.current = true
-        }
+        instance?.reconnect()
     }
 
+    // 组件卸载：移除 domNode（保留实例，不发 terminal:close，进程常驻）
+    useEffect(() => {
+        return () => {
+            if (instance && instance.domNode.parentElement) {
+                instance.domNode.parentElement.removeChild(instance.domNode)
+            }
+            attachedRef.current = false
+        }
+    }, [instance])
+
     return (
-        <div style={{ height: 'calc(100dvh - 130px)', display: 'flex', flexDirection: 'column' }}>
-            {/* 工具栏 */}
-            <div style={{
-                padding: '8px 16px',
-                borderBottom: `1px solid ${token.colorBorder}`,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: token.colorBgLayout
-            }}>
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div
+                style={{
+                    padding: '8px 16px',
+                    borderBottom: `1px solid ${token.colorBorder}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: token.colorBgLayout,
+                }}
+            >
                 <Text type="secondary" style={{ fontSize: 12 }}>
                     {t('terminal.title')} {sessionId.slice(0, 8)}
                 </Text>
-                <Button
-                    icon={<ReloadOutlined />}
-                    size="small"
-                    onClick={handleReconnect}
-                >
+                <Button icon={<ReloadOutlined />} size="small" onClick={handleReconnect}>
                     {t('terminal.reconnect')}
                 </Button>
             </div>
-
-            {/* 终端容器 */}
-            <div
-                ref={containerRef}
-                style={{
-                    flex: 1,
-                    background: '#1e1e1e',
-                    padding: 4,
-                    overflow: 'hidden'
-                }}
-            />
+            <div ref={containerRef} style={{ flex: 1, overflow: 'hidden' }} />
         </div>
     )
 }
