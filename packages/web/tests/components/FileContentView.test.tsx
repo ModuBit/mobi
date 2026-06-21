@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntApp } from 'antd'
 import FileContentView from '@/components/files/FileContentView'
@@ -67,5 +67,22 @@ describe('FileContentView', () => {
     it('content 区显示文件内容', () => {
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
         expect(screen.getByText('FILE BODY')).toBeInTheDocument()
+    })
+
+    it('Ellipsis → 复制相对路径到剪切板并提示', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined)
+        Object.assign(navigator, { clipboard: { writeText } })
+
+        renderWithProviders(
+            <FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />,
+        )
+        // 点 Ellipsis 按钮（aria-label = files.more）展开下拉
+        fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
+        // 菜单项出现后点击「复制文件路径」
+        const copyItem = await screen.findByText('files.copyPath')
+        fireEvent.click(copyItem)
+        await waitFor(() => {
+            expect(writeText).toHaveBeenCalledWith('a/b/c.ts')
+        })
     })
 })
