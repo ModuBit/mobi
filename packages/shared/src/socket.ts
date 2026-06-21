@@ -140,7 +140,7 @@ export type Update = z.infer<typeof UpdateSchema>
 
 export interface ServerToClientEvents {
     update: (data: Update) => void
-    'rpc-request': (data: { method: string; params: string }, callback: (response: string) => void) => void
+    'rpc-request': (data: { method: string; params: unknown }, callback: (response: unknown) => void) => void
     'terminal:open': (data: TerminalOpenPayload) => void
     'terminal:write': (data: TerminalWritePayload) => void
     'terminal:resize': (data: TerminalResizePayload) => void

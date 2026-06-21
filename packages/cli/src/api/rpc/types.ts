@@ -37,13 +37,13 @@ export type RpcHandlerMap = Map<string, RpcHandler>;
  */
 export interface RpcRequest {
     method: string;
-    params: string; // JSON string
+    params: unknown; // 直接对象（hub 不再 JSON.stringify）
 }
 
 /**
  * RPC response callback
  */
-export type RpcResponseCallback = (response: string) => void;
+export type RpcResponseCallback = (response: unknown) => void;
 
 /**
  * Configuration for RPC handler manager

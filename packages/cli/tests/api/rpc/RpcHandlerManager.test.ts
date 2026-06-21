@@ -29,15 +29,15 @@ describe('RpcHandlerManager', () => {
         // method 在 handleRequest 中需带 scopePrefix
         const res = await m.handleRequest({
             method: 's:echo',
-            params: JSON.stringify({ x: 3 })
+            params: { x: 3 }
         })
-        expect(JSON.parse(res)).toEqual({ doubled: 6 })
+        expect(res).toEqual({ doubled: 6 })
     })
 
     it('method not found 返回 error', async () => {
         const m = new RpcHandlerManager({ scopePrefix: 's' })
-        const res = await m.handleRequest({ method: 's:nope', params: '{}' })
-        expect(JSON.parse(res)).toEqual({ error: 'Method not found' })
+        const res = await m.handleRequest({ method: 's:nope', params: {} })
+        expect(res).toEqual({ error: 'Method not found' })
     })
 
     it('handler 抛错时返回 error', async () => {
@@ -45,8 +45,8 @@ describe('RpcHandlerManager', () => {
         m.registerHandler('boom', async () => {
             throw new Error('boom')
         })
-        const res = await m.handleRequest({ method: 's:boom', params: '{}' })
-        expect(JSON.parse(res)).toEqual({ error: 'boom' })
+        const res = await m.handleRequest({ method: 's:boom', params: {} })
+        expect(res).toEqual({ error: 'boom' })
     })
 
     it('非 Error 抛出时返回 Unknown error', async () => {
@@ -54,8 +54,8 @@ describe('RpcHandlerManager', () => {
         m.registerHandler('str', async () => {
             throw 'oops'
         })
-        const res = await m.handleRequest({ method: 's:str', params: '{}' })
-        expect(JSON.parse(res)).toEqual({ error: 'Unknown error' })
+        const res = await m.handleRequest({ method: 's:str', params: {} })
+        expect(res).toEqual({ error: 'Unknown error' })
     })
 
     it('skipIdleTimerReset: true 跳过 onRpcCalled 回调', async () => {
@@ -65,7 +65,7 @@ describe('RpcHandlerManager', () => {
         m.registerHandler('silent', async () => null, {
             skipIdleTimerReset: true
         })
-        await m.handleRequest({ method: 's:silent', params: '{}' })
+        await m.handleRequest({ method: 's:silent', params: {} })
         expect(cb).not.toHaveBeenCalled()
     })
 
@@ -74,7 +74,7 @@ describe('RpcHandlerManager', () => {
         const cb = vi.fn()
         m.setOnRpcCalled(cb)
         m.registerHandler('loud', async () => null)
-        await m.handleRequest({ method: 's:loud', params: '{}' })
+        await m.handleRequest({ method: 's:loud', params: {} })
         expect(cb).toHaveBeenCalledTimes(1)
     })
 
@@ -96,24 +96,25 @@ describe('RpcHandlerManager', () => {
     it('自定义 logger 被调用', async () => {
         const logger = vi.fn()
         const m = new RpcHandlerManager({ scopePrefix: 's', logger })
-        await m.handleRequest({ method: 's:nope', params: '{}' })
+        await m.handleRequest({ method: 's:nope', params: {} })
         expect(logger).toHaveBeenCalled()
         // 第一参数是消息
         expect(logger.mock.calls[0]?.[0]).toContain('Method not found')
     })
 
-    it('JSON 解析失败时 params 为 null 传给 handler', async () => {
+    it('params 对象直传给 handler（不再 JSON.stringify 中转）', async () => {
         const m = new RpcHandlerManager({ scopePrefix: 's' })
         const received: unknown[] = []
-        m.registerHandler<unknown, { ok: true }>('parseFail', async (p) => {
+        m.registerHandler<{ nested: { x: string } }, { ok: true }>('passthrough', async (p) => {
             received.push(p)
             return { ok: true }
         })
         const res = await m.handleRequest({
-            method: 's:parseFail',
-            params: 'not-json'
+            method: 's:passthrough',
+            params: { nested: { x: 'y' } }
         })
-        expect(JSON.parse(res)).toEqual({ ok: true })
-        expect(received[0]).toBeNull()
+        expect(res).toEqual({ ok: true })
+        // params 原样透传（嵌套对象结构保留）
+        expect(received[0]).toEqual({ nested: { x: 'y' } })
     })
 })

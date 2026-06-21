@@ -50,10 +50,10 @@ describe('machine list-directory RPC handler', () => {
     it('仅返回目录（含隐藏目录），不含文件', async () => {
         const response = await rpc.handleRequest({
             method: `${scopePrefix}:list-directory`,
-            params: JSON.stringify({ path: homeDir, homeDir })
+            params: { path: homeDir, homeDir }
         })
 
-        const parsed = JSON.parse(response) as {
+        const parsed = response as {
             success: boolean
             entries?: Array<{ name: string }>
         }
@@ -68,10 +68,10 @@ describe('machine list-directory RPC handler', () => {
     it('拒绝访问 homeDir 外的路径', async () => {
         const response = await rpc.handleRequest({
             method: `${scopePrefix}:list-directory`,
-            params: JSON.stringify({ path: '/etc', homeDir })
+            params: { path: '/etc', homeDir }
         })
 
-        const parsed = JSON.parse(response) as { success: boolean; error?: string }
+        const parsed = response as { success: boolean; error?: string }
         expect(parsed.success).toBe(false)
         expect(parsed.error).toContain('outside the home directory')
     })
@@ -79,10 +79,10 @@ describe('machine list-directory RPC handler', () => {
     it('拒绝 homeDir 为空时', async () => {
         const response = await rpc.handleRequest({
             method: `${scopePrefix}:list-directory`,
-            params: JSON.stringify({ path: homeDir, homeDir: '' })
+            params: { path: homeDir, homeDir: '' }
         })
 
-        const parsed = JSON.parse(response) as { success: boolean; error?: string }
+        const parsed = response as { success: boolean; error?: string }
         expect(parsed.success).toBe(false)
     })
 })

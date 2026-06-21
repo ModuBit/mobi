@@ -34,7 +34,7 @@ import { registerMachineDirectoryHandler } from '../modules/common/handlers/mach
 
 interface ServerToRunnerEvents {
     update: (data: Update) => void
-    'rpc-request': (data: { method: string; params: string }, callback: (response: string) => void) => void
+    'rpc-request': (data: { method: string; params: unknown }, callback: (response: unknown) => void) => void
     error: (data: { message: string }) => void
 }
 
@@ -292,7 +292,7 @@ export class ApiMachineClient {
             this.stopKeepAlive()
         })
 
-        this.socket.on('rpc-request', async (data: { method: string; params: string }, callback: (response: string) => void) => {
+        this.socket.on('rpc-request', async (data: { method: string; params: unknown }, callback: (response: unknown) => void) => {
             callback(await this.rpcHandlerManager.handleRequest(data))
         })
 

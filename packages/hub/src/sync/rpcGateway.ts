@@ -293,19 +293,12 @@ export class RpcGateway {
             throw new Error(`RPC socket disconnected: ${method}`)
         }
 
+        // Socket.IO 原生序列化：params 对象直传，响应对象直收（含二进制附件）
         const response = await socket.timeout(30_000).emitWithAck('rpc-request', {
             method,
-            params: JSON.stringify(params)
+            params
         }) as unknown
 
-        if (typeof response !== 'string') {
-            return response
-        }
-
-        try {
-            return JSON.parse(response) as unknown
-        } catch {
-            return response
-        }
+        return response
     }
 }

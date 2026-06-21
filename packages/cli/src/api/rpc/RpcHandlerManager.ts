@@ -23,14 +23,6 @@ import { logger as defaultLogger } from '@/ui/logger'
 import type { RpcHandler, RpcHandlerConfig, RpcRequest, RpcHandlerOptions } from './types'
 import type { Socket } from 'socket.io-client'
 
-function safeJsonParse(value: string): unknown {
-    try {
-        return JSON.parse(value) as unknown
-    } catch {
-        return null
-    }
-}
-
 /**
  * 处理器条目，包含处理器和选项
  */
@@ -65,7 +57,7 @@ export class RpcHandlerManager {
     ): void {
         const prefixedMethod = this.getPrefixedMethod(method)
 
-        // RPC 边界：handler 泛型擦除为 unknown（params 来自 JSON 解析）
+        // RPC 边界：handler 泛型擦除为 unknown（params 直传对象）
         this.handlers.set(prefixedMethod, {
             handler: handler as unknown as RpcHandler,
             options
@@ -76,12 +68,12 @@ export class RpcHandlerManager {
         }
     }
 
-    async handleRequest(request: RpcRequest): Promise<string> {
+    async handleRequest(request: RpcRequest): Promise<unknown> {
         try {
             const entry = this.handlers.get(request.method)
             if (!entry) {
                 this.logger('[RPC] [ERROR] Method not found', { method: request.method })
-                return JSON.stringify({ error: 'Method not found' })
+                return { error: 'Method not found' }
             }
 
             // 检查是否跳过计时器重置
@@ -89,18 +81,15 @@ export class RpcHandlerManager {
                 this.onRpcCalled()
             }
 
-            const params = safeJsonParse(request.params)
-            // entry.handler 为 RpcHandler<unknown, unknown>，params 已是 unknown
-            const result = await entry.handler(params)
-            return JSON.stringify(result)
+            // params 已是对象（RPC 边界不再 JSON.stringify）
+            const result = await entry.handler(request.params)
+            return result
         } catch (error) {
             const details = error instanceof Error
                 ? { message: error.message, stack: error.stack }
                 : { error: String(error) }
             this.logger('[RPC] [ERROR] Error handling request', details)
-            return JSON.stringify({
-                error: error instanceof Error ? error.message : 'Unknown error'
-            })
+            return { error: error instanceof Error ? error.message : 'Unknown error' }
         }
     }
 

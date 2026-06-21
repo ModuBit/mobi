@@ -145,7 +145,7 @@ export class ApiSessionClient extends EventEmitter {
             })
         })
 
-        this.socket.on('rpc-request', async (data: { method: string; params: string }, callback: (response: string) => void) => {
+        this.socket.on('rpc-request', async (data: { method: string; params: unknown }, callback: (response: unknown) => void) => {
             callback(await this.rpcHandlerManager.handleRequest(data))
         })
 
