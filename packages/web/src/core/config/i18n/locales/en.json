@@ -227,7 +227,9 @@
     "openFromTree": "Open from file tree",
     "more": "More",
     "copyPath": "Copy file path",
-    "pathCopied": "Path copied"
+    "pathCopied": "Path copied",
+    "viewSource": "View source",
+    "viewRender": "View rendered"
   },
   "git": {
     "filesChanged": "{{count}} files changed",

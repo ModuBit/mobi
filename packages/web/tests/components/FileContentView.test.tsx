@@ -255,4 +255,48 @@ describe('FileContentView', () => {
             expect(tab?.filePath).toBe('a/other.ts')
         })
     })
+
+    it('.md 默认渲染（XMarkdown）', async () => {
+        setMock(
+            { mime: 'text/markdown', size: 100, etag: '11-1' },
+            { blob: new Blob(['body content'], { type: 'text/markdown' }), mime: 'text/markdown' },
+        )
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="README.md" />)
+        // .x-markdown 是 Markdown.tsx 容器 className，渲染成功的标志
+        await waitFor(() => {
+            expect(document.querySelector('.x-markdown')).toBeInTheDocument()
+        })
+    })
+
+    it('.md 切源码（CodeHighlight Shiki）', async () => {
+        setMock(
+            { mime: 'text/markdown', size: 100, etag: '11-1' },
+            { blob: new Blob(['# title'], { type: 'text/markdown' }), mime: 'text/markdown' },
+        )
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="README.md" />)
+        // 点 Ellipsis → 切源码
+        fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
+        fireEvent.click(await screen.findByText('files.viewSource'))
+        // .shiki-wrap 是 CodeHighlight 高亮成功的标志
+        await waitFor(() => {
+            expect(document.querySelector('.shiki-wrap')).toBeInTheDocument()
+        })
+    })
+
+    it('非 .md 文本文件 Ellipsis 无 toggleView', async () => {
+        setMock(
+            { mime: 'text/typescript', size: 100, etag: '11-1' },
+            { blob: new Blob(['const x = 1'], { type: 'text/typescript' }), mime: 'text/typescript' },
+        )
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a.ts" />)
+        fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
+        expect(screen.queryByText('files.viewSource')).not.toBeInTheDocument()
+    })
+
+    it('大 .md（≥2MB）→ FileTooLarge', async () => {
+        // 3MB ≥ textPlain(2MB)：isMarkdown 的 tooLarge 走 isTextLike 分支（text/markdown 以 text/ 开头）
+        setMock({ mime: 'text/markdown', size: 3 * 1024 * 1024, etag: '11-1' }, null)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="big.md" />)
+        expect(await screen.findByText('files.tooLarge')).toBeInTheDocument()
+    })
 })

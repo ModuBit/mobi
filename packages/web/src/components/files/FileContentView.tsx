@@ -17,7 +17,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Spin, Empty, Button, App, Popover, Dropdown } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { Folders, Ellipsis, Copy } from 'lucide-react'
+import { Folders, Ellipsis, Copy, FileCode, Eye } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
@@ -25,6 +25,7 @@ import { FILE_SIZE_LIMITS } from '@/core/config/fileLimits'
 import FileTreeView from '@/components/files/FileTreeView'
 import CodeHighlight from '@/components/files/CodeHighlight'
 import FileTooLarge from '@/components/files/FileTooLarge'
+import { Markdown } from '@/components/ui/Markdown'
 
 interface FileContentViewProps {
     sessionId: string
@@ -48,6 +49,8 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     const isImage = mime.startsWith('image/')
     const isPdf = mime === 'application/pdf'
     const isAudioVideo = mime.startsWith('audio/') || mime.startsWith('video/')
+    // .md 文件：text/markdown，可渲染/源码双模式（优先于 isTextLike 分支）
+    const isMarkdown = mime === 'text/markdown'
 
     // size 阈值判断（meta 先行，下载前拦截，省流量/解码）
     const tooLarge = !!meta && (
@@ -66,6 +69,10 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
 
     const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
     const [treeOpen, setTreeOpen] = useState(false)
+
+    // .md 双模式：默认渲染，切文件（filePath 变）重置回渲染
+    const [view, setView] = useState<'render' | 'source'>('render')
+    useEffect(() => { setView('render') }, [filePath])
 
     // 文本类：blob → text 异步读取（content 拉回后才执行）
     const isText = !!file && isTextLike
@@ -145,6 +152,13 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
 
     const moreMenuItems: MenuProps['items'] = [
         { key: 'copyPath', icon: <Copy size={14} />, label: t('files.copyPath'), onClick: copyPath },
+        // .md 文件：渲染/源码切换（图标随当前 view 变化）
+        ...(isMarkdown ? [{
+            key: 'toggleView',
+            icon: view === 'render' ? <FileCode size={14} /> : <Eye size={14} />,
+            label: view === 'render' ? t('files.viewSource') : t('files.viewRender'),
+            onClick: () => setView((v) => v === 'render' ? 'source' : 'render'),
+        }] : []),
     ]
 
     return (
@@ -217,6 +231,11 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                         <div style={{ textAlign: 'center', padding: 12, overflow: 'auto' }}>
                             {imgUrl && <img src={imgUrl} alt={filePath} style={{ maxWidth: '100%' }} />}
                         </div>
+                    ) : isMarkdown ? (
+                        // .md 双模式：默认 XMarkdown 渲染，可切源码 Shiki 高亮（复用 CodeHighlight）
+                        view === 'render'
+                            ? <Markdown content={text ?? ''} />
+                            : <CodeHighlight code={text ?? ''} filePath={filePath} />
                     ) : (
                         useHighlight
                             ? <CodeHighlight code={text ?? ''} filePath={filePath} />

@@ -227,7 +227,9 @@
     "openFromTree": "从文件树打开",
     "more": "更多",
     "copyPath": "复制文件路径",
-    "pathCopied": "已复制路径"
+    "pathCopied": "已复制路径",
+    "viewSource": "查看源码",
+    "viewRender": "查看渲染"
   },
   "git": {
     "filesChanged": "{{count}} 个文件变更",
