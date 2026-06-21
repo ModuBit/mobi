@@ -25,7 +25,6 @@ import {
     formatRequestUserInputAnswers,
     type RequestUserInputQuestion
 } from '@/domain/tool/requestUserInput'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -49,8 +48,7 @@ function RequestUserInputFooterInner(props: RequestUserInputFooterProps) {
     const { t } = useTranslation()
     const { token } = useToken()
     const queryClient = useQueryClient()
-    const { token: authToken } = useAuthStore()
-    const api = useMobiApi(authToken)
+    const api = useMobiApi()
 
     const permission = props.tool.permission
     const parsed = useMemo(() => parseRequestUserInputInput(props.tool.input), [props.tool.input])

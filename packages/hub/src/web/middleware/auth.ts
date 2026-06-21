@@ -31,8 +31,9 @@ const jwtPayloadSchema = z.object({
     ns: z.string()
 })
 
-// 认证 cookie 名（与 routes/auth.ts 保持一致）
-const AUTH_COOKIE_NAME = 'mobi_token'
+// 认证 cookie 名 —— httpOnly 防 XSS 窃取，由浏览器自动随同源请求（含 <img>/<video>/SSE）携带
+// 单一真源：routes/auth.ts import 此常量，消除两处重复
+export const AUTH_COOKIE_NAME = 'mobi_token'
 
 export function createAuthMiddleware(jwtSecret: Uint8Array): MiddlewareHandler<WebAppEnv> {
     return async (c, next) => {

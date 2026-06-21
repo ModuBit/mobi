@@ -15,7 +15,6 @@
  */
 
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import type { DecryptedMessage, MessagesResponse } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -25,8 +24,7 @@ import { queryKeys } from '@/core/lib/query-keys'
  * 使用 useInfiniteQuery 支持向上滚动加载历史消息
  */
 export function useMessages(sessionId: string | null) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useInfiniteQuery<MessagesResponse, Error, DecryptedMessage[]>({
         queryKey: queryKeys.messages(sessionId!),
@@ -58,7 +56,7 @@ export function useMessages(sessionId: string | null) {
                 .reverse()
                 .flatMap((page) => page.messages)
         },
-        enabled: !!token && !!sessionId,
+        enabled: !!sessionId,
         staleTime: Infinity,
     })
 }

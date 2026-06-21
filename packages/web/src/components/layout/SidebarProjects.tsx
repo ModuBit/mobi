@@ -26,7 +26,6 @@ import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
 import { useGroupSessions } from '@/core/data/hooks/queries/useGroupSessions'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
@@ -524,8 +523,7 @@ export function SidebarProjects() {
     const navigate = useNavigate()
     const { message: messageApi } = App.useApp()
     const queryClient = useQueryClient()
-    const authToken = useAuthStore((s) => s.token)
-    const api = useMobiApi(authToken)
+    const api = useMobiApi()
     const params = useParams({ strict: false })
     const activeSessionId = params.sessionId as string | undefined
 

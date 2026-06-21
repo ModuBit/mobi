@@ -389,7 +389,7 @@ const HelpLink = styled.a`
 
 export function LoginPage() {
     const navigate = useNavigate()
-    const { setToken } = useAuthStore()
+    const { setAuthenticated } = useAuthStore()
     const [form] = Form.useForm()
     const [loading, setLoading] = useState(false)
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
@@ -404,13 +404,16 @@ export function LoginPage() {
         try {
             const authRes = await axios.post(`${baseUrl}/api/auth`, {
                 accessToken: values.token,
+            }, {
+                withCredentials: true, // 让 Set-Cookie（httpOnly）写入浏览器
             })
 
             if (!authRes.data?.token) {
                 throw new Error('认证失败：未返回 JWT Token')
             }
 
-            setToken(authRes.data.token)
+            // 置 authenticated（驱动路由/SSE）；token 存内存供 socket.io terminal 使用
+            setAuthenticated(authRes.data.token)
             message.success(t('login.connectSuccess'))
             navigate({ to: '/' })
         } catch (err) {

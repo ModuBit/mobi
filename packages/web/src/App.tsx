@@ -18,14 +18,39 @@ import { Outlet } from '@tanstack/react-router'
 import { SSEProvider } from '@/core/providers/SSEProvider'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
-import { useEffect } from 'react'
-import { setUnauthorizedHandler } from '@/core/data/api/client'
+import { useEffect, useState } from 'react'
+import { setUnauthorizedHandler, createApiClient } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 export function App() {
-    const { token, logout } = useAuthStore()
+    const { authenticated, logout } = useAuthStore()
+    // 启动态：cookie 是登录态真源，authenticated 不持久化，启动时调 /api/auth/status 判定
+    const [bootstrapped, setBootstrapped] = useState(false)
     const navigate = useNavigate()
     const location = useLocation()
+
+    // 启动认证检查：根据 httpOnly cookie 是否有效恢复 authenticated flag
+    useEffect(() => {
+        let cancelled = false
+        createApiClient()
+            .get<{ authenticated: boolean }>('/api/auth/status')
+            .then((res) => {
+                if (cancelled) return
+                if (res.data?.authenticated) {
+                    // cookie 有效但 authenticated 尚未置位（刷新后内存丢失）
+                    // 注意：cookie httpOnly 无法读出 token，但 socket.io terminal 的 token 在登录时已存内存；
+                    // 刷新后 terminal 需重新走登录链路获取 token（此处仅恢复 authenticated 以驱动路由/SSE）
+                    useAuthStore.setState({ authenticated: true })
+                }
+            })
+            .catch(() => {
+                // status 查询失败视为未认证
+            })
+            .finally(() => {
+                if (!cancelled) setBootstrapped(true)
+            })
+        return () => { cancelled = true }
+    }, [])
 
     // 设置 401 未授权处理器
     useEffect(() => {
@@ -38,14 +63,15 @@ export function App() {
         return cleanup // 组件卸载时清理
     }, [logout, navigate])
 
-    // 自动重定向到登录页
+    // 自动重定向到登录页（等启动认证检查完成后再判定，避免刷新瞬间闪登录页）
     useEffect(() => {
-        if (!token && location.pathname !== '/login') {
+        if (!bootstrapped) return
+        if (!authenticated && location.pathname !== '/login') {
             navigate({ to: '/login' })
-        } else if (token && location.pathname === '/login') {
+        } else if (authenticated && location.pathname === '/login') {
             navigate({ to: '/' })
         }
-    }, [token, location.pathname, navigate])
+    }, [authenticated, bootstrapped, location.pathname, navigate])
 
     return (
         <ErrorBoundary>

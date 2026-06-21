@@ -83,6 +83,8 @@ export class SSEClient {
         try {
             await fetchEventSource(url, {
                 signal: this.abortController.signal,
+                // cookie 链路：withCredentials 让浏览器自动携带 httpOnly cookie（替代已去除的 query token）
+                credentials: 'include',
                 // 页面切走（切 tab / 最小化 / 切 app 触发 visibilitychange）时保持连接不断开。
                 // fetch-event-source 默认 openWhenHidden=false，会在页面 hidden 时主动 abort 连接，
                 // 这是「切走即断」的根因。显式设为 true，使后台仍维持长连接。

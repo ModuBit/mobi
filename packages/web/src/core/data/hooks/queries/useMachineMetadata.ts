@@ -15,7 +15,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { SDKMetadata, SDKMetadataResponse } from '@/core/data/api/types'
@@ -29,8 +28,7 @@ import type { SDKMetadata, SDKMetadataResponse } from '@/core/data/api/types'
  *   避免每输入一个目录字符就触发 metadata 请求
  */
 export function useMachineMetadata(machineId: string | null, cwd: string | null, enabled: boolean = true) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useQuery<SDKMetadata | null>({
         queryKey: machineId && cwd ? queryKeys.machineMetadata(machineId, cwd) : ['machineMetadata', 'disabled'],
@@ -39,7 +37,7 @@ export function useMachineMetadata(machineId: string | null, cwd: string | null,
             const res = await api.machines.metadata(machineId, cwd)
             return (res.data as SDKMetadataResponse | undefined)?.metadata ?? null
         },
-        enabled: !!token && !!machineId && !!cwd && enabled,
+        enabled: !!machineId && !!cwd && enabled,
         staleTime: 5 * 60_000,
     })
 }

@@ -23,10 +23,7 @@ import { configuration } from '../../configuration'
 import { constantTimeEquals } from '../../utils/crypto'
 import { parseAccessToken } from '../../utils/accessToken'
 import { getOrCreateOwnerId } from '../../config/ownerId'
-import type { WebAppEnv } from '../middleware/auth'
-
-// 认证 cookie 名 —— httpOnly 防 XSS 窃取，由浏览器自动随同源请求（含 <img>/<video>/SSE）携带
-const AUTH_COOKIE_NAME = 'mobi_token'
+import { AUTH_COOKIE_NAME, type WebAppEnv } from '../middleware/auth'
 // cookie 生命周期，与 JWT 过期（1d）对齐
 const AUTH_COOKIE_MAX_AGE = 86400
 // cookie 安全属性：Lax 防 CSRF POST，Path=/ 覆盖所有 media/SSE 端点

@@ -15,31 +15,33 @@
  */
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 
 interface AuthState {
+    /**
+     * 是否已认证（驱动路由守卫 / SSE 连接 / HTTP 请求）。
+     * 不持久化 —— cookie（httpOnly）是登录态真源，启动时调 /api/auth/status 判定。
+     */
+    authenticated: boolean
+    /**
+     * JWT token（仅内存，不持久化）。
+     * socket.io terminal 走 handshake.auth.token 认证（非 HTTP cookie），故保留此字段供其使用。
+     * HTTP/SSE 不再用它（cookie 自动携带）。
+     */
     token: string | null
-    setToken: (token: string | null) => void
+    /** 登录成功：置 authenticated 并存 token（供 socket.io） */
+    setAuthenticated: (token: string) => void
     logout: () => void
     // 获取 baseUrl（始终是当前页面的 origin）
     getBaseUrl: () => string
 }
 
-export const useAuthStore = create<AuthState>()(
-    persist(
-        (set, _get) => ({
-            token: null,
-            setToken: (token) => set({ token }),
-            logout: () => set({ token: null }),
-            getBaseUrl: () => window.location.origin,
-        }),
-        {
-            name: 'mobi-auth',
-            // 只持久化 token，不持久化 baseUrl
-            partialize: (state) => ({ token: state.token }),
-        }
-    )
-)
+export const useAuthStore = create<AuthState>()((set, _get) => ({
+    authenticated: false,
+    token: null,
+    setAuthenticated: (token) => set({ authenticated: true, token }),
+    logout: () => set({ authenticated: false, token: null }),
+    getBaseUrl: () => window.location.origin,
+}))
 
 // 便捷函数：直接返回 baseUrl（非 hook，可在任意位置调用）
 export function getBaseUrl() {

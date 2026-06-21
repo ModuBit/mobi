@@ -91,6 +91,8 @@ export function createWebApp(options: {
     const corsOriginOption = corsOrigins.includes('*') ? '*' : corsOrigins
     const corsMiddleware = cors({
         origin: corsOriginOption,
+        // 允许跨域带 cookie（web withCredentials 依赖；credentials:true 时浏览器拒 origin: '*'，故 corsOriginOption 为具体域名）
+        credentials: true,
         allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
         allowHeaders: ['authorization', 'content-type']
     })

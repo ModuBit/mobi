@@ -27,7 +27,6 @@ import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
 import { useMentionInteraction } from './useMentionInteraction'
@@ -223,8 +222,7 @@ function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
 export function ChatComposer(props: ChatComposerProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
-    const authToken = useAuthStore((state) => state.token)
-    const api = useMobiApi(authToken)
+    const api = useMobiApi()
     const hasFinePointer = useHasFinePointer()
 
     const {

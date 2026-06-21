@@ -15,7 +15,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { Machine } from '@/core/data/api/types'
@@ -29,8 +28,7 @@ export function useMachines(enabled: boolean = true): {
     error: string | null
     refetch: () => Promise<unknown>
 } {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     const query = useQuery({
         queryKey: queryKeys.machines,
@@ -38,7 +36,7 @@ export function useMachines(enabled: boolean = true): {
             const res = await api.machines.list()
             return res.data
         },
-        enabled: !!token && enabled,
+        enabled: enabled,
     })
 
     return {

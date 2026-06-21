@@ -16,7 +16,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMobiApi } from '@/core/data/api/client'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import type { ListFilesResponse } from '@/core/data/api/types'
 
 export interface FileListingInput {
@@ -90,8 +89,7 @@ export function useSessionFileListing(
     items: FileSuggestionItem[]
     isLoading: boolean
 } {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     const [items, setItems] = useState<FileSuggestionItem[]>([])
     const [isLoading, setIsLoading] = useState(false)

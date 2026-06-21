@@ -16,7 +16,6 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useMobiApi } from '@/core/data/api/client'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNotificationStore, type NotificationPermission } from '@/core/data/stores/notificationStore'
 import { awaitServiceWorkerReady, ServiceWorkerReadyTimeout } from '@/core/pwa/swReady'
 
@@ -59,9 +58,8 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 export function useNotificationSetup(namespace: string) {
     // namespace 当前由 hub 从 token 解析，client 不传；void 标注避免 lint 未用警告
     void namespace
-    // useMobiApi 需要 token（见 client.ts 第 246 行 useMobiApi(token)）
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    // useMobiApi 需要 token（见 client.ts 第 246 行 useMobiApi()）
+    const api = useMobiApi()
     // api 可能随 token 变(换号),用 ref 让 mount effect 只在 mount 跑但读到最新 api
     const apiRef = useRef(api)
     apiRef.current = api

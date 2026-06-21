@@ -23,7 +23,6 @@ import { useTranslation } from 'react-i18next'
 import { useFileTree, parseDirectoryEntries } from '@/core/data/hooks/queries/useFileTree'
 import type { FileNode } from '@/core/data/hooks/queries/useFileTree'
 import { useMobiApi } from '@/core/data/api/client'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { basename } from '@/core/utils/path'
 
 /**
@@ -62,8 +61,7 @@ interface FileTreeViewProps {
  */
 export default function FileTreeView({ sessionId, onOpenFile }: FileTreeViewProps) {
     const { t } = useTranslation()
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
     const { data: rootFiles, isLoading, error } = useFileTree(sessionId, '.')
     /** 已懒加载的子目录：path -> FileNode[]（展开时填充） */
     const [childrenMap, setChildrenMap] = useState<Record<string, FileNode[]>>({})

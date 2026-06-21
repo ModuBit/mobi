@@ -26,8 +26,8 @@ const sseListener = vi.hoisted(() => ({ current: null as ((e: any) => void) | nu
 const notifyInfoSpy = vi.hoisted(() => vi.fn())
 // showSystemNotification spy(后台分支,默认成功显示)
 const showSysSpy = vi.hoisted(() => vi.fn().mockResolvedValue(true))
-// 可变 auth token(测 logout 场景时改为 null)
-const authState = vi.hoisted(() => ({ token: 'tok' as string | null }))
+// 可变认证态(测 logout 场景时改为 false)
+const authState = vi.hoisted(() => ({ authenticated: true as boolean }))
 // Gate.resetPermissionPrompt spy(验证换号重置引导 flag)
 const gateResetSpy = vi.hoisted(() => vi.fn())
 
@@ -48,7 +48,7 @@ vi.mock('@/core/notifications', async (orig) => {
     return { ...actual, showSystemNotification: showSysSpy }
 })
 vi.mock('@/core/data/stores/authStore', () => ({
-    useAuthStore: () => ({ token: authState.token, logout: vi.fn() }),
+    useAuthStore: () => ({ authenticated: authState.authenticated, logout: vi.fn() }),
 }))
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => vi.fn(),
@@ -106,7 +106,7 @@ describe('SSEProvider toast 分支(渲染集成)', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         sseListener.current = null
-        authState.token = 'tok'
+        authState.authenticated = true
         Object.defineProperty(document, 'hidden', { value: false, configurable: true })
     })
     afterEach(() => cleanup())
@@ -150,18 +150,18 @@ describe('SSEProvider toast 分支(渲染集成)', () => {
 describe('SSEProvider 换号重置(logout)', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        authState.token = 'tok'
+        authState.authenticated = true
     })
     afterEach(() => cleanup())
 
-    it('token 变 null(logout)时重置通知 store + 引导 flag', async () => {
+    it('authenticated 变 false(logout)时重置通知 store + 引导 flag', async () => {
         const resetSpy = vi.spyOn(useNotificationStore.getState(), 'reset')
         const result = await renderProvider()
-        // token='tok' 时 logout effect 不触发重置
+        // authenticated=true 时 logout effect 不触发重置
         expect(resetSpy).not.toHaveBeenCalled()
 
-        // 模拟 logout:token 变 null,rerender 新 element 触发 SSEProvider re-render → [token] effect 重跑
-        authState.token = null
+        // 模拟 logout:authenticated 变 false,rerender 新 element 触发 SSEProvider re-render → [authenticated] effect 重跑
+        authState.authenticated = false
         result.rerender(result.makeTree())
 
         expect(resetSpy).toHaveBeenCalled()

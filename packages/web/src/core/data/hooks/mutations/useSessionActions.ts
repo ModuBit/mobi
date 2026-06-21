@@ -16,7 +16,6 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import { clearSessionResources } from '@/core/lib/sessionResources'
@@ -41,8 +40,7 @@ export function useSessionActions(sessionId: string | null): {
     isResumePending: boolean
     isSwitchPending: boolean
 } {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
     const queryClient = useQueryClient()
     const navigate = useNavigate()
 

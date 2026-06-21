@@ -29,6 +29,7 @@ import {
 import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
 import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
 import { usePwaInstall } from './usePwaInstall'
 
@@ -73,8 +74,14 @@ export function SidebarFooter() {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { logout } = useAuthStore()
+    const api = useMobiApi()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
     const { canInstall, handleInstall } = usePwaInstall()
+
+    // 登出：先清服务端 cookie，再清内存 state（cookie 链路下两步缺一不可）
+    const handleLogout = () => {
+        api.auth.logout().catch(() => {}).finally(() => logout())
+    }
 
     // Dropdown 菜单项
     const menuItems: MenuProps['items'] = useMemo(() => {
@@ -119,12 +126,12 @@ export function SidebarFooter() {
                 key: 'logout',
                 label: t('nav.logout'),
                 icon: <LogOut size={16} />,
-                onClick: logout,
+                onClick: handleLogout,
             },
         )
 
         return items
-    }, [t, navigate, resolvedTheme, locale, toggleTheme, toggleLocale, canInstall, handleInstall, logout])
+    }, [t, navigate, resolvedTheme, locale, toggleTheme, toggleLocale, canInstall, handleInstall, handleLogout])
 
     return (
         <FooterContainer>

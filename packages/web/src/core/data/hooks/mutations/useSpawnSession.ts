@@ -16,7 +16,6 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { SpawnResponse } from '@/core/data/api/types'
@@ -42,16 +41,11 @@ export function useSpawnSession(): {
     error: string | null
 } {
     const { t } = useTranslation()
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
     const queryClient = useQueryClient()
 
     const mutation = useMutation({
         mutationFn: async (input: SpawnInput): Promise<SpawnResponse> => {
-            if (!token) {
-                return { type: 'error', message: t('newSession.createFailed') }
-            }
-
             try {
                 const res = await api.machines.spawn(
                     input.machineId,

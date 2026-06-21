@@ -15,7 +15,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import type { GitStatusResponse } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -24,8 +23,7 @@ import { queryKeys } from '@/core/lib/query-keys'
  * 获取会话的 Git 状态
  */
 export function useGitStatus(sessionId: string | null) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useQuery({
         queryKey: queryKeys.gitStatus(sessionId!),
@@ -34,7 +32,7 @@ export function useGitStatus(sessionId: string | null) {
             const res = await api.git.status(sessionId)
             return res.data as GitStatusResponse
         },
-        enabled: !!token && !!sessionId,
+        enabled: !!sessionId,
         refetchInterval: 10_000, // 每 10 秒自动刷新
     })
 }

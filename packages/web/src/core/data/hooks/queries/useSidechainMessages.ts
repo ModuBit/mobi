@@ -15,14 +15,12 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 
 /** 获取 Agent 工具的 sidechain 消息 */
 export function useSidechainMessages(sessionId: string | null, parentToolUseId: string | null) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useQuery({
         queryKey: queryKeys.sidechainMessages(sessionId!, parentToolUseId!),
@@ -31,7 +29,7 @@ export function useSidechainMessages(sessionId: string | null, parentToolUseId: 
             const res = await api.messages.sidechain(sessionId, parentToolUseId)
             return res.data.messages
         },
-        enabled: !!token && !!sessionId && !!parentToolUseId,
+        enabled: !!sessionId && !!parentToolUseId,
         // 覆盖全局 30s，5 秒内重复打开使用缓存，超过则重新请求
         staleTime: 5_000,
     })

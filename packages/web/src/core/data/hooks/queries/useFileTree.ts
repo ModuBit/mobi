@@ -15,7 +15,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { FileNode, ListDirectoryResponse } from '@/core/data/api/types'
@@ -41,8 +40,7 @@ export function parseDirectoryEntries(data: ListDirectoryResponse, dirPath: stri
  * 调用方据此显示错误态而非误导性的「空目录」。
  */
 export function useFileTree(sessionId: string | null, path: string) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useQuery({
         queryKey: queryKeys.sessionDirectory(sessionId!, path),
@@ -55,7 +53,7 @@ export function useFileTree(sessionId: string | null, path: string) {
             }
             return parseDirectoryEntries(data, path)
         },
-        enabled: !!token && !!sessionId,
+        enabled: !!sessionId,
         // staleTime 0：目录需及时反映文件变化，每次挂载都后台 refetch；
         // 缓存仍作 placeholder 先渲染（不闪 skeleton），gcTime 沿用全局 10min
         staleTime: 0,
@@ -85,8 +83,7 @@ export type FileContent = { blob: Blob; mime: string; etag?: string }
  * queryKey 变化 → content 自动 refetch；Ellipsis「刷新」项 invalidate meta 同样联动。
  */
 export function useFileContent(sessionId: string | null, filePath: string | null, enabled = true, etag?: string) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useQuery({
         queryKey: queryKeys.sessionFile(sessionId!, filePath!, etag),
@@ -96,7 +93,7 @@ export function useFileContent(sessionId: string | null, filePath: string | null
             // 浏览器侧缓存主要靠 react-query cache + refetch 协商
             return await api.files.read(sessionId, filePath)
         },
-        enabled: !!token && !!sessionId && !!filePath && enabled,
+        enabled: !!sessionId && !!filePath && enabled,
     })
 }
 
@@ -112,8 +109,7 @@ export type FileMeta = { mime: string; size: number; etag: string }
  * hub 返回 success:false 或缺少 meta 时抛错，由 react-query 透出 error。
  */
 export function useFileMeta(sessionId: string | null, filePath: string | null) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useQuery({
         queryKey: queryKeys.sessionFileMeta(sessionId!, filePath!),
@@ -125,6 +121,6 @@ export function useFileMeta(sessionId: string | null, filePath: string | null) {
             }
             return res.data.meta
         },
-        enabled: !!token && !!sessionId && !!filePath,
+        enabled: !!sessionId && !!filePath,
     })
 }

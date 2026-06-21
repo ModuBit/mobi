@@ -16,7 +16,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMobiApi } from '@/core/data/api/client'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import type { ListDirectoryResponse } from '@/core/data/api/types'
 
 export interface DirectoryOption {
@@ -80,8 +79,7 @@ export function useMachineDirectoryListing(
     options: DirectoryOption[]
     isLoading: boolean
 } {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     const [options, setOptions] = useState<DirectoryOption[]>([])
     const [isLoading, setIsLoading] = useState(false)

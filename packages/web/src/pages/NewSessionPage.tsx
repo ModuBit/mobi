@@ -39,7 +39,6 @@ import { CommandHintBar } from '@/components/composer/CommandHintBar'
 import { AttachmentList } from '@/components/composer/AttachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/components/composer/ResponsiveActionBar'
 import { EnvironmentBar, extractProjectName } from '@/components/composer/EnvironmentBar'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { type AgentType, type SessionType, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import {
@@ -269,8 +268,7 @@ export function NewSessionPage() {
     const { message: messageApi } = App.useApp()
     const navigate = useNavigate()
     const { cwd: initialCwd } = useSearch({ strict: false }) as { cwd?: string }
-    const authToken = useAuthStore((state) => state.token)
-    const api = useMobiApi(authToken)
+    const api = useMobiApi()
     const hasFinePointer = useHasFinePointer()
 
     // 偏好配置（初始化从 localStorage 加载）

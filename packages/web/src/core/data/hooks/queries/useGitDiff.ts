@@ -15,7 +15,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import type { GitDiffResponse } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -24,8 +23,7 @@ import { queryKeys } from '@/core/lib/query-keys'
  * 获取指定文件的 Git diff
  */
 export function useGitDiff(sessionId: string | null, filePath: string | null) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useQuery({
         queryKey: queryKeys.gitDiff(sessionId!, filePath!),
@@ -34,6 +32,6 @@ export function useGitDiff(sessionId: string | null, filePath: string | null) {
             const res = await api.git.diff(sessionId, filePath)
             return (res.data as GitDiffResponse)?.diff || ''
         },
-        enabled: !!token && !!sessionId && !!filePath,
+        enabled: !!sessionId && !!filePath,
     })
 }

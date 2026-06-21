@@ -15,7 +15,6 @@
  */
 
 import { useMutation } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { makeClientSideId } from '@/core/lib/messages'
 
@@ -23,8 +22,7 @@ import { makeClientSideId } from '@/core/lib/messages'
  * 发送消息 Mutation Hook
  */
 export function useSendMessage(sessionId: string) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useMutation({
         mutationFn: (text: string) => {

@@ -32,7 +32,6 @@ import { AgentLoadingBubble } from './AgentLoadingBubble'
 import { CompactProgressBubble } from './CompactProgressBubble'
 import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
@@ -114,8 +113,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const triggerFetchRef = useRef<(scrollTop: number, scrollHeight: number) => void>(() => {})
     const { token } = useToken()
     const { t } = useTranslation()
-    const { token: authToken } = useAuthStore()
-    const api = useMobiApi(authToken)
+    const api = useMobiApi()
 
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
 

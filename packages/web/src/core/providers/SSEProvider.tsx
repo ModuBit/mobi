@@ -285,7 +285,7 @@ type PendingInvalidations = {
  * 负责连接生命周期、事件处理和缓存更新
  */
 export function SSEProvider({ children }: { children: ReactNode }) {
-    const { token, logout } = useAuthStore()
+    const { authenticated, logout } = useAuthStore()
     const queryClient = useQueryClient()
     const clientRef = useRef<SSEClient | null>(null)
     const subscriptionIdRef = useRef<string | null>(null)
@@ -295,7 +295,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const notify = useNotify()
     const notifyRef = useRef(notify)
     notifyRef.current = notify
-    const api = useMobiApi(token)
+    const api = useMobiApi()
     const apiRef = useRef(api)
     apiRef.current = api
     const queryClientRef = useRef(queryClient)
@@ -489,9 +489,9 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         }
     }, [])
 
-    // 登出(token 清空)时清理角标 + 重置通知子系统,避免换号残留上一用户状态
+    // 登出(authenticated 转 false)时清理角标 + 重置通知子系统,避免换号残留上一用户状态
     useEffect(() => {
-        if (!token) {
+        if (!authenticated) {
             clearAllBadgesRef.current()
             // 重置 permission/subscribed/error + 引导 flag:SPA 内 logout→login 不刷新页面,
             // 不重置则新用户继承上一用户状态/不再获得首次引导
@@ -500,10 +500,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             // 清空所有会话的检视面板状态 + 缓存终端（顺带关闭后端 PTY），避免换号残留
             clearAllSessionResources()
         }
-    }, [token])
+    }, [authenticated])
 
     useEffect(() => {
-        if (!token) return
+        if (!authenticated) return
 
         const handleUnauthorized = () => {
             // 清除认证状态
@@ -514,11 +514,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
         const client = new SSEClient(
             () => {
-                if (!token) return null
+                if (!authenticated) return null
                 // all=true 用于接收所有 session 相关事件（如 session-updated）
-                // visibility 传递初始可见性状态
+                // visibility 传递初始可见性状态；认证走 httpOnly cookie（SSEClient credentials: 'include'）
                 const initialVisibility = document.hidden ? 'hidden' : 'visible'
-                return `${window.location.origin}/api/events?token=${token}&all=true&visibility=${initialVisibility}`
+                return `${window.location.origin}/api/events?all=true&visibility=${initialVisibility}`
             },
             handleUnauthorized
         )
@@ -585,12 +585,12 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             // 清理暂存缓冲区
             pendingMessages.clear()
         }
-    }, [token, logout, handleSyncEvent])
+    }, [authenticated, logout, handleSyncEvent])
 
     return (
         <>
             {children}
-            {token && <NotificationPermissionGate />}
+            {authenticated && <NotificationPermissionGate />}
         </>
     )
 }

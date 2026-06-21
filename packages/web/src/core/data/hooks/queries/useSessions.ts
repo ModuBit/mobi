@@ -15,7 +15,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Session } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -24,8 +23,7 @@ import { queryKeys } from '@/core/lib/query-keys'
  * 获取所有会话列表
  */
 export function useSessions() {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useQuery({
         queryKey: queryKeys.sessions,
@@ -33,6 +31,6 @@ export function useSessions() {
             const res = await api.sessions.list()
             return res.data.sessions as Session[]
         },
-        enabled: !!token,
+        enabled: true,
     })
 }

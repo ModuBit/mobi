@@ -15,7 +15,6 @@
  */
 
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Session, GroupSessionsPage } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -28,8 +27,7 @@ const PAGE_SIZE = 20
  * 返回只含 sessionId 的数据，完整 Session 数据 upsert 到全局 sessions 缓存
  */
 export function useGroupSessions(groupKey: string | null) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
     const queryClient = useQueryClient()
 
     return useInfiniteQuery<GroupSessionsPage>({
@@ -56,6 +54,6 @@ export function useGroupSessions(groupKey: string | null) {
             }
             return lastPage.nextCursor
         },
-        enabled: !!token && !!groupKey,
+        enabled: !!groupKey,
     })
 }

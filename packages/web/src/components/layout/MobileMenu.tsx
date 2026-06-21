@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useAuthStore } from '@/core/data/stores/authStore'
+import { useMobiApi } from '@/core/data/api/client'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
@@ -113,11 +114,18 @@ export function MobileMenuDrawer() {
     const location = useLocation()
     const { mobileMenuOpen, setMobileMenuOpen } = useUiStore()
     const { logout } = useAuthStore()
+    const api = useMobiApi()
     const isMobile = useIsMobile()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
+
+    // 登出：先清服务端 cookie，再清内存 state（cookie 链路下两步缺一不可）
+    const handleLogout = () => {
+        handleClose()
+        api.auth.logout().catch(() => {}).finally(() => logout())
+    }
 
     // 选择菜单项
     const handleSelect = (key: string) => {
@@ -203,8 +211,7 @@ export function MobileMenuDrawer() {
                     $danger={true}
                     $token={token}
                     onClick={() => {
-                        handleClose()
-                        logout()
+                        handleLogout()
                     }}
                 >
                     <logoutNavItem.icon size={20} />

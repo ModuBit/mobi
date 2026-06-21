@@ -15,7 +15,6 @@
  */
 
 import { useMemo } from 'react'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useSDKMetadata } from './useSDKMetadata'
 import { useMachineMetadata } from './useMachineMetadata'
@@ -68,8 +67,7 @@ export function useDirectoryCapabilities(
     target: CapabilityTarget | null,
     options?: { metadataEnabled?: boolean },
 ): DirectoryCapabilities {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
     const metadataEnabled = options?.metadataEnabled ?? true
 
     // 选择正确的 metadata 通道
@@ -96,44 +94,44 @@ export function useDirectoryCapabilities(
         [metadata?.commands]
     )
 
-    // 统一 API 方法
+    // 统一 API 方法（未指定 target 时返回 no-op，cookie 自动带认证）
     const searchFiles = useMemo(() => {
-        if (!target || !token) return async () => ({ data: { success: false } })
+        if (!target) return async () => ({ data: { success: false } })
         if (target.kind === 'session') {
             return (query: string, opts?: { signal?: AbortSignal }) =>
                 api.sessions.searchFiles(target.sessionId, query, opts)
         }
         return (query: string, opts?: { signal?: AbortSignal }) =>
             api.machines.searchFiles(target.machineId, target.cwd, query, opts)
-    }, [target, token, api])
+    }, [target, api])
 
     const listDirectory = useMemo(() => {
-        if (!target || !token) return async () => ({ data: { success: false } })
+        if (!target) return async () => ({ data: { success: false } })
         if (target.kind === 'session') {
             return (path: string, opts?: { signal?: AbortSignal }) =>
                 api.sessions.listDirectory(target.sessionId, path, opts)
         }
         return (path: string, opts?: { signal?: AbortSignal }) =>
             api.machines.listSessionDirectory(target.machineId, target.cwd, path, opts)
-    }, [target, token, api])
+    }, [target, api])
 
     const uploadFile = useMemo(() => {
-        if (!target || !token) return async () => ({ data: { success: false } })
+        if (!target) return async () => ({ data: { success: false } })
         if (target.kind === 'session') {
             return (file: File, opts?: { signal?: AbortSignal }) =>
                 api.sessions.upload(target.sessionId, file, opts)
         }
         return (file: File, opts?: { signal?: AbortSignal }) =>
             api.machines.upload(target.machineId, target.cwd, file, opts)
-    }, [target, token, api])
+    }, [target, api])
 
     const deleteUpload = useMemo(() => {
-        if (!target || !token) return async () => ({ data: { success: false } })
+        if (!target) return async () => ({ data: { success: false } })
         if (target.kind === 'session') {
             return (path: string) => api.sessions.deleteUpload(target.sessionId, path)
         }
         return (path: string) => api.machines.deleteUpload(target.machineId, target.cwd, path)
-    }, [target, token, api])
+    }, [target, api])
 
     return useMemo(() => ({
         metadata, metadataLoading, commands,

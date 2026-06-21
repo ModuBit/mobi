@@ -31,7 +31,6 @@ import {
 } from '@ant-design/icons'
 import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
@@ -93,8 +92,7 @@ interface ActionContext {
 export function SessionList({ selectedSessionId }: SessionListProps) {
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const { token: authToken } = useAuthStore()
-    const api = useMobiApi(authToken)
+    const api = useMobiApi()
     const queryClient = useQueryClient()
     const { setSessionListDrawerOpen, startRename, renamingSessionId, renameValue, setRenameValue, cancelRename } = useUiStore()
     const isMobile = useIsMobile()
@@ -132,7 +130,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
 
                 return { sessionIds: res.data.sessions.map(s => s.id), groupKey: group.key }
             },
-            enabled: !!authToken && !!group.key,
+            enabled: !!group.key,
         })),
     })
 

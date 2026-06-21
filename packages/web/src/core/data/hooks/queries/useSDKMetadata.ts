@@ -15,7 +15,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { SDKMetadata, SDKMetadataResponse } from '@/core/data/api/types'
@@ -29,8 +28,7 @@ export type { SDKMetadata, ModelOption, Command, AgentInfo, AccountInfo } from '
  * 其他 hook（useCommands）通过 select 派生。
  */
 export function useSDKMetadata(sessionId: string | null, enabled: boolean = true) {
-    const { token } = useAuthStore()
-    const api = useMobiApi(token)
+    const api = useMobiApi()
 
     return useQuery<SDKMetadata | null>({
         queryKey: sessionId ? queryKeys.sdkMetadata(sessionId) : ['sdkMetadata', 'disabled'],
@@ -40,7 +38,7 @@ export function useSDKMetadata(sessionId: string | null, enabled: boolean = true
             const res = await api.sessions.metadata(sessionId)
             return (res.data as SDKMetadataResponse | undefined)?.metadata ?? null
         },
-        enabled: !!token && !!sessionId && enabled,
+        enabled: !!sessionId && enabled,
         staleTime: 60_000,
     })
 }

@@ -33,7 +33,6 @@ import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
 import { useGroupSessions } from '@/core/data/hooks/queries/useGroupSessions'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import { clearSessionResources } from '@/core/lib/sessionResources'
@@ -395,8 +394,7 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const queryClient = useQueryClient()
-    const authToken = useAuthStore((s) => s.token)
-    const api = useMobiApi(authToken)
+    const api = useMobiApi()
     const params = useParams({ strict: false })
     const activeSessionId = params.sessionId as string | undefined
 

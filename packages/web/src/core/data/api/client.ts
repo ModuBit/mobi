@@ -50,11 +50,13 @@ export function setUnauthorizedHandler(handler: () => void): () => void {
 }
 
 // 创建 API 客户端（使用当前页面的 origin）
-export function createApiClient(token: string | null): AxiosInstance {
+// cookie 链路：withCredentials 让浏览器自动随同源请求携带 httpOnly cookie，
+// 不再手写 Authorization header（CORS credentials 配套见 hub server.ts）
+export function createApiClient(): AxiosInstance {
     const client = axios.create({
         baseURL: window.location.origin,
+        withCredentials: true,
         headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
             'Content-Type': 'application/json'
         }
     })
@@ -74,14 +76,16 @@ export function createApiClient(token: string | null): AxiosInstance {
 }
 
 // 创建 Mobi API 对象
-export function createMobiApi(token: string | null) {
-    const client = createApiClient(token)
+export function createMobiApi() {
+    const client = createApiClient()
 
     return {
         // Auth
         auth: {
             exchangeToken: (accessToken: string) =>
                 client.post<{ token: string; user: { id: number; firstName: string } }>('/api/auth', { accessToken }),
+            // 登出：清 httpOnly cookie（cookie 链路下必须服务端清，仅清内存 state 会在刷新后因 cookie 仍有效而自动恢复登录）
+            logout: () => client.post('/api/auth/logout'),
         },
 
         // Sessions
@@ -196,8 +200,9 @@ export function createMobiApi(token: string | null) {
 
         // Events (SSE)
         events: {
-            subscribeUrl: (namespace: string, token: string) =>
-                `${window.location.origin}/api/events?namespace=${namespace}&token=${token}`,
+            // cookie 链路：SSE 客户端 withCredentials 自动带 cookie，无需 query token
+            subscribeUrl: (namespace: string) =>
+                `${window.location.origin}/api/events?namespace=${namespace}`,
         },
 
         // Visibility
@@ -266,8 +271,8 @@ export type MobiApi = ReturnType<typeof createMobiApi>
 
 /**
  * React Hook: 获取缓存的 Mobi API 实例
- * 只在 token 变化时重建 API 客户端
+ * cookie 链路下不再依赖 token，实例全局单例即可
  */
-export function useMobiApi(token: string | null): MobiApi {
-    return useMemo(() => createMobiApi(token), [token])
+export function useMobiApi(): MobiApi {
+    return useMemo(() => createMobiApi(), [])
 }
