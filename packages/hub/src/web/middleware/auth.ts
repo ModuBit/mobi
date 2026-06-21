@@ -17,6 +17,7 @@
 import type { MiddlewareHandler } from 'hono'
 import { z } from 'zod'
 import { jwtVerify } from 'jose'
+import { getCookie } from 'hono/cookie'
 
 export type WebAppEnv = {
     Variables: {
@@ -30,6 +31,9 @@ const jwtPayloadSchema = z.object({
     ns: z.string()
 })
 
+// 认证 cookie 名（与 routes/auth.ts 保持一致）
+const AUTH_COOKIE_NAME = 'mobi_token'
+
 export function createAuthMiddleware(jwtSecret: Uint8Array): MiddlewareHandler<WebAppEnv> {
     return async (c, next) => {
         const path = c.req.path
@@ -38,10 +42,12 @@ export function createAuthMiddleware(jwtSecret: Uint8Array): MiddlewareHandler<W
             return
         }
 
+        // 双源取 token：优先 cookie（新链路，media/SSE 自动携带），回退 Authorization header（过渡兼容 cli + 旧 web）
+        // /api/events query token 特例已去除 —— SSE 改 withCredentials 后走 cookie 链路
+        const tokenFromCookie = getCookie(c, AUTH_COOKIE_NAME)
         const authorization = c.req.header('authorization')
         const tokenFromHeader = authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : undefined
-        const tokenFromQuery = path === '/api/events' ? c.req.query().token : undefined
-        const token = tokenFromHeader ?? tokenFromQuery
+        const token = tokenFromCookie ?? tokenFromHeader
 
         if (!token) {
             return c.json({ error: 'Missing authorization token' }, 401)

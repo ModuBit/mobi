@@ -15,6 +15,8 @@
  */
 
 import { Hono } from 'hono'
+import type { Context } from 'hono'
+import { setCookie, getCookie } from 'hono/cookie'
 import { SignJWT, jwtVerify } from 'jose'
 import { z } from 'zod'
 import { configuration } from '../../configuration'
@@ -22,6 +24,28 @@ import { constantTimeEquals } from '../../utils/crypto'
 import { parseAccessToken } from '../../utils/accessToken'
 import { getOrCreateOwnerId } from '../../config/ownerId'
 import type { WebAppEnv } from '../middleware/auth'
+
+// 认证 cookie 名 —— httpOnly 防 XSS 窃取，由浏览器自动随同源请求（含 <img>/<video>/SSE）携带
+const AUTH_COOKIE_NAME = 'mobi_token'
+// cookie 生命周期，与 JWT 过期（1d）对齐
+const AUTH_COOKIE_MAX_AGE = 86400
+// cookie 安全属性：Lax 防 CSRF POST，Path=/ 覆盖所有 media/SSE 端点
+const AUTH_COOKIE_OPTIONS = {
+    httpOnly: true,
+    sameSite: 'Lax' as const,
+    path: '/',
+    maxAge: AUTH_COOKIE_MAX_AGE
+}
+
+// 从请求中提取 JWT：优先 cookie（新链路），回退 Authorization header（过渡兼容 cli + 旧 web）
+function extractToken(c: Context<WebAppEnv>): string | undefined {
+    const tokenFromCookie = getCookie(c, AUTH_COOKIE_NAME)
+    if (tokenFromCookie) {
+        return tokenFromCookie
+    }
+    const authorization = c.req.header('authorization')
+    return authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : undefined
+}
 
 const accessTokenAuthSchema = z.object({
     accessToken: z.string()
@@ -35,10 +59,9 @@ const jwtPayloadSchema = z.object({
 export function createAuthRoutes(jwtSecret: Uint8Array): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
-    // 查询当前认证状态（不需要认证）
+    // 查询当前认证状态（不需要认证；双源读 cookie + header 过渡兼容）
     app.get('/auth/status', async (c) => {
-        const authorization = c.req.header('authorization')
-        const token = authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : undefined
+        const token = extractToken(c)
 
         if (!token) {
             return c.json({ authenticated: false })
@@ -78,6 +101,9 @@ export function createAuthRoutes(jwtSecret: Uint8Array): Hono<WebAppEnv> {
             .setExpirationTime('1d')
             .sign(jwtSecret)
 
+        // Set-Cookie：httpOnly cookie 让浏览器自动随同源请求携带（media/SSE 直连）
+        setCookie(c, AUTH_COOKIE_NAME, token, AUTH_COOKIE_OPTIONS)
+
         return c.json({
             token,
             user: {
@@ -85,6 +111,19 @@ export function createAuthRoutes(jwtSecret: Uint8Array): Hono<WebAppEnv> {
                 firstName: 'Web User'
             }
         })
+    })
+
+    // 登出：清除认证 cookie（maxAge=0 立即过期）
+    // 该路由在 auth middleware 之前注册（createAuthRoutes 整体先于 middleware 挂载），
+    // 故此处自行做轻量认证校验：无 cookie/header token 则 401，避免未认证调用清 cookie
+    app.post('/auth/logout', (c) => {
+        const token = extractToken(c)
+        if (!token) {
+            return c.json({ error: 'Missing authorization token' }, 401)
+        }
+
+        setCookie(c, AUTH_COOKIE_NAME, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 })
+        return c.json({ success: true })
     })
 
     return app
