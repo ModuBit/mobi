@@ -17,6 +17,7 @@
 import { defineConfig } from 'vite'
 import type { PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 import mkcert from 'vite-plugin-mkcert'
@@ -33,6 +34,7 @@ const useHttpsDev = process.env.MOBI_DEV_HTTPS === '1' || process.env.MOBI_DEV_H
 export default defineConfig({
     plugins: [
         react(),
+        tailwindcss(),
         VitePWA({
             registerType: 'prompt',
             // 使用自定义 SW 注册逻辑，禁用插件自动注入
