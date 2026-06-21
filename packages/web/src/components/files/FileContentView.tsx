@@ -14,44 +14,110 @@
  * limitations under the License.
  */
 
-import { Spin, Empty, Typography } from 'antd'
+import { useState } from 'react'
+import { Spin, Empty, Breadcrumb, Button, App, Popover, Dropdown } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { Folders, Ellipsis, Copy } from 'lucide-react'
+import type { MenuProps } from 'antd'
 import { useFileContent } from '@/core/data/hooks/queries/useFileTree'
-
-const { Text } = Typography
+import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import FileTreeView from '@/components/files/FileTreeView'
 
 interface FileContentViewProps {
     sessionId: string
+    /** 当前 tab id：Folders 选文件后调 openFileInTab 用 */
+    tabId: string
     filePath: string
 }
 
-/** 只读文件内容视图（占满面板），顶部小字显示相对路径 */
-export default function FileContentView({ sessionId, filePath }: FileContentViewProps) {
+export default function FileContentView({ sessionId, tabId, filePath }: FileContentViewProps) {
     const { t } = useTranslation()
+    const { message } = App.useApp()
     const { data: content, isLoading, error } = useFileContent(sessionId, filePath)
+    const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
+    const [treeOpen, setTreeOpen] = useState(false)
+
+    // 面包屑分段：a/b/c.ts → [a, b, c.ts]，最后一项（文件名）加粗
+    const segments = filePath.split('/').filter(Boolean)
+    const lastIndex = segments.length - 1
+    const crumbItems = segments.map((seg, i) => ({
+        title: <span style={{ fontWeight: i === lastIndex ? 600 : 400 }}>{seg}</span>,
+    }))
+
+    const copyPath = async () => {
+        try {
+            await navigator.clipboard.writeText(filePath)
+        } catch {
+            // fallback：对齐 CopyButton.tsx 的 execCommand 兜底（老浏览器/无权限）
+            const ta = document.createElement('textarea')
+            ta.value = filePath
+            document.body.appendChild(ta)
+            ta.select()
+            document.execCommand('copy')
+            document.body.removeChild(ta)
+        }
+        message.success(t('files.pathCopied'))
+    }
+
+    const moreMenuItems: MenuProps['items'] = [
+        { key: 'copyPath', icon: <Copy size={14} />, label: t('files.copyPath'), onClick: copyPath },
+    ]
 
     return (
-        <div style={{ height: '100%', overflow: 'auto', padding: 16 }}>
-            {isLoading ? (
-                <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
-            ) : error ? (
-                // 读取失败（runner 未就绪/无权限等）：显示错误而非误导性的空白
-                <Empty description={error instanceof Error ? error.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
-            ) : content != null ? (
-                <div>
-                    <div style={{ marginBottom: 8, fontSize: 12 }}>
-                        <Text type="secondary">{filePath}</Text>
-                    </div>
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {/* header：左面包屑（左侧省略）+ 右功能区 */}
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '4px 8px', flexShrink: 0,
+                borderBottom: '1px solid var(--ant-color-border-secondary)',
+            }}>
+                {/* 外层 rtl：让 Breadcrumb 右对齐、溢出裁左（左侧省略）；内层 ltr 保持 a/b/c 顺序 */}
+                <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', direction: 'rtl' }}>
+                    <Breadcrumb style={{ direction: 'ltr', whiteSpace: 'nowrap' }} items={crumbItems} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                    <Dropdown menu={{ items: moreMenuItems }} trigger={['click']}>
+                        <Button type="text" size="small" icon={<Ellipsis size={14} />} aria-label={t('files.more')} />
+                    </Dropdown>
+                    <Popover
+                        open={treeOpen}
+                        onOpenChange={setTreeOpen}
+                        trigger="click"
+                        placement="bottomLeft"
+                        content={
+                            <div style={{ width: 300, height: 400, overflow: 'auto' }}>
+                                <FileTreeView
+                                    sessionId={sessionId}
+                                    onOpenFile={(fp, fn) => {
+                                        // store 去重：当前文件不响应 / 别的 tab 已开则激活 / 否则当前 tab 转该文件
+                                        openFileInTab(sessionId, tabId, fp, fn)
+                                        setTreeOpen(false)
+                                    }}
+                                />
+                            </div>
+                        }
+                    >
+                        <Button type="text" size="small" icon={<Folders size={14} />} aria-label={t('files.openFromTree')} />
+                    </Popover>
+                </div>
+            </div>
+            {/* content：沿用现有三态 */}
+            <div style={{ flex: 1, overflow: 'auto' }}>
+                {isLoading ? (
+                    <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+                ) : error ? (
+                    <Empty description={error instanceof Error ? error.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
+                ) : content != null ? (
                     <pre style={{
                         fontSize: 12, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
                         fontFamily: 'var(--font-mono)', padding: 12,
                     }}>
                         {content}
                     </pre>
-                </div>
-            ) : (
-                <Empty description={t('files.selectToView')} style={{ marginTop: 40 }} />
-            )}
+                ) : (
+                    <Empty description={t('files.selectToView')} style={{ marginTop: 40 }} />
+                )}
+            </div>
         </div>
     )
 }
