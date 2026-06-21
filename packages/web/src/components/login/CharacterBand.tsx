@@ -89,7 +89,9 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
 
     return (
         <div className="w-full flex justify-center overflow-hidden">
-            <div className="relative" style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}>
+            {/* 窄屏等比缩放：origin-bottom 保持角色脚不飘；max-[480px]/max-[380px] 为 tailwind v4 任意值断点 */}
+            <div className="origin-bottom max-[480px]:scale-[0.7] max-[380px]:scale-[0.55]">
+                <div className="relative" style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}>
                 {/* 紫色矮胖 - 最后层 */}
                 <div
                     ref={purpleRef}
@@ -248,6 +250,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                             backgroundColor: '#2D2D2D',
                         }}
                     />
+                </div>
                 </div>
             </div>
         </div>

@@ -394,6 +394,17 @@ const HelpLink = styled.a`
     }
 `
 
+/** 底部角色带容器：与 LoginPanel/BrandPanel 一致的 paper 色 + dark 分支 */
+const BandWrapper = styled.div`
+    width: 100%;
+    padding: 8px 0 0;
+    background: #faf9f5;
+
+    html[data-theme='dark'] & {
+        background: #141413;
+    }
+`
+
 export function LoginPage() {
     const navigate = useNavigate()
     const { setToken } = useAuthStore()
@@ -587,6 +598,7 @@ export function LoginPage() {
                                 suffix={
                                     <Button
                                         type="text"
+                                        htmlType="button"
                                         size="small"
                                         icon={
                                             tokenVisible ? (
@@ -628,11 +640,13 @@ export function LoginPage() {
                 </LoginPanel>
             </TopSection>
 
-            <CharacterBand
-                peek={tokenVisible}
-                hasToken={hasToken}
-                typing={typing}
-            />
+            <BandWrapper>
+                <CharacterBand
+                    peek={tokenVisible}
+                    hasToken={hasToken}
+                    typing={typing}
+                />
+            </BandWrapper>
         </PageContainer>
     )
 }
