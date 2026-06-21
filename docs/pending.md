@@ -595,3 +595,75 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 
 **优先级**：低，按需触发。
 
+---
+
+## 23. 会话附件上传（web → hub → cli）流式传输优化
+
+**背景**：与文件读取流式管道（方案 X）对称的反向链路。文件读取侧已规划流式管道（web↔hub HTTP 流式 + hub↔cli socket.io 小 chunk RPC，见 spec `docs/superpowers/specs/2026-06-21-file-streaming-pipeline-design.md`）；附件上传当前仍是 base64-over-JSON 一次性全量，大附件同样受 socket.io `maxHttpBufferSize`（默认 1MB）与 base64 膨胀 33% 的双重制约。
+
+**相关文件**：
+- `packages/web/src/core/lib/fileAttachments.ts` — 附件类型与上传校验
+- `packages/hub/src/web/routes/sessions.ts:139-146` — web 上传路由（读 ArrayBuffer → `Buffer.from(...).toString('base64')`）
+- `packages/hub/src/sync/syncEngine.ts` / `rpcGateway.ts` — `uploadFile` / `machineUploadFile` 透传 base64 content + mimeType
+- `packages/cli/src/modules/common/handlers/uploads.ts:42,171` — `content: string // base64 编码`、`MAX_UPLOAD_BYTES` 50MB
+
+**现状**：web 读文件 → ArrayBuffer → base64 → POST JSON → hub → socket.io RPC（base64 content）→ cli `Buffer.from(content,'base64')` → `writeFile`。整包、无背压、大附件靠调高 `maxHttpBufferSize` 硬扛。
+
+**对称优化方向**（待读取侧流式管道落地后再评估）：
+- web↔hub：HTTP 流式上传（`fetch` + `ReadableStream` body / chunked request）
+- hub↔cli：反向复用读取侧的 `emitWithAck` 分块 RPC（cli 端 `writeFileRange` handler，按 offset 追加写）
+- 背压：读取侧同款机制（`res.on('drain')` / await ack 串行）
+- 复用 cli 端分段 IO 的对称抽象（`readFileRange` ↔ `writeFileRange`）
+
+**与读取侧的关系**：两者共享「cli 分段 IO + hub 翻译 + HTTP 流式」的架构骨架，上传侧作为对称改造，待读取侧稳定后单独立项。
+
+**优先级**：低，待文件读取流式管道落地后触发。
+
+---
+
+## 24. 文件流式端点（`/read-file`）quality review 遗留项
+
+Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以下非阻塞项待后续评估：
+
+**I3 — ENOENT/越权 应映射为 404/403（当前 500）**：
+- `packages/hub/src/web/routes/sessions.ts` 的流式端点：`readFileMeta` 失败（含 cli ENOENT、validatePath 越权）统一返回 500
+- 语义不准：文件不存在应为 404，路径越权应为 403，前端难以区分「文件没了」vs「cli 挂了」
+- 方向：cli `readFileMeta` handler 区分 ENOENT 单独返回标志，或 hub 端按 error 字符串轻量映射（`/ENOENT|no such file/i` → 404，validation 类 → 403）
+
+**I4 — suffix range（`bytes=-N`）当前返回 416**：
+- 正则 `^bytes=(\d+)-(\d*)$` 不匹配 `bytes=-5`（RFC 7233 表示「最后 5 字节」）→ isRange=false → 命中 416 分支
+- 影响：浏览器 `<video>` seek 末尾、`<audio>` 流式、curl `--range -N`/aria2 等会发 suffix range，当前拿不到数据
+- 取决于 Task 6/7 预览方式：若 fetch 手动分片（发 `bytes=start-`）则无影响；若 `<video src>` 原生标签则需补 suffix（正则加 `(\d*)-(\d+)` 分支 + `start = max(0, size-N)`）
+
+**M2 — sessions.ts read 类端点可抽模块**：
+- 流式端点 +82 行后 sessions.ts 持续膨胀，Task 8 移除旧 readFile 后若 read 类端点（read-file + 未来 list/search）继续膨胀，可抽 `readFileRoute.ts`。当前内联合理，YAGNI。
+
+**相关文件**：`packages/hub/src/web/routes/sessions.ts:492-581`
+
+**优先级**：低，Task 8 收尾或 Task 6/7 预览方式定了后评估。
+
+---
+
+## 25. P3 图片浏览器缓存（SW 方案）搁置
+
+**背景**：用户最初诉求「图片加浏览器缓存，避免重复获取」。当前图片走 `URL.createObjectURL(blob)`（`blob:` 协议，不走浏览器 HTTP 缓存），原因是 `/read-file` 端点要 token 认证，`<img src>` 带不了 Authorization header。
+
+**SW 方案（已设计未实施）**：
+- `packages/web/src/core/pwa/sw.ts`（mobi 已有 SW 基建，Web Push 在用）加 fetch 拦截 `/read-file`，透明注入 Authorization header + Cache API 缓存
+- token 传递：web postMessage → SW（+ IndexedDB 兜底，防 SW 重启丢 token）
+- 缓存策略：stale-while-revalidate（返回缓存 + 后台 etag 更新）
+- `ImageContentView` 从 objectURL 改为 `<img src={端点URL}>` 直连（SW 接管）
+
+**搁置原因（2026-06-21 用户决策）**：SW 方案复杂度高（token 传递 postMessage+IDB / 缓存策略选择 / 拦截范围 / SW 重启 token 丢失一致性），收益（图片浏览器缓存）相对核心功能（流式管道 + 高亮 + markdown + etag）是边际的。
+
+**现状可接受**：
+- 图片 objectURL 直显（P0）+ 5MB 阈值（P1）
+- react-query cache：切 tab 回来命中缓存（不重复下载），非浏览器 HTTP 缓存但功能上「不重复获取」
+- etag 协商（P4）：meta refetch 时浏览器层可能 304
+
+**待后续**：若图片重复获取成为体验瓶颈、或 SW 基建为其他需求（如离线）扩展时，再实施此方案。
+
+**相关文件**：`packages/web/src/components/files/ImageContentView.tsx`、`packages/web/src/core/pwa/sw.ts`、`packages/web/src/core/pwa/registerSW.ts`
+
+**优先级**：低，按需触发。
+
