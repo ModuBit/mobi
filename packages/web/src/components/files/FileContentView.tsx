@@ -23,9 +23,10 @@ import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTr
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { FILE_SIZE_LIMITS } from '@/core/config/fileLimits'
 import FileTreeView from '@/components/files/FileTreeView'
-import CodeHighlight from '@/components/files/CodeHighlight'
 import FileTooLarge from '@/components/files/FileTooLarge'
-import { Markdown } from '@/components/ui/Markdown'
+import TextContentView from '@/components/files/TextContentView'
+import MarkdownContentView from '@/components/files/MarkdownContentView'
+import ImageContentView from '@/components/files/ImageContentView'
 
 interface FileContentViewProps {
     sessionId: string
@@ -227,26 +228,13 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                 ) : contentError ? (
                     <Empty description={contentError instanceof Error ? contentError.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
                 ) : file ? (
+                    // 按类型路由到 ContentView（纯展示组件），文本/图片渲染策略在外壳 meta 先行决定
                     isImage ? (
-                        <div style={{ textAlign: 'center', padding: 12, overflow: 'auto' }}>
-                            {imgUrl && <img src={imgUrl} alt={filePath} style={{ maxWidth: '100%' }} />}
-                        </div>
+                        <ImageContentView imgUrl={imgUrl} filePath={filePath} />
                     ) : isMarkdown ? (
-                        // .md 双模式：默认 XMarkdown 渲染，可切源码 Shiki 高亮（复用 CodeHighlight）
-                        view === 'render'
-                            ? <Markdown content={text ?? ''} />
-                            : <CodeHighlight code={text ?? ''} filePath={filePath} />
+                        <MarkdownContentView text={text ?? ''} filePath={filePath} view={view} />
                     ) : (
-                        useHighlight
-                            ? <CodeHighlight code={text ?? ''} filePath={filePath} />
-                            : (
-                                <pre style={{
-                                    fontSize: 12, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                                    fontFamily: 'var(--font-mono)', padding: 12,
-                                }}>
-                                    {text ?? ''}
-                                </pre>
-                            )
+                        <TextContentView text={text ?? ''} filePath={filePath} highlight={useHighlight} />
                     )
                 ) : (
                     <Empty description={t('files.selectToView')} style={{ marginTop: 40 }} />
