@@ -15,7 +15,14 @@
  */
 
 import { Form, Input, Button, App } from 'antd'
-import { SunOutlined, MoonOutlined, GithubOutlined } from '@ant-design/icons'
+import {
+    SunOutlined,
+    MoonOutlined,
+    GithubOutlined,
+    EyeOutlined,
+    EyeInvisibleOutlined,
+} from '@ant-design/icons'
+import { CharacterBand } from '@/components/login/CharacterBand'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/core/data/stores/authStore'
@@ -36,11 +43,20 @@ const FEATURES = [
     { titleKey: 'feature3Title', descKey: 'feature3Desc' },
 ] as const
 
-/** 全屏容器：左右分栏 */
+/** 全屏容器：上下分栏（上栏左右分 + 底部角色带） */
 const PageContainer = styled.div`
     display: flex;
+    flex-direction: column;
     width: 100%;
     min-height: 100dvh;
+`
+
+/** 上栏：承载原有左右两栏，占满剩余高度 */
+const TopSection = styled.div`
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
 `
 
 /**
@@ -352,11 +368,10 @@ const WelcomeSubtitle = styled.p`
     }
 `
 
-/** 帮助链接 */
+/** 帮助链接：流式居中显示（原绝对定位会与底部角色带重叠） */
 const HelpLink = styled.a`
-    position: absolute;
-    bottom: 32px;
-    right: 32px;
+    margin-top: 24px;
+    justify-content: center;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -377,14 +392,6 @@ const HelpLink = styled.a`
             color: #87867f;
         }
     }
-
-    @media (max-width: 1023px) {
-        position: absolute;
-        bottom: 32px;
-        right: auto;
-        left: 50%;
-        transform: translateX(-50%);
-    }
 `
 
 export function LoginPage() {
@@ -392,6 +399,12 @@ export function LoginPage() {
     const { setToken } = useAuthStore()
     const [form] = Form.useForm()
     const [loading, setLoading] = useState(false)
+    /** token 明文可见（驱动 CharacterBand.peek） */
+    const [tokenVisible, setTokenVisible] = useState(false)
+    /** token 非空（驱动 CharacterBand.hasToken） */
+    const [hasToken, setHasToken] = useState(false)
+    /** 正在输入（驱动 CharacterBand.typing） */
+    const [typing, setTyping] = useState(false)
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
     const isDark = resolvedTheme === 'dark'
     const { message } = App.useApp()
@@ -433,117 +446,126 @@ export function LoginPage() {
                 <title>{t('siteTitle')}</title>
             </Helmet>
 
-            <BrandPanel>
-                <GridPattern />
-                <GlowOrb
-                    style={{
-                        top: '-20%',
-                        left: '-20%',
-                        width: '80%',
-                        height: '80%',
-                    }}
-                />
-                <GlowOrb
-                    style={{
-                        bottom: '-10%',
-                        right: '-10%',
-                        width: '60%',
-                        height: '60%',
-                    }}
-                />
-
-                <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <LogoImg as={Logo} />
-                    <BrandName>{t('login.brand')}</BrandName>
-                </div>
-
-                <div
-                    style={{
-                        position: 'relative',
-                        zIndex: 1,
-                        maxWidth: 480,
-                    }}
-                >
-                    <IntroLogoWrap />
-                    <Tagline>{t('login.subtitle')}</Tagline>
-                    <Description>{t('login.description')}</Description>
-                    <FeatureList>
-                        {FEATURES.map(({ titleKey, descKey }) => (
-                            <FeatureItem key={titleKey}>
-                                <div className="feature-dot" />
-                                <div>
-                                    <div className="feature-title">
-                                        {t(`login.${titleKey}`)}
-                                    </div>
-                                    <div className="feature-desc">
-                                        {t(`login.${descKey}`)}
-                                    </div>
-                                </div>
-                            </FeatureItem>
-                        ))}
-                    </FeatureList>
-                </div>
-
-                <div style={{ position: 'relative', zIndex: 1 }}>
-                    <FooterMeta>© {CURRENT_YEAR} Mobi</FooterMeta>
-                </div>
-            </BrandPanel>
-
-            <LoginPanel>
-                <MobileLogo>
-                    <LogoImg as={Logo} style={{ width: 24, height: 24 }} />
-                    <BrandName>{t('login.brand')}</BrandName>
-                </MobileLogo>
-
-                <TopActions>
-                    <Button
-                        type="text"
-                        onClick={toggleLocale}
-                        title={
-                            locale === 'zh'
-                                ? 'Switch to English'
-                                : '切换到中文'
-                        }
+            <TopSection>
+                <BrandPanel>
+                    <GridPattern />
+                    <GlowOrb
                         style={{
-                            padding: 0,
-                            width: 32,
-                            height: 32,
+                            top: '-20%',
+                            left: '-20%',
+                            width: '80%',
+                            height: '80%',
+                        }}
+                    />
+                    <GlowOrb
+                        style={{
+                            bottom: '-10%',
+                            right: '-10%',
+                            width: '60%',
+                            height: '60%',
+                        }}
+                    />
+
+                    <div
+                        style={{
+                            position: 'relative',
+                            zIndex: 1,
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
+                            gap: 12,
                         }}
                     >
-                        <LocaleSwitchIcon>
-                            <ActiveLocale>
-                                {locale === 'zh' ? '中' : 'En'}
-                            </ActiveLocale>
-                            <InactiveLocale>
-                                {locale === 'zh' ? 'En' : '中'}
-                            </InactiveLocale>
-                        </LocaleSwitchIcon>
-                    </Button>
-                    <Button
-                        shape="circle"
-                        type="text"
-                        icon={isDark ? <SunOutlined /> : <MoonOutlined />}
-                        onClick={toggleTheme}
-                    />
-                </TopActions>
-
-                <FormArea>
-                    <div style={{ marginBottom: 32 }}>
-                        <AnimatedLogoWrap />
-                        <WelcomeTitle>{t('login.welcome')}</WelcomeTitle>
-                        <WelcomeSubtitle>
-                            {t('login.welcomeSubtitle')}
-                        </WelcomeSubtitle>
+                        <LogoImg as={Logo} />
+                        <BrandName>{t('login.brand')}</BrandName>
                     </div>
 
-                    <Form
-                        form={form}
-                        layout="vertical"
-                        onFinish={handleSubmit}
+                    <div
+                        style={{
+                            position: 'relative',
+                            zIndex: 1,
+                            maxWidth: 480,
+                        }}
                     >
+                        <IntroLogoWrap />
+                        <Tagline>{t('login.subtitle')}</Tagline>
+                        <Description>{t('login.description')}</Description>
+                        <FeatureList>
+                            {FEATURES.map(({ titleKey, descKey }) => (
+                                <FeatureItem key={titleKey}>
+                                    <div className="feature-dot" />
+                                    <div>
+                                        <div className="feature-title">
+                                            {t(`login.${titleKey}`)}
+                                        </div>
+                                        <div className="feature-desc">
+                                            {t(`login.${descKey}`)}
+                                        </div>
+                                    </div>
+                                </FeatureItem>
+                            ))}
+                        </FeatureList>
+                    </div>
+
+                    <div style={{ position: 'relative', zIndex: 1 }}>
+                        <FooterMeta>© {CURRENT_YEAR} Mobi</FooterMeta>
+                    </div>
+                </BrandPanel>
+
+                <LoginPanel>
+                    <MobileLogo>
+                        <LogoImg as={Logo} style={{ width: 24, height: 24 }} />
+                        <BrandName>{t('login.brand')}</BrandName>
+                    </MobileLogo>
+
+                    <TopActions>
+                        <Button
+                            type="text"
+                            onClick={toggleLocale}
+                            title={
+                                locale === 'zh'
+                                    ? 'Switch to English'
+                                    : '切换到中文'
+                            }
+                            style={{
+                                padding: 0,
+                                width: 32,
+                                height: 32,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
+                        >
+                            <LocaleSwitchIcon>
+                                <ActiveLocale>
+                                    {locale === 'zh' ? '中' : 'En'}
+                                </ActiveLocale>
+                                <InactiveLocale>
+                                    {locale === 'zh' ? 'En' : '中'}
+                                </InactiveLocale>
+                            </LocaleSwitchIcon>
+                        </Button>
+                        <Button
+                            shape="circle"
+                            type="text"
+                            icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+                            onClick={toggleTheme}
+                        />
+                    </TopActions>
+
+                    <FormArea>
+                        <div style={{ marginBottom: 32 }}>
+                            <AnimatedLogoWrap />
+                            <WelcomeTitle>{t('login.welcome')}</WelcomeTitle>
+                            <WelcomeSubtitle>
+                                {t('login.welcomeSubtitle')}
+                            </WelcomeSubtitle>
+                        </div>
+
+                        <Form
+                            form={form}
+                            layout="vertical"
+                            onFinish={handleSubmit}
+                        >
                         <Form.Item
                             name="token"
                             rules={[
@@ -553,9 +575,32 @@ export function LoginPage() {
                                 },
                             ]}
                         >
-                            <Input.Password
+                            <Input
+                                type={tokenVisible ? 'text' : 'password'}
                                 placeholder={t('login.tokenPlaceholder')}
                                 size="large"
+                                onFocus={() => setTyping(true)}
+                                onBlur={() => setTyping(false)}
+                                onChange={(e) =>
+                                    setHasToken(e.target.value.length > 0)
+                                }
+                                suffix={
+                                    <Button
+                                        type="text"
+                                        size="small"
+                                        icon={
+                                            tokenVisible ? (
+                                                <EyeInvisibleOutlined />
+                                            ) : (
+                                                <EyeOutlined />
+                                            )
+                                        }
+                                        onClick={() =>
+                                            setTokenVisible((v) => !v)
+                                        }
+                                        aria-label="toggle token visibility"
+                                    />
+                                }
                             />
                         </Form.Item>
                         <Form.Item style={{ marginBottom: 0 }}>
@@ -570,17 +615,24 @@ export function LoginPage() {
                             </Button>
                         </Form.Item>
                     </Form>
-                </FormArea>
 
-                <HelpLink
-                    href="https://github.com/modubit/mobi"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
-                    <GithubOutlined style={{ fontSize: 14 }} />
-                    GitHub
-                </HelpLink>
-            </LoginPanel>
+                    <HelpLink
+                        href="https://github.com/modubit/mobi"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <GithubOutlined style={{ fontSize: 14 }} />
+                        GitHub
+                    </HelpLink>
+                </FormArea>
+                </LoginPanel>
+            </TopSection>
+
+            <CharacterBand
+                peek={tokenVisible}
+                hasToken={hasToken}
+                typing={typing}
+            />
         </PageContainer>
     )
 }
