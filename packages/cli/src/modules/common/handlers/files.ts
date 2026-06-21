@@ -16,11 +16,13 @@
 
 import { logger } from '@/ui/logger'
 import { readFile, stat, writeFile } from 'fs/promises'
+import { createReadStream } from 'fs'
 import { createHash } from 'crypto'
 import { resolve } from 'path'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validatePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
+import { lookupMime } from './fileMime'
 
 interface ReadFileRequest {
     path: string
@@ -44,6 +46,37 @@ interface WriteFileResponse {
     error?: string
 }
 
+interface ReadFileMetaRequest {
+    path: string
+}
+
+interface FileMeta {
+    mime: string
+    size: number
+    etag: string
+}
+
+interface ReadFileMetaResponse {
+    success: boolean
+    meta?: FileMeta
+    error?: string
+}
+
+interface ReadFileRangeRequest {
+    path: string
+    offset: number
+    length: number
+}
+
+interface ReadFileRangeResponse {
+    success: boolean
+    chunk?: Uint8Array
+    error?: string
+}
+
+/** 单段最大 2MB（受 hub maxHttpBufferSize 4MB 约束，留余量） */
+const FILE_RANGE_CHUNK = 2 * 1024 * 1024
+
 export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
         logger.debug('Read file request:', data.path)
@@ -61,6 +94,68 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
         } catch (error) {
             logger.debug('Failed to read file:', error)
             return rpcError(getErrorMessage(error, 'Failed to read file'))
+        }
+    })
+
+    // readFileMeta：stat → mime/size/etag（etag = size-mtimeMs，文件变化 mtime 必变）
+    rpcHandlerManager.registerHandler<ReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', async (data) => {
+        logger.debug('Read file meta:', data.path)
+
+        const validation = validatePath(data.path, workingDirectory)
+        if (!validation.valid) {
+            return rpcError(validation.error ?? 'Invalid file path')
+        }
+
+        try {
+            const resolvedPath = resolve(workingDirectory, data.path)
+            const st = await stat(resolvedPath)
+            return {
+                success: true,
+                meta: {
+                    mime: lookupMime(data.path),
+                    size: st.size,
+                    etag: `${st.size}-${Math.floor(st.mtimeMs)}`,
+                },
+            }
+        } catch (error) {
+            logger.debug('Failed to stat file:', error)
+            return rpcError(getErrorMessage(error, 'Failed to read file meta'))
+        }
+    })
+
+    // readFileRange：无状态读 [offset, offset+length)，返回 Uint8Array（Socket.IO binary 附件）
+    rpcHandlerManager.registerHandler<ReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', async (data) => {
+        logger.debug('Read file range:', data.path, data.offset, data.length)
+
+        const validation = validatePath(data.path, workingDirectory)
+        if (!validation.valid) {
+            return rpcError(validation.error ?? 'Invalid file path')
+        }
+
+        try {
+            const resolvedPath = resolve(workingDirectory, data.path)
+            const st = await stat(resolvedPath)
+            // ?? 0 只挡 null/undefined，挡不住 NaN（Math.floor(NaN)=NaN 会绕过越界检查），需 Number.isFinite 显式校验
+            const rawOffset = Math.floor(data.offset ?? 0)
+            const rawLength = Math.floor(data.length ?? FILE_RANGE_CHUNK)
+            if (!Number.isFinite(rawOffset) || !Number.isFinite(rawLength) || rawOffset < 0 || rawLength < 0) {
+                return rpcError('Invalid offset or length')
+            }
+            const offset = rawOffset
+            const length = Math.min(rawLength, st.size - offset)
+            if (offset >= st.size || length <= 0) {
+                return rpcError('Range out of bounds')
+            }
+
+            // createReadStream 的 end 是 inclusive，所以 end = offset + length - 1
+            const chunks: Buffer[] = []
+            for await (const c of createReadStream(resolvedPath, { start: offset, end: offset + length - 1 })) {
+                chunks.push(c)
+            }
+            return { success: true, chunk: new Uint8Array(Buffer.concat(chunks)) }
+        } catch (error) {
+            logger.debug('Failed to read file range:', error)
+            return rpcError(getErrorMessage(error, 'Failed to read file range'))
         }
     })
 
