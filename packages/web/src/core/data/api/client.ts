@@ -153,8 +153,25 @@ export function createMobiApi(token: string | null) {
         files: {
             list: (sessionId: string, path: string) =>
                 client.get(`/api/sessions/${sessionId}/list-directory`, { params: { path } }),
-            read: (sessionId: string, path: string) =>
-                client.get(`/api/sessions/${sessionId}/read-file`, { params: { path } }),
+            // read-file 为标准 HTTP 流式端点：返回原始二进制（非 base64 JSON），
+            // headers 带 Content-Type/ETag/Content-Length/Accept-Ranges/Content-Disposition。
+            // 用 arraybuffer 接收后包成 Blob，按 mime 在前端三分发（文本/图片/二进制）。
+            // 304 协商命中时 axios 默认会 throw，这里放行让上层保持旧缓存。
+            read: async (
+                sessionId: string,
+                path: string,
+            ): Promise<{ blob: Blob; mime: string; etag?: string } | null> => {
+                const res = await client.get(`/api/sessions/${sessionId}/read-file`, {
+                    params: { path },
+                    responseType: 'arraybuffer',
+                    validateStatus: (s) => (s >= 200 && s < 300) || s === 304,
+                })
+                if (res.status === 304) return null
+                const mime = (res.headers['content-type'] as string) ?? 'application/octet-stream'
+                const etag = res.headers['etag'] as string | undefined
+                const blob = new Blob([res.data as ArrayBuffer], { type: mime })
+                return { blob, mime, etag }
+            },
         },
 
         // Permissions

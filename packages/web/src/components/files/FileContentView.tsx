@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Fragment, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Spin, Empty, Button, App, Popover, Dropdown } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Folders, Ellipsis, Copy } from 'lucide-react'
@@ -33,9 +33,44 @@ interface FileContentViewProps {
 export default function FileContentView({ sessionId, tabId, filePath }: FileContentViewProps) {
     const { t } = useTranslation()
     const { message } = App.useApp()
-    const { data: content, isLoading, error } = useFileContent(sessionId, filePath)
+    const { data: file, isLoading, error } = useFileContent(sessionId, filePath)
     const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
     const [treeOpen, setTreeOpen] = useState(false)
+
+    // 按 mime 三分发：文本直显 / 图片直显（objectURL）/ 二进制提示下载
+    const isText = !!file && (
+        file.mime.startsWith('text/')
+        || file.mime === 'application/json'
+        || file.mime.startsWith('application/x-sh')
+        || file.mime.startsWith('application/sql')
+        || file.mime.startsWith('application/xml')
+        || file.mime === 'application/toml'
+    )
+    const isImage = !!file && file.mime.startsWith('image/')
+
+    // 文本类：blob → text 异步读取
+    const [text, setText] = useState<string | null>(null)
+    useEffect(() => {
+        if (!(file && isText)) {
+            setText(null)
+            return
+        }
+        let cancelled = false
+        file.blob.text().then((v) => { if (!cancelled) setText(v) }).catch(() => setText(null))
+        return () => { cancelled = true }
+    }, [file, isText])
+
+    // 图片类：blob → objectURL，unmount/换文件时 revoke 防泄漏
+    const [imgUrl, setImgUrl] = useState<string | null>(null)
+    useEffect(() => {
+        if (!(file && isImage)) {
+            setImgUrl(null)
+            return
+        }
+        const url = URL.createObjectURL(file.blob)
+        setImgUrl(url)
+        return () => URL.revokeObjectURL(url)
+    }, [file, isImage])
 
     // 面包屑分段：a/b/c.ts → [a, b, c.ts]，最后一项（文件名）加粗
     const segments = filePath.split('/').filter(Boolean)
@@ -137,19 +172,27 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                     </Popover>
                 </div>
             </div>
-            {/* content：沿用现有三态 */}
+            {/* content：按 mime 三分发 */}
             <div style={{ flex: 1, overflow: 'auto' }}>
                 {isLoading ? (
                     <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
                 ) : error ? (
                     <Empty description={error instanceof Error ? error.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
-                ) : content != null ? (
-                    <pre style={{
-                        fontSize: 12, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                        fontFamily: 'var(--font-mono)', padding: 12,
-                    }}>
-                        {content}
-                    </pre>
+                ) : file ? (
+                    isImage ? (
+                        <div style={{ textAlign: 'center', padding: 12, overflow: 'auto' }}>
+                            {imgUrl && <img src={imgUrl} alt={filePath} style={{ maxWidth: '100%' }} />}
+                        </div>
+                    ) : isText ? (
+                        <pre style={{
+                            fontSize: 12, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                            fontFamily: 'var(--font-mono)', padding: 12,
+                        }}>
+                            {text ?? ''}
+                        </pre>
+                    ) : (
+                        <Empty description={t('files.binaryFile')} style={{ marginTop: 40 }} />
+                    )
                 ) : (
                     <Empty description={t('files.selectToView')} style={{ marginTop: 40 }} />
                 )}

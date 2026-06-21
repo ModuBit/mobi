@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
-import type { FileNode, ListDirectoryResponse, FileReadResponse } from '@/core/data/api/types'
+import type { FileNode, ListDirectoryResponse } from '@/core/data/api/types'
 
 export type { FileNode }
 
@@ -63,8 +63,18 @@ export function useFileTree(sessionId: string | null, path: string) {
 }
 
 /**
- * 获取文件内容。
- * hub 返回 success:false 时抛错，透出 error，避免把读取失败静默成「空文件」。
+ * 文件内容：二进制流结果。
+ * - blob：原始内容（按 mime 在前端三分发：文本 → blob.text()、图片 → objectURL、二进制 → 提示下载）
+ * - mime：来自 hub 的 Content-Type
+ * - etag：来自 hub 的 ETag，用于后续 304 协商
+ * null 表示尚未加载或 304 命中（保持旧缓存）。
+ */
+export type FileContent = { blob: Blob; mime: string; etag?: string }
+
+/**
+ * 获取文件内容（二进制流）。
+ * read-file 为标准 HTTP 端点：非 2xx 走 axios throw → useQuery error；
+ * 304 命中（命中协商缓存）时返回 null，由 react-query 保持旧 data。
  */
 export function useFileContent(sessionId: string | null, filePath: string | null) {
     const { token } = useAuthStore()
@@ -74,12 +84,9 @@ export function useFileContent(sessionId: string | null, filePath: string | null
         queryKey: queryKeys.sessionFile(sessionId!, filePath!),
         queryFn: async () => {
             if (!sessionId || !filePath) return null
-            const res = await api.files.read(sessionId, filePath)
-            const data = res.data as FileReadResponse
-            if (data.success === false) {
-                throw new Error(data.error ?? 'read-file failed')
-            }
-            return data.content ?? ''
+            // 304 命中 → 端点不下发 body，这里返回 null（与「未加载」同义），
+            // 浏览器侧缓存主要靠 react-query cache + refetch 协商
+            return await api.files.read(sessionId, filePath)
         },
         enabled: !!token && !!sessionId && !!filePath,
     })
