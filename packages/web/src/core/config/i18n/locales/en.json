@@ -218,7 +218,11 @@
     "title": "File Explorer",
     "empty": "No file changes in this session",
     "selectToView": "Select a file to view content",
-    "loadFailed": "Failed to load file"
+    "loadFailed": "Failed to load file",
+    "openFromTree": "Open from file tree",
+    "more": "More",
+    "copyPath": "Copy file path",
+    "pathCopied": "Path copied"
   },
   "git": {
     "filesChanged": "{{count}} files changed",
