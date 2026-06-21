@@ -19,6 +19,8 @@ import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { Hono } from 'hono'
+import { stream } from 'hono/streaming'
+import { basename } from 'node:path'
 import { z } from 'zod'
 import type { SyncEngine, Session } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
@@ -502,16 +504,86 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!path) {
             return c.json({ success: false, error: 'Path parameter is required' }, 400)
         }
+        const download = c.req.query('download') === '1'
 
-        try {
-            const result = await engine.readSessionFile(sessionResult.sessionId, path)
-            return c.json(result)
-        } catch (error) {
-            return c.json({
-                success: false,
-                error: error instanceof Error ? error.message : 'Failed to read file'
-            }, 500)
+        // 元信息（mime/size/etag），由 cli 经 RPC 返回
+        const meta = await engine.readFileMeta(sessionResult.sessionId, path)
+        if (!meta.success || !meta.meta) {
+            return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, 500)
         }
+        const { mime, size, etag } = meta.meta
+
+        // 协商缓存：etag 命中直接返回空体
+        if (c.req.header('if-none-match') === etag) {
+            return new Response(null, { status: 304, headers: { etag } })
+        }
+
+        // Range 解析（仅支持 bytes=start-end / bytes=start-）
+        let start = 0
+        let end = size - 1
+        let isRange = false
+        const rangeHeader = c.req.header('range')
+        if (rangeHeader) {
+            const m = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader)
+            if (m) {
+                start = Number(m[1])
+                if (m[2]) {
+                    end = Number(m[2])
+                }
+                isRange = true
+            }
+            // 越界或非法区间：416
+            if (!isRange || start > end || start >= size) {
+                return new Response(null, {
+                    status: 416,
+                    headers: { 'content-range': `bytes */${size}` },
+                })
+            }
+            // end 不超过文件末尾
+            if (end >= size) {
+                end = size - 1
+            }
+        }
+
+        // 响应头：stream() 内部最终以 c.newResponse(readable) 收尾，
+        // 此前用 c.header()/c.status() 设置的头与状态会被透传
+        c.header('content-type', mime)
+        c.header('content-length', String(end - start + 1))
+        c.header('etag', etag)
+        c.header('accept-ranges', 'bytes')
+        c.header('cache-control', 'private, no-cache')
+        if (isRange) {
+            c.header('content-range', `bytes ${start}-${end}/${size}`)
+        }
+        if (download) {
+            const safeName = encodeURIComponent(basename(path))
+            // RFC 5987：filename* 优先供现代浏览器解码中文文件名，filename 为 ASCII 兼容兜底
+            c.header('content-disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${safeName}`)
+        }
+        c.status(isRange ? 206 : 200)
+
+        // 流式翻译：循环 readFileRange 分片读取
+        // 背压：正常消费时 TransformStream writer.write 提供天然背压（web 消费慢 → readable 不读
+        // → writable queue 满 → write 的 Promise 不 resolve → 循环暂停）。
+        // 但 hono StreamingApi.write 内部吞掉所有异常，客户端断开后 write 仍立即 resolve，
+        // 背压失效——靠循环内 s.aborted/s.closed 检查兜底，避免空转把剩余文件全量拉进内存丢弃。
+        const CHUNK = 2 * 1024 * 1024
+        return stream(c, async (s) => {
+            let offset = start
+            while (offset <= end) {
+                // 客户端断开（abort/close）及时停止
+                if (s.aborted || s.closed) {
+                    break
+                }
+                const len = Math.min(CHUNK, end - offset + 1)
+                const r = await engine.readFileRange(sessionResult.sessionId, path, offset, len)
+                if (!r.success || !r.chunk) {
+                    break
+                }
+                await s.write(r.chunk)
+                offset += r.chunk.byteLength
+            }
+        })
     })
 
     app.get('/sessions/:id/metadata', async (c) => {
