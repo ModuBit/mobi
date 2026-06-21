@@ -45,6 +45,8 @@ export const queryKeys = {
     sessionDirectory: (sessionId: string, path: string) => ['session-directory', sessionId, path] as const,
     /** 会话文件 */
     sessionFile: (sessionId: string, path: string) => ['session-file', sessionId, path] as const,
+    /** 会话文件元数据（mime/size/etag） */
+    sessionFileMeta: (sessionId: string, path: string) => ['session-file-meta', sessionId, path] as const,
     /** Git 文件差异 */
     gitFileDiff: (sessionId: string, path: string, staged?: boolean) => [
         'git-file-diff',

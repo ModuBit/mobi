@@ -91,3 +91,32 @@ export function useFileContent(sessionId: string | null, filePath: string | null
         enabled: !!token && !!sessionId && !!filePath,
     })
 }
+
+/**
+ * 文件元数据：mime / size / etag。
+ * 用于在不拉取文件体的前提下，决定渲染策略（如代码高亮 vs 二进制提示）
+ * 或做协商缓存的条件请求。
+ */
+export type FileMeta = { mime: string; size: number; etag: string }
+
+/**
+ * 获取文件元数据（mime/size/etag）。
+ * hub 返回 success:false 或缺少 meta 时抛错，由 react-query 透出 error。
+ */
+export function useFileMeta(sessionId: string | null, filePath: string | null) {
+    const { token } = useAuthStore()
+    const api = useMobiApi(token)
+
+    return useQuery({
+        queryKey: queryKeys.sessionFileMeta(sessionId!, filePath!),
+        queryFn: async () => {
+            if (!sessionId || !filePath) return null
+            const res = await api.files.meta(sessionId, filePath)
+            if (res.data.success === false || !res.data.meta) {
+                throw new Error(res.data.error ?? 'file-meta failed')
+            }
+            return res.data.meta
+        },
+        enabled: !!token && !!sessionId && !!filePath,
+    })
+}

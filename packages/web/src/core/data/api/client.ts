@@ -172,6 +172,13 @@ export function createMobiApi(token: string | null) {
                 const blob = new Blob([res.data as ArrayBuffer], { type: mime })
                 return { blob, mime, etag }
             },
+            // file-meta：轻量元数据（mime/size/etag），不拉文件体，
+            // 供「代码高亮 P1」等场景按 mime 决定渲染策略、按 etag 做条件请求
+            meta: (sessionId: string, path: string) =>
+                client.get<{ success: boolean; meta?: { mime: string; size: number; etag: string }; error?: string }>(
+                    `/api/sessions/${sessionId}/file-meta`,
+                    { params: { path } },
+                ),
         },
 
         // Permissions
