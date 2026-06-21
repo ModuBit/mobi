@@ -13,9 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
+import { computeLookOffset, type MousePos } from './useMouseLook'
 
 interface PupilProps {
+    /** 鼠标位置（由 CharacterBand 单源下发） */
+    mouse: MousePos
     size?: number
     maxDistance?: number
     pupilColor?: string
@@ -25,38 +28,29 @@ interface PupilProps {
 
 /** 纯瞳孔（橙色/黄色角色用，无眼白） */
 export function Pupil({
+    mouse,
     size = 12,
     maxDistance = 5,
     pupilColor = 'black',
     forceLookX,
     forceLookY,
 }: PupilProps) {
-    const [mouse, setMouse] = useState({ x: 0, y: 0 })
     const ref = useRef<HTMLDivElement>(null)
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => setMouse({ x: e.clientX, y: e.clientY })
-        window.addEventListener('mousemove', handler)
-        return () => window.removeEventListener('mousemove', handler)
-    }, [])
-
     const pos = (() => {
         if (!ref.current) return { x: 0, y: 0 }
-        if (forceLookX !== undefined && forceLookY !== undefined) {
-            return { x: forceLookX, y: forceLookY }
-        }
-        const r = ref.current.getBoundingClientRect()
-        const dx = mouse.x - (r.left + r.width / 2)
-        const dy = mouse.y - (r.top + r.height / 2)
-        const dist = Math.min(Math.hypot(dx, dy), maxDistance)
-        const angle = Math.atan2(dy, dx)
-        return { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist }
+        return computeLookOffset(
+            ref.current.getBoundingClientRect(),
+            mouse,
+            maxDistance,
+            forceLookX,
+            forceLookY,
+        )
     })()
 
     return (
         <div
             ref={ref}
-            className='rounded-full'
+            className="rounded-full"
             style={{
                 width: `${size}px`,
                 height: `${size}px`,
@@ -69,6 +63,7 @@ export function Pupil({
 }
 
 interface EyeBallProps {
+    mouse: MousePos
     size?: number
     pupilSize?: number
     maxDistance?: number
@@ -81,6 +76,7 @@ interface EyeBallProps {
 
 /** 眼白 + 瞳孔（紫色/黑色角色用） */
 export function EyeBall({
+    mouse,
     size = 48,
     pupilSize = 16,
     maxDistance = 10,
@@ -90,32 +86,22 @@ export function EyeBall({
     forceLookX,
     forceLookY,
 }: EyeBallProps) {
-    const [mouse, setMouse] = useState({ x: 0, y: 0 })
     const ref = useRef<HTMLDivElement>(null)
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => setMouse({ x: e.clientX, y: e.clientY })
-        window.addEventListener('mousemove', handler)
-        return () => window.removeEventListener('mousemove', handler)
-    }, [])
-
     const pos = (() => {
         if (!ref.current) return { x: 0, y: 0 }
-        if (forceLookX !== undefined && forceLookY !== undefined) {
-            return { x: forceLookX, y: forceLookY }
-        }
-        const r = ref.current.getBoundingClientRect()
-        const dx = mouse.x - (r.left + r.width / 2)
-        const dy = mouse.y - (r.top + r.height / 2)
-        const dist = Math.min(Math.hypot(dx, dy), maxDistance)
-        const angle = Math.atan2(dy, dx)
-        return { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist }
+        return computeLookOffset(
+            ref.current.getBoundingClientRect(),
+            mouse,
+            maxDistance,
+            forceLookX,
+            forceLookY,
+        )
     })()
 
     return (
         <div
             ref={ref}
-            className='rounded-full flex items-center justify-center transition-all duration-150'
+            className="rounded-full flex items-center justify-center transition-all duration-150"
             style={{
                 width: `${size}px`,
                 height: isBlinking ? '2px' : `${size}px`,
@@ -125,7 +111,7 @@ export function EyeBall({
         >
             {!isBlinking && (
                 <div
-                    className='rounded-full'
+                    className="rounded-full"
                     style={{
                         width: `${pupilSize}px`,
                         height: `${pupilSize}px`,

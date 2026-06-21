@@ -23,6 +23,7 @@ import {
     EyeInvisibleOutlined,
 } from '@ant-design/icons'
 import { CharacterBand } from '@/components/login/CharacterBand'
+import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/core/data/stores/authStore'
@@ -43,20 +44,11 @@ const FEATURES = [
     { titleKey: 'feature3Title', descKey: 'feature3Desc' },
 ] as const
 
-/** 全屏容器：上下分栏（上栏左右分 + 底部角色带） */
+/** 全屏容器：左右分栏（角色带 absolute 叠在 LoginPanel 底部，不占文档流） */
 const PageContainer = styled.div`
     display: flex;
-    flex-direction: column;
     width: 100%;
     min-height: 100dvh;
-`
-
-/** 上栏：承载原有左右两栏，占满剩余高度 */
-const TopSection = styled.div`
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    width: 100%;
 `
 
 /**
@@ -312,10 +304,24 @@ const MobileLogo = styled.div`
     }
 `
 
-/** 表单区域 */
+/** 表单区域：圆角容器（与整体同色背景），z-index 高于底部角色带 */
 const FormArea = styled.div`
+    position: relative;
+    z-index: 10;
     width: 100%;
     max-width: 380px;
+    padding: 32px;
+    border-radius: 16px;
+    background: ${shadcnLightToken.colorBgBase};
+    transform: translateY(-5vh);
+
+    @media (max-width: 1023px) {
+        transform: translateY(-10vh);
+    }
+
+    html[data-theme='dark'] & {
+        background: ${shadcnDarkToken.colorBgBase};
+    }
 `
 
 /** 欢迎标题 */
@@ -394,15 +400,13 @@ const HelpLink = styled.a`
     }
 `
 
-/** 底部角色带容器：与 LoginPanel/BrandPanel 一致的 paper 色 + dark 分支 */
+/** 底部角色带：absolute 叠在 LoginPanel 底部，不占文档流；背景透明（透 LoginPanel 同色），pointer-events:none 不拦截表单交互 */
 const BandWrapper = styled.div`
-    width: 100%;
-    padding: 8px 0 0;
-    background: #faf9f5;
-
-    html[data-theme='dark'] & {
-        background: #141413;
-    }
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    pointer-events: none;
 `
 
 export function LoginPage() {
@@ -412,10 +416,10 @@ export function LoginPage() {
     const [loading, setLoading] = useState(false)
     /** token 明文可见（驱动 CharacterBand.peek） */
     const [tokenVisible, setTokenVisible] = useState(false)
-    /** token 非空（驱动 CharacterBand.hasToken） */
-    const [hasToken, setHasToken] = useState(false)
     /** 正在输入（驱动 CharacterBand.typing） */
     const [typing, setTyping] = useState(false)
+    /** token 非空（派生自 form 值，单一数据源；避免 onChange 漏同步自动填充） */
+    const hasToken = (Form.useWatch('token', form) ?? '').length > 0
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
     const isDark = resolvedTheme === 'dark'
     const { message } = App.useApp()
@@ -457,8 +461,7 @@ export function LoginPage() {
                 <title>{t('siteTitle')}</title>
             </Helmet>
 
-            <TopSection>
-                <BrandPanel>
+            <BrandPanel>
                     <GridPattern />
                     <GlowOrb
                         style={{
@@ -590,11 +593,9 @@ export function LoginPage() {
                                 type={tokenVisible ? 'text' : 'password'}
                                 placeholder={t('login.tokenPlaceholder')}
                                 size="large"
+                                autoComplete="off"
                                 onFocus={() => setTyping(true)}
                                 onBlur={() => setTyping(false)}
-                                onChange={(e) =>
-                                    setHasToken(e.target.value.length > 0)
-                                }
                                 suffix={
                                     <Button
                                         type="text"
@@ -610,7 +611,7 @@ export function LoginPage() {
                                         onClick={() =>
                                             setTokenVisible((v) => !v)
                                         }
-                                        aria-label="toggle token visibility"
+                                        aria-label={t('login.toggleTokenVisibility')}
                                     />
                                 }
                             />
@@ -637,16 +638,14 @@ export function LoginPage() {
                         GitHub
                     </HelpLink>
                 </FormArea>
+                    <BandWrapper>
+                        <CharacterBand
+                            peek={tokenVisible}
+                            hasToken={hasToken}
+                            typing={typing}
+                        />
+                    </BandWrapper>
                 </LoginPanel>
-            </TopSection>
-
-            <BandWrapper>
-                <CharacterBand
-                    peek={tokenVisible}
-                    hasToken={hasToken}
-                    typing={typing}
-                />
-            </BandWrapper>
         </PageContainer>
     )
 }
