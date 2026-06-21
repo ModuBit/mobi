@@ -33,25 +33,31 @@ export interface CharacterAnimation {
 
 /**
  * 随机眨眼定时器：3–7s 随机间隔，眨眼时长 150ms
+ *
+ * cleanup 同时清外层（间隔 timer）和内层（复位 timer），
+ * 避免"眨眼中"卸载后内层 timer 仍 setState。
  */
-function useRandomBlink(active = true) {
+function useRandomBlink() {
     const [blinking, setBlinking] = useState(false)
     useEffect(() => {
-        if (!active) return
-        let blinkTimeout: ReturnType<typeof setTimeout>
+        let outer: ReturnType<typeof setTimeout>
+        let inner: ReturnType<typeof setTimeout>
         const schedule = () => {
             const delay = 3000 + Math.random() * 4000
-            blinkTimeout = setTimeout(() => {
+            outer = setTimeout(() => {
                 setBlinking(true)
-                setTimeout(() => {
+                inner = setTimeout(() => {
                     setBlinking(false)
                     schedule()
                 }, 150)
             }, delay)
         }
         schedule()
-        return () => clearTimeout(blinkTimeout)
-    }, [active])
+        return () => {
+            clearTimeout(outer)
+            clearTimeout(inner)
+        }
+    }, [])
     return blinking
 }
 
@@ -82,6 +88,9 @@ export function useCharacterAnimation({
     }, [typing])
 
     // 偷瞄：peek && hasToken 时，2–5s 随机间隔偷瞄 800ms
+    //
+    // cleanup 同时清外层（间隔 timer）和内层（复位 timer），
+    // 避免"偷瞄中"卸载/切换时内层 timer 仍 setState。
     const peekingActive = peek && hasToken
     const [isPurplePeeking, setIsPurplePeeking] = useState(false)
     useEffect(() => {
@@ -89,19 +98,23 @@ export function useCharacterAnimation({
             setIsPurplePeeking(false)
             return
         }
-        let peekTimeout: ReturnType<typeof setTimeout>
+        let outer: ReturnType<typeof setTimeout>
+        let inner: ReturnType<typeof setTimeout>
         const schedule = () => {
             const delay = 2000 + Math.random() * 3000
-            peekTimeout = setTimeout(() => {
+            outer = setTimeout(() => {
                 setIsPurplePeeking(true)
-                setTimeout(() => {
+                inner = setTimeout(() => {
                     setIsPurplePeeking(false)
                     schedule()
                 }, 800)
             }, delay)
         }
         schedule()
-        return () => clearTimeout(peekTimeout)
+        return () => {
+            clearTimeout(outer)
+            clearTimeout(inner)
+        }
     }, [peekingActive])
 
     return { isPurplePeeking, isPurpleBlinking, isBlackBlinking, isLookingAtEachOther }
