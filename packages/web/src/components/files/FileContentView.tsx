@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
-import { Spin, Empty, Breadcrumb, Button, App, Popover, Dropdown } from 'antd'
+import { Fragment, useLayoutEffect, useRef, useState } from 'react'
+import { Spin, Empty, Button, App, Popover, Dropdown } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Folders, Ellipsis, Copy } from 'lucide-react'
 import type { MenuProps } from 'antd'
@@ -40,9 +40,37 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     // 面包屑分段：a/b/c.ts → [a, b, c.ts]，最后一项（文件名）加粗
     const segments = filePath.split('/').filter(Boolean)
     const lastIndex = segments.length - 1
-    const crumbItems = segments.map((seg, i) => ({
-        title: <span style={{ fontWeight: i === lastIndex ? 600 : 400 }}>{seg}</span>,
-    }))
+
+    // 左对齐 + 空间不够时左侧省略（保留文件名）：CSS 的 text-overflow 只能在右端省略，
+    // 这里用 JS 测容器宽度——溢出则从左逐段砍、前缀 …；容器变宽时重置重新计算。
+    const crumbRef = useRef<HTMLDivElement>(null)
+    const [cutStart, setCutStart] = useState(0)
+    const [crumbWidth, setCrumbWidth] = useState(0)
+
+    // 监听面包屑容器宽度（inspector 分栏拖动 / 窗口缩放）
+    useLayoutEffect(() => {
+        const el = crumbRef.current
+        if (!el) return
+        const ro = new ResizeObserver((entries) => {
+            setCrumbWidth(entries[0].contentRect.width)
+        })
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [])
+
+    // 宽度或路径变化 → 重置为完整显示，再按需砍
+    useLayoutEffect(() => {
+        setCutStart(0)
+    }, [crumbWidth, filePath])
+
+    // 仍溢出 → 从左再砍一段（至少保留文件名），下一帧重测直至 fits
+    useLayoutEffect(() => {
+        const el = crumbRef.current
+        if (!el || lastIndex < 0) return
+        if (el.scrollWidth > el.clientWidth + 1 && cutStart < lastIndex) {
+            setCutStart((s) => s + 1)
+        }
+    }, [cutStart, crumbWidth, lastIndex])
 
     const copyPath = async () => {
         try {
@@ -65,15 +93,23 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            {/* header：左面包屑（左侧省略）+ 右功能区 */}
+            {/* header：左面包屑（左对齐，空间不够左省略）+ 右功能区 */}
             <div style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 padding: '4px 8px', flexShrink: 0,
                 borderBottom: '1px solid var(--ant-color-border-secondary)',
             }}>
-                {/* 外层 rtl：让 Breadcrumb 右对齐、溢出裁左（左侧省略）；内层 ltr 保持 a/b/c 顺序 */}
-                <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', direction: 'rtl' }}>
-                    <Breadcrumb style={{ direction: 'ltr', whiteSpace: 'nowrap' }} items={crumbItems} />
+                <div ref={crumbRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                    {cutStart > 0 && <span style={{ opacity: 0.45 }}>…{segments[cutStart] !== undefined ? ' /' : ''} </span>}
+                    {segments.slice(cutStart).map((seg, i) => {
+                        const realIdx = cutStart + i
+                        return (
+                            <Fragment key={realIdx}>
+                                {i > 0 && <span style={{ margin: '0 2px', opacity: 0.45 }}>/</span>}
+                                <span style={{ fontWeight: realIdx === lastIndex ? 600 : 400 }}>{seg}</span>
+                            </Fragment>
+                        )
+                    })}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                     <Dropdown menu={{ items: moreMenuItems }} trigger={['click']}>
