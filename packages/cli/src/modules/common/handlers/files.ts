@@ -24,16 +24,6 @@ import { validatePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
 import { lookupMime } from './fileMime'
 
-interface ReadFileRequest {
-    path: string
-}
-
-interface ReadFileResponse {
-    success: boolean
-    content?: string
-    error?: string
-}
-
 interface WriteFileRequest {
     path: string
     content: string
@@ -78,25 +68,6 @@ interface ReadFileRangeResponse {
 const FILE_RANGE_CHUNK = 2 * 1024 * 1024
 
 export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
-    rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
-        logger.debug('Read file request:', data.path)
-
-        const validation = validatePath(data.path, workingDirectory)
-        if (!validation.valid) {
-            return rpcError(validation.error ?? 'Invalid file path')
-        }
-
-        try {
-            const resolvedPath = resolve(workingDirectory, data.path)
-            const buffer = await readFile(resolvedPath)
-            const content = buffer.toString('base64')
-            return { success: true, content }
-        } catch (error) {
-            logger.debug('Failed to read file:', error)
-            return rpcError(getErrorMessage(error, 'Failed to read file'))
-        }
-    })
-
     // readFileMeta：stat → mime/size/etag（etag = size-mtimeMs，文件变化 mtime 必变）
     rpcHandlerManager.registerHandler<ReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', async (data) => {
         logger.debug('Read file meta:', data.path)

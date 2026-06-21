@@ -32,12 +32,6 @@ export type RpcCommandResponse = {
     error?: string
 }
 
-export type RpcReadFileResponse = {
-    success: boolean
-    content?: string
-    error?: string
-}
-
 // 文件元数据（流式读取前置查询）
 export type RpcFileMeta = { mime: string; size: number; etag: string }
 export type RpcReadFileMetaResponse = {
@@ -221,10 +215,6 @@ export class RpcGateway {
 
     async getGitDiffFile(sessionId: string, options: { cwd?: string; filePath: string; staged?: boolean }): Promise<RpcCommandResponse> {
         return await this.sessionRpc(sessionId, 'git-diff-file', options) as RpcCommandResponse
-    }
-
-    async readSessionFile(sessionId: string, path: string): Promise<RpcReadFileResponse> {
-        return await this.sessionRpc(sessionId, 'readFile', { path }) as RpcReadFileResponse
     }
 
     // 查询文件元数据（mime/size/etag），用于流式读取前置判断

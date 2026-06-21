@@ -20,7 +20,7 @@ import { existsSync, readFileSync, rmSync, mkdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { getUploadsDir } from '@/constants/uploadPaths'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
-import { registerUploadHandlers } from '../uploads'
+import { registerUploadHandlers } from '@/modules/common/handlers/uploads'
 
 /**
  * uploads handler 测试

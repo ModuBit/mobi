@@ -230,12 +230,6 @@ export type ListFilesResponse = {
     error?: string
 }
 
-export type FileReadResponse = {
-    success: boolean
-    content?: string
-    error?: string
-}
-
 export type UploadFileResponse = {
     success: boolean
     path?: string

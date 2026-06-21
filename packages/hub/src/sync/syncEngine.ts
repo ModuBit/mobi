@@ -29,7 +29,6 @@ import {
     type RpcListDirectoryResponse,
     type RpcReadFileMetaResponse,
     type RpcReadFileRangeResponse,
-    type RpcReadFileResponse,
     type RpcRefreshMetadataResponse,
     type RpcUploadFileResponse
 } from './rpcGateway'
@@ -45,7 +44,6 @@ export type {
     RpcPathExistsResponse,
     RpcReadFileMetaResponse,
     RpcReadFileRangeResponse,
-    RpcReadFileResponse,
     RpcRefreshMetadataResponse,
     RpcUploadFileResponse
 } from './rpcGateway'
@@ -448,10 +446,6 @@ export class SyncEngine {
 
     async getGitDiffFile(sessionId: string, options: { cwd?: string; filePath: string; staged?: boolean }): Promise<RpcCommandResponse> {
         return await this.rpcGateway.getGitDiffFile(sessionId, options)
-    }
-
-    async readSessionFile(sessionId: string, path: string): Promise<RpcReadFileResponse> {
-        return await this.rpcGateway.readSessionFile(sessionId, path)
     }
 
     async readFileMeta(sessionId: string, path: string): Promise<RpcReadFileMetaResponse> {
