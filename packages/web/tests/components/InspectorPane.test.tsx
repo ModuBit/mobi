@@ -28,10 +28,15 @@ vi.mock('@/core/data/hooks/queries/useFileTree', () => ({
     useFileTree: vi.fn(() => ({ data: [], isLoading: false })),
     useFileContent: vi.fn(() => ({ data: 'content', isLoading: false })),
 }))
-// mock i18next：t(key) => key
-vi.mock('react-i18next', () => ({
-    useTranslation: () => ({ t: (key: string) => key }),
-}))
+// mock i18next：t(key) => key；合并 actual 以保留 initReactI18next
+// （FileContentView → CodeHighlight → uiStore 顶层 import i18n，i18n.init 需要 initReactI18next）
+vi.mock('react-i18next', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('react-i18next')>()
+    return {
+        ...actual,
+        useTranslation: () => ({ t: (key: string) => key }),
+    }
+})
 const resumeSessionMock = vi.fn()
 vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
     useSessionActions: () => ({ resumeSession: resumeSessionMock, isResumePending: false }),

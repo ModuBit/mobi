@@ -21,7 +21,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntApp } from 'antd'
 import FileContentView from '@/components/files/FileContentView'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
-import { useFileContent } from '@/core/data/hooks/queries/useFileTree'
+import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTree'
+import type { FileContent, FileMeta } from '@/core/data/hooks/queries/useFileTree'
 
 // jsdom 没有 ResizeObserver（antd Tabs/Tree 依赖）
 beforeAll(() => {
@@ -37,10 +38,15 @@ vi.mock('@/core/data/hooks/queries/useFileTree', async () => {
         '@/core/data/hooks/queries/useFileTree',
     )
     return {
-        // useFileContent：返回二进制流结果 {blob, mime, etag}（text/plain 默认）；
+        // useFileMeta：返回 mime/size/etag（默认小文本，触发高亮路径）
+        // useFileContent：返回二进制流结果 {blob, mime, etag}
         // useFileTree：返回可点击文件（Popover 内 FileTreeView 用）
+        useFileMeta: vi.fn(() => ({
+            data: { mime: 'text/typescript', size: 100, etag: '11-1' } as FileMeta,
+            isLoading: false,
+        })),
         useFileContent: vi.fn(() => ({
-            data: { blob: new Blob(['FILE BODY'], { type: 'text/plain' }), mime: 'text/plain', etag: '11-1' },
+            data: { blob: new Blob(['FILE BODY'], { type: 'text/plain' }), mime: 'text/plain', etag: '11-1' } as FileContent,
             isLoading: false,
         })),
         useFileTree: vi.fn(() => ({
@@ -59,9 +65,14 @@ vi.mock('@/core/data/stores/authStore', () => ({
     useAuthStore: vi.fn(() => ({ token: 't' })),
 }))
 
-vi.mock('react-i18next', () => ({
-    useTranslation: () => ({ t: (k: string) => k }),
-}))
+vi.mock('react-i18next', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('react-i18next')>()
+    return {
+        ...actual,
+        // useTranslation 直接回 key（测试断言按 key 文案）
+        useTranslation: () => ({ t: (k: string) => k }),
+    }
+})
 
 function renderWithProviders(ui: React.ReactNode) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -72,11 +83,22 @@ function renderWithProviders(ui: React.ReactNode) {
     )
 }
 
+/** 统一设置 meta + content 的 mock 返回值（content 可选，默认 null——大文件/PDF/音视频/二进制不拉 content） */
+function setMock(meta: FileMeta | null, content: FileContent | null = null) {
+    vi.mocked(useFileMeta).mockReturnValue({
+        data: meta, isLoading: false,
+    } as never)
+    vi.mocked(useFileContent).mockReturnValue({
+        data: content, isLoading: false,
+    } as never)
+}
+
 describe('FileContentView', () => {
     beforeEach(() => useWorkspaceStore.getState().clearAll())
     afterEach(() => cleanup())
 
     it('面包屑按 / 分段显示，文件名加粗', () => {
+        setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
         expect(screen.getByText('a')).toBeInTheDocument()
         expect(screen.getByText('b')).toBeInTheDocument()
@@ -85,15 +107,112 @@ describe('FileContentView', () => {
         expect(fileNode).toHaveStyle({ fontWeight: '600' })
     })
 
-    it('content 区显示文件内容（blob.text 异步）', async () => {
+    it('小文本（<1MB）→ CodeHighlight 高亮渲染', async () => {
+        setMock(
+            { mime: 'text/typescript', size: 100, etag: '11-1' },
+            { blob: new Blob(['const x = 1'], { type: 'text/typescript' }), mime: 'text/typescript' },
+        )
+
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
-        // blob.text() 异步 → 用 findByText await 渲染
-        expect(await screen.findByText('FILE BODY')).toBeInTheDocument()
+        // Shiki 异步高亮：await codeToHtml 完成 → 出现 .shiki-wrap（高亮成功的标志）
+        await waitFor(() => {
+            expect(document.querySelector('.shiki-wrap')).toBeInTheDocument()
+        })
+    })
+
+    it('中文本（1-2MB）→ 纯 pre 不高亮（useHighlight=false）', async () => {
+        // 1.5MB：≥ textHighlight(1MB) 且 < textPlain(2MB) → 纯 pre
+        setMock(
+            { mime: 'text/plain', size: 1.5 * 1024 * 1024, etag: '11-1' },
+            { blob: new Blob(['plain content'], { type: 'text/plain' }), mime: 'text/plain' },
+        )
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/big.txt" />)
+        // 纯文本分支渲染出 <pre>，内容为 plain content
+        expect(await screen.findByText('plain content')).toBeInTheDocument()
+        // 无 shiki-wrap（不高亮）
+        expect(document.querySelector('.shiki-wrap')).not.toBeInTheDocument()
+    })
+
+    it('大文本（≥2MB）→ FileTooLarge 提示 + 下载按钮，不拉 content', () => {
+        const contentMock = vi.mocked(useFileContent)
+        // 3MB ≥ textPlain(2MB) → tooLarge
+        setMock({ mime: 'text/plain', size: 3 * 1024 * 1024, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/huge.txt" />)
+        // 命中 files.tooLarge 文案
+        expect(screen.getByText('files.tooLarge')).toBeInTheDocument()
+        // 出现下载按钮（文案 files.download）
+        expect(screen.getByText('files.download')).toBeInTheDocument()
+        // useFileContent 因 enabled=false 不应被「以 truthy enabled 态」求值——
+        // 这里仅断言 content 数据为 null（shouldFetchContent=false 时 meta tooLarge 已拦截）
+        expect(contentMock).toHaveBeenCalled()
+    })
+
+    it('图片（<5MB）→ objectURL 直显 img', async () => {
+        setMock(
+            { mime: 'image/png', size: 1024 * 1024, etag: '11-1' },
+            { blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), mime: 'image/png' },
+        )
+
+        const { container } = renderWithProviders(
+            <FileContentView sessionId="s1" tabId="t1" filePath="a/b/logo.png" />,
+        )
+        // img 出现（objectURL 在 jsdom 里是 blob: 伪协议，非 base64）
+        expect(await screen.findByRole('img')).toBeInTheDocument()
+        // 容器文本不含 base64 长串（图片不应被当成文本渲染）
+        expect(container.textContent).not.toMatch(/[A-Za-z0-9+/]{50,}={0,2}/)
+    })
+
+    it('大图片（≥5MB）→ FileTooLarge', () => {
+        setMock({ mime: 'image/png', size: 6 * 1024 * 1024, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/big.png" />)
+        expect(screen.getByText('files.tooLarge')).toBeInTheDocument()
+        expect(screen.getByText('files.download')).toBeInTheDocument()
+        expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    })
+
+    it('其他二进制 → FileTooLarge（files.binaryDownload）', () => {
+        // application/octet-stream 既非 text/image/pdf/audio/video → 走最后的 binaryDownload 分支
+        // 此类型 shouldFetchContent=false，不会拉 content
+        setMock({ mime: 'application/octet-stream', size: 100, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/app.bin" />)
+        // 命中 files.binaryDownload 文案
+        expect(screen.getByText('files.binaryDownload')).toBeInTheDocument()
+        // 不出现文本/图片渲染分支
+        expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    })
+
+    it('application/zip → FileTooLarge（files.binaryDownload）', () => {
+        setMock({ mime: 'application/zip', size: 100, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/app.zip" />)
+        expect(screen.getByText('files.binaryDownload')).toBeInTheDocument()
+    })
+
+    it('PDF → FileTooLarge pdfDownload（不拉 content）', async () => {
+        setMock({ mime: 'application/pdf', size: 1 * 1024 * 1024, etag: '11-1' })
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="doc.pdf" />)
+        expect(await screen.findByText('files.pdfDownload')).toBeInTheDocument()
+        // PDF 分支 shouldFetchContent=false，不出现文本/图片渲染
+        expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    })
+
+    it('音视频 → FileTooLarge mediaDownload（不拉 content）', async () => {
+        setMock({ mime: 'audio/mpeg', size: 1 * 1024 * 1024, etag: '11-1' })
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="song.mp3" />)
+        expect(await screen.findByText('files.mediaDownload')).toBeInTheDocument()
+        expect(screen.queryByRole('img')).not.toBeInTheDocument()
     })
 
     it('Ellipsis → 复制相对路径到剪切板并提示', async () => {
         const writeText = vi.fn().mockResolvedValue(undefined)
         Object.assign(navigator, { clipboard: { writeText } })
+        setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
 
         renderWithProviders(
             <FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />,
@@ -120,6 +239,7 @@ describe('FileContentView', () => {
                 activeTabId: 't1',
             }),
         }))
+        setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
 
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
         // 点 Folders 按钮
@@ -134,35 +254,5 @@ describe('FileContentView', () => {
             const tab = s.tabs.find((t) => t.id === 't1')
             expect(tab?.filePath).toBe('a/other.ts')
         })
-    })
-
-    it('图片 mime → 用 objectURL 直显（img 存在，不出现 base64 文本）', async () => {
-        const mock = vi.mocked(useFileContent)
-        mock.mockReturnValue({
-            data: { blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), mime: 'image/png' },
-            isLoading: false,
-        } as never)
-
-        const { container } = renderWithProviders(
-            <FileContentView sessionId="s1" tabId="t1" filePath="a/b/logo.png" />,
-        )
-        // img 出现（objectURL 在 jsdom 里是 blob: 伪协议，非 base64）
-        expect(await screen.findByRole('img')).toBeInTheDocument()
-        // 容器文本不含 base64 长串（图片不应被当成文本渲染）
-        expect(container.textContent).not.toMatch(/[A-Za-z0-9+/]{50,}={0,2}/)
-    })
-
-    it('二进制 mime → 显示 binaryFile 提示，不渲染原始字节', () => {
-        const mock = vi.mocked(useFileContent)
-        mock.mockReturnValue({
-            data: { blob: new Blob([new Uint8Array([0, 1, 2, 3])], { type: 'application/octet-stream' }), mime: 'application/octet-stream' },
-            isLoading: false,
-        } as never)
-
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/app.bin" />)
-        // 命中 files.binaryFile 文案
-        expect(screen.getByText('files.binaryFile')).toBeInTheDocument()
-        // 不出现文本/图片渲染分支
-        expect(screen.queryByRole('img')).not.toBeInTheDocument()
     })
 })

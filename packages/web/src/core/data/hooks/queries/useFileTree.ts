@@ -75,8 +75,12 @@ export type FileContent = { blob: Blob; mime: string; etag?: string }
  * 获取文件内容（二进制流）。
  * read-file 为标准 HTTP 端点：非 2xx 走 axios throw → useQuery error；
  * 304 命中（命中协商缓存）时返回 null，由 react-query 保持旧 data。
+ *
+ * 第三个参数 enabled 用于「meta 先行」协调：FileContentView 拿到 meta 后，
+ * 对超大文件 / 不支持预览类型（PDF/音视频）跳过 content 拉取（省流量、省解码）。
+ * 默认 true 保持其他调用方行为不变。
  */
-export function useFileContent(sessionId: string | null, filePath: string | null) {
+export function useFileContent(sessionId: string | null, filePath: string | null, enabled = true) {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
 
@@ -88,7 +92,7 @@ export function useFileContent(sessionId: string | null, filePath: string | null
             // 浏览器侧缓存主要靠 react-query cache + refetch 协商
             return await api.files.read(sessionId, filePath)
         },
-        enabled: !!token && !!sessionId && !!filePath,
+        enabled: !!token && !!sessionId && !!filePath && enabled,
     })
 }
 
