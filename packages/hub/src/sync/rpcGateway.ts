@@ -38,6 +38,21 @@ export type RpcReadFileResponse = {
     error?: string
 }
 
+// 文件元数据（流式读取前置查询）
+export type RpcFileMeta = { mime: string; size: number; etag: string }
+export type RpcReadFileMetaResponse = {
+    success: boolean
+    meta?: RpcFileMeta
+    error?: string
+}
+
+// 文件范围读取响应（chunk 为二进制，经 Socket.IO 原生序列化原样透传）
+export type RpcReadFileRangeResponse = {
+    success: boolean
+    chunk?: Uint8Array
+    error?: string
+}
+
 export type RpcUploadFileResponse = {
     success: boolean
     path?: string
@@ -210,6 +225,16 @@ export class RpcGateway {
 
     async readSessionFile(sessionId: string, path: string): Promise<RpcReadFileResponse> {
         return await this.sessionRpc(sessionId, 'readFile', { path }) as RpcReadFileResponse
+    }
+
+    // 查询文件元数据（mime/size/etag），用于流式读取前置判断
+    async readFileMeta(sessionId: string, path: string): Promise<RpcReadFileMetaResponse> {
+        return await this.sessionRpc(sessionId, 'readFileMeta', { path }) as RpcReadFileMetaResponse
+    }
+
+    // 范围读取文件二进制 chunk
+    async readFileRange(sessionId: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
+        return await this.sessionRpc(sessionId, 'readFileRange', { path, offset, length }) as RpcReadFileRangeResponse
     }
 
     async listDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {

@@ -27,8 +27,10 @@ import {
     type RpcCommandResponse,
     type RpcDeleteUploadResponse,
     type RpcListDirectoryResponse,
-    type RpcRefreshMetadataResponse,
+    type RpcReadFileMetaResponse,
+    type RpcReadFileRangeResponse,
     type RpcReadFileResponse,
+    type RpcRefreshMetadataResponse,
     type RpcUploadFileResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
@@ -41,6 +43,8 @@ export type {
     RpcDeleteUploadResponse,
     RpcListDirectoryResponse,
     RpcPathExistsResponse,
+    RpcReadFileMetaResponse,
+    RpcReadFileRangeResponse,
     RpcReadFileResponse,
     RpcRefreshMetadataResponse,
     RpcUploadFileResponse
@@ -448,6 +452,14 @@ export class SyncEngine {
 
     async readSessionFile(sessionId: string, path: string): Promise<RpcReadFileResponse> {
         return await this.rpcGateway.readSessionFile(sessionId, path)
+    }
+
+    async readFileMeta(sessionId: string, path: string): Promise<RpcReadFileMetaResponse> {
+        return await this.rpcGateway.readFileMeta(sessionId, path)
+    }
+
+    async readFileRange(sessionId: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
+        return await this.rpcGateway.readFileRange(sessionId, path, offset, length)
     }
 
     async listDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
