@@ -303,6 +303,11 @@ packages/web/src/
 │   │   ├── UpdatePrompt.tsx    更新提示
 │   │   ├── usePwaMode.ts       PWA 运行环境检测（独立窗口/嵌入）
 │   │   └── useThemeLocaleToggle.ts 主题/语言切换 Hook
+│   ├── login/                  登录页角色带
+│   │   ├── CharacterBand.tsx   底部 4 角色带（眼球跟随/眨眼/对视/偷瞄）
+│   │   ├── EyeBall.tsx         眼球组件（Pupil + EyeBall）
+│   │   ├── useCharacterAnimation.ts 角色动画状态机（眨眼/对视/偷瞄定时器）
+│   │   └── useMouseLook.ts     单一鼠标位置源（rAF 节流 + 共享几何）
 │   ├── pixel-avatar/           像素头像动画
 │   │   ├── PixelAvatar.tsx     主组件
 │   │   ├── types.ts            类型定义
