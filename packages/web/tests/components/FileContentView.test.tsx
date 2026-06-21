@@ -31,11 +31,27 @@ beforeAll(() => {
     })
 })
 
-vi.mock('@/core/data/hooks/queries/useFileTree', () => ({
-    // useFileContent：返回固定内容；useFileTree：返回空（Popover 内 FileTreeView 用，Task4 再细化）
-    useFileContent: vi.fn(() => ({ data: 'FILE BODY', isLoading: false })),
-    useFileTree: vi.fn(() => ({ data: [], isLoading: false })),
-    parseDirectoryEntries: vi.fn((d: { entries?: unknown[] }) => (d.entries ?? []).map((e) => e)),
+vi.mock('@/core/data/hooks/queries/useFileTree', async () => {
+    const actual = await vi.importActual<typeof import('@/core/data/hooks/queries/useFileTree')>(
+        '@/core/data/hooks/queries/useFileTree',
+    )
+    return {
+        // useFileContent：返回固定内容；useFileTree：返回可点击文件（Popover 内 FileTreeView 用）
+        useFileContent: vi.fn(() => ({ data: 'FILE BODY', isLoading: false })),
+        useFileTree: vi.fn(() => ({
+            data: [{ name: 'other.ts', path: 'a/other.ts', type: 'file' }],
+            isLoading: false,
+        })),
+        parseDirectoryEntries: actual.parseDirectoryEntries,
+    }
+})
+
+// FileTreeView 还依赖 api client 与 auth
+vi.mock('@/core/data/api/client', () => ({
+    useMobiApi: vi.fn(() => ({ files: { list: vi.fn() } })),
+}))
+vi.mock('@/core/data/stores/authStore', () => ({
+    useAuthStore: vi.fn(() => ({ token: 't' })),
 }))
 
 vi.mock('react-i18next', () => ({
@@ -83,6 +99,34 @@ describe('FileContentView', () => {
         fireEvent.click(copyItem)
         await waitFor(() => {
             expect(writeText).toHaveBeenCalledWith('a/b/c.ts')
+        })
+    })
+
+    it('Folders → 选另一文件 → 调 openFileInTab(当前 tabId) 切换', async () => {
+        // 预置：s1 已有 tree tab t1（模拟 InspectorPane 正常打开场景）
+        // openFileInTab 语义：把 tree tab 转为 file tab。若无此 tab，tabs.map 空跑不会新增 → 测试无意义
+        useWorkspaceStore.setState((s) => ({
+            sessions: new Map(s.sessions).set('s1', {
+                expanded: true,
+                splitRatio: 0.5,
+                chatHidden: false,
+                tabs: [{ id: 't1', mode: 'tree' }],
+                activeTabId: 't1',
+            }),
+        }))
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        // 点 Folders 按钮
+        fireEvent.click(screen.getByRole('button', { name: 'files.openFromTree' }))
+        // Popover 内文件树出现 other.ts（lazy mount，用 findByText await）
+        const otherNode = await screen.findByText('other.ts')
+        // 点文件节点：照搬 FileTreeView.test.tsx 的点击写法（文本节点 click 即触发 onSelect → onOpenFile）
+        fireEvent.click(otherNode)
+        // store：t1 tab 由 tree 转为 file，filePath 变 a/other.ts
+        await waitFor(() => {
+            const s = useWorkspaceStore.getState().getSession('s1')
+            const tab = s.tabs.find((t) => t.id === 't1')
+            expect(tab?.filePath).toBe('a/other.ts')
         })
     })
 })
