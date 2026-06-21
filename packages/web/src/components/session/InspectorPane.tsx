@@ -82,6 +82,10 @@ const StyledTabs = styled(Tabs)`
     && > .ant-tabs-nav .ant-tabs-ink-bar {
         background: transparent;
     }
+    /* 去掉 nav 底部分割线（editable-card 默认有一条 border-bottom） */
+    && > .ant-tabs-nav::before {
+        border-bottom: none;
+    }
 `
 
 export interface InspectorPaneProps {
