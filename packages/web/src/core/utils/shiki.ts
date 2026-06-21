@@ -1,0 +1,105 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { createHighlighterCore } from 'shiki/core'
+import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
+import type { HighlighterCore } from 'shiki/core'
+import { useEffect, useState } from 'react'
+
+// 单主题：github-light / github-dark（按 isDark 切，切主题重新高亮——静态文件可接受）
+export const SHIKI_THEME_LIGHT = 'github-light'
+export const SHIKI_THEME_DARK = 'github-dark'
+
+// 2 主题（懒加载）
+const THEMES = [
+    import('@shikijs/themes/github-light'),
+    import('@shikijs/themes/github-dark'),
+]
+
+// ~25 常用语言（懒加载）——覆盖文件查看常见场景
+const LANGS = [
+    import('@shikijs/langs/shellscript'),
+    import('@shikijs/langs/json'),
+    import('@shikijs/langs/yaml'),
+    import('@shikijs/langs/toml'),
+    import('@shikijs/langs/xml'),
+    import('@shikijs/langs/ini'),
+    import('@shikijs/langs/markdown'),
+    import('@shikijs/langs/html'),
+    import('@shikijs/langs/css'),
+    import('@shikijs/langs/javascript'),
+    import('@shikijs/langs/typescript'),
+    import('@shikijs/langs/jsx'),
+    import('@shikijs/langs/tsx'),
+    import('@shikijs/langs/sql'),
+    import('@shikijs/langs/c'),
+    import('@shikijs/langs/rust'),
+    import('@shikijs/langs/go'),
+    import('@shikijs/langs/java'),
+    import('@shikijs/langs/kotlin'),
+    import('@shikijs/langs/python'),
+    import('@shikijs/langs/php'),
+    import('@shikijs/langs/swift'),
+    import('@shikijs/langs/csharp'),
+    import('@shikijs/langs/dockerfile'),
+    import('@shikijs/langs/diff'),
+]
+
+// 单例 highlighter（首次调用懒加载主题 + 语言 + JS 正则引擎）
+let highlighterPromise: Promise<HighlighterCore> | null = null
+function getHighlighter(): Promise<HighlighterCore> {
+    if (!highlighterPromise) {
+        highlighterPromise = createHighlighterCore({
+            themes: THEMES,
+            langs: LANGS,
+            engine: createJavaScriptRegexEngine({ forgiving: true }),
+        })
+    }
+    return highlighterPromise
+}
+
+/**
+ * 异步代码高亮（codeToHtml）：返回完整 `<pre><code>` HTML 字符串（主题内联色）。
+ *
+ * 文件查看为静态一次性高亮（非聊天流式），故：
+ * - 用 codeToHtml + dangerouslySetInnerHTML，而非 hast → React 元素树（少装依赖）
+ * - 单主题按 isDark 切，切主题重新高亮（< 1MB 静态文件可接受）
+ * - 不加防抖（聊天流式场景才需要）
+ *
+ * 未加载语言 / text / 失败 → null（调用方 fallback 纯 `<pre>`）。
+ */
+export function useShikiHtml(code: string, language: string, isDark: boolean): string | null {
+    const [html, setHtml] = useState<string | null>(null)
+    useEffect(() => {
+        let cancelled = false
+        getHighlighter().then((highlighter) => {
+            if (cancelled) return
+            const loaded = highlighter.getLoadedLanguages()
+            // 未加载语言 / 纯文本 → 不高亮，fallback 由调用方处理
+            if (language === 'text' || !loaded.includes(language)) {
+                setHtml(null)
+                return
+            }
+            const out = highlighter.codeToHtml(code, {
+                lang: language,
+                theme: isDark ? SHIKI_THEME_DARK : SHIKI_THEME_LIGHT,
+            })
+            if (!cancelled) setHtml(out)
+        }).catch(() => { if (!cancelled) setHtml(null) })
+        return () => { cancelled = true }
+    }, [code, language, isDark])
+    return html
+}

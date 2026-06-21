@@ -1,0 +1,16 @@
+/* ==================== Shiki 代码高亮 ==================== */
+/* Shiki codeToHtml 输出 <pre class="shiki ..."><code>...，颜色全部内联在 style。
+   只修正默认 margin/padding 与字体，着色交由内联 style（不依赖 data-theme）。 */
+
+.shiki-wrap pre.shiki {
+    margin: 0;
+    padding: 12px;
+    font-family: var(--font-mono);
+    /* 文件查看：长行换行，与 fallback <pre> 一致 */
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.shiki-wrap pre.shiki code {
+    font-family: var(--font-mono);
+}
