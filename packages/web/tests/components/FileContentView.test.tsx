@@ -17,12 +17,25 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntApp } from 'antd'
 import FileContentView from '@/components/files/FileContentView'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTree'
+import { queryKeys } from '@/core/lib/query-keys'
 import type { FileContent, FileMeta } from '@/core/data/hooks/queries/useFileTree'
+
+// useQueryClient spy：刷新项测试断言 invalidateQueries 被以 sessionFileMeta key 调用。
+// importActual 保留 QueryClient/QueryClientProvider 等其余真实导出，避免破坏 Provider 渲染。
+const invalidateQueriesSpy = vi.fn()
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@tanstack/react-query')>()
+    return {
+        ...actual,
+        useQueryClient: () => ({ invalidateQueries: invalidateQueriesSpy }),
+    }
+})
+// 延迟引入被 mock 的模块（在 vi.mock 之后），拿真实的 QueryClient/Provider
+const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
 
 // jsdom 没有 ResizeObserver（antd Tabs/Tree 依赖）
 beforeAll(() => {
@@ -298,5 +311,46 @@ describe('FileContentView', () => {
         setMock({ mime: 'text/markdown', size: 3 * 1024 * 1024, etag: '11-1' }, null)
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="big.md" />)
         expect(await screen.findByText('files.tooLarge')).toBeInTheDocument()
+    })
+
+    it('useFileContent 收 meta.etag 作为参数（etag 维度进 queryKey 驱动 refetch）', () => {
+        // 第 4 个参数 = meta?.etag，meta 先行拿到 etag 后应透传给 useFileContent
+        setMock({ mime: 'text/typescript', size: 100, etag: 'v1' }, null)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        expect(useFileContent).toHaveBeenCalledWith('s1', 'a/b/c.ts', true, 'v1')
+    })
+
+    it('meta.etag 变化 → useFileContent 以新 etag 再次被调用（queryKey 变触发 refetch）', () => {
+        const contentMock = vi.mocked(useFileContent)
+        // 初始 etag='v1'
+        setMock({ mime: 'text/typescript', size: 100, etag: 'v1' }, null)
+        const { rerender } = renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        expect(contentMock).toHaveBeenLastCalledWith('s1', 'a/b/c.ts', true, 'v1')
+
+        // 模拟窗口聚焦 / 刷新后 meta refetch 拿到新 etag='v2'，重渲染
+        setMock({ mime: 'text/typescript', size: 100, etag: 'v2' }, null)
+        rerender(
+            <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+                <AntApp><FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" /></AntApp>
+            </QueryClientProvider>,
+        )
+        // useFileContent 以新 etag='v2' 被调用 → queryKey 含 etag 变化 → content 自动 refetch
+        expect(contentMock).toHaveBeenLastCalledWith('s1', 'a/b/c.ts', true, 'v2')
+    })
+
+    it('Ellipsis → 刷新项 invalidate meta（联动 content refetch）', async () => {
+        setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
+        invalidateQueriesSpy.mockClear()
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+
+        // 点 Ellipsis 展开 → 点刷新项
+        fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
+        fireEvent.click(await screen.findByText('files.refresh'))
+        // 断言 invalidateQueries 被以 sessionFileMeta key 调用（meta refetch → etag 变 → content 自动跟随）
+        await waitFor(() => {
+            expect(invalidateQueriesSpy).toHaveBeenCalledWith({
+                queryKey: queryKeys.sessionFileMeta('s1', 'a/b/c.ts'),
+            })
+        })
     })
 })

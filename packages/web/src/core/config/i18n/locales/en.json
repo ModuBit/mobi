@@ -226,6 +226,7 @@
     "binaryDownload": "Binary file, download to view",
     "openFromTree": "Open from file tree",
     "more": "More",
+    "refresh": "Refresh",
     "copyPath": "Copy file path",
     "pathCopied": "Path copied",
     "viewSource": "View source",

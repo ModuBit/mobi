@@ -15,12 +15,14 @@
  */
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Spin, Empty, Button, App, Popover, Dropdown } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { Folders, Ellipsis, Copy, FileCode, Eye } from 'lucide-react'
+import { Folders, Ellipsis, Copy, FileCode, Eye, RefreshCw } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { queryKeys } from '@/core/lib/query-keys'
 import { FILE_SIZE_LIMITS } from '@/core/config/fileLimits'
 import FileTreeView from '@/components/files/FileTreeView'
 import FileTooLarge from '@/components/files/FileTooLarge'
@@ -38,6 +40,7 @@ interface FileContentViewProps {
 export default function FileContentView({ sessionId, tabId, filePath }: FileContentViewProps) {
     const { t } = useTranslation()
     const { message } = App.useApp()
+    const queryClient = useQueryClient()
 
     // meta 先行：不拉 body 即可拿到 mime/size，据此决定渲染策略与是否拉 content
     const { data: meta, isLoading: metaLoading, error: metaError } = useFileMeta(sessionId, filePath)
@@ -65,7 +68,7 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     // 只在「size 内 + 可渲染类型（文本/图片）」才取 content，其余（大文件/PDF/音视频/二进制）不拉
     const shouldFetchContent = !!meta && !tooLarge && !isPdf && !isAudioVideo && (isTextLike || isImage)
     const { data: file, isLoading: contentLoading, error: contentError } = useFileContent(
-        sessionId, filePath, shouldFetchContent,
+        sessionId, filePath, shouldFetchContent, meta?.etag,
     )
 
     const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
@@ -152,6 +155,10 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     }
 
     const moreMenuItems: MenuProps['items'] = [
+        // 刷新：只 invalidate meta → meta refetch 拿新 etag → useFileContent queryKey 含 etag 变化 → content 自动 refetch
+        { key: 'refresh', icon: <RefreshCw size={14} />, label: t('files.refresh'), onClick: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.sessionFileMeta(sessionId, filePath) })
+        } },
         { key: 'copyPath', icon: <Copy size={14} />, label: t('files.copyPath'), onClick: copyPath },
         // .md 文件：渲染/源码切换（图标随当前 view 变化）
         ...(isMarkdown ? [{

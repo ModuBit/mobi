@@ -226,6 +226,7 @@
     "binaryDownload": "二进制文件，下载查看",
     "openFromTree": "从文件树打开",
     "more": "更多",
+    "refresh": "刷新",
     "copyPath": "复制文件路径",
     "pathCopied": "已复制路径",
     "viewSource": "查看源码",

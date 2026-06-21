@@ -79,13 +79,17 @@ export type FileContent = { blob: Blob; mime: string; etag?: string }
  * 第三个参数 enabled 用于「meta 先行」协调：FileContentView 拿到 meta 后，
  * 对超大文件 / 不支持预览类型（PDF/音视频）跳过 content 拉取（省流量、省解码）。
  * 默认 true 保持其他调用方行为不变。
+ *
+ * 第四个参数 etag 为显式缓存驱动：把 meta 的 etag 并入 queryKey，
+ * 窗口聚焦（react-query refetchOnWindowFocus 默认开）触发 meta refetch 拿到新 etag →
+ * queryKey 变化 → content 自动 refetch；Ellipsis「刷新」项 invalidate meta 同样联动。
  */
-export function useFileContent(sessionId: string | null, filePath: string | null, enabled = true) {
+export function useFileContent(sessionId: string | null, filePath: string | null, enabled = true, etag?: string) {
     const { token } = useAuthStore()
     const api = useMobiApi(token)
 
     return useQuery({
-        queryKey: queryKeys.sessionFile(sessionId!, filePath!),
+        queryKey: queryKeys.sessionFile(sessionId!, filePath!, etag),
         queryFn: async () => {
             if (!sessionId || !filePath) return null
             // 304 命中 → 端点不下发 body，这里返回 null（与「未加载」同义），
