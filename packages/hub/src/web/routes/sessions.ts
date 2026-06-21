@@ -586,6 +586,37 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         })
     })
 
+    // 文件元信息（mime/size/etag），轻量 stat 不下载内容——供 web 大小判断/协商缓存先行
+    app.get('/sessions/:id/file-meta', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const path = c.req.query('path') ?? ''
+        if (!path) {
+            return c.json({ success: false, error: 'Path parameter is required' }, 400)
+        }
+
+        try {
+            const meta = await engine.readFileMeta(sessionResult.sessionId, path)
+            if (!meta.success) {
+                return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, 500)
+            }
+            return c.json({ success: true, meta: meta.meta })
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to read file meta',
+            }, 500)
+        }
+    })
+
     app.get('/sessions/:id/metadata', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
