@@ -72,7 +72,9 @@ export function createSocketServer(deps: SocketServerDeps): {
     }
 
     const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>({
-        cors: corsOptions
+        cors: corsOptions,
+        // 4MB：允许 readFileRange 单 chunk 二进制响应（socket.io 默认 1MB，超过会断连）
+        maxHttpBufferSize: 4e6
     })
 
     const engine = new Engine({
