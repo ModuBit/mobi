@@ -258,12 +258,70 @@ describe('FileContentView', () => {
         expect(useFileContent).toHaveBeenCalledWith('s1', 'doc.pdf', true, 'v1')
     })
 
-    it('音视频 → FileTooLarge mediaDownload（不拉 content）', async () => {
-        setMock({ mime: 'audio/mpeg', size: 1 * 1024 * 1024, etag: '11-1' })
+    it('原生视频（mp4）→ MediaContentView video src 直连', async () => {
+        setMock({ mime: 'video/mp4', size: 1 * 1024 * 1024, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="clip.mp4" />)
+        // video 标签 src 直连 read-file 端点（jsdom 不给 audio/video 暴露 role，按 tagName 查）
+        const video = document.querySelector('video')
+        await waitFor(() => {
+            expect(video).not.toBeNull()
+        })
+        expect(video!).toHaveAttribute('src', '/api/sessions/s1/read-file?path=clip.mp4')
+        expect(video!).toHaveAttribute('controls')
+        expect(document.querySelector('audio')).toBeNull()
+    })
+
+    it('原生音频（mp3）→ MediaContentView audio src 直连', async () => {
+        setMock({ mime: 'audio/mpeg', size: 1 * 1024 * 1024, etag: '11-1' }, null)
 
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="song.mp3" />)
-        expect(await screen.findByText('files.mediaDownload')).toBeInTheDocument()
-        expect(screen.queryByRole('img')).not.toBeInTheDocument()
+        const audio = document.querySelector('audio')
+        await waitFor(() => {
+            expect(audio).not.toBeNull()
+        })
+        expect(audio!).toHaveAttribute('src', '/api/sessions/s1/read-file?path=song.mp3')
+        expect(audio!).toHaveAttribute('controls')
+        expect(document.querySelector('video')).toBeNull()
+    })
+
+    it('非原生视频（mkv）→ FileTooLarge mediaDownload', () => {
+        setMock({ mime: 'video/x-matroska', size: 1 * 1024 * 1024, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="movie.mkv" />)
+        expect(screen.getByText('files.mediaDownload')).toBeInTheDocument()
+        expect(document.querySelector('video')).toBeNull()
+    })
+
+    it('非原生音频（flac）→ FileTooLarge mediaDownload', () => {
+        setMock({ mime: 'audio/flac', size: 1 * 1024 * 1024, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="track.flac" />)
+        expect(screen.getByText('files.mediaDownload')).toBeInTheDocument()
+        expect(document.querySelector('audio')).toBeNull()
+    })
+
+    it('大视频（流式无 size 阈值）→ 仍 MediaContentView（非 FileTooLarge）', async () => {
+        // 音视频流式 Range，不像图片/pdf 有 tooLarge；100MB 仍 src 直连
+        setMock({ mime: 'video/mp4', size: 100 * 1024 * 1024, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="huge.mp4" />)
+        await waitFor(() => {
+            expect(document.querySelector('video')).not.toBeNull()
+        })
+        expect(screen.queryByText('files.mediaDownload')).not.toBeInTheDocument()
+        expect(screen.queryByText('files.tooLarge')).not.toBeInTheDocument()
+    })
+
+    it('音频原生格式判断（m4a ∈ NATIVE_MEDIA_EXT）→ audio 直连', async () => {
+        setMock({ mime: 'audio/mp4', size: 100, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="voice.m4a" />)
+        const audio = document.querySelector('audio')
+        await waitFor(() => {
+            expect(audio).not.toBeNull()
+        })
+        expect(audio!).toHaveAttribute('src', '/api/sessions/s1/read-file?path=voice.m4a')
     })
 
     it('Ellipsis → 复制相对路径到剪切板并提示', async () => {

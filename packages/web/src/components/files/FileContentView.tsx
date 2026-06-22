@@ -23,13 +23,14 @@ import type { MenuProps } from 'antd'
 import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { queryKeys } from '@/core/lib/query-keys'
-import { FILE_SIZE_LIMITS } from '@/core/config/fileLimits'
+import { FILE_SIZE_LIMITS, NATIVE_MEDIA_EXT } from '@/core/config/fileLimits'
 import FileTreeView from '@/components/files/FileTreeView'
 import FileTooLarge from '@/components/files/FileTooLarge'
 import TextContentView from '@/components/files/TextContentView'
 import MarkdownContentView from '@/components/files/MarkdownContentView'
 import ImageContentView from '@/components/files/ImageContentView'
 import PdfContentView from '@/components/files/PdfContentView'
+import MediaContentView from '@/components/files/MediaContentView'
 
 interface FileContentViewProps {
     sessionId: string
@@ -65,6 +66,10 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     )
     // 文本高亮判断（< 1MB 才走 Shiki，避免 DOM 瓶颈）
     const useHighlight = !!meta && isTextLike && meta.size < FILE_SIZE_LIMITS.textHighlight
+
+    // 原生音视频格式判断（扩展名 ∈ NATIVE_MEDIA_EXT，其余非原生走下载）
+    const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase()
+    const isNativeMedia = NATIVE_MEDIA_EXT.includes(ext)
 
     // 只在「size 内 + 可预览类型」才取 content；图片走 src 直连端点（不 fetch blob），音视频/二进制不拉
     // PDF 走 react-pdf：需 fetch content 拿 ArrayBuffer 渲染（与图片 src 直连不同）
@@ -216,7 +221,10 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                     // PDF 走 react-pdf：file 非空时 blob 交给 PdfContentView 渲染（< 10MB，≥10MB 已被 tooLarge 拦截）
                     file ? <PdfContentView blob={file.blob} filePath={filePath} /> : <Spin />
                 ) : isAudioVideo ? (
-                    <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.mediaDownload')} />
+                    // 原生格式 src 直连（cookie 带 + Range 流式，无 size 阈值）；非原生走下载
+                    isNativeMedia
+                        ? <MediaContentView sessionId={sessionId} filePath={filePath} isAudio={mime.startsWith('audio/')} />
+                        : <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.mediaDownload')} />
                 ) : isImage ? (
                     // 图片 src 直连端点（cookie 带 + 浏览器原生缓存），不依赖 content
                     <ImageContentView sessionId={sessionId} filePath={filePath} />
