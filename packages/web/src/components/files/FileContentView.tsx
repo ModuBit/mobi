@@ -65,8 +65,8 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     // 文本高亮判断（< 1MB 才走 Shiki，避免 DOM 瓶颈）
     const useHighlight = !!meta && isTextLike && meta.size < FILE_SIZE_LIMITS.textHighlight
 
-    // 只在「size 内 + 可渲染类型（文本/图片）」才取 content，其余（大文件/PDF/音视频/二进制）不拉
-    const shouldFetchContent = !!meta && !tooLarge && !isPdf && !isAudioVideo && (isTextLike || isImage)
+    // 只在「size 内 + 文本类」才取 content；图片走 src 直连端点（不 fetch blob），其余（大文件/PDF/音视频/二进制）不拉
+    const shouldFetchContent = !!meta && !tooLarge && !isPdf && !isAudioVideo && isTextLike
     const { data: file, isLoading: contentLoading, error: contentError } = useFileContent(
         sessionId, filePath, shouldFetchContent, meta?.etag,
     )
@@ -90,19 +90,6 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
         file.blob.text().then((v) => { if (!cancelled) setText(v) }).catch(() => setText(null))
         return () => { cancelled = true }
     }, [file, isText])
-
-    // 图片类：blob → objectURL，unmount/换文件时 revoke 防泄漏
-    const isImg = !!file && isImage
-    const [imgUrl, setImgUrl] = useState<string | null>(null)
-    useEffect(() => {
-        if (!(file && isImg)) {
-            setImgUrl(null)
-            return
-        }
-        const url = URL.createObjectURL(file.blob)
-        setImgUrl(url)
-        return () => URL.revokeObjectURL(url)
-    }, [file, isImg])
 
     // 面包屑分段：a/b/c.ts → [a, b, c.ts]，最后一项（文件名）加粗
     const segments = filePath.split('/').filter(Boolean)
@@ -227,7 +214,10 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                     <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.pdfDownload')} />
                 ) : isAudioVideo ? (
                     <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.mediaDownload')} />
-                ) : !(isTextLike || isImage) ? (
+                ) : isImage ? (
+                    // 图片 src 直连端点（cookie 带 + 浏览器原生缓存），不依赖 content
+                    <ImageContentView sessionId={sessionId} filePath={filePath} />
+                ) : !isTextLike ? (
                     // meta 就绪但不属于可直显类型（文本/图片）→ 二进制，提示下载（不依赖 content）
                     <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.binaryDownload')} />
                 ) : contentLoading ? (
@@ -235,10 +225,8 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                 ) : contentError ? (
                     <Empty description={contentError instanceof Error ? contentError.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
                 ) : file ? (
-                    // 按类型路由到 ContentView（纯展示组件），文本/图片渲染策略在外壳 meta 先行决定
-                    isImage ? (
-                        <ImageContentView imgUrl={imgUrl} filePath={filePath} />
-                    ) : isMarkdown ? (
+                    // 按类型路由到 ContentView（纯展示组件），文本渲染策略在外壳 meta 先行决定
+                    isMarkdown ? (
                         <MarkdownContentView text={text ?? ''} filePath={filePath} view={view} />
                     ) : (
                         <TextContentView text={text ?? ''} filePath={filePath} highlight={useHighlight} />

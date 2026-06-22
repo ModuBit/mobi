@@ -162,19 +162,15 @@ describe('FileContentView', () => {
         expect(contentMock).toHaveBeenCalled()
     })
 
-    it('图片（<5MB）→ objectURL 直显 img', async () => {
-        setMock(
-            { mime: 'image/png', size: 1024 * 1024, etag: '11-1' },
-            { blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), mime: 'image/png' },
-        )
+    it('图片（<5MB）→ src 直连 read-file 端点渲染 img', async () => {
+        // 图片 src 直连：不 fetch content（shouldFetchContent 不含 image），img 的 src 指向 read-file 端点
+        setMock({ mime: 'image/png', size: 1024 * 1024, etag: '11-1' }, null)
 
-        const { container } = renderWithProviders(
-            <FileContentView sessionId="s1" tabId="t1" filePath="a/b/logo.png" />,
-        )
-        // img 出现（objectURL 在 jsdom 里是 blob: 伪协议，非 base64）
-        expect(await screen.findByRole('img')).toBeInTheDocument()
-        // 容器文本不含 base64 长串（图片不应被当成文本渲染）
-        expect(container.textContent).not.toMatch(/[A-Za-z0-9+/]{50,}={0,2}/)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/logo.png" />)
+        const img = await screen.findByRole('img')
+        expect(img).toBeInTheDocument()
+        // src = /api/sessions/s1/read-file?path=a%2Fb%2Flogo.png（encodeURIComponent 编码路径）
+        expect(img).toHaveAttribute('src', '/api/sessions/s1/read-file?path=a%2Fb%2Flogo.png')
     })
 
     it('大图片（≥5MB）→ FileTooLarge', () => {

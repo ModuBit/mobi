@@ -15,21 +15,22 @@
  */
 
 interface ImageContentViewProps {
-    /** 图片 objectURL（null 时渲染空容器） */
-    imgUrl: string | null
-    /** 文件路径（img alt） */
+    /** 会话 id（拼 read-file 端点 src） */
+    sessionId: string
+    /** 文件路径（img alt + src query） */
     filePath: string
 }
 
 /**
  * 图片文件内容视图（纯展示）：
- * - objectURL 直显（objectURL 由外壳通过 blob.effect 算好传入）
- * - 后续 P3 SW 缓存（spec 2）在此组件内实现
+ * - src 直连 read-file 端点（cookie 改造后 httpOnly mobi_token 自动带 → 认证通过）
+ * - 浏览器原生 HTTP 缓存（端点 ETag + Cache-Control 协商 304）
  */
-export default function ImageContentView({ imgUrl, filePath }: ImageContentViewProps) {
+export default function ImageContentView({ sessionId, filePath }: ImageContentViewProps) {
+    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}`
     return (
         <div style={{ textAlign: 'center', padding: 12, overflow: 'auto' }}>
-            {imgUrl && <img src={imgUrl} alt={filePath} style={{ maxWidth: '100%' }} />}
+            <img src={src} alt={filePath} style={{ maxWidth: '100%' }} />
         </div>
     )
 }
