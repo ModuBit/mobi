@@ -222,7 +222,6 @@
     "download": "Download",
     "tooLarge": "File too large to preview",
     "mediaDownload": "Audio/video preview not supported, download to view",
-    "pdfDownload": "PDF preview not supported, download to view",
     "binaryDownload": "Binary file, download to view",
     "openFromTree": "Open from file tree",
     "more": "More",

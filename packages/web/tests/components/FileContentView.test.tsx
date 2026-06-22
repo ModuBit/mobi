@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
+import React from 'react'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { App as AntApp } from 'antd'
@@ -86,6 +87,26 @@ vi.mock('react-i18next', async (importOriginal) => {
         useTranslation: () => ({ t: (k: string) => k }),
     }
 })
+
+// react-pdf 在 jsdom 下无法真正渲染（canvas/worker 缺失），mock 成最小占位。
+// Document 把 onLoadSuccess 回调暴露出来，测试通过调用它注入 numPages，断言翻页/缩放 UI。
+vi.mock('react-pdf', () => ({
+    pdfjs: { GlobalWorkerOptions: { workerSrc: '' }, version: '0.0.0' },
+    Document: ({ children, onLoadSuccess }: {
+        children: React.ReactNode
+        onLoadSuccess?: (pdf: { numPages: number }) => void
+    }) => {
+        // 首次渲染触发 onLoadSuccess，注入 numPages=3（够测上一页/下一页边界）
+        React.useEffect(() => { onLoadSuccess?.({ numPages: 3 }) }, [onLoadSuccess])
+        return <div data-testid="pdf-document">{children}</div>
+    },
+    Page: ({ pageNumber, scale }: { pageNumber: number; scale: number }) => (
+        <div data-testid="pdf-page" data-page={pageNumber} data-scale={scale} />
+    ),
+}))
+// CSS import 在 jsdom 下无意义，用空 mock 避免 vitest 解析 .css 失败
+vi.mock('react-pdf/dist/Page/AnnotationLayer.css', () => ({}))
+vi.mock('react-pdf/dist/Page/TextLayer.css', () => ({}))
 
 function renderWithProviders(ui: React.ReactNode) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -201,13 +222,40 @@ describe('FileContentView', () => {
         expect(screen.getByText('files.binaryDownload')).toBeInTheDocument()
     })
 
-    it('PDF → FileTooLarge pdfDownload（不拉 content）', async () => {
-        setMock({ mime: 'application/pdf', size: 1 * 1024 * 1024, etag: '11-1' })
+    it('PDF（<10MB）→ react-pdf 渲染（fetch content 拿 blob）', async () => {
+        // PDF 走 react-pdf：shouldFetchContent 含 pdf → fetch content → PdfContentView 渲染
+        setMock(
+            { mime: 'application/pdf', size: 1 * 1024 * 1024, etag: '11-1' },
+            { blob: new Blob(['%PDF-1.4'], { type: 'application/pdf' }), mime: 'application/pdf' },
+        )
 
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="doc.pdf" />)
-        expect(await screen.findByText('files.pdfDownload')).toBeInTheDocument()
-        // PDF 分支 shouldFetchContent=false，不出现文本/图片渲染
+        // react-pdf Document 渲染（mock 占位）
+        expect(await screen.findByTestId('pdf-document')).toBeInTheDocument()
+        // Page 渲染默认第 1 页、scale=1
+        const page = screen.getByTestId('pdf-page')
+        expect(page).toHaveAttribute('data-page', '1')
+        expect(page).toHaveAttribute('data-scale', '1')
+        // 不出现文本/图片渲染分支
         expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    })
+
+    it('大 PDF（≥10MB）→ FileTooLarge，不渲染 react-pdf', () => {
+        // 11MB ≥ pdf(10MB) → tooLarge
+        setMock({ mime: 'application/pdf', size: 11 * 1024 * 1024, etag: '11-1' }, null)
+
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="big.pdf" />)
+        expect(screen.getByText('files.tooLarge')).toBeInTheDocument()
+        expect(screen.getByText('files.download')).toBeInTheDocument()
+        expect(screen.queryByTestId('pdf-document')).not.toBeInTheDocument()
+    })
+
+    it('PDF shouldFetchContent=true（fetch content 拉 blob）', () => {
+        // PDF 需 fetch content 拿 ArrayBuffer 给 react-pdf
+        setMock({ mime: 'application/pdf', size: 100, etag: 'v1' }, null)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="doc.pdf" />)
+        // 第 3 个参数（enabled）应为 true（shouldFetchContent 含 pdf）
+        expect(useFileContent).toHaveBeenCalledWith('s1', 'doc.pdf', true, 'v1')
     })
 
     it('音视频 → FileTooLarge mediaDownload（不拉 content）', async () => {

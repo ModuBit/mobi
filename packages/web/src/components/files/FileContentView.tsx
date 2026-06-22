@@ -29,6 +29,7 @@ import FileTooLarge from '@/components/files/FileTooLarge'
 import TextContentView from '@/components/files/TextContentView'
 import MarkdownContentView from '@/components/files/MarkdownContentView'
 import ImageContentView from '@/components/files/ImageContentView'
+import PdfContentView from '@/components/files/PdfContentView'
 
 interface FileContentViewProps {
     sessionId: string
@@ -65,8 +66,9 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     // 文本高亮判断（< 1MB 才走 Shiki，避免 DOM 瓶颈）
     const useHighlight = !!meta && isTextLike && meta.size < FILE_SIZE_LIMITS.textHighlight
 
-    // 只在「size 内 + 文本类」才取 content；图片走 src 直连端点（不 fetch blob），其余（大文件/PDF/音视频/二进制）不拉
-    const shouldFetchContent = !!meta && !tooLarge && !isPdf && !isAudioVideo && isTextLike
+    // 只在「size 内 + 可预览类型」才取 content；图片走 src 直连端点（不 fetch blob），音视频/二进制不拉
+    // PDF 走 react-pdf：需 fetch content 拿 ArrayBuffer 渲染（与图片 src 直连不同）
+    const shouldFetchContent = !!meta && !tooLarge && !isAudioVideo && (isTextLike || isPdf)
     const { data: file, isLoading: contentLoading, error: contentError } = useFileContent(
         sessionId, filePath, shouldFetchContent, meta?.etag,
     )
@@ -211,7 +213,8 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                 ) : tooLarge ? (
                     <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.tooLarge')} />
                 ) : isPdf ? (
-                    <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.pdfDownload')} />
+                    // PDF 走 react-pdf：file 非空时 blob 交给 PdfContentView 渲染（< 10MB，≥10MB 已被 tooLarge 拦截）
+                    file ? <PdfContentView blob={file.blob} filePath={filePath} /> : <Spin />
                 ) : isAudioVideo ? (
                     <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.mediaDownload')} />
                 ) : isImage ? (
