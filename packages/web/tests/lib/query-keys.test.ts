@@ -93,10 +93,16 @@ describe('queryKeys', () => {
             expect(key).toHaveLength(3)
         })
 
-        it('sessionFile(sessionId, path) 应返回正确元组', () => {
+        it('sessionFile(sessionId, path) 未传 etag 返回 4 元组（etag 位 undefined）', () => {
             const key = queryKeys.sessionFile('sess-1', '/src/main.ts')
-            expect(key).toEqual(['session-file', 'sess-1', '/src/main.ts'])
-            expect(key).toHaveLength(3)
+            expect(key).toEqual(['session-file', 'sess-1', '/src/main.ts', undefined])
+            expect(key).toHaveLength(4)
+        })
+
+        it('sessionFile(sessionId, path, etag) 带 etag 返回完整 4 元组', () => {
+            const key = queryKeys.sessionFile('sess-1', '/src/main.ts', 'etag-1')
+            expect(key).toEqual(['session-file', 'sess-1', '/src/main.ts', 'etag-1'])
+            expect(key).toHaveLength(4)
         })
 
         it('gitFileDiff(sessionId, path, staged=true) 应包含 staged', () => {

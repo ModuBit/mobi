@@ -18,18 +18,13 @@ import { create } from 'zustand'
 
 interface AuthState {
     /**
-     * 是否已认证（驱动路由守卫 / SSE 连接 / HTTP 请求）。
+     * 是否已认证（驱动路由守卫 / SSE 连接 / HTTP 请求 / socket.io terminal）。
      * 不持久化 —— cookie（httpOnly）是登录态真源，启动时调 /api/auth/status 判定。
+     * socket.io terminal 同源走 httpOnly cookie，无需内存 token。
      */
     authenticated: boolean
-    /**
-     * JWT token（仅内存，不持久化）。
-     * socket.io terminal 走 handshake.auth.token 认证（非 HTTP cookie），故保留此字段供其使用。
-     * HTTP/SSE 不再用它（cookie 自动携带）。
-     */
-    token: string | null
-    /** 登录成功：置 authenticated 并存 token（供 socket.io） */
-    setAuthenticated: (token: string) => void
+    /** 登录成功：置 authenticated（cookie 由 Set-Cookie 写入浏览器，无需内存 token） */
+    setAuthenticated: (v: boolean) => void
     logout: () => void
     // 获取 baseUrl（始终是当前页面的 origin）
     getBaseUrl: () => string
@@ -37,9 +32,8 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()((set, _get) => ({
     authenticated: false,
-    token: null,
-    setAuthenticated: (token) => set({ authenticated: true, token }),
-    logout: () => set({ authenticated: false, token: null }),
+    setAuthenticated: (v) => set({ authenticated: v }),
+    logout: () => set({ authenticated: false }),
     getBaseUrl: () => window.location.origin,
 }))
 

@@ -26,12 +26,20 @@ import { getOrCreateOwnerId } from '../../config/ownerId'
 import { AUTH_COOKIE_NAME, type WebAppEnv } from '../middleware/auth'
 // cookie 生命周期，与 JWT 过期（1d）对齐
 const AUTH_COOKIE_MAX_AGE = 86400
-// cookie 安全属性：Lax 防 CSRF POST，Path=/ 覆盖所有 media/SSE 端点
-const AUTH_COOKIE_OPTIONS = {
-    httpOnly: true,
-    sameSite: 'Lax' as const,
-    path: '/',
-    maxAge: AUTH_COOKIE_MAX_AGE
+/**
+ * cookie 安全属性工厂：secure 动态求值（避免模块加载时读 configuration.publicUrl）。
+ * Lax 防 CSRF POST，Path=/ 覆盖所有 media/SSE 端点。
+ * secure 仅 https 部署时启用（http localhost 部署下 false，否则浏览器丢弃 cookie）。
+ */
+export function getAuthCookieOptions(maxAge: number = AUTH_COOKIE_MAX_AGE) {
+    const isHttps = configuration.publicUrl.startsWith('https')
+    return {
+        httpOnly: true,
+        sameSite: 'Lax' as const,
+        path: '/',
+        maxAge,
+        secure: isHttps,
+    }
 }
 
 // 从请求中提取 JWT：优先 cookie（新链路），回退 Authorization header（过渡兼容 cli + 旧 web）
@@ -99,7 +107,7 @@ export function createAuthRoutes(jwtSecret: Uint8Array): Hono<WebAppEnv> {
             .sign(jwtSecret)
 
         // Set-Cookie：httpOnly cookie 让浏览器自动随同源请求携带（media/SSE 直连）
-        setCookie(c, AUTH_COOKIE_NAME, token, AUTH_COOKIE_OPTIONS)
+        setCookie(c, AUTH_COOKIE_NAME, token, getAuthCookieOptions())
 
         return c.json({
             token,
@@ -119,7 +127,7 @@ export function createAuthRoutes(jwtSecret: Uint8Array): Hono<WebAppEnv> {
             return c.json({ error: 'Missing authorization token' }, 401)
         }
 
-        setCookie(c, AUTH_COOKIE_NAME, '', { ...AUTH_COOKIE_OPTIONS, maxAge: 0 })
+        setCookie(c, AUTH_COOKIE_NAME, '', getAuthCookieOptions(0))
         return c.json({ success: true })
     })
 

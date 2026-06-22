@@ -18,7 +18,6 @@ import { io, type Socket } from 'socket.io-client'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import { useAuthStore } from '@/core/data/stores/authStore'
 
 const TERMINAL_ID = 'main'
 
@@ -43,8 +42,6 @@ interface CreateOptions {
  * dispose 时断开 socket 并销毁 xterm（仅 clearCachedInstance 触发）。
  */
 export function createCachedTerminal({ sessionId }: CreateOptions): CachedTerminal {
-    const { token } = useAuthStore.getState()
-
     const domNode = document.createElement('div')
     domNode.style.cssText = 'width:100%;height:100%;background:#1e1e1e;padding:4px;overflow:hidden;'
 
@@ -91,7 +88,7 @@ export function createCachedTerminal({ sessionId }: CreateOptions): CachedTermin
 
     const wireSocket = () => {
         socket = io(window.location.origin, {
-            auth: { token },
+            // 同源 httpOnly cookie（mobi_token）自动携带，hub terminalNs 读 cookie（刷新不丢）
             transports: ['websocket'],
             path: '/socket.io',
         })

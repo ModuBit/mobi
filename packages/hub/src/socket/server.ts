@@ -17,11 +17,13 @@
 import { Server as Engine } from '@socket.io/bun-engine'
 import { Server, type DefaultEventsMap } from 'socket.io'
 import { jwtVerify } from 'jose'
+import { parse as parseCookie } from 'cookie'
 import { z } from 'zod'
 import type { Store } from '../store'
 import { configuration } from '../configuration'
 import { constantTimeEquals } from '../utils/crypto'
 import { parseAccessToken } from '../utils/accessToken'
+import { AUTH_COOKIE_NAME } from '../web/middleware/auth'
 import { registerCliHandlers } from './handlers/cli'
 import { registerTerminalHandlers } from './handlers/terminal'
 import { RpcRegistry } from './rpcRegistry'
@@ -33,6 +35,22 @@ const jwtPayloadSchema = z.object({
     uid: z.number(),
     ns: z.string()
 })
+
+/**
+ * 从 socket handshake 双源提取 terminal token：cookie 优先，fallback handshake.auth.token。
+ * 提取为纯函数便于单测；验证逻辑留在 terminalNs.use 内。
+ */
+export function extractTerminalToken(handshake: {
+    headers: { cookie?: string }
+    auth?: Record<string, unknown> | unknown
+}): string | undefined {
+    const cookieHeader = handshake.headers.cookie
+    const tokenFromCookie = typeof cookieHeader === 'string'
+        ? parseCookie(cookieHeader)[AUTH_COOKIE_NAME] : undefined
+    const auth = handshake.auth as Record<string, unknown> | undefined
+    const tokenFromAuth = typeof auth?.token === 'string' ? auth.token : undefined
+    return tokenFromCookie ?? tokenFromAuth
+}
 
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
 const DEFAULT_MAX_TERMINALS = 4
@@ -64,6 +82,10 @@ export function createSocketServer(deps: SocketServerDeps): {
 } {
     const corsOrigins = deps.corsOrigins ?? configuration.corsOrigins
     const allowAllOrigins = corsOrigins.includes('*')
+    // 守卫：credentials 闭环（cookie 同源自动携带）与 origin:* 互斥——浏览器会对 credentials:true 拒绝通配 cookie
+    if (allowAllOrigins) {
+        console.warn('[CORS] credentials 闭环与 origin:* 互斥，浏览器将拒绝 cookie。请配置具体域名。')
+    }
     const corsOriginOption = allowAllOrigins ? '*' : corsOrigins
     const corsOptions = {
         origin: corsOriginOption,
@@ -138,8 +160,8 @@ export function createSocketServer(deps: SocketServerDeps): {
     }))
 
     terminalNs.use(async (socket, next) => {
-        const auth = socket.handshake.auth as Record<string, unknown> | undefined
-        const token = typeof auth?.token === 'string' ? auth.token : null
+        // 双源提取：cookie 优先（同源 httpOnly cookie 浏览器自动携带，刷新不丢），fallback auth.token（过渡兼容）
+        const token = extractTerminalToken(socket.handshake)
         if (!token) {
             return next(new Error('Missing token'))
         }

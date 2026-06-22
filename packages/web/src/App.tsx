@@ -38,8 +38,8 @@ export function App() {
                 if (cancelled) return
                 if (res.data?.authenticated) {
                     // cookie 有效但 authenticated 尚未置位（刷新后内存丢失）
-                    // 注意：cookie httpOnly 无法读出 token，但 socket.io terminal 的 token 在登录时已存内存；
-                    // 刷新后 terminal 需重新走登录链路获取 token（此处仅恢复 authenticated 以驱动路由/SSE）
+                    // cookie httpOnly 无法读出 token，但 socket.io terminal 同源自动携带 cookie（C-T3 闭环），
+                    // 刷新后 terminal 不依赖内存 token，此处仅恢复 authenticated 以驱动路由/SSE
                     useAuthStore.setState({ authenticated: true })
                 }
             })

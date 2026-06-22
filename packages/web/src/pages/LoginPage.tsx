@@ -408,12 +408,12 @@ export function LoginPage() {
                 withCredentials: true, // 让 Set-Cookie（httpOnly）写入浏览器
             })
 
-            if (!authRes.data?.token) {
-                throw new Error('认证失败：未返回 JWT Token')
+            if (authRes.status !== 200) {
+                throw new Error('认证失败')
             }
 
-            // 置 authenticated（驱动路由/SSE）；token 存内存供 socket.io terminal 使用
-            setAuthenticated(authRes.data.token)
+            // 置 authenticated（驱动路由/SSE/socket.io terminal）；登录态真源是 httpOnly cookie
+            setAuthenticated(true)
             message.success(t('login.connectSuccess'))
             navigate({ to: '/' })
         } catch (err) {

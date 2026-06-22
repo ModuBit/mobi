@@ -101,6 +101,8 @@ describe('Auth API', () => {
         expect(setCookie).toContain('SameSite=Lax')
         expect(setCookie).toContain('Path=/')
         expect(setCookie).toContain('Max-Age=86400')
+        // secure 动态：测试环境 publicUrl 为 http，不应带 Secure（https 部署才启用）
+        expect(setCookie).not.toContain('Secure')
 
         // cookie 值为可验证的 JWT，且与 body.token 一致
         const cookieToken = parseCookieValue(setCookie, 'mobi_token')
