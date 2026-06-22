@@ -644,7 +644,15 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 
 ---
 
-## 25. P3 图片浏览器缓存（SW 方案）搁置
+## 25. ~~P3 图片浏览器缓存（SW 方案）搁置~~ ✅ 已解决（cookie 改造 + src 直连）
+
+**原方案**（搁置）：SW 拦截 `/read-file` 注入 token + Cache API（pending #19 复杂）。
+
+**实际解决（2026-06-22）**：cookie 认证改造（C-T1/T2/T3）后，`<img src="/api/sessions/:id/read-file?path=">` 直连带 cookie → 认证通过 → **浏览器原生 HTTP 缓存白送**（端点 ETag + Cache-Control `private, no-cache` → 协商 304）。无需 SW。ImageContentView（M-T1）从 objectURL 改 src 直连。SW 方案不再需要。
+
+**相关文件**：`packages/web/src/components/files/ImageContentView.tsx`（src 直连）、cookie 改造（C-T1/T2/T3）
+
+**状态**：已解决，关闭。
 
 **背景**：用户最初诉求「图片加浏览器缓存，避免重复获取」。当前图片走 `URL.createObjectURL(blob)`（`blob:` 协议，不走浏览器 HTTP 缓存），原因是 `/read-file` 端点要 token 认证，`<img src>` 带不了 Authorization header。
 
