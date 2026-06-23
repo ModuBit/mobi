@@ -15,7 +15,7 @@
  */
 
 import { logger } from '@/ui/logger'
-import { mkdir, writeFile, rm, readFile } from 'fs/promises'
+import { mkdir, writeFile, rm, readFile, open, stat } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join, resolve, relative, extname, sep } from 'path'
 import { homedir } from 'os'
@@ -37,17 +37,26 @@ function validateRpcCwd(cwd: string): boolean {
     return normalized === normalizedHome || normalized.startsWith(homePrefix)
 }
 
-interface UploadFileRequest {
-    filename: string
-    content: string  // base64 编码
-    mimeType: string
+interface WriteFileRangeRequest {
+    /** 首块（offset=0）用：原始文件名，cli 生成唯一名 */
+    filename?: string
+    /** 后续块（offset>0）用：首块返回的项目相对路径 */
+    path?: string
+    offset: number
+    /** 二进制块（Socket.IO 附件，非 base64） */
+    content: Uint8Array
     /** 覆盖工作目录（machine channel 传入） */
     cwd?: string
+    /** 首块传：总大小预校验 */
+    totalSize?: number
 }
 
-interface UploadFileResponse {
+interface WriteFileRangeResponse {
     success: boolean
+    /** 首块返回：项目相对路径 */
     path?: string
+    /** 本次写入字节数 */
+    written?: number
     error?: string
 }
 
@@ -105,14 +114,11 @@ function sanitizeFilename(filename: string): string {
 }
 
 /**
- * 估算 base64 编码后的字节数
+ * 累计写入追踪（path → 已写字节），用于累计超限兜底。
+ * 进程内 Map，随 cli 进程生命周期。
+ * 依赖 hub 侧 emitWithAck 串行背压，cli 侧单线程顺序处理同一文件的上传块，此处无锁。
  */
-function estimateBase64Bytes(base64: string): number {
-    const len = base64.length
-    if (len === 0) return 0
-    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
-    return Math.floor((len * 3) / 4) - padding
-}
+const writtenTracker = new Map<string, number>()
 
 /** 上传目录就绪缓存，避免同月重复 stat + readFile */
 const uploadDirCache = new Map<string, string>()
@@ -207,11 +213,11 @@ export function registerUploadHandlers(
     rpcHandlerManager: RpcHandlerManager,
     workingDirectory: string,
 ): void {
-    // 上传文件
-    rpcHandlerManager.registerHandler<UploadFileRequest, UploadFileResponse>(
-        'uploadFile',
+    // 分块写文件（替换旧 base64 整包 uploadFile，对称 readFileRange 无状态）
+    rpcHandlerManager.registerHandler<WriteFileRangeRequest, WriteFileRangeResponse>(
+        'writeFileRange',
         async (data) => {
-            logger.debug('上传文件请求:', data.filename, 'mimeType:', data.mimeType)
+            logger.debug('写入文件块:', data.filename ?? data.path, 'offset:', data.offset, 'len:', data.content.length)
 
             // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
             const effectiveCwd = data.cwd || workingDirectory
@@ -219,56 +225,78 @@ export function registerUploadHandlers(
                 return rpcError('Invalid cwd: path is outside home directory')
             }
 
-            if (!data.filename) {
-                return rpcError('Filename is required')
+            // offset / content 基本校验
+            if (!Number.isFinite(data.offset) || data.offset < 0) {
+                return rpcError('Invalid offset')
             }
-
-            if (!data.content) {
+            if (!(data.content instanceof Uint8Array) || data.content.length === 0) {
                 return rpcError('Content is required')
             }
 
             try {
-                // 校验文件扩展名
-                const extError = validateFileExtension(data.filename)
-                if (extError) {
-                    return rpcError(extError)
+                if (data.offset === 0 && data.filename) {
+                    // ── 首块：创建文件 ──
+                    const extError = validateFileExtension(data.filename)
+                    if (extError) return rpcError(extError)
+
+                    // 总大小预校验（第二道闸；hub 已 Content-Length 预校验为第一道）
+                    if (typeof data.totalSize === 'number' && Number.isFinite(data.totalSize) && data.totalSize > MAX_UPLOAD_BYTES) {
+                        return rpcError('File too large (max 50MB)')
+                    }
+
+                    const uploadDir = await ensureUploadDir(effectiveCwd)
+                    const sanitizedFilename = sanitizeFilename(data.filename)
+                    const shortId = Date.now().toString(36)
+                    const ext = extname(sanitizedFilename)
+                    const base = ext ? sanitizedFilename.slice(0, sanitizedFilename.length - ext.length) : sanitizedFilename
+                    const uniqueFilename = ext ? `${base}-${shortId}${ext}` : `${sanitizedFilename}-${shortId}`
+                    const filePath = join(uploadDir, uniqueFilename)
+
+                    // 累计超限兜底（第三道闸）：本块 + 已写
+                    if (data.content.length > MAX_UPLOAD_BYTES) return rpcError('File too large (max 50MB)')
+                    writtenTracker.set(filePath, data.content.length)
+
+                    const fd = await open(filePath, 'w')  // 创建/截断
+                    await fd.write(data.content, 0, data.content.length, 0)
+                    await fd.close()
+
+                    return { success: true, path: relative(effectiveCwd, filePath), written: data.content.length }
+                } else if (data.path) {
+                    // ── 后续块：按 path + offset 追加 ──
+                    if (!isPathWithinUploads(effectiveCwd, data.path)) {
+                        return rpcError('Invalid upload path')
+                    }
+                    const fullPath = resolve(effectiveCwd, data.path)
+
+                    // 累计超限兜底
+                    const prev = writtenTracker.get(fullPath) ?? 0
+                    if (prev + data.content.length > MAX_UPLOAD_BYTES) {
+                        writtenTracker.delete(fullPath)
+                        return rpcError('File too large (max 50MB)')
+                    }
+                    writtenTracker.set(fullPath, prev + data.content.length)
+
+                    const st = await stat(fullPath)
+                    // 纵深防御：offset 不得超过当前文件 size，防止稀疏文件空洞绕过大小限制
+                    if (data.offset > st.size) {
+                        return rpcError('Offset out of bounds')
+                    }
+                    const fd = await open(fullPath, 'r+')  // 必须已存在，不截断
+                    await fd.write(data.content, 0, data.content.length, data.offset)
+                    await fd.close()
+
+                    return { success: true, written: data.content.length }
+                } else {
+                    return rpcError('Either filename (offset=0) or path (offset>0) is required')
                 }
-
-                // 估算文件大小
-                const estimatedBytes = estimateBase64Bytes(data.content)
-                if (estimatedBytes > MAX_UPLOAD_BYTES) {
-                    return rpcError('File too large (max 50MB)')
-                }
-
-                // 确保上传目录存在
-                const uploadDir = await ensureUploadDir(effectiveCwd)
-
-                // 清理文件名并生成唯一标识
-                // 格式：{原始文件名}-{短hash}.ext
-                // 使用 base36 压缩时间戳到 6~8 个字符，避免 13 位数字前缀
-                const sanitizedFilename = sanitizeFilename(data.filename)
-                const shortId = Date.now().toString(36)
-                const dotIndex = sanitizedFilename.lastIndexOf('.')
-                const uniqueFilename = dotIndex > 0
-                    ? `${sanitizedFilename.slice(0, dotIndex)}-${shortId}${sanitizedFilename.slice(dotIndex)}`
-                    : `${sanitizedFilename}-${shortId}`
-                const filePath = join(uploadDir, uniqueFilename)
-
-                // 解码 base64 并写入文件
-                const buffer = Buffer.from(data.content, 'base64')
-                if (buffer.length > MAX_UPLOAD_BYTES) {
-                    return rpcError('File too large (max 50MB)')
-                }
-                await writeFile(filePath, buffer)
-
-                // 返回项目相对路径
-                const relativePath = relative(effectiveCwd, filePath)
-
-                logger.debug('文件上传成功:', relativePath)
-                return { success: true, path: relativePath }
             } catch (error) {
-                logger.debug('文件上传失败:', error)
-                return rpcError(getErrorMessage(error, 'Failed to upload file'))
+                const nodeError = error as NodeJS.ErrnoException
+                // 文件不存在（offset>0 但首块未写 / path 错）→ 明确错误
+                if (nodeError.code === 'ENOENT') {
+                    return rpcError('Upload file not found (offset out of order or invalid path)')
+                }
+                logger.debug('写入文件块失败:', error)
+                return rpcError(getErrorMessage(error, 'Failed to write file range'))
             }
         },
     )

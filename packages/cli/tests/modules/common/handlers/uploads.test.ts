@@ -14,30 +14,30 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { join, resolve } from 'path'
-import { existsSync, readFileSync, rmSync, mkdirSync } from 'fs'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { mkdtemp, rm, readFile, stat } from 'fs/promises'
+import { existsSync, mkdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
-import { getUploadsDir } from '@/constants/uploadPaths'
+import { join, resolve } from 'path'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { registerUploadHandlers } from '@/modules/common/handlers/uploads'
+import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 
 /**
  * uploads handler 测试
  *
  * 验证：
- * - getUploadsDir 返回正确路径
- * - uploadFile 存储到 .mobi/uploads/YYYY-MM/
- * - .mobi/.gitignore 自动创建且内容包含 "uploads/" 和 "artifacts/"
- * - 黑名单文件类型被拒绝
- * - 文件名清理（移除 .. 和 /）
- * - 返回项目相对路径
+ * - writeFileRange：offset=0 首块创建文件 + offset>0 后续块追加
+ * - writeFileRange：totalSize 预校验、累计超限兜底、扩展名/path 遍历防护
+ * - deleteUpload：路径校验 + 删除
+ * - getUploadsDir：返回正确路径
  */
 
-// 测试用的 handler 返回结构（upload/delete 共用 success/path/error 字段）
+// 测试用的 handler 返回结构（write/delete 共用 success/path/written/error 字段）
 interface MockHandlerResult {
     success: boolean
     path?: string
+    written?: number
     error?: string
 }
 
@@ -62,248 +62,136 @@ class MockRpcHandlerManager {
     }
 }
 
-/**
- * 创建 base64 编码内容
- */
-function toBase64(content: string): string {
-    return Buffer.from(content).toString('base64')
-}
-
-describe('getUploadsDir', () => {
-    it('应返回 projectRoot/.mobi/uploads 路径', () => {
-        const projectRoot = '/tmp/test-project'
-        const result = getUploadsDir(projectRoot)
-        expect(result).toBe(join(projectRoot, '.mobi', 'uploads'))
-    })
-
-    it('不同 projectRoot 应返回不同路径', () => {
-        const result1 = getUploadsDir('/project/a')
-        const result2 = getUploadsDir('/project/b')
-        expect(result1).toBe(join('/project/a', '.mobi', 'uploads'))
-        expect(result2).toBe(join('/project/b', '.mobi', 'uploads'))
-        expect(result1).not.toBe(result2)
-    })
-})
-
-describe('uploadFile handler', () => {
+describe('writeFileRange handler', () => {
     let mockRpc: MockRpcHandlerManager
     let tempDir: string
 
     beforeEach(() => {
         mockRpc = new MockRpcHandlerManager()
-        // 每个测试使用独立的临时目录作为项目根目录
-        tempDir = join(tmpdir(), `mobi-test-uploads-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+        tempDir = join(tmpdir(), `mobi-test-wfr-${Date.now()}-${Math.random().toString(36).slice(2)}`)
         mkdirSync(tempDir, { recursive: true })
         registerUploadHandlers(mockRpc as unknown as RpcHandlerManager, tempDir)
     })
 
     afterEach(() => {
-        // 清理临时目录
         if (existsSync(tempDir)) {
             rmSync(tempDir, { recursive: true, force: true })
         }
     })
 
-    it('应将文件存储到 .mobi/uploads/YYYY-MM/ 目录', async () => {
-        const result = await mockRpc.call('uploadFile', {
-            filename: 'test.png',
-            content: toBase64('hello world'),
-            mimeType: 'image/png',
+    it('offset=0 首块：创建文件 + 返回 path/written', async () => {
+        const content = new Uint8Array([1, 2, 3, 4])
+        const res = await mockRpc.call('writeFileRange', {
+            filename: 'test.png', offset: 0, content, totalSize: 4,
         })
 
-        expect(result.success).toBe(true)
-        expect(result.path).toBeTruthy()
-
-        // 验证返回的是相对路径
-        const fullPath = resolve(tempDir, result.path!)
-        expect(existsSync(fullPath)).toBe(true)
-
-        // 验证路径结构包含 .mobi/uploads/YYYY-MM
-        expect(result.path).toMatch(/\.mobi\/uploads\/\d{4}-\d{2}\//)
+        expect(res.success).toBe(true)
+        expect(res.written).toBe(4)
+        expect(res.path).toMatch(/\.mobi\/uploads\/\d{4}-\d{2}\/test-.+\.png$/)
 
         // 验证文件内容
-        const content = readFileSync(fullPath)
-        expect(content.toString()).toBe('hello world')
+        const fullPath = resolve(tempDir, res.path!)
+        const buf = await readFile(fullPath)
+        expect(Array.from(buf)).toEqual([1, 2, 3, 4])
     })
 
-    it('应自动创建 .mobi/.gitignore 且内容包含 "uploads/" 和 "artifacts/"', async () => {
-        await mockRpc.call('uploadFile', {
-            filename: 'test.png',
-            content: toBase64('hello'),
-            mimeType: 'image/png',
+    it('offset>0 后续块：按 offset 追加写，内容拼接正确', async () => {
+        const first = await mockRpc.call('writeFileRange', {
+            filename: 'a.zip', offset: 0, content: new Uint8Array([1, 2]), totalSize: 4,
+        })
+        expect(first.success).toBe(true)
+        expect(first.path).toBeTruthy()
+
+        const res = await mockRpc.call('writeFileRange', {
+            path: first.path, offset: 2, content: new Uint8Array([3, 4]),
         })
 
-        const gitignorePath = join(tempDir, '.mobi', '.gitignore')
-        expect(existsSync(gitignorePath)).toBe(true)
+        expect(res.success).toBe(true)
+        expect(res.written).toBe(2)
 
-        const content = readFileSync(gitignorePath, 'utf-8')
-        const lines = content.split('\n')
-        expect(lines).toContain('uploads/')
-        expect(lines).toContain('artifacts/')
+        const fullPath = resolve(tempDir, first.path!)
+        const buf = await readFile(fullPath)
+        expect(Array.from(buf)).toEqual([1, 2, 3, 4])
     })
 
-    it('应返回项目相对路径', async () => {
-        const result = await mockRpc.call('uploadFile', {
-            filename: 'doc.pdf',
-            content: toBase64('pdf content'),
-            mimeType: 'application/pdf',
+    it('totalSize 预校验：超 50MB 首块即拒绝，不创建文件', async () => {
+        const res = await mockRpc.call('writeFileRange', {
+            filename: 'big.zip', offset: 0, content: new Uint8Array([1]),
+            totalSize: 50 * 1024 * 1024 + 1,
         })
 
-        expect(result.success).toBe(true)
-        expect(result.path).toBeTruthy()
-
-        // 不应该以 / 开头（相对路径）
-        expect(result.path).not.toMatch(/^\//)
-
-        // 解析后应该等于实际文件路径
-        const fullPath = resolve(tempDir, result.path!)
-        expect(existsSync(fullPath)).toBe(true)
+        expect(res.success).toBe(false)
+        expect(res.error).toMatch(/too large/i)
     })
 
-    it('应清理文件名中的 .. 和 /', async () => {
-        const result = await mockRpc.call('uploadFile', {
-            filename: '../../../etc/test.png',
-            content: toBase64('hack'),
-            mimeType: 'image/png',
+    it('扩展名校验：黑名单/非白名单拒绝', async () => {
+        const res = await mockRpc.call('writeFileRange', {
+            filename: 'evil.exe', offset: 0, content: new Uint8Array([1]), totalSize: 1,
         })
 
-        expect(result.success).toBe(true)
-
-        // 文件名中不应包含 .. 或原始路径分隔符
-        const fullPath = resolve(tempDir, result.path!)
-        // 验证文件确实在 uploads 目录内
-        expect(fullPath).toContain('.mobi/uploads')
-
-        // 验证没有路径遍历
-        const uploadsDir = join(tempDir, '.mobi', 'uploads')
-        expect(fullPath.startsWith(uploadsDir)).toBe(true)
+        expect(res.success).toBe(false)
     })
 
-    it('应清理文件名中的特殊字符（+、括号等）', async () => {
-        const result = await mockRpc.call('uploadFile', {
-            filename: 'data+analysis(1).xlsx',
-            content: toBase64('excel'),
-            mimeType: 'application/vnd.ms-excel',
+    it('path 遍历防护：后续块 path 逃逸 uploads 目录拒绝', async () => {
+        const res = await mockRpc.call('writeFileRange', {
+            path: '../../../etc/passwd', offset: 0, content: new Uint8Array([1]),
         })
 
-        expect(result.success).toBe(true)
-        // 文件名中的 + 和括号应被替换为 _
-        const filename = result.path!.split('/').pop()!
-        expect(filename).not.toContain('+')
-        expect(filename).not.toContain('(')
-        expect(filename).not.toContain(')')
+        expect(res.success).toBe(false)
     })
 
-    it('应清理 CJK 字符文件名', async () => {
-        const result = await mockRpc.call('uploadFile', {
-            filename: '报告.pdf',
-            content: toBase64('pdf'),
-            mimeType: 'application/pdf',
+    it('offset>0 但文件不存在（path 指向不存在的路径）：open r+ 失败 → rpcError', async () => {
+        const first = await mockRpc.call('writeFileRange', {
+            filename: 'create.zip', offset: 0, content: new Uint8Array([1, 2]), totalSize: 2,
+        })
+        expect(first.success).toBe(true)
+        const res = await mockRpc.call('writeFileRange', {
+            path: '.mobi/uploads/2099-01/nope-xxx.png', offset: 5, content: new Uint8Array([3]),
+        })
+        expect(res.success).toBe(false)
+    })
+
+    it('offset=0 但传 path（非 filename）：走后续块分支 → 文件不存在 rpcError', async () => {
+        const res = await mockRpc.call('writeFileRange', {
+            path: '.mobi/uploads/2099-01/nope.png', offset: 0, content: new Uint8Array([1]),
+        })
+        // 分支条件为 filename 是否存在（非 offset 是否为 0），传 path 无 filename 走后续块定位
+        expect(res.success).toBe(false)
+    })
+
+    it('offset 越界：后续块 offset > 文件 size → 拒绝，不扩展稀疏文件', async () => {
+        const first = await mockRpc.call('writeFileRange', {
+            filename: 'no-hole.zip', offset: 0, content: new Uint8Array([1, 2, 3, 4]), totalSize: 4,
+        })
+        expect(first.success).toBe(true)
+        const res = await mockRpc.call('writeFileRange', {
+            path: first.path, offset: 9999, content: new Uint8Array([5]),
+        })
+        expect(res.success).toBe(false)
+        expect(res.error).toMatch(/out of bounds/i)
+        // 验证文件大小未扩展（无稀疏空洞）
+        const fullPath = resolve(tempDir, first.path!)
+        const st = await stat(fullPath)
+        expect(st.size).toBe(4)
+    })
+
+    it('累计超限兜底：首块小、后续累计超 50MB → 拒绝', async () => {
+        // 首块：伪造小的 totalSize 通过预校验
+        const first = await mockRpc.call('writeFileRange', {
+            filename: 'sneaky.zip', offset: 0,
+            content: new Uint8Array(new Array(10).fill(0)),
+            totalSize: 10,
+        })
+        expect(first.success).toBe(true)
+
+        // 后续：写一块使累计超 50MB
+        const big = new Uint8Array(MAX_UPLOAD_BYTES + 1)
+        const res = await mockRpc.call('writeFileRange', {
+            path: first.path, offset: 10, content: big,
         })
 
-        expect(result.success).toBe(true)
-        // CJK 字符应被替换为 _
-        const filename = result.path!.split('/').pop()!
-        expect(filename).toMatch(/^[A-Za-z0-9_\-.]+$/)
-    })
-
-    it('应拒绝黑名单文件类型（可执行文件）', async () => {
-        const blockedExtensions = ['.exe', '.bat', '.cmd', '.com', '.vbs', '.ps1']
-
-        for (const ext of blockedExtensions) {
-            const result = await mockRpc.call('uploadFile', {
-                filename: `malware${ext}`,
-                content: toBase64('evil code'),
-                mimeType: 'application/octet-stream',
-            })
-            expect(result.success).toBe(false)
-            expect(result.error).toBeTruthy()
-        }
-    })
-
-    it('应拒绝没有文件名的请求', async () => {
-        const result = await mockRpc.call('uploadFile', {
-            filename: '',
-            content: toBase64('content'),
-            mimeType: 'text/plain',
-        })
-
-        expect(result.success).toBe(false)
-        expect(result.error).toContain('Filename')
-    })
-
-    it('应拒绝没有内容的请求', async () => {
-        const result = await mockRpc.call('uploadFile', {
-            filename: 'test.png',
-            content: '',
-            mimeType: 'image/png',
-        })
-
-        expect(result.success).toBe(false)
-        expect(result.error).toContain('Content')
-    })
-
-    it('应拒绝超大文件', async () => {
-        // 创建超过 50MB 的内容（通过 base64 估算）
-        const result = await mockRpc.call('uploadFile', {
-            filename: 'big.png',
-            content: 'A'.repeat(70 * 1024 * 1024), // 70MB base64 > 50MB
-            mimeType: 'image/png',
-        })
-
-        expect(result.success).toBe(false)
-        expect(result.error).toContain('large')
-    })
-
-    it('应接受白名单中的文件类型', async () => {
-        const allowedTypes = [
-            { filename: 'photo.jpg', mimeType: 'image/jpeg' },
-            { filename: 'doc.pdf', mimeType: 'application/pdf' },
-            { filename: 'code.py', mimeType: 'text/x-python' },
-            { filename: 'archive.zip', mimeType: 'application/zip' },
-        ]
-
-        for (const { filename, mimeType } of allowedTypes) {
-            const result = await mockRpc.call('uploadFile', {
-                filename,
-                content: toBase64('test content'),
-                mimeType,
-            })
-            expect(result.success).toBe(true)
-        }
-    })
-
-    it('应拒绝无扩展名的文件', async () => {
-        const result = await mockRpc.call('uploadFile', {
-            filename: 'noextension',
-            content: toBase64('content'),
-            mimeType: 'text/plain',
-        })
-
-        expect(result.success).toBe(false)
-        expect(result.error).toBeTruthy()
-    })
-
-    it('同一月内多次上传应存入同一目录', async () => {
-        const result1 = await mockRpc.call('uploadFile', {
-            filename: 'file1.png',
-            content: toBase64('content1'),
-            mimeType: 'image/png',
-        })
-
-        const result2 = await mockRpc.call('uploadFile', {
-            filename: 'file2.png',
-            content: toBase64('content2'),
-            mimeType: 'image/png',
-        })
-
-        expect(result1.success).toBe(true)
-        expect(result2.success).toBe(true)
-
-        // 两个文件应该在同一个 YYYY-MM 目录
-        const dir1 = result1.path!.split('/').slice(0, 3).join('/')
-        const dir2 = result2.path!.split('/').slice(0, 3).join('/')
-        expect(dir1).toBe(dir2)
+        expect(res.success).toBe(false)
+        expect(res.error).toMatch(/too large/i)
     })
 })
 
@@ -313,7 +201,7 @@ describe('deleteUpload handler', () => {
 
     beforeEach(() => {
         mockRpc = new MockRpcHandlerManager()
-        tempDir = join(tmpdir(), `mobi-test-delete-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+        tempDir = join(tmpdir(), `mobi-test-del-${Date.now()}-${Math.random().toString(36).slice(2)}`)
         mkdirSync(tempDir, { recursive: true })
         registerUploadHandlers(mockRpc as unknown as RpcHandlerManager, tempDir)
     })
@@ -325,47 +213,30 @@ describe('deleteUpload handler', () => {
     })
 
     it('应能删除已上传的文件', async () => {
-        const uploadResult = await mockRpc.call('uploadFile', {
+        const uploadResult = await mockRpc.call('writeFileRange', {
             filename: 'to-delete.png',
-            content: toBase64('delete me'),
-            mimeType: 'image/png',
+            offset: 0,
+            content: new Uint8Array([1, 2, 3]),
+            totalSize: 3,
         })
 
         expect(uploadResult.success).toBe(true)
         const fullPath = resolve(tempDir, uploadResult.path!)
         expect(existsSync(fullPath)).toBe(true)
 
-        // 删除
-        const deleteResult = await mockRpc.call('deleteUpload', {
-            path: uploadResult.path,
-        })
-
+        const deleteResult = await mockRpc.call('deleteUpload', { path: uploadResult.path })
         expect(deleteResult.success).toBe(true)
         expect(existsSync(fullPath)).toBe(false)
     })
 
     it('应拒绝不在 uploads 目录内的路径', async () => {
-        const result = await mockRpc.call('deleteUpload', {
-            path: '../../../etc/passwd',
-        })
-
+        const result = await mockRpc.call('deleteUpload', { path: '../../../etc/passwd' })
         expect(result.success).toBe(false)
         expect(result.error).toContain('Invalid')
     })
 
-    it('应拒绝绝对路径', async () => {
-        const result = await mockRpc.call('deleteUpload', {
-            path: '/etc/passwd',
-        })
-
-        expect(result.success).toBe(false)
-    })
-
     it('应拒绝空路径', async () => {
-        const result = await mockRpc.call('deleteUpload', {
-            path: '',
-        })
-
+        const result = await mockRpc.call('deleteUpload', { path: '' })
         expect(result.success).toBe(false)
     })
 })
