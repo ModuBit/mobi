@@ -19,7 +19,7 @@ import { SSEProvider } from '@/core/providers/SSEProvider'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { setUnauthorizedHandler, createApiClient } from '@/core/data/api/client'
+import { setUnauthorizedHandler, createApiClient, useMobiApi } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 export function App() {
@@ -28,6 +28,7 @@ export function App() {
     const [bootstrapped, setBootstrapped] = useState(false)
     const navigate = useNavigate()
     const location = useLocation()
+    const api = useMobiApi()
 
     // 启动认证检查：根据 httpOnly cookie 是否有效恢复 authenticated flag
     useEffect(() => {
@@ -55,13 +56,16 @@ export function App() {
     // 设置 401 未授权处理器
     useEffect(() => {
         const cleanup = setUnauthorizedHandler(() => {
-            // 清理登录态
-            logout()
-            // 跳转到登录页
-            navigate({ to: '/login' })
+            // 先清服务端 httpOnly cookie（cookie 链路下 JS 清不了，必须 POST /api/auth/logout），
+            // 再清内存 authenticated flag。两步缺一：cookie 残留 → bootstrap status 重新认证 → 登录循环。
+            // 对齐 SidebarFooter.tsx / MobileMenu.tsx 的登出按钮做法。
+            api.auth.logout().catch(() => {}).finally(() => {
+                logout()
+                navigate({ to: '/login' })
+            })
         })
         return cleanup // 组件卸载时清理
-    }, [logout, navigate])
+    }, [api, logout, navigate])
 
     // 自动重定向到登录页（等启动认证检查完成后再判定，避免刷新瞬间闪登录页）
     useEffect(() => {

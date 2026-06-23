@@ -40,7 +40,8 @@ export async function setupTestApp(syncEngine: SyncEngine | null = null) {
         jwtSecret: testJwtSecret,
         store,
         vapidPublicKey: 'test-vapid-public-key',
-        corsOrigins: ['*'],
+        // 测试用具体 origin（非 '*'）：web 层 credentials:true 与 '*' 互斥，启动会 throw（assertCorsOriginsForCredentials）
+        corsOrigins: ['http://localhost:3000'],
         embeddedAssetMap: null,
     })
 

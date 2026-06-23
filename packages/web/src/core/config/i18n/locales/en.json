@@ -223,6 +223,7 @@
     "tooLarge": "File too large to preview",
     "mediaDownload": "Audio/video preview not supported, download to view",
     "binaryDownload": "Binary file, download to view",
+    "retry": "Retry",
     "openFromTree": "Open from file tree",
     "more": "More",
     "refresh": "Refresh",

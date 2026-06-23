@@ -42,6 +42,7 @@ import type { Server as SocketEngine } from '@socket.io/bun-engine'
 import type { WebSocketData } from '@socket.io/bun-engine'
 import { loadEmbeddedAssetMap, type EmbeddedWebAsset } from './embeddedAssets'
 import { isBunCompiled } from '../utils/bunCompiled'
+import { assertCorsOriginsForCredentials } from '../utils/cors'
 import type { Store } from '../store'
 
 function findWebappDistDir(): { distDir: string; indexHtmlPath: string } {
@@ -88,6 +89,9 @@ export function createWebApp(options: {
     app.get('/health', (c) => c.json({ status: 'ok', protocolVersion: PROTOCOL_VERSION }))
 
     const corsOrigins = options.corsOrigins ?? configuration.corsOrigins
+    // 守卫：credentials:true + origin:'*' 互斥，浏览器会拒绝跨域 cookie → 全链路静默 401。
+    // 启动期 throw，迫使运维配置具体域名（credentials:false 的 socket 层不受此约束）。
+    assertCorsOriginsForCredentials(corsOrigins, true)
     const corsOriginOption = corsOrigins.includes('*') ? '*' : corsOrigins
     const corsMiddleware = cors({
         origin: corsOriginOption,

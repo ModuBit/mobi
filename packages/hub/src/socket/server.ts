@@ -82,9 +82,12 @@ export function createSocketServer(deps: SocketServerDeps): {
 } {
     const corsOrigins = deps.corsOrigins ?? configuration.corsOrigins
     const allowAllOrigins = corsOrigins.includes('*')
-    // 守卫：credentials 闭环（cookie 同源自动携带）与 origin:* 互斥——浏览器会对 credentials:true 拒绝通配 cookie
+    // socket 层 credentials:false（terminal token 走 handshake.auth/cookie 双源，非 CORS credentials 闭环），
+    // origin:'*' 在此合法。web 层 credentials:true 才与 '*' 互斥，由 assertCorsOriginsForCredentials 守卫。
+    // 这里仅提示：若运维误以为 web 也允许 '*'，会导致 web 静默 401（web 层启动会 throw 阻断）。
     if (allowAllOrigins) {
-        console.warn('[CORS] credentials 闭环与 origin:* 互斥，浏览器将拒绝 cookie。请配置具体域名。')
+        console.warn('[CORS] socket 允许 origin:"*"（credentials:false，合法）。' +
+            '注意：web HTTP 层 credentials:true 与 "*" 互斥，会在启动时 throw。')
     }
     const corsOriginOption = allowAllOrigins ? '*' : corsOrigins
     const corsOptions = {

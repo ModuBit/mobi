@@ -16,7 +16,8 @@
 
 import { useEffect, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
-import { Button, Spin } from 'antd'
+import { Button, Spin, Empty } from 'antd'
+import { useTranslation } from 'react-i18next'
 // react-pdf v10：文本层/注释层样式（选中、超链接等）
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
@@ -45,14 +46,21 @@ const SCALE_STEP = 0.2
  * - 工具栏：上一页 / 页码 / 下一页 / 缩小 / 缩放比 / 放大
  */
 export default function PdfContentViewImpl({ blob, filePath: _filePath }: PdfContentViewImplProps) {
+    const { t } = useTranslation()
     const [data, setData] = useState<Uint8Array | null>(null)
     const [numPages, setNumPages] = useState(0)
     const [pageNum, setPageNum] = useState(1)
     const [scale, setScale] = useState(1.0)
+    // PDF 加载失败（损坏/加密/格式错）：渲染错误提示，而非空白
+    const [loadError, setLoadError] = useState<Error | null>(null)
 
     // blob → Uint8Array：react-pdf Document file.data 优选 Uint8Array
+    // blob 变化（切到另一份 PDF）时一并重置页码与错误态，避免旧 pageNum 越界（切到页数更少的 PDF）或残留错误
     useEffect(() => {
         let cancelled = false
+        setNumPages(0)
+        setPageNum(1)
+        setLoadError(null)
         blob.arrayBuffer().then((ab) => {
             if (!cancelled) setData(new Uint8Array(ab))
         }).catch(() => {
@@ -89,10 +97,18 @@ export default function PdfContentViewImpl({ blob, filePath: _filePath }: PdfCon
             }}>
                 {!data ? (
                     <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+                ) : loadError ? (
+                    // PDF 加载失败（损坏/加密/格式错）：给明确错误提示，而非空白
+                    <Empty description={t('files.loadFailed')} style={{ marginTop: 40 }} />
                 ) : (
                     <Document
                         file={{ data }}
-                        onLoadSuccess={({ numPages: n }) => setNumPages(n)}
+                        onLoadSuccess={({ numPages: n }) => {
+                            setNumPages(n)
+                            // 切换 PDF 后旧 pageNum 可能越界（前一份留 5 页、新一份仅 2 页），按新 numPages clamp
+                            setPageNum((p) => Math.min(p, n))
+                        }}
+                        onLoadError={(err) => setLoadError(err)}
                     >
                         <Page pageNumber={pageNum} scale={scale} />
                     </Document>

@@ -223,6 +223,7 @@
     "tooLarge": "文件过大，无法预览",
     "mediaDownload": "音视频暂不支持预览，下载查看",
     "binaryDownload": "二进制文件，下载查看",
+    "retry": "重试",
     "openFromTree": "从文件树打开",
     "more": "更多",
     "refresh": "刷新",

@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+import { useState } from 'react'
+import { Empty, Button } from 'antd'
+import { useTranslation } from 'react-i18next'
+
 interface ImageContentViewProps {
     /** 会话 id（拼 read-file 端点 src） */
     sessionId: string
@@ -25,12 +29,37 @@ interface ImageContentViewProps {
  * 图片文件内容视图（纯展示）：
  * - src 直连 read-file 端点（cookie 改造后 httpOnly mobi_token 自动带 → 认证通过）
  * - 浏览器原生 HTTP 缓存（端点 ETag + Cache-Control 协商 304）
+ * - onError 兜底：原生 img 请求不经 axios interceptor，401（cookie 过期）/损坏等无法触发全局 401 处理，
+ *   这里捕获后渲染「加载失败，点击重试」，重试通过变更 src 上的 retry 计数强制重新请求。
  */
 export default function ImageContentView({ sessionId, filePath }: ImageContentViewProps) {
-    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}`
+    const { t } = useTranslation()
+    const [error, setError] = useState(false)
+    // 重试计数：拼到 src query 让浏览器视为新 URL，绕过缓存重新请求（触发 cookie 重新认证）
+    const [retry, setRetry] = useState(0)
+    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}${retry > 0 ? `&_retry=${retry}` : ''}`
+
+    if (error) {
+        return (
+            <div style={{ textAlign: 'center', marginTop: 40 }}>
+                <Empty description={t('files.loadFailed')} />
+                <Button
+                    type="primary"
+                    style={{ marginTop: 12 }}
+                    onClick={() => {
+                        setError(false)
+                        setRetry((r) => r + 1)
+                    }}
+                >
+                    {t('files.retry')}
+                </Button>
+            </div>
+        )
+    }
+
     return (
         <div style={{ textAlign: 'center', padding: 12, overflow: 'auto' }}>
-            <img src={src} alt={filePath} style={{ maxWidth: '100%' }} />
+            <img src={src} alt={filePath} style={{ maxWidth: '100%' }} onError={() => setError(true)} />
         </div>
     )
 }
