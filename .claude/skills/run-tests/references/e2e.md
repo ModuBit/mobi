@@ -36,14 +36,33 @@ E2E 脚本位于 skill 目录的 `scripts/` 下，使用 Chrome DevTools MCP 工
 先清理可能残留的旧环境，再启动新环境（bootstrap 脚本会检查端口冲突，旧环境会导致启动失败）：
 
 ```bash
-# 清理残留环境
+# 清理残留环境（含 --profile e2e 旧进程 pattern 兜底，彻底清）
 bash .claude/skills/run-tests/scripts/e2e-cleanup.sh
 
 # 后台启动 E2E 环境（Hub + Web + Runner）
-bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh
+nohup bash .claude/skills/run-tests/scripts/e2e-bootstrap.sh >/dev/null 2>&1 &
 ```
 
-bootstrap 在后台运行。**判断就绪：轮询 `~/.mobi-e2e/ready.flag` 文件是否存在**（`test -f ~/.mobi-e2e/ready.flag`），**不要等 stdout echo**——stdout 在后台 bash 任务会被 tail 缓冲，看不到。超时（约 120s）仍无 ready.flag 则判定启动失败，查日志 `~/.mobi-e2e/logs/`（hub.log/web.log/runner.log）定位。
+**⚠️ bootstrap 脚本是前台常驻设计**（末尾 `wait` 保持环境运行，Ctrl+C 触发 cleanup）。所以：
+- **必须 nohup ... & 后台跑**（否则阻塞）
+- **判断就绪：轮询 `~/.mobi-e2e/ready.flag`**（`test -f ~/.mobi-e2e/ready.flag`），**不要等脚本退出/stdout echo**——脚本常驻不退出，stdout 在后台被缓冲看不到
+- 超时（约 60s）仍无 ready.flag 则判定启动失败，查日志 `~/.mobi-e2e/logs/`（hub.log/web.log/runner.log）定位
+
+```bash
+# 轮询就绪（典型 10-20s）
+for i in $(seq 1 30); do test -f ~/.mobi-e2e/ready.flag && echo "READY" && break; sleep 2; done
+```
+
+### default 环境隔离（重要）
+
+mobi 有三套端口（default 2222/5173、dev 2223/5174、e2e 2224/5175）。**default 环境（你日常运行的 mobi）和 e2e 端口隔离，互不冲突**。但需确认 e2e web 进程读到正确的 `MOBI_API_URL=2224`（而非 default 的 2222）：
+
+```bash
+# 确认 web 进程 PROFILE（应显示 MOBI_API_URL=http://localhost:2224）
+grep "PROFILE" ~/.mobi-e2e/logs/web.log
+```
+
+若显示 `2222`（fallback），说明 vite 没读到 profile env，proxy 会连错端口 → 登录 `ERR_CONNECTION_REFUSED`。
 
 ### 环境操作规范（重要）
 
@@ -111,9 +130,10 @@ Chrome DevTools MCP 首次调用时自动启动 Chrome，后续复用。按以�
    - `new_page` 打开 `http://localhost:5175` → 自动跳转到 `/login`
    - `click` Access Token 输入框（聚焦）
    - `press_key Control+A`（清空，输入框初始为空也执行，稳妥）
-   - `type_text` 输入 `e2e-test-token-mobi`，`submitKey: Enter`（提交）
+   - `type_text` 输入 `e2e-test-token-mobi`（**不带 `submitKey`**——Enter 在这个自定义输入框常不触发提交，输入完无反应）
+   - `click` "Connect" 按钮提交（**显式点按钮，不依赖 Enter**）
    - **禁用 `fill`**——对自定义输入框常超时失败
-   - 验证跳转到 `/sessions`（或 `/sessions/new`，无会话时）
+   - 验证跳转：`take_snapshot` 确认 URL 变为 `/sessions/new`（或 `/sessions`）。Connect 按钮变 `loading` 后通常 1-2s 跳转；若卡 loading 超过 5s，查 `list_network_requests` 看 `POST /api/auth` 是否 `ERR_CONNECTION_REFUSED`（proxy env 问题，见 default 隔离）
 
 2. **创建会话**
    - 点击 "新建会话"
@@ -152,9 +172,14 @@ Chrome DevTools MCP 首次调用时自动启动 Chrome，后续复用。按以�
 |---|---|
 | 看 hub.log 早期 banner 端口判冲突 | hub 早期 banner 可能打默认 2222（已修为读 env，但以 bootstrap 输出的 `HUB_PORT`=2224 为准） |
 | 把 cliApiToken 当 JWT 去 curl API | token 仅 web 登录框用；API 需先登录换 JWT |
-| 等 stdout echo 判就绪 | 轮询 `ready.flag` 或 `curl` 端口 |
+| 等 stdout echo 判就绪 | 轮询 `ready.flag` 或 `curl` 端口（bootstrap 常驻 `wait` 不退出） |
 | 手动 `nohup bun run dev` 或 `kill` 管环境 | 必须用 `e2e-bootstrap.sh` / `e2e-cleanup.sh` 脚本 |
-| 用 `fill` 填 token 登录超时 | 用 `click` + `Control+A` + `type_text` + `Enter` |
+| 用 `fill` 填 token 登录超时 | 用 `click` + `Control+A` + `type_text` + `click Connect` |
+| **`type_text` 带 `submitKey: Enter` 以为会登录** | Enter 在自定义输入框不触发提交；必须 `click` "Connect" 按钮 |
+| **旧 e2e 残留进程（上次没清干净）干扰新环境** | cleanup 脚本已加 `--profile e2e` pattern 兜底 kill；若仍异常，手动 `pkill -f -- '--profile e2e'` |
+| **default 环境（2222/5173）与 e2e 共存时登录 REFUSED** | 端口隔离不冲突，但确认 e2e web 进程 `MOBI_API_URL=2224`（`grep PROFILE ~/.mobi-e2e/logs/web.log`），否则 vite proxy fallback 到 2222 连不上 e2e hub |
+| **`navigate_page reload` 后测试 page 消失** | reload 偶发丢 page；改用 `new_page` 重新打开 URL，或 `list_pages` 确认后 `select_page` |
+| **bootstrap 不退出以为是卡死** | bootstrap 末尾 `wait` 常驻是设计（保持环境）；background 跑 + 轮询 `ready.flag`，ready 后直接用，不等脚本退出 |
 
 **端口隔离**（dev 与 e2e 完全隔离，配置上不冲突；若冲突说明环境异常）：
 

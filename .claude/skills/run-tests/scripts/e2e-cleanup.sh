@@ -81,6 +81,28 @@ main() {
         e2e_log_info "端口无残留进程"
     fi
 
+    # 3.5 pattern 兜底：清所有 --profile e2e 进程（旧残留/僵尸，端口清理可能遗漏）
+    # 端口清理只杀占 2224/5175 的进程，但历史残留的 e2e 进程（如上次未清干净）
+    # 可能占着别的端口或处于僵尸态，下次 bootstrap 时干扰。按命令行 pattern 彻底清。
+    e2e_log_info "pattern 兜底清理（所有 --profile e2e 进程）..."
+    local e2e_pids
+    e2e_pids=$(pgrep -f -- '--profile e2e' 2>/dev/null || true)
+    if [[ -n "${e2e_pids}" ]]; then
+        for pid in ${e2e_pids}; do
+            e2e_log_info "终止 e2e 残留进程 (PID: ${pid})"
+            kill -9 "${pid}" 2>/dev/null || true
+        done
+        sleep 1
+        # 二次确认
+        local remaining_e2e
+        remaining_e2e=$(pgrep -f -- '--profile e2e' 2>/dev/null || true)
+        if [[ -n "${remaining_e2e}" ]]; then
+            e2e_log_warn "仍有 e2e 残留: ${remaining_e2e}"
+        fi
+    else
+        e2e_log_info "无 --profile e2e 残留进程"
+    fi
+
     # 4. 清理数据目录（含日志）
     if [[ -d "${E2E_TMPDIR}" ]]; then
         e2e_log_info "清理数据目录: ${E2E_TMPDIR}"
