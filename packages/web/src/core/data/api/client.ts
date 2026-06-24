@@ -112,15 +112,21 @@ export function createMobiApi() {
             clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) =>
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
-            // 上传文件（FormData）
-            upload: (sessionId: string, file: File, opts?: { signal?: AbortSignal }) => {
-                const formData = new FormData()
-                formData.append('file', file)
-                return client.post(`/api/sessions/${sessionId}/upload`, formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' },
-                    signal: opts?.signal,
-                })
-            },
+            // 上传文件（二进制流式 + 进度 + 取消，替换 FormData→multipart）
+            upload: (
+                sessionId: string,
+                file: File,
+                opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void },
+            ) => client.post(`/api/sessions/${sessionId}/upload`, file, {
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Mobi-Filename': encodeURIComponent(file.name),
+                },
+                onUploadProgress: opts?.onProgress
+                    ? (e) => opts.onProgress!(e.total ? Math.round((e.loaded / e.total) * 100) : 0)
+                    : undefined,
+                signal: opts?.signal,
+            }),
             deleteUpload: (sessionId: string, path: string) =>
                 client.post(`/api/sessions/${sessionId}/upload/delete`, { path }),
             // SDK 元数据（commands, models, agents, account 等）
@@ -244,16 +250,23 @@ export function createMobiApi() {
             // SDK metadata（slash 命令）
             metadata: (machineId: string, cwd: string, opts?: { signal?: AbortSignal }) =>
                 client.get(`/api/machines/${machineId}/metadata`, { params: { cwd }, signal: opts?.signal }),
-            // 文件上传
-            upload: (machineId: string, cwd: string, file: File, opts?: { signal?: AbortSignal }) => {
-                const formData = new FormData()
-                formData.append('file', file)
-                formData.append('cwd', cwd)
-                return client.post(`/api/machines/${machineId}/upload`, formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' },
-                    signal: opts?.signal,
-                })
-            },
+            // 文件上传（二进制流式 + 进度 + 取消，cwd 走 header，替换 FormData→multipart）
+            upload: (
+                machineId: string,
+                cwd: string,
+                file: File,
+                opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void },
+            ) => client.post(`/api/machines/${machineId}/upload`, file, {
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Mobi-Filename': encodeURIComponent(file.name),
+                    'X-Mobi-Cwd': encodeURIComponent(cwd),
+                },
+                onUploadProgress: opts?.onProgress
+                    ? (e) => opts.onProgress!(e.total ? Math.round((e.loaded / e.total) * 100) : 0)
+                    : undefined,
+                signal: opts?.signal,
+            }),
             // 文件上传删除
             deleteUpload: (machineId: string, cwd: string, path: string) =>
                 client.post(`/api/machines/${machineId}/upload/delete`, { cwd, path }),
