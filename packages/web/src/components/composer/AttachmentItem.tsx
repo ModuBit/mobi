@@ -15,7 +15,7 @@
  */
 
 import { memo, useState, useEffect, type FC } from 'react'
-import { theme, Spin, Tooltip } from 'antd'
+import { theme, Spin, Progress, Tooltip } from 'antd'
 import { CloseOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
 import {
     File, FileText, FileSpreadsheet, FileImage, FileVideo,
@@ -222,7 +222,7 @@ const AttachmentCard = memo(function AttachmentCard({
                     />
                 )}
 
-                {/* 上传中覆盖 */}
+                {/* 上传中覆盖：有进度显示进度条，无进度（极小文件瞬间完成）回退 Spin */}
                 {isUploading && (
                     <div style={{
                         position: 'absolute', inset: 0,
@@ -230,7 +230,11 @@ const AttachmentCard = memo(function AttachmentCard({
                         background: 'rgba(255, 255, 255, 0.7)',
                         borderRadius: token.borderRadiusSM,
                     }}>
-                        <Spin indicator={<LoadingOutlined style={{ fontSize: 14 }} spin />} />
+                        {attachment.progress ? (
+                            <Progress type="circle" percent={attachment.progress} size={20} showInfo={false} />
+                        ) : (
+                            <Spin indicator={<LoadingOutlined style={{ fontSize: 14 }} spin />} />
+                        )}
                     </div>
                 )}
 

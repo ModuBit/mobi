@@ -88,4 +88,30 @@ describe('useAttachmentHandling', () => {
         rerender({ cd: true })
         expect(result.current.isDragOver).toBe(false)
     })
+
+    it('上传进度经 onProgress 回调更新到 attachment.progress', async () => {
+        let capturedOnProgress: ((p: number) => void) | undefined
+        const uploadFile = vi.fn((_file: File, opts?: { signal?: AbortSignal; onProgress?: (p: number) => void }) => {
+            capturedOnProgress = opts?.onProgress
+            // 永不 resolve，模拟上传进行中
+            return new Promise<{ data: { success: boolean; path: string } }>(() => {})
+        })
+        const capabilities = makeCapabilities(uploadFile)
+        const { result } = renderHook(() => useAttachmentHandling(capabilities))
+
+        await act(async () => {
+            result.current.handleDrop({
+                preventDefault: () => {},
+                dataTransfer: { files: [new File(['x'], 'a.txt', { type: 'text/plain' })] },
+            } as any)
+        })
+
+        expect(capturedOnProgress).toBeDefined()
+
+        // 触发进度回调 → attachment.progress 应实时更新
+        await act(async () => {
+            capturedOnProgress!(50)
+        })
+        expect(result.current.attachments[0].progress).toBe(50)
+    })
 })

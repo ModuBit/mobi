@@ -89,7 +89,12 @@ export function useAttachmentHandling(capabilities: DirectoryCapabilities, contr
         const controller = new AbortController()
         abortControllersRef.current.set(attachmentId, controller)
         try {
-            const response = await capabilities.uploadFile(file, { signal: controller.signal })
+            const response = await capabilities.uploadFile(file, {
+                signal: controller.signal,
+                onProgress: (p) => setAttachments(prev => prev.map(a =>
+                    a.id === attachmentId ? { ...a, progress: p } : a
+                )),
+            })
             const data = response.data as UploadFileResponse
             if (import.meta.env.DEV) console.log('[Upload] 响应', attachmentId, data)
             if (data.success && data.path) {

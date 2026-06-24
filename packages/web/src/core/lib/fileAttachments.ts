@@ -32,6 +32,8 @@ export type FileAttachment = {
     path?: string
     /** 错误信息 */
     error?: string
+    /** 上传进度（0-100，uploading 状态时实时更新） */
+    progress?: number
 }
 
 /**
