@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
+import { streamUpload } from '../utils/uploadStream'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
@@ -208,7 +209,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
-    // 文件上传到 machine 指定目录
+    // 文件流式上传到 machine 指定目录（二进制 body + header 元信息，对称 session 通道）
     app.post('/machines/:id/upload', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
@@ -221,34 +222,45 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return machine
         }
 
-        const body = await c.req.parseBody()
-        const cwd = typeof body.cwd === 'string' ? body.cwd : ''
+        // cwd 走 header（X-Mobi-Cwd），因 body 是二进制流（非 multipart）
+        const cwd = decodeURIComponent(c.req.header('X-Mobi-Cwd') ?? '')
         if (!cwd) {
-            return c.json({ error: 'cwd field is required' }, 400)
+            return c.json({ success: false, error: 'cwd required (X-Mobi-Cwd header)' }, 400)
         }
-
         const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
         if (cwdError) return cwdError
 
-        const file = body.file
-        if (!file || !(file instanceof File)) {
-            return c.json({ error: 'file field is required' }, 400)
+        const filename = decodeURIComponent(c.req.header('X-Mobi-Filename') ?? '')
+        const totalSize = Number(c.req.header('Content-Length') ?? 0)
+        if (!filename) {
+            return c.json({ success: false, error: 'Filename required (X-Mobi-Filename header)' }, 400)
+        }
+        if (!Number.isFinite(totalSize) || totalSize <= 0) {
+            return c.json({ success: false, error: 'Invalid Content-Length' }, 400)
+        }
+        if (totalSize > MAX_UPLOAD_BYTES) {
+            return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
         }
 
-        if (file.size > MAX_UPLOAD_BYTES) {
-            return c.json({ error: 'File too large' }, 413)
+        const reader = c.req.raw.body?.getReader()
+        if (!reader) {
+            return c.json({ success: false, error: 'No request body' }, 400)
         }
-
-        const filename = file.name
-        const mimeType = file.type || 'application/octet-stream'
-        const arrayBuffer = await file.arrayBuffer()
-        const base64Content = Buffer.from(arrayBuffer).toString('base64')
 
         try {
-            const result = await engine.machineUploadFile(machineId, cwd, filename, base64Content, mimeType)
-            return c.json(result)
+            const path = await streamUpload(
+                reader,
+                filename,
+                totalSize,
+                (fn, p, off, chunk) => engine.machineUploadFileRange(machineId, cwd, fn, p, off, chunk, totalSize),
+                (p) => engine.machineDeleteUpload(machineId, cwd, p),
+            )
+            return c.json({ success: true, path })
         } catch (error) {
-            return c.json({ error: error instanceof Error ? error.message : 'Failed to upload file' }, 500)
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to upload file'
+            }, 500)
         }
     })
 

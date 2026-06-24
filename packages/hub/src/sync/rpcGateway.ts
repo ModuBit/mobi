@@ -47,9 +47,11 @@ export type RpcReadFileRangeResponse = {
     error?: string
 }
 
-export type RpcUploadFileResponse = {
+// 文件范围写入响应（对称 readFileRange，content 为 Uint8Array 二进制附件）
+export type RpcWriteFileRangeResponse = {
     success: boolean
     path?: string
+    written?: number
     error?: string
 }
 
@@ -243,9 +245,17 @@ export class RpcGateway {
         return await this.machineRpc(machineId, 'list-directory', { path, homeDir }) as RpcListDirectoryResponse
     }
 
-    // 文件上传到 machine 指定目录
-    async machineUploadFile(machineId: string, cwd: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
-        return await this.machineRpc(machineId, 'uploadFile', { cwd, filename, content, mimeType }) as RpcUploadFileResponse
+    // 文件流式上传到 machine 指定目录（Uint8Array 二进制附件，非 base64）
+    async machineUploadFileRange(
+        machineId: string,
+        cwd: string,
+        filename: string,
+        path: string | undefined,
+        offset: number,
+        content: Uint8Array,
+        totalSize?: number,
+    ): Promise<RpcWriteFileRangeResponse> {
+        return await this.machineRpc(machineId, 'writeFileRange', { cwd, filename, path, offset, content, totalSize }) as RpcWriteFileRangeResponse
     }
 
     // 删除 machine 上的已上传文件
@@ -268,8 +278,16 @@ export class RpcGateway {
         return await this.machineRpc(machineId, 'refreshMetadata', { cwd }) as RpcRefreshMetadataResponse
     }
 
-    async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
-        return await this.sessionRpc(sessionId, 'uploadFile', { sessionId, filename, content, mimeType }) as RpcUploadFileResponse
+    // 文件流式上传（Uint8Array 二进制附件，非 base64）
+    async uploadFileRange(
+        sessionId: string,
+        filename: string,
+        path: string | undefined,
+        offset: number,
+        content: Uint8Array,
+        totalSize?: number,
+    ): Promise<RpcWriteFileRangeResponse> {
+        return await this.sessionRpc(sessionId, 'writeFileRange', { sessionId, filename, path, offset, content, totalSize }) as RpcWriteFileRangeResponse
     }
 
     async deleteUploadFile(sessionId: string, path: string): Promise<RpcDeleteUploadResponse> {

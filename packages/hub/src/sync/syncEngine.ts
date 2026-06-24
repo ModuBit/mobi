@@ -30,7 +30,7 @@ import {
     type RpcReadFileMetaResponse,
     type RpcReadFileRangeResponse,
     type RpcRefreshMetadataResponse,
-    type RpcUploadFileResponse
+    type RpcWriteFileRangeResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
 
@@ -45,7 +45,7 @@ export type {
     RpcReadFileMetaResponse,
     RpcReadFileRangeResponse,
     RpcRefreshMetadataResponse,
-    RpcUploadFileResponse
+    RpcWriteFileRangeResponse
 } from './rpcGateway'
 
 export type ResumeSessionResult =
@@ -472,8 +472,16 @@ export class SyncEngine {
         return await this.rpcGateway.listMachineDirectory(machineId, path, homeDir)
     }
 
-    async machineUploadFile(machineId: string, cwd: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
-        return await this.rpcGateway.machineUploadFile(machineId, cwd, filename, content, mimeType)
+    async machineUploadFileRange(
+        machineId: string,
+        cwd: string,
+        filename: string,
+        path: string | undefined,
+        offset: number,
+        content: Uint8Array,
+        totalSize?: number,
+    ): Promise<RpcWriteFileRangeResponse> {
+        return await this.rpcGateway.machineUploadFileRange(machineId, cwd, filename, path, offset, content, totalSize)
     }
 
     async machineDeleteUpload(machineId: string, cwd: string, path: string): Promise<RpcDeleteUploadResponse> {
@@ -492,8 +500,15 @@ export class SyncEngine {
         return await this.rpcGateway.machineRefreshMetadata(machineId, cwd)
     }
 
-    async uploadFile(sessionId: string, filename: string, content: string, mimeType: string): Promise<RpcUploadFileResponse> {
-        return await this.rpcGateway.uploadFile(sessionId, filename, content, mimeType)
+    async uploadFileRange(
+        sessionId: string,
+        filename: string,
+        path: string | undefined,
+        offset: number,
+        content: Uint8Array,
+        totalSize?: number,
+    ): Promise<RpcWriteFileRangeResponse> {
+        return await this.rpcGateway.uploadFileRange(sessionId, filename, path, offset, content, totalSize)
     }
 
     async deleteUploadFile(sessionId: string, path: string): Promise<RpcDeleteUploadResponse> {

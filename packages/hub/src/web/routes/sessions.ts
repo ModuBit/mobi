@@ -18,6 +18,7 @@ import { getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessio
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
+import { streamUpload } from '../utils/uploadStream'
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
 import { basename } from 'node:path'
@@ -124,34 +125,36 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return sessionResult
         }
 
+        const sessionId = sessionResult.sessionId
+
+        // 元信息走 header（body 纯二进制流，非 multipart）：filename + Content-Length
+        const filename = decodeURIComponent(c.req.header('X-Mobi-Filename') ?? '')
+        const totalSize = Number(c.req.header('Content-Length') ?? 0)
+        if (!filename) {
+            return c.json({ success: false, error: 'Filename required (X-Mobi-Filename header)' }, 400)
+        }
+        if (!Number.isFinite(totalSize) || totalSize <= 0) {
+            return c.json({ success: false, error: 'Invalid Content-Length' }, 400)
+        }
+        // 第一道闸：hub 预校验总大小，超限直接 413 不开始传（省带宽）
+        if (totalSize > MAX_UPLOAD_BYTES) {
+            return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
+        }
+
+        const reader = c.req.raw.body?.getReader()
+        if (!reader) {
+            return c.json({ success: false, error: 'No request body' }, 400)
+        }
+
         try {
-            // 解析 multipart/form-data
-            const body = await c.req.parseBody()
-            const file = body['file']
-
-            if (!file || !(file instanceof File)) {
-                return c.json({ success: false, error: 'File is required' }, 400)
-            }
-
-            // 文件大小校验
-            if (file.size > MAX_UPLOAD_BYTES) {
-                return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
-            }
-
-            // 读取文件内容为 ArrayBuffer 再转为 base64
-            const arrayBuffer = await file.arrayBuffer()
-            const base64Content = Buffer.from(arrayBuffer).toString('base64')
-
-            const result = await engine.uploadFile(
-                sessionResult.sessionId,
-                file.name,
-                base64Content,
-                file.type,
+            const path = await streamUpload(
+                reader,
+                filename,
+                totalSize,
+                (fn, p, off, chunk) => engine.uploadFileRange(sessionId, fn, p, off, chunk, totalSize),
+                (p) => engine.deleteUploadFile(sessionId, p),
             )
-            if (!result.success) {
-                return c.json(result, 400)
-            }
-            return c.json(result)
+            return c.json({ success: true, path })
         } catch (error) {
             return c.json({
                 success: false,
