@@ -20,6 +20,7 @@ import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSe
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload } from '../utils/uploadStream'
+import { safeDecodeHeader } from '../utils/headers'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
@@ -223,14 +224,14 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         // cwd 走 header（X-Mobi-Cwd），因 body 是二进制流（非 multipart）
-        const cwd = decodeURIComponent(c.req.header('X-Mobi-Cwd') ?? '')
+        const cwd = safeDecodeHeader(c.req.header('X-Mobi-Cwd'))
         if (!cwd) {
             return c.json({ success: false, error: 'cwd required (X-Mobi-Cwd header)' }, 400)
         }
         const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
         if (cwdError) return cwdError
 
-        const filename = decodeURIComponent(c.req.header('X-Mobi-Filename') ?? '')
+        const filename = safeDecodeHeader(c.req.header('X-Mobi-Filename'))
         const totalSize = Number(c.req.header('Content-Length') ?? 0)
         if (!filename) {
             return c.json({ success: false, error: 'Filename required (X-Mobi-Filename header)' }, 400)

@@ -89,11 +89,22 @@ export function useAttachmentHandling(capabilities: DirectoryCapabilities, contr
         const controller = new AbortController()
         abortControllersRef.current.set(attachmentId, controller)
         try {
+            // onProgress 节流：XHR 每 16-50ms 回调，直接 setAttachments 会高频 re-render AttachmentList
+            // 仅每 5% 或每 100ms 或完成（p>=100）时更新，re-render 次数降 ~10-20x
+            let lastPercent = 0
+            let lastTime = 0
             const response = await capabilities.uploadFile(file, {
                 signal: controller.signal,
-                onProgress: (p) => setAttachments(prev => prev.map(a =>
-                    a.id === attachmentId ? { ...a, progress: p } : a
-                )),
+                onProgress: (p) => {
+                    const now = Date.now()
+                    if (p - lastPercent >= 5 || now - lastTime >= 100 || p >= 100) {
+                        lastPercent = p
+                        lastTime = now
+                        setAttachments(prev => prev.map(a =>
+                            a.id === attachmentId ? { ...a, progress: p } : a
+                        ))
+                    }
+                },
             })
             const data = response.data as UploadFileResponse
             if (import.meta.env.DEV) console.log('[Upload] 响应', attachmentId, data)

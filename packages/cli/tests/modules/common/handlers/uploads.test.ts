@@ -151,12 +151,13 @@ describe('writeFileRange handler', () => {
         expect(res.success).toBe(false)
     })
 
-    it('offset=0 但传 path（非 filename）：走后续块分支 → 文件不存在 rpcError', async () => {
+    it('offset=0 但传 path（非 filename）：拒绝（首块必须 filename，#4 防御 offset=0+path 覆盖已存在文件）', async () => {
         const res = await mockRpc.call('writeFileRange', {
             path: '.mobi/uploads/2099-01/nope.png', offset: 0, content: new Uint8Array([1]),
         })
-        // 分支条件为 filename 是否存在（非 offset 是否为 0），传 path 无 filename 走后续块定位
+        // #4: else if(path && offset>0) —— offset=0+path 不满足，走 else 拒绝（防止覆盖已存在 uploads 文件开头）
         expect(res.success).toBe(false)
+        expect(res.error).toMatch(/filename.*path|required/i)
     })
 
     it('offset 越界：后续块 offset > 文件 size → 拒绝，不扩展稀疏文件', async () => {

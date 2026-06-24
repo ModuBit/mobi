@@ -118,7 +118,7 @@ function sanitizeFilename(filename: string): string {
  * 进程内 Map，随 cli 进程生命周期。
  * 依赖 hub 侧 emitWithAck 串行背压，cli 侧单线程顺序处理同一文件的上传块，此处无锁。
  */
-const writtenTracker = new Map<string, number>()
+const writtenTracker = new Map<string, { written: number; totalSize?: number }>()
 
 /** 上传目录就绪缓存，避免同月重复 stat + readFile */
 const uploadDirCache = new Map<string, string>()
@@ -246,35 +246,41 @@ export function registerUploadHandlers(
 
                     const uploadDir = await ensureUploadDir(effectiveCwd)
                     const sanitizedFilename = sanitizeFilename(data.filename)
-                    const shortId = Date.now().toString(36)
+                    // 时间戳 + 随机段，避免同毫秒同名并发上传碰撞（open('w') 覆盖丢数据）
+                    const shortId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
                     const ext = extname(sanitizedFilename)
                     const base = ext ? sanitizedFilename.slice(0, sanitizedFilename.length - ext.length) : sanitizedFilename
                     const uniqueFilename = ext ? `${base}-${shortId}${ext}` : `${sanitizedFilename}-${shortId}`
                     const filePath = join(uploadDir, uniqueFilename)
 
-                    // 累计超限兜底（第三道闸）：本块 + 已写
+                    // 单块大小校验（第三道闸）
                     if (data.content.length > MAX_UPLOAD_BYTES) return rpcError('File too large (max 50MB)')
-                    writtenTracker.set(filePath, data.content.length)
 
                     const fd = await open(filePath, 'w')  // 创建/截断
                     await fd.write(data.content, 0, data.content.length, 0)
                     await fd.close()
 
+                    // 记录累计（open 成功后写入，避免孤儿 entry）；单块即完成则清理，防止 Map 无限增长
+                    writtenTracker.set(filePath, { written: data.content.length, totalSize: data.totalSize })
+                    if (data.totalSize !== undefined && data.content.length >= data.totalSize) {
+                        writtenTracker.delete(filePath)
+                    }
+
                     return { success: true, path: relative(effectiveCwd, filePath), written: data.content.length }
-                } else if (data.path) {
-                    // ── 后续块：按 path + offset 追加 ──
+                } else if (data.path && data.offset > 0) {
+                    // ── 后续块：按 path + offset 追加（offset>0；首块由 filename 分支处理，offset=0+path 拒绝） ──
                     if (!isPathWithinUploads(effectiveCwd, data.path)) {
                         return rpcError('Invalid upload path')
                     }
                     const fullPath = resolve(effectiveCwd, data.path)
 
-                    // 累计超限兜底
-                    const prev = writtenTracker.get(fullPath) ?? 0
-                    if (prev + data.content.length > MAX_UPLOAD_BYTES) {
+                    // 累计超限兜底（用旧值校验，open 前判断）
+                    const prev = writtenTracker.get(fullPath)
+                    const prevWritten = prev?.written ?? 0
+                    if (prevWritten + data.content.length > MAX_UPLOAD_BYTES) {
                         writtenTracker.delete(fullPath)
                         return rpcError('File too large (max 50MB)')
                     }
-                    writtenTracker.set(fullPath, prev + data.content.length)
 
                     const st = await stat(fullPath)
                     // 纵深防御：offset 不得超过当前文件 size，防止稀疏文件空洞绕过大小限制
@@ -284,6 +290,14 @@ export function registerUploadHandlers(
                     const fd = await open(fullPath, 'r+')  // 必须已存在，不截断
                     await fd.write(data.content, 0, data.content.length, data.offset)
                     await fd.close()
+
+                    // 累计更新；完成（累计 >= totalSize）则清理 entry，避免 writtenTracker 无限增长
+                    const newWritten = prevWritten + data.content.length
+                    if (prev?.totalSize !== undefined && newWritten >= prev.totalSize) {
+                        writtenTracker.delete(fullPath)
+                    } else {
+                        writtenTracker.set(fullPath, { written: newWritten, totalSize: prev?.totalSize })
+                    }
 
                     return { success: true, written: data.content.length }
                 } else {

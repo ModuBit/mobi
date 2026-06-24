@@ -19,6 +19,7 @@ import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload } from '../utils/uploadStream'
+import { safeDecodeHeader } from '../utils/headers'
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
 import { basename } from 'node:path'
@@ -128,7 +129,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const sessionId = sessionResult.sessionId
 
         // 元信息走 header（body 纯二进制流，非 multipart）：filename + Content-Length
-        const filename = decodeURIComponent(c.req.header('X-Mobi-Filename') ?? '')
+        const filename = safeDecodeHeader(c.req.header('X-Mobi-Filename'))
         const totalSize = Number(c.req.header('Content-Length') ?? 0)
         if (!filename) {
             return c.json({ success: false, error: 'Filename required (X-Mobi-Filename header)' }, 400)
