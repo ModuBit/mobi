@@ -81,6 +81,26 @@ bun run lint       # ESLint 检查
 - 展示最终升级汇总：更新数量、各验证项结果
 - 提交代码
 
+### 第七步：维护 patchedDependencies（移除 / 迁移 / 重做）
+
+项目可能用 `bun patch` 给第三方包打补丁（见 `patches/` 目录 + `package.json` 的 `patchedDependencies`）。这些补丁通常是上游 bug 的临时修复。上游发新版时，补丁有三种去向：上游修了→**移除**；上游没修但有新版→**迁移**到新版本重做补丁；上游动了相邻代码导致 context 失败→同样要**重做**补丁（可能改动位置已变）。目的：不长期自维护陈旧补丁、不错过上游其他修复。
+
+**每次升级依赖时必须检查**（即使本次没升 patched 包）：
+
+1. 读取 `package.json` 的 `patchedDependencies`（key 格式 `<pkg>@<version>`，如 `@socket.io/bun-engine@0.1.1`）+ 列出 `patches/` 目录
+2. 对每个 patched 包，`npm view <pkg> version` 查最新版本
+3. **最新版 == patch 绑定版本**（无新版）：补丁继续生效，无需处理，跳过
+4. **最新版 > patch 绑定版本**（有新版）：必须评估补丁去向，分三种情况
+   - 先查 changelog / release notes / commit：补丁针对的 bug 是否已在上游修复
+   - **(a) bug 已修复**：移除补丁（删 `patches/<pkg>.patch` + 删 `package.json` 的 `patchedDependencies` 条目）+ 升级该包到最新 + 跑 typecheck/test/E2E 验证原 bug 场景不再复现
+   - **(b) bug 未修复**：补丁仍需要，但**必须重新生成补丁**应用到新版本（`bun patch <pkg>@<新版本>` → 重做改动 → `bun patch --commit`）+ 删旧 patch 文件
+   - **(c) bug 未修复，且 `bun install` 因补丁应用失败而报错**：上游动了被 patch 那段代码（重构/相邻行变更），补丁 diff context 对不上。这是 (b) 的信号——同样要重新生成补丁，但需先理解上游新代码结构再决定等价改动落在哪一行（可能改动位置已变）。**绝不能为了"让补丁应用成功"而硬调 context 行号掩盖改动语义变化**
+5. 向用户汇报每个补丁的状态：(a) 已移除 / (b) 已迁移到新版本 / 仍不可移除（上游未修，补丁重做）
+
+**关键安全点**：`bun patch`（与 patch-package）应用时**校验 diff context**。上游若改了被 patch 的那段代码，补丁会**应用失败报错**（而非静默打错位置），所以补丁陈旧最坏导致 `bun install` 失败，**不会**因补丁逻辑错位而线上出 bug——失败显式，逼你重做。反过来，若 `bun install` 静默成功了（补丁仍绑定旧版本、你没升该包），说明补丁没被挑战，但**不代表上游没改那段代码**——仍需主动查 changelog 确认 bug 状态。
+
+**示例**（本项目）：`patches/@socket.io%2Fbun-engine@0.1.1.patch` 修复 bun-engine 发送二进制附件 bug（`Buffer.isBuffer`→`ArrayBuffer.isView`）。每次升级时若发现 `@socket.io/bun-engine` 有 0.1.2+，查其是否已修该 bug → 修复则移除补丁并升级。
+
 ## 版本约束规范
 
 | 原约束 | 推荐写法 | 说明 |
@@ -95,4 +115,5 @@ bun run lint       # ESLint 检查
 - **workspace:* 跳过**：monorepo 内部依赖不需要升级
 - **bun 运行时**：安装命令用 `bun install`，不是 npm
 - **升级后必验证**：typecheck → test → lint 三步缺一不可
+- **patchedDependencies 维护**：每次升级必须执行第七步，按上游新版情况处理补丁（移除/迁移/重做），不只是「移除」——上游没修但改了代码，补丁要跟着重做
 - **提交规范**：commit message 使用 `chore:` 前缀，列出关键变更
