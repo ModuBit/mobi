@@ -597,29 +597,29 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 
 ---
 
-## 23. 会话附件上传（web → hub → cli）流式传输优化
+## 23. 会话附件上传（web → hub → cli）流式传输优化 ✅ 已完成
 
-**背景**：与文件读取流式管道（方案 X）对称的反向链路。文件读取侧已规划流式管道（web↔hub HTTP 流式 + hub↔cli socket.io 小 chunk RPC，见 spec `docs/superpowers/specs/2026-06-21-file-streaming-pipeline-design.md`）；附件上传当前仍是 base64-over-JSON 一次性全量，大附件同样受 socket.io `maxHttpBufferSize`（默认 1MB）与 base64 膨胀 33% 的双重制约。
+**完成摘要**（对称下载侧 readFileRange，2026-06-25）：
+- web↔hub：axios POST 二进制 Blob body（浏览器 chunked 流式 + `onUploadProgress` 进度 + `AbortController` 取消），替换 FormData→multipart→base64
+- hub↔cli：`writeFileRange` 分块写 RPC（`emitWithAck` 串行 = 天然背压），替换 base64 整包 `uploadFile`
+- hub 端点二进制流式：`c.req.raw.body` reader 聚合 256KB（`uploadStream` 共享管道）+ 中断清理半成品 + 三道大小闸（Content-Length 413 / totalSize 预校验 / 累计 written 兜底）
+- cli `writeFileRange` 无状态分块写（`open` + `fd.write(position=offset)`）+ offset 越界防御（stat 校验）+ 扩展名/path 遍历/cwd 安全
+- 进度 UI：`FileAttachment.progress` + `onProgress` 节流（每 5%/100ms）+ `AttachmentItem` Progress 圆环
+- 测试：cli handler 10 用例 + `uploadStream` 9 用例（聚合/背压/cli拒绝/reader中断/不完整清理）+ rpcCall 二进制往返 4 用例 + 端点集成 + E2E（100KB/500KB md5 一致）
 
-**相关文件**：
-- `packages/web/src/core/lib/fileAttachments.ts` — 附件类型与上传校验
-- `packages/hub/src/web/routes/sessions.ts:139-146` — web 上传路由（读 ArrayBuffer → `Buffer.from(...).toString('base64')`）
-- `packages/hub/src/sync/syncEngine.ts` / `rpcGateway.ts` — `uploadFile` / `machineUploadFile` 透传 base64 content + mimeType
-- `packages/cli/src/modules/common/handlers/uploads.ts:42,171` — `content: string // base64 编码`、`MAX_UPLOAD_BYTES` 50MB
+**关键发现：@socket.io/bun-engine 0.1.1 发送二进制附件 bug**
+- bun-engine 自带的 parser `encodePacket` 仅认 `Buffer.isBuffer(data)`，对 `Uint8Array`（socket.io 二进制附件的实际类型）走 else 分支字符串拼接 → cli `parse error` 断连
+- 这解释了为何下载侧（cli→hub readFileRange，bun-engine **接收**方向）工作，而上传侧（hub→cli writeFileRange，bun-engine **发送**方向）失败
+- bun-engine 0.1.1 是 npm 最新（2026-04-23），bug 未修；官方 `engine.io-parser` 5.2.3 处理正确但 bun-engine 没复用
+- **修复**：`patches/@socket.io%2Fbun-engine@0.1.1.patch`（`Buffer.isBuffer` → `ArrayBuffer.isView`，对齐官方 parser），`bun patch` 持久化 + `package.json` patchedDependencies，重装自动应用
 
-**现状**：web 读文件 → ArrayBuffer → base64 → POST JSON → hub → socket.io RPC（base64 content）→ cli `Buffer.from(content,'base64')` → `writeFile`。整包、无背压、大附件靠调高 `maxHttpBufferSize` 硬扛。
-
-**对称优化方向**（待读取侧流式管道落地后再评估）：
-- web↔hub：HTTP 流式上传（`fetch` + `ReadableStream` body / chunked request）
-- hub↔cli：反向复用读取侧的 `emitWithAck` 分块 RPC（cli 端 `writeFileRange` handler，按 offset 追加写）
-- 背压：读取侧同款机制（`res.on('drain')` / await ack 串行）
-- 复用 cli 端分段 IO 的对称抽象（`readFileRange` ↔ `writeFileRange`）
-
-**与读取侧的关系**：两者共享「cli 分段 IO + hub 翻译 + HTTP 流式」的架构骨架，上传侧作为对称改造，待读取侧稳定后单独立项。
-
-**优先级**：低，待文件读取流式管道落地后触发。
+**遗留（低优先，非本次范围）**：
+- 中断清理的边界（`--max-time` 极短导致首块未 flush，无 path → 不触发 cleanup）——实际用户取消场景（AbortController）会经 hub reader.read() 抛错触发清理，已覆盖；curl 极短超时是测试 artifact
+- bun-engine patch 待上游修复后可移除（关注 0.1.2+ 版本）
 
 ---
+
+
 
 ## 24. 文件流式端点（`/read-file`）quality review 遗留项
 

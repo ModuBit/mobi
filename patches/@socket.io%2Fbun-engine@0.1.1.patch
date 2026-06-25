@@ -1,0 +1,15 @@
+diff --git a/dist/parser.js b/dist/parser.js
+index acc614d1c0522bd84fc04243510221fce7c4f895..f09e2cd5360354077ef4cda35b08efc278d27494 100644
+--- a/dist/parser.js
++++ b/dist/parser.js
+@@ -16,8 +16,8 @@ const PACKET_TYPES_REVERSE = new Map();
+ const ERROR_PACKET = { type: "error", data: "parser error" };
+ export const Parser = {
+     encodePacket({ type, data }, supportsBinary) {
+-        if (Buffer.isBuffer(data)) {
+-            return supportsBinary ? data : "b" + data.toString("base64");
++        if (ArrayBuffer.isView(data)) {
++            return supportsBinary ? data : "b" + Buffer.from(data).toString("base64");
+         }
+         else {
+             return PACKET_TYPES.get(type) + (data || "");
