@@ -194,6 +194,31 @@ describe('writeFileRange handler', () => {
         expect(res.success).toBe(false)
         expect(res.error).toMatch(/too large/i)
     })
+
+    it('累计封顶看实际文件大小：tracker 缺失（既有文件 / cli 重启后）仍按文件大小封顶', async () => {
+        // 先正常上传一个 dummy，拿到当月 uploads 目录前缀
+        const dummy = await mockRpc.call('writeFileRange', {
+            filename: 'probe.png', offset: 0, content: new Uint8Array([1]), totalSize: 1,
+        })
+        expect(dummy.success).toBe(true)
+        const dir = dummy.path!.replace(/[^/]+$/, '')
+        const targetRel = dir + 'existing-target.png'
+        const targetFull = resolve(tempDir, targetRel)
+
+        // 直接在磁盘造一个接近上限的稀疏文件（不经 handler → writtenTracker 无 entry）
+        const fs = await import('fs/promises')
+        await fs.writeFile(targetFull, '')
+        await fs.truncate(targetFull, MAX_UPLOAD_BYTES - 10)
+
+        // writeFileRange offset>0 指向既有大文件；tracker 无 entry，须按实际文件大小封顶
+        const res = await mockRpc.call('writeFileRange', {
+            path: targetRel, offset: MAX_UPLOAD_BYTES - 10, content: new Uint8Array(100),
+        })
+        // 修复后：baseWritten = max(0, size≈MAX-10)，+100 > MAX → 拒绝
+        // （修复前 prevWritten 回退到 0，0+100 < MAX 会放行 → 文件被扩展超限）
+        expect(res.success).toBe(false)
+        expect(res.error).toMatch(/too large/i)
+    })
 })
 
 describe('deleteUpload handler', () => {

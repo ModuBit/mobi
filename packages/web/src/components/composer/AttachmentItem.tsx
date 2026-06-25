@@ -105,12 +105,12 @@ const CATEGORY_COLOR: Record<FileCategory, string> = {
  * 从服务器路径提取文件名（取最后一段，移除 CLI 追加的短 ID）
  *
  * 当前格式：{原始文件名}-{shortId}.{ext}
- * 其中 shortId = Date.now().toString(36)，约 6~9 个 base36 字符
+ * 其中 shortId = Date.now().toString(36)(~8 位) + 4 位随机，约 12 个 base36 字符
  *
  * 旧格式（已弃用）：{timestamp}-{sanitized}.{ext}
  * timestamp 为 13 位纯数字前缀
  */
-function getDisplayName(attachment: FileAttachment): string {
+export function getDisplayName(attachment: FileAttachment): string {
     // 上传成功后，优先使用服务器返回的实际路径中的文件名
     if (attachment.path) {
         const parts = attachment.path.split('/')
@@ -120,8 +120,8 @@ function getDisplayName(attachment: FileAttachment): string {
             const legacyMatch = serverName.match(/^\d{13}-(.+)$/)
             if (legacyMatch) return legacyMatch[1]
 
-            // 新格式：移除 base36 短 ID 后缀（-{shortId} 在扩展名之前）
-            const cleaned = serverName.replace(/-([a-z0-9]{6,9})(\.[a-z0-9]+)?$/i, '$2')
+            // 新格式：移除 base36 短 ID 后缀（-{shortId} 在扩展名之前，约 12 字符）
+            const cleaned = serverName.replace(/-([a-z0-9]{10,14})(\.[a-z0-9]+)?$/i, '$2')
             return cleaned || serverName
         }
     }

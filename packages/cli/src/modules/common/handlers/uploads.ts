@@ -120,7 +120,11 @@ function sanitizeFilename(filename: string): string {
  */
 const writtenTracker = new Map<string, { written: number; totalSize?: number }>()
 
-/** 上传目录就绪缓存，避免同月重复 stat + readFile */
+/**
+ * 上传目录就绪缓存，避免同月重复 stat + readFile。
+ * 条目键为 projectRoot:月份 —— 目录一旦就绪永久有效，非泄漏；
+ * 单项目年增 12 条后稳定，多项目按项目数线性增长，无需 LRU。
+ */
 const uploadDirCache = new Map<string, string>()
 
 /**
@@ -256,9 +260,18 @@ export function registerUploadHandlers(
                     // 单块大小校验（第三道闸）
                     if (data.content.length > MAX_UPLOAD_BYTES) return rpcError('File too large (max 50MB)')
 
+                    // open 成功后若 write/close 失败（磁盘满 / EIO），文件已落盘但 path 尚未返回 hub，
+                    // hub 侧 cleanup 因无 path 无法清理 → 内层兜底删除孤儿文件
                     const fd = await open(filePath, 'w')  // 创建/截断
-                    await fd.write(data.content, 0, data.content.length, 0)
-                    await fd.close()
+                    try {
+                        await fd.write(data.content, 0, data.content.length, 0)
+                        await fd.close()
+                    } catch (writeErr) {
+                        await fd.close().catch(() => {})
+                        await rm(filePath, { force: true }).catch(() => {})
+                        logger.debug('首块写入失败，已清理孤儿文件:', filePath, writeErr)
+                        return rpcError(getErrorMessage(writeErr, 'Failed to write file range'))
+                    }
 
                     // 记录累计（open 成功后写入，避免孤儿 entry）；单块即完成则清理，防止 Map 无限增长
                     writtenTracker.set(filePath, { written: data.content.length, totalSize: data.totalSize })
@@ -274,25 +287,27 @@ export function registerUploadHandlers(
                     }
                     const fullPath = resolve(effectiveCwd, data.path)
 
-                    // 累计超限兜底（用旧值校验，open 前判断）
-                    const prev = writtenTracker.get(fullPath)
-                    const prevWritten = prev?.written ?? 0
-                    if (prevWritten + data.content.length > MAX_UPLOAD_BYTES) {
-                        writtenTracker.delete(fullPath)
-                        return rpcError('File too large (max 50MB)')
-                    }
-
                     const st = await stat(fullPath)
                     // 纵深防御：offset 不得超过当前文件 size，防止稀疏文件空洞绕过大小限制
                     if (data.offset > st.size) {
                         return rpcError('Offset out of bounds')
                     }
+
+                    // 累计超限兜底：基数取 tracker 记录与实际文件大小的较大者。
+                    // 仅看进程内 tracker 会在 cli 重启 / 指向既有文件时回退到 0，从而绕过封顶。
+                    const prev = writtenTracker.get(fullPath)
+                    const baseWritten = Math.max(prev?.written ?? 0, st.size)
+                    if (baseWritten + data.content.length > MAX_UPLOAD_BYTES) {
+                        writtenTracker.delete(fullPath)
+                        return rpcError('File too large (max 50MB)')
+                    }
+
                     const fd = await open(fullPath, 'r+')  // 必须已存在，不截断
                     await fd.write(data.content, 0, data.content.length, data.offset)
                     await fd.close()
 
                     // 累计更新；完成（累计 >= totalSize）则清理 entry，避免 writtenTracker 无限增长
-                    const newWritten = prevWritten + data.content.length
+                    const newWritten = baseWritten + data.content.length
                     if (prev?.totalSize !== undefined && newWritten >= prev.totalSize) {
                         writtenTracker.delete(fullPath)
                     } else {
@@ -338,6 +353,8 @@ export function registerUploadHandlers(
             try {
                 const fullPath = resolve(effectiveCwd, path)
                 await rm(fullPath, { force: true })
+                // 同步清理累计追踪 entry（删除 / 中断后失效，避免 stale entry 泄漏）
+                writtenTracker.delete(fullPath)
                 return { success: true }
             } catch (error) {
                 logger.debug('删除上传文件失败:', error)
