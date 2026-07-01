@@ -24,7 +24,7 @@ import PdfContentViewImpl from '@/components/files/PdfContentViewImpl'
 // - Document 透传 file prop（data-file）+ 把 onLoadSuccess 暴露出来供测试触发
 // - Page 渲染当前 pageNumber/scale（data-* 便于断言）
 
-/** mock pdf 对象（onLoadSuccess 回调入参） */
+/** mock pdf 对象（onLoadSuccess 回调入参；结构对齐 pdfjs PDFDocumentProxy 的 numPages + getPage） */
 interface MockPdf {
     numPages: number
     getPage: (n: number) => Promise<{ getViewport: (o: { scale: number }) => { width: number; height: number } }>
@@ -33,13 +33,25 @@ interface MockPdf {
 let onLoadSuccessCb: ((pdf: MockPdf) => void) | null = null
 vi.mock('react-pdf', () => ({
     pdfjs: { GlobalWorkerOptions: { workerSrc: '' }, version: '5.4.296' },
-    Document: ({ children, file, onLoadSuccess }: {
+    // 暴露 file / options / loading prop 到 data-*，断言 withCredentials 与 loading={null}
+    Document: ({ children, file, options, loading, onLoadSuccess }: {
         children: React.ReactNode
         file?: unknown
+        options?: { withCredentials?: boolean }
+        loading?: unknown
         onLoadSuccess?: (pdf: MockPdf) => void
     }) => {
         onLoadSuccessCb = onLoadSuccess ?? null
-        return <div data-testid="pdf-document" data-file={String(file ?? '')}>{children}</div>
+        return (
+            <div
+                data-testid="pdf-document"
+                data-file={String(file ?? '')}
+                data-wc={String(options?.withCredentials ?? '')}
+                data-loading={loading === null ? 'null' : 'set'}
+            >
+                {children}
+            </div>
+        )
     },
     Page: ({ pageNumber, scale }: { pageNumber: number; scale: number }) => (
         <div data-testid={`pdf-page-${pageNumber}`} data-page={pageNumber} data-scale={scale} />
@@ -123,5 +135,33 @@ describe('PdfContentViewImpl', () => {
     it('不崩溃（基线）', () => {
         render(<PdfContentViewImpl sessionId="s1" filePath="doc.pdf" />)
         expect(screen.getByTestId('pdf-document')).toBeInTheDocument()
+    })
+
+    it('I4: Document 收到 options.withCredentials=true（read-file 端点依赖 cookie）', () => {
+        render(<PdfContentViewImpl sessionId="s1" filePath="a.pdf" />)
+        const doc = screen.getByTestId('pdf-document')
+        expect(doc.getAttribute('data-wc')).toBe('true')
+    })
+
+    it('I2: Document 收到 loading={null}（外层 Spin 独占加载态，避免双提示）', () => {
+        render(<PdfContentViewImpl sessionId="s1" filePath="a.pdf" />)
+        const doc = screen.getByTestId('pdf-document')
+        expect(doc.getAttribute('data-loading')).toBe('null')
+    })
+
+    it('I3: handleLoadSuccess 同步读 DOM 宽度算 fit scale（绕过 ResizeObserver 竞态）', async () => {
+        // mock containerRef.current.getBoundingClientRect 返回 1000，pageWidth=200
+        // → fit = 1000/200 = 5 → clamp 到 MAX_SCALE=3 → 工具栏显示 300%
+        // （PdfContinuousView 的 IntersectionObserver 在测试 mock 下不触发回调，
+        //   Page 不渲染，故通过 PdfToolbar 百分比断言 scale 而非 data-scale）
+        const orig = HTMLElement.prototype.getBoundingClientRect
+        HTMLElement.prototype.getBoundingClientRect = function () {
+            return this.style.flex ? { width: 1000, height: 800 } as DOMRect : orig.call(this)
+        }
+        render(<PdfContentViewImpl sessionId="s1" filePath="a.pdf" />)
+        await act(async () => { fireLoad(1, 200, 200) })
+        // 初始 scale=3（MAX_SCALE）→ 工具栏 300%
+        expect(screen.getByText('300%')).toBeInTheDocument()
+        HTMLElement.prototype.getBoundingClientRect = orig
     })
 })

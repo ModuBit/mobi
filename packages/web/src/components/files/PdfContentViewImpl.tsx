@@ -16,6 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Document, pdfjs } from 'react-pdf'
+import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { Empty, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 // react-pdf v10：文本层/注释层样式（选中、超链接等）
@@ -31,6 +32,19 @@ import PdfToolbar, { MIN_SCALE, MAX_SCALE } from './PdfToolbar'
 import PdfContinuousView from './PdfContinuousView'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+
+// 组件外（模块级），保持引用稳定，避免 react-pdf 因 options 变化重新加载
+// （react-pdf Document.d.ts 明确要求 options 对象定义在组件外或 useMemo）。
+// read-file 端点依赖 httpOnly cookie mobi_token 认证，必须开启 withCredentials，
+// 否则 pdfjs 的 JS fetch 不带 cookie → 401 → PDF 加载失败。
+const PDF_OPTIONS = { withCredentials: true } as const
+
+/**
+ * 计算「适应宽度」缩放：containerWidth / pageWidth，clamp 到 [MIN_SCALE, MAX_SCALE]。
+ * 宽度 ≤ 0（未就绪）返回 null（调用方判断是否 setScale）。
+ */
+const computeFitScale = (cw: number, pw: number): number | null =>
+    cw > 0 && pw > 0 ? Math.max(MIN_SCALE, Math.min(MAX_SCALE, cw / pw)) : null
 
 interface PdfContentViewImplProps {
     /** 会话 ID（拼 read-file 端点 url） */
@@ -74,25 +88,23 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
     // read-file 端点 url：pdfjs 走 HTTP Range 按需加载
     const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}`
 
-    const handleLoadSuccess = async (pdf: {
-        numPages: number
-        getPage: (n: number) => Promise<{ getViewport: (o: { scale: number }) => { width: number; height: number } }>
-    }) => {
+    const handleLoadSuccess = async (pdf: PDFDocumentProxy) => {
         setNumPages(pdf.numPages)
         const page = await pdf.getPage(1)
         const vp = page.getViewport({ scale: 1 })
         setPageWidth(vp.width)
         setPageHeight(vp.height)
-        // 适应宽度默认：containerWidth / pageWidth，clamp 到 [MIN_SCALE, MAX_SCALE]
-        if (containerWidth > 0 && vp.width > 0) {
-            setScale(Math.max(MIN_SCALE, Math.min(MAX_SCALE, containerWidth / vp.width)))
-        }
+        // I3: 同步读 DOM 容器宽度算 fit scale，绕过 ResizeObserver 竞态
+        // （首次 mount 时 observer 回调可能晚于 onLoadSuccess → containerWidth state=0 → 适应宽度失效）
+        const cw = containerRef.current?.getBoundingClientRect().width ?? 0
+        const fit = computeFitScale(cw, vp.width)
+        if (fit !== null) setScale(fit)
     }
 
     const fitWidth = () => {
-        if (containerWidth > 0 && pageWidth > 0) {
-            setScale(Math.max(MIN_SCALE, Math.min(MAX_SCALE, containerWidth / pageWidth)))
-        }
+        // 用户点按钮触发：此时 ResizeObserver 早已 fire，containerWidth state 已就绪
+        const fit = computeFitScale(containerWidth, pageWidth)
+        if (fit !== null) setScale(fit)
     }
     const reset = () => setScale(1)
 
@@ -117,6 +129,8 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
                         )}
                         <Document
                             file={src}
+                            options={PDF_OPTIONS}
+                            loading={null}
                             onLoadSuccess={handleLoadSuccess}
                             onLoadError={(e) => setLoadError(e)}
                         >
