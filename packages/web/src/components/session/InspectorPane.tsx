@@ -86,6 +86,25 @@ const StyledTabs = styled(Tabs)`
     && > .ant-tabs-nav::before {
         border-bottom: none;
     }
+    /* 高度链：让 tab 内容占满剩余空间。
+       多页 PDF 等连续滚动型预览需要 tabpane 有 bounded height 才能在内部滚动，
+       否则内容会把整条链撑开（tabpane → FileContentView → PdfContentViewImpl 全部 height:auto），
+       表现为「不能滚动」。flex 滚动容器还需配合 minHeight:0（见各组件）。*/
+    && {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+    && > .ant-tabs-content-holder {
+        flex: 1;
+        min-height: 0;
+    }
+    && > .ant-tabs-content-holder > .ant-tabs-content {
+        height: 100%;
+    }
+    && > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+        height: 100%;
+    }
 `
 
 export interface InspectorPaneProps {

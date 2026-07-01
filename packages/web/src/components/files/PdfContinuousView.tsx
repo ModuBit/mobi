@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Page } from 'react-pdf'
 
 interface PdfContinuousViewProps {
@@ -26,6 +26,13 @@ interface PdfContinuousViewProps {
     pageHeight: number
     /** 当前缩放比例 */
     scale: number
+    /**
+     * 滚动容器 ref（作为 IntersectionObserver 的 root）。
+     * 滚动发生在 PdfContentViewImpl 的滚动 div 内，IO 必须以该容器为 root 才能正确
+     * 检测「页相对滚动可视区」的可见性；若用 viewport（root:null），滚动容器内溢出
+     * 的占位会被错误判定为可见 → 全部页渲染，虚拟滚动失效。
+     */
+    scrollRootRef?: RefObject<HTMLElement | null>
 }
 
 /**
@@ -41,7 +48,7 @@ interface PdfContinuousViewProps {
  * querySelectorAll('[data-placeholder]') 一次性 observe 全部占位，无遗漏。
  * numPages 变化（切换 PDF）时 effect 重跑，对新占位重新 observe。
  */
-export default function PdfContinuousView({ numPages, pageWidth: _pageWidth, pageHeight, scale }: PdfContinuousViewProps) {
+export default function PdfContinuousView({ numPages, pageWidth: _pageWidth, pageHeight, scale, scrollRootRef }: PdfContinuousViewProps) {
     const [visible, setVisible] = useState<Set<number>>(new Set())
     const containerRef = useRef<HTMLDivElement>(null)
 
@@ -49,7 +56,8 @@ export default function PdfContinuousView({ numPages, pageWidth: _pageWidth, pag
         const container = containerRef.current
         if (!container) return
 
-        // rootMargin '50% 0% 50% 0%'：前后各半屏预加载，滚动时提前渲染下一页，避免白屏闪烁
+        // root 必须是滚动容器（scrollRootRef），否则溢出的占位会被判定为 viewport 可见 → 虚拟滚动失效。
+        // rootMargin '50% 0% 50% 0%'：相对滚动容器，前后各半屏预加载，滚动时提前渲染下一页避免白屏
         const io = new IntersectionObserver((entries) => {
             setVisible((prev) => {
                 let changed = false
@@ -72,7 +80,7 @@ export default function PdfContinuousView({ numPages, pageWidth: _pageWidth, pag
                 // 仅在可见集合变化时返回新引用，避免无谓 re-render
                 return changed ? next : prev
             })
-        }, { root: null, rootMargin: '50% 0% 50% 0%' })
+        }, { root: scrollRootRef?.current ?? null, rootMargin: '50% 0% 50% 0%' })
 
         // effect 在 DOM 提交后跑，占位已挂载，一次性 observe 全部 —— 无遗漏
         const placeholders = container.querySelectorAll('[data-placeholder]')

@@ -209,7 +209,7 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                 </div>
             </div>
             {/* content：meta 先行 → size 阈值拦截 → 按类型三级分发 */}
-            <div style={{ flex: 1, overflow: 'auto' }}>
+            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                 {metaLoading ? (
                     <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
                 ) : metaError ? (

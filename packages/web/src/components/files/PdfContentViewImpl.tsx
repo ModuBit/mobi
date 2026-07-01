@@ -118,7 +118,7 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
             />
             <div
                 ref={containerRef}
-                style={{ flex: 1, overflow: 'auto', background: 'var(--ant-color-fill-quaternary)' }}
+                style={{ flex: 1, minHeight: 0, overflow: 'auto', background: 'var(--ant-color-fill-quaternary)' }}
             >
                 {loadError ? (
                     <Empty description={t('files.loadFailed')} style={{ marginTop: 40 }} />
@@ -140,6 +140,7 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
                                     pageWidth={pageWidth}
                                     pageHeight={pageHeight}
                                     scale={scale}
+                                    scrollRootRef={containerRef}
                                 />
                             )}
                         </Document>
