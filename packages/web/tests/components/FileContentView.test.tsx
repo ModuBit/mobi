@@ -38,9 +38,15 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 // 延迟引入被 mock 的模块（在 vi.mock 之后），拿真实的 QueryClient/Provider
 const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
 
-// jsdom 没有 ResizeObserver（antd Tabs/Tree 依赖）
+// jsdom 没有 ResizeObserver（antd Tabs/Tree + PdfContentViewImpl 依赖）/ IntersectionObserver（PdfContinuousView 依赖）
 beforeAll(() => {
     vi.stubGlobal('ResizeObserver', class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    })
+    vi.stubGlobal('IntersectionObserver', class {
+        constructor() {}
         observe() {}
         unobserve() {}
         disconnect() {}
@@ -92,16 +98,28 @@ vi.mock('react-i18next', async (importOriginal) => {
 // Document 把 onLoadSuccess 回调暴露出来，测试通过调用它注入 numPages，断言翻页/缩放 UI。
 vi.mock('react-pdf', () => ({
     pdfjs: { GlobalWorkerOptions: { workerSrc: '' }, version: '0.0.0' },
-    Document: ({ children, onLoadSuccess }: {
+    Document: ({ children, file, onLoadSuccess }: {
         children: React.ReactNode
-        onLoadSuccess?: (pdf: { numPages: number }) => void
+        file?: unknown
+        onLoadSuccess?: (pdf: {
+            numPages: number
+            getPage: (n: number) => Promise<{ getViewport: (o: { scale: number }) => { width: number; height: number } }>
+        }) => void
     }) => {
-        // 首次渲染触发 onLoadSuccess，注入 numPages=3（够测上一页/下一页边界）
-        React.useEffect(() => { onLoadSuccess?.({ numPages: 3 }) }, [onLoadSuccess])
-        return <div data-testid="pdf-document">{children}</div>
+        // 首次渲染触发 onLoadSuccess，注入 numPages=3 + getPage(1).getViewport({scale:1})
+        // （PdfContentViewImpl 新版 handleLoadSuccess 会调 getPage(1).getViewport）
+        React.useEffect(() => {
+            onLoadSuccess?.({
+                numPages: 3,
+                getPage: () => Promise.resolve({
+                    getViewport: ({ scale }: { scale: number }) => ({ width: 595 * scale, height: 842 * scale }),
+                }),
+            })
+        }, [onLoadSuccess])
+        return <div data-testid="pdf-document" data-file={String(file ?? '')}>{children}</div>
     },
     Page: ({ pageNumber, scale }: { pageNumber: number; scale: number }) => (
-        <div data-testid="pdf-page" data-page={pageNumber} data-scale={scale} />
+        <div data-testid={`pdf-page-${pageNumber}`} data-page={pageNumber} data-scale={scale} />
     ),
 }))
 // CSS import 在 jsdom 下无意义，用空 mock 避免 vitest 解析 .css 失败
@@ -222,20 +240,20 @@ describe('FileContentView', () => {
         expect(screen.getByText('files.binaryDownload')).toBeInTheDocument()
     })
 
-    it('PDF（<10MB）→ react-pdf 渲染（fetch content 拿 blob）', async () => {
-        // PDF 走 react-pdf：shouldFetchContent 含 pdf → fetch content → PdfContentView 渲染
+    it('PDF（<10MB）→ react-pdf 渲染（file=url，pdfjs HTTP Range 按需加载）', async () => {
+        // PDF 走 react-pdf：file=url 让 pdfjs 走 HTTP Range，不再全量 fetch blob
         setMock(
             { mime: 'application/pdf', size: 1 * 1024 * 1024, etag: '11-1' },
             { blob: new Blob(['%PDF-1.4'], { type: 'application/pdf' }), mime: 'application/pdf' },
         )
 
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="doc.pdf" />)
-        // react-pdf Document 渲染（mock 占位）
-        expect(await screen.findByTestId('pdf-document')).toBeInTheDocument()
-        // Page 渲染默认第 1 页、scale=1
-        const page = screen.getByTestId('pdf-page')
-        expect(page).toHaveAttribute('data-page', '1')
-        expect(page).toHaveAttribute('data-scale', '1')
+        // react-pdf Document 渲染（mock 占位），data-file 含 read-file 端点
+        const doc = await screen.findByTestId('pdf-document')
+        expect(doc).toBeInTheDocument()
+        const file = doc.getAttribute('data-file') ?? ''
+        expect(file).toContain('/api/sessions/s1/read-file')
+        expect(file).toContain(encodeURIComponent('doc.pdf'))
         // 不出现文本/图片渲染分支
         expect(screen.queryByRole('img')).not.toBeInTheDocument()
     })

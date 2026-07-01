@@ -218,8 +218,8 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                 ) : tooLarge ? (
                     <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.tooLarge')} />
                 ) : isPdf ? (
-                    // PDF 走 react-pdf：file 非空时 blob 交给 PdfContentView 渲染（< 10MB，≥10MB 已被 tooLarge 拦截）
-                    file ? <PdfContentView blob={file.blob} filePath={filePath} /> : <Spin />
+                    // PDF 走 react-pdf：file=url 让 pdfjs HTTP Range 按需加载（不再全量 fetch blob）
+                    <PdfContentView sessionId={sessionId} filePath={filePath} />
                 ) : isAudioVideo ? (
                     // 原生格式 src 直连（cookie 带 + Range 流式，无 size 阈值）；非原生走下载
                     isNativeMedia

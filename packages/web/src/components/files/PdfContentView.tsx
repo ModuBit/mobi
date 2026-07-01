@@ -21,9 +21,9 @@ import { Spin } from 'antd'
 const PdfContentViewImpl = lazy(() => import('./PdfContentViewImpl'))
 
 interface PdfContentViewProps {
-    /** 文件二进制内容（由 FileContentView fetch content 拿到的 blob） */
-    blob: Blob
-    /** 文件路径（保留以便后续扩展，如标题/书签） */
+    /** 会话 ID（拼 read-file 端点 url，pdfjs 走 HTTP Range 按需加载） */
+    sessionId: string
+    /** 文件路径（拼 url query param path） */
     filePath: string
 }
 

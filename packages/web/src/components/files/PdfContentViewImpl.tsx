@@ -14,104 +14,122 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react'
-import { Document, Page, pdfjs } from 'react-pdf'
-import { Button, Spin, Empty } from 'antd'
+import { useEffect, useRef, useState } from 'react'
+import { Document, pdfjs } from 'react-pdf'
+import { Empty, Spin } from 'antd'
 import { useTranslation } from 'react-i18next'
 // react-pdf v10：文本层/注释层样式（选中、超链接等）
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
+// pdfjs worker：用 ?url 显式拿 worker 文件 URL。
+// 不用 new URL('pdfjs-dist/...', import.meta.url)——vite dev 对指向 optimize dep 子路径的
+// bare import transform 异常，会得到错误相对路径（如 "pdf.worker.mjs"），fetch 命中 SPA fallback
+// 返回 index.html，worker 加载到 HTML 而非脚本 → pdfjs worker 起不来 → PDF 渲染失败。
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+// 缩放上下限从 PdfToolbar 导出（叶子组件，避免重复定义 + 循环依赖）
+import PdfToolbar, { MIN_SCALE, MAX_SCALE } from './PdfToolbar'
+import PdfContinuousView from './PdfContinuousView'
 
-// pdfjs worker（react-pdf v9+/pdfjs v4+ 推荐：用 import.meta.url 解析随包 worker，离线可用、版本一致）
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url,
-).toString()
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
 interface PdfContentViewImplProps {
-    /** 文件二进制内容（FileContentView fetch content 拿到的 blob） */
-    blob: Blob
-    /** 文件路径（保留以便后续扩展） */
+    /** 会话 ID（拼 read-file 端点 url） */
+    sessionId: string
+    /** 文件路径（拼 url query param path） */
     filePath: string
 }
 
-/** 缩放上下限与步进（移动端友好区间） */
-const MIN_SCALE = 0.5
-const MAX_SCALE = 3
-const SCALE_STEP = 0.2
-
 /**
- * PDF 内容视图实现（react-pdf Document/Page + 翻页/缩放）：
- * - 接收 Blob，内部 effect 转 Uint8Array 后交给 react-pdf（data 优选 Uint8Array）
- * - 工具栏：上一页 / 页码 / 下一页 / 缩小 / 缩放比 / 放大
+ * PDF 内容视图实现（file=url 按需加载 + 连续滚动 + 适应宽度默认）：
+ *
+ * - **file={url}**：直接把 read-file 端点 url 交给 react-pdf（pdfjs 走 HTTP Range 按需下载，
+ *   不再全量读 blob 转 Uint8Array）。大 PDF 只下载首部 + 当前可视页，首屏更快、内存更省。
+ * - **适应宽度默认**：onLoadSuccess 拿第一页 viewport，按 containerWidth / pageWidth 算初始 scale。
+ * - **连续滚动**：Document 内放 PdfContinuousView（IntersectionObserver 虚拟化，只渲染可视页）。
+ * - **工具栏**：PdfToolbar（-/百分比/+ /适应宽度/100%，Task 1 已实现）。
+ *
+ * 常量（MIN_SCALE/MAX_SCALE/SCALE_STEP）在 PdfToolbar 导出，这里只 import 前两个用于 clamp。
  */
-export default function PdfContentViewImpl({ blob, filePath: _filePath }: PdfContentViewImplProps) {
+export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentViewImplProps) {
     const { t } = useTranslation()
-    const [data, setData] = useState<Uint8Array | null>(null)
     const [numPages, setNumPages] = useState(0)
-    const [pageNum, setPageNum] = useState(1)
-    const [scale, setScale] = useState(1.0)
+    const [pageWidth, setPageWidth] = useState(0)
+    const [pageHeight, setPageHeight] = useState(0)
+    const [scale, setScale] = useState(1)
     // PDF 加载失败（损坏/加密/格式错）：渲染错误提示，而非空白
     const [loadError, setLoadError] = useState<Error | null>(null)
+    const containerRef = useRef<HTMLDivElement>(null)
+    // 滚动容器宽度（ResizeObserver 跟踪），用于「适应宽度」计算
+    const [containerWidth, setContainerWidth] = useState(0)
 
-    // blob → Uint8Array：react-pdf Document file.data 优选 Uint8Array
-    // blob 变化（切到另一份 PDF）时一并重置页码与错误态，避免旧 pageNum 越界（切到页数更少的 PDF）或残留错误
+    // ResizeObserver：容器宽度变化时更新 containerWidth（驱动适应宽度计算）
     useEffect(() => {
-        let cancelled = false
-        setNumPages(0)
-        setPageNum(1)
-        setLoadError(null)
-        blob.arrayBuffer().then((ab) => {
-            if (!cancelled) setData(new Uint8Array(ab))
-        }).catch(() => {
-            if (!cancelled) setData(null)
-        })
-        return () => { cancelled = true }
-    }, [blob])
+        const el = containerRef.current
+        if (!el) return
+        const ro = new ResizeObserver((entries) => setContainerWidth(entries[0].contentRect.width))
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [])
 
-    const zoomOut = () => setScale((s) => Math.max(MIN_SCALE, +(s - SCALE_STEP).toFixed(1)))
-    const zoomIn = () => setScale((s) => Math.min(MAX_SCALE, +(s + SCALE_STEP).toFixed(1)))
-    const goPrev = () => setPageNum((p) => Math.max(1, p - 1))
-    const goNext = () => setPageNum((p) => Math.min(numPages, p + 1))
+    // read-file 端点 url：pdfjs 走 HTTP Range 按需加载
+    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}`
+
+    const handleLoadSuccess = async (pdf: {
+        numPages: number
+        getPage: (n: number) => Promise<{ getViewport: (o: { scale: number }) => { width: number; height: number } }>
+    }) => {
+        setNumPages(pdf.numPages)
+        const page = await pdf.getPage(1)
+        const vp = page.getViewport({ scale: 1 })
+        setPageWidth(vp.width)
+        setPageHeight(vp.height)
+        // 适应宽度默认：containerWidth / pageWidth，clamp 到 [MIN_SCALE, MAX_SCALE]
+        if (containerWidth > 0 && vp.width > 0) {
+            setScale(Math.max(MIN_SCALE, Math.min(MAX_SCALE, containerWidth / vp.width)))
+        }
+    }
+
+    const fitWidth = () => {
+        if (containerWidth > 0 && pageWidth > 0) {
+            setScale(Math.max(MIN_SCALE, Math.min(MAX_SCALE, containerWidth / pageWidth)))
+        }
+    }
+    const reset = () => setScale(1)
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            {/* 工具栏：翻页 + 缩放 */}
-            <div style={{
-                padding: '4px 8px',
-                borderBottom: '1px solid var(--ant-color-border-secondary)',
-                display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-            }}>
-                <Button size="small" disabled={pageNum <= 1} onClick={goPrev}>上一页</Button>
-                <span style={{ fontSize: 12 }}>{pageNum} / {numPages}</span>
-                <Button size="small" disabled={pageNum >= numPages} onClick={goNext}>下一页</Button>
-                <Button size="small" disabled={scale <= MIN_SCALE} onClick={zoomOut}>-</Button>
-                <span style={{ fontSize: 12 }}>{Math.round(scale * 100)}%</span>
-                <Button size="small" disabled={scale >= MAX_SCALE} onClick={zoomIn}>+</Button>
-            </div>
-            {/* 渲染区：data 就绪前 Spin；Document 加载成功后回填 numPages */}
-            <div style={{
-                flex: 1, overflow: 'auto', textAlign: 'center',
-                background: 'var(--ant-color-fill-quaternary)',
-            }}>
-                {!data ? (
-                    <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
-                ) : loadError ? (
-                    // PDF 加载失败（损坏/加密/格式错）：给明确错误提示，而非空白
+            <PdfToolbar
+                scale={scale}
+                onScaleChange={setScale}
+                onFitWidth={fitWidth}
+                onReset={reset}
+            />
+            <div
+                ref={containerRef}
+                style={{ flex: 1, overflow: 'auto', background: 'var(--ant-color-fill-quaternary)' }}
+            >
+                {loadError ? (
                     <Empty description={t('files.loadFailed')} style={{ marginTop: 40 }} />
                 ) : (
-                    <Document
-                        file={{ data }}
-                        onLoadSuccess={({ numPages: n }) => {
-                            setNumPages(n)
-                            // 切换 PDF 后旧 pageNum 可能越界（前一份留 5 页、新一份仅 2 页），按新 numPages clamp
-                            setPageNum((p) => Math.min(p, n))
-                        }}
-                        onLoadError={(err) => setLoadError(err)}
-                    >
-                        <Page pageNumber={pageNum} scale={scale} />
-                    </Document>
+                    <>
+                        {numPages === 0 && (
+                            <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+                        )}
+                        <Document
+                            file={src}
+                            onLoadSuccess={handleLoadSuccess}
+                            onLoadError={(e) => setLoadError(e)}
+                        >
+                            {numPages > 0 && (
+                                <PdfContinuousView
+                                    numPages={numPages}
+                                    pageWidth={pageWidth}
+                                    pageHeight={pageHeight}
+                                    scale={scale}
+                                />
+                            )}
+                        </Document>
+                    </>
                 )}
             </div>
         </div>

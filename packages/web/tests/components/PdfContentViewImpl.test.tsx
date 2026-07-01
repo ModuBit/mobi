@@ -16,115 +16,112 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
+import { afterEach, beforeEach } from 'vitest'
 import PdfContentViewImpl from '@/components/files/PdfContentViewImpl'
 
 // react-pdf 在 jsdom 下无法真正渲染，mock 成受控占位：
-// - Document 把 onLoadSuccess 暴露出来，测试调用注入 numPages
+// - Document 透传 file prop（data-file）+ 把 onLoadSuccess 暴露出来供测试触发
 // - Page 渲染当前 pageNumber/scale（data-* 便于断言）
-let onLoadSuccessCb: ((pdf: { numPages: number }) => void) | null = null
+
+/** mock pdf 对象（onLoadSuccess 回调入参） */
+interface MockPdf {
+    numPages: number
+    getPage: (n: number) => Promise<{ getViewport: (o: { scale: number }) => { width: number; height: number } }>
+}
+
+let onLoadSuccessCb: ((pdf: MockPdf) => void) | null = null
 vi.mock('react-pdf', () => ({
-    pdfjs: { GlobalWorkerOptions: { workerSrc: '' }, version: '0.0.0' },
-    Document: ({ children, onLoadSuccess }: {
+    pdfjs: { GlobalWorkerOptions: { workerSrc: '' }, version: '5.4.296' },
+    Document: ({ children, file, onLoadSuccess }: {
         children: React.ReactNode
-        onLoadSuccess?: (pdf: { numPages: number }) => void
+        file?: unknown
+        onLoadSuccess?: (pdf: MockPdf) => void
     }) => {
-        // 暴露回调供测试触发（注入 numPages=3）
         onLoadSuccessCb = onLoadSuccess ?? null
-        return <div data-testid="pdf-document">{children}</div>
+        return <div data-testid="pdf-document" data-file={String(file ?? '')}>{children}</div>
     },
     Page: ({ pageNumber, scale }: { pageNumber: number; scale: number }) => (
-        <div data-testid="pdf-page" data-page={pageNumber} data-scale={scale} />
+        <div data-testid={`pdf-page-${pageNumber}`} data-page={pageNumber} data-scale={scale} />
     ),
 }))
 vi.mock('react-pdf/dist/Page/AnnotationLayer.css', () => ({}))
 vi.mock('react-pdf/dist/Page/TextLayer.css', () => ({}))
+
+// PdfToolbar 调 useTranslation，mock 掉避免 i18n 初始化报错（与 Task 1 测试一致）
+vi.mock('react-i18next', () => ({
+    useTranslation: () => ({ t: (k: string) => k }),
+}))
+
+beforeEach(() => {
+    onLoadSuccessCb = null
+    // PdfContinuousView 用 IntersectionObserver、PdfContentViewImpl 用 ResizeObserver
+    vi.stubGlobal('IntersectionObserver', class {
+        constructor() {} observe() {} unobserve() {} disconnect() {}
+    })
+    vi.stubGlobal('ResizeObserver', class {
+        observe() {} unobserve() {} disconnect() {}
+    })
+})
 
 afterEach(() => {
     cleanup()
     onLoadSuccessCb = null
 })
 
+/** 触发 onLoadSuccess：注入 numPages + getPage(1).getViewport({scale:1}) */
+function fireLoad(numPages: number, w = 595, h = 842) {
+    onLoadSuccessCb?.({
+        numPages,
+        getPage: () => Promise.resolve({
+            getViewport: ({ scale }: { scale: number }) => ({ width: w * scale, height: h * scale }),
+        }),
+    })
+}
+
 describe('PdfContentViewImpl', () => {
-    it('blob 转 Uint8Array 后渲染 Document/Page 默认第 1 页 scale=1', async () => {
-        render(<PdfContentViewImpl blob={new Blob(['%PDF-1.4'], { type: 'application/pdf' })} filePath="doc.pdf" />)
-        // blob.arrayBuffer() 异步：await Document 渲染
-        expect(await screen.findByTestId('pdf-document')).toBeInTheDocument()
-        // 触发 onLoadSuccess 注入 numPages=3
-        onLoadSuccessCb?.({ numPages: 3 })
-        // 页码显示 1 / 3
-        expect(await screen.findByText('1 / 3')).toBeInTheDocument()
-        // Page 默认第 1 页、scale=1
-        const page = screen.getByTestId('pdf-page')
-        expect(page).toHaveAttribute('data-page', '1')
-        expect(page).toHaveAttribute('data-scale', '1')
+    it('file={url}：data-file 含 read-file 端点 + encodeURIComponent(filePath)', () => {
+        render(<PdfContentViewImpl sessionId="s1" filePath="a/b.pdf" />)
+        const doc = screen.getByTestId('pdf-document')
+        // url 形式：/api/sessions/s1/read-file?path=a%2Fb.pdf
+        expect(doc).toHaveAttribute('data-file')
+        const file = doc.getAttribute('data-file')!
+        expect(file).toContain('/api/sessions/s1/read-file')
+        expect(file).toContain(encodeURIComponent('a/b.pdf'))
     })
 
-    it('下一页/上一页翻页 + 边界禁用', async () => {
-        render(<PdfContentViewImpl blob={new Blob(['%PDF'], { type: 'application/pdf' })} filePath="doc.pdf" />)
-        await screen.findByTestId('pdf-document')
-        onLoadSuccessCb?.({ numPages: 3 })
-        expect(await screen.findByText('1 / 3')).toBeInTheDocument()
+    it('onLoadSuccess 后工具栏出现（百分比 / 适应宽度 / 100% 按钮可见）', async () => {
+        render(<PdfContentViewImpl sessionId="s1" filePath="a.pdf" />)
+        // Document 初始渲染（numPages=0 → Spin，但 Document 仍挂载以触发 onLoadSuccess）
+        expect(screen.getByTestId('pdf-document')).toBeInTheDocument()
 
-        // 初始：上一页禁用（第 1 页），下一页可用
-        const prevBtn = screen.getByText('上一页').closest('button')!
-        const nextBtn = screen.getByText('下一页').closest('button')!
-        expect(prevBtn).toBeDisabled()
-        expect(nextBtn).not.toBeDisabled()
+        // 触发 onLoadSuccess（2 页）
+        await act(async () => { fireLoad(2) })
 
-        // 点下一页 → 第 2 页
-        fireEvent.click(nextBtn)
-        expect(screen.getByTestId('pdf-page')).toHaveAttribute('data-page', '2')
-
-        // 再下一页 → 第 3 页（末页，下一页禁用）
-        fireEvent.click(screen.getByText('下一页'))
-        expect(screen.getByTestId('pdf-page')).toHaveAttribute('data-page', '3')
-        expect(screen.getByText('下一页').closest('button')).toBeDisabled()
-
-        // 点上一页 → 回第 2 页
-        fireEvent.click(screen.getByText('上一页'))
-        expect(screen.getByTestId('pdf-page')).toHaveAttribute('data-page', '2')
-    })
-
-    it('缩放 +/- 步进 0.2、边界 0.5~3、显示百分比', async () => {
-        render(<PdfContentViewImpl blob={new Blob(['%PDF'], { type: 'application/pdf' })} filePath="doc.pdf" />)
-        await screen.findByTestId('pdf-document')
-        onLoadSuccessCb?.({ numPages: 1 })
-
-        // 初始 100%
+        // 工具栏：比例（默认 100%）、适应宽度、100% 按钮可见
         expect(screen.getByText('100%')).toBeInTheDocument()
-        const minus = screen.getByText('-').closest('button')!
-        const plus = screen.getByText('+').closest('button')!
-
-        // + → 120%
-        fireEvent.click(plus)
-        expect(screen.getByText('120%')).toBeInTheDocument()
-        expect(screen.getByTestId('pdf-page')).toHaveAttribute('data-scale', '1.2')
-
-        // - 两次 → 回 80%
-        fireEvent.click(minus)
-        fireEvent.click(minus)
-        expect(screen.getByText('80%')).toBeInTheDocument()
+        expect(screen.getByText('files.fitWidth')).toBeInTheDocument()
+        expect(screen.getByText('files.actualSize')).toBeInTheDocument()
     })
 
-    it('缩放上限 3 / 下限 0.5（连续点击不越界）', async () => {
-        render(<PdfContentViewImpl blob={new Blob(['%PDF'], { type: 'application/pdf' })} filePath="doc.pdf" />)
-        await screen.findByTestId('pdf-document')
-        onLoadSuccessCb?.({ numPages: 1 })
+    it('100% 预设重置 scale（放大后点 100% 回到 100%）', async () => {
+        render(<PdfContentViewImpl sessionId="s1" filePath="a.pdf" />)
+        await act(async () => { fireLoad(2) })
 
-        const plus = screen.getByText('+').closest('button')!
-        // 连续点 + 11 次（1.0 → 3.0 封顶）
-        for (let i = 0; i < 11; i++) fireEvent.click(plus)
-        expect(screen.getByText('300%')).toBeInTheDocument()
-        expect(plus).toBeDisabled()
-        expect(screen.getByTestId('pdf-page')).toHaveAttribute('data-scale', '3')
+        // 默认 100%
+        expect(screen.getByText('100%')).toBeInTheDocument()
 
-        const minus = screen.getByText('-').closest('button')!
-        // 连续点 - 13 次（3.0 → 0.5 封顶）
-        for (let i = 0; i < 13; i++) fireEvent.click(minus)
-        expect(screen.getByText('50%')).toBeInTheDocument()
-        expect(minus).toBeDisabled()
-        expect(screen.getByTestId('pdf-page')).toHaveAttribute('data-scale', '0.5')
+        // 放大 → 120%
+        fireEvent.click(screen.getByText('+'))
+        expect(screen.getByText('120%')).toBeInTheDocument()
+
+        // 点 100%（actualSize）→ 回 100%
+        fireEvent.click(screen.getByText('files.actualSize'))
+        expect(screen.getByText('100%')).toBeInTheDocument()
+    })
+
+    it('不崩溃（基线）', () => {
+        render(<PdfContentViewImpl sessionId="s1" filePath="doc.pdf" />)
+        expect(screen.getByTestId('pdf-document')).toBeInTheDocument()
     })
 })
