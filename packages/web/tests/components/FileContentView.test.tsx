@@ -268,12 +268,12 @@ describe('FileContentView', () => {
         expect(screen.queryByTestId('pdf-document')).not.toBeInTheDocument()
     })
 
-    it('PDF shouldFetchContent=true（fetch content 拉 blob）', () => {
-        // PDF 需 fetch content 拿 ArrayBuffer 给 react-pdf
+    it('PDF shouldFetchContent=false（src 直连，不 fetch content）', () => {
+        // PDF 走 src 直连 read-file（pdfjs Range 按需加载），不再 fetch content blob
         setMock({ mime: 'application/pdf', size: 100, etag: 'v1' }, null)
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="doc.pdf" />)
-        // 第 3 个参数（enabled）应为 true（shouldFetchContent 含 pdf）
-        expect(useFileContent).toHaveBeenCalledWith('s1', 'doc.pdf', true, 'v1')
+        // 第 3 个参数（enabled）应为 false（shouldFetchContent 不含 pdf）
+        expect(useFileContent).toHaveBeenCalledWith('s1', 'doc.pdf', false, 'v1')
     })
 
     it('原生视频（mp4）→ MediaContentView video src 直连', async () => {

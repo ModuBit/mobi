@@ -71,9 +71,8 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase()
     const isNativeMedia = NATIVE_MEDIA_EXT.includes(ext)
 
-    // 只在「size 内 + 可预览类型」才取 content；图片走 src 直连端点（不 fetch blob），音视频/二进制不拉
-    // PDF 走 react-pdf：需 fetch content 拿 ArrayBuffer 渲染（与图片 src 直连不同）
-    const shouldFetchContent = !!meta && !tooLarge && !isAudioVideo && (isTextLike || isPdf)
+    // 只在「size 内 + 可预览类型」才取 content；图片/PDF 走 src 直连端点（不 fetch blob），音视频/二进制不拉
+    const shouldFetchContent = !!meta && !tooLarge && !isAudioVideo && isTextLike
     const { data: file, isLoading: contentLoading, error: contentError } = useFileContent(
         sessionId, filePath, shouldFetchContent, meta?.etag,
     )
