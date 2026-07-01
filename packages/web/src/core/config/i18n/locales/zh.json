@@ -230,7 +230,9 @@
     "copyPath": "复制文件路径",
     "pathCopied": "已复制路径",
     "viewSource": "查看源码",
-    "viewRender": "查看渲染"
+    "viewRender": "查看渲染",
+    "fitWidth": "适应宽度",
+    "actualSize": "100%"
   },
   "git": {
     "filesChanged": "{{count}} 个文件变更",

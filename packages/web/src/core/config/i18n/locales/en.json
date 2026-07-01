@@ -230,7 +230,9 @@
     "copyPath": "Copy file path",
     "pathCopied": "Path copied",
     "viewSource": "View source",
-    "viewRender": "View rendered"
+    "viewRender": "View rendered",
+    "fitWidth": "Fit width",
+    "actualSize": "100%"
   },
   "git": {
     "filesChanged": "{{count}} files changed",
