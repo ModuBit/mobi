@@ -123,6 +123,55 @@ describe('GET /api/sessions/:id/read-file 流式', () => {
         expect(new TextDecoder().decode(buf)).toBe('ell')
     })
 
+    test('206 Partial：Range bytes=-2（suffix 尾部 N 字节）返回最后 2 字节', async () => {
+        // suffix range：浏览器读 mp4 尾部 moov atom 时常用此形式（bytes=-N）
+        const token = await getAuthToken(app)
+
+        const res = await app.request('/api/sessions/s1/read-file?path=a.txt', {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Range: 'bytes=-2',
+            },
+        })
+
+        expect(res.status).toBe(206)
+        expect(res.headers.get('content-range')).toBe(`bytes 3-4/${FILE_CONTENT.byteLength}`)
+        expect(res.headers.get('content-length')).toBe('2')
+        const buf = new Uint8Array(await res.arrayBuffer())
+        expect(new TextDecoder().decode(buf)).toBe('lo')
+    })
+
+    test('206 Partial：Range bytes=-100（suffix 超过文件大小）返回整个文件', async () => {
+        // RFC 7233：suffix 长度 ≥ 文件大小时，区间回退为整个文件
+        const token = await getAuthToken(app)
+
+        const res = await app.request('/api/sessions/s1/read-file?path=a.txt', {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Range: 'bytes=-100',
+            },
+        })
+
+        expect(res.status).toBe(206)
+        expect(res.headers.get('content-range')).toBe(`bytes 0-4/${FILE_CONTENT.byteLength}`)
+        const buf = new Uint8Array(await res.arrayBuffer())
+        expect(new TextDecoder().decode(buf)).toBe('hello')
+    })
+
+    test('416：Range bytes=-0（suffix 长度为 0）非法', async () => {
+        const token = await getAuthToken(app)
+
+        const res = await app.request('/api/sessions/s1/read-file?path=a.txt', {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Range: 'bytes=-0',
+            },
+        })
+
+        expect(res.status).toBe(416)
+        expect(res.headers.get('content-range')).toBe(`bytes */${FILE_CONTENT.byteLength}`)
+    })
+
     test('304：If-None-Match 命中 etag 返回空', async () => {
         const token = await getAuthToken(app)
 

@@ -522,19 +522,32 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return new Response(null, { status: 304, headers: { etag } })
         }
 
-        // Range 解析（仅支持 bytes=start-end / bytes=start-）
+        // Range 解析（RFC 7233 三种形式）：
+        //   bytes=start-end  区间
+        //   bytes=start-     从 start 到末尾
+        //   bytes=-N         最后 N 字节（suffix，浏览器读 mp4 尾部 moov 时常用）
         let start = 0
         let end = size - 1
         let isRange = false
         const rangeHeader = c.req.header('range')
         if (rangeHeader) {
-            const m = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader)
-            if (m) {
-                start = Number(m[1])
-                if (m[2]) {
-                    end = Number(m[2])
+            const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader)
+            const firstPos = m?.[1]
+            const lastPos = m?.[2]
+            if (m && (firstPos || lastPos)) {
+                if (firstPos) {
+                    // bytes=start-end / bytes=start-
+                    start = Number(firstPos)
+                    if (lastPos) {
+                        end = Number(lastPos)
+                    }
+                    isRange = true
+                } else if (Number(lastPos) > 0) {
+                    // bytes=-N（suffix）：最后 N 字节；N ≥ size 时回退为整个文件
+                    start = Math.max(0, size - Number(lastPos))
+                    end = size - 1
+                    isRange = true
                 }
-                isRange = true
             }
             // 越界或非法区间：416
             if (!isRange || start > end || start >= size) {

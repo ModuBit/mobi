@@ -77,3 +77,20 @@ describe('CORS 守卫', () => {
         warnSpy.mockRestore()
     })
 })
+
+describe('bun-engine maxHttpBufferSize', () => {
+    // 回归：hub 用 @socket.io/bun-engine 作底层 engine，io.bind(外部 engine) 不会把
+    // socket.io Server 的 maxHttpBufferSize 透传给 bun-engine；bun-engine 默认仅 1MB。
+    // readFileRange 单段 chunk 为 2MB，超过 1MB 会被 bun-engine 判定 "payload too large"
+    // 并断开 cli 连接（transport close），导致大文件（图片/视频）预览 body 为空。
+    test('engine 的 maxHttpBufferSize 必须大于 readFileRange 的 2MB 单段 chunk', () => {
+        const { engine } = createSocketServer({
+            store: null as never,
+            jwtSecret: testJwtSecret,
+            corsOrigins: ['http://localhost:3000']
+        })
+        const FILE_RANGE_CHUNK = 2 * 1024 * 1024
+        // 大于 2MB chunk 才能容纳 cli 回传的整段二进制响应
+        expect(engine.opts.maxHttpBufferSize).toBeGreaterThan(FILE_RANGE_CHUNK)
+    })
+})

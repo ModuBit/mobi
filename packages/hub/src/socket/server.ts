@@ -105,6 +105,12 @@ export function createSocketServer(deps: SocketServerDeps): {
     const engine = new Engine({
         path: '/socket.io/',
         cors: corsOptions,
+        // 4MB：允许 readFileRange 单 chunk 二进制响应（cli → hub 方向）。
+        // maxHttpBufferSize 是 engine 层选项，必须直接设在 bun-engine 上——
+        // io.bind(外部 engine) 不会把上面 new Server(maxHttpBufferSize) 的同名选项透传过来。
+        // bun-engine 默认仅 1MB，超过会判定 "payload too large" 并断开 cli 连接（transport close），
+        // 表现为 hub stream 拿不到 chunk、大文件（图片/视频）预览 body 为空。
+        maxHttpBufferSize: 4e6,
         allowRequest: async (req) => {
             const origin = req.headers.get('origin')
             if (!origin || allowAllOrigins || corsOrigins.includes(origin)) {
