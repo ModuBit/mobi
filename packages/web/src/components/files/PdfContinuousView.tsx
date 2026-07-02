@@ -24,8 +24,10 @@ interface PdfContinuousViewProps {
     pageWidth: number
     /** 单页原始高度（A4 = 842） */
     pageHeight: number
-    /** 当前缩放比例 */
-    scale: number
+    /** 即时缩放（CSS transform 预览 + 占位高度）；用户拖动/按钮即时变化 */
+    previewScale: number
+    /** pdfjs 实际渲染缩放（debounce 后跟随 previewScale，保证清晰） */
+    renderScale: number
     /**
      * 滚动容器 ref（作为 IntersectionObserver 的 root）。
      * 滚动发生在 PdfContentViewImpl 的滚动 div 内，IO 必须以该容器为 root 才能正确
@@ -48,7 +50,7 @@ interface PdfContinuousViewProps {
  * querySelectorAll('[data-placeholder]') 一次性 observe 全部占位，无遗漏。
  * numPages 变化（切换 PDF）时 effect 重跑，对新占位重新 observe。
  */
-export default function PdfContinuousView({ numPages, pageWidth: _pageWidth, pageHeight, scale, scrollRootRef }: PdfContinuousViewProps) {
+export default function PdfContinuousView({ numPages, pageWidth: _pageWidth, pageHeight, previewScale, renderScale, scrollRootRef }: PdfContinuousViewProps) {
     const [visible, setVisible] = useState<Set<number>>(new Set())
     const containerRef = useRef<HTMLDivElement>(null)
 
@@ -89,16 +91,20 @@ export default function PdfContinuousView({ numPages, pageWidth: _pageWidth, pag
         return () => io.disconnect()
     }, [numPages])
 
+    const previewRatio = previewScale / renderScale
+
     return (
         <div ref={containerRef}>
             {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
                 <div
                     key={pageNumber}
                     data-placeholder={pageNumber}
-                    style={{ height: `${pageHeight * scale}px` }}
+                    style={{ height: `${pageHeight * previewScale}px` }}
                 >
                     {visible.has(pageNumber) && (
-                        <Page pageNumber={pageNumber} scale={scale} />
+                        <div style={{ transform: `scale(${previewRatio})`, transformOrigin: 'top left' }}>
+                            <Page pageNumber={pageNumber} scale={renderScale} />
+                        </div>
                     )}
                 </div>
             ))}

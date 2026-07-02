@@ -64,7 +64,7 @@ function triggerPageVisible(pageNumber: number, isIntersecting: boolean) {
 
 describe('PdfContinuousView', () => {
     it('渲染 N 个占位 div，初始无 Page（IO 未触发可见）', () => {
-        render(<PdfContinuousView numPages={3} pageWidth={595} pageHeight={842} scale={1} />)
+        render(<PdfContinuousView numPages={3} pageWidth={595} pageHeight={842} previewScale={1} renderScale={1} />)
 
         // 3 个占位
         const placeholders = document.querySelectorAll('[data-placeholder]')
@@ -83,7 +83,7 @@ describe('PdfContinuousView', () => {
     })
 
     it('占位进入可视区 → 渲染 Page；离开 → 卸载', () => {
-        render(<PdfContinuousView numPages={3} pageWidth={595} pageHeight={842} scale={1} />)
+        render(<PdfContinuousView numPages={3} pageWidth={595} pageHeight={842} previewScale={1} renderScale={1} />)
 
         // 初始无 page-1
         expect(document.querySelector('[data-testid="pdf-page-1"]')).not.toBeInTheDocument()
@@ -100,12 +100,30 @@ describe('PdfContinuousView', () => {
         expect(document.querySelector('[data-testid="pdf-page-1"]')).not.toBeInTheDocument()
     })
 
-    it('占位高度随 scale 变化（scale=2 → 1684px）', () => {
-        render(<PdfContinuousView numPages={1} pageWidth={595} pageHeight={842} scale={2} />)
+    it('占位高度随 previewScale 变化（previewScale=2 → 1684px）', () => {
+        render(<PdfContinuousView numPages={1} pageWidth={595} pageHeight={842} previewScale={2} renderScale={1} />)
 
         const placeholder = document.querySelector('[data-placeholder="1"]') as HTMLElement
         expect(placeholder).toBeInTheDocument()
-        // 高度 = pageHeight * scale = 842 * 2 = 1684px
+        // 高度 = pageHeight * previewScale = 842 * 2 = 1684px
         expect(placeholder.style.height).toContain('1684')
+    })
+
+    it('transform 补偿：previewScale=2 renderScale=1 → wrapper scale(2) + origin top left，Page scale=1', () => {
+        render(<PdfContinuousView numPages={1} pageWidth={595} pageHeight={842} previewScale={2} renderScale={1} />)
+
+        // 先让 page-1 进入可视区，触发 Page 渲染
+        triggerPageVisible(1, true)
+
+        // Page 渲染且 scale=renderScale=1（pdfjs 实际渲染缩放）
+        const page = document.querySelector('[data-testid="pdf-page-1"]')
+        expect(page).toBeInTheDocument()
+        expect(page).toHaveAttribute('data-scale', '1')
+
+        // Page 外层 wrapper 有 transform: scale(previewScale/renderScale) = scale(2)
+        const wrapper = page!.parentElement as HTMLElement
+        expect(wrapper.style.transform).toBe('scale(2)')
+        // transformOrigin 必须是 top left（否则缩放偏移）
+        expect(wrapper.style.transformOrigin).toBe('top left')
     })
 })

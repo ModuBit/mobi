@@ -23,6 +23,8 @@ export const MIN_SCALE = 0.5
 export const MAX_SCALE = 3
 /** 缩放步进 */
 export const SCALE_STEP = 0.2
+/** 把缩放值约束到 [MIN_SCALE, MAX_SCALE]（按钮步进、pinch、适应宽度共用） */
+export const clampScale = (s: number): number => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s))
 
 interface PdfToolbarProps {
     /** 当前缩放比例（1 = 100%） */
@@ -52,8 +54,8 @@ export default function PdfToolbar({
 }: PdfToolbarProps) {
     const { t } = useTranslation()
     // toFixed(1) 避免浮点累加（0.1+0.2=0.30000000000000004）
-    const zoomIn = () => onScaleChange(Math.min(MAX_SCALE, +(scale + SCALE_STEP).toFixed(1)))
-    const zoomOut = () => onScaleChange(Math.max(MIN_SCALE, +(scale - SCALE_STEP).toFixed(1)))
+    const zoomIn = () => onScaleChange(clampScale(+(scale + SCALE_STEP).toFixed(1)))
+    const zoomOut = () => onScaleChange(clampScale(+(scale - SCALE_STEP).toFixed(1)))
 
     return (
         <div

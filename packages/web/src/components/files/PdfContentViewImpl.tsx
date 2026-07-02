@@ -139,7 +139,8 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
                                     numPages={numPages}
                                     pageWidth={pageWidth}
                                     pageHeight={pageHeight}
-                                    scale={scale}
+                                    previewScale={scale}
+                                    renderScale={scale}
                                     scrollRootRef={containerRef}
                                 />
                             )}
