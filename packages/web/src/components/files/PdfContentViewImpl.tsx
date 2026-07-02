@@ -28,7 +28,7 @@ import 'react-pdf/dist/Page/TextLayer.css'
 // 返回 index.html，worker 加载到 HTML 而非脚本 → pdfjs worker 起不来 → PDF 渲染失败。
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 // 缩放上下限从 PdfToolbar 导出（叶子组件，避免重复定义 + 循环依赖）
-import PdfToolbar, { MIN_SCALE, MAX_SCALE } from './PdfToolbar'
+import PdfToolbar, { clampScale } from './PdfToolbar'
 import PdfContinuousView from './PdfContinuousView'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
@@ -44,7 +44,7 @@ const PDF_OPTIONS = { withCredentials: true } as const
  * 宽度 ≤ 0（未就绪）返回 null（调用方判断是否 setScale）。
  */
 const computeFitScale = (cw: number, pw: number): number | null =>
-    cw > 0 && pw > 0 ? Math.max(MIN_SCALE, Math.min(MAX_SCALE, cw / pw)) : null
+    cw > 0 && pw > 0 ? clampScale(cw / pw) : null
 
 interface PdfContentViewImplProps {
     /** 会话 ID（拼 read-file 端点 url） */
