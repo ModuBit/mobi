@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
 import { logger } from '@/ui/logger'
 import { readFile, stat, writeFile } from 'fs/promises'
 import { createReadStream } from 'fs'
@@ -64,8 +65,8 @@ interface ReadFileRangeResponse {
     error?: string
 }
 
-/** 单段最大 2MB（受 hub maxHttpBufferSize 4MB 约束，留余量） */
-const FILE_RANGE_CHUNK = 2 * 1024 * 1024
+/** 单段最大 chunk（值在 @mobi/shared RPC_BINARY_CHUNK_SIZE 统一，与 hub 流式转发 / bun-engine 上限协同） */
+const FILE_RANGE_CHUNK = RPC_BINARY_CHUNK_SIZE
 
 export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // readFileMeta：stat → mime/size/etag（etag = size-mtimeMs，文件变化 mtime 必变）

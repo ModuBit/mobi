@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
+import { getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary, RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
@@ -584,7 +584,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         // → writable queue 满 → write 的 Promise 不 resolve → 循环暂停）。
         // 但 hono StreamingApi.write 内部吞掉所有异常，客户端断开后 write 仍立即 resolve，
         // 背压失效——靠循环内 s.aborted/s.closed 检查兜底，避免空转把剩余文件全量拉进内存丢弃。
-        const CHUNK = 2 * 1024 * 1024
+        const CHUNK = RPC_BINARY_CHUNK_SIZE
         return stream(c, async (s) => {
             let offset = start
             while (offset <= end) {
