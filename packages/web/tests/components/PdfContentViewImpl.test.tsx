@@ -19,6 +19,7 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { afterEach, beforeEach } from 'vitest'
 import PdfContentViewImpl from '@/components/files/PdfContentViewImpl'
+import { clampScale } from '@/components/files/PdfToolbar'
 
 // react-pdf 在 jsdom 下无法真正渲染，mock 成受控占位：
 // - Document 透传 file prop（data-file）+ 把 onLoadSuccess 暴露出来供测试触发
@@ -219,5 +220,93 @@ describe('PdfContentViewImpl', () => {
         act(() => { vi.advanceTimersByTime(300) })
         expect(cont().getAttribute('data-render')).toBe(cont().getAttribute('data-preview'))
         vi.useRealTimers()
+    })
+
+    // Task 3: 移动端双指 pinch 缩放
+    // jsdom 不实现 Touch，需手动构造 TouchLike 对象（React 只读 identifier/clientX/Y/target 等字段）
+    /** jsdom 下构造 Touch 事件所需的最小字段（对齐 React Touch 读取的属性） */
+    type TouchLike = {
+        identifier: number
+        clientX: number
+        clientY: number
+        target: Element
+        radiusX: number
+        radiusY: number
+        force: number
+        rotationAngle: number
+    }
+    function makeTouch(x: number, y: number, id: number, target: Element): TouchLike {
+        return {
+            identifier: id,
+            clientX: x,
+            clientY: y,
+            target,
+            radiusX: 0,
+            radiusY: 0,
+            force: 0,
+            rotationAngle: 0,
+        }
+    }
+
+    it('双指 pinch：距离 ×2 → previewScale 按比例放大；松指后单指不触发', async () => {
+        const { container } = render(<PdfContentViewImpl sessionId="s1" filePath="x.pdf" />)
+        await act(async () => { fireLoad(1) })
+        const cont = () => screen.getByTestId('pdf-continuous')
+        const base = Number(cont().getAttribute('data-preview'))
+
+        // 滚动容器 = 绑 onTouchStart 的元素（含 overflow: auto）
+        const scrollArea = container.querySelector('[style*="overflow"]')!
+        // 两指起点：指 0 在 (100,100)，指 1 在 (200,100)，距离 100
+        const t1 = makeTouch(100, 100, 0, scrollArea)
+        const t2_start = makeTouch(200, 100, 1, scrollArea)
+        // move 后指 1 移到 (300,100)，距离变为 200（×2）
+        const t2_move = makeTouch(300, 100, 1, scrollArea)
+
+        // 双指落下
+        fireEvent.touchStart(scrollArea, { touches: [t1, t2_start] })
+        // 双指移动：距离 ×2 → previewScale = clamp(base * 2)
+        fireEvent.touchMove(scrollArea, { touches: [t1, t2_move] })
+        const after = Number(cont().getAttribute('data-preview'))
+        expect(after).toBeCloseTo(clampScale(base * 2), 1)
+
+        // 双指离开（剩余 < 2）→ pinchRef 清空
+        fireEvent.touchEnd(scrollArea, { touches: [t1], changedTouches: [t2_move] })
+        const afterEnd = Number(cont().getAttribute('data-preview'))
+
+        // 单指 touchmove 不应改变 scale（pinchRef 已清空）
+        fireEvent.touchMove(scrollArea, { touches: [t1] })
+        expect(Number(cont().getAttribute('data-preview'))).toBe(afterEnd)
+    })
+
+    it('pinch 距离 ×0.5 → previewScale 按比例缩小（不低于 MIN_SCALE）', async () => {
+        const { container } = render(<PdfContentViewImpl sessionId="s1" filePath="x.pdf" />)
+        await act(async () => { fireLoad(1) })
+        const cont = () => screen.getByTestId('pdf-continuous')
+        const base = Number(cont().getAttribute('data-preview'))
+
+        const scrollArea = container.querySelector('[style*="overflow"]')!
+        const t1 = makeTouch(100, 100, 0, scrollArea)
+        const t2_start = makeTouch(200, 100, 1, scrollArea) // 距离 100
+        const t2_move = makeTouch(150, 100, 1, scrollArea)  // 距离 50（×0.5）
+
+        fireEvent.touchStart(scrollArea, { touches: [t1, t2_start] })
+        fireEvent.touchMove(scrollArea, { touches: [t1, t2_move] })
+        const after = Number(cont().getAttribute('data-preview'))
+        expect(after).toBeCloseTo(clampScale(base * 0.5), 1)
+    })
+
+    it('单指 touchStart + touchMove 不触发 pinch（无第二指）', async () => {
+        const { container } = render(<PdfContentViewImpl sessionId="s1" filePath="x.pdf" />)
+        await act(async () => { fireLoad(1) })
+        const cont = () => screen.getByTestId('pdf-continuous')
+        const base = Number(cont().getAttribute('data-preview'))
+
+        const scrollArea = container.querySelector('[style*="overflow"]')!
+        const t1 = makeTouch(100, 100, 0, scrollArea)
+
+        // 单指落下 + 移动：不应触发 pinch（pinchRef 从未设置）
+        fireEvent.touchStart(scrollArea, { touches: [t1] })
+        fireEvent.touchMove(scrollArea, { touches: [t1] })
+        expect(Number(cont().getAttribute('data-preview'))).toBe(base)
     })
 })

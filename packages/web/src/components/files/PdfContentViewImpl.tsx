@@ -133,11 +133,37 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
     const reset = () => setPreviewScale(1)
     const handleScaleChange = (s: number) => setPreviewScale(clampScale(s))
 
-    // Task 3 将实现 pinch gesture；现先占位 noop，避免 touch 事件被默认行为吞掉滚动。
-    // touchAction: 'pan-y' 允许纵向滚动交给浏览器原生处理（横向留给未来 pinch）。
-    const onTouchStart = (_e: React.TouchEvent) => {}
-    const onTouchMove = (_e: React.TouchEvent) => {}
-    const onTouchEnd = () => {}
+    // pinch 状态：双指起始距离 + 起始 previewScale（onTouchStart 记录，onTouchMove 按比例缩放）
+    const pinchRef = useRef<{ startDist: number; baseScale: number } | null>(null)
+
+    /** 两指欧几里得距离（clientX/Y 坐标系）；不足两指返回 0 */
+    const getTouchDist = (touches: React.TouchList): number => {
+        if (touches.length < 2) return 0
+        const dx = touches[0].clientX - touches[1].clientX
+        const dy = touches[0].clientY - touches[1].clientY
+        return Math.hypot(dx, dy)
+    }
+
+    // touchAction: 'pan-y' 允许纵向滚动交给浏览器原生处理（pan-y），双指 pinch 由 JS 接管。
+    const onTouchStart = (e: React.TouchEvent) => {
+        // 双指落下：记录初始指间距 + 当前 previewScale 作为 pinch 基线
+        if (e.touches.length === 2) {
+            pinchRef.current = { startDist: getTouchDist(e.touches), baseScale: previewScale }
+        }
+    }
+    const onTouchMove = (e: React.TouchEvent) => {
+        const ps = pinchRef.current
+        if (!ps || e.touches.length !== 2) return
+        const dist = getTouchDist(e.touches)
+        // 距离 0 防御（除零）：起点或当前距离退化时跳过
+        if (ps.startDist <= 0 || dist <= 0) return
+        const ratio = dist / ps.startDist
+        setPreviewScale(clampScale(ps.baseScale * ratio))
+    }
+    const onTouchEnd = (e: React.TouchEvent) => {
+        // 双指离开（剩余 < 2）→ 结束 pinch；previewScale 已变，debounce 自然跟进 renderScale
+        if (e.touches.length < 2) pinchRef.current = null
+    }
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
