@@ -68,7 +68,7 @@ interface PdfContentViewImplProps {
  *   才追上（避免高频重渲染）。首屏 fit 时 preview+render 同步设置，绕过 debounce（避免首屏 300ms 模糊）。
  * - **工具栏**：PdfToolbar（-/百分比/+ /适应宽度/100%），百分比显示即时 previewScale。
  *
- * 常量（MIN_SCALE/MAX_SCALE/SCALE_STEP）在 PdfToolbar 导出，这里只 import 前两个用于 clamp。
+ * clampScale 及其常量（MIN_SCALE/MAX_SCALE/SCALE_STEP）在 PdfToolbar 导出（叶子组件，避免重复定义 + 循环依赖）。
  */
 export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentViewImplProps) {
     const { t } = useTranslation()
