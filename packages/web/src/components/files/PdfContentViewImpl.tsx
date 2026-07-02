@@ -46,6 +46,9 @@ const PDF_OPTIONS = { withCredentials: true } as const
 const computeFitScale = (cw: number, pw: number): number | null =>
     cw > 0 && pw > 0 ? clampScale(cw / pw) : null
 
+/** renderScale 跟随 previewScale 的 debounce 延迟（ms）：停顿 300ms 后才触发 pdfjs 高清重渲染 */
+const DEBOUNCE_MS = 300
+
 interface PdfContentViewImplProps {
     /** 会话 ID（拼 read-file 端点 url） */
     sessionId: string
@@ -60,7 +63,10 @@ interface PdfContentViewImplProps {
  *   不再全量读 blob 转 Uint8Array）。大 PDF 只下载首部 + 当前可视页，首屏更快、内存更省。
  * - **适应宽度默认**：onLoadSuccess 拿第一页 viewport，按 containerWidth / pageWidth 算初始 scale。
  * - **连续滚动**：Document 内放 PdfContinuousView（IntersectionObserver 虚拟化，只渲染可视页）。
- * - **工具栏**：PdfToolbar（-/百分比/+ /适应宽度/100%，Task 1 已实现）。
+ * - **混合缩放**：previewScale 即时（CSS transform 预览）/ renderScale debounce 300ms 跟随（pdfjs
+ *   高清重渲染）。用户拖动/按按钮时 previewScale 立即变化（视觉无卡顿），停顿 300ms 后 renderScale
+ *   才追上（避免高频重渲染）。首屏 fit 时 preview+render 同步设置，绕过 debounce（避免首屏 300ms 模糊）。
+ * - **工具栏**：PdfToolbar（-/百分比/+ /适应宽度/100%），百分比显示即时 previewScale。
  *
  * 常量（MIN_SCALE/MAX_SCALE/SCALE_STEP）在 PdfToolbar 导出，这里只 import 前两个用于 clamp。
  */
@@ -69,12 +75,26 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
     const [numPages, setNumPages] = useState(0)
     const [pageWidth, setPageWidth] = useState(0)
     const [pageHeight, setPageHeight] = useState(0)
-    const [scale, setScale] = useState(1)
+    // 混合缩放：previewScale 即时（驱动 CSS transform 预览 + 工具栏百分比），
+    // renderScale debounce 300ms 跟随（驱动 pdfjs <Page scale=renderScale> 高清重渲染）
+    const [previewScale, setPreviewScale] = useState(1)
+    const [renderScale, setRenderScale] = useState(1)
+    // debounce timer handle（useEffect cleanup 时 clear，避免泄漏/重复触发）
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     // PDF 加载失败（损坏/加密/格式错）：渲染错误提示，而非空白
     const [loadError, setLoadError] = useState<Error | null>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     // 滚动容器宽度（ResizeObserver 跟踪），用于「适应宽度」计算
     const [containerWidth, setContainerWidth] = useState(0)
+
+    // debounce：previewScale 变化 → 停顿 300ms → renderScale 跟随。
+    // 每次 previewScale 变化都 clear 上次 timer 重排，保证只在用户停止操作后才重渲染。
+    // cleanup 清理 pending timer，防止组件卸载后 setState（内存泄漏/警告）。
+    useEffect(() => {
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+        debounceRef.current = setTimeout(() => setRenderScale(previewScale), DEBOUNCE_MS)
+        return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+    }, [previewScale])
 
     // ResizeObserver：容器宽度变化时更新 containerWidth（驱动适应宽度计算）
     useEffect(() => {
@@ -98,27 +118,48 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
         // （首次 mount 时 observer 回调可能晚于 onLoadSuccess → containerWidth state=0 → 适应宽度失效）
         const cw = containerRef.current?.getBoundingClientRect().width ?? 0
         const fit = computeFitScale(cw, vp.width)
-        if (fit !== null) setScale(fit)
+        if (fit !== null) {
+            // 首屏：preview + render 同步设，绕过 debounce（避免首屏 300ms 模糊）
+            setPreviewScale(fit)
+            setRenderScale(fit)
+        }
     }
 
     const fitWidth = () => {
         // 用户点按钮触发：此时 ResizeObserver 早已 fire，containerWidth state 已就绪
         const fit = computeFitScale(containerWidth, pageWidth)
-        if (fit !== null) setScale(fit)
+        if (fit !== null) setPreviewScale(fit)   // 即时预览，debounce 自然跟进 renderScale
     }
-    const reset = () => setScale(1)
+    const reset = () => setPreviewScale(1)
+    const handleScaleChange = (s: number) => setPreviewScale(clampScale(s))
+
+    // Task 3 将实现 pinch gesture；现先占位 noop，避免 touch 事件被默认行为吞掉滚动。
+    // touchAction: 'pan-y' 允许纵向滚动交给浏览器原生处理（横向留给未来 pinch）。
+    const onTouchStart = (_e: React.TouchEvent) => {}
+    const onTouchMove = (_e: React.TouchEvent) => {}
+    const onTouchEnd = () => {}
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <PdfToolbar
-                scale={scale}
-                onScaleChange={setScale}
+                scale={previewScale}
+                onScaleChange={handleScaleChange}
                 onFitWidth={fitWidth}
                 onReset={reset}
             />
             <div
                 ref={containerRef}
-                style={{ flex: 1, minHeight: 0, overflow: 'auto', background: 'var(--ant-color-fill-quaternary)' }}
+                style={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: 'auto',
+                    background: 'var(--ant-color-fill-quaternary)',
+                    // 允许纵向滚动交给浏览器原生（pan-y），横向留给未来 pinch（Task 3）
+                    touchAction: 'pan-y',
+                }}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
             >
                 {loadError ? (
                     <Empty description={t('files.loadFailed')} style={{ marginTop: 40 }} />
@@ -139,8 +180,8 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
                                     numPages={numPages}
                                     pageWidth={pageWidth}
                                     pageHeight={pageHeight}
-                                    previewScale={scale}
-                                    renderScale={scale}
+                                    previewScale={previewScale}
+                                    renderScale={renderScale}
                                     scrollRootRef={containerRef}
                                 />
                             )}

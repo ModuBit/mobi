@@ -60,6 +60,13 @@ vi.mock('react-pdf', () => ({
 vi.mock('react-pdf/dist/Page/AnnotationLayer.css', () => ({}))
 vi.mock('react-pdf/dist/Page/TextLayer.css', () => ({}))
 
+// mock PdfContinuousView：暴露 previewScale/renderScale 到 data-*，便于断言混合缩放状态
+vi.mock('@/components/files/PdfContinuousView', () => ({
+    default: ({ previewScale, renderScale }: { previewScale: number; renderScale: number }) => (
+        <div data-testid="pdf-continuous" data-preview={previewScale} data-render={renderScale} />
+    ),
+}))
+
 // PdfToolbar 调 useTranslation，mock 掉避免 i18n 初始化报错（与 Task 1 测试一致）
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
@@ -163,5 +170,54 @@ describe('PdfContentViewImpl', () => {
         // 初始 scale=3（MAX_SCALE）→ 工具栏 300%
         expect(screen.getByText('300%')).toBeInTheDocument()
         HTMLElement.prototype.getBoundingClientRect = orig
+    })
+
+    it('混合缩放：previewScale 即时变，renderScale debounce 300ms 后跟随', async () => {
+        vi.useFakeTimers()
+        render(<PdfContentViewImpl sessionId="s1" filePath="x.pdf" />)
+        await act(async () => { fireLoad(1) })
+        const cont = () => screen.getByTestId('pdf-continuous')
+        // 首屏 fit：preview 与 render 同步（绕过 debounce，避免首屏 300ms 模糊）
+        expect(cont().getAttribute('data-render')).toBe(cont().getAttribute('data-preview'))
+
+        // 点 +：preview 即时变，render 未变（debounce 中）
+        fireEvent.click(screen.getByText('+'))
+        expect(cont().getAttribute('data-preview')).not.toBe(cont().getAttribute('data-render'))
+
+        // 快进 299ms：render 仍旧（debounce 未到）
+        act(() => { vi.advanceTimersByTime(299) })
+        expect(cont().getAttribute('data-render')).not.toBe(cont().getAttribute('data-preview'))
+
+        // 快进到 300ms：render 跟随 preview
+        act(() => { vi.advanceTimersByTime(1) })
+        expect(cont().getAttribute('data-render')).toBe(cont().getAttribute('data-preview'))
+        vi.useRealTimers()
+    })
+
+    it('debounce 清理：连续缩放只触发最后一次 renderScale 更新', async () => {
+        vi.useFakeTimers()
+        render(<PdfContentViewImpl sessionId="s1" filePath="x.pdf" />)
+        await act(async () => { fireLoad(1) })
+        const cont = () => screen.getByTestId('pdf-continuous')
+        // 首屏同步
+        const initialPreview = cont().getAttribute('data-preview')
+
+        // 连续点 3 次 +：每次重置 debounce，只最后一次应触发 render
+        fireEvent.click(screen.getByText('+'))
+        act(() => { vi.advanceTimersByTime(150) })  // 未到 300ms
+        fireEvent.click(screen.getByText('+'))
+        act(() => { vi.advanceTimersByTime(150) })  // 未到 300ms
+        fireEvent.click(screen.getByText('+'))
+        // 仍未到 300ms（累计 150+150=300，但每次 click 重置计时器，最后一次只过 150ms）
+        // 实际：每点一次 → useEffect 重跑 → clearTimeout + 重排 setTimeout(300)
+        // 三次 click 后只过了 300ms（150+150+0），最后一次 setTimeout 才过 0ms → render 未更新
+        // 注：上面两次 advanceTimersByTime(150) 后，第三次 click 重置 timer → 再 advance 才到
+        expect(cont().getAttribute('data-render')).toBe(initialPreview) // render 仍旧
+        expect(cont().getAttribute('data-preview')).not.toBe(initialPreview) // preview 已变
+
+        // 快进到第三次 click 后的 300ms：render 跟随
+        act(() => { vi.advanceTimersByTime(300) })
+        expect(cont().getAttribute('data-render')).toBe(cont().getAttribute('data-preview'))
+        vi.useRealTimers()
     })
 })
