@@ -70,13 +70,18 @@ function PdfPage({ pageNumber, previewScale, renderScale }: {
     }
 
     return (
-        <>
+        // PdfPage 根撑满占位（height:100% = 外层 var(--page-h)），所有层 absolute 不参与布局。
+        // 切换层（renderScale 变）时占位高度仅由 CSS 变量驱动（previewScale），层增减/切换不改变
+        // 占位布局 → 无 layout shift（CLS 实测 0.69 的闪屏真根因：relative 层 Page canvas 尺寸随
+        // renderScale 变化撑动占位）。新层 opacity:0 渲染中不遮挡旧层。
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
             {layers.map((l, i) => (
                 <div
                     key={l.id}
                     style={{
-                        position: i === 0 ? 'relative' : 'absolute',
+                        position: 'absolute',
                         top: 0, left: 0,
+                        opacity: i === 0 ? 1 : 0,
                         transform: `scale(${previewScale / l.scale})`,
                         transformOrigin: 'top left',
                     }}
@@ -88,7 +93,7 @@ function PdfPage({ pageNumber, previewScale, renderScale }: {
                     />
                 </div>
             ))}
-        </>
+        </div>
     )
 }
 
