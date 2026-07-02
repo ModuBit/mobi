@@ -23,6 +23,8 @@ const PdfContentViewImpl = lazy(() => import('./PdfContentViewImpl'))
 interface PdfContentViewProps {
     /** 会话 ID（拼 read-file 端点 url，pdfjs 走 HTTP Range 按需加载） */
     sessionId: string
+    /** 所属 tab id（读写 tab.viewState 记忆缩放+滚动） */
+    tabId: string
     /** 文件路径（拼 url query param path） */
     filePath: string
 }

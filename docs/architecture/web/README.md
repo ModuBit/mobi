@@ -116,14 +116,15 @@ packages/web/src/
 │   │   ├── api/                HTTP API
 │   │   │   ├── client.ts       createMobiApi() — 所有 REST 端点
 │   │   │   └── types.ts        统一类型定义（Web 前端唯一类型源）
-│   │   ├── stores/             Zustand 全局状态（7 个）
+│   │   ├── stores/             Zustand 全局状态（8 个）
 │   │   │   ├── authStore.ts    认证 token（localStorage 持久化）
 │   │   │   ├── uiStore.ts      UI 状态（主题、语言、侧边栏、视图模式）
 │   │   │   ├── chatBlocksByIdStore.ts   会话级 ChatBlock 缓存
 │   │   │   ├── backgroundTasksStore.ts  后台任务状态
 │   │   │   ├── runningAgentsStore.ts    运行中 Agent 状态
 │   │   │   ├── teamAgentsStore.ts       Team Agent 状态
-│   │   │   └── notificationBadgeStore.ts 通知角标未读状态
+│   │   │   ├── notificationBadgeStore.ts 通知角标未读状态
+│   │   │   └── workspaceStore.ts  Inspector 面板状态（tabs + tab 视图状态）
 │   │   ├── realtime/           实时通信
 │   │   │   └── sseClient.ts    SSE 传输层（fetch-event-source 封装）
 │   │   ├── cache/              缓存操作工具
@@ -568,6 +569,7 @@ Web 端区分三种状态，使用不同的管理方案：
 | `useRunningAgentsStore` | 运行中 Agent 状态 |
 | `useTeamAgentsStore` | Team Agent 状态 |
 | `useNotificationBadgeStore` | 通知角标未读状态 |
+| `useWorkspaceStore` | Inspector 面板状态（按 sessionId 隔离：tabs、activeTabId、布局，及 tab 的视图状态 `viewState` 如 PDF 缩放/滚动比例） |
 
 ## 布局体系
 

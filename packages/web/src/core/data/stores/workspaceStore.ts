@@ -25,6 +25,22 @@ export interface InspectorTabEntry {
     filePath?: string
     /** mode='file'：tab 显示名 */
     fileName?: string
+    /**
+     * 该 tab 的视图状态（切走再切回恢复）。挂 tab 上：closeTab 自动清；新类型只需扩字段。
+     * 通用 scrollRatio（所有可滚动类型共用）+ 按需扩展（scale 仅可缩放类型如 PDF）。
+     */
+    viewState?: TabViewState
+}
+
+/**
+ * tab 视图状态：跨 session 切换恢复用。各类型按需扩展（PDF 加 scale；未来 markdown/代码复用 scrollRatio）。
+ * 用比例（scrollRatio）而非绝对 scrollTop：scrollHeight 含缩放/换行变化，绝对像素会偏；比例稳定。
+ */
+export interface TabViewState {
+    /** 滚动比例 scrollTop/scrollHeight（[0,1]），所有可滚动类型通用 */
+    scrollRatio?: number
+    /** 缩放（1=100%），仅可缩放类型（如 PDF） */
+    scale?: number
 }
 
 /** 单个 session 的检视面板状态 */
@@ -70,6 +86,8 @@ interface WorkspaceState {
     /** 关闭 tab；归空则收起 inspector；关的是 active 则激活相邻 */
     closeTab: (sessionId: string, tabId: string) => void
     setActiveTab: (sessionId: string, tabId: string) => void
+    /** 记住某 tab 的视图状态（滚动比例/缩放等）；patch 与现有值逐字段合并，同值短路 */
+    setTabViewState: (sessionId: string, tabId: string, patch: Partial<TabViewState>) => void
     clearSession: (sessionId: string) => void
     clearAll: () => void
 }
@@ -137,8 +155,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 next.set(sessionId, { ...cur, activeTabId: existed.id })
                 return { sessions: next }
             }
+            // 转换：把 tabId 指向的 tab 转为 file（tree→file 或 file→换文件）。
+            // 关键：换文件时必须清旧 viewState——viewState 属于上一个文件的内容（缩放/滚动），
+            // 同 tab 切到新文件（含 pdf↔pdf、pdf↔非pdf、非pdf↔非pdf）旧值已失效，
+            // 残留会导致新文件继承旧文件的缩放/滚动位置。
             const tabs = cur.tabs.map((t) =>
-                t.id === tabId ? { ...t, mode: 'file' as const, filePath, fileName } : t,
+                t.id === tabId ? { ...t, mode: 'file' as const, filePath, fileName, viewState: undefined } : t,
             )
             const next = new Map(state.sessions)
             next.set(sessionId, { ...cur, tabs, activeTabId: tabId })
@@ -170,6 +192,25 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     setActiveTab: (sessionId, tabId) =>
         set((state) => applyPatch(state, sessionId, { activeTabId: tabId })),
+
+    setTabViewState: (sessionId, tabId, patch) =>
+        set((state) => {
+            const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
+            const idx = cur.tabs.findIndex((t) => t.id === tabId)
+            if (idx === -1) return state
+            const tab = cur.tabs[idx]
+            const prev = tab.viewState ?? {}
+            // 逐字段同值短路（避免高频写入触发订阅组件 re-render）
+            const same = Object.keys(patch).every(
+                (k) => (prev as Record<string, unknown>)[k] === (patch as Record<string, unknown>)[k],
+            )
+            if (same) return state
+            const tabs = cur.tabs.slice()
+            tabs[idx] = { ...tab, viewState: { ...prev, ...patch } }
+            const next = new Map(state.sessions)
+            next.set(sessionId, { ...cur, tabs })
+            return { sessions: next }
+        }),
 
     clearSession: (sessionId) =>
         set((state) => {

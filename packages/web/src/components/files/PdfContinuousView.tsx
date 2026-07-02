@@ -74,25 +74,44 @@ function PdfPage({ pageNumber, previewScale, renderScale }: {
         // 切换层（renderScale 变）时占位高度仅由 CSS 变量驱动（previewScale），层增减/切换不改变
         // 占位布局 → 无 layout shift（CLS 实测 0.69 的闪屏真根因：relative 层 Page canvas 尺寸随
         // renderScale 变化撑动占位）。新层 opacity:0 渲染中不遮挡旧层。
+        //
+        // 居中：每层拆「外层定位 + 内层缩放」——
+        // - 外层 absolute 撑满占位 + flex justify-center / align-items:flex-start，把内层（Page canvas
+        //   宽度）水平居中、顶部对齐占位顶部
+        // - 内层只承担 transform: scale(ratio)（CSS 预览补偿），transformOrigin 'top center'：以顶部中心
+        //   为锚 → 水平居中在缩放后保持，垂直从占位顶部向下扩展（canvas 顶部对齐占位顶部）
+        // 外层不缩放（width:100% 不撑水平滚动条），内层缩放是视觉变换、不撑布局。
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            {layers.map((l, i) => (
-                <div
-                    key={l.id}
-                    style={{
-                        position: 'absolute',
-                        top: 0, left: 0,
-                        opacity: i === 0 ? 1 : 0,
-                        transform: `scale(${previewScale / l.scale})`,
-                        transformOrigin: 'top left',
-                    }}
-                >
-                    <Page
-                        pageNumber={pageNumber}
-                        scale={l.scale}
-                        onRenderSuccess={() => handleRendered(l.id)}
-                    />
-                </div>
-            ))}
+            {layers.map((l, i) => {
+                const ratio = previewScale / l.scale
+                return (
+                    <div
+                        key={l.id}
+                        style={{
+                            position: 'absolute',
+                            top: 0, left: 0,
+                            width: '100%', height: '100%',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'flex-start',
+                            opacity: i === 0 ? 1 : 0,
+                        }}
+                    >
+                        <div
+                            style={{
+                                transform: `scale(${ratio})`,
+                                transformOrigin: 'top center',
+                            }}
+                        >
+                            <Page
+                                pageNumber={pageNumber}
+                                scale={l.scale}
+                                onRenderSuccess={() => handleRendered(l.id)}
+                            />
+                        </div>
+                    </div>
+                )
+            })}
         </div>
     )
 }

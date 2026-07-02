@@ -117,7 +117,7 @@ describe('PdfContinuousView', () => {
         expect(container.style.getPropertyValue('--page-h')).toContain('1684')
     })
 
-    it('transform 补偿：previewScale=2 renderScale=1 → wrapper scale(2) + origin top left，Page scale=1', () => {
+    it('transform 补偿 + 居中：previewScale=2 renderScale=1 → 内层 scale(2) origin top center，外层 flex 居中，Page scale=1', () => {
         render(<PdfContinuousView numPages={1} pageHeight={842} previewScale={2} renderScale={1} />)
 
         // 先让 page-1 进入可视区，触发 Page 渲染
@@ -128,11 +128,18 @@ describe('PdfContinuousView', () => {
         expect(page).toBeInTheDocument()
         expect(page).toHaveAttribute('data-scale', '1')
 
-        // Page 外层 wrapper 有 transform: scale(previewScale/renderScale) = scale(2)
-        const wrapper = page!.parentElement as HTMLElement
-        expect(wrapper.style.transform).toBe('scale(2)')
-        // transformOrigin 必须是 top left（否则缩放偏移）
-        expect(wrapper.style.transformOrigin).toBe('top left')
+        // 内层 wrapper：transform: scale(previewScale/renderScale) = scale(2)，origin top center
+        // （居中：以顶部中心为锚缩放，水平居中在缩放后保持）
+        const inner = page!.parentElement as HTMLElement
+        expect(inner.style.transform).toBe('scale(2)')
+        expect(inner.style.transformOrigin).toBe('top center')
+
+        // 外层 wrapper：absolute 撑满占位 + flex 水平居中 + 顶部对齐（把 Page canvas 居中）
+        const outer = inner.parentElement as HTMLElement
+        expect(outer.style.display).toBe('flex')
+        expect(outer.style.justifyContent).toBe('center')
+        expect(outer.style.alignItems).toBe('flex-start')
+        expect(outer.style.position).toBe('absolute')
     })
 
     it('numPages 变化（切 PDF）→ visible 清空，旧可见页卸载', () => {

@@ -164,6 +164,54 @@ describe('workspaceStore', () => {
         expect(useWorkspaceStore.getState().sessions).toBe(before)
     })
 
+    it('setTabViewState 挂 tab 上：partial 合并不覆盖未传字段；closeTab 自动清', () => {
+        // 先建一个 file tab（openFileTreeTab → openFileInTab 把 tree 转 file）
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const tabId = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+        useWorkspaceStore.getState().openFileInTab('s1', tabId, 'a/b.pdf', 'b.pdf')
+
+        // 写 scrollRatio
+        useWorkspaceStore.getState().setTabViewState('s1', tabId, { scrollRatio: 0.4 })
+        let vs = useWorkspaceStore.getState().getSession('s1').tabs.find((t) => t.id === tabId)?.viewState
+        expect(vs).toEqual({ scrollRatio: 0.4 })
+
+        // partial：加 scale 不覆盖已有 scrollRatio
+        useWorkspaceStore.getState().setTabViewState('s1', tabId, { scale: 1.5 })
+        vs = useWorkspaceStore.getState().getSession('s1').tabs.find((t) => t.id === tabId)?.viewState
+        expect(vs).toEqual({ scrollRatio: 0.4, scale: 1.5 })
+
+        // 同值短路（sessions 引用不变，避免订阅组件无谓 re-render）
+        const before = useWorkspaceStore.getState().sessions
+        useWorkspaceStore.getState().setTabViewState('s1', tabId, { scale: 1.5 })
+        expect(useWorkspaceStore.getState().sessions).toBe(before)
+
+        // closeTab → tab 删除，viewState 跟着没（无需额外清理，这是挂 tab 上的核心收益）
+        useWorkspaceStore.getState().closeTab('s1', tabId)
+        expect(useWorkspaceStore.getState().getSession('s1').tabs.find((t) => t.id === tabId)).toBeUndefined()
+
+        // tabId 不存在 → no-op
+        const before2 = useWorkspaceStore.getState().sessions
+        useWorkspaceStore.getState().setTabViewState('s1', 'never-exists', { scrollRatio: 0.5 })
+        expect(useWorkspaceStore.getState().sessions).toBe(before2)
+    })
+
+    it('openFileInTab 换文件时清旧 viewState（同 tab 切任意文件都不继承上个文件的视图状态）', () => {
+        // 建 a.pdf 的 file tab，写 viewState（缩放 200%、滚动 50%）
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const tabId = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+        useWorkspaceStore.getState().openFileInTab('s1', tabId, 'a.pdf', 'a.pdf')
+        useWorkspaceStore.getState().setTabViewState('s1', tabId, { scale: 2, scrollRatio: 0.5 })
+        expect(useWorkspaceStore.getState().getSession('s1').tabs.find((t) => t.id === tabId)?.viewState)
+            .toEqual({ scale: 2, scrollRatio: 0.5 })
+
+        // 同 tab 换文件（a.pdf → b.pdf，覆盖 pdf↔pdf、pdf↔非pdf 等所有「同 tab 换文件」路径）
+        useWorkspaceStore.getState().openFileInTab('s1', tabId, 'b.pdf', 'b.pdf')
+        const tab = useWorkspaceStore.getState().getSession('s1').tabs.find((t) => t.id === tabId)
+        expect(tab?.filePath).toBe('b.pdf')
+        // viewState 必须清——否则 b.pdf 会继承 a.pdf 的 200%/50%，对新文件无意义
+        expect(tab?.viewState).toBeUndefined()
+    })
+
     it('未挂载 persist 中间件', () => {
         expect((useWorkspaceStore as unknown as { persist?: unknown }).persist).toBeUndefined()
     })
