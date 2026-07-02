@@ -20,11 +20,16 @@ import { render, cleanup, act } from '@testing-library/react'
 import PdfContinuousView from '@/components/files/PdfContinuousView'
 
 // react-pdf mock：Page 渲染 data-testid + data-page + data-scale，便于断言
-vi.mock('react-pdf', () => ({
-    Page: ({ pageNumber, scale }: { pageNumber: number; scale: number }) => (
-        <div data-testid={`pdf-page-${pageNumber}`} data-page={pageNumber} data-scale={scale} />
-    ),
-}))
+vi.mock('react-pdf', async () => {
+    const { useLayoutEffect } = await import('react')
+    return {
+        // Page mount/scale 变后调 onRenderSuccess（模拟 pdfjs 渲染完成，触发双缓冲切层）
+        Page: ({ pageNumber, scale, onRenderSuccess }: { pageNumber: number; scale: number; onRenderSuccess?: () => void }) => {
+            useLayoutEffect(() => { onRenderSuccess?.() }, [scale])
+            return <div data-testid={`pdf-page-${pageNumber}`} data-page={pageNumber} data-scale={scale} />
+        },
+    }
+})
 vi.mock('react-pdf/dist/Page/AnnotationLayer.css', () => ({}))
 vi.mock('react-pdf/dist/Page/TextLayer.css', () => ({}))
 
@@ -137,5 +142,19 @@ describe('PdfContinuousView', () => {
         rerender(<PdfContinuousView numPages={3} pageHeight={842} previewScale={1} renderScale={1} />)
         // visible 被 useEffect(numPages) 清空 → page-1 卸载（直到新 IO 触发），避免旧页码残留越界
         expect(document.querySelector('[data-testid="pdf-page-1"]')).not.toBeInTheDocument()
+    })
+
+    it('双缓冲：renderScale 变 → 叠加新层渲染、旧层保持；新层 ready → 旧层移除（canvas 不重建无闪）', () => {
+        const { rerender } = render(<PdfContinuousView numPages={1} pageHeight={842} previewScale={1} renderScale={1} />)
+        triggerPageVisible(1, true)
+        // 初始单层 scale=1
+        expect(document.querySelectorAll('[data-page="1"]').length).toBe(1)
+        expect(document.querySelector('[data-page="1"]')).toHaveAttribute('data-scale', '1')
+
+        // renderScale 1→2：PdfPage 叠加新层（scale=2）渲染；新层 onRenderSuccess 后移除旧层
+        // （新层 position absolute→relative，react-pdf Page scale 未变 → canvas 不重建 → 无空白闪屏）
+        rerender(<PdfContinuousView numPages={1} pageHeight={842} previewScale={2} renderScale={2} />)
+        expect(document.querySelectorAll('[data-page="1"]').length).toBe(1) // 仅新层（scale=2），旧层已移除
+        expect(document.querySelector('[data-page="1"]')).toHaveAttribute('data-scale', '2')
     })
 })

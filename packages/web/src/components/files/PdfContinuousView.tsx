@@ -36,6 +36,63 @@ interface PdfContinuousViewProps {
 }
 
 /**
+ * 单页双缓冲渲染：消除混合缩放「renderScale 跟随 → pdfjs 重绘 canvas 间隙」的闪屏。
+ *
+ * - renderScale 变化时，叠加新层（absolute）用新 scale 渲染，旧层（relative）保持显示
+ * - 新层 onRenderSuccess 后移除旧层，新层 position 从 absolute 切 relative——
+ *   **canvas 不重建**（react-pdf Page scale 没变，只是父 div position 变），用户看不到空白
+ * - 各层 transform: scale(previewScale / l.scale) 即时补偿到 previewScale 视觉（CSS 预览，无重渲染）
+ */
+function PdfPage({ pageNumber, previewScale, renderScale }: {
+    pageNumber: number
+    previewScale: number
+    renderScale: number
+}) {
+    // layers：层列表。[0] 显示（relative），其后 absolute 叠加（渲染中）
+    const nextIdRef = useRef(1)
+    const [layers, setLayers] = useState<{ id: number; scale: number }[]>([{ id: 0, scale: renderScale }])
+
+    // renderScale 变 → 加新层（叠加渲染），不动旧层（保持显示，无空白）
+    useEffect(() => {
+        setLayers(prev => {
+            if (prev[prev.length - 1].scale === renderScale) return prev
+            return [...prev, { id: nextIdRef.current++, scale: renderScale }]
+        })
+    }, [renderScale])
+
+    // 新层渲染完成 → 仅保留该层（变显示层），旧层卸载。
+    // 关键：新层 position 从 absolute 切 relative 不重建 canvas（react-pdf Page 无重渲染）→ 无闪
+    const handleRendered = (id: number) => {
+        setLayers(prev => {
+            if (prev[prev.length - 1].id !== id) return prev
+            return [{ id, scale: renderScale }]
+        })
+    }
+
+    return (
+        <>
+            {layers.map((l, i) => (
+                <div
+                    key={l.id}
+                    style={{
+                        position: i === 0 ? 'relative' : 'absolute',
+                        top: 0, left: 0,
+                        transform: `scale(${previewScale / l.scale})`,
+                        transformOrigin: 'top left',
+                    }}
+                >
+                    <Page
+                        pageNumber={pageNumber}
+                        scale={l.scale}
+                        onRenderSuccess={() => handleRendered(l.id)}
+                    />
+                </div>
+            ))}
+        </>
+    )
+}
+
+/**
  * PDF 连续滚动视图 + IntersectionObserver 虚拟化：
  *
  * 放在 react-pdf <Document> 内部作为 children。渲染 N 个占位 div（高度 = pageHeight * scale），
@@ -92,8 +149,6 @@ export default function PdfContinuousView({ numPages, pageHeight, previewScale, 
         return () => io.disconnect()
     }, [numPages])
 
-    const previewRatio = previewScale / renderScale
-
     return (
         // 占位高度用 CSS 变量 --page-h：previewScale 变化时只更新容器一处 style，
         // N 个占位通过 var(--page-h) 读取，浏览器只做一次 layout（避免逐个 inline height 的 O(N) reflow，
@@ -109,9 +164,7 @@ export default function PdfContinuousView({ numPages, pageHeight, previewScale, 
                     style={{ height: 'var(--page-h)' }}
                 >
                     {visible.has(pageNumber) && (
-                        <div style={{ transform: `scale(${previewRatio})`, transformOrigin: 'top left' }}>
-                            <Page pageNumber={pageNumber} scale={renderScale} />
-                        </div>
+                        <PdfPage pageNumber={pageNumber} previewScale={previewScale} renderScale={renderScale} />
                     )}
                 </div>
             ))}
