@@ -32,17 +32,20 @@ interface MockPdf {
 }
 
 let onLoadSuccessCb: ((pdf: MockPdf) => void) | null = null
+let onLoadErrorCb: ((err: Error) => void) | null = null
 vi.mock('react-pdf', () => ({
     pdfjs: { GlobalWorkerOptions: { workerSrc: '' }, version: '5.4.296' },
     // 暴露 file / options / loading prop 到 data-*，断言 withCredentials 与 loading={null}
-    Document: ({ children, file, options, loading, onLoadSuccess }: {
+    Document: ({ children, file, options, loading, onLoadSuccess, onLoadError }: {
         children: React.ReactNode
         file?: unknown
         options?: { withCredentials?: boolean }
         loading?: unknown
         onLoadSuccess?: (pdf: MockPdf) => void
+        onLoadError?: (err: Error) => void
     }) => {
         onLoadSuccessCb = onLoadSuccess ?? null
+        onLoadErrorCb = onLoadError ?? null
         return (
             <div
                 data-testid="pdf-document"
@@ -75,6 +78,7 @@ vi.mock('react-i18next', () => ({
 
 beforeEach(() => {
     onLoadSuccessCb = null
+    onLoadErrorCb = null
     // PdfContinuousView 用 IntersectionObserver、PdfContentViewImpl 用 ResizeObserver
     vi.stubGlobal('IntersectionObserver', class {
         constructor() {} observe() {} unobserve() {} disconnect() {}
@@ -82,11 +86,16 @@ beforeEach(() => {
     vi.stubGlobal('ResizeObserver', class {
         observe() {} unobserve() {} disconnect() {}
     })
+    // pinch onTouchMove 用 requestAnimationFrame 节流：mock 成同步执行 callback，
+    // 测试 fireEvent.touchMove 后可直接断言 previewScale（无需异步等帧）
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { cb(0); return 1 })
+    vi.stubGlobal('cancelAnimationFrame', () => {})
 })
 
 afterEach(() => {
     cleanup()
     onLoadSuccessCb = null
+    onLoadErrorCb = null
 })
 
 /** 触发 onLoadSuccess：注入 numPages + getPage(1).getViewport({scale:1}) */
@@ -308,5 +317,15 @@ describe('PdfContentViewImpl', () => {
         fireEvent.touchStart(scrollArea, { touches: [t1] })
         fireEvent.touchMove(scrollArea, { touches: [t1] })
         expect(Number(cont().getAttribute('data-preview'))).toBe(base)
+    })
+
+    it('切换 filePath → loadError 清空，新 PDF 不卡 Empty（重置 effect）', () => {
+        const { rerender } = render(<PdfContentViewImpl sessionId="s1" filePath="a.pdf" />)
+        // 触发加载失败 → loadError 设 → 渲染 Empty
+        act(() => { onLoadErrorCb?.(new Error('encrypted')) })
+        expect(screen.getByText('files.loadFailed')).toBeInTheDocument()
+        // 切换 filePath → 重置 effect 清 loadError → Empty 消失（Document 重新挂载）
+        rerender(<PdfContentViewImpl sessionId="s1" filePath="b.pdf" />)
+        expect(screen.queryByText('files.loadFailed')).not.toBeInTheDocument()
     })
 })

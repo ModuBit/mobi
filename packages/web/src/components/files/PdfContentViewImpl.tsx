@@ -84,6 +84,8 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
     // PDF 加载失败（损坏/加密/格式错）：渲染错误提示，而非空白
     const [loadError, setLoadError] = useState<Error | null>(null)
     const containerRef = useRef<HTMLDivElement>(null)
+    // 加载令牌：每次 handleLoadSuccess 自增，丢弃切换 filePath 后旧 getPage 的延迟回调
+    const loadTokenRef = useRef(0)
     // 滚动容器宽度（ResizeObserver 跟踪），用于「适应宽度」计算
     const [containerWidth, setContainerWidth] = useState(0)
 
@@ -105,12 +107,25 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
         return () => ro.disconnect()
     }, [])
 
+    // 切换 PDF（sessionId/filePath 变）→ 重置加载状态，避免旧 PDF 残留：
+    // - loadError 不清会永久卡 Empty（Document 不挂载，新 onLoadSuccess 永不触发）
+    // - numPages/pageWidth/pageHeight 不清会旧占位 + 旧尺寸（PdfContinuousView 也会清 visible）
+    useEffect(() => {
+        setLoadError(null)
+        setNumPages(0)
+        setPageWidth(0)
+        setPageHeight(0)
+    }, [sessionId, filePath])
+
     // read-file 端点 url：pdfjs 走 HTTP Range 按需加载
     const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}`
 
     const handleLoadSuccess = async (pdf: PDFDocumentProxy) => {
+        const token = ++loadTokenRef.current
         setNumPages(pdf.numPages)
         const page = await pdf.getPage(1)
+        // 切换 filePath 后旧 PDF 的 getPage 可能晚 resolve → 丢弃，避免覆盖新 PDF 状态
+        if (token !== loadTokenRef.current) return
         const vp = page.getViewport({ scale: 1 })
         setPageWidth(vp.width)
         setPageHeight(vp.height)
@@ -135,6 +150,10 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
 
     // pinch 状态：双指起始距离 + 起始 previewScale（onTouchStart 记录，onTouchMove 按比例缩放）
     const pinchRef = useRef<{ startDist: number; baseScale: number } | null>(null)
+    // rAF 节流：高频 touchmove（60-120Hz）合并到每帧一次 setPreviewScale，避免长 PDF pinch 时
+    // React 每秒 60-120 次重渲染（含 N 占位 + debounce timer churn）导致掉帧
+    const rafRef = useRef<number | null>(null)
+    const pinchPendingRef = useRef<number | null>(null)
 
     /** 两指欧几里得距离（clientX/Y 坐标系）；不足两指返回 0 */
     const getTouchDist = (touches: React.TouchList): number => {
@@ -158,16 +177,33 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
         // 距离 0 防御（除零）：起点或当前距离退化时跳过
         if (ps.startDist <= 0 || dist <= 0) return
         const ratio = dist / ps.startDist
-        setPreviewScale(clampScale(ps.baseScale * ratio))
+        // 写入 pending，rAF 回调统一 flush（每帧最多一次 setPreviewScale）
+        pinchPendingRef.current = clampScale(ps.baseScale * ratio)
+        if (rafRef.current == null) {
+            rafRef.current = requestAnimationFrame(() => {
+                rafRef.current = null
+                if (pinchPendingRef.current != null) {
+                    setPreviewScale(pinchPendingRef.current)
+                    pinchPendingRef.current = null
+                }
+            })
+        }
     }
-    const onTouchEnd = (e: React.TouchEvent) => {
-        // 双指离开（剩余 < 2）→ 结束 pinch；previewScale 已变，debounce 自然跟进 renderScale
-        if (e.touches.length < 2) pinchRef.current = null
-    }
-    const onTouchCancel = () => {
-        // 系统中断（来电/通知/手掌触摸）触发 touchcancel 而非 touchend：清 pinchRef 避免残留
+    // 结束 pinch：无条件清 pinchRef（修复 3 指→2 指：剩 2 指但组合变了，旧 startDist 不匹配 → scale 突跳），
+    // flush 最后一次 pending 值 + 取消 rAF（确保停手即定稿）
+    const endPinch = () => {
         pinchRef.current = null
+        if (rafRef.current != null) {
+            cancelAnimationFrame(rafRef.current)
+            rafRef.current = null
+        }
+        if (pinchPendingRef.current != null) {
+            setPreviewScale(pinchPendingRef.current)
+            pinchPendingRef.current = null
+        }
     }
+    const onTouchEnd = () => endPinch()
+    const onTouchCancel = () => endPinch()
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -209,7 +245,6 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
                             {numPages > 0 && (
                                 <PdfContinuousView
                                     numPages={numPages}
-                                    pageWidth={pageWidth}
                                     pageHeight={pageHeight}
                                     previewScale={previewScale}
                                     renderScale={renderScale}

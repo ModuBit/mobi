@@ -64,7 +64,7 @@ function triggerPageVisible(pageNumber: number, isIntersecting: boolean) {
 
 describe('PdfContinuousView', () => {
     it('渲染 N 个占位 div，初始无 Page（IO 未触发可见）', () => {
-        render(<PdfContinuousView numPages={3} pageWidth={595} pageHeight={842} previewScale={1} renderScale={1} />)
+        render(<PdfContinuousView numPages={3} pageHeight={842} previewScale={1} renderScale={1} />)
 
         // 3 个占位
         const placeholders = document.querySelectorAll('[data-placeholder]')
@@ -83,7 +83,7 @@ describe('PdfContinuousView', () => {
     })
 
     it('占位进入可视区 → 渲染 Page；离开 → 卸载', () => {
-        render(<PdfContinuousView numPages={3} pageWidth={595} pageHeight={842} previewScale={1} renderScale={1} />)
+        render(<PdfContinuousView numPages={3} pageHeight={842} previewScale={1} renderScale={1} />)
 
         // 初始无 page-1
         expect(document.querySelector('[data-testid="pdf-page-1"]')).not.toBeInTheDocument()
@@ -100,17 +100,20 @@ describe('PdfContinuousView', () => {
         expect(document.querySelector('[data-testid="pdf-page-1"]')).not.toBeInTheDocument()
     })
 
-    it('占位高度随 previewScale 变化（previewScale=2 → 1684px）', () => {
-        render(<PdfContinuousView numPages={1} pageWidth={595} pageHeight={842} previewScale={2} renderScale={1} />)
+    it('占位高度随 previewScale 变化（容器 --page-h = 1684px，占位 height 用 var）', () => {
+        render(<PdfContinuousView numPages={1} pageHeight={842} previewScale={2} renderScale={1} />)
 
         const placeholder = document.querySelector('[data-placeholder="1"]') as HTMLElement
         expect(placeholder).toBeInTheDocument()
-        // 高度 = pageHeight * previewScale = 842 * 2 = 1684px
-        expect(placeholder.style.height).toContain('1684')
+        // 占位高度用 CSS 变量（previewScale 变时只更新容器一处，N 占位通过 var 读取，浏览器 O(1) layout）
+        expect(placeholder.style.height).toBe('var(--page-h)')
+        // 容器 --page-h = pageHeight * previewScale = 842 * 2 = 1684px
+        const container = placeholder.parentElement as HTMLElement
+        expect(container.style.getPropertyValue('--page-h')).toContain('1684')
     })
 
     it('transform 补偿：previewScale=2 renderScale=1 → wrapper scale(2) + origin top left，Page scale=1', () => {
-        render(<PdfContinuousView numPages={1} pageWidth={595} pageHeight={842} previewScale={2} renderScale={1} />)
+        render(<PdfContinuousView numPages={1} pageHeight={842} previewScale={2} renderScale={1} />)
 
         // 先让 page-1 进入可视区，触发 Page 渲染
         triggerPageVisible(1, true)
@@ -125,5 +128,14 @@ describe('PdfContinuousView', () => {
         expect(wrapper.style.transform).toBe('scale(2)')
         // transformOrigin 必须是 top left（否则缩放偏移）
         expect(wrapper.style.transformOrigin).toBe('top left')
+    })
+
+    it('numPages 变化（切 PDF）→ visible 清空，旧可见页卸载', () => {
+        const { rerender } = render(<PdfContinuousView numPages={2} pageHeight={842} previewScale={1} renderScale={1} />)
+        triggerPageVisible(1, true)
+        expect(document.querySelector('[data-testid="pdf-page-1"]')).toBeInTheDocument()
+        rerender(<PdfContinuousView numPages={3} pageHeight={842} previewScale={1} renderScale={1} />)
+        // visible 被 useEffect(numPages) 清空 → page-1 卸载（直到新 IO 触发），避免旧页码残留越界
+        expect(document.querySelector('[data-testid="pdf-page-1"]')).not.toBeInTheDocument()
     })
 })

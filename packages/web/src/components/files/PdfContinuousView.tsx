@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { Page } from 'react-pdf'
 
 interface PdfContinuousViewProps {
     /** PDF 总页数 */
     numPages: number
-    /** 单页原始宽度（预留，当前虚拟滚动用 height 占位） */
-    pageWidth: number
     /** 单页原始高度（A4 = 842） */
     pageHeight: number
     /** 即时缩放（CSS transform 预览 + 占位高度）；用户拖动/按钮即时变化 */
@@ -50,11 +48,14 @@ interface PdfContinuousViewProps {
  * querySelectorAll('[data-placeholder]') 一次性 observe 全部占位，无遗漏。
  * numPages 变化（切换 PDF）时 effect 重跑，对新占位重新 observe。
  */
-export default function PdfContinuousView({ numPages, pageWidth: _pageWidth, pageHeight, previewScale, renderScale, scrollRootRef }: PdfContinuousViewProps) {
+export default function PdfContinuousView({ numPages, pageHeight, previewScale, renderScale, scrollRootRef }: PdfContinuousViewProps) {
     const [visible, setVisible] = useState<Set<number>>(new Set())
     const containerRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
+        // 切换 PDF（numPages 变）→ 先清空 visible，避免旧 PDF 的可见页码残留进新 PDF
+        // （越界页码向 pdfjs 请求不存在的页 / 非可视区页浪费 canvas）
+        setVisible(new Set())
         const container = containerRef.current
         if (!container) return
 
@@ -94,12 +95,18 @@ export default function PdfContinuousView({ numPages, pageWidth: _pageWidth, pag
     const previewRatio = previewScale / renderScale
 
     return (
-        <div ref={containerRef}>
+        // 占位高度用 CSS 变量 --page-h：previewScale 变化时只更新容器一处 style，
+        // N 个占位通过 var(--page-h) 读取，浏览器只做一次 layout（避免逐个 inline height 的 O(N) reflow，
+        // 长 PDF pinch 缩放时关键）
+        <div
+            ref={containerRef}
+            style={{ '--page-h': `${pageHeight * previewScale}px` } as CSSProperties}
+        >
             {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
                 <div
                     key={pageNumber}
                     data-placeholder={pageNumber}
-                    style={{ height: `${pageHeight * previewScale}px` }}
+                    style={{ height: 'var(--page-h)' }}
                 >
                     {visible.has(pageNumber) && (
                         <div style={{ transform: `scale(${previewRatio})`, transformOrigin: 'top left' }}>
