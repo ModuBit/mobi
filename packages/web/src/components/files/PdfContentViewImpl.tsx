@@ -164,6 +164,10 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
         // 双指离开（剩余 < 2）→ 结束 pinch；previewScale 已变，debounce 自然跟进 renderScale
         if (e.touches.length < 2) pinchRef.current = null
     }
+    const onTouchCancel = () => {
+        // 系统中断（来电/通知/手掌触摸）触发 touchcancel 而非 touchend：清 pinchRef 避免残留
+        pinchRef.current = null
+    }
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -186,6 +190,7 @@ export default function PdfContentViewImpl({ sessionId, filePath }: PdfContentVi
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}
+                onTouchCancel={onTouchCancel}
             >
                 {loadError ? (
                     <Empty description={t('files.loadFailed')} style={{ marginTop: 40 }} />
