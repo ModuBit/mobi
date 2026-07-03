@@ -14,18 +14,17 @@
  * limitations under the License.
  */
 
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Spin, Empty, Button, App, Popover, Dropdown } from 'antd'
+import { Spin, Empty, App } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { Folders, Ellipsis, Copy, FileCode, Eye, RefreshCw } from 'lucide-react'
+import { Copy, FileCode, Eye, RefreshCw } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTree'
-import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { queryKeys } from '@/core/lib/query-keys'
 import { FILE_SIZE_LIMITS, NATIVE_MEDIA_EXT } from '@/core/config/fileLimits'
-import FileTreeView from '@/components/files/FileTreeView'
 import FileTooLarge from '@/components/files/FileTooLarge'
+import FileContentViewHeader from '@/components/files/FileContentViewHeader'
 import TextContentView from '@/components/files/TextContentView'
 import MarkdownContentView from '@/components/files/MarkdownContentView'
 import ImageContentView from '@/components/files/ImageContentView'
@@ -77,9 +76,6 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
         sessionId, filePath, shouldFetchContent, meta?.etag,
     )
 
-    const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
-    const [treeOpen, setTreeOpen] = useState(false)
-
     // .md 双模式：默认渲染，切文件（filePath 变）重置回渲染
     const [view, setView] = useState<'render' | 'source'>('render')
     useEffect(() => { setView('render') }, [filePath])
@@ -96,41 +92,6 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
         file.blob.text().then((v) => { if (!cancelled) setText(v) }).catch(() => setText(null))
         return () => { cancelled = true }
     }, [file, isText])
-
-    // 面包屑分段：a/b/c.ts → [a, b, c.ts]，最后一项（文件名）加粗
-    const segments = filePath.split('/').filter(Boolean)
-    const lastIndex = segments.length - 1
-
-    // 左对齐 + 空间不够时左侧省略（保留文件名）：CSS 的 text-overflow 只能在右端省略，
-    // 这里用 JS 测容器宽度——溢出则从左逐段砍、前缀 …；容器变宽时重置重新计算。
-    const crumbRef = useRef<HTMLDivElement>(null)
-    const [cutStart, setCutStart] = useState(0)
-    const [crumbWidth, setCrumbWidth] = useState(0)
-
-    // 监听面包屑容器宽度（inspector 分栏拖动 / 窗口缩放）
-    useLayoutEffect(() => {
-        const el = crumbRef.current
-        if (!el) return
-        const ro = new ResizeObserver((entries) => {
-            setCrumbWidth(entries[0].contentRect.width)
-        })
-        ro.observe(el)
-        return () => ro.disconnect()
-    }, [])
-
-    // 宽度或路径变化 → 重置为完整显示，再按需砍
-    useLayoutEffect(() => {
-        setCutStart(0)
-    }, [crumbWidth, filePath])
-
-    // 仍溢出 → 从左再砍一段（至少保留文件名），下一帧重测直至 fits
-    useLayoutEffect(() => {
-        const el = crumbRef.current
-        if (!el || lastIndex < 0) return
-        if (el.scrollWidth > el.clientWidth + 1 && cutStart < lastIndex) {
-            setCutStart((s) => s + 1)
-        }
-    }, [cutStart, crumbWidth, lastIndex])
 
     const copyPath = async () => {
         try {
@@ -164,50 +125,13 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            {/* header：左面包屑（左对齐，空间不够左省略）+ 右功能区 */}
-            <div style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                padding: '4px 8px', flexShrink: 0,
-                borderBottom: '1px solid var(--ant-color-border-secondary)',
-            }}>
-                <div ref={crumbRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                    {cutStart > 0 && <span style={{ opacity: 0.45 }}>…{segments[cutStart] !== undefined ? ' /' : ''} </span>}
-                    {segments.slice(cutStart).map((seg, i) => {
-                        const realIdx = cutStart + i
-                        return (
-                            <Fragment key={realIdx}>
-                                {i > 0 && <span style={{ margin: '0 2px', opacity: 0.45 }}>/</span>}
-                                <span style={{ fontWeight: realIdx === lastIndex ? 600 : 400 }}>{seg}</span>
-                            </Fragment>
-                        )
-                    })}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                    <Dropdown menu={{ items: moreMenuItems }} trigger={['click']}>
-                        <Button type="text" size="small" icon={<Ellipsis size={14} />} aria-label={t('files.more')} />
-                    </Dropdown>
-                    <Popover
-                        open={treeOpen}
-                        onOpenChange={setTreeOpen}
-                        trigger="click"
-                        placement="bottomLeft"
-                        content={
-                            <div style={{ width: 300, height: 400, overflow: 'auto' }}>
-                                <FileTreeView
-                                    sessionId={sessionId}
-                                    onOpenFile={(fp, fn) => {
-                                        // store 去重：当前文件不响应 / 别的 tab 已开则激活 / 否则当前 tab 转该文件
-                                        openFileInTab(sessionId, tabId, fp, fn)
-                                        setTreeOpen(false)
-                                    }}
-                                />
-                            </div>
-                        }
-                    >
-                        <Button type="text" size="small" icon={<Folders size={14} />} aria-label={t('files.openFromTree')} />
-                    </Popover>
-                </div>
-            </div>
+            {/* header：左面包屑（左对齐，空间不够左省略）+ 右功能区（more 菜单 + 文件树） */}
+            <FileContentViewHeader
+                sessionId={sessionId}
+                tabId={tabId}
+                filePath={filePath}
+                extraMenuItems={moreMenuItems}
+            />
             {/* content：meta 先行 → size 阈值拦截 → 按类型三级分发 */}
             <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                 {metaLoading ? (
