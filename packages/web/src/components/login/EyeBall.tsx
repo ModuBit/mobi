@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 import { useRef } from 'react'
-import { computeLookOffset, type MousePos } from './useMouseLook'
+import { computeLookOffset, useCachedRect, type MousePos } from './useMouseLook'
 
 interface PupilProps {
     /** 鼠标位置（由 CharacterBand 单源下发） */
@@ -36,16 +36,10 @@ export function Pupil({
     forceLookY,
 }: PupilProps) {
     const ref = useRef<HTMLDivElement>(null)
-    const pos = (() => {
-        if (!ref.current) return { x: 0, y: 0 }
-        return computeLookOffset(
-            ref.current.getBoundingClientRect(),
-            mouse,
-            maxDistance,
-            forceLookX,
-            forceLookY,
-        )
-    })()
+    const rect = useCachedRect(ref)
+    const pos = rect
+        ? computeLookOffset(rect, mouse, maxDistance, forceLookX, forceLookY)
+        : { x: 0, y: 0 }
 
     return (
         <div
@@ -87,16 +81,10 @@ export function EyeBall({
     forceLookY,
 }: EyeBallProps) {
     const ref = useRef<HTMLDivElement>(null)
-    const pos = (() => {
-        if (!ref.current) return { x: 0, y: 0 }
-        return computeLookOffset(
-            ref.current.getBoundingClientRect(),
-            mouse,
-            maxDistance,
-            forceLookX,
-            forceLookY,
-        )
-    })()
+    const rect = useCachedRect(ref)
+    const pos = rect
+        ? computeLookOffset(rect, mouse, maxDistance, forceLookX, forceLookY)
+        : { x: 0, y: 0 }
 
     return (
         <div

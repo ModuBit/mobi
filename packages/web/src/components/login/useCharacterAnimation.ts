@@ -32,24 +32,35 @@ export interface CharacterAnimation {
 }
 
 /**
- * 随机眨眼定时器：3–7s 随机间隔，眨眼时长 150ms
+ * 随机脉冲定时器：active 时以 [intervalMin, intervalMax] 随机间隔触发，
+ * 每次持续 durationMs 后复位并重新调度。
  *
+ * 复用于"随机眨眼"与"紫角色偷瞄"两种状态机，统一 outer/inner 双 timer 的调度与清理。
  * cleanup 同时清外层（间隔 timer）和内层（复位 timer），
- * 避免"眨眼中"卸载后内层 timer 仍 setState。
+ * 避免"激活中"卸载/失活后内层 timer 仍 setState。
  */
-function useRandomBlink() {
-    const [blinking, setBlinking] = useState(false)
+function useRandomPulse(
+    active: boolean,
+    intervalMin: number,
+    intervalMax: number,
+    durationMs: number,
+): boolean {
+    const [on, setOn] = useState(false)
     useEffect(() => {
+        if (!active) {
+            setOn(false)
+            return
+        }
         let outer: ReturnType<typeof setTimeout>
         let inner: ReturnType<typeof setTimeout>
         const schedule = () => {
-            const delay = 3000 + Math.random() * 4000
+            const delay = intervalMin + Math.random() * (intervalMax - intervalMin)
             outer = setTimeout(() => {
-                setBlinking(true)
+                setOn(true)
                 inner = setTimeout(() => {
-                    setBlinking(false)
+                    setOn(false)
                     schedule()
-                }, 150)
+                }, durationMs)
             }, delay)
         }
         schedule()
@@ -57,8 +68,8 @@ function useRandomBlink() {
             clearTimeout(outer)
             clearTimeout(inner)
         }
-    }, [])
-    return blinking
+    }, [active, intervalMin, intervalMax, durationMs])
+    return on
 }
 
 /**
@@ -72,8 +83,8 @@ export function useCharacterAnimation({
     hasToken,
     typing,
 }: UseCharacterAnimationArgs): CharacterAnimation {
-    const isPurpleBlinking = useRandomBlink()
-    const isBlackBlinking = useRandomBlink()
+    const isPurpleBlinking = useRandomPulse(true, 3000, 7000, 150)
+    const isBlackBlinking = useRandomPulse(true, 3000, 7000, 150)
 
     // 对视：typing 触发，800ms 复位
     const [isLookingAtEachOther, setIsLookingAtEachOther] = useState(false)
@@ -88,34 +99,8 @@ export function useCharacterAnimation({
     }, [typing])
 
     // 偷瞄：peek && hasToken 时，2–5s 随机间隔偷瞄 800ms
-    //
-    // cleanup 同时清外层（间隔 timer）和内层（复位 timer），
-    // 避免"偷瞄中"卸载/切换时内层 timer 仍 setState。
     const peekingActive = peek && hasToken
-    const [isPurplePeeking, setIsPurplePeeking] = useState(false)
-    useEffect(() => {
-        if (!peekingActive) {
-            setIsPurplePeeking(false)
-            return
-        }
-        let outer: ReturnType<typeof setTimeout>
-        let inner: ReturnType<typeof setTimeout>
-        const schedule = () => {
-            const delay = 2000 + Math.random() * 3000
-            outer = setTimeout(() => {
-                setIsPurplePeeking(true)
-                inner = setTimeout(() => {
-                    setIsPurplePeeking(false)
-                    schedule()
-                }, 800)
-            }, delay)
-        }
-        schedule()
-        return () => {
-            clearTimeout(outer)
-            clearTimeout(inner)
-        }
-    }, [peekingActive])
+    const isPurplePeeking = useRandomPulse(peekingActive, 2000, 5000, 800)
 
     return { isPurplePeeking, isPurpleBlinking, isBlackBlinking, isLookingAtEachOther }
 }

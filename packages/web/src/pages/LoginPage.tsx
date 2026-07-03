@@ -592,31 +592,25 @@ export function LoginPage() {
                                 },
                             ]}
                         >
-                            <Input
-                                type={tokenVisible ? 'text' : 'password'}
+                            <Input.Password
+                                autoComplete="current-password"
                                 placeholder={t('login.tokenPlaceholder')}
                                 size="large"
-                                autoComplete="off"
                                 onFocus={() => setTyping(true)}
                                 onBlur={() => setTyping(false)}
-                                suffix={
-                                    <Button
-                                        type="text"
-                                        htmlType="button"
-                                        size="small"
-                                        icon={
-                                            tokenVisible ? (
-                                                <EyeInvisibleOutlined />
-                                            ) : (
-                                                <EyeOutlined />
-                                            )
-                                        }
-                                        onClick={() =>
-                                            setTokenVisible((v) => !v)
-                                        }
-                                        aria-label={t('login.toggleTokenVisibility')}
-                                    />
-                                }
+                                visibilityToggle={{
+                                    onVisibleChange: (v: boolean) => setTokenVisible(v),
+                                }}
+                                iconRender={(visible) => (
+                                    // onMouseDown 防止点击切换按钮时 input 失焦
+                                    // （失焦会触发 onBlur → typing=false → 打断"对视"动画）
+                                    <span
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        style={{ display: 'inline-flex' }}
+                                    >
+                                        {visible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                                    </span>
+                                )}
                             />
                         </Form.Item>
                         <Form.Item style={{ marginBottom: 0 }}>

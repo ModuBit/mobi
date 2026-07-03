@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { ReactNode } from 'react'
 import { ConfigProvider, App as AntdApp } from 'antd'
@@ -29,7 +29,7 @@ vi.mock('axios', () => ({
         isAxiosError: vi.fn(() => false),
     },
 }))
-import axios from 'axios'
+import axios, { type AxiosResponse } from 'axios'
 
 // —— mock Router：LoginPage 调用 navigate({ to: '/' })，故 useNavigate 返回 (opts) => void ——
 const mockNavigate = vi.fn()
@@ -37,10 +37,10 @@ vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => mockNavigate,
 }))
 
-// —— mock authStore：useAuthStore() 返回 { setToken } ——
-const setToken = vi.fn()
+// —— mock authStore：useAuthStore() 返回 { setAuthenticated } ——
+const setAuthenticated = vi.fn()
 vi.mock('@/core/data/stores/authStore', () => ({
-    useAuthStore: () => ({ setToken }),
+    useAuthStore: () => ({ setAuthenticated }),
 }))
 
 // —— mock useThemeLocaleToggle：返回 resolvedTheme / locale / toggleTheme / toggleLocale ——
@@ -73,9 +73,13 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 describe('LoginPage', () => {
     beforeEach(() => vi.clearAllMocks())
+    afterEach(() => cleanup())
 
-    it('提交 token 成功时调用 setToken 并跳转首页', async () => {
-        vi.mocked(axios.post).mockResolvedValueOnce({ data: { token: 'jwt-xxx' } })
+    it('提交 token 成功时置 authenticated 并跳转首页', async () => {
+        vi.mocked(axios.post).mockResolvedValueOnce({
+            status: 200,
+            data: {},
+        } as unknown as AxiosResponse)
 
         render(<LoginPage />, { wrapper })
 
@@ -88,9 +92,17 @@ describe('LoginPage', () => {
             expect(axios.post).toHaveBeenCalledWith(
                 expect.stringContaining('/api/auth'),
                 { accessToken: 'my-token' },
+                expect.objectContaining({ withCredentials: true }),
             )
         })
-        expect(setToken).toHaveBeenCalledWith('jwt-xxx')
+        // 登录态真源为 httpOnly cookie，前端仅置 authenticated 驱动路由
+        expect(setAuthenticated).toHaveBeenCalledWith(true)
         expect(mockNavigate).toHaveBeenCalledWith({ to: '/' })
+    })
+
+    it('token 字段以 password 类型渲染（保留密码管理器语义）', () => {
+        render(<LoginPage />, { wrapper })
+        const input = screen.getByPlaceholderText('login.tokenPlaceholder')
+        expect(input).toHaveAttribute('type', 'password')
     })
 })

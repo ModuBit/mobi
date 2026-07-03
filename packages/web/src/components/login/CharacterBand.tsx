@@ -16,7 +16,7 @@
 import { useRef } from 'react'
 import { EyeBall, Pupil } from './EyeBall'
 import { useCharacterAnimation } from './useCharacterAnimation'
-import { useMouseLook, type MousePos } from './useMouseLook'
+import { useCachedRect, useMouseLook, type MousePos } from './useMouseLook'
 
 export interface CharacterBandProps {
     /** token 明文可见 */
@@ -31,15 +31,29 @@ const STAGE_WIDTH = 550
 const STAGE_HEIGHT = 400
 
 /**
+ * 角色调色板（装饰性插画色，非主题 token）。
+ * 命名常量统一管理，避免魔法 hex 散落与重复 find-replace。
+ */
+const CHARACTER_COLORS = {
+    purple: '#6C3FF5',
+    black: '#2D2D2D',
+    orange: '#FF9B6B',
+    yellow: '#E8D754',
+    pupil: '#2D2D2D',
+} as const
+
+/**
  * 角色带 lean 计算：身体 skew + 脸部偏移跟随鼠标。
+ * 通过 useCachedRect 在 mount 时读取一次矩形（而非每次 render 读），
+ * 避免 high-freq mousemove 路径上触发 layout thrashing。
  * mouse 为中性（移动端 / 首次渲染）时保持中立，不误朝屏幕原点。
  */
-function lean(ref: React.RefObject<HTMLDivElement | null>, mouse: MousePos) {
-    if (!ref.current) return { faceX: 0, faceY: 0, skew: 0 }
+function useLean(ref: React.RefObject<HTMLDivElement | null>, mouse: MousePos) {
+    const rect = useCachedRect(ref)
+    if (!rect) return { faceX: 0, faceY: 0, skew: 0 }
     if (mouse.x === 0 && mouse.y === 0) return { faceX: 0, faceY: 0, skew: 0 }
-    const r = ref.current.getBoundingClientRect()
-    const dx = mouse.x - (r.left + r.width / 2)
-    const dy = mouse.y - (r.top + r.height / 3)
+    const dx = mouse.x - (rect.left + rect.width / 2)
+    const dy = mouse.y - (rect.top + rect.height / 3)
     return {
         faceX: Math.max(-15, Math.min(15, dx / 20)),
         faceY: Math.max(-10, Math.min(10, dy / 30)),
@@ -66,10 +80,10 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
     const yellowRef = useRef<HTMLDivElement>(null)
     const orangeRef = useRef<HTMLDivElement>(null)
 
-    const purple = lean(purpleRef, mouse)
-    const black = lean(blackRef, mouse)
-    const yellow = lean(yellowRef, mouse)
-    const orange = lean(orangeRef, mouse)
+    const purple = useLean(purpleRef, mouse)
+    const black = useLean(blackRef, mouse)
+    const yellow = useLean(yellowRef, mouse)
+    const orange = useLean(orangeRef, mouse)
 
     // 偷瞄/对视时瞳孔强制朝向（朝上 = 负 Y，指向舞台上方/输入框）
     const peeking = peek && hasToken
@@ -98,7 +112,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                         left: '70px',
                         width: '180px',
                         height: '400px',
-                        backgroundColor: '#6C3FF5',
+                        backgroundColor: CHARACTER_COLORS.purple,
                         borderRadius: '10px 10px 0 0',
                         zIndex: 1,
                         transform: peeking ? 'skewX(0deg)' : `skewX(${purple.skew}deg)`,
@@ -114,7 +128,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                             size={18}
                             pupilSize={7}
                             maxDistance={5}
-                            pupilColor="#2D2D2D"
+                            pupilColor={CHARACTER_COLORS.pupil}
                             isBlinking={isPurpleBlinking}
                             forceLookX={purpleForce?.x}
                             forceLookY={purpleForce?.y}
@@ -124,7 +138,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                             size={18}
                             pupilSize={7}
                             maxDistance={5}
-                            pupilColor="#2D2D2D"
+                            pupilColor={CHARACTER_COLORS.pupil}
                             isBlinking={isPurpleBlinking}
                             forceLookX={purpleForce?.x}
                             forceLookY={purpleForce?.y}
@@ -140,7 +154,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                         left: '240px',
                         width: '120px',
                         height: '310px',
-                        backgroundColor: '#2D2D2D',
+                        backgroundColor: CHARACTER_COLORS.black,
                         borderRadius: '8px 8px 0 0',
                         zIndex: 2,
                         transform: peeking ? 'skewX(0deg)' : `skewX(${black.skew * (isLookingAtEachOther ? 1.5 : 1)}deg)`,
@@ -156,7 +170,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                             size={16}
                             pupilSize={6}
                             maxDistance={4}
-                            pupilColor="#2D2D2D"
+                            pupilColor={CHARACTER_COLORS.pupil}
                             isBlinking={isBlackBlinking}
                             forceLookX={blackForce?.x}
                             forceLookY={blackForce?.y}
@@ -166,7 +180,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                             size={16}
                             pupilSize={6}
                             maxDistance={4}
-                            pupilColor="#2D2D2D"
+                            pupilColor={CHARACTER_COLORS.pupil}
                             isBlinking={isBlackBlinking}
                             forceLookX={blackForce?.x}
                             forceLookY={blackForce?.y}
@@ -182,7 +196,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                         left: '0px',
                         width: '240px',
                         height: '200px',
-                        backgroundColor: '#FF9B6B',
+                        backgroundColor: CHARACTER_COLORS.orange,
                         borderRadius: '120px 120px 0 0',
                         zIndex: 3,
                         transform: peeking ? 'skewX(0deg)' : `skewX(${orange.skew}deg)`,
@@ -197,7 +211,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                             mouse={mouse}
                             size={12}
                             maxDistance={5}
-                            pupilColor="#2D2D2D"
+                            pupilColor={CHARACTER_COLORS.pupil}
                             forceLookX={dotForce?.x}
                             forceLookY={dotForce?.y}
                         />
@@ -205,7 +219,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                             mouse={mouse}
                             size={12}
                             maxDistance={5}
-                            pupilColor="#2D2D2D"
+                            pupilColor={CHARACTER_COLORS.pupil}
                             forceLookX={dotForce?.x}
                             forceLookY={dotForce?.y}
                         />
@@ -220,7 +234,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                         left: '310px',
                         width: '140px',
                         height: '230px',
-                        backgroundColor: '#E8D754',
+                        backgroundColor: CHARACTER_COLORS.yellow,
                         borderRadius: '70px 70px 0 0',
                         zIndex: 4,
                         transform: peeking ? 'skewX(0deg)' : `skewX(${yellow.skew}deg)`,
@@ -235,7 +249,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                             mouse={mouse}
                             size={12}
                             maxDistance={5}
-                            pupilColor="#2D2D2D"
+                            pupilColor={CHARACTER_COLORS.pupil}
                             forceLookX={dotForce?.x}
                             forceLookY={dotForce?.y}
                         />
@@ -243,7 +257,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                             mouse={mouse}
                             size={12}
                             maxDistance={5}
-                            pupilColor="#2D2D2D"
+                            pupilColor={CHARACTER_COLORS.pupil}
                             forceLookX={dotForce?.x}
                             forceLookY={dotForce?.y}
                         />
@@ -253,7 +267,7 @@ export function CharacterBand({ peek, hasToken, typing }: CharacterBandProps) {
                         style={{
                             left: peeking ? 10 : 40 + yellow.faceX,
                             top: peeking ? 88 : 88 + yellow.faceY,
-                            backgroundColor: '#2D2D2D',
+                            backgroundColor: CHARACTER_COLORS.pupil,
                         }}
                     />
                 </div>

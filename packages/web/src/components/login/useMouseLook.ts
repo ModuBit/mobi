@@ -13,12 +13,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 
 export interface MousePos {
     x: number
     y: number
+}
+
+/** 元素布局矩形（getBoundingClientRect 的子集，便于缓存） */
+export interface Rect {
+    left: number
+    top: number
+    width: number
+    height: number
+}
+
+/**
+ * 缓存元素布局矩形：仅在 mount 与 window resize 时读取。
+ * 避免在 render 期间调用 getBoundingClientRect 触发 forced sync layout（layout thrashing）——
+ * 角色带高频 mousemove → setMouse → 重渲染路径上不再读 DOM。
+ * 角色舞台为固定像素尺寸，window resize 足以覆盖视口/方向变化。
+ */
+export function useCachedRect(ref: RefObject<HTMLElement | null>): Rect | null {
+    const [rect, setRect] = useState<Rect | null>(null)
+    useLayoutEffect(() => {
+        const el = ref.current
+        if (!el) return
+        const read = () => {
+            const r = el.getBoundingClientRect()
+            setRect({ left: r.left, top: r.top, width: r.width, height: r.height })
+        }
+        read()
+        window.addEventListener('resize', read)
+        return () => window.removeEventListener('resize', read)
+    }, [ref])
+    return rect
 }
 
 /** 中性鼠标位置（移动端 / 首次渲染）：消费方据此保持中性朝向，不误朝屏幕原点 */
@@ -62,7 +92,7 @@ export function useMouseLook(): MousePos {
  * - mouse 为中性（移动端 / 首次渲染）时返回 {0,0}，避免误朝屏幕原点（左上）
  */
 export function computeLookOffset(
-    rect: DOMRect,
+    rect: Rect,
     mouse: MousePos,
     maxDistance: number,
     forceLookX?: number,
