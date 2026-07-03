@@ -14,22 +14,20 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Spin, Empty, App } from 'antd'
+import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Copy, FileCode, Eye, RefreshCw } from 'lucide-react'
-import type { MenuProps } from 'antd'
-import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTree'
 import { queryKeys } from '@/core/lib/query-keys'
-import { FILE_SIZE_LIMITS, NATIVE_MEDIA_EXT } from '@/core/config/fileLimits'
 import FileTooLarge from '@/components/files/FileTooLarge'
-import FileContentViewHeader from '@/components/files/FileContentViewHeader'
 import TextContentView from '@/components/files/TextContentView'
 import MarkdownContentView from '@/components/files/MarkdownContentView'
 import ImageContentView from '@/components/files/ImageContentView'
 import PdfContentView from '@/components/files/PdfContentView'
 import MediaContentView from '@/components/files/MediaContentView'
+import FileContentViewHeader from '@/components/files/FileContentViewHeader'
+import { useFileRenderState } from '@/components/files/useFileRenderState'
 
 interface FileContentViewProps {
     sessionId: string
@@ -42,56 +40,12 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     const { t } = useTranslation()
     const { message } = App.useApp()
     const queryClient = useQueryClient()
+    const state = useFileRenderState(sessionId, filePath)
 
-    // meta 先行：不拉 body 即可拿到 mime/size，据此决定渲染策略与是否拉 content
-    const { data: meta, isLoading: metaLoading, error: metaError } = useFileMeta(sessionId, filePath)
-
-    // 按 mime 分类（基于 meta，而非 content——可在拉 content 前判断）
-    const mime = meta?.mime ?? ''
-    const isTextLike = mime.startsWith('text/')
-        || ['application/json', 'application/xml', 'application/x-sh', 'application/sql', 'application/toml']
-            .includes(mime)
-    const isImage = mime.startsWith('image/')
-    const isPdf = mime === 'application/pdf'
-    const isAudioVideo = mime.startsWith('audio/') || mime.startsWith('video/')
-    // .md 文件：text/markdown，可渲染/源码双模式（优先于 isTextLike 分支）
-    const isMarkdown = mime === 'text/markdown'
-
-    // size 阈值判断（meta 先行，下载前拦截，省流量/解码）
-    const tooLarge = !!meta && (
-        (isTextLike && meta.size >= FILE_SIZE_LIMITS.textPlain)
-        || (isImage && meta.size >= FILE_SIZE_LIMITS.image)
-        || (isPdf && meta.size >= FILE_SIZE_LIMITS.pdf)
-    )
-    // 文本高亮判断（< 1MB 才走 Shiki，避免 DOM 瓶颈）
-    const useHighlight = !!meta && isTextLike && meta.size < FILE_SIZE_LIMITS.textHighlight
-
-    // 原生音视频格式判断（扩展名 ∈ NATIVE_MEDIA_EXT，其余非原生走下载）
-    const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase()
-    const isNativeMedia = NATIVE_MEDIA_EXT.includes(ext)
-
-    // 只在「size 内 + 可预览类型」才取 content；图片/PDF 走 src 直连端点（不 fetch blob），音视频/二进制不拉
-    const shouldFetchContent = !!meta && !tooLarge && !isAudioVideo && isTextLike
-    const { data: file, isLoading: contentLoading, error: contentError } = useFileContent(
-        sessionId, filePath, shouldFetchContent, meta?.etag,
-    )
-
-    // .md 双模式：默认渲染，切文件（filePath 变）重置回渲染
-    const [view, setView] = useState<'render' | 'source'>('render')
-    useEffect(() => { setView('render') }, [filePath])
-
-    // 文本类：blob → text 异步读取（content 拉回后才执行）
-    const isText = !!file && isTextLike
-    const [text, setText] = useState<string | null>(null)
-    useEffect(() => {
-        if (!(file && isText)) {
-            setText(null)
-            return
-        }
-        let cancelled = false
-        file.blob.text().then((v) => { if (!cancelled) setText(v) }).catch(() => setText(null))
-        return () => { cancelled = true }
-    }, [file, isText])
+    // markdown view 跟随 hook（ready 态携带）；构造 toggle 菜单项仅在 markdown 时
+    const view = state.status === 'ready' ? state.view : 'render'
+    const toggleView = state.status === 'ready' ? state.toggleView : () => {}
+    const isMarkdown = state.status === 'ready' && state.kind.kind === 'markdown'
 
     const copyPath = async () => {
         try {
@@ -119,7 +73,7 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
             key: 'toggleView',
             icon: view === 'render' ? <FileCode size={14} /> : <Eye size={14} />,
             label: view === 'render' ? t('files.viewSource') : t('files.viewRender'),
-            onClick: () => setView((v) => v === 'render' ? 'source' : 'render'),
+            onClick: () => toggleView(),
         }] : []),
     ]
 
@@ -132,43 +86,67 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                 filePath={filePath}
                 extraMenuItems={moreMenuItems}
             />
-            {/* content：meta 先行 → size 阈值拦截 → 按类型三级分发 */}
+            {/* content：按 RenderState exhaustive switch 渲染 */}
             <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                {metaLoading ? (
-                    <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
-                ) : metaError ? (
-                    <Empty description={metaError instanceof Error ? metaError.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
-                ) : tooLarge ? (
-                    <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.tooLarge')} />
-                ) : isPdf ? (
-                    // PDF 走 react-pdf：file=url 让 pdfjs HTTP Range 按需加载（不再全量 fetch blob）
-                    <PdfContentView sessionId={sessionId} tabId={tabId} filePath={filePath} />
-                ) : isAudioVideo ? (
-                    // 原生格式 src 直连（cookie 带 + Range 流式，无 size 阈值）；非原生走下载
-                    isNativeMedia
-                        ? <MediaContentView sessionId={sessionId} filePath={filePath} isAudio={mime.startsWith('audio/')} />
-                        : <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.mediaDownload')} />
-                ) : isImage ? (
-                    // 图片 src 直连端点（cookie 带 + 浏览器原生缓存），不依赖 content
-                    <ImageContentView sessionId={sessionId} filePath={filePath} />
-                ) : !isTextLike ? (
-                    // meta 就绪但不属于可直显类型（文本/图片）→ 二进制，提示下载（不依赖 content）
-                    <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.binaryDownload')} />
-                ) : contentLoading ? (
-                    <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
-                ) : contentError ? (
-                    <Empty description={contentError instanceof Error ? contentError.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
-                ) : file ? (
-                    // 按类型路由到 ContentView（纯展示组件），文本渲染策略在外壳 meta 先行决定
-                    isMarkdown ? (
-                        <MarkdownContentView text={text ?? ''} filePath={filePath} view={view} />
-                    ) : (
-                        <TextContentView text={text ?? ''} filePath={filePath} highlight={useHighlight} />
-                    )
-                ) : (
-                    <Empty description={t('files.selectToView')} style={{ marginTop: 40 }} />
-                )}
+                {renderBody(state, sessionId, tabId, filePath, t)}
             </div>
         </div>
     )
+}
+
+/** 按 RenderState exhaustive switch 渲染内容区 */
+function renderBody(
+    state: ReturnType<typeof useFileRenderState>,
+    sessionId: string,
+    tabId: string,
+    filePath: string,
+    t: (k: string) => string,
+) {
+    switch (state.status) {
+        case 'meta-loading':
+            return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        case 'meta-error':
+            return <Empty description={state.error instanceof Error ? state.error.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
+        case 'too-large':
+            return <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.tooLarge')} />
+        case 'content-loading':
+            return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        case 'content-error':
+            return <Empty description={state.error instanceof Error ? state.error.message : t('files.loadFailed')} style={{ marginTop: 40 }} />
+        case 'empty':
+            return <Empty description={t('files.selectToView')} style={{ marginTop: 40 }} />
+        case 'ready':
+            return renderKind(state, sessionId, tabId, filePath, t)
+    }
+}
+
+/** ready 态按 FileKind exhaustive switch 路由到各 ContentView */
+function renderKind(
+    state: Extract<ReturnType<typeof useFileRenderState>, { status: 'ready' }>,
+    sessionId: string,
+    tabId: string,
+    filePath: string,
+    t: (k: string) => string,
+) {
+    switch (state.kind.kind) {
+        case 'pdf':
+            // PDF 走 react-pdf：file=url 让 pdfjs HTTP Range 按需加载
+            return <PdfContentView sessionId={sessionId} tabId={tabId} filePath={filePath} />
+        case 'image':
+            // 图片 src 直连端点（cookie 带 + 浏览器原生缓存）
+            return <ImageContentView sessionId={sessionId} filePath={filePath} />
+        case 'media-native':
+            // 原生格式 src 直连（cookie 带 + Range 流式）
+            return <MediaContentView sessionId={sessionId} filePath={filePath} isAudio={state.kind.isAudio} />
+        case 'media-download':
+            // 非原生音视频走下载
+            return <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.mediaDownload')} />
+        case 'binary':
+            // 不可直显二进制，提示下载
+            return <FileTooLarge sessionId={sessionId} filePath={filePath} reason={t('files.binaryDownload')} />
+        case 'markdown':
+            return <MarkdownContentView text={state.text} filePath={filePath} view={state.view} />
+        case 'text':
+            return <TextContentView text={state.text} filePath={filePath} highlight={state.kind.highlight} />
+    }
 }
