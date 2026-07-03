@@ -145,9 +145,34 @@ function setMock(meta: FileMeta | null, content: FileContent | null = null) {
     } as never)
 }
 
+/** meta loading / error 分支用：直接控制 isLoading / error 字段 */
+function setMockMetaState({ isLoading, error }: { isLoading?: boolean; error?: Error | null }) {
+    vi.mocked(useFileMeta).mockReturnValue({
+        data: undefined, isLoading: !!isLoading, error: error ?? null,
+    } as never)
+    vi.mocked(useFileContent).mockReturnValue({
+        data: undefined, isLoading: false, error: null,
+    } as never)
+}
+
 describe('FileContentView', () => {
     beforeEach(() => useWorkspaceStore.getState().clearAll())
     afterEach(() => cleanup())
+
+    // —— loading / error 分支（characterization：meta 先行决定渲染态）——
+    it('meta 加载中 → Spin（metaLoading 拦截在所有内容分发之前）', () => {
+        setMockMetaState({ isLoading: true })
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        expect(document.querySelector('.ant-spin')).toBeInTheDocument()
+    })
+
+    it('meta 错误 → Empty（metaError 优先于内容分发）', () => {
+        setMockMetaState({ error: new Error('permission denied') })
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        // Empty 渲染 metaError.message（Error 实例走 .message）
+        expect(screen.getByText('permission denied')).toBeInTheDocument()
+        expect(document.querySelector('.ant-empty')).toBeInTheDocument()
+    })
 
     it('面包屑按 / 分段显示，文件名加粗', () => {
         setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
