@@ -219,6 +219,28 @@ export const useUiStore = create<UiState>()(
 - **API 客户端**：通过 `useMobiApi(token)` 获取实例，不在组件外创建
 - **错误处理**：401 由全局 handler 自动处理，组件只需处理业务错误
 
+## 样式方案
+
+Web 端样式采用 **emotion styled + Tailwind v4 共存**，与 Ant Design v6 协同：
+
+| 方案 | 用途 |
+|------|------|
+| emotion `styled` | 现有组件的主流样式 |
+| Tailwind v4 utility | 新增组件可用（如登录页角色带 `components/login/`） |
+| Ant Design v6 | 基础组件库（Button / Input / Form 等） |
+
+### Tailwind 与 antd / emotion 共存
+
+- Tailwind 经 `@tailwindcss/vite` 插件接入，入口 `src/index.css` 顶部 `@import 'tailwindcss'`
+- **`@layer` 分层**确保优先级：`@layer theme, base, components, properties, antd, utilities;`
+  - Tailwind preflight / base 最低，utilities 最高
+  - antd v6 cssinjs 与 emotion styled 均为 unlayered，优先级天然高于 Tailwind layer → **现有组件不受 Tailwind 影响**
+- 高频事件驱动的样式（如鼠标跟随）应提取**单一状态源 + `requestAnimationFrame` 节流**，避免每个子组件各自挂载监听器（参考 `components/login/useMouseLook.ts`）
+
+### 主题色引用
+
+新组件的颜色应引用 `core/config/theme/tokens.ts` 的 token 常量（`shadcnLightToken.colorBgBase` / `shadcnDarkToken.colorBgBase` 等），不要硬编码 `#faf9f5` / `#141413`（既有 styled 的硬编码为渐进迁移项）。
+
 ## 路径别名
 
 使用 `@/` 映射到 `src/`：

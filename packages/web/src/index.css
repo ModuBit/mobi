@@ -14,6 +14,14 @@
  * limitations under the License.
  */
 
+/* Tailwind v4：utilities 圈进 layer，避免覆盖 antd(emotion) 现有样式。
+   分层优先级（低 → 高）：tailwind theme/base/components → 第三方/antd → tailwind utilities。
+   v4 实际 layer 名为 theme/base/components/properties/utilities（构建产物已确认）；
+   mobi 自有 emotion 样式为 unlayered，天然高于 layer 内样式，故现有组件不受 tailwind 影响。 */
+@import 'tailwindcss';
+
+@layer theme, base, components, properties, antd, utilities;
+
 /* 样式模块导入 */
 @import './styles/fonts.css';
 @import './styles/variables.css';

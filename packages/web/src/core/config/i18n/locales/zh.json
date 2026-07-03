@@ -34,7 +34,8 @@
     "tokenRequired": "请输入访问令牌",
     "connect": "连接",
     "connectSuccess": "连接成功",
-    "authFailed": "认证失败，请检查 Token 是否正确"
+    "authFailed": "认证失败，请检查 Token 是否正确",
+    "toggleTokenVisibility": "切换令牌显示"
   },
   "nav": {
     "sessions": "会话",

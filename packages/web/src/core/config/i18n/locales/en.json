@@ -34,7 +34,8 @@
     "tokenRequired": "Please enter access token",
     "connect": "Connect",
     "connectSuccess": "Connected",
-    "authFailed": "Authentication failed, please check your token"
+    "authFailed": "Authentication failed, please check your token",
+    "toggleTokenVisibility": "Toggle token visibility"
   },
   "nav": {
     "sessions": "Sessions",
