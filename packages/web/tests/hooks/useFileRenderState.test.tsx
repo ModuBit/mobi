@@ -66,7 +66,8 @@ describe('useFileRenderState', () => {
         const s = renderState('s', 'a.pdf').result.current
         expect(s.status).toBe('ready')
         expect(s.status === 'ready' && s.kind.kind).toBe('pdf')
-        expect(mockedContent.mock.calls[0]).toBeDefined()
+        // pdf 是非文本类，shouldFetchContent 必须为 false（enabled 是 useFileContent 第 3 参）
+        expect(mockedContent).toHaveBeenCalledWith('s', 'a.pdf', false, 'e')
     })
 
     it('text 超阈值 → too-large', () => {
