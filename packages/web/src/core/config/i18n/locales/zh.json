@@ -219,6 +219,7 @@
     "title": "文件浏览器",
     "empty": "当前会话无文件变更",
     "selectToView": "选择文件查看内容",
+    "fileEmpty": "文件内容为空",
     "loadFailed": "无法加载文件",
     "download": "下载",
     "tooLarge": "文件过大，无法预览",

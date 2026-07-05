@@ -53,15 +53,23 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
     const [cutStart, setCutStart] = useState(0)
     const [crumbWidth, setCrumbWidth] = useState(0)
 
-    // 监听面包屑容器宽度（inspector 分栏拖动 / 窗口缩放）
+    // 监听面包屑容器宽度（inspector 分栏拖动 / 窗口缩放）。
+    // rAF 合并高频回调：拖动分栏时 ResizeObserver 每帧多次触发，合并到下一帧只 setState 一次，
+    // 避免每次宽度变化都触发下方 O(n) 收敛链反复跑。
+    const rafRef = useRef<number | null>(null)
     useLayoutEffect(() => {
         const el = crumbRef.current
         if (!el) return
         const ro = new ResizeObserver((entries) => {
-            setCrumbWidth(entries[0].contentRect.width)
+            const w = entries[0].contentRect.width
+            if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+            rafRef.current = requestAnimationFrame(() => { setCrumbWidth(w) })
         })
         ro.observe(el)
-        return () => ro.disconnect()
+        return () => {
+            ro.disconnect()
+            if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+        }
     }, [])
 
     // 宽度或路径变化 → 重置为完整显示，再按需砍

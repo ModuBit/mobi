@@ -19,21 +19,22 @@ import { useFileContent, useFileMeta } from '@/core/data/hooks/queries/useFileTr
 import { FILE_SIZE_LIMITS } from '@/core/config/fileLimits'
 import { resolveFileKind, type FileKind } from '@/components/files/fileKind'
 
-/** 渲染决策状态（判别联合）—— useFileRenderState 的输出 */
+/** 渲染决策状态（判别联合）—— useFileRenderState 的输出
+ *
+ *  kind 在 meta 就绪后的多个状态（content-loading / ready）均携带，
+ *  以便父组件在 content 拉取期间就能派生 markdown 等菜单项，避免加载过程菜单闪退。
+ */
 export type RenderState =
     | { status: 'meta-loading' }
     | { status: 'meta-error'; error: unknown }
     | { status: 'too-large' }
-    | { status: 'content-loading' }
+    | { status: 'content-loading'; kind: FileKind; view: 'render' | 'source'; toggleView: () => void }
     | { status: 'content-error'; error: unknown }
     | { status: 'empty' }
-    | {
-        status: 'ready'
-        kind: FileKind
-        text: string                  // 非文本类为 ''；文本类为 blob.text() 解析结果
-        view: 'render' | 'source'     // markdown 渲染/源码模式
-        toggleView: () => void
-      }
+    | { status: 'ready'; kind: FileKind; text: string; view: 'render' | 'source'; toggleView: () => void }
+
+/** ready 态（带 kind/text/view/toggleView）—— 供消费侧复用，避免重复 Extract */
+export type ReadyRenderState = Extract<RenderState, { status: 'ready' }>
 
 /** 按 kind + size 判是否超阈值（与原 FileContentView 一致） */
 function isTooLarge(kind: FileKind, size: number): boolean {
@@ -82,7 +83,9 @@ export function useFileRenderState(sessionId: string, filePath: string): RenderS
             return
         }
         let cancelled = false
-        file.blob.text().then((v) => { if (!cancelled) setText(v) }).catch(() => setText(null))
+        file.blob.text()
+            .then((v) => { if (!cancelled) setText(v) })
+            .catch(() => { if (!cancelled) setText(null) })
         return () => { cancelled = true }
     }, [file, isText])
 
@@ -95,7 +98,7 @@ export function useFileRenderState(sessionId: string, filePath: string): RenderS
         // pdf / image / media：src 直连端点，不依赖 content
         return { status: 'ready', kind, text: '', view, toggleView }
     }
-    if (contentLoading) return { status: 'content-loading' }
+    if (contentLoading) return { status: 'content-loading', kind, view, toggleView }
     if (contentError) return { status: 'content-error', error: contentError }
     if (!file) return { status: 'empty' }
     // text===null 时短暂以空串渲染（与原 `text ?? ''` 一致），blob 解析完更新

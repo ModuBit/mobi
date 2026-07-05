@@ -18,18 +18,19 @@ import { Empty, Button } from 'antd'
 import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-interface FileTooLargeProps {
+interface FileDownloadPromptProps {
     sessionId: string
     filePath: string
-    /** 不支持预览的原因文案 key（如 files.tooLarge / files.binaryDownload） */
+    /** 不支持预览的原因文案（如 t('files.tooLarge') / t('files.binaryDownload')） */
     reason: string
 }
 
 /**
- * 文件过大 / 不支持预览：提示 + 下载按钮。
+ * 文件下载提示：reason 文案 + 下载按钮。
+ * 用于「文件过大」「音视频暂不支持预览」「二进制文件」等无法在浏览器直显的场景。
  * 下载指向 /read-file?download=1（P0 已支持 Content-Disposition，触发浏览器下载）。
  */
-export default function FileTooLarge({ sessionId, filePath, reason }: FileTooLargeProps) {
+export default function FileDownloadPrompt({ sessionId, filePath, reason }: FileDownloadPromptProps) {
     const { t } = useTranslation()
     const downloadUrl = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}&download=1`
     return (

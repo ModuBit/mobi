@@ -219,6 +219,7 @@
     "title": "File Explorer",
     "empty": "No file changes in this session",
     "selectToView": "Select a file to view content",
+    "fileEmpty": "File is empty",
     "loadFailed": "Failed to load file",
     "download": "Download",
     "tooLarge": "File too large to preview",
