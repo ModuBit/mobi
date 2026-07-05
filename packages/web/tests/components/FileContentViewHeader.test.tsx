@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, cleanup } from '@testing-library/react'
+import { render, cleanup, act } from '@testing-library/react'
 import FileContentViewHeader from '@/components/files/FileContentViewHeader'
 
 // 记录 ResizeObserver callback，测试主动触发宽度变化
@@ -66,5 +66,29 @@ describe('FileContentViewHeader 面包屑左省略', () => {
             />,
         )
         expect(container.querySelector('button')).toBeInTheDocument()
+    })
+
+    it('空间不够 → 二分收敛到只保留文件名，左侧出现省略号', async () => {
+        // scrollWidth 恒定远大于 clientWidth：模拟「无论砍多少段都溢出」→ 应收敛到 lastIndex
+        const { container } = render(
+            <FileContentViewHeader
+                sessionId="s" tabId="t" filePath="a/b/c/d.ts"
+                extraMenuItems={[]}
+            />,
+        )
+        const crumb = observers[0]
+        await act(async () => {
+            Object.defineProperty(crumb, 'clientWidth', { configurable: true, value: 50 })
+            Object.defineProperty(crumb, 'scrollWidth', { configurable: true, value: 1000 })
+            roCb?.([{ target: crumb, contentRect: { width: 50 } }])
+            // ResizeObserver 回调经 rAF 合并后才 setCrumbWidth，flush 一帧让收敛链跑完
+            await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+        })
+        // 收敛到 lastIndex（d.ts），前三段被砍、出现省略号
+        expect(container.textContent).toContain('…')
+        expect(container.textContent).toContain('d.ts')
+        expect(container.textContent).not.toContain('a')
+        expect(container.textContent).not.toContain('b')
+        expect(container.textContent).not.toContain('c')
     })
 })

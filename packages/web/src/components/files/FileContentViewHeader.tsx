@@ -52,6 +52,12 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
     const crumbRef = useRef<HTMLDivElement>(null)
     const [cutStart, setCutStart] = useState(0)
     const [crumbWidth, setCrumbWidth] = useState(0)
+    // 二分收敛 cutStart 的搜索边界（ref，避免进 effect 依赖触发重跑）。
+    // 不变量：答案（最小不溢出的 cutStart）∈ [loRef, hiRef]；loRef===hiRef 时收敛。
+    const loRef = useRef(0)
+    const hiRef = useRef(0)
+    // 上次的「重置触发」签名，用于在同一 effect 内区分「重置」与「继续探针」
+    const lastTriggerRef = useRef('')
 
     // 监听面包屑容器宽度（inspector 分栏拖动 / 窗口缩放）。
     // rAF 合并高频回调：拖动分栏时 ResizeObserver 每帧多次触发，合并到下一帧只 setState 一次，
@@ -72,19 +78,40 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
         }
     }, [])
 
-    // 宽度或路径变化 → 重置为完整显示，再按需砍
-    useLayoutEffect(() => {
-        setCutStart(0)
-    }, [crumbWidth, filePath])
-
-    // 仍溢出 → 从左再砍一段（至少保留文件名），下一帧重测直至 fits
+    // 二分收敛 cutStart：测当前 cutStart 是否溢出 → 收紧 [lo, hi] → 跳到中点；
+    // O(log n) 次重排（替代原逐段 +1 的 O(n)）。宽度/路径变化时先重置边界。
     useLayoutEffect(() => {
         const el = crumbRef.current
         if (!el || lastIndex < 0) return
-        if (el.scrollWidth > el.clientWidth + 1 && cutStart < lastIndex) {
-            setCutStart((s) => s + 1)
+        const trigger = `${crumbWidth}|${filePath}|${lastIndex}`
+        if (trigger !== lastTriggerRef.current) {
+            // 宽度/路径变化：重置搜索范围为 [0, lastIndex]，跳到中点开始探针
+            lastTriggerRef.current = trigger
+            loRef.current = 0
+            hiRef.current = lastIndex
+            const mid = lastIndex >> 1
+            if (mid !== cutStart) {
+                setCutStart(mid)
+                return // 等 cutStart 变更后下一帧再探针
+            }
+            // mid===cutStart（如重设到同值）：落入下方探针逻辑
         }
-    }, [cutStart, crumbWidth, lastIndex])
+        // 探针：测当前 cutStart 是否溢出，收紧搜索范围
+        const overflows = el.scrollWidth > el.clientWidth + 1
+        if (overflows) {
+            loRef.current = Math.min(cutStart + 1, lastIndex) // cutStart 溢出 → 答案在更右
+        } else {
+            hiRef.current = cutStart // cutStart fit → 答案 ≤ cutStart
+        }
+        if (loRef.current < hiRef.current) {
+            // 未收敛：跳到新中点（保证 ≠ 当前，避免死循环）
+            const next = (loRef.current + hiRef.current) >> 1
+            if (next !== cutStart) setCutStart(next)
+        } else if (loRef.current !== cutStart) {
+            // 收敛（lo===hi===答案）：定格到答案
+            setCutStart(Math.min(loRef.current, lastIndex))
+        }
+    }, [cutStart, crumbWidth, filePath, lastIndex])
 
     return (
         <div style={{
