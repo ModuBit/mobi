@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
-import { Empty, Button } from 'antd'
-import { useTranslation } from 'react-i18next'
+import { Image } from 'antd'
 
 interface ImageContentViewProps {
     /** 会话 id（拼 read-file 端点 src） */
@@ -25,41 +23,34 @@ interface ImageContentViewProps {
     filePath: string
 }
 
+// 加载失败兜底图：语言无关的「破损图片」SVG（灰色山+太阳占位）。
+// 用 data URI 内联，无需额外网络请求；i18n 文案由 antd 的 fallback 视觉语义承载。
+const FALLBACK_IMAGE = `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='180' viewBox='0 0 240 180'>
+        <rect width='240' height='180' fill='#f5f5f5'/>
+        <path d='M30 130 L90 70 L130 110 L170 60 L210 130 Z' fill='#d9d9d9'/>
+        <circle cx='175' cy='55' r='14' fill='#bfbfbf'/>
+    </svg>`,
+)}`
+
 /**
  * 图片文件内容视图（纯展示）：
- * - src 直连 read-file 端点（cookie 改造后 httpOnly mobi_token 自动带 → 认证通过）
- * - 浏览器原生 HTTP 缓存（端点 ETag + Cache-Control 协商 304）
- * - onError 兜底：原生 img 请求不经 axios interceptor，401（cookie 过期）/损坏等无法触发全局 401 处理，
- *   这里捕获后渲染「加载失败，点击重试」，重试通过变更 src 上的 retry 计数强制重新请求。
+ * - antd Image：preview 默认开启（点击放大）、placeholder 渐进式加载（大图/弱网友好）、fallback 加载失败兜底
+ * - src 直连 read-file 端点（cookie 改造后 httpOnly mobi_token 自动带 → 认证通过；浏览器原生协商缓存）
+ * - 尺寸约束见 styles/antd.css 的 .image-content-view：图片永远 contain 在容器内，不超出、不变形
+ * - 原生 img 不经 axios interceptor，401（cookie 过期）/损坏等由 fallback 兜底；恢复走 header 的 refresh（重挂载触发重新认证）
  */
 export default function ImageContentView({ sessionId, filePath }: ImageContentViewProps) {
-    const { t } = useTranslation()
-    const [error, setError] = useState(false)
-    // 重试计数：拼到 src query 让浏览器视为新 URL，绕过缓存重新请求（触发 cookie 重新认证）
-    const [retry, setRetry] = useState(0)
-    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}${retry > 0 ? `&_retry=${retry}` : ''}`
-
-    if (error) {
-        return (
-            <div style={{ textAlign: 'center', marginTop: 40 }}>
-                <Empty description={t('files.loadFailed')} />
-                <Button
-                    type="primary"
-                    style={{ marginTop: 12 }}
-                    onClick={() => {
-                        setError(false)
-                        setRetry((r) => r + 1)
-                    }}
-                >
-                    {t('files.retry')}
-                </Button>
-            </div>
-        )
-    }
-
+    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}`
     return (
-        <div style={{ textAlign: 'center', padding: 12, overflow: 'auto' }}>
-            <img src={src} alt={filePath} style={{ maxWidth: '100%' }} onError={() => setError(true)} />
+        <div className="image-content-view">
+            <Image
+                src={src}
+                alt={filePath}
+                placeholder
+                preview
+                fallback={FALLBACK_IMAGE}
+            />
         </div>
     )
 }

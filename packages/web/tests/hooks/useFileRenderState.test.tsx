@@ -127,4 +127,16 @@ describe('useFileRenderState', () => {
         act(() => { result.current.status === 'ready' && result.current.toggleView() })
         expect(result.current.status === 'ready' && result.current.view).toBe('source')
     })
+
+    it('ready：wrap 默认 false，toggleWrap 切换', async () => {
+        mockedMeta.mockReturnValue({ data: { mime: 'text/plain', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
+        const blob = { text: async () => 'hi' } as unknown as Blob
+        mockedContent.mockReturnValue({ data: { blob, mime: 'text/plain', etag: 'e' }, isLoading: false, error: null } as any)
+        const { result } = renderState('s', 'a.txt')
+        await act(async () => { await Promise.resolve() })
+        expect(result.current.status === 'ready' && result.current.wrap).toBe(false)
+
+        act(() => { result.current.status === 'ready' && result.current.toggleWrap() })
+        expect(result.current.status === 'ready' && result.current.wrap).toBe(true)
+    })
 })

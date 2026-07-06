@@ -17,6 +17,7 @@
 import { useState } from 'react'
 import { Empty, Button } from 'antd'
 import { useTranslation } from 'react-i18next'
+import AudioPlayer from './AudioPlayer'
 
 interface MediaContentViewProps {
     /** 会话 id（拼 read-file 端点 src） */
@@ -60,10 +61,10 @@ export default function MediaContentView({ sessionId, filePath, isAudio }: Media
     }
 
     return (
-        <div style={{ textAlign: 'center', padding: 12 }}>
+        <div className="media-content-view">
             {isAudio
-                ? <audio src={src} controls style={{ width: '100%' }} onError={() => setError(true)} />
-                : <video src={src} controls style={{ maxWidth: '100%', maxHeight: '70vh' }} onError={() => setError(true)} />}
+                ? <AudioPlayer src={src} filePath={filePath} onError={() => setError(true)} />
+                : <video src={src} controls onError={() => setError(true)} />}
         </div>
     )
 }

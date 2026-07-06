@@ -24,15 +24,23 @@ interface MarkdownContentViewProps {
     filePath: string
     /** 渲染模式：render 渲染 / source 源码高亮（toggle state 由外壳持有） */
     view: 'render' | 'source'
+    /** 源码模式自动换行（仅 source 生效；render 由 XMarkdown 自然换行） */
+    wrap?: boolean
 }
 
 /**
  * Markdown 文件内容视图（纯展示）：
  * - render：XMarkdown 渲染
- * - source：源码 Shiki 高亮（复用 CodeHighlight）
+ * - source：源码 Shiki 高亮（复用 CodeHighlight），wrap 控制自动换行
  */
-export default function MarkdownContentView({ text, filePath, view }: MarkdownContentViewProps) {
-    return view === 'render'
-        ? <Markdown content={text} />
-        : <CodeHighlight code={text} filePath={filePath} />
+export default function MarkdownContentView({ text, filePath, view, wrap = true }: MarkdownContentViewProps) {
+    return (
+        <div className={`markdown-content-view${view === 'source' ? ' source-view' : ''}`}>
+            <div className="content-scroll">
+                {view === 'render'
+                    ? <Markdown content={text} />
+                    : <CodeHighlight code={text} filePath={filePath} wrap={wrap} />}
+            </div>
+        </div>
+    )
 }

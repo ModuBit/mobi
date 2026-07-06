@@ -23,6 +23,8 @@ interface TextContentViewProps {
     filePath: string
     /** 是否走 Shiki 高亮（< 1MB）；否则纯 <pre> */
     highlight: boolean
+    /** 自动换行（默认 true）；false 时长行不换行，容器横向滚动 */
+    wrap?: boolean
 }
 
 /**
@@ -30,15 +32,23 @@ interface TextContentViewProps {
  * - highlight：复用 CodeHighlight（Shiki 高亮，未加载语言时内部 fallback 纯 <pre>）
  * - 非 highlight：纯 <pre>，样式与 CodeHighlight fallback 对齐
  */
-export default function TextContentView({ text, filePath, highlight }: TextContentViewProps) {
-    return highlight
-        ? <CodeHighlight code={text} filePath={filePath} />
-        : (
-            <pre style={{
-                fontSize: 12, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                fontFamily: 'var(--font-mono)', padding: 12,
-            }}>
-                {text}
-            </pre>
-        )
+export default function TextContentView({ text, filePath, highlight, wrap = true }: TextContentViewProps) {
+    return (
+        <div className="text-content-view source-view">
+            <div className="content-scroll">
+                {highlight
+                    ? <CodeHighlight code={text} filePath={filePath} wrap={wrap} />
+                    : (
+                        <pre style={{
+                            fontSize: 12, margin: 0,
+                            whiteSpace: wrap ? 'pre-wrap' : 'pre',
+                            wordBreak: wrap ? 'break-all' : 'normal',
+                            fontFamily: 'var(--font-mono)',
+                        }}>
+                            {text}
+                        </pre>
+                    )}
+            </div>
+        </div>
+    )
 }

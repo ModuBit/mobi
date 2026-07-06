@@ -101,6 +101,229 @@
     margin-block-start: 4px !important;
 }
 
+/* 文本/代码类内容视图：外层固定（padding 常驻，不随内容滚走），内部 .content-scroll 独立滚动。
+   pre.shiki / fallback <pre> 不再自带 padding，全靠外层，避免多层叠加 */
+.markdown-content-view,
+.text-content-view {
+    height: 100%;
+    padding: 12px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.content-scroll {
+    height: 100%;
+    overflow: auto;
+}
+/* 源码模式（行号列有背景）去左 padding，行号贴左；其余三边 padding 保留 */
+.markdown-content-view.source-view,
+.text-content-view.source-view {
+    padding-left: 0;
+}
+
+/* 音视频内容视图：原始尺寸优先，超出父组件才等比缩放；
+   x 方向居中、垂直顶部对齐（与 image 一致）。padding 12 防贴边。 */
+.media-content-view {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 12px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.media-content-view audio {
+    width: 100%;
+}
+.media-content-view video {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* 音频播放器：bg-container 与 layout 区分，无阴影无边框。
+   顶部直角（hover 时间浮层在上方需可见）、底部圆角；overflow visible 让浮层不裁剪 */
+.audio-block {
+    width: 100%;
+    max-width: 460px;
+    margin-top: 28px;  /* 给 hover 时间浮层留显示空间（浮层在顶部 -22px） */
+    background: var(--ant-color-bg-container);
+    border-radius: 0 0 var(--ant-border-radius-lg) var(--ant-border-radius-lg);
+    overflow: visible;
+}
+/* 顶部进度条：无 padding 贴满 audio-block 顶/左/右 */
+.audio-block-progress {
+    position: relative;
+    padding: 0;
+}
+/* 进度条与音量条共用一套 thin slider 样式（仅 handle 圆点尺寸不同，见下方各自覆盖）。
+   rail 未播放淡灰；track 已播放主色（纯色）。top:0 + slider height 3px → rail 占满 slider */
+.mobi-audio-slider .ant-slider {
+    margin: 0;
+    padding: 0;
+    height: 3px;
+}
+.mobi-audio-slider .ant-slider-rail,
+.mobi-audio-slider .ant-slider-track {
+    height: 3px;
+    border-radius: 999px;
+    top: 0;
+}
+.mobi-audio-slider .ant-slider-rail {
+    background: var(--ant-color-fill-tertiary);
+}
+.mobi-audio-slider .ant-slider-track {
+    background: var(--ant-color-primary);
+}
+/* 阻止 antd slider hover 时默认给 track 加变浅反馈 */
+.mobi-audio-slider .ant-slider:hover .ant-slider-rail {
+    background: var(--ant-color-fill-tertiary) !important;
+}
+.mobi-audio-slider .ant-slider:hover .ant-slider-track {
+    background: var(--ant-color-primary) !important;
+}
+/* handle 容器：垂直居中于 rail（top 50% + translate Y -50%）。
+   只覆盖 top/transform，不碰 left/inset-inline-start（保留 antd 的 left% 定位 + 拖动）。 */
+.mobi-audio-slider .ant-slider-handle {
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+}
+.mobi-audio-slider .ant-slider-handle::after {
+    background-color: var(--ant-color-primary) !important;
+    box-shadow: none !important;
+    border-radius: 999px !important;
+    inset: auto !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+}
+.mobi-audio-slider .ant-slider-handle:hover:not(.ant-slider-handle-disabled)::after,
+.mobi-audio-slider .ant-slider-handle:focus-visible::after {
+    box-shadow: 0 0 0 4px var(--ant-color-primary-bg) !important;
+}
+/* handle 圆点尺寸：进度条 10px、音量条 8px（唯一差异） */
+.audio-block-progress .ant-slider-handle::after {
+    width: 10px !important;
+    height: 10px !important;
+}
+.audio-vol-pop .ant-slider-handle::after {
+    width: 8px !important;
+    height: 8px !important;
+}
+/* 内容行：左 info / 中 播放按钮 / 右 控件 */
+.audio-block-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 14px 12px;
+}
+.audio-block-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.audio-block-info > svg {
+    color: var(--ant-color-text-quaternary);
+    flex-shrink: 0;
+}
+.audio-block-name {
+    font-size: 13.5px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    color: var(--ant-color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.audio-block-time {
+    color: var(--ant-color-text-quaternary);
+    font-size: 11.5px;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+.audio-block-ctrl .ant-btn-text,
+.audio-block-row .ant-btn-text {
+    color: var(--ant-color-text-tertiary);
+}
+.audio-block-row .ant-btn-text:hover {
+    color: var(--ant-color-text);
+}
+/* 音量 hover 弹层：收窄 Popover 自带 inner padding */
+.audio-vol-popover .ant-popover-inner-content {
+    padding: 3px 10px;
+}
+.audio-vol-pop {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.audio-vol-pct {
+    font-size: 11.5px;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ant-color-text-tertiary);
+    min-width: 22px;
+    text-align: right;
+}
+/* hover 进度条时光标位置的时间预览浮层 */
+.audio-hover-tip {
+    position: absolute;
+    top: -22px;
+    transform: translateX(-50%);
+    background: var(--ant-color-bg-elevated);
+    box-shadow: var(--ant-box-shadow-secondary);
+    padding: 3px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ant-color-text);
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 10;
+}
+/* 图片内容视图：图片按原始尺寸显示，仅当超出父组件时等比缩放到 fit；
+   水平居中、垂直顶部对齐（小图不被放大、不变形）。 */
+.image-content-view {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 12px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+/* .ant-image 默认 inline-block、尺寸随 img：保留 shrink-to-fit 宽度（小图按原尺寸，不被拉宽），
+   仅设 height:100% 让 img 的 max-height:100% 有确定参照（否则百分比高度被浏览器忽略）。
+   max-width:100% 让大图宽度触顶时缩到容器内。 */
+.image-content-view .ant-image {
+    display: inline-flex;
+    align-items: flex-start;
+    justify-content: center;
+    max-width: 100%;
+    max-height: 100%;
+    height: 100%;
+}
+/* img 用 natural size，仅 max-* 约束上限：原始尺寸优先，超出才等比缩放（保持比例）；
+   去掉 antd 默认给 .ant-image-img 的淡灰底（rgba(20,20,19,0.04)），让透明 PNG/SVG 真正透明 */
+.image-content-view .ant-image-img {
+    max-width: 100%;
+    max-height: 100%;
+    background: transparent !important;
+}
+/* 去掉 antd Image hover 时的灰色覆盖层（.ant-image-cover，#000 30%）背景，
+   但保留元素本身（cursor:pointer + 点击打开预览）——所以用透明背景而非 display:none。 */
+.image-content-view .ant-image-cover {
+    background: transparent !important;
+}
+
 /* Dark 模式下 solid 按钮文字颜色修复 */
 html[data-theme='dark'] .ant-btn-variant-solid {
     color: #141413 !important;

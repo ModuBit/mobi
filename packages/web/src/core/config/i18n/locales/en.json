@@ -233,6 +233,9 @@
     "pathCopied": "Path copied",
     "viewSource": "View source",
     "viewRender": "View rendered",
+    "wordWrap": "Word wrap",
+    "noWrap": "No wrap",
+    "mute": "Mute",
     "fitWidth": "Fit width",
     "actualSize": "100%"
   },

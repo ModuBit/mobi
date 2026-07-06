@@ -233,6 +233,9 @@
     "pathCopied": "已复制路径",
     "viewSource": "查看源码",
     "viewRender": "查看渲染",
+    "wordWrap": "自动换行",
+    "noWrap": "不换行",
+    "mute": "静音",
     "fitWidth": "适应宽度",
     "actualSize": "100%"
   },

@@ -4,13 +4,64 @@
 
 .shiki-wrap pre.shiki {
     margin: 0;
-    padding: 12px;
+    padding: 0;
     font-family: var(--font-mono);
-    /* 文件查看：长行换行，与 fallback <pre> 一致 */
-    white-space: pre-wrap;
+    /* .line 设 block 后，shiki 在 .line 之间输出的 \n 会被 pre-wrap 渲染成空行；
+       pre 改 normal 让这些 \n 折叠，长行折行交给 .line 自己的 pre-wrap 处理 */
+    white-space: normal;
     word-break: break-all;
+    /* 去掉 shiki 主题自带的纯色背景（内联 background-color），透出 mobi 主题色；
+       token 颜色（span 内联 color）不受影响 */
+    background: transparent !important;
 }
 
 .shiki-wrap pre.shiki code {
     font-family: var(--font-mono);
+}
+
+/* 每行容器：block + hanging indent（padding-left 3em + text-indent -3em）。
+   - 行号 .ln 落在列 0（首行 text-indent 左移），token 在 3em 后；
+   - 折行的续行无 text-indent，从 padding-left（3em）开始 → 与首行代码对齐，不压行号。 */
+.shiki-wrap pre.shiki .line {
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-all;
+    padding-left: 3em;
+    text-indent: -3em;
+    /* 行号列背景：0-2.5em 用 inspector 面板背景（Layout 底色），2.5em 后透明（0.5em gap）。
+       让折行的续行左侧也有连续背景（.ln 只在首行，覆盖不到续行的 padding 区）。 */
+    background: linear-gradient(to right, var(--ant-color-bg-layout) 2.5em, transparent 2.5em);
+}
+
+/* 行号（transformer 在每个 .line 首位插入 <span class="ln">N</span>）：
+   border-box width 2.5em 含 padding-right 0.5em（背景内留白，数字不紧贴背景右缘），
+   margin-right 0.5em 做 gap（背景外透明），代码从 3em 开始。
+   背景用 Layout 底色与 inspector 面板一致（非透明，遮挡透过行号的代码）。 */
+.shiki-wrap pre.shiki .line .ln {
+    box-sizing: border-box;
+    display: inline-block;
+    width: 2.5em;
+    padding-right: 0.5em;
+    margin-right: 0.5em;
+    text-align: right;
+    color: var(--ant-color-text-quaternary);
+    user-select: none;
+    background: var(--ant-color-bg-layout);
+}
+
+/* 不换行模式：长行不折行，靠外层 .content-scroll 横向滚动 */
+.shiki-wrap.no-wrap pre.shiki .line {
+    white-space: pre;
+}
+/* 撑开 .shiki-wrap 到内容全宽：否则 block 宽度=容器宽，内容溢出但不撑开容器，
+   .ln 的 sticky 有效范围仅=容器宽——滚动超过后行号被带走。max-content 让 sticky 覆盖整行长。 */
+.shiki-wrap.no-wrap {
+    width: max-content;
+    min-width: 100%;
+}
+/* 水平滚动锁定行号：.ln 真实元素 sticky left:0（伪元素 ::before 的水平 sticky 浏览器支持差，
+   故用 transformer 注入真实 span）。不加背景——代码内容在 padding-left 列外，正常不会与行号重叠 */
+.shiki-wrap.no-wrap pre.shiki .line .ln {
+    position: sticky;
+    left: 0;
 }

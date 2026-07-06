@@ -19,7 +19,7 @@ import { Spin, Empty, App } from 'antd'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Copy, FileCode, Eye, RefreshCw } from 'lucide-react'
+import { Copy, FileCode, Eye, RefreshCw, WrapText } from 'lucide-react'
 import { queryKeys } from '@/core/lib/query-keys'
 import FileDownloadPrompt from '@/components/files/FileDownloadPrompt'
 import TextContentView from '@/components/files/TextContentView'
@@ -45,10 +45,14 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
 
     // markdown 菜单：kind 在 content-loading / ready 均携带，故 content 拉取期间菜单也常驻，
     // 不会因加载完成而闪退闪现；view/toggleView 在这两个状态均可用，加载期间可预切源码。
-    const onMarkdownPath = state.status === 'content-loading' || state.status === 'ready'
-    const isMarkdown = onMarkdownPath && state.kind.kind === 'markdown'
-    const view = onMarkdownPath ? state.view : 'render'
-    const toggleView = onMarkdownPath ? state.toggleView : undefined
+    const onCodePath = state.status === 'content-loading' || state.status === 'ready'
+    const isMarkdown = onCodePath && state.kind.kind === 'markdown'
+    const view = onCodePath ? state.view : 'render'
+    const toggleView = onCodePath ? state.toggleView : undefined
+    // 源码视图（text 文件，或 markdown source 模式）才显示「自动换行」切换
+    const isCodeView = onCodePath && (state.kind.kind === 'text' || (isMarkdown && view === 'source'))
+    const wrap = onCodePath ? state.wrap : true
+    const toggleWrap = onCodePath ? state.toggleWrap : undefined
 
     const copyPath = async () => {
         try {
@@ -79,6 +83,15 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
             icon: view === 'render' ? <FileCode size={14} /> : <Eye size={14} />,
             label: view === 'render' ? t('files.viewSource') : t('files.viewRender'),
             onClick: () => toggleView?.(),
+        })
+    }
+    // 源码视图：自动换行切换（label 显示切换后的目标状态）
+    if (isCodeView) {
+        moreMenuItems.push({
+            key: 'toggleWrap',
+            icon: <WrapText size={14} />,
+            label: wrap ? t('files.noWrap') : t('files.wordWrap'),
+            onClick: () => toggleWrap?.(),
         })
     }
 
@@ -151,8 +164,8 @@ function renderReady(
             // 不可直显二进制，提示下载
             return <FileDownloadPrompt sessionId={sessionId} filePath={filePath} reason={t('files.binaryDownload')} />
         case 'markdown':
-            return <MarkdownContentView text={state.text} filePath={filePath} view={state.view} />
+            return <MarkdownContentView text={state.text} filePath={filePath} view={state.view} wrap={state.wrap} />
         case 'text':
-            return <TextContentView text={state.text} filePath={filePath} highlight={state.kind.highlight} />
+            return <TextContentView text={state.text} filePath={filePath} highlight={state.kind.highlight} wrap={state.wrap} />
     }
 }

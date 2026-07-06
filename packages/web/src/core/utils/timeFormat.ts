@@ -86,8 +86,7 @@ export function formatElapsedTime(startedAt: number, now: number = Date.now()): 
 }
 
 /** 格式化消息时间：当天 HH:mm，非当天 MM/DD HH:mm，非当年 YYYY/MM/DD HH:mm */
-export function formatMessageTime(createdAt: number): string {
-    const date = new Date(createdAt)
+export function formatMessageTime(createdAt: number): string {    const date = new Date(createdAt)
     const now = new Date()
     const hours = date.getHours().toString().padStart(2, '0')
     const minutes = date.getMinutes().toString().padStart(2, '0')
@@ -101,4 +100,20 @@ export function formatMessageTime(createdAt: number): string {
     const monthDay = `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`
     if (sameYear) return `${monthDay} ${time}`
     return `${date.getFullYear()}/${monthDay} ${time}`
+}
+
+/**
+ * 格式化播放时间（秒 → m:ss，超 1 小时 → H:mm:ss）
+ * 非有限值（NaN/Infinity，见于未确定时长的流式音频）或负值统一兜底为 0:00
+ * @param seconds 秒
+ */
+export function formatPlayTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 0) seconds = 0
+    const total = Math.floor(seconds)
+    const h = Math.floor(total / 3600)
+    const m = Math.floor((total % 3600) / 60)
+    const s = total % 60
+    const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
+    const ss = String(s).padStart(2, '0')
+    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
 }

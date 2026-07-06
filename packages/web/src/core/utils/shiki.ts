@@ -17,11 +17,28 @@
 import { createHighlighterCore } from 'shiki/core'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import type { HighlighterCore } from 'shiki/core'
+import type { ShikiTransformer } from 'shiki'
 import { useEffect, useState } from 'react'
 
 // 单主题：github-light / github-dark（按 isDark 切，切主题重新高亮——静态文件可接受）
 export const SHIKI_THEME_LIGHT = 'github-light'
 export const SHIKI_THEME_DARK = 'github-dark'
+
+/** 行号 transformer：在每个 <span class="line"> 首位插入 <span class="ln">N</span>。
+ *  用真实元素而非 ::before —— 水平滚动锁定行号（sticky）需真实元素，伪元素的 sticky
+ *  在水平方向浏览器支持差。CSS .ln sticky left:0 锁定列；hanging indent 让行号落在列 0。 */
+const lineNumberTransformer: ShikiTransformer = {
+    name: 'mobi:line-numbers',
+    line(node, line) {
+        const ln = {
+            type: 'element',
+            tagName: 'span',
+            properties: { className: ['ln'] },
+            children: [{ type: 'text', value: String(line) }],
+        } as typeof node
+        node.children.unshift(ln)
+    },
+}
 
 // 2 主题（懒加载）
 const THEMES = [
@@ -96,6 +113,7 @@ export function useShikiHtml(code: string, language: string, isDark: boolean): s
             const out = highlighter.codeToHtml(code, {
                 lang: language,
                 theme: isDark ? SHIKI_THEME_DARK : SHIKI_THEME_LIGHT,
+                transformers: [lineNumberTransformer],
             })
             if (!cancelled) setHtml(out)
         }).catch(() => { if (!cancelled) setHtml(null) })

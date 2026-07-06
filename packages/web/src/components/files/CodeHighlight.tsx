@@ -24,6 +24,8 @@ interface CodeHighlightProps {
     code: string
     /** 文件路径（用于推断语言） */
     filePath: string
+    /** 自动换行（默认 true）；false 时长行不换行，容器横向滚动 */
+    wrap?: boolean
 }
 
 /**
@@ -33,21 +35,21 @@ interface CodeHighlightProps {
  *
  * 首次渲染：highlighter 异步加载期间返回 null，先 fallback 纯 `<pre>`，加载完成后切到高亮版本。
  */
-export default function CodeHighlight({ code, filePath }: CodeHighlightProps) {
+export default function CodeHighlight({ code, filePath, wrap = true }: CodeHighlightProps) {
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const lang = useMemo(() => resolveFileLang(filePath), [filePath])
     const html = useShikiHtml(code, lang, isDark)
 
     if (!html) {
         // fallback：纯文本，样式与 FileContentView 原文本分支对齐
+        // padding 由调用方外层容器（markdown-content-view / text-content-view）统一管
         return (
             <pre style={{
                 fontSize: 12,
                 margin: 0,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
+                whiteSpace: wrap ? 'pre-wrap' : 'pre',
+                wordBreak: wrap ? 'break-all' : 'normal',
                 fontFamily: 'var(--font-mono)',
-                padding: 12,
             }}>
                 {code}
             </pre>
@@ -56,7 +58,7 @@ export default function CodeHighlight({ code, filePath }: CodeHighlightProps) {
 
     return (
         <div
-            className="shiki-wrap"
+            className={`shiki-wrap${wrap ? '' : ' no-wrap'}`}
             style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}
             dangerouslySetInnerHTML={{ __html: html }}
         />
