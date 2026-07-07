@@ -295,4 +295,8 @@ export type FileNode = {
     name: string
     path: string
     type: 'file' | 'directory'
+    /** 文件大小（字节）；目录无此字段（stat 出的目录条目大小无意义） */
+    size?: number
+    /** 修改时间（毫秒时间戳） */
+    modified?: number
 }

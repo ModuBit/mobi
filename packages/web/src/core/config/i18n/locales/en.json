@@ -237,7 +237,14 @@
     "noWrap": "No wrap",
     "mute": "Mute",
     "fitWidth": "Fit width",
-    "actualSize": "100%"
+    "actualSize": "100%",
+    "size": "Size",
+    "modified": "Modified",
+    "searchPlaceholder": "Filter files...",
+    "noResults": "No matching files",
+    "resultsTruncated": "Showing first {{count}} results",
+    "showHidden": "Show hidden files",
+    "hideHidden": "Hide hidden files"
   },
   "git": {
     "filesChanged": "{{count}} files changed",

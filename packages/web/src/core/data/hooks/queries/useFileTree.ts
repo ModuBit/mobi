@@ -28,36 +28,16 @@ export type { FileNode }
  */
 export function parseDirectoryEntries(data: ListDirectoryResponse, dirPath: string): FileNode[] {
     const base = !dirPath || dirPath === '.' ? '' : `${dirPath}/`
-    type FileOrDir = { name: string; type: 'file' | 'directory' }
+    type FileOrDir = { name: string; type: 'file' | 'directory'; size?: number; modified?: number }
     return (data.entries ?? [])
         .filter((e): e is FileOrDir => e.type === 'file' || e.type === 'directory')
-        .map((e) => ({ name: e.name, path: `${base}${e.name}`, type: e.type }))
-}
-
-/**
- * 获取目录下的文件列表。
- * hub 返回 success:false（runner 未就绪/无权限等）时抛错，由 react-query 透出 error，
- * 调用方据此显示错误态而非误导性的「空目录」。
- */
-export function useFileTree(sessionId: string | null, path: string) {
-    const api = useMobiApi()
-
-    return useQuery({
-        queryKey: queryKeys.sessionDirectory(sessionId!, path),
-        queryFn: async () => {
-            if (!sessionId) return []
-            const res = await api.files.list(sessionId, path)
-            const data = res.data as ListDirectoryResponse
-            if (data.success === false) {
-                throw new Error(data.error ?? 'list-directory failed')
-            }
-            return parseDirectoryEntries(data, path)
-        },
-        enabled: !!sessionId,
-        // staleTime 0：目录需及时反映文件变化，每次挂载都后台 refetch；
-        // 缓存仍作 placeholder 先渲染（不闪 skeleton），gcTime 沿用全局 10min
-        staleTime: 0,
-    })
+        .map((e) => ({
+            name: e.name,
+            path: `${base}${e.name}`,
+            type: e.type,
+            size: e.size,
+            modified: e.modified,
+        }))
 }
 
 /**

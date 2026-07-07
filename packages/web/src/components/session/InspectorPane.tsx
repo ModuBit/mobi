@@ -193,6 +193,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
         return (
             <FileTreeView
                 sessionId={sessionId}
+                active={activeTabId === tab.id}
                 onOpenFile={(filePath, fileName) => openFileInTab(sessionId, tab.id, filePath, fileName)}
             />
         )

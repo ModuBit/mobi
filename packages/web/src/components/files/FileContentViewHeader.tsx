@@ -144,6 +144,7 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
                         <div style={{ width: 300, height: 400, overflow: 'auto' }}>
                             <FileTreeView
                                 sessionId={sessionId}
+                                active={treeOpen}
                                 onOpenFile={(fp, fn) => {
                                     // store 去重：当前文件不响应 / 别的 tab 已开则激活 / 否则当前 tab 转该文件
                                     openFileInTab(sessionId, tabId, fp, fn)

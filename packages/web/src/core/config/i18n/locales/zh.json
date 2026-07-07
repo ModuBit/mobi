@@ -237,7 +237,14 @@
     "noWrap": "不换行",
     "mute": "静音",
     "fitWidth": "适应宽度",
-    "actualSize": "100%"
+    "actualSize": "100%",
+    "size": "大小",
+    "modified": "修改",
+    "searchPlaceholder": "筛选文件...",
+    "noResults": "无匹配文件",
+    "resultsTruncated": "仅显示前 {{count}} 条结果",
+    "showHidden": "显示隐藏文件",
+    "hideHidden": "隐藏文件"
   },
   "git": {
     "filesChanged": "{{count}} 个文件变更",

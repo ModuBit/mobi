@@ -79,7 +79,14 @@ vi.mock('@/core/data/hooks/queries/useFileTree', async () => {
 
 // FileTreeView 还依赖 api client 与 auth
 vi.mock('@/core/data/api/client', () => ({
-    useMobiApi: vi.fn(() => ({ files: { list: vi.fn() } })),
+    useMobiApi: vi.fn(() => ({
+        files: {
+            // Popover 内 FileTreeView 真实订阅根目录（useQueries）→ 返回可点击的 other.ts
+            list: vi.fn(async () => ({
+                data: { success: true, entries: [{ name: 'other.ts', type: 'file' }] },
+            })),
+        },
+    })),
 }))
 vi.mock('@/core/data/stores/authStore', () => ({
     useAuthStore: vi.fn(() => ({ token: 't' })),
@@ -406,11 +413,11 @@ describe('FileContentView', () => {
         const otherNode = await screen.findByText('other.ts')
         // 点文件节点：照搬 FileTreeView.test.tsx 的点击写法（文本节点 click 即触发 onSelect → onOpenFile）
         fireEvent.click(otherNode)
-        // store：t1 tab 由 tree 转为 file，filePath 变 a/other.ts
+        // store：t1 tab 由 tree 转为 file，filePath 变 other.ts
         await waitFor(() => {
             const s = useWorkspaceStore.getState().getSession('s1')
             const tab = s.tabs.find((t) => t.id === 't1')
-            expect(tab?.filePath).toBe('a/other.ts')
+            expect(tab?.filePath).toBe('other.ts')
         })
     })
 

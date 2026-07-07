@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import type { LucideProps } from 'lucide-react'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
+import { formatFileSize } from '@/core/utils/fileSize'
 
 /** 文件类别图标（对齐 AntX FileCard PresetIcons） */
 type FileCategory = 'default' | 'pdf' | 'word' | 'excel' | 'ppt' | 'image' | 'video' | 'audio' | 'zip' | 'markdown' | 'java' | 'javascript' | 'python' | 'code'
@@ -148,16 +149,6 @@ function isImageAttachment(attachment: FileAttachment): boolean {
     if (attachment.file.type.startsWith('image/')) return true
     const ext = attachment.file.name.split('.').pop()?.toLowerCase() ?? ''
     return EXT_CATEGORY[ext] === 'image'
-}
-
-/** 文件大小人性化格式化（B → KB → MB → GB） */
-function formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 B'
-    const units = ['B', 'KB', 'MB', 'GB']
-    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-    const value = bytes / (1024 ** i)
-    // 小于 10 显示 1 位小数，否则取整
-    return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
 }
 
 /** 卡片左侧图标区尺寸 */

@@ -43,6 +43,8 @@ export const queryKeys = {
     sessionFiles: (sessionId: string, query: string) => ['session-files', sessionId, query] as const,
     /** 会话目录 */
     sessionDirectory: (sessionId: string, path: string) => ['session-directory', sessionId, path] as const,
+    /** 某 session 下所有目录（用作 invalidate 前缀：打开文件树时刷新根 + 已展开子目录） */
+    sessionDirectories: (sessionId: string) => ['session-directory', sessionId] as const,
     /** 会话文件（含 etag 维度：meta refetch 拿到新 etag → queryKey 变 → content 自动 refetch） */
     sessionFile: (sessionId: string, path: string, etag?: string) => ['session-file', sessionId, path, etag] as const,
     /** 会话文件元数据（mime/size/etag） */
