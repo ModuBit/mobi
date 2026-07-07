@@ -454,9 +454,10 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!query) {
             return c.json({ success: false, error: 'Query parameter is required' }, 400)
         }
+        const type = c.req.query('type') as 'file' | 'directory' | undefined
 
         try {
-            const result = await engine.searchSessionFiles(sessionResult.sessionId, query)
+            const result = await engine.searchSessionFiles(sessionResult.sessionId, query, type)
             return c.json(result)
         } catch (error) {
             return c.json({

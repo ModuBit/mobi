@@ -99,7 +99,7 @@ export function useDirectoryCapabilities(
         if (!target) return async () => ({ data: { success: false } })
         if (target.kind === 'session') {
             return (query: string, opts?: { signal?: AbortSignal }) =>
-                api.sessions.searchFiles(target.sessionId, query, opts)
+                api.sessions.searchFiles(target.sessionId, query, undefined, opts)
         }
         return (query: string, opts?: { signal?: AbortSignal }) =>
             api.machines.searchFiles(target.machineId, target.cwd, query, opts)

@@ -132,8 +132,13 @@ export function createMobiApi() {
             // SDK 元数据（commands, models, agents, account 等）
             metadata: (sessionId: string) => client.get(`/api/sessions/${sessionId}/metadata`),
             // 文件搜索和目录列表（@ 引用）
-            searchFiles: (sessionId: string, query: string, opts?: { signal?: AbortSignal }) =>
-                client.get<ListFilesResponse>(`/api/sessions/${sessionId}/search-files`, { params: { query }, signal: opts?.signal }),
+            searchFiles: (
+                sessionId: string,
+                query: string,
+                type?: 'file' | 'directory',
+                opts?: { signal?: AbortSignal },
+            ) =>
+                client.get<ListFilesResponse>(`/api/sessions/${sessionId}/search-files`, { params: { query, type }, signal: opts?.signal }),
             listDirectory: (sessionId: string, path: string, opts?: { signal?: AbortSignal }) =>
                 client.get<ListFilesResponse>(`/api/sessions/${sessionId}/list-directory`, { params: { path }, signal: opts?.signal }),
         },

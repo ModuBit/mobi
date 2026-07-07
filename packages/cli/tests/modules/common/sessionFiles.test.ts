@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery } from '@/modules/common/handlers/sessionFiles'
+import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery, applyTypeFilter } from '@/modules/common/handlers/sessionFiles'
 
 describe('isSearchQuery', () => {
     it('普通文件名应触发搜索', () => {
@@ -117,5 +117,39 @@ describe('pathMatchesQuery', () => {
 
     it('路径段跨层级匹配', () => {
         expect(pathMatchesQuery('packages/cli/src/index.ts', ['cli', 'index'])).toBe(true)
+    })
+})
+
+describe('applyTypeFilter', () => {
+    const dirs = [
+        { name: 'src', type: 'directory' as const, path: 'src' },
+        { name: 'docs', type: 'directory' as const, path: 'docs' },
+    ]
+    const files = [
+        { name: 'a.ts', type: 'file' as const, path: 'src/a.ts' },
+        { name: 'b.ts', type: 'file' as const, path: 'b.ts' },
+    ]
+
+    it('type=file → 仅文件', () => {
+        expect(applyTypeFilter(dirs, files, 'file')).toEqual(files)
+    })
+
+    it('type=directory → 仅目录', () => {
+        expect(applyTypeFilter(dirs, files, 'directory')).toEqual(dirs)
+    })
+
+    it('type 不传 → 目录 + 文件合并', () => {
+        expect(applyTypeFilter(dirs, files)).toEqual([...dirs, ...files])
+    })
+
+    it('合并结果受 MAX_RESULTS(50) 截断', () => {
+        const manyDirs = Array.from({ length: 30 }, (_, i) => ({ name: `d${i}`, type: 'directory' as const, path: `d${i}` }))
+        const manyFiles = Array.from({ length: 30 }, (_, i) => ({ name: `f${i}.ts`, type: 'file' as const, path: `f${i}.ts` }))
+        expect(applyTypeFilter(manyDirs, manyFiles)).toHaveLength(50)
+    })
+
+    it('type=directory 超量也截断到 50', () => {
+        const manyDirs = Array.from({ length: 60 }, (_, i) => ({ name: `d${i}`, type: 'directory' as const, path: `d${i}` }))
+        expect(applyTypeFilter(manyDirs, [], 'directory')).toHaveLength(50)
     })
 })

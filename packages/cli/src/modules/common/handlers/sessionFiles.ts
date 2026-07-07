@@ -123,6 +123,22 @@ function extractMatchingDirs(
 }
 
 /**
+ * 按类型过滤搜索结果（search-files 的 type 参数实现）。
+ * - type='file' → 仅文件（fileEntries 已在调用前 cap 到 MAX_RESULTS）
+ * - type='directory' → 仅目录，cap MAX_RESULTS
+ * - 不传 → 目录 + 文件合并 cap MAX_RESULTS（向后兼容：composer @ 默认行为）
+ */
+export function applyTypeFilter(
+    dirEntries: FileEntry[],
+    fileEntries: FileEntry[],
+    type?: 'file' | 'directory',
+): FileEntry[] {
+    if (type === 'file') return fileEntries
+    if (type === 'directory') return dirEntries.slice(0, MAX_RESULTS)
+    return [...dirEntries, ...fileEntries].slice(0, MAX_RESULTS)
+}
+
+/**
  * 从 query 中解析最长已存在的目录前缀
  * 如 "docs/architecture/hu" → { dirPrefix: "docs/architecture", matchParts: ["hu"] }
  * 如 "hub" → { dirPrefix: "", matchParts: ["hub"] }
@@ -155,7 +171,7 @@ async function resolveDirPrefix(
 /**
  * 使用 ripgrep 模糊搜索文件和目录（路径子串匹配）
  */
-async function searchFiles(workingDirectory: string, query: string): Promise<FileEntry[]> {
+async function searchFiles(workingDirectory: string, query: string, type?: 'file' | 'directory'): Promise<FileEntry[]> {
     try {
         const allParts = query.toLowerCase().split('/').filter(p => p.length > 0)
         const { dirPrefix, matchParts } = await resolveDirPrefix(workingDirectory, allParts)
@@ -178,14 +194,28 @@ async function searchFiles(workingDirectory: string, query: string): Promise<Fil
         )
 
         const fullPaths = matchedLines.map(l => prefixPath + l)
-        const dirEntries = extractMatchingDirs(fullPaths, allParts)
-        const fileEntries = fullPaths.slice(0, MAX_RESULTS).map(p => ({
-            name: p.includes('/') ? p.slice(p.lastIndexOf('/') + 1) : p,
-            type: 'file' as const,
-            path: p,
-        }))
+        // 补 size/modified：让搜索结果 Tooltip 与树展开视图信息密度一致（stat 失败降级无元信息）
+        const fileEntries: FileEntry[] = await Promise.all(
+            fullPaths.slice(0, MAX_RESULTS).map(async (p) => {
+                const name = p.includes('/') ? p.slice(p.lastIndexOf('/') + 1) : p
+                try {
+                    const stats = await stat(join(workingDirectory, p))
+                    return {
+                        name,
+                        type: 'file' as const,
+                        path: p,
+                        size: stats.size,
+                        modified: stats.mtime.getTime(),
+                    }
+                } catch {
+                    return { name, type: 'file' as const, path: p }
+                }
+            }),
+        )
+        // type=file 时跳过 extractMatchingDirs（仅文件场景无需推导目录，省后处理）
+        const dirEntries = type === 'file' ? [] : extractMatchingDirs(fullPaths, allParts)
 
-        return [...dirEntries, ...fileEntries].slice(0, MAX_RESULTS)
+        return applyTypeFilter(dirEntries, fileEntries, type)
     } catch (error) {
         logger.debug('ripgrep 搜索失败:', error)
         return []
@@ -252,7 +282,7 @@ function validateRpcCwd(cwd: string): boolean {
 
 export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // 接口 1：ripgrep 模糊搜索（工作目录内）
-    rpcHandlerManager.registerHandler<{ query: string, cwd?: string }, ListSessionFilesResponse>('searchSessionFiles', async (data) => {
+    rpcHandlerManager.registerHandler<{ query: string, cwd?: string, type?: 'file' | 'directory' }, ListSessionFilesResponse>('searchSessionFiles', async (data) => {
         // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
         const effectiveCwd = data.cwd || workingDirectory
         if (data.cwd && !validateRpcCwd(data.cwd)) {
@@ -264,7 +294,7 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
         logger.debug('Search session files request:', data.query)
 
         try {
-            const entries = await searchFiles(effectiveCwd, data.query)
+            const entries = await searchFiles(effectiveCwd, data.query, data.type)
             return { success: true, entries }
         } catch (error) {
             return rpcError(getErrorMessage(error, 'Failed to search files'))
