@@ -78,15 +78,19 @@ vi.mock('@/core/data/hooks/queries/useFileTree', async () => {
 })
 
 // FileTreeView 还依赖 api client 与 auth
+// 注意：useDebouncedFileSearch 的 effect 依赖 useMobiApi() 的返回引用，
+// 生产中 useMobiApi 用 useMemo([]) 稳定；mock 必须镜像这一契约——返回稳定单例，
+// 否则每次渲染新对象 → effect 无限循环 → worker OOM。
+const stableApi = {
+    files: {
+        // Popover 内 FileTreeView 真实订阅根目录（useQueries）→ 返回可点击的 other.ts
+        list: vi.fn(async () => ({
+            data: { success: true, entries: [{ name: 'other.ts', type: 'file' }] },
+        })),
+    },
+}
 vi.mock('@/core/data/api/client', () => ({
-    useMobiApi: vi.fn(() => ({
-        files: {
-            // Popover 内 FileTreeView 真实订阅根目录（useQueries）→ 返回可点击的 other.ts
-            list: vi.fn(async () => ({
-                data: { success: true, entries: [{ name: 'other.ts', type: 'file' }] },
-            })),
-        },
-    })),
+    useMobiApi: vi.fn(() => stableApi),
 }))
 vi.mock('@/core/data/stores/authStore', () => ({
     useAuthStore: vi.fn(() => ({ token: 't' })),
@@ -331,7 +335,8 @@ describe('FileContentView', () => {
             expect(audio).not.toBeNull()
         })
         expect(audio!).toHaveAttribute('src', '/api/sessions/s1/read-file?path=song.mp3')
-        expect(audio!).toHaveAttribute('controls')
+        // 音频经 AudioPlayer 渲染：隐藏 audio + 自定义 UI（无原生 controls），preload=metadata 是其特征
+        expect(audio!).toHaveAttribute('preload', 'metadata')
         expect(document.querySelector('video')).toBeNull()
     })
 
