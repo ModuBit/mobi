@@ -116,7 +116,7 @@ export default function AudioPlayer({ src, filePath, onError }: AudioPlayerProps
                 ref={audioRef}
                 src={src}
                 preload="metadata"
-                onError={() => onError?.()}
+                // error 由 effect 内 addEventListener 统一处理（onErrorRef 模式，避免回调变更反复挂卸）
                 style={{ display: 'none' }}
             />
 
