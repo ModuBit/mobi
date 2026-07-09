@@ -177,7 +177,11 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
     if (expanded && tabs.length === 0) {
         return (
             <Layout style={{ height: '100%', position: 'relative' }}>
-                <InspectorEmptyState onOpenFile={() => openFileTreeTab(sessionId)} />
+                <InspectorEmptyState
+                    onOpenFile={() => openFileTreeTab(sessionId)}
+                    onOpenTerminal={() => openTerminalTab(sessionId)}
+                    terminalDisabled={terminalLimitReached}
+                />
                 <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 2 }}>{rightChrome}</div>
             </Layout>
         )

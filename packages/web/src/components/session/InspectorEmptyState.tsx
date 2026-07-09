@@ -22,13 +22,17 @@ import { INSPECTOR_ACTIONS } from './inspectorActions'
 interface InspectorEmptyStateProps {
     /** 点「文件」 */
     onOpenFile: () => void
+    /** 点「终端」（未传或达上限时该卡片置灰） */
+    onOpenTerminal?: () => void
+    /** 终端已达上限：terminal 卡片叠加上限 disable（与「+」菜单一致） */
+    terminalDisabled?: boolean
 }
 
 /**
  * 空态：居中的卡片行列表（参考 macOS 菜单风格——图标 + 标签，浅灰圆角卡）。
  * 动作清单与「+」下拉菜单共用 INSPECTOR_ACTIONS，避免两处能力漂移。
  */
-export function InspectorEmptyState({ onOpenFile }: InspectorEmptyStateProps) {
+export function InspectorEmptyState({ onOpenFile, onOpenTerminal, terminalDisabled }: InspectorEmptyStateProps) {
     const { t } = useTranslation()
     const { token } = antTheme.useToken()
 
@@ -37,12 +41,21 @@ export function InspectorEmptyState({ onOpenFile }: InspectorEmptyStateProps) {
             <List role="list">
                 {INSPECTOR_ACTIONS.map((item) => {
                     const { Icon } = item
+                    // 终端卡片：达上限时叠加 disable（与「+」菜单一致）
+                    const disabled =
+                        item.disabled || (item.key === 'terminal' && (terminalDisabled ?? false))
+                    // onClick 按 key 分发：terminal → onOpenTerminal，其余 → onOpenFile
+                    const onClick = disabled
+                        ? undefined
+                        : item.key === 'terminal'
+                            ? onOpenTerminal
+                            : onOpenFile
                     return (
                         <Row
                             key={item.key}
                             type="button"
-                            disabled={item.disabled}
-                            onClick={item.disabled ? undefined : onOpenFile}
+                            disabled={disabled}
+                            onClick={onClick}
                             $token={token}
                         >
                             <span className="icon"><Icon size={18} /></span>

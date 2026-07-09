@@ -23,7 +23,7 @@ export interface InspectorActionDescriptor {
     Icon: LucideIcon
     /** 文案 i18n key */
     labelKey: string
-    /** 暂未支持的动作置灰（终端/审查） */
+    /** 暂未支持的动作置灰（审查）；终端已在 Task 9 启用，其上限 disable 由调用方叠加 */
     disabled: boolean
 }
 
@@ -33,6 +33,6 @@ export interface InspectorActionDescriptor {
  */
 export const INSPECTOR_ACTIONS: readonly InspectorActionDescriptor[] = [
     { key: 'file', Icon: Folder, labelKey: 'session.inspector.openFile', disabled: false },
-    { key: 'terminal', Icon: Terminal, labelKey: 'session.inspector.terminal', disabled: true },
+    { key: 'terminal', Icon: Terminal, labelKey: 'session.inspector.terminal', disabled: false },
     { key: 'review', Icon: FileSearch, labelKey: 'session.inspector.review', disabled: true },
 ]

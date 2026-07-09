@@ -79,12 +79,23 @@ describe('InspectorPane', () => {
     })
     afterEach(() => cleanup())
 
-    it('空态：渲染 文件/终端/审查 三个按钮，终端审查 disabled', () => {
+    it('空态：渲染 文件/终端/审查 三个按钮，终端/文件可用，审查 disabled', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         renderWithClient(<InspectorPane sessionId="s1" />)
         expect(screen.getByRole('button', { name: 'session.inspector.openFile' })).toBeEnabled()
-        expect(screen.getByRole('button', { name: 'session.inspector.terminal' })).toBeDisabled()
+        // terminal 在空态启用（无 tab → terminalDisabled=false），点击可新建终端
+        expect(screen.getByRole('button', { name: 'session.inspector.terminal' })).toBeEnabled()
         expect(screen.getByRole('button', { name: 'session.inspector.review' })).toBeDisabled()
+    })
+
+    it('空态：点「终端」→ 新建 terminal tab', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        fireEvent.click(screen.getByRole('button', { name: 'session.inspector.terminal' }))
+        const s = useWorkspaceStore.getState().getSession('s1')
+        expect(s.tabs).toHaveLength(1)
+        expect(s.tabs[0].mode).toBe('terminal')
+        expect(s.activeTabId).toBe(s.tabs[0].id)
     })
 
     it('session 离线（active=false）：覆盖恢复层，点按钮调 resumeSession', () => {
@@ -148,6 +159,23 @@ describe('InspectorPane', () => {
         expect(screen.getByTestId('mock-terminal-view')).toHaveAttribute('data-new-disabled', 'false')
     })
 
+    it('未达上限时「+」菜单 terminal 项可点，点击触发 openTerminalTab', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        // 先开一个 tree tab 让「+」按钮出现（tabs.length > 0 才进入 tab 态）
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        fireEvent.click(screen.getByRole('button', { name: 'session.inspector.addTab' }))
+        const terminalItem = screen.getByText('session.inspector.terminal').closest('[role="menuitem"]')
+        expect(terminalItem).toBeTruthy()
+        // action.disabled=false 且未达上限 → 菜单项可点
+        expect(terminalItem?.getAttribute('aria-disabled')).not.toBe('true')
+        fireEvent.click(terminalItem!)
+        const s = useWorkspaceStore.getState().getSession('s1')
+        const terminalTab = s.tabs.find((t) => t.mode === 'terminal')
+        expect(terminalTab).toBeTruthy()
+        expect(s.activeTabId).toBe(terminalTab!.id)
+    })
+
     it('达上限（3 个终端）时 TerminalView newTerminalDisabled=true 且「+」菜单 terminal 项 disabled', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().openTerminalTab('s1')
@@ -156,7 +184,9 @@ describe('InspectorPane', () => {
         renderWithClient(<InspectorPane sessionId="s1" />)
         // 激活的 terminal tab 渲染的终端视图收到 newTerminalDisabled=true
         expect(screen.getByTestId('mock-terminal-view')).toHaveAttribute('data-new-disabled', 'true')
-        // 「+」下拉菜单中 terminal 项 disabled（INSPECTOR_ACTIONS.disabled + terminalLimitReached 叠加）
+        // 「+」下拉菜单中 terminal 项 disabled。
+        // Task 9 启用 terminal 后 action.disabled=false，disabled 完全由 terminalLimitReached 决定，
+        // 此处真正验证上限叠加（覆盖 Task 8 当时 action.disabled=true 无法独立验证的缺口）
         fireEvent.click(screen.getByRole('button', { name: 'session.inspector.addTab' }))
         const terminalItem = screen.getByText('session.inspector.terminal').closest('[role="menuitem"]')
         expect(terminalItem).toBeTruthy()
