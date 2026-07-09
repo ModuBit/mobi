@@ -19,8 +19,6 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 
-const TERMINAL_ID = 'main'
-
 /** 缓存的终端实例：xterm + 插件 + 独立 DOM 节点 + socket */
 export interface CachedTerminal {
     terminal: Terminal
@@ -34,6 +32,7 @@ export interface CachedTerminal {
 
 interface CreateOptions {
     sessionId: string
+    terminalId: string
 }
 
 /**
@@ -41,7 +40,7 @@ interface CreateOptions {
  * socket 断开不杀后端进程（TerminalManager 常驻）；重连 re-attach。
  * dispose 时断开 socket 并销毁 xterm（仅 clearCachedInstance 触发）。
  */
-export function createCachedTerminal({ sessionId }: CreateOptions): CachedTerminal {
+export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): CachedTerminal {
     const domNode = document.createElement('div')
     domNode.style.cssText = 'width:100%;height:100%;background:#1e1e1e;padding:4px;overflow:hidden;'
 
@@ -94,13 +93,13 @@ export function createCachedTerminal({ sessionId }: CreateOptions): CachedTermin
         })
 
         socket.on('terminal:output', (d: { sessionId: string; terminalId: string; data: string }) => {
-            if (d.sessionId === sessionId && d.terminalId === TERMINAL_ID) {
+            if (d.sessionId === sessionId && d.terminalId === terminalId) {
                 // 终端场景：output 直接写屏，不依赖外部 onData 回调新鲜度
                 terminal.write(d.data)
             }
         })
         socket.on('terminal:exit', (d: { sessionId: string; terminalId: string; code?: number }) => {
-            if (d.sessionId === sessionId && d.terminalId === TERMINAL_ID) {
+            if (d.sessionId === sessionId && d.terminalId === terminalId) {
                 // exit 横幅直接写屏，外部无需感知（进程退出由后端 TerminalManager 管理）
                 terminal.write(`\r\n\x1b[31m[Process exited, code: ${d.code}]\x1b[0m\r\n`)
                 isOpen = false
@@ -109,18 +108,18 @@ export function createCachedTerminal({ sessionId }: CreateOptions): CachedTermin
 
         terminal.onData((data) => {
             if (socket?.connected && isOpen) {
-                socket.emit('terminal:write', { sessionId, terminalId: TERMINAL_ID, data })
+                socket.emit('terminal:write', { sessionId, terminalId, data })
             }
         })
         terminal.onResize(({ cols, rows }) => {
             if (socket?.connected && isOpen) {
-                socket.emit('terminal:resize', { sessionId, terminalId: TERMINAL_ID, cols, rows })
+                socket.emit('terminal:resize', { sessionId, terminalId, cols, rows })
             }
         })
 
         socket.on('connect', () => {
             const { cols, rows } = terminal
-            socket!.emit('terminal:open', { sessionId, terminalId: TERMINAL_ID, cols, rows })
+            socket!.emit('terminal:open', { sessionId, terminalId, cols, rows })
             isOpen = true
             terminal.write('\x1b[32m[Terminal connected]\x1b[0m\r\n')
         })
@@ -133,7 +132,7 @@ export function createCachedTerminal({ sessionId }: CreateOptions): CachedTermin
         if (!socket) return
         if (socket.connected) {
             const { cols, rows } = terminal
-            socket.emit('terminal:open', { sessionId, terminalId: TERMINAL_ID, cols, rows })
+            socket.emit('terminal:open', { sessionId, terminalId, cols, rows })
             isOpen = true
         } else {
             // 掉线窗口期：主动重连，connect 事件会自动重发 terminal:open
@@ -148,7 +147,7 @@ export function createCachedTerminal({ sessionId }: CreateOptions): CachedTermin
         try {
             // 关闭后端 PTY（组件卸载不发，仅真正销毁实例时发）
             if (socket?.connected) {
-                socket.emit('terminal:close', { sessionId, terminalId: TERMINAL_ID })
+                socket.emit('terminal:close', { sessionId, terminalId: terminalId })
             }
             socket?.removeAllListeners()
             socket?.disconnect()

@@ -39,14 +39,9 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const attachedRef = useRef(false)
 
-    const cacheKey = `terminal:${sessionId}`
-
     const { instance } = useCachedInstance<CachedTerminal>(
-        cacheKey,
-        () =>
-            createCachedTerminal({
-                sessionId,
-            }),
+        `terminal:${sessionId}:main`, // 临时，Task 6 改为真实 terminalId
+        () => createCachedTerminal({ sessionId, terminalId: 'main' }),
         disposeCachedTerminal,
     )
 
