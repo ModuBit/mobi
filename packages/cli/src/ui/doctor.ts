@@ -300,7 +300,6 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
     // 报告内置 claude 二进制解析结果（仅 'all' 过滤时展示，避免噪音）
     if (filter === 'all') {
         try {
-            const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
             const resolved = await getClaudeExecutablePath();
             console.log(chalk.bold.cyan('\n🤖 Claude Binary'));
             if (process.env.MOBI_CLAUDE_PATH) {
