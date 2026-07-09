@@ -126,23 +126,34 @@ async function downloadAndExtractBinary(
     const tmpTar = `${outPath}.tar`;
     const ws = createWriteStream(tmpTar);
     const reader = resp.body.getReader();
-    for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        ws.write(value);
-    }
-    await new Promise((res, rej) => ws.close((err) => (err ? rej(err) : res(null))));
+    try {
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            ws.write(value);
+        }
+        // ws.end() 而非 ws.close()：end 先 flush 缓冲再关 fd，close 只关 fd 不保证 flush
+        await new Promise<void>((res, rej) => {
+            ws.end((err: Error | null | undefined) => (err ? rej(err) : res()));
+        });
 
-    await tar.extract({
-        file: tmpTar,
-        cwd: dirname(outPath),
-    }, [`package/${binaryName}`]);
+        await tar.extract({
+            file: tmpTar,
+            cwd: dirname(outPath),
+            preserveOwner: false,
+        }, [`package/${binaryName}`]);
 
-    rmSync(tmpTar, { force: true });
-    const extracted = join(dirname(outPath), 'package', binaryName);
-    if (!existsSync(extracted)) {
-        throw new Error(`tarball 内未找到 package/${binaryName}`);
+        const extracted = join(dirname(outPath), 'package', binaryName);
+        if (!existsSync(extracted)) {
+            throw new Error(`tarball 内未找到 package/${binaryName}（url=${url}）`);
+        }
+        renameSync(extracted, outPath);
+    } finally {
+        // 无条件清理：cancel reader（释放 fetch body）、destroy ws、删 tmpTar 与 package/ 残留
+        // 成功路径下 tmpTar / package/ 已不存在，force:true 幂等
+        reader.cancel().catch(() => {});
+        ws.destroy();
+        rmSync(tmpTar, { force: true });
+        rmSync(join(dirname(outPath), 'package'), { recursive: true, force: true });
     }
-    renameSync(extracted, outPath);
-    rmSync(join(dirname(outPath), 'package'), { recursive: true, force: true });
 }

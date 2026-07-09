@@ -20,17 +20,10 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// 用真实 sha 注入 manifest mock，使缓存命中逻辑可离线验证
+// 保留真实实现，测试内按需 spyOn 覆盖 manifest / version
 vi.mock('@/runtime/claudeBinarySource', async () => {
     const actual = await vi.importActual<typeof import('@/runtime/claudeBinarySource')>('@/runtime/claudeBinarySource');
-    return {
-        ...actual,
-        readSdkVersion: () => '0.3.204',
-        readSdkManifest: () => ({
-            version: '2.1.204',
-            platforms: { 'darwin-arm64': { binary: 'claude', checksum: 'WILL_BE_REPLACED', size: 3 } },
-        }),
-    };
+    return { ...actual };
 });
 
 describe('downloadClaudeBinary', () => {
@@ -47,6 +40,7 @@ describe('downloadClaudeBinary', () => {
         const data = 'abc';
         const sha = createHash('sha256').update(data).digest('hex');
         const source = await import('@/runtime/claudeBinarySource');
+        vi.spyOn(source, 'readSdkVersion').mockReturnValue('0.3.204');
         vi.spyOn(source, 'readSdkManifest').mockReturnValue({
             version: '2.1.204',
             platforms: { 'darwin-arm64': { binary: 'claude', checksum: sha, size: 3 } },
@@ -66,6 +60,7 @@ describe('downloadClaudeBinary', () => {
 
     it('缓存损坏（sha 不匹配）触发重新下载', async () => {
         const source = await import('@/runtime/claudeBinarySource');
+        vi.spyOn(source, 'readSdkVersion').mockReturnValue('0.3.204');
         vi.spyOn(source, 'readSdkManifest').mockReturnValue({
             version: '2.1.204',
             platforms: { 'darwin-arm64': { binary: 'claude', checksum: 'a'.repeat(64), size: 3 } },
@@ -73,7 +68,7 @@ describe('downloadClaudeBinary', () => {
         writeFileSync(join(tmpRoot, 'claude-darwin-arm64.bin'), 'stale');
 
         const { downloadClaudeBinary } = await import('../../../scripts/downloadClaudeBinary');
-        // fetch 返回不合法内容 → 解压/校验失败 → throw
+        // tar.extract 在 tmpTar 内容非合法 tarball 时同步抛错（此用例的稳定失败点），在 sha256 校验之前
         fetchSpy.mockResolvedValue(new Response('not a tarball', { status: 200 }));
         await expect(downloadClaudeBinary('bun-darwin-arm64', {
             archivesDir: tmpRoot,
