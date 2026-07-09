@@ -220,4 +220,38 @@ describe('workspaceStore', () => {
     it('DEFAULT_INSPECTOR_STATE 含 nextTerminalSeq: 1', () => {
         expect(DEFAULT_INSPECTOR_STATE.nextTerminalSeq).toBe(1)
     })
+
+    describe('openTerminalTab', () => {
+        it('新建终端 tab：生成 terminalId + 序号 1 + 激活，返回新 tab id', () => {
+            const returnedId = useWorkspaceStore.getState().openTerminalTab('s1')
+            const st = useWorkspaceStore.getState().getSession('s1')
+            expect(st.tabs).toHaveLength(1)
+            expect(st.tabs[0].mode).toBe('terminal')
+            expect(st.tabs[0].terminalId).toBeTruthy()
+            expect(st.tabs[0].terminalSeq).toBe(1)
+            expect(st.activeTabId).toBe(st.tabs[0].id)
+            expect(st.nextTerminalSeq).toBe(2)
+            // 返回值契约：等于实际创建的 tab id（专为此改用块级函数体）
+            expect(returnedId).toBe(st.tabs[0].id)
+        })
+
+        it('序号不重用：关掉终端 2 后新建是终端 3', () => {
+            useWorkspaceStore.getState().openTerminalTab('s1') // 终端1
+            useWorkspaceStore.getState().openTerminalTab('s1') // 终端2
+            const t2 = useWorkspaceStore.getState().getSession('s1').tabs[1].id
+            useWorkspaceStore.getState().closeTab('s1', t2)
+            useWorkspaceStore.getState().openTerminalTab('s1') // 终端3
+            const tabs = useWorkspaceStore.getState().getSession('s1').tabs
+            const newTab = tabs.find((t) => t.terminalSeq === 3)
+            expect(newTab).toBeDefined()
+            expect(tabs).toHaveLength(2)
+        })
+
+        it('多次新建各自独立 terminalId', () => {
+            useWorkspaceStore.getState().openTerminalTab('s1')
+            useWorkspaceStore.getState().openTerminalTab('s1')
+            const tabs = useWorkspaceStore.getState().getSession('s1').tabs
+            expect(tabs[0].terminalId).not.toBe(tabs[1].terminalId)
+        })
+    })
 })

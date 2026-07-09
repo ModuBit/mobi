@@ -95,6 +95,8 @@ interface WorkspaceState {
      * 否则把当前 tab 由 tree 转为 file。
      */
     openFileInTab: (sessionId: string, tabId: string, filePath: string, fileName: string) => void
+    /** 「终端」动作：新建一个终端 tab 并激活；返回新 tab id */
+    openTerminalTab: (sessionId: string) => string
     /** 关闭 tab；归空则收起 inspector；关的是 active 则激活相邻 */
     closeTab: (sessionId: string, tabId: string) => void
     setActiveTab: (sessionId: string, tabId: string) => void
@@ -178,6 +180,30 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             next.set(sessionId, { ...cur, tabs, activeTabId: tabId })
             return { sessions: next }
         }),
+
+    openTerminalTab: (sessionId) => {
+        // 先生成 tab id，便于 set 后返回（闭包变量）
+        const newTabId = uuid()
+        set((state) => {
+            const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
+            const entry: InspectorTabEntry = {
+                id: newTabId,
+                mode: 'terminal',
+                terminalId: uuid(),
+                terminalSeq: cur.nextTerminalSeq,
+            }
+            const tabs = [...cur.tabs, entry]
+            const next = new Map(state.sessions)
+            next.set(sessionId, {
+                ...cur,
+                tabs,
+                activeTabId: entry.id,
+                nextTerminalSeq: cur.nextTerminalSeq + 1,
+            })
+            return { sessions: next }
+        })
+        return newTabId
+    },
 
     closeTab: (sessionId, tabId) =>
         set((state) => {
