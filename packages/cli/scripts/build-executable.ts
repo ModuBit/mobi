@@ -17,6 +17,7 @@
 import { dirname, isAbsolute, join } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { downloadClaudeBinary } from './downloadClaudeBinary';
 
 const DEFAULT_TARGETS = [
     'bun-darwin-x64',
@@ -230,6 +231,9 @@ async function buildTarget(projectRoot: string, target: string, outdir: string, 
     const outfile = join(outdir, target, outputName);
     mkdirSync(dirname(outfile), { recursive: true });
     const featureFlag = getFeatureFlag(platform, arch);
+
+    // 下载并校验该 target 的 claude 二进制（供 embeddedClaudeBinary.bun.ts 内嵌）
+    await downloadClaudeBinary(target);
 
     const cmd = [
         process.execPath,
