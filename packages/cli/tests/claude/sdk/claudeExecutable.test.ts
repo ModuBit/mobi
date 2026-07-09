@@ -46,12 +46,31 @@ describe('getClaudeExecutablePath', () => {
             runtimePath: () => '/x',
         }));
         vi.doMock('@anthropic-ai/claude-agent-sdk/extract', () => ({
-            extractFromBunfs: (p: string) => `/tmp/extracted/${p}`,
+            extractFromBunfs: (p: string) => `/tmp/extracted${p}`,
         }));
         vi.doMock('@/runtime/embeddedClaudeBinary.bun', () => ({
             loadEmbeddedClaudeBinary: async () => '/bunfs/claude.bin',
         }));
         const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
-        expect(await getClaudeExecutablePath()).toBe('/tmp/extracted//bunfs/claude.bin');
+        expect(await getClaudeExecutablePath()).toBe('/tmp/extracted/bunfs/claude.bin');
+    });
+
+    it('MOBI_CLAUDE_PATH 优先于编译态（短路）', async () => {
+        process.env.MOBI_CLAUDE_PATH = '/custom/claude';
+        const extractSpy = vi.fn((p: string) => `/tmp/extracted${p}`);
+        vi.doMock('@/projectPath', () => ({
+            isBunCompiled: () => true,
+            projectPath: () => '/x',
+            runtimePath: () => '/x',
+        }));
+        vi.doMock('@anthropic-ai/claude-agent-sdk/extract', () => ({
+            extractFromBunfs: extractSpy,
+        }));
+        vi.doMock('@/runtime/embeddedClaudeBinary.bun', () => ({
+            loadEmbeddedClaudeBinary: async () => '/bunfs/claude.bin',
+        }));
+        const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
+        expect(await getClaudeExecutablePath()).toBe('/custom/claude');
+        expect(extractSpy).not.toHaveBeenCalled();
     });
 });

@@ -20,8 +20,10 @@ import { isBunCompiled } from '@/projectPath';
  * 解析 claude 可执行路径（local + remote 共用）。
  *
  * 三层回退：
- * 1. MOBI_CLAUDE_PATH 环境变量（escape hatch）
- * 2. 编译态：extractFromBunfs(内嵌二进制) → /tmp/claude-<uid>/<sha256>/claude
+ * 1. MOBI_CLAUDE_PATH 环境变量（escape hatch，不做存在性校验）
+ * 2. 编译态：extractFromBunfs(内嵌二进制) → 提取到 SDK 管理的临时目录
+ *    （按二进制内容 sha256 缓存复用）。注意：提取失败时 SDK 会返回原始
+ *    $bunfs 路径，子进程无法 spawn，调用方需感知此降级。
  * 3. dev 态：返回 undefined，由 SDK 自动 require.resolve node_modules 子包
  *
  * 返回 undefined 时：
