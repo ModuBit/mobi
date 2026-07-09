@@ -55,6 +55,23 @@ describe('getClaudeExecutablePath', () => {
         expect(await getClaudeExecutablePath()).toBe('/tmp/extracted/bunfs/claude.bin');
     });
 
+    it('编译态 extractFromBunfs 返回 $bunfs 原始路径（提取失败）时回退 undefined', async () => {
+        vi.doMock('@/projectPath', () => ({
+            isBunCompiled: () => true,
+            projectPath: () => '/x',
+            runtimePath: () => '/x',
+        }));
+        vi.doMock('@anthropic-ai/claude-agent-sdk/extract', () => ({
+            // SDK 提取失败时的降级：返回未解压的虚拟路径
+            extractFromBunfs: () => '/$bunfs/root/tools/archives/claude-darwin-arm64.bin',
+        }));
+        vi.doMock('@/runtime/embeddedClaudeBinary.bun', () => ({
+            loadEmbeddedClaudeBinary: async () => '/$bunfs/root/tools/archives/claude-darwin-arm64.bin',
+        }));
+        const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
+        expect(await getClaudeExecutablePath()).toBeUndefined();
+    });
+
     it('MOBI_CLAUDE_PATH 优先于编译态（短路）', async () => {
         process.env.MOBI_CLAUDE_PATH = '/custom/claude';
         const extractSpy = vi.fn((p: string) => `/tmp/extracted${p}`);

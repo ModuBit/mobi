@@ -89,6 +89,7 @@ async function runLocalMode(options: StartOptions): Promise<void> {
 
         claudeProcess.on('error', (error) => {
             console.error(chalk.red('Failed to start Claude:'), error.message)
+            console.error(chalk.yellow('  未找到 claude？可设置 MOBI_CLAUDE_PATH 指向已有 claude 可执行文件'))
             reject(error)
         })
     })

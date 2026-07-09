@@ -36,6 +36,9 @@ const TARGET_MAP: Record<string, ClaudeBinaryTarget> = {
     'bun-darwin-arm64': { subpackage: '@anthropic-ai/claude-agent-sdk-darwin-arm64', binaryName: 'claude', manifestKey: 'darwin-arm64', archiveFile: 'claude-darwin-arm64.bin' },
     'bun-darwin-x64': { subpackage: '@anthropic-ai/claude-agent-sdk-darwin-x64', binaryName: 'claude', manifestKey: 'darwin-x64', archiveFile: 'claude-darwin-x64.bin' },
     'bun-linux-x64-baseline': { subpackage: '@anthropic-ai/claude-agent-sdk-linux-x64', binaryName: 'claude', manifestKey: 'linux-x64', archiveFile: 'claude-linux-x64.bin' },
+    // modern 与 baseline 共用同一个 glibc linux-x64 二进制（SDK manifest 无 baseline/modern 之分），
+    // 故映射到同一子包 + 同一 archiveFile，缓存自动复用
+    'bun-linux-x64-modern': { subpackage: '@anthropic-ai/claude-agent-sdk-linux-x64', binaryName: 'claude', manifestKey: 'linux-x64', archiveFile: 'claude-linux-x64.bin' },
     'bun-linux-arm64': { subpackage: '@anthropic-ai/claude-agent-sdk-linux-arm64', binaryName: 'claude', manifestKey: 'linux-arm64', archiveFile: 'claude-linux-arm64.bin' },
     'bun-windows-x64': { subpackage: '@anthropic-ai/claude-agent-sdk-win32-x64', binaryName: 'claude.exe', manifestKey: 'win32-x64', archiveFile: 'claude-win32-x64.bin' },
 };
@@ -50,6 +53,16 @@ export function resolveClaudeTarget(mobiTarget: string): ClaudeBinaryTarget {
     if (!t) throw new Error(`Unsupported claude binary target: ${mobiTarget}`);
     return t;
 }
+
+/**
+ * mobi 支持的所有 claude 二进制 target（Object.keys 快照，用于一致性校验）。
+ *
+ * embeddedClaudeBinary.bun.ts 按「平台 feature flag」静态 import 5 个 .bin 文件
+ * （darwin-arm64/darwin-x64/linux-arm64/linux-x64/win32-x64），不区分 baseline/modern。
+ * 新增 target 时，若其 archiveFile 不在既有 5 个文件名内，必须同步在
+ * embeddedClaudeBinary.bun.ts 补 feature 分支，否则编译态产物在目标平台静默不可用。
+ */
+export const ALL_MOBI_TARGETS: readonly string[] = Object.freeze(Object.keys(TARGET_MAP));
 
 /** 默认 npm registry（官方源） */
 const DEFAULT_REGISTRY = 'https://registry.npmjs.org';

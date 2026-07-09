@@ -20,6 +20,7 @@ import {
     buildTarballUrl,
     resolveRegistry,
     verifySha256,
+    ALL_MOBI_TARGETS,
 } from '@/runtime/claudeBinarySource';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -50,8 +51,45 @@ describe('resolveClaudeTarget', () => {
         expect(t.manifestKey).toBe('linux-x64');
     });
 
+    it('映射 linux-x64-modern 到同一 glibc linux-x64（与 baseline 共用二进制/缓存）', () => {
+        const t = resolveClaudeTarget('bun-linux-x64-modern');
+        const baseline = resolveClaudeTarget('bun-linux-x64-baseline');
+        expect(t.subpackage).toBe(baseline.subpackage);
+        expect(t.manifestKey).toBe(baseline.manifestKey);
+        expect(t.archiveFile).toBe(baseline.archiveFile);
+    });
+
     it('未知 target 抛错', () => {
         expect(() => resolveClaudeTarget('bun-solaris-x64')).toThrow(/unsupported/i);
+    });
+});
+
+describe('TARGET_MAP 一致性（防新增 target 漏改 embeddedClaudeBinary）', () => {
+    // embeddedClaudeBinary.bun.ts 按 5 个平台 feature flag 静态 import 的 .bin 文件名集合。
+    // 新增 target 若引入新 archiveFile，必须同步在此处与 embeddedClaudeBinary.bun.ts 补分支。
+    const EMBEDDED_ARCHIVE_FILES = new Set([
+        'claude-darwin-arm64.bin',
+        'claude-darwin-x64.bin',
+        'claude-linux-arm64.bin',
+        'claude-linux-x64.bin',
+        'claude-win32-x64.bin',
+    ]);
+
+    it('所有 archiveFile 遵循 claude-<manifestKey>.bin 命名约定', () => {
+        for (const mobiTarget of ALL_MOBI_TARGETS) {
+            const t = resolveClaudeTarget(mobiTarget);
+            expect(t.archiveFile).toBe(`claude-${t.manifestKey}.bin`);
+        }
+    });
+
+    it('每个 target 的 archiveFile 都在 embeddedClaudeBinary 静态 import 集合内', () => {
+        for (const mobiTarget of ALL_MOBI_TARGETS) {
+            const { archiveFile } = resolveClaudeTarget(mobiTarget);
+            expect(
+                EMBEDDED_ARCHIVE_FILES.has(archiveFile),
+                `${archiveFile} 未在 embeddedClaudeBinary.bun.ts 加 feature 分支，编译态会静默失效`,
+            ).toBe(true);
+        }
     });
 });
 

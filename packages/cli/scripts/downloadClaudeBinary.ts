@@ -139,7 +139,7 @@ export async function downloadClaudeBinary(
                 stallTimeoutMs,
                 progressIntervalBytes,
             });
-            // 下载+解压成功，校验 sha256
+            // 下载+解压成功，校验裸二进制 sha256（manifest checksum 是裸二进制的，非 tarball）
             if (!(await verifySha256(tmpArchive, expected))) {
                 // sha 不匹配不可重试（下载内容本身错了，重试也是错的）→ 立即清理并抛
                 rmSync(tmpArchive, { force: true });
@@ -173,7 +173,7 @@ export async function downloadClaudeBinary(
 }
 
 /**
- * 下载 npm tarball，从中解压出 package/<binaryName> 裸二进制，写入 outPath
+ * 下载 npm tarball，从中解压出 package/<binaryName> 裸二进制，写入 outPath。
  *
  * 内建 stall 超时保护：fetch 传 AbortController signal，起看门狗定时器，
  * 每次 read 收到数据就重置；stallTimeoutMs 内无数据则 abort 中断 fetch

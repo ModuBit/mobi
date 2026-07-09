@@ -38,6 +38,8 @@ export type SpawnWithAbortOptions = {
     logLabel: string;
     spawnName: string;
     installHint: string;
+    /** ENOENT 等启动失败时追加到错误消息末尾的恢复建议（如 escape hatch 环境变量） */
+    recoveryHint?: string;
     abortKillTimeoutMs?: number;
     abortExitCodes?: number[];
     abortSignals?: NodeJS.Signals[];
@@ -125,7 +127,8 @@ export async function spawnWithAbort(options: SpawnWithAbortOptions): Promise<vo
             }
             const message = error instanceof Error ? error.message : String(error);
             const errorMessage = `Failed to spawn ${options.spawnName}: ${message}. ` +
-                `Is ${options.installHint} installed and on PATH?`;
+                `Is ${options.installHint} installed and on PATH?` +
+                (options.recoveryHint ? ` ${options.recoveryHint}` : '');
             if (options.includeCause) {
                 reject(new Error(errorMessage, { cause: error }));
             } else {

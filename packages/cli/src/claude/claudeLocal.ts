@@ -119,6 +119,7 @@ export async function claudeLocal(opts: {
             logLabel: 'ClaudeLocal',
             spawnName: 'claude',
             installHint: 'Claude CLI',
+            recoveryHint: '也可设置 MOBI_CLAUDE_PATH 指向已有 claude 可执行文件',
             includeCause: true,
             logExit: true,
             shell: false  // Use absolute path, no shell needed
