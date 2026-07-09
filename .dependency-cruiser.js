@@ -93,7 +93,8 @@ module.exports = {
       path: 'node_modules',
     },
     exclude: {
-      path: 'node_modules',
+      // dist 是 gitignored 的构建产物（如 packages/web/dist），不应纳入依赖巡检
+      path: '(node_modules|dist)',
     },
   },
 }

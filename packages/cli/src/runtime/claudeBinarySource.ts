@@ -51,15 +51,37 @@ export function resolveClaudeTarget(mobiTarget: string): ClaudeBinaryTarget {
     return t;
 }
 
+/** 默认 npm registry（官方源） */
+const DEFAULT_REGISTRY = 'https://registry.npmjs.org';
+
+/**
+ * 解析生效的 registry：MOBI_NPM_REGISTRY env > 默认官方源
+ *
+ * 用于 build:exe 时按需切换镜像源（如国内阿里源 https://registry.npmmirror.com）。
+ * env 为空或纯空白时回退默认；带尾斜杠的会被规范化去掉（避免拼出双斜杠）。
+ *
+ * @param env 可选的环境变量对象（默认 process.env，便于测试注入）
+ */
+export function resolveRegistry(env: NodeJS.ProcessEnv = process.env): string {
+    const v = env.MOBI_NPM_REGISTRY;
+    return (v && v.trim()) ? v.trim().replace(/\/$/, '') : DEFAULT_REGISTRY;
+}
+
 /**
  * 从 npm 子包名与版本拼标准 registry tarball URL
  * （scoped 包路径保留 @scope/，文件名是去掉 @scope/ 的 <name>-<version>.tgz）
+ *
  * @param subpackage npm scoped 包名
  * @param version 语义化版本号
+ * @param registryBase 可选 registry 前缀，默认 resolveRegistry()（读 MOBI_NPM_REGISTRY env）
  */
-export function buildTarballUrl(subpackage: string, version: string): string {
+export function buildTarballUrl(
+    subpackage: string,
+    version: string,
+    registryBase: string = resolveRegistry(),
+): string {
     const unscoped = subpackage.replace(/^@[^/]+\//, '');
-    return `https://registry.npmjs.org/${subpackage}/-/${unscoped}-${version}.tgz`;
+    return `${registryBase}/${subpackage}/-/${unscoped}-${version}.tgz`;
 }
 
 /**

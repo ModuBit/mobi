@@ -15,7 +15,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { resolveClaudeTarget, buildTarballUrl, verifySha256 } from '@/runtime/claudeBinarySource';
+import {
+    resolveClaudeTarget,
+    buildTarballUrl,
+    resolveRegistry,
+    verifySha256,
+} from '@/runtime/claudeBinarySource';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -50,10 +55,55 @@ describe('resolveClaudeTarget', () => {
     });
 });
 
+describe('resolveRegistry', () => {
+    // 保存/恢复原始 env，避免污染其他用例与全局 process.env
+    const orig = process.env.MOBI_NPM_REGISTRY;
+    afterEach(() => {
+        if (orig === undefined) delete process.env.MOBI_NPM_REGISTRY;
+        else process.env.MOBI_NPM_REGISTRY = orig;
+    });
+
+    it('env 未设时回退默认官方源', () => {
+        delete process.env.MOBI_NPM_REGISTRY;
+        expect(resolveRegistry()).toBe('https://registry.npmjs.org');
+    });
+
+    it('env 为空字符串/纯空白时回退默认官方源', () => {
+        process.env.MOBI_NPM_REGISTRY = '   ';
+        expect(resolveRegistry()).toBe('https://registry.npmjs.org');
+        process.env.MOBI_NPM_REGISTRY = '';
+        expect(resolveRegistry()).toBe('https://registry.npmjs.org');
+    });
+
+    it('env 设为阿里镜像源时生效', () => {
+        process.env.MOBI_NPM_REGISTRY = 'https://registry.npmmirror.com';
+        expect(resolveRegistry()).toBe('https://registry.npmmirror.com');
+    });
+
+    it('env 带尾斜杠时被规范化去掉（避免拼出双斜杠）', () => {
+        process.env.MOBI_NPM_REGISTRY = 'https://registry.npmmirror.com/';
+        expect(resolveRegistry()).toBe('https://registry.npmmirror.com');
+    });
+
+    it('接受显式 env 参数（便于测试注入，不读全局 env）', () => {
+        expect(resolveRegistry({ MOBI_NPM_REGISTRY: 'https://example.com' })).toBe('https://example.com');
+        expect(resolveRegistry({})).toBe('https://registry.npmjs.org');
+    });
+});
+
 describe('buildTarballUrl', () => {
-    it('拼出标准 npm registry URL', () => {
+    it('拼出标准 npm registry URL（默认官方源）', () => {
         const url = buildTarballUrl('@anthropic-ai/claude-agent-sdk-darwin-arm64', '0.3.204');
         expect(url).toBe('https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-darwin-arm64/-/claude-agent-sdk-darwin-arm64-0.3.204.tgz');
+    });
+
+    it('显式传 registryBase 时覆盖默认源', () => {
+        const url = buildTarballUrl(
+            '@anthropic-ai/claude-agent-sdk-darwin-arm64',
+            '0.3.204',
+            'https://registry.npmmirror.com',
+        );
+        expect(url).toBe('https://registry.npmmirror.com/@anthropic-ai/claude-agent-sdk-darwin-arm64/-/claude-agent-sdk-darwin-arm64-0.3.204.tgz');
     });
 });
 
