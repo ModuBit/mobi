@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
-import { describe, it, expect } from 'vitest';
-import { resolveClaudeTarget, buildTarballUrl, verifyChecksum } from '@/runtime/claudeBinarySource';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { resolveClaudeTarget, buildTarballUrl, verifySha256 } from '@/runtime/claudeBinarySource';
 import { createHash } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const tmpRoot = join(tmpdir(), `mobi-test-sha-${process.pid}`);
 
 describe('resolveClaudeTarget', () => {
     it('映射 darwin-arm64', () => {
@@ -53,17 +57,20 @@ describe('buildTarballUrl', () => {
     });
 });
 
-describe('verifyChecksum', () => {
+describe('verifySha256', () => {
+    beforeEach(() => mkdirSync(tmpRoot, { recursive: true }));
+    afterEach(() => rmSync(tmpRoot, { recursive: true, force: true }));
+
     it('sha256 匹配返回 true', async () => {
-        const f = '/tmp/_mobi_sha_test.bin';
+        const f = join(tmpRoot, 'sha-test.bin');
         writeFileSync(f, 'hello');
         const sha = createHash('sha256').update('hello').digest('hex');
-        await expect(verifyChecksum(f, sha)).resolves.toBe(true);
+        await expect(verifySha256(f, sha)).resolves.toBe(true);
     });
 
     it('sha256 不匹配返回 false', async () => {
-        const f = '/tmp/_mobi_sha_test.bin';
+        const f = join(tmpRoot, 'sha-test.bin');
         writeFileSync(f, 'hello');
-        await expect(verifyChecksum(f, 'deadbeef')).resolves.toBe(false);
+        await expect(verifySha256(f, 'deadbeef')).resolves.toBe(false);
     });
 });

@@ -81,7 +81,7 @@ export async function sha256OfFile(filePath: string): Promise<string> {
  * @param filePath 文件绝对路径
  * @param expectedSha256 期望的 sha256（大小写不敏感）
  */
-export async function verifyChecksum(filePath: string, expectedSha256: string): Promise<boolean> {
+export async function verifySha256(filePath: string, expectedSha256: string): Promise<boolean> {
     const actual = await sha256OfFile(filePath);
     return actual.toLowerCase() === expectedSha256.toLowerCase();
 }
