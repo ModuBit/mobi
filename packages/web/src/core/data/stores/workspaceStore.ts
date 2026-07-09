@@ -97,6 +97,8 @@ interface WorkspaceState {
     openFileInTab: (sessionId: string, tabId: string, filePath: string, fileName: string) => void
     /** 「终端」动作：新建一个终端 tab 并激活；返回新 tab id */
     openTerminalTab: (sessionId: string) => string
+    /** 重命名终端 tab（title 去空白后为空则回退默认"终端 N"） */
+    renameTerminalTab: (sessionId: string, tabId: string, title: string) => void
     /** 关闭 tab；归空则收起 inspector；关的是 active 则激活相邻 */
     closeTab: (sessionId: string, tabId: string) => void
     setActiveTab: (sessionId: string, tabId: string) => void
@@ -204,6 +206,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         })
         return newTabId
     },
+
+    renameTerminalTab: (sessionId, tabId, title) =>
+        set((state) => {
+            const cur = state.sessions.get(sessionId) ?? DEFAULT_INSPECTOR_STATE
+            const idx = cur.tabs.findIndex((t) => t.id === tabId && t.mode === 'terminal')
+            if (idx === -1) return state
+            const trimmed = title.trim()
+            const nextTitle = trimmed.length > 0 ? trimmed : undefined
+            // 同值短路（避免高频双击重命名触发订阅组件无谓 re-render）
+            if (cur.tabs[idx].title === nextTitle) return state
+            const tabs = cur.tabs.slice()
+            tabs[idx] = { ...tabs[idx], title: nextTitle }
+            const next = new Map(state.sessions)
+            next.set(sessionId, { ...cur, tabs })
+            return { sessions: next }
+        }),
 
     closeTab: (sessionId, tabId) =>
         set((state) => {

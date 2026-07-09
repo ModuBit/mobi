@@ -254,4 +254,34 @@ describe('workspaceStore', () => {
             expect(tabs[0].terminalId).not.toBe(tabs[1].terminalId)
         })
     })
+
+    describe('renameTerminalTab', () => {
+        it('设置自定义 title', () => {
+            useWorkspaceStore.getState().openTerminalTab('s1')
+            const tabId = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+            useWorkspaceStore.getState().renameTerminalTab('s1', tabId, 'build')
+            expect(useWorkspaceStore.getState().getSession('s1').tabs[0].title).toBe('build')
+        })
+
+        it('空 title 清除自定义名（回退默认"终端 N"）', () => {
+            useWorkspaceStore.getState().openTerminalTab('s1')
+            const tabId = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+            useWorkspaceStore.getState().renameTerminalTab('s1', tabId, 'build')
+            useWorkspaceStore.getState().renameTerminalTab('s1', tabId, '  ')
+            expect(useWorkspaceStore.getState().getSession('s1').tabs[0].title).toBeUndefined()
+        })
+
+        it('非 terminal tab 或不存在 tabId 静默无操作', () => {
+            useWorkspaceStore.getState().openFileTreeTab('s1')
+            const tabId = useWorkspaceStore.getState().getSession('s1').tabs[0].id
+            useWorkspaceStore.getState().renameTerminalTab('s1', tabId, 'x')
+            const st = useWorkspaceStore.getState().getSession('s1')
+            expect(st.tabs[0].title).toBeUndefined()
+            // tree tab 本身未被误改（mode/数量保持）
+            expect(st.tabs).toHaveLength(1)
+            expect(st.tabs[0].mode).toBe('tree')
+            // 不存在
+            expect(() => useWorkspaceStore.getState().renameTerminalTab('s1', 'nope', 'x')).not.toThrow()
+        })
+    })
 })
