@@ -97,7 +97,9 @@
       "terminal": "Terminal",
       "review": "Review",
       "addTab": "Add",
-      "terminalLimitReached": "Limit reached ({{max}})"
+      "terminalLimitReached": "Limit reached ({{max}})",
+      "terminalName": "Terminal {{n}}",
+      "terminalRenamePlaceholder": "Terminal name"
     },
     "empty": "No sessions yet. Start a new conversation.",
     "newSession": "New Session",

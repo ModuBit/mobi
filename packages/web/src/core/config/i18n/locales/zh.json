@@ -97,7 +97,9 @@
       "terminal": "终端",
       "review": "审查",
       "addTab": "新建",
-      "terminalLimitReached": "已达上限（{{max}}）"
+      "terminalLimitReached": "已达上限（{{max}}）",
+      "terminalName": "终端 {{n}}",
+      "terminalRenamePlaceholder": "终端名称"
     },
     "empty": "暂无会话，点击新建开始对话",
     "newSession": "新建会话",
