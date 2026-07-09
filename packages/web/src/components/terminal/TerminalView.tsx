@@ -14,16 +14,18 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef } from 'react'
-import { Button, Typography, theme as antTheme } from 'antd'
+import { useEffect, useRef, useState } from 'react'
+import { Button, Typography, Tooltip, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { ReloadOutlined } from '@ant-design/icons'
+import { ReloadOutlined, PlusOutlined } from '@ant-design/icons'
 import '@xterm/xterm/css/xterm.css'
 import { useCachedInstance } from '@/core/hooks/useCachedInstance'
+import { MAX_TERMINALS_PER_SESSION } from '@/core/data/stores/workspaceStore'
 import {
     createCachedTerminal,
     disposeCachedTerminal,
     type CachedTerminal,
+    type TerminalStatus,
 } from '@/components/terminal/cachedTerminal'
 
 const { Text } = Typography
@@ -31,19 +33,43 @@ const { useToken } = antTheme
 
 interface TerminalViewProps {
     sessionId: string
+    terminalId: string
+    onNewTerminal?: () => void
+    newTerminalDisabled?: boolean
 }
 
-export default function TerminalView({ sessionId }: TerminalViewProps) {
+/** 状态点颜色映射 */
+const STATUS_COLOR: Record<TerminalStatus, string> = {
+    connected: '#52c41a',
+    connecting: '#faad14',
+    reconnecting: '#faad14',
+    error: '#ff4d4f',
+}
+
+export default function TerminalView({
+    sessionId,
+    terminalId,
+    onNewTerminal,
+    newTerminalDisabled,
+}: TerminalViewProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const containerRef = useRef<HTMLDivElement>(null)
     const attachedRef = useRef(false)
 
     const { instance } = useCachedInstance<CachedTerminal>(
-        `terminal:${sessionId}:main`, // 临时，Task 6 改为真实 terminalId
-        () => createCachedTerminal({ sessionId, terminalId: 'main' }),
+        `terminal:${sessionId}:${terminalId}`,
+        () => createCachedTerminal({ sessionId, terminalId }),
         disposeCachedTerminal,
     )
+
+    // 订阅连接状态
+    const [status, setStatus] = useState<TerminalStatus>(instance?.status ?? 'connecting')
+    useEffect(() => {
+        if (!instance) return
+        setStatus(instance.status)
+        return instance.subscribe(setStatus)
+    }, [instance])
 
     // attach 缓存的 domNode 到可见容器
     useEffect(() => {
@@ -74,10 +100,6 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
         return () => ro.disconnect()
     }, [instance])
 
-    const handleReconnect = () => {
-        instance?.reconnect()
-    }
-
     // 组件卸载：移除 domNode（保留实例，不发 terminal:close，进程常驻）
     useEffect(() => {
         return () => {
@@ -100,12 +122,55 @@ export default function TerminalView({ sessionId }: TerminalViewProps) {
                     background: token.colorBgLayout,
                 }}
             >
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                    {t('terminal.title')} {sessionId.slice(0, 8)}
-                </Text>
-                <Button icon={<ReloadOutlined />} size="small" onClick={handleReconnect}>
-                    {t('terminal.reconnect')}
-                </Button>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Tooltip title={t(`terminal.status.${status}`)}>
+                        <span
+                            style={{
+                                display: 'inline-block',
+                                width: 8,
+                                height: 8,
+                                borderRadius: '50%',
+                                background: STATUS_COLOR[status],
+                                opacity:
+                                    status === 'connecting' || status === 'reconnecting' ? 0.6 : 1,
+                            }}
+                        />
+                    </Tooltip>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                        {status === 'error'
+                            ? t('terminal.disconnectedHint')
+                            : `${t('terminal.title')} ${sessionId.slice(0, 8)}`}
+                    </Text>
+                </span>
+                <span style={{ display: 'flex', gap: 8 }}>
+                    {onNewTerminal && (
+                        <Tooltip
+                            title={
+                                newTerminalDisabled
+                                    ? t('session.inspector.terminalLimitReached', {
+                                          max: MAX_TERMINALS_PER_SESSION,
+                                      })
+                                    : t('session.inspector.addTab')
+                            }
+                        >
+                            <Button
+                                icon={<PlusOutlined />}
+                                aria-label={t('session.inspector.addTab')}
+                                size="small"
+                                disabled={newTerminalDisabled}
+                                onClick={onNewTerminal}
+                            />
+                        </Tooltip>
+                    )}
+                    <Button
+                        icon={<ReloadOutlined />}
+                        aria-label={t('terminal.reconnect')}
+                        size="small"
+                        onClick={() => instance?.reconnect()}
+                    >
+                        {t('terminal.reconnect')}
+                    </Button>
+                </span>
             </div>
             <div ref={containerRef} style={{ flex: 1, overflow: 'hidden' }} />
         </div>

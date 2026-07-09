@@ -96,7 +96,8 @@
       "openFile": "打开文件",
       "terminal": "终端",
       "review": "审查",
-      "addTab": "新建"
+      "addTab": "新建",
+      "terminalLimitReached": "已达上限（{{max}}）"
     },
     "empty": "暂无会话，点击新建开始对话",
     "newSession": "新建会话",
@@ -261,7 +262,14 @@
   },
   "terminal": {
     "title": "终端",
-    "reconnect": "重连"
+    "reconnect": "重连",
+    "disconnectedHint": "连接已断开，断开期间的输出已丢失",
+    "status": {
+      "connecting": "连接中",
+      "connected": "已连接",
+      "reconnecting": "重连中",
+      "error": "已断开"
+    }
   },
   "settings": {
     "title": "设置"

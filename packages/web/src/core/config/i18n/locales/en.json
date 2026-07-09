@@ -96,7 +96,8 @@
       "openFile": "Open File",
       "terminal": "Terminal",
       "review": "Review",
-      "addTab": "Add"
+      "addTab": "Add",
+      "terminalLimitReached": "Limit reached ({{max}})"
     },
     "empty": "No sessions yet. Start a new conversation.",
     "newSession": "New Session",
@@ -261,7 +262,14 @@
   },
   "terminal": {
     "title": "Terminal",
-    "reconnect": "Reconnect"
+    "reconnect": "Reconnect",
+    "disconnectedHint": "Disconnected. Output during the outage was lost.",
+    "status": {
+      "connecting": "Connecting",
+      "connected": "Connected",
+      "reconnecting": "Reconnecting",
+      "error": "Disconnected"
+    }
   },
   "settings": {
     "title": "Settings"
