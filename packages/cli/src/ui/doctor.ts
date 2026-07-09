@@ -31,7 +31,7 @@ import { readRunnerState } from '@/persistence'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { isBunCompiled, projectPath, runtimePath } from '@/projectPath'
-import { getDefaultClaudeCodePath } from '@/claude/sdk/utils'
+import { getClaudeExecutablePath } from '@/claude/sdk/claudeExecutable'
 import { withBunRuntimeEnv } from '@/utils/bunRuntime'
 import packageJson from '../../package.json'
 
@@ -300,7 +300,7 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
     // 追加 Claude Code doctor 信息（仅 TTY 环境，claude doctor 需要交互输入）
     if (filter === 'all' && process.stdin.isTTY) {
         try {
-            const claudePath = getDefaultClaudeCodePath()
+            const claudePath = (await getClaudeExecutablePath()) ?? 'claude'
             console.log(chalk.bold.cyan('\n🔍 Claude Code Doctor\n'));
 
             await new Promise<void>((resolve) => {

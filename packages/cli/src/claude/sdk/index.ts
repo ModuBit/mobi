@@ -46,7 +46,8 @@ export type {
 } from './types'
 
 // 导出工具函数
-export { getDefaultClaudeCodePath, logDebug, streamToStdin } from './utils'
+export { logDebug, streamToStdin } from './utils'
+export { getClaudeExecutablePath } from './claudeExecutable'
 
 // 导出提示词常量
 export * from './prompts'

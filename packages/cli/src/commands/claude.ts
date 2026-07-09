@@ -28,7 +28,7 @@ import { spawnMobiCli } from '@/utils/spawnMobiCli'
 import { maybeAutoStartServer } from '@/utils/autoStartServer'
 import { withBunRuntimeEnv } from '@/utils/bunRuntime'
 import { extractErrorInfo } from '@/utils/errorUtils'
-import { getDefaultClaudeCodePath } from '@/claude/sdk/utils'
+import { getClaudeExecutablePath } from '@/claude/sdk/claudeExecutable'
 import type { CommandDefinition } from './types'
 
 // 检测是否为网络连接错误
@@ -70,8 +70,8 @@ async function runLocalMode(options: StartOptions): Promise<void> {
 
     logger.debug(`[LOCAL] Starting Claude with args:`, claudeArgs)
 
-    // 直接启动 claude 进程
-    const claudeCommand = getDefaultClaudeCodePath()
+    // 直接启动 claude 进程（dev 模式回退 PATH 上的 claude）
+    const claudeCommand = (await getClaudeExecutablePath()) ?? 'claude'
     const claudeProcess = spawn(claudeCommand, claudeArgs, {
         stdio: 'inherit',
         env: withBunRuntimeEnv(),
@@ -196,7 +196,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
             // 追加 claude code 的帮助信息
             try {
                 const claudeHelp = execFileSync(
-                    getDefaultClaudeCodePath(),
+                    (await getClaudeExecutablePath()) ?? 'claude',
                     ['--help'],
                     { encoding: 'utf8', env: withBunRuntimeEnv(), shell: false }
                 )

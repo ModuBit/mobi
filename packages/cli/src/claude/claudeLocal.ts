@@ -25,7 +25,7 @@ import { systemPrompt } from "./utils/systemPrompt";
 import { withBunRuntimeEnv } from "@/utils/bunRuntime";
 import { spawnWithAbort } from "@/utils/spawnWithAbort";
 import { stripNewlinesForWindowsShellArg } from "@/utils/shellEscape";
-import { getDefaultClaudeCodePath } from "./sdk/utils";
+import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 
 export async function claudeLocal(opts: {
@@ -103,8 +103,8 @@ export async function claudeLocal(opts: {
 
     logger.debug(`[ClaudeLocal] Spawning claude with args: ${JSON.stringify(args)}`);
 
-    // Get Claude executable path (absolute path on Windows for shell: false)
-    const claudeCommand = getDefaultClaudeCodePath();
+    // Get Claude executable path (dev 模式回退 PATH 上的 claude)
+    const claudeCommand = (await getClaudeExecutablePath()) ?? 'claude';
     logger.debug(`[ClaudeLocal] Using claude executable: ${claudeCommand}`);
 
     // Spawn the process
