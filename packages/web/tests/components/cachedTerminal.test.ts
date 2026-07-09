@@ -78,3 +78,82 @@ describe('cachedTerminal（C-T3 cookie 闭环）', () => {
         expect(openCall![1]).toMatchObject({ sessionId: 's1', terminalId: 't-abc' })
     })
 })
+
+describe('连接状态', () => {
+    beforeEach(() => {
+        ioMock.mockClear()
+        mockSocket._handlers.clear()
+        mockSocket.emit.mockClear()
+        mockSocket.on.mockClear()
+    })
+
+    it('初始 status 为 connecting；connect 后变 connected', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        expect(inst.status).toBe('connecting')
+        fire('connect')
+        expect(inst.status).toBe('connected')
+    })
+
+    it('subscribe 收到 status 变化通知', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        const listener = vi.fn()
+        const unsub = inst.subscribe(listener)
+        fire('connect') // connecting -> connected
+        expect(listener).toHaveBeenLastCalledWith('connected')
+        unsub()
+        listener.mockClear()
+        fire('disconnect', 'transport')
+        expect(listener).not.toHaveBeenCalled() // 已取消订阅
+    })
+
+    it('terminal:error → status=error', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        fire('terminal:error', { sessionId: 's1', terminalId: 't1', message: 'boom' })
+        expect(inst.status).toBe('error')
+    })
+
+    it('terminal:error 无 sessionId（hub 内部 emit）也能触发 error', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        fire('terminal:error', { terminalId: 't1', message: 'CLI disconnected.' }) // 无 sessionId
+        expect(inst.status).toBe('error')
+    })
+
+    it('reconnect_attempt → status=reconnecting', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        fire('reconnect_attempt')
+        expect(inst.status).toBe('reconnecting')
+    })
+
+    it('disconnect → status=reconnecting', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        fire('disconnect', 'transport')
+        expect(inst.status).toBe('reconnecting')
+    })
+
+    it('connect_error → status=error', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        fire('connect_error', new Error('x'))
+        expect(inst.status).toBe('error')
+    })
+})
+
+describe('reconnect 不 clear', () => {
+    beforeEach(() => {
+        ioMock.mockClear()
+        mockSocket._handlers.clear()
+        mockSocket.emit.mockClear()
+        mockSocket.on.mockClear()
+    })
+
+    it('reconnect() 不调用 terminal.clear，改写分隔横幅', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        const clearSpy = vi.spyOn(inst.terminal, 'clear')
+        const writeSpy = vi.spyOn(inst.terminal, 'write')
+        fire('connect') // isOpen = true
+        clearSpy.mockClear()
+        writeSpy.mockClear()
+        inst.reconnect()
+        expect(clearSpy).not.toHaveBeenCalled()
+        expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('reconnected'))
+    })
+})

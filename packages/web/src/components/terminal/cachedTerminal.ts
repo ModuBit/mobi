@@ -19,12 +19,19 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 
+/** 终端连接状态机 */
+export type TerminalStatus = 'connecting' | 'connected' | 'reconnecting' | 'error'
+
 /** 缓存的终端实例：xterm + 插件 + 独立 DOM 节点 + socket */
 export interface CachedTerminal {
     terminal: Terminal
     fitAddon: FitAddon
     domNode: HTMLDivElement
-    /** 重连：清屏并重新 open 终端会话 */
+    /** 当前连接状态 */
+    status: TerminalStatus
+    /** 订阅状态变化，返回取消订阅函数 */
+    subscribe: (listener: (s: TerminalStatus) => void) => () => void
+    /** 重连：保留历史，写分隔横幅并重新 open 终端会话 */
     reconnect: () => void
     /** 内部销毁钩子（断 socket + 销毁 xterm）；仅 clearCachedInstance 调用 */
     dispose: () => void
@@ -85,6 +92,19 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
     let socket: Socket | null = null
     let isOpen = false
 
+    // 连接状态机：connecting(初始) → connected | reconnecting | error
+    let status: TerminalStatus = 'connecting'
+    const listeners = new Set<(s: TerminalStatus) => void>()
+    const setStatus = (next: TerminalStatus) => {
+        if (status === next) return
+        status = next
+        listeners.forEach((l) => l(status))
+    }
+    const subscribe = (listener: (s: TerminalStatus) => void) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+    }
+
     const wireSocket = () => {
         socket = io(window.location.origin, {
             // 同源 httpOnly cookie（mobi_token）自动携带，hub terminalNs 读 cookie（刷新不丢）
@@ -121,14 +141,29 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
             const { cols, rows } = terminal
             socket!.emit('terminal:open', { sessionId, terminalId, cols, rows })
             isOpen = true
+            setStatus('connected')
             terminal.write('\x1b[32m[Terminal connected]\x1b[0m\r\n')
+        })
+        // 断线/重连：进入 reconnecting 态（disconnect 不 clear，等 reconnect 横幅分隔）
+        socket.on('disconnect', () => setStatus('reconnecting'))
+        socket.on('reconnect_attempt', () => setStatus('reconnecting'))
+        socket.on('connect_error', () => setStatus('error'))
+        // terminal:error：hub 内部 emit（emitTerminalError/onIdle/cleanup）普遍只带
+        // { terminalId, message }，不带 sessionId（仅 CLI 转发路径带）；每个实例独占
+        // socket，socketId 天然隔离事件，故只按 terminalId 过滤，sessionId 标可选如实反映 hub 违约
+        socket.on('terminal:error', (d: { terminalId: string; message: string; sessionId?: string }) => {
+            if (d.terminalId === terminalId) {
+                setStatus('error')
+                terminal.write(`\r\n\x1b[31m[${d.message}]\x1b[0m\r\n`)
+            }
         })
     }
 
     wireSocket()
 
     const reconnect = () => {
-        terminal.clear()
+        // 不 clear：保留历史；写分隔横幅
+        terminal.write('\r\n\x1b[90m--- reconnected ---\x1b[0m\r\n')
         if (!socket) return
         if (socket.connected) {
             const { cols, rows } = terminal
@@ -163,7 +198,18 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         }
     }
 
-    return { terminal, fitAddon, domNode, reconnect, dispose }
+    return {
+        terminal,
+        fitAddon,
+        domNode,
+        // getter：暴露状态机当前值（status 是闭包内的 let，需 live 反映）
+        get status(): TerminalStatus {
+            return status
+        },
+        subscribe,
+        reconnect,
+        dispose,
+    }
 }
 
 /**
