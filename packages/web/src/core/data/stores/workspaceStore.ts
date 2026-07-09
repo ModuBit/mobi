@@ -17,14 +17,23 @@
 import { create } from 'zustand'
 import { uuid } from '@/core/lib/uuid'
 
-/** 单个 tab：文件树视图或已打开的文件 */
+/** 每 session 终端数上限（与后端 DEFAULT_MAX_TERMINALS 对齐） */
+export const MAX_TERMINALS_PER_SESSION = 3
+
+/** 单个 tab：文件树视图、已打开的文件或终端 */
 export interface InspectorTabEntry {
     id: string
-    mode: 'tree' | 'file'
+    mode: 'tree' | 'file' | 'terminal'
     /** mode='file'：相对路径（去重 key + tooltip） */
     filePath?: string
     /** mode='file'：tab 显示名 */
     fileName?: string
+    /** mode='terminal'：后端 PTY id（前端 uuid 生成） */
+    terminalId?: string
+    /** mode='terminal'：默认序号（终端 1/2/3，不重用） */
+    terminalSeq?: number
+    /** mode='terminal'：自定义名（双击重命名）；空则显示"终端 N" */
+    title?: string
     /**
      * 该 tab 的视图状态（切走再切回恢复）。挂 tab 上：closeTab 自动清；新类型只需扩字段。
      * 通用 scrollRatio（所有可滚动类型共用）+ 按需扩展（scale 仅可缩放类型如 PDF）。
@@ -55,6 +64,8 @@ export interface SessionInspectorState {
     tabs: InspectorTabEntry[]
     /** 当前激活的 tab id；无 tab 时为 null */
     activeTabId: string | null
+    /** 终端序号计数器（只增不减，不重用，仿 VSCode） */
+    nextTerminalSeq: number
 }
 
 /**
@@ -67,6 +78,7 @@ export const DEFAULT_INSPECTOR_STATE: Readonly<SessionInspectorState> = Object.f
     chatHidden: false,
     tabs: [],
     activeTabId: null,
+    nextTerminalSeq: 1,
 })
 
 interface WorkspaceState {

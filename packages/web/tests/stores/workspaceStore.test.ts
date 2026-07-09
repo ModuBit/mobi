@@ -44,6 +44,7 @@ describe('workspaceStore', () => {
             chatHidden: false,
             tabs: [],
             activeTabId: null,
+            nextTerminalSeq: 1,
         })
     })
 
@@ -53,7 +54,7 @@ describe('workspaceStore', () => {
         useWorkspaceStore.getState().setChatHidden('s2', true)
 
         expect(useWorkspaceStore.getState().getSession('s1')).toEqual({
-            expanded: true, splitRatio: 0.7, chatHidden: false, tabs: [], activeTabId: null,
+            expanded: true, splitRatio: 0.7, chatHidden: false, tabs: [], activeTabId: null, nextTerminalSeq: 1,
         })
         expect(useWorkspaceStore.getState().getSession('s2').chatHidden).toBe(true)
     })
@@ -214,5 +215,9 @@ describe('workspaceStore', () => {
 
     it('未挂载 persist 中间件', () => {
         expect((useWorkspaceStore as unknown as { persist?: unknown }).persist).toBeUndefined()
+    })
+
+    it('DEFAULT_INSPECTOR_STATE 含 nextTerminalSeq: 1', () => {
+        expect(DEFAULT_INSPECTOR_STATE.nextTerminalSeq).toBe(1)
     })
 })
