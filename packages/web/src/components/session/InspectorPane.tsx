@@ -22,12 +22,18 @@ import styled from '@emotion/styled'
 import { PanelRightClose, Folder, FileSearch, Maximize, Minimize, Plus } from 'lucide-react'
 import FileTreeView from '@/components/files/FileTreeView'
 import FileContentView from '@/components/files/FileContentView'
+import TerminalView from '@/components/terminal/TerminalView'
 import { ActivateCover } from '@/components/ui/ActivateCover'
 import { InspectorEmptyState } from './InspectorEmptyState'
+import { TerminalTabLabel } from './TerminalTabLabel'
 import { INSPECTOR_ACTIONS } from './inspectorActions'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { useWorkspaceStore, type InspectorTabEntry } from '@/core/data/stores/workspaceStore'
+import {
+    useWorkspaceStore,
+    type InspectorTabEntry,
+    MAX_TERMINALS_PER_SESSION,
+} from '@/core/data/stores/workspaceStore'
 
 /**
  * editable-card 提供关闭 × 机制，但其卡片外观（边框/背景）过重。
@@ -130,6 +136,11 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
     const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
     const closeTab = useWorkspaceStore((s) => s.closeTab)
     const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
+    const openTerminalTab = useWorkspaceStore((s) => s.openTerminalTab)
+    const renameTerminalTab = useWorkspaceStore((s) => s.renameTerminalTab)
+    // 终端数与上限：达上限时 disable 新建入口（叠加 INSPECTOR_ACTIONS.disabled）
+    const terminalCount = tabs.filter((t) => t.mode === 'terminal').length
+    const terminalLimitReached = terminalCount >= MAX_TERMINALS_PER_SESSION
 
     // 首次展开才挂载内容（懒加载闸）；与 destroyOnHidden={false} 分工 keepalive。
     const [everExpanded, setEverExpanded] = useState(false)
@@ -174,21 +185,37 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
 
     if (!everExpanded) return <Layout style={{ height: '100%' }} />
 
-    // 「+」下拉菜单：与空态卡片共用 INSPECTOR_ACTIONS，仅「文件」可点
+    // 「+」下拉菜单：与空态卡片共用 INSPECTOR_ACTIONS，terminal 项达上限时叠加 disable
     const addMenuItems: MenuProps['items'] = INSPECTOR_ACTIONS.map((action) => {
         const { Icon } = action
+        const isTerminal = action.key === 'terminal'
+        // 终端达上限：叠加 disable（即便 Task 9 启用 terminal，达上限仍不可新建）
+        const disabled = action.disabled || (isTerminal && terminalLimitReached)
         return {
             key: action.key,
             icon: <Icon size={14} />,
             label: t(action.labelKey),
-            disabled: action.disabled,
-            onClick: action.disabled ? undefined : () => openFileTreeTab(sessionId),
+            disabled,
+            onClick: disabled ? undefined : () => {
+                if (isTerminal) openTerminalTab(sessionId)
+                else openFileTreeTab(sessionId)
+            },
         }
     })
 
     const renderTabContent = (tab: InspectorTabEntry): ReactNode => {
         if (tab.mode === 'file' && tab.filePath) {
             return <FileContentView sessionId={sessionId} tabId={tab.id} filePath={tab.filePath} />
+        }
+        if (tab.mode === 'terminal' && tab.terminalId) {
+            return (
+                <TerminalView
+                    sessionId={sessionId}
+                    terminalId={tab.terminalId}
+                    onNewTerminal={() => openTerminalTab(sessionId)}
+                    newTerminalDisabled={terminalLimitReached}
+                />
+            )
         }
         return (
             <FileTreeView
@@ -204,10 +231,17 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             key: tab.id,
             label: (
                 <Tooltip title={tab.mode === 'file' ? tab.filePath : ''}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {tab.mode === 'file' ? <FileSearch size={14} /> : <Folder size={14} />}
-                        {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
-                    </span>
+                    {tab.mode === 'terminal' ? (
+                        <TerminalTabLabel
+                            tab={tab}
+                            onRename={(title) => renameTerminalTab(sessionId, tab.id, title)}
+                        />
+                    ) : (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {tab.mode === 'file' ? <FileSearch size={14} /> : <Folder size={14} />}
+                            {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
+                        </span>
+                    )}
                 </Tooltip>
             ),
             children: renderTabContent(tab),

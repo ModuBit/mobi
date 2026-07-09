@@ -41,6 +41,22 @@ const resumeSessionMock = vi.fn()
 vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
     useSessionActions: () => ({ resumeSession: resumeSessionMock, isResumePending: false }),
 }))
+// mock TerminalView：真实组件依赖 xterm/cachedTerminal（jsdom 无 DOM 布局），
+// 用 marker div 暴露 props，验证 terminal tab 渲染与 newTerminalDisabled 接线
+vi.mock('@/components/terminal/TerminalView', () => ({
+    default: ({ sessionId, terminalId, newTerminalDisabled }: {
+        sessionId: string
+        terminalId: string
+        newTerminalDisabled?: boolean
+    }) => (
+        <div
+            data-testid="mock-terminal-view"
+            data-session={sessionId}
+            data-terminal={terminalId}
+            data-new-disabled={String(newTerminalDisabled ?? false)}
+        />
+    ),
+}))
 
 // jsdom 没有 ResizeObserver（antd Tabs 依赖）
 beforeAll(() => {
@@ -109,5 +125,41 @@ describe('InspectorPane', () => {
         const s = useWorkspaceStore.getState().getSession('s1')
         expect(s.tabs).toHaveLength(0)
         expect(s.expanded).toBe(false)
+    })
+
+    it('openTerminalTab 后 terminal tab 激活并渲染 TerminalView', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openTerminalTab('s1')
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        const st = useWorkspaceStore.getState().getSession('s1')
+        const terminalTab = st.tabs.find((t) => t.mode === 'terminal')
+        expect(terminalTab).toBeTruthy()
+        expect(st.activeTabId).toBe(terminalTab!.id)
+        // 渲染了终端视图
+        const tv = screen.getByTestId('mock-terminal-view')
+        expect(tv).toHaveAttribute('data-session', 's1')
+        expect(tv.getAttribute('data-terminal')).toBe(terminalTab!.terminalId)
+    })
+
+    it('未达上限时 TerminalView newTerminalDisabled=false', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openTerminalTab('s1')
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        expect(screen.getByTestId('mock-terminal-view')).toHaveAttribute('data-new-disabled', 'false')
+    })
+
+    it('达上限（3 个终端）时 TerminalView newTerminalDisabled=true 且「+」菜单 terminal 项 disabled', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openTerminalTab('s1')
+        useWorkspaceStore.getState().openTerminalTab('s1')
+        useWorkspaceStore.getState().openTerminalTab('s1')
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        // 激活的 terminal tab 渲染的终端视图收到 newTerminalDisabled=true
+        expect(screen.getByTestId('mock-terminal-view')).toHaveAttribute('data-new-disabled', 'true')
+        // 「+」下拉菜单中 terminal 项 disabled（INSPECTOR_ACTIONS.disabled + terminalLimitReached 叠加）
+        fireEvent.click(screen.getByRole('button', { name: 'session.inspector.addTab' }))
+        const terminalItem = screen.getByText('session.inspector.terminal').closest('[role="menuitem"]')
+        expect(terminalItem).toBeTruthy()
+        expect(terminalItem?.getAttribute('aria-disabled')).toBe('true')
     })
 })
