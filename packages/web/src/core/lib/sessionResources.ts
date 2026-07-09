@@ -17,16 +17,19 @@
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { clearCachedInstance, clearAllInstances } from '@/core/hooks/useCachedInstance'
 
-/** 终端缓存 key 规则（与 TerminalView 保持一致） */
-const terminalCacheKey = (sessionId: string) => `terminal:${sessionId}`
-
 /**
- * 会话删除时清理其前端残留状态：检视面板状态 + 缓存终端（xterm/socket）。
- * 缓存终端被清理时其 dispose 会向后端发 terminal:close，关闭常驻 PTY。
+ * 会话删除时清理其前端残留状态：检视面板状态 + 所有缓存终端（xterm/socket）。
+ * 顺序关键：先从 store 读出 terminal tabs 逐个清缓存（dispose 发 terminal:close 杀 PTY），
+ * 再 clearSession 清 store 元数据。clearSession 后拿不到 terminalId。
  */
 export function clearSessionResources(sessionId: string): void {
+    const tabs = useWorkspaceStore.getState().getSession(sessionId).tabs
+    for (const tab of tabs) {
+        if (tab.mode === 'terminal' && tab.terminalId) {
+            clearCachedInstance(`terminal:${sessionId}:${tab.terminalId}`)
+        }
+    }
     useWorkspaceStore.getState().clearSession(sessionId)
-    clearCachedInstance(terminalCacheKey(sessionId))
 }
 
 /**
