@@ -106,8 +106,8 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
     }
 
     const wireSocket = () => {
-        socket = io(window.location.origin, {
-            // 同源 httpOnly cookie（mobi_token）自动携带，hub terminalNs 读 cookie（刷新不丢）
+        socket = io(`${window.location.origin}/terminal`, {
+            // 同源 httpOnly cookie（mobi_token）自动携带，/terminal namespace 读 cookie（刷新不丢）
             transports: ['websocket'],
             path: '/socket.io',
         })

@@ -70,6 +70,12 @@ describe('cachedTerminal（C-T3 cookie 闭环）', () => {
         expect(options.path).toBe('/socket.io')
     })
 
+    it('io() 连接 /terminal namespace', () => {
+        createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        const [url] = ioMock.mock.calls[0] as [string, unknown]
+        expect(url).toContain('/terminal')
+    })
+
     it('terminal:open 使用传入的 terminalId（非硬编码 main）', () => {
         createCachedTerminal({ sessionId: 's1', terminalId: 't-abc' })
         fire('connect') // 触发 cachedTerminal 内部 socket 的 connect handler
