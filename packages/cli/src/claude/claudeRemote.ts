@@ -41,7 +41,7 @@ import { systemPrompt } from "./utils/systemPrompt";
 import type { PermissionResult } from "./sdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUIHints } from "@mobi/shared";
-import { getDefaultClaudeCodePath } from "./sdk/utils";
+import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender } from './utils/streamSnapshotSender'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
@@ -521,6 +521,8 @@ export async function claudeRemote(opts: {
     let warmRef: WarmQuery | null = null
 
     const baseConfig = opts.getSessionConfig()
+    // 先解析 claude 可执行路径（dev 模式返回 undefined，由 SDK 自动 require.resolve）
+    const claudeExecutable = await getClaudeExecutablePath()
     const sdkOptions: Options = {
         cwd: opts.path,
         includePartialMessages: true,
@@ -548,7 +550,7 @@ export async function claudeRemote(opts: {
             const result = await opts.canCallTool(toolName, input, options);
             return result;
         },
-        pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
+        pathToClaudeCodeExecutable: claudeExecutable,
         settings: opts.hookSettingsPath,
         additionalDirectories: [join(opts.path, '.mobi')],
         toolConfig: {

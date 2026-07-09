@@ -23,7 +23,7 @@ import { existsSync } from 'fs'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
-import { getDefaultClaudeCodePath } from '@/claude/sdk/utils'
+import { getClaudeExecutablePath } from '@/claude/sdk/claudeExecutable'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 import type { SDKMetadata } from '@mobi/shared'
 
@@ -63,9 +63,11 @@ export async function extractSDKMetadata(cwd?: string): Promise<SDKMetadata> {
         const childEnv = { ...process.env } as Record<string, string | undefined>
         stripBunDebuggerEnv(childEnv)
 
+        // dev 模式返回 undefined，由 SDK 自动 require.resolve
+        const claudeExecutable = await getClaudeExecutablePath()
         const options: Parameters<typeof query>[0]['options'] = {
             abortController,
-            pathToClaudeCodeExecutable: getDefaultClaudeCodePath(),
+            pathToClaudeCodeExecutable: claudeExecutable,
             persistSession: false,
             env: childEnv,
         }

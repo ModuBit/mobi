@@ -32,10 +32,10 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     query: (...args: unknown[]) => mockQuery(...args),
 }))
 
-// mock getDefaultClaudeCodePath
-const mockGetDefaultClaudeCodePath = vi.fn()
-vi.mock('@/claude/sdk/utils', () => ({
-    getDefaultClaudeCodePath: () => mockGetDefaultClaudeCodePath(),
+// mock getClaudeExecutablePath（异步，dev 模式返回 undefined，编译态返回路径）
+const mockGetClaudeExecutablePath = vi.fn()
+vi.mock('@/claude/sdk/claudeExecutable', () => ({
+    getClaudeExecutablePath: () => mockGetClaudeExecutablePath(),
 }))
 
 // mock logger
@@ -74,7 +74,7 @@ function makeInitResponse(overrides?: Record<string, unknown>) {
 
 beforeEach(() => {
     vi.clearAllMocks()
-    mockGetDefaultClaudeCodePath.mockReturnValue('/usr/local/bin/claude')
+    mockGetClaudeExecutablePath.mockResolvedValue('/usr/local/bin/claude')
     mockQuery.mockReturnValue({
         initializationResult: mockInitializationResult,
         close: mockClose,
