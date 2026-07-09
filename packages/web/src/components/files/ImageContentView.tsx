@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-import { Image } from 'antd'
+import { useState } from 'react'
+import { Button, Image } from 'antd'
+import { useTranslation } from 'react-i18next'
 
 interface ImageContentViewProps {
     /** 会话 id（拼 read-file 端点 src） */
@@ -38,10 +40,26 @@ const FALLBACK_IMAGE = `data:image/svg+xml,${encodeURIComponent(
  * - antd Image：preview 默认开启（点击放大）、placeholder 渐进式加载（大图/弱网友好）、fallback 加载失败兜底
  * - src 直连 read-file 端点（cookie 改造后 httpOnly mobi_token 自动带 → 认证通过；浏览器原生协商缓存）
  * - 尺寸约束见 styles/antd.css 的 .image-content-view：图片永远 contain 在容器内，不超出、不变形
- * - 原生 img 不经 axios interceptor，401（cookie 过期）/损坏等由 fallback 兜底；恢复走 header 的 refresh（重挂载触发重新认证）
+ * - 加载失败（401 cookie 过期/损坏等）显示「重试」按钮：点击变更 src query 强制重新请求（触发 cookie 重新认证）
  */
 export default function ImageContentView({ sessionId, filePath }: ImageContentViewProps) {
-    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}`
+    const { t } = useTranslation()
+    // 重试计数：拼到 src query 让浏览器视为新 URL，绕过缓存重新请求（触发 cookie 重新认证）
+    const [retry, setRetry] = useState(0)
+    const [failed, setFailed] = useState(false)
+    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}${retry > 0 ? `&_retry=${retry}` : ''}`
+
+    if (failed) {
+        return (
+            <div className="image-content-view image-content-view--error">
+                <img src={FALLBACK_IMAGE} alt={filePath} className="image-content-view__fallback" />
+                <Button size="small" onClick={() => { setFailed(false); setRetry((r) => r + 1) }}>
+                    {t('files.retry')}
+                </Button>
+            </div>
+        )
+    }
+
     return (
         <div className="image-content-view">
             <Image
@@ -50,6 +68,7 @@ export default function ImageContentView({ sessionId, filePath }: ImageContentVi
                 placeholder
                 preview
                 fallback={FALLBACK_IMAGE}
+                onError={() => setFailed(true)}
             />
         </div>
     )

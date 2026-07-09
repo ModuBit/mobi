@@ -52,6 +52,11 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
     const abortRef = useRef<AbortController | null>(null)
     /** loading 延迟计时器：fetch 快时取消，不触发 loading 态 */
     const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    /**
+     * 请求代际守卫：每次发起新请求自增，finally 只在「当前请求仍是最新代」时复位 loading。
+     * 防止慢请求 A 的 finally 在快请求 B 已进入 loading 后过早熄灭 spinner。
+     */
+    const generationRef = useRef(0)
 
     const clearLoadingTimer = useCallback(() => {
         if (loadingTimerRef.current) {
@@ -74,6 +79,8 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
         abortRef.current?.abort()
         const controller = new AbortController()
         abortRef.current = controller
+        // 标记本次请求代际；finally 据此判断是否仍是最新请求
+        const myGeneration = ++generationRef.current
 
         const timer = setTimeout(async () => {
             // 延迟显示 loading：fetch 在 LOADING_DELAY 内完成则不进 loading 态（快网不闪烁）
@@ -108,11 +115,12 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
             } catch {
                 if (!controller.signal.aborted) setResults([])
             } finally {
-                // 总复位 loading（即使被 abort）：旧请求被新 query 接管，loading 由新 query 自己管；
-                // debounce 隔离保证此处的 false 不会被新 query 后续的 true 覆盖
-                // （时序：旧 finally 在 await 抛后立即跑，远早于新 query 的 loading 定时器）
                 clearLoadingTimer()
-                setIsLoading(false)
+                // 仅当仍是最新代请求时复位 loading；
+                // 否则把 loading 的控制权交给后来居上的新请求（它有自己的 loading 定时器 + finally）
+                if (generationRef.current === myGeneration) {
+                    setIsLoading(false)
+                }
             }
         }, DEBOUNCE_MS)
 

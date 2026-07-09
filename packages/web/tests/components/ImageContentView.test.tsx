@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render } from '@testing-library/react'
+import { render, fireEvent, waitFor } from '@testing-library/react'
 import ImageContentView from '@/components/files/ImageContentView'
 
 describe('ImageContentView', () => {
@@ -53,5 +53,29 @@ describe('ImageContentView', () => {
         // preview 启用时 antd 会给 root 加 previewable 标记 class（跨版本稳定：.ant-image-preview）
         // 这里仅断言 root 存在 + img 可交互（点击预览的实质由 antd 内部保障）
         expect(container.querySelector('.ant-image-img')).toBeInTheDocument()
+    })
+
+    it('图片加载失败显示重试按钮，点击重试变更 src（绕过缓存重新请求）', async () => {
+        const { container } = render(<ImageContentView sessionId="s1" filePath="a.png" />)
+        // 初始 src 不含 _retry
+        const img0 = container.querySelector('.ant-image-img') as HTMLImageElement
+        expect(img0.src).not.toContain('_retry')
+
+        // 触发原生 onError（模拟 401/损坏）→ 切到失败态
+        fireEvent.error(img0)
+
+        // 失败态显示重试按钮（antd Button 渲染 .ant-btn；用 container 局部查询避免全局累积干扰）
+        const retryBtn = await waitFor(() => {
+            const btn = container.querySelector('.ant-btn') as HTMLButtonElement
+            expect(btn).toBeInTheDocument()
+            return btn
+        })
+
+        // 点击重试 → failed 复位 + retry 自增 → 重新渲染 antd Image，src 带 _retry=1
+        fireEvent.click(retryBtn)
+        await waitFor(() => {
+            const img1 = container.querySelector('.ant-image-img') as HTMLImageElement
+            expect(img1.src).toContain('_retry=1')
+        })
     })
 })

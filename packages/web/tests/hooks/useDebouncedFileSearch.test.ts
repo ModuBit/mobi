@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import { useDebouncedFileSearch } from '@/core/data/hooks/queries/useDebouncedFileSearch'
 
 vi.mock('@/core/data/api/client', () => ({ useMobiApi: vi.fn() }))
@@ -25,6 +25,17 @@ const mockedUseMobiApi = vi.mocked(useMobiApi)
 
 function mockApi(searchFiles: ReturnType<typeof vi.fn>) {
     mockedUseMobiApi.mockReturnValue({ sessions: { searchFiles } } as any)
+}
+
+/** 可手动 resolve/reject 的 deferred，用于精细控制请求时序 */
+function createDeferred<T = unknown>() {
+    let resolve!: (v: T) => void
+    let reject!: (e: unknown) => void
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res
+        reject = rej
+    })
+    return { promise, resolve, reject }
 }
 
 describe('useDebouncedFileSearch', () => {
@@ -107,5 +118,51 @@ describe('useDebouncedFileSearch', () => {
 
         await waitFor(() => expect(result.current.results).toEqual([]))
         expect(result.current.isLoading).toBe(false)
+    })
+
+    it('旧请求 finally 不复位新请求的 loading（generation 守卫，防 spinner 误熄）', async () => {
+        // fake timers 确定性控制防抖/loading 定时器，避免 real timer 下时序 flaky
+        vi.useFakeTimers()
+        const deferredA = createDeferred()
+        const deferredB = createDeferred()
+        let calls = 0
+        const searchFiles = vi.fn(() => {
+            calls++
+            return calls === 1 ? deferredA.promise : deferredB.promise
+        })
+        mockApi(searchFiles)
+
+        const { result, rerender } = renderHook(({ q }) => useDebouncedFileSearch('s1', q), {
+            initialProps: { q: 'a' },
+        })
+
+        // 推进防抖 300ms → A 发起（generation=1）
+        await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+        expect(searchFiles).toHaveBeenCalledTimes(1)
+
+        // 切到 'ab'：B 接管，A 被 abort（generation=2）
+        rerender({ q: 'ab' })
+        await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+        expect(searchFiles).toHaveBeenCalledTimes(2)
+
+        // 推进 B 的 loading 定时器（LOADING_DELAY=400ms）→ isLoading=true
+        await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+        expect(result.current.isLoading).toBe(true)
+
+        // A 被拒绝（模拟 abort reject）→ A 的 finally 因 generation 不匹配不应复位 loading
+        await act(async () => {
+            deferredA.reject(new Error('aborted'))
+            await vi.advanceTimersByTimeAsync(0)
+        })
+        expect(result.current.isLoading).toBe(true)
+
+        // B 成功 → B 的 finally（generation 匹配）复位 loading
+        await act(async () => {
+            deferredB.resolve({ data: { success: true, entries: [] } })
+            await vi.advanceTimersByTimeAsync(0)
+        })
+        expect(result.current.isLoading).toBe(false)
+
+        vi.useRealTimers()
     })
 })

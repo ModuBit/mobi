@@ -323,6 +323,19 @@
 .image-content-view .ant-image-cover {
     background: transparent !important;
 }
+/* 加载失败态：兜底图 + 重试按钮纵向居中 */
+.image-content-view--error {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+.image-content-view__fallback {
+    max-width: 240px;
+    max-height: 180px;
+    object-fit: contain;
+    opacity: 0.85;
+}
 
 /* Dark 模式下 solid 按钮文字颜色修复 */
 html[data-theme='dark'] .ant-btn-variant-solid {

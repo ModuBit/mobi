@@ -86,7 +86,8 @@ export function formatElapsedTime(startedAt: number, now: number = Date.now()): 
 }
 
 /** 格式化消息时间：当天 HH:mm，非当天 MM/DD HH:mm，非当年 YYYY/MM/DD HH:mm */
-export function formatMessageTime(createdAt: number): string {    const date = new Date(createdAt)
+export function formatMessageTime(createdAt: number): string {
+    const date = new Date(createdAt)
     const now = new Date()
     const hours = date.getHours().toString().padStart(2, '0')
     const minutes = date.getMinutes().toString().padStart(2, '0')
