@@ -54,7 +54,7 @@ export function extractTerminalToken(handshake: {
 }
 
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
-const DEFAULT_MAX_TERMINALS = 4
+const DEFAULT_MAX_TERMINALS = 3
 
 function resolveEnvNumber(name: string, fallback: number): number {
     const raw = process.env[name]

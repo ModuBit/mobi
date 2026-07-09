@@ -42,7 +42,7 @@ type TerminalManagerOptions = {
 }
 
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
-const DEFAULT_MAX_TERMINALS = 4
+const DEFAULT_MAX_TERMINALS = 3
 const SENSITIVE_ENV_KEYS = new Set([
     'CLI_API_TOKEN',
     'MOBI_API_URL',
