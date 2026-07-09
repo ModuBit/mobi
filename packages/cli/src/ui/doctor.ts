@@ -297,6 +297,30 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
 
     console.log(chalk.green('\n✅ Doctor diagnosis complete!'));
 
+    // 报告内置 claude 二进制解析结果（仅 'all' 过滤时展示，避免噪音）
+    if (filter === 'all') {
+        try {
+            const { getClaudeExecutablePath } = await import('@/claude/sdk/claudeExecutable');
+            const resolved = await getClaudeExecutablePath();
+            console.log(chalk.bold.cyan('\n🤖 Claude Binary'));
+            if (process.env.MOBI_CLAUDE_PATH) {
+                console.log(`  来源: ${chalk.yellow('MOBI_CLAUDE_PATH 覆盖')}`);
+            } else if (isBunCompiled()) {
+                console.log(`  来源: ${chalk.green('内置（extractFromBunfs）')}`);
+            } else {
+                console.log(`  来源: ${chalk.green('SDK 自动解析（dev 模式）')}`);
+            }
+            console.log(`  路径: ${resolved ?? '(由 SDK 运行时解析)'}`);
+            if (resolved) {
+                const { spawnSync } = await import('node:child_process');
+                const r = spawnSync(resolved, ['--version'], { encoding: 'utf8', timeout: 10000 });
+                console.log(`  版本: ${(r.stdout || '').trim() || chalk.red('运行失败')}`);
+            }
+        } catch (e) {
+            console.log(chalk.yellow(`  Claude binary 解析失败: ${(e as Error).message}`));
+        }
+    }
+
     // 追加 Claude Code doctor 信息（仅 TTY 环境，claude doctor 需要交互输入）
     if (filter === 'all' && process.stdin.isTTY) {
         try {
@@ -316,8 +340,11 @@ export async function runDoctorCommand(filter?: 'all' | 'runner' | string): Prom
                     resolve()
                 })
             })
-        } catch {
-            console.log(chalk.yellow('Could not find Claude Code CLI. Install Claude Code or set MOBI_CLAUDE_PATH.'))
+        } catch (e) {
+            // 注意：claudePath 在 dev 态会回退到 'claude'（永不抛 not-found），
+            // 这里捕获的是 spawn 前的其他异常（如 ENOENT on PATH、权限等），
+            // 真正的 spawn 失败由上面的 child.on('error') 处理。
+            console.log(chalk.yellow(`Could not launch claude doctor: ${(e as Error).message}`))
         }
     }
 

@@ -103,7 +103,7 @@ export async function claudeLocal(opts: {
 
     logger.debug(`[ClaudeLocal] Spawning claude with args: ${JSON.stringify(args)}`);
 
-    // Get Claude executable path (dev 模式回退 PATH 上的 claude)
+    // 解析 claude 可执行路径（dev 模式回退 PATH 上的 claude）
     const claudeCommand = (await getClaudeExecutablePath()) ?? 'claude';
     logger.debug(`[ClaudeLocal] Using claude executable: ${claudeCommand}`);
 
