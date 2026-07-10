@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Component, type ReactNode } from 'react'
+import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button, Result } from 'antd'
 import { useTranslation } from 'react-i18next'
 
@@ -41,6 +41,10 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps & { t: (key: strin
 
     static getDerivedStateFromError(error: Error): ErrorBoundaryState {
         return { hasError: true, error }
+    }
+
+    componentDidCatch(error: Error, info: ErrorInfo) {
+        console.error('[ErrorBoundary]', error, info.componentStack)
     }
 
     handleReset = () => {
