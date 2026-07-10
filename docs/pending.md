@@ -708,3 +708,20 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 
 ---
 
+## 27. ~~dev 环境终端 WebSocket 受 Vite 8 + Bun proxy 阻塞~~ ✅ 已解决
+
+**真实根因**：这是三个叠加问题，不是单一的 `destroySoon()`：
+
+1. Vite Web 端口与 Hub 端口不同，proxy 默认保留 Web Origin；Hub CORS 因此返回 403 `Origin not allowed`。
+2. Vite 8 的 WebSocket proxy 在 Bun runtime 下无法可靠转发 upgrade tunnel；即使 `rewriteWsOrigin` 后 Hub 返回 101，浏览器连接仍会失败。
+3. 失败响应/异常断开路径调用 Node `socket.destroySoon()`，而 Bun socket 未实现该方法，导致整个 Vite dev server 崩溃。
+
+**修复**：
+- terminal 在 dev 构建中通过 `__MOBI_HUB_URL__` 直连 Hub，绕过损坏的 Vite WS tunnel；production 仍使用 `window.location.origin`。
+- dev/e2e profile 明确将 Web origin 加入 `CORS_ORIGINS`，允许浏览器跨端口直连。
+- 移除已无调用方的 `/socket.io` proxy；不保留 Vite patch，避免维护一条业务不再经过的死链路。
+- 同时修正 E2E 暴露的 Web→Hub 事件名错配：`terminal:open` → Hub 实际监听的 `terminal:create`。
+
+**验证**：dev E2E 中 terminal 状态为 connected，PTY 显示 shell prompt，执行 `printf '__MOBI_DEV_WS_OK__\\n'` 后输出 marker。
+
+---

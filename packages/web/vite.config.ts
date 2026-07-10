@@ -65,6 +65,11 @@ export default defineConfig({
             '@': resolve(__dirname, 'src')
         }
     },
+    // terminal 在 dev 下直连 Hub，绕过 Vite 8 + Bun 无法可靠转发的 WebSocket tunnel；
+    // production 构建时该值为 undefined，客户端继续使用同源 origin。
+    define: {
+        __MOBI_HUB_URL__: JSON.stringify(process.env.NODE_ENV === 'production' ? undefined : hubUrl),
+    },
     server: {
         host: true,
         port: webPort,
@@ -72,10 +77,6 @@ export default defineConfig({
         ...(useHttpsDev ? { https: true } : {}),
         proxy: {
             '/api': hubUrl,
-            '/socket.io': {
-                target: hubUrl,
-                ws: true
-            },
             '/manifest.webmanifest': hubUrl,
         }
     }

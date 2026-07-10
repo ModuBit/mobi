@@ -14,6 +14,17 @@
  * limitations under the License.
  */
 
-/// <reference types="vite/client" />
+import { describe, expect, test } from 'vitest'
+import viteConfig from '../vite.config'
 
-declare const __MOBI_HUB_URL__: string | undefined
+describe('Vite dev terminal 配置', () => {
+    test('向 dev 客户端注入 Hub URL，terminal 可绕过 Bun 下失效的 Vite WS tunnel', () => {
+        expect(viteConfig.define).toMatchObject({
+            __MOBI_HUB_URL__: JSON.stringify('http://localhost:2222'),
+        })
+    })
+
+    test('不配置无调用方的 /socket.io WebSocket proxy', () => {
+        expect(viteConfig.server?.proxy?.['/socket.io']).toBeUndefined()
+    })
+})
