@@ -20,6 +20,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { InspectorPane } from '@/components/session/InspectorPane'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
 
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => false,
@@ -42,20 +43,19 @@ vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
     useSessionActions: () => ({ resumeSession: resumeSessionMock, isResumePending: false }),
 }))
 // mock TerminalView：真实组件依赖 xterm/cachedTerminal（jsdom 无 DOM 布局），
-// 用 marker div 暴露 props，验证 terminal tab 渲染与 newTerminalDisabled 接线
+// 用 marker div 暴露 props，验证 terminal tab 渲染接线
 vi.mock('@/components/terminal/TerminalView', () => ({
-    default: ({ sessionId, terminalId, newTerminalDisabled }: {
-        sessionId: string
-        terminalId: string
-        newTerminalDisabled?: boolean
-    }) => (
+    default: ({ sessionId, terminalId }: { sessionId: string; terminalId: string }) => (
         <div
             data-testid="mock-terminal-view"
             data-session={sessionId}
             data-terminal={terminalId}
-            data-new-disabled={String(newTerminalDisabled ?? false)}
         />
     ),
+}))
+// mock clearCachedInstance：验证关闭 terminal tab 时触发清理（dispose 发 terminal:close 杀 PTY + 断 socket）
+vi.mock('@/core/hooks/useCachedInstance', () => ({
+    clearCachedInstance: vi.fn(),
 }))
 
 // jsdom 没有 ResizeObserver（antd Tabs 依赖）
@@ -109,6 +109,33 @@ describe('InspectorPane', () => {
         expect(resumeSessionMock).toHaveBeenCalled()
     })
 
+    it('离线 + 有 tab：保留 tab 内容作毛玻璃背景，叠加恢复层', () => {
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openTerminalTab('s1') // 关闭前已开 terminal tab
+        renderWithClient(<InspectorPane sessionId="s1" active={false} />)
+        // tab 内容（mock TerminalView）仍渲染 —— 作为毛玻璃背景，模糊可见关闭前的内容
+        expect(screen.getByTestId('mock-terminal-view')).toBeInTheDocument()
+        // 恢复层（sender-overlay 毛玻璃）覆盖其上
+        expect(screen.getByRole('button', { name: 'composer.activate' })).toBeInTheDocument()
+        expect(document.querySelector('.sender-overlay')).toBeInTheDocument()
+    })
+
+    it('关闭 terminal tab：清理缓存终端实例（发 terminal:close 杀 PTY + 断 socket）', () => {
+        vi.mocked(clearCachedInstance).mockClear()
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openTerminalTab('s1')
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        const terminalId = useWorkspaceStore
+            .getState()
+            .getSession('s1').tabs.find((t) => t.mode === 'terminal')!.terminalId
+        // 点 terminal tab 的关闭按钮（editable-card 的 remove）触发 onEdit
+        fireEvent.click(document.querySelector('.ant-tabs-tab-remove') as HTMLElement)
+        // 清理该 terminalId 的缓存实例 → dispose 发 terminal:close 杀 PTY + 断 socket
+        expect(clearCachedInstance).toHaveBeenCalledWith(`terminal:s1:${terminalId}`)
+        // store 里 tab 已移除
+        expect(useWorkspaceStore.getState().getSession('s1').tabs).toHaveLength(0)
+    })
+
     it('点「文件」→ 出现 tree tab', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         renderWithClient(<InspectorPane sessionId="s1" />)
@@ -152,13 +179,6 @@ describe('InspectorPane', () => {
         expect(tv.getAttribute('data-terminal')).toBe(terminalTab!.terminalId)
     })
 
-    it('未达上限时 TerminalView newTerminalDisabled=false', () => {
-        useWorkspaceStore.getState().setExpanded('s1', true)
-        useWorkspaceStore.getState().openTerminalTab('s1')
-        renderWithClient(<InspectorPane sessionId="s1" />)
-        expect(screen.getByTestId('mock-terminal-view')).toHaveAttribute('data-new-disabled', 'false')
-    })
-
     it('未达上限时「+」菜单 terminal 项可点，点击触发 openTerminalTab', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         // 先开一个 tree tab 让「+」按钮出现（tabs.length > 0 才进入 tab 态）
@@ -176,14 +196,12 @@ describe('InspectorPane', () => {
         expect(s.activeTabId).toBe(terminalTab!.id)
     })
 
-    it('达上限（3 个终端）时 TerminalView newTerminalDisabled=true 且「+」菜单 terminal 项 disabled', () => {
+    it('达上限（3 个终端）时「+」菜单 terminal 项 disabled', () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().openTerminalTab('s1')
         useWorkspaceStore.getState().openTerminalTab('s1')
         useWorkspaceStore.getState().openTerminalTab('s1')
         renderWithClient(<InspectorPane sessionId="s1" />)
-        // 激活的 terminal tab 渲染的终端视图收到 newTerminalDisabled=true
-        expect(screen.getByTestId('mock-terminal-view')).toHaveAttribute('data-new-disabled', 'true')
         // 「+」下拉菜单中 terminal 项 disabled。
         // Task 9 启用 terminal 后 action.disabled=false，disabled 完全由 terminalLimitReached 决定，
         // 此处真正验证上限叠加（覆盖 Task 8 当时 action.disabled=true 无法独立验证的缺口）

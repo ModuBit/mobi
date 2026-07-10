@@ -43,6 +43,14 @@ type TerminalManagerOptions = {
 
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000
 const DEFAULT_MAX_TERMINALS = 3
+/**
+ * PTY 子进程的默认 TERM。
+ * runner 从 GUI / VS Code launch / nohup 等非 tty 环境启动时，自身 process.env 常无 TERM，
+ * 若不显式补上，PTY 子 shell 的 TERM 为空 → top/vim 报 "unknown terminal"、
+ * zsh 按 TERM 查 termcap 配键绑定失败（backspace/方向键异常）。
+ * xterm-256color 与前端 xterm.js 的能力匹配，是安全默认值。
+ */
+const DEFAULT_TERM = 'xterm-256color'
 const SENSITIVE_ENV_KEYS = new Set([
     'CLI_API_TOKEN',
     'MOBI_API_URL',
@@ -73,7 +81,7 @@ function resolveShell(): string {
     return '/bin/bash'
 }
 
-function buildFilteredEnv(): NodeJS.ProcessEnv {
+export function buildFilteredEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {}
     for (const [key, value] of Object.entries(process.env)) {
         if (!value) {
@@ -83,6 +91,10 @@ function buildFilteredEnv(): NodeJS.ProcessEnv {
             continue
         }
         env[key] = value
+    }
+    // PTY 必须有明确 TERM；缺失（runner 从非 tty 环境启动）或为空时补默认值
+    if (!env.TERM) {
+        env.TERM = DEFAULT_TERM
     }
     return env
 }

@@ -271,6 +271,22 @@
       "connected": "Connected",
       "reconnecting": "Reconnecting",
       "error": "Disconnected"
+    },
+    "virtualKeys": {
+      "aria": "Terminal virtual keys",
+      "edit": "Edit virtual keys",
+      "editor": {
+        "title": "Virtual keys",
+        "save": "Save",
+        "add": "Add key",
+        "hint": "Tap \"Add key\" to combine a modifier (Ctrl/Alt/Shift) with a main key"
+      },
+      "picker": {
+        "title": "Add key",
+        "cancel": "Cancel",
+        "add": "Add",
+        "preview": "Preview: "
+      }
     }
   },
   "settings": {

@@ -15,47 +15,47 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Button, Typography, Tooltip, theme as antTheme } from 'antd'
+import { Button, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { ReloadOutlined, PlusOutlined } from '@ant-design/icons'
+import { ReloadOutlined } from '@ant-design/icons'
 import '@xterm/xterm/css/xterm.css'
 import { useCachedInstance } from '@/core/hooks/useCachedInstance'
-import { MAX_TERMINALS_PER_SESSION } from '@/core/data/stores/workspaceStore'
+import { useSession } from '@/core/data/hooks/queries/useSession'
+import { useIsDark } from '@/core/data/hooks/useIsDark'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import {
     createCachedTerminal,
     disposeCachedTerminal,
     type CachedTerminal,
     type TerminalStatus,
 } from '@/components/terminal/cachedTerminal'
+import { VirtualKeyBar } from './VirtualKeyBar'
+import { VirtualKeyEditor } from './VirtualKeyEditor'
 
 const { Text } = Typography
-const { useToken } = antTheme
 
 interface TerminalViewProps {
     sessionId: string
     terminalId: string
-    onNewTerminal?: () => void
-    newTerminalDisabled?: boolean
 }
 
-/** 状态点颜色映射 */
-const STATUS_COLOR: Record<TerminalStatus, string> = {
-    connected: '#52c41a',
-    connecting: '#faad14',
-    reconnecting: '#faad14',
-    error: '#ff4d4f',
+/** 断开态：需要展示重连遮罩的连接状态 */
+function isDisconnected(status: TerminalStatus): boolean {
+    return status === 'reconnecting' || status === 'error'
 }
 
-export default function TerminalView({
-    sessionId,
-    terminalId,
-    onNewTerminal,
-    newTerminalDisabled,
-}: TerminalViewProps) {
-    const { token } = useToken()
+export default function TerminalView({ sessionId, terminalId }: TerminalViewProps) {
     const { t } = useTranslation()
+    const isMobile = useIsMobile()
     const containerRef = useRef<HTMLDivElement>(null)
     const attachedRef = useRef(false)
+    const [editorOpen, setEditorOpen] = useState(false)
+
+    // session metadata：取版本（= mobi --version）、项目目录、git 分支用于 banner
+    const { data: session } = useSession(sessionId)
+    const metadata = session?.metadata
+    // 终端主题跟随 web（亮/暗，system 模式实时响应 OS）
+    const isDark = useIsDark()
 
     const { instance } = useCachedInstance<CachedTerminal>(
         `terminal:${sessionId}:${terminalId}`,
@@ -71,6 +71,22 @@ export default function TerminalView({
         return instance.subscribe(setStatus)
     }, [instance])
 
+    // 欢迎横幅：metadata 就绪后写一次（showBanner 内部 once；cwd 未就绪跳过，等就绪再写）
+    useEffect(() => {
+        if (!instance) return
+        instance.showBanner({
+            version: metadata?.version,
+            cwd: metadata?.path,
+            gitBranch: metadata?.gitBranch,
+        })
+    }, [instance, metadata])
+
+    // 主题切换：跟随 web 亮/暗，动态重绘终端（不丢历史、banner 文本随之重染）
+    useEffect(() => {
+        if (!instance) return
+        instance.setTheme(isDark ? 'dark' : 'light')
+    }, [instance, isDark])
+
     // attach 缓存的 domNode 到可见容器
     useEffect(() => {
         if (!instance || !containerRef.current || attachedRef.current) return
@@ -81,6 +97,8 @@ export default function TerminalView({
         } catch {
             // 容器宽度为 0 时 fit 抛错，忽略
         }
+        // 新建/切回 terminal tab 立即聚焦，可直接键盘输入
+        instance.terminal.focus()
     }, [instance])
 
     // 监听可见容器尺寸变化 → fit（宽度 0 时跳过）
@@ -110,69 +128,54 @@ export default function TerminalView({
         }
     }, [instance])
 
+    const showMask = isDisconnected(status)
+
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div
-                style={{
-                    padding: '8px 16px',
-                    borderBottom: `1px solid ${token.colorBorder}`,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    background: token.colorBgLayout,
-                }}
+                ref={containerRef}
+                style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }}
             >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Tooltip title={t(`terminal.status.${status}`)}>
-                        <span
-                            style={{
-                                display: 'inline-block',
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                background: STATUS_COLOR[status],
-                                opacity:
-                                    status === 'connecting' || status === 'reconnecting' ? 0.6 : 1,
-                            }}
-                        />
-                    </Tooltip>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                        {status === 'error'
-                            ? t('terminal.disconnectedHint')
-                            : `${t('terminal.title')} ${sessionId.slice(0, 8)}`}
-                    </Text>
-                </span>
-                <span style={{ display: 'flex', gap: 8 }}>
-                    {onNewTerminal && (
-                        <Tooltip
-                            title={
-                                newTerminalDisabled
-                                    ? t('session.inspector.terminalLimitReached', {
-                                          max: MAX_TERMINALS_PER_SESSION,
-                                      })
-                                    : t('session.inspector.addTab')
-                            }
-                        >
-                            <Button
-                                icon={<PlusOutlined />}
-                                aria-label={t('session.inspector.addTab')}
-                                size="small"
-                                disabled={newTerminalDisabled}
-                                onClick={onNewTerminal}
-                            />
-                        </Tooltip>
-                    )}
-                    <Button
-                        icon={<ReloadOutlined />}
-                        aria-label={t('terminal.reconnect')}
-                        size="small"
-                        onClick={() => instance?.reconnect()}
+                {showMask && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 10,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 12,
+                            // 玻璃磨砂：半透明深色底 + backdrop blur，与终端深色背景协调
+                            background: 'rgba(30, 30, 30, 0.45)',
+                            backdropFilter: 'blur(8px)',
+                            WebkitBackdropFilter: 'blur(8px)',
+                        }}
                     >
-                        {t('terminal.reconnect')}
-                    </Button>
-                </span>
+                        <Text style={{ color: '#d4d4d4', fontSize: 13 }}>
+                            {t(`terminal.status.${status}`)}
+                        </Text>
+                        <Button
+                            type="primary"
+                            icon={<ReloadOutlined />}
+                            onClick={() => instance?.reconnect()}
+                        >
+                            {t('terminal.reconnect')}
+                        </Button>
+                    </div>
+                )}
             </div>
-            <div ref={containerRef} style={{ flex: 1, overflow: 'hidden' }} />
+            {/* 移动端虚拟按键条：无物理键盘时触发 Ctrl+C/Esc/Tab/方向键等 */}
+            {isMobile && (
+                <>
+                    <VirtualKeyBar
+                        onSend={(data) => instance?.send(data)}
+                        onEdit={() => setEditorOpen(true)}
+                    />
+                    <VirtualKeyEditor open={editorOpen} onClose={() => setEditorOpen(false)} />
+                </>
+            )}
         </div>
     )
 }

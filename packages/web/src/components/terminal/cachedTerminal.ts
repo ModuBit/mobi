@@ -15,12 +15,84 @@
  */
 
 import { io, type Socket } from 'socket.io-client'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 
 /** 终端连接状态机 */
 export type TerminalStatus = 'connecting' | 'connected' | 'reconnecting' | 'error'
+
+/** 终端主题模式（跟随 web 主题） */
+export type TerminalThemeMode = 'dark' | 'light'
+
+/** 暗色调色板（VSCode Dark+ 风格；bg/fg 与 web dark token 接近） */
+const XTERM_DARK_THEME: ITheme = {
+    background: '#1e1e1e',
+    foreground: '#d4d4d4',
+    cursor: '#ffffff',
+    cursorAccent: '#1e1e1e',
+    selectionBackground: '#264f78',
+    black: '#000000', red: '#cd3131', green: '#0dbc79', yellow: '#e5e510',
+    blue: '#2472c8', magenta: '#bc3fbc', cyan: '#11a8cd', white: '#e5e5e5',
+    brightBlack: '#666666', brightRed: '#f14c4c', brightGreen: '#23d18b',
+    brightYellow: '#f5f543', brightBlue: '#3b8eea', brightMagenta: '#d670d6',
+    brightCyan: '#29b8db', brightWhite: '#e5e5e5',
+}
+
+/** 亮色调色板（bg/fg 与 web light token 一致：#faf9f5 / #141413） */
+const XTERM_LIGHT_THEME: ITheme = {
+    background: '#faf9f5',
+    foreground: '#141413',
+    cursor: '#141413',
+    cursorAccent: '#faf9f5',
+    selectionBackground: '#c8c8c8',
+    black: '#141413', red: '#cd3131', green: '#0a7d4f', yellow: '#b58900',
+    blue: '#2472c8', magenta: '#bc3fbc', cyan: '#098a9e', white: '#faf9f5',
+    brightBlack: '#666666', brightRed: '#cd3131', brightGreen: '#0a7d4f',
+    brightYellow: '#b58900', brightBlue: '#2472c8', brightMagenta: '#d670d6',
+    brightCyan: '#098a9e', brightWhite: '#ffffff',
+}
+
+/** 按模式取调色板 */
+function xtermTheme(mode: TerminalThemeMode): ITheme {
+    return mode === 'dark' ? XTERM_DARK_THEME : XTERM_LIGHT_THEME
+}
+
+/** MOBI ASCII art（box-drawing 字体，3 行；左侧两空格与信息行对齐）。
+ *  不着色 → 用终端 default foreground，主题切换时随 theme.foreground 自动重染（亮暗均醒目） */
+const MOBI_ART = [
+    '  ╭┬╮╭─╮╭╮ ╷\r\n',
+    '  ││││ │├┴╮│\r\n',
+    '  ╵ ╵╰─╯╰─╯╵\r\n',
+].join('')
+
+/** 欢迎横幅信息（来自 session.metadata） */
+export interface BannerInfo {
+    /** mobi 版本（= `mobi --version`，session.metadata.version） */
+    version?: string
+    /** 项目目录 cwd（session.metadata.path） */
+    cwd?: string
+    /** Git 分支（可选，session.metadata.gitBranch） */
+    gitBranch?: string
+}
+
+/**
+ * 构建欢迎横幅：MOBI ASCII art + 版本 + 项目目录（含 git 分支）。
+ * 由 showBanner 在 metadata 就绪后写入一次；reconnect 不重复。
+ */
+export function buildBanner({ version, cwd, gitBranch }: BannerInfo): string {
+    const lines: string[] = ['\r\n', MOBI_ART]
+    if (version) {
+        // MOBI 用 default foreground（随主题），- version 用灰（亮暗均可见）
+        lines.push(`  MOBI \x1b[90m- ${version}\x1b[0m\r\n`)
+    }
+    if (cwd) {
+        const branchSuffix = gitBranch ? ` \x1b[90m(git:${gitBranch})\x1b[0m` : ''
+        lines.push(`\x1b[90m  ${cwd}\x1b[0m${branchSuffix}\r\n`)
+    }
+    lines.push('\r\n')
+    return lines.join('')
+}
 
 /** 缓存的终端实例：xterm + 插件 + 独立 DOM 节点 + socket */
 export interface CachedTerminal {
@@ -33,6 +105,12 @@ export interface CachedTerminal {
     subscribe: (listener: (s: TerminalStatus) => void) => () => void
     /** 重连：保留历史，写分隔横幅并重新 open 终端会话 */
     reconnect: () => void
+    /** 写入欢迎横幅（metadata 就绪后调用；cwd 未就绪跳过，仅写一次） */
+    showBanner: (info: BannerInfo) => void
+    /** 切换终端主题（跟随 web 亮/暗），动态重绘不丢历史 */
+    setTheme: (mode: TerminalThemeMode) => void
+    /** 直接发送字节序列到 PTY（虚拟按键用，不经 xterm 输入焦点） */
+    send: (data: string) => void
     /** 内部销毁钩子（断 socket + 销毁 xterm）；仅 clearCachedInstance 调用 */
     dispose: () => void
 }
@@ -49,34 +127,12 @@ interface CreateOptions {
  */
 export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): CachedTerminal {
     const domNode = document.createElement('div')
-    domNode.style.cssText = 'width:100%;height:100%;background:#1e1e1e;padding:4px;overflow:hidden;'
+    domNode.style.cssText = `width:100%;height:100%;background:${XTERM_DARK_THEME.background};padding:4px;overflow:hidden;`
 
     const terminal = new Terminal({
         fontSize: 14,
         fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Monaco, Menlo, Consolas, monospace',
-        theme: {
-            background: '#1e1e1e',
-            foreground: '#d4d4d4',
-            cursor: '#ffffff',
-            cursorAccent: '#1e1e1e',
-            selectionBackground: '#264f78',
-            black: '#000000',
-            red: '#cd3131',
-            green: '#0dbc79',
-            yellow: '#e5e510',
-            blue: '#2472c8',
-            magenta: '#bc3fbc',
-            cyan: '#11a8cd',
-            white: '#e5e5e5',
-            brightBlack: '#666666',
-            brightRed: '#f14c4c',
-            brightGreen: '#23d18b',
-            brightYellow: '#f5f543',
-            brightBlue: '#3b8eea',
-            brightMagenta: '#d670d6',
-            brightCyan: '#29b8db',
-            brightWhite: '#e5e5e5',
-        },
+        theme: XTERM_DARK_THEME,
         cursorBlink: true,
         cursorStyle: 'block',
         scrollback: 1000,
@@ -106,8 +162,9 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
     }
 
     const wireSocket = () => {
-        socket = io(`${window.location.origin}/terminal`, {
-            // 同源 httpOnly cookie（mobi_token）自动携带，/terminal namespace 读 cookie（刷新不丢）
+        const terminalOrigin = __MOBI_HUB_URL__ ?? window.location.origin
+        socket = io(`${terminalOrigin}/terminal`, {
+            // httpOnly cookie（mobi_token）按 host 携带；dev 端口不同仍可直连 Hub，production 保持同源
             transports: ['websocket'],
             path: '/socket.io',
         })
@@ -139,10 +196,18 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
 
         socket.on('connect', () => {
             const { cols, rows } = terminal
-            socket!.emit('terminal:open', { sessionId, terminalId, cols, rows })
+            socket!.emit('terminal:create', { sessionId, terminalId, cols, rows })
             isOpen = true
             setStatus('connected')
             terminal.write('\x1b[32m[Terminal connected]\x1b[0m\r\n')
+        })
+        // terminal:ready：hub 处理完 terminal:create 后回传，标志终端会话真正建立。
+        // reconnect（socket 仍连着、重发 create）时不会触发 connect 事件，靠 ready 恢复 connected 态。
+        socket.on('terminal:ready', (d: { sessionId: string; terminalId: string }) => {
+            if (d.sessionId === sessionId && d.terminalId === terminalId) {
+                isOpen = true
+                setStatus('connected')
+            }
         })
         // 断线/重连：进入 reconnecting 态（disconnect 不 clear，等 reconnect 横幅分隔）
         socket.on('disconnect', () => setStatus('reconnecting'))
@@ -166,14 +231,71 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         terminal.write('\r\n\x1b[90m--- reconnected ---\x1b[0m\r\n')
         if (!socket) return
         if (socket.connected) {
+            // socket 连着（如 CLI 断开导致的 error）：重发 create 重新打开终端会话。
+            // hub 端同一 socket 重注册会先清旧 entry（避免 "already in use"），CLI 复用已存在的 PTY。
+            // 成功后 hub 回传 terminal:ready → setStatus('connected')。
             const { cols, rows } = terminal
-            socket.emit('terminal:open', { sessionId, terminalId, cols, rows })
+            socket.emit('terminal:create', { sessionId, terminalId, cols, rows })
             isOpen = true
         } else {
-            // 掉线窗口期：主动重连，connect 事件会自动重发 terminal:open
+            // socket 断开：主动重连，connect 事件会自动重发 terminal:create
             socket.connect()
         }
     }
+
+    // 欢迎横幅：仅写一次（跟实例生命周期，跨 tab 切换/重连不重复）。
+    // cwd 未就绪时跳过，等 TerminalView 拿到 session.metadata 后再写。
+    let bannerShown = false
+    const showBanner = (info: BannerInfo) => {
+        if (bannerShown) return
+        if (!info.cwd) return
+        terminal.write(buildBanner(info))
+        bannerShown = true
+    }
+
+    // 主题切换：动态改 xterm theme + domNode 背景，立即重绘不丢历史
+    const setTheme = (mode: TerminalThemeMode) => {
+        const t = xtermTheme(mode)
+        terminal.options.theme = t
+        domNode.style.background = t.background ?? ''
+    }
+
+    // 直接发送字节到 PTY（虚拟按键用；与 onData 路径一致，但无需终端聚焦）
+    const send = (data: string) => {
+        if (socket?.connected && isOpen) {
+            socket.emit('terminal:write', { sessionId, terminalId, data })
+        }
+    }
+
+    // 移动端触屏滚动：@xterm/xterm 6.0.0 公开 Terminal 的滚动（SmoothScrollableElement）
+    // 只监听 MOUSE_WHEEL，触摸 Gesture 被裁剪（Widget 仅有 ignoreGesture 无 addTarget；
+    // MouseService touch 在 master 才有）。故移动端需自行把 touch 位移转 scrollLines。
+    // 累积位移到约一行高度后滚动（带余量防抖动）；alt buffer（vim/less 无 scrollback）不拦截。
+    const ROW_PX = 18 // 近似行高（fontSize 14 + 行距）
+    let lastTouchY = 0
+    let scrollAcc = 0
+    const onTouchStart = (e: TouchEvent) => {
+        if (e.touches.length === 1) {
+            lastTouchY = e.touches[0].clientY
+            scrollAcc = 0
+        }
+    }
+    const onTouchMove = (e: TouchEvent) => {
+        if (e.touches.length !== 1) return
+        // 无 scrollback（alt buffer 如 vim/less，或刚开无历史）不拦截，避免困住用户
+        if (terminal.buffer.active.length <= terminal.rows) return
+        const y = e.touches[0].clientY
+        scrollAcc += lastTouchY - y // 上滑为正（看更新内容）、下滑为负（看更早历史）
+        lastTouchY = y
+        const lines = Math.trunc(scrollAcc / ROW_PX)
+        if (lines !== 0) {
+            terminal.scrollLines(lines)
+            scrollAcc -= lines * ROW_PX
+            e.preventDefault() // 阻止页面整体滚动，让终端接管
+        }
+    }
+    domNode.addEventListener('touchstart', onTouchStart, { passive: true })
+    domNode.addEventListener('touchmove', onTouchMove, { passive: false })
 
     // 内部销毁：先通知后端关闭 PTY（terminal:close），再移除监听（避免 disconnect 重连瞬间
     // 触发回调向已销毁 xterm 写屏），再断 socket，最后销毁 xterm。
@@ -191,6 +313,9 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         }
         socket = null
         isOpen = false
+        // 移除触屏滚动监听（terminal.dispose 不清自己加的 listener）
+        domNode.removeEventListener('touchstart', onTouchStart)
+        domNode.removeEventListener('touchmove', onTouchMove)
         try {
             terminal.dispose()
         } catch {
@@ -208,6 +333,9 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         },
         subscribe,
         reconnect,
+        showBanner,
+        setTheme,
+        send,
         dispose,
     }
 }

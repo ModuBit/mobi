@@ -271,6 +271,22 @@
       "connected": "已连接",
       "reconnecting": "重连中",
       "error": "已断开"
+    },
+    "virtualKeys": {
+      "aria": "终端虚拟按键",
+      "edit": "编辑虚拟按键",
+      "editor": {
+        "title": "虚拟按键",
+        "save": "保存",
+        "add": "添加按键",
+        "hint": "点「添加按键」组合修饰键（Ctrl/Alt/Shift）与主键；长按可删除"
+      },
+      "picker": {
+        "title": "添加按键",
+        "cancel": "取消",
+        "add": "添加",
+        "preview": "预览："
+      }
     }
   },
   "settings": {

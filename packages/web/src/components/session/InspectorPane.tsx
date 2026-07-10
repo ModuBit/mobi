@@ -24,6 +24,7 @@ import FileTreeView from '@/components/files/FileTreeView'
 import FileContentView from '@/components/files/FileContentView'
 import TerminalView from '@/components/terminal/TerminalView'
 import { ActivateCover } from '@/components/ui/ActivateCover'
+import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
 import { InspectorEmptyState } from './InspectorEmptyState'
 import { TerminalTabLabel } from './TerminalTabLabel'
 import { INSPECTOR_ACTIONS } from './inspectorActions'
@@ -93,22 +94,26 @@ const StyledTabs = styled(Tabs)`
         border-bottom: none;
     }
     /* 高度链：让 tab 内容占满剩余空间。
-       多页 PDF 等连续滚动型预览需要 tabpane 有 bounded height 才能在内部滚动，
-       否则内容会把整条链撑开（tabpane → FileContentView → PdfContentViewImpl 全部 height:auto），
-       表现为「不能滚动」。flex 滚动容器还需配合 minHeight:0（见各组件）。*/
+       多页 PDF / xterm 等需要 tabpane 有 bounded height 才能在内部滚动/自适应，
+       否则内容会把整条链撑开（tabpane → FileContentView / TerminalView 全部 height:auto），
+       表现为「不能滚动 / 终端占不满」。flex 滚动容器还需配合 minHeight:0（见各组件）。
+       注意 antd v5 类名链为 body-holder > body > content > tabpane（v4 的 content-holder 已废弃）。*/
     && {
         display: flex;
         flex-direction: column;
         height: 100%;
     }
-    && > .ant-tabs-content-holder {
+    && > .ant-tabs-body-holder {
         flex: 1;
         min-height: 0;
     }
-    && > .ant-tabs-content-holder > .ant-tabs-content {
+    && > .ant-tabs-body-holder > .ant-tabs-body {
         height: 100%;
     }
-    && > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+    && > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content {
+        height: 100%;
+    }
+    && > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content > .ant-tabs-tabpane {
         height: 100%;
     }
 `
@@ -161,34 +166,6 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
         [isMobile, chatHidden, setChatHidden, setExpanded, sessionId, t],
     )
 
-    // session 离线（CLI runner 未连接）：覆盖「恢复会话」层。
-    // 不渲染文件树/空态，避免触发注定失败的 RPC（handler 注册在 runner 侧）。
-    // active 与 mode 正交，local/remote 一视同仁；local+active 文件浏览本就可用，无需此层。
-    if (!active) {
-        return (
-            <Layout style={{ height: '100%', position: 'relative' }}>
-                <ActivateCover loading={isResumePending} onActivate={() => resumeSession()} />
-                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 2 }}>{rightChrome}</div>
-            </Layout>
-        )
-    }
-
-    // 空态：居中 3 按钮（仅展开且无 tab 时）
-    if (expanded && tabs.length === 0) {
-        return (
-            <Layout style={{ height: '100%', position: 'relative' }}>
-                <InspectorEmptyState
-                    onOpenFile={() => openFileTreeTab(sessionId)}
-                    onOpenTerminal={() => openTerminalTab(sessionId)}
-                    terminalDisabled={terminalLimitReached}
-                />
-                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 2 }}>{rightChrome}</div>
-            </Layout>
-        )
-    }
-
-    if (!everExpanded) return <Layout style={{ height: '100%' }} />
-
     // 「+」下拉菜单：与空态卡片共用 INSPECTOR_ACTIONS，terminal 项达上限时叠加 disable
     const addMenuItems: MenuProps['items'] = INSPECTOR_ACTIONS.map((action) => {
         const { Icon } = action
@@ -212,14 +189,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             return <FileContentView sessionId={sessionId} tabId={tab.id} filePath={tab.filePath} />
         }
         if (tab.mode === 'terminal' && tab.terminalId) {
-            return (
-                <TerminalView
-                    sessionId={sessionId}
-                    terminalId={tab.terminalId}
-                    onNewTerminal={() => openTerminalTab(sessionId)}
-                    newTerminalDisabled={terminalLimitReached}
-                />
-            )
+            return <TerminalView sessionId={sessionId} terminalId={tab.terminalId} />
         }
         return (
             <FileTreeView
@@ -271,28 +241,59 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
         },
     ]
 
+    const hasTabs = tabs.length > 0
+    // 在线 + 空态：居中 3 按钮
+    const showEmpty = active && expanded && !hasTabs
+
     return (
-        <Layout style={{ height: '100%' }}>
-            <StyledTabs
-                type="editable-card"
-                hideAdd
-                activeKey={activeTabId ?? undefined}
-                onChange={(key) => {
-                    // 「+」tab 仅作菜单触发，不切换激活
-                    if (key === ADD_TAB_KEY) return
-                    setActiveTab(sessionId, key)
-                }}
-                items={tabItems}
-                size="small"
-                destroyOnHidden={false}
-                onEdit={(targetKey, action) => {
-                    if (action === 'remove' && typeof targetKey === 'string') {
-                        closeTab(sessionId, targetKey)
-                    }
-                }}
-                tabBarStyle={{ padding: '0 12px', margin: 0 }}
-                tabBarExtraContent={{ right: rightChrome }}
-            />
+        <Layout style={{ height: '100%', position: 'relative' }}>
+            {/* tab 内容：有 tab 时渲染。active 切换（在线↔离线）不卸载（destroyOnHidden + 同一条件分支），
+                离线时保留作毛玻璃背景，模糊可见关闭前的内容。空态/未展开不渲染（避免无谓 RPC）。 */}
+            {everExpanded && hasTabs && (
+                <StyledTabs
+                    type="editable-card"
+                    hideAdd
+                    activeKey={activeTabId ?? undefined}
+                    onChange={(key) => {
+                        // 「+」tab 仅作菜单触发，不切换激活
+                        if (key === ADD_TAB_KEY) return
+                        setActiveTab(sessionId, key)
+                    }}
+                    items={tabItems}
+                    size="small"
+                    destroyOnHidden={false}
+                    onEdit={(targetKey, action) => {
+                        if (action === 'remove' && typeof targetKey === 'string') {
+                            // 关闭 terminal tab：清理缓存实例（dispose 发 terminal:close 杀 PTY + 断 socket）。
+                            // 切换 tab 不走此处，PTY 保留（keepalive）。
+                            const closingTab = tabs.find((t) => t.id === targetKey)
+                            if (closingTab?.mode === 'terminal' && closingTab.terminalId) {
+                                clearCachedInstance(`terminal:${sessionId}:${closingTab.terminalId}`)
+                            }
+                            closeTab(sessionId, targetKey)
+                        }
+                    }}
+                    tabBarStyle={{ padding: '0 12px', margin: 0 }}
+                    // 离线时 rightChrome 改为浮动定位（置于毛玻璃之上），不放进 tabBar
+                    tabBarExtraContent={active ? { right: rightChrome } : undefined}
+                />
+            )}
+            {everExpanded && showEmpty && (
+                <InspectorEmptyState
+                    onOpenFile={() => openFileTreeTab(sessionId)}
+                    onOpenTerminal={() => openTerminalTab(sessionId)}
+                    terminalDisabled={terminalLimitReached}
+                />
+            )}
+            {/* 空态/离线态的浮动 rightChrome（tab 态的在 tabBarExtraContent）。
+                zIndex 高于毛玻璃，保证离线时最大化/收起按钮可点 */}
+            {(showEmpty || !active) && (
+                <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11 }}>{rightChrome}</div>
+            )}
+            {/* 离线毛玻璃覆盖（sender-overlay）：叠加在 tab 内容之上，模糊可见关闭前的 tab 内容 */}
+            {!active && (
+                <ActivateCover className="sender-overlay" loading={isResumePending} onActivate={() => resumeSession()} />
+            )}
         </Layout>
     )
 }
