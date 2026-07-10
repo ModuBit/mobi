@@ -101,4 +101,28 @@ describe('terminal:create 同 socket 重连', () => {
             expect.objectContaining({ message: 'Terminal ID is already in use.' }),
         )
     })
+
+    test('达 session 上限（3）时同 socket 重连：先清旧 entry 再过上限检查，成功', () => {
+        const deps = makeDeps()
+        // 3 个 web socket 各开一个 terminal（每实例独占 socket），countForSession 达 3
+        const mk = (id: string, tid: string) => {
+            const web = makeSocket(id)
+            registerTerminalHandlers(web as never, deps as never)
+            web._handlers.get('terminal:create')!({ sessionId: 's1', terminalId: tid, cols: 80, rows: 24 })
+            return web
+        }
+        const web1 = mk('web-1', 't1')
+        mk('web-2', 't2')
+        mk('web-3', 't3')
+
+        ;(deps._cliSocket.emit as ReturnType<typeof mock>).mockClear()
+        web1.emit.mockClear()
+        // web1 重连 t1（同 socket 重发 create）：旧 entry 先清，不触发 too many
+        web1._handlers.get('terminal:create')!({ sessionId: 's1', terminalId: 't1', cols: 80, rows: 24 })
+        expect(deps._cliSocket.emit).toHaveBeenCalledWith(
+            'terminal:open',
+            expect.objectContaining({ terminalId: 't1' }),
+        )
+        expect(web1.emit).not.toHaveBeenCalled()
+    })
 })

@@ -111,6 +111,19 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
             return
         }
 
+        // 同一 web socket 对同一 terminalId 重新 create（前端 reconnect 重发 create）：
+        // 先清旧 entry 再做上限检查，避免达上限时重连被永久拒绝（旧 entry 仍占用计数）。
+        // 不同 socket 占用同一 terminalId 视为冲突。
+        const existing = terminalRegistry.get(terminalId)
+        if (existing) {
+            if (existing.socketId === socket.id) {
+                terminalRegistry.remove(terminalId)
+            } else {
+                emitTerminalError(terminalId, 'Terminal ID is already in use.')
+                return
+            }
+        }
+
         if (terminalRegistry.countForSocket(socket.id) >= maxTerminalsPerSocket) {
             emitTerminalError(terminalId, `Too many terminals open (max ${maxTerminalsPerSocket}).`)
             return
@@ -125,18 +138,6 @@ export function registerTerminalHandlers(socket: SocketWithData, deps: TerminalH
         if (!cliSocketId) {
             emitTerminalError(terminalId, 'CLI is not connected for this session.')
             return
-        }
-
-        // 同一 web socket 对同一 terminalId 重新 create（前端 reconnect 重发 create）：
-        // 先清旧 entry 再注册，避免 "already in use"。不同 socket 仍视为冲突。
-        const existing = terminalRegistry.get(terminalId)
-        if (existing) {
-            if (existing.socketId === socket.id) {
-                terminalRegistry.remove(terminalId)
-            } else {
-                emitTerminalError(terminalId, 'Terminal ID is already in use.')
-                return
-            }
         }
 
         const entry = terminalRegistry.register(terminalId, sessionId, socket.id, cliSocketId)

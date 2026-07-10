@@ -143,11 +143,11 @@ export function buildKeySequence(mods: Modifier[], keyId: string): BuiltKey | nu
         return { label: join(arrowSym[keyId]), data }
     }
 
-    // Tab
+    // Tab（Shift+Tab = \x1b[Z；Ctrl/Alt+Tab 无通用标准序列，禁用避免发编造码）
     if (keyId === 'tab') {
         if (mc === 1) return { label: join('Tab'), data: '\t' }
         if (has('shift') && !has('ctrl') && !has('alt')) return { label: join('Tab'), data: '\x1b[Z' }
-        return { label: join('Tab'), data: `\x1b[9;${mc}~` }
+        return null
     }
 
     if (keyId === 'esc') {

@@ -55,6 +55,12 @@ describe('buildKeySequence', () => {
         expect(buildKeySequence(['shift'], 'tab')).toEqual({ label: 'Shift+Tab', data: '\x1b[Z' })
     })
 
+    it('Ctrl/Alt + Tab 无通用序列 → null（不发编造码）', () => {
+        expect(buildKeySequence(['ctrl'], 'tab')).toBeNull()
+        expect(buildKeySequence(['alt'], 'tab')).toBeNull()
+        expect(buildKeySequence(['ctrl', 'shift'], 'tab')).toBeNull()
+    })
+
     it('Esc / Enter / Backspace / Space', () => {
         expect(buildKeySequence([], 'esc')).toEqual({ label: 'Esc', data: '\x1b' })
         expect(buildKeySequence([], 'enter')).toEqual({ label: '↵', data: '\r' })

@@ -111,6 +111,8 @@ export interface CachedTerminal {
     setTheme: (mode: TerminalThemeMode) => void
     /** 直接发送字节序列到 PTY（虚拟按键用，不经 xterm 输入焦点） */
     send: (data: string) => void
+    /** 控制 socket 连接（离线断开避免被拒、在线重连） */
+    setActive: (active: boolean) => void
     /** 内部销毁钩子（断 socket + 销毁 xterm）；仅 clearCachedInstance 调用 */
     dispose: () => void
 }
@@ -118,6 +120,8 @@ export interface CachedTerminal {
 interface CreateOptions {
     sessionId: string
     terminalId: string
+    /** 初始是否建连（session 离线时传 false，延迟到 active 再连）；默认 true */
+    initialActive?: boolean
 }
 
 /**
@@ -125,7 +129,7 @@ interface CreateOptions {
  * socket 断开不杀后端进程（TerminalManager 常驻）；重连 re-attach。
  * dispose 时断开 socket 并销毁 xterm（仅 clearCachedInstance 触发）。
  */
-export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): CachedTerminal {
+export function createCachedTerminal({ sessionId, terminalId, initialActive = true }: CreateOptions): CachedTerminal {
     const domNode = document.createElement('div')
     domNode.style.cssText = `width:100%;height:100%;background:${XTERM_DARK_THEME.background};padding:4px;overflow:hidden;`
 
@@ -167,6 +171,8 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
             // httpOnly cookie（mobi_token）按 host 携带；dev 端口不同仍可直连 Hub，production 保持同源
             transports: ['websocket'],
             path: '/socket.io',
+            // 离线 session 不主动建连（setActive(true) 后再 connect），避免被 hub 以 inactive 拒绝
+            autoConnect: initialActive,
         })
 
         socket.on('terminal:output', (d: { sessionId: string; terminalId: string; data: string }) => {
@@ -219,6 +225,7 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         socket.on('terminal:error', (d: { terminalId: string; message: string; sessionId?: string }) => {
             if (d.terminalId === terminalId) {
                 setStatus('error')
+                isOpen = false // 复位：create 被拒/CLI 断开时不再发 terminal:write，避免击键静默丢弃
                 terminal.write(`\r\n\x1b[31m[${d.message}]\x1b[0m\r\n`)
             }
         })
@@ -267,6 +274,16 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         }
     }
 
+    // 控制 socket 连接：离线 session 断开（不 emit create，避免被 hub 以 inactive 拒绝），在线连
+    const setActive = (active: boolean) => {
+        if (!socket) return
+        if (active) socket.connect()
+        else {
+            isOpen = false
+            socket.disconnect()
+        }
+    }
+
     // 移动端触屏滚动：@xterm/xterm 6.0.0 公开 Terminal 的滚动（SmoothScrollableElement）
     // 只监听 MOUSE_WHEEL，触摸 Gesture 被裁剪（Widget 仅有 ignoreGesture 无 addTarget；
     // MouseService touch 在 master 才有）。故移动端需自行把 touch 位移转 scrollLines。
@@ -275,6 +292,12 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
     let lastTouchY = 0
     let scrollAcc = 0
     const onTouchStart = (e: TouchEvent) => {
+        // 无论几指：以首指重置基准（多指手势开始清累积，避免残留）
+        lastTouchY = e.touches[0]?.clientY ?? lastTouchY
+        scrollAcc = 0
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+        // 多指手势结束、剩单指：以剩余指重置基准，避免抬指后用旧基准大跳
         if (e.touches.length === 1) {
             lastTouchY = e.touches[0].clientY
             scrollAcc = 0
@@ -296,6 +319,7 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
     }
     domNode.addEventListener('touchstart', onTouchStart, { passive: true })
     domNode.addEventListener('touchmove', onTouchMove, { passive: false })
+    domNode.addEventListener('touchend', onTouchEnd, { passive: true })
 
     // 内部销毁：先通知后端关闭 PTY（terminal:close），再移除监听（避免 disconnect 重连瞬间
     // 触发回调向已销毁 xterm 写屏），再断 socket，最后销毁 xterm。
@@ -316,6 +340,7 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         // 移除触屏滚动监听（terminal.dispose 不清自己加的 listener）
         domNode.removeEventListener('touchstart', onTouchStart)
         domNode.removeEventListener('touchmove', onTouchMove)
+        domNode.removeEventListener('touchend', onTouchEnd)
         try {
             terminal.dispose()
         } catch {
@@ -336,6 +361,7 @@ export function createCachedTerminal({ sessionId, terminalId }: CreateOptions): 
         showBanner,
         setTheme,
         send,
+        setActive,
         dispose,
     }
 }

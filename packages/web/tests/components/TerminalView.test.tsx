@@ -35,6 +35,7 @@ const { mockCreate, makeInstance } = vi.hoisted(() => {
         showBanner: vi.fn(),
         setTheme: vi.fn(),
         send: vi.fn(),
+        setActive: vi.fn(),
         dispose: vi.fn(),
     })
     const mockCreate = vi.fn(() => makeInstance())
@@ -90,7 +91,7 @@ afterEach(() => {
 describe('TerminalView', () => {
     it('terminalId 正确接线到 createCachedTerminal', () => {
         render(<TerminalView sessionId="s1abcdef" terminalId="t1" />)
-        expect(mockCreate).toHaveBeenCalledWith({ sessionId: 's1abcdef', terminalId: 't1' })
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1abcdef', terminalId: 't1' }))
     })
 
     it('connected 不渲染重连遮罩（无按钮）', () => {
@@ -171,5 +172,57 @@ describe('TerminalView', () => {
         // 默认预设含 Ctrl+C（\x03）
         screen.getByText('Ctrl+C').click()
         expect(inst.send).toHaveBeenCalledWith('\x03')
+    })
+
+    it('ResizeObserver 用 rAF 合并 fit（一帧内多次 resize 只 fit 一次）', () => {        const inst = makeInstance()
+        mockCreate.mockReturnValueOnce(inst)
+        // 可捕获 callback 的 RO + 记录型 rAF（不立即执行，手动 flush）
+        let roCb: (() => void) | null = null
+        let scheduled: (() => void) | null = null
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(cb: () => void) {
+                roCb = cb
+            }
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+        })
+        vi.stubGlobal('requestAnimationFrame', (cb: () => void) => {
+            scheduled = scheduled ?? cb
+            return 1
+        })
+        vi.stubGlobal('cancelAnimationFrame', () => {})
+        render(<TerminalView sessionId="s1" terminalId="t1" />)
+        inst.fitAddon.fit.mockClear()
+        // jsdom 无布局，stub 容器尺寸使宽度检查通过
+        const container = inst.domNode.parentElement!
+        Object.defineProperty(container, 'clientWidth', { get: () => 100, configurable: true })
+        Object.defineProperty(container, 'clientHeight', { get: () => 100, configurable: true })
+        // 同一帧内连续 3 次 resize → 只调度 1 个 rAF
+        roCb!()
+        roCb!()
+        roCb!()
+        expect(inst.fitAddon.fit).not.toHaveBeenCalled()
+        // flush 该帧 → fit 一次
+        scheduled!()
+        expect(inst.fitAddon.fit).toHaveBeenCalledTimes(1)
+    })
+
+    it('session 离线（active=false）→ factory 传 initialActive=false + setActive(false)', () => {
+        const inst = makeInstance()
+        mockCreate.mockReturnValueOnce(inst)
+        useSessionMock.mockReturnValue({ data: { active: false } })
+        render(<TerminalView sessionId="s1" terminalId="t1" />)
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ initialActive: false }))
+        expect(inst.setActive).toHaveBeenCalledWith(false)
+    })
+
+    it('session 在线（active=true）→ initialActive=true + setActive(true)', () => {
+        const inst = makeInstance()
+        mockCreate.mockReturnValueOnce(inst)
+        useSessionMock.mockReturnValue({ data: { active: true } })
+        render(<TerminalView sessionId="s1" terminalId="t1" />)
+        expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ initialActive: true }))
+        expect(inst.setActive).toHaveBeenCalledWith(true)
     })
 })

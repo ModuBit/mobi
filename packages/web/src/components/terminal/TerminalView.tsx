@@ -54,12 +54,14 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
     // session metadata：取版本（= mobi --version）、项目目录、git 分支用于 banner
     const { data: session } = useSession(sessionId)
     const metadata = session?.metadata
+    // session 是否在线（CLI runner 已连接）；离线时不建终端 socket，避免被 hub 以 inactive 拒绝
+    const active = session?.active === true
     // 终端主题跟随 web（亮/暗，system 模式实时响应 OS）
     const isDark = useIsDark()
 
     const { instance } = useCachedInstance<CachedTerminal>(
         `terminal:${sessionId}:${terminalId}`,
-        () => createCachedTerminal({ sessionId, terminalId }),
+        () => createCachedTerminal({ sessionId, terminalId, initialActive: active }),
         disposeCachedTerminal,
     )
 
@@ -87,6 +89,12 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
         instance.setTheme(isDark ? 'dark' : 'light')
     }, [instance, isDark])
 
+    // 在线/离线控制 socket：离线断开（不 emit create），在线连
+    useEffect(() => {
+        if (!instance) return
+        instance.setActive(active)
+    }, [instance, active])
+
     // attach 缓存的 domNode 到可见容器
     useEffect(() => {
         if (!instance || !containerRef.current || attachedRef.current) return
@@ -101,21 +109,29 @@ export default function TerminalView({ sessionId, terminalId }: TerminalViewProp
         instance.terminal.focus()
     }, [instance])
 
-    // 监听可见容器尺寸变化 → fit（宽度 0 时跳过）
+    // 监听可见容器尺寸变化 → fit（rAF 合并，避免拖拽期间连续全量重渲染 + 后端 resize 刷屏）
     useEffect(() => {
         if (!containerRef.current || !instance) return
         const el = containerRef.current
+        let rafId: number | null = null
         const ro = new ResizeObserver(() => {
-            if (el.clientWidth > 0 && el.clientHeight > 0) {
-                try {
-                    instance.fitAddon.fit()
-                } catch {
-                    // 忽略
+            if (rafId !== null) return // 一帧内多次 resize 只调度一次
+            rafId = requestAnimationFrame(() => {
+                rafId = null
+                if (el.clientWidth > 0 && el.clientHeight > 0) {
+                    try {
+                        instance.fitAddon.fit()
+                    } catch {
+                        // 忽略
+                    }
                 }
-            }
+            })
         })
         ro.observe(el)
-        return () => ro.disconnect()
+        return () => {
+            ro.disconnect()
+            if (rafId !== null) cancelAnimationFrame(rafId)
+        }
     }, [instance])
 
     // 组件卸载：移除 domNode（保留实例，不发 terminal:close，进程常驻）

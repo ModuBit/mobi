@@ -273,11 +273,12 @@ describe('移动端触屏滚动', () => {
         vi.unstubAllGlobals()
     })
 
-    /** 构造 touch 事件（用 Event + touches 属性，绕过 jsdom 无 Touch 构造） */
-    function touch(type: string, y: number): Event {
+    /** 构造 touch 事件（用 Event + touches 属性，绕过 jsdom 无 Touch 构造）；ys 支持多指 */
+    function touch(type: string, ys: number | number[]): Event {
+        const arr = Array.isArray(ys) ? ys : [ys]
         const ev = new Event(type, { bubbles: true, cancelable: true })
         Object.defineProperty(ev, 'touches', {
-            value: [{ clientY: y, identifier: 0 }],
+            value: arr.map((y, i) => ({ clientY: y, identifier: i })),
             configurable: true,
         })
         return ev
@@ -313,6 +314,23 @@ describe('移动端触屏滚动', () => {
         inst.domNode.dispatchEvent(touch('touchmove', 136)) // 下滑 36px → -2
         expect(scrollSpy).toHaveBeenCalledWith(-2)
     })
+
+    it('多指手势结束后剩单指：重置基准不跳（修复前会跳 2 行）', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        Object.defineProperty(inst.terminal.buffer.active, 'length', { get: () => 100, configurable: true })
+        const scrollSpy = vi.spyOn(inst.terminal, 'scrollLines')
+        inst.domNode.dispatchEvent(touch('touchstart', [200]))
+        inst.domNode.dispatchEvent(touch('touchmove', [164])) // 滚 2 行，lastTouchY=164
+        // 第二指落下（多指）
+        inst.domNode.dispatchEvent(touch('touchstart', [164, 300])) // 重置基准 164、清累积
+        inst.domNode.dispatchEvent(touch('touchmove', [164, 300])) // 多指，早返回
+        // 抬第二指，剩第一指在 Y=120
+        inst.domNode.dispatchEvent(touch('touchend', [120])) // onTouchEnd 重置 lastTouchY=120
+        scrollSpy.mockClear()
+        // 剩余指小幅移动 6px → 不滚（若未重置基准=164，164-126=38 会跳 2 行）
+        inst.domNode.dispatchEvent(touch('touchmove', [126]))
+        expect(scrollSpy).not.toHaveBeenCalled()
+    })
 })
 
 describe('send（虚拟按键发送字节）', () => {
@@ -341,5 +359,15 @@ describe('send（虚拟按键发送字节）', () => {
             terminalId: 't1',
             data: '\x03',
         })
+    })
+
+    it('terminal:error 后 isOpen 复位，send 不 emit（击键不静默丢弃）', () => {
+        const inst = createCachedTerminal({ sessionId: 's1', terminalId: 't1' })
+        mockSocket.connected = true
+        fire('connect') // isOpen=true
+        fire('terminal:error', { terminalId: 't1', message: 'boom' }) // isOpen 复位
+        mockSocket.emit.mockClear()
+        inst.send('\x03')
+        expect(mockSocket.emit).not.toHaveBeenCalled()
     })
 })
