@@ -175,7 +175,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
     const activeMachines = machines.filter(m => m.active !== false)
 
     // 目录下拉受控：选中目录后子目录加载完成时自动展开
-    const [directoryOpen, setDirectoryOpen] = useState(false)
+    const [, setDirectoryOpen] = useState(false)
     const pendingOpenRef = useRef(false)
 
     useEffect(() => {
@@ -240,13 +240,6 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
             }}>
                 <FolderOutlined style={{ color: token.colorTextQuaternary, fontSize: 12, flexShrink: 0 }} />
                 <AutoComplete
-                    open={directoryOpen && autoCompleteOptions.length > 0}
-                    onOpenChange={(open) => {
-                        // 选中子目录后 Ant Design 自动关闭 dropdown，
-                        // 但用户可能继续选子目录，等新 options 加载后再展开
-                        if (!open && pendingOpenRef.current) return
-                        setDirectoryOpen(open)
-                    }}
                     options={autoCompleteOptions}
                     placeholder="输入项目/目录路径"
                     value={selectedDirectory}
@@ -258,13 +251,6 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                         const dir = value.endsWith('/') ? value : `${value}/`
                         onDirectoryChange(dir)
                         pendingOpenRef.current = true
-                    }}
-                    onBlur={() => {
-                        pendingOpenRef.current = false
-                        setDirectoryOpen(false)
-                        if (selectedDirectory.trim()) {
-                            onDirectoryConfirm?.(selectedDirectory)
-                        }
                     }}
                     defaultActiveFirstOption
                     suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}
