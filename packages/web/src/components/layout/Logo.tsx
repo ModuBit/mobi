@@ -29,12 +29,15 @@ interface LogoProps {
     className?: string
     /** 内联样式 */
     style?: CSSProperties
+    /** 标记色。默认跟随 app 主题（浅色 #141413 / 深色 #faf9f5）；显式传入时覆盖 */
+    color?: string
 }
 
-export function Logo({ className, style }: LogoProps) {
-    // 跟随 app 主题取标记色（与文本色一致），浅色 #141413 / 深色 #faf9f5
+export function Logo({ className, style, color: colorProp }: LogoProps) {
+    // 跟随 app 主题取标记色（与文本色一致），浅色 #141413 / 深色 #faf9f5；
+    // 显式 color 覆盖（用于固定背景的场景，如 BootLogPanel 始终深色背景需浅色标记）
     const isDark = useUiStore((s) => s.theme === 'dark')
-    const color = isDark ? '#faf9f5' : '#141413'
+    const color = colorProp ?? (isDark ? '#faf9f5' : '#141413')
 
     return (
         <svg

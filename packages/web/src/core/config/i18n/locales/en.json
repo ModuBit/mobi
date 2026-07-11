@@ -20,6 +20,8 @@
   },
   "login": {
     "subtitle": "Your AI, Always Within Reach",
+    "tagline2": "Vibe Coding, Anywhere",
+    "tagline3": "Local-First, Fully Yours",
     "welcome": "Welcome back",
     "welcomeSubtitle": "Enter your access token to continue.",
     "description": "Keep your AI running locally and stay connected from any device. Check progress, send instructions, and pick up where you left off — wherever you are.",
@@ -29,6 +31,7 @@
     "feature2Desc": "Start on desktop, continue on your phone or tablet",
     "feature3Title": "Runs on Your Machine",
     "feature3Desc": "Your data stays local, fully under your control",
+    "whatYouCanDo": "what you can do",
     "tokenPlaceholder": "Access Token",
     "tokenRequired": "Please enter access token",
     "connect": "Connect",

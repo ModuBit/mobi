@@ -29,6 +29,11 @@ vi.mock('@/components/layout/useThemeLocaleToggle', () => ({
         toggleLocale: vi.fn(),
     }),
 }))
+// Logo 内部 useUiStore 的 import 链会触发 i18n 初始化副作用，与上面的
+// react-i18next mock 冲突；mock 成静态 svg 切断链路（此处不验证 Logo 本体）
+vi.mock('@/components/layout/Logo', () => ({
+    Logo: () => <svg data-testid="mobi-logo" aria-hidden="true" />,
+}))
 
 import { BootLogPanel } from '@/components/login/BootLogPanel'
 
@@ -51,26 +56,55 @@ describe('BootLogPanel', () => {
         vi.stubGlobal('matchMedia', mockMatchMedia(true))
     })
 
-    it('渲染 banner（MOBI 字标）与版权', () => {
+    it('渲染 hero：MOBI 字标 + neofetch 信息表 + 版权', () => {
         const { container } = render(<BootLogPanel />)
         // Panel 基础 display:none（仅 @media (min-width:1024px) 才显示），
-        // jsdom 不评估 CSS 媒体查询，Panel 子树被排除出 a11y 树，
-        // getByRole 需 hidden:true 才能命中 display:none 子树内的 svg
+        // jsdom 不评估 CSS 媒体查询，子树被排除出 a11y 树，需 hidden:true
         expect(
             screen.getByRole('img', { name: 'Mobi', hidden: true }),
         ).toBeInTheDocument()
-        // 用 textContent 断言，避免 getByText 正则命中多个祖先容器
-        expect(container.textContent ?? '').toMatch(/©.*mobi/)
+        const text = container.textContent ?? ''
+        expect(text).toContain('ready')
+        expect(text).toContain('claude code')
+        expect(text).toContain('any device')
+        expect(text).toContain('100% local')
+        expect(text).toContain('login.subtitle')
+        expect(text).toMatch(/©.*mobi/)
     })
 
-    it('reduced-motion 下所有日志行立即可见', () => {
+    it('渲染 boot log 启动序列 + 能力树 + online 指示', () => {
         const { container } = render(<BootLogPanel />)
-        // reduced-motion → visibleCount = 全部；用 textContent 断言，
-        // 避免 getByText 正则命中多个祖先（Lines/Panel 聚合文本同样含各 key）
         const text = container.textContent ?? ''
+        // titlebar 在线指示
+        expect(text).toContain('online')
+        // boot log 启动序列（含 ok 标记）
+        expect(text).toContain('initializing mobi daemon')
+        expect(text).toContain('loading plugin registry')
+        expect(text).toContain('mounting workspace')
+        expect(text).toContain('establishing secure tunnel')
+        expect(text).toContain('warming context cache')
+        // 能力树：五大模块 + 状态
+        expect(text).toContain('sessions')
+        expect(text).toContain('devices')
+        expect(text).toContain('terminal')
+        expect(text).toContain('plugins')
+        expect(text).toContain('files')
+        expect(text).toContain('paired')
+        expect(text).toContain('synced')
+        // 历史命令行
+        expect(text).toContain('mobi service start')
+    })
+
+    it('reduced-motion 下 feature + 状态行全部可见', () => {
+        const { container } = render(<BootLogPanel />)
+        const text = container.textContent ?? ''
+        expect(text).toContain('login.whatYouCanDo')
         expect(text).toContain('feature1Title')
+        expect(text).toContain('feature1Desc')
         expect(text).toContain('feature2Title')
+        expect(text).toContain('feature2Desc')
         expect(text).toContain('feature3Title')
-        expect(text).toContain('awaiting connection')
+        expect(text).toContain('feature3Desc')
+        expect(text).toContain('awaiting token')
     })
 })

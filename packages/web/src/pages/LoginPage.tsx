@@ -36,11 +36,12 @@ import axios from 'axios'
 import { useState } from 'react'
 import styled from '@emotion/styled'
 
-/** 全屏容器：左右分栏 */
+/** 全屏容器：左右分栏（固定视口高度，左右各自处理内部滚动） */
 const PageContainer = styled.div`
     display: flex;
     width: 100%;
-    min-height: 100dvh;
+    height: 100dvh;
+    overflow: hidden;
 `
 
 /** Logo 图片 */
@@ -62,12 +63,14 @@ const BrandName = styled.span`
 /** 右面板：登录表单 */
 const LoginPanel = styled.div`
     display: flex;
-    align-items: center;
+    align-items: safe center;
     justify-content: center;
     width: 100%;
     padding: 32px;
     position: relative;
     background: #faf9f5;
+    /* 矮视口表单超高时自滚（safe center：溢出回退顶部不切割） */
+    overflow-y: auto;
 
     html[data-theme='dark'] & {
         background: #141413;

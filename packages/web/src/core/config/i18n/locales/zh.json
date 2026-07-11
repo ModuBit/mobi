@@ -20,6 +20,8 @@
   },
   "login": {
     "subtitle": "你的 AI，触手可及",
+    "tagline2": "随时随地，Vibe Coding",
+    "tagline3": "本地运行，完全掌控",
     "welcome": "欢迎回来",
     "welcomeSubtitle": "输入访问令牌以继续",
     "description": "你的 AI 在本地运行，任何设备随时可达。查看进展、下达指令、接续未完的工作——随时随地，尽在掌握。",
@@ -29,6 +31,7 @@
     "feature2Desc": "在电脑上开始，在手机或平板上继续",
     "feature3Title": "本地运行",
     "feature3Desc": "数据留在你的机器上，完全由你掌控",
+    "whatYouCanDo": "你能做什么",
     "tokenPlaceholder": "访问令牌",
     "tokenRequired": "请输入访问令牌",
     "connect": "连接",
