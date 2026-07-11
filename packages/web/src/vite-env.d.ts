@@ -17,3 +17,4 @@
 /// <reference types="vite/client" />
 
 declare const __MOBI_HUB_URL__: string | undefined
+declare const __MOBI_VERSION__: string
