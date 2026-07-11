@@ -81,6 +81,7 @@ describe('BootLogPanel', () => {
         expect(text).toContain('initializing mobi daemon')
         expect(text).toContain('loading plugin registry')
         expect(text).toContain('mounting workspace')
+        expect(text).toContain('pairing devices')
         expect(text).toContain('establishing secure tunnel')
         expect(text).toContain('warming context cache')
         // 能力树：五大模块 + 状态

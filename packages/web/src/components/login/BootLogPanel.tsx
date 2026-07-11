@@ -15,12 +15,13 @@
  */
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Logo } from '@/components/layout/Logo'
 import { MobiWordmark } from '@/components/layout/MobiWordmark'
 import { useThemeLocaleToggle } from '@/components/layout/useThemeLocaleToggle'
 import { useBootSequence, type BootLine } from './useBootSequence'
+import { useRotation } from './useRotation'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -37,9 +38,9 @@ const RUNTIME_INTERVAL = 2600
 const REACH_INTERVAL = 2200
 const CMD_INTERVAL = 3000
 const TAGLINE_INTERVAL = 4200
-/** connection 进度条填充帧（往返扫动，8 格亮块数） */
-const BAR_FRAMES = [2, 3, 4, 5, 6, 7, 8, 7, 6, 5, 4, 3] as const
-const BAR_INTERVAL = 220
+/** connection 进度条：8 格纯 CSS 扫动（无 JS tick，不触发组件重渲染） */
+const BAR_TOTAL = 8
+const BAR_SWEEP_PERIOD = 2.64 // 秒，8 格按 idx 错开 delay 形成往返扫动波
 
 const blink = keyframes`50% { opacity: 0; }`
 
@@ -47,6 +48,12 @@ const blink = keyframes`50% { opacity: 0; }`
 const fade = keyframes`
     from { opacity: 0; transform: translateY(-2px); }
     to { opacity: 1; transform: translateY(0); }
+`
+
+/** 进度条单格扫动（亮峰经过时变绿） */
+const barSweep = keyframes`
+    0%, 100% { color: #3a3a37; }
+    50% { color: #4ade80; }
 `
 
 /** 左侧终端面板：neofetch 风仪表盘，替换原 BrandPanel，仅 PC 显示 */
@@ -229,12 +236,6 @@ const VGreen = styled.span`
     color: #4ade80;
 `
 
-/** runtime 轮播文本：key 变化时重挂载触发淡入 */
-const Runtime = styled.span`
-    display: inline-block;
-    animation: ${fade} 0.35s ease;
-`
-
 /** hero 下的 tagline 注释 */
 const Tagline = styled.div`
     font-size: 12px;
@@ -309,6 +310,12 @@ const Block = styled.div`
     padding: 10px 12px 11px;
     border-radius: 4px;
     background: rgba(0, 0, 0, 0.18);
+`
+
+/** 轮播文本：key 变化时重挂载触发淡入（runtime / reach / 命令 / 标语 / 能力树值共用） */
+const FadeText = styled.span`
+    display: inline-block;
+    animation: ${fade} 0.35s ease;
 `
 
 /** boot log 单行：▸ msg ……… ok */
@@ -389,16 +396,29 @@ const Progress = styled.div`
     gap: 8px;
 `
 
+/** 进度条容器：8 格 █，纯 CSS 扫动（reduced-motion 下前 2 格静态亮） */
 const Bar = styled.span`
-    letter-spacing: 1px;
+    display: inline-flex;
+    gap: 1px;
+    letter-spacing: 0;
+
+    /* reduced-motion：定格前 2 格亮（静态连接指示） */
+    @media (prefers-reduced-motion: reduce) {
+        & > span:nth-child(-n + 2) {
+            color: #4ade80;
+        }
+    }
 `
 
-const BarOn = styled.span`
-    color: #4ade80;
-`
-
-const BarOff = styled.span`
+const BarCell = styled.span<{ $idx: number }>`
     color: #3a3a37;
+    animation: ${barSweep} ${BAR_SWEEP_PERIOD}s linear infinite;
+    /* 8 格按 idx 错开 delay，形成从左到右的扫动波 */
+    animation-delay: ${({ $idx }) => $idx * (BAR_SWEEP_PERIOD / BAR_TOTAL)}s;
+
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
 `
 
 /** 历史命令行（淡化，营造曾执行过的终端感） */
@@ -451,26 +471,6 @@ const Foot = styled.div`
     z-index: 1;
 `
 
-/** 循环轮播 hook：在 values 间按 interval 切换；reduce-motion 或单值时固定首个 */
-function useRotation<T>(values: readonly T[], intervalMs: number): T {
-    // reduce-motion 在 mount 时锁定（与 useBootSequence 一致），避免每次渲染重读 matchMedia
-    const prefersReducedMotion = useMemo(
-        () =>
-            typeof window !== 'undefined' &&
-            !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
-        [],
-    )
-    const [idx, setIdx] = useState(0)
-    useEffect(() => {
-        if (prefersReducedMotion || values.length <= 1) return
-        const id = setInterval(() => {
-            setIdx((i) => (i + 1) % values.length)
-        }, intervalMs)
-        return () => clearInterval(id)
-    }, [prefersReducedMotion, values.length, intervalMs])
-    return values[idx] ?? values[0]
-}
-
 /** boot log 启动序列（逐行打字机滚出，终端启动感） */
 const BOOT_LOG: { msg: string }[] = [
     { msg: 'initializing mobi daemon' },
@@ -481,69 +481,74 @@ const BOOT_LOG: { msg: string }[] = [
     { msg: 'warming context cache' },
 ]
 
-/** workspace 能力树模块名（顺序固定；val 由组件内轮播提供） */
-const TREE_NAMES = ['sessions', 'devices', 'terminal', 'plugins', 'files'] as const
-
 export function BootLogPanel() {
     const { t } = useTranslation()
     const { resolvedTheme } = useThemeLocaleToggle()
     const isDark = resolvedTheme === 'dark'
 
-    // 循环轮播（runtime / reach / 命令 / 标语 / 进度条 / workspace 数字），节奏错开；
-    // reduce-motion 时各自固定首个
+    // 循环轮播（runtime / reach / 命令 / 标语），节奏错开；reduce-motion 时各自固定首个
     const runtime = useRotation(RUNTIMES, RUNTIME_INTERVAL)
     const device = useRotation(DEVICES, REACH_INTERVAL)
     const cmd = useRotation(COMMANDS, CMD_INTERVAL)
     const taglineKey = useRotation(TAGLINE_KEYS, TAGLINE_INTERVAL)
-    const barOn = useRotation(BAR_FRAMES, BAR_INTERVAL)
     // workspace 数字行小幅波动（terminal / files 状态词固定）
     const sessionsVal = useRotation(['3 active', '4 active', '2 active'], 2500)
     const devicesVal = useRotation(['2 paired', '3 paired', '1 paired'], 2900)
     const pluginsVal = useRotation(['24 loaded', '26 loaded', '23 loaded'], 2300)
-    const treeVals = [sessionsVal, devicesVal, 'live', pluginsVal, 'synced']
-
-    // 打字机驱动 feature（hero / boot log / 能力树 / 状态行静态立显）
-    const lines: BootLine[] = [
-        {
-            id: 'f1',
-            node: (
-                <>
-                    <FeatTitle>
-                        <Idx>01</Idx>
-                        <Mark>▸</Mark>
-                        {t('login.feature1Title')}
-                    </FeatTitle>
-                    <FeatDesc>{t('login.feature1Desc')}</FeatDesc>
-                </>
-            ),
-        },
-        {
-            id: 'f2',
-            node: (
-                <>
-                    <FeatTitle>
-                        <Idx>02</Idx>
-                        <Mark>▸</Mark>
-                        {t('login.feature2Title')}
-                    </FeatTitle>
-                    <FeatDesc>{t('login.feature2Desc')}</FeatDesc>
-                </>
-            ),
-        },
-        {
-            id: 'f3',
-            node: (
-                <>
-                    <FeatTitle>
-                        <Idx>03</Idx>
-                        <Mark>▸</Mark>
-                        {t('login.feature3Title')}
-                    </FeatTitle>
-                    <FeatDesc>{t('login.feature3Desc')}</FeatDesc>
-                </>
-            ),
-        },
+    // workspace 能力树：name 顺序固定，val 数字行轮播 / terminal·files 状态词固定
+    const treeRows = [
+        { name: 'sessions', val: sessionsVal },
+        { name: 'devices', val: devicesVal },
+        { name: 'terminal', val: 'live' },
+        { name: 'plugins', val: pluginsVal },
+        { name: 'files', val: 'synced' },
     ]
+
+    // 打字机驱动 feature（hero / boot log / 状态行各自由 hook 驱动）
+    const lines = useMemo<BootLine[]>(
+        () => [
+            {
+                id: 'f1',
+                node: (
+                    <>
+                        <FeatTitle>
+                            <Idx>01</Idx>
+                            <Mark>▸</Mark>
+                            {t('login.feature1Title')}
+                        </FeatTitle>
+                        <FeatDesc>{t('login.feature1Desc')}</FeatDesc>
+                    </>
+                ),
+            },
+            {
+                id: 'f2',
+                node: (
+                    <>
+                        <FeatTitle>
+                            <Idx>02</Idx>
+                            <Mark>▸</Mark>
+                            {t('login.feature2Title')}
+                        </FeatTitle>
+                        <FeatDesc>{t('login.feature2Desc')}</FeatDesc>
+                    </>
+                ),
+            },
+            {
+                id: 'f3',
+                node: (
+                    <>
+                        <FeatTitle>
+                            <Idx>03</Idx>
+                            <Mark>▸</Mark>
+                            {t('login.feature3Title')}
+                        </FeatTitle>
+                        <FeatDesc>{t('login.feature3Desc')}</FeatDesc>
+                    </>
+                ),
+            },
+        ],
+        [t],
+    )
     const { visibleCount } = useBootSequence(lines, 200)
 
     // boot log 逐行打字机滚出（终端启动日志一行行出现）
@@ -594,13 +599,13 @@ export function BootLogPanel() {
                             <VGreen>● ready</VGreen>
                             <K>runtime</K>
                             <V>
-                                <Runtime key={runtime}>{runtime}</Runtime>
+                                <FadeText key={runtime}>{runtime}</FadeText>
                             </V>
                             <K>version</K>
                             <V>{__MOBI_VERSION__}</V>
                             <K>reach</K>
                             <V>
-                                <Runtime key={device}>{device}</Runtime>
+                                <FadeText key={device}>{device}</FadeText>
                             </V>
                             <K>privacy</K>
                             <V>100% local</V>
@@ -618,7 +623,8 @@ export function BootLogPanel() {
                 </Block>
 
                 <Tagline>
-                    <Comment>#</Comment> <Runtime key={taglineKey}>{t(taglineKey)}</Runtime>
+                    <Comment>#</Comment>{' '}
+                    <FadeText key={taglineKey}>{t(taglineKey)}</FadeText>
                 </Tagline>
 
                 <Sep>{t('login.whatYouCanDo')}</Sep>
@@ -631,13 +637,13 @@ export function BootLogPanel() {
 
                 <Sep>{'workspace'}</Sep>
                 <Block>
-                    {TREE_NAMES.map((name, i) => (
+                    {treeRows.map(({ name, val }, i) => (
                         <TreeRow key={name}>
-                            <TreeBranch>{i === TREE_NAMES.length - 1 ? '└──' : '├──'}</TreeBranch>
+                            <TreeBranch>{i === treeRows.length - 1 ? '└──' : '├──'}</TreeBranch>
                             <TreeName>{name}/</TreeName>
                             <TreeFill />
                             <TreeVal>
-                                <Runtime key={`${name}-${treeVals[i]}`}>{treeVals[i]}</Runtime>
+                                <FadeText key={`${name}-${val}`}>{val}</FadeText>
                             </TreeVal>
                         </TreeRow>
                     ))}
@@ -648,16 +654,20 @@ export function BootLogPanel() {
                 <Progress>
                     connection{' '}
                     <Bar>
-                        <BarOn>{'█'.repeat(barOn)}</BarOn>
-                        <BarOff>{'░'.repeat(8 - barOn)}</BarOff>
+                        {Array.from({ length: BAR_TOTAL }, (_, i) => (
+                            <BarCell key={i} $idx={i}>
+                                █
+                            </BarCell>
+                        ))}
                     </Bar>{' '}
                     idle
                 </Progress>
                 <CmdLine>
-                    <CmdDollar>$</CmdDollar> <Runtime key={cmd}>{cmd}</Runtime>
+                    <CmdDollar>$</CmdDollar> <FadeText key={cmd}>{cmd}</FadeText>
                 </CmdLine>
                 <SysLine>
-                    mobi/{__MOBI_VERSION__} · <Runtime key={`sys-${runtime}`}>{runtime}</Runtime> ·{' '}
+                    mobi/{__MOBI_VERSION__} ·{' '}
+                    <FadeText key={`sys-${runtime}`}>{runtime}</FadeText> ·{' '}
                     <VGreen>ready</VGreen>
                 </SysLine>
                 <PromptLine>

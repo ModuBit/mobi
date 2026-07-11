@@ -15,17 +15,12 @@
  */
 
 import { vi } from 'vitest'
-import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { readMobiVersion } from '../src/core/lib/version'
 
 // __MOBI_VERSION__ 由 vite 构建期从 cli package.json 注入（见 vite.config.ts），
 // 但 vitest 用独立 config 不走 define，这里补全局 stub，同源读取避免写死
-const mobiVersion = (
-    JSON.parse(readFileSync(resolve(__dirname, '../../cli/package.json'), 'utf-8')) as {
-        version: string
-    }
-).version
-vi.stubGlobal('__MOBI_VERSION__', mobiVersion)
+vi.stubGlobal('__MOBI_VERSION__', readMobiVersion(resolve(__dirname, '../../cli/package.json')))
 
 // jsdom 不实现 window.matchMedia，为使用 useMediaQuery 的组件提供 mock
 Object.defineProperty(window, 'matchMedia', {

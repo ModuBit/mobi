@@ -19,20 +19,16 @@ import type { PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
-import { readFileSync } from 'fs'
 import { VitePWA } from 'vite-plugin-pwa'
 import mkcert from 'vite-plugin-mkcert'
+import { readMobiVersion } from './src/core/lib/version'
 
 // 从环境变量读取配置，支持 profile 机制覆盖
 const hubUrl = process.env.MOBI_API_URL || 'http://localhost:2222'
 const webPort = parseInt(process.env.MOBI_WEB_PORT || '5173', 10)
 
 // mobi 产品版本：构建期从 cli package.json 读取（与 `mobi --version` 同源），注入为全局常量
-const mobiVersion = (
-    JSON.parse(readFileSync(resolve(__dirname, '../cli/package.json'), 'utf-8')) as {
-        version: string
-    }
-).version
+const mobiVersion = readMobiVersion(resolve(__dirname, '../cli/package.json'))
 
 // MOBI_DEV_HTTPS=1 启用 HTTPS dev（用于移动端 PWA / Service Worker 测试）；
 // vite-plugin-mkcert 自动生成受信任证书（含 localhost + 当前所有局域网 IP），IP 变化无需手动改证书。
