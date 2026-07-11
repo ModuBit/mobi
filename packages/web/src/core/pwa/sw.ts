@@ -55,7 +55,7 @@ self.addEventListener('push', (event) => {
             body: payload.body,
             tag: payload.tag,
             data: payload.data,
-            icon: '/favicon.ico',
+            icon: '/brand/favicon.ico',
         })
     )
 })

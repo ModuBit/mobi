@@ -446,7 +446,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     void showSystemNotification({
                         title,
                         body,
-                        icon: '/favicon.ico',
+                        icon: '/brand/favicon.ico',
                         tag: notifyKey,
                         data: { url },
                     }).then((ok) => {

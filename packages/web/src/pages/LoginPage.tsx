@@ -31,6 +31,7 @@ import { useThemeLocaleToggle } from '@/components/layout/useThemeLocaleToggle'
 import { Logo } from '@/components/layout/Logo'
 import { AnimateLogo } from '@/components/layout/AnimateLogo'
 import { IntroLogo } from '@/components/layout/IntroLogo'
+import { MobiWordmark } from '@/components/layout/MobiWordmark'
 import { Helmet } from 'react-helmet-async'
 import axios from 'axios'
 import { useState } from 'react'
@@ -116,11 +117,8 @@ const LogoImg = styled.div`
     flex-shrink: 0;
 `
 
-/** 品牌名 */
+/** 品牌名（仅承载 color，字标尺寸由 MobiWordmark 自身控制） */
 const BrandName = styled.span`
-    font-size: 18px;
-    font-weight: 500;
-    letter-spacing: -0.03em;
     color: #141413;
 
     html[data-theme='dark'] & {
@@ -338,28 +336,18 @@ const WelcomeTitle = styled.h1`
     }
 `
 
-/** 动画 Logo（表单区域） */
+/** 动画 Logo（表单区域，颜色由 AnimateLogo 自随主题） */
 const AnimatedLogoWrap = styled(AnimateLogo)`
     display: block;
     width: 64px;
     height: 64px;
     margin: 0 auto 16px;
-    color: #141413;
-
-    html[data-theme='dark'] & {
-        color: #faf9f5;
-    }
 `
 
-/** 开场动画 Logo（品牌区域） */
+/** 开场动画 Logo（品牌区域，颜色由内部组件自随主题） */
 const IntroLogoWrap = styled(IntroLogo)`
     margin-bottom: 64px;
     margin-left: -32px;
-    color: #141413;
-
-    html[data-theme='dark'] & {
-        color: #faf9f5;
-    }
 `
 
 /** 欢迎副标题 */
@@ -493,7 +481,7 @@ export function LoginPage() {
                         }}
                     >
                         <LogoImg as={Logo} />
-                        <BrandName>{t('login.brand')}</BrandName>
+                        <BrandName><MobiWordmark size={18} /></BrandName>
                     </div>
 
                     <div
@@ -531,7 +519,7 @@ export function LoginPage() {
                 <LoginPanel>
                     <MobileLogo>
                         <LogoImg as={Logo} style={{ width: 24, height: 24 }} />
-                        <BrandName>{t('login.brand')}</BrandName>
+                        <BrandName><MobiWordmark size={18} /></BrandName>
                     </MobileLogo>
 
                     <TopActions>

@@ -18,7 +18,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { theme as antTheme } from 'antd'
 import { PanelLeftClose } from 'lucide-react'
 import styled from '@emotion/styled'
-import { Icon } from './Icon'
+import { Logo } from './Logo'
+import { MobiWordmark } from './MobiWordmark'
 import { useUiStore } from '@/core/data/stores/uiStore'
 
 const { useToken } = antTheme
@@ -45,16 +46,13 @@ const LogoArea = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
 `
 
 // Logo 图标尺寸
-const LogoIcon = styled(Icon)`
+const LogoIcon = styled(Logo)`
     width: 28px;
     height: 28px;
 `
 
-// 品牌名
+// 品牌名（仅承载 color，字标尺寸由 MobiWordmark 自身控制）
 const BrandName = styled.span<{ $token: ReturnType<typeof useToken>['token'] }>`
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: 1px;
     color: ${props => props.$token.colorText};
 `
 
@@ -95,7 +93,7 @@ export function SidebarHeader() {
                 onClick={() => navigate({ to: '/sessions/new', search: { cwd: undefined } })}
             >
                 <LogoIcon />
-                <BrandName $token={token}>MOBI</BrandName>
+                <BrandName $token={token}><MobiWordmark size={15} /></BrandName>
             </LogoArea>
 
             {/* 收起侧边栏 */}

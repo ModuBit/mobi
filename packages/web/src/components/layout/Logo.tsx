@@ -15,11 +15,14 @@
  */
 
 /**
- * Mobi Logo 组件 — 内联 SVG，支持 currentColor 继承父元素颜色，
- * 自动适配深浅主题。
+ * Mobi Logo 组件 — 内联裸 "m" 标记（透明底），颜色跟随 app 主题（uiStore.theme）。
+ * 装饰性标记：组合处由字标（MobiWordmark/MobiLockup）承载可访问名，此处 aria-hidden。
+ * 尺寸由父元素通过 width/height 控制。
  */
 
 import type { CSSProperties } from 'react'
+import { useUiStore } from '@/core/data/stores/uiStore'
+import { MOBI_MARK_PATH } from './brandPaths'
 
 interface LogoProps {
     /** 自定义类名 */
@@ -28,59 +31,22 @@ interface LogoProps {
     style?: CSSProperties
 }
 
-/**
- * Mobi Logo（方形），使用 currentColor 继承父元素颜色。
- * 父元素设置 `color` 即可控制 Logo 颜色。
- */
 export function Logo({ className, style }: LogoProps) {
+    // 跟随 app 主题取标记色（与文本色一致），浅色 #141413 / 深色 #faf9f5
+    const isDark = useUiStore((s) => s.theme === 'dark')
+    const color = isDark ? '#faf9f5' : '#141413'
+
     return (
         <svg
             xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 128 128"
-            fill="none"
-            role="img"
-            aria-label="Mobi"
+            viewBox="0 0 250 250"
             className={className}
             style={style}
+            aria-hidden="true"
         >
-            {/* 后层 Shadow */}
-            <rect
-                x="57"
-                y="17"
-                width="29"
-                height="78"
-                rx="15"
-                fill="currentColor"
-                opacity="0.08"
-            />
-            {/* 中层 Shadow */}
-            <rect
-                x="50"
-                y="11"
-                width="29"
-                height="78"
-                rx="15"
-                fill="currentColor"
-                opacity="0.16"
-            />
-            {/* 主体 */}
-            <rect
-                x="43"
-                y="5"
-                width="29"
-                height="78"
-                rx="15"
-                fill="currentColor"
-            />
-            {/* 空心墨点 */}
-            <circle
-                cx="57.5"
-                cy="114"
-                r="9"
-                stroke="currentColor"
-                strokeWidth="3.5"
-                fill="none"
-            />
+            <path fill={color} d={MOBI_MARK_PATH} />
+            <path fill={color} transform="translate(250,0) scale(-1,1)" d={MOBI_MARK_PATH} />
+            <circle fill={color} cx="125" cy="161" r="16.5" />
         </svg>
     )
 }

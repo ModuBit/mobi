@@ -42,13 +42,13 @@ export function createManifestRoutes(): Hono {
             background_color: '#faf9f5',
             icons: [
                 {
-                    src: '/logo.svg',
+                    src: '/brand/logo.svg',
                     sizes: 'any',
                     type: 'image/svg+xml',
                     purpose: 'any',
                 },
                 {
-                    src: '/icon.png',
+                    src: '/brand/icon.png',
                     sizes: '512x512',
                     type: 'image/png',
                     purpose: 'any',

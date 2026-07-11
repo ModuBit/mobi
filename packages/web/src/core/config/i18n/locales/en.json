@@ -19,7 +19,6 @@
     "yearsAgo": "{{count}}y ago"
   },
   "login": {
-    "brand": "MOBI",
     "subtitle": "Your AI, Always Within Reach",
     "welcome": "Welcome back",
     "welcomeSubtitle": "Enter your access token to continue.",

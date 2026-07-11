@@ -52,7 +52,7 @@ import {
     savePreferredPermissionMode,
 } from '@/domain/session/preferences'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
-import { Icon } from '@/components/layout/Icon'
+import { Logo } from '@/components/layout/Logo'
 import { enableVConsole } from '@/core/lib/vconsole'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
@@ -874,7 +874,7 @@ export function NewSessionPage() {
             <ContentWrapper>
                 <TitleBar $color={token.colorTextSecondary}>
                     <span onClick={handleLogoTap} style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 8 }}>
-                        <Icon style={{ width: 24, height: 24, color: 'var(--ant-colorPrimary)' }} />
+                        <Logo style={{ width: 24, height: 24 }} />
                     </span>
                     {title}
                 </TitleBar>

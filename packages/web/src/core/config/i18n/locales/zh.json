@@ -19,7 +19,6 @@
     "yearsAgo": "{{count}}年前"
   },
   "login": {
-    "brand": "MOBI",
     "subtitle": "你的 AI，触手可及",
     "welcome": "欢迎回来",
     "welcomeSubtitle": "输入访问令牌以继续",

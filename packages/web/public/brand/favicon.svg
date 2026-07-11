@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 250" width="250" height="250">
+  <style>
+    /* 跟随系统主题：浅色黑 m / 深色白 m（标签 favicon 场景） */
+    .mark { fill: #000000; }
+    @media (prefers-color-scheme: dark) {
+      .mark { fill: #ffffff; }
+    }
+  </style>
+
+  <!-- 裸 "m" 标记（透明底），左半折线 + 右半镜像 + 中心墨点 -->
+  <path class="mark" d="M36.5 183 L36.5 74.62 A16 16 0 0 1 63.48 62.98 L105.8 102.91 A7 7 0 0 1 96.2 113.09 L65.68 84.3 A9 9 0 0 0 50.5 90.85 L50.5 183 A7 7 0 0 1 36.5 183 Z" />
+  <path class="mark" transform="translate(250,0) scale(-1,1)" d="M36.5 183 L36.5 74.62 A16 16 0 0 1 63.48 62.98 L105.8 102.91 A7 7 0 0 1 96.2 113.09 L65.68 84.3 A9 9 0 0 0 50.5 90.85 L50.5 183 A7 7 0 0 1 36.5 183 Z" />
+  <circle class="mark" cx="125" cy="161" r="16.5" />
+</svg>

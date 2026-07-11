@@ -58,7 +58,7 @@ export function useNotify(): NotifyAPI {
             void showSystemNotification({
                 title: options.message,
                 body: options.description ?? '',
-                icon: '/favicon.ico',
+                icon: '/brand/favicon.ico',
             }).then((ok) => {
                 if (ok) return
                 notification[type]({

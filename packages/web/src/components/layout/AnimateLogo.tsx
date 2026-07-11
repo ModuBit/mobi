@@ -15,11 +15,17 @@
  */
 
 /**
- * Mobi 动画 Logo 组件 — 内联 SVG，支持 currentColor 继承父元素颜色，
- * 自动适配深浅主题。包含层叠构建、呼吸脉冲、浮动和扫描线动画。
+ * Mobi 动画 Logo 组件 — 内联裸 "m" 标记 + 构建/墨点脉冲/浮动动画，颜色跟随 app 主题。
+ * 动画用 emotion keyframes + styled（@keyframes 全局去重、类名作用域化，多实例不重复 <style>）。
+ * 装饰性标记：组合处由字标承载可访问名，此处 aria-hidden。
+ * 尺寸由父元素通过 width/height 控制。
  */
 
 import type { CSSProperties } from 'react'
+import styled from '@emotion/styled'
+import { keyframes } from '@emotion/react'
+import { useUiStore } from '@/core/data/stores/uiStore'
+import { MOBI_MARK_PATH } from './brandPaths'
 
 interface AnimateLogoProps {
     /** 自定义类名 */
@@ -28,164 +34,96 @@ interface AnimateLogoProps {
     style?: CSSProperties
 }
 
-/**
- * Mobi 动画 Logo，使用 currentColor 继承父元素颜色。
- * 父元素设置 `color` 即可控制 Logo 颜色。
- */
+/* ── keyframes（emotion 全局去重） ── */
+
+const floatKf = keyframes`
+    0%, 50%, 100% { transform: translateY(0); }
+    25%           { transform: translateY(-3px); }
+`
+
+const buildKf = keyframes`
+    from { opacity: 0; transform: translateY(20px) scaleY(.6); }
+    to   { opacity: 1; transform: translateY(0)    scaleY(1); }
+`
+
+const dotAppearKf = keyframes`
+    from { opacity: 0; transform: scale(.6); }
+    to   { opacity: 1; transform: scale(1); }
+`
+
+const pulseKf = keyframes`
+    0%, 40%, 100% { transform: scale(1); }
+    20%           { transform: scale(1.15); }
+`
+
+/* ── 作用域样式（styled 生成哈希类名，不污染全局命名空间） ── */
+
+/** 整组轻浮动 */
+const LogoGroup = styled.g`
+    transform-origin: center;
+    animation: ${floatKf} 2800ms ease-in-out infinite;
+    animation-delay: 1500ms;
+
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+`
+
+/** 双腿自下而上 build（scaleY 锚定底部） */
+const Leg = styled.g`
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    opacity: 0;
+    animation: ${buildKf} 800ms cubic-bezier(.22, 1, .36, 1) forwards;
+
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+        opacity: 1;
+    }
+`
+
+/** 墨点：先入场，再循环脉冲 */
+const Dot = styled.circle`
+    transform-box: fill-box;
+    transform-origin: center;
+    opacity: 0;
+    animation: ${dotAppearKf} 500ms ease forwards, ${pulseKf} 2800ms ease-in-out infinite;
+    animation-delay: 900ms, 1500ms;
+
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+        opacity: 1;
+    }
+`
+
 export function AnimateLogo({ className, style }: AnimateLogoProps) {
+    const isDark = useUiStore((s) => s.theme === 'dark')
+    const color = isDark ? '#faf9f5' : '#141413'
+
     return (
         <svg
             xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 128 128"
-            fill="none"
-            role="img"
-            aria-label="Mobi"
+            viewBox="0 0 250 250"
             className={className}
-            style={style}
+            style={{ ...style, color }}
+            aria-hidden="true"
         >
-            <style>{`
-                .al-logo {
-                    transform-origin: center;
-                    animation: al-float 2800ms ease-in-out infinite;
-                    animation-delay: 1500ms;
-                }
+            <LogoGroup fill="currentColor">
+                {/* 左腿 */}
+                <Leg>
+                    <path d={MOBI_MARK_PATH} />
+                </Leg>
 
-                .al-layer1 {
-                    opacity: 0;
-                    animation: al-build1 800ms cubic-bezier(.22,1,.36,1) forwards;
-                }
-
-                .al-layer2 {
-                    opacity: 0;
-                    animation: al-build2 800ms cubic-bezier(.22,1,.36,1) forwards;
-                    animation-delay: 250ms;
-                }
-
-                .al-layer3 {
-                    opacity: 0;
-                    animation: al-build3 800ms cubic-bezier(.22,1,.36,1) forwards;
-                    animation-delay: 500ms;
-                }
-
-                .al-dot {
-                    opacity: 0;
-                    animation: al-dotAppear 500ms ease forwards, al-pulse 2800ms ease-in-out infinite;
-                    animation-delay: 900ms, 1500ms;
-                }
-
-                .al-scan {
-                    stroke-dasharray: 8 54;
-                    stroke-dashoffset: 0;
-                    animation: al-scan 2400ms linear infinite;
-                    animation-delay: 1500ms;
-                }
-
-                @media (prefers-reduced-motion: reduce) {
-                    .al-logo,
-                    .al-dot,
-                    .al-scan {
-                        animation: none !important;
-                    }
-                    .al-layer1 { animation: al-build1 800ms cubic-bezier(.22,1,.36,1) forwards !important; }
-                    .al-layer2 { animation: al-build2 800ms cubic-bezier(.22,1,.36,1) forwards !important; }
-                    .al-layer3 { animation: al-build3 800ms cubic-bezier(.22,1,.36,1) forwards !important; }
-                    .al-dot { animation: al-dotAppear 500ms ease forwards !important; animation-delay: 900ms !important; }
-                }
-
-                @keyframes al-build1 {
-                    from { opacity: 0; transform: translateY(20px) scaleY(.6); }
-                    to { opacity: 1; transform: translateY(0) scaleY(1); }
-                }
-
-                @keyframes al-build2 {
-                    from { opacity: 0; transform: translateY(20px) scaleY(.6); }
-                    to { opacity: .16; transform: translateY(0) scaleY(1); }
-                }
-
-                @keyframes al-build3 {
-                    from { opacity: 0; transform: translateY(20px) scaleY(.6); }
-                    to { opacity: .08; transform: translateY(0) scaleY(1); }
-                }
-
-                @keyframes al-dotAppear {
-                    from { opacity: 0; transform: scale(.6); }
-                    to { opacity: 1; transform: scale(1); }
-                }
-
-                @keyframes al-pulse {
-                    0% { transform: scale(1); }
-                    20% { transform: scale(1.15); }
-                    40% { transform: scale(1); }
-                    100% { transform: scale(1); }
-                }
-
-                @keyframes al-float {
-                    0% { transform: translateY(0); }
-                    25% { transform: translateY(-3px); }
-                    50% { transform: translateY(0); }
-                    100% { transform: translateY(0); }
-                }
-
-                @keyframes al-scan {
-                    from { stroke-dashoffset: 0; }
-                    to { stroke-dashoffset: -62; }
-                }
-            `}</style>
-
-            <g className="al-logo" fill="currentColor">
-                {/* Layer 3 */}
-                <rect
-                    className="al-layer3"
-                    x="57"
-                    y="17"
-                    width="29"
-                    height="78"
-                    rx="15"
-                    opacity=".08"
-                />
-
-                {/* Layer 2 */}
-                <rect
-                    className="al-layer2"
-                    x="50"
-                    y="11"
-                    width="29"
-                    height="78"
-                    rx="15"
-                    opacity=".16"
-                />
-
-                {/* Layer 1 */}
-                <rect
-                    className="al-layer1"
-                    x="43"
-                    y="5"
-                    width="29"
-                    height="78"
-                    rx="15"
-                />
-
-                {/* Hollow Dot */}
-                <g transform="translate(57.5 114)">
-                    <g className="al-dot">
-                        <circle
-                            r="9"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3.5"
-                        />
-                        <circle
-                            className="al-scan"
-                            r="9"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3.5"
-                            strokeLinecap="round"
-                            opacity=".5"
-                        />
-                    </g>
+                {/* 右腿（镜像需独立一层承载 transform 属性，避免被 CSS 动画覆盖） */}
+                <g transform="translate(250,0) scale(-1,1)">
+                    <Leg style={{ animationDelay: '250ms' }}>
+                        <path d={MOBI_MARK_PATH} />
+                    </Leg>
                 </g>
-            </g>
+
+                {/* 中心墨点 */}
+                <Dot cx="125" cy="161" r="16.5" />
+            </LogoGroup>
         </svg>
     )
 }

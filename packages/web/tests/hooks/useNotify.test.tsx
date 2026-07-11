@@ -70,7 +70,7 @@ describe('useNotify', () => {
             expect.objectContaining({
                 title: '标题',
                 body: '正文',
-                icon: '/favicon.ico',
+                icon: '/brand/favicon.ico',
             }),
         )
     })
