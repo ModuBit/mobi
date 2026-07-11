@@ -22,7 +22,7 @@ import {
     EyeOutlined,
     EyeInvisibleOutlined,
 } from '@ant-design/icons'
-import { CharacterBand } from '@/components/login/CharacterBand'
+import { BootLogPanel } from '@/components/login/BootLogPanel'
 import { shadcnLightToken, shadcnDarkToken } from '@/core/config/theme/tokens'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -30,84 +30,17 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useThemeLocaleToggle } from '@/components/layout/useThemeLocaleToggle'
 import { Logo } from '@/components/layout/Logo'
 import { AnimateLogo } from '@/components/layout/AnimateLogo'
-import { IntroLogo } from '@/components/layout/IntroLogo'
 import { MobiWordmark } from '@/components/layout/MobiWordmark'
 import { Helmet } from 'react-helmet-async'
 import axios from 'axios'
 import { useState } from 'react'
 import styled from '@emotion/styled'
 
-const CURRENT_YEAR = new Date().getFullYear()
-
-const FEATURES = [
-    { titleKey: 'feature1Title', descKey: 'feature1Desc' },
-    { titleKey: 'feature2Title', descKey: 'feature2Desc' },
-    { titleKey: 'feature3Title', descKey: 'feature3Desc' },
-] as const
-
-/** 全屏容器：左右分栏（角色带 absolute 叠在 LoginPanel 底部，不占文档流） */
+/** 全屏容器：左右分栏 */
 const PageContainer = styled.div`
     display: flex;
     width: 100%;
     min-height: 100dvh;
-`
-
-/**
- * 左面板：品牌展示（仅 PC 端可见）
- * 通过 html[data-theme] 选择器适配 dark/light 主题
- */
-const BrandPanel = styled.div`
-    display: none;
-
-    @media (min-width: 1024px) {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        width: 50%;
-        padding: 48px;
-        position: relative;
-        overflow: hidden;
-        background: #faf9f5;
-        border-right: 1px solid #f0eee6;
-
-        html[data-theme='dark'] & {
-            background: #141413;
-            border-right-color: #30302e;
-        }
-    }
-`
-
-/** 网格纹理 */
-const GridPattern = styled.div`
-    position: absolute;
-    inset: 0;
-    opacity: 0.03;
-    pointer-events: none;
-    background-image: linear-gradient(#000 1px, transparent 1px),
-        linear-gradient(90deg, #000 1px, transparent 1px);
-    background-size: 60px 60px;
-
-    html[data-theme='dark'] & {
-        background-image: linear-gradient(#fff 1px, transparent 1px),
-            linear-gradient(90deg, #fff 1px, transparent 1px);
-    }
-`
-
-/** 装饰光晕 */
-const GlowOrb = styled.div`
-    position: absolute;
-    border-radius: 50%;
-    pointer-events: none;
-    filter: blur(100px);
-    background: radial-gradient(circle, rgba(232, 230, 220, 0.4), transparent);
-
-    html[data-theme='dark'] & {
-        background: radial-gradient(
-            circle,
-            rgba(48, 48, 46, 0.3),
-            transparent
-        );
-    }
 `
 
 /** Logo 图片 */
@@ -123,93 +56,6 @@ const BrandName = styled.span`
 
     html[data-theme='dark'] & {
         color: #faf9f5;
-    }
-`
-
-/** 品牌标语 */
-const Tagline = styled.h2`
-    font-size: 20px;
-    font-weight: 400;
-    line-height: 1.6;
-    letter-spacing: -0.01em;
-    color: #87867f;
-    margin: 0;
-
-    html[data-theme='dark'] & {
-        color: #d1cfc5;
-    }
-`
-
-/** 品牌描述 */
-const Description = styled.p`
-    font-size: 14px;
-    line-height: 1.7;
-    color: #87867f;
-    margin: 16px 0 0;
-
-    html[data-theme='dark'] & {
-        color: #b0aea5;
-    }
-`
-
-/** 特性列表 */
-const FeatureList = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    margin-top: 32px;
-`
-
-/** 特性项 */
-const FeatureItem = styled.div`
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-
-    .feature-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #141413;
-        margin-top: 7px;
-        flex-shrink: 0;
-
-        html[data-theme='dark'] & {
-            background: #faf9f5;
-        }
-    }
-
-    .feature-title {
-        font-size: 13px;
-        font-weight: 500;
-        color: #4d4c48;
-
-        html[data-theme='dark'] & {
-            color: #d1cfc5;
-        }
-    }
-
-    .feature-desc {
-        font-size: 12px;
-        color: #b0aea5;
-        margin-top: 2px;
-
-        html[data-theme='dark'] & {
-            color: #87867f;
-        }
-    }
-`
-
-/** 底部版权 */
-const FooterMeta = styled.div`
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #b0aea5;
-
-    html[data-theme='dark'] & {
-        color: #5e5d59;
     }
 `
 
@@ -302,7 +148,7 @@ const MobileLogo = styled.div`
     }
 `
 
-/** 表单区域：圆角容器（与整体同色背景），z-index 高于底部角色带 */
+/** 表单区域：圆角容器（与整体同色背景） */
 const FormArea = styled.div`
     position: relative;
     z-index: 10;
@@ -311,11 +157,6 @@ const FormArea = styled.div`
     padding: 32px;
     border-radius: 16px;
     background: ${shadcnLightToken.colorBgBase};
-    transform: translateY(-5vh);
-
-    @media (max-width: 1023px) {
-        transform: translateY(-10vh);
-    }
 
     html[data-theme='dark'] & {
         background: ${shadcnDarkToken.colorBgBase};
@@ -344,12 +185,6 @@ const AnimatedLogoWrap = styled(AnimateLogo)`
     margin: 0 auto 16px;
 `
 
-/** 开场动画 Logo（品牌区域，颜色由内部组件自随主题） */
-const IntroLogoWrap = styled(IntroLogo)`
-    margin-bottom: 64px;
-    margin-left: -32px;
-`
-
 /** 欢迎副标题 */
 const WelcomeSubtitle = styled.p`
     font-size: 14px;
@@ -362,7 +197,7 @@ const WelcomeSubtitle = styled.p`
     }
 `
 
-/** 帮助链接：流式居中显示（原绝对定位会与底部角色带重叠） */
+/** 帮助链接：流式居中显示 */
 const HelpLink = styled.a`
     margin-top: 24px;
     justify-content: center;
@@ -388,27 +223,13 @@ const HelpLink = styled.a`
     }
 `
 
-/** 底部角色带：absolute 叠在 LoginPanel 底部，不占文档流；背景透明（透 LoginPanel 同色），pointer-events:none 不拦截表单交互 */
-const BandWrapper = styled.div`
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    pointer-events: none;
-`
-
 export function LoginPage() {
     const navigate = useNavigate()
     const { setAuthenticated } = useAuthStore()
     const [form] = Form.useForm()
     const [loading, setLoading] = useState(false)
-    /** token 明文可见（驱动 CharacterBand.peek） */
-    const [tokenVisible, setTokenVisible] = useState(false)
-    /** 正在输入（驱动 CharacterBand.typing） */
-    const [typing, setTyping] = useState(false)
-    /** token 非空（派生自 form 值，单一数据源；避免 onChange 漏同步自动填充） */
-    const hasToken = (Form.useWatch('token', form) ?? '').length > 0
-    const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
+    const { resolvedTheme, locale, toggleTheme, toggleLocale } =
+        useThemeLocaleToggle()
     const isDark = resolvedTheme === 'dark'
     const { message } = App.useApp()
     const { t } = useTranslation()
@@ -418,11 +239,15 @@ export function LoginPage() {
     const handleSubmit = async (values: { token: string }) => {
         setLoading(true)
         try {
-            const authRes = await axios.post(`${baseUrl}/api/auth`, {
-                accessToken: values.token,
-            }, {
-                withCredentials: true, // 让 Set-Cookie（httpOnly）写入浏览器
-            })
+            const authRes = await axios.post(
+                `${baseUrl}/api/auth`,
+                {
+                    accessToken: values.token,
+                },
+                {
+                    withCredentials: true, // 让 Set-Cookie（httpOnly）写入浏览器
+                },
+            )
 
             if (authRes.status !== 200) {
                 throw new Error('认证失败')
@@ -452,125 +277,65 @@ export function LoginPage() {
                 <title>{t('siteTitle')}</title>
             </Helmet>
 
-            <BrandPanel>
-                    <GridPattern />
-                    <GlowOrb
-                        style={{
-                            top: '-20%',
-                            left: '-20%',
-                            width: '80%',
-                            height: '80%',
-                        }}
-                    />
-                    <GlowOrb
-                        style={{
-                            bottom: '-10%',
-                            right: '-10%',
-                            width: '60%',
-                            height: '60%',
-                        }}
-                    />
+            <BootLogPanel />
 
-                    <div
+            <LoginPanel>
+                <MobileLogo>
+                    <LogoImg as={Logo} style={{ width: 24, height: 24 }} />
+                    <BrandName>
+                        <MobiWordmark size={18} />
+                    </BrandName>
+                </MobileLogo>
+
+                <TopActions>
+                    <Button
+                        type="text"
+                        onClick={toggleLocale}
+                        title={
+                            locale === 'zh'
+                                ? 'Switch to English'
+                                : '切换到中文'
+                        }
                         style={{
-                            position: 'relative',
-                            zIndex: 1,
+                            padding: 0,
+                            width: 32,
+                            height: 32,
                             display: 'flex',
                             alignItems: 'center',
-                            gap: 12,
+                            justifyContent: 'center',
                         }}
                     >
-                        <LogoImg as={Logo} />
-                        <BrandName><MobiWordmark size={18} /></BrandName>
+                        <LocaleSwitchIcon>
+                            <ActiveLocale>
+                                {locale === 'zh' ? '中' : 'En'}
+                            </ActiveLocale>
+                            <InactiveLocale>
+                                {locale === 'zh' ? 'En' : '中'}
+                            </InactiveLocale>
+                        </LocaleSwitchIcon>
+                    </Button>
+                    <Button
+                        shape="circle"
+                        type="text"
+                        icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+                        onClick={toggleTheme}
+                    />
+                </TopActions>
+
+                <FormArea>
+                    <div style={{ marginBottom: 32 }}>
+                        <AnimatedLogoWrap />
+                        <WelcomeTitle>{t('login.welcome')}</WelcomeTitle>
+                        <WelcomeSubtitle>
+                            {t('login.welcomeSubtitle')}
+                        </WelcomeSubtitle>
                     </div>
 
-                    <div
-                        style={{
-                            position: 'relative',
-                            zIndex: 1,
-                            maxWidth: 480,
-                        }}
+                    <Form
+                        form={form}
+                        layout="vertical"
+                        onFinish={handleSubmit}
                     >
-                        <IntroLogoWrap />
-                        <Tagline>{t('login.subtitle')}</Tagline>
-                        <Description>{t('login.description')}</Description>
-                        <FeatureList>
-                            {FEATURES.map(({ titleKey, descKey }) => (
-                                <FeatureItem key={titleKey}>
-                                    <div className="feature-dot" />
-                                    <div>
-                                        <div className="feature-title">
-                                            {t(`login.${titleKey}`)}
-                                        </div>
-                                        <div className="feature-desc">
-                                            {t(`login.${descKey}`)}
-                                        </div>
-                                    </div>
-                                </FeatureItem>
-                            ))}
-                        </FeatureList>
-                    </div>
-
-                    <div style={{ position: 'relative', zIndex: 1 }}>
-                        <FooterMeta>© {CURRENT_YEAR} Mobi</FooterMeta>
-                    </div>
-                </BrandPanel>
-
-                <LoginPanel>
-                    <MobileLogo>
-                        <LogoImg as={Logo} style={{ width: 24, height: 24 }} />
-                        <BrandName><MobiWordmark size={18} /></BrandName>
-                    </MobileLogo>
-
-                    <TopActions>
-                        <Button
-                            type="text"
-                            onClick={toggleLocale}
-                            title={
-                                locale === 'zh'
-                                    ? 'Switch to English'
-                                    : '切换到中文'
-                            }
-                            style={{
-                                padding: 0,
-                                width: 32,
-                                height: 32,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}
-                        >
-                            <LocaleSwitchIcon>
-                                <ActiveLocale>
-                                    {locale === 'zh' ? '中' : 'En'}
-                                </ActiveLocale>
-                                <InactiveLocale>
-                                    {locale === 'zh' ? 'En' : '中'}
-                                </InactiveLocale>
-                            </LocaleSwitchIcon>
-                        </Button>
-                        <Button
-                            shape="circle"
-                            type="text"
-                            icon={isDark ? <SunOutlined /> : <MoonOutlined />}
-                            onClick={toggleTheme}
-                        />
-                    </TopActions>
-
-                    <FormArea>
-                        <div style={{ marginBottom: 32 }}>
-                            <AnimatedLogoWrap />
-                            <WelcomeTitle>{t('login.welcome')}</WelcomeTitle>
-                            <WelcomeSubtitle>
-                                {t('login.welcomeSubtitle')}
-                            </WelcomeSubtitle>
-                        </div>
-
-                        <Form
-                            form={form}
-                            layout="vertical"
-                            onFinish={handleSubmit}
-                        >
                         <Form.Item
                             name="token"
                             rules={[
@@ -584,19 +349,18 @@ export function LoginPage() {
                                 autoComplete="current-password"
                                 placeholder={t('login.tokenPlaceholder')}
                                 size="large"
-                                onFocus={() => setTyping(true)}
-                                onBlur={() => setTyping(false)}
-                                visibilityToggle={{
-                                    onVisibleChange: (v: boolean) => setTokenVisible(v),
-                                }}
+                                visibilityToggle
                                 iconRender={(visible) => (
                                     // onMouseDown 防止点击切换按钮时 input 失焦
-                                    // （失焦会触发 onBlur → typing=false → 打断"对视"动画）
                                     <span
                                         onMouseDown={(e) => e.preventDefault()}
                                         style={{ display: 'inline-flex' }}
                                     >
-                                        {visible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                                        {visible ? (
+                                            <EyeInvisibleOutlined />
+                                        ) : (
+                                            <EyeOutlined />
+                                        )}
                                     </span>
                                 )}
                             />
@@ -623,14 +387,7 @@ export function LoginPage() {
                         GitHub
                     </HelpLink>
                 </FormArea>
-                    <BandWrapper>
-                        <CharacterBand
-                            peek={tokenVisible}
-                            hasToken={hasToken}
-                            typing={typing}
-                        />
-                    </BandWrapper>
-                </LoginPanel>
+            </LoginPanel>
         </PageContainer>
     )
 }
