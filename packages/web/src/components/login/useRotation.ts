@@ -17,29 +17,22 @@ import { useState } from 'react'
 import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
 import { useInterval } from '@/core/data/hooks/useInterval'
 
-/** 终端启动日志的一行（id 供 React key 使用，node 为渲染内容） */
-export interface BootLine {
-    id: string
-    node: React.ReactNode
-}
-
 /**
- * 逐行打字机：每 intervalMs 显示一行，全部显示后 done=true。
- * prefers-reduced-motion 时立即全部显示。
+ * 循环轮播 hook：在 values 间按 interval 切换，返回当前值。
  *
- * 定时器生命周期由 useInterval 原语管理：reduce / 空数组 / 到顶 时 delay=null 暂停。
- * 用函数式 setState 累加 visibleCount，无需把 visibleCount 放入定时器 deps。
+ * - prefers-reduced-motion 或单值数组时固定首个（不轮播）。
+ * - reduce-motion 通过共享 useMediaQuery 读取（响应中途变化），与 useBootSequence 一致。
+ * - 定时器生命周期由 useInterval 原语管理（delay 为 null 时暂停）。
+ *
+ * 调用方渲染时用 `<FadeText key={value}>{value}</FadeText>` 触发切换淡入。
  */
-export function useBootSequence(lines: BootLine[], intervalMs = 150) {
+export function useRotation<T>(values: readonly T[], intervalMs: number): T {
     const reduce = useMediaQuery('(prefers-reduced-motion: reduce)')
-    const [visibleCount, setVisibleCount] = useState<number>(() =>
-        reduce ? lines.length : 0,
-    )
-    const done = visibleCount >= lines.length
-    const active = !reduce && lines.length > 0 && !done
+    const [idx, setIdx] = useState(0)
+    const active = !reduce && values.length > 1
     useInterval(
-        () => setVisibleCount((c) => Math.min(c + 1, lines.length)),
+        () => setIdx((i) => (i + 1) % values.length),
         active ? intervalMs : null,
     )
-    return { visibleCount, done }
+    return values[idx] ?? values[0]
 }
