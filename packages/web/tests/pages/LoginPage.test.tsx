@@ -61,7 +61,6 @@ vi.mock('react-i18next', () => ({
 // —— 静态化 Logo 组件，避免动画/图片干扰 DOM 断言 ——
 vi.mock('@/components/layout/Logo', () => ({ Logo: () => null }))
 vi.mock('@/components/layout/AnimateLogo', () => ({ AnimateLogo: () => null }))
-vi.mock('@/components/layout/IntroLogo', () => ({ IntroLogo: () => null }))
 
 const wrapper = ({ children }: { children: ReactNode }) => (
     <HelmetProvider>
