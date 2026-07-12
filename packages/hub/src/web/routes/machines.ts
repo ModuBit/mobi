@@ -16,6 +16,7 @@
 
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { PermissionModeSchema } from '@mobi/shared'
 import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
@@ -30,7 +31,7 @@ const spawnBodySchema = z.object({
     agent: z.enum(['claude']).optional(),  // Mobi 当前仅支持 Claude
     model: z.string().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
-    yolo: z.boolean().optional(),
+    permissionMode: PermissionModeSchema.optional(),
     sessionType: z.enum(['simple', 'worktree']).optional(),
     worktreeName: z.string().optional()
 })
@@ -104,7 +105,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             parsed.data.directory,
             parsed.data.agent,
             parsed.data.model,
-            parsed.data.yolo,
+            parsed.data.permissionMode,
             parsed.data.sessionType,
             parsed.data.worktreeName,
             undefined, // resumeSessionId

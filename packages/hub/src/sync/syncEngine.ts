@@ -329,14 +329,14 @@ export class SyncEngine {
         directory: string,
         agent: 'claude' = 'claude',  // Mobi 当前仅支持 Claude
         model?: string,
-        yolo?: boolean,
+        permissionMode?: PermissionMode,
         sessionType?: 'simple' | 'worktree',
         worktreeName?: string,
         resumeSessionId?: string,
         effort?: EffortLevel,
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
         return await this.rpcGateway.spawnSession(
-            machineId, directory, agent, model, yolo,
+            machineId, directory, agent, model, permissionMode,
             sessionType, worktreeName, resumeSessionId, effort
         )
     }

@@ -144,7 +144,7 @@ export class RpcGateway {
         directory: string,
         agent: 'claude' = 'claude',  // Mobi 当前仅支持 Claude
         model?: string,
-        yolo?: boolean,
+        permissionMode?: PermissionMode,
         sessionType?: 'simple' | 'worktree',
         worktreeName?: string,
         resumeSessionId?: string,
@@ -154,7 +154,7 @@ export class RpcGateway {
             const result = await this.machineRpc(
                 machineId,
                 'spawn-mobi-session',
-                { type: 'spawn-in-directory', directory, agent, model, yolo, sessionType, worktreeName, resumeSessionId, effort }
+                { type: 'spawn-in-directory', directory, agent, model, permissionMode, sessionType, worktreeName, resumeSessionId, effort }
             )
             if (result && typeof result === 'object') {
                 const obj = result as Record<string, unknown>
