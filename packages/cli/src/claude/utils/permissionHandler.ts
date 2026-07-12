@@ -22,15 +22,12 @@
  */
 
 import { logger } from "@/lib";
-import type { SDKAssistantMessage, SDKMessage, SDKTaskStartedMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SDKTaskStartedMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "../sdk/types";
 import type { SDKUIHints } from "@mobi/shared";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
-import { deepEqual } from "@/utils/deepEqual";
 import { PermissionMode } from "../types";
-import { getToolDescriptor } from "./getToolDescriptor";
-import { delay } from "@/utils/time";
 import { isObject } from "@mobi/shared";
 import {
     BasePermissionHandler,
@@ -106,11 +103,7 @@ function buildRequestUserInputUpdatedInput(input: unknown, answers: unknown): Re
     };
 }
 
-// toolCalls 已用的条目无查询价值，超过上限时自动清理
-const MAX_TOOL_CALLS = 50;
-
 export class PermissionHandler extends BasePermissionHandler<PermissionResponse, PermissionResult> {
-    private toolCalls: { id: string, name: string, input: unknown, used: boolean }[] = [];
     private responses = new Map<string, PermissionResponse>();
     private session: Session;
     private allowedTools = new Set<string>();
@@ -273,33 +266,21 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
-        // Calculate descriptor
-        const descriptor = getToolDescriptor(toolName);
-
-        //
-        // Handle special cases
-        //
-
-        if (!isQuestionTool && this.permissionMode === 'bypassPermissions') {
-            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
-        }
-
-        if (!isQuestionTool && this.permissionMode === 'acceptEdits' && descriptor.edit) {
-            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
-        }
-
         //
         // Approval flow
         //
 
-        // 优先使用 SDK 直接提供的 toolUseID，避免脆弱的 name+input 匹配
-        let toolCallId = options.toolUseID ?? this.resolveToolCallId(toolName, input);
+        // [W2a] 观测 SDK suggestions 提供率，为会话白名单简化决策提供数据
+        const suggCount = options.suggestions?.length ?? 0
+        const suggDest = options.suggestions?.[0]?.destination ?? 'none'
+        logger.debug(
+            `[permission-stats] tool=${toolName} hasSuggestions=${suggCount > 0} count=${suggCount} dest=${suggDest}`
+        )
+
+        // SDK 契约：canUseTool 入参稳定提供 toolUseID（sdk.d.ts:245，非可选）
+        const toolCallId = options.toolUseID;
         if (!toolCallId) {
-            await delay(1000);
-            toolCallId = this.resolveToolCallId(toolName, input);
-            if (!toolCallId) {
-                throw new Error(`Could not resolve tool call ID for ${toolName}`);
-            }
+            throw new Error(`SDK did not provide toolUseID for ${toolName}`);
         }
         // 注入 agent 信息到 sdkHints（只拷贝 SDKUIHints 已知字段，排除 signal 等）
         const sdkHints: SDKUIHints = {
@@ -390,65 +371,9 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     }
 
     /**
-     * Resolves tool call ID based on tool name and input
-     */
-    private resolveToolCallId(name: string, args: unknown): string | null {
-        // Search in reverse (most recent first)
-        for (let i = this.toolCalls.length - 1; i >= 0; i--) {
-            const call = this.toolCalls[i];
-            if (call.name === name && deepEqual(call.input, args)) {
-                if (call.used) {
-                    return null;
-                }
-                // Found unused match - mark as used and return
-                call.used = true;
-                return call.id;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Handles messages to track tool calls and agent info
+     * Handles messages to track agent info（仅保留 task_started；tool_use/tool_result 追踪已移除）
      */
     onMessage(message: SDKMessage): void {
-        if (message.type === 'assistant') {
-            const assistantMsg = message as SDKAssistantMessage;
-            if (assistantMsg.message && assistantMsg.message.content) {
-                for (const block of assistantMsg.message.content) {
-                    if (block.type === 'tool_use') {
-                        this.toolCalls.push({
-                            id: block.id!,
-                            name: block.name!,
-                            input: block.input,
-                            used: false
-                        });
-                    }
-                }
-            }
-            // 超过上限时清理已用条目；仍超限则截断保留最新的
-            if (this.toolCalls.length > MAX_TOOL_CALLS) {
-                this.toolCalls = this.toolCalls.filter(tc => !tc.used);
-                if (this.toolCalls.length > MAX_TOOL_CALLS) {
-                    this.toolCalls = this.toolCalls.slice(-MAX_TOOL_CALLS);
-                }
-            }
-        }
-        if (message.type === 'user') {
-            const userMsg = message as SDKUserMessage;
-            if (userMsg.message && userMsg.message.content && Array.isArray(userMsg.message.content)) {
-                for (const block of userMsg.message.content) {
-                    if (block.type === 'tool_result' && block.tool_use_id) {
-                        const toolCall = this.toolCalls.find(tc => tc.id === block.tool_use_id);
-                        if (toolCall && !toolCall.used) {
-                            toolCall.used = true;
-                        }
-                    }
-                }
-            }
-        }
-        // 追踪 task_started 系统消息，记录 agent 信息
         if (message.type === 'system') {
             const sysMsg = message as SDKTaskStartedMessage;
             if (sysMsg.subtype === 'task_started' && sysMsg.task_id && sysMsg.description) {
@@ -461,30 +386,9 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     }
 
     /**
-     * Checks if a tool call is rejected
-     */
-    isAborted(toolCallId: string): boolean {
-
-        // If tool not approved, it's aborted
-        if (this.responses.get(toolCallId)?.approved === false) {
-            return true;
-        }
-
-        // Always abort exit_plan_mode
-        const toolCall = this.toolCalls.find(tc => tc.id === toolCallId);
-        if (toolCall && (toolCall.name === 'exit_plan_mode' || toolCall.name === 'ExitPlanMode')) {
-            return true;
-        }
-
-        // Tool call is not aborted
-        return false;
-    }
-
-    /**
-     * 轮次间重置：清空工具调用追踪和挂起请求，保留会话级白名单
+     * 轮次间重置：清空挂起请求，保留会话级白名单
      */
     resetForNewTurn(): void {
-        this.toolCalls = [];
         this.responses.clear();
         this.agentInfoMap.clear();
 
@@ -497,7 +401,6 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
      * Resets all state for new sessions
      */
     reset(): void {
-        this.toolCalls = [];
         this.responses.clear();
         this.allowedTools.clear();
         this.allowedBashLiterals.clear();
