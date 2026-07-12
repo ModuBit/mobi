@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
 import type { SpawnResponse } from '@/core/data/api/types'
-import type { EffortLevel } from '@mobi/shared'
+import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import type { AgentType, SessionType } from '@/domain/session/types'
 
 export interface SpawnInput {
@@ -28,7 +28,7 @@ export interface SpawnInput {
     agent?: AgentType
     model?: string
     effort?: EffortLevel
-    yolo?: boolean
+    permissionMode?: PermissionMode
     sessionType?: SessionType
     worktreeName?: string
 }
@@ -52,7 +52,7 @@ export function useSpawnSession(): {
                     input.directory,
                     input.agent,
                     input.model,
-                    input.yolo,
+                    input.permissionMode,
                     input.sessionType,
                     input.worktreeName,
                     input.effort

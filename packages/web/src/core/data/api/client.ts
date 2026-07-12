@@ -17,6 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse, ListFilesResponse } from './types'
+import type { PermissionMode } from '@mobi/shared'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -246,8 +247,8 @@ export function createMobiApi() {
         // Machines
         machines: {
             list: () => client.get<{ machines: Machine[] }>('/api/machines'),
-            spawn: (machineId: string, directory: string, agent?: string, model?: string, yolo?: boolean, sessionType?: string, worktreeName?: string, effort?: string) =>
-                client.post(`/api/machines/${machineId}/spawn`, { directory, agent, model, yolo, sessionType, worktreeName, effort }),
+            spawn: (machineId: string, directory: string, agent?: string, model?: string, permissionMode?: PermissionMode, sessionType?: string, worktreeName?: string, effort?: string) =>
+                client.post(`/api/machines/${machineId}/spawn`, { directory, agent, model, permissionMode, sessionType, worktreeName, effort }),
             checkPathsExist: (machineId: string, paths: string[]) =>
                 client.post<{ exists: Record<string, boolean> }>(`/api/machines/${machineId}/paths/exists`, { paths }),
             listDirectory: (machineId: string, path: string, opts?: { signal?: AbortSignal }) =>

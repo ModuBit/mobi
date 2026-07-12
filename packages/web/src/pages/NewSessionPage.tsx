@@ -596,7 +596,7 @@ export function NewSessionPage() {
                 agent,
                 model: model === 'auto' ? undefined : model,
                 effort,
-                yolo: permissionMode === 'bypassPermissions',
+                permissionMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
             }

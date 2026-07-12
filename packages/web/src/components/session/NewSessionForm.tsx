@@ -171,7 +171,7 @@ export function NewSession(props: NewSessionProps) {
                 agent,
                 model: model !== 'auto' ? model : undefined,
                 effort,
-                yolo: yoloMode,
+                permissionMode: yoloMode ? 'bypassPermissions' : 'default',
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined
             })
