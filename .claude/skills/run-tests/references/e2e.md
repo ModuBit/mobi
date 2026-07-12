@@ -122,7 +122,7 @@ Chrome DevTools MCP 首次调用时自动启动 Chrome，后续复用。按以�
 
 使用 profile `e2e` 中的 token `e2e-test-token-mobi`。
 
-> **⚠️ token 用途（重要，勿用错）**：`e2e-test-token-mobi` 是 **cliApiToken，仅在 web 登录框输入**。**不能**直接当 `Authorization: Bearer` 去 curl API（API 需要的是 web 登录后换取的 JWT）。诊断 API 用 health 端点（`/api/health`，不需 token）或先登录拿 JWT 再查询。
+> **⚠️ token 用途（重要，勿用错）**：E2E 环境 `cliApiToken` 与 `webApiToken` **同值**（均为 `e2e-test-token-mobi`，见 `profiles/e2e.env`）。在 web 登录框输入它，会被 `/api/auth` 当作 **webApiToken** 校验（双密钥后 `/api/auth` 不再接受 cliApiToken）。**不能**直接当 `Authorization: Bearer` 去 curl API（API 需要的是 web 登录后换取的 JWT）。诊断 API 用 health 端点（`/api/health`，不需 token）或先登录拿 JWT 再查询。
 
 ### 完整用户流程
 

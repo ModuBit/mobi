@@ -6,8 +6,11 @@ WebServer 有两套认证机制：
 
 | 认证方式 | 使用者 | HTTP 路由 | Socket.IO 命名空间 |
 |----------|--------|-----------|-------------------|
-| **Access Token** | CLI 客户端 | `/cli/*` | `/cli` |
+| **CLI_API_TOKEN** | CLI 客户端 | `/cli/*` | `/cli` |
+| **WEB_API_TOKEN** | Web 浏览器（换 JWT） | `POST /api/auth` | — |
 | **JWT** | Web 浏览器 | `/api/*` | `/terminal` |
+
+> 双密钥分离：CLI 与 Web 各持一把独立密钥，互不通用、各自可独立轮换。`/api/auth` 只认 `WEB_API_TOKEN`，`/cli/*` 只认 `CLI_API_TOKEN`。
 
 ## 认证流程
 
@@ -23,8 +26,8 @@ sequenceDiagram
     Server-->>CLI: 响应
 
     Note over Web,Server: Web 需要先换取 JWT
-    Web->>Server: POST /api/auth { accessToken }
-    Server->>Server: 验证 Access Token
+    Web->>Server: POST /api/auth { accessToken: webApiToken }
+    Server->>Server: 验证 WEB_API_TOKEN
     Server-->>Web: 返回 JWT
     Web->>Server: HTTP /api/* 或 Socket.IO /terminal + JWT
     Server->>Server: 验证 JWT
@@ -128,7 +131,8 @@ flowchart TB
     D --> E[返回 token + user]
 ```
 
-- 输入：`accessToken`（即 CLI_API_TOKEN）
+- 输入：`accessToken`（即 **WEB_API_TOKEN**，与 CLI_API_TOKEN 独立；CLI_API_TOKEN 不再被接受）
+- 验证：经 `verifyWebCredential()` 抽象（后续短期临时密钥将在此扩展，路由层零改动）
 - 输出：JWT（有效期 1 天）+ 用户信息
 
 ### JWT 中间件
@@ -182,6 +186,22 @@ flowchart TB
   Saved to: ~/.mobi/settings.json
 ======================================================================
 ```
+
+### WEB_API_TOKEN（Web 登录密钥）
+
+**文件**: [`packages/hub/src/config/webApiToken.ts`](/packages/hub/src/config/webApiToken.ts)
+
+Web 浏览器登录专用密钥（`POST /api/auth` 校验源），与 `CLI_API_TOKEN` 完全独立、互不通用。
+
+| 优先级 | 来源 | 说明 |
+|--------|------|------|
+| 1 | 环境变量 `WEB_API_TOKEN` | 最高优先级 |
+| 2 | 配置文件 `~/.mobi/settings.json` | 持久化存储 |
+| 3 | 自动生成 | 首次启动时生成并保存 |
+
+**轮换（不重启 hub）**：`mobi auth rotate-web-token` 重写 settings.json，hub 经 `settingsWatcher`（fs.watch 目录监听）热 reload。查看当前值：`mobi auth web-token`。
+
+> 已知 tradeoff：轮换后已签发的 JWT 最长 1 天自然失效（JWT 无状态），新登录需用新 WEB_API_TOKEN。
 
 ### JWT Secret
 

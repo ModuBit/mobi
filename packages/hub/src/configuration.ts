@@ -36,6 +36,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { getOrCreateCliApiToken } from './config/cliApiToken'
+import { getOrCreateWebApiToken } from './config/webApiToken'
 import { getSettingsFile } from './config/settings'
 import { loadServerSettings, type ServerSettings, type ServerSettingsResult } from './config/serverSettings'
 
@@ -48,6 +49,7 @@ export interface ConfigSources {
     corsOrigins: ConfigSource
     hubName: ConfigSource
     cliApiToken: 'env' | 'file' | 'generated'
+    webApiToken: 'env' | 'file' | 'generated'
 }
 
 class Configuration {
@@ -59,6 +61,15 @@ class Configuration {
 
     /** Whether CLI API token was newly generated (for first-run display) */
     public readonly cliApiTokenIsNew: boolean
+
+    /** Web 登录专用 token（与 cliApiToken 独立） */
+    public readonly webApiToken: string
+
+    /** Web API token 来源 */
+    public readonly webApiTokenSource: 'env' | 'file' | 'generated' | ''
+
+    /** Web API token 是否为新生成（首次启动展示用） */
+    public readonly webApiTokenIsNew: boolean
 
     /** Path to settings.json file */
     public readonly settingsFile: string
@@ -110,6 +121,11 @@ class Configuration {
         this.cliApiTokenSource = ''
         this.cliApiTokenIsNew = false
 
+        // Web API token - will be set by _setWebApiToken() before create() returns
+        this.webApiToken = ''
+        this.webApiTokenSource = ''
+        this.webApiTokenIsNew = false
+
         // Store sources for logging (cliApiToken will be set by _setCliApiToken)
         this.sources = {
             ...sources,
@@ -157,6 +173,10 @@ class Configuration {
         const tokenResult = await getOrCreateCliApiToken(dataDir)
         config._setCliApiToken(tokenResult.token, tokenResult.source, tokenResult.isNew)
 
+        // 6. Load Web API token
+        const webTokenResult = await getOrCreateWebApiToken(dataDir)
+        config._setWebApiToken(webTokenResult.token, webTokenResult.source, webTokenResult.isNew)
+
         return config
     }
 
@@ -166,6 +186,14 @@ class Configuration {
         ;(this as { cliApiTokenSource: string }).cliApiTokenSource = source
         ;(this as { cliApiTokenIsNew: boolean }).cliApiTokenIsNew = isNew
         ;(this.sources as { cliApiToken: string }).cliApiToken = source
+    }
+
+    /** Set Web API token（运行时热更新用，如 fs.watch 检测到轮换） */
+    _setWebApiToken(token: string, source: 'env' | 'file' | 'generated', isNew: boolean): void {
+        (this as { webApiToken: string }).webApiToken = token
+        ;(this as { webApiTokenSource: string }).webApiTokenSource = source
+        ;(this as { webApiTokenIsNew: boolean }).webApiTokenIsNew = isNew
+        ;(this.sources as { webApiToken: string }).webApiToken = source
     }
 }
 

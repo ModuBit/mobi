@@ -26,10 +26,12 @@ export const testJwtSecret = new Uint8Array(32)
 crypto.getRandomValues(testJwtSecret)
 
 export const testCliApiToken = 'test-cli-api-token'
+export const testWebApiToken = 'test-web-api-token'
 
 export async function setupTestApp(syncEngine: SyncEngine | null = null) {
     const store = new Store(':memory:')
     process.env.CLI_API_TOKEN = testCliApiToken
+    process.env.WEB_API_TOKEN = testWebApiToken
     resetConfiguration()
     await createConfiguration()
 
@@ -48,6 +50,7 @@ export async function setupTestApp(syncEngine: SyncEngine | null = null) {
     const cleanup = () => {
         store.close()
         delete process.env.CLI_API_TOKEN
+        delete process.env.WEB_API_TOKEN
         resetConfiguration()
     }
 
@@ -58,7 +61,7 @@ export async function getAuthToken(app: ReturnType<typeof createWebApp>): Promis
     const res = await app.request('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken: testCliApiToken }),
+        body: JSON.stringify({ accessToken: testWebApiToken }),
     })
     const body = await res.json() as { token: string }
     return body.token

@@ -20,8 +20,7 @@ import { setCookie, getCookie } from 'hono/cookie'
 import { SignJWT, jwtVerify } from 'jose'
 import { z } from 'zod'
 import { configuration } from '../../configuration'
-import { constantTimeEquals } from '../../utils/crypto'
-import { parseAccessToken } from '../../utils/accessToken'
+import { verifyWebCredential } from '../auth/verifyWebCredential'
 import { getOrCreateOwnerId } from '../../config/ownerId'
 import { AUTH_COOKIE_NAME, type WebAppEnv } from '../middleware/auth'
 // cookie 生命周期，与 JWT 过期（1d）对齐
@@ -91,14 +90,14 @@ export function createAuthRoutes(jwtSecret: Uint8Array): Hono<WebAppEnv> {
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        // Access Token 认证（CLI_API_TOKEN）
-        const parsedToken = parseAccessToken(parsed.data.accessToken)
-        if (!parsedToken || !constantTimeEquals(parsedToken.baseToken, configuration.cliApiToken)) {
+        // Web 凭据验证（webApiToken，与 cliApiToken 隔离）
+        const webCred = await verifyWebCredential(parsed.data.accessToken)
+        if (!webCred) {
             return c.json({ error: 'Invalid access token' }, 401)
         }
 
         const userId = await getOrCreateOwnerId()
-        const namespace = parsedToken.namespace
+        const namespace = webCred.namespace
 
         const token = await new SignJWT({ uid: userId, ns: namespace })
             .setProtectedHeader({ alg: 'HS256' })

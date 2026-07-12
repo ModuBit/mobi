@@ -40,7 +40,8 @@
 |--------|------|--------|------|
 | `machineId` | string | 自动生成 | 机器唯一标识，用于 Hub 注册 |
 | `machineIdConfirmedByServer` | boolean | false | 服务器是否已确认 machineId |
-| `cliApiToken` | string | 自动生成 | CLI 认证令牌，首次运行 Hub 时生成 |
+| `cliApiToken` | string | 自动生成 | CLI 认证令牌（CLI 专用，首次运行 Hub 时生成） |
+| `webApiToken` | string | 自动生成 | Web 登录令牌（Web 浏览器专用，与 cliApiToken 独立，首次运行 Hub 时生成） |
 | `runnerAutoStartWhenRunningMobi` | boolean | - | 运行 mobi 时是否自动启动 Runner |
 
 ### Hub 服务配置
@@ -87,7 +88,8 @@
 |--------|------|--------|
 | `MOBI_HOME` | 数据目录路径 | 仅环境变量 |
 | `DB_PATH` | SQLite 数据库路径 | 仅环境变量 |
-| `CLI_API_TOKEN` | CLI 认证令牌 | 环境变量 > settings.json > 自动生成 |
+| `CLI_API_TOKEN` | CLI 认证令牌（CLI 专用） | 环境变量 > settings.json > 自动生成 |
+| `WEB_API_TOKEN` | Web 登录令牌（Web 浏览器专用，与 CLI 密钥独立） | 环境变量 > settings.json > 自动生成 |
 | `MOBI_LISTEN_HOST` | 监听地址 | 环境变量 > settings.json |
 | `MOBI_LISTEN_PORT` | 监听端口 | 环境变量 > settings.json |
 | `MOBI_PUBLIC_URL` | 公网访问地址 | 环境变量 > settings.json |
@@ -118,7 +120,8 @@ mobi hub
 // ~/.mobi/settings.json 示例
 {
   "machineId": "abc123",
-  "cliApiToken": "your-secret-token",
+  "cliApiToken": "your-cli-secret-token",
+  "webApiToken": "your-web-secret-token",
   "listenPort": 3000,
   "publicUrl": "https://mobi.example.com",
   "idleTimeoutMs": 172800000
@@ -159,6 +162,7 @@ export CORS_ORIGINS=https://app1.example.com,https://app2.example.com
 ## 安全注意事项
 
 1. **access.key** 包含敏感的认证密钥，请勿分享或提交到版本控制
-2. **cliApiToken** 是 CLI 与 Hub 的共享密钥，请妥善保管
-3. 生产环境建议通过环境变量传递敏感配置，避免写入 `settings.json`
-4. `MOBI_LISTEN_HOST=0.0.0.0` 会暴露服务到所有网络接口，请确保网络环境安全
+2. **cliApiToken** 是 CLI 与 Hub 的共享密钥（CLI 专用），请妥善保管
+3. **webApiToken** 是 Web 浏览器登录专用密钥，与 cliApiToken 完全独立；轮换用 `mobi auth rotate-web-token`（hub 自动热加载，无需重启；已登录 Web 会话最长 1 天后自然失效）
+4. 生产环境建议通过环境变量传递敏感配置，避免写入 `settings.json`
+5. `MOBI_LISTEN_HOST=0.0.0.0` 会暴露服务到所有网络接口，请确保网络环境安全

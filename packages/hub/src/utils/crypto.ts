@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { timingSafeEqual } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 
 export function constantTimeEquals(a: string | null | undefined, b: string | null | undefined): boolean {
     if (typeof a !== 'string' || typeof b !== 'string') {
@@ -32,4 +32,12 @@ export function constantTimeEquals(a: string | null | undefined, b: string | nul
 
     const matches = timingSafeEqual(paddedA, paddedB)
     return matches && bufferA.length === bufferB.length
+}
+
+/**
+ * 生成密码学安全的随机 token（32 字节，base64url 编码 ≈ 43 字符）。
+ * CLI 密钥与 Web 密钥的生成都用它，避免格式漂移导致校验不一致。
+ */
+export function generateSecureToken(): string {
+    return randomBytes(32).toString('base64url')
 }

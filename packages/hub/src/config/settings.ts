@@ -23,6 +23,7 @@ export interface Settings {
     machineIdConfirmedByServer?: boolean
     runnerAutoStartWhenRunningMobi?: boolean
     cliApiToken?: string
+    webApiToken?: string
     vapidKeys?: {
         publicKey: string
         privateKey: string

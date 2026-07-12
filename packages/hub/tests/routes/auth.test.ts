@@ -16,7 +16,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { jwtVerify } from 'jose'
-import { setupTestApp, getAuthToken, testJwtSecret } from '../helpers/setupTestApp'
+import { setupTestApp, getAuthToken, testJwtSecret, testWebApiToken, testCliApiToken } from '../helpers/setupTestApp'
 
 // 从 Set-Cookie header 中解析指定 cookie 的值
 function parseCookieValue(setCookie: string | null, name: string): string | undefined {
@@ -52,11 +52,22 @@ describe('Auth API', () => {
         expect(body).toHaveProperty('error')
     })
 
+    test('POST /api/auth 用 cliApiToken 必须返回 401（双密钥隔离）', async () => {
+        // cliApiToken 不再能登录 Web —— 校验源已切到 webApiToken
+        const res = await app.request('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accessToken: testCliApiToken })
+        })
+
+        expect(res.status).toBe(401)
+    })
+
     test('POST /api/auth 有效的 access token 返回 200 和 JWT', async () => {
         const res = await app.request('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: 'test-cli-api-token' })
+            body: JSON.stringify({ accessToken: testWebApiToken })
         })
 
         expect(res.status).toBe(200)
@@ -74,7 +85,7 @@ describe('Auth API', () => {
         const res = await app.request('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: 'test-cli-api-token:my-namespace' })
+            body: JSON.stringify({ accessToken: `${testWebApiToken}:my-namespace` })
         })
 
         expect(res.status).toBe(200)
@@ -89,7 +100,7 @@ describe('Auth API', () => {
         const res = await app.request('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: 'test-cli-api-token' })
+            body: JSON.stringify({ accessToken: testWebApiToken })
         })
 
         expect(res.status).toBe(200)
