@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Tooltip, Select, theme, Typography, Popover, message } from 'antd'
-import { PlusOutlined, SwapOutlined, SafetyOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
+import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -42,6 +42,8 @@ import { CommandHintBar } from './CommandHintBar'
 import { ResponsiveActionBar, type ActionItem } from './ResponsiveActionBar'
 import { ActivateCover } from '@/components/ui/ActivateCover'
 import { getPermissionModeColor } from './permissionModeColors'
+import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from './permissionModeOption'
+import { getPermissionModeIcon } from './permissionModeIcons'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 
 
@@ -354,19 +356,10 @@ export function ChatComposer(props: ChatComposerProps) {
         if (v !== model) onModelChange?.(v)
     }, [model, onModelChange])
 
+    usePermissionModeDropdownStyle()
     const permissionSelectOptions = useMemo(
-        () => permissionModeOptions.map(opt => {
-            const color = opt.tone !== 'neutral'
-                ? getPermissionModeColor(token, opt.tone)
-                : undefined
-            return {
-                value: opt.mode,
-                label: color
-                    ? <span style={{ color }}>{t(`composer.permissionModes.${opt.mode}`)}</span>
-                    : t(`composer.permissionModes.${opt.mode}`),
-            }
-        }),
-        [permissionModeOptions, t, token]
+        () => buildPermissionModeSelectOptions(t),
+        [t]
     )
 
     // 点击外部关闭下拉
@@ -552,8 +545,9 @@ export function ChatComposer(props: ChatComposerProps) {
     const showLocalModeCover = active && mode === 'local'
     const isBashMode = text.startsWith('! ')
 
-    const permissionModeTone = permissionMode !== 'default' ? getPermissionModeTone(permissionMode) : null
+    const permissionModeTone = getPermissionModeTone(permissionMode ?? 'default')
     const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
+    const PermissionModeIcon = getPermissionModeIcon(permissionMode ?? 'default')
 
     // Sender header 区域内容（可组合，多条可共存）
     const headerNodes = [
@@ -654,11 +648,15 @@ export function ChatComposer(props: ChatComposerProps) {
                                     render: () => (
                                         <CompactHoverSelect
                                             $token={token}
-                                            prefix={<SafetyOutlined style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
+                                            prefix={<PermissionModeIcon style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
                                             value={permissionMode ?? 'default'}
                                             onChange={v => onPermissionModeChange?.(v as PermissionMode)}
                                             disabled={controlsDisabled || showLocalModeCover}
                                             options={permissionSelectOptions}
+                                            optionRender={(option) => renderPermissionModeOption(option, t, token)}
+                                            virtual={false}
+                                            listHeight={320}
+                                            classNames={{ popup: { root: PERMISSION_MODE_DROPDOWN_CLASS } }}
                                             style={{ color: permissionModeColor }}
                                         />
                                     ),

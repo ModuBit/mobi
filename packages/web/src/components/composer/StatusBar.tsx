@@ -24,6 +24,7 @@ import {
 } from '@mobi/shared'
 import { getContextBudgetTokens } from '@/domain/chat'
 import { getPermissionModeColor } from './permissionModeColors'
+import { getPermissionModeIcon } from './permissionModeIcons'
 
 interface StatusBarProps {
     /** 是否正在运行 */
@@ -95,9 +96,8 @@ export function StatusBar(props: StatusBarProps) {
         }
     }, [contextSize, model, agentFlavor, t, token])
 
-    // 显示的权限模式
+    // 显示的权限模式（default 也展示，让用户始终看到当前审批策略）
     const displayPermissionMode = permissionMode
-        && permissionMode !== 'default'
         && isPermissionModeAllowedForFlavor(permissionMode, agentFlavor)
         ? permissionMode
         : null
@@ -105,6 +105,7 @@ export function StatusBar(props: StatusBarProps) {
     const permissionModeLabel = displayPermissionMode ? t(`composer.permissionModes.${displayPermissionMode}`) : null
     const permissionModeTone = displayPermissionMode ? getPermissionModeTone(displayPermissionMode) : null
     const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? token.colorTextSecondary
+    const PermissionModeIcon = displayPermissionMode ? getPermissionModeIcon(displayPermissionMode) : null
 
     return (
         <div style={{
@@ -148,7 +149,8 @@ export function StatusBar(props: StatusBarProps) {
                         {t('composer.abort')}
                     </Button>
                 ) : displayPermissionMode ? (
-                    <span style={{ fontSize: 12, color: permissionModeColor }}>
+                    <span style={{ fontSize: 12, color: permissionModeColor, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {PermissionModeIcon && <PermissionModeIcon style={{ fontSize: 12 }} />}
                         {permissionModeLabel}
                     </span>
                 ) : null}

@@ -308,12 +308,20 @@
     "abort": "中断",
     "send": "发送",
     "permissionModes": {
-      "default": "默认",
-      "acceptEdits": "接受编辑",
       "auto": "自动审批",
+      "default": "请求批准",
+      "acceptEdits": "接受编辑",
       "plan": "计划模式",
-      "bypassPermissions": "YOLO",
-      "dontAsk": "静默拒绝"
+      "dontAsk": "静默拒绝",
+      "bypassPermissions": "YOLO"
+    },
+    "permissionModeDescriptions": {
+      "auto": "智能审查每个动作，放行常规、拦截危险",
+      "default": "仅读取自动放行，写入与命令需确认",
+      "acceptEdits": "自动接受文件编辑与文件操作",
+      "plan": "只读探索并给出方案，不改动代码",
+      "dontAsk": "未预批准的操作一律拒绝，不弹窗",
+      "bypassPermissions": "跳过所有检查立即执行（谨慎）"
     },
     "activate": "恢复会话",
     "switchToRemote": "切换到远程模式",

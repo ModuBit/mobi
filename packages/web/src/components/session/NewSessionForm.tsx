@@ -26,6 +26,7 @@ import {
     Select,
     Spin,
     Tag,
+    theme,
     Tooltip,
     Typography,
 } from 'antd'
@@ -40,7 +41,10 @@ import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirect
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from '@/domain/session/types'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
-import { getEffortOptions, getPermissionModeOptionsForFlavor, type EffortLevel, type PermissionMode } from '@mobi/shared'
+import { getEffortOptions, getPermissionModeTone, type EffortLevel, type PermissionMode } from '@mobi/shared'
+import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from '@/components/composer/permissionModeOption'
+import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
+import { getPermissionModeIcon } from '@/components/composer/permissionModeIcons'
 import {
     loadPreferredAgent,
     loadPreferredEffort,
@@ -80,6 +84,8 @@ function startEllipsis(path: string, maxLen = 40): string {
  */
 export function NewSession(props: NewSessionProps) {
     const { t } = useTranslation()
+    const { token } = theme.useToken()
+    usePermissionModeDropdownStyle()
     useSessions()
 
     const { machines: fetchedMachines, isLoading: machinesLoading } = useMachines()
@@ -97,6 +103,9 @@ export function NewSession(props: NewSessionProps) {
     const [agent, setAgent] = useState<AgentType>(loadPreferredAgent)
     const [model, setModel] = useState(loadPreferredModel)
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(loadPreferredPermissionMode)
+    const permissionModeTone = getPermissionModeTone(permissionMode)
+    const permissionModeColor = getPermissionModeColor(token, permissionModeTone)
+    const PermissionModeIcon = getPermissionModeIcon(permissionMode)
     const [effort, setEffort] = useState<EffortLevel>(loadPreferredEffort)
     const [sessionType, setSessionType] = useState<SessionType>('simple')
     const [worktreeName, setWorktreeName] = useState('')
@@ -394,10 +403,13 @@ export function NewSession(props: NewSessionProps) {
                     <Select
                         value={permissionMode}
                         onChange={(v) => setPermissionMode(v)}
-                        options={getPermissionModeOptionsForFlavor(agent).map(opt => ({
-                            value: opt.mode,
-                            label: t(`composer.permissionModes.${opt.mode}`),
-                        }))}
+                        options={buildPermissionModeSelectOptions(t)}
+                        optionRender={(option) => renderPermissionModeOption(option, t, token)}
+                        prefix={<PermissionModeIcon style={{ color: permissionModeColor }} />}
+                        labelRender={(props) => <span style={{ color: permissionModeColor }}>{props.label}</span>}
+                        virtual={false}
+                        listHeight={320}
+                        classNames={{ popup: { root: PERMISSION_MODE_DROPDOWN_CLASS } }}
                         style={{ width: '100%' }}
                         disabled={isFormDisabled}
                     />

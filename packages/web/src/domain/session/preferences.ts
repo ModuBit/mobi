@@ -110,12 +110,19 @@ export function savePreferredEffort(effort: EffortLevel): void {
 
 /**
  * 加载首选权限模式
+ *
+ * 默认 auto：日常最常用、最适合远程托管场景（安全且少打扰）。
+ * 注意：仅对"无已存偏好"的用户生效；localStorage 已记录的偏好不被覆盖。
+ *
+ * 已知限制：auto 受账号 Plan / 模型版本 / Provider 影响（Bedrock / Vertex /
+ * Foundry 需设 CLAUDE_CODE_ENABLE_AUTO_MODE=1）。多数 Anthropic 官方 API 用户
+ * 支持；若运行时 SDK 拒绝 auto，会话创建会失败——用户需手动切换其他模式。
  */
 export function loadPreferredPermissionMode(): PermissionMode {
     return loadPreference(
         PERMISSION_MODE_STORAGE_KEY,
         (v): v is PermissionMode => (PERMISSION_MODES as readonly string[]).includes(v),
-        'default'
+        'auto'
     )
 }
 

@@ -308,12 +308,20 @@
     "abort": "Abort",
     "send": "Send",
     "permissionModes": {
-      "default": "Default",
-      "acceptEdits": "Accept Edits",
       "auto": "Auto",
+      "default": "Request Approval",
+      "acceptEdits": "Accept Edits",
       "plan": "Plan Mode",
-      "bypassPermissions": "YOLO",
-      "dontAsk": "Don't Ask"
+      "dontAsk": "Don't Ask",
+      "bypassPermissions": "YOLO"
+    },
+    "permissionModeDescriptions": {
+      "auto": "Reviews each action, runs safe ones, blocks risky",
+      "default": "Reads auto-run; writes and commands need approval",
+      "acceptEdits": "Auto-accept file edits and file operations",
+      "plan": "Explore read-only and propose a plan, no edits",
+      "dontAsk": "Deny anything not pre-approved, no prompts",
+      "bypassPermissions": "Skip all checks, run immediately (careful)"
     },
     "activate": "Resume",
     "switchToRemote": "Switch to Remote Mode",

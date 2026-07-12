@@ -17,13 +17,13 @@
 import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from 'react'
 import { App, Button, Input, Tooltip, Select, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
 import { Sender } from '@ant-design/x'
-import { PlusOutlined, InboxOutlined, SafetyOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
+import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
-import { EFFORT_LEVELS, EFFORT_LABELS, getPermissionModeOptionsForFlavor, getPermissionModeTone } from '@mobi/shared'
+import { EFFORT_LEVELS, EFFORT_LABELS, getPermissionModeTone } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
@@ -60,6 +60,8 @@ import { normalizeDirectoryPath } from '@/core/utils/path'
 import { makeClientSideId } from '@/core/lib/messages'
 import { saveDraftText } from '@/core/lib/draftText'
 import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
+import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from '@/components/composer/permissionModeOption'
+import { getPermissionModeIcon } from '@/components/composer/permissionModeIcons'
 import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
 
 const { useToken } = antTheme
@@ -676,27 +678,15 @@ export function NewSessionPage() {
     }, [model])
 
     // permission mode 选项（带颜色 + 国际化，同 ChatComposer）
-    const permissionModeOptions = useMemo(
-        () => getPermissionModeOptionsForFlavor(),
-        []
-    )
+    usePermissionModeDropdownStyle()
     const permissionSelectOptions = useMemo(
-        () => permissionModeOptions.map(opt => {
-            const color = opt.tone !== 'neutral'
-                ? getPermissionModeColor(token, opt.tone)
-                : undefined
-            return {
-                value: opt.mode,
-                label: color
-                    ? <span style={{ color }}>{t(`composer.permissionModes.${opt.mode}`)}</span>
-                    : t(`composer.permissionModes.${opt.mode}`),
-            }
-        }),
-        [permissionModeOptions, t, token]
+        () => buildPermissionModeSelectOptions(t),
+        [t]
     )
 
-    const permissionModeTone = permissionMode !== 'default' ? getPermissionModeTone(permissionMode) : null
+    const permissionModeTone = getPermissionModeTone(permissionMode ?? 'default')
     const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
+    const PermissionModeIcon = getPermissionModeIcon(permissionMode ?? 'default')
 
     // ============ ActionItems ============
 
@@ -725,11 +715,15 @@ export function NewSessionPage() {
             render: () => (
                 <CompactHoverSelect
                     $token={token}
-                    prefix={<SafetyOutlined style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
+                    prefix={<PermissionModeIcon style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
                     value={permissionMode}
                     onChange={v => setPermissionMode(v as PermissionMode)}
                     disabled={inputDisabled}
                     options={permissionSelectOptions}
+                    optionRender={(option) => renderPermissionModeOption(option, t, token)}
+                    virtual={false}
+                    listHeight={320}
+                    classNames={{ popup: { root: PERMISSION_MODE_DROPDOWN_CLASS } }}
                     style={{ color: permissionModeColor }}
                 />
             ),
