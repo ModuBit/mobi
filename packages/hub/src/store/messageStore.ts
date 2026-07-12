@@ -19,7 +19,16 @@ import type { Database } from 'bun:sqlite'
 import type { MessageCategory } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
-import { addMessage, getMessages, getMessagesAfter, getSidechainMessages, mergeSessionMessages } from './messages'
+import {
+    addMessage,
+    cancelQueuedMessage,
+    getMessages,
+    getMessagesAfter,
+    getSidechainMessages,
+    getUninvokedLocalMessages,
+    markMessagesInvoked,
+    mergeSessionMessages
+} from './messages'
 
 export class MessageStore {
     private readonly db: Database
@@ -46,5 +55,17 @@ export class MessageStore {
 
     mergeSessionMessages(fromSessionId: string, toSessionId: string): { moved: number; oldMaxSeq: number; newMaxSeq: number } {
         return mergeSessionMessages(this.db, fromSessionId, toSessionId)
+    }
+
+    markMessagesInvoked(sessionId: string, localIds: string[], invokedAt: number): string[] {
+        return markMessagesInvoked(this.db, sessionId, localIds, invokedAt)
+    }
+
+    getUninvokedLocalMessages(sessionId: string): StoredMessage[] {
+        return getUninvokedLocalMessages(this.db, sessionId)
+    }
+
+    cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; invoked: boolean } {
+        return cancelQueuedMessage(this.db, sessionId, localId)
     }
 }

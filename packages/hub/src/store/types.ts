@@ -55,6 +55,8 @@ export type StoredMessage = {
     isSidechain: boolean
     parentToolUseId: string | null
     category: string  // 'discard' | 'ephemeral' | 'persistent'
+    /** 被 agent 处理的时刻；null = 仍在排队 */
+    invokedAt: number | null
 }
 
 export type StoredUser = {
