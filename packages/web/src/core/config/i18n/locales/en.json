@@ -309,8 +309,10 @@
     "permissionModes": {
       "default": "Default",
       "acceptEdits": "Accept Edits",
+      "auto": "Auto",
       "plan": "Plan Mode",
-      "bypassPermissions": "YOLO"
+      "bypassPermissions": "YOLO",
+      "dontAsk": "Don't Ask"
     },
     "activate": "Resume",
     "switchToRemote": "Switch to Remote Mode",

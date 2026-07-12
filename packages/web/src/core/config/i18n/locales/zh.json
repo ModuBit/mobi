@@ -309,8 +309,10 @@
     "permissionModes": {
       "default": "默认",
       "acceptEdits": "接受编辑",
+      "auto": "自动审批",
       "plan": "计划模式",
-      "bypassPermissions": "YOLO"
+      "bypassPermissions": "YOLO",
+      "dontAsk": "静默拒绝"
     },
     "activate": "恢复会话",
     "switchToRemote": "切换到远程模式",
