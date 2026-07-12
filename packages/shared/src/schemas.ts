@@ -382,6 +382,11 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
             timeoutAt: z.number(),
             remainingMs: z.number()
         })
+    }),
+    SessionChangedSchema.extend({
+        type: z.literal('messages-consumed'),
+        localIds: z.array(z.string()),
+        invokedAt: z.number(),
     })
 ])
 

@@ -282,6 +282,18 @@ describe('SyncEventSchema', () => {
     })
 })
 
+describe('SyncEventSchema messages-consumed', () => {
+    it('parses messages-consumed event', () => {
+        const evt = { type: 'messages-consumed', sessionId: 's1', localIds: ['a', 'b'], invokedAt: 999 }
+        const parsed = SyncEventSchema.parse(evt)
+        expect(parsed.type).toBe('messages-consumed')
+        if (parsed.type === 'messages-consumed') {
+            expect(parsed.localIds).toEqual(['a', 'b'])
+            expect(parsed.invokedAt).toBe(999)
+        }
+    })
+})
+
 describe('BackgroundTaskItemSchema', () => {
     it('解析有效的 background task', () => {
         const task = {
