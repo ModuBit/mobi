@@ -554,7 +554,7 @@ export async function claudeRemote(opts: {
         settings: opts.hookSettingsPath,
         additionalDirectories: [join(opts.path, '.mobi')],
         toolConfig: {
-            askUserQuestion: { previewFormat: 'html' }
+            askUserQuestion: { previewFormat: 'markdown' }
         },
     }
 

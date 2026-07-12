@@ -19,31 +19,61 @@ import { memo, useMemo } from 'react'
 import { Popover, theme as antTheme } from 'antd'
 import { Eye } from 'lucide-react'
 import styled from '@emotion/styled'
+import DOMPurify from 'dompurify'
 import { Markdown } from '@/components/ui/Markdown'
 
+/** markdown 块级语法特征（标题/列表/引用/代码围栏）；命中则即便被 HTML 元素包裹也按 markdown 处理 */
+const MARKDOWN_BLOCK_SYNTAX = /(^|\n)\s*(#{1,6}\s|[-*+]\s|>\s|```)/
+
+/**
+ * 判断整段内容是否为 HTML 片段
+ *
+ * 不靠「以 < 开头」这种粗糙启发式（markdown 源码里的 <details>、<br>、`<` 比较符都会误判），
+ * 而是用 DOMParser 真正解析一遍：若 body 的直接子节点中存在「裸文本节点」，说明内容混杂了
+ * 非标签文本（典型的 markdown 源码特征），按 markdown 渲染；仅当 body 全由元素节点构成时才视为 HTML。
+ *
+ * 额外兜底：即便 body 全是元素（如 `<div>\n# 标题\n</div>` 这种 markdown 被 HTML 包裹的形式），
+ * 只要文本含 markdown 块语法特征，仍按 markdown 处理——避免误判后走 HTML 分支显示裸源码。
+ */
 function isHtmlContent(content: string): boolean {
-    return /^<[a-zA-Z]/s.test(content)
+    const trimmed = content.trim()
+    if (!trimmed) return false
+    if (MARKDOWN_BLOCK_SYNTAX.test(trimmed)) return false
+    const doc = new DOMParser().parseFromString(trimmed, 'text/html')
+    return !Array.from(doc.body.childNodes).some(
+        node => node.nodeType === Node.TEXT_NODE && (node.textContent?.trim().length ?? 0) > 0,
+    )
 }
 
 function PreviewContent({ content }: { content: string }) {
     const { token } = antTheme.useToken()
-    const style: React.CSSProperties = {
+    const baseStyle: React.CSSProperties = {
         maxHeight: 300,
         overflow: 'auto',
         fontSize: 13,
         lineHeight: 1.6,
         color: token.colorText,
     }
-    if (isHtmlContent(content)) {
+    // 判定结果按内容缓存，避免 Popover 重渲染时重复 DOMParser 解析
+    const isHtml = useMemo(() => isHtmlContent(content), [content])
+    // HTML 分支：preview 内容来自模型/链路，用 DOMPurify 清洗后再注入，拦截 <script>/onerror 等
+    const sanitizedHtml = useMemo(
+        () => (isHtml ? DOMPurify.sanitize(content) : ''),
+        [isHtml, content],
+    )
+    if (isHtml) {
         return (
             <div
-                style={style}
-                dangerouslySetInnerHTML={{ __html: content }}
+                style={baseStyle}
+                dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
             />
         )
     }
+    // markdown preview：等宽字体，对齐 SDK 的 markdown preview「monospace box」观感。
+    // 不在外层强制 white-space——ASCII 图依赖 XMarkdown 代码块自带的 pre 保持列对齐，
+    // 普通文本自然换行；若外层加 pre 会与 Markdown 的 breaks:true 冲突产生双倍行距。
     return (
-        <div style={style}>
+        <div style={{ ...baseStyle, fontFamily: 'var(--font-mono)' }}>
             <Markdown content={content} typing={false} />
         </div>
     )
