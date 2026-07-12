@@ -250,6 +250,11 @@ export class SyncEngine {
         await this.messageService.sendMessage(sessionId, payload)
     }
 
+    /** 取消仍排队的消息（物理删除）；已 invoke 的不动 */
+    cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; invoked: boolean } {
+        return this.messageService.cancelQueuedMessage(sessionId, localId)
+    }
+
     async approvePermission(
         sessionId: string,
         requestId: string,

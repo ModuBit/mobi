@@ -110,5 +110,23 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return c.json({ ok: true })
     })
 
+    // 取消排队消息（仍处于 invoked_at IS NULL 状态的 user 消息）
+    app.delete('/sessions/:id/messages/:messageId', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const sessionId = sessionResult.sessionId
+        const localId = c.req.param('messageId')
+        const res = engine.cancelQueuedMessage(sessionId, localId)
+        return c.json({ status: res.cancelled ? 'cancelled' : 'invoked' })
+    })
+
     return app
 }

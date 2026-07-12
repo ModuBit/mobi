@@ -21,7 +21,14 @@ import { EventPublisher } from './eventPublisher'
 
 export class MessageService {
     private static toDecrypted(message: StoredMessage): DecryptedMessage {
-        return { id: message.id, seq: message.seq, localId: message.localId, content: message.content, createdAt: message.createdAt }
+        return {
+            id: message.id,
+            seq: message.seq,
+            localId: message.localId,
+            invokedAt: message.invokedAt,
+            content: message.content,
+            createdAt: message.createdAt,
+        }
     }
 
     constructor(
@@ -43,8 +50,18 @@ export class MessageService {
         const stored = this.store.messages.getMessages(sessionId, options.limit, options.beforeSeq ?? undefined, true)
         const messages: DecryptedMessage[] = stored.map(MessageService.toDecrypted)
 
+        // 首页：out-of-band 钉入仍排队的本地 user 消息（悬浮条）
+        // getUninvokedLocalMessages 返回 seq ASC，追加到列表尾部，不参与 nextBeforeSeq/hasMore 计算
+        if (options.beforeSeq === null || options.beforeSeq === undefined) {
+            const inPageIds = new Set(stored.map(r => r.id))
+            const uninvoked = this.store.messages.getUninvokedLocalMessages(sessionId)
+                .filter(m => !inPageIds.has(m.id))
+                .map(MessageService.toDecrypted)
+            messages.push(...uninvoked)
+        }
+
         let oldestSeq: number | null = null
-        for (const message of messages) {
+        for (const message of stored) {
             if (typeof message.seq !== 'number') continue
             if (oldestSeq === null || message.seq < oldestSeq) {
                 oldestSeq = message.seq
@@ -130,5 +147,15 @@ export class MessageService {
                 createdAt: msg.createdAt
             }
         })
+    }
+
+    /** 标记 localId 对应的排队消息为「已消费」（invokedAt 落库），返回实际更新的 localId 列表 */
+    markMessagesInvoked(sessionId: string, localIds: string[], invokedAt: number): string[] {
+        return this.store.messages.markMessagesInvoked(sessionId, localIds, invokedAt)
+    }
+
+    /** 取消仍排队的消息（物理删除）；已 invoke 的不动 */
+    cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; invoked: boolean } {
+        return this.store.messages.cancelQueuedMessage(sessionId, localId)
     }
 }

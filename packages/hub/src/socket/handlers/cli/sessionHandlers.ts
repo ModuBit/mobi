@@ -439,4 +439,24 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             }
         })
     })
+
+    // CLI 消费了排队消息 → 标记 invokedAt 后转发 SSE 给 Web
+    socket.on('messages-consumed', (data: { sid: string; localIds: string[] }) => {
+        if (!data || typeof data.sid !== 'string' || !Array.isArray(data.localIds)) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        if (data.localIds.length === 0) return
+
+        const invokedAt = Date.now()
+        const fresh = store.messages.markMessagesInvoked(data.sid, data.localIds, invokedAt)
+        // DB 落盘成功后才转发 SSE，防 live/refresh 状态分叉
+        if (fresh.length > 0) {
+            onWebappEvent?.({ type: 'messages-consumed', sessionId: data.sid, localIds: fresh, invokedAt })
+        }
+    })
 }
