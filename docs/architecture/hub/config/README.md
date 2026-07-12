@@ -65,6 +65,7 @@ configuration.listenPort
 | `publicUrl` | `string` | `MOBI_PUBLIC_URL` | `http://localhost:{port}` | `settings.json` |
 | `corsOrigins` | `string[]` | `CORS_ORIGINS` | 从 publicUrl 派生 | `settings.json` |
 | `cliApiToken` | `string` | `CLI_API_TOKEN` | 自动生成 | `settings.json` |
+| `webApiToken` | `string` | `WEB_API_TOKEN` | 自动生成 | `settings.json` |
 
 > `dataDir` 和 `dbPath` 仅通过环境变量设置，不持久化到 `settings.json`。
 
@@ -129,6 +130,21 @@ flowchart TB
 | Namespace 去除 | 如果 token 包含 `:` 后缀，自动剥离并警告 |
 | 自动持久化 | 环境变量首次使用时写入文件，防止丢失 |
 | 加密安全生成 | 32 字节（256 位）随机数，base64url 编码 |
+
+### Web API Token
+
+**文件**: [`packages/hub/src/config/webApiToken.ts`](/packages/hub/src/config/webApiToken.ts)
+
+Web 浏览器登录专用密钥（`POST /api/auth` 的校验源），与 CLI 的 `cliApiToken` **完全独立、互不通用**。三级来源：环境变量 `WEB_API_TOKEN` > `settings.json` > 自动生成（32 字节 base64url）。
+
+| 属性 | 说明 |
+|------|------|
+| 用途 | Web 登录（换 JWT）；不可访问 `/cli/*` |
+| 生成 | 32 字节（256 位）随机数，base64url 编码 |
+| 自动持久化 | 环境变量首次使用时写入文件，防止丢失 |
+| 热轮换 | `mobi auth rotate-web-token` 重写 settings.json，hub 经 [`settingsWatcher.ts`](./settingsWatcher.ts)（fs.watch）热 reload，无需重启 |
+
+> 轮换后已签发的 JWT 最长 1 天自然失效；新登录需用新 webApiToken。查看当前值：`mobi auth web-token`。
 
 ### JWT Secret
 
@@ -220,6 +236,8 @@ packages/hub/src/
 ├── configuration.ts          # Configuration 单例 + createConfiguration()
 └── config/
     ├── cliApiToken.ts        # CLI API Token 管理
+    ├── webApiToken.ts        # Web API Token 管理（与 cliApiToken 独立）
+    ├── settingsWatcher.ts    # settings.json 监听（webApiToken 热轮换）
     ├── serverSettings.ts     # 服务器设置（host/port/CORS）
     ├── jwtSecret.ts          # JWT 签名密钥
     ├── vapidKeys.ts          # Web Push VAPID 密钥
@@ -232,7 +250,7 @@ packages/hub/src/
 
 ```
 ~/.mobi/
-├── settings.json       # 主配置文件（服务器设置、CLI Token、VAPID Keys）
+├── settings.json       # 主配置文件（服务器设置、CLI/Web Token、VAPID Keys）
 ├── jwt-secret.json     # JWT 密钥（独立文件，权限 600）
 ├── owner-id.json       # 所有者 ID（独立文件，权限 600）
 └── mobi.db             # SQLite 数据库
@@ -248,5 +266,6 @@ packages/hub/src/
 | `MOBI_LISTEN_PORT` | 监听端口 | `settings.json` |
 | `MOBI_PUBLIC_URL` | 公开 URL | `settings.json` |
 | `CORS_ORIGINS` | CORS 来源 | `settings.json` |
-| `CLI_API_TOKEN` | CLI 认证 Token | `settings.json` |
+| `CLI_API_TOKEN` | CLI 认证 Token（CLI 专用） | `settings.json` |
+| `WEB_API_TOKEN` | Web 登录 Token（Web 专用，与 CLI 独立） | `settings.json` |
 | `VAPID_SUBJECT` | Web Push 联系方式 | 不持久化 |
