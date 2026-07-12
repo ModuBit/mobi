@@ -218,4 +218,6 @@ export interface ClientToServerEvents {
     ping: (callback: () => void) => void
     'usage-report': (data: unknown) => void
     'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
+    'messages-consumed': (data: { sid: string; localIds: string[] }) => void
+    'cancel-queued-message': (data: { sid: string; messageId: string; localId: string }) => void
 }
