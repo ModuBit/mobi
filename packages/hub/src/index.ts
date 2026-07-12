@@ -31,6 +31,7 @@ import { NotificationHub } from './notifications/notificationHub'
 import type { NotificationChannel } from './notifications/notificationTypes'
 import { startWebServer } from './web/server'
 import { getOrCreateJwtSecret } from './config/jwtSecret'
+import { startWebApiTokenWatcher } from './config/settingsWatcher'
 import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
@@ -75,6 +76,25 @@ async function main() {
         console.log('')
     } else {
         console.log(`[Hub] CLI_API_TOKEN: loaded from ${formatSource(config.sources.cliApiToken)}`)
+    }
+
+    // Display Web API token information
+    if (config.webApiTokenIsNew) {
+        console.log('')
+        console.log('='.repeat(70))
+        console.log('  NEW WEB_API_TOKEN GENERATED (Web 浏览器登录用，与 CLI 密钥独立)')
+        console.log('='.repeat(70))
+        console.log('')
+        console.log(`  Token: ${config.webApiToken}`)
+        console.log('')
+        console.log(`  Saved to: ${config.settingsFile}`)
+        console.log('')
+        console.log('  查看命令: mobi auth web-token    轮换命令: mobi auth rotate-web-token')
+        console.log('')
+        console.log('='.repeat(70))
+        console.log('')
+    } else {
+        console.log(`[Hub] WEB_API_TOKEN: loaded from ${formatSource(config.sources.webApiToken)}`)
     }
 
     console.log(`[Hub] MOBI_LISTEN_HOST: ${config.listenHost} (${formatSource(config.sources.listenHost)})`)
@@ -130,6 +150,9 @@ async function main() {
         corsOrigins: config.corsOrigins
     })
 
+    // 启动 settings.json 监听：webApiToken 轮换时热 reload，无需重启 hub
+    const settingsWatcher = startWebApiTokenWatcher()
+
     console.log('')
     console.log('[Web] Hub listening on :' + config.listenPort)
     console.log('[Web] Local:  http://localhost:' + config.listenPort)
@@ -151,6 +174,7 @@ async function main() {
         syncEngine?.stop()
         sseManager?.stop()
         webServer?.stop()
+        settingsWatcher.stop()
         console.log('Shutdown complete.')
         process.exit(0)
     }
