@@ -144,6 +144,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
         });
 
+        // 取消排队消息（web → hub → cli 两阶段取消的 CLI 侧）
+        // DB 层删除无法影响 CLI 内存中已缓冲的消息，需通过此 RPC 从内存队列移除
+        session.client.rpcHandlerManager.registerHandler('cancel-queued-message', async (params) => {
+            const { localId } = (params ?? {}) as { localId?: string }
+            if (!localId) return { status: 'invoked' }
+            const removed = session.queue.cancelByLocalId(localId)
+            return { status: removed ? 'cancelled' : 'invoked' }
+        });
+
         const permissionHandler = new PermissionHandler(session);
         this.permissionHandler = permissionHandler;
 
