@@ -443,6 +443,52 @@ describe('userInputLoop', () => {
 
         await loopPromise
     })
+
+    it('agent 运行时不拉消息，idle 后才拉（gated pump C-2）', async () => {
+        const messages = new PushableAsyncIterable<any>()
+        const ctx: LoopContext = { isCompactCommand: false }
+        const specialCommandCtx = createMockSpecialCommandCtx()
+        const ac = new AbortController()
+
+        let running = true
+        let idleR: (() => void) | null = null
+        const waitForIdle = () => new Promise<void>(r => { idleR = r })
+
+        let nextCalls = 0
+        const nextMessage = vi.fn().mockImplementation(async () => {
+            nextCalls++
+            return null
+        })
+
+        const loopPromise = userInputLoop(messages, ctx, {
+            nextMessage,
+            specialCommandCtx,
+            isRunning: () => running,
+            waitForIdle,
+            signal: ac.signal,
+        })
+
+        // 几轮 microtask 后，running=true → 门控生效，不应拉消息
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(nextCalls).toBe(0)
+
+        // 模拟 result → agent 闲置
+        running = false
+        idleR?.()
+
+        // idle 后门控放行，应拉取一条消息
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(nextCalls).toBe(1)
+
+        // 清理
+        ac.abort()
+        messages.end()
+        await loopPromise.catch(() => {})
+    })
 })
 
 // ─── 取消机制测试 ────────────────────────────────────────────────
@@ -534,5 +580,36 @@ describe('取消机制 (AbortController)', () => {
         // userInputLoop 应在 abort 后退出
         await userDone
         expect(messages.done).toBe(true)
+    })
+
+    it('门控等待 idle 时 abort 能打破等待并退出（C-2 gated pump）', async () => {
+        const messages = new PushableAsyncIterable<any>()
+        const ctx: LoopContext = { isCompactCommand: false }
+        const controller = new AbortController()
+        const specialCommandCtx = createMockSpecialCommandCtx()
+
+        // agent 一直运行，waitForIdle 永不 resolve（模拟长时间运行）
+        const waitForIdle = () => new Promise<void>(() => {})
+        const nextMessage = vi.fn().mockImplementation(() => new Promise<null>(() => {}))
+
+        const loopPromise = userInputLoop(messages, ctx, {
+            nextMessage,
+            specialCommandCtx,
+            isRunning: () => true,
+            waitForIdle,
+            signal: controller.signal,
+        })
+
+        // 循环应挂起在 idle 等待上
+        await new Promise((r) => setTimeout(r, 20))
+        expect(nextMessage).not.toHaveBeenCalled()
+        expect(messages.done).toBe(false)
+
+        // abort 应打破 idle 等待
+        controller.abort()
+        await loopPromise
+
+        expect(messages.done).toBe(true)
+        expect(nextMessage).not.toHaveBeenCalled()
     })
 })

@@ -359,9 +359,25 @@ export async function userInputLoop(
         specialCommandCtx: SpecialCommandContext
         /** 中止信号，外部调用 abort() 时退出循环 */
         signal?: AbortSignal
+        /** agent 是否正在运行（门控：运行时暂缓拉消息） */
+        isRunning?: () => boolean
+        /** 等待 agent 闲置（running 翻 false / result 时 resolve） */
+        waitForIdle?: () => Promise<void>
     },
 ): Promise<void> {
     while (!opts.signal?.aborted) {
+        // 门控：agent 在跑就先等到 result（idle）；agent 闲置时直接拉
+        if (opts.isRunning?.()) {
+            const waitIdle = opts.waitForIdle ?? (() => Promise.resolve())
+            if (opts.signal) {
+                await abortable(waitIdle(), opts.signal, undefined)
+            } else {
+                await waitIdle()
+            }
+            // abort 后立即退出
+            if (opts.signal?.aborted) { messages.end(); return }
+        }
+
         // 将 nextMessage 与 abort 信号竞争，避免 sdkOutputLoop 结束后永远挂起
         const next = await (opts.signal
             ? abortable(opts.nextMessage(), opts.signal, null)
@@ -590,10 +606,24 @@ export async function claudeRemote(opts: {
 
     // Track running state
     let running = false;
+
+    // idle gate：running 翻 false（result）时 resolve，供 userInputLoop 等待
+    // 保证消息只在 agent 闲置时才被拉取并推送，避免 turn 串扰
+    let idleResolver: (() => void) | null = null
+    const waitForIdle = (): Promise<void> =>
+        new Promise<void>(resolve => { idleResolver = resolve })
+    const resolveIdle = (): void => {
+        const r = idleResolver
+        idleResolver = null
+        r?.()
+    }
+
     const updateRunning = (newRunning: boolean) => {
         if (running !== newRunning) {
             running = newRunning;
             logger.debug(`[claudeRemote] Running state changed to: ${running}`);
+            // result → 放行 userInputLoop 门控
+            if (!newRunning) resolveIdle()
             if (opts.onRunningChange) {
                 opts.onRunningChange(running);
             }
@@ -664,6 +694,8 @@ export async function claudeRemote(opts: {
             userInputLoop(messages, loopCtx, {
                 nextMessage: opts.nextMessage,
                 specialCommandCtx,
+                isRunning: () => running,
+                waitForIdle,
                 signal: loopAbort.signal,
             }),
         ])
