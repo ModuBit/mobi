@@ -208,7 +208,7 @@ export async function startRunner(): Promise<void> {
 
       const { directory, approvedNewDirectoryCreation = true } = options;
       const effort = options.effort;
-      const yolo = options.yolo === true;
+      const permissionMode = options.permissionMode;
       const sessionType = options.sessionType ?? 'simple';
       const worktreeName = options.worktreeName;
       let directoryCreated = false;
@@ -355,8 +355,8 @@ export async function startRunner(): Promise<void> {
         if (effort !== undefined) {
           args.push('--effort', effort);
         }
-        if (yolo) {
-          args.push('--yolo');
+        if (permissionMode) {
+          args.push('--permission-mode', permissionMode);
         }
 
         // sessionId reserved for future use

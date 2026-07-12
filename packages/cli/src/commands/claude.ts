@@ -17,7 +17,7 @@
 import chalk from 'chalk'
 import { execFileSync, spawn } from 'node:child_process'
 import { z } from 'zod'
-import { PROTOCOL_VERSION, type EffortLevel } from '@mobi/shared'
+import { PROTOCOL_VERSION, PERMISSION_MODES, type EffortLevel } from '@mobi/shared'
 import type { StartOptions } from '@/claude/runClaude'
 import { configuration } from '@/configuration'
 import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@/runner/controlClient'
@@ -123,6 +123,13 @@ export const claudeCommand: CommandDefinition = {
                 // 设置yolo模式
                 options.permissionMode = 'bypassPermissions'
                 unknownArgs.push('--dangerously-skip-permissions')
+            } else if (arg === '--permission-mode') {
+                // 设置权限模式（newchat 透传）
+                const mode = args[++i]
+                if (!mode) {
+                    throw new Error('Missing --permission-mode value')
+                }
+                options.permissionMode = z.enum(PERMISSION_MODES).parse(mode)
             } else if (arg === '--dangerously-skip-permissions') {
                 // 与yolo模式相同
                 options.permissionMode = 'bypassPermissions'
