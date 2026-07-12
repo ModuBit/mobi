@@ -16,6 +16,19 @@
     display: none !important;
 }
 
+/* Sender 输入框 focus 黑框修复
+   antd-x Sender 内部 textarea 用的是 antd Input 的 borderless 变体（antd v6.5 / x v2.8 起）。
+   而 antd Input 的 :focus { outline:0 } 只写在 outlined/filled 变体上，borderless 没有 →
+   focus 时暴露浏览器 UA 默认 textarea:focus outline（一圈黑框）。
+   Sender 的 focus 反馈本就由外层 .ant-sender-main 常驻 border + box-shadow 提供
+   （ChatComposer/NewSessionPage 虽把这俩干掉做"卡中卡"，但光标 caret 已足够提示），
+   故此处显式 reset 内部 textarea 的 outline（含 :focus-visible）。
+   守卫测试：tests/sender-focus-outline.test.ts */
+.ant-sender .ant-input:focus,
+.ant-sender .ant-input:focus-visible {
+    outline: none;
+}
+
 /* assistant 气泡右侧空间压缩到 5% */
 .ant-bubble-list .ant-bubble-start:not(.ant-bubble-divider):not(.ant-bubble-system) {
     padding-inline-end: 5% !important;
