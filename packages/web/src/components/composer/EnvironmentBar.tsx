@@ -175,7 +175,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
     const activeMachines = machines.filter(m => m.active !== false)
 
     // 目录下拉受控：选中目录后子目录加载完成时自动展开
-    const [, setDirectoryOpen] = useState(false)
+    const [directoryOpen, setDirectoryOpen] = useState(false)
     const pendingOpenRef = useRef(false)
 
     useEffect(() => {
@@ -243,13 +243,21 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                     options={autoCompleteOptions}
                     placeholder="输入项目/目录路径"
                     value={selectedDirectory}
+                    open={directoryOpen && autoCompleteOptions.length > 0}
+                    onOpenChange={(open) => {
+                        // pendingOpen 期间（选中目录后等子目录加载）阻止 antd 关闭下拉
+                        if (!open && pendingOpenRef.current) return
+                        setDirectoryOpen(open)
+                    }}
                     onChange={(value: string) => {
                         onDirectoryChange(value)
                         pendingOpenRef.current = false
+                        setDirectoryOpen(true)
                     }}
                     onSelect={(value: string) => {
                         const dir = value.endsWith('/') ? value : `${value}/`
                         onDirectoryChange(dir)
+                        // 标记 pending：等 directoryOptions 更新为子目录后由 effect 重新展开
                         pendingOpenRef.current = true
                     }}
                     defaultActiveFirstOption
