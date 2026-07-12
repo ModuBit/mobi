@@ -155,6 +155,9 @@ export function createMobiApi() {
                     params: { parentToolUseId },
                     signal: opts?.signal,
                 }),
+            // 取消排队消息（仍处于 invokedAt=null 的 user 消息）；已 invoke 则返回 'invoked'
+            cancel: (sessionId: string, messageId: string) =>
+                client.delete<{ status: 'cancelled' | 'invoked' }>(`/api/sessions/${sessionId}/messages/${messageId}`),
         },
 
         // Git

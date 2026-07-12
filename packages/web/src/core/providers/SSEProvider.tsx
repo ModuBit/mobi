@@ -21,6 +21,7 @@ import { SSEClient } from '@/core/data/realtime/sseClient'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate } from '@tanstack/react-router'
 import { queryKeys } from '@/core/lib/query-keys'
+import { markMessagesConsumed } from '@/core/lib/markMessagesConsumed'
 import { useTranslation } from 'react-i18next'
 import { useNotify } from '@/core/data/hooks/useNotify'
 import { useMobiApi } from '@/core/data/api/client'
@@ -393,6 +394,24 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'message-snapshot':
                 if (event.message && event.sessionId) {
                     upsertMessageCache(qc, event.sessionId, event.message as DecryptedMessage)
+                }
+                break
+            case 'messages-consumed':
+                // 排队消息被 agent 真正消费：把命中 localId 的消息 invokedAt 翻为给定时间戳
+                if (event.sessionId && event.localIds?.length) {
+                    qc.setQueryData<InfiniteData<MessagesResponse>>(
+                        queryKeys.messages(event.sessionId),
+                        (old) => {
+                            if (!old) return old
+                            return {
+                                ...old,
+                                pages: old.pages.map(page => ({
+                                    ...page,
+                                    messages: markMessagesConsumed(page.messages, event.localIds, event.invokedAt),
+                                })),
+                            }
+                        },
+                    )
                 }
                 break
             case 'machine-updated':

@@ -87,7 +87,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         isFetchingNextPage,
     } = useMessages(sessionId)
     const { data: session } = useSession(sessionId)
-    const sendMutation = useSendMessage(sessionId)
+    const sendMutation = useSendMessage(sessionId, session?.running ?? false)
     const sessionActions = useSessionActions(sessionId)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const scrollBoxRef = useRef<HTMLElement | null>(null)
