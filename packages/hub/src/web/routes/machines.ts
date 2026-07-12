@@ -16,9 +16,8 @@
 
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { PermissionModeSchema } from '@mobi/shared'
+import { PermissionModeSchema, EFFORT_LEVELS } from '@mobi/shared'
 import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSecurity'
-import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'

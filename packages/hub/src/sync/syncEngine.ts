@@ -392,7 +392,7 @@ export class SyncEngine {
             metadata.path,
             'claude',  // Mobi 当前仅支持 Claude
             session.runtimeState?.model ?? undefined,
-            undefined,
+            session.permissionMode,
             undefined,
             undefined,
             resumeToken,

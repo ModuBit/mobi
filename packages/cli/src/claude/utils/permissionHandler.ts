@@ -266,21 +266,32 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
+        // 防御性诊断：acceptEdits/bypassPermissions 模式下 canUseTool 理论上不被 SDK 调用
+        // （SDK 自行放行编辑/全部工具）。若被调用，说明 SDK 行为与文档不符，记 warn 便于排查
+        if (this.permissionMode === 'acceptEdits' || this.permissionMode === 'bypassPermissions') {
+            logger.debug(`[permission][WARN] canUseTool invoked in ${this.permissionMode} mode for ${toolName}; SDK should have auto-handled`);
+        }
+
         //
         // Approval flow
         //
 
         // [W2a] 观测 SDK suggestions 提供率，为会话白名单简化决策提供数据
-        const suggCount = options.suggestions?.length ?? 0
-        const suggDest = options.suggestions?.[0]?.destination ?? 'none'
+        const suggestions = options.suggestions ?? []
+        const dests = suggestions.length > 0 ? suggestions.map(s => s.destination).join(',') : 'none'
         logger.debug(
-            `[permission-stats] tool=${toolName} hasSuggestions=${suggCount > 0} count=${suggCount} dest=${suggDest}`
+            `[permission-stats] tool=${toolName} count=${suggestions.length} dests=${dests}`
         )
 
         // SDK 契约：canUseTool 入参稳定提供 toolUseID（sdk.d.ts:245，非可选）
+        // 防御：若 SDK 边缘场景未提供，deny 该工具而非抛错中断整个流程
         const toolCallId = options.toolUseID;
         if (!toolCallId) {
-            throw new Error(`SDK did not provide toolUseID for ${toolName}`);
+            logger.debug(`[permission][ERROR] SDK did not provide toolUseID for ${toolName}, denying`);
+            return {
+                behavior: 'deny',
+                message: `Cannot authorize ${toolName}: missing toolUseID from SDK`
+            };
         }
         // 注入 agent 信息到 sdkHints（只拷贝 SDKUIHints 已知字段，排除 signal 等）
         const sdkHints: SDKUIHints = {

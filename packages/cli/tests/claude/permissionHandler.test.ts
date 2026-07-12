@@ -151,17 +151,17 @@ describe('PermissionHandler — toolCallId 直接用 SDK toolUseID', () => {
         expect(ids).toContain('tooluse-xyz-789')
     })
 
-    it('未提供 toolUseID 时抛明确错误（SDK 契约：toolUseID 必给）', async () => {
+    it('未提供 toolUseID 时返回 deny（不中断流程）', async () => {
         const { session } = createMockDeps()
         const handler = new PermissionHandler(session as never)
 
-        await expect(
-            handler.handleToolCall(
-                'Bash',
-                { command: 'ls' },
-                { signal: new AbortController().signal } as never
-            )
-        ).rejects.toThrow(/toolUseID/)
+        const result = await handler.handleToolCall(
+            'Bash',
+            { command: 'ls' },
+            { signal: new AbortController().signal } as never
+        )
+
+        expect(result.behavior).toBe('deny')
     })
 })
 

@@ -25,7 +25,6 @@ import {
     Radio,
     Select,
     Spin,
-    Switch,
     Tag,
     Tooltip,
     Typography,
@@ -41,16 +40,16 @@ import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirect
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from '@/domain/session/types'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
-import { getEffortOptions, type EffortLevel } from '@mobi/shared'
+import { getEffortOptions, getPermissionModeOptionsForFlavor, type EffortLevel, type PermissionMode } from '@mobi/shared'
 import {
     loadPreferredAgent,
     loadPreferredEffort,
     loadPreferredModel,
-    loadPreferredYoloMode,
+    loadPreferredPermissionMode,
     savePreferredAgent,
     savePreferredEffort,
     savePreferredModel,
-    savePreferredYoloMode,
+    savePreferredPermissionMode,
 } from '@/domain/session/preferences'
 
 export interface NewSessionProps {
@@ -97,7 +96,7 @@ export function NewSession(props: NewSessionProps) {
     const [directory, setDirectory] = useState('')
     const [agent, setAgent] = useState<AgentType>(loadPreferredAgent)
     const [model, setModel] = useState(loadPreferredModel)
-    const [yoloMode, setYoloMode] = useState(loadPreferredYoloMode)
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>(loadPreferredPermissionMode)
     const [effort, setEffort] = useState<EffortLevel>(loadPreferredEffort)
     const [sessionType, setSessionType] = useState<SessionType>('simple')
     const [worktreeName, setWorktreeName] = useState('')
@@ -117,7 +116,7 @@ export function NewSession(props: NewSessionProps) {
     // 保存偏好设置
     useEffect(() => { savePreferredAgent(agent) }, [agent])
     useEffect(() => { savePreferredModel(model) }, [model])
-    useEffect(() => { savePreferredYoloMode(yoloMode) }, [yoloMode])
+    useEffect(() => { savePreferredPermissionMode(permissionMode) }, [permissionMode])
     useEffect(() => { savePreferredEffort(effort) }, [effort])
 
     // 初始化机器选择
@@ -171,7 +170,7 @@ export function NewSession(props: NewSessionProps) {
                 agent,
                 model: model !== 'auto' ? model : undefined,
                 effort,
-                permissionMode: yoloMode ? 'bypassPermissions' : 'default',
+                permissionMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined
             })
@@ -390,15 +389,20 @@ export function NewSession(props: NewSessionProps) {
                 </Form.Item>
             )}
 
-            <Form.Item label={t('newSession.autoMode')}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                        <div>{t('newSession.yoloMode')}</div>
-                        <Text type="secondary" style={{ fontSize: 12 }}>{t('newSession.yoloModeDesc')}</Text>
-                    </div>
-                    <Switch checked={yoloMode} onChange={setYoloMode} disabled={isFormDisabled} />
-                </div>
-            </Form.Item>
+            {agent === 'claude' && (
+                <Form.Item label={t('newSession.permissionMode')}>
+                    <Select
+                        value={permissionMode}
+                        onChange={(v) => setPermissionMode(v)}
+                        options={getPermissionModeOptionsForFlavor(agent).map(opt => ({
+                            value: opt.mode,
+                            label: t(`composer.permissionModes.${opt.mode}`),
+                        }))}
+                        style={{ width: '100%' }}
+                        disabled={isFormDisabled}
+                    />
+                </Form.Item>
+            )}
 
             {(error ?? spawnError) && (
                 <Alert

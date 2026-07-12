@@ -76,6 +76,7 @@
     "model": "Model",
     "modelOptional": "optional",
     "effort": "Reasoning Effort",
+    "permissionMode": "Permission Mode",
     "autoMode": "Auto Mode",
     "yoloMode": "YOLO Mode",
     "yoloModeDesc": "Automatically execute all operations without confirmation",
