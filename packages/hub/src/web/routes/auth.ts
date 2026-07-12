@@ -20,7 +20,6 @@ import { setCookie, getCookie } from 'hono/cookie'
 import { SignJWT, jwtVerify } from 'jose'
 import { z } from 'zod'
 import { configuration } from '../../configuration'
-import { parseAccessToken } from '../../utils/accessToken'
 import { verifyWebCredential } from '../auth/verifyWebCredential'
 import { getOrCreateOwnerId } from '../../config/ownerId'
 import { AUTH_COOKIE_NAME, type WebAppEnv } from '../middleware/auth'
@@ -98,7 +97,7 @@ export function createAuthRoutes(jwtSecret: Uint8Array): Hono<WebAppEnv> {
         }
 
         const userId = await getOrCreateOwnerId()
-        const namespace = parseAccessToken(parsed.data.accessToken)?.namespace ?? 'default'
+        const namespace = webCred.namespace
 
         const token = await new SignJWT({ uid: userId, ns: namespace })
             .setProtectedHeader({ alg: 'HS256' })

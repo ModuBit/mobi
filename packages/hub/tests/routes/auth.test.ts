@@ -16,7 +16,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { jwtVerify } from 'jose'
-import { setupTestApp, getAuthToken, testJwtSecret, testWebApiToken } from '../helpers/setupTestApp'
+import { setupTestApp, getAuthToken, testJwtSecret, testWebApiToken, testCliApiToken } from '../helpers/setupTestApp'
 
 // 从 Set-Cookie header 中解析指定 cookie 的值
 function parseCookieValue(setCookie: string | null, name: string): string | undefined {
@@ -57,7 +57,7 @@ describe('Auth API', () => {
         const res = await app.request('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessToken: 'test-cli-api-token' })
+            body: JSON.stringify({ accessToken: testCliApiToken })
         })
 
         expect(res.status).toBe(401)

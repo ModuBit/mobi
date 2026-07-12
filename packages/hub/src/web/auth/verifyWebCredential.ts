@@ -27,6 +27,8 @@ import { constantTimeEquals } from '../../utils/crypto'
 import { parseAccessToken } from '../../utils/accessToken'
 
 export interface VerifiedWebCredential {
+    /** 命名空间（parseAccessToken 保证非空，验证成功时必有其值） */
+    namespace: string
     /** 设备标识，第一阶段恒为 undefined，给后续按设备签发短期密钥留位 */
     deviceId?: string
     /** 作用域，第一阶段恒为 undefined */
@@ -35,12 +37,12 @@ export interface VerifiedWebCredential {
 
 /**
  * 验证 Web 凭据。
- * @returns 验证成功返回对象（第一阶段为空对象），失败返回 null
+ * @returns 验证成功返回包含 namespace 的对象，失败返回 null
  */
 export async function verifyWebCredential(rawToken: string): Promise<VerifiedWebCredential | null> {
     const parsed = parseAccessToken(rawToken)
     if (!parsed || !constantTimeEquals(parsed.baseToken, configuration.webApiToken)) {
         return null
     }
-    return {}
+    return { namespace: parsed.namespace }
 }

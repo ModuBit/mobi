@@ -35,6 +35,7 @@ describe('verifyWebCredential', () => {
     test('webApiToken 验证通过', async () => {
         const result = await verifyWebCredential('the-web-token')
         expect(result).not.toBeNull()
+        expect(result?.namespace).toBe('default')
     })
 
     test('cliApiToken 必须被拒绝（隔离核心断言）', async () => {
@@ -50,5 +51,6 @@ describe('verifyWebCredential', () => {
     test('带命名空间的 webApiToken 通过', async () => {
         const result = await verifyWebCredential('the-web-token:my-ns')
         expect(result).not.toBeNull()
+        expect(result?.namespace).toBe('my-ns')
     })
 })
