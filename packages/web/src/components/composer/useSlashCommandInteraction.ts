@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { detectSlashAtCursor, type SlashCommandSuggestionItem } from '@/domain/command/slashCommandHelper'
 import { useSlashCommandSuggestion } from './useSlashCommandSuggestion'
 import { recordCommandUsage } from '@/core/lib/commandUsage'
@@ -44,6 +44,8 @@ export function useSlashCommandInteraction({
     const [filter, setFilter] = useState('')
     const [activeIndex, setActiveIndex] = useState(0)
     const [activeCommand, setActiveCommand] = useState<{ value: string; hint: string; description?: string } | null>(null)
+    // 当前触发 / 的位置（与 @mention 的 mentionAtIndexRef 对齐），用于选择时按位置切分文本
+    const slashIndexRef = useRef(0)
 
     const { items, isLoading } = useSlashCommandSuggestion(
         commandsData,
@@ -58,9 +60,10 @@ export function useSlashCommandInteraction({
     }, [])
 
     const processChange = useCallback((text: string, cursorPos: number): boolean => {
-        const slashFilter = detectSlashAtCursor(text, cursorPos)
-        if (slashFilter !== null) {
-            setFilter(slashFilter)
+        const slash = detectSlashAtCursor(text, cursorPos)
+        if (slash) {
+            slashIndexRef.current = slash.slashIndex
+            setFilter(slash.filter)
             setIsOpen(true)
             setActiveIndex(0)
             return true
@@ -94,9 +97,12 @@ export function useSlashCommandInteraction({
     const selectItem = useCallback((item: SlashCommandSuggestionItem, text: string): SlashSelectionResult | null => {
         if (!isOpen) return null
 
-        const slashEnd = 1 + filter.length
-        const after = text.slice(slashEnd)
-        const newText = `${item.value} ${after}`
+        // 按 / 触发位置切分：before = / 之前的文本，after = 命令词之后到末尾的文本
+        const slashIndex = slashIndexRef.current
+        const before = text.slice(0, slashIndex)
+        // 去掉参数文本的前导空白，由下方统一插入一个分隔空格，避免与原分隔空白叠加成双空格
+        const after = text.slice(slashIndex + 1 + filter.length).replace(/^\s+/, '')
+        const newText = `${before}${item.value} ${after}`
 
         setActiveCommand(
             (item.argumentHint || item.description)
@@ -112,7 +118,8 @@ export function useSlashCommandInteraction({
 
         return {
             text: newText,
-            cursorPos: item.value.length + 1,
+            // 光标停在「命令 + 分隔空格」之后，即参数起始（无参数时为文本末尾，便于继续输入）
+            cursorPos: before.length + item.value.length + 1,
         }
     }, [isOpen, filter, workingDir])
 
@@ -151,6 +158,7 @@ export function useSlashCommandInteraction({
         setIsOpen(false)
         setFilter('')
         setActiveCommand(null)
+        slashIndexRef.current = 0
     }, [])
 
     return useMemo(() => ({

@@ -30,19 +30,19 @@ import type { Command } from './useSlashCommandSuggestion.test-helper'
 
 describe('detectSlashAtCursor', () => {
     it('单独 /，光标在末尾 → 触发，filter 为空', () => {
-        expect(detectSlashAtCursor('/', 1)).toBe('')
+        expect(detectSlashAtCursor('/', 1)).toEqual({ slashIndex: 0, filter: '' })
     })
 
     it('/help，光标在末尾 → 触发，filter 为 help', () => {
-        expect(detectSlashAtCursor('/help', 5)).toBe('help')
+        expect(detectSlashAtCursor('/help', 5)).toEqual({ slashIndex: 0, filter: 'help' })
     })
 
     it('/help，光标在 / 后 → 触发，filter 为空', () => {
-        expect(detectSlashAtCursor('/help', 1)).toBe('')
+        expect(detectSlashAtCursor('/help', 1)).toEqual({ slashIndex: 0, filter: '' })
     })
 
     it('/help，光标在 h 后 → 触发，filter 为 h', () => {
-        expect(detectSlashAtCursor('/help', 2)).toBe('h')
+        expect(detectSlashAtCursor('/help', 2)).toEqual({ slashIndex: 0, filter: 'h' })
     })
 
     it('/ 后跟空白不触发', () => {
@@ -56,16 +56,62 @@ describe('detectSlashAtCursor', () => {
     })
 
     it('/super abc 光标在 super 后触发', () => {
-        expect(detectSlashAtCursor('/super abc', 6)).toBe('super')
+        expect(detectSlashAtCursor('/super abc', 6)).toEqual({ slashIndex: 0, filter: 'super' })
     })
 
     it('空字符串不触发', () => {
         expect(detectSlashAtCursor('', 0)).toBeNull()
     })
 
-    it('非 / 开头不触发', () => {
+    it('无 / 不触发', () => {
         expect(detectSlashAtCursor('help', 4)).toBeNull()
-        expect(detectSlashAtCursor(' /help', 6)).toBeNull()
+    })
+
+    // —— 与 @ mention 一致的宽松触发条件：/ 前为行首或空白即可，不必整段以 / 开头 ——
+
+    it('前导空格的 / 触发（与 @ 一致）', () => {
+        expect(detectSlashAtCursor(' /help', 6)).toEqual({ slashIndex: 1, filter: 'help' })
+        expect(detectSlashAtCursor(' /', 2)).toEqual({ slashIndex: 1, filter: '' })
+    })
+
+    it('段落中间（前一空格）的 / 触发', () => {
+        expect(detectSlashAtCursor('foo /help', 9)).toEqual({ slashIndex: 4, filter: 'help' })
+        expect(detectSlashAtCursor('foo /he', 7)).toEqual({ slashIndex: 4, filter: 'he' })
+    })
+
+    it('换行后的 / 触发', () => {
+        expect(detectSlashAtCursor('foo\n/help', 9)).toEqual({ slashIndex: 4, filter: 'help' })
+    })
+
+    it('非独立词的 / 不触发（/ 前紧邻非空白字符）', () => {
+        expect(detectSlashAtCursor('foo/bar', 7)).toBeNull()
+        expect(detectSlashAtCursor('a/b', 3)).toBeNull()
+    })
+
+    it('段落中间 / 后跟空白不触发', () => {
+        expect(detectSlashAtCursor('foo / bar', 6)).toBeNull()
+    })
+
+    it('取光标前最近的独立词 /', () => {
+        // 文本 "/a /b"，光标在末尾：最近的 / 是 index 3
+        expect(detectSlashAtCursor('/a /b', 5)).toEqual({ slashIndex: 3, filter: 'b' })
+    })
+
+    // —— 字符集白名单：仅命令名合法字符（字母/数字/_/-）可触发，避免路径与特殊字符误触发 ——
+
+    it('路径式 / 不触发（与 @ 路径引用区分）', () => {
+        expect(detectSlashAtCursor('see /path/to/x', 14)).toBeNull()
+        expect(detectSlashAtCursor('/path/to/file', 14)).toBeNull()
+    })
+
+    it('含特殊字符的 / 不触发', () => {
+        expect(detectSlashAtCursor('/foo(bar)', 10)).toBeNull()
+        expect(detectSlashAtCursor('/foo"baz', 8)).toBeNull()
+    })
+
+    it('命令名含连字符/下划线触发', () => {
+        expect(detectSlashAtCursor('/code-review', 13)).toEqual({ slashIndex: 0, filter: 'code-review' })
+        expect(detectSlashAtCursor('/clear_cache', 13)).toEqual({ slashIndex: 0, filter: 'clear_cache' })
     })
 })
 

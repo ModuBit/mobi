@@ -16,6 +16,7 @@
 
 import type { Command } from '@/core/data/api/types'
 import { getCommandsOrderByScore } from '@/core/lib/commandUsage'
+import { findStandaloneTriggerBeforeCursor } from './triggerDetector'
 
 /**
  * 斜杠命令建议项
@@ -31,19 +32,30 @@ export interface SlashCommandSuggestionItem {
     argumentHint?: string
 }
 
+/** 命令名合法字符（字母、数字、下划线、连字符）；用于过滤路径/括号等误触发 */
+const COMMAND_NAME_CHARS = /^[a-zA-Z0-9_-]*$/
+
 /**
  * 检测光标位置是否处于斜杠命令模式
- * 规则：/ 位于文本起始位置，光标在 /xxx 模式内（/ 到首个空白之间）
- * @returns 过滤文本（不含 / 前缀），或 null 表示不触发
+ * 规则与 @mention 对齐：从光标向前找最近的 /，要求其前为行首或空白（独立词），
+ * 且 / 到光标之间内容仅含命令名合法字符（光标仍在命令词内）。
+ *
+ * 这样 / 不必出现在整段文本开头——"foo /he"、" /help"、换行后 "/help" 都能触发；
+ * 而 "/path/to/x"、"/foo(bar)" 这类路径/含特殊字符的文本不会误触发。
+ *
+ * @returns { slashIndex, filter }，filter 不含 / 前缀；或 null 表示不触发
  */
-export function detectSlashAtCursor(text: string, cursorPos: number): string | null {
-    if (!text.startsWith('/')) return null
-
-    // 从 / 后到光标位置的文本不含空白，说明光标仍在命令词内
-    const beforeCursor = text.slice(1, cursorPos)
-    if (/\s/.test(beforeCursor)) return null
-
-    return beforeCursor
+export function detectSlashAtCursor(
+    text: string,
+    cursorPos: number,
+): { slashIndex: number; filter: string } | null {
+    const found = findStandaloneTriggerBeforeCursor(
+        text,
+        cursorPos,
+        '/',
+        after => COMMAND_NAME_CHARS.test(after),
+    )
+    return found ? { slashIndex: found.index, filter: found.after } : null
 }
 
 function ensureSlashPrefix(name: string): string {

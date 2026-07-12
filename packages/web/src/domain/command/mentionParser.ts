@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { findStandaloneTriggerBeforeCursor } from './triggerDetector'
+
 /** 拼接 @ 引用路径（保留用户输入的相对形式） */
 export function buildMentionPath(mentionInput: string, selectedName: string): string {
     const lastSlash = mentionInput.lastIndexOf('/')
@@ -21,33 +23,22 @@ export function buildMentionPath(mentionInput: string, selectedName: string): st
     return dirPart + selectedName
 }
 
+/** @ 引用路径的合法字符（含路径分隔符 / . ~ 等） */
+const MENTION_PATH_CHARS = /^[a-zA-Z0-9./_\-~]*$/
+
 /**
  * 在完整文本中找到包含光标位置的 @mention 模式
- * 从光标位置向前查找最近的 @，验证其是否为独立词
+ * 从光标位置向前查找最近的 @，验证其是否为独立词、其后到光标的内容是否为合法路径
  */
 export function detectMentionAtCursor(
     fullText: string,
     cursorPos: number,
 ): { atIndex: number; afterAt: string } | null {
-    // 从光标位置向前查找 @
-    let searchFrom = cursorPos
-    while (searchFrom > 0) {
-        const atPos = fullText.lastIndexOf('@', searchFrom - 1)
-        if (atPos === -1) return null
-
-        // @ 前必须是行首或空白
-        if (atPos > 0 && !/\s/.test(fullText[atPos - 1])) {
-            searchFrom = atPos
-            continue
-        }
-
-        // 提取 @ 后的内容，直到空白或行尾
-        const afterAt = fullText.slice(atPos + 1, cursorPos)
-        if (/^[a-zA-Z0-9./_\-~]*$/.test(afterAt)) {
-            return { atIndex: atPos, afterAt }
-        }
-
-        searchFrom = atPos
-    }
-    return null
+    const found = findStandaloneTriggerBeforeCursor(
+        fullText,
+        cursorPos,
+        '@',
+        after => MENTION_PATH_CHARS.test(after),
+    )
+    return found ? { atIndex: found.index, afterAt: found.after } : null
 }
