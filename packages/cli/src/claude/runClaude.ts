@@ -182,6 +182,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         disallowedTools: mode.disallowedTools
     }));
 
+    // 消费批次时通知 Hub（messages-consumed → invoked_at）
+    messageQueue.setOnBatchConsumed((localIds) => {
+        apiSession.emitMessagesConsumed(localIds);
+    });
+
     // Forward messages to the queue
     let currentEffort: EffortLevel = options.effort ?? 'medium';
     let currentPermissionMode: PermissionMode = options.permissionMode ?? 'default';
@@ -314,7 +319,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
             const commandText = specialCommand.originalMessage || message.content.text;
-            messageQueue.pushAndClear(commandText, enhancedMode);
+            messageQueue.pushAndClear(commandText, enhancedMode, message.localId);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -322,13 +327,13 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         if (specialCommand.type === 'clear') {
             logger.debug('[start] Detected /clear command');
             const commandText = specialCommand.originalMessage || message.content.text;
-            messageQueue.pushIsolateAndClear(commandText, enhancedMode);
+            messageQueue.pushIsolateAndClear(commandText, enhancedMode, message.localId);
             logger.debugLargeJson('[start] /clear command pushed to queue:', message);
             return;
         }
 
         // Push with resolved permission mode, model, system prompts, and tools
-        messageQueue.push(formattedText, enhancedMode);
+        messageQueue.push(formattedText, enhancedMode, message.localId);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 

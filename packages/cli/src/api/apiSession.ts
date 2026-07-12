@@ -494,6 +494,12 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
+    /** 通知 Hub：这批 localId 的消息已被 agent 消费（将入 invoked_at） */
+    emitMessagesConsumed(localIds: string[]): void {
+        if (localIds.length === 0) return
+        this.socket.emit('messages-consumed', { sid: this.sessionId, localIds })
+    }
+
     keepAlive(
         running: boolean,
         mode: 'local' | 'remote',

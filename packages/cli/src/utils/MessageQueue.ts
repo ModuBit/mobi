@@ -21,6 +21,7 @@ interface QueueItem<T> {
     mode: T;
     modeHash: string;
     isolate?: boolean; // If true, this message must be processed alone
+    localId?: string; // 用户消息的本地 ID，用于通知 Hub 已消费
 }
 
 /**
@@ -32,6 +33,7 @@ export class MessageQueue<T> {
     private waiter: ((hasMessages: boolean) => void) | null = null;
     private closed = false;
     private onMessageHandler: ((message: string, mode: T) => void) | null = null;
+    private onBatchConsumedHandler: ((localIds: string[]) => void) | null = null;
     modeHasher: (mode: T) => string;
 
     constructor(
@@ -50,10 +52,15 @@ export class MessageQueue<T> {
         this.onMessageHandler = handler;
     }
 
+    /** 设置「一批消息被 collectBatch shift 消费」回调（用于 emit messages-consumed） */
+    setOnBatchConsumed(handler: ((localIds: string[]) => void) | null): void {
+        this.onBatchConsumedHandler = handler;
+    }
+
     /**
      * Push a message to the queue with a mode.
      */
-    push(message: string, mode: T): void {
+    push(message: string, mode: T, localId?: string): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -65,7 +72,8 @@ export class MessageQueue<T> {
             message,
             mode,
             modeHash,
-            isolate: false
+            isolate: false,
+            localId
         });
 
         // Trigger message handler if set
@@ -88,8 +96,8 @@ export class MessageQueue<T> {
      * Push a message immediately without batching delay.
      * Does not clear the queue or enforce isolation.
      */
-    pushImmediate(message: string, mode: T): void {
-        this.push(message, mode);
+    pushImmediate(message: string, mode: T, localId?: string): void {
+        this.push(message, mode, localId);
     }
 
     /**
@@ -97,8 +105,8 @@ export class MessageQueue<T> {
      * Clears any pending messages but does NOT set isolate flag.
      * Used for commands like /compact that need a clean queue but should be processed normally.
      */
-    pushAndClear(message: string, mode: T): void {
-        this.pushAfterClear(message, mode, false);
+    pushAndClear(message: string, mode: T, localId?: string): void {
+        this.pushAfterClear(message, mode, false, localId);
     }
 
     /**
@@ -106,15 +114,15 @@ export class MessageQueue<T> {
      * Clears any pending messages and ensures this message is never batched with others.
      * Used for special commands that require dedicated processing (e.g., /clear).
      */
-    pushIsolateAndClear(message: string, mode: T): void {
-        this.pushAfterClear(message, mode, true);
+    pushIsolateAndClear(message: string, mode: T, localId?: string): void {
+        this.pushAfterClear(message, mode, true, localId);
     }
 
     /**
      * 内部方法：清空队列后推送消息
      * @param isolate - true 表示隔离处理（触发 claudeRemote 重启），false 表示正常处理
      */
-    private pushAfterClear(message: string, mode: T, isolate: boolean): void {
+    private pushAfterClear(message: string, mode: T, isolate: boolean, localId?: string): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -129,7 +137,8 @@ export class MessageQueue<T> {
             message,
             mode,
             modeHash,
-            isolate
+            isolate,
+            localId
         });
 
         if (this.onMessageHandler) {
@@ -149,7 +158,7 @@ export class MessageQueue<T> {
     /**
      * Push a message to the beginning of the queue with a mode.
      */
-    unshift(message: string, mode: T): void {
+    unshift(message: string, mode: T, localId?: string): void {
         if (this.closed) {
             throw new Error('Cannot unshift to closed queue');
         }
@@ -161,7 +170,8 @@ export class MessageQueue<T> {
             message,
             mode,
             modeHash,
-            isolate: false
+            isolate: false,
+            localId
         });
 
         // Trigger message handler if set
@@ -221,11 +231,20 @@ export class MessageQueue<T> {
         return this.queue.length;
     }
 
+    /** 删除仍排队（未消费）的 localId 消息。返回是否删除成功。 */
+    cancelByLocalId(localId: string): boolean {
+        const idx = this.queue.findIndex(item => item.localId === localId);
+        if (idx < 0) return false;
+        this.queue.splice(idx, 1);
+        logger.debug(`[MessageQueue] cancelByLocalId removed ${localId}, size=${this.queue.length}`);
+        return true;
+    }
+
     /**
      * Wait for messages and return all messages with the same mode as a single string
-     * Returns { message: string, mode: T } or null if aborted/closed
+     * Returns { message: string, mode: T, isolate: boolean, hash: string, localIds: string[] } or null if aborted/closed
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string } | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, localIds: string[] } | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
             return this.collectBatch();
@@ -249,13 +268,14 @@ export class MessageQueue<T> {
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean } | null {
+    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, localIds: string[] } | null {
         if (this.queue.length === 0) {
             return null;
         }
 
         const firstItem = this.queue[0];
         const sameModeMessages: string[] = [];
+        const consumedLocalIds: string[] = [];
         const mode = firstItem.mode;
         const isolate = firstItem.isolate ?? false;
         const targetModeHash = firstItem.modeHash;
@@ -264,6 +284,9 @@ export class MessageQueue<T> {
         if (firstItem.isolate) {
             const item = this.queue.shift()!;
             sameModeMessages.push(item.message);
+            if (item.localId) {
+                consumedLocalIds.push(item.localId);
+            }
             logger.debug(`[MessageQueue] Collected isolated message with mode hash: ${targetModeHash}`);
         } else {
             // Collect all messages with the same mode until we hit an isolated message
@@ -272,8 +295,16 @@ export class MessageQueue<T> {
                 !this.queue[0].isolate) {
                 const item = this.queue.shift()!;
                 sameModeMessages.push(item.message);
+                if (item.localId) {
+                    consumedLocalIds.push(item.localId);
+                }
             }
             logger.debug(`[MessageQueue] Collected batch of ${sameModeMessages.length} messages with mode hash: ${targetModeHash}`);
+        }
+
+        // 通知 Hub：这批消息已被消费
+        if (consumedLocalIds.length > 0) {
+            this.onBatchConsumedHandler?.(consumedLocalIds);
         }
 
         // Join all messages with newlines
@@ -283,7 +314,8 @@ export class MessageQueue<T> {
             message: combinedMessage,
             mode,
             hash: targetModeHash,
-            isolate
+            isolate,
+            localIds: consumedLocalIds
         };
     }
 

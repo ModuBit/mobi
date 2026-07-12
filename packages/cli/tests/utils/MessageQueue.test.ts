@@ -472,4 +472,23 @@ describe('MessageQueue', () => {
         expect(batch3?.message).toBe('after-isolated');
         expect(batch3?.mode.type).toBe('B');
     });
+
+    it('collectBatch 触发 onBatchConsumed 带 localIds', async () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        const consumed: string[][] = [];
+        queue.setOnBatchConsumed(ids => consumed.push(ids));
+        queue.push('a', { m: '1' }, 'loc-a');
+        queue.push('b', { m: '1' }, 'loc-b');
+        const r = await queue.waitForMessagesAndGetAsString();
+        expect(r!.localIds).toEqual(['loc-a', 'loc-b']);
+        expect(consumed).toEqual([['loc-a', 'loc-b']]);
+    });
+
+    it('cancelByLocalId 删除未消费消息', () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        queue.push('a', { m: '1' }, 'loc-a');
+        expect(queue.cancelByLocalId('loc-a')).toBe(true);
+        expect(queue.size()).toBe(0);
+        expect(queue.cancelByLocalId('loc-a')).toBe(false);
+    });
 });
