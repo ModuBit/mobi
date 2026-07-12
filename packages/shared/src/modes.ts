@@ -18,7 +18,7 @@
  * Mobi 当前仅支持 Claude Code
  */
 
-export const CLAUDE_PERMISSION_MODES = ['default', 'acceptEdits', 'bypassPermissions', 'plan'] as const
+export const CLAUDE_PERMISSION_MODES = ['default', 'acceptEdits', 'auto', 'bypassPermissions', 'plan', 'dontAsk'] as const
 export type ClaudePermissionMode = typeof CLAUDE_PERMISSION_MODES[number]
 
 export const CLAUDE_MODEL_PRESETS = ['sonnet', 'sonnet[1m]', 'opus', 'opus[1m]'] as const
@@ -35,8 +35,10 @@ export const CLAUDE_MODEL_LABELS: Record<ClaudeModelPreset, string> = {
 export const PERMISSION_MODES = [
     'default',
     'acceptEdits',
+    'auto',
     'bypassPermissions',
-    'plan'
+    'plan',
+    'dontAsk'
 ] as const
 export type PermissionMode = typeof PERMISSION_MODES[number]
 
@@ -46,8 +48,10 @@ export type AgentFlavor = 'claude'
 export const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
     default: 'Default',
     acceptEdits: 'Accept Edits',
+    auto: 'Auto',
     plan: 'Plan Mode',
-    bypassPermissions: 'Yolo'
+    bypassPermissions: 'Yolo',
+    dontAsk: "Don't Ask"
 }
 
 export type PermissionModeTone = 'neutral' | 'info' | 'warning' | 'danger' | 'success'
@@ -55,8 +59,10 @@ export type PermissionModeTone = 'neutral' | 'info' | 'warning' | 'danger' | 'su
 export const PERMISSION_MODE_TONES: Record<PermissionMode, PermissionModeTone> = {
     default: 'neutral',
     acceptEdits: 'warning',
+    auto: 'warning',
     plan: 'success',
-    bypassPermissions: 'danger'
+    bypassPermissions: 'danger',
+    dontAsk: 'info'
 }
 
 export type PermissionModeOption = {

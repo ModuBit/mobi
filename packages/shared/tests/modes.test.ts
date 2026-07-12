@@ -15,7 +15,17 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { EFFORT_LEVELS, EFFORT_LABELS, type EffortLevel } from '../src/modes'
+import {
+    EFFORT_LEVELS,
+    EFFORT_LABELS,
+    type EffortLevel,
+    PERMISSION_MODES,
+    CLAUDE_PERMISSION_MODES,
+    PERMISSION_MODE_LABELS,
+    PERMISSION_MODE_TONES,
+    type PermissionMode,
+    type PermissionModeTone
+} from '../src/modes'
 import { RuntimeStateSchema } from '../src/schemas'
 
 describe('EFFORT_LEVELS', () => {
@@ -72,5 +82,52 @@ describe('RuntimeStateSchema effort', () => {
         const result = RuntimeStateSchema.parse({ model: 'sonnet', effort: 'high' })
         expect(result.model).toBe('sonnet')
         expect(result.effort).toBe('high')
+    })
+})
+
+describe('PERMISSION_MODES', () => {
+    it('包含全部六个模式，顺序对齐 SDK 枚举', () => {
+        expect(PERMISSION_MODES).toEqual([
+            'default', 'acceptEdits', 'auto', 'bypassPermissions', 'plan', 'dontAsk'
+        ])
+    })
+
+    it('CLAUDE_PERMISSION_MODES 与 PERMISSION_MODES 一致', () => {
+        expect([...CLAUDE_PERMISSION_MODES]).toEqual([...PERMISSION_MODES])
+    })
+
+    it('PermissionMode 类型支持全部有效字面量', () => {
+        const valid: PermissionMode[] = ['default', 'acceptEdits', 'auto', 'bypassPermissions', 'plan', 'dontAsk']
+        expect(valid).toHaveLength(6)
+    })
+})
+
+describe('PERMISSION_MODE_LABELS', () => {
+    it('每个模式都有非空标签', () => {
+        for (const mode of PERMISSION_MODES) {
+            expect(PERMISSION_MODE_LABELS[mode]).toBeTruthy()
+        }
+    })
+
+    it('auto 与 dontAsk 标签正确', () => {
+        expect(PERMISSION_MODE_LABELS.auto).toBe('Auto')
+        expect(PERMISSION_MODE_LABELS.dontAsk).toBe("Don't Ask")
+    })
+})
+
+describe('PERMISSION_MODE_TONES', () => {
+    it('每个模式都有合法 tone', () => {
+        const validTones: PermissionModeTone[] = ['neutral', 'info', 'warning', 'danger', 'success']
+        for (const mode of PERMISSION_MODES) {
+            expect(validTones).toContain(PERMISSION_MODE_TONES[mode])
+        }
+    })
+
+    it('auto = warning（与 acceptEdits 同级，会自动放行部分工具）', () => {
+        expect(PERMISSION_MODE_TONES.auto).toBe('warning')
+    })
+
+    it('dontAsk = info（收紧模式，未预批准即拒、不弹窗）', () => {
+        expect(PERMISSION_MODE_TONES.dontAsk).toBe('info')
     })
 })
