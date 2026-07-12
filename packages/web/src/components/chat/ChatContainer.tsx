@@ -24,14 +24,16 @@ import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { isQueuedForInvocation } from '@/core/lib/messages'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
-import { ChatComposer } from '@/components/composer/ChatComposer'
+import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
 import { AgentLoadingBubble } from './AgentLoadingBubble'
 import { CompactProgressBubble } from './CompactProgressBubble'
 import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
+import { QueuedMessagesBar } from './QueuedMessagesBar'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
@@ -91,6 +93,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const sessionActions = useSessionActions(sessionId)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const scrollBoxRef = useRef<HTMLElement | null>(null)
+    const composerRef = useRef<ChatComposerHandle>(null)
     const isRestoringScrollRef = useRef(false)
     const prevShowRef = useRef(false)
     const pendingRestoreRef = useRef<{
@@ -118,7 +121,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
 
     const { blocks: rawBlocks, byId } = useMemo(() => {
-        const normalized = messages
+        // 排队消息仅在悬浮条展示，不进入聊天线程
+        const visibleMessages = messages.filter(m => !isQueuedForInvocation(m))
+        const normalized = visibleMessages
             .map(normalizeDecryptedMessage)
             .filter((m): m is Exclude<typeof m, null> => m !== null)
         const raw = reduceChatBlocks(normalized, session?.agentState)
@@ -647,7 +652,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 )}
             </div>
 
+            <QueuedMessagesBar
+                sessionId={sessionId}
+                messages={messages}
+                onEdit={(text) => composerRef.current?.setDraft(text)}
+            />
+
             <ChatComposer
+                ref={composerRef}
                 sessionId={sessionId}
                 disabled={sendMutation.isPending || isCompressing}
                 sending={sendMutation.isPending}

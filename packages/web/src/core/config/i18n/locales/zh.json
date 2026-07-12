@@ -219,6 +219,12 @@
       "teamState": "清理团队状态？",
       "confirm": "确认清理",
       "cancel": "取消"
+    },
+    "queued": {
+      "title": "排队中（{{count}}）",
+      "edit": "编辑",
+      "cancel": "取消",
+      "alreadyInvoked": "消息已被 agent 处理，无法编辑"
     }
   },
   "files": {

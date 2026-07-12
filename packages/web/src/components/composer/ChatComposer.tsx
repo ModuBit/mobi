@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { Button, Tooltip, Select, theme, Typography, Popover, message } from 'antd'
 import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
@@ -46,6 +46,12 @@ import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermis
 import { getPermissionModeIcon } from './permissionModeIcons'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 
+
+/** ChatComposer 命令式 API，供外部（如 QueuedMessagesBar 编辑回填）设置草稿 */
+export interface ChatComposerHandle {
+    /** 设置输入框文本并聚焦 */
+    setDraft: (text: string) => void
+}
 
 interface ChatComposerProps {
     sessionId: string
@@ -221,7 +227,7 @@ function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
  * 聊天输入组件
  * 基于 antd X 的 Sender 组件，支持多行输入、附件上传、@文件引用
  */
-export function ChatComposer(props: ChatComposerProps) {
+export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer(props, ref) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const api = useMobiApi()
@@ -261,6 +267,14 @@ export function ChatComposer(props: ChatComposerProps) {
 
     const [text, setText] = useState('')
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
+
+    // 命令式 API：外部（如 QueuedMessagesBar 编辑）可设置草稿并聚焦
+    useImperativeHandle(ref, () => ({
+        setDraft: (draftText: string) => {
+            setText(draftText)
+            requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
+        },
+    }), [])
 
     // 读取跨页暂存的消息草稿（NewSessionPage 创建会话后发送失败时暂存），预填到输入框供用户重试 (#2)
     useEffect(() => {
@@ -861,4 +875,4 @@ export function ChatComposer(props: ChatComposerProps) {
             </ComposerDock>
         </div>
     )
-}
+})

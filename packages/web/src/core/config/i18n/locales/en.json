@@ -219,6 +219,12 @@
       "teamState": "Clear team state?",
       "confirm": "Clear",
       "cancel": "Cancel"
+    },
+    "queued": {
+      "title": "Queued ({{count}})",
+      "edit": "Edit",
+      "cancel": "Cancel",
+      "alreadyInvoked": "Message already picked up by agent, cannot edit"
     }
   },
   "files": {
