@@ -68,6 +68,17 @@ describe('DecryptedMessageSchema', () => {
         expect(result.localId).toBeNull()
     })
 
+    it('accepts invokedAt null and number', () => {
+        const base = { id: 'm1', seq: 1, localId: null, content: {}, createdAt: 0 }
+        expect(DecryptedMessageSchema.parse({ ...base, invokedAt: null }).invokedAt).toBeNull()
+        expect(DecryptedMessageSchema.parse({ ...base, invokedAt: 123 }).invokedAt).toBe(123)
+    })
+
+    it('defaults invokedAt to undefined when absent (optional)', () => {
+        const parsed = DecryptedMessageSchema.parse({ id: 'm1', seq: 1, localId: null, content: {}, createdAt: 0 })
+        expect(parsed.invokedAt).toBeUndefined()
+    })
+
     it('缺少必填字段抛错', () => {
         // 缺少 id
         expect(() => DecryptedMessageSchema.parse({
