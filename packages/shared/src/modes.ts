@@ -18,7 +18,9 @@
  * Mobi 当前仅支持 Claude Code
  */
 
-export const CLAUDE_PERMISSION_MODES = ['default', 'acceptEdits', 'auto', 'bypassPermissions', 'plan', 'dontAsk'] as const
+// 顺序：按自由度递增，auto 置顶（日常推荐）
+// auto(推荐) → manual(每次问) → acceptEdits → plan → dontAsk → yolo(全放行)
+export const CLAUDE_PERMISSION_MODES = ['auto', 'default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions'] as const
 export type ClaudePermissionMode = typeof CLAUDE_PERMISSION_MODES[number]
 
 export const CLAUDE_MODEL_PRESETS = ['sonnet', 'sonnet[1m]', 'opus', 'opus[1m]'] as const
@@ -31,38 +33,43 @@ export const CLAUDE_MODEL_LABELS: Record<ClaudeModelPreset, string> = {
     'opus[1m]': 'Opus 1M'
 }
 
-// Mobi 当前仅支持 Claude，简化权限模式
+// 顺序与 CLAUDE_PERMISSION_MODES 一致（自由度递增，auto 置顶）
 export const PERMISSION_MODES = [
+    'auto',
     'default',
     'acceptEdits',
-    'auto',
-    'bypassPermissions',
     'plan',
-    'dontAsk'
+    'dontAsk',
+    'bypassPermissions'
 ] as const
 export type PermissionMode = typeof PERMISSION_MODES[number]
 
 // Mobi 当前仅支持 Claude
 export type AgentFlavor = 'claude'
 
+// 注意：default 对应 SDK 的 'default' 模式值（契约不可变），
+// 但对用户展示为 'Request Approval'（每次操作都请求批准），避免 'Default' 含义模糊
 export const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
-    default: 'Default',
-    acceptEdits: 'Accept Edits',
     auto: 'Auto',
+    default: 'Request Approval',
+    acceptEdits: 'Accept Edits',
     plan: 'Plan Mode',
-    bypassPermissions: 'Yolo',
-    dontAsk: "Don't Ask"
+    dontAsk: "Don't Ask",
+    bypassPermissions: 'YOLO'
 }
 
-export type PermissionModeTone = 'neutral' | 'info' | 'warning' | 'danger' | 'success'
+// 色调对齐 Claude CLI 配色（固定品牌色保证对比度，随主题仅 neutral）：
+// auto=gold(金黄) · default=neutral(灰) · acceptEdits=purple(紫)
+// · plan=green(绿) · dontAsk=danger(红) · bypassPermissions=danger(红, YOLO)
+export type PermissionModeTone = 'neutral' | 'gold' | 'purple' | 'green' | 'danger'
 
 export const PERMISSION_MODE_TONES: Record<PermissionMode, PermissionModeTone> = {
+    auto: 'gold',
     default: 'neutral',
-    acceptEdits: 'warning',
-    auto: 'warning',
-    plan: 'success',
-    bypassPermissions: 'danger',
-    dontAsk: 'info'
+    acceptEdits: 'purple',
+    plan: 'green',
+    dontAsk: 'danger',
+    bypassPermissions: 'danger'
 }
 
 export type PermissionModeOption = {

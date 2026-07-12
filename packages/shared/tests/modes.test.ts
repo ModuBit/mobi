@@ -86,9 +86,9 @@ describe('RuntimeStateSchema effort', () => {
 })
 
 describe('PERMISSION_MODES', () => {
-    it('包含全部六个模式，顺序对齐 SDK 枚举', () => {
+    it('包含全部六个模式，按自由度递增排列（auto 置顶）', () => {
         expect(PERMISSION_MODES).toEqual([
-            'default', 'acceptEdits', 'auto', 'bypassPermissions', 'plan', 'dontAsk'
+            'auto', 'default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions'
         ])
     })
 
@@ -97,7 +97,7 @@ describe('PERMISSION_MODES', () => {
     })
 
     it('PermissionMode 类型支持全部有效字面量', () => {
-        const valid: PermissionMode[] = ['default', 'acceptEdits', 'auto', 'bypassPermissions', 'plan', 'dontAsk']
+        const valid: PermissionMode[] = ['auto', 'default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions']
         expect(valid).toHaveLength(6)
     })
 })
@@ -109,25 +109,39 @@ describe('PERMISSION_MODE_LABELS', () => {
         }
     })
 
-    it('auto 与 dontAsk 标签正确', () => {
+    it('auto / default(Request Approval) / dontAsk 标签正确', () => {
         expect(PERMISSION_MODE_LABELS.auto).toBe('Auto')
+        expect(PERMISSION_MODE_LABELS.default).toBe('Request Approval')
         expect(PERMISSION_MODE_LABELS.dontAsk).toBe("Don't Ask")
     })
 })
 
 describe('PERMISSION_MODE_TONES', () => {
     it('每个模式都有合法 tone', () => {
-        const validTones: PermissionModeTone[] = ['neutral', 'info', 'warning', 'danger', 'success']
+        const validTones: PermissionModeTone[] = ['neutral', 'gold', 'purple', 'green', 'danger']
         for (const mode of PERMISSION_MODES) {
             expect(validTones).toContain(PERMISSION_MODE_TONES[mode])
         }
     })
 
-    it('auto = warning（与 acceptEdits 同级，会自动放行部分工具）', () => {
-        expect(PERMISSION_MODE_TONES.auto).toBe('warning')
+    it('auto = gold（金黄，对齐 Claude CLI）', () => {
+        expect(PERMISSION_MODE_TONES.auto).toBe('gold')
     })
 
-    it('dontAsk = info（收紧模式，未预批准即拒、不弹窗）', () => {
-        expect(PERMISSION_MODE_TONES.dontAsk).toBe('info')
+    it('default = neutral（灰）', () => {
+        expect(PERMISSION_MODE_TONES.default).toBe('neutral')
+    })
+
+    it('acceptEdits = purple（紫）', () => {
+        expect(PERMISSION_MODE_TONES.acceptEdits).toBe('purple')
+    })
+
+    it('plan = green（绿）', () => {
+        expect(PERMISSION_MODE_TONES.plan).toBe('green')
+    })
+
+    it('bypassPermissions / dontAsk = danger（红）', () => {
+        expect(PERMISSION_MODE_TONES.bypassPermissions).toBe('danger')
+        expect(PERMISSION_MODE_TONES.dontAsk).toBe('danger')
     })
 })
