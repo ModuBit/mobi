@@ -153,6 +153,8 @@ export const UserMessageSchema = z.object({
         text: z.string(),
         attachments: z.array(AttachmentMetadataSchema).optional()
     }),
+    /** 客户端乐观 ID（用于排队消息的 consume 通知与取消） */
+    localId: z.string().optional(),
     localKey: z.string().optional(),
     meta: MessageMetaSchema.optional()
 })
