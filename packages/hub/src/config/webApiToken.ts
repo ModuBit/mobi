@@ -15,13 +15,13 @@
  */
 
 /**
- * Web API Token management
+ * Web API Token 管理
  *
  * Web 浏览器登录专用密钥，与 CLI 的 cliApiToken 完全独立。
  * 优先级：环境变量 WEB_API_TOKEN > settings.json > 自动生成
  */
 
-import { randomBytes } from 'node:crypto'
+import { generateSecureToken } from '../utils/crypto'
 import { getOrCreateSettingsValue } from './generators'
 import { getSettingsFile, readSettings, writeSettings } from './settings'
 
@@ -30,13 +30,6 @@ export interface WebApiTokenResult {
     source: 'env' | 'file' | 'generated'
     isNew: boolean
     filePath: string
-}
-
-/**
- * 生成密码学安全的随机 token（32 字节，base64url ≈ 43 字符）
- */
-function generateSecureToken(): string {
-    return randomBytes(32).toString('base64url')
 }
 
 /**

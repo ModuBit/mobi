@@ -41,7 +41,10 @@ export interface VerifiedWebCredential {
  */
 export async function verifyWebCredential(rawToken: string): Promise<VerifiedWebCredential | null> {
     const parsed = parseAccessToken(rawToken)
-    if (!parsed || !constantTimeEquals(parsed.baseToken, configuration.webApiToken)) {
+    const expected = parseAccessToken(configuration.webApiToken)
+    // 两端都经 parseAccessToken 取 baseToken：避免 webApiToken 误含 ':' 后缀时
+    // （如手动设 WEB_API_TOKEN="a:b"）baseToken 与完整值错位导致永久 401
+    if (!parsed || !expected || !constantTimeEquals(parsed.baseToken, expected.baseToken)) {
         return null
     }
     return { namespace: parsed.namespace }

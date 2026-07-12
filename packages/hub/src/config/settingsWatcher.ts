@@ -54,9 +54,10 @@ export function startWebApiTokenWatcher(): SettingsWatcher {
                 if (next && next !== lastWebToken) {
                     // 通过 getConfiguration() 拿到真实单例再调方法；
                     // configuration 是 Proxy（仅拦截 get），直接调方法会以 Proxy 为 this，
-                    // 赋值落到 Proxy 的空 target 上而非真实单例
-                    const source = configuration.webApiTokenSource === '' ? 'file' : configuration.webApiTokenSource
-                    getConfiguration()._setWebApiToken(next, source, false)
+                    // 赋值落到 Proxy 的空 target 上而非真实单例。
+                    // source 固定为 'file'：watcher 只在检测到文件变化时触发，
+                    // 此时值的来源就是文件（无论启动时是 env 还是 generated）
+                    getConfiguration()._setWebApiToken(next, 'file', false)
                     lastWebToken = next
                     console.log('[Hub] webApiToken reloaded from settings.json')
                 }
@@ -84,6 +85,9 @@ export function startWebApiTokenWatcher(): SettingsWatcher {
         watcher.on('error', () => {
             // FSEvents/inotify 极少出错；出错时 watcher 会自动关闭，无需特殊处理
         })
+        // 注册后立即检查一次：追赶 createConfiguration 快照与 watch 注册之间
+        // （hub 启动期间）可能发生的文件变更，避免轮换静默丢失
+        reloadIfChanged()
     } catch {
         // 目录不存在等极端情况：无法监听，静默放弃
         // （正常启动流程下 createConfiguration 已确保 dataDir 存在）

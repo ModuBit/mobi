@@ -53,4 +53,16 @@ describe('verifyWebCredential', () => {
         expect(result).not.toBeNull()
         expect(result?.namespace).toBe('my-ns')
     })
+
+    test('webApiToken 配置本身含 ":" 后缀时，两端 baseToken 对齐仍可校验通过（回归锁定）', async () => {
+        // 模拟手动设 WEB_API_TOKEN="base:ns"：两端都经 parseAccessToken 取 baseToken，
+        // 避免 baseToken 与完整值错位导致永久 401
+        process.env.WEB_API_TOKEN = 'the-web-token:web-ns'
+        resetConfiguration()
+        await createConfiguration()
+
+        const result = await verifyWebCredential('the-web-token:web-ns')
+        expect(result).not.toBeNull()
+        expect(result?.namespace).toBe('web-ns')
+    })
 })

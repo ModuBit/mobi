@@ -21,7 +21,7 @@
  * Priority: environment variable > settings.json > auto-generate
  */
 
-import { randomBytes } from 'node:crypto'
+import { generateSecureToken } from '../utils/crypto'
 import { parseAccessToken } from '../utils/accessToken'
 import { getOrCreateSettingsValue } from './generators'
 import { getSettingsFile, readSettings, writeSettings } from './settings'
@@ -33,13 +33,6 @@ export interface CliApiTokenResult {
     filePath: string
 }
 
-/**
- * Generate a cryptographically secure random token
- * 32 bytes = 256 bits, base64url encoded = ~43 characters
- */
-function generateSecureToken(): string {
-    return randomBytes(32).toString('base64url')
-}
 
 /**
  * Check if a token appears to be weak

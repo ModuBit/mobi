@@ -50,6 +50,25 @@ function formatSource(source: ConfigSource | 'generated'): string {
     }
 }
 
+/** 首次生成 token 时打印的横幅（CLI / Web 密钥共用，避免两段重复） */
+function printTokenBanner(title: string, token: string, file: string, footer?: string): void {
+    console.log('')
+    console.log('='.repeat(70))
+    console.log(`  ${title}`)
+    console.log('='.repeat(70))
+    console.log('')
+    console.log(`  Token: ${token}`)
+    console.log('')
+    console.log(`  Saved to: ${file}`)
+    console.log('')
+    if (footer) {
+        console.log(`  ${footer}`)
+        console.log('')
+    }
+    console.log('='.repeat(70))
+    console.log('')
+}
+
 let syncEngine: SyncEngine | null = null
 let webServer: BunServer<WebSocketData> | null = null
 let sseManager: SSEManager | null = null
@@ -61,38 +80,21 @@ async function main() {
 
     const config = await createConfiguration()
 
-    // Display CLI API token information
+    // 首次生成 CLI 密钥时打印横幅
     if (config.cliApiTokenIsNew) {
-        console.log('')
-        console.log('='.repeat(70))
-        console.log('  NEW CLI_API_TOKEN GENERATED')
-        console.log('='.repeat(70))
-        console.log('')
-        console.log(`  Token: ${config.cliApiToken}`)
-        console.log('')
-        console.log(`  Saved to: ${config.settingsFile}`)
-        console.log('')
-        console.log('='.repeat(70))
-        console.log('')
+        printTokenBanner('NEW CLI_API_TOKEN GENERATED', config.cliApiToken, config.settingsFile)
     } else {
         console.log(`[Hub] CLI_API_TOKEN: loaded from ${formatSource(config.sources.cliApiToken)}`)
     }
 
-    // Display Web API token information
+    // 首次生成 Web 密钥时打印横幅（Web 浏览器登录用，与 CLI 密钥独立）
     if (config.webApiTokenIsNew) {
-        console.log('')
-        console.log('='.repeat(70))
-        console.log('  NEW WEB_API_TOKEN GENERATED (Web 浏览器登录用，与 CLI 密钥独立)')
-        console.log('='.repeat(70))
-        console.log('')
-        console.log(`  Token: ${config.webApiToken}`)
-        console.log('')
-        console.log(`  Saved to: ${config.settingsFile}`)
-        console.log('')
-        console.log('  查看命令: mobi auth web-token    轮换命令: mobi auth rotate-web-token')
-        console.log('')
-        console.log('='.repeat(70))
-        console.log('')
+        printTokenBanner(
+            'NEW WEB_API_TOKEN GENERATED (Web 浏览器登录用，与 CLI 密钥独立)',
+            config.webApiToken,
+            config.settingsFile,
+            '查看命令: mobi auth web-token    轮换命令: mobi auth rotate-web-token'
+        )
     } else {
         console.log(`[Hub] WEB_API_TOKEN: loaded from ${formatSource(config.sources.webApiToken)}`)
     }
