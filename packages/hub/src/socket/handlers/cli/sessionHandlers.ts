@@ -419,6 +419,17 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
         onSessionEnd?.(data)
+
+        // CLI 离线：把仍排队的本地 user 消息全部 invoke，防悬浮条卡死
+        const uninvoked = store.messages.getUninvokedLocalMessages(data.sid)
+        if (uninvoked.length > 0) {
+            const invokedAt = Date.now()
+            const lids = uninvoked.map(m => m.localId).filter((l): l is string => Boolean(l))
+            const fresh = store.messages.markMessagesInvoked(data.sid, lids, invokedAt)
+            if (fresh.length > 0) {
+                onWebappEvent?.({ type: 'messages-consumed', sessionId: data.sid, localIds: fresh, invokedAt })
+            }
+        }
     })
 
     socket.on('idle-timeout-warning', (data: IdleTimeoutWarningPayload) => {

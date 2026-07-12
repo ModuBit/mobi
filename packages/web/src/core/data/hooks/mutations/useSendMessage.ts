@@ -77,8 +77,9 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
             if (import.meta.env.DEV) console.log('[Send] 发送请求成功')
         },
         onError: (error) => {
-            // SSE 会推送正确状态，此处仅记录错误
             console.error('[Send] 发送消息失败:', error)
+            // 失败时 invalidate，让缓存重新拉取（服务端无此消息 → 乐观气泡被丢弃）
+            qc.invalidateQueries({ queryKey: queryKeys.messages(sessionId) })
         },
     })
 

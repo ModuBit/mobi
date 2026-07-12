@@ -307,6 +307,12 @@ export class RpcGateway {
         await this.sessionRpc(sessionId, 'stop-task', { taskId })
     }
 
+    // 取消 CLI 内存队列中已缓冲的排队消息（两阶段取消的 CLI 侧）
+    async cancelCliQueuedMessage(sessionId: string, localId: string): Promise<{ status: 'cancelled' | 'invoked' }> {
+        const res = await this.sessionRpc(sessionId, 'cancel-queued-message', { localId })
+        return (res ?? { status: 'invoked' }) as { status: 'cancelled' | 'invoked' }
+    }
+
     private async sessionRpc(sessionId: string, method: string, params: unknown): Promise<unknown> {
         return await this.rpcCall(`${sessionId}:${method}`, params)
     }

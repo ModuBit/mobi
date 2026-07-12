@@ -255,6 +255,11 @@ export class SyncEngine {
         return this.messageService.cancelQueuedMessage(sessionId, localId)
     }
 
+    /** 通知 CLI 从内存队列移除排队消息（两阶段取消的 CLI 侧 RPC） */
+    async cancelCliQueuedMessage(sessionId: string, localId: string): Promise<{ status: 'cancelled' | 'invoked' }> {
+        return await this.rpcGateway.cancelCliQueuedMessage(sessionId, localId)
+    }
+
     async approvePermission(
         sessionId: string,
         requestId: string,

@@ -110,7 +110,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return c.json({ ok: true })
     })
 
-    // 取消排队消息（仍处于 invoked_at IS NULL 状态的 user 消息）
+    // 取消排队消息（两阶段取消：DB 层 + CLI 内存层）
     app.delete('/sessions/:id/messages/:messageId', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
@@ -124,8 +124,25 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
         const sessionId = sessionResult.sessionId
         const localId = c.req.param('messageId')
-        const res = engine.cancelQueuedMessage(sessionId, localId)
-        return c.json({ status: res.cancelled ? 'cancelled' : 'invoked' })
+
+        // 1. DB 层：已 invoke？已删？
+        const dbRes = engine.cancelQueuedMessage(sessionId, localId)
+        if (dbRes.invoked) return c.json({ status: 'invoked' })
+        if (dbRes.cancelled) {
+            // 2. DB 已删，但 CLI 内存里可能还缓冲着 → 通知 CLI 也删（竞态兜底）
+            try {
+                await engine.cancelCliQueuedMessage(sessionId, localId)
+            } catch { /* CLI 不在线或超时：DB 已删即可 */ }
+            return c.json({ status: 'cancelled' })
+        }
+
+        // 3. DB 里没这条（已被消费/不存在）→ 问 CLI
+        try {
+            const cliRes = await engine.cancelCliQueuedMessage(sessionId, localId)
+            return c.json({ status: cliRes.status ?? 'invoked' })
+        } catch {
+            return c.json({ status: 'invoked' })
+        }
     })
 
     return app
