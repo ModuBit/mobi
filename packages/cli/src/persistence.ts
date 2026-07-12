@@ -33,6 +33,8 @@ export interface Settings {
   machineIdConfirmedByServer?: boolean
   runnerAutoStartWhenRunningMobi?: boolean
   cliApiToken?: string
+  // Web 浏览器登录专用 token（由 hub 生成、与本机 settings.json 共享）
+  webApiToken?: string
   // API URL for server connections (priority: env MOBI_API_URL > this > default)
   apiUrl?: string
   // Legacy field name (for migration, read-only)

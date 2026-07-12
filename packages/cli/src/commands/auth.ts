@@ -16,6 +16,7 @@
 
 import chalk from 'chalk'
 import os from 'node:os'
+import { randomBytes } from 'node:crypto'
 import * as readline from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 import { configuration } from '@/configuration'
@@ -81,6 +82,35 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
         return
     }
 
+    if (subcommand === 'web-token') {
+        // 回显当前 webApiToken（Web 浏览器登录用，与 CLI 密钥独立）
+        const settings = await readSettings()
+        if (!settings.webApiToken) {
+            console.error(chalk.red('webApiToken 尚未配置。'))
+            console.error(chalk.gray('  启动 hub 时会自动生成，或运行 mobi auth rotate-web-token 生成。'))
+            process.exit(1)
+        }
+        console.log(chalk.bold('\nWeb API Token (Web 浏览器登录用)\n'))
+        console.log(chalk.green(`  ${settings.webApiToken}`))
+        console.log(chalk.gray(`\n  来源: ${configuration.settingsFile}`))
+        console.log(chalk.gray('  轮换: mobi auth rotate-web-token'))
+        console.log('')
+        return
+    }
+
+    if (subcommand === 'rotate-web-token') {
+        // 生成新 webApiToken 并原子写入 settings.json
+        // hub 进程的 settingsWatcher 会检测到变化并热 reload，无需重启 hub
+        const newToken = randomBytes(32).toString('base64url')
+        await updateSettings(current => ({ ...current, webApiToken: newToken }))
+        console.log(chalk.green('\nWeb API Token 已轮换。'))
+        console.log(chalk.gray('  hub 将自动热加载新 token（无需重启）。'))
+        console.log(chalk.gray('  注意：已登录的 Web 会话最长 1 天后自然失效，新登录需用下方 token：\n'))
+        console.log(chalk.green(`  ${newToken}\n`))
+        console.log(chalk.gray(`  已写入: ${configuration.settingsFile}`))
+        return
+    }
+
     if (subcommand === 'logout') {
         await updateSettings(current => ({
             ...current,
@@ -102,9 +132,11 @@ function showHelp(): void {
 ${chalk.bold('mobi auth')} - Manage authentication
 
 ${chalk.bold('Usage:')}
-  mobi auth status            Show current auth configuration
-  mobi auth login             Enter and save CLI_API_TOKEN
-  mobi auth logout            Clear saved credentials
+  mobi auth status               Show current auth configuration
+  mobi auth login                Enter and save CLI_API_TOKEN
+  mobi auth logout               Clear saved credentials
+  mobi auth web-token            Show webApiToken (Web 浏览器登录用)
+  mobi auth rotate-web-token     Rotate webApiToken (hub 热加载)
 
 ${chalk.gray('For initial setup, use:')} ${chalk.cyan('mobi setup settings')}
 ${chalk.gray('Token priority:')} env CLI_API_TOKEN > ~/.mobi/settings.json > auto-generated
