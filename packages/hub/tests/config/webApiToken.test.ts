@@ -15,25 +15,33 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getOrCreateWebApiToken } from '../../src/config/webApiToken'
 
 describe('getOrCreateWebApiToken', () => {
     let dataDir: string
+    let prevEnvToken: string | undefined
 
     beforeEach(async () => {
         dataDir = await mkdtemp(join(tmpdir(), 'mobi-webtoken-'))
+        // 隔离环境变量：保证每个测试从干净起点开始，避免 CI/dev shell 导出 WEB_API_TOKEN 导致 flaky
+        prevEnvToken = process.env.WEB_API_TOKEN
+        delete process.env.WEB_API_TOKEN
     })
 
     afterEach(async () => {
         await rm(dataDir, { recursive: true, force: true })
+        // 恢复环境变量（undefined 则 delete）
+        if (prevEnvToken === undefined) delete process.env.WEB_API_TOKEN
+        else process.env.WEB_API_TOKEN = prevEnvToken
     })
 
     test('首次调用自动生成并持久化 webApiToken', async () => {
         const result = await getOrCreateWebApiToken(dataDir)
-        expect(result.token.length).toBeGreaterThanOrEqual(32)
+        // randomBytes(32).toString('base64url') 恒为 43 字符
+        expect(result.token).toHaveLength(43)
         expect(result.isNew).toBe(true)
         expect(result.source).toBe('generated')
 
@@ -44,24 +52,43 @@ describe('getOrCreateWebApiToken', () => {
         expect(again.source).toBe('file')
     })
 
-    test('环境变量 WEB_API_TOKEN 优先级最高', async () => {
-        const prev = process.env.WEB_API_TOKEN
+    test('环境变量 WEB_API_TOKEN 优先级高于 settings.json 文件值', async () => {
+        // 预置文件中的竞争 token，证明 env 真正胜过 file
+        await writeFile(
+            join(dataDir, 'settings.json'),
+            JSON.stringify({ webApiToken: 'file-token-value' })
+        )
         process.env.WEB_API_TOKEN = 'env-web-token-value'
-        try {
-            const result = await getOrCreateWebApiToken(dataDir)
-            expect(result.token).toBe('env-web-token-value')
-            expect(result.source).toBe('env')
-        } finally {
-            if (prev === undefined) delete process.env.WEB_API_TOKEN
-            else process.env.WEB_API_TOKEN = prev
-        }
+
+        const result = await getOrCreateWebApiToken(dataDir)
+        expect(result.token).toBe('env-web-token-value')
+        expect(result.source).toBe('env')
+    })
+
+    test('环境变量 WEB_API_TOKEN 持久化到已有 settings.json', async () => {
+        // 预置一个不含 webApiToken 的 settings.json，覆盖持久化子分支
+        await writeFile(
+            join(dataDir, 'settings.json'),
+            JSON.stringify({ cliApiToken: 'x' })
+        )
+        process.env.WEB_API_TOKEN = 'env-web-token-value'
+
+        const result = await getOrCreateWebApiToken(dataDir)
+        expect(result.token).toBe('env-web-token-value')
+
+        const content = await readFile(join(dataDir, 'settings.json'), 'utf8')
+        const parsed = JSON.parse(content)
+        // env 值被写入磁盘
+        expect(parsed.webApiToken).toBe('env-web-token-value')
+        // 原有字段保留
+        expect(parsed.cliApiToken).toBe('x')
     })
 
     test('不破坏 settings.json 中的其他字段', async () => {
         await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ cliApiToken: 'preexisting' }))
         await getOrCreateWebApiToken(dataDir)
 
-        const content = await import('node:fs/promises').then(fs => fs.readFile(join(dataDir, 'settings.json'), 'utf8'))
+        const content = await readFile(join(dataDir, 'settings.json'), 'utf8')
         const parsed = JSON.parse(content)
         expect(parsed.cliApiToken).toBe('preexisting')
         expect(typeof parsed.webApiToken).toBe('string')
