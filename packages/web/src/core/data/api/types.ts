@@ -43,7 +43,7 @@ export type {
 // ============ 消息类型 ============
 
 // 消息发送状态
-export type MessageStatus = 'sending' | 'sent' | 'failed'
+export type MessageStatus = 'sending' | 'sent' | 'queued' | 'failed'
 
 // 扩展的解密消息（包含发送状态）
 export type DecryptedMessage = ProtocolDecryptedMessage & {

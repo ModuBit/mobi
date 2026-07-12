@@ -44,6 +44,14 @@ function isOptimisticMessage(msg: DecryptedMessage): boolean {
 }
 
 /**
+ * 仍在排队、未被 agent 处理的 user 消息
+ * （悬浮条显示、从线程剔除的判断依据）
+ */
+export function isQueuedForInvocation(msg: DecryptedMessage): boolean {
+    return isUserMessage(msg) && msg.invokedAt == null && msg.status !== 'failed'
+}
+
+/**
  * 消息比较函数，用于排序
  */
 function compareMessages(a: DecryptedMessage, b: DecryptedMessage): number {
@@ -77,7 +85,26 @@ export function mergeMessages(existing: DecryptedMessage[], incoming: DecryptedM
         byId.set(msg.id, msg)
     }
     for (const msg of incoming) {
-        byId.set(msg.id, msg)
+        let row = msg
+        // (1) 服务端 echo 带有 localId：从乐观消息迁移 status/invokedAt
+        // 避免排队中的乐观气泡被服务端确认后丢失排队态
+        if (row.localId) {
+            const optimistic = byId.get(row.localId)
+            if (optimistic && isOptimisticMessage(optimistic)) {
+                row = {
+                    ...row,
+                    status: optimistic.status ?? row.status,
+                    invokedAt: optimistic.invokedAt ?? row.invokedAt,
+                }
+            }
+        }
+        // (2) 不让 incoming 用 null/undefined invokedAt 覆盖已有的非 null invokedAt
+        // 防止陈旧的服务端 echo 回退已确认的 invoke 状态
+        const prev = byId.get(row.id)
+        if (prev && prev.invokedAt != null && row.invokedAt == null) {
+            row = { ...row, invokedAt: prev.invokedAt }
+        }
+        byId.set(row.id, row)
     }
 
     let merged = Array.from(byId.values())
