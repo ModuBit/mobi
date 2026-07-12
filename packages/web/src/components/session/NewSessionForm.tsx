@@ -251,28 +251,32 @@ export function NewSession(props: NewSessionProps) {
     }, [directory, recentPaths, directoryOptions, machineHomeDir])
 
     const canCreate = Boolean(machineId && trimmedDirectory && !isFormDisabled)
+    // 只有一个可选机器时隐藏机器选择器（init effect 已自动选中）
+    const showMachineSelect = machines.length > 1
 
     return (
         <Form layout="vertical" style={{ padding: '16px' }} requiredMark={false}>
-            <Form.Item label={<><DesktopOutlined style={{ marginRight: 4 }} />{t('newSession.machine')}</>}>
-                <Select
-                    value={machineId ?? undefined}
-                    onChange={handleMachineChange}
-                    disabled={isFormDisabled}
-                    loading={isLoading}
-                    placeholder={isLoading ? t('newSession.machineLoading') : t('newSession.machinePlaceholder')}
-                    notFoundContent={isLoading ? <Spin size="small" /> : t('newSession.machineEmpty')}
-                    options={machines.map(m => ({
-                        value: m.id,
-                        label: (
-                            <span>
-                                {getMachineTitle(m)}
-                                {m.metadata?.platform ? ` (${m.metadata.platform})` : ''}
-                            </span>
-                        )
-                    }))}
-                />
-            </Form.Item>
+            {showMachineSelect && (
+                <Form.Item label={<><DesktopOutlined style={{ marginRight: 4 }} />{t('newSession.machine')}</>}>
+                    <Select
+                        value={machineId ?? undefined}
+                        onChange={handleMachineChange}
+                        disabled={isFormDisabled}
+                        loading={isLoading}
+                        placeholder={isLoading ? t('newSession.machineLoading') : t('newSession.machinePlaceholder')}
+                        notFoundContent={isLoading ? <Spin size="small" /> : t('newSession.machineEmpty')}
+                        options={machines.map(m => ({
+                            value: m.id,
+                            label: (
+                                <span>
+                                    {getMachineTitle(m)}
+                                    {m.metadata?.platform ? ` (${m.metadata.platform})` : ''}
+                                </span>
+                            )
+                        }))}
+                    />
+                </Form.Item>
+            )}
 
             <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />{t('newSession.workDirectory')}</>}>
                 <AutoComplete

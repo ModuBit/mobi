@@ -173,6 +173,8 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
     } = props
 
     const activeMachines = machines.filter(m => m.active !== false)
+    // 只有一个可选机器时隐藏机器选择器（父组件 init effect 已自动选中）
+    const showMachineSelect = activeMachines.length > 1
 
     // 目录下拉受控：选中目录后子目录加载完成时自动展开
     const [directoryOpen, setDirectoryOpen] = useState(false)
@@ -211,26 +213,28 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
             gap: 2,
             padding: '4px 4px 6px',
         }}>
-            {/* 机器选择 */}
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-            }}>
-                <DesktopOutlined style={{ color: token.colorTextQuaternary, fontSize: 12, flexShrink: 0 }} />
-                <Select
-                    value={selectedMachineId ?? undefined}
-                    onChange={onMachineChange}
-                    disabled={disabled || isLoading}
-                    loading={isLoading}
-                    placeholder={isLoading ? '加载中...' : '选择机器'}
-                    size="small"
-                    variant="borderless"
-                    options={machineSelectOptions}
-                    suffixIcon={isLoading ? <LoadingOutlined /> : undefined}
-                    style={{ flex: 1, minWidth: 0 }}
-                />
-            </div>
+            {/* 机器选择：仅多机器时展示，单机器由父组件自动选中 */}
+            {showMachineSelect && (
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                }}>
+                    <DesktopOutlined style={{ color: token.colorTextQuaternary, fontSize: 12, flexShrink: 0 }} />
+                    <Select
+                        value={selectedMachineId ?? undefined}
+                        onChange={onMachineChange}
+                        disabled={disabled || isLoading}
+                        loading={isLoading}
+                        placeholder={isLoading ? '加载中...' : '选择机器'}
+                        size="small"
+                        variant="borderless"
+                        options={machineSelectOptions}
+                        suffixIcon={isLoading ? <LoadingOutlined /> : undefined}
+                        style={{ flex: 1, minWidth: 0 }}
+                    />
+                </div>
+            )}
 
             {/* 工作目录 */}
             <div style={{
