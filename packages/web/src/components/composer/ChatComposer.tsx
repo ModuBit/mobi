@@ -29,7 +29,7 @@ import { ComposerInfoPanel } from './ComposerInfoPanel'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
-import { saveDraft } from '@/core/lib/composerDrafts'
+import { mergeDraftText } from '@/core/lib/composerDrafts'
 import { useComposerDraft } from './useComposerDraft'
 import { useMentionInteraction } from './useMentionInteraction'
 import { useSlashCommandInteraction } from './useSlashCommandInteraction'
@@ -285,8 +285,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
         const crossPageDraft = consumeDraftText()
         if (crossPageDraft) {
             setText(crossPageDraft)
-            // 落入当前 session 草稿，后续切走/切回由 per-session map 接管
-            saveDraft(sessionId, crossPageDraft, [])
+            // 仅更新文本，保留该 session 既有的附件草稿（避免空附件覆盖）
+            mergeDraftText(sessionId, crossPageDraft)
         }
     }, [sessionId])
 
@@ -309,7 +309,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
         handleAttach, handleRemoveAttachment, handlePaste,
         handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
         resetAttachments,
-    } = useAttachmentHandling(capabilities, controlsDisabled)
+    } = useAttachmentHandling(sessionId, capabilities, controlsDisabled)
 
     // per-session 草稿生命周期：挂载恢复、切走保存（依赖上面的 text/attachments/setters）
     useComposerDraft(

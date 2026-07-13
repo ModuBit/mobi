@@ -109,14 +109,18 @@ function evict(drafts: DraftsMap): void {
     }
 }
 
-function persist(): void {
-    if (typeof window === 'undefined') return
+function persist(next: DraftsMap): void {
+    if (typeof window === 'undefined') {
+        cache = next
+        return
+    }
     try {
-        const drafts = hydrate()
-        evict(drafts)
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(drafts))
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+        // 仅在持久化成功后提交内存 cache，避免 cache 被 evict/修改而 sessionStorage 未跟上的不一致
+        cache = next
     } catch {
-        // 存储不可用或超额时静默
+        // sessionStorage 写入失败（quota 等）：cache 保持上一次成功的状态，
+        // 与当前 sessionStorage 一致；本次更新不持久化（降级，不崩溃）
     }
 }
 
@@ -135,27 +139,63 @@ function toPersisted(attachments: FileAttachment[]): PersistedAttachment[] {
 
 export function getDraft(sessionId: string): SessionDraft | null {
     const drafts = hydrate()
-    return drafts[sessionId] ?? null
+    const draft = drafts[sessionId]
+    if (draft) {
+        // 读刷新 LRU 顺序（仅内存）：高频访问的老 session 不被优先淘汰
+        delete drafts[sessionId]
+        drafts[sessionId] = draft
+    }
+    return draft ?? null
 }
 
 export function saveDraft(sessionId: string, text: string, attachments: FileAttachment[]): void {
     if (!sessionId) return
     const trimmed = text.trim()
     const persisted = toPersisted(attachments)
-    const drafts = hydrate()
+    const next: DraftsMap = { ...hydrate() }
     if (!trimmed && persisted.length === 0) {
-        delete drafts[sessionId]
+        delete next[sessionId]
     } else {
         // 先删再写，刷新 Object.keys() 顺序用于 LRU 淘汰
-        delete drafts[sessionId]
-        drafts[sessionId] = { text, attachments: persisted }
+        delete next[sessionId]
+        next[sessionId] = { text, attachments: persisted }
     }
-    persist()
+    evict(next)
+    persist(next)
+}
+
+/**
+ * 仅更新草稿文本，保留该 session 既有的附件草稿。
+ * 供跨页草稿落入既有 session 时使用，避免用空附件覆盖。
+ */
+export function mergeDraftText(sessionId: string, text: string): void {
+    if (!sessionId) return
+    const trimmed = text.trim()
+    const existing = hydrate()[sessionId]
+    const keptAttachments = existing?.attachments ?? []
+    const next: DraftsMap = { ...hydrate() }
+    if (!trimmed && keptAttachments.length === 0) {
+        delete next[sessionId]
+    } else {
+        delete next[sessionId]
+        next[sessionId] = { text, attachments: keptAttachments }
+    }
+    evict(next)
+    persist(next)
 }
 
 export function clearDraft(sessionId: string): void {
     if (!sessionId) return
-    const drafts = hydrate()
-    delete drafts[sessionId]
-    persist()
+    const next: DraftsMap = { ...hydrate() }
+    delete next[sessionId]
+    persist(next)
+}
+
+/**
+ * 重置内存 cache（仅供测试）
+ *
+ * cache 是模块级单例，跨用例累积；测试需要从干净的 cache 开始时调用。
+ */
+export function __resetDraftCacheForTesting(): void {
+    cache = null
 }

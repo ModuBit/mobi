@@ -363,7 +363,7 @@ export function NewSessionPage() {
         attachments, isDragOver,
         handleAttach, handleRemoveAttachment, handlePaste,
         handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
-    } = useAttachmentHandling(capabilities)
+    } = useAttachmentHandling(undefined, capabilities)
 
     // @ 文件引用交互
     const mention = useMentionInteraction({

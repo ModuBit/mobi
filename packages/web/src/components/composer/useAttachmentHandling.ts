@@ -59,8 +59,16 @@ function imageExtFromMime(mimeType: string): string {
  *
  * 封装上传、删除、粘贴、拖拽等附件操作，
  * 供 ChatComposer 和 NewSessionPage 共享
+ *
+ * @param sessionId 当前会话 id；NewSessionPage（创建前）传 undefined。
+ *                  同实例下 sessionId 变化（TanStack Router 复用组件切换会话）时，
+ *                  会中止进行中的上传并清空附件，避免孤儿文件与跨 session 污染。
  */
-export function useAttachmentHandling(capabilities: DirectoryCapabilities, controlsDisabled = false) {
+export function useAttachmentHandling(
+    sessionId: string | undefined,
+    capabilities: DirectoryCapabilities,
+    controlsDisabled = false,
+) {
     const [attachments, setAttachments] = useState<FileAttachment[]>([])
     const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
 
@@ -68,13 +76,19 @@ export function useAttachmentHandling(capabilities: DirectoryCapabilities, contr
     const [isDragOver, setIsDragOver] = useState(false)
     const dragCounterRef = useRef(0)
 
-    // 组件卸载时中止所有进行中的上传，避免产生孤立文件 + setState on unmounted
+    // sessionId 变化或组件卸载：中止所有进行中的上传 + 清空附件
+    // （同实例切换会话时 useAttachmentHandling 不随 sessionId 自然重置，需显式清理，
+    // 否则上个 session 的上传完成回调会污染下个 session 的附件列表，并产生孤儿服务器文件）
     useEffect(() => {
+        // 首次挂载：abortControllersRef 与 attachments 都已是初始空态，无需操作
         return () => {
             abortControllersRef.current.forEach(c => c.abort())
             abortControllersRef.current.clear()
+            setAttachments([])
+            dragCounterRef.current = 0
+            setIsDragOver(false)
         }
-    }, [])
+    }, [sessionId])
 
     // 控件禁用（会话失活/归档）时重置拖拽计数，防止 handler 卸载后计数残留导致覆盖层永久失效
     useEffect(() => {

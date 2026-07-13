@@ -53,7 +53,7 @@ describe('useAttachmentHandling', () => {
             return new Promise(() => {})
         })
         const capabilities = makeCapabilities(uploadFile)
-        const { result, unmount } = renderHook(() => useAttachmentHandling(capabilities))
+        const { result, unmount } = renderHook(() => useAttachmentHandling('s1', capabilities))
 
         await act(async () => {
             result.current.handleDrop({
@@ -74,7 +74,7 @@ describe('useAttachmentHandling', () => {
     it('controlsDisabled 置 true 时重置拖拽覆盖层 (#3)', () => {
         const capabilities = makeCapabilities(vi.fn())
         const { result, rerender } = renderHook(
-            ({ cd }: { cd: boolean }) => useAttachmentHandling(capabilities, cd),
+            ({ cd }: { cd: boolean }) => useAttachmentHandling('s1', capabilities, cd),
             { initialProps: { cd: false } },
         )
 
@@ -97,7 +97,7 @@ describe('useAttachmentHandling', () => {
             return new Promise<{ data: { success: boolean; path: string } }>(() => {})
         })
         const capabilities = makeCapabilities(uploadFile)
-        const { result } = renderHook(() => useAttachmentHandling(capabilities))
+        const { result } = renderHook(() => useAttachmentHandling('s1', capabilities))
 
         await act(async () => {
             result.current.handleDrop({
@@ -113,5 +113,35 @@ describe('useAttachmentHandling', () => {
             capturedOnProgress!(50)
         })
         expect(result.current.attachments[0].progress).toBe(50)
+    })
+
+    it('sessionId 变化时中止进行中的上传并清空附件（避免孤儿文件/跨 session 污染）', async () => {
+        let capturedSignal: AbortSignal | undefined
+        const uploadFile = vi.fn((_file: File, opts?: { signal?: AbortSignal }) => {
+            capturedSignal = opts?.signal
+            // 永不 resolve，模拟上传进行中
+            return new Promise(() => {})
+        })
+        const capabilities = makeCapabilities(uploadFile)
+        const { result, rerender, unmount } = renderHook(
+            ({ sid }: { sid: string | undefined }) => useAttachmentHandling(sid, capabilities),
+            { initialProps: { sid: 's1' as string | undefined } },
+        )
+
+        await act(async () => {
+            result.current.handleDrop({
+                preventDefault: () => {},
+                dataTransfer: { files: [new File(['x'], 'a.txt', { type: 'text/plain' })] },
+            } as any)
+        })
+        expect(result.current.attachments.length).toBe(1)
+        expect(capturedSignal?.aborted).toBe(false)
+
+        // 同实例切换到 s2（TanStack Router 复用组件）：应中止 s1 的上传 + 清空附件
+        act(() => rerender({ sid: 's2' }))
+        expect(capturedSignal?.aborted).toBe(true)
+        expect(result.current.attachments.length).toBe(0)
+
+        unmount()
     })
 })

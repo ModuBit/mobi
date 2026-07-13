@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { saveDraft, getDraft, clearDraft } from '@/core/lib/composerDrafts'
+import { saveDraft, getDraft, clearDraft, mergeDraftText, __resetDraftCacheForTesting } from '@/core/lib/composerDrafts'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
 
 function attach(id: string, name: string, path: string, size = 1024): FileAttachment {
@@ -25,6 +25,7 @@ function attach(id: string, name: string, path: string, size = 1024): FileAttach
 describe('composerDrafts', () => {
     beforeEach(() => {
         sessionStorage.clear()
+        __resetDraftCacheForTesting()
     })
 
     it('save 后 get 能读到 text 与 complete 附件', () => {
@@ -73,4 +74,30 @@ describe('composerDrafts', () => {
         saveDraft('s1', 't', [])
         expect(getDraft('s1')!.text).toBe('t')
     })
+
+    it('mergeDraftText 保留既有 attachments，只更新 text', () => {
+        saveDraft('s1', 'old', [attach('a1', 'f.png', '/p/f.png')])
+        mergeDraftText('s1', 'new text')
+        const d = getDraft('s1')!
+        expect(d.text).toBe('new text')
+        expect(d.attachments).toEqual([{ id: 'a1', name: 'f.png', path: '/p/f.png', size: 1024 }])
+    })
+
+    it('mergeDraftText 在空文本且无附件时删除 key', () => {
+        saveDraft('s1', 'old', [])
+        mergeDraftText('s1', '   ')
+        expect(getDraft('s1')).toBeNull()
+    })
+
+    it('getDraft 读刷新 LRU 顺序（高频读的老 session 不被优先淘汰）', () => {
+        for (let i = 0; i < 50; i++) saveDraft(`s${i}`, `t${i}`, [])
+        getDraft('s0') // 读刷新 s0 到最新
+        saveDraft('s50', 't50', []) // 触发淘汰，应删 s1（最早未刷新项）
+        expect(getDraft('s0')?.text).toBe('t0')
+        expect(getDraft('s1')).toBeNull()
+    })
+
+    // persist 写入失败（quota）时 cache 不被 evict 提交的降级行为，
+    // 因 jsdom 无法 mock 原生 Storage.prototype.setItem 而未覆盖单测；
+    // 实现上 persist 仅在 setItem 成功后才赋值 cache，失败时 cache 保持旧值。
 })

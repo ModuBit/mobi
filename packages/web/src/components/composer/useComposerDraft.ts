@@ -51,6 +51,10 @@ export function useComposerDraft(
     // 恢复完成守卫：rAF 内恢复完成后置 true；未完成即卸载则跳过保存
     const draftReadyRef = useRef(false)
 
+    // setters 解构进 deps：当前 setText/setAttachments 为稳定引用（useState setter），
+    // effect 实际仅在 sessionId 变化时重跑；显式声明依赖避免未来 setter 变为不稳定时静默用过期闭包
+    const { setText, setAttachments } = setters
+
     useEffect(() => {
         if (!sessionId) return
         const currentSessionId = sessionId
@@ -59,7 +63,7 @@ export function useComposerDraft(
         const frame = requestAnimationFrame(() => {
             const draft = getDraft(currentSessionId)
             if (draft) {
-                if (draft.text) setters.setText(draft.text)
+                if (draft.text) setText(draft.text)
                 if (draft.attachments.length > 0) {
                     const restored: FileAttachment[] = draft.attachments.map((a: PersistedAttachment) => ({
                         id: a.id,
@@ -70,7 +74,7 @@ export function useComposerDraft(
                         name: a.name,
                         size: a.size,
                     }))
-                    setters.setAttachments(restored)
+                    setAttachments(restored)
                 }
             }
             draftReadyRef.current = true
@@ -84,6 +88,5 @@ export function useComposerDraft(
             }
             draftReadyRef.current = false
         }
-        // setters 引用稳定（useState setter / useCallback），text/attachments 通过 ref 读最新值，故仅依赖 sessionId
-    }, [sessionId])
+    }, [sessionId, setText, setAttachments])
 }
