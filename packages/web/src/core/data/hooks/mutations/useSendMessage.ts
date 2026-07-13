@@ -83,9 +83,17 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
         },
     })
 
-    // 对外保留 mutate(text) 接口（内部生成 localId，保证 onMutate 与 mutationFn 用同一个）
+    // 对外暴露统一的 mutate(text)/mutateAsync(text) 接口（内部生成 localId，
+    // 保证 onMutate 与 mutationFn 用同一个）。必须同时覆盖两者——只覆盖 mutate 会让
+    // 展开的 mutateAsync 仍按 {text,localId} 签名工作，调用方传 text 会丢 localId，
+    // 导致服务端 echo 无法按 localId 去重乐观气泡 → 重复消息。
+    const send = (text: string): { text: string; localId: string } => ({
+        text,
+        localId: makeClientSideId('local'),
+    })
     return {
         ...mutation,
-        mutate: (text: string) => mutation.mutate({ text, localId: makeClientSideId('local') }),
+        mutate: (text: string) => mutation.mutate(send(text)),
+        mutateAsync: (text: string) => mutation.mutateAsync(send(text)),
     }
 }

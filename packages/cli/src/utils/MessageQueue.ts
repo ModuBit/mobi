@@ -131,6 +131,12 @@ export class MessageQueue<T> {
         const methodName = isolate ? 'pushIsolateAndClear' : 'pushAndClear';
         logger.debug(`[MessageQueue] ${methodName}() mode=${modeHash}, clearing ${this.queue.length} messages`);
 
+        // 被清空的排队项需要通知 Hub 标记为已处理（invokedAt），否则其 DB 行永远 invoked_at=null，
+        // Web 悬浮条会永久卡死。收集带 localId 的丢弃项，触发 onBatchConsumed（与正常消费同路径）。
+        const discardedLocalIds = this.queue
+            .map(item => item.localId)
+            .filter((l): l is string => Boolean(l));
+
         this.queue = [];
 
         this.queue.push({
@@ -140,6 +146,11 @@ export class MessageQueue<T> {
             isolate,
             localId
         });
+
+        // 通知丢弃项已「离开队列」（agent 不会再处理它们）
+        if (discardedLocalIds.length > 0) {
+            this.onBatchConsumedHandler?.(discardedLocalIds);
+        }
 
         if (this.onMessageHandler) {
             this.onMessageHandler(message, mode);

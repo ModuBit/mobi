@@ -93,4 +93,14 @@ describe('byPosition + invokedAt', () => {
         // 再次调用全空
         expect(markMessagesInvoked(db, 's', ['loc-1', 'loc-2', 'loc-3'], 300)).toEqual([])
     })
+
+    test('getMessages：beforeSeq 指向已删除行 → 返回空（防退回最新页造成重复）', () => {
+        // loc-1 是 seq=1 的排队 user 消息
+        addMessage(db, 's', { role: 'user' }, 'loc-1')
+        addMessage(db, 's', { role: 'assistant' }, undefined) // seq=2
+        // 取消 loc-1 → 物理删除
+        cancelQueuedMessage(db, 's', 'loc-1')
+        // 用 loc-1 的 seq=1 作游标翻页：行已不存在，必须返回 [] 而非退回最新页
+        expect(getMessages(db, 's', 50, 1)).toEqual([])
+    })
 })

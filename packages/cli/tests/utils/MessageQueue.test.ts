@@ -491,4 +491,19 @@ describe('MessageQueue', () => {
         expect(queue.size()).toBe(0);
         expect(queue.cancelByLocalId('loc-a')).toBe(false);
     });
+
+    it('pushAndClear 清空排队项时触发 onBatchConsumed（防悬浮条卡死）', () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        const consumed: string[][] = [];
+        queue.setOnBatchConsumed(ids => consumed.push(ids));
+        // 先放两条带 localId 的排队消息
+        queue.push('a', { m: '1' }, 'loc-a');
+        queue.push('b', { m: '1' }, 'loc-b');
+        // pushAndClear 清空它们、推入 /compact（带自己的 localId）
+        queue.pushAndClear('compact', { m: '1' }, 'loc-compact');
+        // 被丢弃的 loc-a/loc-b 应通过 onBatchConsumed 通知；loc-compact 是新推的、不在丢弃集
+        expect(consumed).toContainEqual(['loc-a', 'loc-b']);
+        // 队列只剩 /compact
+        expect(queue.size()).toBe(1);
+    });
 });

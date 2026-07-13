@@ -151,6 +151,11 @@ export function getMessages(
     const anchor = db.prepare(
         `SELECT COALESCE(invoked_at, created_at) AS p, seq FROM messages WHERE session_id = ? AND seq = ?`
     ).get(sessionId, beforeSeq) as { p: number; seq: number } | undefined
+    if (!anchor) {
+        // 游标行已不存在（如排队消息被取消后物理删除）→ 停止翻页返回空，
+        // 避免回退到 queryByPosition(undefined) 拿最新页造成重复消息/滚动错乱
+        return []
+    }
     return queryByPosition(db, sessionId, limit, anchor, sidechainFilter)
 }
 
@@ -200,8 +205,10 @@ export function markMessagesInvoked(
     const result = db.prepare(
         `UPDATE messages SET invoked_at = ? WHERE session_id = ? AND invoked_at IS NULL AND local_id IN (${candidates.map(() => '?').join(',')})`
     ).run(invokedAt, sessionId, ...candidates)
-    // result.changes 应等于 candidates.length（除非竞态）；返回实际被更新的（用 changes 与候选取交集保守返回）
-    return result.changes === candidates.length ? candidates : candidates.slice(0, result.changes)
+    // 单连接同步执行，SELECT 与 UPDATE 之间无其他写入，changes 必等于 candidates.length。
+    // 直接返回 candidates（之前用 slice(0, changes) 是死代码且语义错误——它假设前 N 个被更新）。
+    void result
+    return candidates
 }
 
 /** 仍排队（invoked_at IS NULL 且有 local_id）的 user 消息，用于悬浮条钉最新页。 */
