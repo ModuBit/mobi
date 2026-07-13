@@ -233,5 +233,69 @@ describe('RpcGateway.machineUploadFileRange', () => {
     })
 })
 
+// ============ cancelCliQueuedMessage（两阶段取消的 CLI 侧 RPC） ============
+
+describe('RpcGateway.cancelCliQueuedMessage', () => {
+    test('正确调用 sessionRpc(sessionId, cancel-queued-message, {localId}) 并返回 status', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({
+            response: { status: 'cancelled' },
+            payloadCaptor,
+        })
+        const io = makeFakeIo('sock-cancel-1', socket)
+        const registry = makeFakeRegistry(new Map([['sess-A:cancel-queued-message', 'sock-cancel-1']]))
+
+        const gateway = new RpcGateway(io, registry)
+        const result = await gateway.cancelCliQueuedMessage('sess-A', 'loc-1')
+
+        expect(result).toEqual({ status: 'cancelled' })
+        const envelope = payloadCaptor.value as { method: string; params: Record<string, unknown> }
+        expect(envelope.method).toBe('sess-A:cancel-queued-message')
+        expect(envelope.params).toEqual({ localId: 'loc-1' })
+    })
+
+    test('CLI 返回 invoked → 透传', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({
+            response: { status: 'invoked' },
+            payloadCaptor,
+        })
+        const io = makeFakeIo('sock-cancel-2', socket)
+        const registry = makeFakeRegistry(new Map([['sess-B:cancel-queued-message', 'sock-cancel-2']]))
+
+        const gateway = new RpcGateway(io, registry)
+        const result = await gateway.cancelCliQueuedMessage('sess-B', 'loc-2')
+
+        expect(result).toEqual({ status: 'invoked' })
+    })
+
+    test('CLI 无响应（res 为 null/undefined）→ 降级为 invoked', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({
+            response: null,
+            payloadCaptor,
+        })
+        const io = makeFakeIo('sock-cancel-3', socket)
+        const registry = makeFakeRegistry(new Map([['sess-C:cancel-queued-message', 'sock-cancel-3']]))
+
+        const gateway = new RpcGateway(io, registry)
+        const result = await gateway.cancelCliQueuedMessage('sess-C', 'loc-3')
+
+        expect(result).toEqual({ status: 'invoked' })
+    })
+
+    test('handler 未注册 → throw（CLI 不在线）', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({ response: {}, payloadCaptor })
+        const io = makeFakeIo('sock-cancel-4', socket)
+        const registry = makeFakeRegistry(new Map([['sess-D:cancel-queued-message', null]]))
+
+        const gateway = new RpcGateway(io, registry)
+        await expect(
+            gateway.cancelCliQueuedMessage('sess-D', 'loc-4')
+        ).rejects.toThrow(/not registered/)
+    })
+})
+
 // mock 标记：保留 import 避免被 lint 当未使用（本测试用自建 fake，未直接用 mock）
 void mock
