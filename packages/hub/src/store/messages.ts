@@ -106,8 +106,10 @@ export function addMessage(
     const json = JSON.stringify(content)
     const isSidechain = extractIsSidechain(content) ? 1 : 0
     const parentToolUseId = extractParentToolUseId(content)
-    // user 消息（带 localId）invokedAt=null（排队中）；agent 产出的消息立即定位
-    const invokedAt = localId ? null : now
+    const role = (content as { role?: string } | null)?.role
+    // 仅「带 localId 的 user 消息」排队（invokedAt=null，悬浮等采纳）；
+    // agent 消息虽然也带 localId（=其 uuid），但 role≠user，立即定位不悬浮
+    const invokedAt = (role === 'user' && localId) ? null : now
 
     db.prepare(`
         INSERT INTO messages (
