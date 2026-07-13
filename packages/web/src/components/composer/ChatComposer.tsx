@@ -332,7 +332,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     const hasAttachments = attachments.length > 0
     // 有 pending 权限请求时禁用发送
     const hasPendingPermission = Boolean(agentState?.requests && Object.keys(agentState.requests).length > 0)
-    const canSend = (hasText || hasAttachments) && !controlsDisabled && !running && !sending && !hasPendingPermission
+    // 注意：running 时不禁用发送——运行中发送的消息会进入排队悬浮条（queued），
+    // 等当前 turn 结束由 gated pump 喂给 agent。abort 走独立按钮/Ctrl+C，与此独立。
+    const canSend = (hasText || hasAttachments) && !controlsDisabled && !sending && !hasPendingPermission
     const hasSubBar = !!extraItems?.length || !!(extraLeftButtons && !extraItems)
 
     // 是否展示命令提示（hint 或 description 任一存在即展示）
