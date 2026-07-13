@@ -1,0 +1,200 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * useSendMessage 单元测试
+ * 验证乐观更新注入、localId 共享、失败时 invalidate
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { renderHook, act, waitFor, cleanup } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { InfiniteData } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
+import { queryKeys } from '@/core/lib/query-keys'
+import type { DecryptedMessage, MessagesResponse } from '@/core/data/api/types'
+
+// 隔离 api.messages.send，避免真实 HTTP
+const mocks = vi.hoisted(() => ({
+    send: vi.fn(),
+}))
+vi.mock('@/core/data/api/client', () => ({
+    useMobiApi: () => ({ messages: { send: mocks.send } }),
+}))
+
+import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
+
+const SESSION_ID = 's1'
+
+/** QueryClientProvider wrapper */
+function makeWrapper(qc: QueryClient) {
+    return function Wrapper({ children }: { children: ReactNode }) {
+        return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    }
+}
+
+/** 构建初始 InfiniteData 缓存 */
+function seedData(messages: DecryptedMessage[]): InfiniteData<MessagesResponse> {
+    return {
+        pages: [{
+            messages,
+            page: { limit: 50, beforeSeq: null, nextBeforeSeq: null, hasMore: false },
+        }],
+        pageParams: [null],
+    }
+}
+
+/** 读取缓存中 pages[0] 的消息列表 */
+function readCacheMessages(qc: QueryClient): DecryptedMessage[] {
+    const data = qc.getQueryData<InfiniteData<MessagesResponse>>(queryKeys.messages(SESSION_ID))
+    return data?.pages[0]?.messages ?? []
+}
+
+describe('useSendMessage', () => {
+    let qc: QueryClient
+
+    beforeEach(() => {
+        qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        mocks.send.mockReset()
+        // 抑制 hook 内 DEV console.log / onError console.error
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+        cleanup()
+    })
+
+    it('isRunning=false 时 onMutate 注入乐观消息 status=sending', async () => {
+        mocks.send.mockResolvedValue({ data: {} })
+        qc.setQueryData(queryKeys.messages(SESSION_ID), seedData([]))
+
+        const { result } = renderHook(() => useSendMessage(SESSION_ID, false), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate('hello')
+        })
+        await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
+
+        const msgs = readCacheMessages(qc)
+        expect(msgs).toHaveLength(1)
+        const optimistic = msgs[0]
+        expect(optimistic.status).toBe('sending')
+        expect(optimistic.invokedAt).toBeNull()
+        // 乐观消息 id === localId
+        expect(optimistic.id).toBe(optimistic.localId)
+        // content 信封正确
+        const content = optimistic.content as {
+            role: string
+            content: { type: string; text: string }
+            meta: { sentFrom: string }
+        }
+        expect(content.role).toBe('user')
+        expect(content.content.type).toBe('text')
+        expect(content.content.text).toBe('hello')
+        expect(content.meta.sentFrom).toBe('webapp')
+    })
+
+    it('isRunning=true 时乐观消息 status=queued', async () => {
+        mocks.send.mockResolvedValue({ data: {} })
+        qc.setQueryData(queryKeys.messages(SESSION_ID), seedData([]))
+
+        const { result } = renderHook(() => useSendMessage(SESSION_ID, true), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate('排队中')
+        })
+        await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
+
+        const msgs = readCacheMessages(qc)
+        expect(msgs[0].status).toBe('queued')
+    })
+
+    it('mutate(text) 生成的 localId 被 onMutate 与 mutationFn 共享', async () => {
+        mocks.send.mockResolvedValue({ data: {} })
+        qc.setQueryData(queryKeys.messages(SESSION_ID), seedData([]))
+
+        const { result } = renderHook(() => useSendMessage(SESSION_ID, false), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate('shared-id')
+        })
+        await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
+
+        // mutationFn 收到的 localId（第三参数）
+        const sentLocalId = mocks.send.mock.calls[0][2]
+        expect(sentLocalId).toBeTruthy()
+        expect(typeof sentLocalId).toBe('string')
+
+        // 缓存乐观消息的 id / localId 与之一致
+        const msgs = readCacheMessages(qc)
+        const optimistic = msgs[0]
+        expect(optimistic.localId).toBe(sentLocalId)
+        expect(optimistic.id).toBe(sentLocalId)
+    })
+
+    it('乐观消息追加到 pages[0] 末尾，保留已有消息', async () => {
+        mocks.send.mockResolvedValue({ data: {} })
+        const existing: DecryptedMessage = {
+            id: 'msg-existing',
+            seq: 1,
+            localId: null,
+            createdAt: 1000,
+            content: { role: 'user', content: 'old' },
+        }
+        qc.setQueryData(queryKeys.messages(SESSION_ID), seedData([existing]))
+
+        const { result } = renderHook(() => useSendMessage(SESSION_ID, false), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate('new one')
+        })
+        await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
+
+        const msgs = readCacheMessages(qc)
+        expect(msgs).toHaveLength(2)
+        // 原有消息保持在前
+        expect(msgs[0].id).toBe('msg-existing')
+        // 乐观消息在末尾
+        expect(msgs[1].id).toBe(msgs[1].localId)
+    })
+
+    it('onError 时 invalidateQueries({ queryKey: messages(sessionId) })', async () => {
+        mocks.send.mockRejectedValue(new Error('network down'))
+        qc.setQueryData(queryKeys.messages(SESSION_ID), seedData([]))
+        const spy = vi.spyOn(qc, 'invalidateQueries')
+
+        const { result } = renderHook(() => useSendMessage(SESSION_ID, false), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate('will-fail')
+        })
+        await waitFor(() => expect(result.current.isError).toBe(true))
+
+        expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.messages(SESSION_ID) })
+    })
+})
