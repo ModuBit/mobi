@@ -36,7 +36,7 @@ Web 是 Mobi 的浏览器前端，提供 Claude Code 会话的远程交互界面
 | **SSEClient** | SSE 传输层，封装 `@microsoft/fetch-event-source`，负责连接/重连/认证 |
 | **ChatContainer** | 聊天容器组件，消费 `useMessages` 数据并渲染消息列表 |
 | **ToolCard** | 工具调用展示组件，根据工具名称选择对应的视图（Edit、Diff、Write 等） |
-| **ChatComposer** | 消息输入组件，支持文本输入、斜杠命令自动补全、文件附件 |
+| **ChatComposer** | 消息输入组件，支持文本输入、斜杠命令自动补全、文件附件。运行中允许发送（消息进入排队悬浮条） |
 | **Chat Reducer** | 消息归约器（`domain/chat/reducer.ts`），将原始消息事件归约为 ChatBlock 列表 |
 | **QueryKeys** | 集中定义的 React Query 缓存 key，确保缓存操作的一致性 |
 
@@ -144,8 +144,9 @@ packages/web/src/
 │   │       │   ├── useCommands.ts        斜杠命令列表
 │   │       │   ├── useSidechainMessages.ts Agent 子对话消息
 │   │       │   └── useSDKMetadata.ts     SDK 元数据
-│   │       ├── mutations/      TanStack Query 变更（3 个）
-│   │       │   ├── useSendMessage.ts     发送消息
+│   │       ├── mutations/      TanStack Query 变更（4 个）
+│   │       │   ├── useSendMessage.ts     发送消息（运行中发送→排队）
+│   │       │   ├── useCancelQueuedMessage.ts 取消排队消息（乐观删除 + 两阶段）
 │   │       │   ├── useSessionActions.ts  会话操作（归档/中止/切换/恢复/重命名）
 │   │       │   └── useSpawnSession.ts    启动新会话
 │   │       ├── useMediaQuery.ts          响应式断点
@@ -166,7 +167,8 @@ packages/web/src/
 │   │   └── SSEProvider.tsx     SSE 全局连接管理（单例）
 │   ├── lib/                    业务辅助逻辑
 │   │   ├── query-keys.ts       React Query key 集中定义
-│   │   ├── messages.ts         消息合并/去重/排序（缓存操作工具）
+│   │   ├── messages.ts         消息合并/去重/排序（缓存操作工具，isQueuedForInvocation）
+│   │   ├── markMessagesConsumed.ts 排队消息消费标记（invokedAt first-write-wins）
 │   │   ├── fileAttachments.ts  文件附件类型和辅助函数
 │   │   ├── toolInputUtils.ts   工具输入解析
 │   │   ├── recent-skills.ts    最近技能 localStorage 持久化
@@ -220,6 +222,7 @@ packages/web/src/
 ├── components/                 UI 组件（按功能域分组）
 │   ├── chat/                   聊天视图
 │   │   ├── ChatContainer.tsx   主聊天容器
+│   │   ├── QueuedMessagesBar.tsx 排队消息悬浮条（agent 运行中发送的消息，✕取消 / ✎编辑）
 │   │   ├── buildBubbleItems.tsx Bubble 渲染项构建
 │   │   ├── bubbleRoles.ts      气泡角色配置
 │   │   ├── ChatWelcome.tsx     空态欢迎页
@@ -414,6 +417,9 @@ sequenceDiagram
     else message-received（新消息）
         Provider->>QC: invalidateQueries(messages)
         QC->>UI: 触发 refetch → 渲染新消息
+    else messages-consumed（排队消息被消费）
+        Provider->>Provider: markMessagesConsumed()（invokedAt 翻值，缓存就地修补）
+        QC->>UI: 自动 re-render
     else session-added / session-removed
         Provider->>QC: invalidateQueries(sessions)
         QC->>UI: 刷新列表
@@ -424,6 +430,7 @@ sequenceDiagram
 
 - `session-updated` 使用 `setQueryData` 直接修补缓存，避免心跳触发 API 请求
 - `message-received` 使用 `invalidateQueries` 触发 refetch，因为消息有分页和去重逻辑
+- `messages-consumed` 使用 `markMessagesConsumed` 就地修补缓存（把命中 localId 的消息 `invokedAt` 翻值），避免 refetch 抖动
 - 失效操作通过批处理（16ms 防抖）合并，避免高频事件导致多次 API 请求
 
 ### 消息渲染管线

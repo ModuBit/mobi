@@ -156,9 +156,9 @@ flowchart TB
 
 ## claudeRemote — SDK 集成
 
-**文件**: `packages/cli/src/claude/claudeRemote.ts`（300 行）
+**文件**: `packages/cli/src/claude/claudeRemote.ts`（720 行）
 
-`claudeRemote` 是与 Claude Code SDK 交互的核心函数，通过 `query()` 驱动 Claude。
+`claudeRemote` 是与 Claude Code SDK 交互的核心函数，通过 `query()` 驱动 Claude。内部维护**双循环**：`sdkOutputLoop`（消费 SDK 输出）和 `userInputLoop`（拉取用户输入，带 gated pump 门控）。
 
 ### 执行流程
 
@@ -224,7 +224,7 @@ const sdkOptions: Options = {
 
 ### 消息流（PushableAsyncIterable）
 
-`claudeRemote` 使用 `PushableAsyncIterable` 实现消息推送：
+`claudeRemote` 使用 `PushableAsyncIterable` 实现消息推送。采用**双循环架构**：`sdkOutputLoop` 消费 SDK 输出，`userInputLoop` 拉取用户输入。`userInputLoop` 带 **gated pump（门控泵 C-2）**：agent 运行时不 pull 消息（`isRunning()` 为 true 时先 `waitForIdle`），等 result（running 翻 false）才拉取，消息始终停留在 MessageQueue 中排队：
 
 ```
 初始消息 → messages.push(userMessage)
@@ -234,13 +234,16 @@ const sdkOptions: Options = {
     ├── for await (message of response)
     │   ├── onMessage(message)           ← 通知 Launcher 处理
     │   ├── system init → onSessionFound
-    │   ├── result → nextMessage()
+    │   ├── result → updateThinking(false) → resolveIdle → nextMessage()
+    │   │   ├── gated pump 放行（agent idle）→ pull 一批
     │   │   ├── 有消息 → messages.push() ← SDK 自动继续
     │   │   └── 无消息 → messages.end()  ← SDK 结束迭代
     │   └── user → 检查 aborted tool_result
     │
     └── catch AbortError → 忽略
 ```
+
+**门控效果**：用户在 agent 运行期间发送的消息（status='queued'）会排队悬浮在 Web 端，等 agent idle（result 到达）后才被真正拉取并送给 SDK，此时 CLI 通过 `onBatchConsumed` → `emitMessagesConsumed` 通知 Hub 将这批消息的 `invokedAt` 落库。
 
 ## PermissionHandler — 工具权限审批
 

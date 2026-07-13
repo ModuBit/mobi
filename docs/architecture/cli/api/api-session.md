@@ -53,7 +53,9 @@ socket.on('update', { body.t === 'new-message' })
             handleIncomingMessage()
                     │
                     ├── seq 去重检查（单调递增）
-                    ├── UserMessageSchema 解析 → enqueueUserMessage()
+                    ├── UserMessageSchema 解析
+                    ├── localId 合并（Hub 放在 message 外层，合并进 UserMessage）
+                    ├── enqueueUserMessage()
                     └── 其他 → emit('message')
                     │
                     ▼
@@ -61,6 +63,7 @@ socket.on('update', { body.t === 'new-message' })
 ```
 
 - **消息去重**: 基于 `seq` 单调递增，跳过旧消息
+- **localId 合并**: Hub 将 `localId` 放在 message 外层（与 content 信封同级），`handleIncomingMessage` 将其合并进 UserMessage，供 `runClaude` 入队 → `collectBatch` → `emitMessagesConsumed` 追踪 consume
 - **消息缓冲**: `pendingMessages` 队列，在 callback 注册前暂存消息
 
 ### 消息类型
@@ -144,6 +147,10 @@ Session 级 RPC 通过 `RpcHandlerManager` 管理：
 | `message` | `{ message: string }` | 系统消息 |
 | `permission-mode-changed` | `{ mode }` | 权限模式变更 |
 | `ready` | - | Session 就绪 |
+
+### 排队消息消费通知
+
+`emitMessagesConsumed(localIds)` 通过 `socket.emit('messages-consumed', { sid, localIds })` 通知 Hub：这批 localId 的消息已被 agent 真正消费。由 `runClaude` 绑定到 `MessageQueue.setOnBatchConsumed` 回调，批次消费后自动触发。Hub 收到后将 `invokedAt` 落库并转发 SSE 给 Web。
 
 ## IdleTimer 集成
 

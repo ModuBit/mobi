@@ -13,6 +13,8 @@ flowchart TB
         getMessagesAfter[getMessagesAfter]
         getSidechainMessages[getSidechainMessages]
         sendMessage[sendMessage]
+        markMessagesInvoked[markMessagesInvoked]
+        cancelQueuedMessage[cancelQueuedMessage]
     end
 
     subgraph 依赖
@@ -25,6 +27,8 @@ flowchart TB
     WebAPI -->|增量获取| getMessagesAfter
     WebAPI -->|Sidechain 查询| getSidechainMessages
     WebAPI -->|发送消息| sendMessage
+    WebAPI -->|取消排队| cancelQueuedMessage
+    SocketHandler[CLI Socket Handler] -->|排队消息已消费| markMessagesInvoked
 
     getMessagesPage --> Store
     getMessagesAfter --> Store
@@ -32,6 +36,9 @@ flowchart TB
     sendMessage --> Store
     sendMessage --> IO
     sendMessage --> Publisher
+    markMessagesInvoked --> Store
+    markMessagesInvoked --> Publisher
+    cancelQueuedMessage --> Store
 
     Publisher -->|message-received| SSE[SSEManager]
     SSE -->|推送| Web[Web 客户端]
@@ -42,10 +49,12 @@ flowchart TB
 
 | 方法 | 作用 |
 |------|------|
-| `getMessagesPage()` | 分页获取消息（支持向上翻页） |
+| `getMessagesPage()` | 分页获取消息（支持向上翻页，首页 out-of-band 钉入排队消息） |
 | `getMessagesAfter()` | 获取指定序号后的消息（增量同步） |
 | `getSidechainMessages()` | 获取指定 toolUseId 的 Sidechain 消息 |
 | `sendMessage()` | 发送消息 |
+| `markMessagesInvoked()` | 标记 localId 对应的排队消息为已消费（`invokedAt` 落库，first-write-wins） |
+| `cancelQueuedMessage()` | 取消仍排队的消息（物理删除）；已 invoke 的不动 |
 
 ## 消息发送流程
 
@@ -120,6 +129,10 @@ GET /api/sessions/:id/messages?limit=50&beforeSeq=100
 }
 ```
 
+**首页 out-of-band 钉入**：`beforeSeq` 为 null（首页）时，额外查询仍排队的本地 user 消息（`invoked_at IS NULL AND local_id IS NOT NULL`），追加到列表尾部。这些消息不参与 `nextBeforeSeq`/`hasMore` 计算，仅保证悬浮条可见。
+
+**byPosition 分页**：消息按 `COALESCE(invoked_at, created_at) DESC, seq DESC` 排序分页（position 表达式索引），复合游标 `(position_at, seq)` 翻页。
+
 ### getMessagesAfter
 
 ```
@@ -133,3 +146,4 @@ GET /api/sessions/:id/messages/after?afterSeq=100&limit=50
 | 方法入口 | 触发点 | 事件类型 | 说明 |
 |----------|--------|----------|------|
 | `sendMessage` | 用户发送消息 | `message-received` | 包含完整消息内容 |
+| `markMessagesInvoked` | CLI 消费排队消息 / session-end force-invoke | `messages-consumed` | `localIds` + `invokedAt`，Web 据此把悬浮消息翻为正式消息 |

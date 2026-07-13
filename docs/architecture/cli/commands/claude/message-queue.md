@@ -55,6 +55,7 @@ interface QueueItem<T> {
     mode: T;              // 模式上下文（如 EnhancedMode）
     modeHash: string;     // 模式的确定性哈希值（由 modeHasher 计算）
     isolate?: boolean;    // 是否要求隔离处理
+    localId?: string;     // 用户消息的本地 ID，用于通知 Hub 已消费
 }
 ```
 
@@ -107,9 +108,16 @@ hash 相同 = 所有影响 Claude 运行行为的参数一致 → 可以合并�
 
 | 方法 | 用途 | 行为 |
 |------|------|------|
-| `waitForMessagesAndGetAsString(signal?)` | 等待并获取一批消息 | 阻塞直到有消息，按 modeHash 分批返回 |
+| `waitForMessagesAndGetAsString(signal?)` | 等待并获取一批消息 | 阻塞直到有消息，按 modeHash 分批返回，返回值含 `localIds`（本批已消费的 localId 列表） |
+| `cancelByLocalId(localId)` | 取消排队消息 | 删除仍排队（未消费）的 localId 消息，返回是否删除成功 |
 | `size()` | 获取队列长度 | — |
 | `isClosed()` | 检查是否已关闭 | — |
+
+### 回调
+
+| 方法 | 用途 |
+|------|------|
+| `setOnBatchConsumed(handler)` | 注册批次消费回调，`collectBatch` 取出一批后触发，参数为本批 `localIds`。`runClaude` 绑定此回调 → `apiSession.emitMessagesConsumed(localIds)` 通知 Hub |
 
 ### 生命周期
 
@@ -128,7 +136,7 @@ flowchart TB
     Loop -->|"遇到不同 modeHash<br/>或 isolate 消息"| Stop["停止收集"]
     Loop -->|"队列空"| Stop
     Stop --> Join["将同批消息用 \\n 拼接"]
-    Solo --> Return["返回 { message, mode, hash, isolate }"]
+    Solo --> Return["返回 { message, mode, hash, isolate, localIds }"]
     Join --> Return
 ```
 
@@ -136,6 +144,7 @@ flowchart TB
 - **隔离消息独占一批** — `isolate: true` 的消息不与任何其他消息合并
 - **同 mode 合批** — 连续且 modeHash 相同的非隔离消息合并为一条（用 `\n` 分隔）
 - **遇异即停** — 遇到不同 modeHash 的消息时停止收集，剩余消息留给下一次取
+- **localIds 收集** — 批次内所有带 `localId` 的 item 收集为 `localIds`，collectBatch 完成后触发 `onBatchConsumed(localIds)` 回调
 
 ## 使用场景
 
@@ -160,10 +169,11 @@ Local 模式和 Remote 模式的 Launcher 都通过 `session.queue` 消费消息
 
 ```
 const batch = await queue.waitForMessagesAndGetAsString(abortSignal);
-// batch.message — 合并后的文本（多条消息用 \n 拼接）
-// batch.mode   — 这一批的 EnhancedMode
-// batch.isolate — 是否为隔离消息
-// batch.hash   — modeHash
+// batch.message   — 合并后的文本（多条消息用 \n 拼接）
+// batch.mode     — 这一批的 EnhancedMode
+// batch.isolate  — 是否为隔离消息
+// batch.hash     — modeHash
+// batch.localIds — 本批已消费的 localId 列表（已通过 onBatchConsumed 回调通知 Hub）
 ```
 
 ## 线程模型

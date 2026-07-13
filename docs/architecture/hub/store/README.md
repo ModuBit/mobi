@@ -40,7 +40,7 @@ graph TB
 |----------|------|
 | **SessionStore** | 会话 CRUD、分组查询、metadata / agentState / runtimeState 乐观锁更新 |
 | **MachineStore** | 机器 CRUD、metadata / runnerState 乐观锁更新 |
-| **MessageStore** | 消息追加、按序号分页查询、sidechain 查询、会话消息合并 |
+| **MessageStore** | 消息追加、按位置分页查询（byPosition）、sidechain 查询、排队消息 invoke/cancel |
 | **UserStore** | 用户绑定（平台 + 平台 ID）、按平台/命名空间查询 |
 | **PushStore** | Web Push 订阅管理（按命名空间） |
 
@@ -119,12 +119,16 @@ PRAGMA busy_timeout = 5000    // 5 秒超时
 | local_id | TEXT | | 客户端本地 ID |
 | is_sidechain | INTEGER | NOT NULL DEFAULT 0 | 是否为 sidechain 消息 |
 | parent_tool_use_id | TEXT | | 所属 tool_use 的消息 ID |
+| category | TEXT | NOT NULL DEFAULT 'persistent' | 消息分类（persistent/ephemeral） |
+| invoked_at | INTEGER | | 被 agent 真正处理的时刻；NULL 表示仍在排队悬浮 |
 
 **索引**:
 - `idx_messages_session` → `(session_id, seq)`
 - `idx_messages_session_main` → `(session_id, seq, is_sidechain)`
 - `idx_messages_parent_tool` → `(parent_tool_use_id)`
 - `idx_messages_local_id` → `UNIQUE (session_id, local_id) WHERE local_id IS NOT NULL`
+- `idx_messages_session_position` → `(session_id, COALESCE(invoked_at, created_at) DESC, seq DESC)`（表达式索引，byPosition 分页）
+- `idx_messages_session_uninvoked_local` → `(session_id) WHERE invoked_at IS NULL AND local_id IS NOT NULL`（部分索引，悬浮排队消息查询）
 
 ### users
 

@@ -246,6 +246,7 @@ Hub 通过 SSE 向 Web 端推送 `SyncEvent`：
 - `heartbeat`：心跳
 - `connection-changed`：连接状态变化
 - `idle-timeout-warning`：空闲超时预警
+- `messages-consumed`：排队消息被 agent 真正消费（`invokedAt` 落库），Web 据此把悬浮消息翻为正式消息
 
 Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新。
 
@@ -261,6 +262,55 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 | `message-received` | 先通过 `parentUuid` 清除同轮次的残留 snapshot，再 upsert |
 
 **snapshot 清理机制**：由于 SDK `stream_event` uuid ≠ 最终 `assistant` 消息 uuid，snapshot 和 full message 的 id 不同，无法通过 id 匹配替换。因此通过提取 raw content 中的 `parentUuid`（`content.content.data.parentUuid`）关联同一轮次的消息——同一轮次的 snapshot 和第一条 full message 共享相同的 `parentUuid`。
+
+---
+
+## 排队消息生命周期（Queued Messages）
+
+当 Web 用户在 agent 运行中发送消息时，消息不会立即送给 Claude，而是进入"排队悬浮"状态，等 agent 闲置后才被真正消费。
+
+### 核心字段
+
+| 字段 | 位置 | 含义 |
+|------|------|------|
+| `invokedAt` | `DecryptedMessage` / `messages.invoked_at` | 被 agent 真正处理的时刻；`null` = 仍在排队悬浮 |
+| `status: 'queued'` | Web `MessageStatus` | 前端乐观状态，标记消息在悬浮条展示 |
+
+### 完整流程
+
+```mermaid
+flowchart LR
+    Web["Web 用户<br/>（agent 运行中发送）"] -->|"POST 消息<br/>localId"| Hub["Hub<br/>addMessage"]
+    Hub -->|"role=user && localId<br/>→ invoked_at=null"| DB[("SQLite<br/>排队")]
+    Hub -->|"SSE message-received<br/>invokedAt=null"| WebBar["Web 悬浮条<br/>QueuedMessagesBar"]
+
+    CLI["CLI gated pump<br/>agent idle 时 pull"] -->|"collectBatch<br/>localIds"| Consume["消费"]
+    Consume -->|"emitMessagesConsumed"| Hub2["Hub<br/>markMessagesInvoked"]
+    Hub2 -->|"invokedAt 落库"| DB2[("SQLite<br/>invoked_at=now")]
+    Hub2 -->|"SSE messages-consumed"| WebFinal["Web<br/>markMessagesConsumed<br/>翻为正式消息"]
+```
+
+### 关键环节
+
+| 环节 | 位置 | 行为 |
+|------|------|------|
+| **入库规则** | Hub `addMessage` | `role==='user' && localId` → `invoked_at = null`（排队）；其余 → `invoked_at = now` |
+| **Gated Pump（C-2）** | CLI `userInputLoop` | agent 运行时不 pull（`isRunning()` → `waitForIdle()`），等 result 才拉取，消息始终停留在 MessageQueue |
+| **消费通知** | CLI `onBatchConsumed` | 批次消费后触发 `emitMessagesConsumed(localIds)` → Hub `messages-consumed` handler → `markMessagesInvoked`（first-write-wins）→ SSE `messages-consumed` |
+| **首页钉入** | Hub `getMessagesPage` | 首页（`beforeSeq=null`）out-of-band 查询仍排队的本地消息（`invoked_at IS NULL AND local_id IS NOT NULL`），追加到列表尾部 |
+| **session-end 兜底** | Hub `sessionHandlers` | CLI 离线时 force-invoke 所有剩余排队消息，防止悬浮条卡死 |
+| **取消** | Web `DELETE` → Hub | 两阶段取消：DB 层 `cancelQueuedMessage`（物理删除）+ CLI RPC `cancel-queued-message`（清理内存缓冲兜底） |
+
+### Web 端处理
+
+| 组件 | 职责 |
+|------|------|
+| `QueuedMessagesBar` | composer 上方悬浮条，展示排队消息，✕ 取消 / ✎ 编辑（回填草稿） |
+| `useSendMessage` | 乐观注入：`isRunning` → `status='queued'`，否则 `status='sending'` |
+| `useCancelQueuedMessage` | 乐观删除缓存中的 localId 消息；`status='invoked'` 时失效重拉 |
+| `markMessagesConsumed` | SSE `messages-consumed` 到达时，把命中 localId 的消息 `invokedAt` 翻值（first-write-wins） |
+| `ChatContainer` | 线程过滤掉排队消息（`isQueuedForInvocation`），仅在悬浮条展示 |
+| `ChatComposer` | `canSend` 去掉 `!running` 门控，运行中允许发送（→排队） |
 
 ---
 
@@ -530,11 +580,14 @@ type ChatBlock =
 | CLI 类型 | `packages/cli/src/claude/types.ts` | RawJSONLines Schema 定义 |
 | CLI 启动 | `packages/cli/src/claude/claudeRemoteLauncher.ts` | 创建 Converter，管理消息流 |
 | CLI 队列 | `packages/cli/src/claude/utils/OutgoingMessageQueue.ts` | 消息发送队列（保序、延迟发送、透传） |
-| CLI 循环 | `packages/cli/src/claude/claudeRemote.ts` | 处理 result 控制信号、流式 snapshot 事件分发 |
+| CLI 循环 | `packages/cli/src/claude/claudeRemote.ts` | 处理 result 控制信号、流式 snapshot 事件分发、gated pump（排队消息门控） |
 | CLI 快照发送 | `packages/cli/src/claude/utils/streamSnapshotSender.ts` | 累积 stream_event delta，定时发送 snapshot |
-| Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化 |
-| Hub 同步 | `packages/hub/src/sync/syncEngine.ts` | SSE 推送 |
-| Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + parentUuid 关联清理） |
+| Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化（invoked_at 列、byPosition 分页） |
+| Hub 同步 | `packages/hub/src/sync/syncEngine.ts` | SSE 推送、cancelQueuedMessage 委托 |
+| Hub 消息服务 | `packages/hub/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesInvoked/cancelQueuedMessage |
+| Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + parentUuid 关联清理）、messages-consumed 处理 |
+| Web 排队消费标记 | `packages/web/src/core/lib/markMessagesConsumed.ts` | 排队消息 invokedAt 翻值（first-write-wins） |
+| Web 排队悬浮条 | `packages/web/src/components/chat/QueuedMessagesBar.tsx` | composer 上方悬浮排队消息（✕取消 / ✎编辑） |
 | Web 标准化入口 | `packages/web/src/domain/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
 | Web Agent 标准化 | `packages/web/src/domain/chat/normalizeAgent.ts` | Agent 消息详细解析 |
 | Web User 标准化 | `packages/web/src/domain/chat/normalizeUser.ts` | User 消息解析 |

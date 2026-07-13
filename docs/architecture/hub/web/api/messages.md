@@ -8,6 +8,7 @@
 |------|------|------|
 | `GET` | `/api/sessions/:id/messages` | 分页获取消息 |
 | `POST` | `/api/sessions/:id/messages` | 发送消息 |
+| `DELETE` | `/api/sessions/:id/messages/:messageId` | 取消排队消息（`messageId` 为 localId） |
 
 ## 分页获取消息
 
@@ -45,6 +46,7 @@ GET /api/sessions/sess-abc123/messages?limit=50&beforeSeq=200
             "id": "msg-001",
             "seq": 199,
             "localId": "local-xyz",
+            "invokedAt": 1712000000000,
             "content": { "role": "user", "content": "你好" },
             "createdAt": 1712000000000
         },
@@ -66,6 +68,27 @@ GET /api/sessions/sess-abc123/messages?limit=50&beforeSeq=200
 ```
 
 > 类型定义详见 [共享类型](./types.md#decryptedmessage)
+
+## 取消排队消息
+
+### 请求
+
+```
+DELETE /api/sessions/:id/messages/:messageId
+```
+
+`messageId` 为消息的 `localId`。采用**两阶段取消**：先查 DB（已 invoke？已删？），再兜底 RPC 通知 CLI 删除内存缓冲。
+
+### 响应
+
+```typescript
+{ status: 'cancelled' | 'invoked' }
+```
+
+| 状态 | 含义 |
+|------|------|
+| `cancelled` | DB 层已物理删除该排队消息，并已通知 CLI 清理内存缓冲 |
+| `invoked` | 消息已被 agent 消费（`invokedAt` 已落库）或 CLI 已抢先处理，无法取消 |
 
 ## 发送消息
 

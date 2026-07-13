@@ -75,6 +75,7 @@ flowchart TB
 | `refreshMetadata` | 刷新 SDK 元数据 | `{sessionId}:refreshMetadata` |
 | `stopTask` | 停止后台任务 | `{sessionId}:stop-task` |
 | `runRipgrep` | 搜索代码 | `{sessionId}:ripgrep` |
+| `cancelCliQueuedMessage` | 取消 CLI 内存队列中缓冲的排队消息（两阶段取消的 CLI 侧） | `{sessionId}:cancel-queued-message` |
 
 ## RPC 调用流程
 

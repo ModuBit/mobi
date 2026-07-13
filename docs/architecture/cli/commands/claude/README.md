@@ -50,7 +50,7 @@ CLI 的主要使用方式：`mobi [options]`，所有未匹配子命令的参数
 | **SessionScanner** | Local 模式下监听 Claude JSONL 文件的扫描器 |
 | **HookServer** | HTTP 服务，接收 Claude 的 SessionStart Hook 通知 |
 | **OutgoingMessageQueue** | Remote 模式下有序发送消息到 Hub 的队列 |
-| **MessageQueue** | 带模式上下文的消息队列，管理用户消息和 mode 切换 |
+| **MessageQueue** | 带模式上下文的消息队列，管理用户消息和 mode 切换，支持 localId 追踪与排队取消 |
 | **KeepAlive** | 定时心跳（2 秒），向 Hub 报告会话状态（thinking、mode 等） |
 | **controlledByUser** | AgentState 字段，标记会话当前由用户控制（Local）还是远程控制（Remote） |
 
@@ -292,6 +292,8 @@ Session 通过 `ApiSessionClient` 与 Hub 保持双向实时通信：
 | `update-metadata` | CLI → Hub | 更新会话元数据（版本化，乐观锁） |
 | `update-state` | CLI → Hub | 更新 AgentState（版本化，乐观锁） |
 | `session-end` | CLI → Hub | 通知会话结束 |
+| `messages-consumed` | CLI → Hub | 通知一批 localId 的排队消息已被 agent 消费 |
+| `cancel-queued-message` | Hub → CLI | RPC：取消 CLI 内存队列中缓冲的排队消息 |
 | `update` | Hub → CLI | 接收状态更新（消息、session、machine） |
 | `rpc-request` | Hub → CLI | RPC 请求（abort、switch、set-session-config 等） |
 | `terminal:*` | 双向 | 终端事件（open/write/resize/close） |
@@ -320,6 +322,7 @@ Hub 可通过 RPC 远程控制 CLI 会话：
 | `abort` | 中止当前操作 |
 | `switch` | 切换 Local/Remote 模式 |
 | `set-session-config` | 远程修改 permissionMode 或 model |
+| `cancel-queued-message` | 取消 CLI 内存队列中缓冲的排队消息（两阶段取消的 CLI 侧） |
 | Common RPC（bash、files、git 等） | 供 Hub 远程执行本地操作 |
 
 ## 消息处理流程

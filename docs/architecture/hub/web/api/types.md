@@ -105,6 +105,7 @@ interface DecryptedMessage {
     id: string            // 消息唯一 ID
     seq: number | null    // 服务端序号（持久化后分配），null 表示尚未入库
     localId: string | null // 客户端本地 ID（用于去重）
+    invokedAt?: number | null // 被 agent 真正处理的时刻；null 表示仍在排队悬浮
     content: unknown      // 消息内容（SDK 原始格式）
     createdAt: number     // 创建时间戳（毫秒）
     snapshot?: boolean    // 标识流式快照消息（未落库，Hub 直接透传给 Web）
@@ -218,6 +219,7 @@ type SyncEvent =
     | { type: 'heartbeat', data?: { timestamp: number }, namespace?: string }
     | { type: 'connection-changed', data?: { status: string, subscriptionId?: string }, connected?: boolean, reconnected?: boolean, namespace?: string }
     | { type: 'idle-timeout-warning', sessionId: string, data: { timeoutAt: number, remainingMs: number }, namespace?: string }
+    | { type: 'messages-consumed', sessionId: string, localIds: string[], invokedAt: number, namespace?: string }
 ```
 
 | 事件类型 | 触发场景 |
@@ -232,6 +234,7 @@ type SyncEvent =
 | `heartbeat` | 心跳事件 |
 | `connection-changed` | 连接状态变化 |
 | `idle-timeout-warning` | 空闲超时预警，提示会话即将因空闲被关闭 |
+| `messages-consumed` | 排队消息被 agent 真正消费（`invokedAt` 落库），Web 据此把悬浮消息翻为正式消息 |
 
 ## 会话元数据
 
