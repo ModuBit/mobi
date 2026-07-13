@@ -126,8 +126,8 @@ export function getDisplayName(attachment: FileAttachment): string {
             return cleaned || serverName
         }
     }
-    // 上传中或失败，使用原始文件名
-    return attachment.file.name
+    // 上传中或失败，使用原始文件名（恢复态优先顶层 name）
+    return attachment.name ?? attachment.file.name
 }
 
 /** 根据文件名获取 Lucide 图标组件 */
@@ -144,10 +144,11 @@ function getCategoryColor(filename: string): string {
     return CATEGORY_COLOR[category]
 }
 
-/** 判断附件是否为图片类型（MIME 优先，扩展名兜底） */
+/** 判断附件是否为图片类型（MIME 优先，扩展名兜底；恢复态空 file 无可靠 MIME） */
 function isImageAttachment(attachment: FileAttachment): boolean {
-    if (attachment.file.type.startsWith('image/')) return true
-    const ext = attachment.file.name.split('.').pop()?.toLowerCase() ?? ''
+    const filename = attachment.name ?? attachment.file.name
+    if (attachment.file.size > 0 && attachment.file.type.startsWith('image/')) return true
+    const ext = filename.split('.').pop()?.toLowerCase() ?? ''
     return EXT_CATEGORY[ext] === 'image'
 }
 
@@ -173,7 +174,7 @@ const AttachmentCard = memo(function AttachmentCard({
     const isUploading = attachment.status === 'uploading'
     const isError = attachment.status === 'error'
     const displayName = getDisplayName(attachment)
-    const fileSize = formatFileSize(attachment.file.size)
+    const fileSize = formatFileSize(attachment.size ?? attachment.file.size)
     const accentColor = getCategoryColor(displayName)
 
     return (
@@ -290,7 +291,7 @@ const AttachmentCard = memo(function AttachmentCard({
     )
 })
 
-/** 图片缩略图子组件：管理 objectURL 生命周期 */
+/** 图片缩略图子组件：管理 objectURL 生命周期；空 file（恢复态）直接回退图标 */
 const ImageThumb = memo(function ImageThumb({
     attachment,
 }: {
@@ -300,8 +301,12 @@ const ImageThumb = memo(function ImageThumb({
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
     const [imgError, setImgError] = useState(false)
 
-    // 创建 / 清理 objectURL，避免内存泄漏
+    // 创建 / 清理 objectURL，避免内存泄漏；空 file（恢复态占位）跳过，直接回退图标
     useEffect(() => {
+        if (attachment.file.size === 0) {
+            setPreviewUrl(null)
+            return
+        }
         const url = URL.createObjectURL(attachment.file)
         setPreviewUrl(url)
         setImgError(false)
@@ -324,7 +329,7 @@ const ImageThumb = memo(function ImageThumb({
         )
     }
 
-    // 图片加载失败回退
+    // 图片加载失败 / 恢复态空 file 回退
     return <FileImage size={16} style={{ color: token.colorTextQuaternary }} />
 })
 
