@@ -68,4 +68,29 @@ describe('byPosition + invokedAt', () => {
         markMessagesInvoked(db, 's', ['loc-2'], 1)
         expect(cancelQueuedMessage(db, 's', 'loc-2')).toEqual({ cancelled: false, invoked: true })
     })
+
+    test('cancelQueuedMessage：不存在的 localId 返回 cancelled:false invoked:false', () => {
+        expect(cancelQueuedMessage(db, 's', 'never-exists')).toEqual({ cancelled: false, invoked: false })
+    })
+
+    test('markMessagesInvoked：无候选返回空数组', () => {
+        expect(markMessagesInvoked(db, 's', [], 100)).toEqual([])
+        addMessage(db, 's', { role: 'user' }, 'loc-1')
+        markMessagesInvoked(db, 's', ['loc-1'], 100)
+        // 已 invoke → 无候选
+        expect(markMessagesInvoked(db, 's', ['loc-1'], 200)).toEqual([])
+    })
+
+    test('markMessagesInvoked：多条 localId 混合（部分已 invoke）只更新未 invoke 的', () => {
+        addMessage(db, 's', { role: 'user' }, 'loc-1')
+        addMessage(db, 's', { role: 'user' }, 'loc-2')
+        addMessage(db, 's', { role: 'user' }, 'loc-3')
+        // 先 invoke loc-2
+        markMessagesInvoked(db, 's', ['loc-2'], 100)
+        // 批量 invoke 时 loc-1 和 loc-3 还没 invoke
+        const fresh = markMessagesInvoked(db, 's', ['loc-1', 'loc-2', 'loc-3'], 200)
+        expect(fresh.sort()).toEqual(['loc-1', 'loc-3'])
+        // 再次调用全空
+        expect(markMessagesInvoked(db, 's', ['loc-1', 'loc-2', 'loc-3'], 300)).toEqual([])
+    })
 })

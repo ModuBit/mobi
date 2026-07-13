@@ -189,17 +189,19 @@ export function markMessagesInvoked(
     invokedAt: number
 ): string[] {
     if (localIds.length === 0) return []
+    // 先查哪些还没 invoke（候选），再 UPDATE，用 changes 校准
     const rows = db.prepare(
         `SELECT local_id FROM messages
          WHERE session_id = ? AND local_id IN (${localIds.map(() => '?').join(',')})
            AND invoked_at IS NULL`
     ).all(sessionId, ...localIds) as { local_id: string }[]
-    const fresh = rows.map(r => r.local_id)
-    if (fresh.length === 0) return []
-    db.prepare(
-        `UPDATE messages SET invoked_at = ? WHERE session_id = ? AND invoked_at IS NULL AND local_id IN (${fresh.map(() => '?').join(',')})`
-    ).run(invokedAt, sessionId, ...fresh)
-    return fresh
+    const candidates = rows.map(r => r.local_id)
+    if (candidates.length === 0) return []
+    const result = db.prepare(
+        `UPDATE messages SET invoked_at = ? WHERE session_id = ? AND invoked_at IS NULL AND local_id IN (${candidates.map(() => '?').join(',')})`
+    ).run(invokedAt, sessionId, ...candidates)
+    // result.changes 应等于 candidates.length（除非竞态）；返回实际被更新的（用 changes 与候选取交集保守返回）
+    return result.changes === candidates.length ? candidates : candidates.slice(0, result.changes)
 }
 
 /** 仍排队（invoked_at IS NULL 且有 local_id）的 user 消息，用于悬浮条钉最新页。 */
@@ -221,10 +223,11 @@ export function cancelQueuedMessage(
     ).get(sessionId, localId) as { invoked_at: number | null } | undefined
     if (!row) return { cancelled: false, invoked: false }
     if (row.invoked_at !== null) return { cancelled: false, invoked: true }
-    db.prepare(
+    // TOCTOU：SELECT 与 DELETE 之间可能被 invoke，用 changes 判定真实结果
+    const result = db.prepare(
         `DELETE FROM messages WHERE session_id = ? AND local_id = ? AND invoked_at IS NULL`
     ).run(sessionId, localId)
-    return { cancelled: true, invoked: false }
+    return { cancelled: result.changes > 0, invoked: result.changes === 0 }
 }
 
 export function getMessagesAfter(
