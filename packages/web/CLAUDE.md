@@ -19,6 +19,7 @@
 | `src/components/tool-card/knownTools.tsx` | 工具卡片注册 |
 | `src/core/lib/query-keys.ts` | 查询缓存 Key |
 | `src/core/lib/fileAttachments.ts` | 文件附件类型与上传校验 |
+| `src/core/lib/composerDrafts.ts` | per-session 草稿持久化（文本 + 已上传附件，sessionStorage） |
 
 ## 移动端 Drawer 规范
 

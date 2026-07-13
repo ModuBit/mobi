@@ -36,7 +36,7 @@ Web 是 Mobi 的浏览器前端，提供 Claude Code 会话的远程交互界面
 | **SSEClient** | SSE 传输层，封装 `@microsoft/fetch-event-source`，负责连接/重连/认证 |
 | **ChatContainer** | 聊天容器组件，消费 `useMessages` 数据并渲染消息列表 |
 | **ToolCard** | 工具调用展示组件，根据工具名称选择对应的视图（Edit、Diff、Write 等） |
-| **ChatComposer** | 消息输入组件，支持文本输入、斜杠命令自动补全、文件附件。运行中允许发送（消息进入排队悬浮条） |
+| **ChatComposer** | 消息输入组件，支持文本输入、斜杠命令自动补全、文件附件。运行中允许发送（消息进入排队悬浮条）。切换 session 时待发送的文本与已上传附件通过 `composerDrafts`（sessionStorage）持久化 |
 | **Chat Reducer** | 消息归约器（`domain/chat/reducer.ts`），将原始消息事件归约为 ChatBlock 列表 |
 | **QueryKeys** | 集中定义的 React Query 缓存 key，确保缓存操作的一致性 |
 
@@ -170,6 +170,7 @@ packages/web/src/
 │   │   ├── messages.ts         消息合并/去重/排序（缓存操作工具，isQueuedForInvocation）
 │   │   ├── markMessagesConsumed.ts 排队消息消费标记（invokedAt first-write-wins）
 │   │   ├── fileAttachments.ts  文件附件类型和辅助函数
+│   │   ├── composerDrafts.ts  per-session 草稿持久化（sessionStorage + LRU，含附件子集）
 │   │   ├── toolInputUtils.ts   工具输入解析
 │   │   ├── recent-skills.ts    最近技能 localStorage 持久化
 │   │   ├── ansiUtils.ts        ANSI 转义序列处理
@@ -241,7 +242,7 @@ packages/web/src/
 │   │       ├── CompactSummaryBlock.tsx 紧凑摘要块
 │   │       ├── ToolCallBlock.tsx     工具调用块
 │   │       └── ToolCallGroupBlock.tsx 工具调用折叠组
-│   ├── composer/               消息输入（26 文件）
+│   ├── composer/               消息输入（27 文件）
 │   │   ├── ChatComposer.tsx    输入框 + 自动补全 + 布局编排
 │   │   ├── AutoComplete.tsx    自动补全容器
 │   │   ├── MentionDropdown.tsx @ 文件引用下拉
