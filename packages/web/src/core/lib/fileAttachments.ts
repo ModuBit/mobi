@@ -24,7 +24,7 @@ import { uuid } from './uuid'
 export type FileAttachment = {
     /** 唯一标识 */
     id: string
-    /** 原始文件对象 */
+    /** 原始文件对象（恢复态附件为占位空 File） */
     file: File
     /** 上传状态 */
     status: 'uploading' | 'complete' | 'error'
@@ -34,6 +34,16 @@ export type FileAttachment = {
     error?: string
     /** 上传进度（0-100，uploading 状态时实时更新） */
     progress?: number
+    /**
+     * 顶层文件名（恢复态专用）：从草稿恢复的附件无可用 File 元信息，
+     * 渲染层优先读此字段，回退 file.name。正常上传态不填。
+     */
+    name?: string
+    /**
+     * 顶层文件大小字节数（恢复态专用）：占位空 File 的 size 恒为 0，
+     * 渲染层优先读此字段，回退 file.size。正常上传态不填。
+     */
+    size?: number
 }
 
 /**
