@@ -29,6 +29,8 @@ import { ComposerInfoPanel } from './ComposerInfoPanel'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
+import { saveDraft } from '@/core/lib/composerDrafts'
+import { useComposerDraft } from './useComposerDraft'
 import { useMentionInteraction } from './useMentionInteraction'
 import { useSlashCommandInteraction } from './useSlashCommandInteraction'
 import { useAttachmentHandling } from './useAttachmentHandling'
@@ -276,11 +278,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
         },
     }), [])
 
-    // 读取跨页暂存的消息草稿（NewSessionPage 创建会话后发送失败时暂存），预填到输入框供用户重试 (#2)
+    // 跨页草稿（NewSessionPage 创建会话后发送失败时暂存）优先级最高：取出后落入当前 session 草稿，
+    // 随后 useComposerDraft 的 rAF 恢复会从草稿库读到它 —— 天然一致，无需标志位协调 (#2)
     useEffect(() => {
-        const draft = consumeDraftText()
-        if (draft) setText(draft)
-    }, [])
+        if (!sessionId) return
+        const crossPageDraft = consumeDraftText()
+        if (crossPageDraft) {
+            setText(crossPageDraft)
+            // 落入当前 session 草稿，后续切走/切回由 per-session map 接管
+            saveDraft(sessionId, crossPageDraft, [])
+        }
+    }, [sessionId])
 
     // 构建目录能力目标，useMemo 保证引用稳定，避免下游 useEffect 无限循环
     const capTarget = useMemo<CapabilityTarget | null>(
@@ -296,11 +304,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     // 附件管理（共享 hook）
     const {
         attachments,
+        setAttachments,
         isDragOver,
         handleAttach, handleRemoveAttachment, handlePaste,
         handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
         resetAttachments,
     } = useAttachmentHandling(capabilities, controlsDisabled)
+
+    // per-session 草稿生命周期：挂载恢复、切走保存（依赖上面的 text/attachments/setters）
+    useComposerDraft(
+        sessionId,
+        { text, attachments },
+        { setText, setAttachments },
+    )
 
     // SDK 元数据（模型列表等）
     const { data: sdkMetadata } = useSDKMetadata(sessionId ?? null)
