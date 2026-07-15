@@ -47,8 +47,8 @@ function isOptimisticMessage(msg: DecryptedMessage): boolean {
  * 仍在排队、未被 agent 处理的 user 消息
  * （悬浮条显示、从线程剔除的判断依据）
  */
-export function isQueuedForInvocation(msg: DecryptedMessage): boolean {
-    return isUserMessage(msg) && msg.invokedAt == null && msg.status !== 'failed'
+export function isQueuedInMobi(msg: DecryptedMessage): boolean {
+    return isUserMessage(msg) && msg.submittedAt == null && msg.status !== 'failed'
 }
 
 /**
@@ -86,7 +86,7 @@ export function mergeMessages(existing: DecryptedMessage[], incoming: DecryptedM
     }
     for (const msg of incoming) {
         let row = msg
-        // (1) 服务端 echo 带有 localId：从乐观消息迁移 status/invokedAt
+        // (1) 服务端 echo 带有 localId：从乐观消息迁移 status/submittedAt
         // 避免排队中的乐观气泡被服务端确认后丢失排队态
         if (row.localId) {
             const optimistic = byId.get(row.localId)
@@ -94,15 +94,15 @@ export function mergeMessages(existing: DecryptedMessage[], incoming: DecryptedM
                 row = {
                     ...row,
                     status: optimistic.status ?? row.status,
-                    invokedAt: optimistic.invokedAt ?? row.invokedAt,
+                    submittedAt: optimistic.submittedAt ?? row.submittedAt,
                 }
             }
         }
-        // (2) 不让 incoming 用 null/undefined invokedAt 覆盖已有的非 null invokedAt
+        // (2) 不让 incoming 用 null/undefined submittedAt 覆盖已有的非 null submittedAt
         // 防止陈旧的服务端 echo 回退已确认的 invoke 状态
         const prev = byId.get(row.id)
-        if (prev && prev.invokedAt != null && row.invokedAt == null) {
-            row = { ...row, invokedAt: prev.invokedAt }
+        if (prev && prev.submittedAt != null && row.submittedAt == null) {
+            row = { ...row, submittedAt: prev.submittedAt }
         }
         byId.set(row.id, row)
     }

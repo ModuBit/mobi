@@ -41,8 +41,8 @@ const mockSession: Session = {
  * cancelQueuedMessageReturn / cancelCliQueuedMessageImpl 由用例注入。
  */
 function makeMockEngine(opts: {
-    cancelQueuedMessageReturn: { cancelled: boolean; invoked: boolean }
-    cancelCliQueuedMessageImpl?: (sessionId: string, localId: string) => Promise<{ status: 'cancelled' | 'invoked' }>
+    cancelQueuedMessageReturn: { cancelled: boolean; submitted: boolean }
+    cancelCliQueuedMessageImpl?: (sessionId: string, localId: string) => Promise<{ status: 'cancelled' | 'submitted' }>
 }): SyncEngine {
     return {
         resolveSessionAccess: (_id: string, _ns: string) => ({
@@ -52,7 +52,7 @@ function makeMockEngine(opts: {
         }),
         cancelQueuedMessage: () => opts.cancelQueuedMessageReturn,
         cancelCliQueuedMessage: opts.cancelCliQueuedMessageImpl
-            ?? (() => Promise.resolve({ status: 'invoked' })),
+            ?? (() => Promise.resolve({ status: 'submitted' })),
     } as unknown as SyncEngine
 }
 
@@ -75,24 +75,24 @@ describe('DELETE /api/sessions/:id/messages/:messageId（排队消息两阶段�
         })
     }
 
-    test('DB 已 invoke → 返回 {status:invoked}，不调 CLI RPC', async () => {
+    test('DB 已 invoke → 返回 {status:submitted}，不调 CLI RPC', async () => {
         let cliCalled = false
         const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: false, invoked: true },
-            cancelCliQueuedMessageImpl: async () => { cliCalled = true; return { status: 'invoked' } },
+            cancelQueuedMessageReturn: { cancelled: false, submitted: true },
+            cancelCliQueuedMessageImpl: async () => { cliCalled = true; return { status: 'submitted' } },
         })
 
         const res = await deleteMessage(engine)
         expect(res.status).toBe(200)
         const body = await res.json() as { status: string }
-        expect(body.status).toBe('invoked')
+        expect(body.status).toBe('submitted')
         expect(cliCalled).toBe(false)
     })
 
     test('DB cancelled → 调 CLI RPC（best-effort）→ 返回 {status:cancelled}', async () => {
         let cliCalled = false
         const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: true, invoked: false },
+            cancelQueuedMessageReturn: { cancelled: true, submitted: false },
             cancelCliQueuedMessageImpl: async (sid, lid) => {
                 cliCalled = true
                 expect(sid).toBe('test-session-1')
@@ -110,7 +110,7 @@ describe('DELETE /api/sessions/:id/messages/:messageId（排队消息两阶段�
 
     test('DB cancelled 但 CLI 不在线 → 优雅降级，仍返回 {status:cancelled}', async () => {
         const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: true, invoked: false },
+            cancelQueuedMessageReturn: { cancelled: true, submitted: false },
             cancelCliQueuedMessageImpl: async () => { throw new Error('CLI disconnected') },
         })
 
@@ -124,7 +124,7 @@ describe('DELETE /api/sessions/:id/messages/:messageId（排队消息两阶段�
     test('DB 无行 → 问 CLI → CLI 返回 cancelled', async () => {
         let cliCalled = false
         const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: false, invoked: false },
+            cancelQueuedMessageReturn: { cancelled: false, submitted: false },
             cancelCliQueuedMessageImpl: async () => { cliCalled = true; return { status: 'cancelled' } },
         })
 
@@ -135,27 +135,27 @@ describe('DELETE /api/sessions/:id/messages/:messageId（排队消息两阶段�
         expect(cliCalled).toBe(true)
     })
 
-    test('DB 无行 → CLI 返回 invoked', async () => {
+    test('DB 无行 → CLI 返回 submitted', async () => {
         const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: false, invoked: false },
-            cancelCliQueuedMessageImpl: async () => ({ status: 'invoked' }),
+            cancelQueuedMessageReturn: { cancelled: false, submitted: false },
+            cancelCliQueuedMessageImpl: async () => ({ status: 'submitted' }),
         })
 
         const res = await deleteMessage(engine)
         expect(res.status).toBe(200)
         const body = await res.json() as { status: string }
-        expect(body.status).toBe('invoked')
+        expect(body.status).toBe('submitted')
     })
 
-    test('DB 无行 → CLI 不可达 → 优雅降级返回 invoked', async () => {
+    test('DB 无行 → CLI 不可达 → 优雅降级返回 submitted', async () => {
         const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: false, invoked: false },
+            cancelQueuedMessageReturn: { cancelled: false, submitted: false },
             cancelCliQueuedMessageImpl: async () => { throw new Error('RPC handler not registered') },
         })
 
         const res = await deleteMessage(engine)
         expect(res.status).toBe(200)
         const body = await res.json() as { status: string }
-        expect(body.status).toBe('invoked')
+        expect(body.status).toBe('submitted')
     })
 })

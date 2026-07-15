@@ -125,9 +125,9 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const sessionId = sessionResult.sessionId
         const localId = c.req.param('messageId')
 
-        // 1. DB 层：已 invoke？已删？
+        // 1. DB 层：已 submit？已删？
         const dbRes = engine.cancelQueuedMessage(sessionId, localId)
-        if (dbRes.invoked) return c.json({ status: 'invoked' })
+        if (dbRes.submitted) return c.json({ status: 'submitted' })
         if (dbRes.cancelled) {
             // 2. DB 已删，但 CLI 内存里可能还缓冲着 → 通知 CLI 也删（竞态兜底）
             try {
@@ -139,9 +139,9 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         // 3. DB 里没这条（已被消费/不存在）→ 问 CLI
         try {
             const cliRes = await engine.cancelCliQueuedMessage(sessionId, localId)
-            return c.json({ status: cliRes.status ?? 'invoked' })
+            return c.json({ status: cliRes.status ?? 'submitted' })
         } catch {
-            return c.json({ status: 'invoked' })
+            return c.json({ status: 'submitted' })
         }
     })
 

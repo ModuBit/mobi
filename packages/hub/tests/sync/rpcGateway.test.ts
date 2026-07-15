@@ -254,10 +254,10 @@ describe('RpcGateway.cancelCliQueuedMessage', () => {
         expect(envelope.params).toEqual({ localId: 'loc-1' })
     })
 
-    test('CLI 返回 invoked → 透传', async () => {
+    test('CLI 返回 submitted → 透传', async () => {
         const payloadCaptor = { value: undefined as unknown }
         const socket = makeFakeSocket({
-            response: { status: 'invoked' },
+            response: { status: 'submitted' },
             payloadCaptor,
         })
         const io = makeFakeIo('sock-cancel-2', socket)
@@ -266,10 +266,10 @@ describe('RpcGateway.cancelCliQueuedMessage', () => {
         const gateway = new RpcGateway(io, registry)
         const result = await gateway.cancelCliQueuedMessage('sess-B', 'loc-2')
 
-        expect(result).toEqual({ status: 'invoked' })
+        expect(result).toEqual({ status: 'submitted' })
     })
 
-    test('CLI 无响应（res 为 null/undefined）→ 降级为 invoked', async () => {
+    test('CLI 无响应（res 为 null/undefined）→ 降级为 submitted', async () => {
         const payloadCaptor = { value: undefined as unknown }
         const socket = makeFakeSocket({
             response: null,
@@ -281,7 +281,7 @@ describe('RpcGateway.cancelCliQueuedMessage', () => {
         const gateway = new RpcGateway(io, registry)
         const result = await gateway.cancelCliQueuedMessage('sess-C', 'loc-3')
 
-        expect(result).toEqual({ status: 'invoked' })
+        expect(result).toEqual({ status: 'submitted' })
     })
 
     test('handler 未注册 → throw（CLI 不在线）', async () => {

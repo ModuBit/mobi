@@ -35,7 +35,7 @@ function makeMsg(id: string, localId: string | null, seq: number): StoredMessage
     return {
         id, sessionId: 's1', content: {}, createdAt: seq, seq,
         localId, isSidechain: false, parentToolUseId: null,
-        category: 'persistent', invokedAt: null,
+        category: 'persistent', submittedAt: null,
     }
 }
 
@@ -60,10 +60,10 @@ function makeFakeSocket() {
 
 /**
  * 构造 SessionHandlersDeps，注入可控的 messages mock 与事件捕获。
- * markInvokedSpy 捕获 markMessagesInvoked 的参数。
+ * markInvokedSpy 捕获 markMessagesSubmitted 的参数。
  */
 function makeDeps(opts: {
-    uninvoked: StoredMessage[]
+    unsubmitted: StoredMessage[]
     markInvokedReturn: string[]
     sessionOk?: boolean
 }): { deps: SessionHandlersDeps; events: SyncEvent[]; markInvokedSpy: { args: { sid: string; lids: string[]; at: number } | null }; accessError: { called: boolean } } {
@@ -74,8 +74,8 @@ function makeDeps(opts: {
     const deps: SessionHandlersDeps = {
         store: {
             messages: {
-                getUninvokedLocalMessages: () => opts.uninvoked,
-                markMessagesInvoked: (sid: string, lids: string[], at: number) => {
+                getUnsubmittedLocalMessages: () => opts.unsubmitted,
+                markMessagesSubmitted: (sid: string, lids: string[], at: number) => {
                     markInvokedSpy.args = { sid, lids, at }
                     return opts.markInvokedReturn
                 },
@@ -94,32 +94,32 @@ function makeDeps(opts: {
 }
 
 describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
-    test('有 uninvoked local 消息 → 全部 invoke + 广播 messages-consumed', () => {
+    test('有 unsubmitted local 消息 → 全部 submit + 广播 messages-submitted', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events, markInvokedSpy } = makeDeps({
-            uninvoked: [makeMsg('m1', 'loc-1', 1), makeMsg('m2', 'loc-2', 2)],
+            unsubmitted: [makeMsg('m1', 'loc-1', 1), makeMsg('m2', 'loc-2', 2)],
             markInvokedReturn: ['loc-1', 'loc-2'],
         })
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
         fakeSocket.emit('session-end', { sid: 's1', time: Date.now() })
 
-        // markMessagesInvoked 被调用，localId 全部传入
+        // markMessagesSubmitted 被调用，localId 全部传入
         expect(markInvokedSpy.args).not.toBeNull()
         expect(markInvokedSpy.args!.sid).toBe('s1')
         expect(markInvokedSpy.args!.lids).toEqual(['loc-1', 'loc-2'])
 
-        // 广播 messages-consumed
+        // 广播 messages-submitted
         expect(events).toHaveLength(1)
-        const evt = events[0] as Extract<SyncEvent, { type: 'messages-consumed' }>
-        expect(evt.type).toBe('messages-consumed')
+        const evt = events[0] as Extract<SyncEvent, { type: 'messages-submitted' }>
+        expect(evt.type).toBe('messages-submitted')
         expect(evt.sessionId).toBe('s1')
         expect(evt.localIds).toEqual(['loc-1', 'loc-2'])
     })
 
-    test('无 uninvoked local 消息 → 不 invoke、不广播', () => {
+    test('无 unsubmitted local 消息 → 不 invoke、不广播', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, events, markInvokedSpy } = makeDeps({ uninvoked: [], markInvokedReturn: [] })
+        const { deps, events, markInvokedSpy } = makeDeps({ unsubmitted: [], markInvokedReturn: [] })
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
         fakeSocket.emit('session-end', { sid: 's1', time: Date.now() })
@@ -131,7 +131,7 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
     test('部分 localId 为 null 被 filter 掉', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events, markInvokedSpy } = makeDeps({
-            uninvoked: [makeMsg('m1', 'loc-1', 1), makeMsg('m2', null, 2)],
+            unsubmitted: [makeMsg('m1', 'loc-1', 1), makeMsg('m2', null, 2)],
             markInvokedReturn: ['loc-1'],
         })
 
@@ -141,13 +141,13 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
         // null localId 被 filter 掉，只有 loc-1 传入
         expect(markInvokedSpy.args!.lids).toEqual(['loc-1'])
         expect(events).toHaveLength(1)
-        expect((events[0] as Extract<SyncEvent, { type: 'messages-consumed' }>).localIds).toEqual(['loc-1'])
+        expect((events[0] as Extract<SyncEvent, { type: 'messages-submitted' }>).localIds).toEqual(['loc-1'])
     })
 
     test('session 不存在 → resolveSessionAccess 失败，不 invoke', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events, markInvokedSpy, accessError } = makeDeps({
-            uninvoked: [],
+            unsubmitted: [],
             markInvokedReturn: [],
             sessionOk: false,
         })
@@ -160,10 +160,10 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
         expect(events).toHaveLength(0)
     })
 
-    test('markMessagesInvoked 返回空（竞态：被别处先 invoke）→ 不广播', () => {
+    test('markMessagesSubmitted 返回空（竞态：被别处先 invoke）→ 不广播', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events } = makeDeps({
-            uninvoked: [makeMsg('m1', 'loc-1', 1)],
+            unsubmitted: [makeMsg('m1', 'loc-1', 1)],
             markInvokedReturn: [],  // 竞态：UPDATE 时已被 invoke
         })
 

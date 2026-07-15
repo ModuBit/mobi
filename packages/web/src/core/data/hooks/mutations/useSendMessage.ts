@@ -52,7 +52,7 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
                 id: vars.localId,
                 seq: null,
                 localId: vars.localId,
-                invokedAt: null,
+                submittedAt: null,
                 content: {
                     role: 'user',
                     content: { type: 'text', text: vars.text, attachments: undefined },

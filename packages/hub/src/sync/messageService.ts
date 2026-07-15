@@ -25,7 +25,7 @@ export class MessageService {
             id: message.id,
             seq: message.seq,
             localId: message.localId,
-            invokedAt: message.invokedAt,
+            submittedAt: message.submittedAt,
             content: message.content,
             createdAt: message.createdAt,
         }
@@ -51,13 +51,13 @@ export class MessageService {
         const messages: DecryptedMessage[] = stored.map(MessageService.toDecrypted)
 
         // 首页：out-of-band 钉入仍排队的本地 user 消息（悬浮条）
-        // getUninvokedLocalMessages 返回 seq ASC，追加到列表尾部，不参与 nextBeforeSeq/hasMore 计算
+        // getUnsubmittedLocalMessages 返回 seq ASC，追加到列表尾部，不参与 nextBeforeSeq/hasMore 计算
         if (options.beforeSeq === null || options.beforeSeq === undefined) {
             const inPageIds = new Set(stored.map(r => r.id))
-            const uninvoked = this.store.messages.getUninvokedLocalMessages(sessionId)
+            const unsubmitted = this.store.messages.getUnsubmittedLocalMessages(sessionId)
                 .filter(m => !inPageIds.has(m.id))
                 .map(MessageService.toDecrypted)
-            messages.push(...uninvoked)
+            messages.push(...unsubmitted)
         }
 
         let oldestSeq: number | null = null
@@ -149,13 +149,13 @@ export class MessageService {
         })
     }
 
-    /** 标记 localId 对应的排队消息为「已消费」（invokedAt 落库），返回实际更新的 localId 列表 */
-    markMessagesInvoked(sessionId: string, localIds: string[], invokedAt: number): string[] {
-        return this.store.messages.markMessagesInvoked(sessionId, localIds, invokedAt)
+    /** 标记 localId 对应的排队消息为「已消费」（submittedAt 落库），返回实际更新的 localId 列表 */
+    markMessagesSubmitted(sessionId: string, localIds: string[], submittedAt: number): string[] {
+        return this.store.messages.markMessagesSubmitted(sessionId, localIds, submittedAt)
     }
 
     /** 取消仍排队的消息（物理删除）；已 invoke 的不动 */
-    cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; invoked: boolean } {
+    cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; submitted: boolean } {
         return this.store.messages.cancelQueuedMessage(sessionId, localId)
     }
 }

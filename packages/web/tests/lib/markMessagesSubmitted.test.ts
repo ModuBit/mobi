@@ -15,13 +15,13 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { markMessagesConsumed } from '@/core/lib/markMessagesConsumed'
+import { markMessagesSubmitted } from '@/core/lib/markMessagesSubmitted'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /** 创建 mock DecryptedMessage */
 function m(
     localId: string | null,
-    invokedAt: number | null | undefined,
+    submittedAt: number | null | undefined,
     overrides: Partial<DecryptedMessage> = {},
 ): DecryptedMessage {
     return {
@@ -30,56 +30,56 @@ function m(
         localId,
         createdAt: 0,
         content: { role: 'user', content: 'hello' },
-        invokedAt,
+        submittedAt,
         status: 'queued',
         ...overrides,
     }
 }
 
-describe('markMessagesConsumed', () => {
-    it('翻转命中 localId 的 invokedAt 并更新 status', () => {
-        const out = markMessagesConsumed(
+describe('markMessagesSubmitted', () => {
+    it('翻转命中 localId 的 submittedAt 并更新 status', () => {
+        const out = markMessagesSubmitted(
             [m('a', null), m('b', null)],
             ['a'],
             999,
         )
-        expect(out[0].invokedAt).toBe(999)
+        expect(out[0].submittedAt).toBe(999)
         expect(out[0].status).toBe('sent')
-        expect(out[1].invokedAt).toBeNull()
+        expect(out[1].submittedAt).toBeNull()
         expect(out[1].status).toBe('queued')
     })
 
     it('已 invoke 的不动（first-write-wins）', () => {
-        const out = markMessagesConsumed([m('a', 100)], ['a'], 999)
-        expect(out[0].invokedAt).toBe(100)
+        const out = markMessagesSubmitted([m('a', 100)], ['a'], 999)
+        expect(out[0].submittedAt).toBe(100)
         expect(out[0].status).toBe('queued')
     })
 
     it('localId 为 null 的消息不受影响', () => {
-        const out = markMessagesConsumed([m(null, null)], ['x'], 999)
-        expect(out[0].invokedAt).toBeNull()
+        const out = markMessagesSubmitted([m(null, null)], ['x'], 999)
+        expect(out[0].submittedAt).toBeNull()
     })
 
     it('未命中的 localId 不影响其他消息', () => {
-        const out = markMessagesConsumed(
+        const out = markMessagesSubmitted(
             [m('a', null), m('b', null)],
             ['c'],
             999,
         )
-        expect(out[0].invokedAt).toBeNull()
-        expect(out[1].invokedAt).toBeNull()
+        expect(out[0].submittedAt).toBeNull()
+        expect(out[1].submittedAt).toBeNull()
     })
 
     it('空数组安全返回', () => {
-        const out = markMessagesConsumed([], ['a'], 999)
+        const out = markMessagesSubmitted([], ['a'], 999)
         expect(out).toEqual([])
     })
 
     it('不修改原数组（返回新数组）', () => {
         const original = [m('a', null)]
-        const out = markMessagesConsumed(original, ['a'], 999)
-        expect(original[0].invokedAt).toBeNull()
-        expect(out[0].invokedAt).toBe(999)
+        const out = markMessagesSubmitted(original, ['a'], 999)
+        expect(original[0].submittedAt).toBeNull()
+        expect(out[0].submittedAt).toBe(999)
         expect(out).not.toBe(original)
     })
 })

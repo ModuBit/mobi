@@ -25,7 +25,7 @@ import type { MessagesResponse } from '@/core/data/api/types'
  *
  * onMutate 立即从缓存移除该 localId 的消息（乐观删除）。
  * - 成功且 status='cancelled'：消息确已删除，乐观删除即终态
- * - 成功且 status='invoked'：CLI 抢先消费，乐观已移除但服务端仍会处理 → 失效重拉以恢复一致
+ * - 成功且 status='submitted'：CLI 抢先提交，乐观已移除但服务端仍会处理 → 失效重拉以恢复一致
  * - 失败：失效重拉，恢复被乐观删除的消息
  */
 export function useCancelQueuedMessage(sessionId: string) {
@@ -48,8 +48,8 @@ export function useCancelQueuedMessage(sessionId: string) {
             })
         },
         onSuccess: (res) => {
-            // 已 invoke（CLI 抢先消费）→ 失效重拉以恢复一致
-            if (res.data.status === 'invoked') {
+            // 已 invoke（CLI 抢先提交）→ 失效重拉以恢复一致
+            if (res.data.status === 'submitted') {
                 qc.invalidateQueries({ queryKey: queryKeys.messages(sessionId) })
             }
         },

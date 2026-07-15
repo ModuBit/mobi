@@ -32,7 +32,7 @@ type DbMessageRow = {
     is_sidechain: number
     parent_tool_use_id: string | null
     category: string
-    invoked_at: number | null
+    submitted_at: number | null
 }
 
 /** 历史查询的 category 过滤条件（只返回 persistent 消息） */
@@ -64,7 +64,7 @@ function toStoredMessage(row: DbMessageRow): StoredMessage {
         isSidechain: row.is_sidechain === 1,
         parentToolUseId: row.parent_tool_use_id,
         category: row.category,
-        invokedAt: row.invoked_at,
+        submittedAt: row.submitted_at,
     }
 }
 
@@ -107,15 +107,15 @@ export function addMessage(
     const isSidechain = extractIsSidechain(content) ? 1 : 0
     const parentToolUseId = extractParentToolUseId(content)
     const role = (content as { role?: string } | null)?.role
-    // 仅「带 localId 的 user 消息」排队（invokedAt=null，悬浮等采纳）；
+    // 仅「带 localId 的 user 消息」排队（submittedAt=null，悬浮等采纳）；
     // agent 消息虽然也带 localId（=其 uuid），但 role≠user，立即定位不悬浮
-    const invokedAt = (role === 'user' && localId) ? null : now
+    const submittedAt = (role === 'user' && localId) ? null : now
 
     db.prepare(`
         INSERT INTO messages (
-            id, session_id, content, created_at, seq, local_id, is_sidechain, parent_tool_use_id, category, invoked_at
+            id, session_id, content, created_at, seq, local_id, is_sidechain, parent_tool_use_id, category, submitted_at
         ) VALUES (
-            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain, @parent_tool_use_id, @category, @invoked_at
+            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain, @parent_tool_use_id, @category, @submitted_at
         )
     `).run({
         id,
@@ -127,7 +127,7 @@ export function addMessage(
         is_sidechain: isSidechain,
         parent_tool_use_id: parentToolUseId,
         category: category,
-        invoked_at: invokedAt,
+        submitted_at: submittedAt,
     })
 
     const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as DbMessageRow | undefined
@@ -149,7 +149,7 @@ export function getMessages(
         return queryByPosition(db, sessionId, limit, undefined, sidechainFilter)
     }
     const anchor = db.prepare(
-        `SELECT COALESCE(invoked_at, created_at) AS p, seq FROM messages WHERE session_id = ? AND seq = ?`
+        `SELECT COALESCE(submitted_at, created_at) AS p, seq FROM messages WHERE session_id = ? AND seq = ?`
     ).get(sessionId, beforeSeq) as { p: number; seq: number } | undefined
     if (!anchor) {
         // 游标行已不存在（如排队消息被取消后物理删除）→ 停止翻页返回空，
@@ -159,7 +159,7 @@ export function getMessages(
     return queryByPosition(db, sessionId, limit, anchor, sidechainFilter)
 }
 
-/** 按 position（COALESCE(invoked_at, created_at)）分页查询消息 */
+/** 按 position（COALESCE(submitted_at, created_at)）分页查询消息 */
 function queryByPosition(
     db: Database,
     sessionId: string,
@@ -169,10 +169,10 @@ function queryByPosition(
 ): StoredMessage[] {
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(200, limit)) : 200
     const beforeClause = before
-        ? 'AND (COALESCE(invoked_at, created_at) < @at OR (COALESCE(invoked_at, created_at) = @at AND seq < @seq))'
+        ? 'AND (COALESCE(submitted_at, created_at) < @at OR (COALESCE(submitted_at, created_at) = @at AND seq < @seq))'
         : ''
     const rows = db.prepare(`
-        SELECT *, COALESCE(invoked_at, created_at) AS position_at
+        SELECT *, COALESCE(submitted_at, created_at) AS position_at
         FROM messages
         WHERE session_id = @sessionId AND category = 'persistent' ${sidechainFilter} ${beforeClause}
         ORDER BY position_at DESC, seq DESC
@@ -186,55 +186,55 @@ function queryByPosition(
     return rows.reverse().map(toStoredMessage)
 }
 
-/** 把 localId 对应的消息 invoked_at 设为给定值；已设过的不动。返回实际更新的 localId。 */
-export function markMessagesInvoked(
+/** 把 localId 对应的消息 submitted_at 设为给定值；已设过的不动。返回实际更新的 localId。 */
+export function markMessagesSubmitted(
     db: Database,
     sessionId: string,
     localIds: string[],
-    invokedAt: number
+    submittedAt: number
 ): string[] {
     if (localIds.length === 0) return []
-    // 先查哪些还没 invoke（候选），再 UPDATE，用 changes 校准
+    // 先查哪些还没 submit（候选），再 UPDATE，用 changes 校准
     const rows = db.prepare(
         `SELECT local_id FROM messages
          WHERE session_id = ? AND local_id IN (${localIds.map(() => '?').join(',')})
-           AND invoked_at IS NULL`
+           AND submitted_at IS NULL`
     ).all(sessionId, ...localIds) as { local_id: string }[]
     const candidates = rows.map(r => r.local_id)
     if (candidates.length === 0) return []
     const result = db.prepare(
-        `UPDATE messages SET invoked_at = ? WHERE session_id = ? AND invoked_at IS NULL AND local_id IN (${candidates.map(() => '?').join(',')})`
-    ).run(invokedAt, sessionId, ...candidates)
+        `UPDATE messages SET submitted_at = ? WHERE session_id = ? AND submitted_at IS NULL AND local_id IN (${candidates.map(() => '?').join(',')})`
+    ).run(submittedAt, sessionId, ...candidates)
     // 单连接同步执行，SELECT 与 UPDATE 之间无其他写入，changes 必等于 candidates.length。
     // 直接返回 candidates（之前用 slice(0, changes) 是死代码且语义错误——它假设前 N 个被更新）。
     void result
     return candidates
 }
 
-/** 仍排队（invoked_at IS NULL 且有 local_id）的 user 消息，用于悬浮条钉最新页。 */
-export function getUninvokedLocalMessages(db: Database, sessionId: string): StoredMessage[] {
+/** 仍排队（submitted_at IS NULL 且有 local_id）的 user 消息，用于悬浮条钉最新页。 */
+export function getUnsubmittedLocalMessages(db: Database, sessionId: string): StoredMessage[] {
     const rows = db.prepare(
-        `SELECT * FROM messages WHERE session_id = ? AND invoked_at IS NULL AND local_id IS NOT NULL ORDER BY seq ASC`
+        `SELECT * FROM messages WHERE session_id = ? AND submitted_at IS NULL AND local_id IS NOT NULL ORDER BY seq ASC`
     ).all(sessionId) as DbMessageRow[]
     return rows.map(toStoredMessage)
 }
 
-/** 删除一条仍排队的消息；已 invoke 则不删。 */
+/** 删除一条仍排队的消息；已 submit 则不删。 */
 export function cancelQueuedMessage(
     db: Database,
     sessionId: string,
     localId: string
-): { cancelled: boolean; invoked: boolean } {
+): { cancelled: boolean; submitted: boolean } {
     const row = db.prepare(
-        `SELECT invoked_at FROM messages WHERE session_id = ? AND local_id = ?`
-    ).get(sessionId, localId) as { invoked_at: number | null } | undefined
-    if (!row) return { cancelled: false, invoked: false }
-    if (row.invoked_at !== null) return { cancelled: false, invoked: true }
-    // TOCTOU：SELECT 与 DELETE 之间可能被 invoke，用 changes 判定真实结果
+        `SELECT submitted_at FROM messages WHERE session_id = ? AND local_id = ?`
+    ).get(sessionId, localId) as { submitted_at: number | null } | undefined
+    if (!row) return { cancelled: false, submitted: false }
+    if (row.submitted_at !== null) return { cancelled: false, submitted: true }
+    // TOCTOU：SELECT 与 DELETE 之间可能被 submit，用 changes 判定真实结果
     const result = db.prepare(
-        `DELETE FROM messages WHERE session_id = ? AND local_id = ? AND invoked_at IS NULL`
+        `DELETE FROM messages WHERE session_id = ? AND local_id = ? AND submitted_at IS NULL`
     ).run(sessionId, localId)
-    return { cancelled: result.changes > 0, invoked: result.changes === 0 }
+    return { cancelled: result.changes > 0, submitted: result.changes === 0 }
 }
 
 export function getMessagesAfter(

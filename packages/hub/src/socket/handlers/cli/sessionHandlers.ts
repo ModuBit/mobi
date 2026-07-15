@@ -421,13 +421,13 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         onSessionEnd?.(data)
 
         // CLI 离线：把仍排队的本地 user 消息全部 invoke，防悬浮条卡死
-        const uninvoked = store.messages.getUninvokedLocalMessages(data.sid)
-        if (uninvoked.length > 0) {
-            const invokedAt = Date.now()
-            const lids = uninvoked.map(m => m.localId).filter((l): l is string => Boolean(l))
-            const fresh = store.messages.markMessagesInvoked(data.sid, lids, invokedAt)
+        const unsubmitted = store.messages.getUnsubmittedLocalMessages(data.sid)
+        if (unsubmitted.length > 0) {
+            const submittedAt = Date.now()
+            const lids = unsubmitted.map(m => m.localId).filter((l): l is string => Boolean(l))
+            const fresh = store.messages.markMessagesSubmitted(data.sid, lids, submittedAt)
             if (fresh.length > 0) {
-                onWebappEvent?.({ type: 'messages-consumed', sessionId: data.sid, localIds: fresh, invokedAt })
+                onWebappEvent?.({ type: 'messages-submitted', sessionId: data.sid, localIds: fresh, submittedAt })
             }
         }
     })
@@ -451,8 +451,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         })
     })
 
-    // CLI 消费了排队消息 → 标记 invokedAt 后转发 SSE 给 Web
-    socket.on('messages-consumed', (data: { sid: string; localIds: string[] }) => {
+    // CLI 消费了排队消息 → 标记 submittedAt 后转发 SSE 给 Web
+    socket.on('messages-submitted', (data: { sid: string; localIds: string[] }) => {
         if (!data || typeof data.sid !== 'string' || !Array.isArray(data.localIds)) {
             return
         }
@@ -463,11 +463,11 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
         if (data.localIds.length === 0) return
 
-        const invokedAt = Date.now()
-        const fresh = store.messages.markMessagesInvoked(data.sid, data.localIds, invokedAt)
+        const submittedAt = Date.now()
+        const fresh = store.messages.markMessagesSubmitted(data.sid, data.localIds, submittedAt)
         // DB 落盘成功后才转发 SSE，防 live/refresh 状态分叉
         if (fresh.length > 0) {
-            onWebappEvent?.({ type: 'messages-consumed', sessionId: data.sid, localIds: fresh, invokedAt })
+            onWebappEvent?.({ type: 'messages-submitted', sessionId: data.sid, localIds: fresh, submittedAt })
         }
     })
 }

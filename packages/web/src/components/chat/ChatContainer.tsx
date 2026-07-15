@@ -24,7 +24,7 @@ import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { isQueuedForInvocation } from '@/core/lib/messages'
+import { isQueuedInMobi } from '@/core/lib/messages'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
@@ -122,7 +122,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     const { blocks: rawBlocks, byId } = useMemo(() => {
         // 排队消息仅在悬浮条展示，不进入聊天线程
-        const visibleMessages = messages.filter(m => !isQueuedForInvocation(m))
+        const visibleMessages = messages.filter(m => !isQueuedInMobi(m))
         const normalized = visibleMessages
             .map(normalizeDecryptedMessage)
             .filter((m): m is Exclude<typeof m, null> => m !== null)

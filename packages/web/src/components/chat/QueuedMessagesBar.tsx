@@ -18,7 +18,7 @@ import { useMemo } from 'react'
 import { Button, Tooltip, theme, message } from 'antd'
 import { ClockCircleOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { isQueuedForInvocation } from '@/core/lib/messages'
+import { isQueuedInMobi } from '@/core/lib/messages'
 import { useCancelQueuedMessage } from '@/core/data/hooks/mutations/useCancelQueuedMessage'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
@@ -52,7 +52,7 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
 
     const queued = useMemo(
         () => messages
-            .filter(isQueuedForInvocation)
+            .filter(isQueuedInMobi)
             .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)),
         [messages],
     )

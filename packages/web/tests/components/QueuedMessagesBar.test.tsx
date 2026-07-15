@@ -42,26 +42,26 @@ vi.mock('react-i18next', () => ({
 
 import { QueuedMessagesBar } from '@/components/chat/QueuedMessagesBar'
 
-/** 构建排队中的 user 消息（invokedAt=null） */
+/** 构建排队中的 user 消息（submittedAt=null） */
 function queuedMsg(id: string, text: string, createdAt = 1000): DecryptedMessage {
     return {
         id,
         seq: null,
         localId: id,
-        invokedAt: null,
+        submittedAt: null,
         createdAt,
         content: { role: 'user', content: { type: 'text', text } },
         status: 'queued',
     }
 }
 
-/** 构建已被 agent 处理的 user 消息（invokedAt!=null） */
-function invokedMsg(id: string, text: string): DecryptedMessage {
+/** 构建已被 agent 处理的 user 消息（submittedAt!=null） */
+function submittedMsg(id: string, text: string): DecryptedMessage {
     return {
         id,
         seq: 1,
         localId: null,
-        invokedAt: 2000,
+        submittedAt: 2000,
         createdAt: 1000,
         content: { role: 'user', content: { type: 'text', text } },
     }
@@ -73,7 +73,7 @@ function agentMsg(id: string, text: string): DecryptedMessage {
         id,
         seq: 2,
         localId: null,
-        invokedAt: 2000,
+        submittedAt: 2000,
         createdAt: 1000,
         content: { role: 'agent', content: { type: 'text', text } },
     }
@@ -112,7 +112,7 @@ describe('QueuedMessagesBar', () => {
     })
 
     it('仅有已 invoke 的 user 消息时也渲染 null', () => {
-        const { container } = renderBar([invokedMsg('m1', '已处理')])
+        const { container } = renderBar([submittedMsg('m1', '已处理')])
         expect(container.textContent).toBe('')
     })
 
@@ -137,7 +137,7 @@ describe('QueuedMessagesBar', () => {
     it('排队消息与已 invoke 消息混合时只展示排队项', () => {
         const { getByText, queryByText } = renderBar([
             queuedMsg('q1', '排队中'),
-            invokedMsg('i1', '已处理'),
+            submittedMsg('i1', '已处理'),
             agentMsg('a1', 'agent 回复'),
         ])
 
@@ -180,7 +180,7 @@ describe('QueuedMessagesBar', () => {
         expect(onEdit).toHaveBeenCalledWith('编辑我')
     })
 
-    it('点击编辑 + cancel 返回 invoked → 不调 onEdit', () => {
+    it('点击编辑 + cancel 返回 submitted → 不调 onEdit', () => {
         const onEdit = vi.fn()
         const { container } = renderBar([queuedMsg('q1', '编辑我')], onEdit)
 
@@ -192,7 +192,7 @@ describe('QueuedMessagesBar', () => {
         }
 
         // 已被 agent 抢先处理 → 不回填
-        opts.onSuccess({ data: { status: 'invoked' } })
+        opts.onSuccess({ data: { status: 'submitted' } })
         expect(onEdit).not.toHaveBeenCalled()
     })
 })

@@ -251,12 +251,12 @@ export class SyncEngine {
     }
 
     /** 取消仍排队的消息（物理删除）；已 invoke 的不动 */
-    cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; invoked: boolean } {
+    cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; submitted: boolean } {
         return this.messageService.cancelQueuedMessage(sessionId, localId)
     }
 
     /** 通知 CLI 从内存队列移除排队消息（两阶段取消的 CLI 侧 RPC） */
-    async cancelCliQueuedMessage(sessionId: string, localId: string): Promise<{ status: 'cancelled' | 'invoked' }> {
+    async cancelCliQueuedMessage(sessionId: string, localId: string): Promise<{ status: 'cancelled' | 'submitted' }> {
         return await this.rpcGateway.cancelCliQueuedMessage(sessionId, localId)
     }
 

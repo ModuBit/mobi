@@ -17,18 +17,18 @@
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /**
- * 把 localId 命中的消息 invokedAt 翻成给定时间戳（first-write-wins）。
+ * 把 localId 命中的消息 submittedAt 翻成给定时间戳（first-write-wins）。
  * 调用方拿到 messages 数组、用 setQueryData 写回。
  */
-export function markMessagesConsumed(
+export function markMessagesSubmitted(
     messages: DecryptedMessage[],
     localIds: string[],
-    invokedAt: number,
+    submittedAt: number,
 ): DecryptedMessage[] {
     const set = new Set(localIds)
     return messages.map(m =>
-        m.localId && set.has(m.localId) && m.invokedAt == null
-            ? { ...m, invokedAt, status: 'sent' as const }
+        m.localId && set.has(m.localId) && m.submittedAt == null
+            ? { ...m, submittedAt, status: 'sent' as const }
             : m,
     )
 }

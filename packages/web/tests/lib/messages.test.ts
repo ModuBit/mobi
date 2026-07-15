@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isUserMessage, isQueuedForInvocation, mergeMessages, makeClientSideId } from '@/core/lib/messages'
+import { isUserMessage, isQueuedInMobi, mergeMessages, makeClientSideId } from '@/core/lib/messages'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /** 创建 mock DecryptedMessage */
@@ -72,28 +72,28 @@ describe('isUserMessage', () => {
     })
 })
 
-describe('isQueuedForInvocation', () => {
-    it('user 消息 + invokedAt 未设 = 排队中', () => {
-        expect(isQueuedForInvocation(createMessage())).toBe(true)
+describe('isQueuedInMobi', () => {
+    it('user 消息 + submittedAt 未设 = 排队中', () => {
+        expect(isQueuedInMobi(createMessage())).toBe(true)
     })
 
-    it('invokedAt 非 null = 不排队', () => {
-        expect(isQueuedForInvocation(createMessage({ invokedAt: 1000 }))).toBe(false)
+    it('submittedAt 非 null = 不排队', () => {
+        expect(isQueuedInMobi(createMessage({ submittedAt: 1000 }))).toBe(false)
     })
 
-    it('invokedAt 为 null = 排队中', () => {
-        expect(isQueuedForInvocation(createMessage({ invokedAt: null }))).toBe(true)
+    it('submittedAt 为 null = 排队中', () => {
+        expect(isQueuedInMobi(createMessage({ submittedAt: null }))).toBe(true)
     })
 
     it('failed 状态 = 不排队', () => {
-        expect(isQueuedForInvocation(createMessage({ status: 'failed' }))).toBe(false)
+        expect(isQueuedInMobi(createMessage({ status: 'failed' }))).toBe(false)
     })
 
     it('agent 消息 = 不排队', () => {
         const msg = createMessage({
             content: { role: 'agent', content: { type: 'text', text: 'hi' } },
         })
-        expect(isQueuedForInvocation(msg)).toBe(false)
+        expect(isQueuedInMobi(msg)).toBe(false)
     })
 })
 
@@ -217,8 +217,8 @@ describe('mergeMessages', () => {
     })
 })
 
-describe('mergeMessages invokedAt 保留', () => {
-    it('服务端 echo 缺 invokedAt 时从乐观消息迁移 status', () => {
+describe('mergeMessages submittedAt 保留', () => {
+    it('服务端 echo 缺 submittedAt 时从乐观消息迁移 status', () => {
         const optimistic = createMessage({
             id: 'local-1',
             localId: 'local-1',
@@ -231,7 +231,7 @@ describe('mergeMessages invokedAt 保留', () => {
             localId: 'local-1',
             seq: 1,
             createdAt: 1000,
-            // invokedAt 未设 — 模拟服务端 echo 不带此字段
+            // submittedAt 未设 — 模拟服务端 echo 不带此字段
         })
 
         const result = mergeMessages([optimistic], [serverEcho])
@@ -240,37 +240,37 @@ describe('mergeMessages invokedAt 保留', () => {
         expect(result[0].status).toBe('queued')
     })
 
-    it('incoming 覆盖时不丢已有的 invokedAt（防陈旧 echo 回退）', () => {
+    it('incoming 覆盖时不丢已有的 submittedAt（防陈旧 echo 回退）', () => {
         const existing = createMessage({
             id: 'server-1',
             localId: null,
-            invokedAt: 100,
+            submittedAt: 100,
         })
         const incoming = createMessage({
             id: 'server-1',
             localId: null,
-            // incoming 缺 invokedAt — 模拟陈旧的服务端数据
+            // incoming 缺 submittedAt — 模拟陈旧的服务端数据
         })
 
         const result = mergeMessages([existing], [incoming])
         expect(result).toHaveLength(1)
-        expect(result[0].invokedAt).toBe(100)
+        expect(result[0].submittedAt).toBe(100)
     })
 
-    it('incoming 带 invokedAt 时正常覆盖（不保留旧值）', () => {
+    it('incoming 带 submittedAt 时正常覆盖（不保留旧值）', () => {
         const existing = createMessage({
             id: 'server-1',
             localId: null,
-            invokedAt: 100,
+            submittedAt: 100,
         })
         const incoming = createMessage({
             id: 'server-1',
             localId: null,
-            invokedAt: 200,
+            submittedAt: 200,
         })
 
         const result = mergeMessages([existing], [incoming])
-        expect(result[0].invokedAt).toBe(200)
+        expect(result[0].submittedAt).toBe(200)
     })
 })
 

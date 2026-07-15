@@ -271,7 +271,7 @@ export class ApiSessionClient extends EventEmitter {
         const userResult = UserMessageSchema.safeParse(message.content)
         if (userResult.success) {
             // localId 由 Hub 放在 message 外层（与 content 信封同级），合并进 UserMessage
-            // 供 runClaude 入队 → collectBatch → emitMessagesConsumed 追踪 consume
+            // 供 runClaude 入队 → collectBatch → emitMessagesSubmitted 追踪 consume
             this.enqueueUserMessage({ ...userResult.data, localId: message.localId ?? userResult.data.localId ?? undefined })
             return
         }
@@ -496,10 +496,10 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
-    /** 通知 Hub：这批 localId 的消息已被 agent 消费（将入 invoked_at） */
-    emitMessagesConsumed(localIds: string[]): void {
+    /** 通知 Hub：这批 localId 的消息已提交给 Claude Code（将入 submitted_at） */
+    emitMessagesSubmitted(localIds: string[]): void {
         if (localIds.length === 0) return
-        this.socket.emit('messages-consumed', { sid: this.sessionId, localIds })
+        this.socket.emit('messages-submitted', { sid: this.sessionId, localIds })
     }
 
     keepAlive(

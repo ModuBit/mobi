@@ -96,7 +96,7 @@ describe('useSendMessage', () => {
         expect(msgs).toHaveLength(1)
         const optimistic = msgs[0]
         expect(optimistic.status).toBe('sending')
-        expect(optimistic.invokedAt).toBeNull()
+        expect(optimistic.submittedAt).toBeNull()
         // 乐观消息 id === localId
         expect(optimistic.id).toBe(optimistic.localId)
         // content 信封正确

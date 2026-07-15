@@ -69,7 +69,7 @@ function queuedMsg(id: string, createdAt = 1000): DecryptedMessage {
         id,
         seq: null,
         localId: id,
-        invokedAt: null,
+        submittedAt: null,
         createdAt,
         content: { role: 'user', content: { type: 'text', text: `msg-${id}` } },
         status: 'queued',
@@ -107,8 +107,8 @@ describe('useCancelQueuedMessage', () => {
         expect(msgs[0].localId).toBe('local-2')
     })
 
-    it('onSuccess status=invoked 时 invalidate（CLI 抢先消费，需重拉）', async () => {
-        mocks.cancel.mockResolvedValue({ data: { status: 'invoked' } })
+    it('onSuccess status=submitted 时 invalidate（CLI 抢先消费，需重拉）', async () => {
+        mocks.cancel.mockResolvedValue({ data: { status: 'submitted' } })
         qc.setQueryData(queryKeys.messages(SESSION_ID), seedData([queuedMsg('local-1')]))
         const spy = vi.spyOn(qc, 'invalidateQueries')
 

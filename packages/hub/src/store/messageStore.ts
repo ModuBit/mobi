@@ -25,8 +25,8 @@ import {
     getMessages,
     getMessagesAfter,
     getSidechainMessages,
-    getUninvokedLocalMessages,
-    markMessagesInvoked,
+    getUnsubmittedLocalMessages,
+    markMessagesSubmitted,
     mergeSessionMessages
 } from './messages'
 
@@ -57,15 +57,15 @@ export class MessageStore {
         return mergeSessionMessages(this.db, fromSessionId, toSessionId)
     }
 
-    markMessagesInvoked(sessionId: string, localIds: string[], invokedAt: number): string[] {
-        return markMessagesInvoked(this.db, sessionId, localIds, invokedAt)
+    markMessagesSubmitted(sessionId: string, localIds: string[], submittedAt: number): string[] {
+        return markMessagesSubmitted(this.db, sessionId, localIds, submittedAt)
     }
 
-    getUninvokedLocalMessages(sessionId: string): StoredMessage[] {
-        return getUninvokedLocalMessages(this.db, sessionId)
+    getUnsubmittedLocalMessages(sessionId: string): StoredMessage[] {
+        return getUnsubmittedLocalMessages(this.db, sessionId)
     }
 
-    cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; invoked: boolean } {
+    cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; submitted: boolean } {
         return cancelQueuedMessage(this.db, sessionId, localId)
     }
 }
