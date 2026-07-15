@@ -68,15 +68,37 @@ describe('DecryptedMessageSchema', () => {
         expect(result.localId).toBeNull()
     })
 
-    it('accepts invokedAt null and number', () => {
+    it('accepts submittedAt null and number', () => {
         const base = { id: 'm1', seq: 1, localId: null, content: {}, createdAt: 0 }
-        expect(DecryptedMessageSchema.parse({ ...base, invokedAt: null }).invokedAt).toBeNull()
-        expect(DecryptedMessageSchema.parse({ ...base, invokedAt: 123 }).invokedAt).toBe(123)
+        expect(DecryptedMessageSchema.parse({ ...base, submittedAt: null }).submittedAt).toBeNull()
+        expect(DecryptedMessageSchema.parse({ ...base, submittedAt: 123 }).submittedAt).toBe(123)
     })
 
-    it('defaults invokedAt to undefined when absent (optional)', () => {
+    it('defaults submittedAt to undefined when absent (optional)', () => {
         const parsed = DecryptedMessageSchema.parse({ id: 'm1', seq: 1, localId: null, content: {}, createdAt: 0 })
-        expect(parsed.invokedAt).toBeUndefined()
+        expect(parsed.submittedAt).toBeUndefined()
+    })
+
+    it('使用 submittedAt 而非 invokedAt', () => {
+        const msg = {
+            id: 'm1',
+            seq: 1,
+            localId: null,
+            content: { role: 'user', content: { type: 'text', text: 'hi' } },
+            createdAt: 1000,
+            submittedAt: 2000,
+        }
+        const parsed = DecryptedMessageSchema.safeParse(msg)
+        expect(parsed.success).toBe(true)
+        expect((parsed.success ? parsed.data.submittedAt : null)).toBe(2000)
+    })
+
+    it('submittedAt 可空可缺省', () => {
+        const parsed = DecryptedMessageSchema.safeParse({
+            id: 'm1', seq: null, localId: null, createdAt: 1,
+            content: { role: 'user', content: { type: 'text', text: '' } },
+        })
+        expect(parsed.success).toBe(true)
     })
 
     it('缺少必填字段抛错', () => {
@@ -282,15 +304,25 @@ describe('SyncEventSchema', () => {
     })
 })
 
-describe('SyncEventSchema messages-consumed', () => {
-    it('parses messages-consumed event', () => {
-        const evt = { type: 'messages-consumed', sessionId: 's1', localIds: ['a', 'b'], invokedAt: 999 }
+describe('SyncEventSchema messages-submitted', () => {
+    it('parses messages-submitted event', () => {
+        const evt = { type: 'messages-submitted', sessionId: 's1', localIds: ['a', 'b'], submittedAt: 999 }
         const parsed = SyncEventSchema.parse(evt)
-        expect(parsed.type).toBe('messages-consumed')
-        if (parsed.type === 'messages-consumed') {
+        expect(parsed.type).toBe('messages-submitted')
+        if (parsed.type === 'messages-submitted') {
             expect(parsed.localIds).toEqual(['a', 'b'])
-            expect(parsed.invokedAt).toBe(999)
+            expect(parsed.submittedAt).toBe(999)
         }
+    })
+
+    it('解析 messages-submitted 事件', () => {
+        const parsed = SyncEventSchema.safeParse({
+            type: 'messages-submitted',
+            sessionId: 's1',
+            localIds: ['a', 'b'],
+            submittedAt: 1234,
+        })
+        expect(parsed.success).toBe(true)
     })
 })
 

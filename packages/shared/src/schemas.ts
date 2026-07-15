@@ -280,8 +280,8 @@ export const DecryptedMessageSchema = z.object({
     id: z.string(),
     seq: z.number().nullable(),
     localId: z.string().nullable(),
-    /** 被 agent 真正处理的时刻；null 表示仍在排队悬浮。agent 产生的消息入库时 = createdAt */
-    invokedAt: z.number().nullable().optional(),
+    /** 已提交给 Claude Code SDK input stream 的时刻；null 表示仍在排队悬浮。agent 产生的消息入库时 = createdAt */
+    submittedAt: z.number().nullable().optional(),
     content: z.unknown(),
     createdAt: z.number(),
     /** 标识流式快照消息（未落库，Hub 直接透传给 Web） */
@@ -384,9 +384,9 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         })
     }),
     SessionChangedSchema.extend({
-        type: z.literal('messages-consumed'),
+        type: z.literal('messages-submitted'),
         localIds: z.array(z.string()),
-        invokedAt: z.number(),
+        submittedAt: z.number(),
     })
 ])
 
