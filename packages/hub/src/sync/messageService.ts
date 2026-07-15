@@ -158,4 +158,9 @@ export class MessageService {
     cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; submitted: boolean } {
         return this.store.messages.cancelQueuedMessage(sessionId, localId)
     }
+
+    /** 查询某 localId 消息的提交状态（非破坏性，用于 steer 前置校验） */
+    getMessageSubmitState(sessionId: string, localId: string): { exists: boolean, submitted: boolean } {
+        return this.store.messages.getMessageSubmitState(sessionId, localId)
+    }
 }

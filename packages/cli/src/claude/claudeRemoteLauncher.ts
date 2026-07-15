@@ -156,20 +156,35 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         });
 
         // steer 排队消息（web → hub → cli）：把仍排队的消息从内存队列取出，
-        // 立即 push 进 SDK input stream，由 Claude Code 在内部安全点处理
+        // 立即 push 进 SDK input stream，由 Claude Code 在内部安全点处理。
+        // 设计权衡：steer 绕过 MessageQueue 的 modeHash 一致性检查与 collectBatch 的 pending 重启机制，
+        // 消息以「当前运行 Query 的配置」被处理，而非入队时的配置。若用户排队后改了 model/permissionMode，
+        // steer 消息不会触发 Query 重启——这是为「即时性」刻意取舍（mode 重启走正常 collectBatch 路径）。
         session.client.rpcHandlerManager.registerHandler('steer-queued-message', async (params) => {
             const { localId } = (params ?? {}) as { localId?: string }
             if (!localId) return { status: 'submitted' }
             const stolen = session.queue.stealByLocalId(localId)
             if (!stolen) return { status: 'submitted' }
+
+            // push 失败的统一回填：消息已从队列移除，若 SDK input stream 未就绪或已关闭，
+            // 必须放回队列，否则消息丢失（DB 行仍 submitted_at=null 但 agent 永远收不到）
+            const pushBack = () => session.queue.push(stolen.message, stolen.mode, localId)
+
             if (!this.steerSink) {
                 // query 未就绪：放回队列，保持排队态
-                session.queue.push(stolen.message, stolen.mode, localId)
+                pushBack()
                 return { status: 'submitted' }
             }
-            const ok = this.steerSink(stolen.message)
+            let ok: boolean
+            try {
+                ok = this.steerSink(stolen.message)
+            } catch (e) {
+                // SDK input stream 已 end（mode 切换重启/turn 间隙旧循环已结束）→ push 抛错，回填保命
+                logger.debug('[remote]: steer push failed, restoring queue', e)
+                ok = false
+            }
             if (!ok) {
-                session.queue.push(stolen.message, stolen.mode, localId)
+                pushBack()
                 return { status: 'submitted' }
             }
             // push 成功 → 立即通知 Hub 已提交（与 collectBatch 同路径）
@@ -527,6 +542,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     this.abortFuture?.resolve(undefined);
                     this.abortFuture = null;
                     this.queryRef = null;
+                    // 清空 steer sink：旧 SDK input stream 已 end，避免下一轮 claudeRemote 注入新 sink 前
+                    // 命中 stale sink 导致 steer push 抛错（虽已 try/catch 回填，但清空让未就绪态更明确）
+                    this.steerSink = null;
                     if (this.queryControlRef) {
                         this.queryControlRef.current = null;
                     }

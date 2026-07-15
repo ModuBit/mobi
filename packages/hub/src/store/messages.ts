@@ -237,6 +237,19 @@ export function cancelQueuedMessage(
     return { cancelled: result.changes > 0, submitted: result.changes === 0 }
 }
 
+/** 查询某 localId 消息的提交状态（非破坏性）。exists=false 表示 DB 中无此消息。 */
+export function getMessageSubmitState(
+    db: Database,
+    sessionId: string,
+    localId: string
+): { exists: boolean, submitted: boolean } {
+    const row = db.prepare(
+        `SELECT submitted_at FROM messages WHERE session_id = ? AND local_id = ?`
+    ).get(sessionId, localId) as { submitted_at: number | null } | undefined
+    if (!row) return { exists: false, submitted: false }
+    return { exists: true, submitted: row.submitted_at !== null }
+}
+
 export function getMessagesAfter(
     db: Database,
     sessionId: string,

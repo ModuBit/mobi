@@ -224,7 +224,7 @@
             "title": "排队中（{{count}}）",
             "edit": "编辑",
             "cancel": "取消",
-            "alreadySubmitted": "消息已被 agent 处理，无法编辑",
+            "alreadySubmitted": "消息已提交给 Claude Code，无法编辑",
             "steer": "立即提交给 Claude Code",
             "steerFailed": "暂无法提交，仍保留在队列中"
         }

@@ -22,6 +22,7 @@ import type { StoredMessage } from './types'
 import {
     addMessage,
     cancelQueuedMessage,
+    getMessageSubmitState,
     getMessages,
     getMessagesAfter,
     getSidechainMessages,
@@ -67,5 +68,9 @@ export class MessageStore {
 
     cancelQueuedMessage(sessionId: string, localId: string): { cancelled: boolean; submitted: boolean } {
         return cancelQueuedMessage(this.db, sessionId, localId)
+    }
+
+    getMessageSubmitState(sessionId: string, localId: string): { exists: boolean, submitted: boolean } {
+        return getMessageSubmitState(this.db, sessionId, localId)
     }
 }

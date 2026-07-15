@@ -224,7 +224,7 @@
             "title": "Queued ({{count}})",
             "edit": "Edit",
             "cancel": "Cancel",
-            "alreadySubmitted": "Message already picked up by agent, cannot edit",
+            "alreadySubmitted": "Message already submitted to Claude Code, cannot edit",
             "steer": "Submit to Claude Code now",
             "steerFailed": "Could not submit; still queued"
         }

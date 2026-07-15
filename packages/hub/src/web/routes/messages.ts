@@ -160,6 +160,10 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const sessionId = sessionResult.sessionId
         const localId = c.req.param('messageId')
 
+        // DB 层前置校验（与 cancel 路由对称）：已 submit 或不存在 → 不再打扰 CLI
+        const state = engine.getMessageSubmitState(sessionId, localId)
+        if (!state.exists || state.submitted) return c.json({ status: 'submitted' })
+
         try {
             const res = await engine.steerCliQueuedMessage(sessionId, localId)
             return c.json({ status: res.status ?? 'submitted' })

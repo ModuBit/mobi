@@ -22,7 +22,8 @@ import {
     getMessages,
     markMessagesSubmitted,
     getUnsubmittedLocalMessages,
-    cancelQueuedMessage
+    cancelQueuedMessage,
+    getMessageSubmitState
 } from '../../src/store/messages'
 
 function makeDb() {
@@ -102,5 +103,17 @@ describe('byPosition + submittedAt', () => {
         cancelQueuedMessage(db, 's', 'loc-1')
         // 用 loc-1 的 seq=1 作游标翻页：行已不存在，必须返回 [] 而非退回最新页
         expect(getMessages(db, 's', 50, 1)).toEqual([])
+    })
+
+    test('getMessageSubmitState：未提交/已提交/不存在三种状态', () => {
+        addMessage(db, 's', { role: 'user' }, 'loc-q') // 排队，submitted_at=null
+        addMessage(db, 's', { role: 'assistant' }, undefined) // 立即定位
+        // 未提交
+        expect(getMessageSubmitState(db, 's', 'loc-q')).toEqual({ exists: true, submitted: false })
+        // 提交后
+        markMessagesSubmitted(db, 's', ['loc-q'], 1234)
+        expect(getMessageSubmitState(db, 's', 'loc-q')).toEqual({ exists: true, submitted: true })
+        // 不存在
+        expect(getMessageSubmitState(db, 's', 'never')).toEqual({ exists: false, submitted: false })
     })
 })

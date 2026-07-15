@@ -265,6 +265,11 @@ export class SyncEngine {
         return await this.rpcGateway.steerCliQueuedMessage(sessionId, localId)
     }
 
+    /** 查询某 localId 消息的提交状态（非破坏性） */
+    getMessageSubmitState(sessionId: string, localId: string): { exists: boolean, submitted: boolean } {
+        return this.messageService.getMessageSubmitState(sessionId, localId)
+    }
+
     async approvePermission(
         sessionId: string,
         requestId: string,
