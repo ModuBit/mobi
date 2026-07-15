@@ -448,6 +448,8 @@ export async function claudeRemote(opts: {
     onSessionReset?: () => void,
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
     onQueryReady?: (query: Query) => void,
+    // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
+    onSteerSinkReady?: (push: (text: string) => boolean) => void,
 }) {
 
     // Check if session is valid
@@ -641,6 +643,23 @@ export async function claudeRemote(opts: {
         parent_tool_use_id: null,
         session_id: '', // SDK 会在运行时填充
     });
+
+    // 注入 steer sink：把文本 push 进 SDK input stream，返回 true。
+    // 由 launcher 的 steer-queued-message RPC 调用，把已排队消息提前提交给 SDK。
+    if (opts.onSteerSinkReady) {
+        opts.onSteerSinkReady((text: string) => {
+            messages.push({
+                type: 'user',
+                message: {
+                    role: 'user',
+                    content: sanitizeUserMessage(text),
+                },
+                parent_tool_use_id: null,
+                session_id: '',
+            });
+            return true;
+        });
+    }
 
     let warmConsumed = false;
     let response: Query;

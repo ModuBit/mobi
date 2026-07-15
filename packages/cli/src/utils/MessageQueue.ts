@@ -252,6 +252,19 @@ export class MessageQueue<T> {
     }
 
     /**
+     * 取出并移除指定 localId 的排队消息，返回其内容与 mode。
+     * 用于 steer：把仍排队的消息提前提交给 SDK input stream，避免 collectBatch 重复投递。
+     * 不命中返回 null。
+     */
+    stealByLocalId(localId: string): { message: string, mode: T } | null {
+        const idx = this.queue.findIndex(item => item.localId === localId);
+        if (idx < 0) return null;
+        const [item] = this.queue.splice(idx, 1);
+        logger.debug(`[MessageQueue] stealByLocalId stole ${localId}, size=${this.queue.length}`);
+        return { message: item.message, mode: item.mode };
+    }
+
+    /**
      * Wait for messages and return all messages with the same mode as a single string
      * Returns { message: string, mode: T, isolate: boolean, hash: string, localIds: string[] } or null if aborted/closed
      */

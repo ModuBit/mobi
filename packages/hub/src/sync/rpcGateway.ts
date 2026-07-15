@@ -313,6 +313,12 @@ export class RpcGateway {
         return (res ?? { status: 'submitted' }) as { status: 'cancelled' | 'submitted' }
     }
 
+    // steer CLI 内存队列中的排队消息：立即提交给 SDK input stream
+    async steerCliQueuedMessage(sessionId: string, localId: string): Promise<{ status: 'steered' | 'submitted' }> {
+        const res = await this.sessionRpc(sessionId, 'steer-queued-message', { localId })
+        return (res ?? { status: 'submitted' }) as { status: 'steered' | 'submitted' }
+    }
+
     private async sessionRpc(sessionId: string, method: string, params: unknown): Promise<unknown> {
         return await this.rpcCall(`${sessionId}:${method}`, params)
     }

@@ -145,5 +145,28 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
+    // steer：把仍排队的消息提前提交给 Claude Code SDK input stream
+    app.post('/sessions/:id/messages/:messageId/steer', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        const sessionId = sessionResult.sessionId
+        const localId = c.req.param('messageId')
+
+        try {
+            const res = await engine.steerCliQueuedMessage(sessionId, localId)
+            return c.json({ status: res.status ?? 'submitted' })
+        } catch {
+            return c.json({ status: 'submitted' }, 503)
+        }
+    })
+
     return app
 }

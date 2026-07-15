@@ -56,6 +56,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private handleSessionFound: ((sessionId: string) => void) | null = null;
     // SDK Query 引用，用于 interrupt/close 控制
     private queryRef: Query | null = null;
+    // steer sink：由 claudeRemote 启动循环时注入，把 steer 文本 push 进 SDK input stream
+    private steerSink: ((text: string) => boolean) | null = null;
 
     constructor(
         session: Session,
@@ -151,6 +153,28 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (!localId) return { status: 'submitted' }
             const removed = session.queue.cancelByLocalId(localId)
             return { status: removed ? 'cancelled' : 'submitted' }
+        });
+
+        // steer 排队消息（web → hub → cli）：把仍排队的消息从内存队列取出，
+        // 立即 push 进 SDK input stream，由 Claude Code 在内部安全点处理
+        session.client.rpcHandlerManager.registerHandler('steer-queued-message', async (params) => {
+            const { localId } = (params ?? {}) as { localId?: string }
+            if (!localId) return { status: 'submitted' }
+            const stolen = session.queue.stealByLocalId(localId)
+            if (!stolen) return { status: 'submitted' }
+            if (!this.steerSink) {
+                // query 未就绪：放回队列，保持排队态
+                session.queue.push(stolen.message, stolen.mode, localId)
+                return { status: 'submitted' }
+            }
+            const ok = this.steerSink(stolen.message)
+            if (!ok) {
+                session.queue.push(stolen.message, stolen.mode, localId)
+                return { status: 'submitted' }
+            }
+            // push 成功 → 立即通知 Hub 已提交（与 collectBatch 同路径）
+            session.client.emitMessagesSubmitted([localId])
+            return { status: 'steered' }
         });
 
         const permissionHandler = new PermissionHandler(session);
@@ -463,6 +487,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             session.client.sendContentSnapshot(msg);
                         },
                         getConverter: () => sdkToLogConverter,
+                        onSteerSinkReady: (push) => { this.steerSink = push },
                     });
 
                     session.consumeOneTimeFlags();

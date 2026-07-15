@@ -260,6 +260,11 @@ export class SyncEngine {
         return await this.rpcGateway.cancelCliQueuedMessage(sessionId, localId)
     }
 
+    /** 通知 CLI 把仍排队的消息 steer（立即提交 SDK input stream） */
+    async steerCliQueuedMessage(sessionId: string, localId: string): Promise<{ status: 'steered' | 'submitted' }> {
+        return await this.rpcGateway.steerCliQueuedMessage(sessionId, localId)
+    }
+
     async approvePermission(
         sessionId: string,
         requestId: string,

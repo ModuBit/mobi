@@ -492,6 +492,24 @@ describe('MessageQueue', () => {
         expect(queue.cancelByLocalId('loc-a')).toBe(false);
     });
 
+    it('stealByLocalId 取出并移除指定 localId，返回内容与 mode', () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        queue.push('hello', { m: '1' }, 'loc-a');
+        queue.push('world', { m: '1' }, 'loc-b');
+
+        const stolen = queue.stealByLocalId('loc-a');
+        expect(stolen).toEqual({ message: 'hello', mode: { m: '1' } });
+
+        // loc-a 已移除，collectBatch 只剩 loc-b
+        const batch = queue.collectBatch();
+        expect(batch?.localIds).toEqual(['loc-b']);
+    });
+
+    it('stealByLocalId 未命中返回 null', () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        expect(queue.stealByLocalId('nope')).toBeNull();
+    });
+
     it('pushAndClear 清空排队项时触发 onBatchConsumed（防悬浮条卡死）', () => {
         const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
         const consumed: string[][] = [];

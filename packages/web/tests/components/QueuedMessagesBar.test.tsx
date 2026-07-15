@@ -35,6 +35,16 @@ vi.mock('@/core/data/hooks/mutations/useCancelQueuedMessage', () => ({
     useCancelQueuedMessage: () => cancelMock,
 }))
 
+// mock useSteerQueuedMessage —— 隔离 steer mutation
+const steerMock = vi.hoisted(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    variables: undefined as string | undefined,
+}))
+vi.mock('@/core/data/hooks/mutations/useSteerQueuedMessage', () => ({
+    useSteerQueuedMessage: () => steerMock,
+}))
+
 // mock i18n —— key 直接透传，便于按 key 断言
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
@@ -102,6 +112,9 @@ describe('QueuedMessagesBar', () => {
         cancelMock.mutate.mockReset()
         cancelMock.isPending = false
         cancelMock.variables = undefined
+        steerMock.mutate.mockReset()
+        steerMock.isPending = false
+        steerMock.variables = undefined
     })
 
     afterEach(() => cleanup())
@@ -193,6 +206,21 @@ describe('QueuedMessagesBar', () => {
 
         // 已被 agent 抢先处理 → 不回填
         opts.onSuccess({ data: { status: 'submitted' } })
+        expect(onEdit).not.toHaveBeenCalled()
+    })
+
+    it('点击 steer 按钮 → steerMutation.mutate(localId)', () => {
+        const onEdit = vi.fn()
+        const { container } = renderBar([queuedMsg('q1', '要 steer')], onEdit)
+
+        // steer 按钮（ThunderboltOutlined → .anticon-thunderbolt）
+        const steerBtn = container.querySelector('.anticon-thunderbolt')!.closest('button')!
+        fireEvent.click(steerBtn)
+
+        expect(steerMock.mutate).toHaveBeenCalledTimes(1)
+        expect(steerMock.mutate).toHaveBeenCalledWith('q1', expect.objectContaining({ onError: expect.any(Function) }))
+        // steer 不触发取消/编辑
+        expect(cancelMock.mutate).not.toHaveBeenCalled()
         expect(onEdit).not.toHaveBeenCalled()
     })
 })

@@ -16,10 +16,11 @@
 
 import { useMemo } from 'react'
 import { Button, Tooltip, theme, message } from 'antd'
-import { ClockCircleOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { ClockCircleOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { isQueuedInMobi } from '@/core/lib/messages'
 import { useCancelQueuedMessage } from '@/core/data/hooks/mutations/useCancelQueuedMessage'
+import { useSteerQueuedMessage } from '@/core/data/hooks/mutations/useSteerQueuedMessage'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /**
@@ -49,6 +50,7 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
     const { token } = theme.useToken()
     const [messageApi, contextHolder] = message.useMessage()
     const cancelMutation = useCancelQueuedMessage(sessionId)
+    const steerMutation = useSteerQueuedMessage(sessionId)
 
     const queued = useMemo(
         () => messages
@@ -72,9 +74,16 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                 if (res.data.status === 'cancelled') {
                     onEdit(previewText(msg))
                 } else {
-                    messageApi.info(t('chat.queued.alreadyInvoked'))
+                    messageApi.info(t('chat.queued.alreadySubmitted'))
                 }
             },
+        })
+    }
+
+    const handleSteer = (msg: DecryptedMessage) => {
+        if (!msg.localId) return
+        steerMutation.mutate(msg.localId, {
+            onError: () => messageApi.info(t('chat.queued.steerFailed')),
         })
     }
 
@@ -110,10 +119,16 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                             cancelMutation.isPending &&
                             cancelMutation.variables === msg.localId
                         }
+                        steerPending={
+                            steerMutation.isPending &&
+                            steerMutation.variables === msg.localId
+                        }
                         onEdit={() => handleEdit(msg)}
                         onCancel={() => handleCancel(msg)}
+                        onSteer={() => handleSteer(msg)}
                         editLabel={t('chat.queued.edit')}
                         cancelLabel={t('chat.queued.cancel')}
+                        steerLabel={t('chat.queued.steer')}
                     />
                 ))}
             </div>
@@ -125,12 +140,15 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
 function QueuedItem(props: {
     text: string
     cancelPending: boolean
+    steerPending: boolean
     onEdit: () => void
     onCancel: () => void
+    onSteer: () => void
     editLabel: string
     cancelLabel: string
+    steerLabel: string
 }): React.ReactElement {
-    const { text, cancelPending, onEdit, onCancel, editLabel, cancelLabel } = props
+    const { text, cancelPending, steerPending, onEdit, onCancel, onSteer, editLabel, cancelLabel, steerLabel } = props
     const { token } = theme.useToken()
 
     return (
@@ -166,13 +184,23 @@ function QueuedItem(props: {
 
             {/* 操作按钮 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                <Tooltip title={steerLabel}>
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<ThunderboltOutlined />}
+                        onClick={onSteer}
+                        loading={steerPending}
+                        disabled={cancelPending}
+                    />
+                </Tooltip>
                 <Tooltip title={editLabel}>
                     <Button
                         type="text"
                         size="small"
                         icon={<EditOutlined />}
                         onClick={onEdit}
-                        disabled={cancelPending}
+                        disabled={cancelPending || steerPending}
                     />
                 </Tooltip>
                 <Tooltip title={cancelLabel}>
@@ -183,6 +211,7 @@ function QueuedItem(props: {
                         icon={<DeleteOutlined />}
                         onClick={onCancel}
                         loading={cancelPending}
+                        disabled={steerPending}
                     />
                 </Tooltip>
             </div>
