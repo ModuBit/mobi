@@ -16,7 +16,7 @@
 
 /**
  * Composer 信息面板
- * 在 StatusBar 上方展示各种状态信息：工具交互请求、任务列表、文件修改等
+ * 在输入区上方展示各种状态信息：工具交互请求、任务列表、文件修改等
  */
 
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
@@ -177,7 +177,7 @@ export type ComposerInfoPanelProps = {
 
 /**
  * Composer 信息面板
- * 在 StatusBar 上方展示各种状态信息
+ * 在输入区上方展示各种状态信息
  */
 export function ComposerInfoPanel({
     sessionId,

@@ -46,9 +46,16 @@ function isOptimisticMessage(msg: DecryptedMessage): boolean {
 /**
  * 仍在排队、未被 agent 处理的 user 消息
  * （悬浮条显示、从线程剔除的判断依据）
+ *
+ * 排除 status='sending'：非 running 时发送的乐观消息虽 submittedAt=null，
+ * 但它在途（服务端收到即开新 turn），应作为普通气泡渲染，而非进悬浮条闪烁。
+ * status=undefined（刷新后从服务端加载的未消费消息）仍视为排队。
  */
 export function isQueuedInMobi(msg: DecryptedMessage): boolean {
-    return isUserMessage(msg) && msg.submittedAt == null && msg.status !== 'failed'
+    return isUserMessage(msg)
+        && msg.submittedAt == null
+        && msg.status !== 'failed'
+        && msg.status !== 'sending'
 }
 
 /**

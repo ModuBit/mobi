@@ -69,7 +69,7 @@ export function usePermissionModeDropdownStyle(): void {
  * 构建权限模式下拉选项（label 仅名称，附带 tone 供 optionRender 取用）
  *
  * 注意：dontAsk 在 UI 隐藏（仅过滤选项展示），功能完全保留——
- * PermissionMode 枚举 / SDK 协议 / hub / cli / StatusBar 均不变；
+ * PermissionMode 枚举 / SDK 协议 / hub / cli 均不变；
  * 已存在的 dontAsk 会话 resume 后仍按 dontAsk 模式正常运行。
  */
 export function buildPermissionModeSelectOptions(t: (key: string) => string): PermissionModeSelectOption[] {

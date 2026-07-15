@@ -23,7 +23,6 @@ import styled from '@emotion/styled'
 import type { AgentState, EffortLevel, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
-import { StatusBar } from './StatusBar'
 import { AttachmentList } from './AttachmentItem'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
@@ -46,6 +45,8 @@ import { ActivateCover } from '@/components/ui/ActivateCover'
 import { getPermissionModeColor } from './permissionModeColors'
 import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from './permissionModeOption'
 import { getPermissionModeIcon } from './permissionModeIcons'
+import { SubmitButton } from './SubmitButton'
+import { resolveSubmitButtonState } from './submitButtonState'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 
 
@@ -66,7 +67,6 @@ interface ChatComposerProps {
     running?: boolean
     agentState?: AgentState | null
     metadata?: SessionMetadataSummary | null
-    contextSize?: number
     agentFlavor?: string | null
     mode?: Session['mode']
     workingDir?: string
@@ -246,7 +246,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
         running = false,
         agentState,
         metadata,
-        contextSize,
         agentFlavor,
         mode,
         workingDir,
@@ -351,6 +350,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     // 注意：running 时不禁用发送——运行中发送的消息会进入排队悬浮条（queued），
     // 等当前 turn 结束由 gated pump 喂给 agent。abort 走独立按钮/Ctrl+C，与此独立。
     const canSend = (hasText || hasAttachments) && !controlsDisabled && !sending && !hasPendingPermission
+    // 合并按钮状态：canSend 时展示发送（含 running 中有内容的特殊情况），否则 running/sending 中展示停止
+    const submitButtonState = resolveSubmitButtonState({
+        canSend,
+        running,
+        sending,
+        abortPending,
+    })
+    // Sender 内置按钮的 loading：stop 态时显示 LoadingButton（与自定义 SubmitButton 视觉一致）
+    const senderLoading = submitButtonState.kind === 'stop'
     const hasSubBar = !!extraItems?.length || !!(extraLeftButtons && !extraItems)
 
     // 是否展示命令提示（hint 或 description 任一存在即展示）
@@ -615,16 +623,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                 tasks={tasks}
             />
 
-            <StatusBar
-                running={running}
-                contextSize={contextSize}
-                model={model}
-                permissionMode={permissionMode}
-                agentFlavor={agentFlavor}
-                onAbort={onAbort}
-                abortPending={abortPending}
-            />
-
             <div
                 ref={wrapperRef}
                 className={isBashMode ? 'bash-mode' : undefined}
@@ -641,10 +639,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                     onChange={handleChange}
                     onSubmit={handleSubmit}
                     submitType={hasFinePointer ? 'enter' : 'shiftEnter'}
-                    onCancel={onAbort}
                     placeholder={isBashMode ? t('composer.bashPlaceholder') : t(`composer.placeholders.${placeholderIdx.current}`)}
                     disabled={controlsDisabled || showInactiveCover || showLocalModeCover || hasPendingPermission}
-                    loading={sending}
+                    loading={senderLoading}
                     autoSize={{ minRows: 1, maxRows: 5 }}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
@@ -655,8 +652,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                         zIndex: 1,
                     } : undefined}
                     footer={(oriNode) => (
-                        <ResponsiveActionBar
-                            items={[
+                        <>
+                            {/* 隐藏 oriNode：仅为保持 antd X 内置 SendButton 挂载，使其 effect 维持
+                                submitDisabled 与输入内容同步（Enter 提交门控依赖它）。
+                                可见按钮用下方自定义 SubmitButton（无 SVG <title>，不会 hover 弹原生 tooltip；
+                                且不挂 Sender disabled 上下文，请求权限期间仍可点）。display:none 不影响 effect 执行。 */}
+                            <div style={{ display: 'none' }} aria-hidden>{oriNode}</div>
+                            <ResponsiveActionBar
+                                items={[
                                 // 附件
                                 {
                                     key: 'attach',
@@ -761,9 +764,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                                     ),
                                 }] : []),
                             ]}
-                            suffix={showLocalModeCover ? null : oriNode}
+                            suffix={showLocalModeCover ? null : (
+                                <SubmitButton
+                                    state={submitButtonState}
+                                    onSubmit={() => handleSubmit(text)}
+                                    onAbort={onAbort}
+                                />
+                            )}
                             gap={4}
-                        />
+                            />
+                        </>
                     )}
                 />
 

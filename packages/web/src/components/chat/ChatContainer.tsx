@@ -670,7 +670,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 running={session?.running ?? false}
                 agentState={session?.agentState}
                 metadata={metadata}
-                contextSize={undefined}
                 agentFlavor={agentFlavor}
                 mode={session?.mode}
                 workingDir={session?.metadata?.path}

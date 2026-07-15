@@ -89,6 +89,19 @@ describe('isQueuedInMobi', () => {
         expect(isQueuedInMobi(createMessage({ status: 'failed' }))).toBe(false)
     })
 
+    it('sending 状态（非 running 乐观消息）= 不排队，作为普通气泡', () => {
+        // submittedAt=null 但在途，不该进悬浮条闪烁
+        expect(isQueuedInMobi(createMessage({ submittedAt: null, status: 'sending' }))).toBe(false)
+    })
+
+    it('queued 状态（running 乐观消息）= 排队中', () => {
+        expect(isQueuedInMobi(createMessage({ submittedAt: null, status: 'queued' }))).toBe(true)
+    })
+
+    it('status 未设（刷新后服务端未消费消息）= 排队中', () => {
+        expect(isQueuedInMobi(createMessage({ submittedAt: null }))).toBe(true)
+    })
+
     it('agent 消息 = 不排队', () => {
         const msg = createMessage({
             content: { role: 'agent', content: { type: 'text', text: 'hi' } },
