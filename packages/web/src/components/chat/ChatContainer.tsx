@@ -17,7 +17,7 @@
 import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react'
 import { Bubble } from '@ant-design/x'
 import { Spin, Button, Skeleton, theme as antTheme, message } from 'antd'
-import { DownOutlined } from '@ant-design/icons'
+import { DownOutlined, LoadingOutlined } from '@ant-design/icons'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
@@ -29,7 +29,6 @@ import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reco
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
-import { AgentLoadingBubble } from './AgentLoadingBubble'
 import { CompactProgressBubble } from './CompactProgressBubble'
 import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
@@ -37,7 +36,6 @@ import { QueuedMessagesBar } from './QueuedMessagesBar'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import { getAgentStatus } from '@/components/pixel-avatar/types'
 import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
 import { useBackgroundTasksStore } from '@/core/data/stores/backgroundTasksStore'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
@@ -67,6 +65,18 @@ const AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD = 50
 const SCROLL_BOTTOM_VISIBLE_THRESHOLD = 60
 // 补偿完成后屏蔽滚动事件的时间窗口（覆盖 ResizeObserver + rAF 双帧延迟）
 const RESTORE_SCROLL_GUARD_MS = 100
+/** 流式跟随平滑滚动：每帧靠近目标的比例（0~1，越大收敛越快、越生硬） */
+const SMOOTH_FOLLOW_FACTOR = 0.25
+/**
+ * 瞬时贴底阈值（px）：gap ≤ 此值时直接对齐，不走 glide。
+ * 逐字 reveal 的单次增量（~10–40px）落在此范围内 → 每次瞬时贴底，gap 始终≈0，
+ * 底部最新气泡不会被"推下再追回"地上下浮动。
+ * 而 20fps × ~20px 的小步进视觉上本身就是平滑的（等价于正常滚动速度）。
+ * 也是 glide 区间的下限：只有 gap ∈ (此值, SNAP] 才平滑滚动。
+ */
+const SMOOTH_FOLLOW_INSTANT_THRESHOLD = 80
+/** 平滑跟随最大差距：超过则直接对齐，避免大块内容（代码块/图片）出现时长时间滑不到底 */
+const SMOOTH_FOLLOW_SNAP_THRESHOLD = 300
 
 import { BUBBLE_ROLES } from './bubbleRoles'
 
@@ -314,6 +324,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         let isNearBottom = true
         let prevScrollTop = scrollBox.scrollTop
         let rafId = 0
+        // 流式跟随的平滑滚动 rAF id（独立于 ResizeObserver 防抖用的 rafId）
+        let smoothFollowRafId = 0
+        // 平滑跟随的目标 scrollTop（= scrollHeight - clientHeight，即可达底部）。
+        // 由 captureFollowTarget 在内容/视口尺寸变化时刷新，tick 只读这个闭包变量，
+        // 不每帧读 scrollHeight/clientHeight（避免 rAF 内触发强制同步 layout）。
+        let followMaxTop = scrollBox.scrollHeight - scrollBox.clientHeight
+        // tick 内对 scrollTop 的镜像：每次写入后同步更新，使 tick 无需读 scrollBox.scrollTop。
+        // 仅在 loop 拥有滚动权期间有效（用户主动滚动会取消 loop，下次启动重新读取实际值）。
+        let currentPos = scrollBox.scrollTop
 
         /** 触发加载上一页历史消息 */
         const triggerFetchNextPage = (scrollTop: number, scrollHeight: number) => {
@@ -359,13 +378,18 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const distanceToBottom = scrollHeight - scrollTop - clientHeight
 
             if (scrollTop < prevScrollTop - 2) {
+                // 用户主动向上滚 → 立即终止平滑跟随，避免下一帧把位置又拉回底部
+                cancelAnimationFrame(smoothFollowRafId)
+                smoothFollowRafId = 0
                 isNearBottom = distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD
             } else if (distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD) {
                 isNearBottom = true
             }
             prevScrollTop = scrollTop
 
-            const shouldShow = distanceToBottom > SCROLL_BOTTOM_VISIBLE_THRESHOLD
+            // 跟随期间（isNearBottom）强制不显示「滚到底」按钮：
+            // 平滑 glide 时 distanceToBottom 可能瞬时超过阈值，不加此闸会导致按钮快速闪烁
+            const shouldShow = !isNearBottom && distanceToBottom > SCROLL_BOTTOM_VISIBLE_THRESHOLD
             if (shouldShow !== prevShowRef.current) {
                 prevShowRef.current = shouldShow
                 setShowScrollBottom(shouldShow)
@@ -382,8 +406,63 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // fill 级联期间不做 scroll 补偿
             if (isFillingRef.current) return
             if (isNearBottom && !isRestoringScrollRef.current) {
-                scrollBox.scrollTop = scrollBox.scrollHeight
+                smoothFollowToBottom()
             }
+        }
+
+        /**
+         * 刷新平滑跟随目标（内容/视口尺寸变化时调用）。
+         * 目标是 scrollHeight - clientHeight——即 scrollTop 的物理上限（可达底部），
+         * 而非 scrollHeight（不可达，会被浏览器钳制）。集中在此读取 layout 属性，
+         * 让 tick 无需每帧触发同步 layout。
+         */
+        const captureFollowTarget = () => {
+            followMaxTop = scrollBox.scrollHeight - scrollBox.clientHeight
+        }
+
+        /**
+         * 平滑跟随到底部：rAF 循环每帧按 SMOOTH_FOLLOW_FACTOR 逼近 followMaxTop。
+         * 用比例逼近替代「每帧硬切 scrollTop = scrollHeight」，消除快速输出时
+         * 每帧瞬移累积的跳动。tick 只读写镜像 currentPos（不读 layout 属性），
+         * layout 由 captureFollowTarget 在尺寸变化时统一捕获，内容持续长高也能追踪。
+         * 终止：追到底 / 用户向上滚（isNearBottom=false）/ 恢复滚动中 / 差距过大直接对齐。
+         */
+        const smoothFollowToBottom = () => {
+            if (smoothFollowRafId) return
+            captureFollowTarget()
+            currentPos = scrollBox.scrollTop
+            // 已贴近底部（含内容未溢出 followMaxTop≤0 / 逐字 reveal 小增量）→ 瞬时对齐，不启动循环
+            if (currentPos >= followMaxTop - SMOOTH_FOLLOW_INSTANT_THRESHOLD) {
+                if (scrollBox.scrollTop !== followMaxTop) scrollBox.scrollTop = followMaxTop
+                return
+            }
+            const tick = () => {
+                // 期间用户主动向上滚 / 进入 scroll 恢复 → 终止。
+                // 不检查 isFillingRef：fill（向上加载历史）几乎只在初始加载期发生，
+                // 那时无流式 glide 在跑；且 fill 与 glide 都朝底部推，不冲突
+                if (!isNearBottom || isRestoringScrollRef.current) {
+                    smoothFollowRafId = 0
+                    return
+                }
+                const remaining = followMaxTop - currentPos
+                // 贴近底部（含逐字 reveal 的小增量）/ 内容收缩 / 超大突变 → 瞬时贴底。
+                // 小增量若走 glide，25%/帧追不上 20fps 的持续 reveal，滞后累积会把
+                // 底部最新气泡推下再追回 → 上下浮动。瞬时对齐保持 gap≈0 既无浮动，
+                // 步进又足够小，视觉上仍平滑。
+                if (remaining <= SMOOTH_FOLLOW_INSTANT_THRESHOLD || remaining > SMOOTH_FOLLOW_SNAP_THRESHOLD) {
+                    scrollBox.scrollTop = followMaxTop
+                    currentPos = followMaxTop
+                    smoothFollowRafId = 0
+                    return
+                }
+                // 中等增量（典型快速 burst / 代码块撑高）→ 平滑 glide，消除硬切跳动。
+                // remaining > INSTANT_THRESHOLD(80)，故步进 = remaining*0.25 > 20，无需下限兜底；
+                // Math.min 防御 followMaxTop 在 tick 间收缩的越界（正常不触发）
+                currentPos = Math.min(currentPos + remaining * SMOOTH_FOLLOW_FACTOR, followMaxTop)
+                scrollBox.scrollTop = currentPos
+                smoothFollowRafId = requestAnimationFrame(tick)
+            }
+            smoothFollowRafId = requestAnimationFrame(tick)
         }
 
         // contentEl ResizeObserver：RAF 防抖，防止 thinking 动画每帧触发微抖
@@ -393,6 +472,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             resizeObserver = new ResizeObserver(() => {
                 cancelAnimationFrame(rafId)
                 rafId = requestAnimationFrame(() => {
+                    // 内容长高 → 先刷新目标，再跟随（loop 运行中则 tick 内自动用新目标）
+                    captureFollowTarget()
                     handleAutoScroll()
                 })
             })
@@ -401,6 +482,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
         // 监听视口尺寸变化：autoScroll + 窗口拉高时检测溢出继续加载历史
         const viewportObserver = new ResizeObserver(() => {
+            // 视口变化改变 clientHeight → 可达底部随之变化，刷新目标
+            captureFollowTarget()
             handleAutoScroll()
             checkOverflowAndFetch()
         })
@@ -423,6 +506,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             resizeObserver?.disconnect()
             viewportObserver.disconnect()
             cancelAnimationFrame(rafId)
+            cancelAnimationFrame(smoothFollowRafId)
+            smoothFollowRafId = 0
         }
     }, [chatBlocks.length])
 
@@ -556,22 +641,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 content: <CompactProgressBubble />,
                 variant: 'borderless',
             })
-        } else if (session?.running) {
-            const loadingStatus = getAgentStatus({
-                active: session.active ?? false,
-                running: session.running,
-                agentState: session.agentState,
-            })
-            items.push({
-                key: '__loading__',
-                role: 'assistant',
-                content: <AgentLoadingBubble agentId={sessionId} status={loadingStatus} />,
-                variant: 'borderless',
-            })
         }
 
         return items
-    }, [decoratedItems, isFetchingNextPage, isCompressing, session?.running, session?.agentState?.requests, sessionId])
+    }, [decoratedItems, isFetchingNextPage, isCompressing])
 
     const handleSend = (text: string) => {
         if (import.meta.env.DEV) console.log('[Send] handleSend', { textLen: text.length, hasTrim: !!text.trim() })
@@ -636,7 +709,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         type="default"
                         shape="circle"
                         size="middle"
-                        icon={<DownOutlined />}
+                        // running 时换用 loading 图标：用户滚离底部时仍能感知「正在生成」，点击回到底部查看
+                        icon={session?.running ? <LoadingOutlined /> : <DownOutlined />}
                         onClick={handleScrollToBottom}
                         style={{
                             position: 'absolute',
@@ -663,6 +737,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 sessionId={sessionId}
                 disabled={sendMutation.isPending || isCompressing}
                 sending={sendMutation.isPending}
+                compressing={isCompressing}
                 permissionMode={session?.permissionMode}
                 model={session?.runtimeState?.model}
                 active={session?.active ?? false}

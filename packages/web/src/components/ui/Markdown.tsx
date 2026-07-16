@@ -136,7 +136,9 @@ export const Markdown = memo(function Markdown({
         [className],
     )
 
-    const finalContent = useDrip ? displayContent : (content ?? '')
+    // 始终用 hook 输出：hook 内部区分历史全显 / 流式逐字 / 流式结束后继续逐字到收敛，
+    // 避免 streaming 结束（full message 替换 snapshot）时直接跳到 content 全显覆盖逐字
+    const finalContent = displayContent
 
     // 提取脚注定义，清洗正文
     const { cleanContent, footnotes } = useMemo(

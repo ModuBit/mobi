@@ -25,6 +25,8 @@ import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
+import { StatusBar } from '@/components/chat/StatusBar'
+import { getAgentStatus } from '@/components/pixel-avatar/types'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useMobiApi } from '@/core/data/api/client'
 import { consumeDraftText } from '@/core/lib/draftText'
@@ -65,6 +67,8 @@ interface ChatComposerProps {
     active?: boolean
     allowSendWhenInactive?: boolean
     running?: boolean
+    /** 是否正在压缩历史（compact）：压缩期间不显示 loading 状态栏，避免与列表内的 CompactProgressBubble 重复 */
+    compressing?: boolean
     agentState?: AgentState | null
     metadata?: SessionMetadataSummary | null
     agentFlavor?: string | null
@@ -244,6 +248,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
         active = true,
         allowSendWhenInactive = false,
         running = false,
+        compressing = false,
         agentState,
         metadata,
         agentFlavor,
@@ -589,6 +594,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
     const PermissionModeIcon = getPermissionModeIcon(permissionMode ?? 'default')
 
+    // running 时的 loading 状态，驱动 ComposerInfoPanel 下方的 StatusBar
+    const loadingStatus = running
+        ? getAgentStatus({ active, running, agentState })
+        : null
+
     // Sender header 区域内容（可组合，多条可共存）
     const headerNodes = [
         <CommandHintBar
@@ -621,6 +631,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                 }}
                 todos={todos}
                 tasks={tasks}
+            />
+
+            <StatusBar
+                agentId={sessionId}
+                status={loadingStatus ?? undefined}
+                running={running && !compressing}
             />
 
             <div

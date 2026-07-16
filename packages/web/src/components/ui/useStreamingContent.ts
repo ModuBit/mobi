@@ -17,11 +17,26 @@
 import { useEffect, useRef, useState } from 'react'
 
 /** 逐字揭示基础速率（字符/毫秒），~120 chars/sec */
-const STREAM_BASE_RATE = 0.1
+export const STREAM_BASE_RATE = 0.1
 /** 积压阈值：超过此字符数时自适应加速 */
 const STREAM_CATCHUP_THRESHOLD = 50
-/** 积压追赶帧数（≈30帧 ≈ 500ms，即一个 snapshot 间隔内追完） */
-const STREAM_CATCHUP_FRAMES = 30
+/** 积压追赶时长（毫秒）：积压内容在此时长内匀速追完，约一个 snapshot 间隔 */
+const STREAM_CATCHUP_DURATION_MS = 500
+
+/**
+ * 计算逐字揭示速率（字符/毫秒）。
+ * 积压超过阈值时加速追平，否则回落到基础速率。
+ *
+ * 单位为 char/ms，与 STREAM_BASE_RATE 一致——这样 `chars = round(rate * dt_ms)`
+ * 在基础与追赶两条分支都自洽。曾误用「帧数」(STREAM_CATCHUP_FRAMES) 作分母，
+ * 被当成 ms 与 BASE_RATE 合并，使追赶速率放大约 16×（1帧≈16ms），
+ * 导致每批 snapshot 在 2~3 帧内脉冲式清空 80%，表现为流式「一大块一大块」。
+ */
+export function computeRevealRate(gap: number): number {
+    return gap > STREAM_CATCHUP_THRESHOLD
+        ? Math.max(STREAM_BASE_RATE, gap / STREAM_CATCHUP_DURATION_MS)
+        : STREAM_BASE_RATE
+}
 
 /**
  * 流式内容逐字揭示 hook。
@@ -29,24 +44,43 @@ const STREAM_CATCHUP_FRAMES = 30
  * 自适应速率：积压时自动加速追平，追上后回落到基础速率。
  */
 export function useStreamingContent(target: string, streaming?: boolean): string {
-    const [display, setDisplay] = useState(target)
+    const [display, setDisplay] = useState(streaming ? '' : target)
     const targetRef = useRef(target)
-    const revealedRef = useRef(target.length)
+    const revealedRef = useRef(streaming ? 0 : target.length)
+    // 本次内容是否曾处于流式。区分：
+    // - 历史消息（从未流式）→ 全显
+    // - 流式结束后的 full message（曾流式）→ 继续逐字到收敛，不被 snapToFull 打断
+    // 否则 full message 到达时 streaming 变 false 会立即全显，覆盖 snapshot 阶段的逐字
+    const wasStreamingRef = useRef(!!streaming)
     const rafRef = useRef(0)
 
     useEffect(() => {
         targetRef.current = target
 
-        // 非流式或新消息（内容缩短）→ 立即显示全部
-        if (!streaming || target.length < revealedRef.current) {
+        const snapToFull = () => {
             cancelAnimationFrame(rafRef.current)
             rafRef.current = 0
-            revealedRef.current = target.length
-            setDisplay(target)
+            revealedRef.current = targetRef.current.length
+            setDisplay(targetRef.current)
+        }
+
+        // 内容缩短 → 全显。不重置 wasStreamingRef：同 hook 实例内的内容缩短是
+        // full message 经 normalize/清洗后短于 snapshot 已揭示长度（收敛），而非新消息
+        // （新消息会 mount 新 hook 实例，wasStreaming 由其 mount 初值决定）
+        if (target.length < revealedRef.current) {
+            snapToFull()
             return
         }
 
-        // 有未揭示内容且动画未在运行 → 启动
+        if (streaming) wasStreamingRef.current = true
+
+        // 从未流式（历史消息）→ 立即全显
+        if (!wasStreamingRef.current) {
+            snapToFull()
+            return
+        }
+
+        // 曾流式（含 full message 替换 snapshot 后 streaming 变 false）且有未揭示内容 → 继续逐字到收敛
         if (revealedRef.current < target.length && rafRef.current === 0) {
             let lastTime = performance.now()
             let lastRender = lastTime
@@ -55,9 +89,7 @@ export function useStreamingContent(target: string, streaming?: boolean): string
                 lastTime = now
 
                 const gap = targetRef.current.length - revealedRef.current
-                const rate = gap > STREAM_CATCHUP_THRESHOLD
-                    ? Math.max(STREAM_BASE_RATE, gap / STREAM_CATCHUP_FRAMES)
-                    : STREAM_BASE_RATE
+                const rate = computeRevealRate(gap)
                 const chars = Math.max(1, Math.round(rate * dt))
                 revealedRef.current = Math.min(revealedRef.current + chars, targetRef.current.length)
 
@@ -77,7 +109,10 @@ export function useStreamingContent(target: string, streaming?: boolean): string
         }
     }, [target, streaming])
 
-    useEffect(() => () => cancelAnimationFrame(rafRef.current), [])
+    useEffect(() => () => {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = 0
+    }, [])
 
     return display
 }

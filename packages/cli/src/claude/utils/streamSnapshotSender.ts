@@ -47,6 +47,8 @@ export class StreamSnapshotSender {
     private snapshotOpts: { parentToolUseId?: string; model?: string } = {}
     /** SDK 为当前消息分配的 uuid，snapshot 和完整消息一致 */
     private sdkUuid: string | null = null
+    /** 当前消息的 sdkUuid（供 full message 复用作 localId，保持 block key 一致） */
+    get currentSdkUuid(): string | null { return this.sdkUuid }
 
     constructor(
         private readonly transport: SnapshotTransport,

@@ -93,8 +93,13 @@ export function buildChatBubbleItems(
             isThinking: block.kind === 'agent-reasoning' && isLastRunningBlock,
         }
 
+        // 流式 snapshot 块（未落库）逐字揭示，不依赖 turn running 状态：
+        // snapshot 到达时 isRunning/isLastRunningBlock 可能尚未就绪（尤其首批），
+        // 导致 isStreaming=false 全显。只要是未落库的 snapshot 就应逐字回放。
+        // 依赖 messageCache 在 full message 到达时及时清理 snapshot（替换为 full），
+        // 否则残留的旧 snapshot block 会被逐字回放（messageCache 正常路径保证不残留）
         const content = renderChatBlock(
-            isLastRunningBlock && isSnapshot
+            isSnapshot
                 ? { ...block, isStreaming: true }
                 : block,
             blockCtx,

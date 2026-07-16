@@ -702,7 +702,14 @@ export async function claudeRemote(opts: {
             sdkOutputLoop(response, loopCtx, {
                 initialModel: initial.mode.model,
                 path: opts.path,
-                onMessage: opts.onMessage,
+                onMessage: (msg) => {
+                    // 仅对 assistant message 复用 snapshot 的 sdkUuid 作 uuid（与 snapshot 共享 localId），
+                    // 保持 snapshot/full 的 block key 一致，避免 TextBlock 重 mount 打断逐字。
+                    // 限定 assistant：tool use/result/user 等非 snapshot 对应消息保持原 uuid，
+                    // 否则会被错贴 assistant 的 localId，导致 reducer block.id 冲突或追溯错乱
+                    const sid = msg?.type === 'assistant' ? snapshotSender.currentSdkUuid : null
+                    opts.onMessage(sid && msg ? { ...msg, uuid: sid } as typeof msg : msg)
+                },
                 snapshotSender,
                 onSessionFound: opts.onSessionFound,
                 onReady: opts.onReady,

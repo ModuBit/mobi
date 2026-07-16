@@ -193,6 +193,10 @@ export function reduceTimeline(
 
         if (msg.role === 'agent') {
             const isSnapshot = msg.snapshot === true
+            // agent block 的稳定 id：snapshot 与 full message 共享 localId（CLI 侧统一为 sdkUuid），
+            // 用 localId 作 key 前缀避免 snapshot→full 时 block.id 变化触发 TextBlock 重 mount。
+            // 用 `||` 而非 `??`：防空字符串 localId 退化成畸形 ':idx' 导致 duplicate key
+            const blockId = (idx: number) => `${msg.localId || msg.id}:${idx}`
             for (let idx = 0; idx < msg.content.length; idx += 1) {
                 const c = msg.content[idx]
                 if (c.type === 'text') {
@@ -214,7 +218,7 @@ export function reduceTimeline(
                     }
                     blocks.push({
                         kind: 'agent-text',
-                        id: `${msg.id}:${idx}`,
+                        id: blockId(idx),
                         localId: msg.localId,
                         createdAt: msg.createdAt,
                         text: c.text,
@@ -228,7 +232,7 @@ export function reduceTimeline(
                 if (c.type === 'reasoning') {
                     blocks.push({
                         kind: 'agent-reasoning',
-                        id: `${msg.id}:${idx}`,
+                        id: blockId(idx),
                         localId: msg.localId,
                         createdAt: msg.createdAt,
                         text: c.text,
