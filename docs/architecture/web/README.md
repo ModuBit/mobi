@@ -481,6 +481,12 @@ Agent 工具（`Task` / `Agent`）是渲染复杂度最高的部分，有内联�
 
 详细架构见 [→ Agent 消息渲染](agent-rendering.md)
 
+### 流式逐字渲染
+
+流式回复的"打字机"逐字效果横跨 CLI → Hub → Web 三层，有多个 dev-only 隐蔽坑（StrictMode 下 raf 被 cleanup 取消、snapshot/full 的 localId 不一致导致重 mount 等）。
+
+详细架构、关键决策与调试方法见 [→ 流式逐字渲染](streaming.md)
+
 ### 工具调用折叠
 
 消息渲染管线中，工具调用经过两层过滤后再展示：
