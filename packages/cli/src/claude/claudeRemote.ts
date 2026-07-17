@@ -44,6 +44,7 @@ import type { SDKUIHints } from "@mobi/shared";
 import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender } from './utils/streamSnapshotSender'
+import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 
 /**
@@ -280,6 +281,10 @@ export async function sdkOutputLoop(
 ): Promise<void> {
     let queryStarted = false;
 
+    // 装配 SDK includePartialMessages 拆分的 assistant partial（同 message.id 的多 block）
+    // 为完整消息后再分发，避免下游按 uuid 去重时后到 block 覆盖先到 block（thinking 丢失）
+    const assembler = new AssistantPartialAssembler(opts.onMessage);
+
     for await (const message of response) {
         // 外部中止时立即退出迭代
         if (opts.signal?.aborted) break
@@ -301,8 +306,8 @@ export async function sdkOutputLoop(
             opts.snapshotSender.flush();
         }
 
-        // 分发消息
-        opts.onMessage(message);
+        // 分发消息（assistant 经 assembler 装配，其余类型透传并触发装配 flush）
+        assembler.submit(message);
 
         // 处理 system/init 消息
         if (message.type === 'system' && message.subtype === 'init') {
@@ -343,6 +348,10 @@ export async function sdkOutputLoop(
             opts.onReady();
         }
     }
+
+    // 迭代结束后 flush 最后一条待装配的 assistant（含 abort 场景：已生成的 block 如完整
+    // thinking 应保留落库，由调用方/下游决定展示，而非在装配层丢弃半成品）
+    assembler.flush();
 
     logger.debug(`[sdkOutputLoop] Response iteration ended normally. queryStarted=${queryStarted}`);
 }
@@ -543,6 +552,10 @@ export async function claudeRemote(opts: {
     const claudeExecutable = await getClaudeExecutablePath()
     const sdkOptions: Options = {
         cwd: opts.path,
+        // 开启后 SDK 会把同一 Anthropic message 的多个 content block 拆成多条 SDK assistant
+        // 消息（共享 uuid）分别 emit。消费循环（sdkOutputLoop）必须经 AssistantPartialAssembler
+        // 装配成完整消息再下发，否则下游按 uuid 去重会覆盖先到 block（thinking 丢失）。
+        // 若其他启动模式（如 local）也开启此项，必须同样接入装配器。
         includePartialMessages: true,
         agentProgressSummaries: true,
         resume: startFrom ?? undefined,
@@ -707,6 +720,12 @@ export async function claudeRemote(opts: {
                     // 保持 snapshot/full 的 block key 一致，避免 TextBlock 重 mount 打断逐字。
                     // 限定 assistant：tool use/result/user 等非 snapshot 对应消息保持原 uuid，
                     // 否则会被错贴 assistant 的 localId，导致 reducer block.id 冲突或追溯错乱
+                    //
+                    // 隐含假设：assistant 到达（经 AssistantPartialAssembler 装配后 flush）时，
+                    // currentSdkUuid 仍是该 message 的 sdkUuid。这依赖 SDK 的 agent loop 语义——
+                    // assistant message 之间必有 user/tool_result 分隔，使 assembler 在下一条
+                    // message 的 stream_event(message_start) 改写 currentSdkUuid 之前就已 flush。
+                    // 若未来出现连续两条 assistant message 无非 assistant 分隔，此处会错配 uuid。
                     const sid = msg?.type === 'assistant' ? snapshotSender.currentSdkUuid : null
                     opts.onMessage(sid && msg ? { ...msg, uuid: sid } as typeof msg : msg)
                 },
