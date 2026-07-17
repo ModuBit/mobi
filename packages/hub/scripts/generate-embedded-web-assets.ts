@@ -103,7 +103,7 @@ function main(): void {
         const safeImportPath = importPath.replace(/'/g, "\\'");
         const safeRequestPath = requestPath.replace(/'/g, "\\'");
         const safeMimeType = mimeType.replace(/'/g, "\\'");
-        imports.push(`import ${importName} from '${safeImportPath}' assert { type: 'file' };`);
+        imports.push(`import ${importName} from '${safeImportPath}' with { type: 'file' };`);
         manifestLines.push(`    { path: '${safeRequestPath}', sourcePath: ${importName}, mimeType: '${safeMimeType}' },`);
     });
 

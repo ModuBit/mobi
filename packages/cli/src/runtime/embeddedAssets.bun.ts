@@ -16,10 +16,10 @@
 
 import { feature } from 'bun:bundle';
 
-import difftasticArchiveLicense from '../../tools/archives/difftastic-LICENSE' assert { type: 'file' };
-import ripgrepArchiveLicense from '../../tools/archives/ripgrep-LICENSE' assert { type: 'file' };
-import difftasticLicense from '../../tools/licenses/difftastic-LICENSE' assert { type: 'file' };
-import ripgrepLicense from '../../tools/licenses/ripgrep-LICENSE' assert { type: 'file' };
+import difftasticArchiveLicense from '../../tools/archives/difftastic-LICENSE' with { type: 'file' };
+import ripgrepArchiveLicense from '../../tools/archives/ripgrep-LICENSE' with { type: 'file' };
+import difftasticLicense from '../../tools/licenses/difftastic-LICENSE' with { type: 'file' };
+import ripgrepLicense from '../../tools/licenses/ripgrep-LICENSE' with { type: 'file' };
 
 export interface EmbeddedAsset {
     relativePath: string;
@@ -46,8 +46,8 @@ async function selectEmbeddedAssets(): Promise<EmbeddedAsset[]> {
             { default: difftasticArm64Darwin },
             { default: ripgrepArm64Darwin }
         ] = await Promise.all([
-            import('../../tools/archives/difftastic-arm64-darwin.tar.gz', { assert: { type: 'file' } }),
-            import('../../tools/archives/ripgrep-arm64-darwin.tar.gz', { assert: { type: 'file' } })
+            import('../../tools/archives/difftastic-arm64-darwin.tar.gz', { with: { type: 'file' } }),
+            import('../../tools/archives/ripgrep-arm64-darwin.tar.gz', { with: { type: 'file' } })
         ]);
         return [
             ...COMMON_ASSETS,
@@ -61,8 +61,8 @@ async function selectEmbeddedAssets(): Promise<EmbeddedAsset[]> {
             { default: difftasticX64Darwin },
             { default: ripgrepX64Darwin }
         ] = await Promise.all([
-            import('../../tools/archives/difftastic-x64-darwin.tar.gz', { assert: { type: 'file' } }),
-            import('../../tools/archives/ripgrep-x64-darwin.tar.gz', { assert: { type: 'file' } })
+            import('../../tools/archives/difftastic-x64-darwin.tar.gz', { with: { type: 'file' } }),
+            import('../../tools/archives/ripgrep-x64-darwin.tar.gz', { with: { type: 'file' } })
         ]);
         return [
             ...COMMON_ASSETS,
@@ -76,8 +76,8 @@ async function selectEmbeddedAssets(): Promise<EmbeddedAsset[]> {
             { default: difftasticArm64Linux },
             { default: ripgrepArm64Linux }
         ] = await Promise.all([
-            import('../../tools/archives/difftastic-arm64-linux.tar.gz', { assert: { type: 'file' } }),
-            import('../../tools/archives/ripgrep-arm64-linux.tar.gz', { assert: { type: 'file' } })
+            import('../../tools/archives/difftastic-arm64-linux.tar.gz', { with: { type: 'file' } }),
+            import('../../tools/archives/ripgrep-arm64-linux.tar.gz', { with: { type: 'file' } })
         ]);
         return [
             ...COMMON_ASSETS,
@@ -91,8 +91,8 @@ async function selectEmbeddedAssets(): Promise<EmbeddedAsset[]> {
             { default: difftasticX64Linux },
             { default: ripgrepX64Linux }
         ] = await Promise.all([
-            import('../../tools/archives/difftastic-x64-linux.tar.gz', { assert: { type: 'file' } }),
-            import('../../tools/archives/ripgrep-x64-linux.tar.gz', { assert: { type: 'file' } })
+            import('../../tools/archives/difftastic-x64-linux.tar.gz', { with: { type: 'file' } }),
+            import('../../tools/archives/ripgrep-x64-linux.tar.gz', { with: { type: 'file' } })
         ]);
         return [
             ...COMMON_ASSETS,
@@ -106,8 +106,8 @@ async function selectEmbeddedAssets(): Promise<EmbeddedAsset[]> {
             { default: difftasticX64Win32 },
             { default: ripgrepX64Win32 }
         ] = await Promise.all([
-            import('../../tools/archives/difftastic-x64-win32.tar.gz', { assert: { type: 'file' } }),
-            import('../../tools/archives/ripgrep-x64-win32.tar.gz', { assert: { type: 'file' } })
+            import('../../tools/archives/difftastic-x64-win32.tar.gz', { with: { type: 'file' } }),
+            import('../../tools/archives/ripgrep-x64-win32.tar.gz', { with: { type: 'file' } })
         ]);
         return [
             ...COMMON_ASSETS,

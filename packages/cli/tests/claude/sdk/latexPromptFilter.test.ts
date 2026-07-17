@@ -20,14 +20,15 @@
  * 背景：用户发送包含 $a^2 + b^2 = c^2$ 的消息时，Claude API 返回 400 invalid_request_error。
  * 本测试直接调用 SDK，验证该限制是否真实存在。
  *
- * 注意：此测试依赖本地 Claude Code SDK 环境（需配置 API key），CI 中自动跳过。
- * 运行方式：bun test tests/claude/sdk/latexPromptFilter.test.ts
+ * 注意：此测试依赖本地 Claude Code SDK 环境（需配置 API key 与 claude 二进制路径），CI 中自动跳过。
+ * 运行方式：ANTHROPIC_API_KEY=... CLAUDE_CODE_BINARY=/path/to/claude bun test tests/claude/sdk/latexPromptFilter.test.ts
  */
 
 import { describe, it, expect } from 'vitest'
 
-// CI 或无 API key 环境下跳过
-const shouldSkip = !!process.env.CI || !process.env.ANTHROPIC_API_KEY
+// CI、无 API key、或未显式提供 claude 二进制路径时跳过（探索性测试，默认不在常规 run-tests 中执行）
+const claudeBinary = process.env.CLAUDE_CODE_BINARY
+const shouldSkip = !!process.env.CI || !process.env.ANTHROPIC_API_KEY || !claudeBinary
 
 const describeIfEnabled = shouldSkip ? describe.skip : describe
 
@@ -42,7 +43,7 @@ describeIfEnabled('SDK LaTeX $...$ prompt injection 过滤器', () => {
             options: {
                 cwd: process.cwd(),
                 permissionMode: 'bypassPermissions',
-                pathToClaudeCodeExecutable: '/home/admin/.local/bin/claude',
+                pathToClaudeCodeExecutable: claudeBinary,
             },
         })
 
@@ -114,7 +115,7 @@ describeIfEnabled('SDK LaTeX $...$ prompt injection 过滤器', () => {
             options: {
                 cwd: process.cwd(),
                 permissionMode: 'bypassPermissions',
-                pathToClaudeCodeExecutable: '/home/admin/.local/bin/claude',
+                pathToClaudeCodeExecutable: claudeBinary,
             },
         })
 

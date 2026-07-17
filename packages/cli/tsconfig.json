@@ -10,10 +10,9 @@
             "node",
             "bun-types"
         ],
-        "baseUrl": ".",
         "paths": {
-            "@/*": ["src/*"],
-            "#embedded-assets": ["src/runtime/embeddedAssets"]
+            "@/*": ["./src/*"],
+            "#embedded-assets": ["./src/runtime/embeddedAssets"]
         }
     },
     "include": [

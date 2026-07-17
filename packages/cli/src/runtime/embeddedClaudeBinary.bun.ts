@@ -38,23 +38,23 @@ import { feature } from 'bun:bundle';
  */
 export async function loadEmbeddedClaudeBinary(): Promise<string> {
     if (feature('MOBI_TARGET_DARWIN_ARM64')) {
-        const { default: p } = await import('../../tools/archives/claude-darwin-arm64.bin', { assert: { type: 'file' } });
+        const { default: p } = await import('../../tools/archives/claude-darwin-arm64.bin', { with: { type: 'file' } });
         return p;
     }
     if (feature('MOBI_TARGET_DARWIN_X64')) {
-        const { default: p } = await import('../../tools/archives/claude-darwin-x64.bin', { assert: { type: 'file' } });
+        const { default: p } = await import('../../tools/archives/claude-darwin-x64.bin', { with: { type: 'file' } });
         return p;
     }
     if (feature('MOBI_TARGET_LINUX_ARM64')) {
-        const { default: p } = await import('../../tools/archives/claude-linux-arm64.bin', { assert: { type: 'file' } });
+        const { default: p } = await import('../../tools/archives/claude-linux-arm64.bin', { with: { type: 'file' } });
         return p;
     }
     if (feature('MOBI_TARGET_LINUX_X64')) {
-        const { default: p } = await import('../../tools/archives/claude-linux-x64.bin', { assert: { type: 'file' } });
+        const { default: p } = await import('../../tools/archives/claude-linux-x64.bin', { with: { type: 'file' } });
         return p;
     }
     if (feature('MOBI_TARGET_WIN32_X64')) {
-        const { default: p } = await import('../../tools/archives/claude-win32-x64.bin', { assert: { type: 'file' } });
+        const { default: p } = await import('../../tools/archives/claude-win32-x64.bin', { with: { type: 'file' } });
         return p;
     }
     throw new Error('No build target feature flag set. Build with --feature=MOBI_TARGET_*.');

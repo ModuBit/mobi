@@ -17,7 +17,7 @@
 import { Server as Engine } from '@socket.io/bun-engine'
 import { Server, type DefaultEventsMap } from 'socket.io'
 import { jwtVerify } from 'jose'
-import { parse as parseCookie } from 'cookie'
+import { parseCookie } from 'cookie'
 import { z } from 'zod'
 import { RPC_MAX_HTTP_BUFFER_SIZE } from '@mobi/shared'
 import type { Store } from '../store'
