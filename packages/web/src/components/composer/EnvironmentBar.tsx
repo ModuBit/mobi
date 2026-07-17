@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AutoComplete, Select, Tag, Tooltip, theme } from 'antd'
 import { DesktopOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
 import { parsePrefixInput, type DirectoryOption } from '@/components/session/useMachineDirectoryListing'
@@ -187,12 +187,15 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
         }
     }, [directoryOptions])
 
-    // AutoComplete 选项
-    const autoCompleteOptions = buildDirectoryAutoCompleteOptions(
-        selectedDirectory,
-        recentPaths,
-        directoryOptions,
-        machineHomeDir,
+    // AutoComplete 选项（memoize：避免每次 render 返回新数组导致 antd Select 内部 effect 无限循环，生产构建 React #185）
+    const autoCompleteOptions = useMemo(
+        () => buildDirectoryAutoCompleteOptions(
+            selectedDirectory,
+            recentPaths,
+            directoryOptions,
+            machineHomeDir,
+        ),
+        [selectedDirectory, recentPaths, directoryOptions, machineHomeDir],
     )
 
     // 机器选项
