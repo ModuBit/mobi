@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="modu/mobi"
+REPO="ModuBit/mobi"
 INSTALL_DIR="$HOME/.local/bin"
 BINARY_NAME="mobi"
 
