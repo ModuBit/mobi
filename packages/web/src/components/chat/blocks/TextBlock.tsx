@@ -21,14 +21,15 @@ import { Markdown } from '@/components/ui/Markdown'
 const INTERRUPTED_RE = /\[Request interrupted by user.*\]/
 
 /** 渲染文本块（user-text / agent-text 共用） */
-export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreaming, enableSlashCommand }: {
+export const TextBlock = memo(function TextBlock({ text, isSynthetic, isStreaming, enableSlashCommand, enableMention }: {
     text: string
     isSynthetic?: boolean
     isStreaming?: boolean
     enableSlashCommand?: boolean
+    enableMention?: boolean
 }) {
     if (isSynthetic || INTERRUPTED_RE.test(text)) {
         return <span style={{ fontSize: 12, opacity: 0.5 }}>{text}</span>
     }
-    return <Markdown content={text} streaming={isStreaming} enableSlashCommand={enableSlashCommand} />
+    return <Markdown content={text} streaming={isStreaming} enableSlashCommand={enableSlashCommand} enableMention={enableMention} />
 })

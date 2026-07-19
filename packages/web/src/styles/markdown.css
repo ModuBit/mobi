@@ -194,3 +194,22 @@ html[data-theme='dark'] .x-markdown .slash-command-badge {
     background: #30302e;
     color: #d1cfc5;
 }
+
+/* Mention Badge（@path 文件引用） */
+.x-markdown .mention-badge {
+    display: inline-block;
+    background: #e8e6dc;
+    color: #3a5a7c;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 0.85em;
+    font-weight: 500;
+    vertical-align: baseline;
+    white-space: nowrap;
+}
+
+html[data-theme='dark'] .x-markdown .mention-badge {
+    background: #30302e;
+    color: #a9c4e0;
+}

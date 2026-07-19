@@ -242,7 +242,7 @@ packages/web/src/
 │   │       ├── CompactSummaryBlock.tsx 紧凑摘要块
 │   │       ├── ToolCallBlock.tsx     工具调用块
 │   │       └── ToolCallGroupBlock.tsx 工具调用折叠组
-│   ├── composer/               消息输入（27 文件）
+│   ├── composer/               消息输入（28 文件）
 │   │   ├── ChatComposer.tsx    输入框 + 自动补全 + 布局编排
 │   │   ├── AutoComplete.tsx    自动补全容器
 │   │   ├── MentionDropdown.tsx @ 文件引用下拉
@@ -346,6 +346,7 @@ packages/web/src/
 │       ├── footnotePlugin.ts   Markdown 脚注插件
 │       ├── latexPlugin.ts      Markdown LaTeX 插件
 │       ├── slashCommandPlugin.ts Markdown 斜杠命令插件
+│       ├── mentionPlugin.ts    Markdown @path mention 插件
 │       ├── sourceIcon.tsx      来源图标
 │       └── useStreamingContent.ts 流式内容 Hook
 │

@@ -18,6 +18,7 @@ import { memo, useMemo, useRef, type CSSProperties, type FC } from 'react'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
 import Latex from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
+import mention from './mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
 import { useStreamingContent } from './useStreamingContent'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
@@ -38,6 +39,9 @@ const LATEX_EXTENSIONS = Latex()
 
 /** slash command badge 扩展 */
 const SLASH_COMMAND_EXTENSIONS = [slashCommand()]
+
+/** mention (@path) badge 扩展 */
+const MENTION_EXTENSIONS = [mention()]
 
 /** 脚注引用扩展（稳定引用，不依赖运行时数据） */
 const FOOTNOTE_REF_EXTENSIONS = [footnoteRefExtension()]
@@ -91,6 +95,12 @@ export interface MarkdownProps extends Omit<XMarkdownProps, 'streaming' | 'conte
      * 默认 `false`。
      */
     enableSlashCommand?: boolean
+    /**
+     * 是否启用 mention（`@<path>`）badge 渲染。
+     * 仅在用户消息场景启用——mention 作为独立 token 优先于 GFM 删除线等 inline 语法，
+     * 避免用户输入 `@~/a/b/c` 里的 `~` 被删除线吞掉。默认 `false`。
+     */
+    enableMention?: boolean
 }
 
 /**
@@ -111,6 +121,7 @@ export const Markdown = memo(function Markdown({
     style,
     config,
     enableSlashCommand = false,
+    enableMention = false,
     ...rest
 }: MarkdownProps) {
     const useDrip = !!streaming && typing !== false
@@ -162,7 +173,8 @@ export const Markdown = memo(function Markdown({
 
     const mergedConfig = useMemo(() => {
         const slashExts = enableSlashCommand ? SLASH_COMMAND_EXTENSIONS : []
-        const baseExts = [...FOOTNOTE_REF_EXTENSIONS, ...slashExts, ...LATEX_EXTENSIONS]
+        const mentionExts = enableMention ? MENTION_EXTENSIONS : []
+        const baseExts = [...FOOTNOTE_REF_EXTENSIONS, ...slashExts, ...mentionExts, ...LATEX_EXTENSIONS]
         if (!config) return { breaks: true, extensions: baseExts }
         return {
             breaks: true,
@@ -172,7 +184,7 @@ export const Markdown = memo(function Markdown({
                 ...baseExts,
             ],
         }
-    }, [config, enableSlashCommand])
+    }, [config, enableSlashCommand, enableMention])
 
     return (
         <FootnoteContext.Provider value={footnotesMapRef.current}>
