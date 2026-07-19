@@ -71,9 +71,11 @@ const cpWrapper = ({ children }: { children: ReactNode }) => (
 function Harness({
     initialDir,
     optionsFlow,
+    onDirectoryConfirm,
 }: {
     initialDir: string
     optionsFlow: (dir: string) => DirectoryOption[]
+    onDirectoryConfirm?: (dir: string) => void
 }) {
     const [dir, setDir] = useState(initialDir)
     return (
@@ -83,6 +85,7 @@ function Harness({
             directoryOptions={optionsFlow(dir)}
             selectedDirectory={dir}
             onDirectoryChange={setDir}
+            onDirectoryConfirm={onDirectoryConfirm}
             recentPaths={[]}
         />
     )
@@ -114,5 +117,48 @@ describe('EnvironmentBar 目录 AutoComplete 受控 open', () => {
         await waitFor(() => {
             expect(acProps.current.open).toBe(true)
         })
+    })
+})
+
+describe('EnvironmentBar 目录确认（onDirectoryConfirm）', () => {
+    /**
+     * 回归守卫：手动选目录 / 输入失焦必须触发 onDirectoryConfirm，
+     * 否则 NewSessionPage 的 confirmedDirectory 不更新 → capTarget=null
+     * → sender 中 @~/ 文件引用发不出 list-session-directory 请求（下拉永远空）。
+     * 仅"最近路径"标签确认、其余路径不确认是已知 bug 的特征。
+     */
+    it('从下拉选中目录时触发 onDirectoryConfirm（补全 confirm 语义）', async () => {
+        const confirmSpy = vi.fn()
+        const optionsFlow = (dir: string): DirectoryOption[] => {
+            if (dir.startsWith('/zzz')) return [{ value: '/foo', label: 'foo' }]
+            return []
+        }
+
+        render(
+            <Harness initialDir="/zzz" optionsFlow={optionsFlow} onDirectoryConfirm={confirmSpy} />,
+            { wrapper: cpWrapper },
+        )
+
+        await waitFor(() => expect(acProps.current.onSelect).toBeTruthy())
+        act(() => {
+            ;(acProps.current.onSelect as (v: string) => void)('/foo')
+        })
+
+        expect(confirmSpy).toHaveBeenCalledWith('/foo/')
+    })
+
+    it('输入框失焦时触发 onDirectoryConfirm（兜底手动输入完整路径）', async () => {
+        const confirmSpy = vi.fn()
+        render(
+            <Harness initialDir="/home/me/proj" optionsFlow={() => []} onDirectoryConfirm={confirmSpy} />,
+            { wrapper: cpWrapper },
+        )
+
+        await waitFor(() => expect(acProps.current.onBlur).toBeTruthy())
+        act(() => {
+            ;(acProps.current.onBlur as () => void)()
+        })
+
+        expect(confirmSpy).toHaveBeenCalledWith('/home/me/proj')
     })
 })

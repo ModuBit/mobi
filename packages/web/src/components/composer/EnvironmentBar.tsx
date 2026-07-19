@@ -264,8 +264,18 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                     onSelect={(value: string) => {
                         const dir = value.endsWith('/') ? value : `${value}/`
                         onDirectoryChange(dir)
+                        // 选定目录即确认：更新 confirmedDirectory，
+                        // 否则 sender 中 @~/ 文件引用因 capTarget=null 发不出请求
+                        onDirectoryConfirm?.(dir)
                         // 标记 pending：等 directoryOptions 更新为子目录后由 effect 重新展开
                         pendingOpenRef.current = true
+                    }}
+                    onBlur={() => {
+                        // 失焦兜底：手动输入完整路径（未走下拉 onSelect）也要确认，
+                        // 否则 confirmedDirectory 停在旧值，mention/metadata 通道用错根目录
+                        if (selectedDirectory) {
+                            onDirectoryConfirm?.(selectedDirectory)
+                        }
                     }}
                     defaultActiveFirstOption
                     suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}
