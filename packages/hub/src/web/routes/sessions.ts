@@ -483,8 +483,11 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ success: false, error: 'Path parameter is required' }, 400)
         }
 
+        // 可选 prefix：大目录下收窄候选集，避免匹配项被 MAX_RESULTS 截断
+        const prefix = c.req.query('prefix') ?? undefined
+
         try {
-            const result = await engine.listSessionDirectory(sessionResult.sessionId, path)
+            const result = await engine.listSessionDirectory(sessionResult.sessionId, path, prefix)
             return c.json(result)
         } catch (error) {
             return c.json({

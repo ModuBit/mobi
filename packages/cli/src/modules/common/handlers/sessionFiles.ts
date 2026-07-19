@@ -222,7 +222,23 @@ async function searchFiles(workingDirectory: string, query: string, type?: 'file
     }
 }
 
-async function listDirectory(targetPath: string): Promise<FileEntry[]> {
+/**
+ * 按前缀过滤条目名（大小写不敏感，startsWith 语义）
+ *
+ * 大目录（如 home）下条目可能远超 MAX_RESULTS，若先 slice 再过滤，
+ * 字母序靠后的匹配项（如 `workspace`）会被截掉。
+ * 故在排序/截断前先用 prefix 收窄候选集，保证匹配项必在结果内。
+ *
+ * @param entries 待过滤条目
+ * @param prefix 名字前缀，空值返回原数组（保持目录浏览全量行为）
+ */
+export function filterByPrefix(entries: FileEntry[], prefix?: string): FileEntry[] {
+    if (!prefix) return entries
+    const lower = prefix.toLowerCase()
+    return entries.filter((e) => e.name.toLowerCase().startsWith(lower))
+}
+
+async function listDirectory(targetPath: string, prefix?: string): Promise<FileEntry[]> {
     const entries = await readdir(targetPath, { withFileTypes: true })
 
     const fileEntries: FileEntry[] = await Promise.all(
@@ -250,13 +266,15 @@ async function listDirectory(targetPath: string): Promise<FileEntry[]> {
         })
     )
 
-    fileEntries.sort((a, b) => {
+    // 先按 prefix 过滤，再排序、再截断 —— 避免大目录下匹配项被 MAX_RESULTS 截掉
+    const filtered = filterByPrefix(fileEntries, prefix)
+    filtered.sort((a, b) => {
         if (a.type === 'directory' && b.type !== 'directory') return -1
         if (a.type !== 'directory' && b.type === 'directory') return 1
         return a.name.localeCompare(b.name)
     })
 
-    return fileEntries.slice(0, MAX_RESULTS)
+    return filtered.slice(0, MAX_RESULTS)
 }
 
 function isWithinWorkingDir(targetPath: string, workingDirectory: string): boolean {
@@ -302,7 +320,7 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
     })
 
     // 接口 2：目录列表（工作目录内 + 外）
-    rpcHandlerManager.registerHandler<ListSessionFilesRequest & { cwd?: string }, ListSessionFilesResponse>('listSessionDirectory', async (data) => {
+    rpcHandlerManager.registerHandler<ListSessionFilesRequest & { cwd?: string; prefix?: string }, ListSessionFilesResponse>('listSessionDirectory', async (data) => {
         // 优先使用 RPC 参数中的 cwd，否则使用注册时的 workingDirectory
         const effectiveCwd = data.cwd || workingDirectory
         if (data.cwd && !validateRpcCwd(data.cwd)) {
@@ -344,7 +362,7 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
                 }
             }
 
-            const entries = await listDirectory(resolvedPath)
+            const entries = await listDirectory(resolvedPath, data.prefix)
             return { success: true, entries }
         } catch (error) {
             return rpcError(getErrorMessage(error, 'Failed to list directory'))

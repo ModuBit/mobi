@@ -484,8 +484,8 @@ export class SyncEngine {
         return await this.rpcGateway.searchSessionFiles(sessionId, query, type)
     }
 
-    async listSessionDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
-        return await this.rpcGateway.listSessionDirectory(sessionId, path)
+    async listSessionDirectory(sessionId: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
+        return await this.rpcGateway.listSessionDirectory(sessionId, path, prefix)
     }
 
     async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
@@ -512,8 +512,8 @@ export class SyncEngine {
         return await this.rpcGateway.machineSearchFiles(machineId, cwd, query)
     }
 
-    async machineListSessionDirectory(machineId: string, cwd: string, path: string): Promise<RpcListDirectoryResponse> {
-        return await this.rpcGateway.machineListSessionDirectory(machineId, cwd, path)
+    async machineListSessionDirectory(machineId: string, cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
+        return await this.rpcGateway.machineListSessionDirectory(machineId, cwd, path, prefix)
     }
 
     async machineRefreshMetadata(machineId: string, cwd: string): Promise<RpcRefreshMetadataResponse> {

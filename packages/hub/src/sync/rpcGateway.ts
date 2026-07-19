@@ -237,8 +237,8 @@ export class RpcGateway {
         return await this.sessionRpc(sessionId, 'searchSessionFiles', { query, type }) as RpcListDirectoryResponse
     }
 
-    async listSessionDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
-        return await this.sessionRpc(sessionId, 'listSessionDirectory', { path }) as RpcListDirectoryResponse
+    async listSessionDirectory(sessionId: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
+        return await this.sessionRpc(sessionId, 'listSessionDirectory', { path, prefix }) as RpcListDirectoryResponse
     }
 
     async listMachineDirectory(machineId: string, path: string, homeDir: string): Promise<RpcListDirectoryResponse> {
@@ -269,8 +269,8 @@ export class RpcGateway {
     }
 
     // 列出 machine 会话目录
-    async machineListSessionDirectory(machineId: string, cwd: string, path: string): Promise<RpcListDirectoryResponse> {
-        return await this.machineRpc(machineId, 'listSessionDirectory', { cwd, path }) as RpcListDirectoryResponse
+    async machineListSessionDirectory(machineId: string, cwd: string, path: string, prefix?: string): Promise<RpcListDirectoryResponse> {
+        return await this.machineRpc(machineId, 'listSessionDirectory', { cwd, path, prefix }) as RpcListDirectoryResponse
     }
 
     // 刷新 machine 上的会话元数据

@@ -36,7 +36,7 @@ export type DeleteUploadResult = { data: DeleteUploadResponse }
 
 /** 统一的目录搜索/列表方法签名（session 与 machine 通道共用） */
 export type SearchFilesFn = (query: string, opts?: { signal?: AbortSignal }) => Promise<FileSearchResult>
-export type ListDirectoryFn = (path: string, opts?: { signal?: AbortSignal }) => Promise<FileSearchResult>
+export type ListDirectoryFn = (path: string, prefix: string | undefined, opts?: { signal?: AbortSignal }) => Promise<FileSearchResult>
 export type UploadFileFn = (file: File, opts?: { signal?: AbortSignal; onProgress?: (percent: number) => void }) => Promise<UploadResult>
 export type DeleteUploadFn = (path: string) => Promise<DeleteUploadResult>
 
@@ -108,11 +108,11 @@ export function useDirectoryCapabilities(
     const listDirectory = useMemo(() => {
         if (!target) return async () => ({ data: { success: false } })
         if (target.kind === 'session') {
-            return (path: string, opts?: { signal?: AbortSignal }) =>
-                api.sessions.listDirectory(target.sessionId, path, opts)
+            return (path: string, prefix: string | undefined, opts?: { signal?: AbortSignal }) =>
+                api.sessions.listDirectory(target.sessionId, path, prefix, opts)
         }
-        return (path: string, opts?: { signal?: AbortSignal }) =>
-            api.machines.listSessionDirectory(target.machineId, target.cwd, path, opts)
+        return (path: string, prefix: string | undefined, opts?: { signal?: AbortSignal }) =>
+            api.machines.listSessionDirectory(target.machineId, target.cwd, path, prefix, opts)
     }, [target, api])
 
     const uploadFile = useMemo(() => {

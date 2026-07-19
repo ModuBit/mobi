@@ -144,6 +144,7 @@ export function useFileListing(
     const doListDirectory = useCallback(async (
         listFn: ListDirectoryFn,
         dirPath: string,
+        prefix: string,
     ) => {
         abortRef.current?.abort()
         const controller = new AbortController()
@@ -151,7 +152,7 @@ export function useFileListing(
 
         setIsLoading(true)
         try {
-            const res = await listFn(dirPath, { signal: controller.signal })
+            const res = await listFn(dirPath, prefix, { signal: controller.signal })
             if (controller.signal.aborted) return
 
             const data = res.data as ListFilesResponse
@@ -164,7 +165,10 @@ export function useFileListing(
                 .filter(e => e.type === 'file' || e.type === 'directory')
                 .map(e => ({ name: e.name, type: e.type, path: e.path }))
 
-            cacheRef.current.set(dirPath, entries)
+            // 仅缓存全集（prefix 空时）；带 prefix 的过滤子集不缓存，避免污染后续全集浏览
+            if (!prefix) {
+                cacheRef.current.set(dirPath, entries)
+            }
 
             setItems(toSuggestionItems(filterEntries(entries, currentPrefixRef.current, filterContainsRef.current)))
         } catch {
@@ -209,14 +213,22 @@ export function useFileListing(
         currentPrefixRef.current = prefix
         filterContainsRef.current = !isInsideWorkingDir(mentionInput)
 
+        // 两阶段：先查全集缓存做前端过滤
+        // - prefix 空（浏览全集）：命中缓存直接用
+        // - prefix 非空且缓存有匹配项：用缓存（匹配项落在 MAX_RESULTS 全集内）
+        // - prefix 非空但缓存无匹配（匹配项排在全集之外，如 home 下的 workspace）：
+        //   fallback 带 prefix 请求服务端捞回；请求期间靠 isLoading 转圈而非清空，避免闪烁
         const cached = cacheRef.current.get(listPath)
         if (cached) {
-            setItems(toSuggestionItems(filterEntries(cached, prefix, filterContainsRef.current)))
-            return
+            const filtered = filterEntries(cached, prefix, filterContainsRef.current)
+            if (!prefix || filtered.length > 0) {
+                setItems(toSuggestionItems(filtered))
+                return
+            }
         }
 
         timerRef.current = setTimeout(() => {
-            doListDirectory(listDirectory, listPath)
+            doListDirectory(listDirectory, listPath, prefix)
         }, 300)
 
         return () => {

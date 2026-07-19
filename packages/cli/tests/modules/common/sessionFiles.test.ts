@@ -14,8 +14,12 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest'
-import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery, applyTypeFilter } from '@/modules/common/handlers/sessionFiles'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { mkdir, rm } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
+import { isSearchQuery, parseRipgrepOutput, pathMatchesQuery, applyTypeFilter, filterByPrefix, registerSessionFilesHandler } from '@/modules/common/handlers/sessionFiles'
 
 describe('isSearchQuery', () => {
     it('普通文件名应触发搜索', () => {
@@ -151,5 +155,91 @@ describe('applyTypeFilter', () => {
     it('type=directory 超量也截断到 50', () => {
         const manyDirs = Array.from({ length: 60 }, (_, i) => ({ name: `d${i}`, type: 'directory' as const, path: `d${i}` }))
         expect(applyTypeFilter(manyDirs, [], 'directory')).toHaveLength(50)
+    })
+})
+
+describe('filterByPrefix', () => {
+    const entries = [
+        { name: 'src', type: 'directory' as const },
+        { name: 'README.md', type: 'file' as const },
+        { name: 'workspace', type: 'directory' as const },
+        { name: 'test.txt', type: 'file' as const },
+    ]
+
+    it('空 prefix 返回原数组（保持目录浏览全量行为）', () => {
+        expect(filterByPrefix(entries)).toBe(entries)
+        expect(filterByPrefix(entries, '')).toBe(entries)
+    })
+
+    it('startsWith 精确匹配', () => {
+        const r = filterByPrefix(entries, 'work')
+        expect(r.map((e) => e.name)).toEqual(['workspace'])
+    })
+
+    it('大小写不敏感', () => {
+        const r = filterByPrefix(entries, 'READ')
+        expect(r.map((e) => e.name)).toEqual(['README.md'])
+    })
+
+    it('不匹配返回空数组', () => {
+        expect(filterByPrefix(entries, 'xyz')).toEqual([])
+    })
+
+    it('仅保留前缀匹配项', () => {
+        const r = filterByPrefix(entries, 't')
+        expect(r.map((e) => e.name)).toEqual(['test.txt'])
+    })
+})
+
+describe('listSessionDirectory handler — prefix 下推', () => {
+    let rootDir: string
+    let rpc: RpcHandlerManager
+
+    beforeEach(async () => {
+        const base = tmpdir()
+        rootDir = join(base, `mobi-session-files-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+        await mkdir(rootDir, { recursive: true })
+        // 55 个字母序在 'workspace' 之前的目录，把 workspace 挤到第 56 位（超过 MAX_RESULTS=50）
+        for (let i = 0; i < 55; i++) {
+            await mkdir(join(rootDir, `aaa${String(i).padStart(2, '0')}`), { recursive: true })
+        }
+        await mkdir(join(rootDir, 'workspace'), { recursive: true })
+
+        rpc = new RpcHandlerManager({ scopePrefix: 'sf-test' })
+        registerSessionFilesHandler(rpc, rootDir)
+    })
+
+    it('无 prefix 时 workspace 被 MAX_RESULTS 截断（复现根因）', async () => {
+        const res = (await rpc.handleRequest({
+            method: 'sf-test:listSessionDirectory',
+            params: { path: '' },
+        })) as { success: boolean; entries?: Array<{ name: string }> }
+
+        expect(res.success).toBe(true)
+        const names = (res.entries ?? []).map((e) => e.name)
+        // 56 个目录排序后 workspace 排末尾，slice(50) 后被截掉
+        expect(names).not.toContain('workspace')
+        expect(names.length).toBeLessThanOrEqual(50)
+    })
+
+    it('带 prefix 时 workspace 必返回（prefix 下推修复）', async () => {
+        const res = (await rpc.handleRequest({
+            method: 'sf-test:listSessionDirectory',
+            params: { path: '', prefix: 'worksp' },
+        })) as { success: boolean; entries?: Array<{ name: string }> }
+
+        expect(res.success).toBe(true)
+        const names = (res.entries ?? []).map((e) => e.name)
+        expect(names).toContain('workspace')
+    })
+
+    it('无 prefix 与有 prefix 行为解耦：未匹配 prefix 返回空', async () => {
+        const res = (await rpc.handleRequest({
+            method: 'sf-test:listSessionDirectory',
+            params: { path: '', prefix: 'zzz' },
+        })) as { success: boolean; entries?: Array<{ name: string }> }
+
+        expect(res.success).toBe(true)
+        expect((res.entries ?? []).length).toBe(0)
     })
 })

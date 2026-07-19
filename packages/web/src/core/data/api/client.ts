@@ -140,8 +140,8 @@ export function createMobiApi() {
                 opts?: { signal?: AbortSignal },
             ) =>
                 client.get<ListFilesResponse>(`/api/sessions/${sessionId}/search-files`, { params: { query, type }, signal: opts?.signal }),
-            listDirectory: (sessionId: string, path: string, opts?: { signal?: AbortSignal }) =>
-                client.get<ListFilesResponse>(`/api/sessions/${sessionId}/list-directory`, { params: { path }, signal: opts?.signal }),
+            listDirectory: (sessionId: string, path: string, prefix?: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListFilesResponse>(`/api/sessions/${sessionId}/list-directory`, { params: { path, prefix }, signal: opts?.signal }),
         },
 
         // Messages
@@ -286,8 +286,8 @@ export function createMobiApi() {
             searchFiles: (machineId: string, cwd: string, query: string, opts?: { signal?: AbortSignal }) =>
                 client.get<ListFilesResponse>(`/api/machines/${machineId}/search-files`, { params: { cwd, query }, signal: opts?.signal }),
             // 目录列表（@ 引用展开子目录）
-            listSessionDirectory: (machineId: string, cwd: string, path: string, opts?: { signal?: AbortSignal }) =>
-                client.get<ListFilesResponse>(`/api/machines/${machineId}/list-session-directory`, { params: { cwd, path }, signal: opts?.signal }),
+            listSessionDirectory: (machineId: string, cwd: string, path: string, prefix?: string, opts?: { signal?: AbortSignal }) =>
+                client.get<ListFilesResponse>(`/api/machines/${machineId}/list-session-directory`, { params: { cwd, path, prefix }, signal: opts?.signal }),
         },
     }
 }

@@ -146,7 +146,7 @@ export function useSessionFileListing(
 
         setIsLoading(true)
         try {
-            const res = await api.sessions.listDirectory(sId, dirPath, { signal: controller.signal })
+            const res = await api.sessions.listDirectory(sId, dirPath, undefined, { signal: controller.signal })
             if (controller.signal.aborted) return
 
             const data = res.data as ListFilesResponse

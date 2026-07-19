@@ -349,8 +349,11 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const cwdError = validateCwd(cwd, machine.metadata?.homeDir)
         if (cwdError) return cwdError
 
+        // 可选 prefix：大目录下收窄候选集，避免匹配项被 MAX_RESULTS 截断
+        const prefix = c.req.query('prefix') ?? undefined
+
         try {
-            const result = await engine.machineListSessionDirectory(machineId, cwd, path)
+            const result = await engine.machineListSessionDirectory(machineId, cwd, path, prefix)
             return c.json(result)
         } catch (error) {
             return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list session directory' }, 500)
