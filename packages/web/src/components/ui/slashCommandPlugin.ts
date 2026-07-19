@@ -16,8 +16,15 @@
 
 import type { Token, Tokens, TokenizerAndRendererExtension } from 'marked'
 
-/** 匹配 /command（字母开头，允许连字符和下划线），后跟可选描述文本 */
-const SLASH_COMMAND_RULE = /^\/([a-zA-Z][\w-]*)(.*)/
+/**
+ * 匹配 /command：独立词 / 开头，命令名 [a-zA-Z0-9_-]+，
+ * 命令名后必须是空白/换行/结尾（lookahead）——避免 /path/to/x、/foo(bar) 误判。
+ * 第二组捕获命令名后的参数（到行尾），参数走 inline 解析支持 markdown。
+ *
+ * 触发条件与 sender 的 detectSlashAtCursor 对齐：独立词（/ 前为行首或空白），
+ * 不再要求整段以 / 开头。
+ */
+const SLASH_COMMAND_RULE = /^\/([a-zA-Z0-9_-]+)(?=[ \t\n]|$)(?:[ \t]([^\n]*))?/
 
 /** HTML entity 转义，防止 XSS */
 function escapeHtml(text: string): string {
@@ -29,23 +36,28 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * 将用户消息开头的 /command 渲染为 Badge 标签样式。
- * 仅在段落起始位置匹配（block level），不影响消息中间出现的 /xxx。
- * rest 部分通过 marked inline lexer 解析，支持 markdown 格式。
+ * 将用户消息中的 /command 渲染为 Badge 标签样式。
+ *
+ * inline 级扩展，匹配任意位置的独立词 /command（与 sender 触发条件对齐，不再限首行首字符）。
+ * rest（参数）部分通过 marked inline lexer 解析，支持 markdown 格式。
  */
 function slashCommand(): TokenizerAndRendererExtension {
     return {
         name: 'slashCommand',
-        level: 'block',
+        level: 'inline',
         start(src: string) {
-            return src[0] === '/' ? 0 : undefined
+            // 找下一个「独立词 / 后跟命令名字符」的位置（/ 前为空白或开头）
+            const m = src.match(/(?:^|\s)\/[a-zA-Z0-9_-]/)
+            if (!m) return undefined
+            // 跳过可能的前导空白，返回 / 的位置
+            return m.index! + (src[m.index!] === '/' ? 0 : 1)
         },
         tokenizer(src: string) {
             const match = src.match(SLASH_COMMAND_RULE)
             if (!match) return undefined
 
             const command = match[1]
-            const rest = match[2].trimStart()
+            const rest = match[2] ?? ''
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const token: any = {
@@ -55,8 +67,10 @@ function slashCommand(): TokenizerAndRendererExtension {
                 tokens: [] as Token[],
             }
 
-            // 将 rest 解析为 inline tokens，支持 markdown 格式
-            this.lexer.inline(rest, token.tokens)
+            // 将参数解析为 inline tokens，支持 markdown 格式
+            if (rest) {
+                this.lexer.inline(rest, token.tokens)
+            }
 
             return token
         },
@@ -69,7 +83,7 @@ function slashCommand(): TokenizerAndRendererExtension {
             const restHtml = tokens.length > 0
                 ? this.parser.parseInline(tokens)
                 : ''
-            return restHtml ? `<p>${badge} ${restHtml}</p>` : `<p>${badge}</p>`
+            return restHtml ? `${badge} ${restHtml}` : badge
         },
     }
 }
