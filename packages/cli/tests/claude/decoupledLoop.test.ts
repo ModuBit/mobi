@@ -22,6 +22,7 @@ import {
 } from '../../src/claude/claudeRemote'
 import { PushableAsyncIterable } from '../../src/utils/PushableAsyncIterable'
 import type { SpecialCommandContext } from '../../src/claude/claudeRemote'
+import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 
 // ─── Helper 函数 ────────────────────────────────────────────────
 
@@ -116,11 +117,14 @@ function createOutputLoopOpts(overrides?: Record<string, unknown>) {
             startBlock: vi.fn(),
             append: vi.fn(),
             endBlock: vi.fn(),
+            markFullDelivered: vi.fn(),
+            consumePendingFull: vi.fn().mockReturnValue(null),
         } as any,
         onSessionFound: vi.fn(),
         onReady: vi.fn(),
         onRunningChange: vi.fn(),
         onCompletionEvent: vi.fn(),
+        onAbortFlush: vi.fn(),
         ...overrides,
     }
 }
@@ -196,6 +200,85 @@ describe('sdkOutputLoop', () => {
         expect(opts.onMessage).toHaveBeenCalledWith(msg)
         // assistant 消息也会 flush
         expect(opts.snapshotSender.flush).toHaveBeenCalled()
+    })
+
+    it('同一 turn 多条 assistant（共享 message.id、各自 uuid）原样透传，不合并不覆盖 uuid', async () => {
+        // SDK 文档：一个 turn 可产生多条共享 message.id 的 SDKAssistantMessage，每条有独立 uuid。
+        // mobi 必须原样透传每条（Hub 按 local_id=uuid 去重天然正确）。
+        // 历史 bug：曾把所有 assistant 的 uuid 覆盖成同一个 snapshot uuid，导致同 turn 多条
+        // assistant 在 Hub 互相 UPDATE 覆盖、丢失 thinking/tool_use。本测试锁定「不覆盖」行为。
+        const assistant1 = {
+            type: 'assistant' as const,
+            uuid: 'uuid-assistant-1',
+            message: { id: 'msg_shared', role: 'assistant' as const, content: [{ type: 'thinking' as const, thinking: '先思考' }] },
+            parent_tool_use_id: null,
+            session_id: 'test-session',
+        } as SDKMessage
+        const toolResult = {
+            type: 'user' as const,
+            uuid: 'uuid-user-result',
+            message: { role: 'user' as const, content: [{ type: 'tool_result' as const, tool_use_id: 'toolu_1', content: 'done' }] },
+            parent_tool_use_id: null,
+            session_id: 'test-session',
+        } as SDKMessage
+        const assistant2 = {
+            type: 'assistant' as const,
+            uuid: 'uuid-assistant-2',
+            message: { id: 'msg_shared', role: 'assistant' as const, content: [{ type: 'text' as const, text: '结果' }] },
+            parent_tool_use_id: null,
+            session_id: 'test-session',
+        } as SDKMessage
+        const opts = createOutputLoopOpts()
+        const ctx: LoopContext = { isCompactCommand: false }
+
+        await sdkOutputLoop(asyncIterableFrom([assistant1, toolResult, assistant2]), ctx, opts)
+
+        // 3 条消息全部透传，未被合并
+        expect(opts.onMessage).toHaveBeenCalledTimes(3)
+        // 关键：每条 assistant 的 uuid 原样到达，未被覆盖成同一个值
+        expect(opts.onMessage).toHaveBeenNthCalledWith(1, assistant1)
+        expect(opts.onMessage).toHaveBeenNthCalledWith(3, assistant2)
+    })
+
+    it('收到 assistant 消息时调用 snapshotSender.markFullDelivered（标记 full 已到）', async () => {
+        const msg = mockAssistantMessage()
+        const opts = createOutputLoopOpts()
+        const ctx: LoopContext = { isCompactCommand: false }
+        await sdkOutputLoop(asyncIterableFrom([msg]), ctx, opts)
+        expect(opts.snapshotSender.markFullDelivered).toHaveBeenCalled()
+    })
+
+    it('迭代结束时有 pending full（full 未到、有累积）→ 调用 onAbortFlush 补全落库', async () => {
+        const pending = { blocks: [{ type: 'text', text: '残留' }], model: 'm' }
+        const base = createOutputLoopOpts()
+        const opts = createOutputLoopOpts({
+            snapshotSender: { ...base.snapshotSender, consumePendingFull: vi.fn().mockReturnValue(pending) },
+        })
+        const ctx: LoopContext = { isCompactCommand: false }
+        // 不发 assistant（full 未到），模拟中断/abort 在流式中
+        await sdkOutputLoop(asyncIterableFrom([]), ctx, opts)
+        expect(opts.onAbortFlush).toHaveBeenCalledWith(pending)
+    })
+
+    it('迭代结束时无 pending（full 已到）→ 不调用 onAbortFlush', async () => {
+        const msg = mockAssistantMessage() // assistant 触发 markFullDelivered
+        const opts = createOutputLoopOpts() // consumePendingFull mock 返回 null
+        const ctx: LoopContext = { isCompactCommand: false }
+        await sdkOutputLoop(asyncIterableFrom([msg]), ctx, opts)
+        expect(opts.onAbortFlush).not.toHaveBeenCalled()
+    })
+
+    it('signal abort 中断后、有 pending → 仍调用 onAbortFlush', async () => {
+        const pending = { blocks: [{ type: 'thinking', thinking: '中断' }] }
+        const base = createOutputLoopOpts()
+        const opts = createOutputLoopOpts({
+            snapshotSender: { ...base.snapshotSender, consumePendingFull: vi.fn().mockReturnValue(pending) },
+        })
+        const controller = new AbortController()
+        controller.abort()
+        const ctx: LoopContext = { isCompactCommand: false }
+        await sdkOutputLoop(asyncIterableFrom([mockAssistantMessage()]), ctx, { ...opts, signal: controller.signal })
+        expect(opts.onAbortFlush).toHaveBeenCalledWith(pending)
     })
 
     it('处理 system/init 消息时调用 onRunningChange(true) + onSessionFound', async () => {

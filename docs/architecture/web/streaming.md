@@ -44,9 +44,9 @@ snapshot 和 full message 是同一条消息的两个阶段（流式中 / 落库
 
 若 `block.id` 用 `msg.id`，snapshot/full 的 block.id 不同 → React 按 key 复用失败 → **TextBlock 卸载重 mount** → `useState` 重置 → 逐字被打断（短回复只一批 snapshot 就被 full 重 mount 覆盖，表现为一次性）。
 
-**解决**：
-- **CLI 侧**：`StreamSnapshotSender.currentSdkUuid` getter，`claudeRemote` 的 `onMessage` **仅对 `type === 'assistant'` 的 message** 复用 sdkUuid 作 uuid（即 localId），保证 snapshot/full 的 `localId` 一致。必须限定 assistant：sdkOutputLoop 的 `onMessage` 还承载 tool use/result/user 等消息，无差别改写会让这些消息错贴 assistant 的 localId，导致 reducer `block.id` 冲突。
-- **Web 侧**：reducer 的 `block.id = ${msg.localId ?? msg.id}:${idx}`。`idx` 区分同消息的 reasoning（0）/ text（1），`localId` 让 snapshot/full 同 key。
+**解决**（靠前端清理 snapshot，不靠 CLI 改写 uuid）：
+- **CLI 侧**：每条 `SDKAssistantMessage` 用自己的原始 uuid 作 localId 直接下发，Hub 按 localId 去重天然正确。**不复用 snapshot 的 sdkUuid**——历史曾用 `currentSdkUuid` 覆盖 assistant 的 uuid 强制 snapshot/full 同 localId，但 SDK 一个 turn 可产生多条共享 `message.id`、各自独立 uuid 的 assistant（见 SDK 文档），共享 uuid 会让它们在 Hub 互相 UPDATE 覆盖，丢失 thinking/tool_use。
+- **Web 侧**：snapshot/full 的 localId 不同（sdkUuid vs assistant uuid），靠 `resolveMessageCache` 按 `parentUuid` 清理同轮次 snapshot（见 [message-lifecycle.md](../../message-lifecycle.md) 的 snapshot 清理机制）。reducer 的 `block.id = ${msg.localId ?? msg.id}:${idx}`，`idx` 区分同消息的 reasoning（0）/ text（1）。
 
 ### 2. isStreaming 不依赖 isRunning
 
@@ -80,6 +80,20 @@ full message 到达时 `streaming` 变 false。用 `wasStreamingRef` 区分：
 
 `Markdown` 的 `finalContent = displayContent`（始终），不因 `streaming` 切换到 `content`。否则 full message（`streaming=false`）时 `finalContent=content` 全显，覆盖 display。
 
+### 6. abort 补全：流式内容落库（不丢失）
+
+snapshot 通道**不落库**（`snapshot:true` 仅 Hub 透传给前端即时显示）。只有完整 `SDKAssistantMessage` 到达才落库。若 abort 时 SDK 还没 emit 完整 assistant，流式已显示的内容刷新后会丢失。
+
+**机制**（CLI 侧，`StreamSnapshotSender` + `sdkOutputLoop`）：
+- `endBlock` 不删 buffer——保留当前 message 的完整累积到下次 `message_start`（`clearBuffers`）清空
+- `fullDelivered` 状态：`message_start` 重置 false；`sdkOutputLoop` 收到完整 assistant 时调 `markFullDelivered()` 置 true
+- `sdkOutputLoop` 迭代结束（含 abort/异常）调 `consumePendingFull()`：仅当 `!fullDelivered && 有累积` 返回完整 blocks（内部复用 `buildBlocks()`，与 `flush` 共用）
+- `claudeRemoteLauncher.onAbortFlush`：`convertSnapshot(blocks)` → `messageQueue.enqueue`（经 messageQueue 统一仲裁顺序，由 `finally` 的 `messageQueue.flush()` 发送——保证 abort 时「delay 中的上一条 assistant → 当前补全」的正确 FIFO 时序，不绕过 messageQueue）
+
+**与正常 full 同路径**：补全消息用 `convertSnapshot` 的独立 uuid，`parentUuid` 与 snapshot 一致（流式期间 `lastUuid` 不变）。前端 `resolveMessageCache` 第 1 层 parentUuid 清理删同轮次 snapshot + 追加补全 full——与正常 `SDKAssistantMessage` 到达完全相同，无特殊路径。
+
+**兼容未来增量 snapshot**：`consumePendingFull()` 语义是"当前 message 的完整累积内容"，不暴露 buffers 内部。未来 snapshot 改增量发送（flush 只发 delta）时，只改 `flush` 实现，本接口仍返回完整内容，abort 补全逻辑不变；前端从补全 full（完整）重新渲染，不依赖 snapshot 累积状态。
+
 ## 关键坑（dev-only，调试血泪）
 
 ### ⚠️ 坑 1：React StrictMode 导致 raf 永不执行（最隐蔽）
@@ -101,7 +115,7 @@ useEffect(() => () => {
 
 ### ⚠️ 坑 2：snapshot/full 的 localId 不一致
 
-详见上文"关键设计 1"。CLI 的 `sdkUuid`（stream message.uuid）≠ `body.uuid`（RawJSONLines uuid），SDK 机制导致。必须 CLI 侧显式让 full 复用 sdkUuid。
+详见上文"关键设计 1"。CLI 的 `sdkUuid`（stream message.uuid）≠ `body.uuid`（RawJSONLines uuid），SDK 机制导致。**不要**用 CLI 覆盖 uuid 强制一致——会让同一 turn 多条 assistant 共享 uuid、被 Hub 互相覆盖。靠前端 `resolveMessageCache` 按 `parentUuid` 清理 snapshot 实现过渡。
 
 ### ⚠️ 坑 3：`isStreaming` 依赖未就绪的 isRunning
 
@@ -204,8 +218,8 @@ E2E 的 glm 模型 text 输出快（常一批 snapshot 就完整），snapshot �
 
 | 文件 | 职责 |
 |------|------|
-| `cli/.../streamSnapshotSender.ts` | snapshot 累积 + flush + `currentSdkUuid` getter |
-| `cli/.../claudeRemote.ts` | full message 复用 sdkUuid 作 localId |
+| `cli/.../streamSnapshotSender.ts` | snapshot 累积 + flush + 用 sdkUuid 作 snapshot id/localId |
+| `cli/.../claudeRemote.ts` | 每条 SDKAssistantMessage 用各自 uuid 作 localId 直接下发 |
 | `web/.../domain/chat/reducerTimeline.ts` | `block.id = localId:idx` |
 | `web/.../domain/chat/buildBubbleItems.tsx` | `isStreaming = isSnapshot` |
 | `web/.../components/ui/useStreamingContent.ts` | 逐字揭示 hook（首批从 0 + wasStreaming + cleanup rafRef=0） |

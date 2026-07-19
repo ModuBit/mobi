@@ -147,12 +147,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         });
 
         // 取消排队消息（web → hub → cli 两阶段取消的 CLI 侧）
-        // DB 层删除无法影响 CLI 内存中已缓冲的消息，需通过此 RPC 从内存队列移除
+        // CLI 是「是否仍可安全取消」的权威：in-flight（已 collectBatch/steal，即将喂 agent）→ 不可取消，
+        // 否则会产生幽灵消息。tryCancel 区分 in-flight / 仍在队列 / CLI 未知三种。
         session.client.rpcHandlerManager.registerHandler('cancel-queued-message', async (params) => {
             const { localId } = (params ?? {}) as { localId?: string }
             if (!localId) return { status: 'submitted' }
-            const removed = session.queue.cancelByLocalId(localId)
-            return { status: removed ? 'cancelled' : 'submitted' }
+            return { status: session.queue.tryCancel(localId) }
         });
 
         // steer 排队消息（web → hub → cli）：把仍排队的消息从内存队列取出，
@@ -502,6 +502,23 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             session.client.sendContentSnapshot(msg);
                         },
                         getConverter: () => sdkToLogConverter,
+                        // 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库。
+                        // 经 messageQueue 入队（非直接 send）：让 messageQueue 统一仲裁顺序——abort 时
+                        // messageQueue 可能含 delay 中的上一条 assistant（tool_use 未配对 result），补全按 FIFO
+                        // 入队其后，由本 launch finally 的 messageQueue.flush() 统一发送，保证
+                        // 「上一条 tool_use → 当前补全」的正确时序。前端 resolveMessageCache 按 parentUuid
+                        // 清理 snapshot + 追加补全 full，刷新后内容仍在。
+                        onAbortFlush: (pending) => {
+                            try {
+                                const raw = sdkToLogConverter.convertSnapshot(pending.blocks, {
+                                    model: pending.model,
+                                    parentToolUseId: pending.parentToolUseId,
+                                });
+                                messageQueue.enqueue(raw);
+                            } catch (e) {
+                                logger.warn('[remote]: onAbortFlush failed', e);
+                            }
+                        },
                         onSteerSinkReady: (push) => { this.steerSink = push },
                     });
 
