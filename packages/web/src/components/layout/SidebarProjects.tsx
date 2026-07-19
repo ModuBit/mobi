@@ -170,7 +170,7 @@ const SessionItem = styled.div<{
     padding: 0 8px 0 26px;
     border: none;
     background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
-    color: ${props => props.$active ? props.$token.colorPrimaryText : props.$token.colorText};
+    color: ${props => props.$token.colorText};
     border-radius: 6px;
     cursor: pointer;
     font-size: 12px;
