@@ -25,6 +25,7 @@ import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
+import { resolveCopyShortcut } from './copyShortcut'
 import { StatusBar } from '@/components/chat/StatusBar'
 import { getAgentStatus } from '@/components/pixel-avatar/types'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
@@ -492,16 +493,27 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
 
     // 键盘导航
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        // Ctrl+C：有内容则清空，无内容且 running 则 abort
-        if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
-            if (textRef.current.length > 0) {
+        // Ctrl+C：只拦 Ctrl 不拦 Cmd（Mac 上 Cmd+C 走原生复制）。
+        // 有选中文本 → 放行复制；无选中 + 有内容 → 清空；无选中 + 无内容 + running → abort
+        if (e.key === 'c' && e.ctrlKey) {
+            const selection = window.getSelection()
+            const hasSelection = !!selection && selection.toString().length > 0
+            const action = resolveCopyShortcut({
+                hasSelection,
+                text: textRef.current,
+                running,
+                canAbort: !!onAbort,
+                abortPending: !!abortPending,
+            })
+            if (action === 'copy') return
+            if (action === 'clear') {
                 e.preventDefault()
                 setText('')
                 mention.close()
                 slash.reset()
-            } else if (running && onAbort && !abortPending) {
+            } else if (action === 'abort') {
                 e.preventDefault()
-                onAbort()
+                onAbort?.()
             }
             return
         }
