@@ -44,18 +44,16 @@ function isOptimisticMessage(msg: DecryptedMessage): boolean {
 }
 
 /**
- * 仍在排队、未被 agent 处理的 user 消息
- * （悬浮条显示、从线程剔除的判断依据）
+ * 是否为「仍在排队、未被 agent 消费」的消息（悬浮条展示、从线程剔除的判断依据）。
  *
- * 排除 status='sending'：非 running 时发送的乐观消息虽 submittedAt=null，
- * 但它在途（服务端收到即开新 turn），应作为普通气泡渲染，而非进悬浮条闪烁。
- * status=undefined（刷新后从服务端加载的未消费消息）仍视为排队。
+ * 只读显式 `queueState==='pending'`——这是 Hub 写入时用 denylist 谓词裁决的单一结果，
+ * Web 不再反推来源/时间戳。乐观消息（尚未收到服务端 echo）由 useSendMessage 直接置
+ * queueState='pending'。
+ * status='sending'（非 running 发送，在途开新 turn）/ status='failed' 排除。
  */
 export function isQueuedInMobi(msg: DecryptedMessage): boolean {
-    return isUserMessage(msg)
-        && msg.submittedAt == null
-        && msg.status !== 'failed'
-        && msg.status !== 'sending'
+    if (msg.status === 'failed' || msg.status === 'sending') return false
+    return msg.queueState === 'pending'
 }
 
 /**
@@ -193,4 +191,27 @@ export function upsertMessagesInCache(
         ...data,
         pages,
     }
+}
+
+/**
+ * 把无限分页的各页消息合并为单一列表（旧→新），按 id 跨页去重。
+ *
+ * 翻页游标基于「页内最老消息 seq」，若该消息为 pending 且在翻页间隙被消费，
+ * 其 position_at 跳变会让 Hub 返回与当前页重叠的下一页。mergeMessages 只在
+ * SSE upsertMessageCache 内去重，不覆盖分页历史路径——故此处必须显式跨页去重，
+ * 否则 merged 列表出现同 id 重复（React key 碰撞）。首次出现者保留（旧页优先）。
+ */
+export function flattenMessagesPages(
+    pages: { messages: DecryptedMessage[] }[],
+): DecryptedMessage[] {
+    const seen = new Set<string>()
+    const result: DecryptedMessage[] = []
+    for (const page of pages) {
+        for (const m of page.messages) {
+            if (seen.has(m.id)) continue
+            seen.add(m.id)
+            result.push(m)
+        }
+    }
+    return result
 }

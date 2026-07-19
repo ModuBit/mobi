@@ -280,8 +280,18 @@ export const DecryptedMessageSchema = z.object({
     id: z.string(),
     seq: z.number().nullable(),
     localId: z.string().nullable(),
-    /** 已提交给 Claude Code SDK input stream 的时刻；null 表示仍在排队悬浮。agent 产生的消息入库时 = createdAt */
+    /**
+     * 被 agent 消费的时刻；仅当该消息经过排队轨道（queue_state pending→consumed）时写入。
+     * 非排队消息（agent/CLI/system 输出）恒为 null。排序请用 positionAt，不要 COALESCE 本字段。
+     */
     submittedAt: z.number().nullable().optional(),
+    /**
+     * 排队生命周期状态：null（非排队轨道）/ 'pending'（等消费）/ 'consumed'（已消费）。
+     * 「是否排队」的唯一读取依据，不再靠 submittedAt 缺失反推。
+     */
+    queueState: z.enum(['pending', 'consumed']).nullable().optional(),
+    /** 排序锚点（= 落库 created_at；排队消息被消费时跳到消费时刻，保留「运行中消费的消息排在 turn 之后」UX） */
+    positionAt: z.number().optional(),
     content: z.unknown(),
     createdAt: z.number(),
     /** 标识流式快照消息（未落库，Hub 直接透传给 Web） */

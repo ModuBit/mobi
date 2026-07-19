@@ -25,6 +25,26 @@ interface QueueItem<T> {
 }
 
 /**
+ * in-flight 集合容量上限（近期守卫）。被 collect/steal 的 localId 在 Hub 确认 consumed 前需保留，
+ * 以拒绝取消（防幽灵消息）。正常情况下 Hub 几百 ms 内即落库，in-flight 实际只积压个位数；
+ * 此上限只是防止异常积压时无界增长。
+ */
+export const IN_FLIGHT_CAP = 500
+
+/**
+ * 「曾 shift 出队列」的 localId 容量上限（最终兜底）。
+ *
+ * in-flight 淘汰只是因为「近期守卫」过期，但「这条消息曾经被 dispatch 喂给 agent」这一事实永久
+ * 有效——即便 Hub 迟迟未落库（onBatchConsumed 的 socket emit 丢失 / Hub 重启不重放历史），
+ * 也不能让 Web 取消成功删除 DB，否则 agent 已收到并会回复一条用户以为已取消的幽灵消息。
+ * 故 in-flight 淘汰时把 localId 留在 everDispatched，tryCancel 对其仍返回 'submitted'（保守不可取消）。
+ *
+ * 只有当 everDispatched 也超限（单 session dispatch 5000 条仍未落库，现实不可达）才彻底遗忘，
+ * 退回 'not-in-queue' 交 Hub DB 裁决。reset/close 随 session 清空。
+ */
+export const EVER_DISPATCHED_CAP = 5000
+
+/**
  * A mode-aware message queue that stores messages with their modes.
  * Returns consistent batches of messages with the same mode.
  */
@@ -34,6 +54,18 @@ export class MessageQueue<T> {
     private closed = false;
     private onMessageHandler: ((message: string, mode: T) => void) | null = null;
     private onBatchConsumedHandler: ((localIds: string[]) => void) | null = null;
+    /**
+     * 已被 collectBatch/steal 取出（即将喂给 agent）、但 Hub 尚未确认 consumed 的 localId。
+     * 取消竞态防护：此集合内的消息已离开队列，不可取消，否则会产生幽灵消息
+     * （agent 收到并回复一条用户以为已取消的消息）。FIFO 有界（IN_FLIGHT_CAP），防长会话无界增长。
+     */
+    private readonly inFlightLocalIds: Map<string, true> = new Map();
+    /**
+     * 曾 shift 出队列（dispatch 给 agent 或经 pushAfterClear 丢弃）的全部 localId，FIFO 有界
+     * （EVER_DISPATCHED_CAP）。即便 in-flight 近期守卫过期淘汰，此处仍保留——「曾 dispatch」
+     * 的事实永久有效，Hub 未落库时也不可取消（详见 EVER_DISPATCHED_CAP 注释）。
+     */
+    private readonly everDispatchedLocalIds: Map<string, true> = new Map();
     modeHasher: (mode: T) => string;
 
     constructor(
@@ -147,8 +179,11 @@ export class MessageQueue<T> {
             localId
         });
 
-        // 通知丢弃项已「离开队列」（agent 不会再处理它们）
+        // 通知丢弃项已「离开队列」（agent 不会再处理它们）。同步标 in-flight，与 collectBatch/steal
+        // 语义一致：这些 localId 已离开 CLI 队列、即将经 onBatchConsumed 标 consumed 落库，此窗口内
+        // 不可取消（否则与「保留为 consumed」矛盾，且 onBatchConsumed 落库前删除会让消息无故消失）
         if (discardedLocalIds.length > 0) {
+            for (const id of discardedLocalIds) this.markInFlight(id);
             this.onBatchConsumedHandler?.(discardedLocalIds);
         }
 
@@ -207,6 +242,8 @@ export class MessageQueue<T> {
     reset(): void {
         logger.debug(`[MessageQueue] reset() called. Clearing ${this.queue.length} messages`);
         this.queue = [];
+        this.inFlightLocalIds.clear();
+        this.everDispatchedLocalIds.clear();
         this.closed = false;
 
         // Clear waiter without calling it since we're not closing
@@ -260,8 +297,47 @@ export class MessageQueue<T> {
         const idx = this.queue.findIndex(item => item.localId === localId);
         if (idx < 0) return null;
         const [item] = this.queue.splice(idx, 1);
+        // 同步标记 in-flight：消息已离开队列、即将推入 SDK input stream，不可取消
+        this.markInFlight(localId);
         logger.debug(`[MessageQueue] stealByLocalId stole ${localId}, size=${this.queue.length}`);
         return { message: item.message, mode: item.mode };
+    }
+
+    /**
+     * 尝试取消仍排队的 localId 消息。返回：
+     * - 'cancelled'：仍在队列中，已移除（可安全取消）。
+     * - 'submitted'：已 collectBatch/steal（in-flight），或曾 shift 出队列（everDispatched），
+     *   即将/已经喂给 agent，不可取消（否则幽灵消息）。
+     * - 'not-in-queue'：CLI 未知（尚未送达，或 everDispatched 已彻底遗忘），交由 Hub DB 裁决。
+     */
+    tryCancel(localId: string): 'cancelled' | 'submitted' | 'not-in-queue' {
+        if (this.inFlightLocalIds.has(localId)) return 'submitted'
+        if (this.everDispatchedLocalIds.has(localId)) return 'submitted'
+        return this.cancelByLocalId(localId) ? 'cancelled' : 'not-in-queue'
+    }
+
+    /**
+     * 标记 localId 为已 dispatch（in-flight 近期守卫 + everDispatched 永久事实）。
+     * inFlight 与 everDispatched 各自 FIFO 淘汰最旧，但 inFlight 淘汰不影响 everDispatched。
+     */
+    private markInFlight(localId: string): void {
+        // 重新插入到末尾，维持时序
+        this.inFlightLocalIds.delete(localId)
+        this.inFlightLocalIds.set(localId, true)
+        this.everDispatchedLocalIds.delete(localId)
+        this.everDispatchedLocalIds.set(localId, true)
+        // inFlight 近期守卫淘汰（落库后此集合过期无碍，everDispatched 仍兜底）
+        while (this.inFlightLocalIds.size > IN_FLIGHT_CAP) {
+            const oldest = this.inFlightLocalIds.keys().next().value
+            if (oldest === undefined) break
+            this.inFlightLocalIds.delete(oldest)
+        }
+        // everDispatched 最终兜底淘汰（单 session dispatch 5000 条仍未落库，现实不可达）
+        while (this.everDispatchedLocalIds.size > EVER_DISPATCHED_CAP) {
+            const oldest = this.everDispatchedLocalIds.keys().next().value
+            if (oldest === undefined) break
+            this.everDispatchedLocalIds.delete(oldest)
+        }
     }
 
     /**
@@ -328,6 +404,8 @@ export class MessageQueue<T> {
 
         // 通知 Hub：这批消息已被消费
         if (consumedLocalIds.length > 0) {
+            // 同步标记 in-flight（早于 onBatchConsumed 触发的异步 socket），关闭取消竞态窗口
+            for (const id of consumedLocalIds) this.markInFlight(id);
             this.onBatchConsumedHandler?.(consumedLocalIds);
         }
 

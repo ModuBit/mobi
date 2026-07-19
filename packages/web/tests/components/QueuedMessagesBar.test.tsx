@@ -52,15 +52,16 @@ vi.mock('react-i18next', () => ({
 
 import { QueuedMessagesBar } from '@/components/chat/QueuedMessagesBar'
 
-/** 构建排队中的 user 消息（submittedAt=null） */
+/** 构建排队中的 user 消息（queueState='pending'） */
 function queuedMsg(id: string, text: string, createdAt = 1000): DecryptedMessage {
     return {
         id,
         seq: null,
         localId: id,
         submittedAt: null,
+        queueState: 'pending',
         createdAt,
-        content: { role: 'user', content: { type: 'text', text } },
+        content: { role: 'user', content: { type: 'text', text }, meta: { sentFrom: 'webapp' } },
         status: 'queued',
     }
 }

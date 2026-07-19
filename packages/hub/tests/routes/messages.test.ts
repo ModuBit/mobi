@@ -37,26 +37,34 @@ const mockSession: Session = {
 }
 
 /**
- * 构造可配置的 mock SyncEngine，用于测试 DELETE 路由三分支。
- * cancelQueuedMessageReturn / cancelCliQueuedMessageImpl 由用例注入。
+ * 构造可配置的 mock SyncEngine，用于测试 DELETE 路由。
+ * 新语义：CLI 是「是否仍可安全取消」的权威——getMessageSubmitState 非破坏性探测 DB，
+ * 仅当 DB 仍 pending 且 CLI 未 in-flight 时才 cancelQueuedMessage 物理删除。
  */
 function makeMockEngine(opts: {
-    cancelQueuedMessageReturn: { cancelled: boolean; submitted: boolean }
-    cancelCliQueuedMessageImpl?: (sessionId: string, localId: string) => Promise<{ status: 'cancelled' | 'submitted' }>
-}): SyncEngine {
-    return {
+    submitState: { exists: boolean; submitted: boolean }
+    cancelQueuedMessageReturn?: { cancelled: boolean; submitted: boolean }
+    cancelCliQueuedMessageImpl?: (sessionId: string, localId: string) => Promise<{ status: 'cancelled' | 'submitted' | 'not-in-queue' }>
+}): SyncEngine & { deleteCalled: boolean } {
+    const engine = {
+        deleteCalled: false,
         resolveSessionAccess: (_id: string, _ns: string) => ({
             ok: true as const,
             sessionId: 'test-session-1',
             session: mockSession,
         }),
-        cancelQueuedMessage: () => opts.cancelQueuedMessageReturn,
+        getMessageSubmitState: () => opts.submitState,
+        cancelQueuedMessage: () => {
+            engine.deleteCalled = true
+            return opts.cancelQueuedMessageReturn ?? { cancelled: true, submitted: false }
+        },
         cancelCliQueuedMessage: opts.cancelCliQueuedMessageImpl
-            ?? (() => Promise.resolve({ status: 'submitted' })),
-    } as unknown as SyncEngine
+            ?? (() => Promise.resolve({ status: 'submitted' as const })),
+    }
+    return engine as unknown as SyncEngine & { deleteCalled: boolean }
 }
 
-describe('DELETE /api/sessions/:id/messages/:messageId（排队消息两阶段取消）', () => {
+describe('DELETE /api/sessions/:id/messages/:messageId（CLI 权威的取消）', () => {
     let cleanup: () => void
     let app: ReturnType<typeof import('../../src/web/server').createWebApp>
 
@@ -75,86 +83,109 @@ describe('DELETE /api/sessions/:id/messages/:messageId（排队消息两阶段�
         })
     }
 
-    test('DB 已 invoke → 返回 {status:submitted}，不调 CLI RPC', async () => {
+    test('DB 已 consumed → {status:submitted}，不调 CLI、不删 DB', async () => {
         let cliCalled = false
         const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: false, submitted: true },
+            submitState: { exists: true, submitted: true },
             cancelCliQueuedMessageImpl: async () => { cliCalled = true; return { status: 'submitted' } },
         })
 
         const res = await deleteMessage(engine)
-        expect(res.status).toBe(200)
         const body = await res.json() as { status: string }
         expect(body.status).toBe('submitted')
         expect(cliCalled).toBe(false)
+        expect(engine.deleteCalled).toBe(false)
     })
 
-    test('DB cancelled → 调 CLI RPC（best-effort）→ 返回 {status:cancelled}', async () => {
-        let cliCalled = false
+    test('DB pending 且 CLI in-flight → {status:submitted}，不删 DB（防幽灵消息）', async () => {
         const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: true, submitted: false },
-            cancelCliQueuedMessageImpl: async (sid, lid) => {
-                cliCalled = true
-                expect(sid).toBe('test-session-1')
-                expect(lid).toBe('loc-1')
-                return { status: 'cancelled' }
-            },
-        })
-
-        const res = await deleteMessage(engine)
-        expect(res.status).toBe(200)
-        const body = await res.json() as { status: string }
-        expect(body.status).toBe('cancelled')
-        expect(cliCalled).toBe(true)
-    })
-
-    test('DB cancelled 但 CLI 不在线 → 优雅降级，仍返回 {status:cancelled}', async () => {
-        const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: true, submitted: false },
-            cancelCliQueuedMessageImpl: async () => { throw new Error('CLI disconnected') },
-        })
-
-        const res = await deleteMessage(engine)
-        expect(res.status).toBe(200)
-        const body = await res.json() as { status: string }
-        // DB 已删即可，CLI 异常被吞
-        expect(body.status).toBe('cancelled')
-    })
-
-    test('DB 无行 → 问 CLI → CLI 返回 cancelled', async () => {
-        let cliCalled = false
-        const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: false, submitted: false },
-            cancelCliQueuedMessageImpl: async () => { cliCalled = true; return { status: 'cancelled' } },
-        })
-
-        const res = await deleteMessage(engine)
-        expect(res.status).toBe(200)
-        const body = await res.json() as { status: string }
-        expect(body.status).toBe('cancelled')
-        expect(cliCalled).toBe(true)
-    })
-
-    test('DB 无行 → CLI 返回 submitted', async () => {
-        const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: false, submitted: false },
+            submitState: { exists: true, submitted: false },
             cancelCliQueuedMessageImpl: async () => ({ status: 'submitted' }),
         })
 
         const res = await deleteMessage(engine)
-        expect(res.status).toBe(200)
+        const body = await res.json() as { status: string }
+        expect(body.status).toBe('submitted')
+        expect(engine.deleteCalled).toBe(false) // 关键：已 collect 的消息绝不删
+    })
+
+    test('DB pending 且 CLI 仍在队列 → 删 DB → {status:cancelled}', async () => {
+        const engine = makeMockEngine({
+            submitState: { exists: true, submitted: false },
+            cancelCliQueuedMessageImpl: async () => ({ status: 'cancelled' }),
+        })
+
+        const res = await deleteMessage(engine)
+        const body = await res.json() as { status: string }
+        expect(body.status).toBe('cancelled')
+        expect(engine.deleteCalled).toBe(true)
+    })
+
+    test('DB pending 且 CLI not-in-queue（尚未送达）→ 删 DB → {status:cancelled}', async () => {
+        const engine = makeMockEngine({
+            submitState: { exists: true, submitted: false },
+            cancelCliQueuedMessageImpl: async () => ({ status: 'not-in-queue' }),
+        })
+
+        const res = await deleteMessage(engine)
+        const body = await res.json() as { status: string }
+        expect(body.status).toBe('cancelled')
+        expect(engine.deleteCalled).toBe(true)
+    })
+
+    test('DB pending 但 CLI 不可达 → 保守返回 submitted，不删 DB', async () => {
+        const engine = makeMockEngine({
+            submitState: { exists: true, submitted: false },
+            cancelCliQueuedMessageImpl: async () => { throw new Error('CLI disconnected') },
+        })
+
+        const res = await deleteMessage(engine)
+        const body = await res.json() as { status: string }
+        expect(body.status).toBe('submitted')
+        expect(engine.deleteCalled).toBe(false) // CLI 状态未知时不冒险删除
+    })
+
+    test('DB 无行 → 问 CLI → CLI cancelled → {status:cancelled}，不删 DB', async () => {
+        const engine = makeMockEngine({
+            submitState: { exists: false, submitted: false },
+            cancelCliQueuedMessageImpl: async () => ({ status: 'cancelled' }),
+        })
+
+        const res = await deleteMessage(engine)
+        const body = await res.json() as { status: string }
+        expect(body.status).toBe('cancelled')
+        expect(engine.deleteCalled).toBe(false)
+    })
+
+    test('DB 无行 → CLI submitted → {status:submitted}', async () => {
+        const engine = makeMockEngine({
+            submitState: { exists: false, submitted: false },
+            cancelCliQueuedMessageImpl: async () => ({ status: 'submitted' }),
+        })
+
+        const res = await deleteMessage(engine)
         const body = await res.json() as { status: string }
         expect(body.status).toBe('submitted')
     })
 
-    test('DB 无行 → CLI 不可达 → 优雅降级返回 submitted', async () => {
+    test('DB 无行 → CLI not-in-queue → 归并 {status:submitted}（对齐 Web 契约，不泄漏 not-in-queue）', async () => {
         const engine = makeMockEngine({
-            cancelQueuedMessageReturn: { cancelled: false, submitted: false },
+            submitState: { exists: false, submitted: false },
+            cancelCliQueuedMessageImpl: async () => ({ status: 'not-in-queue' }),
+        })
+
+        const res = await deleteMessage(engine)
+        const body = await res.json() as { status: string }
+        expect(body.status).toBe('submitted')
+    })
+
+    test('DB 无行 → CLI 不可达 → 优雅降级 submitted', async () => {
+        const engine = makeMockEngine({
+            submitState: { exists: false, submitted: false },
             cancelCliQueuedMessageImpl: async () => { throw new Error('RPC handler not registered') },
         })
 
         const res = await deleteMessage(engine)
-        expect(res.status).toBe(200)
         const body = await res.json() as { status: string }
         expect(body.status).toBe('submitted')
     })

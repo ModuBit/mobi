@@ -26,6 +26,8 @@ export class MessageService {
             seq: message.seq,
             localId: message.localId,
             submittedAt: message.submittedAt,
+            queueState: message.queueState,
+            positionAt: message.positionAt,
             content: message.content,
             createdAt: message.createdAt,
         }
@@ -60,6 +62,10 @@ export class MessageService {
             messages.push(...unsubmitted)
         }
 
+        // 游标锚点 = 页内最老消息的 seq（不分 queue_state）。
+        // 不跳过 pending：否则整页全 pending 时 oldestSeq=null → hasMore=false，更早历史被锁死。
+        // pending 锚点的 position_at 会在消费时跳变，但游标语义是「翻到此 seq 之前」，漂移只会让
+        // 下一页多含若干已取消息，由 mergeMessages 的 id 去重兜底，不丢消息、不重复。
         let oldestSeq: number | null = null
         for (const message of stored) {
             if (typeof message.seq !== 'number') continue
@@ -130,6 +136,9 @@ export class MessageService {
                     seq: msg.seq,
                     createdAt: msg.createdAt,
                     localId: msg.localId,
+                    submittedAt: msg.submittedAt,
+                    queueState: msg.queueState,
+                    positionAt: msg.positionAt,
                     content: msg.content
                 }
             }
@@ -143,6 +152,9 @@ export class MessageService {
                 id: msg.id,
                 seq: msg.seq,
                 localId: msg.localId,
+                submittedAt: msg.submittedAt,
+                queueState: msg.queueState,
+                positionAt: msg.positionAt,
                 content: msg.content,
                 createdAt: msg.createdAt
             }

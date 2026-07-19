@@ -110,7 +110,9 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return c.json({ ok: true })
     })
 
-    // 取消排队消息（两阶段取消：DB 层 + CLI 内存层）
+    // 取消排队消息。CLI 是「是否仍可安全取消」的权威（in-flight 防幽灵消息）：
+    // CLI 已 collectBatch 的消息（status='submitted'）绝不可删 DB，否则 agent 会回复一条
+    // 用户以为已取消的消息。故 DB 仍 pending 时先问 CLI，再决定是否物理删除。
     app.delete('/sessions/:id/messages/:messageId', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
@@ -125,24 +127,33 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const sessionId = sessionResult.sessionId
         const localId = c.req.param('messageId')
 
-        // 1. DB 层：已 submit？已删？
-        const dbRes = engine.cancelQueuedMessage(sessionId, localId)
-        if (dbRes.submitted) return c.json({ status: 'submitted' })
-        if (dbRes.cancelled) {
-            // 2. DB 已删，但 CLI 内存里可能还缓冲着 → 通知 CLI 也删（竞态兜底）
+        const state = engine.getMessageSubmitState(sessionId, localId)
+        if (!state.exists) {
+            // DB 无此消息：兼容性问一次 CLI（理论上 web 发送必先落库）。
+            // 只放行 'cancelled'；'not-in-queue'/'submitted' 一律归 submitted，
+            // 对齐 Web 契约 {status:'cancelled'|'submitted'}，不泄漏内部状态。
             try {
-                await engine.cancelCliQueuedMessage(sessionId, localId)
-            } catch { /* CLI 不在线或超时：DB 已删即可 */ }
-            return c.json({ status: 'cancelled' })
+                const cliRes = await engine.cancelCliQueuedMessage(sessionId, localId)
+                return c.json({ status: cliRes.status === 'cancelled' ? 'cancelled' : 'submitted' })
+            } catch {
+                return c.json({ status: 'submitted' })
+            }
         }
+        if (state.submitted) return c.json({ status: 'submitted' })
 
-        // 3. DB 里没这条（已被消费/不存在）→ 问 CLI
+        // DB 仍 pending：问 CLI 是否已 in-flight（已 collect，不可取消）
+        let cliStatus: 'cancelled' | 'submitted' | 'not-in-queue'
         try {
             const cliRes = await engine.cancelCliQueuedMessage(sessionId, localId)
-            return c.json({ status: cliRes.status ?? 'submitted' })
+            cliStatus = (cliRes.status ?? 'submitted') as 'cancelled' | 'submitted' | 'not-in-queue'
         } catch {
-            return c.json({ status: 'submitted' })
+            cliStatus = 'submitted' // CLI 不在线：保守不删，避免幽灵
         }
+        if (cliStatus === 'submitted') return c.json({ status: 'submitted' })
+
+        // 'cancelled'（CLI 队列已移除）或 'not-in-queue'（尚未送达 CLI）→ DB 物理删除
+        const dbRes = engine.cancelQueuedMessage(sessionId, localId)
+        return c.json({ status: dbRes.cancelled ? 'cancelled' : 'submitted' })
     })
 
     // steer：把仍排队的消息提前提交给 Claude Code SDK input stream

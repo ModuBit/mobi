@@ -18,6 +18,7 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import type { DecryptedMessage, MessagesResponse } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
+import { flattenMessagesPages } from '@/core/lib/messages'
 
 /**
  * 获取会话消息列表（分页）
@@ -48,13 +49,9 @@ export function useMessages(sessionId: string | null) {
             return lastPage.page.nextBeforeSeq
         },
         select: (data) => {
-            // pages: [最新页, 更旧页, ...]
-            // 每页内部按 seq 升序（从旧到新）
-            // 合并为全局升序: [...更旧页, ...最新页]
-            return data.pages
-                .slice()
-                .reverse()
-                .flatMap((page) => page.messages)
+            // pages: [最新页, 更旧页, ...]，每页内部按 seq 升序（旧→新）。
+            // 反转后用 flattenMessagesPages 跨页合并并按 id 去重（防游标漂移导致重叠页重复）。
+            return flattenMessagesPages(data.pages.slice().reverse())
         },
         enabled: !!sessionId,
         staleTime: Infinity,

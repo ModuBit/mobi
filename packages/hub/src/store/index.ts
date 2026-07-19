@@ -186,6 +186,8 @@ export class Store {
                 parent_tool_use_id TEXT,
                 category TEXT NOT NULL DEFAULT 'persistent',
                 submitted_at INTEGER,
+                queue_state TEXT,
+                position_at INTEGER NOT NULL,
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
@@ -193,9 +195,9 @@ export class Store {
             CREATE INDEX IF NOT EXISTS idx_messages_parent_tool ON messages(parent_tool_use_id);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_local_id ON messages(session_id, local_id) WHERE local_id IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_messages_session_position
-                ON messages(session_id, COALESCE(submitted_at, created_at) DESC, seq DESC);
+                ON messages(session_id, position_at DESC, seq DESC);
             CREATE INDEX IF NOT EXISTS idx_messages_session_unsubmitted_local
-                ON messages(session_id) WHERE submitted_at IS NULL AND local_id IS NOT NULL;
+                ON messages(session_id) WHERE queue_state = 'pending';
 
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

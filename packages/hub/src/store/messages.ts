@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import type { MessageCategory } from '@mobi/shared'
+import { isQueueableUserSubmission, type MessageCategory } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
 import { safeJsonParse } from './json'
@@ -33,6 +33,8 @@ type DbMessageRow = {
     parent_tool_use_id: string | null
     category: string
     submitted_at: number | null
+    queue_state: 'pending' | 'consumed' | null
+    position_at: number
 }
 
 /** 历史查询的 category 过滤条件（只返回 persistent 消息） */
@@ -65,6 +67,8 @@ function toStoredMessage(row: DbMessageRow): StoredMessage {
         parentToolUseId: row.parent_tool_use_id,
         category: row.category,
         submittedAt: row.submitted_at,
+        queueState: row.queue_state,
+        positionAt: row.position_at,
     }
 }
 
@@ -82,15 +86,26 @@ export function addMessage(
             'SELECT * FROM messages WHERE session_id = ? AND local_id = ? LIMIT 1'
         ).get(sessionId, localId) as DbMessageRow | undefined
         if (existing) {
-            // 相同 localId：更新内容（resume 场景下内容可能有增量变化）
+            // 相同 localId：更新内容（resume 重放，内容可能有增量变化）。
+            // queue_state 由新内容重新裁决：仍可排队 → 保留已有状态（已消费不复位为 pending）；
+            // 不再可排队（如 CLI 回显）→ 归入非排队轨道（queue_state=NULL）。
             const parentToolUseId = extractParentToolUseId(content)
+            const stillQueueable = isQueueableUserSubmission(content, existing.local_id)
+            const queueState = stillQueueable
+                ? (existing.queue_state === 'consumed' ? 'consumed' : 'pending')
+                : null
             db.prepare(
-                'UPDATE messages SET content = @content, parent_tool_use_id = @parent_tool_use_id, category = @category WHERE id = @id'
+                `UPDATE messages
+                 SET content = @content, parent_tool_use_id = @parent_tool_use_id,
+                     category = @category, queue_state = @queue_state,
+                     submitted_at = CASE WHEN @queue_state = 'consumed' THEN submitted_at ELSE NULL END
+                 WHERE id = @id`
             ).run({
                 content: JSON.stringify(content),
                 parent_tool_use_id: parentToolUseId,
                 category: category,
-                id: existing.id
+                queue_state: queueState,
+                id: existing.id,
             })
             const updated = db.prepare('SELECT * FROM messages WHERE id = ?').get(existing.id) as DbMessageRow
             return toStoredMessage(updated)
@@ -106,16 +121,17 @@ export function addMessage(
     const json = JSON.stringify(content)
     const isSidechain = extractIsSidechain(content) ? 1 : 0
     const parentToolUseId = extractParentToolUseId(content)
-    const role = (content as { role?: string } | null)?.role
-    // 仅「带 localId 的 user 消息」排队（submittedAt=null，悬浮等采纳）；
-    // agent 消息虽然也带 localId（=其 uuid），但 role≠user，立即定位不悬浮
-    const submittedAt = (role === 'user' && localId) ? null : now
+    // 排队轨道的「唯一写入决策点」：denylist，CLI 来源永不排队。
+    // submitted_at 仅在消费时写入；position_at 初始 = created_at（消费时跳变）。
+    const queueState = isQueueableUserSubmission(content, localId) ? 'pending' : null
 
     db.prepare(`
         INSERT INTO messages (
-            id, session_id, content, created_at, seq, local_id, is_sidechain, parent_tool_use_id, category, submitted_at
+            id, session_id, content, created_at, seq, local_id, is_sidechain,
+            parent_tool_use_id, category, submitted_at, queue_state, position_at
         ) VALUES (
-            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain, @parent_tool_use_id, @category, @submitted_at
+            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain,
+            @parent_tool_use_id, @category, @submitted_at, @queue_state, @position_at
         )
     `).run({
         id,
@@ -127,7 +143,9 @@ export function addMessage(
         is_sidechain: isSidechain,
         parent_tool_use_id: parentToolUseId,
         category: category,
-        submitted_at: submittedAt,
+        submitted_at: null,
+        queue_state: queueState,
+        position_at: now,
     })
 
     const row = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as DbMessageRow | undefined
@@ -149,7 +167,7 @@ export function getMessages(
         return queryByPosition(db, sessionId, limit, undefined, sidechainFilter)
     }
     const anchor = db.prepare(
-        `SELECT COALESCE(submitted_at, created_at) AS p, seq FROM messages WHERE session_id = ? AND seq = ?`
+        `SELECT position_at AS p, seq FROM messages WHERE session_id = ? AND seq = ?`
     ).get(sessionId, beforeSeq) as { p: number; seq: number } | undefined
     if (!anchor) {
         // 游标行已不存在（如排队消息被取消后物理删除）→ 停止翻页返回空，
@@ -159,7 +177,11 @@ export function getMessages(
     return queryByPosition(db, sessionId, limit, anchor, sidechainFilter)
 }
 
-/** 按 position（COALESCE(submitted_at, created_at)）分页查询消息 */
+/**
+ * 按 position_at 分页查询消息。beforeSeq 是页内最老消息的 seq（可为任意 queue_state，
+ * 由 messageService.getMessagesPage 选定）。若该游标为 pending 消息且在翻页间隙被消费，
+ * 其 position_at 跳变会让下一页与当前页重叠——由 Web 端 flattenMessagesPages 跨页 id 去重兜底。
+ */
 function queryByPosition(
     db: Database,
     sessionId: string,
@@ -169,11 +191,10 @@ function queryByPosition(
 ): StoredMessage[] {
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(200, limit)) : 200
     const beforeClause = before
-        ? 'AND (COALESCE(submitted_at, created_at) < @at OR (COALESCE(submitted_at, created_at) = @at AND seq < @seq))'
+        ? 'AND (position_at < @at OR (position_at = @at AND seq < @seq))'
         : ''
     const rows = db.prepare(`
-        SELECT *, COALESCE(submitted_at, created_at) AS position_at
-        FROM messages
+        SELECT * FROM messages
         WHERE session_id = @sessionId AND category = 'persistent' ${sidechainFilter} ${beforeClause}
         ORDER BY position_at DESC, seq DESC
         LIMIT @limit
@@ -186,7 +207,7 @@ function queryByPosition(
     return rows.reverse().map(toStoredMessage)
 }
 
-/** 把 localId 对应的消息 submitted_at 设为给定值；已设过的不动。返回实际更新的 localId。 */
+/** 把 localId 对应的 pending 消息翻为 consumed：写 submitted_at + 跳 position_at。返回实际更新的 localId。 */
 export function markMessagesSubmitted(
     db: Database,
     sessionId: string,
@@ -194,45 +215,45 @@ export function markMessagesSubmitted(
     submittedAt: number
 ): string[] {
     if (localIds.length === 0) return []
-    // 先查哪些还没 submit（候选），再 UPDATE，用 changes 校准
+    // 候选 = 仍 pending 的；first-write-wins：已 consumed 的不动（position_at 已是消费时刻，不能二次跳变）
     const rows = db.prepare(
         `SELECT local_id FROM messages
          WHERE session_id = ? AND local_id IN (${localIds.map(() => '?').join(',')})
-           AND submitted_at IS NULL`
+           AND queue_state = 'pending'`
     ).all(sessionId, ...localIds) as { local_id: string }[]
     const candidates = rows.map(r => r.local_id)
     if (candidates.length === 0) return []
     const result = db.prepare(
-        `UPDATE messages SET submitted_at = ? WHERE session_id = ? AND submitted_at IS NULL AND local_id IN (${candidates.map(() => '?').join(',')})`
-    ).run(submittedAt, sessionId, ...candidates)
-    // 单连接同步执行，SELECT 与 UPDATE 之间无其他写入，changes 必等于 candidates.length。
-    // 直接返回 candidates（之前用 slice(0, changes) 是死代码且语义错误——它假设前 N 个被更新）。
+        `UPDATE messages
+         SET queue_state = 'consumed', submitted_at = ?, position_at = ?
+         WHERE session_id = ? AND queue_state = 'pending' AND local_id IN (${candidates.map(() => '?').join(',')})`
+    ).run(submittedAt, submittedAt, sessionId, ...candidates)
     void result
     return candidates
 }
 
-/** 仍排队（submitted_at IS NULL 且有 local_id）的 user 消息，用于悬浮条钉最新页。 */
+/** 仍排队（queue_state='pending'）的 user 消息，用于悬浮条钉最新页。 */
 export function getUnsubmittedLocalMessages(db: Database, sessionId: string): StoredMessage[] {
     const rows = db.prepare(
-        `SELECT * FROM messages WHERE session_id = ? AND submitted_at IS NULL AND local_id IS NOT NULL ORDER BY seq ASC`
+        `SELECT * FROM messages WHERE session_id = ? AND queue_state = 'pending' ORDER BY seq ASC`
     ).all(sessionId) as DbMessageRow[]
     return rows.map(toStoredMessage)
 }
 
-/** 删除一条仍排队的消息；已 submit 则不删。 */
+/** 删除一条仍排队（pending）的消息；已 consumed 则不删。 */
 export function cancelQueuedMessage(
     db: Database,
     sessionId: string,
     localId: string
 ): { cancelled: boolean; submitted: boolean } {
     const row = db.prepare(
-        `SELECT submitted_at FROM messages WHERE session_id = ? AND local_id = ?`
-    ).get(sessionId, localId) as { submitted_at: number | null } | undefined
+        `SELECT queue_state FROM messages WHERE session_id = ? AND local_id = ?`
+    ).get(sessionId, localId) as { queue_state: 'pending' | 'consumed' | null } | undefined
     if (!row) return { cancelled: false, submitted: false }
-    if (row.submitted_at !== null) return { cancelled: false, submitted: true }
-    // TOCTOU：SELECT 与 DELETE 之间可能被 submit，用 changes 判定真实结果
+    if (row.queue_state === 'consumed') return { cancelled: false, submitted: true }
+    // TOCTOU：SELECT 与 DELETE 之间可能被 markMessagesSubmitted 翻为 consumed，用 changes 判定真实结果
     const result = db.prepare(
-        `DELETE FROM messages WHERE session_id = ? AND local_id = ? AND submitted_at IS NULL`
+        `DELETE FROM messages WHERE session_id = ? AND local_id = ? AND queue_state = 'pending'`
     ).run(sessionId, localId)
     return { cancelled: result.changes > 0, submitted: result.changes === 0 }
 }
@@ -244,12 +265,21 @@ export function getMessageSubmitState(
     localId: string
 ): { exists: boolean, submitted: boolean } {
     const row = db.prepare(
-        `SELECT submitted_at FROM messages WHERE session_id = ? AND local_id = ?`
-    ).get(sessionId, localId) as { submitted_at: number | null } | undefined
+        `SELECT queue_state FROM messages WHERE session_id = ? AND local_id = ?`
+    ).get(sessionId, localId) as { queue_state: 'pending' | 'consumed' | null } | undefined
     if (!row) return { exists: false, submitted: false }
-    return { exists: true, submitted: row.submitted_at !== null }
+    return { exists: true, submitted: row.queue_state === 'consumed' }
 }
 
+/**
+ * 按 seq 增量查询（seq > afterSeq）。
+ *
+ * 与 getMessages 的 position_at 排序**有意不同**：本函数服务 CLI REST 代理
+ * `/cli/sessions/:id/messages` 的「拉取某 seq 之后全部消息」回填场景，需要稳定、
+ * 单调、不受排队消费影响的捕获点，故按 seq；而 getMessages 服务 Web 分页，需要
+ * 排队感知（运行中消费的消息排在 turn 之后），故按 position_at。两者面向不同消费者，
+ * 不要强行统一（见 P6）。
+ */
 export function getMessagesAfter(
     db: Database,
     sessionId: string,

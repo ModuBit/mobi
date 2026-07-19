@@ -525,3 +525,87 @@ describe('MessageQueue', () => {
         expect(queue.size()).toBe(1);
     });
 });
+describe('MessageQueue in-flight（取消/steer 竞态防护）', () => {
+    it('collectBatch 后 localId 标记 in-flight，tryCancel 返回 submitted', async () => {
+        const queue = new MessageQueue<string>(mode => mode);
+        queue.push('msg', 'local', 'loc-1');
+        const r = await queue.waitForMessagesAndGetAsString();
+        expect(r?.localIds).toEqual(['loc-1']);
+        // 已 collectBatch（即将喂给 agent）→ 不可取消
+        expect(queue.tryCancel('loc-1')).toBe('submitted');
+    });
+
+    it('stealByLocalId 后标记 in-flight，tryCancel 返回 submitted', () => {
+        const queue = new MessageQueue<string>(mode => mode);
+        queue.push('msg', 'local', 'loc-1');
+        expect(queue.stealByLocalId('loc-1')).not.toBeNull();
+        expect(queue.tryCancel('loc-1')).toBe('submitted');
+    });
+
+    it('仍在队列（未 collect）→ tryCancel 移除并返回 cancelled', () => {
+        const queue = new MessageQueue<string>(mode => mode);
+        queue.push('msg', 'local', 'loc-1');
+        expect(queue.tryCancel('loc-1')).toBe('cancelled');
+        expect(queue.size()).toBe(0);
+    });
+
+    it('未知 localId（尚未送达 CLI）→ not-in-queue（交由 Hub DB 裁决）', () => {
+        const queue = new MessageQueue<string>(mode => mode);
+        expect(queue.tryCancel('never')).toBe('not-in-queue');
+    });
+
+    it('reset 清空 in-flight 集合', async () => {
+        const queue = new MessageQueue<string>(mode => mode);
+        queue.push('msg', 'local', 'loc-1');
+        await queue.waitForMessagesAndGetAsString();
+        expect(queue.tryCancel('loc-1')).toBe('submitted');
+        queue.reset();
+        expect(queue.tryCancel('loc-1')).toBe('not-in-queue');
+    });
+});
+
+describe('MessageQueue in-flight 有界化', () => {
+    it('inFlight 超过 IN_FLIGHT_CAP 淘汰最旧，但 everDispatched 仍记其曾 shift → tryCancel 保守 submitted', async () => {
+        const mod = await import('@/utils/MessageQueue');
+        const cap = mod.IN_FLIGHT_CAP;
+        const queue = new MessageQueue<string>(mode => mode);
+        // 推入 cap+5 条同模式消息，一次 collectBatch 全部消费 → 全标 in-flight，inFlight 超限淘汰最旧
+        for (let i = 0; i < cap + 5; i++) {
+            queue.push(`m${i}`, 'local', `loc-${i}`);
+        }
+        await queue.waitForMessagesAndGetAsString();
+        // inFlight 已淘汰 loc-0，但其曾 shift 出队列（喂给 agent）→ 保守不可取消（防幽灵消息）
+        expect(queue.tryCancel('loc-0')).toBe('submitted');
+        // 最新条目仍在 in-flight
+        expect(queue.tryCancel(`loc-${cap + 4}`)).toBe('submitted');
+    });
+
+    it('everDispatched 超过 EVER_DISPATCHED_CAP 后才彻底遗忘 → not-in-queue（最终兜底）', async () => {
+        const mod = await import('@/utils/MessageQueue');
+        const cap = mod.EVER_DISPATCHED_CAP;
+        const queue = new MessageQueue<string>(mode => mode);
+        // 用反射塞满 everDispatched（loc-0..loc-(cap-1)），避免 cap 次真实消费拖慢测试
+        const dispatched = (queue as unknown as { everDispatchedLocalIds: Map<string, true> }).everDispatchedLocalIds;
+        for (let i = 0; i < cap; i++) dispatched.set(`loc-${i}`, true);
+        // 再消费一条 → markInFlight 使 everDispatched size=cap+1 → 淘汰最旧 loc-0
+        queue.push('new', 'local', 'loc-new');
+        await queue.waitForMessagesAndGetAsString();
+        expect(queue.tryCancel('loc-0')).toBe('not-in-queue');
+        // loc-new 与其他仍在 everDispatched → submitted
+        expect(queue.tryCancel('loc-new')).toBe('submitted');
+    });
+});
+
+describe('MessageQueue pushAfterClear 的丢弃项亦标 in-flight', () => {
+    it('pushAndClear 丢弃的 localId 标 in-flight，tryCancel 返回 submitted（与 collectBatch 语义一致）', () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        // 先放两条带 localId 的排队消息
+        queue.push('a', { m: '1' }, 'loc-a');
+        queue.push('b', { m: '1' }, 'loc-b');
+        // pushAndClear 清空它们、推入 /compact
+        queue.pushAndClear('compact', { m: '1' }, 'loc-compact');
+        // 被丢弃的 loc-a/loc-b 已「离开队列」（即将经 onBatchConsumed 标 consumed）→ 不可取消
+        expect(queue.tryCancel('loc-a')).toBe('submitted');
+        expect(queue.tryCancel('loc-b')).toBe('submitted');
+    });
+});

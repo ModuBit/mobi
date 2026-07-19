@@ -36,6 +36,7 @@ function makeMsg(id: string, localId: string | null, seq: number): StoredMessage
         id, sessionId: 's1', content: {}, createdAt: seq, seq,
         localId, isSidechain: false, parentToolUseId: null,
         category: 'persistent', submittedAt: null,
+        queueState: 'pending', positionAt: seq,
     }
 }
 

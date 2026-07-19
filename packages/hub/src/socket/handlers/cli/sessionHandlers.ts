@@ -284,6 +284,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     seq: msg.seq,
                     createdAt: msg.createdAt,
                     localId: msg.localId,
+                    submittedAt: msg.submittedAt,
+                    queueState: msg.queueState,
+                    positionAt: msg.positionAt,
                     content: msg.content
                 }
             }
@@ -297,6 +300,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 id: msg.id,
                 seq: msg.seq,
                 localId: msg.localId,
+                submittedAt: msg.submittedAt,
+                queueState: msg.queueState,
+                positionAt: msg.positionAt,
                 content: msg.content,
                 createdAt: msg.createdAt
             }

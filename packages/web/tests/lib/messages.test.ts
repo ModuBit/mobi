@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isUserMessage, isQueuedInMobi, mergeMessages, makeClientSideId } from '@/core/lib/messages'
+import { isUserMessage, isQueuedInMobi, mergeMessages, makeClientSideId, flattenMessagesPages } from '@/core/lib/messages'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /** 创建 mock DecryptedMessage */
@@ -30,7 +30,9 @@ function createMessage(overrides: Partial<DecryptedMessage> = {}): DecryptedMess
         seq: 1,
         localId: null,
         createdAt: 1000,
-        content: { role: 'user', content: 'hello' },
+        // 默认一条排队消息（queueState=pending）；非排队用例显式覆盖为 null
+        queueState: 'pending',
+        content: { role: 'user', content: 'hello', meta: { sentFrom: 'webapp' } },
         ...overrides,
     }
 }
@@ -73,16 +75,19 @@ describe('isUserMessage', () => {
 })
 
 describe('isQueuedInMobi', () => {
-    it('user 消息 + submittedAt 未设 = 排队中', () => {
+    // 新模型：isQueuedInMobi 只读 queueState==='pending'（Hub 写入裁决的单一结果）。
+    // createMessage 默认 queueState='pending' 表示一条排队消息。
+    it('queueState=pending = 排队中', () => {
         expect(isQueuedInMobi(createMessage())).toBe(true)
     })
 
-    it('submittedAt 非 null = 不排队', () => {
-        expect(isQueuedInMobi(createMessage({ submittedAt: 1000 }))).toBe(false)
+    it('queueState=consumed = 不排队', () => {
+        expect(isQueuedInMobi(createMessage({ queueState: 'consumed', submittedAt: 1000 }))).toBe(false)
     })
 
-    it('submittedAt 为 null = 排队中', () => {
-        expect(isQueuedInMobi(createMessage({ submittedAt: null }))).toBe(true)
+    it('queueState 缺失（非排队轨道消息）= 不排队', () => {
+        expect(isQueuedInMobi(createMessage({ queueState: null }))).toBe(false)
+        expect(isQueuedInMobi(createMessage({ queueState: undefined }))).toBe(false)
     })
 
     it('failed 状态 = 不排队', () => {
@@ -90,21 +95,28 @@ describe('isQueuedInMobi', () => {
     })
 
     it('sending 状态（非 running 乐观消息）= 不排队，作为普通气泡', () => {
-        // submittedAt=null 但在途，不该进悬浮条闪烁
-        expect(isQueuedInMobi(createMessage({ submittedAt: null, status: 'sending' }))).toBe(false)
+        expect(isQueuedInMobi(createMessage({ status: 'sending', queueState: null }))).toBe(false)
     })
 
-    it('queued 状态（running 乐观消息）= 排队中', () => {
-        expect(isQueuedInMobi(createMessage({ submittedAt: null, status: 'queued' }))).toBe(true)
-    })
-
-    it('status 未设（刷新后服务端未消费消息）= 排队中', () => {
-        expect(isQueuedInMobi(createMessage({ submittedAt: null }))).toBe(true)
-    })
-
-    it('agent 消息 = 不排队', () => {
+    it('agent 消息（queueState 非 pending）= 不排队', () => {
         const msg = createMessage({
+            queueState: null,
             content: { role: 'agent', content: { type: 'text', text: 'hi' } },
+        })
+        expect(isQueuedInMobi(msg)).toBe(false)
+    })
+
+    it('CLI 回显：Hub 裁决为非排队轨道（queueState=null）→ 不排队', () => {
+        // local-command-stdout / compact summary 等 CLI 回显，Hub addMessage 用 denylist 判定
+        // 不进排队轨道，Web 只读 queueState，与来源无关
+        const msg = createMessage({
+            queueState: null,
+            submittedAt: null,
+            content: {
+                role: 'user',
+                content: { type: 'text', text: '<local-command-stdout>Set model to sonnet</local-command-stdout>' },
+                meta: { sentFrom: 'cli' },
+            },
         })
         expect(isQueuedInMobi(msg)).toBe(false)
     })
@@ -297,5 +309,28 @@ describe('makeClientSideId', () => {
         const id1 = makeClientSideId('a')
         const id2 = makeClientSideId('a')
         expect(id1).not.toBe(id2)
+    })
+})
+
+describe('flattenMessagesPages', () => {
+    it('按页顺序合并（旧→新）', () => {
+        const pages = [
+            { messages: [createMessage({ id: 'a', seq: 3 })] },   // 最新页
+            { messages: [createMessage({ id: 'b', seq: 2 })] },   // 更旧页
+        ]
+        // useMessages 调用前会 reverse（旧→新）；此处直接验证去重逻辑
+        const result = flattenMessagesPages(pages.slice().reverse())
+        expect(result.map(m => m.id)).toEqual(['b', 'a'])
+    })
+
+    it('跨页 id 去重：游标漂移导致重叠页时不重复', () => {
+        // 场景：下一页与当前页重叠（含同 id 消息），mergeMessages 不覆盖分页路径
+        const pages = [
+            { messages: [createMessage({ id: 'old', seq: 1 })] },
+            { messages: [createMessage({ id: 'dup', seq: 2 }), createMessage({ id: 'mid', seq: 3 })] },
+            { messages: [createMessage({ id: 'dup', seq: 2 }), createMessage({ id: 'new', seq: 4 })] },
+        ]
+        const result = flattenMessagesPages(pages)
+        expect(result.map(m => m.id)).toEqual(['old', 'dup', 'mid', 'new'])
     })
 })

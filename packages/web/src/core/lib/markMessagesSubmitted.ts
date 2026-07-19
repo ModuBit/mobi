@@ -17,8 +17,8 @@
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /**
- * 把 localId 命中的消息 submittedAt 翻成给定时间戳（first-write-wins）。
- * 调用方拿到 messages 数组、用 setQueryData 写回。
+ * 把 localId 命中的排队消息翻为 consumed（queueState='consumed' + submittedAt + status='sent'）。
+ * first-write-wins：已是 consumed 的不动。调用方拿到 messages 数组、用 setQueryData 写回。
  */
 export function markMessagesSubmitted(
     messages: DecryptedMessage[],
@@ -27,8 +27,8 @@ export function markMessagesSubmitted(
 ): DecryptedMessage[] {
     const set = new Set(localIds)
     return messages.map(m =>
-        m.localId && set.has(m.localId) && m.submittedAt == null
-            ? { ...m, submittedAt, status: 'sent' as const }
+        m.localId && set.has(m.localId) && m.queueState !== 'consumed'
+            ? { ...m, queueState: 'consumed' as const, submittedAt, status: 'sent' as const }
             : m,
     )
 }

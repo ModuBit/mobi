@@ -18,7 +18,7 @@ import { describe, it, expect } from 'vitest'
 import { markMessagesSubmitted } from '@/core/lib/markMessagesSubmitted'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
-/** 创建 mock DecryptedMessage */
+/** 创建 mock DecryptedMessage。submittedAt 非空 ⇒ 已 consumed（queueState='consumed'） */
 function m(
     localId: string | null,
     submittedAt: number | null | undefined,
@@ -31,7 +31,8 @@ function m(
         createdAt: 0,
         content: { role: 'user', content: 'hello' },
         submittedAt,
-        status: 'queued',
+        queueState: submittedAt != null ? 'consumed' : 'pending',
+        status: submittedAt != null ? 'sent' : 'queued',
         ...overrides,
     }
 }
@@ -52,7 +53,8 @@ describe('markMessagesSubmitted', () => {
     it('已 invoke 的不动（first-write-wins）', () => {
         const out = markMessagesSubmitted([m('a', 100)], ['a'], 999)
         expect(out[0].submittedAt).toBe(100)
-        expect(out[0].status).toBe('queued')
+        expect(out[0].queueState).toBe('consumed')
+        expect(out[0].status).toBe('sent')
     })
 
     it('localId 为 null 的消息不受影响', () => {

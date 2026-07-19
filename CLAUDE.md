@@ -17,6 +17,7 @@ Mobi — Claude Code 远程控制工具，通过浏览器远程与本地 Claude 
 
 - **先看事实再推理**: 分析问题前先看代码和日志，禁止凭想象构造前提再推理。不确定就说不确定，不要编造"分析"
 - **架构优先**: 接手任务时先查阅 `docs/architecture/` 中相关模块的架构文档，再深入代码细节
+- **改前先定位根因**: 修复问题先找到根本原因，禁止为绕过表象草草打补丁、往条件里堆逻辑。站在更大视野设计改动，兼顾鲁棒性、可读性、可扩展性——先想清楚概念该由谁承载、放在哪一层，再动手。判断散落成内联条件时抽成命名良好、带文档的函数，让"为什么"集中在一处而非分散复制
 - **运行时**: bun（不是 npm/node）
 - **TypeScript**: 严格模式
 - **注释**: 中文
@@ -79,3 +80,17 @@ Stop hook 会在会话结束时自动检测是否有结构性代码变更（新�
 
 - **禁止**在提交信息中包含 `Co-Authored-By` 信息
 - **禁止**提交 `.gitignore` 排除的文件：禁止 `git add -f`，禁止 staging 任何被 gitignore 的路径（如 `docs/superpowers/`、`.superpowers/`）。子代理派遣时必须包含此约束，子代理 commit 后必须验证 `git show --stat`
+
+## Agent skills
+
+### Issue tracker
+
+Issues 以本地 markdown 形式追踪：高层 backlog 在 `docs/pending.md`，特性级 spec/ticket 在 `.scratch/<feature-slug>/`。详见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用五个标准 triage 标签（needs-triage / needs-info / ready-for-agent / ready-for-human / wontfix）。详见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+multi-context 布局：根 `CONTEXT-MAP.md` 指向各包的 `CONTEXT.md`。详见 `docs/agents/domain.md`。

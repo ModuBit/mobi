@@ -55,8 +55,12 @@ export type StoredMessage = {
     isSidechain: boolean
     parentToolUseId: string | null
     category: string  // 'discard' | 'ephemeral' | 'persistent'
-    /** 被 agent 处理的时刻；null = 仍在排队 */
+    /** 被 agent 消费的时刻；仅排队轨道消息消费后写入，否则 null */
     submittedAt: number | null
+    /** 排队生命周期：null（非排队轨道）/ 'pending'（等消费）/ 'consumed'（已消费） */
+    queueState: 'pending' | 'consumed' | null
+    /** 排序锚点；排队消息消费时跳到消费时刻 */
+    positionAt: number
 }
 
 export type StoredUser = {
