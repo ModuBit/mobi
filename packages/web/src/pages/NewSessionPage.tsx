@@ -40,7 +40,7 @@ import { AttachmentList } from '@/components/composer/AttachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/components/composer/ResponsiveActionBar'
 import { EnvironmentBar, extractProjectName } from '@/components/composer/EnvironmentBar'
 import { useMobiApi } from '@/core/data/api/client'
-import { type AgentType, type SessionType, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
+import { type AgentType, type SessionType, CLAUDE_MODEL_FALLBACK, AGENT_OPTIONS } from '@/domain/session/types'
 import {
     loadPreferredAgent,
     savePreferredAgent,
@@ -67,11 +67,6 @@ import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
 const { useToken } = antTheme
 
 /* ========== 常量 ========== */
-
-const AGENT_OPTIONS: { value: AgentType; label: string; disabled?: boolean }[] = [
-    { value: 'claude', label: 'Claude Code' },
-    { value: 'codex', label: 'Codex', disabled: true },
-]
 
 const SESSION_TYPE_OPTIONS: { value: SessionType; label: string }[] = [
     { value: 'simple', label: '普通' },
@@ -275,6 +270,14 @@ export function NewSessionPage() {
 
     // 偏好配置（初始化从 localStorage 加载）
     const [agent, setAgent] = useState<AgentType>(() => loadPreferredAgent())
+    // 只有一个可选 Agent 时默认选中并隐藏选择器（避免停留在不可选值上）
+    const selectableAgents = useMemo(() => AGENT_OPTIONS.filter(a => !a.disabled), [])
+    const showAgentSelect = selectableAgents.length > 1
+    useEffect(() => {
+        if (selectableAgents.length === 1 && agent !== selectableAgents[0].value) {
+            setAgent(selectableAgents[0].value)
+        }
+    }, [selectableAgents, agent])
     const [model, setModel] = useState(() => loadPreferredModel())
     const [effort, setEffort] = useState<EffortLevel>(() => loadPreferredEffort())
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => loadPreferredPermissionMode())
@@ -802,8 +805,8 @@ export function NewSessionPage() {
 
     // SubBar（Sender 下方抽屉）：次要配置项
     const subBarItems: ActionItem[] = useMemo(() => [
-        // Agent 选择（Codex disabled）
-        {
+        // Agent 选择（仅当存在多个可选 Agent 时才展示）
+        showAgentSelect && {
             key: 'agent',
             label: 'Agent',
             render: () => (
@@ -831,7 +834,7 @@ export function NewSessionPage() {
                 />
             ),
         },
-    ], [token, t, inputDisabled, agent, sessionType])
+    ].filter(Boolean) as ActionItem[], [token, t, inputDisabled, agent, sessionType, showAgentSelect])
 
     // ============ Sender header ============
     const headerNodes = [

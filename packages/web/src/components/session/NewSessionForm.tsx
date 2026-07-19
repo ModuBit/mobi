@@ -40,7 +40,7 @@ import { useSpawnSession } from '@/core/data/hooks/mutations/useSpawnSession'
 import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirectoryListing'
 import { useRecentPaths } from './useRecentPaths'
 import type { AgentType, SessionType } from '@/domain/session/types'
-import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
+import { AGENT_OPTIONS, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { getEffortOptions, getPermissionModeTone, type EffortLevel, type PermissionMode } from '@mobi/shared'
 import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from '@/components/composer/permissionModeOption'
 import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
@@ -121,6 +121,15 @@ export function NewSession(props: NewSessionProps) {
 
     // Agent 变化时加载该 agent 的模型偏好
     useEffect(() => { setModel(loadPreferredModel()) }, [agent])
+
+    // 只有一个可选 Agent 时默认选中并隐藏选择器（避免停留在不可选值上）
+    const selectableAgents = useMemo(() => AGENT_OPTIONS.filter((a) => !a.disabled), [])
+    const showAgentSelect = selectableAgents.length > 1
+    useEffect(() => {
+        if (selectableAgents.length === 1 && agent !== selectableAgents[0].value) {
+            setAgent(selectableAgents[0].value)
+        }
+    }, [selectableAgents, agent])
 
     // 保存偏好设置
     useEffect(() => { savePreferredAgent(agent) }, [agent])
@@ -359,18 +368,25 @@ export function NewSession(props: NewSessionProps) {
                 )}
             </Form.Item>
 
-            <Form.Item label={t('newSession.agent')}>
-                <Radio.Group
-                    value={agent}
-                    onChange={(e) => setAgent(e.target.value)}
-                    disabled={isFormDisabled}
-                >
-                    <Radio value="claude">Claude</Radio>
-                    <Tooltip title={t('newSession.codexComingSoon')}>
-                        <Radio value="codex" disabled>Codex</Radio>
-                    </Tooltip>
-                </Radio.Group>
-            </Form.Item>
+            {showAgentSelect && (
+                <Form.Item label={t('newSession.agent')}>
+                    <Radio.Group
+                        value={agent}
+                        onChange={(e) => setAgent(e.target.value)}
+                        disabled={isFormDisabled}
+                    >
+                        {AGENT_OPTIONS.map((opt) =>
+                            opt.disabled ? (
+                                <Tooltip key={opt.value} title={opt.disabledTooltipKey ? t(opt.disabledTooltipKey) : ''}>
+                                    <Radio value={opt.value} disabled>{opt.label}</Radio>
+                                </Tooltip>
+                            ) : (
+                                <Radio key={opt.value} value={opt.value}>{opt.label}</Radio>
+                            ),
+                        )}
+                    </Radio.Group>
+                </Form.Item>
+            )}
 
             {agent === 'claude' && (
                 <Form.Item label={<span>{t('newSession.model')} <Text type="secondary" style={{ fontWeight: 400 }}>({t('newSession.modelOptional')})</Text></span>}>
