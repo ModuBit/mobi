@@ -136,6 +136,8 @@
         },
         "copy": "Copy",
         "copied": "Copied",
+        "expand": "Expand",
+        "collapse": "Collapse",
         "tool": {
             "input": "Input:",
             "output": "Output:",

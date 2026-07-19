@@ -79,6 +79,7 @@ const SMOOTH_FOLLOW_INSTANT_THRESHOLD = 80
 const SMOOTH_FOLLOW_SNAP_THRESHOLD = 300
 
 import { BUBBLE_ROLES } from './bubbleRoles'
+import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
 
 export { BUBBLE_ROLES }
 
@@ -685,6 +686,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto' }}>
             {contextHolder}
             <Global styles={bubbleCopyStyles} />
+            <Global styles={collapsibleUserMessageStyles} />
             <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (
                     <ChatWelcome sessionId={sessionId} />

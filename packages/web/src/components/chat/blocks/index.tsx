@@ -24,6 +24,7 @@ import { CliOutputBlock } from './CliOutputBlock'
 import { AgentEventBlock } from './AgentEventBlock'
 import { ToolCallRenderer } from './ToolCallBlock'
 import { CompactSummaryBlockComponent } from './CompactSummaryBlock'
+import { CollapsibleUserMessage } from '../CollapsibleUserMessage'
 
 /** 渲染 chat block 的上下文 */
 export type ChatBlockContext = {
@@ -45,7 +46,11 @@ export type ChatBlockContext = {
 export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.ReactNode {
     switch (block.kind) {
         case 'user-text':
-            return <TextBlock text={block.text} isSynthetic={block.isSynthetic} enableSlashCommand enableMention />
+            return (
+                <CollapsibleUserMessage text={block.text}>
+                    <TextBlock text={block.text} isSynthetic={block.isSynthetic} enableSlashCommand enableMention />
+                </CollapsibleUserMessage>
+            )
         case 'agent-text':
             return <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} />
         case 'agent-reasoning':
