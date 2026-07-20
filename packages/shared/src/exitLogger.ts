@@ -30,6 +30,7 @@
 
 import {
   appendFileSync,
+  writeFileSync,
   mkdirSync,
   existsSync,
   statSync,
@@ -383,16 +384,19 @@ function writeHeapSnapshotBestEffort(processType: ProcessType, logsDir: string):
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
   const target = join(logsDir, DUMPS_DIRNAME, `${ts}-${processType}-pid-${process.pid}.heapsnapshot`)
   try {
-    // 优先 Bun.dumpHeap，回退 node 的 process.dumpHeap
-    const anyBun = (globalThis as unknown as { Bun?: { dumpHeap?: (path: string) => void } }).Bun
-    if (anyBun?.dumpHeap) {
-      anyBun.dumpHeap(target)
+    // Bun: generateHeapSnapshot 返回 snapshot 对象，序列化后写文件
+    const anyBun = (globalThis as unknown as { Bun?: { generateHeapSnapshot?: () => unknown } }).Bun
+    if (anyBun?.generateHeapSnapshot) {
+      const snapshot = anyBun.generateHeapSnapshot()
+      writeFileSync(target, JSON.stringify(snapshot), 'utf-8')
       return
     }
+    // Node 兜底：process.dumpHeap 直接写文件（v8）
     const anyProcess = process as unknown as { dumpHeap?: (path: string) => void }
     if (anyProcess.dumpHeap) {
       anyProcess.dumpHeap(target)
     }
+    // 若两者都没有（如受限运行时），静默跳过——best-effort
   } catch {
     // best-effort：写失败不影响退出
   }
