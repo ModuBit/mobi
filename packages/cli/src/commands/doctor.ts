@@ -17,6 +17,8 @@
 import chalk from 'chalk'
 import { killRunawayMobiProcesses } from '@/runner/doctor'
 import { runDoctorCommand } from '@/ui/doctor'
+import { printExitReport } from '@/ui/exitLogReport'
+import type { ProcessType } from '@mobi/shared'
 import type { CommandDefinition } from './types'
 
 export const doctorCommand: CommandDefinition = {
@@ -33,6 +35,9 @@ ${chalk.bold('Usage:')}
   mobi doctor runner          Diagnose runner issues
   mobi doctor clean           Clean up all runaway processes
   mobi doctor clean [profile] Clean up processes for a specific profile
+  mobi doctor exits           Show recent process exit records
+  mobi doctor exits --process hub|runner|cli
+  mobi doctor exits --limit N
 `)
             return
         }
@@ -56,6 +61,17 @@ ${chalk.bold('Usage:')}
             }
             process.exit(0)
         }
+
+        if (commandArgs[0] === 'exits') {
+            // mobi doctor exits [--process hub|runner|cli] [--limit N]
+            const processIdx = commandArgs.indexOf('--process')
+            const processFilter = processIdx >= 0 ? commandArgs[processIdx + 1] as ProcessType : undefined
+            const limitIdx = commandArgs.indexOf('--limit')
+            const limit = limitIdx >= 0 ? Number(commandArgs[limitIdx + 1]) : undefined
+            printExitReport({ limit, processFilter })
+            return
+        }
+
         await runDoctorCommand(commandArgs[0])
     }
 }
