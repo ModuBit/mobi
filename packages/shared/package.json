@@ -12,7 +12,8 @@
         "./messages": "./src/messages.ts",
         "./profile": "./src/profile.ts",
         "./pathSecurity": "./src/pathSecurity.ts",
-        "./upload": "./src/upload.ts"
+        "./upload": "./src/upload.ts",
+        "./exitLogger": "./src/exitLogger.ts"
     },
     "scripts": {
         "test": "vitest run",
