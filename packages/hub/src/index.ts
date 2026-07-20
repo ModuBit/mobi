@@ -23,6 +23,10 @@
  * - SSE updates for the web UI
  */
 
+import { installExitLogger, installExitHandlers, resolveMobiLogsDir, resolveMobiHome, type ExitLogger } from '@mobi/shared'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { isProcessAlive } from './utils/process'
 import { createConfiguration, type ConfigSource } from './configuration'
 import { writeHubState, clearHubState } from './config/hubState'
 import { Store } from './store'
@@ -75,7 +79,30 @@ let sseManager: SSEManager | null = null
 let visibilityTracker: VisibilityTracker | null = null
 let notificationHub: NotificationHub | null = null
 
+/**
+ * 启动检测兜底：读 hub.state.json，若上次实例 pid 已死则补记 killed-externally。
+ * 覆盖 SIGKILL / OOM / 段错误等 JS 运行时来不及写记录的场景。
+ */
+function detectPreviousHubCrash(logger: ExitLogger): void {
+    const stateFile = join(resolveMobiHome(), 'hub.state.json')
+    if (!existsSync(stateFile)) return
+    try {
+        const prev = JSON.parse(readFileSync(stateFile, 'utf-8')) as { pid?: number; startTime?: string }
+        if (typeof prev.pid === 'number' && prev.pid !== process.pid && !isProcessAlive(prev.pid)) {
+            logger.recordExternalKill(prev.pid, prev.startTime)
+        }
+    } catch {
+        // state 文件损坏，忽略
+    }
+}
+
 async function main() {
+    // —— 退出日志：最早挂载，确保后续配置加载失败也能捕获 ——
+    const hubExitLogger = installExitLogger('hub', { logsDir: resolveMobiLogsDir() })
+    installExitHandlers('hub', hubExitLogger)
+    // —— OOM/SIGKILL 兜底：检测上次 hub 实例是否异常消失 ——
+    detectPreviousHubCrash(hubExitLogger)
+
     console.log('Mobi Hub starting...')
 
     const config = await createConfiguration()
