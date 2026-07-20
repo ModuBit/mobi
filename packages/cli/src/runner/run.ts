@@ -27,7 +27,7 @@ import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnMobiCli } from '@/utils/spawnMobiCli';
 import { writeRunnerState, RunnerLocallyPersistedState, readRunnerState, acquireRunnerLock, releaseRunnerLock } from '@/persistence';
 import { isProcessAlive, isWindows, killProcess, killProcessByChildProcess } from '@/utils/process';
-import { installExitLogger, resolveMobiLogsDir } from '@mobi/shared';
+import { installExitLogger, resolveMobiLogsDir } from '@mobi/shared/exitLogger';
 import { withRetry } from '@/utils/time';
 import { isRetryableConnectionError } from '@/utils/errorUtils';
 

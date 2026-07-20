@@ -27,7 +27,7 @@ import { configuration } from '@/configuration'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { readRunnerState } from '@/persistence'
-import type { RingBufferReader } from '@mobi/shared'
+import type { RingBufferReader } from '@mobi/shared/exitLogger'
 
 /**
  * Consistent date/time formatting functions

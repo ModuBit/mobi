@@ -23,7 +23,7 @@
  * - SSE updates for the web UI
  */
 
-import { installExitLogger, installExitHandlers, resolveMobiLogsDir, resolveMobiHome, isProcessAlive, type ExitLogger } from '@mobi/shared'
+import { installExitLogger, installExitHandlers, resolveMobiLogsDir, resolveMobiHome, isProcessAlive, type ExitLogger } from '@mobi/shared/exitLogger'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createConfiguration, type ConfigSource } from './configuration'

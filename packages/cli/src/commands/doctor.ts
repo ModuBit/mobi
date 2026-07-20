@@ -18,7 +18,7 @@ import chalk from 'chalk'
 import { killRunawayMobiProcesses } from '@/runner/doctor'
 import { runDoctorCommand } from '@/ui/doctor'
 import { printExitReport } from '@/ui/exitLogReport'
-import type { ProcessType } from '@mobi/shared'
+import type { ProcessType } from '@mobi/shared/exitLogger'
 import type { CommandDefinition } from './types'
 
 export const doctorCommand: CommandDefinition = {

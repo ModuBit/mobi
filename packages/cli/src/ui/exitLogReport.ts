@@ -15,7 +15,7 @@
  */
 
 import chalk from 'chalk'
-import { readExitRecords, resolveMobiLogsDir, type ProcessType, type ExitRecord } from '@mobi/shared'
+import { readExitRecords, resolveMobiLogsDir, type ProcessType, type ExitRecord } from '@mobi/shared/exitLogger'
 
 export interface ExitReportOptions {
     /** 打印最近 N 条，默认 20 */
