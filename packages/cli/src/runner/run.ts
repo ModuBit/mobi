@@ -27,6 +27,7 @@ import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnMobiCli } from '@/utils/spawnMobiCli';
 import { writeRunnerState, RunnerLocallyPersistedState, readRunnerState, acquireRunnerLock, releaseRunnerLock } from '@/persistence';
 import { isProcessAlive, isWindows, killProcess, killProcessByChildProcess } from '@/utils/process';
+import { installExitLogger, resolveMobiLogsDir } from '@mobi/shared';
 import { withRetry } from '@/utils/time';
 import { isRetryableConnectionError } from '@/utils/errorUtils';
 
@@ -36,6 +37,18 @@ import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
 import { buildMachineMetadata } from '@/agent/sessionFactory';
 
 export async function startRunner(): Promise<void> {
+  // —— 退出日志：最早挂载，注入 logger ring buffer 还原崩溃前上下文 ——
+  const runnerExitLogger = installExitLogger('runner', {
+    logsDir: resolveMobiLogsDir(),
+    ringBuffer: logger,
+  });
+
+  // —— OOM/SIGKILL 兜底：检测上次 runner 实例异常消失 ——
+  const prevRunnerState = await readRunnerState();
+  if (prevRunnerState?.pid && prevRunnerState.pid !== process.pid && !isProcessAlive(prevRunnerState.pid)) {
+    runnerExitLogger.recordExternalKill(prevRunnerState.pid);
+  }
+
   // We don't have cleanup function at the time of server construction
   // Control flow is:
   // 1. Create promise that will resolve when shutdown is requested
@@ -67,37 +80,51 @@ export async function startRunner(): Promise<void> {
 
   // Setup signal handlers
   process.on('SIGINT', () => {
+    runnerExitLogger.recordExit({ reason: 'signal-int', signal: 'SIGINT' });
     logger.debug('[RUNNER RUN] Received SIGINT');
     requestShutdown('os-signal');
   });
 
   process.on('SIGTERM', () => {
+    runnerExitLogger.recordExit({ reason: 'signal-term', signal: 'SIGTERM' });
     logger.debug('[RUNNER RUN] Received SIGTERM');
     requestShutdown('os-signal');
   });
 
   if (isWindows()) {
     process.on('SIGBREAK', () => {
+      runnerExitLogger.recordExit({ reason: 'signal-term', signal: 'SIGBREAK' });
       logger.debug('[RUNNER RUN] Received SIGBREAK');
       requestShutdown('os-signal');
     });
   }
 
   process.on('uncaughtException', (error) => {
+    runnerExitLogger.recordExit({
+      reason: 'crash-uncaught',
+      errorMessage: error.message,
+      stack: error.stack,
+    });
     logger.debug('[RUNNER RUN] FATAL: Uncaught exception', error);
     logger.debug(`[RUNNER RUN] Stack trace: ${error.stack}`);
     requestShutdown('exception', error.message);
   });
 
   process.on('unhandledRejection', (reason, promise) => {
+    const error = reason instanceof Error ? reason : new Error(`Unhandled promise rejection: ${reason}`);
+    runnerExitLogger.recordExit({
+      reason: 'crash-unhandled',
+      errorMessage: error.message,
+      stack: error.stack,
+    });
     logger.debug('[RUNNER RUN] FATAL: Unhandled promise rejection', reason);
     logger.debug(`[RUNNER RUN] Rejected promise:`, promise);
-    const error = reason instanceof Error ? reason : new Error(`Unhandled promise rejection: ${reason}`);
     logger.debug(`[RUNNER RUN] Stack trace: ${error.stack}`);
     requestShutdown('exception', error.message);
   });
 
   process.on('exit', (code) => {
+    runnerExitLogger.recordExit({ reason: code === 0 ? 'normal' : 'error-exit', exitCode: code });
     logger.debug(`[RUNNER RUN] Process exiting with code: ${code}`);
   });
 
