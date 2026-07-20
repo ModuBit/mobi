@@ -66,12 +66,14 @@ export class Logger implements RingBufferReader {
   /** 最近 N 条 debug 的环形缓冲，供 exitLogger crash dump 还原崩溃前上下文 */
   private readonly ringBuffer: string[] = []
   private readonly ringBufferCapacity: number
+  /** 环形缓冲下一个写入位置（满后覆盖最旧），O(1) 入队 */
+  private ringWriteIndex = 0
 
   constructor(
     public readonly logFilePath = getSessionLogPath(),
     options?: { ringBufferCapacity?: number }
   ) {
-    this.ringBufferCapacity = options?.ringBufferCapacity ?? 200
+    this.ringBufferCapacity = Math.max(1, options?.ringBufferCapacity ?? 200)
     // Remote logging enabled only when explicitly set with API URL
     if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING
       && process.env.MOBI_API_URL) {
@@ -170,9 +172,19 @@ export class Logger implements RingBufferReader {
     return this.logFilePath
   }
 
-  /** 返回最近 N 条 debug（供 exitLogger crash dump 注入） */
+  /** 返回最近 N 条 debug（按时间正序，供 exitLogger crash dump 注入） */
   getRecentEntries(): string[] {
-    return [...this.ringBuffer]
+    const len = this.ringBuffer.length
+    if (len === 0) return []
+    const cap = this.ringBufferCapacity
+    // 未满：writeIndex == len，直接原序返回；满后：writeIndex 指向最旧，从 writeIndex 起顺序读
+    const start = len < cap ? 0 : this.ringWriteIndex
+    const count = len < cap ? len : cap
+    const out: string[] = []
+    for (let i = 0; i < count; i++) {
+      out.push(this.ringBuffer[(start + i) % cap]!)
+    }
+    return out
   }
 
   /** RingBufferReader 实现：供 exitLogger 读取崩溃前上下文 */
@@ -190,10 +202,13 @@ export class Logger implements RingBufferReader {
       // 序列化失败（如循环引用）时退化为仅存 message，避免污染主流程
       entry = message
     }
-    this.ringBuffer.push(entry)
-    if (this.ringBuffer.length > this.ringBufferCapacity) {
-      this.ringBuffer.splice(0, this.ringBuffer.length - this.ringBufferCapacity)
+    if (this.ringBuffer.length < this.ringBufferCapacity) {
+      this.ringBuffer.push(entry)
+    } else {
+      // 满后覆盖最旧位置，O(1) 入队（避免 splice 每次移动整个数组）
+      this.ringBuffer[this.ringWriteIndex] = entry
     }
+    this.ringWriteIndex = (this.ringWriteIndex + 1) % this.ringBufferCapacity
   }
   
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {

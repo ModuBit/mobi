@@ -109,10 +109,7 @@ export interface ExitLogger {
  * 供调用方在 configuration 单例就绪前独立解析用（exitLogger 需最早挂载）。
  */
 export function resolveMobiLogsDir(): string {
-  const home = process.env.MOBI_HOME
-    ? process.env.MOBI_HOME.replace(/^~/, homedir())
-    : join(homedir(), '.mobi')
-  return join(home, 'logs')
+  return join(resolveMobiHome(), 'logs')
 }
 
 /**
@@ -122,6 +119,19 @@ export function resolveMobiHome(): string {
   return process.env.MOBI_HOME
     ? process.env.MOBI_HOME.replace(/^~/, homedir())
     : join(homedir(), '.mobi')
+}
+
+/**
+ * 检测 pid 是否存活（启动检测兜底用，零依赖 process.kill 探测）。
+ */
+export function isProcessAlive(pid: number): boolean {
+  if (!Number.isFinite(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -227,11 +237,22 @@ export function installExitLogger(
  * 注意：runner 已有自己的优雅退出流程（requestShutdown），runner 侧应自行挂载
  * 并在 handler 内既驱动 requestShutdown 又调 recordExit，而不是用这个默认实现。
  */
+export interface InstallHandlersOptions {
+  /** 信号记录后是否立即 process.exit。默认 false。
+   * cli 主进程传 true（无自定义退出 handler，否则 Ctrl+C/SIGTERM 无法终止进程）；
+   * hub 保留 false（依赖自有 shutdown handler 优雅退出）。
+   * uncaughtException/unhandledRejection 不受此选项影响——崩溃始终 exit(1)。 */
+  exitOnSignal?: boolean
+}
+
 export function installExitHandlers(
   processType: ProcessType,
   logger: ExitLogger,
-  onSignal?: (signal: NodeJS.Signals) => void
+  onSignal?: (signal: NodeJS.Signals) => void,
+  options?: InstallHandlersOptions
 ): void {
+  const exitOnSignal = options?.exitOnSignal ?? false
+
   process.on('uncaughtException', (error: Error) => {
     logger.recordExit({
       reason: 'crash-uncaught',
@@ -243,7 +264,9 @@ export function installExitHandlers(
     } catch {
       // 忽略
     }
-    // 不 swallow：默认让进程继续崩溃退出
+    // 注册 uncaughtException listener 即抑制 Node 默认崩溃，必须显式 exit，
+    // 否则进程会带着损坏状态继续运行
+    process.exit(1)
   })
 
   process.on('unhandledRejection', (reason: unknown) => {
@@ -258,6 +281,7 @@ export function installExitHandlers(
     } catch {
       // 忽略
     }
+    process.exit(1)
   })
 
   const signalHandler = (signal: NodeJS.Signals) => {
@@ -265,6 +289,11 @@ export function installExitHandlers(
       reason: signal === 'SIGINT' ? 'signal-int' : 'signal-term',
       signal
     })
+    if (exitOnSignal) {
+      // 128 + 信号号是 POSIX 惯例（SIGINT=130, SIGTERM=143）
+      process.exit(signalExitCode(signal))
+      return
+    }
     onSignal?.(signal)
   }
 
@@ -281,6 +310,13 @@ export function installExitHandlers(
       exitCode: code
     })
   })
+}
+
+/** 常见信号 → POSIX 惯例退出码（128 + 信号号） */
+function signalExitCode(signal: NodeJS.Signals): number {
+  if (signal === 'SIGINT') return 130
+  if (signal === 'SIGTERM') return 143
+  return 1
 }
 
 /**

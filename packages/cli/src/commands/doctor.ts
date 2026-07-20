@@ -67,7 +67,9 @@ ${chalk.bold('Usage:')}
             const processIdx = commandArgs.indexOf('--process')
             const processFilter = processIdx >= 0 ? commandArgs[processIdx + 1] as ProcessType : undefined
             const limitIdx = commandArgs.indexOf('--limit')
-            const limit = limitIdx >= 0 ? Number(commandArgs[limitIdx + 1]) : undefined
+            const rawLimit = limitIdx >= 0 ? Number(commandArgs[limitIdx + 1]) : undefined
+            // NaN/缺值回退到默认 20（printExitReport 内 ?? 20）
+            const limit = rawLimit !== undefined && Number.isFinite(rawLimit) ? rawLimit : undefined
             printExitReport({ limit, processFilter })
             return
         }

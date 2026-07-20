@@ -22,7 +22,8 @@ import {
   installExitLogger,
   installExitHandlers,
   resolveMobiLogsDir,
-  readExitRecords
+  readExitRecords,
+  isProcessAlive
 } from '../src/exitLogger'
 
 let logsDir: string
@@ -169,5 +170,21 @@ describe('installExitHandlers', () => {
     expect(typeof installExitHandlers).toBe('function')
     const logger = installExitLogger('cli', { logsDir })
     expect(() => installExitHandlers('cli', logger)).not.toThrow()
+  })
+
+  it('支持 exitOnSignal 选项', () => {
+    const logger = installExitLogger('cli', { logsDir })
+    expect(() => installExitHandlers('cli', logger, undefined, { exitOnSignal: true })).not.toThrow()
+  })
+})
+
+describe('isProcessAlive', () => {
+  it('自身 pid 存活', () => {
+    expect(isProcessAlive(process.pid)).toBe(true)
+  })
+  it('无效/不存在的 pid 不存活', () => {
+    expect(isProcessAlive(0)).toBe(false)
+    expect(isProcessAlive(-1)).toBe(false)
+    expect(isProcessAlive(Number.MAX_SAFE_INTEGER)).toBe(false)
   })
 })
