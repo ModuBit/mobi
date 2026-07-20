@@ -30,7 +30,7 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
 import { CompactProgressBubble } from './CompactProgressBubble'
-import { isClearInProgress } from '@/domain/chat/presentation'
+import { isCommandInProgress, isClearInProgress } from '@/domain/chat/presentation'
 import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
 import { QueuedMessagesBar } from './QueuedMessagesBar'
@@ -260,21 +260,24 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return blocks
     }, [rawBlocks, hasNextPage, bgCompletedTasks])
 
-    // 从 chatBlocks 推导压缩状态：最后一条 user-text 是 /compact 且后面没有 compact-summary
-    const isCompressing = useMemo(() => {
-        const start = Math.max(0, chatBlocks.length - 10)
-        for (let i = chatBlocks.length - 1; i >= start; i--) {
-            const block = chatBlocks[i]
-            if (block.kind === 'compact-summary') return false
-            if (block.kind === 'user-text') {
-                return block.text.trim() === COMPACT_COMMAND
-            }
-        }
-        return false
-    }, [chatBlocks])
+    // 从 chatBlocks 推导压缩状态：用通用 isCommandInProgress（与 isClearing 共用同一推导）
+    const isCompressing = useMemo(
+        () => isCommandInProgress(chatBlocks, COMPACT_COMMAND, b => b.kind === 'compact-summary'),
+        [chatBlocks]
+    )
 
-    // /clear 进行中：禁用输入，防止 clear 期间提交新消息（与 isCompressing 同构）
+    // /clear 进行中：禁用输入，防止 clear 期间提交新消息（与 isCompressing 共用 isCommandInProgress）
     const isClearing = useMemo(() => isClearInProgress(chatBlocks), [chatBlocks])
+
+    // clear 完成事件（context-cleared）丢失兜底：发送完成 10s 后若仍卡在 clear，强制解禁，
+    // 避免输入永久禁用。compact 不加此兜底——其可合法耗时数十秒，超时会误判进行中为卡死。
+    const [clearStuck, setClearStuck] = useState(false)
+    useEffect(() => {
+        setClearStuck(false)
+        if (!isClearing || sendMutation.isPending) return
+        const timer = setTimeout(() => setClearStuck(true), 10_000)
+        return () => clearTimeout(timer)
+    }, [isClearing, sendMutation.isPending])
 
     const chatBlocksLengthRef = useRef(chatBlocks.length)
     chatBlocksLengthRef.current = chatBlocks.length
@@ -741,7 +744,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <ChatComposer
                 ref={composerRef}
                 sessionId={sessionId}
-                disabled={sendMutation.isPending || isCompressing || isClearing}
+                disabled={sendMutation.isPending || isCompressing || (isClearing && !clearStuck)}
                 sending={sendMutation.isPending}
                 compressing={isCompressing}
                 permissionMode={session?.permissionMode}

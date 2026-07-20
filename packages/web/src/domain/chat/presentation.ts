@@ -19,20 +19,32 @@ import type { AgentEvent, ChatBlock } from './types'
 const CLEAR_COMMAND = '/clear'
 
 /**
- * 推导 /clear 是否进行中：末尾最后一条 user-text 是 /clear，
- * 且其后未出现 context-cleared 事件（CLI 清空上下文后发出该事件作为完成标志）。
- * 进行中期间禁用输入，与 ChatContainer 内 isCompressing 同构（compact-summary ↔ context-cleared）。
+ * 推导某斜杠命令是否进行中：从末尾向前扫，先遇到完成标志 block → false（已完成），
+ * 先遇到 user-text → 判断是否目标命令；扫到首个 user-text 为止（不固定窗口，避免命令后被大量中间 block 推出窗口）。
+ * /compact、/clear 等命令期间禁用输入：compact-summary（compact）/ context-cleared（clear）为完成标志。
  */
-export function isClearInProgress(chatBlocks: ChatBlock[]): boolean {
-    const start = Math.max(0, chatBlocks.length - 10)
-    for (let i = chatBlocks.length - 1; i >= start; i--) {
+export function isCommandInProgress(
+    chatBlocks: ChatBlock[],
+    command: string,
+    isCompletion: (block: ChatBlock) => boolean
+): boolean {
+    for (let i = chatBlocks.length - 1; i >= 0; i--) {
         const block = chatBlocks[i]
-        if (block.kind === 'agent-event' && block.event.type === 'context-cleared') return false
+        if (isCompletion(block)) return false
         if (block.kind === 'user-text') {
-            return block.text.trim() === CLEAR_COMMAND
+            return block.text.trim() === command
         }
     }
     return false
+}
+
+/** /clear 是否进行中（完成标志：context-cleared 事件） */
+export function isClearInProgress(chatBlocks: ChatBlock[]): boolean {
+    return isCommandInProgress(
+        chatBlocks,
+        CLEAR_COMMAND,
+        (block) => block.kind === 'agent-event' && block.event.type === 'context-cleared'
+    )
 }
 
 export function formatUnixTimestamp(value: number): string {

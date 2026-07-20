@@ -19,13 +19,13 @@ import { isClearInProgress } from '../../src/domain/chat/presentation'
 import type { ChatBlock } from '../../src/domain/chat/types'
 
 function userText(text: string): ChatBlock {
-    return { kind: 'user-text', id: 'u', localId: null, createdAt: 0, text } as ChatBlock
+    return { kind: 'user-text', id: 'u', localId: null, createdAt: 0, text }
 }
 function contextCleared(): ChatBlock {
-    return { kind: 'agent-event', id: 'a', createdAt: 0, event: { type: 'context-cleared' } } as ChatBlock
+    return { kind: 'agent-event', id: 'a', createdAt: 0, event: { type: 'context-cleared' } }
 }
 function agentText(text: string): ChatBlock {
-    return { kind: 'agent-text', id: 't', localId: null, createdAt: 0, text } as ChatBlock
+    return { kind: 'agent-text', id: 't', localId: null, createdAt: 0, text }
 }
 
 describe('isClearInProgress', () => {
