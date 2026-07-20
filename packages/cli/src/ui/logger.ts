@@ -27,6 +27,7 @@ import { configuration } from '@/configuration'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { readRunnerState } from '@/persistence'
+import type { RingBufferReader } from '@mobi/shared'
 
 /**
  * Consistent date/time formatting functions
@@ -60,12 +61,17 @@ function getSessionLogPath(): string {
   return join(configuration.logsDir, filename)
 }
 
-class Logger {
+export class Logger implements RingBufferReader {
   private dangerouslyUnencryptedServerLoggingUrl: string | undefined
+  /** 最近 N 条 debug 的环形缓冲，供 exitLogger crash dump 还原崩溃前上下文 */
+  private readonly ringBuffer: string[] = []
+  private readonly ringBufferCapacity: number
 
   constructor(
-    public readonly logFilePath = getSessionLogPath()
+    public readonly logFilePath = getSessionLogPath(),
+    options?: { ringBufferCapacity?: number }
   ) {
+    this.ringBufferCapacity = options?.ringBufferCapacity ?? 200
     // Remote logging enabled only when explicitly set with API URL
     if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING
       && process.env.MOBI_API_URL) {
@@ -82,6 +88,7 @@ class Logger {
 
   debug(message: string, ...args: unknown[]): void {
     this.logToFile(`[${this.localTimezoneTimestamp()}]`, message, ...args)
+    this.pushRingBuffer(message, ...args)
 
     // NOTE: @kirill does not think its a good ideas,
     // as it will break us using claude in interactive mode.
@@ -161,6 +168,32 @@ class Logger {
   
   getLogPath(): string {
     return this.logFilePath
+  }
+
+  /** 返回最近 N 条 debug（供 exitLogger crash dump 注入） */
+  getRecentEntries(): string[] {
+    return [...this.ringBuffer]
+  }
+
+  /** RingBufferReader 实现：供 exitLogger 读取崩溃前上下文 */
+  snapshot(): string[] {
+    return this.getRecentEntries()
+  }
+
+  private pushRingBuffer(message: string, ...args: unknown[]): void {
+    let entry: string
+    try {
+      entry = args.length > 0
+        ? `${message} ${args.map(arg => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' ')}`
+        : message
+    } catch {
+      // 序列化失败（如循环引用）时退化为仅存 message，避免污染主流程
+      entry = message
+    }
+    this.ringBuffer.push(entry)
+    if (this.ringBuffer.length > this.ringBufferCapacity) {
+      this.ringBuffer.splice(0, this.ringBuffer.length - this.ringBufferCapacity)
+    }
   }
   
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
