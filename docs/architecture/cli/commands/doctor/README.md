@@ -9,6 +9,7 @@ Doctor 提供 CLI 环境的诊断检查和进程清理功能，帮助排查问�
 ```mermaid
 flowchart TB
     Cmd["doctor 命令"] -->|"clean"| Clean["killRunawayMobiProcesses()<br/>runner/doctor.ts"]
+    Cmd -->|"exits"| Exits["printExitReport()<br/>ui/exitLogReport.ts"]
     Cmd -->|"无参数 / 其他"| Run["runDoctorCommand()<br/>ui/doctor.ts"]
 
     Run --> Filter{"filter 参数"}
@@ -44,13 +45,16 @@ flowchart TB
 flowchart TB
     Args["commandArgs"] --> Check1{"'clean'?"}
     Check1 -->|是| Clean["killRunawayMobiProcesses()"]
-    Check1 -->|否| Check2{"'runner'?"}
+    Check1 -->|否| CheckExits{"'exits'?"}
+    CheckExits -->|是| Exits["printExitReport()"]
+    CheckExits -->|否| Check2{"'runner'?"}
     Check2 -->|是| RunnerFilter["runDoctorCommand('runner')"]
     Check2 -->|否| AllFilter["runDoctorCommand(undefined)<br/>默认 all"]
 ```
 
 `commands/doctor.ts` 的路由逻辑：
 - `commandArgs[0] === 'clean'` → 进程清理
+- `commandArgs[0] === 'exits'` → 打印进程退出记录
 - `commandArgs[0] === 'runner'` → 仅 Runner 诊断
 - 其他 → 完整诊断（默认）
 
@@ -61,6 +65,7 @@ flowchart TB
 | (无) | 运行完整诊断检查 |
 | `runner` | 仅输出 Runner 诊断（等同于 `mobi runner status`） |
 | `clean` | 清理失控的 mobi 进程 |
+| `exits` | 打印进程退出记录（`exits.log`），支持 `--process hub\|runner\|cli` / `--limit N` |
 
 ## 诊断报告内容
 
@@ -159,6 +164,49 @@ flowchart TB
 
 **可清理的进程类型**：`runner`、`dev-runner`、`runner-spawned-session`、`dev-runner-spawned`、`runner-version-check`、`dev-runner-version-check`。排除当前进程和用户会话进程。
 
+## 进程退出记录（exits）
+
+`mobi doctor exits` 打印 `~/.mobi/logs/exits.log` 中的进程退出记录，用于排查 hub/runner/cli 无故退出。
+
+**文件**: [`packages/cli/src/ui/exitLogReport.ts`](/packages/cli/src/ui/exitLogReport.ts)
+
+### 退出日志机制
+
+三个长生命周期进程（hub / runner / cli）启动时挂载 `@mobi/shared` 的 `installExitLogger`，捕获退出事件统一写入 `exits.log`：
+
+| 事件 | reason | 写 exits.log | 写 dump |
+|---|---|---|---|
+| `uncaughtException` | `crash-uncaught` | ✓ | ✓ + heapsnapshot |
+| `unhandledRejection` | `crash-unhandled` | ✓ | ✓ + heapsnapshot |
+| `SIGINT` | `signal-int` | ✓ | ✗ |
+| `SIGTERM` / `SIGBREAK` | `signal-term` | ✓ | ✗ |
+| `exit` | `normal` / `error-exit` | ✓ | ✗ |
+
+### SIGKILL / OOM 兜底
+
+进程被 SIGKILL / OOM killer / 段错误终止时，JS 运行时来不及执行任何代码，崩溃 handler 无法触发。为此 hub 和 runner 在**下次启动时**检测持久化 pid 标记（`hub.state.json` / `runner.state.json`），若上次 pid 已死则补记一条 `killed-externally` 记录。CLI 主进程无长驻标记，不做此兜底（但仍捕获 crash）。
+
+### 文件布局
+
+```
+~/.mobi/logs/
+  exits.log                              # JSONL，每次退出追加一行
+  exits.log.1 ...                        # 超 5MB 滚动，保留最近 5 个
+  dumps/
+    <ts>-<processType>-pid-<pid>.json    # 结构化 dump（stack + 上下文 + 近 200 条 log）
+    <ts>-<processType>-pid-<pid>.heapsnapshot
+```
+
+dump 仅保留非敏感 env（`MOBI_HOME` / `MOBI_PROFILE` / `MOBI_API_URL` / `NODE_ENV`），严禁记录任何 token / secret。
+
+### 用法
+
+```bash
+mobi doctor exits                       # 最近 20 条
+mobi doctor exits --process hub         # 仅 hub
+mobi doctor exits --limit 50            # 最近 50 条
+```
+
 ## 代码结构
 
 ```
@@ -166,7 +214,8 @@ packages/cli/src/
 ├── commands/
 │   └── doctor.ts                # doctor 命令入口
 ├── ui/
-│   └── doctor.ts                # 诊断报告输出
+│   ├── doctor.ts                # 诊断报告输出
+│   └── exitLogReport.ts         # 进程退出记录报告（mobi doctor exits）
 └── runner/
     └── doctor.ts                # 进程发现、分类、清理
 ```
@@ -175,4 +224,5 @@ packages/cli/src/
 |------|------|
 | `packages/cli/src/commands/doctor.ts` | [`doctorCommand`](/packages/cli/src/commands/doctor.ts) |
 | `packages/cli/src/ui/doctor.ts` | [`runDoctorCommand()`](/packages/cli/src/ui/doctor.ts) |
+| `packages/cli/src/ui/exitLogReport.ts` | [`printExitReport()`](/packages/cli/src/ui/exitLogReport.ts) |
 | `packages/cli/src/runner/doctor.ts` | [`findAllMobiProcesses()` / `killRunawayMobiProcesses()`](/packages/cli/src/runner/doctor.ts) |

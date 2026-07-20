@@ -21,6 +21,7 @@
 | `src/profile.ts` | 用户配置 Schema 与类型 |
 | `src/sessionSummary.ts` | 会话摘要 Schema 与类型 |
 | `src/upload.ts` | 文件上传 Schema 与类型 |
+| `src/exitLogger.ts` | 进程退出日志（hub/runner/cli 共用基础设施） |
 | `src/index.ts` | Barrel export |
 
 ## 测试
