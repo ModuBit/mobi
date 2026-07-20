@@ -30,6 +30,7 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
 import { CompactProgressBubble } from './CompactProgressBubble'
+import { isClearInProgress } from '@/domain/chat/presentation'
 import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
 import { QueuedMessagesBar } from './QueuedMessagesBar'
@@ -271,6 +272,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
         return false
     }, [chatBlocks])
+
+    // /clear 进行中：禁用输入，防止 clear 期间提交新消息（与 isCompressing 同构）
+    const isClearing = useMemo(() => isClearInProgress(chatBlocks), [chatBlocks])
 
     const chatBlocksLengthRef = useRef(chatBlocks.length)
     chatBlocksLengthRef.current = chatBlocks.length
@@ -737,7 +741,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <ChatComposer
                 ref={composerRef}
                 sessionId={sessionId}
-                disabled={sendMutation.isPending || isCompressing}
+                disabled={sendMutation.isPending || isCompressing || isClearing}
                 sending={sendMutation.isPending}
                 compressing={isCompressing}
                 permissionMode={session?.permissionMode}

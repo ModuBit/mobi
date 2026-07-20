@@ -14,7 +14,26 @@
  * limitations under the License.
  */
 
-import type { AgentEvent } from './types'
+import type { AgentEvent, ChatBlock } from './types'
+
+const CLEAR_COMMAND = '/clear'
+
+/**
+ * 推导 /clear 是否进行中：末尾最后一条 user-text 是 /clear，
+ * 且其后未出现 context-cleared 事件（CLI 清空上下文后发出该事件作为完成标志）。
+ * 进行中期间禁用输入，与 ChatContainer 内 isCompressing 同构（compact-summary ↔ context-cleared）。
+ */
+export function isClearInProgress(chatBlocks: ChatBlock[]): boolean {
+    const start = Math.max(0, chatBlocks.length - 10)
+    for (let i = chatBlocks.length - 1; i >= start; i--) {
+        const block = chatBlocks[i]
+        if (block.kind === 'agent-event' && block.event.type === 'context-cleared') return false
+        if (block.kind === 'user-text') {
+            return block.text.trim() === CLEAR_COMMAND
+        }
+    }
+    return false
+}
 
 export function formatUnixTimestamp(value: number): string {
     const ms = value < 1_000_000_000_000 ? value * 1000 : value
