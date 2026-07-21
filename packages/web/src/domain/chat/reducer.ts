@@ -23,6 +23,52 @@ import { collectHiddenToolUseIds, collectTitleChanges, collectToolIdsFromMessage
 import { reduceTimeline } from './reducerTimeline'
 
 /**
+ * 双保险第二道：按 (messageId, type) 去重 snapshot block。
+ *
+ * 第一道（messageCache parentUuid 清理）在 CLI assembler 聚合 full 后已可靠，但有已知边界
+ * 可能漏清：parentUuid 为 null（会话首条 assistant，lastUuid 未建立）、SSE 早到/乱序。
+ * 此处在 reducer 渲染前兜底——snapshot 的 block 若已被同 (messageId, type) 的 full 覆盖，
+ * 则移除；即使 snapshot 残留到渲染层也不重复显示。
+ *
+ * type（reasoning/text）是内容自带的稳定标识，不依赖 block 序号或到达顺序，比"按序号对齐"稳。
+ * 边界：同一 message 多个同类型 block（如两个 thinking）少见，按 type 匹配会一起标记覆盖，
+ * 最坏是某 block 短暂不显示（等下一条 full 补），不会双气泡。
+ */
+export function dedupeSnapshotBlocks(normalized: NormalizedMessage[]): NormalizedMessage[] {
+    // 第一遍：收集已落库 full 的 (messageId, type)，同时检测是否存在 snapshot
+    const deliveredKeys = new Set<string>()
+    let hasSnapshot = false
+    for (const m of normalized) {
+        if (m.role !== 'agent' || !m.messageId || !Array.isArray(m.content)) continue
+        if (m.snapshot) {
+            hasSnapshot = true
+            continue  // snapshot 不贡献 deliveredKeys
+        }
+        for (const c of m.content) {
+            if (c && typeof c === 'object' && 'type' in c) {
+                deliveredKeys.add(`${m.messageId}:${c.type}`)
+            }
+        }
+    }
+    // 无 full 或无 snapshot → 无需去重，原样返回（避免第二遍遍历；翻页历史无 snapshot 时早退）
+    if (deliveredKeys.size === 0 || !hasSnapshot) return normalized
+
+    // 第二遍：snapshot 的 block 若被 full 覆盖则移除；全被覆盖则整条丢弃
+    const result: NormalizedMessage[] = []
+    for (const m of normalized) {
+        if (!m.snapshot || m.role !== 'agent' || !m.messageId || !Array.isArray(m.content)) {
+            result.push(m)
+            continue
+        }
+        const kept = m.content.filter(c => !(c && typeof c === 'object' && 'type' in c
+            && deliveredKeys.has(`${m.messageId}:${c.type}`)))
+        if (kept.length === 0) continue  // snapshot 全被覆盖，移除整条
+        result.push(kept.length === m.content.length ? m : { ...m, content: kept })
+    }
+    return result
+}
+
+/**
  * 计算上下文大小
  */
 function calculateContextSize(usage: UsageData): number {
@@ -48,11 +94,13 @@ export function reduceChatBlocks(
     agentState: AgentState | null | undefined
 ): { blocks: ChatBlock[]; byId: ChatBlocksById; hasReadyEvent: boolean; latestUsage: LatestUsage | null } {
     const permissionsById = getPermissions(agentState)
-    const toolIdsInMessages = collectToolIdsFromMessages(normalized)
-    const titleChangesByToolUseId = collectTitleChanges(normalized)
-    const hiddenToolUseIds = collectHiddenToolUseIds(normalized)
+    // 双保险第二道：兜底 parentUuid 清理的边界（null/乱序），snapshot 被覆盖的 block 不渲染
+    const normalizedMsgs = dedupeSnapshotBlocks(normalized)
+    const toolIdsInMessages = collectToolIdsFromMessages(normalizedMsgs)
+    const titleChangesByToolUseId = collectTitleChanges(normalizedMsgs)
+    const hiddenToolUseIds = collectHiddenToolUseIds(normalizedMsgs)
 
-    const traced = traceMessages(normalized)
+    const traced = traceMessages(normalizedMsgs)
     const groups = new Map<string, TracedMessage[]>()
     const root: TracedMessage[] = []
 
@@ -74,8 +122,8 @@ export function reduceChatBlocks(
 
     // 只在没有工具调用/结果时创建仅权限的工具卡片（仅 pending 状态）
     // 同时跳过比当前视图中最旧消息更早的权限，避免分页时混合新旧工具卡片
-    const oldestMessageTime = normalized.length > 0
-        ? normalized.reduce((min, m) => Math.min(min, m.createdAt), Infinity)
+    const oldestMessageTime = normalizedMsgs.length > 0
+        ? normalizedMsgs.reduce((min, m) => Math.min(min, m.createdAt), Infinity)
         : null
 
     for (const [id, entry] of permissionsById) {
@@ -101,8 +149,8 @@ export function reduceChatBlocks(
 
     // 从消息中计算最新使用情况（找到最近有使用数据的消息）
     let latestUsage: LatestUsage | null = null
-    for (let i = normalized.length - 1; i >= 0; i--) {
-        const msg = normalized[i]
+    for (let i = normalizedMsgs.length - 1; i >= 0; i--) {
+        const msg = normalizedMsgs[i]
         if (msg.usage) {
             latestUsage = {
                 inputTokens: msg.usage.input_tokens,

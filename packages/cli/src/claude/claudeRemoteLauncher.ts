@@ -506,13 +506,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         // 经 messageQueue 入队（非直接 send）：让 messageQueue 统一仲裁顺序——abort 时
                         // messageQueue 可能含 delay 中的上一条 assistant（tool_use 未配对 result），补全按 FIFO
                         // 入队其后，由本 launch finally 的 messageQueue.flush() 统一发送，保证
-                        // 「上一条 tool_use → 当前补全」的正确时序。前端 resolveMessageCache 按 parentUuid
+                        // 「上一条 tool_use → 当前补全」的正确时序。前端 resolveMessageCache 按 message.id
                         // 清理 snapshot + 追加补全 full，刷新后内容仍在。
                         onAbortFlush: (pending) => {
                             try {
                                 const raw = sdkToLogConverter.convertSnapshot(pending.blocks, {
                                     model: pending.model,
                                     parentToolUseId: pending.parentToolUseId,
+                                    messageId: pending.messageId,
                                 });
                                 messageQueue.enqueue(raw);
                             } catch (e) {

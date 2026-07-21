@@ -29,12 +29,18 @@ function makeMsg(overrides: Partial<DecryptedMessage> & Pick<DecryptedMessage, '
     }
 }
 
-function makeContent(parentUuid: string, messageContent: unknown) {
+function makeContent(parentUuid: string, messageContent: unknown, messageId?: string) {
     return {
         role: 'agent' as const,
         content: {
             type: 'output',
-            data: { parentUuid, type: 'assistant', message: { role: 'assistant', content: messageContent } },
+            data: {
+                parentUuid,
+                type: 'assistant',
+                // message.id 由 Anthropic 分配：full message 自带，snapshot 由 CLI 捕获 message_start 写入。
+                // snapshot/full 共享同一 message.id，是稳定的关联键（不受 parentUuid 漂移影响）
+                message: { id: messageId, role: 'assistant', content: messageContent },
+            },
         },
         meta: { sentFrom: 'cli' },
     }
@@ -189,5 +195,16 @@ describe('resolveMessageCache', () => {
         expect(result).toHaveLength(2)
         expect(result[0].id).toBe('snap-2')
         expect(result[1].id).toBe('msg-1')
+    })
+
+    it('full 按 parentUuid 清理 snapshot（assembler 聚合 full 后 parentUuid 不漂移）', () => {
+        // 前提：CLI 的 assembler 把 SDK 拆分的 full 按 message.id 聚合成一条 → snapshot 与 full
+        // 1-vs-1 → parentUuid 不漂移 → parentUuid 清理可靠（= message queue 之前的稳定态）
+        const snapshot = makeMsg({ id: 'snap-1', snapshot: true, content: makeContent('p1', [thinking('t1')]) })
+        const received = makeMsg({ id: 'msg-1', content: makeContent('p1', [thinking('t1')]) })
+
+        const result = resolveMessageCache([snapshot], received)
+        expect(result).toHaveLength(1)
+        expect(result[0].id).toBe('msg-1')
     })
 })

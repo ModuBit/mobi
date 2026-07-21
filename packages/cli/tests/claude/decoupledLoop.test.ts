@@ -133,7 +133,7 @@ function createOutputLoopOpts(overrides?: Record<string, unknown>) {
 function mockAssistantMessage(content: string = 'hello') {
     return {
         type: 'assistant' as const,
-        message: { role: 'assistant' as const, content: [{ type: 'text' as const, text: content }] },
+        message: { id: 'msg-test', role: 'assistant' as const, content: [{ type: 'text' as const, text: content }] },
         parent_tool_use_id: null,
         session_id: 'test-session',
     }
@@ -308,34 +308,30 @@ describe('sdkOutputLoop', () => {
         expect(elapsed).toBeLessThan(100)
     })
 
-    it('result 后 SDK 继续产出消息时立即处理（模拟后台任务）', async () => {
-        // 模拟场景：result 消息后 SDK 继续产出后台消息
+    it('result 后 SDK 继续产出消息时在迭代结束聚合输出（后台消息经 assembler 延迟到 flushAll）', async () => {
+        // assembler 聚合 assistant partial，flushAll 在非 assistant / 结束时输出。
+        // 后台 complete message（无后续非 assistant 分隔）延迟到迭代结束才 onMessage。
+        // 取舍见 assistantPartialAssembler.ts 类注释（暂时保留 assembler 的代价）。
         const { iterable, push, end } = createPushableAsyncIterable<any>()
         const opts = createOutputLoopOpts()
         const ctx: LoopContext = { isCompactCommand: false }
 
         const loopPromise = sdkOutputLoop(iterable, ctx, opts)
 
-        // 推送 result 消息
+        // result（非 assistant）→ flushAll（空）+ emit result
         push(mockResultMessage())
-
-        // 等待 result 被处理
         await new Promise((r) => setTimeout(r, 10))
-
         expect(opts.onReady).toHaveBeenCalled()
 
-        // 推送后台消息（模拟后台 Agent/Shell 完成后的消息）
+        // 后台消息（assistant）→ assembler 累积（不立即 onMessage）
         const bgMsg = mockAssistantMessage('background task result')
         push(bgMsg)
 
-        // 等待后台消息被处理
-        await new Promise((r) => setTimeout(r, 10))
-
-        expect(opts.onMessage).toHaveBeenCalledWith(bgMsg)
-
-        // 结束迭代器
+        // 结束迭代 → flushAll → 聚合输出 bgMsg
         end()
         await loopPromise
+
+        expect(opts.onMessage).toHaveBeenCalledWith(bgMsg)
     })
 
     it('isCompactCommand 在 result 时被读取并重置', async () => {

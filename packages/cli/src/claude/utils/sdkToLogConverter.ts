@@ -241,11 +241,15 @@ export class SDKToLogConverter {
 
     /**
      * 将累积的 content blocks 转换为 snapshot 格式的 RawJSONLines
-     * 与 convert(assistantMessage) 生成的结构一致，确保前端 snapshot 和完整消息格式相同
+     * 与 convert(assistantMessage) 生成的结构一致，确保前端 snapshot 和完整消息格式相同。
+     *
+     * message.id 写入 Anthropic 分配的 id（由 message_start 捕获）：snapshot 与 full 共享同一 id，
+     * 前端 resolveMessageCache 据此精确清理同 id 的 snapshot。替代脆弱的 parentUuid 关联——
+     * snapshot 走主链 lastUuid、full 走各自 parent_tool_use_id 路径，parentUuid 必漂移。
      */
     convertSnapshot(
         contentBlocks: Array<{ type: 'text'; text: string } | { type: 'thinking'; thinking: string }>,
-        opts?: { parentToolUseId?: string; model?: string },
+        opts?: { parentToolUseId?: string; model?: string; messageId?: string },
     ): RawJSONLines {
         const uuid = randomUUID()
         const parentToolUseId = opts?.parentToolUseId
@@ -258,6 +262,7 @@ export class SDKToLogConverter {
             type: 'assistant',
             message: {
                 role: 'assistant',
+                id: opts?.messageId,
                 content: contentBlocks,
                 model: opts?.model,
             },

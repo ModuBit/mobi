@@ -35,18 +35,31 @@ flowchart LR
 
 ## 关键设计
 
-### 1. snapshot 与 full message 必须共享 localId
+### 1. snapshot↔full 对齐：CLI assembler 聚合 full（回到 message queue 之前稳定态）
 
-snapshot 和 full message 是同一条消息的两个阶段（流式中 / 落库后），但 **`msg.id` 不同**：
+snapshot 和 full 是同一条消息的两个阶段，id 各不同：
 
-- snapshot：`id = sdkUuid`（CLI `wrapAsDecryptedMessage`，SDK 流式 message 的 uuid）
-- full：`id = body.uuid`（RawJSONLines 的 uuid，SDK 最终 message 的 uuid，与 sdkUuid 不同）
+- snapshot `msg.id` = `sdkUuid`（CLI `wrapAsDecryptedMessage`，SDK 流式 message 的 uuid）
+- full `msg.id` = DB 主键（Hub 分配）
+- full `localId` = `body.uuid`（RawJSONLines 的 uuid，SDK 最终 assistant 的 uuid，与 `sdkUuid` 不同）
 
-若 `block.id` 用 `msg.id`，snapshot/full 的 block.id 不同 → React 按 key 复用失败 → **TextBlock 卸载重 mount** → `useState` 重置 → 逐字被打断（短回复只一批 snapshot 就被 full 重 mount 覆盖，表现为一次性）。
+**粒度匹配是关键**：snapshot 是 message 级（一条累积所有 content block）；full 必须也是 message 级（一条），二者 1-vs-1 才能让前端 `resolveMessageCache` 按 parentUuid 清理可靠。
 
-**解决**（靠前端清理 snapshot，不靠 CLI 改写 uuid）：
-- **CLI 侧**：每条 `SDKAssistantMessage` 用自己的原始 uuid 作 localId 直接下发，Hub 按 localId 去重天然正确。**不复用 snapshot 的 sdkUuid**——历史曾用 `currentSdkUuid` 覆盖 assistant 的 uuid 强制 snapshot/full 同 localId，但 SDK 一个 turn 可产生多条共享 `message.id`、各自独立 uuid 的 assistant（见 SDK 文档），共享 uuid 会让它们在 Hub 互相 UPDATE 覆盖，丢失 thinking/tool_use。
-- **Web 侧**：snapshot/full 的 localId 不同（sdkUuid vs assistant uuid），靠 `resolveMessageCache` 按 `parentUuid` 清理同轮次 snapshot（见 [message-lifecycle.md](../../message-lifecycle.md) 的 snapshot 清理机制）。reducer 的 `block.id = ${msg.localId ?? msg.id}:${idx}`，`idx` 区分同消息的 reasoning（0）/ text（1）。
+**问题根源**：SDK 开 `includePartialMessages`（为拿 stream_event 喂逐字）会**按 content block 拆开** emit 最终 assistant——一条 message（`[thinking, text]`）变成两条 full（thinking-full + text-full，共享 `message.id`、各自独立 uuid）。snapshot 一条 vs full 两条，粒度不匹配 → 对齐崩坏 → thinking 双气泡（snapshot 的 thinking block 与 thinking-full 重复）。
+
+**解：CLI `AssistantPartialAssembler` 按 `message.id` 把拆分的 full 聚合回一条**（content 拼回 `[thinking, text]`，uuid 取最新 partial 的 `body.uuid`）。聚合后 full 一条、snapshot 一条，1-vs-1，parentUuid 不漂移，`resolveMessageCache` 按 parentUuid 清理可靠——**这就是 message queue 之前流式稳定的原因**。
+
+**历史教训（为何反复出 bug）**：`d7260a2` 引入 assembler 时**同时**引入了 uuid 覆盖（让 full 用 `sdkUuid`，破坏 resume 去重——sdkUuid 不写 .jsonl，resume 时对不上）。`3d2433d` 修 uuid 覆盖的 resume bug 时，**把正确的 assembler（聚合）和错误的 uuid 覆盖一起删了**，full 从此拆分裸奔。之后 `parentUuid` 漂移 → `message.id` → `clearDeliveredBlocks` 等补丁，都是在"full 拆分"这个错误前提下打转。**恢复 assembler（不恢复 uuid 覆盖）= 修正前提**，回到稳定态。
+
+**实现**（CLI `claudeRemote.ts` `sdkOutputLoop`）：
+- `stream_event` → `StreamSnapshotSender` 累积 delta（snapshot 通道，display-only 不落库）
+- assistant → `assembler.submit`（按 `message.id` 聚合；遇不同 `message.id` / 非 assistant 时 flush 输出一条完整 full）
+- assembler emit full 时用 `template.uuid`（= `body.uuid`，写进 .jsonl，**resume 安全**）作 localId；**不**覆盖成 `sdkUuid`（保留 `3d2433d` 的 resume 修复）
+- assembler emit full 时调 `snapshotSender.markFullDelivered()`（该 message 的 snapshot 已被 full 取代，abort 补全不再补它）
+
+**前端双保险**：assembler 让 parentUuid 清理可靠（第一道，messageCache 层），但 parentUuid 有已知边界（null：会话首条 assistant、SSE 乱序）可能漏清。reducer 入口 `dedupeSnapshotBlocks` 按 `(messageId, type)` 兜底（第二道，渲染层）——snapshot 的 block 若已被同 `(messageId, type)` 的 full 覆盖则不渲染。两道在不同层，任一生效即无双气泡。`type`（reasoning/text）是内容自带的稳定标识，不依赖 block 序号或到达顺序。
+
+**取舍（为何暂时保留 assembler）**：`dedupeSnapshotBlocks` 按 `(messageId, type)` 过滤**单独就能解决**双气泡 + text 不中断（snapshot 的 text block 渲染到 text-full）。assembler 的额外价值是双保险（parentUuid 清理可靠 + 聚合 full 含完整 text，避免 parentUuid 误删 snapshot 的 text 中断）。**代价**：assembler 累积到 flushAll 才输出，后台 complete message（无后续非 assistant 分隔）延迟到 turn 结束落库（后台 agent 多数有 stream_event 实时显示，complete 少数延迟）。**暂时保留 assembler**；若未来后台延迟成问题，可删 assembler + 删 parentUuid 清理，只留 type 过滤（见 `assistantPartialAssembler.ts` 类注释）。
 
 ### 2. isStreaming 不依赖 isRunning
 
@@ -80,17 +93,16 @@ full message 到达时 `streaming` 变 false。用 `wasStreamingRef` 区分：
 
 `Markdown` 的 `finalContent = displayContent`（始终），不因 `streaming` 切换到 `content`。否则 full message（`streaming=false`）时 `finalContent=content` 全显，覆盖 display。
 
-### 6. abort 补全：流式内容落库（不丢失）
+### 6. abort 补全：与 assembler 互斥，流式内容不丢失
 
-snapshot 通道**不落库**（`snapshot:true` 仅 Hub 透传给前端即时显示）。只有完整 `SDKAssistantMessage` 到达才落库。若 abort 时 SDK 还没 emit 完整 assistant，流式已显示的内容刷新后会丢失。
+snapshot 通道**不落库**（`snapshot:true` 仅 Hub 透传给前端即时显示）。只有完整 full（经 assembler 聚合）到达才落库。若 abort 时 SDK 没 emit 完整 assistant（assembler 未聚合输出），流式已显示的内容刷新后会丢失。
 
-**机制**（CLI 侧，`StreamSnapshotSender` + `sdkOutputLoop`）：
-- `endBlock` 不删 buffer——保留当前 message 的完整累积到下次 `message_start`（`clearBuffers`）清空
-- `fullDelivered` 状态：`message_start` 重置 false；`sdkOutputLoop` 收到完整 assistant 时调 `markFullDelivered()` 置 true
-- `sdkOutputLoop` 迭代结束（含 abort/异常）调 `consumePendingFull()`：仅当 `!fullDelivered && 有累积` 返回完整 blocks（内部复用 `buildBlocks()`，与 `flush` 共用）
-- `claudeRemoteLauncher.onAbortFlush`：`convertSnapshot(blocks)` → `messageQueue.enqueue`（经 messageQueue 统一仲裁顺序，由 `finally` 的 `messageQueue.flush()` 发送——保证 abort 时「delay 中的上一条 assistant → 当前补全」的正确 FIFO 时序，不绕过 messageQueue）
+**机制**（CLI `sdkOutputLoop` 迭代结束）：
+- `markFullDelivered` 在 **assembler 聚合输出完整 full 时**置位（**不**在每个 partial 到达时——一个 message 多 partial，任一 partial 就置 true 会让后续 partial 的 snapshot 补全失效）
+- 迭代结束：`consumePendingFull()` 优先——有 pending（assembler 未输出完整 full，即 `markFullDelivered` 未置）→ 走 `onAbortFlush`，用 `snapshotSender` 累积（stream_event 实时累积，最完整）补全；assembler 的 pending 是不完整 partial，**丢弃**（不调 `assembler.flush`），避免与 snapshot 补全重复落库
+- 无 pending（full 已 delivered）→ `assembler.flush()` 输出最后一条 message 的完整聚合 full
 
-**与正常 full 同路径**：补全消息用 `convertSnapshot` 的独立 uuid，`parentUuid` 与 snapshot 一致（流式期间 `lastUuid` 不变）。前端 `resolveMessageCache` 第 1 层 parentUuid 清理删同轮次 snapshot + 追加补全 full——与正常 `SDKAssistantMessage` 到达完全相同，无特殊路径。
+`onAbortFlush`（`claudeRemoteLauncher`）：`convertSnapshot(blocks)` → `messageQueue.enqueue`（经 messageQueue 统一仲裁顺序，由 `finally` 的 `messageQueue.flush()` 发送——保证 abort 时「delay 中的上一条 assistant → 当前补全」的正确 FIFO 时序，不绕过 messageQueue）。补全消息用 `convertSnapshot` 的独立 uuid + `messageId`（与 snapshot 共享 message.id，前端按双保险清理/去重）。
 
 **兼容未来增量 snapshot**：`consumePendingFull()` 语义是"当前 message 的完整累积内容"，不暴露 buffers 内部。未来 snapshot 改增量发送（flush 只发 delta）时，只改 `flush` 实现，本接口仍返回完整内容，abort 补全逻辑不变；前端从补全 full（完整）重新渲染，不依赖 snapshot 累积状态。
 
@@ -113,17 +125,25 @@ useEffect(() => () => {
 
 **这是 dev-only 坑**：生产无 StrictMode，effect 单次调用，不会触发。但 E2E（vite dev）必现。之前所有"修复"都无效，正是因为这层没破——raf 根本没跑。
 
-### ⚠️ 坑 2：snapshot/full 的 localId 不一致
+### ⚠️ 坑 2：删 assembler 误伤聚合（`3d2433d` 的过度删除）
 
-详见上文"关键设计 1"。CLI 的 `sdkUuid`（stream message.uuid）≠ `body.uuid`（RawJSONLines uuid），SDK 机制导致。**不要**用 CLI 覆盖 uuid 强制一致——会让同一 turn 多条 assistant 共享 uuid、被 Hub 互相覆盖。靠前端 `resolveMessageCache` 按 `parentUuid` 清理 snapshot 实现过渡。
+详见上文"关键设计 1"。`d7260a2` 同时引入了 **assembler（聚合 full）** 和 **uuid 覆盖（破坏 resume）** 两个独立机制。`3d2433d` 修 uuid 覆盖的 resume bug 时，把两者**一起删了**——但 assembler 的聚合本与 uuid 覆盖无关（它用 `template.uuid` = `body.uuid`，写进 .jsonl，resume 安全），是被误伤的。
+
+删 assembler 后 full 回到 SDK 拆分的原始形态（一条 message 的多 block 拆成多条 full），snapshot（一条累积）与 full（拆分）粒度不匹配，对齐崩坏。之后 `parentUuid` 漂移 → `message.id` → `clearDeliveredBlocks` 等补丁，全是在"full 拆分"这个错误前提下打转，越补越乱。
+
+**正确做法**：恢复 assembler（聚合 full，用 `body.uuid`），**不**恢复 uuid 覆盖（保留 `3d2433d` 的 resume 修复）。parentUuid 清理在 assembler 聚合下重新可靠（full 一条，parentUuid 不漂移），reducer 的 `(messageId, type)` 过滤兜底其边界。
+
+**拆分 vs 聚合的归属**：full 按 content block 拆开 emit 是 **SDK 在 `includePartialMessages` 下的行为**（不开则聚合一条，见 hapi——没开 `includePartialMessages`、无 assembler、流式稳定）；mobi 要字符级逐字必须开 `includePartialMessages`，必然遭遇拆分，**assembler 是 mobi 抵消拆分副作用的聚合层**，缺一不可。
 
 ### ⚠️ 坑 3：`isStreaming` 依赖未就绪的 isRunning
 
 详见"关键设计 2"。
 
-### ⚠️ 坑 4：messageCache 不能复用 snapshot 的 id
+### ⚠️ 坑 4：snapshot/full 不复用 id——靠 assembler 让粒度匹配，而非让 id 相同
 
-曾尝试在 `messageCache` 让 full message 复用 snapshot 的 id（保持 block key 稳定），但**违反设计**：测试明确期望 full message 用 full id（`msg-1`），且多 turn thinking 场景会错误合并不同消息。正确做法是 CLI 侧统一 localId，前端 `block.id=localId:idx`。
+snapshot `msg.id`=`sdkUuid`、full `msg.id`=DB 主键，物理上不可能相同（`d7260a2` 曾用 uuid 覆盖强求相同，破坏 resume——见坑 2）。不要在 `messageCache` 复用 id（测试明确期望 full 用自己的 id，多 turn 场景会错误合并不同消息）。
+
+**正确做法**：snapshot/full 各自 id 独立，靠 **CLI assembler 聚合 full**（让 full 从拆分的 N 条变回 1 条）使粒度与 snapshot（1 条）匹配，再靠 **parentUuid 清理**（主，messageCache 层）+ **`(messageId, type)` 过滤**（兜底，reducer 层）解决"snapshot/full 共存"的渲染去重——而非让 id/localId 相同。reducer 的 `block.id=localId:idx`。
 
 ## 调试方法
 
@@ -218,11 +238,13 @@ E2E 的 glm 模型 text 输出快（常一批 snapshot 就完整），snapshot �
 
 | 文件 | 职责 |
 |------|------|
-| `cli/.../streamSnapshotSender.ts` | snapshot 累积 + flush + 用 sdkUuid 作 snapshot id/localId |
-| `cli/.../claudeRemote.ts` | 每条 SDKAssistantMessage 用各自 uuid 作 localId 直接下发 |
+| `cli/.../assistantPartialAssembler.ts` | 按 `message.id` 聚合 SDK 拆分的 full 为一条（用 `body.uuid`，resume 安全）；坑 2 记录的误删与恢复 |
+| `cli/.../streamSnapshotSender.ts` | snapshot 累积 + flush + 用 sdkUuid 作 snapshot id/localId + 携带 `message.id`（`message_start` 捕获，供前端 type 过滤兜底） |
+| `cli/.../claudeRemote.ts` | `sdkOutputLoop` 接入 assembler（assistant 经聚合，assembler emit 时 `markFullDelivered`）；abort 分支（`consumePendingFull` 优先 / 否则 `assembler.flush`）；`handleStreamEvent` 捕获 `message.id` |
+| `web/.../domain/chat/reducer.ts` | `reduceChatBlocks` 入口 `dedupeSnapshotBlocks` 按 `(messageId, type)` 兜底去重（双保险第二道） |
 | `web/.../domain/chat/reducerTimeline.ts` | `block.id = localId:idx` |
 | `web/.../domain/chat/buildBubbleItems.tsx` | `isStreaming = isSnapshot` |
 | `web/.../components/ui/useStreamingContent.ts` | 逐字揭示 hook（首批从 0 + wasStreaming + cleanup rafRef=0） |
 | `web/.../components/ui/Markdown.tsx` | `finalContent = displayContent` |
 | `web/.../components/chat/ChatContainer.tsx` | 流式滚动跟随（三段式 gap 策略 + 镜像零读 + captureFollowTarget） |
-| `web/.../core/data/cache/messageCache.ts` | snapshot 原地更新 / full 按 parentUuid 清理 snapshot |
+| `web/.../core/data/cache/messageCache.ts` | snapshot 原地更新 / full 按 `parentUuid` 清理 snapshot（assembler 聚合 full 后 parentUuid 不漂移，双保险第一道） |

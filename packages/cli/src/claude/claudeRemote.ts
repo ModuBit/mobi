@@ -44,6 +44,7 @@ import type { SDKUIHints } from "@mobi/shared";
 import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
+import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 
 /**
@@ -214,6 +215,11 @@ function handleStreamEvent(
             parentToolUseId: parentToolUseId || undefined,
             model: event.message.model || fallbackModel,
             sdkUuid,
+            // Anthropic 为本条 message 分配的 id：snapshot 写入 message.id，前端 resolveMessageCache
+            // 据此精确清理同 id 的 snapshot（取代脆弱的 parentUuid 关联——见 streaming.md 坑 2）。
+            // SDKPartialAssistantMessage 的 parent_tool_use_id 总是 null（官方文档），故 snapshot 永远
+            // 走主链 lastUuid，而 full 走各自 parent_tool_use_id 路径，parentUuid 必然漂移。
+            messageId: event.message.id,
         });
     } else if (event.type === 'message_stop') {
         snapshotSender.flush();
@@ -280,10 +286,26 @@ export async function sdkOutputLoop(
          * 迭代结束（含 abort/异常）时若当前 message 的完整 full 未下发且有累积内容，触发补全落库。
          * pending 内容由调用方 convertSnapshot 成 RawJSONLines 后 sendClaudeSessionMessage 下发。
          */
-        onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string }) => void
+        onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void
     },
 ): Promise<void> {
     let queryStarted = false;
+
+    // 装配 SDK includePartialMessages 拆分的 assistant partial（同 message.id 的多 block）
+    // 为一条完整消息后再分发：snapshot 是 message 级（一条累积所有 block），full 也必须是
+    // message 级（一条），二者 1-vs-1 才能让前端 parentUuid 清理可靠（不漂移）。
+    // 用 template.uuid（= body.uuid，SDK 分配、写进 .jsonl）作 localId，resume 去重安全；
+    // 不复用 sdkUuid——那是 stream_event 的临时 uuid，不在 .jsonl，会破坏 resume。
+    const assembler = new AssistantPartialAssembler((msg) => {
+        opts.onMessage(msg);
+        // assembler 聚合输出完整 full（同 message.id 的所有 block 拼回一条，带 message.id）→
+        // 标记该 message 的 snapshot 已被 full 取代，abort 时 consumePendingFull 不再补全（避免重复）。
+        // 守卫 message.id：只对聚合 full（有 id）置位；透传的缺 id assistant（异常路径）不置位，
+        // 让 snapshot 补全仍能处理它，避免误跳过导致内容丢失
+        if (msg.type === 'assistant' && (msg as SDKAssistantMessage).message?.id) {
+            opts.snapshotSender.markFullDelivered();
+        }
+    });
 
     for await (const message of response) {
         // 外部中止时立即退出迭代
@@ -301,17 +323,13 @@ export async function sdkOutputLoop(
             continue;
         }
 
-        // 收到完整 assistant 消息时刷新快照（不重置 index，由 message_start 处理）
+        // 收到完整 assistant 消息时刷新快照（snapshot 通道：发当前累积的预览）
         if (message.type === 'assistant') {
             opts.snapshotSender.flush();
-            // 标记当前 message 的 full 已下发，之后 consumePendingFull 不再返回其内容（避免补全重复）
-            opts.snapshotSender.markFullDelivered();
         }
 
-        // 分发消息：每条 SDKAssistantMessage 用自己的 uuid 作 localId 直接下发，Hub 按 localId
-        // 去重天然正确（SDK 文档：一个 turn 可产生多条共享 message.id 但各自独立 uuid 的 assistant）。
-        // snapshot→full 过渡由前端 resolveMessageCache 按 parentUuid 清理，不依赖 full.id == snapshot.id。
-        opts.onMessage(message);
+        // 分发消息（assistant 经 assembler 聚合成一条，非 assistant 透传并触发上一个 message flush）
+        assembler.submit(message);
 
         // 处理 system/init 消息
         if (message.type === 'system' && message.subtype === 'init') {
@@ -353,11 +371,17 @@ export async function sdkOutputLoop(
         }
     }
 
-    // 迭代结束（含 abort/异常）：若当前 message 的完整 full 未下发且有累积内容，补全落库。
-    // 否则流式期间已通过 snapshot 显示的内容（snapshot 通道不落库）刷新后会丢失。
+    // 迭代结束：snapshot 补全优先于 assembler flush，避免重复落库。
+    // - 有 pending（assembler 未聚合输出完整 full，即 markFullDelivered 未置位）：用 snapshotSender
+    //   的累积（stream_event 实时累积，最完整）走 onAbortFlush 补全；assembler 的 pending 是不完整
+    //   partial，丢弃（不调 assembler.flush），避免与 snapshot 补全重复落库。
+    // - 无 pending（full 已 delivered）：assembler.flush 输出最后一条 message 的完整聚合 full。
+    //   （assistant 经 assembler 在中途遇不同 message.id / 非 assistant 时已 flush；这里兜底最后一条）
     const pendingFull = opts.snapshotSender.consumePendingFull();
     if (pendingFull) {
         opts.onAbortFlush?.(pendingFull);
+    } else {
+        assembler.flushAll();
     }
 
     logger.debug(`[sdkOutputLoop] Response iteration ended normally. queryStarted=${queryStarted}`);
@@ -462,7 +486,7 @@ export async function claudeRemote(opts: {
     onCompletionEvent?: (message: string) => void,
     onContextCleared?: () => void,
     /** 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库（由 launcher 实现 convert+send） */
-    onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string }) => void,
+    onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void,
     onSessionReset?: () => void,
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
     onQueryReady?: (query: Query) => void,

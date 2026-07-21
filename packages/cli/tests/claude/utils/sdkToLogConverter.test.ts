@@ -442,4 +442,23 @@ describe('SDKToLogConverter', () => {
             expect((logMessage as any).mode).toBe('plan')
         })
     })
+
+    describe('convertSnapshot (snapshot 携带 message.id)', () => {
+        it('写入 opts.messageId 到 message.id（snapshot↔full 关联键）', () => {
+            const raw = converter.convertSnapshot(
+                [{ type: 'thinking', thinking: '思考' }],
+                { messageId: 'msg_anthropic_abc', model: 'm' },
+            )
+            expect(raw).toBeTruthy()
+            const message = (raw as any).message
+            expect(message.id).toBe('msg_anthropic_abc')
+            expect(message.role).toBe('assistant')
+            expect(message.content).toEqual([{ type: 'thinking', thinking: '思考' }])
+        })
+
+        it('opts.messageId 缺省时 message.id 为 undefined（不伪造）', () => {
+            const raw = converter.convertSnapshot([{ type: 'text', text: 'hi' }])
+            expect((raw as any).message.id).toBeUndefined()
+        })
+    })
 })

@@ -44,7 +44,7 @@ export class StreamSnapshotSender {
     private timer: ReturnType<typeof setInterval> | null = null
     private destroyed = false
     /** 当前消息的快照选项 */
-    private snapshotOpts: { parentToolUseId?: string; model?: string } = {}
+    private snapshotOpts: { parentToolUseId?: string; model?: string; messageId?: string } = {}
     /** SDK 为当前 message_start 分配的 uuid，作 snapshot 的 id/localId（full message 用各自独立 uuid，不共享） */
     private sdkUuid: string | null = null
     /**
@@ -61,7 +61,7 @@ export class StreamSnapshotSender {
     ) {}
 
     /** 设置消息级别选项（在 message_start 时调用）。每条新 message 开始时 full 未到，重置 fullDelivered。 */
-    setSnapshotOpts(opts: { parentToolUseId?: string; model?: string; sdkUuid?: string }): void {
+    setSnapshotOpts(opts: { parentToolUseId?: string; model?: string; sdkUuid?: string; messageId?: string }): void {
         this.snapshotOpts = opts
         if (opts.sdkUuid) this.sdkUuid = opts.sdkUuid
         this.fullDelivered = false
@@ -155,9 +155,9 @@ export class StreamSnapshotSender {
      * 语义是「当前 message 的完整累积内容」，不暴露 buffers 内部——未来 snapshot 改增量发送时
      * 只改 flush 的发送逻辑，本接口仍返回完整内容，abort 补全逻辑不变。
      */
-    consumePendingFull(): { blocks: ContentBlock[]; model?: string; parentToolUseId?: string } | null {
+    consumePendingFull(): { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string } | null {
         if (this.fullDelivered || this.buffers.size === 0) return null
-        return { blocks: this.buildBlocks(), model: this.snapshotOpts.model, parentToolUseId: this.snapshotOpts.parentToolUseId }
+        return { blocks: this.buildBlocks(), model: this.snapshotOpts.model, parentToolUseId: this.snapshotOpts.parentToolUseId, messageId: this.snapshotOpts.messageId }
     }
 
     /** 将 RawJSONLines 包装为 DecryptedMessage（与 sendClaudeSessionMessage 一致的角色信封格式） */

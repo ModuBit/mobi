@@ -94,3 +94,30 @@ describe('StreamSnapshotSender - abort 补全（consumePendingFull）', () => {
         expect(sender.consumePendingFull()).toBeNull()
     })
 })
+
+describe('StreamSnapshotSender - messageId 透传（snapshot↔full 关联键）', () => {
+    it('setSnapshotOpts 的 messageId 透传到 convertSnapshot（flush 发 snapshot 时）', () => {
+        const { sender, convertSnapshot, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_anthropic_abc' })
+        sender.startBlock(0, 'thinking')
+        sender.append(0, '思考')
+        sender.flush()
+
+        expect(convertSnapshot).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ messageId: 'msg_anthropic_abc' }),
+        )
+        expect(transport).toHaveBeenCalled()
+    })
+
+    it('consumePendingFull 透传 messageId（abort 补全 full 也携带 message.id）', () => {
+        const { sender } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_anthropic_abc' })
+        sender.startBlock(0, 'text')
+        sender.append(0, 'hi')
+
+        const pending = sender.consumePendingFull()
+        expect(pending).not.toBeNull()
+        expect(pending!.messageId).toBe('msg_anthropic_abc')
+    })
+})

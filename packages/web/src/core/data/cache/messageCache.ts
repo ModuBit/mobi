@@ -39,9 +39,11 @@ export function resolveMessageCache(
 ): DecryptedMessage[] {
     if (!old) return [msg]
 
-    // 当非 snapshot 消息到达时，移除相同 parentUuid 的 snapshot
-    // 因为 SDK stream_event uuid ≠ raw JSON line uuid，snapshot 与 full message id 不同，
-    // 需要通过 parentUuid 关联同一轮次的消息来实现 snapshot 清理
+    // 当非 snapshot 消息（full）到达时，移除相同 parentUuid 的 snapshot。
+    // 前提：CLI 的 assembler 把 SDK 拆分的 full 按 message.id 聚合成一条，使 snapshot（一条）
+    // 与 full（一条）1-vs-1、parentUuid 不漂移，清理可靠（= message queue 之前的稳定态）。
+    // parentUuid 的已知边界（null：会话首条 assistant；SSE 乱序）由 reducer 的 (message.id, type)
+    // 过滤兜底（见 normalize 后的 dedupe），双保险。
     let base = old
     if (!msg.snapshot) {
         const parentUuid = extractParentUuid(msg.content)

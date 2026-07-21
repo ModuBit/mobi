@@ -22,6 +22,25 @@ import { isSkippableAgentContent, normalizeAgentRecord } from './normalizeAgent'
 import { normalizeUserRecord } from './normalizeUser'
 
 /**
+ * 从 DecryptedMessage.content 信封提取 Anthropic message.id。
+ * snapshot 与 full 共享同一 message.id（同一条 Anthropic message 的流式阶段与最终落库），
+ * 是双保险第二道（reducer 按 (messageId, type) 去重）的键。与 messageCache 的 extractMessageId
+ * 同源逻辑，normalize 层内联以避免 domain→cache 反向依赖。
+ */
+function extractAnthropicMessageId(content: unknown): string | null {
+    if (!content || typeof content !== 'object') return null
+    const envelope = content as Record<string, unknown>
+    const inner = envelope.content
+    if (!inner || typeof inner !== 'object') return null
+    const data = (inner as Record<string, unknown>).data
+    if (!data || typeof data !== 'object') return null
+    const message = (data as Record<string, unknown>).message
+    if (!message || typeof message !== 'object') return null
+    const id = (message as Record<string, unknown>).id
+    return typeof id === 'string' ? id : null
+}
+
+/**
  * 标准化解密消息
  * 将原始消息转换为统一的 NormalizedMessage 格式
  */
@@ -60,12 +79,13 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
             }
     }
     if (record.role === 'agent') {
+        const messageId = extractAnthropicMessageId(message.content) ?? undefined
         if (isSkippableAgentContent(record.content)) {
             return null
         }
         const normalized = normalizeAgentRecord(message.id, message.localId, message.createdAt, record.content, record.meta as MessageMeta | undefined)
         if (normalized) {
-            return { ...normalized, status: message.status, originalText: message.originalText, snapshot }
+            return { ...normalized, status: message.status, originalText: message.originalText, snapshot, messageId }
         }
         // normalizeAgentRecord 对 result/success 等消息返回 null 属于正常跳过，
         // 不应走 JSON dump fallback，仅当确实是未知类型时才兜底
@@ -87,6 +107,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
             status: message.status,
             originalText: message.originalText,
             snapshot,
+            messageId,
         }
     }
 

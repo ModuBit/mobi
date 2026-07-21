@@ -143,6 +143,8 @@ export type NormalizedMessage = ({
     isSynthetic?: boolean
     /** 流式快照消息（未落库，Hub 直接透传） */
     snapshot?: boolean
+    /** Anthropic 分配的 message.id（snapshot 与 full 共享，双保险第二道按 (messageId, type) 去重的键） */
+    messageId?: string
 }
 
 export type ToolPermission = {

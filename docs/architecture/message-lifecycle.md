@@ -191,7 +191,7 @@ SDK stream_event → StreamSnapshotSender 累积 delta → 每 500ms 发送 snap
 | snapshot id | 使用 SDK `stream_event` 的 uuid，与最终 assistant 消息的 uuid **不同**（它们是两条不同的 JSON 日志行） |
 | snapshot 标识 | `DecryptedMessage.snapshot = true` 区分快照和正式消息 |
 | Hub 处理 | snapshot 不写入 SQLite，直接通过 SSE `message-snapshot` 事件透传给 Web |
-| 关联清理 | Web 端通过 `parentUuid` 关联同一轮次的 snapshot 和 full message；snapshot 和 full message 共享相同的 `parentUuid`（因为 `convertSnapshot` 不更新 `this.lastUuid`） |
+| 关联清理 | Web 端通过 **`parentUuid`** 关联同一轮次的 snapshot 和 full message；前提：CLI `AssistantPartialAssembler` 把 SDK 拆分的 full 按 `message.id` 聚合成一条 → snapshot/full 1-vs-1 → parentUuid 不漂移 → 清理可靠（= message queue 之前稳定态）。reducer 的 `(messageId, type)` 过滤兜底 parentUuid 边界（双保险，见 [streaming.md](web/streaming.md) 关键设计 1） |
 
 ### 特殊方法
 
@@ -259,9 +259,13 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 | 事件类型 | 处理方式 |
 |----------|----------|
 | `message-snapshot` | 同 id 原地更新（覆盖旧 snapshot），新 id 追加 |
-| `message-received` | 先通过 `parentUuid` 清除同轮次的残留 snapshot，再 upsert |
+| `message-received` | 先通过 `parentUuid` 清除同轮次 snapshot（assembler 聚合 full 后 parentUuid 不漂移；reducer 再按 `(messageId, type)` 兜底），再 upsert |
 
-**snapshot 清理机制**：由于 SDK `stream_event` uuid ≠ 最终 `assistant` 消息 uuid，snapshot 和 full message 的 id 不同，无法通过 id 匹配替换。因此通过提取 raw content 中的 `parentUuid`（`content.content.data.parentUuid`）关联同一轮次的消息——同一轮次的 snapshot 和第一条 full message 共享相同的 `parentUuid`。
+**snapshot 清理机制（双保险）**：SDK `includePartialMessages` 把一条 message 的多 content block 拆成多条 full（共享 `message.id`、各自 uuid），与 snapshot（一条累积）粒度不匹配。CLI `AssistantPartialAssembler` 按 `message.id` 把拆分的 full **聚合成一条**，使 snapshot/full 1-vs-1，`parentUuid` 不再漂移（`d7260a2` 之前稳定态）。
+
+> - **第一道（messageCache `resolveMessageCache`）**：full 到达按 `parentUuid` 删同轮次 snapshot。assembler 聚合后可靠，已知边界（`parentUuid` 为 null 的会话首条、SSE 乱序）可能漏清。
+> - **第二道（reducer `dedupeSnapshotBlocks`）**：兜底第一道——snapshot 的 block 若已被同 `(messageId, type)` 的 full 覆盖则不渲染。`type`（reasoning/text）是内容自带的稳定标识。
+> - **历史**：`3d2433d` 修 uuid 覆盖的 resume bug 时误删 assembler（见 [streaming.md](web/streaming.md) 坑 2），full 从此拆分裸奔，parentUuid 清理失效 → thinking 双气泡。恢复 assembler（不恢复 uuid 覆盖）修正前提。
 
 ---
 
@@ -555,7 +559,7 @@ type ChatBlock =
 | Snapshot 发送 | Hub 收到 `snapshot: true` 的消息 | 不落库，直接 SSE `message-snapshot` 透传 |
 | Web 收到 snapshot | `SSEProvider` → `upsertMessageCache` | 同 id 原地更新，新 id 追加 |
 | Web 渲染 snapshot | `reducerTimeline` → `isSnapshot` 标记 | `AgentTextBlock` / `AgentReasoningBlock` 带 `isSnapshot` 标记，ChatContainer 对最后一个 running snapshot 启用 typing 光标 |
-| Full message 到达 | `SSEProvider` → `upsertMessageCache` | 通过 `parentUuid` 清除同轮次 snapshot，full message 正常 upsert |
+| Full message 到达 | `SSEProvider` → `upsertMessageCache` | 通过 `parentUuid` 清除同轮次 snapshot（assembler 聚合后可靠），full message 正常 upsert |
 
 ### 隐藏工具
 
@@ -595,7 +599,7 @@ type ChatBlock =
 | Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化（queue_state/position_at 列、byPosition 分页） |
 | Hub 同步 | `packages/hub/src/sync/syncEngine.ts` | SSE 推送、cancelQueuedMessage 委托 |
 | Hub 消息服务 | `packages/hub/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesSubmitted/cancelQueuedMessage |
-| Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + parentUuid 关联清理）、messages-submitted 处理 |
+| Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + 按 `parentUuid` 关联清理，assembler 聚合后可靠）、messages-submitted 处理 |
 | Web 排队消费标记 | `packages/web/src/core/lib/markMessagesSubmitted.ts` | 排队消息 queueState 翻为 consumed（first-write-wins） |
 | Web 排队悬浮条 | `packages/web/src/components/chat/QueuedMessagesBar.tsx` | composer 上方悬浮排队消息（✕取消 / ✎编辑） |
 | Web 标准化入口 | `packages/web/src/domain/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
