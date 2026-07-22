@@ -20,6 +20,8 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { AppSidebar } from './AppSidebar'
 import { MobileMenuDrawer } from './MobileMenu'
 import { SessionListDrawer } from './SessionListDrawer'
+import { WcoTitleBar } from './WcoTitleBar'
+import { useWindowControlsOverlay } from './useWindowControlsOverlay'
 import { Outlet } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -44,6 +46,9 @@ export function MainLayout() {
     // PWA 更新回调
     const [updateReload, setUpdateReload] = useState<(() => void) | null>(null)
 
+    // WCO 标题栏：桌面 PWA 启用时替代系统标题栏；PC Web / 移动端 / standalone 返回 false 不受影响
+    const isWco = useWindowControlsOverlay()
+
     // 应用主题
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', resolvedTheme)
@@ -67,25 +72,35 @@ export function MainLayout() {
                 <title>{t('siteTitle')}</title>
             </Helmet>
             <UpdatePrompt onUpdate={updateReload} />
-            <Layout style={{
+            {/* 外层 column 容器：WCO 标题栏在上（独立于下方 row Layout 的横向流），不受 AppSidebar overflow 裁剪 */}
+            <div style={{
                 height: '100dvh',
+                display: 'flex',
+                flexDirection: 'column',
                 overflow: 'hidden',
-                flexDirection: 'row',
-                background: token.colorBgContainer,
             }}>
-                <AppSidebar />
-                <Layout.Content style={{
+                {isWco && <WcoTitleBar />}
+                <Layout style={{
                     flex: 1,
-                    display: 'flex',
+                    minHeight: 0,
                     overflow: 'hidden',
-                    minWidth: 0,
-                    borderRadius: !isMobile && sidebarExpanded ? '12px 0 0 12px' : undefined,
-                    borderLeft: !isMobile && sidebarExpanded ? `1px solid ${token.colorBorder}` : undefined,
-                    background: token.colorBgLayout,
+                    flexDirection: 'row',
+                    background: token.colorBgContainer,
                 }}>
-                    <Outlet />
-                </Layout.Content>
-            </Layout>
+                    <AppSidebar />
+                    <Layout.Content style={{
+                        flex: 1,
+                        display: 'flex',
+                        overflow: 'hidden',
+                        minWidth: 0,
+                        borderRadius: !isMobile && sidebarExpanded ? '12px 0 0 12px' : undefined,
+                        borderLeft: !isMobile && sidebarExpanded ? `1px solid ${token.colorBorder}` : undefined,
+                        background: token.colorBgLayout,
+                    }}>
+                        <Outlet />
+                    </Layout.Content>
+                </Layout>
+            </div>
             <SessionListDrawer />
             {/* 移动端底部弹出菜单 */}
             <MobileMenuDrawer />
