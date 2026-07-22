@@ -41,7 +41,7 @@ export function createManifestRoutes(): Hono {
             // WCO：桌面端 PWA 把系统标题栏区域交还 Web 内容（按钮浮在内容上）。
             // 浏览器逐项尝试，window-controls-overlay 不可用时回退 standalone（现状）。
             display_override: ['window-controls-overlay', 'standalone'],
-            theme_color: '#ffffff',
+            theme_color: '#faf9f5',
             background_color: '#faf9f5',
             icons: [
                 {

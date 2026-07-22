@@ -50,14 +50,13 @@ export function MainLayout() {
     const isWco = useWindowControlsOverlay()
 
     // 应用主题：同步 data-theme + 浏览器 chrome（标签栏/地址栏）theme-color
-    // theme-color 随 mobi 实际主题变化，避免 Chrome 标签栏深色条与浅色内容区冲突。
-    // index.html 有亮/暗两个 media meta（首屏兜底），运行时统一覆盖为 mobi 主题色
+    // theme-color 取 colorBgLayout —— 与 WcoTitleBar 同源，保证 chrome 标签栏与标题栏/内容区颜色完全一致
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', resolvedTheme)
-        const chromeColor = resolvedTheme === 'dark' ? '#141414' : '#ffffff'
+        const chromeColor = token.colorBgLayout
         document.querySelectorAll('meta[name="theme-color"]')
             .forEach(m => m.setAttribute('content', chromeColor))
-    }, [resolvedTheme])
+    }, [resolvedTheme, token.colorBgLayout])
 
     // 注册 Service Worker（DEV 也注册 dev-sw type:module，含 push handler；不再跳过）
     useEffect(() => {
