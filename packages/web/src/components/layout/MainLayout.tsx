@@ -49,9 +49,14 @@ export function MainLayout() {
     // WCO 标题栏：桌面 PWA 启用时替代系统标题栏；PC Web / 移动端 / standalone 返回 false 不受影响
     const isWco = useWindowControlsOverlay()
 
-    // 应用主题
+    // 应用主题：同步 data-theme + 浏览器 chrome（标签栏/地址栏）theme-color
+    // theme-color 随 mobi 实际主题变化，避免 Chrome 标签栏深色条与浅色内容区冲突。
+    // index.html 有亮/暗两个 media meta（首屏兜底），运行时统一覆盖为 mobi 主题色
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', resolvedTheme)
+        const chromeColor = resolvedTheme === 'dark' ? '#141414' : '#ffffff'
+        document.querySelectorAll('meta[name="theme-color"]')
+            .forEach(m => m.setAttribute('content', chromeColor))
     }, [resolvedTheme])
 
     // 注册 Service Worker（DEV 也注册 dev-sw type:module，含 push handler；不再跳过）
