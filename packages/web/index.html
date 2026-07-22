@@ -6,6 +6,23 @@
     <!-- 浏览器 chrome（标签栏/地址栏）着色：静态默认跟 colorBgLayout 一致，运行时由 MainLayout 按 uiStore.theme 动态覆盖 -->
     <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)" />
+    <!-- 早读 mobi-ui theme，React 加载前同步设 theme-color，消除刷新时"先黑后浅"闪烁。
+         mobi 主题独立于系统主题（system 才跟随），media query 兜底仅用于 localStorage 无值的首次访问 -->
+    <script>
+        (function () {
+            try {
+                var raw = JSON.parse(localStorage.getItem('mobi-ui') || '{}')
+                var theme = (raw.state && raw.state.theme) || 'dark'
+                var resolved = theme === 'system'
+                    ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                    : theme
+                var color = resolved === 'dark' ? '#141414' : '#faf9f5'
+                document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+                    m.setAttribute('content', color)
+                })
+            } catch (e) { /* localStorage 不可用等异常，静默回退 media 默认 */ }
+        })()
+    </script>
     <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/brand/favicon.ico" sizes="32x32" />
     <link rel="manifest" href="/manifest.webmanifest" />
