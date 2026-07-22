@@ -43,13 +43,13 @@ interface WcoTitleBarProps {
  *
  * per-session 信息（会话名、操作按钮）不在本组件——保留在各页面 PageHeader。
  */
-const TitleBarRoot = styled.div<{ $bg: string; $border: string }>`
+const TitleBarRoot = styled.div<{ $bg: string }>`
     display: flex;
     align-items: center;
     height: 38px;
     flex-shrink: 0;
     background: ${p => p.$bg};
-    border-bottom: 1px solid ${p => p.$border};
+    /* 无 border-bottom：与下方内容区无缝融合，避免割裂感 */
     /* 整条标题栏可拖拽移动窗口；左侧 cluster 单独 no-drag */
     -webkit-app-region: drag;
     app-region: drag;
@@ -133,8 +133,7 @@ export function WcoTitleBar({ side }: WcoTitleBarProps) {
         <TitleBarRoot
             className={resolvedSide === 'mac' ? 'wco-titlebar-mac' : 'wco-titlebar-win'}
             style={sideStyle}
-            $bg={token.colorBgContainer}
-            $border={token.colorBorder}
+            $bg={token.colorBgLayout}
         >
             <LeftCluster>
                 <LogoArea
