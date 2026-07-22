@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 
 /** Window Controls Overlay 的最小可用接口（Chromium 桌面 PWA 提供） */
 interface WindowControlsOverlay {
@@ -56,4 +56,16 @@ function checkVisible(): boolean {
     if (typeof navigator === 'undefined') return false
     const wco = (navigator as NavigatorWithWCO).windowControlsOverlay
     return Boolean(wco?.visible)
+}
+
+/**
+ * WCO 状态共享 context。
+ * 检测逻辑（geometrychange listener）只在 MainLayout 调 useWindowControlsOverlay() 一次，
+ * 通过 Provider 下发给 AppSidebar / SidebarToggle 等子组件，避免多组件各自注册 listener。
+ */
+export const WcoContext = createContext(false)
+
+/** 消费 WCO 状态（子组件用，由 MainLayout 通过 WcoContext.Provider 提供） */
+export function useWco(): boolean {
+    return useContext(WcoContext)
 }

@@ -19,7 +19,7 @@ import styled from '@emotion/styled'
 import { PanelLeft } from 'lucide-react'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { useWindowControlsOverlay } from './useWindowControlsOverlay'
+import { useWco } from './useWindowControlsOverlay'
 
 const { useToken } = antTheme
 
@@ -53,7 +53,7 @@ export function SidebarToggle() {
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
     const toggleSidebar = useUiStore((s) => s.toggleSidebar)
     // WCO 模式下标题栏已有收起/展开按钮，主内容区不重复渲染
-    const isWco = useWindowControlsOverlay()
+    const isWco = useWco()
 
     if (isWco || isMobile || sidebarExpanded) return null
 

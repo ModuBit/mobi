@@ -30,10 +30,10 @@ vi.mock('@/core/data/stores/uiStore', () => ({
 }))
 
 vi.mock('@/components/layout/useWindowControlsOverlay', () => ({
-    useWindowControlsOverlay: vi.fn(() => false),
+    useWco: vi.fn(() => false),
 }))
 
-import { useWindowControlsOverlay } from '@/components/layout/useWindowControlsOverlay'
+import { useWco } from '@/components/layout/useWindowControlsOverlay'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 
 describe('SidebarToggle WCO 降级', () => {
@@ -41,13 +41,13 @@ describe('SidebarToggle WCO 降级', () => {
     afterEach(() => cleanup())
 
     it('WCO=false + 侧边栏收起 → 渲染展开按钮（现状）', () => {
-        vi.mocked(useWindowControlsOverlay).mockReturnValue(false)
+        vi.mocked(useWco).mockReturnValue(false)
         const { container } = render(<ConfigProvider><SidebarToggle /></ConfigProvider>)
         expect(container.querySelector('button')).not.toBeNull()
     })
 
     it('WCO=true → 返回 null（标题栏已有收起按钮）', () => {
-        vi.mocked(useWindowControlsOverlay).mockReturnValue(true)
+        vi.mocked(useWco).mockReturnValue(true)
         const { container } = render(<ConfigProvider><SidebarToggle /></ConfigProvider>)
         expect(container.firstChild).toBeNull()
     })

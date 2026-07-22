@@ -20,8 +20,8 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { AppSidebar } from './AppSidebar'
 import { MobileMenuDrawer } from './MobileMenu'
 import { SessionListDrawer } from './SessionListDrawer'
-import { WcoTitleBar } from './WcoTitleBar'
-import { useWindowControlsOverlay } from './useWindowControlsOverlay'
+import { WcoTitleBar, resolveChromeColor } from './WcoTitleBar'
+import { useWindowControlsOverlay, WcoContext } from './useWindowControlsOverlay'
 import { Outlet } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -50,14 +50,13 @@ export function MainLayout() {
     const isWco = useWindowControlsOverlay()
 
     // 应用主题：同步 data-theme + 浏览器 chrome（标签栏/地址栏）theme-color
-    // 浅色用 colorBgContainer（纯白）、深色用 colorBgLayout —— 与 WcoTitleBar 同源，
-    // 保证 chrome 标签栏与标题栏颜色完全一致
+    // theme-color 取 resolveChromeColor —— 与 WcoTitleBar 同源、与 html 背景一致
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', resolvedTheme)
-        const chromeColor = resolvedTheme === 'dark' ? token.colorBgLayout : token.colorBgContainer
+        const chromeColor = resolveChromeColor(resolvedTheme)
         document.querySelectorAll('meta[name="theme-color"]')
             .forEach(m => m.setAttribute('content', chromeColor))
-    }, [resolvedTheme, token.colorBgLayout, token.colorBgContainer])
+    }, [resolvedTheme])
 
     // 注册 Service Worker（DEV 也注册 dev-sw type:module，含 push handler；不再跳过）
     useEffect(() => {
@@ -73,6 +72,7 @@ export function MainLayout() {
                 algorithm: resolvedTheme === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
             }}
         >
+            <WcoContext.Provider value={isWco}>
             <Helmet>
                 <title>{t('siteTitle')}</title>
             </Helmet>
@@ -109,6 +109,7 @@ export function MainLayout() {
             <SessionListDrawer />
             {/* 移动端底部弹出菜单 */}
             <MobileMenuDrawer />
+            </WcoContext.Provider>
         </ConfigProvider>
     )
 }

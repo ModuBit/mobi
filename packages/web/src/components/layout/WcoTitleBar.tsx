@@ -27,6 +27,20 @@ const { useToken } = antTheme
 /** macOS 三色按钮区宽度（浮在内容上，env 不反映，用固定值避让） */
 const MAC_TRAFFIC_PAD = '78px'
 
+/**
+ * 浏览器 chrome（标签栏/地址栏）与 WcoTitleBar 统一使用的背景色。
+ * 跟 html 背景色（base.css）一致：亮 #ffffff / 暗 #141414，
+ * 不用 antd token（shadcn override 的 colorBgContainer=#faf9f5 / colorBgLayout=#141413 与 html 不同源，
+ * 会导致 chrome 标签栏与窗口边缘色差、以及刷新时 #ffffff↔#faf9f5 闪烁）。
+ */
+const CHROME_BG_LIGHT = '#ffffff'
+const CHROME_BG_DARK = '#141414'
+
+/** 解析当前主题对应的 chrome 背景色。MainLayout 设 theme-color 与 WcoTitleBar 背景共用，保证同源 */
+export function resolveChromeColor(theme: 'light' | 'dark'): string {
+    return theme === 'dark' ? CHROME_BG_DARK : CHROME_BG_LIGHT
+}
+
 /** 标题栏两侧：mac 三色在左，win 按钮在右 */
 type TitleBarSide = 'mac' | 'win'
 
@@ -106,14 +120,21 @@ const DragRegion = styled.div`
     height: 100%;
 `
 
-/** 探测窗口控制按钮所在侧：macOS 三色在左，其余（Windows/Linux）在右 */
+/** 探测窗口控制按钮所在侧：macOS 三色在左，其余（Windows/Linux）在右。
+ *  平台在会话期间不变，模块级缓存避免每次渲染重复探测 */
+let cachedSide: TitleBarSide | undefined
 function detectSide(): TitleBarSide {
-    if (typeof navigator === 'undefined') return 'win'
+    if (cachedSide) return cachedSide
+    if (typeof navigator === 'undefined') {
+        cachedSide = 'win'
+        return cachedSide
+    }
     const uaData = (navigator as Navigator & {
         userAgentData?: { platform: string }
     }).userAgentData
     const platform = uaData?.platform ?? navigator.platform ?? ''
-    return /mac/i.test(platform) ? 'mac' : 'win'
+    cachedSide = /mac/i.test(platform) ? 'mac' : 'win'
+    return cachedSide
 }
 
 export function WcoTitleBar({ side }: WcoTitleBarProps) {
@@ -126,9 +147,8 @@ export function WcoTitleBar({ side }: WcoTitleBarProps) {
 
     const resolvedSide = side ?? detectSide()
 
-    // 浅色用 colorBgContainer（纯白，与 chrome 标签栏一致）；
-    // 深色保持 colorBgLayout（与内容区一致，不动）
-    const bgColor = resolvedTheme === 'dark' ? token.colorBgLayout : token.colorBgContainer
+    // 背景跟 html 窗口底色一致（resolveChromeColor），不随 antd token 变化
+    const bgColor = resolveChromeColor(resolvedTheme)
 
     // macOS 三色按钮在左 → 左 padding 避让；Windows/Linux 按钮在右 → env(titlebar-area-width) 已扣除按钮宽
     const sideStyle: React.CSSProperties = resolvedSide === 'mac'
