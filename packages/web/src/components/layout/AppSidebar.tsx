@@ -22,6 +22,7 @@ import { SidebarHeader } from './SidebarHeader'
 import { SidebarNav } from './SidebarNav'
 import { SidebarProjects } from './SidebarProjects'
 import { SidebarFooter } from './SidebarFooter'
+import { useWindowControlsOverlay } from './useWindowControlsOverlay'
 import { CLIP_DURATION, CLIP_EASING } from '@/components/ui/clipConstants'
 
 const { useToken } = antTheme
@@ -67,6 +68,8 @@ export function AppSidebar() {
     const { token } = useToken()
     const isMobile = useIsMobile()
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
+    // WCO 模式下 Logo + 收起按钮已上移到 WcoTitleBar，SidebarHeader 不再渲染
+    const isWco = useWindowControlsOverlay()
 
     // 移动端不渲染（使用 Drawer）
     if (isMobile) {
@@ -76,7 +79,7 @@ export function AppSidebar() {
     return (
         <SidebarContainer $token={token} $expanded={sidebarExpanded}>
             <SidebarInner $token={token} $expanded={sidebarExpanded}>
-                <SidebarHeader />
+                {!isWco && <SidebarHeader />}
                 <SidebarNav />
                 <SidebarProjects />
                 <Spacer />
