@@ -23,19 +23,33 @@ import { collectHiddenToolUseIds, collectTitleChanges, collectToolIdsFromMessage
 import { reduceTimeline } from './reducerTimeline'
 
 /**
- * 双保险第二道：按 (messageId, type) 去重 snapshot block。
+ * 双保险第二道：按 (messageId, type[, id]) 去重 snapshot block。
  *
  * 第一道（messageCache parentUuid 清理）在 CLI assembler 聚合 full 后已可靠，但有已知边界
  * 可能漏清：parentUuid 为 null（会话首条 assistant，lastUuid 未建立）、SSE 早到/乱序。
- * 此处在 reducer 渲染前兜底——snapshot 的 block 若已被同 (messageId, type) 的 full 覆盖，
- * 则移除；即使 snapshot 残留到渲染层也不重复显示。
+ * 此处在 reducer 渲染前兜底——snapshot 的 block 若已被同 key 的 full 覆盖，则移除；
+ * 即使 snapshot 残留到渲染层也不重复显示。
  *
- * type（reasoning/text）是内容自带的稳定标识，不依赖 block 序号或到达顺序，比"按序号对齐"稳。
- * 边界：同一 message 多个同类型 block（如两个 thinking）少见，按 type 匹配会一起标记覆盖，
- * 最坏是某 block 短暂不显示（等下一条 full 补），不会双气泡。
+ * key：text/thinking/reasoning 等 → `(messageId, type)`（type 是稳定标识，不依赖序号/到达顺序）；
+ * tool-call → `(messageId, tool-call, id)`——并行工具调用同 message 含多个 tool-call，
+ * 按 type 会把多条一起标记覆盖（full 暂只到部分时误删其余），用 tool_use_id 精确到条。
+ * 边界：同 message 多个同类型 text/thinking 仍按 type 匹配（少见，最坏某 block 短暂不显示）。
  */
+function blockDedupeKey(messageId: string, block: unknown): string | null {
+    if (!block || typeof block !== 'object') return null
+    const b = block as { type?: unknown; id?: unknown }
+    // normalized 后 tool_use 表现为 { type: 'tool-call', id: tool_use_id }
+    if (b.type === 'tool-call' && typeof b.id === 'string') {
+        return `${messageId}:tool-call:${b.id}`
+    }
+    if (typeof b.type === 'string') {
+        return `${messageId}:${b.type}`
+    }
+    return null
+}
+
 export function dedupeSnapshotBlocks(normalized: NormalizedMessage[]): NormalizedMessage[] {
-    // 第一遍：收集已落库 full 的 (messageId, type)，同时检测是否存在 snapshot
+    // 第一遍：收集已落库 full 的 block key，同时检测是否存在 snapshot
     const deliveredKeys = new Set<string>()
     let hasSnapshot = false
     for (const m of normalized) {
@@ -45,9 +59,8 @@ export function dedupeSnapshotBlocks(normalized: NormalizedMessage[]): Normalize
             continue  // snapshot 不贡献 deliveredKeys
         }
         for (const c of m.content) {
-            if (c && typeof c === 'object' && 'type' in c) {
-                deliveredKeys.add(`${m.messageId}:${c.type}`)
-            }
+            const key = blockDedupeKey(m.messageId, c)
+            if (key) deliveredKeys.add(key)
         }
     }
     // 无 full 或无 snapshot → 无需去重，原样返回（避免第二遍遍历；翻页历史无 snapshot 时早退）
@@ -60,8 +73,11 @@ export function dedupeSnapshotBlocks(normalized: NormalizedMessage[]): Normalize
             result.push(m)
             continue
         }
-        const kept = m.content.filter(c => !(c && typeof c === 'object' && 'type' in c
-            && deliveredKeys.has(`${m.messageId}:${c.type}`)))
+        const messageId = m.messageId
+        const kept = m.content.filter(c => {
+            const key = blockDedupeKey(messageId, c)
+            return !key || !deliveredKeys.has(key)
+        })
         if (kept.length === 0) continue  // snapshot 全被覆盖，移除整条
         result.push(kept.length === m.content.length ? m : { ...m, content: kept })
     }

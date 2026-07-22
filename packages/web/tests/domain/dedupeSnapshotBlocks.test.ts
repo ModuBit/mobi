@@ -102,4 +102,33 @@ describe('dedupeSnapshotBlocks（双保险第二道：按 (messageId, type) 去�
         const result = dedupeSnapshotBlocks([snap, full])
         expect(result.find(m => m.id === 'snap-1')!.content).toHaveLength(1)
     })
+
+    it('tool-call 按 (messageId, id) 精确去重：并行多 tool_use，full 只到一条时不误删其余', () => {
+        // 同一 message 含两个并行 tool-call（不同 tool_use_id）。full 暂只覆盖第一条时，
+        // snapshot 的第二条不应被按 type 一起误删（这是修复并行工具 running 中间态丢失的关键）
+        const snap = {
+            id: 'snap-1', localId: 'snap-1', createdAt: 1, isSidechain: false,
+            role: 'agent' as const,
+            content: [
+                { type: 'tool-call' as const, id: 'toolu_A', name: 'Bash', input: { command: 'ls' }, description: null, uuid: 'u-a', parentUUID: null },
+                { type: 'tool-call' as const, id: 'toolu_B', name: 'Read', input: { path: 'x' }, description: null, uuid: 'u-b', parentUUID: null },
+            ],
+            snapshot: true, messageId: 'msgX',
+        } as unknown as NormalizedMessage
+        const fullA = {
+            id: 'full-a', localId: 'full-a', createdAt: 1, isSidechain: false,
+            role: 'agent' as const,
+            content: [
+                { type: 'tool-call' as const, id: 'toolu_A', name: 'Bash', input: { command: 'ls' }, description: null, uuid: 'u-a', parentUUID: null },
+            ],
+            snapshot: false, messageId: 'msgX',
+        } as unknown as NormalizedMessage
+
+        const result = dedupeSnapshotBlocks([snap, fullA])
+        const snapResult = result.find(m => m.id === 'snap-1')!
+        // toolu_A 被 full 覆盖移除；toolu_B 保留（未误删）
+        expect(snapResult.content).toEqual([
+            expect.objectContaining({ type: 'tool-call', id: 'toolu_B' }),
+        ])
+    })
 })

@@ -95,6 +95,73 @@ describe('StreamSnapshotSender - abort 补全（consumePendingFull）', () => {
     })
 })
 
+describe('StreamSnapshotSender - tool_use 流式（让前端可见 tool running 中间态）', () => {
+    it('content_block_stop 后 tool_use 经 flush→convertSnapshot 下发，input 由 input_json_delta 拼成', () => {
+        const { sender, convertSnapshot, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
+        sender.startBlock(0, 'tool_use', { id: 'toolu_1', name: 'Bash' })
+        sender.append(0, '{"comm')
+        sender.append(0, 'and":"ls"}')
+        sender.flush()
+        // 流式期间（未 content_block_stop）flush 不下发 tool_use：半截 JSON 无意义
+        expect(convertSnapshot).not.toHaveBeenCalled()
+        sender.endBlock(0) // content_block_stop：input 完整、ready，触发 flush
+        expect(convertSnapshot).toHaveBeenCalledWith(
+            expect.arrayContaining([{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } }]),
+            expect.anything(),
+        )
+        expect(transport).toHaveBeenCalled()
+    })
+
+    it('ready 时 input JSON 解析失败兜底为 {}（保 running 可见，不丢 tool_use）', () => {
+        const { sender, convertSnapshot } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
+        sender.startBlock(0, 'tool_use', { id: 'toolu_2', name: 'Read' })
+        sender.append(0, '{not-json')
+        sender.endBlock(0)
+
+        expect(convertSnapshot).toHaveBeenCalledWith(
+            expect.arrayContaining([{ type: 'tool_use', id: 'toolu_2', name: 'Read', input: {} }]),
+            expect.anything(),
+        )
+    })
+
+    it('text 与 tool_use 混合：text 流式即下发，tool_use 仅 ready 后随 flush 下发', () => {
+        const { sender, convertSnapshot } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
+        sender.startBlock(0, 'text')
+        sender.append(0, 'thinking...')
+        sender.startBlock(1, 'tool_use', { id: 'toolu_3', name: 'Grep' })
+        sender.append(1, '{"pattern":"x"}')
+        sender.flush()
+
+        // tool_use 未 endBlock：snapshot 只下发 text，不含 tool_use
+        const beforeCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
+        expect(beforeCall).toEqual([{ type: 'text', text: 'thinking...' }])
+
+        sender.endBlock(1)
+        const afterCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
+        expect(afterCall).toEqual([
+            { type: 'text', text: 'thinking...' },
+            { type: 'tool_use', id: 'toolu_3', name: 'Grep', input: { pattern: 'x' } },
+        ])
+    })
+
+    it('abort 补全（consumePendingFull）保留半截 tool_use，不丢调用记录', () => {
+        // abort 时 tool_use 可能仍在流式 input（未 content_block_stop）。consumePendingFull 用于落库
+        // 补全，此时应保留该 tool_use（input 兜底），避免「该工具被调用过」整条丢失。
+        const { sender } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1' })
+        sender.startBlock(0, 'tool_use', { id: 'toolu_4', name: 'Bash' })
+        sender.append(0, '{"command":"ls"') // 未闭合，未 endBlock（abort 发生在 content_block_stop 前）
+
+        const pending = sender.consumePendingFull()
+        expect(pending!.blocks).toEqual([
+            { type: 'tool_use', id: 'toolu_4', name: 'Bash', input: {} }, // parse 失败兜底 {}
+        ])
+    })
+})
+
 describe('StreamSnapshotSender - messageId 透传（snapshot↔full 关联键）', () => {
     it('setSnapshotOpts 的 messageId 透传到 convertSnapshot（flush 发 snapshot 时）', () => {
         const { sender, convertSnapshot, transport } = createSender()

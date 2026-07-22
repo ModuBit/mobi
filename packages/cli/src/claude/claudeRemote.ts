@@ -230,6 +230,10 @@ function handleStreamEvent(
             snapshotSender.startBlock(event.index, 'text');
         } else if (block?.type === 'thinking') {
             snapshotSender.startBlock(event.index, 'thinking');
+        } else if (block?.type === 'tool_use') {
+            // tool_use 的 id/name 在 content_block_start 齐全；input 随 input_json_delta 累积，
+            // content_block_stop 后随 snapshot 下发 → 前端建 running block（不等 type:'assistant' 完整消息）
+            snapshotSender.startBlock(event.index, 'tool_use', { id: block.id, name: block.name });
         }
     } else if (event.type === 'content_block_delta') {
         const delta = event.delta;
@@ -237,6 +241,11 @@ function handleStreamEvent(
             snapshotSender.append(event.index, delta.text);
         } else if (delta?.type === 'thinking_delta') {
             snapshotSender.append(event.index, delta.thinking);
+        } else if (delta?.type === 'input_json_delta') {
+            // tool_use 的 input 分片流式，累积到完整 JSON（content_block_stop 后才进 snapshot）
+            // typeof 校验字段名：SDK 类型对 input_json_delta 未严格导出，防止字段名差异致 undefined 混入
+            const chunk = delta.partial_json;
+            if (typeof chunk === 'string' && chunk) snapshotSender.append(event.index, chunk);
         }
     } else if (event.type === 'content_block_stop') {
         snapshotSender.endBlock(event.index);

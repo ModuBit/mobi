@@ -248,7 +248,11 @@ export class SDKToLogConverter {
      * snapshot 走主链 lastUuid、full 走各自 parent_tool_use_id 路径，parentUuid 必漂移。
      */
     convertSnapshot(
-        contentBlocks: Array<{ type: 'text'; text: string } | { type: 'thinking'; thinking: string }>,
+        contentBlocks: Array<
+            | { type: 'text'; text: string }
+            | { type: 'thinking'; thinking: string }
+            | { type: 'tool_use'; id: string; name: string; input: unknown }
+        >,
         opts?: { parentToolUseId?: string; model?: string; messageId?: string },
     ): RawJSONLines {
         const uuid = randomUUID()
