@@ -54,4 +54,14 @@ describe('Manifest API', () => {
         const body = await res.json() as Record<string, unknown>
         expect(body.name).toMatch(/^Mobi - /)
     })
+
+    test('GET /manifest.webmanifest 声明 display_override 含 window-controls-overlay', async () => {
+        const res = await app.request('/manifest.webmanifest')
+        const body = await res.json() as Record<string, unknown>
+        const override = body.display_override
+        expect(Array.isArray(override)).toBe(true)
+        expect((override as unknown[]).includes('window-controls-overlay')).toBe(true)
+        // 回退项 standalone 必须存在，保证 WCO 不可用时降级
+        expect((override as unknown[]).includes('standalone')).toBe(true)
+    })
 })
