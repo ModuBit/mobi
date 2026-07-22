@@ -50,13 +50,14 @@ export function MainLayout() {
     const isWco = useWindowControlsOverlay()
 
     // 应用主题：同步 data-theme + 浏览器 chrome（标签栏/地址栏）theme-color
-    // theme-color 取 colorBgLayout —— 与 WcoTitleBar 同源，保证 chrome 标签栏与标题栏/内容区颜色完全一致
+    // 浅色用 colorBgContainer（纯白）、深色用 colorBgLayout —— 与 WcoTitleBar 同源，
+    // 保证 chrome 标签栏与标题栏颜色完全一致
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', resolvedTheme)
-        const chromeColor = token.colorBgLayout
+        const chromeColor = resolvedTheme === 'dark' ? token.colorBgLayout : token.colorBgContainer
         document.querySelectorAll('meta[name="theme-color"]')
             .forEach(m => m.setAttribute('content', chromeColor))
-    }, [resolvedTheme, token.colorBgLayout])
+    }, [resolvedTheme, token.colorBgLayout, token.colorBgContainer])
 
     // 注册 Service Worker（DEV 也注册 dev-sw type:module，含 push handler；不再跳过）
     useEffect(() => {

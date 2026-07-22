@@ -20,7 +20,7 @@ import styled from '@emotion/styled'
 import { useNavigate } from '@tanstack/react-router'
 import { Logo } from './Logo'
 import { MobiWordmark } from './MobiWordmark'
-import { useUiStore } from '@/core/data/stores/uiStore'
+import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 
 const { useToken } = antTheme
 
@@ -119,10 +119,16 @@ function detectSide(): TitleBarSide {
 export function WcoTitleBar({ side }: WcoTitleBarProps) {
     const { token } = useToken()
     const navigate = useNavigate()
+    const theme = useUiStore((s) => s.theme)
     const sidebarExpanded = useUiStore((s) => s.sidebarExpanded)
     const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+    const resolvedTheme = resolveTheme(theme)
 
     const resolvedSide = side ?? detectSide()
+
+    // 浅色用 colorBgContainer（纯白，与 chrome 标签栏一致）；
+    // 深色保持 colorBgLayout（与内容区一致，不动）
+    const bgColor = resolvedTheme === 'dark' ? token.colorBgLayout : token.colorBgContainer
 
     // macOS 三色按钮在左 → 左 padding 避让；Windows/Linux 按钮在右 → env(titlebar-area-width) 已扣除按钮宽
     const sideStyle: React.CSSProperties = resolvedSide === 'mac'
@@ -133,7 +139,7 @@ export function WcoTitleBar({ side }: WcoTitleBarProps) {
         <TitleBarRoot
             className={resolvedSide === 'mac' ? 'wco-titlebar-mac' : 'wco-titlebar-win'}
             style={sideStyle}
-            $bg={token.colorBgLayout}
+            $bg={bgColor}
         >
             <LeftCluster>
                 <LogoArea

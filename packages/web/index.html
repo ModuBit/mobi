@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-    <!-- 浏览器 chrome（标签栏/地址栏）着色：静态默认跟 colorBgLayout 一致，运行时由 MainLayout 按 uiStore.theme 动态覆盖 -->
-    <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
+    <!-- 浏览器 chrome（标签栏/地址栏）着色：静态默认浅色 #ffffff / 深色 #141414，运行时由 MainLayout 按 uiStore.theme 动态覆盖 -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)" />
     <!-- 早读 mobi-ui theme，React 加载前同步设 theme-color，消除刷新时"先黑后浅"闪烁。
          mobi 主题独立于系统主题（system 才跟随），media query 兜底仅用于 localStorage 无值的首次访问 -->
@@ -16,7 +16,7 @@
                 var resolved = theme === 'system'
                     ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
                     : theme
-                var color = resolved === 'dark' ? '#141414' : '#faf9f5'
+                var color = resolved === 'dark' ? '#141414' : '#ffffff'
                 document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
                     m.setAttribute('content', color)
                 })

@@ -21,12 +21,15 @@ import { ConfigProvider } from 'antd'
 
 // 可控 uiStore mock state —— 直接修改对象即可驱动组件重渲（配合 key 强制 remount）
 const mockState = {
+    theme: 'light' as 'light' | 'dark' | 'system',
     sidebarExpanded: true,
     toggleSidebar: vi.fn(),
 }
 
 vi.mock('@/core/data/stores/uiStore', () => ({
     useUiStore: (selector: (s: typeof mockState) => unknown) => selector(mockState),
+    // resolveTheme: 'system' 解析为亮色（测试默认亮色场景）
+    resolveTheme: (t: string) => (t === 'system' ? 'light' : t),
 }))
 
 // router navigate mock（Logo 点击跳转会触发 useNavigate）
