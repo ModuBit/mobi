@@ -52,8 +52,8 @@ describe('toStatusDotState', () => {
 
     it('映射工具侧 ToolCallState', () => {
         expect(toStatusDotState('running')).toBe('running')
-        expect(toStatusDotState('pending')).toBe('awaiting_auth')
-        expect(toStatusDotState('completed')).toBe('inactive')
+        expect(toStatusDotState('pending')).toBe('pending')
+        expect(toStatusDotState('completed')).toBe('completed')
         expect(toStatusDotState('error')).toBe('error')
     })
 })
@@ -91,6 +91,13 @@ describe('StatusStateIcon', () => {
         const { container } = render(<StatusStateIcon state="error" />)
         const dot = container.firstChild as HTMLElement
         expect(dot.style.background).toBe(rgb('#ef5350'))
+        expect(dot.style.animation).toBe('')
+    })
+
+    it('completed 绿色 + 静态（工具执行成功）', () => {
+        const { container } = render(<StatusStateIcon state="completed" />)
+        const dot = container.firstChild as HTMLElement
+        expect(dot.style.background).toBe(rgb('#66bb6a'))
         expect(dot.style.animation).toBe('')
     })
 

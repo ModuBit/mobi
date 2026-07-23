@@ -128,34 +128,38 @@ export function getToolIcon(name: string, opts: CSSProperties | ToolIconOpts = I
 type ToolCallState = 'pending' | 'running' | 'completed' | 'error'
 
 /** StatusDot 统一状态空间（session 侧 AgentStatus 与工具侧 ToolCallState 共同映射目标） */
-export type StatusDotState = 'running' | 'awaiting_auth' | 'idle' | 'inactive' | 'error'
+export type StatusDotState = 'running' | 'pending' | 'awaiting_auth' | 'idle' | 'completed' | 'inactive' | 'error'
 
 /** 统一状态色板 —— 全 app 唯一状态色来源 */
 export const STATUS_DOT_COLORS: Record<StatusDotState, string> = {
     running: '#4dabf7',
+    pending: '#ffa726',
     awaiting_auth: '#ffa726',
     idle: '#66bb6a',
+    completed: '#66bb6a',
     inactive: '#d9d9d9',
     error: '#ef5350',
 }
 
 /**
  * 将 session 侧 AgentStatus 或工具侧 ToolCallState 映射到统一 StatusDotState。
- * - outputting / running → running
- * - awaiting_auth / pending → awaiting_auth
- * - idle → idle
- * - inactive / completed → inactive
- * - error → error
+ * - outputting / running → running（蓝呼吸）
+ * - pending → pending（橙呼吸，工具排队，沿用原工具行为）
+ * - awaiting_auth → awaiting_auth（橙颤动，session 等审批）
+ * - idle → idle（绿舒缓呼吸，session 等输入）
+ * - completed → completed（绿静态，工具执行成功）
+ * - inactive → inactive（灰静态，session 未激活）
+ * - error → error（红静态）
  */
 export function toStatusDotState(state: AgentStatus | ToolCallState): StatusDotState {
     switch (state) {
         case 'outputting':
         case 'running': return 'running'
-        case 'awaiting_auth':
-        case 'pending': return 'awaiting_auth'
+        case 'pending': return 'pending'
+        case 'awaiting_auth': return 'awaiting_auth'
         case 'idle': return 'idle'
-        case 'inactive':
-        case 'completed': return 'inactive'
+        case 'completed': return 'completed'
+        case 'inactive': return 'inactive'
         case 'error': return 'error'
         default: return 'inactive'
     }
@@ -170,9 +174,10 @@ type StatusStateIconProps = {
     style?: CSSProperties
 }
 
-/** 各 StatusDotState 对应的动画；未列出的状态（inactive/error）为静态 */
+/** 各 StatusDotState 对应的动画；未列出的状态（completed/inactive/error）为静态 */
 const STATUS_DOT_ANIMATION: Partial<Record<StatusDotState, string>> = {
     running: 'status-dot-breathe 1.1s ease-in-out infinite',
+    pending: 'status-dot-breathe 1.5s ease-in-out infinite',
     awaiting_auth: 'status-dot-shake 0.45s ease-in-out infinite',
     idle: 'status-dot-breathe-slow 3s ease-in-out infinite',
 }
