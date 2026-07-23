@@ -15,295 +15,171 @@
  */
 
 /**
- * Design decisions:
- * - Logging should be done only through file for debugging, otherwise we might disturb the claude session when in interactive mode
- * - Use info for logs that are useful to the user - this is our UI
- * - File output location: ~/.handy/logs/<date time in local timezone>.log
+ * cli Logger：基于 shared BaseLogger（统一落盘 / 格式 / ringBuffer / console 着色），
+ * 额外保留 cli 特有能力：
+ * - 远程日志（DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING）
+ * - debugLargeJson（大对象截断落盘）
+ *
+ * 文件名按 processType 分：runner → {ts}-runner.log，交互 → {ts}-cli.log。
  */
 
 import chalk from 'chalk'
-import { appendFileSync } from 'fs'
+import {
+    BaseLogger,
+    createTimestampForFilename,
+    createTimestampForLogEntry,
+    type LogLevel,
+} from '@mobi/shared/logger'
 import { configuration } from '@/configuration'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { readRunnerState } from '@/persistence'
-import type { RingBufferReader } from '@mobi/shared/exitLogger'
 
-/**
- * Consistent date/time formatting functions
- */
-function createTimestampForFilename(date: Date = new Date()): string {
-  return date.toLocaleString('sv-SE', { 
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    year: 'numeric',
-    month: '2-digit', 
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).replace(/[: ]/g, '-').replace(/,/g, '') + '-pid-' + process.pid
+/** 按 configuration.processType 解析本次会话的日志文件路径 */
+function sessionLogPath(): string {
+    const timestamp = createTimestampForFilename()
+    return join(configuration.logsDir, `${timestamp}-${configuration.processType}.log`)
 }
 
-function createTimestampForLogEntry(date: Date = new Date()): string {
-  return date.toLocaleTimeString('en-US', { 
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    fractionalSecondDigits: 3
-  })
-}
+export class Logger extends BaseLogger {
+    private dangerouslyUnencryptedServerLoggingUrl: string | undefined
 
-function getSessionLogPath(): string {
-  const timestamp = createTimestampForFilename()
-  const filename = configuration.isRunnerProcess ? `${timestamp}-runner.log` : `${timestamp}.log`
-  return join(configuration.logsDir, filename)
-}
-
-export class Logger implements RingBufferReader {
-  private dangerouslyUnencryptedServerLoggingUrl: string | undefined
-  /** 最近 N 条 debug 的环形缓冲，供 exitLogger crash dump 还原崩溃前上下文 */
-  private readonly ringBuffer: string[] = []
-  private readonly ringBufferCapacity: number
-  /** 环形缓冲下一个写入位置（满后覆盖最旧），O(1) 入队 */
-  private ringWriteIndex = 0
-
-  constructor(
-    public readonly logFilePath = getSessionLogPath(),
-    options?: { ringBufferCapacity?: number }
-  ) {
-    this.ringBufferCapacity = Math.max(1, options?.ringBufferCapacity ?? 200)
-    // Remote logging enabled only when explicitly set with API URL
-    if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING
-      && process.env.MOBI_API_URL) {
-      this.dangerouslyUnencryptedServerLoggingUrl = process.env.MOBI_API_URL
-      console.log(chalk.yellow('[REMOTE LOGGING] Sending logs to server for AI debugging'))
-    }
-  }
-
-  // Use local timezone for simplicity of locating the logs,
-  // in practice you will not need absolute timestamps
-  localTimezoneTimestamp(): string {
-    return createTimestampForLogEntry()
-  }
-
-  debug(message: string, ...args: unknown[]): void {
-    this.logToFile(`[${this.localTimezoneTimestamp()}]`, message, ...args)
-    this.pushRingBuffer(message, ...args)
-
-    // NOTE: @kirill does not think its a good ideas,
-    // as it will break us using claude in interactive mode.
-    // Instead simply open the debug file in a new editor window.
-    //
-    // Also log to console in development mode
-    // if (process.env.DEBUG) {
-    //   this.logToConsole('debug', '', message, ...args)
-    // }
-  }
-
-  debugLargeJson(
-    message: string,
-    object: unknown,
-    maxStringLength: number = 100,
-    maxArrayLength: number = 10,
-  ): void {
-    if (!process.env.DEBUG) {
-      this.debug(`In production, skipping message inspection`)
-    }
-
-    // Some of our messages are huge, but we still want to show them in the logs
-    const truncateStrings = (obj: unknown): unknown => {
-      if (typeof obj === 'string') {
-        return obj.length > maxStringLength 
-          ? obj.substring(0, maxStringLength) + '... [truncated for logs]'
-          : obj
-      }
-      
-      if (Array.isArray(obj)) {
-        const truncatedArray = obj.map(item => truncateStrings(item)).slice(0, maxArrayLength)
-        if (obj.length > maxArrayLength) {
-          truncatedArray.push(`... [truncated array for logs up to ${maxArrayLength} items]` as unknown)
+    constructor(
+        logFilePath: string = sessionLogPath(),
+        options?: { ringBufferCapacity?: number },
+    ) {
+        super(configuration.processType, configuration.logsDir, logFilePath, options)
+        // 仅在显式开启且配置了 API URL 时启用远程日志
+        if (
+            process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING &&
+            process.env.MOBI_API_URL
+        ) {
+            this.dangerouslyUnencryptedServerLoggingUrl = process.env.MOBI_API_URL
+            console.log(chalk.yellow('[REMOTE LOGGING] Sending logs to server for AI debugging'))
         }
-        return truncatedArray
-      }
-      
-      if (obj && typeof obj === 'object') {
-        const result: Record<string, unknown> = {}
-        for (const [key, value] of Object.entries(obj)) {
-          if (key === 'usage') {
-            // Drop usage, not generally useful for debugging
-            continue
-          }
-          result[key] = truncateStrings(value)
+    }
+
+    /**
+     * override：落盘前追加远程上报（若启用）。
+     * 调 super.writeLine 完成统一的落盘 + ringBuffer。
+     */
+    protected writeLine(level: LogLevel, message: string, ...args: unknown[]): void {
+        if (this.dangerouslyUnencryptedServerLoggingUrl) {
+            // fire-and-forget，显式 catch 避免未处理 rejection
+            this.sendToRemoteServer(level, message, ...args).catch(() => {
+                // 静默，不打扰会话
+            })
         }
-        return result
-      }
-      
-      return obj
+        super.writeLine(level, message, ...args)
     }
 
-    const truncatedObject = truncateStrings(object)
-    const json = JSON.stringify(truncatedObject, null, 2)
-    this.logToFile(`[${this.localTimezoneTimestamp()}]`, message, '\n', json)
-  }
-  
-  info(message: string, ...args: unknown[]): void {
-    this.logToConsole('info', '', message, ...args)
-    this.debug(message, args)
-  }
-  
-  infoDeveloper(message: string, ...args: unknown[]): void {
-    // Always write to debug
-    this.debug(message, ...args)
-    
-    // Write to info if DEBUG mode is on
-    if (process.env.DEBUG) {
-      this.logToConsole('info', '[DEV]', message, ...args)
+    /**
+     * 大对象截断后落盘（多行 JSON）。生产环境默认跳过内容，仅记一条 debug 提示。
+     */
+    debugLargeJson(
+        message: string,
+        object: unknown,
+        maxStringLength: number = 100,
+        maxArrayLength: number = 10,
+    ): void {
+        if (!process.env.DEBUG) {
+            this.debug('In production, skipping message inspection')
+        }
+
+        const truncateStrings = (obj: unknown): unknown => {
+            if (typeof obj === 'string') {
+                return obj.length > maxStringLength
+                    ? obj.substring(0, maxStringLength) + '... [truncated for logs]'
+                    : obj
+            }
+
+            if (Array.isArray(obj)) {
+                const truncatedArray = obj.map(item => truncateStrings(item)).slice(0, maxArrayLength)
+                if (obj.length > maxArrayLength) {
+                    truncatedArray.push(`... [truncated array for logs up to ${maxArrayLength} items]` as unknown)
+                }
+                return truncatedArray
+            }
+
+            if (obj && typeof obj === 'object') {
+                const result: Record<string, unknown> = {}
+                for (const [key, value] of Object.entries(obj)) {
+                    if (key === 'usage') {
+                        // usage 对排障无用，丢弃
+                        continue
+                    }
+                    result[key] = truncateStrings(value)
+                }
+                return result
+            }
+
+            return obj
+        }
+
+        const truncatedObject = truncateStrings(object)
+        const json = JSON.stringify(truncatedObject, null, 2)
+        const ts = createTimestampForLogEntry()
+        // 多行格式：首行统一前缀，次行起为 JSON
+        const line = `[${ts}] [${this.processType}] DEBUG ${message}\n${json}\n`
+        try {
+            appendFileSync(this.logFilePath, line)
+        } catch {
+            // best-effort，不打扰会话
+        }
     }
-  }
-  
-  warn(message: string, ...args: unknown[]): void {
-    this.logToConsole('warn', '', message, ...args)
-    this.debug(`[WARN] ${message}`, ...args)
-  }
-  
-  getLogPath(): string {
-    return this.logFilePath
-  }
 
-  /** 返回最近 N 条 debug（按时间正序，供 exitLogger crash dump 注入） */
-  getRecentEntries(): string[] {
-    const len = this.ringBuffer.length
-    if (len === 0) return []
-    const cap = this.ringBufferCapacity
-    // 未满：writeIndex == len，直接原序返回；满后：writeIndex 指向最旧，从 writeIndex 起顺序读
-    const start = len < cap ? 0 : this.ringWriteIndex
-    const count = len < cap ? len : cap
-    const out: string[] = []
-    for (let i = 0; i < count; i++) {
-      out.push(this.ringBuffer[(start + i) % cap]!)
+    /** 仅 DEBUG 模式下输出到 console；始终写 debug 文件 */
+    infoDeveloper(message: string, ...args: unknown[]): void {
+        this.debug(message, ...args)
+
+        if (process.env.DEBUG) {
+            this.logToConsole('info', `[DEV] ${message}`, ...args)
+        }
     }
-    return out
-  }
 
-  /** RingBufferReader 实现：供 exitLogger 读取崩溃前上下文 */
-  snapshot(): string[] {
-    return this.getRecentEntries()
-  }
-
-  private pushRingBuffer(message: string, ...args: unknown[]): void {
-    let entry: string
-    try {
-      entry = args.length > 0
-        ? `${message} ${args.map(arg => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' ')}`
-        : message
-    } catch {
-      // 序列化失败（如循环引用）时退化为仅存 message，避免污染主流程
-      entry = message
+    /** 兼容旧调用方：返回最近 N 条 */
+    getRecentEntries(): string[] {
+        return this.snapshot()
     }
-    if (this.ringBuffer.length < this.ringBufferCapacity) {
-      this.ringBuffer.push(entry)
-    } else {
-      // 满后覆盖最旧位置，O(1) 入队（避免 splice 每次移动整个数组）
-      this.ringBuffer[this.ringWriteIndex] = entry
+
+    /** 兼容旧调用方：本地时区时间戳 */
+    localTimezoneTimestamp(): string {
+        return createTimestampForLogEntry()
     }
-    this.ringWriteIndex = (this.ringWriteIndex + 1) % this.ringBufferCapacity
-  }
-  
-  private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
-    switch (level) {
-      case 'debug': {
-        console.log(chalk.gray(prefix), message, ...args)
-        break
-      }
 
-      case 'error': {
-        console.error(chalk.red(prefix), message, ...args)
-        break
-      }
+    private async sendToRemoteServer(level: string, message: string, ...args: unknown[]): Promise<void> {
+        if (!this.dangerouslyUnencryptedServerLoggingUrl) return
 
-      case 'info': {
-        console.log(chalk.blue(prefix), message, ...args)
-        break
-      }
-
-      case 'warn': {
-        console.log(chalk.yellow(prefix), message, ...args)
-        break
-      }
-
-      default: {
-        this.debug('Unknown log level:', level)
-        console.log(chalk.blue(prefix), message, ...args)
-        break
-      }
+        try {
+            await fetch(this.dangerouslyUnencryptedServerLoggingUrl + '/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    timestamp: new Date().toISOString(),
+                    level,
+                    message: `${message} ${args.map(a =>
+                        typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
+                    ).join(' ')}`,
+                    source: this.processType,
+                    platform: process.platform,
+                }),
+            })
+        } catch {
+            // 静默失败，避免干扰会话
+        }
     }
-  }
-
-  private async sendToRemoteServer(level: string, message: string, ...args: unknown[]): Promise<void> {
-    if (!this.dangerouslyUnencryptedServerLoggingUrl) return
-    
-    try {
-      await fetch(this.dangerouslyUnencryptedServerLoggingUrl + '/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          timestamp: new Date().toISOString(),
-          level,
-          message: `${message} ${args.map(a => 
-            typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-          ).join(' ')}`,
-          source: 'cli',
-          platform: process.platform
-        })
-      })
-    } catch (_error) {
-      // Silently fail to avoid disrupting the session
-    }
-  }
-
-  private logToFile(prefix: string, message: string, ...args: unknown[]): void {
-    const logLine = `${prefix} ${message} ${args.map(arg => 
-      typeof arg === 'string' ? arg : JSON.stringify(arg)
-    ).join(' ')}\n`
-    
-    // Send to remote server if configured
-    if (this.dangerouslyUnencryptedServerLoggingUrl) {
-      // Determine log level from prefix
-      let level = 'info'
-      if (prefix.includes(this.localTimezoneTimestamp())) {
-        level = 'debug'
-      }
-      // Fire and forget, with explicit .catch to prevent unhandled rejection
-      this.sendToRemoteServer(level, message, ...args).catch(() => {
-        // Silently ignore remote logging errors to prevent loops
-      })
-    }
-    
-    // Handle async file path
-    try {
-      appendFileSync(this.logFilePath, logLine)
-    } catch (appendError) {
-      if (process.env.DEBUG) {
-        console.error('[DEV MODE ONLY THROWING] Failed to append to log file:', appendError)
-        throw appendError
-      }
-      // In production, fail silently to avoid disturbing Claude session
-    }
-  }
 }
 
-// Will be initialized immideately on startup
+// 启动即初始化
 export const logger = new Logger()
 
 /**
  * Information about a log file on disk
  */
 export type LogFileInfo = {
-  file: string;
-  path: string;
-  modified: Date;
+    file: string;
+    path: string;
+    modified: Date;
 };
 
 /**
@@ -311,58 +187,58 @@ export type LogFileInfo = {
  * Returns up to `limit` entries; empty array if none.
  */
 export async function listRunnerLogFiles(limit: number = 50): Promise<LogFileInfo[]> {
-  try {
-    const logsDir = configuration.logsDir;
-    if (!existsSync(logsDir)) {
-      return [];
-    }
-
-    const logs = readdirSync(logsDir)
-      .filter(file => file.endsWith('-runner.log'))
-      .map(file => {
-        const fullPath = join(logsDir, file);
-        const stats = statSync(fullPath);
-        return { file, path: fullPath, modified: stats.mtime } as LogFileInfo;
-      })
-      .sort((a, b) => b.modified.getTime() - a.modified.getTime());
-
-    // Prefer the path persisted by the runner if present (return 0th element if present)
     try {
-      const state = await readRunnerState();
-
-      if (!state) {
-        return logs;
-      }
-
-      if (state.runnerLogPath && existsSync(state.runnerLogPath)) {
-        const stats = statSync(state.runnerLogPath);
-        const persisted: LogFileInfo = {
-          file: basename(state.runnerLogPath),
-          path: state.runnerLogPath,
-          modified: stats.mtime
-        };
-        const idx = logs.findIndex(l => l.path === persisted.path);
-        if (idx >= 0) {
-          const [found] = logs.splice(idx, 1);
-          logs.unshift(found);
-        } else {
-          logs.unshift(persisted);
+        const logsDir = configuration.logsDir;
+        if (!existsSync(logsDir)) {
+            return [];
         }
-      }
-    } catch {
-      // Ignore errors reading runner state; fall back to directory listing
-    }
 
-    return logs.slice(0, Math.max(0, limit));
-  } catch {
-    return [];
-  }
+        const logs = readdirSync(logsDir)
+            .filter(file => file.endsWith('-runner.log'))
+            .map(file => {
+                const fullPath = join(logsDir, file);
+                const stats = statSync(fullPath);
+                return { file, path: fullPath, modified: stats.mtime } as LogFileInfo;
+            })
+            .sort((a, b) => b.modified.getTime() - a.modified.getTime());
+
+        // Prefer the path persisted by the runner if present (return 0th element if present)
+        try {
+            const state = await readRunnerState();
+
+            if (!state) {
+                return logs;
+            }
+
+            if (state.runnerLogPath && existsSync(state.runnerLogPath)) {
+                const stats = statSync(state.runnerLogPath);
+                const persisted: LogFileInfo = {
+                    file: basename(state.runnerLogPath),
+                    path: state.runnerLogPath,
+                    modified: stats.mtime
+                };
+                const idx = logs.findIndex(l => l.path === persisted.path);
+                if (idx >= 0) {
+                    const [found] = logs.splice(idx, 1);
+                    logs.unshift(found);
+                } else {
+                    logs.unshift(persisted);
+                }
+            }
+        } catch {
+            // Ignore errors reading runner state; fall back to directory listing
+        }
+
+        return logs.slice(0, Math.max(0, limit));
+    } catch {
+        return [];
+    }
 }
 
 /**
  * Get the most recent runner log file, or null if none exist.
  */
 export async function getLatestRunnerLog(): Promise<LogFileInfo | null> {
-  const [latest] = await listRunnerLogFiles(1);
-  return latest || null;
+    const [latest] = await listRunnerLogFiles(1);
+    return latest || null;
 }
