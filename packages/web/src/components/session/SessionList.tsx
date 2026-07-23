@@ -228,7 +228,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                                 {hasUnread && <Badge data-testid={`session-id-badge-${session.id}`} color="#fa541c" dot />}
                             </div>,
                     group: group?.name || groupKey,
-                    icon: <StatusStateIcon state={getSessionAvatarStatus(session)} style={{ width: 8, height: 8 }} />,
+                    icon: <StatusStateIcon state={getSessionAvatarStatus(session)} style={{ width: 10, height: 10 }} />,
                 })
             }
         }

@@ -17,6 +17,7 @@
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { STATUS_DOT_COLORS, type StatusDotState } from '@/components/tool-card/toolIcons'
+import type { AgentStatus } from '@/components/pixel-avatar/types'
 import type { TeamMember } from '@mobi/shared'
 
 export type TeamAgentCardProps = {
@@ -32,15 +33,23 @@ export function TeamAgentCard({ member, teamName }: TeamAgentCardProps) {
     const { token } = theme.useToken()
     const rawStatus = member.status ?? 'active'
     // member.status 值域 active/idle/shutdown/running/completed —— 映射到统一 StatusDotState 取色
+    // running → 蓝（执行中）；active/idle → 绿（在线待命，区分于 running）；
+    // completed → 绿静态（完成）；shutdown → 红；未知值 → 灰兜底（label 透出原值便于排查）
     const dotState: StatusDotState =
-        rawStatus === 'running' || rawStatus === 'active' ? 'running'
-            : rawStatus === 'idle' ? 'idle'
+        rawStatus === 'running' ? 'running'
+            : rawStatus === 'active' || rawStatus === 'idle' ? 'idle'
+            : rawStatus === 'completed' ? 'completed'
             : rawStatus === 'shutdown' ? 'error'
             : 'inactive'
     const labelColor = STATUS_DOT_COLORS[dotState]
-    const isActive = dotState === 'running'
-    const label = rawStatus === 'active' ? 'running'
-        : rawStatus === 'completed' ? 'done'
+    const isRunning = dotState === 'running'
+    // PixelAvatar 生命状态：running 奋力输出、active/idle 待命活着、其余休眠（灰滤镜）
+    const avatarStatus: AgentStatus =
+        rawStatus === 'running' ? 'outputting'
+            : rawStatus === 'active' || rawStatus === 'idle' ? 'idle'
+            : 'inactive'
+    const label =
+        rawStatus === 'completed' ? 'done'
         : rawStatus === 'shutdown' ? 'stopped'
         : rawStatus
 
@@ -52,10 +61,10 @@ export function TeamAgentCard({ member, teamName }: TeamAgentCardProps) {
             cursor: 'default', border: 'none',
             background: token.colorBgTextHover,
             boxSizing: 'border-box',
-            opacity: isActive ? 1 : 0.75,
+            opacity: isRunning ? 1 : 0.75,
         }}>
             <div style={{ flexShrink: 0, lineHeight: 0 }}>
-                <PixelAvatar name={member.name} status={isActive ? 'outputting' : 'inactive'} size={24} />
+                <PixelAvatar name={member.name} status={avatarStatus} size={24} />
             </div>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <div style={{

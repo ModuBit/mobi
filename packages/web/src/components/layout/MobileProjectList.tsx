@@ -245,7 +245,7 @@ function MobileSessionItem({ session, active, onClick, onLongPress }: MobileSess
             onTouchEnd={longPress.onTouchEnd}
             onTouchMove={longPress.onTouchMove}
         >
-            <StatusStateIcon state={avatarStatus} style={{ width: 8, height: 8 }} />
+            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10 }} />
             <SessionName $token={token}>{displayName}</SessionName>
             <TimeLabel $token={token}>{relativeTime}</TimeLabel>
             <MoreButton

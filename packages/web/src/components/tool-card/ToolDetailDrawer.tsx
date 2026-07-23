@@ -156,7 +156,7 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, color: token.colorTextSecondary }}>
                 <StatusStateIcon state={tool.state} />
-                {getToolIcon(tool.name, { style: ICON_STYLE_LG })}
+                {getToolIcon(tool.name, ICON_STYLE_LG)}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
                 {presentation.isFilePath ? (

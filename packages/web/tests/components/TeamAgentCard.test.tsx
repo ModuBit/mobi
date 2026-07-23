@@ -46,6 +46,17 @@ describe('TeamAgentCard', () => {
         expect(runningLabel!.style.color).toBe('rgb(77, 171, 247)')
     })
 
+    it('active 状态用绿待命（区别于 running 蓝），label 显示 active', () => {
+        const { container } = render(
+            <TeamAgentCard member={baseMember({ status: 'active' })} teamName="t" />,
+            { wrapper },
+        )
+        const activeLabel = Array.from(container.querySelectorAll('span'))
+            .find(s => s.textContent === 'active')
+        expect(activeLabel).toBeDefined()
+        expect(activeLabel!.style.color).toBe('rgb(102, 187, 106)')
+    })
+
     it('idle 状态 label 颜色用统一绿 #66bb6a', () => {
         const { container } = render(
             <TeamAgentCard member={baseMember({ status: 'idle' })} teamName="t" />,
@@ -57,7 +68,7 @@ describe('TeamAgentCard', () => {
         expect(idleLabel!.style.color).toBe('rgb(102, 187, 106)')
     })
 
-    it('completed 状态 label 颜色用统一灰 #d9d9d9', () => {
+    it('completed 状态 label 颜色用统一绿 #66bb6a（完成=成功）', () => {
         const { container } = render(
             <TeamAgentCard member={baseMember({ status: 'completed' })} teamName="t" />,
             { wrapper },
@@ -65,7 +76,7 @@ describe('TeamAgentCard', () => {
         const doneLabel = Array.from(container.querySelectorAll('span'))
             .find(s => s.textContent === 'done')
         expect(doneLabel).toBeDefined()
-        expect(doneLabel!.style.color).toBe('rgb(217, 217, 217)')
+        expect(doneLabel!.style.color).toBe('rgb(102, 187, 106)')
     })
 
     it('保留 PixelAvatar（有 canvas）', () => {

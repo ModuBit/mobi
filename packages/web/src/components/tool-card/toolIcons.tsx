@@ -89,19 +89,11 @@ export const TOOL_ICON_MAP: Record<string, ComponentType<{ style?: CSSProperties
 /** Lucide 图标工具名 */
 export const LUCIDE_TOOL_NAMES = new Set(['TaskList', 'TaskGet', 'TaskOutput', 'TaskStop', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'EnterWorktree', 'ExitWorktree', 'TeamDelete'])
 
-type ToolIconOpts = {
-    style?: CSSProperties
-}
-
 /**
  * 根据工具名返回对应的图标。
  * Agent/Task 工具统一用 RocketOutlined（不再用 PixelAvatar，状态指示由调用处的 StatusStateIcon 承担）。
  */
-export function getToolIcon(name: string, opts: CSSProperties | ToolIconOpts = ICON_STYLE): ReactNode {
-    const style = opts && typeof opts === 'object' && 'style' in opts
-        ? (opts.style ?? ICON_STYLE)
-        : opts as CSSProperties
-
+export function getToolIcon(name: string, style: CSSProperties = ICON_STYLE): ReactNode {
     // mcp__ 前缀的工具使用 LineSquiggle 图标
     if (name.startsWith('mcp__')) {
         const iconSize = typeof style.fontSize === 'number' ? style.fontSize : 14

@@ -63,11 +63,16 @@ export function AgentLoadingBubble({ agentId, status, startedAt }: AgentLoadingB
 
     const elapsedTime = formatElapsedTime(effectiveStartedAt, effectiveStartedAt + elapsed * 1000)
 
+    // awaiting_auth：等待用户审批，文本/aria-label 切到「等待审批」，不轮换 vibing 动词
+    const isAwaitingAuth = status === 'awaiting_auth'
+    const labelText = isAwaitingAuth ? 'awaiting approval…' : vibingMsg
+    const ariaLabel = isAwaitingAuth ? `${agentId} 等待审批` : `${agentId} 正在运行`
+
     return (
-        <div role="status" aria-label={`${agentId} 正在运行`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div role="status" aria-label={ariaLabel} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <StatusStateIcon state={status} style={{ width: 8, height: 8 }} />
             <BlinkText blinking color={CLAUDE_ORANGE} aria-live="polite" style={{ fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <ScrambleText text={vibingMsg} previousText={prevMsg} speed={40} />
+                <ScrambleText text={labelText} previousText={prevMsg} speed={40} />
             </BlinkText>
             <span aria-hidden="true" style={{ color: token.colorTextTertiary, fontSize: 12, marginLeft: 'auto' }}>
                 {elapsedTime}

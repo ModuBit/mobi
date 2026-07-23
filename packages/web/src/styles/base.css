@@ -74,10 +74,10 @@ pre, code {
     font-family: var(--font-mono);
 }
 
-/* 状态圆点呼吸动画 */
+/* 状态圆点呼吸动画（running/pending，缩放+透明度让小尺寸下可辨） */
 @keyframes status-dot-breathe {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.25); }
 }
 
 /* 状态圆点颤动动画（等待审批） */

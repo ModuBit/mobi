@@ -335,7 +335,7 @@ function SessionRow({
 
     return (
         <SessionItem $active={active} $token={token} onClick={onClick}>
-            <StatusStateIcon state={avatarStatus} style={{ width: 8, height: 8 }} />
+            <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10 }} />
             <Tooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName>{displayName}</SessionName>
             </Tooltip>
