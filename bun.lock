@@ -74,6 +74,7 @@
       "name": "@mobi/shared",
       "version": "0.0.0",
       "dependencies": {
+        "chalk": "^5.6.2",
         "zod": "^4.4.3",
       },
       "devDependencies": {
