@@ -105,6 +105,11 @@ class Configuration {
         return this._apiUrl
     }
 
+    /** 当前进程的日志分类：runner 后台进程为 'runner'，交互进程为 'cli' */
+    get processType(): 'runner' | 'cli' {
+        return this.isRunnerProcess ? 'runner' : 'cli'
+    }
+
     _setApiUrl(url: string): void {
         this._apiUrl = url
     }
