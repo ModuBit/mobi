@@ -70,7 +70,7 @@ export const AccountInfoSchema = z.object({
     subscriptionType: z.string().optional(),
     tokenSource: z.string().optional(),
     apiKeySource: z.string().optional(),
-    apiProvider: z.enum(['firstParty', 'bedrock', 'vertex', 'foundry', 'anthropicAws', 'mantle', 'gateway']).optional()
+    apiProvider: z.string().optional()
 })
 
 export type AccountInfo = z.infer<typeof AccountInfoSchema>
