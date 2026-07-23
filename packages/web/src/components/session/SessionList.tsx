@@ -38,15 +38,12 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
-import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import type { StatusStyle } from '@/components/pixel-avatar/types'
+import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mergeSessions } from '@/core/data/cache/sessionCache'
 import styled from '@emotion/styled'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
-
-const SESSION_AVATAR_STYLES: Partial<Record<string, StatusStyle>> = {}
 
 const ListContainer = styled.div`
     flex: 1;
@@ -231,7 +228,7 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
                                 {hasUnread && <Badge data-testid={`session-id-badge-${session.id}`} color="#fa541c" dot />}
                             </div>,
                     group: group?.name || groupKey,
-                    icon: <PixelAvatar name={session.id} status={getSessionAvatarStatus(session)} size={24} statusStyles={SESSION_AVATAR_STYLES} />,
+                    icon: <StatusStateIcon state={getSessionAvatarStatus(session)} style={{ width: 8, height: 8 }} />,
                 })
             }
         }

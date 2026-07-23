@@ -106,10 +106,6 @@ vi.mock('@/core/data/stores/uiStore', () => ({
         cancelRename: () => {},
     }),
 }))
-// PixelAvatar 用 canvas，jsdom 无 getContext('2d')；stub 成占位元素
-vi.mock('@/components/pixel-avatar/PixelAvatar', () => ({
-    PixelAvatar: () => <span data-testid="pixel-avatar" />,
-}))
 vi.mock('@/core/data/api/client', () => ({
     useMobiApi: () => ({
         sessionGroups: { getSessions: async () => ({ data: { sessions: [] } }) },
@@ -147,6 +143,14 @@ describe('SessionList 未读角标', () => {
     beforeEach(() => {
         useNotificationBadgeStore.getState().clearAll()
         setMobile(false)
+    })
+
+    it('session 列表项渲染 StatusDot 而非 PixelAvatar', () => {
+        const { container } = render(<SessionList />, { wrapper })
+        expect(container.querySelector('[data-testid="pixel-avatar"]')).toBeNull()
+        // StatusStateIcon 渲染带 background 色的 span
+        const dots = container.querySelectorAll('span[style*="background"]')
+        expect(dots.length).toBeGreaterThan(0)
     })
 
     it('无未读时不渲染任何 session 的角标', () => {
