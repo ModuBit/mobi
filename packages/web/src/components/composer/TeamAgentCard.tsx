@@ -16,19 +16,12 @@
 
 import { theme } from 'antd'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import { STATUS_DOT_COLORS, type StatusDotState } from '@/components/tool-card/toolIcons'
 import type { TeamMember } from '@mobi/shared'
 
 export type TeamAgentCardProps = {
     member: TeamMember
     teamName: string
-}
-
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-    running: { label: 'running', color: '#52c41a' },
-    active: { label: 'running', color: '#52c41a' },
-    idle: { label: 'idle', color: '#faad14' },
-    completed: { label: 'done', color: '#8c8c8c' },
-    shutdown: { label: 'stopped', color: '#ff4d4f' },
 }
 
 /**
@@ -37,9 +30,19 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
  */
 export function TeamAgentCard({ member, teamName }: TeamAgentCardProps) {
     const { token } = theme.useToken()
-    const status = member.status ?? 'active'
-    const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.active
-    const isActive = status === 'running' || status === 'active'
+    const rawStatus = member.status ?? 'active'
+    // member.status 值域 active/idle/shutdown/running/completed —— 映射到统一 StatusDotState 取色
+    const dotState: StatusDotState =
+        rawStatus === 'running' || rawStatus === 'active' ? 'running'
+            : rawStatus === 'idle' ? 'idle'
+            : rawStatus === 'shutdown' ? 'error'
+            : 'inactive'
+    const labelColor = STATUS_DOT_COLORS[dotState]
+    const isActive = dotState === 'running'
+    const label = rawStatus === 'active' ? 'running'
+        : rawStatus === 'completed' ? 'done'
+        : rawStatus === 'shutdown' ? 'stopped'
+        : rawStatus
 
     return (
         <div style={{
@@ -61,8 +64,8 @@ export function TeamAgentCard({ member, teamName }: TeamAgentCardProps) {
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.name}</span>
-                    <span style={{ flexShrink: 0, fontSize: 10, color: config.color, fontWeight: 400 }}>
-                        {config.label}
+                    <span style={{ flexShrink: 0, fontSize: 10, color: labelColor, fontWeight: 400 }}>
+                        {label}
                     </span>
                 </div>
                 <div style={{
