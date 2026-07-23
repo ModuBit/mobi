@@ -35,9 +35,9 @@ interface ToolUseBuffer {
     name: string
     /** 累积 input 分片，content_block_stop 后 parse 为完整 input 填充占位 */
     inputJson: string
-    /** content_block_stop 后置 true，表示 input 已完整可进实时 snapshot */
+    /** content_block_stop 后置 true，表示 input 已完整并 parse 缓存到 parsedInput（未 ready 时也发占位，input 用初始 {}） */
     ready: boolean
-    /** ready 翻转时标脏一次，触发 flush 输出 */
+    /** startBlock（占位下发）与 ready 翻转（完整 input）时各标脏一次，触发 flush 输出 */
     dirty: boolean
     /** ready 时一次性 parse 缓存（inputJson 此后不变，避免每次 flush 重复 parse）；初始 {} 作占位 */
     parsedInput: unknown
@@ -151,7 +151,7 @@ export class StreamSnapshotSender {
 
     /**
      * 内容块结束（content_block_stop），刷新剩余内容。
-     * tool_use 在此标记 ready 并一次性 parse 缓存 input（此后不变），填充占位后下次 flush 输出完整 input。
+     * tool_use 在此标记 ready 并一次性 parse 缓存 input（此后不变），立即 flush 下发完整 input（填充占位）。
      * 不删 buffer——保留当前 message 的完整累积，供 abort 时 consumePendingFull 补全落库。
      * 累积在下次 message_start（clearBuffers）时清空，一个 message 的 block 数有限，不泄漏。
      */
