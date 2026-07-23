@@ -20,19 +20,19 @@ import { generateCharacter } from './sprites/characters';
 import { useAnimationLoop } from './hooks/useAnimationLoop';
 import './PixelAvatar.css';
 
-// 各状态默认样式
+// 各状态默认样式（背景动画已移除：状态区分靠角色精灵动画本身，背景保持静态透明）
 const DEFAULT_STATUS_STYLES: Record<AgentStatus, StatusStyle> = {
     outputting: {
         border: 'none',
-        animation: 'pixel-avatar-pulse 1.2s ease-in-out infinite',
+        animation: 'none',
     },
     awaiting_auth: {
         border: 'none',
-        animation: 'pixel-avatar-breathe-yellow 2s ease-in-out infinite',
+        animation: 'none',
     },
     idle: {
         border: 'none',
-        animation: 'pixel-avatar-breathe-gray 3s ease-in-out infinite',
+        animation: 'none',
     },
     inactive: {
         background: 'none',
