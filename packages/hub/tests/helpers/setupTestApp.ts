@@ -32,6 +32,10 @@ export async function setupTestApp(syncEngine: SyncEngine | null = null) {
     const store = new Store(':memory:')
     process.env.CLI_API_TOKEN = testCliApiToken
     process.env.WEB_API_TOKEN = testWebApiToken
+    // 钉死 publicUrl 为 http：createConfiguration 会读本地 ~/.mobi/settings.json（env > file > default），
+    // 若本机配了 https publicUrl(部署用) 会污染 secure cookie 判定 → auth Secure 断言误失败。
+    // env 优先级最高,显式设 http 隔离测试环境。
+    process.env.MOBI_PUBLIC_URL = 'http://localhost:2222'
     resetConfiguration()
     await createConfiguration()
 
@@ -51,6 +55,7 @@ export async function setupTestApp(syncEngine: SyncEngine | null = null) {
         store.close()
         delete process.env.CLI_API_TOKEN
         delete process.env.WEB_API_TOKEN
+        delete process.env.MOBI_PUBLIC_URL
         resetConfiguration()
     }
 
