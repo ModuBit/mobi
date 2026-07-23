@@ -39,8 +39,7 @@ import { clearSessionResources } from '@/core/lib/sessionResources'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
-import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import type { StatusStyle } from '@/components/pixel-avatar/types'
+import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 
@@ -48,8 +47,6 @@ const { useToken } = antTheme
 
 /** 默认展示和每次加载更多的会话数 */
 const PAGE_SIZE = 5
-
-const AVATAR_STYLES: Partial<Record<string, StatusStyle>> = {}
 
 // ========== 样式组件 ==========
 
@@ -248,7 +245,7 @@ function MobileSessionItem({ session, active, onClick, onLongPress }: MobileSess
             onTouchEnd={longPress.onTouchEnd}
             onTouchMove={longPress.onTouchMove}
         >
-            <PixelAvatar name={session.id} status={avatarStatus} size={22} statusStyles={AVATAR_STYLES} />
+            <StatusStateIcon state={avatarStatus} style={{ width: 8, height: 8 }} />
             <SessionName $token={token}>{displayName}</SessionName>
             <TimeLabel $token={token}>{relativeTime}</TimeLabel>
             <MoreButton

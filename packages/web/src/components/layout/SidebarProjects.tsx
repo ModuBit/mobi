@@ -33,8 +33,7 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import type { StatusStyle } from '@/components/pixel-avatar/types'
+import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
 
@@ -42,8 +41,6 @@ const { useToken } = antTheme
 
 /** 默认展示和每次加载更多的会话数 */
 const PAGE_SIZE = 5
-
-const AVATAR_STYLES: Partial<Record<string, StatusStyle>> = {}
 
 // ========== 样式组件 ==========
 
@@ -338,7 +335,7 @@ function SessionRow({
 
     return (
         <SessionItem $active={active} $token={token} onClick={onClick}>
-            <PixelAvatar name={session.id} status={avatarStatus} size={18} statusStyles={AVATAR_STYLES} />
+            <StatusStateIcon state={avatarStatus} style={{ width: 8, height: 8 }} />
             <Tooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName>{displayName}</SessionName>
             </Tooltip>
