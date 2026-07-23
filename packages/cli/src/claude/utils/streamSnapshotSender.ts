@@ -28,18 +28,18 @@ interface TextLikeBuffer {
     dirty: boolean
 }
 
-/** tool_use 缓冲区：累积 input_json_delta，content_block_stop 后（input JSON 完整）才进实时 snapshot */
+/** tool_use 缓冲区：累积 input_json_delta，content_block_stop 后 parse 为完整 input 填充占位 */
 interface ToolUseBuffer {
     kind: 'tool_use'
     id: string
     name: string
-    /** 累积的 input JSON 字符串（来自 input_json_delta.partial_json） */
+    /** 累积 input 分片，content_block_stop 后 parse 为完整 input 填充占位 */
     inputJson: string
     /** content_block_stop 后置 true，表示 input 已完整可进实时 snapshot */
     ready: boolean
     /** ready 翻转时标脏一次，触发 flush 输出 */
     dirty: boolean
-    /** ready 时一次性 parse 缓存（inputJson 此后不变，避免每次 flush 重复 parse） */
+    /** ready 时一次性 parse 缓存（inputJson 此后不变，避免每次 flush 重复 parse）；初始 {} 作占位 */
     parsedInput: unknown
 }
 
@@ -71,9 +71,10 @@ export type ContentBlock =
  * 前端据此实现平滑的 snapshot → full message 过渡。
  *
  * text/thinking 流式逐字追加，过程中即可输出（半截文本有意义）。
- * tool_use 累积 input_json_delta，**content_block_stop 后（input JSON 完整）才输出**——
- * 半截 JSON 无意义且前端解析会出错。这样 tool_use 在工具实际执行期间就作为 snapshot 下发，
- * 前端 reducer 命中 tool-call 建 running block（不等 type:'assistant' 完整消息），可见「工具正在执行」。
+ * tool_use 在 content_block_start 即下发 input={} 占位——前端立即建 running 卡片，
+ * 消除 Write/Edit 等大 input 工具在模型流式生成 input 内容期间的视觉盲区（半截 JSON 无意义，
+ * 但占位卡片只需工具名，不依赖 input）；content_block_stop 后再 flush 填充完整 input，
+ * 前端按 tool_use_id 就地更新（input 空→满不闪烁）。
  */
 export class StreamSnapshotSender {
     private readonly buffers: Map<number, ContentBlockBuffer> = new Map()
@@ -109,7 +110,11 @@ export class StreamSnapshotSender {
         this.buffers.clear()
     }
 
-    /** 记录 content_block_start（text/thinking 逐字流式；tool_use 累积 input JSON） */
+    /** 记录 content_block_start（text/thinking 逐字流式；tool_use 累积 input JSON）
+     *  tool_use 在 start 时即 flush 下发 input={} 占位——让前端立即建 running 卡片，
+     *  消除 Write/Edit 等大 input 工具在模型生成内容期间（input_json_delta 累积）的视觉盲区。
+     *  content_block_stop 后再 flush 填充完整 input，前端按 tool_use_id 就地更新。
+     */
     startBlock(index: number, type: 'text' | 'thinking'): void
     startBlock(index: number, type: 'tool_use', meta: { id: string; name: string }): void
     startBlock(index: number, type: 'text' | 'thinking' | 'tool_use', meta?: { id: string; name: string }): void {
@@ -122,9 +127,10 @@ export class StreamSnapshotSender {
                 name: meta!.name,
                 inputJson: '',
                 ready: false,
-                dirty: false,
+                dirty: true, // 立即标脏，触发占位下发
                 parsedInput: {},
             })
+            this.flush() // content_block_start 即下发 input={} 占位（不等 content_block_stop）
             return
         }
         this.buffers.set(index, { kind: 'text-like', type, content: '', dirty: false })
@@ -145,7 +151,7 @@ export class StreamSnapshotSender {
 
     /**
      * 内容块结束（content_block_stop），刷新剩余内容。
-     * tool_use 在此标记 ready 并一次性 parse 缓存 input（此后不变），下次 flush 输出。
+     * tool_use 在此标记 ready 并一次性 parse 缓存 input（此后不变），填充占位后下次 flush 输出完整 input。
      * 不删 buffer——保留当前 message 的完整累积，供 abort 时 consumePendingFull 补全落库。
      * 累积在下次 message_start（clearBuffers）时清空，一个 message 的 block 数有限，不泄漏。
      */
@@ -190,11 +196,9 @@ export class StreamSnapshotSender {
      * 从 buffers 构造完整 ContentBlock[]（按插入顺序，含已 endBlock 的——endBlock 不删 buffer）。
      *
      * - text/thinking：总是输出（流式中也含已累积内容，半截文本有意义）
-     * - tool_use：仅 ready（content_block_stop）后输出，input 用 ready 时缓存的 parsedInput
-     *
-     * @param includePartialToolUse abort 补全（consumePendingFull）传 true——半截 tool_use 也输出
-     *   （input 兜底为已累积部分或 {}），保留「该工具被调用过」的记录，避免 abort 时整条丢失。
-     *   实时 flush 传 false（默认）——半截 JSON 无意义，不发。
+     * - tool_use：ready 后用 ready 时缓存的 parsedInput；未 ready 时也输出占位（parsedInput 初始 {}），
+     *   让 content_block_start 即下发占位卡片。abort 补全（includePartialToolUse）时未 ready 改用
+     *   累积 inputJson 兜底 parse，保留半截记录。
      */
     private buildBlocks(includePartialToolUse = false): ContentBlock[] {
         const blocks: ContentBlock[] = []
@@ -203,11 +207,16 @@ export class StreamSnapshotSender {
                 blocks.push(buffer.type === 'text'
                     ? { type: 'text', text: buffer.content }
                     : { type: 'thinking', thinking: buffer.content })
-            } else if (buffer.ready) {
-                blocks.push({ type: 'tool_use', id: buffer.id, name: buffer.name, input: buffer.parsedInput })
-            } else if (includePartialToolUse) {
-                // abort 补全：未 ready 的 tool_use 也输出，尽量保留记录（input 用已累积部分，parse 失败兜底 {}）
-                blocks.push({ type: 'tool_use', id: buffer.id, name: buffer.name, input: parseInputJson(buffer.inputJson) })
+            } else {
+                // tool_use：ready 用 ready 时缓存的 parsedInput；未 ready 实时占位也用 parsedInput（初始 {}）
+                //   ——让 content_block_start 立即下发占位，消除大 input 工具（Write/Edit）生成内容期间的盲区
+                // abort 补全（includePartialToolUse）：未 ready 时改用累积 inputJson 兜底 parse，保留半截记录
+                const input = buffer.ready
+                    ? buffer.parsedInput
+                    : includePartialToolUse
+                        ? parseInputJson(buffer.inputJson)
+                        : buffer.parsedInput
+                blocks.push({ type: 'tool_use', id: buffer.id, name: buffer.name, input })
             }
         }
         return blocks

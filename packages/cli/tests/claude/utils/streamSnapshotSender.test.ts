@@ -96,15 +96,14 @@ describe('StreamSnapshotSender - abort 补全（consumePendingFull）', () => {
 })
 
 describe('StreamSnapshotSender - tool_use 流式（让前端可见 tool running 中间态）', () => {
-    it('content_block_stop 后 tool_use 经 flush→convertSnapshot 下发，input 由 input_json_delta 拼成', () => {
+    it('content_block_stop 后 tool_use 下发完整 input，input 由 input_json_delta 拼成', () => {
         const { sender, convertSnapshot, transport } = createSender()
         sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
         sender.startBlock(0, 'tool_use', { id: 'toolu_1', name: 'Bash' })
+        // startBlock 已立即下发占位（input={}），手动 flush 不重复触发新内容
         sender.append(0, '{"comm')
         sender.append(0, 'and":"ls"}')
         sender.flush()
-        // 流式期间（未 content_block_stop）flush 不下发 tool_use：半截 JSON 无意义
-        expect(convertSnapshot).not.toHaveBeenCalled()
         sender.endBlock(0) // content_block_stop：input 完整、ready，触发 flush
         expect(convertSnapshot).toHaveBeenCalledWith(
             expect.arrayContaining([{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } }]),
@@ -126,22 +125,24 @@ describe('StreamSnapshotSender - tool_use 流式（让前端可见 tool running 
         )
     })
 
-    it('text 与 tool_use 混合：text 流式即下发，tool_use 仅 ready 后随 flush 下发', () => {
+    it('text 与 tool_use 混合：text 流式即下发，tool_use start 即占位、stop 后填充完整 input', () => {
         const { sender, convertSnapshot } = createSender()
         sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
         sender.startBlock(0, 'text')
         sender.append(0, 'thinking...')
         sender.startBlock(1, 'tool_use', { id: 'toolu_3', name: 'Grep' })
         sender.append(1, '{"pattern":"x"}')
-        sender.flush()
 
-        // tool_use 未 endBlock：snapshot 只下发 text，不含 tool_use
-        const beforeCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
-        expect(beforeCall).toEqual([{ type: 'text', text: 'thinking...' }])
+        // start tool_use 立即触发 flush：snapshot 同时含 text 与 tool_use 占位（input={}）
+        const placeholderCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
+        expect(placeholderCall).toEqual([
+            { type: 'text', text: 'thinking...' },
+            { type: 'tool_use', id: 'toolu_3', name: 'Grep', input: {} },
+        ])
 
         sender.endBlock(1)
-        const afterCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
-        expect(afterCall).toEqual([
+        const fullCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
+        expect(fullCall).toEqual([
             { type: 'text', text: 'thinking...' },
             { type: 'tool_use', id: 'toolu_3', name: 'Grep', input: { pattern: 'x' } },
         ])
@@ -158,6 +159,36 @@ describe('StreamSnapshotSender - tool_use 流式（让前端可见 tool running 
         const pending = sender.consumePendingFull()
         expect(pending!.blocks).toEqual([
             { type: 'tool_use', id: 'toolu_4', name: 'Bash', input: {} }, // parse 失败兜底 {}
+        ])
+    })
+
+    it('content_block_start 立即下发 input={} 占位（消除大 input 工具的生成盲区）', () => {
+        const { sender, convertSnapshot, transport } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
+        // content_block_start：tool_use 立即下发占位，input={}（parsedInput 初始值）
+        sender.startBlock(0, 'tool_use', { id: 'toolu_placeholder', name: 'Write' })
+
+        expect(convertSnapshot).toHaveBeenCalledTimes(1)
+        expect(convertSnapshot).toHaveBeenCalledWith(
+            [{ type: 'tool_use', id: 'toolu_placeholder', name: 'Write', input: {} }],
+            expect.anything(),
+        )
+        expect(transport).toHaveBeenCalledTimes(1)
+    })
+
+    it('占位后 endBlock 下发完整 input（input 空→满就地更新）', () => {
+        const { sender, convertSnapshot } = createSender()
+        sender.setSnapshotOpts({ sdkUuid: 'uuid-1', messageId: 'msg_1' })
+        sender.startBlock(0, 'tool_use', { id: 'toolu_ph2', name: 'Write' })
+        sender.append(0, '{"file_path":"/a.ts","content":"x"}')
+
+        const placeholderCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
+        expect(placeholderCall).toEqual([{ type: 'tool_use', id: 'toolu_ph2', name: 'Write', input: {} }])
+
+        sender.endBlock(0) // content_block_stop：input 完整，再下发一次
+        const fullCall = convertSnapshot.mock.calls.at(-1)![0] as unknown[]
+        expect(fullCall).toEqual([
+            { type: 'tool_use', id: 'toolu_ph2', name: 'Write', input: { file_path: '/a.ts', content: 'x' } },
         ])
     })
 })
