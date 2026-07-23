@@ -79,3 +79,16 @@ pre, code {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
 }
+
+/* 状态圆点颤动动画（等待审批） */
+@keyframes status-dot-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-1.2px); }
+    75% { transform: translateX(1.2px); }
+}
+
+/* 状态圆点舒缓呼吸动画（空闲/待命） */
+@keyframes status-dot-breathe-slow {
+    0%, 100% { opacity: 0.55; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1.1); }
+}

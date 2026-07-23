@@ -157,34 +157,70 @@ export function getToolIcon(name: string, opts: CSSProperties | ToolIconOpts = I
  */
 type ToolCallState = 'pending' | 'running' | 'completed' | 'error'
 
-/**
- * 状态图标组件的属性
- */
-type StatusStateIconProps = {
-    state: ToolCallState
-    style?: CSSProperties
-}
+/** StatusDot 统一状态空间（session 侧 AgentStatus 与工具侧 ToolCallState 共同映射目标） */
+export type StatusDotState = 'running' | 'awaiting_auth' | 'idle' | 'inactive' | 'error'
 
-const STATUS_DOT_COLORS: Record<ToolCallState, string> = {
+/** 统一状态色板 —— 全 app 唯一状态色来源 */
+export const STATUS_DOT_COLORS: Record<StatusDotState, string> = {
     running: '#4dabf7',
-    pending: '#ffa726',
-    completed: '#66bb6a',
+    awaiting_auth: '#ffa726',
+    idle: '#66bb6a',
+    inactive: '#d9d9d9',
     error: '#ef5350',
 }
 
 /**
- * 状态小圆点：running/pending 时有呼吸动画
+ * 将 session 侧 AgentStatus 或工具侧 ToolCallState 映射到统一 StatusDotState。
+ * - outputting / running → running
+ * - awaiting_auth / pending → awaiting_auth
+ * - idle → idle
+ * - inactive / completed → inactive
+ * - error → error
+ */
+export function toStatusDotState(state: AgentStatus | ToolCallState): StatusDotState {
+    switch (state) {
+        case 'outputting':
+        case 'running': return 'running'
+        case 'awaiting_auth':
+        case 'pending': return 'awaiting_auth'
+        case 'idle': return 'idle'
+        case 'inactive':
+        case 'completed': return 'inactive'
+        case 'error': return 'error'
+        default: return 'inactive'
+    }
+}
+
+/**
+ * 状态图标组件的属性
+ */
+type StatusStateIconProps = {
+    /** 工具侧 ToolCallState 或 session 侧 AgentStatus，内部映射到统一 StatusDotState */
+    state: ToolCallState | AgentStatus
+    style?: CSSProperties
+}
+
+/** 各 StatusDotState 对应的动画；未列出的状态（inactive/error）为静态 */
+const STATUS_DOT_ANIMATION: Partial<Record<StatusDotState, string>> = {
+    running: 'status-dot-breathe 1.1s ease-in-out infinite',
+    awaiting_auth: 'status-dot-shake 0.45s ease-in-out infinite',
+    idle: 'status-dot-breathe-slow 3s ease-in-out infinite',
+}
+
+/**
+ * 状态小圆点：running/awaiting_auth/idle 各带对应节奏动画，inactive/error 静态。
+ * 颜色与状态映射全 app 统一，由 STATUS_DOT_COLORS + toStatusDotState 承载。
  */
 export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNode {
-    const isActive = state === 'running' || state === 'pending'
+    const dotState = toStatusDotState(state)
     const dotStyle: CSSProperties = {
         width: 6,
         height: 6,
         borderRadius: '50%',
-        background: STATUS_DOT_COLORS[state],
+        background: STATUS_DOT_COLORS[dotState],
         display: 'inline-block',
         flexShrink: 0,
-        animation: isActive ? 'status-dot-breathe 1.5s ease-in-out infinite' : undefined,
+        animation: STATUS_DOT_ANIMATION[dotState],
         ...style,
     }
     return <span style={dotStyle} />
