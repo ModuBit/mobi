@@ -19,7 +19,7 @@ import { theme } from 'antd'
 import { useElapsedSeconds } from './useElapsedSeconds'
 import { ScrambleText } from './ScrambleText'
 import { formatElapsedTime } from '@/core/utils/timeFormat'
-import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
+import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { VIBING_MESSAGES } from '@/components/pixel-avatar/vibingMessages'
 import { BlinkText } from '@/components/ui/BlinkText'
@@ -65,7 +65,7 @@ export function AgentLoadingBubble({ agentId, status, startedAt }: AgentLoadingB
 
     return (
         <div role="status" aria-label={`${agentId} 正在运行`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <PixelAvatar name={agentId} status={status} size={18} />
+            <StatusStateIcon state={status} style={{ width: 8, height: 8 }} />
             <BlinkText blinking color={CLAUDE_ORANGE} aria-live="polite" style={{ fontSize: 13, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <ScrambleText text={vibingMsg} previousText={prevMsg} speed={40} />
             </BlinkText>
