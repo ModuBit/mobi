@@ -21,12 +21,12 @@
 
 import { useMemo, memo, type CSSProperties } from 'react'
 import { theme as antTheme, Typography } from 'antd'
-import { isObject, safeStringify } from '@mobi/shared'
+import { safeStringify } from '@mobi/shared'
 import { useTranslation } from 'react-i18next'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolCallBlock } from '@/domain/tool/types'
 import type { ChatBlock } from '@/domain/chat'
-import { getToolPresentation, isAgentTool, isTeamAgentTool, getAgentTitle } from './knownTools'
+import { getToolPresentation, isAgentTool, getAgentTitle } from './knownTools'
 import { getToolIcon, ICON_STYLE_LG, StatusStateIcon } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
@@ -154,13 +154,9 @@ function ToolDetailDrawerInner({ block, metadata, open, onClose, sessionId }: To
     // 标题栏
     const titleContent = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: token.colorTextSecondary }}>
-                {getToolIcon(tool.name, {
-                    style: ICON_STYLE_LG,
-                    id: isTeamAgentTool(tool.name, tool.input) && isObject(tool.input) && typeof tool.input.name === 'string'
-                        ? tool.input.name : block.id,
-                    state: tool.state,
-                })}
+            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, color: token.colorTextSecondary }}>
+                <StatusStateIcon state={tool.state} />
+                {getToolIcon(tool.name, { style: ICON_STYLE_LG })}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
                 {presentation.isFilePath ? (

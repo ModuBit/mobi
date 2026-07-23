@@ -34,7 +34,7 @@ import { RequestUserInputFooter } from './RequestUserInputFooter'
 import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { getToolPresentation, isTerminalTool, isAgentTool } from './knownTools'
-import { getToolIcon } from './toolIcons'
+import { getToolIcon, StatusStateIcon } from './toolIcons'
 import { getToolFullViewComponent, getToolViewComponent, type ToolViewComponent } from './views/_all'
 import { getToolResultViewComponent } from './views/_results'
 import { getInputString, getInputStringAny, truncate } from '@/core/lib/toolInputUtils'
@@ -405,8 +405,9 @@ function ToolCardInner(props: ToolCardProps) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: token.colorTextSecondary }}>
-                        {getToolIcon(toolName, { id: props.block.id, state: props.block.tool.state })}
+                    <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, color: token.colorTextSecondary }}>
+                        <StatusStateIcon state={props.block.tool.state} />
+                        {getToolIcon(toolName)}
                     </div>
                     <Text strong style={{ minWidth: 0, fontSize: 13, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 0' }}>
                         {toolTitle}

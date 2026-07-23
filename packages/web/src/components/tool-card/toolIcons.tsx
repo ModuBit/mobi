@@ -36,8 +36,7 @@ import {
     ApiOutlined,
     ToolOutlined,
 } from '@ant-design/icons'
-import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
-import type { AgentStatus, StatusStyle } from '@/components/pixel-avatar/types'
+import type { AgentStatus } from '@/components/pixel-avatar/types'
 
 /** 小尺寸图标样式（14px） */
 export const ICON_STYLE: CSSProperties = { fontSize: 14 }
@@ -90,47 +89,18 @@ export const TOOL_ICON_MAP: Record<string, ComponentType<{ style?: CSSProperties
 /** Lucide 图标工具名 */
 export const LUCIDE_TOOL_NAMES = new Set(['TaskList', 'TaskGet', 'TaskOutput', 'TaskStop', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'EnterWorktree', 'ExitWorktree', 'TeamDelete'])
 
-/** Agent/Task 工具名 */
-const AGENT_TOOL_NAMES = new Set(['Task', 'Agent'])
-
-/** Agent 工具图标：禁用背景色和发光 */
-const TOOL_AVATAR_STYLES: Partial<Record<AgentStatus, StatusStyle>> = {
-    outputting: { background: 'none', glow: 'none' },
-    awaiting_auth: { background: 'none', glow: 'none' },
-    idle: { background: 'none', glow: 'none' },
-    inactive: { background: 'none', glow: 'none' },
-}
-
-/** 将工具状态映射为 PixelAvatar 状态 */
-function toolStateToAvatarStatus(state: ToolCallState): AgentStatus {
-    if (state === 'running') return 'outputting'
-    if (state === 'pending') return 'awaiting_auth'
-    return 'inactive'
-}
-
 type ToolIconOpts = {
     style?: CSSProperties
-    /** Agent 工具的 tool_use_id，用于生成头像 */
-    id?: string
-    /** 工具状态，Agent 工具用于控制动态/静态头像 */
-    state?: ToolCallState
 }
 
 /**
- * 根据工具名返回对应的图标
- * Agent/Task 工具在提供 id + state 时返回 PixelAvatar 动态头像
+ * 根据工具名返回对应的图标。
+ * Agent/Task 工具统一用 RocketOutlined（不再用 PixelAvatar，状态指示由调用处的 StatusStateIcon 承担）。
  */
 export function getToolIcon(name: string, opts: CSSProperties | ToolIconOpts = ICON_STYLE): ReactNode {
-    // CSSProperties 直接传入时没有 id/state 字段，转为 ToolIconOpts
-    const hasOptsFields = typeof opts === 'object' && opts !== null && ('id' in opts || 'state' in opts || 'style' in opts)
-        && !('fontSize' in opts && !('id' in opts) && !('state' in opts) && !('style' in opts))
-    const resolved: ToolIconOpts = hasOptsFields ? opts as ToolIconOpts : { style: opts as CSSProperties }
-    const style = resolved.style ?? ICON_STYLE
-
-    // Agent/Task 工具：有 id 和 state 时使用 PixelAvatar
-    if (AGENT_TOOL_NAMES.has(name) && resolved.id && resolved.state) {
-        return <PixelAvatar name={resolved.id} status={toolStateToAvatarStatus(resolved.state)} size={typeof style.fontSize === 'number' ? style.fontSize + 4 : 18} statusStyles={TOOL_AVATAR_STYLES} />
-    }
+    const style = opts && typeof opts === 'object' && 'style' in opts
+        ? (opts.style ?? ICON_STYLE)
+        : opts as CSSProperties
 
     // mcp__ 前缀的工具使用 LineSquiggle 图标
     if (name.startsWith('mcp__')) {
