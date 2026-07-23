@@ -46,7 +46,10 @@ import { extractMessageEventType } from './eventParsing'
  */
 export class NotificationHub {
     private readonly channels: NotificationChannel[]
-    /** Ready 通知冷却时间，5s 内不重复发送 */
+    /** Ready 通知冷却时间，60s 内同一 session 不重复发送。
+     *  60s 而非原来的 5s：agent 正常对话每轮 ready 间隔常 >5s，5s 几乎压不住 → 每轮都通知，
+     *  叠加用户少点击 → 触发 Chrome 通知滥用保护("垃圾内容")。拉到 60s 显著降频，
+     *  再配合前端固定 tag 聚合(pushNotificationChannel/toast 路径)避免堆积。 */
     private readonly readyCooldownMs: number
     /** 权限请求防抖时间，500ms 内的多次更新合并为一次通知 */
     private readonly permissionDebounceMs: number
@@ -64,7 +67,7 @@ export class NotificationHub {
         options?: NotificationHubOptions
     ) {
         this.channels = channels
-        this.readyCooldownMs = options?.readyCooldownMs ?? 5000
+        this.readyCooldownMs = options?.readyCooldownMs ?? 60000
         this.permissionDebounceMs = options?.permissionDebounceMs ?? 500
         this.unsubscribeSyncEvents = this.syncEngine.subscribe((event) => {
             this.handleSyncEvent(event)

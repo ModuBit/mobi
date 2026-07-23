@@ -93,4 +93,29 @@ describe('NotificationHub ready 链路（代码层确认）', () => {
         expect(channel.sendReady).not.toHaveBeenCalled()
         hub.stop()
     })
+
+    test('冷却期内连发第二次 ready → 被吞,channel.sendReady 仍只 1 次', async () => {
+        let registeredListener: ((e: SyncEvent) => void) | null = null
+        const syncEngine = {
+            subscribe: mock((listener: (e: SyncEvent) => void) => {
+                registeredListener = listener
+                return () => {}
+            }),
+            getSession: mock(() => ({ id: 's1', namespace: 'ns1', active: true, agentState: {} })),
+        } as never
+        const channel = {
+            sendReady: mock(() => Promise.resolve()),
+            sendPermissionRequest: mock(() => Promise.resolve()),
+        }
+
+        const hub = new NotificationHub(syncEngine, [channel as never])
+
+        // 同步连发两条 ready(同毫秒,第二条必然落在冷却窗内 → 丢弃)
+        registeredListener!(makeReadyEvent('s1'))
+        registeredListener!(makeReadyEvent('s1'))
+        await new Promise(resolve => setTimeout(resolve, 50))
+
+        expect(channel.sendReady).toHaveBeenCalledTimes(1)
+        hub.stop()
+    })
 })

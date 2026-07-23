@@ -385,7 +385,8 @@
             "swReadyTimeout": "Service is warming up — refresh and retry",
             "subscribeFailed": "Failed to subscribe, please retry",
             "refreshPermission": "Re-check",
-            "testFailed": "Failed to send test notification, please retry"
+            "testFailed": "Failed to send test notification, please retry",
+            "testBody": "Click this notification to open the app and jump to the session list"
         },
         "pwa": {
             "updateAvailable": "Update available",

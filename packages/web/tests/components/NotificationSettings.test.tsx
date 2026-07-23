@@ -167,6 +167,14 @@ describe('NotificationSettings', () => {
         renderUi()
         fireEvent.click(screen.getByText('notification.settings.test'))
         await vi.waitFor(() => expect(showNotification).toHaveBeenCalled())
+        // 带 data.url + tag:点击通知可验证「打开应用 + 跳转会话列表」链路
+        expect(showNotification).toHaveBeenCalledWith(
+            'notification.settings.title',
+            expect.objectContaining({
+                tag: 'test-notification',
+                data: { url: '/sessions' },
+            }),
+        )
         Object.defineProperty(nav, 'serviceWorker', { value: original, configurable: true })
     })
 

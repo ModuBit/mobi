@@ -24,21 +24,31 @@
  *
  * @returns true=已显示；false=SW 未就绪或显示失败（调用方应降级为页面内通知）
  */
+/** 扩展 NotificationOptions 纳入 renotify（TS 6.0 lib.dom 未收录,但 Chrome 已支持,需 tag 同时设置） */
+type ShowNotificationOptions = NotificationOptions & { renotify?: boolean }
+
 export async function showSystemNotification(options: {
     title: string
     body?: string
     icon?: string
     tag?: string
+    /**
+     * 同 tag 新通知替换旧通知时，是否再次提醒（响铃/震动/高亮）。
+     * 配合固定 tag 实现「聚合 + 有更新再提醒」：renotify 要求 tag 必须设置。
+     */
+    renotify?: boolean
     data?: Record<string, unknown>
 }): Promise<boolean> {
     try {
         const reg = await navigator.serviceWorker.ready
-        await reg.showNotification(options.title, {
+        const opts: ShowNotificationOptions = {
             body: options.body,
             icon: options.icon,
             tag: options.tag,
+            renotify: options.renotify,
             data: options.data,
-        })
+        }
+        await reg.showNotification(options.title, opts)
         return true
     } catch {
         return false

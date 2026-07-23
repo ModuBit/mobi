@@ -16,7 +16,6 @@
 
 import { useCallback, useMemo } from 'react'
 import { App } from 'antd'
-import { showSystemNotification } from '@/core/notifications'
 
 /** 通知选项 */
 export interface NotifyOptions {
@@ -44,34 +43,23 @@ export interface NotifyAPI {
 }
 
 /**
- * 统一通知 hook
+ * 统一的「页面内 Toast」hook（antd notification）。
  *
- * 已授权浏览器通知 → SW 系统通知（showSystemNotification，跨端一致）
- * 未授权 → 使用 antd notification (页面内通知)
+ * 职责边界：本 hook 只负责页面内提示，**不**触发系统通知。
+ * 系统通知（SW showNotification）曾是本 hook 的隐式行为——只要已授权就把
+ * success/warning/error/info 全部升级为系统通知。这会导致断线、操作反馈等
+ * 自愈/低价值事件在已授权时大量弹出系统通知，叠加用户极少点击，触发 Chrome
+ * 的通知滥用保护（"可能发送了垃圾内容" + quieter messaging 自动静音）。
+ *
+ * 现在的分层：
+ * - 页面 Toast（本 hook）：用户在前台时可见的即时反馈
+ * - 系统通知：由调用方按需「显式」调用 showSystemNotification，仅用于
+ *   需要用户介入的高价值事件（工具授权请求、空闲超时、后台 agent 回复）
  */
 export function useNotify(): NotifyAPI {
     const { notification } = App.useApp()
 
     const dispatch = useCallback((type: NotifyType, options: NotifyOptions) => {
-        // 已授权浏览器通知 → SW 系统通知（移动端不支持页面层 new Notification），SW 失败降级 antd
-        if ('Notification' in window && Notification.permission === 'granted') {
-            void showSystemNotification({
-                title: options.message,
-                body: options.description ?? '',
-                icon: '/brand/favicon.ico',
-            }).then((ok) => {
-                if (ok) return
-                notification[type]({
-                    key: options.key,
-                    message: options.message,
-                    description: options.description,
-                    duration: options.duration,
-                })
-            })
-            return
-        }
-
-        // 未授权 → 使用 antd 页面通知
         notification[type]({
             key: options.key,
             message: options.message,

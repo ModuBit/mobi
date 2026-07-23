@@ -455,18 +455,21 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 })
                 if (action === 'ignore') break
 
-                // 序号去重:同 session 连发同类通知时,每条用独立 key/tag,
-                // 避免 SW replaceNotification / antd 同 key 更新吞掉前一条(角标幂等不受影响)
+                // 前台 Toast 用递增 key(每条都显示,避免 antd 同 key 互相吞);
+                // 后台系统通知用固定 tag 聚合(见 system-notification 分支),避免堆积触发 Chrome 反垃圾
                 const notifyKey = `${kind}-${sessionId}-${++toastSeq}`
 
                 if (action === 'system-notification') {
                     // 场景③ 后台:SW 系统通知（移动端不支持页面层 new Notification），
-                    // 点击跳转由 sw.ts notificationclick 处理（读 data.url）；SW 不可用则降级 antd
+                    // 点击跳转由 sw.ts notificationclick 处理（读 data.url）；SW 不可用则降级 antd。
+                    // 聚合:固定 tag(按 kind+session)让同会话新通知替换旧的,通知中心只留一条而非堆积
+                    // (Chrome 见堆积+低点击 → 判定垃圾内容);renotify=true 替换时再次提醒,避免静默漏看。
                     void showSystemNotification({
                         title,
                         body,
                         icon: '/brand/favicon.ico',
-                        tag: notifyKey,
+                        tag: `mobi-${kind}-${sessionId}`,
+                        renotify: true,
                         data: { url },
                     }).then((ok) => {
                         if (ok) return
@@ -497,16 +500,48 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'idle-timeout-warning':
                 if (event.data?.remainingMs) {
                     const remainingMinutes = Math.ceil(event.data.remainingMs / 60000)
+                    const idleMsg = tRef.current('notification.idleTimeoutWarning')
+                    const idleDesc = tRef.current('notification.idleTimeoutWarningDesc', { minutes: remainingMinutes })
+                    // 页面 Toast 常驻(duration:0),前台用户已可见
                     nt.warning({
                         key: `idle-timeout-${event.sessionId}`,
-                        message: tRef.current('notification.idleTimeoutWarning'),
-                        description: tRef.current('notification.idleTimeoutWarningDesc', { minutes: remainingMinutes }),
+                        message: idleMsg,
+                        description: idleDesc,
                         duration: 0,
                     })
+                    // 仅后台时额外发系统通知拉回用户;前台有常驻页面 Toast,弹系统通知纯打扰。
+                    // tag 按 session 固定去重,避免堆积;renotify=true 替换时再次提醒,对齐 ready 路径。
+                    // 系统通知只用于"需用户介入"的高价值事件。
+                    if (document.hidden) {
+                        void showSystemNotification({
+                            title: idleMsg,
+                            body: idleDesc,
+                            icon: '/brand/favicon.ico',
+                            tag: `idle-timeout-${event.sessionId}`,
+                            renotify: true,
+                            data: { url: `/sessions/${event.sessionId}` },
+                        })
+                    }
                 }
                 break
         }
     }, [])
+
+    // 监听 SW 通知点击发来的 NAVIGATE 指令,用 SPA 路由跳转到目标 session。
+    // 通知点击的窗口聚焦/openWindow 由 sw.ts 处理,但"已打开窗口内定位到 session"
+    // 必须靠前端 router(SW 无法驱动 SPA 路由),故 SW postMessage 过来由这里执行。
+    useEffect(() => {
+        if (!authenticated) return
+        if (!('serviceWorker' in navigator)) return
+        const onMessage = (event: MessageEvent) => {
+            const data = event.data as { type?: string; url?: string } | null
+            if (data?.type === 'NAVIGATE' && typeof data.url === 'string') {
+                navigateRef.current({ to: data.url })
+            }
+        }
+        navigator.serviceWorker.addEventListener('message', onMessage)
+        return () => navigator.serviceWorker.removeEventListener('message', onMessage)
+    }, [authenticated])
 
     // 登出(authenticated 转 false)时清理角标 + 重置通知子系统,避免换号残留上一用户状态
     useEffect(() => {

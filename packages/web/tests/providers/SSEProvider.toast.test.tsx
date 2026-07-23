@@ -28,6 +28,8 @@ const notifyInfoSpy = vi.hoisted(() => vi.fn())
 const showSysSpy = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 // 可变认证态(测 logout 场景时改为 false)
 const authState = vi.hoisted(() => ({ authenticated: true as boolean }))
+// navigate spy:验证 SW NAVIGATE 消息触发的 SPA 跳转
+const navigateSpy = vi.hoisted(() => vi.fn())
 // Gate.resetPermissionPrompt spy(验证换号重置引导 flag)
 const gateResetSpy = vi.hoisted(() => vi.fn())
 
@@ -51,7 +53,7 @@ vi.mock('@/core/data/stores/authStore', () => ({
     useAuthStore: () => ({ authenticated: authState.authenticated, logout: vi.fn() }),
 }))
 vi.mock('@tanstack/react-router', () => ({
-    useNavigate: () => vi.fn(),
+    useNavigate: () => navigateSpy,
 }))
 vi.mock('@/core/data/hooks/useNotify', () => ({
     useNotify: () => ({ warning: vi.fn(), success: vi.fn(), info: vi.fn(), error: vi.fn(), destroy: vi.fn() }),
@@ -167,5 +169,91 @@ describe('SSEProvider 换号重置(logout)', () => {
         expect(resetSpy).toHaveBeenCalled()
         expect(gateResetSpy).toHaveBeenCalled()
         resetSpy.mockRestore()
+    })
+})
+
+describe('SSEProvider 系统通知分层', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        sseListener.current = null
+        authState.authenticated = true
+        Object.defineProperty(document, 'hidden', { value: false, configurable: true })
+    })
+    afterEach(() => cleanup())
+
+    it('后台 idle-timeout-warning → 额外发系统通知(带固定 tag 供 SW 去重 + 跳转 url)', async () => {
+        await renderProvider()
+        Object.defineProperty(document, 'hidden', { value: true, configurable: true })
+
+        sseListener.current!({ type: 'idle-timeout-warning', sessionId: 's9', data: { remainingMs: 120000 } })
+
+        expect(showSysSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                tag: 'idle-timeout-s9',
+                renotify: true,
+                data: { url: '/sessions/s9' },
+            }),
+        )
+    })
+
+    it('前台 idle-timeout-warning → 不发系统通知(常驻页面 Toast 已可见)', async () => {
+        await renderProvider()
+        Object.defineProperty(document, 'hidden', { value: false, configurable: true })
+
+        sseListener.current!({ type: 'idle-timeout-warning', sessionId: 's9', data: { remainingMs: 120000 } })
+
+        expect(showSysSpy).not.toHaveBeenCalled()
+    })
+
+    it('断线(connection-changed connected=false)→ 不弹系统通知(自愈事件,仅页面 Toast)', async () => {
+        await renderProvider()
+        sseListener.current!({ type: 'connection-changed', connected: false })
+        expect(showSysSpy).not.toHaveBeenCalled()
+    })
+
+    it('后台连发两条同类 toast → 系统通知用固定 tag + renotify(聚合替换,不堆积)', async () => {
+        await renderProvider()
+        Object.defineProperty(document, 'hidden', { value: true, configurable: true })
+
+        sseListener.current!(toast({ kind: 'ready', sessionId: 's1', title: 't1', body: 'b1', url: '/sessions/s1' }))
+        sseListener.current!(toast({ kind: 'ready', sessionId: 's1', title: 't2', body: 'b2', url: '/sessions/s1' }))
+
+        // 两条都发(每条照发),但 tag 固定相同 → Chrome 替换旧通知,通知中心只留最新一条
+        expect(showSysSpy).toHaveBeenCalledTimes(2)
+        expect(showSysSpy).toHaveBeenNthCalledWith(1, expect.objectContaining({ tag: 'mobi-ready-s1', renotify: true }))
+        expect(showSysSpy).toHaveBeenNthCalledWith(2, expect.objectContaining({ tag: 'mobi-ready-s1', renotify: true }))
+    })
+})
+
+describe('SSEProvider 通知点击跳转(NAVIGATE)', () => {
+    let swTarget: EventTarget
+    beforeEach(() => {
+        vi.clearAllMocks()
+        navigateSpy.mockClear()
+        sseListener.current = null
+        authState.authenticated = true
+        // jsdom 无 SW,stub 一个 EventTarget 模拟 navigator.serviceWorker
+        swTarget = new EventTarget()
+        Object.defineProperty(navigator, 'serviceWorker', { value: swTarget, configurable: true })
+    })
+    afterEach(() => cleanup())
+
+    it('收到 SW NAVIGATE 消息 → 用 SPA 路由跳转到目标 url', async () => {
+        await renderProvider()
+        swTarget.dispatchEvent(new MessageEvent('message', { data: { type: 'NAVIGATE', url: '/sessions/abc' } }))
+        expect(navigateSpy).toHaveBeenCalledWith({ to: '/sessions/abc' })
+    })
+
+    it('非 NAVIGATE 消息不触发跳转', async () => {
+        await renderProvider()
+        swTarget.dispatchEvent(new MessageEvent('message', { data: { type: 'OTHER', url: '/x' } }))
+        expect(navigateSpy).not.toHaveBeenCalled()
+    })
+
+    it('未认证时不挂监听(NAVIGATE 无效)', async () => {
+        authState.authenticated = false
+        await renderProvider()
+        swTarget.dispatchEvent(new MessageEvent('message', { data: { type: 'NAVIGATE', url: '/sessions/abc' } }))
+        expect(navigateSpy).not.toHaveBeenCalled()
     })
 })

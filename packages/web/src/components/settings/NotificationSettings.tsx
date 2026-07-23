@@ -159,12 +159,17 @@ export function NotificationSettings({ namespace }: NotificationSettingsProps) {
         })
     }, [error, message, t])
 
-    /** 发送测试通知：通过 SW registration.showNotification（移动端 Android Chrome / iOS Safari 不支持页面层 new Notification，必须走 SW） */
+    /** 发送测试通知：通过 SW registration.showNotification（移动端 Android Chrome / iOS Safari 不支持页面层 new Notification，必须走 SW）。
+     *  带 data.url,点击通知可验证「打开应用 + 跳转会话列表」链路(sw.ts notificationclick → SSEProvider NAVIGATE)。 */
     const sendTest = async () => {
         try {
             // 复用超时保护:controller 孤儿时 ready 永不 resolve,超时归为 testFailed,与 enable() 对齐
             const reg = await awaitServiceWorkerReady()
-            await reg.showNotification(t('notification.settings.title'), { body: '✓' })
+            await reg.showNotification(t('notification.settings.title'), {
+                body: t('notification.settings.testBody'),
+                tag: 'test-notification',
+                data: { url: '/sessions' },
+            })
         } catch {
             message.error(t('notification.settings.testFailed'))
         }

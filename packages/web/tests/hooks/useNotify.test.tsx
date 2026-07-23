@@ -20,7 +20,8 @@ import { ConfigProvider, App as AntdApp } from 'antd'
 import type { ReactNode } from 'react'
 import { useNotify } from '@/core/data/hooks/useNotify'
 
-// mock showSystemNotification（避免依赖真实 SW），用 hoisted 让 vi.mock 拿到引用
+// useNotify 现在是纯页面 Toast 封装,不应再碰系统通知。
+// 仍 mock showSystemNotification 以断言"绝不被调用"。
 const showSpy = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 vi.mock('@/core/notifications', () => ({
     showSystemNotification: showSpy,
@@ -62,37 +63,38 @@ describe('useNotify', () => {
         vi.unstubAllGlobals()
     })
 
-    it('已授权（permission=granted）→ 调 showSystemNotification（title/body/icon）', () => {
+    it('始终走 antd 页面通知,绝不调 showSystemNotification(已授权也不升级)', () => {
+        // 即便已授权系统通知,useNotify 也不再隐式升级——
+        // 系统通知由调用方显式调用,避免 success/info/断线等提示泛滥触发 Chrome 反垃圾。
         vi.stubGlobal('Notification', { permission: 'granted' })
         const { result } = renderHook(() => useNotify(), { wrapper })
         result.current.success({ message: '标题', description: '正文' })
-        expect(showSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                title: '标题',
-                body: '正文',
-                icon: '/brand/favicon.ico',
-            }),
+        expect(showSpy).not.toHaveBeenCalled()
+        expect(notificationApi.success).toHaveBeenCalledWith(
+            expect.objectContaining({ message: '标题', description: '正文' }),
         )
     })
 
-    it('未授权（permission=default）→ 不调 showSystemNotification，走 antd 页面通知', () => {
+    it('未授权(default)同样走 antd 页面通知', () => {
         vi.stubGlobal('Notification', { permission: 'default' })
         const { result } = renderHook(() => useNotify(), { wrapper })
         result.current.success({ message: '标题' })
         expect(showSpy).not.toHaveBeenCalled()
-        // 未授权走 antd 页面通知（notification 已 mock 为 spy）
         expect(notificationApi.success).toHaveBeenCalledWith(
             expect.objectContaining({ message: '标题' }),
         )
     })
 
-    it('warning/error/info 同样在已授权时走 showSystemNotification', () => {
+    it('warning/error/info 均只走 antd 页面通知', () => {
         vi.stubGlobal('Notification', { permission: 'granted' })
         const { result } = renderHook(() => useNotify(), { wrapper })
-        result.current.warning({ message: 'w' })
-        result.current.error({ message: 'e' })
-        result.current.info({ message: 'i' })
-        expect(showSpy).toHaveBeenCalledTimes(3)
+        result.current.warning({ message: 'w', key: 'k1' })
+        result.current.error({ message: 'e', key: 'k2' })
+        result.current.info({ message: 'i', key: 'k3' })
+        expect(showSpy).not.toHaveBeenCalled()
+        expect(notificationApi.warning).toHaveBeenCalledWith(expect.objectContaining({ message: 'w', key: 'k1' }))
+        expect(notificationApi.error).toHaveBeenCalledWith(expect.objectContaining({ message: 'e', key: 'k2' }))
+        expect(notificationApi.info).toHaveBeenCalledWith(expect.objectContaining({ message: 'i', key: 'k3' }))
     })
 
     it('destroy 透传不抛错', () => {

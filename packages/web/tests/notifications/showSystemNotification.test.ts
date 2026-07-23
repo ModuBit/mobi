@@ -48,6 +48,7 @@ describe('showSystemNotification', () => {
             body: 'B',
             icon: '/i.png',
             tag: 't1',
+            renotify: true,
             data: { url: '/x' },
         })
 
@@ -56,6 +57,7 @@ describe('showSystemNotification', () => {
             body: 'B',
             icon: '/i.png',
             tag: 't1',
+            renotify: true,
             data: { url: '/x' },
         })
     })
@@ -82,6 +84,7 @@ describe('showSystemNotification', () => {
             body: undefined,
             icon: undefined,
             tag: undefined,
+            renotify: undefined,
             data: undefined,
         })
     })
