@@ -21,6 +21,7 @@ import { doctorCommand } from './doctor'
 import { mcpCommand } from './mcp'
 import { hubCommand } from './hub'
 import { serviceCommand } from './service'
+import { logsCommand } from './logs'
 import { hookForwarderCommand } from './hookForwarder'
 import { versionCommand } from './version'
 import { upgradeCommand } from './upgrade'
@@ -33,6 +34,7 @@ const COMMANDS: CommandDefinition[] = [
     mcpCommand,
     hubCommand,
     serviceCommand,
+    logsCommand,
     doctorCommand,
     runnerCommand,
     versionCommand,
