@@ -27,7 +27,7 @@
  */
 
 import chalk from 'chalk'
-import { appendFileSync, existsSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RingBufferReader } from './exitLogger'
 
@@ -196,20 +196,23 @@ export interface CreateLoggerOptions {
     logsDir: string
     logFilePath?: string
     ringBufferCapacity?: number
-    /** 启动时清理旧日志，默认 true */
+    /** 启动时清理旧日志，默认 false（由长生命周期进程 main 显式调用，避免短命令/测试触发副作用） */
     cleanup?: boolean
 }
 
 /**
- * 创建一个 logger 实例并（默认）顺带清理旧日志。
+ * 创建一个 logger 实例，并确保 logsDir 存在。
+ * cleanup 默认不执行（见上）；长生命周期进程应在 main 里显式调 cleanupOldLogs。
  * 每次进程启动产生一个新文件（{ts}-{processType}.log）。
  */
 export function createLogger(opts: CreateLoggerOptions): MobiLogger {
     const logFilePath = opts.logFilePath ?? sessionLogPath(opts.processType, opts.logsDir)
+    // 自保目录：不依赖外部（exitLogger ensureDir / cli configuration mkdirSync）先行创建
+    ensureDir(opts.logsDir)
     const instance = new BaseLogger(opts.processType, opts.logsDir, logFilePath, {
         ringBufferCapacity: opts.ringBufferCapacity,
     })
-    if (opts.cleanup !== false) {
+    if (opts.cleanup) {
         try {
             cleanupOldLogs(opts.logsDir)
         } catch {
@@ -217,6 +220,17 @@ export function createLogger(opts: CreateLoggerOptions): MobiLogger {
         }
     }
     return instance
+}
+
+/** 确保 logsDir 存在（best-effort，失败不阻断日志写入） */
+function ensureDir(dir: string): void {
+    try {
+        if (!existsSync(dir)) {
+            mkdirSync(dir, { recursive: true })
+        }
+    } catch {
+        // best-effort
+    }
 }
 
 /** 查找指定 processType 的最新日志文件（按 mtime 降序），无则 null */

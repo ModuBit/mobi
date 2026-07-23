@@ -24,6 +24,7 @@
  */
 
 import { installExitLogger, installExitHandlers, resolveMobiLogsDir, resolveMobiHome, isProcessAlive, type ExitLogger } from '@mobi/shared/exitLogger'
+import { cleanupOldLogs } from '@mobi/shared/logger'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createConfiguration, type ConfigSource } from './configuration'
@@ -107,6 +108,8 @@ async function main() {
     installExitHandlers('hub', hubExitLogger)
     // —— OOM/SIGKILL 兜底：检测上次 hub 实例是否异常消失 ——
     detectPreviousHubCrash(hubExitLogger)
+    // —— 启动清理旧日志（超 7 天 / 单类超 50 个），createLogger 默认不清理 ——
+    cleanupOldLogs(resolveMobiLogsDir())
 
     hubLogger.info('Mobi Hub starting...')
 
