@@ -18,16 +18,16 @@ import type { AgentStatus } from '@/components/pixel-avatar/types'
 import { AgentLoadingBubble } from './AgentLoadingBubble'
 
 interface StatusBarProps {
-    /** Agent 标识（PixelAvatar name） */
+    /** Agent 标识（AgentLoadingBubble aria-label 用） */
     agentId: string
-    /** Agent 运行状态（驱动 PixelAvatar 动画）；缺省时不渲染 */
+    /** Agent 运行状态（驱动 StatusDot 颜色/节奏）；缺省时不渲染 */
     status?: AgentStatus
     /** 是否正在运行：false 时不渲染 */
     running: boolean
 }
 
 /**
- * 状态栏：running 时在输入框上方独立一行展示 loading 内容（avatar + vibing 文字 + 计时）。
+ * 状态栏：running 时在输入框上方独立一行展示 loading 内容（StatusDot + vibing 文字 + 计时）。
  * 替代原先 push 到消息列表末尾的 loading 气泡，使 loading 指示固定可见、不随消息流滚动。
  * 非 running（或 status 缺省）时返回 null，不占布局高度。
  */
