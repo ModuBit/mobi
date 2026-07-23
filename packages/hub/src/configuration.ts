@@ -35,6 +35,7 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { hubLogger } from './logger'
 import { getOrCreateCliApiToken } from './config/cliApiToken'
 import { getOrCreateWebApiToken } from './config/webApiToken'
 import { getSettingsFile } from './config/settings'
@@ -158,7 +159,7 @@ class Configuration {
         const settingsResult = await loadServerSettings(dataDir)
 
         if (settingsResult.savedToFile) {
-            console.log(`[Hub] Configuration saved to ${getSettingsFile(dataDir)}`)
+            hubLogger.info(`[Hub] Configuration saved to ${getSettingsFile(dataDir)}`)
         }
 
         // 4. Create configuration instance

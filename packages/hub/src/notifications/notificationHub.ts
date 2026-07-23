@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { hubLogger } from '../logger'
 import type { Session, SyncEngine, SyncEvent } from '../sync/syncEngine'
 import type { NotificationChannel, NotificationHubOptions } from './notificationTypes'
 import { extractMessageEventType } from './eventParsing'
@@ -111,7 +112,7 @@ export class NotificationHub {
             const eventType = extractMessageEventType(event)
             if (eventType === 'ready') {
                 this.sendReadyNotification(event.sessionId).catch((error) => {
-                    console.error('[NotificationHub] Failed to send ready notification:', error)
+                    hubLogger.error('[NotificationHub] Failed to send ready notification:', error)
                 })
             }
         }
@@ -174,7 +175,7 @@ export class NotificationHub {
         const timer = setTimeout(() => {
             this.notificationDebounce.delete(session.id)
             this.sendPermissionNotification(session.id).catch((error) => {
-                console.error('[NotificationHub] Failed to send permission notification:', error)
+                hubLogger.error('[NotificationHub] Failed to send permission notification:', error)
             })
         }, this.permissionDebounceMs)
 
@@ -216,7 +217,7 @@ export class NotificationHub {
             try {
                 await channel.sendReady(session)
             } catch (error) {
-                console.error('[NotificationHub] Failed to send ready notification:', error)
+                hubLogger.error('[NotificationHub] Failed to send ready notification:', error)
             }
         }
     }
@@ -226,7 +227,7 @@ export class NotificationHub {
             try {
                 await channel.sendPermissionRequest(session)
             } catch (error) {
-                console.error('[NotificationHub] Failed to send permission notification:', error)
+                hubLogger.error('[NotificationHub] Failed to send permission notification:', error)
             }
         }
     }

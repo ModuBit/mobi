@@ -28,6 +28,7 @@
 import { watch, type FSWatcher } from 'node:fs'
 import { dirname, basename } from 'node:path'
 import { configuration, getConfiguration } from '../configuration'
+import { hubLogger } from '../logger'
 import { readSettings } from './settings'
 
 const DEBOUNCE_MS = 100
@@ -59,7 +60,7 @@ export function startWebApiTokenWatcher(): SettingsWatcher {
                     // 此时值的来源就是文件（无论启动时是 env 还是 generated）
                     getConfiguration()._setWebApiToken(next, 'file', false)
                     lastWebToken = next
-                    console.log('[Hub] webApiToken reloaded from settings.json')
+                    hubLogger.info('[Hub] webApiToken reloaded from settings.json')
                 }
             })
             .catch(() => {

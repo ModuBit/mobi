@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { hubLogger } from '../logger'
 import type { SyncEvent } from '@mobi/shared/types'
 import type { SSEManager } from '../sse/sseManager'
 
@@ -41,7 +42,7 @@ export class EventPublisher {
             try {
                 listener(enrichedEvent)
             } catch (error) {
-                console.error('[SyncEngine] Listener error:', error)
+                hubLogger.error('[SyncEngine] Listener error:', error)
             }
         }
 

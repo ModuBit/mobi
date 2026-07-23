@@ -21,6 +21,7 @@
  * Priority: environment variable > settings.json > auto-generate
  */
 
+import { hubLogger } from '../logger'
 import { generateSecureToken } from '../utils/crypto'
 import { parseAccessToken } from '../utils/accessToken'
 import { getOrCreateSettingsValue } from './generators'
@@ -56,7 +57,7 @@ function normalizeCliApiToken(rawToken: string, source: CliApiTokenSource): { to
     const parsed = parseAccessToken(rawToken)
     if (!parsed) {
         if (rawToken.includes(':')) {
-            console.warn(`[WARN] CLI_API_TOKEN from ${source} contains ":" but is not a valid token. Server expects a base token without namespace.`)
+            hubLogger.warn(`[WARN] CLI_API_TOKEN from ${source} contains ":" but is not a valid token. Server expects a base token without namespace.`)
         }
         return { token: rawToken, didStrip: false }
     }
@@ -65,7 +66,7 @@ function normalizeCliApiToken(rawToken: string, source: CliApiTokenSource): { to
         return { token: rawToken, didStrip: false }
     }
 
-    console.warn(
+    hubLogger.warn(
         `[WARN] CLI_API_TOKEN from ${source} includes namespace suffix "${parsed.namespace}". ` +
         'Server expects the base token only; stripping the suffix.'
     )
@@ -88,7 +89,7 @@ export async function getOrCreateCliApiToken(dataDir: string): Promise<CliApiTok
     if (envToken) {
         const normalized = normalizeCliApiToken(envToken, 'env')
         if (isWeakToken(normalized.token)) {
-            console.warn('[WARN] CLI_API_TOKEN appears to be weak. Consider using a stronger secret.')
+            hubLogger.warn('[WARN] CLI_API_TOKEN appears to be weak. Consider using a stronger secret.')
         }
 
         // Persist env token to file if not already saved (prevents token loss on env var issues)

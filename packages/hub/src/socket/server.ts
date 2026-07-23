@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { hubLogger } from '../logger'
 import { Server as Engine } from '@socket.io/bun-engine'
 import { Server, type DefaultEventsMap } from 'socket.io'
 import { jwtVerify } from 'jose'
@@ -87,7 +88,7 @@ export function createSocketServer(deps: SocketServerDeps): {
     // origin:'*' 在此合法。web 层 credentials:true 才与 '*' 互斥，由 assertCorsOriginsForCredentials 守卫。
     // 这里仅提示：若运维误以为 web 也允许 '*'，会导致 web 静默 401（web 层启动会 throw 阻断）。
     if (allowAllOrigins) {
-        console.warn('[CORS] socket 允许 origin:"*"（credentials:false，合法）。' +
+        hubLogger.warn('[CORS] socket 允许 origin:"*"（credentials:false，合法）。' +
             '注意：web HTTP 层 credentials:true 与 "*" 互斥，会在启动时 throw。')
     }
     const corsOriginOption = allowAllOrigins ? '*' : corsOrigins

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { hubLogger } from '../logger'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
@@ -238,8 +239,8 @@ export async function startWebServer(options: {
         }
     })
 
-    console.log(`[Web] Mobi Hub listening on ${configuration.listenHost}:${configuration.listenPort}`)
-    console.log(`[Web] public URL: ${configuration.publicUrl}`)
+    hubLogger.info(`[Web] Mobi Hub listening on ${configuration.listenHost}:${configuration.listenPort}`)
+    hubLogger.info(`[Web] public URL: ${configuration.publicUrl}`)
 
     return server
 }

@@ -27,6 +27,7 @@ import { installExitLogger, installExitHandlers, resolveMobiLogsDir, resolveMobi
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createConfiguration, type ConfigSource } from './configuration'
+import { hubLogger } from './logger'
 import { writeHubState, clearHubState } from './config/hubState'
 import { Store } from './store'
 import { SyncEngine, type SyncEvent } from './sync/syncEngine'
@@ -55,21 +56,22 @@ function formatSource(source: ConfigSource | 'generated'): string {
 
 /** 首次生成 token 时打印的横幅（CLI / Web 密钥共用，避免两段重复） */
 function printTokenBanner(title: string, token: string, file: string, footer?: string): void {
-    console.log('')
-    console.log('='.repeat(70))
-    console.log(`  ${title}`)
-    console.log('='.repeat(70))
-    console.log('')
-    console.log(`  Token: ${token}`)
-    console.log('')
-    console.log(`  Saved to: ${file}`)
-    console.log('')
+    const bar = '='.repeat(70)
+    hubLogger.info('')
+    hubLogger.info(bar)
+    hubLogger.info(`  ${title}`)
+    hubLogger.info(bar)
+    hubLogger.info('')
+    hubLogger.info(`  Token: ${token}`)
+    hubLogger.info('')
+    hubLogger.info(`  Saved to: ${file}`)
+    hubLogger.info('')
     if (footer) {
-        console.log(`  ${footer}`)
-        console.log('')
+        hubLogger.info(`  ${footer}`)
+        hubLogger.info('')
     }
-    console.log('='.repeat(70))
-    console.log('')
+    hubLogger.info(bar)
+    hubLogger.info('')
 }
 
 let syncEngine: SyncEngine | null = null
@@ -97,12 +99,16 @@ function detectPreviousHubCrash(logger: ExitLogger): void {
 
 async function main() {
     // —— 退出日志：最早挂载，确保后续配置加载失败也能捕获 ——
-    const hubExitLogger = installExitLogger('hub', { logsDir: resolveMobiLogsDir() })
+    // hubLogger 的 ringBuffer 注入 exitLogger，崩溃 dump 可还原崩溃前上下文
+    const hubExitLogger = installExitLogger('hub', {
+        logsDir: resolveMobiLogsDir(),
+        ringBuffer: hubLogger,
+    })
     installExitHandlers('hub', hubExitLogger)
     // —— OOM/SIGKILL 兜底：检测上次 hub 实例是否异常消失 ——
     detectPreviousHubCrash(hubExitLogger)
 
-    console.log('Mobi Hub starting...')
+    hubLogger.info('Mobi Hub starting...')
 
     const config = await createConfiguration()
 
@@ -110,7 +116,7 @@ async function main() {
     if (config.cliApiTokenIsNew) {
         printTokenBanner('NEW CLI_API_TOKEN GENERATED', config.cliApiToken, config.settingsFile)
     } else {
-        console.log(`[Hub] CLI_API_TOKEN: loaded from ${formatSource(config.sources.cliApiToken)}`)
+        hubLogger.info(`[Hub] CLI_API_TOKEN: loaded from ${formatSource(config.sources.cliApiToken)}`)
     }
 
     // 首次生成 Web 密钥时打印横幅（Web 浏览器登录用，与 CLI 密钥独立）
@@ -122,12 +128,12 @@ async function main() {
             '查看命令: mobi auth web-token    轮换命令: mobi auth rotate-web-token'
         )
     } else {
-        console.log(`[Hub] WEB_API_TOKEN: loaded from ${formatSource(config.sources.webApiToken)}`)
+        hubLogger.info(`[Hub] WEB_API_TOKEN: loaded from ${formatSource(config.sources.webApiToken)}`)
     }
 
-    console.log(`[Hub] MOBI_LISTEN_HOST: ${config.listenHost} (${formatSource(config.sources.listenHost)})`)
-    console.log(`[Hub] MOBI_LISTEN_PORT: ${config.listenPort} (${formatSource(config.sources.listenPort)})`)
-    console.log(`[Hub] MOBI_PUBLIC_URL: ${config.publicUrl} (${formatSource(config.sources.publicUrl)})`)
+    hubLogger.info(`[Hub] MOBI_LISTEN_HOST: ${config.listenHost} (${formatSource(config.sources.listenHost)})`)
+    hubLogger.info(`[Hub] MOBI_LISTEN_PORT: ${config.listenPort} (${formatSource(config.sources.listenPort)})`)
+    hubLogger.info(`[Hub] MOBI_PUBLIC_URL: ${config.publicUrl} (${formatSource(config.sources.publicUrl)})`)
 
     // 数据存储
     const store = new Store(config.dbPath)
@@ -181,11 +187,11 @@ async function main() {
     // 启动 settings.json 监听：webApiToken 轮换时热 reload，无需重启 hub
     const settingsWatcher = startWebApiTokenWatcher()
 
-    console.log('')
-    console.log('[Web] Hub listening on :' + config.listenPort)
-    console.log('[Web] Local:  http://localhost:' + config.listenPort)
-    console.log('')
-    console.log('Mobi Hub is ready!')
+    hubLogger.info('')
+    hubLogger.info('[Web] Hub listening on :' + config.listenPort)
+    hubLogger.info('[Web] Local:  http://localhost:' + config.listenPort)
+    hubLogger.info('')
+    hubLogger.info('Mobi Hub is ready!')
 
     // 写入 hub 状态文件，供 CLI status/stop 子命令使用
     writeHubState(config.dataDir, {
@@ -196,14 +202,14 @@ async function main() {
     })
 
     const shutdown = async () => {
-        console.log('\nShutting down...')
+        hubLogger.info('Shutting down...')
         clearHubState(config.dataDir)
         notificationHub?.stop()
         syncEngine?.stop()
         sseManager?.stop()
         webServer?.stop()
         settingsWatcher.stop()
-        console.log('Shutdown complete.')
+        hubLogger.info('Shutdown complete.')
         process.exit(0)
     }
 
@@ -214,6 +220,6 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error('Fatal error:', error)
+    hubLogger.error('Fatal error:', error)
     process.exit(1)
 })

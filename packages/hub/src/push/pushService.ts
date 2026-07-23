@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { hubLogger } from '../logger'
 import * as webPush from 'web-push'
 import type { Store } from '../store'
 import type { VapidKeys } from '../config/vapidKeys'
@@ -94,7 +95,7 @@ export class PushService {
                 return
             }
 
-            console.error('[PushService] Failed to send notification:', error)
+            hubLogger.error('[PushService] Failed to send notification:', error)
         }
     }
 }
