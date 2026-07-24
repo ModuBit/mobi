@@ -24,6 +24,7 @@ export type FileKind =
     | { kind: 'media-native'; isAudio: boolean }
     | { kind: 'media-download' } // 非原生音视频 → 提示下载
     | { kind: 'markdown' }
+    | { kind: 'html' } // HTML 站点 → 预览/源码切换（iframe 沙箱）
     | { kind: 'text'; highlight: boolean }
     | { kind: 'binary' } // 不可直显 → 提示下载
 
@@ -62,6 +63,8 @@ export function resolveFileKind(meta: FileMeta, filePath: string): FileKind {
     if (!isTextLikeMime(mime)) return { kind: 'binary' }
 
     if (mime === 'text/markdown') return { kind: 'markdown' }
+
+    if (mime === 'text/html') return { kind: 'html' }
 
     return { kind: 'text', highlight: size < FILE_SIZE_LIMITS.textHighlight }
 }

@@ -43,6 +43,11 @@ describe('resolveFileKind', () => {
         expect(resolveFileKind(meta('text/markdown'), 'a.md')).toEqual({ kind: 'markdown' })
     })
 
+    it('text/html → html（优先于 text，供预览/源码切换）', () => {
+        expect(resolveFileKind(meta('text/html'), 'a.html')).toEqual({ kind: 'html' })
+        expect(resolveFileKind(meta('text/html'), 'a.htm')).toEqual({ kind: 'html' })
+    })
+
     it('text-like 各子类 → text', () => {
         for (const m of ['text/plain', 'application/json', 'application/xml', 'application/x-sh', 'application/sql', 'application/toml']) {
             expect(resolveFileKind(meta(m), 'f')).toEqual({ kind: 'text', highlight: true })

@@ -40,7 +40,8 @@ export type ReadyRenderState = Extract<RenderState, { status: 'ready' }>
 function isTooLarge(kind: FileKind, size: number): boolean {
     switch (kind.kind) {
         case 'text':
-        case 'markdown': return size >= FILE_SIZE_LIMITS.textPlain
+        case 'markdown':
+        case 'html': return size >= FILE_SIZE_LIMITS.textPlain
         case 'image': return size >= FILE_SIZE_LIMITS.image
         case 'pdf': return size >= FILE_SIZE_LIMITS.pdf
         // media-native / media-download / binary：无 size 阈值
@@ -48,9 +49,9 @@ function isTooLarge(kind: FileKind, size: number): boolean {
     }
 }
 
-/** 是否需要拉 content（仅文本类：text / markdown） */
+/** 是否需要拉 content（文本类：text / markdown / html） */
 function needsContent(kind: FileKind): boolean {
-    return kind.kind === 'text' || kind.kind === 'markdown'
+    return kind.kind === 'text' || kind.kind === 'markdown' || kind.kind === 'html'
 }
 
 /**
@@ -69,9 +70,12 @@ export function useFileRenderState(sessionId: string, filePath: string): RenderS
         sessionId, filePath, shouldFetchContent, meta?.etag,
     )
 
-    // markdown view：默认 render，filePath 变化重置（与原实现一致）
+    // view 默认值：markdown=render（保持回归）；html=source（默认源码，用户可选切预览）
+    // filePath 变化或 kind 变化时重置（如从 .md 切到 .html）
     const [view, setView] = useState<'render' | 'source'>('render')
-    useEffect(() => { setView('render') }, [filePath])
+    useEffect(() => {
+        setView(kind?.kind === 'html' ? 'source' : 'render')
+    }, [filePath, kind?.kind])
     const toggleView = useCallback(() => setView((v) => v === 'render' ? 'source' : 'render'), [])
 
     // 源码模式自动换行：默认关（与 VS Code/GitHub 一致，保代码结构），filePath 变化重置

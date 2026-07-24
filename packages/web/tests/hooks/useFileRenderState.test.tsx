@@ -139,4 +139,17 @@ describe('useFileRenderState', () => {
         act(() => { result.current.status === 'ready' && result.current.toggleWrap() })
         expect(result.current.status === 'ready' && result.current.wrap).toBe(true)
     })
+
+    it('html → needsContent（拉 content），默认 view=source', async () => {
+        mockedMeta.mockReturnValue({ data: { mime: 'text/html', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
+        const blob = { text: async () => '<html></html>' } as unknown as Blob
+        mockedContent.mockReturnValue({ data: { blob, mime: 'text/html', etag: 'e' }, isLoading: false, error: null } as any)
+        const { result } = renderHook(() => useFileRenderState('s', 'a.html'), { wrapper: Wrapper })
+        await act(async () => { await Promise.resolve() })
+        // html needsContent → shouldFetchContent=true
+        expect(mockedContent).toHaveBeenCalledWith('s', 'a.html', true, 'e')
+        expect(result.current.status === 'ready' && result.current.kind.kind).toBe('html')
+        // html 默认 source（区别于 markdown 默认 render）
+        expect(result.current.status === 'ready' && result.current.view).toBe('source')
+    })
 })

@@ -165,6 +165,9 @@ function renderReady(
             return <FileDownloadPrompt sessionId={sessionId} filePath={filePath} reason={t('files.binaryDownload')} />
         case 'markdown':
             return <MarkdownContentView text={state.text} filePath={filePath} view={state.view} wrap={state.wrap} />
+        case 'html':
+            // html 暂走源码视图（useFileRenderState 默认 view='source'）；commit 3 替换为 HtmlPreviewView 支持预览切换
+            return <TextContentView text={state.text} filePath={filePath} highlight wrap={state.wrap} />
         case 'text':
             return <TextContentView text={state.text} filePath={filePath} highlight={state.kind.highlight} wrap={state.wrap} />
     }
