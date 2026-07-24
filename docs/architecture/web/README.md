@@ -179,7 +179,7 @@ packages/web/src/
 │   │   └── styledUtils.ts      样式工具函数
 │   ├── utils/                  纯工具函数
 │   │   ├── sessionUtils.ts     会话显示名称格式化
-│   │   ├── path.ts             路径显示处理
+│   │   ├── path.ts             路径显示处理（含 relativePath / encodePathSegments，供 HTML 预览拼 serve-file URL）
 │   │   ├── timeFormat.ts       相对时间格式化
 │   │   ├── applySuggestion.ts  自动补全建议应用
 │   │   ├── findActiveWord.ts   光标位置单词查找
@@ -319,9 +319,13 @@ packages/web/src/
 │   │   ├── vibingMessages.ts   状态文案
 │   │   ├── hooks/useAnimationLoop.ts 动画循环 Hook
 │   │   └── sprites/            精灵图
-│   ├── files/                  文件浏览
+│   ├── files/                  文件浏览与预览
 │   │   ├── FileTree.tsx        文件树
-│   │   └── FileView.tsx        文件查看器
+│   │   ├── FileView.tsx        文件查看器
+│   │   ├── FileContentView.tsx 内容查看器（按 FileKind 分流：pdf/image/media/markdown/html/text）
+│   │   ├── fileKind.ts         mime → FileKind 判定
+│   │   ├── useFileRenderState.ts 渲染决策（meta→kind→ready，view/wrap 切换）
+│   │   └── HtmlPreviewView.tsx HTML 预览（源码 / iframe 沙箱切换，走 serve-file 端点）
 │   ├── git/                    Git 状态/Diff
 │   │   ├── GitStatus.tsx       Git 状态
 │   │   └── DiffView.tsx        Diff 视图
