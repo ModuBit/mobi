@@ -24,6 +24,7 @@ import { queryKeys } from '@/core/lib/query-keys'
 import FileDownloadPrompt from '@/components/files/FileDownloadPrompt'
 import TextContentView from '@/components/files/TextContentView'
 import MarkdownContentView from '@/components/files/MarkdownContentView'
+import HtmlPreviewView from '@/components/files/HtmlPreviewView'
 import ImageContentView from '@/components/files/ImageContentView'
 import PdfContentView from '@/components/files/PdfContentView'
 import MediaContentView from '@/components/files/MediaContentView'
@@ -47,10 +48,11 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
     // 不会因加载完成而闪退闪现；view/toggleView 在这两个状态均可用，加载期间可预切源码。
     const onCodePath = state.status === 'content-loading' || state.status === 'ready'
     const isMarkdown = onCodePath && state.kind.kind === 'markdown'
+    const isHtml = onCodePath && state.kind.kind === 'html'
     const view = onCodePath ? state.view : 'render'
     const toggleView = onCodePath ? state.toggleView : undefined
-    // 源码视图（text 文件，或 markdown source 模式）才显示「自动换行」切换
-    const isCodeView = onCodePath && (state.kind.kind === 'text' || (isMarkdown && view === 'source'))
+    // 源码视图（text 文件，或 markdown / html source 模式）才显示「自动换行」切换
+    const isCodeView = onCodePath && (state.kind.kind === 'text' || ((isMarkdown || isHtml) && view === 'source'))
     const wrap = onCodePath ? state.wrap : true
     const toggleWrap = onCodePath ? state.toggleWrap : undefined
 
@@ -76,12 +78,20 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
         } },
         { key: 'copyPath', icon: <Copy size={14} />, label: t('files.copyPath'), onClick: copyPath },
     ]
-    // .md 文件：渲染/源码切换（图标随当前 view 变化）；isMarkdown 隐含 toggleView 已定义
-    if (isMarkdown) {
+    // .md / .html 文件：渲染/源码切换（图标随当前 view 变化）；isMarkdown || isHtml 隐含 toggleView 已定义
+    // - markdown: render→source 用 viewSource；source→render 用 viewRender
+    // - html: source(默认)→render(预览) 用 viewPreview；render→source 用 viewSource
+    if (isMarkdown || isHtml) {
+        const inRenderMode = view === 'render'
+        // 切换目标文案：render 态下要切去 source（viewSource）；source 态下要切去 渲染/预览
+        // markdown 用 viewRender，html 用 viewPreview
+        const switchLabel = inRenderMode
+            ? t('files.viewSource')
+            : (isHtml ? t('files.viewPreview') : t('files.viewRender'))
         moreMenuItems.push({
             key: 'toggleView',
-            icon: view === 'render' ? <FileCode size={14} /> : <Eye size={14} />,
-            label: view === 'render' ? t('files.viewSource') : t('files.viewRender'),
+            icon: inRenderMode ? <FileCode size={14} /> : <Eye size={14} />,
+            label: switchLabel,
             onClick: () => toggleView?.(),
         })
     }
@@ -166,8 +176,7 @@ function renderReady(
         case 'markdown':
             return <MarkdownContentView text={state.text} filePath={filePath} view={state.view} wrap={state.wrap} />
         case 'html':
-            // html 暂走源码视图（useFileRenderState 默认 view='source'）；commit 3 替换为 HtmlPreviewView 支持预览切换
-            return <TextContentView text={state.text} filePath={filePath} highlight wrap={state.wrap} />
+            return <HtmlPreviewView sessionId={sessionId} filePath={filePath} view={state.view} text={state.text} wrap={state.wrap} />
         case 'text':
             return <TextContentView text={state.text} filePath={filePath} highlight={state.kind.highlight} wrap={state.wrap} />
     }
