@@ -51,6 +51,9 @@ const MIME_BY_EXTENSION: Record<string, string> = {
     m4a: 'audio/mp4', aac: 'audio/aac',
     mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
     mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+    // 字体（web font / 字体图标）
+    woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf',
+    otf: 'font/otf', eot: 'application/vnd.ms-fontobject',
     // 文档
     pdf: 'application/pdf',
 }

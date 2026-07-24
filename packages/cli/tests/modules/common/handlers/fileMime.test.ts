@@ -67,4 +67,12 @@ describe('lookupMime', () => {
     it('路径式文件名按最后一段扩展名判定', () => {
         expect(lookupMime('path/to/file.ts')).toBe('text/typescript')
     })
+
+    it('字体类扩展名命中 font/* （HTML 预览的 web font/字体图标依赖）', () => {
+        expect(lookupMime('a.woff2')).toBe('font/woff2')
+        expect(lookupMime('a.woff')).toBe('font/woff')
+        expect(lookupMime('a.ttf')).toBe('font/ttf')
+        expect(lookupMime('a.otf')).toBe('font/otf')
+        expect(lookupMime('a.eot')).toBe('application/vnd.ms-fontobject')
+    })
 })
