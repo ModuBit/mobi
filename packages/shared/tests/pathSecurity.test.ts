@@ -18,6 +18,7 @@ import { describe, it, expect } from 'vitest'
 import {
     validateHomeDirPath,
     isWithinBlacklistedDir,
+    isWithinDir,
     DEFAULT_BLACKLISTED_DIR_NAMES,
 } from '../src/pathSecurity'
 
@@ -85,5 +86,24 @@ describe('isWithinBlacklistedDir', () => {
             if (prev === undefined) delete process.env.MOBI_SEARCH_BLACKLIST
             else process.env.MOBI_SEARCH_BLACKLIST = prev
         }
+    })
+})
+
+describe('isWithinDir', () => {
+    it('base 内子路径 → true', () => {
+        expect(isWithinDir('/proj/output/index.html', '/proj')).toBe(true)
+    })
+    it('恰好等于 base → true（含等）', () => {
+        expect(isWithinDir('/proj', '/proj')).toBe(true)
+    })
+    it('../ 逃出 base → false', () => {
+        expect(isWithinDir('/proj/../etc/passwd', '/proj')).toBe(false)
+        expect(isWithinDir('/etc/passwd', '/proj')).toBe(false)
+    })
+    it('前缀同名但非目录前缀 → false（/project 不在 /proj 内）', () => {
+        expect(isWithinDir('/project/x', '/proj')).toBe(false)
+    })
+    it('base 为空 → false', () => {
+        expect(isWithinDir('/proj/x', '')).toBe(false)
     })
 })

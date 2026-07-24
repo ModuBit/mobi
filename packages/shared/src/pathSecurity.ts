@@ -65,6 +65,20 @@ export function resolveBlacklistedDirs(homeDir: string): string[] {
 }
 
 /**
+ * 校验 target 是否落在 base 目录内（含等于 base）。
+ * 用于 serve-file 的 cwd 边界：相对路径 resolve 后必须仍在 session 工作目录内。
+ * resolve 已规范化 `..`，所以 `/proj/../etc` 会先 resolve 成 `/etc` 再判定 → 正确逃出。
+ */
+export function isWithinDir(target: string, base: string): boolean {
+    if (!base) return false
+    const norm = (p: string) => process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p)
+    const t = norm(target)
+    const b = norm(base)
+    const prefix = b.endsWith(sep) ? b : b + sep
+    return t === b || t.startsWith(prefix)
+}
+
+/**
  * 校验路径是否落入风险目录黑名单（仅匹配 home 直接子级，避免误伤项目内同名目录）
  * @returns true 表示路径被黑名单拦截
  */
