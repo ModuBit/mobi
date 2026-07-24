@@ -55,7 +55,9 @@ function HtmlIframe({ sessionId, filePath }: { sessionId: string; filePath: stri
     return (
         <div className="html-preview-view" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '4px 8px', fontSize: 12, borderBottom: '1px solid var(--ant-color-border-secondary)' }}>
-                <a href={src} target="_blank" rel="noopener noreferrer">{t('files.openInNewTab')}</a>
+                {/* 下载而非新标签打开：serve-file 在 top-level 打开会脱离 sandbox（同源执行），
+                    ?download=1 触发 attachment，避免恶意 HTML 在 mobi origin 下跑脚本 */}
+                <a href={`${src}?download=1`} download>{t('files.download')}</a>
             </div>
             <iframe
                 src={src}

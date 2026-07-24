@@ -522,6 +522,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
     // 静态资源服务（HTML 预览用）：相对 cwd 的 path 段形式（splat），相对路径基准交给浏览器原生解析。
     // 安全边界=严格 cwd 内（与 read-file 的 homeDir 边界不同），nosniff 防 MIME 嗅探。
+    // download=1 强制 attachment——供「下载」入口，避免 HTML 在 top-level 打开时脱离 sandbox 同源执行。
     // 与 read-file 共享 serveFileContent 的 meta/304/Range/stream 逻辑，仅 path 来源与安全策略不同。
     app.get('/sessions/:id/serve-file/:path{.*}', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
@@ -545,13 +546,16 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ success: false, error: 'Session working directory unknown' }, 500)
         }
 
-        // resolve 已规范化 ..，越界（逃出 cwd）直接 403
+        // resolve 已规范化 ..（含 ../etc 形式），越界（逃出 cwd）直接 403
         const absPath = resolve(cwd, relPath)
         if (!isWithinDir(absPath, cwd)) {
             return c.json({ success: false, error: 'Access denied: path outside project directory' }, 403)
         }
 
+        // download=1：top-level 打开会脱离 sandbox（同源执行），强制 attachment 触发下载而非渲染
+        const download = c.req.query('download') === '1'
         return serveFileContent(c, engine, sessionResult.sessionId, absPath, {
+            download,
             extraHeaders: { 'x-content-type-options': 'nosniff' },
         })
     })

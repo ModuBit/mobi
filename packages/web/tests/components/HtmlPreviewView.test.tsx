@@ -70,6 +70,10 @@ describe('HtmlPreviewView', () => {
         expect(sandbox).not.toContain('allow-same-origin')
         // referrerPolicy=no-referrer 防泄漏本机路径
         expect(iframe!).toHaveAttribute('referrerPolicy', 'no-referrer')
+        // 下载入口（非新标签打开）：脱离 sandbox 的入口改为强制 ?download=1 下载
+        const downloadLink = screen.getByText('files.download')
+        expect(downloadLink).toHaveAttribute('href', '/api/sessions/s1/serve-file/site/ind%20ex.html?download=1')
+        expect(downloadLink).toHaveAttribute('download')
     })
 
     it('filePath 为空 → 不渲染 iframe，显示 Empty 提示', () => {

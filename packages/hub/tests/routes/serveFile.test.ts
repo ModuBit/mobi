@@ -110,6 +110,18 @@ describe('GET /api/sessions/:id/serve-file/* 静态资源（HTML 预览）', () 
         expect(res.headers.get('content-type')).toBe('text/html')
     })
 
+    test('download=1 → content-disposition: attachment（强制下载，避免 top-level 脱离 sandbox）', async () => {
+        const token = await getAuthToken(app)
+
+        const res = await app.request('/api/sessions/s1/serve-file/index.html?download=1', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+
+        expect(res.status).toBe(200)
+        // attachment 触发浏览器下载而非渲染——新标签打开也不执行脚本，保持 sandbox 隔离
+        expect(res.headers.get('content-disposition')).toContain('attachment')
+    })
+
     test('越界（前导 / 绝对路径注入逃出 cwd）→ 403', async () => {
         const token = await getAuthToken(app)
 
@@ -137,6 +149,16 @@ describe('GET /api/sessions/:id/serve-file/* 静态资源（HTML 预览）', () 
 })
 
 describe('GET /api/sessions/:id/serve-file/* 错误码', () => {
+    test('无 token → 401（serve-file 不可绕过鉴权）', async () => {
+        const setup = await setupTestApp(mockSyncEngine)
+        try {
+            const res = await setup.app.request('/api/sessions/s1/serve-file/index.html')
+            expect(res.status).toBe(401)
+        } finally {
+            setup.cleanup()
+        }
+    })
+
     test('文件不存在（cli stat 抛 ENOENT）→ 404', async () => {
         const engine = {
             resolveSessionAccess: (_id: string, _ns: string) => ({

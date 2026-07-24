@@ -250,7 +250,6 @@
         "viewSource": "查看源码",
         "viewRender": "查看渲染",
         "viewPreview": "预览",
-        "openInNewTab": "在新标签打开",
         "previewUnavailable": "无法预览（文件不在工作目录内）",
         "wordWrap": "自动换行",
         "noWrap": "不换行",

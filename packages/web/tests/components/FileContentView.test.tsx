@@ -77,11 +77,6 @@ vi.mock('@/core/data/hooks/queries/useFileTree', async () => {
     }
 })
 
-// mock useSession：HtmlPreviewView render 态用 session.metadata.path 算 serve-file 相对路径
-vi.mock('@/core/data/hooks/queries/useSession', () => ({
-    useSession: vi.fn(() => ({ data: { metadata: { path: '/proj' } }, isLoading: false })),
-}))
-
 // FileTreeView 还依赖 api client 与 auth
 // 注意：useDebouncedFileSearch 的 effect 依赖 useMobiApi() 的返回引用，
 // 生产中 useMobiApi 用 useMemo([]) 稳定；mock 必须镜像这一契约——返回稳定单例，

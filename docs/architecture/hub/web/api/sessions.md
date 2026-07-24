@@ -190,7 +190,7 @@ flowchart TB
 从 read-file 抽出的共享逻辑，吃绝对路径输出流式响应：`readFileMeta` → 304 协商缓存 → Range(206) 解析 → 响应头 → stream 分片翻译（含客户端断开兜底）。`read-file` 与 `serve-file` 都委托给它，避免复制粘贴。
 
 - meta 失败时分流状态码：cli stat 对不存在文件抛 ENOENT（文案含 `enoent`）→ **404**；其他错误 → 500
-- `download` 选项仅 `read-file` 用（追加 `content-disposition: attachment`）
+- `download` 选项（`?download=1`）：`read-file` 与 `serve-file` 均支持（追加 `content-disposition: attachment`）；serve-file 专供 HTML 预览的「下载」入口，避免 HTML 在 top-level 打开时脱离 sandbox 同源执行
 - `extraHeaders` 选项供 `serve-file` 追加 `x-content-type-options: nosniff`
 
 ### read-file vs serve-file 分工
@@ -202,7 +202,7 @@ flowchart TB
 | 路径形式 | query `path`（绝对路径） | path 段 `:path{.*}`（相对 cwd） |
 | 安全边界 | homeDir + 黑名单（浏览查看） | **严格 cwd 内**（`isWithinDir`，可执行站点） |
 | 相对路径基准 | 无（单文件） | 天然（浏览器按 URL 层级解析，供 HTML 引用 `./css`/`./js`/`./img`） |
-| `download` 选项 | 有 | 无 |
+| `download` 选项 | 有 | 有（`?download=1`） |
 | `nosniff` | — | **必加**（通用静态端点防 MIME 嗅探） |
 
 **为何不合并**：安全边界根本不同（homeDir 宽松浏览 vs cwd 严格站点），合并会牵动 web 端多个 read-file 调用点（ImageContentView / MediaContentView / PdfContentView / useFileContent / FileDownloadPrompt）做破坏性改动且收益为零。正确复用层次：**端点分（职责与安全边界不同），实现合（共享 serveFileContent）**。

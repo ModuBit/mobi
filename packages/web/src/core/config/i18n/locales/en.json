@@ -250,7 +250,6 @@
         "viewSource": "View source",
         "viewRender": "View rendered",
         "viewPreview": "Preview",
-        "openInNewTab": "Open in new tab",
         "previewUnavailable": "Preview unavailable (file outside working directory)",
         "wordWrap": "Word wrap",
         "noWrap": "No wrap",
