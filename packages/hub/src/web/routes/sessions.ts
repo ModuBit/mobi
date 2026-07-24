@@ -16,11 +16,13 @@
 
 import { getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
+import { isWithinDir } from '@mobi/shared/pathSecurity'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
 import { Hono } from 'hono'
+import { resolve } from 'node:path'
 import { z } from 'zod'
 import type { SyncEngine, Session } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
@@ -516,6 +518,42 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         // 共享文件服务逻辑（meta/304/Range/stream）抽至 serveFileContent，
         // 与 serve-file（HTML 预览静态资源）复用。
         return serveFileContent(c, engine, sessionResult.sessionId, path, { download })
+    })
+
+    // 静态资源服务（HTML 预览用）：相对 cwd 的 path 段形式（splat），相对路径基准交给浏览器原生解析。
+    // 安全边界=严格 cwd 内（与 read-file 的 homeDir 边界不同），nosniff 防 MIME 嗅探。
+    // 与 read-file 共享 serveFileContent 的 meta/304/Range/stream 逻辑，仅 path 来源与安全策略不同。
+    app.get('/sessions/:id/serve-file/:path{.*}', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+
+        // :path{.*} 捕获 serve-file/ 之后的剩余路径（含子目录），相对路径基准交给浏览器原生解析
+        const relPath = c.req.param('path') ?? ''
+        if (!relPath) {
+            return c.json({ success: false, error: 'Path parameter is required' }, 400)
+        }
+
+        const cwd = sessionResult.session.metadata?.path
+        if (!cwd) {
+            return c.json({ success: false, error: 'Session working directory unknown' }, 500)
+        }
+
+        // resolve 已规范化 ..，越界（逃出 cwd）直接 403
+        const absPath = resolve(cwd, relPath)
+        if (!isWithinDir(absPath, cwd)) {
+            return c.json({ success: false, error: 'Access denied: path outside project directory' }, 403)
+        }
+
+        return serveFileContent(c, engine, sessionResult.sessionId, absPath, {
+            extraHeaders: { 'x-content-type-options': 'nosniff' },
+        })
     })
 
     // 文件元信息（mime/size/etag），轻量 stat 不下载内容——供 web 大小判断/协商缓存先行
