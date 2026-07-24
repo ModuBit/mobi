@@ -87,3 +87,43 @@ export function truncatePathLeft(path: string, maxLen: number): string {
     const keepLen = maxLen - ellipsis.length
     return ellipsis + path.slice(-keepLen)
 }
+
+/** relativePath 结果：ok=true 给 posix 相对路径；ok=false 表示越界或非法（调用方应降级提示） */
+export type RelativeResult = { ok: true; rel: string } | { ok: false }
+
+/**
+ * 计算 filePath 相对 baseDir 的 posix 相对路径（浏览器环境，纯字符串，无 node:path）。
+ * 仅当 filePath 真正落在 baseDir 内时返回 ok；越界 / 相等 / 空串返回 ok:false。
+ * 用于 HTML 预览拼接 serve-file URL：把文件绝对路径转成相对 cwd 的 path 段。
+ *
+ * 段级比较（非 startsWith）以防前缀同名误判：/project 不会被视为 /proj 内。
+ */
+export function relativePath(baseDir: string, filePath: string): RelativeResult {
+    if (!baseDir || !filePath) return { ok: false }
+    // 词法规范化：\ → /，拆段时消解 . 与 ..（如 /proj/../etc → /etc），否则越界检测失效
+    const norm = (p: string) => {
+        const segs: string[] = []
+        for (const seg of p.replace(/\\/g, '/').split('/')) {
+            if (!seg || seg === '.') continue
+            if (seg === '..') { segs.pop(); continue }
+            segs.push(seg)
+        }
+        return segs
+    }
+    const base = norm(baseDir)
+    const file = norm(filePath)
+    // base 必须是 file 的前缀（filePath 在 baseDir 下）
+    if (base.length > file.length) return { ok: false }
+    for (let i = 0; i < base.length; i++) {
+        if (base[i] !== file[i]) return { ok: false }
+    }
+    const rel = file.slice(base.length).join('/')
+    return rel ? { ok: true, rel } : { ok: false }
+}
+
+/**
+ * 将 posix 相对路径按段 URL 编码，保留 / 分隔符（供 path 段路由如 serve-file/:path 使用）。
+ */
+export function encodePathSegments(rel: string): string {
+    return rel.split('/').map(encodeURIComponent).join('/')
+}
