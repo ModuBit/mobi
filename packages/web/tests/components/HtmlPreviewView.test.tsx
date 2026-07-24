@@ -14,21 +14,13 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import React from 'react'
 import '@testing-library/jest-dom/vitest'
 import { render, cleanup, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ConfigProvider } from 'antd'
 import HtmlPreviewView from '@/components/files/HtmlPreviewView'
-
-// mock useSession：默认 cwd=/proj（filePath 在其内则渲染 iframe）
-vi.mock('@/core/data/hooks/queries/useSession', () => ({
-    useSession: vi.fn(),
-}))
-
-import { useSession } from '@/core/data/hooks/queries/useSession'
-const mockedUseSession = vi.mocked(useSession)
 
 // react-i18next：保留 initReactI18next 等（i18n 初始化需要），仅覆写 useTranslation 返回 key
 vi.mock('react-i18next', async (importOriginal) => {
@@ -49,11 +41,9 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe('HtmlPreviewView', () => {
-    beforeEach(() => { mockedUseSession.mockReset() })
     afterEach(() => cleanup())
 
-    it('view="source" → 渲染 TextContentView（.text-content-view）', () => {
-        mockedUseSession.mockReturnValue({ data: undefined, isLoading: false } as never)
+    it('view="source" → 渲染 TextContentView（源码），不渲染 iframe', () => {
         render(
             <HtmlPreviewView sessionId="s1" filePath="a.html" view="source" text="<p>hi</p>" wrap={false} />,
             { wrapper: Wrapper },
@@ -63,22 +53,16 @@ describe('HtmlPreviewView', () => {
         expect(document.querySelector('iframe')).not.toBeInTheDocument()
     })
 
-    it('view="render" 且 filePath 在 cwd 内 → iframe 指向 serve-file 端点（sandbox 不含 allow-same-origin）', () => {
-        mockedUseSession.mockReturnValue({
-            data: { metadata: { path: '/proj' } },
-            isLoading: false,
-        } as never)
-
+    it('view="render" → iframe 指向 serve-file（filePath 直接作 relPath 按段编码），sandbox 隔离', () => {
         render(
-            <HtmlPreviewView sessionId="s1" filePath="/proj/site/index.html" view="render" text="" wrap={false} />,
+            <HtmlPreviewView sessionId="s1" filePath="site/ind ex.html" view="render" text="" wrap={false} />,
             { wrapper: Wrapper },
         )
 
         const iframe = document.querySelector('iframe')
         expect(iframe).not.toBeNull()
-        // 相对 cwd 的路径段被 URL 编码（index.html 段 → index.html，无特殊字符不变）
-        // 路径 /proj/site/index.html 相对 /proj → site/index.html
-        expect(iframe!).toHaveAttribute('src', '/api/sessions/s1/serve-file/site/index.html')
+        // filePath 来自文件树（相对 cwd 的 posix 路径），每段编码后拼 serve-file path 段
+        expect(iframe!).toHaveAttribute('src', '/api/sessions/s1/serve-file/site/ind%20ex.html')
         // sandbox 必须含 allow-scripts（预览需要 JS 运行）
         const sandbox = iframe!.getAttribute('sandbox') ?? ''
         expect(sandbox).toContain('allow-scripts')
@@ -88,19 +72,13 @@ describe('HtmlPreviewView', () => {
         expect(iframe!).toHaveAttribute('referrerPolicy', 'no-referrer')
     })
 
-    it('filePath 不在 cwd 内（越界）→ 不渲染 iframe，显示 Empty 提示', () => {
-        mockedUseSession.mockReturnValue({
-            data: { metadata: { path: '/proj' } },
-            isLoading: false,
-        } as never)
-
+    it('filePath 为空 → 不渲染 iframe，显示 Empty 提示', () => {
         render(
-            <HtmlPreviewView sessionId="s1" filePath="/etc/passwd" view="render" text="" wrap={false} />,
+            <HtmlPreviewView sessionId="s1" filePath="" view="render" text="" wrap={false} />,
             { wrapper: Wrapper },
         )
-        // 越界：不渲染 iframe
+        // 越界判定已下沉到 hub（isWithinDir），前端只对空 filePath 降级提示
         expect(document.querySelector('iframe')).not.toBeInTheDocument()
-        // 显示 files.previewUnavailable 文案（Empty description）
         expect(screen.getByText('files.previewUnavailable')).toBeInTheDocument()
     })
 })

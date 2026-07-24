@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { basename, normalizeDirectoryPath, truncatePathLeft, relativePath, encodePathSegments } from '@/core/utils/path'
+import { basename, normalizeDirectoryPath, truncatePathLeft, encodePathSegments } from '@/core/utils/path'
 
 describe('path utils', () => {
     describe('basename', () => {
@@ -88,29 +88,6 @@ describe('path utils', () => {
             expect(result.startsWith('...')).toBe(true)
             expect(result.length).toBe(15)
         })
-    })
-})
-
-describe('relativePath', () => {
-    it('cwd 内正常相对', () => {
-        expect(relativePath('/proj', '/proj/output/index.html')).toEqual({ ok: true, rel: 'output/index.html' })
-    })
-    it('filePath 等于 cwd（是目录非文件）→ ok:false', () => {
-        expect(relativePath('/proj', '/proj')).toEqual({ ok: false })
-    })
-    it('filePath 在 cwd 外 → ok:false（越界，不发请求）', () => {
-        expect(relativePath('/proj', '/etc/passwd')).toEqual({ ok: false })
-        expect(relativePath('/proj', '/proj/../etc')).toEqual({ ok: false })
-    })
-    it('前缀同名但非目录前缀 → ok:false（/project 不在 /proj）', () => {
-        expect(relativePath('/proj', '/project/x')).toEqual({ ok: false })
-    })
-    it('Windows 分隔符归一', () => {
-        expect(relativePath('C:\\proj', 'C:\\proj\\a.html')).toEqual({ ok: true, rel: 'a.html' })
-    })
-    it('base 或 file 为空 → ok:false', () => {
-        expect(relativePath('', '/proj/x')).toEqual({ ok: false })
-        expect(relativePath('/proj', '')).toEqual({ ok: false })
     })
 })
 

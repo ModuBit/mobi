@@ -18,8 +18,7 @@ import { useMemo } from 'react'
 import { Empty } from 'antd'
 import { useTranslation } from 'react-i18next'
 import TextContentView from './TextContentView'
-import { useSession } from '@/core/data/hooks/queries/useSession'
-import { relativePath, encodePathSegments } from '@/core/utils/path'
+import { encodePathSegments } from '@/core/utils/path'
 
 interface Props {
     sessionId: string
@@ -40,16 +39,14 @@ export default function HtmlPreviewView({ sessionId, filePath, view, text, wrap 
 /** 预览态：sandboxed iframe 指向 serve-file，相对路径基准交给浏览器原生解析 */
 function HtmlIframe({ sessionId, filePath }: { sessionId: string; filePath: string }) {
     const { t } = useTranslation()
-    const { data: session } = useSession(sessionId)
-    // Session 类型中 cwd 在 metadata.path（metadata 可为 null）
-    const cwd = session?.metadata?.path
 
+    // filePath 来自文件树，已是相对 session cwd 的 posix 路径（parseDirectoryEntries 以 '.' 为根），
+    // 正是 serve-file 端点的 relPath——直接拼接，无需再算相对路径。
+    // 越界（如 ../）由 hub 侧 isWithinDir 兜底拦截。
     const src = useMemo(() => {
-        if (!cwd) return null
-        const r = relativePath(cwd, filePath)
-        if (!r.ok) return null
-        return `/api/sessions/${sessionId}/serve-file/${encodePathSegments(r.rel)}`
-    }, [cwd, filePath, sessionId])
+        if (!filePath) return null
+        return `/api/sessions/${sessionId}/serve-file/${encodePathSegments(filePath)}`
+    }, [sessionId, filePath])
 
     if (!src) {
         return <Empty description={t('files.previewUnavailable')} style={{ marginTop: 40 }} />
