@@ -124,6 +124,7 @@ function createOutputLoopOpts(overrides?: Record<string, unknown>) {
         onReady: vi.fn(),
         onRunningChange: vi.fn(),
         onCompletionEvent: vi.fn(),
+        onCompactCompleted: vi.fn(),
         onAbortFlush: vi.fn(),
         ...overrides,
     }
@@ -334,14 +335,17 @@ describe('sdkOutputLoop', () => {
         expect(opts.onMessage).toHaveBeenCalledWith(bgMsg)
     })
 
-    it('isCompactCommand 在 result 时被读取并重置', async () => {
+    it('isCompactCommand 在 result 时触发 onCompactCompleted 并重置', async () => {
         const resultMsg = mockResultMessage()
         const opts = createOutputLoopOpts()
         const ctx: LoopContext = { isCompactCommand: true }
 
         await sdkOutputLoop(asyncIterableFrom([resultMsg]), ctx, opts)
 
-        expect(opts.onCompletionEvent).toHaveBeenCalledWith('Compaction completed')
+        // 发结构化 compact-completed 事件（成功失败都发），web 据此退出压缩态
+        expect(opts.onCompactCompleted).toHaveBeenCalledTimes(1)
+        // 不再走 onCompletionEvent 文案路径
+        expect(opts.onCompletionEvent).not.toHaveBeenCalledWith('Compaction completed')
         // 重置为 false
         expect(ctx.isCompactCommand).toBe(false)
     })

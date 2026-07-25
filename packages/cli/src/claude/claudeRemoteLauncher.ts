@@ -485,6 +485,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             logger.debug(`[remote]: Completion event: ${message}`);
                             session.client.sendSessionEvent({ type: 'message', message });
                         },
+                        onCompactCompleted: () => {
+                            logger.debug('[remote]: Compaction completed');
+                            session.client.sendSessionEvent({ type: 'compact-completed' });
+                        },
                         onContextCleared: () => {
                             logger.debug('[remote]: Context cleared');
                             session.client.sendSessionEvent({ type: 'context-cleared' });

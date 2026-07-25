@@ -85,6 +85,12 @@ export function buildChatBubbleItems(
             continue
         }
 
+        // compact-completed 是纯完成信号（供 isCompressing 退出压缩态），不渲染气泡：
+        // 成功路径已有 compact-summary 反馈压缩统计，失败路径已有 assistant 回复说明原因
+        if (block.kind === 'agent-event' && block.event.type === 'compact-completed') {
+            continue
+        }
+
         const isLastRunningBlock = block.id === lastAssistantBlockKey && isRunning
         const isSnapshot = (block.kind === 'agent-text' || block.kind === 'agent-reasoning') && block.isSnapshot
 

@@ -289,6 +289,12 @@ export async function sdkOutputLoop(
         onReady: () => void
         onRunningChange: (running: boolean) => void
         onCompletionEvent?: (message: string) => void
+        /**
+         * compact 结束（result 到达）时触发，无论成功失败。
+         * 发结构化 compact-completed 事件，作为 web 端退出压缩态的兜底完成信号——
+         * 失败路径（如 "Not enough messages to compact."）无 compact_summary，靠此解禁输入。
+         */
+        onCompactCompleted?: () => void
         /** 中止信号，外部调用 abort() 时停止迭代 */
         signal?: AbortSignal
         /**
@@ -368,10 +374,10 @@ export async function sdkOutputLoop(
                 logger.debug('[sdkOutputLoop] Result received');
             }
 
-            // 读取并重置 isCompactCommand
+            // 读取并重置 isCompactCommand：发结构化完成事件，web 据此退出压缩态（成功失败都发）
             if (ctx.isCompactCommand) {
                 logger.debug('[sdkOutputLoop] Compaction completed');
-                opts.onCompletionEvent?.('Compaction completed');
+                opts.onCompactCompleted?.();
                 ctx.isCompactCommand = false;
             }
 
@@ -493,6 +499,8 @@ export async function claudeRemote(opts: {
     /** Snapshot converter，用于生成与最终消息一致的 DecryptedMessage */
     getConverter: () => import('./utils/sdkToLogConverter').SDKToLogConverter,
     onCompletionEvent?: (message: string) => void,
+    /** compact 结束（result）时触发，发结构化完成事件给 web 作压缩态退出信号（成功失败都发） */
+    onCompactCompleted?: () => void,
     onContextCleared?: () => void,
     /** 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库（由 launcher 实现 convert+send） */
     onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void,
@@ -764,6 +772,7 @@ export async function claudeRemote(opts: {
                 onReady: opts.onReady,
                 onRunningChange: updateRunning,
                 onCompletionEvent: opts.onCompletionEvent,
+                onCompactCompleted: opts.onCompactCompleted,
                 signal: loopAbort.signal,
             }),
             userInputLoop(messages, loopCtx, {

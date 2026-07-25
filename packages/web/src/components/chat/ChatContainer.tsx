@@ -30,7 +30,7 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
-import { isCommandInProgress, isClearInProgress } from '@/domain/chat/presentation'
+import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND } from '@/domain/chat/presentation'
 import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
 import { QueuedMessagesBar } from './QueuedMessagesBar'
@@ -56,7 +56,6 @@ const bubbleCopyStyles = css`
 `
 
 /** 滚动相关阈值（autoScroll=false，正常 flex column 布局） */
-const COMPACT_COMMAND = '/compact'
 
 /** 聊天内容区最大宽度：超宽屏时限宽居中，避免用户/AI 气泡分列两端过于割裂；小屏自动 100% */
 const CHAT_MAX_WIDTH = 1200
@@ -260,9 +259,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return blocks
     }, [rawBlocks, hasNextPage, bgCompletedTasks])
 
-    // 从 chatBlocks 推导压缩状态：用通用 isCommandInProgress（与 isClearing 共用同一推导）
+    // 从 chatBlocks 推导压缩状态：完成标志见 isCompactCompletion（compact-summary 成功路径 + compact-completed 失败兜底）
     const isCompressing = useMemo(
-        () => isCommandInProgress(chatBlocks, COMPACT_COMMAND, b => b.kind === 'compact-summary'),
+        () => isCommandInProgress(chatBlocks, COMPACT_COMMAND, isCompactCompletion),
         [chatBlocks]
     )
 

@@ -18,10 +18,27 @@ import type { AgentEvent, ChatBlock } from './types'
 
 const CLEAR_COMMAND = '/clear'
 
+/** /compact 命令字面量，web 端判定压缩状态用 */
+export const COMPACT_COMMAND = '/compact'
+
+/**
+ * compact 是否已完成（用于 isCompressing 解禁输入）。
+ *
+ * 两条完成信号：
+ * - compact-summary block：成功路径，SDK 发 compact_boundary 后 CLI 回灌的压缩总结
+ * - compact-completed event：CLI 在 compact 的 result 时（**无论成功失败**）发出的
+ *   结构化事件。失败路径（如 "Not enough messages to compact."）不会产生 compact-summary，
+ *   靠此事件兜底退出 compressing 状态，否则 sender 永久 disabled。
+ */
+export function isCompactCompletion(block: ChatBlock): boolean {
+    if (block.kind === 'compact-summary') return true
+    return block.kind === 'agent-event' && block.event.type === 'compact-completed'
+}
+
 /**
  * 推导某斜杠命令是否进行中：从末尾向前扫，先遇到完成标志 block → false（已完成），
  * 先遇到 user-text → 判断是否目标命令；扫到首个 user-text 为止（不固定窗口，避免命令后被大量中间 block 推出窗口）。
- * /compact、/clear 等命令期间禁用输入：compact-summary（compact）/ context-cleared（clear）为完成标志。
+ * /compact、/clear 等命令期间禁用输入：compact-summary/compact-completed（compact）/ context-cleared（clear）为完成标志。
  */
 export function isCommandInProgress(
     chatBlocks: ChatBlock[],

@@ -476,6 +476,8 @@ export class ApiSessionClient extends EventEmitter {
     } | {
         type: 'context-cleared'
     } | {
+        type: 'compact-completed'
+    } | {
         type: 'permission-mode-changed'
         mode: SessionPermissionMode
     } | {

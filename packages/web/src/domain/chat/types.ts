@@ -42,6 +42,7 @@ export type AgentEvent =
     | { type: 'turn-duration'; durationMs: number }
     | { type: 'microcompact'; trigger: string; preTokens: number; tokensSaved: number }
     | { type: 'compact'; trigger: string; preTokens: number; postTokens: number; durationMs: number }
+    | { type: 'compact-completed' }
     | { type: 'aborted'; numTurns: number | null; durationMs?: number; tokens?: number }
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string }
     | { type: 'agent-progress'; toolUseId: string; metrics: AgentMetrics; summary?: string }
