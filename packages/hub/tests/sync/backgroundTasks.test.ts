@@ -234,25 +234,41 @@ describe('extractBackgroundTaskDeltasFromMessageContent', () => {
             expect(delta.task.toolName).toBe('Bash')
         })
 
-        test('tool_use_id 不在 backgroundToolUseIds 中时返回 null（前台任务）', () => {
+        test('tool_use_id 不在 backgroundToolUseIds 中时仍生成 delta（兜底 toolName）', () => {
+            // SDK 的 task_started 本就是 background 标识（同步任务不 emit），tool_use_id 仅用于推断 toolName，不是准入条件。
             const msg = makeSystemMessage('task_started', {
                 task_id: 'bt-002',
-                description: '前台任务',
-                tool_use_id: 'toolu-fg',
+                description: 'SDK 内部 backgrounded 的任务',
+                tool_use_id: 'toolu-unknown',
             })
             const bgMap = new Map([['toolu-bg', 'Bash'] as const])
             const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap)
-            expect(result).toBeNull()
+            expect(result).not.toBeNull()
+
+            const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
+            expect(delta.task.taskId).toBe('bt-002')
+            // tool_use_id 不在 Map + 无 subagent_type → 兜底 Bash
+            expect(delta.task.toolName).toBe('Bash')
         })
 
-        test('tool_use_id 为 null 且有 backgroundToolUseIds 时返回 null', () => {
+        test('无 tool_use_id 的 task_started 仍生成 delta（/code-review 等 SDK 内部 background subagent）', () => {
+            // /code-review custom command 的 background subagent 由 SDK 内部启动，
+            // 无主 agent 的 tool_use（task_started.tool_use_id 为空，见 sdk.d.ts SDKTaskStartedMessage）。
             const msg = makeSystemMessage('task_started', {
                 task_id: 'bt-003',
-                description: '无 toolUseId',
+                description: 'code-review',
+                subagent_type: 'code-reviewer',
             })
             const bgMap = new Map([['toolu-001', 'Bash'] as const])
             const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap)
-            expect(result).toBeNull()
+            expect(result).not.toBeNull()
+
+            const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
+            expect(delta.task.taskId).toBe('bt-003')
+            expect(delta.task.toolUseId).toBeNull()
+            // 无 tool_use_id + 有 subagent_type → 兜底 Agent
+            expect(delta.task.toolName).toBe('Agent')
+            expect(delta.task.subagentType).toBe('code-reviewer')
         })
 
         test('Agent 后台任务使用 backgroundToolUseIds 中的 toolName', () => {

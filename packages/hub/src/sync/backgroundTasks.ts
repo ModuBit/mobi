@@ -101,9 +101,12 @@ export function collectBackgroundToolUseIds(
 
 /**
  * 从消息内容中提取后台任务增量。
- * 后台任务增量来自 system 类型的消息（task_started / task_progress / task_notification）。
- * - task_started 仅当 tool_use_id 在 backgroundToolUseIds 中时才创建 delta
- * - task_progress / task_notification 仅当 taskId 在 knownTaskIds 中时才创建 delta
+ * 后台任务增量来自 system 类型的消息（task_started / task_progress / task_notification / task_updated）。
+ * - task_started：SDK 仅对后台任务 emit（同步任务不 emit，见 sdk.d.ts SDKTaskStartedMessage），
+ *   故 task_id 即后台标识。tool_use_id 仅用于从 backgroundToolUseIds 推断 toolName——
+ *   /code-review custom command 等 SDK 内部启动的 background subagent 无主 agent tool_use，
+ *   task_started.tool_use_id 为空，也必须创建 delta，否则前端永远感知不到。
+ * - task_progress / task_notification / task_updated 仅当 taskId 在 knownTaskIds 中时才创建 delta
  */
 export function extractBackgroundTaskDeltasFromMessageContent(
     content: unknown,
@@ -135,18 +138,24 @@ export function extractBackgroundTaskDeltasFromMessageContent(
 
         const toolUseId = asString(data.tool_use_id) ?? null
 
-        // 检查是否为后台任务
-        if (backgroundToolUseIds !== undefined) {
-            if (!toolUseId || !backgroundToolUseIds.has(toolUseId)) return null
-        }
+        // SDK 的 task_started 本就是 background task 标识（同步任务不 emit task_started），
+        // 见 sdk.d.ts SDKTaskStartedMessage。原先要求 tool_use_id 命中 backgroundToolUseIds
+        // （主 agent 显式调过 Bash/Agent 且 run_in_background=true），误杀了 /code-review 等 SDK 内部
+        // 启动、无主 tool_use 的 background subagent——它们 task_started.tool_use_id 为空。
+        // 现仅用 backgroundToolUseIds 推断 toolName，不再作为准入条件。
 
         const description = asString(data.description) ?? ''
         const subagentType = asString(data.subagent_type) ?? undefined
 
-        // 使用收集到的 toolName，兜底用 subagent_type 推断（向后兼容：无 Map 时无法识别 Monitor）
-        let toolName: BackgroundToolName = subagentType ? 'Agent' : 'Bash'
+        // toolName 推断：优先用 backgroundToolUseIds（主 agent tool_use，可识别 Monitor），
+        // 兜底用 subagent_type（有则 Agent，无则 Bash）
+        let toolName: BackgroundToolName
         if (toolUseId && backgroundToolUseIds?.has(toolUseId)) {
             toolName = backgroundToolUseIds.get(toolUseId)!
+        } else if (subagentType) {
+            toolName = 'Agent'
+        } else {
+            toolName = 'Bash'
         }
 
         const task: BackgroundTaskItem = {
