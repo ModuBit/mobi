@@ -82,8 +82,10 @@ export class Logger extends BaseLogger {
         maxStringLength: number = 100,
         maxArrayLength: number = 10,
     ): void {
+        // 生产模式完全静默：既不落盘也不进 ringBuffer
+        // （大 JSON 会挤占 ringBuffer 配额，且每条 SDK 消息都调用，是日志风暴主因）
         if (!process.env.DEBUG) {
-            this.debug('In production, skipping message inspection')
+            return
         }
 
         const truncateStrings = (obj: unknown): unknown => {

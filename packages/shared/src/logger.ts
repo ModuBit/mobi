@@ -108,8 +108,14 @@ export class BaseLogger implements MobiLogger {
     }
 
     debug(message: string, ...args: unknown[]): void {
-        // debug 不进 console（交互模式不打扰 claude 会话），仅落盘 + ringBuffer
-        this.writeLine('debug', message, ...args)
+        // debug 不进 console（交互模式不打扰 claude 会话）
+        // 非 DEBUG 模式仅写 ringBuffer（保 crash dump 上下文），不落盘——
+        // 避免高频 debug（SDK stream_event / IdleTimer Reset 等）撑爆日志文件
+        if (process.env.DEBUG) {
+            this.writeLine('debug', message, ...args)
+        } else {
+            this.pushRingBuffer('debug', message, ...args)
+        }
     }
 
     getLogPath(): string {

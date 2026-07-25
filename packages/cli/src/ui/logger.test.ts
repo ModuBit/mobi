@@ -42,14 +42,49 @@ describe('cli Logger', () => {
         expect(readFileSync(path, 'utf8')).toMatch(/\[cli\] INFO hi/)
     })
 
-    it('debugLargeJson 落盘带 JSON 体', () => {
+    it('debug 生产模式（!DEBUG）不落盘但进 ringBuffer', () => {
+        const path = join(TEST_DIR, '2026-07-23-00-00-00-pid-1a.log')
+        const log = new Logger(path, { ringBufferCapacity: 5 })
+        log.debug('dbg quiet')
+        expect(existsSync(path)).toBe(false)
+        expect(log.snapshot().some(e => e.includes('dbg quiet'))).toBe(true)
+    })
+
+    it('debug DEBUG 模式落盘', () => {
+        const prev = process.env.DEBUG
+        process.env.DEBUG = '1'
+        try {
+            const path = join(TEST_DIR, '2026-07-23-00-00-00-pid-1b.log')
+            const log = new Logger(path)
+            log.debug('dbg verbose')
+            expect(readFileSync(path, 'utf8')).toMatch(/\[cli\] DEBUG dbg verbose/)
+        } finally {
+            if (prev === undefined) delete process.env.DEBUG
+            else process.env.DEBUG = prev
+        }
+    })
+
+    it('debugLargeJson 生产模式（!DEBUG）不落盘', () => {
         const path = join(TEST_DIR, '2026-07-23-00-00-00-pid-2.log')
         const log = new Logger(path)
         log.debugLargeJson('payload', { a: 1 })
+        expect(existsSync(path)).toBe(false)
+    })
 
-        const content = readFileSync(path, 'utf8')
-        expect(content).toMatch(/DEBUG payload/)
-        expect(content).toContain('"a": 1')
+    it('debugLargeJson DEBUG 模式落盘带 JSON 体', () => {
+        const prev = process.env.DEBUG
+        process.env.DEBUG = '1'
+        try {
+            const path = join(TEST_DIR, '2026-07-23-00-00-00-pid-2b.log')
+            const log = new Logger(path)
+            log.debugLargeJson('payload', { a: 1 })
+            const content = readFileSync(path, 'utf8')
+            expect(content).toMatch(/DEBUG payload/)
+            expect(content).toContain('"a": 1')
+        } finally {
+            if (prev === undefined) delete process.env.DEBUG
+            else process.env.DEBUG = prev
+        }
     })
 
     it('snapshot/getRecentEntries 返回 ringBuffer 内容', () => {
