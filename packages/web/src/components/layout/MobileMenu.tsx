@@ -25,8 +25,9 @@ import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './na
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
 import { MobileProjectList } from './MobileProjectList'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
-import { Menu, Sun, Moon, Languages } from 'lucide-react'
+import { Menu, Sun, Moon, Languages, RefreshCw } from 'lucide-react'
 import { InstallButton } from './InstallButton'
+import { useForceUpdate } from '@/core/pwa/useForceUpdate'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -117,6 +118,7 @@ export function MobileMenuDrawer() {
     const api = useMobiApi()
     const isMobile = useIsMobile()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
+    const checkUpdate = useForceUpdate()
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
@@ -205,6 +207,19 @@ export function MobileMenuDrawer() {
                         <span>{locale === 'zh' ? 'English' : '中文'}</span>
                     </MenuItem>
                 </div>
+
+                {/* 检查更新(清缓存硬刷新) */}
+                <MenuItem
+                    $active={false}
+                    $token={token}
+                    onClick={() => {
+                        handleClose()
+                        checkUpdate()
+                    }}
+                >
+                    <RefreshCw size={20} />
+                    <span>{t('nav.checkUpdate')}</span>
+                </MenuItem>
 
                 <MenuItem
                     $active={false}
