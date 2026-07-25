@@ -105,7 +105,16 @@ async function main() {
         logsDir: resolveMobiLogsDir(),
         ringBuffer: hubLogger,
     })
-    installExitHandlers('hub', hubExitLogger)
+    // hub.state.json 的 dataDir 在 config 就绪后才确定，用容器延迟绑定
+    // （const 对象，属性修改不触发 prefer-const）
+    const exitCtx: { dataDir: string | undefined } = { dataDir: undefined }
+    installExitHandlers('hub', hubExitLogger, undefined, {
+        // 信号终止时 SIGTERM handler 偶发不触发（Bun 仅走默认退出），
+        // exit handler 是兜底时机 —— 同步清理 state，避免幽灵 pid 残留
+        onExitSync: () => {
+            if (exitCtx.dataDir) clearHubState(exitCtx.dataDir)
+        },
+    })
     // —— OOM/SIGKILL 兜底：检测上次 hub 实例是否异常消失 ——
     detectPreviousHubCrash(hubExitLogger)
     // —— 启动清理旧日志（超 7 天 / 单类超 50 个），createLogger 默认不清理 ——
@@ -203,6 +212,8 @@ async function main() {
         listenPort: config.listenPort,
         startTime: new Date().toLocaleString()
     })
+    // config 就绪后绑定 dataDir 给 exit handler 的 onExitSync
+    exitCtx.dataDir = config.dataDir
 
     const shutdown = async () => {
         hubLogger.info('Shutting down...')

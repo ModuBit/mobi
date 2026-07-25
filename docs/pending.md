@@ -796,3 +796,45 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 **排查方向**：复现时按 [streaming.md 的调试方法](architecture/web/streaming.md#调试方法) 加 `[BB]`/`[SC]`/`[TICK]` log，依次确认 raf 是否执行（坑 1）、snapshot/full 的 block.id 是否稳定（坑 2）、streaming 是否 true（坑 3）。
 
 **优先级**：中。核心机制已修复，残留为偶发体验细节。
+
+---
+
+## 31. Tool Use snapshot 渐进式透出 partial input（方案 2）
+
+**背景**（2026-07-23）：已实现方案 1（`content_block_start` 立即下发 `input={}` 占位，消除 Write/Edit 生成 input 期间的盲区，见 [spec](superpowers/specs/2026-07-23-tool-use-placeholder-snapshot-design.md)）。方案 1 占位期不显示 input 细节（file_path 等要等 `content_block_stop` 才出现）。
+
+**目标**：在 `input_json_delta` 流式累积期间也节流 flush，对累积的 **partial JSON** 容错提取已完成的 key（如 `file_path`），让用户看到文件路径等参数先于完整 input 出现。
+
+**复杂度/风险**：
+- partial JSON 不完整，无法直接 `JSON.parse`——要么引入 `jsonrepair`（依赖体积），要么自写容错 key 提取（转义/嵌套/字符串未闭合的坑）
+- Write 的 `content` 字段可能很大，每次 flush 都 parse + 传输，带宽与 CPU 开销上升（与 #8 带宽优化冲突，需权衡）
+
+**涉及文件**：
+- `packages/cli/src/claude/utils/streamSnapshotSender.ts` — `append(tool_use)` 标 dirty 节流 flush；`buildBlocks` 对未 ready tool_use 容错 parse 累积 input
+- 前端 `ensureToolBlock` 已支持同 id input 渐进更新，无需改动
+
+**触发条件**：方案 1 上线后用户反馈「占位期想知道在写哪个文件/什么参数」时再做。当前 YAGNI。
+
+**优先级**：低。
+
+---
+
+## 32. Hub SIGTERM handler 偶发不触发（依赖 exit handler 兜底）
+
+**背景**（2026-07-24）：生产 hub+runner 在 23ms 内同时收到 SIGTERM（进程组批量终止，见 exits.log）。最小复现实验证明 **Bun 能正常触发 `process.on('SIGTERM')` handler**（handler 执行 + exit code=0）。但 exits.log 显示 hub 那条记录是 `reason=error-exit signal=null exitCode=143`——即只有 `process.on('exit')` 兜底跑了，signalHandler 未执行。runner/cli 则正常走了 signalHandler（`reason=signal-term`）。
+
+**现状**：已加 `installExitHandlers` 的 `onExitSync` 选项，hub 在 exit handler 里同步 `clearHubState` 兜底，避免幽灵 pid 残留。退出原因已由 `exits.log` 完整记录（含父进程谱系 ppid/parentCommand，见 P1-4）。
+
+**未解**：hub 的 signalHandler 为何偶发不触发。怀疑信号到达时机与事件循环调度的交互（hub 长期 `await new Promise(()=>{})` 阻塞、或密集同步操作期间信号被延迟到默认退出路径）。需可重现案例才能深入。
+
+**排查方向**：
+- 用 `scripts/observe-sigterm.sh`（eslogger/dtrace）在进程外抓 SIGTERM 的发送者与时机，确认信号确实送达
+- 在 hub 加一个 `setInterval` 周期性写心跳，对比信号到达与事件循环状态
+- 排查 Bun 版本相关的信号处理已知 issue
+
+**涉及文件**：
+- `packages/shared/src/exitLogger.ts` — `installExitHandlers` / `onExitSync`
+- `packages/hub/src/index.ts` — `exitCtx` / shutdown
+- `scripts/observe-sigterm.sh` — 外部观测脚本
+
+**优先级**：中。兜底已就位，根因待复现。

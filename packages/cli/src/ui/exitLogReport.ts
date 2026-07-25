@@ -57,6 +57,12 @@ export function printExitReport(opts: ExitReportOptions = {}): void {
         if (r.errorMessage) {
             console.log(chalk.gray(`    ${truncate(r.errorMessage, 120)}`))
         }
+        // 异常退出时显示父进程谱系 —— SIGTERM 批量来源（进程组/会话）的唯一线索
+        const abnormal = r.reason !== 'normal'
+        if (abnormal && r.ppid != null) {
+            const cmd = r.parentCommand ? `  ${truncate(r.parentCommand, 100)}` : ''
+            console.log(chalk.gray(`    parent: pid=${r.ppid}${cmd}`))
+        }
         if (r.dumpFile) {
             console.log(chalk.cyan(`    dump: ${logsDir}/${r.dumpFile}`))
         }

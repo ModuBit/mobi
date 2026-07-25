@@ -38,6 +38,7 @@ import {
   unlinkSync,
   readFileSync
 } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
@@ -78,12 +79,17 @@ export interface ExitRecord {
   uptimeMs: number | null
   peakMemoryMb: number | null
   dumpFile: string | null
+  /** 父进程 pid —— 推断 SIGTERM 来源（进程组/会话）的关键线索 */
+  ppid: number | null
+  /** 父进程命令行（截断），便于人工辨识启动者 */
+  parentCommand: string | null
 }
 
 const STACK_HEAD_LIMIT = 2048
 const RECENT_LOG_LIMIT = 200
 const EXIT_LOG_FILENAME = 'exits.log'
 const DUMPS_DIRNAME = 'dumps'
+const PARENT_COMMAND_LIMIT = 512
 
 /** 仅保留非敏感 env，严禁记录任何 token / secret / 密钥 */
 const SAFE_ENV_KEYS = ['MOBI_HOME', 'MOBI_PROFILE', 'MOBI_API_URL', 'NODE_ENV', 'DEV'] as const
@@ -152,7 +158,23 @@ export function readExitRecords(logsDir: string): ExitRecord[] {
     const trimmed = line.trim()
     if (!trimmed) continue
     try {
-      records.push(JSON.parse(trimmed) as ExitRecord)
+      const parsed = JSON.parse(trimmed) as Partial<ExitRecord>
+      // 前向兼容：旧记录无 ppid/parentCommand 字段，补 null
+      records.push({
+        timestamp: parsed.timestamp ?? '',
+        processType: parsed.processType ?? 'cli',
+        pid: parsed.pid ?? 0,
+        exitCode: parsed.exitCode ?? null,
+        signal: parsed.signal ?? null,
+        reason: parsed.reason ?? 'normal',
+        errorMessage: parsed.errorMessage ?? null,
+        stackHead: parsed.stackHead ?? null,
+        uptimeMs: parsed.uptimeMs ?? null,
+        peakMemoryMb: parsed.peakMemoryMb ?? null,
+        dumpFile: parsed.dumpFile ?? null,
+        ppid: parsed.ppid ?? null,
+        parentCommand: parsed.parentCommand ?? null,
+      })
     } catch {
       // 跳过损坏行
     }
@@ -171,6 +193,10 @@ export function installExitLogger(
   let alreadyRecorded = false
   let peakMemoryMb = computeMemoryMb()
 
+  // 启动时同步采集父进程谱系 —— SIGTERM 来源（进程组/会话批量终止）的唯一可观测线索
+  const parentPid = process.ppid > 0 ? process.ppid : null
+  const parentCommand = parentPid != null ? readParentCommand(parentPid) : null
+
   // 定期采样峰值内存（用于 crash 时还原），unref 避免阻止进程退出
   const memSampler = setInterval(() => {
     const current = computeMemoryMb()
@@ -187,7 +213,7 @@ export function installExitLogger(
 
     let dumpFile: string | null = null
     if (input.reason === 'crash-uncaught' || input.reason === 'crash-unhandled') {
-      dumpFile = writeDump(processType, logsDir, input, options.ringBuffer, peakMemoryMb, startedAt)
+      dumpFile = writeDump(processType, logsDir, input, options.ringBuffer, peakMemoryMb, startedAt, parentPid, parentCommand)
       writeHeapSnapshotBestEffort(processType, logsDir)
     }
 
@@ -202,7 +228,9 @@ export function installExitLogger(
       stackHead: input.stack ? input.stack.slice(0, STACK_HEAD_LIMIT) : null,
       uptimeMs: Date.now() - startedAt,
       peakMemoryMb,
-      dumpFile
+      dumpFile,
+      ppid: parentPid,
+      parentCommand
     }
 
     appendAndRoll(logsDir, JSON.stringify(record) + '\n', maxRollSize, maxRollCount)
@@ -222,7 +250,9 @@ export function installExitLogger(
       stackHead: null,
       uptimeMs: null,
       peakMemoryMb: null,
-      dumpFile: null
+      dumpFile: null,
+      ppid: null,
+      parentCommand: null
     }
     // 兜底记录的是「上次实例」，不受本实例 alreadyRecorded 约束
     appendAndRoll(logsDir, JSON.stringify(record) + '\n', maxRollSize, maxRollCount)
@@ -243,6 +273,10 @@ export interface InstallHandlersOptions {
    * hub 保留 false（依赖自有 shutdown handler 优雅退出）。
    * uncaughtException/unhandledRejection 不受此选项影响——崩溃始终 exit(1)。 */
   exitOnSignal?: boolean
+  /** process.on('exit') 内同步调用。
+   * 信号终止时 SIGTERM handler 偶发不触发（Bun 在特定时机只走默认退出），
+   * 此时 exit handler 是唯一可靠的同步清理时机 —— 用它清理 state 文件等关键副作用。 */
+  onExitSync?: () => void
 }
 
 export function installExitHandlers(
@@ -305,6 +339,12 @@ export function installExitHandlers(
 
   process.on('exit', (code: number) => {
     // exit handler 内只能同步写——recordExit 已是同步 appendFileSync
+    // 信号终止时 SIGTERM handler 偶发不触发，exit handler 是兜底的同步清理时机
+    try {
+      options?.onExitSync?.()
+    } catch {
+      // 清理失败不影响退出记录
+    }
     logger.recordExit({
       reason: code === 0 ? 'normal' : 'error-exit',
       exitCode: code
@@ -379,7 +419,9 @@ function writeDump(
   input: RecordExitInput,
   ringBuffer: RingBufferReader | undefined,
   peakMemoryMb: number,
-  startedAt: number
+  startedAt: number,
+  parentPid: number | null,
+  parentCommand: string | null
 ): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
   const base = `${ts}-${processType}-pid-${process.pid}`
@@ -390,6 +432,8 @@ function writeDump(
     timestamp: new Date().toISOString(),
     processType,
     pid: process.pid,
+    ppid: parentPid,
+    parentCommand,
     reason: input.reason,
     exitCode: input.exitCode ?? null,
     signal: input.signal ?? null,
@@ -451,6 +495,25 @@ function pickSafeEnv(): Record<string, string | undefined> {
 function computeMemoryMb(): number {
   const mem = (process as unknown as { memoryUsage?: () => { rss: number } }).memoryUsage?.()
   return mem ? Math.round(mem.rss / 1024 / 1024) : 0
+}
+
+/**
+ * 读取父进程命令行（跨平台，best-effort）。
+ * macOS/Linux 用 ps；Windows 不支持 ps 语义，返回 null。
+ * 用于 exits.log 记录父进程谱系，推断 SIGTERM 批量来源。
+ */
+function readParentCommand(ppid: number): string | null {
+  if (process.platform === 'win32') return null
+  try {
+    const out = execSync(`ps -o command= -p ${ppid}`, {
+      encoding: 'utf-8',
+      timeout: 2_000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+    return out ? out.slice(0, PARENT_COMMAND_LIMIT) : null
+  } catch {
+    return null
+  }
 }
 
 function ensureDir(dir: string): void {

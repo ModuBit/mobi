@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -85,6 +85,41 @@ describe('exitLogger recordExit', () => {
     const records = readExitRecords(logsDir)
     expect(records).toHaveLength(1)
     expect(records[0].reason).toBe('crash-uncaught')
+  })
+
+  it('recordExit 记录父进程谱系（ppid + parentCommand）', () => {
+    const logger = installExitLogger('hub', { logsDir })
+    logger.recordExit({ reason: 'normal', exitCode: 0 })
+
+    const records = readExitRecords(logsDir)
+    expect(records[0].ppid).toBe(process.ppid)
+    // parentCommand 可能为 null（受限环境），但类型必须存在
+    expect('parentCommand' in records[0]).toBe(true)
+  })
+})
+
+describe('exitLogger 前向兼容', () => {
+  it('readExitRecords 解析无 ppid/parentCommand 的旧记录时补 null', () => {
+    const oldRecord = {
+      timestamp: '2026-07-20T00:00:00.000Z',
+      processType: 'hub',
+      pid: 12345,
+      exitCode: 143,
+      signal: 'SIGTERM',
+      reason: 'signal-term',
+      errorMessage: null,
+      stackHead: null,
+      uptimeMs: 1000,
+      peakMemoryMb: 100,
+      dumpFile: null
+    }
+    writeFileSync(join(logsDir, 'exits.log'), JSON.stringify(oldRecord) + '\n', 'utf-8')
+
+    const records = readExitRecords(logsDir)
+    expect(records).toHaveLength(1)
+    expect(records[0].ppid).toBeNull()
+    expect(records[0].parentCommand).toBeNull()
+    expect(records[0].reason).toBe('signal-term')
   })
 })
 
