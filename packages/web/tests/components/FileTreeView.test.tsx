@@ -168,7 +168,7 @@ describe('FileTreeView', () => {
         renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
         const node = await screen.findByText('long-name.ts')
 
-        fireEvent.mouseEnter(node)
+        fireEvent.pointerOver(node, { pointerType: 'mouse', relatedTarget: document.body })
         // mouseEnterDelay 0.5s + tooltip portal 渲染，给足时间
         await waitFor(() => {
             expect(screen.getByText(/1\.5 KB/)).toBeInTheDocument()
@@ -184,7 +184,7 @@ describe('FileTreeView', () => {
         renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
         const node = await screen.findByText('src')
 
-        fireEvent.mouseEnter(node)
+        fireEvent.pointerOver(node, { pointerType: 'mouse', relatedTarget: document.body })
         await waitFor(() => {
             // 目录即使 stat 出 size 也不显示（4 KB 是目录条目大小，会误导）
             expect(screen.queryByText(/4 KB/)).toBeNull()

@@ -15,7 +15,8 @@
  */
 
 import { useMemo } from 'react'
-import { Button, Tooltip, theme, message } from 'antd'
+import { Button, theme, message } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import { ClockCircleOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { isQueuedInMobi } from '@/core/lib/messages'
@@ -184,7 +185,7 @@ function QueuedItem(props: {
 
             {/* 操作按钮 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                <Tooltip title={steerLabel}>
+                <AppTooltip title={steerLabel}>
                     <Button
                         type="text"
                         size="small"
@@ -193,8 +194,8 @@ function QueuedItem(props: {
                         loading={steerPending}
                         disabled={cancelPending}
                     />
-                </Tooltip>
-                <Tooltip title={editLabel}>
+                </AppTooltip>
+                <AppTooltip title={editLabel}>
                     <Button
                         type="text"
                         size="small"
@@ -202,8 +203,8 @@ function QueuedItem(props: {
                         onClick={onEdit}
                         disabled={cancelPending || steerPending}
                     />
-                </Tooltip>
-                <Tooltip title={cancelLabel}>
+                </AppTooltip>
+                <AppTooltip title={cancelLabel}>
                     <Button
                         type="text"
                         size="small"
@@ -213,7 +214,7 @@ function QueuedItem(props: {
                         loading={cancelPending}
                         disabled={steerPending}
                     />
-                </Tooltip>
+                </AppTooltip>
             </div>
         </div>
     )

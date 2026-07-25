@@ -15,7 +15,8 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
-import { App, Badge, Input, Modal, Tooltip, theme as antTheme } from 'antd'
+import { App, Badge, Input, Modal, theme as antTheme } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { useNavigate, useParams } from '@tanstack/react-router'
@@ -336,9 +337,9 @@ function SessionRow({
     return (
         <SessionItem $active={active} $token={token} onClick={onClick}>
             <StatusStateIcon state={avatarStatus} style={{ width: 10, height: 10 }} />
-            <Tooltip title={displayName} mouseEnterDelay={0.5} placement="right">
+            <AppTooltip title={displayName} mouseEnterDelay={0.5} placement="right">
                 <SessionName>{displayName}</SessionName>
-            </Tooltip>
+            </AppTooltip>
             {hasUnread && <Badge data-testid={`session-id-badge-${session.id}`} color="#fa541c" dot />}
             <TimeLabel $token={token} className="session-time">{relativeTime}</TimeLabel>
             <SessionActions className="session-actions">

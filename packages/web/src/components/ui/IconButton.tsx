@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, Tooltip } from 'antd'
+import { theme as antTheme } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { ReactNode, ButtonHTMLAttributes } from 'react'
 import styled from '@emotion/styled'
 
@@ -75,9 +76,9 @@ export function IconButton({
 
     if (tooltip) {
         return (
-            <Tooltip title={tooltip} placement={tooltipPlacement}>
+            <AppTooltip title={tooltip} placement={tooltipPlacement}>
                 {button}
-            </Tooltip>
+            </AppTooltip>
         )
     }
 

@@ -15,7 +15,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { theme, Tooltip, Popconfirm, Drawer, Button } from 'antd'
+import { theme, Popconfirm, Drawer, Button } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import { Terminal, CircleStop, Eye } from 'lucide-react'
 import { Global, css } from '@emotion/react'
@@ -153,7 +154,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
             <CircleStop size={14} style={{ color: token.colorTextQuaternary }} />
         </div>
     ) : (
-        <Tooltip title={t('chat.backgroundTask.stop')} mouseEnterDelay={0.5}>
+        <AppTooltip title={t('chat.backgroundTask.stop')} mouseEnterDelay={0.5}>
             <Popconfirm
                 title={t('chat.backgroundTask.stopConfirm')}
                 onConfirm={doStop}
@@ -178,7 +179,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                     }} />
                 </div>
             </Popconfirm>
-        </Tooltip>
+        </AppTooltip>
     )
 
     return (
@@ -211,7 +212,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                     }}>
                         {name}
                     </div>
-                    <Tooltip title={displaySummary || undefined} placement="top" mouseEnterDelay={0.5}>
+                    <AppTooltip title={displaySummary || undefined} placement="top" mouseEnterDelay={0.5}>
                         <div style={{
                             fontSize: 9, color: token.colorTextQuaternary,
                             fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
@@ -221,7 +222,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                                 ? `${task.metrics?.durationMs != null ? formatDuration(task.metrics.durationMs) : ''} · ${displaySummary}`
                                 : formatMetrics(task)}
                         </div>
-                    </Tooltip>
+                    </AppTooltip>
                 </div>
                 {stopElement}
                 {stopDrawer}

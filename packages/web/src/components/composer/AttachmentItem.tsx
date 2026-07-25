@@ -15,7 +15,8 @@
  */
 
 import { memo, useState, useEffect, type FC } from 'react'
-import { theme, Spin, Progress, Tooltip } from 'antd'
+import { theme, Spin, Progress } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import { CloseOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
 import {
     File, FileText, FileSpreadsheet, FileImage, FileVideo,
@@ -251,7 +252,7 @@ const AttachmentCard = memo(function AttachmentCard({
                 flexDirection: 'column',
                 gap: 2,
             }}>
-                <Tooltip title={displayName}>
+                <AppTooltip title={displayName}>
                     <span style={{
                         fontSize: 12,
                         lineHeight: '16px',
@@ -263,7 +264,7 @@ const AttachmentCard = memo(function AttachmentCard({
                     }}>
                         {displayName}
                     </span>
-                </Tooltip>
+                </AppTooltip>
                 <span style={{
                     fontSize: 11,
                     lineHeight: '14px',

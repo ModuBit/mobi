@@ -15,7 +15,8 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
-import { Button, Tooltip, Select, theme, Typography, Popover, message } from 'antd'
+import { Button, Select, theme, Typography, Popover, message } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
@@ -693,7 +694,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                                     key: 'attach',
                                     label: t('composer.attach'),
                                     render: () => (
-                                        <Tooltip title={t('composer.attach')}>
+                                        <AppTooltip title={t('composer.attach')}>
                                             <Button
                                                 type="text"
                                                 size="small"
@@ -702,7 +703,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                                                 disabled={controlsDisabled || showLocalModeCover || hasPendingPermission}
                                                 style={ACTION_BUTTON_STYLE}
                                             />
-                                        </Tooltip>
+                                        </AppTooltip>
                                     ),
                                 },
                                 // permissionmode

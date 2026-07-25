@@ -15,7 +15,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AutoComplete, Select, Tag, Tooltip, theme } from 'antd'
+import { AutoComplete, Select, Tag, theme } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import { DesktopOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
 import { parsePrefixInput, type DirectoryOption } from '@/components/session/useMachineDirectoryListing'
 import type { Machine } from '@/core/data/api/types'
@@ -296,7 +297,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                     padding: '2px 0 0 18px',
                 }}>
                     {recentPaths.slice(0, 5).map(path => (
-                        <Tooltip key={path} title={path} mouseEnterDelay={0.3}>
+                        <AppTooltip key={path} title={path} mouseEnterDelay={0.3}>
                             <Tag
                                 variant="filled"
                                 closable={!!onRemoveRecentPath}
@@ -320,7 +321,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                             >
                                 {startEllipsis(path, 30)}
                             </Tag>
-                        </Tooltip>
+                        </AppTooltip>
                     ))}
                 </div>
             )}

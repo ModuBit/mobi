@@ -15,10 +15,10 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { Download } from 'lucide-react'
 import { theme as antTheme } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -132,12 +132,12 @@ export function InstallButton({ variant = 'nav' }: InstallButtonProps) {
     // card variant + iOS + 无 beforeinstallprompt → 手动指引按钮(受控 Tooltip,点击 toggle 显示步骤)
     if (variant === 'card' && !installEvent && isIos) {
         return (
-            <Tooltip title={t('notification.pwa.iosManual')} placement="top" open={iosTipOpen} onOpenChange={setIosTipOpen}>
+            <AppTooltip title={t('notification.pwa.iosManual')} placement="top" open={iosTipOpen} onOpenChange={setIosTipOpen}>
                 <CardButton $token={token} type="button" onClick={() => setIosTipOpen(v => !v)}>
                     <Download size={16} />
                     <span>{t('notification.pwa.install')}</span>
                 </CardButton>
-            </Tooltip>
+            </AppTooltip>
         )
     }
 
@@ -162,10 +162,10 @@ export function InstallButton({ variant = 'nav' }: InstallButtonProps) {
     }
 
     return (
-        <Tooltip title={t('notification.pwa.installPrompt')} placement="right">
+        <AppTooltip title={t('notification.pwa.installPrompt')} placement="right">
             <NavItem $token={token} onClick={handleInstall}>
                 <Download size={20} />
             </NavItem>
-        </Tooltip>
+        </AppTooltip>
     )
 }

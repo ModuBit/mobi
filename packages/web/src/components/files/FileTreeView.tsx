@@ -16,7 +16,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled from '@emotion/styled'
-import { Tree, Empty, Skeleton, Tooltip, Input, Button, type TreeProps } from 'antd'
+import { Tree, Empty, Skeleton, Input, Button, type TreeProps } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { DataNode } from 'antd/es/tree'
 import { FolderOpen, FolderClosed, File as FileIcon, Search, Eye, EyeOff } from 'lucide-react'
 import { LoadingOutlined } from '@ant-design/icons'
@@ -186,7 +187,7 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                 const node: DataNode = {
                     key: f.path,
                     title: (
-                        <Tooltip
+                        <AppTooltip
                             // 稍长延迟：避免在树里快速划过时频繁弹出
                             mouseEnterDelay={0.5}
                             title={
@@ -202,7 +203,7 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                             }
                         >
                             <span>{f.name}</span>
-                        </Tooltip>
+                        </AppTooltip>
                     ),
                     icon: () => {
                         // folder：两个图标 + CSS 按 aria-expanded 显隐；loading 指示交给 antd 内置 switcher

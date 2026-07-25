@@ -15,7 +15,8 @@
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Layout, Tabs, Button, Tooltip, Dropdown } from 'antd'
+import { Layout, Tabs, Button, Dropdown } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -204,7 +205,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
         ...tabs.map((tab) => ({
             key: tab.id,
             label: (
-                <Tooltip title={tab.mode === 'file' ? tab.filePath : ''}>
+                <AppTooltip title={tab.mode === 'file' ? tab.filePath : ''}>
                     {tab.mode === 'terminal' ? (
                         <TerminalTabLabel
                             tab={tab}
@@ -216,7 +217,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                             {tab.mode === 'file' ? tab.fileName : t('session.inspector.openFile')}
                         </span>
                     )}
-                </Tooltip>
+                </AppTooltip>
             ),
             children: renderTabContent(tab),
             closable: true,
@@ -316,18 +317,18 @@ function RightChrome({
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             {!isMobile && (
                 chatHidden ? (
-                    <Tooltip title={t('session.inspector.restore')}>
+                    <AppTooltip title={t('session.inspector.restore')}>
                         <Button type="text" size="small" icon={<Minimize size={16} />} onClick={() => onToggleChat(false)} />
-                    </Tooltip>
+                    </AppTooltip>
                 ) : (
-                    <Tooltip title={t('session.inspector.maximize')}>
+                    <AppTooltip title={t('session.inspector.maximize')}>
                         <Button type="text" size="small" icon={<Maximize size={16} />} onClick={() => onToggleChat(true)} />
-                    </Tooltip>
+                    </AppTooltip>
                 )
             )}
-            <Tooltip title={t('session.inspector.collapse')}>
+            <AppTooltip title={t('session.inspector.collapse')}>
                 <Button type="text" size="small" icon={<PanelRightClose size={16} />} onClick={onCollapse} />
-            </Tooltip>
+            </AppTooltip>
         </div>
     )
 }

@@ -27,9 +27,9 @@ import {
     Spin,
     Tag,
     theme,
-    Tooltip,
     Typography,
 } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import { DesktopOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { InputRef } from 'antd'
 import type { AutoCompleteProps } from 'antd'
@@ -326,14 +326,14 @@ export function NewSession(props: NewSessionProps) {
                 {recentPaths.length > 0 && (
                     <div style={{ marginTop: 8, lineHeight: '2em' }}>
                         {recentPaths.slice(0, 5).map((path) => (
-                            <Tooltip key={path} title={path} mouseEnterDelay={0.3}>
+                            <AppTooltip key={path} title={path} mouseEnterDelay={0.3}>
                                 <Tag
                                     onClick={() => setDirectory(path)}
                                     style={{ cursor: 'pointer' }}
                                 >
                                     {startEllipsis(path)}
                                 </Tag>
-                            </Tooltip>
+                            </AppTooltip>
                         ))}
                     </div>
                 )}
@@ -377,9 +377,9 @@ export function NewSession(props: NewSessionProps) {
                     >
                         {AGENT_OPTIONS.map((opt) =>
                             opt.disabled ? (
-                                <Tooltip key={opt.value} title={opt.disabledTooltipKey ? t(opt.disabledTooltipKey) : ''}>
+                                <AppTooltip key={opt.value} title={opt.disabledTooltipKey ? t(opt.disabledTooltipKey) : ''}>
                                     <Radio value={opt.value} disabled>{opt.label}</Radio>
-                                </Tooltip>
+                                </AppTooltip>
                             ) : (
                                 <Radio key={opt.value} value={opt.value}>{opt.label}</Radio>
                             ),

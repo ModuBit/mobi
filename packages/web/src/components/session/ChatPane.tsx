@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import { Layout, Tooltip, Button } from 'antd'
+import { Layout, Button } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import { useTranslation } from 'react-i18next'
 import { PanelRight } from 'lucide-react'
 import styled from '@emotion/styled'
@@ -83,14 +84,14 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
                     </>
                 }
                 right={showExpand && (
-                    <Tooltip title={t('session.inspector.expand')}>
+                    <AppTooltip title={t('session.inspector.expand')}>
                         <Button
                             type="text"
                             size="small"
                             icon={<PanelRight size={16} />}
                             onClick={() => setExpanded(sessionId, true)}
                         />
-                    </Tooltip>
+                    </AppTooltip>
                 )}
             />
 

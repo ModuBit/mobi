@@ -15,7 +15,8 @@
  */
 
 import { useState, useCallback } from 'react'
-import { Popconfirm, Drawer, Button, Tooltip, theme } from 'antd'
+import { Popconfirm, Drawer, Button, theme } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import { BrushCleaning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -112,7 +113,7 @@ export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateB
     }
 
     return (
-        <Tooltip title={t('chat.clearState.label')} mouseEnterDelay={0.5}>
+        <AppTooltip title={t('chat.clearState.label')} mouseEnterDelay={0.5}>
             <Popconfirm
                 title={confirmText}
                 onConfirm={doClear}
@@ -123,6 +124,6 @@ export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateB
             >
                 {trigger}
             </Popconfirm>
-        </Tooltip>
+        </AppTooltip>
     )
 }

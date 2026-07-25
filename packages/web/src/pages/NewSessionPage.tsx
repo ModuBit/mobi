@@ -15,7 +15,8 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from 'react'
-import { App, Button, Input, Tooltip, Select, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
+import { App, Button, Input, Select, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
+import { AppTooltip } from '@/components/ui/AppTooltip'
 import { Sender } from '@ant-design/x'
 import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
@@ -713,7 +714,7 @@ export function NewSessionPage() {
             key: 'attach',
             label: t('composer.attach'),
             render: () => (
-                <Tooltip title={t('composer.attach')}>
+                <AppTooltip title={t('composer.attach')}>
                     <Button
                         type="text"
                         size="small"
@@ -722,7 +723,7 @@ export function NewSessionPage() {
                         disabled={inputDisabled}
                         style={ACTION_BUTTON_STYLE}
                     />
-                </Tooltip>
+                </AppTooltip>
             ),
         },
         // 权限模式
