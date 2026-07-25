@@ -68,7 +68,7 @@ interface ChatComposerProps {
     active?: boolean
     allowSendWhenInactive?: boolean
     running?: boolean
-    /** 是否正在压缩历史（compact）：压缩期间不显示 loading 状态栏，避免与列表内的 CompactProgressBubble 重复 */
+    /** 是否正在压缩历史（compact）：压缩期间不显示 loading 状态栏，避免与列表内的 CommandProgressBubble 重复 */
     compressing?: boolean
     agentState?: AgentState | null
     metadata?: SessionMetadataSummary | null

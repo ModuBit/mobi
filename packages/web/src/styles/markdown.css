@@ -213,3 +213,10 @@ html[data-theme='dark'] .x-markdown .mention-badge {
     background: #30302e;
     color: #a9c4e0;
 }
+
+/* 代码块语言标签：自动检测不准时会显示错误语言（如 fallback 的 clike），
+   隐藏语言标签更干净；复制按钮是兄弟元素，不受影响。
+   attribute selector 规避 antd X 的 prefixCls 前缀差异（ant- / ant-x-）。 */
+.x-markdown [class*="codeHighlighter-header-title"] {
+    display: none;
+}

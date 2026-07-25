@@ -26,6 +26,7 @@ import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import { EFFORT_LEVELS, EFFORT_LABELS, getPermissionModeTone } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
+import { SessionSpawnPending } from '@/components/session/SessionSpawnPending'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
 import { useRecentPaths } from '@/components/session/useRecentPaths'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
@@ -309,6 +310,18 @@ export function NewSessionPage() {
     // 当前选中机器的 homeDir
     const currentMachine = machines.find(m => m.id === selectedMachineId)
     const machineHomeDir = currentMachine?.metadata?.homeDir as string | undefined
+    // 过渡态回显：机器显示名 + home 缩写为 ~ 的目录（仅展示用，非提交值）
+    const machineLabel = currentMachine?.metadata?.displayName
+        ?? currentMachine?.metadata?.host
+        ?? currentMachine?.id?.slice(0, 8)
+        ?? ''
+    const directoryLabel = useMemo(() => {
+        if (!selectedDirectory) return ''
+        if (machineHomeDir && selectedDirectory.startsWith(machineHomeDir)) {
+            return '~' + selectedDirectory.slice(machineHomeDir.length)
+        }
+        return selectedDirectory
+    }, [selectedDirectory, machineHomeDir])
 
     const { options: directoryOptions, isLoading: isDirectoryLoading } = useMachineDirectoryListing(
         selectedMachineId,
@@ -877,6 +890,9 @@ export function NewSessionPage() {
                 </TitleBar>
 
                 <InputCard>
+                {isPending ? (
+                    <SessionSpawnPending machineLabel={machineLabel} directory={directoryLabel} />
+                ) : (
                 <div
                     ref={wrapperRef}
                     style={{ position: 'relative' }}
@@ -1041,6 +1057,7 @@ export function NewSessionPage() {
                         </div>
                     )}
                 </div>
+                )}
                 </InputCard>
             </ContentWrapper>
         </PageContainer>

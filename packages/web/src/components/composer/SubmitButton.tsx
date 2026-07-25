@@ -16,13 +16,46 @@
 
 import { Button } from 'antd'
 import { ArrowUpOutlined } from '@ant-design/icons'
+import styled from '@emotion/styled'
+import { keyframes } from '@emotion/react'
 import type { SubmitButtonState } from './submitButtonState'
 
-/** 停止图标：实心方块（继承 currentColor，在主色按钮上为白色） */
+const spinKf = keyframes`
+    to { transform: rotate(360deg); }
+`
+
+/**
+ * 停止态外圈：旋转的 loading ring（轨道淡橙 + 顶部暖橙头）
+ * 仅在方块态（非 abortPending）显示——abortPending 时 Button 自身 loading 转圈，
+ * 双重转圈视觉冗余，故此时 $ring=false 隐藏光环
+ */
+const StopWrap = styled.span<{ $ring: boolean }>`
+    position: relative;
+    display: inline-flex;
+
+    &::before {
+        content: '';
+        position: absolute;
+        inset: -4px;
+        border-radius: 50%;
+        border: 2.5px solid color-mix(in srgb, var(--ant-colorWarning) 30%, transparent);
+        border-top-color: var(--ant-colorWarning);
+        animation: ${spinKf} 1s linear infinite;
+        pointer-events: none;
+        /* abortPending 时 Button 自身转圈，光环隐藏 */
+        display: ${props => props.$ring ? 'block' : 'none'};
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        &::before { animation: none; opacity: .5; }
+    }
+`
+
+/** 停止图标：实心圆角方块（720/1024 ≈ 70%，原 600/1024 ≈ 58% 偏小） */
 function SquareIcon() {
     return (
         <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style={{ width: '1em', height: '1em' }}>
-            <rect fill="currentColor" height="600" rx="64" ry="64" width="600" x="212" y="212" />
+            <rect fill="currentColor" height="720" rx="76" ry="76" width="720" x="152" y="152" />
         </svg>
     )
 }
@@ -41,7 +74,8 @@ export interface SubmitButtonProps {
  *
  * 由 state.kind 决定形态：
  * - send → 主色圆形 ↑（禁用态由 state.disabled 控制）
- * - stop → 与发送按钮同款主色圆形，仅中心图标换成方块 ■（abortPending 时禁用以防重复中止）
+ * - stop → 主色圆形 + 方块 ■（变大）；方块态额外叠加外圈旋转光环传递"运行中"，
+ *   abortPending 时光环隐藏（Button 自身 loading 转圈）+ 禁用以防重复中止
  *
  * 不挂在 antd X Sender 的 disabled 上下文里，故请求权限期间（Sender disabled）仍可点击。
  */
@@ -60,15 +94,17 @@ export function SubmitButton(props: SubmitButtonProps) {
         )
     }
 
-    // 停止态：发送按钮样式 + 方块图标；abortPending 时转圈并禁用
+    // 停止态：方块 + 外圈旋转光环（abortPending 时光环隐藏，Button 自身转圈）
     return (
-        <Button
-            type="primary"
-            shape="circle"
-            icon={<SquareIcon />}
-            loading={state.loading}
-            disabled={state.disabled}
-            onClick={onAbort}
-        />
+        <StopWrap $ring={!state.loading}>
+            <Button
+                type="primary"
+                shape="circle"
+                icon={<SquareIcon />}
+                loading={state.loading}
+                disabled={state.disabled}
+                onClick={onAbort}
+            />
+        </StopWrap>
     )
 }

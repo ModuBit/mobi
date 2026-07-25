@@ -17,7 +17,7 @@
 import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react'
 import { Bubble } from '@ant-design/x'
 import { Spin, Button, Skeleton, theme as antTheme, message } from 'antd'
-import { DownOutlined, LoadingOutlined } from '@ant-design/icons'
+import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined } from '@ant-design/icons'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
@@ -29,7 +29,7 @@ import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reco
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
-import { CompactProgressBubble } from './CompactProgressBubble'
+import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress } from '@/domain/chat/presentation'
 import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
@@ -646,13 +646,22 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             items.push({
                 key: '__compressing__',
                 role: 'assistant',
-                content: <CompactProgressBubble />,
+                content: <CommandProgressBubble icon={<CompressOutlined />} titleKey="chat.compacting" />,
+                variant: 'borderless',
+            })
+        }
+
+        if (isClearing) {
+            items.push({
+                key: '__clearing__',
+                role: 'assistant',
+                content: <CommandProgressBubble icon={<ClearOutlined />} titleKey="chat.clearing" />,
                 variant: 'borderless',
             })
         }
 
         return items
-    }, [decoratedItems, isFetchingNextPage, isCompressing])
+    }, [decoratedItems, isFetchingNextPage, isCompressing, isClearing])
 
     const handleSend = (text: string) => {
         if (import.meta.env.DEV) console.log('[Send] handleSend', { textLen: text.length, hasTrim: !!text.trim() })

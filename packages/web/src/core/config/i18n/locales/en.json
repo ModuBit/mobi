@@ -81,7 +81,11 @@
         "yoloMode": "YOLO Mode",
         "yoloModeDesc": "Automatically execute all operations without confirmation",
         "createFailed": "Failed to create session",
-        "create": "Create Session"
+        "create": "Create Session",
+        "spawnStage": {
+            "creating": "Creating session…",
+            "creatingSub": "Request sent, waiting for a response…"
+        }
     },
     "session": {
         "loadFailed": "Failed to load session",
@@ -123,6 +127,7 @@
         "contextReset": "Context was reset",
         "compactSummary": "Conversation compressed",
         "compacting": "Compressing conversation...",
+        "clearing": "Clearing context...",
         "apiError": "API Error",
         "apiRateLimit": "API Rate Limited",
         "retryDelay": "Retrying in {{seconds}}s",
