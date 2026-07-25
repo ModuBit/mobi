@@ -40,6 +40,8 @@ Thumbs.db
 *.log
 *.tmp
 *.temp
+tmp/
+temp/
 logs/
 
 .VSCodeCounter
