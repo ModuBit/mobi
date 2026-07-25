@@ -70,6 +70,14 @@ export class AssistantPartialAssembler {
         }
 
         const am = message as SDKAssistantMessage
+        // 子 agent 的 complete 消息（parent_tool_use_id 非空）本就完整，无需聚合——
+        // SDK 契约：partial(stream_event) 只对主 session；子 agent 消息是 complete message。
+        // 若累积到 Map，需等下一条非 assistant 才 flush → 子 agent 工具调用延迟/丢失，前端看不到。
+        if (am.parent_tool_use_id) {
+            this.flushAll()
+            this.emit(message)
+            return
+        }
         const msgId = am.message?.id
         if (!msgId) {
             logger.warn('[AssistantPartialAssembler] assistant 消息缺少 message.id，跳过装配直接透传（同 uuid 的 partial 可能被下游去重覆盖）')

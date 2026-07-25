@@ -137,4 +137,29 @@ describe('AssistantPartialAssembler', () => {
         a.flushAll() // 重复调用
         expect(out).toHaveLength(1) // 无新增
     })
+
+    // SDK 契约：partial(stream_event) 只对主 session（parent_tool_use_id 恒 null）；
+    // 子 agent 的消息是 complete message（parent_tool_use_id 非空），本就完整，无需聚合。
+    // 累积它会延迟到下一条非 assistant 才 flush → 子 agent 工具调用延迟/丢失，前端看不到。
+    test('子 agent complete（parent_tool_use_id 非空）立即透传，不累积', () => {
+        const out: SDKMessage[] = []
+        const a = new AssistantPartialAssembler(m => out.push(m))
+        const sub = { ...asst('sub-1', [{ type: 'tool_use', id: 'tu-read', name: 'Read', input: {} }]), parent_tool_use_id: 'toolu-agent-1' }
+        a.submit(sub)
+        expect(out).toHaveLength(1) // 立即透传，无需 flushAll
+        expect(out[0]).toBe(sub)
+    })
+
+    test('主线程装配中，子 agent complete 到达时先 flush 主线程再透传子 agent', () => {
+        const out: SDKMessage[] = []
+        const a = new AssistantPartialAssembler(m => out.push(m))
+        a.submit(asst('main-1', [{ type: 'thinking', thinking: 'main' }]))
+        expect(out).toEqual([]) // 主线程装配中
+        const sub = { ...asst('sub-1', [{ type: 'tool_use', id: 'tu', name: 'Read', input: {} }]), parent_tool_use_id: 'toolu-agent-1' }
+        a.submit(sub)
+        expect(out).toHaveLength(2) // 主线程 flush 在前 + 子 agent 透传在后
+        expect(out[0]!.type).toBe('assistant')
+        expect(blocksOf(out[0]!)).toEqual([{ type: 'thinking', thinking: 'main' }])
+        expect(out[1]).toBe(sub)
+    })
 })
