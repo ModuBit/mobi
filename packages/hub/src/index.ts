@@ -111,8 +111,12 @@ async function main() {
     installExitHandlers('hub', hubExitLogger, undefined, {
         // 信号终止时 SIGTERM handler 偶发不触发（Bun 仅走默认退出），
         // exit handler 是兜底时机 —— 同步清理 state，避免幽灵 pid 残留
-        onExitSync: () => {
-            if (exitCtx.dataDir) clearHubState(exitCtx.dataDir)
+        // 信号终止时 SIGTERM handler 偶发不触发（Bun 仅走默认退出），
+        // exit handler 是兜底时机 —— 正常/信号退出时同步清理 state，避免幽灵 pid 残留。
+        // 崩溃（uncaught/unhandled）时跳过清理：保留 state 让下次 detectPreviousHubCrash 能检出
+        // （SIGKILL/OOM 进程直接消失、state 本就保留；本分支补齐可捕获的崩溃路径）
+        onExitSync: ({ crashed }) => {
+            if (!crashed && exitCtx.dataDir) clearHubState(exitCtx.dataDir)
         },
     })
     // —— OOM/SIGKILL 兜底：检测上次 hub 实例是否异常消失 ——

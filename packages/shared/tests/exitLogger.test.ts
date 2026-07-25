@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -210,6 +210,35 @@ describe('installExitHandlers', () => {
   it('支持 exitOnSignal 选项', () => {
     const logger = installExitLogger('cli', { logsDir })
     expect(() => installExitHandlers('cli', logger, undefined, { exitOnSignal: true })).not.toThrow()
+  })
+
+  it('onExitSync 正常退出收到 { crashed: false }', () => {
+    const logger = installExitLogger('hub', { logsDir })
+    const spy = vi.fn()
+    installExitHandlers('hub', logger, undefined, { onExitSync: spy })
+    // process.emit('exit', code) 同步触发 exit listener，不真正退出进程
+    process.emit('exit', 0)
+    expect(spy).toHaveBeenCalledWith({ crashed: false })
+  })
+
+  it('onExitSync 崩溃退出收到 { crashed: true }（hub 据此跳过 clearHubState 保留痕迹）', () => {
+    const logger = installExitLogger('hub', { logsDir })
+    const spy = vi.fn()
+    // 屏蔽其它 uncaughtException 监听（含 vitest 自身），仅让本安装的 handler 跑
+    const origListeners = process.listeners('uncaughtException')
+    process.removeAllListeners('uncaughtException')
+    // handler 内会 process.exit(1)，mock 成 no-op 避免真正退出测试进程
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never)
+    try {
+      installExitHandlers('hub', logger, undefined, { onExitSync: spy })
+      process.emit('uncaughtException', new Error('boom'))
+      process.emit('exit', 1)
+      expect(spy).toHaveBeenCalledWith({ crashed: true })
+    } finally {
+      exitSpy.mockRestore()
+      process.removeAllListeners('uncaughtException')
+      for (const l of origListeners) process.on('uncaughtException', l as (...a: unknown[]) => void)
+    }
   })
 })
 

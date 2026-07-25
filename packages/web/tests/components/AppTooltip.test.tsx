@@ -122,6 +122,28 @@ describe('AppTooltip', () => {
         expect(clickSpy).not.toHaveBeenCalled()
     })
 
+    it('mouse hover 打开后点击 trigger 不关闭（桌面端点击不应关 hover tooltip）', () => {
+        const clickSpy = vi.fn()
+        render(
+            <AppTooltip title="hello" mouseEnterDelay={0}>
+                <button onClick={clickSpy}>btn</button>
+            </AppTooltip>,
+        )
+        const btn = screen.getByRole('button')
+        hoverEnter(btn)
+        act(() => vi.runAllTimers())
+        expect(screen.getByTestId('tip')).toBeDefined()
+
+        // 鼠标点击 trigger 自身：tooltip 应保持打开（dismiss 监听仅 touch 模式挂载）
+        // pointerDown 用 mouse 类型，模拟真实鼠标点击序列
+        fireEvent.pointerDown(btn, { pointerType: 'mouse' })
+        fireEvent.pointerUp(btn, { pointerType: 'mouse' })
+        fireEvent.click(btn)
+        expect(screen.getByTestId('tip')).toBeDefined()
+        // click action 正常触发
+        expect(clickSpy).toHaveBeenCalledOnce()
+    })
+
     it('tooltip 显示时，外部 pointerdown 关闭', () => {
         render(
             <>

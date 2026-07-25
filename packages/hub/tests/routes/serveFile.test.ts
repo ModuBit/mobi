@@ -159,14 +159,14 @@ describe('GET /api/sessions/:id/serve-file/* 错误码', () => {
         }
     })
 
-    test('文件不存在（cli stat 抛 ENOENT）→ 404', async () => {
+    test('文件不存在（cli stat 抛 ENOENT，结构化 code）→ 404', async () => {
         const engine = {
             resolveSessionAccess: (_id: string, _ns: string) => ({
                 ok: true as const,
                 sessionId: 's1',
                 session: mockSession,
             }),
-            readFileMeta: async () => ({ success: false, error: 'ENOENT: no such file or directory' }),
+            readFileMeta: async () => ({ success: false, error: 'ENOENT: no such file or directory', code: 'ENOENT' }),
             readFileRange: async () => ({ success: true, chunk: new Uint8Array(0) }),
         } as unknown as SyncEngine
         const setup = await setupTestApp(engine)
@@ -176,6 +176,30 @@ describe('GET /api/sessions/:id/serve-file/* 错误码', () => {
                 headers: { Authorization: `Bearer ${token}` },
             })
             expect(res.status).toBe(404)
+        } finally {
+            setup.cleanup()
+        }
+    })
+
+    test('非 ENOENT 错误（即使文案含 not found）→ 500，不误判 404', async () => {
+        // 回归：旧实现用 /not found|enoent/i 文案正则，会把含 "not found" 的 500 错误误判为 404。
+        // 现基于结构化 code，无 code 即 500。
+        const engine = {
+            resolveSessionAccess: (_id: string, _ns: string) => ({
+                ok: true as const,
+                sessionId: 's1',
+                session: mockSession,
+            }),
+            readFileMeta: async () => ({ success: false, error: 'registry: foo not found in cache' }),
+            readFileRange: async () => ({ success: true, chunk: new Uint8Array(0) }),
+        } as unknown as SyncEngine
+        const setup = await setupTestApp(engine)
+        try {
+            const token = await getAuthToken(setup.app)
+            const res = await setup.app.request('/api/sessions/s1/serve-file/x.html', {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(res.status).toBe(500)
         } finally {
             setup.cleanup()
         }

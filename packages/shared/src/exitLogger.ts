@@ -193,9 +193,10 @@ export function installExitLogger(
   let alreadyRecorded = false
   let peakMemoryMb = computeMemoryMb()
 
-  // 启动时同步采集父进程谱系 —— SIGTERM 来源（进程组/会话批量终止）的唯一可观测线索
+  // 启动时仅采集 parentPid（process.ppid 读取，零成本）；
+  // 父进程命令行（需 fork/exec ps）延迟到 recordExit 时再采集 —— 避免每次 hub/cli
+  // 冷启动都同步阻塞在最坏 2s 的 ps 上（受限/繁忙环境下放大启动延迟）。
   const parentPid = process.ppid > 0 ? process.ppid : null
-  const parentCommand = parentPid != null ? readParentCommand(parentPid) : null
 
   // 定期采样峰值内存（用于 crash 时还原），unref 避免阻止进程退出
   const memSampler = setInterval(() => {
@@ -210,6 +211,11 @@ export function installExitLogger(
   function recordExit(input: RecordExitInput): void {
     if (alreadyRecorded) return
     alreadyRecorded = true
+
+    // 父进程谱系延迟到此处采集（recordExit 仅在退出时触发，把 ps 的 fork/exec 成本
+    // 从每次启动挪到罕见的退出时机）。SIGTERM 来源（父进程组批量终止）此时仍是活的，
+    // 能采到命令行；父进程已先于本进程退出的极端场景采不到，best-effort 接受。
+    const parentCommand = parentPid != null ? readParentCommand(parentPid) : null
 
     let dumpFile: string | null = null
     if (input.reason === 'crash-uncaught' || input.reason === 'crash-unhandled') {
@@ -267,6 +273,14 @@ export function installExitLogger(
  * 注意：runner 已有自己的优雅退出流程（requestShutdown），runner 侧应自行挂载
  * 并在 handler 内既驱动 requestShutdown 又调 recordExit，而不是用这个默认实现。
  */
+/** process.on('exit') 内同步回调的入参 */
+export interface ExitSyncInfo {
+  /** 本次退出是否由 uncaughtException / unhandledRejection 触发。
+   *  调用方据此区分「崩溃」与「正常/信号退出」——例如 hub 崩溃时应跳过清理 state，
+   *  保留 pid 痕迹供下次启动的 detectPreviousHubCrash 检出。 */
+  crashed: boolean
+}
+
 export interface InstallHandlersOptions {
   /** 信号记录后是否立即 process.exit。默认 false。
    * cli 主进程传 true（无自定义退出 handler，否则 Ctrl+C/SIGTERM 无法终止进程）；
@@ -275,8 +289,9 @@ export interface InstallHandlersOptions {
   exitOnSignal?: boolean
   /** process.on('exit') 内同步调用。
    * 信号终止时 SIGTERM handler 偶发不触发（Bun 在特定时机只走默认退出），
-   * 此时 exit handler 是唯一可靠的同步清理时机 —— 用它清理 state 文件等关键副作用。 */
-  onExitSync?: () => void
+   * 此时 exit handler 是唯一可靠的同步清理时机 —— 用它清理 state 文件等关键副作用。
+   * 入参告知本次退出是否为崩溃，崩溃时调用方可选择保留崩溃痕迹（不清理）。 */
+  onExitSync?: (info: ExitSyncInfo) => void
 }
 
 export function installExitHandlers(
@@ -287,7 +302,11 @@ export function installExitHandlers(
 ): void {
   const exitOnSignal = options?.exitOnSignal ?? false
 
+  // 崩溃标志：uncaught/unhandled 触发时置 true，供 onExitSync 区分崩溃与正常/信号退出
+  let crashed = false
+
   process.on('uncaughtException', (error: Error) => {
+    crashed = true
     logger.recordExit({
       reason: 'crash-uncaught',
       errorMessage: error.message,
@@ -304,6 +323,7 @@ export function installExitHandlers(
   })
 
   process.on('unhandledRejection', (reason: unknown) => {
+    crashed = true
     const error = reason instanceof Error ? reason : new Error(String(reason))
     logger.recordExit({
       reason: 'crash-unhandled',
@@ -341,7 +361,7 @@ export function installExitHandlers(
     // exit handler 内只能同步写——recordExit 已是同步 appendFileSync
     // 信号终止时 SIGTERM handler 偶发不触发，exit handler 是兜底的同步清理时机
     try {
-      options?.onExitSync?.()
+      options?.onExitSync?.({ crashed })
     } catch {
       // 清理失败不影响退出记录
     }

@@ -38,6 +38,8 @@ export type RpcReadFileMetaResponse = {
     success: boolean
     meta?: RpcFileMeta
     error?: string
+    /** 结构化错误码（如 'ENOENT'），hub 据此精确分流 404/500 */
+    code?: string
 }
 
 // 文件范围读取响应（chunk 为二进制，经 Socket.IO 原生序列化原样透传）

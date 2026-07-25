@@ -35,6 +35,7 @@ const LONG_PRESS_MS = 500
  *   · 短按（未到期 pointerup）→ 不显示，click 正常触发元素 action
  *   · long-press 命中 → 显示 tooltip，并在捕获阶段吞掉紧随的 click（阻止 action 被误触发）
  *   · tooltip 显示时挂 document 一次性 pointerdown listener → 点任意外部位置关闭
+ *     （仅 touch 模式；hover 模式由 pointerleave 关闭，不挂此监听，避免桌面端点击 trigger 误关）
  *
  * 不依赖 matchMedia / 屏幕宽度：pointerType 是每一下输入的真实来源，
  * iPad 接鼠标时鼠标走 hover、手指走 long-press，两者并存不互斥。
@@ -53,6 +54,10 @@ export function AppTooltip({ children, mouseEnterDelay, open: controlledOpen, ..
     const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
     const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
     const longPressedRef = useRef(false)
+    // 记录当前打开 tooltip 的输入类型：决定是否挂「外部 pointerdown 关闭」监听。
+    // 仅 touch（long-press）打开时需要 —— hover 打开的 tooltip 由 pointerleave 关闭，
+    // 若也挂该监听，桌面端鼠标用户点击 trigger 自身会被误关（与桌面 Tooltip 常规行为不符）。
+    const openInputType = useRef<'mouse' | 'touch' | undefined>(undefined)
 
     // 卸载时清理定时器，避免泄漏
     useEffect(() => () => {
@@ -60,9 +65,10 @@ export function AppTooltip({ children, mouseEnterDelay, open: controlledOpen, ..
         if (holdTimer.current) clearTimeout(holdTimer.current)
     }, [])
 
-    // tooltip 显示时，下一次外部 pointerdown 关闭（仅非受控模式）
+    // tooltip 显示时，下一次外部 pointerdown 关闭（仅 touch 模式 + 非受控）
     useEffect(() => {
         if (!open || isControlled) return
+        if (openInputType.current !== 'touch') return
         const handler = () => setInternalOpen(false)
         document.addEventListener('pointerdown', handler, { capture: true, once: true })
         return () => document.removeEventListener('pointerdown', handler, { capture: true })
@@ -74,7 +80,10 @@ export function AppTooltip({ children, mouseEnterDelay, open: controlledOpen, ..
     const handlePointerEnter = (e: PointerEvent) => {
         if (isControlled || !isHoverInput(e)) return
         if (hoverTimer.current) clearTimeout(hoverTimer.current)
-        hoverTimer.current = setTimeout(() => setInternalOpen(true), (mouseEnterDelay ?? 0) * 1000)
+        hoverTimer.current = setTimeout(() => {
+            openInputType.current = 'mouse'
+            setInternalOpen(true)
+        }, (mouseEnterDelay ?? 0) * 1000)
     }
 
     const handlePointerLeave = (e: PointerEvent) => {
@@ -93,6 +102,7 @@ export function AppTooltip({ children, mouseEnterDelay, open: controlledOpen, ..
         if (holdTimer.current) clearTimeout(holdTimer.current)
         holdTimer.current = setTimeout(() => {
             longPressedRef.current = true
+            openInputType.current = 'touch'
             setInternalOpen(true)
         }, LONG_PRESS_MS)
     }

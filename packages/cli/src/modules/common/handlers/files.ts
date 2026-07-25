@@ -51,6 +51,8 @@ interface ReadFileMetaResponse {
     success: boolean
     meta?: FileMeta
     error?: string
+    /** 结构化错误码（如 'ENOENT'），供 hub 精确分流 404/500，不依赖 error 文案正则 */
+    code?: string
 }
 
 interface ReadFileRangeRequest {
@@ -91,7 +93,12 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
             }
         } catch (error) {
             logger.debug('Failed to stat file:', error)
-            return rpcError(getErrorMessage(error, 'Failed to read file meta'))
+            // 透传 errno code（ENOENT 等）让 hub 基于结构化码判 404，不再依赖文案
+            const code = (error as NodeJS.ErrnoException | null | undefined)?.code
+            return rpcError(
+                getErrorMessage(error, 'Failed to read file meta'),
+                code === 'ENOENT' ? { code: 'ENOENT' } : undefined,
+            )
         }
     })
 
