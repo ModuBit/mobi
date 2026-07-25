@@ -32,6 +32,23 @@ function getDefaultMobiHome(): string {
         : join(homedir(), '.mobi')
 }
 
+/**
+ * 当前进程已加载的活动 profile 名（loadProfile 成功后设置）。
+ * 进程级单例：profile 机制本就通过注入 process.env 全局生效，活动 profile 名与之同生命周期。
+ * 用途：doctor 等子命令在 --profile 被全局消费后，仍能获知当前 profile（不再误判为 "无 profile"）。
+ */
+let activeProfile: string | undefined
+
+/** 返回当前进程已加载的活动 profile 名（未加载返回 undefined） */
+export function getActiveProfile(): string | undefined {
+    return activeProfile
+}
+
+/** 重置活动 profile（仅测试用：隔离用例间的全局状态） */
+export function _resetActiveProfileForTest(): void {
+    activeProfile = undefined
+}
+
 /** 获取 profile 文件所在目录 */
 export function getProfilesDir(customDir?: string): string {
     return customDir ?? join(getDefaultMobiHome(), 'profiles')
@@ -153,6 +170,9 @@ export function loadProfile(
 
     // 从 args 中移除 --profile 参数
     args.splice(profileIndex, removeCount)
+
+    // 记录活动 profile 供下游子命令（如 doctor）感知
+    activeProfile = profileName
 
     return profileName
 }

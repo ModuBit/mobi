@@ -22,6 +22,7 @@
  */
 
 import psList from 'ps-list';
+import { execSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -55,27 +56,57 @@ async function readRunnerPid(mobiHome: string): Promise<number | undefined> {
 }
 
 /**
- * 从 /proc/<pid>/environ 反推进程所属 profile
- * /proc/<pid>/environ 是 exec 时的快照（非运行时 process.env）
- * ⚠️ 仅 Linux 有效（macOS 无 /proc 文件系统）
+ * 从进程环境文本归约 profile 名（纯函数）。
+ *
+ * 兼容两种来源文本：
+ * - Linux `/proc/<pid>/environ`：\0 分隔的 KEY=VALUE
+ * - macOS `ps -E -o command=`：环境变量追加在 command 后，空格分隔的 KEY=VALUE
+ *
+ * 归约规则（与 dev.env 的 MOBI_HOME=~/.mobi-<name> 约定一致）：
+ * - 无 MOBI_HOME → 进程未显式设 home，走默认 home → 'default'
+ * - MOBI_HOME 等于默认 home → 'default'
+ * - MOBI_HOME 匹配 ~/.mobi-<name> → '<name>'；非约定路径回退 'default'
+ */
+export function deriveProfileFromEnvText(text: string): string {
+    // [^\s\0] 同时挡 macOS 的空格分隔与 Linux /proc 的 \0 分隔，避免跨字段捕获
+    const match = text.match(/MOBI_HOME=([^\s\0]+)/)
+    if (!match) return 'default'
+    const mobiHome = match[1].replace(/^~/, homedir())
+    if (mobiHome === DEFAULT_MOBI_HOME) return 'default'
+    const m = mobiHome.match(/\.mobi-(.+)$/)
+    return m?.[1] ?? 'default'
+}
+
+/** 进程 → profile 名的归属函数签名（可注入便于测试） */
+export type ProfileAttributor = (pid: number) => Promise<string | undefined>
+
+/**
+ * 反推进程所属 profile。
+ *
+ * - Linux：读 /proc/<pid>/environ（exec 时的 env 快照）
+ * - macOS：`ps -E -o command= -p <pid>` 把环境变量追加在 command 后
+ * - 其它平台（如 Windows）：不支持，返回 undefined
+ *
+ * 读到的文本经 deriveProfileFromEnvText 归约；读取失败返回 undefined（不归属）。
  */
 async function getProcessProfile(pid: number): Promise<string | undefined> {
-  if (process.platform !== 'linux') return undefined
-
-  try {
-    const environ = await readFile(`/proc/${pid}/environ`, 'utf8')
-    const mobiHome = environ.split('\0')
-      .find(e => e.startsWith('MOBI_HOME='))
-      ?.slice('MOBI_HOME='.length)
-      ?.replace(/^~/, homedir())
-
-    if (!mobiHome || mobiHome === DEFAULT_MOBI_HOME) return 'default'
-
-    const match = mobiHome.match(/\.mobi-(.+)$/)
-    return match?.[1] ?? 'default'
-  } catch {
-    return undefined
-  }
+    try {
+        let text: string | undefined
+        if (process.platform === 'linux') {
+            text = await readFile(`/proc/${pid}/environ`, 'utf8')
+        } else if (process.platform === 'darwin') {
+            text = execSync(`ps -E -o command= -p ${pid}`, {
+                encoding: 'utf8',
+                timeout: 2_000,
+                stdio: ['ignore', 'pipe', 'ignore'],
+            })
+        } else {
+            return undefined
+        }
+        return text ? deriveProfileFromEnvText(text) : undefined
+    } catch {
+        return undefined
+    }
 }
 
 const RUNNABLE_TYPES = new Set([
@@ -85,7 +116,7 @@ const RUNNABLE_TYPES = new Set([
   'runner-version-check', 'dev-runner-version-check',
 ])
 
-export async function findAllMobiProcesses(): Promise<MobiProcess[]> {
+export async function findAllMobiProcesses(attributor: ProfileAttributor = getProcessProfile): Promise<MobiProcess[]> {
   try {
     const processes = await psList();
     const candidates: Array<{ proc: typeof processes[0]; cmd: string; name: string; type: string }> = [];
@@ -126,7 +157,7 @@ export async function findAllMobiProcesses(): Promise<MobiProcess[]> {
       candidates.push({ proc, cmd, name, type });
     }
 
-    const profiles = await Promise.all(candidates.map(c => getProcessProfile(c.proc.pid)))
+      const profiles = await Promise.all(candidates.map(c => attributor(c.proc.pid)))
 
     return candidates.map((c, i) => ({
       pid: c.proc.pid,
@@ -145,8 +176,8 @@ function matchesProfile(proc: MobiProcess, profile: string, runnerPids: Set<numb
   return false
 }
 
-export async function findRunawayMobiProcesses(profile?: string): Promise<Array<{ pid: number, command: string }>> {
-  const allProcesses = await findAllMobiProcesses();
+export async function findRunawayMobiProcesses(profile?: string, attributor: ProfileAttributor = getProcessProfile): Promise<Array<{ pid: number, command: string }>> {
+  const allProcesses = await findAllMobiProcesses(attributor);
 
   const runnerPids = new Set<number>()
   if (profile) {

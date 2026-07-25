@@ -18,6 +18,7 @@ import chalk from 'chalk'
 import { killRunawayMobiProcesses } from '@/runner/doctor'
 import { runDoctorCommand } from '@/ui/doctor'
 import { printExitReport } from '@/ui/exitLogReport'
+import { getActiveProfile } from '@mobi/shared/profile'
 import type { ProcessType } from '@mobi/shared/exitLogger'
 import type { CommandDefinition } from './types'
 
@@ -35,6 +36,7 @@ ${chalk.bold('Usage:')}
   mobi doctor runner          Diagnose runner issues
   mobi doctor clean           Clean up all runaway processes
   mobi doctor clean [profile] Clean up processes for a specific profile
+  mobi --profile X doctor clean   同上（--profile 是全局 flag，等价 positional）
   mobi doctor exits           Show recent process exit records
   mobi doctor exits --process hub|runner|cli
   mobi doctor exits --limit N
@@ -44,9 +46,11 @@ ${chalk.bold('Usage:')}
 
         if (commandArgs[0] === 'clean') {
             // mobi doctor clean [profile]
-            // mobi doctor clean        → 清理全部
-            // mobi doctor clean e2e    → 只清理 e2e profile
-            const profile = commandArgs[1]
+            // mobi doctor clean            → 清理全部（无 profile 上下文）
+            // mobi doctor clean e2e        → 只清理 e2e profile（positional）
+            // mobi doctor clean --profile dev → --profile 是全局 flag，被 loadProfile
+            //   消费后不会出现在 commandArgs；用 getActiveProfile() 兜底，避免误判为 "全部"
+            const profile = commandArgs[1] ?? getActiveProfile()
 
             if (profile) {
                 console.log(`Cleaning up runaway processes for profile: ${chalk.cyan(profile)}`)

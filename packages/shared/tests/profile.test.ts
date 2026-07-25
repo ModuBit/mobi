@@ -24,6 +24,8 @@ import {
     listProfiles,
     getProfilePath,
     parseEnvFile,
+    getActiveProfile,
+    _resetActiveProfileForTest,
 } from '../src/profile'
 
 // 测试用的临时 profile 目录
@@ -40,6 +42,8 @@ describe('profile', () => {
         // 清理测试用的环境变量
         delete process.env._TEST_VAR1
         delete process.env._TEST_VAR2
+        // 隔离活动 profile 全局状态
+        _resetActiveProfileForTest()
     })
 
     afterEach(() => {
@@ -48,6 +52,7 @@ describe('profile', () => {
         }
         delete process.env._TEST_VAR1
         delete process.env._TEST_VAR2
+        _resetActiveProfileForTest()
     })
 
     describe('parseEnvFile', () => {
@@ -196,6 +201,32 @@ describe('profile', () => {
             expect(() => loadProfile(args, TEST_PROFILES_DIR)).toThrow(
                 /nonexistent/
             )
+        })
+    })
+
+    describe('getActiveProfile', () => {
+        it('未加载 profile 时返回 undefined', () => {
+            expect(getActiveProfile()).toBeUndefined()
+        })
+
+        it('loadProfile 成功后记录活动 profile', () => {
+            writeFileSync(join(TEST_PROFILES_DIR, 'dev.env'), '_TEST_VAR1=v\n')
+            const args = ['--profile', 'dev', 'hub', 'start']
+            loadProfile(args, TEST_PROFILES_DIR)
+            expect(getActiveProfile()).toBe('dev')
+        })
+
+        it('loadProfile 未传 --profile 时保持 undefined', () => {
+            writeFileSync(join(TEST_PROFILES_DIR, 'dev.env'), '_TEST_VAR1=v\n')
+            const args = ['hub', 'start']
+            loadProfile(args, TEST_PROFILES_DIR)
+            expect(getActiveProfile()).toBeUndefined()
+        })
+
+        it('profile 文件不存在（抛错）时不设置活动 profile', () => {
+            const args = ['--profile', 'missing']
+            expect(() => loadProfile(args, TEST_PROFILES_DIR)).toThrow()
+            expect(getActiveProfile()).toBeUndefined()
         })
     })
 })
