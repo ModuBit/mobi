@@ -95,4 +95,20 @@ describe('drawerHistoryGuard', () => {
         firePopstate()
         expect(inner).toHaveBeenCalledTimes(1)
     })
+
+    it('嵌套时主动关闭底层（非栈顶）不误弹栈顶哨兵', () => {
+        const inner = vi.fn()
+        const outer = vi.fn()
+        const disposeInner = pushHistoryGuard(inner)
+        pushHistoryGuard(outer)
+        // closeStack=[inner, outer]，history 栈顶是 outer 的哨兵
+        // 程序化先关底层 inner（如父组件重置 expanded）：不应 back（否则误弹 outer 哨兵）
+        disposeInner()
+        expect(inner).not.toHaveBeenCalled()
+        expect(outer).not.toHaveBeenCalled()
+        // 栈顶 outer 仍在，手势返回应正常关它（未被误弹）
+        firePopstate()
+        expect(outer).toHaveBeenCalledTimes(1)
+        expect(inner).not.toHaveBeenCalled()
+    })
 })

@@ -28,6 +28,11 @@ import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 /** 下拉关闭阈值（px） */
 const SWIPE_THRESHOLD = 60
 
+/** 手势返回 / 下拉关闭无真实 DOM 事件，构造最小事件对象，
+ *  避免上层 onClose 实现读取 stopPropagation/preventDefault 时 TypeError */
+const createSyntheticCloseEvent = () =>
+    ({ stopPropagation() {}, preventDefault() {} }) as unknown as React.MouseEvent
+
 /** 手势关闭时禁用 antd 动画的 class */
 const SWIPE_CLOSING_CLASS = 'mobile-drawer-swipe-closing'
 
@@ -154,7 +159,7 @@ export function MobileDrawer({
     useEffect(() => {
         if (!open) return
         const dispose = pushHistoryGuard(() => {
-            onCloseRef.current?.({} as React.MouseEvent)
+            onCloseRef.current?.(createSyntheticCloseEvent())
         })
         return dispose
     }, [open])
@@ -200,8 +205,8 @@ export function MobileDrawer({
                     setSwipeClosing(true)
                     // 等 class 生效后再调 onClose
                     const raf = requestAnimationFrame(() => {
-                        // 手势关闭无真实事件，antd onClose 回调不读 e 字段，传空 MouseEvent 触发关闭
-                        onClose?.({} as React.MouseEvent)
+                        // 手势关闭无真实事件，用合成事件触发 onClose（避免上层读 e.stopPropagation 等）
+                        onClose?.(createSyntheticCloseEvent())
                         // 等 antd motion-leave 完成（~300ms）再清理状态。期间 swipeClosing CSS
                         // 用 !important 锁定 transform translateY(100%)，防止 motion-leave 重置回原位闪动
                         const t2 = window.setTimeout(() => {

@@ -49,19 +49,32 @@ let installed = false
 function ensureInstalled(): void {
     if (installed || typeof window === 'undefined') return
     installed = true
-    window.addEventListener('popstate', () => {
+    const w = window as unknown as { __mobiHistoryGuardHandler?: () => void }
+    // HMR 保护：开发态热更新会重新求值本模块（installed 重置为 false），但旧实例注册的
+    // popstate listener 仍挂在 window 上。先移除旧的，避免同一次 popstate 触发两次回调
+    // 导致 depth 与实际哨兵数错位。生产环境无此属性，正常注册。
+    if (w.__mobiHistoryGuardHandler) {
+        window.removeEventListener('popstate', w.__mobiHistoryGuardHandler)
+    }
+    const handler = () => {
         // 我们主动 back() 弹哨兵触发的 popstate：哨兵已从栈中移除并记账，不再处理
         if (suppressCount > 0) {
             suppressCount--
             return
         }
-        // 用户手势返回消费了栈顶哨兵 → 收起对应覆盖物（URL 不变，路由不动）
+        // 用户手势返回消费了栈顶哨兵 → 收起对应覆盖物（URL 不变，路由不动）。
+        // 前提：覆盖物打开期间不会发生路由层导航（mobi 中 drawer 遮罩盖全屏、InspectorPane 全屏，
+        // 均拦截路由点击），故 history 栈顶始终是我们的哨兵。若未来引入「覆盖物打开期间路由跳转」，
+        // 路由 entry 会压在哨兵之上，此处会把路由 back 误当作消费哨兵 —— 届时需改为按哨兵唯一 id
+        // 精确匹配 event.state。
         if (depth > 0) {
             depth--
             const close = closeStack.pop()
             close?.()
         }
-    })
+    }
+    w.__mobiHistoryGuardHandler = handler
+    window.addEventListener('popstate', handler)
 }
 
 /**
@@ -84,12 +97,16 @@ export function pushHistoryGuard(onBackPressed: () => void): () => void {
         const idx = closeStack.lastIndexOf(onBackPressed)
         // 已被 popstate 消费（栈里找不到）→ 无需再 back
         if (idx < 0) return
+        // 只有本覆盖物的哨兵在 closeStack 栈顶时，其 history 哨兵才在 history 栈顶可直接 back 弹掉。
+        // 若上方还有未关闭的覆盖物（idx 非最后一项），本哨兵被压在 history 下方，主动 back 会误弹
+        // 栈顶覆盖物的哨兵 —— 此时只从栈中移除，本哨兵作为孤儿 entry 留在 history，由后续 popstate 自然消费
+        const isTop = idx === closeStack.length - 1
         closeStack.splice(idx, 1)
         depth--
-
-        // 仅当哨兵仍是当前 history 栈顶（state 匹配）才主动 back 弹掉；
-        // 若上方压了路由 entry（覆盖物打开期间用户点了别的链接），不 back 以免跳过它
-        // （此时哨兵残留为同 URL entry，用户后续多按一次 back 而已，无功能损害）
+        if (!isTop) return
+        // 栈顶哨兵：再确认 history 当前 entry 确实是我们的哨兵（state 含标记），而非上方压了路由 entry。
+        // 若 Router 在哨兵为当前 entry 时 replaceState 覆盖了 state（scroll restoration 等），此处读到
+        // undefined → 不 back，哨兵残留（退化：用户多按一次返回，无功能损害）
         const st = window.history.state as { mobiHistoryGuard?: boolean } | null
         if (st && st.mobiHistoryGuard) {
             suppressCount++
