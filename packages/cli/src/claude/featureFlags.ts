@@ -53,7 +53,8 @@ export function buildClaudeFeatureEnv(opts?: ClaudeFeatureEnvOptions): Record<st
     }
 
     // 用户在 settings.json 显式配置的 env，优先级最高
-    if (rawClaudeEnv && typeof rawClaudeEnv === 'object') {
+    // 注意：数组也是 object，须显式排除（否则 Object.entries 拿到数值键注入子进程）
+    if (rawClaudeEnv && typeof rawClaudeEnv === 'object' && !Array.isArray(rawClaudeEnv)) {
         for (const [key, value] of Object.entries(rawClaudeEnv)) {
             if (typeof value === 'string') {
                 env[key] = value;

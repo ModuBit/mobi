@@ -69,44 +69,68 @@ async function readRunnerPid(mobiHome: string): Promise<number | undefined> {
  */
 export function deriveProfileFromEnvText(text: string): string {
     // [^\s\0] 同时挡 macOS 的空格分隔与 Linux /proc 的 \0 分隔，避免跨字段捕获
-    const match = text.match(/MOBI_HOME=([^\s\0]+)/)
-    if (!match) return 'default'
-    const mobiHome = match[1].replace(/^~/, homedir())
+    // 取最后一个匹配：macOS ps -E 的 env 追加在 argv 之后，若 argv 偶然含 MOBI_HOME=
+    // 字面量（如某 flag 的参数值），首个匹配会污染 profile，故取末尾的真实 env
+    const matches = text.match(/MOBI_HOME=([^\s\0]+)/g)
+    if (!matches) return 'default'
+    const mobiHome = matches[matches.length - 1].slice('MOBI_HOME='.length).replace(/^~/, homedir())
     if (mobiHome === DEFAULT_MOBI_HOME) return 'default'
     const m = mobiHome.match(/\.mobi-(.+)$/)
     return m?.[1] ?? 'default'
 }
 
-/** 进程 → profile 名的归属函数签名（可注入便于测试） */
-export type ProfileAttributor = (pid: number) => Promise<string | undefined>
+/** 进程 → profile 名的归属函数签名（批量，可注入便于测试）。
+ *  批量接口让默认实现可一次 ps 取回所有候选 pid，避免 per-pid 同步 execSync 阻塞事件循环。 */
+export type ProfileAttributor = (pids: number[]) => Promise<Map<number, string | undefined>>
 
 /**
- * 反推进程所属 profile。
+ * 批量反推多个进程所属 profile。
  *
- * - Linux：读 /proc/<pid>/environ（exec 时的 env 快照）
- * - macOS：`ps -E -o command= -p <pid>` 把环境变量追加在 command 后
- * - 其它平台（如 Windows）：不支持，返回 undefined
+ * - Linux：并行读 `/proc/<pid>/environ`（异步 readFile，本就不阻塞事件循环）
+ * - macOS：一次 `ps -E -o pid= -o command= -p <pid1,pid2,...>` 把环境变量随 command 取回
+ * - 其它平台（如 Windows）：不支持，返回空 Map
  *
- * 读到的文本经 deriveProfileFromEnvText 归约；读取失败返回 undefined（不归属）。
+ * 读到的文本经 deriveProfileFromEnvText 归约；单个 pid 读取失败不写入 Map（不归属）。
+ * 候选 pid 为空时直接返回，不调用 ps。
  */
-async function getProcessProfile(pid: number): Promise<string | undefined> {
-    try {
-        let text: string | undefined
-        if (process.platform === 'linux') {
-            text = await readFile(`/proc/${pid}/environ`, 'utf8')
-        } else if (process.platform === 'darwin') {
-            text = execSync(`ps -E -o command= -p ${pid}`, {
+async function getProcessProfiles(pids: number[]): Promise<Map<number, string | undefined>> {
+    const result = new Map<number, string | undefined>()
+    if (pids.length === 0) return result
+
+    if (process.platform === 'linux') {
+        await Promise.all(pids.map(async (pid) => {
+            try {
+                const text = await readFile(`/proc/${pid}/environ`, 'utf8')
+                result.set(pid, text ? deriveProfileFromEnvText(text) : undefined)
+            } catch {
+                // 进程已退出或无权限 → 不归属
+            }
+        }))
+        return result
+    }
+
+    if (process.platform === 'darwin') {
+        try {
+            // 一次 ps 取回所有候选 pid 的 command+env（-E 追加 env，pid=/command= 抑制列头）
+            const text = execSync(`ps -E -o pid= -o command= -p ${pids.join(',')}`, {
                 encoding: 'utf8',
                 timeout: 2_000,
                 stdio: ['ignore', 'pipe', 'ignore'],
             })
-        } else {
-            return undefined
+            for (const line of text.split('\n')) {
+                // pid 右对齐有前导空格；其余为 argv + env
+                const m = line.match(/^\s*(\d+)\s+(.*)$/)
+                if (!m) continue
+                const pid = Number(m[1])
+                result.set(pid, m[2] ? deriveProfileFromEnvText(m[2]) : undefined)
+            }
+        } catch {
+            // ps 失败（如 pid 全部已退出）→ 全部不归属
         }
-        return text ? deriveProfileFromEnvText(text) : undefined
-    } catch {
-        return undefined
+        return result
     }
+
+    return result
 }
 
 const RUNNABLE_TYPES = new Set([
@@ -116,7 +140,7 @@ const RUNNABLE_TYPES = new Set([
   'runner-version-check', 'dev-runner-version-check',
 ])
 
-export async function findAllMobiProcesses(attributor: ProfileAttributor = getProcessProfile): Promise<MobiProcess[]> {
+export async function findAllMobiProcesses(attributor: ProfileAttributor = getProcessProfiles): Promise<MobiProcess[]> {
   try {
     const processes = await psList();
     const candidates: Array<{ proc: typeof processes[0]; cmd: string; name: string; type: string }> = [];
@@ -157,13 +181,14 @@ export async function findAllMobiProcesses(attributor: ProfileAttributor = getPr
       candidates.push({ proc, cmd, name, type });
     }
 
-      const profiles = await Promise.all(candidates.map(c => attributor(c.proc.pid)))
+    // 一次性批量归属，避免 per-pid 同步 execSync 串行阻塞
+    const profiles = await attributor(candidates.map(c => c.proc.pid))
 
-    return candidates.map((c, i) => ({
+    return candidates.map((c) => ({
       pid: c.proc.pid,
       command: c.cmd || c.name,
       type: c.type,
-      profile: profiles[i],
+      profile: profiles.get(c.proc.pid),
     }));
   } catch (_error) {
     return [];
@@ -176,7 +201,7 @@ function matchesProfile(proc: MobiProcess, profile: string, runnerPids: Set<numb
   return false
 }
 
-export async function findRunawayMobiProcesses(profile?: string, attributor: ProfileAttributor = getProcessProfile): Promise<Array<{ pid: number, command: string }>> {
+export async function findRunawayMobiProcesses(profile?: string, attributor: ProfileAttributor = getProcessProfiles): Promise<Array<{ pid: number, command: string }>> {
   const allProcesses = await findAllMobiProcesses(attributor);
 
   const runnerPids = new Set<number>()

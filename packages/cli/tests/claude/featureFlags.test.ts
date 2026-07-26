@@ -54,6 +54,17 @@ describe('buildClaudeFeatureEnv', () => {
         expect(env).toEqual({})
     })
 
+    test('claudeEnv 为数组时防御为空（数组也是 object，须显式排除）', () => {
+        // settings.json 误写 "claudeEnv": ["a","b"] —— typeof==='object' 通过，
+        // 但 Object.entries 会得到 [['0','a'],['1','b']]，值是 string 不被过滤，
+        // 会注入名为 '0'/'1' 的环境变量。必须 Array.isArray 排除。
+        const env = buildClaudeFeatureEnv({
+            agentTeams: false,
+            claudeEnv: ['ANTHROPIC_LOG', 'debug'] as unknown as Record<string, string>,
+        })
+        expect(env).toEqual({})
+    })
+
     test('claudeEnv 值非 string 时跳过该键（保证返回类型 Record<string,string>）', () => {
         const env = buildClaudeFeatureEnv({
             agentTeams: false,

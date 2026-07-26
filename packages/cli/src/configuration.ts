@@ -107,7 +107,9 @@ class Configuration {
                     disconnectTimeoutMs: parsed.disconnectTimeoutMs,
                     idleTimeoutMs: parsed.idleTimeoutMs,
                     timeoutWarningMs: parsed.timeoutWarningMs,
-                    claudeEnv: typeof parsed.claudeEnv === 'object' && parsed.claudeEnv !== null
+                    claudeEnv: typeof parsed.claudeEnv === 'object'
+                            && parsed.claudeEnv !== null
+                            && !Array.isArray(parsed.claudeEnv)
                         ? parsed.claudeEnv as Record<string, string>
                         : undefined,
                 }

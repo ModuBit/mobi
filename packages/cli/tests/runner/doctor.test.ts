@@ -38,16 +38,20 @@ vi.mock('ps-list', () => ({
     default: async () => SYNTHETIC_PROCESSES,
 }))
 
-// attributor 桩：按 pid 给出 profile（模拟 macOS ps -E / Linux /proc 的归属结果）
-const stubAttributor = (pid: number): Promise<string | undefined> => {
-    const map: Record<number, string> = {
-        [PID_DEV_RUNNER]: 'dev',
-        [PID_DEV_HUB]: 'dev',
-        [PID_DEV_SESSION]: 'dev',
-        [PID_E2E_HUB]: 'e2e',
-        [PID_DEFAULT_RUNNER]: 'default',
+// attributor 桩：批量按 pid 给出 profile（模拟 macOS ps -E / Linux /proc 的归属结果）
+const PROFILE_BY_PID: Record<number, string> = {
+    [PID_DEV_RUNNER]: 'dev',
+    [PID_DEV_HUB]: 'dev',
+    [PID_DEV_SESSION]: 'dev',
+    [PID_E2E_HUB]: 'e2e',
+    [PID_DEFAULT_RUNNER]: 'default',
+}
+const stubAttributor = async (pids: number[]): Promise<Map<number, string | undefined>> => {
+    const result = new Map<number, string | undefined>()
+    for (const pid of pids) {
+        result.set(pid, PROFILE_BY_PID[pid])
     }
-    return Promise.resolve(map[pid])
+    return result
 }
 
 describe('deriveProfileFromEnvText', () => {
@@ -69,6 +73,13 @@ describe('deriveProfileFromEnvText', () => {
 
     it('非约定路径（无 .mobi-<name> 匹配）→ default', () => {
         expect(deriveProfileFromEnvText('mobi MOBI_HOME=/some/custom/path')).toBe('default')
+    })
+
+    it('macOS argv 含 MOBI_HOME= 字面量时，取 env 段（最后一个匹配）', () => {
+        // ps -E 输出 argv 在前、env 在后。若 argv 偶然含字面量（如作为某 flag 的参数值），
+        // 应取真实 env（最后的匹配），否则 profile 会被 argv 字面量污染。
+        const text = 'mobi run --label XMOBI_HOME=/bad MOBI_HOME=/Users/x/.mobi-e2e'
+        expect(deriveProfileFromEnvText(text)).toBe('e2e')
     })
 })
 
