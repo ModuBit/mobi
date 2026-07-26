@@ -58,7 +58,7 @@ class Configuration {
     public readonly isAgentTeamsEnabled: boolean
 
     // 配置文件中的设置
-    private settings: Pick<Settings, 'disconnectTimeoutMs' | 'idleTimeoutMs' | 'timeoutWarningMs'> = {}
+    private settings: Pick<Settings, 'disconnectTimeoutMs' | 'idleTimeoutMs' | 'timeoutWarningMs' | 'claudeEnv'> = {}
 
     constructor() {
         // Server configuration
@@ -107,6 +107,9 @@ class Configuration {
                     disconnectTimeoutMs: parsed.disconnectTimeoutMs,
                     idleTimeoutMs: parsed.idleTimeoutMs,
                     timeoutWarningMs: parsed.timeoutWarningMs,
+                    claudeEnv: typeof parsed.claudeEnv === 'object' && parsed.claudeEnv !== null
+                        ? parsed.claudeEnv as Record<string, string>
+                        : undefined,
                 }
             }
         } catch {
@@ -178,6 +181,15 @@ class Configuration {
             this.settings.timeoutWarningMs,
             300000 // 默认 5 分钟
         )
+    }
+
+    /**
+     * settings.json 的 claudeEnv：注入给 claude 子进程的额外环境变量。
+     * 由 buildClaudeFeatureEnv 合并，优先级高于 process.env 与内置开关。
+     * 未配置时返回空对象。值的精细过滤（非 string 跳过）交给 buildClaudeFeatureEnv。
+     */
+    get claudeEnv(): Record<string, string> {
+        return this.settings.claudeEnv ?? {}
     }
 }
 

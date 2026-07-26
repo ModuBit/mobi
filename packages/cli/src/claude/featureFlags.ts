@@ -20,17 +20,45 @@ import { configuration } from '@/configuration';
 export const CLAUDE_AGENT_TEAMS_ENV = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS';
 
 /**
+ * buildClaudeFeatureEnv 的输入。可选——不传时从 configuration 单例读取默认值，
+ * 调用点（claudeRemote / runClaude）无需改动；测试可显式传参做纯函数验证。
+ */
+export type ClaudeFeatureEnvOptions = {
+    /** 是否启用 agent teams 内置快捷开关 */
+    agentTeams?: boolean;
+    /** settings.json 的 claudeEnv（用户自定义注入变量） */
+    claudeEnv?: Record<string, string>;
+};
+
+/**
  * 把 mobi 侧的特性开关翻译成注入 claude 进程的环境变量。
  *
  * 这些变量由 claude 自己读取，mobi 只负责传递，因此集中在此处映射，
- * 避免变量名散落在各调用点。仅包含已开启的开关——未开启时不写入，
- * 保持 claude 的默认行为。
+ * 避免变量名散落在各调用点。
+ *
+ * 优先级（从低到高）：
+ *   1. 内置快捷开关（MOBI_AGENT_TEAMS → CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS）
+ *   2. settings.json 的 claudeEnv（用户显式配置，最具体，覆盖同名内置开关）
+ *
+ * claudeEnv 由用户在 settings.json 编辑，需防御非对象 / 非 string 值，避免污染返回类型。
  */
-export function buildClaudeFeatureEnv(): Record<string, string> {
+export function buildClaudeFeatureEnv(opts?: ClaudeFeatureEnvOptions): Record<string, string> {
+    const agentTeams = opts?.agentTeams ?? configuration.isAgentTeamsEnabled;
+    const rawClaudeEnv = opts?.claudeEnv ?? configuration.claudeEnv;
+
     const env: Record<string, string> = {};
 
-    if (configuration.isAgentTeamsEnabled) {
+    if (agentTeams) {
         env[CLAUDE_AGENT_TEAMS_ENV] = '1';
+    }
+
+    // 用户在 settings.json 显式配置的 env，优先级最高
+    if (rawClaudeEnv && typeof rawClaudeEnv === 'object') {
+        for (const [key, value] of Object.entries(rawClaudeEnv)) {
+            if (typeof value === 'string') {
+                env[key] = value;
+            }
+        }
     }
 
     return env;

@@ -48,6 +48,9 @@ export interface Settings {
   // Hub 配置（与 hub 共享 settings.json）
   listenHost?: string
   listenPort?: number
+  // 注入给 claude 子进程的额外环境变量（优先级高于 process.env 与内置开关）
+  // 由 buildClaudeFeatureEnv 合并进 sdkOptions.env，用户可在 settings.json 自由扩展
+  claudeEnv?: Record<string, string>
 }
 
 const defaultSettings: Settings = {}
