@@ -282,7 +282,7 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
             setExpanded(false)
         }
         prevIsError.current = isError
-    }, [isError])
+    }, [isError, tool.name])
 
     // 前台 Agent 完成时自动收起（后台 agent 不收起，保留 summary 展示）
     const prevAgentRunning = useRef(agentRunning)

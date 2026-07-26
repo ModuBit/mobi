@@ -164,21 +164,24 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         session.client.rpcHandlerManager.registerHandler('steer-queued-message', async (params) => {
             const { localId } = (params ?? {}) as { localId?: string }
             if (!localId) return { status: 'submitted' }
+
+            // 特殊命令（!bash / /clear / /compact）不 steal：steer 会把文本直接 push 进 SDK
+            // input stream 绕过 claudeRemote 正常泵的 handleSpecialCommand（!bash 会被 SDK 当
+            // 普通消息用自己的 Bash 工具执行，/clear /compact 也失效）。用 peek（不移除）探测，
+            // 命中则留队列走正常泵（executeBash/onClear/isCompact）——保留消息原始 isolate 标志
+            // 与位置，避免 steal 后 pushBack 丢 isolate（/clear 由 pushIsolateAndClear 入队）
+            // 并被 collectBatch 重排序合并进相邻同 mode 消息。
+            const peeked = session.queue.peekByLocalId(localId)
+            if (peeked && parseSpecialCommand(peeked.message).type) {
+                return { status: 'submitted' }
+            }
+
             const stolen = session.queue.stealByLocalId(localId)
             if (!stolen) return { status: 'submitted' }
 
             // push 失败的统一回填：消息已从队列移除，若 SDK input stream 未就绪或已关闭，
             // 必须放回队列，否则消息丢失（DB 行仍 submitted_at=null 但 agent 永远收不到）
             const pushBack = () => session.queue.push(stolen.message, stolen.mode, localId)
-
-            // 特殊命令（!bash / /clear / /compact）不走 steer：steer 把文本直接 push 进 SDK
-            // input stream，绕过 claudeRemote 正常泵里的 handleSpecialCommand，会导致 !bash 被
-            // SDK 当普通消息、用自己的 Bash 工具执行（而非 mobi 本地沙箱执行），/clear /compact
-            // 也会失效。放回队列，交由正常泵 nextMessage → handleSpecialCommand 处理。
-            if (parseSpecialCommand(stolen.message).type) {
-                pushBack()
-                return { status: 'submitted' }
-            }
 
             if (!this.steerSink) {
                 // query 未就绪：放回队列，保持排队态

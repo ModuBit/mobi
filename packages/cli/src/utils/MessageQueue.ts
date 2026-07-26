@@ -289,6 +289,17 @@ export class MessageQueue<T> {
     }
 
     /**
+     * 读取（不移除）指定 localId 的排队消息文本。用于 steal 前探测消息内容
+     * （如 steer 前判断是否为特殊命令），避免 steal 后再 pushBack 丢失 isolate
+     * 标志或被 collectBatch 重排序。不命中返回 null。
+     */
+    peekByLocalId(localId: string): { message: string } | null {
+        const item = this.queue.find(it => it.localId === localId);
+        if (!item) return null;
+        return { message: item.message };
+    }
+
+    /**
      * 取出并移除指定 localId 的排队消息，返回其内容与 mode。
      * 用于 steer：把仍排队的消息提前提交给 SDK input stream，避免 collectBatch 重复投递。
      * 不命中返回 null。

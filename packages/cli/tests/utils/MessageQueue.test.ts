@@ -510,6 +510,36 @@ describe('MessageQueue', () => {
         expect(queue.stealByLocalId('nope')).toBeNull();
     });
 
+    it('peekByLocalId 读取消息但不移除（steer 前探测用）', () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        queue.push('hello', { m: '1' }, 'loc-1');
+        expect(queue.peekByLocalId('loc-1')?.message).toBe('hello');
+        // 未移除：仍可 steal
+        expect(queue.stealByLocalId('loc-1')?.message).toBe('hello');
+        expect(queue.size()).toBe(0);
+    });
+
+    it('peekByLocalId 未命中返回 null', () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        expect(queue.peekByLocalId('nope')).toBeNull();
+    });
+
+    it('特殊命令 isolate 入队后 peek 不破坏 isolate（防 steer 回归）', async () => {
+        // 回归场景：/clear 经 pushIsolateAndClear 入队（isolate=true，必须单独投递）。
+        // steer 前用 peek 探测特殊命令后应保留原队列项不动，collectBatch 仍按 isolate
+        // 单独投递，不与后续同 mode 消息合并——否则 "msgB\n/clear" 会被当普通文本发 Claude。
+        const queue = new MessageQueue<string>(m => m);
+        queue.pushIsolateAndClear('/clear', 'local', 'loc-clear');
+        queue.push('msgB', 'local', 'loc-b');
+        // peek 不移除，队列原样
+        expect(queue.peekByLocalId('loc-clear')?.message).toBe('/clear');
+        expect(queue.size()).toBe(2);
+        // isolate 首条 → 单独投递，msgB 不并入
+        const result = await queue.waitForMessagesAndGetAsString();
+        expect(result?.message).toBe('/clear');
+        expect(result?.isolate).toBe(true);
+    });
+
     it('pushAndClear 清空排队项时触发 onBatchConsumed（防悬浮条卡死）', () => {
         const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
         const consumed: string[][] = [];
