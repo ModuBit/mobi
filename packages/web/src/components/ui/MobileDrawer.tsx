@@ -23,6 +23,7 @@ import { useRef, useCallback, useState, useLayoutEffect, useEffect } from 'react
 import { Drawer, type DrawerProps } from 'antd'
 import { Global, css } from '@emotion/react'
 import styled from '@emotion/styled'
+import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 
 /** 下拉关闭阈值（px） */
 const SWIPE_THRESHOLD = 60
@@ -142,6 +143,21 @@ export function MobileDrawer({
             setSwipeClosing(false)
         }
     }, [open, clearTimers])
+
+    // onClose 用 ref 持有，避免父组件内联箭头每次渲染产生新引用导致 effect 重跑（重复 push 哨兵）
+    const onCloseRef = useRef(onClose)
+    onCloseRef.current = onClose
+
+    // 移动端全屏手势返回（iOS 边缘滑动 / Android 返回键 / 浏览器 back）应关闭 drawer，
+    // 而非穿透到路由层退出 session detail。open 时推一个同 URL history 哨兵：
+    // 手势返回消费哨兵 → 触发 onClose；用户主动关闭（遮罩/下拉/按钮）时 dispose 弹掉哨兵。
+    useEffect(() => {
+        if (!open) return
+        const dispose = pushHistoryGuard(() => {
+            onCloseRef.current?.({} as React.MouseEvent)
+        })
+        return dispose
+    }, [open])
 
     useLayoutEffect(() => {
         if (!isClosing) return

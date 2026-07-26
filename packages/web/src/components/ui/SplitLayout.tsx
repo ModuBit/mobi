@@ -33,6 +33,7 @@ import styled from '@emotion/styled'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { computeSplitRatio, shouldCollapseOnDrag, DEFAULT_LEFT_MIN_RATIO } from './splitLayoutUtils'
 import { CLIP_DURATION, CLIP_EASING } from './clipConstants'
+import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 
 export interface SplitLayoutProps {
     /** 左侧（主）面板内容 */
@@ -227,6 +228,18 @@ export function SplitLayout({
             dragRef.current = null
         }
     }, [])
+
+    // onExpandedChange 用 ref 持有，避免父组件内联箭头每次渲染产生新引用导致 effect 重跑
+    const onExpandedChangeRef = useRef(onExpandedChange)
+    onExpandedChangeRef.current = onExpandedChange
+
+    // 移动端：右侧面板（InspectorPane）展开时占满全屏，此时全屏手势返回应「收起面板」
+    // 而非穿透退路由退出 session detail。expanded 时推 history 哨兵，手势返回消费哨兵 → 收起。
+    useEffect(() => {
+        if (!isMobile || !expanded) return
+        const dispose = pushHistoryGuard(() => onExpandedChangeRef.current?.(false))
+        return dispose
+    }, [isMobile, expanded])
 
     if (isMobile) {
         // 移动端不支持最大化，仅展开/收起切换
