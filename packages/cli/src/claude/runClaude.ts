@@ -26,6 +26,7 @@ import { getEnvironmentInfo } from '@/ui/doctor';
 import { startMobiMcpServer } from '@/claude/utils/startMobiMcpServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
+import { buildClaudeFeatureEnv } from './featureFlags';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '@/agent/sessionFactory';
@@ -131,7 +132,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
     const hookSettingsPath = generateHookSettingsFile(hookServer.port, hookServer.token, {
         filenamePrefix: 'session-hook',
-        logLabel: 'generateHookSettings'
+        logLabel: 'generateHookSettings',
+        env: buildClaudeFeatureEnv()
     });
     logger.debug(`[START] Generated hook settings file: ${hookSettingsPath}`);
 

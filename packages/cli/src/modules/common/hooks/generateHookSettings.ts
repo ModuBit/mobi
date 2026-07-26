@@ -32,6 +32,11 @@ type HookSettings = {
     hooksConfig?: {
         enabled?: boolean;
     };
+    /**
+     * 注入给 claude 进程的环境变量。settings.json 的标准字段，
+     * 相比污染 mobi 自身的 process.env 更内聚——变量只作用于本次会话拉起的 claude。
+     */
+    env?: Record<string, string>;
     hooks: {
         SessionStart: HookCommandConfig[];
     };
@@ -41,6 +46,8 @@ export type HookSettingsOptions = {
     filenamePrefix: string;
     logLabel: string;
     hooksEnabled?: boolean;
+    /** 透传进 settings.env，供 claude 侧特性开关使用 */
+    env?: Record<string, string>;
 };
 
 function shellQuote(value: string): string {
@@ -59,7 +66,11 @@ function shellJoin(parts: string[]): string {
     return parts.map(shellQuote).join(' ');
 }
 
-function buildHookSettings(command: string, hooksEnabled?: boolean): HookSettings {
+function buildHookSettings(
+    command: string,
+    hooksEnabled?: boolean,
+    env?: Record<string, string>
+): HookSettings {
     const hooks: HookSettings['hooks'] = {
         SessionStart: [
             {
@@ -79,6 +90,9 @@ function buildHookSettings(command: string, hooksEnabled?: boolean): HookSetting
         settings.hooksConfig = {
             enabled: hooksEnabled
         };
+    }
+    if (env && Object.keys(env).length > 0) {
+        settings.env = env;
     }
 
     return settings;
@@ -104,7 +118,7 @@ export function generateHookSettingsFile(
     ]);
     const hookCommand = shellJoin([command, ...args]);
 
-    const settings = buildHookSettings(hookCommand, options.hooksEnabled);
+    const settings = buildHookSettings(hookCommand, options.hooksEnabled, options.env);
 
     writeFileSync(filepath, JSON.stringify(settings, null, 4));
     logger.debug(`[${options.logLabel}] Created hook settings file: ${filepath}`);

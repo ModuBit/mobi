@@ -45,6 +45,7 @@ import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
+import { buildClaudeFeatureEnv } from './featureFlags'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 
 /**
@@ -633,6 +634,9 @@ export async function claudeRemote(opts: {
         },
         pathToClaudeCodeExecutable: claudeExecutable,
         settings: opts.hookSettingsPath,
+        // env 会整体替换子进程环境（不与 process.env 合并），故必须自行展开，
+        // 否则 PATH / HOME / ANTHROPIC_API_KEY 等继承变量会丢失
+        env: { ...process.env, ...buildClaudeFeatureEnv() } as Record<string, string>,
         additionalDirectories: [join(opts.path, '.mobi')],
         toolConfig: {
             askUserQuestion: { previewFormat: 'markdown' }

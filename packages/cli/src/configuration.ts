@@ -45,6 +45,18 @@ class Configuration {
 
     public readonly isExperimentalEnabled: boolean
 
+    /**
+     * 是否启用 Claude Code agent teams（多 teammate 协作）。
+     *
+     * 该特性在 Claude Code 侧默认关闭：不设开关时 session 启动不建团、
+     * 不写团队目录，Claude 也不会派发或提议 teammate（此时 Agent 工具
+     * 产出的都是普通 subagent，走 backgroundTasks 链路）。
+     * 官方标注其在 session resume / 任务协调 / 优雅关停上仍有已知限制，
+     * 且每个 teammate 独占 context window、token 开销显著更高，
+     * 故 mobi 侧同样默认关闭，由 MOBI_AGENT_TEAMS 显式开启。
+     */
+    public readonly isAgentTeamsEnabled: boolean
+
     // 配置文件中的设置
     private settings: Pick<Settings, 'disconnectTimeoutMs' | 'idleTimeoutMs' | 'timeoutWarningMs'> = {}
 
@@ -74,6 +86,7 @@ class Configuration {
         this.hubStateFile = join(this.mobiHomeDir, 'hub.state.json')
 
         this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.MOBI_EXPERIMENTAL?.toLowerCase() || '')
+        this.isAgentTeamsEnabled = ['true', '1', 'yes'].includes(process.env.MOBI_AGENT_TEAMS?.toLowerCase() || '')
 
         this.currentCliVersion = packageJson.version
 
