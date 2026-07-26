@@ -32,11 +32,14 @@ import { extractTeamStateFromMessageContent, applyTeamStateDelta, handleTeamSess
  *
  * @param messages 消息列表
  * @param existingRuntimeState 现有的 runtimeState（用于增量合并）
+ * @param sessionId mobi sessionId，用于推导隐式团队名（session-XXXXXXXX），
+ *   与 live 路径保持一致；省略时团队名回退为空串
  * @returns 回填后的 runtimeState，如果没有数据则返回 null
  */
 export function backfillRuntimeStateFromMessages(
     messages: Array<{ content: unknown }>,
-    existingRuntimeState?: RuntimeState
+    existingRuntimeState?: RuntimeState,
+    sessionId?: string
 ): RuntimeState | null {
     const runtimeState: RuntimeState = {}
 
@@ -63,7 +66,7 @@ export function backfillRuntimeStateFromMessages(
         const teamDelta = extractTeamStateFromMessageContent(message.content)
         if (teamDelta) {
             const beforeTeamName = teamState ? (teamState as { teamName: string }).teamName : null
-            teamState = applyTeamStateDelta(teamState, teamDelta)
+            teamState = applyTeamStateDelta(teamState, teamDelta, sessionId)
             // TeamDelete 时，完成该 team 创建的 tasks
             if (teamDelta._action === 'delete' && beforeTeamName && tasks) {
                 tasks = tasks.map(t =>
