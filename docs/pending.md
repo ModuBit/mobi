@@ -872,3 +872,27 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 - `node_modules/.bun/@anthropic-ai+claude-agent-sdk@0.3.218.../sdk.d.ts:2892` — `SDKBackgroundTasksChangedMessage`
 
 **优先级**：低。加固项，无可观察症状。
+
+## 34. `Auto` 模型下 claude 子进程静默挂死（无产出、无超时、无提示）
+
+**现象**（2026-07-26，dev 环境实测）：Web 侧选模型 `Auto` 时发送 `/code-review high 全面审查 ...`，会话永远停在 `thinking…`：
+
+| | `Auto` | `Sonnet` |
+|---|---|---|
+| claude 启动参数 | 无 `--model` | `--model sonnet` |
+| claude transcript | 391 字节，7 分钟只有 `enqueue`/`dequeue` 两条 | 正常产出 |
+| `task_started` | 0 | 7（约 85s 出第一条） |
+| Web 渲染 | 永远 `thinking…` | 「后台任务 7」正常 |
+
+**根因（非 mobi 缺陷）**：卡死时 claude 子进程（PID 48018）已建立到 `ANTHROPIC_BASE_URL=http://127.0.0.1:15721`（cc-switch 代理）的连接，代理到上游的连接也是 ESTABLISHED，但上游始终不返回 token。`~/.claude/settings.json` 中 `API_TIMEOUT_MS=3000000`（50 分钟），故不报错、只持续等待。mobi 的事件管道正常（`f217364` 已验证），是上游无响应。
+
+**待改进（mobi 侧可做的）**：用户完全无法区分"模型在深度思考"与"上游挂死"。可考虑：
+
+1. **首 token 超时提示**：会话进入 running 后若 N 秒（如 90s）内未收到任何 assistant/system 输出，Web 给出可感知提示（"仍在等待模型首次响应"），而非只显示动画文案。注意 `/code-review high` 正常也需约 85s 才出第一个 `task_started`，阈值不能太激进。
+2. **透出 claude 侧静默状态**：CLI 已能观测子进程有无产出，可作为 runtime signal 上报。
+
+**优先级**：低。环境配置问题引发，但排查成本极高（表象与"skill 不派 finder"完全一致，本次耗费大量时间才定位）。
+
+**涉及文件**：
+- `packages/cli/src/claude/claudeRemote.ts` — SDK 消息流消费
+- `packages/web/src/**` — running 状态文案与提示
