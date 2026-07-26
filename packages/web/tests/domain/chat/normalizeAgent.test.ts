@@ -502,6 +502,82 @@ describe('normalizeAgentRecord', () => {
             expect((result.content as any).summary).toBeUndefined()
         }
     })
+
+    it('tool_progress 产出 tool-progress 事件（toolUseId 取自 parent_tool_use_id）', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'tool_progress',
+                    parent_tool_use_id: 'call_abc',
+                    tool_use_id: 'call_abc-heartbeat-0',
+                    tool_name: 'Bash',
+                    elapsed_time_seconds: 30,
+                    heartbeat: true,
+                },
+            }
+        )
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('tool-progress')
+            expect((result.content as any).toolUseId).toBe('call_abc')
+            expect((result.content as any).elapsedSeconds).toBe(30)
+            expect((result.content as any).toolName).toBe('Bash')
+        }
+    })
+
+    it('tool_progress sidechain 跳过（主线程不挂，留待 Phase 2 子视图）', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'tool_progress',
+                    parent_tool_use_id: 'call_abc',
+                    elapsed_time_seconds: 30,
+                    isSidechain: true,
+                },
+            }
+        )
+        expect(result).toBeNull()
+    })
+
+    it('tool_progress 缺 parent_tool_use_id 跳过', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            { type: 'output', data: { type: 'tool_progress', elapsed_time_seconds: 30 } }
+        )
+        expect(result).toBeNull()
+    })
+
+    it('tool_use_summary 产出 tool-use-summary 事件', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'tool_use_summary',
+                    summary: 'Ran tests and fixed 2 failures',
+                    preceding_tool_use_ids: ['call_a', 'call_b'],
+                },
+            }
+        )
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('tool-use-summary')
+            expect((result.content as any).summary).toBe('Ran tests and fixed 2 failures')
+            expect((result.content as any).toolUseIds).toEqual(['call_a', 'call_b'])
+        }
+    })
+
+    it('tool_use_summary 空 preceding_tool_use_ids 跳过', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            { type: 'output', data: { type: 'tool_use_summary', summary: 'x', preceding_tool_use_ids: [] } }
+        )
+        expect(result).toBeNull()
+    })
 })
 
 describe('isSkippableAgentContent', () => {
@@ -527,5 +603,23 @@ describe('isSkippableAgentContent', () => {
             type: 'output',
             data: { type: 'user', isCompactSummary: true },
         })).toBe(true)
+    })
+
+    it('tool_progress 已接入 handler，isSkippable 返回 false', () => {
+        expect(isSkippableAgentContent({
+            type: 'output',
+            data: { type: 'tool_progress', heartbeat: true, tool_name: 'Bash' },
+        })).toBe(false)
+        expect(isSkippableAgentContent({
+            type: 'output',
+            data: { type: 'tool_progress' },
+        })).toBe(false)
+    })
+
+    it('tool_use_summary 已接入 handler，isSkippable 返回 false', () => {
+        expect(isSkippableAgentContent({
+            type: 'output',
+            data: { type: 'tool_use_summary' },
+        })).toBe(false)
     })
 })

@@ -46,6 +46,10 @@ export type AgentEvent =
     | { type: 'aborted'; numTurns: number | null; durationMs?: number; tokens?: number }
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string }
     | { type: 'agent-progress'; toolUseId: string; metrics: AgentMetrics; summary?: string }
+    // tool_progress 心跳：长任务（Bash 等）每 30s 推送，校准对应工具卡片的运行耗时
+    | { type: 'tool-progress'; toolUseId: string; elapsedSeconds: number; toolName: string }
+    // tool_use_summary：SDK 对一组工具执行结果的人话摘要，挂到对应工具卡片
+    | { type: 'tool-use-summary'; summary: string; toolUseIds: string[] }
     // 后台任务事件
     | { type: 'bg-task-started'; taskId: string; toolUseId: string | null; toolName: 'Bash' | 'Agent' | 'Monitor'; description: string; subagentType?: string }
     | { type: 'bg-task-progress'; taskId: string; metrics: AgentMetrics; summary?: string }
@@ -174,6 +178,8 @@ export type ChatToolCall = {
     permission?: ToolPermission
     agentMetrics?: AgentMetrics
     agentSummary?: string
+    /** SDK tool_use_summary 挂载的工具组摘要（区别于 subagent 专用的 agentSummary） */
+    summary?: string
 }
 
 export type UserTextBlock = {

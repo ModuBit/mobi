@@ -454,6 +454,40 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
 }
 
 // ============================================================================
+// 工具进度 / 摘要消息处理器
+// ============================================================================
+
+/**
+ * 处理 tool_progress 消息（长任务心跳）。
+ * SDK 在工具执行期间每 ~30s 推送一条，携带已运行时长。用 parent_tool_use_id 关联到对应工具卡片
+ * （其自带 tool_use_id 是 call_xxx-heartbeat-N 变体，不可直接用）。reducer 据此校准 startedAt。
+ * sidechain 的 tool_progress 主线程无对应 block，跳过（Phase 2 在子视图 reduce 内复用）。
+ */
+const handleToolProgressOutput: OutputHandler = (data, ctx) => {
+    if (data.isSidechain === true) return null
+    const toolUseId = asString(getField(data, 'parent_tool_use_id'))
+    if (!toolUseId) return null
+    const elapsedSeconds = asNumber(data.elapsed_time_seconds) ?? 0
+    const toolName = asString(data.tool_name) ?? 'Tool'
+    return createEventMessage(ctx, { type: 'tool-progress', toolUseId, elapsedSeconds, toolName })
+}
+
+/**
+ * 处理 tool_use_summary 消息。
+ * SDK 对一组工具的执行结果生成人话摘要，preceding_tool_use_ids 指向被总结的工具。
+ * reducer 将 summary 挂到 preceding 列表最后一个工具卡片（视线落点）。
+ */
+const handleToolUseSummaryOutput: OutputHandler = (data, ctx) => {
+    if (data.isSidechain === true) return null
+    const summary = asString(data.summary)
+    if (!summary) return null
+    const rawIds = Array.isArray(data.preceding_tool_use_ids) ? data.preceding_tool_use_ids : []
+    const toolUseIds = rawIds.filter((id): id is string => typeof id === 'string')
+    if (toolUseIds.length === 0) return null
+    return createEventMessage(ctx, { type: 'tool-use-summary', summary, toolUseIds })
+}
+
+// ============================================================================
 // 处理器注册表
 // ============================================================================
 
@@ -471,6 +505,8 @@ const outputHandlers = new Map<string, OutputHandler>([
     ['system:task_notification', handleTaskNotificationOutput],
     ['system:task_started', handleBgTaskStartedOutput],
     ['system:task_updated', handleBgTaskUpdatedOutput],
+    ['tool_progress', handleToolProgressOutput],
+    ['tool_use_summary', handleToolUseSummaryOutput],
     ['result', handleResultOutput],
 ])
 

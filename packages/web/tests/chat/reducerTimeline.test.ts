@@ -262,6 +262,110 @@ describe('reduceTimeline', () => {
         })
     })
 
+    describe('tool-progress 心跳校准 startedAt', () => {
+        it('心跳到达时校准对应 running 工具的 startedAt = createdAt - elapsed*1000', () => {
+            // tool_use 在 createdAt=1000 落地（running 态，startedAt=1000）
+            const toolCall = createToolCallMessage('tool-run', 'Bash', { command: 'bun test' }, { createdAt: 1000 })
+            // 心跳在 createdAt=31000，elapsed=30 → startedAt 校准为 31000-30000=1000
+            const progress: TracedMessage = {
+                id: 'evt-progress',
+                localId: null,
+                createdAt: 31000,
+                role: 'event',
+                isSidechain: false,
+                content: {
+                    type: 'tool-progress',
+                    toolUseId: 'tool-run',
+                    elapsedSeconds: 30,
+                    toolName: 'Bash',
+                },
+            }
+            const result = reduceTimeline([toolCall, progress], {
+                permissionsById: new Map(),
+                groups: new Map(),
+                consumedGroupIds: new Set(),
+                titleChangesByToolUseId: new Map(),
+                emittedTitleChangeToolUseIds: new Set(),
+                hiddenToolUseIds: new Map(),
+            })
+            const block = result.toolBlocksById.get('tool-run')
+            expect(block?.tool.state).toBe('running')
+            expect(block?.tool.startedAt).toBe(1000)
+        })
+
+        it('心跳未命中 block（tool_use 尚未到达）无副作用', () => {
+            const progress: TracedMessage = {
+                id: 'evt-progress',
+                localId: null,
+                createdAt: 5000,
+                role: 'event',
+                isSidechain: false,
+                content: {
+                    type: 'tool-progress',
+                    toolUseId: 'not-exist',
+                    elapsedSeconds: 5,
+                    toolName: 'Bash',
+                },
+            }
+            const result = reduceTimeline([progress], {
+                permissionsById: new Map(),
+                groups: new Map(),
+                consumedGroupIds: new Set(),
+                titleChangesByToolUseId: new Map(),
+                emittedTitleChangeToolUseIds: new Set(),
+                hiddenToolUseIds: new Map(),
+            })
+            expect(result.blocks.find(b => b.kind === 'tool-call')).toBeUndefined()
+        })
+    })
+
+    describe('tool-use-summary 挂载', () => {
+        it('挂到 preceding_tool_use_ids 最后一个 block 的 summary', () => {
+            const toolCallA = createToolCallMessage('tool-a', 'Read', { file_path: 'a.ts' }, { createdAt: 1000 })
+            const toolCallB = createToolCallMessage('tool-b', 'Bash', { command: 'bun test' }, { createdAt: 2000 })
+            const summary: TracedMessage = {
+                id: 'evt-summary',
+                localId: null,
+                createdAt: 3000,
+                role: 'event',
+                isSidechain: false,
+                content: {
+                    type: 'tool-use-summary',
+                    summary: 'Ran tests and fixed 2 failures',
+                    toolUseIds: ['tool-a', 'tool-b'],
+                },
+            }
+            const result = reduceTimeline([toolCallA, toolCallB, summary], {
+                permissionsById: new Map(),
+                groups: new Map(),
+                consumedGroupIds: new Set(),
+                titleChangesByToolUseId: new Map(),
+                emittedTitleChangeToolUseIds: new Set(),
+                hiddenToolUseIds: new Map(),
+            })
+            expect(result.toolBlocksById.get('tool-b')?.tool.summary).toBe('Ran tests and fixed 2 failures')
+            expect(result.toolBlocksById.get('tool-a')?.tool.summary).toBeUndefined()
+        })
+
+        it('多次到达 summary 后覆盖前', () => {
+            const toolCall = createToolCallMessage('tool-x', 'Bash', { command: 'bun test' }, { createdAt: 1000 })
+            const ctx = {
+                permissionsById: new Map(), groups: new Map(), consumedGroupIds: new Set(),
+                titleChangesByToolUseId: new Map(), emittedTitleChangeToolUseIds: new Set(), hiddenToolUseIds: new Map(),
+            }
+            const summary1: TracedMessage = {
+                id: 'evt-s1', localId: null, createdAt: 2000, role: 'event', isSidechain: false,
+                content: { type: 'tool-use-summary', summary: 'first', toolUseIds: ['tool-x'] },
+            }
+            const summary2: TracedMessage = {
+                id: 'evt-s2', localId: null, createdAt: 3000, role: 'event', isSidechain: false,
+                content: { type: 'tool-use-summary', summary: 'second', toolUseIds: ['tool-x'] },
+            }
+            const result = reduceTimeline([toolCall, summary1, summary2], ctx)
+            expect(result.toolBlocksById.get('tool-x')?.tool.summary).toBe('second')
+        })
+    })
+
     describe('错误处理', () => {
         it('应正确标记错误的 tool-result', () => {
             const messages: TracedMessage[] = [

@@ -231,6 +231,16 @@ function ToolCallPreviewContent({
 
     return (
         <div style={{ marginTop: 4, paddingLeft: 12, paddingRight: 12 }}>
+            {/* tool_use_summary：SDK 对工具组的人话摘要，挂在 result preview 上方 */}
+            {tool.summary && (
+                <div style={{
+                    fontSize: 13, lineHeight: 1.5,
+                    color: token.colorTextSecondary,
+                    marginBottom: 4,
+                }}>
+                    {tool.summary}
+                </div>
+            )}
             <OverflowContainer maxHeight={maxHeight} onClickExpand={onViewDetail}>
                 <ViewComponent block={adaptedBlock} metadata={metadata} />
             </OverflowContainer>

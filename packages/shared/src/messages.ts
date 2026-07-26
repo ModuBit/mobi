@@ -35,6 +35,12 @@ const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'task_updated',
 ])
 
+// 不可见的顶层消息类型（ephemeral：非对话内容，web normalize 无对应 handler）。
+// tool_progress / tool_use_summary 已接入 normalize handler（分别产出 tool-progress /
+// tool-use-summary 事件，挂到对应工具卡片），故从黑名单移除，视为可见。
+// 保留常量作为「单点回滚开关」：未来若需关闭通道，把这两项加回即可让下游 handler 全失效。
+const INVISIBLE_CLAUDE_TOP_LEVEL_TYPES = new Set<string>([])
+
 export function isRoleWrappedRecord(value: unknown): value is RoleWrappedRecord {
     if (!isObject(value)) return false
     return typeof value.role === 'string' && 'content' in value
@@ -67,6 +73,9 @@ export function isClaudeChatVisibleSystemSubtype(subtype: unknown): subtype is s
  * 判断消息是否在 Claude 聊天中可见
  */
 export function isClaudeChatVisibleMessage(message: { type: unknown; subtype?: unknown }): boolean {
+    if (typeof message.type === 'string' && INVISIBLE_CLAUDE_TOP_LEVEL_TYPES.has(message.type)) {
+        return false
+    }
     if (message.type !== 'system') {
         return true
     }

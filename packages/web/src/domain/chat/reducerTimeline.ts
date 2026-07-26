@@ -109,6 +109,39 @@ export function reduceTimeline(
                 }
                 continue
             }
+            // tool-progress 心跳：校准对应工具卡片的运行耗时
+            // startedAt = 心跳时间 - 已运行时长（纯函数，用消息自身 timestamp；不依赖 Date.now）
+            if (msg.content.type === 'tool-progress') {
+                const { toolUseId, elapsedSeconds } = msg.content as Extract<AgentEvent, { type: 'tool-progress' }>
+                const existingBlock = toolBlocksById.get(toolUseId)
+                if (existingBlock && existingBlock.tool.state === 'running') {
+                    const updatedBlock = {
+                        ...existingBlock,
+                        tool: {
+                            ...existingBlock.tool,
+                            startedAt: Math.max(0, msg.createdAt - elapsedSeconds * 1000),
+                        }
+                    }
+                    replaceBlockById(blocks, blockIndexById, toolUseId, updatedBlock)
+                    toolBlocksById.set(toolUseId, updatedBlock)
+                }
+                continue
+            }
+            // tool-use-summary：挂到 preceding 列表最后一个工具卡片的 summary（视线落点）
+            if (msg.content.type === 'tool-use-summary') {
+                const { summary, toolUseIds } = msg.content as Extract<AgentEvent, { type: 'tool-use-summary' }>
+                const lastId = toolUseIds[toolUseIds.length - 1]
+                const existingBlock = lastId ? toolBlocksById.get(lastId) : undefined
+                if (existingBlock) {
+                    const updatedBlock = {
+                        ...existingBlock,
+                        tool: { ...existingBlock.tool, summary }
+                    }
+                    replaceBlockById(blocks, blockIndexById, lastId, updatedBlock)
+                    toolBlocksById.set(lastId, updatedBlock)
+                }
+                continue
+            }
             // 检测 compact 事件，记录 metadata 用于下一条 user 消息
             if (msg.content.type === 'compact') {
                 // AgentEvent 是联合类型，需要提取 compact 特有字段

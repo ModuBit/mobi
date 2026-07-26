@@ -203,6 +203,85 @@ describe('normalizeDecryptedMessage', () => {
         expect(result).toBeNull()
     })
 
+    it('主线程 tool_progress 心跳产出 tool-progress 事件（不再走 JSON dump 兜底）', () => {
+        // 曾因无 handler 落入 JSON dump 被整段渲染成文本；接入 handler 后产出 tool-progress 事件，
+        // 由 reducer 校准对应工具卡片 startedAt
+        const message: DecryptedMessage = {
+            id: 'msg-tool-progress',
+            seq: 60,
+            localId: null,
+            createdAt: 60000,
+            content: {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'tool_progress',
+                        heartbeat: true,
+                        tool_name: 'Bash',
+                        parent_tool_use_id: 'call_86796e05',
+                        tool_use_id: 'call_86796e05-heartbeat-0',
+                        elapsed_time_seconds: 30,
+                    },
+                },
+            },
+        }
+
+        const result = normalizeDecryptedMessage(message)
+        expect(result).not.toBeNull()
+        expect(result!.role).toBe('event')
+        expect((result!.content as { type: string }).type).toBe('tool-progress')
+    })
+
+    it('sidechain tool_progress 跳过（主线程不挂，返回 null）', () => {
+        const message: DecryptedMessage = {
+            id: 'msg-tool-progress-sc',
+            seq: 61,
+            localId: null,
+            createdAt: 61000,
+            content: {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'tool_progress',
+                        parent_tool_use_id: 'call_sc',
+                        elapsed_time_seconds: 30,
+                        isSidechain: true,
+                    },
+                },
+            },
+        }
+
+        const result = normalizeDecryptedMessage(message)
+        expect(result).toBeNull()
+    })
+
+    it('tool_use_summary 产出 tool-use-summary 事件', () => {
+        const message: DecryptedMessage = {
+            id: 'msg-tool-use-summary',
+            seq: 62,
+            localId: null,
+            createdAt: 62000,
+            content: {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'tool_use_summary',
+                        summary: 'Ran tests and fixed 2 failures',
+                        preceding_tool_use_ids: ['call_a', 'call_b'],
+                    },
+                },
+            },
+        }
+
+        const result = normalizeDecryptedMessage(message)
+        expect(result).not.toBeNull()
+        expect(result!.role).toBe('event')
+        expect((result!.content as { type: string }).type).toBe('tool-use-summary')
+    })
+
     it('应处理无法解包的消息（兜底为 JSON dump）', () => {
         const message: DecryptedMessage = {
             id: 'msg-raw',

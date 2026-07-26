@@ -123,10 +123,17 @@ describe('isClaudeChatVisibleSystemSubtype', () => {
 })
 
 describe('isClaudeChatVisibleMessage', () => {
-    it('非 system 类型始终返回 true', () => {
+    it('非 system 且非 ephemeral 顶层类型返回 true', () => {
         expect(isClaudeChatVisibleMessage({ type: 'user' })).toBe(true)
         expect(isClaudeChatVisibleMessage({ type: 'assistant' })).toBe(true)
         expect(isClaudeChatVisibleMessage({ type: 'tool_result' })).toBe(true)
+    })
+
+    it('tool_progress / tool_use_summary 已接入 handler，视为可见', () => {
+        // 这两类 ephemeral 消息由 web normalize 产出 tool-progress / tool-use-summary 事件，
+        // 挂到对应工具卡片（耗时显示 / 摘要），不再被 JSON dump 当文本渲染
+        expect(isClaudeChatVisibleMessage({ type: 'tool_progress' })).toBe(true)
+        expect(isClaudeChatVisibleMessage({ type: 'tool_use_summary' })).toBe(true)
     })
 
     it('system + 可见子类型返回 true', () => {
