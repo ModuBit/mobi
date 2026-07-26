@@ -19,13 +19,30 @@ import type { Session } from '@/core/data/api/types'
 import { basename } from '@/core/utils/path'
 
 /**
+ * getSessionAvatarStatus 的最小输入结构。
+ * 列表项（SessionSummary）只带 pendingRequestsCount，详情项（Session）带 agentState.requests，
+ * 两者结构不同但都能判断状态，故取交集声明为可选，兼容两类调用方。
+ */
+type AvatarStatusInput = Pick<Session, 'active' | 'running'> & {
+    agentState?: { requests?: Record<string, unknown> | null } | null
+    pendingRequestsCount?: number
+}
+
+/**
  * 根据会话状态映射为头像状态
  * 多处复用：SidebarProjects、SessionList、MobileProjectList
+ *
+ * 待审批判定双数据源：
+ *   - 列表项（SessionSummary）：只有 pendingRequestsCount（hub 序列化时已计数）
+ *   - 详情项（Session）：只有 agentState.requests
+ * 任一来源 > 0 即视为待审批，否则列表里 pendingRequestsCount 缺失会导致待审批会话
+ * 仍显示运行中蓝色（useSessions 把 SessionSummary as Session[]，agentState 恒空）。
  */
-export function getSessionAvatarStatus(session: Session): AgentStatus {
+export function getSessionAvatarStatus(session: AvatarStatusInput): AgentStatus {
     if (!session.active) return 'inactive'
-    const pendingRequests = session.agentState?.requests
-    if (pendingRequests && Object.keys(pendingRequests).length > 0) return 'awaiting_auth'
+    const pendingFromSummary = session.pendingRequestsCount ?? 0
+    const pendingFromDetail = session.agentState?.requests ? Object.keys(session.agentState.requests).length : 0
+    if (pendingFromSummary > 0 || pendingFromDetail > 0) return 'awaiting_auth'
     if (session.running) return 'outputting'
     return 'idle'
 }
