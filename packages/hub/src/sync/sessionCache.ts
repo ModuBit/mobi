@@ -442,7 +442,11 @@ export class SessionCache {
         }
 
         const currentMetadata = session.metadata ?? { path: '', host: '' }
-        const newMetadata = { ...currentMetadata, name }
+        // 用户显式重命名：以新 name 为准，并清除自动摘要 summary。
+        // web 端 getSessionDisplayName 优先级为 summary.text > name，若保留旧 summary，
+        // 用户命名会被自动摘要盖住，表现为“重命名提示成功但显示未生效”。
+        // summary 仅承载 Claude 自动摘要，下次 summary 事件会重新填充。
+        const newMetadata = { ...currentMetadata, name, summary: undefined }
 
         const result = this.store.sessions.updateSessionMetadata(
             sessionId,
