@@ -38,7 +38,8 @@ const SettingsContent = styled.div<{ $token: ReturnType<typeof useToken>['token'
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    padding: 24px;
+    /* 底部避让 home 指示条；桌面 env=0 保持 24px */
+    padding: 24px 24px max(24px, env(safe-area-inset-bottom));
 `
 
 export function SettingsModule() {

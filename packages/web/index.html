@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+    <!-- viewport-fit=cover：内容延伸到刘海/圆角/home 指示条区域，让 env(safe-area-inset-*)
+         返回真实避让值（否则 iOS 下恒为 0，safe-area 全失效）。各贴边组件用 env() 自行避让。
+         maximum-scale 维持禁用缩放（看代码靠 drawer 内横向滚动，避免输入误捏合放大） -->
     <!-- 浏览器 chrome（标签栏/地址栏）着色：静态默认浅色 #ffffff / 深色 #141414，运行时由 MainLayout 按 uiStore.theme 动态覆盖 -->
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)" />

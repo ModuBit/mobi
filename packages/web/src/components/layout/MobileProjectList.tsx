@@ -555,7 +555,7 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                 onClose={closeActionSheet}
                 title={actionSession ? getSessionDisplayName(actionSession) : undefined}
                 closable={false}
-                styles={{ body: { padding: '8px 0' } }}
+                styles={{ body: { padding: '8px 0 max(8px, env(safe-area-inset-bottom))' } }}
             >
                 {actionSession && (
                     <>

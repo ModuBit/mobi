@@ -27,7 +27,8 @@ const Banner = styled.div`
     align-items: center;
     justify-content: center;
     gap: 12px;
-    padding: 8px 16px;
+    /* padding-top 撑到刘海外，桌面 env=0 保持 8px */
+    padding: max(8px, env(safe-area-inset-top)) 16px 8px;
     background: #3d3d3a;
     color: #faf9f5;
     font-size: 13px;

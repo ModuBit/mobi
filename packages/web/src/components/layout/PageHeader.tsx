@@ -48,6 +48,10 @@ const StyledHeader = styled(Layout.Header, {
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
+    /* 移动端 PWA standalone 顶部贴状态栏，避让刘海区域；桌面（env=0）不影响 */
+    @media (hover: none) and (pointer: coarse) {
+        padding-top: max(0px, env(safe-area-inset-top));
+    }
     height: auto;
     min-height: 48px;
     line-height: normal;

@@ -66,7 +66,8 @@ const LoginPanel = styled.div`
     align-items: safe center;
     justify-content: center;
     width: 100%;
-    padding: 32px;
+    /* 底部避让 home 指示条；桌面 env=0 保持 32px */
+    padding: 32px 32px max(32px, env(safe-area-inset-bottom));
     position: relative;
     background: #faf9f5;
     /* 矮视口表单超高时自滚（safe center：溢出回退顶部不切割） */
@@ -84,8 +85,9 @@ const LoginPanel = styled.div`
 /** 右上角操作按钮 */
 const TopActions = styled.div`
     position: absolute;
-    top: 16px;
-    right: 16px;
+    /* 避让刘海/圆角；桌面 env=0 保持 16px */
+    top: max(16px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
     display: flex;
     gap: 8px;
     z-index: 2;
@@ -140,8 +142,9 @@ const InactiveLocale = styled.span`
 /** 移动端 Logo */
 const MobileLogo = styled.div`
     position: absolute;
-    top: 16px;
-    left: 16px;
+    /* 避让刘海/圆角；桌面 env=0 保持 16px */
+    top: max(16px, env(safe-area-inset-top));
+    left: max(16px, env(safe-area-inset-left));
     display: flex;
     align-items: center;
     gap: 8px;

@@ -30,8 +30,7 @@ const Bar = styled.div`
     align-items: center;
     gap: 6px;
     padding: 6px 8px;
-    /* 底部安全边界：避开手机底部横条/圆角 */
-    padding-bottom: max(6px, env(safe-area-inset-bottom));
+    /* 底部 safe-area 避让由 InspectorPane 容器统一处理（terminal/文件/PDF tab 共用），此处只保留内边距 */
     overflow-x: auto;
     overflow-y: hidden;
     border-top: 1px solid var(--ant-color-border-secondary);

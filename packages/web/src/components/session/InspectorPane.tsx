@@ -247,7 +247,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
     const showEmpty = active && expanded && !hasTabs
 
     return (
-        <Layout style={{ height: '100%', position: 'relative' }}>
+        <Layout style={{ height: '100%', position: 'relative', paddingBottom: 'env(safe-area-inset-bottom)' }}>
             {/* tab 内容：有 tab 时渲染。active 切换（在线↔离线）不卸载（destroyOnHidden + 同一条件分支），
                 离线时保留作毛玻璃背景，模糊可见关闭前的内容。空态/未展开不渲染（避免无谓 RPC）。 */}
             {everExpanded && hasTabs && (
@@ -274,7 +274,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                             closeTab(sessionId, targetKey)
                         }
                     }}
-                    tabBarStyle={{ padding: '0 12px', margin: 0 }}
+                    tabBarStyle={{ padding: 'max(0px, env(safe-area-inset-top)) 12px 0', margin: 0 }}
                     // 离线时 rightChrome 改为浮动定位（置于毛玻璃之上），不放进 tabBar
                     tabBarExtraContent={active ? { right: rightChrome } : undefined}
                 />

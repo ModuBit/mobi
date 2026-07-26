@@ -135,8 +135,9 @@ const PageContainer = styled.div`
 
 const SidebarToggleWrapper = styled.div`
     position: absolute;
-    top: 12px;
-    left: 12px;
+    /* 避让刘海/圆角；桌面 env=0 保持 12px */
+    top: max(12px, env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
     z-index: 10;
 `
 

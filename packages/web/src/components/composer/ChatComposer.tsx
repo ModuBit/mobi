@@ -640,7 +640,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     ].filter(Boolean)
 
     return (
-        <div style={{ padding: '0 12px 12px' }}>
+        <div style={{ padding: '0 12px max(12px, env(safe-area-inset-bottom))' }}>
             <ComposerDock>
             {/* 信息面板：工具交互请求、任务列表等 */}
             <ComposerInfoPanel
