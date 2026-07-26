@@ -541,6 +541,20 @@ describe('applyTaskDelta', () => {
         expect(result[0].status).toBe('in_progress')
     })
 
+    test('update: 同一 turn 内多个 delta 依次应用，最终为最后一条', () => {
+        // 一个 assistant turn 可含多个 TaskUpdate，需逐条累积而非互相覆盖
+        const deltas: TaskDelta[] = [
+            { type: 'update', taskId: 'task-001', updates: { status: 'in_progress' } },
+            { type: 'update', taskId: 'task-001', updates: { status: 'completed' } },
+        ]
+        const result = deltas.reduce(
+            (acc, d) => applyTaskDelta(acc, d),
+            [makeSampleTask({ id: 'task-001', status: 'pending' })] as TaskItem[]
+        )
+        expect(result).toHaveLength(1)
+        expect(result[0].status).toBe('completed')
+    })
+
     test('update: status 为 deleted 时移除 task', () => {
         const existing: TaskItem[] = [
             makeSampleTask({ id: 'task-001' }),

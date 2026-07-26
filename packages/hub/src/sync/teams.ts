@@ -67,9 +67,11 @@ function processTeamDelete(): TeamStateDelta {
 }
 
 function processTaskToolWithTeam(input: Record<string, unknown>): TeamStateDelta | null {
-    const teamName = typeof input.team_name === 'string' ? input.team_name : null
+    // SDK v2.1.178+：session 只有隐式单团队，team_name 已 deprecated（accepted but ignored）。
+    // 不再要求 team_name；只用 name 是否存在来判定这是一次 teammate 派发——
+    // 普通 subagent 的 Agent tool_use input 不带 name 字段，因此不会误注册。
     const name = typeof input.name === 'string' ? input.name : null
-    if (!teamName || !name) return null
+    if (!name) return null
 
     const agentType = typeof input.subagent_type === 'string' ? input.subagent_type : undefined
     const prompt = typeof input.prompt === 'string' ? input.prompt : undefined
@@ -90,51 +92,6 @@ function processTaskToolWithTeam(input: Record<string, unknown>): TeamStateDelta
             status: 'in_progress',
             owner: name,
         }] : undefined,
-        updatedAt: Date.now()
-    }
-}
-
-function processTaskCreate(input: Record<string, unknown>): TeamStateDelta | null {
-    const id = typeof input.task_id === 'string' ? input.task_id
-        : typeof input.id === 'string' ? input.id
-        : null
-    const title = typeof input.subject === 'string' ? input.subject
-        : typeof input.title === 'string' ? input.title
-        : typeof input.content === 'string' ? input.content
-        : null
-    if (!id || !title) return null
-
-    const description = typeof input.description === 'string' ? input.description : undefined
-    const status = typeof input.status === 'string' ? input.status as 'pending' | 'in_progress' | 'completed' | 'blocked' : 'pending'
-    const owner = typeof input.owner === 'string' ? input.owner : undefined
-
-    return {
-        _action: 'update',
-        tasks: [{ id, title, description, status, owner, createdAt: Date.now() }],
-        updatedAt: Date.now()
-    }
-}
-
-function processTaskUpdate(input: Record<string, unknown>): TeamStateDelta | null {
-    const id = typeof input.taskId === 'string' ? input.taskId
-        : typeof input.task_id === 'string' ? input.task_id
-        : typeof input.id === 'string' ? input.id
-        : null
-    if (!id) return null
-
-    const task: Record<string, unknown> = { id }
-    if (typeof input.subject === 'string') task.title = input.subject
-    if (typeof input.title === 'string') task.title = input.title
-    if (typeof input.status === 'string') task.status = input.status
-    if (typeof input.owner === 'string') task.owner = input.owner
-    if (typeof input.description === 'string') task.description = input.description
-
-    // Must have at least one field besides id
-    if (Object.keys(task).length <= 1) return null
-
-    return {
-        _action: 'update',
-        tasks: [task as { id: string; title: string; status?: 'pending' | 'in_progress' | 'completed' | 'blocked'; owner?: string }],
         updatedAt: Date.now()
     }
 }
@@ -197,12 +154,10 @@ export function extractTeamStateFromMessageContent(messageContent: unknown): Tea
             case 'Agent':
                 delta = processTaskToolWithTeam(block.input)
                 break
-            case 'TaskCreate':
-                delta = processTaskCreate(block.input)
-                break
-            case 'TaskUpdate':
-                delta = processTaskUpdate(block.input)
-                break
+            // TaskCreate/TaskUpdate 不在此解析：task 状态的单一真相源是
+            // runtime_state.tasks（由 sync/tasks.ts 的 extractTaskDeltas + applyTaskDelta 承载）。
+            // 此前这里重复解析同一批 tool_use 写入 teamState.tasks，两套视图独立合并、
+            // 永不校准，且会让一个纯 task 会话凭空生成 members 为空的 teamState。
             case 'SendMessage':
                 delta = processSendMessage(block.input)
                 break
@@ -331,9 +286,23 @@ export function handleTeamSessionEnd(existingTeamState: TeamState | null | undef
     }
 }
 
+/**
+ * 从 mobi sessionId 推导隐式团队名：`session-` + 前 8 位。
+ *
+ * SDK v2.1.178+ 不再有 TeamCreate，团队名不会随消息到达，只能本地推导。
+ * 命名形式借用 Claude Code 的习惯，但取的是 mobi sessionId（非 claude sessionId），
+ * 因此与 `~/.claude/teams/{team-name}/` 下的实际目录名并不对应——
+ * 此值仅用于前端展示与 task 的 `_teamName` 归属标记，不用于寻址任何文件。
+ */
+function deriveTeamName(sessionId?: string): string {
+    if (!sessionId) return ''
+    return `session-${sessionId.slice(0, 8)}`
+}
+
 export function applyTeamStateDelta(
     existing: TeamState | null | undefined,
-    delta: TeamStateDelta
+    delta: TeamStateDelta,
+    sessionId?: string
 ): TeamState | null {
     if (delta._action === 'delete') return null
 
@@ -347,7 +316,8 @@ export function applyTeamStateDelta(
     if (!existing) {
         if (!delta.members && !delta.tasks) return null
         return {
-            teamName: '',
+            // delta 自带 teamName（如 session 结束时整体回灌）优先，其次按 sessionId 推导
+            teamName: delta.teamName ?? deriveTeamName(sessionId),
             members: delta.members ?? [],
             tasks: delta.tasks ?? [],
             messages: delta.messages ?? [],

@@ -72,7 +72,103 @@ describe('Agent tool name 匹配', () => {
     })
 })
 
+describe('隐式单团队：无 team_name 时仍应注册 member', () => {
+    test('只有 name（无 team_name）时，SDK 2.1.178+ 的真实 payload 仍应触发注册', () => {
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', {
+                name: 'analyzer',
+                subagent_type: 'general-purpose',
+                description: '分析任务',
+            })
+        )
+        expect(delta).not.toBeNull()
+        expect(delta!.members).toHaveLength(1)
+        expect(delta!.members![0].name).toBe('analyzer')
+    })
+
+    test('无 name 的 Agent 派发是普通 subagent，不注册 member', () => {
+        // db 实测的普通 subagent payload：只有 description/model/prompt/subagent_type。
+        // 这类派发由 backgroundTasks 链路承载，注册进 members 会污染团队视图。
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', {
+                description: '实现 web HTML 预览渲染链',
+                model: 'sonnet',
+                prompt: '...',
+                subagent_type: 'general-purpose',
+            })
+        )
+        expect(delta).toBeNull()
+    })
+
+    test('隐式重建时用 sessionId 推导 teamName，避免前端因 teamName 空而不渲染', () => {
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', { name: 'analyzer', description: '分析' })
+        )
+        const state = applyTeamStateDelta(null, delta!, 'abcd1234-5678-90ab-cdef-000000000000')
+        expect(state).not.toBeNull()
+        // 仅供展示与 task 归属标记：session- + mobi sessionId 前 8 位
+        expect(state!.teamName).toBe('session-abcd1234')
+    })
+
+    test('delta 自带 teamName 时优先保留，不被 sessionId 推导值覆盖', () => {
+        // session 结束路径（sessionCache）会把已有 teamState 整体作为 delta 传入，
+        // 其中已含真实 teamName，推导值不应把它冲掉
+        const state = applyTeamStateDelta(
+            null,
+            {
+                _action: 'update',
+                teamName: 'existing-team',
+                members: [{ name: 'analyzer', status: 'completed' }],
+            },
+            'abcd1234-5678',
+        )
+        expect(state!.teamName).toBe('existing-team')
+    })
+
+    test('未提供 sessionId 时 teamName 回退为空字符串（保持原行为）', () => {
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', { name: 'analyzer', description: '分析' })
+        )
+        const state = applyTeamStateDelta(null, delta!)
+        expect(state!.teamName).toBe('')
+    })
+})
+
 // ============ 自动清理测试 ============
+
+describe('task 单一真相源：teamState 不再解析 TaskCreate/TaskUpdate', () => {
+    test('TaskCreate 不产生 teamState delta（task 由 runtime_state.tasks 承载）', () => {
+        // 此前会凭空造出一个 members 为空、tasks 有内容的 teamState，
+        // 与 runtime_state.tasks 形成两套互不同步的视图
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'TaskCreate', { task_id: '24', subject: '写代码' })
+        )
+        expect(delta).toBeNull()
+    })
+
+    test('TaskUpdate 不产生 teamState delta', () => {
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'TaskUpdate', { taskId: '24', status: 'completed' })
+        )
+        expect(delta).toBeNull()
+    })
+
+    test('无 team 的纯 task 会话不会凭空生成 teamState', () => {
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'TaskCreate', { task_id: '1', subject: 'x' })
+        )
+        expect(delta).toBeNull()
+        // delta 为 null → sessionHandlers 不会调用 applyTeamStateDelta，teamState 保持 undefined
+    })
+
+    test('teammate 派发仍正常产生 member（不受本次收窄影响）', () => {
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', { name: 'analyzer', description: '分析' })
+        )
+        expect(delta).not.toBeNull()
+        expect(delta!.members).toHaveLength(1)
+    })
+})
 
 describe('applyTeamStateDelta 自动清理', () => {
     test('所有 members idle + 所有 tasks completed → 返回 null', () => {
@@ -387,6 +483,20 @@ describe('extractTeamSystemDeltasFromMessageContent', () => {
         )
         expect(result).not.toBeNull()
         expect(result!.members![0].lastProgressAt).toBeTypeOf('number')
+    })
+
+    test('local_agent（普通 subagent）的 task_started 被忽略，由 backgroundTasks 承载', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'running' }],
+        })
+        const result = extractTeamSystemDeltasFromMessageContent(
+            makeSystemMessage('task_started', {
+                task_id: 't1',
+                task_type: 'local_agent',
+            }),
+            state,
+        )
+        expect(result).toBeNull()
     })
 
     test('非 in_process_teammate 的 task_started 被忽略', () => {

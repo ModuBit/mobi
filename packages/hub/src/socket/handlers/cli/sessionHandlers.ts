@@ -196,7 +196,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 const deletedTeamName = teamDelta._action === 'delete' && existingTeamState
                     ? (existingTeamState as { teamName: string }).teamName : null
 
-                existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamDelta) ?? undefined
+                existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamDelta, sid) ?? undefined
 
                 // TeamDelete 时，完成该 team 创建的 tasks
                 if (deletedTeamName && existingRuntimeState.tasks) {
@@ -212,7 +212,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             // 合并 team system delta（task_started/task_progress）
             if (teamSystemDelta) {
                 const existingTeamState = existingRuntimeState.teamState ?? null
-                existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamSystemDelta) ?? undefined
+                existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamSystemDelta, sid) ?? undefined
             }
 
             // 合并 tasks
@@ -256,7 +256,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 delete existingRuntimeState.todos
             }
 
-            const updated = store.sessions.setRuntimeState(sid, existingRuntimeState, msg.createdAt, session.namespace)
+            // 用处理时刻而非 msg.createdAt：runtime_state_updated_at 表示状态更新时间，
+            // resume 重放时老 createdAt 会让该字段倒退，与下方清理分支语义也不一致
+            const updated = store.sessions.setRuntimeState(sid, existingRuntimeState, Date.now(), session.namespace)
             if (updated) {
                 onWebappEvent?.({ type: 'session-updated', sessionId: sid, data: { sid, runtimeState: existingRuntimeState } })
             }

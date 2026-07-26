@@ -232,6 +232,12 @@ export function updateSessionAgentState(
 
 /**
  * 更新运行时状态（合并了 todos、teamState 等扩展状态）
+ *
+ * 采用 last-writer-wins，不按 runtime_state_updated_at 做时序裁决：
+ * 合并已在调用方内存层完成（读 existing → merge → 整块写），db 层再比时间戳
+ * 只会误伤——同一 assistant turn 的多条 delta 落在同一毫秒，严格小于的守卫会
+ * 静默丢弃后到者（changes=0 不报错），导致 task 状态停滞且不推送 web。
+ * 增量同步的顺序由单调递增的 seq 保证，与时间戳无关。
  */
 export function setRuntimeState(
     db: Database,
@@ -250,7 +256,6 @@ export function setRuntimeState(
                 seq = seq + 1
             WHERE id = @id
               AND namespace = @namespace
-              AND (runtime_state_updated_at IS NULL OR runtime_state_updated_at < @runtime_state_updated_at)
         `).run({
             id,
             runtime_state: json,
@@ -303,7 +308,6 @@ export function clearRuntimeStateFields(
                 seq = seq + 1
             WHERE id = @id
               AND namespace = @namespace
-              AND (runtime_state_updated_at IS NULL OR runtime_state_updated_at < @runtime_state_updated_at)
         `).run({
             id,
             namespace,
