@@ -18,6 +18,7 @@ import React from "react";
 import { Session } from "./session";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import { claudeRemote } from "./claudeRemote";
+import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import type { SDKAssistantMessage, SDKMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
@@ -169,6 +170,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             // push 失败的统一回填：消息已从队列移除，若 SDK input stream 未就绪或已关闭，
             // 必须放回队列，否则消息丢失（DB 行仍 submitted_at=null 但 agent 永远收不到）
             const pushBack = () => session.queue.push(stolen.message, stolen.mode, localId)
+
+            // 特殊命令（!bash / /clear / /compact）不走 steer：steer 把文本直接 push 进 SDK
+            // input stream，绕过 claudeRemote 正常泵里的 handleSpecialCommand，会导致 !bash 被
+            // SDK 当普通消息、用自己的 Bash 工具执行（而非 mobi 本地沙箱执行），/clear /compact
+            // 也会失效。放回队列，交由正常泵 nextMessage → handleSpecialCommand 处理。
+            if (parseSpecialCommand(stolen.message).type) {
+                pushBack()
+                return { status: 'submitted' }
+            }
 
             if (!this.steerSink) {
                 // query 未就绪：放回队列，保持排队态

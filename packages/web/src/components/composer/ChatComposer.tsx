@@ -110,6 +110,16 @@ const ComposerDock = styled.div`
         border-radius: var(--ant-border-radius, 8px) !important;
         background: var(--ant-color-bg-container) !important;
     }
+
+    /* bash 模式：恢复 Sender 橙色发光边框（输入 ! 空格 触发 .bash-mode）。
+       上一条 .ant-sender 规则用 (0,3,0)+!important 把 box-shadow 压成 none，
+       连 inline style 都盖得住；这里在同一 styled 内追加 .bash-mode 后代，
+       以 (0,4,0)+!important 反向覆盖自己的 none，让发光边框重新可见。
+       box-shadow 的 spread 模拟实色边框、blur 模拟外发光，不动 border-width 避免布局抖动。 */
+    && .bash-mode .ant-sender {
+        box-shadow: 0 0 0 2px rgba(232, 112, 58, 0.6),
+                    0 0 16px rgba(232, 112, 58, 0.25) !important;
+    }
 `
 
 // 带 filled 背景的紧凑 Select

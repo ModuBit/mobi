@@ -269,13 +269,16 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     const isAgent = isAgentTool(tool.name)
     const isBgAgent = isBackgroundTool(tool.name, tool.input)
     const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
-    const defaultExpanded = !isError && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning || isBgAgent)
+    // 终端工具（Bash/shell_command）即报错也默认展开：用户主动下发的命令，
+    // 失败/被拦截时必须直接看到命令与原因（如 mobi 本地 !bash 的高危拦截提示），
+    // 不能像其它工具那样 error 即折叠降噪。
+    const defaultExpanded = (!isError || isTerminalTool(tool.name)) && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning || isBgAgent)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const prevPermissionDrivenExpand = useRef(permissionDrivenExpand)
 
     const prevIsError = useRef(isError)
     useEffect(() => {
-        if (isError && !prevIsError.current) {
+        if (isError && !prevIsError.current && !isTerminalTool(tool.name)) {
             setExpanded(false)
         }
         prevIsError.current = isError
