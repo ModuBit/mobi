@@ -19,13 +19,13 @@ import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, theme as antTheme, Input, Tabs } from 'antd'
 import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
-import { ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
 import { OptionRow } from './OptionRow'
+import { CollapseHeader } from './CollapseHeader'
 
 const { useToken } = antTheme
 const { TextArea } = Input
@@ -66,10 +66,6 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     const { token } = useToken()
     const queryClient = useQueryClient()
     const isMobile = useIsMobile()
-    // 无障碍：尊重用户的减少动画偏好（与 PermissionFooter 一致的一次性探测）
-    const reducedMotion = typeof window !== 'undefined' && window.matchMedia
-        ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        : false
     // 移动端触摸目标 ≥44px，桌面端 40px
     const actionMinHeight = isMobile ? 44 : 40
     const permission = props.tool.permission
@@ -315,56 +311,17 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             flexDirection: 'column',
             gap: 8
         }}>
-            {/* 折叠头：徽标 + 问题摘要 + 展开箭头（button 以提供键盘可达性，与 PermissionFooter 一致） */}
-            <button
-                type="button"
-                data-testid="ask-collapse-toggle"
-                aria-expanded={!collapsed}
-                aria-controls="ask-collapse-actions"
-                onClick={() => setCollapsed((c) => !c)}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    width: '100%',
-                    minHeight: actionMinHeight,
-                    cursor: 'pointer',
-                    color: token.colorTextSecondary,
-                    fontSize: 13,
-                    background: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    textAlign: 'left',
-                }}
-            >
-                <span style={{
-                    fontSize: 11,
-                    color: token.colorPrimary,
-                    background: token.colorPrimaryBg,
-                    border: `1px solid ${token.colorPrimaryBorder}`,
-                    padding: '1px 8px',
-                    borderRadius: 10,
-                    flexShrink: 0,
-                }}>{t('chat.tool.askUserQuestion.title')}</span>
-                <span style={{
-                    flex: 1,
-                    minWidth: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                }}>
-                    {/* 多题场景下也展示首题文本（与单题一致），避免「第 N 题」语义歧义；徽标 + Tabs 承载题数上下文 */}
-                    {questions[0]?.question || ''}
-                </span>
-                <span style={{
-                    transform: collapsed ? 'none' : 'rotate(180deg)',
-                    transition: reducedMotion ? 'none' : 'transform .2s',
-                    color: token.colorTextTertiary,
-                    flexShrink: 0,
-                }}>
-                    <ChevronDown size={14} />
-                </span>
-            </button>
+            {/* 折叠头：徽标 + 问题摘要 + 展开箭头（共享 CollapseHeader） */}
+            <CollapseHeader
+                badgeText={t('chat.tool.askUserQuestion.title')}
+                // 多题场景下也展示首题文本（与单题一致），避免「第 N 题」语义歧义；徽标 + Tabs 承载题数上下文
+                summary={questions[0]?.question || ''}
+                collapsed={collapsed}
+                onToggle={() => setCollapsed((c) => !c)}
+                testId="ask-collapse-toggle"
+                panelId="ask-collapse-actions"
+                actionMinHeight={actionMinHeight}
+            />
 
             {collapsed ? null : (
                 <div id="ask-collapse-actions">

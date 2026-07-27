@@ -21,12 +21,12 @@ import type { SDKUIHints } from '@mobi/shared'
 import { memo, useMemo, useState } from 'react'
 import { Alert, Button, Input, Spin, theme as antTheme } from 'antd'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
-import { ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { getInputStringAny, getCustomPermissionTitleKey, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
+import { CollapseHeader } from './CollapseHeader'
 
 const { useToken } = antTheme
 
@@ -99,10 +99,6 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const { token } = useToken()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const isMobile = useIsMobile()
-    // 无障碍：尊重用户的减少动画偏好（与 PixelCard.tsx 一致的一次性探测）
-    const reducedMotion = typeof window !== 'undefined' && window.matchMedia
-        ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        : false
     const permission = props.tool.permission
     const [loading, setLoading] = useState<'allow' | 'deny' | null>(null)
     const [loadingForSession, setLoadingForSession] = useState(false)
@@ -229,63 +225,16 @@ function PermissionFooterInner(props: PermissionFooterProps) {
 
     return (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {/* 折叠头：徽标 + 工具摘要 + 展开箭头（button 以提供键盘可达性） */}
-            <button
-                type="button"
-                data-testid="perm-collapse-toggle"
-                aria-expanded={!collapsed}
-                aria-controls="perm-collapse-actions"
-                onClick={() => setCollapsed((c) => !c)}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    width: '100%',
-                    minHeight: actionMinHeight,
-                    cursor: 'pointer',
-                    color: token.colorTextSecondary,
-                    fontSize: 13,
-                    background: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    textAlign: 'left',
-                }}
-            >
-                <span
-                    style={{
-                        fontSize: 11,
-                        color: token.colorPrimary,
-                        background: token.colorPrimaryBg,
-                        border: `1px solid ${token.colorPrimaryBorder}`,
-                        padding: '1px 8px',
-                        borderRadius: 10,
-                        flexShrink: 0,
-                    }}
-                >
-                    {t('chat.tool.waitingForApproval')}
-                </span>
-                <span
-                    style={{
-                        flex: 1,
-                        minWidth: 0,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                    }}
-                >
-                    {summaryDisplay}
-                </span>
-                <span
-                    style={{
-                        transform: collapsed ? 'none' : 'rotate(180deg)',
-                        transition: reducedMotion ? 'none' : 'transform .2s',
-                        color: token.colorTextTertiary,
-                        flexShrink: 0,
-                    }}
-                >
-                    <ChevronDown size={14} />
-                </span>
-            </button>
+            {/* 折叠头：徽标 + 工具摘要 + 展开箭头（共享 CollapseHeader） */}
+            <CollapseHeader
+                badgeText={t('chat.tool.waitingForApproval')}
+                summary={summaryDisplay}
+                collapsed={collapsed}
+                onToggle={() => setCollapsed((c) => !c)}
+                testId="perm-collapse-toggle"
+                panelId="perm-collapse-actions"
+                actionMinHeight={actionMinHeight}
+            />
 
             {collapsed ? null : (
                 <div id="perm-collapse-actions">
