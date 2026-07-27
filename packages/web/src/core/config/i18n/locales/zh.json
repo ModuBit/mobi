@@ -167,7 +167,7 @@
             "keepPlanning": "继续规划",
             "keepPlanningPlaceholder": "告诉 Claude 你希望它接下来做什么...",
             "sendFeedback": "发送反馈",
-            "irreversibleHint": "不可逆，谨慎",
+            "irreversibleHint": "不可逆操作，请谨慎",
             "result": "结果",
             "questionsAnswers": "问答记录",
             "planReadyForReview": "Claude 已完成规划，等待确认",

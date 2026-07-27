@@ -57,6 +57,11 @@ const mockApi = {
     sessions: { setPermissionMode: mockSetPermissionMode },
 } as unknown as MobiApi
 
+// 强制走移动端分支（actionMinHeight = 44px）
+vi.mock('@/core/data/hooks/useMediaQuery', () => ({
+    useIsMobile: () => true,
+}))
+
 // jsdom 没有 ResizeObserver（Ant Design TextArea 需要）
 beforeAll(() => {
     vi.stubGlobal('ResizeObserver', class {
@@ -151,5 +156,32 @@ describe('PermissionFooter', () => {
         renderFooter(makeTool())
         fireEvent.click(screen.getByText('允许'))
         await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    })
+
+    it('拒绝按钮为弱化 text 样式（非 primary block）', () => {
+        renderFooter(makeTool())
+        const denyBtn = screen.getByText('拒绝').closest('button')!
+        expect(denyBtn.classList.contains('ant-btn-text')).toBe(true)
+        expect(denyBtn.classList.contains('ant-btn-primary')).toBe(false)
+    })
+
+    it('ExitPlanMode 渲染三按钮且自动接受调用 approve', async () => {
+        renderFooter(
+            makeTool({
+                name: 'ExitPlanMode',
+                input: { plan: 'step 1' },
+            }),
+        )
+        // 三个按钮均渲染
+        const autoAccept = screen.getByText('批准（自动接受编辑）')
+        const manual = screen.getByText('批准（手动审批）')
+        const keepPlanning = screen.getByText('继续规划')
+        expect(autoAccept).toBeInTheDocument()
+        expect(manual).toBeInTheDocument()
+        expect(keepPlanning).toBeInTheDocument()
+
+        // 自动接受 → approveWithMode('acceptEdits') → api.permissions.approve
+        fireEvent.click(autoAccept)
+        await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s1', 'p1', { mode: 'acceptEdits' }))
     })
 })
