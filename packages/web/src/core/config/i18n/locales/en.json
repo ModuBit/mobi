@@ -167,6 +167,7 @@
             "keepPlanning": "Keep Planning",
             "keepPlanningPlaceholder": "Tell Claude what you want it to do next...",
             "sendFeedback": "Send Feedback",
+            "irreversibleHint": "Irreversible — proceed with care",
             "result": "Result",
             "questionsAnswers": "Questions & Answers",
             "planReadyForReview": "Plan ready for review",
