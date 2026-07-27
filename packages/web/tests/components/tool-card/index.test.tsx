@@ -110,6 +110,13 @@ describe('ToolCard pending 焦点层', () => {
         expect(card.querySelector('[data-slot="focus-bar"]')).toBeNull()
     })
 
+    it('permission 已批准（非 pending）也不触发焦点层', () => {
+        renderCard(makeBlock({ permission: { id: 'p1', status: 'approved' }, state: 'completed' }))
+        const card = document.querySelector('.tool-card') as HTMLElement
+        expect(card.getAttribute('data-pending')).toBe('false')
+        expect(card.querySelector('[data-slot="focus-bar"]')).toBeNull()
+    })
+
     it('pending 时点击 header 不打开 Modal', () => {
         renderCard(makeBlock())
         fireEvent.click(screen.getByTestId('tool-card-header'))

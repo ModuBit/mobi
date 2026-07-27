@@ -442,16 +442,14 @@ function ToolCardInner(props: ToolCardProps) {
                 overflow: 'hidden',
                 position: 'relative',
                 borderColor: isPermissionPending ? token.colorPrimaryBorder : undefined,
-                background: isPermissionPending
-                    ? `linear-gradient(${token.colorPrimaryBg}, ${token.colorPrimaryBg}) ${token.colorBgContainer}`
-                    : undefined,
+                background: isPermissionPending ? token.colorPrimaryBg : undefined,
             }}
         >
             {isPermissionPending ? (
                 <span data-slot="focus-bar" style={{
                     position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
                     background: token.colorPrimary, zIndex: 2,
-                    animation: 'mobi-card-pulse 2.4s ease-in-out infinite',
+                    animation: 'tool-card-pulse 2.4s ease-in-out infinite',
                 }} />
             ) : null}
             <div

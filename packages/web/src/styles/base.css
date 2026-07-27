@@ -98,7 +98,7 @@ pre, code {
 }
 
 /* ToolCard pending 焦点色带脉动（权限等待时的左侧高亮条） */
-@keyframes mobi-card-pulse {
+@keyframes tool-card-pulse {
     0%, 100% { opacity: 0.55; }
     50% { opacity: 1; }
 }
