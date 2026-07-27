@@ -404,7 +404,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                             activeKey={String(step)}
                             onChange={(key) => { setError(null); setStep(Number(key)) }}
                             size="small"
-                            tabBarStyle={{ minHeight: 40 }}
+                            tabBarStyle={{ minHeight: actionMinHeight }}
                             items={questions.map((q, idx) => ({
                                 key: String(idx),
                                 label: q.header || t('chat.tool.askUserQuestion.questionN', { n: idx + 1 }),
