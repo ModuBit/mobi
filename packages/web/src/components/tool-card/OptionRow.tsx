@@ -46,7 +46,7 @@ export function OptionRow(props: OptionRowProps) {
     const accentBg = props.tone === 'completed' ? token.colorSuccessBg : token.colorPrimaryBg
     const accentBorder = props.tone === 'completed' ? token.colorSuccessBorder : token.colorPrimaryBorder
 
-    const showDescription = props.description && props.description !== props.title
+    const showDescription = Boolean(props.description && props.description !== props.title)
 
     const markSize = 18
     const mark = props.mode === 'multi'
