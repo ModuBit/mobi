@@ -28,8 +28,15 @@
  * 覆盖物打开时 push 一个「同 URL 的 history entry」（哨兵）。
  * - 用户手势返回 → popstate 消费哨兵 → URL 未变，TanStack Router 不重渲染、不跳路由，
  *   我们转而调用覆盖物的收起回调。
- * - 覆盖物主动关闭（点遮罩 / 下拉 / 按钮）→ 调 disposer → history.back() 弹掉哨兵，
+ * - 覆盖物主动关闭（点遮罩 / 下拉 / 按钮）→ 调 disposer → 在微任务中 history.back() 弹掉哨兵，
  *   期间触发的 popstate 由 suppressCount 抑制，不会误关其它覆盖物。
+ *
+ * ## 为什么 disposer 的 back 决策必须异步
+ * TanStack Router 的 navigate 把 pushState 异步化（@tanstack/history queueHistoryAction 排微任务
+ * 才 flush）。点 session 列表切换是「navigate + 关 drawer」同一回调：若 disposer 同步判断
+ * history.state，此时 flush 尚未落地、state 仍是哨兵 → 误 history.back() 把刚 push 的路由 entry
+ * 弹掉，navigate 被抵消（移动端切 session 无反应）。故 disposer 用 queueMicrotask 延迟判断，
+ * 并按哨兵唯一 guardId 精确匹配「栈顶是否本哨兵」，覆盖「纯关闭 / 导航压顶 / 快速重开」三态。
  *
  * ## 嵌套
  * InspectorPane 展开后又开了文件预览 drawer：每个覆盖物各 push 一个哨兵，
@@ -44,6 +51,9 @@ let depth = 0
 let suppressCount = 0
 /** 全局 popstate 监听是否已安装（幂等） */
 let installed = false
+/** 哨兵自增 id：每条 push 的 history entry 携带唯一 guardId，dispose 时据此精确判断
+ *  「history 栈顶是不是我这条哨兵」，避免误弹别的 entry（路由 entry / 新哨兵） */
+let nextGuardId = 1
 
 /** 安装全局 popstate 监听。幂等，仅浏览器环境生效 */
 function ensureInstalled(): void {
@@ -87,8 +97,9 @@ export function pushHistoryGuard(onBackPressed: () => void): () => void {
     ensureInstalled()
     depth++
     closeStack.push(onBackPressed)
+    const guardId = nextGuardId++
     // 同 URL 哨兵：URL 不变，popstate 后 TanStack Router 匹配结果不变，不触发跳转/重渲染
-    window.history.pushState({ mobiHistoryGuard: true }, '')
+    window.history.pushState({ mobiHistoryGuard: true, guardId }, '')
 
     let disposed = false
     return () => {
@@ -97,21 +108,30 @@ export function pushHistoryGuard(onBackPressed: () => void): () => void {
         const idx = closeStack.lastIndexOf(onBackPressed)
         // 已被 popstate 消费（栈里找不到）→ 无需再 back
         if (idx < 0) return
-        // 只有本覆盖物的哨兵在 closeStack 栈顶时，其 history 哨兵才在 history 栈顶可直接 back 弹掉。
-        // 若上方还有未关闭的覆盖物（idx 非最后一项），本哨兵被压在 history 下方，主动 back 会误弹
-        // 栈顶覆盖物的哨兵 —— 此时只从栈中移除，本哨兵作为孤儿 entry 留在 history，由后续 popstate 自然消费
-        const isTop = idx === closeStack.length - 1
         closeStack.splice(idx, 1)
         depth--
-        if (!isTop) return
-        // 栈顶哨兵：再确认 history 当前 entry 确实是我们的哨兵（state 含标记），而非上方压了路由 entry。
-        // 若 Router 在哨兵为当前 entry 时 replaceState 覆盖了 state（scroll restoration 等），此处读到
-        // undefined → 不 back，哨兵残留（退化：用户多按一次返回，无功能损害）
-        const st = window.history.state as { mobiHistoryGuard?: boolean } | null
-        if (st && st.mobiHistoryGuard) {
-            suppressCount++
-            window.history.back()
-        }
+
+        // ⚠️ 必须延迟到微任务再决定是否 back。TanStack Router 的 navigate 把 pushState 异步化
+        // （@tanstack/history 的 queueHistoryAction 排一个微任务才 flush）。点 session 切换正是
+        // 「navigate + 关 drawer」同一回调：navigate 在事件同步阶段排队 flush 微任务；React 在
+        // 事件结束后异步跑 passive effect（含本 dispose）→ 本微任务必排在 flush 之后。故微任务
+        // 执行时 flush 已落地、history.state 已更新为路由 entry → 不 back。
+        //
+        // 若同步判断（旧实现），dispose 跑时 flush 尚未落地，state 仍是本哨兵 → 误 history.back()，
+        // 把刚 push 的路由 entry 弹掉、navigate 被抵消 —— 移动端点列表切 session 无反应的根因。
+        // （桌面端 session 列表内嵌 AppSidebar、不经 MobileDrawer 哨兵，故不受影响。）
+        queueMicrotask(() => {
+            const st = window.history.state as { mobiHistoryGuard?: boolean; guardId?: number } | null
+            // 仅当 history 栈顶仍是「本哨兵」才 back 弹掉：
+            // - 纯关闭（无导航）：state.guardId === guardId → back ✓
+            // - navigate 已压入路由 entry：state 无 mobiHistoryGuard → 不 back（路由 entry 留栈顶）✓
+            // - 快速重开压了新哨兵：state.guardId === 新 id ≠ guardId → 不 back ✓
+            // 其余情况哨兵作为孤儿 entry 留在 history，由后续 popstate 自然消费
+            if (st && st.mobiHistoryGuard && st.guardId === guardId) {
+                suppressCount++
+                window.history.back()
+            }
+        })
     }
 }
 
@@ -120,5 +140,6 @@ export function __resetHistoryGuardForTest(): void {
     closeStack.length = 0
     depth = 0
     suppressCount = 0
+    nextGuardId = 1
     // installed 保留：addEventListener 重复注册反而有害；模块状态已清，监听器读到空栈是 no-op
 }

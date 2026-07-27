@@ -19,6 +19,8 @@ import { pushHistoryGuard, __resetHistoryGuardForTest } from '@/core/lib/drawerH
 
 /** 同步派发一次 popstate（模拟用户手势返回） */
 const firePopstate = (): void => window.dispatchEvent(new PopStateEvent('popstate'))
+/** flush 微任务队列 —— dispose 的 back 决策异步化后，断言前需 await */
+const flushMicrotasks = (): Promise<void> => new Promise(queueMicrotask)
 
 describe('drawerHistoryGuard', () => {
     beforeEach(() => {
@@ -39,11 +41,26 @@ describe('drawerHistoryGuard', () => {
         expect(back).toHaveBeenCalledTimes(1)
     })
 
-    it('正常关闭（dispose）不触发 onBackPressed', () => {
+    it('纯关闭（无导航）：dispose 微任务中 back 弹掉哨兵，onBackPressed 不触发', async () => {
         const back = vi.fn()
         const dispose = pushHistoryGuard(back)
         dispose()
-        // dispose 内部 history.back()（已 mock 同步）触发 popstate，由 suppressCount 抑制
+        await flushMicrotasks()
+        // back 弹哨兵，popstate 由 suppressCount 抑制 → onBackPressed 不调
+        expect(window.history.back).toHaveBeenCalledTimes(1)
+        expect(back).not.toHaveBeenCalled()
+    })
+
+    it('导航异步 flush 竞态：flush 已落地后 dispose 不误 back（切 session 回归）', async () => {
+        const back = vi.fn()
+        const dispose = pushHistoryGuard(back)
+        // 模拟 TanStack Router navigate 的 flush 在 dispose 微任务之前落地：
+        // history.state 已变为路由 entry（无 mobiHistoryGuard）—— 点 session 切换的真实时序
+        window.history.replaceState({ key: 'tsr-router-entry' }, '')
+        dispose()
+        await flushMicrotasks()
+        // 不误 back —— 路由 entry 留栈顶，navigate 不被抵消（修复前的 bug：URL 被拉回）
+        expect(window.history.back).not.toHaveBeenCalled()
         expect(back).not.toHaveBeenCalled()
     })
 
@@ -61,19 +78,21 @@ describe('drawerHistoryGuard', () => {
         expect(inner).toHaveBeenCalledTimes(1)
     })
 
-    it('dispose 已被 popstate 消费的哨兵为空操作，不重复触发回调', () => {
+    it('dispose 已被 popstate 消费的哨兵为空操作，不重复触发回调', async () => {
         const back = vi.fn()
         const dispose = pushHistoryGuard(back)
         firePopstate() // 消费哨兵
         expect(back).toHaveBeenCalledTimes(1)
         expect(() => dispose()).not.toThrow()
+        await flushMicrotasks()
         expect(back).toHaveBeenCalledTimes(1) // 不再触发
     })
 
-    it('dispose 后再 push 新哨兵仍正常工作', () => {
+    it('dispose 后再 push 新哨兵仍正常工作', async () => {
         const a = vi.fn()
         const disposeA = pushHistoryGuard(a)
         disposeA()
+        await flushMicrotasks() // 旧哨兵已被 back 弹掉
 
         const b = vi.fn()
         pushHistoryGuard(b)
@@ -82,13 +101,14 @@ describe('drawerHistoryGuard', () => {
         expect(a).not.toHaveBeenCalled()
     })
 
-    it('嵌套时主动关闭顶层不影响底层（栈序正确）', () => {
+    it('嵌套时主动关闭顶层不影响底层（栈序正确）', async () => {
         const inner = vi.fn()
         const outer = vi.fn()
         pushHistoryGuard(inner)
         const disposeOuter = pushHistoryGuard(outer)
 
         disposeOuter() // 用户主动关顶层 drawer
+        await flushMicrotasks()
         expect(outer).not.toHaveBeenCalled() // 主动关闭 ≠ 手势返回回调
 
         // 底层仍在，手势返回应收起它
@@ -96,7 +116,7 @@ describe('drawerHistoryGuard', () => {
         expect(inner).toHaveBeenCalledTimes(1)
     })
 
-    it('嵌套时主动关闭底层（非栈顶）不误弹栈顶哨兵', () => {
+    it('嵌套时主动关闭底层（非栈顶）不误弹栈顶哨兵', async () => {
         const inner = vi.fn()
         const outer = vi.fn()
         const disposeInner = pushHistoryGuard(inner)
@@ -104,11 +124,28 @@ describe('drawerHistoryGuard', () => {
         // closeStack=[inner, outer]，history 栈顶是 outer 的哨兵
         // 程序化先关底层 inner（如父组件重置 expanded）：不应 back（否则误弹 outer 哨兵）
         disposeInner()
+        await flushMicrotasks()
+        // guardId 匹配（inner≠outer）→ 不 back，栈顶 outer 哨兵未被误弹
+        expect(window.history.back).not.toHaveBeenCalled()
         expect(inner).not.toHaveBeenCalled()
         expect(outer).not.toHaveBeenCalled()
-        // 栈顶 outer 仍在，手势返回应正常关它（未被误弹）
+        // 栈顶 outer 仍在，手势返回应正常关它
         firePopstate()
         expect(outer).toHaveBeenCalledTimes(1)
         expect(inner).not.toHaveBeenCalled()
+    })
+
+    it('快速重开压了新哨兵：旧 dispose 不误 back 新哨兵（guardId 隔离）', async () => {
+        const a = vi.fn()
+        const b = vi.fn()
+        const disposeA = pushHistoryGuard(a)
+        disposeA()
+        // 旧 dispose 微任务未跑时，新哨兵压顶（覆盖物快速 close→reopen）
+        pushHistoryGuard(b)
+        await flushMicrotasks()
+        // 旧 dispose 读到新哨兵（guardId 不匹配）→ 不 back，新哨兵留栈顶
+        expect(window.history.back).not.toHaveBeenCalled()
+        expect(a).not.toHaveBeenCalled()
+        expect(b).not.toHaveBeenCalled()
     })
 })
