@@ -19,15 +19,15 @@
  * 在输入区上方展示各种状态信息：工具交互请求、任务列表、文件修改等
  */
 
-import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { Space, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
+import { ChevronDown } from 'lucide-react'
 import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
-import { getCustomPermissionTitleKey } from '@/core/lib/toolInputUtils'
 import type { MobiApi } from '@/core/data/api/client'
 import type { SDKUIHints, TodoItem, TaskItem } from '@mobi/shared'
-import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+import { PermissionFooter, getPermissionDisplayText } from '@/components/tool-card/PermissionFooter'
 import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFooter'
 import { RequestUserInputFooter } from '@/components/tool-card/RequestUserInputFooter'
 import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
@@ -63,7 +63,6 @@ function ToolInteractionPanel({
     disabled: boolean
     onDone: () => void
 }) {
-    const { token } = useToken()
     const { t } = useTranslation()
 
     // 转换为各 Footer 组件需要的格式
@@ -135,31 +134,73 @@ function ToolInteractionPanel({
 
                 const titleText = isAskUserQuestion
                     ? (askUserQuestionHeader || t('chat.tool.askUserQuestion.title'))
-                    : (() => {
-                        const customKey = getCustomPermissionTitleKey(tool.name)
-                        if (customKey) return t(customKey)
-                        return tool.sdkHints?.displayName
-                            ? t('chat.permission.toolRequest', { tool: tool.sdkHints.displayName })
-                            : t('chat.permission.title')
-                    })()
+                    : getPermissionDisplayText(tool.permission, tool.name, tool.input, t, tool.sdkHints)
 
                 return (
-                    <div key={id} style={{
-                        padding: 12,
-                        background: token.colorWarningBg,
-                        border: `1px solid ${token.colorWarningBorder}`,
-                        borderRadius: 8
-                    }}>
-                        <div style={{ marginBottom: 8 }}>
-                            <Text strong>
-                                <ExclamationCircleOutlined style={{ color: token.colorWarningText, marginRight: 8 }} />
-                                {titleText}
-                            </Text>
-                        </div>
-                        {footerNode}
-                    </div>
+                    <ToolRequestCard
+                        key={id}
+                        testId={`tool-request-toggle-${id}`}
+                        titleText={titleText}
+                        footerNode={footerNode}
+                    />
                 )
             })}
+        </div>
+    )
+}
+
+/**
+ * 单个工具交互请求卡片：标题区（图标 + 标题 + 展开箭头）作为折叠头，
+ * 折叠/展开能力上移到此层，Footer 自身不再含折叠头（消除两层标题头语义重复）。
+ * 中性背景/边框避免与 Footer 内层中性组件色温断裂；attention 浓缩到左侧图标。
+ */
+function ToolRequestCard({ titleText, footerNode, testId }: {
+    titleText: string
+    footerNode: ReactNode
+    testId: string
+}) {
+    const { token } = useToken()
+    const [collapsed, setCollapsed] = useState(false)
+    const reducedMotion = typeof window !== 'undefined' && window.matchMedia
+        ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        : false
+
+    return (
+        <div style={{
+            padding: 12,
+            background: token.colorBgContainer,
+            border: `1px solid ${token.colorBorderSecondary}`,
+            borderRadius: 8,
+        }}>
+            <button
+                type="button"
+                data-testid={testId}
+                aria-expanded={!collapsed}
+                aria-controls={`${testId}-panel`}
+                onClick={() => setCollapsed((c) => !c)}
+                style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    minHeight: 32, cursor: 'pointer',
+                    color: token.colorText, fontSize: 13, fontWeight: 500,
+                    background: 'transparent', border: 'none', padding: 0, textAlign: 'left',
+                }}
+            >
+                <ExclamationCircleOutlined style={{ color: token.colorWarningText, fontSize: 14, flexShrink: 0 }} />
+                <Text strong style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {titleText}
+                </Text>
+                <ChevronDown
+                    size={14}
+                    style={{
+                        flexShrink: 0, color: token.colorTextTertiary,
+                        transform: collapsed ? 'none' : 'rotate(180deg)',
+                        transition: reducedMotion ? 'none' : 'transform .2s',
+                    }}
+                />
+            </button>
+            {!collapsed ? (
+                <div id={`${testId}-panel`} style={{ marginTop: 8 }}>{footerNode}</div>
+            ) : null}
         </div>
     )
 }

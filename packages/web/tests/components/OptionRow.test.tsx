@@ -45,7 +45,7 @@ describe('OptionRow', () => {
         expect(onClick).toHaveBeenCalledTimes(1)
     })
 
-    it('checked 时带 selected 数据态与色带节点', () => {
+    it('checked 时带 selected 数据态与实色选中边框', () => {
         wrap(
             <OptionRow
                 data-testid="opt"
@@ -59,7 +59,9 @@ describe('OptionRow', () => {
         )
         const btn = screen.getByTestId('opt')
         expect(btn.getAttribute('data-selected')).toBe('true')
-        expect(btn.querySelector('[data-slot="bar"]')).not.toBeNull()
+        expect(btn.getAttribute('aria-checked')).toBe('true')
+        // 不再有左侧色带（四重堆叠已收敛）
+        expect(btn.querySelector('[data-slot="bar"]')).toBeNull()
     })
 
     it('disabled 时不响应点击', () => {
@@ -111,18 +113,20 @@ describe('OptionRow', () => {
         expect(getComputedStyle(btn).opacity).toBe('1')
     })
 
-    it('single 模式渲染 Circle/CircleCheck，multi 模式渲染 Square/SquareCheck', () => {
+    it('single 模式渲染 antd Radio，multi 模式渲染 antd Checkbox', () => {
         const { rerender } = wrap(
             <OptionRow data-testid="opt" checked={false} mode="single" disabled={false} tone="interactive" title="A" onClick={() => {}} />
         )
-        // 未选中 single → Circle（lucide 渲染 svg，class 含组件名派生的 stable hash，断言 svg 存在即可）
-        expect(screen.getByTestId('opt').querySelector('svg')).not.toBeNull()
+        // single → antd Radio（实心圆点选中态由 antd 承载）
+        expect(screen.getByTestId('opt').querySelector('input[type="radio"]')).not.toBeNull()
 
         rerender(
             <ConfigProvider>
-                <OptionRow data-testid="opt" checked mode="single" disabled={false} tone="interactive" title="A" onClick={() => {}} />
+                <OptionRow data-testid="opt" checked mode="multi" disabled={false} tone="interactive" title="A" onClick={() => {}} />
             </ConfigProvider>
         )
+        // multi → antd Checkbox
+        expect(screen.getByTestId('opt').querySelector('input[type="checkbox"]')).not.toBeNull()
         expect(screen.getByTestId('opt').getAttribute('data-selected')).toBe('true')
     })
 

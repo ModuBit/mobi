@@ -18,15 +18,14 @@ import type { MobiApi } from '@/core/data/api/client'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
 import type { SDKUIHints } from '@mobi/shared'
-import { memo, useMemo, useState } from 'react'
-import { Alert, Button, Input, Spin, theme as antTheme } from 'antd'
+import { memo, useState } from 'react'
+import { Alert, Button, Input, theme as antTheme } from 'antd'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { getInputStringAny, getCustomPermissionTitleKey, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
-import { CollapseHeader } from './CollapseHeader'
 
 const { useToken } = antTheme
 
@@ -85,6 +84,31 @@ function formatPermissionSummary(
     return t('chat.tool.allow')
 }
 
+/**
+ * 工具交互面板标题文本：基于权限状态 + SDK 提示 + 工具输入推断摘要，
+ * 去掉「等待审批」前缀（标题区已有图标表意）。供 ToolInteractionPanel 标题区使用。
+ */
+export function getPermissionDisplayText(
+    permission: ToolPermission | null | undefined,
+    toolName: string,
+    toolInput: unknown,
+    t: (key: string) => string,
+    sdkHints?: SDKUIHints
+): string {
+    if (!permission) return ''
+    if (permission.status === 'pending') {
+        const customKey = getCustomPermissionTitleKey(toolName)
+        if (customKey) return t(customKey)
+    }
+    const summary = formatPermissionSummary(permission, toolName, toolInput, t, sdkHints)
+    const prefix = t('chat.tool.waitingForApproval')
+    if (summary.startsWith(prefix)) {
+        const rest = summary.slice(prefix.length).trim()
+        return rest || summary
+    }
+    return summary
+}
+
 type PermissionFooterProps = {
     api: MobiApi
     sessionId: string
@@ -106,10 +130,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const [error, setError] = useState<string | null>(null)
     const [showFeedback, setShowFeedback] = useState(false)
     const [feedback, setFeedback] = useState('')
-    // 折叠态：默认展开。移动端可折叠以省空间，避免误触
-    const [collapsed, setCollapsed] = useState(false)
-    // 移动端触摸目标 ≥44px，桌面端 40px
-    const actionMinHeight = isMobile ? 44 : 40
+    // 移动端触摸目标 ≥44px；PC 紧凑 32px（避免大按钮突兀）
+    const actionMinHeight = isMobile ? 44 : 32
 
     const toolName = props.tool.name
     // 从 sdkHints 获取 agent 信息（CLI 端在 task_started 时注入）
@@ -126,26 +148,6 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const isPending = permission?.status === 'pending'
     const canAllowForSession = isPending && !hideAllowForSession
     const canAllowAllEdits = isPending && isEditTool
-
-    const customTitleKey = useMemo(() => getCustomPermissionTitleKey(toolName), [toolName])
-    const summary = useMemo(() => {
-        if (!permission) return ''
-        if (isPending && customTitleKey) return t(customTitleKey)
-        return formatPermissionSummary(permission, toolName, props.tool.input, t, props.tool.sdkHints)
-    }, [permission, toolName, props.tool.input, t, props.tool.sdkHints, isPending, customTitleKey])
-
-    // pending 时折叠头已有"等待审批"徽标，summary 文本不再重复该前缀，
-    // 仅展示工具身份/命令摘要（与 tool-card/index.tsx 顶部 pending-badge 去重）
-    // 注意：本 memo 仅在 pending 渲染路径下被消费（非 pending 在上方已 early-return），
-    // 故无需再处理非 pending 分支
-    const summaryDisplay = useMemo(() => {
-        const prefix = t('chat.tool.waitingForApproval')
-        if (summary.startsWith(prefix)) {
-            const rest = summary.slice(prefix.length).trim()
-            return rest || summary
-        }
-        return summary
-    }, [summary, t])
 
     if (!permission) return null
 
@@ -225,19 +227,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
 
     return (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {/* 折叠头：徽标 + 工具摘要 + 展开箭头（共享 CollapseHeader） */}
-            <CollapseHeader
-                badgeText={t('chat.tool.waitingForApproval')}
-                summary={summaryDisplay}
-                collapsed={collapsed}
-                onToggle={() => setCollapsed((c) => !c)}
-                testId="perm-collapse-toggle"
-                panelId="perm-collapse-actions"
-                actionMinHeight={actionMinHeight}
-            />
-
-            {collapsed ? null : (
-                <div id="perm-collapse-actions">
+            <div id="perm-collapse-actions">
                     {/* Agent 来源标识 */}
                     {agentInfo ? (
                         <div
@@ -278,14 +268,29 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         />
                     ) : null}
 
-                    {/* 主操作组：允许 / 本会话允许 / 全部允许 / 自动接受 / 手动审批 */}
-                    <div data-group="primary" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {/* PC 端不可逆操作提示（移动端在 actions 内用分隔线承载） */}
+                    {!isExitPlanMode && !isMobile ? (
+                        <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
+                            {t('chat.tool.irreversibleHint')}
+                        </div>
+                    ) : null}
+
+                    {/* 操作组：移动垂直 block（触控友好）/ PC 水平 inline（紧凑）。
+                        PC 拒绝提级为 default ghost 与允许同行对等，不再缩到角落 text 弱化；
+                        移动保持末行 text 弱化 + 分隔线防误触 */}
+                    <div data-group="actions" style={{
+                        display: 'flex',
+                        flexDirection: isMobile ? 'column' : 'row',
+                        gap: 8,
+                        alignItems: isMobile ? 'stretch' : 'center',
+                        flexWrap: 'wrap',
+                    }}>
                         {isExitPlanMode ? (
                             <>
                                 <Button
                                     type="primary"
-                                    block
-                                    icon={loading === 'allow' ? <Spin size="small" /> : <CheckOutlined />}
+                                    block={isMobile}
+                                    icon={<CheckOutlined />}
                                     disabled={props.disabled || loading !== null}
                                     loading={loading === 'allow'}
                                     onClick={() => approveWithMode('acceptEdits')}
@@ -294,8 +299,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     {t('chat.tool.approveAutoAccept')}
                                 </Button>
                                 <Button
-                                    block
-                                    icon={loading === 'allow' ? <Spin size="small" /> : <CheckOutlined />}
+                                    block={isMobile}
+                                    icon={<CheckOutlined />}
                                     disabled={props.disabled || loading !== null}
                                     loading={loading === 'allow'}
                                     onClick={() => approveWithMode('default')}
@@ -303,13 +308,25 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 >
                                     {t('chat.tool.approveManual')}
                                 </Button>
+                                <Button
+                                    type={isMobile ? 'text' : 'default'}
+                                    icon={<CloseOutlined />}
+                                    disabled={props.disabled || loading !== null}
+                                    loading={loading === 'deny'}
+                                    onClick={() => {
+                                        if (!showFeedback) setShowFeedback(true)
+                                    }}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', color: isMobile ? token.colorTextSecondary : undefined }}
+                                >
+                                    {t('chat.tool.keepPlanning')}
+                                </Button>
                             </>
                         ) : (
                             <>
                                 <Button
                                     type="primary"
-                                    block
-                                    icon={loading === 'allow' ? <Spin size="small" /> : <CheckOutlined />}
+                                    block={isMobile}
+                                    icon={<CheckOutlined />}
                                     disabled={
                                         props.disabled ||
                                         loading !== null ||
@@ -324,7 +341,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 </Button>
                                 {canAllowForSession ? (
                                     <Button
-                                        block
+                                        block={isMobile}
                                         disabled={
                                             props.disabled ||
                                             loading !== null ||
@@ -340,7 +357,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 ) : null}
                                 {canAllowAllEdits ? (
                                     <Button
-                                        block
+                                        block={isMobile}
                                         disabled={
                                             props.disabled ||
                                             loading !== null ||
@@ -354,57 +371,34 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                         {t('chat.tool.allowAll')}
                                     </Button>
                                 ) : null}
+                                {/* 分隔线：仅移动端，防误触；PC inline 用 gap 间隔即可 */}
+                                {isMobile ? (
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: 8,
+                                        margin: '4px 0', width: '100%',
+                                        color: token.colorTextQuaternary, fontSize: 11,
+                                    }}>
+                                        <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
+                                        <span>{t('chat.tool.irreversibleHint')}</span>
+                                        <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
+                                    </div>
+                                ) : null}
+                                <Button
+                                    type={isMobile ? 'text' : 'default'}
+                                    icon={<CloseOutlined />}
+                                    disabled={
+                                        props.disabled ||
+                                        loading !== null ||
+                                        loadingAllEdits ||
+                                        loadingForSession
+                                    }
+                                    loading={loading === 'deny'}
+                                    onClick={deny}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', color: isMobile ? token.colorTextSecondary : undefined }}
+                                >
+                                    {t('chat.tool.deny')}
+                                </Button>
                             </>
-                        )}
-                    </div>
-
-                    {/* 分隔线：视觉上把主操作与拒绝隔开，降低误触概率 */}
-                    <div
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            margin: '12px 0',
-                            color: token.colorTextQuaternary,
-                            fontSize: 11,
-                        }}
-                    >
-                        <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
-                        {!isExitPlanMode ? <span>{t('chat.tool.irreversibleHint')}</span> : null}
-                        <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
-                    </div>
-
-                    {/* 拒绝组：text 按钮、右对齐、视觉弱化，与主操作物理隔离 */}
-                    <div data-group="deny" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        {isExitPlanMode ? (
-                            <Button
-                                type="text"
-                                icon={loading === 'deny' ? <Spin size="small" /> : <CloseOutlined />}
-                                disabled={props.disabled || loading !== null}
-                                loading={loading === 'deny'}
-                                onClick={() => {
-                                    if (!showFeedback) setShowFeedback(true)
-                                }}
-                                style={{ color: token.colorTextSecondary, minHeight: actionMinHeight }}
-                            >
-                                {t('chat.tool.keepPlanning')}
-                            </Button>
-                        ) : (
-                            <Button
-                                type="text"
-                                icon={loading === 'deny' ? <Spin size="small" /> : <CloseOutlined />}
-                                disabled={
-                                    props.disabled ||
-                                    loading !== null ||
-                                    loadingAllEdits ||
-                                    loadingForSession
-                                }
-                                loading={loading === 'deny'}
-                                onClick={deny}
-                                style={{ color: token.colorTextSecondary, minHeight: actionMinHeight }}
-                            >
-                                {t('chat.tool.deny')}
-                            </Button>
                         )}
                     </div>
 
@@ -433,7 +427,6 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         </div>
                     ) : null}
                 </div>
-            )}
         </div>
     )
 }

@@ -424,7 +424,7 @@ describe('AskUserQuestionFooter', () => {
             fireEvent.click(getSubmitButton())
 
             await waitFor(() => {
-                expect(findOptionBtn('OptA')).toBeDisabled()
+                expect(findOptionBtn('OptA')).toHaveAttribute('aria-disabled', 'true')
             })
 
             resolveApprove()
@@ -505,7 +505,7 @@ describe('AskUserQuestionFooter', () => {
             }])
 
             renderFooter(tool, true)
-            expect(findOptionBtn('OptA')).toBeDisabled()
+            expect(findOptionBtn('OptA')).toHaveAttribute('aria-disabled', 'true')
         })
     })
 
@@ -559,8 +559,8 @@ describe('AskUserQuestionFooter', () => {
         })
     })
 
-    describe('共享 OptionRow + 折叠头', () => {
-        it('选中项带 data-selected=true 与色带节点', () => {
+    describe('共享 OptionRow', () => {
+        it('选中项带 data-selected=true 与 antd Checkbox 选中态', () => {
             const tool = makeTool([{
                 question: 'Q', multiSelect: true,
                 options: [{ label: 'A', description: null, preview: null }],
@@ -569,20 +569,9 @@ describe('AskUserQuestionFooter', () => {
             const a = findOptionBtn('A')
             fireEvent.click(a)
             expect(a.getAttribute('data-selected')).toBe('true')
-            expect(a.querySelector('[data-slot="bar"]')).not.toBeNull()
-        })
-
-        it('折叠后选项不渲染，再点展开恢复', () => {
-            const tool = makeTool([{
-                question: 'Q', multiSelect: false,
-                options: [{ label: 'A', description: null, preview: null }],
-            }])
-            renderFooter(tool)
-            expect(findOptionBtn('A')).toBeInTheDocument()
-            fireEvent.click(screen.getByTestId('ask-collapse-toggle'))
-            expect(() => findOptionBtn('A')).toThrow()
-            fireEvent.click(screen.getByTestId('ask-collapse-toggle'))
-            expect(findOptionBtn('A')).toBeInTheDocument()
+            // 不再有左侧色带（四重堆叠已收敛），选中态由 antd Checkbox 实心方块承载
+            expect(a.querySelector('[data-slot="bar"]')).toBeNull()
+            expect(a.querySelector('input[type="checkbox"]')).not.toBeNull()
         })
     })
 
@@ -599,19 +588,6 @@ describe('AskUserQuestionFooter', () => {
             // 模拟用户点击 textarea 聚焦 —— 不应触发 toggle 把它收起
             fireEvent.click(ta)
             expect(document.querySelector('textarea')).not.toBeNull()
-        })
-
-        it('折叠头带 aria-expanded / aria-controls', () => {
-            const tool = makeTool([{
-                question: 'Q', multiSelect: false,
-                options: [{ label: 'A', description: null, preview: null }],
-            }])
-            renderFooter(tool)
-            const toggle = screen.getByTestId('ask-collapse-toggle')
-            expect(toggle.getAttribute('aria-expanded')).toBe('true')
-            expect(toggle.getAttribute('aria-controls')).toBe('ask-collapse-actions')
-            fireEvent.click(toggle)
-            expect(toggle.getAttribute('aria-expanded')).toBe('false')
         })
     })
 })

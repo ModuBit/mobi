@@ -32,7 +32,7 @@ vi.hoisted(() => {
     }
 })
 
-import { render } from '@testing-library/react'
+import { render, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { ComposerInfoPanel } from '@/components/composer/ComposerInfoPanel'
@@ -122,6 +122,26 @@ describe('ComposerInfoPanel', () => {
             { wrapper }
         )
         expect(container.innerHTML).not.toBe('')
+    })
+
+    it('工具交互卡片折叠头点击切换 aria-expanded', () => {
+        const agentState = {
+            requests: {
+                'req-1': { tool: 'Bash', arguments: { command: 'ls' }, createdAt: null },
+            },
+        } as unknown as AgentState
+
+        const { container } = render(
+            <ComposerInfoPanel {...defaultProps} agentState={agentState} />,
+            { wrapper }
+        )
+        const toggle = container.querySelector('[data-testid="tool-request-toggle-req-1"]') as HTMLElement
+        expect(toggle).toBeTruthy()
+        expect(toggle.getAttribute('aria-expanded')).toBe('true')
+        fireEvent.click(toggle)
+        expect(toggle.getAttribute('aria-expanded')).toBe('false')
+        fireEvent.click(toggle)
+        expect(toggle.getAttribute('aria-expanded')).toBe('true')
     })
 
     it('溢出容器设置了 maxHeight', () => {

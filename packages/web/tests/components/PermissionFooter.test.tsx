@@ -112,12 +112,12 @@ describe('PermissionFooter', () => {
     })
     afterEach(cleanup)
 
-    it('允许与拒绝分属不同分组（data-group）', () => {
+    it('允许与拒绝同属 actions 组（PC 提级对等，不再物理隔离）', () => {
         renderFooter(makeTool())
         const allowBtn = screen.getByText('允许').closest('button')!
         const denyBtn = screen.getByText('拒绝').closest('button')!
-        expect(allowBtn.closest('[data-group="primary"]')).not.toBeNull()
-        expect(denyBtn.closest('[data-group="deny"]')).not.toBeNull()
+        expect(allowBtn.closest('[data-group="actions"]')).not.toBeNull()
+        expect(denyBtn.closest('[data-group="actions"]')).not.toBeNull()
     })
 
     it('点击允许调用 approve', async () => {
@@ -130,15 +130,6 @@ describe('PermissionFooter', () => {
         renderFooter(makeTool())
         fireEvent.click(screen.getByText('拒绝'))
         await waitFor(() => expect(mockDeny).toHaveBeenCalledWith('s1', 'p1'))
-    })
-
-    it('折叠头点击后操作区不渲染，再点展开恢复', () => {
-        renderFooter(makeTool())
-        expect(screen.getByText('允许')).toBeInTheDocument()
-        fireEvent.click(screen.getByTestId('perm-collapse-toggle'))
-        expect(screen.queryByText('允许')).not.toBeInTheDocument()
-        fireEvent.click(screen.getByTestId('perm-collapse-toggle'))
-        expect(screen.getByText('允许')).toBeInTheDocument()
     })
 
     it('Edit 工具显示全部允许次级按钮', () => {

@@ -81,13 +81,13 @@ describe('AskUserQuestionView', () => {
 
         it('选中项显示正确', () => {
             renderView(props)
-            // 选中项通过共享 OptionRow 渲染为 button[data-selected="true"]
-            const selectedBtn = screen.getByText('Bun').closest('button[data-selected="true"]')
+            // 选中项通过共享 OptionRow 渲染为 [data-selected="true"]
+            const selectedBtn = screen.getByText('Bun').closest('[data-selected="true"]')
             expect(selectedBtn).toBeTruthy()
         })
 
         it('未选中项正常显示', () => {
-            const { container } = renderView(props)
+            renderView(props)
             expect(screen.getByText('Node')).toBeInTheDocument()
             expect(screen.getByText('Classic')).toBeInTheDocument()
         })
@@ -115,8 +115,8 @@ describe('AskUserQuestionView', () => {
 
         it('多个选中项均高亮', () => {
             const { container } = renderView(props)
-            // OptionRow 选中态：button[data-selected="true"]
-            const selectedBtns = container.querySelectorAll('button[data-selected="true"]')
+            // OptionRow 选中态：[data-selected="true"]
+            const selectedBtns = container.querySelectorAll('[data-selected="true"]')
             expect(selectedBtns.length).toBe(2)
             const labels = Array.from(selectedBtns).map(c => c.textContent)
             // Auth 和 Cache 被选中
@@ -125,7 +125,7 @@ describe('AskUserQuestionView', () => {
         })
 
         it('未选中项不高亮', () => {
-            const { container } = renderView(props)
+            renderView(props)
             expect(screen.getByText('Logging')).toBeInTheDocument()
         })
     })
@@ -165,7 +165,7 @@ describe('AskUserQuestionView', () => {
             // Bun 和 Node 都不在 answers 中 → 常规选项无选中态
             // （deno 经 OtherAnswersList 渲染为 checked OptionRow，需排除）
             const selectedRegular = container.querySelectorAll(
-                'button[data-selected="true"]:not([data-testid="other-answer"])'
+                '[data-selected="true"]:not([data-testid="other-answer"])'
             )
             expect(selectedRegular.length).toBe(0)
             // 仅 deno 通过 OtherAnswersList 渲染
@@ -215,7 +215,7 @@ describe('AskUserQuestionView', () => {
             expect(screen.getByText('A')).toBeInTheDocument()
             expect(screen.getByText('B')).toBeInTheDocument()
             // 无选中 OptionRow，也无 other/freeform 答案卡片
-            const selectedBtns = container.querySelectorAll('button[data-selected="true"]')
+            const selectedBtns = container.querySelectorAll('[data-selected="true"]')
             expect(selectedBtns.length).toBe(0)
             const otherCards = container.querySelectorAll('[data-testid="other-answer"]')
             expect(otherCards.length).toBe(0)
@@ -306,8 +306,8 @@ describe('AskUserQuestionView', () => {
 
         it('每题的答案正确高亮', () => {
             const { container } = renderView(props)
-            // OptionRow 选中态：button[data-selected="true"]，每题一个
-            const selectedBtns = container.querySelectorAll('button[data-selected="true"]')
+            // OptionRow 选中态：[data-selected="true"]，每题一个
+            const selectedBtns = container.querySelectorAll('[data-selected="true"]')
             expect(selectedBtns.length).toBe(2)
         })
     })

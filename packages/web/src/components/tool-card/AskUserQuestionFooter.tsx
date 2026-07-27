@@ -25,7 +25,6 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
 import { OptionRow } from './OptionRow'
-import { CollapseHeader } from './CollapseHeader'
 
 const { useToken } = antTheme
 const { TextArea } = Input
@@ -77,8 +76,6 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     const [otherSelectedByQuestion, setOtherSelectedByQuestion] = useState<boolean[]>([])
     const [otherTextByQuestion, setOtherTextByQuestion] = useState<string[]>([])
     const [fallbackText, setFallbackText] = useState('')
-    // 折叠态：默认展开。移动端可折叠以省空间，避免误触
-    const [collapsed, setCollapsed] = useState(false)
 
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -91,8 +88,6 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         setFallbackText('')
         setLoading(false)
         setError(null)
-        // 新 pending 权限时强制展开，确保用户看见操作区
-        setCollapsed(false)
     }, [props.tool.input])
 
     if (!permission || permission.status !== 'pending') return null
@@ -311,70 +306,54 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             flexDirection: 'column',
             gap: 8
         }}>
-            {/* 折叠头：徽标 + 问题摘要 + 展开箭头（共享 CollapseHeader） */}
-            <CollapseHeader
-                badgeText={t('chat.tool.askUserQuestion.title')}
-                // 多题场景下也展示首题文本（与单题一致），避免「第 N 题」语义歧义；徽标 + Tabs 承载题数上下文
-                summary={questions[0]?.question || ''}
-                collapsed={collapsed}
-                onToggle={() => setCollapsed((c) => !c)}
-                testId="ask-collapse-toggle"
-                panelId="ask-collapse-actions"
-                actionMinHeight={actionMinHeight}
-            />
+            {error ? (
+                <Alert
+                    type="error"
+                    showIcon
+                    message={error}
+                    style={{ fontSize: 12, padding: '8px 12px', marginBottom: 8 }}
+                />
+            ) : null}
 
-            {collapsed ? null : (
-                <div id="ask-collapse-actions">
-                    {error ? (
-                        <Alert
-                            type="error"
-                            showIcon
-                            message={error}
-                            style={{ fontSize: 12, padding: '8px 12px', marginBottom: 8 }}
-                        />
-                    ) : null}
-
-                    {questions.length === 0 ? (
-                        <div>
-                            <div style={{ fontSize: 14, color: token.colorTextSecondary }}>
-                                {t('chat.tool.askUserQuestion.fallback')}
-                            </div>
-                            <TextArea
-                                value={fallbackText}
-                                onChange={(e) => setFallbackText(e.target.value)}
-                                disabled={props.disabled || loading}
-                                placeholder={t('chat.tool.askUserQuestion.placeholder')}
-                                rows={4}
-                                style={{ marginTop: 8 }}
-                            />
-                            {renderSubmitButton()}
-                        </div>
-                    ) : questions.length === 1 ? (
-                        /* 单题：直接展示选项 */
-                        <div>
-                            {renderQuestionOptions(0)}
-                            {renderSubmitButton()}
-                        </div>
-                    ) : (
-                        /* 多题：使用 Tabs 组件 */
-                        <Tabs
-                            activeKey={String(step)}
-                            onChange={(key) => { setError(null); setStep(Number(key)) }}
-                            size="small"
-                            tabBarStyle={{ minHeight: actionMinHeight }}
-                            items={questions.map((q, idx) => ({
-                                key: String(idx),
-                                label: q.header || t('chat.tool.askUserQuestion.questionN', { n: idx + 1 }),
-                                children: (
-                                    <div>
-                                        {renderQuestionOptions(idx)}
-                                        {idx === questions.length - 1 ? renderSubmitButton() : null}
-                                    </div>
-                                )
-                            }))}
-                        />
-                    )}
+            {questions.length === 0 ? (
+                <div>
+                    <div style={{ fontSize: 14, color: token.colorTextSecondary }}>
+                        {t('chat.tool.askUserQuestion.fallback')}
+                    </div>
+                    <TextArea
+                        value={fallbackText}
+                        onChange={(e) => setFallbackText(e.target.value)}
+                        disabled={props.disabled || loading}
+                        placeholder={t('chat.tool.askUserQuestion.placeholder')}
+                        rows={4}
+                        style={{ marginTop: 8 }}
+                    />
+                    {renderSubmitButton()}
                 </div>
+            ) : questions.length === 1 ? (
+                /* 单题：直接展示选项 */
+                <div>
+                    {renderQuestionOptions(0)}
+                    {renderSubmitButton()}
+                </div>
+            ) : (
+                /* 多题：使用 Tabs 组件 */
+                <Tabs
+                    activeKey={String(step)}
+                    onChange={(key) => { setError(null); setStep(Number(key)) }}
+                    size="small"
+                    tabBarStyle={{ minHeight: actionMinHeight }}
+                    items={questions.map((q, idx) => ({
+                        key: String(idx),
+                        label: q.header || t('chat.tool.askUserQuestion.questionN', { n: idx + 1 }),
+                        children: (
+                            <div>
+                                {renderQuestionOptions(idx)}
+                                {idx === questions.length - 1 ? renderSubmitButton() : null}
+                            </div>
+                        )
+                    }))}
+                />
             )}
         </div>
     )
