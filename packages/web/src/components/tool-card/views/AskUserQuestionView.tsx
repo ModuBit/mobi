@@ -31,78 +31,6 @@ function isAnswerSelected(
     return questionAnswers.some(a => a.trim() === optionLabel.trim())
 }
 
-/**
- * 自定义/其他答案项 —— 选项列表之外的自由答案（例如 deno）。
- * 完成态视觉与 OptionRow 一致：colorSuccessBg 底 + colorSuccessBorder 边 + colorSuccess 文本强调。
- * 不直接复用 OptionRow 是因为它需要 (custom answer) 副标题与图标占位语义。
- */
-function OtherAnswerItem({ answer, isMulti }: { answer: string; isMulti: boolean }) {
-    const { token } = antTheme.useToken()
-    return (
-        <div
-            data-testid="other-answer"
-            style={{
-                borderRadius: 6,
-                border: `1px solid ${token.colorSuccessBorder}`,
-                background: token.colorSuccessBg,
-                padding: 8,
-            }}
-        >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <span style={{ flexShrink: 0, fontSize: 14, color: token.colorSuccess }}>
-                    {isMulti ? '☑' : '●'}
-                </span>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{
-                        fontSize: 14,
-                        color: token.colorSuccess,
-                        fontWeight: 500,
-                        wordBreak: 'break-word',
-                    }}>
-                        {answer}
-                    </div>
-                    <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary }}>
-                        (custom answer)
-                    </div>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-/**
- * 自由格式答案项 —— 无选项的问题直接展示文本答案。
- * 同样走 colorSuccess 系 token，与完成态整体视觉统一。
- */
-function FreeformAnswerItem({ answer }: { answer: string }) {
-    const { token } = antTheme.useToken()
-    return (
-        <div
-            data-testid="freeform-answer"
-            style={{
-                borderRadius: 6,
-                border: `1px solid ${token.colorSuccessBorder}`,
-                background: token.colorSuccessBg,
-                padding: 8,
-            }}
-        >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <span style={{ flexShrink: 0, fontSize: 14, color: token.colorSuccess }}>●</span>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{
-                        fontSize: 14,
-                        color: token.colorSuccess,
-                        fontWeight: 500,
-                        wordBreak: 'break-word',
-                    }}>
-                        {answer}
-                    </div>
-                </div>
-            </div>
-        </div>
-    )
-}
-
 function OtherAnswersList(props: {
     answers: Record<string, string[]>
     questionText: string
@@ -117,15 +45,30 @@ function OtherAnswersList(props: {
 
     if (otherAnswers.length === 0) return null
 
+    // 复用 OptionRow（tone=completed）—— 自定义答案与选中选项视觉完全一致，
+    // description 承载 (custom answer) 副标题，无需独立组件
     return (
         <>
             {otherAnswers.map((answer, i) => (
-                <OtherAnswerItem key={`other-${i}`} answer={answer} isMulti={props.isMulti} />
+                <OptionRow
+                    key={`other-${i}`}
+                    data-testid="other-answer"
+                    checked
+                    mode={props.isMulti ? 'multi' : 'single'}
+                    disabled
+                    tone="completed"
+                    title={answer}
+                    description="(custom answer)"
+                />
             ))}
         </>
     )
 }
 
+/**
+ * 自由格式答案列表 —— 无选项的问题直接展示文本答案。
+ * 同样复用 OptionRow（tone=completed），与完成态整体视觉统一。
+ */
 function FreeformAnswersList(props: {
     answers: Record<string, string[]>
     questionText: string
@@ -139,7 +82,15 @@ function FreeformAnswersList(props: {
     return (
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {cleaned.map((answer, i) => (
-                <FreeformAnswerItem key={i} answer={answer} />
+                <OptionRow
+                    key={i}
+                    data-testid="freeform-answer"
+                    checked
+                    mode="single"
+                    disabled
+                    tone="completed"
+                    title={answer}
+                />
             ))}
         </div>
     )

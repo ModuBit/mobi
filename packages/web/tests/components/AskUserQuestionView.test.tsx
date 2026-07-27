@@ -160,9 +160,12 @@ describe('AskUserQuestionView', () => {
 
         it('常规选项未选中不高亮', () => {
             const { container } = renderView(props)
-            // Bun 和 Node 都不在 answers 中 → 无 OptionRow 选中态
-            const selectedBtns = container.querySelectorAll('button[data-selected="true"]')
-            expect(selectedBtns.length).toBe(0)
+            // Bun 和 Node 都不在 answers 中 → 常规选项无选中态
+            // （deno 经 OtherAnswersList 渲染为 checked OptionRow，需排除）
+            const selectedRegular = container.querySelectorAll(
+                'button[data-selected="true"]:not([data-testid="other-answer"])'
+            )
+            expect(selectedRegular.length).toBe(0)
             // 仅 deno 通过 OtherAnswersList 渲染
             const otherCards = container.querySelectorAll('[data-testid="other-answer"]')
             expect(otherCards.length).toBe(1)
