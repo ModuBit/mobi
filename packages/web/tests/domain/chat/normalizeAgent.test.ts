@@ -578,6 +578,48 @@ describe('normalizeAgentRecord', () => {
         )
         expect(result).toBeNull()
     })
+
+    it('tool_progress 兼容 camelCase 字段（parentToolUseId / elapsedTimeSeconds / toolName）', () => {
+        // SDK 字段下划线/驼峰两种格式都可能下发，handler 走 getField 兼容（web/CLAUDE.md 规范）
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'tool_progress',
+                    parentToolUseId: 'call_abc',
+                    elapsedTimeSeconds: 25,
+                    toolName: 'Bash',
+                },
+            }
+        )
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('tool-progress')
+            expect((result.content as any).toolUseId).toBe('call_abc')
+            expect((result.content as any).elapsedSeconds).toBe(25)
+            expect((result.content as any).toolName).toBe('Bash')
+        }
+    })
+
+    it('tool_use_summary 兼容 camelCase 字段（precedingToolUseIds）', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'tool_use_summary',
+                    summary: 'Ran tests',
+                    precedingToolUseIds: ['call_a', 'call_b'],
+                },
+            }
+        )
+        expect(result?.role).toBe('event')
+        if (result && 'type' in result.content) {
+            expect(result.content.type).toBe('tool-use-summary')
+            expect((result.content as any).toolUseIds).toEqual(['call_a', 'call_b'])
+        }
+    })
 })
 
 describe('isSkippableAgentContent', () => {

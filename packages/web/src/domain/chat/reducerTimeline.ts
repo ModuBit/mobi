@@ -127,18 +127,23 @@ export function reduceTimeline(
                 }
                 continue
             }
-            // tool-use-summary：挂到 preceding 列表最后一个工具卡片的 summary（视线落点）
+            // tool-use-summary：挂到 preceding 列表最后一个工具卡片（视线落点）
+            // 从末尾向前找第一个已存在 block：lastId 可能是隐藏工具（hiddenToolUseIds，
+            // 不进 toolBlocksById）或未进窗口的工具，逐个回退避免整条 summary 被丢弃
             if (msg.content.type === 'tool-use-summary') {
                 const { summary, toolUseIds } = msg.content as Extract<AgentEvent, { type: 'tool-use-summary' }>
-                const lastId = toolUseIds[toolUseIds.length - 1]
-                const existingBlock = lastId ? toolBlocksById.get(lastId) : undefined
-                if (existingBlock) {
-                    const updatedBlock = {
-                        ...existingBlock,
-                        tool: { ...existingBlock.tool, summary }
+                for (let i = toolUseIds.length - 1; i >= 0; i--) {
+                    const id = toolUseIds[i]
+                    const existingBlock = toolBlocksById.get(id)
+                    if (existingBlock) {
+                        const updatedBlock = {
+                            ...existingBlock,
+                            tool: { ...existingBlock.tool, summary }
+                        }
+                        replaceBlockById(blocks, blockIndexById, id, updatedBlock)
+                        toolBlocksById.set(id, updatedBlock)
+                        break
                     }
-                    replaceBlockById(blocks, blockIndexById, lastId, updatedBlock)
-                    toolBlocksById.set(lastId, updatedBlock)
                 }
                 continue
             }

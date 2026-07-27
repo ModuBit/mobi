@@ -87,10 +87,13 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
         if (normalized) {
             return { ...normalized, status: message.status, originalText: message.originalText, snapshot, messageId }
         }
-        // normalizeAgentRecord 对 output 消息已充分识别（visible 判定 + handler 注册表 + 未识别类型 console.warn）。
+        // normalizeAgentRecord 对 output 消息已充分识别（visible 判定 + handler 注册表）。
         // 返回 null 即「正常跳过」（result / sidechain tool_progress / 未识别 output 类型等），
         // 不走 JSON dump fallback —— 结构化消息 dump 成文本本身就是 bug
-        //（如 tool_progress 心跳曾被整段渲染成 JSON 文本）。仅 raw record（非 output）才兜底 dump。
+        //（如 tool_progress 心跳曾被整段渲染成 JSON 文本）。
+        // 未识别类型的可观测性由 normalizeAgentRecord 的 console.warn（含 type + messageId）承担：
+        // 开发期立即可见、生产不展示——此权衡优先避免 JSON 文本污染（已实证回归 bug）。
+        // 仅 raw record（非 output）才兜底 dump。
         const rc = record.content as Record<string, unknown>
         if (rc?.type === 'output') {
             return null

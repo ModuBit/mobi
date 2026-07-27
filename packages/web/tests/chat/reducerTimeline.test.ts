@@ -364,6 +364,29 @@ describe('reduceTimeline', () => {
             const result = reduceTimeline([toolCall, summary1, summary2], ctx)
             expect(result.toolBlocksById.get('tool-x')?.tool.summary).toBe('second')
         })
+
+        it('lastId 不在 toolBlocksById（隐藏工具）时回退挂到前一个存在的 block', () => {
+            // hiddenToolUseIds 里的工具（如 change_title）不进 toolBlocksById；
+            // preceding 末尾命中此类工具时，应逐个回退而非整条丢弃
+            const toolCallA = createToolCallMessage('tool-a', 'Read', { file_path: 'a.ts' }, { createdAt: 1000 })
+            const summary: TracedMessage = {
+                id: 'evt-summary', localId: null, createdAt: 3000, role: 'event', isSidechain: false,
+                content: {
+                    type: 'tool-use-summary',
+                    summary: 'Ran tests and fixed 2 failures',
+                    toolUseIds: ['tool-a', 'tool-hidden'],
+                },
+            }
+            const result = reduceTimeline([toolCallA, summary], {
+                permissionsById: new Map(),
+                groups: new Map(),
+                consumedGroupIds: new Set(),
+                titleChangesByToolUseId: new Map(),
+                emittedTitleChangeToolUseIds: new Set(),
+                hiddenToolUseIds: new Map(),
+            })
+            expect(result.toolBlocksById.get('tool-a')?.tool.summary).toBe('Ran tests and fixed 2 failures')
+        })
     })
 
     describe('错误处理', () => {

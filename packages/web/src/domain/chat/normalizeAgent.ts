@@ -461,14 +461,18 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
  * 处理 tool_progress 消息（长任务心跳）。
  * SDK 在工具执行期间每 ~30s 推送一条，携带已运行时长。用 parent_tool_use_id 关联到对应工具卡片
  * （其自带 tool_use_id 是 call_xxx-heartbeat-N 变体，不可直接用）。reducer 据此校准 startedAt。
- * sidechain 的 tool_progress 主线程无对应 block，跳过（Phase 2 在子视图 reduce 内复用）。
+ *
+ * sidechain 的 tool_progress 在此 return null 丢弃：normalize 阶段过滤后该消息不会进入 sidechain
+ * group（group 由 normalize 后的 TracedMessage 构成），故 Phase 2 若要支持子视图心跳，需先打通
+ * normalize 对 sidechain tool_progress 的透传，再在子视图 reduce 内复用 reducer 的 patch 逻辑。
  */
 const handleToolProgressOutput: OutputHandler = (data, ctx) => {
-    if (data.isSidechain === true) return null
+    const isSidechain = Boolean(getField(data, 'isSidechain'))
+    if (isSidechain) return null
     const toolUseId = asString(getField(data, 'parent_tool_use_id'))
     if (!toolUseId) return null
-    const elapsedSeconds = asNumber(data.elapsed_time_seconds) ?? 0
-    const toolName = asString(data.tool_name) ?? 'Tool'
+    const elapsedSeconds = asNumber(getField(data, 'elapsed_time_seconds')) ?? 0
+    const toolName = asString(getField(data, 'tool_name')) ?? 'Tool'
     return createEventMessage(ctx, { type: 'tool-progress', toolUseId, elapsedSeconds, toolName })
 }
 
@@ -476,13 +480,17 @@ const handleToolProgressOutput: OutputHandler = (data, ctx) => {
  * 处理 tool_use_summary 消息。
  * SDK 对一组工具的执行结果生成人话摘要，preceding_tool_use_ids 指向被总结的工具。
  * reducer 将 summary 挂到 preceding 列表最后一个工具卡片（视线落点）。
+ * 字段一律走 getField，兼容 SDK snake_case / camelCase 两种下发格式（见 web/CLAUDE.md）。
  */
 const handleToolUseSummaryOutput: OutputHandler = (data, ctx) => {
-    if (data.isSidechain === true) return null
-    const summary = asString(data.summary)
+    const isSidechain = Boolean(getField(data, 'isSidechain'))
+    if (isSidechain) return null
+    const summary = asString(getField(data, 'summary'))
     if (!summary) return null
-    const rawIds = Array.isArray(data.preceding_tool_use_ids) ? data.preceding_tool_use_ids : []
-    const toolUseIds = rawIds.filter((id): id is string => typeof id === 'string')
+    const rawIds = getField(data, 'preceding_tool_use_ids')
+    const toolUseIds = Array.isArray(rawIds)
+        ? rawIds.filter((id): id is string => typeof id === 'string')
+        : []
     if (toolUseIds.length === 0) return null
     return createEventMessage(ctx, { type: 'tool-use-summary', summary, toolUseIds })
 }
