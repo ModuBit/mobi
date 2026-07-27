@@ -33,6 +33,11 @@ vi.mock('react-i18next', async (importOriginal) => {
     }
 })
 
+// mock useIsMobile：默认移动端（触控目标 44px）
+vi.mock('@/core/data/hooks/useMediaQuery', () => ({
+    useIsMobile: () => true,
+}))
+
 const mockApprove = vi.fn()
 const mockApi = {
     permissions: { approve: mockApprove },
@@ -88,23 +93,14 @@ function renderFooter(tool: ToolInfo, disabled = false) {
     )
 }
 
-/** 查找选项按钮（<button type="button">），通过其内部 label div 匹配 */
+/** 查找选项按钮（共享 OptionRow 渲染的 <button data-selected>），通过其内部 label div 匹配 */
 function findOptionBtn(label: string): HTMLElement {
-    const allBtns = Array.from(document.querySelectorAll('button[type="button"]'))
-    for (const btn of allBtns) {
-        // 排除 antd Button（有 ant-btn class）
-        if (btn.classList.contains('ant-btn')) continue
-        // label 在 <span> 下的第一个 <div> 中（fontWeight: 500）
-        const labelDiv = btn.querySelector<HTMLDivElement>('span > div:first-child')
-        if (labelDiv && labelDiv.textContent?.trim() === label) {
-            return btn as HTMLElement
-        }
+    const opts = Array.from(document.querySelectorAll('[data-selected]'))
+    for (const o of opts) {
+        const title = o.querySelector('span > div:first-child')
+        if (title && title.textContent?.trim() === label) return o as HTMLElement
     }
-    throw new Error(`Option button with label "${label}" not found. Available: ${
-        allBtns.filter(b => !b.classList.contains('ant-btn'))
-            .map(b => b.querySelector('span > div')?.textContent?.trim())
-            .filter(Boolean).join(', ')
-    }`)
+    throw new Error(`option "${label}" not found`)
 }
 
 /** 查找提交按钮 */
@@ -560,6 +556,33 @@ describe('AskUserQuestionFooter', () => {
                 { wrapper }
             )
             expect(container.innerHTML).toBe('')
+        })
+    })
+
+    describe('共享 OptionRow + 折叠头', () => {
+        it('选中项带 data-selected=true 与色带节点', () => {
+            const tool = makeTool([{
+                question: 'Q', multiSelect: true,
+                options: [{ label: 'A', description: null, preview: null }],
+            }])
+            renderFooter(tool)
+            const a = findOptionBtn('A')
+            fireEvent.click(a)
+            expect(a.getAttribute('data-selected')).toBe('true')
+            expect(a.querySelector('[data-slot="bar"]')).not.toBeNull()
+        })
+
+        it('折叠后选项不渲染，再点展开恢复', () => {
+            const tool = makeTool([{
+                question: 'Q', multiSelect: false,
+                options: [{ label: 'A', description: null, preview: null }],
+            }])
+            renderFooter(tool)
+            expect(findOptionBtn('A')).toBeInTheDocument()
+            fireEvent.click(screen.getByTestId('ask-collapse-toggle'))
+            expect(() => findOptionBtn('A')).toThrow()
+            fireEvent.click(screen.getByTestId('ask-collapse-toggle'))
+            expect(findOptionBtn('A')).toBeInTheDocument()
         })
     })
 })

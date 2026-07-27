@@ -17,83 +17,18 @@
 import type { MobiApi } from '@/core/data/api/client'
 import type { ToolInfo } from '@/domain/tool/types'
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Button, theme as antTheme, Input, Tabs } from 'antd'
+import { Alert, Button, theme as antTheme, Input, Tabs } from 'antd'
 import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
-import { Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
-import { OptionPreview } from './OptionPreview'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
+import { OptionRow } from './OptionRow'
 
 const { useToken } = antTheme
 const { TextArea } = Input
-
-function SelectionMark(props: { checked: boolean; mode: 'single' | 'multi' }) {
-    const { token } = useToken()
-    const icon = props.mode === 'multi'
-        ? (props.checked ? <SquareCheck size={16} /> : <Square size={16} />)
-        : (props.checked ? <CircleCheck size={16} /> : <Circle size={16} />)
-    return (
-        <span style={{ marginTop: 2, width: 16, flexShrink: 0, textAlign: 'center', color: props.checked ? token.colorPrimary : token.colorTextQuaternary, display: 'flex', alignItems: 'center' }}>
-            {icon}
-        </span>
-    )
-}
-
-function OptionRow(props: {
-    checked: boolean
-    mode: 'single' | 'multi'
-    disabled: boolean
-    title: string
-    description?: string | null
-    preview?: string | null
-    onClick: () => void
-}) {
-    const { token } = useToken()
-
-    const showDescription = props.description && props.description !== props.title
-    const labelContent = (
-        <span style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontWeight: 500, color: token.colorText, wordBreak: 'break-word' }}>{props.title}</div>
-            {showDescription ? (
-                <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
-                    {props.description}
-                </div>
-            ) : null}
-        </span>
-    )
-
-    const content = props.preview
-        ? <OptionPreview preview={props.preview}>{labelContent}</OptionPreview>
-        : labelContent
-
-    return (
-        <button
-            type="button"
-            onClick={props.onClick}
-            disabled={props.disabled}
-            style={{
-                display: 'flex',
-                width: '100%',
-                alignItems: 'flex-start',
-                gap: 8,
-                borderRadius: 6,
-                padding: '4px 8px',
-                textAlign: 'left',
-                fontSize: 14,
-                border: 'none',
-                background: props.checked ? token.colorBgTextHover : 'transparent',
-                cursor: props.disabled ? 'not-allowed' : 'pointer',
-                opacity: props.disabled ? 0.5 : 1,
-                transition: 'background 0.2s'
-            }}
-        >
-            <SelectionMark checked={props.checked} mode={props.mode} />
-            {content}
-        </button>
-    )
-}
 
 function computeAnswersForQuestion(
     question: AskUserQuestionQuestion,
@@ -130,6 +65,13 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     const { t } = useTranslation()
     const { token } = useToken()
     const queryClient = useQueryClient()
+    const isMobile = useIsMobile()
+    // 无障碍：尊重用户的减少动画偏好（与 PermissionFooter 一致的一次性探测）
+    const reducedMotion = typeof window !== 'undefined' && window.matchMedia
+        ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        : false
+    // 移动端触摸目标 ≥44px，桌面端 40px
+    const actionMinHeight = isMobile ? 44 : 40
     const permission = props.tool.permission
     const parsed = useMemo(() => parseAskUserQuestionInput(props.tool.input), [props.tool.input])
     const questions = parsed.questions
@@ -139,6 +81,8 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     const [otherSelectedByQuestion, setOtherSelectedByQuestion] = useState<boolean[]>([])
     const [otherTextByQuestion, setOtherTextByQuestion] = useState<string[]>([])
     const [fallbackText, setFallbackText] = useState('')
+    // 折叠态：默认展开。移动端可折叠以省空间，避免误触
+    const [collapsed, setCollapsed] = useState(false)
 
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -185,7 +129,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             onClick={submit}
             loading={loading}
             icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
-            style={{ marginTop: 8 }}
+            style={{ marginTop: 12, minHeight: actionMinHeight }}
         >
             {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
         </Button>
@@ -303,13 +247,18 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         }
     }
 
-    // 渲染单个问题的选项列表（不含 header）
+    // 渲染单个问题的选项列表（不含 header）—— 用共享 OptionRow + 卡片容器
     const renderQuestionOptions = (qIdx: number) => {
         const question = questions[qIdx]
         if (!question) return null
         const m: 'single' | 'multi' = question.multiSelect ? 'multi' : 'single'
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{
+                display: 'flex', flexDirection: 'column', gap: 6,
+                padding: 10, borderRadius: 8,
+                background: token.colorBgLayout,
+                border: `1px solid ${token.colorBorderSecondary}`,
+            }}>
                 {question.question ? (
                     <div style={{ fontSize: 14, color: token.colorText, wordBreak: 'break-word', marginBottom: 4 }}>
                         {question.question}
@@ -320,9 +269,11 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     return (
                         <OptionRow
                             key={optIdx}
+                            data-testid={`option-${optIdx}`}
                             checked={selected}
                             mode={m}
                             disabled={props.disabled || loading}
+                            tone="interactive"
                             title={opt.label}
                             description={opt.description}
                             preview={opt.preview}
@@ -331,23 +282,26 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     )
                 })}
                 <OptionRow
+                    data-testid="option-other"
                     checked={otherSelectedByQuestion[qIdx] ?? false}
                     mode={m}
                     disabled={props.disabled || loading}
+                    tone="interactive"
                     title={t('chat.tool.other')}
                     description={t('chat.tool.otherDescription')}
                     onClick={() => toggleOther(qIdx)}
-                />
-                {(otherSelectedByQuestion[qIdx] ?? false) ? (
-                    <TextArea
-                        value={otherTextByQuestion[qIdx] ?? ''}
-                        onChange={(e) => updateOtherText(qIdx, e.target.value)}
-                        disabled={props.disabled || loading}
-                        placeholder={t('chat.tool.askUserQuestion.otherPlaceholder')}
-                        rows={3}
-                        style={{ marginTop: 4 }}
-                    />
-                ) : null}
+                >
+                    {(otherSelectedByQuestion[qIdx] ?? false) ? (
+                        <TextArea
+                            value={otherTextByQuestion[qIdx] ?? ''}
+                            onChange={(e) => updateOtherText(qIdx, e.target.value)}
+                            disabled={props.disabled || loading}
+                            placeholder={t('chat.tool.askUserQuestion.otherPlaceholder')}
+                            rows={3}
+                            style={{ marginTop: 8 }}
+                        />
+                    ) : null}
+                </OptionRow>
             </div>
         )
     }
@@ -359,50 +313,110 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             flexDirection: 'column',
             gap: 8
         }}>
-            {error ? (
-                <div style={{ fontSize: 12, color: token.colorError }}>
-                    {error}
-                </div>
-            ) : null}
+            {/* 折叠头：徽标 + 问题摘要 + 展开箭头（button 以提供键盘可达性，与 PermissionFooter 一致） */}
+            <button
+                type="button"
+                data-testid="ask-collapse-toggle"
+                aria-expanded={!collapsed}
+                aria-controls="ask-collapse-actions"
+                onClick={() => setCollapsed((c) => !c)}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: '100%',
+                    minHeight: actionMinHeight,
+                    cursor: 'pointer',
+                    color: token.colorTextSecondary,
+                    fontSize: 13,
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    textAlign: 'left',
+                }}
+            >
+                <span style={{
+                    fontSize: 11,
+                    color: token.colorPrimary,
+                    background: token.colorPrimaryBg,
+                    border: `1px solid ${token.colorPrimaryBorder}`,
+                    padding: '1px 8px',
+                    borderRadius: 10,
+                    flexShrink: 0,
+                }}>{t('chat.tool.askUserQuestion.title')}</span>
+                <span style={{
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                }}>
+                    {questions.length > 1
+                        ? t('chat.tool.askUserQuestion.questionN', { n: questions.length })
+                        : (questions[0]?.question || '')}
+                </span>
+                <span style={{
+                    transform: collapsed ? 'none' : 'rotate(180deg)',
+                    transition: reducedMotion ? 'none' : 'transform .2s',
+                    color: token.colorTextTertiary,
+                    flexShrink: 0,
+                }}>
+                    <ChevronDown size={14} />
+                </span>
+            </button>
 
-            {questions.length === 0 ? (
-                <div>
-                    <div style={{ fontSize: 14, color: token.colorTextSecondary }}>
-                        {t('chat.tool.askUserQuestion.fallback')}
-                    </div>
-                    <TextArea
-                        value={fallbackText}
-                        onChange={(e) => setFallbackText(e.target.value)}
-                        disabled={props.disabled || loading}
-                        placeholder={t('chat.tool.askUserQuestion.placeholder')}
-                        rows={4}
-                        style={{ marginTop: 8 }}
-                    />
-                    {renderSubmitButton()}
-                </div>
-            ) : questions.length === 1 ? (
-                /* 单题：直接展示选项 */
-                <div>
-                    {renderQuestionOptions(0)}
-                    {renderSubmitButton()}
-                </div>
-            ) : (
-                /* 多题：使用 Tabs 组件 */
-                <Tabs
-                    activeKey={String(step)}
-                    onChange={(key) => { setError(null); setStep(Number(key)) }}
-                    size="small"
-                    items={questions.map((q, idx) => ({
-                        key: String(idx),
-                        label: q.header || t('chat.tool.askUserQuestion.questionN', { n: idx + 1 }),
-                        children: (
-                            <div>
-                                {renderQuestionOptions(idx)}
-                                {idx === questions.length - 1 ? renderSubmitButton() : null}
+            {collapsed ? null : (
+                <div id="ask-collapse-actions">
+                    {error ? (
+                        <Alert
+                            type="error"
+                            showIcon
+                            message={error}
+                            style={{ fontSize: 12, padding: '8px 12px', marginBottom: 8 }}
+                        />
+                    ) : null}
+
+                    {questions.length === 0 ? (
+                        <div>
+                            <div style={{ fontSize: 14, color: token.colorTextSecondary }}>
+                                {t('chat.tool.askUserQuestion.fallback')}
                             </div>
-                        )
-                    }))}
-                />
+                            <TextArea
+                                value={fallbackText}
+                                onChange={(e) => setFallbackText(e.target.value)}
+                                disabled={props.disabled || loading}
+                                placeholder={t('chat.tool.askUserQuestion.placeholder')}
+                                rows={4}
+                                style={{ marginTop: 8 }}
+                            />
+                            {renderSubmitButton()}
+                        </div>
+                    ) : questions.length === 1 ? (
+                        /* 单题：直接展示选项 */
+                        <div>
+                            {renderQuestionOptions(0)}
+                            {renderSubmitButton()}
+                        </div>
+                    ) : (
+                        /* 多题：使用 Tabs 组件 */
+                        <Tabs
+                            activeKey={String(step)}
+                            onChange={(key) => { setError(null); setStep(Number(key)) }}
+                            size="small"
+                            tabBarStyle={{ minHeight: 40 }}
+                            items={questions.map((q, idx) => ({
+                                key: String(idx),
+                                label: q.header || t('chat.tool.askUserQuestion.questionN', { n: idx + 1 }),
+                                children: (
+                                    <div>
+                                        {renderQuestionOptions(idx)}
+                                        {idx === questions.length - 1 ? renderSubmitButton() : null}
+                                    </div>
+                                )
+                            }))}
+                        />
+                    )}
+                </div>
             )}
         </div>
     )
