@@ -2,9 +2,17 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import { AskUserQuestionView } from '@/components/tool-card/views/AskUserQuestionView'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import type { ToolInfo } from '@/domain/tool/types'
+
+const VIEW_SRC = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../../src/components/tool-card/views/AskUserQuestionView.tsx'),
+    'utf-8'
+)
 
 // mock i18next
 vi.mock('react-i18next', async (importOriginal) => {
@@ -72,18 +80,10 @@ describe('AskUserQuestionView', () => {
         )
 
         it('选中项显示正确', () => {
-            const { container } = renderView(props)
-            // 选中项有绿色边框
-            const allCards = container.querySelectorAll('div[style*="border: 1px solid"]')
-            let selectedCard: Element | null = null
-            let unselectedCard: Element | null = null
-            allCards.forEach(card => {
-                const style = (card as HTMLElement).style
-                if (style.borderColor === 'rgb(82, 196, 26)') selectedCard = card
-                if (style.borderColor !== 'rgb(82, 196, 26)' && style.borderColor !== '') unselectedCard = card
-            })
-            expect(selectedCard).toBeTruthy()
-            expect(selectedCard?.textContent).toContain('Bun')
+            renderView(props)
+            // 选中项通过共享 OptionRow 渲染为 button[data-selected="true"]
+            const selectedBtn = screen.getByText('Bun').closest('button[data-selected="true"]')
+            expect(selectedBtn).toBeTruthy()
         })
 
         it('未选中项正常显示', () => {
@@ -115,9 +115,10 @@ describe('AskUserQuestionView', () => {
 
         it('多个选中项均高亮', () => {
             const { container } = renderView(props)
-            const greenCards = container.querySelectorAll('div[style*="border: 1px solid rgb(82, 196, 26)"]')
-            expect(greenCards.length).toBe(2)
-            const labels = Array.from(greenCards).map(c => c.textContent)
+            // OptionRow 选中态：button[data-selected="true"]
+            const selectedBtns = container.querySelectorAll('button[data-selected="true"]')
+            expect(selectedBtns.length).toBe(2)
+            const labels = Array.from(selectedBtns).map(c => c.textContent)
             // Auth 和 Cache 被选中
             expect(labels.some(l => l?.includes('Auth'))).toBe(true)
             expect(labels.some(l => l?.includes('Cache'))).toBe(true)
@@ -150,17 +151,21 @@ describe('AskUserQuestionView', () => {
         })
 
         it('自定义答案有绿色样式', () => {
-            const { container } = renderView(props)
+            renderView(props)
             const denoEl = screen.getByText('deno')
-            const card = denoEl.closest('div[style*="border: 1px solid rgb(82, 196, 26)"]')
+            // OtherAnswersList 渲染为带 testid 的 div，使用 colorSuccess 系 token
+            const card = denoEl.closest('[data-testid="other-answer"]')
             expect(card).toBeTruthy()
         })
 
         it('常规选项未选中不高亮', () => {
             const { container } = renderView(props)
-            // Bun 和 Node 都不在 answers 中
-            const greenCards = container.querySelectorAll('div[style*="border: 1px solid rgb(82, 196, 26)"]')
-            expect(greenCards.length).toBe(1) // 只有 deno
+            // Bun 和 Node 都不在 answers 中 → 无 OptionRow 选中态
+            const selectedBtns = container.querySelectorAll('button[data-selected="true"]')
+            expect(selectedBtns.length).toBe(0)
+            // 仅 deno 通过 OtherAnswersList 渲染
+            const otherCards = container.querySelectorAll('[data-testid="other-answer"]')
+            expect(otherCards.length).toBe(1)
         })
     })
 
@@ -181,9 +186,10 @@ describe('AskUserQuestionView', () => {
         })
 
         it('自由格式答案有绿色样式', () => {
-            const { container } = renderView(props)
+            renderView(props)
             const answerEl = screen.getByText('I prefer TDD with incremental refactoring')
-            const card = answerEl.closest('div[style*="border: 1px solid rgb(82, 196, 26)"]')
+            // FreeformAnswersList 渲染为带 testid 的 div，使用 colorSuccess 系 token
+            const card = answerEl.closest('[data-testid="freeform-answer"]')
             expect(card).toBeTruthy()
         })
     })
@@ -201,9 +207,67 @@ describe('AskUserQuestionView', () => {
             const { container } = renderView(props)
             expect(screen.getByText('A')).toBeInTheDocument()
             expect(screen.getByText('B')).toBeInTheDocument()
-            // 无绿色高亮卡片
-            const greenCards = container.querySelectorAll('div[style*="border: 1px solid rgb(82, 196, 26)"]')
-            expect(greenCards.length).toBe(0)
+            // 无选中 OptionRow，也无 other/freeform 答案卡片
+            const selectedBtns = container.querySelectorAll('button[data-selected="true"]')
+            expect(selectedBtns.length).toBe(0)
+            const otherCards = container.querySelectorAll('[data-testid="other-answer"]')
+            expect(otherCards.length).toBe(0)
+        })
+    })
+
+    describe('TC-25: token 化完成态', () => {
+        // jsdom 把 hex 序列化为 rgb，故 HTML 断言无法区分「硬编码 hex」与「token 求值」。
+        // 源码级断言才真正锚定根除硬编码 — 与任务要求的 grep 验证等价。
+        it('源码不再含硬编码绿色 hex 字面量（#52c41a / #f6ffed / #237804 / #999）', () => {
+            expect(VIEW_SRC).not.toContain('#52c41a')
+            expect(VIEW_SRC).not.toContain('#f6ffed')
+            expect(VIEW_SRC).not.toContain('#237804')
+            expect(VIEW_SRC).not.toContain('#999')
+        })
+
+        it('完成态使用共享 OptionRow（tone="completed"）渲染选项', () => {
+            expect(VIEW_SRC).toContain("tone=\"completed\"")
+            expect(VIEW_SRC).toMatch(/from '\.\.\/OptionRow'/)
+        })
+
+        it('完成态渲染 HTML 不出现默认成功色 hex 字面量（jsdom 转 rgb 后仍应消失）', () => {
+            // 一道题 + 一个选中选项 + 一个自定义答案，覆盖 option 与 other-answer 两条渲染路径
+            const props = makeBlock(
+                { questions: [{
+                    question: 'Which?',
+                    header: 'Lang',
+                    options: [
+                        { label: 'A', description: 'pick A' },
+                        { label: 'B', description: 'pick B' },
+                    ],
+                    multiSelect: false,
+                }]},
+                { 'Which?': ['A', 'deno'] }
+            )
+            const { container } = renderView(props)
+            // jsdom 把 hex 序列化为 rgb — 这是双保险，验证渲染层也无残留
+            expect(container.innerHTML).not.toContain('#52c41a')
+            expect(container.innerHTML).not.toContain('#f6ffed')
+            expect(container.innerHTML).not.toContain('#237804')
+            expect(container.innerHTML).not.toContain('#999')
+        })
+
+        it('自由格式答案路径也不含硬编码绿色 hex 字面量', () => {
+            // 无选项的问题 + 自由格式答案，覆盖 freeform 渲染路径
+            const props = makeBlock(
+                { questions: [{
+                    question: 'Describe',
+                    header: 'Approach',
+                    options: [],
+                    multiSelect: false,
+                }]},
+                { 'Describe': ['I prefer TDD'] }
+            )
+            const { container } = renderView(props)
+            expect(container.innerHTML).not.toContain('#52c41a')
+            expect(container.innerHTML).not.toContain('#f6ffed')
+            expect(container.innerHTML).not.toContain('#237804')
+            expect(container.innerHTML).not.toContain('#999')
         })
     })
 
@@ -234,8 +298,9 @@ describe('AskUserQuestionView', () => {
 
         it('每题的答案正确高亮', () => {
             const { container } = renderView(props)
-            const greenCards = container.querySelectorAll('div[style*="border: 1px solid rgb(82, 196, 26)"]')
-            expect(greenCards.length).toBe(2)
+            // OptionRow 选中态：button[data-selected="true"]，每题一个
+            const selectedBtns = container.querySelectorAll('button[data-selected="true"]')
+            expect(selectedBtns.length).toBe(2)
         })
     })
 })

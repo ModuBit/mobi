@@ -18,8 +18,7 @@ import type { ReactNode } from 'react'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import { parseAskUserQuestionInput, normalizeAnswers } from '@/domain/tool/askUserQuestion'
 import { theme as antTheme } from 'antd'
-import { Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
-import { OptionPreview } from '../OptionPreview'
+import { OptionRow } from '../OptionRow'
 
 function isAnswerSelected(
     answers: Record<string, string[]> | undefined,
@@ -32,23 +31,88 @@ function isAnswerSelected(
     return questionAnswers.some(a => a.trim() === optionLabel.trim())
 }
 
-function renderSelectionMark(isMulti: boolean, isSelected: boolean): ReactNode {
-    if (isMulti) {
-        return isSelected ? <SquareCheck size={14} /> : <Square size={14} />
-    }
-    return isSelected ? <CircleCheck size={14} /> : <Circle size={14} />
+/**
+ * 自定义/其他答案项 —— 选项列表之外的自由答案（例如 deno）。
+ * 完成态视觉与 OptionRow 一致：colorSuccessBg 底 + colorSuccessBorder 边 + colorSuccess 文本强调。
+ * 不直接复用 OptionRow 是因为它需要 (custom answer) 副标题与图标占位语义。
+ */
+function OtherAnswerItem({ answer, isMulti }: { answer: string; isMulti: boolean }) {
+    const { token } = antTheme.useToken()
+    return (
+        <div
+            data-testid="other-answer"
+            style={{
+                borderRadius: 6,
+                border: `1px solid ${token.colorSuccessBorder}`,
+                background: token.colorSuccessBg,
+                padding: 8,
+            }}
+        >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <span style={{ flexShrink: 0, fontSize: 14, color: token.colorSuccess }}>
+                    {isMulti ? '☑' : '●'}
+                </span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{
+                        fontSize: 14,
+                        color: token.colorSuccess,
+                        fontWeight: 500,
+                        wordBreak: 'break-word',
+                    }}>
+                        {answer}
+                    </div>
+                    <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary }}>
+                        (custom answer)
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
 }
 
-function renderOtherAnswers(
-    answers: Record<string, string[]>,
-    questionText: string,
-    options: { label: string }[],
+/**
+ * 自由格式答案项 —— 无选项的问题直接展示文本答案。
+ * 同样走 colorSuccess 系 token，与完成态整体视觉统一。
+ */
+function FreeformAnswerItem({ answer }: { answer: string }) {
+    const { token } = antTheme.useToken()
+    return (
+        <div
+            data-testid="freeform-answer"
+            style={{
+                borderRadius: 6,
+                border: `1px solid ${token.colorSuccessBorder}`,
+                background: token.colorSuccessBg,
+                padding: 8,
+            }}
+        >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <span style={{ flexShrink: 0, fontSize: 14, color: token.colorSuccess }}>●</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{
+                        fontSize: 14,
+                        color: token.colorSuccess,
+                        fontWeight: 500,
+                        wordBreak: 'break-word',
+                    }}>
+                        {answer}
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+function OtherAnswersList(props: {
+    answers: Record<string, string[]>
+    questionText: string
+    options: { label: string }[]
     isMulti: boolean
-): ReactNode {
-    const questionAnswers = answers[questionText]
+}): ReactNode {
+    const questionAnswers = props.answers[props.questionText]
     if (!questionAnswers || !Array.isArray(questionAnswers)) return null
 
-    const optionLabels = new Set(options.map(o => o.label.trim()))
+    const optionLabels = new Set(props.options.map(o => o.label.trim()))
     const otherAnswers = questionAnswers.filter(a => !optionLabels.has(a.trim()))
 
     if (otherAnswers.length === 0) return null
@@ -56,39 +120,17 @@ function renderOtherAnswers(
     return (
         <>
             {otherAnswers.map((answer, i) => (
-                <div
-                    key={`other-${i}`}
-                    style={{
-                        borderRadius: 6,
-                        border: '1px solid #52c41a',
-                        background: '#f6ffed',
-                        padding: '8px'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                        <span style={{ flexShrink: 0, fontSize: 14, color: '#52c41a' }}>
-                            {isMulti ? '☑' : '●'}
-                        </span>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ fontSize: 14, color: '#237804', fontWeight: 500, wordBreak: 'break-word' }}>
-                                {answer}
-                            </div>
-                            <div style={{ marginTop: 2, fontSize: 12, color: '#999' }}>
-                                (custom answer)
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <OtherAnswerItem key={`other-${i}`} answer={answer} isMulti={props.isMulti} />
             ))}
         </>
     )
 }
 
-function renderFreeformAnswers(
-    answers: Record<string, string[]>,
+function FreeformAnswersList(props: {
+    answers: Record<string, string[]>
     questionText: string
-): ReactNode {
-    const questionAnswers = answers[questionText]
+}): ReactNode {
+    const questionAnswers = props.answers[props.questionText]
     if (!questionAnswers || !Array.isArray(questionAnswers)) return null
 
     const cleaned = questionAnswers.map(a => a.trim()).filter(a => a.length > 0)
@@ -97,24 +139,7 @@ function renderFreeformAnswers(
     return (
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {cleaned.map((answer, i) => (
-                <div
-                    key={i}
-                    style={{
-                        borderRadius: 6,
-                        border: '1px solid #52c41a',
-                        background: '#f6ffed',
-                        padding: '8px'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                        <span style={{ flexShrink: 0, fontSize: 14, color: '#52c41a' }}>●</span>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ fontSize: 14, color: '#237804', fontWeight: 500, wordBreak: 'break-word' }}>
-                                {answer}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <FreeformAnswerItem key={i} answer={answer} />
             ))}
         </div>
     )
@@ -131,7 +156,7 @@ export function AskUserQuestionView(props: ToolViewProps) {
     // 当问题数组为空但答案存在时（备用路径），直接渲染答案
     if (questions.length === 0) {
         if (hasAnswers && answers) {
-            return renderFreeformAnswers(answers, '')
+            return <FreeformAnswersList answers={answers} questionText="" />
         }
         return null
     }
@@ -148,7 +173,7 @@ export function AskUserQuestionView(props: ToolViewProps) {
                             borderRadius: 6,
                             border: `1px solid ${token.colorBorder}`,
                             background: token.colorBgContainer,
-                            padding: 12
+                            padding: 12,
                         }}
                     >
                         {q.question ? (
@@ -161,60 +186,33 @@ export function AskUserQuestionView(props: ToolViewProps) {
                             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 {q.options.map((opt, optIdx) => {
                                     const isSelected = isAnswerSelected(answers, q.question, opt.label)
-
-                                    const labelContent = (
-                                        <span style={{ minWidth: 0, flex: 1 }}>
-                                            <div style={{
-                                                fontSize: 14,
-                                                wordBreak: 'break-word',
-                                                color: isSelected ? '#237804' : token.colorText,
-                                                fontWeight: isSelected ? 500 : 400
-                                            }}>
-                                                {opt.label}
-                                            </div>
-                                            {opt.description ? (
-                                                <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
-                                                    {opt.description}
-                                                </div>
-                                            ) : null}
-                                        </span>
-                                    )
-
                                     return (
-                                        <div
+                                        <OptionRow
                                             key={optIdx}
-                                            style={{
-                                                borderRadius: 6,
-                                                border: `1px solid ${isSelected ? '#52c41a' : token.colorBorder}`,
-                                                background: isSelected ? '#f6ffed' : 'transparent',
-                                                padding: 8
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                                                {hasAnswers && (
-                                                    <span style={{
-                                                        flexShrink: 0,
-                                                        fontSize: 14,
-                                                        color: isSelected ? '#52c41a' : token.colorTextDisabled,
-                                                        display: 'flex',
-                                                        alignItems: 'center'
-                                                    }}>
-                                                        {renderSelectionMark(isMulti, isSelected)}
-                                                    </span>
-                                                )}
-                                                {opt.preview ? (
-                                                    <OptionPreview preview={opt.preview}>{labelContent}</OptionPreview>
-                                                ) : labelContent}
-                                            </div>
-                                        </div>
+                                            checked={isSelected}
+                                            mode={isMulti ? 'multi' : 'single'}
+                                            disabled
+                                            tone="completed"
+                                            title={opt.label}
+                                            description={opt.description}
+                                            preview={opt.preview}
+                                            onClick={() => {}}
+                                        />
                                     )
                                 })}
 
-                                {hasAnswers && renderOtherAnswers(answers, q.question, q.options, isMulti)}
+                                {hasAnswers && answers ? (
+                                    <OtherAnswersList
+                                        answers={answers}
+                                        questionText={q.question}
+                                        options={q.options}
+                                        isMulti={isMulti}
+                                    />
+                                ) : null}
                             </div>
                         ) : hasAnswers && answers ? (
                             // 自由格式问题（无选项）- 直接显示答案
-                            renderFreeformAnswers(answers, q.question)
+                            <FreeformAnswersList answers={answers} questionText={q.question} />
                         ) : null}
                     </div>
                 )
