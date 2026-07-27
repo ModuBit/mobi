@@ -17,6 +17,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { theme as antTheme } from 'antd'
 import { Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
+import { OptionPreview } from './OptionPreview'
 
 export type OptionRowMode = 'single' | 'multi'
 export type OptionRowTone = 'interactive' | 'completed'
@@ -52,6 +53,23 @@ export function OptionRow(props: OptionRowProps) {
     const mark = props.mode === 'multi'
         ? (props.checked ? <SquareCheck size={markSize} /> : <Square size={markSize} />)
         : (props.checked ? <CircleCheck size={markSize} /> : <Circle size={markSize} />)
+
+    // 标题 + 描述组合：如有 preview 则外层包 OptionPreview（眼睛图标 + Popover）
+    const labelContent = (
+        <>
+            <div style={{ fontWeight: 500, color: token.colorText, wordBreak: 'break-word' }}>
+                {props.title}
+            </div>
+            {showDescription ? (
+                <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
+                    {props.description}
+                </div>
+            ) : null}
+        </>
+    )
+    const content = props.preview ? (
+        <OptionPreview preview={props.preview}>{labelContent}</OptionPreview>
+    ) : labelContent
 
     const baseStyle: CSSProperties = {
         position: 'relative',
@@ -94,14 +112,7 @@ export function OptionRow(props: OptionRowProps) {
                 {mark}
             </span>
             <span style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 500, color: token.colorText, wordBreak: 'break-word' }}>
-                    {props.title}
-                </div>
-                {showDescription ? (
-                    <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
-                        {props.description}
-                    </div>
-                ) : null}
+                {content}
                 {props.children}
             </span>
         </button>

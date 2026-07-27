@@ -585,4 +585,33 @@ describe('AskUserQuestionFooter', () => {
             expect(findOptionBtn('A')).toBeInTheDocument()
         })
     })
+
+    describe('回归：code-review 修复', () => {
+        it('点击「其他」后 TextArea 可聚焦输入，不因冒泡消失', () => {
+            const tool = makeTool([{
+                question: 'Q', multiSelect: false,
+                options: [{ label: 'A', description: null, preview: null }],
+            }])
+            renderFooter(tool)
+            fireEvent.click(findOptionBtn('其他'))
+            const ta = document.querySelector('textarea') as HTMLElement
+            expect(ta).toBeInTheDocument()
+            // 模拟用户点击 textarea 聚焦 —— 不应触发 toggle 把它收起
+            fireEvent.click(ta)
+            expect(document.querySelector('textarea')).not.toBeNull()
+        })
+
+        it('折叠头带 aria-expanded / aria-controls', () => {
+            const tool = makeTool([{
+                question: 'Q', multiSelect: false,
+                options: [{ label: 'A', description: null, preview: null }],
+            }])
+            renderFooter(tool)
+            const toggle = screen.getByTestId('ask-collapse-toggle')
+            expect(toggle.getAttribute('aria-expanded')).toBe('true')
+            expect(toggle.getAttribute('aria-controls')).toBe('ask-collapse-actions')
+            fireEvent.click(toggle)
+            expect(toggle.getAttribute('aria-expanded')).toBe('false')
+        })
+    })
 })

@@ -95,6 +95,8 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         setFallbackText('')
         setLoading(false)
         setError(null)
+        // 新 pending 权限时强制展开，确保用户看见操作区
+        setCollapsed(false)
     }, [props.tool.input])
 
     if (!permission || permission.status !== 'pending') return null
@@ -290,18 +292,18 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     title={t('chat.tool.other')}
                     description={t('chat.tool.otherDescription')}
                     onClick={() => toggleOther(qIdx)}
-                >
-                    {(otherSelectedByQuestion[qIdx] ?? false) ? (
-                        <TextArea
-                            value={otherTextByQuestion[qIdx] ?? ''}
-                            onChange={(e) => updateOtherText(qIdx, e.target.value)}
-                            disabled={props.disabled || loading}
-                            placeholder={t('chat.tool.askUserQuestion.otherPlaceholder')}
-                            rows={3}
-                            style={{ marginTop: 8 }}
-                        />
-                    ) : null}
-                </OptionRow>
+                />
+                {/* TextArea 作为 OptionRow 的兄弟节点，避免点击 textarea 冒泡到 OptionRow 的 button 触发 toggle */}
+                {(otherSelectedByQuestion[qIdx] ?? false) ? (
+                    <TextArea
+                        value={otherTextByQuestion[qIdx] ?? ''}
+                        onChange={(e) => updateOtherText(qIdx, e.target.value)}
+                        disabled={props.disabled || loading}
+                        placeholder={t('chat.tool.askUserQuestion.otherPlaceholder')}
+                        rows={3}
+                        style={{ marginTop: 4 }}
+                    />
+                ) : null}
             </div>
         )
     }
@@ -351,9 +353,8 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                 }}>
-                    {questions.length > 1
-                        ? t('chat.tool.askUserQuestion.questionN', { n: questions.length })
-                        : (questions[0]?.question || '')}
+                    {/* 多题场景下也展示首题文本（与单题一致），避免「第 N 题」语义歧义；徽标 + Tabs 承载题数上下文 */}
+                    {questions[0]?.question || ''}
                 </span>
                 <span style={{
                     transform: collapsed ? 'none' : 'rotate(180deg)',
