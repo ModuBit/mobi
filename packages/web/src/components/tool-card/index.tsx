@@ -398,6 +398,8 @@ function ToolCardInner(props: ToolCardProps) {
         ? showsToolFooter
         : showInline || isAgentToolCard || taskSummary !== null || showsToolFooter
     const stateColor = statusColorClass(props.block.tool.state, token)
+    // 权限等待中：作为视觉焦点，禁止 header 打开详情 Modal（避免遮挡操作按钮）
+    const isPermissionPending = Boolean(permission && permission.status === 'pending')
 
     const [modalOpen, setModalOpen] = useState(false)
 
@@ -435,13 +437,42 @@ function ToolCardInner(props: ToolCardProps) {
         <Card
             size="small"
             className="tool-card"
-            style={{ overflow: 'hidden' }}
+            data-pending={isPermissionPending ? 'true' : 'false'}
+            style={{
+                overflow: 'hidden',
+                position: 'relative',
+                borderColor: isPermissionPending ? token.colorPrimaryBorder : undefined,
+                background: isPermissionPending
+                    ? `linear-gradient(${token.colorPrimaryBg}, ${token.colorPrimaryBg}) ${token.colorBgContainer}`
+                    : undefined,
+            }}
         >
+            {isPermissionPending ? (
+                <span data-slot="focus-bar" style={{
+                    position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+                    background: token.colorPrimary, zIndex: 2,
+                    animation: 'mobi-card-pulse 2.4s ease-in-out infinite',
+                }} />
+            ) : null}
             <div
-                style={{ padding: 12, cursor: 'pointer' }}
-                onClick={() => setModalOpen(true)}
+                data-testid="tool-card-header"
+                style={{ padding: 12, cursor: isPermissionPending ? 'default' : 'pointer' }}
+                onClick={() => { if (!isPermissionPending) setModalOpen(true) }}
             >
                 {header}
+                {isPermissionPending ? (
+                    <span
+                        data-testid="pending-badge"
+                        style={{
+                            display: 'inline-block', marginTop: 6, fontSize: 11,
+                            color: token.colorPrimary, background: token.colorPrimaryBg,
+                            border: `1px solid ${token.colorPrimaryBorder}`,
+                            padding: '1px 8px', borderRadius: 10,
+                        }}
+                    >
+                        {t('chat.tool.waitingForApproval')}
+                    </span>
+                ) : null}
             </div>
 
             {hasBody ? (

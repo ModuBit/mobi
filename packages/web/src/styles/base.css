@@ -96,3 +96,9 @@ pre, code {
     0%, 100% { opacity: 0.55; transform: scale(0.85); }
     50% { opacity: 1; transform: scale(1.1); }
 }
+
+/* ToolCard pending 焦点色带脉动（权限等待时的左侧高亮条） */
+@keyframes mobi-card-pulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+}
