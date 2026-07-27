@@ -150,12 +150,14 @@ describe('AskUserQuestionView', () => {
             expect(screen.getByText('(custom answer)')).toBeInTheDocument()
         })
 
-        it('自定义答案有绿色样式', () => {
+        it('自定义答案以 completed 选中态渲染（绿色系来自 OptionRow tone=completed）', () => {
             renderView(props)
             const denoEl = screen.getByText('deno')
-            // OtherAnswersList 渲染为带 testid 的 div，使用 colorSuccess 系 token
-            const card = denoEl.closest('[data-testid="other-answer"]')
+            // OtherAnswersList 渲染为 OptionRow（button），绿色系由 data-tone=completed + data-selected=true 驱动
+            const card = denoEl.closest('[data-testid="other-answer"]') as HTMLElement
             expect(card).toBeTruthy()
+            expect(card.getAttribute('data-selected')).toBe('true')
+            expect(card.getAttribute('data-tone')).toBe('completed')
         })
 
         it('常规选项未选中不高亮', () => {
@@ -188,12 +190,14 @@ describe('AskUserQuestionView', () => {
             expect(screen.getByText('I prefer TDD with incremental refactoring')).toBeInTheDocument()
         })
 
-        it('自由格式答案有绿色样式', () => {
+        it('自由格式答案以 completed 选中态渲染（绿色系来自 OptionRow tone=completed）', () => {
             renderView(props)
             const answerEl = screen.getByText('I prefer TDD with incremental refactoring')
-            // FreeformAnswersList 渲染为带 testid 的 div，使用 colorSuccess 系 token
-            const card = answerEl.closest('[data-testid="freeform-answer"]')
+            // FreeformAnswersList 渲染为 OptionRow（button），绿色系由 data-tone=completed + data-selected=true 驱动
+            const card = answerEl.closest('[data-testid="freeform-answer"]') as HTMLElement
             expect(card).toBeTruthy()
+            expect(card.getAttribute('data-selected')).toBe('true')
+            expect(card.getAttribute('data-tone')).toBe('completed')
         })
     })
 

@@ -58,7 +58,7 @@ function OtherAnswersList(props: {
                     disabled
                     tone="completed"
                     title={answer}
-                    description="(custom answer)"
+                    subtitle="(custom answer)"
                 />
             ))}
         </>

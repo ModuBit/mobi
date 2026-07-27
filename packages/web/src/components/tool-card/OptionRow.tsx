@@ -30,6 +30,8 @@ type OptionRowProps = {
     tone: OptionRowTone
     title: string
     description?: string | null
+    /** 完成态元信息标记（如「(custom answer)」）；始终渲染，不受 title 相等守卫影响 */
+    subtitle?: ReactNode
     preview?: string | null
     /** 未提供时按钮不响应点击（用于只读展示态） */
     onClick?: () => void
@@ -56,6 +58,8 @@ export function OptionRow(props: OptionRowProps) {
         : (props.checked ? <CircleCheck size={markSize} /> : <Circle size={markSize} />)
 
     // 标题 + 描述组合：如有 preview 则外层包 OptionPreview（眼睛图标 + Popover）
+    // 注：标题固定 colorText（非强调色）——完成态的绿色强调由背景/边框/左色带/图标承载，
+    // 与同视图常规选中选项完全一致；答案文字本身不再额外染色。
     const labelContent = (
         <>
             <div style={{ fontWeight: 500, color: token.colorText, wordBreak: 'break-word' }}>
@@ -64,6 +68,12 @@ export function OptionRow(props: OptionRowProps) {
             {showDescription ? (
                 <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
                     {props.description}
+                </div>
+            ) : null}
+            {/* subtitle：完成态的元信息标记（如「(custom answer)」），始终渲染、不受 title 相等守卫影响 */}
+            {props.subtitle ? (
+                <div style={{ marginTop: 2, fontSize: 12, color: token.colorTextSecondary, wordBreak: 'break-word' }}>
+                    {props.subtitle}
                 </div>
             ) : null}
         </>

@@ -143,6 +143,22 @@ describe('OptionRow', () => {
         expect(screen.getByTestId('inner')).toBeInTheDocument()
     })
 
+    it('subtitle 始终渲染，即使与 title 相同（区别于 description 的相等守卫）', () => {
+        wrap(
+            <OptionRow
+                data-testid="opt"
+                checked
+                mode="single"
+                disabled
+                tone="completed"
+                title="(custom answer)"
+                subtitle="(custom answer)"
+            />
+        )
+        // title + subtitle 两处都应出现（subtitle 不被 title 相等守卫吞掉）
+        expect(screen.getAllByText('(custom answer)')).toHaveLength(2)
+    })
+
     it('description 与 title 相同时不渲染描述', () => {
         wrap(
             <OptionRow
