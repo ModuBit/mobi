@@ -95,6 +95,22 @@ describe('OptionRow', () => {
         expect(container.innerHTML).not.toContain('#f6ffed')
     })
 
+    it('interactive + disabled 压低透明度（提交中锁定反馈）', () => {
+        wrap(
+            <OptionRow data-testid="opt" checked={false} mode="single" disabled tone="interactive" title="A" onClick={() => {}} />
+        )
+        const btn = screen.getByTestId('opt')
+        expect(getComputedStyle(btn).opacity).toBe('0.5')
+    })
+
+    it('completed + disabled 不压低透明度（只读展示态）', () => {
+        wrap(
+            <OptionRow data-testid="opt" checked mode="single" disabled tone="completed" title="A" />
+        )
+        const btn = screen.getByTestId('opt')
+        expect(getComputedStyle(btn).opacity).toBe('1')
+    })
+
     it('single 模式渲染 Circle/CircleCheck，multi 模式渲染 Square/SquareCheck', () => {
         const { rerender } = wrap(
             <OptionRow data-testid="opt" checked={false} mode="single" disabled={false} tone="interactive" title="A" onClick={() => {}} />

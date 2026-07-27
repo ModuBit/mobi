@@ -31,7 +31,8 @@ type OptionRowProps = {
     title: string
     description?: string | null
     preview?: string | null
-    onClick: () => void
+    /** 未提供时按钮不响应点击（用于只读展示态） */
+    onClick?: () => void
     children?: ReactNode
     'data-testid'?: string
 }
@@ -85,7 +86,9 @@ export function OptionRow(props: OptionRowProps) {
         border: `1px solid ${props.checked ? accentBorder : token.colorBorderSecondary}`,
         background: props.checked ? accentBg : token.colorBgContainer,
         cursor: props.disabled ? 'not-allowed' : 'pointer',
-        opacity: props.disabled ? 0.5 : 1,
+        // completed 为只读展示态（非"输入锁定"），不压低透明度；
+        // interactive 的 disabled 用于提交中锁定，保留半透明反馈
+        opacity: props.disabled && props.tone !== 'completed' ? 0.5 : 1,
         transition: 'border-color .15s, background .15s',
     }
 

@@ -196,7 +196,6 @@ export function AskUserQuestionView(props: ToolViewProps) {
                                             title={opt.label}
                                             description={opt.description}
                                             preview={opt.preview}
-                                            onClick={() => {}}
                                         />
                                     )
                                 })}

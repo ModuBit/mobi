@@ -218,6 +218,7 @@ describe('AskUserQuestionView', () => {
     describe('TC-25: token 化完成态', () => {
         // jsdom 把 hex 序列化为 rgb，故 HTML 断言无法区分「硬编码 hex」与「token 求值」。
         // 源码级断言才真正锚定根除硬编码 — 与任务要求的 grep 验证等价。
+        // 注意：下列字面量出现在源码任意位置（含注释）都会失败，这是故意的，强制零硬编码。
         it('源码不再含硬编码绿色 hex 字面量（#52c41a / #f6ffed / #237804 / #999）', () => {
             expect(VIEW_SRC).not.toContain('#52c41a')
             expect(VIEW_SRC).not.toContain('#f6ffed')
