@@ -103,9 +103,10 @@ pre, code {
     50% { opacity: 1; }
 }
 
-/* 无障碍：尊重用户的减少动画偏好（焦点色带脉动） */
+/* 无障碍：尊重用户的减少动画偏好（焦点色带脉动 + 状态圆点呼吸/颤动） */
 @media (prefers-reduced-motion: reduce) {
-    [data-slot="focus-bar"] {
+    [data-slot="focus-bar"],
+    .status-state-dot {
         animation: none !important;
     }
 }

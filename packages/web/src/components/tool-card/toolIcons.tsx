@@ -190,5 +190,5 @@ export function StatusStateIcon({ state, style }: StatusStateIconProps): ReactNo
         animation: STATUS_DOT_ANIMATION[dotState],
         ...style,
     }
-    return <span style={dotStyle} />
+    return <span className="status-state-dot" style={dotStyle} />
 }

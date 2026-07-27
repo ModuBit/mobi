@@ -86,7 +86,10 @@ const Dot = styled.span<{ $color: string; $pulse: boolean }>`
     border-radius: 50%;
     background: ${p => p.$color};
     flex-shrink: 0;
-    ${p => p.$pulse && css`animation: ${breathe} 2.2s ease-in-out infinite;`}
+    ${p => p.$pulse && css`
+        animation: ${breathe} 2.2s ease-in-out infinite;
+        @media (prefers-reduced-motion: reduce) { animation: none; }
+    `}
 `
 
 const Label = styled.span<{ $token: Token; $tone: Tone }>`
