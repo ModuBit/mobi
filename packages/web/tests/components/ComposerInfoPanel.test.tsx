@@ -124,6 +124,44 @@ describe('ComposerInfoPanel', () => {
         expect(container.innerHTML).not.toBe('')
     })
 
+    it('Bash permission 卡片在标题下显示具体命令 subtitle', () => {
+        // sdkHints.displayName 让 titleText 只显示工具名，subtitle 补充具体命令
+        const agentState = {
+            requests: {
+                'req-1': {
+                    tool: 'Bash',
+                    arguments: { command: 'echo hi > test.txt' },
+                    createdAt: null,
+                    sdkHints: { displayName: 'Bash' },
+                },
+            },
+        } as unknown as AgentState
+
+        const { container } = render(
+            <ComposerInfoPanel {...defaultProps} agentState={agentState} />,
+            { wrapper }
+        )
+        // subtitle 显示具体命令
+        expect(container.textContent).toContain('echo hi > test.txt')
+    })
+
+    it('无 sdkHints 时 titleText 已含具体内容，subtitle 去重不重复显示', () => {
+        const agentState = {
+            requests: {
+                'req-1': { tool: 'Bash', arguments: { command: 'ls -la' }, createdAt: null },
+            },
+        } as unknown as AgentState
+
+        const { container } = render(
+            <ComposerInfoPanel {...defaultProps} agentState={agentState} />,
+            { wrapper }
+        )
+        // titleText 含 "Bash: ls -la"，subtitle 去重后不重复
+        expect(container.textContent).toContain('Bash: ls -la')
+        // 不应出现两次
+        expect((container.textContent ?? '').match(/Bash: ls -la/g)?.length).toBe(1)
+    })
+
     it('工具交互卡片折叠头点击切换 aria-expanded', () => {
         const agentState = {
             requests: {

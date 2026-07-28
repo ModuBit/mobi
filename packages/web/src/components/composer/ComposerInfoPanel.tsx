@@ -32,6 +32,7 @@ import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFoo
 import { RequestUserInputFooter } from '@/components/tool-card/RequestUserInputFooter'
 import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
+import { getPermissionDescription } from '@/core/lib/toolInputUtils'
 import { AgentPanel } from './AgentPanel'
 import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
 import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
@@ -137,12 +138,18 @@ function ToolInteractionPanel({
                 const titleText = isAskUserQuestion
                     ? (askUserQuestionHeader || t('chat.tool.askUserQuestion.title'))
                     : getPermissionDisplayText(tool.permission, tool.name, tool.input, t, tool.sdkHints)
+                // 具体授权内容（Bash 命令/文件路径等）；与 titleText 去重避免重复显示
+                const detail = (isAskUserQuestion || isRequestUserInput)
+                    ? null
+                    : getPermissionDescription(tool.name, tool.input)
+                const subtitle = detail && !titleText.includes(detail) ? detail : undefined
 
                 return (
                     <ToolRequestCard
                         key={id}
                         testId={`tool-request-toggle-${id}`}
                         titleText={titleText}
+                        subtitle={subtitle}
                         footerNode={footerNode}
                     />
                 )
@@ -156,8 +163,9 @@ function ToolInteractionPanel({
  * 折叠/展开能力上移到此层，Footer 自身不再含折叠头（消除两层标题头语义重复）。
  * 中性背景/边框避免与 Footer 内层中性组件色温断裂；attention 浓缩到左侧图标。
  */
-function ToolRequestCard({ titleText, footerNode, testId }: {
+function ToolRequestCard({ titleText, subtitle, footerNode, testId }: {
     titleText: string
+    subtitle?: string
     footerNode: ReactNode
     testId: string
 }) {
@@ -188,9 +196,20 @@ function ToolRequestCard({ titleText, footerNode, testId }: {
                 }}
             >
                 <ExclamationCircleOutlined style={{ color: token.colorWarningText, fontSize: 14, flexShrink: 0 }} />
-                <Text strong style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {titleText}
-                </Text>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Text strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {titleText}
+                    </Text>
+                    {subtitle ? (
+                        <Text style={{
+                            fontSize: 12, color: token.colorTextTertiary,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            fontFamily: titleText.includes('Bash') ? 'monospace' : undefined,
+                        }}>
+                            {subtitle}
+                        </Text>
+                    ) : null}
+                </div>
                 <ChevronDown
                     size={14}
                     style={{
