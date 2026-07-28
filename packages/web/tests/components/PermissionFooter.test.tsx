@@ -149,11 +149,59 @@ describe('PermissionFooter', () => {
         await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
     })
 
-    it('拒绝按钮为弱化 text 样式（非 primary block）', () => {
+    it('拒绝按钮为警示样式（text + danger 红字，非 primary block）', () => {
         renderFooter(makeTool())
         const denyBtn = screen.getByText('拒绝').closest('button')!
+        // text 弱化（无填充）+ danger 警示色文字 —— 语义层红字提示「拒绝」，
+        // 但非 primary 不抢视觉锚点
         expect(denyBtn.classList.contains('ant-btn-text')).toBe(true)
+        expect(denyBtn.classList.contains('ant-btn-dangerous')).toBe(true)
         expect(denyBtn.classList.contains('ant-btn-primary')).toBe(false)
+        expect(denyBtn.classList.contains('ant-btn-block')).toBe(false)
+    })
+
+    it('本次会话允许提为 primary 主操作，允许降为 default（按使用频率排视觉层级）', () => {
+        // 实际最常用「本次会话允许」——视觉层级应与用法对齐，原允许 primary 倒挂
+        renderFooter(makeTool()) // Bash → canAllowForSession
+        const forSessionBtn = screen.getByText('本次会话允许').closest('button')!
+        const allowBtn = screen.getByText('允许').closest('button')!
+        expect(forSessionBtn.classList.contains('ant-btn-primary')).toBe(true)
+        expect(allowBtn.classList.contains('ant-btn-primary')).toBe(false)
+    })
+
+    it('移动端：本次会话允许独占满宽行，允许+拒绝并排在次要行', () => {
+        // 主操作独占一行（block 满宽），次操作与拒绝并排（非 block，同处次要行容器）
+        renderFooter(makeTool())
+        const forSessionBtn = screen.getByText('本次会话允许').closest('button')!
+        const allowBtn = screen.getByText('允许').closest('button')!
+        const denyBtn = screen.getByText('拒绝').closest('button')!
+        // 主操作 block 满宽独占
+        expect(forSessionBtn.classList.contains('ant-btn-block')).toBe(true)
+        // 次操作、拒绝均非 block（在并排行 flex:1）
+        expect(allowBtn.classList.contains('ant-btn-block')).toBe(false)
+        expect(denyBtn.classList.contains('ant-btn-block')).toBe(false)
+        // 允许与拒绝同处「次要行」容器（与主操作行分离）
+        const subRow = allowBtn.closest('[data-sub-row="secondary"]')
+        expect(subRow).not.toBeNull()
+        expect(denyBtn.closest('[data-sub-row="secondary"]')).toBe(subRow)
+        // 主操作不在次要行
+        expect(forSessionBtn.closest('[data-sub-row="secondary"]')).toBeNull()
+    })
+
+    it('Edit 工具：允许仍为 primary，全部允许为次级 default（避免误开 acceptEdits）', () => {
+        // Edit 无「本次会话允许」；「全部允许」=切 acceptEdits 模式（更激进），不提 primary
+        renderFooter(
+            makeTool({
+                name: 'Edit',
+                input: { file_path: 'a.ts', old_string: 'x', new_string: 'y' },
+            }),
+        )
+        const allowBtn = screen.getByText('允许').closest('button')!
+        const allEditsBtn = screen.getByText('全部允许').closest('button')!
+        expect(allowBtn.classList.contains('ant-btn-primary')).toBe(true)
+        expect(allEditsBtn.classList.contains('ant-btn-primary')).toBe(false)
+        // 全部允许与拒绝并排在次要行
+        expect(allEditsBtn.closest('[data-sub-row="secondary"]')).not.toBeNull()
     })
 
     it('ExitPlanMode 渲染三按钮且自动接受调用 approve', async () => {

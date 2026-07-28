@@ -225,6 +225,26 @@ function PermissionFooterInner(props: PermissionFooterProps) {
         setLoading(null)
     }
 
+    // 主操作与次操作配置：按工具类型决定视觉层级
+    // 实际最常用「本次会话允许」→ 非 Edit 工具提为主操作（primary 满宽），允许降为 default 次操作
+    // Edit 工具无「本次会话允许」：允许保持 primary，「全部允许」(=切 acceptEdits，更激进) 保持次级，避免误开激进模式
+    // 拒绝：text + danger 警示色文字 —— 语义层红字提示，但非 primary 不抢视觉锚点
+    const disabledAll = props.disabled || loading !== null || loadingAllEdits || loadingForSession
+    const denyConfig = {
+        label: t('chat.tool.deny'),
+        onClick: deny,
+        loading: loading === 'deny',
+        disabled: disabledAll,
+    }
+    const primaryAction = canAllowForSession
+        ? { label: t('chat.tool.allowForSession'), onClick: approveForSession, loading: loadingForSession, disabled: disabledAll }
+        : { label: t('chat.tool.allow'), onClick: approve, loading: loading === 'allow', disabled: disabledAll }
+    const secondaryAction = canAllowForSession
+        ? { label: t('chat.tool.allow'), onClick: approve, loading: loading === 'allow', disabled: disabledAll }
+        : canAllowAllEdits
+            ? { label: t('chat.tool.allowAll'), onClick: approveAllEdits, loading: loadingAllEdits, disabled: disabledAll }
+            : null
+
     return (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div id="perm-collapse-actions">
@@ -323,55 +343,51 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                             </>
                         ) : (
                             <>
+                                {/* 主操作行：移动端满宽独占；PC 序列首位 */}
                                 <Button
                                     type="primary"
                                     block={isMobile}
                                     icon={<CheckOutlined />}
-                                    disabled={
-                                        props.disabled ||
-                                        loading !== null ||
-                                        loadingAllEdits ||
-                                        loadingForSession
-                                    }
-                                    loading={loading === 'allow'}
-                                    onClick={approve}
+                                    disabled={primaryAction.disabled}
+                                    loading={primaryAction.loading}
+                                    onClick={primaryAction.onClick}
                                     style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
                                 >
-                                    {t('chat.tool.allow')}
+                                    {primaryAction.label}
                                 </Button>
-                                {canAllowForSession ? (
+                                {/* 次要行：允许/全部允许（default）+ 拒绝（text+danger 警示）
+                                    移动端 flex:1 等分并排；PC 作为一组 inline 续在主操作后 */}
+                                <div data-sub-row="secondary" style={{
+                                    display: 'flex',
+                                    flexDirection: 'row',
+                                    gap: 8,
+                                    alignItems: 'stretch',
+                                    flex: isMobile ? undefined : undefined,
+                                }}>
+                                    {secondaryAction ? (
+                                        <Button
+                                            icon={<CheckOutlined />}
+                                            disabled={secondaryAction.disabled}
+                                            loading={secondaryAction.loading}
+                                            onClick={secondaryAction.onClick}
+                                            style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
+                                        >
+                                            {secondaryAction.label}
+                                        </Button>
+                                    ) : null}
                                     <Button
-                                        block={isMobile}
-                                        disabled={
-                                            props.disabled ||
-                                            loading !== null ||
-                                            loadingAllEdits ||
-                                            loadingForSession
-                                        }
-                                        loading={loadingForSession}
-                                        onClick={approveForSession}
-                                        style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                        type="text"
+                                        danger
+                                        icon={<CloseOutlined />}
+                                        disabled={denyConfig.disabled}
+                                        loading={denyConfig.loading}
+                                        onClick={denyConfig.onClick}
+                                        style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
                                     >
-                                        {t('chat.tool.allowForSession')}
+                                        {denyConfig.label}
                                     </Button>
-                                ) : null}
-                                {canAllowAllEdits ? (
-                                    <Button
-                                        block={isMobile}
-                                        disabled={
-                                            props.disabled ||
-                                            loading !== null ||
-                                            loadingAllEdits ||
-                                            loadingForSession
-                                        }
-                                        loading={loadingAllEdits}
-                                        onClick={approveAllEdits}
-                                        style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
-                                    >
-                                        {t('chat.tool.allowAll')}
-                                    </Button>
-                                ) : null}
-                                {/* 分隔线：仅移动端，防误触；PC inline 用 gap 间隔即可 */}
+                                </div>
+                                {/* 分隔线 + 不可逆提示：仅移动端（PC 端上方已有文字提示） */}
                                 {isMobile ? (
                                     <div style={{
                                         display: 'flex', alignItems: 'center', gap: 8,
@@ -383,21 +399,6 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                         <span style={{ flex: 1, height: 1, background: token.colorBorderSecondary }} />
                                     </div>
                                 ) : null}
-                                <Button
-                                    type={isMobile ? 'text' : 'default'}
-                                    icon={<CloseOutlined />}
-                                    disabled={
-                                        props.disabled ||
-                                        loading !== null ||
-                                        loadingAllEdits ||
-                                        loadingForSession
-                                    }
-                                    loading={loading === 'deny'}
-                                    onClick={deny}
-                                    style={{ minHeight: actionMinHeight, justifyContent: 'center', color: isMobile ? token.colorTextSecondary : undefined }}
-                                >
-                                    {t('chat.tool.deny')}
-                                </Button>
                             </>
                         )}
                     </div>
