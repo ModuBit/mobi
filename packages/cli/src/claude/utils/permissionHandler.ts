@@ -150,18 +150,23 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             updatedPermissions: response.updatedPermissions
         };
 
-        // [死代码] mobi 自有 Set 路径已由 SDK updatedPermissions 接管，逻辑走不到，保留作后退路径
-        if (response.allowTools && response.allowTools.length > 0) {
-            response.allowTools.forEach(tool => {
-                if (isQuestionToolName(tool)) {
-                    return;
+        // [持久化兜底] SDK updatedPermissions 经 E2E 验证不跨 turn 持久（SDK 未兑现 session 级放行承诺，
+        // 下次同命令仍会调 canCallTool）。故 mobi 自有 Set 兜底：把 Web 选中档的 rules 填进 Set，
+        // handleToolCall 命中 Set 直接放行，真正跨 turn 持久（resetForNewTurn 不清 Set）。
+        // updatedPermissions 仍透传给 SDK 作双轨兜底（见下方 result.updatedPermissions）。
+        if (response.updatedPermissions && response.updatedPermissions.length > 0) {
+            for (const update of response.updatedPermissions) {
+                if (update.type !== 'addRules' && update.type !== 'replaceRules') continue;
+                for (const rule of update.rules) {
+                    if (isQuestionToolName(rule.toolName)) continue;
+                    if (rule.toolName === 'Bash' && rule.ruleContent) {
+                        // 复用 parseBashPermission：ruleContent 形如 'echo:*'（前缀）或 'echo hi'（字面）
+                        this.parseBashPermission(`Bash(${rule.ruleContent})`);
+                    } else {
+                        this.allowedTools.add(rule.toolName);
+                    }
                 }
-                if (tool.startsWith('Bash(') || tool === 'Bash') {
-                    this.parseBashPermission(tool);
-                } else {
-                    this.allowedTools.add(tool);
-                }
-            });
+            }
         }
 
         // Update permission mode

@@ -258,3 +258,86 @@ describe('PermissionHandler — handlePermissionResponse 透传 updatedPermissio
         expect(result.updatedPermissions).toBeUndefined()
     })
 })
+
+describe('PermissionHandler — updatedPermissions 填 mobi Set 兜底持久化', () => {
+    // SDK updatedPermissions 经 E2E 验证不跨 turn 持久，mobi 自有 Set 兜底：
+    // handlePermissionResponse 把选中档 rules 填进 Set，handleToolCall 命中放行，真正跨 turn 持久
+    function makeHandler() {
+        const session = {
+            client: {
+                rpcHandlerManager: { registerHandler: () => {} },
+                updateAgentState: () => {},
+                resetIdleTimer: () => {},
+            },
+            setPermissionMode: vi.fn(),
+            queue: { unshift: vi.fn() },
+        }
+        return { handler: new PermissionHandler(session as never), session }
+    }
+
+    it('Bash 前缀 rule 填 Set 后，同前缀命令 handleToolCall 命中放行', async () => {
+        const { handler } = makeHandler()
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Bash', input: { command: 'echo hi' }, toolUseID: 't1' }
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({
+            id: 't1', approved: true,
+            updatedPermissions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'echo:*' }], behavior: 'allow', destination: 'session' }],
+        }, pending)
+
+        const result = await handler.handleToolCall(
+            'Bash',
+            { command: 'echo bye' },
+            { signal: new AbortController().signal } as never
+        )
+        expect(result.behavior).toBe('allow')
+    })
+
+    it('Bash 字面 rule 填 Set 后，同精确命令命中放行', async () => {
+        const { handler } = makeHandler()
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Bash', input: { command: 'echo hi' }, toolUseID: 't1' }
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({
+            id: 't1', approved: true,
+            updatedPermissions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'echo hi' }], behavior: 'allow', destination: 'session' }],
+        }, pending)
+
+        const result = await handler.handleToolCall(
+            'Bash',
+            { command: 'echo hi' },
+            { signal: new AbortController().signal } as never
+        )
+        expect(result.behavior).toBe('allow')
+    })
+
+    it('非 Bash 工具 rule 填 Set 后，同工具命中放行', async () => {
+        const { handler } = makeHandler()
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Read', input: { file_path: '/tmp/a' }, toolUseID: 't1' }
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({
+            id: 't1', approved: true,
+            updatedPermissions: [{ type: 'addRules', rules: [{ toolName: 'Read' }], behavior: 'allow', destination: 'session' }],
+        }, pending)
+
+        const result = await handler.handleToolCall(
+            'Read',
+            { file_path: '/tmp/b' },
+            { signal: new AbortController().signal } as never
+        )
+        expect(result.behavior).toBe('allow')
+    })
+
+    it('不同命令不命中 Set，进入正常 pending（不误放行）', async () => {
+        const { handler, session } = makeHandler()
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Bash', input: { command: 'echo hi' }, toolUseID: 't1' }
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({
+            id: 't1', approved: true,
+            updatedPermissions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'echo:*' }], behavior: 'allow', destination: 'session' }],
+        }, pending)
+
+        // rm 不匹配 echo:* 前缀，应进入 pending（updateAgentState 被调）
+        const updateSpy = vi.spyOn(session.client, 'updateAgentState')
+        handler.handleToolCall('Bash', { command: 'rm -rf /' }, { signal: new AbortController().signal, toolUseID: 't2' } as never)
+        expect(updateSpy).toHaveBeenCalled()
+    })
+})
