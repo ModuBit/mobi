@@ -16,7 +16,7 @@
 
 import type { AgentState } from "@/api/types";
 import type { PermissionMode } from "@mobi/shared/types";
-import type { SDKUIHints } from "@mobi/shared";
+import type { PermissionUpdate, SDKUIHints } from "@mobi/shared";
 
 type RpcHandlerManagerLike = {
     registerHandler<TRequest = unknown, TResponse = unknown>(
@@ -87,7 +87,7 @@ export type PendingPermissionRequest<TResult> = {
     reject: (error: Error) => void;
     toolName: string;
     input: unknown;
-    suggestions?: unknown[];
+    suggestions?: PermissionUpdate[];
     toolUseID?: string;
     sdkHints?: SDKUIHints;
 };
@@ -140,7 +140,7 @@ export abstract class BasePermissionHandler<TResponse extends { id: string }, TR
         toolName: string,
         input: unknown,
         handlers: { resolve: (value: TResult) => void; reject: (error: Error) => void },
-        extra?: { suggestions?: unknown[]; toolUseID?: string; sdkHints?: SDKUIHints }
+        extra?: { suggestions?: PermissionUpdate[]; toolUseID?: string; sdkHints?: SDKUIHints }
     ): void {
         this.pendingRequests.set(id, {
             ...handlers,
@@ -160,6 +160,7 @@ export abstract class BasePermissionHandler<TResponse extends { id: string }, TR
                     arguments: input,
                     createdAt: Date.now(),
                     sdkHints: extra?.sdkHints,
+                    suggestions: extra?.suggestions,
                 }
             }
         }));
