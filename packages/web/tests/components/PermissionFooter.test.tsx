@@ -179,12 +179,29 @@ describe('PermissionFooter', () => {
         expect(denyBtn.classList.contains('ant-btn-block')).toBe(false)
     })
 
-    it('0 suggestion：只渲染「允许」+「拒绝」，不渲染持久化档', () => {
-        renderFooter(makeTool())
-        expect(screen.queryByText('本次会话允许')).not.toBeInTheDocument()
-        expect(screen.queryByText('当前项目允许')).not.toBeInTheDocument()
-        expect(screen.getByText('允许')).toBeInTheDocument()
+    it('0 suggestion：构造 session fallback 档，渲染「本次会话允许」+「允许」+「拒绝」', () => {
+        // SDK 给 0 suggestion 时，Web 构造 session 档 fallback，让 CLI mobi Set 兜底链路接通
+        renderFooter(makeTool()) // makeTool 默认无 suggestion
+        expect(screen.getByText('本次会话允许')).toBeInTheDocument() // fallback session 档
+        expect(screen.getByText('允许')).toBeInTheDocument() // 允许本次（临时）
         expect(screen.getByText('拒绝')).toBeInTheDocument()
+    })
+
+    it('0 suggestion 点「本次会话允许」→ approve 回传 fallback updatedPermissions（Bash command ruleContent）', async () => {
+        renderFooter(makeTool())
+        fireEvent.click(screen.getByText('本次会话允许'))
+        await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s1', 'p1', {
+            updatedPermissions: expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'addRules',
+                    destination: 'session',
+                    behavior: 'allow',
+                    rules: expect.arrayContaining([
+                        expect.objectContaining({ toolName: 'Bash', ruleContent: 'rm -rf node_modules' }),
+                    ]),
+                }),
+            ]),
+        }))
     })
 
     it('有 session suggestion：渲染「本次会话允许」primary + 「允许」次 + 「拒绝」', () => {

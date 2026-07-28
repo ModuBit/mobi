@@ -25,7 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { getCustomPermissionTitleKey, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
+import { getCustomPermissionTitleKey, getInputStringAny, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 
 const { useToken } = antTheme
 
@@ -54,6 +54,24 @@ function groupSuggestionsByDestination(suggestions: PermissionUpdate[] | undefin
     return [...groups.entries()]
         .sort((a, b) => DESTINATION_ORDER.indexOf(a[0]) - DESTINATION_ORDER.indexOf(b[0]))
         .map(([destination, items]) => ({ destination, items }))
+}
+
+/**
+ * SDK 无 suggestion 时，构造 session 档回退 mobi Set 兜底：
+ * Bash 用 command 字面作 ruleContent（CLI parseBashPermission 字面填 Set），
+ * 非 Bash 用 toolName（CLI allowedTools.add 填整个工具）。
+ * CLI 收到后填 mobi Set，下次同工具/命令命中放行，真正跨 turn 持久。
+ */
+function buildFallbackUpdate(toolName: string, input: unknown): PermissionUpdate {
+    const ruleContent = toolName === 'Bash'
+        ? (getInputStringAny(input, ['command', 'cmd']) ?? undefined)
+        : undefined
+    return {
+        type: 'addRules',
+        rules: [{ toolName, ruleContent }],
+        behavior: 'allow',
+        destination: 'session',
+    }
 }
 
 /**
@@ -165,15 +183,23 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const isExitPlanMode = isExitPlanModeTool(toolName)
 
     const isPending = permission?.status === 'pending'
+    // SDK 无 suggestion 时的 fallback（session 档，命令字面/工具名），用 useMemo 稳定引用
+    const fallbackUpdate = useMemo(
+        () => buildFallbackUpdate(toolName, props.tool.input),
+        [toolName, props.tool.input]
+    )
     // SDK suggestions 驱动的持久化档位（Edit/ExitPlanMode 不走 suggestion 档，保留各自路径）
     // useMemo 稳定 items 引用：setPendingAction(items) 存引用，loading 用 pendingAction === items 判定，
     // 若每次 render 重建数组会导致引用不等、loading 永不显示
-    const suggestionGroups = useMemo(
-        () => isPending && !isEditTool && !isExitPlanMode
-            ? groupSuggestionsByDestination(permission?.suggestions)
-            : [],
-        [isPending, isEditTool, isExitPlanMode, permission?.suggestions]
-    )
+    // SDK 给 0 suggestion 时，构造 session 档 fallback，让 CLI mobi Set 兜底链路接通（用户选「本次会话允许」→ 回传 → CLI 填 Set）
+    const suggestionGroups = useMemo(() => {
+        if (!isPending || isEditTool || isExitPlanMode) return []
+        const groups = groupSuggestionsByDestination(permission?.suggestions)
+        if (groups.length === 0) {
+            return [{ destination: 'session' as const, items: [fallbackUpdate] }]
+        }
+        return groups
+    }, [isPending, isEditTool, isExitPlanMode, permission?.suggestions, fallbackUpdate])
     const canAllowAllEdits = isPending && isEditTool
 
     if (!permission) return null
