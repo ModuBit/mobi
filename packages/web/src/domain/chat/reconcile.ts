@@ -72,6 +72,14 @@ function areAnswersEqual(
     return true
 }
 
+function areSuggestionsEqual(left?: ToolPermission['suggestions'], right?: ToolPermission['suggestions']): boolean {
+    if (left === right) return true
+    if (!left || !right) return false
+    if (left.length !== right.length) return false
+    // suggestions 是 PermissionUpdate 对象数组，用 JSON 序列化比较（结构稳定）
+    return JSON.stringify(left) === JSON.stringify(right)
+}
+
 function arePermissionsEqual(left?: ToolPermission, right?: ToolPermission): boolean {
     if (left === right) return true
     if (!left || !right) return false
@@ -85,6 +93,7 @@ function arePermissionsEqual(left?: ToolPermission, right?: ToolPermission): boo
         && left.completedAt === right.completedAt
         && areStringArraysEqual(left.allowedTools, right.allowedTools)
         && areAnswersEqual(left.answers, right.answers)
+        && areSuggestionsEqual(left.suggestions, right.suggestions)
 }
 
 function getEventKey(event: AgentEvent): string {

@@ -394,7 +394,9 @@ export function reduceTimeline(
                         date: c.permissions.date,
                         mode: c.permissions.mode,
                         allowedTools: c.permissions.allowedTools,
-                        decision: c.permissions.decision
+                        decision: c.permissions.decision,
+                        // 保留 pending 时的 suggestions，供 approved 分支按 destination 显示档位文案
+                        suggestions: permissionEntry?.permission.suggestions
                     } satisfies ToolPermission) : undefined
 
                     const permission = permissionFromResult ?? permissionEntry?.permission

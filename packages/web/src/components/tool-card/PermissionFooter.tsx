@@ -18,7 +18,7 @@ import type { MobiApi } from '@/core/data/api/client'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
 import type { PermissionUpdate, PermissionUpdateDestination, SDKUIHints } from '@mobi/shared'
-import { memo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { Alert, Button, Input, theme as antTheme } from 'antd'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -166,9 +166,14 @@ function PermissionFooterInner(props: PermissionFooterProps) {
 
     const isPending = permission?.status === 'pending'
     // SDK suggestions 驱动的持久化档位（Edit/ExitPlanMode 不走 suggestion 档，保留各自路径）
-    const suggestionGroups = isPending && !isEditTool && !isExitPlanMode
-        ? groupSuggestionsByDestination(permission.suggestions)
-        : []
+    // useMemo 稳定 items 引用：setPendingAction(items) 存引用，loading 用 pendingAction === items 判定，
+    // 若每次 render 重建数组会导致引用不等、loading 永不显示
+    const suggestionGroups = useMemo(
+        () => isPending && !isEditTool && !isExitPlanMode
+            ? groupSuggestionsByDestination(permission?.suggestions)
+            : [],
+        [isPending, isEditTool, isExitPlanMode, permission?.suggestions]
+    )
     const canAllowAllEdits = isPending && isEditTool
 
     if (!permission) return null

@@ -372,4 +372,34 @@ describe('PermissionHandler — updatedPermissions 填 mobi Set 兜底持久化'
         handler.handleToolCall('Bash', { command: 'rm -rf /' }, { signal: new AbortController().signal, toolUseID: 't2' } as never)
         expect(updateSpy).toHaveBeenCalled()
     })
+
+    it('removeRules 不触发命令字面兜底（移除语义不应反转为放行）', () => {
+        const { handler, session } = makeHandler()
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Bash', input: { command: 'echo hi' }, toolUseID: 't1' }
+        // @ts-expect-error 访问 protected
+        void handler.handlePermissionResponse({
+            id: 't1', approved: true,
+            updatedPermissions: [{ type: 'removeRules', rules: [{ toolName: 'Bash', ruleContent: 'echo:*' }], behavior: 'deny', destination: 'session' }],
+        }, pending)
+
+        // removeRules 不触发字面兜底，同命令仍进 pending
+        const updateSpy = vi.spyOn(session.client, 'updateAgentState')
+        handler.handleToolCall('Bash', { command: 'echo hi' }, { signal: new AbortController().signal, toolUseID: 't2' } as never)
+        expect(updateSpy).toHaveBeenCalled()
+    })
+
+    it('addRules Bash 无 ruleContent 不填裸 Bash（不放行所有 Bash）', () => {
+        const { handler, session } = makeHandler()
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Bash', input: { command: 'echo hi' }, toolUseID: 't1' }
+        // @ts-expect-error 访问 protected
+        void handler.handlePermissionResponse({
+            id: 't1', approved: true,
+            updatedPermissions: [{ type: 'addRules', rules: [{ toolName: 'Bash' }], behavior: 'allow', destination: 'session' }],
+        }, pending)
+
+        // Bash 无 ruleContent 不填 Set，同命令仍进 pending（不放行裸 Bash）
+        const updateSpy = vi.spyOn(session.client, 'updateAgentState')
+        handler.handleToolCall('Bash', { command: 'echo hi' }, { signal: new AbortController().signal, toolUseID: 't2' } as never)
+        expect(updateSpy).toHaveBeenCalled()
+    })
 })

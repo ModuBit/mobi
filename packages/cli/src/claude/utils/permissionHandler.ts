@@ -153,27 +153,37 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         // [持久化兜底] SDK updatedPermissions 经 E2E 验证不跨 turn 持久（SDK 未兑现 session 级放行承诺，
         // 下次同命令仍会调 canCallTool）。故 mobi 自有 Set 兜底，按 SDK suggestion 做前缀匹配：
         // - addRules/replaceRules：用 ruleContent 填 Set（SDK 给的命令前缀如 'echo:*' 或字面）
-        // - suggestion 不可用（SDK 给 addDirectories 目录级等无命令前缀的 suggestion）：
+        // - suggestion 不可用（updatedPermissions 全是 addDirectories/setMode 等非 rules 类操作）：
         //   回退到 pending.input.command 命令字面填 Set，让「本次会话允许」对同命令生效
+        // 不回退的情况：updatedPermissions 含 rules 类操作（addRules/replaceRules/removeRules），
+        //   即使未填进 Set（如 Bash 无 ruleContent、removeRules 移除语义），也不应字面兜底——
+        //   否则会把「移除/无规则」反转为「会话放行」，与用户选择的语义相反
         // updatedPermissions 仍透传给 SDK 作双轨兜底（见下方 result.updatedPermissions）。
         if (response.updatedPermissions && response.updatedPermissions.length > 0) {
+            let hasRulesOp = false;
             let filledFromRules = false;
             for (const update of response.updatedPermissions) {
+                if (update.type === 'addRules' || update.type === 'replaceRules' || update.type === 'removeRules') {
+                    hasRulesOp = true;
+                }
                 if (update.type !== 'addRules' && update.type !== 'replaceRules') continue;
                 for (const rule of update.rules) {
                     if (isQuestionToolName(rule.toolName)) continue;
                     if (rule.toolName === 'Bash' && rule.ruleContent) {
                         // 复用 parseBashPermission：ruleContent 形如 'echo:*'（前缀）或 'echo hi'（字面）
                         this.parseBashPermission(`Bash(${rule.ruleContent})`);
+                        filledFromRules = true;
+                    } else if (rule.toolName === 'Bash') {
+                        // Bash 无 ruleContent：mobi 命令级粒度无法放行裸 'Bash'（且 handleToolCall 不查
+                        // allowedTools 查 Bash），跳过不填，避免语义混乱
                     } else {
                         this.allowedTools.add(rule.toolName);
+                        filledFromRules = true;
                     }
-                    filledFromRules = true;
                 }
             }
-            // SDK 给 Bash 的 suggestion 常为 addDirectories（目录级，无命令前缀），suggestion 不可用。
-            // 回退到命令字面填 Set，让「本次会话允许」对同命令生效。
-            if (!filledFromRules && pending.toolName === 'Bash') {
+            // 仅当 updatedPermissions 全是 addDirectories/setMode 等非 rules 类操作时回退命令字面
+            if (!hasRulesOp && pending.toolName === 'Bash') {
                 const cmd = (pending.input as { command?: string } | null)?.command;
                 if (cmd) this.parseBashPermission(`Bash(${cmd})`);
             }
