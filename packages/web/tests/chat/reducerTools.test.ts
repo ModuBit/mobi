@@ -662,6 +662,32 @@ describe('getPermissions', () => {
     it('空 AgentState 应返回空 Map', () => {
         expect(getPermissions({}).size).toBe(0)
     })
+
+    it('把 agentState.requests[id].suggestions 填进 ToolPermission.suggestions', () => {
+        const agentState = {
+            requests: {
+                r1: {
+                    tool: 'Bash',
+                    arguments: { command: 'git status' },
+                    suggestions: [{
+                        type: 'addRules',
+                        rules: [{ toolName: 'Bash', ruleContent: 'git:*' }],
+                        behavior: 'allow',
+                        destination: 'session',
+                    }],
+                },
+            },
+        } as unknown as AgentState
+
+        const map = getPermissions(agentState)
+        expect(map.get('r1')?.permission.suggestions).toHaveLength(1)
+        expect(map.get('r1')?.permission.suggestions?.[0].destination).toBe('session')
+    })
+
+    it('无 suggestions 时 permission.suggestions undefined', () => {
+        const map = getPermissions({ requests: { r1: { tool: 'Bash', arguments: {} } } } as unknown as AgentState)
+        expect(map.get('r1')?.permission.suggestions).toBeUndefined()
+    })
 })
 
 describe('collectToolIdsFromMessages', () => {
