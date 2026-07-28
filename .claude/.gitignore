@@ -3,3 +3,9 @@ scripts/
 plans
 settings.local.json
 settings.json
+# skills/ 默认全部本地不入库；用 ! 显式保留团队共享的 skill
+skills/*
+!skills/db-schema
+!skills/run-tests
+!skills/sync-docs
+!skills/upgrade-deps
