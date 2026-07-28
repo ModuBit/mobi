@@ -15,7 +15,7 @@
  */
 
 import { isPermissionModeAllowedForFlavor } from '@mobi/shared'
-import { PermissionModeSchema } from '@mobi/shared/schemas'
+import { PermissionModeSchema, PermissionUpdateSchema } from '@mobi/shared/schemas'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
@@ -33,7 +33,7 @@ const answersSchema = z.union([
 
 const approveBodySchema = z.object({
     mode: PermissionModeSchema.optional(),
-    allowTools: z.array(z.string()).optional(),
+    updatedPermissions: z.array(PermissionUpdateSchema).optional(),
     decision: decisionSchema.optional(),
     answers: answersSchema.optional()
 })
@@ -78,10 +78,10 @@ export function createPermissionsRoutes(getSyncEngine: () => SyncEngine | null):
                 return c.json({ error: 'Invalid permission mode for session flavor' }, 400)
             }
         }
-        const allowTools = parsed.data.allowTools
+        const updatedPermissions = parsed.data.updatedPermissions
         const decision = parsed.data.decision
         const answers = parsed.data.answers
-        await engine.approvePermission(sessionId, requestId, mode, allowTools, decision, answers)
+        await engine.approvePermission(sessionId, requestId, mode, decision, answers, updatedPermissions)
         return c.json({ ok: true })
     })
 

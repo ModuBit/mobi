@@ -15,6 +15,7 @@
  */
 
 import { describe, test, expect, mock } from 'bun:test'
+import type { PermissionUpdate } from '@mobi/shared'
 import { RpcGateway } from '../../src/sync/rpcGateway'
 import type { RpcRegistry } from '../../src/socket/rpcRegistry'
 
@@ -294,6 +295,59 @@ describe('RpcGateway.cancelCliQueuedMessage', () => {
         await expect(
             gateway.cancelCliQueuedMessage('sess-D', 'loc-4')
         ).rejects.toThrow(/not registered/)
+    })
+})
+
+// ============ approvePermission 转发 updatedPermissions ============
+
+describe('RpcGateway.approvePermission', () => {
+    test('updatedPermissions 塞进 permission RPC payload 并透传给 CLI', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({ response: { ok: true }, payloadCaptor })
+        const io = makeFakeIo('sock-appr-1', socket)
+        const registry = makeFakeRegistry(new Map([['sess-appr:permission', 'sock-appr-1']]))
+
+        const gateway = new RpcGateway(io, registry)
+        const updatedPermissions: PermissionUpdate[] = [
+            {
+                type: 'addRules',
+                rules: [{ toolName: 'Bash', ruleContent: 'ls' }],
+                behavior: 'allow',
+                destination: 'session',
+            },
+        ]
+        await gateway.approvePermission(
+            'sess-appr',
+            'req-1',
+            undefined,
+            'approved',
+            undefined,
+            updatedPermissions,
+        )
+
+        const envelope = payloadCaptor.value as { method: string; params: Record<string, unknown> }
+        expect(envelope.method).toBe('sess-appr:permission')
+        expect(envelope.params.id).toBe('req-1')
+        expect(envelope.params.approved).toBe(true)
+        // 关键：updatedPermissions 原样塞进 payload（替代旧的 allowTools）
+        expect(envelope.params.updatedPermissions).toEqual(updatedPermissions)
+        expect('allowTools' in envelope.params).toBe(false)
+    })
+
+    test('未传 updatedPermissions 时 payload 不含该字段', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({ response: { ok: true }, payloadCaptor })
+        const io = makeFakeIo('sock-appr-2', socket)
+        const registry = makeFakeRegistry(new Map([['sess-appr2:permission', 'sock-appr-2']]))
+
+        const gateway = new RpcGateway(io, registry)
+        await gateway.approvePermission('sess-appr2', 'req-2', undefined, 'approved', undefined, undefined)
+
+        const envelope = payloadCaptor.value as { method: string; params: Record<string, unknown> }
+        expect(envelope.params.id).toBe('req-2')
+        // updatedPermissions 未传时 payload 中该字段为 undefined（原 allowTools 字段彻底移除）
+        expect(envelope.params.updatedPermissions).toBeUndefined()
+        expect('allowTools' in envelope.params).toBe(false)
     })
 })
 

@@ -15,6 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
+import type { PermissionUpdate } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
@@ -90,17 +91,17 @@ export class RpcGateway {
         sessionId: string,
         requestId: string,
         mode?: PermissionMode,
-        allowTools?: string[],
         decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
-        answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>
+        answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>,
+        updatedPermissions?: PermissionUpdate[]
     ): Promise<void> {
         await this.sessionRpc(sessionId, 'permission', {
             id: requestId,
             approved: true,
             mode,
-            allowTools,
             decision,
-            answers
+            answers,
+            updatedPermissions
         })
     }
 
