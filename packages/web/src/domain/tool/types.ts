@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SDKUIHints } from '@mobi/shared'
+import type { PermissionUpdate, SDKUIHints } from '@mobi/shared'
 
 /**
  * 工具权限类型
@@ -26,6 +26,7 @@ export type ToolPermission = {
     decision?: 'approved' | 'approved_for_session' | 'abort' | 'acceptEdits'
     mode?: 'acceptEdits'
     allowedTools?: string[]
+    suggestions?: PermissionUpdate[]
     answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>
 }
 

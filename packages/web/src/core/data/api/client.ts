@@ -206,8 +206,8 @@ export function createMobiApi() {
         // Permissions
         permissions: {
             approve: (sessionId: string, requestId: string, body?: {
-                mode?: string
-                allowTools?: string[]
+                mode?: 'acceptEdits' | 'default'
+                updatedPermissions?: import('@mobi/shared').PermissionUpdate[]
                 decision?: string
                 answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>
             }) =>

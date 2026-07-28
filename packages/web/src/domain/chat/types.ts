@@ -15,6 +15,7 @@
  */
 
 import type { AttachmentMetadata, MessageStatus } from '@/core/data/api/types'
+import type { PermissionUpdate } from '@mobi/shared'
 
 /** 消息元数据 */
 export type MessageMeta = {
@@ -158,6 +159,7 @@ export type ToolPermission = {
     reason?: string
     mode?: string
     allowedTools?: string[]
+    suggestions?: PermissionUpdate[]
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort'
     answers?: Record<string, string[]> | Record<string, { answers: string[] }>
     date?: number

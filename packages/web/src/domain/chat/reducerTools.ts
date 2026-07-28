@@ -39,7 +39,8 @@ export function getPermissions(agentState: AgentState | null | undefined): Map<s
                 permission: {
                     id,
                     status: 'pending',
-                    createdAt: request.createdAt ?? null
+                    createdAt: request.createdAt ?? null,
+                    suggestions: request.suggestions,
                 }
             })
         }
