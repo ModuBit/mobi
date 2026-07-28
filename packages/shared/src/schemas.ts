@@ -139,11 +139,63 @@ export const SDKUIHintsSchema = z.object({
 
 export type SDKUIHints = z.infer<typeof SDKUIHintsSchema>
 
+/** SDK 权限更新建议（与 @anthropic-ai/claude-agent-sdk 的 PermissionUpdate 结构对齐） */
+export const PermissionBehaviorSchema = z.enum(['allow', 'deny', 'ask'])
+
+export const PermissionUpdateDestinationSchema = z.enum([
+    'userSettings', 'projectSettings', 'localSettings', 'session', 'cliArg'
+])
+
+export const PermissionRuleValueSchema = z.object({
+    toolName: z.string(),
+    ruleContent: z.string().optional(),
+})
+
+export const PermissionUpdateSchema = z.discriminatedUnion('type', [
+    z.object({
+        type: z.literal('addRules'),
+        rules: z.array(PermissionRuleValueSchema),
+        behavior: PermissionBehaviorSchema,
+        destination: PermissionUpdateDestinationSchema,
+    }),
+    z.object({
+        type: z.literal('replaceRules'),
+        rules: z.array(PermissionRuleValueSchema),
+        behavior: PermissionBehaviorSchema,
+        destination: PermissionUpdateDestinationSchema,
+    }),
+    z.object({
+        type: z.literal('removeRules'),
+        rules: z.array(PermissionRuleValueSchema),
+        behavior: PermissionBehaviorSchema,
+        destination: PermissionUpdateDestinationSchema,
+    }),
+    z.object({
+        type: z.literal('setMode'),
+        mode: PermissionModeSchema,
+        destination: PermissionUpdateDestinationSchema,
+    }),
+    z.object({
+        type: z.literal('addDirectories'),
+        directories: z.array(z.string()),
+        destination: PermissionUpdateDestinationSchema,
+    }),
+    z.object({
+        type: z.literal('removeDirectories'),
+        directories: z.array(z.string()),
+        destination: PermissionUpdateDestinationSchema,
+    }),
+])
+
+export type PermissionUpdate = z.infer<typeof PermissionUpdateSchema>
+export type PermissionUpdateDestination = z.infer<typeof PermissionUpdateDestinationSchema>
+
 export const AgentStateRequestSchema = z.object({
     tool: z.string(),
     arguments: z.unknown(),
     createdAt: z.number().nullish(),
     sdkHints: SDKUIHintsSchema.optional(),
+    suggestions: z.array(PermissionUpdateSchema).optional(),
 })
 
 export type AgentStateRequest = z.infer<typeof AgentStateRequestSchema>

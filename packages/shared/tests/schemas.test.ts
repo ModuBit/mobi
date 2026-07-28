@@ -23,6 +23,8 @@ import {
     SyncEventSchema,
     BackgroundTaskItemSchema,
     RuntimeStateSchema,
+    PermissionUpdateSchema,
+    AgentStateRequestSchema,
 } from '../src/schemas'
 
 describe('PermissionModeSchema', () => {
@@ -369,5 +371,55 @@ describe('RuntimeStateSchema with backgroundTasks', () => {
     it('backgroundTasks 可选', () => {
         const result = RuntimeStateSchema.parse({})
         expect(result.backgroundTasks).toBeUndefined()
+    })
+})
+
+describe('PermissionUpdateSchema', () => {
+    it('解析 addRules + session destination', () => {
+        const update = {
+            type: 'addRules',
+            rules: [{ toolName: 'Bash', ruleContent: 'git:*' }],
+            behavior: 'allow',
+            destination: 'session',
+        }
+        expect(PermissionUpdateSchema.safeParse(update).success).toBe(true)
+    })
+
+    it('解析 setMode + projectSettings destination', () => {
+        const update = { type: 'setMode', mode: 'acceptEdits', destination: 'projectSettings' }
+        expect(PermissionUpdateSchema.safeParse(update).success).toBe(true)
+    })
+
+    it('解析 addDirectories', () => {
+        const update = { type: 'addDirectories', directories: ['/tmp'], destination: 'localSettings' }
+        expect(PermissionUpdateSchema.safeParse(update).success).toBe(true)
+    })
+
+    it('拒绝未知 destination', () => {
+        const update = { type: 'addRules', rules: [], behavior: 'allow', destination: 'nowhere' }
+        expect(PermissionUpdateSchema.safeParse(update).success).toBe(false)
+    })
+
+    it('拒绝未知 type', () => {
+        const update = { type: 'bogus', rules: [], behavior: 'allow', destination: 'session' }
+        expect(PermissionUpdateSchema.safeParse(update).success).toBe(false)
+    })
+})
+
+describe('AgentStateRequestSchema suggestions', () => {
+    it('接受 suggestions 字段', () => {
+        const req = {
+            tool: 'Bash',
+            arguments: { command: 'git status' },
+            createdAt: 1,
+            suggestions: [
+                { type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'git:*' }], behavior: 'allow', destination: 'session' },
+            ],
+        }
+        expect(AgentStateRequestSchema.safeParse(req).success).toBe(true)
+    })
+
+    it('suggestions 可选', () => {
+        expect(AgentStateRequestSchema.safeParse({ tool: 'Bash', arguments: {} }).success).toBe(true)
     })
 })
