@@ -181,3 +181,80 @@ describe('PermissionHandler — onMessage task_started 仍填充 agentInfo', () 
         expect(() => handler.onMessage(taskMsg)).not.toThrow()
     })
 })
+
+describe('PermissionHandler — handlePermissionResponse 透传 updatedPermissions', () => {
+    function createSession(): {
+        session: unknown
+        setPermissionMode: ReturnType<typeof vi.fn>
+        queueUnshift: ReturnType<typeof vi.fn>
+    } {
+        const setPermissionMode = vi.fn()
+        const queueUnshift = vi.fn()
+        const session = {
+            client: {
+                rpcHandlerManager: { registerHandler: () => {} },
+                updateAgentState: () => {},
+                resetIdleTimer: () => {},
+            },
+            setPermissionMode,
+            queue: { unshift: queueUnshift },
+        }
+        return { session, setPermissionMode, queueUnshift }
+    }
+
+    function makePending() {
+        return {
+            resolve: vi.fn(),
+            reject: vi.fn(),
+            toolName: 'Bash',
+            input: {},
+            toolUseID: 't1',
+        }
+    }
+
+    it('response 带 updatedPermissions → pending.resolve 收到 user_permanent + updatedPermissions', async () => {
+        const { session } = createSession()
+        const handler = new PermissionHandler(session as never)
+        const pending = makePending()
+
+        const updatedPermissions = [
+            {
+                type: 'addRules' as const,
+                rules: [{ toolName: 'Bash', ruleContent: 'ls' }],
+                behavior: 'allow' as const,
+                destination: 'session' as const,
+            }
+        ]
+
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            { id: 't1', approved: true, updatedPermissions },
+            pending
+        )
+
+        expect(pending.resolve).toHaveBeenCalledTimes(1)
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('allow')
+        expect(result.decisionClassification).toBe('user_permanent')
+        expect(result.updatedPermissions).toHaveLength(1)
+        expect(result.updatedPermissions).toEqual(updatedPermissions)
+    })
+
+    it('response 无 updatedPermissions → user_temporary 且不写 updatedPermissions', async () => {
+        const { session } = createSession()
+        const handler = new PermissionHandler(session as never)
+        const pending = makePending()
+
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            { id: 't1', approved: true },
+            pending
+        )
+
+        expect(pending.resolve).toHaveBeenCalledTimes(1)
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('allow')
+        expect(result.decisionClassification).toBe('user_temporary')
+        expect(result.updatedPermissions).toBeUndefined()
+    })
+})
