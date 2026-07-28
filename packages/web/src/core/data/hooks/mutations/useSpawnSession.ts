@@ -58,10 +58,18 @@ export function useSpawnSession(): {
                     input.effort
                 )
 
-                return {
-                    type: 'success',
-                    sessionId: res.data?.sessionId
+                // hub spawnSession 失败时返回 { type:'error', message } 且 HTTP 仍 200，
+                // axios 对 200 不抛错——必须读取 body.type 判定，否则真实失败原因被吞，
+                // NewSessionPage 仅显示「创建会话失败」兜底文案而看不到具体错误。
+                const data = res.data as SpawnResponse | undefined
+                if (data && data.type === 'success' && data.sessionId) {
+                    return { type: 'success', sessionId: data.sessionId }
                 }
+                if (data && data.type === 'error' && data.message) {
+                    return { type: 'error', message: data.message }
+                }
+                // shape 异常（machine 离线 / RPC 返回非预期结构）
+                return { type: 'error', message: t('newSession.createFailed') }
             } catch (e) {
                 const message = e instanceof Error ? e.message : t('newSession.createFailed')
                 return { type: 'error', message }
