@@ -189,7 +189,11 @@
             },
             "requestUserInput.noteLabel": "备注（可选）",
             "requestUserInput.notePlaceholder": "输入备注...",
-            "requestUserInput.textPlaceholder": "在此输入..."
+            "requestUserInput.textPlaceholder": "在此输入...",
+            "allowSession": "本次会话允许",
+            "allowProjectLocal": "当前项目允许（本地）",
+            "allowProject": "当前项目允许",
+            "allowUser": "当前用户允许"
         },
         "planMode": {
             "entered": "已进入计划模式",

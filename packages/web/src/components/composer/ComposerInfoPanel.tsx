@@ -26,7 +26,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { ChevronDown } from 'lucide-react'
 import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
-import type { SDKUIHints, TodoItem, TaskItem } from '@mobi/shared'
+import type { SDKUIHints, TodoItem, TaskItem, PermissionUpdate } from '@mobi/shared'
 import { PermissionFooter, getPermissionDisplayText } from '@/components/tool-card/PermissionFooter'
 import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFooter'
 import { RequestUserInputFooter } from '@/components/tool-card/RequestUserInputFooter'
@@ -72,6 +72,7 @@ function ToolInteractionPanel({
             const req = request as {
                 tool?: string; arguments?: unknown; createdAt?: number | null
                 sdkHints?: SDKUIHints
+                suggestions?: PermissionUpdate[]
             }
             const toolName = req.tool || 'Unknown'
             const tool = {
@@ -85,7 +86,8 @@ function ToolInteractionPanel({
                 permission: {
                     id: requestId,
                     status: 'pending' as const,
-                    createdAt: req.createdAt ?? null
+                    createdAt: req.createdAt ?? null,
+                    suggestions: req.suggestions,
                 },
                 sdkHints: req.sdkHints,
             }

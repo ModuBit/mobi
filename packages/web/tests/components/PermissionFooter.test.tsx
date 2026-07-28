@@ -19,7 +19,8 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
-import type { ToolInfo } from '@/domain/tool/types'
+import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
+import type { PermissionUpdate } from '@mobi/shared'
 import type { MobiApi } from '@/core/data/api/client'
 
 // mock i18next — 与 AskUserQuestionFooter.test.tsx 同样的模式
@@ -32,6 +33,10 @@ vi.mock('react-i18next', async (importOriginal) => {
                 const map: Record<string, string> = {
                     'chat.tool.allow': '允许',
                     'chat.tool.deny': '拒绝',
+                    'chat.tool.allowSession': '本次会话允许',
+                    'chat.tool.allowProjectLocal': '当前项目允许（本地）',
+                    'chat.tool.allowProject': '当前项目允许',
+                    'chat.tool.allowUser': '当前用户允许',
                     'chat.tool.allowForSession': '本次会话允许',
                     'chat.tool.allowAll': '全部允许',
                     'chat.tool.waitingForApproval': '等待审批',
@@ -75,6 +80,16 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ConfigProvider>{children}</ConfigProvider>
 )
 
+const sessionSuggestion: PermissionUpdate = {
+    type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'git:*' }], behavior: 'allow', destination: 'session',
+}
+const projectSuggestion: PermissionUpdate = {
+    type: 'addRules', rules: [{ toolName: 'Bash' }], behavior: 'allow', destination: 'projectSettings',
+}
+const userSuggestion: PermissionUpdate = {
+    type: 'addRules', rules: [{ toolName: 'Bash' }], behavior: 'allow', destination: 'userSettings',
+}
+
 function makeTool(overrides: Partial<ToolInfo> = {}): ToolInfo {
     return {
         name: 'Bash',
@@ -88,6 +103,10 @@ function makeTool(overrides: Partial<ToolInfo> = {}): ToolInfo {
         sdkHints: undefined,
         ...overrides,
     } as ToolInfo
+}
+
+function withSuggestions(...suggestions: PermissionUpdate[]): Partial<ToolPermission> {
+    return { id: 'p1', status: 'pending', suggestions }
 }
 
 function renderFooter(tool: ToolInfo) {
@@ -120,7 +139,7 @@ describe('PermissionFooter', () => {
         expect(denyBtn.closest('[data-group="actions"]')).not.toBeNull()
     })
 
-    it('点击允许调用 approve', async () => {
+    it('点击允许调用 approve（无 updatedPermissions，仅本次）', async () => {
         renderFooter(makeTool())
         fireEvent.click(screen.getByText('允许'))
         await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s1', 'p1'))
@@ -160,36 +179,76 @@ describe('PermissionFooter', () => {
         expect(denyBtn.classList.contains('ant-btn-block')).toBe(false)
     })
 
-    it('本次会话允许提为 primary 主操作，允许降为 default（按使用频率排视觉层级）', () => {
-        // 实际最常用「本次会话允许」——视觉层级应与用法对齐，原允许 primary 倒挂
-        renderFooter(makeTool()) // Bash → canAllowForSession
+    it('0 suggestion：只渲染「允许」+「拒绝」，不渲染持久化档', () => {
+        renderFooter(makeTool())
+        expect(screen.queryByText('本次会话允许')).not.toBeInTheDocument()
+        expect(screen.queryByText('当前项目允许')).not.toBeInTheDocument()
+        expect(screen.getByText('允许')).toBeInTheDocument()
+        expect(screen.getByText('拒绝')).toBeInTheDocument()
+    })
+
+    it('有 session suggestion：渲染「本次会话允许」primary + 「允许」次 + 「拒绝」', () => {
+        renderFooter(makeTool({ permission: withSuggestions(sessionSuggestion) }))
         const forSessionBtn = screen.getByText('本次会话允许').closest('button')!
         const allowBtn = screen.getByText('允许').closest('button')!
+        // 最窄档（session）提为 primary
         expect(forSessionBtn.classList.contains('ant-btn-primary')).toBe(true)
+        // 「允许」降为次级 default
         expect(allowBtn.classList.contains('ant-btn-primary')).toBe(false)
     })
 
-    it('移动端：本次会话允许独占满宽行，允许+拒绝并排在次要行', () => {
-        // 主操作独占一行（block 满宽），次操作与拒绝并排（非 block，同处次要行容器）
-        renderFooter(makeTool())
-        const forSessionBtn = screen.getByText('本次会话允许').closest('button')!
+    it('有 session + project + user 三档：按窄→宽排序，session 为 primary', () => {
+        renderFooter(makeTool({ permission: withSuggestions(projectSuggestion, userSuggestion, sessionSuggestion) }))
+        const sessionBtn = screen.getByText('本次会话允许').closest('button')!
+        const projectBtn = screen.getByText('当前项目允许').closest('button')!
+        const userBtn = screen.getByText('当前用户允许').closest('button')!
+        // session 为 primary（最窄）
+        expect(sessionBtn.classList.contains('ant-btn-primary')).toBe(true)
+        expect(projectBtn.classList.contains('ant-btn-primary')).toBe(false)
+        expect(userBtn.classList.contains('ant-btn-primary')).toBe(false)
+        // 窄→宽顺序：session 在 project 之前，project 在 user 之前
+        expect(sessionBtn.compareDocumentPosition(projectBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(projectBtn.compareDocumentPosition(userBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('点击「本次会话允许」→ approve 带 updatedPermissions', async () => {
+        renderFooter(makeTool({ permission: withSuggestions(sessionSuggestion) }))
+        fireEvent.click(screen.getByText('本次会话允许'))
+        await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s1', 'p1', {
+            updatedPermissions: expect.arrayContaining([expect.objectContaining({ destination: 'session' })]),
+        }))
+    })
+
+    it('点击「当前项目允许」→ approve 带 projectSettings 档 updatedPermissions', async () => {
+        renderFooter(makeTool({ permission: withSuggestions(sessionSuggestion, projectSuggestion) }))
+        fireEvent.click(screen.getByText('当前项目允许'))
+        await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s1', 'p1', {
+            updatedPermissions: expect.arrayContaining([expect.objectContaining({ destination: 'projectSettings' })]),
+        }))
+    })
+
+    it('移动端：最窄档独占满宽行，其余档+允许+拒绝并排在次要行', () => {
+        renderFooter(makeTool({ permission: withSuggestions(sessionSuggestion, projectSuggestion) }))
+        const sessionBtn = screen.getByText('本次会话允许').closest('button')!
+        const projectBtn = screen.getByText('当前项目允许').closest('button')!
         const allowBtn = screen.getByText('允许').closest('button')!
         const denyBtn = screen.getByText('拒绝').closest('button')!
         // 主操作 block 满宽独占
-        expect(forSessionBtn.classList.contains('ant-btn-block')).toBe(true)
+        expect(sessionBtn.classList.contains('ant-btn-block')).toBe(true)
         // 次操作、拒绝均非 block（在并排行 flex:1）
+        expect(projectBtn.classList.contains('ant-btn-block')).toBe(false)
         expect(allowBtn.classList.contains('ant-btn-block')).toBe(false)
         expect(denyBtn.classList.contains('ant-btn-block')).toBe(false)
-        // 允许与拒绝同处「次要行」容器（与主操作行分离）
-        const subRow = allowBtn.closest('[data-sub-row="secondary"]')
+        // 其余档+允许+拒绝同处次要行，主操作不在次要行
+        const subRow = projectBtn.closest('[data-sub-row="secondary"]')
         expect(subRow).not.toBeNull()
+        expect(allowBtn.closest('[data-sub-row="secondary"]')).toBe(subRow)
         expect(denyBtn.closest('[data-sub-row="secondary"]')).toBe(subRow)
-        // 主操作不在次要行
-        expect(forSessionBtn.closest('[data-sub-row="secondary"]')).toBeNull()
+        expect(sessionBtn.closest('[data-sub-row="secondary"]')).toBeNull()
     })
 
     it('Edit 工具：允许仍为 primary，全部允许为次级 default（避免误开 acceptEdits）', () => {
-        // Edit 无「本次会话允许」；「全部允许」=切 acceptEdits 模式（更激进），不提 primary
+        // Edit 无 suggestion 档；「全部允许」=切 acceptEdits 模式（更激进），不提 primary
         renderFooter(
             makeTool({
                 name: 'Edit',
@@ -202,6 +261,18 @@ describe('PermissionFooter', () => {
         expect(allEditsBtn.classList.contains('ant-btn-primary')).toBe(false)
         // 全部允许与拒绝并排在次要行
         expect(allEditsBtn.closest('[data-sub-row="secondary"]')).not.toBeNull()
+    })
+
+    it('Edit 工具即使 SDK 给 suggestion 也不渲染持久化档（走 acceptEdits 路径）', () => {
+        renderFooter(
+            makeTool({
+                name: 'Edit',
+                input: { file_path: 'a.ts', old_string: 'x', new_string: 'y' },
+                permission: withSuggestions(sessionSuggestion),
+            }),
+        )
+        expect(screen.queryByText('本次会话允许')).not.toBeInTheDocument()
+        expect(screen.getByText('全部允许')).toBeInTheDocument()
     })
 
     it('ExitPlanMode 渲染三按钮且自动接受调用 approve', async () => {

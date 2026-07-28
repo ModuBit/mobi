@@ -17,7 +17,7 @@
 import type { MobiApi } from '@/core/data/api/client'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
-import type { SDKUIHints } from '@mobi/shared'
+import type { PermissionUpdate, PermissionUpdateDestination, SDKUIHints } from '@mobi/shared'
 import { memo, useState } from 'react'
 import { Alert, Button, Input, theme as antTheme } from 'antd'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
@@ -25,25 +25,35 @@ import { useTranslation } from 'react-i18next'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { getInputStringAny, getCustomPermissionTitleKey, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
+import { getCustomPermissionTitleKey, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 
 const { useToken } = antTheme
 
-/**
- * 检查工具是否允许在会话中使用
- */
-function isToolAllowedForSession(toolName: string, toolInput: unknown, allowedTools: string[] | undefined): boolean {
-    if (!allowedTools || allowedTools.length === 0) return false
-    if (allowedTools.includes(toolName)) return true
+/** destination → i18n key。cliArg 归并到「允许本次」（不单独渲染按钮） */
+const DESTINATION_LABEL_KEY: Record<PermissionUpdateDestination, string> = {
+    session: 'chat.tool.allowSession',
+    localSettings: 'chat.tool.allowProjectLocal',
+    projectSettings: 'chat.tool.allowProject',
+    userSettings: 'chat.tool.allowUser',
+    cliArg: 'chat.tool.allow',
+}
 
-    if (toolName === 'Bash') {
-        const command = getInputStringAny(toolInput, ['command', 'cmd'])
-        if (command) {
-            return allowedTools.includes(`Bash(${command})`)
-        }
+/** destination 排序：由窄到宽 */
+const DESTINATION_ORDER: PermissionUpdateDestination[] = ['session', 'localSettings', 'projectSettings', 'userSettings']
+
+/** 按 destination 分组排序 SDK suggestions，cliArg 不单独出按钮 */
+function groupSuggestionsByDestination(suggestions: PermissionUpdate[] | undefined): { destination: PermissionUpdateDestination; items: PermissionUpdate[] }[] {
+    if (!suggestions || suggestions.length === 0) return []
+    const groups = new Map<PermissionUpdateDestination, PermissionUpdate[]>()
+    for (const s of suggestions) {
+        const dest = s.destination
+        if (dest === 'cliArg') continue
+        if (!groups.has(dest)) groups.set(dest, [])
+        groups.get(dest)!.push(s)
     }
-
-    return false
+    return [...groups.entries()]
+        .sort((a, b) => DESTINATION_ORDER.indexOf(a[0]) - DESTINATION_ORDER.indexOf(b[0]))
+        .map(([destination, items]) => ({ destination, items }))
 }
 
 /**
@@ -73,7 +83,11 @@ function formatPermissionSummary(
 
     if (permission.status === 'approved') {
         if (permission.mode === 'acceptEdits') return t('chat.tool.approvedAllowAllEdits')
-        if (isToolAllowedForSession(toolName, toolInput, permission.allowedTools)) return t('chat.tool.approvedForSession')
+        // 按 approve 时回传的 suggestions destination 显示对应档位文案
+        if (permission.suggestions && permission.suggestions.length > 0) {
+            const dest = permission.suggestions[0].destination
+            if (dest === 'session') return t('chat.tool.approvedForSession')
+        }
         return t('chat.tool.approved')
     }
 
@@ -118,15 +132,21 @@ type PermissionFooterProps = {
     onDone: () => void
 }
 
+type ActionConfig = {
+    label: string
+    onClick: () => void
+    loading: boolean
+    disabled: boolean
+}
+
 function PermissionFooterInner(props: PermissionFooterProps) {
     const { t } = useTranslation()
     const { token } = useToken()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const isMobile = useIsMobile()
     const permission = props.tool.permission
-    const [loading, setLoading] = useState<'allow' | 'deny' | null>(null)
-    const [loadingForSession, setLoadingForSession] = useState(false)
-    const [loadingAllEdits, setLoadingAllEdits] = useState(false)
+    // 收敛三个互斥 loading 为单一 pendingAction：'allow' | 'deny' | 'allowAllEdits' | PermissionUpdate[]（选中档的引用）
+    const [pendingAction, setPendingAction] = useState<'allow' | 'deny' | 'allowAllEdits' | PermissionUpdate[] | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [showFeedback, setShowFeedback] = useState(false)
     const [feedback, setFeedback] = useState('')
@@ -143,10 +163,12 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     } : null
     const isEditTool = toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit'
     const isExitPlanMode = isExitPlanModeTool(toolName)
-    const hideAllowForSession = isEditTool || isExitPlanMode
 
     const isPending = permission?.status === 'pending'
-    const canAllowForSession = isPending && !hideAllowForSession
+    // SDK suggestions 驱动的持久化档位（Edit/ExitPlanMode 不走 suggestion 档，保留各自路径）
+    const suggestionGroups = isPending && !isEditTool && !isExitPlanMode
+        ? groupSuggestionsByDestination(permission.suggestions)
+        : []
     const canAllowAllEdits = isPending && isEditTool
 
     if (!permission) return null
@@ -163,6 +185,9 @@ function PermissionFooterInner(props: PermissionFooterProps) {
         )
     }
 
+    const busy = pendingAction !== null
+    const disabledAll = props.disabled || busy
+
     const run = async (action: () => Promise<unknown>) => {
         if (props.disabled) return
         setError(null)
@@ -174,76 +199,95 @@ function PermissionFooterInner(props: PermissionFooterProps) {
         }
     }
 
-    const approve = async () => {
-        if (!isPending || loading || loadingAllEdits || loadingForSession) return
-        setLoading('allow')
+    // 「允许本次」：不写 updatedPermissions，SDK 下次同工具仍会调 canCallTool
+    const approveOnce = async () => {
+        if (busy) return
+        setPendingAction('allow')
         await run(() => props.api.permissions.approve(props.sessionId, permission.id))
-        setLoading(null)
+        setPendingAction(null)
     }
 
+    // 「本次会话/当前项目/当前用户允许」：回传选中档的 suggestions 作 updatedPermissions，SDK 按 destination 持久化放行
+    const approveWithPermissions = async (items: PermissionUpdate[]) => {
+        if (busy) return
+        setPendingAction(items)
+        await run(() => props.api.permissions.approve(props.sessionId, permission.id, { updatedPermissions: items }))
+        setPendingAction(null)
+    }
+
+    // ExitPlanMode 专用：批准并切换权限模式（保留原 setPermissionMode 兜底）
     const approveWithMode = async (mode: 'acceptEdits' | 'default') => {
-        if (!isPending || loading || loadingAllEdits || loadingForSession) return
-        setLoading('allow')
+        if (busy) return
+        setPendingAction('allow')
         await run(async () => {
             await props.api.permissions.approve(props.sessionId, permission.id, { mode })
             await props.api.sessions.setPermissionMode(props.sessionId, mode).catch(() => {})
         })
-        setLoading(null)
+        setPendingAction(null)
     }
 
+    // Edit 工具「全部允许」：切 acceptEdits 模式
     const approveAllEdits = async () => {
-        if (!isPending || !canAllowAllEdits || loading || loadingAllEdits || loadingForSession) return
-        setLoadingAllEdits(true)
-        // 传递 mode: 'acceptEdits' 参数，切换到 acceptEdits 模式
+        if (!canAllowAllEdits || busy) return
+        setPendingAction('allowAllEdits')
         await run(() => props.api.permissions.approve(props.sessionId, permission.id, { mode: 'acceptEdits' }))
-        setLoadingAllEdits(false)
-    }
-
-    const approveForSession = async () => {
-        if (!isPending || !canAllowForSession || loading || loadingAllEdits || loadingForSession) return
-        setLoadingForSession(true)
-        const command = toolName === 'Bash' ? getInputStringAny(props.tool.input, ['command', 'cmd']) : null
-        const toolIdentifier = toolName === 'Bash' && command ? `Bash(${command})` : toolName
-        // 传递 allowTools 参数，让 CLI 在会话内自动允许该工具
-        await run(() => props.api.permissions.approve(props.sessionId, permission.id, { allowTools: [toolIdentifier] }))
-        setLoadingForSession(false)
+        setPendingAction(null)
     }
 
     const deny = async () => {
-        if (!isPending || loading || loadingAllEdits || loadingForSession) return
-        setLoading('deny')
+        if (busy) return
+        setPendingAction('deny')
         await run(() => props.api.permissions.deny(props.sessionId, permission.id))
-        setLoading(null)
+        setPendingAction(null)
     }
 
     const denyWithFeedback = async () => {
-        if (!isPending || loading || loadingAllEdits || loadingForSession) return
-        setLoading('deny')
+        if (busy) return
+        setPendingAction('deny')
         await run(() => props.api.permissions.deny(props.sessionId, permission.id, {
             reason: feedback.trim() || undefined
         }))
-        setLoading(null)
+        setPendingAction(null)
     }
 
-    // 主操作与次操作配置：按工具类型决定视觉层级
-    // 实际最常用「本次会话允许」→ 非 Edit 工具提为主操作（primary 满宽），允许降为 default 次操作
-    // Edit 工具无「本次会话允许」：允许保持 primary，「全部允许」(=切 acceptEdits，更激进) 保持次级，避免误开激进模式
-    // 拒绝：text + danger 警示色文字 —— 语义层红字提示，但非 primary 不抢视觉锚点
-    const disabledAll = props.disabled || loading !== null || loadingAllEdits || loadingForSession
-    const denyConfig = {
+    // 主操作：最窄 suggestion 档（primary 满宽）；无 suggestion 档时退化为「允许本次」
+    const primaryAction: ActionConfig = suggestionGroups.length > 0
+        ? {
+            label: t(DESTINATION_LABEL_KEY[suggestionGroups[0].destination]),
+            onClick: () => approveWithPermissions(suggestionGroups[0].items),
+            loading: pendingAction === suggestionGroups[0].items,
+            disabled: disabledAll,
+        }
+        : { label: t('chat.tool.allow'), onClick: approveOnce, loading: pendingAction === 'allow', disabled: disabledAll }
+
+    // 次操作行：其余 suggestion 档（更宽）+ 「允许本次」（仅当有 suggestion 档时降级）+ Edit 的「全部允许」
+    const secondaryActions: ActionConfig[] = [
+        ...suggestionGroups.slice(1).map((g) => ({
+            label: t(DESTINATION_LABEL_KEY[g.destination]),
+            onClick: () => approveWithPermissions(g.items),
+            loading: pendingAction === g.items,
+            disabled: disabledAll,
+        })),
+        ...(suggestionGroups.length > 0 ? [{
+            label: t('chat.tool.allow'),
+            onClick: approveOnce,
+            loading: pendingAction === 'allow',
+            disabled: disabledAll,
+        }] : []),
+        ...(canAllowAllEdits ? [{
+            label: t('chat.tool.allowAll'),
+            onClick: approveAllEdits,
+            loading: pendingAction === 'allowAllEdits',
+            disabled: disabledAll,
+        }] : []),
+    ]
+
+    const denyConfig: ActionConfig = {
         label: t('chat.tool.deny'),
         onClick: deny,
-        loading: loading === 'deny',
+        loading: pendingAction === 'deny',
         disabled: disabledAll,
     }
-    const primaryAction = canAllowForSession
-        ? { label: t('chat.tool.allowForSession'), onClick: approveForSession, loading: loadingForSession, disabled: disabledAll }
-        : { label: t('chat.tool.allow'), onClick: approve, loading: loading === 'allow', disabled: disabledAll }
-    const secondaryAction = canAllowForSession
-        ? { label: t('chat.tool.allow'), onClick: approve, loading: loading === 'allow', disabled: disabledAll }
-        : canAllowAllEdits
-            ? { label: t('chat.tool.allowAll'), onClick: approveAllEdits, loading: loadingAllEdits, disabled: disabledAll }
-            : null
 
     return (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -311,8 +355,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     type="primary"
                                     block={isMobile}
                                     icon={<CheckOutlined />}
-                                    disabled={props.disabled || loading !== null}
-                                    loading={loading === 'allow'}
+                                    disabled={disabledAll}
+                                    loading={pendingAction === 'allow'}
                                     onClick={() => approveWithMode('acceptEdits')}
                                     style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
                                 >
@@ -321,8 +365,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 <Button
                                     block={isMobile}
                                     icon={<CheckOutlined />}
-                                    disabled={props.disabled || loading !== null}
-                                    loading={loading === 'allow'}
+                                    disabled={disabledAll}
+                                    loading={pendingAction === 'allow'}
                                     onClick={() => approveWithMode('default')}
                                     style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
                                 >
@@ -331,8 +375,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 <Button
                                     type={isMobile ? 'text' : 'default'}
                                     icon={<CloseOutlined />}
-                                    disabled={props.disabled || loading !== null}
-                                    loading={loading === 'deny'}
+                                    disabled={disabledAll}
+                                    loading={pendingAction === 'deny'}
                                     onClick={() => {
                                         if (!showFeedback) setShowFeedback(true)
                                     }}
@@ -355,26 +399,26 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 >
                                     {primaryAction.label}
                                 </Button>
-                                {/* 次要行：允许/全部允许（default）+ 拒绝（text+danger 警示）
+                                {/* 次要行：其余持久化档 + 允许本次 + 全部允许（default）+ 拒绝（text+danger 警示）
                                     移动端 flex:1 等分并排；PC 作为一组 inline 续在主操作后 */}
                                 <div data-sub-row="secondary" style={{
                                     display: 'flex',
                                     flexDirection: 'row',
                                     gap: 8,
                                     alignItems: 'stretch',
-                                    flex: isMobile ? undefined : undefined,
                                 }}>
-                                    {secondaryAction ? (
+                                    {secondaryActions.map((action, idx) => (
                                         <Button
+                                            key={idx}
                                             icon={<CheckOutlined />}
-                                            disabled={secondaryAction.disabled}
-                                            loading={secondaryAction.loading}
-                                            onClick={secondaryAction.onClick}
+                                            disabled={action.disabled}
+                                            loading={action.loading}
+                                            onClick={action.onClick}
                                             style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center' }}
                                         >
-                                            {secondaryAction.label}
+                                            {action.label}
                                         </Button>
-                                    ) : null}
+                                    ))}
                                     <Button
                                         type="text"
                                         danger
@@ -420,8 +464,8 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                 danger
                                 style={{ marginTop: 4 }}
                                 onClick={denyWithFeedback}
-                                loading={loading === 'deny'}
-                                disabled={props.disabled || loading !== null}
+                                loading={pendingAction === 'deny'}
+                                disabled={disabledAll}
                             >
                                 {t('chat.tool.sendFeedback')}
                             </Button>

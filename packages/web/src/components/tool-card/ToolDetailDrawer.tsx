@@ -61,6 +61,7 @@ function chatBlockToToolCardBlock(block: Extract<ChatBlock, { kind: 'tool-call' 
             decision: perm.decision === 'denied' ? ('abort' as const) : perm.decision === 'approved_for_session' ? ('approved_for_session' as const) : perm.decision === 'approved' ? ('approved' as const) : undefined,
             mode: perm.mode === 'acceptEdits' ? ('acceptEdits' as const) : undefined,
             allowedTools: perm.allowedTools,
+            suggestions: perm.suggestions,
             answers: perm.answers,
         }
     }

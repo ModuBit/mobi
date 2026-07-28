@@ -189,7 +189,11 @@
             },
             "requestUserInput.noteLabel": "Note (optional)",
             "requestUserInput.notePlaceholder": "Enter a note...",
-            "requestUserInput.textPlaceholder": "Type here..."
+            "requestUserInput.textPlaceholder": "Type here...",
+            "allowSession": "Allow this session",
+            "allowProjectLocal": "Allow for this project (local)",
+            "allowProject": "Allow for this project",
+            "allowUser": "Allow for this user"
         },
         "planMode": {
             "entered": "Entered plan mode",
