@@ -351,6 +351,10 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     const titleContainsDescription = isAgentTool(tool.name)
         || (tool.description != null && (toolPresentation.title === tool.description || toolPresentation.title.startsWith(tool.description)))
 
+    // pending permission/askUserQuestion/ExitPlanMode 时不在 chat 区渲染卡片（避免与 ComposerInfoPanel 重复），
+    // 授权/回答后（status 非 pending）恢复渲染，保持现有逻辑
+    if (hasPermission) return null
+
     return (
         <>
             <Think
