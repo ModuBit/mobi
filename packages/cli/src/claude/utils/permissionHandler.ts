@@ -24,7 +24,7 @@
 import { logger } from "@/lib";
 import type { SDKMessage, SDKTaskStartedMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "../sdk/types";
-import type { SDKUIHints } from "@mobi/shared";
+import type { PermissionUpdate as MobiPermissionUpdate, SDKUIHints } from "@mobi/shared";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { PermissionMode } from "../types";
@@ -40,10 +40,13 @@ interface PermissionResponse {
     approved: boolean;
     reason?: string;
     mode?: PermissionMode;
+    /** @deprecated 权限范围改由 updatedPermissions 表达，保留作后退字段 */
     allowTools?: string[];
     answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>;
+    /** Web 回传的持久化放行建议，透传进 PermissionResult 让 SDK 持久化 */
+    updatedPermissions?: MobiPermissionUpdate[];
     receivedAt?: number;
-    /** @deprecated 未使用，权限范围由 allowTools 和 mode 决定 */
+    /** @deprecated 未使用，权限范围由 updatedPermissions 和 mode 决定 */
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
 }
 
@@ -143,10 +146,11 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             reason: response.reason,
             mode: response.mode,
             allowTools: response.allowTools,
-            answers: response.answers
+            answers: response.answers,
+            updatedPermissions: response.updatedPermissions
         };
 
-        // Update allowed tools
+        // [死代码] mobi 自有 Set 路径已由 SDK updatedPermissions 接管，逻辑走不到，保留作后退路径
         if (response.allowTools && response.allowTools.length > 0) {
             response.allowTools.forEach(tool => {
                 if (isQuestionToolName(tool)) {
@@ -217,15 +221,17 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         }
 
         // Handle default case for all other tools
+        // 按 Web 回传的 updatedPermissions 决定：有则作为持久化放行建议透传给 SDK（user_permanent），
+        // 无则仅本次放行（user_temporary），不写 updatedPermissions
+        const hasUpdatedPermissions = !!response.updatedPermissions && response.updatedPermissions.length > 0;
         const result: PermissionResult = response.approved
             ? {
                 behavior: 'allow',
                 updatedInput: (pending.input as Record<string, unknown>) || {},
-                // 用户选择"本session允许"时，透传 SDK 的权限建议
-                ...(response.allowTools && response.allowTools.length > 0 && pending.suggestions
-                    ? { updatedPermissions: pending.suggestions as PermissionUpdate[] }
+                ...(hasUpdatedPermissions
+                    ? { updatedPermissions: response.updatedPermissions as PermissionUpdate[] }
                     : {}),
-                decisionClassification: response.allowTools && response.allowTools.length > 0
+                decisionClassification: hasUpdatedPermissions
                     ? 'user_permanent' as PermissionDecisionClassification
                     : 'user_temporary' as PermissionDecisionClassification,
                 toolUseID: pending.toolUseID,

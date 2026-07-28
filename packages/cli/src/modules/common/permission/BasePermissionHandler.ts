@@ -98,6 +98,7 @@ export type PermissionCompletion = {
     mode?: string;
     allowTools?: string[];
     answers?: Record<string, string | string[]> | Record<string, { answers: string[] }>;
+    updatedPermissions?: PermissionUpdate[];
 };
 
 export type CancelPendingRequestOptions = {
