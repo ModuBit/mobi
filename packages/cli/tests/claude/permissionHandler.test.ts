@@ -340,4 +340,36 @@ describe('PermissionHandler — updatedPermissions 填 mobi Set 兜底持久化'
         handler.handleToolCall('Bash', { command: 'rm -rf /' }, { signal: new AbortController().signal, toolUseID: 't2' } as never)
         expect(updateSpy).toHaveBeenCalled()
     })
+
+    it('SDK 给 addDirectories（suggestion 不可用）时回退命令字面填 Set，同命令命中放行', async () => {
+        const { handler } = makeHandler()
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Bash', input: { command: 'echo hi > test-bash.txt' }, toolUseID: 't1' }
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({
+            id: 't1', approved: true,
+            updatedPermissions: [{ type: 'addDirectories', directories: ['/Users/manerfan/workspace/demo'], destination: 'session' }],
+        }, pending)
+
+        // 同命令字面命中 Set 放行
+        const result = await handler.handleToolCall(
+            'Bash',
+            { command: 'echo hi > test-bash.txt' },
+            { signal: new AbortController().signal } as never
+        )
+        expect(result.behavior).toBe('allow')
+    })
+
+    it('addDirectories 回退字面后，不同命令不命中（进 pending 不误放行）', () => {
+        const { handler, session } = makeHandler()
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Bash', input: { command: 'echo hi > test-bash.txt' }, toolUseID: 't1' }
+        // @ts-expect-error 访问 protected
+        void handler.handlePermissionResponse({
+            id: 't1', approved: true,
+            updatedPermissions: [{ type: 'addDirectories', directories: ['/x'], destination: 'session' }],
+        }, pending)
+
+        const updateSpy = vi.spyOn(session.client, 'updateAgentState')
+        handler.handleToolCall('Bash', { command: 'rm -rf /' }, { signal: new AbortController().signal, toolUseID: 't2' } as never)
+        expect(updateSpy).toHaveBeenCalled()
+    })
 })

@@ -151,10 +151,13 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         };
 
         // [持久化兜底] SDK updatedPermissions 经 E2E 验证不跨 turn 持久（SDK 未兑现 session 级放行承诺，
-        // 下次同命令仍会调 canCallTool）。故 mobi 自有 Set 兜底：把 Web 选中档的 rules 填进 Set，
-        // handleToolCall 命中 Set 直接放行，真正跨 turn 持久（resetForNewTurn 不清 Set）。
+        // 下次同命令仍会调 canCallTool）。故 mobi 自有 Set 兜底，按 SDK suggestion 做前缀匹配：
+        // - addRules/replaceRules：用 ruleContent 填 Set（SDK 给的命令前缀如 'echo:*' 或字面）
+        // - suggestion 不可用（SDK 给 addDirectories 目录级等无命令前缀的 suggestion）：
+        //   回退到 pending.input.command 命令字面填 Set，让「本次会话允许」对同命令生效
         // updatedPermissions 仍透传给 SDK 作双轨兜底（见下方 result.updatedPermissions）。
         if (response.updatedPermissions && response.updatedPermissions.length > 0) {
+            let filledFromRules = false;
             for (const update of response.updatedPermissions) {
                 if (update.type !== 'addRules' && update.type !== 'replaceRules') continue;
                 for (const rule of update.rules) {
@@ -165,7 +168,14 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                     } else {
                         this.allowedTools.add(rule.toolName);
                     }
+                    filledFromRules = true;
                 }
+            }
+            // SDK 给 Bash 的 suggestion 常为 addDirectories（目录级，无命令前缀），suggestion 不可用。
+            // 回退到命令字面填 Set，让「本次会话允许」对同命令生效。
+            if (!filledFromRules && pending.toolName === 'Bash') {
+                const cmd = (pending.input as { command?: string } | null)?.command;
+                if (cmd) this.parseBashPermission(`Bash(${cmd})`);
             }
         }
 
