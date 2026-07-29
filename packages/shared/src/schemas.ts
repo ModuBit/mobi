@@ -300,6 +300,50 @@ export const TeamStateSchema = z.object({
 export type TeamState = z.infer<typeof TeamStateSchema>
 
 /**
+ * 上下文用量分类项（system prompt / tools / messages / MCP / memory 等）
+ * 由 SDK getContextUsage().categories 裁剪而来
+ */
+export const ContextUsageCategorySchema = z.object({
+    name: z.string(),
+    tokens: z.number(),
+    /** SDK 给的展示色（可选，前端可覆盖） */
+    color: z.string().optional(),
+})
+
+/**
+ * API token 用量明细（输入/输出/缓存读/缓存写）
+ */
+export const ContextUsageApiSchema = z.object({
+    input_tokens: z.number(),
+    output_tokens: z.number(),
+    cache_read_input_tokens: z.number(),
+    cache_creation_input_tokens: z.number(),
+})
+
+/**
+ * 上下文窗口用量快照
+ *
+ * 由 CLI 调 SDK `Query.getContextUsage()` 采集，裁剪掉前端用不到的大字段
+ * （gridRows / mcpTools / memoryFiles / skills 等）后，作为 runtimeState.contextUsage 落库。
+ * 事件驱动采集（init / assistant / result / compact / clear），非定时轮询。
+ */
+export const ContextUsageSchema = z.object({
+    totalTokens: z.number(),
+    maxTokens: z.number(),
+    /** 已用占 maxTokens 的百分比（0–100） */
+    percentage: z.number(),
+    /** autoCompact 触发阈值百分比，距此即「还剩多少到压缩」 */
+    autoCompactThreshold: z.number().optional(),
+    isAutoCompactEnabled: z.boolean(),
+    categories: z.array(ContextUsageCategorySchema),
+    apiUsage: ContextUsageApiSchema.nullable(),
+    /** 会话累计成本（USD），取自 result.total_cost_usd */
+    costUsd: z.number(),
+})
+
+export type ContextUsage = z.infer<typeof ContextUsageSchema>
+
+/**
  * 运行时状态：存储会话的扩展状态（todos、teamState、model 等）
  * 未来新增功能可在此对象中添加字段，无需修改数据库 schema
  */
@@ -309,7 +353,8 @@ export const RuntimeStateSchema = z.object({
     backgroundTasks: BackgroundTasksSchema.optional(),
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
-    effort: z.enum(EFFORT_LEVELS).optional()
+    effort: z.enum(EFFORT_LEVELS).optional(),
+    contextUsage: ContextUsageSchema.optional()
 })
 
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>

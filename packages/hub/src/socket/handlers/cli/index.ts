@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { PermissionMode } from '@mobi/shared/types'
+import type { ContextUsage, PermissionMode } from '@mobi/shared/types'
 import type { Store, StoredMachine, StoredSession } from '../../../store'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SyncEvent } from '../../../sync/syncEngine'
@@ -45,6 +45,11 @@ type MachineAlivePayload = {
     time: number
 }
 
+export type ContextUsagePayload = {
+    sid: string
+    contextUsage: ContextUsage
+}
+
 export type CliHandlersDeps = {
     io: SocketServer
     store: Store
@@ -53,11 +58,13 @@ export type CliHandlersDeps = {
     onSessionAlive?: (payload: SessionAlivePayload) => void
     onSessionEnd?: (payload: SessionEndPayload) => void
     onMachineAlive?: (payload: MachineAlivePayload) => void
+    /** CLI 事件驱动上报上下文用量 → 落库 runtimeState.contextUsage + SSE 推 */
+    onContextUsage?: (payload: ContextUsagePayload) => void
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, onSessionAlive, onSessionEnd, onMachineAlive, onWebappEvent } = deps
+    const { io, store, rpcRegistry, terminalRegistry, onSessionAlive, onSessionEnd, onMachineAlive, onContextUsage, onWebappEvent } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -116,6 +123,7 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         emitAccessError,
         onSessionAlive,
         onSessionEnd,
+        onContextUsage,
         onWebappEvent
     })
     registerMachineHandlers(socket, {

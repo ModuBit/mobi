@@ -21,6 +21,7 @@ import { jwtVerify } from 'jose'
 import { parseCookie } from 'cookie'
 import { z } from 'zod'
 import { RPC_MAX_HTTP_BUFFER_SIZE } from '@mobi/shared'
+import type { ContextUsage } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { configuration } from '../configuration'
 import { constantTimeEquals } from '../utils/crypto'
@@ -75,6 +76,7 @@ export type SocketServerDeps = {
     onSessionAlive?: (payload: { sid: string; time: number; running?: boolean; mode?: 'local' | 'remote' }) => void
     onSessionEnd?: (payload: { sid: string; time: number }) => void
     onMachineAlive?: (payload: { machineId: string; time: number }) => void
+    onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage }) => void
 }
 
 export function createSocketServer(deps: SocketServerDeps): {
@@ -169,6 +171,7 @@ export function createSocketServer(deps: SocketServerDeps): {
         onSessionAlive: deps.onSessionAlive,  // CLI心跳保活
         onSessionEnd: deps.onSessionEnd,      // CLI会话结束
         onMachineAlive: deps.onMachineAlive,  // CLI机器心跳
+        onContextUsage: deps.onContextUsage,  // CLI上下文用量上报
         onWebappEvent: deps.onWebappEvent     // Web端实时事件
     }))
 

@@ -333,6 +333,14 @@ export async function sdkOutputLoop(
          * pending 内容由调用方 convertSnapshot 成 RawJSONLines 后 sendClaudeSessionMessage 下发。
          */
         onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void
+        /**
+         * 上下文用量采集触发（事件驱动，非轮询）。
+         * - 'init'：system/init 后采基线（resume/启动，覆盖 DB 旧值）
+         * - 'assistant'：每条完整 assistant 后采（长 turn 中间增长；launcher 负责节流 ≥3s）
+         * - 'result'：轮次结束主采集点；resultMsg 用于更新累计成本（compact 的 result 也走此，自动反映压缩后用量）
+         * 定时器兜底见 docs/pending.md #36。
+         */
+        onContextUsage?: (trigger: 'init' | 'assistant' | 'result', resultMsg?: SDKResultMessage) => void
     },
 ): Promise<void> {
     let queryStarted = false;
@@ -372,6 +380,8 @@ export async function sdkOutputLoop(
         // 收到完整 assistant 消息时刷新快照（snapshot 通道：发当前累积的预览）
         if (message.type === 'assistant') {
             opts.snapshotSender.flush();
+            // 长 turn 中间增长采集（launcher 端节流 ≥3s）
+            opts.onContextUsage?.('assistant');
         }
 
         // 分发消息（assistant 经 assembler 聚合成一条，非 assistant 透传并触发上一个 message flush）
@@ -391,6 +401,8 @@ export async function sdkOutputLoop(
                 logger.debug(`[sdkOutputLoop] Session file found: ${systemInit.session_id} ${found}`);
                 opts.onSessionFound(systemInit.session_id);
             }
+            // 基线采集（resume/启动后立即采一次，覆盖 DB 旧值）
+            opts.onContextUsage?.('init');
         }
 
         // 处理 result 消息：不阻塞，直接继续拉取后台消息
@@ -414,6 +426,9 @@ export async function sdkOutputLoop(
 
             // 通知就绪
             opts.onReady();
+
+            // 轮次结束采集：主采集点 + cost 提取（compact 的 result 也走此分支，自动反映压缩后用量）
+            opts.onContextUsage?.('result', message as SDKResultMessage);
         }
     }
 
@@ -536,6 +551,8 @@ export async function claudeRemote(opts: {
     /** 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库（由 launcher 实现 convert+send） */
     onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void,
     onSessionReset?: () => void,
+    /** 上下文用量采集触发（事件驱动；由 launcher 实现采集+节流+上报） */
+    onContextUsage?: (trigger: 'init' | 'assistant' | 'result', resultMsg?: SDKResultMessage) => void,
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
     onQueryReady?: (query: Query) => void,
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
@@ -845,6 +862,7 @@ export async function claudeRemote(opts: {
                 onRunningChange: updateRunning,
                 onCompletionEvent: opts.onCompletionEvent,
                 onCompactCompleted: opts.onCompactCompleted,
+                onContextUsage: opts.onContextUsage,
                 signal: loopAbort.signal,
             }),
             userInputLoop(messages, loopCtx, {

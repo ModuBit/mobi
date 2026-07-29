@@ -124,3 +124,59 @@ describe('SessionCache.renameSession', () => {
         expect(metadata?.summary).toBeUndefined()
     })
 })
+
+describe('SessionCache.handleContextUsage', () => {
+    let store: Store
+    let emits: { type: string; sessionId: string; data: unknown }[]
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        emits = []
+        const rec = { emit: (e: { type: string; sessionId: string; data: unknown }) => emits.push(e) }
+        cache = new SessionCache(store, rec as unknown as EventPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    const usage = {
+        totalTokens: 124000, maxTokens: 200000, percentage: 62,
+        autoCompactThreshold: 78, isAutoCompactEnabled: true,
+        categories: [{ name: 'messages', tokens: 62000 }],
+        apiUsage: null, costUsd: 0.043,
+    }
+
+    test('落库到 runtimeState.contextUsage 并 SSE 推送 runtimeState patch', () => {
+        const session = cache.getOrCreateSession('tag-ctx-1', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleContextUsage({ sid: session.id, contextUsage: usage })
+
+        // 内存层
+        expect(cache.getSession(session.id)?.runtimeState?.contextUsage?.percentage).toBe(62)
+        // 落库（直接读 store 绕过内存）
+        const stored = store.sessions.getSession(session.id)
+        expect((stored?.runtimeState as { contextUsage?: { percentage: number } })?.contextUsage?.percentage).toBe(62)
+        // SSE 推送
+        const pushed = emits.find(e => e.type === 'session-updated')
+        expect(pushed).toBeTruthy()
+        expect((pushed!.data as { runtimeState: { contextUsage: { percentage: number } } }).runtimeState.contextUsage.percentage).toBe(62)
+    })
+
+    test('不影响 runtimeState 其他字段（与 model 共存）', () => {
+        const session = cache.getOrCreateSession('tag-ctx-2', { path: '/tmp/p' }, null, 'default', 'remote', { model: 'opus', effort: 'high' })
+
+        cache.handleContextUsage({ sid: session.id, contextUsage: usage })
+
+        const rs = cache.getSession(session.id)?.runtimeState
+        expect(rs?.model).toBe('opus')
+        expect(rs?.effort).toBe('high')
+        expect(rs?.contextUsage?.percentage).toBe(62)
+    })
+
+    test('未知 sid 静默忽略（不抛错）', () => {
+        expect(() => cache.handleContextUsage({ sid: 'no-such-session', contextUsage: usage })).not.toThrow()
+        expect(emits).toHaveLength(0)
+    })
+})

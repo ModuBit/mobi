@@ -768,6 +768,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 effort={session?.runtimeState?.effort}
                 todos={session?.runtimeState?.todos}
                 tasks={session?.runtimeState?.tasks}
+                contextUsage={session?.runtimeState?.contextUsage ?? null}
                 onEffortChange={handleEffortChange}
                 onPermissionModeChange={handlePermissionModeChange}
                 onModelChange={handleModelChange}

@@ -152,6 +152,10 @@ Session 级 RPC 通过 `RpcHandlerManager` 管理：
 
 `emitMessagesConsumed(localIds)` 通过 `socket.emit('messages-consumed', { sid, localIds })` 通知 Hub：这批 localId 的消息已被 agent 真正消费。由 `runClaude` 绑定到 `MessageQueue.setOnBatchConsumed` 回调，批次消费后自动触发。Hub 收到后将 `invokedAt` 落库并转发 SSE 给 Web。
 
+### 上下文用量上报
+
+`reportContextUsage(usage)` 通过 `socket.emit('context-usage', { sid, contextUsage })` 上报上下文用量。由 `claudeRemoteLauncher` 事件驱动触发（`system/init` · `assistant` · `result` · `/compact` 完成 · `/clear`），经 `ContextUsageCollector` 调 SDK `getContextUsage()` 裁剪后上报。Hub 落库到 `runtimeState.contextUsage`（复用 `updateRuntimeStateField`）+ SSE 推 Web。非定时轮询（定时器兜底见 `docs/pending.md` #36）。
+
 ## IdleTimer 集成
 
 ApiSessionClient 集成 `IdleTimer` 实现 Session 自动超时关闭：

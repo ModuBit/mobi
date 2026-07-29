@@ -15,7 +15,7 @@
  */
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
-import type { EffortLevel, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
+import type { ContextUsage, EffortLevel, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
 import type { TaskItem } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { clampAliveTime } from './aliveTime'
@@ -351,6 +351,31 @@ export class SessionCache {
             throw new Error(`Failed to update session ${String(field)}`)
         }
         session.runtimeState = newRuntimeState
+    }
+
+    /**
+     * 处理上下文用量上报（CLI 事件驱动采集）。
+     * 落库到 runtimeState.contextUsage（updateRuntimeStateField 复用 model/effort 同款路径）
+     * + SSE 推 runtimeState patch 给 web。作为 runtimeState 字段落库，resume 时首屏从 DB
+     * 直接读到值，下次 init/result 采集即覆盖成最新。
+     */
+    handleContextUsage(payload: { sid: string; contextUsage: ContextUsage }): void {
+        const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
+        if (!session) return
+        try {
+            this.updateRuntimeStateField(
+                session, payload.sid, 'contextUsage', payload.contextUsage,
+                Date.now(), session.namespace,
+            )
+        } catch {
+            // 落库失败不阻塞采集流程（CLI 下次事件会重试上报）
+            return
+        }
+        this.publisher.emit({
+            type: 'session-updated',
+            sessionId: session.id,
+            data: { runtimeState: session.runtimeState },
+        })
     }
 
     handleSessionEnd(payload: { sid: string; time: number }): void {

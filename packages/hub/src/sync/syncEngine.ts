@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
+import type { ContextUsage, DecryptedMessage, EffortLevel, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
 import type { PermissionUpdate } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
@@ -204,6 +204,10 @@ export class SyncEngine {
 
     handleSessionEnd(payload: { sid: string; time: number }): void {
         this.sessionCache.handleSessionEnd(payload)
+    }
+
+    handleContextUsage(payload: { sid: string; contextUsage: ContextUsage }): void {
+        this.sessionCache.handleContextUsage(payload)
     }
 
     handleMachineAlive(payload: { machineId: string; time: number }): void {

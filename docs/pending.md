@@ -926,3 +926,26 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 - `packages/hub/src/web/routes/serveFileContent.ts` — serve-file 响应头（`no-cache`）
 
 **优先级**：低。当前信任边界（用户 cwd 文件）可接受；待「预览不可信 HTML」成为场景再评估。
+
+---
+
+## 36. 上下文用量采集的定时器兜底（暂用纯事件驱动）
+
+**背景**（2026-07-29）：上下文用量仪表盘（composer thread 线 + SessionContextBar 吊顶详情）的采集采用**纯事件驱动**——在 `load` / `resume` / `/compact` / `/clear` / `error` / 每条 assistant message / `result` 这些上下文显著变化的时刻调 SDK 的 `getContextUsage()`。这些事件覆盖了绝大多数变化时刻（含长 turn 中间 tool 循环的增长——每条 assistant message 都会刷新）。
+
+**为何暂不加定时器**：定时器（如 15s 轮询）的唯一价值是兜底「未监听事件导致的变化」，该概率极低；而代价是引入一个常驻后台运转的东西 + 一套可靠性机制（防重入 / 错误隔离 try-catch / 幂等 start / destroy 清理 / RPC 超时 / 失败落盘日志）。属 YAGNI，等真实需求再加。用户当时对「常驻后台定时器是否会以未预料方式出问题」有说不出来的顾虑，遂决定先纯事件驱动。
+
+**若日后加，设计已就绪**：
+- 提炼轻量 `IntervalTask` 工具类（封装 setInterval + 错误隔离 + 防重入 running flag + 幂等 start/stop + destroy guard + 可选超时），对齐现有 `StreamSnapshotSender` 的自包含定时器模式
+- contextUsage 采集器作为首个使用者；旧定时逻辑（keepAlive / watchdog / stale heartbeat）不强制迁移，渐进清理
+- 定位为事件驱动的低频心跳兜底（60–120s），即便定时器偶发故障也不影响核心功能（事件触发仍工作，条最多停在旧值，下个事件自愈）
+- 采集结果与现有事件驱动同款：落库到 `runtimeState.contextUsage`（复用 runtimeState 通道）+ SSE 推 web
+
+**触发条件**：实际使用中观测到「上下文变了但仪表盘没刷新」（条长时间停在旧值），且确认是漏了某个未监听的事件点。
+
+**相关文件**（功能实现后精确化）：
+- `packages/cli/src/claude/claudeRemote.ts` — 事件驱动采集注入点（`sdkOutputLoop` / `handleSpecialCommand`）
+- `packages/cli/src/claude/utils/streamSnapshotSender.ts` — `IntervalTask` 提炼的参照模式
+- 未来 `packages/cli/src/claude/utils/intervalTask.ts` — 定时器工具（加定时器时创建）
+
+**优先级**：低。事件驱动已覆盖常见变化；纯加固项。

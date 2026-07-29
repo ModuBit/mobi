@@ -21,7 +21,7 @@ import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined } from '@ant-d
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import type { AgentState, EffortLevel, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
+import type { AgentState, ContextUsage, EffortLevel, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
@@ -50,6 +50,7 @@ import { getPermissionModeColor } from './permissionModeColors'
 import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from './permissionModeOption'
 import { getPermissionModeIcon } from './permissionModeIcons'
 import { SubmitButton } from './SubmitButton'
+import { ContextUsageThread } from './ContextUsageThread'
 import { resolveSubmitButtonState } from './submitButtonState'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 
@@ -91,6 +92,8 @@ interface ChatComposerProps {
     switchPending?: boolean
     todos?: TodoItem[]
     tasks?: TaskItem[]
+    /** 上下文用量（来自 session.runtimeState.contextUsage；无值时不渲染用量线） */
+    contextUsage?: ContextUsage | null
 }
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
@@ -281,6 +284,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
         switchPending = false,
         todos,
         tasks,
+        contextUsage,
     } = props
 
     const [text, setText] = useState('')
@@ -661,6 +665,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                 status={loadingStatus ?? undefined}
                 running={running && !compressing}
             />
+
+            {/* 上下文用量线（Sender 上方，无值时不渲染） */}
+            {contextUsage ? <ContextUsageThread usage={contextUsage} /> : null}
 
             <div
                 ref={wrapperRef}

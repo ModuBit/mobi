@@ -174,6 +174,8 @@ async function main() {
         onWebappEvent: (event: SyncEvent) => syncEngine?.handleRealtimeEvent(event),
         // CLI 心跳保活 → 更新会话活跃状态
         onSessionAlive: (payload) => syncEngine?.handleSessionAlive(payload),
+        // CLI 上下文用量上报 → 落库 runtimeState.contextUsage + SSE 推
+        onContextUsage: (payload) => syncEngine?.handleContextUsage(payload),
         // CLI 断开/结束 → 清理会话资源
         onSessionEnd: (payload) => syncEngine?.handleSessionEnd(payload),
         // CLI 机器心跳 → 更新机器在线状态

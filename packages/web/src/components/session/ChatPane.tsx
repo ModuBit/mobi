@@ -95,7 +95,10 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
                 )}
             />
 
-            <SessionContextBar metadata={session.metadata as SessionMetadataSummary | null} />
+            <SessionContextBar
+                metadata={session.metadata as SessionMetadataSummary | null}
+                contextUsage={session.runtimeState?.contextUsage ?? null}
+            />
 
             <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
                 <ChatWrapper>

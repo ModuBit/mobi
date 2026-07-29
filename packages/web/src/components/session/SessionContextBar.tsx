@@ -17,7 +17,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { GitBranch, FolderTree, Folder, ChevronDown } from 'lucide-react'
 import styled from '@emotion/styled'
+import type { ContextUsage } from '@mobi/shared'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
+import { ContextUsageChip } from './ContextUsageChip'
+import { ContextUsageDetail } from './ContextUsageDetail'
 
 /** 自动收起延迟（毫秒） */
 const AUTO_COLLAPSE_DELAY = 3000
@@ -81,6 +84,8 @@ const Separator = styled.span`
 
 interface SessionContextBarProps {
     metadata: SessionMetadataSummary | null
+    /** 上下文用量（有值时收起态追加百分比 chip，展开态追加详情区块） */
+    contextUsage?: ContextUsage | null
 }
 
 /**
@@ -91,7 +96,7 @@ interface SessionContextBarProps {
  * 1. 进入 session 默认展开，3 秒后自动收起
  * 2. 点击切换展开/收起
  */
-export function SessionContextBar({ metadata }: SessionContextBarProps) {
+export function SessionContextBar({ metadata, contextUsage }: SessionContextBarProps) {
     const [expanded, setExpanded] = useState(true)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -164,7 +169,11 @@ export function SessionContextBar({ metadata }: SessionContextBarProps) {
                         </InfoItem>
                     </>
                 )}
+                {/* 收起态：上下文用量百分比 chip（点击切换展开/收起） */}
+                {!expanded && contextUsage ? <ContextUsageChip usage={contextUsage} /> : null}
             </ContentRow>
+            {/* 展开态：上下文用量详情（分类占用 / 距压缩剩余 / 成本） */}
+            {expanded && contextUsage ? <ContextUsageDetail usage={contextUsage} /> : null}
         </BarContainer>
     )
 }

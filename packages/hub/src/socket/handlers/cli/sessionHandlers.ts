@@ -18,7 +18,7 @@ import { SNAPSHOT_PENDING_ID, type ClientToServerEvents } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import type { PermissionMode, RuntimeState } from '@mobi/shared/types'
+import type { ContextUsage, PermissionMode, RuntimeState } from '@mobi/shared/types'
 import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
@@ -86,11 +86,12 @@ export type SessionHandlersDeps = {
     emitAccessError: EmitAccessError
     onSessionAlive?: (payload: SessionAlivePayload) => void
     onSessionEnd?: (payload: SessionEndPayload) => void
+    onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage }) => void
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
-    const { store, resolveSessionAccess, emitAccessError, onSessionAlive, onSessionEnd, onWebappEvent } = deps
+    const { store, resolveSessionAccess, emitAccessError, onSessionAlive, onSessionEnd, onContextUsage, onWebappEvent } = deps
 
     // session 连接级别的 PendingTaskMap，在连接生命周期内持续存在
     const pendingTaskMap = new PendingTaskMap()
@@ -415,6 +416,18 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
         onSessionAlive?.(data)
+    })
+
+    socket.on('context-usage', (data: { sid: string; contextUsage: ContextUsage }) => {
+        if (!data || typeof data.sid !== 'string' || typeof data.contextUsage !== 'object' || !data.contextUsage) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        onContextUsage?.(data)
     })
 
     socket.on('session-end', (data: SessionEndPayload) => {

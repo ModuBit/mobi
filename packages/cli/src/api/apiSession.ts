@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, DecryptedMessage, EffortLevel, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
+import type { ClientToServerEvents, ContextUsage, DecryptedMessage, EffortLevel, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -502,6 +502,17 @@ export class ApiSessionClient extends EventEmitter {
     emitMessagesSubmitted(localIds: string[]): void {
         if (localIds.length === 0) return
         this.socket.emit('messages-submitted', { sid: this.sessionId, localIds })
+    }
+
+    /**
+     * 上报上下文用量（事件驱动采集）。
+     * Hub 落库到 runtimeState.contextUsage + SSE 推 web。
+     */
+    reportContextUsage(usage: ContextUsage): void {
+        this.socket.emit('context-usage', {
+            sid: this.sessionId,
+            contextUsage: usage,
+        })
     }
 
     keepAlive(

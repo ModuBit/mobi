@@ -23,6 +23,7 @@ import {
     SyncEventSchema,
     BackgroundTaskItemSchema,
     RuntimeStateSchema,
+    ContextUsageSchema,
     PermissionUpdateSchema,
     AgentStateRequestSchema,
 } from '../src/schemas'
@@ -371,6 +372,75 @@ describe('RuntimeStateSchema with backgroundTasks', () => {
     it('backgroundTasks 可选', () => {
         const result = RuntimeStateSchema.parse({})
         expect(result.backgroundTasks).toBeUndefined()
+    })
+})
+
+describe('ContextUsageSchema', () => {
+    const validUsage = {
+        totalTokens: 124000,
+        maxTokens: 200000,
+        percentage: 62,
+        autoCompactThreshold: 78,
+        isAutoCompactEnabled: true,
+        categories: [
+            { name: '消息历史', tokens: 62000, color: '#4d9eff' },
+            { name: '工具定义', tokens: 19840 },
+        ],
+        apiUsage: {
+            input_tokens: 2100,
+            output_tokens: 8400,
+            cache_read_input_tokens: 88000,
+            cache_creation_input_tokens: 1400,
+        },
+        costUsd: 0.043,
+    }
+
+    it('合法用量解析成功并保留全部字段', () => {
+        const result = ContextUsageSchema.parse(validUsage)
+        expect(result.totalTokens).toBe(124000)
+        expect(result.percentage).toBe(62)
+        expect(result.autoCompactThreshold).toBe(78)
+        expect(result.categories).toHaveLength(2)
+        expect(result.categories[0].color).toBe('#4d9eff')
+        expect(result.apiUsage?.cache_read_input_tokens).toBe(88000)
+        expect(result.costUsd).toBe(0.043)
+    })
+
+    it('apiUsage 可为 null', () => {
+        const result = ContextUsageSchema.parse({ ...validUsage, apiUsage: null })
+        expect(result.apiUsage).toBeNull()
+    })
+
+    it('autoCompactThreshold / category.color 可选', () => {
+        const result = ContextUsageSchema.parse({
+            ...validUsage,
+            autoCompactThreshold: undefined,
+            categories: [{ name: 'x', tokens: 1 }],
+        })
+        expect(result.autoCompactThreshold).toBeUndefined()
+        expect(result.categories[0].color).toBeUndefined()
+    })
+
+    it('缺少必填字段抛错', () => {
+        expect(() => ContextUsageSchema.parse({ totalTokens: 1 })).toThrow()
+    })
+})
+
+describe('RuntimeStateSchema with contextUsage', () => {
+    it('包含 contextUsage 字段', () => {
+        const state = {
+            contextUsage: {
+                totalTokens: 100, maxTokens: 200, percentage: 50,
+                isAutoCompactEnabled: true, categories: [], apiUsage: null, costUsd: 0,
+            },
+        }
+        const result = RuntimeStateSchema.parse(state)
+        expect(result.contextUsage?.percentage).toBe(50)
+    })
+
+    it('contextUsage 可选', () => {
+        const result = RuntimeStateSchema.parse({})
+        expect(result.contextUsage).toBeUndefined()
     })
 })
 

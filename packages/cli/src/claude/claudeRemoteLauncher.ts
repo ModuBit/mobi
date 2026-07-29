@@ -21,7 +21,7 @@ import { claudeRemote } from "./claudeRemote";
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
-import type { SDKAssistantMessage, SDKMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
@@ -29,6 +29,7 @@ import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
+import { ContextUsageCollector } from "./utils/contextUsageCollector";
 import type { RawJSONLines } from "./types";
 import { classifyMessage } from '@mobi/shared';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
@@ -59,6 +60,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private queryRef: Query | null = null;
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 文本 push 进 SDK input stream
     private steerSink: ((text: string) => boolean) | null = null;
+    // 上下文用量采集器（事件驱动；见 handleContextUsage）
+    private readonly contextCollector = new ContextUsageCollector();
+    // assistant 触发节流时间戳（≥3s 才采一次，避免长 turn 过频写库）
+    private lastContextUsageAt = 0;
 
     constructor(
         session: Session,
@@ -118,6 +123,33 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private async handleSwitchFromUi(): Promise<void> {
         logger.debug('[remote]: Switching to local mode via double space');
         await this.handleSwitchRequest();
+    }
+
+    /**
+     * 事件驱动采集上下文用量并上报 hub。
+     * - init/result：总是采（result 携带 cost 更新累计成本）
+     * - assistant：节流 ≥3s，避免长 turn 过频落库
+     * 采集失败（getContextUsage 抛错）由 collector 内部兜住返回 null，此处跳过上报。
+     * 定时器兜底见 docs/pending.md #36。
+     */
+    private async handleContextUsage(
+        trigger: 'init' | 'assistant' | 'result',
+        resultMsg?: SDKResultMessage,
+    ): Promise<void> {
+        if (trigger === 'assistant') {
+            const now = Date.now();
+            if (now - this.lastContextUsageAt < 3000) return;
+        }
+        const source = this.queryControlRef?.current;
+        if (!source) return;
+        const usage = await this.contextCollector.collect(source, resultMsg);
+        if (!usage) return;
+        this.lastContextUsageAt = Date.now();
+        try {
+            await this.session.client.reportContextUsage(usage);
+        } catch (e) {
+            logger.debug('[remote]: reportContextUsage failed', e);
+        }
     }
 
     public async launch(): Promise<RemoteLauncherExitReason> {
@@ -504,7 +536,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onContextCleared: () => {
                             logger.debug('[remote]: Context cleared');
+                            this.contextCollector.reset();
                             session.client.sendSessionEvent({ type: 'context-cleared' });
+                        },
+                        onContextUsage: (trigger, resultMsg) => {
+                            void this.handleContextUsage(trigger, resultMsg);
                         },
                         onSessionReset: () => {
                             logger.debug('[remote]: Session reset');

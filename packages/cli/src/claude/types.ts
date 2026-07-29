@@ -106,12 +106,14 @@ export type RawJSONLines = z.infer<typeof RawJSONLinesSchema>;
 // claude 模块权限模式别名（绑定 Claude；保留可演化性：未来支持 non-claude agent 时分化）
 export type PermissionMode = ClaudePermissionMode
 
-/** SDK Query 动态控制引用，用于 setModel/setPermissionMode */
+/** SDK Query 动态控制引用，用于 setModel/setPermissionMode/getContextUsage */
 export type QueryControlRef = {
   current: {
     setPermissionMode: (m: PermissionMode) => Promise<void>
     setModel: (m?: string) => Promise<void>
     applyFlagSettings: (settings: Record<string, unknown>) => Promise<void>
+    /** 采集上下文用量（事件驱动；ContextUsageCollector.collect 内部调用） */
+    getContextUsage: () => Promise<unknown>
   } | null
 }
 
