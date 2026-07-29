@@ -41,6 +41,8 @@ description: 全面升级项目依赖到最新版本。当用户提到"升级依
 
 注意：对于 `0.x.y` 版本，semver 约定中次版本号变化视为 breaking change。
 
+> ⚠️ **`@anthropic-ai/*` 包例外**：它们是 mobi 协议层核心，**无论升几级（哪怕 patch）都必须额外执行第八步的 changelog 检查与回归**——SDK 的运行时行为变化（流式拆分、hooks、工具协议）版本号反映不了。
+
 向用户展示分类结果表格，包含：包名、当前版本、最新版本、风险等级、所在位置。同时列出已是最新无需更新的包。
 
 ### 第四步：分步升级
@@ -101,6 +103,50 @@ bun run lint       # ESLint 检查
 
 **示例**（本项目）：`patches/@socket.io%2Fbun-engine@0.1.1.patch` 修复 bun-engine 发送二进制附件 bug（`Buffer.isBuffer`→`ArrayBuffer.isView`）。每次升级时若发现 `@socket.io/bun-engine` 有 0.1.2+，查其是否已修该 bug → 修复则移除补丁并升级。
 
+### 第八步：anthropic/claude 包 changelog 检查与回归
+
+**触发条件**：本次升级涉及任何 `@anthropic-ai/*` 包（cli 当前依赖 `@anthropic-ai/claude-agent-sdk`、`@anthropic-ai/sandbox-runtime`、`@anthropic-ai/sdk`，**均 0.x，semver 上 minor 即 breaking**）。这类包是 mobi 的协议层核心，第三步的风险分级不足以反映真实风险——**版本号无论几级，只要动了 anthropic 包就必须做这一步**。
+
+**为什么单独成步**：历史教训——SDK 0.3.204→0.3.211 升级时，`includePartialMessages` 的流式拆分语义变了（同一条 Anthropic message 的多个 content block 共享 uuid 被拆成多条 SDK 消息分别 emit），导致 mobi 的 thinking 流式可见但刷新后丢失、DB 不存。typecheck 和单测都没拦住——是运行时流式行为变化，只有 changelog + 定向回归能发现（详见 memory `project_sdk-partial-assembler`）。
+
+#### 1. 拉两个 changelog，定位本次跨越的版本范围
+
+| changelog | 反映什么 | 地址 |
+|---|---|---|
+| Claude Agent SDK | TS SDK 的 API、query options、hooks、partial、导出接口——**直接影响 cli 代码** | `https://raw.githubusercontent.com/anthropics/claude-agent-sdk-typescript/refs/heads/main/CHANGELOG.md` |
+| Claude Code | SDK 内嵌 claude 二进制的行为——工具协议、plan 模式、工具调度、提示词、MCP——**影响 mobi 运行时行为预期** | `https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md` |
+
+fetch 下来，按**本次升级跨越的版本范围**筛条目。SDK changelog 按 SDK 版本号；Claude Code changelog 按 claude 二进制版本号（从 SDK 平台子包 manifest 或 `claude --version` 取）。fetch 不通就 download 到磁盘看。
+
+#### 2. 对照 mobi 的 SDK 使用面，逐条评估影响
+
+changelog 里涉及下表方向的变化必须重点评估（代码定位 → 读代码 → 对照 changelog → 必要时查官方文档）：
+
+| SDK 使用面 | mobi 代码位置 | changelog 关注点 |
+|---|---|---|
+| `includePartialMessages` + assistant partial 装配 | `packages/cli/src/claude/claudeRemote.ts`（query options）、`packages/cli/src/claude/utils/assistantPartialAssembler.ts` | partial 拆分语义、`message.id` 共享、block 累积 / flush 边界 |
+| claude 二进制 resolve（dev + 编译态） | `packages/cli/src/claude/sdk/claudeExecutable.ts` | `pathToClaudeCodeExecutable`、平台子包结构、manifest、`extractFromBunfs` |
+| 工具协议注入与调度 | SDK 注入（plan 模式 / Write / Bash …） | 工具行为、入参/返回 schema、plan 模式流程 |
+| SDK hooks 回调 | `packages/cli/src/claude/utils/sessionHookForwarder.ts`、`startHookServer.ts` | hooks 回调签名、可用事件、输入数据结构 |
+| 权限审批 | `packages/cli/src/claude/utils/permissionHandler.ts` | `canUseTool` / 权限回调契约 |
+| session resume | `packages/cli/src/claude/session.ts` | resume 语义、消息重放格式 |
+| MCP / system prompt | `utils/mcpConfig.ts`、`utils/systemPrompt.ts` | MCP 配置契约、prompt 注入点 |
+| 环境变量 / 配置 | env-vars（见配置文档） | 新增 / 废弃 / 默认值变化的 env |
+
+> 查具体 API 细节：按 `docs/claude-agent-sdk/README.md` 索引找到对应官方文档（partial / hooks / sessions / streaming / permissions / env-vars 等）fetch 最新版对照，**不要凭训练数据猜 SDK 行为**。
+
+#### 3. 风险定级与回归验证
+
+对每条"可能影响"：
+
+- **定位 mobi 受影响代码** → 读代码判断是否仍兼容
+- **typecheck / test 拦不住的运行时行为**（partial 装配、流式、hooks、权限、resume）→ 必须用 `/run-tests` 的 E2E 走真实会话流程验证（见 `.claude/skills/run-tests/references/e2e.md`，先读其 `memory/MEMORY.md`）
+- **历史坑优先重验**：partial 装配（thinking 刷新不丢 + DB 持久）、claude 二进制 resolve（dev + 编译模式）、hooks 回调数据完整——每次必过
+
+#### 4. 汇报
+
+列出：本次跨越的 changelog 条目摘要、逐条影响评估（影响/不影响 + 理由 + 对应 mobi 代码）、已执行的回归项及结果。任何不确定的运行时行为变化，E2E 验证通过后再提交。
+
 ## 版本约束规范
 
 | 原约束 | 推荐写法 | 说明 |
@@ -116,4 +162,5 @@ bun run lint       # ESLint 检查
 - **bun 运行时**：安装命令用 `bun install`，不是 npm
 - **升级后必验证**：typecheck → test → lint 三步缺一不可
 - **patchedDependencies 维护**：每次升级必须执行第七步，按上游新版情况处理补丁（移除/迁移/重做），不只是「移除」——上游没修但改了代码，补丁要跟着重做
+- **anthropic/claude 包强制 changelog 检查**：升任何 `@anthropic-ai/*` 包必须执行第八步——拉 SDK + Claude Code 两个 changelog，对照 mobi SDK 使用面评估影响，typecheck 拦不住的运行时行为用 E2E 回归
 - **提交规范**：commit message 使用 `chore:` 前缀，列出关键变更
