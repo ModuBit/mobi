@@ -547,10 +547,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     }
                 } catch (e) {
                     // 增强错误日志：序列化非标准错误对象
+                    // 用 error 级而非 debug：SDK 崩溃错误（含 stderr tail，见 getProcessExitError）
+                    // 需始终落盘以便事后从日志排查。debug 在生产模式只进 ringBuffer、不落盘，
+                    // 而此处错误被优雅捕获（不崩溃）→ ringBuffer 永不 dump → 日志文件空白。
                     const errorDetail = e instanceof Error
                         ? `${e.name}: ${e.message}\n${e.stack?.substring(0, 500)}`
                         : `Non-Error thrown: type=${typeof e}, value=${JSON.stringify(e)}, keys=${typeof e === 'object' && e !== null ? Object.keys(e).join(',') : 'N/A'}`;
-                    logger.debug(`[remote]: launch error: ${errorDetail}`);
+                    logger.error(`[remote]: launch error: ${errorDetail}`);
                     if (!this.exitReason) {
                         session.client.sendSessionEvent({ type: 'message', message: `Process exited unexpectedly: ${e instanceof Error ? e.message : String(e)}` });
                         // claude 进程崩溃，退出 session 避免僵尸进程

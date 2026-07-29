@@ -128,11 +128,16 @@ mobi 写一个临时 settings.json，配置 `SessionStart` hook 执行 `mobi hoo
 
 **建议**：评估改用 `systemPrompt` 数组形式 + `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` 标记，前缀保留可缓存部分；或至少文档化「设 custom prompt 会丢失默认行为」的取舍。
 
-### 🔧 P5 — 未捕获子进程 stderr
+### 🔧 P5 — SDK 崩溃错误被 debug 级吞掉（日志文件空白）
 
-**现状**：`Options.stderr` 回调未用。claude 子进程的 stderr 默认丢弃，排查启动失败/运行异常时缺关键线索（已有的 `BUN_INSPECT` 坑就是靠现象猜出来的）。
+**现状**（已重新核实）：审计初稿曾建议接管 `Options.stderr` 回调，但事实链表明那不是根因——
 
-**建议**：接 `stderr: (data) => logger.debug(...)`，零成本提升可诊断性。
+- SDK 子进程崩溃时，错误对象 `e.message` **已自带 stderr 尾部**（SDK 源码 `getProcessExitError` 构造 `Error("Claude Code process exited with code ${e}${formatStderrTail()}")`，实证）。
+- Web 用户也已能看到：`claudeRemoteLauncher.ts` 的终态 catch 把 `e.message`（含 stderr）作为「Process exited unexpectedly: ...」推给前端。
+
+**真正的 gap 是日志文件空白**：错误链被两处 `logger.debug` 吞掉——`claudeRemote.ts` 内层 catch 与 `claudeRemoteLauncher.ts` 终态 catch 都记在 debug 级。而 `logger.debug` 在生产模式（无 `DEBUG` env）**只进 ringBuffer、不落盘**；再加上错误在终态 catch 被优雅捕获（置 `exitReason='exit'`、不 re-throw）→ 进程不崩 → ringBuffer 永不 dump → 日志文件里没有任何线索。事后从日志排查时一片空白。
+
+**修复**：终态 catch（`claudeRemoteLauncher.ts`）从 `logger.debug` 提到 `logger.error`——始终落盘 + console 可见。子进程崩溃是低频严重事件，值得 error 级。内层 catch 保持 debug，避免与终态双写。`stderr` 回调不必加：致命 stderr 已在错误里，非致命警告价值低且级别难选（debug 不落盘 / warn 刷 console）。
 
 ### 🔧 P6 — `!bash` 双路径
 
@@ -250,7 +255,7 @@ mobi 自研沙箱只管 `!bash`，agent 自己调的 Bash 不经沙箱。SDK 的
 
 | 优先级 | 项 | 理由 |
 |---|---|---|
-| **先做（低成本高收益）** | `stderr` 接管（§二-P5）、`getContextUsage()`（§三-P1）、`promptSuggestions`（§三-P2）、成本上墙（§三-P2） | 改动小、用户可感知、不碰核心流程 |
+| **先做（低成本高收益）** | 崩溃错误提级落盘（§二-P5，已修）、`getContextUsage()`（§三-P1）、`promptSuggestions`（§三-P2）、成本上墙（§三-P2） | 改动小、用户可感知、不碰核心流程 |
 | **再做（中成本特色）** | TodoWrite 上墙（§三-P3）、`rewindFiles`（§三-P1）、`forwardSubagentText`（§三-P3） | 差异化能力，补齐已有但空转的 UI（TodoPanel） |
 | **增量改进（低风险）** | SessionStart hook 用上 `source`/`transcript_path` 字段（§二-P1） | hook 是 local 模式刚需不可删，但预留字段当前全丢，纯增量价值高 |
 | **追踪 SDK（随升级兑现）** | 权限双轨清理（§二-P2） | 依赖 SDK 兑现承诺，挂入 `/upgrade-deps` 第八步 |

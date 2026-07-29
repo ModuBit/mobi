@@ -787,7 +787,9 @@ export async function claudeRemote(opts: {
             }),
         ])
     } catch (e) {
-        // 增强错误日志：捕获 SDK 抛出的非标准错误对象
+        // 增强错误日志：捕获 SDK 抛出的非标准错误对象。
+        // 保持 debug 级：此处 re-throw，错误最终由 claudeRemoteLauncher 的终态 catch
+        // 以 error 级落盘（含 SDK 自带的 stderr tail）；这里提级会与 launcher 双写。
         const errorInfo = e instanceof Error
             ? { name: e.name, message: e.message, stack: e.stack?.substring(0, 500) }
             : { type: typeof e, value: String(e), keys: typeof e === 'object' && e !== null ? Object.keys(e) : [] };
