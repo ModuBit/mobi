@@ -58,7 +58,7 @@ class Configuration {
     public readonly isAgentTeamsEnabled: boolean
 
     // 配置文件中的设置
-    private settings: Pick<Settings, 'disconnectTimeoutMs' | 'idleTimeoutMs' | 'timeoutWarningMs' | 'claudeEnv'> = {}
+    private settings: Pick<Settings, 'disconnectTimeoutMs' | 'idleTimeoutMs' | 'timeoutWarningMs' | 'claudeEnv' | 'bashInjectContext'> = {}
 
     constructor() {
         // Server configuration
@@ -111,6 +111,9 @@ class Configuration {
                             && parsed.claudeEnv !== null
                             && !Array.isArray(parsed.claudeEnv)
                         ? parsed.claudeEnv as Record<string, string>
+                        : undefined,
+                    bashInjectContext: typeof parsed.bashInjectContext === 'boolean'
+                        ? parsed.bashInjectContext
                         : undefined,
                 }
             }
@@ -192,6 +195,16 @@ class Configuration {
      */
     get claudeEnv(): Record<string, string> {
         return this.settings.claudeEnv ?? {}
+    }
+
+    /**
+     * !bash 本地执行后是否把命令+输出注入 SDK context（默认开启）。
+     * true = 注入即响应（模型感知输出并回复，等同 Claude CLI respondToBashCommands:true）；
+     * false = 仅本地执行 + UI 合成工具对，模型不参与（!cmd 不耗 token）。
+     * settings.json 的 bashInjectContext 显式为 boolean 时覆盖默认。
+     */
+    get bashInjectContext(): boolean {
+        return this.settings.bashInjectContext ?? true
     }
 }
 

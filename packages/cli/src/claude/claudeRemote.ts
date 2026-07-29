@@ -33,7 +33,7 @@ import {
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
 import { parseSpecialCommand, checkDangerousCommand } from "@/parsers/specialCommands";
-import { logger } from "@/lib";
+import { logger, configuration } from "@/lib";
 import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
@@ -166,6 +166,36 @@ function createBashToolResultMessage(
         parent_tool_use_id: null,
         session_id: '',
     } as unknown as SDKUserMessage
+}
+
+/**
+ * 转义 XML 特殊字符（& < >），避免 bash 输出里的尖括号破坏标签解析。
+ * 仅用于注入文本的 stdout/stderr/命令体，标签名本身不转义。
+ */
+function escapeXml(s: string): string {
+    return s.replace(/[&<>]/g, c => c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;')
+}
+
+/**
+ * 构造「!bash 输出注入 SDK context」的 user 消息文本。
+ * 对齐 Claude CLI 的 processBashCommand 原生格式：用模型训练即识别的结构化标签
+ * bash-input / bash-stdout / bash-stderr 包裹命令与输出（stdout/stderr 分离、同行），
+ * 比自然语言更省 token、解析更稳。CLI 本还在前面加一条 local-command-caveat
+ * （「DO NOT respond…」），那是配合 shouldQuery:false 用的——mobi 走 A 路（注入即响应），
+ * 故改用一句简短的「已执行、无需重复执行」框定，既防止模型再用 Bash 工具重跑，
+ * 又不与「期待模型响应」的语义冲突。
+ */
+export function buildBashInjectionText(command: string, stdout: string, stderr: string, hasError: boolean): string {
+    const status = hasError ? '（执行失败/有错误输出）' : ''
+    const out = stdout.trim()
+    const err = stderr.trim()
+    const stdoutTag = `<bash-stdout>${escapeXml(out)}</bash-stdout>`
+    const stderrTag = `<bash-stderr>${escapeXml(err)}</bash-stderr>`
+    return [
+        `用户在本地用 ! 前缀执行了以下 bash 命令${status}（已执行，无需重复执行）：`,
+        `<bash-input>${escapeXml(command)}</bash-input>`,
+        `${stdoutTag}${stderrTag}`,
+    ].join('\n')
 }
 
 /**
@@ -541,6 +571,12 @@ export async function claudeRemote(opts: {
         opts.onSessionFound(pregeneratedSessionId)
     }
 
+    // !bash 输出注入 sink：把「命令+输出」作为隐藏 user 消息 push 进 SDK input stream。
+    // 在 messages + query 就绪后（下方 wiring）才接通；接通前为 null，
+    // 故「首条消息即 !cmd」（query 尚未启动，函数会在 handleSpecialCommand 后 return）时不注入，
+    // 退化为纯本地执行——符合预期。注入消息不调 onMessage，SDK 也不回放 user 文本，UI 看不到。
+    let bashInjectSink: ((text: string) => void) | null = null
+
     // !bash: 本地执行 shell 命令，不走 SDK，生成 tool_use/tool_result 消息对
     const executeBashCommand = async (command: string): Promise<void> => {
         logger.debug(`[claudeRemote] Bash command detected: ${command}`)
@@ -592,7 +628,22 @@ export async function claudeRemote(opts: {
 
         opts.onMessage(createBashToolResultMessage(toolCallId, output, hasError))
 
-        opts.onRunningChange?.(false)
+        // 注入输出到 SDK context（默认开启，settings.json 的 bashInjectContext 可关）。
+        // 模型据此感知并响应；注入本身不回显（见 sink 注释）。高危拦截路径已 return，不会走到这。
+        // sink 未接通（首条消息即 !cmd，query 未启动）时 push 无意义，按未注入处理。
+        // 传分离的 stdout/stderr（CLI 标签格式，详见 buildBashInjectionText）。
+        const injected = configuration.bashInjectContext && Boolean(bashInjectSink)
+        if (injected) {
+            bashInjectSink!(sanitizeUserMessage(buildBashInjectionText(command, stdout, stderr, hasError)))
+        }
+
+        // 注入会异步触发模型轮次：running 由 SDK 的 system/init→result 驱动，
+        // 不在此手动复位——否则「复位 false」会先于异步「init true」落地，制造 running=false
+        // 窗口，userInputLoop 的 idle 门控可能在窗口内误放行下一条用户消息，导致 turn 串扰。
+        // 未注入（开关关 / sink 未接通）时无模型轮次，需手动复位。
+        if (!injected) {
+            opts.onRunningChange?.(false)
+        }
     }
 
     // 并行：预热子进程 + 等待用户首条消息
@@ -657,6 +708,19 @@ export async function claudeRemote(opts: {
     }
     const initial = msgSettled.value
 
+    // 创建 messages 并接通 !bash 注入 sink：提前到首条消息处理之前，使「首条即 !cmd」时
+    // executeBashCommand 推入的注入也能进入下面的 query——与中途 !cmd 行为一致，不再退化。
+    // query 尚未启动，PushableAsyncIterable 会缓冲，query 消费时即触发模型响应。
+    const messages = new PushableAsyncIterable<SDKUserMessage>();
+    bashInjectSink = (text: string) => {
+        messages.push({
+            type: 'user',
+            message: { role: 'user', content: text },
+            parent_tool_use_id: null,
+            session_id: '',
+        });
+    };
+
     const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
     const initialResult = await handleSpecialCommand(initial.message, specialCommandCtx)
 
@@ -665,7 +729,9 @@ export async function claudeRemote(opts: {
         return
     }
 
-    if (initialResult.handled && !initialResult.isCompact) {
+    // 首条即 bash：注入开 → 注入已入 messages，落到下面启动 query；注入关 → 纯本地、不启动 query。
+    const isBashInitial = initialResult.handled && !initialResult.isCompact
+    if (isBashInitial && !configuration.bashInjectContext) {
         warmRef?.close()
         return
     }
@@ -699,16 +765,19 @@ export async function claudeRemote(opts: {
     };
 
     // Push initial message
-    const messages = new PushableAsyncIterable<SDKUserMessage>();
-    messages.push({
-        type: 'user',
-        message: {
-            role: 'user',
-            content: sanitizeUserMessage(initial.message),
-        },
-        parent_tool_use_id: null,
-        session_id: '', // SDK 会在运行时填充
-    });
+    // 首条即 bash 且注入开时，executeBashCommand 已把注入 push 进 messages，不再 push 原始 !cmd 文本；
+    // 其余（普通消息 / compact）push 原文。
+    if (!isBashInitial) {
+        messages.push({
+            type: 'user',
+            message: {
+                role: 'user',
+                content: sanitizeUserMessage(initial.message),
+            },
+            parent_tool_use_id: null,
+            session_id: '', // SDK 会在运行时填充
+        });
+    }
 
     // 注入 steer sink：把文本 push 进 SDK input stream，返回 true。
     // 由 launcher 的 steer-queued-message RPC 调用，把已排队消息提前提交给 SDK。

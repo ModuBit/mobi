@@ -139,11 +139,15 @@ mobi 写一个临时 settings.json，配置 `SessionStart` hook 执行 `mobi hoo
 
 **修复**：终态 catch（`claudeRemoteLauncher.ts`）从 `logger.debug` 提到 `logger.error`——始终落盘 + console 可见。子进程崩溃是低频严重事件，值得 error 级。内层 catch 保持 debug，避免与终态双写。`stderr` 回调不必加：致命 stderr 已在错误里，非致命警告价值低且级别难选（debug 不落盘 / warn 刷 console）。
 
-### 🔧 P6 — `!bash` 双路径
+### 🔧 P6 — `!bash` 双路径（已演进为「本地执行 + 输出注入 context」）
 
-**现状**：`!bash` 走 mobi 自研沙箱执行（生成合成消息对），而 agent 自己调的 `Bash` 工具走 SDK。两条 bash 执行路径，权限/沙箱/超时语义不一致。
+**原状**：`!bash` 走 mobi 自研沙箱执行（生成合成消息对），模型完全不参与；agent 自己调的 `Bash` 工具走 SDK。两条 bash 路径，权限/沙箱/超时语义不一致。
 
-**建议**：这是 `!command` UX 的刻意设计（不消耗 token、即时反馈），保留合理。但应文档化两路径差异，避免维护者混淆。
+**关键认知**：Claude CLI 的 `!command` 同样是「CLI 本地执行 + 输出加入 context + 模型事后可选响应」（SDK settings 的 `respondToBashCommands`/`defaultShell` 仅存在于 Zod schema、无 query() 执行逻辑——`!` 是 TUI 输入层特性，编程式 query() 不识别）。直接把 `!cmd` 当普通 user 消息发 SDK，模型只会「理解」这段文本，不会直接执行。
+
+**已落地**（settings.json `bashInjectContext`，默认开）：保留本地沙箱执行 + UI 合成工具对（即时、不耗 token、可见命令与输出），额外把「命令+输出」作为**隐藏 user 消息**注入 SDK input stream——模型据此感知并可顺势响应。注入文本对齐 Claude CLI `processBashCommand` 的原生标签格式（`bash-input` / `bash-stdout` / `bash-stderr`，stdout/stderr 分离同行、XML 转义；CLI 的 `local-command-caveat`「DO NOT respond」是配合 `shouldQuery:false` 用的，mobi 走 A 路〔注入即响应〕故改用一句「已执行、无需重复执行」框定防重跑，不加该 caveat）。注入消息不调 onMessage、SDK 也不回放 host 推入的 user 文本（源码实证仅 stdin 写入），故 UI 不回显。`messages` + sink 创建已提到首条消息处理之前，故首条即 `!cmd` 也能注入（与中途一致，不退化）。开关关则退回纯本地、模型不参与（首条即 `!cmd` 时不启动 query）。
+
+**残留双路径**：模型自发的 `Bash` 工具调用仍走 SDK（带权限/超时语义），与 `!` 的本地沙箱路径并存。这是 `!command`「即时/省 token」UX 的刻意取舍，文档化即可。
 
 ---
 

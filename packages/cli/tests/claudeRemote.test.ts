@@ -18,6 +18,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
     handleSpecialCommand,
     createSpecialCommandContext,
+    buildBashInjectionText,
     type SpecialCommandContext
 } from '../src/claude/claudeRemote'
 
@@ -162,5 +163,31 @@ describe('createSpecialCommandContext', () => {
         ctx.onClear()
         expect(onCompletionEvent).toHaveBeenCalledWith('Context was reset')
         expect(onSessionReset).toHaveBeenCalled()
+    })
+})
+
+describe('buildBashInjectionText', () => {
+    it('用 CLI 原生标签包裹命令与输出，并标明已本地执行、无需重复执行', () => {
+        const text = buildBashInjectionText('ls -la', 'file1\nfile2', '', false)
+        expect(text).toContain('<bash-input>ls -la</bash-input>')
+        // stdout/stderr 同行拼接
+        expect(text).toContain('<bash-stdout>file1\nfile2</bash-stdout><bash-stderr></bash-stderr>')
+        expect(text).toContain('本地')
+        // 明确告知模型不要重复执行
+        expect(text).toMatch(/无需重复执行|不要重复|不必重复/)
+    })
+
+    it('hasError=true 时标注失败，stderr 有内容', () => {
+        const text = buildBashInjectionText('false', '', 'oops', true)
+        expect(text).toMatch(/失败|错误/)
+        expect(text).toContain('<bash-stdout></bash-stdout><bash-stderr>oops</bash-stderr>')
+    })
+
+    it('转义输出中的 XML 特殊字符，避免破坏标签', () => {
+        const text = buildBashInjectionText('echo a<b>&c', 'a<b>&c', '', false)
+        expect(text).toContain('<bash-input>echo a&lt;b&gt;&amp;c</bash-input>')
+        expect(text).toContain('<bash-stdout>a&lt;b&gt;&amp;c</bash-stdout>')
+        // 原始尖括号不应泄漏到标签内容
+        expect(text).not.toContain('a<b>&c')
     })
 })

@@ -51,6 +51,10 @@ export interface Settings {
   // 注入给 claude 子进程的额外环境变量（优先级高于 process.env 与内置开关）
   // 由 buildClaudeFeatureEnv 合并进 sdkOptions.env，用户可在 settings.json 自由扩展
   claudeEnv?: Record<string, string>
+  // !bash 命令本地执行后，是否把命令+输出作为隐藏上下文注入 SDK，让模型感知并响应。
+  // true（默认）= 注入即响应（等同 Claude CLI 的 respondToBashCommands:true）；
+  // false = 仅本地执行、UI 展示合成工具对，模型完全不参与（!cmd 不耗 token）。
+  bashInjectContext?: boolean
 }
 
 const defaultSettings: Settings = {}
