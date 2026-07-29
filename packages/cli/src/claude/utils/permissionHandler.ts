@@ -161,7 +161,6 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         // updatedPermissions 仍透传给 SDK 作双轨兜底（见下方 result.updatedPermissions）。
         if (response.updatedPermissions && response.updatedPermissions.length > 0) {
             let hasRulesOp = false;
-            let filledFromRules = false;
             for (const update of response.updatedPermissions) {
                 if (update.type === 'addRules' || update.type === 'replaceRules' || update.type === 'removeRules') {
                     hasRulesOp = true;
@@ -172,13 +171,11 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                     if (rule.toolName === 'Bash' && rule.ruleContent) {
                         // 复用 parseBashPermission：ruleContent 形如 'echo:*'（前缀）或 'echo hi'（字面）
                         this.parseBashPermission(`Bash(${rule.ruleContent})`);
-                        filledFromRules = true;
                     } else if (rule.toolName === 'Bash') {
                         // Bash 无 ruleContent：mobi 命令级粒度无法放行裸 'Bash'（且 handleToolCall 不查
                         // allowedTools 查 Bash），跳过不填，避免语义混乱
                     } else {
                         this.allowedTools.add(rule.toolName);
-                        filledFromRules = true;
                     }
                 }
             }
