@@ -37,7 +37,7 @@ import { logger } from "@/lib";
 import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
-import { systemPrompt } from "./utils/systemPrompt";
+import { buildAppendSystemPrompt } from "./utils/systemPrompt";
 import type { PermissionResult } from "./sdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUIHints } from "@mobi/shared";
@@ -617,15 +617,14 @@ export async function claudeRemote(opts: {
         // effort 依赖 thinking 默认值 { type: 'adaptive' } 才能生效，SDK 默认即为 adaptive
         effort: baseConfig.effort,
         fallbackModel: baseConfig.fallbackModel,
-        systemPrompt: baseConfig.customSystemPrompt
-            ? baseConfig.customSystemPrompt + '\n\n' + systemPrompt
-            : {
-                type: 'preset' as const,
-                preset: 'claude_code' as const,
-                append: baseConfig.appendSystemPrompt
-                    ? baseConfig.appendSystemPrompt + '\n\n' + systemPrompt
-                    : systemPrompt,
-            },
+        // systemPrompt 统一走 preset + append：customSystemPrompt 与 appendSystemPrompt
+        // 都作为追加内容拼在 claude_code 默认 prompt 之后（详见 buildAppendSystemPrompt），
+        // 不再用纯字符串整体替换——那会丢掉 claude_code 默认 prompt。
+        systemPrompt: {
+            type: 'preset' as const,
+            preset: 'claude_code' as const,
+            append: buildAppendSystemPrompt(baseConfig),
+        },
         allowedTools: baseConfig.allowedTools ? baseConfig.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: baseConfig.disallowedTools,
         canUseTool: async (toolName, input, options) => {

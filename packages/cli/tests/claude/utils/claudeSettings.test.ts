@@ -16,15 +16,15 @@
 
 /**
  * Tests for Claude settings reading functionality
- * 
- * Tests reading Claude's settings.json file and respecting the includeCoAuthoredBy setting
+ *
+ * Tests reading Claude's settings.json file.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readClaudeSettings, shouldIncludeCoAuthoredBy } from '@/claude/utils/claudeSettings';
+import { readClaudeSettings } from '@/claude/utils/claudeSettings';
 
 describe('Claude Settings', () => {
   let testClaudeDir: string;
@@ -62,7 +62,7 @@ describe('Claude Settings', () => {
 
     it('reads settings when file exists', () => {
       const settingsPath = join(testClaudeDir, 'settings.json');
-      const testSettings = { includeCoAuthoredBy: false, otherSetting: 'value' };
+      const testSettings = { someSetting: 'value', another: 42 };
       writeFileSync(settingsPath, JSON.stringify(testSettings));
 
       const settings = readClaudeSettings();
@@ -75,37 +75,6 @@ describe('Claude Settings', () => {
 
       const settings = readClaudeSettings();
       expect(settings).toBe(null);
-    });
-  });
-
-  describe('shouldIncludeCoAuthoredBy', () => {
-    it('returns false when no settings file exists (default behavior)', () => {
-      const result = shouldIncludeCoAuthoredBy();
-      expect(result).toBe(false);
-    });
-
-    it('returns false when includeCoAuthoredBy is not set (default behavior)', () => {
-      const settingsPath = join(testClaudeDir, 'settings.json');
-      writeFileSync(settingsPath, JSON.stringify({ otherSetting: 'value' }));
-
-      const result = shouldIncludeCoAuthoredBy();
-      expect(result).toBe(false);
-    });
-
-    it('returns false when includeCoAuthoredBy is explicitly set to false', () => {
-      const settingsPath = join(testClaudeDir, 'settings.json');
-      writeFileSync(settingsPath, JSON.stringify({ includeCoAuthoredBy: false }));
-
-      const result = shouldIncludeCoAuthoredBy();
-      expect(result).toBe(false);
-    });
-
-    it('returns true when includeCoAuthoredBy is explicitly set to true', () => {
-      const settingsPath = join(testClaudeDir, 'settings.json');
-      writeFileSync(settingsPath, JSON.stringify({ includeCoAuthoredBy: true }));
-
-      const result = shouldIncludeCoAuthoredBy();
-      expect(result).toBe(true);
     });
   });
 });

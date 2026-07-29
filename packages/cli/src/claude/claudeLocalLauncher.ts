@@ -17,8 +17,10 @@
 import { claudeLocal } from "./claudeLocal";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
+import { buildAppendSystemPrompt } from "./utils/systemPrompt";
 import { BaseLocalLauncher } from "@/modules/common/launcher/BaseLocalLauncher";
 import { logger } from "@/ui/logger";
+import type { EnhancedMode } from "./types";
 
 /**
  * 从 claudeArgs 中解析 --resume / --continue 的 session ID
@@ -42,7 +44,10 @@ function extractSessionIdFromArgs(claudeArgs?: string[]): string | null {
 
 export async function claudeLocalLauncher(
     session: Session,
-    processCleanupRef?: { current: (() => void) | null }
+    processCleanupRef?: { current: (() => void) | null },
+    /** 当前会话配置（customSystemPrompt / appendSystemPrompt），用于拼接 append system prompt。
+     *  与 remote 模式同源（runClaude 的 getSessionConfig），保证两模式 append 行为一致。 */
+    getSessionConfig: () => EnhancedMode = () => ({ permissionMode: 'default' }),
 ): Promise<'switch' | 'exit'> {
 
     // 优先使用 session.sessionId（remote 模式下由 SDK 设置），
@@ -77,6 +82,10 @@ export async function claudeLocalLauncher(
         startedBy: session.startedBy,
         startingMode: session.startingMode,
         launch: async (abortSignal) => {
+            // 启动时按当前配置拼接 append system prompt（与 remote 同逻辑），
+            // local 模式 claude 为交互式 TUI，prompt 仅在启动时注入一次
+            const config = getSessionConfig();
+            const systemPromptAppend = buildAppendSystemPrompt(config);
             await claudeLocal({
                 path: session.path,
                 sessionId: session.sessionId,
@@ -86,6 +95,7 @@ export async function claudeLocalLauncher(
                 mcpServers: session.mcpServers,
                 allowedTools: session.allowedTools,
                 hookSettingsPath: session.hookSettingsPath,
+                systemPromptAppend,
             });
         },
         onLaunchSuccess: () => {

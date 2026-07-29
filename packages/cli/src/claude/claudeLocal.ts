@@ -21,7 +21,6 @@ import { restoreTerminalState } from "@/ui/terminalState";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { getProjectPath } from "./utils/path";
 import { appendMcpConfigArg } from "./utils/mcpConfig";
-import { systemPrompt } from "./utils/systemPrompt";
 import { withBunRuntimeEnv } from "@/utils/bunRuntime";
 import { spawnWithAbort } from "@/utils/spawnWithAbort";
 import { stripNewlinesForWindowsShellArg } from "@/utils/shellEscape";
@@ -37,6 +36,8 @@ export async function claudeLocal(opts: {
     claudeArgs?: string[]
     allowedTools?: string[]
     hookSettingsPath: string
+    /** 追加到 claude 默认 system prompt 之后的内容（含 mobi base + 用户 custom/append） */
+    systemPromptAppend: string
 }) {
 
     // Ensure project directory exists
@@ -69,7 +70,7 @@ export async function claudeLocal(opts: {
         args.push('--resume', startFrom);
     }
 
-    args.push('--append-system-prompt', stripNewlinesForWindowsShellArg(systemPrompt));
+    args.push('--append-system-prompt', stripNewlinesForWindowsShellArg(opts.systemPromptAppend));
 
     const cleanupMcpConfig = appendMcpConfigArg(args, opts.mcpServers, {
         baseDir: projectDir

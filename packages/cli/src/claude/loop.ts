@@ -84,7 +84,7 @@ export async function loop(opts: LoopOptions) {
         session,
         startingMode: opts.startingMode,
         logTag: 'loop',
-        runLocal: (s) => claudeLocalLauncher(s, cleanup),
+        runLocal: (s) => claudeLocalLauncher(s, cleanup, opts.getSessionConfig),
         runRemote: (s) => claudeRemoteLauncher(s, cleanup, queryControl, opts.getSessionConfig, opts.flushConfig),
         onSessionReady: opts.onSessionReady
     });

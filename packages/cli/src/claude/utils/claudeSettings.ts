@@ -15,10 +15,9 @@
  */
 
 /**
- * Utilities for reading Claude's settings.json configuration
- * 
- * Handles reading Claude's settings.json file to respect user preferences
- * like includeCoAuthoredBy setting for commit message generation.
+ * Utilities for reading Claude's settings.json configuration.
+ *
+ * 仅提供读取能力（readClaudeSettings），具体字段的语义解读由调用方负责。
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -27,7 +26,6 @@ import { homedir } from 'node:os';
 import { logger } from '@/ui/logger';
 
 export interface ClaudeSettings {
-  includeCoAuthoredBy?: boolean;
   [key: string]: unknown;
 }
 
@@ -41,45 +39,26 @@ function getClaudeSettingsPath(): string {
 
 /**
  * Read Claude's settings.json file from the default location
- * 
- * @returns Claude settings object or null if file doesn't exist or can't be read
+ *
+ * @returns Claude settings object or null if file does not exist or can't be read
  */
 export function readClaudeSettings(): ClaudeSettings | null {
   try {
     const settingsPath = getClaudeSettingsPath();
-    
+
     if (!existsSync(settingsPath)) {
       logger.debug(`[ClaudeSettings] No Claude settings file found at ${settingsPath}`);
       return null;
     }
-    
+
     const settingsContent = readFileSync(settingsPath, 'utf-8');
     const settings = JSON.parse(settingsContent) as ClaudeSettings;
-    
+
     logger.debug(`[ClaudeSettings] Successfully read Claude settings from ${settingsPath}`);
-    logger.debug(`[ClaudeSettings] includeCoAuthoredBy: ${settings.includeCoAuthoredBy}`);
-    
+
     return settings;
   } catch (error) {
     logger.debug(`[ClaudeSettings] Error reading Claude settings: ${error}`);
     return null;
   }
-}
-
-/**
- * Check if Co-Authored-By lines should be included in commit messages
- * based on Claude's settings
- * 
- * @returns true if Co-Authored-By should be included, false otherwise
- */
-export function shouldIncludeCoAuthoredBy(): boolean {
-  const settings = readClaudeSettings();
-  
-  // 如果没有配置文件或 includeCoAuthoredBy 未设置，
-  // 默认返回 false
-  if (!settings || settings.includeCoAuthoredBy === undefined) {
-    return false;
-  }
-  
-  return settings.includeCoAuthoredBy;
 }
