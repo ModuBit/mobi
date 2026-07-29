@@ -29,7 +29,8 @@ interface ActivateCoverProps {
     zIndex?: number
     /** 覆盖层圆角，默认 0 */
     borderRadius?: string | number
-    /** 透传 className（如磨砂遮罩 sender-overlay） */
+    /** 透传 className（磨砂遮罩：InspectorPane 铺彩色内容用 sender-overlay；
+     *  ChatComposer 铺实色 Sender 用 composer-cover-mask，白底可见） */
     className?: string
 }
 

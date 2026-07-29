@@ -878,7 +878,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                 {/* 未激活覆盖层 */}
                 {showInactiveCover && (
                     <ActivateCover
-                        className="sender-overlay"
+                        className="composer-cover-mask"
                         loading={activatePending}
                         onActivate={onActivate!}
                         borderRadius="var(--ant-border-radius)"
@@ -888,7 +888,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                 {/* 本地模式覆盖层 */}
                 {showLocalModeCover && (
                     <div
-                        className="sender-overlay"
+                        className="composer-cover-mask"
                         style={{
                             position: 'absolute',
                             top: 0,

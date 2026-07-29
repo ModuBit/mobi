@@ -11,6 +11,18 @@ html[data-theme='dark'] .sender-overlay {
     background: rgba(0, 0, 0, 0.55);
 }
 
+/* Composer 覆盖层磨砂遮罩：铺在实色 Sender（bg-container）之上。
+   sender-overlay 的 rgba(255,255,255,0.55) 在纯白 Sender 上「白盖白」无色差、
+   backdrop-filter 模糊纯色无效，遮罩视觉消失。改用 var(--ant-color-fill)（中灰半透明，
+   light rgba(20,20,19,0.15) / dark 自适应），配合 blur 在实色 Sender 上呈现可见毛玻璃。
+   仅 ChatComposer 的「恢复会话 / 切换到远程」两处使用；InspectorPane 铺彩色 tab 内容，
+   继续用 sender-overlay。 */
+.composer-cover-mask {
+    background: var(--ant-color-fill);
+    backdrop-filter: blur(2px) saturate(1.4);
+    -webkit-backdrop-filter: blur(2px) saturate(1.4);
+}
+
 /* Bash 模式：Sender 发光边框已迁移到 ChatComposer.tsx 的 inline style。
  * 此处保留的 CSS 类样式（无论提升优先级还是 !important）均无法稳定覆盖 antd Sender
  * 运行时 css-injs 注入的 unlayered 样式——modes.css 被 Tailwind v4 @import 纳入 cascade
