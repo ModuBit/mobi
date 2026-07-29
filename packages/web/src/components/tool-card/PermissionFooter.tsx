@@ -19,12 +19,15 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
 import type { PermissionUpdate, PermissionUpdateDestination, SDKUIHints } from '@mobi/shared'
 import { memo, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { Alert, Button, Input, theme as antTheme } from 'antd'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { agentCardBg } from '@/components/composer/agentPalette'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
+import { queryKeys } from '@/core/lib/query-keys'
 import { getCustomPermissionTitleKey, getInputStringAny, getPermissionDescription, isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 
 const { useToken } = antTheme
@@ -160,6 +163,7 @@ type ActionConfig = {
 function PermissionFooterInner(props: PermissionFooterProps) {
     const { t } = useTranslation()
     const { token } = useToken()
+    const queryClient = useQueryClient()
     const isDark = useUiStore((s) => resolveTheme(s.theme) === 'dark')
     const isMobile = useIsMobile()
     const permission = props.tool.permission
@@ -222,12 +226,23 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const run = async (action: () => Promise<unknown>) => {
         if (props.disabled) return
         setError(null)
+        let handled = true // true = 正常完成或 404（已被处理）；false = 需提示错误
         try {
             await action()
-            props.onDone()
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
+            // 404 = 该 request 已被处理（首次 approve 成功但 SSE 滞后致 UI 未更新、用户重复点击）。
+            // 此时同步真实状态即可，不报错；其余错误正常提示
+            if (!(isAxiosError(e) && e.response?.status === 404)) {
+                setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
+                handled = false
+            }
         }
+        if (!handled) return
+        // approve/deny 成功（或 404 已处理）：失效 session 强制重拉最新 agentState，
+        // UI 立即移除 permission，不依赖 SSE session-updated 到达。
+        // 对齐 AskUserQuestionFooter / RequestUserInputFooter，补齐此前遗漏的失效
+        queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
+        props.onDone()
     }
 
     // 「允许本次」：不写 updatedPermissions，SDK 下次同工具仍会调 canCallTool

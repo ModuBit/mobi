@@ -19,6 +19,9 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AxiosError } from 'axios'
+import { queryKeys } from '@/core/lib/query-keys'
 import type { ToolInfo, ToolPermission } from '@/domain/tool/types'
 import type { PermissionUpdate } from '@mobi/shared'
 import type { MobiApi } from '@/core/data/api/client'
@@ -77,8 +80,14 @@ beforeAll(() => {
     })
 })
 
+// 每个用例在 beforeEach 新建（避免跨用例缓存污染）
+let queryClient: QueryClient
+let invalidateSpy: ReturnType<typeof vi.spyOn>
+
 const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <ConfigProvider>{children}</ConfigProvider>
+    <ConfigProvider>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </ConfigProvider>
 )
 
 const sessionSuggestion: PermissionUpdate = {
@@ -129,6 +138,10 @@ describe('PermissionFooter', () => {
         mockApprove.mockClear()
         mockDeny.mockClear()
         mockSetPermissionMode.mockClear()
+        queryClient = new QueryClient({
+            defaultOptions: { queries: { retry: false } },
+        })
+        invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
     })
     afterEach(cleanup)
 
@@ -167,6 +180,32 @@ describe('PermissionFooter', () => {
         renderFooter(makeTool())
         fireEvent.click(screen.getByText('允许'))
         await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    })
+
+    it('approve 成功后失效 session 缓存，UI 移除 permission 不依赖 SSE', async () => {
+        // 对齐 AskUserQuestion/RequestUserInput：approve 成功后主动失效 session 强制重拉 agentState，
+        // 而非完全依赖 SSE session-updated 到达（SSE 丢失/迟到会导致 permission 卡住不消失）
+        renderFooter(makeTool())
+        fireEvent.click(screen.getByText('允许'))
+        await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s1', 'p1'))
+        await waitFor(() => {
+            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.session('s1') })
+        })
+    })
+
+    it('approve 返回 404（request 已被处理）时静默同步，不弹错误', async () => {
+        // 场景：首次 approve 成功但 SSE 滞后 → UI 仍显示 permission → 用户重复点击 →
+        // Hub 已删 request 返回 404。此时应静默拉最新状态让 UI 自愈，而非报错
+        const notFound = new AxiosError('Request not found')
+        ;(notFound as unknown as { response: { status: number } }).response = { status: 404 }
+        mockApprove.mockRejectedValueOnce(notFound)
+        renderFooter(makeTool())
+        fireEvent.click(screen.getByText('允许'))
+        await waitFor(() => {
+            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.session('s1') })
+        })
+        // 404 = 已处理，不弹错误
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
     it('拒绝按钮为警示样式（text + danger 红字，非 primary block）', () => {
