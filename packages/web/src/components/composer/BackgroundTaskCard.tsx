@@ -49,11 +49,11 @@ function taskAvatarStatus(status: BackgroundTask['status']): AgentStatus {
     return status === 'running' ? 'outputting' : 'inactive'
 }
 
-/** 终态图标颜色 */
-function terminalIconColor(status: BackgroundTask['status'], token: GlobalToken): string {
-    if (status === 'completed') return '#52c41a'
-    if (status === 'failed') return token.colorError
-    return token.colorTextQuaternary
+/** 终态色板：completed=success、failed=error、其余（stopped 等）=primary 淡档（与运行中彗星环同色系，自然过渡） */
+function terminalStatusPalette(status: BackgroundTask['status'], token: GlobalToken): { bg: string; fg: string } {
+    if (status === 'completed') return { bg: token.colorSuccessBg, fg: token.colorSuccess }
+    if (status === 'failed') return { bg: token.colorErrorBg, fg: token.colorError }
+    return { bg: token.colorPrimaryBg, fg: token.colorTextTertiary }
 }
 
 /**
@@ -197,7 +197,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                     {task.toolName === 'Agent' ? (
                         <PixelAvatar name={task.taskId} status={taskAvatarStatus(task.status)} size={24} />
                     ) : (
-                        <ToolIcon toolName={task.toolName} status={task.status} bgColor={agentCardBg(name, isDark)} />
+                        <ToolIcon toolName={task.toolName} status={task.status} />
                     )}
                 </div>
                 <div style={{
@@ -231,10 +231,13 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
     )
 }
 
-/** 非Agent工具图标，运行中时带旋转渐变圆环 */
-function ToolIcon({ toolName, status, bgColor }: { toolName: string; status: BackgroundTask['status']; bgColor: string }) {
+/**
+ * 非Agent工具图标
+ * running = 纯彗星缺口环旋转（语义：运行中，不叠工具图标）
+ * 终态 = 柔色底圆 + 浓色 Terminal 图标（语义：bash 工具的结果）
+ */
+function ToolIcon({ toolName, status }: { toolName: string; status: BackgroundTask['status'] }) {
     const { token } = theme.useToken()
-    const isRunning = status === 'running'
 
     if (toolName === 'Monitor') {
         return (
@@ -243,44 +246,39 @@ function ToolIcon({ toolName, status, bgColor }: { toolName: string; status: Bac
                 alignItems: 'center', justifyContent: 'center',
                 borderRadius: 4,
             }}>
-                <Eye size={16} style={{ color: terminalIconColor(status, token) }} />
+                <Eye size={16} style={{ color: terminalStatusPalette(status, token).fg }} />
             </div>
         )
     }
 
-    const icon = <Terminal size={isRunning ? 12 : 16} style={{ color: isRunning ? token.colorTextSecondary : terminalIconColor(status, token) }} />
-
-    if (!isRunning) {
+    // 运行中：纯彗星环。conic-gradient 画「头亮尾透」弧段，radial-mask 挖空中心只留环
+    if (status === 'running') {
+        const ringMask = 'radial-gradient(circle at center, transparent 8px, #000 8.5px)'
         return (
             <div style={{
                 width: 24, height: 24, display: 'flex',
                 alignItems: 'center', justifyContent: 'center',
-                borderRadius: 12,
-                border: `1.5px solid ${terminalIconColor(status, token)}`,
             }}>
-                {icon}
+                <div style={{
+                    width: 22, height: 22, borderRadius: '50%',
+                    background: `conic-gradient(from 0deg, transparent 0%, ${token.colorPrimary} 38%, transparent 72%)`,
+                    WebkitMask: ringMask,
+                    mask: ringMask,
+                    animation: 'bgtask-icon-spin 1.2s linear infinite',
+                }} />
             </div>
         )
     }
 
-    // 运行中：细渐变环（1px conic-gradient 旋转），整体缩小保持视觉平衡
+    // 终态：柔色底圆 + 浓色 Terminal
+    const { bg, fg } = terminalStatusPalette(status, token)
     return (
-        <div style={{ width: 24, height: 24, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{
-                width: 18, height: 18,
-                position: 'absolute',
-                borderRadius: 9,
-                background: `conic-gradient(from 0deg, transparent 0%, ${token.colorPrimary} 30%, transparent 60%)`,
-                animation: 'bgtask-icon-spin 1.5s linear infinite',
-            }} />
-            <div style={{
-                width: 16, height: 16, borderRadius: 8,
-                background: bgColor,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                position: 'relative',
-            }}>
-                {icon}
-            </div>
+        <div style={{
+            width: 22, height: 22, borderRadius: '50%',
+            background: bg,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+            <Terminal size={12} style={{ color: fg }} />
         </div>
     )
 }
