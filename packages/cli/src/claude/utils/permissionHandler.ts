@@ -50,7 +50,7 @@ interface PermissionResponse {
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
 }
 
-const PLAN_EXIT_MODES: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions'];
+const PLAN_EXIT_MODES: PermissionMode[] = ['auto', 'default', 'acceptEdits', 'bypassPermissions'];
 
 function isAskUserQuestionToolName(toolName: string): boolean {
     return toolName === 'AskUserQuestion' || toolName === 'ask_user_question';

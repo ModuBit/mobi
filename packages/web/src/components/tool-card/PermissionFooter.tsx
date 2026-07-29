@@ -247,7 +247,7 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     }
 
     // ExitPlanMode 专用：批准并切换权限模式（保留原 setPermissionMode 兜底）
-    const approveWithMode = async (mode: 'acceptEdits' | 'default') => {
+    const approveWithMode = async (mode: 'acceptEdits' | 'default' | 'auto') => {
         if (busy) return
         setPendingAction('allow')
         await run(async () => {
@@ -384,6 +384,16 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                             <>
                                 <Button
                                     type="primary"
+                                    block={isMobile}
+                                    icon={<CheckOutlined />}
+                                    disabled={disabledAll}
+                                    loading={pendingAction === 'allow'}
+                                    onClick={() => approveWithMode('auto')}
+                                    style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                                >
+                                    {t('chat.tool.approveAuto')}
+                                </Button>
+                                <Button
                                     block={isMobile}
                                     icon={<CheckOutlined />}
                                     disabled={disabledAll}

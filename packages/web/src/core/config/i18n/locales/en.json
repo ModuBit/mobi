@@ -163,6 +163,7 @@
             "allowAll": "Allow all",
             "requestFailed": "Request failed",
             "approveAutoAccept": "Approve (Auto Accept Edits)",
+            "approveAuto": "Approve (Auto)",
             "approveManual": "Approve (Manual Review)",
             "keepPlanning": "Keep Planning",
             "keepPlanningPlaceholder": "Tell Claude what you want it to do next...",

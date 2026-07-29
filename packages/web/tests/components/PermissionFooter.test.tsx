@@ -43,6 +43,7 @@ vi.mock('react-i18next', async (importOriginal) => {
                     'chat.tool.requestFailed': '请求失败',
                     'chat.tool.irreversibleHint': '不可逆，谨慎',
                     'chat.tool.approveAutoAccept': '批准（自动接受编辑）',
+                    'chat.tool.approveAuto': '批准（自动审批）',
                     'chat.tool.approveManual': '批准（手动审批）',
                     'chat.tool.keepPlanning': '继续规划',
                     'chat.tool.keepPlanningPlaceholder': '告诉 Claude 接下来做什么',
@@ -292,23 +293,30 @@ describe('PermissionFooter', () => {
         expect(screen.getByText('全部允许')).toBeInTheDocument()
     })
 
-    it('ExitPlanMode 渲染三按钮且自动接受调用 approve', async () => {
+    it('ExitPlanMode 渲染四按钮，auto 为 primary 且自动审批调用 approve', async () => {
         renderFooter(
             makeTool({
                 name: 'ExitPlanMode',
                 input: { plan: 'step 1' },
             }),
         )
-        // 三个按钮均渲染
-        const autoAccept = screen.getByText('批准（自动接受编辑）')
+        // 四个按钮均渲染
+        const auto = screen.getByText('批准（自动审批）').closest('button')!
+        const autoAccept = screen.getByText('批准（自动接受编辑）').closest('button')!
         const manual = screen.getByText('批准（手动审批）')
         const keepPlanning = screen.getByText('继续规划')
+        expect(auto).toBeInTheDocument()
         expect(autoAccept).toBeInTheDocument()
         expect(manual).toBeInTheDocument()
         expect(keepPlanning).toBeInTheDocument()
 
-        // 自动接受 → approveWithMode('acceptEdits') → api.permissions.approve
-        fireEvent.click(autoAccept)
-        await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s1', 'p1', { mode: 'acceptEdits' }))
+        // auto 为 primary（最前），acceptEdits/manual 降普通
+        expect(auto.classList.contains('ant-btn-primary')).toBe(true)
+        expect(autoAccept.classList.contains('ant-btn-primary')).toBe(false)
+
+        // 自动审批 → approveWithMode('auto') → api.permissions.approve({ mode: 'auto' })
+        fireEvent.click(auto)
+        await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s1', 'p1', { mode: 'auto' }))
+        await waitFor(() => expect(mockSetPermissionMode).toHaveBeenCalledWith('s1', 'auto'))
     })
 })

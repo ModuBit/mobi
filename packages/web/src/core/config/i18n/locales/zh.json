@@ -163,6 +163,7 @@
             "allowAll": "允许所有",
             "requestFailed": "请求失败",
             "approveAutoAccept": "批准（自动接受编辑）",
+            "approveAuto": "批准（自动审批）",
             "approveManual": "批准（手动审批）",
             "keepPlanning": "继续规划",
             "keepPlanningPlaceholder": "告诉 Claude 你希望它接下来做什么...",
