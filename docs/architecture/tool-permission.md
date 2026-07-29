@@ -32,7 +32,7 @@ AgentState.requests: Record<toolCallId, {
 
 **PermissionMode** — `packages/shared/src/modes.ts`
 
-四种权限模式：`'default'`（逐次审批）、`'acceptEdits'`（自动允许编辑）、`'bypassPermissions'`（跳过所有）、`'plan'`（规划模式，不允许编辑操作）。
+六种权限模式（自由度递增，auto 置顶）：`'auto'`（自动审批，智能放行常规、拦截危险）、`'default'`（逐次审批）、`'acceptEdits'`（自动允许编辑）、`'plan'`（规划模式，不允许编辑操作）、`'dontAsk'`（未预批准的一律拒绝、不弹窗）、`'bypassPermissions'`（跳过所有）。
 
 **Socket.IO 事件** — `packages/shared/src/socket.ts`
 
@@ -172,7 +172,8 @@ response.approved
 
 **触发**：模型在 plan mode 下完成规划，调用 `exit_plan_mode` 工具（携带 `plan` 参数）。
 
-**Web UI**：`PermissionFooter` — 特殊三按钮：
+**Web UI**：`PermissionFooter` — 特殊四按钮（auto 为 primary）：
+- 自动审批（`approveWithMode('auto')`，primary — 日常推荐档）
 - 自动接受编辑（`approveWithMode('acceptEdits')`）
 - 手动审批（`approveWithMode('default')`）
 - 继续规划（deny，带反馈输入框）
