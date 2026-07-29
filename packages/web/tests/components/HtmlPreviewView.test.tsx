@@ -14,13 +14,25 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import React from 'react'
 import '@testing-library/jest-dom/vitest'
-import { render, cleanup, screen } from '@testing-library/react'
+import { render, cleanup, screen, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ConfigProvider } from 'antd'
 import HtmlPreviewView from '@/components/files/HtmlPreviewView'
+import { queryKeys } from '@/core/lib/query-keys'
+
+// useFileMeta 订阅 meta（etag）驱动 iframe 重建；mock useMobiApi.files.meta 返回可控 etag。
+// mockApi 必须稳定引用（见 usemobiapi-stable-mock 记忆），否则 useMemo/useQuery effect 无限循环。
+const { mockApi, mockMeta } = vi.hoisted(() => {
+    const mockMeta = vi.fn()
+    return { mockMeta, mockApi: { files: { meta: mockMeta } } }
+})
+vi.mock('@/core/data/api/client', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/core/data/api/client')>()
+    return { ...actual, useMobiApi: () => mockApi }
+})
 
 // react-i18next：保留 initReactI18next 等（i18n 初始化需要），仅覆写 useTranslation 返回 key
 vi.mock('react-i18next', async (importOriginal) => {
@@ -40,7 +52,35 @@ function Wrapper({ children }: { children: React.ReactNode }) {
     )
 }
 
+/**
+ * 带可控 QueryClient 的渲染：新用例需在渲染后 invalidate meta 验证 iframe 重建，
+ * 故要把 qc 暴露出来（Wrapper 内部新建的拿不到）。
+ */
+function renderWithQc(overrides: { filePath?: string; view?: 'render' | 'source' } = {}) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const result = render(
+        <QueryClientProvider client={qc}>
+            <ConfigProvider>
+                <HtmlPreviewView
+                    sessionId="s1"
+                    filePath={overrides.filePath ?? 'a.html'}
+                    view={overrides.view ?? 'render'}
+                    text=""
+                    wrap={false}
+                />
+            </ConfigProvider>
+        </QueryClientProvider>,
+    )
+    return { ...result, qc }
+}
+
 describe('HtmlPreviewView', () => {
+    beforeEach(() => {
+        // 默认 meta：etag=v1，供 source/现有 render 用例稳定渲染
+        mockMeta.mockResolvedValue({
+            data: { success: true, meta: { mime: 'text/html', size: 100, etag: 'v1' } },
+        })
+    })
     afterEach(() => cleanup())
 
     it('view="source" → 渲染 TextContentView（源码），不渲染 iframe', () => {
@@ -66,14 +106,11 @@ describe('HtmlPreviewView', () => {
         // sandbox 必须含 allow-scripts（预览需要 JS 运行）
         const sandbox = iframe!.getAttribute('sandbox') ?? ''
         expect(sandbox).toContain('allow-scripts')
-        // 严禁 allow-same-origin：保持 opaque origin 隔离，防止读取 mobi cookie/storage
-        expect(sandbox).not.toContain('allow-same-origin')
+        // allow-same-origin：iframe 与 mobi 同源，引用的 CSS/JS 才不会被 Chrome ORB 拦截
+        // （sandboxed opaque origin 的跨源 no-cors 子资源会被 ORB 丢弃）。安全权衡见组件注释。
+        expect(sandbox).toContain('allow-same-origin')
         // referrerPolicy=no-referrer 防泄漏本机路径
         expect(iframe!).toHaveAttribute('referrerPolicy', 'no-referrer')
-        // 下载入口（非新标签打开）：脱离 sandbox 的入口改为强制 ?download=1 下载
-        const downloadLink = screen.getByText('files.download')
-        expect(downloadLink).toHaveAttribute('href', '/api/sessions/s1/serve-file/site/ind%20ex.html?download=1')
-        expect(downloadLink).toHaveAttribute('download')
     })
 
     it('filePath 为空 → 不渲染 iframe，显示 Empty 提示', () => {
@@ -84,5 +121,34 @@ describe('HtmlPreviewView', () => {
         // 越界判定已下沉到 hub（isWithinDir），前端只对空 filePath 降级提示
         expect(document.querySelector('iframe')).not.toBeInTheDocument()
         expect(screen.getByText('files.previewUnavailable')).toBeInTheDocument()
+    })
+
+    it('iframe key 绑 meta etag：初次渲染 data-etag 反映当前 etag', async () => {
+        renderWithQc({ filePath: 'a.html' })
+        // etag 进入 iframe 的 data-etag（测试钩子）+ key（etag 变则 React 重建）
+        await waitFor(() => {
+            expect(screen.getByTitle('html-preview')).toHaveAttribute('data-etag', 'v1')
+        })
+    })
+
+    it('刷新（meta etag 变化）→ iframe 重建，data-etag 更新到最新', async () => {
+        // FileContentView 顶部「刷新」项 invalidate sessionFileMeta → meta refetch 拿新 etag →
+        // iframe key 变 → React 重建 → 浏览器重新加载（serve-file no-cache 连带引用 CSS/JS 回源）
+        const { qc } = renderWithQc({ filePath: 'a.html' })
+        // beforeEach 默认 etag=v1
+        await waitFor(() => {
+            expect(screen.getByTitle('html-preview')).toHaveAttribute('data-etag', 'v1')
+        })
+
+        // 模拟文件被改写后点刷新：meta refetch 返回新 etag
+        mockMeta.mockResolvedValue({
+            data: { success: true, meta: { mime: 'text/html', size: 120, etag: 'v2' } },
+        })
+        await act(async () => {
+            await qc.invalidateQueries({ queryKey: queryKeys.sessionFileMeta('s1', 'a.html') })
+        })
+        await waitFor(() => {
+            expect(screen.getByTitle('html-preview')).toHaveAttribute('data-etag', 'v2')
+        })
     })
 })

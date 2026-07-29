@@ -896,3 +896,33 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 **涉及文件**：
 - `packages/cli/src/claude/claudeRemote.ts` — SDK 消息流消费
 - `packages/web/src/**` — running 状态文案与提示
+
+---
+
+## 35. HTML 预览 iframe `allow-same-origin` 安全权衡（引用资源加载 vs 隔离）
+
+**背景**（2026-07-29）：Web 端 HTML 预览（`HtmlPreviewView` 的 `HtmlIframe`）为支持「Live Server 式刷新 + 引用外部 CSS/JS 生效」，做了两处改动：
+1. iframe `key` 绑定文件 meta etag → 点「刷新」/切回窗口时 etag 变 → iframe 重建 → 重新加载最新内容（serve-file 已 `cache-control: no-cache`，连带引用资源回源验证）。
+2. iframe sandbox 从 `allow-scripts allow-forms allow-popups` **加 `allow-same-origin`**。
+
+**为何必须加 `allow-same-origin`**：sandboxed iframe 不含 `allow-same-origin` 时是 opaque origin，其加载的子资源（CSS/JS）对浏览器是 cross-site no-cors，被 **Chrome ORB（Opaque Response Blocking）** 丢弃，引用的外部样式/脚本完全不生效（实测 `style.css` → `net::ERR_BLOCKED_BY_ORB`）。加 `allow-same-origin` 后 iframe 与 mobi 同源，子资源 same-origin，ORB 不介入（实测 `style.css` → `304` 正常加载）。CORS 头（ACAO）无效——`<link>`/`<script>` 是 no-cors 模式，浏览器不看 ACAO。详见 [chromium #325432959](https://issues.chromium.org/issues/325432959)。
+
+**安全权衡（风险）**：加 `allow-same-origin` 后，**预览的 HTML 内脚本**将能：
+- ✅ **httpOnly cookie 仍安全**——JS 本就读不到 httpOnly cookie
+- ⚠️ 读 mobi 的 **localStorage / sessionStorage**（同源 JS 可访问）
+- ⚠️ 以用户身份**调 mobi API**（同源 fetch 自动带 cookie）
+
+即风险从「完全隔离」放宽到「信任 cwd 里的文件」。
+
+**当前接受的依据**：预览的 HTML 来自用户自己的 session cwd（自有 / Claude 生成），等同用户主动执行该 HTML，信任边界可接受（类 Live Server / CodePen）。用户已知情拍板接受（2026-07-29）。
+
+**后续若要恢复强隔离 + 仍支持引用资源的方向**（目前不做，记录备查）：
+1. **服务端内联引用资源**：serve-file 返回 HTML 时，把引用的本地 CSS/JS 内容内联进 HTML（`<link>` → `<style>`、`<script src>` → `<script>`），iframe 保持 opaque origin，子资源不再是独立请求。代价：hub 端解析 HTML + 读取引用文件 + 相对路径解析，复杂度中等；动态加载的资源覆盖不到。
+2. **子资源走独立无鉴权静态域**：把预览资源放独立 origin（无 cookie 隔离），iframe 仍 sandboxed——但 mobi 单 origin 架构改造成本高。
+3. **CSP 限制**：给 iframe 设严格 CSP 限制脚本能力，但会破坏「预览真实运行 HTML」的预期。
+
+**相关文件**：
+- `packages/web/src/components/files/HtmlPreviewView.tsx` — `HtmlIframe` sandbox + etag 刷新
+- `packages/hub/src/web/routes/serveFileContent.ts` — serve-file 响应头（`no-cache`）
+
+**优先级**：低。当前信任边界（用户 cwd 文件）可接受；待「预览不可信 HTML」成为场景再评估。
