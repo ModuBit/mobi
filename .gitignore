@@ -46,7 +46,6 @@ logs/
 
 .VSCodeCounter
 docs/superpowers/
-docs/claude-agent-sdk/
 docs/test-reports/
 docs/temp/
 .worktrees/

@@ -68,6 +68,7 @@ bun run lint:deps    # 依赖方向检查
 | 编码规范 | [docs/conventions/](docs/conventions/) |
 | 调试规范 | [docs/conventions/debugging.md](docs/conventions/debugging.md) |
 | 配置指南 | [docs/configuration.md](docs/configuration.md) |
+| Claude / Agent SDK 文档 | [docs/claude-agent-sdk/README.md](docs/claude-agent-sdk/README.md)（链接索引，每次拿最新） |
 | 待处理项 | [docs/pending.md](docs/pending.md) |
 
 ## 文档同步
