@@ -14,21 +14,17 @@
  * limitations under the License.
  */
 
-import { theme, Alert } from 'antd'
+import { theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens, thresholdPercent } from '@/core/lib/formatTokens'
 
 /**
- * SDK categories 的 color 是 Claude 终端语义色板名（promptBorder / warning / inactive /
- * purple_FOR_SUBAGENTS_ONLY 等），**不是合法 CSS 色**——直接用作 background 会被浏览器
- * 忽略导致色块透明（进度条看着空）。只有当 color 形如 #hex / rgb() 时才采用，
- * 否则按索引回退到 FALLBACK_PALETTE。
+ * SDK categories 的 color 是 Claude 终端语义色板名（promptBorder / warning / claude /
+ * inactive / *_FOR_SUBAGENTS_ONLY 等），**不是合法 CSS**。同一个色名每次稳定出现——
+ * 按色名映射到固定 CSS 色，保证分类颜色不随数组顺序/数量漂移（旧实现按索引回退，
+ * categories 增减会让同项颜色乱跳）。
  */
-// SDK categories 的 color 是 Claude 终端语义色板名（promptBorder / warning / claude /
-// inactive / *_FOR_SUBAGENTS_ONLY 等），**不是合法 CSS**。同一个色名每次稳定出现——
-// 按色名映射到固定 CSS 色，保证分类颜色不随数组顺序/数量漂移（旧实现按索引回退，
-// categories 增减会让同项颜色乱跳）。
 const SDK_COLOR_MAP: Record<string, string> = {
     promptBorder: '#4d9eff',
     claude: '#d97757',
@@ -94,7 +90,8 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                 </span>
             </div>
 
-            {/* 大条：stacked categories（每段按 tokens/maxTokens 占比，加起来=100%） */}
+            {/* 大条：stacked categories，每段按 tokens/maxTokens 占比绘制（与窗口成比例，
+                与下方分类表分母一致）。Free space 不画段——留底色表示「空」，彩色段总和=已用占比 */}
             <div
                 style={{
                     position: 'relative',
@@ -133,25 +130,47 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                 )}
             </div>
 
-            {/* 距压缩剩余 / 已超阈值（autoCompact 启用且有阈值时才展示） */}
+            {/* 距压缩剩余 / 已超阈值（autoCompact 启用且有阈值时才展示）
+                轻量一行提示：未超阈值用中性灰（context 还够用，不该用警示色惊扰），
+                仅超阈值才转 error 红。字号 11px 与周围一致，避免 Alert 的硕大字号喧宾夺主 */}
             {thresholdPct !== null && usage.isAutoCompactEnabled && (
-                <Alert
-                    type={overThreshold ? 'error' : 'warning'}
-                    showIcon
-                    style={{ marginTop: 8 }}
-                    message={overThreshold
-                        ? t('session.contextUsage.compactReached', { pct: Math.round(thresholdPct) })
-                        : t('session.contextUsage.compactRemaining', { pct: remainingPct })}
-                    description={overThreshold
-                        ? t('session.contextUsage.compactReachedDesc')
-                        : t('session.contextUsage.compactRemainingDesc', {
-                            tokens: formatTokens(remainingTokens),
-                            threshold: Math.round(thresholdPct),
-                        })}
-                />
+                <div
+                    style={{
+                        marginTop: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 11,
+                        lineHeight: 1.6,
+                        color: overThreshold ? token.colorError : token.colorTextTertiary,
+                    }}
+                >
+                    <span
+                        style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            background: overThreshold ? token.colorError : token.colorTextQuaternary,
+                            flexShrink: 0,
+                        }}
+                    />
+                    <span>
+                        {overThreshold
+                            ? t('session.contextUsage.compactReached', { pct: Math.round(thresholdPct) })
+                            : t('session.contextUsage.compactRemaining', { pct: remainingPct })}
+                        <span style={{ marginLeft: 4, color: token.colorTextQuaternary }}>
+                            {overThreshold
+                                ? t('session.contextUsage.compactReachedDesc')
+                                : t('session.contextUsage.compactRemainingDesc', {
+                                    tokens: formatTokens(remainingTokens),
+                                    threshold: Math.round(thresholdPct),
+                                })}
+                        </span>
+                    </span>
+                </div>
             )}
 
-            {/* 分类占用表：catPct 按 maxTokens（categories 之和=maxTokens，故各项加起来=100%） */}
+            {/* 分类占用表：catPct 按 maxTokens（各分类在其上下文窗口中的占比，分母与大条一致） */}
             <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
                 {usage.categories.map((c, i) => {
                     const catPct = usage.maxTokens > 0

@@ -20,6 +20,7 @@ import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { SessionContextBar } from '@/components/session/SessionContextBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
+import type { ContextUsage } from '@mobi/shared'
 
 // mock i18next
 vi.mock('react-i18next', () => ({
@@ -177,6 +178,34 @@ describe('SessionContextBar', () => {
 
         // mousedown 落在吊顶内 → 外部监听不应收起（仍保持展开，后续 click 走 toggle）
         act(() => { fireEvent.mouseDown(bar) })
+        expect(bar).toHaveAttribute('data-expanded', 'true')
+    })
+
+    it('展开态点击浮层内容不收起（浮层与吊顶事件边界隔离）', () => {
+        const metadata: SessionMetadataSummary = {
+            path: '/home/user/project',
+            host: 'localhost',
+            gitBranch: 'main',
+        }
+        const usage: ContextUsage = {
+            totalTokens: 62000,
+            maxTokens: 200000,
+            percentage: 31,
+            isAutoCompactEnabled: false,
+            categories: [{ name: '消息历史', tokens: 62000, color: '#4d9eff' }],
+            apiUsage: null,
+            costUsd: 0.043,
+        }
+
+        vi.useFakeTimers()
+        render(<SessionContextBar metadata={metadata} contextUsage={usage} />, { wrapper })
+
+        const bar = screen.getByRole('button', { name: /session-context/i })
+        expect(bar).toHaveAttribute('data-expanded', 'true')
+
+        // 点击浮层内的分类名（DetailPopover 是 BarContainer 的 DOM 子节点，
+        // 需 stopPropagation 阻断冒泡，否则会触发 toggle 把浮层收起）
+        act(() => { fireEvent.click(screen.getByText('消息历史')) })
         expect(bar).toHaveAttribute('data-expanded', 'true')
     })
 })

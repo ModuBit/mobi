@@ -210,9 +210,11 @@ export function SessionContextBar({ metadata, contextUsage }: SessionContextBarP
                 {/* 收起态：上下文用量百分比 chip（点击切换展开/收起） */}
                 {!expanded && contextUsage ? <ContextUsageChip usage={contextUsage} /> : null}
             </ContentRow>
-            {/* 展开态：上下文用量详情浮层（分类占用 / 距压缩剩余 / 成本）——绝对定位，不挤压对话区 */}
+            {/* 展开态：上下文用量详情浮层（分类占用 / 距压缩剩余 / 成本）——绝对定位，不挤压对话区。
+                stopPropagation：浮层是 BarContainer 的 DOM 子节点，点击浮层内容会冒泡到
+                BarContainer.onClick 触发 toggle 收起；阻断冒泡，让浮层内容可正常查看/交互 */}
             {expanded && contextUsage ? (
-                <DetailPopover>
+                <DetailPopover onClick={(e) => e.stopPropagation()}>
                     <ContextUsageDetail usage={contextUsage} />
                 </DetailPopover>
             ) : null}
