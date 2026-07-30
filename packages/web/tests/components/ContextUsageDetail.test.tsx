@@ -87,4 +87,55 @@ describe('ContextUsageDetail', () => {
         expect(screen.queryByText(/距自动压缩还剩/)).not.toBeInTheDocument()
         expect(screen.getByText(/已达自动压缩阈值/)).toBeInTheDocument()
     })
+
+    it('相同 SDK 语义色名渲染为同一固定色（不随数组索引/数量漂移）', () => {
+        // 场景 A：promptBorder 在索引 0（仅一项）
+        const a = renderDetail(usage({
+            totalTokens: 1000, maxTokens: 100000, percentage: 1,
+            categories: [{ name: 'System prompt', tokens: 1000, color: 'promptBorder' }],
+        }))
+        const aBg = (a.container.querySelector('[data-cat="System prompt"]') as HTMLElement).style.background
+
+        // 场景 B：promptBorder 在索引 6（前面塞 6 项，模拟 categories 增减导致索引漂移）
+        const b = renderDetail(usage({
+            totalTokens: 7000, maxTokens: 100000, percentage: 7,
+            categories: [
+                { name: 'A', tokens: 1000, color: 'claude' },
+                { name: 'B', tokens: 1000, color: 'warning' },
+                { name: 'C', tokens: 1000, color: 'inactive' },
+                { name: 'D', tokens: 1000, color: 'cyan_FOR_SUBAGENTS_ONLY' },
+                { name: 'E', tokens: 1000, color: 'purple_FOR_SUBAGENTS_ONLY' },
+                { name: 'F', tokens: 1000, color: 'success' },
+                { name: 'System prompt', tokens: 1000, color: 'promptBorder' },
+            ],
+        }))
+        const bBg = (b.container.querySelector('[data-cat="System prompt"]') as HTMLElement).style.background
+
+        // 索引从 0 → 6，promptBorder 仍映射到同一固定色，不再因回退调色板而漂移
+        expect(aBg).toBe(bBg)
+        expect(aBg).toMatch(/#4d9eff|rgb\(77,\s*158,\s*255\)/i)
+    })
+
+    it('Free space 中性化：大条不画彩色段，分类表用虚线灰块', () => {
+        // System prompt 与 Free space 同为 promptBorder（SDK 实际如此），且 Free space 占大头
+        const { container } = renderDetail(usage({
+            totalTokens: 1275, maxTokens: 1000000, percentage: 1,
+            categories: [
+                { name: 'System prompt', tokens: 1275, color: 'promptBorder' },
+                { name: 'Free space', tokens: 900959, color: 'promptBorder' },
+            ],
+        }))
+
+        // 大条：Free space 不画彩色段（title 含 'Free space' 的段不存在）
+        const barSegs = container.querySelectorAll('[title*="Free space"]')
+        expect(barSegs).toHaveLength(0)
+
+        // 分类表：Free space 色块透明 + 虚线边（中性「空」），System prompt 仍上色
+        const freeSwatch = container.querySelector('[data-cat="Free space"]') as HTMLElement
+        expect(freeSwatch.style.background).toBe('transparent')
+        expect(freeSwatch.style.borderStyle).toBe('dashed')
+
+        const sysSwatch = container.querySelector('[data-cat="System prompt"]') as HTMLElement
+        expect(sysSwatch.style.background).toMatch(/#4d9eff|rgb\(77,\s*158,\s*255\)/i)
+    })
 })

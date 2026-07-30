@@ -24,11 +24,41 @@ import { formatTokens, thresholdPercent } from '@/core/lib/formatTokens'
  * 忽略导致色块透明（进度条看着空）。只有当 color 形如 #hex / rgb() 时才采用，
  * 否则按索引回退到 FALLBACK_PALETTE。
  */
-const FALLBACK_PALETTE = ['#4d9eff', '#f0883e', '#a371f7', '#3fb950', '#d29922', '#6e7681']
-const CSS_COLOR_RE = /^#[0-9a-fA-F]{3,8}$|^rgb/i
-function resolveColor(color: string | undefined, i: number): string {
-    return color && CSS_COLOR_RE.test(color) ? color : FALLBACK_PALETTE[i % FALLBACK_PALETTE.length]
+// SDK categories 的 color 是 Claude 终端语义色板名（promptBorder / warning / claude /
+// inactive / *_FOR_SUBAGENTS_ONLY 等），**不是合法 CSS**。同一个色名每次稳定出现——
+// 按色名映射到固定 CSS 色，保证分类颜色不随数组顺序/数量漂移（旧实现按索引回退，
+// categories 增减会让同项颜色乱跳）。
+const SDK_COLOR_MAP: Record<string, string> = {
+    promptBorder: '#4d9eff',
+    claude: '#d97757',
+    warning: '#d29922',
+    inactive: '#6e7681',
+    success: '#3fb950',
+    error: '#f85149',
+    cyan_FOR_SUBAGENTS_ONLY: '#39c5cf',
+    purple_FOR_SUBAGENTS_ONLY: '#a371f7',
 }
+const CSS_COLOR_RE = /^#[0-9a-fA-F]{3,8}$|^rgb/i
+const FALLBACK_PALETTE = ['#4d9eff', '#f0883e', '#a371f7', '#3fb950', '#d29922', '#6e7681']
+
+function hashStr(s: string): number {
+    let h = 0
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+    return Math.abs(h)
+}
+
+function resolveColor(color: string | undefined): string {
+    if (!color) return FALLBACK_PALETTE[0]
+    if (CSS_COLOR_RE.test(color)) return color // 已是合法 CSS（测试/自定义）
+    if (SDK_COLOR_MAP[color]) return SDK_COLOR_MAP[color] // SDK 语义色名 → 固定色
+    // 未知色名：按色名 hash 稳定取调色板（不依赖数组索引）
+    return FALLBACK_PALETTE[hashStr(color) % FALLBACK_PALETTE.length]
+}
+
+/** Free space 是「剩余空间」而非占用——SDK 给它的色名（如 promptBorder）常与其它项撞色，
+ *  且语义上应为「空」。单独识别，大条里留空显底色、分类表用虚线灰块，占用项才上彩色。 */
+const FREE_SPACE_RE = /free\s*space/i
+const isFreeSpace = (name: string): boolean => FREE_SPACE_RE.test(name)
 
 /** SessionContextBar 展开态详情：大条 + 距压缩剩余 + 分类占用 + 成本 */
 export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
@@ -73,16 +103,20 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                     display: 'flex',
                 }}
             >
-                {usage.categories.map((c, i) => (
-                    <div
-                        key={c.name}
-                        title={`${c.name}: ${c.tokens.toLocaleString()} tokens`}
-                        style={{
-                            width: `${(c.tokens / usage.maxTokens) * 100}%`,
-                            background: resolveColor(c.color, i),
-                        }}
-                    />
-                ))}
+                {usage.categories.map((c, i) => {
+                    // Free space 不画彩色段——它是剩余空间，留底色表示「空」，占用项彩色堆叠凸显
+                    if (isFreeSpace(c.name)) return null
+                    return (
+                        <div
+                            key={`${c.name}-${i}`}
+                            title={`${c.name}: ${c.tokens.toLocaleString()} tokens`}
+                            style={{
+                                width: `${(c.tokens / usage.maxTokens) * 100}%`,
+                                background: resolveColor(c.color),
+                            }}
+                        />
+                    )
+                })}
                 {thresholdPct !== null && thresholdPct > 0 && thresholdPct <= 100 && (
                     <div
                         style={{
@@ -129,9 +163,10 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                     const catPct = usage.maxTokens > 0
                         ? Math.round((c.tokens / usage.maxTokens) * 100)
                         : 0
+                    const free = isFreeSpace(c.name)
                     return (
                         <div
-                            key={c.name}
+                            key={`${c.name}-${i}`}
                             style={{
                                 display: 'grid',
                                 gridTemplateColumns: '10px 1fr 40px 56px',
@@ -139,14 +174,19 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                                 alignItems: 'center',
                             }}
                         >
-                            <span style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 2,
-                                background: resolveColor(c.color, i),
-                            }} />
-                            <span style={{ color: token.colorText }}>{c.name}</span>
-                            <span style={{ textAlign: 'right' }}>{catPct}%</span>
+                            <span
+                                data-cat={c.name}
+                                style={{
+                                    width: 8,
+                                    height: 8,
+                                    borderRadius: 2,
+                                    background: free ? 'transparent' : resolveColor(c.color),
+                                    border: free ? `1px dashed ${token.colorBorder}` : 'none',
+                                    boxSizing: 'border-box',
+                                }}
+                            />
+                            <span style={{ color: free ? token.colorTextTertiary : token.colorText }}>{c.name}</span>
+                            <span style={{ textAlign: 'right', color: free ? token.colorTextQuaternary : undefined }}>{catPct}%</span>
                             <span style={{ textAlign: 'right', color: token.colorTextTertiary }}>
                                 {formatTokens(c.tokens)}
                             </span>
