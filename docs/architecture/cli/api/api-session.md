@@ -154,7 +154,7 @@ Session 级 RPC 通过 `RpcHandlerManager` 管理：
 
 ### 上下文用量上报
 
-`reportContextUsage(usage)` 通过 `socket.emit('context-usage', { sid, contextUsage })` 上报上下文用量。由 `claudeRemoteLauncher` 事件驱动触发（`system/init` · `assistant` · `result` · `/compact` 完成 · `/clear`），经 `ContextUsageCollector` 调 SDK `getContextUsage()` 裁剪后上报。Hub 落库到 `runtimeState.contextUsage`（复用 `updateRuntimeStateField`）+ SSE 推 Web。非定时轮询（定时器兜底见 `docs/pending.md` #36）。
+`reportContextUsage(usage)` 通过 `socket.emit('context-usage', { sid, contextUsage })` 上报上下文用量。每轮 `result` 时由 `claudeRemoteLauncher` 本地组装（**不调** SDK `getContextUsage()`——其在子进程内会触发大量 `count_tokens` 请求撑爆 provider 限流）：`totalTokens` = 最后一条 assistant 的 `input+cache_creation+cache_read`（当前占用），`maxTokens` = `result.modelUsage[model].contextWindow`，`costUsd` = `result.total_cost_usd`。Hub 落库到 `runtimeState.contextUsage`（复用 `updateRuntimeStateField`）+ SSE 推 Web。
 
 ## IdleTimer 集成
 

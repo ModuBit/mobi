@@ -124,14 +124,24 @@
         "contextUsage": {
             "usage": "Context usage",
             "cost": "Session cost",
-            "compactRemaining": "~{{pct}}% left before auto-compact",
-            "compactRemainingDesc": "approx. {{tokens}} tokens · threshold {{threshold}}%",
-            "compactReached": "Auto-compact threshold reached ({{pct}}%)",
-            "compactReachedDesc": "Compaction may trigger on the next turn",
-            "threshold": "Threshold {{pct}}%"
+            "windowRemaining": "~{{pct}}% to window limit",
+            "windowRemainingDesc": "({{tokens}} tokens)",
+            "remaining": "{{tokens}} left",
+            "toggleHint": "Toggle percentage / used tokens"
         }
     },
     "chat": {
+        "turnDetail": {
+            "duration": "Duration",
+            "ttft": "First token",
+            "turns": "Turns",
+            "model": "Model",
+            "cost": "Cost",
+            "input": "Input",
+            "output": "Output",
+            "cacheRead": "Cache read",
+            "cacheWrite": "Cache write"
+        },
         "thinking": "Thinking...",
         "thought": "Thought",
         "contextReset": "Context was reset",

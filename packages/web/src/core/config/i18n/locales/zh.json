@@ -124,14 +124,24 @@
         "contextUsage": {
             "usage": "上下文用量",
             "cost": "会话成本",
-            "compactRemaining": "距自动压缩还剩 ~{{pct}}%",
-            "compactRemainingDesc": "约 {{tokens}} tokens · 阈值 {{threshold}}%",
-            "compactReached": "已达自动压缩阈值（{{pct}}%）",
-            "compactReachedDesc": "下次轮次可能触发压缩",
-            "threshold": "阈值 {{pct}}%"
+            "windowRemaining": "距窗口上限剩 ~{{pct}}%",
+            "windowRemainingDesc": "（{{tokens}} tokens）",
+            "remaining": "剩 {{tokens}}",
+            "toggleHint": "点击切换 百分比 / 已用 tokens"
         }
     },
     "chat": {
+        "turnDetail": {
+            "duration": "耗时",
+            "ttft": "首 token",
+            "turns": "轮次",
+            "model": "模型",
+            "cost": "成本",
+            "input": "输入",
+            "output": "输出",
+            "cacheRead": "缓存读",
+            "cacheWrite": "缓存写"
+        },
         "thinking": "思考中...",
         "thought": "思考完成",
         "contextReset": "上下文已重置",

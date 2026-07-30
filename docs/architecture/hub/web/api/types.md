@@ -435,7 +435,7 @@ interface RuntimeState {
     teamState?: TeamState
     model?: string | null
     effort?: EffortLevel
-    contextUsage?: ContextUsage // 上下文用量快照（CLI 事件驱动采集，见 ContextUsage）
+    contextUsage?: ContextUsage // 上下文用量快照（每轮 result 由 CLI 从 usage 字段本地派生，见 ContextUsage）
 }
 ```
 

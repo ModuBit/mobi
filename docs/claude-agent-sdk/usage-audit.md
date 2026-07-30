@@ -153,7 +153,9 @@ mobi 写一个临时 settings.json，配置 `SessionStart` hook 执行 `mobi hoo
 
 ## 三、可用但暂未使用、能提升 mobi 的能力（按价值排序）
 
-### 🚀 P1 — `getContextUsage()`：上下文用量仪表盘
+### ⛔ P1（已弃用）— `getContextUsage()`：上下文用量仪表盘
+
+> **已弃用（2026-07-30）**：实测 `getContextUsage()` 在 claude 子进程内会触发大量 `count_tokens` API + 失败时的 Haiku `messages.create` 兜底（见 clawd-code `analyzeContextUsage` → `countTokensWithFallback`），mobi 原把它接到每条消息事件上自动跑，直接撑爆 provider 请求频率限制（连发必 429）。已**彻底移除**：仪表盘改由 `result.modelUsage[model].contextWindow`（窗口大小）+ 最后一条 assistant 的 `input+cache_creation+cache_read`（当前占用）派生，零额外 API。失去的分类细分（system/tools/mcp/memory）不再提供。
 
 SDK 提供 `Query.getContextUsage()` 返回上下文窗口按类别（system prompt / tools / messages / MCP tools / memory）的 token 占用与总量。
 

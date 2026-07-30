@@ -300,43 +300,23 @@ export const TeamStateSchema = z.object({
 export type TeamState = z.infer<typeof TeamStateSchema>
 
 /**
- * 上下文用量分类项（system prompt / tools / messages / MCP / memory 等）
- * 由 SDK getContextUsage().categories 裁剪而来
- */
-export const ContextUsageCategorySchema = z.object({
-    name: z.string(),
-    tokens: z.number(),
-    /** SDK 给的展示色（可选，前端可覆盖） */
-    color: z.string().optional(),
-})
-
-/**
- * API token 用量明细（输入/输出/缓存读/缓存写）
- */
-export const ContextUsageApiSchema = z.object({
-    input_tokens: z.number(),
-    output_tokens: z.number(),
-    cache_read_input_tokens: z.number(),
-    cache_creation_input_tokens: z.number(),
-})
-
-/**
  * 上下文窗口用量快照
  *
- * 由 CLI 调 SDK `Query.getContextUsage()` 采集，裁剪掉前端用不到的大字段
- * （gridRows / mcpTools / memoryFiles / skills 等）后，作为 runtimeState.contextUsage 落库。
- * 事件驱动采集（init / assistant / result / compact / clear），非定时轮询。
+ * 完全由 SDK 消息流派生，**不调用** `Query.getContextUsage()`（后者会触发大量
+ * count_tokens / Haiku 兜底请求，撑爆 provider 请求频率限制）。每轮 result 后由 CLI 本地组装：
+ * - totalTokens：最后一条 assistant 消息的 input + cache_creation + cache_read（当前窗口占用）
+ * - maxTokens：result.modelUsage[model].contextWindow（窗口大小）
+ * - percentage：totalTokens / maxTokens × 100
+ * - costUsd：result.total_cost_usd（会话累计成本）
+ *
+ * 不再包含分类细分（system/tools/mcp/memory）——那只有 getContextUsage 能给，代价过高。
+ * 「距窗口上限剩余」= maxTokens − totalTokens，无需阈值。
  */
 export const ContextUsageSchema = z.object({
     totalTokens: z.number(),
     maxTokens: z.number(),
     /** 已用占 maxTokens 的百分比（0–100） */
     percentage: z.number(),
-    /** autoCompact 触发阈值百分比，距此即「还剩多少到压缩」 */
-    autoCompactThreshold: z.number().optional(),
-    isAutoCompactEnabled: z.boolean(),
-    categories: z.array(ContextUsageCategorySchema),
-    apiUsage: ContextUsageApiSchema.nullable(),
     /** 会话累计成本（USD），取自 result.total_cost_usd */
     costUsd: z.number(),
 })

@@ -15,7 +15,100 @@
  */
 
 import type React from 'react'
+import { useState } from 'react'
+import { theme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { formatMessageTime } from '@/core/utils/timeFormat'
+import { formatTokens } from '@/core/lib/formatTokens'
+import type { AgentEvent } from './types'
+
+/** 毫秒 → 可读时长（turn 概要与详情共用，避免两处公式偏移） */
+function formatDurationMs(ms: number): string {
+    if (ms >= 60000) {
+        const min = Math.floor(ms / 60000)
+        const sec = Math.floor((ms % 60000) / 1000)
+        return `${min}m ${sec}s`
+    }
+    if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`
+    return `${ms}ms`
+}
+
+/** token 数 → 「N tokens / Nk tokens」概要串 */
+function formatTokensCount(tokens: number): string {
+    return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k tokens` : `${tokens} tokens`
+}
+
+type TurnResultEvent = Extract<AgentEvent, { type: 'turn-result' }>
+
+/** 详情表单行：label 左、value 右（tabular-nums 对齐） */
+function DetailRow({ label, value }: { label: string; value: string | number }) {
+    const { token } = theme.useToken()
+    return (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '2px 0' }}>
+            <span style={{ color: token.colorTextTertiary }}>{label}</span>
+            <span style={{ color: token.colorText, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+        </div>
+    )
+}
+
+/**
+ * turn 结束概要（可折叠）。收起态保持「duration · N tokens · time」一行概要，
+ * 展开态显示 result 完整详情（耗时/首 token/轮次/模型/成本/token 细分）。
+ * 数据全部来自 CLI 透传的 result 消息，零额外采集。
+ */
+function TurnResultMeta({ event, createdAt }: { event: TurnResultEvent; createdAt?: number }) {
+    const { t } = useTranslation()
+    const { token } = theme.useToken()
+    const [open, setOpen] = useState(false)
+    const dur = formatDurationMs(event.durationMs)
+    const time = createdAt ? formatMessageTime(createdAt) : null
+    const hasDetail = event.numTurns != null || event.ttftMs !== undefined || event.costUsd !== undefined
+        || event.inputTokens !== undefined || event.model !== undefined
+        || event.cacheReadTokens !== undefined || event.cacheCreationTokens !== undefined
+
+    return (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: token.colorTextTertiary }}>
+            <span
+                role="button"
+                onClick={hasDetail ? () => setOpen(o => !o) : undefined}
+                style={{ cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none' }}
+            >
+                {hasDetail && <span style={{ display: 'inline-block', width: '1em' }}>{open ? '▾' : '▸'}</span>}
+                {dur} · {formatTokensCount(event.tokens)}
+                {time && <span style={{ marginLeft: 8 }}>{time}</span>}
+            </span>
+            {hasDetail && (
+                <div
+                    style={{
+                        display: 'grid',
+                        gridTemplateRows: open ? '1fr' : '0fr',
+                        opacity: open ? 1 : 0,
+                        transition: 'grid-template-rows 0.22s ease, opacity 0.22s ease',
+                    }}
+                >
+                    <div style={{ overflow: 'hidden' }}>
+                        <div style={{ marginTop: 6, padding: '6px 10px', borderLeft: `2px solid ${token.colorBorderSecondary}`, marginLeft: '1em' }}>
+                            <DetailRow label={t('chat.turnDetail.duration')} value={dur} />
+                            {event.ttftMs !== undefined && <DetailRow label={t('chat.turnDetail.ttft')} value={formatDurationMs(event.ttftMs)} />}
+                            {event.numTurns != null && <DetailRow label={t('chat.turnDetail.turns')} value={event.numTurns} />}
+                            {event.model && <DetailRow label={t('chat.turnDetail.model')} value={event.model} />}
+                            {event.costUsd !== undefined && <DetailRow label={t('chat.turnDetail.cost')} value={`$${event.costUsd.toFixed(4)}`} />}
+                            {event.inputTokens !== undefined && <DetailRow label={t('chat.turnDetail.input')} value={formatTokens(event.inputTokens)} />}
+                            {event.outputTokens !== undefined && <DetailRow label={t('chat.turnDetail.output')} value={formatTokens(event.outputTokens)} />}
+                            {event.cacheReadTokens !== undefined && <DetailRow label={t('chat.turnDetail.cacheRead')} value={formatTokens(event.cacheReadTokens)} />}
+                            {event.cacheCreationTokens !== undefined && <DetailRow label={t('chat.turnDetail.cacheWrite')} value={formatTokens(event.cacheCreationTokens)} />}
+                        </div>
+                    </div>
+                </div>
+            )}
+            {event.error && (
+                <div style={{ marginTop: 2, color: 'rgba(255, 77, 79, 0.63)', fontFamily: 'var(--font-sans)' }}>
+                    {event.error}
+                </div>
+            )}
+        </div>
+    )
+}
 
 /** 从嵌套 error 对象中提取错误详情 */
 export function extractApiErrorDetail(error: unknown): string | null {
@@ -122,42 +215,7 @@ export function formatEvent(
             return t('chat.planMode.enterFailed')
         }
         case 'turn-result': {
-            const durationMs = Number(event.durationMs) || 0
-            const tokens = Number(event.tokens) || 0
-            const error = typeof event.error === 'string' ? event.error : null
-
-            let durationText: string
-            if (durationMs >= 60000) {
-                const min = Math.floor(durationMs / 60000)
-                const sec = Math.floor((durationMs % 60000) / 1000)
-                durationText = `${min}m ${sec}s`
-            } else if (durationMs >= 1000) {
-                durationText = `${(durationMs / 1000).toFixed(1)}s`
-            } else {
-                durationText = `${durationMs}ms`
-            }
-
-            const tokensText = tokens >= 1000
-                ? `${(tokens / 1000).toFixed(1)}k tokens`
-                : `${tokens} tokens`
-
-            const time = createdAt ? formatMessageTime(createdAt) : null
-
-            return (
-                <div style={{ fontFamily: 'var(--font-mono)' }}>
-                    {durationText} · {tokensText}
-                    {time && <span style={{ marginLeft: 8 }}>{time}</span>}
-                    {error && (
-                        <div style={{
-                            marginTop: 2,
-                            color: 'rgba(255, 77, 79, 0.63)',
-                            fontFamily: 'var(--font-sans)',
-                        }}>
-                            {error}
-                        </div>
-                    )}
-                </div>
-            )
+            return <TurnResultMeta event={event as TurnResultEvent} createdAt={createdAt} />
         }
         default:
             return null

@@ -29,10 +29,9 @@ import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
-import { ContextUsageCollector } from "./utils/contextUsageCollector";
 import type { RawJSONLines } from "./types";
 import { classifyMessage } from '@mobi/shared';
-import type { ClaudePermissionMode } from "@mobi/shared/types";
+import type { ClaudePermissionMode, ContextUsage } from "@mobi/shared/types";
 import {
     RemoteLauncherBase,
     type RemoteLauncherDisplayContext,
@@ -60,8 +59,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private queryRef: Query | null = null;
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 文本 push 进 SDK input stream
     private steerSink: ((text: string) => boolean) | null = null;
-    // 上下文用量采集器（事件驱动；见 handleContextUsage）
-    private readonly contextCollector = new ContextUsageCollector();
 
     constructor(
         session: Session,
@@ -124,24 +121,36 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     }
 
     /**
-     * 事件驱动采集上下文用量并上报 hub。只在稳定态（init/result）采集——
-     * SDK getContextUsage 在 turn 进行中返回不稳定（totalTokens 在长对话中突跳到 ~24k 再跳回），
-     * 故不在 assistant 采集。result 携带 cost 更新累计成本。
-     * 采集失败（getContextUsage 抛错）由 collector 内部兜住返回 null，此处跳过上报。
-     * 定时器兜底见 docs/pending.md #36。
+     * 上下文用量上报：纯本地组装，零额外 API（不调 SDK getContextUsage——其内部 count_tokens /
+     * Haiku 兜底请求会撑爆 provider 请求频率限制）。全部取自 SDKResultMessage：
+     * - totalTokens = usage 的 input + cache_creation + cache_read（单步 turn = 当前窗口占用；
+     *   多步 turn 为累计，偏大但保守侧，仪表盘倾向更早提示 /compact）
+     * - maxTokens = modelUsage 主模型的 contextWindow（窗口大小）
+     * - percentage = totalTokens / maxTokens × 100
+     * - costUsd = total_cost_usd（会话累计成本）
      */
-    private async handleContextUsage(
-        trigger: 'init' | 'result',
-        resultMsg?: SDKResultMessage,
-    ): Promise<void> {
-        const source = this.queryControlRef?.current;
-        if (!source) return;
-        const usage = await this.contextCollector.collect(source, resultMsg);
-        if (!usage) return;
+    private handleContextUsage(resultMsg: SDKResultMessage): void {
+        const u = resultMsg.usage
+        const totalTokens = u
+            ? (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
+            : 0
+        const entries = Object.values(resultMsg.modelUsage ?? {})
+        // 主模型：取累计 inputTokens 最大的（fallback/subagent 可能有多个，主对话占大头）
+        const main = entries.length > 0
+            ? entries.reduce((a, b) => (b.inputTokens > a.inputTokens ? b : a))
+            : null
+        const maxTokens = main?.contextWindow ?? 0
+        const percentage = maxTokens > 0 ? (totalTokens / maxTokens) * 100 : 0
+        const usage: ContextUsage = {
+            totalTokens,
+            maxTokens,
+            percentage,
+            costUsd: resultMsg.total_cost_usd ?? 0,
+        }
         try {
-            await this.session.client.reportContextUsage(usage);
+            this.session.client.reportContextUsage(usage)
         } catch (e) {
-            logger.debug('[remote]: reportContextUsage failed', e);
+            logger.debug('[remote]: reportContextUsage failed', e)
         }
     }
 
@@ -529,11 +538,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onContextCleared: () => {
                             logger.debug('[remote]: Context cleared');
-                            this.contextCollector.reset();
                             session.client.sendSessionEvent({ type: 'context-cleared' });
                         },
-                        onContextUsage: (trigger, resultMsg) => {
-                            void this.handleContextUsage(trigger, resultMsg);
+                        onContextUsage: (resultMsg) => {
+                            this.handleContextUsage(resultMsg);
                         },
                         onSessionReset: () => {
                             logger.debug('[remote]: Session reset');

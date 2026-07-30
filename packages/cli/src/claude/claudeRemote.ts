@@ -26,8 +26,8 @@ import {
     type SDKSystemMessage,
     type SDKUserMessage,
     type SDKAssistantMessage,
-    type SDKResultMessage,
     type SDKPartialAssistantMessage,
+    type SDKResultMessage,
     type McpServerConfig,
 } from '@anthropic-ai/claude-agent-sdk'
 import { claudeCheckSession } from "./utils/claudeCheckSession";
@@ -334,14 +334,11 @@ export async function sdkOutputLoop(
          */
         onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void
         /**
-         * 上下文用量采集触发（事件驱动，非轮询）。
-         * - 'init'：system/init 后采基线（resume/启动，覆盖 DB 旧值）
-         * - 'result'：轮次结束主采集点；resultMsg 用于更新累计成本（compact 的 result 也走此，自动反映压缩后用量）
-         * 不在 assistant（turn 中间）采集：SDK getContextUsage 在 turn 进行中返回不稳定
-         * （观察到 totalTokens 在 196k↔24k 间抖动，messages 尚未稳定计入），只在稳定态采集避免假数据。
-         * 定时器兜底见 docs/pending.md #36。
+         * 上下文用量上报触发（每轮 result 一次，零额外 API）。launcher 从 resultMsg 的
+         * usage / modelUsage / total_cost_usd 本地组装 ContextUsage。**不调用** SDK getContextUsage
+         * （其内部 count_tokens / Haiku 兜底请求会撑爆限流）。
          */
-        onContextUsage?: (trigger: 'init' | 'result', resultMsg?: SDKResultMessage) => void
+        onContextUsage?: (resultMsg: SDKResultMessage) => void
     },
 ): Promise<void> {
     let queryStarted = false;
@@ -400,8 +397,6 @@ export async function sdkOutputLoop(
                 logger.debug(`[sdkOutputLoop] Session file found: ${systemInit.session_id} ${found}`);
                 opts.onSessionFound(systemInit.session_id);
             }
-            // 基线采集（resume/启动后立即采一次，覆盖 DB 旧值）
-            opts.onContextUsage?.('init');
         }
 
         // 处理 result 消息：不阻塞，直接继续拉取后台消息
@@ -426,8 +421,8 @@ export async function sdkOutputLoop(
             // 通知就绪
             opts.onReady();
 
-            // 轮次结束采集：主采集点 + cost 提取（compact 的 result 也走此分支，自动反映压缩后用量）
-            opts.onContextUsage?.('result', message as SDKResultMessage);
+            // 上下文用量上报（每轮一次，零额外 API）：launcher 从 resultMsg 本地组装
+            opts.onContextUsage?.(message as SDKResultMessage);
         }
     }
 
@@ -550,8 +545,8 @@ export async function claudeRemote(opts: {
     /** 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库（由 launcher 实现 convert+send） */
     onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void,
     onSessionReset?: () => void,
-    /** 上下文用量采集触发（事件驱动；由 launcher 实现采集+节流+上报） */
-    onContextUsage?: (trigger: 'init' | 'result', resultMsg?: SDKResultMessage) => void,
+    /** 上下文用量上报触发（result 时；launcher 从 resultMsg 本地组装，零额外 API） */
+    onContextUsage?: (resultMsg: SDKResultMessage) => void,
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
     onQueryReady?: (query: Query) => void,
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息

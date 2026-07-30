@@ -929,7 +929,9 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 
 ---
 
-## 36. 上下文用量采集的定时器兜底（暂用纯事件驱动）
+## 36. ~~上下文用量采集的定时器兜底~~（已失效）
+
+> **已失效（2026-07-30）**：`getContextUsage()` 因在 claude 子进程内触发大量 `count_tokens` / Haiku 兜底请求，撑爆 provider 请求频率限制（连发消息必 429），已**彻底移除**。仪表盘改为完全由 `result` / `assistant` 消息的 usage 字段派生（零额外 API），"事件驱动采集"不复存在，本条定时器兜底讨论随之作废。
 
 **背景**（2026-07-29）：上下文用量仪表盘（composer thread 线 + SessionContextBar 吊顶详情）的采集采用**纯事件驱动**——在 `load` / `resume` / `/compact` / `/clear` / `error` / 每条 assistant message / `result` 这些上下文显著变化的时刻调 SDK 的 `getContextUsage()`。这些事件覆盖了绝大多数变化时刻（含长 turn 中间 tool 循环的增长——每条 assistant message 都会刷新）。
 

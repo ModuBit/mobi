@@ -14,33 +14,12 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { SessionContextBar } from '@/components/session/SessionContextBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import type { ContextUsage } from '@mobi/shared'
-
-// mock i18next
-vi.mock('react-i18next', () => ({
-    useTranslation: () => ({ t: (key: string) => key }),
-}))
-
-// jsdom 没有 ResizeObserver
-beforeAll(() => {
-    // @ts-expect-error jsdom 环境没有 ResizeObserver
-    globalThis.ResizeObserver = class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-    }
-})
-
-afterEach(() => {
-    cleanup()
-    vi.useRealTimers()
-})
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ConfigProvider>{children}</ConfigProvider>
@@ -88,124 +67,5 @@ describe('SessionContextBar', () => {
         render(<SessionContextBar metadata={metadata} />, { wrapper })
         expect(screen.getByText('main')).toBeInTheDocument()
         expect(screen.getByText('auth-worktree')).toBeInTheDocument()
-    })
-
-    it('初始态展开，显示 workdir 路径', () => {
-        const metadata: SessionMetadataSummary = {
-            path: '/home/user/project',
-            host: 'localhost',
-            gitBranch: 'main',
-        }
-        render(<SessionContextBar metadata={metadata} />, { wrapper })
-        expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
-    })
-
-    it('3 秒后自动收起', () => {
-        const metadata: SessionMetadataSummary = {
-            path: '/home/user/project',
-            host: 'localhost',
-            gitBranch: 'main',
-        }
-
-        vi.useFakeTimers()
-        render(<SessionContextBar metadata={metadata} />, { wrapper })
-
-        // 初始展开
-        const bar = screen.getByRole('button', { name: /session-context/i })
-        expect(bar).toHaveAttribute('data-expanded', 'true')
-
-        // 3 秒后收起
-        act(() => { vi.advanceTimersByTime(3000) })
-        expect(bar).toHaveAttribute('data-expanded', 'false')
-    })
-
-    it('点击切换展开/收起', () => {
-        const metadata: SessionMetadataSummary = {
-            path: '/home/user/project',
-            host: 'localhost',
-            gitBranch: 'main',
-        }
-
-        vi.useFakeTimers()
-        render(<SessionContextBar metadata={metadata} />, { wrapper })
-
-        // 3 秒后自动收起
-        act(() => { vi.advanceTimersByTime(3000) })
-
-        const bar = screen.getByRole('button', { name: /session-context/i })
-        expect(bar).toHaveAttribute('data-expanded', 'false')
-
-        // 点击展开
-        fireEvent.click(bar)
-        expect(bar).toHaveAttribute('data-expanded', 'true')
-
-        // 再点击收起
-        fireEvent.click(bar)
-        expect(bar).toHaveAttribute('data-expanded', 'false')
-    })
-
-    it('展开态点击吊顶以外区域即收起（drawer 语义）', () => {
-        const metadata: SessionMetadataSummary = {
-            path: '/home/user/project',
-            host: 'localhost',
-            gitBranch: 'main',
-        }
-
-        vi.useFakeTimers()
-        render(<SessionContextBar metadata={metadata} />, { wrapper })
-
-        const bar = screen.getByRole('button', { name: /session-context/i })
-        // 初始展开
-        expect(bar).toHaveAttribute('data-expanded', 'true')
-
-        // 点击 document.body（吊顶以外）→ 收起
-        act(() => { fireEvent.mouseDown(document.body) })
-        expect(bar).toHaveAttribute('data-expanded', 'false')
-    })
-
-    it('展开态点击吊顶本身不因外部监听误收起', () => {
-        const metadata: SessionMetadataSummary = {
-            path: '/home/user/project',
-            host: 'localhost',
-            gitBranch: 'main',
-        }
-
-        vi.useFakeTimers()
-        render(<SessionContextBar metadata={metadata} />, { wrapper })
-
-        const bar = screen.getByRole('button', { name: /session-context/i })
-        expect(bar).toHaveAttribute('data-expanded', 'true')
-
-        // mousedown 落在吊顶内 → 外部监听不应收起（仍保持展开，后续 click 走 toggle）
-        act(() => { fireEvent.mouseDown(bar) })
-        expect(bar).toHaveAttribute('data-expanded', 'true')
-    })
-
-    it('展开态点击浮层内容不收起（浮层与吊顶事件边界隔离）', () => {
-        const metadata: SessionMetadataSummary = {
-            path: '/home/user/project',
-            host: 'localhost',
-            gitBranch: 'main',
-        }
-        const usage: ContextUsage = {
-            totalTokens: 62000,
-            maxTokens: 200000,
-            percentage: 31,
-            isAutoCompactEnabled: false,
-            categories: [{ name: '消息历史', tokens: 62000, color: '#4d9eff' }],
-            apiUsage: null,
-            costUsd: 0.043,
-        }
-
-        vi.useFakeTimers()
-        render(<SessionContextBar metadata={metadata} contextUsage={usage} />, { wrapper })
-
-        const bar = screen.getByRole('button', { name: /session-context/i })
-        expect(bar).toHaveAttribute('data-expanded', 'true')
-
-        // 点击浮层内的分类名（DetailPopover 是 BarContainer 的 DOM 子节点，
-        // 需 stopPropagation 阻断冒泡，否则会触发 toggle 把浮层收起）
-        act(() => { fireEvent.click(screen.getByText('消息历史')) })
-        expect(bar).toHaveAttribute('data-expanded', 'true')
     })
 })

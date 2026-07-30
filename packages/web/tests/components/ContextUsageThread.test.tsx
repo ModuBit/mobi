@@ -31,10 +31,6 @@ const usage = (over: Partial<ContextUsage> = {}): ContextUsage => ({
     totalTokens: 124000,
     maxTokens: 200000,
     percentage: 62,
-    autoCompactThreshold: 160000,
-    isAutoCompactEnabled: true,
-    categories: [{ name: 'messages', tokens: 62000 }],
-    apiUsage: null,
     costUsd: 0.043,
     ...over,
 })
@@ -47,27 +43,25 @@ describe('ContextUsageThread', () => {
 
     it('默认显示已用 tokens（k）', () => {
         renderThread(usage())
-        expect(screen.getByText('124k')).toBeInTheDocument()
+        expect(screen.getByText('124k/200k')).toBeInTheDocument()
     })
 
     it('点击数字切换到百分比，再点切回 tokens', () => {
         renderThread(usage())
-        fireEvent.click(screen.getByText('124k'))
+        fireEvent.click(screen.getByText('124k/200k'))
         expect(screen.getByText('62%')).toBeInTheDocument()
         fireEvent.click(screen.getByText('62%'))
-        expect(screen.getByText('124k')).toBeInTheDocument()
+        expect(screen.getByText('124k/200k')).toBeInTheDocument()
     })
 
     it('tokens < 1000 时显示原值', () => {
         renderThread(usage({ totalTokens: 800 }))
-        // 默认即显示 tokens，无需点击
-        expect(screen.getByText('800')).toBeInTheDocument()
+        expect(screen.getByText('800/200k')).toBeInTheDocument()
     })
 
     it('percentage 钳制到 0–100', () => {
         renderThread(usage({ percentage: 150 }))
-        // 默认显示 tokens，点击切到百分比后才看到钳制后的 100%
-        fireEvent.click(screen.getByText('124k'))
+        fireEvent.click(screen.getByText('124k/200k'))
         expect(screen.getByText('100%')).toBeInTheDocument()
     })
 })

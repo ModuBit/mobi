@@ -19,9 +19,9 @@ import { theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { keyframes } from '@emotion/react'
 import type { ContextUsage } from '@mobi/shared'
-import { formatTokens, thresholdPercent } from '@/core/lib/formatTokens'
+import { formatTokens } from '@/core/lib/formatTokens'
 
-/** >75% 临近压缩时透明度脉冲（不发光，纯透明度） */
+/** >75% 临近上限时透明度脉冲（不发光，纯透明度） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.4}`
 
 /** 三档警示色：<50% 蓝（健康）/ 50–75% 琥珀（注意）/ >75% 红（警示） */
@@ -38,15 +38,14 @@ interface ContextUsageThreadProps {
 /**
  * 上下文用量线（composer 输入框上方，~10px 高）
  *
- * 视觉：2px 暗灰底线 + 已用段彩色（末 28px 自然 fade 融回底线）+ autoCompact 阈值刻度。
+ * 视觉：2px 暗灰底线 + 已用段彩色（末 28px 自然 fade 融回底线）。
  * 右端数字点击在「百分比 / 已用 tokens」间切换。
  * 三档警示色随 percentage 变化，>75% 透明度脉冲提示「该压缩了」。
- * 详情（分类占用 / 距压缩剩余 / 成本）收进 SessionContextBar 展开态。
+ * 详情（距窗口上限剩余 / 成本）收进 SessionContextBar 展开态。
  *
- * 注意：SDK 的 autoCompactThreshold 是 token 阈值数（非百分比），刻度位置需按
- * threshold / maxTokens 换算成百分比定位。
- *
- * 样式参照 .scratch/context-gauge/mockup.html 的 thread 线。
+ * 数据完全由 SDK 消息流派生（无 getContextUsage 的 count_tokens 开销）：
+ * totalTokens = 最后一条 assistant 的 input+cache_creation+cache_read（当前占用），
+ * maxTokens = result.modelUsage[model].contextWindow（窗口大小）。
  */
 export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
     const { t } = useTranslation()
@@ -61,10 +60,7 @@ export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
         : tone === 'warning'
             ? token.colorWarning
             : token.colorInfo
-
-    // SDK autoCompactThreshold 是 token 阈值数，换算成占 maxTokens 的百分比（@/core/lib/formatTokens）
-    const thresholdPct = thresholdPercent(usage)
-    const thresholdWarn = pct >= 50
+    const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
 
     return (
         <div
@@ -74,9 +70,7 @@ export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
                 gap: 10,
                 padding: '2px 4px',
             }}
-            title={`${usage.totalTokens.toLocaleString()} / ${usage.maxTokens.toLocaleString()} tokens${
-                thresholdPct !== null ? ` · ${t('session.contextUsage.threshold', { pct: Math.round(thresholdPct) })}` : ''
-            }`}
+            title={`${usage.totalTokens.toLocaleString()} / ${usage.maxTokens.toLocaleString()} tokens · ${t('session.contextUsage.remaining', { tokens: formatTokens(remaining) })}`}
         >
             <div
                 style={{
@@ -98,24 +92,11 @@ export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
                         animation: danger ? `${pulse} 1.3s ease-in-out infinite` : undefined,
                     }}
                 />
-                {/* autoCompact 阈值刻度（与线齐平的 1px 细纹，位置按 threshold/maxTokens 换算） */}
-                {thresholdPct !== null && thresholdPct > 0 && thresholdPct <= 100 && (
-                    <div
-                        style={{
-                            position: 'absolute',
-                            top: 0,
-                            bottom: 0,
-                            width: 1,
-                            left: `${thresholdPct}%`,
-                            background: thresholdWarn ? token.colorWarning : token.colorBorder,
-                        }}
-                    />
-                )}
             </div>
             <span
                 role="button"
                 onClick={() => setShowTokens(s => !s)}
-                title="点击切换 百分比 / 已用 tokens"
+                title={t('session.contextUsage.toggleHint')}
                 style={{
                     fontFamily: 'var(--ant-font-family-code, ui-monospace, monospace)',
                     fontSize: 11,
@@ -124,12 +105,12 @@ export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
                     cursor: 'pointer',
                     userSelect: 'none',
                     fontVariantNumeric: 'tabular-nums',
-                    minWidth: 34,
+                    minWidth: 60,
                     textAlign: 'right',
                     lineHeight: 1.4,
                 }}
             >
-                {showTokens ? formatTokens(usage.totalTokens) : `${pct}%`}
+                {showTokens ? `${formatTokens(usage.totalTokens)}/${formatTokens(usage.maxTokens)}` : `${pct}%`}
             </span>
         </div>
     )

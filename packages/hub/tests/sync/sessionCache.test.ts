@@ -142,10 +142,7 @@ describe('SessionCache.handleContextUsage', () => {
     })
 
     const usage = {
-        totalTokens: 124000, maxTokens: 200000, percentage: 62,
-        autoCompactThreshold: 78, isAutoCompactEnabled: true,
-        categories: [{ name: 'messages', tokens: 62000 }],
-        apiUsage: null, costUsd: 0.043,
+        totalTokens: 124000, maxTokens: 200000, percentage: 62, costUsd: 0.043,
     }
 
     test('落库到 runtimeState.contextUsage 并 SSE 推送 runtimeState patch', () => {

@@ -420,17 +420,25 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
     const subtype = asString(data.subtype)
     const terminalReason = asString(data.terminal_reason) ?? asString(data.terminalReason)
     const isError = Boolean(data.is_error)
-    const numTurns = asNumber(data.num_turns) ?? asNumber(data.numTurns)
+    const numTurns = asNumber(data.num_turns) ?? asNumber(data.numTurns) ?? null
 
     // 中断
     const isAborted = terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools'
 
-    // 提取耗时和 token
+    // 提取耗时和 token 细分（result 消息携带完整 usage，CLI 已透传，无需额外采集）
     const durationMs = asNumber(data.duration_ms) ?? asNumber(data.durationMs) ?? 0
     const usage = isObject(data.usage) ? data.usage : null
-    const inputTokens = usage ? (asNumber(usage.input_tokens) ?? 0) : 0
-    const outputTokens = usage ? (asNumber(usage.output_tokens) ?? 0) : 0
+    const inputTokens = usage ? (asNumber(getField(usage, 'input_tokens')) ?? 0) : 0
+    const outputTokens = usage ? (asNumber(getField(usage, 'output_tokens')) ?? 0) : 0
+    const cacheReadTokens = usage ? (asNumber(getField(usage, 'cache_read_input_tokens')) ?? undefined) : undefined
+    const cacheCreationTokens = usage ? (asNumber(getField(usage, 'cache_creation_input_tokens')) ?? undefined) : undefined
     const tokens = inputTokens + outputTokens
+
+    // 成本 / 首 token / 模型（result 独有，assistant 无）
+    const costUsd = asNumber(getField(data, 'total_cost_usd')) ?? undefined
+    const ttftMs = asNumber(getField(data, 'ttft_ms')) ?? undefined
+    const modelUsage = isObject(data.modelUsage) ? data.modelUsage : null
+    const model = modelUsage ? (Object.keys(modelUsage)[0] ?? undefined) : undefined
 
     if (isAborted) {
         return createEventMessage(ctx, { type: 'aborted', numTurns, durationMs, tokens })
@@ -449,6 +457,13 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
         type: 'turn-result',
         durationMs,
         tokens,
+        numTurns,
+        ...(ttftMs !== undefined && { ttftMs }),
+        ...(costUsd !== undefined && { costUsd }),
+        ...(inputTokens > 0 && { inputTokens, outputTokens }),
+        ...(cacheReadTokens !== undefined && { cacheReadTokens }),
+        ...(cacheCreationTokens !== undefined && { cacheCreationTokens }),
+        ...(model !== undefined && { model }),
         ...(error && { error }),
     })
 }
