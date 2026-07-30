@@ -25,6 +25,7 @@ import { InspectorPane } from '@/components/session/InspectorPane'
 import { WorkspaceSplitter } from '@/components/session/WorkspaceSplitter'
 import { getAgentStatus } from '@/components/pixel-avatar/types'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
+import { useWakeLock } from '@/core/pwa/useWakeLock'
 
 interface SessionDetailProps {
     sessionId: string
@@ -50,6 +51,9 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
             }),
         [session?.active, session?.running, session?.agentState],
     )
+
+    // 输出中或等待权限确认时，保持屏幕常亮（PWA/移动端避免错过进度与权限请求）
+    useWakeLock(agentStatus === 'outputting' || agentStatus === 'awaiting_auth')
 
     if (isLoading) {
         return (
