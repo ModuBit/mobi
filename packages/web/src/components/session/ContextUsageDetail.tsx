@@ -16,23 +16,24 @@
 
 import { theme } from 'antd'
 import type { ContextUsage } from '@mobi/shared'
+import { formatTokens, thresholdPercent } from '@/core/lib/formatTokens'
 
 /** SDK 未给 color 时的回退色板（消息/工具/系统/MCP/记忆/其他） */
 const FALLBACK_PALETTE = ['#4d9eff', '#f0883e', '#a371f7', '#3fb950', '#d29922', '#6e7681']
-
-function formatK(tokens: number): string {
-    return tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : `${tokens}`
-}
 
 /** SessionContextBar 展开态详情：大条 + 距压缩剩余 + 分类占用 + 成本 */
 export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
     const { token } = theme.useToken()
     const pct = Math.round(usage.percentage)
-    const threshold = usage.autoCompactThreshold
-    const remaining = threshold !== undefined ? Math.max(0, threshold - pct) : null
-    const remainingTokens = remaining !== null
-        ? Math.round((usage.maxTokens * remaining) / 100)
-        : null
+    // SDK autoCompactThreshold 是 token 阈值数，换算成占 maxTokens 的百分比（@/core/lib/formatTokens）
+    const thresholdPct = thresholdPercent(usage)
+    // 距压缩剩余用 token 差值（绝对值准确），再换算成百分比。
+    // remainingTokens/remainingPct 用 0 兜底，仅当 thresholdPct !== null（有阈值）时块才渲染
+    const remainingTokens = usage.autoCompactThreshold !== undefined
+        ? usage.autoCompactThreshold - usage.totalTokens
+        : 0
+    const remainingPct = thresholdPct !== null ? Math.max(0, Math.round(thresholdPct - pct)) : 0
+    const overThreshold = remainingTokens <= 0
 
     return (
         <div
@@ -48,7 +49,7 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ color: token.colorTextTertiary, letterSpacing: '0.06em' }}>上下文用量</span>
                 <span>
-                    {usage.totalTokens.toLocaleString()} / {usage.maxTokens.toLocaleString()} ·{' '}
+                    {formatTokens(usage.totalTokens)} / {formatTokens(usage.maxTokens)} ·{' '}
                     <span style={{ color: token.colorText, fontWeight: 600 }}>{pct}%</span>
                 </span>
             </div>
@@ -74,22 +75,22 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                         }}
                     />
                 ))}
-                {threshold !== undefined && threshold > 0 && threshold <= 100 && (
+                {thresholdPct !== null && thresholdPct > 0 && thresholdPct <= 100 && (
                     <div
                         style={{
                             position: 'absolute',
                             top: -2,
                             bottom: -2,
                             width: 1,
-                            left: `${threshold}%`,
+                            left: `${thresholdPct}%`,
                             background: token.colorWarning,
                         }}
                     />
                 )}
             </div>
 
-            {/* 距压缩剩余 */}
-            {remaining !== null && remainingTokens !== null && usage.isAutoCompactEnabled && (
+            {/* 距压缩剩余 / 已超阈值（autoCompact 启用且有阈值时才展示） */}
+            {thresholdPct !== null && usage.isAutoCompactEnabled && (
                 <div
                     style={{
                         marginTop: 8,
@@ -100,8 +101,17 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                         color: token.colorText,
                     }}
                 >
-                    距自动压缩还剩 <b style={{ color: token.colorWarning }}>~{remaining}%</b>
-                    （约 {remainingTokens.toLocaleString()} tokens · 阈值 {threshold}%）
+                    {overThreshold ? (
+                        <>
+                            <b style={{ color: token.colorWarning }}>已达自动压缩阈值</b>
+                            （{Math.round(thresholdPct)}%）· 下次轮次可能触发压缩
+                        </>
+                    ) : (
+                        <>
+                            距自动压缩还剩 <b style={{ color: token.colorWarning }}>~{remainingPct}%</b>
+                            （约 {formatTokens(remainingTokens)} tokens · 阈值 {Math.round(thresholdPct)}%）
+                        </>
+                    )}
                 </div>
             )}
 
@@ -130,7 +140,7 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                             <span style={{ color: token.colorText }}>{c.name}</span>
                             <span style={{ textAlign: 'right' }}>{catPct}%</span>
                             <span style={{ textAlign: 'right', color: token.colorTextTertiary }}>
-                                {formatK(c.tokens)}
+                                {formatTokens(c.tokens)}
                             </span>
                         </div>
                     )

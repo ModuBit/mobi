@@ -18,6 +18,7 @@ import { useState } from 'react'
 import { theme } from 'antd'
 import { keyframes } from '@emotion/react'
 import type { ContextUsage } from '@mobi/shared'
+import { formatTokens, thresholdPercent } from '@/core/lib/formatTokens'
 
 /** >75% 临近压缩时透明度脉冲（不发光，纯透明度） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.4}`
@@ -27,10 +28,6 @@ function resolveTone(pct: number): 'info' | 'warning' | 'error' {
     if (pct >= 75) return 'error'
     if (pct >= 50) return 'warning'
     return 'info'
-}
-
-function formatK(tokens: number): string {
-    return tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : `${tokens}`
 }
 
 interface ContextUsageThreadProps {
@@ -45,11 +42,14 @@ interface ContextUsageThreadProps {
  * 三档警示色随 percentage 变化，>75% 透明度脉冲提示「该压缩了」。
  * 详情（分类占用 / 距压缩剩余 / 成本）收进 SessionContextBar 展开态。
  *
+ * 注意：SDK 的 autoCompactThreshold 是 token 阈值数（非百分比），刻度位置需按
+ * threshold / maxTokens 换算成百分比定位。
+ *
  * 样式参照 .scratch/context-gauge/mockup.html 的 thread 线。
  */
 export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
     const { token } = theme.useToken()
-    const [showTokens, setShowTokens] = useState(false)
+    const [showTokens, setShowTokens] = useState(true)
 
     const pct = Math.max(0, Math.min(100, Math.round(usage.percentage)))
     const tone = resolveTone(pct)
@@ -60,7 +60,8 @@ export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
             ? token.colorWarning
             : token.colorInfo
 
-    const threshold = usage.autoCompactThreshold
+    // SDK autoCompactThreshold 是 token 阈值数，换算成占 maxTokens 的百分比（@/core/lib/formatTokens）
+    const thresholdPct = thresholdPercent(usage)
     const thresholdWarn = pct >= 50
 
     return (
@@ -72,7 +73,7 @@ export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
                 padding: '2px 4px',
             }}
             title={`${usage.totalTokens.toLocaleString()} / ${usage.maxTokens.toLocaleString()} tokens${
-                threshold !== undefined ? ` · 阈值 ${threshold}%` : ''
+                thresholdPct !== null ? ` · 阈值 ${Math.round(thresholdPct)}%` : ''
             }`}
         >
             <div
@@ -95,15 +96,15 @@ export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
                         animation: danger ? `${pulse} 1.3s ease-in-out infinite` : undefined,
                     }}
                 />
-                {/* autoCompact 阈值刻度（与线齐平的 1px 细纹） */}
-                {threshold !== undefined && threshold > 0 && threshold <= 100 && (
+                {/* autoCompact 阈值刻度（与线齐平的 1px 细纹，位置按 threshold/maxTokens 换算） */}
+                {thresholdPct !== null && thresholdPct > 0 && thresholdPct <= 100 && (
                     <div
                         style={{
                             position: 'absolute',
                             top: 0,
                             bottom: 0,
                             width: 1,
-                            left: `${threshold}%`,
+                            left: `${thresholdPct}%`,
                             background: thresholdWarn ? token.colorWarning : token.colorBorder,
                         }}
                     />
@@ -126,7 +127,7 @@ export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
                     lineHeight: 1.4,
                 }}
             >
-                {showTokens ? formatK(usage.totalTokens) : `${pct}%`}
+                {showTokens ? formatTokens(usage.totalTokens) : `${pct}%`}
             </span>
         </div>
     )

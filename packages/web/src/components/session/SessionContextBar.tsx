@@ -26,15 +26,18 @@ import { ContextUsageDetail } from './ContextUsageDetail'
 const AUTO_COLLAPSE_DELAY = 3000
 
 const BarContainer = styled.div<{ $expanded: boolean }>`
+    position: relative;
+    z-index: 2;
     display: flex;
     flex-direction: column;
     padding: ${({ $expanded }) => $expanded ? '6px 12px' : '2px 12px'};
-    background: var(--ant-color-bg-layout);
+    background: var(--ant-color-bg-container);
     border-bottom: 1px solid var(--ant-color-border-secondary);
+    box-shadow: ${({ $expanded }) => $expanded ? '0 2px 8px var(--ant-color-shadow, rgba(0,0,0,0.08))' : 'none'};
     cursor: pointer;
     overflow: hidden;
     user-select: none;
-    transition: padding 0.2s ease;
+    transition: padding 0.2s ease, box-shadow 0.2s ease;
 `
 
 const ContentRow = styled.div`
