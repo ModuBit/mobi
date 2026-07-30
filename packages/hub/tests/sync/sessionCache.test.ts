@@ -180,3 +180,58 @@ describe('SessionCache.handleContextUsage', () => {
         expect(emits).toHaveLength(0)
     })
 })
+
+describe('SessionCache.applyRefreshedSDKMetadata', () => {
+    let store: Store
+    let emits: { type: string; sessionId: string }[]
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        emits = []
+        const rec = { emit: (e: { type: string; sessionId: string }) => emits.push(e) }
+        cache = new SessionCache(store, rec as unknown as EventPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    const m1 = { commands: [{ name: 'a', description: 'da', argumentHint: '' }, { name: 'b', description: 'db', argumentHint: '' }] }
+    // 与 m1 内容相同，但 commands 顺序颠倒——顺序无关应判等
+    const m1Shuffled = { commands: [{ name: 'b', description: 'db', argumentHint: '' }, { name: 'a', description: 'da', argumentHint: '' }] }
+    const m2 = { commands: [{ name: 'a', description: 'da', argumentHint: '' }, { name: 'b', description: 'db', argumentHint: '' }, { name: 'c', description: 'dc', argumentHint: '' }] }
+
+    test('首次写入（无缓存）→ 写库 + 发 SSE，返回 true', () => {
+        const session = cache.getOrCreateSession('tag-meta-1', { path: '/tmp/p' }, null, 'default')
+
+        const changed = cache.applyRefreshedSDKMetadata(session.id, m1)
+
+        expect(changed).toBe(true)
+        expect(cache.getSession(session.id)?.metadata?.sdkMetadata).toEqual(m1)
+        expect(emits.filter(e => e.type === 'sdk-metadata-refreshed')).toHaveLength(1)
+    })
+
+    test('内容相同（仅数组顺序不同）→ 不写不发，返回 false（打破 refetch↔SSE 循环）', () => {
+        const session = cache.getOrCreateSession('tag-meta-2', { path: '/tmp/p' }, null, 'default')
+        cache.applyRefreshedSDKMetadata(session.id, m1)
+        emits.length = 0
+
+        const changed = cache.applyRefreshedSDKMetadata(session.id, m1Shuffled)
+
+        expect(changed).toBe(false)
+        expect(emits).toHaveLength(0)
+    })
+
+    test('内容实际变化（新增命令）→ 写库 + 发 SSE，返回 true', () => {
+        const session = cache.getOrCreateSession('tag-meta-3', { path: '/tmp/p' }, null, 'default')
+        cache.applyRefreshedSDKMetadata(session.id, m1)
+        emits.length = 0
+
+        const changed = cache.applyRefreshedSDKMetadata(session.id, m2)
+
+        expect(changed).toBe(true)
+        expect(cache.getSession(session.id)?.metadata?.sdkMetadata).toEqual(m2)
+        expect(emits.filter(e => e.type === 'sdk-metadata-refreshed')).toHaveLength(1)
+    })
+})

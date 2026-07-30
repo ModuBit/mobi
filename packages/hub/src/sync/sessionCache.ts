@@ -676,6 +676,9 @@ export class SessionCache {
     }
 
     updateSDKMetadata(sessionId: string, sdkMetadata: SDKMetadata): void {
+        // 通用写路径（CLI socket 推送的 outputStyle/fastMode 等、阻塞首次加载等）。
+        // 不在此发 SSE——SWR 的 web refetch 通知只属于后台刷新路径（见 applyRefreshedSDKMetadata），
+        // 否则每次 CLI 写都逼所有 web 客户端 refetch + 再触发一次后台 RPC。
         const session = this.sessions.get(sessionId)
         if (!session) return
 
@@ -692,13 +695,68 @@ export class SessionCache {
 
         if (result.result === 'success') {
             this.refreshSession(sessionId)
-            // 通知 web：sdkMetadata 已更新，refetch（SWR 后台刷新配套）。仅发本 session，
-            // patchSessionCache 不消费此事件——web SSEProvider 单独 invalidate sdkMetadata query
-            this.publisher.emit({
-                type: 'sdk-metadata-refreshed',
-                sessionId,
-                namespace: session.namespace,
-            })
         }
     }
+
+    /**
+     * 后台刷新专用：compare-and-swap 写 sdkMetadata。
+     * 同步完成「读缓存 → 相等比较 → 写库 → 发 SSE」，JS 单线程内无 TOCTOU 窗口。
+     *
+     * 仅当新内容与缓存实际不同（稳定 JSON 串对比，对象按 key、数组按元素内容排序，
+     * 顺序无关）才写库并发 sdk-metadata-refreshed SSE；相同则什么都不做。
+     * 「内容相等即不发」是打破 SWR「refetch ↔ SSE」无限循环的唯一闸——SDK 跨次
+     * 返回顺序不稳也不会被误判为变化。仅后台刷新路径调用。
+     *
+     * @returns 是否实际发生了变更（写了库 + 发了 SSE）
+     */
+    applyRefreshedSDKMetadata(sessionId: string, sdkMetadata: SDKMetadata): boolean {
+        const session = this.sessions.get(sessionId)
+        if (!session) return false
+
+        const cachedSdk = (session.metadata as Record<string, unknown> | undefined)?.sdkMetadata as SDKMetadata | undefined
+        if (cachedSdk && sdkMetadataEqual(cachedSdk, sdkMetadata)) {
+            return false
+        }
+
+        const currentMetadata = (session.metadata ?? { path: '', host: '' }) as Record<string, unknown>
+        const newMetadata = { ...currentMetadata, sdkMetadata }
+        const result = this.store.sessions.updateSessionMetadata(
+            sessionId,
+            newMetadata,
+            session.metadataVersion,
+            session.namespace,
+            { touchUpdatedAt: false }
+        )
+        if (result.result !== 'success') return false
+
+        this.refreshSession(sessionId)
+        this.publisher.emit({
+            type: 'sdk-metadata-refreshed',
+            sessionId,
+            namespace: session.namespace,
+        })
+        return true
+    }
+}
+
+/**
+ * sdkMetadata 等价比较（顺序无关）。用于后台刷新判定「是否真变了」。
+ */
+function sdkMetadataEqual(a: SDKMetadata, b: SDKMetadata): boolean {
+    return stableStringify(a) === stableStringify(b)
+}
+
+/**
+ * 稳定 JSON 串：对象按 key 排序、数组按元素稳定串排序（数组顺序无关）。
+ * commands/agents/models 等集合，SDK 跨次返回顺序可能不稳——若按原序比较，
+ * 会把「顺序抖动」误判为内容变化，每次后台刷新都写库 + 发 SSE，触发
+ * refetch ↔ SSE 无限循环（每轮 spawn 一次 SDK RPC）。
+ */
+function stableStringify(value: unknown): string {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value)
+    if (Array.isArray(value)) {
+        return '[' + value.map(stableStringify).sort().join(',') + ']'
+    }
+    const obj = value as Record<string, unknown>
+    return '{' + Object.keys(obj).sort().map(k => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',') + '}'
 }

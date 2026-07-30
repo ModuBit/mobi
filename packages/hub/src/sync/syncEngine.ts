@@ -552,15 +552,17 @@ export class SyncEngine {
         this.sessionCache.updateSDKMetadata(sessionId, metadata)
     }
 
-    // 进行中的后台刷新去重（同一 session 同时只跑一个 refreshMetadata RPC）
+    // 后台刷新并发去重：同一 session 同时只跑一个 refreshMetadata RPC。
+    // 注意——这只是并发闸，不负责打破 refetch↔SSE 循环；循环终止完全靠
+    // sessionCache.applyRefreshedSDKMetadata 的「内容相等则不写不发」语义。删除那个
+    // 相等检查会重新引入无限循环，不要被此 Set 的存在误导。
     private readonly refreshingMetadata = new Set<string>()
 
     /**
      * 后台刷新 sdkMetadata（SWR 配套）。
      * 由 metadata 端点在命中缓存时 fire-and-forget 调用：
-     * - 同 session 并发去重（Set），避免多组件同时拉 metadata 触发多次 spawn
-     * - 仅当新 metadata 与缓存实际不同才写库（→ updateSDKMetadata 会发 SSE 通知 web refetch）；
-     *   相同则什么都不做——这是打破「refetch ↔ SSE」无限循环的关键
+     * - 同 session 并发去重（Set）
+     * - 交给 sessionCache.applyRefreshedSDKMetadata 做 CAS：仅当内容变化才写库 + 发 SSE
      * - 会话不活跃 / RPC 失败静默（web 仍用缓存，不退化）
      */
     async refreshSDKMetadataBackground(sessionId: string): Promise<void> {
@@ -569,31 +571,11 @@ export class SyncEngine {
         try {
             const result = await this.refreshMetadata(sessionId)
             if (!result.success || !result.metadata) return
-            const cached = this.getSession(sessionId)?.metadata?.sdkMetadata
-            if (!cached || !sdkMetadataEqual(cached, result.metadata)) {
-                this.updateSDKMetadata(sessionId, result.metadata)
-            }
+            this.sessionCache.applyRefreshedSDKMetadata(sessionId, result.metadata)
         } catch {
             // 会话不活跃 / RPC 失败 — 静默，web 继续用缓存
         } finally {
             this.refreshingMetadata.delete(sessionId)
         }
     }
-}
-
-/**
- * sdkMetadata 等价比较（稳定 JSON 串对比，commands 等数组按名排序去序敏感）。
- * 用于后台刷新判定「是否真变了」——避免无变化时发 SSE 触发 web refetch 循环。
- */
-function sdkMetadataEqual(a: SDKMetadata, b: SDKMetadata): boolean {
-    return stableStringify(a) === stableStringify(b)
-}
-
-function stableStringify(value: unknown): string {
-    if (value === null || typeof value !== 'object') return JSON.stringify(value)
-    if (Array.isArray(value)) {
-        return '[' + value.map(stableStringify).join(',') + ']'
-    }
-    const obj = value as Record<string, unknown>
-    return '{' + Object.keys(obj).sort().map(k => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',') + '}'
 }
