@@ -19,8 +19,11 @@ import {
     handleSpecialCommand,
     createSpecialCommandContext,
     buildBashInjectionText,
-    type SpecialCommandContext
+    sdkOutputLoop,
+    type SpecialCommandContext,
+    type LoopContext,
 } from '../src/claude/claudeRemote'
+import type { Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 
 describe('handleSpecialCommand', () => {
     const createMockContext = (): SpecialCommandContext => {
@@ -189,5 +192,83 @@ describe('buildBashInjectionText', () => {
         expect(text).toContain('<bash-stdout>a&lt;b&gt;&amp;c</bash-stdout>')
         // 原始尖括号不应泄漏到标签内容
         expect(text).not.toContain('a<b>&c')
+    })
+})
+
+describe('sdkOutputLoop contextUsage 分发', () => {
+    type SnapshotSender = Parameters<typeof sdkOutputLoop>[2]['snapshotSender']
+
+    const mockQuery = (msgs: SDKMessage[]): Query =>
+        ({ async *[Symbol.asyncIterator]() { for (const m of msgs) yield m } }) as unknown as Query
+
+    const mockSnapshotSender = (): SnapshotSender =>
+        ({ flush: vi.fn(), consumePendingFull: vi.fn(() => null) }) as unknown as SnapshotSender
+
+    const baseOpts = () => ({
+        path: '/tmp',
+        onMessage: vi.fn(),
+        snapshotSender: mockSnapshotSender(),
+        onSessionFound: vi.fn(),
+        onReady: vi.fn(),
+        onRunningChange: vi.fn(),
+    })
+
+    it('compact_boundary 触发 onCompactBoundary 带 post_tokens', async () => {
+        const onCompactBoundary = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{
+                type: 'system', subtype: 'compact_boundary',
+                compact_metadata: { trigger: 'manual', pre_tokens: 46400, post_tokens: 1900 },
+            } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onCompactBoundary },
+        )
+        expect(onCompactBoundary).toHaveBeenCalledWith(1900)
+    })
+
+    it('compact_boundary 的 post_tokens 缺失时传 undefined', async () => {
+        const onCompactBoundary = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{
+                type: 'system', subtype: 'compact_boundary',
+                compact_metadata: { trigger: 'manual', pre_tokens: 46400 },
+            } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onCompactBoundary },
+        )
+        expect(onCompactBoundary).toHaveBeenCalledWith(undefined)
+    })
+
+    it('compact 的 result 仍调 onContextUsage(isCompact=true) 回填成本，并触发 onCompactCompleted', async () => {
+        const onContextUsage = vi.fn()
+        const onCompactCompleted = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{ type: 'result', subtype: 'success', terminal_reason: undefined } as unknown as SDKMessage]),
+            { isCompactCommand: true } satisfies LoopContext,
+            { ...baseOpts(), onContextUsage, onCompactCompleted },
+        )
+        // isCompact=true：用量由 compact_boundary 上报，此处只回填成本，故仍回调
+        expect(onContextUsage).toHaveBeenCalledWith(expect.anything(), true)
+        expect(onCompactCompleted).toHaveBeenCalled()
+    })
+
+    it('中断的 result（aborted_streaming）跳过 onContextUsage', async () => {
+        const onContextUsage = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{ type: 'result', subtype: 'success', terminal_reason: 'aborted_streaming' } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onContextUsage },
+        )
+        expect(onContextUsage).not.toHaveBeenCalled()
+    })
+
+    it('正常 result 触发 onContextUsage', async () => {
+        const onContextUsage = vi.fn()
+        await sdkOutputLoop(
+            mockQuery([{ type: 'result', subtype: 'success', terminal_reason: undefined } as unknown as SDKMessage]),
+            { isCompactCommand: false } satisfies LoopContext,
+            { ...baseOpts(), onContextUsage },
+        )
+        expect(onContextUsage).toHaveBeenCalled()
     })
 })

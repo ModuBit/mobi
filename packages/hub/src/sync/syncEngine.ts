@@ -206,7 +206,7 @@ export class SyncEngine {
         this.sessionCache.handleSessionEnd(payload)
     }
 
-    handleContextUsage(payload: { sid: string; contextUsage: ContextUsage }): void {
+    handleContextUsage(payload: { sid: string; contextUsage: ContextUsage | null }): void {
         this.sessionCache.handleContextUsage(payload)
     }
 

@@ -74,4 +74,19 @@ describe('formatEvent turn-result', () => {
         // 概要仍显示
         expect(screen.getByText(/1\.0s/)).toBeInTheDocument()
     })
+
+    it('tokens===0（本地命令如 /usage）只显示 耗时·时间，不显示 token、不可展开', () => {
+        // /usage 等不调主模型的本地命令：result.usage 为 0，即便 result 带 numTurns 也不展开
+        renderEvent({ type: 'turn-result', durationMs: 800, tokens: 0, numTurns: 1 })
+        // 耗时显示
+        expect(screen.getByText(/800ms/)).toBeInTheDocument()
+        // 无 ▸/▾ 指示符、无 role=button（非交互元素，a11y 友好）
+        expect(screen.queryByText('▸')).not.toBeInTheDocument()
+        expect(screen.queryByText('▾')).not.toBeInTheDocument()
+        expect(screen.queryByRole('button')).not.toBeInTheDocument()
+        // 不展开（即便带 numTurns 也不渲染「轮次」详情标签）
+        expect(screen.queryByText('轮次')).not.toBeInTheDocument()
+        // 不显示 token 数（无「N tokens」字样）
+        expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
+    })
 })

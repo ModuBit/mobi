@@ -26,12 +26,13 @@ import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
+import { calcContextUsageFromResult, calcContextUsageFromCompact } from "./utils/contextUsageCalc";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
 import { classifyMessage } from '@mobi/shared';
-import type { ClaudePermissionMode, ContextUsage } from "@mobi/shared/types";
+import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
     RemoteLauncherBase,
     type RemoteLauncherDisplayContext,
@@ -59,6 +60,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private queryRef: Query | null = null;
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 文本 push 进 SDK input stream
     private steerSink: ((text: string) => boolean) | null = null;
+    // 上次真实 turn 的窗口大小与累计成本，供 compact_boundary 上报时复用
+    // （compact_boundary 消息不带 contextWindow 与 costUsd，只能复用上次记忆）
+    private lastMaxTokens = 0;
+    private lastCostUsd = 0;
 
     constructor(
         session: Session,
@@ -121,39 +126,39 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     }
 
     /**
-     * 上下文用量上报：纯本地组装，零额外 API（不调 SDK getContextUsage——其内部 count_tokens /
-     * Haiku 兜底请求会撑爆 provider 请求频率限制）。全部取自 SDKResultMessage：
-     * - totalTokens = usage 的 input + cache_creation + cache_read（单步 turn = 当前窗口占用；
-     *   多步 turn 为累计，偏大但保守侧，仪表盘倾向更早提示 /compact）
-     * - maxTokens = modelUsage 主模型的 contextWindow（窗口大小）
-     * - percentage = totalTokens / maxTokens × 100
-     * - costUsd = total_cost_usd（会话累计成本）
+     * 上下文用量上报（真实 turn 的 result）：组装逻辑见 calcContextUsageFromResult（纯函数）。
+     * 本地命令（/usage 等，usage=0）/ 窗口未知 → 组装返回 null，跳过保持上一轮读数。
+     * compact / 中断已在 claudeRemote 层过滤（不到此）。记忆 maxTokens/costUsd 供 compact 复用。
      */
-    private handleContextUsage(resultMsg: SDKResultMessage): void {
-        const u = resultMsg.usage
-        const totalTokens = u
-            ? (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
-            : 0
-        const entries = Object.values(resultMsg.modelUsage ?? {})
-        // 主模型：取累计 inputTokens 最大的（fallback/subagent 可能有多个，主对话占大头）
-        const main = entries.length > 0
-            ? entries.reduce((a, b) => (b.inputTokens > a.inputTokens ? b : a))
-            : null
-        const maxTokens = main?.contextWindow ?? 0
-        // 窗口大小未知（异常/空 result 未填 modelUsage）时不报——避免 totalTokens>0 却显示
-        // 误导性的「0%」与「Xk/0」。跳过本次，UI 保留上一轮正常读数；下一轮正常 result 修正
-        if (maxTokens === 0) return
-        const percentage = (totalTokens / maxTokens) * 100
-        const usage: ContextUsage = {
-            totalTokens,
-            maxTokens,
-            percentage,
-            costUsd: resultMsg.total_cost_usd ?? 0,
+    private handleContextUsage(resultMsg: SDKResultMessage, isCompact: boolean): void {
+        // compact 的 result：用量已由 compact_boundary 的 post_tokens 上报，此处只回填累计成本
+        // （compact 自身的 total_cost_usd），避免连续 /compact 期间 lastCostUsd 冻结
+        if (isCompact) {
+            this.lastCostUsd = resultMsg.total_cost_usd ?? this.lastCostUsd
+            return
         }
+        const r = calcContextUsageFromResult(resultMsg)
+        if (!r) return
+        this.lastMaxTokens = r.maxTokens
+        this.lastCostUsd = r.costUsd
+        try {
+            this.session.client.reportContextUsage(r.usage)
+        } catch (e) {
+            logger.debug('[remote]: reportContextUsage failed', e)
+        }
+    }
+
+    /**
+     * 上下文用量上报（compact_boundary）：用 post_tokens 反映压缩后真实占用，复用上次记忆的
+     * 窗口大小与成本。组装逻辑见 calcContextUsageFromCompact（纯函数）。
+     */
+    private handleCompactBoundary(postTokens: number | undefined): void {
+        const usage = calcContextUsageFromCompact(postTokens, this.lastMaxTokens, this.lastCostUsd)
+        if (!usage) return
         try {
             this.session.client.reportContextUsage(usage)
         } catch (e) {
-            logger.debug('[remote]: reportContextUsage failed', e)
+            logger.debug('[remote]: reportContextUsage (compact) failed', e)
         }
     }
 
@@ -542,9 +547,17 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onContextCleared: () => {
                             logger.debug('[remote]: Context cleared');
                             session.client.sendSessionEvent({ type: 'context-cleared' });
+                            // 清空用量：/clear 后新会话从 0 开始，避免用量线残留上个会话的旧值
+                            session.client.clearContextUsage();
+                            // 重置成本/窗口记忆，避免下个 compact_boundary 复用上个会话的累计成本
+                            this.lastMaxTokens = 0;
+                            this.lastCostUsd = 0;
                         },
-                        onContextUsage: (resultMsg) => {
-                            this.handleContextUsage(resultMsg);
+                        onContextUsage: (resultMsg, isCompact) => {
+                            this.handleContextUsage(resultMsg, isCompact);
+                        },
+                        onCompactBoundary: (postTokens) => {
+                            this.handleCompactBoundary(postTokens);
                         },
                         onSessionReset: () => {
                             logger.debug('[remote]: Session reset');

@@ -176,6 +176,26 @@ describe('SessionCache.handleContextUsage', () => {
         expect(() => cache.handleContextUsage({ sid: 'no-such-session', contextUsage: usage })).not.toThrow()
         expect(emits).toHaveLength(0)
     })
+
+    test('contextUsage 为 null 时清空用量（/clear 后新会话从 0 开始）', () => {
+        const session = cache.getOrCreateSession('tag-ctx-clear', { path: '/tmp/p' }, null, 'default')
+
+        // 先有旧读数
+        cache.handleContextUsage({ sid: session.id, contextUsage: usage })
+        expect(cache.getSession(session.id)?.runtimeState?.contextUsage?.percentage).toBe(62)
+
+        // /clear → 清空
+        cache.handleContextUsage({ sid: session.id, contextUsage: null })
+
+        // 内存层清空
+        expect(cache.getSession(session.id)?.runtimeState?.contextUsage).toBeUndefined()
+        // 落库也清空
+        const stored = store.sessions.getSession(session.id)
+        expect((stored?.runtimeState as { contextUsage?: unknown }).contextUsage).toBeUndefined()
+        // SSE 推送（清空也推，让 web 隐藏用量线）
+        const pushed = emits.filter(e => e.type === 'session-updated').pop()
+        expect(pushed).toBeTruthy()
+    })
 })
 
 describe('SessionCache.applyRefreshedSDKMetadata', () => {

@@ -86,7 +86,7 @@ export type SessionHandlersDeps = {
     emitAccessError: EmitAccessError
     onSessionAlive?: (payload: SessionAlivePayload) => void
     onSessionEnd?: (payload: SessionEndPayload) => void
-    onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage }) => void
+    onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage | null }) => void
     onWebappEvent?: (event: SyncEvent) => void
 }
 
@@ -418,8 +418,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         onSessionAlive?.(data)
     })
 
-    socket.on('context-usage', (data: { sid: string; contextUsage: ContextUsage }) => {
-        if (!data || typeof data.sid !== 'string' || typeof data.contextUsage !== 'object' || !data.contextUsage) {
+    socket.on('context-usage', (data: { sid: string; contextUsage: ContextUsage | null }) => {
+        // null = 清空（/clear）；非 null 必须是对象
+        if (!data || typeof data.sid !== 'string'
+            || (data.contextUsage !== null && (typeof data.contextUsage !== 'object' || !data.contextUsage))) {
             return
         }
         const sessionAccess = resolveSessionAccess(data.sid)

@@ -76,7 +76,7 @@ export type SocketServerDeps = {
     onSessionAlive?: (payload: { sid: string; time: number; running?: boolean; mode?: 'local' | 'remote' }) => void
     onSessionEnd?: (payload: { sid: string; time: number }) => void
     onMachineAlive?: (payload: { machineId: string; time: number }) => void
-    onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage }) => void
+    onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage | null }) => void
 }
 
 export function createSocketServer(deps: SocketServerDeps): {

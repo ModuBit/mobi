@@ -55,6 +55,10 @@ function DetailRow({ label, value }: { label: string; value: string | number }) 
  * turn 结束概要（可折叠）。收起态保持「duration · N tokens · time」一行概要，
  * 展开态显示 result 完整详情（耗时/首 token/轮次/模型/成本/token 细分）。
  * 数据全部来自 CLI 透传的 result 消息，零额外采集。
+ *
+ * 本地命令（/usage /cost /help 等不调主模型的指令）result.usage 为 0 → tokens===0：
+ * 只显示「duration · time」，不显示 token 数、不可展开（反正也没有 token 细分）。
+ * 判据是 tokens===0 这个数据特征，不维护命令清单。
  */
 function TurnResultMeta({ event, createdAt }: { event: TurnResultEvent; createdAt?: number }) {
     const { t } = useTranslation()
@@ -62,19 +66,20 @@ function TurnResultMeta({ event, createdAt }: { event: TurnResultEvent; createdA
     const [open, setOpen] = useState(false)
     const dur = formatDurationMs(event.durationMs)
     const time = createdAt ? formatMessageTime(createdAt) : null
-    const hasDetail = event.numTurns != null || event.ttftMs !== undefined || event.costUsd !== undefined
+    // 无 LLM 调用的本地命令：tokens===0，精简显示（只耗时+时间），不可展开
+    const noTokens = event.tokens === 0
+    const hasDetail = !noTokens && (event.numTurns != null || event.ttftMs !== undefined || event.costUsd !== undefined
         || event.inputTokens !== undefined || event.model !== undefined
-        || event.cacheReadTokens !== undefined || event.cacheCreationTokens !== undefined
+        || event.cacheReadTokens !== undefined || event.cacheCreationTokens !== undefined)
 
     return (
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: token.colorTextTertiary }}>
             <span
-                role="button"
-                onClick={hasDetail ? () => setOpen(o => !o) : undefined}
+                {...(hasDetail ? { role: 'button' as const, onClick: () => setOpen(o => !o) } : {})}
                 style={{ cursor: hasDetail ? 'pointer' : 'default', userSelect: 'none' }}
             >
                 {hasDetail && <span style={{ display: 'inline-block', width: '1em' }}>{open ? '▾' : '▸'}</span>}
-                {dur} · {formatTokensCount(event.tokens)}
+                {dur}{!noTokens && <> · {formatTokensCount(event.tokens)}</>}
                 {time && <span style={{ marginLeft: 8 }}>{time}</span>}
             </span>
             {hasDetail && (

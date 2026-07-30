@@ -28,6 +28,7 @@ import {
     type SDKAssistantMessage,
     type SDKPartialAssistantMessage,
     type SDKResultMessage,
+    type SDKCompactBoundaryMessage,
     type McpServerConfig,
 } from '@anthropic-ai/claude-agent-sdk'
 import { claudeCheckSession } from "./utils/claudeCheckSession";
@@ -337,8 +338,17 @@ export async function sdkOutputLoop(
          * 上下文用量上报触发（每轮 result 一次，零额外 API）。launcher 从 resultMsg 的
          * usage / modelUsage / total_cost_usd 本地组装 ContextUsage。**不调用** SDK getContextUsage
          * （其内部 count_tokens / Haiku 兜底请求会撑爆限流）。
+         *
+         * compact 的 result 跳过此回调（其 usage 是「压缩这一步」的调用，不反映压缩后占用），
+         * 改由 onCompactBoundary 用 post_tokens 上报压缩后真实占用。
          */
-        onContextUsage?: (resultMsg: SDKResultMessage) => void
+        onContextUsage?: (resultMsg: SDKResultMessage, isCompact: boolean) => void
+        /**
+         * compact_boundary 到达时触发，携带压缩后 token（compact_metadata.post_tokens）。
+         * launcher 用它 + 上次记忆的 maxTokens/costUsd 组装 ContextUsage 上报。
+         * post_tokens 为可选字段（失败时缺失）→ 传入 undefined，launcher 保持上一轮读数。
+         */
+        onCompactBoundary?: (postTokens: number | undefined) => void
     },
 ): Promise<void> {
     let queryStarted = false;
@@ -399,6 +409,15 @@ export async function sdkOutputLoop(
             }
         }
 
+        // 处理 compact_boundary：提取压缩后 token，上报压缩后真实占用。
+        // 压缩这一步的 result.usage 不反映压缩后占用（见下方 result 处理跳过），故从此消息取
+        // post_tokens。microcompact_boundary 无 post_tokens，不在此处理（保持现状）。
+        if (message.type === 'system' && message.subtype === 'compact_boundary') {
+            const meta = (message as SDKCompactBoundaryMessage).compact_metadata;
+            const postTokens = typeof meta?.post_tokens === 'number' ? meta.post_tokens : undefined;
+            opts.onCompactBoundary?.(postTokens);
+        }
+
         // 处理 result 消息：不阻塞，直接继续拉取后台消息
         if (message.type === 'result') {
             opts.onRunningChange(false);
@@ -412,6 +431,7 @@ export async function sdkOutputLoop(
             }
 
             // 读取并重置 isCompactCommand：发结构化完成事件，web 据此退出压缩态（成功失败都发）
+            const wasCompact = ctx.isCompactCommand
             if (ctx.isCompactCommand) {
                 logger.debug('[sdkOutputLoop] Compaction completed');
                 opts.onCompactCompleted?.();
@@ -421,8 +441,14 @@ export async function sdkOutputLoop(
             // 通知就绪
             opts.onReady();
 
-            // 上下文用量上报（每轮一次，零额外 API）：launcher 从 resultMsg 本地组装
-            opts.onContextUsage?.(message as SDKResultMessage);
+            // 上下文用量上报：launcher 从 resultMsg 本地组装。
+            // - 中断（aborted_*）：turn 未完成，usage 可能缺失/不完整，跳过，UI 保留上一轮读数。
+            // - compact：用量由 compact_boundary 的 post_tokens 上报（见 onCompactBoundary），此处
+            //   仍回调（isCompact=true）让 launcher 回填累计成本（compact 的 total_cost_usd），
+            //   避免连续 /compact 期间 lastCostUsd 冻结。
+            if (!isInterrupt) {
+                opts.onContextUsage?.(message as SDKResultMessage, wasCompact);
+            }
         }
     }
 
@@ -545,8 +571,11 @@ export async function claudeRemote(opts: {
     /** 流式期间 abort/中断时，把已累积但 full 未到的内容补全落库（由 launcher 实现 convert+send） */
     onAbortFlush?: (pending: { blocks: ContentBlock[]; model?: string; parentToolUseId?: string; messageId?: string }) => void,
     onSessionReset?: () => void,
-    /** 上下文用量上报触发（result 时；launcher 从 resultMsg 本地组装，零额外 API） */
-    onContextUsage?: (resultMsg: SDKResultMessage) => void,
+    /** 上下文用量上报触发（result 时；launcher 从 resultMsg 本地组装，零额外 API）。
+     * isCompact=true 表示这是 compact 的 result：用量改由 compact_boundary 上报，launcher 只回填成本 */
+    onContextUsage?: (resultMsg: SDKResultMessage, isCompact: boolean) => void,
+    /** compact_boundary 到达：post_tokens 为压缩后 token（失败时 undefined），launcher 据此上报压缩后占用 */
+    onCompactBoundary?: (postTokens: number | undefined) => void,
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
     onQueryReady?: (query: Query) => void,
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
@@ -869,6 +898,7 @@ export async function claudeRemote(opts: {
                 onCompletionEvent: opts.onCompletionEvent,
                 onCompactCompleted: opts.onCompactCompleted,
                 onContextUsage: opts.onContextUsage,
+                onCompactBoundary: opts.onCompactBoundary,
                 signal: loopAbort.signal,
             }),
             userInputLoop(messages, loopCtx, {

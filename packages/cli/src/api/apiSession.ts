@@ -515,6 +515,18 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
+    /**
+     * 清空上下文用量（/clear 后新会话从 0 开始）。
+     * 复用 context-usage 通道，contextUsage 传 null：hub 据此清 runtimeState.contextUsage + SSE 推，
+     * web 端用量线隐藏，直到下次真实 turn 的 result 到达。
+     */
+    clearContextUsage(): void {
+        this.socket.emit('context-usage', {
+            sid: this.sessionId,
+            contextUsage: null,
+        })
+    }
+
     keepAlive(
         running: boolean,
         mode: 'local' | 'remote',

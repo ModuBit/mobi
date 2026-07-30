@@ -47,7 +47,8 @@ type MachineAlivePayload = {
 
 export type ContextUsagePayload = {
     sid: string
-    contextUsage: ContextUsage
+    /** null 表示清空（/clear 后新会话从 0 开始） */
+    contextUsage: ContextUsage | null
 }
 
 export type CliHandlersDeps = {

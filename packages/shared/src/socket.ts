@@ -221,6 +221,7 @@ export interface ClientToServerEvents {
     'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
     'messages-submitted': (data: { sid: string; localIds: string[] }) => void
     'cancel-queued-message': (data: { sid: string; messageId: string; localId: string }) => void
-    /** CLI 事件驱动上报上下文用量（hub 落库到 runtimeState.contextUsage + SSE 推 web） */
-    'context-usage': (data: { sid: string; contextUsage: ContextUsage }) => void
+    /** CLI 事件驱动上报上下文用量（hub 落库到 runtimeState.contextUsage + SSE 推 web）。
+     * contextUsage 为 null 表示清空（/clear 后新会话从 0 开始，用量线隐藏直到下次真实 turn） */
+    'context-usage': (data: { sid: string; contextUsage: ContextUsage | null }) => void
 }

@@ -359,12 +359,13 @@ export class SessionCache {
      * + SSE 推 runtimeState patch 给 web。作为 runtimeState 字段落库，resume 时首屏从 DB
      * 直接读到值，下次 init/result 采集即覆盖成最新。
      */
-    handleContextUsage(payload: { sid: string; contextUsage: ContextUsage }): void {
+    handleContextUsage(payload: { sid: string; contextUsage: ContextUsage | null }): void {
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
         if (!session) return
         try {
+            // contextUsage 为 null → 清空（/clear 后新会话从 0 开始）；否则落库覆盖
             this.updateRuntimeStateField(
-                session, payload.sid, 'contextUsage', payload.contextUsage,
+                session, payload.sid, 'contextUsage', payload.contextUsage ?? undefined,
                 Date.now(), session.namespace,
             )
         } catch {
