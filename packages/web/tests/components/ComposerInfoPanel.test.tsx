@@ -35,6 +35,7 @@ vi.hoisted(() => {
 import { render, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ComposerInfoPanel } from '@/components/composer/ComposerInfoPanel'
 import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
@@ -77,8 +78,14 @@ beforeAll(() => {
     })
 })
 
+// ComposerInfoPanel 渲染的 permission 卡片内含 PermissionFooter（用 useQueryClient 失效 session 缓存），
+// 需 QueryClientProvider 包裹
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
 const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <ConfigProvider>{children}</ConfigProvider>
+    <ConfigProvider>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </ConfigProvider>
 )
 
 const defaultProps = {

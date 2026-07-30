@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach, beforeAll } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToolCard } from '@/components/tool-card'
 import type { ToolCallBlock } from '@/domain/tool/types'
 import type { MobiApi } from '@/core/data/api/client'
@@ -52,6 +53,13 @@ beforeAll(() => {
 
 afterEach(cleanup)
 
+// ToolCard 渲染 PermissionFooter，后者用 useQueryClient（审批后失效 session 缓存），
+// 需 QueryClientProvider 包裹；每个用例新建 client 避免跨用例缓存污染
+let queryClient: QueryClient
+beforeEach(() => {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+})
+
 const mockApi = {
     permissions: { approve: vi.fn(), deny: vi.fn() },
 } as unknown as MobiApi
@@ -78,14 +86,16 @@ function makeBlock(overrides: Partial<ToolCallBlock['tool']> = {}): ToolCallBloc
 function renderCard(block: ToolCallBlock) {
     return render(
         <ConfigProvider>
-            <ToolCard
-                api={mockApi}
-                sessionId="s1"
-                metadata={null}
-                disabled={false}
-                onDone={vi.fn()}
-                block={block}
-            />
+            <QueryClientProvider client={queryClient}>
+                <ToolCard
+                    api={mockApi}
+                    sessionId="s1"
+                    metadata={null}
+                    disabled={false}
+                    onDone={vi.fn()}
+                    block={block}
+                />
+            </QueryClientProvider>
         </ConfigProvider>
     )
 }
