@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme } from 'antd'
+import { theme, Alert } from 'antd'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens, thresholdPercent } from '@/core/lib/formatTokens'
 
@@ -133,28 +133,17 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
 
             {/* 距压缩剩余 / 已超阈值（autoCompact 启用且有阈值时才展示） */}
             {thresholdPct !== null && usage.isAutoCompactEnabled && (
-                <div
-                    style={{
-                        marginTop: 8,
-                        padding: '6px 8px',
-                        background: token.colorWarningBg,
-                        borderLeft: `2px solid ${token.colorWarning}`,
-                        borderRadius: 3,
-                        color: token.colorText,
-                    }}
-                >
-                    {overThreshold ? (
-                        <>
-                            <b style={{ color: token.colorWarning }}>已达自动压缩阈值</b>
-                            （{Math.round(thresholdPct)}%）· 下次轮次可能触发压缩
-                        </>
-                    ) : (
-                        <>
-                            距自动压缩还剩 <b style={{ color: token.colorWarning }}>~{remainingPct}%</b>
-                            （约 {formatTokens(remainingTokens)} tokens · 阈值 {Math.round(thresholdPct)}%）
-                        </>
-                    )}
-                </div>
+                <Alert
+                    type={overThreshold ? 'error' : 'warning'}
+                    showIcon
+                    style={{ marginTop: 8 }}
+                    message={overThreshold
+                        ? `已达自动压缩阈值（${Math.round(thresholdPct)}%）`
+                        : <>距自动压缩还剩 <b>~{remainingPct}%</b></>}
+                    description={overThreshold
+                        ? '下次轮次可能触发压缩'
+                        : `约 ${formatTokens(remainingTokens)} tokens · 阈值 ${Math.round(thresholdPct)}%`}
+                />
             )}
 
             {/* 分类占用表：catPct 按 maxTokens（categories 之和=maxTokens，故各项加起来=100%） */}
