@@ -16,6 +16,7 @@
 
 import { useState } from 'react'
 import { theme } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { keyframes } from '@emotion/react'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens, thresholdPercent } from '@/core/lib/formatTokens'
@@ -48,6 +49,7 @@ interface ContextUsageThreadProps {
  * 样式参照 .scratch/context-gauge/mockup.html 的 thread 线。
  */
 export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
+    const { t } = useTranslation()
     const { token } = theme.useToken()
     const [showTokens, setShowTokens] = useState(true)
 
@@ -73,7 +75,7 @@ export function ContextUsageThread({ usage }: ContextUsageThreadProps) {
                 padding: '2px 4px',
             }}
             title={`${usage.totalTokens.toLocaleString()} / ${usage.maxTokens.toLocaleString()} tokens${
-                thresholdPct !== null ? ` · 阈值 ${Math.round(thresholdPct)}%` : ''
+                thresholdPct !== null ? ` · ${t('session.contextUsage.threshold', { pct: Math.round(thresholdPct) })}` : ''
             }`}
         >
             <div

@@ -120,6 +120,15 @@
             "deleteConfirmTitle": "删除会话",
             "deleteConfirmContent": "确定要删除此会话吗？此操作无法撤销。",
             "nameRequired": "请输入会话名称"
+        },
+        "contextUsage": {
+            "usage": "上下文用量",
+            "cost": "会话成本",
+            "compactRemaining": "距自动压缩还剩 ~{{pct}}%",
+            "compactRemainingDesc": "约 {{tokens}} tokens · 阈值 {{threshold}}%",
+            "compactReached": "已达自动压缩阈值（{{pct}}%）",
+            "compactReachedDesc": "下次轮次可能触发压缩",
+            "threshold": "阈值 {{pct}}%"
         }
     },
     "chat": {

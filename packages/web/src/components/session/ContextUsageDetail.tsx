@@ -15,6 +15,7 @@
  */
 
 import { theme, Alert } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens, thresholdPercent } from '@/core/lib/formatTokens'
 
@@ -62,6 +63,7 @@ const isFreeSpace = (name: string): boolean => FREE_SPACE_RE.test(name)
 
 /** SessionContextBar 展开态详情：大条 + 距压缩剩余 + 分类占用 + 成本 */
 export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
+    const { t } = useTranslation()
     const { token } = theme.useToken()
     const pct = Math.round(usage.percentage)
     // SDK autoCompactThreshold 是 token 阈值数，换算成占 maxTokens 的百分比（@/core/lib/formatTokens）
@@ -85,7 +87,7 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
         >
             {/* 用量读取行 */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ color: token.colorTextTertiary, letterSpacing: '0.06em' }}>上下文用量</span>
+                <span style={{ color: token.colorTextTertiary, letterSpacing: '0.06em' }}>{t('session.contextUsage.usage')}</span>
                 <span>
                     {formatTokens(usage.totalTokens)} / {formatTokens(usage.maxTokens)} ·{' '}
                     <span style={{ color: token.colorText, fontWeight: 600 }}>{pct}%</span>
@@ -138,11 +140,14 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                     showIcon
                     style={{ marginTop: 8 }}
                     message={overThreshold
-                        ? `已达自动压缩阈值（${Math.round(thresholdPct)}%）`
-                        : <>距自动压缩还剩 <b>~{remainingPct}%</b></>}
+                        ? t('session.contextUsage.compactReached', { pct: Math.round(thresholdPct) })
+                        : t('session.contextUsage.compactRemaining', { pct: remainingPct })}
                     description={overThreshold
-                        ? '下次轮次可能触发压缩'
-                        : `约 ${formatTokens(remainingTokens)} tokens · 阈值 ${Math.round(thresholdPct)}%`}
+                        ? t('session.contextUsage.compactReachedDesc')
+                        : t('session.contextUsage.compactRemainingDesc', {
+                            tokens: formatTokens(remainingTokens),
+                            threshold: Math.round(thresholdPct),
+                        })}
                 />
             )}
 
@@ -194,7 +199,7 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                     justifyContent: 'space-between',
                 }}
             >
-                <span style={{ color: token.colorTextTertiary, letterSpacing: '0.06em' }}>会话成本</span>
+                <span style={{ color: token.colorTextTertiary, letterSpacing: '0.06em' }}>{t('session.contextUsage.cost')}</span>
                 <span style={{ color: token.colorSuccess, fontWeight: 600 }}>
                     ${usage.costUsd.toFixed(4)}
                 </span>

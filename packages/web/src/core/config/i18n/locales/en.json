@@ -120,6 +120,15 @@
             "deleteConfirmTitle": "Delete Session",
             "deleteConfirmContent": "Are you sure you want to delete this session? This action cannot be undone.",
             "nameRequired": "Please enter a session name"
+        },
+        "contextUsage": {
+            "usage": "Context usage",
+            "cost": "Session cost",
+            "compactRemaining": "~{{pct}}% left before auto-compact",
+            "compactRemainingDesc": "approx. {{tokens}} tokens · threshold {{threshold}}%",
+            "compactReached": "Auto-compact threshold reached ({{pct}}%)",
+            "compactReachedDesc": "Compaction may trigger on the next turn",
+            "threshold": "Threshold {{pct}}%"
         }
     },
     "chat": {

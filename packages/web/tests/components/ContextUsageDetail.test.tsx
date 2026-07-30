@@ -14,12 +14,18 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
+// 导入真实 i18n 实例并切换到 zh，让 useTranslation 返回实际翻译文本（含 {{pct}} 等插值）
+import i18n from '../../src/core/config/i18n'
 import { ContextUsageDetail } from '../../src/components/session/ContextUsageDetail'
 import type { ContextUsage } from '@mobi/shared'
+
+beforeAll(async () => {
+    await i18n.changeLanguage('zh')
+})
 
 // autoCompactThreshold 是 token 阈值数（SDK 语义）：160000 tokens = 占 maxTokens 80%
 const usage = (over: Partial<ContextUsage> = {}): ContextUsage => ({
