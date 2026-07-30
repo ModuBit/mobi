@@ -55,8 +55,8 @@ describe('ContextUsageDetail', () => {
         renderDetail(usage())
         expect(screen.getByText('消息历史')).toBeInTheDocument()
         expect(screen.getByText('工具定义')).toBeInTheDocument()
-        // 消息历史占 totalTokens 的 50%（62000/124000）
-        expect(screen.getByText('50%')).toBeInTheDocument()
+        // 消息历史占 maxTokens 的 31%（62000/200000；categories 按窗口占比，加起来=100%）
+        expect(screen.getByText('31%')).toBeInTheDocument()
     })
 
     it('有 autoCompactThreshold 时显示距压缩剩余（按 token 阈值换算）', () => {

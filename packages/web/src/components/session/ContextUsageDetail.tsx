@@ -18,8 +18,17 @@ import { theme } from 'antd'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens, thresholdPercent } from '@/core/lib/formatTokens'
 
-/** SDK 未给 color 时的回退色板（消息/工具/系统/MCP/记忆/其他） */
+/**
+ * SDK categories 的 color 是 Claude 终端语义色板名（promptBorder / warning / inactive /
+ * purple_FOR_SUBAGENTS_ONLY 等），**不是合法 CSS 色**——直接用作 background 会被浏览器
+ * 忽略导致色块透明（进度条看着空）。只有当 color 形如 #hex / rgb() 时才采用，
+ * 否则按索引回退到 FALLBACK_PALETTE。
+ */
 const FALLBACK_PALETTE = ['#4d9eff', '#f0883e', '#a371f7', '#3fb950', '#d29922', '#6e7681']
+const CSS_COLOR_RE = /^#[0-9a-fA-F]{3,8}$|^rgb/i
+function resolveColor(color: string | undefined, i: number): string {
+    return color && CSS_COLOR_RE.test(color) ? color : FALLBACK_PALETTE[i % FALLBACK_PALETTE.length]
+}
 
 /** SessionContextBar 展开态详情：大条 + 距压缩剩余 + 分类占用 + 成本 */
 export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
@@ -54,7 +63,7 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                 </span>
             </div>
 
-            {/* 大条：stacked categories（每段按 tokens/maxTokens 占比） */}
+            {/* 大条：stacked categories（每段按 tokens/maxTokens 占比，加起来=100%） */}
             <div
                 style={{
                     position: 'relative',
@@ -71,7 +80,7 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                         title={`${c.name}: ${c.tokens.toLocaleString()} tokens`}
                         style={{
                             width: `${(c.tokens / usage.maxTokens) * 100}%`,
-                            background: c.color ?? FALLBACK_PALETTE[i % FALLBACK_PALETTE.length],
+                            background: resolveColor(c.color, i),
                         }}
                     />
                 ))}
@@ -115,11 +124,11 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                 </div>
             )}
 
-            {/* 分类占用表 */}
+            {/* 分类占用表：catPct 按 maxTokens（categories 之和=maxTokens，故各项加起来=100%） */}
             <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
                 {usage.categories.map((c, i) => {
-                    const catPct = usage.totalTokens > 0
-                        ? Math.round((c.tokens / usage.totalTokens) * 100)
+                    const catPct = usage.maxTokens > 0
+                        ? Math.round((c.tokens / usage.maxTokens) * 100)
                         : 0
                     return (
                         <div
@@ -135,7 +144,7 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
                                 width: 8,
                                 height: 8,
                                 borderRadius: 2,
-                                background: c.color ?? FALLBACK_PALETTE[i % FALLBACK_PALETTE.length],
+                                background: resolveColor(c.color, i),
                             }} />
                             <span style={{ color: token.colorText }}>{c.name}</span>
                             <span style={{ textAlign: 'right' }}>{catPct}%</span>
