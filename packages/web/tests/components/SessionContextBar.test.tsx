@@ -142,4 +142,41 @@ describe('SessionContextBar', () => {
         fireEvent.click(bar)
         expect(bar).toHaveAttribute('data-expanded', 'false')
     })
+
+    it('展开态点击吊顶以外区域即收起（drawer 语义）', () => {
+        const metadata: SessionMetadataSummary = {
+            path: '/home/user/project',
+            host: 'localhost',
+            gitBranch: 'main',
+        }
+
+        vi.useFakeTimers()
+        render(<SessionContextBar metadata={metadata} />, { wrapper })
+
+        const bar = screen.getByRole('button', { name: /session-context/i })
+        // 初始展开
+        expect(bar).toHaveAttribute('data-expanded', 'true')
+
+        // 点击 document.body（吊顶以外）→ 收起
+        act(() => { fireEvent.mouseDown(document.body) })
+        expect(bar).toHaveAttribute('data-expanded', 'false')
+    })
+
+    it('展开态点击吊顶本身不因外部监听误收起', () => {
+        const metadata: SessionMetadataSummary = {
+            path: '/home/user/project',
+            host: 'localhost',
+            gitBranch: 'main',
+        }
+
+        vi.useFakeTimers()
+        render(<SessionContextBar metadata={metadata} />, { wrapper })
+
+        const bar = screen.getByRole('button', { name: /session-context/i })
+        expect(bar).toHaveAttribute('data-expanded', 'true')
+
+        // mousedown 落在吊顶内 → 外部监听不应收起（仍保持展开，后续 click 走 toggle）
+        act(() => { fireEvent.mouseDown(bar) })
+        expect(bar).toHaveAttribute('data-expanded', 'true')
+    })
 })

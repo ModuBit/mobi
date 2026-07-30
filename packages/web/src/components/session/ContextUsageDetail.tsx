@@ -47,7 +47,6 @@ export function ContextUsageDetail({ usage }: { usage: ContextUsage }) {
     return (
         <div
             style={{
-                borderTop: `1px solid ${token.colorBorderSecondary}`,
                 padding: '12px 16px',
                 fontSize: 11,
                 color: token.colorTextSecondary,

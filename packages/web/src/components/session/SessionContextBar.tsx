@@ -25,19 +25,35 @@ import { ContextUsageDetail } from './ContextUsageDetail'
 /** 自动收起延迟（毫秒） */
 const AUTO_COLLAPSE_DELAY = 3000
 
-const BarContainer = styled.div<{ $expanded: boolean }>`
+// 常驻薄条（收起/展开都占位），高度恒定——展开内容用 DetailPopover 浮出，不挤压对话区
+const BarContainer = styled.div`
     position: relative;
-    z-index: 2;
+    z-index: 10;
     display: flex;
     flex-direction: column;
-    padding: ${({ $expanded }) => $expanded ? '6px 12px' : '2px 12px'};
+    padding: 4px 12px;
     background: var(--ant-color-bg-container);
     border-bottom: 1px solid var(--ant-color-border-secondary);
-    box-shadow: ${({ $expanded }) => $expanded ? '0 2px 8px var(--ant-color-shadow, rgba(0,0,0,0.08))' : 'none'};
     cursor: pointer;
-    overflow: hidden;
     user-select: none;
-    transition: padding 0.2s ease, box-shadow 0.2s ease;
+`
+
+// 展开态浮层：绝对定位紧贴 bar 下沿，叠在对话区之上（不占文档流，不挤压对话）。
+// 阴影 + 实色背景 + 淡入下移动画，制造「浮动卡片」层次，两主题靠 antd CSS 变量自适应
+const DetailPopover = styled.div`
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    background: var(--ant-color-bg-container);
+    border-bottom: 1px solid var(--ant-color-border);
+    box-shadow: var(--ant-box-shadow);
+    animation: scb-popover-in 0.18s ease;
+    @keyframes scb-popover-in {
+        from { opacity: 0; transform: translateY(-4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
 `
 
 const ContentRow = styled.div`
@@ -95,13 +111,16 @@ interface SessionContextBarProps {
  * Session 上下文信息条（吊顶效果）
  *
  * 展示当前 session 的环境上下文：工作目录、Git 分支、Worktree 状态。
+ * 常驻薄条占位；展开内容（contextUsage 详情）以浮层叠在对话区上方，不挤压对话。
  * PC 和移动端行为一致：
  * 1. 进入 session 默认展开，3 秒后自动收起
- * 2. 点击切换展开/收起
+ * 2. 点击吊顶切换展开/收起
+ * 3. 展开态点击吊顶以外任意区域即收起（drawer 语义）
  */
 export function SessionContextBar({ metadata, contextUsage }: SessionContextBarProps) {
     const [expanded, setExpanded] = useState(true)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const barRef = useRef<HTMLDivElement>(null)
 
     const hasContent = Boolean(metadata && metadata.path)
 
@@ -127,6 +146,22 @@ export function SessionContextBar({ metadata, contextUsage }: SessionContextBarP
         return clearCollapseTimer
     }, [hasContent, startCollapseTimer, clearCollapseTimer])
 
+    // drawer 语义：展开态时点击吊顶以外任意区域即收起
+    // 用 document mousedown + ref 命中判断，不渲染全屏 mask——
+    // 避免与 Layout 的 stacking context 冲突，也不阻塞对话区/composer 交互
+    useEffect(() => {
+        if (!expanded) return
+        const onPointerDown = (e: MouseEvent) => {
+            const target = e.target as Node | null
+            if (target && barRef.current && !barRef.current.contains(target)) {
+                clearCollapseTimer()
+                setExpanded(false)
+            }
+        }
+        document.addEventListener('mousedown', onPointerDown)
+        return () => document.removeEventListener('mousedown', onPointerDown)
+    }, [expanded, clearCollapseTimer])
+
     const handleClick = useCallback(() => {
         clearCollapseTimer()
         setExpanded(prev => !prev)
@@ -140,7 +175,7 @@ export function SessionContextBar({ metadata, contextUsage }: SessionContextBarP
 
     return (
         <BarContainer
-            $expanded={expanded}
+            ref={barRef}
             role="button"
             aria-label="session-context"
             data-expanded={expanded}
@@ -175,8 +210,12 @@ export function SessionContextBar({ metadata, contextUsage }: SessionContextBarP
                 {/* 收起态：上下文用量百分比 chip（点击切换展开/收起） */}
                 {!expanded && contextUsage ? <ContextUsageChip usage={contextUsage} /> : null}
             </ContentRow>
-            {/* 展开态：上下文用量详情（分类占用 / 距压缩剩余 / 成本） */}
-            {expanded && contextUsage ? <ContextUsageDetail usage={contextUsage} /> : null}
+            {/* 展开态：上下文用量详情浮层（分类占用 / 距压缩剩余 / 成本）——绝对定位，不挤压对话区 */}
+            {expanded && contextUsage ? (
+                <DetailPopover>
+                    <ContextUsageDetail usage={contextUsage} />
+                </DetailPopover>
+            ) : null}
         </BarContainer>
     )
 }
