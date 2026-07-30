@@ -122,10 +122,6 @@
             "nameRequired": "Please enter a session name"
         },
         "contextUsage": {
-            "usage": "Context usage",
-            "cost": "Session cost",
-            "windowRemaining": "~{{pct}}% to window limit",
-            "windowRemainingDesc": "({{tokens}} tokens)",
             "remaining": "{{tokens}} left",
             "toggleHint": "Toggle percentage / used tokens"
         }

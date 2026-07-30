@@ -122,10 +122,6 @@
             "nameRequired": "请输入会话名称"
         },
         "contextUsage": {
-            "usage": "上下文用量",
-            "cost": "会话成本",
-            "windowRemaining": "距窗口上限剩 ~{{pct}}%",
-            "windowRemainingDesc": "（{{tokens}} tokens）",
             "remaining": "剩 {{tokens}}",
             "toggleHint": "点击切换 百分比 / 已用 tokens"
         }

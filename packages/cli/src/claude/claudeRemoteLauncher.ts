@@ -140,7 +140,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             ? entries.reduce((a, b) => (b.inputTokens > a.inputTokens ? b : a))
             : null
         const maxTokens = main?.contextWindow ?? 0
-        const percentage = maxTokens > 0 ? (totalTokens / maxTokens) * 100 : 0
+        // 窗口大小未知（异常/空 result 未填 modelUsage）时不报——避免 totalTokens>0 却显示
+        // 误导性的「0%」与「Xk/0」。跳过本次，UI 保留上一轮正常读数；下一轮正常 result 修正
+        if (maxTokens === 0) return
+        const percentage = (totalTokens / maxTokens) * 100
         const usage: ContextUsage = {
             totalTokens,
             maxTokens,

@@ -37,6 +37,11 @@ export function useWakeLock(active: boolean): void {
         if (!('wakeLock' in navigator)) return
 
         const wakeLock = navigator.wakeLock
+        // 卸载标志：await 期间若组件卸载，不再把 sentinel 赋回 ref（否则泄漏到下次 effect）
+        let cancelled = false
+        // 请求在飞标志：visibilitychange 快速触发时避免并发 request()——前一个 sentinel
+        // 会被后一个覆盖且永不 release，导致常亮泄漏到页面卸载
+        let acquiring = false
 
         /** 释放当前 sentinel 并清空引用 */
         const release = async () => {
@@ -53,12 +58,29 @@ export function useWakeLock(active: boolean): void {
 
         /** 仅在可见时获取，失败静默 */
         const acquire = async () => {
-            if (sentinelRef.current) return
+            // 已有「未释放」的 sentinel 才算占用中；系统在切后台时已自动 release
+            // （sentinel.released=true），此时视为失效，需重新获取，不能直接 return
+            const current = sentinelRef.current
+            if (current && !current.released) return
+            sentinelRef.current = null
+            // 仅在可见时请求，否则 request 必失败
             if (document.visibilityState !== 'visible') return
+            // 防并发：visible 快速切换时避免双发 request
+            if (acquiring) return
+            acquiring = true
             try {
-                sentinelRef.current = await wakeLock.request('screen')
+                const sentinel = await wakeLock.request('screen')
+                // await 期间若已卸载 / 切后台 / 被并发 release：立即释放刚拿到的，不占坑，
+                // 避免赋回一个已被系统释放的 stale sentinel（否则再次 acquire 会被守卫跳过）
+                if (cancelled || document.visibilityState !== 'visible') {
+                    try { await sentinel.release() } catch { /* 忽略 */ }
+                } else {
+                    sentinelRef.current = sentinel
+                }
             } catch {
                 // NotAllowedError 等吞掉，不影响主流程
+            } finally {
+                acquiring = false
             }
         }
 
@@ -80,6 +102,7 @@ export function useWakeLock(active: boolean): void {
 
         document.addEventListener('visibilitychange', onVisibilityChange)
         return () => {
+            cancelled = true
             document.removeEventListener('visibilitychange', onVisibilityChange)
             void release()
         }

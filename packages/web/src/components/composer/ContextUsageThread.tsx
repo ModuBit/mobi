@@ -41,7 +41,7 @@ interface ContextUsageThreadProps {
  * 视觉：2px 暗灰底线 + 已用段彩色（末 28px 自然 fade 融回底线）。
  * 右端数字点击在「百分比 / 已用 tokens」间切换。
  * 三档警示色随 percentage 变化，>75% 透明度脉冲提示「该压缩了」。
- * 详情（距窗口上限剩余 / 成本）收进 SessionContextBar 展开态。
+ * 完整详情（距窗口上限剩余）见 title 悬浮提示；本组件不再依赖吊顶展开态。
  *
  * 数据完全由 SDK 消息流派生（无 getContextUsage 的 count_tokens 开销）：
  * totalTokens = 最后一条 assistant 的 input+cache_creation+cache_read（当前占用），
