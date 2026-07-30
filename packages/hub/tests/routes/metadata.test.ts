@@ -44,7 +44,7 @@ function makeSession(sdkMetadata?: SDKMetadata): Session {
 
 describe('GET /api/sessions/:id/metadata — SWR', () => {
     let app: ReturnType<typeof import('../../src/web/server').createWebApp>
-    let cleanup: () => void
+    let cleanup: () => void = () => {}
 
     async function bootstrap(session: Session, engine: Partial<SyncEngine>) {
         const fullEngine = {

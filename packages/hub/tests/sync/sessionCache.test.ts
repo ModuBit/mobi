@@ -234,4 +234,19 @@ describe('SessionCache.applyRefreshedSDKMetadata', () => {
         expect(cache.getSession(session.id)?.metadata?.sdkMetadata).toEqual(m2)
         expect(emits.filter(e => e.type === 'sdk-metadata-refreshed')).toHaveLength(1)
     })
+
+    test('expectedVersion 与当前 metadataVersion 不匹配 → 放弃写（防 stale RPC 覆盖并发写入）', () => {
+        const session = cache.getOrCreateSession('tag-meta-4', { path: '/tmp/p' }, null, 'default')
+        cache.applyRefreshedSDKMetadata(session.id, m1) // 首次写：metadataVersion +1
+        emits.length = 0
+
+        // 模拟后台 RPC 发起后、apply 前别处写入：当前 version 已 > 发起时快照
+        const staleVersion = cache.getSession(session.id)!.metadataVersion - 1
+        const changed = cache.applyRefreshedSDKMetadata(session.id, m2, staleVersion)
+
+        expect(changed).toBe(false)
+        // m2 是 stale 结果，不应覆盖 m1
+        expect(cache.getSession(session.id)?.metadata?.sdkMetadata).toEqual(m1)
+        expect(emits).toHaveLength(0)
+    })
 })

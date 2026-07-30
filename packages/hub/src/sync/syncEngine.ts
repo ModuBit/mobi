@@ -567,13 +567,18 @@ export class SyncEngine {
      */
     async refreshSDKMetadataBackground(sessionId: string): Promise<void> {
         if (this.refreshingMetadata.has(sessionId)) return
+        // CLI 不在线时 RPC 必失败/超时，且会占去重槽位直到超时——提前跳过省资源（web 仍用缓存）
+        const sessionBefore = this.sessionCache.getSession(sessionId)
+        if (!sessionBefore?.active) return
+        // 快照发起时的 metadataVersion，apply 时比对——RPC 期间若有别处写入（version 变），放弃 stale 结果
+        const versionBefore = sessionBefore.metadataVersion
         this.refreshingMetadata.add(sessionId)
         try {
             const result = await this.refreshMetadata(sessionId)
             if (!result.success || !result.metadata) return
-            this.sessionCache.applyRefreshedSDKMetadata(sessionId, result.metadata)
+            this.sessionCache.applyRefreshedSDKMetadata(sessionId, result.metadata, versionBefore)
         } catch {
-            // 会话不活跃 / RPC 失败 — 静默，web 继续用缓存
+            // RPC 失败 — 静默，web 继续用缓存
         } finally {
             this.refreshingMetadata.delete(sessionId)
         }

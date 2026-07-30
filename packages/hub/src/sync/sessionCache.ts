@@ -707,11 +707,19 @@ export class SessionCache {
      * 「内容相等即不发」是打破 SWR「refetch ↔ SSE」无限循环的唯一闸——SDK 跨次
      * 返回顺序不稳也不会被误判为变化。仅后台刷新路径调用。
      *
+     * @param expectedVersion 发起后台 RPC 时快照的 metadataVersion；apply 时若当前版本已不同，
+     *   说明 RPC 期间有别处写入了 metadata（如阻塞首装、CLI 推送），RPC 结果可能 stale，放弃写。
+     *   undefined 时不守卫（保留非后台调用方行为）。
      * @returns 是否实际发生了变更（写了库 + 发了 SSE）
      */
-    applyRefreshedSDKMetadata(sessionId: string, sdkMetadata: SDKMetadata): boolean {
+    applyRefreshedSDKMetadata(sessionId: string, sdkMetadata: SDKMetadata, expectedVersion?: number): boolean {
         const session = this.sessions.get(sessionId)
         if (!session) return false
+
+        // 版本守卫：杜绝 stale RPC 覆盖并发写入（见 @param expectedVersion）
+        if (expectedVersion !== undefined && session.metadataVersion !== expectedVersion) {
+            return false
+        }
 
         const cachedSdk = (session.metadata as Record<string, unknown> | undefined)?.sdkMetadata as SDKMetadata | undefined
         if (cachedSdk && sdkMetadataEqual(cachedSdk, sdkMetadata)) {
