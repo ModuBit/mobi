@@ -55,6 +55,35 @@ const bubbleCopyStyles = css`
     }
 `
 
+/** 聊天滚动区禁止水平滚动：聊天列表只该垂直滚。
+ *  宽内容（代码块等）已在自身 pre 内局部滚动，不该撑出整列表的水平滚动条
+ *  （移动端表现为可左右滑到一片空白）。堵住外层容器 + Bubble.List 内部 scrollBox 两层，
+ *  并让 scroll-content / 单个 bubble 可收缩，避免正常内容被裁剪 */
+const chatScrollStyles = css`
+    .chat-scroll-container {
+        overflow-x: hidden;
+    }
+    .chat-scroll-container .ant-bubble-list-scroll-box {
+        overflow-x: hidden;
+    }
+    .chat-scroll-container .ant-bubble-list-scroll-content {
+        min-width: 0;
+        max-width: 100%;
+    }
+    .chat-scroll-container .ant-bubble {
+        min-width: 0;
+        max-width: 100%;
+    }
+    /* LaTeX 撑宽治本：KaTeX 默认 white-space:nowrap，长公式不可断行，
+       会从 bubble 内部一路撑开 flex 链 → 整列表水平滚动（移动端窄屏尤甚）。
+       将长公式收进公式块自身横向滚动，不撑破气泡 */
+    .chat-scroll-container .katex-display {
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+`
+
 /** 滚动相关阈值（autoScroll=false，正常 flex column 布局） */
 
 /** 聊天内容区最大宽度：超宽屏时限宽居中，避免用户/AI 气泡分列两端过于割裂；小屏自动 100% */
@@ -701,8 +730,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto' }}>
             {contextHolder}
             <Global styles={bubbleCopyStyles} />
+            <Global styles={chatScrollStyles} />
             <Global styles={collapsibleUserMessageStyles} />
-            <div ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
+            <div ref={scrollContainerRef} className="chat-scroll-container" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (
                     <ChatWelcome sessionId={sessionId} />
                 ) : (
