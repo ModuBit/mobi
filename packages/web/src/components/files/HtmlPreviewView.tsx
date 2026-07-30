@@ -75,9 +75,12 @@ function HtmlIframe({ sessionId, filePath }: { sessionId: string; filePath: stri
                 // Chrome ORB（Opaque Response Blocking）拦截——sandboxed opaque origin 的跨源 no-cors
                 // 子资源会被 ORB 丢弃，引用的外部样式/脚本不生效（实测加 same-origin 后 style.css 由
                 // ERR_BLOCKED_BY_ORB 变 304 正常加载）。
-                // 安全权衡：allow-same-origin 后预览的 HTML 脚本能读 mobi localStorage、以用户身份调
-                // mobi API（httpOnly cookie 仍不可被 JS 读）。预览文件来自用户 session cwd（自有/Claude
-                // 生成），等同用户主动执行该 HTML，信任边界可接受（类 Live Server / CodePen）。
+                // 安全：allow-same-origin 让预览脚本获得 mobi origin 能力，但 serve-file 端点对 text/html
+                // 注入了严格 CSP（PREVIEW_CSP，见 sessions.ts）——connect-src 'none' 禁掉所有 fetch/XHR，
+                // 脚本无法以用户身份（httpOnly cookie）调 mobi API；img/media 禁外链防 GET 外带。残留外带面
+                // （拼数据进 script/style 的 https 资源 URL）仅能拿到 localStorage 里 recent-paths/偏好等
+                // 低价值 PII（凭证走 httpOnly cookie，不入 localStorage）。信任边界从「任意调 mobi API」
+                // 收敛到「低价值 PII 可能被外带」，可接受（类 Live Server / CodePen）。
                 sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
                 referrerPolicy="no-referrer"
                 style={{ flex: 1, border: 'none', minHeight: 0 }}

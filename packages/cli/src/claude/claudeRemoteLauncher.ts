@@ -63,7 +63,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // 上下文用量采集器（事件驱动；见 handleContextUsage）
     private readonly contextCollector = new ContextUsageCollector();
     // assistant 触发节流时间戳（≥3s 才采一次，避免长 turn 过频写库）
-    private lastContextUsageAt = 0;
+    private lastAssistantUsageAt = 0;
 
     constructor(
         session: Session,
@@ -127,10 +127,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
     /**
      * 事件驱动采集上下文用量并上报 hub。
-     * - init/result：总是采（result 携带 cost 更新累计成本）
-     * - assistant：节流 ≥3s，避免长 turn 过频落库
-     * 采集失败（getContextUsage 抛错）由 collector 内部兜住返回 null，此处跳过上报。
-     * 定时器兜底见 docs/pending.md #36。
+     * - init/result：总是采（result 携带 cost 更新累计成本），不参与节流
+     * - assistant：节流 ≥3s（仅 assistant 之间互节流），避免长 turn 过频落库
+     * 节流时间戳独立于 init/result——否则紧邻 result/init 的首条 assistant 会被抑制，
+     * 长 turn 中段用量停在旧值。采集失败（getContextUsage 抛错）由 collector 内部兜住返回 null，
+     * 此处跳过上报。定时器兜底见 docs/pending.md #36。
      */
     private async handleContextUsage(
         trigger: 'init' | 'assistant' | 'result',
@@ -138,13 +139,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     ): Promise<void> {
         if (trigger === 'assistant') {
             const now = Date.now();
-            if (now - this.lastContextUsageAt < 3000) return;
+            if (now - this.lastAssistantUsageAt < 3000) return;
+            this.lastAssistantUsageAt = now;
         }
         const source = this.queryControlRef?.current;
         if (!source) return;
         const usage = await this.contextCollector.collect(source, resultMsg);
         if (!usage) return;
-        this.lastContextUsageAt = Date.now();
         try {
             await this.session.client.reportContextUsage(usage);
         } catch (e) {

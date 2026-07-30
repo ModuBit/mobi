@@ -226,13 +226,18 @@ function PermissionFooterInner(props: PermissionFooterProps) {
     const run = async (action: () => Promise<unknown>) => {
         if (props.disabled) return
         setError(null)
-        let handled = true // true = 正常完成或 404（已被处理）；false = 需提示错误
+        let handled = true // true = 正常完成或已被处理；false = 需提示错误
         try {
             await action()
         } catch (e) {
-            // 404 = 该 request 已被处理（首次 approve 成功但 SSE 滞后致 UI 未更新、用户重复点击）。
-            // 此时同步真实状态即可，不报错；其余错误正常提示
-            if (!(isAxiosError(e) && e.response?.status === 404)) {
+            // hub 对「会话仍存活但 requestId 已被处理」返回 404 + code:'permission_request_gone'
+            // （典型：首次 approve 成功但 SSE 滞后致卡片残留，用户重复点击）。此情形静默收起，不报错；
+            // 其余 404（会话被删 / 路由错误等）仍当真实失败提示，避免掩盖问题。
+            const data = (isAxiosError(e) ? (e.response?.data as { code?: string; error?: string } | undefined) : undefined)
+            const isHandled = isAxiosError(e)
+                && e.response?.status === 404
+                && (data?.code === 'permission_request_gone' || data?.error === 'Request not found')
+            if (!isHandled) {
                 setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
                 handled = false
             }

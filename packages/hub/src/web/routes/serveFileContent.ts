@@ -25,6 +25,8 @@ interface ServeOptions {
     download?: boolean
     /** 额外响应头（serve-file 用于追加 x-content-type-options: nosniff） */
     extraHeaders?: Record<string, string>
+    /** text/html 文档专属 CSP（serve-file 预览用），仅当 meta.mime 为 text/html 时注入 */
+    htmlCsp?: string
 }
 
 /**
@@ -101,6 +103,12 @@ export async function serveFileContent(
     c.header('etag', etag)
     c.header('accept-ranges', 'bytes')
     c.header('cache-control', 'private, no-cache')
+    // text/html 预览文档：注入严格 CSP，把 sandbox + allow-same-origin 的能力面收窄到
+    // 「只能加载资源、不能联网发请求/调 mobi API」（connect-src 'none'）。仅作用于 html 文档本身，
+    // CSS/JS 子资源（同目录或外部 CDN）照常服务。详见 serve-file 路由 PREVIEW_CSP 注释。
+    if (opts.htmlCsp && mime.startsWith('text/html')) {
+        c.header('content-security-policy', opts.htmlCsp)
+    }
     if (opts.extraHeaders) {
         for (const [k, v] of Object.entries(opts.extraHeaders)) {
             c.header(k, v)

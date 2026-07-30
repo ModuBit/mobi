@@ -68,7 +68,10 @@ export function createPermissionsRoutes(getSyncEngine: () => SyncEngine | null):
 
         const requests = session.agentState?.requests ?? null
         if (!requests || !requests[requestId]) {
-            return c.json({ error: 'Request not found' }, 404)
+            // 会话仍存活但 requestId 已不在 agentState.requests：已被 approve/deny 处理
+            // （典型场景：首次响应成功但 SSE 滞后致前端卡片残留，用户重复点击）。
+            // 用 code:'permission_request_gone' 与「会话不存在」的 404 区分，让前端静默收起而非报错。
+            return c.json({ error: 'Request not found', code: 'permission_request_gone' }, 404)
         }
 
         const mode = parsed.data.mode
@@ -101,7 +104,7 @@ export function createPermissionsRoutes(getSyncEngine: () => SyncEngine | null):
 
         const requests = session.agentState?.requests ?? null
         if (!requests || !requests[requestId]) {
-            return c.json({ error: 'Request not found' }, 404)
+            return c.json({ error: 'Request not found', code: 'permission_request_gone' }, 404)
         }
 
         const json = await c.req.json().catch(() => null)

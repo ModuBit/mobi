@@ -110,6 +110,49 @@ describe('GET /api/sessions/:id/serve-file/* 静态资源（HTML 预览）', () 
         expect(res.headers.get('content-type')).toBe('text/html')
     })
 
+    test('HTML 文档注入严格 CSP（connect-src none 禁调 mobi API；script/style https 放行 CDN）', async () => {
+        const token = await getAuthToken(app)
+
+        const res = await app.request('/api/sessions/s1/serve-file/index.html', {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+
+        const csp = res.headers.get('content-security-policy') ?? ''
+        // 收窄脚本联网能力：不能 fetch/XHR 调 mobi API
+        expect(csp).toContain("connect-src 'none'")
+        // 放行同目录（'self'）+ 外部 CDN（https:）脚本与样式
+        expect(csp).toContain("script-src 'self' https:")
+        expect(csp).toContain("style-src 'self' https:")
+    })
+
+    test('非 HTML 子资源（text/css）不注入 CSP——CSP 只作用于预览文档本身', async () => {
+        const engine = {
+            resolveSessionAccess: (_id: string, _ns: string) => ({
+                ok: true as const,
+                sessionId: 's1',
+                session: mockSession,
+            }),
+            readFileMeta: async () => ({
+                success: true,
+                meta: { mime: 'text/css', size: FILE_CONTENT.byteLength, etag: '5-1' },
+            }),
+            readFileRange: async (_s: string, _p: string, offset: number, length: number) => ({
+                success: true,
+                chunk: FILE_CONTENT.subarray(offset, offset + length),
+            }),
+        } as unknown as SyncEngine
+        const setup = await setupTestApp(engine)
+        try {
+            const token = await getAuthToken(setup.app)
+            const res = await setup.app.request('/api/sessions/s1/serve-file/a/b.css', {
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            expect(res.headers.get('content-security-policy')).toBeNull()
+        } finally {
+            setup.cleanup()
+        }
+    })
+
     test('download=1 → content-disposition: attachment（强制下载，避免 top-level 脱离 sandbox）', async () => {
         const token = await getAuthToken(app)
 

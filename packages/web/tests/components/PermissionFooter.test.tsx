@@ -195,9 +195,12 @@ describe('PermissionFooter', () => {
 
     it('approve 返回 404（request 已被处理）时静默同步，不弹错误', async () => {
         // 场景：首次 approve 成功但 SSE 滞后 → UI 仍显示 permission → 用户重复点击 →
-        // Hub 已删 request 返回 404。此时应静默拉最新状态让 UI 自愈，而非报错
+        // Hub 已删 request 返回 404 + code:permission_request_gone。此时应静默拉最新状态让 UI 自愈，而非报错
         const notFound = new AxiosError('Request not found')
-        ;(notFound as unknown as { response: { status: number } }).response = { status: 404 }
+        ;(notFound as unknown as { response: { status: number; data: { code: string } } }).response = {
+            status: 404,
+            data: { code: 'permission_request_gone' },
+        }
         mockApprove.mockRejectedValueOnce(notFound)
         renderFooter(makeTool())
         fireEvent.click(screen.getByText('允许'))
@@ -206,6 +209,21 @@ describe('PermissionFooter', () => {
         })
         // 404 = 已处理，不弹错误
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('approve 返回 404 但无 permission_request_gone code（如会话被删）时弹错误', async () => {
+        // 回归：不能把所有 404 一律当「已处理」——会话被删/路由错误的 404 仍需提示
+        const sessionGone = new AxiosError('Session not found')
+        ;(sessionGone as unknown as { response: { status: number; data: { error: string } } }).response = {
+            status: 404,
+            data: { error: 'Session not found' },
+        }
+        mockApprove.mockRejectedValueOnce(sessionGone)
+        renderFooter(makeTool())
+        fireEvent.click(screen.getByText('允许'))
+        await waitFor(() => {
+            expect(screen.queryByRole('alert')).toBeInTheDocument()
+        })
     })
 
     it('拒绝按钮为警示样式（text + danger 红字，非 primary block）', () => {

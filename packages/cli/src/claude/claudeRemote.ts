@@ -592,7 +592,7 @@ export async function claudeRemote(opts: {
     // 在 messages + query 就绪后（下方 wiring）才接通；接通前为 null，
     // 故「首条消息即 !cmd」（query 尚未启动，函数会在 handleSpecialCommand 后 return）时不注入，
     // 退化为纯本地执行——符合预期。注入消息不调 onMessage，SDK 也不回放 user 文本，UI 看不到。
-    let bashInjectSink: ((text: string) => void) | null = null
+    let bashInjectSink: ((text: string) => boolean) | null = null
 
     // !bash: 本地执行 shell 命令，不走 SDK，生成 tool_use/tool_result 消息对
     const executeBashCommand = async (command: string): Promise<void> => {
@@ -648,17 +648,21 @@ export async function claudeRemote(opts: {
         // 注入输出到 SDK context（默认开启，settings.json 的 bashInjectContext 可关）。
         // 模型据此感知并响应；注入本身不回显（见 sink 注释）。高危拦截路径已 return，不会走到这。
         // sink 未接通（首条消息即 !cmd，query 未启动）时 push 无意义，按未注入处理。
-        // 传分离的 stdout/stderr（CLI 标签格式，详见 buildBashInjectionText）。
+        // 注入文本不经 sanitizeUserMessage：它是 XML 标签包裹的结构化命令/输出（非用户自由文本），
+        // LaTeX 化 $…$→\(…\) 会把 bash 输出里的货币/数学串（如 $5$）篡改成 \(5\)，让模型读到错误数据。
+        // sink 返回 push 是否被接纳，据此判断注入是否真的会触发模型轮次。
         const injected = configuration.bashInjectContext && Boolean(bashInjectSink)
-        if (injected) {
-            bashInjectSink!(sanitizeUserMessage(buildBashInjectionText(command, stdout, stderr, hasError)))
-        }
+        const turnStarted = injected
+            ? bashInjectSink!(buildBashInjectionText(command, stdout, stderr, hasError))
+            : false
 
-        // 注入会异步触发模型轮次：running 由 SDK 的 system/init→result 驱动，
-        // 不在此手动复位——否则「复位 false」会先于异步「init true」落地，制造 running=false
-        // 窗口，userInputLoop 的 idle 门控可能在窗口内误放行下一条用户消息，导致 turn 串扰。
-        // 未注入（开关关 / sink 未接通）时无模型轮次，需手动复位。
-        if (!injected) {
+        // running 复位策略：
+        // - turnStarted（push 被活着的 messages 接纳 → 必触发模型轮次）：由 SDK 的 system/init→result
+        //   驱动复位，不在此手动复位——否则「复位 false」会先于异步「init true」落地，制造 running=false
+        //   窗口，userInputLoop 的 idle 门控可能在窗口内误放行下一条用户消息，导致 turn 串扰。
+        // - !turnStarted（注入关 / sink 未接通 / messages 已关闭不会触发轮次）：必须手动复位，
+        //   否则 running 永久卡 true（query 退出后 push 被丢弃即此情形）。
+        if (!turnStarted) {
             opts.onRunningChange?.(false)
         }
     }
@@ -729,13 +733,21 @@ export async function claudeRemote(opts: {
     // executeBashCommand 推入的注入也能进入下面的 query——与中途 !cmd 行为一致，不再退化。
     // query 尚未启动，PushableAsyncIterable 会缓冲，query 消费时即触发模型响应。
     const messages = new PushableAsyncIterable<SDKUserMessage>();
-    bashInjectSink = (text: string) => {
-        messages.push({
-            type: 'user',
-            message: { role: 'user', content: text },
-            parent_tool_use_id: null,
-            session_id: '',
-        });
+    // 返回 push 是否被接纳：messages 已关闭（query 退出）时 push 会抛错，捕获返回 false，
+    // 供 executeBashCommand 判断「注入不会触发模型轮次」并据此复位 running。
+    bashInjectSink = (text: string): boolean => {
+        if (messages.done) return false;
+        try {
+            messages.push({
+                type: 'user',
+                message: { role: 'user', content: text },
+                parent_tool_use_id: null,
+                session_id: '',
+            });
+            return true;
+        } catch {
+            return false;
+        }
     };
 
     const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
