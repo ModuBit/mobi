@@ -551,4 +551,49 @@ export class SyncEngine {
     updateSDKMetadata(sessionId: string, metadata: SDKMetadata): void {
         this.sessionCache.updateSDKMetadata(sessionId, metadata)
     }
+
+    // 进行中的后台刷新去重（同一 session 同时只跑一个 refreshMetadata RPC）
+    private readonly refreshingMetadata = new Set<string>()
+
+    /**
+     * 后台刷新 sdkMetadata（SWR 配套）。
+     * 由 metadata 端点在命中缓存时 fire-and-forget 调用：
+     * - 同 session 并发去重（Set），避免多组件同时拉 metadata 触发多次 spawn
+     * - 仅当新 metadata 与缓存实际不同才写库（→ updateSDKMetadata 会发 SSE 通知 web refetch）；
+     *   相同则什么都不做——这是打破「refetch ↔ SSE」无限循环的关键
+     * - 会话不活跃 / RPC 失败静默（web 仍用缓存，不退化）
+     */
+    async refreshSDKMetadataBackground(sessionId: string): Promise<void> {
+        if (this.refreshingMetadata.has(sessionId)) return
+        this.refreshingMetadata.add(sessionId)
+        try {
+            const result = await this.refreshMetadata(sessionId)
+            if (!result.success || !result.metadata) return
+            const cached = this.getSession(sessionId)?.metadata?.sdkMetadata
+            if (!cached || !sdkMetadataEqual(cached, result.metadata)) {
+                this.updateSDKMetadata(sessionId, result.metadata)
+            }
+        } catch {
+            // 会话不活跃 / RPC 失败 — 静默，web 继续用缓存
+        } finally {
+            this.refreshingMetadata.delete(sessionId)
+        }
+    }
+}
+
+/**
+ * sdkMetadata 等价比较（稳定 JSON 串对比，commands 等数组按名排序去序敏感）。
+ * 用于后台刷新判定「是否真变了」——避免无变化时发 SSE 触发 web refetch 循环。
+ */
+function sdkMetadataEqual(a: SDKMetadata, b: SDKMetadata): boolean {
+    return stableStringify(a) === stableStringify(b)
+}
+
+function stableStringify(value: unknown): string {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value)
+    if (Array.isArray(value)) {
+        return '[' + value.map(stableStringify).join(',') + ']'
+    }
+    const obj = value as Record<string, unknown>
+    return '{' + Object.keys(obj).sort().map(k => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',') + '}'
 }

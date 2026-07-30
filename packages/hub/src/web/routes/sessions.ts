@@ -636,13 +636,19 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return sessionResult
         }
 
-        // 优先从 DB 中获取完整 sdkMetadata
+        // SWR（stale-while-revalidate）：
+        // - 有缓存：立即返回（web 不阻塞），同时后台异步刷新。刷新仅在内容变化时写库 + 发 SSE，
+        //   web 收到 sdk-metadata-refreshed 自动 refetch 拿到新值。会话不活跃时 RPC 静默失败，web 继续用缓存。
+        // - 无缓存：阻塞刷新一次（首次打开必须等），写库后返回。
+        //   这样 new/resume/reconnect 三种「打开」都能在会话存活时拿到最新 commands/agents/models，
+        //   不再因「DB 非空即短路」永久返回陈旧缓存（旧会话看不到新增的 .claude/commands）。
         const sdkMetadata = sessionResult.session.metadata?.sdkMetadata
         if (sdkMetadata && Object.keys(sdkMetadata).length > 0) {
+            void engine.refreshSDKMetadataBackground(sessionResult.sessionId)
             return c.json({ success: true, metadata: sdkMetadata })
         }
 
-        // Fallback: RPC 让 CLI 通过 SDK 提取完整 metadata
+        // 无缓存：RPC 让 CLI 通过 SDK 提取完整 metadata（阻塞）
         try {
             const result = await engine.refreshMetadata(sessionResult.sessionId)
 

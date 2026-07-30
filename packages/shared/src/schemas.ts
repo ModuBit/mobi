@@ -494,6 +494,11 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         type: z.literal('messages-submitted'),
         localIds: z.array(z.string()),
         submittedAt: z.number(),
+    }),
+    // 后台刷新 sdkMetadata 完成且内容有变 → 通知 web refetch（SWR 配套，见 hub metadata 端点）
+    SessionEventBaseSchema.extend({
+        type: z.literal('sdk-metadata-refreshed'),
+        sessionId: z.string()
     })
 ])
 

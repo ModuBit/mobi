@@ -692,6 +692,13 @@ export class SessionCache {
 
         if (result.result === 'success') {
             this.refreshSession(sessionId)
+            // 通知 web：sdkMetadata 已更新，refetch（SWR 后台刷新配套）。仅发本 session，
+            // patchSessionCache 不消费此事件——web SSEProvider 单独 invalidate sdkMetadata query
+            this.publisher.emit({
+                type: 'sdk-metadata-refreshed',
+                sessionId,
+                namespace: session.namespace,
+            })
         }
     }
 }

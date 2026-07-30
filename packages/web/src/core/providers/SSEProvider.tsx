@@ -380,6 +380,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'session-updated':
                 patchSessionCache(qc, event.sessionId, event.data)
                 break
+            case 'sdk-metadata-refreshed':
+                // hub 后台刷新 sdkMetadata 完成（内容有变）→ 失效本 session 的 metadata query，触发 refetch 拿新值
+                qc.invalidateQueries({ queryKey: queryKeys.sdkMetadata(event.sessionId) })
+                break
             case 'session-removed':
                 qc.removeQueries({ queryKey: queryKeys.session(event.sessionId) })
                 qc.removeQueries({ queryKey: queryKeys.messages(event.sessionId) })
