@@ -25,7 +25,7 @@ import { Global, css } from '@emotion/react'
 import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { BackgroundTaskCard } from './BackgroundTaskCard'
-import { ClearStateButton } from './ClearStateButton'
+import { ClearStateButton, type ClearRuntimeStateField } from './ClearStateButton'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import type { BackgroundTask } from '@/domain/chat/types'
 import type { MobiApi } from '@/core/data/api/client'
@@ -45,7 +45,7 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
     sessionId: string
     api: MobiApi
     onTaskClick: (task: BackgroundTask) => void
-    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) => Promise<void>
+    onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()

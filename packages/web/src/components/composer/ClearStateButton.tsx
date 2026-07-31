@@ -21,10 +21,13 @@ import { BrushCleaning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
+/** 可清理的运行时状态字段（web 组件层共用，避免字面量联合散落多处） */
+export type ClearRuntimeStateField = 'todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus'
+
 export type ClearStateButtonProps = {
     sessionId: string
-    clearField: 'todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus'
-    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) => Promise<void>
+    clearField: ClearRuntimeStateField
+    onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
 }
 
 export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateButtonProps) {

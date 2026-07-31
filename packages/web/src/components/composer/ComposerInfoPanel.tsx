@@ -38,6 +38,7 @@ import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
 import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { TodoPanel } from './TodoPanel'
+import type { ClearRuntimeStateField } from './ClearStateButton'
 import { TaskPanel } from './TaskPanel'
 import { BackgroundTaskPanel } from './BackgroundTaskPanel'
 import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
@@ -289,7 +290,7 @@ export function ComposerInfoPanel({
     }, [])
 
     // 清理运行时状态字段的回调
-    const handleClearState = useCallback(async (clearSessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) => {
+    const handleClearState = useCallback(async (clearSessionId: string, clearFields: ClearRuntimeStateField[]) => {
         await api.sessions.clearRuntimeStateFields(clearSessionId, clearFields)
     }, [api])
 

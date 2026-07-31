@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto'
 import type { GoalStatus } from '@mobi/shared'
 import type { ApiSessionClient } from '@/lib'
 import type { GoalStatusAttachment, RawJSONLines } from './types'
+import { logger } from '@/ui/logger'
 
 /** goal 达成后,延迟多久清空 hub 侧 goalStatus(避免吊顶瞬间消失) */
 const MET_AUTOCLEAR_DELAY = 10_000
@@ -52,11 +53,11 @@ export class GoalStatusHandler {
             ...(status.tokens !== undefined && { tokens: status.tokens }),
         }
 
-        // 1. RPC 上报 → hub 落库 + SSE 推 web(失败静默,不阻塞聊天流)
+        // 1. RPC 上报 → hub 落库 + SSE 推 web(失败记日志,不阻塞聊天流)
         try {
             this.client.reportGoalStatus(goalStatus)
-        } catch {
-            /* 静默:goal 状态非关键路径 */
+        } catch (e) {
+            logger.debug('[GoalStatusHandler] reportGoalStatus failed', e)
         }
 
         // 2. goal_progress 消息进聊天流(stream 标注)
@@ -72,8 +73,8 @@ export class GoalStatusHandler {
             this.metTimer = setTimeout(() => {
                 try {
                     this.client.reportGoalStatus(null)
-                } catch {
-                    /* 静默 */
+                } catch (e) {
+                    logger.debug('[GoalStatusHandler] reportGoalStatus(null) failed', e)
                 }
                 this.metTimer = null
             }, MET_AUTOCLEAR_DELAY)

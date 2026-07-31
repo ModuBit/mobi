@@ -19,17 +19,9 @@ import { GitBranch, FolderTree, Folder, ChevronDown } from 'lucide-react'
 import styled from '@emotion/styled'
 import type { GoalStatus } from '@mobi/shared'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
-import type { ClearStateButtonProps } from '@/components/composer/ClearStateButton'
+import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { GoalChip } from './GoalChip'
 import { GoalDetail } from './GoalDetail'
-
-/** 可清理字段联合（与 ClearStateButton 的 onClear 签名对齐） */
-type ClearFields = ClearStateButtonProps['onClear'] extends (
-    _sid: string,
-    _fields: infer F,
-) => Promise<void>
-    ? F
-    : never
 
 /** 自动收起延迟（毫秒） */
 const AUTO_COLLAPSE_DELAY = 3000
@@ -121,7 +113,7 @@ interface SessionContextBarProps {
     /** goal 状态（有值时收起态追加 chip，展开态在浮层展示详情） */
     goal?: GoalStatus | null
     sessionId: string
-    onClearGoal: (sid: string, fields: ClearFields) => Promise<void>
+    onClearGoal: (sid: string, fields: ClearRuntimeStateField[]) => Promise<void>
 }
 
 /**

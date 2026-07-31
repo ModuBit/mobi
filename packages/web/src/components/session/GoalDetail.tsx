@@ -16,16 +16,8 @@
 
 import styled from '@emotion/styled'
 import type { GoalStatus } from '@mobi/shared'
-import type { ClearStateButtonProps } from '@/components/composer/ClearStateButton'
+import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { ClearStateButton } from '@/components/composer/ClearStateButton'
-
-/** 可清理字段联合（与 ClearStateButton 的 onClear 签名对齐） */
-type ClearFields = ClearStateButtonProps['onClear'] extends (
-    _sid: string,
-    _fields: infer F,
-) => Promise<void>
-    ? F
-    : never
 
 /** 展开态 goal 详情卡片：左边框颜色按 met/active 区分，浮在吊顶下沿 */
 const Card = styled.div<{ $met: boolean }>`
@@ -79,7 +71,7 @@ const Stats = styled.div`
 export interface GoalDetailProps {
     goal: GoalStatus
     sessionId: string
-    onClear: (sid: string, fields: ClearFields) => Promise<void>
+    onClear: (sid: string, fields: ClearRuntimeStateField[]) => Promise<void>
 }
 
 /**

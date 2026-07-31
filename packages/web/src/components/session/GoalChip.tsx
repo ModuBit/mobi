@@ -16,16 +16,8 @@
 
 import styled from '@emotion/styled'
 import type { GoalStatus } from '@mobi/shared'
-import type { ClearStateButtonProps } from '@/components/composer/ClearStateButton'
+import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { ClearStateButton } from '@/components/composer/ClearStateButton'
-
-/** 可清理字段联合（与 ClearStateButton 的 onClear 签名对齐） */
-type ClearFields = ClearStateButtonProps['onClear'] extends (
-    _sid: string,
-    _fields: infer F,
-) => Promise<void>
-    ? F
-    : never
 
 /** 收起态 goal chip：圆点 + 状态文案 + 条件摘要 + 清理按钮。右贴吊顶。 */
 const Chip = styled.span<{ $met: boolean }>`
@@ -60,7 +52,7 @@ const ConditionText = styled.span`
 export interface GoalChipProps {
     goal: GoalStatus
     sessionId: string
-    onClear: (sid: string, fields: ClearFields) => Promise<void>
+    onClear: (sid: string, fields: ClearRuntimeStateField[]) => Promise<void>
 }
 
 /**

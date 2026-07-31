@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { TaskItem } from '@mobi/shared'
 import { BlinkText } from '@/components/ui/BlinkText'
-import { ClearStateButton } from './ClearStateButton'
+import { ClearStateButton, type ClearRuntimeStateField } from './ClearStateButton'
 
 /** 任务橙色，参考 Claude Code */
 const TASK_ORANGE = '#e8825c'
@@ -54,7 +54,7 @@ const StyledCheckbox = styled(Checkbox)<{ $status: TaskItem['status'] }>`
 export type TaskPanelProps = {
     tasks: TaskItem[] | undefined
     sessionId: string
-    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) => Promise<void>
+    onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
 }
 
 export function TaskPanel({ tasks, sessionId, onClear }: TaskPanelProps) {

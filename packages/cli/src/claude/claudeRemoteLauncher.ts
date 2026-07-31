@@ -191,6 +191,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         );
         // scanner 只启动一次(首次 onSessionFound)；后续 session 切换走 onNewSession
         let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null;
+        // pending promise 跟踪：防止 start() 完成前的重复启动竞争 + cleanup 时序问题
+        let scannerPromise: Promise<Awaited<ReturnType<typeof createSessionScanner>>> | null = null;
 
         // 启动恢复：读 transcript 最后一条 goal_status，仅恢复未达成的 active goal
         const restoreGoalStatus = async (sessionId: string) => {
@@ -557,16 +559,18 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onSessionFound: (sessionId) => {
                             session.onSessionFound(sessionId);
-                            if (!scanner) {
+                            if (!scannerPromise) {
                                 // 首次：启动 scanner(只传 onAttachmentStatus,不传 onMessage——
                                 // remote 模式 SDK 消息流已送聊天消息,scanner 送消息会重复)
-                                createSessionScanner({
+                                scannerPromise = createSessionScanner({
                                     sessionId,
                                     workingDirectory: session.path,
                                     onAttachmentStatus: (status) => goalHandler.handle(status),
-                                }).then((s) => { scanner = s; restoreGoalStatus(sessionId); })
-                                  .catch((e) => logger.debug('[remote]: scanner start failed', e));
-                            } else {
+                                });
+                                scannerPromise
+                                    .then((s) => { scanner = s; restoreGoalStatus(sessionId); })
+                                    .catch((e) => { scannerPromise = null; logger.debug('[remote]: scanner start failed', e); });
+                            } else if (scanner) {
                                 // 后续 session 切换(fork/compact)：切监听文件 + 恢复 goal 状态
                                 scanner.onNewSession(sessionId);
                                 restoreGoalStatus(sessionId);
@@ -688,8 +692,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         } finally {
             // scanner 与 goalHandler 跟 launcher 生命周期一致(跨 turn 复用,仅销毁时清理)
             goalHandler.dispose();
-            if (scanner) {
-                await scanner.cleanup();
+            // 等待 pending scanner 创建完成再 cleanup,防止 launcher 在 start() 完成前退出致孤儿 watcher
+            // scannerPromise 仅在回调闭包内赋值，TS CFA 不跟踪闭包赋值会窄化为 null，需 as 恢复联合类型
+            const pendingScanner = scannerPromise as Promise<Awaited<ReturnType<typeof createSessionScanner>>> | null;
+            if (pendingScanner) {
+                try {
+                    const s = await pendingScanner.catch(() => null);
+                    await s?.cleanup();
+                } catch (e) {
+                    logger.debug('[remote]: scanner cleanup failed', e);
+                }
             }
             if (this.permissionHandler) {
                 this.permissionHandler.reset();

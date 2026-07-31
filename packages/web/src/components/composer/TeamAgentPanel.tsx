@@ -25,7 +25,7 @@ import { Global, css } from '@emotion/react'
 import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { TeamAgentCard } from './TeamAgentCard'
-import { ClearStateButton } from './ClearStateButton'
+import { ClearStateButton, type ClearRuntimeStateField } from './ClearStateButton'
 import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 
 const STATUS_ORDER: Record<string, number> = {
@@ -42,7 +42,7 @@ const spinKeyframes = css`
 
 export function TeamAgentPanel({ sessionId, onClear }: {
     sessionId: string
-    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) => Promise<void>
+    onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()

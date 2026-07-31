@@ -31,6 +31,7 @@ import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { useMobiApi } from '@/core/data/api/client'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
+import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 
 const ChatWrapper = styled.div`
     position: absolute;
@@ -66,7 +67,7 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
     const handleClearGoal = useCallback(
         async (
             sid: string,
-            fields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[],
+            fields: ClearRuntimeStateField[],
         ) => {
             await api.sessions.clearRuntimeStateFields(sid, fields)
         },
