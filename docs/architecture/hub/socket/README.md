@@ -52,6 +52,7 @@ CLI 连接后，通过事件与 Hub 交互。事件按职责分为四组：
 | `session-alive` | CLI → Hub | 会话心跳，保活状态，携带运行时字段（`running`、`mode`、`permissionMode`、`model`、`effort`） |
 | `session-end` | CLI → Hub | 会话结束，触发清理 |
 | `context-usage` | CLI → Hub | 每轮 result 上报上下文用量（从 usage 字段本地派生，不调 getContextUsage），落库到 `runtimeState.contextUsage` 并广播给 Web |
+| `goal-status` | CLI → Hub | 上报 `/goal` 状态（scanner 从 transcript `attachment.goal_status` 提取后双发：RPC 落库 `runtimeState.goalStatus` + `goal_progress` 消息进聊天流），`goalStatus:null` 表示清空（达成 10s 后 / 手动清理） |
 | `update-metadata` | CLI ⇄ Hub | 更新会话元数据（名称等），带乐观锁 |
 | `update-state` | CLI ⇄ Hub | 更新 Agent 状态（requests 等），带乐观锁 |
 | `idle-timeout-warning` | CLI → Hub | 空闲超时预警，广播到 Web 端 |
