@@ -93,9 +93,34 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
     error: z.unknown().optional(),
     durationMs: z.number().optional(),
   }).loose(),
+
+  // Goal progress — CLI 自产合成消息（每 turn 一次），进聊天流作标注
+  RawJSONLinesBaseSchema.extend({
+    type: z.literal("goal_progress"),
+    uuid: z.string(),
+    met: z.boolean(),
+    condition: z.string(),
+    reason: z.string().optional(),
+    iterations: z.number().optional(),
+    durationMs: z.number().optional(),
+    tokens: z.number().optional(),
+  }).loose(),
 ]);
 
 export type RawJSONLines = z.infer<typeof RawJSONLinesSchema>;
+
+/** transcript 中 attachment.goal_status 的结构（Claude Code 每 turn 落盘） */
+export const GoalStatusAttachmentSchema = z.object({
+  type: z.literal("goal_status"),
+  met: z.boolean(),
+  condition: z.string(),
+  reason: z.string().optional(),
+  iterations: z.number().optional(),
+  durationMs: z.number().optional(),
+  tokens: z.number().optional(),
+  sentinel: z.boolean().optional(),
+});
+export type GoalStatusAttachment = z.infer<typeof GoalStatusAttachmentSchema>;
 
 // ============ 会话模式相关类型（从 loop.ts 抽出，消除循环依赖）============
 // 抽出原因：session/claudeRemote/claudeRemoteLauncher/permissionHandler/runClaude
