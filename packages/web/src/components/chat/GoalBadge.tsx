@@ -15,18 +15,22 @@
  */
 
 import styled from '@emotion/styled'
+import { Popover } from 'antd'
 import type { GoalStatus } from '@mobi/shared'
 import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { ClearStateButton } from '@/components/composer/ClearStateButton'
 
 /**
- * goal 徽标（StatusBar 内渲染）
+ * goal 徽标（StatusBar 内渲染）。
  *
- * 纯展示：active / 达成 两态，配色跟随 antd 双主题 CSS 变量
- * （success-bg / primary-bg）。condition 文本超长时 ellipsis，maxWidth 160px 防止撑宽。
- * 当 sessionId 与 onClear 都传时，末尾内嵌清理按钮；否则纯展示。
+ * 仅 active 态存在：达成(met:true)后 cli 立即 reportGoalStatus(null) → goalStatus=null →
+ * 徽标不渲染，所以这里统一 primary 蓝(运行提示色)。
+ *
+ * 收起只显示 ◎ active + condition 截断；hover 出 Popover 详情：
+ * condition 全文 / evaluator reason / 统计 / 清理按钮(仅 sessionId+onClear 都传时)。
+ * 用 Popover 而非 Tooltip —— overlay 可交互，鼠标能移进去点清理按钮。
  */
-const Badge = styled.span<{ $met: boolean }>`
+const Badge = styled.span`
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -34,10 +38,9 @@ const Badge = styled.span<{ $met: boolean }>`
     border-radius: 10px;
     font-size: 11px;
     line-height: 1.6;
-    ${({ $met }) =>
-        $met
-            ? `color: var(--ant-color-success); background: var(--ant-color-success-bg);`
-            : `color: var(--ant-color-primary); background: var(--ant-color-primary-bg);`}
+    color: var(--ant-color-primary);
+    background: var(--ant-color-primary-bg);
+    cursor: default;
 `
 
 const Dot = styled.span`
@@ -55,6 +58,44 @@ const Condition = styled.span`
     white-space: nowrap;
 `
 
+const Detail = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 260px;
+`
+
+const DetailCondition = styled.div`
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ant-color-text);
+    word-break: break-word;
+`
+
+const DetailReason = styled.div`
+    font-size: 11px;
+    font-style: italic;
+    color: var(--ant-color-text-secondary);
+    background: var(--ant-color-fill-quaternary);
+    padding: 3px 6px;
+    border-radius: 4px;
+    line-height: 1.5;
+    word-break: break-word;
+`
+
+const DetailStats = styled.div`
+    font-size: 11px;
+    color: var(--ant-color-text-tertiary);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+`
+
+const DetailClear = styled.div`
+    margin-top: 2px;
+    align-self: flex-start;
+`
+
 interface GoalBadgeProps {
     goal: GoalStatus
     /** sessionId（与 onClear 同时传入时渲染清理按钮） */
@@ -65,18 +106,49 @@ interface GoalBadgeProps {
 
 export function GoalBadge({ goal, sessionId, onClear }: GoalBadgeProps) {
     const canClear = Boolean(sessionId && onClear)
-    return (
-        <Badge $met={goal.met}>
-            <Dot />
-            {goal.met ? '✓ 达成' : '◎ active'}
-            <Condition>{goal.condition}</Condition>
-            {canClear ? (
-                <ClearStateButton
-                    sessionId={sessionId!}
-                    clearField="goalStatus"
-                    onClear={onClear!}
-                />
+    const hasStats =
+        goal.iterations !== undefined ||
+        goal.durationMs !== undefined ||
+        goal.tokens !== undefined
+
+    const detail = (
+        <Detail>
+            <DetailCondition>{goal.condition}</DetailCondition>
+            {goal.reason ? (
+                <DetailReason>evaluator · {goal.reason}</DetailReason>
             ) : null}
-        </Badge>
+            {hasStats ? (
+                <DetailStats>
+                    {goal.iterations !== undefined ? <span>iter {goal.iterations}</span> : null}
+                    {goal.durationMs !== undefined ? <span>{goal.durationMs}ms</span> : null}
+                    {goal.tokens !== undefined ? <span>{goal.tokens} tok</span> : null}
+                </DetailStats>
+            ) : null}
+            {canClear ? (
+                <DetailClear>
+                    <ClearStateButton
+                        sessionId={sessionId!}
+                        clearField="goalStatus"
+                        onClear={onClear!}
+                    />
+                </DetailClear>
+            ) : null}
+        </Detail>
+    )
+
+    return (
+        <Popover
+            content={detail}
+            trigger="hover"
+            mouseEnterDelay={0.3}
+            mouseLeaveDelay={0.3}
+            overlayStyle={{ maxWidth: 280 }}
+        >
+            <Badge>
+                <Dot />
+                ◎ active
+                <Condition>{goal.condition}</Condition>
+            </Badge>
+        </Popover>
     )
 }

@@ -20,30 +20,23 @@ import type { ApiSessionClient } from '@/lib'
 import type { GoalStatusAttachment, RawJSONLines } from './types'
 import { logger } from '@/ui/logger'
 
-/** goal 达成后,延迟多久清空 hub 侧 goalStatus(避免吊顶瞬间消失) */
-const MET_AUTOCLEAR_DELAY = 10_000
-
 /**
  * session 级 goal 状态处理器(local / remote 两模式共用)。
  *
  * 收到 scanner 提取的 goal_status attachment 后双发:
- *   1. reportGoalStatus RPC → hub runtimeState.goalStatus(吊顶 / 徽标)
- *   2. goal_progress 消息    → 聊天流(stream 标注)
+ *   1. goal_progress 消息    → 聊天流(stream 标注:达成那轮仍渲染 ✓ 达成 绿)
+ *   2. reportGoalStatus RPC → hub runtimeState.goalStatus(吊顶 / 徽标)
  *
- * met=true 时启动 10s 定时器,到期清空 goalStatus;新 status 到达时取消挂起定时器,
- * 避免上一个达成态的自动清空误覆盖新状态。
+ * met=true 时立即上报 null 让 UI 立即清空(达成态不再驻留吊顶);
+ * goal_progress 消息照发 met:true,stream 标注仍标绿。
  */
 export class GoalStatusHandler {
-    private metTimer: ReturnType<typeof setTimeout> | null = null
-
     constructor(
         private readonly client: ApiSessionClient,
         private readonly sendMessage: (body: RawJSONLines) => void,
     ) {}
 
     handle(status: GoalStatusAttachment): void {
-        this.clearMetTimer()
-
         const goalStatus: GoalStatus = {
             met: status.met,
             condition: status.condition,
@@ -53,14 +46,7 @@ export class GoalStatusHandler {
             ...(status.tokens !== undefined && { tokens: status.tokens }),
         }
 
-        // 1. RPC 上报 → hub 落库 + SSE 推 web(失败记日志,不阻塞聊天流)
-        try {
-            this.client.reportGoalStatus(goalStatus)
-        } catch (e) {
-            logger.debug('[GoalStatusHandler] reportGoalStatus failed', e)
-        }
-
-        // 2. goal_progress 消息进聊天流(stream 标注)
+        // 1. goal_progress 消息进聊天流(stream 标注:met:true 那轮仍渲染 ✓ 达成 绿)
         this.sendMessage({
             type: 'goal_progress',
             uuid: randomUUID(),
@@ -68,28 +54,21 @@ export class GoalStatusHandler {
             ...goalStatus,
         })
 
-        // 3. 达成后启动自动清空定时器(到期发 null 清 hub goalStatus)
-        if (status.met) {
-            this.metTimer = setTimeout(() => {
-                try {
-                    this.client.reportGoalStatus(null)
-                } catch (e) {
-                    logger.debug('[GoalStatusHandler] reportGoalStatus(null) failed', e)
-                }
-                this.metTimer = null
-            }, MET_AUTOCLEAR_DELAY)
+        // 2. RPC 上报 → hub runtimeState.goalStatus(吊顶 / 徽标)
+        //    active(met:false) 上报 goalStatus 供 UI 显示;达成(met:true) 立即上报 null 让 UI 清空
+        try {
+            this.client.reportGoalStatus(status.met ? null : goalStatus)
+        } catch (e) {
+            logger.debug('[GoalStatusHandler] reportGoalStatus failed', e)
         }
     }
 
-    /** 释放资源:取消挂起的自动清空定时器 */
+    /**
+     * 释放资源。
+     * 历史曾在此取消挂起的自动清空定时器(达成 10s 后清空),现已改为达成立即上报 null,
+     * 无定时器需清;保留方法签名避免改动 launcher 调用点。
+     */
     dispose(): void {
-        this.clearMetTimer()
-    }
-
-    private clearMetTimer(): void {
-        if (this.metTimer) {
-            clearTimeout(this.metTimer)
-            this.metTimer = null
-        }
+        // no-op
     }
 }

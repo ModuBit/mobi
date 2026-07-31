@@ -24,57 +24,26 @@ const makeDeps = () => ({
 })
 
 describe('GoalStatusHandler', () => {
-    it('active: 上报 goalStatus + 发 goal_progress 消息,不启定时器', () => {
+    it('active(met=false): 上报 goalStatus + 发 goal_progress 消息(met=false)', () => {
         const deps = makeDeps()
         const h = new GoalStatusHandler(deps as unknown as ApiSessionClient, deps.sendMessage)
-        h.handle({ type: 'goal_status', met: false, condition: 'x', iterations: 1 })
-        expect(deps.reportGoalStatus).toHaveBeenCalledWith(expect.objectContaining({ met: false, condition: 'x' }))
-        expect(deps.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'goal_progress' }))
-        // 未达成不应排定定时器:推进时钟不应触发额外上报
-        vi.useFakeTimers()
-        vi.advanceTimersByTime(10_000)
+        h.handle({ type: 'goal_status', met: false, condition: '所有测试通过', iterations: 1 })
+        expect(deps.reportGoalStatus).toHaveBeenCalledWith(expect.objectContaining({ met: false, condition: '所有测试通过' }))
+        expect(deps.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'goal_progress', met: false }))
+        // active 不发 null
+        expect(deps.reportGoalStatus).not.toHaveBeenCalledWith(null)
         expect(deps.reportGoalStatus).toHaveBeenCalledTimes(1)
-        vi.useRealTimers()
     })
 
-    it('met=true: 上报后启定时器,到期清空 goalStatus', () => {
-        vi.useFakeTimers()
+    it('met=true: 立即上报 null(UI 立即清空) + 发 goal_progress(met=true) stream 标注', () => {
         const deps = makeDeps()
         const h = new GoalStatusHandler(deps as unknown as ApiSessionClient, deps.sendMessage)
-        h.handle({ type: 'goal_status', met: true, condition: 'x' })
-        expect(deps.reportGoalStatus).toHaveBeenLastCalledWith(expect.objectContaining({ met: true }))
-        // 到期前不应清空
-        vi.advanceTimersByTime(9_999)
-        expect(deps.reportGoalStatus).toHaveBeenCalledTimes(1)
-        vi.advanceTimersByTime(1)
+        h.handle({ type: 'goal_status', met: true, condition: '所有测试通过' })
+        // reportGoalStatus 立即收到 null(无 delay),且只调用一次
         expect(deps.reportGoalStatus).toHaveBeenLastCalledWith(null)
-        expect(deps.reportGoalStatus).toHaveBeenCalledTimes(2)
-        vi.useRealTimers()
-    })
-
-    it('新 status 到达取消挂起定时器', () => {
-        vi.useFakeTimers()
-        const deps = makeDeps()
-        const h = new GoalStatusHandler(deps as unknown as ApiSessionClient, deps.sendMessage)
-        h.handle({ type: 'goal_status', met: true, condition: 'x' })
-        h.handle({ type: 'goal_status', met: false, condition: 'y' })
-        vi.advanceTimersByTime(10_000)
-        // 定时器已被取消,不应再发 null 清空
-        expect(deps.reportGoalStatus).toHaveBeenLastCalledWith(expect.objectContaining({ met: false, condition: 'y' }))
-        expect(deps.reportGoalStatus).toHaveBeenCalledTimes(2)
-        vi.useRealTimers()
-    })
-
-    it('dispose 取消挂起定时器', () => {
-        vi.useFakeTimers()
-        const deps = makeDeps()
-        const h = new GoalStatusHandler(deps as unknown as ApiSessionClient, deps.sendMessage)
-        h.handle({ type: 'goal_status', met: true, condition: 'x' })
-        h.dispose()
-        vi.advanceTimersByTime(10_000)
-        // dispose 后定时器不应触发
         expect(deps.reportGoalStatus).toHaveBeenCalledTimes(1)
-        vi.useRealTimers()
+        // goal_progress 消息仍带 met:true(stream 标注渲染 ✓ 达成 绿)
+        expect(deps.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'goal_progress', met: true }))
     })
 
     it('可选字段透传:reason/durationMs/tokens', () => {
@@ -101,5 +70,11 @@ describe('GoalStatusHandler', () => {
             durationMs: 1234,
             tokens: 9999,
         }))
+    })
+
+    it('dispose 可安全调用(已无定时器,空操作不抛)', () => {
+        const deps = makeDeps()
+        const h = new GoalStatusHandler(deps as unknown as ApiSessionClient, deps.sendMessage)
+        expect(() => h.dispose()).not.toThrow()
     })
 })
