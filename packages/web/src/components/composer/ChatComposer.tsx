@@ -21,7 +21,7 @@ import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined } from '@ant-d
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import type { AgentState, ContextUsage, EffortLevel, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
+import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
@@ -51,6 +51,7 @@ import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermis
 import { getPermissionModeIcon } from './permissionModeIcons'
 import { SubmitButton } from './SubmitButton'
 import { ContextUsageThread } from './ContextUsageThread'
+import { GoalBadge } from '@/components/chat/GoalBadge'
 import { resolveSubmitButtonState } from './submitButtonState'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 
@@ -94,6 +95,8 @@ interface ChatComposerProps {
     tasks?: TaskItem[]
     /** 上下文用量（来自 session.runtimeState.contextUsage；无值时不渲染用量线） */
     contextUsage?: ContextUsage | null
+    /** goal 状态（来自 session.runtimeState.goalStatus；无值时不渲染徽标） */
+    goal?: GoalStatus | null
 }
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
@@ -285,6 +288,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
         todos,
         tasks,
         contextUsage,
+        goal,
     } = props
 
     const [text, setText] = useState('')
@@ -668,6 +672,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
 
             {/* 上下文用量线（Sender 上方，无值时不渲染） */}
             {contextUsage ? <ContextUsageThread usage={contextUsage} /> : null}
+
+            {/* goal 状态徽标（active/达成，无值不渲染） */}
+            {goal ? <GoalBadge goal={goal} /> : null}
 
             <div
                 ref={wrapperRef}
