@@ -350,8 +350,8 @@ export const RuntimeStateSchema = z.object({
     model: z.string().nullable().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
     contextUsage: ContextUsageSchema.optional(),
-    /** 当前/最近一次 goal 状态；null 表示无 goal 或已清空 */
-    goals: GoalStatusSchema.nullable().optional(),
+    /** 当前/最近一次 goalStatus；null 表示无 goal 或已清空 */
+    goalStatus: GoalStatusSchema.nullable().optional(),
 })
 
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>

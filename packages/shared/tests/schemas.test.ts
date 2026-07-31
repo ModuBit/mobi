@@ -503,20 +503,20 @@ describe('GoalStatusSchema', () => {
     })
 })
 
-describe('RuntimeStateSchema with goals', () => {
-    it('接受 goals 字段并保留在解析结果中', () => {
-        const result = RuntimeStateSchema.parse({ goals: { met: false, condition: 'x' } })
-        expect(result.goals?.met).toBe(false)
-        expect(result.goals?.condition).toBe('x')
+describe('RuntimeStateSchema with goalStatus', () => {
+    it('接受 goalStatus 字段并保留在解析结果中', () => {
+        const result = RuntimeStateSchema.parse({ goalStatus: { met: false, condition: 'x' } })
+        expect(result.goalStatus?.met).toBe(false)
+        expect(result.goalStatus?.condition).toBe('x')
     })
 
-    it('goals 可为 null（无 goal 或已清空）', () => {
-        const result = RuntimeStateSchema.parse({ goals: null })
-        expect(result.goals).toBeNull()
+    it('goalStatus 可为 null（无 goal 或已清空）', () => {
+        const result = RuntimeStateSchema.parse({ goalStatus: null })
+        expect(result.goalStatus).toBeNull()
     })
 
-    it('goals 可选（缺省时不报错）', () => {
+    it('goalStatus 可选（缺省时不报错）', () => {
         const result = RuntimeStateSchema.parse({})
-        expect(result.goals).toBeUndefined()
+        expect(result.goalStatus).toBeUndefined()
     })
 })
