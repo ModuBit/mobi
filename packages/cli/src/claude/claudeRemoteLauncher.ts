@@ -203,7 +203,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 const last = goalStatuses[goalStatuses.length - 1];
                 if (last && !last.met) {
                     // 仅恢复未达成的 active goal；met:true 不恢复(已达成,等下次 active)
-                    goalHandler.handle(last);
+                    // 用 restore(只 RPC)而非 handle(双发)——恢复时不发 goal_progress 聊天消息，
+                    // 避免每次重连/会话切换都往历史注入一条合成消息
+                    goalHandler.restore(last);
                 }
             } catch (e) {
                 logger.debug('[remote]: restoreGoalStatus failed', e);

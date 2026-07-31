@@ -32,58 +32,46 @@ const wrapper = ({ children }: { children: ReactNode }) => (
     <ConfigProvider>{children}</ConfigProvider>
 )
 
-const baseProps = {
-    sessionId: 's1',
-    onClearGoal: vi.fn(),
-}
-
-describe('SessionContextBar 无 goal 静态条（M2 gate）', () => {
+// SessionContextBar 接口只有 { metadata }——goal 已移至 StatusBar 渲染（见 GoalBadge），
+// 这里只验静态信息条：path / gitBranch / worktree。
+describe('SessionContextBar 静态信息条', () => {
     afterEach(cleanup)
 
     it('metadata 为 null 时不渲染', () => {
         const { container } = render(
-            <SessionContextBar metadata={null} goal={null} {...baseProps} />,
+            <SessionContextBar metadata={null} />,
             { wrapper },
         )
         expect(container.firstChild).toBeNull()
     })
 
-    it('无 goal 时为静态信息条（role=status，无 chevron，无展开交互）', () => {
-        const metadata: SessionMetadataSummary = {
+    it('渲染 path，静态条 role=status 无展开符号', () => {
+        const metadata = {
             path: '/home/user/project',
             host: 'localhost',
         } as SessionMetadataSummary
-        render(
-            <SessionContextBar metadata={metadata} goal={null} {...baseProps} />,
-            { wrapper },
-        )
+        render(<SessionContextBar metadata={metadata} />, { wrapper })
         const bar = screen.getByTestId('session-context-bar')
-        // 静态条：role=status（非 button）
         expect(bar).toHaveAttribute('role', 'status')
-        // 无 chevron（chevron 仅 goal 存在时渲染）
+        // 静态条无展开 chevron
         expect(screen.queryByText('▾')).not.toBeInTheDocument()
         expect(screen.queryByText('▸')).not.toBeInTheDocument()
-        // path 仍展示
         expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
     })
 
-    it('无 goal 但有 gitBranch 时仍渲染分支信息（静态条不丢内容）', () => {
-        const metadata: SessionMetadataSummary = {
+    it('有 gitBranch 时渲染分支信息', () => {
+        const metadata = {
             path: '/home/user/project',
             host: 'localhost',
             gitBranch: 'feature/auth',
         } as SessionMetadataSummary
-        render(
-            <SessionContextBar metadata={metadata} goal={null} {...baseProps} />,
-            { wrapper },
-        )
+        render(<SessionContextBar metadata={metadata} />, { wrapper })
         expect(screen.getByText('feature/auth')).toBeInTheDocument()
-        // 静态条
         expect(screen.getByTestId('session-context-bar')).toHaveAttribute('role', 'status')
     })
 
-    it('无 goal 但有 worktree 时仍渲染 worktree 信息', () => {
-        const metadata: SessionMetadataSummary = {
+    it('有 worktree 时渲染 worktree 信息', () => {
+        const metadata = {
             path: '/home/user/project',
             host: 'localhost',
             gitBranch: 'main',
@@ -93,10 +81,7 @@ describe('SessionContextBar 无 goal 静态条（M2 gate）', () => {
                 name: 'auth-worktree',
             },
         } as SessionMetadataSummary
-        render(
-            <SessionContextBar metadata={metadata} goal={null} {...baseProps} />,
-            { wrapper },
-        )
+        render(<SessionContextBar metadata={metadata} />, { wrapper })
         expect(screen.getByText('main')).toBeInTheDocument()
         expect(screen.getByText('auth-worktree')).toBeInTheDocument()
     })

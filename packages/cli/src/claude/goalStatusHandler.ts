@@ -37,14 +37,7 @@ export class GoalStatusHandler {
     ) {}
 
     handle(status: GoalStatusAttachment): void {
-        const goalStatus: GoalStatus = {
-            met: status.met,
-            condition: status.condition,
-            ...(status.reason !== undefined && { reason: status.reason }),
-            ...(status.iterations !== undefined && { iterations: status.iterations }),
-            ...(status.durationMs !== undefined && { durationMs: status.durationMs }),
-            ...(status.tokens !== undefined && { tokens: status.tokens }),
-        }
+        const goalStatus = this.toGoalStatus(status)
 
         // 1. goal_progress 消息进聊天流(stream 标注:met:true 那轮仍渲染 ✓ 达成 绿)
         this.sendMessage({
@@ -55,7 +48,31 @@ export class GoalStatusHandler {
         })
 
         // 2. RPC 上报 → hub runtimeState.goalStatus(吊顶 / 徽标)
-        //    active(met:false) 上报 goalStatus 供 UI 显示;达成(met:true) 立即上报 null 让 UI 清空
+        this.report(status, goalStatus)
+    }
+
+    /**
+     * 恢复场景（启动 / 重连 / 会话切换）专用：只 reportGoalStatus RPC 恢复徽标，
+     * **不发 goal_progress 聊天消息**。聊天历史里已有当初首次设置时的标注，
+     * 恢复时再 sendMessage 会注入一条合成消息污染历史（每次重连/切换多一行）。
+     */
+    restore(status: GoalStatusAttachment): void {
+        this.report(status, this.toGoalStatus(status))
+    }
+
+    private toGoalStatus(status: GoalStatusAttachment): GoalStatus {
+        return {
+            met: status.met,
+            condition: status.condition,
+            ...(status.reason !== undefined && { reason: status.reason }),
+            ...(status.iterations !== undefined && { iterations: status.iterations }),
+            ...(status.durationMs !== undefined && { durationMs: status.durationMs }),
+            ...(status.tokens !== undefined && { tokens: status.tokens }),
+        }
+    }
+
+    /** RPC 上报：active(met:false) 上报 goalStatus 供 UI 显示；达成(met:true) 立即上报 null 让 UI 清空 */
+    private report(status: GoalStatusAttachment, goalStatus: GoalStatus): void {
         try {
             this.client.reportGoalStatus(status.met ? null : goalStatus)
         } catch (e) {

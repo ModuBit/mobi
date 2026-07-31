@@ -77,4 +77,21 @@ describe('GoalStatusHandler', () => {
         const h = new GoalStatusHandler(deps as unknown as ApiSessionClient, deps.sendMessage)
         expect(() => h.dispose()).not.toThrow()
     })
+
+    it('restore(恢复场景): 只 reportGoalStatus RPC 恢复徽标，不发 goal_progress 聊天消息（避免重连/切换注入合成消息污染历史）', () => {
+        const deps = makeDeps()
+        const h = new GoalStatusHandler(deps as unknown as ApiSessionClient, deps.sendMessage)
+        h.restore({ type: 'goal_status', met: false, condition: '所有测试通过', iterations: 1 })
+        expect(deps.reportGoalStatus).toHaveBeenCalledWith(expect.objectContaining({ met: false, condition: '所有测试通过' }))
+        // 恢复不发聊天消息
+        expect(deps.sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('restore met=true: 上报 null（与 handle 一致的清空语义，但仍不发消息）', () => {
+        const deps = makeDeps()
+        const h = new GoalStatusHandler(deps as unknown as ApiSessionClient, deps.sendMessage)
+        h.restore({ type: 'goal_status', met: true, condition: '所有测试通过' })
+        expect(deps.reportGoalStatus).toHaveBeenLastCalledWith(null)
+        expect(deps.sendMessage).not.toHaveBeenCalled()
+    })
 })

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { SNAPSHOT_PENDING_ID, type ClientToServerEvents } from '@mobi/shared'
+import { SNAPSHOT_PENDING_ID, GoalStatusSchema, type ClientToServerEvents } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
@@ -434,10 +434,13 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     })
 
     socket.on('goal-status', (data: { sid: string; goalStatus: GoalStatus | null }) => {
-        // null = 清空（达成后/手动清理）；非 null 必须是对象
-        if (!data || typeof data.sid !== 'string'
-            || (data.goalStatus !== null && (typeof data.goalStatus !== 'object' || !data.goalStatus))) {
-            return
+        // null = 清空（达成后/手动清理）；非 null 必须是合法 GoalStatus
+        // （与 message/updateState 等 handler 一致用 Zod 校验，防 malformed payload 落库 + SSE 推 web 崩溃）
+        if (!data || typeof data.sid !== 'string') return
+        if (data.goalStatus !== null) {
+            const parsed = GoalStatusSchema.safeParse(data.goalStatus)
+            if (!parsed.success) return
+            data.goalStatus = parsed.data
         }
         const sessionAccess = resolveSessionAccess(data.sid)
         if (!sessionAccess.ok) {
