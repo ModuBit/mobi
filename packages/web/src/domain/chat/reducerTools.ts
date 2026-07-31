@@ -16,6 +16,7 @@
 
 import type { AgentState } from '@/core/data/api/types'
 import type { ChatBlock, ChatToolCall, MessageMeta, NormalizedMessage, ToolCallBlock, ToolPermission } from './types'
+import { recordTool } from '@/core/lib/diag'
 
 /** 权限条目 */
 export type PermissionEntry = {
@@ -91,6 +92,15 @@ export function ensureToolBlock(
             if (updatedTool.state === 'running' && seed.permission.status === 'pending') {
                 updatedTool.state = 'pending'
             }
+        } else if (updatedTool.state === 'pending') {
+            // 审批已通过/无 pending 请求（agentState.requests 移除后 getPermissions 不再返回）：
+            // 清除遗留的 pending permission 并翻 running，让工具执行窗口可见。
+            // 若保持 pending，ToolCallBlock 会因 hasPermission=true 持续不渲染，直到 tool_result 才出现。
+            updatedTool.permission = undefined
+            updatedTool.state = 'running'
+            if (updatedTool.startedAt === null) {
+                updatedTool.startedAt = seed.createdAt
+            }
         }
         if (seed.name && (!isPlaceholderToolName(seed.name) || isPlaceholderToolName(updatedTool.name))) {
             updatedTool.name = seed.name
@@ -100,6 +110,21 @@ export function ensureToolBlock(
         }
         if (seed.description !== null) {
             updatedTool.description = seed.description
+        }
+
+        // 诊断埋点：记录已有 block 的状态迁移（state 或 permission 变化）。
+        // 用「值」比较而非「引用」：reducer 每次重跑都新建 permission 对象，但值没变时不算变化。
+        const permChanged = JSON.stringify(existing.tool.permission) !== JSON.stringify(updatedTool.permission)
+        if (existing.tool.state !== updatedTool.state || permChanged) {
+            recordTool({
+                kind: 'tool',
+                toolUseId: id,
+                name: updatedTool.name,
+                stage: 'state',
+                state: updatedTool.state,
+                permission: updatedTool.permission,
+                source: 'existing',
+            })
         }
 
         // 更新映射以保持引用一致性
@@ -134,6 +159,17 @@ export function ensureToolBlock(
         children: [],
         meta: seed.meta
     }
+
+    // 诊断埋点：记录新 block 建立（snapshot 占位 / full / permission-only）
+    recordTool({
+        kind: 'tool',
+        toolUseId: id,
+        name: seed.name,
+        stage: 'created',
+        state: tool.state,
+        permission: seed.permission,
+        source: seed.permission ? 'permission' : 'message',
+    })
 
     toolBlocksById.set(id, block)
     blocks.push(block)

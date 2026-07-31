@@ -951,3 +951,44 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 - 未来 `packages/cli/src/claude/utils/intervalTask.ts` — 定时器工具（加定时器时创建）
 
 **优先级**：低。事件驱动已覆盖常见变化；纯加固项。
+
+---
+
+## 37. 渲染链路诊断埋点（tool_use 卡片渲染问题专项）
+
+**问题背景**（2026-08-01）：thinking → text → tool_use 组合下，工具卡片偶发不渲染 running 态、必须等 tool_result 才出现。用户反复反馈、已修复多次仍复发。**E2E 从零重放复现不出来**（干净场景一切正常），说明 bug 依赖某种前置状态/组合（历史会话、审批时序、网络抖动等），只能靠「bug 发生时留现场数据」定位。
+
+**解决方案**：web 端常驻「渲染链路诊断埋点」，记录每条工具调用经过渲染链路的每个决策点：
+
+```
+CLI snapshot ──SSE──▶ normalizeDecryptedMessage ──▶ reduceChatBlocks ──▶ ToolCallBlock 渲染
+        ① snapshot 到达        ② 建/更新 tool-call block            ③ 卡片渲染
+```
+
+### 使用方法（bug 发生后回读数据）
+
+- **开启**：URL 加 `?diag=1`，或 localStorage 置 `mobi-diag-enabled=1`（下次加载自动开）。全构建可用（dev/prod 均可），默认关。
+- **取数据**：bug 出现后浏览器控制台执行 `window.__mobiDiag.dump()`（返回 JSON）；或 `copy(window.__mobiDiag.dump())` 复制走。刷新/关页数据仍在（localStorage 镜像），无需在 bug 前预装。
+- **数据形态**：`events` 事件序列 + `tools` 按 tool_use_id 聚合的状态史（`created:running` → `state:pending` → `state:running (approved)` → …），可定位「卡在 ①②③ 哪一环」。
+- **管理**：`window.__mobiDiag.clear()` 清空；`disable()` 关闭并清数据。
+
+### 实现要点（相关文件）
+
+- `packages/web/src/core/lib/diag.ts`（新）— 环形缓冲（最近 ~300 条）+ localStorage 镜像（`beforeunload` 兜底刷盘）+ 开关 + 全局接口。**localStorage 安全访问器**：vitest/jsdom 下 `window.localStorage` 为 undefined（Node 22+ localStorage 是实验性的，需 `--localstorage-file`），判空降级为「仅内存缓冲」绝不抛错
+- `packages/web/src/domain/chat/normalize.ts` — `normalizeDecryptedMessage` 入口记录 snapshot/完整消息到达（`recordSnapshot`）
+- `packages/web/src/domain/chat/reducerTools.ts` — `ensureToolBlock` 记录工具建块与状态迁移（`recordTool`）
+- `packages/web/src/main.tsx` — `initDiag()` 启动初始化（normalize 侧也兜底调一次，防裁剪）
+- `packages/web/tests/setup.ts` — jsdom localStorage polyfill（`LocalStorageStub`）
+- 测试：`tests/core/lib/diag.test.ts`（8 用例）+ `tests/chat/reducerTools.test.ts` 埋点接入 describe 块
+
+### 踩过的坑（去重设计）
+
+1. **历史重放刷屏**：reducer 每次 SSE 全量重跑，`toolBlocksById` Map 重建 → 历史工具反复被当「新建」。修复：`created` 按 toolUseId 去重（只记首次）；`state` 按 `(state, permission值)` 去重（值没变不算迁移，历史固定 permission 重放跳过）。修复前 AskUserQuestion 被记 20 条重复，修复后 2 条。
+2. **`state` 事件用值比较而非引用比较**：reducer 重跑都新建 permission 对象，引用必然不同，必须 `JSON.stringify` 比内容。
+
+### 待办
+
+- 代码改动**尚未 commit**（diag.ts / normalize.ts / reducerTools.ts / main.tsx / setup.ts / 测试）
+- 触发条件：下次用户反馈「工具卡片又不渲染了」时，直接用本埋点回读现场数据定位卡点，替代 E2E 反复复现。
+
+**优先级**：高（工具卡片渲染是核心 UX，已反复复发）。

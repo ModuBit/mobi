@@ -20,6 +20,10 @@ import type { DecryptedMessage } from '@/core/data/api/types'
 import type { NormalizedMessage, MessageMeta } from './types'
 import { isSkippableAgentContent, normalizeAgentRecord } from './normalizeAgent'
 import { normalizeUserRecord } from './normalizeUser'
+import { initDiag, recordSnapshot } from '@/core/lib/diag'
+
+// 诊断埋点首次进入 normalize 链路时确保已初始化（main 侧可能因构建裁剪未调用 initDiag）
+initDiag()
 
 /**
  * 从 DecryptedMessage.content 信封提取 Anthropic message.id。
@@ -45,6 +49,15 @@ function extractAnthropicMessageId(content: unknown): string | null {
  * 将原始消息转换为统一的 NormalizedMessage 格式
  */
 export function normalizeDecryptedMessage(message: DecryptedMessage): NormalizedMessage | null {
+    // 诊断埋点：snapshot/完整消息到达 normalize 入口（记录原始形态，供渲染链路排查）
+    recordSnapshot({
+        kind: 'snapshot',
+        snapshot: message.snapshot ?? false,
+        messageId: extractAnthropicMessageId(message.content),
+        localId: message.localId ?? null,
+        role: (message.content as { role?: string } | null | undefined)?.role ?? 'unknown',
+        content: message.content,
+    })
     const snapshot = message.snapshot
     const record = unwrapRoleWrappedRecordEnvelope(message.content)
     if (!record) {

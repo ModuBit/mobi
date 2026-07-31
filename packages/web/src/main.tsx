@@ -21,7 +21,11 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { HelmetProvider } from 'react-helmet-async'
 import { router } from './router'
 import { ThemeProvider } from './core/config/theme/ThemeProvider'
+import { initDiag } from './core/lib/diag'
 import './index.css'
+
+// 渲染链路诊断埋点：默认关，?diag=1 或 localStorage 开启；窗口挂 window.__mobiDiag
+initDiag()
 
 const queryClient = new QueryClient({
     defaultOptions: {

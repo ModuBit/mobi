@@ -19,7 +19,7 @@
  * 测试 ensureToolBlock、getPermissions、collectToolIdsFromMessages 等核心函数
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import {
     ensureToolBlock,
     getPermissions,
@@ -29,6 +29,7 @@ import {
 } from '@/domain/chat/reducerTools'
 import type { ToolCallBlock, NormalizedMessage } from '@/domain/chat/types'
 import type { AgentState } from '@/core/data/api/types'
+import { enableDiag, disableDiag, dumpDiag } from '@/core/lib/diag'
 
 describe('ensureToolBlock', () => {
     describe('首次创建', () => {
@@ -292,7 +293,7 @@ describe('ensureToolBlock', () => {
             expect(updated.tool.state).toBe('pending')
         })
 
-        it('已有 state=pending，传入无 permission，应保持 pending', () => {
+        it('已有 state=pending，传入无 permission（审批已通过，agentState.requests 已移除），应清除 permission 并翻 running', () => {
             const blocks: ToolCallBlock[] = []
             const toolBlocksById = new Map<string, ToolCallBlock>()
 
@@ -307,6 +308,8 @@ describe('ensureToolBlock', () => {
 
             expect(blocks[0].tool.state).toBe('pending')
 
+            // 审批通过后 agentState.requests 移除该请求，getPermissions 不再返回 → seed.permission 为 undefined。
+            // 此时若保持 pending，ToolCallBlock 会因 hasPermission=true 持续不渲染，工具执行窗口不可见（等 tool_result 才出现）。
             const updated = ensureToolBlock(blocks, toolBlocksById, 'tool-1', {
                 createdAt: 1000,
                 localId: null,
@@ -315,7 +318,8 @@ describe('ensureToolBlock', () => {
                 description: null,
             })
 
-            expect(updated.tool.state).toBe('pending')
+            expect(updated.tool.state).toBe('running')
+            expect(updated.tool.permission).toBeUndefined()
         })
     })
 
@@ -825,5 +829,101 @@ describe('extractTitleFromChangeTitleInput', () => {
         expect(extractTitleFromChangeTitleInput(undefined)).toBeNull()
         expect(extractTitleFromChangeTitleInput('string')).toBeNull()
         expect(extractTitleFromChangeTitleInput(42)).toBeNull()
+    })
+})
+
+describe('ensureToolBlock 诊断埋点', () => {
+    beforeEach(() => {
+        disableDiag()
+        localStorage.clear()
+        enableDiag()
+    })
+    afterEach(() => {
+        disableDiag()
+        localStorage.clear()
+    })
+
+    it('新建 block 时记录 created 事件（含状态）', () => {
+        const blocks: ToolCallBlock[] = []
+        const toolBlocksById = new Map<string, ToolCallBlock>()
+        ensureToolBlock(blocks, toolBlocksById, 'tool-x', {
+            createdAt: 1000,
+            localId: 'l1',
+            name: 'Write',
+            input: { file_path: '/a.txt' },
+            description: null,
+        })
+        const d = dumpDiag()
+        const tr = d.tools.find(t => t.toolUseId === 'tool-x')
+        expect(tr).toBeDefined()
+        expect(tr!.name).toBe('Write')
+        expect(tr!.events[0]).toContain('created:running')
+    })
+
+    it('permission-only 建块记录 pending 状态', () => {
+        const blocks: ToolCallBlock[] = []
+        const toolBlocksById = new Map<string, ToolCallBlock>()
+        ensureToolBlock(blocks, toolBlocksById, 'tool-p', {
+            createdAt: 1000,
+            localId: null,
+            name: 'Edit',
+            input: undefined,
+            description: null,
+            permission: { id: 'tool-p', status: 'pending' },
+        })
+        const tr = dumpDiag().tools.find(t => t.toolUseId === 'tool-p')
+        expect(tr).toBeDefined()
+        expect(tr!.events[0]).toContain('created:pending')
+    })
+
+    it('已有 block 状态迁移记录 state 事件（pending → running 翻转为审批已通过）', () => {
+        const blocks: ToolCallBlock[] = []
+        const toolBlocksById = new Map<string, ToolCallBlock>()
+        // 先以 permission-only 建 pending 块
+        ensureToolBlock(blocks, toolBlocksById, 'tool-p', {
+            createdAt: 1000,
+            localId: null,
+            name: 'Edit',
+            input: undefined,
+            description: null,
+            permission: { id: 'tool-p', status: 'pending' },
+        })
+        // 审批已通过：permission 无，state 从 pending 翻 running（根因 1 的修复分支）
+        ensureToolBlock(blocks, toolBlocksById, 'tool-p', {
+            createdAt: 1000,
+            localId: null,
+            name: 'Edit',
+            input: undefined,
+            description: null,
+        })
+        const tr = dumpDiag().tools.find(t => t.toolUseId === 'tool-p')
+        expect(tr).toBeDefined()
+        expect(tr!.events).toHaveLength(2)
+        expect(tr!.events[1]).toContain('state:running')
+        // permission 已清除 → 状态史不含 pending 权限残留
+        expect(tr!.events[1]).not.toContain('pending')
+    })
+
+    it('状态无变化时不记录冗余事件', () => {
+        const blocks: ToolCallBlock[] = []
+        const toolBlocksById = new Map<string, ToolCallBlock>()
+        ensureToolBlock(blocks, toolBlocksById, 'tool-x', {
+            createdAt: 1000,
+            localId: 'l1',
+            name: 'Write',
+            input: { file_path: '/a.txt' },
+            description: null,
+        })
+        // 重复跑同输入，state 无变化 → 只保留 created 一条
+        ensureToolBlock(blocks, toolBlocksById, 'tool-x', {
+            createdAt: 1000,
+            localId: 'l1',
+            name: 'Write',
+            input: { file_path: '/a.txt' },
+            description: null,
+        })
+        const tr = dumpDiag().tools.find(t => t.toolUseId === 'tool-x')
+        expect(tr).toBeDefined()
+        expect(tr!.events).toHaveLength(1)
     })
 })
