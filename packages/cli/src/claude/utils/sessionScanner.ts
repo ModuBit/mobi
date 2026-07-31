@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { RawJSONLines, RawJSONLinesSchema } from "../types";
+import { GoalStatusAttachment, GoalStatusAttachmentSchema, RawJSONLines, RawJSONLinesSchema } from "../types";
 import { basename, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
@@ -42,12 +42,16 @@ const INTERNAL_CLAUDE_EVENT_TYPES = new Set([
 export async function createSessionScanner(opts: {
     sessionId: string | null;
     workingDirectory: string;
-    onMessage: (message: RawJSONLines) => void;
+    /** 消息回调;省略时 scanner 不送聊天消息(remote 模式仅监听状态) */
+    onMessage?: (message: RawJSONLines) => void;
+    /** transcript attachment 状态回调(目前仅 goal_status) */
+    onAttachmentStatus?: (status: GoalStatusAttachment) => void;
 }) {
     const scanner = new ClaudeSessionScanner({
         sessionId: opts.sessionId,
         workingDirectory: opts.workingDirectory,
-        onMessage: opts.onMessage
+        onMessage: opts.onMessage,
+        onAttachmentStatus: opts.onAttachmentStatus,
     });
 
     await scanner.start();
@@ -67,7 +71,10 @@ export type SessionScanner = ReturnType<typeof createSessionScanner>;
 
 class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
     private readonly projectDir: string;
-    private readonly onMessage: (message: RawJSONLines) => void;
+    private readonly onMessage?: (message: RawJSONLines) => void;
+    private readonly onAttachmentStatus?: (status: GoalStatusAttachment) => void;
+    /** parseSessionFile 收集、handleFileScan 消费的 goal_status 缓冲(per-file 配对) */
+    private pendingGoalStatuses: GoalStatusAttachment[] = [];
     /** 已完成扫描的会话ID集合，用于避免重复处理已扫描过的会话 */
     private readonly finishedSessions = new Set<string>();
     /** 待扫描的会话ID集合，当切换到新会话时，旧会话暂存于此等待后续扫描 */
@@ -77,10 +84,16 @@ class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
     /** 本轮扫描过程中已扫描的会话ID集合，用于扫描完成后更新会话状态（将pending移至finished） */
     private readonly scannedSessions = new Set<string>();
 
-    constructor(opts: { sessionId: string | null; workingDirectory: string; onMessage: (message: RawJSONLines) => void }) {
+    constructor(opts: {
+        sessionId: string | null;
+        workingDirectory: string;
+        onMessage?: (message: RawJSONLines) => void;
+        onAttachmentStatus?: (status: GoalStatusAttachment) => void;
+    }) {
         super({ intervalMs: 3000 });
         this.projectDir = getProjectPath(opts.workingDirectory);
         this.onMessage = opts.onMessage;
+        this.onAttachmentStatus = opts.onAttachmentStatus;
         this.currentSessionId = opts.sessionId;
     }
 
@@ -108,6 +121,7 @@ class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
         }
         const sessionFile = this.sessionFilePath(this.currentSessionId);
         const { events, totalLines } = await readSessionLog(sessionFile, 0);
+        // 历史 goalStatuses 丢弃(不回放),只 seed 消息 key
         logger.debug(`[SESSION_SCANNER] initialize: sessionId=${this.currentSessionId}, seeding ${events.length} existing messages as processed`);
         const keys = events.map((entry) => messageKey(entry.event));
         this.seedProcessedKeys(keys);
@@ -137,7 +151,9 @@ class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
         if (sessionId) {
             this.scannedSessions.add(sessionId);
         }
-        const { events, totalLines } = await readSessionLog(filePath, cursor);
+        const { events, totalLines, goalStatuses } = await readSessionLog(filePath, cursor);
+        // 缓冲本轮读取到的 goal_status,交给 handleFileScan 分流(不进消息流/不去重)
+        this.pendingGoalStatuses = goalStatuses;
         return {
             events,
             nextCursor: totalLines
@@ -152,8 +168,14 @@ class ClaudeSessionScanner extends BaseSessionScanner<RawJSONLines> {
         for (const message of stats.events) {
             const id = message.type === 'summary' ? message.leafUuid : message.uuid;
             logger.debug(`[SESSION_SCANNER] Sending new message: type=${message.type}, uuid=${id}`);
-            this.onMessage(message);
+            this.onMessage?.(message);
         }
+        // 分流 goal_status(不进消息流,不进去重集合)
+        for (const status of this.pendingGoalStatuses) {
+            logger.debug(`[SESSION_SCANNER] goal_status: met=${status.met}, condition=${status.condition}`);
+            this.onAttachmentStatus?.(status);
+        }
+        this.pendingGoalStatuses = [];
         if (stats.parsedCount > 0) {
             const sessionId = sessionIdFromPath(stats.filePath) ?? 'unknown';
             logger.debug(`[SESSION_SCANNER] Session ${sessionId}: found=${stats.parsedCount}, skipped=${stats.skippedCount}, sent=${stats.newCount}`);
@@ -206,14 +228,18 @@ function messageKey(message: RawJSONLines): string {
  * Read and parse session log file.
  * Returns only valid conversation messages, silently skipping internal events.
  */
-async function readSessionLog(filePath: string, startLine: number): Promise<{ events: SessionFileScanEntry<RawJSONLines>[]; totalLines: number }> {
+async function readSessionLog(filePath: string, startLine: number): Promise<{
+    events: SessionFileScanEntry<RawJSONLines>[];
+    totalLines: number;
+    goalStatuses: GoalStatusAttachment[];
+}> {
     logger.debug(`[SESSION_SCANNER] Reading session file: ${filePath}`);
     let file: string;
     try {
         file = await readFile(filePath, 'utf-8');
     } catch (_error) {
         logger.debug(`[SESSION_SCANNER] Session file not found: ${filePath}`);
-        return { events: [], totalLines: startLine };
+        return { events: [], totalLines: startLine, goalStatuses: [] };
     }
     const lines = file.split('\n');
     const hasTrailingEmpty = lines.length > 0 && lines[lines.length - 1] === '';
@@ -223,6 +249,7 @@ async function readSessionLog(filePath: string, startLine: number): Promise<{ ev
         effectiveStartLine = 0;
     }
     const messages: SessionFileScanEntry<RawJSONLines>[] = [];
+    const goalStatuses: GoalStatusAttachment[] = [];
     for (let index = effectiveStartLine; index < lines.length; index += 1) {
         const l = lines[index];
         try {
@@ -230,13 +257,22 @@ async function readSessionLog(filePath: string, startLine: number): Promise<{ ev
                 continue;
             }
             const message = JSON.parse(l);
-            
+
             // Silently skip known internal Claude Code events
             // These are state/tracking events, not conversation messages
             if (message.type && INTERNAL_CLAUDE_EVENT_TYPES.has(message.type)) {
                 continue;
             }
-            
+
+            // 先识别 goal_status attachment(在 RawJSONLinesSchema 校验前,否则被当未知 type 跳过)
+            if (message.type === 'attachment' && message.attachment?.type === 'goal_status') {
+                const parsed = GoalStatusAttachmentSchema.safeParse(message.attachment);
+                if (parsed.success) {
+                    goalStatuses.push(parsed.data);
+                }
+                continue;
+            }
+
             const parsed = RawJSONLinesSchema.safeParse(message);
             if (!parsed.success) {
                 // Unknown message types are silently skipped.
@@ -248,7 +284,7 @@ async function readSessionLog(filePath: string, startLine: number): Promise<{ ev
             continue;
         }
     }
-    return { events: messages, totalLines };
+    return { events: messages, totalLines, goalStatuses };
 }
 
 function sessionIdFromPath(filePath: string): string | null {
