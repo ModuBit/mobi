@@ -22,7 +22,7 @@ import type { GoalStatus } from '@mobi/shared'
 
 afterEach(cleanup)
 
-// mock antd Popover：hover(open) 时渲染 content（避开 portal/motion，聚焦 GoalBadge 内容拼装）
+// mock antd Popover：click 时渲染 content（统一 click 触发，桌面/移动端一致），
 // 同时保留 trigger(children) 始终渲染，便于断言收起态
 vi.mock('antd', async orig => {
     const actual = await orig() as Record<string, unknown>
@@ -33,8 +33,7 @@ vi.mock('antd', async orig => {
             <>
                 <span
                     data-testid="popover-trigger"
-                    onMouseEnter={() => setOpen(true)}
-                    onMouseLeave={() => setOpen(false)}
+                    onClick={() => setOpen(o => !o)}
                 >
                     {children}
                 </span>
@@ -55,20 +54,21 @@ vi.mock('@/components/composer/ClearStateButton', () => ({
 import { GoalBadge } from '@/components/chat/GoalBadge'
 
 describe('GoalBadge', () => {
-    it('收起简要：渲染 ◎ active + condition（primary 蓝，达成态不渲染）', () => {
+    it('收起简要：徽标只显示 ◎ active（condition 不在收起态，移到 click 详情）', () => {
         const goal: GoalStatus = { met: false, condition: '所有测试通过' }
         render(<GoalBadge goal={goal} />)
         expect(screen.getByText('◎ active')).toBeTruthy()
-        expect(screen.getByText('所有测试通过')).toBeTruthy()
+        // condition 在 click 详情里，收起态不显示
+        expect(screen.queryByText('所有测试通过')).toBeNull()
     })
 
-    it('收起态默认不弹出详情（hover 前 popover-content 不在）', () => {
+    it('收起态默认不弹出详情（click 前 popover-content 不在）', () => {
         const goal: GoalStatus = { met: false, condition: '所有测试通过', reason: '隐藏理由' }
         render(<GoalBadge goal={goal} />)
         expect(screen.queryByTestId('popover-content')).toBeNull()
     })
 
-    it('hover：弹出详情（condition 全文 + reason + 统计）', () => {
+    it('click：弹出详情（condition 全文 + reason + 统计）', () => {
         const goal: GoalStatus = {
             met: false,
             condition: '重构 composer 模块',
@@ -78,7 +78,7 @@ describe('GoalBadge', () => {
             tokens: 9999,
         }
         render(<GoalBadge goal={goal} />)
-        fireEvent.mouseEnter(screen.getByTestId('popover-trigger'))
+        fireEvent.click(screen.getByTestId('popover-trigger'))
         const content = screen.getByTestId('popover-content')
         // condition 全文
         expect(content).toHaveTextContent('重构 composer 模块')
@@ -93,21 +93,21 @@ describe('GoalBadge', () => {
     it('无 reason/stats 时详情只含 condition', () => {
         const goal: GoalStatus = { met: false, condition: '所有测试通过' }
         render(<GoalBadge goal={goal} />)
-        fireEvent.mouseEnter(screen.getByTestId('popover-trigger'))
+        fireEvent.click(screen.getByTestId('popover-trigger'))
         const content = screen.getByTestId('popover-content')
         expect(content).toHaveTextContent('所有测试通过')
         expect(content.textContent).not.toContain('evaluator')
         expect(content.textContent).not.toContain('iter')
     })
 
-    it('不传 sessionId/onClear：hover 详情内不渲染清理按钮', () => {
+    it('不传 sessionId/onClear：click 详情内不渲染清理按钮', () => {
         const goal: GoalStatus = { met: false, condition: '所有测试通过' }
         render(<GoalBadge goal={goal} />)
-        fireEvent.mouseEnter(screen.getByTestId('popover-trigger'))
+        fireEvent.click(screen.getByTestId('popover-trigger'))
         expect(screen.queryByTestId('clear-goal-btn')).toBeNull()
     })
 
-    it('传 sessionId + onClear：hover 详情内渲染清理按钮并透传 sessionId / clearField=goalStatus', () => {
+    it('传 sessionId + onClear：click 详情内渲染清理按钮并透传 sessionId / clearField=goalStatus', () => {
         const goal: GoalStatus = { met: false, condition: '所有测试通过' }
         render(
             <GoalBadge
@@ -116,7 +116,7 @@ describe('GoalBadge', () => {
                 onClear={vi.fn()}
             />,
         )
-        fireEvent.mouseEnter(screen.getByTestId('popover-trigger'))
+        fireEvent.click(screen.getByTestId('popover-trigger'))
         const clearBtn = screen.getByTestId('clear-goal-btn')
         expect(clearBtn).toHaveAttribute('data-session', 's-xyz')
         expect(clearBtn).toHaveAttribute('data-field', 'goalStatus')
@@ -126,7 +126,7 @@ describe('GoalBadge', () => {
         const goal: GoalStatus = { met: false, condition: '所有测试通过' }
         // @ts-expect-error 故意只传 sessionId 测试守卫
         render(<GoalBadge goal={goal} sessionId="s1" />)
-        fireEvent.mouseEnter(screen.getByTestId('popover-trigger'))
+        fireEvent.click(screen.getByTestId('popover-trigger'))
         expect(screen.queryByTestId('clear-goal-btn')).toBeNull()
     })
 })

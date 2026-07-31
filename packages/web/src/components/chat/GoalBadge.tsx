@@ -19,16 +19,19 @@ import { Popover } from 'antd'
 import type { GoalStatus } from '@mobi/shared'
 import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { ClearStateButton } from '@/components/composer/ClearStateButton'
+import { STATUS_DOT_COLORS } from '@/components/tool-card/toolIcons'
 
 /**
- * goal 徽标（StatusBar 内渲染）。
+ * goal 徽标（StatusBar 内渲染，靠右）。
  *
  * 仅 active 态存在：达成(met:true)后 cli 立即 reportGoalStatus(null) → goalStatus=null →
- * 徽标不渲染，所以这里统一 primary 蓝(运行提示色)。
+ * 徽标不渲染，所以这里统一用运行中状态色（STATUS_DOT_COLORS.running = #4dabf7 蓝），
+ * 与 StatusBar 里 StatusStateIcon 的 running 态同款，复用全 app 唯一状态色来源。
  *
- * 收起只显示 ◎ active + condition 截断；hover 出 Popover 详情：
+ * 概要只显示 `◎ active` 状态标识（尽量短）；condition 全文不进徽标，只出现在 click 详情里：
  * condition 全文 / evaluator reason / 统计 / 清理按钮(仅 sessionId+onClear 都传时)。
- * 用 Popover 而非 Tooltip —— overlay 可交互，鼠标能移进去点清理按钮。
+ * 统一 click 触发——桌面/移动端一致，移动端无需 hover。用 Popover 而非 Tooltip ——
+ * overlay 可交互，手指/鼠标能移进去点清理按钮。
  */
 const Badge = styled.span`
     display: inline-flex;
@@ -38,24 +41,9 @@ const Badge = styled.span`
     border-radius: 10px;
     font-size: 11px;
     line-height: 1.6;
-    color: var(--ant-color-primary);
-    background: var(--ant-color-primary-bg);
+    color: ${STATUS_DOT_COLORS.running};
+    background: ${STATUS_DOT_COLORS.running}1f;
     cursor: default;
-`
-
-const Dot = styled.span`
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-    flex-shrink: 0;
-`
-
-const Condition = styled.span`
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 `
 
 const Detail = styled.div`
@@ -139,16 +127,10 @@ export function GoalBadge({ goal, sessionId, onClear }: GoalBadgeProps) {
     return (
         <Popover
             content={detail}
-            trigger="hover"
-            mouseEnterDelay={0.3}
-            mouseLeaveDelay={0.3}
+            trigger="click"
             overlayStyle={{ maxWidth: 280 }}
         >
-            <Badge>
-                <Dot />
-                ◎ active
-                <Condition>{goal.condition}</Condition>
-            </Badge>
+            <Badge>◎ active</Badge>
         </Popover>
     )
 }

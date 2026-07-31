@@ -80,7 +80,7 @@ describe('StatusBar', () => {
         expect(badge.getAttribute('data-session')).toBe('s-1')
     })
 
-    it('goal + running 都有时并列渲染徽标与 loading', () => {
+    it('goal + running 都有时：loading 靠左、goal 靠右（DOM 顺序 loading 在前）', () => {
         render(
             <StatusBar
                 agentId="session-1"
@@ -90,8 +90,10 @@ describe('StatusBar', () => {
                 sessionId="s-1"
             />,
         )
-        expect(screen.getByTestId('goal-badge')).toBeTruthy()
-        expect(screen.getByTestId('loading-bubble')).toBeTruthy()
+        const bubble = screen.getByTestId('loading-bubble')
+        const badge = screen.getByTestId('goal-badge')
+        // loading 在前（靠左），goal 在后（靠右，marginLeft:auto）
+        expect(badge.compareDocumentPosition(bubble)).toBe(Node.DOCUMENT_POSITION_PRECEDING)
     })
 
     it('goal=null 且 running=false（即使有 sessionId/onClearGoal）不渲染', () => {

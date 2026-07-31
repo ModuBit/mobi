@@ -39,8 +39,8 @@ interface StatusBarProps {
  * 状态栏：composer 输入框上方一行，承载 goal 徽标与 loading 指示。
  *
  * 渲染规则：有 goal 或 running（含 status）时才渲染，否则返回 null 不占布局高度。
- * 内容横向并列：左侧 goal 徽标（有 goal 时）+ 右侧 loading 气泡（running && status 时）。
- * width: fit-content 让整行收缩到内容宽度，避免计时被 marginLeft:auto 推到 composer 最右。
+ * 布局：整行撑满 composer 内容宽——loading 气泡靠左，goal 徽标靠右（marginLeft:auto）。
+ * goal 在右、loading 在左同时存在时左右分开；只一个时该元素落在自己的边。
  */
 export function StatusBar({ agentId, status, running, goal, sessionId, onClearGoal }: StatusBarProps) {
     const showGoal = goal != null
@@ -52,19 +52,21 @@ export function StatusBar({ agentId, status, running, goal, sessionId, onClearGo
             style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: showGoal && showLoading ? 8 : 0,
+                gap: 8,
                 padding: '4px 8px',
-                width: 'fit-content',
+                width: '100%',
             }}
         >
-            {showGoal ? (
-                <GoalBadge
-                    goal={goal!}
-                    sessionId={sessionId}
-                    onClear={onClearGoal}
-                />
-            ) : null}
             {showLoading ? <AgentLoadingBubble agentId={agentId} status={status!} /> : null}
+            {showGoal ? (
+                <div style={{ marginLeft: 'auto' }}>
+                    <GoalBadge
+                        goal={goal!}
+                        sessionId={sessionId}
+                        onClear={onClearGoal}
+                    />
+                </div>
+            ) : null}
         </div>
     )
 }
