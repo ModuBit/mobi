@@ -51,9 +51,9 @@ import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermis
 import { getPermissionModeIcon } from './permissionModeIcons'
 import { SubmitButton } from './SubmitButton'
 import { ContextUsageThread } from './ContextUsageThread'
-import { GoalBadge } from '@/components/chat/GoalBadge'
 import { resolveSubmitButtonState } from './submitButtonState'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
+import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 
 
 /** ChatComposer 命令式 API，供外部（如 QueuedMessagesBar 编辑回填）设置草稿 */
@@ -256,6 +256,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     const { token } = theme.useToken()
     const api = useMobiApi()
     const hasFinePointer = useHasFinePointer()
+
+    // goal 清理回调：供 StatusBar 内 GoalBadge 的 ClearStateButton 使用
+    const handleClearGoal = useCallback(
+        async (sid: string, fields: ClearRuntimeStateField[]) => {
+            await api.sessions.clearRuntimeStateFields(sid, fields)
+        },
+        [api],
+    )
 
     const {
         sessionId,
@@ -668,13 +676,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                 agentId={sessionId}
                 status={loadingStatus ?? undefined}
                 running={running && !compressing}
+                goal={goal}
+                sessionId={sessionId}
+                onClearGoal={handleClearGoal}
             />
 
             {/* 上下文用量线（Sender 上方，无值时不渲染） */}
             {contextUsage ? <ContextUsageThread usage={contextUsage} /> : null}
-
-            {/* goal 状态徽标（active/达成，无值不渲染） */}
-            {goal ? <GoalBadge goal={goal} /> : null}
 
             <div
                 ref={wrapperRef}

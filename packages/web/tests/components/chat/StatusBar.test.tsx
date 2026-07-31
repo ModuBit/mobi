@@ -16,30 +16,40 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
+import type { GoalStatus } from '@mobi/shared'
 
 afterEach(cleanup)
 
-// StatusBar 的职责是「running 时渲染 loading 内容、非 running 不渲染」。
-// mock 掉 AgentLoadingBubble，隔离其 PixelAvatar / antd theme / setInterval 依赖，
-// 让测试聚焦 StatusBar 自身的渲染门控逻辑。
+// StatusBar 的职责：「有 goal 或 running（含 status）时渲染对应内容，否则不渲染」。
+// mock 掉 AgentLoadingBubble 与 GoalBadge，隔离各自内部依赖，
+// 让测试聚焦 StatusBar 自身的渲染门控与并列逻辑。
 vi.mock('@/components/chat/AgentLoadingBubble', () => ({
     AgentLoadingBubble: ({ agentId, status }: { agentId: string; status: string }) => (
         <div data-testid="loading-bubble" data-agent={agentId} data-status={status} />
     ),
 }))
 
+vi.mock('@/components/chat/GoalBadge', () => ({
+    GoalBadge: ({ goal, sessionId }: { goal: GoalStatus; sessionId?: string }) => (
+        <div data-testid="goal-badge" data-met={String(goal.met)} data-session={sessionId ?? ''} />
+    ),
+}))
+
 import { StatusBar } from '@/components/chat/StatusBar'
 
+const activeGoal: GoalStatus = { met: false, condition: '所有测试通过' }
+
 describe('StatusBar', () => {
-    it('running=false 时不渲染任何内容', () => {
+    it('goal=null 且 running=false 时不渲染任何内容', () => {
         const { container } = render(
             <StatusBar agentId="session-1" status="idle" running={false} />
         )
         expect(screen.queryByTestId('loading-bubble')).toBeNull()
+        expect(screen.queryByTestId('goal-badge')).toBeNull()
         expect(container.firstChild).toBeNull()
     })
 
-    it('running=true 时渲染 loading 内容并透传 agentId / status', () => {
+    it('running=true（含 status）时渲染 loading 内容并透传 agentId / status', () => {
         render(
             <StatusBar agentId="session-1" status="outputting" running={true} />
         )
@@ -48,11 +58,51 @@ describe('StatusBar', () => {
         expect(bubble.getAttribute('data-status')).toBe('outputting')
     })
 
-    it('running=true 但 status 缺省时不渲染', () => {
+    it('running=true 但 status 缺省且无 goal 时不渲染', () => {
         const { container } = render(
             <StatusBar agentId="session-1" running={true} />
         )
         expect(screen.queryByTestId('loading-bubble')).toBeNull()
+        expect(container.firstChild).toBeNull()
+    })
+
+    it('goal!=null 时渲染 GoalBadge 并透传 sessionId', () => {
+        render(
+            <StatusBar
+                agentId="session-1"
+                running={false}
+                goal={activeGoal}
+                sessionId="s-1"
+            />,
+        )
+        const badge = screen.getByTestId('goal-badge')
+        expect(badge.getAttribute('data-met')).toBe('false')
+        expect(badge.getAttribute('data-session')).toBe('s-1')
+    })
+
+    it('goal + running 都有时并列渲染徽标与 loading', () => {
+        render(
+            <StatusBar
+                agentId="session-1"
+                status="outputting"
+                running={true}
+                goal={activeGoal}
+                sessionId="s-1"
+            />,
+        )
+        expect(screen.getByTestId('goal-badge')).toBeTruthy()
+        expect(screen.getByTestId('loading-bubble')).toBeTruthy()
+    })
+
+    it('goal=null 且 running=false（即使有 sessionId/onClearGoal）不渲染', () => {
+        const { container } = render(
+            <StatusBar
+                agentId="session-1"
+                running={false}
+                sessionId="s-1"
+                onClearGoal={vi.fn()}
+            />,
+        )
         expect(container.firstChild).toBeNull()
     })
 })

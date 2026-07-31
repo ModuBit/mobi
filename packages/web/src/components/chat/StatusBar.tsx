@@ -15,28 +15,56 @@
  */
 
 import type { AgentStatus } from '@/components/pixel-avatar/types'
+import type { GoalStatus } from '@mobi/shared'
+import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { AgentLoadingBubble } from './AgentLoadingBubble'
+import { GoalBadge } from './GoalBadge'
 
 interface StatusBarProps {
     /** Agent 标识（AgentLoadingBubble aria-label 用） */
     agentId: string
-    /** Agent 运行状态（驱动 StatusDot 颜色/节奏）；缺省时不渲染 */
+    /** Agent 运行状态（驱动 StatusDot 颜色/节奏）；running 时缺省则不渲染 loading */
     status?: AgentStatus
-    /** 是否正在运行：false 时不渲染 */
+    /** 是否正在运行 */
     running: boolean
+    /** goal 状态（有值时渲染徽标） */
+    goal?: GoalStatus | null
+    /** sessionId（goal 清理用，与 onClearGoal 同时传入） */
+    sessionId?: string
+    /** goal 清理回调（与 sessionId 同时传入时徽标带清理按钮） */
+    onClearGoal?: (sid: string, fields: ClearRuntimeStateField[]) => Promise<void>
 }
 
 /**
- * 状态栏：running 时在输入框上方独立一行展示 loading 内容（StatusDot + vibing 文字 + 计时）。
- * 替代原先 push 到消息列表末尾的 loading 气泡，使 loading 指示固定可见、不随消息流滚动。
- * 非 running（或 status 缺省）时返回 null，不占布局高度。
+ * 状态栏：composer 输入框上方一行，承载 goal 徽标与 loading 指示。
+ *
+ * 渲染规则：有 goal 或 running（含 status）时才渲染，否则返回 null 不占布局高度。
+ * 内容横向并列：左侧 goal 徽标（有 goal 时）+ 右侧 loading 气泡（running && status 时）。
+ * width: fit-content 让整行收缩到内容宽度，避免计时被 marginLeft:auto 推到 composer 最右。
  */
-export function StatusBar({ agentId, status, running }: StatusBarProps) {
-    if (!running || !status) return null
-    // width: fit-content 让整行收缩到内容宽度，避免计时被 marginLeft:auto 推到 composer 最右
+export function StatusBar({ agentId, status, running, goal, sessionId, onClearGoal }: StatusBarProps) {
+    const showGoal = goal != null
+    const showLoading = running && Boolean(status)
+    if (!showGoal && !showLoading) return null
+
     return (
-        <div style={{ padding: '4px 8px', width: 'fit-content' }}>
-            <AgentLoadingBubble agentId={agentId} status={status} />
+        <div
+            style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: showGoal && showLoading ? 8 : 0,
+                padding: '4px 8px',
+                width: 'fit-content',
+            }}
+        >
+            {showGoal ? (
+                <GoalBadge
+                    goal={goal!}
+                    sessionId={sessionId}
+                    onClear={onClearGoal}
+                />
+            ) : null}
+            {showLoading ? <AgentLoadingBubble agentId={agentId} status={status!} /> : null}
         </div>
     )
 }

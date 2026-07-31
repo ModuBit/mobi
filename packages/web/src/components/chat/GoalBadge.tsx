@@ -16,14 +16,15 @@
 
 import styled from '@emotion/styled'
 import type { GoalStatus } from '@mobi/shared'
+import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
+import { ClearStateButton } from '@/components/composer/ClearStateButton'
 
 /**
- * goal 徽标（composer 输入框上方）
+ * goal 徽标（StatusBar 内渲染）
  *
  * 纯展示：active / 达成 两态，配色跟随 antd 双主题 CSS 变量
- * （success-bg / primary-bg，Task 8 已确认双主题可用）。
- * condition 文本超长时 ellipsis，maxWidth 160px 防止撑宽 composer。
- * 不含清理按钮 —— 清理走吊顶两处（GoalChip / GoalDetail）。
+ * （success-bg / primary-bg）。condition 文本超长时 ellipsis，maxWidth 160px 防止撑宽。
+ * 当 sessionId 与 onClear 都传时，末尾内嵌清理按钮；否则纯展示。
  */
 const Badge = styled.span<{ $met: boolean }>`
     display: inline-flex;
@@ -56,14 +57,26 @@ const Condition = styled.span`
 
 interface GoalBadgeProps {
     goal: GoalStatus
+    /** sessionId（与 onClear 同时传入时渲染清理按钮） */
+    sessionId?: string
+    /** 清理回调（与 sessionId 同时传入时渲染清理按钮） */
+    onClear?: (sid: string, fields: ClearRuntimeStateField[]) => Promise<void>
 }
 
-export function GoalBadge({ goal }: GoalBadgeProps) {
+export function GoalBadge({ goal, sessionId, onClear }: GoalBadgeProps) {
+    const canClear = Boolean(sessionId && onClear)
     return (
         <Badge $met={goal.met}>
             <Dot />
             {goal.met ? '✓ 达成' : '◎ active'}
             <Condition>{goal.condition}</Condition>
+            {canClear ? (
+                <ClearStateButton
+                    sessionId={sessionId!}
+                    clearField="goalStatus"
+                    onClear={onClear!}
+                />
+            ) : null}
         </Badge>
     )
 }
