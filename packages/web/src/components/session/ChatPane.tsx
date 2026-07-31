@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useCallback } from 'react'
 import { Layout, Button } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { useTranslation } from 'react-i18next'
@@ -27,6 +28,7 @@ import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { useMobiApi } from '@/core/data/api/client'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 
@@ -57,8 +59,19 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
     const isMobile = useIsMobile()
     const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
     const setExpanded = useWorkspaceStore((s) => s.setExpanded)
+    const api = useMobiApi()
 
     const showExpand = !expanded
+
+    const handleClearGoal = useCallback(
+        async (
+            sid: string,
+            fields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[],
+        ) => {
+            await api.sessions.clearRuntimeStateFields(sid, fields)
+        },
+        [api],
+    )
 
     return (
         <Layout style={{ height: '100%' }}>
@@ -97,6 +110,9 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
 
             <SessionContextBar
                 metadata={session.metadata as SessionMetadataSummary | null}
+                goal={session.runtimeState?.goalStatus ?? null}
+                sessionId={sessionId}
+                onClearGoal={handleClearGoal}
             />
 
             <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
