@@ -250,6 +250,147 @@ describe('normalizeAgentRecord', () => {
         }
     })
 
+    describe('handleGoalProgressOutput (system:goal_progress)', () => {
+        it('should include all optional fields when met:true with full payload', () => {
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                {
+                    type: 'output',
+                    data: {
+                        type: 'system',
+                        subtype: 'goal_progress',
+                        met: true,
+                        condition: 'All tests must pass',
+                        reason: 'Goal achieved',
+                        iterations: 3,
+                        durationMs: 1500,
+                        tokens: 1024,
+                    },
+                }
+            )
+
+            expect(result).not.toBeNull()
+            expect(result?.role).toBe('event')
+            if (result && 'type' in result.content) {
+                expect(result.content).toMatchObject({
+                    type: 'goal-progress',
+                    met: true,
+                    condition: 'All tests must pass',
+                    reason: 'Goal achieved',
+                    iterations: 3,
+                    durationMs: 1500,
+                    tokens: 1024,
+                })
+            }
+        })
+
+        it('should coerce met to false when met is a falsy value (0)', () => {
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                {
+                    type: 'output',
+                    data: {
+                        type: 'system',
+                        subtype: 'goal_progress',
+                        met: 0,
+                        condition: 'Some condition',
+                    },
+                }
+            )
+
+            expect(result).not.toBeNull()
+            expect(result?.role).toBe('event')
+            if (result && 'type' in result.content) {
+                expect(result.content.type).toBe('goal-progress')
+                // 严格 === true 语义，0 应被强制为 false
+                expect(result.content.met).toBe(false)
+            }
+        })
+
+        it('should coerce met to false when met is missing', () => {
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                {
+                    type: 'output',
+                    data: {
+                        type: 'system',
+                        subtype: 'goal_progress',
+                        condition: 'Condition without met',
+                    },
+                }
+            )
+
+            expect(result).not.toBeNull()
+            expect(result?.role).toBe('event')
+            if (result && 'type' in result.content) {
+                expect(result.content.type).toBe('goal-progress')
+                expect(result.content.met).toBe(false)
+            }
+        })
+
+        it('should produce minimal payload with only condition when no optional fields', () => {
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                {
+                    type: 'output',
+                    data: {
+                        type: 'system',
+                        subtype: 'goal_progress',
+                        condition: 'Minimal condition',
+                    },
+                }
+            )
+
+            expect(result).not.toBeNull()
+            expect(result?.role).toBe('event')
+            if (result && 'type' in result.content) {
+                expect(result.content.type).toBe('goal-progress')
+                expect(result.content.met).toBe(false)
+                expect(result.content.condition).toBe('Minimal condition')
+                // 无可选字段时均不应存在
+                expect(result.content).not.toHaveProperty('reason')
+                expect(result.content).not.toHaveProperty('iterations')
+                expect(result.content).not.toHaveProperty('durationMs')
+                expect(result.content).not.toHaveProperty('tokens')
+            }
+        })
+
+        it('should omit reason when reason is null', () => {
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                {
+                    type: 'output',
+                    data: {
+                        type: 'system',
+                        subtype: 'goal_progress',
+                        met: true,
+                        condition: 'Condition with null reason',
+                        reason: null,
+                    },
+                }
+            )
+
+            expect(result).not.toBeNull()
+            expect(result?.role).toBe('event')
+            if (result && 'type' in result.content) {
+                expect(result.content.type).toBe('goal-progress')
+                expect(result.content.met).toBe(true)
+                // !== undefined && !== null 守卫：null reason 应被省略
+                expect(result.content).not.toHaveProperty('reason')
+            }
+        })
+    })
+
     it('should handle system:api_retry', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,
