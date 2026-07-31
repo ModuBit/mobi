@@ -18,6 +18,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { SessionCache } from '../../src/sync/sessionCache'
 import { Store } from '../../src/store'
 import type { EventPublisher } from '../../src/sync/eventPublisher'
+import type { SDKMetadata } from '@mobi/shared'
 
 // SessionCache 仅依赖 publisher.emit（rename 路径对已存在 session 不广播），
 // 用最小 stub 即可，无需拉起 SSE/namespace 解析
@@ -337,6 +338,55 @@ describe('SessionCache.applyRefreshedSDKMetadata', () => {
         expect(changed).toBe(false)
         // m2 是 stale 结果，不应覆盖 m1
         expect(cache.getSession(session.id)?.metadata?.sdkMetadata).toEqual(m1)
+        expect(emits).toHaveLength(0)
+    })
+
+    test('SDK model 含 ModelInfoSchema 未声明字段（resolvedModel/supportsEffort 等）→ 内容相同应判等（打破 strip 致 refetch↔SSE 死循环）', () => {
+        // 复现真实 bug：SDK initializationResult 返回的 model 有 9 个字段，但
+        // ModelInfoSchema 只声明 value/displayName/description，refreshSession 的
+        // MetadataSchema.safeParse（Zod 默认 strip）裁掉其余 6 个，内存 cachedSdk
+        // 永远 ≠ RPC newSdk，相等闸永不闭合 → 死循环。
+        const mWithFullModel = {
+            models: [{
+                value: 'opus',
+                displayName: 'Opus',
+                description: 'd',
+                resolvedModel: 'claude-opus-4-8',
+                supportsEffort: true,
+                supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+                supportsAdaptiveThinking: true,
+                supportsFastMode: true,
+                supportsAutoMode: true,
+            }],
+        } as unknown as SDKMetadata
+
+        const session = cache.getOrCreateSession('tag-meta-model', { path: '/tmp/p' }, null, 'default')
+        cache.applyRefreshedSDKMetadata(session.id, mWithFullModel)
+        emits.length = 0
+
+        // 同一内容再 apply：应判等，不写不发
+        const changed = cache.applyRefreshedSDKMetadata(session.id, mWithFullModel)
+
+        expect(changed).toBe(false)
+        expect(emits).toHaveLength(0)
+    })
+
+    test('SDK 含 Schema 完全未声明的未来字段 → raw stored 比较，仍判等（免疫 SDK 升级新增字段）', () => {
+        // 防御：即便 SDKMetadataSchema 补全了已知字段，SDK 升级仍可能新增 Schema 未声明的字段。
+        // apply 必须用 raw stored.metadata.sdkMetadata 比较，而非 MetadataSchema strip 后的内存值，
+        // 否则相等闸再次失真、死循环重演。
+        const mWithFutureField = {
+            commands: [{ name: 'x', description: 'dx', argumentHint: '' }],
+            futureUnknownField: { anyShape: [1, 2, 3] },
+        } as unknown as SDKMetadata
+
+        const session = cache.getOrCreateSession('tag-meta-future', { path: '/tmp/p' }, null, 'default')
+        cache.applyRefreshedSDKMetadata(session.id, mWithFutureField)
+        emits.length = 0
+
+        const changed = cache.applyRefreshedSDKMetadata(session.id, mWithFutureField)
+
+        expect(changed).toBe(false)
         expect(emits).toHaveLength(0)
     })
 })

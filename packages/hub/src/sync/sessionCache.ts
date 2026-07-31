@@ -749,7 +749,13 @@ export class SessionCache {
             return false
         }
 
-        const cachedSdk = (session.metadata as Record<string, unknown> | undefined)?.sdkMetadata as SDKMetadata | undefined
+        // 比较基准必须取 raw stored.metadata（未裁剪），不能用内存 session.metadata.sdkMetadata：
+        // 后者经 refreshSession 的 MetadataSchema.safeParse（Zod 默认 strip）裁掉了 Schema 未声明的字段，
+        // 一旦 SDK 返回新字段（如 model 的 resolvedModel/supportsEffort，或未来新增），内存值就会
+        // 永久 ≠ RPC 完整值，相等闸永不闭合 → refetch↔SSE 死循环。Schema 是下游消费契约，不该兼任
+        // 原始数据等价比对基准。
+        const stored = this.store.sessions.getSession(sessionId)
+        const cachedSdk = (stored?.metadata as Record<string, unknown> | undefined)?.sdkMetadata as SDKMetadata | undefined
         if (cachedSdk && sdkMetadataEqual(cachedSdk, sdkMetadata)) {
             return false
         }

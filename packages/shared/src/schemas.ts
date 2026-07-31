@@ -57,8 +57,14 @@ export type AgentInfo = z.infer<typeof AgentInfoSchema>
 /** SDK 模型信息 */
 export const ModelInfoSchema = z.object({
     value: z.string(),
+    resolvedModel: z.string().optional(),
     displayName: z.string(),
-    description: z.string()
+    description: z.string(),
+    supportsEffort: z.boolean().optional(),
+    supportedEffortLevels: z.array(z.string()).optional(),
+    supportsAdaptiveThinking: z.boolean().optional(),
+    supportsFastMode: z.boolean().optional(),
+    supportsAutoMode: z.boolean().optional(),
 })
 
 export type ModelInfo = z.infer<typeof ModelInfoSchema>
