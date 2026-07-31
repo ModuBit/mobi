@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ContextUsage, PermissionMode } from '@mobi/shared/types'
+import type { ContextUsage, GoalStatus, PermissionMode } from '@mobi/shared/types'
 import type { Store, StoredMachine, StoredSession } from '../../../store'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SyncEvent } from '../../../sync/syncEngine'
@@ -51,6 +51,12 @@ export type ContextUsagePayload = {
     contextUsage: ContextUsage | null
 }
 
+export type GoalStatusPayload = {
+    sid: string
+    /** null 表示清空（达成 10s 后 / 手动清理） */
+    goalStatus: GoalStatus | null
+}
+
 export type CliHandlersDeps = {
     io: SocketServer
     store: Store
@@ -61,11 +67,13 @@ export type CliHandlersDeps = {
     onMachineAlive?: (payload: MachineAlivePayload) => void
     /** CLI 事件驱动上报上下文用量 → 落库 runtimeState.contextUsage + SSE 推 */
     onContextUsage?: (payload: ContextUsagePayload) => void
+    /** CLI 事件驱动上报 goal 状态 → 落库 runtimeState.goalStatus + SSE 推 */
+    onGoalStatus?: (payload: GoalStatusPayload) => void
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, onSessionAlive, onSessionEnd, onMachineAlive, onContextUsage, onWebappEvent } = deps
+    const { io, store, rpcRegistry, terminalRegistry, onSessionAlive, onSessionEnd, onMachineAlive, onContextUsage, onGoalStatus, onWebappEvent } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -125,6 +133,7 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         onSessionAlive,
         onSessionEnd,
         onContextUsage,
+        onGoalStatus,
         onWebappEvent
     })
     registerMachineHandlers(socket, {

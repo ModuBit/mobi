@@ -15,7 +15,7 @@
  */
 
 import { AgentStateSchema, MetadataSchema, RuntimeStateSchema } from '@mobi/shared/schemas'
-import type { ContextUsage, EffortLevel, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
+import type { ContextUsage, EffortLevel, GoalStatus, PermissionMode, RuntimeState, SDKMetadata, Session } from '@mobi/shared/types'
 import type { TaskItem } from '@mobi/shared/types'
 import type { Store } from '../store'
 import { clampAliveTime } from './aliveTime'
@@ -370,6 +370,33 @@ export class SessionCache {
             )
         } catch {
             // 落库失败不阻塞采集流程（CLI 下次事件会重试上报）
+            return
+        }
+        this.publisher.emit({
+            type: 'session-updated',
+            sessionId: session.id,
+            data: { runtimeState: session.runtimeState },
+        })
+    }
+
+    /**
+     * 处理 goal 状态上报（CLI 事件驱动：reportGoalStatus RPC → emit 'goal-status'）。
+     * 落库到 runtimeState.goalStatus（复用 updateRuntimeStateField 同款路径）
+     * + SSE 推 runtimeState patch 给 web。
+     * goalStatus 为 null 表示清空（达成 10s 后 / 手动清理），undefined 让 updateRuntimeStateField
+     * 把字段从 runtimeState 移除（JSON.stringify 丢弃 undefined 键 → DB 无此字段 → resume 读不到）。
+     */
+    handleGoalStatus(payload: { sid: string; goalStatus: GoalStatus | null }): void {
+        const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
+        if (!session) return
+        try {
+            // goalStatus 为 null → 清空；否则落库覆盖
+            this.updateRuntimeStateField(
+                session, payload.sid, 'goalStatus', payload.goalStatus ?? undefined,
+                Date.now(), session.namespace,
+            )
+        } catch {
+            // 落库失败不阻塞 CLI 流程（下次 turn 会重试上报）
             return
         }
         this.publisher.emit({

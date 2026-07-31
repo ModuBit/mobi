@@ -271,7 +271,7 @@ export function setRuntimeState(
 }
 
 /** 合法的 runtimeState 可清理字段 */
-const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(['todos', 'tasks', 'backgroundTasks'])
+const CLEARABLE_RUNTIME_STATE_FIELDS = new Set(['todos', 'tasks', 'backgroundTasks', 'goalStatus'])
 
 /**
  * 清除 runtimeState 中的指定字段

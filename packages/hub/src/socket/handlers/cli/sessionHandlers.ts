@@ -18,7 +18,7 @@ import { SNAPSHOT_PENDING_ID, type ClientToServerEvents } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import type { ContextUsage, PermissionMode, RuntimeState } from '@mobi/shared/types'
+import type { ContextUsage, GoalStatus, PermissionMode, RuntimeState } from '@mobi/shared/types'
 import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
@@ -87,11 +87,12 @@ export type SessionHandlersDeps = {
     onSessionAlive?: (payload: SessionAlivePayload) => void
     onSessionEnd?: (payload: SessionEndPayload) => void
     onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage | null }) => void
+    onGoalStatus?: (payload: { sid: string; goalStatus: GoalStatus | null }) => void
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
-    const { store, resolveSessionAccess, emitAccessError, onSessionAlive, onSessionEnd, onContextUsage, onWebappEvent } = deps
+    const { store, resolveSessionAccess, emitAccessError, onSessionAlive, onSessionEnd, onContextUsage, onGoalStatus, onWebappEvent } = deps
 
     // session 连接级别的 PendingTaskMap，在连接生命周期内持续存在
     const pendingTaskMap = new PendingTaskMap()
@@ -430,6 +431,20 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
         onContextUsage?.(data)
+    })
+
+    socket.on('goal-status', (data: { sid: string; goalStatus: GoalStatus | null }) => {
+        // null = 清空（达成后/手动清理）；非 null 必须是对象
+        if (!data || typeof data.sid !== 'string'
+            || (data.goalStatus !== null && (typeof data.goalStatus !== 'object' || !data.goalStatus))) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        onGoalStatus?.(data)
     })
 
     socket.on('session-end', (data: SessionEndPayload) => {

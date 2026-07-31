@@ -198,6 +198,79 @@ describe('SessionCache.handleContextUsage', () => {
     })
 })
 
+describe('SessionCache.handleGoalStatus', () => {
+    let store: Store
+    let emits: { type: string; sessionId: string; data: unknown }[]
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        emits = []
+        const rec = { emit: (e: { type: string; sessionId: string; data: unknown }) => emits.push(e) }
+        cache = new SessionCache(store, rec as unknown as EventPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    const goal = { met: false, condition: '所有测试通过' }
+
+    test('落库到 runtimeState.goalStatus 并 SSE 推送 runtimeState patch', () => {
+        const session = cache.getOrCreateSession('tag-goal-1', { path: '/tmp/p' }, null, 'default')
+
+        cache.handleGoalStatus({ sid: session.id, goalStatus: goal })
+
+        // 内存层
+        expect(cache.getSession(session.id)?.runtimeState?.goalStatus).toEqual(goal)
+        // 落库（直接读 store 绕过内存）
+        const stored = store.sessions.getSession(session.id)
+        expect((stored?.runtimeState as { goalStatus?: { met: boolean; condition: string } })?.goalStatus).toEqual(goal)
+        // SSE 推送
+        const pushed = emits.find(e => e.type === 'session-updated')
+        expect(pushed).toBeTruthy()
+        expect((pushed!.data as { runtimeState: { goalStatus: { met: boolean } } }).runtimeState.goalStatus.met).toBe(false)
+    })
+
+    test('不影响 runtimeState 其他字段（与 contextUsage/model 共存）', () => {
+        const session = cache.getOrCreateSession(
+            'tag-goal-2', { path: '/tmp/p' }, null, 'default', 'remote', { model: 'opus', effort: 'high' }
+        )
+
+        cache.handleGoalStatus({ sid: session.id, goalStatus: goal })
+
+        const rs = cache.getSession(session.id)?.runtimeState
+        expect(rs?.model).toBe('opus')
+        expect(rs?.effort).toBe('high')
+        expect(rs?.goalStatus).toEqual(goal)
+    })
+
+    test('未知 sid 静默忽略（不抛错）', () => {
+        expect(() => cache.handleGoalStatus({ sid: 'no-such-session', goalStatus: goal })).not.toThrow()
+        expect(emits).toHaveLength(0)
+    })
+
+    test('goalStatus 为 null 时清空（达成后/手动清理后从吊顶消失）', () => {
+        const session = cache.getOrCreateSession('tag-goal-clear', { path: '/tmp/p' }, null, 'default')
+
+        // 先有旧状态
+        cache.handleGoalStatus({ sid: session.id, goalStatus: goal })
+        expect(cache.getSession(session.id)?.runtimeState?.goalStatus).toEqual(goal)
+
+        // 清空
+        cache.handleGoalStatus({ sid: session.id, goalStatus: null })
+
+        // 内存层清空
+        expect(cache.getSession(session.id)?.runtimeState?.goalStatus).toBeUndefined()
+        // 落库也清空
+        const stored = store.sessions.getSession(session.id)
+        expect((stored?.runtimeState as { goalStatus?: unknown }).goalStatus).toBeUndefined()
+        // SSE 推送（清空也推，让 web 隐藏 goal 吊顶）
+        const pushed = emits.filter(e => e.type === 'session-updated').pop()
+        expect(pushed).toBeTruthy()
+    })
+})
+
 describe('SessionCache.applyRefreshedSDKMetadata', () => {
     let store: Store
     let emits: { type: string; sessionId: string }[]

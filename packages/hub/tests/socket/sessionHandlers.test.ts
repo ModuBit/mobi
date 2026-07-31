@@ -175,3 +175,77 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
         expect(events).toHaveLength(0)
     })
 })
+
+describe('goal-status：CLI 上报 goal 状态 → 校验 + 委派 onGoalStatus', () => {
+    /** 构造 goal-status 专用 deps，捕获 onGoalStatus 回调与 accessError */
+    function makeGoalDeps(opts: { sessionOk?: boolean } = {}) {
+        const captured: { sid: string; goalStatus: unknown }[] = []
+        const accessError = { called: false }
+        const deps: SessionHandlersDeps = {
+            store: { sessions: {}, messages: {} } as unknown as SessionHandlersDeps['store'],
+            resolveSessionAccess: (sid: string) => {
+                if (opts.sessionOk === false) return { ok: false, reason: 'not-found' as const }
+                return { ok: true as const, value: makeStoredSession(sid) }
+            },
+            emitAccessError: () => { accessError.called = true },
+            onGoalStatus: (payload: { sid: string; goalStatus: unknown }) => { captured.push(payload) },
+        }
+        return { deps, captured, accessError }
+    }
+
+    test('合法 goalStatus 对象 → onGoalStatus 被调用，透传 payload', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured, accessError } = makeGoalDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('goal-status', { sid: 's1', goalStatus: { met: false, condition: 'x' } })
+
+        expect(captured).toHaveLength(1)
+        expect(captured[0].sid).toBe('s1')
+        expect(captured[0].goalStatus).toEqual({ met: false, condition: 'x' })
+        expect(accessError.called).toBe(false)
+    })
+
+    test('goalStatus:null（清空）→ onGoalStatus 透传 null', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured } = makeGoalDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('goal-status', { sid: 's1', goalStatus: null })
+
+        expect(captured).toHaveLength(1)
+        expect(captured[0].goalStatus).toBeNull()
+    })
+
+    test('非法 payload（sid 非字符串）→ 静默丢弃，不调 onGoalStatus', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured } = makeGoalDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('goal-status', { sid: 123, goalStatus: { met: false, condition: 'x' } })
+
+        expect(captured).toHaveLength(0)
+    })
+
+    test('非法 goalStatus（基本类型而非对象）→ 静默丢弃', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured } = makeGoalDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        // goalStatus 必须是 null 或对象；字符串/数字/布尔均非法
+        fakeSocket.emit('goal-status', { sid: 's1', goalStatus: 'met' as unknown })
+
+        expect(captured).toHaveLength(0)
+    })
+
+    test('未知 sid → emitAccessError，不调 onGoalStatus', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured, accessError } = makeGoalDeps({ sessionOk: false })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('goal-status', { sid: 'unknown', goalStatus: { met: false, condition: 'x' } })
+
+        expect(captured).toHaveLength(0)
+        expect(accessError.called).toBe(true)
+    })
+})
