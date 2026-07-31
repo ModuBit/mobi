@@ -147,6 +147,63 @@ describe('reduceTimeline', () => {
         })
     })
 
+    describe('审批通过后工具恢复 running（修复 tool_use 等待 tool_result 才渲染）', () => {
+        it('snapshot tool-call 建 pending → 审批通过（requests 移除，permission 无）→ 重跑翻 running，不等 tool_result', () => {
+            // 场景：thinking+text+tool_use，工具需要审批。
+            // 1) 第一次 reduce：snapshot 的 tool-call 到达，permissionsById 有 pending → 建 pending block
+            const snapMsg: TracedMessage = {
+                id: 'snap-1', localId: 'snap-1', createdAt: 1000, isSidechain: false, role: 'agent',
+                content: [
+                    { type: 'reasoning', text: '思考', uuid: 'u1', parentUUID: null },
+                    { type: 'tool-call', id: 'tool-1', name: 'Read', input: { file_path: '/a.ts' }, description: null, uuid: 'u2', parentUUID: null },
+                ],
+                snapshot: true, messageId: 'msgX',
+            } as unknown as TracedMessage
+
+            const pendingPermission = { id: 'tool-1', status: 'pending' as const }
+            const ctx1 = {
+                permissionsById: new Map<string, PermissionEntry>([['tool-1', { toolName: 'Read', input: { file_path: '/a.ts' }, permission: pendingPermission }]]),
+                groups: new Map<string, TracedMessage[]>(),
+                consumedGroupIds: new Set<string>(),
+                titleChangesByToolUseId: new Map<string, string>(),
+                emittedTitleChangeToolUseIds: new Set<string>(),
+                hiddenToolUseIds: new Map<string, string>(),
+            }
+
+            const { blocks: blocks1, toolBlocksById: byId1 } = reduceTimeline([snapMsg], ctx1)
+            const pendingBlock = byId1.get('tool-1')
+            expect(pendingBlock?.tool.state).toBe('pending')
+            expect(pendingBlock?.tool.permission?.status).toBe('pending')
+
+            // 2) 审批通过：agentState.requests 移除该请求，permissionsById 不再含 tool-1。
+            //    full message 到达（assistant full，无 permission）→ 重跑 reducer → 应翻 running
+            const fullMsg: TracedMessage = {
+                id: 'full-1', localId: 'full-1', createdAt: 1001, isSidechain: false, role: 'agent',
+                content: [
+                    { type: 'reasoning', text: '思考', uuid: 'u1', parentUUID: null },
+                    { type: 'tool-call', id: 'tool-1', name: 'Read', input: { file_path: '/a.ts' }, description: null, uuid: 'u2', parentUUID: null },
+                ],
+                snapshot: false, messageId: 'msgX',
+            } as unknown as TracedMessage
+
+            const ctx2 = {
+                permissionsById: new Map<string, PermissionEntry>(),  // 审批通过，无 pending
+                groups: new Map<string, TracedMessage[]>(),
+                consumedGroupIds: new Set<string>(),
+                titleChangesByToolUseId: new Map<string, string>(),
+                emittedTitleChangeToolUseIds: new Set<string>(),
+                hiddenToolUseIds: new Map<string, string>(),
+            }
+
+            const { blocks, toolBlocksById } = reduceTimeline([snapMsg, fullMsg], ctx2)
+            const runningBlock = toolBlocksById.get('tool-1')
+            // 审批通过后应立即 running（可见工具执行窗口），而非等 tool_result
+            expect(runningBlock?.tool.state).toBe('running')
+            expect(runningBlock?.tool.permission).toBeUndefined()
+            expect(blocks.some(b => b.kind === 'tool-call' && b.id === 'tool-1')).toBe(true)
+        })
+    })
+
     describe('tool-result 更新正确的块', () => {
         it('应更新对应 tool_use_id 的块，而不是最后一个块', () => {
             const messages: TracedMessage[] = [

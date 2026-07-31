@@ -31,8 +31,6 @@ import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { FilePathText } from '@/components/ui/FilePathText'
-import { PermissionFooter } from '@/components/tool-card/PermissionFooter'
-import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFooter'
 import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { Markdown } from '@/components/ui/Markdown'
 import { getAgentPrompt } from '@/components/tool-card/index'
@@ -250,9 +248,10 @@ function ToolCallPreviewContent({
 }
 
 /** 渲染 ToolCallBlock（来自 reduceChatBlocks） */
-export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata, api, sessionId, disabled, onDone, disableDrawer }: {
+export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata, sessionId, disableDrawer }: {
     block: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
+    /** 审批交互已由 ComposerInfoPanel 承担，chat 区工具卡片不需要 api/disabled/onDone；保留类型声明维持调用方接口稳定 */
     api?: MobiApi
     sessionId?: string
     disabled?: boolean
@@ -334,26 +333,14 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
         setDrawerOpen(true)
     }, [drawerDisabled])
 
-    // 转换为 PermissionFooter 需要的 tool 格式
-    const toolForPermission = useMemo(() => ({
-        name: tool.name,
-        input: tool.input,
-        result: tool.result,
-        state: tool.state,
-        description: tool.description,
-        startedAt: tool.startedAt,
-        createdAt: tool.createdAt,
-        permission: tool.permission ? convertPermission(tool.permission) : null,
-    }), [tool])
-
     // 判断 title 是否已包含 description 信息
     // Agent 工具的 title 由 getAgentTitle 动态生成，不含 description 字段，或 title 等于/以 description 开头时跳过
     const titleContainsDescription = isAgentTool(tool.name)
         || (tool.description != null && (toolPresentation.title === tool.description || toolPresentation.title.startsWith(tool.description)))
 
-    // pending permission/askUserQuestion/ExitPlanMode 时不在 chat 区渲染卡片（避免与 ComposerInfoPanel 重复），
-    // 授权/回答后（status 非 pending）恢复渲染，保持现有逻辑
-    if (hasPermission) return null
+    // 审批中（pending）工具卡片照常渲染（工具名/输入预览），让用户看到「工具即将执行」；
+    // 审批操作（Allow/Deny 按钮）由 ComposerInfoPanel 承担，chat 区不重复渲染审批交互。
+    // 授权/回答后（status 非 pending）卡片继续显示，状态由 reducer 翻为 running/completed。
 
     return (
         <>
@@ -393,41 +380,17 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
                 expanded={expanded}
                 onExpand={setExpanded}
             >
-                {/* AskUserQuestion pending 时跳过默认预览，由 AskUserQuestionFooter 接管 */}
-                {!(isAskUserQuestion && hasPermission) && (
-                    <ToolCallPreviewContent
-                        toolCallBlock={block}
-                        metadata={metadata}
-                        onViewDetail={handleViewDetail}
-                        showInput={hasPermission}
-                        maxHeight={toolPresentation.previewMaxHeight
-                            ?? (isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
-                            : PREVIEW_MAX_HEIGHT.DEFAULT)}
-                    />
-                )}
-                {/* pending 状态显示操作按钮 */}
-                {hasPermission && api && sessionId ? (
-                    <div style={{ marginTop: 8, paddingLeft: 12, paddingRight: 12 }}>
-                        {isAskUserQuestion ? (
-                            <AskUserQuestionFooter
-                                api={api}
-                                sessionId={sessionId}
-                                tool={toolForPermission}
-                                disabled={disabled ?? false}
-                                onDone={onDone ?? (() => {})}
-                            />
-                        ) : (
-                            <PermissionFooter
-                                api={api}
-                                sessionId={sessionId}
-                                metadata={metadata}
-                                tool={toolForPermission}
-                                disabled={disabled ?? false}
-                                onDone={onDone ?? (() => {})}
-                            />
-                        )}
-                    </div>
-                ) : null}
+                {/* 审批中（pending）也渲染输入预览：Write/Edit 显示文件路径与内容、Bash 显示命令，
+                    让用户看到「工具即将做什么」；审批交互按钮由 ComposerInfoPanel 承担 */}
+                <ToolCallPreviewContent
+                    toolCallBlock={block}
+                    metadata={metadata}
+                    onViewDetail={handleViewDetail}
+                    showInput={hasPermission}
+                    maxHeight={toolPresentation.previewMaxHeight
+                        ?? (isTerminalTool(tool.name) ? PREVIEW_MAX_HEIGHT.TERMINAL
+                        : PREVIEW_MAX_HEIGHT.DEFAULT)}
+                />
             </Think>
             {!drawerDisabled && (
                 <ToolDetailDrawer
