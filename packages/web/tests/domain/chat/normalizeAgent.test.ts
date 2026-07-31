@@ -250,7 +250,7 @@ describe('normalizeAgentRecord', () => {
         }
     })
 
-    describe('handleGoalProgressOutput (system:goal_progress)', () => {
+    describe('handleGoalProgressOutput (goal_progress)', () => {
         it('should include all optional fields when met:true with full payload', () => {
             const result = normalizeAgentRecord(
                 baseParams.messageId,
@@ -259,8 +259,7 @@ describe('normalizeAgentRecord', () => {
                 {
                     type: 'output',
                     data: {
-                        type: 'system',
-                        subtype: 'goal_progress',
+                        type: 'goal_progress',
                         met: true,
                         condition: 'All tests must pass',
                         reason: 'Goal achieved',
@@ -294,8 +293,7 @@ describe('normalizeAgentRecord', () => {
                 {
                     type: 'output',
                     data: {
-                        type: 'system',
-                        subtype: 'goal_progress',
+                        type: 'goal_progress',
                         met: 0,
                         condition: 'Some condition',
                     },
@@ -319,8 +317,7 @@ describe('normalizeAgentRecord', () => {
                 {
                     type: 'output',
                     data: {
-                        type: 'system',
-                        subtype: 'goal_progress',
+                        type: 'goal_progress',
                         condition: 'Condition without met',
                     },
                 }
@@ -342,8 +339,7 @@ describe('normalizeAgentRecord', () => {
                 {
                     type: 'output',
                     data: {
-                        type: 'system',
-                        subtype: 'goal_progress',
+                        type: 'goal_progress',
                         condition: 'Minimal condition',
                     },
                 }
@@ -371,8 +367,7 @@ describe('normalizeAgentRecord', () => {
                 {
                     type: 'output',
                     data: {
-                        type: 'system',
-                        subtype: 'goal_progress',
+                        type: 'goal_progress',
                         met: true,
                         condition: 'Condition with null reason',
                         reason: null,

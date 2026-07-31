@@ -33,7 +33,6 @@ const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'task_notification',
     'task_started',
     'task_updated',
-    'goal_progress',
 ])
 
 export function isRoleWrappedRecord(value: unknown): value is RoleWrappedRecord {
