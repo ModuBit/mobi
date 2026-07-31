@@ -15,6 +15,7 @@
  */
 
 import { claudeLocal } from "./claudeLocal";
+import { GoalStatusHandler } from "./goalStatusHandler";
 import { Session } from "./session";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { buildAppendSystemPrompt } from "./utils/systemPrompt";
@@ -55,6 +56,9 @@ export async function claudeLocalLauncher(
     const scannerSessionId = session.sessionId ?? extractSessionIdFromArgs(session.claudeArgs);
     logger.debug(`[LocalLauncher] Creating scanner: sessionId=${scannerSessionId}, path=${session.path}`);
 
+    // goal 状态处理器:双发 reportGoalStatus RPC + goal_progress 聊天消息
+    const goalHandler = new GoalStatusHandler(session.client, (m) => session.client.sendClaudeSessionMessage(m));
+
     // Create scanner
     const scanner = await createSessionScanner({
         sessionId: scannerSessionId,
@@ -65,7 +69,8 @@ export async function claudeLocalLauncher(
             if (message.type !== 'summary') {
                 session.client.sendClaudeSessionMessage(message)
             }
-        }
+        },
+        onAttachmentStatus: (status) => goalHandler.handle(status),
     });
 
     const handleSessionFound = (sessionId: string) => {
@@ -122,6 +127,7 @@ export async function claudeLocalLauncher(
             processCleanupRef.current = null;
         }
         session.removeSessionFoundCallback(handleSessionFound);
+        goalHandler.dispose();
         await scanner.cleanup();
     }
 }

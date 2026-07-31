@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, ContextUsage, DecryptedMessage, EffortLevel, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
+import type { ClientToServerEvents, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -524,6 +524,17 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.emit('context-usage', {
             sid: this.sessionId,
             contextUsage: null,
+        })
+    }
+
+    /**
+     * 上报 goal 状态（hub 落库到 runtimeState.goalStatus + SSE 推 web）。
+     * goalStatus 为 null 表示清空（达成 10s 后自动清空 / 手动清理）。
+     */
+    reportGoalStatus(goalStatus: GoalStatus | null): void {
+        this.socket.emit('goal-status', {
+            sid: this.sessionId,
+            goalStatus,
         })
     }
 
