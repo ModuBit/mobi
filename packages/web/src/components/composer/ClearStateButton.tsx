@@ -23,8 +23,8 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 export type ClearStateButtonProps = {
     sessionId: string
-    clearField: 'todos' | 'tasks' | 'backgroundTasks' | 'teamState'
-    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) => Promise<void>
+    clearField: 'todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus'
+    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) => Promise<void>
 }
 
 export function ClearStateButton({ sessionId, clearField, onClear }: ClearStateButtonProps) {

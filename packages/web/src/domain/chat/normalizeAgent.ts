@@ -351,6 +351,19 @@ const handleCompactBoundaryOutput: OutputHandler = (data, ctx) => {
     })
 }
 
+/** 处理 system:goal_progress 消息（CLI 扫描 SDK ToolResult 原始 JSON 行后透传） */
+const handleGoalProgressOutput: OutputHandler = (data, ctx) => {
+    return createEventMessage(ctx, {
+        type: 'goal-progress',
+        met: data.met === true,
+        condition: asString(data.condition) ?? '',
+        ...(data.reason !== undefined && data.reason !== null && { reason: asString(data.reason) }),
+        ...(typeof data.iterations === 'number' && { iterations: data.iterations }),
+        ...(typeof data.durationMs === 'number' && { durationMs: data.durationMs }),
+        ...(typeof data.tokens === 'number' && { tokens: data.tokens }),
+    })
+}
+
 /** 处理 system:task_progress 消息 */
 const handleTaskProgressOutput: OutputHandler = (data, ctx) => {
     const toolUseId = asString(data.tool_use_id)
@@ -524,6 +537,7 @@ const outputHandlers = new Map<string, OutputHandler>([
     ['system:turn_duration', handleTurnDurationOutput],
     ['system:microcompact_boundary', handleMicrocompactBoundaryOutput],
     ['system:compact_boundary', handleCompactBoundaryOutput],
+    ['system:goal_progress', handleGoalProgressOutput],
     ['system:task_progress', handleTaskProgressOutput],
     ['system:task_notification', handleTaskNotificationOutput],
     ['system:task_started', handleBgTaskStartedOutput],

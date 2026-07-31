@@ -246,6 +246,7 @@
             "tasks": "Clear stale tasks?",
             "backgroundTasks": "Clear stale background tasks?",
             "teamState": "Clear team state?",
+            "goalStatus": "Clear stale goal?",
             "confirm": "Clear",
             "cancel": "Cancel"
         },

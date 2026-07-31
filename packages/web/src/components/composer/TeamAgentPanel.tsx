@@ -42,7 +42,7 @@ const spinKeyframes = css`
 
 export function TeamAgentPanel({ sessionId, onClear }: {
     sessionId: string
-    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) => Promise<void>
+    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) => Promise<void>
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()

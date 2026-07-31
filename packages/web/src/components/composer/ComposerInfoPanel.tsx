@@ -289,7 +289,7 @@ export function ComposerInfoPanel({
     }, [])
 
     // 清理运行时状态字段的回调
-    const handleClearState = useCallback(async (clearSessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) => {
+    const handleClearState = useCallback(async (clearSessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) => {
         await api.sessions.clearRuntimeStateFields(clearSessionId, clearFields)
     }, [api])
 

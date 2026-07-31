@@ -45,7 +45,7 @@ export function BackgroundTaskPanel({ sessionId, api, onTaskClick, onClear }: {
     sessionId: string
     api: MobiApi
     onTaskClick: (task: BackgroundTask) => void
-    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) => Promise<void>
+    onClear: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) => Promise<void>
 }) {
     const { t } = useTranslation()
     const { token } = theme.useToken()

@@ -246,6 +246,7 @@
             "tasks": "清理任务列表？",
             "backgroundTasks": "清理后台任务？",
             "teamState": "清理团队状态？",
+            "goalStatus": "清理目标状态？",
             "confirm": "确认清理",
             "cancel": "取消"
         },

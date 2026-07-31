@@ -110,7 +110,7 @@ export function createMobiApi() {
             stopTask: (sessionId: string, taskId: string) =>
                 client.post(`/api/sessions/${sessionId}/stop-task`, { taskId }),
             // 清理 runtimeState 指定字段
-            clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState')[]) =>
+            clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) =>
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
             // 上传文件（二进制流式 + 进度 + 取消，替换 FormData→multipart）
