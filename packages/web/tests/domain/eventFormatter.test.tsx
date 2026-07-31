@@ -90,3 +90,52 @@ describe('formatEvent turn-result', () => {
         expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
     })
 })
+
+// 防漏网根因：Task 7 只测到 normalize 层，没跨 reducer→render，
+// 导致 formatEvent 缺 goal-progress case（落 default:return null）无人发现。
+// 此 describe 覆盖 reducer→render 全链：formatEvent 对 goal-progress 返回非 null JSX
+describe('formatEvent goal-progress', () => {
+    afterEach(cleanup)
+
+    it('met=false 渲染 ◎ goal active + condition + 统计', () => {
+        renderEvent({
+            type: 'goal-progress',
+            met: false,
+            condition: '所有测试通过',
+            iterations: 3,
+            durationMs: 45000,
+            tokens: 1234,
+        })
+        // 状态文案
+        expect(screen.getByText('◎ goal active')).toBeInTheDocument()
+        // condition 文本
+        expect(screen.getByText(/所有测试通过/)).toBeInTheDocument()
+        // 统计：3 turns · 45.0s · 1.2k tokens
+        expect(screen.getByText(/3 turns/)).toBeInTheDocument()
+        expect(screen.getByText(/45\.0s/)).toBeInTheDocument()
+        expect(screen.getByText(/1\.2k tokens/)).toBeInTheDocument()
+    })
+
+    it('met=true 渲染 ✓ goal 达成', () => {
+        renderEvent({
+            type: 'goal-progress',
+            met: true,
+            condition: 'lint 零警告',
+        })
+        expect(screen.getByText('✓ goal 达成')).toBeInTheDocument()
+        expect(screen.getByText(/lint 零警告/)).toBeInTheDocument()
+        // 无统计字段时不渲染 stats 段
+        expect(screen.queryByText(/turns/)).not.toBeInTheDocument()
+    })
+
+    it('无统计字段时不渲染 stats 段（只有 状态 · condition）', () => {
+        renderEvent({
+            type: 'goal-progress',
+            met: false,
+            condition: 'build 成功',
+        })
+        expect(screen.getByText('◎ goal active')).toBeInTheDocument()
+        expect(screen.queryByText(/turns/)).not.toBeInTheDocument()
+        expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
+    })
+})

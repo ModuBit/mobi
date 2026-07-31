@@ -15,6 +15,7 @@
  */
 
 import React from "react";
+import { join } from "node:path";
 import { Session } from "./session";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import { claudeRemote } from "./claudeRemote";
@@ -197,7 +198,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 启动恢复：读 transcript 最后一条 goal_status，仅恢复未达成的 active goal
         const restoreGoalStatus = async (sessionId: string) => {
             try {
-                const file = `${getProjectPath(session.path)}/${sessionId}.jsonl`;
+                const file = join(getProjectPath(session.path), `${sessionId}.jsonl`);
                 const { goalStatuses } = await readSessionLog(file, 0);
                 const last = goalStatuses[goalStatuses.length - 1];
                 if (last && !last.met) {

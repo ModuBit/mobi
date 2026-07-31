@@ -14,46 +14,75 @@
  * limitations under the License.
  */
 
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
+import type { ReactNode } from 'react'
 import { SessionContextBar } from '@/components/session/SessionContextBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
-const wrapper = ({ children }: { children: React.ReactNode }) => (
+// mock i18next（SessionContextBar 内部 useTranslation，mock 后不影响断言）
+vi.mock('react-i18next', () => ({
+    initReactI18next: { type: '3rdParty', init: () => {} },
+    useTranslation: () => ({ t: (key: string) => key }),
+}))
+
+const wrapper = ({ children }: { children: ReactNode }) => (
     <ConfigProvider>{children}</ConfigProvider>
 )
 
-describe('SessionContextBar', () => {
+const baseProps = {
+    sessionId: 's1',
+    onClearGoal: vi.fn(),
+}
+
+describe('SessionContextBar 无 goal 静态条（M2 gate）', () => {
+    afterEach(cleanup)
+
     it('metadata 为 null 时不渲染', () => {
         const { container } = render(
-            <SessionContextBar metadata={null} />,
+            <SessionContextBar metadata={null} goal={null} {...baseProps} />,
             { wrapper },
         )
         expect(container.firstChild).toBeNull()
     })
 
-    it('无 gitBranch 且无 worktree 时仍然渲染并显示 workdir', () => {
+    it('无 goal 时为静态信息条（role=status，无 chevron，无展开交互）', () => {
         const metadata: SessionMetadataSummary = {
             path: '/home/user/project',
             host: 'localhost',
-        }
-        render(<SessionContextBar metadata={metadata} />, { wrapper })
+        } as SessionMetadataSummary
+        render(
+            <SessionContextBar metadata={metadata} goal={null} {...baseProps} />,
+            { wrapper },
+        )
+        const bar = screen.getByTestId('session-context-bar')
+        // 静态条：role=status（非 button）
+        expect(bar).toHaveAttribute('role', 'status')
+        // 无 chevron（chevron 仅 goal 存在时渲染）
+        expect(screen.queryByText('▾')).not.toBeInTheDocument()
+        expect(screen.queryByText('▸')).not.toBeInTheDocument()
+        // path 仍展示
         expect(screen.getByText(/home\/user\/project/)).toBeInTheDocument()
     })
 
-    it('有 gitBranch 时渲染分支信息', () => {
+    it('无 goal 但有 gitBranch 时仍渲染分支信息（静态条不丢内容）', () => {
         const metadata: SessionMetadataSummary = {
             path: '/home/user/project',
             host: 'localhost',
             gitBranch: 'feature/auth',
-        }
-        render(<SessionContextBar metadata={metadata} />, { wrapper })
+        } as SessionMetadataSummary
+        render(
+            <SessionContextBar metadata={metadata} goal={null} {...baseProps} />,
+            { wrapper },
+        )
         expect(screen.getByText('feature/auth')).toBeInTheDocument()
+        // 静态条
+        expect(screen.getByTestId('session-context-bar')).toHaveAttribute('role', 'status')
     })
 
-    it('有 worktree 时渲染 worktree 信息', () => {
+    it('无 goal 但有 worktree 时仍渲染 worktree 信息', () => {
         const metadata: SessionMetadataSummary = {
             path: '/home/user/project',
             host: 'localhost',
@@ -63,8 +92,11 @@ describe('SessionContextBar', () => {
                 branch: 'feature/auth',
                 name: 'auth-worktree',
             },
-        }
-        render(<SessionContextBar metadata={metadata} />, { wrapper })
+        } as SessionMetadataSummary
+        render(
+            <SessionContextBar metadata={metadata} goal={null} {...baseProps} />,
+            { wrapper },
+        )
         expect(screen.getByText('main')).toBeInTheDocument()
         expect(screen.getByText('auth-worktree')).toBeInTheDocument()
     })

@@ -21,12 +21,13 @@ import { parseMessageAsEvent } from './reducerEvents'
 import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, isHiddenTool, isPlanModeEnterTool, type PermissionEntry } from './reducerTools'
 
 // 根据事件类型获取渲染提示
-function getEventDisplay(event: { type: string }): EventDisplay | undefined {
+function getEventDisplay(event: { type: string; [key: string]: unknown }): EventDisplay | undefined {
     switch (event.type) {
         case 'turn-duration': return { align: 'left', padding: false }
         case 'api-retry': return { color: 'warning' }
         case 'api-error': return { color: 'error' }
-        case 'goal-progress': return { color: 'success', align: 'left' }
+        // goal 达成(success 绿) vs active(中性灰)，对齐 GoalChip 的颜色语义
+        case 'goal-progress': return { color: event.met === true ? 'success' : 'default', align: 'left' }
         case 'turn-result':
         case 'aborted': return { align: 'left' }
         default: return undefined

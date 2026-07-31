@@ -222,6 +222,29 @@ export function formatEvent(
         case 'turn-result': {
             return <TurnResultMeta event={event as TurnResultEvent} createdAt={createdAt} />
         }
+        // goal-progress：每 turn 的目标达成状态标注（stream 三大展示面之一）
+        // met=true 达成(success 绿，由 reducer display.color=success + AgentEventBlock 配合)，
+        // met=false active(中性灰)。后跟 condition + 可选统计
+        case 'goal-progress': {
+            const met = event.met === true
+            const condition = typeof event.condition === 'string' ? event.condition : ''
+            const iterations = typeof event.iterations === 'number' ? event.iterations : undefined
+            const durationMs = typeof event.durationMs === 'number' ? event.durationMs : undefined
+            const tokens = typeof event.tokens === 'number' ? event.tokens : undefined
+
+            const stats: string[] = []
+            if (iterations !== undefined) stats.push(`${iterations} turns`)
+            if (durationMs !== undefined) stats.push(formatDurationMs(durationMs))
+            if (tokens !== undefined && tokens > 0) stats.push(formatTokensCount(tokens))
+
+            return (
+                <div style={{ fontFamily: 'var(--font-mono)' }}>
+                    <span>{met ? '✓ goal 达成' : '◎ goal active'}</span>
+                    {condition && <span> · {condition}</span>}
+                    {stats.length > 0 && <span> · {stats.join(' · ')}</span>}
+                </div>
+            )
+        }
         default:
             return null
     }

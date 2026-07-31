@@ -72,11 +72,14 @@ export const AgentEventBlock = memo(function AgentEventBlock({ block }: { block:
 
     const d = block.display
     const alignClass = d?.align ? `event-align-${d.align}` : undefined
+    // goal-progress met=true → success 绿；met=false → default 走 colorTextQuaternary（中性）
     const colorValue = d?.color === 'error'
         ? token.colorError
         : d?.color === 'warning'
             ? token.colorWarning
-            : token.colorTextQuaternary
+            : d?.color === 'success'
+                ? token.colorSuccess
+                : token.colorTextQuaternary
     return (
         <div
             className={alignClass}

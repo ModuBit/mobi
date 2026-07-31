@@ -27,7 +27,8 @@ import { GoalDetail } from './GoalDetail'
 const AUTO_COLLAPSE_DELAY = 3000
 
 // 常驻薄条（收起/展开都占位），高度恒定——展开内容用 DetailPopover 浮出，不挤压对话区
-const BarContainer = styled.div`
+// $hasGoal=false 时退化为静态信息条（role=status，无 cursor/交互），保持原 077f703 行为零回归
+const BarContainer = styled.div<{ $hasGoal: boolean }>`
     position: relative;
     z-index: 10;
     display: flex;
@@ -35,8 +36,8 @@ const BarContainer = styled.div`
     padding: 4px 12px;
     background: var(--ant-color-bg-container);
     border-bottom: 1px solid var(--ant-color-border-secondary);
-    cursor: pointer;
-    user-select: none;
+    cursor: ${({ $hasGoal }) => ($hasGoal ? 'pointer' : 'default')};
+    user-select: ${({ $hasGoal }) => ($hasGoal ? 'none' : 'text')};
 `
 
 // 展开态浮层：绝对定位紧贴 bar 下沿，叠在对话区之上（不占文档流，不挤压对话）。
@@ -132,6 +133,9 @@ export function SessionContextBar({ metadata, goal, sessionId, onClearGoal }: Se
     const barRef = useRef<HTMLDivElement>(null)
 
     const hasContent = Boolean(metadata && metadata.path)
+    // 展开交互（chevron / auto-collapse / drawer）仅在有 goal 时启用；
+    // 无 goal 时保持原静态信息条行为（role=status，零回归）
+    const hasGoal = Boolean(goal)
 
     const clearCollapseTimer = useCallback(() => {
         if (timerRef.current) {
@@ -147,19 +151,19 @@ export function SessionContextBar({ metadata, goal, sessionId, onClearGoal }: Se
         }, AUTO_COLLAPSE_DELAY)
     }, [clearCollapseTimer])
 
-    // 初始展开，3 秒后收起
+    // 初始展开，3 秒后收起（仅 goal 存在时挂载——无 goal 无展开内容，timer 纯属浪费）
     useEffect(() => {
-        if (!hasContent) return
+        if (!hasContent || !hasGoal) return
         setExpanded(true)
         startCollapseTimer()
         return clearCollapseTimer
-    }, [hasContent, startCollapseTimer, clearCollapseTimer])
+    }, [hasContent, hasGoal, startCollapseTimer, clearCollapseTimer])
 
-    // drawer 语义：展开态时点击吊顶以外任意区域即收起
+    // drawer 语义：展开态时点击吊顶以外任意区域即收起（仅 goal 存在时才需要）
     // 用 document mousedown + ref 命中判断，不渲染全屏 mask——
     // 避免与 Layout 的 stacking context 冲突，也不阻塞对话区/composer 交互
     useEffect(() => {
-        if (!expanded) return
+        if (!hasGoal || !expanded) return
         const onPointerDown = (e: MouseEvent) => {
             const target = e.target as Node | null
             if (target && barRef.current && !barRef.current.contains(target)) {
@@ -169,7 +173,7 @@ export function SessionContextBar({ metadata, goal, sessionId, onClearGoal }: Se
         }
         document.addEventListener('mousedown', onPointerDown)
         return () => document.removeEventListener('mousedown', onPointerDown)
-    }, [expanded, clearCollapseTimer])
+    }, [hasGoal, expanded, clearCollapseTimer])
 
     const handleClick = useCallback(() => {
         clearCollapseTimer()
@@ -185,14 +189,15 @@ export function SessionContextBar({ metadata, goal, sessionId, onClearGoal }: Se
     return (
         <BarContainer
             ref={barRef}
-            role="button"
+            role={hasGoal ? 'button' : 'status'}
             aria-label="session-context"
             data-expanded={expanded}
             data-testid="session-context-bar"
-            onClick={handleClick}
+            $hasGoal={hasGoal}
+            onClick={hasGoal ? handleClick : undefined}
         >
             <ContentRow>
-                <StyledChevron $expanded={expanded} size={14} />
+                {hasGoal && <StyledChevron $expanded={expanded} size={14} />}
                 {path && (
                     <InfoItem $variant="path">
                         <Folder size={12} />
