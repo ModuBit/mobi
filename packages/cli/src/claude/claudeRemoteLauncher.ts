@@ -31,6 +31,9 @@ import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
+import { createSessionScanner, readSessionLog } from "./utils/sessionScanner";
+import { GoalStatusHandler } from "./goalStatusHandler";
+import { getProjectPath } from "./utils/path";
 import { classifyMessage } from '@mobi/shared';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
@@ -180,6 +183,29 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             onAbort: () => this.handleAbortRequest(),
             onSwitch: () => this.handleSwitchRequest()
         });
+
+        // goal 状态处理器：scanner 提取 goal_status attachment 后双发(RPC + goal_progress 消息)
+        const goalHandler = new GoalStatusHandler(
+            session.client,
+            (m) => session.client.sendClaudeSessionMessage(m),
+        );
+        // scanner 只启动一次(首次 onSessionFound)；后续 session 切换走 onNewSession
+        let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null;
+
+        // 启动恢复：读 transcript 最后一条 goal_status，仅恢复未达成的 active goal
+        const restoreGoalStatus = async (sessionId: string) => {
+            try {
+                const file = `${getProjectPath(session.path)}/${sessionId}.jsonl`;
+                const { goalStatuses } = await readSessionLog(file, 0);
+                const last = goalStatuses[goalStatuses.length - 1];
+                if (last && !last.met) {
+                    // 仅恢复未达成的 active goal；met:true 不恢复(已达成,等下次 active)
+                    goalHandler.handle(last);
+                }
+            } catch (e) {
+                logger.debug('[remote]: restoreGoalStatus failed', e);
+            }
+        };
 
         // 注册 stop-task RPC 处理器，用于远程停止后台任务
         session.client.rpcHandlerManager.registerHandler('stop-task', async (params) => {
@@ -531,6 +557,20 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onSessionFound: (sessionId) => {
                             session.onSessionFound(sessionId);
+                            if (!scanner) {
+                                // 首次：启动 scanner(只传 onAttachmentStatus,不传 onMessage——
+                                // remote 模式 SDK 消息流已送聊天消息,scanner 送消息会重复)
+                                createSessionScanner({
+                                    sessionId,
+                                    workingDirectory: session.path,
+                                    onAttachmentStatus: (status) => goalHandler.handle(status),
+                                }).then((s) => { scanner = s; restoreGoalStatus(sessionId); })
+                                  .catch((e) => logger.debug('[remote]: scanner start failed', e));
+                            } else {
+                                // 后续 session 切换(fork/compact)：切监听文件 + 恢复 goal 状态
+                                scanner.onNewSession(sessionId);
+                                restoreGoalStatus(sessionId);
+                            }
                         },
                         onRunningChange: session.onRunningChange,
                         claudeEnvVars: session.claudeEnvVars,
@@ -646,6 +686,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 }
             }
         } finally {
+            // scanner 与 goalHandler 跟 launcher 生命周期一致(跨 turn 复用,仅销毁时清理)
+            goalHandler.dispose();
+            if (scanner) {
+                await scanner.cleanup();
+            }
             if (this.permissionHandler) {
                 this.permissionHandler.reset();
             }

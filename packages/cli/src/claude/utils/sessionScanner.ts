@@ -228,7 +228,7 @@ function messageKey(message: RawJSONLines): string {
  * Read and parse session log file.
  * Returns only valid conversation messages, silently skipping internal events.
  */
-async function readSessionLog(filePath: string, startLine: number): Promise<{
+export async function readSessionLog(filePath: string, startLine: number): Promise<{
     events: SessionFileScanEntry<RawJSONLines>[];
     totalLines: number;
     goalStatuses: GoalStatusAttachment[];
