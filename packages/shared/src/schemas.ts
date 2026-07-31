@@ -324,6 +324,21 @@ export const ContextUsageSchema = z.object({
 export type ContextUsage = z.infer<typeof ContextUsageSchema>
 
 /**
+ * Claude Code `/goal` 的状态。数据源为 transcript 的 attachment.goal_status。
+ * 除 met/condition 外字段全可选（evaluator 每 turn 落盘时可能只带部分）。
+ */
+export const GoalStatusSchema = z.object({
+    met: z.boolean(),
+    condition: z.string(),
+    reason: z.string().optional(),
+    iterations: z.number().optional(),
+    durationMs: z.number().optional(),
+    tokens: z.number().optional(),
+})
+
+export type GoalStatus = z.infer<typeof GoalStatusSchema>
+
+/**
  * 运行时状态：存储会话的扩展状态（todos、teamState、model 等）
  * 未来新增功能可在此对象中添加字段，无需修改数据库 schema
  */
@@ -334,7 +349,9 @@ export const RuntimeStateSchema = z.object({
     teamState: TeamStateSchema.optional(),
     model: z.string().nullable().optional(),
     effort: z.enum(EFFORT_LEVELS).optional(),
-    contextUsage: ContextUsageSchema.optional()
+    contextUsage: ContextUsageSchema.optional(),
+    /** 当前/最近一次 goal 状态；null 表示无 goal 或已清空 */
+    goals: GoalStatusSchema.nullable().optional(),
 })
 
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>

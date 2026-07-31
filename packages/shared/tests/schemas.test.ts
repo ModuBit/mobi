@@ -26,6 +26,7 @@ import {
     ContextUsageSchema,
     PermissionUpdateSchema,
     AgentStateRequestSchema,
+    GoalStatusSchema,
 } from '../src/schemas'
 
 describe('PermissionModeSchema', () => {
@@ -470,5 +471,52 @@ describe('AgentStateRequestSchema suggestions', () => {
 
     it('suggestions 可选', () => {
         expect(AgentStateRequestSchema.safeParse({ tool: 'Bash', arguments: {} }).success).toBe(true)
+    })
+})
+
+describe('GoalStatusSchema', () => {
+    it('接受 met + condition', () => {
+        const r = GoalStatusSchema.safeParse({ met: false, condition: 'all tests pass' })
+        expect(r.success).toBe(true)
+    })
+
+    it('接受全部可选字段', () => {
+        const r = GoalStatusSchema.safeParse({
+            met: true,
+            condition: 'x',
+            reason: 'done',
+            iterations: 3,
+            durationMs: 12000,
+            tokens: 1400,
+        })
+        expect(r.success).toBe(true)
+    })
+
+    it('拒绝缺 condition', () => {
+        const r = GoalStatusSchema.safeParse({ met: false })
+        expect(r.success).toBe(false)
+    })
+
+    it('拒绝缺 met', () => {
+        const r = GoalStatusSchema.safeParse({ condition: 'x' })
+        expect(r.success).toBe(false)
+    })
+})
+
+describe('RuntimeStateSchema with goals', () => {
+    it('接受 goals 字段并保留在解析结果中', () => {
+        const result = RuntimeStateSchema.parse({ goals: { met: false, condition: 'x' } })
+        expect(result.goals?.met).toBe(false)
+        expect(result.goals?.condition).toBe('x')
+    })
+
+    it('goals 可为 null（无 goal 或已清空）', () => {
+        const result = RuntimeStateSchema.parse({ goals: null })
+        expect(result.goals).toBeNull()
+    })
+
+    it('goals 可选（缺省时不报错）', () => {
+        const result = RuntimeStateSchema.parse({})
+        expect(result.goals).toBeUndefined()
     })
 })

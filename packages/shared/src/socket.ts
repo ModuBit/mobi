@@ -17,7 +17,7 @@
 import { z } from 'zod'
 import type { PermissionMode, EffortLevel } from './modes'
 import type { MessageCategory } from './messageClassification'
-import type { ContextUsage } from './schemas'
+import type { ContextUsage, GoalStatus } from './schemas'
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
 
@@ -224,4 +224,7 @@ export interface ClientToServerEvents {
     /** CLI 事件驱动上报上下文用量（hub 落库到 runtimeState.contextUsage + SSE 推 web）。
      * contextUsage 为 null 表示清空（/clear 后新会话从 0 开始，用量线隐藏直到下次真实 turn） */
     'context-usage': (data: { sid: string; contextUsage: ContextUsage | null }) => void
+    /** CLI 事件驱动上报 goal 状态（hub 落库到 runtimeState.goals + SSE 推 web）。
+     * goalStatus 为 null 表示清空（达成 10s 后 / 手动清理）。 */
+    'goal-status': (data: { sid: string; goalStatus: GoalStatus | null }) => void
 }

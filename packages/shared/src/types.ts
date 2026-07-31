@@ -20,6 +20,7 @@ export type {
     AttachmentMetadata,
     ContextUsage,
     DecryptedMessage,
+    GoalStatus,
     Metadata,
     RuntimeState,
     Session,
