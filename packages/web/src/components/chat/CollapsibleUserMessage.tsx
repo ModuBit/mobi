@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { css } from '@emotion/react'
 import { ChevronDown } from 'lucide-react'
@@ -140,65 +140,73 @@ export const collapsibleUserMessageStyles = css`
  *
  * `text` 按引用 memo 化预估结果，chatBlocks 高频重渲染（流式期间）时不会对历史消息重复计算。
  */
-export function CollapsibleUserMessage({
-    children,
-    text,
-    threshold = USER_MESSAGE_COLLAPSE_THRESHOLD,
-}: {
-    children: ReactNode
-    /** 消息原始文本，用于首帧折叠预估（按 text memo 化，避免高频重渲染重复计算） */
-    text?: string
-    threshold?: number
-}) {
-    const { t } = useTranslation()
-    const [expanded, setExpanded] = useState(false)
-    // 首帧预估：按 text memo，text 不变（user 消息静态）则只算一次
-    const initiallyCollapsed = useMemo(
-        () => (text ? estimateUserMessageOverflow(text) : false),
-        [text],
-    )
-    const [clippable, setClippable] = useState(initiallyCollapsed)
-    const contentRef = useRef<HTMLDivElement>(null)
+export const CollapsibleUserMessage = memo(
+    function CollapsibleUserMessage({
+        children,
+        text,
+        threshold = USER_MESSAGE_COLLAPSE_THRESHOLD,
+    }: {
+        children: ReactNode
+        /** 消息原始文本，用于首帧折叠预估（按 text memo 化，避免高频重渲染重复计算） */
+        text?: string
+        threshold?: number
+    }) {
+        const { t } = useTranslation()
+        const [expanded, setExpanded] = useState(false)
+        // 首帧预估：按 text memo，text 不变（user 消息静态）则只算一次
+        const initiallyCollapsed = useMemo(
+            () => (text ? estimateUserMessageOverflow(text) : false),
+            [text],
+        )
+        const [clippable, setClippable] = useState(initiallyCollapsed)
+        const contentRef = useRef<HTMLDivElement>(null)
 
-    useLayoutEffect(() => {
-        const el = contentRef.current
-        if (!el) return
+        useLayoutEffect(() => {
+            const el = contentRef.current
+            if (!el) return
 
-        // 双向测量：真实是否超阈值即 clippable。useLayoutEffect 在 paint 前同步执行，
-        // 首帧即可用真实值覆盖预估，避免预估误判导致的永久错误折叠。
-        const measure = () => setClippable(el.scrollHeight > threshold)
-        measure()
+            // 双向测量：真实是否超阈值即 clippable。useLayoutEffect 在 paint 前同步执行，
+            // 首帧即可用真实值覆盖预估，避免预估误判导致的永久错误折叠。
+            const measure = () => setClippable(el.scrollHeight > threshold)
+            measure()
 
-        const ro = new ResizeObserver(measure)
-        ro.observe(el)
-        return () => ro.disconnect()
-    }, [threshold])
+            const ro = new ResizeObserver(measure)
+            ro.observe(el)
+            return () => ro.disconnect()
+        }, [threshold])
 
-    const collapsed = clippable && !expanded
+        const collapsed = clippable && !expanded
 
-    return (
-        <div className="collapsible-user-msg">
-            <div
-                ref={contentRef}
-                className={`collapsible-user-msg__content${collapsed ? ' collapsible-user-msg__content--collapsed' : ''}`}
-                style={{ '--collapsible-threshold': `${threshold}px` } as CSSProperties}
-            >
-                {children}
-            </div>
-            {clippable && (
-                <div className="collapsible-user-msg__toggle-wrap">
-                    <button
-                        type="button"
-                        className="collapsible-user-msg__toggle"
-                        data-expanded={expanded}
-                        onClick={() => setExpanded((v) => !v)}
-                        aria-expanded={expanded}
-                    >
-                        <span>{expanded ? t('chat.collapse') : t('chat.expand')}</span>
-                        <ChevronDown size={14} className="collapsible-user-msg__chevron" />
-                    </button>
+        return (
+            <div className="collapsible-user-msg">
+                <div
+                    ref={contentRef}
+                    className={`collapsible-user-msg__content${collapsed ? ' collapsible-user-msg__content--collapsed' : ''}`}
+                    style={{ '--collapsible-threshold': `${threshold}px` } as CSSProperties}
+                >
+                    {children}
                 </div>
-            )}
-        </div>
-    )
-}
+                {clippable && (
+                    <div className="collapsible-user-msg__toggle-wrap">
+                        <button
+                            type="button"
+                            className="collapsible-user-msg__toggle"
+                            data-expanded={expanded}
+                            onClick={() => setExpanded((v) => !v)}
+                            aria-expanded={expanded}
+                        >
+                            <span>{expanded ? t('chat.collapse') : t('chat.expand')}</span>
+                            <ChevronDown size={14} className="collapsible-user-msg__chevron" />
+                        </button>
+                    </div>
+                )}
+            </div>
+        )
+    },
+    // 自定义比较：user-text 的 children 由 text 唯一决定（renderChatBlock 固定传
+    // <TextBlock text={block.text}/>），故 text 相同即内容实质相同。忽略 children 元素引用变化
+    // （renderChatBlock 每次都新建 JSX 元素），让流式期间未变化的用户消息气泡跳过重渲。
+    // ⚠️ 前提：children 不含 text 之外的动态字段；当前唯一调用点满足。若未来传入含动态
+    // prop 的 children，需把该字段纳入比较，否则会静默漏更新。
+    (prev, next) => prev.text === next.text && prev.threshold === next.threshold,
+)

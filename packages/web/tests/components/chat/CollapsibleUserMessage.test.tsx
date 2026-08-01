@@ -157,4 +157,27 @@ describe('CollapsibleUserMessage', () => {
         expect(screen.getByRole('button')).toBeInTheDocument()
         expect(getContent(container).style.getPropertyValue('--collapsible-threshold')).toBe('50px')
     })
+
+    it('text 不变时 rerender 跳过重渲（memo 自定义比较忽略 children 引用）', () => {
+        // user-text 的 children 由 text 唯一决定，text 相同即视为相等，跳过 reconcile。
+        // 这让流式期间未变化的用户消息气泡不被重渲。
+        mockScrollHeight(USER_MESSAGE_COLLAPSE_THRESHOLD)
+        const { container, rerender } = render(
+            <CollapsibleUserMessage text="same"><p data-testid="c">A</p></CollapsibleUserMessage>,
+        )
+        expect(container.querySelector('[data-testid=c]')?.textContent).toBe('A')
+
+        // rerender：text 相同，children 换成新元素（模拟 renderChatBlock 每次新建 JSX）
+        rerender(
+            <CollapsibleUserMessage text="same"><p data-testid="c">B</p></CollapsibleUserMessage>,
+        )
+        // memo 生效 → 跳过重渲 → DOM 仍是 A（children 未被替换）
+        expect(container.querySelector('[data-testid=c]')?.textContent).toBe('A')
+
+        // text 变了 → 重渲 → 新 children 生效
+        rerender(
+            <CollapsibleUserMessage text="changed"><p data-testid="c">C</p></CollapsibleUserMessage>,
+        )
+        expect(container.querySelector('[data-testid=c]')?.textContent).toBe('C')
+    })
 })
