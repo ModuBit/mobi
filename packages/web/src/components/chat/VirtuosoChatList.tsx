@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { forwardRef, memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { Bubble } from '@ant-design/x'
 import { Skeleton } from 'antd'
@@ -92,6 +92,16 @@ export const VirtuosoChatList = forwardRef<VirtuosoHandle, VirtuosoChatListProps
         onStartReached?.()
     }, [onStartReached])
 
+    // Virtuoso Header：仅在加载更旧历史时渲染骨架。components 对象必须始终存在
+    //（见下文 components prop 注释），故 useMemo 总返回 { Header }，Header 内部判断。
+    const components = useMemo(() => ({
+        Header: () => isFetchingNextPage ? (
+            <div style={{ padding: '12px 16px' }}>
+                <Skeleton avatar={{ shape: 'circle' }} paragraph={{ rows: 2 }} active />
+            </div>
+        ) : null,
+    }), [isFetchingNextPage])
+
     // firstItemIndex：让 Virtuoso 识别"开头插入"（prepend 历史消息）vs"末尾追加"（流式新消息）。
     // Virtuoso 据此保持滚动位置（不会因 data 变化跳顶）。
     //
@@ -126,14 +136,12 @@ export const VirtuosoChatList = forwardRef<VirtuosoHandle, VirtuosoChatListProps
             // 初始滚到底部（最新消息）
             initialTopMostItemIndex={items.length > 0 ? items.length - 1 : 0}
             itemContent={(_index, item) => <BubbleItem item={item} />}
-            // 顶部加载更旧历史时渲染骨架（替代旧 Bubble.List 的 __loading-skeleton__ 项）
-            components={isFetchingNextPage ? {
-                Header: () => (
-                    <div style={{ padding: '12px 16px' }}>
-                        <Skeleton avatar={{ shape: 'circle' }} paragraph={{ rows: 2 }} active />
-                    </div>
-                ),
-            } : undefined}
+            // 顶部加载更旧历史时渲染骨架（替代旧 Bubble.List 的 __loading-skeleton__ 项）。
+            // 注意：components prop 必须始终传对象——传显式 undefined 会让 react-virtuoso 把
+            // undefined 写入 components state，selector `d => d[l]` 对 undefined 读会崩
+            //（Cannot read 'EmptyPlaceholder'）。Header 内部按 isFetchingNextPage 返回 null/骨架，
+            // 既避免 undefined，又不影响非加载态。
+            components={components}
             startReached={handleStartReached}
             // 流式追加时，若用户在底部则平滑跟随；离开底部则不自动滚（用户在看历史）
             followOutput={(isAtBottom) => (isAtBottom ? 'smooth' : false)}
