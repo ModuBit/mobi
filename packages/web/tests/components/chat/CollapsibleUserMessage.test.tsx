@@ -73,9 +73,11 @@ describe('estimateUserMessageOverflow', () => {
 
 describe('CollapsibleUserMessage', () => {
     beforeEach(() => {
-        // ResizeObserver 在 jsdom 不存在，提供一个空实现
+        // ResizeObserver stub：observe 时触发 callback，模拟真实 RO 的首次异步回调
+        // （组件 useEffect 靠 RO 首次回调测量 scrollHeight → setClippable）
         vi.stubGlobal('ResizeObserver', class {
-            observe() { /* noop */ }
+            constructor(private cb: () => void) {}
+            observe() { this.cb() }
             unobserve() { /* noop */ }
             disconnect() { /* noop */ }
         })

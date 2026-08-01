@@ -37,7 +37,8 @@
         "typescript-eslint": "^8.64.0"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.29.0"
+        "@modelcontextprotocol/sdk": "^1.29.0",
+        "react-virtuoso": "^4.18.11"
     },
     "lint-staged": {
         "packages/*/src/**/*.{ts,tsx}": "eslint --fix"

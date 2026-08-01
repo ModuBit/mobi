@@ -234,23 +234,41 @@
 
 ---
 
-## 10. Web 端消息列表长列表性能优化
+## 10. Web 端消息列表长列表性能优化 — 虚拟化（PoC 已验证，待完整迁移）
 
 **相关文件**：
-- `packages/web/src/components/chat/ChatContainer.tsx`
-- `packages/web/src/components/chat/buildBubbleItems.tsx`
+- `packages/web/src/components/chat/ChatContainer.tsx` — `USE_VIRTUOSO` feature flag 切换
+- `packages/web/src/components/chat/VirtuosoChatList.tsx` — PoC 虚拟化组件（新建）
+- `packages/web/src/components/chat/CollapsibleUserMessage.tsx` — mount-time 测量已优化（useEffect + RO 异步）
+- `packages/web/src/components/ui/FilePathText.tsx` — antd Typography.ellipsis 已改 CSS ellipsis（避免 isEleEllipsis forced reflow）
 
-**现状**：
-- Ant Design X 的 `Bubble.List` 没有虚拟滚动，直接 `items.map()` 全量渲染
-- 消息量持续增长时 DOM 节点线性增加，滚动卡顿
+**根因**（chrome-devtools trace 实测，e2e 环境 goal 会话 3825 条消息）：
+- baseline（Bubble.List）：DOM 16993 节点 / style recalc 51ms 影响 14k 元素。**瓶颈是 DOM 节点数（浏览器 layout/style 层）**，不是 React reconcile
+- memo（commit `22df525`，消除 CollapsibleUserMessage 失效点）只省 React script，不减 DOM，治标
 
-**优化方向**：
-- 方案 A：渲染窗口控制（超出视口范围的消息从 DOM 移除，保留在内存中）
-- 方案 B：引入 `rc-virtual-list` 虚拟滚动（需改造 Bubble.List）
+**已排除的方案**（PoC 实测）：
+- `content-visibility: auto`：style recalc 消除但 **CLS 0.5**（bubble 高度 4-1621px 极度分散，CSS 估值无解）
+- 数据层裁剪（按页淘汰）：pages[0] SSE 膨胀 + 游标连续性两硬问题，静默丢消息风险高
 
-**触发条件**：
-- 实际使用中出现明显滚动卡顿时再实施
-- 代码中标记 FIXME 提醒
+**最终方案：react-virtuoso 替换 Bubble.List 渲染容器**（保留 Bubble 单组件，视觉不变）。PoC 已验证：
+- DOM 16993 → **1484（降 91%）**
+- forced reflow 全消（修两个 mount-time 几何检测后，trace 无 insight）
+- CLS 0.00
+
+**关键模式 — mount-time 几何检测放大**：虚拟化下 bubble 频繁 mount/unmount，所有"mount 时同步读几何属性"的组件都被放大成 forced reflow。已修两个（CollapsibleUserMessage 的 scrollHeight、FilePathText 的 isEleEllipsis）。**完整迁移时还要审计其他检测点**。
+
+**完整迁移清单**（单独立项，PoC 未完成）：
+1. prepend 滚动位置跳顶（未设 `firstItemIndex`，看历史加载新页会跳）
+2. 旧 observer 逻辑迁移（`showScrollBottom` / scroll restoration 绑旧 `.ant-bubble-list-scroll-box` DOM，Virtuoso 模式失效）→ 改用 Virtuoso 的 `atBottomStateChange` / `rangeChanged`
+3. 流式 `followOutput` 真实测试（需流式数据）
+4. role 模板完善（divider/system 视觉占位，未完全对齐 Bubble.List）
+5. 完整单测 + `lint:deps`（react-virtuoso 依赖方向）
+
+**复现数据**：`.scratch/perf-fixtures/goal-support-session.json`（734 条 fixture）+ e2e 环境 `~/.mobi-e2e`（cp default 副本 DB，含 3825 条）。复现卡顿：打开会话 → 向上加载历史到 579 bubble → chrome-devtools performance trace。
+
+**worktree**：`.claude/worktrees/bubble-list-perf`（branch `bubble-list-perf`），PoC 代码 + `USE_VIRTUOSO=true`。
+
+**优先级**：高（核心 UX，长会话必卡）。完整迁移单独立项，按上面 5 项 + mount-time 审计分阶段做。
 
 ---
 

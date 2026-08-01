@@ -28,6 +28,7 @@ import { isQueuedInMobi } from '@/core/lib/messages'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
+import { VirtuosoChatList } from './VirtuosoChatList'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND } from '@/domain/chat/presentation'
@@ -111,6 +112,13 @@ import { BUBBLE_ROLES } from './bubbleRoles'
 import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
 
 export { BUBBLE_ROLES }
+
+/**
+ * PoC 开关：虚拟化聊天列表（react-virtuoso 替换 Bubble.List）。
+ * true=VirtuosoChatList（只渲染视口附近，DOM 不随消息量增长）；
+ * false=Bubble.List（原全量渲染）。验证完毕后决定是否移除开关。
+ */
+const USE_VIRTUOSO = false
 
 interface ChatContainerProps {
     sessionId: string
@@ -748,12 +756,19 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                           加载历史消息时，enforceScrollLock 与手动 scrollTop 恢复存在时序冲突，
                           且 shouldLock 在用户靠近哨兵时为 false 导致跳过锁定。
                           因此禁用 autoScroll，改用下方 ResizeObserver 自行实现流式跟随。 */}
-                        <Bubble.List
-                            items={bubbleItems}
-                            role={BUBBLE_ROLES}
-                            style={{ height: '100%' }}
-                            autoScroll={false}
-                        />
+                        {USE_VIRTUOSO ? (
+                            <VirtuosoChatList
+                                items={bubbleItems}
+                                onStartReached={() => { void fetchNextPage() }}
+                            />
+                        ) : (
+                            <Bubble.List
+                                items={bubbleItems}
+                                role={BUBBLE_ROLES}
+                                style={{ height: '100%' }}
+                                autoScroll={false}
+                            />
+                        )}
                     </>
                 )}
                 {showScrollBottom && (

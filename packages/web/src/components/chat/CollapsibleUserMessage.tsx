@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { css } from '@emotion/react'
 import { ChevronDown } from 'lucide-react'
@@ -161,16 +161,16 @@ export const CollapsibleUserMessage = memo(
         const [clippable, setClippable] = useState(initiallyCollapsed)
         const contentRef = useRef<HTMLDivElement>(null)
 
-        useLayoutEffect(() => {
+        useEffect(() => {
             const el = contentRef.current
             if (!el) return
 
-            // 双向测量：真实是否超阈值即 clippable。useLayoutEffect 在 paint 前同步执行，
-            // 首帧即可用真实值覆盖预估，避免预估误判导致的永久错误折叠。
-            const measure = () => setClippable(el.scrollHeight > threshold)
-            measure()
-
-            const ro = new ResizeObserver(measure)
+            // 虚拟化（react-virtuoso）下 bubble 频繁 mount/unmount，useLayoutEffect 同步读
+            // scrollHeight 会触发 forced reflow（PoC trace 实测 292ms）。改 useEffect + ResizeObserver
+            // 异步测量：mount 时用 estimate（initiallyCollapsed）作首帧，RO observe 的首次回调
+            // （异步，浏览器批处理，不 forced reflow）修正真实值。边界（estimate 与真实不符）
+            // 有一帧闪烁，可接受——estimate 偏保守，多数场景 estimate 即准确。
+            const ro = new ResizeObserver(() => setClippable(el.scrollHeight > threshold))
             ro.observe(el)
             return () => ro.disconnect()
         }, [threshold])
