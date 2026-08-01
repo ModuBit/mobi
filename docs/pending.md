@@ -1020,3 +1020,27 @@ CLI snapshot ──SSE──▶ normalizeDecryptedMessage ──▶ reduceChatBl
 **触发条件**：重做统计口径时（需要把「什么是准的占用」定义清楚），再恢复展示。
 
 **优先级**：低（展示层隐藏，不阻塞功能）。
+
+## 39. 虚拟化历史加载顶部 Skeleton 未显示（react-virtuoso Header 渲染异常）
+
+> **发现（2026-08-01，code-review 问题 7 E2E 验证时）**：虚拟化迁移后，滚到顶加载更旧历史（`fetchNextPage`）时，顶部应有 Skeleton 视觉反馈（替代旧 Bubble.List 的 `__loading-skeleton__` 项）。当前 `VirtuosoChatList` 用 `components={{ Header: () => isFetchingNextPage ? <Skeleton/> : null }}` 实现，但 **Skeleton 实际未出现在 DOM**。
+
+**诊断**（E2E 实测）：
+- `fetchNextPage` 确实触发（网络请求 `messages?beforeSeq=...` 200）；
+- `isFetchingNextPage` 确实变 true（Header 函数内 log 确认 `{"isFetchingNextPage":true}` 被调用 2 次）；
+- 但 `[data-testid="virtuoso-header"]` 在 `isFetchingNextPage=true` 窗口（1.5s 人为 sleep）内全文档搜不到 → Header 函数被调用但输出未挂载 DOM。
+
+**疑似根因**：react-virtuoso 的 `components.Header`（`Ir` memo，mjs:2570）在 List（`Cr`，mjs:2667）内渲染于 item-list 之前，但在 prepend 虚拟化模式下 Header 输出未实际挂载——可能是 system state 更新 HeaderComponent 后 `Ir` 的 memo 未重渲染，或 Header 输出被 Virtuoso 内部 padding/transform 逻辑抑制。**未定位精确根因**。
+
+**已做的相关修复（保留）**：
+- `components` prop 始终传对象（commit `8e5b02a`）——传显式 undefined 会让 react-virtuoso 把 undefined 写入 components state → selector `d => d[l]` 崩（`Cannot read 'EmptyPlaceholder'`）。这是 P0 崩溃，与 Skeleton 显示无关，独立保留。
+
+**待办**：
+- 定位 react-virtuoso `components.Header` 在 prepend 模式不渲染的根因；或
+- 换方案：用 `fixedHeaderContent`（sticky 顶部）/ `topItemCount` + 头部骨架 item / 在 `VirtuosoChatList` 外部（`ChatContainer` 顶部）渲染独立骨架条（脱离 Virtuoso）。
+
+**相关文件**：
+- `packages/web/src/components/chat/VirtuosoChatList.tsx` — `components` useMemo + Header
+- `packages/web/src/components/chat/ChatContainer.tsx` — `onStartReached` + `isFetchingNextPage` 传递
+
+**优先级**：低（本地/快速网络下历史加载 <50ms 无感知；远程慢网络下缺视觉反馈）。核心功能（对话、虚拟化、prepend 数据加载）均正常。
