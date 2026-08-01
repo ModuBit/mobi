@@ -20,6 +20,7 @@ import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { NotificationSettings } from './NotificationSettings'
+import { DebugSection } from './blocks/DebugSection'
 import styled from '@emotion/styled'
 
 const { Title } = Typography
@@ -61,6 +62,8 @@ export function SettingsModule() {
                     传空串作为语义占位（useNotificationSetup 内部 void 标注）。
                 */}
                 <NotificationSettings namespace="" />
+                {/* 调试区块：未解锁时不渲染（见 blocks/DebugSection） */}
+                <DebugSection />
             </SettingsContent>
         </SettingsContainer>
     )

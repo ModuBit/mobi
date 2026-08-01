@@ -335,6 +335,18 @@
     "settings": {
         "title": "Settings"
     },
+    "debug": {
+        "title": "Debug",
+        "desc": "Diagnostic hooks & data export (tap the brand logo on New Session to unlock)",
+        "diagLabel": "Render-chain diagnostic hooks",
+        "download": "Download diagnostics",
+        "diagOn": "Diagnostics enabled",
+        "diagOff": "Diagnostics disabled",
+        "diagNotEnabled": "Hooks off — data is empty",
+        "downloaded": "Diagnostics downloaded",
+        "downloadFailed": "Failed to download diagnostics",
+        "unlocked": "Debug unlocked — debug tools now available in Settings"
+    },
     "composer": {
         "placeholders": [
             "How can Mobi help you today?",

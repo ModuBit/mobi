@@ -968,6 +968,7 @@ CLI snapshot ──SSE──▶ normalizeDecryptedMessage ──▶ reduceChatBl
 ### 使用方法（bug 发生后回读数据）
 
 - **开启**：URL 加 `?diag=1`，或 localStorage 置 `mobi-diag-enabled=1`（下次加载自动开）。全构建可用（dev/prod 均可），默认关。
+- **移动端（PWA）便捷入口**：创建页连点品牌 Logo ≥5 次解锁「设置页调试区块」（`debug.unlocked` 提示），区块内可**开关诊断埋点** + **一键下载诊断数据**（内容即 `window.__mobiDiag.dump()`，落盘 `mobi-diag-<ts>.json`）。后续所有调试能力（vConsole 开关等）都追加到该区块，作为移动端调试统一入口。见 `core/lib/debug.ts`（解锁状态）+ `components/settings/blocks/DebugSection.tsx`。
 - **取数据**：bug 出现后浏览器控制台执行 `window.__mobiDiag.dump()`（返回 JSON）；或 `copy(window.__mobiDiag.dump())` 复制走。刷新/关页数据仍在（localStorage 镜像），无需在 bug 前预装。
 - **数据形态**：`events` 事件序列 + `tools` 按 tool_use_id 聚合的状态史（`created:running` → `state:pending` → `state:running (approved)` → …），可定位「卡在 ①②③ 哪一环」。
 - **管理**：`window.__mobiDiag.clear()` 清空；`disable()` 关闭并清数据。
@@ -992,3 +993,26 @@ CLI snapshot ──SSE──▶ normalizeDecryptedMessage ──▶ reduceChatBl
 - 触发条件：下次用户反馈「工具卡片又不渲染了」时，直接用本埋点回读现场数据定位卡点，替代 E2E 反复复现。
 
 **优先级**：高（工具卡片渲染是核心 UX，已反复复发）。
+
+---
+
+## 38. ~~上下文用量条展示~~（已隐藏，功能保留）
+
+> **已隐藏（2026-08-01）**：composer sender 上方的上下文用量条（`ContextUsageThread`）统计数据不准确，先在展示层隐藏。**功能逻辑全部保留**——CLI 的 `contextUsageCalc` 计算、`runtimeState.contextUsage` 传递链、web 组件本身都未动，仅渲染处短路。
+
+**隐藏方式**：`packages/web/src/components/composer/ChatComposer.tsx` 渲染处由模块常量 `SHOW_CONTEXT_USAGE = false` 短路。日后统计口径修正后，置 `true` 即可恢复，无需动其他代码。
+
+**统计不准的可能方向**（未根因调查，仅记录观察）：
+- `ContextUsageThread` 的 `totalTokens` 取「最后一条 assistant 的 input+cache_creation+cache_read」，但多 assistant 消息/并发 agent 时会叠错基数；
+- 百分比按 `totalTokens / maxTokens`，但 maxTokens 是 `result.modelUsage[model].contextWindow`，不同 model 窗口混算时比例失真；
+- 未计入 tool_result 输出、system prompt 等占用。
+
+**相关文件**：
+- `packages/web/src/components/composer/ChatComposer.tsx` — 渲染处短路（隐藏点）
+- `packages/web/src/components/composer/ContextUsageThread.tsx` — 展示组件（保留）
+- `packages/cli/src/claude/utils/contextUsageCalc.ts` — 计算（保留）
+- `packages/shared/src/schemas.ts` — `ContextUsage` 类型（保留）
+
+**触发条件**：重做统计口径时（需要把「什么是准的占用」定义清楚），再恢复展示。
+
+**优先级**：低（展示层隐藏，不阻塞功能）。

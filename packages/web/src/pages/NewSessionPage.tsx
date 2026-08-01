@@ -56,6 +56,7 @@ import {
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { Logo } from '@/components/layout/Logo'
 import { enableVConsole } from '@/core/lib/vconsole'
+import { unlockDebug, isDebugUnlocked } from '@/core/lib/debug'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 import { normalizeDirectoryPath } from '@/core/utils/path'
@@ -442,7 +443,9 @@ export function NewSessionPage() {
         )
     }, [confirmedProjectName])
 
-    // 连点品牌 Logo ≥5 次开启移动端调试面板（vConsole），隐蔽入口
+    // 连点品牌 Logo ≥5 次：开启移动端调试面板（vConsole）+ 解锁「设置页调试区块」（debug.ts）。
+    // 这是移动端调试的统一隐蔽入口——以后所有调试能力都走「连点解锁 → 设置页操作」这条链路，
+    // vConsole 本身逻辑不变（仍每次连点触发）。
     // 1.5s 内连续点击累计到 5 次即触发；超时重置计数
     const vconsoleTapRef = useRef({ count: 0, timer: null as ReturnType<typeof setTimeout> | null })
     const handleLogoTap = useCallback(() => {
@@ -453,13 +456,18 @@ export function NewSessionPage() {
             state.count = 0
             state.timer = null
             enableVConsole()
+            // 首次解锁时轻提示；已解锁过则静默（vConsole 仍触发）
+            if (!isDebugUnlocked()) {
+                unlockDebug()
+                messageApi.success(t('debug.unlocked'))
+            }
             return
         }
         state.timer = setTimeout(() => {
             state.count = 0
             state.timer = null
         }, 1500)
-    }, [])
+    }, [messageApi, t])
 
     // 随机 placeholder，与 session 详情页一致
     const placeholders = t('composer.placeholders', { returnObjects: true }) as string[]

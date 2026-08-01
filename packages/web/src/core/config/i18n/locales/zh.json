@@ -335,6 +335,18 @@
     "settings": {
         "title": "设置"
     },
+    "debug": {
+        "title": "调试",
+        "desc": "诊断埋点开关与诊断数据下载（创建页连点品牌 Logo 解锁）",
+        "diagLabel": "渲染链路诊断埋点",
+        "download": "下载诊断数据",
+        "diagOn": "诊断埋点已开启",
+        "diagOff": "诊断埋点已关闭",
+        "diagNotEnabled": "埋点未开启，数据为空",
+        "downloaded": "诊断数据已下载",
+        "downloadFailed": "诊断数据下载失败",
+        "unlocked": "调试模式已解锁，可到设置页使用调试功能"
+    },
     "composer": {
         "placeholders": [
             "今天想做什么？",
