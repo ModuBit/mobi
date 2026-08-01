@@ -93,11 +93,14 @@ interface ChatComposerProps {
     switchPending?: boolean
     todos?: TodoItem[]
     tasks?: TaskItem[]
-    /** 上下文用量（来自 session.runtimeState.contextUsage；无值时不渲染用量线） */
+    /** 上下文用量（来自 session.runtimeState.contextUsage）。展示已隐藏（统计不准，见 docs/pending.md），传值保留供日后恢复 */
     contextUsage?: ContextUsage | null
     /** goal 状态（来自 session.runtimeState.goalStatus；无值时不渲染徽标） */
     goal?: GoalStatus | null
 }
+
+/** 是否展示上下文用量线：统计不准先隐藏（见 docs/pending.md #38），置 true 即恢复 */
+const SHOW_CONTEXT_USAGE = false
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
     return wrapper?.querySelector('textarea') ?? null
@@ -681,8 +684,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                 onClearGoal={handleClearGoal}
             />
 
-            {/* 上下文用量线（Sender 上方，无值时不渲染） */}
-            {contextUsage ? <ContextUsageThread usage={contextUsage} /> : null}
+            {/* 上下文用量线（Sender 上方）。
+                统计不准先隐藏（见 docs/pending.md #38）：SHOW_CONTEXT_USAGE 置 true 即恢复显示，
+                CLI 计算 / runtimeState 传值链路保留，无需改动他处。 */}
+            {SHOW_CONTEXT_USAGE && contextUsage ? <ContextUsageThread usage={contextUsage} /> : null}
 
             <div
                 ref={wrapperRef}
