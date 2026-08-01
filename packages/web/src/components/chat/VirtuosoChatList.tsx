@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-import { forwardRef, memo, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { forwardRef, memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { Bubble } from '@ant-design/x'
+import { Skeleton } from 'antd'
 import { BUBBLE_ROLES } from './bubbleRoles'
 import type { BubbleItemBase } from './buildBubbleItems'
 
@@ -75,6 +76,8 @@ interface VirtuosoChatListProps {
     onStartReached?: () => void
     /** 贴底状态变化（驱动"滚到底"按钮等） */
     atBottomStateChange?: (atBottom: boolean) => void
+    /** 是否正在加载更旧的历史页（为 true 时顶部渲染骨架） */
+    isFetchingNextPage?: boolean
 }
 
 /**
@@ -84,25 +87,35 @@ interface VirtuosoChatListProps {
  * 不随消息总量增长。Virtuoso 自动测量动态高度（无需估高），followOutput 接管流式贴底跟随，
  * startReached 接管向上加载历史。
  */
-export const VirtuosoChatList = forwardRef<VirtuosoHandle, VirtuosoChatListProps>(function VirtuosoChatList({ items, onStartReached, atBottomStateChange }, ref) {
+export const VirtuosoChatList = forwardRef<VirtuosoHandle, VirtuosoChatListProps>(function VirtuosoChatList({ items, onStartReached, atBottomStateChange, isFetchingNextPage }, ref) {
     const handleStartReached = useCallback(() => {
         onStartReached?.()
     }, [onStartReached])
 
     // firstItemIndex：让 Virtuoso 识别"开头插入"（prepend 历史消息）vs"末尾追加"（流式新消息）。
-    // 从大数起算，每次检测到 items 开头 prepend 了 K 项（prevFirstKey 在新 items 中的位置），
-    // firstItemIndex 减 K。Virtuoso 据此保持滚动位置（不会因 data 变化跳顶）。详见
-    // https://virtuoso.dev/react-virtuoso/api-reference/virtuoso/#firstitemindex
-    const firstItemIndexRef = useRef(Number.MAX_SAFE_INTEGER)
+    // Virtuoso 据此保持滚动位置（不会因 data 变化跳顶）。
+    //
+    // 实现：用 useState 存 firstItemIndex，useEffect 检测 items 开头 prepend 了 K 项
+    // （prevFirstKey 在新 items 中的位置）后 setFirstItemIndex(prev => prev - K)。
+    //
+    // 为何不放 useMemo 工厂里（曾在 PoC 中这么做）：useMemo 工厂是 React 明确会重调以检测不纯
+    // 的函数（StrictMode 双调用 / 并发渲染丢弃重试），在工厂里 `-=` 累减 + 改 ref 是不纯的
+    // 渲染副作用，重调会让 index 偏差。移到 useEffect（提交后副作用）即符合 React 约定。
+    //
+    // 幂等性（StrictMode 双调用 effect）：第一次进入时 prevFirstKeyRef 更新为 firstKey，
+    // cleanup（无）→ 第二次进入时 firstKey === prevFirstKeyRef.current 直接 return，不会重复减。
+    // 详见 https://virtuoso.dev/react-virtuoso/api-reference/virtuoso/#firstitemindex
+    const [firstItemIndex, setFirstItemIndex] = useState(Number.MAX_SAFE_INTEGER)
     const prevFirstKeyRef = useRef<string | undefined>(undefined)
-    const firstItemIndex = useMemo(() => {
+    useEffect(() => {
         const firstKey = items[0]?.key
-        if (prevFirstKeyRef.current !== undefined && firstKey !== undefined && firstKey !== prevFirstKeyRef.current) {
+        // 无变化（含 StrictMode 第二次进入）→ 跳过，保证幂等
+        if (firstKey === prevFirstKeyRef.current) return
+        if (prevFirstKeyRef.current !== undefined && firstKey !== undefined) {
             const idx = items.findIndex(it => it.key === prevFirstKeyRef.current)
-            if (idx > 0) firstItemIndexRef.current -= idx
+            if (idx > 0) setFirstItemIndex(prev => prev - idx)
         }
         prevFirstKeyRef.current = firstKey
-        return firstItemIndexRef.current
     }, [items])
 
     return (
@@ -113,6 +126,14 @@ export const VirtuosoChatList = forwardRef<VirtuosoHandle, VirtuosoChatListProps
             // 初始滚到底部（最新消息）
             initialTopMostItemIndex={items.length > 0 ? items.length - 1 : 0}
             itemContent={(_index, item) => <BubbleItem item={item} />}
+            // 顶部加载更旧历史时渲染骨架（替代旧 Bubble.List 的 __loading-skeleton__ 项）
+            components={isFetchingNextPage ? {
+                Header: () => (
+                    <div style={{ padding: '12px 16px' }}>
+                        <Skeleton avatar={{ shape: 'circle' }} paragraph={{ rows: 2 }} active />
+                    </div>
+                ),
+            } : undefined}
             startReached={handleStartReached}
             // 流式追加时，若用户在底部则平滑跟随；离开底部则不自动滚（用户在看历史）
             followOutput={(isAtBottom) => (isAtBottom ? 'smooth' : false)}

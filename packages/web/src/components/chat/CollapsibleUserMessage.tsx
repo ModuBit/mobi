@@ -145,11 +145,21 @@ export const CollapsibleUserMessage = memo(
         children,
         text,
         threshold = USER_MESSAGE_COLLAPSE_THRESHOLD,
+        // isSynthetic 不在组件体内渲染，仅供底部 memo 比较器纳入（避免同 text 不同
+        // isSynthetic 时跳过重渲、TextBlock 用旧值），故此处显式标记不参与 unused 检查
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        isSynthetic,
     }: {
         children: ReactNode
         /** 消息原始文本，用于首帧折叠预估（按 text memo 化，避免高频重渲染重复计算） */
         text?: string
         threshold?: number
+        /**
+         * 是否合成消息（透传给 children TextBlock 的 isSynthetic）。
+         * children 内部用到此字段，但 memo 比较器忽略 children 元素引用，故必须把 isSynthetic
+         * 显式提到 prop 纳入比较，否则同 text 不同 isSynthetic 时会跳过重渲、TextBlock 用旧值。
+         */
+        isSynthetic?: boolean
     }) {
         const { t } = useTranslation()
         const [expanded, setExpanded] = useState(false)
@@ -167,10 +177,12 @@ export const CollapsibleUserMessage = memo(
 
             // 虚拟化（react-virtuoso）下 bubble 频繁 mount/unmount，useLayoutEffect 同步读
             // scrollHeight 会触发 forced reflow（PoC trace 实测 292ms）。改 useEffect + ResizeObserver
-            // 异步测量：mount 时用 estimate（initiallyCollapsed）作首帧，RO observe 的首次回调
-            // （异步，浏览器批处理，不 forced reflow）修正真实值。边界（estimate 与真实不符）
-            // 有一帧闪烁，可接受——estimate 偏保守，多数场景 estimate 即准确。
-            const ro = new ResizeObserver(() => setClippable(el.scrollHeight > threshold))
+            // 异步测量。useEffect 在 paint 后执行（不阻塞 paint，不算 forced reflow），
+            // 故可同步读一次 scrollHeight 作首帧修正，弥补 RO 首次回调可能延迟/不触发的边界
+            // （否则 estimate 与真实不符时 clippable 会永久停在 initiallyCollapsed 估值）。
+            const measure = () => setClippable(el.scrollHeight > threshold)
+            measure()
+            const ro = new ResizeObserver(measure)
             ro.observe(el)
             return () => ro.disconnect()
         }, [threshold])
@@ -203,10 +215,10 @@ export const CollapsibleUserMessage = memo(
             </div>
         )
     },
-    // 自定义比较：user-text 的 children 由 text 唯一决定（renderChatBlock 固定传
-    // <TextBlock text={block.text}/>），故 text 相同即内容实质相同。忽略 children 元素引用变化
-    // （renderChatBlock 每次都新建 JSX 元素），让流式期间未变化的用户消息气泡跳过重渲。
-    // ⚠️ 前提：children 不含 text 之外的动态字段；当前唯一调用点满足。若未来传入含动态
-    // prop 的 children，需把该字段纳入比较，否则会静默漏更新。
-    (prev, next) => prev.text === next.text && prev.threshold === next.threshold,
+    // 自定义比较：user-text 的 children 由 (text, isSynthetic) 唯一决定（renderChatBlock 固定传
+    // <TextBlock text={block.text} isSynthetic={block.isSynthetic}/>），故两者相同即内容实质相同。
+    // 忽略 children 元素引用变化（renderChatBlock 每次都新建 JSX 元素），让流式期间未变化的用户
+    // 消息气泡跳过重渲。⚠️ 前提：children 不含这两个字段以外的动态字段；当前唯一调用点满足。
+    // 若未来 children 引入更多动态 prop，必须把它提到这里纳入比较，否则会静默漏更新。
+    (prev, next) => prev.text === next.text && prev.threshold === next.threshold && prev.isSynthetic === next.isSynthetic,
 )

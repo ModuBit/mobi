@@ -182,4 +182,24 @@ describe('CollapsibleUserMessage', () => {
         )
         expect(container.querySelector('[data-testid=c]')?.textContent).toBe('C')
     })
+
+    it('text 相同但 isSynthetic 变化时仍重渲（isSynthetic 纳入比较，不漏更新）', () => {
+        // children 内部用 isSynthetic（TextBlock），memo 比较器必须把它纳入，
+        // 否则同 text 不同 isSynthetic 会跳过重渲、TextBlock 用旧值。
+        mockScrollHeight(USER_MESSAGE_COLLAPSE_THRESHOLD)
+        const { container, rerender } = render(
+            <CollapsibleUserMessage text="same" isSynthetic={false}>
+                <p data-testid="c">A</p>
+            </CollapsibleUserMessage>,
+        )
+        expect(container.querySelector('[data-testid=c]')?.textContent).toBe('A')
+
+        // text 相同、isSynthetic 变化 → 必须重渲
+        rerender(
+            <CollapsibleUserMessage text="same" isSynthetic={true}>
+                <p data-testid="c">B</p>
+            </CollapsibleUserMessage>,
+        )
+        expect(container.querySelector('[data-testid=c]')?.textContent).toBe('B')
+    })
 })

@@ -108,6 +108,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         isLoading: messagesLoading,
         fetchNextPage,
         hasNextPage,
+        isFetchingNextPage,
     } = useMessages(sessionId)
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId, session?.running ?? false)
@@ -391,7 +392,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     <VirtuosoChatList
                         ref={virtuosoRef}
                         items={bubbleItems}
-                        onStartReached={() => { void fetchNextPage() }}
+                        // hasNextPage / isFetchingNextPage 双防御：startReached 在惯性滚动时可能
+                        // 连续触发，React Query 虽去重并发请求，但仍会创建多余 promise + 通知，
+                        // 这里直接短路避免无意义的下一页查找
+                        onStartReached={() => {
+                            if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
+                        }}
+                        isFetchingNextPage={isFetchingNextPage}
                         atBottomStateChange={(atBottom) => setShowScrollBottom(!atBottom)}
                     />
                 )}

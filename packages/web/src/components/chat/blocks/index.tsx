@@ -47,7 +47,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
     switch (block.kind) {
         case 'user-text':
             return (
-                <CollapsibleUserMessage text={block.text}>
+                <CollapsibleUserMessage text={block.text} isSynthetic={block.isSynthetic}>
                     <TextBlock text={block.text} isSynthetic={block.isSynthetic} enableSlashCommand enableMention />
                 </CollapsibleUserMessage>
             )
