@@ -1021,7 +1021,9 @@ CLI snapshot ──SSE──▶ normalizeDecryptedMessage ──▶ reduceChatBl
 
 **优先级**：低（展示层隐藏，不阻塞功能）。
 
-## 39. 虚拟化历史加载顶部 Skeleton 未显示（react-virtuoso Header 渲染异常）
+## 39. ~~虚拟化历史加载顶部 Skeleton 未显示~~ ✅ 已查实正常（E2E 误判）
+
+> **已解决（2026-08-01 复查）**：Skeleton 渲染完全正常。初次 E2E 诊断误判，根因是 evaluate `querySelector` 轮询时机问题——Skeleton 在 `isFetchingNextPage=true` 窗口（fetchNextPage 进行中）正常显示，但本地 hub 响应快（~50ms），窗口极短；当用 `sleep` 人为拉长窗口后，截图 + 连续轮询（8×200ms）均确认：`inDOM/inBody/visible` 全 true，`top: 84px`（视口顶部，用户可见）。
 
 > **发现（2026-08-01，code-review 问题 7 E2E 验证时）**：虚拟化迁移后，滚到顶加载更旧历史（`fetchNextPage`）时，顶部应有 Skeleton 视觉反馈（替代旧 Bubble.List 的 `__loading-skeleton__` 项）。当前 `VirtuosoChatList` 用 `components={{ Header: () => isFetchingNextPage ? <Skeleton/> : null }}` 实现，但 **Skeleton 实际未出现在 DOM**。
 
