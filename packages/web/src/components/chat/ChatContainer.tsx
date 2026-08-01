@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react'
-import { Bubble } from '@ant-design/x'
-import { Spin, Button, Skeleton, theme as antTheme, message } from 'antd'
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
+import { Spin, Button, theme as antTheme, message } from 'antd'
 import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined } from '@ant-design/icons'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
@@ -43,6 +42,11 @@ import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
 import { useBackgroundTasksStore } from '@/core/data/stores/backgroundTasksStore'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
+import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
+
+// BUBBLE_ROLES 由 VirtuosoChatList 内部使用（from './bubbleRoles'），此处仅保留 re-export
+// 供历史 import './ChatContainer' 的调用方兼容
+export { BUBBLE_ROLES } from './bubbleRoles'
 
 const { useToken } = antTheme
 
@@ -57,28 +61,17 @@ const bubbleCopyStyles = css`
     }
 `
 
-/** 聊天滚动区禁止水平滚动：聊天列表只该垂直滚。
- *  宽内容（代码块等）已在自身 pre 内局部滚动，不该撑出整列表的水平滚动条
- *  （移动端表现为可左右滑到一片空白）。堵住外层容器 + Bubble.List 内部 scrollBox 两层，
- *  并让 scroll-content / 单个 bubble 可收缩，避免正常内容被裁剪 */
+/** 聊天滚动区禁止水平滚动：宽内容（代码块等）已在自身 pre 内局部滚动，不该撑出整列表水平滚动条 */
 const chatScrollStyles = css`
     .chat-scroll-container {
         overflow-x: hidden;
-    }
-    .chat-scroll-container .ant-bubble-list-scroll-box {
-        overflow-x: hidden;
-    }
-    .chat-scroll-container .ant-bubble-list-scroll-content {
-        min-width: 0;
-        max-width: 100%;
     }
     .chat-scroll-container .ant-bubble {
         min-width: 0;
         max-width: 100%;
     }
-    /* LaTeX 撑宽治本：KaTeX 默认 white-space:nowrap，长公式不可断行，
-       会从 bubble 内部一路撑开 flex 链 → 整列表水平滚动（移动端窄屏尤甚）。
-       将长公式收进公式块自身横向滚动，不撑破气泡 */
+    /* LaTeX 撑宽治本：KaTeX 默认 white-space:nowrap，长公式不可断行，会从 bubble 内部一路撑开
+       flex 链 → 整列表水平滚动（移动端窄屏尤甚）。将长公式收进公式块自身横向滚动，不撑破气泡 */
     .chat-scroll-container .katex-display {
         max-width: 100%;
         overflow-x: auto;
@@ -86,40 +79,8 @@ const chatScrollStyles = css`
     }
 `
 
-/** 滚动相关阈值（autoScroll=false，正常 flex column 布局） */
-
 /** 聊天内容区最大宽度：超宽屏时限宽居中，避免用户/AI 气泡分列两端过于割裂；小屏自动 100% */
 const CHAT_MAX_WIDTH = 1200
-
-const HISTORY_PREFETCH_DISTANCE = 200
-const AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD = 50
-const SCROLL_BOTTOM_VISIBLE_THRESHOLD = 60
-// 补偿完成后屏蔽滚动事件的时间窗口（覆盖 ResizeObserver + rAF 双帧延迟）
-const RESTORE_SCROLL_GUARD_MS = 100
-/** 流式跟随平滑滚动：每帧靠近目标的比例（0~1，越大收敛越快、越生硬） */
-const SMOOTH_FOLLOW_FACTOR = 0.25
-/**
- * 瞬时贴底阈值（px）：gap ≤ 此值时直接对齐，不走 glide。
- * 逐字 reveal 的单次增量（~10–40px）落在此范围内 → 每次瞬时贴底，gap 始终≈0，
- * 底部最新气泡不会被"推下再追回"地上下浮动。
- * 而 20fps × ~20px 的小步进视觉上本身就是平滑的（等价于正常滚动速度）。
- * 也是 glide 区间的下限：只有 gap ∈ (此值, SNAP] 才平滑滚动。
- */
-const SMOOTH_FOLLOW_INSTANT_THRESHOLD = 80
-/** 平滑跟随最大差距：超过则直接对齐，避免大块内容（代码块/图片）出现时长时间滑不到底 */
-const SMOOTH_FOLLOW_SNAP_THRESHOLD = 300
-
-import { BUBBLE_ROLES } from './bubbleRoles'
-import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
-
-export { BUBBLE_ROLES }
-
-/**
- * PoC 开关：虚拟化聊天列表（react-virtuoso 替换 Bubble.List）。
- * true=VirtuosoChatList（只渲染视口附近，DOM 不随消息量增长）；
- * false=Bubble.List（原全量渲染）。验证完毕后决定是否移除开关。
- */
-const USE_VIRTUOSO = false
 
 interface ChatContainerProps {
     sessionId: string
@@ -129,41 +90,33 @@ interface ChatContainerProps {
     extraComposerItems?: ActionItem[]
 }
 
+/**
+ * 聊天容器：消息列表 + composer。
+ *
+ * 消息列表用 react-virtuoso 虚拟化（VirtuosoChatList），只渲染视口附近 bubble，DOM 不随消息量增长。
+ * 滚动行为由 Virtuoso 原生 API 接管：
+ * - followOutput：流式追加时贴底跟随
+ * - startReached：滚到顶加载历史（fetchNextPage）
+ * - firstItemIndex：prepend 历史时保持滚动位置
+ * - atBottomStateChange：驱动"滚到底"按钮
+ *
+ * 详见 docs/pending.md #10（虚拟化迁移）。
+ */
 export function ChatContainer({ sessionId, extraComposerButtons, extraComposerItems }: ChatContainerProps) {
     const {
         data: messages = [],
         isLoading: messagesLoading,
         fetchNextPage,
         hasNextPage,
-        isFetchingNextPage,
     } = useMessages(sessionId)
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId, session?.running ?? false)
     const sessionActions = useSessionActions(sessionId)
-    const scrollContainerRef = useRef<HTMLDivElement>(null)
-    const scrollBoxRef = useRef<HTMLElement | null>(null)
-    const composerRef = useRef<ChatComposerHandle>(null)
     const virtuosoRef = useRef<VirtuosoHandle>(null)
-    const isRestoringScrollRef = useRef(false)
-    const prevShowRef = useRef(false)
-    const pendingRestoreRef = useRef<{
-        scrollTop: number
-        scrollHeight: number
-        blocksLength: number
-    } | null>(null)
+    const composerRef = useRef<ChatComposerHandle>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
-    // fill 级联模式：初始加载连续加载多页 beforeSeq，期间不做 scroll 补偿、不显示 skeleton
-    const isFillingRef = useRef(false)
-    // observer 绑定标记：避免 chatBlocks.length 变化时重复绑定
-    const setupDoneRef = useRef(false)
-    // observer 清理函数：不通过 effect cleanup 返回，由 session effect 统一管理
-    const observerCleanupRef = useRef<(() => void) | null>(null)
-    // scroll restoration setTimeout ID，用于 session 切换/unmount 时清理
-    const scrollRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定
     const prevByIdRef = useRef<ChatBlocksById>(new Map())
-    // 触发历史消息加载的函数引用（observer setup effect 中赋值）
-    const triggerFetchRef = useRef<(scrollTop: number, scrollHeight: number) => void>(() => {})
     const { token } = useToken()
     const { t } = useTranslation()
     const api = useMobiApi()
@@ -322,321 +275,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return () => clearTimeout(timer)
     }, [isClearing, sendMutation.isPending])
 
-    const chatBlocksLengthRef = useRef(chatBlocks.length)
-    chatBlocksLengthRef.current = chatBlocks.length
-
-    useLayoutEffect(() => {
-        const el = scrollContainerRef.current
-        if (!el) return
-        scrollBoxRef.current = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
-    }, [chatBlocks.length])
-
-    const hasNextPageRef = useRef(hasNextPage)
-    hasNextPageRef.current = hasNextPage
-    const isFetchingNextPageRef = useRef(isFetchingNextPage)
-    isFetchingNextPageRef.current = isFetchingNextPage
-    const fetchNextPageRef = useRef(fetchNextPage)
-    fetchNextPageRef.current = fetchNextPage
-
-    // session 切换时重置 observer 绑定状态并清理
+    // session 切换时重置 reconcile 结构化共享缓存
     useEffect(() => {
-        setupDoneRef.current = false
-        isFillingRef.current = false
         prevByIdRef.current = new Map()
-        observerCleanupRef.current?.()
-        observerCleanupRef.current = null
-        if (scrollRestoreTimerRef.current) {
-            clearTimeout(scrollRestoreTimerRef.current)
-            scrollRestoreTimerRef.current = null
-        }
-        return () => {
-            observerCleanupRef.current?.()
-            observerCleanupRef.current = null
-            if (scrollRestoreTimerRef.current) {
-                clearTimeout(scrollRestoreTimerRef.current)
-                scrollRestoreTimerRef.current = null
-            }
-        }
     }, [sessionId])
 
-    // Observer 绑定 — setupDoneRef 确保只绑定一次，不随 chatBlocks.length 重复 teardown/rebuild
-    useEffect(() => {
-        if (setupDoneRef.current) return
-
-        const el = scrollContainerRef.current
-        if (!el) return
-        const scrollBox = el.querySelector('.ant-bubble-list-scroll-box') as HTMLElement | null
-        if (!scrollBox) return
-
-        setupDoneRef.current = true
-        scrollBoxRef.current = scrollBox
-        const contentEl = scrollBox.querySelector('.ant-bubble-list-scroll-content') as HTMLElement | null
-
-        let isNearBottom = true
-        let prevScrollTop = scrollBox.scrollTop
-        let rafId = 0
-        // 流式跟随的平滑滚动 rAF id（独立于 ResizeObserver 防抖用的 rafId）
-        let smoothFollowRafId = 0
-        // 平滑跟随的目标 scrollTop（= scrollHeight - clientHeight，即可达底部）。
-        // 由 captureFollowTarget 在内容/视口尺寸变化时刷新，tick 只读这个闭包变量，
-        // 不每帧读 scrollHeight/clientHeight（避免 rAF 内触发强制同步 layout）。
-        let followMaxTop = scrollBox.scrollHeight - scrollBox.clientHeight
-        // tick 内对 scrollTop 的镜像：每次写入后同步更新，使 tick 无需读 scrollBox.scrollTop。
-        // 仅在 loop 拥有滚动权期间有效（用户主动滚动会取消 loop，下次启动重新读取实际值）。
-        let currentPos = scrollBox.scrollTop
-
-        /** 触发加载上一页历史消息 */
-        const triggerFetchNextPage = (scrollTop: number, scrollHeight: number) => {
-            if (!isFillingRef.current) {
-                // 用户主动加载历史：设置 pendingRestoreRef 保持 scroll 位置
-                pendingRestoreRef.current = {
-                    scrollTop,
-                    scrollHeight,
-                    blocksLength: chatBlocksLengthRef.current,
-                }
-            }
-            // fill 模式下不设置 pendingRestoreRef，不做 scroll 补偿
-            isFetchingNextPageRef.current = true
-            fetchNextPageRef.current()
-        }
-        // 保存到 ref，供 auto-chain（scroll restoration useLayoutEffect）调用
-        triggerFetchRef.current = triggerFetchNextPage
-
-        /**
-         * 内容未溢出时主动加载历史消息
-         * 窗口足够高时消息列表无需滚动，scroll 事件永远不会触发，
-         * 导致历史消息无法加载。需要在布局稳定后主动检查并触发加载。
-         */
-        const checkOverflowAndFetch = () => {
-            if (!hasNextPageRef.current || isFetchingNextPageRef.current) return
-            const { scrollHeight, clientHeight, scrollTop } = scrollBox
-            if (scrollHeight <= clientHeight) {
-                // 内容未溢出 → 进入 fill 模式，加载更多
-                isFillingRef.current = true
-                triggerFetchNextPage(scrollTop, scrollHeight)
-            } else if (isFillingRef.current) {
-                // Fill 期间内容已溢出，滚到底部
-                // 不立即重置 isFillingRef，由 fill cascade effect 在 fetch 完成后统一重置
-                // 避免 isFillingRef=false + isFetchingNextPage=true 的缝隙导致 skeleton 闪烁
-                scrollBox.scrollTop = scrollBox.scrollHeight
-            }
-        }
-
-        const handleScroll = () => {
-            if (isRestoringScrollRef.current) return
-
-            const { scrollTop, scrollHeight, clientHeight } = scrollBox
-            const distanceToBottom = scrollHeight - scrollTop - clientHeight
-
-            if (scrollTop < prevScrollTop - 2) {
-                // 用户主动向上滚 → 立即终止平滑跟随，避免下一帧把位置又拉回底部
-                cancelAnimationFrame(smoothFollowRafId)
-                smoothFollowRafId = 0
-                isNearBottom = distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD
-            } else if (distanceToBottom < AUTO_SCROLL_NEAR_BOTTOM_THRESHOLD) {
-                isNearBottom = true
-            }
-            prevScrollTop = scrollTop
-
-            // 跟随期间（isNearBottom）强制不显示「滚到底」按钮：
-            // 平滑 glide 时 distanceToBottom 可能瞬时超过阈值，不加此闸会导致按钮快速闪烁
-            const shouldShow = !isNearBottom && distanceToBottom > SCROLL_BOTTOM_VISIBLE_THRESHOLD
-            if (shouldShow !== prevShowRef.current) {
-                prevShowRef.current = shouldShow
-                setShowScrollBottom(shouldShow)
-            }
-
-            if (scrollTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
-                // 用户主动滚动到顶部加载历史
-                isFillingRef.current = false
-                triggerFetchNextPage(scrollTop, scrollHeight)
-            }
-        }
-
-        const handleAutoScroll = () => {
-            // fill 级联期间不做 scroll 补偿
-            if (isFillingRef.current) return
-            if (isNearBottom && !isRestoringScrollRef.current) {
-                smoothFollowToBottom()
-            }
-        }
-
-        /**
-         * 刷新平滑跟随目标（内容/视口尺寸变化时调用）。
-         * 目标是 scrollHeight - clientHeight——即 scrollTop 的物理上限（可达底部），
-         * 而非 scrollHeight（不可达，会被浏览器钳制）。集中在此读取 layout 属性，
-         * 让 tick 无需每帧触发同步 layout。
-         */
-        const captureFollowTarget = () => {
-            followMaxTop = scrollBox.scrollHeight - scrollBox.clientHeight
-        }
-
-        /**
-         * 平滑跟随到底部：rAF 循环每帧按 SMOOTH_FOLLOW_FACTOR 逼近 followMaxTop。
-         * 用比例逼近替代「每帧硬切 scrollTop = scrollHeight」，消除快速输出时
-         * 每帧瞬移累积的跳动。tick 只读写镜像 currentPos（不读 layout 属性），
-         * layout 由 captureFollowTarget 在尺寸变化时统一捕获，内容持续长高也能追踪。
-         * 终止：追到底 / 用户向上滚（isNearBottom=false）/ 恢复滚动中 / 差距过大直接对齐。
-         */
-        const smoothFollowToBottom = () => {
-            if (smoothFollowRafId) return
-            captureFollowTarget()
-            currentPos = scrollBox.scrollTop
-            // 已贴近底部（含内容未溢出 followMaxTop≤0 / 逐字 reveal 小增量）→ 瞬时对齐，不启动循环
-            if (currentPos >= followMaxTop - SMOOTH_FOLLOW_INSTANT_THRESHOLD) {
-                if (scrollBox.scrollTop !== followMaxTop) scrollBox.scrollTop = followMaxTop
-                return
-            }
-            const tick = () => {
-                // 期间用户主动向上滚 / 进入 scroll 恢复 → 终止。
-                // 不检查 isFillingRef：fill（向上加载历史）几乎只在初始加载期发生，
-                // 那时无流式 glide 在跑；且 fill 与 glide 都朝底部推，不冲突
-                if (!isNearBottom || isRestoringScrollRef.current) {
-                    smoothFollowRafId = 0
-                    return
-                }
-                const remaining = followMaxTop - currentPos
-                // 贴近底部（含逐字 reveal 的小增量）/ 内容收缩 / 超大突变 → 瞬时贴底。
-                // 小增量若走 glide，25%/帧追不上 20fps 的持续 reveal，滞后累积会把
-                // 底部最新气泡推下再追回 → 上下浮动。瞬时对齐保持 gap≈0 既无浮动，
-                // 步进又足够小，视觉上仍平滑。
-                if (remaining <= SMOOTH_FOLLOW_INSTANT_THRESHOLD || remaining > SMOOTH_FOLLOW_SNAP_THRESHOLD) {
-                    scrollBox.scrollTop = followMaxTop
-                    currentPos = followMaxTop
-                    smoothFollowRafId = 0
-                    return
-                }
-                // 中等增量（典型快速 burst / 代码块撑高）→ 平滑 glide，消除硬切跳动。
-                // remaining > INSTANT_THRESHOLD(80)，故步进 = remaining*0.25 > 20，无需下限兜底；
-                // Math.min 防御 followMaxTop 在 tick 间收缩的越界（正常不触发）
-                currentPos = Math.min(currentPos + remaining * SMOOTH_FOLLOW_FACTOR, followMaxTop)
-                scrollBox.scrollTop = currentPos
-                smoothFollowRafId = requestAnimationFrame(tick)
-            }
-            smoothFollowRafId = requestAnimationFrame(tick)
-        }
-
-        // contentEl ResizeObserver：RAF 防抖，防止 thinking 动画每帧触发微抖
-        // 只处理 autoScroll，不调用 checkOverflowAndFetch（fill 级联由专属 effect 驱动）
-        let resizeObserver: ResizeObserver | null = null
-        if (contentEl) {
-            resizeObserver = new ResizeObserver(() => {
-                cancelAnimationFrame(rafId)
-                rafId = requestAnimationFrame(() => {
-                    // 内容长高 → 先刷新目标，再跟随（loop 运行中则 tick 内自动用新目标）
-                    captureFollowTarget()
-                    handleAutoScroll()
-                })
-            })
-            resizeObserver.observe(contentEl)
-        }
-
-        // 监听视口尺寸变化：autoScroll + 窗口拉高时检测溢出继续加载历史
-        const viewportObserver = new ResizeObserver(() => {
-            // 视口变化改变 clientHeight → 可达底部随之变化，刷新目标
-            captureFollowTarget()
-            handleAutoScroll()
-            checkOverflowAndFetch()
-        })
-        viewportObserver.observe(scrollBox)
-
-        // useLayoutEffect 的初始滚动可能在布局未稳定时执行，此处（paint 后）再次校正
-        if (postPaintCorrectionRef.current && chatBlocksLengthRef.current > 0) {
-            postPaintCorrectionRef.current = false
-            scrollBox.scrollTop = scrollBox.scrollHeight
-        }
-
-        // 初始加载时检查溢出
-        checkOverflowAndFetch()
-
-        scrollBox.addEventListener('scroll', handleScroll, { passive: true })
-
-        // 不返回 cleanup！保存到 ref，由 session effect 统一清理
-        observerCleanupRef.current = () => {
-            scrollBox.removeEventListener('scroll', handleScroll)
-            resizeObserver?.disconnect()
-            viewportObserver.disconnect()
-            cancelAnimationFrame(rafId)
-            cancelAnimationFrame(smoothFollowRafId)
-            smoothFollowRafId = 0
-        }
-    }, [chatBlocks.length])
-
-    // fill 级联驱动：只在 isFillingRef 已为 true 时继续加载（初始 fill 由 observer setup 启动）
-    // 用户手动滚到顶部加载历史时 isFillingRef 为 false，级联不会接管
-    useEffect(() => {
-        const scrollBox = scrollBoxRef.current
-        if (!scrollBox) return
-        if (!isFillingRef.current) return
-        if (!hasNextPageRef.current || isFetchingNextPageRef.current) return
-
-        const { scrollHeight, clientHeight } = scrollBox
-        if (scrollHeight <= clientHeight) {
-            isFetchingNextPageRef.current = true
-            fetchNextPageRef.current()
-        } else {
-            isFillingRef.current = false
-            scrollBox.scrollTop = scrollBox.scrollHeight
-        }
-    }, [chatBlocks.length, isFetchingNextPage])
-
-    useLayoutEffect(() => {
-        const pending = pendingRestoreRef.current
-        if (!pending) return
-        const scrollBox = scrollBoxRef.current
-        if (!scrollBox) return
-
-        const delta = scrollBox.scrollHeight - pending.scrollHeight
-        if (delta !== 0) {
-            isRestoringScrollRef.current = true
-            scrollBox.scrollTop = pending.scrollTop + delta
-            pending.scrollTop = scrollBox.scrollTop
-            pending.scrollHeight = scrollBox.scrollHeight
-        }
-        if (chatBlocks.length > pending.blocksLength || !isFetchingNextPage) {
-            const restoredScrollTop = scrollBox.scrollTop
-            pendingRestoreRef.current = null
-            isRestoringScrollRef.current = true
-            // 清理上一个 restoration timer，防止 stale timeout
-            if (scrollRestoreTimerRef.current) {
-                clearTimeout(scrollRestoreTimerRef.current)
-            }
-            scrollRestoreTimerRef.current = setTimeout(() => {
-                scrollRestoreTimerRef.current = null
-                isRestoringScrollRef.current = false
-                // scroll restoration 完成后仍在顶部附近 → 自动加载下一页
-                // 解决：手动滚到顶部加载一页后，scroll restoration 结束不再有 scroll 事件，
-                // 用户必须手动再滚一下才能触发下一页的问题
-                if (restoredScrollTop < HISTORY_PREFETCH_DISTANCE
-                    && hasNextPageRef.current && !isFetchingNextPageRef.current) {
-                    isFillingRef.current = false
-                    triggerFetchRef.current(scrollBox.scrollTop, scrollBox.scrollHeight)
-                }
-            }, RESTORE_SCROLL_GUARD_MS)
-        }
-    }, [chatBlocks.length, isFetchingNextPage])
-
     const handleScrollToBottom = useCallback(() => {
-        if (USE_VIRTUOSO) {
-            virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
-            return
-        }
-        const scrollBox = scrollBoxRef.current
-        if (scrollBox) scrollBox.scrollTo({ top: scrollBox.scrollHeight, behavior: 'smooth' })
+        virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
     }, [])
-
-    // 首次加载消息时滚动到底部（sessionId 变化时重置）
-    const initialScrollRef = useRef(true)
-    const postPaintCorrectionRef = useRef(false)
-    useEffect(() => { initialScrollRef.current = true }, [sessionId])
-
-    useLayoutEffect(() => {
-        if (initialScrollRef.current && chatBlocks.length > 0 && scrollBoxRef.current) {
-            initialScrollRef.current = false
-            postPaintCorrectionRef.current = true
-            scrollBoxRef.current.scrollTop = scrollBoxRef.current.scrollHeight
-        }
-    }, [chatBlocks.length])
 
     const decoratedItems = useMemo(() => {
         const baseItems = buildChatBubbleItems(
@@ -668,26 +314,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         })
     }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t])
 
-    // FIXME: 长列表性能优化 —— Bubble.List 没有虚拟滚动，消息量持续增长时 DOM 节点线性增加。
-    // 当实际使用中出现滚动卡顿时，考虑：1) 渲染窗口控制 2) 引入 rc-virtual-list 虚拟滚动。
-    // 详见 docs/pending.md #23。
     const bubbleItems = useMemo(() => {
         const items: Array<BubbleItemBase & {
             header?: React.ReactNode
             footer?: React.ReactNode
             footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
             classNames?: { root?: string }
-        }> = [
-            // fill 级联模式下不显示 skeleton，避免高度来回跳动导致抖动
-            ...(isFetchingNextPage && !isFillingRef.current
-                ? [{
-                    key: '__loading-skeleton__',
-                    role: 'system' as const,
-                    content: <Skeleton active avatar paragraph={{ rows: 2 }} />,
-                }]
-                : []),
-            ...decoratedItems,
-        ]
+        }> = [...decoratedItems]
 
         if (isCompressing) {
             items.push({
@@ -708,7 +341,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
 
         return items
-    }, [decoratedItems, isFetchingNextPage, isCompressing, isClearing])
+    }, [decoratedItems, isCompressing, isClearing])
 
     const handleSend = (text: string) => {
         if (import.meta.env.DEV) console.log('[Send] handleSend', { textLen: text.length, hasTrim: !!text.trim() })
@@ -751,33 +384,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
             <Global styles={collapsibleUserMessageStyles} />
-            <div ref={scrollContainerRef} className="chat-scroll-container" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
+            <div className="chat-scroll-container" style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (
                     <ChatWelcome sessionId={sessionId} />
                 ) : (
-                    <>
-                        {/* autoScroll=false：不使用 Bubble.List 的 autoScroll。
-                          autoScroll 启用 column-reverse 布局和 useCompatibleScroll，
-                          后者通过 ResizeObserver + enforceScrollLock 独立管理视口位置。
-                          加载历史消息时，enforceScrollLock 与手动 scrollTop 恢复存在时序冲突，
-                          且 shouldLock 在用户靠近哨兵时为 false 导致跳过锁定。
-                          因此禁用 autoScroll，改用下方 ResizeObserver 自行实现流式跟随。 */}
-                        {USE_VIRTUOSO ? (
-                            <VirtuosoChatList
-                                ref={virtuosoRef}
-                                items={bubbleItems}
-                                onStartReached={() => { void fetchNextPage() }}
-                                atBottomStateChange={(atBottom) => setShowScrollBottom(!atBottom)}
-                            />
-                        ) : (
-                            <Bubble.List
-                                items={bubbleItems}
-                                role={BUBBLE_ROLES}
-                                style={{ height: '100%' }}
-                                autoScroll={false}
-                            />
-                        )}
-                    </>
+                    <VirtuosoChatList
+                        ref={virtuosoRef}
+                        items={bubbleItems}
+                        onStartReached={() => { void fetchNextPage() }}
+                        atBottomStateChange={(atBottom) => setShowScrollBottom(!atBottom)}
+                    />
                 )}
                 {showScrollBottom && (
                     <Button
