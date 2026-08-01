@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { memo, useCallback, useMemo, useRef, type ReactNode } from 'react'
-import { Virtuoso } from 'react-virtuoso'
+import { forwardRef, memo, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { Bubble } from '@ant-design/x'
 import { BUBBLE_ROLES } from './bubbleRoles'
 import type { BubbleItemBase } from './buildBubbleItems'
@@ -84,7 +84,7 @@ interface VirtuosoChatListProps {
  * 不随消息总量增长。Virtuoso 自动测量动态高度（无需估高），followOutput 接管流式贴底跟随，
  * startReached 接管向上加载历史。
  */
-export function VirtuosoChatList({ items, onStartReached, atBottomStateChange }: VirtuosoChatListProps) {
+export const VirtuosoChatList = forwardRef<VirtuosoHandle, VirtuosoChatListProps>(function VirtuosoChatList({ items, onStartReached, atBottomStateChange }, ref) {
     const handleStartReached = useCallback(() => {
         onStartReached?.()
     }, [onStartReached])
@@ -107,6 +107,7 @@ export function VirtuosoChatList({ items, onStartReached, atBottomStateChange }:
 
     return (
         <Virtuoso
+            ref={ref}
             data={items}
             firstItemIndex={firstItemIndex}
             // 初始滚到底部（最新消息）
@@ -121,4 +122,4 @@ export function VirtuosoChatList({ items, onStartReached, atBottomStateChange }:
             style={{ height: '100%' }}
         />
     )
-}
+})

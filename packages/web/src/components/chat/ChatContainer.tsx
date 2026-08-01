@@ -29,6 +29,7 @@ import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reco
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
 import { VirtuosoChatList } from './VirtuosoChatList'
+import type { VirtuosoHandle } from 'react-virtuoso'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND } from '@/domain/chat/presentation'
@@ -142,6 +143,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const scrollBoxRef = useRef<HTMLElement | null>(null)
     const composerRef = useRef<ChatComposerHandle>(null)
+    const virtuosoRef = useRef<VirtuosoHandle>(null)
     const isRestoringScrollRef = useRef(false)
     const prevShowRef = useRef(false)
     const pendingRestoreRef = useRef<{
@@ -615,6 +617,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [chatBlocks.length, isFetchingNextPage])
 
     const handleScrollToBottom = useCallback(() => {
+        if (USE_VIRTUOSO) {
+            virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
+            return
+        }
         const scrollBox = scrollBoxRef.current
         if (scrollBox) scrollBox.scrollTo({ top: scrollBox.scrollHeight, behavior: 'smooth' })
     }, [])
@@ -758,8 +764,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                           因此禁用 autoScroll，改用下方 ResizeObserver 自行实现流式跟随。 */}
                         {USE_VIRTUOSO ? (
                             <VirtuosoChatList
+                                ref={virtuosoRef}
                                 items={bubbleItems}
                                 onStartReached={() => { void fetchNextPage() }}
+                                atBottomStateChange={(atBottom) => setShowScrollBottom(!atBottom)}
                             />
                         ) : (
                             <Bubble.List
