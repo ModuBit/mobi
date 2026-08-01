@@ -122,7 +122,7 @@ describe('diag 诊断埋点', () => {
     it('localStorage 标记开启时 initDiag 自动开启并合并现场', () => {
         // 预置上次会话的镜像（模拟刷新前留下的数据）
         localStorage.setItem(LS_DATA_KEY, JSON.stringify({
-            version: '1',
+            version: '2',
             enabled: true,
             createdAt: 0,
             events: [{ kind: 'snapshot', snapshot: true, messageId: 'm1', localId: null, role: 'agent', content: {} }],
@@ -158,5 +158,77 @@ describe('diag 诊断埋点', () => {
         expect(() => JSON.stringify(dumped)).not.toThrow()
         expect((dumped as { events: unknown[] }).events).toHaveLength(1)
         expect((dumped as { tools: unknown[] }).tools).toHaveLength(1)
+    })
+
+    it('旧版本镜像不合并（restoreFromLS 版本校验）', () => {
+        // 预置 v1 镜像（模拟旧版本残留）
+        localStorage.setItem(LS_DATA_KEY, JSON.stringify({
+            version: '1',
+            enabled: true,
+            createdAt: 0,
+            events: [{ kind: 'snapshot', snapshot: true, messageId: 'm1', localId: null, role: 'agent', content: {} }],
+            tools: [{ toolUseId: 't1', name: 'Write', events: ['created:running'], firstSeen: 0, lastSeen: 0 }],
+        }))
+        localStorage.setItem(LS_ENABLED_KEY, '1')
+        initDiag()
+        expect(isDiagEnabled()).toBe(true)
+        // 旧版本数据被丢弃，从空开始
+        expect(dumpDiag().events).toHaveLength(0)
+        expect(dumpDiag().tools).toHaveLength(0)
+    })
+
+    it('结构损坏的镜像条目被过滤，不污染去重状态', () => {
+        // 合法轨迹 + 一条缺字段的损坏轨迹
+        localStorage.setItem(LS_DATA_KEY, JSON.stringify({
+            version: '2',
+            enabled: true,
+            createdAt: 0,
+            events: [{ kind: 'snapshot', snapshot: true, messageId: 'm1', localId: null, role: 'agent', content: {} }],
+            tools: [
+                { toolUseId: 't-good', name: 'Write', events: ['created:running'], firstSeen: 0, lastSeen: 0 },
+                { toolUseId: 't-bad', name: 'Write' },  // 缺 events
+            ],
+        }))
+        localStorage.setItem(LS_ENABLED_KEY, '1')
+        initDiag()
+        const d = dumpDiag()
+        expect(d.tools).toHaveLength(1)
+        expect(d.tools[0].toolUseId).toBe('t-good')
+    })
+
+    it('镜像超限时逐事件丢弃而非硬截断字符串（JSON 始终合法）', () => {
+        // 灌入大量事件（超 MEM_CAPACITY 与 LS_MAX_CHARS），beforeunload 兜底触发 syncToLS
+        const bigContent = { text: 'x'.repeat(1000) }
+        localStorage.setItem(LS_ENABLED_KEY, '1')
+        initDiag()  // 空现场开启，enabled
+        for (let i = 0; i < 400; i++) {
+            recordSnapshot({ kind: 'snapshot', snapshot: true, messageId: `m${i}`, localId: null, role: 'agent', content: bigContent })
+        }
+        // 直接调 beforeunload 监听器强制镜像（绕过 1s 节流）
+        window.dispatchEvent(new Event('beforeunload'))
+        const stored = localStorage.getItem(LS_DATA_KEY)
+        expect(stored).not.toBeNull()
+        // 镜像必须是合法 JSON（硬截断会破坏 JSON.parse）
+        const parsed = JSON.parse(stored!)
+        expect(parsed.events.length).toBeGreaterThan(0)
+        // 模拟「刷新后恢复」：disableDiag 会清空 LS 数据，此处直接回填刚写出的镜像再 restore，
+        // 验证截断后的镜像可被正确读回（不抛错、事件非空）
+        disableDiag()
+        localStorage.setItem(LS_DATA_KEY, stored!)
+        localStorage.setItem(LS_ENABLED_KEY, '1')
+        initDiag()
+        expect(dumpDiag().events.length).toBeGreaterThan(0)
+    })
+
+    it('?diag=0 只关闭本次会话，保留 localStorage 持久化开启标记', () => {
+        // 用户此前已开启诊断（标记置 1）
+        localStorage.setItem(LS_ENABLED_KEY, '1')
+        window.history.replaceState({}, '', `${window.location.pathname}?diag=0`)
+        initDiag()
+        expect(isDiagEnabled()).toBe(false)
+        // 持久化偏好未被删除：刷新（无 URL 参数）后自动开启
+        window.history.replaceState({}, '', window.location.pathname)
+        initDiag()
+        expect(isDiagEnabled()).toBe(true)
     })
 })

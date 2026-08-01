@@ -418,7 +418,11 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             processCleanupRef,
             queryControlRef,
             getSessionConfig: () => ({
-                permissionMode: currentPermissionMode,
+                // 权限模式单一真相源 = session：plan 由 enter_plan_mode 工具进入 / ExitPlanMode 退出，
+                // 都不经过 set-session-config（不更新 currentPermissionMode）。若此处仍读局部变量，
+                // query 重启（modeHash 变化）时 fallbackConfig 会用旧 currentPermissionMode，session 与
+                // Query 权限模式脱节——plan 卡到下一轮 set-session-config。session 未就绪时回退启动值。
+                permissionMode: currentSessionRef.current?.getPermissionMode() ?? currentPermissionMode,
                 model: currentModel ?? undefined,
                 effort: currentEffort,
                 fallbackModel: currentFallbackModel,

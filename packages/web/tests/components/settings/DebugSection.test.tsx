@@ -101,6 +101,27 @@ describe('DebugSection', () => {
         expect(messageSpy.success).toHaveBeenCalledWith('debug.diagOff')
     })
 
+    it('关闭后再开启从空开始（不 restore 旧镜像，避免历史重放重复记录）', () => {
+        unlockDebug()
+        // 预置「上次会话」的 LS 镜像 + 开启标记（模拟刷新后遗留），但模块级 enabled 为 false
+        localStorage.setItem('mobi-diag-data', JSON.stringify({
+            version: '2',
+            enabled: true,
+            createdAt: 0,
+            events: [{ kind: 'snapshot', snapshot: true, messageId: 'm1', localId: null, role: 'agent', content: {} }],
+            tools: [{ toolUseId: 't1', name: 'Write', events: ['created:running'], firstSeen: 0, lastSeen: 0 }],
+        }))
+        localStorage.setItem('mobi-diag-enabled', '1')
+        renderUi()
+        // 开关处于关闭态（内存未 enable）
+        expect(dumpDiag().enabled).toBe(false)
+        // 手动开启：应从空开始，而非 restore 残留镜像（restore 会重建 seenToolIds/recordedCreatedIds，重放刷屏）
+        fireEvent.click(screen.getByRole('switch'))
+        expect(dumpDiag().enabled).toBe(true)
+        expect(dumpDiag().events).toHaveLength(0)
+        expect(dumpDiag().tools).toHaveLength(0)
+    })
+
     it('diag 未开启时点击下载提示 diagNotEnabled 但仍触发下载', () => {
         unlockDebug()
         renderUi()

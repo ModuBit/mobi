@@ -99,8 +99,19 @@ interface ChatComposerProps {
     goal?: GoalStatus | null
 }
 
-/** 是否展示上下文用量线：统计不准先隐藏（见 docs/pending.md #38），置 true 即恢复 */
-const SHOW_CONTEXT_USAGE = false
+/**
+ * 是否展示上下文用量线：统计不准先隐藏（见 docs/pending.md #38）。
+ * 默认关（行为与硬编码 false 一致）；支持运行时通过 localStorage 置
+ * `mobi-show-context-usage=1` 开启，供统计口径修正前手动校验。读取放
+ * 组件渲染时调用（与 diag 标记同机制：页面加载/刷新时读取，不需响应式）。
+ */
+function isContextUsageShown(): boolean {
+    try {
+        return typeof window !== 'undefined' && window.localStorage?.getItem('mobi-show-context-usage') === '1'
+    } catch {
+        return false
+    }
+}
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
     return wrapper?.querySelector('textarea') ?? null
@@ -685,9 +696,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
             />
 
             {/* 上下文用量线（Sender 上方）。
-                统计不准先隐藏（见 docs/pending.md #38）：SHOW_CONTEXT_USAGE 置 true 即恢复显示，
+                统计不准先隐藏（见 docs/pending.md #38）：localStorage 置 mobi-show-context-usage=1 即恢复显示，
                 CLI 计算 / runtimeState 传值链路保留，无需改动他处。 */}
-            {SHOW_CONTEXT_USAGE && contextUsage ? <ContextUsageThread usage={contextUsage} /> : null}
+            {isContextUsageShown() && contextUsage ? <ContextUsageThread usage={contextUsage} /> : null}
 
             <div
                 ref={wrapperRef}

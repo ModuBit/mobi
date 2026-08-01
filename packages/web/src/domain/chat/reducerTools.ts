@@ -92,10 +92,15 @@ export function ensureToolBlock(
             if (updatedTool.state === 'running' && seed.permission.status === 'pending') {
                 updatedTool.state = 'pending'
             }
-        } else if (updatedTool.state === 'pending') {
+        } else if (updatedTool.state === 'pending' && existing.tool.permission?.status === 'pending') {
             // 审批已通过/无 pending 请求（agentState.requests 移除后 getPermissions 不再返回）：
             // 清除遗留的 pending permission 并翻 running，让工具执行窗口可见。
             // 若保持 pending，ToolCallBlock 会因 hasPermission=true 持续不渲染，直到 tool_result 才出现。
+            //
+            // 守卫 `existing.tool.permission?.status === 'pending'`：只有「块确实曾处于待审批」才翻转。
+            // 非审批工具首次建块即 running（initialState 逻辑），不会走到这里；审批拒绝（denied/canceled）
+            // 的块 permission 已在 tool-result 分支被清为非 pending 并翻 error，也不会误翻 running。
+            // 防止异常态（permission 已清除但 state 卡 pending）在 reducer 全量重跑时反复翻转。
             updatedTool.permission = undefined
             updatedTool.state = 'running'
             if (updatedTool.startedAt === null) {
@@ -114,7 +119,14 @@ export function ensureToolBlock(
 
         // 诊断埋点：记录已有 block 的状态迁移（state 或 permission 变化）。
         // 用「值」比较而非「引用」：reducer 每次重跑都新建 permission 对象，但值没变时不算变化。
-        const permChanged = JSON.stringify(existing.tool.permission) !== JSON.stringify(updatedTool.permission)
+        // 仅在状态或 permission 引用实际变化时做序列化比较——reducer 每次全量重跑都会走到这里，
+        // 高频流式下为每个工具无条件 JSON.stringify 整个 permission 对象是热路径上的重复开销。
+        // 大部分重跑里 state 与 permission 引用都没变（只有首块新建/审批翻转时才变），先按引用
+        // 短路，引用不同才序列化比对值；permission 内嵌的 suggestions 引用不变即视为未变，
+        // 规避「异步字段写入间隙重跑」造成的误报。
+        const permRefChanged = existing.tool.permission !== updatedTool.permission
+        const permChanged = permRefChanged
+            && JSON.stringify(existing.tool.permission) !== JSON.stringify(updatedTool.permission)
         if (existing.tool.state !== updatedTool.state || permChanged) {
             recordTool({
                 kind: 'tool',

@@ -321,6 +321,37 @@ describe('ensureToolBlock', () => {
             expect(updated.tool.state).toBe('running')
             expect(updated.tool.permission).toBeUndefined()
         })
+
+        it('已有 state=pending 但 permission 已被清除（异常态），传入无 permission 时不反复翻转', () => {
+            // 防御性：块处于「permission 已清除但 state 卡 pending」的异常态（正常流程不会出现），
+            // reducer 全量重跑时不应把它反复翻 running——守卫要求 existing.permission 仍为 pending。
+            const blocks: ToolCallBlock[] = []
+            const toolBlocksById = new Map<string, ToolCallBlock>()
+
+            const original = ensureToolBlock(blocks, toolBlocksById, 'tool-1', {
+                createdAt: 1000,
+                localId: null,
+                name: 'Bash',
+                input: {},
+                description: null,
+                permission: { id: 'tool-1', status: 'pending' },
+            })
+            // 手工构造异常态：permission 已清除但 state 仍是 pending
+            const corrupted = { ...original, tool: { ...original.tool, permission: undefined } }
+            toolBlocksById.set('tool-1', corrupted)
+
+            const updated = ensureToolBlock(blocks, toolBlocksById, 'tool-1', {
+                createdAt: 1000,
+                localId: null,
+                name: 'Bash',
+                input: {},
+                description: null,
+            })
+
+            // 守卫生效：permission 非 pending，不翻 running，保持原状
+            expect(updated.tool.state).toBe('pending')
+            expect(updated.tool.permission).toBeUndefined()
+        })
     })
 
     describe('tool name 更新规则', () => {
@@ -924,6 +955,32 @@ describe('ensureToolBlock 诊断埋点', () => {
         })
         const tr = dumpDiag().tools.find(t => t.toolUseId === 'tool-x')
         expect(tr).toBeDefined()
+        expect(tr!.events).toHaveLength(1)
+    })
+
+    it('permission 引用变化但值不变时不记录冗余 state 事件（避免热路径重复序列化误报）', () => {
+        const blocks: ToolCallBlock[] = []
+        const toolBlocksById = new Map<string, ToolCallBlock>()
+        ensureToolBlock(blocks, toolBlocksById, 'tool-p', {
+            createdAt: 1000,
+            localId: null,
+            name: 'Bash',
+            input: {},
+            description: null,
+            permission: { id: 'tool-p', status: 'pending' },
+        })
+        // 重跑：permission 是同值的新对象（引用不同），state 仍 pending → 值没变，不应记 state 事件
+        ensureToolBlock(blocks, toolBlocksById, 'tool-p', {
+            createdAt: 1000,
+            localId: null,
+            name: 'Bash',
+            input: {},
+            description: null,
+            permission: { id: 'tool-p', status: 'pending' },
+        })
+        const tr = dumpDiag().tools.find(t => t.toolUseId === 'tool-p')
+        expect(tr).toBeDefined()
+        // created 一条，state 事件 0（pending 未变化）
         expect(tr!.events).toHaveLength(1)
     })
 })

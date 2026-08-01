@@ -90,7 +90,7 @@ export interface DiagDump {
     tools: DiagToolTrace[]
 }
 
-const VERSION = '1'
+const VERSION = '2'
 const seenToolIds = new Set<string>()
 /** 已记录过 created 的 toolUseId：reducer 全量重跑时同一工具会被反复「新建」，
  *  但只有首次是真实建块，后续重跑去重，避免历史重放刷屏 */
@@ -165,9 +165,16 @@ function syncToLS(): void {
         const store = getStore()
         if (!store) return
         let s = serialize()
-        if (s.length > LS_MAX_CHARS) {
-            s = s.slice(0, LS_MAX_CHARS)
+        // 超限：从事件头部丢弃最旧事件重新序列化，直到不超限。硬切字符串会从 mid-string 截断
+        // 破坏 JSON，restoreFromLS 的 JSON.parse 抛错走 catch → 整个诊断现场丢失（「刷新不丢」
+        // 的既定目标被静默破坏）。逐事件丢弃与内存环形缓冲语义一致，JSON 始终合法。
+        while (s.length > LS_MAX_CHARS && events.length > 0) {
+            events.splice(0, 1)
+            s = serialize()
         }
+        // 极端：全部事件丢弃后仍超限（单事件/工具轨迹超限，truncate 已限字段、现实中不可达），
+        // 放弃镜像避免写入损坏数据
+        if (s.length > LS_MAX_CHARS) return
         store.setItem(LS_DATA_KEY, s)
     } catch {
         // localStorage 满 / 隐私模式：静默失败，内存数据不受影响
@@ -181,11 +188,19 @@ function restoreFromLS(): void {
         if (!store) return
         const s = store.getItem(LS_DATA_KEY)
         if (!s) return
+        // 版本不匹配的旧镜像直接忽略：旧版本事件结构可能缺字段/含未知 stage，
+        // 直接合并会污染新版本的去重状态（seenToolIds / recordedCreatedIds / lastStateKeyPerTool）。
+        // 版本升级时旧镜像失去价值，静默丢弃即可。
         const parsed = JSON.parse(s) as Partial<DiagDump>
+        if (parsed.version !== VERSION) return
         if (!Array.isArray(parsed.events) || !Array.isArray(parsed.tools)) return
-        events = parsed.events
-        tools = parsed.tools
-        for (const t of parsed.tools) {
+        // 结构校验：仅接受合法的事件/轨迹，损坏条目跳过，避免污染去重状态
+        const validEvents = parsed.events.filter(isValidDiagEvent)
+        const validTools = parsed.tools.filter(isValidDiagTrace)
+        if (validEvents.length === 0 && validTools.length === 0) return
+        events = validEvents
+        tools = validTools
+        for (const t of validTools) {
             seenToolIds.add(t.toolUseId)
             if (t.events.some(e => e.startsWith('created:'))) recordedCreatedIds.add(t.toolUseId)
             // 从恢复的轨迹里重建 state 去重键：取最后一条 state 事件，剥掉 `state:` 前缀，
@@ -196,6 +211,33 @@ function restoreFromLS(): void {
     } catch {
         // 数据损坏：忽略并继续
     }
+}
+
+/** 校验单个事件的版本兼容结构：缺失必填字段/类型不符的条目视为损坏，跳过不合并 */
+function isValidDiagEvent(ev: unknown): ev is DiagEvent {
+    if (!ev || typeof ev !== 'object') return false
+    const e = ev as Record<string, unknown>
+    if (e.kind === 'snapshot') {
+        return typeof e.snapshot === 'boolean' && typeof e.role === 'string'
+    }
+    if (e.kind === 'tool') {
+        return typeof e.toolUseId === 'string'
+            && typeof e.name === 'string'
+            && (e.stage === 'created' || e.stage === 'full' || e.stage === 'permission' || e.stage === 'state')
+            && typeof e.state === 'string'
+            && typeof e.source === 'string'
+    }
+    return false
+}
+
+/** 校验单个工具轨迹的版本兼容结构 */
+function isValidDiagTrace(t: unknown): t is DiagToolTrace {
+    if (!t || typeof t !== 'object') return false
+    const o = t as Record<string, unknown>
+    return typeof o.toolUseId === 'string'
+        && typeof o.name === 'string'
+        && Array.isArray(o.events)
+        && o.events.every((e): e is string => typeof e === 'string')
 }
 
 /** 开启诊断（幂等）。refresh 为 true 时保留旧现场（fromLocalStorage 合并）；为 false 时从空开始 */
@@ -285,10 +327,19 @@ export function initDiag(): void {
     if (getStore()?.getItem(LS_ENABLED_KEY) === '1' && !enabled) {
         enableDiag({ restore: true })
     }
-    // URL 参数 ?diag=1 → 开启；?diag=0 → 强制关闭
+    // URL 参数 ?diag=1 → 开启；?diag=0 → 强制关闭（仅本次会话，不删除用户已开启的持久化偏好）
     const q = new URLSearchParams(window.location.search)
     if (q.get('diag') === '1') enableDiag({ restore: true })
-    else if (q.get('diag') === '0') disableDiag()
+    else if (q.get('diag') === '0') {
+        // 只关本次运行的内存态，不触碰 localStorage 的 mobi-diag-enabled 标记：
+        // 否则会静默覆盖用户此前「已开启」的持久化偏好，之后刷新诊断不再自动开启。
+        enabled = false
+        events = []
+        tools = []
+        seenToolIds.clear()
+        recordedCreatedIds.clear()
+        lastStateKeyPerTool.clear()
+    }
     // 暴露全局接口（幂等）
     if (!(window as unknown as Record<string, unknown>).__mobiDiag) {
         ;(window as unknown as Record<string, unknown>).__mobiDiag = {

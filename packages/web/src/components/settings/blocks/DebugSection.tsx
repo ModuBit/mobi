@@ -126,8 +126,11 @@ export function DebugSection() {
             setDiagOn(false)
             message.success(t('debug.diagOff'))
         } else {
-            // 保留上次现场（localStorage 镜像）继续采集
-            enableDiag({ restore: true })
+            // 手动开关 = 从空开始（禁用时 disableDiag 已清空内存与 LS 镜像，无可恢复的现场）。
+            // 刷新/关页不丢由 initDiag 的持久化标记 + restoreFromLS 在页面加载时自动承担，
+            // 不在此 restore：否则 disable 后残留的旧状态键会重建 seenToolIds/recordedCreatedIds，
+            // 使同批历史消息重放时旧 toolUseId 被当作新「created」重复记录（diag 刷屏）。
+            enableDiag({ restore: false })
             setDiagOn(true)
             message.success(t('debug.diagOn'))
         }
