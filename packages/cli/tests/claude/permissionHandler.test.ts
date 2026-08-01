@@ -20,17 +20,23 @@ import type { AgentState } from '../../src/api/types'
 
 // ─── mock session 工厂 ─────────────────────────────────────────
 
+/**
+ * 有状态的 mock session：permissionMode 由 setPermissionMode 写、getPermissionMode 读，
+ * 模拟真实 Session（sessionBase.ts:58）——方案 A 下它是权限模式的唯一真相源。
+ */
 function createMockDeps() {
     const updateAgentState = vi.fn((fn: (s: AgentState) => AgentState) => {})
     const registerHandler = vi.fn()
     const resetIdleTimer = vi.fn()
+    let permissionMode: string | undefined
     const session = {
         client: {
             rpcHandlerManager: { registerHandler },
             updateAgentState,
             resetIdleTimer,
         },
-        setPermissionMode: vi.fn(),
+        setPermissionMode: vi.fn((mode: string) => { permissionMode = mode }),
+        getPermissionMode: vi.fn(() => permissionMode),
         queue: { unshift: vi.fn() },
     }
     return { session, updateAgentState, registerHandler, resetIdleTimer }
@@ -197,6 +203,7 @@ describe('PermissionHandler — handlePermissionResponse 透传 updatedPermissio
                 resetIdleTimer: () => {},
             },
             setPermissionMode,
+            getPermissionMode: vi.fn(() => undefined),
             queue: { unshift: queueUnshift },
         }
         return { session, setPermissionMode, queueUnshift }
@@ -270,6 +277,7 @@ describe('PermissionHandler — updatedPermissions 填 mobi Set 兜底持久化'
                 resetIdleTimer: () => {},
             },
             setPermissionMode: vi.fn(),
+            getPermissionMode: vi.fn(() => undefined),
             queue: { unshift: vi.fn() },
         }
         return { handler: new PermissionHandler(session as never), session }
@@ -401,5 +409,65 @@ describe('PermissionHandler — updatedPermissions 填 mobi Set 兜底持久化'
         const updateSpy = vi.spyOn(session.client, 'updateAgentState')
         handler.handleToolCall('Bash', { command: 'echo hi' }, { signal: new AbortController().signal, toolUseID: 't2' } as never)
         expect(updateSpy).toHaveBeenCalled()
+    })
+})
+
+// ─── 方案 A：权限模式单一真相源 = session ─────────────────────
+// 背景：running 中 web 切换权限模式后，若权限判断仍以「消息入队时快照」为准，
+// 消费旧消息会把 session 回写成旧值，心跳随即把旧值顶回 web（bug）。
+// 修复语义：权限判断读 session 当前值，消息快照不再回写 session。
+import { logger } from '../../src/ui/logger'
+
+describe('PermissionHandler — 权限模式单一真相源 = session（方案 A）', () => {
+    let abortSignal: AbortSignal
+
+    beforeEach(() => {
+        abortSignal = new AbortController().signal
+    })
+
+    it('handleModeChange 把模式写入 session，getPermissionMode 读到该值', () => {
+        const { session } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        handler.handleModeChange('acceptEdits')
+        expect(session.getPermissionMode()).toBe('acceptEdits')
+    })
+
+    it('web 切换（只写 session）后，防御日志读到 session 当前值而非内部副本', () => {
+        const { session } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        const debugSpy = vi.spyOn(logger, 'debug')
+        try {
+            // 模拟 RPC set-session-config → syncSessionModes 直接写 session，不经过 handler
+            session.setPermissionMode('bypassPermissions')
+
+            handler.handleToolCall(
+                'Bash',
+                { command: 'ls' },
+                { signal: abortSignal, toolUseID: 't-a1' } as never
+            )
+
+            // 防御日志（:299）打印的是 session 当前值 'bypassPermissions'
+            const warnLog = debugSpy.mock.calls.find(([msg]) =>
+                String(msg).includes('canUseTool invoked in')
+            )
+            expect(warnLog).toBeDefined()
+            expect(String(warnLog![0])).toContain('bypassPermissions')
+        } finally {
+            debugSpy.mockRestore()
+        }
+    })
+
+    it('handlePermissionResponse 带 mode 时更新 session（plan 退出等路径仍同步 session）', async () => {
+        const { session } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        handler.handleModeChange('plan')
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Bash', input: {}, toolUseID: 't1' }
+
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            { id: 't1', approved: true, mode: 'default' },
+            pending
+        )
+        expect(session.getPermissionMode()).toBe('default')
     })
 })

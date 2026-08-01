@@ -112,7 +112,6 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     private allowedTools = new Set<string>();
     private allowedBashLiterals = new Set<string>();
     private allowedBashPrefixes = new Set<string>();
-    private permissionMode: PermissionMode = 'default';
     private onPermissionRequestCallback?: (toolCallId: string) => void;
     /** agentID → { description, subagentType }，从 task_started 系统消息中提取 */
     private agentInfoMap = new Map<string, { description: string; subagentType?: string }>();
@@ -129,8 +128,11 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         this.onPermissionRequestCallback = callback;
     }
 
+    /**
+     * 权限模式变更：写入 session（唯一真相源，心跳/审批判断都从 session 读）。
+     * 调用方：web 切换（set-session-config → syncSessionModes）与 plan 流程。
+     */
     handleModeChange(mode: PermissionMode) {
-        this.permissionMode = mode;
         this.session.setPermissionMode(mode);
     }
 
@@ -188,7 +190,6 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
 
         // Update permission mode
         if (response.mode) {
-            this.permissionMode = response.mode;
             this.session.setPermissionMode(response.mode);
         }
 
@@ -296,8 +297,10 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
 
         // 防御性诊断：acceptEdits/bypassPermissions 模式下 canUseTool 理论上不被 SDK 调用
         // （SDK 自行放行编辑/全部工具）。若被调用，说明 SDK 行为与文档不符，记 warn 便于排查
-        if (this.permissionMode === 'acceptEdits' || this.permissionMode === 'bypassPermissions') {
-            logger.debug(`[permission][WARN] canUseTool invoked in ${this.permissionMode} mode for ${toolName}; SDK should have auto-handled`);
+        // 模式从 session 读（唯一真相源）：web 切换写入 session，此处立即感知
+        const currentPermissionMode = this.session.getPermissionMode();
+        if (currentPermissionMode === 'acceptEdits' || currentPermissionMode === 'bypassPermissions') {
+            logger.debug(`[permission][WARN] canUseTool invoked in ${currentPermissionMode} mode for ${toolName}; SDK should have auto-handled`);
         }
 
         //

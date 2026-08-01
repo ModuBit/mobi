@@ -501,7 +501,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 this.abortController = controller;
                 this.abortFuture = new Future<void>();
                 let modeHash: string | null = null;
-                let mode: EnhancedMode | null = null;
                 try {
                     await claudeRemote({
                         sessionId: session.sessionId,
@@ -534,7 +533,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             if (pending) {
                                 const p = pending;
                                 pending = null;
-                                permissionHandler.handleModeChange(p.mode.permissionMode);
                                 return p;
                             }
 
@@ -550,8 +548,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                     return null;
                                 }
                                 modeHash = msg.hash;
-                                mode = msg.mode;
-                                permissionHandler.handleModeChange(mode.permissionMode);
                                 return {
                                     message: msg.message,
                                     mode: msg.mode
@@ -689,7 +685,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     logger.debug('[remote]: launch done');
                     permissionHandler.resetForNewTurn();
                     modeHash = null;
-                    mode = null;
                 }
             }
         } finally {
