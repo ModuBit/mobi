@@ -88,6 +88,50 @@ describe('extractRunningAgents', () => {
         expect(extractRunningAgents([block])).toHaveLength(0)
     })
 
+    it('过滤 run_in_background=true 的 Agent（后台任务不进前台面板）', () => {
+        const block = makeAgentBlock({
+            id: 'bg-agent',
+            name: 'Agent',
+            state: 'running',
+            input: { subagent_type: 'Explore', description: '后台研究', run_in_background: true },
+        })
+        expect(extractRunningAgents([block])).toHaveLength(0)
+    })
+
+    it('过滤 run_in_background=true 的 Task 工具（后台任务不进前台面板）', () => {
+        const block = makeAgentBlock({
+            id: 'bg-task',
+            name: 'Task',
+            state: 'running',
+            input: { name: '任务', run_in_background: true },
+        })
+        expect(extractRunningAgents([block])).toHaveLength(0)
+    })
+
+    it('run_in_background=false 的前台 Agent 正常提取', () => {
+        const block = makeAgentBlock({
+            id: 'fg-agent',
+            state: 'running',
+            input: { subagent_type: 'Explore', description: '前台研究', run_in_background: false },
+        })
+        const result = extractRunningAgents([block])
+        expect(result).toHaveLength(1)
+        expect(result[0].block.id).toBe('fg-agent')
+    })
+
+    it('混合：显式后台 Agent 被排除，前台 Agent 保留', () => {
+        const blocks: ChatBlock[] = [
+            makeAgentBlock({
+                id: 'bg1', state: 'running',
+                input: { description: '后台', run_in_background: true },
+            }),
+            makeAgentBlock({ id: 'fg1', state: 'running' }),
+        ]
+        const result = extractRunningAgents(blocks)
+        expect(result).toHaveLength(1)
+        expect(result[0].block.id).toBe('fg1')
+    })
+
     it('从 input 提取 subagent_type 和 description', () => {
         const block = makeAgentBlock({
             input: { subagent_type: 'Plan', description: '设计方案', prompt: 'xxx' },

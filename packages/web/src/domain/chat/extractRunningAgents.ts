@@ -15,7 +15,7 @@
  */
 
 import type { ChatBlock } from './types'
-import { isAgentTool } from '@/components/tool-card/knownTools'
+import { isAgentTool, isBackgroundAgentTool } from '@/components/tool-card/knownTools'
 import { getInputStringAny } from '@/core/lib/toolInputUtils'
 
 /** 正在运行或等待中的 Agent 信息 */
@@ -28,6 +28,8 @@ export type RunningAgent = {
 
 /**
  * 从 ChatBlock 列表中提取所有 running/pending 状态的 Agent 工具调用
+ * 显式 run_in_background=true 的 Agent 不进前台面板（后台任务由后台面板展示），
+ * 避免同一任务在前台/后台两个面板双重渲染
  */
 export function extractRunningAgents(blocks: ChatBlock[]): RunningAgent[] {
     const result: RunningAgent[] = []
@@ -35,6 +37,8 @@ export function extractRunningAgents(blocks: ChatBlock[]): RunningAgent[] {
         if (block.kind !== 'tool-call') continue
         if (!isAgentTool(block.tool.name)) continue
         if (block.tool.state !== 'running' && block.tool.state !== 'pending') continue
+        // 显式后台 Agent（run_in_background=true）不视为前台执行中 agent
+        if (isBackgroundAgentTool(block.tool.name, block.tool.input)) continue
 
         result.push({
             block,

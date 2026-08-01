@@ -62,7 +62,7 @@ export const useBackgroundTasksStore = create<BackgroundTasksState>((set, get) =
                 }
             }
 
-            // 存储所有任务（包含终态），供 BackgroundTaskPanel 展示
+            // 存储所有任务（包含终态），供 TasksPanel 展示
             const next = new Map(state.tasksBySession)
             next.set(sessionId, tasks)
 

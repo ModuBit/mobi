@@ -18,6 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import {
     collectBackgroundToolUseIds,
     extractBackgroundTaskDeltasFromMessageContent,
+    extractBackgroundTaskIdsFromMessageContent,
     applyBackgroundTaskDelta,
 } from '../../src/sync/backgroundTasks'
 import type { BackgroundTaskDelta, BackgroundTaskItem } from '../../src/sync/backgroundTasks'
@@ -63,6 +64,7 @@ function makeSampleBackgroundTask(overrides?: Partial<BackgroundTaskItem>): Back
         toolName: 'Bash',
         description: '运行构建脚本',
         status: 'running',
+        isBackground: true,
         startedAt: 1000000,
         ...overrides,
     }
@@ -205,70 +207,131 @@ describe('collectBackgroundToolUseIds', () => {
 describe('extractBackgroundTaskDeltasFromMessageContent', () => {
 
     describe('task_started', () => {
-        test('无 backgroundToolUseIds 时（旧逻辑）仍生成 delta', () => {
+        test('task_id 在 activeBackgroundTaskIds 中（background_tasks_changed 权威集合）→ 生成后台 delta', () => {
+            const msg = makeSystemMessage('task_started', {
+                task_id: 'bt-001',
+                description: '后台构建',
+                tool_use_id: 'tu-001',
+            })
+            const activeBg = new Set(['bt-001'])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, undefined, undefined, activeBg)
+            expect(result).not.toBeNull()
+
+            const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
+            expect(delta.task.taskId).toBe('bt-001')
+            expect(delta.task.isBackground).toBe(true)
+        })
+
+        test('task_id 不在 activeBackgroundTaskIds 且无 run_in_background → 返回 null（前台任务，核心修复）', () => {
+            // SDK 对所有 Bash/Agent 任务（无论前后台）都 emit task_started；
+            // 前台任务（task_id 不在 background_tasks_changed 集合、tool_use 未显式后台）不得生成后台 delta
+            const msg = makeSystemMessage('task_started', {
+                task_id: 'bt-fg',
+                description: '前台 Bash',
+                tool_use_id: 'toolu-fg',
+            })
+            const activeBg = new Set(['bt-001'])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, undefined, undefined, activeBg)
+            expect(result).toBeNull()
+        })
+
+        test('task_id 不在 activeBackgroundTaskIds 但 tool_use_id 命中 run_in_background → 生成后台 delta（重启兜底）', () => {
+            // CLI 进程重启后 background_tasks_changed 不 emit，activeBackgroundTaskIds 为空；
+            // 显式 run_in_background=true 的 tool_use 仍能兜底识别后台任务
+            const msg = makeSystemMessage('task_started', {
+                task_id: 'bt-002',
+                description: '显式后台构建',
+                tool_use_id: 'toolu-001',
+            })
+            const activeBg = new Set(['bt-001'])
+            const bgMap = new Map([['toolu-001', 'Bash'] as const])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap, undefined, activeBg)
+            expect(result).not.toBeNull()
+
+            const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
+            expect(delta.task.taskId).toBe('bt-002')
+            expect(delta.task.isBackground).toBe(true)
+        })
+
+        test('task_id 不在 activeBackgroundTaskIds 且 tool_use_id 不匹配 → 返回 null（前台）', () => {
+            const msg = makeSystemMessage('task_started', {
+                task_id: 'bt-fg2',
+                description: '前台任务',
+                tool_use_id: 'toolu-unknown',
+            })
+            const activeBg = new Set(['bt-001'])
+            const bgMap = new Map([['toolu-bg', 'Bash'] as const])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap, undefined, activeBg)
+            expect(result).toBeNull()
+        })
+
+        test('无 activeBackgroundTaskIds 时（仅靠 run_in_background 判定）生成 delta', () => {
+            // activeBackgroundTaskIds 为 undefined（未接入 bg_changed 的调用方）：后台判定退化为
+            // 仅依赖 run_in_background tool_use 命中，绝不无条件放行前台任务
             const msg = makeSystemMessage('task_started', {
                 task_id: 'bt-001',
                 description: '运行构建脚本',
                 tool_use_id: 'tu-001',
             })
-            const result = extractBackgroundTaskDeltasFromMessageContent(msg)
+            const bgMap = new Map([['tu-001', 'Bash'] as const])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap)
             expect(result).not.toBeNull()
             expect(result!.type).toBe('started')
 
             const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
             expect(delta.task.taskId).toBe('bt-001')
             expect(delta.task.toolName).toBe('Bash')
+            expect(delta.task.isBackground).toBe(true)
         })
 
-        test('tool_use_id 在 backgroundToolUseIds 中时生成 delta', () => {
+        test('无 activeBackgroundTaskIds 且 tool_use_id 未命中 run_in_background → 返回 null（前台）', () => {
+            // activeBackgroundTaskIds 为 undefined + tool_use 未显式后台 → 前台任务不生成 delta
+            const msg = makeSystemMessage('task_started', {
+                task_id: 'bt-fg',
+                description: '前台任务',
+                tool_use_id: 'tu-001',
+            })
+            const bgMap = new Map([['tu-bg', 'Bash'] as const])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap)
+            expect(result).toBeNull()
+        })
+
+        test('tool_use_id 在 backgroundToolUseIds 中且 task_id 在 activeBackgroundTaskIds 中 → 生成 delta', () => {
             const msg = makeSystemMessage('task_started', {
                 task_id: 'bt-001',
                 description: '后台构建',
                 tool_use_id: 'toolu-001',
             })
             const bgMap = new Map([['toolu-001', 'Bash'] as const])
-            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap)
+            const activeBg = new Set(['bt-001'])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap, undefined, activeBg)
             expect(result).not.toBeNull()
 
             const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
             expect(delta.task.toolName).toBe('Bash')
+            expect(delta.task.isBackground).toBe(true)
         })
 
-        test('tool_use_id 不在 backgroundToolUseIds 中时仍生成 delta（兜底 toolName）', () => {
-            // SDK 的 task_started 本就是 background 标识（同步任务不 emit），tool_use_id 仅用于推断 toolName，不是准入条件。
-            const msg = makeSystemMessage('task_started', {
-                task_id: 'bt-002',
-                description: 'SDK 内部 backgrounded 的任务',
-                tool_use_id: 'toolu-unknown',
-            })
-            const bgMap = new Map([['toolu-bg', 'Bash'] as const])
-            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap)
-            expect(result).not.toBeNull()
-
-            const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
-            expect(delta.task.taskId).toBe('bt-002')
-            // tool_use_id 不在 Map + 无 subagent_type → 兜底 Bash
-            expect(delta.task.toolName).toBe('Bash')
-        })
-
-        test('无 tool_use_id 的 task_started 仍生成 delta（/code-review 等 SDK 内部 background subagent）', () => {
+        test('SDK 内部后台任务（无主 tool_use，仅靠 activeBackgroundTaskIds 识别）→ 生成 delta', () => {
             // /code-review custom command 的 background subagent 由 SDK 内部启动，
-            // 无主 agent 的 tool_use（task_started.tool_use_id 为空，见 sdk.d.ts SDKTaskStartedMessage）。
+            // 无主 agent 的 tool_use（task_started.tool_use_id 为空），只能靠 background_tasks_changed 集合识别
             const msg = makeSystemMessage('task_started', {
                 task_id: 'bt-003',
                 description: 'code-review',
                 subagent_type: 'code-reviewer',
             })
             const bgMap = new Map([['toolu-001', 'Bash'] as const])
-            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap)
+            const activeBg = new Set(['bt-003'])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap, undefined, activeBg)
             expect(result).not.toBeNull()
 
             const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
             expect(delta.task.taskId).toBe('bt-003')
             expect(delta.task.toolUseId).toBeNull()
-            // 无 tool_use_id + 有 subagent_type → 兜底 Agent
+            // toolName 由 subagent_type 兜底推断
             expect(delta.task.toolName).toBe('Agent')
             expect(delta.task.subagentType).toBe('code-reviewer')
+            expect(delta.task.isBackground).toBe(true)
         })
 
         test('Agent 后台任务使用 backgroundToolUseIds 中的 toolName', () => {
@@ -279,11 +342,13 @@ describe('extractBackgroundTaskDeltasFromMessageContent', () => {
                 subagent_type: 'researcher',
             })
             const bgMap = new Map([['toolu-agent', 'Agent'] as const])
-            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap)
+            const activeBg = new Set(['bt-004'])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap, undefined, activeBg)
 
             const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
             expect(delta.task.toolName).toBe('Agent')
             expect(delta.task.subagentType).toBe('researcher')
+            expect(delta.task.isBackground).toBe(true)
         })
 
         test('Monitor 后台任务使用 backgroundToolUseIds 中的 toolName', () => {
@@ -293,26 +358,30 @@ describe('extractBackgroundTaskDeltasFromMessageContent', () => {
                 tool_use_id: 'toolu-monitor',
             })
             const bgMap = new Map([['toolu-monitor', 'Monitor'] as const])
-            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap)
+            const activeBg = new Set(['bt-005'])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, bgMap, undefined, activeBg)
 
             const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
             expect(delta.task.toolName).toBe('Monitor')
+            expect(delta.task.isBackground).toBe(true)
         })
 
-        test('有 subagent_type 时生成 Agent 类型的 started delta', () => {
+        test('有 subagent_type 且 task_id 在 activeBackgroundTaskIds 中 → 生成 Agent 类型 delta', () => {
             const msg = makeSystemMessage('task_started', {
                 task_id: 'bt-002',
                 description: '研究代码库结构',
                 tool_use_id: 'tu-002',
                 subagent_type: 'researcher',
             })
-            const result = extractBackgroundTaskDeltasFromMessageContent(msg)
+            const activeBg = new Set(['bt-002'])
+            const result = extractBackgroundTaskDeltasFromMessageContent(msg, undefined, undefined, activeBg)
             expect(result).not.toBeNull()
 
             const delta = result as Extract<BackgroundTaskDelta, { type: 'started' }>
             expect(delta.task.taskId).toBe('bt-002')
             expect(delta.task.toolName).toBe('Agent')
             expect(delta.task.subagentType).toBe('researcher')
+            expect(delta.task.isBackground).toBe(true)
         })
     })
 
@@ -526,6 +595,64 @@ describe('extractBackgroundTaskDeltasFromMessageContent', () => {
     })
 })
 
+// ============ extractBackgroundTaskIdsFromMessageContent 测试 ============
+
+describe('extractBackgroundTaskIdsFromMessageContent', () => {
+    /** 构造 background_tasks_changed 消息 */
+    function makeBgChangedMessage(tasks: Array<Record<string, unknown>>) {
+        return {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'system',
+                    subtype: 'background_tasks_changed',
+                    tasks,
+                }
+            }
+        }
+    }
+
+    test('返回活跃后台任务 task_id 集合', () => {
+        const msg = makeBgChangedMessage([
+            { task_id: 'bt-001', task_type: 'local_bash', description: '构建' },
+            { task_id: 'bt-002', task_type: 'local_agent', description: '研究' },
+        ])
+        const result = extractBackgroundTaskIdsFromMessageContent(msg)
+        expect(result).not.toBeNull()
+        expect(Array.from(result!).sort()).toEqual(['bt-001', 'bt-002'])
+    })
+
+    test('tasks 数组为空 → 返回空集合（replace 语义清空）', () => {
+        const msg = makeBgChangedMessage([])
+        const result = extractBackgroundTaskIdsFromMessageContent(msg)
+        expect(result).not.toBeNull()
+        expect(result!.size).toBe(0)
+    })
+
+    test('非 background_tasks_changed 消息 → 返回 null', () => {
+        const msg = makeSystemMessage('task_started', { task_id: 'bt-001' })
+        const result = extractBackgroundTaskIdsFromMessageContent(msg)
+        expect(result).toBeNull()
+    })
+
+    test('task_id 缺失或非字符串时过滤', () => {
+        const msg = makeBgChangedMessage([
+            { task_id: 'bt-001', task_type: 'local_bash' },
+            { task_type: 'local_agent' },          // 无 task_id
+            { task_id: 123, task_type: 'local_bash' }, // 非字符串
+        ])
+        const result = extractBackgroundTaskIdsFromMessageContent(msg)
+        expect(result).not.toBeNull()
+        expect(Array.from(result!)).toEqual(['bt-001'])
+    })
+
+    test('无法解包的消息返回 null', () => {
+        expect(extractBackgroundTaskIdsFromMessageContent('not-an-object')).toBeNull()
+        expect(extractBackgroundTaskIdsFromMessageContent(null)).toBeNull()
+    })
+})
+
 // ============ applyBackgroundTaskDelta 测试 ============
 
 describe('applyBackgroundTaskDelta', () => {
@@ -650,5 +777,7 @@ describe('applyBackgroundTaskDelta', () => {
         expect(result[0].status).toBe('completed')
         expect(result[0].summary).toBe('Task done')
         expect(result[0].completedAt).toBeGreaterThan(0)
+        // 兜底创建的最小终态条目也是后台任务
+        expect(result[0].isBackground).toBe(true)
     })
 })

@@ -248,10 +248,9 @@ packages/web/src/
 │   │   ├── MentionDropdown.tsx @ 文件引用下拉
 │   │   ├── SlashCommandDropdown.tsx 斜杠命令下拉
 │   │   ├── StatusBar.tsx       状态栏（上下文预算等）
-│   │   ├── AgentCard.tsx       Agent 选择卡片
-│   │   ├── AgentPanel.tsx      Agent 选择面板
+│   │   ├── AgentCard.tsx       Agent 卡片（前台/后台统一渲染，TasksPanel 复用）
+│   │   ├── TasksPanel.tsx      执行中任务面板（合并前台 Agent + 后台任务，后台任务带闪电标签）
 │   │   ├── BackgroundTaskCard.tsx  后台任务卡片
-│   │   ├── BackgroundTaskPanel.tsx 后台任务面板
 │   │   ├── TeamAgentCard.tsx   Team Agent 卡片
 │   │   ├── TeamAgentPanel.tsx  Team Agent 面板
 │   │   ├── TaskPanel.tsx       任务面板
@@ -265,7 +264,6 @@ packages/web/src/
 │   │   ├── RequestUserInputFooter.tsx RequestUserInput 底部操作
 │   │   ├── ToolDetailDrawer.tsx 工具详情抽屉
 │   │   ├── AgentDrawerContent.tsx Agent 子对话抽屉内容
-│   │   ├── BashDrawerContent.tsx  Bash 输出抽屉内容
 │   │   ├── OptionPreview.tsx   选项预览
 │   │   ├── checklist.tsx       清单工具渲染
 │   │   ├── icons.tsx           工具图标

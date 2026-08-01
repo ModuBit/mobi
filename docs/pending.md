@@ -843,6 +843,8 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 
 ## 33. 接入 `background_tasks_changed`（level signal）作为后台任务存活集合
 
+**状态**：✅ 已实现（2026-08-01）。见 `packages/hub/src/sync/backgroundTasks.ts` 的 `extractBackgroundTaskIdsFromMessageContent` 与 `sessionHandlers.ts` 连接级 `activeBackgroundTaskIds`。
+
 **背景**（2026-07-25）：SDK 0.3.203 新增 `background_tasks_changed` system message，携带每次成员变更后的全量存活后台任务。官方定位为 **level signal**，用于替代 `task_started` / `task_notification` 的 edge 配对——"consumers that only need 'is background work running' should replace their set with each payload rather than pairing edges, so a missed bookend cannot wedge a stale running indicator"（`sdk.d.ts:2892`）。mobi 当前完全不处理该消息。
 
 **已验证可行**：E2E 环境跑 `/code-review high` 时，hub 实际收到 **10 条** `background_tasks_changed`（已落库，`classifyMessage` 默认 persistent）。真实 payload 为累积式 REPLACE（1→2→3 个任务），`task_type: "local_agent"`，`task_id` 与 edge 流一致：
@@ -853,25 +855,19 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 ]}
 ```
 
-**为何暂不做**：现有 `task_started` / `task_progress` 链路经 E2E 实测完整可用（5 个 finder 的卡片、耗时、实时进度均正常渲染，见 commit `f217364`）。该消息修的是"某条 edge 丢失导致任务永久卡 running"的边界情况，**尚未观察到实际发生**。属加固项，非缺陷修复。
+**接入方式的设计约束**（已实现时的决策）：
 
-**接入方式的设计约束**（做之前必读）：
+1. **不能直接 REPLACE 现有 `runtimeState.backgroundTasks`**。payload 仅有 `task_id` / `task_type` / `description` 三个字段，而 mobi 的 `BackgroundTaskItem` 还有 `toolName`、`status`、`startedAt`、`metrics`（tokens/toolUses/durationMs）、`summary`、`subagentType`。直接覆盖会抹掉 edge 流积累的进度与指标（E2E 里"34.7s · Reviewing runClaude.ts"会消失），属功能退化。→ **实现采用连接级 `activeBackgroundTaskIds` Set 仅作 task_started 后台准入判定，不落库、不覆盖 backgroundTasks**。
+2. **SDK 明确禁止与 edge 流关联**："the payload carries ids only, so do not correlate it with the edge stream"，且"Ordering relative to the bookends for the same transition is unspecified"。若用 level 集合反向清理残留任务，可能误杀刚启动、level 尚未包含的任务，需额外防护。→ **实现只用于 task_started 的准入（task_id ∈ activeBackgroundTaskIds → 后台），不做反向清理**。
+3. **per-process 语义**：`nothing is emitted at startup, so consumers must reset to the empty set whenever the session's CLI process (re)starts`。hub 需在 CLI 重连时清空该集合，否则留下永久"有后台任务在跑"的假象。→ **连接级 Set 随 socket 连接生命周期自动创建/销毁，天然满足**。
 
-1. **不能直接 REPLACE 现有 `runtimeState.backgroundTasks`**。payload 仅有 `task_id` / `task_type` / `description` 三个字段，而 mobi 的 `BackgroundTaskItem` 还有 `toolName`、`status`、`startedAt`、`metrics`（tokens/toolUses/durationMs）、`summary`、`subagentType`。直接覆盖会抹掉 edge 流积累的进度与指标（E2E 里"34.7s · Reviewing runClaude.ts"会消失），属功能退化。
-2. **SDK 明确禁止与 edge 流关联**："the payload carries ids only, so do not correlate it with the edge stream"，且"Ordering relative to the bookends for the same transition is unspecified"。若用 level 集合反向清理残留任务，可能误杀刚启动、level 尚未包含的任务，需额外防护。
-3. **per-process 语义**：`nothing is emitted at startup, so consumers must reset to the empty set whenever the session's CLI process (re)starts`。hub 需在 CLI 重连时清空该集合，否则留下永久"有后台任务在跑"的假象。
-
-**建议方案**：新增独立字段（如 `runtimeState.liveBackgroundTaskIds`）与现有列表并存，只作"是否有后台工作在跑"的权威信号，不参与卡片渲染。注意：仅接 hub 侧而不改 web 消费方时，落库后无行为变化。
-
-**触发时机**：出现"后台任务卡住不消失"的实际反馈时再做。
+**为何做**（2026-08-01）：发现 SDK 对**所有** Bash/Agent 任务（无论前后台）都 emit `task_started`，旧实现把所有 task_started 都当后台任务，导致 92% 前台任务被误判为后台。接入 bg_changed 集合后，`task_started` 的 task_id ∈ 集合才判后台，正确修复识别。
 
 **涉及文件**：
-- `packages/hub/src/sync/backgroundTasks.ts` — 后台任务 delta 提取
-- `packages/hub/src/socket/handlers/cli/sessionHandlers.ts` — runtimeState 合并与推送
-- `packages/web/src/core/data/stores/backgroundTasksStore.ts` — web 侧消费
-- `node_modules/.bun/@anthropic-ai+claude-agent-sdk@0.3.218.../sdk.d.ts:2892` — `SDKBackgroundTasksChangedMessage`
-
-**优先级**：低。加固项，无可观察症状。
+- `packages/hub/src/sync/backgroundTasks.ts` — `extractBackgroundTaskIdsFromMessageContent` + task_started 组合判定
+- `packages/hub/src/socket/handlers/cli/sessionHandlers.ts` — 连接级 `activeBackgroundTaskIds`
+- `packages/shared/src/schemas.ts` — `BackgroundTaskItemSchema` 加 `isBackground`
+- `packages/web/src/components/composer/TasksPanel.tsx` — 合并前台 agent + 后台任务面板
 
 ## 34. `Auto` 模型下 claude 子进程静默挂死（无产出、无超时、无提示）
 

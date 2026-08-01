@@ -63,6 +63,7 @@ export function AgentCard({ agent, onClick }: {
 
     return (
         <div
+            data-testid={`agent-card-${tool.id}`}
             onClick={onClick}
             style={{
                 display: 'flex',

@@ -337,11 +337,13 @@ describe('BackgroundTaskItemSchema', () => {
             toolName: 'Bash',
             description: 'npm test',
             status: 'running',
+            isBackground: true,
             startedAt: Date.now(),
         }
         const result = BackgroundTaskItemSchema.parse(task)
         expect(result.taskId).toBe('bg-1')
         expect(result.toolName).toBe('Bash')
+        expect(result.isBackground).toBe(true)
     })
 
     it('解析含可选字段的 background task', () => {
@@ -351,11 +353,24 @@ describe('BackgroundTaskItemSchema', () => {
             description: 'researcher',
             subagentType: 'Explore',
             status: 'running',
+            isBackground: true,
             metrics: { tokens: 100, toolUses: 3, durationMs: 5000 },
             startedAt: Date.now(),
         }
         const result = BackgroundTaskItemSchema.parse(task)
         expect(result.metrics?.tokens).toBe(100)
+        expect(result.isBackground).toBe(true)
+    })
+
+    it('缺少 isBackground 时解析失败（必选字段）', () => {
+        const task = {
+            taskId: 'bg-3',
+            toolName: 'Bash',
+            description: 'test',
+            status: 'running',
+            startedAt: Date.now(),
+        }
+        expect(() => BackgroundTaskItemSchema.parse(task)).toThrow()
     })
 })
 
@@ -363,7 +378,7 @@ describe('RuntimeStateSchema with backgroundTasks', () => {
     it('包含 backgroundTasks 字段', () => {
         const state = {
             backgroundTasks: [
-                { taskId: 'bg-1', toolName: 'Bash', description: 'test', status: 'running', startedAt: 0 },
+                { taskId: 'bg-1', toolName: 'Bash', description: 'test', status: 'running', isBackground: true, startedAt: 0 },
             ],
         }
         const result = RuntimeStateSchema.parse(state)

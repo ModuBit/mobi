@@ -173,7 +173,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return { ...raw, blocks, byId }
     }, [messages, session?.agentState])
 
-    // 同步 running agents 到 store，供 AgentPanel 订阅
+    // 同步 running agents 到 store，供 TasksPanel 订阅
     useEffect(() => {
         const agents = extractRunningAgents(rawBlocks)
         useRunningAgentsStore.getState().setAgents(sessionId, agents)
@@ -190,12 +190,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }, [byId, sessionId])
 
-    // 同步 backgroundTasks 从 session cache 到 Zustand store，供 BackgroundTaskPanel 订阅
+    // 同步 backgroundTasks 从 session cache 到 Zustand store，供后台任务面板订阅
     const bgTasks = session?.runtimeState?.backgroundTasks
     useEffect(() => {
         if (bgTasks) {
-            // BackgroundTaskItem.toolUseId 为 string|null|undefined，需要映射为 string|null
-            const mapped = bgTasks.map(t => ({ ...t, toolUseId: t.toolUseId ?? null }))
+            // BackgroundTaskItem.toolUseId 为 string|null|undefined，需要映射为 string|null；
+            // isBackground 兼容存量 DB 记录（旧数据无此字段，默认按后台处理）
+            const mapped = bgTasks.map(t => ({
+                ...t,
+                toolUseId: t.toolUseId ?? null,
+                isBackground: t.isBackground ?? true,
+            }))
             useBackgroundTasksStore.getState().setTasks(sessionId, mapped)
         } else {
             useBackgroundTasksStore.getState().setTasks(sessionId, [])

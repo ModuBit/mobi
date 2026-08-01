@@ -86,6 +86,8 @@ export type BackgroundTask = {
     description: string
     subagentType?: string
     status: 'running' | 'completed' | 'failed' | 'stopped'
+    /** 是否为后台任务。shared schema 必填（新写入合约），此处可选以兼容存量 DB 记录；渲染时默认按后台处理 */
+    isBackground?: boolean
     metrics?: AgentMetrics
     summary?: string
     startedAt: number

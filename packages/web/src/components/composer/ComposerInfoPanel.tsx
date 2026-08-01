@@ -33,15 +33,14 @@ import { RequestUserInputFooter } from '@/components/tool-card/RequestUserInputF
 import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
 import { getPermissionDescription } from '@/core/lib/toolInputUtils'
-import { AgentPanel } from './AgentPanel'
 import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
 import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
+import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { TodoPanel } from './TodoPanel'
 import type { ClearRuntimeStateField } from './ClearStateButton'
 import { TaskPanel } from './TaskPanel'
-import { BackgroundTaskPanel } from './BackgroundTaskPanel'
-import { useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
+import { TasksPanel } from './TasksPanel'
 import { TeamAgentPanel } from './TeamAgentPanel'
 import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 import type { ToolCallBlock } from '@/domain/chat/types'
@@ -263,6 +262,7 @@ export function ComposerInfoPanel({
     const teamAgents = useTeamMembers(sessionId)
     const teamName = useTeamName(sessionId)
     const hasTeamAgents = teamAgents.length > 0 && !!teamName
+    const hasAgents = agents.length > 0
 
     // 从 store 派生最新 block：先查 running agents，再查 byId（覆盖后台 Agent 任务）
     const drawerBlock: ToolCallBlock | null = (() => {
@@ -272,7 +272,6 @@ export function ComposerInfoPanel({
         const fromById = byIdMap.get(drawerBlockId)
         return fromById?.kind === 'tool-call' ? fromById : null
     })()
-    const hasAgents = agents.length > 0
     const { token } = useToken()
 
     const scrollRef = useRef<HTMLDivElement>(null)
@@ -313,21 +312,14 @@ export function ComposerInfoPanel({
                         onDone={onRequestDone}
                     />
 
-                    <AgentPanel
+                    <TasksPanel
                         sessionId={sessionId}
+                        api={api}
                         onAgentClick={(block) => setDrawerBlockId(block.id)}
+                        onClear={handleClearState}
                     />
 
                     <TeamAgentPanel sessionId={sessionId} onClear={handleClearState} />
-
-                    {hasBgTasks && (
-                        <BackgroundTaskPanel
-                            sessionId={sessionId}
-                            api={api}
-                            onTaskClick={() => {}}
-                            onClear={handleClearState}
-                        />
-                    )}
 
                     <TodoPanel todos={todos} sessionId={sessionId} onClear={handleClearState} />
                     <TaskPanel tasks={tasks} sessionId={sessionId} onClear={handleClearState} />

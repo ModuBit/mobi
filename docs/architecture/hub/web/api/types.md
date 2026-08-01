@@ -485,6 +485,8 @@ interface BackgroundTaskItem {
     description: string
     subagentType?: string
     status: 'running' | 'completed' | 'failed' | 'stopped'
+    /** 是否为后台任务（SDK 对所有 Bash/Agent 任务都 emit task_started，此标志由 hub 判定后写入） */
+    isBackground: boolean
     metrics?: {
         tokens: number
         toolUses: number

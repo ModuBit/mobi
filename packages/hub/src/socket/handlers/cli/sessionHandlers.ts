@@ -27,6 +27,7 @@ import { extractTeamStateFromMessageContent, extractTeamSystemDeltasFromMessageC
 import {
     collectBackgroundToolUseIds,
     extractBackgroundTaskDeltasFromMessageContent,
+    extractBackgroundTaskIdsFromMessageContent,
     applyBackgroundTaskDelta,
     type BackgroundToolName,
 } from '../../../sync/backgroundTasks'
@@ -101,6 +102,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     const backgroundToolUseIds = new Map<string, BackgroundToolName>()
     // 已确认的后台任务 ID 集合，用于过滤 task_progress / task_notification
     const backgroundTaskIds = new Set<string>()
+    // 活跃后台任务 ID 集合（background_tasks_changed 权威集合，replace 语义），用于 task_started 后台判定
+    const activeBackgroundTaskIds = new Set<string>()
 
     socket.on('message', (data: unknown) => {
         const parsed = messageSchema.safeParse(data)
@@ -162,9 +165,19 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         const taskDeltas = extractTaskDeltasFromMessageContent(content, pendingTaskMap)
         const teamDelta = extractTeamStateFromMessageContent(content)
 
-        // 先收集后台工具 ID（从 assistant 消息的 tool_use blocks），再提取后台任务增量
+        // 先收集后台工具 ID（从 assistant 消息的 tool_use blocks）
         collectBackgroundToolUseIds(content, backgroundToolUseIds)
-        const bgTaskDelta = extractBackgroundTaskDeltasFromMessageContent(content, backgroundToolUseIds, backgroundTaskIds)
+
+        // 再解析 background_tasks_changed，整体替换活跃后台集合（replace 语义）。
+        // 必须先于 task_started 判定：bg_changed 是 task_started 的父消息（同 seq 先到），
+        // 处理 task_started 时集合必须已是最新
+        const activeBgIds = extractBackgroundTaskIdsFromMessageContent(content)
+        if (activeBgIds !== null) {
+            activeBackgroundTaskIds.clear()
+            for (const id of activeBgIds) activeBackgroundTaskIds.add(id)
+        }
+
+        const bgTaskDelta = extractBackgroundTaskDeltasFromMessageContent(content, backgroundToolUseIds, backgroundTaskIds, activeBackgroundTaskIds)
 
         // 维护后台任务追踪集合：started 时注册并清理 Map，completed 时移除
         if (bgTaskDelta) {

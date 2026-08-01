@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from 'react'
 import { theme, Popconfirm, Drawer, Button } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { GlobalToken } from 'antd/es/theme/interface'
-import { Terminal, CircleStop, Eye } from 'lucide-react'
+import { Terminal, CircleStop, Eye, Zap } from 'lucide-react'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
@@ -209,8 +209,13 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
                         whiteSpace: 'nowrap', overflow: 'hidden',
                         textOverflow: 'ellipsis', lineHeight: '1.3',
                         textDecoration: !isRunning ? 'line-through' : 'none',
+                        display: 'flex', alignItems: 'center', gap: 4,
                     }}>
-                        {name}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {name}
+                        </span>
+                        {/* 后台任务闪电标签：与 bubble list ToolCallBlock 的 isBgAgent 闪电样式一致 */}
+                        <Zap size={12} style={{ flexShrink: 0, color: '#f5b800' }} />
                     </div>
                     <AppTooltip title={displaySummary || undefined} placement="top" mouseEnterDelay={0.5}>
                         <div style={{
