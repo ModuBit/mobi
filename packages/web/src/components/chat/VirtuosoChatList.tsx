@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { memo, useCallback, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import { Bubble } from '@ant-design/x'
 import { BUBBLE_ROLES } from './bubbleRoles'
@@ -39,12 +39,17 @@ const BubbleItem = memo(function BubbleItem({ item }: { item: ChatBubbleItem }) 
     // 拆出非 Bubble prop 字段
     const { key, role, block, header, footer, footerPlacement, classNames, content, typing, variant, ...rest } = item
 
-    // divider：分隔线（context-cleared 等），简单渲染一条虚线
+    // divider：虚线分隔（context-cleared 等），用 antdx Bubble.Divider 对齐 Bubble.List 视觉
     if (role === 'divider') {
         return (
-            <div className="ant-bubble ant-bubble-divider" style={{ alignSelf: 'center', margin: '8px 0' }}>
-                {content}
-            </div>
+            <Bubble.Divider key={key} content={content} {...cfg} {...rest} />
+        )
+    }
+
+    // system：无边框系统行（bg-task-completed 等），用 antdx Bubble.System
+    if (role === 'system') {
+        return (
+            <Bubble.System key={key} content={content} {...cfg} {...rest} />
         )
     }
 
@@ -84,9 +89,26 @@ export function VirtuosoChatList({ items, onStartReached, atBottomStateChange }:
         onStartReached?.()
     }, [onStartReached])
 
+    // firstItemIndex：让 Virtuoso 识别"开头插入"（prepend 历史消息）vs"末尾追加"（流式新消息）。
+    // 从大数起算，每次检测到 items 开头 prepend 了 K 项（prevFirstKey 在新 items 中的位置），
+    // firstItemIndex 减 K。Virtuoso 据此保持滚动位置（不会因 data 变化跳顶）。详见
+    // https://virtuoso.dev/react-virtuoso/api-reference/virtuoso/#firstitemindex
+    const firstItemIndexRef = useRef(Number.MAX_SAFE_INTEGER)
+    const prevFirstKeyRef = useRef<string | undefined>(undefined)
+    const firstItemIndex = useMemo(() => {
+        const firstKey = items[0]?.key
+        if (prevFirstKeyRef.current !== undefined && firstKey !== undefined && firstKey !== prevFirstKeyRef.current) {
+            const idx = items.findIndex(it => it.key === prevFirstKeyRef.current)
+            if (idx > 0) firstItemIndexRef.current -= idx
+        }
+        prevFirstKeyRef.current = firstKey
+        return firstItemIndexRef.current
+    }, [items])
+
     return (
         <Virtuoso
             data={items}
+            firstItemIndex={firstItemIndex}
             // 初始滚到底部（最新消息）
             initialTopMostItemIndex={items.length > 0 ? items.length - 1 : 0}
             itemContent={(_index, item) => <BubbleItem item={item} />}
