@@ -19,7 +19,7 @@
  * 验证：默认关闭 / 记录 / 聚合状态史 / clear / disable / localStorage 恢复 / 全局接口
  */
 
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
     enableDiag,
     disableDiag,
@@ -230,5 +230,19 @@ describe('diag 诊断埋点', () => {
         window.history.replaceState({}, '', window.location.pathname)
         initDiag()
         expect(isDiagEnabled()).toBe(true)
+    })
+
+    it('initDiag 多入口调用幂等：beforeunload 监听器只注册一次', async () => {
+        // normalize 模块顶层 + main 启动会各调一次 initDiag，累加监听器会泄漏。
+        // resetModules 重置模块级 beforeUnloadRegistered，避免被前序用例污染
+        vi.resetModules()
+        const { initDiag: freshInitDiag } = await import('@/core/lib/diag')
+        const addSpy = vi.spyOn(window, 'addEventListener')
+        freshInitDiag()
+        freshInitDiag()
+        freshInitDiag()
+        const beforeUnloadCalls = addSpy.mock.calls.filter(([type]) => type === 'beforeunload')
+        expect(beforeUnloadCalls).toHaveLength(1)
+        addSpy.mockRestore()
     })
 })

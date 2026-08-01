@@ -102,6 +102,10 @@ let enabled = false
 let events: DiagEvent[] = []
 let tools: DiagToolTrace[] = []
 let lastSyncToLS = 0
+/** beforeunload 监听器是否已注册。initDiag 多入口调用（main 启动 + normalize 模块顶层），
+ *  若无幂等守卫会累加监听器；此处独立于 __mobiDiag 守卫（测试 afterEach 不清 __mobiDiag，
+ *  但监听器注册一次即可跨用例复用——syncToLS 读的是模块级最新状态）。 */
+let beforeUnloadRegistered = false
 
 /**
  * localStorage 安全访问器。
@@ -361,5 +365,9 @@ export function initDiag(): void {
         }
     }
     // 页面关闭前强制镜像一次：节流后可能还有最多 1s 的缓冲未落盘，刷新后靠这次兜底
-    window.addEventListener('beforeunload', () => syncToLS())
+    // 幂等守卫：initDiag 多入口调用，避免累加 beforeunload 监听器
+    if (!beforeUnloadRegistered) {
+        window.addEventListener('beforeunload', () => syncToLS())
+        beforeUnloadRegistered = true
+    }
 }

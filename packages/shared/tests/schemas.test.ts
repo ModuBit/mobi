@@ -362,7 +362,7 @@ describe('BackgroundTaskItemSchema', () => {
         expect(result.isBackground).toBe(true)
     })
 
-    it('缺少 isBackground 时解析失败（必选字段）', () => {
+    it('缺少 isBackground 时默认 true（兼容存量 DB 记录）', () => {
         const task = {
             taskId: 'bg-3',
             toolName: 'Bash',
@@ -370,7 +370,8 @@ describe('BackgroundTaskItemSchema', () => {
             status: 'running',
             startedAt: Date.now(),
         }
-        expect(() => BackgroundTaskItemSchema.parse(task)).toThrow()
+        const result = BackgroundTaskItemSchema.parse(task)
+        expect(result.isBackground).toBe(true)
     })
 })
 

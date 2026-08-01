@@ -245,8 +245,9 @@ export const BackgroundTaskItemSchema = z.object({
     description: z.string(),
     subagentType: z.string().optional(),
     status: z.enum(['running', 'completed', 'failed', 'stopped']),
-    /** 是否为后台任务（进入 backgroundTasks 的都是后台任务，恒 true）。SDK 对所有 Bash/Agent 任务都 emit task_started，此标志由 hub 判定后写入，供 Web 端统一区分前后台渲染 */
-    isBackground: z.boolean(),
+    /** 是否为后台任务（进入 backgroundTasks 的都是后台任务，恒 true）。SDK 对所有 Bash/Agent 任务都 emit task_started，此标志由 hub 判定后写入，供 Web 端统一区分前后台渲染。
+     *  default(true)：存量 DB 记录（isBackground 字段加入前持久化的 runtime_state）经 RuntimeStateSchema.safeParse 时缺此字段，默认 true 与「进入 backgroundTasks 即后台」的语义一致，避免整条数组被 strip */
+    isBackground: z.boolean().default(true),
     metrics: z.object({
         tokens: z.number(),
         toolUses: z.number(),

@@ -237,8 +237,10 @@
             "completed": "Background task completed: {{description}}",
             "failed": "Background task failed: {{description}}",
             "stopConfirm": "Stop this background task?",
-            "stop": "Stop",
-            "panelTitle": "Background Tasks"
+            "stop": "Stop"
+        },
+        "runningTasks": {
+            "panelTitle": "Running Tasks"
         },
         "clearState": {
             "label": "Clear",

@@ -237,8 +237,10 @@
             "completed": "后台任务已完成：{{description}}",
             "failed": "后台任务失败：{{description}}",
             "stopConfirm": "确定停止该后台任务？",
-            "stop": "停止",
-            "panelTitle": "后台任务"
+            "stop": "停止"
+        },
+        "runningTasks": {
+            "panelTitle": "运行中任务"
         },
         "clearState": {
             "label": "清理",
