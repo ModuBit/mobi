@@ -481,14 +481,14 @@ type ChatBlock =
 
 ## 第 6 步：Web 渲染（render）
 
-**文件**：`packages/web/src/components/chat/ChatContainer.tsx`
+**文件**：`packages/web/src/components/chat/ChatContainer.tsx`（主列表容器：`VirtuosoChatList` 虚拟化，内部 Bubble 单组件 + role 模板）
 
-`renderChatBlock()` 根据 `block.kind` 选择渲染组件：
+`renderChatBlock()` 根据 `block.kind` 选择渲染组件（在 `VirtuosoChatList` 容器内）：
 
 | ChatBlock kind | 渲染组件 | 说明 |
 |----------------|----------|------|
-| `user-text` | `Bubble.List` + XMarkdown | 右对齐，带 `isSynthetic` 柔和样式 |
-| `agent-text` | `Bubble.List` + XMarkdown | 左对齐，Markdown 渲染 |
+| `user-text` | XMarkdown（TextBlock） | 右对齐，带 `isSynthetic` 柔和样式 |
+| `agent-text` | XMarkdown（TextBlock） | 左对齐，Markdown 渲染 |
 | `agent-reasoning` | `Think` 组件 | 可折叠的思考过程 |
 | `cli-output` | 命令/输出展示 | CLI 输出内容 |
 | `tool-call` | `ToolCallRenderer` | 根据 `tool.name` 路由到对应 ToolCard 视图 |

@@ -179,56 +179,46 @@ window.__sampler = setInterval(() => {
 
 ## 流式滚动跟随
 
-逐字揭示解决「文字如何出现」，滚动跟随解决「视口如何跟着新内容走」。两者都由 `useStreamingContent` 的 ~20fps 揭示驱动——内容每揭示一批，气泡长高，触发 `ResizeObserver`，由 `ChatContainer` 的 observer effect 自行跟随到底部。
+逐字揭示解决「文字如何出现」，滚动跟随解决「视口如何跟着新内容走」。两者都由 `useStreamingContent` 的 ~20fps 揭示驱动——内容每揭示一批，气泡长高，由 react-virtuoso 的 `followOutput` 自动跟随到底部。
 
-**为什么不用 `Bubble.List` 的 `autoScroll`**：`autoScroll` 启用 `column-reverse` + `useCompatibleScroll`，其 `enforceScrollLock` 与手动 `scrollTop` 恢复（加载历史时）存在时序冲突。故 `autoScroll={false}`，自实现跟随。
+### Virtuoso `followOutput` 接管
 
-### 三段式跟随策略（按 `gap` = 可达底部 − 当前 scrollTop 分层）
+虚拟化（react-virtuoso 替换 `Bubble.List`）后，滚动跟随由 Virtuoso 原生 `followOutput` 接管（见 `VirtuosoChatList.tsx`）：
 
-| gap | 策略 | 理由 |
-|----|------|------|
-| ≤ `INSTANT_THRESHOLD`(80px) | **瞬时贴底**，不调度 rAF | 逐字 reveal 单次增量 ~10–40px 落在此区间，每次瞬时对齐保持 gap≈0；20fps × ~20px 步进视觉本就平滑 |
-| (80, `SNAP_THRESHOLD`(300)] | **rAF 比例 glide**（每帧 `gap×0.25`） | 快速 burst / 代码块撑高的中等跳变，用平滑逼近替代硬切，消除跳动 |
-| > 300px | **直接对齐** | 大块内容（图片/超长代码块）出现时不慢慢滑，立即贴底 |
+```tsx
+<Virtuoso
+  followOutput={(isAtBottom) => (isAtBottom ? 'smooth' : false)}
+  atBottomStateChange={(atBottom) => setShowScrollBottom(!atBottom)}
+  ...
+/>
+```
 
-`gap` 是关键观测量——E2E 采样 `scrollHeight - clientHeight - scrollTop` 序列，稳态恒为 0 即跟随正常；持续累积 → 滞后（见坑 3）。
+- 用户在底部（`isAtBottom`）→ 新内容平滑跟随（`'smooth'`）
+- 用户离开底部（看历史）→ 不自动滚（`false`），新内容不打扰
 
-### 关键设计
+`followOutput` 在 data 变化（流式追加 / 逐字揭示触发 bubble 长高）时触发，由 Virtuoso 内部处理滚动位置——无需手写 rAF / ResizeObserver / 三段式策略（旧 `Bubble.List` 时代 `ChatContainer` 自实现的 `smoothFollowToBottom` 已随 observer 逻辑一并移除）。
 
-**1. 目标用可达底部，不是 `scrollHeight`**：`scrollTop` 物理上限是 `scrollHeight - clientHeight`，`scrollHeight` 不可达（超出被浏览器钳制）。`captureFollowTarget()` 统一算 `followMaxTop = scrollHeight - clientHeight`，由两个 `ResizeObserver`（内容尺寸 / 视口尺寸）在变化时刷新。
+### 「滚到底」按钮
 
-**2. tick 零 layout 读**：`tick` 内只读写闭包镜像 `currentPos`，不读 `scrollHeight`/`clientHeight`/`scrollTop`（rAF 内读会触发强制同步 layout）。layout 属性集中在 `captureFollowTarget` 里读，loop 运行时也由它更新目标——`smoothFollowToBottom` 入口的「已在跑则 return」不影响目标刷新。
+`atBottomStateChange` 回调驱动按钮显示：用户离开底部时显示，贴底时隐藏。
 
-**3. 跟随期隐藏「滚到底」按钮**：`shouldShow = !isNearBottom && distanceToBottom > 阈值`。glide 时 `distanceToBottom` 可能瞬时超阈值，不加 `!isNearBottom` 闸门按钮会闪烁。
+### 历史加载（prepend）
 
-**4. 四条终止路径**：用户向上滚（`handleScroll` 检测 `scrollTop < prevScrollTop - 2` 时 `cancelAnimationFrame`）/ scroll 恢复中（`isRestoringScrollRef`）/ 会话切换·卸载（`observerCleanupRef`）/ 收敛（gap ≤ 80 或 > 300 对齐退出）。
-
-### 关键坑
-
-**⚠️ 坑 1：目标用 `scrollHeight` → 正常视口不生效 + 小视口死循环**
-`scrollTop = scrollHeight` 会被钳制到 `scrollHeight - clientHeight`。若用 `scrollHeight` 当目标算 `diff`，贴底时 `diff ≈ clientHeight`：桌面（clientHeight ~700）恒 > 300 走 snap → glide 从未生效；小视口（clientHeight ∈ (2, 300]）`diff` 落在 glide 区间但 `scrollTop` 被钳住不动 → `diff` 不收敛 → 死循环。**必须**用 `scrollHeight - clientHeight`。
-
-**⚠️ 坑 2：逐字小增量走 glide → 底部 loading 气泡上下浮动**
-glide 的 25%/帧追不上 20fps 的持续 reveal，滞后累积（实测可达 200px+），把底部 loading 气泡推下再追回 → 视觉上"跳动"。**解法**：`INSTANT_THRESHOLD` 让小增量瞬时贴底（gap≈0，气泡钉死），只对中等 burst 走 glide。这是「瞬时 vs 平滑」的边界——平滑只该用在大跳变上。
-
-**⚠️ 坑 3：tick 读 layout 属性 → 每帧强制 reflow**
-`tick` 内读 `scrollHeight` 在内容刚重渲的脏帧会强制一次同步 layout，叠加 scroll 事件 handler 的读，60fps 持续。用 `currentPos` 镜像 + `captureFollowTarget` 集中捕获消除。
+`startReached` 在滚到顶时触发 `fetchNextPage`。新历史 prepend 时，`firstItemIndex`（`VirtuosoChatList` 内从大数递减，检测 `items[0].key` 变化推断 prepend 量）让 Virtuoso 识别「开头插入」，保持滚动位置不跳顶。
 
 ### 调试采样
 
 ```js
-// 采样跟随 gap + loading 气泡屏幕纵坐标，判断是否滞后浮动
-const box = document.querySelector('.ant-bubble-list-scroll-box')
-const loading = document.querySelector('div[role="status"][aria-label*="运行"]')
+// 采样 Virtuoso scroller 的跟随 gap
+const scroller = document.querySelector('[data-testid="virtuoso-scroller"]')
 setInterval(() => {
   console.log({
-    gap: Math.round(box.scrollHeight - box.clientHeight - box.scrollTop),
-    rectTop: Math.round(loading.getBoundingClientRect().top),
+    gap: Math.round(scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop),
   })
 }, 30)
 ```
 
-稳态 `gap` 恒 0、`rectTop` 不动 = 正常；`gap` 持续 > 0 = 滞后（见坑 2），`rectTop` 漂移大 = 浮动。
+稳态 `gap` 恒 0 = 跟随正常；持续 > 0 = 滞后。
 
 ## E2E 验证局限
 
