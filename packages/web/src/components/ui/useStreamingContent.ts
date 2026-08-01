@@ -44,9 +44,15 @@ export function computeRevealRate(gap: number): number {
  * 自适应速率：积压时自动加速追平，追上后回落到基础速率。
  */
 export function useStreamingContent(target: string, streaming?: boolean): string {
-    const [display, setDisplay] = useState(streaming ? '' : target)
+    // mount 时对齐到当前 target 长度：drip 只揭示「mount 之后到达的增量」，
+    // 不重放已有内容。这样折叠重展 / 切走 session 再切回（组件 remount）时，
+    // 长内容立即全显而非从 0 逐字重放——后者会让 XMarkdown 对越来越长的串反复
+    // re-parse（O(n²)），长 thinking / 长正文 remount 时直接卡死。
+    // 首次实时生成场景不受影响：block 创建时 target 通常为 ''，mount 即全显空，
+    // 第一个 snapshot 到达后 effect 启动 drip 逐字揭示增量，打字机效果保留。
+    const [display, setDisplay] = useState(target)
     const targetRef = useRef(target)
-    const revealedRef = useRef(streaming ? 0 : target.length)
+    const revealedRef = useRef(target.length)
     // 本次内容是否曾处于流式。区分：
     // - 历史消息（从未流式）→ 全显
     // - 流式结束后的 full message（曾流式）→ 继续逐字到收敛，不被 snapToFull 打断
