@@ -45,6 +45,20 @@ describe('promptSuggestionStore', () => {
         usePromptSuggestionStore.getState().clearSession('s1')
         expect(usePromptSuggestionStore.getState().bySession.has('s1')).toBe(false)
     })
+
+    it('clearAll 清空全部 session 建议', () => {
+        usePromptSuggestionStore.getState().setSuggestion('s1', '建议 A')
+        usePromptSuggestionStore.getState().setSuggestion('s2', '建议 B')
+        usePromptSuggestionStore.getState().clearAll()
+        expect(usePromptSuggestionStore.getState().bySession.size).toBe(0)
+    })
+
+    it('clearAll 空状态时返回相同引用(无谓新建 Map)', () => {
+        const before = usePromptSuggestionStore.getState()
+        usePromptSuggestionStore.getState().clearAll()
+        // bySession 本就空, 不产生新状态对象
+        expect(usePromptSuggestionStore.getState()).toBe(before)
+    })
 })
 
 describe('extractPromptSuggestion', () => {

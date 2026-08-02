@@ -16,9 +16,10 @@
 
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { clearCachedInstance, clearAllInstances } from '@/core/hooks/useCachedInstance'
+import { usePromptSuggestionStore } from '@/core/data/stores/promptSuggestionStore'
 
 /**
- * 会话删除时清理其前端残留状态：检视面板状态 + 所有缓存终端（xterm/socket）。
+ * 会话删除时清理其前端残留状态：检视面板状态 + 所有缓存终端（xterm/socket）+ 瞬时建议。
  * 顺序关键：先从 store 读出 terminal tabs 逐个清缓存（dispose 发 terminal:close 杀 PTY），
  * 再 clearSession 清 store 元数据。clearSession 后拿不到 terminalId。
  */
@@ -30,13 +31,16 @@ export function clearSessionResources(sessionId: string): void {
         }
     }
     useWorkspaceStore.getState().clearSession(sessionId)
+    // 清理该 session 的瞬时下一轮建议
+    usePromptSuggestionStore.getState().clearSession(sessionId)
 }
 
 /**
- * 登出/换号时清空全部会话相关前端状态：检视面板状态 + 所有缓存终端。
+ * 登出/换号时清空全部会话相关前端状态：检视面板状态 + 所有缓存终端 + 全部瞬时建议。
  * SPA 内 logout→login 不刷新页面，必须显式清理避免上一用户残留。
  */
 export function clearAllSessionResources(): void {
     useWorkspaceStore.getState().clearAll()
     clearAllInstances()
+    usePromptSuggestionStore.getState().clearAll()
 }

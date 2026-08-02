@@ -16,17 +16,20 @@
 
 import styled from '@emotion/styled'
 import { theme } from 'antd'
+import type { GlobalToken } from 'antd'
 import { CloseOutlined } from '@ant-design/icons'
 
-const ChipWrapper = styled.div`
+// 颜色全部走 antd token（colorInfo 族），由主题算法在亮/暗模式下自动适配；
+// 不再硬编码蓝色，避免暗色主题下与全局暖灰主色冲突。
+const ChipWrapper = styled.div<{ $token: GlobalToken }>`
     display: inline-flex;
     align-items: center;
     gap: 6px;
     padding: 2px 4px 2px 8px;
     font-size: 12px;
-    color: #2b5fb3;
-    background: #eef4ff;
-    border: 1px solid #b7c9e8;
+    color: ${({ $token }) => $token.colorInfoText};
+    background: ${({ $token }) => $token.colorInfoBg};
+    border: 1px solid ${({ $token }) => $token.colorInfoBorder};
     border-radius: 12px;
     cursor: pointer;
     max-width: 100%;
@@ -34,7 +37,7 @@ const ChipWrapper = styled.div`
     white-space: nowrap;
     transition: background 0.2s;
     &:hover {
-        background: #e0ecff;
+        background: ${({ $token }) => $token.colorInfoBgHover};
     }
 `
 
@@ -50,7 +53,7 @@ const Text = styled.span`
     white-space: nowrap;
 `
 
-const DismissButton = styled.button`
+const DismissButton = styled.button<{ $token: GlobalToken }>`
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -59,12 +62,12 @@ const DismissButton = styled.button`
     border: none;
     border-radius: 50%;
     background: transparent;
-    color: #2b5fb3;
+    color: ${({ $token }) => $token.colorInfoText};
     cursor: pointer;
     flex-shrink: 0;
     padding: 0;
     &:hover {
-        background: rgba(43, 95, 179, 0.12);
+        background: ${({ $token }) => $token.colorInfoBorder};
     }
 `
 
@@ -83,10 +86,11 @@ export function SuggestionChip({ text, onAccept, onDismiss }: SuggestionChipProp
     const { token } = theme.useToken()
 
     return (
-        <ChipWrapper onClick={onAccept}>
+        <ChipWrapper $token={token} onClick={onAccept}>
             <Spark>✦</Spark>
             <Text>{text}</Text>
             <DismissButton
+                $token={token}
                 aria-label="suggestion-dismiss"
                 onClick={(e) => {
                     e.stopPropagation()

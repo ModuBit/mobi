@@ -24,7 +24,7 @@ import { Space, Typography, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { ChevronDown } from 'lucide-react'
-import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
+import type { AgentState, SessionMetadataSummary, DecryptedMessage } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { SDKUIHints, TodoItem, TaskItem, PermissionUpdate } from '@mobi/shared'
 import { PermissionFooter, getPermissionDisplayText } from '@/components/tool-card/PermissionFooter'
@@ -50,6 +50,9 @@ import { QueuedMessagesBar } from '@/components/chat/QueuedMessagesBar'
 
 const { Text } = Typography
 const { useToken } = antTheme
+
+/** loading 期稳定空数组默认值，避免每次渲染新建 [] 引用抖动 */
+const EMPTY_MESSAGES: DecryptedMessage[] = []
 
 /** 工具交互请求面板：根据工具类型分发不同的交互组件 */
 function ToolInteractionPanel({
@@ -243,6 +246,30 @@ export type ComposerInfoPanelProps = {
 }
 
 /**
+ * 排队消息区：独立订阅排队消息子集。
+ * 父面板只订阅「是否存在排队」布尔（见下 useMessages），重型子面板不随每条消息变动重渲染；
+ * 此处再开一个观察者取排队数组，react-query 按 queryKey 去重，不发额外请求，
+ * 且 select 输出经结构化共享，仅在排队集合实际变化时重渲染本组件。
+ */
+function QueuedMessagesSection({
+    sessionId,
+    onEdit,
+}: {
+    sessionId: string
+    onEdit: (text: string) => void
+}) {
+    const { data: messages = EMPTY_MESSAGES } = useMessages(sessionId, (all) => all.filter(isQueuedInMobi))
+    if (messages.length === 0) return null
+    return (
+        <QueuedMessagesBar
+            sessionId={sessionId}
+            messages={messages}
+            onEdit={onEdit}
+        />
+    )
+}
+
+/**
  * Composer 信息面板
  * 在输入区上方展示各种状态信息
  */
@@ -270,9 +297,9 @@ export function ComposerInfoPanel({
     const hasTeamAgents = teamAgents.length > 0 && !!teamName
     const hasAgents = agents.length > 0
 
-    // 排队消息：与 ChatContainer 共享 useMessages 的 react-query 缓存，不产生额外请求
-    const { data: messages = [] } = useMessages(sessionId)
-    const hasQueued = useMemo(() => messages.some(isQueuedInMobi), [messages])
+    // 只订阅「是否存在排队消息」布尔：react-query 结构化共享下，仅在该布尔翻转时重渲染，
+    // 不随每条消息变动重渲染本面板（避免 ToolInteractionPanel/TasksPanel 等重型子树反复 reconcile）。
+    const { data: hasQueued = false } = useMessages(sessionId, (all) => all.some(isQueuedInMobi))
 
     // 从 store 派生最新 block：先查 running agents，再查 byId（覆盖后台 Agent 任务）
     const drawerBlock: ToolCallBlock | null = (() => {
@@ -313,9 +340,8 @@ export function ComposerInfoPanel({
                 style={{ maxHeight: '40dvh', overflow: 'auto' }}
             >
                 <Space orientation="vertical" size={8} style={{ width: '100%' }}>
-                    <QueuedMessagesBar
+                    <QueuedMessagesSection
                         sessionId={sessionId}
-                        messages={messages}
                         onEdit={onEditQueued}
                     />
 

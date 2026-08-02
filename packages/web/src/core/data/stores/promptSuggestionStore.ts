@@ -24,6 +24,8 @@ interface PromptSuggestionState {
     setSuggestion: (sessionId: string, text: string) => void
     /** chip ✕ 关闭 / 采纳 / 用户发送消息时清空 */
     clearSession: (sessionId: string) => void
+    /** 登出/换号时清空全部会话建议, 避免 SPA logout→login 残留上一用户状态 */
+    clearAll: () => void
 }
 
 export const usePromptSuggestionStore = create<PromptSuggestionState>((set) => ({
@@ -43,13 +45,21 @@ export const usePromptSuggestionStore = create<PromptSuggestionState>((set) => (
             next.delete(sessionId)
             return { bySession: next }
         }),
+
+    clearAll: () =>
+        set((state) => {
+            if (state.bySession.size === 0) return state
+            return { bySession: new Map() }
+        }),
 }))
 
-// 空字符串常量, 避免 selector 返回新引用
-const NO_SUGGESTION: string | undefined = undefined
-
+/**
+ * 读取指定 session 的当前建议文本。
+ * Map.get 返回原始 string | undefined, zustand 用 Object.is 比较,
+ * 缺失时返回稳定的 undefined, 不会触发多余重渲染。
+ */
 export function usePromptSuggestion(sessionId: string): string | undefined {
-    return usePromptSuggestionStore((state) => state.bySession.get(sessionId) ?? NO_SUGGESTION)
+    return usePromptSuggestionStore((state) => state.bySession.get(sessionId))
 }
 
 /**

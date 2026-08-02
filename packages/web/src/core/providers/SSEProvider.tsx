@@ -389,6 +389,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 qc.removeQueries({ queryKey: queryKeys.session(event.sessionId) })
                 qc.removeQueries({ queryKey: queryKeys.messages(event.sessionId) })
                 pendingMessages.delete(event.sessionId)
+                // 清理该 session 的瞬时建议, 避免删除会话后 bySession Map 残留
+                usePromptSuggestionStore.getState().clearSession(event.sessionId)
                 scheduleInvalidation('sessions')
                 break
             case 'message-received': {
@@ -405,11 +407,19 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 }
                 break
             }
-            case 'message-snapshot':
+            case 'message-snapshot': {
                 if (event.message && event.sessionId) {
+                    // 同 message-received: 若快照通道也携带 prompt_suggestion, 写入瞬时 store 不入缓存。
+                    // 当前 SDK 不走此通道, 此处为防御, 避免未来 Hub 重放/SDK 变更时污染消息缓存。
+                    const suggestion = extractPromptSuggestion(event.message.content)
+                    if (suggestion) {
+                        usePromptSuggestionStore.getState().setSuggestion(event.sessionId, suggestion)
+                        break
+                    }
                     upsertMessageCache(qc, event.sessionId, event.message as DecryptedMessage)
                 }
                 break
+            }
             case 'messages-submitted':
                 // 排队消息被 agent 真正消费：把命中 localId 的消息 submittedAt 翻为给定时间戳
                 if (event.sessionId && event.localIds?.length) {

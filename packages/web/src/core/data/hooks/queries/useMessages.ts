@@ -15,6 +15,7 @@
  */
 
 import { useInfiniteQuery } from '@tanstack/react-query'
+import type { InfiniteData } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import type { DecryptedMessage, MessagesResponse } from '@/core/data/api/types'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -23,11 +24,19 @@ import { flattenMessagesPages } from '@/core/lib/messages'
 /**
  * 获取会话消息列表（分页）
  * 使用 useInfiniteQuery 支持向上滚动加载历史消息
+ *
+ * @param select 可选派生函数：在展平的全部消息上做投影（如排队子集 / 是否存在布尔）。
+ *   利用 react-query 结构化共享：select 输出做深比较，未变化不触发组件重渲染。
+ *   例：订阅「是否存在排队消息」时只返回 boolean，仅在该布尔翻转时重渲染，
+ *   避免每条消息变动都重渲染订阅方。
  */
-export function useMessages(sessionId: string | null) {
+export function useMessages<T = DecryptedMessage[]>(
+    sessionId: string | null,
+    select?: (messages: DecryptedMessage[]) => T,
+) {
     const api = useMobiApi()
 
-    return useInfiniteQuery<MessagesResponse, Error, DecryptedMessage[]>({
+    return useInfiniteQuery<MessagesResponse, Error, T>({
         queryKey: queryKeys.messages(sessionId!),
         queryFn: async ({ pageParam }) => {
             if (!sessionId) {
@@ -48,10 +57,11 @@ export function useMessages(sessionId: string | null) {
             }
             return lastPage.page.nextBeforeSeq
         },
-        select: (data) => {
+        select: (data: InfiniteData<MessagesResponse>) => {
             // pages: [最新页, 更旧页, ...]，每页内部按 seq 升序（旧→新）。
             // 反转后用 flattenMessagesPages 跨页合并并按 id 去重（防游标漂移导致重叠页重复）。
-            return flattenMessagesPages(data.pages.slice().reverse())
+            const flat = flattenMessagesPages(data.pages.slice().reverse())
+            return (select ? select(flat) : flat) as T
         },
         enabled: !!sessionId,
         staleTime: Infinity,

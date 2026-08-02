@@ -62,10 +62,13 @@ vi.mock('@/components/pixel-avatar/PixelAvatar', () => ({
     PixelAvatar: () => null,
 }))
 
-// mock useMessages —— ComposerInfoPanel 内部自取排队消息；返回稳定引用避免重渲染循环
+// mock useMessages —— ComposerInfoPanel 内部自取排队消息；返回稳定引用避免重渲染循环。
+// 支持可选 select 派生：guard 订阅 boolean、QueuedMessagesSection 订阅排队子集。
 const messagesMock = vi.hoisted(() => ({ data: [] as DecryptedMessage[] }))
 vi.mock('@/core/data/hooks/queries/useMessages', () => ({
-    useMessages: () => messagesMock,
+    useMessages: (_sid: unknown, select?: (m: DecryptedMessage[]) => unknown) => ({
+        data: select ? select(messagesMock.data) : messagesMock.data,
+    }),
 }))
 
 /** 构造排队中的 user 消息（queueState='pending'） */
