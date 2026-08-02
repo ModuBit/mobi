@@ -666,7 +666,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
             hint={slash.activeCommand?.hint}
             description={slash.activeCommand?.description}
         />,
-        suggestion && (
+        // 用户在输入(draft 非空)时隐藏 suggestion; 清空 draft 则重新显示(store 未清, 仅视觉隐藏)
+        suggestion && !hasText && (
             <SuggestionChip
                 key="suggestion"
                 text={suggestion}
