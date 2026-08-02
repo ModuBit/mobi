@@ -76,6 +76,17 @@ const chatScrollStyles = css`
         overflow-x: auto;
         overflow-y: hidden;
     }
+    /* 气泡与滚动条之间的留白。
+       必须加在**内容层**（item-list），不能靠外层 .chat-scroll-container 的 padding——
+       虚拟化后滚动容器下移到 Virtuoso 内部（virtuoso-scroller），外层已是 overflow:hidden，
+       它的 padding 落在滚动条外侧，气泡仍紧贴滚动条。
+       用 padding-inline 而非 padding 简写：Virtuoso 在 item-list 上写内联
+       paddingTop/paddingBottom 承载虚拟化偏移量，简写会与之语义打架（虽然内联优先级更高，
+       但读代码时误导），只声明水平方向最清晰。
+       水平方向的 8px 由此层承担，故外层容器只留垂直 padding（见下方 JSX）。 */
+    .chat-scroll-container [data-testid='virtuoso-item-list'] {
+        padding-inline: 8px;
+    }
 `
 
 /** 聊天内容区最大宽度：超宽屏时限宽居中，避免用户/AI 气泡分列两端过于割裂；小屏自动 100% */
@@ -397,7 +408,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
             <Global styles={collapsibleUserMessageStyles} />
-            <div className="chat-scroll-container" style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
+            {/* 只保留垂直 padding：水平留白改由内容层（virtuoso-item-list）承担，
+                否则滚动条被推离容器边缘、气泡却仍紧贴滚动条（见 chatScrollStyles） */}
+            <div className="chat-scroll-container" style={{ flex: 1, overflow: 'hidden', padding: '8px 0', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (
                     <ChatWelcome sessionId={sessionId} />
                 ) : (
