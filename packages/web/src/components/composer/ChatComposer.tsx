@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Select, theme, Typography, Popover, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
@@ -57,12 +57,6 @@ import type { ClearRuntimeStateField } from '@/components/composer/ClearStateBut
 import { usePromptSuggestion, usePromptSuggestionStore } from '@/core/data/stores/promptSuggestionStore'
 import { SuggestionChip } from './SuggestionChip'
 
-
-/** ChatComposer 命令式 API，供外部（如 QueuedMessagesBar 编辑回填）设置草稿 */
-export interface ChatComposerHandle {
-    /** 设置输入框文本并聚焦 */
-    setDraft: (text: string) => void
-}
 
 interface ChatComposerProps {
     sessionId: string
@@ -267,7 +261,7 @@ function EffortPopoverContent({ modelValue, effort, onEffortSelect }: {
  * 聊天输入组件
  * 基于 antd X 的 Sender 组件，支持多行输入、附件上传、@文件引用
  */
-export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer(props, ref) {
+export function ChatComposer(props: ChatComposerProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
     const api = useMobiApi()
@@ -318,12 +312,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     const [text, setText] = useState('')
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
-    // 设置草稿并聚焦：命令式 API（外部 ref）与 ComposerInfoPanel 内排队消息编辑共用同一实现
+    // 设置草稿并聚焦：suggestion 采纳 + ComposerInfoPanel 内排队消息编辑共用同一实现
     const setDraft = useCallback((draftText: string) => {
         setText(draftText)
         requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
     }, [])
-    useImperativeHandle(ref, () => ({ setDraft }), [setDraft])
 
     // 跨页草稿（NewSessionPage 创建会话后发送失败时暂存）优先级最高：取出后落入当前 session 草稿，
     // 随后 useComposerDraft 的 rAF 恢复会从草稿库读到它 —— 天然一致，无需标志位协调 (#2)
@@ -1000,4 +993,4 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
             </ComposerDock>
         </div>
     )
-})
+}

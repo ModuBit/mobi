@@ -53,6 +53,10 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
     const cancelMutation = useCancelQueuedMessage(sessionId)
     const steerMutation = useSteerQueuedMessage(sessionId)
 
+    // 防御性二次过滤 + 按时间排序。
+    // 调用方（QueuedMessagesSection）的 useMessages select 已滤出排队子集（性能优化：避免传全量数组），
+    // 这里再过一遍是组件自洽的**正确性边界**——Bar 自身契约「只展示排队消息」，不依赖调用方契约，
+    // 即便未来有别的调用方传混杂数组也不会误展示已提交消息。两者意图不同，非冗余。
     const queued = useMemo(
         () => messages
             .filter(isQueuedInMobi)

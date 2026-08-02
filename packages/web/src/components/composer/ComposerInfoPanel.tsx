@@ -314,8 +314,13 @@ export function ComposerInfoPanel({
     const scrollRef = useRef<HTMLDivElement>(null)
     const [showFade, setShowFade] = useState(false)
 
-    // ResizeObserver 检测内容溢出，比 setTimeout + useMemo 更可靠
+    // 是否渲染了滚动容器（有任何内容面板）。
+    // ResizeObserver effect 依赖它而非 []：空挂载时组件 return null、scrollRef 为 null，
+    // 若用 [] 依赖，effect 只在 mount 跑一次（此时 el=null 直接 return），之后内容出现也不重跑
+    // → observer 永不挂载、showFade 恒 false。依赖 hasContent 后，内容后于挂载出现时 effect 重跑、observer 才挂上。
+    const hasContent = Boolean(hasPendingRequests || hasTodos || hasTasks || hasAgents || hasBgTasks || hasTeamAgents || hasQueued)
     useEffect(() => {
+        if (!hasContent) return
         const el = scrollRef.current
         if (!el) return
         const observer = new ResizeObserver(() => {
@@ -323,14 +328,14 @@ export function ComposerInfoPanel({
         })
         observer.observe(el)
         return () => observer.disconnect()
-    }, [])
+    }, [hasContent])
 
     // 清理运行时状态字段的回调
     const handleClearState = useCallback(async (clearSessionId: string, clearFields: ClearRuntimeStateField[]) => {
         await api.sessions.clearRuntimeStateFields(clearSessionId, clearFields)
     }, [api])
 
-    if (!hasPendingRequests && !hasTodos && !hasTasks && !hasAgents && !hasBgTasks && !hasTeamAgents && !hasQueued) return null
+    if (!hasContent) return null
 
     return (
         <div style={{ position: 'relative', padding: '8px 0', marginBottom: 4 }}>

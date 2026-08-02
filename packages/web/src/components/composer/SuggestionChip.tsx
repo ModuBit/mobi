@@ -49,6 +49,8 @@ export function SuggestionChip({ text, hidden, onAccept, onDismiss }: Suggestion
         <div
             style={{
                 padding: '4px 8px 0 4px',
+                // border-box：maxHeight 收缩时把 padding 也算进盒高，hidden 态彻底塌缩无 4px 缝
+                boxSizing: 'border-box',
                 opacity: hidden ? 0 : 1,
                 transform: hidden ? 'translateY(-4px)' : 'translateY(0)',
                 maxHeight: hidden ? 0 : 60,

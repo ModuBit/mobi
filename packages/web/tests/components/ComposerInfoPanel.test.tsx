@@ -93,10 +93,11 @@ const mockApi = {
 
 const mockMetadata = { flavor: 'claude-code' } as unknown as SessionMetadataSummary
 
-// jsdom 没有 ResizeObserver
+// jsdom 没有 ResizeObserver —— 记录 observe 调用以验证「内容后于挂载出现」时仍能挂 observer
+const observeSpy = vi.fn()
 beforeAll(() => {
     vi.stubGlobal('ResizeObserver', class {
-        observe() {}
+        observe = observeSpy
         unobserve() {}
         disconnect() {}
     })
@@ -126,6 +127,7 @@ describe('ComposerInfoPanel', () => {
     beforeEach(() => {
         // 隔离用例：重置排队消息 mock，避免上一用例残留污染
         messagesMock.data = []
+        observeSpy.mockClear()
     })
 
     it('无 todos 和 requests 时返回 null', () => {
@@ -219,8 +221,19 @@ describe('ComposerInfoPanel', () => {
         expect(toggle.getAttribute('aria-expanded')).toBe('true')
     })
 
-    it('溢出容器设置了 maxHeight', () => {
-        const todos = Array.from({ length: 10 }, (_, i) => ({
+    it('内容后于挂载出现时仍挂载 ResizeObserver（修复空挂载失效）', () => {
+        // 空挂载：无任何内容 → return null，scrollRef div 不渲染、observer 未挂
+        const { rerender } = render(<ComposerInfoPanel {...defaultProps} />, { wrapper })
+        expect(observeSpy).not.toHaveBeenCalled()
+        // 内容后出现：重渲染带 todos → hasContent 翻 true、effect 重跑、observer 挂上
+        const todos: TodoItem[] = [
+            { content: '任务A', status: 'in_progress', activeForm: '正在执行任务A' },
+        ]
+        rerender(<ComposerInfoPanel {...defaultProps} todos={todos} />)
+        expect(observeSpy).toHaveBeenCalled()
+    })
+
+    it('溢出容器设置了 maxHeight', () => {        const todos = Array.from({ length: 10 }, (_, i) => ({
             content: `任务${i}`,
             status: 'pending' as const,
             activeForm: `正在执行任务${i}`,

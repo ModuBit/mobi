@@ -45,4 +45,14 @@ describe('SuggestionChip', () => {
         // 关闭不应同时触发采纳（onClose 内 stopPropagation 防冒泡到 Tag onClick）
         expect(onAccept).not.toHaveBeenCalled()
     })
+
+    it('hidden 时外层彻底塌缩（box-sizing border-box，padding 不留缝）', () => {
+        const { container } = render(
+            <SuggestionChip text="建议" hidden onAccept={vi.fn()} onDismiss={vi.fn()} />,
+        )
+        const wrapper = container.firstElementChild as HTMLElement
+        expect(wrapper.style.maxHeight).toBe('0px')
+        // border-box 保证 maxHeight:0 时 padding 计入盒高、整体塌缩，不残留 4px 透明缝
+        expect(wrapper.style.boxSizing).toBe('border-box')
+    })
 })

@@ -50,4 +50,4 @@ running 中发消息 → 进 QueuedMessagesBar 悬浮条（`Queued (N)`），不
 - **`take_snapshot` 漏条件渲染的纯布局内容** — 展开态/收起态切换渲染的纯 styled div（如吊顶 `ContextUsageDetail`）a11y tree 常不显示文本节点，看着像没渲染；用 `evaluate_script` 读 `element.innerText` 验证（只读诊断，不改状态）
 - **吊顶点击 toggle 不直观** — `SessionContextBar` 点击切换 expanded，但单测外难直接观察；读 `[aria-label="session-context"]` 的 `data-expanded` 属性判断当前态
 - **`prompt_suggestion` 首轮被 suppress** — SDK 文档明确「Suppressed on the first turn」；E2E 验证 suggestion chip 必须等**第二轮完整独立 turn**（首条消息 result 到达、running 复位后再发第二条）才出现。只发一条消息断言 chip 不存在是**误判**。同源坑：SDK 直接传 `promptSuggestions: true` 跑单轮也无 `prompt_suggestion`，别据此断定「SDK 没传参」
-- **SuggestionChip 验证要点** — chip 在 Sender header（输入框上方），a11y snapshot 可见 `✦` + 建议文本 + `suggestion-dismiss` 按钮。采纳 = 点文本 → 草稿回填 + chip 消失；✕ = 点 `suggestion-dismiss` → chip 消失且草稿不受影响。用 `evaluate_script` 读 `textarea.value` 验证回填
+- **SuggestionChip 验证要点** — chip 是 antd `Tag`（`BulbOutlined` 灯泡图标 + closable ✕），位于 Sender header（输入框上方）。a11y snapshot 里**按建议文本定位**（不要找 `✦`，那是过时描述；图标是灯泡）。采纳 = 点 tag 文本 → 草稿回填 + chip 消失；✕ = 点 `.ant-tag-close-icon` → chip 消失且草稿不受影响（onClose 内 stopPropagation 防误触采纳）。用 `evaluate_script` 读 `textarea.value` 验证回填
