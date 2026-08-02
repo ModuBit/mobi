@@ -54,6 +54,8 @@ import { ContextUsageThread } from './ContextUsageThread'
 import { resolveSubmitButtonState } from './submitButtonState'
 import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
+import { usePromptSuggestion, usePromptSuggestionStore } from '@/core/data/stores/promptSuggestionStore'
+import { SuggestionChip } from './SuggestionChip'
 
 
 /** ChatComposer 命令式 API，供外部（如 QueuedMessagesBar 编辑回填）设置草稿 */
@@ -636,7 +638,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
         setText('')
         resetAttachments()
         needsRefocusRef.current = true
-    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, t, resetAttachments])
+        // 发新消息即消失: 清空当前建议(生命周期"每轮结束显示, 发送后消失")
+        usePromptSuggestionStore.getState().clearSession(sessionId)
+    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, t, resetAttachments, sessionId])
 
     const showInactiveCover = !active && !allowSendWhenInactive
     const showLocalModeCover = active && mode === 'local'
@@ -651,6 +655,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
         ? getAgentStatus({ active, running, agentState })
         : null
 
+    // 下一轮建议(SDK prompt_suggestion, 瞬时): 有值则渲染 chip, 无则省略
+    const suggestion = usePromptSuggestion(sessionId)
+
     // Sender header 区域内容（可组合，多条可共存）
     const headerNodes = [
         <CommandHintBar
@@ -659,6 +666,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
             hint={slash.activeCommand?.hint}
             description={slash.activeCommand?.description}
         />,
+        suggestion && (
+            <SuggestionChip
+                key="suggestion"
+                text={suggestion}
+                onAccept={() => {
+                    setDraft(suggestion)  // 回填草稿 + 聚焦
+                    // 采纳后即消失(建议已消费, 防止重复采纳)
+                    usePromptSuggestionStore.getState().clearSession(sessionId)
+                }}
+                onDismiss={() => usePromptSuggestionStore.getState().clearSession(sessionId)}
+            />
+        ),
         hasAttachments && (
             <AttachmentList
                 key="attachments"
