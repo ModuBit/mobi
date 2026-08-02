@@ -276,7 +276,13 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [isClearing, sendMutation.isPending])
 
     const handleScrollToBottom = useCallback(() => {
-        virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
+        virtuosoRef.current?.scrollToBottom('smooth')
+    }, [])
+
+    // 传给 VirtuosoChatList 的稳定回调：内联箭头每次渲染换引用，会让其内部
+    // 上抛 following 的 effect 每帧重跑
+    const handleFollowingChange = useCallback((following: boolean) => {
+        setShowScrollBottom(!following)
     }, [])
 
     const decoratedItems = useMemo(() => {
@@ -405,7 +411,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                             if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
                         }}
                         isFetchingNextPage={isFetchingNextPage}
-                        atBottomStateChange={(atBottom) => setShowScrollBottom(!atBottom)}
+                        onFollowingChange={handleFollowingChange}
                     />
                 )}
                 {showScrollBottom && (

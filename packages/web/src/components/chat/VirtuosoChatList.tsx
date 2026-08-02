@@ -15,11 +15,12 @@
  */
 
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
+import { Virtuoso } from 'react-virtuoso'
 import { Bubble } from '@ant-design/x'
 import { Skeleton } from 'antd'
 import { BUBBLE_ROLES } from './bubbleRoles'
 import type { BubbleItemBase } from './buildBubbleItems'
+import { useStickToBottom } from './useStickToBottom'
 
 /** Virtuoso 渲染的 item 类型（decoratedItems 结构 + 装饰字段） */
 export type ChatBubbleItem = BubbleItemBase & {
@@ -107,31 +108,34 @@ const INITIAL_FIRST_ITEM_INDEX = 1_000_000_000
 
 /**
  * 对外暴露的命令式 handle。
- * 自定义而非直接用 VirtuosoHandle：scrollToIndex 需在调用前重置 followRef
- *（用户点「滚到底」= 想恢复跟随，否则上次主动上滚后 followRef 仍为 false）。
+ *
+ * 只暴露「回到底部并恢复跟随」这一个语义动作，不透出 Virtuoso 的 scrollToIndex——
+ * 滚动权由 useStickToBottom 独占（见其文档），外部绕过它直接调 Virtuoso API
+ * 会与贴底机制争抢 scrollTop。
  */
 export interface VirtuosoChatListHandle {
-    scrollToIndex: (opts: { index: number | 'LAST'; behavior?: 'auto' | 'smooth'; align?: 'start' | 'end' | 'center' }) => void
+    scrollToBottom: (behavior?: 'auto' | 'smooth') => void
 }
 
 interface VirtuosoChatListProps {
     items: ChatBubbleItem[]
     /** 滚到顶部（更旧历史）时触发，对接 fetchNextPage */
     onStartReached?: () => void
-    /** 贴底状态变化（驱动"滚到底"按钮等） */
-    atBottomStateChange?: (atBottom: boolean) => void
+    /** 跟随状态变化：false 表示用户在看历史，驱动「滚到底」按钮显隐 */
+    onFollowingChange?: (following: boolean) => void
     /** 是否正在加载更旧的历史页（为 true 时顶部渲染骨架） */
     isFetchingNextPage?: boolean
 }
 
 /**
- * 虚拟化聊天列表（PoC）—— 用 react-virtuoso 替换 Bubble.List。
+ * 虚拟化聊天列表 —— 用 react-virtuoso 替换 Bubble.List。
  *
  * 只渲染视口附近的 bubble（increaseViewportBy 扩展上下缓冲），DOM 节点数钳制在 ~几十，
- * 不随消息总量增长。Virtuoso 自动测量动态高度（无需估高），followOutput 接管流式贴底跟随，
- * startReached 接管向上加载历史。
+ * 不随消息总量增长。Virtuoso 自动测量动态高度（无需估高），startReached 接管向上加载历史。
+ *
+ * 贴底跟随**不用** Virtuoso 的 followOutput，改由 useStickToBottom 独占（原因见该 hook 文档）。
  */
-export const VirtuosoChatList = forwardRef<VirtuosoChatListHandle, VirtuosoChatListProps>(function VirtuosoChatList({ items, onStartReached, atBottomStateChange, isFetchingNextPage }, ref) {
+export const VirtuosoChatList = forwardRef<VirtuosoChatListHandle, VirtuosoChatListProps>(function VirtuosoChatList({ items, onStartReached, onFollowingChange, isFetchingNextPage }, ref) {
     const handleStartReached = useCallback(() => {
         onStartReached?.()
     }, [onStartReached])
@@ -169,89 +173,18 @@ export const VirtuosoChatList = forwardRef<VirtuosoChatListHandle, VirtuosoChatL
         prevFirstKeyRef.current = firstKey
     }, [items])
 
-    // 流式贴底跟随的补充机制。
-    //
-    // 为何必须补：Virtuoso 的 followOutput 只由 **totalCount 变化** 驱动
-    //（dist/index.mjs 的 followOutput 管道监听 `W(totalCount)`）。但流式回复是把 token
-    // 不断追加到**同一个** block —— item 数量不变，只是末项越来越高。于是整段流式期间
-    // followOutput 一次都不触发，用户停在原位看不到新内容（实测长回复偏离底部 1900px+）。
-    //
-    // 做法：用 ResizeObserver 观测内容总高，增长时若用户在底部则直接钉到底。
-    //
-    // 为何直接改 scrollTop 而非 scrollToIndex：scrollToIndex 走 Virtuoso 内部管道
-    //（偏移树查找 + atBottom 状态机），在内容**持续**增长时跟不上——每次跳完内容又长，
-    // 状态机滞后，偏离累积（实测 scrollToIndex 'auto' 仍偏离 600px+）。直接设 scrollTop
-    // 瞬即到底，并用「实际几何位置」判断是否在底部，不依赖 Virtuoso 状态机。
-    const virtuosoRef = useRef<VirtuosoHandle | null>(null)
-    const scrollerElRef = useRef<HTMLElement | null>(null)
-    const observerRef = useRef<ResizeObserver | null>(null)
-    // 用户是否「想贴底跟随」。用户主动上滚（滚轮/触摸）→ false；点「滚到底」→ true。
-    // 不用 atBottomStateChange（distance>4px 就翻 false，流式一增长就掉队），
-    // 也不用 distance 阈值（一旦临时偏离超阈值就永久掉队）。
-    // wheel/touchmove 只由真实用户手势触发，程序改 scrollTop 不触发，是「主动上滚」最干净的信号。
-    const followRef = useRef(true)
-    // programmatic smooth 滚动进行中标志。smooth 期间沿途 item 被虚拟化逐个测量，
-    // 估算高度→实际高度，item-list 总高累积增长，会误触发 ResizeObserver 瞬跳，
-    // 打断 smooth 最后阶段（表现为「最后突然跳一下」）。scrollend 后解除。
-    const smoothScrollingRef = useRef(false)
+    // 贴底跟随：ResizeObserver 观测内容总高 + 几何判据管理跟随意图，详见 useStickToBottom。
+    // items.length 由 0 变正时 item-list 才挂载，需重建观测，故用 enabled 参数驱动
+    const { handleScrollerRef, following, stickToBottom } = useStickToBottom(items.length > 0)
 
-    const handleScrollerRef = useCallback((el: HTMLElement | Window | null) => {
-        scrollerElRef.current = el && !(el instanceof Window) ? el : null
-    }, [])
-
-    // 用户主动上滚 → 停止跟随；用户没主动操作 → 流式始终贴底
+    // 跟随状态上抛，驱动「滚到底」按钮显隐
     useEffect(() => {
-        const scroller = scrollerElRef.current
-        if (!scroller) return
-        const stop = () => { followRef.current = false }
-        const onScrollEnd = () => { smoothScrollingRef.current = false }
-        scroller.addEventListener('wheel', stop, { passive: true })
-        scroller.addEventListener('touchmove', stop, { passive: true })
-        scroller.addEventListener('scrollend', onScrollEnd, { passive: true })
-        return () => {
-            scroller.removeEventListener('wheel', stop)
-            scroller.removeEventListener('touchmove', stop)
-            scroller.removeEventListener('scrollend', onScrollEnd)
-        }
-    }, [items.length > 0])
+        onFollowingChange?.(following)
+    }, [following, onFollowingChange])
 
-    useEffect(() => {
-        const scroller = scrollerElRef.current
-        if (!scroller) return
-
-        // 观测 item-list（内容总高所在层）。不能观测 scroller.firstElementChild——
-        // 那是 Virtuoso 的视口层，高度恒等于 clientHeight，内容增长时不变，观测它永不触发。
-        const content = scroller.querySelector('[data-testid="virtuoso-item-list"]')
-        if (!content) return
-
-        const observer = new ResizeObserver(() => {
-            if (!followRef.current) return
-            if (smoothScrollingRef.current) return // smooth 动画进行中，不抢断
-            scroller.scrollTop = scroller.scrollHeight
-        })
-        observer.observe(content)
-        observerRef.current = observer
-        return () => {
-            observer.disconnect()
-            observerRef.current = null
-        }
-        // items.length 由 0 变正时 item-list 才挂载，需重建观测
-    }, [items.length > 0])
-
-    // atBottomStateChange 转发给 ChatContainer，驱动「滚到底」按钮显隐
-    const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
-        atBottomStateChange?.(atBottom)
-    }, [atBottomStateChange])
-
-    // 对外暴露 scrollToIndex，调用前重置 followRef（用户点「滚到底」= 想恢复跟随）。
-    // smooth 滚动时置 smoothScrollingRef，让 ResizeObserver 期间不抢断（见上方注释）。
     useImperativeHandle(ref, (): VirtuosoChatListHandle => ({
-        scrollToIndex: (opts) => {
-            followRef.current = true
-            if (opts.behavior === 'smooth') smoothScrollingRef.current = true
-            virtuosoRef.current?.scrollToIndex(opts)
-        },
-    }), [])
+        scrollToBottom: stickToBottom,
+    }), [stickToBottom])
 
     // React key 用 item 自身稳定的 key（= block.id），不用 Virtuoso 默认的 index 算术。
     // 默认 computeItemKey 是恒等函数，key = originalIndex + firstItemIndex，既受浮点精度影响，
@@ -270,7 +203,6 @@ export const VirtuosoChatList = forwardRef<VirtuosoChatListHandle, VirtuosoChatL
 
     return (
         <Virtuoso
-            ref={virtuosoRef}
             data={items}
             firstItemIndex={firstItemIndex}
             computeItemKey={computeItemKey}
@@ -282,9 +214,10 @@ export const VirtuosoChatList = forwardRef<VirtuosoChatListHandle, VirtuosoChatL
             components={CHAT_LIST_COMPONENTS}
             context={context}
             startReached={handleStartReached}
-            // 流式追加时，若用户在底部则平滑跟随；离开底部则不自动滚（用户在看历史）
-            followOutput={(isAtBottom) => (isAtBottom ? 'smooth' : false)}
-            atBottomStateChange={handleAtBottomStateChange}
+            // 有意不传 followOutput / atBottomStateChange：跟随由 useStickToBottom 独占。
+            // 两者并存会争抢 scrollTop（followOutput 的 smooth 动画 vs observer 的瞬跳），
+            // 表现为流式期间卡顿抖动；atBottomStateChange 的 4px 判据则让按钮闪烁。
+            //
             // 视口外缓冲（类似 overscan），避免快速滚动时空白
             increaseViewportBy={{ top: 600, bottom: 600 }}
             // 拿到滚动容器，供 ResizeObserver 观测内容高度变化（流式贴底跟随）
