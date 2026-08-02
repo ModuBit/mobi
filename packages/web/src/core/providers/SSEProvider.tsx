@@ -34,6 +34,7 @@ import type { MessagesResponse } from '@/core/data/api/types'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 import { decideToastAction, parseActiveSessionId, showSystemNotification } from '@/core/notifications'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
+import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/stores/promptSuggestionStore'
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
 
 // ── SSE 早到消息暂存缓冲区 ──────────────────────────────────
@@ -390,11 +391,20 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 pendingMessages.delete(event.sessionId)
                 scheduleInvalidation('sessions')
                 break
-            case 'message-received':
+            case 'message-received': {
                 if (event.message) {
+                    // 拦截 prompt_suggestion: 写入瞬时 store, 不进 React Query 消息缓存。
+                    // prompt_suggestion 是「下一轮建议」的瞬时语义(非聊天历史), 刷新即丢失;
+                    // Hub DB 侧已按 ephemeral 分类存储 + 历史查询过滤, Web 端这里不重复入缓存。
+                    const suggestion = extractPromptSuggestion(event.message.content)
+                    if (suggestion) {
+                        usePromptSuggestionStore.getState().setSuggestion(event.sessionId, suggestion)
+                        break
+                    }
                     upsertMessageCache(qc, event.sessionId, event.message as DecryptedMessage, { skipIfNotSnapshot: true })
                 }
                 break
+            }
             case 'message-snapshot':
                 if (event.message && event.sessionId) {
                     upsertMessageCache(qc, event.sessionId, event.message as DecryptedMessage)

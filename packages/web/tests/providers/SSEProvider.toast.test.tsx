@@ -83,6 +83,7 @@ vi.mock('antd', async (orig) => {
 })
 
 import { useNotificationStore } from '@/core/data/stores/notificationStore'
+import { usePromptSuggestionStore } from '@/core/data/stores/promptSuggestionStore'
 
 async function renderProvider() {
     const { SSEProvider } = await import('@/core/providers/SSEProvider')
@@ -255,5 +256,64 @@ describe('SSEProvider 通知点击跳转(NAVIGATE)', () => {
         await renderProvider()
         swTarget.dispatchEvent(new MessageEvent('message', { data: { type: 'NAVIGATE', url: '/sessions/abc' } }))
         expect(navigateSpy).not.toHaveBeenCalled()
+    })
+})
+
+describe('SSEProvider prompt_suggestion 拦截', () => {
+    beforeEach(() => {
+        usePromptSuggestionStore.setState({ bySession: new Map() })
+        authState.authenticated = true
+    })
+    afterEach(() => cleanup())
+
+    it('收到 prompt_suggestion 写入 store(瞬时建议, 不进消息缓存)', async () => {
+        await renderProvider()
+        expect(sseListener.current).toBeTruthy()
+
+        const promptSuggestionContent = {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: { type: 'prompt_suggestion', suggestion: '用 virtuoso 重构', uuid: 'u1', session_id: 's1' },
+            },
+            meta: { sentFrom: 'cli' },
+        }
+
+        sseListener.current!({
+            type: 'message-received',
+            sessionId: 's1',
+            message: {
+                id: 'm1',
+                seq: 1,
+                localId: 'u1',
+                createdAt: Date.now(),
+                content: promptSuggestionContent,
+            },
+        })
+
+        expect(usePromptSuggestionStore.getState().bySession.get('s1')).toBe('用 virtuoso 重构')
+    })
+
+    it('非 prompt_suggestion 消息不写入 store', async () => {
+        await renderProvider()
+        const normalContent = {
+            role: 'agent',
+            content: { type: 'output', data: { type: 'assistant', message: { role: 'assistant', content: [] } } },
+            meta: { sentFrom: 'cli' },
+        }
+
+        sseListener.current!({
+            type: 'message-received',
+            sessionId: 's1',
+            message: {
+                id: 'm2',
+                seq: 2,
+                localId: 'u2',
+                createdAt: Date.now(),
+                content: normalContent,
+            },
+        })
+
+        expect(usePromptSuggestionStore.getState().bySession.has('s1')).toBe(false)
     })
 })
