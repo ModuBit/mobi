@@ -666,11 +666,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
             hint={slash.activeCommand?.hint}
             description={slash.activeCommand?.description}
         />,
-        // 用户在输入(draft 非空)时隐藏 suggestion; 清空 draft 则重新显示(store 未清, 仅视觉隐藏)
-        suggestion && !hasText && (
+        suggestion && (
             <SuggestionChip
                 key="suggestion"
                 text={suggestion}
+                hidden={hasText}  // 用户输入时丝滑隐藏, 清空 draft 重新显示(store 未清)
                 onAccept={() => {
                     setDraft(suggestion)  // 回填草稿 + 聚焦
                     // 采纳后即消失(建议已消费, 防止重复采纳)

@@ -31,6 +31,8 @@ const TAG_STYLE: CSSProperties = {
 
 interface SuggestionChipProps {
     text: string
+    /** 视觉隐藏（用户输入时）：保持挂载，靠 CSS 过渡丝滑收起，store 不清 */
+    hidden?: boolean
     onAccept: () => void
     onDismiss: () => void
 }
@@ -39,11 +41,21 @@ interface SuggestionChipProps {
  * 下一轮建议 chip, 显示在 Sender header 中, 用 antd Tag 呈现。
  * 点击 chip → 回填草稿(onAccept); 点击 ✕ → 关闭(onDismiss)。
  * 外层 padding 让 chip 不紧贴 Sender 的上/左边界。
+ * hidden=true 时丝滑收起（opacity + 上移 + max-height 塌缩），清空 draft 即恢复。
  * 纯受控组件, 生命周期由父级(ChatComposer)通过 store 管理。
  */
-export function SuggestionChip({ text, onAccept, onDismiss }: SuggestionChipProps) {
+export function SuggestionChip({ text, hidden, onAccept, onDismiss }: SuggestionChipProps) {
     return (
-        <div style={{ padding: '4px 8px 0 4px' }}>
+        <div
+            style={{
+                padding: '4px 8px 0 4px',
+                opacity: hidden ? 0 : 1,
+                transform: hidden ? 'translateY(-4px)' : 'translateY(0)',
+                maxHeight: hidden ? 0 : 60,
+                overflow: 'hidden',
+                transition: 'opacity .2s ease, transform .2s ease, max-height .2s ease',
+            }}
+        >
             <Tag
                 icon={<BulbOutlined />}
                 closable
