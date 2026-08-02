@@ -14,62 +14,20 @@
  * limitations under the License.
  */
 
-import styled from '@emotion/styled'
-import { theme } from 'antd'
-import type { GlobalToken } from 'antd'
-import { CloseOutlined } from '@ant-design/icons'
+import { Tag } from 'antd'
+import { BulbOutlined, CloseOutlined } from '@ant-design/icons'
+import type { CSSProperties } from 'react'
 
-// 颜色全部走 antd token（colorInfo 族），由主题算法在亮/暗模式下自动适配；
-// 不再硬编码蓝色，避免暗色主题下与全局暖灰主色冲突。
-const ChipWrapper = styled.div<{ $token: GlobalToken }>`
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 4px 2px 8px;
-    font-size: 12px;
-    color: ${({ $token }) => $token.colorInfoText};
-    background: ${({ $token }) => $token.colorInfoBg};
-    border: 1px solid ${({ $token }) => $token.colorInfoBorder};
-    border-radius: 12px;
-    cursor: pointer;
-    max-width: 100%;
-    overflow: hidden;
-    white-space: nowrap;
-    transition: background 0.2s;
-    &:hover {
-        background: ${({ $token }) => $token.colorInfoBgHover};
-    }
-`
-
-const Spark = styled.span`
-    font-size: 11px;
-    opacity: 0.7;
-    flex-shrink: 0;
-`
-
-const Text = styled.span`
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-`
-
-const DismissButton = styled.button<{ $token: GlobalToken }>`
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: ${({ $token }) => $token.colorInfoText};
-    cursor: pointer;
-    flex-shrink: 0;
-    padding: 0;
-    &:hover {
-        background: ${({ $token }) => $token.colorInfoBorder};
-    }
-`
+// Tag 本体样式：紧凑、单行省略；margin:0 抹掉默认外边距，由外层 div 统一控制留白
+const TAG_STYLE: CSSProperties = {
+    margin: 0,
+    padding: '2px 8px',
+    cursor: 'pointer',
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+}
 
 interface SuggestionChipProps {
     text: string
@@ -78,27 +36,29 @@ interface SuggestionChipProps {
 }
 
 /**
- * 下一轮建议 chip, 显示在 Sender header 中。
- * 点击文本 → 回填草稿(onAccept); 点击 ✕ → 关闭(onDismiss)。
+ * 下一轮建议 chip, 显示在 Sender header 中, 用 antd Tag 呈现。
+ * 点击 chip → 回填草稿(onAccept); 点击 ✕ → 关闭(onDismiss)。
+ * 外层 padding 让 chip 不紧贴 Sender 的上/左边界。
  * 纯受控组件, 生命周期由父级(ChatComposer)通过 store 管理。
  */
 export function SuggestionChip({ text, onAccept, onDismiss }: SuggestionChipProps) {
-    const { token } = theme.useToken()
-
     return (
-        <ChipWrapper $token={token} onClick={onAccept}>
-            <Spark>✦</Spark>
-            <Text>{text}</Text>
-            <DismissButton
-                $token={token}
-                aria-label="suggestion-dismiss"
-                onClick={(e) => {
+        <div style={{ padding: '4px 8px 0 4px' }}>
+            <Tag
+                icon={<BulbOutlined />}
+                closable
+                closeIcon={<CloseOutlined style={{ fontSize: 10 }} />}
+                onClick={() => onAccept()}
+                onClose={(e) => {
+                    // 阻止冒泡到 Tag 的 onClick：关闭不应同时触发采纳
+                    e.preventDefault()
                     e.stopPropagation()
                     onDismiss()
                 }}
+                style={TAG_STYLE}
             >
-                <CloseOutlined style={{ fontSize: 9, color: token.colorTextSecondary }} />
-            </DismissButton>
-        </ChipWrapper>
+                {text}
+            </Tag>
+        </div>
     )
 }

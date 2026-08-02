@@ -34,9 +34,15 @@ describe('SuggestionChip', () => {
     })
 
     it('点击关闭触发 onDismiss', () => {
+        const onAccept = vi.fn()
         const onDismiss = vi.fn()
-        render(<SuggestionChip text="建议" onAccept={vi.fn()} onDismiss={onDismiss} />)
-        fireEvent.click(screen.getByLabelText('suggestion-dismiss'))
+        const { container } = render(<SuggestionChip text="建议" onAccept={onAccept} onDismiss={onDismiss} />)
+        // antd Tag 的关闭图标（closable）渲染为 .ant-tag-close-icon
+        const closeIcon = container.querySelector('.ant-tag-close-icon') as HTMLElement
+        expect(closeIcon).toBeTruthy()
+        fireEvent.click(closeIcon)
         expect(onDismiss).toHaveBeenCalledTimes(1)
+        // 关闭不应同时触发采纳（onClose 内 stopPropagation 防冒泡到 Tag onClick）
+        expect(onAccept).not.toHaveBeenCalled()
     })
 })
