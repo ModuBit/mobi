@@ -29,12 +29,11 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { VirtuosoChatList, type ChatBubbleItem, type VirtuosoChatListHandle } from './VirtuosoChatList'
 import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
-import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
+import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND } from '@/domain/chat/presentation'
 import { ChatWelcome } from './ChatWelcome'
 import { CopyButton } from './CopyButton'
-import { QueuedMessagesBar } from './QueuedMessagesBar'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
@@ -114,7 +113,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const sendMutation = useSendMessage(sessionId, session?.running ?? false)
     const sessionActions = useSessionActions(sessionId)
     const virtuosoRef = useRef<VirtuosoChatListHandle>(null)
-    const composerRef = useRef<ChatComposerHandle>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定。
     // 无需按 sessionId 重置——本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建实例。
@@ -432,14 +430,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 )}
             </div>
 
-            <QueuedMessagesBar
-                sessionId={sessionId}
-                messages={messages}
-                onEdit={(text) => composerRef.current?.setDraft(text)}
-            />
-
             <ChatComposer
-                ref={composerRef}
                 sessionId={sessionId}
                 disabled={sendMutation.isPending || isCompressing || (isClearing && !clearStuck)}
                 sending={sendMutation.isPending}

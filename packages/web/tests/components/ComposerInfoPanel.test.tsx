@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 
 // Bun jsdom 环境下 navigator.language 未定义，uiStore 初始化需要
 // 使用 vi.hoisted 确保在任何模块导入之前执行
@@ -37,7 +37,7 @@ import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ComposerInfoPanel } from '@/components/composer/ComposerInfoPanel'
-import type { AgentState, SessionMetadataSummary } from '@/core/data/api/types'
+import type { AgentState, SessionMetadataSummary, DecryptedMessage } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { TodoItem } from '@mobi/shared'
 
@@ -61,6 +61,27 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/components/pixel-avatar/PixelAvatar', () => ({
     PixelAvatar: () => null,
 }))
+
+// mock useMessages —— ComposerInfoPanel 内部自取排队消息；返回稳定引用避免重渲染循环
+const messagesMock = vi.hoisted(() => ({ data: [] as DecryptedMessage[] }))
+vi.mock('@/core/data/hooks/queries/useMessages', () => ({
+    useMessages: () => messagesMock,
+}))
+
+/** 构造排队中的 user 消息（queueState='pending'） */
+function queuedMsg(id: string, text: string): DecryptedMessage {
+    return {
+        id,
+        localId: id,
+        seq: null,
+        role: 'user',
+        content: { content: { text } },
+        originalText: text,
+        queueState: 'pending',
+        status: 'completed',
+        createdAt: 1000,
+    } as unknown as DecryptedMessage
+}
 
 // mock MobiApi
 const mockApi = {
@@ -95,9 +116,15 @@ const defaultProps = {
     api: mockApi,
     disabled: false,
     onPermissionDone: vi.fn(),
+    onEditQueued: vi.fn(),
 }
 
 describe('ComposerInfoPanel', () => {
+    beforeEach(() => {
+        // 隔离用例：重置排队消息 mock，避免上一用例残留污染
+        messagesMock.data = []
+    })
+
     it('无 todos 和 requests 时返回 null', () => {
         const { container } = render(
             <ComposerInfoPanel {...defaultProps} />,
@@ -202,6 +229,20 @@ describe('ComposerInfoPanel', () => {
         const scrollEl = container.querySelector('.hide-scrollbar') as HTMLElement
         expect(scrollEl).toBeTruthy()
         expect(scrollEl.style.maxHeight).toBe('40dvh')
+    })
+
+    it('有排队消息时渲染排队条并回填编辑', () => {
+        const onEditQueued = vi.fn()
+        messagesMock.data = [queuedMsg('q-1', '排队的内容预览')]
+        const { container, unmount } = render(
+            <ComposerInfoPanel {...defaultProps} onEditQueued={onEditQueued} />,
+            { wrapper }
+        )
+        // 排队条展示消息预览文本
+        expect(container.textContent).toContain('排队的内容预览')
+        // 编辑按钮存在（具体取消/编辑交互由 QueuedMessagesBar 自身测试覆盖）
+        expect(container.querySelectorAll('button').length).toBeGreaterThan(0)
+        unmount()
     })
 
     it('有 running agents 时渲染面板', async () => {

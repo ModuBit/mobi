@@ -316,13 +316,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     const [text, setText] = useState('')
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
-    // 命令式 API：外部（如 QueuedMessagesBar 编辑）可设置草稿并聚焦
-    useImperativeHandle(ref, () => ({
-        setDraft: (draftText: string) => {
-            setText(draftText)
-            requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
-        },
-    }), [])
+    // 设置草稿并聚焦：命令式 API（外部 ref）与 ComposerInfoPanel 内排队消息编辑共用同一实现
+    const setDraft = useCallback((draftText: string) => {
+        setText(draftText)
+        requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
+    }, [])
+    useImperativeHandle(ref, () => ({ setDraft }), [setDraft])
 
     // 跨页草稿（NewSessionPage 创建会话后发送失败时暂存）优先级最高：取出后落入当前 session 草稿，
     // 随后 useComposerDraft 的 rAF 恢复会从草稿库读到它 —— 天然一致，无需标志位协调 (#2)
@@ -684,6 +683,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
                 }}
                 todos={todos}
                 tasks={tasks}
+                onEditQueued={setDraft}
             />
 
             <StatusBar

@@ -44,6 +44,9 @@ import { TasksPanel } from './TasksPanel'
 import { TeamAgentPanel } from './TeamAgentPanel'
 import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 import type { ToolCallBlock } from '@/domain/chat/types'
+import { useMessages } from '@/core/data/hooks/queries/useMessages'
+import { isQueuedInMobi } from '@/core/lib/messages'
+import { QueuedMessagesBar } from '@/components/chat/QueuedMessagesBar'
 
 const { Text } = Typography
 const { useToken } = antTheme
@@ -235,6 +238,8 @@ export type ComposerInfoPanelProps = {
     onRequestDone: () => void
     todos?: TodoItem[]
     tasks?: TaskItem[]
+    /** 排队消息编辑回填：把文本写回 composer 草稿并聚焦 */
+    onEditQueued: (text: string) => void
 }
 
 /**
@@ -249,7 +254,8 @@ export function ComposerInfoPanel({
     disabled,
     onRequestDone,
     todos,
-    tasks
+    tasks,
+    onEditQueued,
 }: ComposerInfoPanelProps) {
     const [drawerBlockId, setDrawerBlockId] = useState<string | null>(null)
     const hasPendingRequests = agentState?.requests && Object.keys(agentState.requests).length > 0
@@ -263,6 +269,10 @@ export function ComposerInfoPanel({
     const teamName = useTeamName(sessionId)
     const hasTeamAgents = teamAgents.length > 0 && !!teamName
     const hasAgents = agents.length > 0
+
+    // 排队消息：与 ChatContainer 共享 useMessages 的 react-query 缓存，不产生额外请求
+    const { data: messages = [] } = useMessages(sessionId)
+    const hasQueued = useMemo(() => messages.some(isQueuedInMobi), [messages])
 
     // 从 store 派生最新 block：先查 running agents，再查 byId（覆盖后台 Agent 任务）
     const drawerBlock: ToolCallBlock | null = (() => {
@@ -293,7 +303,7 @@ export function ComposerInfoPanel({
         await api.sessions.clearRuntimeStateFields(clearSessionId, clearFields)
     }, [api])
 
-    if (!hasPendingRequests && !hasTodos && !hasTasks && !hasAgents && !hasBgTasks && !hasTeamAgents) return null
+    if (!hasPendingRequests && !hasTodos && !hasTasks && !hasAgents && !hasBgTasks && !hasTeamAgents && !hasQueued) return null
 
     return (
         <div style={{ position: 'relative', padding: '8px 0', marginBottom: 4 }}>
@@ -303,6 +313,12 @@ export function ComposerInfoPanel({
                 style={{ maxHeight: '40dvh', overflow: 'auto' }}
             >
                 <Space orientation="vertical" size={8} style={{ width: '100%' }}>
+                    <QueuedMessagesBar
+                        sessionId={sessionId}
+                        messages={messages}
+                        onEdit={onEditQueued}
+                    />
+
                     <ToolInteractionPanel
                         requests={agentState?.requests}
                         metadata={metadata}
