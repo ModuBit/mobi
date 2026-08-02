@@ -704,6 +704,10 @@ export async function claudeRemote(opts: {
         // resolveMessageCache 按 parentUuid 清理 snapshot，不依赖 full.id == snapshot.id。
         includePartialMessages: true,
         agentProgressSummaries: true,
+        // 开启后 SDK 每轮 result 后 emit 一条 prompt_suggestion（预测的下一轮用户 prompt）。
+        // mobi 分类器已把 prompt_suggestion 归为 ephemeral（落 DB + SSE 实时推 + 历史过滤），
+        // sdkToLogConverter default 分支透传——只需开此 option，后续链路即通。
+        promptSuggestions: true,
         resume: startFrom ?? undefined,
         sessionId: pregeneratedSessionId,
         mcpServers: opts.mcpServers,
