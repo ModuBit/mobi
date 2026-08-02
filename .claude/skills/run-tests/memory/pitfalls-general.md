@@ -30,6 +30,18 @@ E2E 环境 `cliApiToken` 与 `webApiToken` **同值**（`e2e-test-token-mobi`，
 
 **反面案例（曾误判）**：虚拟化 Skeleton（`components.Header`）「未显示」排查——querySelector 轮询（40×50ms）全 miss，误以为 react-virtuoso Header 渲染异常。实际 Skeleton 完全正常，只是本地 fetchNextPage ~50ms 窗口短于轮询间隔。用 ref dump 证明 mount + 拉长窗口截图后立刻确认可见。
 
+## 性能验证 ≠ 功能验证（虚拟化改造教训）
+
+改渲染容器（虚拟化 / 列表重写）时，**只跑 performance trace 看 DOM 数 / reflow / CLS 就宣称「E2E 通过」是错的**。
+性能指标全达标的同时，功能可以是完全坏的——虚拟化迁移后 DOM 降了 91%，但 React key 大面积碰撞导致
+消息重复渲染、滚到底按钮错位、流式看不到新消息，三个 P0 现象一个都没被性能 trace 捕捉到。
+
+**列表类改动必须单独验证的功能项**（性能 trace 不覆盖）：
+1. `document.querySelectorAll('[data-testid="virtuoso-item-list"] > *')` 读 `data-index`，**断言无重复值**
+2. `list_console_messages` 查 React `Encountered two children with the same key` 报错（key 碰撞的直接证据）
+3. 滚到顶后点「滚到底」按钮，断言 `scrollHeight - clientHeight - scrollTop ≈ 0`
+4. **真实发一条消息**跑完整流式，采样断言自己的消息与 agent 输出都可见、贴底跟随生效
+
 ## 工具禁用
 
 - **不用 `analyze_image` 等工具访问 localhost** — 不支持 localhost URL
