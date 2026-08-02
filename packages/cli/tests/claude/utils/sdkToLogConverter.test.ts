@@ -20,7 +20,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { SDKToLogConverter, convertSDKToLog } from '@/claude/utils/sdkToLogConverter'
-import type { SDKMessage, SDKUserMessage, SDKAssistantMessage, SDKSystemMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { SDKMessage, SDKUserMessage, SDKAssistantMessage, SDKSystemMessage, SDKResultMessage, SDKPromptSuggestionMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { ClaudePermissionMode } from '@mobi/shared/types'
 
 // 辅助函数：创建简化版的 SDKUserMessage（用于测试）
@@ -459,6 +459,22 @@ describe('SDKToLogConverter', () => {
         it('opts.messageId 缺省时 message.id 为 undefined（不伪造）', () => {
             const raw = converter.convertSnapshot([{ type: 'text', text: 'hi' }])
             expect((raw as any).message.id).toBeUndefined()
+        })
+    })
+
+    describe('prompt_suggestion', () => {
+        it('透传 prompt_suggestion 消息, 保留 type 与 suggestion', () => {
+            const sdkMsg: SDKPromptSuggestionMessage = {
+                type: 'prompt_suggestion',
+                suggestion: '用 react-virtuoso 重构长会话列表',
+                uuid: 'uuid-1',
+                session_id: 'test-session-123',
+            }
+
+            const result = converter.convert(sdkMsg)
+            expect(result).not.toBeNull()
+            expect(result?.type).toBe('prompt_suggestion')
+            expect((result as { suggestion?: string }).suggestion).toBe('用 react-virtuoso 重构长会话列表')
         })
     })
 })
