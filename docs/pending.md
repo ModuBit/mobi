@@ -1021,9 +1021,13 @@ CLI snapshot ──SSE──▶ normalizeDecryptedMessage ──▶ reduceChatBl
 
 **优先级**：低（展示层隐藏，不阻塞功能）。
 
-## 39. ~~虚拟化历史加载顶部 Skeleton 未显示~~ ✅ 已查实正常（E2E 误判）
+## 39. ~~虚拟化历史加载顶部 Skeleton 未显示~~ ✅ 已解决（Header 闭包致组件类型变化）
 
-> **已解决（2026-08-01 复查）**：Skeleton 渲染完全正常。初次 E2E 诊断误判，根因是 evaluate `querySelector` 轮询时机问题——Skeleton 在 `isFetchingNextPage=true` 窗口（fetchNextPage 进行中）正常显示，但本地 hub 响应快（~50ms），窗口极短；当用 `sleep` 人为拉长窗口后，截图 + 连续轮询（8×200ms）均确认：`inDOM/inBody/visible` 全 true，`top: 84px`（视口顶部，用户可见）。
+> **真根因定位 + 修复（2026-08-02）**：当初「Header 函数被调用但输出未进 DOM」并非 react-virtuoso 内部抑制，而是 `components={{ Header: () => isFetching ? <Skeleton/> : null }}` 的写法本身——每次 `isFetching` 变化都产生一个**全新的函数组件类型**，React 遇到组件类型变化会卸载旧子树、挂载新子树（而非更新），挂载时机错位就表现为输出不进 DOM。
+>
+> **修复**：`HistoryLoadingHeader` 与 `CHAT_LIST_COMPONENTS` 提为模块级常量（组件类型恒定），加载态改经 Virtuoso 的 `context` prop 传入。同类型问题的 E2E 验证受数据量限制（dev 会话历史两页取尽，无第二页触发骨架），靠单测锁定 `components.Header` 跨渲染同引用契约。
+>
+> **以下为旧记录，保留备查**：
 
 > **发现（2026-08-01，code-review 问题 7 E2E 验证时）**：虚拟化迁移后，滚到顶加载更旧历史（`fetchNextPage`）时，顶部应有 Skeleton 视觉反馈（替代旧 Bubble.List 的 `__loading-skeleton__` 项）。当前 `VirtuosoChatList` 用 `components={{ Header: () => isFetchingNextPage ? <Skeleton/> : null }}` 实现，但 **Skeleton 实际未出现在 DOM**。
 
