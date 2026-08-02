@@ -101,7 +101,13 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
 
             <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
                 <ChatWrapper>
-                    <ChatContainer sessionId={sessionId} />
+                    {/* key={sessionId}：切会话必须重新挂载，不能复用组件实例。
+                        聊天容器内部有一批「只在挂载时生效」或「跨会话必须归零」的状态——
+                        Virtuoso 的 initialTopMostItemIndex（仅首次挂载定位到底部）、
+                        firstItemIndex 累减游标、reconcile 的 prevById 缓存、后台任务完成卡片。
+                        复用实例会让这些状态跨会话泄漏（表现为切会话后停在顶部而非最新消息）。
+                        用 key 交给 React 统一重置，胜过逐个字段手写 reset effect。 */}
+                    <ChatContainer key={sessionId} sessionId={sessionId} />
                 </ChatWrapper>
             </Layout.Content>
         </Layout>

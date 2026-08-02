@@ -26,9 +26,9 @@ import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions
 import { isQueuedInMobi } from '@/core/lib/messages'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
-import { buildChatBubbleItems, type BubbleItemBase } from './buildBubbleItems'
-import { VirtuosoChatList } from './VirtuosoChatList'
-import type { VirtuosoHandle } from 'react-virtuoso'
+import { buildChatBubbleItems } from './buildBubbleItems'
+import { VirtuosoChatList, type ChatBubbleItem, type VirtuosoChatListHandle } from './VirtuosoChatList'
+import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
 import { ChatComposer, type ChatComposerHandle } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND } from '@/domain/chat/presentation'
@@ -113,11 +113,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId, session?.running ?? false)
     const sessionActions = useSessionActions(sessionId)
-    const virtuosoRef = useRef<VirtuosoHandle>(null)
+    const virtuosoRef = useRef<VirtuosoChatListHandle>(null)
     const composerRef = useRef<ChatComposerHandle>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
-    // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定
+    // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定。
+    // 无需按 sessionId 重置——本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建实例。
     const prevByIdRef = useRef<ChatBlocksById>(new Map())
+    // bubble item 层的结构化共享缓存（附渲染上下文签名，用于自失效，见 decoratedItems）
+    const prevItemsRef = useRef<{ cache: BubbleItemsCache; ctxKey: string }>({ cache: new Map(), ctxKey: '' })
     const { token } = useToken()
     const { t } = useTranslation()
     const api = useMobiApi()
@@ -197,8 +200,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const [bgCompletedTasks, setBgCompletedTasks] = useState<Array<{
         taskId: string; description: string; summary?: string; status: string; toolName: string
     }>>([])
-    // sessionId 变化时清空，防止跨会话泄漏
-    useEffect(() => { setBgCompletedTasks([]) }, [sessionId])
     useEffect(() => {
         const removed = useBackgroundTasksStore.getState().consumeRemoved()
         if (removed.length === 0) return
@@ -276,11 +277,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return () => clearTimeout(timer)
     }, [isClearing, sendMutation.isPending])
 
-    // session 切换时重置 reconcile 结构化共享缓存
-    useEffect(() => {
-        prevByIdRef.current = new Map()
-    }, [sessionId])
-
     const handleScrollToBottom = useCallback(() => {
         virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' })
     }, [])
@@ -293,7 +289,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             { contextResetLabel: t('chat.contextReset') },
         )
 
-        return baseItems.map(item => {
+        const decorated: ChatBubbleItem[] = baseItems.map(item => {
             const block = item.block
             const isUserText = block?.kind === 'user-text'
 
@@ -313,15 +309,27 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 footerPlacement: 'outer-end' as const,
             }
         })
+
+        // 结构化共享：block 未变的 item 复用上一帧对象（连同其 content 元素），
+        // 让 BubbleItem 的 memo 真正生效。
+        //
+        // 缓存自失效：content 由 block + 渲染上下文共同决定，上下文变了必须整体重建，
+        // 否则会复用捕获了旧 ctx（旧 disabled / 旧 api）的 content。这里把上下文签名
+        // 与缓存存在一起比对——签名不同则丢弃缓存，从空 Map 重建。
+        const ctxKey = `${metadata?.path ?? ''}|${sessionId}|${sendMutation.isPending}|${!!session?.running}`
+        const reusableCache = prevItemsRef.current.ctxKey === ctxKey
+            ? prevItemsRef.current.cache
+            : new Map()
+        const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
+        prevItemsRef.current = { cache, ctxKey }
+        return items
     }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t])
 
     const bubbleItems = useMemo(() => {
-        const items: Array<BubbleItemBase & {
-            header?: React.ReactNode
-            footer?: React.ReactNode
-            footerPlacement?: 'inner-start' | 'inner-end' | 'outer-start' | 'outer-end'
-            classNames?: { root?: string }
-        }> = [...decoratedItems]
+        // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝
+        if (!isCompressing && !isClearing) return decoratedItems
+
+        const items: ChatBubbleItem[] = [...decoratedItems]
 
         if (isCompressing) {
             items.push({
