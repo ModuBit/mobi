@@ -3,9 +3,36 @@ import {
     getMessageWindowState,
     subscribeMessageWindow,
     clearMessageWindow,
+    fetchLatestMessages,
+    fetchOlderMessages,
+    ingestIncomingMessages,
     _resetForTest,
     _internal,
 } from '@/core/data/stores/messageWindowStore'
+import type { MobiApi } from '@/core/data/api/client'
+import type { DecryptedMessage } from '@mobi/shared'
+
+// 测试用 api stub：messages.list 返回指定页
+function makeApi(pages: { messages: DecryptedMessage[]; page: { hasMore: boolean; nextBeforeSeq: number | null } }[]): MobiApi {
+    let callIdx = 0
+    return {
+        messages: { list: async (_sid: string, _opts: { beforeSeq?: number | null }) => ({ data: pages[callIdx++] }) },
+    } as unknown as MobiApi
+}
+
+function msg(id: string, seq: number | null): DecryptedMessage {
+    return {
+        id,
+        seq,
+        localId: null,
+        submittedAt: null,
+        queueState: null,
+        positionAt: seq ?? 0,
+        createdAt: seq ?? 0,
+        content: { role: 'user', content: { type: 'text', text: id } },
+        snapshot: false,
+    } as unknown as DecryptedMessage
+}
 
 describe('messageWindowStore 基建', () => {
     beforeEach(() => _resetForTest())
@@ -78,5 +105,30 @@ describe('messageWindowStore 基建', () => {
         const s2 = getMessageWindowState('s2')
         expect(s1.hasMore).toBe(false)
         expect(s2.hasMore).toBe(true)
+    })
+})
+
+describe('fetchLatest / generation', () => {
+    beforeEach(() => _resetForTest())
+
+    it('fetchLatest 首页写入 store + hasMore/oldestSeq', async () => {
+        const api = makeApi([{ messages: [msg('a', 3), msg('b', 4)], page: { hasMore: true, nextBeforeSeq: 3 } }])
+        await fetchLatestMessages(api, 's1')
+        const s = getMessageWindowState('s1')
+        expect(s.messages.map(m => m.id)).toEqual(['a', 'b'])
+        expect(s.hasMore).toBe(true)
+        expect(s.oldestSeq).toBe(3)
+        expect(s.isLoading).toBe(false)
+    })
+
+    it('过期 fetchLatest 返回不覆盖新 SSE 状态（generation 丢弃）', async () => {
+        const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
+        const p = fetchLatestMessages(api, 's1')
+        // 在 await 期间，SSE 进来一条新消息
+        ingestIncomingMessages('s1', [msg('c', 5)])
+        await p
+        const ids = getMessageWindowState('s1').messages.map(m => m.id)
+        expect(ids).toContain('c')
+        expect(ids).toContain('a')
     })
 })

@@ -25,6 +25,9 @@
  */
 
 import type { DecryptedMessage } from '@mobi/shared'
+import type { MobiApi } from '@/core/data/api/client'
+import { resolveMessageCache } from '@/core/data/cache/messageCache'
+import { mergeMessages } from '@/core/lib/messages'
 
 /** 贴底稳定大小（用户在底部看最新） */
 export const VISIBLE_WINDOW = 400
@@ -138,3 +141,88 @@ export function clearMessageWindow(sessionId: string): void {
 
 // 内部 helper（后续 task 用）
 export const _internal = { getState, updateState, buildState }
+
+// ──────────────────────────────────────────────────────────────
+// 异步竞态防护 + 数据流入 action
+// ──────────────────────────────────────────────────────────────
+
+type AsyncKind = 'latest' | 'older'
+
+function getGeneration(s: InternalState, kind: AsyncKind): number {
+    return kind === 'latest' ? s.latestGeneration : s.olderGeneration
+}
+function setGeneration(s: InternalState, kind: AsyncKind, g: number): InternalState {
+    return kind === 'latest' ? { ...s, latestGeneration: g } : { ...s, olderGeneration: g }
+}
+function beginAsyncGeneration(sessionId: string, kind: AsyncKind, updates: Partial<MessageWindowState>): number {
+    let gen = 0
+    _internal.updateState(sessionId, prev => {
+        gen = getGeneration(prev, kind) + 1
+        return setGeneration(_internal.buildState(prev, updates) as InternalState, kind, gen)
+    })
+    return gen
+}
+function isCurrentGeneration(sessionId: string, kind: AsyncKind, gen: number): boolean {
+    return getGeneration(_internal.getState(sessionId), kind) === gen
+}
+function updateStateForGeneration(sessionId: string, kind: AsyncKind, gen: number, updater: (prev: InternalState) => InternalState): void {
+    _internal.updateState(sessionId, prev => getGeneration(prev, kind) !== gen ? prev : updater(prev))
+}
+
+/**
+ * 拉取首页消息（首次进入 / 重连补拉）。
+ * generation 防竞态：await 前后校验当前 generation，过期请求丢弃。
+ * merge 不覆盖——SSE 已到的消息不会被首页响应冲掉。
+ */
+export async function fetchLatestMessages(api: MobiApi, sessionId: string): Promise<void> {
+    if (_internal.getState(sessionId).isLoading) return
+    const gen = beginAsyncGeneration(sessionId, 'latest', { isLoading: true })
+    try {
+        const res = await api.messages.list(sessionId, { beforeSeq: undefined })
+        if (!isCurrentGeneration(sessionId, 'latest', gen)) return
+        updateStateForGeneration(sessionId, 'latest', gen, prev => {
+            const merged = mergeMessages(prev.messages, res.data.messages)
+            return _internal.buildState(prev, { messages: merged, hasMore: res.data.page.hasMore, isLoading: false }) as InternalState
+        })
+    } catch {
+        if (!isCurrentGeneration(sessionId, 'latest', gen)) return
+        updateStateForGeneration(sessionId, 'latest', gen, prev => _internal.buildState(prev, { isLoading: false }) as InternalState)
+    }
+}
+
+/**
+ * 上滚加载历史。游标用 oldestSeq；merge 到 messages 头部。
+ * generation 防竞态同 fetchLatest。
+ */
+export async function fetchOlderMessages(api: MobiApi, sessionId: string): Promise<void> {
+    const prev = _internal.getState(sessionId)
+    if (prev.isLoadingMore || !prev.hasMore || prev.oldestSeq === null) return
+    const gen = beginAsyncGeneration(sessionId, 'older', { isLoadingMore: true })
+    try {
+        const res = await api.messages.list(sessionId, { beforeSeq: prev.oldestSeq })
+        if (!isCurrentGeneration(sessionId, 'older', gen)) return
+        updateStateForGeneration(sessionId, 'older', gen, p => {
+            const merged = mergeMessages(res.data.messages, p.messages)
+            return _internal.buildState(p, { messages: merged, hasMore: res.data.page.hasMore, isLoadingMore: false }) as InternalState
+        })
+    } catch {
+        if (!isCurrentGeneration(sessionId, 'older', gen)) return
+        updateStateForGeneration(sessionId, 'older', gen, p => _internal.buildState(p, { isLoadingMore: false }) as InternalState)
+    }
+}
+
+/**
+ * SSE 增量入库（message-received / message-snapshot）。
+ * 用 resolveMessageCache 逐条 reduce，保留 snapshot→full 替换清理语义。
+ * 不分路径、不 trim——窗口裁剪由上层 effect 负责。
+ */
+export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMessage[], options?: { skipIfNotSnapshot?: boolean }): void {
+    if (incoming.length === 0) return
+    _internal.updateState(sessionId, prev => {
+        let messages = prev.messages
+        for (const m of incoming) {
+            messages = resolveMessageCache(messages, m, options)
+        }
+        return _internal.buildState(prev, { messages }) as InternalState
+    })
+}
