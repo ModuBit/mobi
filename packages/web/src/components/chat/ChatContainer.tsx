@@ -87,6 +87,13 @@ const chatScrollStyles = css`
     .chat-scroll-container [data-testid='virtuoso-item-list'] {
         padding-inline: 8px;
     }
+    /* 首次测量 settle 前遮挡 item-list —— Virtuoso 首次定位用估算高度，实测收敛时视口从
+       错位跳到正确位置（用户看到「先其他位置内容后正确内容」的闪烁）。settle 前用
+       visibility:hidden 盖住（保留布局不影响测量），ready 后显示。类名由 VirtuosoChatList
+       的 ready state 控制，加在 Virtuoso 外层 div 上。 */
+    .vcl-settling [data-testid='virtuoso-item-list'] {
+        visibility: hidden;
+    }
 `
 
 /** 聊天内容区最大宽度：超宽屏时限宽居中，避免用户/AI 气泡分列两端过于割裂；小屏自动 100% */

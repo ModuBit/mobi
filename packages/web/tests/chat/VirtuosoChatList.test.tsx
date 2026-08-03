@@ -124,3 +124,69 @@ describe('VirtuosoChatList — firstItemIndex 安全区间', () => {
         expect(Number.isSafeInteger(firstItemIndex)).toBe(true)
     })
 })
+
+describe('VirtuosoChatList — firstItemIndex prepend 检测（末项锚）', () => {
+    /**
+     * prepend 检测用「末项 key 锚」而非「首项 key findIndex」——
+     * 因为 reducer 重新归约时边界 block 的 id 会变化（孤立 permission block 在对应 tool_use
+     * 加载后消失/并入），prevFirstKey 在新 items 里 findIndex 返回 -1，旧逻辑直接跳过不减，
+     * 导致 Virtuoso 误判 prepend 为 append，首次加载历史后 startReached 永久失效。
+     * 改用末项锚：末项 key 不变 + 长度增长 = prepend，增量 = 长度差。
+     */
+    it('prepend（末项 key 不变 + 长度增长）时 firstItemIndex 减小 prepend 量', () => {
+        const initial = makeItems(5) // 末项 key = block-4
+        const { rerender } = render(<VirtuosoChatList items={initial} />)
+        const fiiBefore = capturedProps.at(-1)!.firstItemIndex as number
+
+        // 开头插入 3 条，末项仍是 block-4
+        const prepended: ChatBubbleItem[] = [
+            { key: 'new-0', role: 'assistant', content: 'n0' },
+            { key: 'new-1', role: 'assistant', content: 'n1' },
+            { key: 'new-2', role: 'assistant', content: 'n2' },
+            ...initial,
+        ]
+        rerender(<VirtuosoChatList items={prepended} />)
+        const fiiAfter = capturedProps.at(-1)!.firstItemIndex as number
+
+        expect(fiiAfter).toBe(fiiBefore - 3)
+    })
+
+    it('append（末项 key 变）时 firstItemIndex 不变', () => {
+        const initial = makeItems(5)
+        const { rerender } = render(<VirtuosoChatList items={initial} />)
+        const fiiBefore = capturedProps.at(-1)!.firstItemIndex as number
+
+        // 末尾追加 1 条，末项 key 变成 new-5
+        const appended: ChatBubbleItem[] = [
+            ...initial,
+            { key: 'new-5', role: 'assistant', content: 'n5' },
+        ]
+        rerender(<VirtuosoChatList items={appended} />)
+        const fiiAfter = capturedProps.at(-1)!.firstItemIndex as number
+
+        expect(fiiAfter).toBe(fiiBefore)
+    })
+
+    it('末项不变但 reducer 重组（prevFirstKey 消失）仍按长度差减——容忍边界 block 重组', () => {
+        // 模拟实测场景：prepend 前 items[0]="call-x"（孤立 permission block），
+        // prepend 后该 block 消失（并入真实 tool-call），但末项不变、整体仍增长
+        const initial: ChatBubbleItem[] = [
+            { key: 'call-orphan', role: 'assistant', content: 'orphan' },
+            ...makeItems(4), // block-0..block-3，末项 block-3
+        ]
+        const { rerender } = render(<VirtuosoChatList items={initial} />)
+        const fiiBefore = capturedProps.at(-1)!.firstItemIndex as number
+
+        // prepend 2 条 + 旧的 call-orphan 消失（重组），末项 block-3 不变，长度 5 → 6
+        const reorganized: ChatBubbleItem[] = [
+            { key: 'old-1', role: 'assistant', content: 'o1' },
+            { key: 'old-2', role: 'assistant', content: 'o2' },
+            ...makeItems(4), // block-0..block-3，末项 block-3 不变
+        ]
+        rerender(<VirtuosoChatList items={reorganized} />)
+        const fiiAfter = capturedProps.at(-1)!.firstItemIndex as number
+
+        // 末项 block-3 不变，长度从 5 → 6，按长度差减 1（容忍 call-orphan 消失）
+        expect(fiiAfter).toBe(fiiBefore - 1)
+    })
+})
