@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ChatBubbleItem } from './VirtuosoChatList'
+import type { ChatBubbleItem } from './BubbleListChat'
 
 /** 上一帧的 item 缓存（按 item.key 索引） */
 export type BubbleItemsCache = Map<string, ChatBubbleItem>

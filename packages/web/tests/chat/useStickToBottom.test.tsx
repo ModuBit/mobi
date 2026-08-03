@@ -66,7 +66,7 @@ function makeScroller(opts: { scrollHeight: number; clientHeight: number; scroll
     // jsdom 未实现 scrollTo
     el.scrollTo = ((arg: ScrollToOptions) => { el.scrollTop = arg.top ?? 0 }) as typeof el.scrollTo
     const itemList = document.createElement('div')
-    itemList.setAttribute('data-testid', 'virtuoso-item-list')
+    itemList.className = 'ant-bubble-list-scroll-content'
     el.appendChild(itemList)
     document.body.appendChild(el)
     return { el, itemList, setScrollHeight: (v: number) => { scrollHeight = v } }

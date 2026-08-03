@@ -27,7 +27,7 @@ import { isQueuedInMobi } from '@/core/lib/messages'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems } from './buildBubbleItems'
-import { VirtuosoChatList, type ChatBubbleItem, type VirtuosoChatListHandle } from './VirtuosoChatList'
+import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
 import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
@@ -43,7 +43,7 @@ import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
 import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
 
-// BUBBLE_ROLES 由 VirtuosoChatList 内部使用（from './bubbleRoles'），此处仅保留 re-export
+// BUBBLE_ROLES 由 BubbleListChat 内部使用（from './bubbleRoles'），此处仅保留 re-export
 // 供历史 import './ChatContainer' 的调用方兼容
 export { BUBBLE_ROLES } from './bubbleRoles'
 
@@ -60,10 +60,20 @@ const bubbleCopyStyles = css`
     }
 `
 
-/** 聊天滚动区禁止水平滚动：宽内容（代码块等）已在自身 pre 内局部滚动，不该撑出整列表水平滚动条 */
+/** 聊天滚动区禁止水平滚动：聊天列表只该垂直滚。
+ *  宽内容（代码块等）已在自身 pre 内局部滚动，不该撑出整列表的水平滚动条
+ *  （移动端表现为可左右滑到一片空白）。堵住外层容器 + Bubble.List 内部 scrollBox 两层，
+ *  并让 scroll-content / 单个 bubble 可收缩，避免正常内容被裁剪 */
 const chatScrollStyles = css`
     .chat-scroll-container {
         overflow-x: hidden;
+    }
+    .chat-scroll-container .ant-bubble-list-scroll-box {
+        overflow-x: hidden;
+    }
+    .chat-scroll-container .ant-bubble-list-scroll-content {
+        min-width: 0;
+        max-width: 100%;
     }
     .chat-scroll-container .ant-bubble {
         min-width: 0;
@@ -75,24 +85,6 @@ const chatScrollStyles = css`
         max-width: 100%;
         overflow-x: auto;
         overflow-y: hidden;
-    }
-    /* 气泡与滚动条之间的留白。
-       必须加在**内容层**（item-list），不能靠外层 .chat-scroll-container 的 padding——
-       虚拟化后滚动容器下移到 Virtuoso 内部（virtuoso-scroller），外层已是 overflow:hidden，
-       它的 padding 落在滚动条外侧，气泡仍紧贴滚动条。
-       用 padding-inline 而非 padding 简写：Virtuoso 在 item-list 上写内联
-       paddingTop/paddingBottom 承载虚拟化偏移量，简写会与之语义打架（虽然内联优先级更高，
-       但读代码时误导），只声明水平方向最清晰。
-       水平方向的 8px 由此层承担，故外层容器只留垂直 padding（见下方 JSX）。 */
-    .chat-scroll-container [data-testid='virtuoso-item-list'] {
-        padding-inline: 8px;
-    }
-    /* 首次测量 settle 前遮挡 item-list —— Virtuoso 首次定位用估算高度，实测收敛时视口从
-       错位跳到正确位置（用户看到「先其他位置内容后正确内容」的闪烁）。settle 前用
-       visibility:hidden 盖住（保留布局不影响测量），ready 后显示。类名由 VirtuosoChatList
-       的 ready state 控制，加在 Virtuoso 外层 div 上。 */
-    .vcl-settling [data-testid='virtuoso-item-list'] {
-        visibility: hidden;
     }
 `
 
@@ -110,14 +102,13 @@ interface ChatContainerProps {
 /**
  * 聊天容器：消息列表 + composer。
  *
- * 消息列表用 react-virtuoso 虚拟化（VirtuosoChatList），只渲染视口附近 bubble，DOM 不随消息量增长。
- * 滚动行为由 Virtuoso 原生 API 接管：
- * - followOutput：流式追加时贴底跟随
- * - startReached：滚到顶加载历史（fetchNextPage）
- * - firstItemIndex：prepend 历史时保持滚动位置
- * - atBottomStateChange：驱动"滚到底"按钮
+ * 消息列表用 antdx Bubble.List 全量渲染（BubbleListChat），无估高无测量修正、无跳动。
+ * 贴底跟随 / 历史加载（prepend 维持 scrollTop / fill 级联 / 顶部 skeleton）均由 BubbleListChat 接管，
+ * 复用 useStickToBottom（手势 stop / 几何 re-follow 延时 / smooth 门闩 / pointerDown 守卫）。
+ * DOM 随消息量增长，由第二步「数据层窗口化」钳制（见 docs/pending.md #40）。
  *
- * 详见 docs/pending.md #10（虚拟化迁移）。
+ * 虚拟化路径（react-virtuoso）已废弃，代码留存于 tag `chat-list-virtualized`，
+ * 踩坑记录见 memory（virtuoso-* 系列）。
  */
 export function ChatContainer({ sessionId, extraComposerButtons, extraComposerItems }: ChatContainerProps) {
     const {
@@ -130,7 +121,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const { data: session } = useSession(sessionId)
     const sendMutation = useSendMessage(sessionId, session?.running ?? false)
     const sessionActions = useSessionActions(sessionId)
-    const virtuosoRef = useRef<VirtuosoChatListHandle>(null)
+    const chatListRef = useRef<BubbleListChatHandle>(null)
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定。
     // 无需按 sessionId 重置——本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建实例。
@@ -294,10 +285,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [isClearing, sendMutation.isPending])
 
     const handleScrollToBottom = useCallback(() => {
-        virtuosoRef.current?.scrollToBottom('smooth')
+        chatListRef.current?.scrollToBottom('smooth')
     }, [])
 
-    // 传给 VirtuosoChatList 的稳定回调：内联箭头每次渲染换引用，会让其内部
+    // 传给 BubbleListChat 的稳定回调：内联箭头每次渲染换引用，会让其内部
     // 上抛 following 的 effect 每帧重跑
     const handleFollowingChange = useCallback((following: boolean) => {
         setShowScrollBottom(!following)
@@ -415,23 +406,20 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
             <Global styles={collapsibleUserMessageStyles} />
-            {/* 只保留垂直 padding：水平留白改由内容层（virtuoso-item-list）承担，
-                否则滚动条被推离容器边缘、气泡却仍紧贴滚动条（见 chatScrollStyles） */}
-            <div className="chat-scroll-container" style={{ flex: 1, overflow: 'hidden', padding: '8px 0', fontFamily: 'var(--font-chat)', position: 'relative' }}>
+            <div className="chat-scroll-container" style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
                 {chatBlocks.length === 0 ? (
                     <ChatWelcome sessionId={sessionId} />
                 ) : (
-                    <VirtuosoChatList
-                        ref={virtuosoRef}
+                    <BubbleListChat
+                        ref={chatListRef}
                         items={bubbleItems}
-                        // hasNextPage / isFetchingNextPage 双防御：startReached 在惯性滚动时可能
-                        // 连续触发，React Query 虽去重并发请求，但仍会创建多余 promise + 通知，
-                        // 这里直接短路避免无意义的下一页查找
-                        onStartReached={() => {
+                        hasNextPage={hasNextPage}
+                        isFetchingNextPage={isFetchingNextPage}
+                        onLoadMore={() => {
+                            // hasNextPage / isFetchingNextPage 双防御：BubbleListChat 内部已按 ref 检查，
+                            // 此处再短路避免无意义的下一页查找 promise + 通知
                             if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
                         }}
-                        isFetchingNextPage={isFetchingNextPage}
-                        running={session?.running ?? false}
                         onFollowingChange={handleFollowingChange}
                     />
                 )}

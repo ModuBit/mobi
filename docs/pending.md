@@ -1050,3 +1050,60 @@ CLI snapshot ──SSE──▶ normalizeDecryptedMessage ──▶ reduceChatBl
 - `packages/web/src/components/chat/ChatContainer.tsx` — `onStartReached` + `isFetchingNextPage` 传递
 
 **优先级**：低（本地/快速网络下历史加载 <50ms 无感知；远程慢网络下缺视觉反馈）。核心功能（对话、虚拟化、prepend 数据加载）均正常。
+
+---
+
+## 40. 消息列表：Bubble.List 全量渲染已恢复，数据层窗口化（第二步）待做
+
+**状态**（2026-08-03）：方向已定 —— **抛弃 react-virtuoso 虚拟化，切回 antdx Bubble.List 全量渲染**。第一步（恢复 Bubble.List 完整态）已完成并 E2E 验证；第二步（数据层窗口化钳制 DOM）待做。
+
+### 决策过程
+
+react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**严重（估高→RO 实测异步修正，14 次跳动/收缩 3509px）。修复路径逐条排除：
+
+- **内容估高启发式**（`heightEstimates`）不可行：`content` 是 ReactNode（markdown/代码块/工具卡），高度与字符数无关；`maxHeight` 组件（折叠态受 CSS 限高）、group 计算（折叠 vs 展开高度差极大）使估高对离群 item 必错。
+- **离屏预实测**（A）准但复杂（离屏渲染须与真实渲染同 CSS/markdown）。
+- **加大 `increaseViewportBy`**（B）依赖 virtuoso RO 异步测量，未验证。
+- **数据层窗口化**（C，参考 hapi）彻底消除跳动（全量真实高度，无估高无修正），代价是 DOM 随总量增长 → 需 window 钳制。
+
+最终选 C：抛弃虚拟化，Bubble.List 全量渲染。理由：虚拟化的所有坑（估高跳动、firstItemIndex、key 碰撞、遮罩、followOutput trap、scroll-fight）都是虚拟化副产物，全量渲染全部消失；唯一代价（DOM 增长）由第二步 window 解决。
+
+**为何不照搬 hapi**：hapi `message-window-store` 自管 cache（不靠 react-query），因为 react-query infinite query 保留所有 pages 的模型与"trim 旧页省内存"冲突。mobi 用 react-query 管 messages，故 window 走 **bubbleItems 层 trim**（B）——不动数据层、零 trace 断裂风险（mobi `reduceChatBlocks` 的 sidechain parentUUID 链 / tool_use-result 配对在 messages 层 trim 会断），契合 react-query。详见 brainstorming 决策记录。
+
+### 第一步：恢复 Bubble.List 完整态（✅ 已完成）
+
+**改动**：
+- 新建 `packages/web/src/components/chat/BubbleListChat.tsx`：antdx `Bubble.List`（`autoScroll={false}`）+ `useStickToBottom`（适配 `.ant-bubble-list-scroll-content`）+ 恢复 prepend 维持 scrollTop（`pendingRestoreRef` + useLayoutEffect delta pin）/ fill 级联 / 顶部 skeleton / prefetch。
+- `ChatContainer.tsx`：`VirtuosoChatList` → `BubbleListChat`，CSS 回到 `.ant-bubble-list-scroll-box/content` 式。
+- `useStickToBottom.ts`：内容层 selector `[data-testid='virtuoso-item-list']` → `.ant-bubble-list-scroll-content`，逻辑（手势 stop / 几何 re-follow 延时 / smooth 门闩 / pointerDown 守卫）全保留。
+- 删 `VirtuosoChatList.tsx` + `VirtuosoChatList.test.tsx`（虚拟化代码留存于 tag `chat-list-virtualized`，已 push）。
+
+**E2E 修复的一个 bug**：`BubbleListRef.scrollBoxNativeElement` 在 `useLayoutEffect` 时为 null（antdx 内部 effect 时序晚于父组件 useLayoutEffect），导致 scrollBoxRef 不设、RO 拿不到 scroller。改用 `querySelector('.ant-bubble-list-scroll-box')`（旧代码方式，不依赖 ref 时序）。
+
+**E2E 验证**（cp dev DB 副本 213 条会话）：
+
+| 项 | 结果 |
+|---|---|
+| 渲染（Bubble.List 结构） | ✅ scrollBox/content DOM |
+| 初始贴底 | ✅ dist=-1，RO fire |
+| 流式期贴底 | ✅ 全程 maxDist=0 / over80=0 帧 |
+| 流式期 DOM 稳定 | ✅ 10 bubble 0 重建 |
+| prepend 历史加载 | ✅ 33→65 bubble |
+| prepend 维持视口 | ✅ scrollTop=0+delta，原首项仍在视口 |
+| prepend DOM 稳定 | ✅ 原 33 bubble 0 重建 |
+| useStickToBottom 协调 | ✅ wheel following=false，RO 不破坏 restore |
+
+**保留**（期间优化全部保留）：`reconcileChatBlocks`/`reconcileBubbleItems` 结构化共享、`buildChatBubbleItems`、`CollapsibleUserMessage` RO measure、`FilePathText` CSS ellipsis、streaming 修复、通知系统、所有 `domain/chat` 逻辑。
+
+### 第二步：数据层窗口化（⏳ 待做）
+
+Bubble.List 全量渲染，DOM 随消息量增长（长会话性能问题）。第二步在 bubbleItems 层 trim 窗口（~N 条），钳制 DOM。设计待 brainstorming → spec → writing-plans。
+
+**相关文件**：
+- `packages/web/src/components/chat/BubbleListChat.tsx` — Bubble.List + useStickToBottom + restore/fill/prefetch
+- `packages/web/src/components/chat/useStickToBottom.ts` — 贴底跟随（适配 Bubble.List）
+- `packages/web/src/components/chat/ChatContainer.tsx` — 数据流（reconcile/streaming/通知）
+
+**相关 memory**：[[project_bubble-list-virtualization]]（虚拟化已废弃，tag `chat-list-virtualized` 留存）、[[project_virtuoso-mount-flicker]]/[[project_scroll-fight-pointer-drag]]/[[project_virtuoso-prepend-firstitemindex]]/[[project_virtuoso-followoutput-trap]]/[[project_virtuoso-key-collision]]（virtuoso 踩坑记录，方向已废弃但留作参考）。
+
+**优先级**：高（长会话 DOM 增长会卡顿，需 window 钳制）。

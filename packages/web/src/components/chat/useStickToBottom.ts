@@ -44,8 +44,9 @@ export const SMOOTH_SCROLL_FALLBACK_MS = 1000
  */
 export const REFOLLOW_DEBOUNCE_MS = 150
 
-/** 内容总高所在层的选择器。Virtuoso 的 scroller 直接子元素是视口层，高度恒等于 clientHeight */
-const ITEM_LIST_SELECTOR = '[data-testid="virtuoso-item-list"]'
+/** 内容总高所在层的选择器。antdx Bubble.List 的 scroller（scrollBoxNativeElement）直接子元素是
+ *  `.ant-bubble-list-scroll-content`（内容层），高度随消息/bubble 高度变化——RO 观测它驱动贴底跟随。 */
+const ITEM_LIST_SELECTOR = '.ant-bubble-list-scroll-content'
 
 /**
  * 判断键盘事件的命中的目标是否为「可编辑元素」。
