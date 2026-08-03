@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { groupCollapsibleToolCalls, formatGroupTitle } from '@/domain/chat/groupToolCalls'
-import type { ToolCallBlock } from '@/domain/chat'
+import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlock } from '@/domain/chat'
 
 function makeToolCall(overrides: Partial<{
@@ -41,6 +41,24 @@ function makeToolCall(overrides: Partial<{
       description: null,
     },
     children: [],
+  }
+}
+
+function makeReasoning(overrides: Partial<{
+  id: string
+  text: string
+  durationMs?: number
+  done?: boolean
+}> = {}): AgentReasoningBlock {
+  const id = overrides.id ?? 'rs-1'
+  return {
+    kind: 'agent-reasoning',
+    id,
+    localId: null,
+    createdAt: 1000,
+    text: overrides.text ?? '思考内容',
+    ...(overrides.durationMs != null ? { durationMs: overrides.durationMs } : {}),
+    ...(overrides.done != null ? { done: overrides.done } : {}),
   }
 }
 
@@ -119,6 +137,20 @@ describe('groupCollapsibleToolCalls', () => {
     })
     expect(result[1]).toEqual(tc2)
     expect(result[2]).toEqual(tc4)
+  })
+
+  it('group id 锚定 Zone 起始块（即使首个未完成），避免 completed 首成员翻转导致 key 抖动', () => {
+    // zone 首块是 running、completed 在其后 —— 组 id 应锚定 zone[0](tc1)，而非 completed[0](tc2)
+    const tc1 = makeToolCall({ id: 'tc1', name: 'Read', state: 'running' })
+    const tc2 = makeToolCall({ id: 'tc2', name: 'Read', state: 'completed' })
+    const tc3 = makeToolCall({ id: 'tc3', name: 'Read', state: 'completed' })
+    const result = groupCollapsibleToolCalls([tc1, tc2, tc3])
+    expect(result).toHaveLength(2)
+    const group = result[0] as Extract<typeof result[0], { kind: 'tool-call-group' }>
+    // tc2/tc3 是 completed 归组；id 锚定 zone 起始 tc1
+    expect(group.id).toBe('group-tc1')
+    expect(group.blocks).toEqual([tc2, tc3])
+    expect(result[1]).toEqual(tc1)
   })
 
   it('Zone 内 completed < 2 时全部单独展示，保持原始顺序', () => {
@@ -218,6 +250,71 @@ describe('groupCollapsibleToolCalls', () => {
     expect(group1.id).toBe('group-b1')
     expect(group2.id).toBe('group-r1')
     expect(group1.id).not.toBe(group2.id)
+  })
+
+  describe('reasoning 与 tool 混组', () => {
+    it('reasoning 与可折叠工具在同一 Zone 内混组成一组', () => {
+      const rs = makeReasoning({ id: 'rs1', done: true })
+      const bash = makeToolCall({ id: 'b1', name: 'Bash' })
+      const result = groupCollapsibleToolCalls([rs, bash])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        kind: 'tool-call-group',
+        id: 'group-rs1', // 锚定 zone 起始块（reasoning）
+        blocks: [rs, bash],
+      })
+    })
+
+    it('纯 reasoning（连续 ≥2）也成组', () => {
+      const rs1 = makeReasoning({ id: 'rs1', done: true })
+      const rs2 = makeReasoning({ id: 'rs2', done: true })
+      const result = groupCollapsibleToolCalls([rs1, rs2])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ kind: 'tool-call-group', blocks: [rs1, rs2] })
+    })
+
+    it('活跃 reasoning（isActiveReasoning=true）散落可见、不进组，与 running tool 一致', () => {
+      const rsActive = makeReasoning({ id: 'rs1', done: false })
+      const bash = makeToolCall({ id: 'b1', name: 'Bash' })
+      const read = makeToolCall({ id: 'r1', name: 'Read' })
+      const result = groupCollapsibleToolCalls([rsActive, bash, read], {
+        isActiveReasoning: b => b.id === 'rs1',
+      })
+      // bash/read completed 进组；活跃 rs1 散落在后
+      expect(result).toHaveLength(2)
+      expect(result[0]).toMatchObject({ kind: 'tool-call-group', blocks: [bash, read] })
+      expect(result[1]).toEqual(rsActive)
+    })
+
+    it('活跃 reasoning 打断 completed 计数：仅 1 个 completed 时不分组', () => {
+      const rsActive = makeReasoning({ id: 'rs1', done: false })
+      const bash = makeToolCall({ id: 'b1', name: 'Bash' })
+      const result = groupCollapsibleToolCalls([rsActive, bash], {
+        isActiveReasoning: b => b.id === 'rs1',
+      })
+      // completed 只有 bash 一个（<2），整个 zone 散落，保持原始顺序
+      expect(result).toHaveLength(2)
+      expect(result[0]).toEqual(rsActive)
+      expect(result[1]).toEqual(bash)
+    })
+
+    it('非活跃 reasoning（done 或默认）视为已完成，进组归档', () => {
+      const rs = makeReasoning({ id: 'rs1', done: true })
+      const bash = makeToolCall({ id: 'b1', name: 'Bash' })
+      const result = groupCollapsibleToolCalls([rs, bash], {
+        isActiveReasoning: () => false, // 无活跃
+      })
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ kind: 'tool-call-group', blocks: [rs, bash] })
+    })
+
+    it('默认无谓词时 reasoning 视为已完成（向后兼容）', () => {
+      const rs = makeReasoning({ id: 'rs1' }) // 无 done
+      const bash = makeToolCall({ id: 'b1', name: 'Bash' })
+      const result = groupCollapsibleToolCalls([rs, bash])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ kind: 'tool-call-group', blocks: [rs, bash] })
+    })
   })
 
   describe('MCP 工具折叠', () => {
@@ -334,6 +431,54 @@ describe('formatGroupTitle', () => {
       makeToolCall({ id: 'b3', name: 'Bash' }),
     ]
     expect(formatGroupTitle(blocks)).toBe('Run 3 shell commands')
+  })
+
+  describe('reasoning 标题（thinking 总时长，非次数）', () => {
+    it('reasoning durationMs 求和，与 tool 计数共存', () => {
+      const blocks = [
+        makeReasoning({ id: 'rs1', durationMs: 6000, done: true }),
+        makeReasoning({ id: 'rs2', durationMs: 5000, done: true }),
+        makeToolCall({ id: 'b1', name: 'Bash' }),
+        makeToolCall({ id: 'b2', name: 'Bash' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Thought 11.0s, run 2 shell commands')
+    })
+
+    it('全无 durationMs（local/历史）兜底为 thought，无时长', () => {
+      const blocks = [
+        makeReasoning({ id: 'rs1' }),
+        makeReasoning({ id: 'rs2' }),
+        makeToolCall({ id: 'r1', name: 'Read' }),
+        makeToolCall({ id: 'r2', name: 'Read' }),
+        makeToolCall({ id: 'r3', name: 'Read' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Thought, read 3 files')
+    })
+
+    it('纯 reasoning 有时长', () => {
+      const blocks = [
+        makeReasoning({ id: 'rs1', durationMs: 6000 }),
+        makeReasoning({ id: 'rs2', durationMs: 6000 }),
+        makeReasoning({ id: 'rs3', durationMs: 6000 }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Thought 18.0s')
+    })
+
+    it('纯 reasoning 无时长兜底', () => {
+      const blocks = [
+        makeReasoning({ id: 'rs1' }),
+        makeReasoning({ id: 'rs2' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Thought')
+    })
+
+    it('部分有 durationMs 部分无（混合）按有值求和', () => {
+      const blocks = [
+        makeReasoning({ id: 'rs1', durationMs: 4000 }),
+        makeReasoning({ id: 'rs2' }), // undefined 按 0
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Thought 4.0s')
+    })
   })
 
   describe('MCP 标题格式', () => {

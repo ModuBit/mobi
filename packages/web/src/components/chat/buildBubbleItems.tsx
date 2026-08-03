@@ -48,17 +48,22 @@ export function buildChatBubbleItems(
     isRunning: boolean,
     options: BuildBubbleOptions,
 ): BubbleItemBase[] {
-    const grouped = groupCollapsibleToolCalls(blocks)
-
-    // 找到最后一个 assistant block（用于 typing 动画和思考状态判断）
+    // 先基于原始 blocks 算最后一个 assistant block —— 既要驱动 typing/isThinking，
+    // 也要判定「活跃 reasoning」（正在思考），后者需在分组前传给 groupCollapsibleToolCalls
     let lastAssistantBlockKey: string | null = null
-    for (let i = grouped.length - 1; i >= 0; i--) {
-        const block = grouped[i]
-        if (block.kind === 'agent-text' || block.kind === 'agent-reasoning' || block.kind === 'tool-call' || block.kind === 'tool-call-group') {
+    for (let i = blocks.length - 1; i >= 0; i--) {
+        const block = blocks[i]
+        if (block.kind === 'agent-text' || block.kind === 'agent-reasoning' || block.kind === 'tool-call') {
             lastAssistantBlockKey = block.id
             break
         }
     }
+
+    // 活跃 reasoning（正在思考）= 最后一块 + turn running + 未打点 done：散落可见，不进组（与 running tool 一致）
+    const isActiveReasoning = (b: { kind: 'agent-reasoning'; id: string; done?: boolean }): boolean =>
+        isRunning && b.id === lastAssistantBlockKey && !b.done
+
+    const grouped = groupCollapsibleToolCalls(blocks, { isActiveReasoning })
 
     const items: BubbleItemBase[] = []
 

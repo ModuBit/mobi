@@ -1,9 +1,9 @@
 ---
 name: chat-verify
-description: 对话交互 / 等待轮询 / 权限审批 / 排队消息 / 停止 abort / 渲染验证
+description: 对话交互 / 等待轮询 / 权限审批 / 排队消息 / 停止 abort / 渲染验证 / 触发工具折叠分组
 metadata:
   type: recipe
-  last_verified: 2026-08-02
+  last_verified: 2026-08-03
 ---
 
 # 对话与验证
@@ -50,4 +50,13 @@ running 中发消息 → 进 QueuedMessagesBar 悬浮条（`Queued (N)`），不
 - **`take_snapshot` 漏条件渲染的纯布局内容** — 展开态/收起态切换渲染的纯 styled div（如吊顶 `ContextUsageDetail`）a11y tree 常不显示文本节点，看着像没渲染；用 `evaluate_script` 读 `element.innerText` 验证（只读诊断，不改状态）
 - **吊顶点击 toggle 不直观** — `SessionContextBar` 点击切换 expanded，但单测外难直接观察；读 `[aria-label="session-context"]` 的 `data-expanded` 属性判断当前态
 - **`prompt_suggestion` 首轮被 suppress** — SDK 文档明确「Suppressed on the first turn」；E2E 验证 suggestion chip 必须等**第二轮完整独立 turn**（首条消息 result 到达、running 复位后再发第二条）才出现。只发一条消息断言 chip 不存在是**误判**。同源坑：SDK 直接传 `promptSuggestions: true` 跑单轮也无 `prompt_suggestion`，别据此断定「SDK 没传参」
-- **SuggestionChip 验证要点** — chip 是 antd `Tag`（`BulbOutlined` 灯泡图标 + closable ✕），位于 Sender header（输入框上方）。a11y snapshot 里**按建议文本定位**（不要找 `✦`，那是过时描述；图标是灯泡）。采纳 = 点 tag 文本 → 草稿回填 + chip 消失；✕ = 点 `.ant-tag-close-icon` → chip 消失且草稿不受影响（onClose 内 stopPropagation 防误触采纳）。用 `evaluate_script` 读 `textarea.value` 验证回填
+## 触发工具折叠分组（验证 groupToolCalls）
+
+验证「连续可折叠块（Bash/Read/Grep/Glob/MCP + reasoning）折叠成组」时，**模型在工具调用之间插入的 text 会打断 zone**（text 非可折叠块），每个工具单独成 zone → 不分组。常见 prompt（「依次执行 N 条命令，每条说一句结果」）必然踩此坑。
+
+**要触发分组，prompt 必须强制连续工具、禁止中间文字**：
+> 连续用 Read 工具读取这 4 个文件，要求：在整个过程中绝对不要输出任何解释、说明或过渡文字，只连续发起 4 次 Read 工具调用，4 个文件全部读完之后再统一输出总结。文件：package.json、tsconfig.json、README.md、server.mjs
+
+实测产生 `[reasoning, Read×4]` 连续段 → 折叠成一组，标题 `Thought 1.0s, read 4 files`（thinking 时长求和 + tool 计数）。展开组：点 `.tool-call-think` 的 header，`.ant-think-body` 内含 reasoning（ReasoningBlock, `Thought · Xs`）+ 各 tool 卡片。
+
+**读组标题**（区分组 vs 单工具卡片）：组标题是 `span[style*="font-weight"]`，文本为 `Read N files` / `Thought Xs` 等聚合短语；单工具卡片标题是工具描述（如 `List files in current directory`）。两者都用 `.tool-call-think` class，要按标题文本区分。

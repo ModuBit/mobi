@@ -16,9 +16,10 @@
 
 import { useState, useMemo } from 'react'
 import { Think } from '@ant-design/x'
-import type { ToolCallBlock } from '@/domain/chat'
+import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
 import { ToolCallRenderer } from './ToolCallBlock'
+import { ReasoningBlock } from './ReasoningBlock'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { formatGroupTitle } from '@/domain/chat/groupToolCalls'
 
@@ -26,7 +27,7 @@ export function ToolCallGroupRenderer({
   blocks,
   ...ctx
 }: {
-  blocks: ToolCallBlock[]
+  blocks: Array<ToolCallBlock | AgentReasoningBlock>
 } & ChatBlockContext) {
   const [expanded, setExpanded] = useState(false)
   const title = useMemo(() => formatGroupTitle(blocks), [blocks])
@@ -44,7 +45,15 @@ export function ToolCallGroupRenderer({
       onExpand={setExpanded}
     >
       <div style={{ paddingLeft: 12, paddingRight: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {blocks.map(block => (
+        {blocks.map(block => block.kind === 'agent-reasoning' ? (
+          // 组内 reasoning 都是已完成（活跃的已在分组时散落到组外）：thinking=false，仅透传 durationMs
+          <ReasoningBlock
+            key={block.id}
+            text={block.text}
+            thinking={false}
+            durationMs={block.durationMs}
+          />
+        ) : (
           <ToolCallRenderer
             key={block.id}
             block={block}
