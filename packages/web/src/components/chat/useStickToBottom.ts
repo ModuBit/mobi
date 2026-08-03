@@ -43,6 +43,13 @@ export interface StickToBottomController {
     following: boolean
     /** 恢复跟随并滚到底部（供「滚到底」按钮调用） */
     stickToBottom: (behavior?: 'auto' | 'smooth') => void
+    /**
+     * 内容高度变化回调，接 Virtuoso 的 `totalListHeightChanged`。
+     * Virtuoso 测量系统在内部布局 settle 后才触发，此时读 scrollHeight 是最终值——
+     * 补 RO 观测 DOM 层的时序差（RO 回调触发时 scrollHeight 可能尚未反映最终布局，
+     * 钉到差几十 px 的位置）。
+     */
+    onContentHeightChange: () => void
 }
 
 /**
@@ -60,9 +67,11 @@ export interface StickToBottomController {
  *
  * ## 跟随意图（following）如何演化
  *
- * - 用户主动上滚（wheel / touchmove）且已离开底部 → 停止跟随。
- *   程序改 scrollTop 不触发这两个事件，所以它们是「用户主动操作」最干净的信号。
- * - 用户手动滚回底部附近（距底 ≤ 阈值）→ 自动恢复跟随。
+ * - 用户主动上滚（wheel 向上 / touchmove 向上 / PageUp·ArrowUp·Home）→ 停止跟随。
+ *   停止跟随**只认用户手势**：程序改 scrollTop 不触发 wheel/touchmove/keydown，
+ *   而 react-virtuoso 在 item 高度变化时会主动调 scrollTop 维持视觉位置、浏览器在内容变矮时
+ *   也会 clamp scrollTop 并派发 scroll——这些都「不在底部」，若用 scroll 几何判「掉队」会被误判。
+ * - 用户手动滚回底部附近（距底 ≤ 阈值，由 scroll 几何判定）→ 自动恢复跟随。
  *   缺了这条恢复路径的话，触控板轻扫一下就永久掉队，只能靠点按钮救回来。
  * - 点「滚到底」按钮 → 立即恢复。
  *
@@ -111,6 +120,30 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         scroller.scrollTop = scroller.scrollHeight
     }, [])
 
+    /**
+     * 跟随中（且非 smooth 门闩期）则钉底。供 RO / totalListHeightChanged / 门闩释放共用。
+     *
+     * 单一入口的意义：所有「内容可能变化」的信号都走同一条「跟随则钉」逻辑，行为一致、
+     * 便于推理。RO 与 Virtuoso 的 totalListHeightChanged 是两路互补信号——前者观测 DOM 层，
+     * 后者是 Virtuoso 测量系统的权威通知（在其内部布局 settle 后触发，此时读 scrollHeight
+     * 才是最终值，能修 RO 时序差导致的「差几十 px」残留）。
+     */
+    const pinIfFollowing = useCallback(() => {
+        if (!followRef.current) return
+        if (smoothScrollingRef.current) return
+        pinToBottom()
+    }, [pinToBottom])
+
+    /**
+     * 门闩解除时补钉：smooth 期间 RO/onScroll/totalListHeightChanged 均被门闩跳过，
+     * 若内容在 smooth 进行中变化，最后一次变化未被钉底。门闩解除（scrollend / 定时器兜底 /
+     * behavior='auto'）统一在此补一次，避免残留。
+     */
+    const releaseSmoothGateAndPin = useCallback(() => {
+        releaseSmoothGate()
+        pinIfFollowing()
+    }, [pinIfFollowing, releaseSmoothGate])
+
     /** 当前几何位置是否在底部附近 */
     const isNearBottom = useCallback(() => {
         const scroller = scrollerElRef.current
@@ -123,47 +156,88 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         const scroller = scrollerElRef.current
         if (!scroller) return
         if (behavior === 'auto') {
-            releaseSmoothGate()
-            pinToBottom()
+            releaseSmoothGateAndPin()
             return
         }
         smoothScrollingRef.current = true
-        // scrollend 兜底：不支持该事件的浏览器靠定时器解除门闩
+        // scrollend 兜底：不支持该事件的浏览器靠定时器解除门闩；定时器路径也补钉
+        //（releaseSmoothGateAndPin 内含 pinIfFollowing）
         if (smoothTimerRef.current !== null) clearTimeout(smoothTimerRef.current)
-        smoothTimerRef.current = setTimeout(releaseSmoothGate, SMOOTH_SCROLL_FALLBACK_MS)
+        smoothTimerRef.current = setTimeout(releaseSmoothGateAndPin, SMOOTH_SCROLL_FALLBACK_MS)
         scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
-    }, [pinToBottom, releaseSmoothGate, setFollow])
+    }, [releaseSmoothGateAndPin, setFollow])
 
-    // scroll → 双向同步跟随意图；scrollend → 解除 smooth 门闩
+    // scroll → 仅恢复跟随；用户手势 → 停止跟随；scrollend → 解除 smooth 门闩
+    //
+    // touch 起始 Y：touchmove 据此判断方向（向上拖 = 想看历史）。ref 跨事件保持，不进 state。
+    const touchStartYRef = useRef<number | null>(null)
+
     useEffect(() => {
         const scroller = scrollerElRef.current
         if (!enabled || !scroller) return
 
-        // 单个 scroll 处理器双向同步，几何位置即唯一真相源。
+        // 停止跟随与恢复跟随**刻意用不同信号源**——这是修虚拟化下「高度变化掉队」的关键：
         //
-        // 为何 scroll 事件足以区分「用户滚动」与「程序滚动」：程序侧**只会滚到底部**
-        //（pinToBottom / stickToBottom），所以落点不在底部的 scroll 必然来自用户。
+        // 程序发起的 scroll 不止「滚到底部」一种。react-virtuoso 在 item 高度变化时，
+        // 内部用 ResizeObserver **主动调整 scrollTop 以维持视觉位置**（补偿视口上方 item 的高度变化），
+        // 浏览器在内容变矮时也会 clamp scrollTop（数值减小）并派发 scroll。这两类程序 scroll 落点
+        // 都不在底部，若用几何判「掉队」会被误判为「用户上滚」→ following 翻 false → ResizeObserver
+        // 不再钉底 → 高度变化时丢失跟随，turn 最后一次修正也没人钉底（滞留几十 px）。
         //
-        // 为何不用 wheel/touchmove 判「用户想离开」：wheel 在滚动**发生前**触发，
-        // 此刻读到的还是位移前的位置——用户正贴底时向上滚，wheel 里判断仍是「在底部」，
-        // 于是不停止跟随，observer 继续钉底，用户在流式期间根本滚不上去。
-        //
-        // 为何流式增长不会误判掉队：内容变高只增 scrollHeight，**不触发 scroll 事件**，
-        // 本处理器不会被调用；随后 observer 钉底触发的 scroll 落点在底部 → 保持跟随。
-        // （Virtuoso 的 atBottomStateChange 会在 resize 时重算状态，故有此误判，本处理器没有。）
-        // 例外：程序发起的 smooth 滚动会经过一串「不在底部」的中间位置，
-        // 门闩期间跳过，否则动画途中 following 被反复置 false（按钮闪回）。
+        // 而 wheel / touchmove / keydown **只由真实用户手势触发**——程序改 scrollTop、
+        // 浏览器 clamp、Virtuoso 内部调整都不触发它们。故「停止跟随」用手势独占，
+        // 几何信号只用于「恢复跟随」（滚回底部附近），后者不存在误判问题。
         const onScroll = () => {
             if (smoothScrollingRef.current) return
-            setFollow(isNearBottom())
+            // onScroll 只管「恢复跟随」的 re-entry；钉底由 RO / totalListHeightChanged 独占。
+            // 不在 scroll 里 pin：Virtuoso 初始定位（initialTopMostItemIndex 把末项顶到视口顶）
+            // 会持续派发 scroll，跟随时若每次 pin 到底会与 Virtuoso 打架 → 初始落点错乱。
+            // 停止跟随由手势独占（wheel/touch/keydown 先于 scroll 置 false），几何信号只用于恢复。
+            if (isNearBottom()) setFollow(true)
         }
+
+        // 用户向上滚（任意幅度）→ 停止跟随。触控板连续小 wheel 也算——用户能随时滚回底部恢复。
+        const onWheelUp = (e: WheelEvent) => {
+            if (smoothScrollingRef.current) return
+            if (e.deltaY < 0) setFollow(false)
+        }
+
+        const onTouchStart = (e: TouchEvent) => {
+            touchStartYRef.current = e.touches[0]?.clientY ?? null
+        }
+        const onTouchMove = (e: TouchEvent) => {
+            if (smoothScrollingRef.current) return
+            const startY = touchStartYRef.current
+            if (startY == null) return
+            const curY = e.touches[0]?.clientY
+            if (curY == null) return
+            // 手指下移（curY > startY）= 内容向上滚 = 想看更旧的历史
+            if (curY - startY > 0) setFollow(false)
+        }
+
+        const onKeyDownUp = (e: KeyboardEvent) => {
+            if (smoothScrollingRef.current) return
+            if (e.key === 'PageUp' || e.key === 'ArrowUp' || e.key === 'Home') setFollow(false)
+        }
+
         scroller.addEventListener('scroll', onScroll, { passive: true })
-        scroller.addEventListener('scrollend', releaseSmoothGate, { passive: true })
+        // smooth 结束：解除门闩并补钉（releaseSmoothGateAndPin 内含 pinIfFollowing）。
+        // smooth 期间 RO/onScroll/totalListHeightChanged 均被门闩跳过，若内容在 smooth 进行中
+        // 变化，最后一次变化未被钉底 → 残留几十 px。scrollend 解闩时补上。
+        scroller.addEventListener('scrollend', releaseSmoothGateAndPin, { passive: true })
+        scroller.addEventListener('wheel', onWheelUp, { passive: true })
+        scroller.addEventListener('touchstart', onTouchStart, { passive: true })
+        scroller.addEventListener('touchmove', onTouchMove, { passive: true })
+        scroller.addEventListener('keydown', onKeyDownUp)
         return () => {
             scroller.removeEventListener('scroll', onScroll)
-            scroller.removeEventListener('scrollend', releaseSmoothGate)
+            scroller.removeEventListener('scrollend', releaseSmoothGateAndPin)
+            scroller.removeEventListener('wheel', onWheelUp)
+            scroller.removeEventListener('touchstart', onTouchStart)
+            scroller.removeEventListener('touchmove', onTouchMove)
+            scroller.removeEventListener('keydown', onKeyDownUp)
         }
-    }, [enabled, isNearBottom, releaseSmoothGate, setFollow])
+    }, [enabled, isNearBottom, releaseSmoothGateAndPin, setFollow])
 
     // 内容增高 → 跟随中则钉底
     useEffect(() => {
@@ -172,17 +246,13 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         const content = scroller.querySelector(ITEM_LIST_SELECTOR)
         if (!content) return
 
-        const observer = new ResizeObserver(() => {
-            if (!followRef.current) return
-            if (smoothScrollingRef.current) return
-            pinToBottom()
-        })
+        const observer = new ResizeObserver(pinIfFollowing)
         observer.observe(content)
         return () => observer.disconnect()
-    }, [enabled, pinToBottom])
+    }, [enabled, pinIfFollowing])
 
     // 卸载时清掉兜底定时器，避免在已销毁组件上跑回调
     useEffect(() => releaseSmoothGate, [releaseSmoothGate])
 
-    return { handleScrollerRef, following, stickToBottom }
+    return { handleScrollerRef, following, stickToBottom, onContentHeightChange: pinIfFollowing }
 }

@@ -175,7 +175,7 @@ export const VirtuosoChatList = forwardRef<VirtuosoChatListHandle, VirtuosoChatL
 
     // 贴底跟随：ResizeObserver 观测内容总高 + 几何判据管理跟随意图，详见 useStickToBottom。
     // items.length 由 0 变正时 item-list 才挂载，需重建观测，故用 enabled 参数驱动
-    const { handleScrollerRef, following, stickToBottom } = useStickToBottom(items.length > 0)
+    const { handleScrollerRef, following, stickToBottom, onContentHeightChange } = useStickToBottom(items.length > 0)
 
     // 跟随状态上抛，驱动「滚到底」按钮显隐
     useEffect(() => {
@@ -218,6 +218,9 @@ export const VirtuosoChatList = forwardRef<VirtuosoChatListHandle, VirtuosoChatL
             // 两者并存会争抢 scrollTop（followOutput 的 smooth 动画 vs observer 的瞬跳），
             // 表现为流式期间卡顿抖动；atBottomStateChange 的 4px 判据则让按钮闪烁。
             //
+            // totalListHeightChanged：Virtuoso 测量系统在内部布局 settle 后触发，此时读 scrollHeight
+            // 是最终值，补 RO 观测 DOM 层的时序差（修「turn 结束差几十 px」残留）。
+            totalListHeightChanged={onContentHeightChange}
             // 视口外缓冲（类似 overscan），避免快速滚动时空白
             increaseViewportBy={{ top: 600, bottom: 600 }}
             // 拿到滚动容器，供 ResizeObserver 观测内容高度变化（流式贴底跟随）

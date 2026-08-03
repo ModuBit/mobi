@@ -52,8 +52,14 @@ function makeScroller(opts: { scrollHeight: number; clientHeight: number; scroll
         scrollHeight: { get: () => scrollHeight, set: (v: number) => { scrollHeight = v } },
         scrollTop: {
             get: () => scrollTop,
-            // 赋值后同步派发 scroll 事件，对齐浏览器行为（本 hook 依赖 scroll 双向同步跟随意图）
-            set: (v: number) => { scrollTop = v; el.dispatchEvent(new Event('scroll')) },
+            // 赋值后同步派发 scroll 事件（仅当值真正变化时），对齐浏览器行为：
+            // 本 hook 依赖 scroll 双向同步，且跟随时 onScroll 会再 pin——若每次赋值都派发
+            //（哪怕值不变）会与 pin 形成同步无限递归；浏览器对相同 scrollTop 不派发 scroll。
+            set: (v: number) => {
+                if (v === scrollTop) return
+                scrollTop = v
+                el.dispatchEvent(new Event('scroll'))
+            },
         },
     })
     // jsdom 未实现 scrollTo
@@ -77,6 +83,25 @@ function renderHook(enabled: boolean, scroller: HTMLElement) {
     }
     const utils = render(<Probe on={enabled} />)
     return { ref, ...utils, Probe }
+}
+
+/** 派发用户手势事件（wheel / touch / keydown）—— 这些是「停止跟随」的唯一触发源 */
+function wheel(el: HTMLElement, deltaY: number) {
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY, bubbles: true }))
+}
+function touchStart(el: HTMLElement, clientY: number) {
+    // jsdom 无可靠 TouchEvent 构造器，用裸 Event + touches 属性
+    const ev = new Event('touchstart', { bubbles: true })
+    Object.defineProperty(ev, 'touches', { value: [{ clientY }] })
+    el.dispatchEvent(ev)
+}
+function touchMove(el: HTMLElement, clientY: number) {
+    const ev = new Event('touchmove', { bubbles: true })
+    Object.defineProperty(ev, 'touches', { value: [{ clientY }] })
+    el.dispatchEvent(ev)
+}
+function keydown(el: HTMLElement, key: string) {
+    el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 }
 
 const origRO = globalThis.ResizeObserver
@@ -105,27 +130,58 @@ describe('useStickToBottom — 流式贴底跟随', () => {
         expect(el.scrollTop).toBe(3000)
     })
 
-    it('用户上滚离开底部后停止钉底（不被强行拉回）', () => {
+    it('仅程序改 scrollTop（无用户手势）不停止跟随（回归：高度变化 reflow 误判掉队）', () => {
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         const { ref } = renderHook(true, el)
 
-        // 用户上滚 800px：赋值 scrollTop 会派发 scroll，hook 据几何位置判定掉队
+        // 模拟 Virtuoso reflow / 浏览器 clamp：程序把 scrollTop 设到非底部并派发 scroll。
+        // 旧实现会据此误判「用户上滚」→ following=false；新实现只认手势，应保持跟随。
         act(() => { el.scrollTop = 0 })
+        expect(ref.current?.following).toBe(true)
+
+        // 跟随仍在 → 后续增高仍钉底
+        setScrollHeight(3000)
+        act(() => { FakeResizeObserver.instances[0].trigger() })
+        expect(el.scrollTop).toBe(3000)
+    })
+
+    it('onContentHeightChange（Virtuoso totalListHeightChanged）把跟随中的漂移钉回（修 turn 结束差几十像素）', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+        expect(ref.current?.following).toBe(true)
+
+        // 模拟 RO 时序差 / Virtuoso 视觉稳定调整留下的漂移：scrollTop 偏离底部
+        act(() => { el.scrollTop = 400 })
+        expect(ref.current?.following).toBe(true) // 无手势，仍跟随
+        // onScroll 不负责钉底（避免与 Virtuoso 初始定位打架）；漂移由 totalListHeightChanged 信号钉回
+        expect(el.scrollTop).toBe(400)
+
+        // Virtuoso 测量 settle 后触发 totalListHeightChanged → onContentHeightChange 钉回精确底部
+        act(() => { ref.current?.onContentHeightChange() })
+        expect(el.scrollTop).toBe(1000)
+    })
+
+    it('wheel 向上 → 停止跟随，且后续增高不钉底（不被强行拉回）', () => {
+        const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        act(() => { wheel(el, -100) })
         expect(ref.current?.following).toBe(false)
 
         setScrollHeight(3000)
         act(() => { FakeResizeObserver.instances[0].trigger() })
-        expect(el.scrollTop).toBe(0)
+        // 已停止跟随，observer 不钉底
+        expect(el.scrollTop).not.toBe(3000)
     })
 
     it('用户手动滚回底部附近 → 自动恢复跟随（回归：轻扫一下永久掉队）', () => {
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         const { ref } = renderHook(true, el)
 
-        act(() => { el.scrollTop = 0 })
+        act(() => { wheel(el, -100) })
         expect(ref.current?.following).toBe(false)
 
-        // 滚回距底 < 阈值处
+        // 滚回距底 < 阈值处（scroll 几何判定恢复）
         act(() => { el.scrollTop = 1000 - 500 - (AT_BOTTOM_THRESHOLD - 1) })
         expect(ref.current?.following).toBe(true)
 
@@ -134,12 +190,56 @@ describe('useStickToBottom — 流式贴底跟随', () => {
         expect(el.scrollTop).toBe(3000)
     })
 
-    it('距底刚超阈值即判定掉队', () => {
+    it('恢复阈值边界：< 阈值恢复，> 阈值保持掉队', () => {
         const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         const { ref } = renderHook(true, el)
 
-        act(() => { el.scrollTop = 500 - (AT_BOTTOM_THRESHOLD + 1) })
+        act(() => { wheel(el, -100) })
         expect(ref.current?.following).toBe(false)
+
+        // 距底 = 阈值 + 1 → 不恢复
+        act(() => { el.scrollTop = 1000 - 500 - (AT_BOTTOM_THRESHOLD + 1) })
+        expect(ref.current?.following).toBe(false)
+
+        // 距底 = 阈值 - 1 → 恢复
+        act(() => { el.scrollTop = 1000 - 500 - (AT_BOTTOM_THRESHOLD - 1) })
+        expect(ref.current?.following).toBe(true)
+    })
+})
+
+describe('useStickToBottom — 手势停止跟随', () => {
+    it('touch 向上拖动 → 停止跟随', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        act(() => { touchStart(el, 200) })
+        act(() => { touchMove(el, 300) }) // 手指下移 = 内容向上滚 = 看历史
+        expect(ref.current?.following).toBe(false)
+    })
+
+    it('touch 向下拖动不停止跟随（用户在往底部方向滚）', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        act(() => { touchStart(el, 300) })
+        act(() => { touchMove(el, 200) }) // 手指上移 = 内容向下滚
+        expect(ref.current?.following).toBe(true)
+    })
+
+    it.each(['PageUp', 'ArrowUp', 'Home'] as const)('键盘 %s → 停止跟随', (key) => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        act(() => { keydown(el, key) })
+        expect(ref.current?.following).toBe(false)
+    })
+
+    it('wheel 向下不停止跟随（交给几何恢复）', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        act(() => { wheel(el, 100) })
+        expect(ref.current?.following).toBe(true)
     })
 })
 
@@ -165,12 +265,13 @@ describe('useStickToBottom — smooth 门闩', () => {
         const { el } = makeScroller({ scrollHeight: 3000, clientHeight: 500, scrollTop: 0 })
         const { ref } = renderHook(true, el)
 
-        act(() => { el.scrollTop = 0 })
+        // 先用手势停止跟随，再触发 smooth 回到底部
+        act(() => { wheel(el, -100) })
         expect(ref.current?.following).toBe(false)
 
         act(() => { ref.current?.stickToBottom('smooth') })
         expect(ref.current?.following).toBe(true)
-        // 模拟动画中途的一次 scroll（位置远离底部）
+        // 模拟动画中途的一次 scroll（位置远离底部）——门闩期间 onScroll 跳过，不掉队
         act(() => { el.dispatchEvent(new Event('scroll')) })
         expect(ref.current?.following).toBe(true)
     })
