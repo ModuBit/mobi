@@ -36,6 +36,19 @@ export const SMOOTH_SCROLL_FALLBACK_MS = 1000
 /** 内容总高所在层的选择器。Virtuoso 的 scroller 直接子元素是视口层，高度恒等于 clientHeight */
 const ITEM_LIST_SELECTOR = '[data-testid="virtuoso-item-list"]'
 
+/**
+ * 判断键盘事件的命中的目标是否为「可编辑元素」。
+ *
+ * keydown 停止跟随监听绑在 window 上（scroller 是无 tabIndex 的 div，焦点常态在
+ * composer 输入框内，绑在 scroller 上对多数用户失效）。但用户在输入框里按 PageUp/ArrowUp
+ * 时不应被劫持去停止跟随——交给输入框自行处理。故命中可编辑目标时跳过。
+ */
+function isEditableTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false
+    const tag = target.tagName
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
+}
+
 export interface StickToBottomController {
     /** 传给 Virtuoso 的 scrollerRef */
     handleScrollerRef: (el: HTMLElement | Window | null) => void
@@ -171,6 +184,9 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
     //
     // touch 起始 Y：touchmove 据此判断方向（向上拖 = 想看历史）。ref 跨事件保持，不进 state。
     const touchStartYRef = useRef<number | null>(null)
+    // 用户正按住指针在 scroller 上（覆盖滚动条拖拽 / 鼠标按住拖动——这两类只产生 scroll，
+    // 不产生 wheel/touch/keydown）。ref 跨事件保持，pointerup/pointercancel 在 window 清除。
+    const pointerDownRef = useRef(false)
 
     useEffect(() => {
         const scroller = scrollerElRef.current
@@ -193,7 +209,15 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
             // 不在 scroll 里 pin：Virtuoso 初始定位（initialTopMostItemIndex 把末项顶到视口顶）
             // 会持续派发 scroll，跟随时若每次 pin 到底会与 Virtuoso 打架 → 初始落点错乱。
             // 停止跟随由手势独占（wheel/touch/keydown 先于 scroll 置 false），几何信号只用于恢复。
-            if (isNearBottom()) setFollow(true)
+            if (isNearBottom()) {
+                setFollow(true)
+                return
+            }
+            // 滚动条拖拽 / 鼠标按住拖动只产生 scroll，不产生 wheel/touch/keydown——
+            // 这类「指针按下期间」的 scroll 也是真实用户意图，应用几何判停止跟随。
+            // 关键安全约束：仅在 pointerDownRef 为真时启用，故 Virtuoso reflow / 程序改 scrollTop
+            //（无指针按下）不会被误判，回归「程序改 scrollTop 不掉队」仍成立。
+            if (pointerDownRef.current) setFollow(false)
         }
 
         // 用户向上滚（任意幅度）→ 停止跟随。触控板连续小 wheel 也算——用户能随时滚回底部恢复。
@@ -215,8 +239,15 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
             if (curY - startY > 0) setFollow(false)
         }
 
+        const onPointerDown = () => { pointerDownRef.current = true }
+        const onPointerUp = () => { pointerDownRef.current = false }
+
+        // 键盘停止跟随绑在 window：scroller 是无 tabIndex 的普通 div，焦点常态在 composer
+        // 输入框（scroller 之外），绑在 scroller 上事件到不了 → 对多数用户失效。
+        // 命中可编辑元素（输入框等）时跳过，把 PageUp/Home 交回给输入框自行处理。
         const onKeyDownUp = (e: KeyboardEvent) => {
             if (smoothScrollingRef.current) return
+            if (isEditableTarget(e.target)) return
             if (e.key === 'PageUp' || e.key === 'ArrowUp' || e.key === 'Home') setFollow(false)
         }
 
@@ -228,14 +259,22 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         scroller.addEventListener('wheel', onWheelUp, { passive: true })
         scroller.addEventListener('touchstart', onTouchStart, { passive: true })
         scroller.addEventListener('touchmove', onTouchMove, { passive: true })
-        scroller.addEventListener('keydown', onKeyDownUp)
+        // pointerdown 绑 scroller：滚动条/内容上的指针按下都能捕获。
+        // pointerup/cancel 绑 window：指针在 scroller 外松开（如拖出边界）也能清除标志。
+        scroller.addEventListener('pointerdown', onPointerDown, { passive: true })
+        window.addEventListener('pointerup', onPointerUp, { passive: true })
+        window.addEventListener('pointercancel', onPointerUp, { passive: true })
+        window.addEventListener('keydown', onKeyDownUp)
         return () => {
             scroller.removeEventListener('scroll', onScroll)
             scroller.removeEventListener('scrollend', releaseSmoothGateAndPin)
             scroller.removeEventListener('wheel', onWheelUp)
             scroller.removeEventListener('touchstart', onTouchStart)
             scroller.removeEventListener('touchmove', onTouchMove)
-            scroller.removeEventListener('keydown', onKeyDownUp)
+            scroller.removeEventListener('pointerdown', onPointerDown)
+            window.removeEventListener('pointerup', onPointerUp)
+            window.removeEventListener('pointercancel', onPointerUp)
+            window.removeEventListener('keydown', onKeyDownUp)
         }
     }, [enabled, isNearBottom, releaseSmoothGateAndPin, setFollow])
 

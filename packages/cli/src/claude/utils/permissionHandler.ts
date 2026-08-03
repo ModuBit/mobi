@@ -143,8 +143,20 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
      */
     handleModeChange(mode: PermissionMode) {
         this.session.setPermissionMode(mode);
-        // enter_plan_mode 成功后同步：除写 session 外，通知运行中 Query 切换
-        void this.onApplyPermissionMode?.(mode);
+        // enter_plan_mode 成功后同步：除写 session 外，通知运行中 Query 切换。
+        // 错误在此吞 + 记 warn，避免 UnhandledPromiseRejection（query.setPermissionMode 可能因
+        // Query 已终止/销毁而 reject）。签名保持同步 void —— 调用方（claudeRemoteLauncher）
+        // 不 await，错误必须在此内部兜住。与 handlePermissionResponse 中的 await 路径行为对齐。
+        try {
+            const result = this.onApplyPermissionMode?.(mode);
+            if (result && typeof (result as Promise<unknown>).catch === 'function') {
+                (result as Promise<unknown>).catch(err => {
+                    logger.warn(`[permission] 切换运行中 Query permissionMode → ${mode} 失败`, err);
+                });
+            }
+        } catch (err) {
+            logger.warn(`[permission] 同步切换 permissionMode → ${mode} 抛错`, err);
+        }
     }
 
     /**

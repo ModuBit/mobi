@@ -103,6 +103,14 @@ function touchMove(el: HTMLElement, clientY: number) {
 function keydown(el: HTMLElement, key: string) {
     el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 }
+/** 指针按下（模拟滚动条拖拽 / 鼠标按住拖动的起始）。jsdom 无 PointerEvent，用裸 Event。 */
+function pointerDown(el: HTMLElement) {
+    el.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+}
+/** 指针抬起（window 级，模拟用户松开鼠标/触摸）。 */
+function pointerUp() {
+    window.dispatchEvent(new Event('pointerup'))
+}
 
 const origRO = globalThis.ResizeObserver
 
@@ -239,6 +247,87 @@ describe('useStickToBottom — 手势停止跟随', () => {
         const { ref } = renderHook(true, el)
 
         act(() => { wheel(el, 100) })
+        expect(ref.current?.following).toBe(true)
+    })
+})
+
+describe('useStickToBottom — 滚动条拖拽 / 指针按住拖动', () => {
+    // 回归：滚动条拖拽只产生 scroll，不产生 wheel/touch/keydown，旧实现不会停止跟随 →
+    // 流式增长时被 ResizeObserver 强行钉回底部，与用户拖拽冲突。
+    it('指针按下期间上滚 → 停止跟随（覆盖滚动条拖拽）', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        act(() => { pointerDown(el) })
+        // 滚动条拖到上方（scroll 派发，但无 wheel/touch/keydown）
+        act(() => { el.scrollTop = 0 })
+        expect(ref.current?.following).toBe(false)
+        pointerUp()
+    })
+
+    it('指针按下停止跟随后，流式增高不再被强行钉回底部', () => {
+        const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        act(() => { pointerDown(el) })
+        act(() => { el.scrollTop = 0 })
+        expect(ref.current?.following).toBe(false)
+
+        // 流式追加：observer 因 following=false 不钉底，用户拖到的位置不被覆盖
+        setScrollHeight(3000)
+        act(() => { FakeResizeObserver.instances[0].trigger() })
+        expect(el.scrollTop).toBe(0)
+        pointerUp()
+    })
+
+    it('无指针按下的程序 scroll 不停止跟随（安全约束：Virtuoso reflow 不掉队）', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        // 不按指针，直接程序改 scrollTop（模拟 Virtuoso reflow / 浏览器 clamp）
+        act(() => { el.scrollTop = 0 })
+        expect(ref.current?.following).toBe(true)
+    })
+
+    it('指针抬起后的程序 scroll 不再触发停止跟随', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        act(() => { pointerDown(el) })
+        act(() => { el.scrollTop = 0 })
+        expect(ref.current?.following).toBe(false)
+
+        // 滚回底部恢复跟随
+        act(() => { el.scrollTop = 1000 - 500 })
+        expect(ref.current?.following).toBe(true)
+
+        // 抬起指针后，程序改 scrollTop 离开底部不再翻 false
+        pointerUp()
+        act(() => { el.scrollTop = 0 })
+        expect(ref.current?.following).toBe(true)
+    })
+})
+
+describe('useStickToBottom — 键盘停止跟随绑 window', () => {
+    it('在 scroller 外派发 PageUp（冒泡到 window）→ 停止跟随', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        // 焦点常态在 composer（scroller 外），用 document.body 模拟非 scroller、非可编辑目标。
+        // 监听在 window，body 派发的事件冒泡到 window 才被捕获。
+        act(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true })) })
+        expect(ref.current?.following).toBe(false)
+    })
+
+    it('PageUp 命中可编辑元素（textarea）→ 不劫持，保持跟随', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { ref } = renderHook(true, el)
+
+        const textarea = document.createElement('textarea')
+        document.body.appendChild(textarea)
+        act(() => {
+            textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }))
+        })
         expect(ref.current?.following).toBe(true)
     })
 })

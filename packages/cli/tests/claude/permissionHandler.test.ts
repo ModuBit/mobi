@@ -535,4 +535,34 @@ describe('PermissionHandler — mode 变更通知 SDK Query（onApplyPermissionM
         expect(onApplyPermissionMode).toHaveBeenCalledTimes(1)
         expect(onApplyPermissionMode).toHaveBeenCalledWith('plan')
     })
+
+    it('onApplyPermissionMode reject 时被吞 + 记 warn（无 UnhandledPromiseRejection）', async () => {
+        const { session } = createMockDeps()
+        const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+        const onApplyPermissionMode = vi.fn(() => Promise.reject(new Error('query gone')))
+        const handler = new PermissionHandler(session as never, { onApplyPermissionMode })
+
+        // 同步签名：调用本身不抛
+        expect(() => handler.handleModeChange('plan')).not.toThrow()
+        expect(session.getPermissionMode()).toBe('plan')
+
+        // 等微任务跑完 reject 的 .catch
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(warnSpy).toHaveBeenCalled()
+        expect(String(warnSpy.mock.calls[0][0])).toContain('plan')
+        warnSpy.mockRestore()
+    })
+
+    it('onApplyPermissionMode 同步抛错时被吞 + 记 warn', () => {
+        const { session } = createMockDeps()
+        const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+        const onApplyPermissionMode = vi.fn(() => { throw new Error('sync boom') })
+        const handler = new PermissionHandler(session as never, { onApplyPermissionMode })
+
+        expect(() => handler.handleModeChange('auto')).not.toThrow()
+        expect(session.getPermissionMode()).toBe('auto')
+        expect(warnSpy).toHaveBeenCalled()
+        warnSpy.mockRestore()
+    })
 })
