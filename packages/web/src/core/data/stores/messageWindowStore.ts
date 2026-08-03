@@ -24,10 +24,11 @@
  *（fetch in flight 时若窗口被 clear，旧响应自动失效）。
  */
 
-import type { DecryptedMessage } from '@mobi/shared'
+import type { DecryptedMessage, MessageStatus } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import { resolveMessageCache } from '@/core/data/cache/messageCache'
 import { mergeMessages } from '@/core/lib/messages'
+import { markMessagesSubmitted as applyMarkSubmitted } from '@/core/lib/markMessagesSubmitted'
 
 /** 贴底稳定大小（用户在底部看最新） */
 export const VISIBLE_WINDOW = 400
@@ -224,5 +225,48 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
             messages = resolveMessageCache(messages, m, options)
         }
         return _internal.buildState(prev, { messages })
+    })
+}
+
+// ──────────────────────────────────────────────────────────────
+// queued/optimistic actions
+// ──────────────────────────────────────────────────────────────
+
+/** 乐观发送（useSendMessage onMutate） */
+export function appendOptimisticMessage(sessionId: string, message: DecryptedMessage): void {
+    _internal.updateState(sessionId, prev => _internal.buildState(prev, { messages: [...prev.messages, message] }))
+}
+
+/** 取消排队（useCancelQueuedMessage onMutate）—— 按 localId 或 id 移除 */
+export function removeOptimisticMessage(sessionId: string, localId: string): void {
+    _internal.updateState(sessionId, prev => {
+        const next = prev.messages.filter(m => m.localId !== localId && m.id !== localId)
+        if (next.length === prev.messages.length) return prev
+        return _internal.buildState(prev, { messages: next })
+    })
+}
+
+/** SSE messages-submitted：queued 被 agent 消费，翻 submittedAt + queueState */
+export function markMessagesSubmitted(sessionId: string, localIds: string[], submittedAt: number): void {
+    if (localIds.length === 0) return
+    _internal.updateState(sessionId, prev => {
+        const next = applyMarkSubmitted(prev.messages, localIds, submittedAt)
+        if (next === prev.messages) return prev
+        return _internal.buildState(prev, { messages: next })
+    })
+}
+
+/** 发送状态机（sending/sent/failed） */
+export function updateMessageStatus(sessionId: string, localId: string, status: MessageStatus): void {
+    if (!localId) return
+    _internal.updateState(sessionId, prev => {
+        let changed = false
+        const next = prev.messages.map(m => {
+            if (m.localId !== localId || m.status === status) return m
+            changed = true
+            return { ...m, status }
+        })
+        if (!changed) return prev
+        return _internal.buildState(prev, { messages: next })
     })
 }

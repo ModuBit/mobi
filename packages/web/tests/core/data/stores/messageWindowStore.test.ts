@@ -6,11 +6,16 @@ import {
     fetchLatestMessages,
     fetchOlderMessages,
     ingestIncomingMessages,
+    appendOptimisticMessage,
+    removeOptimisticMessage,
+    markMessagesSubmitted,
+    updateMessageStatus,
     _resetForTest,
     _internal,
 } from '@/core/data/stores/messageWindowStore'
 import type { MobiApi } from '@/core/data/api/client'
 import type { DecryptedMessage } from '@mobi/shared'
+import type { MessageStatus } from '@/core/data/api/types'
 
 // 测试用 api stub：messages.list 返回指定页
 function makeApi(pages: { messages: DecryptedMessage[]; page: { hasMore: boolean; nextBeforeSeq: number | null } }[]): MobiApi {
@@ -148,5 +153,41 @@ describe('fetchLatest / generation', () => {
         // fetchLatest 返回的 [a] 应被丢弃（gen mismatch），store 仍空（clear 后）
         const ids = getMessageWindowState('s1').messages.map(m => m.id)
         expect(ids).not.toContain('a')
+    })
+})
+
+describe('queued/optimistic actions', () => {
+    beforeEach(() => _resetForTest())
+
+    it('appendOptimisticMessage 追加到末尾 + messagesVersion 递增', () => {
+        ingestIncomingMessages('s1', [msg('a', 1)])
+        const v0 = getMessageWindowState('s1').messagesVersion
+        appendOptimisticMessage('s1', msg('opt', null))
+        const s = getMessageWindowState('s1')
+        expect(s.messages.map(m => m.id)).toEqual(['a', 'opt'])
+        expect(s.messagesVersion).toBe(v0 + 1)
+    })
+
+    it('removeOptimisticMessage 按 localId 移除', () => {
+        const m = { ...msg('x', null), localId: 'loc-1' } as DecryptedMessage
+        appendOptimisticMessage('s1', m)
+        removeOptimisticMessage('s1', 'loc-1')
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual([])
+    })
+
+    it('markMessagesSubmitted 把命中 localId 翻为 consumed', () => {
+        const m = { ...msg('x', null), localId: 'loc-1', queueState: 'pending' as const } as DecryptedMessage
+        appendOptimisticMessage('s1', m)
+        markMessagesSubmitted('s1', ['loc-1'], 123)
+        const r = getMessageWindowState('s1').messages[0]
+        expect(r.queueState).toBe('consumed')
+        expect(r.submittedAt).toBe(123)
+    })
+
+    it('updateMessageStatus 改 status', () => {
+        const m = { ...msg('x', null), localId: 'loc-1', status: 'sending' as MessageStatus } as DecryptedMessage
+        appendOptimisticMessage('s1', m)
+        updateMessageStatus('s1', 'loc-1', 'failed')
+        expect(getMessageWindowState('s1').messages[0].status).toBe('failed')
     })
 })
