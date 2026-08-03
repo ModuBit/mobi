@@ -118,6 +118,11 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
     const smoothScrollingRef = useRef(false)
     const smoothTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+    // 用户正按住指针在 scroller 上（覆盖滚动条拖拽 / 鼠标按住拖动——这两类只产生 scroll，
+    // 不产生 wheel/touch/keydown）。声明在此处供 pinIfFollowing 守卫使用（拖拽期间让出
+    // scrollTop 控制权，避免钉底与用户上滚争抢）。ref 跨事件保持，pointerup/pointercancel 在 window 清除。
+    const pointerDownRef = useRef(false)
+
     const releaseSmoothGate = useCallback(() => {
         smoothScrollingRef.current = false
         if (smoothTimerRef.current !== null) {
@@ -144,6 +149,12 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
     const pinIfFollowing = useCallback(() => {
         if (!followRef.current) return
         if (smoothScrollingRef.current) return
+        // 用户正在拖拽滚动条 / 按住内容拖动时让出 scrollTop 控制权——
+        // 拖拽起步常在底部 40px 区内（following 仍 true），此时若 RO / totalListHeightChanged
+        //（拖拽时顶部 item 进入视口触发 Virtuoso 实测微调）钉底，会与用户上滚争抢 → 列表反复震动。
+        // wheel / touch 上滚由 onWheelUp / onTouchMove 立即置 false，不在此路径；
+        // 此守卫专防「只产生 scroll + pointerdown、不产生 wheel/touch」的滚动条 / 鼠标拖动。
+        if (pointerDownRef.current) return
         pinToBottom()
     }, [pinToBottom])
 
@@ -184,9 +195,7 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
     //
     // touch 起始 Y：touchmove 据此判断方向（向上拖 = 想看历史）。ref 跨事件保持，不进 state。
     const touchStartYRef = useRef<number | null>(null)
-    // 用户正按住指针在 scroller 上（覆盖滚动条拖拽 / 鼠标按住拖动——这两类只产生 scroll，
-    // 不产生 wheel/touch/keydown）。ref 跨事件保持，pointerup/pointercancel 在 window 清除。
-    const pointerDownRef = useRef(false)
+    // pointerDownRef 已前移至 pinIfFollowing 之前（供其拖拽守卫使用）
 
     useEffect(() => {
         const scroller = scrollerElRef.current

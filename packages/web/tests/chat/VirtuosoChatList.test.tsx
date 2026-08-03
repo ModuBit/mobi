@@ -189,4 +189,27 @@ describe('VirtuosoChatList — firstItemIndex prepend 检测（末项锚）', ()
         // 末项 block-3 不变，长度从 5 → 6，按长度差减 1（容忍 call-orphan 消失）
         expect(fiiAfter).toBe(fiiBefore - 1)
     })
+
+    it('items 清空后重新填充（末项 key 复现）不减 firstItemIndex——回归：stale ref 误减', () => {
+        // 回归 finding 2：旧实现用 useRef 跟踪 prev，items 清空时 guard 跳过整块不重置 ref，
+        // 重新填充且末项 key 恰好相同时 lastKey===prevLast && grown>0 → 误减 firstItemIndex。
+        // 新实现用 useState derived-state：清空时 prev 重置为 {undefined,0}，refill 按 isInitial
+        // 处理（不减）。
+        const initial = makeItems(3) // 末项 block-2
+        const { rerender } = render(<VirtuosoChatList items={initial} />)
+        const fiiBefore = capturedProps.at(-1)!.firstItemIndex as number
+
+        // 清空（SWR 暂态等），prev tracking 应重置
+        rerender(<VirtuosoChatList items={[]} />)
+        // 重新填充，末项仍是 block-2（key 复现），开头多 1 条 → 总长 4
+        const refilled: ChatBubbleItem[] = [
+            { key: 'new-0', role: 'assistant', content: 'n0' },
+            ...initial, // 末项 block-2 不变
+        ]
+        rerender(<VirtuosoChatList items={refilled} />)
+        const fiiAfter = capturedProps.at(-1)!.firstItemIndex as number
+
+        // refill 是 isInitial（prev.len===0 → 正），不是 prepend，不减
+        expect(fiiAfter).toBe(fiiBefore)
+    })
 })

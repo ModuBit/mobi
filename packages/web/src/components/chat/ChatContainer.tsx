@@ -431,6 +431,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                             if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
                         }}
                         isFetchingNextPage={isFetchingNextPage}
+                        running={session?.running ?? false}
                         onFollowingChange={handleFollowingChange}
                     />
                 )}
