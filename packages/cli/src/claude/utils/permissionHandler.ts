@@ -113,12 +113,21 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     private allowedBashLiterals = new Set<string>();
     private allowedBashPrefixes = new Set<string>();
     private onPermissionRequestCallback?: (toolCallId: string) => void;
+    /**
+     * mode 变更时通知运行中的 SDK Query 动态切换 permissionMode。
+     *
+     * session.setPermissionMode 只更新 Session 内存字段（供 keepAlive 上报与 Query 重启时
+     * getSessionConfig 读取）；运行中 Query 的模式切换只能靠 query.setPermissionMode。
+     * 缺了这条通知，ExitPlanMode 批准选 auto 后 SDK Query 仍停留在旧模式 → 编辑继续弹审批。
+     */
+    private readonly onApplyPermissionMode?: (mode: PermissionMode) => void | Promise<void>;
     /** agentID → { description, subagentType }，从 task_started 系统消息中提取 */
     private agentInfoMap = new Map<string, { description: string; subagentType?: string }>();
 
-    constructor(session: Session) {
+    constructor(session: Session, opts?: { onApplyPermissionMode?: (mode: PermissionMode) => void | Promise<void> }) {
         super(session.client);
         this.session = session;
+        this.onApplyPermissionMode = opts?.onApplyPermissionMode;
     }
     
     /**
@@ -134,6 +143,8 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
      */
     handleModeChange(mode: PermissionMode) {
         this.session.setPermissionMode(mode);
+        // enter_plan_mode 成功后同步：除写 session 外，通知运行中 Query 切换
+        void this.onApplyPermissionMode?.(mode);
     }
 
     /**
@@ -191,6 +202,11 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
         // Update permission mode
         if (response.mode) {
             this.session.setPermissionMode(response.mode);
+            // 通知运行中的 SDK Query 动态切换（ExitPlanMode 批准 / 普通工具批准带 mode 都走这里）。
+            // session 字段供 keepAlive 上报与 Query 重启时 getSessionConfig 读取；运行中 Query 的
+            // 模式切换只能靠 query.setPermissionMode，不能只写 session——否则 plan 批准选 auto 后
+            // SDK 仍停留在旧模式，编辑继续走 canUseTool 弹审批。
+            await this.onApplyPermissionMode?.(response.mode);
         }
 
         // Handle ask_user_question

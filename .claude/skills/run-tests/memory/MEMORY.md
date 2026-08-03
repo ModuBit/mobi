@@ -8,6 +8,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [自定义输入框操作](input-box.md) — click → Ctrl+A → type_text 通用规范（登录 / 聊天共用）
 - [创建会话](create-session.md) — 新建 / 选机器 / 工作目录
 - [对话与验证](chat-verify.md) — 发消息 / 等待轮询 / 权限审批 / 排队消息 / 停止按钮（composer 合并按钮）/ 渲染验证
+- [plan 模式切换验证](plan-mode-verify.md) — 切 plan / 触发 exit_plan_mode / 批准四档按钮 / 模式生效观测点（composer 指示器 + 编辑是否弹审批）
 - [通用误判](pitfalls-general.md) — 不归属单一任务的经验（token 用途、诊断命令、短生命周期 DOM 验证、工具禁用）
 - [调试解锁 E2E](debug-unlock-e2e.md) — evaluate_script 模拟连点 + 拦截 a.click 捕获下载
 - [贴底跟随验证](scroll-follow-verify.md) — virtuoso DOM 锚点、rAF 探针、触发真流式的 prompt、指标阈值

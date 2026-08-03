@@ -278,7 +278,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             return { status: 'steered' }
         });
 
-        const permissionHandler = new PermissionHandler(session);
+        const permissionHandler = new PermissionHandler(session, {
+            // mode 变更时通知运行中 SDK Query 动态切换 permissionMode（见 permissionHandler 说明）
+            onApplyPermissionMode: (mode) => this.queryControlRef?.current?.setPermissionMode(mode),
+        });
         this.permissionHandler = permissionHandler;
 
         const messageQueue = new OutgoingMessageQueue<RawJSONLines>(

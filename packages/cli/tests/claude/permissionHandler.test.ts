@@ -471,3 +471,68 @@ describe('PermissionHandler — 权限模式单一真相源 = session（方案 A
         expect(session.getPermissionMode()).toBe('default')
     })
 })
+
+// ─── plan 批准后 SDK Query 运行时模式切换（onApplyPermissionMode）─────────
+// 背景：ExitPlanMode 批准选 auto 后编辑仍弹审批。根因是 permissionHandler 只写 session，
+// 没通知运行中 SDK Query。修复：构造注入 onApplyPermissionMode，mode 变更时调用以触发
+// query.setPermissionMode（SDK Query 运行时模式动态切换的唯一入口）。
+describe('PermissionHandler — mode 变更通知 SDK Query（onApplyPermissionMode）', () => {
+    function makePending() {
+        return { resolve: vi.fn(), reject: vi.fn(), toolName: 'exit_plan_mode', input: {}, toolUseID: 't-plan' }
+    }
+
+    it('handlePermissionResponse 带 mode 时调用 onApplyPermissionMode（回归：plan 批准选 auto 后 SDK 切 auto）', async () => {
+        const { session } = createMockDeps()
+        const onApplyPermissionMode = vi.fn()
+        const handler = new PermissionHandler(session as never, { onApplyPermissionMode })
+        const pending = makePending()
+
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            { id: 't-plan', approved: true, mode: 'auto' },
+            pending
+        )
+
+        // session 写入 + 通知 SDK Query 两者都发生
+        expect(session.getPermissionMode()).toBe('auto')
+        expect(onApplyPermissionMode).toHaveBeenCalledTimes(1)
+        expect(onApplyPermissionMode).toHaveBeenCalledWith('auto')
+    })
+
+    it('handlePermissionResponse 无 mode 时不调用 onApplyPermissionMode', async () => {
+        const { session } = createMockDeps()
+        const onApplyPermissionMode = vi.fn()
+        const handler = new PermissionHandler(session as never, { onApplyPermissionMode })
+        const pending = { resolve: vi.fn(), reject: vi.fn(), toolName: 'Bash', input: {}, toolUseID: 't1' }
+
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({ id: 't1', approved: true }, pending)
+
+        expect(onApplyPermissionMode).not.toHaveBeenCalled()
+    })
+
+    it('未传 onApplyPermissionMode 时向后兼容不报错（旧构造签名）', async () => {
+        const { session } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        const pending = makePending()
+
+        // @ts-expect-error 访问 protected
+        await expect(handler.handlePermissionResponse(
+            { id: 't-plan', approved: true, mode: 'auto' },
+            pending
+        )).resolves.toBeDefined()
+        expect(session.getPermissionMode()).toBe('auto')
+    })
+
+    it('handleModeChange 也调用 onApplyPermissionMode（enter_plan_mode 同步路径）', () => {
+        const { session } = createMockDeps()
+        const onApplyPermissionMode = vi.fn()
+        const handler = new PermissionHandler(session as never, { onApplyPermissionMode })
+
+        handler.handleModeChange('plan')
+
+        expect(session.getPermissionMode()).toBe('plan')
+        expect(onApplyPermissionMode).toHaveBeenCalledTimes(1)
+        expect(onApplyPermissionMode).toHaveBeenCalledWith('plan')
+    })
+})
