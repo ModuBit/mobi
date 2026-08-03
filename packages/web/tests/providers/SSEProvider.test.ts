@@ -16,6 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { decideToastAction, parseActiveSessionId } from '@/core/notifications'
+import { derivePendingRequestsCount } from '@/core/providers/SSEProvider'
 
 /**
  * patchSessionCache 中 effort delta 合并逻辑的等价纯函数实现
@@ -68,6 +69,35 @@ describe('SSE effort delta 合并', () => {
         const existing = { effort: 'high' }
         const result = mergeRuntimeStateDelta(existing, { effort: null })
         expect(result).toEqual({ effort: null })
+    })
+})
+
+describe('derivePendingRequestsCount —— agentState 折算列表圆点计数', () => {
+    // 回归：审批/ask 后 CLI 上报 agentState.requests 清空 → SSE session-updated →
+    // patchSessionCache 列表分支须把 agentState 折算成 pendingRequestsCount，
+    // 否则列表圆点卡橙（SessionSummary 无 agentState 字段，patch 不会自动反映）。
+    it('多个 pending requests → 计数等于 key 数', () => {
+        expect(derivePendingRequestsCount({
+            requests: { a: { tool: 'Bash' }, b: { tool: 'Edit' } },
+        })).toBe(2)
+    })
+
+    it('requests 为空对象 → 0（审批后清空，圆点应变蓝）', () => {
+        expect(derivePendingRequestsCount({ requests: {} })).toBe(0)
+    })
+
+    it('requests 缺省 → 0', () => {
+        expect(derivePendingRequestsCount({ controlledByUser: true })).toBe(0)
+    })
+
+    it('requests 为 null → 0', () => {
+        expect(derivePendingRequestsCount({ requests: null })).toBe(0)
+    })
+
+    it('agentState 为 null/非对象 → 0（防御 malformed）', () => {
+        expect(derivePendingRequestsCount(null)).toBe(0)
+        expect(derivePendingRequestsCount(undefined)).toBe(0)
+        expect(derivePendingRequestsCount('oops')).toBe(0)
     })
 })
 

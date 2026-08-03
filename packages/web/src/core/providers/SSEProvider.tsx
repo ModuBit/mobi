@@ -202,6 +202,18 @@ function hasSessionChanges(
     return false
 }
 
+/**
+ * 从 agentState 折算 pendingRequestsCount。
+ * 列表缓存项是 SessionSummary 形状（无 agentState 字段，只有 pendingRequestsCount 计数），
+ * 故 session-updated 带来的 agentState 需折算成计数写回，否则审批/ask 后 requests 已清空，
+ * 列表圆点仍卡在橙色（详情页存完整 Session，有 agentState，不受影响）。
+ */
+export function derivePendingRequestsCount(agentState: unknown): number {
+    if (!agentState || typeof agentState !== 'object') return 0
+    const requests = (agentState as { requests?: Record<string, unknown> | null }).requests
+    return requests ? Object.keys(requests).length : 0
+}
+
 function patchSessionCache(
     queryClient: ReturnType<typeof useQueryClient>,
     sessionId: string,
@@ -256,12 +268,24 @@ function patchSessionCache(
         if (idx === -1) return old
         const target = old[idx]
         if (!hasSessionChanges(target, patch, runtimeStatePatch, runtimeStateReplace)) return old
-        const updated = [...old]
-        updated[idx] = {
+        // 列表项是 SessionSummary 形状：无 agentState 字段，只有 pendingRequestsCount 计数。
+        // 把 patch 里的 agentState 折算成 count 写回（并丢弃 agentState 本身，保持列表项形状干净）。
+        const summaryPatch: Record<string, unknown> = { ...patch }
+        let pendingRequestsCount: number | undefined
+        if ('agentState' in summaryPatch) {
+            pendingRequestsCount = derivePendingRequestsCount(summaryPatch.agentState)
+            delete summaryPatch.agentState
+        }
+        const updatedItem: Session = {
             ...target,
-            ...patch,
+            ...summaryPatch,
             ...buildRuntimeStateUpdate(target.runtimeState, runtimeStatePatch, runtimeStateReplace),
         }
+        if (pendingRequestsCount !== undefined) {
+            ;(updatedItem as Session & { pendingRequestsCount: number }).pendingRequestsCount = pendingRequestsCount
+        }
+        const updated = [...old]
+        updated[idx] = updatedItem
         return updated
     })
 }
