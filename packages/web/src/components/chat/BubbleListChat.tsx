@@ -20,6 +20,7 @@ import { Skeleton } from 'antd'
 import { BUBBLE_ROLES } from './bubbleRoles'
 import type { BubbleItemBase } from './buildBubbleItems'
 import { useStickToBottom } from './useStickToBottom'
+import { VISIBLE_WINDOW, EXPAND_WINDOW } from '@/core/data/stores/messageWindowStore'
 
 /** 装饰后的 bubble item 类型（buildBubbleItems 产出 + header/footer/装饰字段） */
 export type ChatBubbleItem = BubbleItemBase & {
@@ -101,6 +102,13 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     isFetchingNextPageRef.current = isFetchingNextPage
     const onLoadMoreRef = useRef(onLoadMore)
     onLoadMoreRef.current = onLoadMore
+
+    // window 状态机：贴末尾模式（含最新）vs 滑动模式（老位置，不含最新）。
+    // following=true → 贴末尾 slice(-VISIBLE_WINDOW)；following=false → slice(-N) 动态增长到 EXPAND_WINDOW。
+    // null = 贴末尾模式；数字 = 滑动模式 start（用户上滚到 N=800 后继续上滚，start 偏移，不含最新）
+    const windowStartRef = useRef<number | null>(null)
+    // 贴末尾模式动态 N（上滚 prepend 增长，cap EXPAND_WINDOW）
+    const windowSizeRef = useRef(VISIBLE_WINDOW)
 
     const { handleScrollerRef, following, stickToBottom } = useStickToBottom(items.length > 0)
 
@@ -219,18 +227,45 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         scrollToBottom: stickToBottom,
     }), [stickToBottom])
 
-    // 顶部 skeleton：fill 级联期间不显示（高度来回跳动致抖动），仅用户主动滚到顶加载时显示
+    // renderItems：window slice + 顶部 skeleton。
+    //
+    // window 状态机（spec §6.2）：
+    // - following=true（贴底看最新）：items.slice(-VISIBLE_WINDOW=400)，SSE 增长裁顶保 400
+    // - following=false + 贴末尾模式（N<800）：items.slice(-N)，N 动态增长（上滚 prepend 增，cap 800）
+    // - following=false + 滑动模式（N=800 后继续上滚）：items.slice(start, start+800)，不含最新
+    //
+    // data-bubble-key 透传：BubbleProps extends React.HTMLAttributes<HTMLDivElement>，
+    // data-* 经 Bubble.js 内部 pickAttrs(restProps, {data:true}) 透传到 Bubble 根 div。
+    // 用 spread 加属性绕过 TS excess property check（React 19 types 无 data-* index signature）。
     const renderItems = useMemo<ChatBubbleItem[]>(() => {
-        if (!isFetchingNextPage || isFillingRef.current) return items
+        let windowed: ChatBubbleItem[]
+        if (following) {
+            // 贴末尾：最新 VISIBLE_WINDOW
+            windowStartRef.current = null
+            windowSizeRef.current = VISIBLE_WINDOW
+            windowed = items.slice(-VISIBLE_WINDOW)
+        } else if (windowStartRef.current !== null) {
+            // 滑动模式：固定 start + EXPAND_WINDOW（不含最新）
+            const start = windowStartRef.current
+            windowed = items.slice(start, start + EXPAND_WINDOW)
+        } else {
+            // 贴末尾模式 + following=false：动态 N（上滚 prepend 增长，cap EXPAND_WINDOW）
+            const n = Math.min(windowSizeRef.current, EXPAND_WINDOW)
+            windowed = items.slice(-n)
+        }
+        // 给每个 item 根元素加 data-bubble-key（供测试/调试定位 bubble）
+        const tagged = windowed.map(it => ({ ...it, 'data-bubble-key': it.key }))
+        // 顶部 skeleton：fill 级联期间不显示（高度来回跳动致抖动），仅用户主动滚到顶加载时显示
+        if (!isFetchingNextPage || isFillingRef.current) return tagged
         return [
             {
                 key: '__loading-skeleton__',
                 role: 'system' as const,
                 content: <Skeleton active avatar paragraph={{ rows: 2 }} />,
             },
-            ...items,
+            ...tagged,
         ]
-    }, [items, isFetchingNextPage])
+    }, [items, following, isFetchingNextPage])
 
     return (
         <div ref={scrollContainerRef} style={{ height: '100%' }}>
