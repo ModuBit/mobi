@@ -21,6 +21,7 @@ import {
     useStickToBottom,
     AT_BOTTOM_THRESHOLD,
     SMOOTH_SCROLL_FALLBACK_MS,
+    REFOLLOW_DEBOUNCE_MS,
     type StickToBottomController,
 } from '@/components/chat/useStickToBottom'
 
@@ -182,15 +183,34 @@ describe('useStickToBottom — 流式贴底跟随', () => {
         expect(el.scrollTop).not.toBe(3000)
     })
 
+    it('从底部 wheel 上滚的初 40px 区内不被几何 re-follow 翻回（回归：拉扯/跳动）', () => {
+        // 真实场景：用户从贴底向上滚，onWheelUp 置 following=false，但浏览器原生滚派发 scroll，
+        // 旧实现 onScroll 的 isNearBottom()（仍在 40px 底部区内）立即 setFollow(true) 把 false
+        // 翻回 true → 后续 RO/totalListHeightChanged pin 把 scrollTop 拉回底部 → 列表反复拉扯、
+        // 跳动（用户上滚、程序钉底争抢）。修复：几何 re-follow 延时到滚动 settle 后。
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 }) // dist=0 贴底
+        const { ref } = renderHook(true, el)
+        expect(ref.current?.following).toBe(true)
+
+        // wheel up（onWheelUp 置 false）+ 原生滚上 20px（dist=20，仍在 40px 底部区内）→ 派发 scroll
+        act(() => {
+            wheel(el, -100)
+            el.scrollTop = 500 - 20
+        })
+        expect(ref.current?.following).toBe(false) // 修复后：不被几何 re-follow 翻回
+    })
+
     it('用户手动滚回底部附近 → 自动恢复跟随（回归：轻扫一下永久掉队）', () => {
+        vi.useFakeTimers()
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         const { ref } = renderHook(true, el)
 
         act(() => { wheel(el, -100) })
         expect(ref.current?.following).toBe(false)
 
-        // 滚回距底 < 阈值处（scroll 几何判定恢复）
+        // 滚回距底 < 阈值处（scroll 几何判定恢复，延时到 settle 后）
         act(() => { el.scrollTop = 1000 - 500 - (AT_BOTTOM_THRESHOLD - 1) })
+        act(() => { vi.advanceTimersByTime(REFOLLOW_DEBOUNCE_MS + 1) })
         expect(ref.current?.following).toBe(true)
 
         setScrollHeight(3000)
@@ -199,6 +219,7 @@ describe('useStickToBottom — 流式贴底跟随', () => {
     })
 
     it('恢复阈值边界：< 阈值恢复，> 阈值保持掉队', () => {
+        vi.useFakeTimers()
         const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         const { ref } = renderHook(true, el)
 
@@ -207,10 +228,12 @@ describe('useStickToBottom — 流式贴底跟随', () => {
 
         // 距底 = 阈值 + 1 → 不恢复
         act(() => { el.scrollTop = 1000 - 500 - (AT_BOTTOM_THRESHOLD + 1) })
+        act(() => { vi.advanceTimersByTime(REFOLLOW_DEBOUNCE_MS + 1) })
         expect(ref.current?.following).toBe(false)
 
         // 距底 = 阈值 - 1 → 恢复
         act(() => { el.scrollTop = 1000 - 500 - (AT_BOTTOM_THRESHOLD - 1) })
+        act(() => { vi.advanceTimersByTime(REFOLLOW_DEBOUNCE_MS + 1) })
         expect(ref.current?.following).toBe(true)
     })
 })
@@ -290,6 +313,7 @@ describe('useStickToBottom — 滚动条拖拽 / 指针按住拖动', () => {
     })
 
     it('指针抬起后的程序 scroll 不再触发停止跟随', () => {
+        vi.useFakeTimers()
         const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         const { ref } = renderHook(true, el)
 
@@ -297,8 +321,9 @@ describe('useStickToBottom — 滚动条拖拽 / 指针按住拖动', () => {
         act(() => { el.scrollTop = 0 })
         expect(ref.current?.following).toBe(false)
 
-        // 滚回底部恢复跟随
+        // 滚回底部恢复跟随（延时到 settle 后）
         act(() => { el.scrollTop = 1000 - 500 })
+        act(() => { vi.advanceTimersByTime(REFOLLOW_DEBOUNCE_MS + 1) })
         expect(ref.current?.following).toBe(true)
 
         // 抬起指针后，程序改 scrollTop 离开底部不再翻 false

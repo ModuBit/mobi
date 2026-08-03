@@ -33,6 +33,17 @@ export const AT_BOTTOM_THRESHOLD = 40
  */
 export const SMOOTH_SCROLL_FALLBACK_MS = 1000
 
+/**
+ * 几何 re-follow 的延时（ms）。
+ *
+ * 用户从贴底上滚时，初 40px 底部区内 `onScroll` 的 `isNearBottom()` 会**立即**把
+ * `onWheelUp` / `onTouchMove` 刚置的 `following=false` 翻回 `true` → RO /
+ * `totalListHeightChanged` 的 pin 把 scrollTop 拉回底部，与用户上滚争抢 → 列表反复拉扯、跳动
+ *（用户上滚、程序钉底）。延时到滚动 settle（最后一次 scroll 后此毫秒数）再判 `isNearBottom`，
+ * 避开「上滚初段仍在底部区」的误判窗口；触控板动量滚动结束后才 re-follow。
+ */
+export const REFOLLOW_DEBOUNCE_MS = 150
+
 /** 内容总高所在层的选择器。Virtuoso 的 scroller 直接子元素是视口层，高度恒等于 clientHeight */
 const ITEM_LIST_SELECTOR = '[data-testid="virtuoso-item-list"]'
 
@@ -122,6 +133,8 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
     // 不产生 wheel/touch/keydown）。声明在此处供 pinIfFollowing 守卫使用（拖拽期间让出
     // scrollTop 控制权，避免钉底与用户上滚争抢）。ref 跨事件保持，pointerup/pointercancel 在 window 清除。
     const pointerDownRef = useRef(false)
+    // 几何 re-follow 的延时定时器（见 onScroll，避免从底部上滚初段被即时 re-follow 翻转）
+    const reFollowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const releaseSmoothGate = useCallback(() => {
         smoothScrollingRef.current = false
@@ -219,7 +232,15 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
             // 会持续派发 scroll，跟随时若每次 pin 到底会与 Virtuoso 打架 → 初始落点错乱。
             // 停止跟随由手势独占（wheel/touch/keydown 先于 scroll 置 false），几何信号只用于恢复。
             if (isNearBottom()) {
-                setFollow(true)
+                // 延时 re-follow：用户从贴底上滚的初 40px 区内 isNearBottom 仍 true，若即时
+                // setFollow(true) 会把 onWheelUp/onTouchMove 刚置的 false 翻回 true → pin 拉回底部，
+                // 与用户上滚争抢 → 列表反复拉扯、跳动。延时到滚动 settle 后再判，避开误判窗口。
+                if (reFollowTimerRef.current !== null) clearTimeout(reFollowTimerRef.current)
+                reFollowTimerRef.current = setTimeout(() => {
+                    reFollowTimerRef.current = null
+                    // settle 后重新判 isNearBottom（期间用户可能已离开底部区）
+                    if (isNearBottom()) setFollow(true)
+                }, REFOLLOW_DEBOUNCE_MS)
                 return
             }
             // 滚动条拖拽 / 鼠标按住拖动只产生 scroll，不产生 wheel/touch/keydown——
@@ -301,6 +322,11 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
 
     // 卸载时清掉兜底定时器，避免在已销毁组件上跑回调
     useEffect(() => releaseSmoothGate, [releaseSmoothGate])
+
+    // 卸载时清 re-follow 延时定时器，防遗留
+    useEffect(() => () => {
+        if (reFollowTimerRef.current !== null) clearTimeout(reFollowTimerRef.current)
+    }, [])
 
     return { handleScrollerRef, following, stickToBottom, onContentHeightChange: pinIfFollowing }
 }
