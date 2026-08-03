@@ -17,7 +17,7 @@
 import { describe, test, expect, spyOn } from 'bun:test'
 import { createSocketServer, extractTerminalToken } from '../../src/socket/server'
 import { testJwtSecret } from '../helpers/setupTestApp'
-import { AUTH_COOKIE_NAME } from '../../src/web/middleware/auth'
+import { AUTH_COOKIE_NAME } from '../../src/web/auth/session'
 import { hubLogger } from '../../src/logger'
 
 describe('extractTerminalToken 双源提取', () => {

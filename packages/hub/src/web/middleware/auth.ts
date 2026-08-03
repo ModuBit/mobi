@@ -17,7 +17,8 @@
 import type { MiddlewareHandler } from 'hono'
 import { z } from 'zod'
 import { jwtVerify } from 'jose'
-import { getCookie } from 'hono/cookie'
+import { getCookie, setCookie } from 'hono/cookie'
+import { AUTH_COOKIE_NAME, signSessionJwt, getAuthCookieOptions, SESSION_TTL_SECONDS } from '../auth/session'
 
 export type WebAppEnv = {
     Variables: {
@@ -31,9 +32,9 @@ const jwtPayloadSchema = z.object({
     ns: z.string()
 })
 
-// 认证 cookie 名 —— httpOnly 防 XSS 窃取，由浏览器自动随同源请求（含 <img>/<video>/SSE）携带
-// 单一真源：routes/auth.ts import 此常量，消除两处重复
-export const AUTH_COOKIE_NAME = 'mobi_token'
+// 滑动续期阈值：剩余寿命 < 半寿命才重签发（1d 寿命 → 剩余 <12h 触发）。
+// 活跃用户每天最多续 1~2 次，cookie 永不过期；频繁请求不会每次都 setCookie。
+const RENEW_THRESHOLD_MS = (SESSION_TTL_SECONDS / 2) * 1000
 
 export function createAuthMiddleware(jwtSecret: Uint8Array): MiddlewareHandler<WebAppEnv> {
     return async (c, next) => {
@@ -63,6 +64,17 @@ export function createAuthMiddleware(jwtSecret: Uint8Array): MiddlewareHandler<W
 
             c.set('userId', parsed.data.uid)
             c.set('namespace', parsed.data.ns)
+
+            // 滑动续期：剩余寿命 < 阈值则重签发 JWT + Set-Cookie。
+            // 所有 /api/* 请求（含 SSE 重连）都经此中间件，活跃用户自然续期；
+            // 闲置达 SESSION_TTL_SECONDS 不发请求 → 不续 → 自然过期（符合"闲置登出"语义）。
+            // Set-Cookie 随响应头下发（SSE 流式响应的初始 200 头也带），浏览器自动更新。
+            const exp = verified.payload.exp // 秒（unix）
+            if (exp && exp * 1000 - Date.now() < RENEW_THRESHOLD_MS) {
+                const freshToken = await signSessionJwt(jwtSecret, parsed.data.uid, parsed.data.ns)
+                setCookie(c, AUTH_COOKIE_NAME, freshToken, getAuthCookieOptions())
+            }
+
             await next()
             return
         } catch {

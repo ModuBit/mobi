@@ -15,7 +15,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import { jwtVerify } from 'jose'
+import { jwtVerify, SignJWT } from 'jose'
 import { setupTestApp, getAuthToken, testJwtSecret, testWebApiToken, testCliApiToken } from '../helpers/setupTestApp'
 
 // 从 Set-Cookie header 中解析指定 cookie 的值
@@ -243,5 +243,51 @@ describe('Auth API', () => {
         const res = await app.request(`/api/events?token=${token}`)
 
         expect(res.status).toBe(401)
+    })
+
+    // —— 滑动续期 ——
+    // 所有 /api/* 请求经 auth middleware：jwtVerify 通过后，若剩余寿命 < 半寿命(12h)，
+    // 重签发 JWT + Set-Cookie。活跃用户自然续期，闲置 1d 才过期。
+    // 手工签指定 exp 的 token，绕过 getAuthToken（它签的是新鲜 1d token，不会触发续期）。
+    async function signTokenWithExp(secondsFromNow: number): Promise<string> {
+        const now = Math.floor(Date.now() / 1000)
+        return new SignJWT({ uid: 1, ns: 'default' })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setIssuedAt(Math.max(1, now - (86400 - secondsFromNow)))
+            .setExpirationTime(now + secondsFromNow)
+            .sign(testJwtSecret)
+    }
+
+    test('滑动续期：剩余 < 半寿命（将过期 1h）触发重签发 Set-Cookie', async () => {
+        const staleToken = await signTokenWithExp(3600) // 剩余 1h < 12h → 续
+
+        const res = await app.request('/api/sessions', {
+            headers: { Cookie: `mobi_token=${staleToken}` }
+        })
+        expect(res.status).not.toBe(401)
+
+        const setCookie = res.headers.get('set-cookie')
+        expect(setCookie).toBeTruthy()
+        const freshToken = parseCookieValue(setCookie, 'mobi_token')
+        expect(freshToken).toBeTruthy()
+
+        // 新 token 用同一 secret 可验；exp 比旧 token 晚（续到 ~now+1d），
+        // 且 exp - iat ≈ SESSION_TTL_SECONDS（helper 单一来源生效）
+        const fresh = (await jwtVerify(freshToken!, testJwtSecret)).payload
+        const stale = (await jwtVerify(staleToken, testJwtSecret)).payload
+        expect(fresh.exp!).toBeGreaterThan(stale.exp!)
+        expect((fresh.exp as number) - (fresh.iat as number)).toBeCloseTo(86400, -1)
+    })
+
+    test('滑动续期：剩余 > 半寿命（新鲜 23h）不触发续期', async () => {
+        const freshToken = await signTokenWithExp(23 * 3600) // 剩余 23h > 12h → 不续
+
+        const res = await app.request('/api/sessions', {
+            headers: { Cookie: `mobi_token=${freshToken}` }
+        })
+        expect(res.status).not.toBe(401)
+
+        // 不续期：响应不应带 mobi_token 的 Set-Cookie
+        expect(parseCookieValue(res.headers.get('set-cookie'), 'mobi_token')).toBeUndefined()
     })
 })

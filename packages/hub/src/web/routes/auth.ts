@@ -17,29 +17,12 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { setCookie, getCookie } from 'hono/cookie'
-import { SignJWT, jwtVerify } from 'jose'
+import { jwtVerify } from 'jose'
 import { z } from 'zod'
-import { configuration } from '../../configuration'
 import { verifyWebCredential } from '../auth/verifyWebCredential'
 import { getOrCreateOwnerId } from '../../config/ownerId'
-import { AUTH_COOKIE_NAME, type WebAppEnv } from '../middleware/auth'
-// cookie 生命周期，与 JWT 过期（1d）对齐
-const AUTH_COOKIE_MAX_AGE = 86400
-/**
- * cookie 安全属性工厂：secure 动态求值（避免模块加载时读 configuration.publicUrl）。
- * Lax 防 CSRF POST，Path=/ 覆盖所有 media/SSE 端点。
- * secure 仅 https 部署时启用（http localhost 部署下 false，否则浏览器丢弃 cookie）。
- */
-export function getAuthCookieOptions(maxAge: number = AUTH_COOKIE_MAX_AGE) {
-    const isHttps = configuration.publicUrl.startsWith('https')
-    return {
-        httpOnly: true,
-        sameSite: 'Lax' as const,
-        path: '/',
-        maxAge,
-        secure: isHttps,
-    }
-}
+import { AUTH_COOKIE_NAME, signSessionJwt, getAuthCookieOptions } from '../auth/session'
+import type { WebAppEnv } from '../middleware/auth'
 
 // 从请求中提取 JWT：优先 cookie（新链路），回退 Authorization header（过渡兼容 cli + 旧 web）
 function extractToken(c: Context<WebAppEnv>): string | undefined {
@@ -99,11 +82,7 @@ export function createAuthRoutes(jwtSecret: Uint8Array): Hono<WebAppEnv> {
         const userId = await getOrCreateOwnerId()
         const namespace = webCred.namespace
 
-        const token = await new SignJWT({ uid: userId, ns: namespace })
-            .setProtectedHeader({ alg: 'HS256' })
-            .setIssuedAt()
-            .setExpirationTime('1d')
-            .sign(jwtSecret)
+        const token = await signSessionJwt(jwtSecret, userId, namespace)
 
         // Set-Cookie：httpOnly cookie 让浏览器自动随同源请求携带（media/SSE 直连）
         setCookie(c, AUTH_COOKIE_NAME, token, getAuthCookieOptions())
