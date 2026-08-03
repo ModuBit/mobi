@@ -1095,9 +1095,13 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 
 **保留**（期间优化全部保留）：`reconcileChatBlocks`/`reconcileBubbleItems` 结构化共享、`buildChatBubbleItems`、`CollapsibleUserMessage` RO measure、`FilePathText` CSS ellipsis、streaming 修复、通知系统、所有 `domain/chat` 逻辑。
 
-### 第二步：数据层窗口化（⏳ 待做）
+### 第二步：数据层窗口化（C-2 已完成，C-1 待做）
 
-Bubble.List 全量渲染，DOM 随消息量增长（长会话性能问题）。第二步在 bubbleItems 层 trim 窗口（~N 条），钳制 DOM。设计待 brainstorming → spec → writing-plans。
+**C-2（store 去.pages + 渲染层 window）已完成（2026-08-04）**：新建 `messageWindowStore`（自管 external store，扁平 `DecryptedMessage[]` + 独立游标 + generation 防竞态）替代 `useMessages` 的 `useInfiniteQuery`（消除 react-query pages + SSE append page[0] 三重不匹配）。store 全量不 trim（C-2 钳 DOM 不钳内存）。trim 推到 BubbleListChat 渲染层（reduce 之后，sidechain 天然完整）。window 动态 N [400, 800]（对齐 hapi 双阈值）+ 贴末尾⇄滑动状态机 + N=800 offsetTop restore。SSE/optimistic/submitted/cancel 全改调 store action。单测 1411 + typecheck + lint 全绿。spec: `docs/superpowers/specs/2026-08-03-message-window-store-design.md`，plan: `docs/superpowers/plans/2026-08-03-message-window-store.md`。
+
+**C-1（store 层 turn 边界 trim 钳内存）待做**：在 store 加按 turn 边界 trim（user message + compact-summary + context-cleared 为 turn 起点，保整 turn 保 sidechain）。前提待验证：sidechain ⊆ turn（SDK Task 同步阻塞，子任务不跨 user message 边界）——实测 sidechain seq 分布确认。
+
+**E2E 验证**：C-2 window 滑动/N=800/offsetTop 单测覆盖不到（jsdom offsetTop=0），E2E 受 dev session 恢复环境限制（runner 不恢复 demo session），留实机测（deploy 含 C-2 二进制后真机验证 window 滑动 + N=800 裁顶 + offsetTop restore + 重连补拉 merge + 流式 snapshot update）。
 
 **相关文件**：
 - `packages/web/src/components/chat/BubbleListChat.tsx` — Bubble.List + useStickToBottom + restore/fill/prefetch
