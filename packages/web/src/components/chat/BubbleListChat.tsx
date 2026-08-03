@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Bubble } from '@ant-design/x'
 import { Skeleton } from 'antd'
 import { BUBBLE_ROLES } from './bubbleRoles'
@@ -86,7 +86,8 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     const scrollContainerRef = useRef<HTMLDivElement | null>(null)
     const scrollBoxRef = useRef<HTMLDivElement | null>(null)
     // prepend 历史时记录的 scroll 几何，供 restore useLayoutEffect 维持视口
-    const pendingRestoreRef = useRef<{ scrollTop: number; scrollHeight: number; itemsLength: number } | null>(null)
+    // firstItemKey：原首项 key（N=800 prepend+append 裁时用 offsetTop 测量补偿量）
+    const pendingRestoreRef = useRef<{ scrollTop: number; scrollHeight: number; itemsLength: number; firstItemKey?: string | number | null } | null>(null)
     // restore 补偿期间屏蔽 scroll listener（避免重复触发 prefetch / 误判 fill）
     const isRestoringScrollRef = useRef(false)
     // fill 级联：初始加载内容未溢出时连续拉页，期间不显示 skeleton（避免高度来回跳动）
@@ -109,6 +110,12 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     const windowStartRef = useRef<number | null>(null)
     // 贴末尾模式动态 N（上滚 prepend 增长，cap EXPAND_WINDOW）
     const windowSizeRef = useRef(VISIBLE_WINDOW)
+    // window ref 变更不触发 re-render，用 windowTick 显式触发（window prepend / 滑动模式切换后 +1）
+    const [windowTick, setWindowTick] = useState(0)
+
+    // 同步 renderItems 信息到 ref（handleScroll useCallback([]) 闭包读不到 renderItems）
+    const renderItemsLengthRef = useRef(0)
+    const firstRenderItemKeyRef = useRef<string | number | null | undefined>(undefined)
 
     const { handleScrollerRef, following, stickToBottom } = useStickToBottom(items.length > 0)
 
@@ -121,8 +128,13 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         handleScrollerRef(scrollBox)
     }, [items.length > 0, handleScrollerRef])
 
-    // 跟随状态上抛，驱动「滚到底」按钮
+    // 跟随状态上抛，驱动「滚到底」按钮；following=true 时重置 window 到贴末尾模式
     useEffect(() => {
+        if (following) {
+            // 点按钮/滚回底部：重置贴末尾模式
+            windowStartRef.current = null
+            windowSizeRef.current = VISIBLE_WINDOW
+        }
         onFollowingChange?.(following)
     }, [following, onFollowingChange])
 
@@ -141,15 +153,59 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         if (isRestoringScrollRef.current) return
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
-        const { scrollTop, scrollHeight, clientHeight } = scrollBox
-        // 滚到顶部 prefetch：记 pendingRestore（供 restore 维持视口）+ 触发加载
-        if (scrollTop < HISTORY_PREFETCH_DISTANCE && hasNextPageRef.current && !isFetchingNextPageRef.current) {
-            pendingRestoreRef.current = { scrollTop, scrollHeight, itemsLength: itemsLengthRef.current }
-            onLoadMoreRef.current()
+        const { scrollTop, scrollHeight } = scrollBox
+
+        // 滚到顶 prefetch：window 滑动 + 滑动模式置位 + store 顶 fetchNextPage
+        if (scrollTop < HISTORY_PREFETCH_DISTANCE && !isFetchingNextPageRef.current) {
+            const inSlidingMode = windowStartRef.current !== null
+            const inTailMode = !inSlidingMode
+            // store 中是否还有比当前 window 更旧的 item
+            const windowHasOlderInStore = inSlidingMode
+                ? windowStartRef.current! > 0
+                : itemsLengthRef.current > windowSizeRef.current
+
+            if (inTailMode && windowSizeRef.current >= EXPAND_WINDOW && windowHasOlderInStore) {
+                // 贴末尾 N=800 + store 还有更旧 → 转滑动模式（DOM 不变，后续上滚走滑动 prepend）
+                pendingRestoreRef.current = {
+                    scrollTop, scrollHeight,
+                    itemsLength: itemsLengthRef.current,
+                    firstItemKey: firstRenderItemKeyRef.current,
+                }
+                windowStartRef.current = itemsLengthRef.current - EXPAND_WINDOW
+                setWindowTick(v => v + 1)
+                return
+            }
+            if (windowHasOlderInStore) {
+                // store 已有更旧：window prepend（不 fetch，仅扩窗口）
+                pendingRestoreRef.current = {
+                    scrollTop, scrollHeight,
+                    itemsLength: itemsLengthRef.current,
+                    firstItemKey: firstRenderItemKeyRef.current,
+                }
+                if (inSlidingMode) {
+                    // 滑动模式：start 前移 50（prepend + append 裁）
+                    windowStartRef.current = Math.max(0, windowStartRef.current! - 50)
+                } else {
+                    // 贴末尾模式：N 增长 50（只 prepend 不裁，cap 800）
+                    windowSizeRef.current = Math.min(windowSizeRef.current + 50, EXPAND_WINDOW)
+                }
+                setWindowTick(v => v + 1)
+                return
+            }
+            // store 全量也到顶：fetchNextPage（拉新页扩展 store）
+            if (hasNextPageRef.current) {
+                pendingRestoreRef.current = {
+                    scrollTop, scrollHeight,
+                    itemsLength: itemsLengthRef.current,
+                    firstItemKey: firstRenderItemKeyRef.current,
+                }
+                onLoadMoreRef.current()
+            }
             return
         }
-        // fill：内容未溢出时主动加载（窗口足够高消息列表无需滚动，scroll 永不触发）
-        if (scrollHeight <= clientHeight && hasNextPageRef.current && !isFetchingNextPageRef.current) {
+
+        // fill：window 没填满 + 还有历史 → 主动加载（窗口足够高消息列表无需滚动，scroll 永不触发）
+        if (renderItemsLengthRef.current < VISIBLE_WINDOW && hasNextPageRef.current && !isFetchingNextPageRef.current) {
             isFillingRef.current = true
             onLoadMoreRef.current()
         }
@@ -166,20 +222,38 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
 
     // prepend 历史维持 scrollTop：items 变化后 DOM 已提交，此时读新 scrollHeight，
     // 按 delta 补偿 scrollTop。全量在 DOM，real heights 同步可读，无需等 RO 测量。
+    // N=800（prepend + append 裁同时）时 scrollHeight delta 不精确，改用原首项 offsetTop 测量。
     useLayoutEffect(() => {
         const pending = pendingRestoreRef.current
         if (!pending) return
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
 
-        const delta = scrollBox.scrollHeight - pending.scrollHeight
-        if (delta !== 0) {
+        // 判断补偿方式：N=800（滑动模式 / 贴末尾 N 已 cap）用 offsetTop，N<800 用 scrollHeight delta
+        const inSlidingOrCapped = windowStartRef.current !== null || windowSizeRef.current >= EXPAND_WINDOW
+        let compensate: number | null = null
+
+        if (inSlidingOrCapped && pending.firstItemKey != null) {
+            // N=800：原首项从 offsetTop=0 变到 offsetTop=prependHeight（顶部加了新 item）
+            // 用 querySelectorAll + dataset 匹配，避免 CSS 选择器转义问题
+            const firstEl = Array.from(scrollBox.querySelectorAll('[data-bubble-key]'))
+                .find(el => (el as HTMLElement).dataset.bubbleKey === String(pending.firstItemKey)) as HTMLElement | undefined
+            if (firstEl) {
+                compensate = firstEl.offsetTop
+            }
+        }
+        if (compensate == null) {
+            // N<800（只 prepend 不裁）或 offsetTop 测量失败：scrollHeight delta（精确）
+            compensate = scrollBox.scrollHeight - pending.scrollHeight
+        }
+
+        if (compensate !== 0) {
             isRestoringScrollRef.current = true
-            scrollBox.scrollTop = pending.scrollTop + delta
+            scrollBox.scrollTop = pending.scrollTop + compensate
             pending.scrollTop = scrollBox.scrollTop
             pending.scrollHeight = scrollBox.scrollHeight
         }
-        // 加载完成（items 增长 / fetch 结束）→ 清 pending，延时解除 restore guard。
+        // 加载完成（items 增长 / fetch 结束 / window prepend）→ 清 pending，延时解除 restore guard。
         // 延时内若仍在顶部附近 → 自动续拉下一页（修复「restore 后无 scroll 事件、用户须再滚一下」）
         if (items.length > pending.itemsLength || !isFetchingNextPageRef.current) {
             const restoredScrollTop = scrollBox.scrollTop
@@ -189,19 +263,13 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
             scrollRestoreTimerRef.current = setTimeout(() => {
                 scrollRestoreTimerRef.current = null
                 isRestoringScrollRef.current = false
-                if (restoredScrollTop < HISTORY_PREFETCH_DISTANCE
-                    && hasNextPageRef.current && !isFetchingNextPageRef.current) {
-                    isFillingRef.current = false
-                    pendingRestoreRef.current = {
-                        scrollTop: scrollBox.scrollTop,
-                        scrollHeight: scrollBox.scrollHeight,
-                        itemsLength: itemsLengthRef.current,
-                    }
-                    onLoadMoreRef.current()
+                // restore 后若仍在顶部附近，继续触发（window prepend 或 fetchNextPage）
+                if (restoredScrollTop < HISTORY_PREFETCH_DISTANCE) {
+                    handleScroll()
                 }
             }, RESTORE_SCROLL_GUARD_MS)
         }
-    }, [items.length, isFetchingNextPage])
+    }, [items.length, isFetchingNextPage, windowTick, handleScroll])
 
     // fill 级联：内容溢出后停 fill + 钉底；未溢出且仍有历史则继续拉。
     useEffect(() => {
@@ -265,7 +333,13 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
             },
             ...tagged,
         ]
-    }, [items, following, isFetchingNextPage])
+    }, [items, following, isFetchingNextPage, windowTick])
+
+    // 同步 renderItems 信息到 ref（handleScroll useCallback([]) 闭包读不到 renderItems）
+    renderItemsLengthRef.current = renderItems.length
+    // 跳过 skeleton，取第一个真实 item 的 key（供 offsetTop querySelector 测量）
+    const firstRealItem = renderItems.find(it => it.key !== '__loading-skeleton__')
+    firstRenderItemKeyRef.current = firstRealItem?.key
 
     return (
         <div ref={scrollContainerRef} style={{ height: '100%' }}>
