@@ -158,7 +158,7 @@ function beginAsyncGeneration(sessionId: string, kind: AsyncKind, updates: Parti
     let gen = 0
     _internal.updateState(sessionId, prev => {
         gen = getGeneration(prev, kind) + 1
-        return setGeneration(_internal.buildState(prev, updates) as InternalState, kind, gen)
+        return setGeneration(_internal.buildState(prev, updates), kind, gen)
     })
     return gen
 }
@@ -182,11 +182,11 @@ export async function fetchLatestMessages(api: MobiApi, sessionId: string): Prom
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
         updateStateForGeneration(sessionId, 'latest', gen, prev => {
             const merged = mergeMessages(prev.messages, res.data.messages)
-            return _internal.buildState(prev, { messages: merged, hasMore: res.data.page.hasMore, isLoading: false }) as InternalState
+            return _internal.buildState(prev, { messages: merged, hasMore: res.data.page.hasMore, isLoading: false })
         })
     } catch {
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
-        updateStateForGeneration(sessionId, 'latest', gen, prev => _internal.buildState(prev, { isLoading: false }) as InternalState)
+        updateStateForGeneration(sessionId, 'latest', gen, prev => _internal.buildState(prev, { isLoading: false }))
     }
 }
 
@@ -203,11 +203,11 @@ export async function fetchOlderMessages(api: MobiApi, sessionId: string): Promi
         if (!isCurrentGeneration(sessionId, 'older', gen)) return
         updateStateForGeneration(sessionId, 'older', gen, p => {
             const merged = mergeMessages(res.data.messages, p.messages)
-            return _internal.buildState(p, { messages: merged, hasMore: res.data.page.hasMore, isLoadingMore: false }) as InternalState
+            return _internal.buildState(p, { messages: merged, hasMore: res.data.page.hasMore, isLoadingMore: false })
         })
     } catch {
         if (!isCurrentGeneration(sessionId, 'older', gen)) return
-        updateStateForGeneration(sessionId, 'older', gen, p => _internal.buildState(p, { isLoadingMore: false }) as InternalState)
+        updateStateForGeneration(sessionId, 'older', gen, p => _internal.buildState(p, { isLoadingMore: false }))
     }
 }
 
@@ -223,6 +223,6 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
         for (const m of incoming) {
             messages = resolveMessageCache(messages, m, options)
         }
-        return _internal.buildState(prev, { messages }) as InternalState
+        return _internal.buildState(prev, { messages })
     })
 }

@@ -131,4 +131,22 @@ describe('fetchLatest / generation', () => {
         expect(ids).toContain('c')
         expect(ids).toContain('a')
     })
+
+    it('fetchLatest 期间 clearMessageWindow 后，旧 fetchLatest 返回被丢弃（generation mismatch）', async () => {
+        // 用延迟的 api 让 list 的 await 可控
+        let resolveList: (v: { messages: DecryptedMessage[]; page: { hasMore: boolean; nextBeforeSeq: number | null } }) => void = () => {}
+        const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
+        api.messages.list = async (_sid: string, _opts: { beforeSeq?: number | null }) =>
+            new Promise(resolve => { resolveList = (v) => resolve({ data: v }) as never }) as never
+
+        const p = fetchLatestMessages(api, 's1')
+        // await 期间 clearMessageWindow（generation 递增 → 旧 fetchLatest 过期）
+        clearMessageWindow('s1')
+        // 让 fetchLatest 的 await 完成
+        resolveList({ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } })
+        await p
+        // fetchLatest 返回的 [a] 应被丢弃（gen mismatch），store 仍空（clear 后）
+        const ids = getMessageWindowState('s1').messages.map(m => m.id)
+        expect(ids).not.toContain('a')
+    })
 })
