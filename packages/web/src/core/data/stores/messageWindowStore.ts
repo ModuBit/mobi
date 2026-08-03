@@ -14,11 +14,21 @@
  * limitations under the License.
  */
 
+/**
+ * Per-session 消息窗口 store（仿 hapi message-window-store）。
+ *
+ * 与其他 store 不同，这里不用 zustand——其他 store 是全局 singleton（一个连接、一个 auth 状态），
+ * 而消息窗口是 per-session keyed 的：用户可能同时打开多个 session，各自维护独立的消息列表、
+ * 滚动位置、分页游标。因此用模块级 Map<sessionId, State> + Set<sessionId, listeners> pub/sub
+ * 手写 external store，配合 React useSyncExternalStore 消费。generation 字段用于异步竞态防护
+ *（fetch in flight 时若窗口被 clear，旧响应自动失效）。
+ */
+
 import type { DecryptedMessage } from '@mobi/shared'
 
 /** 贴底稳定大小（用户在底部看最新） */
 export const VISIBLE_WINDOW = 400
-/** 上滚看历史的容忍上限（对齐 hapi OLDER_LOAD_WINDOW_SIZE） */
+/** 上滚看历史的容忍上限（2× VISIBLE_WINDOW，对齐 hapi 双阈值语义） */
 export const EXPAND_WINDOW = 800
 
 export interface MessageWindowState {
@@ -85,7 +95,7 @@ function updateState(sessionId: string, updater: (prev: InternalState) => Intern
 }
 
 /** 派生字段重算（seq 边界 + messagesVersion 递增） */
-function buildState(prev: InternalState, updates: Partial<InternalState>): InternalState {
+function buildState(prev: InternalState, updates: Partial<MessageWindowState>): InternalState {
     const messages = updates.messages ?? prev.messages
     const messagesChanged = messages !== prev.messages
     let oldestSeq: number | null = null
@@ -119,7 +129,11 @@ export function subscribeMessageWindow(sessionId: string, listener: () => void):
 
 export function clearMessageWindow(sessionId: string): void {
     const prev = getState(sessionId)
-    setState(sessionId, { ...createState(sessionId), latestGeneration: prev.latestGeneration + 1, olderGeneration: prev.olderGeneration + 1 })
+    setState(sessionId, {
+        ...createState(sessionId),
+        latestGeneration: prev.latestGeneration + 1,
+        olderGeneration: prev.olderGeneration + 1,
+    })
 }
 
 // 内部 helper（后续 task 用）
