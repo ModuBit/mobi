@@ -117,7 +117,17 @@ const handleAssistantOutput: OutputHandler = (data, ctx) => {
             if (block.type === 'thinking' && typeof block.thinking === 'string') {
                 // 空思考内容不渲染
                 if (block.thinking.trim() === '') continue
-                blocks.push({ type: 'reasoning', text: block.thinking, uuid, parentUUID })
+                // thinking 耗时/完成标记（仅 remote 打点注入，local/历史消息无 → undefined）
+                const durationMs = asNumber(getField(block, 'durationMs'))
+                const isDone = getField(block, 'done') === true
+                blocks.push({
+                    type: 'reasoning',
+                    text: block.thinking,
+                    uuid,
+                    parentUUID,
+                    ...(durationMs != null ? { durationMs } : {}),
+                    ...(isDone ? { done: true } : {}),
+                })
                 continue
             }
             if ((block.type === 'tool_use' || block.type === 'server_tool_use') && typeof block.id === 'string') {

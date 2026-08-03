@@ -121,6 +121,52 @@ describe('normalizeAgentRecord', () => {
         ])
     })
 
+    it('should preserve thinking durationMs/done (remote 打点注入)', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'thinking', thinking: '想完了', signature: 'sig', durationMs: 2345, done: true },
+                        ],
+                    },
+                },
+            }
+        )
+
+        expect(result?.content).toEqual([
+            { type: 'reasoning', text: '想完了', uuid: baseParams.messageId, parentUUID: null, durationMs: 2345, done: true },
+        ])
+    })
+
+    it('thinking 无 durationMs/done（local/历史）→ reasoning 不带这两个字段', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    message: {
+                        content: [
+                            { type: 'thinking', thinking: '本地落盘', signature: 'sig' },
+                        ],
+                    },
+                },
+            }
+        )
+
+        expect(result?.content).toEqual([
+            { type: 'reasoning', text: '本地落盘', uuid: baseParams.messageId, parentUUID: null },
+        ])
+    })
+
     it('should handle user output', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,

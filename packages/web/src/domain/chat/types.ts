@@ -128,6 +128,10 @@ export type NormalizedAgentContent =
         text: string
         uuid: string
         parentUUID: string | null
+        /** thinking 块流式生成耗时（content_block_start→stop 的 wall clock 差）；仅 remote 有 */
+        durationMs?: number
+        /** thinking 块是否已收到 content_block_stop（思考完成）；仅 remote 有 */
+        done?: boolean
     }
     | ToolUse
     | ToolResult
@@ -231,6 +235,10 @@ export type AgentReasoningBlock = {
     isStreaming?: boolean
     /** 是否为流式 snapshot（snapshot 字段由 Hub 透传，尚未落库） */
     isSnapshot?: boolean
+    /** thinking 块流式生成耗时（ms）；仅 remote 有，local/历史消息为 undefined → 不展示时长 */
+    durationMs?: number
+    /** thinking 块是否已收到 content_block_stop（思考完成）；仅 remote 有 */
+    done?: boolean
 }
 
 export type CliOutputBlock = {

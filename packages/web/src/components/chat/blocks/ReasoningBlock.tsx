@@ -22,10 +22,12 @@ import { Markdown } from '@/components/ui/Markdown'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 
 /** 思考过程渲染 */
-export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isStreaming }: {
+export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isStreaming, durationMs }: {
     text: string
     thinking: boolean
     isStreaming?: boolean
+    /** thinking 块流式生成耗时（ms）；仅 remote 打点注入，local/历史消息为 undefined → 不展示时长 */
+    durationMs?: number
 }) {
     const { t } = useTranslation()
     const [expanded, setExpanded] = useState(thinking)
@@ -41,6 +43,13 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
         }
     }, [text, isStreaming])
 
+    // 完成态：耗时 ≥ 100ms 展示「思考完成 · X.X秒」；
+    // < 100ms（interleaved thinking 的极短片段，toFixed 得 0.0s 无意义）/ 无耗时（local/历史消息）退化为「思考完成」
+    const showDuration = durationMs != null && durationMs >= 100
+    const thoughtTitle = showDuration
+        ? t('chat.thoughtDuration', { secs: (durationMs! / 1000).toFixed(1) })
+        : t('chat.thought')
+
     return (
         <Think
             icon={
@@ -49,7 +58,7 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
                     <ThinkIcon />
                 </span>
             }
-            title={thinking ? t('chat.thinking') : t('chat.thought')}
+            title={thinking ? t('chat.thinking') : thoughtTitle}
             blink={thinking}
             expanded={expanded}
             onExpand={setExpanded}

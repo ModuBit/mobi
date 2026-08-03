@@ -15,6 +15,7 @@
  */
 
 import { SNAPSHOT_PENDING_ID, type DecryptedMessage } from '@mobi/shared'
+import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { RawJSONLines } from '@/claude/types'
 import type { SDKToLogConverter } from './sdkToLogConverter'
 
@@ -26,6 +27,12 @@ interface TextLikeBuffer {
     type: 'text' | 'thinking'
     content: string
     dirty: boolean
+    /** thinking 块起始时间戳（content_block_start 时刻），用于算 durationMs；仅 thinking 有意义 */
+    startTs?: number
+    /** thinking 块流式生成耗时（content_block_start→stop 的 wall clock 差），endBlock 后填 */
+    durationMs?: number
+    /** thinking 块是否已收到 content_block_stop（思考完成） */
+    done?: boolean
 }
 
 /** tool_use 缓冲区：累积 input_json_delta，content_block_stop 后 parse 为完整 input 填充占位 */
@@ -59,7 +66,7 @@ function parseInputJson(json: string): unknown {
 
 export type ContentBlock =
     | { type: 'text'; text: string }
-    | { type: 'thinking'; thinking: string }
+    | { type: 'thinking'; thinking: string; durationMs?: number; done?: boolean }
     | { type: 'tool_use'; id: string; name: string; input: unknown }
 
 /**
@@ -133,7 +140,14 @@ export class StreamSnapshotSender {
             this.flush() // content_block_start 即下发 input={} 占位（不等 content_block_stop）
             return
         }
-        this.buffers.set(index, { kind: 'text-like', type, content: '', dirty: false })
+        this.buffers.set(index, {
+            kind: 'text-like',
+            type,
+            content: '',
+            dirty: false,
+            // thinking 记起始时间戳，endBlock 时算 durationMs（思考耗时）；text 无此需求
+            ...(type === 'thinking' ? { startTs: Date.now() } : {}),
+        })
     }
 
     /** 追加增量内容（text_delta / thinking_delta / input_json_delta.partial_json） */
@@ -161,6 +175,11 @@ export class StreamSnapshotSender {
         if (buffer?.kind === 'tool_use' && !buffer.ready) {
             buffer.ready = true
             buffer.parsedInput = parseInputJson(buffer.inputJson)
+            buffer.dirty = true
+        } else if (buffer?.kind === 'text-like' && buffer.type === 'thinking' && buffer.startTs != null) {
+            // thinking 收到 content_block_stop：算最终耗时、置完成标记，标脏立即下发（消除「思考完成→text 开头」误判窗口）
+            buffer.durationMs = Date.now() - buffer.startTs
+            buffer.done = true
             buffer.dirty = true
         }
         this.flush()
@@ -204,9 +223,14 @@ export class StreamSnapshotSender {
         const blocks: ContentBlock[] = []
         for (const buffer of this.buffers.values()) {
             if (buffer.kind === 'text-like') {
-                blocks.push(buffer.type === 'text'
-                    ? { type: 'text', text: buffer.content }
-                    : { type: 'thinking', thinking: buffer.content })
+                if (buffer.type === 'text') {
+                    blocks.push({ type: 'text', text: buffer.content })
+                } else {
+                    // thinking：done 后带 durationMs/done；流式中不带（done undefined → 前端继续显示思考中）
+                    blocks.push(buffer.done
+                        ? { type: 'thinking', thinking: buffer.content, durationMs: buffer.durationMs, done: true }
+                        : { type: 'thinking', thinking: buffer.content })
+                }
             } else {
                 // tool_use：ready 用 ready 时缓存的 parsedInput；未 ready 实时占位也用 parsedInput（初始 {}）
                 //   ——让 content_block_start 立即下发占位，消除大 input 工具（Write/Edit）生成内容期间的盲区
@@ -228,6 +252,37 @@ export class StreamSnapshotSender {
      */
     markFullDelivered(): void {
         this.fullDelivered = true
+    }
+
+    /**
+     * 把已打点的 thinking durationMs/done 注入完整 SDKAssistantMessage 的 thinking block。
+     *
+     * 必要性：messageCache 的 snapshot→full 是替换不是合并，full 若不重新携带这两个字段，
+     * 思考完成后「思考了 X 秒」会在 full 到达时丢失。
+     *
+     * 匹配：full message 的 content 数组下标 = stream event 的 content_block index
+     * （SDK 透传 raw API event，assembler 装配保序），故按 content 数组下标查 buffers 命中。
+     * 仅注入已 done 的 thinking（未 stop 的思考不在 full 到达时存在——full 意味 message 完整，
+     * thinking 必已 stop）；未命中的 thinking block 不动（保留 SDK 原样，如 abort 后无 meta）。
+     *
+     * 在 sdkOutputLoop 下发 full assistant 前调用（同一 message 周期内，buffers 尚未被下一条
+     * message_start 的 clearBuffers 清空）。
+     */
+    injectThinkingMeta(msg: SDKAssistantMessage): void {
+        if (this.destroyed) return
+        const content = msg.message?.content
+        if (!Array.isArray(content)) return
+        for (let i = 0; i < content.length; i++) {
+            const block = content[i]
+            if (!block || typeof block !== 'object') continue
+            const b = block as { type?: unknown; durationMs?: number; done?: boolean }
+            if (b.type !== 'thinking') continue
+            const buffer = this.buffers.get(i)
+            // buffers 按全局 block index 存储；thinking 的 buffer 在 endBlock 后带 durationMs/done
+            if (!buffer || buffer.kind !== 'text-like' || buffer.type !== 'thinking' || !buffer.done) continue
+            b.durationMs = buffer.durationMs
+            b.done = true
+        }
     }
 
     /**

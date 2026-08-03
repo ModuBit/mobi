@@ -54,7 +54,7 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
         case 'agent-text':
             return <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} />
         case 'agent-reasoning':
-            return <ReasoningBlock text={block.text} thinking={ctx.isThinking} isStreaming={block.isStreaming} />
+            return <ReasoningBlock text={block.text} thinking={ctx.isThinking} isStreaming={block.isStreaming} durationMs={block.durationMs} />
         case 'cli-output':
             return <CliOutputBlock text={block.text} />
         case 'compact-summary':

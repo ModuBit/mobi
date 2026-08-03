@@ -140,6 +140,7 @@
         },
         "thinking": "Thinking...",
         "thought": "Thought",
+        "thoughtDuration": "Thought · {{secs}}s",
         "contextReset": "Context was reset",
         "compactSummary": "Conversation compressed",
         "compacting": "Compressing conversation...",

@@ -359,6 +359,12 @@ export async function sdkOutputLoop(
     // 用 template.uuid（= body.uuid，SDK 分配、写进 .jsonl）作 localId，resume 去重安全；
     // 不复用 sdkUuid——那是 stream_event 的临时 uuid，不在 .jsonl，会破坏 resume。
     const assembler = new AssistantPartialAssembler((msg) => {
+        // full 下发前注入 thinking 的 durationMs/done：snapshot→full 是替换关系，
+        // full 若不重新携带，思考完成后「思考了 X 秒」会在 full 到达时丢失（injectThinkingMeta 按
+        // content 数组下标匹配 buffers 中已 done 的 thinking block）
+        if (msg.type === 'assistant' && (msg as SDKAssistantMessage).message?.id) {
+            opts.snapshotSender.injectThinkingMeta(msg as SDKAssistantMessage);
+        }
         opts.onMessage(msg);
         // assembler 聚合输出完整 full（同 message.id 的所有 block 拼回一条，带 message.id）→
         // 标记该 message 的 snapshot 已被 full 取代，abort 时 consumePendingFull 不再补全（避免重复）。

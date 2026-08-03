@@ -18,6 +18,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { ChatBlock, ChatToolCall, ToolCallBlock, UserTextBlock, AgentTextBlock, AgentEventBlock } from '@/domain/chat'
 import type { ChatBlockContext } from '@/components/chat/blocks'
 import { buildChatBubbleItems } from '@/components/chat/buildBubbleItems'
+import { renderChatBlock } from '@/components/chat/blocks'
 
 // Mock renderChatBlock：返回 block id 标记，方便断言 items 顺序与内容
 vi.mock('@/components/chat/blocks', async (importOriginal) => {
@@ -232,6 +233,40 @@ describe('buildChatBubbleItems', () => {
             const items = buildChatBubbleItems(blocks, defaultCtx, true, defaultOptions)
             expect(items).toHaveLength(1)
             expect(items[0].typing).toBe(true)
+        })
+
+        // 取 renderChatBlock mock 最后一次调用收到的 ctx.isThinking
+        const lastReasoningCtxIsThinking = () => {
+            const call = vi.mocked(renderChatBlock).mock.calls.at(-1)!
+            return (call[1] as ChatBlockContext).isThinking
+        }
+
+        it('agent-reasoning done:true（思考完成）即使 isRunning=true → isThinking=false（消除误判窗口）', () => {
+            const blocks = [{
+                kind: 'agent-reasoning' as const,
+                id: 'r-done',
+                localId: null,
+                createdAt: 1000,
+                text: '想完了',
+                isSnapshot: false,
+                done: true,
+                durationMs: 1234,
+            }]
+            buildChatBubbleItems(blocks, defaultCtx, true, defaultOptions)
+            expect(lastReasoningCtxIsThinking()).toBe(false)
+        })
+
+        it('agent-reasoning done 缺省（local/历史消息）+ isRunning=true → isThinking=true（退化为现有逻辑）', () => {
+            const blocks = [{
+                kind: 'agent-reasoning' as const,
+                id: 'r-local',
+                localId: null,
+                createdAt: 1000,
+                text: '本地思考',
+                isSnapshot: false,
+            }]
+            buildChatBubbleItems(blocks, defaultCtx, true, defaultOptions)
+            expect(lastReasoningCtxIsThinking()).toBe(true)
         })
     })
 

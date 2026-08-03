@@ -278,6 +278,9 @@ export function reduceTimeline(
                         text: c.text,
                         meta: msg.meta,
                         isSnapshot,
+                        // thinking 耗时/完成标记（仅 remote 有，照搬 isSnapshot 透传路径）
+                        ...(c.durationMs != null ? { durationMs: c.durationMs } : {}),
+                        ...(c.done ? { done: true } : {}),
                     })
                     continue
                 }

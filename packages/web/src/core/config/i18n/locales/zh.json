@@ -140,6 +140,7 @@
         },
         "thinking": "思考中...",
         "thought": "思考完成",
+        "thoughtDuration": "思考完成 · {{secs}}秒",
         "contextReset": "上下文已重置",
         "compactSummary": "对话已压缩",
         "compacting": "正在压缩对话...",

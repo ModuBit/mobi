@@ -3,7 +3,7 @@ name: pitfalls-general
 description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证）
 metadata:
   type: pitfall
-  last_verified: 2026-08-01
+  last_verified: 2026-08-03
 ---
 
 # 通用误判
@@ -18,6 +18,24 @@ E2E 环境 `cliApiToken` 与 `webApiToken` **同值**（`e2e-test-token-mobi`，
 - 进程身份：`ps -p <PID> -o command=`
 - 日志：`cat ~/.mobi-e2e/logs/{hub,web,runner}.log`
 - 就绪信号：`test -f ~/.mobi-e2e/ready.flag && echo ready`
+
+## 定位精确短文本（reasoning title / 状态标签）—— 用 TreeWalker，别 querySelector('*')
+
+要断言页面出现某个短文本（如 reasoning 的 `Thinking...` / `Thought · 11.0s`、状态标签），**不要** `document.querySelectorAll('*')` 后比 `textContent` —— 会把 `<style>` 标签里整坨 CSS 也匹配进来（CSS 文本动辄几百 KB），`evaluate_script` 输出瞬间爆炸（>500KB 被持久化到文件）。
+
+**正确做法**：TreeWalker 只遍历文本节点，天然排除 `<style>`/`<script>`，且精确匹配短文本：
+
+```js
+const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+const hits = []; let n;
+while ((n = walker.nextNode())) {
+  const t = n.textContent.trim();
+  if (t === 'Thinking...' || /^Thought( · .+?s)?$/.test(t)) hits.push(t);
+}
+return { titles: hits };
+```
+
+正则也要收窄（`/^Thought\b/` 比 `/Thought/` 安全；后者会匹中 CSS 里的 `load-font-thought` 之类）。
 
 ## 短生命周期 DOM 的可见性验证（loadig skeleton / transient 反馈）
 
