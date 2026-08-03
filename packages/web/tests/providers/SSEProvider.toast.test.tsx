@@ -128,7 +128,7 @@ describe('SSEProvider toast 分支(渲染集成)', () => {
         expect(key1).not.toBe(key2)
     })
 
-    it('reconnected 时 sessions + messages 失效并入 16ms 批处理(非立即触发)', async () => {
+    it('reconnected 时 sessions 失效并入 16ms 批处理(messages 不再 invalidate,改 fetchLatest)', async () => {
         vi.useFakeTimers()
         const result = await renderProvider()
         const invalidateSpy = vi.spyOn(result.queryClient, 'invalidateQueries')
@@ -138,13 +138,14 @@ describe('SSEProvider toast 分支(渲染集成)', () => {
         sseListener.current!({ type: 'connection-changed', connected: true, reconnected: true })
         // 批处理等待 16ms:立即检查未失效(绕过批处理则会立即调用)
         expect(invalidateSpy).not.toHaveBeenCalled()
-        // 推进 16ms → 批处理触发:sessions 系列 + messages 全量失效
+        // 推进 16ms → 批处理触发:sessions 系列失效;messages 不再 invalidate(改 fetchLatest merge)
         await vi.advanceTimersByTimeAsync(16)
         expect(invalidateSpy).toHaveBeenCalled()
-        // 验证 sessions 与 messages 两个 scope 都进批处理(漏删 scheduleInvalidation('messages') 会被此断言抓)
+        // sessions scope 进批处理
         const invalidatedKeys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
         expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'sessions')).toBe(true)
-        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'messages')).toBe(true)
+        // messages scope 不应再进批处理(误加 scheduleInvalidation('messages') 会被此断言抓)
+        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'messages')).toBe(false)
 
         vi.useRealTimers()
     })
