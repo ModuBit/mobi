@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { fetchLatestMessages } from '@/core/data/stores/messageWindowStore'
 
 /**
  * steer 排队消息 Mutation Hook
@@ -27,12 +27,12 @@ import { queryKeys } from '@/core/lib/query-keys'
  */
 export function useSteerQueuedMessage(sessionId: string) {
     const api = useMobiApi()
-    const qc = useQueryClient()
 
     return useMutation({
         mutationFn: (localId: string) => api.messages.steer(sessionId, localId),
         onSettled: () => {
-            qc.invalidateQueries({ queryKey: queryKeys.messages(sessionId) })
+            // 重新拉首页消息，确保与服务端一致（submitted 状态、是否已不在队列）
+            void fetchLatestMessages(api, sessionId)
         },
     })
 }

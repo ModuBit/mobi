@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-import type { InfiniteData } from '@tanstack/react-query'
-import type { DecryptedMessage, MessagesResponse } from '@/core/data/api/types'
+import type { DecryptedMessage } from '@/core/data/api/types'
 import { uuid } from './uuid'
 
 /**
@@ -151,67 +150,5 @@ export function mergeMessages(existing: DecryptedMessage[], incoming: DecryptedM
     }
 
     result.sort(compareMessages)
-    return result
-}
-
-/**
- * 在缓存中更新/插入消息
- */
-export function upsertMessagesInCache(
-    data: InfiniteData<MessagesResponse> | undefined,
-    incoming: DecryptedMessage[],
-): InfiniteData<MessagesResponse> {
-    const mergedIncoming = mergeMessages([], incoming)
-
-    if (!data || data.pages.length === 0) {
-        return {
-            pages: [
-                {
-                    messages: mergedIncoming,
-                    page: {
-                        limit: 50,
-                        beforeSeq: null,
-                        nextBeforeSeq: null,
-                        hasMore: false,
-                    },
-                },
-            ],
-            pageParams: [null],
-        }
-    }
-
-    const pages = data.pages.slice()
-    const first = pages[0]
-    pages[0] = {
-        ...first,
-        messages: mergeMessages(first.messages, mergedIncoming),
-    }
-
-    return {
-        ...data,
-        pages,
-    }
-}
-
-/**
- * 把无限分页的各页消息合并为单一列表（旧→新），按 id 跨页去重。
- *
- * 翻页游标基于「页内最老消息 seq」，若该消息为 pending 且在翻页间隙被消费，
- * 其 position_at 跳变会让 Hub 返回与当前页重叠的下一页。mergeMessages 只在
- * SSE upsertMessageCache 内去重，不覆盖分页历史路径——故此处必须显式跨页去重，
- * 否则 merged 列表出现同 id 重复（React key 碰撞）。首次出现者保留（旧页优先）。
- */
-export function flattenMessagesPages(
-    pages: { messages: DecryptedMessage[] }[],
-): DecryptedMessage[] {
-    const seen = new Set<string>()
-    const result: DecryptedMessage[] = []
-    for (const page of pages) {
-        for (const m of page.messages) {
-            if (seen.has(m.id)) continue
-            seen.add(m.id)
-            result.push(m)
-        }
-    }
     return result
 }

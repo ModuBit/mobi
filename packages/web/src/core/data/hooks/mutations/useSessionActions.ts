@@ -18,6 +18,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
+import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 
 /**
@@ -156,8 +157,8 @@ export function useSessionActions(sessionId: string | null): {
             if (!sessionId) return
             // 删除时移除缓存而不是失效
             queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
-            // 同时移除消息缓存
-            queryClient.removeQueries({ queryKey: queryKeys.messages(sessionId) })
+            // 清理消息 store 窗口
+            clearMessageWindow(sessionId)
             // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
             clearSessionResources(sessionId)
             await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })

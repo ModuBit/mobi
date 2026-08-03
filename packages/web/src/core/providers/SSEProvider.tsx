@@ -269,7 +269,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             if (p.messages) tasks.push(qc.invalidateQueries({ queryKey: ['messages'] }))
             for (const sid of Array.from(p.sessionIds)) {
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.session(sid) }))
-                tasks.push(qc.invalidateQueries({ queryKey: queryKeys.messages(sid) }))
             }
 
             p.sessions = false

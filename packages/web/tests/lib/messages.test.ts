@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isUserMessage, isQueuedInMobi, mergeMessages, makeClientSideId, flattenMessagesPages } from '@/core/lib/messages'
+import { isUserMessage, isQueuedInMobi, mergeMessages, makeClientSideId } from '@/core/lib/messages'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /** 创建 mock DecryptedMessage */
@@ -309,28 +309,5 @@ describe('makeClientSideId', () => {
         const id1 = makeClientSideId('a')
         const id2 = makeClientSideId('a')
         expect(id1).not.toBe(id2)
-    })
-})
-
-describe('flattenMessagesPages', () => {
-    it('按页顺序合并（旧→新）', () => {
-        const pages = [
-            { messages: [createMessage({ id: 'a', seq: 3 })] },   // 最新页
-            { messages: [createMessage({ id: 'b', seq: 2 })] },   // 更旧页
-        ]
-        // useMessages 调用前会 reverse（旧→新）；此处直接验证去重逻辑
-        const result = flattenMessagesPages(pages.slice().reverse())
-        expect(result.map(m => m.id)).toEqual(['b', 'a'])
-    })
-
-    it('跨页 id 去重：游标漂移导致重叠页时不重复', () => {
-        // 场景：下一页与当前页重叠（含同 id 消息），mergeMessages 不覆盖分页路径
-        const pages = [
-            { messages: [createMessage({ id: 'old', seq: 1 })] },
-            { messages: [createMessage({ id: 'dup', seq: 2 }), createMessage({ id: 'mid', seq: 3 })] },
-            { messages: [createMessage({ id: 'dup', seq: 2 }), createMessage({ id: 'new', seq: 4 })] },
-        ]
-        const result = flattenMessagesPages(pages)
-        expect(result.map(m => m.id)).toEqual(['old', 'dup', 'mid', 'new'])
     })
 })

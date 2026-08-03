@@ -31,6 +31,7 @@ import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeS
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
+import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
@@ -591,7 +592,7 @@ export function SidebarProjects() {
                     await api.sessions.delete(session.id)
                     messageApi.success(t('common.success'))
                     queryClient.removeQueries({ queryKey: queryKeys.session(session.id) })
-                    queryClient.removeQueries({ queryKey: queryKeys.messages(session.id) })
+                    clearMessageWindow(session.id)
                     await invalidateAll(session.id)
                     // 清理检视面板状态 + 缓存终端（顺带关闭后端 PTY）
                     clearSessionResources(session.id)

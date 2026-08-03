@@ -23,8 +23,6 @@ export const queryKeys = {
     sessions: ['sessions'] as const,
     /** 单个会话 */
     session: (sessionId: string) => ['session', sessionId] as const,
-    /** 会话消息 */
-    messages: (sessionId: string) => ['messages', sessionId] as const,
     /** Sidechain 消息 */
     sidechainMessages: (sessionId: string, parentToolUseId: string) => ['sidechain-messages', sessionId, parentToolUseId] as const,
     /** 会话分组列表 */

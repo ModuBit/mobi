@@ -51,12 +51,6 @@ describe('queryKeys', () => {
             expect(queryKeys.session('a')).not.toEqual(queryKeys.session('b'))
         })
 
-        it('messages(sessionId) 应返回正确元组', () => {
-            const key = queryKeys.messages('sess-1')
-            expect(key).toEqual(['messages', 'sess-1'])
-            expect(key).toHaveLength(2)
-        })
-
         it('groupSessions(groupKey) 应返回正确元组', () => {
             const key = queryKeys.groupSessions('today')
             expect(key).toEqual(['groupSessions', 'today'])
@@ -139,7 +133,6 @@ describe('queryKeys', () => {
         it('同一工厂函数不同参数应产生不同 key', () => {
             const keys = [
                 queryKeys.session('a'),
-                queryKeys.messages('a'),
                 queryKeys.gitStatus('a'),
                 queryKeys.sdkMetadata('a'),
             ]
