@@ -29,7 +29,7 @@ import type { DecryptedMessage } from '@/core/data/api/types'
  * 乐观消息格式：content.content.text
  * 后备：originalText
  */
-export function previewText(msg: DecryptedMessage): string {
+function previewText(msg: DecryptedMessage): string {
     const c = msg.content as { content?: { text?: string } } | null
     return c?.content?.text ?? msg.originalText ?? ''
 }

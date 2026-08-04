@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { decideToastAction, parseActiveSessionId } from '@/core/notifications'
-import { derivePendingRequestsCount } from '@/core/providers/SSEProvider'
+import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
 
 /**
  * patchSessionCache 中 effort delta 合并逻辑的等价纯函数实现

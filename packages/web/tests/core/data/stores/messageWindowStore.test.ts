@@ -154,6 +154,46 @@ describe('fetchLatest / generation', () => {
         const ids = getMessageWindowState('s1').messages.map(m => m.id)
         expect(ids).not.toContain('a')
     })
+
+    it('首次加载（store 空）fetchLatest 翻 isLoading=true —— 供 ChatContainer 显示 Spin', async () => {
+        let resolveList: (v: { messages: DecryptedMessage[]; page: { hasMore: boolean; nextBeforeSeq: number | null } }) => void = () => {}
+        const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
+        api.messages.list = async () =>
+            new Promise(resolve => { resolveList = (v) => resolve({ data: v }) as never }) as never
+
+        const p = fetchLatestMessages(api, 's1')
+        // 进行中：store 为空 → isLoading 应翻 true（首次加载语义）
+        expect(getMessageWindowState('s1').isLoading).toBe(true)
+        resolveList({ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } })
+        await p
+        expect(getMessageWindowState('s1').isLoading).toBe(false)
+    })
+
+    it('重连补拉（store 已有数据）不翻 isLoading —— 防 ChatContainer 早返回循环', async () => {
+        // 首次拉首页，store 有数据
+        const api = makeApi([
+            { messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } },
+            { messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } },
+        ])
+        await fetchLatestMessages(api, 's1')
+        expect(getMessageWindowState('s1').messages).toHaveLength(1)
+        expect(getMessageWindowState('s1').isLoading).toBe(false)
+
+        // 第二次 fetchLatest（重连补拉）—— 用延迟 api 让进行中状态可观测
+        let resolveList: (v: { messages: DecryptedMessage[]; page: { hasMore: boolean; nextBeforeSeq: number | null } }) => void = () => {}
+        api.messages.list = async () =>
+            new Promise(resolve => { resolveList = (v) => resolve({ data: v }) as never }) as never
+
+        const p = fetchLatestMessages(api, 's1')
+        // 进行中：store 已有数据 → isLoading 不应翻 true（重连补拉静默 merge）
+        // 否则 ChatContainer `if (messagesLoading) return <Spin>` 早返回翻转 →
+        // ComposerInfoPanel 反复 mount/unmount → 每次 mount 触发 useMessages useEffect →
+        // 又调 fetchLatest → isLoading=true → 早返回 → 死循环
+        expect(getMessageWindowState('s1').isLoading).toBe(false)
+        resolveList({ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } })
+        await p
+        expect(getMessageWindowState('s1').isLoading).toBe(false)
+    })
 })
 
 describe('queued/optimistic actions', () => {

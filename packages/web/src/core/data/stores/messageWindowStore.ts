@@ -176,8 +176,14 @@ function updateStateForGeneration(sessionId: string, kind: AsyncKind, gen: numbe
  * merge 不覆盖——SSE 已到的消息不会被首页响应冲掉。
  */
 export async function fetchLatestMessages(api: MobiApi, sessionId: string): Promise<void> {
-    if (_internal.getState(sessionId).isLoading) return
-    const gen = beginAsyncGeneration(sessionId, 'latest', { isLoading: true })
+    const prev = _internal.getState(sessionId)
+    if (prev.isLoading) return
+    // isLoading 语义 = 「首次加载且 store 无数据」。
+    // 重连补拉（store 已有数据）静默 merge，不翻 isLoading —— 否则 ChatContainer 的
+    // `if (messagesLoading) return <Spin>` 早返回会翻转，致 ComposerInfoPanel 反复 mount/unmount，
+    // 其 useMessages 每次 mount 都触发 useEffect → fetchLatest → isLoading=true → 早返回 → 循环。
+    const isEmpty = prev.messages.length === 0
+    const gen = beginAsyncGeneration(sessionId, 'latest', { isLoading: isEmpty })
     try {
         const res = await api.messages.list(sessionId, { beforeSeq: undefined })
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return

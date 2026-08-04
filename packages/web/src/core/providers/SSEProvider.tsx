@@ -32,6 +32,7 @@ import { decideToastAction, parseActiveSessionId, showSystemNotification } from 
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/stores/promptSuggestionStore'
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
+import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
 import {
     ingestIncomingMessages,
     markMessagesSubmitted as markSubmittedInStore,
@@ -88,18 +89,6 @@ function hasSessionChanges(
         }
     }
     return false
-}
-
-/**
- * 从 agentState 折算 pendingRequestsCount。
- * 列表缓存项是 SessionSummary 形状（无 agentState 字段，只有 pendingRequestsCount 计数），
- * 故 session-updated 带来的 agentState 需折算成计数写回，否则审批/ask 后 requests 已清空，
- * 列表圆点仍卡在橙色（详情页存完整 Session，有 agentState，不受影响）。
- */
-export function derivePendingRequestsCount(agentState: unknown): number {
-    if (!agentState || typeof agentState !== 'object') return 0
-    const requests = (agentState as { requests?: Record<string, unknown> | null }).requests
-    return requests ? Object.keys(requests).length : 0
 }
 
 function patchSessionCache(
