@@ -140,7 +140,7 @@ sequenceDiagram
 
 **触发**：SDK 调用 Bash、Edit、Write 等需要授权的工具。
 
-**Web UI**：`PermissionFooter` — 提供 Allow（本次）、Allow for Session（本会话）、Allow All Edits、Deny 按钮。
+**Web UI**：`PermissionFooter` — 提供 Allow（本次）、Allow for Session（本会话）、Allow All Edits、Deny 按钮，另有「带原因拒绝」入口（展开 textarea 输入原因，走 `denyWithFeedback` 带 reason；对齐 Claude Code CLI 的 reject-with-feedback）。
 
 **CLI 处理** — `permissionHandler.ts:handlePermissionResponse`
 
@@ -209,7 +209,7 @@ pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' 
 
 **触发**：模型调用 `AskUserQuestion` 工具，携带问题列表。
 
-**Web UI**：`AskUserQuestionFooter` — 渲染选项列表（单选 radio / 多选 checkbox），支持"其他"自由输入。
+**Web UI**：`AskUserQuestionFooter` — 渲染选项列表（单选 radio / 多选 checkbox），支持"其他"自由输入；另提供「聊一聊」（Chat about this）按钮，单击不答题，直接 `deny` 带固定 seed 文案（`buildChatAboutThisReason` 构造，对齐 Claude Code CLI），引导 Claude 主动反问而非给出 dead-end。
 
 **提交**：调用 `approve` API，传递 `{ answers: { "question text": ["选项A"] } }`。answers 的 key 是 question text（符合官方 SDK 要求），value 是 `string[]`（选项 label 数组）。
 
@@ -218,6 +218,14 @@ pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' 
 Web 端提交时 answers value 为 `string[]`，CLI 端 `buildAskUserQuestionUpdatedInput` 将其转换为 SDK 要求的 `string` 格式（单选取 `[0]`，多选 `join(', ')`）：
 
 ```typescript
+// 「聊一聊」：用户带 reason（seed 文案）拒绝 → 透传成 deny message，
+// 引导 Claude 主动反问（对齐 Claude Code CLI 的 Chat about this）。
+const reason = response.reason?.trim()
+if (reason) {
+    pending.resolve({ behavior: 'deny', message: reason })
+    return completion
+}
+
 const answers = response.answers ?? {}
 if (Object.keys(answers).length === 0) {
     // 没选任何选项 → deny
