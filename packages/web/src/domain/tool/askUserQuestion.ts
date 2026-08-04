@@ -137,3 +137,40 @@ export function extractAskUserQuestionQuestionsInfo(input: unknown): AskUserQues
     }
     return questions
 }
+
+/**
+ * 构造「聊一聊」seed 文案（对齐 Claude Code CLI 的 Chat about this）。
+ * 用户不答题、想就问题与 Claude 展开讨论时，作为 deny reason 回传，
+ * 引导 Claude 主动反问"想澄清什么"，而非给出 dead-end "No answers were provided."。
+ *
+ * @param questions 问题列表（可空，空时退化为占位）
+ * @param answers   用户触发前已选答案 Record<questionText, string[]>（可空）
+ */
+export function buildChatAboutThisReason(
+    questions: AskUserQuestionQuestion[],
+    answers: Record<string, string[]>
+): string {
+    const items = questions.length > 0
+        ? questions
+        : [{ header: null, question: '(no question)', options: [], multiSelect: false } as AskUserQuestionQuestion]
+
+    const lines = items.map(q => {
+        const selected = (answers[q.question] ?? [])
+            .map(a => a.trim())
+            .filter(a => a.length > 0)
+        const answerLine = selected.length > 0
+            ? `  Answer: ${selected.join(', ')}`
+            : `  (No answer provided)`
+        return `- "${q.question}"\n${answerLine}`
+    }).join('\n')
+
+    return [
+        'The user wants to clarify these questions.',
+        '    This means they may have additional information, context or questions for you.',
+        '    Take their response into account and then reformulate the questions if appropriate.',
+        '    Start by asking them what they would like to clarify.',
+        '',
+        '    Questions asked:',
+        lines,
+    ].join('\n')
+}

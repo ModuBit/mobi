@@ -21,7 +21,9 @@ import {
     normalizeAnswerEntry,
     normalizeAnswers,
     extractAskUserQuestionQuestionsInfo,
+    buildChatAboutThisReason,
 } from '@/domain/tool/askUserQuestion'
+import type { AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 
 describe('isAskUserQuestionToolName', () => {
     it('matches AskUserQuestion', () => {
@@ -263,5 +265,38 @@ describe('extractAskUserQuestionQuestionsInfo', () => {
             questions: [{ header: '   ', question: '   ' }],
         })
         expect(result).toEqual([{ header: null, question: null }])
+    })
+})
+
+describe('buildChatAboutThisReason', () => {
+    it('多问题 + 部分已选答案，按 CLI 原文拼装', () => {
+        const questions: AskUserQuestionQuestion[] = [
+            { header: 'Auth', question: 'Which library?', options: [{ label: 'JWT', description: null, preview: null }, { label: 'OAuth', description: null, preview: null }], multiSelect: false },
+            { header: 'Layer', question: 'Where to store?', options: [{ label: 'Cookie', description: null, preview: null }], multiSelect: false },
+        ]
+        const answers: Record<string, string[]> = { 'Which library?': ['JWT'] }
+        const out = buildChatAboutThisReason(questions, answers)
+        expect(out).toContain('The user wants to clarify these questions.')
+        expect(out).toContain('Start by asking them what they would like to clarify.')
+        expect(out).toContain('- "Which library?"')
+        expect(out).toContain('  Answer: JWT')
+        expect(out).toContain('- "Where to store?"')
+        expect(out).toContain('  (No answer provided)')
+    })
+
+    it('空 questions 退化为占位单问题', () => {
+        const out = buildChatAboutThisReason([], {})
+        expect(out).toContain('Questions asked:')
+        expect(out).toContain('- "(no question)"')
+        expect(out).toContain('(No answer provided)')
+    })
+
+    it('无已选答案全部标 (No answer provided)', () => {
+        const questions: AskUserQuestionQuestion[] = [
+            { header: null, question: 'Q1?', options: [], multiSelect: false },
+        ]
+        const out = buildChatAboutThisReason(questions, {})
+        expect(out).toContain('  (No answer provided)')
+        expect(out).not.toContain('  Answer:')
     })
 })
