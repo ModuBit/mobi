@@ -223,6 +223,17 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
 
         // Handle ask_user_question
         if (isAskUserQuestionToolName(pending.toolName)) {
+            // 「聊一聊」：用户带 reason（seed 文案）拒绝 → 透传成 deny message，
+            // 引导 Claude 主动反问而非给出 dead-end "No answers were provided."。
+            // 对齐 Claude Code CLI 的 Chat about this。
+            const reason = response.reason?.trim()
+            if (reason) {
+                pending.resolve({ behavior: 'deny', message: reason });
+                completion.status = 'denied';
+                completion.reason = reason;
+                return completion;
+            }
+
             const answers = response.answers ?? {};
             if (Object.keys(answers).length === 0) {
                 pending.resolve({ behavior: 'deny', message: 'No answers were provided.' });

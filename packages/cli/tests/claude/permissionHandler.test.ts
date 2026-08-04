@@ -566,3 +566,67 @@ describe('PermissionHandler — mode 变更通知 SDK Query（onApplyPermissionM
         warnSpy.mockRestore()
     })
 })
+
+describe('PermissionHandler — AskUserQuestion 聊一聊 reason 透传', () => {
+    function makeSession() {
+        return {
+            client: {
+                rpcHandlerManager: { registerHandler: () => {} },
+                updateAgentState: () => {},
+                resetIdleTimer: () => {},
+            },
+            setPermissionMode: vi.fn(),
+            getPermissionMode: vi.fn(() => undefined),
+            queue: { unshift: vi.fn() },
+        }
+    }
+    function makePending(toolName: string, input: unknown = { questions: [] }) {
+        return { resolve: vi.fn(), reject: vi.fn(), toolName, input, toolUseID: 't1' }
+    }
+
+    it('AskUserQuestion + response.reason → deny(message=reason)', async () => {
+        const handler = new PermissionHandler(makeSession() as never)
+        const pending = makePending('AskUserQuestion', { questions: [{ question: 'Q?', options: [] }] })
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            { id: 't1', approved: false, reason: 'The user wants to clarify these questions.' },
+            pending,
+        )
+        expect(pending.resolve).toHaveBeenCalledTimes(1)
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('deny')
+        expect(result.message).toBe('The user wants to clarify these questions.')
+    })
+
+    it('AskUserQuestion 无 reason 无 answers → 保留原 deny(No answers were provided.)', async () => {
+        const handler = new PermissionHandler(makeSession() as never)
+        const pending = makePending('AskUserQuestion')
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({ id: 't1', approved: false }, pending)
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('deny')
+        expect(result.message).toBe('No answers were provided.')
+    })
+
+    it('AskUserQuestion 无 reason 有 answers → allow + updatedInput', async () => {
+        const handler = new PermissionHandler(makeSession() as never)
+        const pending = makePending('AskUserQuestion', { questions: [{ question: 'Q?', options: [] }] })
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            { id: 't1', approved: true, answers: { 'Q?': ['A'] } },
+            pending,
+        )
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('allow')
+        expect(result.updatedInput).toMatchObject({ answers: { 'Q?': 'A' } })
+    })
+
+    it('AskUserQuestion reason 为空白串 → 视为无 reason 走原逻辑', async () => {
+        const handler = new PermissionHandler(makeSession() as never)
+        const pending = makePending('AskUserQuestion')
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({ id: 't1', approved: false, reason: '   ' }, pending)
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.message).toBe('No answers were provided.')
+    })
+})
