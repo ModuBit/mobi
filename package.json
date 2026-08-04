@@ -28,16 +28,16 @@
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
-        "concurrently": "^10.0.3",
-        "dependency-cruiser": "^18.1.0",
-        "eslint": "^10.7.0",
+        "concurrently": "^10.0.4",
+        "dependency-cruiser": "^18.1.1",
+        "eslint": "^10.8.0",
         "husky": "^9.1.7",
-        "lint-staged": "^17.0.8",
+        "lint-staged": "^17.3.0",
         "typescript": "^6.0.3",
-        "typescript-eslint": "^8.64.0"
+        "typescript-eslint": "^8.66.0"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.29.0",
+        "@modelcontextprotocol/sdk": "^1.30.0",
         "react-virtuoso": "^4.18.11"
     },
     "lint-staged": {
