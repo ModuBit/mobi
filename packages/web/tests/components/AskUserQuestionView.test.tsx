@@ -343,5 +343,22 @@ describe('AskUserQuestionView', () => {
             renderResultView(block)
             expect(screen.getByText(/No answers were provided/)).toBeInTheDocument()
         })
+
+        it('permission.status=denied 无 reason → 兜底文案 chat.tool.rejected', () => {
+            const block = makeBlock(questionInput, undefined, 'AskUserQuestion', {
+                id: 'p3', status: 'denied',
+            })
+            renderResultView(block)
+            // mock t('chat.tool.rejected') 直接返回 key 字符串
+            expect(screen.getByText('chat.tool.rejected')).toBeInTheDocument()
+        })
+
+        it('status=canceled 不走 denied 分支（reason 不被当作拒绝原因展示）', () => {
+            const block = makeBlock(questionInput, undefined, 'AskUserQuestion', {
+                id: 'p4', status: 'canceled', reason: 'some unexpected reason',
+            })
+            renderResultView(block)
+            expect(screen.queryByText(/some unexpected reason/)).toBeNull()
+        })
     })
 })
