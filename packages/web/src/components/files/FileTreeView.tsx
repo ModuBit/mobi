@@ -19,7 +19,7 @@ import styled from '@emotion/styled'
 import { Tree, Empty, Skeleton, Input, Button, type TreeProps } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { DataNode } from 'antd/es/tree'
-import { FolderOpen, FolderClosed, File as FileIcon, Search, Eye, EyeOff } from 'lucide-react'
+import { FolderOpen, FolderClosed, File as FileIcon, Search, Eye, EyeOff, RotateCw } from 'lucide-react'
 import { LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -85,7 +85,23 @@ const TreeWrap = styled.div`
         opacity: 0.45;
         text-align: center;
     }
+    /* 刷新按钮转圈：不用 antd Button loading（会把 lucide 图标换成 antd spinner，与树内其他图标不统一） */
+    .refresh-spinning {
+        animation: file-tree-refresh-spin 0.8s linear infinite;
+    }
+    @keyframes file-tree-refresh-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
 `
+
+/**
+ * 刷新图标最短旋转时长。
+ * 快网下 fetch 几十毫秒即完成、搜索的 loading 还有 400ms 延迟才亮，
+ * 只跟真实 fetching 状态会导致「点了没反应」。点击即无条件转这么久，与真实状态取或。
+ */
+const REFRESH_SPIN_MIN_MS = 500
 
 /** 筛选结果前端展示上限（与 useDebouncedFileSearch 的 MAX_DISPLAY 对齐） */
 const FILE_SEARCH_MAX = MAX_DISPLAY
@@ -110,8 +126,10 @@ interface FileTreeViewProps {
  * - 有缓存先展示（不闪 loading），后台静默 refetch；无缓存首次拉取显示 loading
  * - staleTime 0：每次 mount/focus/invalidate 都后台 refetch，确保目录变化可感知
  *
- * 刷新触发：见 useEffect —— `active` 由 false→true（弹层打开 / tab 切入）时
- * invalidate 该 session 下所有 directory query，已订阅的目录响应式后台刷新。
+ * 刷新触发：
+ * - `active` 由 false→true（弹层打开 / tab 切入）时 invalidate 该 session 下所有 directory query，
+ *   已订阅的目录响应式后台刷新（见下方 useEffect）
+ * - 工具栏刷新按钮（见 handleRefresh）：面板一直开着时磁盘变化无从感知，需手动兜底
  *
  * 隐藏文件（. 开头）不显示。
  */
@@ -128,7 +146,11 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
     /** 是否展示隐藏文件/目录（. 开头）；默认隐藏 */
     const [showHidden, setShowHidden] = useState(false)
     const isSearching = filter.trim().length > 0
-    const { results: searchResults, isLoading: isSearchLoading } = useDebouncedFileSearch(sessionId, filter)
+    const {
+        results: searchResults,
+        isLoading: isSearchLoading,
+        refetch: refetchSearch,
+    } = useDebouncedFileSearch(sessionId, filter)
 
     // active false→true：invalidate 该 session 所有 directory query（根 + 已展开子目录），
     // 后台静默刷新。已有缓存先展示（SWR），用户感受到的是「打开即最新」。
@@ -139,6 +161,32 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
         }
         prevActiveRef.current = active
     }, [active, sessionId, queryClient])
+
+    /** 手动刷新的最短旋转窗口（见 REFRESH_SPIN_MIN_MS） */
+    const [spinUntilTimeout, setSpinUntilTimeout] = useState(false)
+    const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    useEffect(() => () => {
+        if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
+    }, [])
+
+    /**
+     * 手动刷新：刷「用户眼下看到的内容」。
+     * 搜索模式重跑搜索（结果同样会因文件增删而过期）；树模式 invalidate 本 session
+     * 所有已订阅目录（根 + 已展开子目录），useQueries 响应式后台 refetch。
+     */
+    const handleRefresh = useCallback(() => {
+        if (isSearching) {
+            refetchSearch()
+        } else {
+            queryClient.invalidateQueries({ queryKey: queryKeys.sessionDirectories(sessionId) })
+        }
+        if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
+        setSpinUntilTimeout(true)
+        spinTimerRef.current = setTimeout(() => {
+            spinTimerRef.current = null
+            setSpinUntilTimeout(false)
+        }, REFRESH_SPIN_MIN_MS)
+    }, [isSearching, refetchSearch, queryClient, sessionId])
 
     /** 拉单个目录（根/子共用）：hub success:false 抛错，由 react-query 透出 error */
     const fetchDirectory = async (path: string): Promise<FileNode[]> => {
@@ -176,6 +224,10 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
     const rootResult = results[0]
     const rootFiles = rootResult?.data
     const rootError = rootResult?.error
+
+    /** 刷新图标是否转圈：真实请求进行中 或 仍在最短旋转窗口内 */
+    const isRefreshing =
+        spinUntilTimeout || (isSearching ? isSearchLoading : results.some((r) => r.isFetching))
 
     // folder 图标的展开/收起切换交给 CSS（按 antd 自带的 aria-expanded 显隐）。
     // files 允许带 children（搜索模式由 buildPathTree 产出嵌套结构）；树模式无 children 则从 dirData 取。
@@ -294,6 +346,15 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                     onClick={() => setShowHidden((v) => !v)}
                     aria-label={t(showHidden ? 'files.hideHidden' : 'files.showHidden')}
                 />
+                <AppTooltip title={t('files.refreshTree')}>
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<RotateCw size={14} className={isRefreshing ? 'refresh-spinning' : undefined} />}
+                        onClick={handleRefresh}
+                        aria-label={t('files.refreshTree')}
+                    />
+                </AppTooltip>
             </div>
             {isSearching ? (
                 searchResults.length === 0 ? (

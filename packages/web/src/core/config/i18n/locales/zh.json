@@ -293,7 +293,8 @@
         "noResults": "无匹配文件",
         "resultsTruncated": "仅显示前 {{count}} 条结果",
         "showHidden": "显示隐藏文件",
-        "hideHidden": "隐藏文件"
+        "hideHidden": "隐藏文件",
+        "refreshTree": "刷新文件树"
     },
     "git": {
         "filesChanged": "{{count}} 个文件变更",

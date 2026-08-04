@@ -58,9 +58,11 @@ export type FileContent = { blob: Blob; mime: string; etag?: string }
  * 对超大文件 / 不支持预览类型（PDF/音视频）跳过 content 拉取（省流量、省解码）。
  * 默认 true 保持其他调用方行为不变。
  *
- * 第四个参数 etag 为显式缓存驱动：把 meta 的 etag 并入 queryKey，
- * 窗口聚焦（react-query refetchOnWindowFocus 默认开）触发 meta refetch 拿到新 etag →
- * queryKey 变化 → content 自动 refetch；Ellipsis「刷新」项 invalidate meta 同样联动。
+ * 第四个参数 etag 为显式缓存驱动：把 meta 的 etag 并入 queryKey，meta refetch 拿到新 etag →
+ * queryKey 变化 → content 自动 refetch。触发 meta refetch 的两条路：
+ * - Ellipsis「刷新」项 invalidate meta（无条件生效，用户主动兜底的主路径）
+ * - 窗口聚焦（refetchOnWindowFocus 默认开）——但受全局 staleTime 30s 约束：
+ *   新鲜期内切回窗口不会 refetch，故聚焦更新是「尽力而为」，不能当作及时性保证。
  */
 export function useFileContent(sessionId: string | null, filePath: string | null, enabled = true, etag?: string) {
     const api = useMobiApi()

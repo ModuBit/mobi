@@ -125,19 +125,31 @@ function fireLoad(numPages: number, w = 595, h = 842) {
     })
 }
 
+/** 从 data-file url 取回 query 参数（断言不耦合参数顺序与编码方式） */
+function fileQuery(el: HTMLElement) {
+    const url = el.getAttribute('data-file')!
+    return new URL(url, 'http://localhost').searchParams
+}
+
 describe('PdfContentViewImpl', () => {
-    it('file={url}：data-file 含 read-file 端点 + encodeURIComponent(filePath)', () => {
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a/b.pdf" />)
+    it('file={url}：data-file 含 read-file 端点 + filePath', () => {
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a/b.pdf" etag="e1" />)
         const doc = screen.getByTestId('pdf-document')
-        // url 形式：/api/sessions/s1/read-file?path=a%2Fb.pdf
         expect(doc).toHaveAttribute('data-file')
-        const file = doc.getAttribute('data-file')!
-        expect(file).toContain('/api/sessions/s1/read-file')
-        expect(file).toContain(encodeURIComponent('a/b.pdf'))
+        expect(doc.getAttribute('data-file')!).toContain('/api/sessions/s1/read-file')
+        expect(fileQuery(doc).get('path')).toBe('a/b.pdf')
+    })
+
+    it('etag 进 url 的 v 参数：内容变化（路径不变）→ url 变 → pdfjs 重新加载', () => {
+        const { rerender } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="100-1700" />)
+        expect(fileQuery(screen.getByTestId('pdf-document')).get('v')).toBe('100-1700')
+
+        rerender(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="250-1800" />)
+        expect(fileQuery(screen.getByTestId('pdf-document')).get('v')).toBe('250-1800')
     })
 
     it('onLoadSuccess 后工具栏出现（百分比 / 适应宽度 / 100% 按钮可见）', async () => {
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         // Document 初始渲染（numPages=0 → Spin，但 Document 仍挂载以触发 onLoadSuccess）
         expect(screen.getByTestId('pdf-document')).toBeInTheDocument()
 
@@ -151,7 +163,7 @@ describe('PdfContentViewImpl', () => {
     })
 
     it('100% 预设重置 scale（放大后点 100% 回到 100%）', async () => {
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         await act(async () => { fireLoad(2) })
 
         // 默认 100%
@@ -167,18 +179,18 @@ describe('PdfContentViewImpl', () => {
     })
 
     it('不崩溃（基线）', () => {
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="doc.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="doc.pdf" etag="e1" />)
         expect(screen.getByTestId('pdf-document')).toBeInTheDocument()
     })
 
     it('I4: Document 收到 options.withCredentials=true（read-file 端点依赖 cookie）', () => {
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         const doc = screen.getByTestId('pdf-document')
         expect(doc.getAttribute('data-wc')).toBe('true')
     })
 
     it('I2: Document 收到 loading={null}（外层 Spin 独占加载态，避免双提示）', () => {
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         const doc = screen.getByTestId('pdf-document')
         expect(doc.getAttribute('data-loading')).toBe('null')
     })
@@ -192,7 +204,7 @@ describe('PdfContentViewImpl', () => {
         HTMLElement.prototype.getBoundingClientRect = function () {
             return this.style.flex ? { width: 1000, height: 800 } as DOMRect : orig.call(this)
         }
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         await act(async () => { fireLoad(1, 200, 200) })
         // 初始 scale=1（100%，封顶）→ 工具栏 100%
         expect(screen.getByText('100%')).toBeInTheDocument()
@@ -205,7 +217,7 @@ describe('PdfContentViewImpl', () => {
         HTMLElement.prototype.getBoundingClientRect = function () {
             return this.style.flex ? { width: 1000, height: 800 } as DOMRect : orig.call(this)
         }
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         await act(async () => { fireLoad(1, 2000, 2000) })
         // 初始 scale=0.5（50%）→ 工具栏 50%
         expect(screen.getByText('50%')).toBeInTheDocument()
@@ -214,7 +226,7 @@ describe('PdfContentViewImpl', () => {
 
     it('混合缩放：previewScale 即时变，renderScale debounce 300ms 后跟随', async () => {
         vi.useFakeTimers()
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" etag="e1" />)
         await act(async () => { fireLoad(1) })
         const cont = () => screen.getByTestId('pdf-continuous')
         // 首屏 fit：preview 与 render 同步（绕过 debounce，避免首屏 300ms 模糊）
@@ -236,7 +248,7 @@ describe('PdfContentViewImpl', () => {
 
     it('debounce 清理：连续缩放只触发最后一次 renderScale 更新', async () => {
         vi.useFakeTimers()
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" etag="e1" />)
         await act(async () => { fireLoad(1) })
         const cont = () => screen.getByTestId('pdf-continuous')
         // 首屏同步
@@ -288,7 +300,7 @@ describe('PdfContentViewImpl', () => {
     }
 
     it('双指 pinch：距离 ×2 → previewScale 按比例放大；松指后单指不触发', async () => {
-        const { container } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" />)
+        const { container } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" etag="e1" />)
         await act(async () => { fireLoad(1) })
         const cont = () => screen.getByTestId('pdf-continuous')
         const base = Number(cont().getAttribute('data-preview'))
@@ -318,7 +330,7 @@ describe('PdfContentViewImpl', () => {
     })
 
     it('pinch 距离 ×0.5 → previewScale 按比例缩小（不低于 MIN_SCALE）', async () => {
-        const { container } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" />)
+        const { container } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" etag="e1" />)
         await act(async () => { fireLoad(1) })
         const cont = () => screen.getByTestId('pdf-continuous')
         const base = Number(cont().getAttribute('data-preview'))
@@ -335,7 +347,7 @@ describe('PdfContentViewImpl', () => {
     })
 
     it('单指 touchStart + touchMove 不触发 pinch（无第二指）', async () => {
-        const { container } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" />)
+        const { container } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="x.pdf" etag="e1" />)
         await act(async () => { fireLoad(1) })
         const cont = () => screen.getByTestId('pdf-continuous')
         const base = Number(cont().getAttribute('data-preview'))
@@ -350,12 +362,12 @@ describe('PdfContentViewImpl', () => {
     })
 
     it('切换 filePath → loadError 清空，新 PDF 不卡 Empty（重置 effect）', () => {
-        const { rerender } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        const { rerender } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         // 触发加载失败 → loadError 设 → 渲染 Empty
         act(() => { onLoadErrorCb?.(new Error('encrypted')) })
         expect(screen.getByText('files.loadFailed')).toBeInTheDocument()
         // 切换 filePath → 重置 effect 清 loadError → Empty 消失（Document 重新挂载）
-        rerender(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="b.pdf" />)
+        rerender(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="b.pdf" etag="e1" />)
         expect(screen.queryByText('files.loadFailed')).not.toBeInTheDocument()
     })
 
@@ -363,7 +375,7 @@ describe('PdfContentViewImpl', () => {
     it('记忆恢复：saved.scale 优先于默认 fit（不被首屏 fit 覆盖）', async () => {
         setupFileTab('s1', 'tab1', 'a.pdf')
         useWorkspaceStore.getState().setTabViewState('s1', 'tab1', { scale: 1.5, scrollRatio: 0.5 })
-        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         await act(async () => { fireLoad(2) })
         // saved.scale=1.5 → 工具栏 150%（即便 fit 算出别的值也用记忆值）
         expect(screen.getByText('150%')).toBeInTheDocument()
@@ -372,7 +384,7 @@ describe('PdfContentViewImpl', () => {
     it('记忆恢复：saved.scrollRatio → 加载后 scrollTop = ratio * 总高度', async () => {
         setupFileTab('s1', 'tab1', 'a.pdf')
         useWorkspaceStore.getState().setTabViewState('s1', 'tab1', { scale: 1, scrollRatio: 0.5 })
-        const { container } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        const { container } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         await act(async () => { fireLoad(2, 595, 842) })  // 2 页，每页高 842，scale=1
         const scrollArea = container.querySelector('[style*="overflow"]') as HTMLElement
         // 总高 = numPages * pageHeight * scale = 2 * 842 * 1 = 1684；scrollRatio 0.5 → scrollTop 842
@@ -382,7 +394,7 @@ describe('PdfContentViewImpl', () => {
     it('onScroll 只更新内存 ref，不实时写 store；卸载时一次性落盘到 tab.viewState', async () => {
         setupFileTab('s1', 'tab1', 'a.pdf')
         useWorkspaceStore.getState().setTabViewState('s1', 'tab1', { scale: 1, scrollRatio: 0.3 })
-        const { container, unmount } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        const { container, unmount } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         await act(async () => { fireLoad(2, 595, 842) })
         const scrollArea = container.querySelector('[style*="overflow"]') as HTMLElement
         Object.defineProperty(scrollArea, 'scrollHeight', { configurable: true, value: 1684 })
@@ -398,7 +410,7 @@ describe('PdfContentViewImpl', () => {
     it('PDF 未加载完就切走 → 不污染 saved（loadedRef 防护，避免初始 ratio=0 覆盖）', () => {
         setupFileTab('s1', 'tab1', 'a.pdf')
         useWorkspaceStore.getState().setTabViewState('s1', 'tab1', { scale: 1.5, scrollRatio: 0.5 })
-        const { unmount } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        const { unmount } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         // 不 fireLoad（模拟 PDF 异步加载未完成）→ 直接卸载
         unmount()
         // saved 不被覆盖（仍是 1.5 / 0.5）
@@ -407,7 +419,7 @@ describe('PdfContentViewImpl', () => {
 
     it('卸载时落盘当前 scale（切走/关页前最新值写入 tab.viewState）', async () => {
         setupFileTab('s1', 'tab1', 'a.pdf')
-        const { unmount } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" />)
+        const { unmount } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
         await act(async () => { fireLoad(1) })
         // 默认 scale=1（无 getBoundingClientRect mock → cw=0 → 不 fit → 初始 state 1）
         fireEvent.click(screen.getByText('+'))  // 1 → 1.2

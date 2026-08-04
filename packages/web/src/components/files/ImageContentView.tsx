@@ -14,15 +14,18 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Image } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { buildReadFileUrl } from '@/core/utils/fileUrl'
 
 interface ImageContentViewProps {
     /** 会话 id（拼 read-file 端点 src） */
     sessionId: string
     /** 文件路径（img alt + src query） */
     filePath: string
+    /** 文件内容版本（meta.etag）：并入 src，让「路径不变但内容变了」也能刷出新图 */
+    etag: string
 }
 
 // 加载失败兜底图：语言无关的「破损图片」SVG（灰色山+太阳占位）。
@@ -42,12 +45,16 @@ const FALLBACK_IMAGE = `data:image/svg+xml,${encodeURIComponent(
  * - 尺寸约束见 styles/antd.css 的 .image-content-view：图片永远 contain 在容器内，不超出、不变形
  * - 加载失败（401 cookie 过期/损坏等）显示「重试」按钮：点击变更 src query 强制重新请求（触发 cookie 重新认证）
  */
-export default function ImageContentView({ sessionId, filePath }: ImageContentViewProps) {
+export default function ImageContentView({ sessionId, filePath, etag }: ImageContentViewProps) {
     const { t } = useTranslation()
     // 重试计数：拼到 src query 让浏览器视为新 URL，绕过缓存重新请求（触发 cookie 重新认证）
     const [retry, setRetry] = useState(0)
     const [failed, setFailed] = useState(false)
-    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}${retry > 0 ? `&_retry=${retry}` : ''}`
+    const src = buildReadFileUrl(sessionId, filePath, { etag, retry })
+
+    // 文件内容已变（etag 变）→ 上次的失败判定过期，清掉兜底图让新内容有机会加载。
+    // 否则一次加载失败会把 tab 永久钉在「重试」界面，即便文件本身已经修好。
+    useEffect(() => { setFailed(false) }, [etag])
 
     if (failed) {
         return (

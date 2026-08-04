@@ -38,6 +38,11 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 // 延迟引入被 mock 的模块（在 vi.mock 之后），拿真实的 QueryClient/Provider
 const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
 
+/** 从 src 取回 query 参数（断言不耦合参数顺序与具体编码方式） */
+function srcQuery(src: string) {
+    return new URL(src, 'http://localhost').searchParams
+}
+
 // jsdom 没有 ResizeObserver（antd Tabs/Tree + PdfContentViewImpl 依赖）/ IntersectionObserver（PdfContinuousView 依赖）
 beforeAll(() => {
     vi.stubGlobal('ResizeObserver', class {
@@ -244,8 +249,12 @@ describe('FileContentView', () => {
         renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/logo.png" />)
         const img = await screen.findByRole('img')
         expect(img).toBeInTheDocument()
-        // src = /api/sessions/s1/read-file?path=a%2Fb%2Flogo.png（encodeURIComponent 编码路径）
-        expect(img).toHaveAttribute('src', '/api/sessions/s1/read-file?path=a%2Fb%2Flogo.png')
+        const src = img.getAttribute('src')!
+        expect(src.startsWith('/api/sessions/s1/read-file?')).toBe(true)
+        const p = srcQuery(src)
+        expect(p.get('path')).toBe('a/b/logo.png')
+        // meta.etag 进 v：路径不变而内容变化时，src 随之变化 → 浏览器重新请求
+        expect(p.get('v')).toBe('11-1')
     })
 
     it('大图片（≥5MB）→ FileTooLarge', () => {
@@ -321,7 +330,8 @@ describe('FileContentView', () => {
         await waitFor(() => {
             expect(video).not.toBeNull()
         })
-        expect(video!).toHaveAttribute('src', '/api/sessions/s1/read-file?path=clip.mp4')
+        expect(srcQuery(video!.getAttribute('src')!).get('path')).toBe('clip.mp4')
+        expect(srcQuery(video!.getAttribute('src')!).get('v')).toBe('11-1')
         expect(video!).toHaveAttribute('controls')
         expect(document.querySelector('audio')).toBeNull()
     })
@@ -334,7 +344,8 @@ describe('FileContentView', () => {
         await waitFor(() => {
             expect(audio).not.toBeNull()
         })
-        expect(audio!).toHaveAttribute('src', '/api/sessions/s1/read-file?path=song.mp3')
+        expect(srcQuery(audio!.getAttribute('src')!).get('path')).toBe('song.mp3')
+        expect(srcQuery(audio!.getAttribute('src')!).get('v')).toBe('11-1')
         // 音频经 AudioPlayer 渲染：隐藏 audio + 自定义 UI（无原生 controls），preload=metadata 是其特征
         expect(audio!).toHaveAttribute('preload', 'metadata')
         expect(document.querySelector('video')).toBeNull()
@@ -376,7 +387,7 @@ describe('FileContentView', () => {
         await waitFor(() => {
             expect(audio).not.toBeNull()
         })
-        expect(audio!).toHaveAttribute('src', '/api/sessions/s1/read-file?path=voice.m4a')
+        expect(srcQuery(audio!.getAttribute('src')!).get('path')).toBe('voice.m4a')
     })
 
     it('Ellipsis → 复制相对路径到剪切板并提示', async () => {

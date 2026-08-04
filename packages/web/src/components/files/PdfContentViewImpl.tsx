@@ -33,6 +33,7 @@ import PdfContinuousView from './PdfContinuousView'
 // PDF 视图状态（缩放 + 滚动比例）记忆在 workspaceStore 的 tab.viewState，与 tab 同生命周期：
 // 切走再切回恢复，关 tab / 删 session 自动清理。命令式读写（getState/setTabViewState），不订阅以避免滚动触发 re-render。
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
+import { buildReadFileUrl } from '@/core/utils/fileUrl'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
@@ -70,6 +71,8 @@ interface PdfContentViewImplProps {
     tabId: string
     /** 文件路径（拼 url query param path） */
     filePath: string
+    /** 文件内容版本（meta.etag）：并入 url，让「路径不变但内容变了」也能重新加载 */
+    etag: string
 }
 
 /**
@@ -86,7 +89,7 @@ interface PdfContentViewImplProps {
  *
  * clampScale 及其常量（MIN_SCALE/MAX_SCALE/SCALE_STEP）在 PdfToolbar 导出（叶子组件，避免重复定义 + 循环依赖）。
  */
-export default function PdfContentViewImpl({ sessionId, tabId, filePath }: PdfContentViewImplProps) {
+export default function PdfContentViewImpl({ sessionId, tabId, filePath, etag }: PdfContentViewImplProps) {
     const { t } = useTranslation()
     const [numPages, setNumPages] = useState(0)
     const [pageWidth, setPageWidth] = useState(0)
@@ -138,7 +141,8 @@ export default function PdfContentViewImpl({ sessionId, tabId, filePath }: PdfCo
         return () => ro.disconnect()
     }, [])
 
-    // 切换 PDF（sessionId/filePath 变）→ 重置加载状态，避免旧 PDF 残留：
+    // 切换 PDF（sessionId/filePath 变）或同一 PDF 内容被改写（etag 变）→ 重置加载状态，
+    // 避免旧 PDF 残留：
     // - loadError 不清会永久卡 Empty（Document 不挂载，新 onLoadSuccess 永不触发）
     // - numPages/pageWidth/pageHeight 不清会旧占位 + 旧尺寸（PdfContinuousView 也会清 visible）
     useEffect(() => {
@@ -150,10 +154,10 @@ export default function PdfContentViewImpl({ sessionId, tabId, filePath }: PdfCo
         pendingRestoreRef.current = true
         // PDF 未加载完：卸载时据此跳过落盘，避免初始 ratio=0 污染 saved
         loadedRef.current = false
-    }, [sessionId, filePath])
+    }, [sessionId, filePath, etag])
 
-    // read-file 端点 url：pdfjs 走 HTTP Range 按需加载
-    const src = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}`
+    // read-file 端点 url：pdfjs 走 HTTP Range 按需加载；etag 并入让内容变化能重新加载
+    const src = buildReadFileUrl(sessionId, filePath, { etag })
 
     const handleLoadSuccess = async (pdf: PDFDocumentProxy) => {
         const token = ++loadTokenRef.current

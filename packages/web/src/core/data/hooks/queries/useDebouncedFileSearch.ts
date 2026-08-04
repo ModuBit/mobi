@@ -45,10 +45,17 @@ const LOADING_DELAY = 400
 export function useDebouncedFileSearch(sessionId: string, query: string): {
     results: FileNode[]
     isLoading: boolean
+    /** 以当前 query 重新搜索（手动刷新用）；query 为空时为 no-op */
+    refetch: () => void
 } {
     const api = useMobiApi()
     const [results, setResults] = useState<FileNode[]>([])
     const [isLoading, setIsLoading] = useState(false)
+    /**
+     * 手动刷新计数：自增即重跑下方 effect（query 不变也能重发请求）。
+     * 与 query 一同作为 effect 依赖，是「重新搜索」的唯一触发口。
+     */
+    const [refreshNonce, setRefreshNonce] = useState(0)
     const abortRef = useRef<AbortController | null>(null)
     /** loading 延迟计时器：fetch 快时取消，不触发 loading 态 */
     const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -57,6 +64,12 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
      * 防止慢请求 A 的 finally 在快请求 B 已进入 loading 后过早熄灭 spinner。
      */
     const generationRef = useRef(0)
+    /**
+     * 上一次 effect 运行时的 nonce。用于区分本次重跑的来源：
+     * nonce 变了 → 手动刷新触发，立即发起（点刷新不该再等 300ms）；
+     * nonce 没变 → 用户在打字（query 变化触发），照常防抖。
+     */
+    const lastNonceRef = useRef(0)
 
     const clearLoadingTimer = useCallback(() => {
         if (loadingTimerRef.current) {
@@ -66,6 +79,11 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
     }, [])
 
     useEffect(() => {
+        // 先认领 nonce（哪怕下方因空 query 提前返回也要认领），
+        // 否则空 query 期间的 refetch 会把「下一次打字」误判成手动刷新而跳过防抖
+        const isManualRefresh = refreshNonce !== lastNonceRef.current
+        lastNonceRef.current = refreshNonce
+
         const trimmed = query.trim()
         if (!trimmed) {
             abortRef.current?.abort()
@@ -122,14 +140,16 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
                     setIsLoading(false)
                 }
             }
-        }, DEBOUNCE_MS)
+        }, isManualRefresh ? 0 : DEBOUNCE_MS)
 
         return () => {
             clearTimeout(timer)
             clearLoadingTimer()
             controller.abort()
         }
-    }, [sessionId, query, api, clearLoadingTimer])
+    }, [sessionId, query, refreshNonce, api, clearLoadingTimer])
 
-    return { results, isLoading }
+    const refetch = useCallback(() => setRefreshNonce((n) => n + 1), [])
+
+    return { results, isLoading, refetch }
 }

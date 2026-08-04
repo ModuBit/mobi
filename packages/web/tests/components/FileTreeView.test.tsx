@@ -225,6 +225,50 @@ describe('FileTreeView', () => {
         expect(onOpenFile).toHaveBeenCalledWith('src/foo.ts', 'foo.ts')
     })
 
+    it('树模式点刷新 → 重新拉取根目录与已展开子目录', async () => {
+        const list = makeList({
+            '.': [{ name: 'src', type: 'directory' }],
+            src: [{ name: 'inner.ts', type: 'file' }],
+        })
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        const { container } = renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('src')
+        // 先展开 src，让它进入订阅集合（刷新应连它一起刷）
+        fireEvent.click(container.querySelectorAll('.ant-tree-switcher')[0])
+        await waitFor(() => expect(screen.getByText('inner.ts')).toBeInTheDocument())
+
+        const rootBefore = list.mock.calls.filter((c) => c[1] === '.').length
+        const srcBefore = list.mock.calls.filter((c) => c[1] === 'src').length
+
+        fireEvent.click(screen.getByRole('button', { name: 'files.refreshTree' }))
+
+        await waitFor(() => {
+            expect(list.mock.calls.filter((c) => c[1] === '.').length).toBeGreaterThan(rootBefore)
+            expect(list.mock.calls.filter((c) => c[1] === 'src').length).toBeGreaterThan(srcBefore)
+        })
+    })
+
+    it('搜索模式点刷新 → 重跑搜索（不刷目录）', async () => {
+        const list = makeList({ '.': [{ name: 'a.ts', type: 'file' }] })
+        const searchFiles = vi.fn(async () => ({
+            data: { success: true, entries: [{ name: 'foo.ts', type: 'file' as const, path: 'src/foo.ts' }] },
+        }))
+        mockedUseMobiApi.mockReturnValue({ files: { list }, sessions: { searchFiles } } as any)
+
+        renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('a.ts')
+
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        await waitFor(() => expect(searchFiles).toHaveBeenCalledTimes(1))
+        const listBefore = list.mock.calls.length
+
+        fireEvent.click(screen.getByRole('button', { name: 'files.refreshTree' }))
+
+        await waitFor(() => expect(searchFiles).toHaveBeenCalledTimes(2))
+        expect(list.mock.calls.length).toBe(listBefore)
+    })
+
     it('默认隐藏 . 开头文件；点切换按钮后显示', async () => {
         const list = makeList({
             '.': [

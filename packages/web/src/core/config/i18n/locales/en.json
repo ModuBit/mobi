@@ -293,7 +293,8 @@
         "noResults": "No matching files",
         "resultsTruncated": "Showing first {{count}} results",
         "showHidden": "Show hidden files",
-        "hideHidden": "Hide hidden files"
+        "hideHidden": "Hide hidden files",
+        "refreshTree": "Refresh file tree"
     },
     "git": {
         "filesChanged": "{{count}} files changed",

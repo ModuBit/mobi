@@ -27,6 +27,8 @@ interface PdfContentViewProps {
     tabId: string
     /** 文件路径（拼 url query param path） */
     filePath: string
+    /** 文件内容版本（meta.etag）：并入 url，让「路径不变但内容变了」也能重新加载 */
+    etag: string
 }
 
 /**

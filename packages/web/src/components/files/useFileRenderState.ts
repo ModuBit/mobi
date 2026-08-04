@@ -31,7 +31,21 @@ export type RenderState =
     | { status: 'content-loading'; kind: FileKind; view: 'render' | 'source'; toggleView: () => void; wrap: boolean; toggleWrap: () => void }
     | { status: 'content-error'; error: unknown }
     | { status: 'empty' }
-    | { status: 'ready'; kind: FileKind; text: string; view: 'render' | 'source'; toggleView: () => void; wrap: boolean; toggleWrap: () => void }
+    | {
+        status: 'ready'
+        kind: FileKind
+        text: string
+        /**
+         * 文件内容版本（= meta.etag，cli 侧为 `size-mtimeMs`）。
+         * 供 src 直连类型（image / media / pdf）并入 URL——URL 不带版本时内容原地变化无从感知，
+         * 详见 buildReadFileUrl 的说明。
+         */
+        etag: string
+        view: 'render' | 'source'
+        toggleView: () => void
+        wrap: boolean
+        toggleWrap: () => void
+    }
 
 /** ready 态（带 kind/text/view/toggleView）—— 供消费侧复用，避免重复 Extract */
 export type ReadyRenderState = Extract<RenderState, { status: 'ready' }>
@@ -104,12 +118,12 @@ export function useFileRenderState(sessionId: string, filePath: string): RenderS
     if (!meta || !kind) return { status: 'meta-loading' }
     if (tooLarge) return { status: 'too-large' }
     if (!needsContent(kind)) {
-        // pdf / image / media：src 直连端点，不依赖 content
-        return { status: 'ready', kind, text: '', view, toggleView, wrap, toggleWrap }
+        // pdf / image / media：src 直连端点，不依赖 content；etag 并入 URL 以感知内容变化
+        return { status: 'ready', kind, text: '', etag: meta.etag, view, toggleView, wrap, toggleWrap }
     }
     if (contentLoading) return { status: 'content-loading', kind, view, toggleView, wrap, toggleWrap }
     if (contentError) return { status: 'content-error', error: contentError }
     if (!file) return { status: 'empty' }
     // text===null 时短暂以空串渲染（与原 `text ?? ''` 一致），blob 解析完更新
-    return { status: 'ready', kind, text: text ?? '', view, toggleView, wrap, toggleWrap }
+    return { status: 'ready', kind, text: text ?? '', etag: meta.etag, view, toggleView, wrap, toggleWrap }
 }

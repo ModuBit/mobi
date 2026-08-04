@@ -28,6 +28,8 @@ interface AudioPlayerProps {
     filePath: string
     /** 加载失败回调（401/404/损坏等；原生 audio 请求不经 axios interceptor，需组件层兜底） */
     onError?: () => void
+    /** 播放态变化回调：调用方据此决定是否可以换 src（播放中换会重新加载、进度归零） */
+    onPlayingChange?: (playing: boolean) => void
 }
 
 /**
@@ -35,7 +37,7 @@ interface AudioPlayerProps {
  * - 顶部：进度条（贴上边缘）+ hover 时间预览
  * - 内容行：左（图标 + 文件名 + 时间）/ 中（播放/暂停）/ 右（音量）
  */
-export default function AudioPlayer({ src, filePath, onError }: AudioPlayerProps) {
+export default function AudioPlayer({ src, filePath, onError, onPlayingChange }: AudioPlayerProps) {
     const { t } = useTranslation()
     const audioRef = useRef<HTMLAudioElement>(null)
     const sliderWrapRef = useRef<HTMLDivElement>(null)
@@ -50,6 +52,9 @@ export default function AudioPlayer({ src, filePath, onError }: AudioPlayerProps
     // 把 onError 存进 ref，让事件监听 effect 只挂载一次（避免回调每次渲染变更导致反复 add/remove）
     const onErrorRef = useRef(onError)
     onErrorRef.current = onError
+    // onPlayingChange 同理走 ref，保持事件监听 effect 的空依赖
+    const onPlayingChangeRef = useRef(onPlayingChange)
+    onPlayingChangeRef.current = onPlayingChange
 
     useEffect(() => {
         const audio = audioRef.current
@@ -57,9 +62,14 @@ export default function AudioPlayer({ src, filePath, onError }: AudioPlayerProps
         const onTime = () => setCurrent(audio.currentTime)
         // duration 可能是 Infinity（流式/无内嵌时长），Number.isFinite 兜底为 0
         const onMeta = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
-        const onEnd = () => setIsPlaying(false)
-        const onPlay = () => setIsPlaying(true)
-        const onPause = () => setIsPlaying(false)
+        // 播放态同时上报给调用方（MediaContentView 据此决定是否延后换 src）
+        const setPlayState = (v: boolean) => {
+            setIsPlaying(v)
+            onPlayingChangeRef.current?.(v)
+        }
+        const onEnd = () => setPlayState(false)
+        const onPlay = () => setPlayState(true)
+        const onPause = () => setPlayState(false)
         const onErr = () => onErrorRef.current?.()
         audio.addEventListener('timeupdate', onTime)
         audio.addEventListener('loadedmetadata', onMeta)

@@ -120,6 +120,50 @@ describe('useDebouncedFileSearch', () => {
         expect(result.current.isLoading).toBe(false)
     })
 
+    it('refetch → 以同一 query 重新发起搜索', async () => {
+        const searchFiles = vi.fn(async () => ({
+            data: { success: true, entries: [{ name: 'a.ts', type: 'file' as const, path: 'a.ts' }] },
+        }))
+        mockApi(searchFiles)
+
+        const { result } = renderHook(() => useDebouncedFileSearch('s1', 'foo'))
+        await waitFor(() => expect(searchFiles).toHaveBeenCalledTimes(1))
+
+        act(() => result.current.refetch())
+
+        await waitFor(() => expect(searchFiles).toHaveBeenCalledTimes(2))
+        expect(searchFiles).toHaveBeenLastCalledWith('s1', 'foo', 'file', expect.any(Object))
+    })
+
+    it('refetch 不等防抖（query 未变 → 立即发起）', async () => {
+        vi.useFakeTimers()
+        const searchFiles = vi.fn(async () => ({ data: { success: true, entries: [] } }))
+        mockApi(searchFiles)
+
+        const { result } = renderHook(() => useDebouncedFileSearch('s1', 'foo'))
+        // 首次输入仍走 300ms 防抖
+        await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+        expect(searchFiles).toHaveBeenCalledTimes(1)
+
+        // refetch：query 未变，无需再等防抖，推进 0ms 即应发起
+        act(() => result.current.refetch())
+        await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+        expect(searchFiles).toHaveBeenCalledTimes(2)
+
+        vi.useRealTimers()
+    })
+
+    it('空 query 时 refetch 不发请求', async () => {
+        const searchFiles = vi.fn()
+        mockApi(searchFiles)
+
+        const { result } = renderHook(() => useDebouncedFileSearch('s1', ''))
+        act(() => result.current.refetch())
+
+        await waitFor(() => expect(result.current.results).toEqual([]))
+        expect(searchFiles).not.toHaveBeenCalled()
+    })
+
     it('旧请求 finally 不复位新请求的 loading（generation 守卫，防 spinner 误熄）', async () => {
         // fake timers 确定性控制防抖/loading 定时器，避免 real timer 下时序 flaky
         vi.useFakeTimers()

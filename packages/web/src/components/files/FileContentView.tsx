@@ -160,13 +160,13 @@ function renderReady(
     switch (state.kind.kind) {
         case 'pdf':
             // PDF 走 react-pdf：file=url 让 pdfjs HTTP Range 按需加载
-            return <PdfContentView sessionId={sessionId} tabId={tabId} filePath={filePath} />
+            return <PdfContentView sessionId={sessionId} tabId={tabId} filePath={filePath} etag={state.etag} />
         case 'image':
-            // 图片 src 直连端点（cookie 带 + 浏览器原生缓存）
-            return <ImageContentView sessionId={sessionId} filePath={filePath} />
+            // 图片 src 直连端点（cookie 带 + 浏览器原生缓存）；etag 入 src 才能感知内容变化
+            return <ImageContentView sessionId={sessionId} filePath={filePath} etag={state.etag} />
         case 'media-native':
             // 原生格式 src 直连（cookie 带 + Range 流式）
-            return <MediaContentView sessionId={sessionId} filePath={filePath} isAudio={state.kind.isAudio} />
+            return <MediaContentView sessionId={sessionId} filePath={filePath} isAudio={state.kind.isAudio} etag={state.etag} />
         case 'media-download':
             // 非原生音视频走下载
             return <FileDownloadPrompt sessionId={sessionId} filePath={filePath} reason={t('files.mediaDownload')} />

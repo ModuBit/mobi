@@ -17,6 +17,7 @@
 import { Empty, Button } from 'antd'
 import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { buildReadFileUrl } from '@/core/utils/fileUrl'
 
 interface FileDownloadPromptProps {
     sessionId: string
@@ -32,7 +33,8 @@ interface FileDownloadPromptProps {
  */
 export default function FileDownloadPrompt({ sessionId, filePath, reason }: FileDownloadPromptProps) {
     const { t } = useTranslation()
-    const downloadUrl = `/api/sessions/${sessionId}/read-file?path=${encodeURIComponent(filePath)}&download=1`
+    // 下载不带 etag：点下载时总取当前磁盘内容，本就无需版本化
+    const downloadUrl = buildReadFileUrl(sessionId, filePath, { download: true })
     return (
         <div style={{ textAlign: 'center', marginTop: 40 }}>
             <Empty description={reason} />
