@@ -285,10 +285,11 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     // 终端工具（Bash/shell_command）即报错也默认展开：用户主动下发的命令，
     // 失败/被拦截时必须直接看到命令与原因（如 mobi 本地 !bash 的高危拦截提示），
     // 不能像其它工具那样 error 即折叠降噪。
-    // 组内（inGroup）统一收起：降噪优先于「Bash 失败必展开」（组头红角标已承载失败信号）；
-    // 组内不会出现 pending permission（未落定的工具散落不进组），故 permissionDrivenExpand 无需保留。
+    // 组内（inGroup）统一收起降噪，但保留「终端工具失败必展开」这一安全不变式——
+    // 组头红角标只表达「≥1 失败」，不承载命令文本/失败原因；用户展开组后须直接看到命令与原因，
+    // 不应再要求一次卡片展开。组内不会出现 pending permission（未落定的工具散落不进组）。
     const defaultExpanded = inGroup
-        ? false
+        ? isError && isTerminalTool(tool.name)
         : (!isError || isTerminalTool(tool.name)) && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning || isBgAgent)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const prevPermissionDrivenExpand = useRef(permissionDrivenExpand)

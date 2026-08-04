@@ -168,7 +168,6 @@
             "statusDone": "Done",
             "statusError": "Error",
             "statusRunning": "Running",
-            "groupFailedCount": "{{count}} failed",
             "waitingForApproval": "Waiting for approval...",
             "canceled": "Canceled",
             "approved": "Approved",

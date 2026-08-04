@@ -18,7 +18,7 @@ import type { AgentReasoningBlock, ChatBlock, ToolCallBlock } from '@/domain/cha
 import { capitalize } from '@/core/utils/sessionUtils'
 import { parseMCPToolName, formatMCPServerDisplay } from '@/core/lib/toolInputUtils'
 
-type ToolCategory = 'shell' | 'read' | 'glob' | 'grep' | 'webfetch' | 'websearch' | 'write'
+type ToolCategory = 'shell' | 'read' | 'glob' | 'grep' | 'webfetch' | 'websearch' | 'write' | 'edit'
 
 const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   Bash: 'shell',
@@ -29,8 +29,8 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   WebFetch: 'webfetch',
   WebSearch: 'websearch',
   Write: 'write',
-  Edit: 'write',
-  MultiEdit: 'write',
+  Edit: 'edit',
+  MultiEdit: 'edit',
 }
 
 const COLLAPSIBLE_TOOL_NAMES = new Set(Object.keys(TOOL_CATEGORY_MAP))
@@ -52,15 +52,24 @@ export type GroupedBlock = ChatBlock | ToolCallGroup
 type IsActiveReasoning = (block: AgentReasoningBlock) => boolean
 
 /**
+ * 组内失败工具数（state=error 的 tool-call；reasoning 不计）。
+ * 组头红角标（hasError）与标题「· N failed」共用此函数，避免两处独立判定漂移。
+ */
+export function countFailedInGroup(blocks: CollapsibleBlock[]): number {
+  return blocks.filter(b => b.kind === 'tool-call' && b.tool.state === 'error').length
+}
+
+/**
  * 格式化折叠组标题。
  * thinking 部分：组内 reasoning 的 durationMs 求和 —— 有（remote）展示「thought X.Xs」，全无（local/历史）兜底「thought」。
- * tool 部分：按类别计数（现有逻辑）。
- * 失败计数：组内 tool state=error 的数量，传入 formatFailedCount 时追加「· N failed」。
+ * tool 部分：按类别计数。
+ * 失败计数：组内失败工具数 > 0 时追加「· N failed」。
+ *
+ * 注：标题主体文案（read N files 等）目前为硬编码英文，与既有动词一致；
+ * 失败计数同样硬编码英文以避免中英混排（中文 locale 下出现「Read 3 files · 1 个失败」）。
+ * 若后续整体 i18n 化标题动词，失败计数应一并接入。
  */
-export function formatGroupTitle(
-  blocks: CollapsibleBlock[],
-  opts: { formatFailedCount?: (count: number) => string } = {},
-): string {
+export function formatGroupTitle(blocks: CollapsibleBlock[]): string {
   // thinking 总时长（仅 remote 打点的 durationMs；local/历史为 undefined → 求和得 0）
   const reasoningBlocks = blocks.filter((b): b is AgentReasoningBlock => b.kind === 'agent-reasoning')
   const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null)
@@ -69,10 +78,8 @@ export function formatGroupTitle(
   // tool 类别计数
   const counts: Partial<Record<ToolCategory, number>> = {}
   const mcpCounts: Record<string, number> = {}
-  let failedCount = 0
   for (const block of blocks) {
     if (block.kind === 'agent-reasoning') continue
-    if (block.tool.state === 'error') failedCount++
     const cat = TOOL_CATEGORY_MAP[block.tool.name]
     if (cat) {
       counts[cat] = (counts[cat] ?? 0) + 1
@@ -115,16 +122,21 @@ export function formatGroupTitle(
   }
   if (counts.write) {
     const n = counts.write
-    parts.push(`edit ${n} file${n !== 1 ? 's' : ''}`)
+    parts.push(`wrote ${n} file${n !== 1 ? 's' : ''}`)
+  }
+  if (counts.edit) {
+    const n = counts.edit
+    parts.push(`edited ${n} file${n !== 1 ? 's' : ''}`)
   }
   for (const [server, n] of Object.entries(mcpCounts)) {
     parts.push(`called ${formatMCPServerDisplay(server)} ${n} time${n !== 1 ? 's' : ''}`)
   }
 
   const base = capitalize(parts.join(', '))
-  // 含失败工具时追加失败计数（需调用方提供格式化器，否则仅计数但不展示）
-  if (failedCount > 0 && opts.formatFailedCount) {
-    return `${base} · ${opts.formatFailedCount(failedCount)}`
+  // 含失败工具时追加失败计数（与主体同语言，避免中英混排）
+  const failedCount = countFailedInGroup(blocks)
+  if (failedCount > 0) {
+    return `${base} · ${failedCount} failed`
   }
   return base
 }

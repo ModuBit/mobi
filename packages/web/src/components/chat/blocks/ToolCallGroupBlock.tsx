@@ -16,13 +16,12 @@
 
 import { useState, useMemo } from 'react'
 import { Think } from '@ant-design/x'
-import { useTranslation } from 'react-i18next'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
 import { ToolCallRenderer } from './ToolCallBlock'
 import { ReasoningBlock } from './ReasoningBlock'
 import { StatusStateIcon, STATUS_DOT_COLORS } from '@/components/tool-card/toolIcons'
-import { formatGroupTitle } from '@/domain/chat/groupToolCalls'
+import { formatGroupTitle, countFailedInGroup } from '@/domain/chat/groupToolCalls'
 
 /**
  * 组头状态 icon：主体 completed 绿点（组已落定），含失败工具时右上角叠小红角标提示。
@@ -57,23 +56,15 @@ export function ToolCallGroupRenderer({
 }: {
   blocks: Array<ToolCallBlock | AgentReasoningBlock>
 } & ChatBlockContext) {
-  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const hasError = useMemo(
-    () => blocks.some(b => b.kind === 'tool-call' && b.tool.state === 'error'),
-    [blocks],
-  )
-  const title = useMemo(
-    () => formatGroupTitle(blocks, {
-      formatFailedCount: n => t('chat.tool.groupFailedCount', { count: n }),
-    }),
-    [blocks, t],
-  )
+  // hasError 与标题「· N failed」共用 countFailedInGroup，避免两处独立判定漂移
+  const failedCount = useMemo(() => countFailedInGroup(blocks), [blocks])
+  const title = useMemo(() => formatGroupTitle(blocks), [blocks])
 
   return (
     <Think
       className="tool-call-think"
-      icon={<ToolCallGroupIcon hasError={hasError} />}
+      icon={<ToolCallGroupIcon hasError={failedCount > 0} />}
       title={
         <span style={{ fontWeight: 500, fontSize: 13 }}>
           {title}

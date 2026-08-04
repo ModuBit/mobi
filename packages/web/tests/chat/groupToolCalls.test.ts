@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { groupCollapsibleToolCalls, formatGroupTitle } from '@/domain/chat/groupToolCalls'
+import { groupCollapsibleToolCalls, formatGroupTitle, countFailedInGroup } from '@/domain/chat/groupToolCalls'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlock } from '@/domain/chat'
 
@@ -481,14 +481,14 @@ describe('formatGroupTitle', () => {
     })
   })
 
-  describe('失败计数（formatFailedCount 回调）', () => {
-    it('含 error 时追加失败计数', () => {
+  describe('失败计数', () => {
+    it('含 error 时追加「· N failed」', () => {
       const blocks = [
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
         makeToolCall({ id: 'r3', name: 'Read', state: 'completed' }),
       ]
-      expect(formatGroupTitle(blocks, { formatFailedCount: n => `${n} failed` })).toBe('Read 3 files · 1 failed')
+      expect(formatGroupTitle(blocks)).toBe('Read 3 files · 1 failed')
     })
 
     it('全 error 时计数为组大小', () => {
@@ -496,20 +496,12 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'error' }),
       ]
-      expect(formatGroupTitle(blocks, { formatFailedCount: n => `${n} failed` })).toBe('Read 2 files · 2 failed')
+      expect(formatGroupTitle(blocks)).toBe('Read 2 files · 2 failed')
     })
 
-    it('无 error 时不追加（即使传了回调）', () => {
+    it('无 error 时不追加', () => {
       const blocks = [
         makeToolCall({ id: 'r1', name: 'Read', state: 'completed' }),
-        makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
-      ]
-      expect(formatGroupTitle(blocks, { formatFailedCount: n => `${n} failed` })).toBe('Read 2 files')
-    })
-
-    it('含 error 但未传回调时不追加', () => {
-      const blocks = [
-        makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
       ]
       expect(formatGroupTitle(blocks)).toBe('Read 2 files')
@@ -521,7 +513,31 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
         makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
       ]
-      expect(formatGroupTitle(blocks, { formatFailedCount: n => `${n} failed` })).toBe('Thought 1.0s, read 2 files · 1 failed')
+      expect(formatGroupTitle(blocks)).toBe('Thought 1.0s, read 2 files · 1 failed')
+    })
+  })
+
+  describe('countFailedInGroup', () => {
+    it('统计 error 态 tool-call 数量', () => {
+      const blocks = [
+        makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
+        makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
+        makeToolCall({ id: 'r3', name: 'Bash', state: 'error' }),
+      ]
+      expect(countFailedInGroup(blocks)).toBe(2)
+    })
+
+    it('reasoning 不计入失败', () => {
+      const blocks = [
+        makeReasoning({ id: 'rs1' }),
+        makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
+      ]
+      expect(countFailedInGroup(blocks)).toBe(1)
+    })
+
+    it('无失败返回 0', () => {
+      const blocks = [makeToolCall({ id: 'r1', name: 'Read', state: 'completed' })]
+      expect(countFailedInGroup(blocks)).toBe(0)
     })
   })
 
@@ -619,12 +635,20 @@ describe('formatGroupTitle', () => {
       ])).toBe('Search the web 3 times')
     })
 
-    it('Write/Edit/MultiEdit 合并 write 类别计数', () => {
-      const blocks = [
-        makeToolCall({ id: 'e1', name: 'Write' }),
-        makeToolCall({ id: 'e2', name: 'Edit' }),
-      ]
-      expect(formatGroupTitle(blocks)).toBe('Edit 2 files')
+    it('Write 与 Edit/MultiEdit 分开计数（write=新建 / edit=修改）', () => {
+      expect(formatGroupTitle([
+        makeToolCall({ id: 'w1', name: 'Write' }),
+        makeToolCall({ id: 'w2', name: 'Write' }),
+      ])).toBe('Wrote 2 files')
+      expect(formatGroupTitle([
+        makeToolCall({ id: 'e1', name: 'Edit' }),
+        makeToolCall({ id: 'e2', name: 'MultiEdit' }),
+      ])).toBe('Edited 2 files')
+      // 混合：各自计数并列
+      expect(formatGroupTitle([
+        makeToolCall({ id: 'w1', name: 'Write' }),
+        makeToolCall({ id: 'e1', name: 'Edit' }),
+      ])).toBe('Wrote 1 file, edited 1 file')
     })
 
     it('read + websearch + edit 混合按固定顺序拼接', () => {
@@ -633,7 +657,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'w1', name: 'WebSearch' }),
         makeToolCall({ id: 'e1', name: 'Edit' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Read 1 file, search the web 1 time, edit 1 file')
+      expect(formatGroupTitle(blocks)).toBe('Read 1 file, search the web 1 time, edited 1 file')
     })
 
     it('全类别混合', () => {
@@ -646,7 +670,7 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'ws1', name: 'WebSearch' }),
         makeToolCall({ id: 'e1', name: 'Edit' }),
       ]
-      expect(formatGroupTitle(blocks)).toBe('Run 1 shell command, read 1 file, find 1 pattern, search 1 pattern, fetch 1 page, search the web 1 time, edit 1 file')
+      expect(formatGroupTitle(blocks)).toBe('Run 1 shell command, read 1 file, find 1 pattern, search 1 pattern, fetch 1 page, search the web 1 time, edited 1 file')
     })
   })
 })
