@@ -621,12 +621,26 @@ describe('PermissionHandler — AskUserQuestion 聊一聊 reason 透传', () => 
         expect(result.updatedInput).toMatchObject({ answers: { 'Q?': 'A' } })
     })
 
+    it('AskUserQuestion reason + answers 同时存在 → reason 优先短路 deny', async () => {
+        const handler = new PermissionHandler(makeSession() as never)
+        const pending = makePending('AskUserQuestion', { questions: [{ question: 'Q?', options: [] }] })
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse(
+            { id: 't1', approved: false, reason: 'chat seed', answers: { 'Q?': ['A'] } },
+            pending,
+        )
+        const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('deny')
+        expect(result.message).toBe('chat seed')
+    })
+
     it('AskUserQuestion reason 为空白串 → 视为无 reason 走原逻辑', async () => {
         const handler = new PermissionHandler(makeSession() as never)
         const pending = makePending('AskUserQuestion')
         // @ts-expect-error 访问 protected
         await handler.handlePermissionResponse({ id: 't1', approved: false, reason: '   ' }, pending)
         const result = pending.resolve.mock.calls[0][0]
+        expect(result.behavior).toBe('deny')
         expect(result.message).toBe('No answers were provided.')
     })
 })
