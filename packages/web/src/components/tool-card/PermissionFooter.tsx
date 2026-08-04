@@ -491,6 +491,15 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                                     >
                                         {denyConfig.label}
                                     </Button>
+                                    {/* 「带原因拒绝」：展开 textarea 走 denyWithFeedback（对齐 CLI reject-with-feedback） */}
+                                    <Button
+                                        type="text"
+                                        disabled={disabledAll}
+                                        onClick={() => setShowFeedback(true)}
+                                        style={{ minHeight: actionMinHeight, flex: isMobile ? 1 : undefined, justifyContent: 'center', color: token.colorTextSecondary }}
+                                    >
+                                        {t('chat.tool.denyWithReason')}
+                                    </Button>
                                 </div>
                                 {/* 分隔线 + 不可逆提示：仅移动端（PC 端上方已有文字提示） */}
                                 {isMobile ? (
@@ -508,13 +517,15 @@ function PermissionFooterInner(props: PermissionFooterProps) {
                         )}
                     </div>
 
-                    {/* 继续规划反馈输入区（仅 exitPlanMode） */}
-                    {showFeedback && isExitPlanMode ? (
+                    {/* 拒绝反馈输入区（普通工具 + ExitPlanMode 共用） */}
+                    {showFeedback ? (
                         <div>
                             <Input.TextArea
                                 value={feedback}
                                 onChange={(e) => setFeedback(e.target.value)}
-                                placeholder={t('chat.tool.keepPlanningPlaceholder')}
+                                placeholder={isExitPlanMode
+                                    ? t('chat.tool.keepPlanningPlaceholder')
+                                    : t('chat.tool.denyReasonPlaceholder')}
                                 rows={3}
                                 status="error"
                                 style={{ fontSize: 12 }}
