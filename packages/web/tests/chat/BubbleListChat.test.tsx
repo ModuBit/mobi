@@ -42,12 +42,14 @@ afterEach(() => {
 })
 
 function item(key: string): ChatBubbleItem {
+    // 模拟上游 reconcileBubbleItems 输出：已挂 data-bubble-key（供 restore offsetTop 测量 + 调试定位）
     return {
         key,
         role: 'user',
         content: key,
         block: { kind: 'user-text', id: key, localId: null, createdAt: 0, text: key } as never,
-    }
+        'data-bubble-key': key,
+    } as ChatBubbleItem
 }
 
 describe('BubbleListChat window', () => {

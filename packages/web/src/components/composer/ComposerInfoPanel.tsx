@@ -247,9 +247,12 @@ export type ComposerInfoPanelProps = {
 
 /**
  * 排队消息区：独立订阅排队消息子集。
- * 父面板只订阅「是否存在排队」布尔（见下 useMessages），重型子面板不随每条消息变动重渲染；
- * 此处再开一个观察者取排队数组，react-query 按 queryKey 去重，不发额外请求，
- * 且 select 输出经结构化共享，仅在排队集合实际变化时重渲染本组件。
+ * 父面板只订阅「是否存在排队」布尔（见下 useMessages）；此处再开一个观察者取排队数组，
+ * useSyncExternalStore 按 sessionId 共享同一 messageWindowStore，不发额外请求。
+ *
+ * 注意：与原 react-query 不同——store 每次 SSE 写入都 notify（无结构化共享），
+ * 本组件会随消息变动重渲染。已知 trade-off（select 在 hook body 不触发无限循环，
+ * getSnapshot 返回稳定 state 引用）；若流式期 reconcile 开销显著，后续加 selector 缓存。
  */
 function QueuedMessagesSection({
     sessionId,
@@ -297,8 +300,9 @@ export function ComposerInfoPanel({
     const hasTeamAgents = teamAgents.length > 0 && !!teamName
     const hasAgents = agents.length > 0
 
-    // 只订阅「是否存在排队消息」布尔：react-query 结构化共享下，仅在该布尔翻转时重渲染，
-    // 不随每条消息变动重渲染本面板（避免 ToolInteractionPanel/TasksPanel 等重型子树反复 reconcile）。
+    // 只订阅「是否存在排队消息」布尔。useSyncExternalStore 下 store 每次 SSE 写入都 notify，
+    // 本面板会随消息变动重渲染——已知 trade-off（不无限循环；getSnapshot 返回稳定 state 引用）。
+    // 若流式期 ToolInteractionPanel/TasksPanel 等重型子树 reconcile 开销显著，后续加 selector 缓存优化。
     const { data: hasQueued = false } = useMessages(sessionId, (all) => all.some(isQueuedInMobi))
 
     // 从 store 派生最新 block：先查 running agents，再查 byId（覆盖后台 Agent 任务）

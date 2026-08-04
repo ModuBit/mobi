@@ -98,21 +98,39 @@ function updateState(sessionId: string, updater: (prev: InternalState) => Intern
     if (next !== prev) setState(sessionId, next)
 }
 
-/** 派生字段重算（seq 边界 + messagesVersion 递增） */
+/** 派生字段重算（messagesVersion 递增）。oldestSeq 由调用方按需传入——只在 fetchLatest/fetchOlder merge 后算，流式期不扫 */
 function buildState(prev: InternalState, updates: Partial<MessageWindowState>): InternalState {
     const messages = updates.messages ?? prev.messages
     const messagesChanged = messages !== prev.messages
-    let oldestSeq: number | null = null
-    for (const m of messages) {
-        if (typeof m.seq === 'number' && (oldestSeq === null || m.seq < oldestSeq)) oldestSeq = m.seq
-    }
-    return {
+    // oldestSeq 不在每次 buildState 全扫（流式期每条 chunk O(n) 浪费）；
+    // 仅 fetchLatest/fetchOlder merge 后显式传入 updates.oldestSeq，其余用 prev.oldestSeq
+    const oldestSeq = updates.oldestSeq !== undefined ? updates.oldestSeq : prev.oldestSeq
+    const next: InternalState = {
         ...prev,
         ...updates,
         messages,
         oldestSeq,
         messagesVersion: messagesChanged ? prev.messagesVersion + 1 : prev.messagesVersion,
     }
+    // 无实质变化（messages + 派生字段均未变）→ 返回 prev 引用，让 updateState 的 no-op 守卫生效，避免无意义 notify
+    if (next.messages === prev.messages
+        && next.hasMore === prev.hasMore
+        && next.isLoading === prev.isLoading
+        && next.isLoadingMore === prev.isLoadingMore
+        && next.oldestSeq === prev.oldestSeq
+        && next.messagesVersion === prev.messagesVersion) {
+        return prev
+    }
+    return next
+}
+
+/** 求 messages 中最小 seq（仅 fetchLatest/fetchOlder 调用，流式期不触发） */
+function computeOldestSeq(messages: DecryptedMessage[]): number | null {
+    let oldest: number | null = null
+    for (const m of messages) {
+        if (typeof m.seq === 'number' && (oldest === null || m.seq < oldest)) oldest = m.seq
+    }
+    return oldest
 }
 
 export function getMessageWindowState(sessionId: string): MessageWindowState {
@@ -189,9 +207,11 @@ export async function fetchLatestMessages(api: MobiApi, sessionId: string): Prom
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
         updateStateForGeneration(sessionId, 'latest', gen, prev => {
             const merged = mergeMessages(prev.messages, res.data.messages)
-            return _internal.buildState(prev, { messages: merged, hasMore: res.data.page.hasMore, isLoading: false })
+            return _internal.buildState(prev, { messages: merged, hasMore: res.data.page.hasMore, isLoading: false, oldestSeq: computeOldestSeq(merged) })
         })
-    } catch {
+    } catch (err) {
+        // 静默吞错会让首次加载失败时用户看到空会话（ChatWelcome）无反馈——至少留日志便于诊断
+        console.error('[messageWindowStore] fetchLatest failed', sessionId, err)
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
         updateStateForGeneration(sessionId, 'latest', gen, prev => _internal.buildState(prev, { isLoading: false }))
     }
@@ -210,9 +230,10 @@ export async function fetchOlderMessages(api: MobiApi, sessionId: string): Promi
         if (!isCurrentGeneration(sessionId, 'older', gen)) return
         updateStateForGeneration(sessionId, 'older', gen, p => {
             const merged = mergeMessages(res.data.messages, p.messages)
-            return _internal.buildState(p, { messages: merged, hasMore: res.data.page.hasMore, isLoadingMore: false })
+            return _internal.buildState(p, { messages: merged, hasMore: res.data.page.hasMore, isLoadingMore: false, oldestSeq: computeOldestSeq(merged) })
         })
-    } catch {
+    } catch (err) {
+        console.error('[messageWindowStore] fetchOlder failed', sessionId, err)
         if (!isCurrentGeneration(sessionId, 'older', gen)) return
         updateStateForGeneration(sessionId, 'older', gen, p => _internal.buildState(p, { isLoadingMore: false }))
     }
@@ -230,7 +251,11 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
         for (const m of incoming) {
             messages = resolveMessageCache(messages, m, options)
         }
-        return _internal.buildState(prev, { messages })
+        if (messages === prev.messages) return prev
+        // oldestSeq：prev 无值（空 store 首次 SSE 早到）则算一次建立游标；
+        // 流式期 prev.oldestSeq 已有，新消息 seq 递增不改变 min，沿用 prev.oldestSeq 避免每条 chunk O(n)
+        const oldestSeq = prev.oldestSeq === null ? computeOldestSeq(messages) : prev.oldestSeq
+        return _internal.buildState(prev, { messages, oldestSeq })
     })
 }
 

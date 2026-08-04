@@ -26,9 +26,14 @@ export function markMessagesSubmitted(
     submittedAt: number,
 ): DecryptedMessage[] {
     const set = new Set(localIds)
-    return messages.map(m =>
-        m.localId && set.has(m.localId) && m.queueState !== 'consumed'
-            ? { ...m, queueState: 'consumed' as const, submittedAt, status: 'sent' as const }
-            : m,
-    )
+    let changed = false
+    const next = messages.map(m => {
+        if (m.localId && set.has(m.localId) && m.queueState !== 'consumed') {
+            changed = true
+            return { ...m, queueState: 'consumed' as const, submittedAt, status: 'sent' as const }
+        }
+        return m
+    })
+    // 无命中返回原数组引用——让 store action 的 `next === prev.messages` 守卫生效，避免无意义 notify
+    return changed ? next : messages
 }

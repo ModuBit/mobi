@@ -57,7 +57,10 @@ export function reconcileBubbleItems(
             && old.role === item.role
             && old.typing === item.typing
             && old.variant === item.variant
-        const result = reusable ? old : item
+        // 复用 old（含上次已挂的 data-bubble-key，引用稳定 → Bubble.List memo 生效）；
+        // 新建项在此挂 data-bubble-key（供 offsetTop restore 测量 + 调试定位），
+        // 这样上游 ChatContainer→BubbleListChat 无需再 spread 造新对象击穿 memo
+        const result = reusable ? old : { ...item, 'data-bubble-key': item.key }
         cache.set(item.key, result)
         return result
     })

@@ -178,8 +178,6 @@ type PendingInvalidations = {
     sessions: boolean
     sessionGroups: boolean
     machines: boolean
-    /** 全量 messages 失效(前缀 ['messages'],重连补拉漏数据用) */
-    messages: boolean
     sessionIds: Set<string>
 }
 
@@ -222,18 +220,15 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         sessions: false,
         sessionGroups: false,
         machines: false,
-        messages: false,
         sessionIds: new Set(),
     })
 
     // 批处理失效：将失效请求合并到同一微任务中，减少重复 API 调用
-    function scheduleInvalidation(scope: 'sessions' | 'machines' | 'messages', sessionId?: string) {
+    function scheduleInvalidation(scope: 'sessions' | 'machines', sessionId?: string) {
         const pending = pendingInvalidationsRef.current
         if (scope === 'sessions') {
             pending.sessions = true
             pending.sessionGroups = true
-        } else if (scope === 'messages') {
-            pending.messages = true
         } else {
             pending.machines = true
         }
@@ -246,7 +241,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             invalidationTimerRef.current = null
             const p = pendingInvalidationsRef.current
             const qc = queryClientRef.current
-            if (!p.sessions && !p.sessionGroups && !p.machines && !p.messages && p.sessionIds.size === 0) return
+            if (!p.sessions && !p.sessionGroups && !p.machines && p.sessionIds.size === 0) return
 
             const tasks: Array<Promise<unknown>> = []
             if (p.sessions) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessions }))
@@ -255,7 +250,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 tasks.push(qc.invalidateQueries({ queryKey: ['groupSessions'] }))
             }
             if (p.machines) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.machines }))
-            if (p.messages) tasks.push(qc.invalidateQueries({ queryKey: ['messages'] }))
             for (const sid of Array.from(p.sessionIds)) {
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.session(sid) }))
             }
@@ -263,7 +257,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             p.sessions = false
             p.sessionGroups = false
             p.machines = false
-            p.messages = false
             p.sessionIds.clear()
             if (tasks.length > 0) void Promise.all(tasks).catch(() => {})
         }, INVALIDATION_BATCH_MS)
@@ -531,7 +524,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 sessions: false,
                 sessionGroups: false,
                 machines: false,
-                messages: false,
                 sessionIds: new Set(),
             }
         }

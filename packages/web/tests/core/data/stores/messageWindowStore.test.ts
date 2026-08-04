@@ -196,6 +196,24 @@ describe('fetchLatest / generation', () => {
     })
 })
 
+describe('ingestIncomingMessages oldestSeq', () => {
+    beforeEach(() => _resetForTest())
+
+    it('SSE 早到空 store 时建立 oldestSeq（首次 ingest 算一次）', () => {
+        // 空 store，SSE 早到一条 seq=5 → oldestSeq 应立即建立（不待 fetchLatest）
+        ingestIncomingMessages('s1', [msg('a', 5)])
+        expect(getMessageWindowState('s1').oldestSeq).toBe(5)
+    })
+
+    it('流式期沿用 prev.oldestSeq 不重算（新消息 seq 递增不改变 min）', () => {
+        // 首次建立 oldestSeq=5
+        ingestIncomingMessages('s1', [msg('a', 5)])
+        // 流式追加 seq=10 → min 仍是 5，沿用 prev.oldestSeq（不付 O(n) 重扫）
+        ingestIncomingMessages('s1', [msg('b', 10)])
+        expect(getMessageWindowState('s1').oldestSeq).toBe(5)
+    })
+})
+
 describe('queued/optimistic actions', () => {
     beforeEach(() => _resetForTest())
 

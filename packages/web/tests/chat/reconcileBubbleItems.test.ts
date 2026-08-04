@@ -50,7 +50,9 @@ describe('reconcileBubbleItems', () => {
         const nextItem = makeItem(block('a'))
         const second = reconcileBubbleItems([nextItem], first.cache)
 
-        expect(second.items[0]).toBe(nextItem)
+        // 重建时挂 data-bubble-key（供 restore offsetTop 测量），故非原 nextItem 引用
+        expect(second.items[0]).toMatchObject(nextItem)
+        expect((second.items[0] as Record<string, unknown>)['data-bubble-key']).toBe('a')
         expect(second.items[0]).not.toBe(first.items[0])
     })
 
@@ -72,7 +74,10 @@ describe('reconcileBubbleItems', () => {
         const nextSynthetic: ChatBubbleItem = { key: '__compressing__', role: 'assistant', content: 'x' }
         const second = reconcileBubbleItems([nextSynthetic], first.cache)
 
-        expect(second.items[0]).toBe(nextSynthetic)
+        // 合成项无 block 不复用 first；重建时仍挂 data-bubble-key
+        expect(second.items[0]).toMatchObject(nextSynthetic)
+        expect((second.items[0] as Record<string, unknown>)['data-bubble-key']).toBe('__compressing__')
+        expect(second.items[0]).not.toBe(first.items[0])
     })
 
     it('prepend 历史后，原有项仍复用旧引用（只有新项是新对象）', () => {

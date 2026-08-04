@@ -118,6 +118,9 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     const firstRenderItemKeyRef = useRef<string | number | null | undefined>(undefined)
 
     const { handleScrollerRef, following, stickToBottom } = useStickToBottom(items.length > 0)
+    // following 同步到 ref：fill 块/effect 闭包读最新值（防 fill 级联钉底瞬移上滚看历史的用户）
+    const followingRef = useRef(following)
+    followingRef.current = following
 
     // Bubble.List 挂载后拿 scrollBoxNativeElement 交给 useStickToBottom 观测 / pin。
     // useLayoutEffect 先于 useStickToBottom 的 useEffect（RO observe）跑，故 scroller 已就位。
@@ -204,8 +207,9 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
             return
         }
 
-        // fill：window 没填满 + 还有历史 → 主动加载（窗口足够高消息列表无需滚动，scroll 永不触发）
-        if (renderItemsLengthRef.current < VISIBLE_WINDOW && hasNextPageRef.current && !isFetchingNextPageRef.current) {
+        // fill：window 没填满 + 还有历史 + 仍在贴底（following） → 主动加载。
+        // gate following：用户上滚看历史（following=false）时不 fill，避免 fill effect 钉底瞬移用户
+        if (renderItemsLengthRef.current < VISIBLE_WINDOW && hasNextPageRef.current && !isFetchingNextPageRef.current && followingRef.current) {
             isFillingRef.current = true
             onLoadMoreRef.current()
         }
@@ -281,8 +285,9 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         if (scrollHeight <= clientHeight) {
             onLoadMoreRef.current()
         } else {
+            // 停 fill；仅仍在贴底时钉底（防竞态：fill 进行中用户上滚后不应被瞬移回底）
             isFillingRef.current = false
-            scrollBox.scrollTop = scrollBox.scrollHeight
+            if (followingRef.current) scrollBox.scrollTop = scrollBox.scrollHeight
         }
     }, [items.length, isFetchingNextPage])
 
@@ -302,9 +307,8 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     // - following=false + 贴末尾模式（N<800）：items.slice(-N)，N 动态增长（上滚 prepend 增，cap 800）
     // - following=false + 滑动模式（N=800 后继续上滚）：items.slice(start, start+800)，不含最新
     //
-    // data-bubble-key 透传：BubbleProps extends React.HTMLAttributes<HTMLDivElement>，
-    // data-* 经 Bubble.js 内部 pickAttrs(restProps, {data:true}) 透传到 Bubble 根 div。
-    // 用 spread 加属性绕过 TS excess property check（React 19 types 无 data-* index signature）。
+    // data-bubble-key 由上游 reconcileBubbleItems 在复用/新建时挂上（不在本层 spread，
+    // 以免给 400-800 个 windowed item 造新对象击穿 reconcileBubbleItems 的结构化共享）。
     const renderItems = useMemo<ChatBubbleItem[]>(() => {
         let windowed: ChatBubbleItem[]
         if (following) {
@@ -321,17 +325,15 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
             const n = Math.min(windowSizeRef.current, EXPAND_WINDOW)
             windowed = items.slice(-n)
         }
-        // 给每个 item 根元素加 data-bubble-key（供测试/调试定位 bubble）
-        const tagged = windowed.map(it => ({ ...it, 'data-bubble-key': it.key }))
         // 顶部 skeleton：fill 级联期间不显示（高度来回跳动致抖动），仅用户主动滚到顶加载时显示
-        if (!isFetchingNextPage || isFillingRef.current) return tagged
+        if (!isFetchingNextPage || isFillingRef.current) return windowed
         return [
             {
                 key: '__loading-skeleton__',
                 role: 'system' as const,
                 content: <Skeleton active avatar paragraph={{ rows: 2 }} />,
             },
-            ...tagged,
+            ...windowed,
         ]
     }, [items, following, isFetchingNextPage, windowTick])
 
