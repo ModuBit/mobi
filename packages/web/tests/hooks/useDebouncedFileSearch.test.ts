@@ -116,8 +116,95 @@ describe('useDebouncedFileSearch', () => {
 
         const { result } = renderHook(() => useDebouncedFileSearch('s1', 'foo'))
 
-        await waitFor(() => expect(result.current.results).toEqual([]))
+        // success:false 来自 cli 侧 rpcError，是故障——必须与「搜过了没匹配」区分开。
+        // 注意等 failed 而非 results：results 初始就是 []，waitFor 会在请求完成前就满足
+        await waitFor(() => expect(result.current.failed).toBe(true))
+        expect(result.current.results).toEqual([])
         expect(result.current.isLoading).toBe(false)
+    })
+
+    it('请求抛错 → failed 置位（不谎报成无匹配）', async () => {
+        const searchFiles = vi.fn(async () => { throw new Error('network down') })
+        mockApi(searchFiles)
+
+        const { result } = renderHook(() => useDebouncedFileSearch('s1', 'foo'))
+
+        await waitFor(() => expect(result.current.failed).toBe(true))
+        expect(result.current.results).toEqual([])
+    })
+
+    it('搜索成功 → failed 保持 false（有结果时不误报失败）', async () => {
+        const searchFiles = vi.fn(async () => ({
+            data: { success: true, entries: [{ name: 'a.ts', type: 'file' as const, path: 'a.ts' }] },
+        }))
+        mockApi(searchFiles)
+
+        const { result } = renderHook(() => useDebouncedFileSearch('s1', 'foo'))
+
+        await waitFor(() => expect(result.current.results).toHaveLength(1))
+        expect(result.current.failed).toBe(false)
+    })
+
+    it('成功搜索 → 空结果不算失败（0 匹配 ≠ 故障）', async () => {
+        const searchFiles = vi.fn(async () => ({ data: { success: true, entries: [] } }))
+        mockApi(searchFiles)
+
+        const { result } = renderHook(() => useDebouncedFileSearch('s1', 'foo'))
+
+        await waitFor(() => expect(searchFiles).toHaveBeenCalled())
+        expect(result.current.results).toEqual([])
+        expect(result.current.failed).toBe(false)
+    })
+
+    it('失败后清空输入框 → failed 复位（再进搜索不残留旧错误）', async () => {
+        const searchFiles = vi.fn(async () => { throw new Error('boom') })
+        mockApi(searchFiles)
+
+        const { result, rerender } = renderHook(
+            ({ q }) => useDebouncedFileSearch('s1', q),
+            { initialProps: { q: 'foo' } },
+        )
+        await waitFor(() => expect(result.current.failed).toBe(true))
+
+        rerender({ q: '' })
+        await waitFor(() => expect(result.current.failed).toBe(false))
+    })
+
+    // 失败时保留旧 results 是为了让渲染层显示「旧结果 + 失败提示」，
+    // 但这只在同一搜索词内成立——换词后失败若还留着旧结果，就是拿 foo 的结果冒充 bar 的
+    it('换搜索词后失败 → 不拿上一个词的结果冒充', async () => {
+        const searchFiles = vi.fn(async (_s: string, q: string) => {
+            if (q === 'bar') throw new Error('boom')
+            return { data: { success: true, entries: [{ name: 'foo.ts', type: 'file' as const, path: 'foo.ts' }] } }
+        })
+        mockApi(searchFiles)
+
+        const { result, rerender } = renderHook(
+            ({ q }) => useDebouncedFileSearch('s1', q),
+            { initialProps: { q: 'foo' } },
+        )
+        await waitFor(() => expect(result.current.results).toHaveLength(1))
+
+        rerender({ q: 'bar' })
+        await waitFor(() => expect(result.current.failed).toBe(true))
+        expect(result.current.results).toEqual([])
+    })
+
+    it('失败后重新搜索成功 → failed 清除', async () => {
+        let shouldFail = true
+        const searchFiles = vi.fn(async () => {
+            if (shouldFail) throw new Error('boom')
+            return { data: { success: true, entries: [{ name: 'a.ts', type: 'file' as const, path: 'a.ts' }] } }
+        })
+        mockApi(searchFiles)
+
+        const { result } = renderHook(() => useDebouncedFileSearch('s1', 'foo'))
+        await waitFor(() => expect(result.current.failed).toBe(true))
+
+        shouldFail = false
+        act(() => result.current.refetch())
+        await waitFor(() => expect(result.current.failed).toBe(false))
+        expect(result.current.results).toHaveLength(1)
     })
 
     it('refetch → 以同一 query 重新发起搜索', async () => {
@@ -162,6 +249,33 @@ describe('useDebouncedFileSearch', () => {
 
         await waitFor(() => expect(result.current.results).toEqual([]))
         expect(searchFiles).not.toHaveBeenCalled()
+    })
+
+    // 这条锁定 hook 内 nonce「提前认领」的存在理由：认领若晚于空 query 的提前返回，
+    // 空 query 期间的 refetch 会残留一个未消费的 nonce，把紧接着的「第一次打字」
+    // 误判成手动刷新而跳过防抖 —— 逐字符打爆后端。删掉那行代码时本用例应失败。
+    it('空 query 期间 refetch 后，随后打字仍走完整防抖（nonce 不残留）', async () => {
+        vi.useFakeTimers()
+        const searchFiles = vi.fn(async () => ({ data: { success: true, entries: [] } }))
+        mockApi(searchFiles)
+
+        const { result, rerender } = renderHook(
+            ({ q }) => useDebouncedFileSearch('s1', q),
+            { initialProps: { q: '' } },
+        )
+        act(() => result.current.refetch())
+        await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+        expect(searchFiles).not.toHaveBeenCalled()
+
+        // 开始打字：这是 query 变化而非手动刷新，必须等满 300ms
+        rerender({ q: 'foo' })
+        await act(async () => { await vi.advanceTimersByTimeAsync(299) })
+        expect(searchFiles).not.toHaveBeenCalled()
+
+        await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+        expect(searchFiles).toHaveBeenCalledTimes(1)
+
+        vi.useRealTimers()
     })
 
     it('旧请求 finally 不复位新请求的 loading（generation 守卫，防 spinner 误熄）', async () => {

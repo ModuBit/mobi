@@ -294,7 +294,10 @@
         "resultsTruncated": "仅显示前 {{count}} 条结果",
         "showHidden": "显示隐藏文件",
         "hideHidden": "隐藏文件",
-        "refreshTree": "刷新文件树"
+        "refreshTree": "刷新文件树",
+        "searchFailed": "搜索失败，请重试",
+        "searchFailedStale": "搜索失败，以下为上次结果",
+        "refreshFailedStale": "刷新失败，以下可能不是最新内容"
     },
     "git": {
         "filesChanged": "{{count}} 个文件变更",

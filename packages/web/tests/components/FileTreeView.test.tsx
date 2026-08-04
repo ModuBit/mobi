@@ -269,6 +269,113 @@ describe('FileTreeView', () => {
         expect(list.mock.calls.length).toBe(listBefore)
     })
 
+    // invalidateQueries 默认 cancelRefetch，而 fetchDirectory 未把 react-query 的 signal
+    // 传给 api.files.list —— 取消只作用于 promise，请求仍会打到 hub。连点就是 N 个真实请求
+    it('刷新中禁用按钮 → 连点不会打出多个请求', async () => {
+        const list = makeList({ '.': [{ name: 'a.ts', type: 'file' }] })
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('a.ts')
+
+        const btn = screen.getByRole('button', { name: 'files.refreshTree' })
+        const before = list.mock.calls.filter((c) => c[1] === '.').length
+
+        // 连点 5 次：首次生效后按钮进入禁用（最短旋转窗口兼作节流），后续点击应被吞掉
+        for (let i = 0; i < 5; i++) fireEvent.click(btn)
+
+        await waitFor(() => {
+            expect(list.mock.calls.filter((c) => c[1] === '.').length).toBe(before + 1)
+        })
+        expect(btn).toBeDisabled()
+    })
+
+    // 刷新失败不该把用户眼前的树清掉——一次瞬时网络故障看起来会像「文件全没了」
+    it('树模式刷新失败 → 保留已有树，只挂非阻断提示', async () => {
+        let shouldFail = false
+        const list = vi.fn(async (_s: string, p: string) => {
+            if (shouldFail) throw new Error('network down')
+            return { data: { success: true, entries: p === '.' ? [{ name: 'a.ts', type: 'file' as const }] : [] } }
+        })
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('a.ts')
+
+        // 后续刷新失败
+        shouldFail = true
+        fireEvent.click(screen.getByRole('button', { name: 'files.refreshTree' }))
+
+        await waitFor(() => {
+            expect(screen.getByText('files.refreshFailedStale')).toBeInTheDocument()
+        })
+        // 关键：树还在，没被错误空态顶掉
+        expect(screen.getByText('a.ts')).toBeInTheDocument()
+    })
+
+    it('首次加载失败（无缓存可退守）→ 仍用错误空态占满面板', async () => {
+        const list = vi.fn(async () => { throw new Error('boom') })
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+
+        await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument())
+        expect(screen.queryByText('files.refreshFailedStale')).not.toBeInTheDocument()
+    })
+
+    // 失败谎报成「无匹配文件」会让用户以为文件被删了
+    it('搜索失败且无旧结果 → 显示搜索失败，而非「无匹配文件」', async () => {
+        const list = makeList({ '.': [{ name: 'a.ts', type: 'file' }] })
+        const searchFiles = vi.fn(async () => { throw new Error('rg died') })
+        mockedUseMobiApi.mockReturnValue({ files: { list }, sessions: { searchFiles } } as any)
+
+        renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('a.ts')
+
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+
+        await waitFor(() => expect(screen.getByText('files.searchFailed')).toBeInTheDocument())
+        expect(screen.queryByText('files.noResults')).not.toBeInTheDocument()
+    })
+
+    it('搜索成功但 0 匹配 → 仍显示「无匹配文件」（不误报失败）', async () => {
+        const list = makeList({ '.': [{ name: 'a.ts', type: 'file' }] })
+        const searchFiles = vi.fn(async () => ({ data: { success: true, entries: [] } }))
+        mockedUseMobiApi.mockReturnValue({ files: { list }, sessions: { searchFiles } } as any)
+
+        renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('a.ts')
+
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+
+        await waitFor(() => expect(screen.getByText('files.noResults')).toBeInTheDocument())
+        expect(screen.queryByText('files.searchFailed')).not.toBeInTheDocument()
+    })
+
+    it('搜索刷新失败但有旧结果 → 保留旧结果，只挂提示', async () => {
+        const list = makeList({ '.': [{ name: 'a.ts', type: 'file' }] })
+        let shouldFail = false
+        const searchFiles = vi.fn(async () => {
+            if (shouldFail) throw new Error('rg died')
+            return { data: { success: true, entries: [{ name: 'foo.ts', type: 'file' as const, path: 'src/foo.ts' }] } }
+        })
+        mockedUseMobiApi.mockReturnValue({ files: { list }, sessions: { searchFiles } } as any)
+
+        renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('a.ts')
+
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        await screen.findByText('foo.ts')
+
+        shouldFail = true
+        fireEvent.click(screen.getByRole('button', { name: 'files.refreshTree' }))
+
+        await waitFor(() => expect(screen.getByText('files.searchFailedStale')).toBeInTheDocument())
+        // 旧结果仍在，没退化成「无匹配文件」
+        expect(screen.getByText('foo.ts')).toBeInTheDocument()
+        expect(screen.queryByText('files.noResults')).not.toBeInTheDocument()
+    })
+
     it('默认隐藏 . 开头文件；点切换按钮后显示', async () => {
         const list = makeList({
             '.': [

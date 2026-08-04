@@ -294,7 +294,10 @@
         "resultsTruncated": "Showing first {{count}} results",
         "showHidden": "Show hidden files",
         "hideHidden": "Hide hidden files",
-        "refreshTree": "Refresh file tree"
+        "refreshTree": "Refresh file tree",
+        "searchFailed": "Search failed, please retry",
+        "searchFailedStale": "Search failed, showing previous results",
+        "refreshFailedStale": "Refresh failed, content may be out of date"
     },
     "git": {
         "filesChanged": "{{count}} files changed",

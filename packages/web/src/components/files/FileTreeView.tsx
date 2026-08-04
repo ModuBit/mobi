@@ -19,7 +19,7 @@ import styled from '@emotion/styled'
 import { Tree, Empty, Skeleton, Input, Button, type TreeProps } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { DataNode } from 'antd/es/tree'
-import { FolderOpen, FolderClosed, File as FileIcon, Search, Eye, EyeOff, RotateCw } from 'lucide-react'
+import { FolderOpen, FolderClosed, File as FileIcon, Search, Eye, EyeOff, RotateCw, TriangleAlert } from 'lucide-react'
 import { LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -85,9 +85,29 @@ const TreeWrap = styled.div`
         opacity: 0.45;
         text-align: center;
     }
+    /* 刷新失败提示条：非阻断，压在内容上方。用 warning 色而非 error——
+       数据仍可用（只是可能不是最新），语义是「提醒」不是「出错」 */
+    .stale-data-warning {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        margin-bottom: 4px;
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--ant-color-warning-text);
+        background: var(--ant-color-warning-bg);
+        border-radius: var(--ant-border-radius-sm);
+    }
     /* 刷新按钮转圈：不用 antd Button loading（会把 lucide 图标换成 antd spinner，与树内其他图标不统一） */
     .refresh-spinning {
         animation: file-tree-refresh-spin 0.8s linear infinite;
+    }
+    /* 尊重系统「减少动效」偏好（与 styles/base.css 及其他组件的做法一致） */
+    @media (prefers-reduced-motion: reduce) {
+        .refresh-spinning {
+            animation: none;
+        }
     }
     @keyframes file-tree-refresh-spin {
         to {
@@ -105,6 +125,22 @@ const REFRESH_SPIN_MIN_MS = 500
 
 /** 筛选结果前端展示上限（与 useDebouncedFileSearch 的 MAX_DISPLAY 对齐） */
 const FILE_SEARCH_MAX = MAX_DISPLAY
+
+/**
+ * 「刷新失败但仍有旧数据」的提示条。
+ *
+ * 刷新失败不该清空用户眼前的内容：树被错误空态顶掉、或搜索结果退化成「无匹配文件」，
+ * 都会让一次瞬时网络故障看起来像「文件没了」——错误的信息比没有信息更糟。
+ * 故失败时保留旧数据，只在顶部挂一条非阻断提示（SWR 的常规做法）。
+ */
+function StaleDataWarning({ message }: { message: string }) {
+    return (
+        <div className="stale-data-warning" role="status">
+            <TriangleAlert size={12} />
+            <span>{message}</span>
+        </div>
+    )
+}
 
 interface FileTreeViewProps {
     sessionId: string
@@ -149,6 +185,7 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
     const {
         results: searchResults,
         isLoading: isSearchLoading,
+        failed: searchFailed,
         refetch: refetchSearch,
     } = useDebouncedFileSearch(sessionId, filter)
 
@@ -352,6 +389,10 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                         size="small"
                         icon={<RotateCw size={14} className={isRefreshing ? 'refresh-spinning' : undefined} />}
                         onClick={handleRefresh}
+                        // 刷新中禁用：invalidateQueries 默认 cancelRefetch，而 fetchDirectory 未接
+                        // react-query 的 signal，取消只作用于 promise、请求仍会打到 hub——连点 N 次
+                        // 就是 N 个真实请求（前 N-1 个结果被丢弃）。REFRESH_SPIN_MIN_MS 顺带成为节流窗口
+                        disabled={isRefreshing}
                         aria-label={t('files.refreshTree')}
                     />
                 </AppTooltip>
@@ -359,11 +400,16 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
             {isSearching ? (
                 searchResults.length === 0 ? (
                     // loading + 空：结果区保持空白（Input prefix 转圈指示），不显示 Skeleton 避免快网闪烁
-                    isSearchLoading ? null : (
+                    isSearchLoading ? null : searchFailed ? (
+                        // 失败 ≠ 无匹配：谎报成「无匹配文件」会让用户以为文件被删了
+                        <Empty description={t('files.searchFailed')} style={{ marginTop: 40 }} />
+                    ) : (
                         <Empty description={t('files.noResults')} style={{ marginTop: 40 }} />
                     )
                 ) : (
                     <>
+                        {/* 有旧结果时失败只挂提示条，不清空用户眼下看的内容 */}
+                        {searchFailed && <StaleDataWarning message={t('files.searchFailedStale')} />}
                         {renderTree(searchTreeData, { expandedKeys: searchExpandedKeys })}
                         {searchResults.length >= FILE_SEARCH_MAX && (
                             <div className="search-truncated">
@@ -374,7 +420,8 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                 )
             ) : rootResult?.isPending ? (
                 <Skeleton active paragraph={{ rows: 6 }} style={{ padding: 16 }} />
-            ) : rootError ? (
+            ) : rootError && !rootFiles ? (
+                // 无缓存可退守才用错误空态占满面板（首次加载失败）
                 <Empty
                     description={(rootError instanceof Error ? rootError.message : String(rootError)) || t('files.loadFailed')}
                     style={{ marginTop: 40 }}
@@ -382,7 +429,11 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
             ) : !rootFiles || rootFiles.length === 0 ? (
                 <Empty description={t('files.empty')} style={{ marginTop: 40 }} />
             ) : (
-                renderTree(treeData, { loadData: loadDirData })
+                <>
+                    {/* 刷新失败但缓存里还有树 → 保留树，只提示「看到的可能不是最新」 */}
+                    {rootError && <StaleDataWarning message={t('files.refreshFailedStale')} />}
+                    {renderTree(treeData, { loadData: loadDirData })}
+                </>
             )}
         </TreeWrap>
     )

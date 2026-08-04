@@ -98,6 +98,60 @@ describe('MediaContentView', () => {
         expect(srcQuery(container.querySelector('audio')!).get('v')).toBe('v2')
     })
 
+    // 播放中出错会卸载 <video>，而卸载 DOM 节点浏览器不补发 pause 事件。
+    // 若 onError 不显式复位播放态，latch 会永久冻结在出错那一刻的 etag，
+    // 后续所有内容变化（含用户手点「刷新」）全部丢弃。
+    it('播放中出错 → 重试后仍能采纳新 etag（播放态不卡死）', () => {
+        const { container, getByRole, rerender } = render(
+            <MediaContentView sessionId="s1" filePath="a.mp4" isAudio={false} etag="v1" />,
+        )
+        fireEvent.play(container.querySelector('video')!)
+        fireEvent.error(container.querySelector('video')!)
+        // 元素已被失败态替换
+        expect(container.querySelector('video')).not.toBeInTheDocument()
+
+        fireEvent.click(getByRole('button', { name: 'files.retry' }))
+        rerender(<MediaContentView sessionId="s1" filePath="a.mp4" isAudio={false} etag="v2" />)
+        expect(srcQuery(container.querySelector('video')!).get('v')).toBe('v2')
+    })
+
+    it('出错后 etag 变化自动清除失败态（内容修好了不必手点重试）', () => {
+        const { container, rerender } = render(
+            <MediaContentView sessionId="s1" filePath="a.mp4" isAudio={false} etag="v1" />,
+        )
+        fireEvent.error(container.querySelector('video')!)
+        expect(container.querySelector('video')).not.toBeInTheDocument()
+
+        rerender(<MediaContentView sessionId="s1" filePath="a.mp4" isAudio={false} etag="v2" />)
+        expect(srcQuery(container.querySelector('video')!).get('v')).toBe('v2')
+    })
+
+    // 同一 tab 内换文件时组件实例被复用（tab.id 不变，见 openFileInTab），
+    // 播放态/失败态/etag 都属于上一个文件，必须整体作废
+    it('换文件 → 立即用新文件的 etag，且不继承上一个文件的播放锁定', () => {
+        const { container, rerender } = render(
+            <MediaContentView sessionId="s1" filePath="a.mp4" isAudio={false} etag="v1" />,
+        )
+        fireEvent.play(container.querySelector('video')!)
+
+        rerender(<MediaContentView sessionId="s1" filePath="b.mp4" isAudio={false} etag="v9" />)
+        const q = srcQuery(container.querySelector('video')!)
+        expect(q.get('path')).toBe('b.mp4')
+        // 旧文件的 etag 不得泄漏到新文件的第一帧 src
+        expect(q.get('v')).toBe('v9')
+    })
+
+    it('换文件 → 清掉上一个文件的失败态（不显示继承来的重试界面）', () => {
+        const { container, rerender } = render(
+            <MediaContentView sessionId="s1" filePath="a.mp4" isAudio={false} etag="v1" />,
+        )
+        fireEvent.error(container.querySelector('video')!)
+        expect(container.querySelector('video')).not.toBeInTheDocument()
+
+        rerender(<MediaContentView sessionId="s1" filePath="b.mp4" isAudio={false} etag="v1" />)
+        expect(srcQuery(container.querySelector('video')!).get('path')).toBe('b.mp4')
+    })
+
     it('容器带 media-content-view 类（承载尺寸约束 / y 方向居中）', () => {
         const { container } = render(<MediaContentView sessionId="s1" filePath="a.mp4" isAudio={false} etag="e1" />)
         expect(container.querySelector('.media-content-view')).toBeInTheDocument()

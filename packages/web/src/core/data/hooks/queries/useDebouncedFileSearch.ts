@@ -45,11 +45,18 @@ const LOADING_DELAY = 400
 export function useDebouncedFileSearch(sessionId: string, query: string): {
     results: FileNode[]
     isLoading: boolean
+    /**
+     * 本次搜索是否失败。与 `results: []` 分开表达——两者语义不同：
+     * 空数组是「搜过了，确实没有匹配」，failed 是「没搜到答案」。
+     * 压成同一个状态会让网络故障显示成「无匹配文件」，用户据此以为文件被删了。
+     */
+    failed: boolean
     /** 以当前 query 重新搜索（手动刷新用）；query 为空时为 no-op */
     refetch: () => void
 } {
     const api = useMobiApi()
     const [results, setResults] = useState<FileNode[]>([])
+    const [failed, setFailed] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
     /**
      * 手动刷新计数：自增即重跑下方 effect（query 不变也能重发请求）。
@@ -70,6 +77,12 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
      * nonce 没变 → 用户在打字（query 变化触发），照常防抖。
      */
     const lastNonceRef = useRef(0)
+    /**
+     * 当前 results 属于哪个搜索词。
+     * 失败时保留旧 results（供渲染层显示「旧结果 + 失败提示」），但那只在同一搜索词内说得通——
+     * 换词后旧结果就是错的答案，必须先清空。这个 ref 就是判据。
+     */
+    const resultsQueryRef = useRef('')
 
     const clearLoadingTimer = useCallback(() => {
         if (loadingTimerRef.current) {
@@ -89,8 +102,19 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
             abortRef.current?.abort()
             clearLoadingTimer()
             setResults([])
+            resultsQueryRef.current = ''
+            // 退出搜索模式（清空输入框）→ 上次的失败判定作废，否则再进搜索时残留旧错误
+            setFailed(false)
             setIsLoading(false)
             return
+        }
+
+        // 换了搜索词 → 旧结果属于上一个词，立即作废（失败时的「保留旧结果」只在同一词内成立，
+        // 否则会拿 'foo' 的结果冒充 'bar' 的）。同时清失败态，避免旧错误跨词残留
+        if (resultsQueryRef.current !== trimmed) {
+            resultsQueryRef.current = trimmed
+            setResults([])
+            setFailed(false)
         }
 
         // 取消上一次进行中的请求（防抖竞态：旧结果覆盖新结果）
@@ -113,8 +137,10 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
                 clearLoadingTimer()
 
                 const data = res.data as ListFilesResponse
+                // success:false 来自 cli 侧 rpcError（ripgrep 挂了/路径非法等），是故障而非空结果。
+                // 保留上次的 results：渲染层据此显示「旧结果 + 失败提示条」而非清空
                 if (!data.success || !data.entries) {
-                    setResults([])
+                    setFailed(true)
                     return
                 }
 
@@ -130,8 +156,11 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
                     .slice(0, MAX_DISPLAY)
 
                 setResults(files)
+                setFailed(false)
             } catch {
-                if (!controller.signal.aborted) setResults([])
+                // abort 是我们主动取消（防抖/换 query），不是失败——此时新请求接手，别打上失败标记。
+                // 同样保留上次 results（见上方 success:false 分支的说明）
+                if (!controller.signal.aborted) setFailed(true)
             } finally {
                 clearLoadingTimer()
                 // 仅当仍是最新代请求时复位 loading；
@@ -151,5 +180,5 @@ export function useDebouncedFileSearch(sessionId: string, query: string): {
 
     const refetch = useCallback(() => setRefreshNonce((n) => n + 1), [])
 
-    return { results, isLoading, refetch }
+    return { results, isLoading, failed, refetch }
 }

@@ -73,6 +73,37 @@ describe('ImageContentView', () => {
         })
     })
 
+    // 同一 tab 内换文件时组件实例被复用（tab.id 不变，见 openFileInTab），
+    // 失败态与重试计数都属于上一个文件，不该跟过来
+    it('换文件 → 清掉上一个文件的失败态（不显示继承来的重试界面）', async () => {
+        const { container, rerender } = render(<ImageContentView sessionId="s1" filePath="a.png" etag="e1" />)
+        fireEvent.error(container.querySelector('.ant-image-img') as HTMLImageElement)
+        await waitFor(() => expect(container.querySelector('.ant-btn')).toBeInTheDocument())
+
+        rerender(<ImageContentView sessionId="s1" filePath="b.png" etag="e1" />)
+        await waitFor(() => {
+            const img = container.querySelector('.ant-image-img') as HTMLImageElement
+            expect(img).toBeInTheDocument()
+            expect(srcQuery(img).get('path')).toBe('b.png')
+        })
+    })
+
+    it('换文件 → 重试计数归零（不把上一个文件的 _retry 带到新 src）', async () => {
+        const { container, rerender } = render(<ImageContentView sessionId="s1" filePath="a.png" etag="e1" />)
+        fireEvent.error(container.querySelector('.ant-image-img') as HTMLImageElement)
+        await waitFor(() => expect(container.querySelector('.ant-btn')).toBeInTheDocument())
+        // 手点重试 → _retry=1
+        fireEvent.click(container.querySelector('.ant-btn')!)
+        await waitFor(() => {
+            const img = container.querySelector('.ant-image-img') as HTMLImageElement
+            expect(srcQuery(img).get('_retry')).toBe('1')
+        })
+
+        rerender(<ImageContentView sessionId="s1" filePath="b.png" etag="e1" />)
+        const img = container.querySelector('.ant-image-img') as HTMLImageElement
+        expect(srcQuery(img).get('_retry')).toBeNull()
+    })
+
     it('alt = filePath', () => {
         const { container } = render(<ImageContentView sessionId="s1" filePath="a/b.png" etag="e1" />)
         const img = container.querySelector('.ant-image-img') as HTMLImageElement

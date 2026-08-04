@@ -371,6 +371,29 @@ describe('PdfContentViewImpl', () => {
         expect(screen.queryByText('files.loadFailed')).not.toBeInTheDocument()
     })
 
+    // 同一 PDF 内容被原地改写（路径不变、etag 变）走的是同一个重置 effect。
+    // etag 若不在依赖里，一次加载失败会把 tab 永久卡在 Empty——Document 不挂载，
+    // 新的 onLoadSuccess 永不触发，即便文件已经修好。
+    it('etag 变化 → loadError 清空，改写后的 PDF 不卡 Empty（重置 effect 依赖 etag）', () => {
+        const { rerender } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
+        act(() => { onLoadErrorCb?.(new Error('corrupted')) })
+        expect(screen.getByText('files.loadFailed')).toBeInTheDocument()
+
+        rerender(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e2" />)
+        expect(screen.queryByText('files.loadFailed')).not.toBeInTheDocument()
+    })
+
+    // numPages / pageWidth / pageHeight 都属于旧文档，不清会拿旧页数与旧尺寸渲染占位。
+    // PdfContinuousView 由 numPages > 0 门控，故它退回 Spin 即「已归零」的可观测信号。
+    it('etag 变化 → numPages 归零（不残留旧文档的页数/尺寸占位）', async () => {
+        const { rerender } = render(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e1" />)
+        await act(async () => { fireLoad(5) })
+        expect(screen.getByTestId('pdf-continuous')).toBeInTheDocument()
+
+        rerender(<PdfContentViewImpl sessionId="s1" tabId="tab1" filePath="a.pdf" etag="e2" />)
+        expect(screen.queryByTestId('pdf-continuous')).not.toBeInTheDocument()
+    })
+
     // 记忆恢复（需求 3）：缩放 + 滚动位置跨 session 切换后恢复（视图状态挂在 tab 上）
     it('记忆恢复：saved.scale 优先于默认 fit（不被首屏 fit 覆盖）', async () => {
         setupFileTab('s1', 'tab1', 'a.pdf')

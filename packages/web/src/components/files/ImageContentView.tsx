@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, Image } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { buildReadFileUrl } from '@/core/utils/fileUrl'
@@ -47,20 +47,35 @@ const FALLBACK_IMAGE = `data:image/svg+xml,${encodeURIComponent(
  */
 export default function ImageContentView({ sessionId, filePath, etag }: ImageContentViewProps) {
     const { t } = useTranslation()
-    // 重试计数：拼到 src query 让浏览器视为新 URL，绕过缓存重新请求（触发 cookie 重新认证）
-    const [retry, setRetry] = useState(0)
-    const [failed, setFailed] = useState(false)
-    const src = buildReadFileUrl(sessionId, filePath, { etag, retry })
+    /**
+     * 加载失败态 + 重试计数，绑定到具体的「文件版本」。
+     *
+     * 两者都只对某一个文件的某一个版本有意义：
+     * - 内容已变（etag 变）→ 上次的失败判定过期，清掉兜底图让新内容有机会加载。
+     *   否则一次加载失败会把 tab 永久钉在「重试」界面，即便文件本身已经修好
+     * - 同一 tab 内换文件（组件实例被复用，见 openFileInTab）→ 上一个文件的失败态
+     *   与重试计数都不该跟过来
+     * 合成一个 state 并在渲染期比对 stamp，是为了让「作废」这件事只有一条路径。
+     */
+    // NUL 分隔：POSIX 文件名可含空格等任意字符，唯独不含 NUL，拼不出歧义
+    const stamp = `${sessionId}\u0000${filePath}\u0000${etag}`
+    const [state, setState] = useState({ stamp, failed: false, retry: 0 })
+    // 渲染期同步（而非 effect）：effect 会多提交一帧带旧 retry 的 src
+    let active = state
+    if (state.stamp !== stamp) {
+        active = { stamp, failed: false, retry: 0 }
+        setState(active)
+    }
+    const src = buildReadFileUrl(sessionId, filePath, { etag, retry: active.retry })
 
-    // 文件内容已变（etag 变）→ 上次的失败判定过期，清掉兜底图让新内容有机会加载。
-    // 否则一次加载失败会把 tab 永久钉在「重试」界面，即便文件本身已经修好。
-    useEffect(() => { setFailed(false) }, [etag])
-
-    if (failed) {
+    if (active.failed) {
         return (
             <div className="image-content-view image-content-view--error">
                 <img src={FALLBACK_IMAGE} alt={filePath} className="image-content-view__fallback" />
-                <Button size="small" onClick={() => { setFailed(false); setRetry((r) => r + 1) }}>
+                <Button
+                    size="small"
+                    onClick={() => setState((s) => ({ ...s, failed: false, retry: s.retry + 1 }))}
+                >
                     {t('files.retry')}
                 </Button>
             </div>
@@ -75,7 +90,7 @@ export default function ImageContentView({ sessionId, filePath, etag }: ImageCon
                 placeholder
                 preview
                 fallback={FALLBACK_IMAGE}
-                onError={() => setFailed(true)}
+                onError={() => setState((s) => ({ ...s, failed: true }))}
             />
         </div>
     )
