@@ -43,6 +43,8 @@ export interface MessageWindowState {
     isLoading: boolean
     isLoadingMore: boolean
     messagesVersion: number
+    /** 首页是否已成功拉取过一次（防多消费方 useMessages effect 重复触发 fetchLatest 致空会话循环） */
+    hasFetchedLatest: boolean
 }
 
 export const EMPTY_STATE: MessageWindowState = {
@@ -53,6 +55,7 @@ export const EMPTY_STATE: MessageWindowState = {
     isLoading: false,
     isLoadingMore: false,
     messagesVersion: 0,
+    hasFetchedLatest: false,
 }
 
 interface InternalState extends MessageWindowState {
@@ -118,7 +121,8 @@ function buildState(prev: InternalState, updates: Partial<MessageWindowState>): 
         && next.isLoading === prev.isLoading
         && next.isLoadingMore === prev.isLoadingMore
         && next.oldestSeq === prev.oldestSeq
-        && next.messagesVersion === prev.messagesVersion) {
+        && next.messagesVersion === prev.messagesVersion
+        && next.hasFetchedLatest === prev.hasFetchedLatest) {
         return prev
     }
     return next
@@ -207,13 +211,14 @@ export async function fetchLatestMessages(api: MobiApi, sessionId: string): Prom
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
         updateStateForGeneration(sessionId, 'latest', gen, prev => {
             const merged = mergeMessages(prev.messages, res.data.messages)
-            return _internal.buildState(prev, { messages: merged, hasMore: res.data.page.hasMore, isLoading: false, oldestSeq: computeOldestSeq(merged) })
+            return _internal.buildState(prev, { messages: merged, hasMore: res.data.page.hasMore, isLoading: false, oldestSeq: computeOldestSeq(merged), hasFetchedLatest: true })
         })
     } catch (err) {
         // 静默吞错会让首次加载失败时用户看到空会话（ChatWelcome）无反馈——至少留日志便于诊断
         console.error('[messageWindowStore] fetchLatest failed', sessionId, err)
         if (!isCurrentGeneration(sessionId, 'latest', gen)) return
-        updateStateForGeneration(sessionId, 'latest', gen, prev => _internal.buildState(prev, { isLoading: false }))
+        // 失败也置 hasFetchedLatest=true 避免空会话循环（用户切走再切回 clear 重置后会重试）
+        updateStateForGeneration(sessionId, 'latest', gen, prev => _internal.buildState(prev, { isLoading: false, hasFetchedLatest: true }))
     }
 }
 

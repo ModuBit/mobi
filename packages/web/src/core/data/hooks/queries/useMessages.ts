@@ -51,6 +51,13 @@ export function useMessages<T = DecryptedMessage[]>(
 
     useEffect(() => {
         if (!api || !sessionId) return
+        // 防多消费方重复触发 fetchLatest：ChatContainer + ComposerInfoPanel 都用 useMessages，
+        // 若各自 effect 都触发 fetchLatest，空会话下 ChatContainer `if (messagesLoading) return <Spin>`
+        // 早返回会让 ComposerInfoPanel 反复 mount/unmount → 每次 mount 触发 effect → fetchLatest →
+        // isLoading 翻 true → 早返回 → unmount → fetchLatest 完成 → 渲染 → mount → ... 死循环。
+        // hasFetchedLatest 标记"首页已拉过"，多消费方共享，clearMessageWindow 重置。
+        const state = getMessageWindowState(sessionId)
+        if (state.hasFetchedLatest || state.isLoading) return
         void fetchLatestMessages(api, sessionId)
     }, [api, sessionId])
 

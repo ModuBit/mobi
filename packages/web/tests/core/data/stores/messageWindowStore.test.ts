@@ -126,6 +126,25 @@ describe('fetchLatest / generation', () => {
         expect(s.isLoading).toBe(false)
     })
 
+    it('fetchLatest 成功后置 hasFetchedLatest=true（防多消费方 effect 重复触发空会话循环）', async () => {
+        // 空会话：messages=[] 但仍置 true（已 fetch 过，不重复）
+        const api = makeApi([{ messages: [], page: { hasMore: false, nextBeforeSeq: null } }])
+        await fetchLatestMessages(api, 's1')
+        expect(getMessageWindowState('s1').hasFetchedLatest).toBe(true)
+        // 非空会话同样置 true
+        const api2 = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
+        await fetchLatestMessages(api2, 's2')
+        expect(getMessageWindowState('s2').hasFetchedLatest).toBe(true)
+    })
+
+    it('clearMessageWindow 重置 hasFetchedLatest=false（切回会话重新 fetch）', async () => {
+        const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
+        await fetchLatestMessages(api, 's1')
+        expect(getMessageWindowState('s1').hasFetchedLatest).toBe(true)
+        clearMessageWindow('s1')
+        expect(getMessageWindowState('s1').hasFetchedLatest).toBe(false)
+    })
+
     it('过期 fetchLatest 返回不覆盖新 SSE 状态（generation 丢弃）', async () => {
         const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
         const p = fetchLatestMessages(api, 's1')
