@@ -16,12 +16,40 @@
 
 import { useState, useMemo } from 'react'
 import { Think } from '@ant-design/x'
+import { useTranslation } from 'react-i18next'
 import type { AgentReasoningBlock, ToolCallBlock } from '@/domain/chat'
 import type { ChatBlockContext } from './index'
 import { ToolCallRenderer } from './ToolCallBlock'
 import { ReasoningBlock } from './ReasoningBlock'
-import { StatusStateIcon } from '@/components/tool-card/toolIcons'
+import { StatusStateIcon, STATUS_DOT_COLORS } from '@/components/tool-card/toolIcons'
 import { formatGroupTitle } from '@/domain/chat/groupToolCalls'
+
+/**
+ * 组头状态 icon：主体 completed 绿点（组已落定），含失败工具时右上角叠小红角标提示。
+ * 主体不染红（避免一个失败染红整组），也不掩盖失败（角标可见 + 标题「· N failed」承载计数）。
+ */
+function ToolCallGroupIcon({ hasError }: { hasError: boolean }) {
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+      <StatusStateIcon state="completed" />
+      {hasError && (
+        <span
+          style={{
+            position: 'absolute',
+            top: -1,
+            right: -2,
+            width: 4,
+            height: 4,
+            borderRadius: '50%',
+            background: STATUS_DOT_COLORS.error,
+            // 描一圈容器底色，避免红点与绿点重叠时糊在一起
+            boxShadow: '0 0 0 1px var(--ant-color-bg-container)',
+          }}
+        />
+      )}
+    </span>
+  )
+}
 
 export function ToolCallGroupRenderer({
   blocks,
@@ -29,13 +57,23 @@ export function ToolCallGroupRenderer({
 }: {
   blocks: Array<ToolCallBlock | AgentReasoningBlock>
 } & ChatBlockContext) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const title = useMemo(() => formatGroupTitle(blocks), [blocks])
+  const hasError = useMemo(
+    () => blocks.some(b => b.kind === 'tool-call' && b.tool.state === 'error'),
+    [blocks],
+  )
+  const title = useMemo(
+    () => formatGroupTitle(blocks, {
+      formatFailedCount: n => t('chat.tool.groupFailedCount', { count: n }),
+    }),
+    [blocks, t],
+  )
 
   return (
     <Think
       className="tool-call-think"
-      icon={<StatusStateIcon state="completed" />}
+      icon={<ToolCallGroupIcon hasError={hasError} />}
       title={
         <span style={{ fontWeight: 500, fontSize: 13 }}>
           {title}
@@ -57,6 +95,7 @@ export function ToolCallGroupRenderer({
           <ToolCallRenderer
             key={block.id}
             block={block}
+            inGroup
             {...ctx}
           />
         ))}

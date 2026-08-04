@@ -248,7 +248,7 @@ function ToolCallPreviewContent({
 }
 
 /** 渲染 ToolCallBlock（来自 reduceChatBlocks） */
-export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata, sessionId, disableDrawer }: {
+export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata, sessionId, disableDrawer, inGroup }: {
     block: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
     /** 审批交互已由 ComposerInfoPanel 承担，chat 区工具卡片不需要 api/disabled/onDone；保留类型声明维持调用方接口稳定 */
@@ -257,6 +257,9 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     disabled?: boolean
     onDone?: () => void
     disableDrawer?: boolean
+    /** 是否在折叠组内渲染：组内统一默认收起（降噪优先，靠组标题概览 + 单卡片点开看详情）。
+     *  组外散落时仍按各工具原 defaultExpanded 逻辑（如 Edit/Write/Bash 默认展开）。 */
+    inGroup?: boolean
 }) {
     const { token } = antTheme.useToken()
     const tool = block.tool
@@ -282,7 +285,11 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     // 终端工具（Bash/shell_command）即报错也默认展开：用户主动下发的命令，
     // 失败/被拦截时必须直接看到命令与原因（如 mobi 本地 !bash 的高危拦截提示），
     // 不能像其它工具那样 error 即折叠降噪。
-    const defaultExpanded = (!isError || isTerminalTool(tool.name)) && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning || isBgAgent)
+    // 组内（inGroup）统一收起：降噪优先于「Bash 失败必展开」（组头红角标已承载失败信号）；
+    // 组内不会出现 pending permission（未落定的工具散落不进组），故 permissionDrivenExpand 无需保留。
+    const defaultExpanded = inGroup
+        ? false
+        : (!isError || isTerminalTool(tool.name)) && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning || isBgAgent)
     const [expanded, setExpanded] = useState(defaultExpanded)
     const prevPermissionDrivenExpand = useRef(permissionDrivenExpand)
 

@@ -168,6 +168,7 @@
             "statusDone": "完成",
             "statusError": "出错",
             "statusRunning": "运行中",
+            "groupFailedCount": "{{count}} 个失败",
             "waitingForApproval": "等待审批...",
             "canceled": "已取消",
             "approved": "已批准",

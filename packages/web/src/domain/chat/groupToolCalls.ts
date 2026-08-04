@@ -18,7 +18,7 @@ import type { AgentReasoningBlock, ChatBlock, ToolCallBlock } from '@/domain/cha
 import { capitalize } from '@/core/utils/sessionUtils'
 import { parseMCPToolName, formatMCPServerDisplay } from '@/core/lib/toolInputUtils'
 
-type ToolCategory = 'shell' | 'read' | 'glob' | 'grep'
+type ToolCategory = 'shell' | 'read' | 'glob' | 'grep' | 'webfetch' | 'websearch' | 'write'
 
 const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   Bash: 'shell',
@@ -26,6 +26,11 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   Read: 'read',
   Glob: 'glob',
   Grep: 'grep',
+  WebFetch: 'webfetch',
+  WebSearch: 'websearch',
+  Write: 'write',
+  Edit: 'write',
+  MultiEdit: 'write',
 }
 
 const COLLAPSIBLE_TOOL_NAMES = new Set(Object.keys(TOOL_CATEGORY_MAP))
@@ -50,8 +55,12 @@ type IsActiveReasoning = (block: AgentReasoningBlock) => boolean
  * 格式化折叠组标题。
  * thinking 部分：组内 reasoning 的 durationMs 求和 —— 有（remote）展示「thought X.Xs」，全无（local/历史）兜底「thought」。
  * tool 部分：按类别计数（现有逻辑）。
+ * 失败计数：组内 tool state=error 的数量，传入 formatFailedCount 时追加「· N failed」。
  */
-export function formatGroupTitle(blocks: CollapsibleBlock[]): string {
+export function formatGroupTitle(
+  blocks: CollapsibleBlock[],
+  opts: { formatFailedCount?: (count: number) => string } = {},
+): string {
   // thinking 总时长（仅 remote 打点的 durationMs；local/历史为 undefined → 求和得 0）
   const reasoningBlocks = blocks.filter((b): b is AgentReasoningBlock => b.kind === 'agent-reasoning')
   const hasThinkDuration = reasoningBlocks.some(b => b.durationMs != null)
@@ -60,8 +69,10 @@ export function formatGroupTitle(blocks: CollapsibleBlock[]): string {
   // tool 类别计数
   const counts: Partial<Record<ToolCategory, number>> = {}
   const mcpCounts: Record<string, number> = {}
+  let failedCount = 0
   for (const block of blocks) {
     if (block.kind === 'agent-reasoning') continue
+    if (block.tool.state === 'error') failedCount++
     const cat = TOOL_CATEGORY_MAP[block.tool.name]
     if (cat) {
       counts[cat] = (counts[cat] ?? 0) + 1
@@ -94,11 +105,28 @@ export function formatGroupTitle(blocks: CollapsibleBlock[]): string {
     const n = counts.grep
     parts.push(`search ${n} pattern${n !== 1 ? 's' : ''}`)
   }
+  if (counts.webfetch) {
+    const n = counts.webfetch
+    parts.push(`fetch ${n} page${n !== 1 ? 's' : ''}`)
+  }
+  if (counts.websearch) {
+    const n = counts.websearch
+    parts.push(`search the web ${n} time${n !== 1 ? 's' : ''}`)
+  }
+  if (counts.write) {
+    const n = counts.write
+    parts.push(`edit ${n} file${n !== 1 ? 's' : ''}`)
+  }
   for (const [server, n] of Object.entries(mcpCounts)) {
     parts.push(`called ${formatMCPServerDisplay(server)} ${n} time${n !== 1 ? 's' : ''}`)
   }
 
-  return capitalize(parts.join(', '))
+  const base = capitalize(parts.join(', '))
+  // 含失败工具时追加失败计数（需调用方提供格式化器，否则仅计数但不展示）
+  if (failedCount > 0 && opts.formatFailedCount) {
+    return `${base} · ${opts.formatFailedCount(failedCount)}`
+  }
+  return base
 }
 
 /** 判断是否为可折叠块（可折叠工具 或 reasoning） */
@@ -109,16 +137,17 @@ function isCollapsibleBlock(block: ChatBlock): block is CollapsibleBlock {
   return COLLAPSIBLE_TOOL_NAMES.has(name) || name.startsWith('mcp__')
 }
 
-/** 可折叠块是否「已完成」（可进组归档）—— tool 看 state，reasoning 看是否非活跃 */
-function isCollapsibleCompleted(
+/** 可折叠块是否「已落定」（可进组归档）—— tool 看 completed/error，reasoning 看是否非活跃 */
+function isCollapsibleSettled(
   block: CollapsibleBlock,
   isActiveReasoning?: IsActiveReasoning,
 ): boolean {
   if (block.kind === 'agent-reasoning') {
-    // 活跃（正在思考）→ 未完成，散落；默认无谓词 → 视为已完成（向后兼容）
+    // 活跃（正在思考）→ 未落定，散落；默认无谓词 → 视为已落定（向后兼容）
     return !(isActiveReasoning?.(block) ?? false)
   }
-  return block.tool.state === 'completed'
+  // completed 成功、error 失败均归档进组；pending/running 仍散落可见
+  return block.tool.state === 'completed' || block.tool.state === 'error'
 }
 
 /** 检测连续可折叠块 Zone 并分组（reasoning + 可折叠工具共享 zone） */
@@ -143,17 +172,17 @@ export function groupCollapsibleToolCalls(
         i++
       }
 
-      // 按完成态拆分，各自保持原始相对顺序
-      const completed = zone.filter(b => isCollapsibleCompleted(b, isActiveReasoning))
-      const others = zone.filter(b => !isCollapsibleCompleted(b, isActiveReasoning))
+      // 按落定态拆分，各自保持原始相对顺序
+      const settled = zone.filter(b => isCollapsibleSettled(b, isActiveReasoning))
+      const others = zone.filter(b => !isCollapsibleSettled(b, isActiveReasoning))
 
-      if (completed.length >= 2) {
+      if (settled.length >= 2) {
         result.push({
           kind: 'tool-call-group',
-          // 锚定 zone 起始块（而非 completed 首块）：zone 边界由非可折叠块决定，
-          // 流式中稳定；completed 首块会随工具状态翻转而变，作 key 会导致组重挂载、折叠态丢失
+          // 锚定 zone 起始块（而非 settled 首块）：zone 边界由非可折叠块决定，
+          // 流式中稳定；settled 首块会随工具状态翻转而变，作 key 会导致组重挂载、折叠态丢失
           id: `group-${zone[0].id}`,
-          blocks: completed,
+          blocks: settled,
         })
         result.push(...others)
       } else {

@@ -103,12 +103,12 @@ describe('groupCollapsibleToolCalls', () => {
 
   it('非可折叠工具打断 Zone', () => {
     const tc1 = makeToolCall({ id: 'tc1', name: 'Bash' })
-    const edit = makeToolCall({ id: 'edit1', name: 'Edit' })
+    const nonCollapsible = makeToolCall({ id: 'nc1', name: 'AskUserQuestion' })
     const tc2 = makeToolCall({ id: 'tc2', name: 'Read' })
-    const result = groupCollapsibleToolCalls([tc1, edit, tc2])
+    const result = groupCollapsibleToolCalls([tc1, nonCollapsible, tc2])
     expect(result).toHaveLength(3)
     expect(result[0]).toEqual(tc1)
-    expect(result[1]).toEqual(edit)
+    expect(result[1]).toEqual(nonCollapsible)
     expect(result[2]).toEqual(tc2)
   })
 
@@ -123,20 +123,20 @@ describe('groupCollapsibleToolCalls', () => {
     expect(result[2]).toEqual(tc2)
   })
 
-  it('Zone 内 completed 归入折叠，其余排在后面', () => {
+  it('Zone 内 completed 与 error 归入折叠，running/pending 排在后面', () => {
     const tc1 = makeToolCall({ id: 'tc1', name: 'Read', state: 'completed' })
     const tc2 = makeToolCall({ id: 'tc2', name: 'Read', state: 'running' })
     const tc3 = makeToolCall({ id: 'tc3', name: 'Read', state: 'completed' })
     const tc4 = makeToolCall({ id: 'tc4', name: 'Read', state: 'error' })
     const tc5 = makeToolCall({ id: 'tc5', name: 'Read', state: 'completed' })
     const result = groupCollapsibleToolCalls([tc1, tc2, tc3, tc4, tc5])
-    expect(result).toHaveLength(3)
+    // completed + error 均归入折叠（失败工具也进组），running/pending 排后
+    expect(result).toHaveLength(2)
     expect(result[0]).toMatchObject({
       kind: 'tool-call-group',
-      blocks: [tc1, tc3, tc5],
+      blocks: [tc1, tc3, tc4, tc5],
     })
     expect(result[1]).toEqual(tc2)
-    expect(result[2]).toEqual(tc4)
   })
 
   it('group id 锚定 Zone 起始块（即使首个未完成），避免 completed 首成员翻转导致 key 抖动', () => {
@@ -354,12 +354,12 @@ describe('groupCollapsibleToolCalls', () => {
 
     it('MCP 工具被非可折叠工具打断为两个 Zone', () => {
       const tc1 = makeToolCall({ id: 'tc1', name: 'mcp__github__search' })
-      const edit = makeToolCall({ id: 'edit1', name: 'Edit' })
+      const nonCollapsible = makeToolCall({ id: 'nc1', name: 'AskUserQuestion' })
       const tc2 = makeToolCall({ id: 'tc2', name: 'mcp__github__read' })
-      const result = groupCollapsibleToolCalls([tc1, edit, tc2])
+      const result = groupCollapsibleToolCalls([tc1, nonCollapsible, tc2])
       expect(result).toHaveLength(3)
       expect(result[0]).toEqual(tc1)
-      expect(result[1]).toEqual(edit)
+      expect(result[1]).toEqual(nonCollapsible)
       expect(result[2]).toEqual(tc2)
     })
 
@@ -481,6 +481,50 @@ describe('formatGroupTitle', () => {
     })
   })
 
+  describe('失败计数（formatFailedCount 回调）', () => {
+    it('含 error 时追加失败计数', () => {
+      const blocks = [
+        makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
+        makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
+        makeToolCall({ id: 'r3', name: 'Read', state: 'completed' }),
+      ]
+      expect(formatGroupTitle(blocks, { formatFailedCount: n => `${n} failed` })).toBe('Read 3 files · 1 failed')
+    })
+
+    it('全 error 时计数为组大小', () => {
+      const blocks = [
+        makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
+        makeToolCall({ id: 'r2', name: 'Read', state: 'error' }),
+      ]
+      expect(formatGroupTitle(blocks, { formatFailedCount: n => `${n} failed` })).toBe('Read 2 files · 2 failed')
+    })
+
+    it('无 error 时不追加（即使传了回调）', () => {
+      const blocks = [
+        makeToolCall({ id: 'r1', name: 'Read', state: 'completed' }),
+        makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
+      ]
+      expect(formatGroupTitle(blocks, { formatFailedCount: n => `${n} failed` })).toBe('Read 2 files')
+    })
+
+    it('含 error 但未传回调时不追加', () => {
+      const blocks = [
+        makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
+        makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Read 2 files')
+    })
+
+    it('含 error 与 reasoning 混合：reasoning 不计入失败', () => {
+      const blocks = [
+        makeReasoning({ id: 'rs1', durationMs: 1000 }),
+        makeToolCall({ id: 'r1', name: 'Read', state: 'error' }),
+        makeToolCall({ id: 'r2', name: 'Read', state: 'completed' }),
+      ]
+      expect(formatGroupTitle(blocks, { formatFailedCount: n => `${n} failed` })).toBe('Thought 1.0s, read 2 files · 1 failed')
+    })
+  })
+
   describe('MCP 标题格式', () => {
     it('单个 MCP server 计数', () => {
       const blocks = [
@@ -526,6 +570,83 @@ describe('formatGroupTitle', () => {
         makeToolCall({ id: 'r3', name: 'Read' }),
       ]
       expect(formatGroupTitle(blocks)).toBe('Read 3 files')
+    })
+  })
+
+  describe('Web 与文件操作工具', () => {
+    it('WebFetch/WebSearch 是可折叠工具，能成组', () => {
+      const result = groupCollapsibleToolCalls([
+        makeToolCall({ id: 'w1', name: 'WebFetch' }),
+        makeToolCall({ id: 'w2', name: 'WebSearch' }),
+      ])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ kind: 'tool-call-group' })
+    })
+
+    it('Write/Edit/MultiEdit 是可折叠工具，能成组', () => {
+      const result = groupCollapsibleToolCalls([
+        makeToolCall({ id: 'e1', name: 'Write' }),
+        makeToolCall({ id: 'e2', name: 'Edit' }),
+        makeToolCall({ id: 'e3', name: 'MultiEdit' }),
+      ])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ kind: 'tool-call-group' })
+    })
+
+    it('Write/Edit 与 Read 同 Zone 混合成组', () => {
+      const result = groupCollapsibleToolCalls([
+        makeToolCall({ id: 'r1', name: 'Read' }),
+        makeToolCall({ id: 'e1', name: 'Edit' }),
+        makeToolCall({ id: 'w1', name: 'Write' }),
+      ])
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({ kind: 'tool-call-group' })
+    })
+
+    it('WebFetch 计数（单数/复数）', () => {
+      expect(formatGroupTitle([makeToolCall({ id: 'w1', name: 'WebFetch' })])).toBe('Fetch 1 page')
+      expect(formatGroupTitle([
+        makeToolCall({ id: 'w1', name: 'WebFetch' }),
+        makeToolCall({ id: 'w2', name: 'WebFetch' }),
+      ])).toBe('Fetch 2 pages')
+    })
+
+    it('WebSearch 计数', () => {
+      expect(formatGroupTitle([
+        makeToolCall({ id: 'w1', name: 'WebSearch' }),
+        makeToolCall({ id: 'w2', name: 'WebSearch' }),
+        makeToolCall({ id: 'w3', name: 'WebSearch' }),
+      ])).toBe('Search the web 3 times')
+    })
+
+    it('Write/Edit/MultiEdit 合并 write 类别计数', () => {
+      const blocks = [
+        makeToolCall({ id: 'e1', name: 'Write' }),
+        makeToolCall({ id: 'e2', name: 'Edit' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Edit 2 files')
+    })
+
+    it('read + websearch + edit 混合按固定顺序拼接', () => {
+      const blocks = [
+        makeToolCall({ id: 'r1', name: 'Read' }),
+        makeToolCall({ id: 'w1', name: 'WebSearch' }),
+        makeToolCall({ id: 'e1', name: 'Edit' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Read 1 file, search the web 1 time, edit 1 file')
+    })
+
+    it('全类别混合', () => {
+      const blocks = [
+        makeToolCall({ id: 'b1', name: 'Bash' }),
+        makeToolCall({ id: 'r1', name: 'Read' }),
+        makeToolCall({ id: 'gl1', name: 'Glob' }),
+        makeToolCall({ id: 'gr1', name: 'Grep' }),
+        makeToolCall({ id: 'wf1', name: 'WebFetch' }),
+        makeToolCall({ id: 'ws1', name: 'WebSearch' }),
+        makeToolCall({ id: 'e1', name: 'Edit' }),
+      ]
+      expect(formatGroupTitle(blocks)).toBe('Run 1 shell command, read 1 file, find 1 pattern, search 1 pattern, fetch 1 page, search the web 1 time, edit 1 file')
     })
   })
 })
