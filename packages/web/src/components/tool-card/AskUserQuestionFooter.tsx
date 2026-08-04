@@ -20,7 +20,7 @@ import { memo, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, theme as antTheme, Input, Tabs } from 'antd'
 import { CheckOutlined, LoadingOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { isAskUserQuestionToolName, parseAskUserQuestionInput, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
+import { isAskUserQuestionToolName, parseAskUserQuestionInput, buildChatAboutThisReason, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -115,17 +115,27 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         : questions.every((_, i) => validateQuestion(i) !== null)
 
     const renderSubmitButton = () => (
-        <Button
-            type="primary"
-            block
-            disabled={props.disabled || loading || !canSubmit}
-            onClick={submit}
-            loading={loading}
-            icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
-            style={{ marginTop: 12, minHeight: actionMinHeight }}
-        >
-            {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
-        </Button>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            <Button
+                type="primary"
+                block
+                disabled={props.disabled || loading || !canSubmit}
+                onClick={submit}
+                loading={loading}
+                icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
+                style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+            >
+                {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
+            </Button>
+            <Button
+                disabled={props.disabled || loading}
+                onClick={chatAbout}
+                loading={loading}
+                style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+            >
+                {t('chat.tool.askUserQuestion.chatAbout')}
+            </Button>
+        </div>
     )
 
     const submit = async () => {
@@ -154,6 +164,40 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         setLoading(true)
         try {
             await props.api.permissions.approve(props.sessionId, permission.id, { answers })
+            queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
+            props.onDone()
+        } catch (e) {
+            setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    /** 聊一聊：不提交答案，deny 带 seed 文案引导 Claude 主动反问 */
+    const chatAbout = async () => {
+        if (loading) return
+
+        // 收集已选答案（与 submit 同逻辑，但不阻断未答题）
+        const answers: Record<string, string[]> = {}
+        if (questions.length === 0) {
+            const a0 = validateQuestion(0)
+            if (a0) answers[''] = a0
+        } else {
+            for (let i = 0; i < questions.length; i += 1) {
+                const a = computeAnswersForQuestion(
+                    questions[i],
+                    selectedByQuestion[i] ?? [],
+                    otherSelectedByQuestion[i] ?? false,
+                    otherTextByQuestion[i] ?? '',
+                )
+                if (a.length > 0) answers[questions[i].question] = a
+            }
+        }
+
+        const reason = buildChatAboutThisReason(questions, answers)
+        setLoading(true)
+        try {
+            await props.api.permissions.deny(props.sessionId, permission.id, { reason })
             queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
             props.onDone()
         } catch (e) {

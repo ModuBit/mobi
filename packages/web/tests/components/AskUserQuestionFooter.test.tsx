@@ -26,6 +26,7 @@ vi.mock('react-i18next', async (importOriginal) => {
                     'chat.tool.askUserQuestion.title': '问题',
                     'chat.tool.submit': '提交',
                     'chat.tool.submitting': '提交中...',
+                    'chat.tool.askUserQuestion.chatAbout': '聊一聊',
                 }
                 return map[key] ?? key
             },
@@ -39,8 +40,9 @@ vi.mock('@/core/data/hooks/useMediaQuery', () => ({
 }))
 
 const mockApprove = vi.fn()
+const mockDeny = vi.fn()
 const mockApi = {
-    permissions: { approve: mockApprove },
+    permissions: { approve: mockApprove, deny: mockDeny },
 } as unknown as MobiApi
 
 // jsdom 没有 ResizeObserver（Ant Design TextArea 需要）
@@ -133,6 +135,7 @@ function getSubmitButton(): HTMLElement {
 describe('AskUserQuestionFooter', () => {
     beforeEach(() => {
         mockApprove.mockReset()
+        mockDeny.mockReset()
     })
 
     afterEach(() => {
@@ -588,6 +591,36 @@ describe('AskUserQuestionFooter', () => {
             // 模拟用户点击 textarea 聚焦 —— 不应触发 toggle 把它收起
             fireEvent.click(ta)
             expect(document.querySelector('textarea')).not.toBeNull()
+        })
+    })
+
+    describe('聊一聊按钮', () => {
+        it('点击聊一聊 → 调 permissions.deny 带 seed reason（含问题与已选答案）', async () => {
+            mockDeny.mockResolvedValue(undefined)
+            const tool = makeTool([{
+                question: 'Which lib?',
+                header: 'Lib',
+                options: [
+                    { label: 'JWT', description: null, preview: null },
+                    { label: 'OAuth', description: null, preview: null },
+                ],
+                multiSelect: false,
+            }])
+            renderFooter(tool)
+            fireEvent.click(findOptionBtn('JWT'))
+            fireEvent.click(screen.getByText('聊一聊'))
+
+            await waitFor(() => {
+                expect(mockDeny).toHaveBeenCalledTimes(1)
+            })
+            const args = mockDeny.mock.calls[0]
+            const body = args[args.length - 1] // body 可能是第 2 或第 3 参数，取最后一个
+            expect(body).toHaveProperty('reason')
+            const reason: string = (body as { reason: string }).reason
+            expect(reason).toContain('The user wants to clarify these questions.')
+            expect(reason).toContain('- "Which lib?"')
+            expect(reason).toContain('Answer: JWT')
+            expect(mockApprove).not.toHaveBeenCalled()
         })
     })
 })
