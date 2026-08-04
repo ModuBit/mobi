@@ -204,11 +204,12 @@ const AskUserQuestionResultView: ToolViewComponent = (props: ToolViewProps) => {
     const { t } = useTranslation()
     const permission = props.block.tool.permission
 
-    // 被拒绝：展示拒绝原因
-    if (permission?.decision === 'abort') {
+    // 被拒绝：展示拒绝原因（含「聊一聊」seed 文案、No answers、用户主动 deny 等）
+    const isDenied = permission?.status === 'denied' || permission?.decision === 'abort'
+    if (isDenied) {
         return (
-            <div style={{ fontSize: 13, color: token.colorTextSecondary }}>
-                {permission.reason || t('chat.tool.rejected')}
+            <div style={{ fontSize: 13, color: token.colorTextSecondary, whiteSpace: 'pre-wrap' }}>
+                {permission?.reason || t('chat.tool.rejected')}
             </div>
         )
     }

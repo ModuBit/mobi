@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { AskUserQuestionView } from '@/components/tool-card/views/AskUserQuestionView'
+import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import type { ToolInfo } from '@/domain/tool/types'
 
@@ -38,7 +39,12 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ConfigProvider>{children}</ConfigProvider>
 )
 
-function makeBlock(toolInput: unknown, answers?: Record<string, string[]>, toolName = 'AskUserQuestion'): ToolViewProps {
+function makeBlock(
+    toolInput: unknown,
+    answers?: Record<string, string[]>,
+    toolName = 'AskUserQuestion',
+    permissionOverride?: Partial<NonNullable<ToolInfo['permission']>>,
+): ToolViewProps {
     const tool: ToolInfo = {
         name: toolName,
         input: toolInput,
@@ -52,6 +58,7 @@ function makeBlock(toolInput: unknown, answers?: Record<string, string[]>, toolN
             status: 'approved',
             createdAt: Date.now(),
             answers,
+            ...permissionOverride,
         },
     }
     return { block: { id: 'block-1', type: 'tool_use', tool } } as ToolViewProps
@@ -59,6 +66,11 @@ function makeBlock(toolInput: unknown, answers?: Record<string, string[]>, toolN
 
 function renderView(props: ToolViewProps) {
     return render(<AskUserQuestionView {...props} />, { wrapper })
+}
+
+function renderResultView(props: ToolViewProps) {
+    const ResultView = getToolResultViewComponent('AskUserQuestion')
+    return render(<ResultView {...props} />, { wrapper })
 }
 
 describe('AskUserQuestionView', () => {
@@ -309,6 +321,27 @@ describe('AskUserQuestionView', () => {
             // OptionRow 选中态：[data-selected="true"]，每题一个
             const selectedBtns = container.querySelectorAll('[data-selected="true"]')
             expect(selectedBtns.length).toBe(2)
+        })
+    })
+
+    describe('denied 态渲染拒绝原因', () => {
+        const questionInput = { questions: [{ question: 'Q?', options: [], multiSelect: false }] }
+
+        it('permission.decision=abort + reason → 展示拒绝原因（聊一聊 seed 文案）', () => {
+            const block = makeBlock(questionInput, undefined, 'AskUserQuestion', {
+                id: 'p1', status: 'denied', decision: 'abort',
+                reason: 'The user wants to clarify these questions.',
+            })
+            renderResultView(block)
+            expect(screen.getByText(/The user wants to clarify these questions/)).toBeInTheDocument()
+        })
+
+        it('permission.status=denied + reason（无 decision）→ 同样展示 reason', () => {
+            const block = makeBlock(questionInput, undefined, 'AskUserQuestion', {
+                id: 'p2', status: 'denied', reason: 'No answers were provided.',
+            })
+            renderResultView(block)
+            expect(screen.getByText(/No answers were provided/)).toBeInTheDocument()
         })
     })
 })
