@@ -25,7 +25,7 @@ import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './na
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
 import { MobileProjectList } from './MobileProjectList'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
-import { Menu, Sun, Moon, Languages, RefreshCw } from 'lucide-react'
+import { Menu, Sun, Moon, Languages, RefreshCw, RotateCw } from 'lucide-react'
 import { InstallButton } from './InstallButton'
 import { useForceUpdate } from '@/core/pwa/useForceUpdate'
 import styled from '@emotion/styled'
@@ -208,18 +208,35 @@ export function MobileMenuDrawer() {
                     </MenuItem>
                 </div>
 
-                {/* 检查更新(清缓存硬刷新) */}
-                <MenuItem
-                    $active={false}
-                    $token={token}
-                    onClick={() => {
-                        handleClose()
-                        checkUpdate()
-                    }}
-                >
-                    <RefreshCw size={20} />
-                    <span>{t('nav.checkUpdate')}</span>
-                </MenuItem>
+                {/* 刷新(软刷新：仅 location.reload，不清 SW 缓存) + 检查更新(清缓存硬刷新)
+                    并排成行：两者都是页面级重载动作，语义同组，对照主题/语言那行的双栏布局 */}
+                <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                    <MenuItem
+                        $active={false}
+                        $token={token}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={() => {
+                            handleClose()
+                            window.location.reload()
+                        }}
+                    >
+                        <RotateCw size={20} />
+                        <span>{t('nav.refresh')}</span>
+                    </MenuItem>
+                    <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorder, margin: '8px 0' }} />
+                    <MenuItem
+                        $active={false}
+                        $token={token}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={() => {
+                            handleClose()
+                            checkUpdate()
+                        }}
+                    >
+                        <RefreshCw size={20} />
+                        <span>{t('nav.checkUpdate')}</span>
+                    </MenuItem>
+                </div>
 
                 <MenuItem
                     $active={false}

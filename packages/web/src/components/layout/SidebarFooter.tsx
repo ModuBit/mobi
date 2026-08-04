@@ -26,6 +26,7 @@ import {
     Download,
     LogOut,
     RefreshCw,
+    RotateCw,
 } from 'lucide-react'
 import type { MenuProps } from 'antd'
 import styled from '@emotion/styled'
@@ -109,6 +110,12 @@ export function SidebarFooter() {
                 onClick: toggleLocale,
             },
             { type: 'divider' },
+            {
+                key: 'refresh',
+                label: t('nav.refresh'),
+                icon: <RotateCw size={16} />,
+                onClick: () => window.location.reload(),
+            },
             {
                 key: 'checkUpdate',
                 label: t('nav.checkUpdate'),
