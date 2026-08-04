@@ -613,14 +613,60 @@ describe('AskUserQuestionFooter', () => {
             await waitFor(() => {
                 expect(mockDeny).toHaveBeenCalledTimes(1)
             })
-            const args = mockDeny.mock.calls[0]
-            const body = args[args.length - 1] // body 可能是第 2 或第 3 参数，取最后一个
+            // mockDeny(sessionId, permissionId, body) 三参签名，取第三参
+            const body = mockDeny.mock.calls[0][2]
             expect(body).toHaveProperty('reason')
             const reason: string = (body as { reason: string }).reason
             expect(reason).toContain('The user wants to clarify these questions.')
             expect(reason).toContain('- "Which lib?"')
             expect(reason).toContain('Answer: JWT')
             expect(mockApprove).not.toHaveBeenCalled()
+        })
+
+        it('pendingAction 防重发：点聊一聊后再点不重复调 deny/approve', async () => {
+            // deny 返回永不 resolve 的 Promise，锁住 pendingAction
+            mockDeny.mockReturnValue(new Promise<void>(() => {}))
+            const tool = makeTool([{
+                question: 'Q?',
+                header: 'H',
+                options: [{ label: 'A', description: null, preview: null }],
+                multiSelect: false,
+            }])
+            renderFooter(tool)
+            fireEvent.click(findOptionBtn('A'))
+            fireEvent.click(screen.getByText('聊一聊'))
+
+            // 等首次 deny 调用
+            await waitFor(() => {
+                expect(mockDeny).toHaveBeenCalledTimes(1)
+            })
+
+            // 再点聊一聊（按钮此时 disabled，但强行 click 测试守卫）
+            const chatBtn = screen.getByText('聊一聊')
+            fireEvent.click(chatBtn)
+            // 再点提交按钮
+            fireEvent.click(getSubmitButton())
+
+            // 仍只调了一次
+            expect(mockDeny).toHaveBeenCalledTimes(1)
+            expect(mockApprove).not.toHaveBeenCalled()
+        })
+
+        it('deny 失败时走 setError 显示错误信息', async () => {
+            mockDeny.mockRejectedValue(new Error('网络错误'))
+            const tool = makeTool([{
+                question: 'Q?',
+                header: 'H',
+                options: [{ label: 'A', description: null, preview: null }],
+                multiSelect: false,
+            }])
+            renderFooter(tool)
+            fireEvent.click(findOptionBtn('A'))
+            fireEvent.click(screen.getByText('聊一聊'))
+
+            await waitFor(() => {
+                expect(screen.getByText('网络错误')).toBeInTheDocument()
+            })
         })
     })
 })

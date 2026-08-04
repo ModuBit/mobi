@@ -77,7 +77,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     const [otherTextByQuestion, setOtherTextByQuestion] = useState<string[]>([])
     const [fallbackText, setFallbackText] = useState('')
 
-    const [loading, setLoading] = useState(false)
+    const [pendingAction, setPendingAction] = useState<'submit' | 'chatAbout' | null>(null)
     const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
@@ -86,7 +86,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         setOtherSelectedByQuestion(questions.map(() => false))
         setOtherTextByQuestion(questions.map(() => ''))
         setFallbackText('')
-        setLoading(false)
+        setPendingAction(null)
         setError(null)
     }, [props.tool.input])
 
@@ -118,19 +118,18 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'stretch' }}>
             <Button
                 type="primary"
-                block
-                disabled={props.disabled || loading || !canSubmit}
+                disabled={props.disabled || pendingAction != null || !canSubmit}
                 onClick={submit}
-                loading={loading}
-                icon={loading ? <LoadingOutlined /> : <CheckOutlined />}
-                style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
+                loading={pendingAction === 'submit'}
+                icon={pendingAction === 'submit' ? <LoadingOutlined /> : <CheckOutlined />}
+                style={{ flex: 1, minHeight: actionMinHeight, justifyContent: 'center' }}
             >
-                {loading ? t('chat.tool.submitting') : t('chat.tool.submit')}
+                {pendingAction === 'submit' ? t('chat.tool.submitting') : t('chat.tool.submit')}
             </Button>
             <Button
-                disabled={props.disabled || loading}
+                disabled={props.disabled || pendingAction != null}
                 onClick={chatAbout}
-                loading={loading}
+                loading={pendingAction === 'chatAbout'}
                 style={{ minHeight: actionMinHeight, justifyContent: 'center' }}
             >
                 {t('chat.tool.askUserQuestion.chatAbout')}
@@ -139,7 +138,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
     )
 
     const submit = async () => {
-        if (loading) return
+        if (pendingAction) return
 
         const answers: Record<string, string[]> = {}
         if (questions.length === 0) {
@@ -161,7 +160,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
             }
         }
 
-        setLoading(true)
+        setPendingAction('submit')
         try {
             await props.api.permissions.approve(props.sessionId, permission.id, { answers })
             queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
@@ -169,13 +168,13 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         } catch (e) {
             setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
         } finally {
-            setLoading(false)
+            setPendingAction(null)
         }
     }
 
     /** 聊一聊：不提交答案，deny 带 seed 文案引导 Claude 主动反问 */
     const chatAbout = async () => {
-        if (loading) return
+        if (pendingAction) return
 
         // 收集已选答案（与 submit 同逻辑，但不阻断未答题）
         const answers: Record<string, string[]> = {}
@@ -195,7 +194,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         }
 
         const reason = buildChatAboutThisReason(questions, answers)
-        setLoading(true)
+        setPendingAction('chatAbout')
         try {
             await props.api.permissions.deny(props.sessionId, permission.id, { reason })
             queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
@@ -203,7 +202,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         } catch (e) {
             setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
         } finally {
-            setLoading(false)
+            setPendingAction(null)
         }
     }
 
@@ -309,7 +308,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                             data-testid={`option-${optIdx}`}
                             checked={selected}
                             mode={m}
-                            disabled={props.disabled || loading}
+                            disabled={props.disabled || pendingAction != null}
                             tone="interactive"
                             title={opt.label}
                             description={opt.description}
@@ -322,7 +321,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     data-testid="option-other"
                     checked={otherSelectedByQuestion[qIdx] ?? false}
                     mode={m}
-                    disabled={props.disabled || loading}
+                    disabled={props.disabled || pendingAction != null}
                     tone="interactive"
                     title={t('chat.tool.other')}
                     description={t('chat.tool.otherDescription')}
@@ -333,7 +332,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     <TextArea
                         value={otherTextByQuestion[qIdx] ?? ''}
                         onChange={(e) => updateOtherText(qIdx, e.target.value)}
-                        disabled={props.disabled || loading}
+                        disabled={props.disabled || pendingAction != null}
                         placeholder={t('chat.tool.askUserQuestion.otherPlaceholder')}
                         rows={3}
                         style={{ marginTop: 4 }}
@@ -367,7 +366,7 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
                     <TextArea
                         value={fallbackText}
                         onChange={(e) => setFallbackText(e.target.value)}
-                        disabled={props.disabled || loading}
+                        disabled={props.disabled || pendingAction != null}
                         placeholder={t('chat.tool.askUserQuestion.placeholder')}
                         rows={4}
                         style={{ marginTop: 8 }}
