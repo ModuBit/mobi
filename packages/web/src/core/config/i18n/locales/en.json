@@ -185,6 +185,8 @@
             "keepPlanning": "Keep Planning",
             "keepPlanningPlaceholder": "Tell Claude what you want it to do next...",
             "sendFeedback": "Send Feedback",
+            "denyWithReason": "Deny with reason",
+            "denyReasonPlaceholder": "Say why, or how you'd like it changed…",
             "irreversibleHint": "Irreversible — proceed with care",
             "result": "Result",
             "questionsAnswers": "Questions & Answers",
@@ -203,7 +205,8 @@
                 "questionN": "Question {{n}}",
                 "fallback": "Please enter your answer:",
                 "placeholder": "Type here...",
-                "otherPlaceholder": "Enter custom answer..."
+                "otherPlaceholder": "Enter custom answer...",
+                "chatAbout": "Chat about this"
             },
             "requestUserInput.noteLabel": "Note (optional)",
             "requestUserInput.notePlaceholder": "Enter a note...",

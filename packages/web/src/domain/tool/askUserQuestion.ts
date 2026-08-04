@@ -143,8 +143,8 @@ export function extractAskUserQuestionQuestionsInfo(input: unknown): AskUserQues
  * 用户不答题、想就问题与 Claude 展开讨论时，作为 deny reason 回传，
  * 引导 Claude 主动反问"想澄清什么"，而非给出 dead-end "No answers were provided."。
  *
- * @param questions 问题列表（可空，空时退化为占位）
- * @param answers   用户触发前已选答案 Record<questionText, string[]>（可空）
+ * @param questions 问题列表（可为空数组，空时退化为占位单问题）
+ * @param answers   用户触发前已选答案 Record<questionText, string[]>（可为空对象）
  */
 export function buildChatAboutThisReason(
     questions: AskUserQuestionQuestion[],
@@ -152,7 +152,7 @@ export function buildChatAboutThisReason(
 ): string {
     const items = questions.length > 0
         ? questions
-        : [{ header: null, question: '(no question)', options: [], multiSelect: false } as AskUserQuestionQuestion]
+        : [{ header: null, question: '(no question)', options: [], multiSelect: false }]
 
     const lines = items.map(q => {
         const selected = (answers[q.question] ?? [])
