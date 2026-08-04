@@ -39,7 +39,7 @@ import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
+import { getSessionAvatarStatus, extractFolderName, compareSessionsForList } from '@/core/utils/sessionStatus'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
@@ -294,7 +294,7 @@ function MobileProjectGroup({
 
         return allSessions
             .filter(s => sessionIdSet.has(s.id))
-            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .sort(compareSessionsForList)
     }, [groupSessionsPages?.pages, allSessions])
 
     // 判断是否包含活跃会话 → 默认展开

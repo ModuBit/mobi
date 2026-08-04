@@ -38,7 +38,7 @@ import { queryKeys } from '@/core/lib/query-keys'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
+import { getSessionAvatarStatus, compareSessionsForList } from '@/core/utils/sessionStatus'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
@@ -180,7 +180,16 @@ export function SessionList({ selectedSessionId }: SessionListProps) {
             const { sessionIds, groupKey } = query.data
             const group = groups[i]
 
-            for (const sessionId of sessionIds) {
+            // 组内排序：活跃会话（执行中/等待输入/等待审批）排在退出会话之前，
+            // 同 active 组内按 updatedAt 倒序。Conversations 按 group 字段聚合、组内保持 push 顺序
+            const sortedSessionIds = [...sessionIds].sort((idA, idB) => {
+                const sA = sessionMap.get(idA)
+                const sB = sessionMap.get(idB)
+                if (!sA || !sB) return 0
+                return compareSessionsForList(sA, sB)
+            })
+
+            for (const sessionId of sortedSessionIds) {
                 const session = sessionMap.get(sessionId)
                 if (!session) continue
 

@@ -37,7 +37,7 @@ import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
-import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
+import { getSessionAvatarStatus, extractFolderName, compareSessionsForList } from '@/core/utils/sessionStatus'
 
 const { useToken } = antTheme
 
@@ -414,7 +414,7 @@ function ProjectGroup({
 
         return allSessions
             .filter(s => sessionIdSet.has(s.id))
-            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .sort(compareSessionsForList)
     }, [groupSessionsPages?.pages, allSessions])
 
     // 判断当前分组是否包含活跃会话 → 决定默认展开状态

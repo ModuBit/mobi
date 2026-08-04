@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
+import { getSessionAvatarStatus, compareSessionsForList } from '@/core/utils/sessionStatus'
 
 describe('getSessionAvatarStatus', () => {
     it('未激活 → inactive', () => {
@@ -64,5 +64,47 @@ describe('getSessionAvatarStatus', () => {
                 agentState: { requests: { 'req-1': {} } },
             } as never)
         ).toBe('awaiting_auth')
+    })
+})
+
+describe('compareSessionsForList', () => {
+    // 构造最小输入：只含 active + updatedAt
+    const s = (active: boolean, updatedAt: number) => ({ active, updatedAt }) as never
+
+    it('活跃会话排在退出会话之前（a active, b inactive → 负）', () => {
+        expect(compareSessionsForList(s(true, 100), s(false, 200))).toBeLessThan(0)
+    })
+
+    it('退出会话排在活跃会话之后（a inactive, b active → 正）', () => {
+        expect(compareSessionsForList(s(false, 200), s(true, 100))).toBeGreaterThan(0)
+    })
+
+    it('不变性：刚退出的会话 updatedAt 更新，也压不过活跃会话', () => {
+        // 退出会话 updatedAt=1000（刚退出），活跃会话 updatedAt=100（早），活跃仍在前
+        expect(compareSessionsForList(s(false, 1000), s(true, 100))).toBeGreaterThan(0)
+    })
+
+    it('同活跃组内按 updatedAt 倒序（更新的在前）', () => {
+        expect(compareSessionsForList(s(true, 100), s(true, 200))).toBeGreaterThan(0)
+        expect(compareSessionsForList(s(true, 200), s(true, 100))).toBeLessThan(0)
+    })
+
+    it('同退出组内按 updatedAt 倒序', () => {
+        expect(compareSessionsForList(s(false, 100), s(false, 200))).toBeGreaterThan(0)
+    })
+
+    it('同 active 且 updatedAt 相同 → 0', () => {
+        expect(compareSessionsForList(s(true, 100), s(true, 100))).toBe(0)
+        expect(compareSessionsForList(s(false, 100), s(false, 100))).toBe(0)
+    })
+
+    it('各活跃状态（执行中/等待输入/等待审批）都同属 active，彼此只按 updatedAt 排序', () => {
+        // outputting / idle / awaiting_auth 都是 active=true，排序只看 updatedAt
+        const outputting = s(true, 50)
+        const idle = s(true, 300)
+        const awaiting = s(true, 150)
+        const sorted = [outputting, idle, awaiting].sort(compareSessionsForList)
+        // 倒序：idle(300) → awaiting(150) → outputting(50)
+        expect(sorted).toEqual([idle, awaiting, outputting])
     })
 })

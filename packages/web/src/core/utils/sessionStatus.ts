@@ -48,6 +48,29 @@ export function getSessionAvatarStatus(session: AvatarStatusInput): AgentStatus 
 }
 
 /**
+ * 会话列表排序输入：只需 active（活跃二分）与 updatedAt（同组内时间倒序）。
+ * 取最小交集，列表摘要态 / 详情态皆可传入。
+ */
+type SessionSortInput = Pick<Session, 'active' | 'updatedAt'>
+
+/**
+ * 会话列表排序比较函数（返回负数 a 在前、正数 b 在前、0 相等）。
+ * 复用于：SidebarProjects、MobileProjectList、SessionList。
+ *
+ * 排序规则：
+ *   1. 活跃会话（active=true，含执行中/等待输入/等待审批）永远排在已退出会话（active=false）之前
+ *   2. 同 active 组内按 updatedAt 倒序（最近更新在前）
+ *
+ * 不变性：只要 a 活跃而 b 不活跃，无论 updatedAt 如何，a 必排在 b 前。
+ * 这保证「退出的会话永远不会压在活跃会话之上」——刚退出的会话即便 updatedAt 较新，
+ * 也不能盖住仍在执行/等待输入/等待审批的会话。
+ */
+export function compareSessionsForList(a: SessionSortInput, b: SessionSortInput): number {
+    if (a.active !== b.active) return a.active ? -1 : 1
+    return b.updatedAt - a.updatedAt
+}
+
+/**
  * 从 group.key 路径提取最后一段目录名（用于展示）
  * 复用 path.basename（处理反斜杠与空段，更健壮）
  */
