@@ -383,7 +383,7 @@ describe('PermissionFooter', () => {
         const tool = makeTool({ name: 'Bash', input: { command: 'rm -rf x' } })
         renderFooter(tool)
         fireEvent.click(screen.getByText('带原因拒绝'))
-        const ta = await screen.findByPlaceholderText(/原因|why|改/i)
+        const ta = await screen.findByPlaceholderText(/请输入拒绝原因/)
         fireEvent.change(ta, { target: { value: '别删这个目录' } })
         fireEvent.click(screen.getByText('发送反馈'))
 
@@ -392,6 +392,20 @@ describe('PermissionFooter', () => {
         })
         const body = mockDeny.mock.calls[0][2] // (sessionId, permissionId, body) 三参
         expect(body).toEqual({ reason: '别删这个目录' })
+    })
+
+    it('带原因拒绝 textarea 空文本 → denyWithFeedback 退化为无 reason', async () => {
+        const tool = makeTool({ name: 'Bash', input: { command: 'ls' } })
+        renderFooter(tool)
+        fireEvent.click(screen.getByText('带原因拒绝'))
+        await screen.findByPlaceholderText(/请输入拒绝原因/)
+        // 不输入任何文本，直接点发送反馈
+        fireEvent.click(screen.getByText('发送反馈'))
+        await waitFor(() => {
+            expect(mockDeny).toHaveBeenCalledTimes(1)
+        })
+        const body = mockDeny.mock.calls[0][2]
+        expect(body).toEqual({ reason: undefined }) // feedback.trim() || undefined → undefined
     })
 
     it('普通工具直接点「拒绝」→ 仍走纯 deny 无 reason', async () => {
