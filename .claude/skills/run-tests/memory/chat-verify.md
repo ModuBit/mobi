@@ -3,7 +3,7 @@ name: chat-verify
 description: 对话交互 / 等待轮询 / 权限审批 / 排队消息 / 停止 abort / 渲染验证 / 触发工具折叠分组
 metadata:
   type: recipe
-  last_verified: 2026-08-03
+  last_verified: 2026-08-05
 ---
 
 # 对话与验证
@@ -15,6 +15,20 @@ metadata:
 3. 遇权限请求 → 浏览器点「允许」/「本次会话允许」
 4. 验证渲染：`take_snapshot`（优先，查组件存在与状态）/ `take_screenshot`（视觉效果）
 
+## 触发 AskUserQuestion（验证聊一聊 / 选项 UI）
+
+可靠触发 prompt（明确指令模型调用该工具）：
+> 我要给这个项目加认证。请用 AskUserQuestion 工具问我一个问题：应该用 JWT 还是 Session？给我两个选项 JWT / Session。
+
+模型（实测 claude-sonnet-4-6）会调 AskUserQuestion → 弹 `AskUserQuestionFooter`（question-circle 图标 + radio 选项 + Other + Submit + **Chat about this** 按钮）。
+
+**聊一聊按钮验证**：点「Chat about this」（英文 locale 文案，zh 是「聊一聊」）→ deny 带 seed reason → 原卡片收起为 denied 态（红点 + question 图标），Claude 按 seed 指令反问「用户想先澄清问题。请问你想澄清哪方面？」+ 列具体澄清方向。用户在普通聊天框继续输入 → Claude 据此重新发问。
+
+**带原因拒绝验证**（普通工具，如 Bash `ls -la`）：权限弹窗的 secondary row 有「Deny with reason」按钮 → 展开 textarea（placeholder "Say why, or how you'd like it changed…"）→ 输入原因 → 点「Send Feedback」→ Claude 收到 reason（实测回应「收到，你想先讨论方案」）。
+
+**坑**
+- 原 AskUserQuestion 卡片 turn 结束后折叠进 `.tool-call-think` 组，`evaluate_script` 点 header 难展开（body 不入 DOM）。验证 denied 态渲染优先靠单测；E2E 视觉只能确认红点+标题，body 内容（seed 文案）需精确点 ▸ toggle（antdx Think 折叠态 body 懒渲染）
+- i18n 文案改动后 HMR 不生效，`navigate_page` 刷新（reload 偶发丢 page，见 [[browser-connect]]）
 ## 停止按钮（abort）
 
 mobi 没有独立的停止按钮——**停止 = composer 右下角的 send/stop 合并按钮**（`SubmitButton.tsx` + `submitButtonState.ts`）：
