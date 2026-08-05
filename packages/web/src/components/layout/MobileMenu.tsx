@@ -217,7 +217,11 @@ export function MobileMenuDrawer() {
                         style={{ flex: 1, justifyContent: 'center' }}
                         onClick={() => {
                             handleClose()
-                            window.location.reload()
+                            // Android Chrome PWA standalone：同步 window.location.reload() 紧随
+                            // setMobileMenuOpen 这个 setState 会被吞掉——drawer 关了但页面不重载。
+                            // 延到下一 task,让 React 先 flush 完 drawer 关闭态再触发导航。
+                            // 对齐「检查更新」的异步 reload 路径(其 reload 在 Modal 确认 + await 后才触发)。
+                            setTimeout(() => window.location.reload(), 0)
                         }}
                     >
                         <RotateCw size={20} />
