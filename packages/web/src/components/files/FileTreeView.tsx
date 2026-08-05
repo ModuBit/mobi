@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import styled from '@emotion/styled'
 import { Tree, Empty, Skeleton, Input, Button, type TreeProps } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
@@ -274,9 +274,10 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
     // 依赖 dirData（SWR 响应式刷新）+ showHidden（视图切换），useCallback 让 treeData/searchTreeData 能正确 memo。
 
     /** 截断提示节点：目录条目数达后端上限（MAX_TREE_ENTRIES=2000）时，挂在目录子项末尾。
-     *  disabled + 不可选，纯提示；复用 .search-truncated 样式，引导用搜索收窄。 */
-    const truncationNode = useCallback((shown: number, total: number): DataNode => ({
-        key: `__truncated__:${total}`,
+     *  disabled + 不可选，纯提示；复用 .search-truncated 样式，引导用搜索收窄。
+     *  key 含目录路径保证唯一——仅 total 会让两个同 total 目录碰撞（antd keyEntities 按全局 key 去重）。 */
+    const truncationNode = useCallback((dirPath: string, shown: number, total: number): DataNode => ({
+        key: `__truncated__:${dirPath}`,
         title: (
             <span className="search-truncated">
                 {t('files.treeTruncated', { shown, total })}
@@ -327,18 +328,21 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                     },
                     isLeaf: f.type === 'file',
                 }
-                // 已订阅（展开过）的目录：填 children；搜索模式由 buildPathTree 直接提供 children
                 if (f.type === 'directory') {
-                    // 搜索模式：f.children 内联嵌套；树模式：从 dirData 取该目录的订阅结果（含截断信息）
-                    const childListing = f.children ? { entries: f.children } : dirData[f.path]
-                    if (childListing) {
-                        const childNodes = buildNodes(childListing.entries)
-                        // 树模式目录截断 → 末尾挂提示节点（搜索模式 dirData 无对应项，不挂）
+                    if (f.children) {
+                        // 搜索模式：buildPathTree 产出的内联嵌套结构。搜索结果有自己的 cap 提示，
+                        // 不挂树浏览的截断节点——即使 dirData 恰有同路径缓存（truncated）也不混入。
+                        node.children = buildNodes(f.children)
+                    } else {
+                        // 树模式：从 dirData 取该目录的订阅结果（含截断信息）
                         const meta = dirData[f.path]
-                        if (meta?.truncated) {
-                            childNodes.push(truncationNode(meta.entries.length, meta.total))
+                        if (meta) {
+                            const childNodes = buildNodes(meta.entries)
+                            if (meta.truncated) {
+                                childNodes.push(truncationNode(f.path, meta.entries.length, meta.total))
+                            }
+                            node.children = childNodes
                         }
-                        node.children = childNodes
                     }
                 }
                 return node
@@ -347,9 +351,9 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
     const treeData = useMemo(() => {
         const listing = rootListing
         const nodes = buildNodes(listing?.entries ?? [])
-        // 根目录截断同样在末尾挂提示节点
+        // 根目录截断同样在末尾挂提示节点（根 path 记 '.'）
         if (listing?.truncated) {
-            nodes.push(truncationNode(listing.entries.length, listing.total))
+            nodes.push(truncationNode('.', listing.entries.length, listing.total))
         }
         return nodes
     }, [rootListing, buildNodes, truncationNode])
@@ -391,7 +395,10 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
      */
     const hostRef = useRef<HTMLDivElement>(null)
     const [treeHeight, setTreeHeight] = useState(0)
-    useEffect(() => {
+    // useLayoutEffect:paint 前同步量高,确保命中缓存的首帧(数据已就绪、isPending=false)
+    // 直接以 virtual=true 渲染,避免先全量渲染 2000 节点再切虚拟的 jank。
+    // useEffect 会在 paint 后才 setTreeHeight,首帧仍 virtual=false 全量渲染——本末倒置。
+    useLayoutEffect(() => {
         const el = hostRef.current
         if (!el) return
         const update = () => setTreeHeight(el.clientHeight)
@@ -419,6 +426,13 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
             {...(opts.expandedKeys ? { expandedKeys: opts.expandedKeys } : {})}
         />
     )
+
+    // 刷新失败但仍有旧数据 → 顶部挂非阻断提示条。提到 host 外（host 兄弟节点），
+    // 不再占用虚拟 Tree 的 height：否则 Tree height=host.clientHeight 会溢出 warning 高度，
+    // 虚拟列表吃滚轮致末尾节点（含截断提示）被遮在 host 可视区外、滚不到。
+    const staleWarning = isSearching
+        ? (searchFailed && searchResults.length > 0 ? t('files.searchFailedStale') : null)
+        : (rootError && rootListing ? t('files.refreshFailedStale') : null)
 
     return (
         <TreeWrap>
@@ -453,7 +467,9 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                     />
                 </AppTooltip>
             </div>
+            {staleWarning && <StaleDataWarning message={staleWarning} />}
             {/* 虚拟滚动 host：稳定挂载，ResizeObserver 测其高传给 Tree。
+                内只放 Tree/Empty/Skeleton（提示条已提到 host 外，不占 height）。
                 overflow auto 兼顾非虚拟模式(jsdom/未测到高)下内容可滚。 */}
             <div ref={hostRef} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                 {isSearching ? (
@@ -467,8 +483,6 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                         )
                     ) : (
                         <>
-                            {/* 有旧结果时失败只挂提示条，不清空用户眼下看的内容 */}
-                            {searchFailed && <StaleDataWarning message={t('files.searchFailedStale')} />}
                             {renderTree(searchTreeData, { expandedKeys: searchExpandedKeys })}
                             {searchResults.length >= FILE_SEARCH_MAX && (
                                 <div className="search-truncated">
@@ -488,11 +502,7 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                 ) : !rootListing || rootListing.entries.length === 0 ? (
                     <Empty description={t('files.empty')} style={{ marginTop: 40 }} />
                 ) : (
-                    <>
-                        {/* 刷新失败但缓存里还有树 → 保留树，只提示「看到的可能不是最新」 */}
-                        {rootError && <StaleDataWarning message={t('files.refreshFailedStale')} />}
-                        {renderTree(treeData, { loadData: loadDirData })}
-                    </>
+                    renderTree(treeData, { loadData: loadDirData })
                 )}
             </div>
         </TreeWrap>

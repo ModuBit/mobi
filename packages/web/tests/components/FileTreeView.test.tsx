@@ -438,4 +438,31 @@ describe('FileTreeView', () => {
         // 子目录 src 截断 → 其子项末尾挂提示节点
         expect(screen.getByText('files.treeTruncated')).toBeInTheDocument()
     })
+
+    it('搜索模式:不把树模式缓存的截断标志误挂到搜索结果', async () => {
+        // 树模式先展开 src(订阅 + 缓存 truncated:true),再切搜索;搜索结果里 src 虚拟目录不应带截断提示
+        // —— 截断是树浏览的上限语义,搜索有自己的 cap 提示,两者不可混。
+        const list = vi.fn(async (_s: string, p: string) => {
+            if (p === '.') return { data: { success: true, entries: [{ name: 'src', type: 'directory' as const }] } }
+            if (p === 'src') return { data: { success: true, entries: [{ name: 'a.ts', type: 'file' as const }], truncated: true, total: 5000 } }
+            return { data: { success: true, entries: [] } }
+        })
+        const searchFiles = vi.fn(async () => ({
+            data: { success: true, entries: [{ name: 'foo.ts', type: 'file' as const, path: 'src/foo.ts' }] },
+        }))
+        mockedUseMobiApi.mockReturnValue({ files: { list }, sessions: { searchFiles } } as any)
+
+        const { container } = renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('src')
+        // 展开 src → 订阅 + 缓存 truncated,树模式 src 末尾出现截断提示
+        fireEvent.click(container.querySelectorAll('.ant-tree-switcher')[0])
+        await waitFor(() => expect(screen.getByText('a.ts')).toBeInTheDocument())
+        expect(screen.getByText('files.treeTruncated')).toBeInTheDocument()
+
+        // 切搜索:foo.ts 命中 src/foo.ts,buildPathTree 造虚拟目录 src
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'foo' } })
+        await screen.findByText('foo.ts')
+        // 关键:搜索结果里 src 虚拟目录不应再带树模式的截断提示
+        expect(screen.queryByText('files.treeTruncated')).not.toBeInTheDocument()
+    })
 })
