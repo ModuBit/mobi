@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { isAskUserQuestionToolName, parseAskUserQuestionInput, buildChatAboutThisReason, type AskUserQuestionQuestion } from '@/domain/tool/askUserQuestion'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { queryKeys } from '@/core/lib/query-keys'
 import { OptionRow } from './OptionRow'
 
@@ -49,6 +50,36 @@ function computeAnswersForQuestion(
         answers.push(other)
     }
 
+    return answers
+}
+
+/**
+ * 收集所有问题的已选答案为 Record<questionText, string[]>。
+ * 空问题（fallback 形态）用 '' key 存 fallback 文本。不校验完整性（submit 另行校验）。
+ * submit 与 chatAbout 共用，避免答案收集逻辑双份散落（曾因两份逻辑差异致 seed 与提交答案不一致）。
+ */
+export function collectAnswers(
+    questions: AskUserQuestionQuestion[],
+    selectedByQuestion: number[][],
+    otherSelectedByQuestion: boolean[],
+    otherTextByQuestion: string[],
+    fallbackText: string,
+): Record<string, string[]> {
+    const answers: Record<string, string[]> = {}
+    if (questions.length === 0) {
+        const text = fallbackText.trim()
+        if (text.length > 0) answers[''] = [text]
+    } else {
+        for (let i = 0; i < questions.length; i += 1) {
+            const a = computeAnswersForQuestion(
+                questions[i],
+                selectedByQuestion[i] ?? [],
+                otherSelectedByQuestion[i] ?? false,
+                otherTextByQuestion[i] ?? '',
+            )
+            if (a.length > 0) answers[questions[i].question] = a
+        }
+    }
     return answers
 }
 
@@ -137,73 +168,72 @@ function AskUserQuestionFooterInner(props: AskUserQuestionFooterProps) {
         </div>
     )
 
+    /**
+     * 请求包装：清旧错误（setError null）+ pendingAction 管理 + 404 静默收起。
+     * hub 对「会话仍存活但 requestId 已被处理」返回 404 + code:'permission_request_gone'
+     * （SSE 滞后/重复点击）→ 静默 onDone 自愈，不报错；其余 404 仍当真实失败提示。
+     * 对齐 PermissionFooter.run。
+     */
+    const run = async (label: 'submit' | 'chatAbout', action: () => Promise<unknown>) => {
+        if (props.disabled) return
+        setError(null)
+        setPendingAction(label)
+        let handled = true
+        try {
+            await action()
+        } catch (e) {
+            const data = isAxiosError(e)
+                ? (e.response?.data as { code?: string; error?: string } | undefined)
+                : undefined
+            const isHandled = isAxiosError(e)
+                && e.response?.status === 404
+                && (data?.code === 'permission_request_gone' || data?.error === 'Request not found')
+            if (!isHandled) {
+                setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
+                handled = false
+            }
+        } finally {
+            setPendingAction(null)
+        }
+        if (!handled) return
+        queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
+        props.onDone()
+    }
+
     const submit = async () => {
         if (pendingAction) return
 
-        const answers: Record<string, string[]> = {}
+        const answers = collectAnswers(
+            questions, selectedByQuestion, otherSelectedByQuestion, otherTextByQuestion, fallbackText
+        )
+        // 校验完整性：空问题需 fallback 文本；多问题每题至少一个答案
         if (questions.length === 0) {
-            const a0 = validateQuestion(0)
-            if (!a0) {
+            if (!answers['']?.length) {
                 setError(t('chat.tool.selectOption'))
                 return
             }
-            answers[''] = a0
         } else {
             for (let i = 0; i < questions.length; i += 1) {
-                const a = validateQuestion(i)
-                if (!a) {
+                if (!answers[questions[i].question]?.length) {
                     setError(t('chat.tool.selectOption'))
                     setStep(i)
                     return
                 }
-                answers[questions[i].question] = a
             }
         }
 
-        setPendingAction('submit')
-        try {
-            await props.api.permissions.approve(props.sessionId, permission.id, { answers })
-            queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
-            props.onDone()
-        } catch (e) {
-            setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
-        } finally {
-            setPendingAction(null)
-        }
+        await run('submit', () => props.api.permissions.approve(props.sessionId, permission.id, { answers }))
     }
 
     /** 聊一聊：不提交答案，deny 带 seed 文案引导 Claude 主动反问 */
     const chatAbout = async () => {
         if (pendingAction) return
 
-        // 收集已选答案（与 submit 同逻辑，但不阻断未答题）
-        const answers: Record<string, string[]> = {}
-        if (questions.length === 0) {
-            const a0 = validateQuestion(0)
-            if (a0) answers[''] = a0
-        } else {
-            for (let i = 0; i < questions.length; i += 1) {
-                const a = computeAnswersForQuestion(
-                    questions[i],
-                    selectedByQuestion[i] ?? [],
-                    otherSelectedByQuestion[i] ?? false,
-                    otherTextByQuestion[i] ?? '',
-                )
-                if (a.length > 0) answers[questions[i].question] = a
-            }
-        }
-
+        const answers = collectAnswers(
+            questions, selectedByQuestion, otherSelectedByQuestion, otherTextByQuestion, fallbackText
+        )
         const reason = buildChatAboutThisReason(questions, answers)
-        setPendingAction('chatAbout')
-        try {
-            await props.api.permissions.deny(props.sessionId, permission.id, { reason })
-            queryClient.invalidateQueries({ queryKey: queryKeys.session(props.sessionId) })
-            props.onDone()
-        } catch (e) {
-            setError(e instanceof Error ? e.message : t('chat.tool.requestFailed'))
-        } finally {
-            setPendingAction(null)
-        }
+        await run('chatAbout', () => props.api.permissions.deny(props.sessionId, permission.id, { reason }))
     }
 
     const toggleOption = (qIdx: number, optIdx: number) => {

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AxiosError } from 'axios'
 import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFooter'
 import type { ToolInfo } from '@/domain/tool/types'
 import type { MobiApi } from '@/core/data/api/client'
@@ -82,14 +83,14 @@ function makeTool(questions: unknown[], toolName = 'AskUserQuestion'): ToolInfo 
     }
 }
 
-function renderFooter(tool: ToolInfo, disabled = false) {
+function renderFooter(tool: ToolInfo, disabled = false, onDone: () => void = vi.fn()) {
     return render(
         <AskUserQuestionFooter
             api={mockApi}
             sessionId="session-1"
             tool={tool}
             disabled={disabled}
-            onDone={vi.fn()}
+            onDone={onDone}
         />,
         { wrapper }
     )
@@ -496,6 +497,34 @@ describe('AskUserQuestionFooter', () => {
                 expect(screen.getByText('请求失败')).toBeInTheDocument()
             })
         })
+
+        it('submit 返回 404 permission_request_gone → 静默 onDone，不弹错误', async () => {
+            // 权限已被处理 → hub 404 + code，静默收起而非报错（对齐 PermissionFooter.run）
+            const notFound = new AxiosError('Request not found')
+            ;(notFound as unknown as { response: { status: number; data: { code: string } } }).response = {
+                status: 404,
+                data: { code: 'permission_request_gone' },
+            }
+            mockApprove.mockRejectedValueOnce(notFound)
+            const onDone = vi.fn()
+
+            const tool = makeTool([{
+                question: 'Q?',
+                header: 'H',
+                options: [{ label: 'OptA' }],
+                multiSelect: false,
+            }])
+
+            renderFooter(tool, false, onDone)
+            fireEvent.click(findOptionBtn('OptA'))
+            fireEvent.click(getSubmitButton())
+
+            await waitFor(() => {
+                expect(onDone).toHaveBeenCalledTimes(1)
+            })
+            expect(screen.queryByText('Request not found')).not.toBeInTheDocument()
+            expect(screen.queryByText('请求失败')).not.toBeInTheDocument()
+        })
     })
 
     describe('disabled 属性', () => {
@@ -666,6 +695,57 @@ describe('AskUserQuestionFooter', () => {
 
             await waitFor(() => {
                 expect(screen.getByText('网络错误')).toBeInTheDocument()
+            })
+        })
+
+        it('chatAbout 返回 404 permission_request_gone → 静默 onDone，不弹错误', async () => {
+            // 权限已被处理（SSE 滞后/重复点击）→ hub 404 + code，静默收起而非报错
+            const notFound = new AxiosError('Request not found')
+            ;(notFound as unknown as { response: { status: number; data: { code: string } } }).response = {
+                status: 404,
+                data: { code: 'permission_request_gone' },
+            }
+            mockDeny.mockRejectedValueOnce(notFound)
+            const onDone = vi.fn()
+            const tool = makeTool([{
+                question: 'Q?',
+                header: 'H',
+                options: [{ label: 'A', description: null, preview: null }],
+                multiSelect: false,
+            }])
+            renderFooter(tool, false, onDone)
+            fireEvent.click(findOptionBtn('A'))
+            fireEvent.click(screen.getByText('聊一聊'))
+
+            await waitFor(() => {
+                expect(onDone).toHaveBeenCalledTimes(1)
+            })
+            // 404 = 已处理，不弹错误
+            expect(screen.queryByText('Request not found')).not.toBeInTheDocument()
+            expect(screen.queryByText('请求失败')).not.toBeInTheDocument()
+        })
+
+        it('chatAbout 起始清空上次失败残留的错误信息（setError null）', async () => {
+            // 先让 submit 失败留下错误
+            mockApprove.mockRejectedValueOnce(new Error('submit 失败'))
+            const tool = makeTool([{
+                question: 'Q?',
+                header: 'H',
+                options: [{ label: 'A', description: null, preview: null }],
+                multiSelect: false,
+            }])
+            renderFooter(tool)
+            fireEvent.click(findOptionBtn('A'))
+            fireEvent.click(getSubmitButton())
+            await waitFor(() => {
+                expect(screen.getByText('submit 失败')).toBeInTheDocument()
+            })
+
+            // 再点聊一聊：起始 setError(null) 应立即清空旧错误
+            mockDeny.mockReturnValue(new Promise<void>(() => {})) // 永不 resolve，锁住请求中态观察
+            fireEvent.click(screen.getByText('聊一聊'))
+            await waitFor(() => {
+                expect(screen.queryByText('submit 失败')).not.toBeInTheDocument()
             })
         })
     })

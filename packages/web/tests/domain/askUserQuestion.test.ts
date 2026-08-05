@@ -291,6 +291,15 @@ describe('buildChatAboutThisReason', () => {
         expect(out).toContain('(No answer provided)')
     })
 
+    it('空 questions + fallback 文本（footer 用 "" key）→ seed 含 Answer', () => {
+        // footer 在 questions 为空时把 fallback 文本存到 answers['']，
+        // buildChatAboutThisReason 必须查 '' key 而非 '(no question)'，否则丢失用户输入
+        const out = buildChatAboutThisReason([], { '': ['我想用 Redis 做会话'] })
+        expect(out).toContain('- "(no question)"')
+        expect(out).toContain('Answer: 我想用 Redis 做会话')
+        expect(out).not.toContain('(No answer provided)')
+    })
+
     it('无已选答案全部标 (No answer provided)', () => {
         const questions: AskUserQuestionQuestion[] = [
             { header: null, question: 'Q1?', options: [], multiSelect: false },

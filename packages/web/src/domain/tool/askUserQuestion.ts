@@ -154,8 +154,10 @@ export function buildChatAboutThisReason(
         ? questions
         : [{ header: null, question: '(no question)', options: [], multiSelect: false }]
 
-    const lines = items.map(q => {
-        const selected = (answers[q.question] ?? [])
+    const lines = items.map((q, idx) => {
+        // 空问题占位项：footer 用 '' key 存 fallback 文本，必须查 '' 而非 '(no question)'
+        const answerKey = questions.length === 0 && idx === 0 ? '' : q.question
+        const selected = (answers[answerKey] ?? [])
             .map(a => a.trim())
             .filter(a => a.length > 0)
         const answerLine = selected.length > 0
