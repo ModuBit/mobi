@@ -291,9 +291,9 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             {(showEmpty || !active) && (
                 <div style={{ position: 'absolute', top: 4, right: 8, zIndex: 11 }}>{rightChrome}</div>
             )}
-            {/* 离线毛玻璃覆盖（sender-overlay）：叠加在 tab 内容之上，模糊可见关闭前的 tab 内容 */}
+            {/* 离线毛玻璃覆盖：叠加在 tab 内容之上，模糊可见关闭前的 tab 内容 */}
             {!active && (
-                <ActivateCover className="sender-overlay" loading={isResumePending} onActivate={() => resumeSession()} />
+                <ActivateCover className="activate-cover-mask" loading={isResumePending} onActivate={() => resumeSession()} />
             )}
         </Layout>
     )

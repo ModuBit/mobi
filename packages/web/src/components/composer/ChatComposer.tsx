@@ -929,7 +929,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 {/* 未激活覆盖层 */}
                 {showInactiveCover && (
                     <ActivateCover
-                        className="composer-cover-mask"
+                        className="activate-cover-mask"
                         loading={activatePending}
                         onActivate={onActivate!}
                         borderRadius="var(--ant-border-radius)"
@@ -939,7 +939,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 {/* 本地模式覆盖层 */}
                 {showLocalModeCover && (
                     <div
-                        className="composer-cover-mask"
+                        className="activate-cover-mask"
                         style={{
                             position: 'absolute',
                             top: 0,
