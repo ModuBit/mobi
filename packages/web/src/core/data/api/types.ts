@@ -212,6 +212,10 @@ export type DirectoryEntry = {
 export type ListDirectoryResponse = {
     success: boolean
     entries?: DirectoryEntry[]
+    /** 树浏览：条目数达到上限被截断（搜索路径不置位） */
+    truncated?: boolean
+    /** 树浏览：截断前的条目总数，用于前端「共 N 项」提示 */
+    total?: number
     error?: string
 }
 

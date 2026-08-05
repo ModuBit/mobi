@@ -296,6 +296,7 @@
         "searchPlaceholder": "Filter files...",
         "noResults": "No matching files",
         "resultsTruncated": "Showing first {{count}} results",
+        "treeTruncated": "Too many entries, showing first {{shown}} of {{total}}. Use search to filter",
         "showHidden": "Show hidden files",
         "hideHidden": "Hide hidden files",
         "refreshTree": "Refresh file tree",

@@ -398,4 +398,44 @@ describe('FileTreeView', () => {
             expect(screen.getByText('.config')).toBeInTheDocument()
         })
     })
+
+    it('根目录截断(truncated) → 树末尾渲染提示节点', async () => {
+        // 后端返回 truncated:true（条目超 MAX_TREE_ENTRIES），前端在根级末尾挂提示节点。
+        // 不必真造 2000 条，直接 mock 截断标志即可锁定渲染行为。
+        const list = vi.fn(async () => ({
+            data: {
+                success: true,
+                entries: [{ name: 'a.ts', type: 'file' as const }],
+                truncated: true,
+                total: 5000,
+            },
+        }))
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('a.ts')
+        // 提示节点出现（i18n fallback 返回 key 原文）
+        expect(screen.getByText('files.treeTruncated')).toBeInTheDocument()
+    })
+
+    it('子目录截断 → 子项末尾渲染提示节点', async () => {
+        const list = vi.fn(async (_s: string, p: string) => ({
+            data: p === '.'
+                ? { success: true, entries: [{ name: 'src', type: 'directory' as const }] }
+                : {
+                    success: true,
+                    entries: [{ name: 'inner.ts', type: 'file' as const }],
+                    truncated: true,
+                    total: 3000,
+                },
+        }))
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        const { container } = renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('src')
+        fireEvent.click(container.querySelectorAll('.ant-tree-switcher')[0])
+        await waitFor(() => expect(screen.getByText('inner.ts')).toBeInTheDocument())
+        // 子目录 src 截断 → 其子项末尾挂提示节点
+        expect(screen.getByText('files.treeTruncated')).toBeInTheDocument()
+    })
 })

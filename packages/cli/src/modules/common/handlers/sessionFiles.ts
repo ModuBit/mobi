@@ -25,6 +25,14 @@ import { runStream as runRipgrepStream } from '@/modules/ripgrep/index'
 
 const MAX_RESULTS = 50
 const MAX_SEARCH_DEPTH = 10
+/**
+ * 树浏览路径（listSessionDirectory）的条目上限。
+ * 远高于搜索的 MAX_RESULTS(50)：项目目录应全量可见，避免第 51 项起凭空消失。
+ * 极端大目录（如 node_modules）超此上限时，响应带 truncated/total，
+ * 前端在目录末尾挂「仅展示前 N 项，共 M 项」提示节点并引导用搜索收窄。
+ * 配合 antd Tree virtual 滚动，2000 节点也只渲染可视区 ~20-30 行。
+ */
+const MAX_TREE_ENTRIES = 2000
 
 interface ListSessionFilesRequest {
     path: string
@@ -42,6 +50,10 @@ interface FileEntry {
 interface ListSessionFilesResponse {
     success: boolean
     entries?: FileEntry[]
+    /** 树浏览：条目数达到 MAX_TREE_ENTRIES 被截断 */
+    truncated?: boolean
+    /** 树浏览：截断前的条目总数（含被截断部分），用于前端「共 N 项」提示 */
+    total?: number
     error?: string
 }
 
@@ -238,7 +250,7 @@ export function filterByPrefix(entries: FileEntry[], prefix?: string): FileEntry
     return entries.filter((e) => e.name.toLowerCase().startsWith(lower))
 }
 
-async function listDirectory(targetPath: string, prefix?: string): Promise<FileEntry[]> {
+async function listDirectory(targetPath: string, prefix?: string): Promise<{ entries: FileEntry[]; truncated: boolean; total: number }> {
     const entries = await readdir(targetPath, { withFileTypes: true })
 
     const fileEntries: FileEntry[] = await Promise.all(
@@ -266,7 +278,7 @@ async function listDirectory(targetPath: string, prefix?: string): Promise<FileE
         })
     )
 
-    // 先按 prefix 过滤，再排序、再截断 —— 避免大目录下匹配项被 MAX_RESULTS 截掉
+    // 先按 prefix 过滤，再排序、再截断 —— 避免大目录下匹配项被 MAX_TREE_ENTRIES 截掉
     const filtered = filterByPrefix(fileEntries, prefix)
     filtered.sort((a, b) => {
         if (a.type === 'directory' && b.type !== 'directory') return -1
@@ -274,7 +286,9 @@ async function listDirectory(targetPath: string, prefix?: string): Promise<FileE
         return a.name.localeCompare(b.name)
     })
 
-    return filtered.slice(0, MAX_RESULTS)
+    const total = filtered.length
+    const shown = filtered.slice(0, MAX_TREE_ENTRIES)
+    return { entries: shown, truncated: total > shown.length, total }
 }
 
 function isWithinWorkingDir(targetPath: string, workingDirectory: string): boolean {
@@ -362,8 +376,8 @@ export function registerSessionFilesHandler(rpcHandlerManager: RpcHandlerManager
                 }
             }
 
-            const entries = await listDirectory(resolvedPath, data.prefix)
-            return { success: true, entries }
+            const result = await listDirectory(resolvedPath, data.prefix)
+            return { success: true, entries: result.entries, truncated: result.truncated, total: result.total }
         } catch (error) {
             return rpcError(getErrorMessage(error, 'Failed to list directory'))
         }

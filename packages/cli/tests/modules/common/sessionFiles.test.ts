@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { mkdir, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -191,7 +191,7 @@ describe('filterByPrefix', () => {
     })
 })
 
-describe('listSessionDirectory handler — prefix 下推', () => {
+describe('listSessionDirectory handler — 上限与 prefix 下推', () => {
     let rootDir: string
     let rpc: RpcHandlerManager
 
@@ -199,9 +199,9 @@ describe('listSessionDirectory handler — prefix 下推', () => {
         const base = tmpdir()
         rootDir = join(base, `mobi-session-files-${Date.now()}-${Math.random().toString(16).slice(2)}`)
         await mkdir(rootDir, { recursive: true })
-        // 55 个字母序在 'workspace' 之前的目录，把 workspace 挤到第 56 位（超过 MAX_RESULTS=50）
-        for (let i = 0; i < 55; i++) {
-            await mkdir(join(rootDir, `aaa${String(i).padStart(2, '0')}`), { recursive: true })
+        // 2000 个字母序在 'workspace' 之前的目录，把 workspace 挤到第 2001 位（超过 MAX_TREE_ENTRIES=2000）
+        for (let i = 0; i < 2000; i++) {
+            await mkdir(join(rootDir, `aaa${String(i).padStart(4, '0')}`), { recursive: true })
         }
         await mkdir(join(rootDir, 'workspace'), { recursive: true })
 
@@ -209,37 +209,43 @@ describe('listSessionDirectory handler — prefix 下推', () => {
         registerSessionFilesHandler(rpc, rootDir)
     })
 
-    it('无 prefix 时 workspace 被 MAX_RESULTS 截断（复现根因）', async () => {
+    afterEach(async () => {
+        await rm(rootDir, { recursive: true, force: true }).catch(() => {})
+    })
+
+    it('无 prefix 时 workspace 被 MAX_TREE_ENTRIES 截断 + 响应带 truncated/total', async () => {
         const res = (await rpc.handleRequest({
             method: 'sf-test:listSessionDirectory',
             params: { path: '' },
-        })) as { success: boolean; entries?: Array<{ name: string }> }
+        })) as { success: boolean; entries?: Array<{ name: string }>; truncated?: boolean; total?: number }
 
         expect(res.success).toBe(true)
-        const names = (res.entries ?? []).map((e) => e.name)
-        // 56 个目录排序后 workspace 排末尾，slice(50) 后被截掉
-        expect(names).not.toContain('workspace')
-        expect(names.length).toBeLessThanOrEqual(50)
+        expect(res.truncated).toBe(true)
+        expect(res.total).toBe(2001)
+        // 2001 条排序后 workspace 排末尾，slice(2000) 后被截掉
+        expect((res.entries ?? []).length).toBe(2000)
+        expect((res.entries ?? []).map((e) => e.name)).not.toContain('workspace')
     })
 
-    it('带 prefix 时 workspace 必返回（prefix 下推修复）', async () => {
+    it('带 prefix 时 workspace 必返回且不再截断', async () => {
         const res = (await rpc.handleRequest({
             method: 'sf-test:listSessionDirectory',
             params: { path: '', prefix: 'worksp' },
-        })) as { success: boolean; entries?: Array<{ name: string }> }
+        })) as { success: boolean; entries?: Array<{ name: string }>; truncated?: boolean }
 
         expect(res.success).toBe(true)
-        const names = (res.entries ?? []).map((e) => e.name)
-        expect(names).toContain('workspace')
+        expect((res.entries ?? []).map((e) => e.name)).toContain('workspace')
+        expect(res.truncated).toBe(false)
     })
 
     it('无 prefix 与有 prefix 行为解耦：未匹配 prefix 返回空', async () => {
         const res = (await rpc.handleRequest({
             method: 'sf-test:listSessionDirectory',
             params: { path: '', prefix: 'zzz' },
-        })) as { success: boolean; entries?: Array<{ name: string }> }
+        })) as { success: boolean; entries?: Array<{ name: string }>; truncated?: boolean }
 
         expect(res.success).toBe(true)
         expect((res.entries ?? []).length).toBe(0)
+        expect(res.truncated).toBe(false)
     })
 })

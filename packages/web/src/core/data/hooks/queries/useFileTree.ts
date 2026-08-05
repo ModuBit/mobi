@@ -25,11 +25,18 @@ export type { FileNode }
  * 把 hub 的目录响应映射为 FileNode[]：
  * hub 的 entry 只有 name，需按被列目录的 dirPath 拼出完整相对路径。
  * 过滤掉 'other' 类型。dirPath '.' 视为根。
+ *
+ * 同时透传 truncated/total：listDirectory（树浏览）在条目数达上限时截断，
+ * 前端据此在目录末尾挂「仅展示前 N 项」提示节点。搜索路径不置位。
  */
-export function parseDirectoryEntries(data: ListDirectoryResponse, dirPath: string): FileNode[] {
+export function parseDirectoryEntries(data: ListDirectoryResponse, dirPath: string): {
+    entries: FileNode[]
+    truncated: boolean
+    total: number
+} {
     const base = !dirPath || dirPath === '.' ? '' : `${dirPath}/`
     type FileOrDir = { name: string; type: 'file' | 'directory'; size?: number; modified?: number }
-    return (data.entries ?? [])
+    const entries = (data.entries ?? [])
         .filter((e): e is FileOrDir => e.type === 'file' || e.type === 'directory')
         .map((e) => ({
             name: e.name,
@@ -38,6 +45,11 @@ export function parseDirectoryEntries(data: ListDirectoryResponse, dirPath: stri
             size: e.size,
             modified: e.modified,
         }))
+    return {
+        entries,
+        truncated: data.truncated ?? false,
+        total: data.total ?? entries.length,
+    }
 }
 
 /**

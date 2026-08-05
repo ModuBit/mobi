@@ -115,9 +115,9 @@ describe('InspectorPane', () => {
         renderWithClient(<InspectorPane sessionId="s1" active={false} />)
         // tab 内容（mock TerminalView）仍渲染 —— 作为毛玻璃背景，模糊可见关闭前的内容
         expect(screen.getByTestId('mock-terminal-view')).toBeInTheDocument()
-        // 恢复层（sender-overlay 毛玻璃）覆盖其上
+        // 恢复层（activate-cover-mask 毛玻璃）覆盖其上
         expect(screen.getByRole('button', { name: 'composer.activate' })).toBeInTheDocument()
-        expect(document.querySelector('.sender-overlay')).toBeInTheDocument()
+        expect(document.querySelector('.activate-cover-mask')).toBeInTheDocument()
     })
 
     it('关闭 terminal tab：清理缓存终端实例（发 terminal:close 杀 PTY + 断 socket）', () => {
