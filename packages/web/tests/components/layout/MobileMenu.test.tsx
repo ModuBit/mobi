@@ -56,9 +56,9 @@ vi.mock('@/components/layout/useThemeLocaleToggle', () => ({
     }),
 }))
 
-const checkUpdate = vi.fn()
+const restart = vi.fn()
 vi.mock('@/core/pwa/useForceUpdate', () => ({
-    useForceUpdate: () => checkUpdate,
+    useForceUpdate: () => restart,
 }))
 
 // MobileProjectList 自带 API/hooks,mock 掉避免噪声
@@ -86,7 +86,7 @@ describe('MobileMenuDrawer 刷新按钮', () => {
             writable: true,
         })
         setMobileMenuOpen.mockClear()
-        checkUpdate.mockClear()
+        restart.mockClear()
     })
 
     afterEach(() => {
@@ -121,19 +121,19 @@ describe('MobileMenuDrawer 刷新按钮', () => {
         expect(reloadSpy).toHaveBeenCalledTimes(1)
     })
 
-    it('检查更新:走 checkUpdate(Modal 异步路径),不直接 reload', () => {
+    it('重启:走 restart(Modal 异步路径),不直接 reload', () => {
         render(<MobileMenuDrawer />)
         const drawer = document.querySelector('[data-testid="drawer"]')!
         const checkSpan = Array.from(drawer.querySelectorAll('span'))
-            .find(s => s.textContent === 'nav.checkUpdate')
+            .find(s => s.textContent === 'nav.restart')
         expect(checkSpan).toBeTruthy()
 
         act(() => {
             fireEvent.click(checkSpan!)
         })
 
-        expect(checkUpdate).toHaveBeenCalledTimes(1)
-        // 检查更新不直接 reload(由 Modal 确认后的 forceUpdateAndReload 异步触发)
+        expect(restart).toHaveBeenCalledTimes(1)
+        // 重启不直接 reload(由 Modal 确认后的 forceUpdateAndReload 异步触发)
         expect(reloadSpy).not.toHaveBeenCalled()
     })
 })

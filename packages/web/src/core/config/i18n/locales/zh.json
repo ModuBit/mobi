@@ -49,7 +49,7 @@
         "plugins": "插件",
         "projects": "项目",
         "settings": "设置",
-        "checkUpdate": "检查更新",
+        "restart": "重启",
         "refresh": "刷新",
         "logout": "退出登录",
         "menu": "菜单",
@@ -444,9 +444,9 @@
         "pwa": {
             "updateAvailable": "发现新版本",
             "updateAction": "刷新",
-            "forceRefreshTitle": "检查更新",
+            "forceRefreshTitle": "重启",
             "forceRefreshContent": "将清除缓存并重新加载页面，未发送的内容可能丢失。",
-            "forceRefreshOk": "确定刷新",
+            "forceRefreshOk": "确定重启",
             "install": "安装到本地",
             "installPrompt": "安装 Mobi 到本地，随时快速访问",
             "iosManual": "iPhone/iPad：点底部「分享」→「添加到主屏幕」"

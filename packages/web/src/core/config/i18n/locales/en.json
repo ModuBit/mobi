@@ -49,7 +49,7 @@
         "plugins": "Plugins",
         "projects": "Projects",
         "settings": "Settings",
-        "checkUpdate": "Check for updates",
+        "restart": "Restart",
         "refresh": "Refresh",
         "logout": "Logout",
         "menu": "Menu",
@@ -444,9 +444,9 @@
         "pwa": {
             "updateAvailable": "Update available",
             "updateAction": "Refresh",
-            "forceRefreshTitle": "Check for updates",
+            "forceRefreshTitle": "Restart",
             "forceRefreshContent": "Will clear the cache and reload the page. Unsent content may be lost.",
-            "forceRefreshOk": "Reload now",
+            "forceRefreshOk": "Restart now",
             "install": "Install",
             "installPrompt": "Install Mobi locally for quick access anytime",
             "iosManual": "iPhone/iPad: tap Share → Add to Home Screen"

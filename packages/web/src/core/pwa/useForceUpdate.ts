@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { forceUpdateAndReload } from './forceUpdate'
 
 /**
- * 「检查更新」点击 handler:弹 Modal.confirm 二次确认后执行强制刷新。
+ * 「重启」点击 handler:弹 Modal.confirm 二次确认后执行强制刷新。
  *
  * 为何要二次确认:硬刷新会中断页面。composerDrafts(文本+已上传附件,存 sessionStorage,
  * reload 不丢)不受影响,但正在上传中的附件、未落盘的内存状态会丢。

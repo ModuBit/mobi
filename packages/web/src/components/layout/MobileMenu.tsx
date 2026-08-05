@@ -118,7 +118,7 @@ export function MobileMenuDrawer() {
     const api = useMobiApi()
     const isMobile = useIsMobile()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
-    const checkUpdate = useForceUpdate()
+    const restart = useForceUpdate()
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
@@ -208,7 +208,7 @@ export function MobileMenuDrawer() {
                     </MenuItem>
                 </div>
 
-                {/* 刷新(软刷新：仅 location.reload，不清 SW 缓存) + 检查更新(清缓存硬刷新)
+                {/* 刷新(软刷新：仅 location.reload，不清 SW 缓存) + 重启(清缓存硬刷新)
                     并排成行：两者都是页面级重载动作，语义同组，对照主题/语言那行的双栏布局 */}
                 <div style={{ display: 'flex', alignItems: 'stretch' }}>
                     <MenuItem
@@ -220,7 +220,7 @@ export function MobileMenuDrawer() {
                             // Android Chrome PWA standalone：同步 window.location.reload() 紧随
                             // setMobileMenuOpen 这个 setState 会被吞掉——drawer 关了但页面不重载。
                             // 延到下一 task,让 React 先 flush 完 drawer 关闭态再触发导航。
-                            // 对齐「检查更新」的异步 reload 路径(其 reload 在 Modal 确认 + await 后才触发)。
+                            // 对齐「重启」的异步 reload 路径(其 reload 在 Modal 确认 + await 后才触发)。
                             setTimeout(() => window.location.reload(), 0)
                         }}
                     >
@@ -234,11 +234,11 @@ export function MobileMenuDrawer() {
                         style={{ flex: 1, justifyContent: 'center' }}
                         onClick={() => {
                             handleClose()
-                            checkUpdate()
+                            restart()
                         }}
                     >
                         <RefreshCw size={20} />
-                        <span>{t('nav.checkUpdate')}</span>
+                        <span>{t('nav.restart')}</span>
                     </MenuItem>
                 </div>
 

@@ -80,7 +80,7 @@ export function SidebarFooter() {
     const api = useMobiApi()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
     const { canInstall, handleInstall } = usePwaInstall()
-    const checkUpdate = useForceUpdate()
+    const restart = useForceUpdate()
 
     // 登出：先清服务端 cookie，再清内存 state（cookie 链路下两步缺一不可）
     const handleLogout = () => {
@@ -117,10 +117,10 @@ export function SidebarFooter() {
                 onClick: () => window.location.reload(),
             },
             {
-                key: 'checkUpdate',
-                label: t('nav.checkUpdate'),
+                key: 'restart',
+                label: t('nav.restart'),
                 icon: <RefreshCw size={16} />,
-                onClick: checkUpdate,
+                onClick: restart,
             },
         ]
 
@@ -148,7 +148,7 @@ export function SidebarFooter() {
         )
 
         return items
-    }, [t, navigate, resolvedTheme, locale, toggleTheme, toggleLocale, canInstall, handleInstall, handleLogout, checkUpdate])
+    }, [t, navigate, resolvedTheme, locale, toggleTheme, toggleLocale, canInstall, handleInstall, handleLogout, restart])
 
     return (
         <FooterContainer>
