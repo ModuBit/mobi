@@ -61,6 +61,12 @@ vi.mock('@/core/pwa/useForceUpdate', () => ({
     useForceUpdate: () => restart,
 }))
 
+// usePwaMode 门控刷新/重启行:用可变对象便于单测切换 PWA/非 PWA
+const pwaState = { current: true }
+vi.mock('@/components/layout/usePwaMode', () => ({
+    usePwaMode: () => pwaState.current,
+}))
+
 // MobileProjectList 自带 API/hooks,mock 掉避免噪声
 vi.mock('@/components/layout/MobileProjectList', () => ({
     MobileProjectList: () => null,
@@ -87,6 +93,8 @@ describe('MobileMenuDrawer 刷新按钮', () => {
         })
         setMobileMenuOpen.mockClear()
         restart.mockClear()
+        // 默认 PWA 模式(刷新/重启行渲染);非 PWA 用例自行置 false
+        pwaState.current = true
     })
 
     afterEach(() => {
@@ -135,5 +143,16 @@ describe('MobileMenuDrawer 刷新按钮', () => {
         expect(restart).toHaveBeenCalledTimes(1)
         // 重启不直接 reload(由 Modal 确认后的 forceUpdateAndReload 异步触发)
         expect(reloadSpy).not.toHaveBeenCalled()
+    })
+
+    it('非 PWA:刷新/重启行不渲染(浏览器有自带刷新按钮)', () => {
+        pwaState.current = false
+        render(<MobileMenuDrawer />)
+        const drawer = document.querySelector('[data-testid="drawer"]')!
+        const spans = Array.from(drawer.querySelectorAll('span'))
+            .map(s => s.textContent)
+        // 刷新/重启 两个标签都不出现(主题/语言等其它项照常)
+        expect(spans).not.toContain('nav.refresh')
+        expect(spans).not.toContain('nav.restart')
     })
 })

@@ -28,6 +28,7 @@ import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { Menu, Sun, Moon, Languages, RefreshCw, RotateCw } from 'lucide-react'
 import { InstallButton } from './InstallButton'
 import { useForceUpdate } from '@/core/pwa/useForceUpdate'
+import { usePwaMode } from '@/components/layout/usePwaMode'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -119,6 +120,8 @@ export function MobileMenuDrawer() {
     const isMobile = useIsMobile()
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
     const restart = useForceUpdate()
+    // 刷新/重启 仅 PWA(standalone)有意义:浏览器有自带刷新按钮,PWA 无浏览器 chrome
+    const isPwa = usePwaMode()
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
@@ -209,38 +212,41 @@ export function MobileMenuDrawer() {
                 </div>
 
                 {/* 刷新(软刷新：仅 location.reload，不清 SW 缓存) + 重启(清缓存硬刷新)
-                    并排成行：两者都是页面级重载动作，语义同组，对照主题/语言那行的双栏布局 */}
-                <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                    <MenuItem
-                        $active={false}
-                        $token={token}
-                        style={{ flex: 1, justifyContent: 'center' }}
-                        onClick={() => {
-                            handleClose()
-                            // Android Chrome PWA standalone：同步 window.location.reload() 紧随
-                            // setMobileMenuOpen 这个 setState 会被吞掉——drawer 关了但页面不重载。
-                            // 延到下一 task,让 React 先 flush 完 drawer 关闭态再触发导航。
-                            // 对齐「重启」的异步 reload 路径(其 reload 在 Modal 确认 + await 后才触发)。
-                            setTimeout(() => window.location.reload(), 0)
-                        }}
-                    >
-                        <RotateCw size={20} />
-                        <span>{t('nav.refresh')}</span>
-                    </MenuItem>
-                    <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorder, margin: '8px 0' }} />
-                    <MenuItem
-                        $active={false}
-                        $token={token}
-                        style={{ flex: 1, justifyContent: 'center' }}
-                        onClick={() => {
-                            handleClose()
-                            restart()
-                        }}
-                    >
-                        <RefreshCw size={20} />
-                        <span>{t('nav.restart')}</span>
-                    </MenuItem>
-                </div>
+                    并排成行：两者都是页面级重载动作，语义同组，对照主题/语言那行的双栏布局。
+                    仅 PWA 展示：浏览器有自带刷新按钮，PWA(standalone)无浏览器 chrome 才需要 */}
+                {isPwa && (
+                    <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                        <MenuItem
+                            $active={false}
+                            $token={token}
+                            style={{ flex: 1, justifyContent: 'center' }}
+                            onClick={() => {
+                                handleClose()
+                                // Android Chrome PWA standalone：同步 window.location.reload() 紧随
+                                // setMobileMenuOpen 这个 setState 会被吞掉——drawer 关了但页面不重载。
+                                // 延到下一 task,让 React 先 flush 完 drawer 关闭态再触发导航。
+                                // 对齐「重启」的异步 reload 路径(其 reload 在 Modal 确认 + await 后才触发)。
+                                setTimeout(() => window.location.reload(), 0)
+                            }}
+                        >
+                            <RotateCw size={20} />
+                            <span>{t('nav.refresh')}</span>
+                        </MenuItem>
+                        <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorder, margin: '8px 0' }} />
+                        <MenuItem
+                            $active={false}
+                            $token={token}
+                            style={{ flex: 1, justifyContent: 'center' }}
+                            onClick={() => {
+                                handleClose()
+                                restart()
+                            }}
+                        >
+                            <RefreshCw size={20} />
+                            <span>{t('nav.restart')}</span>
+                        </MenuItem>
+                    </div>
+                )}
 
                 <MenuItem
                     $active={false}

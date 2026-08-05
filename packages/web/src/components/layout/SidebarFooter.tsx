@@ -34,6 +34,7 @@ import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
 import { usePwaInstall } from './usePwaInstall'
+import { usePwaMode } from '@/components/layout/usePwaMode'
 import { useForceUpdate } from '@/core/pwa/useForceUpdate'
 
 const { useToken } = antTheme
@@ -81,6 +82,7 @@ export function SidebarFooter() {
     const { resolvedTheme, locale, toggleTheme, toggleLocale } = useThemeLocaleToggle()
     const { canInstall, handleInstall } = usePwaInstall()
     const restart = useForceUpdate()
+    const isPwa = usePwaMode()
 
     // 登出：先清服务端 cookie，再清内存 state（cookie 链路下两步缺一不可）
     const handleLogout = () => {
@@ -109,20 +111,26 @@ export function SidebarFooter() {
                 icon: <Languages size={16} />,
                 onClick: toggleLocale,
             },
-            { type: 'divider' },
-            {
-                key: 'refresh',
-                label: t('nav.refresh'),
-                icon: <RotateCw size={16} />,
-                onClick: () => window.location.reload(),
-            },
-            {
-                key: 'restart',
-                label: t('nav.restart'),
-                icon: <RefreshCw size={16} />,
-                onClick: restart,
-            },
         ]
+
+        // 刷新/重启 仅 PWA 展示：浏览器有自带刷新按钮，PWA(standalone)无浏览器 chrome
+        if (isPwa) {
+            items.push(
+                { type: 'divider' },
+                {
+                    key: 'refresh',
+                    label: t('nav.refresh'),
+                    icon: <RotateCw size={16} />,
+                    onClick: () => window.location.reload(),
+                },
+                {
+                    key: 'restart',
+                    label: t('nav.restart'),
+                    icon: <RefreshCw size={16} />,
+                    onClick: restart,
+                },
+            )
+        }
 
         // PWA 安装选项
         if (canInstall) {
@@ -148,7 +156,7 @@ export function SidebarFooter() {
         )
 
         return items
-    }, [t, navigate, resolvedTheme, locale, toggleTheme, toggleLocale, canInstall, handleInstall, handleLogout, restart])
+    }, [t, navigate, resolvedTheme, locale, toggleTheme, toggleLocale, isPwa, canInstall, handleInstall, handleLogout, restart])
 
     return (
         <FooterContainer>
