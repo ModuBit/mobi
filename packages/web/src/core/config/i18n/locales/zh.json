@@ -267,6 +267,20 @@
         }
     },
     "files": {
+        "saveStatus": {
+            "saved": "已保存",
+            "saving": "保存中…",
+            "dirty": "未保存",
+            "conflict": "⚠ 冲突"
+        },
+        "conflictTip": "文件已被 Claude 修改，如何处理你的本地编辑？",
+        "reload": "丢弃本地并重新加载",
+        "forceOverwrite": "强制覆盖",
+        "unsavedTitle": "有未保存的修改",
+        "unsavedBody": "关闭前是否保存？",
+        "saveAndClose": "保存并关闭",
+        "discardClose": "不保存关闭",
+        "cancel": "取消",
         "title": "文件浏览器",
         "empty": "当前会话无文件变更",
         "selectToView": "选择文件查看内容",

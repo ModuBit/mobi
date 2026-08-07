@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef } from 'react'
+import { Suspense, lazy, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Spin, Empty, App } from 'antd'
 import type { MenuProps } from 'antd'
@@ -32,10 +32,12 @@ import MediaContentView from '@/components/files/MediaContentView'
 import FileContentViewHeader from '@/components/files/FileContentViewHeader'
 import { useFileRenderState, type ReadyRenderState } from '@/components/files/useFileRenderState'
 import { useFileEditor, type FileEditorState } from '@/components/files/useFileEditor'
-import { CodeEditorView } from '@/components/files/CodeEditorView'
-import { MarkdownEditorView } from '@/components/files/MarkdownEditorView'
 import { SaveConflictDialog } from '@/components/files/SaveConflictDialog'
 import { registerEditor, unregisterEditor } from '@/components/files/EditorRegistry'
+
+// 懒加载编辑器（Tiptap/CodeMirror 体积大，首次进入编辑态才加载 bundle）
+const CodeEditorView = lazy(() => import('@/components/files/CodeEditorView').then(m => ({ default: m.CodeEditorView })))
+const MarkdownEditorView = lazy(() => import('@/components/files/MarkdownEditorView').then(m => ({ default: m.MarkdownEditorView })))
 
 interface FileContentViewProps {
     sessionId: string
@@ -242,7 +244,11 @@ function renderReady(
         case 'markdown':
             // editable → Typora 式 WYSIWYG；否则只读渲染（含 render/source 切换）
             if (state.editable) {
-                return <MarkdownEditorView text={editor.draft} onChange={editor.update} />
+                return (
+                    <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
+                        <MarkdownEditorView text={editor.draft} onChange={editor.update} />
+                    </Suspense>
+                )
             }
             return <MarkdownContentView text={state.text} filePath={filePath} view={state.view} wrap={state.wrap} />
         case 'html':
@@ -250,7 +256,11 @@ function renderReady(
         case 'text':
             // editable → CodeMirror 编辑器；否则只读高亮
             if (state.editable) {
-                return <CodeEditorView text={editor.draft} filePath={filePath} wrap={state.wrap} onChange={editor.update} />
+                return (
+                    <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
+                        <CodeEditorView text={editor.draft} filePath={filePath} wrap={state.wrap} onChange={editor.update} />
+                    </Suspense>
+                )
             }
             return <TextContentView text={state.text} filePath={filePath} highlight={state.kind.highlight} wrap={state.wrap} />
     }

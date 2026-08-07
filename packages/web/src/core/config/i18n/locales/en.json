@@ -267,6 +267,20 @@
         }
     },
     "files": {
+        "saveStatus": {
+            "saved": "Saved",
+            "saving": "Saving…",
+            "dirty": "Unsaved",
+            "conflict": "⚠ Conflict"
+        },
+        "conflictTip": "The file has been modified by Claude. How do you want to handle your local edits?",
+        "reload": "Discard local and reload",
+        "forceOverwrite": "Force overwrite",
+        "unsavedTitle": "You have unsaved changes",
+        "unsavedBody": "Save before closing?",
+        "saveAndClose": "Save and close",
+        "discardClose": "Close without saving",
+        "cancel": "Cancel",
         "title": "File Explorer",
         "empty": "No file changes in this session",
         "selectToView": "Select a file to view content",
