@@ -50,6 +50,12 @@ export type RpcReadFileRangeResponse = {
     error?: string
 }
 
+// saveFile 响应（覆盖已存在文件 + etag OCC；请求侧 content 为 Uint8Array 二进制附件）
+export type RpcSaveFileResponse =
+    | { success: true; etag: string }
+    | { success: false; conflict: true; currentEtag: string }
+    | { success: false; error: string; code?: string }
+
 // 文件范围写入响应（对称 readFileRange，content 为 Uint8Array 二进制附件）
 export type RpcWriteFileRangeResponse = {
     success: boolean
@@ -234,6 +240,11 @@ export class RpcGateway {
     // 范围读取文件二进制 chunk
     async readFileRange(sessionId: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
         return await this.sessionRpc(sessionId, 'readFileRange', { path, offset, length }) as RpcReadFileRangeResponse
+    }
+
+    // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）
+    async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
+        return await this.sessionRpc(sessionId, 'saveFile', { path, content, baseEtag }) as RpcSaveFileResponse
     }
 
     async listDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {

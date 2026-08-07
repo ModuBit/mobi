@@ -31,6 +31,7 @@ import {
     type RpcReadFileMetaResponse,
     type RpcReadFileRangeResponse,
     type RpcRefreshMetadataResponse,
+    type RpcSaveFileResponse,
     type RpcWriteFileRangeResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
@@ -46,6 +47,7 @@ export type {
     RpcReadFileMetaResponse,
     RpcReadFileRangeResponse,
     RpcRefreshMetadataResponse,
+    RpcSaveFileResponse,
     RpcWriteFileRangeResponse
 } from './rpcGateway'
 
@@ -483,6 +485,10 @@ export class SyncEngine {
 
     async readFileRange(sessionId: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
         return await this.rpcGateway.readFileRange(sessionId, path, offset, length)
+    }
+
+    async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
+        return await this.rpcGateway.saveFile(sessionId, path, content, baseEtag)
     }
 
     async listDirectory(sessionId: string, path: string): Promise<RpcListDirectoryResponse> {
