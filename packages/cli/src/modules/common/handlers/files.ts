@@ -15,11 +15,12 @@
  */
 
 import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
+import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { logger } from '@/ui/logger'
-import { readFile, stat, writeFile } from 'fs/promises'
+import { readFile, stat, writeFile, rename, unlink } from 'fs/promises'
 import { createReadStream } from 'fs'
 import { createHash } from 'crypto'
-import { resolve } from 'path'
+import { resolve, join } from 'path'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validatePath } from '../pathSecurity'
 import { getErrorMessage, rpcError } from '../rpcResponses'
@@ -36,6 +37,17 @@ interface WriteFileResponse {
     hash?: string
     error?: string
 }
+
+interface SaveFileRequest {
+    path: string
+    content: Uint8Array
+    baseEtag: string
+}
+
+type SaveFileResponse =
+    | { success: true; etag: string }
+    | { success: false; conflict: true; currentEtag: string }
+    | { success: false; error: string; code?: string }
 
 interface ReadFileMetaRequest {
     path: string
@@ -183,6 +195,61 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
         } catch (error) {
             logger.debug('Failed to write file:', error)
             return rpcError(getErrorMessage(error, 'Failed to write file'))
+        }
+    })
+
+    // saveFile：覆盖已存在文件 + etag OCC + 原子写（tmp+rename）。
+    // 对称 readFileMeta（etag = ${size}-${mtimeMs}）；baseEtag 由前端 readFileMeta 提供。
+    // 仅覆盖已存在文件（新建走 upload 链路）；越权由 validatePath（含工作目录约束）拦截。
+    rpcHandlerManager.registerHandler<SaveFileRequest, SaveFileResponse>('saveFile', async (data) => {
+        logger.debug('Save file:', data.path, 'baseEtag:', data.baseEtag)
+
+        if (!(data.content instanceof Uint8Array) || data.content.length === 0) {
+            return rpcError('Content is required')
+        }
+        if (data.content.length > MAX_UPLOAD_BYTES) {
+            return rpcError('File too large (max 50MB)')
+        }
+
+        const validation = validatePath(data.path, workingDirectory)
+        if (!validation.valid) {
+            return rpcError(validation.error ?? 'Invalid file path')
+        }
+
+        const resolvedPath = resolve(workingDirectory, data.path)
+        try {
+            // OCC：stat 算当前 etag，比对 baseEtag
+            let st: Awaited<ReturnType<typeof stat>>
+            try {
+                st = await stat(resolvedPath)
+            } catch (error) {
+                const code = (error as NodeJS.ErrnoException).code
+                return rpcError(
+                    getErrorMessage(error, 'Failed to stat file'),
+                    code === 'ENOENT' ? { code } : undefined,
+                )
+            }
+            const currentEtag = `${st.size}-${Math.floor(st.mtimeMs)}`
+            if (data.baseEtag !== currentEtag) {
+                return { success: false, conflict: true, currentEtag }
+            }
+
+            // 原子写：tmp 与目标同目录（保证同设备 rename 原子），写完 rename 覆盖；失败清 tmp
+            const safeName = data.path.replace(/[\\/]/g, '_')
+            const tmpPath = join(resolvedPath, '..', `.mobi-tmp-${safeName}-${process.pid}`)
+            await writeFile(tmpPath, data.content)
+            try {
+                await rename(tmpPath, resolvedPath)
+            } catch (err) {
+                await unlink(tmpPath).catch(() => {})
+                throw err
+            }
+
+            const newSt = await stat(resolvedPath)
+            return { success: true, etag: `${newSt.size}-${Math.floor(newSt.mtimeMs)}` }
+        } catch (error) {
+            logger.debug('Failed to save file:', error)
+            return rpcError(getErrorMessage(error, 'Failed to save file'))
         }
     })
 }
