@@ -21,6 +21,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import './editor.css'
 
 /** 按扩展名异步加载 CodeMirror 语言包（未匹配则返回 null，纯文本无高亮） */
 async function langFor(filePath: string): Promise<Extension | null> {
