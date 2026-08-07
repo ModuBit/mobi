@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Spin, Empty, App } from 'antd'
 import type { MenuProps } from 'antd'
@@ -34,6 +34,8 @@ import { useFileRenderState, type ReadyRenderState } from '@/components/files/us
 import { useFileEditor, type FileEditorState } from '@/components/files/useFileEditor'
 import { CodeEditorView } from '@/components/files/CodeEditorView'
 import { MarkdownEditorView } from '@/components/files/MarkdownEditorView'
+import { SaveConflictDialog } from '@/components/files/SaveConflictDialog'
+import { registerEditor, unregisterEditor } from '@/components/files/EditorRegistry'
 
 interface FileContentViewProps {
     sessionId: string
@@ -58,6 +60,17 @@ export default function FileContentView({ sessionId, tabId, filePath, active = t
     )
     // 仅 ready + editable 时挂编辑器 / 监听快捷键
     const editableNow = isReady && state.editable
+
+    // editorRef：注册到 EditorRegistry 供关 tab 时 flush（持有最新 editor 避免闭包 stale）
+    const editorRef = useRef(editor)
+    editorRef.current = editor
+    useEffect(() => {
+        registerEditor(tabId, {
+            saveNow: () => editorRef.current.saveNow(),
+            isDirty: () => editorRef.current.dirty,
+        })
+        return () => unregisterEditor(tabId)
+    }, [tabId])
 
     // Ctrl/Cmd+S 手动保存
     useEffect(() => {
@@ -133,6 +146,13 @@ export default function FileContentView({ sessionId, tabId, filePath, active = t
         })
     }
 
+    // OCC 冲突「重新加载」：丢弃本地编辑 + invalidate meta → refetch 拿磁盘最新 →
+    // useFileEditor 在 draft=null 时自动跟随 baseText 回填
+    const handleConflictReload = () => {
+        editor.reload()
+        queryClient.invalidateQueries({ queryKey: queryKeys.sessionFileMeta(sessionId, filePath) })
+    }
+
     // 保存状态指示（仅 editable 时显示）
     const saveStatus: 'saved' | 'saving' | 'dirty' | 'conflict' | undefined =
         !editableNow ? undefined
@@ -154,6 +174,14 @@ export default function FileContentView({ sessionId, tabId, filePath, active = t
             <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                 {renderBody(state, sessionId, tabId, filePath, t, editor)}
             </div>
+            {/* OCC 冲突 Drawer（编辑态且检测到冲突时） */}
+            {editableNow && editor.conflict && (
+                <SaveConflictDialog
+                    open
+                    onReload={handleConflictReload}
+                    onForceOverwrite={editor.forceOverwrite}
+                />
+            )}
         </div>
     )
 }

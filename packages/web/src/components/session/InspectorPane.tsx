@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Layout, Tabs, Button, Dropdown } from 'antd'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Layout, Tabs, Button, Dropdown, App } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -23,6 +23,7 @@ import styled from '@emotion/styled'
 import { PanelRightClose, Folder, FileSearch, Maximize, Minimize, Plus } from 'lucide-react'
 import FileTreeView from '@/components/files/FileTreeView'
 import FileContentView from '@/components/files/FileContentView'
+import { getEditorApi } from '@/components/files/EditorRegistry'
 import TerminalView from '@/components/terminal/TerminalView'
 import { ActivateCover } from '@/components/ui/ActivateCover'
 import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
@@ -130,6 +131,7 @@ const ADD_TAB_KEY = '__inspector_add'
 
 export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) {
     const { t } = useTranslation()
+    const { modal } = App.useApp()
     const isMobile = useIsMobile()
     const { resumeSession, isResumePending } = useSessionActions(sessionId)
     const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
@@ -141,6 +143,38 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
     const openFileTreeTab = useWorkspaceStore((s) => s.openFileTreeTab)
     const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
     const closeTab = useWorkspaceStore((s) => s.closeTab)
+    // 关 tab：editable 文件有未保存编辑时弹确认（保存/不保存/取消），其余直接关
+    const handleCloseTab = useCallback((tabId: string) => {
+        const api = getEditorApi(tabId)
+        const doClose = () => closeTab(sessionId, tabId)
+        if (!api?.isDirty()) {
+            doClose()
+            return
+        }
+        let instance: ReturnType<typeof modal.confirm> | undefined
+        instance = modal.confirm({
+            title: t('files.unsavedTitle', '有未保存的修改'),
+            content: t('files.unsavedBody', '关闭前是否保存？'),
+            maskClosable: false,
+            footer: () => (
+                <>
+                    <Button danger onClick={() => { instance?.destroy(); doClose() }}>
+                        {t('files.discardClose', '不保存关闭')}
+                    </Button>
+                    <Button onClick={() => instance?.destroy()}>
+                        {t('files.cancel', '取消')}
+                    </Button>
+                    <Button type="primary" onClick={async () => {
+                        await api.saveNow()
+                        instance?.destroy()
+                        doClose()
+                    }}>
+                        {t('files.saveAndClose', '保存并关闭')}
+                    </Button>
+                </>
+            ),
+        })
+    }, [closeTab, sessionId, t, modal])
     const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
     const openTerminalTab = useWorkspaceStore((s) => s.openTerminalTab)
     const renameTerminalTab = useWorkspaceStore((s) => s.renameTerminalTab)
@@ -271,7 +305,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                             if (closingTab?.mode === 'terminal' && closingTab.terminalId) {
                                 clearCachedInstance(`terminal:${sessionId}:${closingTab.terminalId}`)
                             }
-                            closeTab(sessionId, targetKey)
+                            handleCloseTab(targetKey)
                         }
                     }}
                     tabBarStyle={{ padding: 'max(0px, env(safe-area-inset-top)) 12px 0', margin: 0 }}
