@@ -19,7 +19,7 @@ import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { isWithinDir } from '@mobi/shared/pathSecurity'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
-import { streamUpload } from '../utils/uploadStream'
+import { streamUpload, concatBytes } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
 import { Hono } from 'hono'
 import { resolve } from 'node:path'
@@ -181,6 +181,51 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({
                 success: false,
                 error: error instanceof Error ? error.message : 'Failed to upload file'
+            }, 500)
+        }
+    })
+
+    // save-file：inspector 编辑后保存回原文件（覆盖已存在 + etag OCC）。
+    // body 为 octet-stream；path/baseEtag 走 header；一次性聚合（编辑文件 <1MB，不分片）。
+    app.post('/sessions/:id/save-file', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        if (sessionResult instanceof Response) return sessionResult
+
+        const path = safeDecodeHeader(c.req.header('X-Mobi-Path'))
+        const baseEtag = c.req.header('X-Mobi-Base-Etag') ?? ''
+        if (!path) {
+            return c.json({ success: false, error: 'Path required (X-Mobi-Path header)' }, 400)
+        }
+
+        const reader = c.req.raw.body?.getReader()
+        if (!reader) {
+            return c.json({ success: false, error: 'No request body' }, 400)
+        }
+
+        const parts: Uint8Array[] = []
+        for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value) parts.push(value)
+        }
+        const content = concatBytes(parts)
+
+        try {
+            const res = await engine.saveFile(sessionResult.sessionId, path, content, baseEtag)
+            if (!res.success && (res as { conflict?: boolean }).conflict) {
+                return c.json(res, 409)
+            }
+            if (!res.success) {
+                return c.json(res, 500)
+            }
+            return c.json(res, 200)
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to save file',
             }, 500)
         }
     })
