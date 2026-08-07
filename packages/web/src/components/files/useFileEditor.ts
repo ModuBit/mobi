@@ -69,13 +69,21 @@ export function useFileEditor(
         setDraft(v)
     }, [])
 
-    // 文件切换 / etag 变化 → 重置（重新加载磁盘版本）
+    // 文件切换（filePath 变）：无条件清本地编辑 + 冲突态（新文件新基线由下方 auto-sync 设）
     useEffect(() => {
-        baseEtagRef.current = initial.etag
-        setBaseText(initial.text)
         setDraftSync(null)
         setConflict(null)
-    }, [filePath, initial.etag])
+    }, [filePath, setDraftSync])
+
+    // 基线跟随磁盘版本：draft===null（无本地编辑）时，把 baseText/baseEtag 同步到 initial。
+    // draft≠null（用户在编辑）时跳过，保护编辑——由保存时 OCC（baseEtag 不符→conflict）兜底。
+    // 这样 OCC reload（setDraft(null) + invalidate meta）后，refetch 拿到磁盘最新自动回填。
+    useEffect(() => {
+        if (draftRef.current === null) {
+            baseEtagRef.current = initial.etag
+            setBaseText(initial.text)
+        }
+    }, [filePath, initial.text, initial.etag])
 
     const dirty = draft !== null && draft !== baseText
 

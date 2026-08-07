@@ -187,7 +187,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
 
     const renderTabContent = (tab: InspectorTabEntry): ReactNode => {
         if (tab.mode === 'file' && tab.filePath) {
-            return <FileContentView sessionId={sessionId} tabId={tab.id} filePath={tab.filePath} />
+            return <FileContentView sessionId={sessionId} tabId={tab.id} filePath={tab.filePath} active={active} />
         }
         if (tab.mode === 'terminal' && tab.terminalId) {
             return <TerminalView sessionId={sessionId} terminalId={tab.terminalId} />

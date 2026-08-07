@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Spin, Empty, App } from 'antd'
 import type { MenuProps } from 'antd'
@@ -30,19 +31,46 @@ import PdfContentView from '@/components/files/PdfContentView'
 import MediaContentView from '@/components/files/MediaContentView'
 import FileContentViewHeader from '@/components/files/FileContentViewHeader'
 import { useFileRenderState, type ReadyRenderState } from '@/components/files/useFileRenderState'
+import { useFileEditor, type FileEditorState } from '@/components/files/useFileEditor'
+import { CodeEditorView } from '@/components/files/CodeEditorView'
+import { MarkdownEditorView } from '@/components/files/MarkdownEditorView'
 
 interface FileContentViewProps {
     sessionId: string
     /** 当前 tab id：Folders 选文件后调 openFileInTab 用 */
     tabId: string
     filePath: string
+    /** session 是否在线（CLI 已连接）；离线时不可编辑（save-file 路由 requireActive） */
+    active?: boolean
 }
 
-export default function FileContentView({ sessionId, tabId, filePath }: FileContentViewProps) {
+export default function FileContentView({ sessionId, tabId, filePath, active = true }: FileContentViewProps) {
     const { t } = useTranslation()
     const { message } = App.useApp()
     const queryClient = useQueryClient()
-    const state = useFileRenderState(sessionId, filePath)
+    const state = useFileRenderState(sessionId, filePath, active)
+
+    // 编辑器状态机：ready+editable 时启用；非 ready 传占位（hooks 无条件调用，内部 draft=null 短路）
+    const isReady = state.status === 'ready'
+    const editor = useFileEditor(
+        sessionId, filePath,
+        isReady ? { text: state.text, etag: state.etag } : { text: '', etag: '' },
+    )
+    // 仅 ready + editable 时挂编辑器 / 监听快捷键
+    const editableNow = isReady && state.editable
+
+    // Ctrl/Cmd+S 手动保存
+    useEffect(() => {
+        if (!editableNow) return
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault()
+                void editor.saveNow()
+            }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [editableNow, editor])
 
     // markdown 菜单：kind 在 content-loading / ready 均携带，故 content 拉取期间菜单也常驻，
     // 不会因加载完成而闪退闪现；view/toggleView 在这两个状态均可用，加载期间可预切源码。
@@ -105,6 +133,13 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
         })
     }
 
+    // 保存状态指示（仅 editable 时显示）
+    const saveStatus: 'saved' | 'saving' | 'dirty' | 'conflict' | undefined =
+        !editableNow ? undefined
+            : editor.conflict ? 'conflict'
+                : editor.saving ? 'saving'
+                    : editor.dirty ? 'dirty' : 'saved'
+
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             {/* header：左面包屑（左对齐，空间不够左省略）+ 右功能区（more 菜单 + 文件树） */}
@@ -113,10 +148,11 @@ export default function FileContentView({ sessionId, tabId, filePath }: FileCont
                 tabId={tabId}
                 filePath={filePath}
                 extraMenuItems={moreMenuItems}
+                saveStatus={saveStatus}
             />
             {/* content：按 RenderState exhaustive switch 渲染 */}
             <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                {renderBody(state, sessionId, tabId, filePath, t)}
+                {renderBody(state, sessionId, tabId, filePath, t, editor)}
             </div>
         </div>
     )
@@ -129,6 +165,7 @@ function renderBody(
     tabId: string,
     filePath: string,
     t: TFunction,
+    editor: FileEditorState,
 ) {
     switch (state.status) {
         case 'meta-loading':
@@ -145,7 +182,7 @@ function renderBody(
             // content 拉回但 file 为空（如 304 无 body），非「未选文件」
             return <Empty description={t('files.fileEmpty')} style={{ marginTop: 40 }} />
         case 'ready':
-            return renderReady(state, sessionId, tabId, filePath, t)
+            return renderReady(state, sessionId, tabId, filePath, t, editor)
     }
 }
 
@@ -156,6 +193,7 @@ function renderReady(
     tabId: string,
     filePath: string,
     t: TFunction,
+    editor: FileEditorState,
 ) {
     switch (state.kind.kind) {
         case 'pdf':
@@ -174,10 +212,18 @@ function renderReady(
             // 不可直显二进制，提示下载
             return <FileDownloadPrompt sessionId={sessionId} filePath={filePath} reason={t('files.binaryDownload')} />
         case 'markdown':
+            // editable → Typora 式 WYSIWYG；否则只读渲染（含 render/source 切换）
+            if (state.editable) {
+                return <MarkdownEditorView text={editor.draft} onChange={editor.update} />
+            }
             return <MarkdownContentView text={state.text} filePath={filePath} view={state.view} wrap={state.wrap} />
         case 'html':
             return <HtmlPreviewView sessionId={sessionId} filePath={filePath} view={state.view} text={state.text} wrap={state.wrap} />
         case 'text':
+            // editable → CodeMirror 编辑器；否则只读高亮
+            if (state.editable) {
+                return <CodeEditorView text={editor.draft} filePath={filePath} wrap={state.wrap} onChange={editor.update} />
+            }
             return <TextContentView text={state.text} filePath={filePath} highlight={state.kind.highlight} wrap={state.wrap} />
     }
 }

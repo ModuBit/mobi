@@ -15,7 +15,7 @@
  */
 
 import { Fragment, useLayoutEffect, useRef, useState } from 'react'
-import { Button, Dropdown, Popover } from 'antd'
+import { Button, Dropdown, Popover, theme as antTheme } from 'antd'
 import type { MenuProps } from 'antd'
 import { Ellipsis, Folders } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -29,6 +29,8 @@ export interface FileContentViewHeaderProps {
     filePath: string
     /** more 菜单额外项（refresh/copyPath/markdown toggle 等由父组件提供） */
     extraMenuItems: MenuProps['items']
+    /** 保存状态指示（仅 editable 文件传入；undefined 时不显示） */
+    saveStatus?: 'saved' | 'saving' | 'dirty' | 'conflict'
 }
 
 /**
@@ -38,9 +40,14 @@ export interface FileContentViewHeaderProps {
  *
  * 不持有 view state、不 import 任何 *ContentView——它是 markdown/pdf 等无关的展示外壳。
  */
-export default function FileContentViewHeader({ sessionId, tabId, filePath, extraMenuItems }: FileContentViewHeaderProps) {
+export default function FileContentViewHeader({ sessionId, tabId, filePath, extraMenuItems, saveStatus }: FileContentViewHeaderProps) {
     const { t } = useTranslation()
+    const { token } = antTheme.useToken()
     const openFileInTab = useWorkspaceStore((s) => s.openFileInTab)
+    const saveColor = saveStatus === 'conflict' ? token.colorError
+        : saveStatus === 'dirty' ? token.colorWarning
+            : saveStatus === 'saving' ? token.colorPrimary
+                : token.colorTextTertiary
     const [treeOpen, setTreeOpen] = useState(false)
 
     // 面包屑分段：a/b/c.ts → [a, b, c.ts]，最后一项（文件名）加粗
@@ -131,6 +138,11 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
                     )
                 })}
             </div>
+            {saveStatus && (
+                <span style={{ fontSize: 12, color: saveColor, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    {t(`files.saveStatus.${saveStatus}`)}
+                </span>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                 <Dropdown menu={{ items: extraMenuItems }} trigger={['click']}>
                     <Button type="text" size="small" icon={<Ellipsis size={14} />} aria-label={t('files.more')} />
