@@ -152,4 +152,29 @@ describe('useFileRenderState', () => {
         // html 默认 source（区别于 markdown 默认 render）
         expect(result.current.status === 'ready' && result.current.view).toBe('source')
     })
+
+    it('text/markdown ready + active → editable=true；html → false', async () => {
+        mockedMeta.mockReturnValue({ data: { mime: 'text/plain', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
+        const blob = { text: async () => 'hi' } as unknown as Blob
+        mockedContent.mockReturnValue({ data: { blob, mime: 'text/plain', etag: 'e' }, isLoading: false, error: null } as any)
+        const t = renderState('s', 'a.txt').result.current
+        expect(t.status === 'ready' && t.editable).toBe(true)
+
+        mockedMeta.mockReturnValue({ data: { mime: 'text/markdown', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
+        const md = renderState('s', 'a.md').result.current
+        expect(md.status === 'ready' && md.editable).toBe(true)
+
+        mockedMeta.mockReturnValue({ data: { mime: 'text/html', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
+        const h = renderState('s', 'a.html').result.current
+        expect(h.status === 'ready' && h.editable).toBe(false)
+    })
+
+    it('active=false → editable=false（离线不编辑）', async () => {
+        mockedMeta.mockReturnValue({ data: { mime: 'text/plain', size: 100, etag: 'e' }, isLoading: false, error: null } as any)
+        const blob = { text: async () => 'hi' } as unknown as Blob
+        mockedContent.mockReturnValue({ data: { blob, mime: 'text/plain', etag: 'e' }, isLoading: false, error: null } as any)
+        const { result } = renderHook(() => useFileRenderState('s', 'a.txt', false), { wrapper: Wrapper })
+        await act(async () => { await Promise.resolve() })
+        expect(result.current.status === 'ready' && result.current.editable).toBe(false)
+    })
 })

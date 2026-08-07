@@ -41,6 +41,8 @@ export type RenderState =
          * 详见 buildReadFileUrl 的说明。
          */
         etag: string
+        /** 是否可编辑：text/markdown 且 active 且未超阈值（too-large 不进 ready）。html/二进制/媒体/pdf 为 false */
+        editable: boolean
         view: 'render' | 'source'
         toggleView: () => void
         wrap: boolean
@@ -73,7 +75,7 @@ function needsContent(kind: FileKind): boolean {
  * 封装「meta 先行 + size 阈值 + 是否拉 content + 文本 blob→text + markdown view」全部决策。
  * 所有 hooks 无条件调用（rules-of-hooks），决策在 return 阶段做。
  */
-export function useFileRenderState(sessionId: string, filePath: string): RenderState {
+export function useFileRenderState(sessionId: string, filePath: string, active = true): RenderState {
     const { data: meta, isLoading: metaLoading, error: metaError } = useFileMeta(sessionId, filePath)
 
     const kind = meta ? resolveFileKind(meta, filePath) : null
@@ -116,14 +118,16 @@ export function useFileRenderState(sessionId: string, filePath: string): RenderS
     if (metaLoading) return { status: 'meta-loading' }
     if (metaError) return { status: 'meta-error', error: metaError }
     if (!meta || !kind) return { status: 'meta-loading' }
+    // editable：仅 text/markdown 且在线（active）。too-large 已在上方拦截不会到 ready。
+    const editable = active && (kind.kind === 'text' || kind.kind === 'markdown')
     if (tooLarge) return { status: 'too-large' }
     if (!needsContent(kind)) {
         // pdf / image / media：src 直连端点，不依赖 content；etag 并入 URL 以感知内容变化
-        return { status: 'ready', kind, text: '', etag: meta.etag, view, toggleView, wrap, toggleWrap }
+        return { status: 'ready', kind, text: '', etag: meta.etag, editable, view, toggleView, wrap, toggleWrap }
     }
     if (contentLoading) return { status: 'content-loading', kind, view, toggleView, wrap, toggleWrap }
     if (contentError) return { status: 'content-error', error: contentError }
     if (!file) return { status: 'empty' }
     // text===null 时短暂以空串渲染（与原 `text ?? ''` 一致），blob 解析完更新
-    return { status: 'ready', kind, text: text ?? '', etag: meta.etag, view, toggleView, wrap, toggleWrap }
+    return { status: 'ready', kind, text: text ?? '', etag: meta.etag, editable, view, toggleView, wrap, toggleWrap }
 }
