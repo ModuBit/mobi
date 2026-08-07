@@ -201,6 +201,21 @@ export function createMobiApi() {
                     `/api/sessions/${sessionId}/file-meta`,
                     { params: { path } },
                 ),
+            // save-file：inspector 编辑保存（octet-stream；path/baseEtag 走 header）。
+            // conflict → 409，validateStatus 放行让 useSaveFile 捕获并暴露 conflict 态。
+            save: (
+                sessionId: string,
+                path: string,
+                content: Uint8Array,
+                baseEtag: string,
+            ) => client.post(`/api/sessions/${sessionId}/save-file`, content, {
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Mobi-Path': encodeURIComponent(path),
+                    'X-Mobi-Base-Etag': baseEtag,
+                },
+                validateStatus: (s) => (s >= 200 && s < 300) || s === 409,
+            }),
         },
 
         // Permissions

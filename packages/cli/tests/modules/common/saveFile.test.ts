@@ -114,4 +114,13 @@ describe('saveFile handler', () => {
         const files = await readdir(dir)
         expect(files.filter((f) => f.includes('mobi-tmp'))).toHaveLength(0)
     })
+
+    it('force（baseEtag=""）→ 即使 etag 不匹配也覆盖', async () => {
+        const res = await getHandler(mgr, 'saveFile')({
+            path: 'a.md', content: toBytes('# forced\n'), baseEtag: '',
+        })
+        expect(res.success).toBe(true)
+        expect(res.etag).toBeDefined()
+        await expectFile(join(dir, 'a.md'), '# forced\n')
+    })
 })

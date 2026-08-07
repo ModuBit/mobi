@@ -230,7 +230,9 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
                 )
             }
             const currentEtag = `${st.size}-${Math.floor(st.mtimeMs)}`
-            if (data.baseEtag !== currentEtag) {
+            // baseEtag='' → force 覆盖（跳过 OCC，用于冲突后用户选「强制覆盖」）；
+            // 非空 → OCC 比对，不符则 conflict（正常 baseEtag 来自 readFileMeta，永非空）
+            if (data.baseEtag !== '' && data.baseEtag !== currentEtag) {
                 return { success: false, conflict: true, currentEtag }
             }
 
