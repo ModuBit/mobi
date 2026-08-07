@@ -178,13 +178,13 @@ describe('FileContentView', () => {
     // —— loading / error 分支（characterization：meta 先行决定渲染态）——
     it('meta 加载中 → Spin（metaLoading 拦截在所有内容分发之前）', () => {
         setMockMetaState({ isLoading: true })
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />)
         expect(document.querySelector('.ant-spin')).toBeInTheDocument()
     })
 
     it('meta 错误 → Empty（metaError 优先于内容分发）', () => {
         setMockMetaState({ error: new Error('permission denied') })
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />)
         // Empty 渲染 metaError.message（Error 实例走 .message）
         expect(screen.getByText('permission denied')).toBeInTheDocument()
         expect(document.querySelector('.ant-empty')).toBeInTheDocument()
@@ -192,7 +192,7 @@ describe('FileContentView', () => {
 
     it('面包屑按 / 分段显示，文件名加粗', () => {
         setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />)
         expect(screen.getByText('a')).toBeInTheDocument()
         expect(screen.getByText('b')).toBeInTheDocument()
         const fileNode = screen.getByText('c.ts')
@@ -206,7 +206,7 @@ describe('FileContentView', () => {
             { blob: new Blob(['const x = 1'], { type: 'text/typescript' }), mime: 'text/typescript' },
         )
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />)
         // Shiki 异步高亮：await codeToHtml 完成 → 出现 .shiki-wrap（高亮成功的标志）
         await waitFor(() => {
             expect(document.querySelector('.shiki-wrap')).toBeInTheDocument()
@@ -220,7 +220,7 @@ describe('FileContentView', () => {
             { blob: new Blob(['plain content'], { type: 'text/plain' }), mime: 'text/plain' },
         )
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/big.txt" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/big.txt" />)
         // 纯文本分支渲染出 <pre>，内容为 plain content
         expect(await screen.findByText('plain content')).toBeInTheDocument()
         // 无 shiki-wrap（不高亮）
@@ -232,7 +232,7 @@ describe('FileContentView', () => {
         // 3MB ≥ textPlain(2MB) → tooLarge
         setMock({ mime: 'text/plain', size: 3 * 1024 * 1024, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/huge.txt" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/huge.txt" />)
         // 命中 files.tooLarge 文案
         expect(screen.getByText('files.tooLarge')).toBeInTheDocument()
         // 出现下载按钮（文案 files.download）
@@ -246,7 +246,7 @@ describe('FileContentView', () => {
         // 图片 src 直连：不 fetch content（shouldFetchContent 不含 image），img 的 src 指向 read-file 端点
         setMock({ mime: 'image/png', size: 1024 * 1024, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/logo.png" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/logo.png" />)
         const img = await screen.findByRole('img')
         expect(img).toBeInTheDocument()
         const src = img.getAttribute('src')!
@@ -260,7 +260,7 @@ describe('FileContentView', () => {
     it('大图片（≥5MB）→ FileTooLarge', () => {
         setMock({ mime: 'image/png', size: 6 * 1024 * 1024, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/big.png" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/big.png" />)
         expect(screen.getByText('files.tooLarge')).toBeInTheDocument()
         expect(screen.getByText('files.download')).toBeInTheDocument()
         expect(screen.queryByRole('img')).not.toBeInTheDocument()
@@ -271,7 +271,7 @@ describe('FileContentView', () => {
         // 此类型 shouldFetchContent=false，不会拉 content
         setMock({ mime: 'application/octet-stream', size: 100, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/app.bin" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/app.bin" />)
         // 命中 files.binaryDownload 文案
         expect(screen.getByText('files.binaryDownload')).toBeInTheDocument()
         // 不出现文本/图片渲染分支
@@ -281,7 +281,7 @@ describe('FileContentView', () => {
     it('application/zip → FileTooLarge（files.binaryDownload）', () => {
         setMock({ mime: 'application/zip', size: 100, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/app.zip" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/app.zip" />)
         expect(screen.getByText('files.binaryDownload')).toBeInTheDocument()
     })
 
@@ -292,7 +292,7 @@ describe('FileContentView', () => {
             { blob: new Blob(['%PDF-1.4'], { type: 'application/pdf' }), mime: 'application/pdf' },
         )
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="doc.pdf" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="doc.pdf" />)
         // react-pdf Document 渲染（mock 占位），data-file 含 read-file 端点
         const doc = await screen.findByTestId('pdf-document')
         expect(doc).toBeInTheDocument()
@@ -307,7 +307,7 @@ describe('FileContentView', () => {
         // 11MB ≥ pdf(10MB) → tooLarge
         setMock({ mime: 'application/pdf', size: 11 * 1024 * 1024, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="big.pdf" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="big.pdf" />)
         expect(screen.getByText('files.tooLarge')).toBeInTheDocument()
         expect(screen.getByText('files.download')).toBeInTheDocument()
         expect(screen.queryByTestId('pdf-document')).not.toBeInTheDocument()
@@ -316,7 +316,7 @@ describe('FileContentView', () => {
     it('PDF shouldFetchContent=false（src 直连，不 fetch content）', () => {
         // PDF 走 src 直连 read-file（pdfjs Range 按需加载），不再 fetch content blob
         setMock({ mime: 'application/pdf', size: 100, etag: 'v1' }, null)
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="doc.pdf" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="doc.pdf" />)
         // 第 3 个参数（enabled）应为 false（shouldFetchContent 不含 pdf）
         expect(useFileContent).toHaveBeenCalledWith('s1', 'doc.pdf', false, 'v1')
     })
@@ -324,7 +324,7 @@ describe('FileContentView', () => {
     it('原生视频（mp4）→ MediaContentView video src 直连', async () => {
         setMock({ mime: 'video/mp4', size: 1 * 1024 * 1024, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="clip.mp4" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="clip.mp4" />)
         // video 标签 src 直连 read-file 端点（jsdom 不给 audio/video 暴露 role，按 tagName 查）
         const video = document.querySelector('video')
         await waitFor(() => {
@@ -339,7 +339,7 @@ describe('FileContentView', () => {
     it('原生音频（mp3）→ MediaContentView audio src 直连', async () => {
         setMock({ mime: 'audio/mpeg', size: 1 * 1024 * 1024, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="song.mp3" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="song.mp3" />)
         const audio = document.querySelector('audio')
         await waitFor(() => {
             expect(audio).not.toBeNull()
@@ -354,7 +354,7 @@ describe('FileContentView', () => {
     it('非原生视频（mkv）→ FileTooLarge mediaDownload', () => {
         setMock({ mime: 'video/x-matroska', size: 1 * 1024 * 1024, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="movie.mkv" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="movie.mkv" />)
         expect(screen.getByText('files.mediaDownload')).toBeInTheDocument()
         expect(document.querySelector('video')).toBeNull()
     })
@@ -362,7 +362,7 @@ describe('FileContentView', () => {
     it('非原生音频（flac）→ FileTooLarge mediaDownload', () => {
         setMock({ mime: 'audio/flac', size: 1 * 1024 * 1024, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="track.flac" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="track.flac" />)
         expect(screen.getByText('files.mediaDownload')).toBeInTheDocument()
         expect(document.querySelector('audio')).toBeNull()
     })
@@ -371,7 +371,7 @@ describe('FileContentView', () => {
         // 音视频流式 Range，不像图片/pdf 有 tooLarge；100MB 仍 src 直连
         setMock({ mime: 'video/mp4', size: 100 * 1024 * 1024, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="huge.mp4" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="huge.mp4" />)
         await waitFor(() => {
             expect(document.querySelector('video')).not.toBeNull()
         })
@@ -382,7 +382,7 @@ describe('FileContentView', () => {
     it('音频原生格式判断（m4a ∈ NATIVE_MEDIA_EXT）→ audio 直连', async () => {
         setMock({ mime: 'audio/mp4', size: 100, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="voice.m4a" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="voice.m4a" />)
         const audio = document.querySelector('audio')
         await waitFor(() => {
             expect(audio).not.toBeNull()
@@ -396,7 +396,7 @@ describe('FileContentView', () => {
         setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
 
         renderWithProviders(
-            <FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />,
+            <FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />,
         )
         // 点 Ellipsis 按钮（aria-label = files.more）展开下拉
         fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
@@ -422,7 +422,7 @@ describe('FileContentView', () => {
         }))
         setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
 
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />)
         // 点 Folders 按钮
         fireEvent.click(screen.getByRole('button', { name: 'files.openFromTree' }))
         // Popover 内文件树出现 other.ts（lazy mount，用 findByText await）
@@ -442,7 +442,7 @@ describe('FileContentView', () => {
             { mime: 'text/markdown', size: 100, etag: '11-1' },
             { blob: new Blob(['body content'], { type: 'text/markdown' }), mime: 'text/markdown' },
         )
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="README.md" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="README.md" />)
         // .x-markdown 是 Markdown.tsx 容器 className，渲染成功的标志
         await waitFor(() => {
             expect(document.querySelector('.x-markdown')).toBeInTheDocument()
@@ -454,7 +454,7 @@ describe('FileContentView', () => {
             { mime: 'text/markdown', size: 100, etag: '11-1' },
             { blob: new Blob(['# title'], { type: 'text/markdown' }), mime: 'text/markdown' },
         )
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="README.md" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="README.md" />)
         // 点 Ellipsis → 切源码
         fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
         fireEvent.click(await screen.findByText('files.viewSource'))
@@ -469,7 +469,7 @@ describe('FileContentView', () => {
             { mime: 'text/typescript', size: 100, etag: '11-1' },
             { blob: new Blob(['const x = 1'], { type: 'text/typescript' }), mime: 'text/typescript' },
         )
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a.ts" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a.ts" />)
         fireEvent.click(screen.getByRole('button', { name: 'files.more' }))
         expect(screen.queryByText('files.viewSource')).not.toBeInTheDocument()
     })
@@ -477,14 +477,14 @@ describe('FileContentView', () => {
     it('大 .md（≥2MB）→ FileTooLarge', async () => {
         // 3MB ≥ textPlain(2MB)：isMarkdown 的 tooLarge 走 isTextLike 分支（text/markdown 以 text/ 开头）
         setMock({ mime: 'text/markdown', size: 3 * 1024 * 1024, etag: '11-1' }, null)
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="big.md" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="big.md" />)
         expect(await screen.findByText('files.tooLarge')).toBeInTheDocument()
     })
 
     it('useFileContent 收 meta.etag 作为参数（etag 维度进 queryKey 驱动 refetch）', () => {
         // 第 4 个参数 = meta?.etag，meta 先行拿到 etag 后应透传给 useFileContent
         setMock({ mime: 'text/typescript', size: 100, etag: 'v1' }, null)
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />)
         expect(useFileContent).toHaveBeenCalledWith('s1', 'a/b/c.ts', true, 'v1')
     })
 
@@ -492,14 +492,14 @@ describe('FileContentView', () => {
         const contentMock = vi.mocked(useFileContent)
         // 初始 etag='v1'
         setMock({ mime: 'text/typescript', size: 100, etag: 'v1' }, null)
-        const { rerender } = renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        const { rerender } = renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />)
         expect(contentMock).toHaveBeenLastCalledWith('s1', 'a/b/c.ts', true, 'v1')
 
         // 模拟窗口聚焦 / 刷新后 meta refetch 拿到新 etag='v2'，重渲染
         setMock({ mime: 'text/typescript', size: 100, etag: 'v2' }, null)
         rerender(
             <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-                <AntApp><FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" /></AntApp>
+                <AntApp><FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" /></AntApp>
             </QueryClientProvider>,
         )
         // useFileContent 以新 etag='v2' 被调用 → queryKey 含 etag 变化 → content 自动 refetch
@@ -509,7 +509,7 @@ describe('FileContentView', () => {
     it('Ellipsis → 刷新项 invalidate meta（联动 content refetch）', async () => {
         setMock({ mime: 'text/typescript', size: 100, etag: '11-1' }, null)
         invalidateQueriesSpy.mockClear()
-        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" filePath="a/b/c.ts" />)
+        renderWithProviders(<FileContentView sessionId="s1" tabId="t1" active={false} filePath="a/b/c.ts" />)
 
         // 点 Ellipsis 展开 → 点刷新项
         fireEvent.click(screen.getByRole('button', { name: 'files.more' }))

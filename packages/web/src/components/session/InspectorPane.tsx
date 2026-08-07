@@ -151,8 +151,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             doClose()
             return
         }
-        let instance: ReturnType<typeof modal.confirm> | undefined
-        instance = modal.confirm({
+        const instance = modal.confirm({
             title: t('files.unsavedTitle', '有未保存的修改'),
             content: t('files.unsavedBody', '关闭前是否保存？'),
             maskClosable: false,
