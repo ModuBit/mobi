@@ -87,17 +87,20 @@ describe('LoginPage', () => {
         fireEvent.change(input, { target: { value: 'my-token' } })
         fireEvent.click(screen.getByRole('button', { name: 'login.connect' }))
 
+        // 等完整提交链路（axios → setAuthenticated → navigate）一次性断言。
+        // 旧实现单等 axios 被调后立即断言 setAuthenticated——handleSubmit 的 await axios.post 是微任务，
+        // 全量并发负载下 setAuthenticated/navigate 可能晚一个 tick，曾 flaky timeout 5s。
         await waitFor(() => {
             expect(axios.post).toHaveBeenCalledWith(
                 expect.stringContaining('/api/auth'),
                 { accessToken: 'my-token' },
                 expect.objectContaining({ withCredentials: true }),
             )
+            // 登录态真源为 httpOnly cookie，前端仅置 authenticated 驱动路由
+            expect(setAuthenticated).toHaveBeenCalledWith(true)
+            expect(mockNavigate).toHaveBeenCalledWith({ to: '/' })
         })
-        // 登录态真源为 httpOnly cookie，前端仅置 authenticated 驱动路由
-        expect(setAuthenticated).toHaveBeenCalledWith(true)
-        expect(mockNavigate).toHaveBeenCalledWith({ to: '/' })
-    })
+    }, 15000)
 
     it('token 字段以 password 类型渲染（保留密码管理器语义）', () => {
         render(<LoginPage />, { wrapper })
