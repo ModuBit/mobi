@@ -18,7 +18,7 @@ import { useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { CodeBlockWithMermaid } from './CodeBlockMermaid'
 import Link from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
 import { Table } from '@tiptap/extension-table'
@@ -52,9 +52,9 @@ export function MarkdownEditorView({ text, onChange }: Props) {
     const editor = useEditor({
         immediatelyRender: false,
         extensions: [
-            // 禁用 StarterKit 默认 codeBlock，改用 CodeBlockLowlight（lowlight 实时高亮）
-            StarterKit.configure({ codeBlock: false }),
-            CodeBlockLowlight.configure({ lowlight }),
+            // 禁用 StarterKit 默认 codeBlock（用 CodeBlockWithMermaid）+ link（用扩展版 autolink 配置）
+            StarterKit.configure({ codeBlock: false, link: false }),
+            CodeBlockWithMermaid.configure({ lowlight }),
             Link.configure({ autolink: true, linkOnPaste: true }),
             Image.configure({ inline: false, allowBase64: true }),
             Table.configure({ resizable: false, lastColumnResizable: false }),

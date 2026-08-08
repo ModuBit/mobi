@@ -22,6 +22,7 @@ import mention from './mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
 import { useStreamingContent } from './useStreamingContent'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
+import { MermaidDiagram } from './MermaidDiagram'
 import { FootnoteContext, FootnoteRef, FootnoteSources } from './FootnoteComponents'
 
 /** 流式渲染选项类型（从 XMarkdownProps 推断，因 x-markdown 未顶层导出） */
@@ -67,6 +68,11 @@ const DefaultCode: FC<ComponentProps> = ({ block, lang, className, children }) =
     const explicit = (lang ?? '').split(/\s+/)[0]
         || className?.match(/language-([^\s]+)/)?.[1]
         || undefined
+
+    // mermaid 图：渲染为 mermaid 图（而非代码高亮），与编辑器一致
+    if (explicit === 'mermaid') {
+        return <MermaidDiagram code={children} />
+    }
 
     return <AutoDetectCodeBlock code={children} explicitLang={explicit} />
 }
