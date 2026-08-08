@@ -18,7 +18,18 @@ import { useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import Link from '@tiptap/extension-link'
+import Image from '@tiptap/extension-image'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableCell } from '@tiptap/extension-table-cell'
+import { TableHeader } from '@tiptap/extension-table-header'
+import { common, createLowlight } from 'lowlight'
 import './editor.css'
+
+// lowlight 模块级单例（common 常用语言；按需可补 all）
+const lowlight = createLowlight(common)
 
 interface Props {
     text: string
@@ -40,7 +51,19 @@ export function MarkdownEditorView({ text, onChange }: Props) {
 
     const editor = useEditor({
         immediatelyRender: false,
-        extensions: [StarterKit, Markdown],
+        extensions: [
+            // 禁用 StarterKit 默认 codeBlock，改用 CodeBlockLowlight（lowlight 实时高亮）
+            StarterKit.configure({ codeBlock: false }),
+            CodeBlockLowlight.configure({ lowlight }),
+            Link.configure({ autolink: true, linkOnPaste: true }),
+            Image.configure({ inline: false, allowBase64: true }),
+            Table.configure({ resizable: false, lastColumnResizable: false }),
+            TableRow,
+            TableCell,
+            TableHeader,
+            // markedOptions: gfm（表格/删除线）+ breaks（单换行→br，对齐 typora 式）
+            Markdown.configure({ markedOptions: { gfm: true, breaks: true } }),
+        ],
         content: text,
         onUpdate: ({ editor }) => {
             if (syncingRef.current) return

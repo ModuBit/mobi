@@ -35,4 +35,28 @@ describe('MarkdownEditorView', () => {
         rerender(<MarkdownEditorView text="# B" onChange={() => {}} />)
         await waitFor(() => expect(document.querySelector('.ProseMirror')).toBeInTheDocument())
     })
+
+    it('富 markdown（表格/链接/图片/代码块）渲染不崩', async () => {
+        const md = [
+            '# 标题',
+            '',
+            '| a | b |',
+            '| --- | --- |',
+            '| 1 | 2 |',
+            '',
+            '[link](http://example.com)',
+            '',
+            '![img](http://example.com/x.png)',
+            '',
+            '```ts',
+            'const x = 1',
+            '```',
+        ].join('\n')
+        render(<MarkdownEditorView text={md} onChange={() => {}} />)
+        await waitFor(() => expect(document.querySelector('.ProseMirror')).toBeInTheDocument())
+        // 表格渲染（GFM 解析）
+        await waitFor(() => expect(document.querySelector('.ProseMirror table')).toBeInTheDocument(), { timeout: 3000 })
+        // 代码块高亮（lowlight 输出 .hljs 类）
+        await waitFor(() => expect(document.querySelector('.ProseMirror pre.hljs, .ProseMirror pre code.hljs, .ProseMirror pre code span')).toBeInTheDocument(), { timeout: 3000 })
+    })
 })
