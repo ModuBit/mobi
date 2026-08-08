@@ -18,7 +18,7 @@ import { useEffect, useRef, useState, type ComponentType, type CSSProperties } f
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import { Button, Popover, Tooltip, Input, theme as antTheme } from 'antd'
-import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, ExternalLink, Unlink } from 'lucide-react'
+import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, ExternalLink, Unlink, Trash2, Image as ImageIcon } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
 import { CodeBlockWithMermaid } from './CodeBlockMermaid'
@@ -32,6 +32,7 @@ const LinkWithInputRule = Link.extend({
     },
 })
 import Image from '@tiptap/extension-image'
+import { imageInputRule } from './imageInputRule'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
@@ -70,6 +71,13 @@ import './editor.css'
 // lowlight 模块级单例（common 常用语言；按需可补 all）
 const lowlight = createLowlight(common)
 
+// Image 扩展 + 输入规则：打字 ![alt](url) 自动转图片（@tiptap/markdown 不提供打字解析）
+const ImageWithInputRule = Image.extend({
+    addInputRules() {
+        return [imageInputRule()]
+    },
+})
+
 interface Props {
     text: string
     onChange: (markdown: string) => void
@@ -96,7 +104,7 @@ export function MarkdownEditorView({ text, onChange }: Props) {
             StarterKit.configure({ codeBlock: false, link: false }),
             CodeBlockWithMermaid.configure({ lowlight }),
             LinkWithInputRule.configure({ autolink: true, linkOnPaste: true, openOnClick: false }),
-            Image.configure({ inline: false, allowBase64: true }),
+            ImageWithInputRule.configure({ inline: false, allowBase64: true }),
             Table.configure({ resizable: false, lastColumnResizable: false }),
             TableRow,
             TableCell,
@@ -131,12 +139,12 @@ export function MarkdownEditorView({ text, onChange }: Props) {
             </div>
             {editor && (
                 <>
-                    {/* 格式 menu：选中文本（非空选区）时显示 */}
+                    {/* 格式 menu：选中文本（非空选区）时显示；选中图片时让位给 imageMenu */}
                     <BubbleMenu
                         editor={editor}
                         pluginKey="formatMenu"
                         appendTo={() => document.body}
-                        shouldShow={({ state }: { state: { selection: { empty: boolean } } }) => !state.selection.empty}
+                        shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => !state.selection.empty && !editor.isActive('image')}
                     >
                         <MdBubbleContent editor={editor} />
                     </BubbleMenu>
@@ -148,6 +156,15 @@ export function MarkdownEditorView({ text, onChange }: Props) {
                         shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => state.selection.empty && editor.isActive('link')}
                     >
                         <LinkBubble editor={editor} />
+                    </BubbleMenu>
+                    {/* 图片 menu：点击图片（NodeSelection 选中 image 节点）时显示 */}
+                    <BubbleMenu
+                        editor={editor}
+                        pluginKey="imageMenu"
+                        appendTo={() => document.body}
+                        shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => !state.selection.empty && editor.isActive('image')}
+                    >
+                        <ImageBubble editor={editor} />
                     </BubbleMenu>
                 </>
             )}
@@ -162,10 +179,6 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
     const [linkOpen, setLinkOpen] = useState(false)
     const [linkUrl, setLinkUrl] = useState('')
 
-    const openLink = () => {
-        setLinkUrl((editor.getAttributes('link').href as string | undefined) ?? '')
-        setLinkOpen(true)
-    }
     const applyLink = () => {
         const chain = editor.chain().focus().extendMarkRange('link')
         if (linkUrl.trim()) chain.setLink({ href: linkUrl.trim() }).run()
@@ -182,7 +195,11 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
                 size="small"
                 icon={<Icon size={14} />}
                 onClick={onClick}
-                style={active ? { color: 'var(--ant-color-primary, #4dabf7)' } : undefined}
+                // active 用背景填充 + primary 文字色（同 MarkdownToolbar，浅色下仅 color 不可见）
+                style={active ? {
+                    color: 'var(--ant-color-primary)',
+                    background: 'var(--ant-color-primary-bg)',
+                } : undefined}
             />
         </Tooltip>
     )
@@ -200,7 +217,10 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
             <Btn icon={Code} title="行内代码" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()} />
             <Popover
                 open={linkOpen}
-                onOpenChange={setLinkOpen}
+                onOpenChange={(o) => {
+                    setLinkOpen(o)
+                    if (o) setLinkUrl((editor.getAttributes('link').href as string | undefined) ?? '')
+                }}
                 trigger="click"
                 placement="bottom"
                 content={
@@ -218,7 +238,14 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
                     </div>
                 }
             >
-                <Btn icon={LinkIcon} title="链接" active={editor.isActive('link')} onClick={openLink} />
+                {/* Popover 直接包 Button，不经 Btn/Tooltip 中间层（Tooltip 吞 trigger ref 致 clickOutside 误关） */}
+                <Button
+                    type="text"
+                    size="small"
+                    title="链接"
+                    icon={<LinkIcon size={14} />}
+                    style={editor.isActive('link') ? { color: 'var(--ant-color-primary)', background: 'var(--ant-color-primary-bg)' } : undefined}
+                />
             </Popover>
         </div>
     )
@@ -297,6 +324,77 @@ function LinkBubble({ editor }: { editor: Editor }) {
             </Tooltip>
             <Tooltip title="移除链接" mouseEnterDelay={0.4}>
                 <Button type="text" size="small" danger icon={<Unlink size={15} />} onClick={remove} />
+            </Tooltip>
+        </div>
+    )
+}
+
+/** 图片态 bubble：src 输入 + 应用（更新图片地址）/ 删除图片。点击图片（NodeSelection）时出现。 */
+function ImageBubble({ editor }: { editor: Editor }) {
+    const { token } = antTheme.useToken()
+    const [src, setSrc] = useState((editor.getAttributes('image').src as string | undefined) ?? '')
+    // BubbleMenu children 常驻（不每次 remount），需主动同步当前 image 的 src 到 input
+    const lastSrcRef = useRef<string | null>(null)
+    useEffect(() => {
+        const update = () => {
+            if (editor.isActive('image')) {
+                const s = (editor.getAttributes('image').src as string | undefined) ?? ''
+                // 仅在 src 真正变化时回填，避免覆盖用户正在输入的值
+                if (s !== lastSrcRef.current) {
+                    lastSrcRef.current = s
+                    setSrc(s)
+                }
+            } else {
+                lastSrcRef.current = null
+            }
+        }
+        editor.on('selectionUpdate', update)
+        editor.on('transaction', update)
+        return () => {
+            editor.off('selectionUpdate', update)
+            editor.off('transaction', update)
+        }
+    }, [editor])
+
+    const apply = () => {
+        const s = src.trim()
+        // NodeSelection 选中 image：updateAttributes 更新当前图片 src
+        if (s) editor.chain().focus().updateAttributes('image', { src: s }).run()
+    }
+    const remove = () => {
+        // NodeSelection：deleteSelection 删除整个图片节点
+        editor.chain().focus().deleteSelection().run()
+    }
+
+    // DESIGN：与 LinkBubble 同款抬升层（净白底 + 圆角 lg + 极淡边框 + 极淡投影）
+    const card: CSSProperties = {
+        display: 'flex', alignItems: 'center', gap: 4,
+        background: token.colorBgElevated,
+        borderRadius: token.borderRadiusLG,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        boxShadow: 'rgba(0,0,0,0.05) 0px 4px 24px',
+        padding: 4,
+    }
+
+    return (
+        <div style={card}>
+            <Input
+                className="md-link-input"
+                variant="borderless"
+                size="small"
+                prefix={<ImageIcon size={13} style={{ color: token.colorTextTertiary }} />}
+                placeholder="图片地址 https://"
+                value={src}
+                onChange={(e) => setSrc(e.target.value)}
+                onPressEnter={apply}
+                autoFocus
+                style={{ flex: 1, width: 260, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
+            />
+            <Tooltip title="应用" mouseEnterDelay={0.4}>
+                <Button type="text" size="small" icon={<Check size={15} style={{ color: token.colorPrimary }} />} onClick={apply} />
+            </Tooltip>
+            <Tooltip title="删除图片" mouseEnterDelay={0.4}>
+                <Button type="text" size="small" danger icon={<Trash2 size={15} />} onClick={remove} />
             </Tooltip>
         </div>
     )

@@ -9,6 +9,54 @@
     z-index: 1100;
 }
 
+/* ============ Markdown 工具栏横向滚动 ============ */
+/* 隐藏滚动条（webkit + firefox） */
+.md-toolbar-scroll {
+    scrollbar-width: none;
+}
+.md-toolbar-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+/* 子项禁止压缩：窄屏空间不足时按钮保持固有宽度，靠横向滚动而非挤压（否则图标间距被压窄） */
+.md-toolbar-scroll > * {
+    flex-shrink: 0;
+}
+
+/* 左右滑动箭头：绝对定位贴边，实底背景 + 靠内容侧发丝边框，与滚动内容硬分离 */
+.md-toolbar-arrow {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    border: none;
+    cursor: pointer;
+    color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.55));
+    background: var(--ant-color-bg-container, #faf9f5);
+    transition: color 0.12s, background 0.12s;
+}
+
+.md-toolbar-arrow:hover {
+    color: var(--ant-color-primary, #3d3d3a);
+    /* 用实色 primaryBg（米白）而非 fill-tertiary（半透明），避免透出底层按钮显得「透明」 */
+    background: var(--ant-color-primary-bg, #e8e6dc);
+}
+
+/* 靠内容侧的发丝分隔线（inset 阴影，避免占据布局宽度） */
+.md-toolbar-arrow-left {
+    left: 0;
+    box-shadow: inset -1px 0 0 var(--ant-color-border-secondary, rgba(0, 0, 0, 0.08));
+}
+
+.md-toolbar-arrow-right {
+    right: 0;
+    box-shadow: inset 1px 0 0 var(--ant-color-border-secondary, rgba(0, 0, 0, 0.08));
+}
+
 /* 链接 bubble 输入框：borderless + 强制 focus 无光晕（DESIGN：无 focus 光晕） */
 .md-link-input.ant-input-affix-wrapper,
 .md-link-input.ant-input {
@@ -81,7 +129,9 @@
     border-left: 3px solid rgba(127, 127, 127, 0.4);
     padding-left: 12px;
     margin: 0.5em 0;
-    opacity: 0.85;
+    /* 引用文字用次级文字色（colorTextSecondary），与正文 colorText 拉开层次；
+       不用 opacity——会让左边框一并变淡 */
+    color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.55));
 }
 
 .markdown-editor-view .ProseMirror ul {
@@ -127,14 +177,16 @@
     cursor: pointer;
 }
 
-/* 自定义 checkbox：appearance none + 暖调边框 + checked 主色 + ✓ 伪元素 */
+/* 自定义 checkbox：appearance none + 清晰边框（colorPrimary，深灰/米白随主题）+ checked 主色 + ✓ 伪元素 */
 .markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
     appearance: none;
     -webkit-appearance: none;
     width: 16px;
     height: 16px;
     margin: 0;
-    border: 1.5px solid var(--ant-color-border, #d9d9d9);
+    /* 边框用 colorPrimary：light=#3d3d3a 深灰，dark=米白，在纸感米白底上都清晰；
+       不可用 colorBorder（#d9d9d9 浅灰）——与 #faf9f5 底对比不足，框看不清 */
+    border: 1.5px solid var(--ant-color-primary, #3d3d3a);
     border-radius: 3px;
     background: transparent;
     cursor: pointer;
@@ -143,7 +195,7 @@
 }
 
 .markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:hover {
-    border-color: var(--ant-color-primary, #3d3d3a);
+    background: var(--ant-color-primary-bg, rgba(0, 0, 0, 0.04));
 }
 
 .markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
@@ -196,7 +248,9 @@
 
 .markdown-editor-view .ProseMirror th,
 .markdown-editor-view .ProseMirror td {
-    border: 1px solid var(--ant-color-border-secondary, rgba(0, 0, 0, 0.08));
+    /* colorBorder 太淡（≈背景）、colorTextTertiary 太突出，取折中用 colorTextQuaternary（四级文字色）。
+       深浅主题都保证对比（文字色必有对比度） */
+    border: 1px solid var(--ant-color-text-quaternary, rgba(0, 0, 0, 0.25));
     padding: 6px 10px;
 }
 
@@ -227,4 +281,51 @@
 
 .code-editor-view .cm-gutters {
     border-right: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+/* ============ mermaid 块（编辑器内）============ */
+/* 源码态：NodeViewContent as="pre"，复用代码块观感 */
+.markdown-editor-view .mermaid-source {
+    background: rgba(127, 127, 127, 0.15);
+    border-radius: 6px;
+    padding: 12px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+    outline: none;
+}
+
+/* 右上角控件组（缩放 + preview/source 切换） */
+.mermaid-controls {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 2;
+    display: flex;
+    gap: 2px;
+    opacity: 0.65;
+    transition: opacity 0.12s;
+}
+
+.mermaid-controls:hover {
+    opacity: 1;
+}
+
+.mermaid-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--ant-color-border-secondary, rgba(0, 0, 0, 0.08));
+    border-radius: var(--ant-border-radius, 8px);
+    background: var(--ant-color-bg-elevated, #fff);
+    color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.55));
+    cursor: pointer;
+    transition: color 0.12s;
+}
+
+.mermaid-btn:hover {
+    color: var(--ant-color-primary, #3d3d3a);
 }

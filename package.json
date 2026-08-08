@@ -38,6 +38,8 @@
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.30.0",
+        "@tiptap/extension-task-item": "^3.29.2",
+        "@tiptap/extension-task-list": "^3.29.2",
         "react-virtuoso": "^4.18.11"
     },
     "lint-staged": {

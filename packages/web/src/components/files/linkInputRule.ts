@@ -26,7 +26,11 @@ import { InputRule } from '@tiptap/core'
 export function linkInputRule(): InputRule {
     return new InputRule({
         find: /\[([^\]]+)\]\(([^)\s]+)\)$/,
-        handler: ({ match, range, chain }) => {
+        handler: ({ match, range, chain, state }) => {
+            // 排除图片语法 ![alt](url)：[ 前一字符若是 !，本规则放行，留给 imageInputRule 处理。
+            // 多个 input rule 独立触发（非短路），不加这层守卫 linkInputRule 会抢占图片。
+            const before = range.from > 0 ? state.doc.textBetween(range.from - 1, range.from) : ''
+            if (before === '!') return
             const text = match[1]
             const url = match[2]
             // 插入 link text + 一个空格（不带 mark），光标定位到空格后。

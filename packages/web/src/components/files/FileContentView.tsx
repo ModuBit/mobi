@@ -244,6 +244,15 @@ function renderReady(
         case 'markdown':
             // editable → Typora 式 WYSIWYG；否则只读渲染（含 render/source 切换）
             if (state.editable) {
+                // view=source → 源码编辑器（CodeMirror，所见即 md 源码）；
+                // view=render（默认）→ tiptap WYSIWYG。两视图共用同一份 draft，切换不丢内容
+                if (state.view === 'source') {
+                    return (
+                        <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
+                            <CodeEditorView text={editor.draft} filePath={filePath} wrap={state.wrap} onChange={editor.update} />
+                        </Suspense>
+                    )
+                }
                 return (
                     <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
                         <MarkdownEditorView text={editor.draft} onChange={editor.update} />
