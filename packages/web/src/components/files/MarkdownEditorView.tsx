@@ -14,20 +14,55 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
-import { Button, Popover, Tooltip, Input } from 'antd'
-import { Bold, Italic, Strikethrough, Code, Link as LinkIcon } from 'lucide-react'
+import { Button, Popover, Tooltip, Input, theme as antTheme } from 'antd'
+import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, ExternalLink, Unlink } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
 import { CodeBlockWithMermaid } from './CodeBlockMermaid'
 import Link from '@tiptap/extension-link'
+import { linkInputRule } from './linkInputRule'
+
+// Link 扩展 + 输入规则：打字 [text](url) 自动转链接（@tiptap/markdown 不提供打字解析）
+const LinkWithInputRule = Link.extend({
+    addInputRules() {
+        return [linkInputRule()]
+    },
+})
 import Image from '@tiptap/extension-image'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
+import TaskList from '@tiptap/extension-task-list'
+import TaskItem from '@tiptap/extension-task-item'
+import { InputRule } from '@tiptap/core'
+
+// TaskList + 自定义 input rule：输入 [] / [ ] / [x] + 空格 → 转 task item
+// （避开 StarterKit ListItem 的 "- " input rule 抢占——markdown 的 "- [ ]" 永远到不了）
+const TaskListWithInput = TaskList.extend({
+    addInputRules() {
+        return [
+            ...(this.parent?.() ?? []),
+            new InputRule({
+                find: /^\s*\[([ xX])\]\s$/,
+                handler: ({ match, range, chain }) => {
+                    const checked = match[1].toLowerCase() === 'x'
+                    chain()
+                        .deleteRange({ from: range.from, to: range.to })
+                        .toggleTaskList()
+                        .run()
+                    if (checked) {
+                        // toggleTaskList 默认 unchecked；[x] 标记完成（当前 taskItem）
+                        chain().updateAttributes('taskItem', { checked: true }).run()
+                    }
+                },
+            }),
+        ]
+    },
+})
 import { common, createLowlight } from 'lowlight'
 import { MarkdownToolbar } from './MarkdownToolbar'
 import './editor.css'
@@ -60,12 +95,14 @@ export function MarkdownEditorView({ text, onChange }: Props) {
             // 禁用 StarterKit 默认 codeBlock（用 CodeBlockWithMermaid）+ link（用扩展版 autolink 配置）
             StarterKit.configure({ codeBlock: false, link: false }),
             CodeBlockWithMermaid.configure({ lowlight }),
-            Link.configure({ autolink: true, linkOnPaste: true }),
+            LinkWithInputRule.configure({ autolink: true, linkOnPaste: true, openOnClick: false }),
             Image.configure({ inline: false, allowBase64: true }),
             Table.configure({ resizable: false, lastColumnResizable: false }),
             TableRow,
             TableCell,
             TableHeader,
+            TaskListWithInput,
+            TaskItem.configure({ nested: true }),
             // markedOptions: gfm（表格/删除线）+ breaks（单换行→br，对齐 typora 式）
             Markdown.configure({ markedOptions: { gfm: true, breaks: true } }),
         ],
@@ -93,9 +130,26 @@ export function MarkdownEditorView({ text, onChange }: Props) {
                 <EditorContent editor={editor} />
             </div>
             {editor && (
-                <BubbleMenu editor={editor} className="md-bubble" shouldShow={({ state }: { state: { selection: { empty: boolean } } }) => !state.selection.empty}>
-                    <MdBubbleContent editor={editor} />
-                </BubbleMenu>
+                <>
+                    {/* 格式 menu：选中文本（非空选区）时显示 */}
+                    <BubbleMenu
+                        editor={editor}
+                        pluginKey="formatMenu"
+                        appendTo={() => document.body}
+                        shouldShow={({ state }: { state: { selection: { empty: boolean } } }) => !state.selection.empty}
+                    >
+                        <MdBubbleContent editor={editor} />
+                    </BubbleMenu>
+                    {/* 链接 menu：光标定位链接（collapsed 选区 + 在 link 内）时显示 */}
+                    <BubbleMenu
+                        editor={editor}
+                        pluginKey="linkMenu"
+                        appendTo={() => document.body}
+                        shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => state.selection.empty && editor.isActive('link')}
+                    >
+                        <LinkBubble editor={editor} />
+                    </BubbleMenu>
+                </>
             )}
         </div>
     )
@@ -103,7 +157,7 @@ export function MarkdownEditorView({ text, onChange }: Props) {
 
 interface IconProps { size?: number }
 
-/** BubbleMenu 内容：选中浮窗（格式 + 链接编辑） */
+/** BubbleMenu 内容：选中文本的格式浮窗（加粗/斜体/.../加链接） */
 function MdBubbleContent({ editor }: { editor: Editor }) {
     const [linkOpen, setLinkOpen] = useState(false)
     const [linkUrl, setLinkUrl] = useState('')
@@ -166,6 +220,84 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
             >
                 <Btn icon={LinkIcon} title="链接" active={editor.isActive('link')} onClick={openLink} />
             </Popover>
+        </div>
+    )
+}
+
+/** 链接态 bubble：单行 URL + apply / open / remove（全 icon；标题在编辑器内直接改） */
+function LinkBubble({ editor }: { editor: Editor }) {
+    const { token } = antTheme.useToken()
+    const [url, setUrl] = useState((editor.getAttributes('link').href as string | undefined) ?? '')
+    // BubbleMenu children 常驻（不每次 remount），需主动同步当前 link 的 href 到 input
+    const lastHrefRef = useRef<string | null>(null)
+    useEffect(() => {
+        const update = () => {
+            if (editor.isActive('link')) {
+                const h = (editor.getAttributes('link').href as string | undefined) ?? ''
+                // 仅在 link href 真正变化时回填，避免覆盖用户正在输入的值
+                if (h !== lastHrefRef.current) {
+                    lastHrefRef.current = h
+                    setUrl(h)
+                }
+            } else {
+                lastHrefRef.current = null
+            }
+        }
+        editor.on('selectionUpdate', update)
+        editor.on('transaction', update)
+        return () => {
+            editor.off('selectionUpdate', update)
+            editor.off('transaction', update)
+        }
+    }, [editor])
+
+    const apply = () => {
+        const href = url.trim()
+        if (!href) {
+            editor.chain().focus().extendMarkRange('link').unsetLink().run()
+            return
+        }
+        editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
+    }
+    const remove = () => editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    const visit = () => {
+        const h = url.trim()
+        if (h) window.open(h, '_blank', 'noopener,noreferrer')
+    }
+
+    // DESIGN：抬升层净白底 + 圆角 lg + 极淡边框 + 极淡投影（rgba 0.05），零粗阴影
+    const card: CSSProperties = {
+        display: 'flex', alignItems: 'center', gap: 4,
+        background: token.colorBgElevated,
+        borderRadius: token.borderRadiusLG,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        boxShadow: 'rgba(0,0,0,0.05) 0px 4px 24px',
+        padding: 4,
+    }
+
+    return (
+        <div style={card}>
+            <Input
+                className="md-link-input"
+                variant="borderless"
+                size="small"
+                prefix={<Link2 size={13} style={{ color: token.colorTextTertiary }} />}
+                placeholder="https://"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onPressEnter={apply}
+                autoFocus
+                style={{ flex: 1, width: 220, fontSize: 12, fontFamily: 'var(--font-mono, JetBrains Mono, monospace)' }}
+            />
+            <Tooltip title="应用链接" mouseEnterDelay={0.4}>
+                <Button type="text" size="small" icon={<Check size={15} style={{ color: token.colorPrimary }} />} onClick={apply} />
+            </Tooltip>
+            <Tooltip title="新窗口打开" mouseEnterDelay={0.4}>
+                <Button type="text" size="small" icon={<ExternalLink size={15} />} onClick={visit} />
+            </Tooltip>
+            <Tooltip title="移除链接" mouseEnterDelay={0.4}>
+                <Button type="text" size="small" danger icon={<Unlink size={15} />} onClick={remove} />
+            </Tooltip>
         </div>
     )
 }

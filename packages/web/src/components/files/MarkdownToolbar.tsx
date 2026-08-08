@@ -19,7 +19,7 @@ import { Button, Divider, Input, Popover, Tooltip } from 'antd'
 import type { Editor } from '@tiptap/react'
 import {
     Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3,
-    List, ListOrdered, Quote, Code2, Minus, Link as LinkIcon, Image as ImageIcon,
+    List, ListOrdered, ListChecks, Quote, Code2, Minus, Link as LinkIcon, Image as ImageIcon,
     Table, Plus, Trash2, Undo2, Redo2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -106,6 +106,7 @@ export function MarkdownToolbar({ editor }: Props) {
             <Divider type="vertical" style={{ margin: '0 2px' }} />
             <ToolBtn icon={List} title={tr('bullet', '无序列表')} active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} />
             <ToolBtn icon={ListOrdered} title={tr('ordered', '有序列表')} active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} />
+            <ToolBtn icon={ListChecks} title={tr('todo', '待办列表')} active={editor.isActive('taskList')} onClick={() => editor.chain().focus().toggleTaskList().run()} />
             <ToolBtn icon={Quote} title={tr('quote', '引用')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
             <ToolBtn icon={Code2} title={tr('codeBlock', '代码块')} active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().setCodeBlock().run()} />
             <ToolBtn icon={Minus} title={tr('hr', '分割线')} onClick={() => editor.chain().focus().setHorizontalRule().run()} />

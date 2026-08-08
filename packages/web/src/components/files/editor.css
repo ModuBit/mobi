@@ -4,6 +4,22 @@
  * 避免与 antd CSS 变量可用性强耦合。
  */
 
+/* ============ BubbleMenu 浮窗（appendTo body，需高 z-index）============ */
+.md-bubble {
+    z-index: 1100;
+}
+
+/* 链接 bubble 输入框：borderless + 强制 focus 无光晕（DESIGN：无 focus 光晕） */
+.md-link-input.ant-input-affix-wrapper,
+.md-link-input.ant-input {
+    background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
+    border-radius: var(--ant-border-radius, 8px);
+}
+.md-link-input.ant-input-affix-wrapper-focused,
+.md-link-input.ant-input:focus {
+    box-shadow: none !important;
+}
+
 /* ============ Tiptap ProseMirror（markdown-editor-view）============ */
 .markdown-editor-view .ProseMirror {
     outline: none;
@@ -68,14 +84,98 @@
     opacity: 0.85;
 }
 
-.markdown-editor-view .ProseMirror ul,
-.markdown-editor-view .ProseMirror ol {
+.markdown-editor-view .ProseMirror ul {
+    list-style: disc;
     padding-left: 1.5em;
     margin: 0.5em 0;
 }
 
+.markdown-editor-view .ProseMirror ol {
+    list-style: decimal;
+    padding-left: 1.5em;
+    margin: 0.5em 0;
+}
+
+/* 嵌套列表 marker 递变（disc → circle → square）*/
+.markdown-editor-view .ProseMirror ul ul { list-style: circle; }
+.markdown-editor-view .ProseMirror ul ul ul { list-style: square; }
+
 .markdown-editor-view .ProseMirror li {
     margin: 0.2em 0;
+}
+
+/* task list（todo）：去掉默认 marker，checkbox 与内容横向排列 */
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] {
+    list-style: none;
+    padding-left: 0;
+}
+
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] li {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    /* label 高度 = 正文行高，checkbox 垂直居中即对齐文本首行中心 */
+    height: 1.7em;
+    line-height: 1;
+    user-select: none;
+    cursor: pointer;
+}
+
+/* 自定义 checkbox：appearance none + 暖调边框 + checked 主色 + ✓ 伪元素 */
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border: 1.5px solid var(--ant-color-border, #d9d9d9);
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:hover {
+    border-color: var(--ant-color-primary, #3d3d3a);
+}
+
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+    background: var(--ant-color-primary, #3d3d3a);
+    border-color: var(--ant-color-primary, #3d3d3a);
+}
+
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--ant-color-bg-elevated, #fff);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] li > div {
+    flex: 1;
+    min-width: 0;
+}
+
+/* 去掉 task item 首个 p 的 margin-top，让首行文本与 checkbox（label center）对齐 */
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] li > div > p:first-child {
+    margin-top: 0;
+}
+
+.markdown-editor-view .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+    opacity: 0.5;
+    text-decoration: line-through;
 }
 
 .markdown-editor-view .ProseMirror a {
@@ -96,8 +196,19 @@
 
 .markdown-editor-view .ProseMirror th,
 .markdown-editor-view .ProseMirror td {
-    border: 1px solid rgba(127, 127, 127, 0.4);
+    border: 1px solid var(--ant-color-border-secondary, rgba(0, 0, 0, 0.08));
     padding: 6px 10px;
+}
+
+/* th 区分：加粗 + 温度差背景（DESIGN：靠温度差做层次）*/
+.markdown-editor-view .ProseMirror th {
+    font-weight: 500;
+    text-align: left;
+    background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+.markdown-editor-view .ProseMirror td {
+    text-align: left;
 }
 
 /* ============ CodeMirror（code-editor-view）============ */
