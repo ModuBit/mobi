@@ -123,4 +123,14 @@ describe('saveFile handler', () => {
         expect(res.etag).toBeDefined()
         await expectFile(join(dir, 'a.md'), '# forced\n')
     })
+
+    it('空内容（清空文件）→ 成功覆盖，文件变空（清空是合法操作）', async () => {
+        const base = await etagOf(dir, 'a.md')
+        const res = await getHandler(mgr, 'saveFile')({
+            path: 'a.md', content: new Uint8Array(0), baseEtag: base,
+        })
+        expect(res.success).toBe(true)
+        expect(res.etag).toBeDefined()
+        await expectFile(join(dir, 'a.md'), '')
+    })
 })

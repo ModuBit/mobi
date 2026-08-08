@@ -37,23 +37,29 @@ export interface SaveFileResult {
  *
  * - 成功：{ etag, conflict:false }
  * - 冲突（409）：{ conflict:true, currentEtag }，不抛错（交 UI 分支处理）
- * - 其他错误：{ conflict:false, error }
+ * - 其他错误（500 CLI 业务错误 / 断网等）：{ conflict:false, error }
  *
- * mutationFn 永不抛错（409 已被 client 的 validateStatus 放行），上层直接消费 SaveFileResult。
- * force=true 时传空 baseEtag——cli saveFile 约定「baseEtag='' → 跳过 OCC」。
+ * mutationFn 永不抛错（409/500 已被 client 的 validateStatus 放行；网络异常用 try/catch 包成 error），
+ * 上层直接消费 SaveFileResult。force=true 时传空 baseEtag——cli saveFile 约定「baseEtag='' → 跳过 OCC」。
  */
 export function useSaveFile(sessionId: string) {
     const api = useMobiApi()
     return useMutation<SaveFileResult, never, SaveFileArgs>({
         mutationFn: async ({ path, content, baseEtag, force }) => {
-            const res = await api.files.save(sessionId, path, content, force ? '' : baseEtag)
-            if (res.status === 409) {
-                const data = res.data as { currentEtag?: string }
-                return { conflict: true, currentEtag: data.currentEtag }
+            try {
+                const res = await api.files.save(sessionId, path, content, force ? '' : baseEtag)
+                if (res.status === 409) {
+                    const data = res.data as { currentEtag?: string }
+                    return { conflict: true, currentEtag: data.currentEtag }
+                }
+                const data = res.data as { success: boolean; etag?: string; error?: string }
+                if (!data.success) return { conflict: false, error: data.error }
+                return { etag: data.etag, conflict: false }
+            } catch (e) {
+                // validateStatus 已放行 409/500，此处仅断网 / 超时 / axios 拦截器 reject 等网络异常。
+                // 包成 error 而非抛出，兑现「mutationFn 永不抛错」契约，避免 doSave 的 setTimeout 产生未处理 rejection。
+                return { conflict: false, error: e instanceof Error ? e.message : 'save failed' }
             }
-            const data = res.data as { success: boolean; etag?: string; error?: string }
-            if (!data.success) return { conflict: false, error: data.error }
-            return { etag: data.etag, conflict: false }
         },
         retry: false,
     })

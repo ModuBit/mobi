@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { App } from 'antd'
 import { useSaveFile } from '@/core/data/hooks/mutations/useSaveFile'
 import { AUTOSAVE_DEBOUNCE_MS } from '@/core/config/editConfig'
 
@@ -58,6 +59,7 @@ export function useFileEditor(
     const baseEtagRef = useRef(initial.etag)
 
     const { mutateAsync: saveAsync } = useSaveFile(sessionId)
+    const { message } = App.useApp()
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // 同步 draft state + ref
@@ -100,7 +102,12 @@ export function useFileEditor(
                 setConflict({ currentEtag: r.currentEtag ?? '' })
                 return { ok: false }
             }
-            if (r.error) return { ok: false }
+            if (r.error) {
+                // 业务错误（CLI rpcError 经 hub 包成 500，或断网）→ 提示用户，避免静默失败。
+                // 旧逻辑此处静默返回 ok:false，UI 无任何反馈，用户误以为已保存。
+                message.error(r.error)
+                return { ok: false }
+            }
             // 成功：推进 baseEtag/baseText，清 draft
             if (r.etag) baseEtagRef.current = r.etag
             setBaseText(curDraft)
@@ -113,7 +120,7 @@ export function useFileEditor(
         } finally {
             setSaving(false)
         }
-    }, [saveAsync, filePath, sessionId, setDraftSync])
+    }, [saveAsync, filePath, sessionId, setDraftSync, message])
 
     const update = useCallback((text: string) => {
         setConflict(null)

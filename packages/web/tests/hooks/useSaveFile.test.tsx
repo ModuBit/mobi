@@ -66,6 +66,25 @@ describe('useSaveFile', () => {
         })
     })
 
+    it('500（CLI rpcError 经 hub 包成 500）→ { conflict:false, error }，不抛错', async () => {
+        saveMock.mockResolvedValueOnce({ status: 500, data: { success: false, error: 'cli boom' } })
+        const { result } = renderHook(() => useSaveFile('s1'), { wrapper: Wrapper })
+        await act(async () => {
+            const r = await result.current.mutateAsync({ path: 'a.md', content: new TextEncoder().encode('x'), baseEtag: 'old' })
+            expect(r).toEqual({ conflict: false, error: 'cli boom' })
+        })
+    })
+
+    it('网络错误（axios reject，如断网）→ 包成 { conflict:false, error }，mutationFn 不抛', async () => {
+        saveMock.mockRejectedValueOnce(new Error('Network Error'))
+        const { result } = renderHook(() => useSaveFile('s1'), { wrapper: Wrapper })
+        await act(async () => {
+            const r = await result.current.mutateAsync({ path: 'a.md', content: new TextEncoder().encode('x'), baseEtag: 'old' })
+            expect(r.conflict).toBe(false)
+            expect(typeof r.error).toBe('string')
+        })
+    })
+
     it('force=true → 传空 baseEtag（跳过 OCC）', async () => {
         saveMock.mockResolvedValueOnce({ status: 200, data: { success: true, etag: 'e2' } })
         const { result } = renderHook(() => useSaveFile('s1'), { wrapper: Wrapper })

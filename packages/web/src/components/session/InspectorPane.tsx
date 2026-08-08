@@ -131,7 +131,7 @@ const ADD_TAB_KEY = '__inspector_add'
 
 export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) {
     const { t } = useTranslation()
-    const { modal } = App.useApp()
+    const { modal, message } = App.useApp()
     const isMobile = useIsMobile()
     const { resumeSession, isResumePending } = useSessionActions(sessionId)
     const expanded = useWorkspaceStore((s) => s.getSession(sessionId).expanded)
@@ -164,7 +164,14 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                         {t('files.cancel', '取消')}
                     </Button>
                     <Button type="primary" onClick={async () => {
-                        await api.saveNow()
+                        // 保存失败（冲突 / 业务错误）→ 不关 tab：避免静默丢弃用户编辑。
+                        // 关掉确认框（让用户回到编辑器看 conflict/error 反馈），tab 保留，message 提示。
+                        const { ok } = await api.saveNow()
+                        if (!ok) {
+                            instance?.destroy()
+                            message.error(t('files.saveFailed', '保存失败，请处理后重试'))
+                            return
+                        }
                         instance?.destroy()
                         doClose()
                     }}>
@@ -173,7 +180,7 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
                 </>
             ),
         })
-    }, [closeTab, sessionId, t, modal])
+    }, [closeTab, sessionId, t, modal, message])
     const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
     const openTerminalTab = useWorkspaceStore((s) => s.openTerminalTab)
     const renameTerminalTab = useWorkspaceStore((s) => s.renameTerminalTab)

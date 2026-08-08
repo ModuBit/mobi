@@ -19,7 +19,7 @@ import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { logger } from '@/ui/logger'
 import { readFile, stat, writeFile, rename, unlink } from 'fs/promises'
 import { createReadStream } from 'fs'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { resolve, join } from 'path'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import { validatePath } from '../pathSecurity'
@@ -204,8 +204,10 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
     rpcHandlerManager.registerHandler<SaveFileRequest, SaveFileResponse>('saveFile', async (data) => {
         logger.debug('Save file:', data.path, 'baseEtag:', data.baseEtag)
 
-        if (!(data.content instanceof Uint8Array) || data.content.length === 0) {
-            return rpcError('Content is required')
+        // 仅校验类型 + 大小上限；允许空内容（清空文件是合法操作）。
+        // （旧逻辑拒绝 length===0，致用户无法把文件清空后保存）
+        if (!(data.content instanceof Uint8Array)) {
+            return rpcError('Invalid content')
         }
         if (data.content.length > MAX_UPLOAD_BYTES) {
             return rpcError('File too large (max 50MB)')
@@ -236,9 +238,11 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
                 return { success: false, conflict: true, currentEtag }
             }
 
-            // 原子写：tmp 与目标同目录（保证同设备 rename 原子），写完 rename 覆盖；失败清 tmp
+            // 原子写：tmp 与目标同目录（保证同设备 rename 原子），写完 rename 覆盖；失败清 tmp。
+            // tmp 名含 randomUUID：仅 safeName+pid 是确定性的，同进程对同路径并发保存
+            // （多 tab 编辑同一文件同时自动保存）会撞 tmp 名致覆盖/损坏，加随机后缀隔离。
             const safeName = data.path.replace(/[\\/]/g, '_')
-            const tmpPath = join(resolvedPath, '..', `.mobi-tmp-${safeName}-${process.pid}`)
+            const tmpPath = join(resolvedPath, '..', `.mobi-tmp-${safeName}-${process.pid}-${randomUUID()}`)
             await writeFile(tmpPath, data.content)
             try {
                 await rename(tmpPath, resolvedPath)

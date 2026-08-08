@@ -18,6 +18,7 @@ import { describe, test, expect, afterEach } from 'bun:test'
 import { setupTestApp, getAuthToken } from '../helpers/setupTestApp'
 import type { SyncEngine } from '../../src/sync/syncEngine'
 import type { Session } from '@mobi/shared'
+import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 
 const mockSession: Session = {
     id: 'test-session-1',
@@ -120,5 +121,29 @@ describe('POST /api/sessions/:id/save-file', () => {
         const { engine } = makeEngine(() => ({ success: true, etag: 'x' }))
         const res = await postSave(engine, new Uint8Array([1]), {})
         expect(res.status).toBe(400)
+    })
+
+    test('Content-Length 超限 → 413，不转发给 engine（第一道闸预校验）', async () => {
+        const { engine, calls } = makeEngine(() => ({ success: true, etag: 'x' }))
+        const res = await postSave(
+            engine,
+            new Uint8Array([1]),
+            { 'X-Mobi-Path': 'a.md', 'X-Mobi-Base-Etag': 'old', 'Content-Length': String(MAX_UPLOAD_BYTES + 1) },
+        )
+        expect(res.status).toBe(413)
+        // 预校验在 reader/engine 之前拦截，省带宽
+        expect(calls).toHaveLength(0)
+    })
+
+    test('空内容（Content-Length: 0，清空文件）→ 正常转发给 engine', async () => {
+        const { engine, calls } = makeEngine(() => ({ success: true, etag: 'empty-etag' }))
+        const res = await postSave(
+            engine,
+            new Uint8Array(0),
+            { 'X-Mobi-Path': 'a.md', 'X-Mobi-Base-Etag': 'old' },
+        )
+        expect(res.status).toBe(200)
+        expect(calls).toHaveLength(1)
+        expect(calls[0].content.length).toBe(0)
     })
 })

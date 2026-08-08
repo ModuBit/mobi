@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { App as AntdApp } from 'antd'
 import React from 'react'
 
 // mock useSaveFile：mutateAsync 可控
@@ -32,7 +33,7 @@ import { AUTOSAVE_DEBOUNCE_MS } from '@/core/config/editConfig'
 function Wrapper({ children }: { children: React.ReactNode }) {
     return (
         <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
-            {children}
+            <AntdApp>{children}</AntdApp>
         </QueryClientProvider>
     )
 }
@@ -109,6 +110,19 @@ describe('useFileEditor', () => {
             expect(r.ok).toBe(false)
         })
         expect(result.current.conflict).toEqual({ currentEtag: 'cur-etag' })
+    })
+
+    it('业务错误（error，非 conflict）→ ok:false + dirty 保持，可重试', async () => {
+        mutateAsync.mockResolvedValue({ conflict: false, error: 'boom' })
+        const { result } = renderEditor()
+        act(() => result.current.update('edited'))
+        await act(async () => {
+            const r = await result.current.saveNow()
+            expect(r.ok).toBe(false)
+        })
+        // 失败不推进 baseText、不清 draft → dirty 保持，用户可重试或手动处理
+        expect(result.current.dirty).toBe(true)
+        expect(result.current.conflict).toBeNull()
     })
 
     it('forceOverwrite → mutateAsync force:true', async () => {

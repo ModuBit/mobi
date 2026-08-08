@@ -202,7 +202,9 @@ export function createMobiApi() {
                     { params: { path } },
                 ),
             // save-file：inspector 编辑保存（octet-stream；path/baseEtag 走 header）。
-            // conflict → 409，validateStatus 放行让 useSaveFile 捕获并暴露 conflict 态。
+            // conflict → 409，CLI 业务错误（rpcError）经 hub 包成 500；
+            // 二者都放行（validateStatus），让 useSaveFile 按 data.success 分流，
+            // mutationFn 永不抛错（符合其 error:never 类型签名），仅断网等网络异常才 reject。
             save: (
                 sessionId: string,
                 path: string,
@@ -214,7 +216,7 @@ export function createMobiApi() {
                     'X-Mobi-Path': encodeURIComponent(path),
                     'X-Mobi-Base-Etag': baseEtag,
                 },
-                validateStatus: (s) => (s >= 200 && s < 300) || s === 409,
+                validateStatus: (s) => (s >= 200 && s < 300) || s === 409 || s === 500,
             }),
         },
 

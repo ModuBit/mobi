@@ -14,10 +14,19 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeAll } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, waitFor } from '@testing-library/react'
 import { MarkdownEditorView } from '@/components/files/MarkdownEditorView'
+
+// jsdom 没有 ResizeObserver（MarkdownToolbar 工具栏横向滚动依赖）
+beforeAll(() => {
+    vi.stubGlobal('ResizeObserver', class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    })
+})
 
 describe('MarkdownEditorView', () => {
     it('渲染 ProseMirror 编辑器', async () => {

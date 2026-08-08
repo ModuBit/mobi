@@ -200,16 +200,34 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ success: false, error: 'Path required (X-Mobi-Path header)' }, 400)
         }
 
+        // 第一道闸：Content-Length 预校验（对称 upload 路由），超限直接 413 不读 body，省带宽
+        const totalSize = Number(c.req.header('Content-Length') ?? 0)
+        if (!Number.isFinite(totalSize) || totalSize < 0) {
+            return c.json({ success: false, error: 'Invalid Content-Length' }, 400)
+        }
+        if (totalSize > MAX_UPLOAD_BYTES) {
+            return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
+        }
+
         const reader = c.req.raw.body?.getReader()
         if (!reader) {
             return c.json({ success: false, error: 'No request body' }, 400)
         }
 
+        // 第二道闸：累积字节校验（防 Content-Length 缺失/伪造绕过预校验），超限中途 413，
+        // 避免无界缓冲耗尽内存（旧逻辑把整个 body 无限制 push 到 parts[] 再 concatBytes）
         const parts: Uint8Array[] = []
+        let received = 0
         for (;;) {
             const { done, value } = await reader.read()
             if (done) break
-            if (value) parts.push(value)
+            if (value) {
+                received += value.byteLength
+                if (received > MAX_UPLOAD_BYTES) {
+                    return c.json({ success: false, error: 'File too large (max 50MB)' }, 413)
+                }
+                parts.push(value)
+            }
         }
         const content = concatBytes(parts)
 

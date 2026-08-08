@@ -279,6 +279,7 @@
         "unsavedTitle": "You have unsaved changes",
         "unsavedBody": "Save before closing?",
         "saveAndClose": "Save and close",
+        "saveFailed": "Save failed, please resolve and retry",
         "discardClose": "Close without saving",
         "cancel": "Cancel",
         "title": "File Explorer",

@@ -279,6 +279,7 @@
         "unsavedTitle": "有未保存的修改",
         "unsavedBody": "关闭前是否保存？",
         "saveAndClose": "保存并关闭",
+        "saveFailed": "保存失败，请处理后重试",
         "discardClose": "不保存关闭",
         "cancel": "取消",
         "title": "文件浏览器",

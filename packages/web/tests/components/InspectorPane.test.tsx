@@ -16,11 +16,13 @@
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { App as AntdApp } from 'antd'
 import { InspectorPane } from '@/components/session/InspectorPane'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
+import { getEditorApi } from '@/components/files/EditorRegistry'
 
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
     useIsMobile: () => false,
@@ -57,6 +59,16 @@ vi.mock('@/components/terminal/TerminalView', () => ({
 vi.mock('@/core/hooks/useCachedInstance', () => ({
     clearCachedInstance: vi.fn(),
 }))
+// mock FileContentView：真实组件拉 file meta/content（query hooks），dirty/关闭测试只需占位
+vi.mock('@/components/files/FileContentView', () => ({
+    default: () => <div data-testid="mock-fc" />,
+}))
+// mock EditorRegistry：getEditorApi 返回可控的 isDirty/saveNow（验证关 tab 保存逻辑）
+vi.mock('@/components/files/EditorRegistry', () => ({
+    getEditorApi: vi.fn(),
+    registerEditor: vi.fn(),
+    unregisterEditor: vi.fn(),
+}))
 
 // jsdom 没有 ResizeObserver（antd Tabs 依赖）
 beforeAll(() => {
@@ -69,13 +81,19 @@ beforeAll(() => {
 
 function renderWithClient(ui: React.ReactNode) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
+    // 包 antd App：InspectorPane 用 App.useApp() 取 modal/message，需 holder 上下文
+    return render(
+        <QueryClientProvider client={qc}>
+            <AntdApp>{ui}</AntdApp>
+        </QueryClientProvider>,
+    )
 }
 
 describe('InspectorPane', () => {
     beforeEach(() => {
         useWorkspaceStore.getState().clearAll()
         resumeSessionMock.mockReset()
+        vi.mocked(getEditorApi).mockReset()
     })
     afterEach(() => cleanup())
 
@@ -209,5 +227,42 @@ describe('InspectorPane', () => {
         const terminalItem = screen.getByText('session.inspector.terminal').closest('[role="menuitem"]')
         expect(terminalItem).toBeTruthy()
         expect(terminalItem?.getAttribute('aria-disabled')).toBe('true')
+    })
+
+    it('dirty 文件「保存并关闭」：saveNow 失败 → 不关 tab（防静默丢数据）', async () => {
+        const saveNow = vi.fn().mockResolvedValue({ ok: false })
+        vi.mocked(getEditorApi).mockReturnValue({ isDirty: () => true, saveNow })
+
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const treeTab = useWorkspaceStore.getState().getSession('s1').tabs[0]
+        useWorkspaceStore.getState().openFileInTab('s1', treeTab.id, 'a.md', 'a.md')
+
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        // 点 file tab 关闭 → 弹「未保存」确认框
+        fireEvent.click(document.querySelector('.ant-tabs-tab-remove') as HTMLElement)
+        // 点「保存并关闭」（i18n mock 返回 key 本身）
+        const saveBtn = await screen.findByText('files.saveAndClose')
+        await fireEvent.click(saveBtn)
+        // saveNow 被调用且返回失败 → tab 必须保留（旧逻辑无条件关闭，静默丢弃编辑）
+        await waitFor(() => expect(saveNow).toHaveBeenCalledTimes(1))
+        expect(useWorkspaceStore.getState().getSession('s1').tabs).toHaveLength(1)
+    })
+
+    it('dirty 文件「保存并关闭」：saveNow 成功 → 关 tab', async () => {
+        const saveNow = vi.fn().mockResolvedValue({ ok: true })
+        vi.mocked(getEditorApi).mockReturnValue({ isDirty: () => true, saveNow })
+
+        useWorkspaceStore.getState().setExpanded('s1', true)
+        useWorkspaceStore.getState().openFileTreeTab('s1')
+        const treeTab = useWorkspaceStore.getState().getSession('s1').tabs[0]
+        useWorkspaceStore.getState().openFileInTab('s1', treeTab.id, 'a.md', 'a.md')
+
+        renderWithClient(<InspectorPane sessionId="s1" />)
+        fireEvent.click(document.querySelector('.ant-tabs-tab-remove') as HTMLElement)
+        const saveBtn = await screen.findByText('files.saveAndClose')
+        await fireEvent.click(saveBtn)
+        // 成功 → tab 关闭
+        await waitFor(() => expect(useWorkspaceStore.getState().getSession('s1').tabs).toHaveLength(0))
     })
 })
