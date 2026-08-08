@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render } from '@testing-library/react'
+import { render, waitFor, act } from '@testing-library/react'
 
 // mock uiStore：useUiStore(selector) → selector({theme:'light'})；resolveTheme 透传
 vi.mock('@/core/data/stores/uiStore', () => ({
@@ -43,5 +43,22 @@ describe('CodeEditorView', () => {
     it('未知扩展名不崩（纯文本，无语言包）', () => {
         render(<CodeEditorView text="x" filePath="unknown.xyz" onChange={() => {}} wrap={false} />)
         expect(document.querySelector('.cm-editor')).toBeInTheDocument()
+    })
+
+    it('外部 text 同步不触发 onChange（防 dispatch→onChange 循环）', async () => {
+        // 回归：保存后 refetch 回灌 text → CodeEditorView dispatch 同步 →
+        // 不应回灌 onChange（否则 → editor.update → 又保存 → 循环）
+        const onChange = vi.fn()
+        const { rerender } = render(
+            <CodeEditorView text="a" filePath="f.ts" onChange={onChange} wrap={false} />,
+        )
+        await waitFor(() => expect(document.querySelector('.cm-editor')).toBeInTheDocument())
+        onChange.mockClear()
+        // 外部 text 变化（模拟 refetch 回灌）→ 内部 dispatch a→b → syncingRef 应阻断 onChange
+        await act(async () => {
+            rerender(<CodeEditorView text="b" filePath="f.ts" onChange={onChange} wrap={false} />)
+            await Promise.resolve()
+        })
+        expect(onChange).not.toHaveBeenCalled()
     })
 })

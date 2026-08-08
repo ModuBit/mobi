@@ -15,9 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { useSaveFile } from '@/core/data/hooks/mutations/useSaveFile'
-import { queryKeys } from '@/core/lib/query-keys'
 import { AUTOSAVE_DEBOUNCE_MS } from '@/core/config/editConfig'
 
 export interface FileEditorState {
@@ -59,7 +57,6 @@ export function useFileEditor(
     const draftRef = useRef<string | null>(null)
     const baseEtagRef = useRef(initial.etag)
 
-    const qc = useQueryClient()
     const { mutateAsync: saveAsync } = useSaveFile(sessionId)
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -108,14 +105,15 @@ export function useFileEditor(
             if (r.etag) baseEtagRef.current = r.etag
             setBaseText(curDraft)
             setDraftSync(null)
-            // invalidate 触发 meta refetch（fire-and-forget；draft 已推进，
-            // refetch 内容与 baseText 一致 → 编辑器 text 不变 → 不触发重置）
-            void qc.invalidateQueries({ queryKey: queryKeys.sessionFileMeta(sessionId, filePath) })
+            // 不 invalidate meta/content：编辑器已自管 baseEtag/baseText/draft，
+            // invalidate 会触发 meta refetch → etag 变 → content refetch → text 中间态
+            // 回灌编辑器 → 闪屏/光标丢失/dispatch→onChange 循环。
+            // Claude 改文件由下次保存的 OCC（baseEtagRef 对比 cli currentEtag）兜底。
             return { ok: true }
         } finally {
             setSaving(false)
         }
-    }, [saveAsync, filePath, qc, sessionId, setDraftSync])
+    }, [saveAsync, filePath, sessionId, setDraftSync])
 
     const update = useCallback((text: string) => {
         setConflict(null)

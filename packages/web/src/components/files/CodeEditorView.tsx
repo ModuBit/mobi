@@ -71,6 +71,8 @@ export function CodeEditorView({ text, filePath, wrap, onChange }: Props) {
     // onChange 用 ref，避免 docChanged 闭包 stale + 避免 editor 重建
     const onChangeRef = useRef(onChange)
     onChangeRef.current = onChange
+    // 外部 text 同步（dispatch）期间置 true，阻断 updateListener 回灌 onChange 致循环
+    const syncingRef = useRef(false)
 
     // 创建 editor（仅 filePath 维度重建）
     useEffect(() => {
@@ -85,7 +87,7 @@ export function CodeEditorView({ text, filePath, wrap, onChange }: Props) {
             wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
             themeComp.current.of(isDark ? oneDark : []),
             EditorView.updateListener.of((u) => {
-                if (u.docChanged) onChangeRef.current(u.state.doc.toString())
+                if (u.docChanged && !syncingRef.current) onChangeRef.current(u.state.doc.toString())
             }),
         ]
         view.current = new EditorView({
@@ -108,9 +110,12 @@ export function CodeEditorView({ text, filePath, wrap, onChange }: Props) {
     // 外部 text 变化 → 同步（仅当与当前 doc 不同，避免光标/历史重置）
     useEffect(() => {
         if (view.current && view.current.state.doc.toString() !== text) {
+            // dispatch 期间置 syncingRef，避免 updateListener 回灌 onChange → editor.update → 循环
+            syncingRef.current = true
             view.current.dispatch({
                 changes: { from: 0, to: view.current.state.doc.length, insert: text },
             })
+            syncingRef.current = false
         }
     }, [text])
 
