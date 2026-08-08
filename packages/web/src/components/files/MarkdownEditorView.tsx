@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import { BubbleMenu } from '@tiptap/react/menus'
+import { Button, Popover, Tooltip, Input } from 'antd'
+import { Bold, Italic, Strikethrough, Code, Link as LinkIcon } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
 import { CodeBlockWithMermaid } from './CodeBlockMermaid'
@@ -26,6 +29,7 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { common, createLowlight } from 'lowlight'
+import { MarkdownToolbar } from './MarkdownToolbar'
 import './editor.css'
 
 // lowlight 模块级单例（common 常用语言；按需可补 all）
@@ -42,6 +46,7 @@ interface Props {
  * - @tiptap/markdown 提供双向序列化：setContent(md, {contentType:'markdown'}) 解析、getMarkdown() 序列化
  * - onChange 用 ref 持有（避免 editor 重建）；外部 text 变化时用 syncingRef 守卫，
  *   避免 setContent 触发的 onUpdate 回灌导致循环（保存成功/重载场景）
+ * - 顶部 MarkdownToolbar（格式/插入/表格操作）+ BubbleMenu（选中浮窗：格式/链接编辑）
  */
 export function MarkdownEditorView({ text, onChange }: Props) {
     const onChangeRef = useRef(onChange)
@@ -82,8 +87,85 @@ export function MarkdownEditorView({ text, onChange }: Props) {
     }, [text, editor])
 
     return (
-        <div className="markdown-editor-view" style={{ height: '100%', overflow: 'auto', padding: 16 }}>
-            <EditorContent editor={editor} />
+        <div className="markdown-editor-view" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {editor && <MarkdownToolbar editor={editor} />}
+            <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16 }}>
+                <EditorContent editor={editor} />
+            </div>
+            {editor && (
+                <BubbleMenu editor={editor} className="md-bubble" shouldShow={({ state }: { state: { selection: { empty: boolean } } }) => !state.selection.empty}>
+                    <MdBubbleContent editor={editor} />
+                </BubbleMenu>
+            )}
+        </div>
+    )
+}
+
+interface IconProps { size?: number }
+
+/** BubbleMenu 内容：选中浮窗（格式 + 链接编辑） */
+function MdBubbleContent({ editor }: { editor: Editor }) {
+    const [linkOpen, setLinkOpen] = useState(false)
+    const [linkUrl, setLinkUrl] = useState('')
+
+    const openLink = () => {
+        setLinkUrl((editor.getAttributes('link').href as string | undefined) ?? '')
+        setLinkOpen(true)
+    }
+    const applyLink = () => {
+        const chain = editor.chain().focus().extendMarkRange('link')
+        if (linkUrl.trim()) chain.setLink({ href: linkUrl.trim() }).run()
+        else chain.unsetLink().run()
+        setLinkOpen(false)
+    }
+
+    const Btn = ({ icon: Icon, title, onClick, active }: {
+        icon: ComponentType<IconProps>; title: string; onClick: () => void; active?: boolean
+    }) => (
+        <Tooltip title={title}>
+            <Button
+                type="text"
+                size="small"
+                icon={<Icon size={14} />}
+                onClick={onClick}
+                style={active ? { color: 'var(--ant-color-primary, #4dabf7)' } : undefined}
+            />
+        </Tooltip>
+    )
+
+    return (
+        <div style={{
+            display: 'flex', alignItems: 'center', gap: 2, padding: '2px 4px',
+            background: 'var(--ant-color-bg-elevated, #fff)',
+            borderRadius: 6,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        }}>
+            <Btn icon={Bold} title="加粗" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
+            <Btn icon={Italic} title="斜体" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
+            <Btn icon={Strikethrough} title="删除线" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
+            <Btn icon={Code} title="行内代码" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()} />
+            <Popover
+                open={linkOpen}
+                onOpenChange={setLinkOpen}
+                trigger="click"
+                placement="bottom"
+                content={
+                    <div style={{ display: 'flex', gap: 4 }}>
+                        <Input
+                            size="small"
+                            placeholder="https://"
+                            value={linkUrl}
+                            onChange={(e) => setLinkUrl(e.target.value)}
+                            onPressEnter={applyLink}
+                            style={{ width: 200 }}
+                            autoFocus
+                        />
+                        <Button size="small" type="primary" onClick={applyLink}>确定</Button>
+                    </div>
+                }
+            >
+                <Btn icon={LinkIcon} title="链接" active={editor.isActive('link')} onClick={openLink} />
+            </Popover>
         </div>
     )
 }
