@@ -19,6 +19,7 @@ import { SSEProvider } from '@/core/providers/SSEProvider'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect, useState, Suspense } from 'react'
+import { Spin } from 'antd'
 import { setUnauthorizedHandler, createApiClient, useMobiApi } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
@@ -80,11 +81,28 @@ export function App() {
     return (
         <ErrorBoundary>
             <SSEProvider>
-                {/* 路由页面组件用 React.lazy 拆 chunk，加载期间挂 null（chunk 缓存后近乎无感） */}
-                <Suspense fallback={null}>
+                {/* 路由页面组件用 React.lazy 拆 chunk；加载期间挂居中 Spin（非空，避免远端
+                    慢链路拉 LoginPage 等小 chunk 时白屏像崩溃）。chunk 缓存后近乎无感 */}
+                <Suspense fallback={<RouteLoadingFallback />}>
                     <Outlet />
                 </Suspense>
             </SSEProvider>
         </ErrorBoundary>
+    )
+}
+
+/** 路由懒加载 chunk 拉取期间的占位：全屏居中 Spin（antd 已在 eager 图，零额外开销） */
+function RouteLoadingFallback() {
+    return (
+        <div
+            style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '100dvh',
+            }}
+        >
+            <Spin />
+        </div>
     )
 }

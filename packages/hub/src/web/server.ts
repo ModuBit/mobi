@@ -97,8 +97,8 @@ export function createWebApp(options: {
      * 静态资源 Cache-Control 注入（Hub 远端 PWA 冷启动慢的根因修复）。
      *
      * 在下游路由处理完成后，按 staticCacheControl 策略给成功的 GET/HEAD 响应注入分层
-     * Cache-Control。见 utils/staticCacheControl.ts 的背景说明：SW 接管竞态时浏览器
-     * HTTP 缓存必须能兜底，否则每次冷启都重走远端慢隧道。
+     * Cache-Control（仅 200-299 与 304，不含 3xx 重定向）。见 utils/staticCacheControl.ts
+     * 的背景说明：SW 接管竞态时浏览器 HTTP 缓存必须能兜底，否则每次冷启都重走远端慢隧道。
      *
      * 用 new Response 重建而非 c.header()：next() 后 c.res 已物化，显式重建最稳；
      * body 原样透传不缓冲，对大文件流式响应无性能影响。API/CLI 响应策略为 null 不动。
@@ -108,8 +108,9 @@ export function createWebApp(options: {
         const method = c.req.method
         if (method !== 'GET' && method !== 'HEAD') return
         const status = c.res.status
-        // 仅给成功响应打缓存头（2xx/3xx），错误响应不缓存
-        if (status < 200 || status >= 400) return
+        // 仅给成功的实体响应打缓存头：200-299 与 304（协商缓存命中）。
+        // 排除 3xx 重定向——给重定向打 max-age/immutable 会被永久缓存，跳转一旦有误无法修复。
+        if (!((status >= 200 && status < 300) || status === 304)) return
         const policy = staticCacheControl(
             c.req.path,
             c.res.headers.get('content-type') ?? undefined,
