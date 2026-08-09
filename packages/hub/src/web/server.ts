@@ -44,9 +44,15 @@ import type { WebSocketData } from '@socket.io/bun-engine'
 import { loadEmbeddedAssetMap, type EmbeddedWebAsset } from './embeddedAssets'
 import { isBunCompiled } from '../utils/bunCompiled'
 import { assertCorsOriginsForCredentials } from '../utils/cors'
+import { staticCacheControl } from './utils/staticCacheControl'
 import type { Store } from '../store'
 
-function findWebappDistDir(): { distDir: string; indexHtmlPath: string } {
+function findWebappDistDir(override?: string): { distDir: string; indexHtmlPath: string } {
+    // 测试可注入临时 dist 目录，避免依赖真实 web/dist 构建产物
+    if (override) {
+        return { distDir: override, indexHtmlPath: join(override, 'index.html') }
+    }
+
     const candidates = [
         join(process.cwd(), '..', 'web', 'dist'),
         join(import.meta.dir, '..', '..', '..', 'web', 'dist'),
@@ -81,10 +87,44 @@ export function createWebApp(options: {
     vapidPublicKey: string
     corsOrigins?: string[]
     embeddedAssetMap: Map<string, EmbeddedWebAsset> | null
+    distDirOverride?: string
 }): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
     app.use('*', logger())
+
+    /**
+     * 静态资源 Cache-Control 注入（Hub 远端 PWA 冷启动慢的根因修复）。
+     *
+     * 在下游路由处理完成后，按 staticCacheControl 策略给成功的 GET/HEAD 响应注入分层
+     * Cache-Control。见 utils/staticCacheControl.ts 的背景说明：SW 接管竞态时浏览器
+     * HTTP 缓存必须能兜底，否则每次冷启都重走远端慢隧道。
+     *
+     * 用 new Response 重建而非 c.header()：next() 后 c.res 已物化，显式重建最稳；
+     * body 原样透传不缓冲，对大文件流式响应无性能影响。API/CLI 响应策略为 null 不动。
+     */
+    app.use('*', async (c, next) => {
+        await next()
+        const method = c.req.method
+        if (method !== 'GET' && method !== 'HEAD') return
+        const status = c.res.status
+        // 仅给成功响应打缓存头（2xx/3xx），错误响应不缓存
+        if (status < 200 || status >= 400) return
+        const policy = staticCacheControl(
+            c.req.path,
+            c.res.headers.get('content-type') ?? undefined,
+        )
+        if (!policy) return
+        // 用 new Headers 复制再 set，保证原有 Content-Type 等全部保留
+        // （spread Headers 进对象字面量在 Bun 下会丢 header，不可靠）
+        const headers = new Headers(c.res.headers)
+        headers.set('cache-control', policy)
+        c.res = new Response(c.res.body, {
+            status: c.res.status,
+            statusText: c.res.statusText,
+            headers,
+        })
+    })
 
     // 健康检查端点（不需要认证）
     app.get('/health', (c) => c.json({ status: 'ok', protocolVersion: PROTOCOL_VERSION }))
@@ -163,7 +203,7 @@ export function createWebApp(options: {
         return app
     }
 
-    const { distDir, indexHtmlPath } = findWebappDistDir()
+    const { distDir, indexHtmlPath } = findWebappDistDir(options.distDirOverride)
 
     if (!existsSync(indexHtmlPath)) {
         app.get('/', (c) => {

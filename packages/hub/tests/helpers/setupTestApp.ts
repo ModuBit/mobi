@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import type { afterEach } from 'bun:test'
 import { Store } from '../../src/store'
 import { createWebApp } from '../../src/web/server'
 import { createConfiguration, resetConfiguration } from '../../src/configuration'
@@ -28,7 +27,10 @@ crypto.getRandomValues(testJwtSecret)
 export const testCliApiToken = 'test-cli-api-token'
 export const testWebApiToken = 'test-web-api-token'
 
-export async function setupTestApp(syncEngine: SyncEngine | null = null) {
+export async function setupTestApp(
+    syncEngine: SyncEngine | null = null,
+    opts: { distDirOverride?: string } = {},
+) {
     const store = new Store(':memory:')
     process.env.CLI_API_TOKEN = testCliApiToken
     process.env.WEB_API_TOKEN = testWebApiToken
@@ -49,6 +51,8 @@ export async function setupTestApp(syncEngine: SyncEngine | null = null) {
         // 测试用具体 origin（非 '*'）：web 层 credentials:true 与 '*' 互斥，启动会 throw（assertCorsOriginsForCredentials）
         corsOrigins: ['http://localhost:3000'],
         embeddedAssetMap: null,
+        // 注入临时 dist 目录（静态资源 Cache-Control 等测试用），不依赖真实 web/dist 构建
+        distDirOverride: opts.distDirOverride,
     })
 
     const cleanup = () => {
