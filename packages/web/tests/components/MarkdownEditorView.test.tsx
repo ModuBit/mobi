@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, waitFor, cleanup } from '@testing-library/react'
 import { MarkdownEditorView } from '@/components/files/MarkdownEditorView'
 
 // jsdom 没有 ResizeObserver（MarkdownToolbar 工具栏横向滚动依赖）
@@ -27,6 +27,9 @@ beforeAll(() => {
         disconnect() {}
     })
 })
+
+// vitest 未开 globals：渲染型测试需显式 cleanup，否则 DOM 累积致 getBy*/querySelector 命中前一个用例的节点
+afterEach(cleanup)
 
 describe('MarkdownEditorView', () => {
     it('渲染 ProseMirror 编辑器', async () => {
@@ -67,5 +70,18 @@ describe('MarkdownEditorView', () => {
         await waitFor(() => expect(document.querySelector('.ProseMirror table')).toBeInTheDocument(), { timeout: 3000 })
         // 代码块高亮（lowlight 输出 .hljs 类）
         await waitFor(() => expect(document.querySelector('.ProseMirror pre.hljs, .ProseMirror pre code.hljs, .ProseMirror pre code span')).toBeInTheDocument(), { timeout: 3000 })
+    })
+
+    it('外部 text 变化走 setContent 且不回灌 onChange（防 edit→md→text→setContent 死循环）', async () => {
+        const onChange = vi.fn()
+        const { rerender } = render(<MarkdownEditorView text="# A" onChange={onChange} />)
+        await waitFor(() => expect(document.querySelector('.ProseMirror')).toBeInTheDocument())
+        onChange.mockClear()
+        // 外部变更（OCC reload / 文件切换后内容回填）→ 走 setContent 重解析
+        rerender(<MarkdownEditorView text="# B 新内容" onChange={onChange} />)
+        await waitFor(() => expect(document.querySelector('.ProseMirror')).toHaveTextContent('新内容'))
+        // setContent 期间 syncingRef + lastEmitted 双守卫 → 不回灌 onChange，
+        // 否则 onUpdate→onChange→text→setContent 会与 DOM↔model 抖动互激形成死循环（mermaid NodeView 下复现）
+        expect(onChange).not.toHaveBeenCalled()
     })
 })

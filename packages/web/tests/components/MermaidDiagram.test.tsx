@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, waitFor } from '@testing-library/react'
+import { resetMermaidCache } from '@/components/files/mermaidRender'
 
 // mock mermaid（懒加载动态 import 也被拦截）
 const renderMock = vi.fn(async (_id: string, _code: string) => ({ svg: '<svg class="mock-svg">mock</svg>' }))
@@ -30,13 +31,27 @@ vi.mock('mermaid', () => ({
 import { MermaidDiagram } from '@/components/ui/MermaidDiagram'
 
 describe('MermaidDiagram', () => {
-    beforeEach(() => { renderMock.mockClear() })
+    // svg 缓存是模块级，跨用例残留会令后续用例命中缓存不触发 render；每例前清空
+    beforeEach(() => { renderMock.mockClear(); resetMermaidCache() })
 
-    it('code 变化触发 mermaid.render + 注入 svg', async () => {
+    it('code 变化触发 mermaid.render + 以 <img> data URL 注入 svg（不进内联 DOM）', async () => {
+        // 性能关键：mermaid 输出的 SVG 动辄上千 DOM 节点，若内联进 ProseMirror 文档，
+        // 每次事务的 view.update 扫过大 SVG 子树会卡死（移动端尤甚）。
+        // 故渲染成单个 <img>（src=svg data URL），把上千节点压成 1 个。
         render(<MermaidDiagram code="graph TD; A-->B" />)
         await waitFor(() => expect(renderMock).toHaveBeenCalledWith(expect.any(String), 'graph TD; A-->B'))
-        await waitFor(() => expect(document.querySelector('.mermaid-diagram')).toBeInTheDocument())
-        await waitFor(() => expect(document.querySelector('.mock-svg')).toBeInTheDocument())
+
+        const img = await waitFor(() => {
+            const el = document.querySelector('img.mermaid-diagram') as HTMLImageElement | null
+            expect(el).not.toBeNull()
+            return el!
+        })
+        // src 是 svg data URL，且包含 mermaid 渲染出的 svg 内容
+        const src = img.getAttribute('src') ?? ''
+        expect(src.startsWith('data:image/svg+xml')).toBe(true)
+        expect(src).toContain('mock-svg')
+        // 关键不变量：原始 SVG 不再作为内联 DOM 子树存在
+        expect(document.querySelector('svg.mock-svg')).toBeNull()
     })
 
     it('code 变化 → 重新 render', async () => {

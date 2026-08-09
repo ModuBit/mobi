@@ -21,7 +21,7 @@ import { Button, Popover, Tooltip, Input, theme as antTheme } from 'antd'
 import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Link2, Check, ExternalLink, Unlink, Trash2, Image as ImageIcon } from 'lucide-react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
-import { CodeBlockWithMermaid } from './CodeBlockMermaid'
+import { MermaidCodeBlock, MermaidPreview } from './MermaidPreview'
 import Link from '@tiptap/extension-link'
 import { linkInputRule } from './linkInputRule'
 
@@ -96,13 +96,20 @@ export function MarkdownEditorView({ text, onChange }: Props) {
     onChangeRef.current = onChange
     // 外部同步 text 时置 true，跳过 onUpdate 回灌，避免循环
     const syncingRef = useRef(false)
+    // 最近一次产出/消费的 markdown：区分「自产回灌」与「外部变更」。
+    // 初始 '' 保证首次挂载走 setContent 把 text 按 markdown 正确解析（useEditor 的 content 默认按 HTML 解析）；
+    // 之后 text 若来自自身 onUpdate（getMarkdown 回灌）→ 与 lastEmitted 相等 → 跳过 setContent，
+    // 打破 onUpdate→onChange→text→setContent→remount→DOM抖动→事务→onUpdate 死循环。
+    const lastEmittedRef = useRef('')
 
     const editor = useEditor({
         immediatelyRender: false,
         extensions: [
-            // 禁用 StarterKit 默认 codeBlock（用 CodeBlockWithMermaid）+ link（用扩展版 autolink 配置）
+            // 禁用 StarterKit 默认 codeBlock（用 MermaidCodeBlock + MermaidPreview decoration）+ link（用扩展版 autolink 配置）
             StarterKit.configure({ codeBlock: false, link: false }),
-            CodeBlockWithMermaid.configure({ lowlight }),
+            MermaidCodeBlock.configure({ lowlight }),
+            // mermaid 块的预览图（decoration widget，插在原生 codeBlock 前；不用 NodeView 以免破坏 ProseMirror code 输入处理）
+            MermaidPreview,
             LinkWithInputRule.configure({ autolink: true, linkOnPaste: true, openOnClick: false }),
             ImageWithInputRule.configure({ inline: false, allowBase64: true }),
             Table.configure({ resizable: false, lastColumnResizable: false }),
@@ -117,18 +124,21 @@ export function MarkdownEditorView({ text, onChange }: Props) {
         content: text,
         onUpdate: ({ editor }) => {
             if (syncingRef.current) return
-            onChangeRef.current(editor.getMarkdown())
+            const md = editor.getMarkdown()
+            lastEmittedRef.current = md
+            onChangeRef.current(md)
         },
     })
 
     // 外部 text 变化（OCC reload / 文件切换后内容回填）→ 重新解析 markdown
     useEffect(() => {
         if (!editor) return
-        if (editor.getMarkdown() !== text) {
-            syncingRef.current = true
-            editor.commands.setContent(text, { contentType: 'markdown' })
-            syncingRef.current = false
-        }
+        // text 来自自身 onUpdate 回灌（=== lastEmitted）→ 不再 setContent，避免 edit→md→text→setContent 死循环
+        if (text === lastEmittedRef.current) return
+        syncingRef.current = true
+        editor.commands.setContent(text, { contentType: 'markdown' })
+        lastEmittedRef.current = text
+        syncingRef.current = false
     }, [text, editor])
 
     return (

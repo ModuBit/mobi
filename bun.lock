@@ -122,6 +122,7 @@
         "@tiptap/extension-table-header": "^3.29.2",
         "@tiptap/extension-table-row": "^3.29.2",
         "@tiptap/markdown": "^3.29.2",
+        "@tiptap/pm": "^3.29.2",
         "@tiptap/react": "^3.29.2",
         "@tiptap/starter-kit": "^3.29.2",
         "@xterm/addon-canvas": "^0.7.0",

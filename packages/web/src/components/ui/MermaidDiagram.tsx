@@ -15,19 +15,7 @@
  */
 
 import { useEffect, useState } from 'react'
-
-// mermaid 库懒加载（~1MB，首次遇 mermaid 图才加载），模块级单例
-let mermaidPromise: Promise<typeof import('mermaid')['default']> | null = null
-function loadMermaid(): Promise<typeof import('mermaid')['default']> {
-    if (!mermaidPromise) {
-        mermaidPromise = import('mermaid').then(({ default: mermaid }) => {
-            // 主题：default（深色 mermaid 对齐后续优化）
-            mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' })
-            return mermaid
-        })
-    }
-    return mermaidPromise
-}
+import { ensureRendered, readMermaid } from '@/components/files/mermaidRender'
 
 interface Props {
     /** mermaid 源码 */
@@ -35,31 +23,29 @@ interface Props {
 }
 
 /**
- * mermaid 图渲染（懒加载 + 缓存）。编辑器 NodeView 与只读预览共用，
- * 保证编辑态/只读态渲染一致。
+ * mermaid 图渲染（React 组件，只读预览用）。与编辑器 decoration 共享 mermaidRender
+ * 的 svg 缓存，同一份 code 不重复跑 dagre。
+ *
+ * 渲染成单个 `<img src="svg data URL">`（详见 mermaidRender）。
  */
 export function MermaidDiagram({ code }: Props) {
-    const [svg, setSvg] = useState('')
-    const [error, setError] = useState('')
-
+    // ensureRendered 异步完成后 bump tick 重渲染（读缓存已是 ready）
+    const [, setTick] = useState(0)
     useEffect(() => {
         let cancelled = false
-        // mermaid.render 需唯一 id（页面内多图不冲突）
-        const id = 'mermaid-' + Math.random().toString(36).slice(2, 10)
-        loadMermaid().then((mermaid) => {
-            if (cancelled) return
-            mermaid.render(id, code)
-                .then(({ svg }) => { if (!cancelled) setSvg(svg) })
-                .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)) })
-        }).catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)) })
+        if (readMermaid(code).status === 'loading') {
+            void ensureRendered(code).then(() => { if (!cancelled) setTick((t) => t + 1) })
+        }
         return () => { cancelled = true }
     }, [code])
 
-    if (error) {
-        return <pre style={{ color: 'var(--ant-color-error, #ff4d4f)', margin: 0, fontSize: 12 }}>{error}</pre>
+    const r = readMermaid(code)
+    if (r.status === 'error') {
+        return <pre style={{ color: 'var(--ant-color-error, #ff4d4f)', margin: 0, fontSize: 12 }}>{r.error}</pre>
     }
-    if (!svg) {
+    if (r.status === 'loading') {
         return <div style={{ padding: 16, color: 'var(--ant-color-text-tertiary, gray)', fontSize: 12 }}>渲染中…</div>
     }
-    return <div className="mermaid-diagram" dangerouslySetInnerHTML={{ __html: svg }} />
+    // alt 留空：图本身是内容，但其文本表达即源码，编辑器里可切源码查看；此处作装饰图
+    return <img className="mermaid-diagram" src={r.dataUrl} alt="" draggable={false} style={{ maxWidth: '100%' }} />
 }
