@@ -128,6 +128,39 @@ const REFRESH_SPIN_MIN_MS = 500
 const FILE_SEARCH_MAX = MAX_DISPLAY
 
 /**
+ * 给 query data 引用分配稳定 id（基于 WeakMap，对象回收自动清理）。
+ *
+ * 用途：作为 dirData memo 的「数据是否变了」信号源。
+ *
+ * 为什么不用 react-query 自带的 dataUpdatedAt：dataUpdatedAt 在每次后台 refetch
+ * 完成时都会更新（即便数据内容完全没变），用它做签名 → 单目录后台 refetch（staleTime:0
+ * + refetchOnWindowFocus 默认开，移动端/桌面 focus 抖动即触发）→ dataSig 变 →
+ * dirData 重建 → buildNodes（递归全树）→ treeData 重建。展开节点多时，任一目录的
+ * 一次后台刷新都会牵连整棵树的所有 DataNode + tooltip JSX 全量重造，卡顿随展开规模线性放大。
+ *
+ * 改用 data 引用 id：react-query structuralSharing 保证「相同响应」返回旧引用（深比较一致即不 new），
+ * 故引用 id 只在数据内容真正变化时改变。后台 refetch 拿到相同目录 → 引用不变 → 签名不变 → memo 命中。
+ *
+ * ⚠️ 前提依赖（有契约测试守卫，见 FileTreeView.test）：本方案的有效性完全建立在「目录 query 的 data
+ * 引用在内容不变时稳定」之上。这依赖 react-query 默认开启的 structuralSharing（main.tsx 未覆盖）+ queryFn
+ * (parseDirectoryEntries) 返回纯可深比较对象。若将来有人对目录 query 关掉 structuralSharing、或 queryFn 改
+ * 返回含类实例/函数等不可深比较结构，引用稳定前提即破，卡顿会静默回归（后台 refetch 又触发全树重建）。
+ *
+ * 已知盲区（非回归，故不特治）：gcTime（10min）回收某已展开目录缓存后，下次 refetch 无旧值可
+ * structuralSharing → 新建对象 → 分配新 dataRefId → 一次性全树重建。与旧 dataUpdatedAt 方案同等。
+ */
+const dataRefIdMap = new WeakMap<object, number>()
+let dataRefIdSeq = 0
+function dataRefId(obj: object | undefined): number {
+    if (!obj) return 0
+    const known = dataRefIdMap.get(obj)
+    if (known !== undefined) return known
+    const id = ++dataRefIdSeq
+    dataRefIdMap.set(obj, id)
+    return id
+}
+
+/**
  * 「刷新失败但仍有旧数据」的提示条。
  *
  * 刷新失败不该清空用户眼前的内容：树被错误空态顶掉、或搜索结果退化成「无匹配文件」，
@@ -250,9 +283,10 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
         })),
     })
 
-    /** dataSig：以每个 query 的 dataUpdatedAt 拼签名；data 不变时签名稳定 → dirData 引用稳定 →
-     *  buildNodes/treeData memo 生效（避免 useQueries 每次返回新数组导致 memo 链失效）。 */
-    const dataSig = results.map((r) => r.dataUpdatedAt).join('|')
+    /** dataSig：以每个 query 的 data 引用 id 拼签名（见 dataRefId）；data 内容不变时引用稳定 →
+     *  签名稳定 → dirData/buildNodes/treeData memo 命中，后台 refetch 相同数据不再全量重建树。
+     *  useQueries 每次返回新数组，直接读 results[i].data 进 memo 即可（引用稳就不会失效）。 */
+    const dataSig = results.map((r) => dataRefId(r.data)).join('|')
     const dirData = useMemo(() => {
         const m: Record<string, { entries: FileNode[]; truncated: boolean; total: number } | undefined> = {}
         paths.forEach((p, i) => {
@@ -401,7 +435,21 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
     useLayoutEffect(() => {
         const el = hostRef.current
         if (!el) return
-        const update = () => setTreeHeight(el.clientHeight)
+        const update = () => {
+            const h = el.clientHeight
+            // 仅防 virtual 的 true↔false 翻转：clientHeight 在卸载瞬间、布局抖动时会量到 0，
+            // 此时若让 virtual 落回 false、height 变 undefined，antd Tree 会重初始化虚拟列表、
+            // scrollTop 归零（滚顶诱因之一）。一旦测到正值即不再采纳 0。
+            //
+            // 刻意权衡的边界（不在本守卫治理范围）：
+            // - 正值 resize 风暴未节流：移动端地址栏收起动画期间 RO 每帧量到略不同的正值，
+            //   仍会逐帧 setTreeHeight → 逐帧重渲染。本次只解决 h===0 翻转；正值节流待真机
+            //   验证后按需补（勿据本注释误判「resize 风暴已治理」）。
+            // - host 是 flex:1，正常不会被同级（搜索栏 / 提示条）挤到持续 0；极端小视口下若被
+            //   压成持续 0，本守卫会保留旧正值（Tree 在 0 高容器里渲染虚拟行）——已知边界，
+            //   防滚顶优先于此极端视觉。
+            if (h > 0) setTreeHeight(h)
+        }
         const ro = new ResizeObserver(update)
         ro.observe(el)
         update()

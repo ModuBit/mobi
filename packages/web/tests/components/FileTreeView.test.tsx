@@ -19,6 +19,7 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import FileTreeView from '@/components/files/FileTreeView'
+import { queryKeys } from '@/core/lib/query-keys'
 
 // jsdom 没有 ResizeObserver（antd Tree 依赖）
 beforeAll(() => {
@@ -155,6 +156,32 @@ describe('FileTreeView', () => {
         )
         await waitFor(() => {
             expect(list.mock.calls.filter(c => c[1] === '.').length).toBeGreaterThan(rootCallsBefore)
+        })
+    })
+
+    // dataRefId 用 data 引用 id 替代 dataUpdatedAt 做 memo 签名，其有效性完全建立在
+    // react-query structuralSharing「内容相同 → 返回旧引用」之上。本测试锁定该前提：
+    // 若将来有人对目录 query 关掉 structuralSharing、或 queryFn 改返回不可深比较结构，
+    // 后台 refetch 会拿新引用 → 重新分配 dataRefId → dirData/treeData memo 全失效，
+    // 卡顿静默回归（无任何行为变化，仅性能退化）。此测试即捕获该退化。
+    it('相同目录响应的后台 refetch 保持 data 引用稳定（dataRefId 方案前提）', async () => {
+        const entries = [{ name: 'a.ts', type: 'file' as const }]
+        const list = vi.fn(async () => ({ data: { success: true, entries } }))
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        const { qc } = renderWithClient(<FileTreeView sessionId="s1" onOpenFile={vi.fn()} />)
+        await screen.findByText('a.ts')
+
+        const key = queryKeys.sessionDirectory('s1', '.')
+        const before = qc.getQueryData(key)
+        expect(before).toBeDefined()
+
+        // invalidate 触发后台 refetch（与 refetchOnWindowFocus / 手动刷新同路径）
+        await qc.invalidateQueries({ queryKey: key })
+        await waitFor(() => {
+            // 第二次请求已发出且 cache 已更新；structuralSharing 应返回旧引用（===）
+            expect(list.mock.calls.filter(c => c[1] === '.').length).toBeGreaterThanOrEqual(2)
+            expect(qc.getQueryData(key)).toBe(before)
         })
     })
 
