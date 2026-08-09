@@ -43,10 +43,15 @@ export function svgToDataUrl(svg: string): string {
 }
 
 // code → 渲染结果缓存。decoration 每次事务都 recompute，缓存命中时直接注入 img，不重跑 dagre。
-// 仅 code 真正变化（用户编辑该块）时才 miss → 异步重算。
+// 仅 code 真正变化（用户编辑该块）时才 miss → 异步重算。上限 50 简单 LRU（svg data URL 可达数十 KB）。
+const SVG_CACHE_CAP = 50
 const svgCache = new Map<string, string>() // code -> dataUrl
 const errorCache = new Map<string, string>() // code -> 错误信息
 const inflight = new Map<string, Promise<void>>() // code -> 进行中的渲染
+function setSvgCache(code: string, dataUrl: string) {
+    svgCache.set(code, dataUrl)
+    if (svgCache.size > SVG_CACHE_CAP) svgCache.delete(svgCache.keys().next().value!)
+}
 
 /** 触发某 code 的渲染（若未缓存），缓存结果。不操作 DOM。 */
 export function ensureRendered(code: string): Promise<void> {
@@ -63,7 +68,7 @@ export function ensureRendered(code: string): Promise<void> {
     }
     const p = loadMermaid()
         .then((mermaid) => mermaid.render(id, code))
-        .then(({ svg }) => { svgCache.set(code, svgToDataUrl(svg)) })
+        .then(({ svg }) => { setSvgCache(code, svgToDataUrl(svg)) })
         .catch((e: unknown) => { errorCache.set(code, e instanceof Error ? e.message : String(e)) })
         .finally(cleanupTemp)
     inflight.set(code, p)

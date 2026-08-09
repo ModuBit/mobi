@@ -21,10 +21,12 @@
  * 没有可靠的 destroy 回调；React root 挂进去会泄漏。raw DOM + 闭包 + 监听器随 widget DOM 被 GC。
  *
  * 缩放 + 平移都用 CSS transform（translate + scale）在 inner 上：
- * ⚠️ 不能用 overflow/scroll 平移——transform: scale 不改变布局尺寸，viewport 不会产生溢出区，
- * scrollLeft/Top 恒为 0，拖不动。translate 直接改视觉位置，与缩放一起在 transform 里算。
+ * ⚠️ 不能用 overflow/scroll 平移——transform: scale 不改变布局尺寸，scrollLeft/Top 恒为 0，拖不动。
  *
- * zoom/pan 跨 widget 重建保留：decoration recompute 会重建 widget，状态存模块级缓存（按 code）。
+ * touch-action 动态：zoom<=1 用 pan-y（浏览器原生纵向滚动查看超高图）；zoom>1 用 none
+ * （完全自管 pinch+平移）。pinch 不会因 pan-y 丢失——两指手势浏览器不消费，仍派发给 JS。
+ *
+ * viewCache 按块级稳定键（pos）：编辑某块源码时 code 每键变但 pos 不变，缩放/平移跨源码编辑保留。
  */
 import { renderMermaidInto } from './mermaidRender'
 
@@ -38,30 +40,35 @@ const ICON = {
     reset: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
     zoomOut: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/>',
     zoomIn: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>',
-    // 展开/编辑源码
     pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
-    // 收起（只看图）
     eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
 }
 
 interface ViewState { zoom: number; panX: number; panY: number }
-// code → 视图状态（缩放 + 平移），跨 widget 重建保留
+// 块级稳定键（pos）→ 视图状态。跨源码编辑保留缩放/平移（pos 不随 code 变）。上限 50 简单 LRU。
+const VIEW_CACHE_CAP = 50
 const viewCache = new Map<string, ViewState>()
+function setView(key: string, st: ViewState) {
+    viewCache.set(key, st)
+    if (viewCache.size > VIEW_CACHE_CAP) viewCache.delete(viewCache.keys().next().value!)
+}
 
 /** 测试用：清空视图状态缓存 */
 export function resetMermaidZoomCache(): void {
     viewCache.clear()
 }
 
-/** 创建 mermaid 预览 widget DOM */
-export function buildMermaidWidget(code: string, collapsed: boolean, onToggleCollapsed: () => void): HTMLElement {
+/**
+ * 创建 mermaid 预览 widget DOM。
+ * @param blockKey 块级稳定标识（pos），viewCache 按它保留缩放/平移，跨源码编辑不丢。
+ */
+export function buildMermaidWidget(code: string, collapsed: boolean, onToggleCollapsed: () => void, blockKey: string): HTMLElement {
     const wrap = document.createElement('div')
     wrap.className = 'mermaid-preview-widget'
     wrap.setAttribute('contenteditable', 'false')
 
     const viewport = document.createElement('div')
     viewport.className = 'mermaid-viewport'
-    viewport.style.touchAction = 'none'
     const inner = document.createElement('div')
     inner.className = 'mermaid-zoom-inner'
     inner.style.transformOrigin = 'top left'
@@ -70,20 +77,18 @@ export function buildMermaidWidget(code: string, collapsed: boolean, onToggleCol
 
     renderMermaidInto(code, inner)
 
-    // —— 视图状态（缩放 + 平移）——
-    const st = viewCache.get(code) ?? { zoom: 1, panX: 0, panY: 0 }
-    let { zoom, panX, panY } = st
+    // —— 视图状态（缩放 + 平移），按 blockKey 缓存 ——
+    const initial = viewCache.get(blockKey) ?? { zoom: 1, panX: 0, panY: 0 }
+    let { zoom, panX, panY } = initial
     const apply = () => { inner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})` }
-    const persist = () => { viewCache.set(code, { zoom, panX, panY }) }
+    const persist = () => setView(blockKey, { zoom, panX, panY })
     const setZoom = (z: number) => { zoom = clampZoom(z); apply(); persist(); syncControls() }
 
-    // 拖动平移：触摸单指 + 鼠标 pointer 共用 last 坐标
     let dragging = false
     let lastX = 0
     let lastY = 0
     const panBy = (dx: number, dy: number) => {
-        // zoom<=1 时图不溢出，不允许平移（避免拖飞）
-        if (zoom <= 1) return
+        if (zoom <= 1) return // 图不溢出时不平移（避免拖飞）
         panX += dx; panY += dy
         apply(); persist()
     }
@@ -101,7 +106,6 @@ export function buildMermaidWidget(code: string, collapsed: boolean, onToggleCol
     const btnReset = mkBtn('复位 100%', icon(ICON.reset), () => { zoom = 1; panX = 0; panY = 0; apply(); persist(); syncControls() })
     const btnOut = mkBtn('缩小', icon(ICON.zoomOut), () => setZoom(zoom - 0.1))
     const btnIn = mkBtn('放大', icon(ICON.zoomIn), () => setZoom(zoom + 0.1))
-    // 折叠态可变：点切换时命令式翻图标（不靠 widget 重建，避免连点丢点击）
     let collapsedState = collapsed
     const btnToggle = mkBtn(collapsed ? '展开源码' : '收起源码', icon(collapsed ? ICON.pencil : ICON.eye), () => {
         collapsedState = !collapsedState
@@ -115,6 +119,8 @@ export function buildMermaidWidget(code: string, collapsed: boolean, onToggleCol
         btnReset.title = `复位 100%（当前 ${Math.round(zoom * 100)}%）`
         viewport.style.cursor = zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'default'
         viewport.style.userSelect = zoom > 1 ? 'none' : 'auto'
+        // zoom<=1：pan-y 让浏览器原生纵向滚动查看超高图；zoom>1：none 完全自管 pinch+平移
+        viewport.style.touchAction = zoom > 1 ? 'none' : 'pan-y'
     }
 
     apply()
@@ -135,7 +141,7 @@ export function buildMermaidWidget(code: string, collapsed: boolean, onToggleCol
     controls.appendChild(btnToggle)
     wrap.appendChild(controls)
 
-    // —— 鼠标 pointer 拖动 ——
+    // —— 鼠标 pointer 拖动（zoom>1 时）——
     const onPointerDown = (e: PointerEvent) => {
         if (e.pointerType === 'touch' || zoom <= 1) return
         dragging = true; lastX = e.clientX; lastY = e.clientY
@@ -178,7 +184,7 @@ export function buildMermaidWidget(code: string, collapsed: boolean, onToggleCol
             pinchMidY = (a.clientY + b.clientY) / 2 - rect.top
             dragging = false
         } else if (e.touches.length === 1) {
-            // zoom<=1 不接管单指：让浏览器原生滚动查看超长图（仅 zoom>1 才平移）
+            // zoom<=1 不接管单指：让浏览器原生滚动查看超高图（仅 zoom>1 才平移）
             if (zoom <= 1) return
             dragging = true
             lastX = e.touches[0]!.clientX
@@ -189,7 +195,6 @@ export function buildMermaidWidget(code: string, collapsed: boolean, onToggleCol
         if (e.touches.length === 2 && pinchDist > 0) {
             e.preventDefault()
             const newZoom = clampZoom(+(pinchZoom * (touchDist(e) / pinchDist)).toFixed(2))
-            // 保持 pinch 起始中点指向的内容不动（translate+scale 下的 focal 锚点）
             panX = pinchMidX - (pinchMidX - pinchPanX) * (newZoom / pinchZoom)
             panY = pinchMidY - (pinchMidY - pinchPanY) * (newZoom / pinchZoom)
             zoom = newZoom

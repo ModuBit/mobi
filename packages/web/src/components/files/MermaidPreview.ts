@@ -84,7 +84,7 @@ export const MermaidPreview = Extension.create({
                                             tr = tr.setSelection(TextSelection.near(st.doc.resolve(pos), -1))
                                         }
                                         view.dispatch(tr)
-                                    }),
+                                    }, String(pos)),
                                     { side: -1, stopEvent: () => true, key: `mp-${pos}-${code.length}-${code.slice(-12)}` },
                                 ),
                             )
