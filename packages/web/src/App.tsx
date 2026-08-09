@@ -18,7 +18,7 @@ import { Outlet } from '@tanstack/react-router'
 import { SSEProvider } from '@/core/providers/SSEProvider'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { setUnauthorizedHandler, createApiClient, useMobiApi } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
@@ -80,7 +80,10 @@ export function App() {
     return (
         <ErrorBoundary>
             <SSEProvider>
-                <Outlet />
+                {/* 路由页面组件用 React.lazy 拆 chunk，加载期间挂 null（chunk 缓存后近乎无感） */}
+                <Suspense fallback={null}>
+                    <Outlet />
+                </Suspense>
             </SSEProvider>
         </ErrorBoundary>
     )

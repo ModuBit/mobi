@@ -14,14 +14,30 @@
  * limitations under the License.
  */
 
+import { lazy } from 'react'
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { App } from './App'
-import { LoginPage } from './pages/LoginPage'
-import { MainLayout } from './components/layout/MainLayout'
-import { SessionsLayout } from './pages/SessionsLayout'
-import { SessionDetailPage } from './pages/SessionDetailPage'
-import { NewSessionPage } from './pages/NewSessionPage'
-import { SettingsPage } from './pages/SettingsPage'
+
+// 页面组件用 React.lazy 拆成独立 chunk，把 chat/bubble/toolcard/markdown/editor 等
+// 重依赖移出主入口 bundle——首屏（尤其登录路径）只下 react+antd+providers+router 基础包。
+// App（root，含 SSEProvider）保持 eager（所有路由共用），并在 App 内用 Suspense 兜住懒加载。
+// 页面均为具名导出，故用 .then(m => ({ default: m.X })) 适配 React.lazy 的 default 约定。
+const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })))
+const MainLayout = lazy(() =>
+    import('./components/layout/MainLayout').then((m) => ({ default: m.MainLayout })),
+)
+const SessionsLayout = lazy(() =>
+    import('./pages/SessionsLayout').then((m) => ({ default: m.SessionsLayout })),
+)
+const SessionDetailPage = lazy(() =>
+    import('./pages/SessionDetailPage').then((m) => ({ default: m.SessionDetailPage })),
+)
+const NewSessionPage = lazy(() =>
+    import('./pages/NewSessionPage').then((m) => ({ default: m.NewSessionPage })),
+)
+const SettingsPage = lazy(() =>
+    import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+)
 
 // Root route - wraps all routes with App component
 const rootRoute = createRootRoute({

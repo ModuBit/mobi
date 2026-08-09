@@ -21,6 +21,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 import mkcert from 'vite-plugin-mkcert'
+import { visualizer } from 'rollup-plugin-visualizer'
 import { readMobiVersion } from './src/core/lib/version'
 
 // 从环境变量读取配置，支持 profile 机制覆盖
@@ -34,6 +35,9 @@ const mobiVersion = readMobiVersion(resolve(__dirname, '../cli/package.json'))
 // vite-plugin-mkcert 自动生成受信任证书（含 localhost + 当前所有局域网 IP），IP 变化无需手动改证书。
 // 启用方式：bun run dev:https（默认 bun run dev 走 HTTP，PC 开发无需 HTTPS）
 const useHttpsDev = process.env.MOBI_DEV_HTTPS === '1' || process.env.MOBI_DEV_HTTPS === 'true'
+
+// MOBI_BUNDLE_ANALYZE=1 时生成 dist/stats.html（bundle 体积 treemap），供体积分析；日常构建不跑
+const enableBundleAnalyze = process.env.MOBI_BUNDLE_ANALYZE === '1'
 
 export default defineConfig({
     plugins: [
@@ -63,6 +67,17 @@ export default defineConfig({
         }),
         // 仅在启用 HTTPS dev 时加载 mkcert：force:true 每次启动重新生成证书，跟踪本机 IP 变化
         ...(useHttpsDev ? [mkcert({ force: true })] : []),
+        // bundle 体积分析（按需）：MOBI_BUNDLE_ANALYZE=1 bun run build
+        ...(enableBundleAnalyze
+            ? [
+                  visualizer({
+                      filename: 'dist/stats.html',
+                      template: 'treemap',
+                      gzipSize: true,
+                      brotliSize: true,
+                  }),
+              ]
+            : []),
     ] as PluginOption[],
     resolve: {
         alias: {

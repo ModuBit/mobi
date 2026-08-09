@@ -1,6 +1,13 @@
 /* ==================== 字体定义 ==================== */
 
-/* 正文：阿里巴巴普惠体 3.0 (GB2312 子集) */
+/*
+ * 字体已子集化（scripts/subset-fonts.py）：阿里巴巴普惠体 3.0 仅保留 GB2312 一级常用字
+ * （3755 字）+ ASCII + 希腊字母 + 常用数学/标点符号，每字重 1.7MB → ~500KB。
+ * 子集外字符（二级生僻字等）由浏览器回退到系统字体，font-display: swap 保证不空显。
+ * 不在 index.html preload：字体非首屏关键路径（有系统字体兜底），慢链路下让位给 JS。
+ */
+
+/* 正文：阿里巴巴普惠体 3.0 (GB2312 一级常用字子集) */
 @font-face {
     font-family: 'Alibaba PuHuiTi 3.0';
     src: url('/fonts/alibaba-puhuiti/AlibabaPuHuiTi-3-55-Regular.woff2') format('woff2');

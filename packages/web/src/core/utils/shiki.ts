@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-import { createHighlighterCore } from 'shiki/core'
-import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import type { HighlighterCore } from 'shiki/core'
 import type { ShikiTransformer } from 'shiki'
 import { useEffect, useState } from 'react'
@@ -40,50 +38,62 @@ const lineNumberTransformer: ShikiTransformer = {
     },
 }
 
-// 2 主题（懒加载）
-const THEMES = [
-    import('@shikijs/themes/github-light'),
-    import('@shikijs/themes/github-dark'),
-]
+// 2 主题（懒加载）——包成函数，避免模块加载即触发 import() 拉主题 chunk
+function loadThemes() {
+    return [
+        import('@shikijs/themes/github-light'),
+        import('@shikijs/themes/github-dark'),
+    ]
+}
 
-// ~25 常用语言（懒加载）——覆盖文件查看常见场景
-const LANGS = [
-    import('@shikijs/langs/shellscript'),
-    import('@shikijs/langs/json'),
-    import('@shikijs/langs/yaml'),
-    import('@shikijs/langs/toml'),
-    import('@shikijs/langs/xml'),
-    import('@shikijs/langs/ini'),
-    import('@shikijs/langs/markdown'),
-    import('@shikijs/langs/html'),
-    import('@shikijs/langs/css'),
-    import('@shikijs/langs/javascript'),
-    import('@shikijs/langs/typescript'),
-    import('@shikijs/langs/jsx'),
-    import('@shikijs/langs/tsx'),
-    import('@shikijs/langs/sql'),
-    import('@shikijs/langs/c'),
-    import('@shikijs/langs/rust'),
-    import('@shikijs/langs/go'),
-    import('@shikijs/langs/java'),
-    import('@shikijs/langs/kotlin'),
-    import('@shikijs/langs/python'),
-    import('@shikijs/langs/php'),
-    import('@shikijs/langs/swift'),
-    import('@shikijs/langs/csharp'),
-    import('@shikijs/langs/dockerfile'),
-    import('@shikijs/langs/diff'),
-]
+// ~25 常用语言（懒加载）——包成函数，仅首次高亮时触发，覆盖文件查看常见场景
+function loadLangs() {
+    return [
+        import('@shikijs/langs/shellscript'),
+        import('@shikijs/langs/json'),
+        import('@shikijs/langs/yaml'),
+        import('@shikijs/langs/toml'),
+        import('@shikijs/langs/xml'),
+        import('@shikijs/langs/ini'),
+        import('@shikijs/langs/markdown'),
+        import('@shikijs/langs/html'),
+        import('@shikijs/langs/css'),
+        import('@shikijs/langs/javascript'),
+        import('@shikijs/langs/typescript'),
+        import('@shikijs/langs/jsx'),
+        import('@shikijs/langs/tsx'),
+        import('@shikijs/langs/sql'),
+        import('@shikijs/langs/c'),
+        import('@shikijs/langs/rust'),
+        import('@shikijs/langs/go'),
+        import('@shikijs/langs/java'),
+        import('@shikijs/langs/kotlin'),
+        import('@shikijs/langs/python'),
+        import('@shikijs/langs/php'),
+        import('@shikijs/langs/swift'),
+        import('@shikijs/langs/csharp'),
+        import('@shikijs/langs/dockerfile'),
+        import('@shikijs/langs/diff'),
+    ]
+}
 
-// 单例 highlighter（首次调用懒加载主题 + 语言 + JS 正则引擎）
+// 单例 highlighter（首次调用懒加载 shiki 核心 + JS 正则引擎 + 主题 + 语言）
+// shiki/core 与 engine 用 dynamic import，避免被静态拉进首屏 eager 图
+// （shiki 核心 + 25 种语法 chunk 合计数百 KB，仅文件查看代码高亮需要，首屏不该下）
 let highlighterPromise: Promise<HighlighterCore> | null = null
 function getHighlighter(): Promise<HighlighterCore> {
     if (!highlighterPromise) {
-        highlighterPromise = createHighlighterCore({
-            themes: THEMES,
-            langs: LANGS,
-            engine: createJavaScriptRegexEngine({ forgiving: true }),
-        })
+        highlighterPromise = (async () => {
+            const [{ createHighlighterCore }, { createJavaScriptRegexEngine }] = await Promise.all([
+                import('shiki/core'),
+                import('shiki/engine/javascript'),
+            ])
+            return createHighlighterCore({
+                themes: loadThemes(),
+                langs: loadLangs(),
+                engine: createJavaScriptRegexEngine({ forgiving: true }),
+            })
+        })()
     }
     return highlighterPromise
 }
