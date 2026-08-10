@@ -55,7 +55,9 @@
         "menu": "Menu",
         "themeLight": "Light Mode",
         "themeDark": "Dark Mode",
-        "showMore": "Show more ({{count}})"
+        "showMore": "Show more ({{count}} left)",
+        "loadMore": "Show more",
+        "collapse": "Collapse"
     },
     "home": {
         "newSession": "New Session"

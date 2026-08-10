@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react'
+import React, { useCallback } from 'react'
 import { App, Badge, Input, Modal, theme as antTheme } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
+import { keyframes } from '@emotion/react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { FolderClosed, FolderOpen, SquarePen } from 'lucide-react'
-import { EditOutlined, InboxOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons'
+import { EditOutlined, InboxOutlined, DeleteOutlined, PlayCircleOutlined, LoadingOutlined } from '@ant-design/icons'
 import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
-import { useGroupSessions } from '@/core/data/hooks/queries/useGroupSessions'
-import { useSessions } from '@/core/data/hooks/queries/useSessions'
+import { useProjectGroupSessions } from '@/core/data/hooks/useProjectGroupSessions'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { useUiStore } from '@/core/data/stores/uiStore'
@@ -37,12 +37,9 @@ import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
-import { getSessionAvatarStatus, extractFolderName, compareSessionsForList } from '@/core/utils/sessionStatus'
+import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
 
 const { useToken } = antTheme
-
-/** 默认展示和每次加载更多的会话数 */
-const PAGE_SIZE = 5
 
 // ========== 样式组件 ==========
 
@@ -260,21 +257,59 @@ const RenameRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     }
 `
 
-// "展开显示" 链接
-const ShowMoreLink = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: block;
-    width: 100%;
+// 骨架占位 shimmer 动画
+const shimmer = keyframes`
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+`
+
+// 会话行骨架（首次加载时占位，行高对齐 SessionItem）
+const SkeletonRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 8px 0 26px;
+
+    & > .sk-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: linear-gradient(
+            90deg,
+            ${props => props.$token.colorFillSecondary} 25%,
+            ${props => props.$token.colorFill} 37%,
+            ${props => props.$token.colorFillSecondary} 63%
+        );
+        background-size: 400% 100%;
+        animation: ${shimmer} 1.4s ease infinite;
+    }
+`
+
+// 列表底部链接区（收起 / 展开更多 并列）
+const ListFooter = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 16px;
     padding: 4px 8px 4px 30px;
+`
+
+// 底部链接（收起、展开更多共用）
+const FooterLink = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
     border: none;
     background: transparent;
     color: ${props => props.$token.colorTextTertiary};
     font-size: 12px;
-    text-align: left;
+    padding: 0;
     cursor: pointer;
     transition: color 0.15s;
 
     &:hover {
         color: ${props => props.$token.colorPrimary};
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.7;
     }
 `
 
@@ -394,78 +429,34 @@ function ProjectGroup({
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
-    // 获取该分组下的会话 ID 列表（始终请求，避免折叠时无数据判断激活态）
-    const { data: groupSessionsPages } = useGroupSessions(groupKey)
-    // 从全局会话缓存获取完整 Session 数据
-    const { data: allSessions } = useSessions()
-
-    // 从全局缓存中查找当前分组的会话
-    const sessions = useMemo<Session[]>(() => {
-        if (!groupSessionsPages?.pages || !allSessions) return []
-
-        const sessionIdSet = new Set<string>()
-        for (const page of groupSessionsPages.pages) {
-            for (const id of page.sessionIds) {
-                sessionIdSet.add(id)
-            }
-        }
-
-        return allSessions
-            .filter(s => sessionIdSet.has(s.id))
-            .sort(compareSessionsForList)
-    }, [groupSessionsPages?.pages, allSessions])
-
-    // 判断当前分组是否包含活跃会话 → 决定默认展开状态
-    const containsActive = useMemo(() => {
-        return !!activeSessionId && sessions.some(s => s.id === activeSessionId)
-    }, [activeSessionId, sessions])
-
-    // 展开状态：用户可自由折叠/展开
-    const [expanded, setExpanded] = useState(false)
-
-    // 当数据加载后发现包含活跃会话，自动展开（仅首次触发）
-    const [autoExpanded, setAutoExpanded] = useState(false)
-    useEffect(() => {
-        if (containsActive && !autoExpanded) {
-            setExpanded(true)
-            setAutoExpanded(true)
-        }
-    }, [containsActive, autoExpanded])
+    const {
+        sessions, visibleSessions, fullProjectPath,
+        expanded, toggleExpanded,
+        isLoadingInitial, isLoadingMore,
+        showCollapse, canShowMore, remainingCount,
+        showMore, collapse,
+    } = useProjectGroupSessions(groupKey, activeSessionId)
 
     const folderName = extractFolderName(groupKey)
-
-    // 从该分组下的 session metadata 中提取完整项目路径
-    const fullProjectPath = useMemo(() => {
-        for (const s of sessions) {
-            const path = (s.metadata as { path?: string } | undefined)?.path
-            if (path) return path
-        }
-        // 无 session 时 fallback 到 groupKey（截断路径，不保证正确）
-        return groupKey
-    }, [sessions, groupKey])
-
-    // 可见会话列表（折叠时限制数量）
-    const visibleSessions = sessions.slice(0, visibleCount)
-    const hasMore = sessions.length > visibleCount
 
     const handleSessionClick = useCallback((sessionId: string) => {
         navigate({ to: '/sessions/$sessionId', params: { sessionId } })
     }, [navigate])
-
-    const handleHeaderClick = useCallback(() => {
-        setExpanded(prev => !prev)
-    }, [])
 
     const handleNewSession = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
         navigate({ to: '/sessions/new', search: { cwd: fullProjectPath } })
     }, [navigate, fullProjectPath])
 
+    // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
+    const wrapperExpanded = expanded && (sessions.length > 0 || isLoadingInitial)
+    const showSkeleton = isLoadingInitial && sessions.length === 0
+    const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
+
     return (
         <GroupContainer>
-            <GroupHeader $token={token} onClick={handleHeaderClick}>
+            <GroupHeader $token={token} onClick={toggleExpanded}>
                 <FolderIcon $token={token}>
                     {expanded ? <FolderOpen size={14} /> : <FolderClosed size={14} />}
                 </FolderIcon>
@@ -474,10 +465,25 @@ function ProjectGroup({
                     <SquarePen size={13} />
                 </NewSessionButton>
             </GroupHeader>
-            <SessionListWrapper $expanded={expanded && sessions.length > 0}>
+            <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>
                     <SessionListContainer>
-                        {visibleSessions.map(session => (
+                        {showSkeleton ? (
+                            <>
+                                <SkeletonRow $token={token}>
+                                    <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
+                                    <span className="sk-bar" style={{ flex: 1 }} />
+                                </SkeletonRow>
+                                <SkeletonRow $token={token}>
+                                    <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
+                                    <span className="sk-bar" style={{ flex: 1 }} />
+                                </SkeletonRow>
+                                <SkeletonRow $token={token}>
+                                    <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
+                                    <span className="sk-bar" style={{ flex: 1 }} />
+                                </SkeletonRow>
+                            </>
+                        ) : visibleSessions.map(session => (
                             <SessionRow
                                 key={session.id}
                                 session={session}
@@ -495,13 +501,26 @@ function ProjectGroup({
                                 onDelete={() => onDelete(session)}
                             />
                         ))}
-                        {hasMore && (
-                            <ShowMoreLink
-                                $token={token}
-                                onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
-                            >
-                                {t('nav.showMore', { count: sessions.length - visibleCount })}
-                            </ShowMoreLink>
+                        {showFooter && (
+                            <ListFooter>
+                                {canShowMore && !isLoadingMore && (
+                                    <FooterLink $token={token} onClick={showMore}>
+                                        {remainingCount > 0
+                                            ? t('nav.showMore', { count: remainingCount })
+                                            : t('nav.loadMore')}
+                                    </FooterLink>
+                                )}
+                                {showCollapse && !isLoadingMore && (
+                                    <FooterLink $token={token} onClick={collapse}>
+                                        {t('nav.collapse')}
+                                    </FooterLink>
+                                )}
+                                {isLoadingMore && (
+                                    <FooterLink $token={token} disabled>
+                                        <LoadingOutlined /> {t('common.loading')}
+                                    </FooterLink>
+                                )}
+                            </ListFooter>
                         )}
                     </SessionListContainer>
                 </SessionListInner>

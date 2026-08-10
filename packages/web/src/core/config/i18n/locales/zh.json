@@ -55,7 +55,9 @@
         "menu": "菜单",
         "themeLight": "浅色模式",
         "themeDark": "深色模式",
-        "showMore": "展开显示 ({{count}})"
+        "showMore": "展开显示 (还剩 {{count}})",
+        "loadMore": "展开更多",
+        "collapse": "收起"
     },
     "home": {
         "newSession": "新建会话"
