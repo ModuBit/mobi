@@ -263,6 +263,8 @@ export interface GroupSessionsResponse {
     sessions: Session[]
     nextCursor: number | null
     hasMore: boolean
+    /** 分组会话总数（不受游标影响） */
+    total: number
 }
 
 // 用于 hook 内部的归一化数据结构（groupSessions 缓存只存 ID）
@@ -270,6 +272,8 @@ export interface GroupSessionsPage {
     sessionIds: string[]
     nextCursor: number | null
     hasMore: boolean
+    /** 分组会话总数（不受游标影响，用于前端显示「真实剩余」） */
+    total: number
 }
 
 // ============ SDK 元数据（来自 SDK initializationResult） ============

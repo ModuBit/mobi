@@ -167,7 +167,8 @@ export function createSessionGroupsRoutes(
         return c.json({
             sessions,
             nextCursor: result.nextCursor,
-            hasMore: result.hasMore
+            hasMore: result.hasMore,
+            total: result.total
         })
     })
 

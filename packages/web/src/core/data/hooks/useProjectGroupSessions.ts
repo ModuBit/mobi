@@ -122,7 +122,17 @@ export function useProjectGroupSessions(
 
     const visibleSessions = useMemo(() => sessions.slice(0, visibleCount), [sessions, visibleCount])
     const loadedCount = sessions.length
-    const remainingCount = Math.max(loadedCount - visibleCount, 0)
+
+    // 分组会话总数（后端 COUNT，不受本地已加载量影响）。
+    // 取最后一页 total —— 同一分组各页 total 一致，最后一页是最新 fetch。
+    // total 未就绪（首屏骨架）时回退 loadedCount，避免 remainingCount 暂时低估。
+    const total = useMemo<number | undefined>(() => {
+        const pages = groupSessionsPages?.pages
+        if (!pages || pages.length === 0) return undefined
+        return pages[pages.length - 1].total
+    }, [groupSessionsPages?.pages])
+    const realTotal = total ?? loadedCount
+    const remainingCount = Math.max(realTotal - visibleCount, 0)
 
     const toggleExpanded = useCallback(() => {
         setExpanded(prev => !prev)
@@ -153,7 +163,7 @@ export function useProjectGroupSessions(
         isLoadingInitial: isLoading,
         isLoadingMore: isFetchingNextPage,
         showCollapse: visibleCount > VISIBLE_PAGE_SIZE,
-        canShowMore: remainingCount > 0 || !!hasNextPage,
+        canShowMore: remainingCount > 0,
         remainingCount,
         showMore,
         collapse,

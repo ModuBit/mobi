@@ -417,6 +417,8 @@ export type GroupSessionsResult = {
     sessions: StoredSession[]
     nextCursor: number | null
     hasMore: boolean
+    /** 该分组会话总数（不受 cursor 影响，用于前端显示「真实剩余」而非本地已加载剩余） */
+    total: number
 }
 
 export function getSessionsByGroup(
@@ -444,5 +446,11 @@ export function getSessionsByGroup(
         ? rows[rows.length - 1].updated_at
         : null
 
-    return { sessions, nextCursor, hasMore }
+    // 分组会话总数（不受游标影响）—— 前端据此计算「真实剩余」，
+    // 避免基于本页 limit 条算出的剩余数误导（如分组 50 条、本页 20 条时显示「还剩 15」）
+    const totalRow = db.prepare(
+        'SELECT COUNT(*) as total FROM sessions WHERE namespace = ? AND group_key = ?'
+    ).get(namespace, groupKey) as { total: number }
+
+    return { sessions, nextCursor, hasMore, total: totalRow.total }
 }

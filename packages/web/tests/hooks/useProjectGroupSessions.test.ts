@@ -52,6 +52,8 @@ interface MockQueryOpts {
     isLoading?: boolean
     hasNextPage?: boolean
     isFetchingNextPage?: boolean
+    /** 分组会话总数，默认取 sessionIds.length */
+    total?: number
 }
 
 function mockQuery(opts: MockQueryOpts = {}) {
@@ -63,6 +65,7 @@ function mockQuery(opts: MockQueryOpts = {}) {
                 groupKey: 'g1',
                 nextCursor: null,
                 hasMore: !!opts.hasNextPage,
+                total: opts.total ?? (opts.sessionIds?.length ?? 0),
             }],
         },
         isLoading: opts.isLoading ?? false,
@@ -103,6 +106,22 @@ describe('useProjectGroupSessions', () => {
         expect(result.current.showCollapse).toBe(false)
     })
 
+    it('remainingCount 反映后端真实总数而非本地已加载量', () => {
+        // 本地仅加载 5 条（一页），但分组真实总数 50 → 应显示真实剩余 45
+        const sessions = Array.from({ length: 5 }, (_, i) => makeSession(`s${i}`, i))
+        mockQuery({
+            sessionIds: sessions.map(s => s.id),
+            sessions,
+            total: 50,
+            hasNextPage: true,
+        })
+
+        const { result } = renderHook(() => useProjectGroupSessions('g1'))
+        expect(result.current.visibleSessions).toHaveLength(5)
+        expect(result.current.remainingCount).toBe(45)
+        expect(result.current.canShowMore).toBe(true)
+    })
+
     it('showMore() 展开更多后：visibleSessions 增长、showCollapse 变 true', () => {
         const sessions = Array.from({ length: 7 }, (_, i) => makeSession(`s${i}`, i))
         mockQuery({ sessionIds: sessions.map(s => s.id), sessions })
@@ -137,6 +156,7 @@ describe('useProjectGroupSessions', () => {
         const { fetchNextPage } = mockQuery({
             sessionIds: sessions.map(s => s.id),
             sessions,
+            total: 50,
             hasNextPage: true,
         })
 
@@ -151,6 +171,7 @@ describe('useProjectGroupSessions', () => {
         const { fetchNextPage } = mockQuery({
             sessionIds: sessions.map(s => s.id),
             sessions,
+            total: 50,
             hasNextPage: true,
         })
 

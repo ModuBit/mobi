@@ -45,6 +45,7 @@ export function useGroupSessions(groupKey: string | null) {
                 sessionIds: res.data.sessions.map(s => s.id),
                 nextCursor: res.data.nextCursor,
                 hasMore: res.data.hasMore,
+                total: res.data.total,
             }
         },
         initialPageParam: undefined,
