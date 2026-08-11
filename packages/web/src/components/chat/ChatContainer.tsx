@@ -29,6 +29,7 @@ import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
 import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
+import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND } from '@/domain/chat/presentation'
@@ -236,14 +237,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }, [bgTasks, messageApi, t])
 
-    // 有更多历史页时，过滤掉不完整的 tool-call block 避免闪烁
+    // 有更多历史页时，过滤掉「孤儿」running tool-call block（结果被分页切走、永久卡 running），
+    // 但保留尾部的「活跃」running 工具块（当前正在执行的工具）——否则长任务（如 Write）
+    // 会在整个执行窗口被隐藏，直到 tool_result 到达才出现。详见 filterBlocksForPagination。
     const chatBlocks = useMemo(() => {
-        let blocks = hasNextPage
-            ? rawBlocks.filter((block) => {
-                if (block.kind !== 'tool-call') return true
-                return block.tool.state !== 'running'
-            })
-            : rawBlocks
+        let blocks = filterBlocksForPagination(rawBlocks, hasNextPage)
         // 追加后台任务完成卡片
         if (bgCompletedTasks.length > 0) {
             const lastCreatedAt = blocks.length > 0 ? blocks[blocks.length - 1].createdAt : Date.now()
