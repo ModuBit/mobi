@@ -428,29 +428,35 @@ export function getSessionsByGroup(
     cursor: number | null,
     limit: number = 20
 ): GroupSessionsResult {
+    // 单语句同时取分页数据与全集总数：内层 CTE 用 COUNT(*) OVER() 算分组全集
+    // （仅 namespace + group_key 过滤，不含 cursor/LIMIT），外层套 cursor 过滤与分页。
+    // 用单语句而非「SELECT + 独立 COUNT」是为了快照一致——SQLite WAL 下两条独立语句
+    // 各自取读快照，中间若有 CLI 写入 session，COUNT 与分页 SELECT 会基于不同快照，
+    // 致 total 与累计行数偏差、前端 remainingCount 失真。单语句天然同一快照，无竞态。
     const cursorCondition = cursor ? 'AND updated_at < ?' : ''
     const sql = `
-        SELECT * FROM sessions
-        WHERE namespace = ? AND group_key = ? ${cursorCondition}
+        WITH counted AS (
+            SELECT *, COUNT(*) OVER() AS total_count
+            FROM sessions
+            WHERE namespace = ? AND group_key = ?
+        )
+        SELECT * FROM counted
+        WHERE 1=1 ${cursorCondition}
         ORDER BY updated_at DESC
         LIMIT ?
     `
 
     const rows = cursor
-        ? db.prepare(sql).all(namespace, groupKey, cursor, limit) as DbSessionRow[]
-        : db.prepare(sql).all(namespace, groupKey, limit) as DbSessionRow[]
+        ? db.prepare(sql).all(namespace, groupKey, cursor, limit) as (DbSessionRow & { total_count: number })[]
+        : db.prepare(sql).all(namespace, groupKey, limit) as (DbSessionRow & { total_count: number })[]
 
     const sessions = rows.map(toStoredSession)
     const hasMore = rows.length === limit
     const nextCursor = hasMore && rows.length > 0
         ? rows[rows.length - 1].updated_at
         : null
+    // 全集总数从首行取（同一结果集所有行的 total_count 一致）；空结果集时为 0
+    const total = rows.length > 0 ? rows[0].total_count : 0
 
-    // 分组会话总数（不受游标影响）—— 前端据此计算「真实剩余」，
-    // 避免基于本页 limit 条算出的剩余数误导（如分组 50 条、本页 20 条时显示「还剩 15」）
-    const totalRow = db.prepare(
-        'SELECT COUNT(*) as total FROM sessions WHERE namespace = ? AND group_key = ?'
-    ).get(namespace, groupKey) as { total: number }
-
-    return { sessions, nextCursor, hasMore, total: totalRow.total }
+    return { sessions, nextCursor, hasMore, total }
 }

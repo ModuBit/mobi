@@ -52,9 +52,9 @@ export interface UseProjectGroupSessionsResult {
     isLoadingMore: boolean
     /** 是否展示「收起」入口 —— 当前可见数已超过初始档 */
     showCollapse: boolean
-    /** 是否还能「展开更多」—— 本地有剩余 或 后端还有下一页 */
+    /** 是否还能「展开更多」—— 后端真实总数还有剩余（hasNextPage 作防御兜底：极端情况下 total 失准时仍可触底拉取） */
     canShowMore: boolean
-    /** 本地未展示的会话数（用于"还剩 N"文案；本地耗尽时为 0） */
+    /** 后端真实总数与已展示数的差额（用于"还剩 N"文案；基于 total 而非本地已加载量） */
     remainingCount: number
     /** 展开更多：前端递增 visibleCount；若下一档将超出本地已加载数据且后端还有，则触底拉取下一页 */
     showMore: () => void
@@ -163,7 +163,9 @@ export function useProjectGroupSessions(
         isLoadingInitial: isLoading,
         isLoadingMore: isFetchingNextPage,
         showCollapse: visibleCount > VISIBLE_PAGE_SIZE,
-        canShowMore: remainingCount > 0,
+        // remainingCount > 0 覆盖正常路径；hasNextPage 兜底防 total 在极端并发下失准
+        // 时按钮过早消失、剩余页不可达（最坏情况只是多点一次拉到空页）
+        canShowMore: remainingCount > 0 || !!hasNextPage,
         remainingCount,
         showMore,
         collapse,

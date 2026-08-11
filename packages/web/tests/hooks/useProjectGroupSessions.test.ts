@@ -122,6 +122,22 @@ describe('useProjectGroupSessions', () => {
         expect(result.current.canShowMore).toBe(true)
     })
 
+    it('canShowMore 在 total 失准/耗尽时由 hasNextPage 兜底，避免按钮过早消失', () => {
+        // 极端场景：total 与本地已展示持平（remainingCount=0），但后端实际还有下一页。
+        // hasNextPage 兜底让按钮保留，防止剩余页永久不可达
+        const sessions = Array.from({ length: 5 }, (_, i) => makeSession(`s${i}`, i))
+        mockQuery({
+            sessionIds: sessions.map(s => s.id),
+            sessions,
+            total: 5,
+            hasNextPage: true,
+        })
+
+        const { result } = renderHook(() => useProjectGroupSessions('g1'))
+        expect(result.current.remainingCount).toBe(0)
+        expect(result.current.canShowMore).toBe(true)
+    })
+
     it('showMore() 展开更多后：visibleSessions 增长、showCollapse 变 true', () => {
         const sessions = Array.from({ length: 7 }, (_, i) => makeSession(`s${i}`, i))
         mockQuery({ sessionIds: sessions.map(s => s.id), sessions })
