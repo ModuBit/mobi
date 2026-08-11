@@ -29,17 +29,17 @@
     "devDependencies": {
         "@eslint/js": "^10.0.1",
         "concurrently": "^10.0.4",
-        "dependency-cruiser": "^18.1.1",
-        "eslint": "^10.8.0",
+        "dependency-cruiser": "^18.2.0",
+        "eslint": "^10.8.1",
         "husky": "^9.1.7",
         "lint-staged": "^17.3.0",
         "typescript": "^6.0.3",
-        "typescript-eslint": "^8.66.0"
+        "typescript-eslint": "^8.67.0"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.30.0",
-        "@tiptap/extension-task-item": "^3.29.2",
-        "@tiptap/extension-task-list": "^3.29.2",
+        "@tiptap/extension-task-item": "^3.30.0",
+        "@tiptap/extension-task-list": "^3.30.0",
         "react-virtuoso": "^4.18.11"
     },
     "lint-staged": {
