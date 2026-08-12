@@ -77,11 +77,14 @@ flowchart TB
     Send --> Emit["socket.emit('message', {...})<br/>发送到 Hub"]
     Send --> Update["updateMetadata({<br/>summary: { text, updatedAt }<br/>})"]
     Update --> MetaUpdate["socket.emitWithAck('update-metadata')<br/>更新 Hub metadata"]
+    Handler --> RenameCC["syncClaudeRename(getClaudeSession(), title)<br/>best-effort 回写 CC customTitle"]
 ```
 
 `sendClaudeSessionMessage` 对 `type: 'summary'` 的处理：
 1. 通过 Socket.IO `emit('message')` 发送消息到 Hub
 2. 自动调用 `updateMetadata()` 将标题写入 session metadata（`summary.text` + `summary.updatedAt`）
+
+`syncClaudeRename` 调 SDK `renameSession(claudeSessionId, title, { dir })` 把标题回写到 Claude Code 的 session 文件（`custom-title` entry），保持 CC 会话列表标题与 mobi 一致（LWW）。会话未就绪 / SDK 失败时静默吞错（best-effort），不影响 mobi 侧已完成的改名。与 Web UI 重命名走 `rename-session` RPC → `syncClaudeRename` 复用同一函数。
 
 ## 清理
 

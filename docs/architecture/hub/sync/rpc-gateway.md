@@ -61,6 +61,7 @@ flowchart TB
 | `abortSession` | 中止会话 | `{sessionId}:abort` |
 | `switchSession` | 切换 local/remote | `{sessionId}:switch` |
 | `requestSessionConfig` | 请求配置更新 | `{sessionId}:set-session-config` |
+| `requestRename` | 回写 CC customTitle（Mobi → CC 标题同步，best-effort） | `{sessionId}:rename-session` |
 | `killSession` | 杀死会话 | `{sessionId}:killSession` |
 | `spawnSession` | 创建新会话（支持 `sessionType`/`worktreeName`/`resumeSessionId`/`effort` 参数） | `{machineId}:spawn-mobi-session` |
 | `checkPathsExist` | 检查路径是否存在 | `{machineId}:path-exists` |

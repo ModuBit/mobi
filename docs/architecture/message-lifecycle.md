@@ -570,7 +570,7 @@ type ChatBlock =
 | 工具名 | 说明 | 额外处理 |
 |--------|------|----------|
 | `ToolSearch` | SDK 自动调用的工具搜索 | 无 |
-| `mcp__mobi__change_title` / `mobi__change_title` | 改标题工具 | 提取标题，生成 `title-changed` 事件（不渲染工具卡片本身） |
+| `mcp__mobi__change_title` / `mobi__change_title` | 改标题工具 | 提取标题，生成 `title-changed` 事件（不渲染工具卡片本身）；CLI 侧 best-effort 回写 CC customTitle |
 
 ### 正常渲染
 

@@ -201,7 +201,7 @@ flowchart LR
 | `abortSession()` | 中止会话 |
 | `archiveSession()` | 归档会话 |
 | `switchSession()` | 切换本地/远程模式 |
-| `renameSession()` | 重命名会话 |
+| `renameSession()` | 重命名会话（更新 Hub DB 后 best-effort 同步 CC customTitle） |
 | `deleteSession()` | 删除会话 |
 
 ### 权限操作
