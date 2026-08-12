@@ -24,7 +24,8 @@ import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { startMobiMcpServer } from '@/claude/utils/startMobiMcpServer';
-import { syncClaudeRename } from '@/claude/utils/renameClaudeSession';
+import { registerAgentCapabilities, syncAgentRename } from '@/agent/agentCapabilities';
+import { claudeCapabilities, claudeLocator } from '@/claude/agentCapabilities';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
 import { buildClaudeFeatureEnv } from './featureFlags';
@@ -97,11 +98,14 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     }, workingDirectory);
 
     // Variable to track current session instance (updated via onSessionReady callback)
-    // 提前到 startMobiMcpServer 之前：MCP change_title handler 需要它来回写 CC customTitle
+    // 提前到 startMobiMcpServer 之前：MCP change_title handler 需要它回写 agent 侧标题
     const currentSessionRef: { current: Session | null } = { current: null };
 
+    // 注册 Claude agent 能力（随会话生命周期常驻；后续 syncAgentRename 等按 flavor 调用）
+    registerAgentCapabilities('claude', claudeCapabilities);
+
     // Start MOBI MCP server
-    const mobiMcpServer = await startMobiMcpServer(apiSession, () => currentSessionRef.current);
+    const mobiMcpServer = await startMobiMcpServer(apiSession, () => claudeLocator(currentSessionRef.current));
     logger.debug(`[START] MOBI MCP server started at ${mobiMcpServer.url}`);
 
     // 用于在信号退出时清理子进程（防止 Claude Code / SDK Query 残留）
@@ -386,7 +390,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort } };
     });
 
-    // Web UI 重命名 → Hub rename-session RPC → 回写 CC customTitle（Mobi → CC 单向同步）
+    // Web UI 重命名 → Hub rename-session RPC → 回写 agent 侧标题（Mobi → agent 单向同步）
     apiSession.rpcHandlerManager.registerHandler('rename-session', async (payload: unknown) => {
         if (!payload || typeof payload !== 'object') {
             throw new Error('Invalid rename payload');
@@ -395,7 +399,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         if (typeof title !== 'string' || title.trim().length === 0) {
             throw new Error('rename requires non-empty title string');
         }
-        await syncClaudeRename(currentSessionRef.current, title);
+        await syncAgentRename(claudeLocator(currentSessionRef.current), title);
     });
 
     let loopError: unknown = null;
