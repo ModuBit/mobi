@@ -31,6 +31,9 @@ const MIME_TO_EXT: Record<string, string> = {
     'image/bmp': '.bmp',
 }
 
+/** 超过此字符数的纯文本粘贴自动转为 .txt 附件 */
+const PASTE_TEXT_ATTACHMENT_THRESHOLD = 1000
+
 // 粘贴非图片 MIME → 扩展名
 const NON_IMAGE_MIME_TO_EXT: Record<string, string> = {
     'application/pdf': '.pdf',
@@ -202,7 +205,18 @@ export function useAttachmentHandling(
 
         // 检测是否有文件项
         const fileItems = Array.from(items).filter(item => item.kind === 'file')
-        if (fileItems.length === 0) return
+        if (fileItems.length === 0) {
+            // 无文件项：进入纯文本粘贴判定
+            // clipboardData.getData('text/plain') 同步返回文本，无需异步 getAsString
+            const text = e.clipboardData.getData('text/plain')
+            if (text.length > PASTE_TEXT_ATTACHMENT_THRESHOLD) {
+                // 超阈值：阻止默认插入，转为 .txt 附件
+                e.preventDefault()
+                processFiles([new File([text], 'pasted-text.txt', { type: 'text/plain' })])
+            }
+            // 未超阈值：不干预，浏览器默认把文本插入 textarea
+            return
+        }
 
         // 阻止浏览器默认粘贴行为，避免文件名等文本被插入 textarea
         e.preventDefault()

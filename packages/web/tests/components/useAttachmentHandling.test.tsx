@@ -144,4 +144,66 @@ describe('useAttachmentHandling', () => {
 
         unmount()
     })
+
+    it('纯文本粘贴超过阈值时转为 pasted-text.txt 附件', async () => {
+        const uploadFile = vi.fn().mockResolvedValue({ data: { success: true, path: '/p.txt' } })
+        const capabilities = makeCapabilities(uploadFile)
+        const { result } = renderHook(() => useAttachmentHandling('s1', capabilities))
+
+        await act(async () => {
+            result.current.handlePaste({
+                preventDefault: vi.fn(),
+                clipboardData: {
+                    items: [],
+                    getData: () => 'a'.repeat(1001),
+                },
+            } as any)
+        })
+
+        expect(uploadFile).toHaveBeenCalledTimes(1)
+        const uploaded = uploadFile.mock.calls[0][0] as File
+        expect(uploaded.name).toBe('pasted-text.txt')
+        expect(uploaded.type).toBe('text/plain')
+        expect(await uploaded.text()).toBe('a'.repeat(1001))
+    })
+
+    it('纯文本粘贴未超阈值时不转附件（严格大于）', async () => {
+        const uploadFile = vi.fn().mockResolvedValue({ data: { success: true, path: '/p.txt' } })
+        const capabilities = makeCapabilities(uploadFile)
+        const { result } = renderHook(() => useAttachmentHandling('s1', capabilities))
+
+        await act(async () => {
+            result.current.handlePaste({
+                preventDefault: vi.fn(),
+                clipboardData: {
+                    items: [],
+                    getData: () => 'a'.repeat(1000),
+                },
+            } as any)
+        })
+
+        expect(uploadFile).not.toHaveBeenCalled()
+    })
+
+    it('含文件项时走文件分支，文本分支不触发（文件优先）', async () => {
+        const uploadFile = vi.fn().mockResolvedValue({ data: { success: true, path: '/a.txt' } })
+        const capabilities = makeCapabilities(uploadFile)
+        const { result } = renderHook(() => useAttachmentHandling('s1', capabilities))
+
+        await act(async () => {
+            result.current.handlePaste({
+                preventDefault: vi.fn(),
+                clipboardData: {
+                    items: [{
+                        kind: 'file',
+                        getAsFile: () => new File(['x'], 'a.txt', { type: 'text/plain' }),
+                    }],
+                    getData: () => 'a'.repeat(5000),
+                },
+            } as any)
+        })
+
+        expect(uploadFile).toHaveBeenCalledTimes(1)
+        expect((uploadFile.mock.calls[0][0] as File).name).toBe('a.txt')
+    })
 })
