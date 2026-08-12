@@ -32,18 +32,30 @@ import { z } from "zod";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
+import { syncClaudeRename, type ClaudeSessionLocator } from "@/claude/utils/renameClaudeSession";
 
-export async function startMobiMcpServer(client: ApiSessionClient) {
+export async function startMobiMcpServer(
+    client: ApiSessionClient,
+    /** 取当前 Claude 会话定位（sessionId + path），用于回写 CC customTitle */
+    getClaudeSession: () => ClaudeSessionLocator | null,
+) {
     // Handler that sends title updates via the client
     const handler = async (title: string) => {
         logger.debug('[mobiMCP] Changing title to:', title);
         try {
-            // Send title as a summary message, similar to title generator
+            // 1. 发 summary 到 Hub（更新 mobi 侧标题 + Web 显示）
             client.sendClaudeSessionMessage({
                 type: 'summary',
                 summary: title,
                 leafUuid: randomUUID()
             });
+
+            // 2. best-effort 回写 CC customTitle（会话未就绪/SDK 失败不影响 mobi 侧已完成的改名）
+            try {
+                await syncClaudeRename(getClaudeSession(), title);
+            } catch (renameError) {
+                logger.debug('[mobiMCP] 回写 CC 标题失败 (best-effort，忽略):', renameError);
+            }
 
             return { success: true };
         } catch (error) {

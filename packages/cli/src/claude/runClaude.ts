@@ -24,6 +24,7 @@ import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { startMobiMcpServer } from '@/claude/utils/startMobiMcpServer';
+import { syncClaudeRename } from '@/claude/utils/renameClaudeSession';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
 import { buildClaudeFeatureEnv } from './featureFlags';
@@ -95,12 +96,13 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         }
     }, workingDirectory);
 
-    // Start MOBI MCP server
-    const mobiMcpServer = await startMobiMcpServer(apiSession);
-    logger.debug(`[START] MOBI MCP server started at ${mobiMcpServer.url}`);
-
     // Variable to track current session instance (updated via onSessionReady callback)
+    // 提前到 startMobiMcpServer 之前：MCP change_title handler 需要它来回写 CC customTitle
     const currentSessionRef: { current: Session | null } = { current: null };
+
+    // Start MOBI MCP server
+    const mobiMcpServer = await startMobiMcpServer(apiSession, () => currentSessionRef.current);
+    logger.debug(`[START] MOBI MCP server started at ${mobiMcpServer.url}`);
 
     // 用于在信号退出时清理子进程（防止 Claude Code / SDK Query 残留）
     const processCleanupRef = { current: null as (() => void) | null };
@@ -382,6 +384,18 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         syncSessionModes();
         return { applied: { permissionMode: currentPermissionMode, model: currentModel, effort: currentEffort } };
+    });
+
+    // Web UI 重命名 → Hub rename-session RPC → 回写 CC customTitle（Mobi → CC 单向同步）
+    apiSession.rpcHandlerManager.registerHandler('rename-session', async (payload: unknown) => {
+        if (!payload || typeof payload !== 'object') {
+            throw new Error('Invalid rename payload');
+        }
+        const { title } = payload as { title?: unknown };
+        if (typeof title !== 'string' || title.trim().length === 0) {
+            throw new Error('rename requires non-empty title string');
+        }
+        await syncClaudeRename(currentSessionRef.current, title);
     });
 
     let loopError: unknown = null;

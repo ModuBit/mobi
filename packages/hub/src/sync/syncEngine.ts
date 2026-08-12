@@ -35,6 +35,7 @@ import {
     type RpcWriteFileRangeResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
+import { hubLogger } from '../logger'
 
 export type { Session, SyncEvent } from '@mobi/shared/types'
 export type { Machine } from './machineCache'
@@ -328,6 +329,13 @@ export class SyncEngine {
 
     async renameSession(sessionId: string, name: string): Promise<void> {
         await this.sessionCache.renameSession(sessionId, name)
+        // best-effort 同步到 CC：通知 CLI 调 SDK renameSession 回写 customTitle。
+        // CLI 离线 / Claude session 未就绪时 RPC 会失败，不阻断 Hub 侧已完成的 rename
+        try {
+            await this.rpcGateway.requestRename(sessionId, name)
+        } catch (error) {
+            hubLogger.warn(`[renameSession] 同步 CC 标题失败 (best-effort，忽略): ${(error as Error).message}`)
+        }
     }
 
     async deleteSession(sessionId: string): Promise<void> {

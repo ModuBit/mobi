@@ -148,6 +148,11 @@ export class RpcGateway {
         return await this.sessionRpc(sessionId, 'set-session-config', config)
     }
 
+    // Mobi → CC 标题同步：通知 CLI 调 SDK renameSession 回写 CC customTitle
+    async requestRename(sessionId: string, title: string): Promise<void> {
+        await this.sessionRpc(sessionId, 'rename-session', { title })
+    }
+
     async killSession(sessionId: string): Promise<void> {
         await this.sessionRpc(sessionId, 'killSession', {})
     }

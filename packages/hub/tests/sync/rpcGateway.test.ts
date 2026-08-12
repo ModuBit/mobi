@@ -298,6 +298,34 @@ describe('RpcGateway.cancelCliQueuedMessage', () => {
     })
 })
 
+// ============ requestRename（Mobi → CC 标题同步 RPC） ============
+
+describe('RpcGateway.requestRename', () => {
+    test('正确调用 sessionRpc(sessionId, rename-session, {title}) 透传标题', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({ response: { ok: true }, payloadCaptor })
+        const io = makeFakeIo('sock-rename-1', socket)
+        const registry = makeFakeRegistry(new Map([['sess-rename:rename-session', 'sock-rename-1']]))
+
+        const gateway = new RpcGateway(io, registry)
+        await gateway.requestRename('sess-rename', '新标题')
+
+        const envelope = payloadCaptor.value as { method: string; params: Record<string, unknown> }
+        expect(envelope.method).toBe('sess-rename:rename-session')
+        expect(envelope.params).toEqual({ title: '新标题' })
+    })
+
+    test('handler 未注册（CLI 不在线）→ throw', async () => {
+        const payloadCaptor = { value: undefined as unknown }
+        const socket = makeFakeSocket({ response: {}, payloadCaptor })
+        const io = makeFakeIo('sock-rename-2', socket)
+        const registry = makeFakeRegistry(new Map([['sess-rename2:rename-session', null]]))
+
+        const gateway = new RpcGateway(io, registry)
+        await expect(gateway.requestRename('sess-rename2', '标题')).rejects.toThrow(/not registered/)
+    })
+})
+
 // ============ approvePermission 转发 updatedPermissions ============
 
 describe('RpcGateway.approvePermission', () => {
