@@ -17,13 +17,14 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useAttachmentHandling } from '@/components/composer/useAttachmentHandling'
+import { validateFile } from '@/core/lib/fileAttachments'
 import type { DirectoryCapabilities } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 
 vi.mock('antd', () => ({ message: { warning: vi.fn(), error: vi.fn(), success: vi.fn() } }))
 
 // 绕过真实文件校验，直接让 processFiles 进入上传分支
 vi.mock('@/core/lib/fileAttachments', () => ({
-    validateFile: () => undefined,
+    validateFile: vi.fn(() => undefined),
     createFileAttachment: (file: File) => ({
         id: 'test-id',
         file,
@@ -149,10 +150,11 @@ describe('useAttachmentHandling', () => {
         const uploadFile = vi.fn().mockResolvedValue({ data: { success: true, path: '/p.txt' } })
         const capabilities = makeCapabilities(uploadFile)
         const { result } = renderHook(() => useAttachmentHandling('s1', capabilities))
+        const preventDefault = vi.fn()
 
         await act(async () => {
             result.current.handlePaste({
-                preventDefault: vi.fn(),
+                preventDefault,
                 clipboardData: {
                     items: [],
                     getData: () => 'a'.repeat(1001),
@@ -160,6 +162,8 @@ describe('useAttachmentHandling', () => {
             } as any)
         })
 
+        // 必须阻止默认插入，否则 textarea 也会出现这段文本 → 文本+附件双份
+        expect(preventDefault).toHaveBeenCalledTimes(1)
         expect(uploadFile).toHaveBeenCalledTimes(1)
         const uploaded = uploadFile.mock.calls[0][0] as File
         expect(uploaded.name).toBe('pasted-text.txt')
@@ -171,10 +175,11 @@ describe('useAttachmentHandling', () => {
         const uploadFile = vi.fn().mockResolvedValue({ data: { success: true, path: '/p.txt' } })
         const capabilities = makeCapabilities(uploadFile)
         const { result } = renderHook(() => useAttachmentHandling('s1', capabilities))
+        const preventDefault = vi.fn()
 
         await act(async () => {
             result.current.handlePaste({
-                preventDefault: vi.fn(),
+                preventDefault,
                 clipboardData: {
                     items: [],
                     getData: () => 'a'.repeat(1000),
@@ -182,6 +187,31 @@ describe('useAttachmentHandling', () => {
             } as any)
         })
 
+        // 未超阈值：不阻止默认插入（让浏览器正常把文本插入 textarea），不转附件
+        expect(preventDefault).not.toHaveBeenCalled()
+        expect(uploadFile).not.toHaveBeenCalled()
+    })
+
+    it('超阈值但校验不通过时不阻止默认插入，避免静默丢失', async () => {
+        // 模拟 validateFile 拒绝（如超 50MB）；仅本次调用生效，不影响后续用例
+        vi.mocked(validateFile).mockReturnValueOnce('文件大小超过限制（最大 50MB）')
+        const uploadFile = vi.fn().mockResolvedValue({ data: { success: true, path: '/p.txt' } })
+        const capabilities = makeCapabilities(uploadFile)
+        const { result } = renderHook(() => useAttachmentHandling('s1', capabilities))
+        const preventDefault = vi.fn()
+
+        await act(async () => {
+            result.current.handlePaste({
+                preventDefault,
+                clipboardData: {
+                    items: [],
+                    getData: () => 'a'.repeat(1001),
+                },
+            } as any)
+        })
+
+        // 校验失败：不阻止默认插入（让浏览器正常插入，不丢数据）、不转附件
+        expect(preventDefault).not.toHaveBeenCalled()
         expect(uploadFile).not.toHaveBeenCalled()
     })
 

@@ -210,9 +210,16 @@ export function useAttachmentHandling(
             // clipboardData.getData('text/plain') 同步返回文本，无需异步 getAsString
             const text = e.clipboardData.getData('text/plain')
             if (text.length > PASTE_TEXT_ATTACHMENT_THRESHOLD) {
-                // 超阈值：阻止默认插入，转为 .txt 附件
+                const file = new File([text], 'pasted-text.txt', { type: 'text/plain' })
+                // 先校验：失败（如超 50MB）则不阻止默认插入，避免静默丢失粘贴内容
+                const error = validateFile(file)
+                if (error) {
+                    message.warning(error)
+                    return
+                }
+                // 超阈值且校验通过：阻止默认插入，转为 .txt 附件
                 e.preventDefault()
-                processFiles([new File([text], 'pasted-text.txt', { type: 'text/plain' })])
+                processFiles([file])
             }
             // 未超阈值：不干预，浏览器默认把文本插入 textarea
             return
