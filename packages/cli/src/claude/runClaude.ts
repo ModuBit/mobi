@@ -25,7 +25,7 @@ import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { startMobiMcpServer } from '@/claude/utils/startMobiMcpServer';
 import { registerAgentCapabilities, syncAgentRename } from '@/agent/agentCapabilities';
-import { claudeCapabilities, claudeLocator } from '@/claude/agentCapabilities';
+import { claudeCapabilities, claudeLocator, CLAUDE_FLAVOR } from '@/claude/agentCapabilities';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/modules/common/hooks/generateHookSettings';
 import { buildClaudeFeatureEnv } from './featureFlags';
@@ -102,7 +102,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     const currentSessionRef: { current: Session | null } = { current: null };
 
     // 注册 Claude agent 能力（随会话生命周期常驻；后续 syncAgentRename 等按 flavor 调用）
-    registerAgentCapabilities('claude', claudeCapabilities);
+    registerAgentCapabilities(CLAUDE_FLAVOR, claudeCapabilities);
 
     // Start MOBI MCP server
     const mobiMcpServer = await startMobiMcpServer(apiSession, () => claudeLocator(currentSessionRef.current));

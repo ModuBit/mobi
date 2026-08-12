@@ -33,13 +33,16 @@ interface EngineHandle {
 }
 
 /** 构造真实 SyncEngine + 可控 fake io/registry/sse */
-function makeEngine(opts: { renameOnline: boolean }): EngineHandle {
+function makeEngine(opts: { renameOnline: boolean; emitDelayMs?: number }): EngineHandle {
     const store = new Store(':memory:')
     const emitCalls: { method: string; params: unknown }[] = []
 
     const fakeSocket = {
         timeout() { return this },
         async emitWithAck(_event: string, payload: { method: string; params: unknown }) {
+            if (opts.emitDelayMs) {
+                await new Promise(r => setTimeout(r, opts.emitDelayMs))
+            }
             emitCalls.push(payload)
             return { ok: true }
         },
@@ -74,7 +77,7 @@ function makeEngine(opts: { renameOnline: boolean }): EngineHandle {
 }
 
 describe('SyncEngine.renameSession', () => {
-    test('sessionCache 更新后 best-effort 同步 rename-session RPC 到 CLI', async () => {
+    test('sessionCache 更新后 fire-and-forget 同步 rename-session RPC 到 CLI', async () => {
         const h = makeEngine({ renameOnline: true })
         try {
             const session = h.engine.getOrCreateSession(
@@ -86,14 +89,40 @@ describe('SyncEngine.renameSession', () => {
 
             await h.engine.renameSession(session.id, '新标题')
 
-            // 1. Hub DB 已更新
+            // 1. Hub DB 已立即更新（不等 RPC）
             const after = h.engine.getSession(session.id)
             expect(after?.metadata?.name).toBe('新标题')
 
-            // 2. RPC 已下发到 CLI
+            // 2. RPC 是 fire-and-forget，等一个 tick 让它实际执行
+            await new Promise(r => setTimeout(r, 0))
             expect(h.emitCalls).toHaveLength(1)
             expect(h.emitCalls[0].method).toBe(`${session.id}:rename-session`)
             expect(h.emitCalls[0].params).toEqual({ title: '新标题' })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('RPC 慢时不阻塞 renameSession 返回 —— fire-and-forget 不 await', async () => {
+        const h = makeEngine({ renameOnline: true, emitDelayMs: 300 })
+        try {
+            const session = h.engine.getOrCreateSession(
+                'tag-rename-ff',
+                { path: '/tmp/proj', host: 'h-ff' },
+                null,
+                'default'
+            )
+
+            const start = Date.now()
+            await h.engine.renameSession(session.id, '标题')
+            const elapsed = Date.now() - start
+
+            // renameSession 应在远小于 RPC 延时（300ms）内返回 —— 证明未 await RPC
+            expect(elapsed).toBeLessThan(100)
+
+            // RPC 在后台执行，等待后落地
+            await new Promise(r => setTimeout(r, 350))
+            expect(h.emitCalls).toHaveLength(1)
         } finally {
             h.cleanup()
         }

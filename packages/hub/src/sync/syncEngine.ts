@@ -329,13 +329,12 @@ export class SyncEngine {
 
     async renameSession(sessionId: string, name: string): Promise<void> {
         await this.sessionCache.renameSession(sessionId, name)
-        // best-effort 同步到 CC：通知 CLI 调 SDK renameSession 回写 customTitle。
-        // CLI 离线 / Claude session 未就绪时 RPC 会失败，不阻断 Hub 侧已完成的 rename
-        try {
-            await this.rpcGateway.requestRename(sessionId, name)
-        } catch (error) {
+        // fire-and-forget：不 await RPC，避免阻塞 Web rename HTTP 响应。
+        // CLI 忙时 RPC 可能等长达 30s（emitWithAck timeout），而 sessionCache 已更新，
+        // 应让调用方立即拿到结果；RPC 失败（CLI 离线 / 会话未就绪）仅 warn 不影响本地一致性
+        void this.rpcGateway.requestRename(sessionId, name).catch(error => {
             hubLogger.warn(`[renameSession] 同步 CC 标题失败 (best-effort，忽略): ${(error as Error).message}`)
-        }
+        })
     }
 
     async deleteSession(sessionId: string): Promise<void> {
