@@ -276,6 +276,30 @@ export interface GroupSessionsPage {
     total: number
 }
 
+// ============ 项目类型（实体化后替代会话分组） ============
+
+import type { Project, ProjectFolder } from '@mobi/shared'
+
+export type { Project, ProjectFolder }
+
+/** 项目会话分页响应（对照 GroupSessionsResponse，hub 返回完整 Session） */
+export interface ProjectSessionsResponse {
+    sessions: Session[]
+    nextCursor: number | null
+    hasMore: boolean
+    /** 项目会话总数（不受游标影响） */
+    total: number
+}
+
+/** hook 内部的归一化分页结构（projectSessions 缓存只存 ID，完整 Session 进全局 sessions 缓存） */
+export interface ProjectSessionsPage {
+    sessionIds: string[]
+    nextCursor: number | null
+    hasMore: boolean
+    /** 项目会话总数（不受游标影响，用于前端显示「真实剩余」） */
+    total: number
+}
+
 // ============ SDK 元数据（来自 SDK initializationResult） ============
 
 import type {

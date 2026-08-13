@@ -29,6 +29,12 @@ export const queryKeys = {
     sessionGroups: ['sessionGroups'] as const,
     /** 分组下的会话 */
     groupSessions: (groupKey: string) => ['groupSessions', groupKey] as const,
+    /** 项目列表（第二维为 machineId 或 'all'；亦可作前缀失效所有项目查询） */
+    projects: ['projects'] as const,
+    /** 项目内会话（ID 分页；前缀 ['projectSessions'] 用于批量失效） */
+    projectSessions: (projectId: string) => ['projectSessions', projectId] as const,
+    /** 未归入项目的「最近」会话 */
+    recentSessions: ['recentSessions'] as const,
     /** 机器列表 */
     machines: ['machines'] as const,
     /** 机器 SDK 元数据 */

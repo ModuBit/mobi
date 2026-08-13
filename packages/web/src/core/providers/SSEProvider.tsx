@@ -321,6 +321,20 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             case 'machine-updated':
                 scheduleInvalidation('machines')
                 break
+            case 'project-added':
+            case 'project-updated':
+                // 项目实体变更 → 重新拉取项目列表（数据量小，直接 invalidate）
+                qc.invalidateQueries({ queryKey: queryKeys.projects })
+                break
+            case 'project-removed': {
+                // 名下会话已解绑进「最近」→ 批量失效项目 + 会话 + 两个分组视图即可；
+                // hub 会逐会话发 session-updated，invalidateQueries 天然去重，无需逐事件 patch 缓存
+                qc.invalidateQueries({ queryKey: queryKeys.projects })
+                qc.invalidateQueries({ queryKey: queryKeys.sessions })
+                qc.invalidateQueries({ queryKey: queryKeys.recentSessions })
+                qc.invalidateQueries({ queryKey: ['projectSessions'] })
+                break
+            }
             case 'heartbeat':
                 break
             case 'connection-changed':

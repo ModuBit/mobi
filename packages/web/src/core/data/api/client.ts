@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, MessagesResponse, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse, ListFilesResponse } from './types'
+import type { Session, DecryptedMessage, MessagesResponse, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
 import type { PermissionMode } from '@mobi/shared'
 
 // 全局 401 处理回调（由外部设置）
@@ -265,6 +265,43 @@ export function createMobiApi() {
                         limit: limit ?? 20
                     }
                 }),
+        },
+
+        // Projects（项目实体化，替代 sessionGroups）
+        projects: {
+            // 项目列表（?machineId= 过滤某机器名下项目）
+            list: (machineId?: string) =>
+                client.get<{ projects: Project[] }>('/api/projects', {
+                    params: machineId ? { machineId } : undefined,
+                }),
+            get: (projectId: string) =>
+                client.get<{ project: Project }>(`/api/projects/${projectId}`),
+            create: (input: { name: string; machineId: string; folders: ProjectFolder[] }) =>
+                client.post<{ project: Project }>('/api/projects', input),
+            update: (projectId: string, patch: { name?: string; folders?: ProjectFolder[] }) =>
+                client.patch<{ project: Project }>(`/api/projects/${projectId}`, patch),
+            remove: (projectId: string) =>
+                client.delete<{ success: boolean }>(`/api/projects/${projectId}`),
+            // 项目内会话分页（返回完整 Session）
+            sessions: (projectId: string, cursor?: number, limit?: number) =>
+                client.get<ProjectSessionsResponse>(`/api/projects/${projectId}/sessions`, {
+                    params: {
+                        ...(cursor !== undefined && { cursor }),
+                        limit: limit ?? 20,
+                    },
+                }),
+            // 未归入任何项目的「最近」会话分页
+            unboundSessions: (cursor?: number, limit?: number) =>
+                client.get<ProjectSessionsResponse>('/api/projects/sessions/unbound', {
+                    params: {
+                        ...(cursor !== undefined && { cursor }),
+                        limit: limit ?? 20,
+                    },
+                }),
+            // 会话归入项目 / 移出项目（projectId=null 移出）。
+            // PATCH /api/sessions/:id 为合并端点（name/projectId 共用），此处只发 projectId
+            assignSession: (sessionId: string, projectId: string | null) =>
+                client.patch(`/api/sessions/${sessionId}`, { projectId }),
         },
 
         // Machines
