@@ -278,12 +278,19 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // 新会话（游离进「最近」或归属项目）需要出现在对应分组视图
                 scheduleInvalidation('projectViews')
                 break
-            case 'session-updated':
+            case 'session-updated': {
                 patchSessionCache(qc, event.sessionId, event.data)
-                // 重命名/归档/生成等会改变项目组与「最近」的成员与排序（sessionIds 分页），
-                // 全局缓存 patch 不覆盖分组视图的成员列表，需失效刷新
-                scheduleInvalidation('projectViews')
+                // 只有改变分组成员资格的载荷才失效项目视图：
+                // - 完整 session 载荷（delta.id === sessionId，如 setSessionProject 归属变更）
+                // - 无 data 载荷（projectCache 删除项目后逐会话解绑广播）
+                // 心跳/指标/重命名等轻载荷只需上方 patchSessionCache——活跃会话流式期间
+                // 这类事件高频，若每次都失效 ['projects']+全部分组会造成 refetch 风暴（V2）
+                const delta = event.data as Record<string, unknown> | undefined
+                if (delta === undefined || ('id' in delta && delta.id === event.sessionId)) {
+                    scheduleInvalidation('projectViews')
+                }
                 break
+            }
             case 'sdk-metadata-refreshed':
                 // hub 后台刷新 sdkMetadata 完成（内容有变）→ 失效本 session 的 metadata query，触发 refetch 拿新值
                 qc.invalidateQueries({ queryKey: queryKeys.sdkMetadata(event.sessionId) })

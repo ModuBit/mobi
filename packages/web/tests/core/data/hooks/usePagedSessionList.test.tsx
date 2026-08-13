@@ -356,8 +356,30 @@ describe('P1：session-* SSE 事件失效项目视图', () => {
         await assertProjectViewsInvalidated({ type: 'session-removed', sessionId: 's1' })
     })
 
-    it('session-updated → projectViews 批量失效', async () => {
-        await assertProjectViewsInvalidated({ type: 'session-updated', sessionId: 's1', data: { active: true } })
+    it('session-updated 完整 session 载荷（归属变更）→ projectViews 批量失效', async () => {
+        await assertProjectViewsInvalidated({ type: 'session-updated', sessionId: 's1', data: { id: 's1', projectId: 'p1' } })
+    })
+
+    it('session-updated 无 data 载荷（删除项目解绑）→ projectViews 批量失效', async () => {
+        await assertProjectViewsInvalidated({ type: 'session-updated', sessionId: 's1' })
+    })
+
+    it('session-updated 轻载荷（心跳/指标/重命名）→ 不失效项目视图（V2：防 refetch 风暴）', async () => {
+        const { queryClient: qc } = await renderProvider()
+        expect(sseListener.current).toBeTruthy()
+        const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+        // 活跃会话流式期间的典型载荷：心跳 / contextUsage / metadata 重命名
+        sseListener.current!({ type: 'session-updated', sessionId: 's1', data: { active: true, running: true } })
+        sseListener.current!({ type: 'session-updated', sessionId: 's1', data: { sid: 's1', runtimeState: { contextUsage: {} } } })
+        sseListener.current!({ type: 'session-updated', sessionId: 's1', data: { sid: 's1', metadata: { name: '改名' } } })
+
+        // 等过批处理窗口（16ms + 余量）
+        await new Promise(r => setTimeout(r, 120))
+        const keys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
+        expect(keys.some(k => Array.isArray(k) && k[0] === 'projects')).toBe(false)
+        expect(keys.some(k => Array.isArray(k) && k[0] === 'projectSessions')).toBe(false)
+        invalidateSpy.mockRestore()
     })
 
     it('project-removed → 折叠进 projectViews 批处理', async () => {
