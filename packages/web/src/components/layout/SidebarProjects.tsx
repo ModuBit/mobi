@@ -20,7 +20,6 @@ import type { MenuProps } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { keyframes } from '@emotion/react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { FolderClosed, FolderOpen, History, SquarePen } from 'lucide-react'
@@ -29,7 +28,6 @@ import {
     InboxOutlined,
     DeleteOutlined,
     PlayCircleOutlined,
-    LoadingOutlined,
     MoreOutlined,
     FolderAddOutlined,
     ImportOutlined,
@@ -54,6 +52,8 @@ import { ProjectFormModal } from '@/components/project/ProjectFormModal'
 import { AssignProjectModal } from '@/components/project/AssignProjectModal'
 import type { Session, SessionMetadataSummary, Project } from '@/core/data/api/types'
 import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
+import { SessionSkeletonRows } from './SessionSkeletonRows'
+import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
 
 const { useToken } = antTheme
 
@@ -309,35 +309,7 @@ const RenameRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     }
 `
 
-// 骨架占位 shimmer 动画
-const shimmer = keyframes`
-    0% { background-position: 100% 0; }
-    100% { background-position: -100% 0; }
-`
-
-// 会话行骨架（首次加载时占位，行高对齐 SessionItem）
-const SkeletonRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 30px;
-    padding: 0 8px 0 26px;
-
-    & > .sk-bar {
-        height: 8px;
-        border-radius: 4px;
-        background: linear-gradient(
-            90deg,
-            ${props => props.$token.colorFillSecondary} 25%,
-            ${props => props.$token.colorFill} 37%,
-            ${props => props.$token.colorFillSecondary} 63%
-        );
-        background-size: 400% 100%;
-        animation: ${shimmer} 1.4s ease infinite;
-    }
-`
-
-// 空态占位行（分组无会话时展示，行高与 SkeletonRow 对齐）
+// 空态占位行（分组无会话时展示，行高与骨架行对齐）
 const EmptyRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     display: flex;
     align-items: center;
@@ -345,34 +317,6 @@ const EmptyRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     padding: 0 8px 0 26px;
     font-size: 12px;
     color: ${props => props.$token.colorTextQuaternary};
-`
-
-// 列表底部链接区（收起 / 展开更多 并列）
-const ListFooter = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 4px 8px 4px 30px;
-`
-
-// 底部链接（收起、展开更多共用）
-const FooterLink = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
-    border: none;
-    background: transparent;
-    color: ${props => props.$token.colorTextTertiary};
-    font-size: 12px;
-    padding: 0;
-    cursor: pointer;
-    transition: color 0.15s;
-
-    &:hover {
-        color: ${props => props.$token.colorPrimary};
-    }
-
-    &:disabled {
-        cursor: default;
-        opacity: 0.7;
-    }
 `
 
 /** 从 session metadata 中取显示名称（用于重命名初始值） */
@@ -507,27 +451,14 @@ function SessionRowsList({
     const { token } = useToken()
     const { t } = useTranslation()
 
-    const showSkeleton = isLoadingInitial && sessions.length === 0
-    const showEmpty = !showSkeleton && sessions.length === 0
-    const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
+    const { showSkeleton, showEmpty, showFooter } = getSessionListDisplayState({
+        isLoadingInitial, sessionCount: sessions.length, showCollapse, canShowMore, isLoadingMore,
+    })
 
     return (
         <SessionListContainer>
             {showSkeleton ? (
-                <>
-                    <SkeletonRow $token={token}>
-                        <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                        <span className="sk-bar" style={{ flex: 1 }} />
-                    </SkeletonRow>
-                    <SkeletonRow $token={token}>
-                        <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                        <span className="sk-bar" style={{ flex: 1 }} />
-                    </SkeletonRow>
-                    <SkeletonRow $token={token}>
-                        <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                        <span className="sk-bar" style={{ flex: 1 }} />
-                    </SkeletonRow>
-                </>
+                <SessionSkeletonRows variant="desktop" rows={3} />
             ) : showEmpty ? (
                 <EmptyRow $token={token}>{t('nav.noSessions')}</EmptyRow>
             ) : visibleSessions.map(session => (
@@ -550,25 +481,15 @@ function SessionRowsList({
                 />
             ))}
             {showFooter && (
-                <ListFooter>
-                    {canShowMore && !isLoadingMore && (
-                        <FooterLink $token={token} onClick={showMore}>
-                            {remainingCount > 0
-                                ? t('nav.showMore', { count: remainingCount })
-                                : t('nav.loadMore')}
-                        </FooterLink>
-                    )}
-                    {showCollapse && !isLoadingMore && (
-                        <FooterLink $token={token} onClick={collapse}>
-                            {t('nav.collapse')}
-                        </FooterLink>
-                    )}
-                    {isLoadingMore && (
-                        <FooterLink $token={token} disabled>
-                            <LoadingOutlined /> {t('common.loading')}
-                        </FooterLink>
-                    )}
-                </ListFooter>
+                <SessionListFooter
+                    variant="desktop"
+                    canShowMore={canShowMore}
+                    remainingCount={remainingCount}
+                    isLoadingMore={isLoadingMore}
+                    showCollapse={showCollapse}
+                    onShowMore={showMore}
+                    onCollapse={collapse}
+                />
             )}
         </SessionListContainer>
     )

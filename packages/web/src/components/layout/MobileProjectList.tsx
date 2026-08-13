@@ -18,7 +18,6 @@ import { useState, useCallback } from 'react'
 import { Button, Drawer, Input, Modal, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
-import { keyframes } from '@emotion/react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { FolderClosed, FolderOpen, History, Plus } from 'lucide-react'
@@ -29,7 +28,6 @@ import {
     PlayCircleOutlined,
     MoreOutlined,
     CloseOutlined,
-    LoadingOutlined,
 } from '@ant-design/icons'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions'
@@ -47,6 +45,8 @@ import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import type { Session, SessionMetadataSummary, Project } from '@/core/data/api/types'
+import { SessionSkeletonRows } from './SessionSkeletonRows'
+import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
 
 const { useToken } = antTheme
 
@@ -197,34 +197,6 @@ const MoreButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] 
     }
 `
 
-// 骨架占位 shimmer 动画
-const shimmer = keyframes`
-    0% { background-position: 100% 0; }
-    100% { background-position: -100% 0; }
-`
-
-// 会话行骨架（首次加载时占位，行高对齐 SessionItem）
-const SkeletonRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 44px;
-    padding: 0 12px 0 50px;
-
-    & > .sk-bar {
-        height: 10px;
-        border-radius: 5px;
-        background: linear-gradient(
-            90deg,
-            ${props => props.$token.colorFillSecondary} 25%,
-            ${props => props.$token.colorFill} 37%,
-            ${props => props.$token.colorFillSecondary} 63%
-        );
-        background-size: 400% 100%;
-        animation: ${shimmer} 1.4s ease infinite;
-    }
-`
-
 // 空态占位行（分组无会话时展示，行高对齐 SessionItem）
 const EmptyRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     display: flex;
@@ -233,34 +205,6 @@ const EmptyRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     padding: 0 12px 0 50px;
     font-size: 13px;
     color: ${props => props.$token.colorTextQuaternary};
-`
-
-// 列表底部链接区（收起 / 展开更多 并列）
-const ListFooter = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    min-height: 36px;
-    padding: 0 12px 0 50px;
-`
-
-// 底部链接（收起、展开更多共用）
-const FooterLink = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
-    border: none;
-    background: transparent;
-    color: ${props => props.$token.colorTextTertiary};
-    font-size: 13px;
-    padding: 0;
-    cursor: pointer;
-
-    &:active {
-        color: ${props => props.$token.colorPrimary};
-    }
-
-    &:disabled {
-        cursor: default;
-        opacity: 0.7;
-    }
 `
 
 // ========== 单个会话项 ==========
@@ -348,9 +292,9 @@ function MobileProjectGroup({
     // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
     // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
     const wrapperExpanded = expanded
-    const showSkeleton = isLoadingInitial && sessions.length === 0
-    const showEmpty = !showSkeleton && sessions.length === 0
-    const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
+    const { showSkeleton, showEmpty, showFooter } = getSessionListDisplayState({
+        isLoadingInitial, sessionCount: sessions.length, showCollapse, canShowMore, isLoadingMore,
+    })
 
     return (
         <div>
@@ -366,20 +310,7 @@ function MobileProjectGroup({
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>
                     {showSkeleton ? (
-                        <>
-                            <SkeletonRow $token={token}>
-                                <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                                <span className="sk-bar" style={{ flex: 1 }} />
-                            </SkeletonRow>
-                            <SkeletonRow $token={token}>
-                                <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                                <span className="sk-bar" style={{ flex: 1 }} />
-                            </SkeletonRow>
-                            <SkeletonRow $token={token}>
-                                <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                                <span className="sk-bar" style={{ flex: 1 }} />
-                            </SkeletonRow>
-                        </>
+                        <SessionSkeletonRows variant="mobile" rows={3} />
                     ) : showEmpty ? (
                         <EmptyRow $token={token}>{t('nav.noSessions')}</EmptyRow>
                     ) : visibleSessions.map(session => (
@@ -392,25 +323,15 @@ function MobileProjectGroup({
                         />
                     ))}
                     {showFooter && (
-                        <ListFooter>
-                            {canShowMore && !isLoadingMore && (
-                                <FooterLink $token={token} onClick={showMore}>
-                                    {remainingCount > 0
-                                        ? t('nav.showMore', { count: remainingCount })
-                                        : t('nav.loadMore')}
-                                </FooterLink>
-                            )}
-                            {showCollapse && !isLoadingMore && (
-                                <FooterLink $token={token} onClick={collapse}>
-                                    {t('nav.collapse')}
-                                </FooterLink>
-                            )}
-                            {isLoadingMore && (
-                                <FooterLink $token={token} disabled>
-                                    <LoadingOutlined /> {t('common.loading')}
-                                </FooterLink>
-                            )}
-                        </ListFooter>
+                        <SessionListFooter
+                            variant="mobile"
+                            canShowMore={canShowMore}
+                            remainingCount={remainingCount}
+                            isLoadingMore={isLoadingMore}
+                            showCollapse={showCollapse}
+                            onShowMore={showMore}
+                            onCollapse={collapse}
+                        />
                     )}
                 </SessionListInner>
             </SessionListWrapper>
@@ -457,9 +378,9 @@ function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMenu }: Mo
 
     // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
     const wrapperExpanded = expanded
-    const showSkeleton = isLoadingInitial && sessions.length === 0
-    const showEmpty = !showSkeleton && sessions.length === 0
-    const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
+    const { showSkeleton, showEmpty, showFooter } = getSessionListDisplayState({
+        isLoadingInitial, sessionCount: sessions.length, showCollapse, canShowMore, isLoadingMore,
+    })
 
     return (
         <div>
@@ -475,16 +396,7 @@ function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMenu }: Mo
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>
                     {showSkeleton ? (
-                        <>
-                            <SkeletonRow $token={token}>
-                                <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                                <span className="sk-bar" style={{ flex: 1 }} />
-                            </SkeletonRow>
-                            <SkeletonRow $token={token}>
-                                <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                                <span className="sk-bar" style={{ flex: 1 }} />
-                            </SkeletonRow>
-                        </>
+                        <SessionSkeletonRows variant="mobile" rows={2} />
                     ) : showEmpty ? (
                         <EmptyRow $token={token}>{t('nav.noSessions')}</EmptyRow>
                     ) : visibleSessions.map(session => (
@@ -497,25 +409,15 @@ function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMenu }: Mo
                         />
                     ))}
                     {showFooter && (
-                        <ListFooter>
-                            {canShowMore && !isLoadingMore && (
-                                <FooterLink $token={token} onClick={showMore}>
-                                    {remainingCount > 0
-                                        ? t('nav.showMore', { count: remainingCount })
-                                        : t('nav.loadMore')}
-                                </FooterLink>
-                            )}
-                            {showCollapse && !isLoadingMore && (
-                                <FooterLink $token={token} onClick={collapse}>
-                                    {t('nav.collapse')}
-                                </FooterLink>
-                            )}
-                            {isLoadingMore && (
-                                <FooterLink $token={token} disabled>
-                                    <LoadingOutlined /> {t('common.loading')}
-                                </FooterLink>
-                            )}
-                        </ListFooter>
+                        <SessionListFooter
+                            variant="mobile"
+                            canShowMore={canShowMore}
+                            remainingCount={remainingCount}
+                            isLoadingMore={isLoadingMore}
+                            showCollapse={showCollapse}
+                            onShowMore={showMore}
+                            onCollapse={collapse}
+                        />
                     )}
                 </SessionListInner>
             </SessionListWrapper>
