@@ -105,7 +105,7 @@ describe('ProjectCache', () => {
         const s2 = store.sessions.getOrCreateSession('t2', { path: '/a' }, null, 'default', undefined, project.id)
         store.sessions.getOrCreateSession('free', { path: '/x' }, null, 'default')
 
-        expect(cache.deleteProject(project.id, 'default')).toBe(true)
+        expect(cache.deleteProject(project.id, 'default')?.sort()).toEqual([s1.id, s2.id].sort())
 
         // 缓存移除 + DB 删除 + 会话解绑
         expect(cache.getProject(project.id)).toBeUndefined()
@@ -125,12 +125,12 @@ describe('ProjectCache', () => {
         }
     })
 
-    test('deleteProject 不存在 / 跨 namespace → false 不发事件', () => {
-        expect(cache.deleteProject('nope', 'default')).toBe(false)
+    test('deleteProject 不存在 / 跨 namespace → null 不发事件', () => {
+        expect(cache.deleteProject('nope', 'default')).toBeNull()
         const project = cache.createProject('default', {
             machineId: 'm1', name: 'a', folders: [{ path: '/a', primary: true }],
         })
-        expect(cache.deleteProject(project.id, 'other')).toBe(false)
+        expect(cache.deleteProject(project.id, 'other')).toBeNull()
         expect(events.filter(e => e.type === 'project-removed')).toHaveLength(0)
     })
 

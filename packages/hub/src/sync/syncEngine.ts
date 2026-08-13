@@ -184,12 +184,14 @@ export class SyncEngine {
     }
 
     deleteProject(id: string, namespace: string): boolean {
-        const ok = this.projectCache.deleteProject(id, namespace)
-        if (ok) {
-            // 名下会话已在 store 解绑，刷新 namespace 内存缓存让 hub 侧 session.projectId 同步
-            this.sessionCache.getSessionsByNamespace(namespace)
+        // 返回值 = 被解绑的 session ID 列表（null = 删除失败）；
+        // 只对这些 id 刷新内存缓存，避免丢弃返回值的 O(namespace) 全量扫描
+        const affected = this.projectCache.deleteProject(id, namespace)
+        if (affected === null) return false
+        for (const sessionId of affected) {
+            this.sessionCache.refreshSession(sessionId)
         }
-        return ok
+        return true
     }
 
     getSessionsByProject(namespace: string, projectId: string, cursor: number | null, limit?: number): ProjectSessionsResult {

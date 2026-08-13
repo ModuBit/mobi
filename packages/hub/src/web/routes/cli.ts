@@ -120,21 +120,23 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         }
 
         const namespace = c.get('namespace')
-        try {
-            const session = engine.getOrCreateSession(
-                parsed.data.tag, parsed.data.metadata, parsed.data.agentState ?? null,
-                namespace, parsed.data.mode, parsed.data.runtimeState, parsed.data.projectId
-            )
-            // 响应带 project：CLI 创建会话时校验归属并冻结 folders（不存在 → null = 游离）
-            const project = session.projectId
-                ? engine.getProject(session.projectId) ?? null
-                : null
-            return c.json({ session, project })
-        } catch (error) {
-            // store 层对不存在的 projectId 抛错（CLI 侧视为硬失败）
-            const message = error instanceof Error ? error.message : 'Failed to create session'
-            return c.json({ error: message }, 400)
+        // 归属校验前置：projectId 必须指向同 namespace 的现存项目（404 约定与 PATCH /sessions/:id 一致），
+        // 避免 store 层抛错被宽 catch 吞成 400、掩盖真实故障（DB 错误等应照常 500）
+        if (parsed.data.projectId) {
+            const project = engine.getProject(parsed.data.projectId)
+            if (!project || project.namespace !== namespace) {
+                return c.json({ error: 'Project not found' }, 404)
+            }
         }
+        const session = engine.getOrCreateSession(
+            parsed.data.tag, parsed.data.metadata, parsed.data.agentState ?? null,
+            namespace, parsed.data.mode, parsed.data.runtimeState, parsed.data.projectId
+        )
+        // 响应带 project：CLI 创建会话时校验归属并冻结 folders（不存在 → null = 游离）
+        const project = session.projectId
+            ? engine.getProject(session.projectId) ?? null
+            : null
+        return c.json({ session, project })
     })
 
     // 注意：此路由必须注册在 /sessions/:id 之前，否则会被参数路由拦截

@@ -468,6 +468,8 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return c.json({ ok: cleared })
     })
 
+    // PATCH /sessions/:id：重命名（{name}）与归入项目（{projectId: string|null}）共用端点，至少携带一项。
+    // 注意非原子：projectId 先应用，rename 失败（如版本冲突 409）时归属已变更，不回滚。
     app.patch('/sessions/:id', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {

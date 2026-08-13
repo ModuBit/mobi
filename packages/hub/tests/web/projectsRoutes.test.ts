@@ -330,6 +330,20 @@ describe('projects REST 路由 + 会话归属', () => {
             expect(body.project?.id).toBe(data.project!.id)
         })
 
+        test('带非法 projectId → 404（校验前置，不落库）', async () => {
+            const res = await app.request('/cli/sessions', {
+                method: 'POST',
+                headers: cliHeaders,
+                body: JSON.stringify({
+                    tag: 'tag-cli-bad-project',
+                    metadata: { path: '/x', host: 'h' },
+                    projectId: 'no-such-project',
+                }),
+            })
+            expect(res.status).toBe(404)
+            expect(await res.json()).toMatchObject({ error: 'Project not found' })
+        })
+
         test('不带 projectId → project 为 null', async () => {
             const res = await app.request('/cli/sessions', {
                 method: 'POST',
@@ -343,6 +357,60 @@ describe('projects REST 路由 + 会话归属', () => {
             const body = await res.json() as { session: { projectId?: string | null }; project: unknown }
             expect(body.project).toBeNull()
             expect(body.session.projectId ?? null).toBeNull()
+        })
+    })
+
+    describe('PATCH /api/sessions/:id 重命名路径（合并端点）', () => {
+        test('PATCH {name} → 200 且改名生效', async () => {
+            const session = engine.getOrCreateSession(
+                'tag-rename-route', { path: '/a', host: 'h' }, null, 'default'
+            )
+            const res = await app.request(`/api/sessions/${session.id}`, {
+                method: 'PATCH',
+                headers: authHeaders,
+                body: JSON.stringify({ name: '路由重命名' }),
+            })
+            expect(res.status).toBe(200)
+            expect(await res.json()).toMatchObject({ ok: true })
+
+            const fetched = await app.request(`/api/sessions/${session.id}`, { headers: authHeaders })
+            expect(fetched.status).toBe(200)
+            const body = await fetched.json() as { session: { metadata?: { name?: string } } }
+            expect(body.session.metadata?.name).toBe('路由重命名')
+        })
+
+        test('PATCH {}（无 name 无 projectId）→ 400', async () => {
+            const session = engine.getOrCreateSession(
+                'tag-rename-empty', { path: '/a', host: 'h' }, null, 'default'
+            )
+            const res = await app.request(`/api/sessions/${session.id}`, {
+                method: 'PATCH',
+                headers: authHeaders,
+                body: JSON.stringify({}),
+            })
+            expect(res.status).toBe(400)
+        })
+
+        test('PATCH {name, projectId} 组合 → 两者都生效', async () => {
+            const { data } = await createProject({ name: 'combo-proj', machineId: 'mA' })
+            const session = engine.getOrCreateSession(
+                'tag-rename-combo', { path: '/a', host: 'h', machineId: 'mA' }, null, 'default'
+            )
+            const res = await app.request(`/api/sessions/${session.id}`, {
+                method: 'PATCH',
+                headers: authHeaders,
+                body: JSON.stringify({ name: '组合改名', projectId: data.project!.id }),
+            })
+            expect(res.status).toBe(200)
+
+            // 归属生效
+            const list = await app.request(`/api/projects/${data.project!.id}/sessions?limit=100`, { headers: authHeaders })
+            const listBody = await list.json() as { sessions: Array<{ id: string }> }
+            expect(listBody.sessions.some(s => s.id === session.id)).toBe(true)
+            // 改名生效
+            const fetched = await app.request(`/api/sessions/${session.id}`, { headers: authHeaders })
+            const body = await fetched.json() as { session: { metadata?: { name?: string } } }
+            expect(body.session.metadata?.name).toBe('组合改名')
         })
     })
 })
