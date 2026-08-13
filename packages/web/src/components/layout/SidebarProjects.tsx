@@ -54,6 +54,7 @@ import type { Session, SessionMetadataSummary, Project } from '@/core/data/api/t
 import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
 import { SessionSkeletonRows } from './SessionSkeletonRows'
 import { SessionListFooter, getSessionListDisplayState } from './SessionListFooter'
+import { useSessionRowNavigate } from './useSessionRowNavigate'
 
 const { useToken } = antTheme
 
@@ -517,13 +518,13 @@ interface ProjectGroupProps extends SessionListSharedProps {
  */
 function ProjectGroup({
     project, activeSessionId,
-    renamingSessionId, renameValue, setRenameValue,
-    onRenameConfirm, onRenameCancel, onArchive, onResume, onDelete, onRenameStart,
-    renameLoading, onEditProject, onDeleteProject, onMoveToRecent, onChangeProject, assignPendingSessionId,
+    onEditProject, onDeleteProject, onMoveToRecent, onChangeProject, assignPendingSessionId,
+    ...shared
 }: ProjectGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
+    const handleSessionClick = useSessionRowNavigate()
 
     const {
         sessions, visibleSessions, fullProjectPath, total,
@@ -532,10 +533,6 @@ function ProjectGroup({
         showCollapse, canShowMore, remainingCount,
         showMore, collapse,
     } = useProjectSessions(project.id, activeSessionId)
-
-    const handleSessionClick = useCallback((sessionId: string) => {
-        navigate({ to: '/sessions/$sessionId', params: { sessionId } })
-    }, [navigate])
 
     // 新建会话：带上项目归属（hub 侧把 cwd 锁定项目 primary folder + 挂 projectId）
     const handleNewSession = useCallback((e: React.MouseEvent) => {
@@ -612,17 +609,8 @@ function ProjectGroup({
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>
                     <SessionRowsList
+                        {...shared}
                         activeSessionId={activeSessionId}
-                        renamingSessionId={renamingSessionId}
-                        renameValue={renameValue}
-                        setRenameValue={setRenameValue}
-                        onRenameConfirm={onRenameConfirm}
-                        onRenameCancel={onRenameCancel}
-                        onArchive={onArchive}
-                        onResume={onResume}
-                        onDelete={onDelete}
-                        onRenameStart={onRenameStart}
-                        renameLoading={renameLoading}
                         sessions={sessions}
                         visibleSessions={visibleSessions}
                         isLoadingInitial={isLoadingInitial}
@@ -654,14 +642,12 @@ interface RecentGroupProps extends SessionListSharedProps {
  * 「最近」分组：游离（未归入项目）会话，默认展开
  */
 function RecentGroup({
-    activeSessionId,
-    renamingSessionId, renameValue, setRenameValue,
-    onRenameConfirm, onRenameCancel, onArchive, onResume, onDelete, onRenameStart,
-    renameLoading, onAssign, assignPendingSessionId,
+    activeSessionId, onAssign, assignPendingSessionId, ...shared
 }: RecentGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
+    const handleSessionClick = useSessionRowNavigate()
 
     // 「最近」默认展开（用户仍可手动折叠）
     const {
@@ -671,10 +657,6 @@ function RecentGroup({
         showCollapse, canShowMore, remainingCount,
         showMore, collapse,
     } = useRecentSessions(activeSessionId, true)
-
-    const handleSessionClick = useCallback((sessionId: string) => {
-        navigate({ to: '/sessions/$sessionId', params: { sessionId } })
-    }, [navigate])
 
     // 新建会话（游离）：不带项目信息
     const handleNewSession = useCallback((e: React.MouseEvent) => {
@@ -717,17 +699,8 @@ function RecentGroup({
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>
                     <SessionRowsList
+                        {...shared}
                         activeSessionId={activeSessionId}
-                        renamingSessionId={renamingSessionId}
-                        renameValue={renameValue}
-                        setRenameValue={setRenameValue}
-                        onRenameConfirm={onRenameConfirm}
-                        onRenameCancel={onRenameCancel}
-                        onArchive={onArchive}
-                        onResume={onResume}
-                        onDelete={onDelete}
-                        onRenameStart={onRenameStart}
-                        renameLoading={renameLoading}
                         sessions={sessions}
                         visibleSessions={visibleSessions}
                         isLoadingInitial={isLoadingInitial}
