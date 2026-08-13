@@ -3,6 +3,7 @@
     "common": {
         "loading": "加载中...",
         "confirm": "确认",
+        "save": "保存",
         "cancel": "取消",
         "back": "返回",
         "backHome": "返回首页",
@@ -57,7 +58,10 @@
         "themeDark": "深色模式",
         "showMore": "展开显示 (还剩 {{count}})",
         "loadMore": "展开更多",
-        "collapse": "收起"
+        "collapse": "收起",
+        "recent": "最近",
+        "newProject": "新建项目",
+        "newSessionUnassigned": "新建会话（游离）"
     },
     "home": {
         "newSession": "新建会话"
@@ -469,5 +473,28 @@
             "installPrompt": "安装 Mobi 到本地，随时快速访问",
             "iosManual": "iPhone/iPad：点底部「分享」→「添加到主屏幕」"
         }
+    },
+    "project": {
+        "create": "新建项目",
+        "edit": "编辑项目",
+        "delete": "删除项目",
+        "deleteConfirmTitle": "删除项目「{{name}}」？",
+        "deleteConfirmContent": "名下 {{count}} 个会话将移至「最近」",
+        "toRecent": "移至最近",
+        "changeProject": "换项目…",
+        "assignTo": "归入项目…",
+        "assignTitle": "归入项目",
+        "assignPlaceholder": "选择项目",
+        "assignEmpty": "该机器暂无项目",
+        "name": "项目名称",
+        "namePlaceholder": "输入项目名称",
+        "machine": "所属机器",
+        "folders": "项目文件夹",
+        "folderPathPlaceholder": "输入文件夹绝对路径（/ 触发子目录补全）",
+        "addFolder": "添加文件夹",
+        "primary": "主目录",
+        "removeFolder": "移除",
+        "foldersInvalid": "至少一个文件夹，且恰好一个主目录",
+        "nameRequired": "项目名称不能为空"
     }
 }

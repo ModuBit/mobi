@@ -46,6 +46,7 @@ export interface PagedSessionGroupQueryState {
 export function usePagedSessionGroup(
     query: PagedSessionGroupQueryState,
     activeSessionId?: string,
+    defaultExpanded = false,
 ) {
     const { data: pages, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = query
     const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE)
@@ -74,8 +75,8 @@ export function usePagedSessionGroup(
         return !!activeSessionId && sessions.some(s => s.id === activeSessionId)
     }, [activeSessionId, sessions])
 
-    // 展开状态：用户可自由折叠/展开
-    const [expanded, setExpanded] = useState(false)
+    // 展开状态：用户可自由折叠/展开（defaultExpanded 供「最近」等默认展开的分组使用）
+    const [expanded, setExpanded] = useState(defaultExpanded)
     // 当数据加载后发现包含活跃会话，自动展开（仅首次触发）
     const [autoExpanded, setAutoExpanded] = useState(false)
     useEffect(() => {

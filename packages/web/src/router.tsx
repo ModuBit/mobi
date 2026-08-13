@@ -90,13 +90,14 @@ const sessionDetailRoute = createRoute({
     component: SessionDetailPage,
 })
 
-// 新建会话页（支持 ?dir= 预设项目目录）
+// 新建会话页（支持 ?cwd= 预设目录 + ?projectId= 预设归属项目；均为可选，缺省游离会话）
 const newSessionRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'sessions/new',
     component: NewSessionPage,
-    validateSearch: (search: Record<string, unknown>) => ({
+    validateSearch: (search: Record<string, unknown>): { cwd?: string; projectId?: string } => ({
         cwd: (search.cwd as string) || undefined,
+        projectId: (search.projectId as string) || undefined,
     }),
 })
 

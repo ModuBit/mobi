@@ -3,6 +3,7 @@
     "common": {
         "loading": "Loading...",
         "confirm": "Confirm",
+        "save": "Save",
         "cancel": "Cancel",
         "back": "Back",
         "backHome": "Back to Home",
@@ -57,7 +58,10 @@
         "themeDark": "Dark Mode",
         "showMore": "Show more ({{count}} left)",
         "loadMore": "Show more",
-        "collapse": "Collapse"
+        "collapse": "Collapse",
+        "recent": "Recent",
+        "newProject": "New Project",
+        "newSessionUnassigned": "New Chat (unassigned)"
     },
     "home": {
         "newSession": "New Session"
@@ -469,5 +473,28 @@
             "installPrompt": "Install Mobi locally for quick access anytime",
             "iosManual": "iPhone/iPad: tap Share → Add to Home Screen"
         }
+    },
+    "project": {
+        "create": "New Project",
+        "edit": "Edit Project",
+        "delete": "Delete Project",
+        "deleteConfirmTitle": "Delete project \"{{name}}\"?",
+        "deleteConfirmContent": "{{count}} session(s) under it will be moved to \"Recent\"",
+        "toRecent": "Move to Recent",
+        "changeProject": "Change project…",
+        "assignTo": "Assign to project…",
+        "assignTitle": "Assign to project",
+        "assignPlaceholder": "Select a project",
+        "assignEmpty": "No projects on this machine",
+        "name": "Project name",
+        "namePlaceholder": "Enter project name",
+        "machine": "Machine",
+        "folders": "Project folders",
+        "folderPathPlaceholder": "Enter absolute folder path (/ for completion)",
+        "addFolder": "Add folder",
+        "primary": "Primary",
+        "removeFolder": "Remove",
+        "foldersInvalid": "At least one folder with exactly one primary",
+        "nameRequired": "Project name is required"
     }
 }

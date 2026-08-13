@@ -14,18 +14,31 @@
  * limitations under the License.
  */
 
-import React, { useCallback } from 'react'
-import { App, Badge, Input, Modal, theme as antTheme } from 'antd'
+import React, { useCallback, useState } from 'react'
+import { App, Badge, Dropdown, Input, Modal, theme as antTheme } from 'antd'
+import type { MenuProps } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { FolderClosed, FolderOpen, SquarePen } from 'lucide-react'
-import { EditOutlined, InboxOutlined, DeleteOutlined, PlayCircleOutlined, LoadingOutlined } from '@ant-design/icons'
-import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
-import { useProjectGroupSessions } from '@/core/data/hooks/useProjectGroupSessions'
+import { FolderClosed, FolderOpen, History, SquarePen } from 'lucide-react'
+import {
+    EditOutlined,
+    InboxOutlined,
+    DeleteOutlined,
+    PlayCircleOutlined,
+    LoadingOutlined,
+    MoreOutlined,
+    FolderAddOutlined,
+    ImportOutlined,
+    SwapOutlined,
+} from '@ant-design/icons'
+import { useProjects } from '@/core/data/hooks/queries/useProjects'
+import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions'
+import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
+import { useAssignSessionProject, useDeleteProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
 import { useUiStore } from '@/core/data/stores/uiStore'
@@ -36,8 +49,10 @@ import { clearSessionResources } from '@/core/lib/sessionResources'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
-import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
-import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
+import { ProjectFormModal } from '@/components/project/ProjectFormModal'
+import { AssignProjectModal } from '@/components/project/AssignProjectModal'
+import type { Session, SessionMetadataSummary, Project } from '@/core/data/api/types'
+import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
 
 const { useToken } = antTheme
 
@@ -53,12 +68,48 @@ const Container = styled.div`
     min-height: 0;
 `
 
+// 分区标题行（标题 + hover 显示的「新建项目」按钮）
+const SectionTitleRow = styled.div`
+    display: flex;
+    align-items: center;
+    padding: 8px 8px 4px;
+
+    .section-extra {
+        visibility: hidden;
+    }
+    &:hover .section-extra {
+        visibility: visible;
+    }
+`
+
 // 分区标题
 const SectionTitle = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    padding: 8px 8px 4px;
+    flex: 1;
     font-size: 13px;
     font-weight: 500;
     color: ${props => props.$token.colorTextQuaternary};
+`
+
+// 分区标题上的小操作按钮（新建项目 / 新建游离会话）
+const SectionActionButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: ${props => props.$token.colorTextTertiary};
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.15s, background 0.15s;
+
+    &:hover {
+        color: ${props => props.$token.colorText};
+        background: ${props => props.$token.colorBgTextHover};
+    }
 `
 
 // 项目分组容器
@@ -87,17 +138,17 @@ const GroupHeader = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>
         background: ${props => props.$token.colorBgTextHover};
     }
 
-    /* 新建会话按钮：默认隐藏，hover 时显示 */
-    .new-session-btn {
+    /* 头部操作按钮：默认隐藏，hover 时显示 */
+    .header-actions {
         display: none;
     }
-    &:hover .new-session-btn {
+    &:hover .header-actions {
         display: inline-flex;
     }
 `
 
-// 新建会话按钮（hover 时通过 GroupHeader 的 CSS 显示）
-const NewSessionButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
+// 头部操作按钮（新建会话 / 更多菜单，hover 时通过 GroupHeader 的 CSS 显示）
+const HeaderActionButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
     align-items: center;
     justify-content: center;
     width: 20px;
@@ -319,6 +370,22 @@ function getSessionName(session: Session): string {
     return metadata?.name || ''
 }
 
+// ========== 分组共享 props（项目组与「最近」一致） ==========
+
+interface SessionGroupSharedProps {
+    activeSessionId: string | undefined
+    renamingSessionId: string | null
+    renameValue: string
+    setRenameValue: (v: string) => void
+    onRenameConfirm: () => void
+    onRenameCancel: () => void
+    onArchive: (session: Session) => void
+    onResume: (session: Session) => void
+    onDelete: (session: Session) => void
+    onRenameStart: (sessionId: string, currentName: string) => void
+    renameLoading: boolean
+}
+
 // ========== 会话行组件 ==========
 
 interface SessionRowProps {
@@ -335,12 +402,14 @@ interface SessionRowProps {
     onArchive: () => void
     onResume: () => void
     onDelete: () => void
+    /** 追加操作（「移至最近」/「归入项目」等 Dropdown 入口） */
+    extraAction?: React.ReactNode
 }
 
 function SessionRow({
     session, active, isRenaming,
     renameValue, onRenameValueChange, onRenameConfirm, onRenameCancel, onRenameLoading,
-    onClick, onRename, onArchive, onResume, onDelete,
+    onClick, onRename, onArchive, onResume, onDelete, extraAction,
 }: SessionRowProps) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -394,26 +463,116 @@ function SessionRow({
                 <ActionButton $token={token} $danger title={t('session.actions.delete')} onClick={(e) => { e.stopPropagation(); onDelete() }}>
                     <DeleteOutlined style={{ fontSize: 11 }} />
                 </ActionButton>
+                {extraAction}
             </SessionActions>
         </SessionItem>
     )
 }
 
+// ========== 分组内会话列表（项目组与「最近」共用的渲染骨架） ==========
+
+interface GroupSessionListProps extends SessionGroupSharedProps {
+    sessions: Session[]
+    visibleSessions: Session[]
+    isLoadingInitial: boolean
+    isLoadingMore: boolean
+    showCollapse: boolean
+    canShowMore: boolean
+    remainingCount: number
+    showMore: () => void
+    collapse: () => void
+    onSessionClick: (sessionId: string) => void
+    /** 每行的追加操作（「移至最近」/「归入项目」） */
+    renderExtraAction?: (session: Session) => React.ReactNode
+}
+
+function GroupSessionList({
+    activeSessionId, renamingSessionId, renameValue, setRenameValue,
+    onRenameConfirm, onRenameCancel, onArchive, onResume, onDelete, onRenameStart, renameLoading,
+    sessions, visibleSessions, isLoadingInitial, isLoadingMore,
+    showCollapse, canShowMore, remainingCount, showMore, collapse,
+    onSessionClick, renderExtraAction,
+}: GroupSessionListProps) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+
+    const showSkeleton = isLoadingInitial && sessions.length === 0
+    const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
+
+    return (
+        <SessionListContainer>
+            {showSkeleton ? (
+                <>
+                    <SkeletonRow $token={token}>
+                        <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
+                        <span className="sk-bar" style={{ flex: 1 }} />
+                    </SkeletonRow>
+                    <SkeletonRow $token={token}>
+                        <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
+                        <span className="sk-bar" style={{ flex: 1 }} />
+                    </SkeletonRow>
+                    <SkeletonRow $token={token}>
+                        <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
+                        <span className="sk-bar" style={{ flex: 1 }} />
+                    </SkeletonRow>
+                </>
+            ) : visibleSessions.map(session => (
+                <SessionRow
+                    key={session.id}
+                    session={session}
+                    active={session.id === activeSessionId}
+                    isRenaming={renamingSessionId === session.id}
+                    renameValue={renameValue}
+                    onRenameValueChange={setRenameValue}
+                    onRenameConfirm={onRenameConfirm}
+                    onRenameCancel={onRenameCancel}
+                    onRenameLoading={renameLoading}
+                    onClick={() => onSessionClick(session.id)}
+                    onRename={() => onRenameStart(session.id, getSessionName(session))}
+                    onArchive={() => onArchive(session)}
+                    onResume={() => onResume(session)}
+                    onDelete={() => onDelete(session)}
+                    extraAction={renderExtraAction?.(session)}
+                />
+            ))}
+            {showFooter && (
+                <ListFooter>
+                    {canShowMore && !isLoadingMore && (
+                        <FooterLink $token={token} onClick={showMore}>
+                            {remainingCount > 0
+                                ? t('nav.showMore', { count: remainingCount })
+                                : t('nav.loadMore')}
+                        </FooterLink>
+                    )}
+                    {showCollapse && !isLoadingMore && (
+                        <FooterLink $token={token} onClick={collapse}>
+                            {t('nav.collapse')}
+                        </FooterLink>
+                    )}
+                    {isLoadingMore && (
+                        <FooterLink $token={token} disabled>
+                            <LoadingOutlined /> {t('common.loading')}
+                        </FooterLink>
+                    )}
+                </ListFooter>
+            )}
+        </SessionListContainer>
+    )
+}
+
 // ========== 项目分组组件 ==========
 
-interface ProjectGroupProps {
-    groupKey: string
-    activeSessionId: string | undefined
-    renamingSessionId: string | null
-    renameValue: string
-    setRenameValue: (v: string) => void
-    onRenameConfirm: () => void
-    onRenameCancel: () => void
-    onArchive: (session: Session) => void
-    onResume: (session: Session) => void
-    onDelete: (session: Session) => void
-    onRenameStart: (sessionId: string, currentName: string) => void
-    renameLoading: boolean
+interface ProjectGroupProps extends SessionGroupSharedProps {
+    project: Project
+    /** 编辑项目（标题 hover 菜单） */
+    onEditProject: (project: Project) => void
+    /** 删除项目（标题 hover 菜单，需 total 拼确认文案） */
+    onDeleteProject: (project: Project, total: number) => void
+    /** 移至最近（assignSession(id, null)） */
+    onMoveToRecent: (session: Session) => void
+    /** 换项目（打开 AssignProjectModal） */
+    onChangeProject: (session: Session) => void
+    assignPending: boolean
 }
 
 /**
@@ -421,38 +580,75 @@ interface ProjectGroupProps {
  * 自动展开包含当前活跃会话的分组，其余折叠
  */
 function ProjectGroup({
-    groupKey, activeSessionId,
+    project, activeSessionId,
     renamingSessionId, renameValue, setRenameValue,
     onRenameConfirm, onRenameCancel, onArchive, onResume, onDelete, onRenameStart,
-    renameLoading,
+    renameLoading, onEditProject, onDeleteProject, onMoveToRecent, onChangeProject, assignPending,
 }: ProjectGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const navigate = useNavigate()
 
     const {
-        sessions, visibleSessions, fullProjectPath,
+        sessions, visibleSessions, fullProjectPath, total,
         expanded, toggleExpanded,
         isLoadingInitial, isLoadingMore,
         showCollapse, canShowMore, remainingCount,
         showMore, collapse,
-    } = useProjectGroupSessions(groupKey, activeSessionId)
-
-    const folderName = extractFolderName(groupKey)
+    } = useProjectSessions(project.id, activeSessionId)
 
     const handleSessionClick = useCallback((sessionId: string) => {
         navigate({ to: '/sessions/$sessionId', params: { sessionId } })
     }, [navigate])
 
+    // 新建会话：带上项目归属（hub 侧把 cwd 锁定项目 primary folder + 挂 projectId）
     const handleNewSession = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
-        navigate({ to: '/sessions/new', search: { cwd: fullProjectPath } })
-    }, [navigate, fullProjectPath])
+        navigate({ to: '/sessions/new', search: { cwd: fullProjectPath, projectId: project.id } })
+    }, [navigate, fullProjectPath, project.id])
+
+    // 标题 hover 菜单：编辑 / 删除项目
+    const headerMenu: MenuProps = {
+        items: [
+            { key: 'edit', icon: <EditOutlined />, label: t('project.edit') },
+            { key: 'delete', icon: <DeleteOutlined />, danger: true, label: t('project.delete') },
+        ],
+        onClick: ({ key, domEvent }) => {
+            domEvent.stopPropagation()
+            if (key === 'edit') onEditProject(project)
+            if (key === 'delete') onDeleteProject(project, total ?? sessions.length)
+        },
+    }
+
+    // 行内追加操作：移至最近 / 换项目
+    const renderExtraAction = useCallback((session: Session) => (
+        <Dropdown
+            menu={{
+                items: [
+                    { key: 'recent', icon: <ImportOutlined />, label: t('project.toRecent') },
+                    { key: 'change', icon: <SwapOutlined />, label: t('project.changeProject') },
+                ],
+                onClick: ({ key, domEvent }: Parameters<NonNullable<MenuProps['onClick']>>[0]) => {
+                    domEvent.stopPropagation()
+                    if (key === 'recent') onMoveToRecent(session)
+                    if (key === 'change') onChangeProject(session)
+                },
+            }}
+            trigger={['click']}
+        >
+            <ActionButton
+                $token={token}
+                title={t('common.more')}
+                disabled={assignPending}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <MoreOutlined style={{ fontSize: 11 }} />
+            </ActionButton>
+        </Dropdown>
+    ), [t, token, onMoveToRecent, onChangeProject, assignPending])
 
     // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
     const wrapperExpanded = expanded && (sessions.length > 0 || isLoadingInitial)
-    const showSkeleton = isLoadingInitial && sessions.length === 0
-    const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
 
     return (
         <GroupContainer>
@@ -460,69 +656,151 @@ function ProjectGroup({
                 <FolderIcon $token={token}>
                     {expanded ? <FolderOpen size={14} /> : <FolderClosed size={14} />}
                 </FolderIcon>
-                <GroupName>{folderName}</GroupName>
-                <NewSessionButton $token={token} className="new-session-btn" onClick={handleNewSession}>
-                    <SquarePen size={13} />
-                </NewSessionButton>
+                <GroupName>{project.name}</GroupName>
+                <span className="header-actions" style={{ display: 'inline-flex', gap: 2 }}>
+                    <HeaderActionButton $token={token} className="new-session-btn" onClick={handleNewSession}>
+                        <SquarePen size={13} />
+                    </HeaderActionButton>
+                    <Dropdown menu={headerMenu} trigger={['click']}>
+                        <HeaderActionButton
+                            $token={token}
+                            title={t('common.more')}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <MoreOutlined style={{ fontSize: 12 }} />
+                        </HeaderActionButton>
+                    </Dropdown>
+                </span>
             </GroupHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>
-                    <SessionListContainer>
-                        {showSkeleton ? (
-                            <>
-                                <SkeletonRow $token={token}>
-                                    <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                                    <span className="sk-bar" style={{ flex: 1 }} />
-                                </SkeletonRow>
-                                <SkeletonRow $token={token}>
-                                    <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                                    <span className="sk-bar" style={{ flex: 1 }} />
-                                </SkeletonRow>
-                                <SkeletonRow $token={token}>
-                                    <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
-                                    <span className="sk-bar" style={{ flex: 1 }} />
-                                </SkeletonRow>
-                            </>
-                        ) : visibleSessions.map(session => (
-                            <SessionRow
-                                key={session.id}
-                                session={session}
-                                active={session.id === activeSessionId}
-                                isRenaming={renamingSessionId === session.id}
-                                renameValue={renameValue}
-                                onRenameValueChange={setRenameValue}
-                                onRenameConfirm={onRenameConfirm}
-                                onRenameCancel={onRenameCancel}
-                                onRenameLoading={renameLoading}
-                                onClick={() => handleSessionClick(session.id)}
-                                onRename={() => onRenameStart(session.id, getSessionName(session))}
-                                onArchive={() => onArchive(session)}
-                                onResume={() => onResume(session)}
-                                onDelete={() => onDelete(session)}
-                            />
-                        ))}
-                        {showFooter && (
-                            <ListFooter>
-                                {canShowMore && !isLoadingMore && (
-                                    <FooterLink $token={token} onClick={showMore}>
-                                        {remainingCount > 0
-                                            ? t('nav.showMore', { count: remainingCount })
-                                            : t('nav.loadMore')}
-                                    </FooterLink>
-                                )}
-                                {showCollapse && !isLoadingMore && (
-                                    <FooterLink $token={token} onClick={collapse}>
-                                        {t('nav.collapse')}
-                                    </FooterLink>
-                                )}
-                                {isLoadingMore && (
-                                    <FooterLink $token={token} disabled>
-                                        <LoadingOutlined /> {t('common.loading')}
-                                    </FooterLink>
-                                )}
-                            </ListFooter>
-                        )}
-                    </SessionListContainer>
+                    <GroupSessionList
+                        activeSessionId={activeSessionId}
+                        renamingSessionId={renamingSessionId}
+                        renameValue={renameValue}
+                        setRenameValue={setRenameValue}
+                        onRenameConfirm={onRenameConfirm}
+                        onRenameCancel={onRenameCancel}
+                        onArchive={onArchive}
+                        onResume={onResume}
+                        onDelete={onDelete}
+                        onRenameStart={onRenameStart}
+                        renameLoading={renameLoading}
+                        sessions={sessions}
+                        visibleSessions={visibleSessions}
+                        isLoadingInitial={isLoadingInitial}
+                        isLoadingMore={isLoadingMore}
+                        showCollapse={showCollapse}
+                        canShowMore={canShowMore}
+                        remainingCount={remainingCount}
+                        showMore={showMore}
+                        collapse={collapse}
+                        onSessionClick={handleSessionClick}
+                        renderExtraAction={renderExtraAction}
+                    />
+                </SessionListInner>
+            </SessionListWrapper>
+        </GroupContainer>
+    )
+}
+
+// ========== 「最近」分组组件（未归入项目的会话） ==========
+
+interface RecentGroupProps extends SessionGroupSharedProps {
+    /** 归入项目（打开 AssignProjectModal） */
+    onAssign: (session: Session) => void
+    assignPending: boolean
+}
+
+/**
+ * 「最近」分组：游离（未归入项目）会话，默认展开
+ */
+function RecentGroup({
+    activeSessionId,
+    renamingSessionId, renameValue, setRenameValue,
+    onRenameConfirm, onRenameCancel, onArchive, onResume, onDelete, onRenameStart,
+    renameLoading, onAssign, assignPending,
+}: RecentGroupProps) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const navigate = useNavigate()
+
+    // 「最近」默认展开（用户仍可手动折叠）
+    const {
+        sessions, visibleSessions,
+        expanded, toggleExpanded,
+        isLoadingInitial, isLoadingMore,
+        showCollapse, canShowMore, remainingCount,
+        showMore, collapse,
+    } = useRecentSessions(activeSessionId, true)
+
+    const handleSessionClick = useCallback((sessionId: string) => {
+        navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+    }, [navigate])
+
+    // 新建会话（游离）：不带项目信息
+    const handleNewSession = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation()
+        navigate({ to: '/sessions/new', search: { cwd: undefined } })
+    }, [navigate])
+
+    // 行内追加操作：归入项目…
+    const renderExtraAction = useCallback((session: Session) => (
+        <ActionButton
+            $token={token}
+            title={t('project.assignTo')}
+            disabled={assignPending}
+            onClick={(e) => { e.stopPropagation(); onAssign(session) }}
+        >
+            <FolderAddOutlined style={{ fontSize: 11 }} />
+        </ActionButton>
+    ), [t, token, onAssign, assignPending])
+
+    const wrapperExpanded = expanded && (sessions.length > 0 || isLoadingInitial)
+
+    return (
+        <GroupContainer>
+            <GroupHeader $token={token} onClick={toggleExpanded}>
+                <FolderIcon $token={token}>
+                    <History size={14} />
+                </FolderIcon>
+                <GroupName>{t('nav.recent')}</GroupName>
+                <span className="header-actions" style={{ display: 'inline-flex', gap: 2 }}>
+                    <HeaderActionButton
+                        $token={token}
+                        title={t('nav.newSessionUnassigned')}
+                        onClick={handleNewSession}
+                    >
+                        <SquarePen size={13} />
+                    </HeaderActionButton>
+                </span>
+            </GroupHeader>
+            <SessionListWrapper $expanded={wrapperExpanded}>
+                <SessionListInner>
+                    <GroupSessionList
+                        activeSessionId={activeSessionId}
+                        renamingSessionId={renamingSessionId}
+                        renameValue={renameValue}
+                        setRenameValue={setRenameValue}
+                        onRenameConfirm={onRenameConfirm}
+                        onRenameCancel={onRenameCancel}
+                        onArchive={onArchive}
+                        onResume={onResume}
+                        onDelete={onDelete}
+                        onRenameStart={onRenameStart}
+                        renameLoading={renameLoading}
+                        sessions={sessions}
+                        visibleSessions={visibleSessions}
+                        isLoadingInitial={isLoadingInitial}
+                        isLoadingMore={isLoadingMore}
+                        showCollapse={showCollapse}
+                        canShowMore={canShowMore}
+                        remainingCount={remainingCount}
+                        showMore={showMore}
+                        collapse={collapse}
+                        onSessionClick={handleSessionClick}
+                        renderExtraAction={renderExtraAction}
+                    />
                 </SessionListInner>
             </SessionListWrapper>
         </GroupContainer>
@@ -533,7 +811,7 @@ function ProjectGroup({
 
 /**
  * 侧边栏项目分组会话列表
- * 按工作目录分组展示，参照 Codex 风格：文件夹图标 + 项目名 + 简洁会话列表
+ * 按项目实体分组展示 + 尾部「最近」区（未归入项目的会话）
  */
 export function SidebarProjects() {
     const { token } = useToken()
@@ -549,13 +827,23 @@ export function SidebarProjects() {
     const { startRename, renamingSessionId, renameValue, setRenameValue, cancelRename } = useUiStore()
     const renameActions = useSessionActions(renamingSessionId)
 
-    // 使缓存失效
+    // 项目管理状态
+    const { data: projects = [] } = useProjects()
+    const [projectModalOpen, setProjectModalOpen] = useState(false)
+    const [editingProject, setEditingProject] = useState<Project | null>(null)
+    const [assignSession, setAssignSession] = useState<Session | null>(null)
+
+    const assignMutation = useAssignSessionProject()
+    const deleteProjectMutation = useDeleteProject()
+
+    // 使缓存失效（项目维度视图由 mutation 内部统一失效）
     const invalidateAll = useCallback(async (sessionId: string) => {
         await Promise.all([
             queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
             queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
-            queryClient.invalidateQueries({ queryKey: queryKeys.sessionGroups }),
-            queryClient.invalidateQueries({ queryKey: ['groupSessions'] }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.recentSessions }),
+            queryClient.invalidateQueries({ queryKey: ['projectSessions'] }),
         ])
     }, [queryClient])
 
@@ -625,28 +913,112 @@ export function SidebarProjects() {
         })
     }, [api, t, invalidateAll, queryClient, activeSessionId, navigate, messageApi])
 
-    const { data: groups = [] } = useSessionGroups()
+    // ===== 项目管理 =====
+
+    // 打开新建项目弹窗
+    const handleOpenCreateProject = useCallback(() => {
+        setEditingProject(null)
+        setProjectModalOpen(true)
+    }, [])
+
+    // 打开编辑项目弹窗
+    const handleOpenEditProject = useCallback((project: Project) => {
+        setEditingProject(project)
+        setProjectModalOpen(true)
+    }, [])
+
+    // 删除项目：名下会话解绑进「最近」
+    const handleDeleteProject = useCallback((project: Project, total: number) => {
+        Modal.confirm({
+            title: t('project.deleteConfirmTitle', { name: project.name }),
+            content: t('project.deleteConfirmContent', { count: total }),
+            okText: t('common.confirm'),
+            okButtonProps: { danger: true },
+            cancelText: t('common.cancel'),
+            onOk: async () => {
+                try {
+                    await deleteProjectMutation.mutateAsync(project.id)
+                    messageApi.success(t('common.success'))
+                } catch {
+                    messageApi.error(t('common.error'))
+                }
+            },
+        })
+    }, [t, deleteProjectMutation, messageApi])
+
+    // 移至最近（解除归属）
+    const handleMoveToRecent = useCallback(async (session: Session) => {
+        try {
+            await assignMutation.mutateAsync({ sessionId: session.id, projectId: null })
+            messageApi.success(t('common.success'))
+        } catch {
+            messageApi.error(t('common.error'))
+        }
+    }, [assignMutation, t, messageApi])
+
+    // 换项目 / 归入项目（打开弹窗，选项按会话机器过滤）
+    const handleOpenAssign = useCallback((session: Session) => {
+        setAssignSession(session)
+    }, [])
+
+    const sharedProps = {
+        activeSessionId,
+        renamingSessionId,
+        renameValue,
+        setRenameValue,
+        onRenameConfirm: handleRenameConfirm,
+        onRenameCancel: cancelRename,
+        onArchive: handleArchive,
+        onResume: handleResume,
+        onDelete: handleDelete,
+        onRenameStart: startRename,
+        renameLoading: renameActions.isPending,
+    }
 
     return (
         <Container>
-            <SectionTitle $token={token}>{t('nav.projects')}</SectionTitle>
-            {groups.map(group => (
+            <SectionTitleRow>
+                <SectionTitle $token={token}>{t('nav.projects')}</SectionTitle>
+                <SectionActionButton
+                    $token={token}
+                    className="section-extra"
+                    title={t('nav.newProject')}
+                    onClick={handleOpenCreateProject}
+                >
+                    <FolderAddOutlined style={{ fontSize: 12 }} />
+                </SectionActionButton>
+            </SectionTitleRow>
+            {projects.map(project => (
                 <ProjectGroup
-                    key={group.key}
-                    groupKey={group.key}
-                    activeSessionId={activeSessionId}
-                    renamingSessionId={renamingSessionId}
-                    renameValue={renameValue}
-                    setRenameValue={setRenameValue}
-                    onRenameConfirm={handleRenameConfirm}
-                    onRenameCancel={cancelRename}
-                    onArchive={handleArchive}
-                    onResume={handleResume}
-                    onDelete={handleDelete}
-                    onRenameStart={startRename}
-                    renameLoading={renameActions.isPending}
+                    key={project.id}
+                    project={project}
+                    {...sharedProps}
+                    onEditProject={handleOpenEditProject}
+                    onDeleteProject={handleDeleteProject}
+                    onMoveToRecent={handleMoveToRecent}
+                    onChangeProject={handleOpenAssign}
+                    assignPending={assignMutation.isPending}
                 />
             ))}
+            <RecentGroup
+                {...sharedProps}
+                onAssign={handleOpenAssign}
+                assignPending={assignMutation.isPending}
+            />
+
+            {/* 新建/编辑项目弹窗 */}
+            <ProjectFormModal
+                open={projectModalOpen}
+                onClose={() => setProjectModalOpen(false)}
+                project={editingProject}
+            />
+
+            {/* 归入项目弹窗（只列与会话同机器的项目） */}
+            <AssignProjectModal
+                session={assignSession}
+                open={!!assignSession}
+                onClose={() => setAssignSession(null)}
+            />
         </Container>
     )
 }

@@ -32,7 +32,11 @@ const PAGE_SIZE = 20
  */
 export type UseRecentSessionsResult = ReturnType<typeof usePagedSessionGroup>
 
-export function useRecentSessions(activeSessionId?: string): UseRecentSessionsResult {
+export function useRecentSessions(
+    activeSessionId?: string,
+    /** 默认展开（「最近」区默认展开，用户仍可手动折叠） */
+    defaultExpanded = false,
+): UseRecentSessionsResult {
     const api = useMobiApi()
     const queryClient = useQueryClient()
 
@@ -65,5 +69,5 @@ export function useRecentSessions(activeSessionId?: string): UseRecentSessionsRe
     })
 
     // 分页/展开/剩余数等展示逻辑：共享核心
-    return usePagedSessionGroup(query, activeSessionId)
+    return usePagedSessionGroup(query, activeSessionId, defaultExpanded)
 }
