@@ -177,6 +177,7 @@ let toastSeq = 0
 type PendingInvalidations = {
     sessions: boolean
     sessionGroups: boolean
+    projectViews: boolean
     machines: boolean
     sessionIds: Set<string>
 }
@@ -219,18 +220,25 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const pendingInvalidationsRef = useRef<PendingInvalidations>({
         sessions: false,
         sessionGroups: false,
+        projectViews: false,
         machines: false,
         sessionIds: new Set(),
     })
 
-    // 批处理失效：将失效请求合并到同一微任务中，减少重复 API 调用
-    function scheduleInvalidation(scope: 'sessions' | 'machines', sessionId?: string) {
+    // 批处理失效：将失效请求合并到同一微任务中，减少重复 API 调用。
+    // - 'sessions'：全局会话列表 + 旧 sessionGroups 视图
+    // - 'projectViews'：项目维度视图（['projects'] / ['projectSessions'] / ['recentSessions']）。
+    //   session 增删改会改变项目组与「最近」的 sessionIds 成员，必须一并刷新，
+    //   否则新会话不出现 / 删除会话残留
+    function scheduleInvalidation(scope: 'sessions' | 'machines' | 'projectViews', sessionId?: string) {
         const pending = pendingInvalidationsRef.current
         if (scope === 'sessions') {
             pending.sessions = true
             pending.sessionGroups = true
-        } else {
+        } else if (scope === 'machines') {
             pending.machines = true
+        } else {
+            pending.projectViews = true
         }
         if (sessionId) {
             pending.sessionIds.add(sessionId)
@@ -241,13 +249,18 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             invalidationTimerRef.current = null
             const p = pendingInvalidationsRef.current
             const qc = queryClientRef.current
-            if (!p.sessions && !p.sessionGroups && !p.machines && p.sessionIds.size === 0) return
+            if (!p.sessions && !p.sessionGroups && !p.projectViews && !p.machines && p.sessionIds.size === 0) return
 
             const tasks: Array<Promise<unknown>> = []
             if (p.sessions) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessions }))
             if (p.sessionGroups) {
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessionGroups }))
                 tasks.push(qc.invalidateQueries({ queryKey: ['groupSessions'] }))
+            }
+            if (p.projectViews) {
+                tasks.push(qc.invalidateQueries({ queryKey: queryKeys.projects }))
+                tasks.push(qc.invalidateQueries({ queryKey: queryKeys.recentSessions }))
+                tasks.push(qc.invalidateQueries({ queryKey: ['projectSessions'] }))
             }
             if (p.machines) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.machines }))
             for (const sid of Array.from(p.sessionIds)) {
@@ -256,6 +269,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
             p.sessions = false
             p.sessionGroups = false
+            p.projectViews = false
             p.machines = false
             p.sessionIds.clear()
             if (tasks.length > 0) void Promise.all(tasks).catch(() => {})
@@ -270,9 +284,14 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         switch (event.type) {
             case 'session-added':
                 scheduleInvalidation('sessions')
+                // 新会话（游离进「最近」或归属项目）需要出现在对应分组视图
+                scheduleInvalidation('projectViews')
                 break
             case 'session-updated':
                 patchSessionCache(qc, event.sessionId, event.data)
+                // 重命名/归档/生成等会改变项目组与「最近」的成员与排序（sessionIds 分页），
+                // 全局缓存 patch 不覆盖分组视图的成员列表，需失效刷新
+                scheduleInvalidation('projectViews')
                 break
             case 'sdk-metadata-refreshed':
                 // hub 后台刷新 sdkMetadata 完成（内容有变）→ 失效本 session 的 metadata query，触发 refetch 拿新值
@@ -284,6 +303,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // 清理该 session 的瞬时建议, 避免删除会话后 bySession Map 残留
                 usePromptSuggestionStore.getState().clearSession(event.sessionId)
                 scheduleInvalidation('sessions')
+                // 删除的会话需从项目组/「最近」分组视图中移除
+                scheduleInvalidation('projectViews')
                 break
             case 'message-received': {
                 if (event.message) {
@@ -326,15 +347,12 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 // 项目实体变更 → 重新拉取项目列表（数据量小，直接 invalidate）
                 qc.invalidateQueries({ queryKey: queryKeys.projects })
                 break
-            case 'project-removed': {
-                // 名下会话已解绑进「最近」→ 批量失效项目 + 会话 + 两个分组视图即可；
-                // hub 会逐会话发 session-updated，invalidateQueries 天然去重，无需逐事件 patch 缓存
-                qc.invalidateQueries({ queryKey: queryKeys.projects })
-                qc.invalidateQueries({ queryKey: queryKeys.sessions })
-                qc.invalidateQueries({ queryKey: queryKeys.recentSessions })
-                qc.invalidateQueries({ queryKey: ['projectSessions'] })
+            case 'project-removed':
+                // 名下会话已解绑进「最近」→ 与 session-* 共用 projectViews 批处理
+                // （批量失效项目 + 两个分组视图）；session 级缓存由 hub 逐会话发的
+                // session-updated 走 patchSessionCache，invalidateQueries 天然去重
+                scheduleInvalidation('projectViews')
                 break
-            }
             case 'heartbeat':
                 break
             case 'connection-changed':
@@ -537,6 +555,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             pendingInvalidationsRef.current = {
                 sessions: false,
                 sessionGroups: false,
+                projectViews: false,
                 machines: false,
                 sessionIds: new Set(),
             }

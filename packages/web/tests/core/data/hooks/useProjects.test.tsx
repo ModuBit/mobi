@@ -200,7 +200,7 @@ describe('SSE project 事件失效', () => {
         invalidateSpy.mockRestore()
     })
 
-    it('project-removed → 批量失效 projects/sessions/recentSessions/projectSessions', async () => {
+    it('project-removed → 折叠进 projectViews 批处理（projects/recentSessions/projectSessions）', async () => {
         const { queryClient: qc } = await renderProvider()
         const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -210,10 +210,11 @@ describe('SSE project 事件失效', () => {
             expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['projects'] })
         })
         const invalidatedKeys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
-        // 名下会话解绑进「最近」→ 会话与两个分组视图都要刷新
-        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'sessions')).toBe(true)
+        // 名下会话解绑进「最近」→ 两个分组视图直接刷新；session 级缓存由 hub 逐会话发的
+        // session-updated（patchSessionCache + projectViews 批处理）覆盖，不再在此直接失效
         expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'recentSessions')).toBe(true)
         expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'projectSessions')).toBe(true)
+        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'sessions')).toBe(false)
         invalidateSpy.mockRestore()
     })
 })
