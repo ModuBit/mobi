@@ -15,7 +15,7 @@
  */
 
 import axios from 'axios'
-import type { AgentState, CreateMachineResponse, CreateSessionResponse, RunnerState, Machine, MachineMetadata, Metadata, Session } from '@/api/types'
+import type { AgentState, CreateMachineResponse, CreateSessionResponse, Project, RunnerState, Machine, MachineMetadata, Metadata, Session } from '@/api/types'
 import { AgentStateSchema, CreateMachineResponseSchema, CreateSessionResponseSchema, RunnerStateSchema, MachineMetadataSchema, MetadataSchema } from '@/api/types'
 import { configuration } from '@/configuration'
 import { getAuthToken } from '@/api/auth'
@@ -79,7 +79,8 @@ export class ApiClient {
                 runningAt: raw.runningAt,
                 runtimeState: raw.runtimeState,
                 permissionMode: raw.permissionMode,
-                tag: raw.tag
+                tag: raw.tag,
+                projectId: raw.projectId
             }
         } catch (error: unknown) {
             // 404 → session 不存在，正常情况
@@ -98,7 +99,8 @@ export class ApiClient {
         state: AgentState | null
         mode?: 'local' | 'remote'
         runtimeState?: unknown
-    }): Promise<Session> {
+        projectId?: string
+    }): Promise<Session & { project: Project | null }> {
         const response = await axios.post<CreateSessionResponse>(
             `${configuration.apiUrl}/cli/sessions`,
             {
@@ -106,7 +108,8 @@ export class ApiClient {
                 metadata: opts.metadata,
                 agentState: opts.state,
                 mode: opts.mode,
-                runtimeState: opts.runtimeState
+                runtimeState: opts.runtimeState,
+                projectId: opts.projectId
             },
             {
                 headers: {
@@ -152,7 +155,10 @@ export class ApiClient {
             runningAt: raw.runningAt,
             runtimeState: raw.runtimeState,
             permissionMode: raw.permissionMode,
-            tag: raw.tag
+            tag: raw.tag,
+            projectId: raw.projectId,
+            // 归属项目（带 projectId 创建时返回；resume / 游离为 null）
+            project: parsed.data.project ?? null
         }
     }
 

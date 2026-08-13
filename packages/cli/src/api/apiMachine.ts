@@ -134,7 +134,8 @@ export class ApiMachineClient {
                     token,
                     sessionType,
                     worktreeName,
-                    effort
+                    effort,
+                    projectId
                 } = params || {}
 
                 if (!directory) {
@@ -153,7 +154,8 @@ export class ApiMachineClient {
                     token,
                     sessionType,
                     worktreeName,
-                    effort
+                    effort,
+                    projectId
                 })
 
                 switch (result.type) {

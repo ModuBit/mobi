@@ -16,8 +16,7 @@
 
 import chalk from 'chalk'
 import { execFileSync, spawn } from 'node:child_process'
-import { z } from 'zod'
-import { PROTOCOL_VERSION, PERMISSION_MODES, type EffortLevel } from '@mobi/shared'
+import { PROTOCOL_VERSION } from '@mobi/shared'
 import type { StartOptions } from '@/claude/runClaude'
 import { configuration } from '@/configuration'
 import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@/runner/controlClient'
@@ -29,6 +28,7 @@ import { maybeAutoStartServer } from '@/utils/autoStartServer'
 import { withBunRuntimeEnv } from '@/utils/bunRuntime'
 import { extractErrorInfo } from '@/utils/errorUtils'
 import { getClaudeExecutablePath } from '@/claude/sdk/claudeExecutable'
+import { parseStartOptions } from './claudeArgs'
 import type { CommandDefinition } from './types'
 
 // 检测是否为网络连接错误
@@ -105,61 +105,8 @@ export const claudeCommand: CommandDefinition = {
             args.shift()
         }
 
-        const options: StartOptions = {}
-        let showHelp = false
-        const unknownArgs: string[] = []
-
-        // 解析命令行参数
-        for (let i = 0; i < args.length; i++) {
-            const arg = args[i]
-
-            if (arg === '-h' || arg === '--help') {
-                showHelp = true
-                unknownArgs.push(arg)
-            } else if (arg === '--mobi-starting-mode') {
-                // 设置启动模式
-                options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
-            } else if (arg === '--yolo') {
-                // 设置yolo模式
-                options.permissionMode = 'bypassPermissions'
-                unknownArgs.push('--dangerously-skip-permissions')
-            } else if (arg === '--permission-mode') {
-                // 设置权限模式（newchat 透传）
-                const mode = args[++i]
-                if (!mode) {
-                    throw new Error('Missing --permission-mode value')
-                }
-                options.permissionMode = z.enum(PERMISSION_MODES).parse(mode)
-            } else if (arg === '--dangerously-skip-permissions') {
-                // 与yolo模式相同
-                options.permissionMode = 'bypassPermissions'
-                unknownArgs.push(arg)
-            } else if (arg === '--model' || arg === '-m') {
-                // 设置模型
-                const model = args[++i]
-                if (!model) {
-                    throw new Error('Missing --model value')
-                }
-                options.model = model
-                unknownArgs.push('--model', model)
-            } else if (arg === '--effort') {
-                const effort = args[++i]
-                if (!effort) {
-                    throw new Error('Missing --effort value')
-                }
-                options.effort = effort as EffortLevel
-                unknownArgs.push('--effort', effort)
-            } else if (arg === '--started-by') {
-                // 设置启动来源
-                options.startedBy = args[++i] as 'runner' | 'terminal'
-            } else {
-                // 其他claude code参数
-                unknownArgs.push(arg)
-                if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
-                    unknownArgs.push(args[++i])
-                }
-            }
-        }
+        // 解析命令行参数（mobi 自身 flag + 透传给 claude code 的参数）
+        const { options, showHelp, unknownArgs } = parseStartOptions(args)
 
         if (unknownArgs.length > 0) {
             // 透传给claude code的参数

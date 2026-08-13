@@ -555,6 +555,8 @@ export async function claudeRemote(opts: {
     claudeArgs?: string[],
     allowedTools: string[],
     hookSettingsPath: string,
+    /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
+    additionalDirectories?: string[],
     getSessionConfig: () => EnhancedMode,
     flushConfig?: () => void,
     canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>,
@@ -741,7 +743,8 @@ export async function claudeRemote(opts: {
         // env 会整体替换子进程环境（不与 process.env 合并），故必须自行展开，
         // 否则 PATH / HOME / ANTHROPIC_API_KEY 等继承变量会丢失
         env: { ...process.env, ...buildClaudeFeatureEnv() } as Record<string, string>,
-        additionalDirectories: [join(opts.path, '.mobi')],
+        // .mobi 目录（附件访问）+ 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放）
+        additionalDirectories: [join(opts.path, '.mobi'), ...(opts.additionalDirectories ?? [])],
         toolConfig: {
             askUserQuestion: { previewFormat: 'markdown' }
         },

@@ -49,6 +49,8 @@ export interface StartOptions {
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     startedBy?: 'runner' | 'terminal'
+    /** 归属项目 id（Web spawn / 终端 --project 透传；缺省 = 游离） */
+    projectId?: string
 }
 
 export async function runClaude(options: StartOptions = {}): Promise<void> {
@@ -70,7 +72,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     const initialState: AgentState = {};
     const initialModel = normalizeClaudeSessionModel(options.model);
     const startingMode = options.startingMode ?? (startedBy === 'runner' ? 'remote' : 'local');
-    const { api, apiSession, sessionInfo } = await bootstrapSession({
+    const { api, apiSession, sessionInfo, additionalDirectories } = await bootstrapSession({
         flavor: 'claude',
         startedBy,
         workingDirectory,
@@ -78,7 +80,8 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         model: initialModel ?? undefined,
         effort: options.effort,
         claudeArgs: options.claudeArgs,   // 用于 --resume 时复用 Hub session
-        startingMode
+        startingMode,
+        projectId: options.projectId
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
 
@@ -414,6 +417,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             permissionMode: options.permissionMode,
             effort: currentEffort,
             startingMode,
+            additionalDirectories,
             messageQueue,
             api,
             allowedTools: mobiMcpServer.toolNames.map(toolName => `mcp__mobi__${toolName}`),

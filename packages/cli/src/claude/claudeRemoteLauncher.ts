@@ -581,6 +581,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onRunningChange: session.onRunningChange,
                         claudeEnvVars: session.claudeEnvVars,
                         claudeArgs: session.claudeArgs,
+                        additionalDirectories: session.additionalDirectories,
                         onMessage,
                         onCompletionEvent: (message: string) => {
                             logger.debug(`[remote]: Completion event: ${message}`);

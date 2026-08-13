@@ -1,0 +1,231 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * 验证 bootstrapSession 的项目归属语义（项目实体化 Task 6）：
+ * - 带 projectId：machineId 匹配 + folders 存在性校验，过滤后冻结进 metadata
+ * - machineId 不匹配 / primary 缺失 → 硬失败
+ * - 不带 projectId：游离会话，additionalDirectories 为空、不冻结
+ * - resume：回放创建时冻结的 metadata.additionalDirectories
+ *
+ * @see packages/cli/src/agent/sessionFactory.ts
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// 共享 mock 状态（vi.hoisted 保证 vi.mock 工厂可引用）
+const h = vi.hoisted(() => ({
+    getOrCreateSession: vi.fn(),
+    getSessionByClaudeSessionId: vi.fn(),
+    updateMetadata: vi.fn(),
+    access: vi.fn()
+}))
+
+vi.mock('@/api/api', () => ({
+    ApiClient: {
+        create: async () => ({
+            getOrCreateSession: h.getOrCreateSession,
+            getSessionByClaudeSessionId: h.getSessionByClaudeSessionId,
+            getOrCreateMachine: async () => ({}),
+            sessionSyncClient: () => ({ updateMetadata: h.updateMetadata })
+        })
+    }
+}))
+
+vi.mock('@/persistence', () => ({
+    readSettings: async () => ({ machineId: 'm1' })
+}))
+
+vi.mock('@/runner/controlClient', () => ({
+    notifyRunnerSessionStarted: async () => null
+}))
+
+vi.mock('@/configuration', () => ({
+    configuration: { mobiHomeDir: '/tmp/mobi-home', apiUrl: 'http://hub.test' }
+}))
+
+vi.mock('@/projectPath', () => ({
+    runtimePath: () => '/tmp/mobi-runtime'
+}))
+
+vi.mock('@/utils/worktreeEnv', () => ({
+    readWorktreeEnv: () => null,
+    readGitBranch: () => null
+}))
+
+vi.mock('@/ui/logger', () => ({
+    logger: { debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn(), infoDeveloper: vi.fn(), debugLargeJson: vi.fn() }
+}))
+
+// mock fs.access：按 exists 集合判定路径存在性
+vi.mock('node:fs/promises', () => ({
+    access: h.access
+}))
+
+import { bootstrapSession } from '@/agent/sessionFactory'
+
+const MACHINE_ID = 'm1'
+
+function baseProject(overrides: Record<string, unknown> = {}) {
+    return {
+        id: 'p1',
+        namespace: 'default',
+        machineId: MACHINE_ID,
+        name: 'mobi',
+        folders: [
+            { path: '/a/mobi', primary: true },
+            { path: '/a/shared', primary: false },
+            { path: '/gone', primary: false }
+        ],
+        createdAt: 1,
+        updatedAt: 1,
+        seq: 0,
+        ...overrides
+    }
+}
+
+function mockSession(overrides: Record<string, unknown> = {}) {
+    return {
+        id: 's1',
+        namespace: 'default',
+        seq: 0,
+        createdAt: 1,
+        updatedAt: 1,
+        active: true,
+        activeAt: 1,
+        metadata: null,
+        metadataVersion: 0,
+        agentState: null,
+        agentStateVersion: 0,
+        running: false,
+        runningAt: 0,
+        tag: 'tag1',
+        projectId: null,
+        ...overrides
+    }
+}
+
+/** 设定存在的路径集合（其余 fs.access 全部失败） */
+function stubExists(paths: string[]) {
+    const set = new Set(paths)
+    h.access.mockImplementation((p: string) =>
+        set.has(p) ? Promise.resolve() : Promise.reject(new Error('ENOENT'))
+    )
+}
+
+beforeEach(() => {
+    vi.clearAllMocks()
+    h.getSessionByClaudeSessionId.mockResolvedValue(null)
+})
+
+describe('bootstrapSession 项目归属', () => {
+    it('带 projectId：校验通过后冻结 additionalDirectories 并写入 metadata', async () => {
+        stubExists(['/a/mobi', '/a/shared'])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({ projectId: 'p1' }),
+            project: baseProject()
+        })
+
+        const result = await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            projectId: 'p1'
+        })
+
+        // projectId 透传到 POST /cli/sessions body
+        expect(h.getOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'p1' }))
+        // 只保留存在的非 primary 文件夹（/gone 被跳过）
+        expect(result.additionalDirectories).toEqual(['/a/shared'])
+        // 冻结写入 metadata
+        expect(h.updateMetadata).toHaveBeenCalledTimes(1)
+        const handler = h.updateMetadata.mock.calls[0][0] as (cur: Record<string, unknown>) => Record<string, unknown>
+        expect(handler({ path: '/a/mobi' })).toEqual({
+            path: '/a/mobi',
+            additionalDirectories: ['/a/shared']
+        })
+    })
+
+    it('machineId 不匹配 → 抛错且不冻结', async () => {
+        stubExists(['/a/mobi', '/a/shared'])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({ projectId: 'p1' }),
+            project: baseProject({ machineId: 'm-other' })
+        })
+
+        await expect(bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            projectId: 'p1'
+        })).rejects.toThrow(/different machine/i)
+        expect(h.updateMetadata).not.toHaveBeenCalled()
+    })
+
+    it('primary 缺失（且非进程 cwd）→ 抛错', async () => {
+        stubExists([])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({ projectId: 'p1' }),
+            project: baseProject({
+                folders: [{ path: '/a/missing-primary', primary: true }]
+            })
+        })
+
+        await expect(bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            projectId: 'p1'
+        })).rejects.toThrow(/primary/i)
+        expect(h.updateMetadata).not.toHaveBeenCalled()
+    })
+
+    it('不带 projectId：不冻结、additionalDirectories 为空', async () => {
+        stubExists(['/a/mobi'])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession(),
+            project: null
+        })
+
+        const result = await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi'
+        })
+
+        expect(h.getOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({ projectId: undefined }))
+        expect(result.additionalDirectories).toEqual([])
+        expect(h.updateMetadata).not.toHaveBeenCalled()
+    })
+
+    it('resume：从返回 session.metadata.additionalDirectories 回放', async () => {
+        stubExists(['/a/mobi'])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({ metadata: { path: '/a/mobi', additionalDirectories: ['/frozen'] } }),
+            project: null
+        })
+
+        const result = await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            claudeArgs: ['--resume', 'cs1']
+        })
+
+        expect(result.additionalDirectories).toEqual(['/frozen'])
+        expect(h.updateMetadata).not.toHaveBeenCalled()
+    })
+})

@@ -33,6 +33,7 @@ import { isRetryableConnectionError } from '@/utils/errorUtils';
 
 import { cleanupRunnerState, getInstalledCliMtimeMs, isRunnerRunningCurrentlyInstalledMobiVersion, stopRunner } from './controlClient';
 import { startRunnerControlServer } from './controlServer';
+import { buildClaudeSpawnArgs } from './spawnArgs';
 import { createWorktree, removeWorktree, type WorktreeInfo } from './worktree';
 import { buildMachineMetadata } from '@/agent/sessionFactory';
 
@@ -234,8 +235,6 @@ export async function startRunner(): Promise<void> {
       logger.debugLargeJson('[RUNNER RUN] Spawning session', options);
 
       const { directory, approvedNewDirectoryCreation = true } = options;
-      const effort = options.effort;
-      const permissionMode = options.permissionMode;
       const sessionType = options.sessionType ?? 'simple';
       const worktreeName = options.worktreeName;
       let directoryCreated = false;
@@ -369,22 +368,8 @@ export async function startRunner(): Promise<void> {
           };
         }
 
-        // Construct arguments for the CLI
-        // Mobi 当前仅支持 Claude
-        const args = ['claude'];
-        if (options.resumeSessionId) {
-          args.push('--resume', options.resumeSessionId);
-        }
-        args.push('--mobi-starting-mode', 'remote', '--started-by', 'runner');
-        if (options.model) {
-          args.push('--model', options.model);
-        }
-        if (effort !== undefined) {
-          args.push('--effort', effort);
-        }
-        if (permissionMode) {
-          args.push('--permission-mode', permissionMode);
-        }
+        // Construct arguments for the CLI（纯函数构造，便于单测）
+        const args = buildClaudeSpawnArgs(options);
 
         // sessionId reserved for future use
         const MAX_TAIL_CHARS = 4000;

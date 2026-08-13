@@ -101,6 +101,7 @@ export async function claudeLocalLauncher(
                 allowedTools: session.allowedTools,
                 hookSettingsPath: session.hookSettingsPath,
                 systemPromptAppend,
+                additionalDirectories: session.additionalDirectories,
             });
         },
         onLaunchSuccess: () => {

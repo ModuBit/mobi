@@ -37,6 +37,8 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     readonly hookSettingsPath: string;
     readonly startedBy: 'runner' | 'terminal';
     readonly startingMode: 'local' | 'remote';
+    /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
+    readonly additionalDirectories: string[];
     localLaunchFailure: LocalLaunchFailure | null = null;
 
     constructor(opts: {
@@ -58,6 +60,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         permissionMode?: PermissionMode;
         model?: SessionModel;
         effort?: EffortLevel;
+        additionalDirectories?: string[];
     }) {
         super({
             api: opts.api,
@@ -86,6 +89,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
         this.hookSettingsPath = opts.hookSettingsPath;
         this.startedBy = opts.startedBy;
         this.startingMode = opts.startingMode;
+        this.additionalDirectories = opts.additionalDirectories ?? [];
     }
 
     setPermissionMode = (mode: PermissionMode): void => {

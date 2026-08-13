@@ -17,10 +17,11 @@
 import os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
+import { access } from 'node:fs/promises'
 
 import { ApiClient } from '@/api/api'
 import type { ApiSessionClient } from '@/api/apiSession'
-import type { AgentState, MachineMetadata, Metadata, Session } from '@/api/types'
+import type { AgentState, MachineMetadata, Metadata, Project, Session } from '@/api/types'
 import type { EffortLevel } from '@mobi/shared'
 import { notifyRunnerSessionStarted } from '@/runner/controlClient'
 import { readSettings } from '@/persistence'
@@ -42,6 +43,8 @@ export type SessionBootstrapOptions = {
     effort?: EffortLevel
     claudeArgs?: string[]   // 用于解析 --resume，从而复用已有 Hub session
     startingMode?: 'local' | 'remote'
+    /** 归属项目（Web spawn 透传；缺省 = 游离） */
+    projectId?: string
 }
 
 export type SessionBootstrapResult = {
@@ -52,6 +55,8 @@ export type SessionBootstrapResult = {
     machineId: string
     startedBy: SessionStartedBy
     workingDirectory: string
+    /** 创建时冻结 / resume 回放的额外工作目录（已过滤不存在路径） */
+    additionalDirectories: string[]
 }
 
 export function buildMachineMetadata(): MachineMetadata {
@@ -141,6 +146,51 @@ function extractResumeSessionId(claudeArgs?: string[]): string | null {
     return null
 }
 
+/**
+ * 计算会话的额外工作目录：
+ * - 新建（有 project）：校验 machineId 匹配与 folders 存在性；primary 缺失硬失败，
+ *   其余缺失 warn 跳过；通过者由调用方冻结进 metadata.additionalDirectories
+ * - resume（hub 不回 project）：直接回放 metadata.additionalDirectories（创建时冻结的列表）
+ * - 游离：空数组
+ */
+async function resolveAdditionalDirectories(input: {
+    project: Project | null
+    sessionMetadata: unknown
+    machineId: string
+    workingDirectory: string
+}): Promise<string[]> {
+    const { project, sessionMetadata, machineId, workingDirectory } = input
+
+    if (!project) {
+        // resume 回放：metadata 冻结列表（MetadataSchema.additionalDirectories）
+        const frozen = (sessionMetadata as { additionalDirectories?: string[] } | null)?.additionalDirectories
+        return frozen ?? []
+    }
+
+    // folders 是机器本地路径，项目必须归属本机才能使用
+    if (project.machineId !== machineId) {
+        throw new Error(`Project '${project.name}' belongs to a different machine (${project.machineId}), this machine is ${machineId}`)
+    }
+
+    const dirs: string[] = []
+    for (const folder of project.folders) {
+        const exists = await access(folder.path).then(() => true).catch(() => false)
+        if (folder.primary) {
+            // primary 即 cwd；cwd 本身必然存在（进程就在里面），此分支仅防御显式不匹配
+            if (!exists && !folder.path.startsWith(workingDirectory) && workingDirectory !== folder.path) {
+                throw new Error(`Primary folder does not exist: ${folder.path}`)
+            }
+            continue
+        }
+        if (exists) {
+            dirs.push(folder.path)
+        } else {
+            logger.warn(`[START] 项目文件夹不存在，跳过 add-dir: ${folder.path}`)
+        }
+    }
+    return dirs
+}
+
 export async function bootstrapSession(options: SessionBootstrapOptions): Promise<SessionBootstrapResult> {
     const workingDirectory = options.workingDirectory ?? process.cwd()
     const startedBy = options.startedBy ?? 'terminal'
@@ -189,10 +239,27 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         metadata,
         state: agentState,
         mode: options.startingMode,
-        runtimeState: options.effort ? { effort: options.effort } : undefined
+        runtimeState: options.effort ? { effort: options.effort } : undefined,
+        projectId: options.projectId
     })
 
     const apiSession = api.sessionSyncClient(sessionInfo)
+
+    // 解析额外工作目录：创建时来自 project.folders（校验+过滤后冻结），resume 时回放 metadata 冻结列表
+    const additionalDirectories = await resolveAdditionalDirectories({
+        project: sessionInfo.project,
+        sessionMetadata: sessionInfo.metadata,
+        machineId,
+        workingDirectory
+    })
+
+    // 创建路径冻结：resume 后 Hub 不回 project，回放依赖这里的冻结结果
+    if (options.projectId && sessionInfo.project && additionalDirectories.length > 0) {
+        apiSession.updateMetadata((current) => ({
+            ...current,
+            additionalDirectories
+        }))
+    }
 
     // 通知 runner session 已启动
     await reportSessionStarted(sessionInfo.id, metadata)
@@ -204,6 +271,7 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         metadata,
         machineId,
         startedBy,
-        workingDirectory
+        workingDirectory,
+        additionalDirectories
     }
 }

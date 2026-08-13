@@ -38,6 +38,8 @@ export async function claudeLocal(opts: {
     hookSettingsPath: string
     /** 追加到 claude 默认 system prompt 之后的内容（含 mobi base + 用户 custom/append） */
     systemPromptAppend: string
+    /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
+    additionalDirectories?: string[]
 }) {
 
     // Ensure project directory exists
@@ -93,6 +95,12 @@ export async function claudeLocal(opts: {
     const mobiDir = join(opts.path, '.mobi')
     args.push('--add-dir', mobiDir)
     logger.debug(`[ClaudeLocal] Adding mobi directory: ${mobiDir}`)
+
+    // 项目额外工作目录（创建时冻结 / resume 回放）
+    for (const dir of opts.additionalDirectories ?? []) {
+        args.push('--add-dir', dir)
+        logger.debug(`[ClaudeLocal] Adding project directory: ${dir}`)
+    }
 
     // Prepare environment variables
     // Note: Local mode uses global Claude installation
