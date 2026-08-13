@@ -138,7 +138,6 @@ function patchSessionCache(
     })
 
     // 更新会话列表缓存中对应的 session（仅当值实际变化时）
-    // groupSessions 缓存只存 sessionId，无需更新
     queryClient.setQueryData<Session[]>(queryKeys.sessions, (old) => {
         if (!old) return old
         const idx = old.findIndex(s => s.id === sessionId)
