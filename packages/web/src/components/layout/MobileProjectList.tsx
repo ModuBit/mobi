@@ -224,6 +224,16 @@ const SkeletonRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>
     }
 `
 
+// 空态占位行（分组无会话时展示，行高对齐 SessionItem）
+const EmptyRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 12px 0 50px;
+    font-size: 13px;
+    color: ${props => props.$token.colorTextQuaternary};
+`
+
 // 列表底部链接区（收起 / 展开更多 并列）
 const ListFooter = styled.div`
     display: flex;
@@ -335,8 +345,10 @@ function MobileProjectGroup({
     }, [navigate, onCloseMenu])
 
     // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
-    const wrapperExpanded = expanded && (sessions.length > 0 || isLoadingInitial)
+    // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
+    const wrapperExpanded = expanded
     const showSkeleton = isLoadingInitial && sessions.length === 0
+    const showEmpty = !showSkeleton && sessions.length === 0
     const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
 
     return (
@@ -367,6 +379,8 @@ function MobileProjectGroup({
                                 <span className="sk-bar" style={{ flex: 1 }} />
                             </SkeletonRow>
                         </>
+                    ) : showEmpty ? (
+                        <EmptyRow $token={token}>{t('nav.noSessions')}</EmptyRow>
                     ) : visibleSessions.map(session => (
                         <MobileSessionItem
                             key={session.id}
@@ -440,8 +454,10 @@ function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMenu }: Mo
         navigate({ to: '/sessions/new', search: { cwd: undefined } })
     }, [navigate, onCloseMenu])
 
-    const wrapperExpanded = expanded && (sessions.length > 0 || isLoadingInitial)
+    // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
+    const wrapperExpanded = expanded
     const showSkeleton = isLoadingInitial && sessions.length === 0
+    const showEmpty = !showSkeleton && sessions.length === 0
     const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
 
     return (
@@ -468,6 +484,8 @@ function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMenu }: Mo
                                 <span className="sk-bar" style={{ flex: 1 }} />
                             </SkeletonRow>
                         </>
+                    ) : showEmpty ? (
+                        <EmptyRow $token={token}>{t('nav.noSessions')}</EmptyRow>
                     ) : visibleSessions.map(session => (
                         <MobileSessionItem
                             key={session.id}
@@ -671,8 +689,7 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                         onCloseMenu={onCloseMenu}
                     />
                 ))}
-                {/* 「最近」分组：游离会话 */}
-                <SectionHeader $token={token}>{t('nav.recent')}</SectionHeader>
+                {/* 「最近」分组：游离会话（自带 GroupHeader 承载标题/折叠/新建按钮） */}
                 <MobileRecentGroup
                     activeSessionId={activeSessionId}
                     onSessionAction={setActionSessionId}

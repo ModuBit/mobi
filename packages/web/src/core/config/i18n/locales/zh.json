@@ -8,7 +8,8 @@
         "back": "返回",
         "backHome": "返回首页",
         "error": "错误",
-        "success": "成功"
+        "success": "成功",
+        "more": "更多"
     },
     "time": {
         "justNow": "刚刚",
@@ -61,7 +62,8 @@
         "collapse": "收起",
         "recent": "最近",
         "newProject": "新建项目",
-        "newSessionUnassigned": "新建会话（游离）"
+        "newSessionUnassigned": "新建会话（游离）",
+        "noSessions": "暂无会话"
     },
     "home": {
         "newSession": "新建会话"
@@ -482,6 +484,7 @@
         "delete": "删除项目",
         "deleteConfirmTitle": "删除项目「{{name}}」？",
         "deleteConfirmContent": "名下 {{count}} 个会话将移至「最近」",
+        "deleteConfirmContentFallback": "名下会话将移至「最近」",
         "toRecent": "移至最近",
         "changeProject": "换项目…",
         "assignTo": "归入项目…",

@@ -316,6 +316,11 @@ export function NewSessionPage() {
         () => (initialProjectId ? allProjects.find(p => p.id === initialProjectId) : undefined),
         [allProjects, initialProjectId],
     )
+    // 归属项目（可选）：不选 = 游离会话（进「最近」）；选中后目录锁定项目 primary folder。
+    // selectedProjectId 是冻结快照——项目从缓存消失（被删）也不清空，spawn 仍透传由 hub 报错
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+    // 当前选中机器的项目（手动选择只允许同机器项目）
+    const { data: machineProjects = [] } = useProjects(selectedMachineId ?? undefined)
 
     // 当前选中机器的 homeDir
     const currentMachine = machines.find(m => m.id === selectedMachineId)
@@ -375,12 +380,14 @@ export function NewSessionPage() {
         setMetadataNeeded(true)
     }, [initialCwd])
 
-    // 搜索参数携带项目（projects 缓存异步就绪）：机器 + 目录按项目 primary folder 初始化。
+    // 搜索参数携带项目（projects 缓存异步就绪）：解析结果（id + primary path）一次性冻结进 state。
+    // 此后项目即使被删也不清空——spawn 仍携带 projectId，由 hub 真报错（404），不静默降级游离。
     // 项目 folders 在 hub/cli 侧冻结进 session metadata（cwd/additionalDirectories），页面只做回显
     const projectAppliedRef = useRef(false)
     useEffect(() => {
         if (!initialProject || projectAppliedRef.current) return
         projectAppliedRef.current = true
+        setSelectedProjectId(initialProject.id)
         setSelectedMachineId(initialProject.machineId)
         const primaryPath = initialProject.folders.find(f => f.primary)?.path
         if (primaryPath) {
@@ -388,6 +395,24 @@ export function NewSessionPage() {
             setConfirmedDirectory(normalizeDirectoryPath(primaryPath))
         }
     }, [initialProject])
+
+    // 手动选择项目：选中 → 目录锁定项目 primary folder；清空 → 游离（目录恢复可改）
+    const handleProjectChange = useCallback((projectId: string | null) => {
+        setSelectedProjectId(projectId)
+        if (!projectId) return
+        const project = machineProjects.find(p => p.id === projectId)
+        const primaryPath = project?.folders.find(f => f.primary)?.path
+        if (primaryPath) {
+            setSelectedDirectory(primaryPath)
+            setConfirmedDirectory(normalizeDirectoryPath(primaryPath))
+        }
+    }, [machineProjects])
+
+    // 机器选择变更：项目按机器隔离，换机器清空项目选择（降级游离）
+    const handleMachineChange = useCallback((machineId: string) => {
+        setSelectedMachineId(machineId)
+        setSelectedProjectId(null)
+    }, [])
 
     // 能力目标：用 confirmedDirectory 避免输入过程触发 metadata
     const capTarget = useMemo<CapabilityTarget | null>(() => {
@@ -648,8 +673,8 @@ export function NewSessionPage() {
                 permissionMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
-                // 归属项目（搜索参数进入时携带）；项目被删则 hub 报错，不在此静默降级
-                projectId: initialProject?.id,
+                // 归属项目（冻结快照：搜索参数预选或手动选择）；项目被删则 hub 报 404，不静默降级
+                projectId: selectedProjectId ?? undefined,
             }
 
             const result = await spawnSession(input)
@@ -701,7 +726,7 @@ export function NewSessionPage() {
     }, [
         selectedMachineId, selectedDirectory, isPending,
         agent, model, effort, permissionMode, sessionType, worktreeName,
-        initialProject, spawnSession, navigate, messageApi, api.messages,
+        selectedProjectId, spawnSession, navigate, messageApi, api.messages,
         setLastUsedMachineId, addRecentPath,
     ])
 
@@ -938,7 +963,7 @@ export function NewSessionPage() {
                         machines={machines}
                         isLoading={isLoadingMachines}
                         selectedMachineId={selectedMachineId}
-                        onMachineChange={setSelectedMachineId}
+                        onMachineChange={handleMachineChange}
                         directoryOptions={directoryOptions}
                         isDirectoryLoading={isDirectoryLoading}
                         selectedDirectory={selectedDirectory}
@@ -949,6 +974,10 @@ export function NewSessionPage() {
                         onRemoveRecentPath={selectedMachineId
                             ? (path) => removeRecentPath(selectedMachineId, path)
                             : undefined}
+                        projects={machineProjects}
+                        selectedProjectId={selectedProjectId}
+                        onProjectChange={handleProjectChange}
+                        directoryLocked={!!selectedProjectId}
                         disabled={false}
                     />
                     {/* Sender + Dropdowns：position: relative 使下拉定位于 Sender 上方 */}

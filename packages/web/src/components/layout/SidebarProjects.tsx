@@ -336,6 +336,16 @@ const SkeletonRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>
     }
 `
 
+// 空态占位行（分组无会话时展示，行高与 SkeletonRow 对齐）
+const EmptyRow = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+    display: flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 8px 0 26px;
+    font-size: 12px;
+    color: ${props => props.$token.colorTextQuaternary};
+`
+
 // 列表底部链接区（收起 / 展开更多 并列）
 const ListFooter = styled.div`
     display: flex;
@@ -497,6 +507,7 @@ function GroupSessionList({
     const { t } = useTranslation()
 
     const showSkeleton = isLoadingInitial && sessions.length === 0
+    const showEmpty = !showSkeleton && sessions.length === 0
     const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
 
     return (
@@ -516,6 +527,8 @@ function GroupSessionList({
                         <span className="sk-bar" style={{ flex: 1 }} />
                     </SkeletonRow>
                 </>
+            ) : showEmpty ? (
+                <EmptyRow $token={token}>{t('nav.noSessions')}</EmptyRow>
             ) : visibleSessions.map(session => (
                 <SessionRow
                     key={session.id}
@@ -566,8 +579,8 @@ interface ProjectGroupProps extends SessionGroupSharedProps {
     project: Project
     /** 编辑项目（标题 hover 菜单） */
     onEditProject: (project: Project) => void
-    /** 删除项目（标题 hover 菜单，需 total 拼确认文案） */
-    onDeleteProject: (project: Project, total: number) => void
+    /** 删除项目（标题 hover 菜单，需 total 拼确认文案；total 未就绪时传 undefined） */
+    onDeleteProject: (project: Project, total: number | undefined) => void
     /** 移至最近（assignSession(id, null)） */
     onMoveToRecent: (session: Session) => void
     /** 换项目（打开 AssignProjectModal） */
@@ -616,7 +629,7 @@ function ProjectGroup({
         onClick: ({ key, domEvent }) => {
             domEvent.stopPropagation()
             if (key === 'edit') onEditProject(project)
-            if (key === 'delete') onDeleteProject(project, total ?? sessions.length)
+            if (key === 'delete') onDeleteProject(project, total)
         },
     }
 
@@ -648,7 +661,8 @@ function ProjectGroup({
     ), [t, token, onMoveToRecent, onChangeProject, assignPending])
 
     // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
-    const wrapperExpanded = expanded && (sessions.length > 0 || isLoadingInitial)
+    // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
+    const wrapperExpanded = expanded
 
     return (
         <GroupContainer>
@@ -756,7 +770,8 @@ function RecentGroup({
         </ActionButton>
     ), [t, token, onAssign, assignPending])
 
-    const wrapperExpanded = expanded && (sessions.length > 0 || isLoadingInitial)
+    // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
+    const wrapperExpanded = expanded
 
     return (
         <GroupContainer>
@@ -927,11 +942,13 @@ export function SidebarProjects() {
         setProjectModalOpen(true)
     }, [])
 
-    // 删除项目：名下会话解绑进「最近」
-    const handleDeleteProject = useCallback((project: Project, total: number) => {
+    // 删除项目：名下会话解绑进「最近」（total 未就绪时用不含数字的退化文案，不编造 0）
+    const handleDeleteProject = useCallback((project: Project, total: number | undefined) => {
         Modal.confirm({
             title: t('project.deleteConfirmTitle', { name: project.name }),
-            content: t('project.deleteConfirmContent', { count: total }),
+            content: total === undefined
+                ? t('project.deleteConfirmContentFallback')
+                : t('project.deleteConfirmContent', { count: total }),
             okText: t('common.confirm'),
             okButtonProps: { danger: true },
             cancelText: t('common.cancel'),

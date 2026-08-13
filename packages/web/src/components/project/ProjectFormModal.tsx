@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useMemo, useState, useEffect, useCallback } from 'react'
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { Alert, App, AutoComplete, Button, Form, Input, Modal, Radio, Select, Spin, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { DesktopOutlined, FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
@@ -23,6 +23,11 @@ import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useCreateProject, useUpdateProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
 import type { Machine, Project } from '@/core/data/api/types'
+
+/** 可编辑的文件夹行：带稳定 key（路径可编辑且可重复，不能当 React key） */
+interface EditableFolder extends ProjectFolder {
+    key: number
+}
 
 /** 获取机器显示名称（与 NewSessionForm 一致） */
 function getMachineTitle(machine: Machine): string {
@@ -99,8 +104,6 @@ export interface ProjectFormModalProps {
     onClose: () => void
     /** 编辑模式传入项目实体；缺省为新建 */
     project?: Project | null
-    /** 新建模式的默认机器（如当前选中机器） */
-    defaultMachineId?: string
 }
 
 /**
@@ -110,7 +113,7 @@ export interface ProjectFormModalProps {
  * - machine：所属机器（新建可选，编辑不可改——项目 folders 是机器本地路径，换机器无意义）
  * - folders：≥1 项且恰一项 primary（validateProjectFolders 把关，不通过禁用提交）
  */
-export function ProjectFormModal({ open, onClose, project, defaultMachineId }: ProjectFormModalProps) {
+export function ProjectFormModal({ open, onClose, project }: ProjectFormModalProps) {
     const { t } = useTranslation()
     const { message: messageApi } = App.useApp()
     const isEdit = !!project
@@ -121,10 +124,14 @@ export function ProjectFormModal({ open, onClose, project, defaultMachineId }: P
     const updateMutation = useUpdateProject()
     const isPending = createMutation.isPending || updateMutation.isPending
 
+    // 行 key 自增序号（组件实例内唯一即可；路径可编辑且可重复，不能当 key）
+    const folderKeyRef = useRef(0)
+    const nextFolderKey = useCallback(() => ++folderKeyRef.current, [])
+
     // 表单状态
     const [name, setName] = useState('')
     const [machineId, setMachineId] = useState<string | null>(null)
-    const [folders, setFolders] = useState<ProjectFolder[]>([{ path: '', primary: true }])
+    const [folders, setFolders] = useState<EditableFolder[]>([{ key: 0, path: '', primary: true }])
 
     // 打开时按模式初始化（编辑回填 / 新建重置）——仅在打开/切换编辑对象时执行，
     // 不追踪 machines 等数据变化（避免表单被后台 refetch 覆盖用户输入）
@@ -133,11 +140,11 @@ export function ProjectFormModal({ open, onClose, project, defaultMachineId }: P
         if (project) {
             setName(project.name)
             setMachineId(project.machineId)
-            setFolders(project.folders.map(f => ({ ...f })))
+            setFolders(project.folders.map(f => ({ ...f, key: nextFolderKey() })))
         } else {
             setName('')
-            setMachineId(defaultMachineId ?? (machines.length === 1 ? machines[0].id : null))
-            setFolders([{ path: '', primary: true }])
+            setMachineId(machines.length === 1 ? machines[0].id : null)
+            setFolders([{ key: nextFolderKey(), path: '', primary: true }])
         }
     }, [open, project?.id])
 
@@ -165,11 +172,12 @@ export function ProjectFormModal({ open, onClose, project, defaultMachineId }: P
     const isValid = !nameError && !foldersError && !!machineId
 
     const handleAddFolder = useCallback(() => {
-        setFolders(prev => [...prev, { path: '', primary: false }])
-    }, [])
+        setFolders(prev => [...prev, { key: nextFolderKey(), path: '', primary: false }])
+    }, [nextFolderKey])
 
     const handleOk = async () => {
         if (!isValid || isPending) return
+        // 提交前剥掉行 key（仅前端渲染用，不属于协议字段）
         const trimmedFolders = folders.map(f => ({ path: f.path.trim(), primary: f.primary }))
         try {
             if (isEdit && project) {
@@ -239,7 +247,7 @@ export function ProjectFormModal({ open, onClose, project, defaultMachineId }: P
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {folders.map((folder, idx) => (
                             <FolderRow
-                                key={idx}
+                                key={folder.key}
                                 machineId={machineId}
                                 homeDir={machineHomeDir}
                                 folder={folder}

@@ -15,9 +15,10 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AutoComplete, Select, Tag, theme } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { DesktopOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
+import { DesktopOutlined, FolderOpenOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
 import { parsePrefixInput, type DirectoryOption } from '@/components/session/useMachineDirectoryListing'
 import type { Machine } from '@/core/data/api/types'
 
@@ -144,6 +145,14 @@ interface EnvironmentBarProps {
     machineHomeDir?: string
     /** 移除最近路径 */
     onRemoveRecentPath?: (path: string) => void
+    /** 当前机器的项目列表（可选归属）；空列表不渲染项目选择行 */
+    projects?: Array<{ id: string; name: string }>
+    /** 当前选中的项目 ID（null = 游离会话） */
+    selectedProjectId?: string | null
+    /** 项目选择变更（含 allowClear 清空 → null） */
+    onProjectChange?: (projectId: string | null) => void
+    /** 目录锁定（选中项目后目录由项目 primary folder 决定，不可手改） */
+    directoryLocked?: boolean
     /** 是否禁用 */
     disabled?: boolean
 }
@@ -157,6 +166,7 @@ interface EnvironmentBarProps {
  */
 export function EnvironmentBar(props: EnvironmentBarProps) {
     const { token } = theme.useToken()
+    const { t } = useTranslation()
     const {
         machines,
         isLoading = false,
@@ -170,6 +180,10 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
         recentPaths,
         machineHomeDir,
         onRemoveRecentPath,
+        projects,
+        selectedProjectId,
+        onProjectChange,
+        directoryLocked = false,
         disabled = false,
     } = props
 
@@ -240,7 +254,29 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                 </div>
             )}
 
-            {/* 工作目录 */}
+            {/* 归属项目（可选）：不选 = 游离会话（进「最近」）；选中后目录锁定项目 primary folder */}
+            {projects && projects.length > 0 && onProjectChange && (
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                }}>
+                    <FolderOpenOutlined style={{ color: token.colorTextQuaternary, fontSize: 12, flexShrink: 0 }} />
+                    <Select
+                        allowClear
+                        value={selectedProjectId ?? undefined}
+                        onChange={(v) => onProjectChange(v ?? null)}
+                        disabled={disabled}
+                        placeholder={t('newSession.projectPlaceholder')}
+                        size="small"
+                        variant="borderless"
+                        options={projects.map(p => ({ value: p.id, label: p.name }))}
+                        style={{ flex: 1, minWidth: 0 }}
+                    />
+                </div>
+            )}
+
+            {/* 工作目录（选中项目后锁定 primary folder，不可手改） */}
             <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -280,7 +316,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                     }}
                     defaultActiveFirstOption
                     suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}
-                    disabled={disabled}
+                    disabled={disabled || directoryLocked}
                     size="small"
                     variant="borderless"
                     style={{ flex: 1, minWidth: 0 }}
@@ -288,8 +324,8 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                 />
             </div>
 
-            {/* 最近路径 */}
-            {recentPaths.length > 0 && (
+            {/* 最近路径（项目锁定目录时不展示，避免误导） */}
+            {recentPaths.length > 0 && !directoryLocked && (
                 <div style={{
                     display: 'flex',
                     flexWrap: 'wrap',

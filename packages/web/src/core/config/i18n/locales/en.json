@@ -8,7 +8,8 @@
         "back": "Back",
         "backHome": "Back to Home",
         "error": "Error",
-        "success": "Success"
+        "success": "Success",
+        "more": "More"
     },
     "time": {
         "justNow": "just now",
@@ -61,6 +62,7 @@
         "collapse": "Collapse",
         "recent": "Recent",
         "newProject": "New Project",
+        "noSessions": "No sessions yet",
         "newSessionUnassigned": "New Chat (unassigned)"
     },
     "home": {
@@ -482,6 +484,7 @@
         "delete": "Delete Project",
         "deleteConfirmTitle": "Delete project \"{{name}}\"?",
         "deleteConfirmContent": "{{count}} session(s) under it will be moved to \"Recent\"",
+        "deleteConfirmContentFallback": "Sessions under it will be moved to \"Recent\"",
         "toRecent": "Move to Recent",
         "changeProject": "Change project…",
         "assignTo": "Assign to project…",
