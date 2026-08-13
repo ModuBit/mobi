@@ -45,7 +45,7 @@ describe('sessions 与 project 关联', () => {
 
     it('projectId 不存在 → 抛错', () => {
         expect(() => store.sessions.getOrCreateSession('tag3', { path: '/x' }, {}, 'default', undefined, 'nope'))
-            .toThrow()
+            .toThrow('Project not found: nope')
     })
 
     it('getSessionsByProject 分页 + total；getUnboundSessions 只含游离', () => {
@@ -53,19 +53,40 @@ describe('sessions 与 project 关联', () => {
             namespace: 'default', machineId: 'm1', name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
+        // 注：插入间隔 1ms 确保 updated_at 严格不同（同毫秒会让 `< cursor` 跳过所有同毫秒行）
         for (let i = 0; i < 3; i++) {
             store.sessions.getOrCreateSession(`t${i}`, { path: '/a/mobi' }, {}, 'default', undefined, project.id)
+            Bun.sleepSync(1)
         }
-        store.sessions.getOrCreateSession('free', { path: '/x' }, {}, 'default')
+        store.sessions.getOrCreateSession('free1', { path: '/x' }, {}, 'default')
+        Bun.sleepSync(1)
+        store.sessions.getOrCreateSession('free2', { path: '/y' }, {}, 'default')
+        Bun.sleepSync(1)
+        store.sessions.getOrCreateSession('free3', { path: '/z' }, {}, 'default')
 
         const inProject = store.sessions.getSessionsByProject('default', project.id, null, 2)
         expect(inProject.sessions).toHaveLength(2)
         expect(inProject.total).toBe(3)
         expect(inProject.hasMore).toBe(true)
 
+        // 第二页（cursor 路径）：剩余 1 条，total 仍为全集 3（不受 cursor 影响）
+        const inProjectPage2 = store.sessions.getSessionsByProject('default', project.id, inProject.nextCursor, 2)
+        expect(inProjectPage2.sessions).toHaveLength(1)
+        expect(inProjectPage2.hasMore).toBe(false)
+        expect(inProjectPage2.total).toBe(3)
+
         const unbound = store.sessions.getUnboundSessions('default', null, 20)
-        expect(unbound.total).toBe(1)
+        expect(unbound.total).toBe(3)
         expect(unbound.sessions[0]?.projectId).toBeNull()
+
+        // 游离会话第二页（cursor 路径）：剩余 1 条，total 仍为全集 3（不受 cursor 影响）
+        const unboundPage1 = store.sessions.getUnboundSessions('default', null, 2)
+        expect(unboundPage1.sessions).toHaveLength(2)
+        expect(unboundPage1.hasMore).toBe(true)
+        const unboundPage2 = store.sessions.getUnboundSessions('default', unboundPage1.nextCursor, 2)
+        expect(unboundPage2.sessions).toHaveLength(1)
+        expect(unboundPage2.hasMore).toBe(false)
+        expect(unboundPage2.total).toBe(3)
     })
 
     it('setSessionProject 归入 / 解绑', () => {
