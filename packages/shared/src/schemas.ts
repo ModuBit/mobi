@@ -34,6 +34,38 @@ export const WorktreeMetadataSchema = z.object({
 
 export type WorktreeMetadata = z.infer<typeof WorktreeMetadataSchema>
 
+// ============ 项目相关 Schema ============
+
+/** 项目源文件夹（primary 即 CC 的 cwd） */
+export const ProjectFolderSchema = z.object({
+    path: z.string(),
+    primary: z.boolean()
+})
+
+export type ProjectFolder = z.infer<typeof ProjectFolderSchema>
+
+/** 校验项目文件夹列表：≥1 项且恰一项 primary；返回错误文案或 null */
+export function validateProjectFolders(folders: ProjectFolder[]): string | null {
+    if (folders.length === 0) return 'At least one folder is required'
+    const primaries = folders.filter(f => f.primary)
+    if (primaries.length !== 1) return 'Exactly one primary folder is required'
+    return null
+}
+
+/** 项目实体（folders 是机器本地路径，项目归属 machineId） */
+export const ProjectSchema = z.object({
+    id: z.string(),
+    namespace: z.string(),
+    machineId: z.string(),
+    name: z.string(),
+    folders: z.array(ProjectFolderSchema),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+    seq: z.number()
+})
+
+export type Project = z.infer<typeof ProjectSchema>
+
 // ============ SDK 相关 Schema ============
 
 /** SDK 斜杠命令信息 */
@@ -128,6 +160,8 @@ export const MetadataSchema = z.object({
     worktree: WorktreeMetadataSchema.optional(),
     /** Git 当前分支（session 启动及 local→remote 切换时采集） */
     gitBranch: z.string().optional(),
+    /** 创建会话时冻结的额外工作目录（resume 回放用；已过滤不存在的路径） */
+    additionalDirectories: z.array(z.string()).optional(),
 })
 
 export type Metadata = z.infer<typeof MetadataSchema>
@@ -421,7 +455,9 @@ export const SessionSchema = z.object({
     permissionMode: PermissionModeSchema.optional(),
     mode: z.enum(['local', 'remote']).optional(),
     groupKey: z.string().optional(),
-    tag: z.string().nullable().optional()   // Hub session 的标签，用于 getOrCreateSession 时复用
+    tag: z.string().nullable().optional(),   // Hub session 的标签，用于 getOrCreateSession 时复用
+    /** 归属项目（null = 游离，进「最近」） */
+    projectId: z.string().nullable().optional(),
 })
 
 export type Session = z.infer<typeof SessionSchema>
@@ -436,6 +472,11 @@ const SessionChangedSchema = SessionEventBaseSchema.extend({
 
 const MachineChangedSchema = SessionEventBaseSchema.extend({
     machineId: z.string()
+})
+
+/** project 事件必须带 namespace（hub 的 EventPublisher.resolveNamespace 只认 sessionId/machineId） */
+const ProjectChangedSchema = SessionEventBaseSchema.extend({
+    projectId: z.string()
 })
 
 export const SyncEventSchema = z.discriminatedUnion('type', [
@@ -505,7 +546,10 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     SessionEventBaseSchema.extend({
         type: z.literal('sdk-metadata-refreshed'),
         sessionId: z.string()
-    })
+    }),
+    ProjectChangedSchema.extend({ type: z.literal('project-added') }),
+    ProjectChangedSchema.extend({ type: z.literal('project-updated') }),
+    ProjectChangedSchema.extend({ type: z.literal('project-removed') }),
 ])
 
 export type SyncEvent = z.infer<typeof SyncEventSchema>
