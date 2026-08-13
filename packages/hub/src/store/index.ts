@@ -20,6 +20,7 @@ import { dirname } from 'node:path'
 
 import { MachineStore } from './machineStore'
 import { MessageStore } from './messageStore'
+import { ProjectStore } from './projectStore'
 import { PushStore } from './pushStore'
 import { SessionStore } from './sessionStore'
 import { UserStore } from './userStore'
@@ -34,6 +35,8 @@ export type {
 } from './types'
 export { MachineStore } from './machineStore'
 export { MessageStore } from './messageStore'
+export { ProjectStore } from './projectStore'
+export type { StoredProject } from './projects'
 export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
@@ -59,6 +62,7 @@ export class Store {
     readonly messages: MessageStore
     readonly users: UserStore
     readonly push: PushStore
+    readonly projects: ProjectStore
 
     constructor(dbPath: string) {
         this.dbPath = dbPath
@@ -103,6 +107,7 @@ export class Store {
         this.messages = new MessageStore(this.db)
         this.users = new UserStore(this.db)
         this.push = new PushStore(this.db)
+        this.projects = new ProjectStore(this.db)
     }
 
     close(): void {
@@ -154,11 +159,13 @@ export class Store {
                 runtime_state TEXT,
                 runtime_state_updated_at INTEGER,
                 group_key TEXT,
+                project_id TEXT,
                 seq INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
             CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
             CREATE INDEX IF NOT EXISTS idx_sessions_group_key ON sessions(group_key);
+            CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 
             CREATE TABLE IF NOT EXISTS machines (
                 id TEXT PRIMARY KEY,
@@ -174,6 +181,19 @@ export class Store {
                 seq INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_machines_namespace ON machines(namespace);
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                namespace TEXT NOT NULL DEFAULT 'default',
+                machine_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                folders TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                seq INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_projects_namespace ON projects(namespace);
+            CREATE INDEX IF NOT EXISTS idx_projects_machine ON projects(machine_id);
 
             CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,

@@ -1,0 +1,125 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import type { Database } from 'bun:sqlite'
+import { randomUUID } from 'node:crypto'
+
+import { validateProjectFolders, type Project, type ProjectFolder } from '@mobi/shared'
+
+import { safeJsonParse } from './json'
+
+type DbProjectRow = {
+    id: string
+    namespace: string
+    machine_id: string
+    name: string
+    folders: string
+    created_at: number
+    updated_at: number
+    seq: number
+}
+
+function toProject(row: DbProjectRow): Project {
+    return {
+        id: row.id,
+        namespace: row.namespace,
+        machineId: row.machine_id,
+        name: row.name,
+        folders: (safeJsonParse(row.folders) as ProjectFolder[]) ?? [],
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        seq: row.seq
+    }
+}
+
+export type StoredProject = Project
+
+export function getProjects(db: Database, namespace: string): StoredProject[] {
+    const rows = db.prepare(
+        'SELECT * FROM projects WHERE namespace = ? ORDER BY updated_at DESC'
+    ).all(namespace) as DbProjectRow[]
+    return rows.map(toProject)
+}
+
+export function getProject(db: Database, id: string): StoredProject | null {
+    const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as DbProjectRow | undefined
+    return row ? toProject(row) : null
+}
+
+export function createProject(
+    db: Database,
+    input: { namespace: string; machineId: string; name: string; folders: ProjectFolder[] }
+): StoredProject {
+    const error = validateProjectFolders(input.folders)
+    if (error) throw new Error(error)
+
+    const now = Date.now()
+    const row: DbProjectRow = {
+        id: randomUUID(),
+        namespace: input.namespace,
+        machine_id: input.machineId,
+        name: input.name,
+        folders: JSON.stringify(input.folders),
+        created_at: now,
+        updated_at: now,
+        seq: 0
+    }
+    db.prepare(`
+        INSERT INTO projects (id, namespace, machine_id, name, folders, created_at, updated_at, seq)
+        VALUES (@id, @namespace, @machine_id, @name, @folders, @created_at, @updated_at, 0)
+    `).run(row)
+    return toProject(row)
+}
+
+export function updateProject(
+    db: Database,
+    id: string,
+    namespace: string,
+    patch: { name?: string; folders?: ProjectFolder[] }
+): StoredProject | null {
+    if (patch.folders) {
+        const error = validateProjectFolders(patch.folders)
+        if (error) throw new Error(error)
+    }
+    const existing = getProject(db, id)
+    if (!existing || existing.namespace !== namespace) return null
+
+    const now = Date.now()
+    db.prepare(`
+        UPDATE projects
+        SET name = @name, folders = @folders, updated_at = @updated_at, seq = seq + 1
+        WHERE id = @id AND namespace = @namespace
+    `).run({
+        id,
+        namespace,
+        name: patch.name ?? existing.name,
+        folders: JSON.stringify(patch.folders ?? existing.folders),
+        updated_at: now
+    })
+    return getProject(db, id)
+}
+
+/** 删除项目：同事务内将名下 sessions 解绑（project_id 置 NULL），会话本身不删 */
+export function deleteProject(db: Database, id: string, namespace: string): boolean {
+    const existing = getProject(db, id)
+    if (!existing || existing.namespace !== namespace) return false
+
+    db.transaction(() => {
+        db.prepare('UPDATE sessions SET project_id = NULL WHERE project_id = ?').run(id)
+        db.prepare('DELETE FROM projects WHERE id = ? AND namespace = ?').run(id, namespace)
+    })()
+    return true
+}
