@@ -474,9 +474,10 @@ const MachineChangedSchema = SessionEventBaseSchema.extend({
     machineId: z.string()
 })
 
-/** project 事件必须带 namespace（hub 的 EventPublisher.resolveNamespace 只认 sessionId/machineId） */
+/** project 事件（hub 的 EventPublisher.resolveNamespace 不认 projectId，无缓存回查，namespace 必填） */
 const ProjectChangedSchema = SessionEventBaseSchema.extend({
-    projectId: z.string()
+    projectId: z.string(),
+    namespace: z.string()
 })
 
 export const SyncEventSchema = z.discriminatedUnion('type', [

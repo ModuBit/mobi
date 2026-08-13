@@ -26,6 +26,9 @@ describe('ProjectFolderSchema', () => {
             path: '/a/mobi', primary: true,
         })
     })
+    it('缺 primary 失败', () => {
+        expect(ProjectFolderSchema.safeParse({ path: '/a' }).success).toBe(false)
+    })
 })
 
 describe('validateProjectFolders', () => {
@@ -65,18 +68,27 @@ describe('ProjectSchema', () => {
 })
 
 describe('SessionSchema/MetadataSchema 扩展', () => {
+    const sessionBase = {
+        id: 's1', namespace: 'default', seq: 0, createdAt: 1, updatedAt: 1,
+        active: false, activeAt: 0, metadata: null, metadataVersion: 1,
+        agentState: null, agentStateVersion: 1, running: false, runningAt: 0,
+    }
     it('SessionSchema 接受 projectId（可空可缺省）', () => {
-        const base = {
-            id: 's1', namespace: 'default', seq: 0, createdAt: 1, updatedAt: 1,
-            active: false, activeAt: 0, metadata: null, metadataVersion: 1,
-            agentState: null, agentStateVersion: 1, running: false, runningAt: 0,
-        }
-        expect(SessionSchema.safeParse(base).success).toBe(true)
-        expect(SessionSchema.safeParse({ ...base, projectId: 'p1' }).success).toBe(true)
-        expect(SessionSchema.safeParse({ ...base, projectId: null }).success).toBe(true)
+        expect(SessionSchema.safeParse(sessionBase).success).toBe(true)
+        expect(SessionSchema.safeParse({ ...sessionBase, projectId: null }).success).toBe(true)
     })
-    it('MetadataSchema 接受 additionalDirectories', () => {
+    it('SessionSchema 解析后携带 projectId（缺省为 undefined）', () => {
+        expect(SessionSchema.parse({ ...sessionBase, projectId: 'p1' }).projectId).toBe('p1')
+        expect(SessionSchema.parse(sessionBase).projectId).toBeUndefined()
+    })
+    it('SessionSchema 拒绝非字符串 projectId', () => {
+        expect(SessionSchema.safeParse({ ...sessionBase, projectId: 123 }).success).toBe(false)
+    })
+    it('MetadataSchema 解析后携带 additionalDirectories', () => {
         const base = { path: '/a', host: 'h' }
-        expect(MetadataSchema.safeParse({ ...base, additionalDirectories: ['/b'] }).success).toBe(true)
+        expect(MetadataSchema.parse({ ...base, additionalDirectories: ['/b'] }).additionalDirectories).toEqual(['/b'])
+    })
+    it('MetadataSchema 拒绝非数组 additionalDirectories', () => {
+        expect(MetadataSchema.safeParse({ path: '/a', host: 'h', additionalDirectories: '/b' }).success).toBe(false)
     })
 })
