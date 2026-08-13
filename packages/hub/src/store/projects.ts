@@ -47,9 +47,15 @@ function toProject(row: DbProjectRow): StoredProject {
 }
 
 export function getProjects(db: Database, namespace: string): StoredProject[] {
-    const rows = db.prepare(
-        'SELECT * FROM projects WHERE namespace = ? ORDER BY updated_at DESC, seq DESC'
-    ).all(namespace) as DbProjectRow[]
+    // 排序沿用旧虚拟分组的「最近会话活动浮顶」心智模型：组内会话最新 updated_at 优先，
+    // 无会话（新建/空项目）回退实体编辑时间；seq 作同毫秒 tie-breaker
+    const rows = db.prepare(`
+        SELECT p.*,
+               (SELECT MAX(s.updated_at) FROM sessions s WHERE s.project_id = p.id) AS last_active_at
+        FROM projects p
+        WHERE p.namespace = ?
+        ORDER BY COALESCE(last_active_at, p.updated_at) DESC, p.seq DESC
+    `).all(namespace) as (DbProjectRow & { last_active_at: number | null })[]
     return rows.map(toProject)
 }
 

@@ -38,9 +38,14 @@ export class ProjectCache {
     }
 
     getProjects(namespace: string): Project[] {
-        return Array.from(this.projects.values())
-            .filter(p => p.namespace === namespace)
-            .sort((a, b) => b.updatedAt - a.updatedAt || b.seq - a.seq)
+        // 列表排序依赖「组内会话最新活动」（sessions.updated_at 派生），会话活动不经过本缓存、
+        // 内存无法跟踪——故列表每次委托 store SQL 排序（projects 表极小，代价可忽略），
+        // 顺带回填缓存保持身份查找新鲜；getProject 单查仍走内存
+        const ordered = this.store.projects.getProjects(namespace)
+        for (const project of ordered) {
+            this.projects.set(project.id, project)
+        }
+        return ordered
     }
 
     getProject(id: string): Project | undefined {

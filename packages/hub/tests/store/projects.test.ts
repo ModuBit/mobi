@@ -92,6 +92,25 @@ describe('ProjectStore', () => {
         expect(list.map(p => p.id)).toEqual([a.id, b.id])
     })
 
+    test('list 按「最近会话活动」排序——活跃项目浮顶，无会话回退实体编辑时间（V7）', () => {
+        const a = store.projects.createProject({
+            namespace: 'default', machineId: 'm1', name: 'a',
+            folders: [{ path: '/a', primary: true }]
+        })
+        Bun.sleepSync(2)
+        // b 实体更「新」（后建）——纯实体排序下 b 会钉在 a 上面
+        store.projects.createProject({
+            namespace: 'default', machineId: 'm1', name: 'b',
+            folders: [{ path: '/b', primary: true }]
+        })
+        Bun.sleepSync(2)
+        // a 名下发生会话活动（updated_at = now，晚于 b 的实体 updatedAt）→ a 应浮顶
+        store.sessions.getOrCreateSession('tag-v7', { path: '/a' }, {}, 'default', undefined, a.id)
+
+        const list = store.projects.getProjects('default')
+        expect(list.map(p => p.id)[0]).toBe(a.id)
+    })
+
     test('update 改名/改 folders 并递增 seq', () => {
         const p = store.projects.createProject({
             namespace: 'default',
