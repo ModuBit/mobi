@@ -141,5 +141,22 @@ describe('ProjectStore', () => {
     })
 
     // 依赖 Task 3 的 getOrCreateSession(..., projectId) 参数，届时补全实现启用
-    it.todo('删除项目 → 名下 sessions 解绑（project_id 置 NULL）', () => {})
+    it('删除项目 → 名下 sessions 解绑（project_id 置 NULL）', () => {
+        const p = store.projects.createProject({
+            namespace: 'default',
+            machineId: 'm1',
+            name: 'mobi',
+            folders: [{ path: '/a/mobi', primary: true }]
+        })
+        const bound = store.sessions.getOrCreateSession(
+            'proj-del-1', { path: '/a/mobi' }, null, 'default', undefined, p.id
+        )
+        expect(bound.projectId).toBe(p.id)
+
+        expect(store.projects.deleteProject(p.id, 'default')).toBe(true)
+        // 会话本身不删，仅解绑
+        const after = store.sessions.getSession(bound.id)
+        expect(after).not.toBeNull()
+        expect(after?.projectId).toBeNull()
+    })
 })

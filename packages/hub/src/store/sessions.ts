@@ -35,6 +35,7 @@ type DbSessionRow = {
     runtime_state: string | null
     runtime_state_updated_at: number | null
     group_key: string | null
+    project_id: string | null
     seq: number
 }
 
@@ -53,6 +54,7 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         runtimeState: safeJsonParse(row.runtime_state),
         runtimeStateUpdatedAt: row.runtime_state_updated_at,
         groupKey: row.group_key,
+        projectId: row.project_id,
         seq: row.seq
     }
 }
@@ -81,13 +83,16 @@ export function getOrCreateSession(
     metadata: unknown,
     agentState: unknown,
     namespace: string,
-    runtimeState?: unknown
+    runtimeState?: unknown,
+    projectId?: string | null
 ): StoredSession {
     const existing = db.prepare(
         'SELECT * FROM sessions WHERE tag = ? AND namespace = ? ORDER BY created_at DESC LIMIT 1'
     ).get(tag, namespace) as DbSessionRow | undefined
 
     if (existing) {
+        // resume 复用：归属（project_id）不重算——已存在 session 即使本次没带 projectId
+        // 也保留原归属，避免重连时意外把手工归组改掉
         // 合并新 metadata 到已有 session（新增/更新字段覆盖旧值，旧字段保留）
         const existingMetadata = (safeJsonParse(existing.metadata) as Record<string, unknown>) ?? {}
         const newMetadata = (metadata as Record<string, unknown>) ?? {}
@@ -130,6 +135,15 @@ export function getOrCreateSession(
     const agentStateJson = agentState === null || agentState === undefined ? null : JSON.stringify(agentState)
     const runtimeStateJson = runtimeState ? JSON.stringify(runtimeState) : null
 
+    // 归属校验：projectId 必须指向同 namespace 的现存项目（CLI 侧把它当硬失败）
+    let projectIdVerified: string | null = null
+    if (projectId) {
+        const project = db.prepare('SELECT id FROM projects WHERE id = ? AND namespace = ?')
+            .get(projectId, namespace) as { id: string } | undefined
+        if (!project) throw new Error(`Project not found: ${projectId}`)
+        projectIdVerified = project.id
+    }
+
     // 计算 groupKey
     const metadataObj = metadata as { path?: string } | null
     const groupKey = extractGroupKey(metadataObj?.path)
@@ -140,13 +154,13 @@ export function getOrCreateSession(
             metadata, metadata_version,
             agent_state, agent_state_version,
             runtime_state, runtime_state_updated_at,
-            group_key, seq
+            group_key, project_id, seq
         ) VALUES (
             @id, @tag, @namespace, NULL, @created_at, @updated_at,
             @metadata, 1,
             @agent_state, 1,
             @runtime_state, @runtime_state_updated_at,
-            @group_key, 0
+            @group_key, @project_id, 0
         )
     `).run({
         id,
@@ -158,7 +172,8 @@ export function getOrCreateSession(
         agent_state: agentStateJson,
         runtime_state: runtimeStateJson,
         runtime_state_updated_at: runtimeState ? now : null,
-        group_key: groupKey
+        group_key: groupKey,
+        project_id: projectIdVerified
     })
 
     const row = getSession(db, id)
@@ -459,4 +474,104 @@ export function getSessionsByGroup(
     const total = rows.length > 0 ? rows[0].total_count : 0
 
     return { sessions, nextCursor, hasMore, total }
+}
+
+// ============ 项目归属相关 ============
+
+export type ProjectSessionsResult = GroupSessionsResult
+
+/**
+ * 按项目分页查询会话（SQL 按 updated_at 游标；前端再按 active→updatedAt 排序展示）。
+ * 单语句 + COUNT(*) OVER() 的快照一致语义与 getSessionsByGroup 相同，见其注释。
+ */
+export function getSessionsByProject(
+    db: Database,
+    namespace: string,
+    projectId: string,
+    cursor: number | null,
+    limit: number = 20
+): ProjectSessionsResult {
+    const cursorCondition = cursor ? 'AND updated_at < ?' : ''
+    const sql = `
+        WITH counted AS (
+            SELECT *, COUNT(*) OVER() AS total_count
+            FROM sessions
+            WHERE namespace = ? AND project_id = ?
+        )
+        SELECT * FROM counted
+        WHERE 1=1 ${cursorCondition}
+        ORDER BY updated_at DESC
+        LIMIT ?
+    `
+
+    const rows = cursor
+        ? db.prepare(sql).all(namespace, projectId, cursor, limit) as (DbSessionRow & { total_count: number })[]
+        : db.prepare(sql).all(namespace, projectId, limit) as (DbSessionRow & { total_count: number })[]
+
+    const sessions = rows.map(toStoredSession)
+    const hasMore = rows.length === limit
+    const nextCursor = hasMore && rows.length > 0
+        ? rows[rows.length - 1].updated_at
+        : null
+    const total = rows.length > 0 ? rows[0].total_count : 0
+
+    return { sessions, nextCursor, hasMore, total }
+}
+
+/**
+ * 游离会话分页查询（project_id IS NULL），「最近」区数据源。
+ * 单语句 + COUNT(*) OVER() 的快照一致语义与 getSessionsByGroup 相同，见其注释。
+ */
+export function getUnboundSessions(
+    db: Database,
+    namespace: string,
+    cursor: number | null,
+    limit: number = 20
+): ProjectSessionsResult {
+    const cursorCondition = cursor ? 'AND updated_at < ?' : ''
+    const sql = `
+        WITH counted AS (
+            SELECT *, COUNT(*) OVER() AS total_count
+            FROM sessions
+            WHERE namespace = ? AND project_id IS NULL
+        )
+        SELECT * FROM counted
+        WHERE 1=1 ${cursorCondition}
+        ORDER BY updated_at DESC
+        LIMIT ?
+    `
+
+    const rows = cursor
+        ? db.prepare(sql).all(namespace, cursor, limit) as (DbSessionRow & { total_count: number })[]
+        : db.prepare(sql).all(namespace, limit) as (DbSessionRow & { total_count: number })[]
+
+    const sessions = rows.map(toStoredSession)
+    const hasMore = rows.length === limit
+    const nextCursor = hasMore && rows.length > 0
+        ? rows[rows.length - 1].updated_at
+        : null
+    const total = rows.length > 0 ? rows[0].total_count : 0
+
+    return { sessions, nextCursor, hasMore, total }
+}
+
+/**
+ * 归入项目 / 解绑（纯改分组，不动 metadata）；projectId 须存在且同 namespace。
+ * updated_at + seq 成对递增，与 sessions 变更范式一致（SSE 增量同步靠 seq 感知）。
+ */
+export function setSessionProject(
+    db: Database,
+    id: string,
+    projectId: string | null,
+    namespace: string
+): boolean {
+    if (projectId) {
+        const project = db.prepare('SELECT id FROM projects WHERE id = ? AND namespace = ?')
+            .get(projectId, namespace) as { id: string } | undefined
+        if (!project) return false
+    }
+    const result = db.prepare(
+        'UPDATE sessions SET project_id = ?, updated_at = ?, seq = seq + 1 WHERE id = ? AND namespace = ?'
+    ).run(projectId, Date.now(), id, namespace)
+    return result.changes > 0
 }

@@ -38,7 +38,7 @@ function makeStoredSession(runtimeState: RuntimeState | null = null): StoredSess
         id: SID, tag: null, namespace: 'default', machineId: null,
         createdAt: 1, updatedAt: 1, metadata: null, metadataVersion: 0,
         agentState: null, agentStateVersion: 0, runtimeState,
-        runtimeStateUpdatedAt: null, groupKey: null, seq: 1,
+        runtimeStateUpdatedAt: null, groupKey: null, projectId: null, seq: 1,
     }
 }
 

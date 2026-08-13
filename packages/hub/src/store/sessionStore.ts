@@ -28,12 +28,16 @@ import {
     getSessionsByNamespace,
     getSessionGroups as getSessionGroupsFromDb,
     getSessionsByGroup as getSessionsByGroupFromDb,
+    getSessionsByProject as getSessionsByProjectFromDb,
+    getUnboundSessions as getUnboundSessionsFromDb,
+    setSessionProject as setSessionProjectFromDb,
     setRuntimeState,
     clearRuntimeStateFields,
     updateSessionAgentState,
     updateSessionMetadata,
     type SessionGroup,
-    type GroupSessionsResult
+    type GroupSessionsResult,
+    type ProjectSessionsResult
 } from './sessions'
 
 export class SessionStore {
@@ -43,8 +47,15 @@ export class SessionStore {
         this.db = db
     }
 
-    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, runtimeState?: unknown): StoredSession {
-        return getOrCreateSession(this.db, tag, metadata, agentState, namespace, runtimeState)
+    getOrCreateSession(
+        tag: string,
+        metadata: unknown,
+        agentState: unknown,
+        namespace: string,
+        runtimeState?: unknown,
+        projectId?: string | null
+    ): StoredSession {
+        return getOrCreateSession(this.db, tag, metadata, agentState, namespace, runtimeState, projectId)
     }
 
     updateSessionMetadata(
@@ -121,5 +132,28 @@ export class SessionStore {
         limit?: number
     ): GroupSessionsResult {
         return getSessionsByGroupFromDb(this.db, namespace, groupKey, cursor, limit)
+    }
+
+    // ============ 项目归属相关 ============
+
+    getSessionsByProject(
+        namespace: string,
+        projectId: string,
+        cursor: number | null,
+        limit?: number
+    ): ProjectSessionsResult {
+        return getSessionsByProjectFromDb(this.db, namespace, projectId, cursor, limit)
+    }
+
+    getUnboundSessions(
+        namespace: string,
+        cursor: number | null,
+        limit?: number
+    ): ProjectSessionsResult {
+        return getUnboundSessionsFromDb(this.db, namespace, cursor, limit)
+    }
+
+    setSessionProject(id: string, projectId: string | null, namespace: string): boolean {
+        return setSessionProjectFromDb(this.db, id, projectId, namespace)
     }
 }
