@@ -89,6 +89,32 @@ describe('sessions 与 project 关联', () => {
         expect(unboundPage2.total).toBe(3)
     })
 
+    it('cursor 页空结果时 total 仍报全集数（V5：翻页间隙 updated_at 被顶起的会话不丢「展开更多」）', () => {
+        const project = store.projects.createProject({
+            namespace: 'default', machineId: 'm1', name: 'mobi',
+            folders: [{ path: '/a/mobi', primary: true }]
+        })
+        for (let i = 0; i < 3; i++) {
+            store.sessions.getOrCreateSession(`tv${i}`, { path: '/a/mobi' }, {}, 'default', undefined, project.id)
+            Bun.sleepSync(1)
+        }
+        const page1 = store.sessions.getSessionsByProject('default', project.id, null, 2)
+        expect(page1.total).toBe(3)
+        expect(page1.nextCursor).not.toBeNull()
+
+        // 翻页间隙：剩余会话的 updated_at 被顶到 cursor 之上（如 metadata 更新）
+        const remaining = store.sessions.getSessionsByNamespace('default')
+            .filter(s => s.projectId === project.id)
+            .slice(2)   // 第三条（page1 未加载）
+        expect(remaining.length).toBe(1)
+        store.sessions.updateSessionMetadata(remaining[0].id, { path: '/a/mobi', name: 'bumped' }, remaining[0].metadataVersion, 'default')
+
+        // 下一页空结果：旧行为 total 归 0 → 前端 remainingCount=0、「展开更多」消失但会话没加载完
+        const page2 = store.sessions.getSessionsByProject('default', project.id, page1.nextCursor, 2)
+        expect(page2.sessions).toHaveLength(0)
+        expect(page2.total).toBe(3)
+    })
+
     it('setSessionProject 归入 / 解绑', () => {
         const project = store.projects.createProject({
             namespace: 'default', machineId: 'm1', name: 'mobi',

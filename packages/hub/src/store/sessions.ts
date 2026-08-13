@@ -419,8 +419,17 @@ function paginateSessions(
     const nextCursor = hasMore && rows.length > 0
         ? rows[rows.length - 1].updated_at
         : null
-    // 全集总数从首行取（同一结果集所有行的 total_count 一致）；空结果集时为 0
-    const total = rows.length > 0 ? rows[0].total_count : 0
+    // 全集总数从首行取（同一结果集所有行的 total_count 一致）；空结果集时为 0。
+    // 例外（V5）：带 cursor 的空页通常是「剩余会话 updated_at 被顶到 cursor 之上」的瞬时
+    // 边界——total 若归 0，前端 remainingCount 归 0、「展开更多」消失但会话尚未加载完。
+    // 此时补一次同条件 COUNT（快照可能略有偏移，可接受）保住全集数
+    let total = rows.length > 0 ? rows[0].total_count : 0
+    if (rows.length === 0 && cursor !== null) {
+        const counted = db.prepare(
+            `SELECT COUNT(*) AS cnt FROM sessions WHERE ${whereSql}`
+        ).get(...params) as { cnt: number } | undefined
+        total = counted?.cnt ?? 0
+    }
 
     return { sessions, nextCursor, hasMore, total }
 }
