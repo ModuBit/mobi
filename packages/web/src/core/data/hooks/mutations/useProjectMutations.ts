@@ -17,6 +17,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
+import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
 import type { Project, ProjectFolder } from '@/core/data/api/types'
 
 /** 创建项目入参（folders 合法性由 hub validateProjectFolders 把关） */
@@ -36,16 +37,16 @@ export interface UpdateProjectInput {
  * 会话归属变更 / 项目删除后需要刷新的缓存集合：
  * - ['projects']：项目列表本身
  * - ['sessions']：全局会话缓存（Session 已 upsert，归属变化需重拉）
- * - ['recentSessions'] / ['projectSessions']：两个分组视图
+ * - ['recentSessions'] / ['projectSessions']：两个分组视图（invalidateProjectViews 收口）
  */
 function useInvalidateProjectCaches() {
     const queryClient = useQueryClient()
     return async (opts: { sessionScoped?: boolean } = {}) => {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.projects })
         if (opts.sessionScoped) {
             await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
-            await queryClient.invalidateQueries({ queryKey: queryKeys.recentSessions })
-            await queryClient.invalidateQueries({ queryKey: ['projectSessions'] })
+            await invalidateProjectViews(queryClient)
+        } else {
+            await queryClient.invalidateQueries({ queryKey: queryKeys.projects })
         }
     }
 }

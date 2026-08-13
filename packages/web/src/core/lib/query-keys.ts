@@ -15,6 +15,12 @@
  */
 
 /**
+ * 项目内会话查询的根前缀
+ * 单独导出供批量失效所有 ['projectSessions', projectId] 查询使用（invalidateProjectViews）
+ */
+const projectSessionsRoot = ['projectSessions'] as const
+
+/**
  * React Query 查询键定义
  * 用于缓存键的一致性管理
  */
@@ -27,8 +33,10 @@ export const queryKeys = {
     sidechainMessages: (sessionId: string, parentToolUseId: string) => ['sidechain-messages', sessionId, parentToolUseId] as const,
     /** 项目列表（第二维为 machineId 或 'all'；亦可作前缀失效所有项目查询） */
     projects: ['projects'] as const,
-    /** 项目内会话（ID 分页；前缀 ['projectSessions'] 用于批量失效） */
-    projectSessions: (projectId: string) => ['projectSessions', projectId] as const,
+    /** 项目内会话根前缀（批量失效所有项目的会话分组查询） */
+    projectSessionsRoot,
+    /** 项目内会话（ID 分页；前缀失效走 projectSessionsRoot） */
+    projectSessions: (projectId: string) => [...projectSessionsRoot, projectId] as const,
     /** 未归入项目的「最近」会话 */
     recentSessions: ['recentSessions'] as const,
     /** 机器列表 */

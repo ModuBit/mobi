@@ -44,6 +44,7 @@ import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeS
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
+import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
@@ -853,14 +854,12 @@ export function SidebarProjects() {
     const assignMutation = useAssignSessionProject()
     const deleteProjectMutation = useDeleteProject()
 
-    // 使缓存失效（项目维度视图由 mutation 内部统一失效）
+    // 使缓存失效（项目维度视图由 invalidateProjectViews 统一收口）
     const invalidateAll = useCallback(async (sessionId: string) => {
         await Promise.all([
             queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
             queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
-            queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
-            queryClient.invalidateQueries({ queryKey: queryKeys.recentSessions }),
-            queryClient.invalidateQueries({ queryKey: ['projectSessions'] }),
+            invalidateProjectViews(queryClient),
         ])
     }, [queryClient])
 

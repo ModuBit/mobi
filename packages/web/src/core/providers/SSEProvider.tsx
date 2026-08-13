@@ -33,6 +33,7 @@ import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeS
 import { usePromptSuggestionStore, extractPromptSuggestion } from '@/core/data/stores/promptSuggestionStore'
 import { clearAllSessionResources } from '@/core/lib/sessionResources'
 import { derivePendingRequestsCount } from '@/core/lib/pendingRequests'
+import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
 import {
     ingestIncomingMessages,
     markMessagesSubmitted as markSubmittedInStore,
@@ -249,11 +250,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
             const tasks: Array<Promise<unknown>> = []
             if (p.sessions) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessions }))
-            if (p.projectViews) {
-                tasks.push(qc.invalidateQueries({ queryKey: queryKeys.projects }))
-                tasks.push(qc.invalidateQueries({ queryKey: queryKeys.recentSessions }))
-                tasks.push(qc.invalidateQueries({ queryKey: ['projectSessions'] }))
-            }
+            // 项目维度视图三键（projects/recentSessions/projectSessions 根前缀）由 helper 统一收口
+            if (p.projectViews) tasks.push(invalidateProjectViews(qc))
             if (p.machines) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.machines }))
             for (const sid of Array.from(p.sessionIds)) {
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.session(sid) }))

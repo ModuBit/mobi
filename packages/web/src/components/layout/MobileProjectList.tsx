@@ -38,6 +38,7 @@ import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
+import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
@@ -561,14 +562,12 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
         return allSessions?.find(s => s.id === sessionId)
     }, [allSessions])
 
-    // 使缓存失效（项目视图相关查询一并失效，保证分组归属及时刷新）
+    // 使缓存失效（项目维度视图由 invalidateProjectViews 统一收口）
     const invalidateAll = useCallback(async (sessionId: string) => {
         await Promise.all([
             queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
             queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
-            queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
-            queryClient.invalidateQueries({ queryKey: queryKeys.recentSessions }),
-            queryClient.invalidateQueries({ queryKey: ['projectSessions'] }),
+            invalidateProjectViews(queryClient),
         ])
     }, [queryClient])
 
