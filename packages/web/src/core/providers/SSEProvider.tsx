@@ -369,6 +369,9 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     // 真实断网仍由上方 connected===false 的 warning 提示
                     nt.destroy('sse-disconnected')
                     scheduleInvalidation('sessions')
+                    // 断连期间错过的 project-*/归属变更事件无法重放——项目维度视图必须连带补拉，
+                    // 否则他端新建/删除/归入的项目会话在侧边栏长期陈旧
+                    scheduleInvalidation('projectViews')
                     // messages 不再 invalidate（refetch 覆盖危险），改 fetchLatest merge + generation 防竞态
                     const sid = parseActiveSessionId(window.location.pathname)
                     if (sid && apiRef.current) void fetchLatestMessages(apiRef.current, sid)

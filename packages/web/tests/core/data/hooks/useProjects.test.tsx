@@ -217,4 +217,22 @@ describe('SSE project 事件失效', () => {
         expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'sessions')).toBe(false)
         invalidateSpy.mockRestore()
     })
+
+    it('connection-changed reconnected → 补失效项目视图（断连期间他端的成员/归属变更）', async () => {
+        const { queryClient: qc } = await renderProvider()
+        const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+        // 模拟移动端后台→前台：SSE 静默重连
+        sseListener.current!({ type: 'connection-changed', connected: true, reconnected: true })
+
+        await waitFor(() => {
+            expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['sessions'] })
+        })
+        // 重连必须连带失效项目维度视图，否则断连期间他端的项目/归属变更不补拉
+        const invalidatedKeys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
+        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'projects')).toBe(true)
+        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'recentSessions')).toBe(true)
+        expect(invalidatedKeys.some(k => Array.isArray(k) && k[0] === 'projectSessions')).toBe(true)
+        invalidateSpy.mockRestore()
+    })
 })
