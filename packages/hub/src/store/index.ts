@@ -50,7 +50,8 @@ const REQUIRED_TABLES = [
     'machines',
     'messages',
     'users',
-    'push_subscriptions'
+    'push_subscriptions',
+    'projects'
 ] as const
 
 export class Store {
@@ -264,7 +265,19 @@ export class Store {
         if (missing.length > 0) {
             throw new Error(
                 `SQLite schema is missing required tables (${missing.join(', ')}). ` +
-                'Back up and rebuild the database, or run an offline migration to the expected schema version.'
+                'For databases created before the project-entity feature, stop hub/runner and run ' +
+                '`bun scripts/migrate-projects.ts` to migrate; otherwise back up and rebuild the database.'
+            )
+        }
+
+        // 「项目实体化」前的存量库 user_version 同为 1（BASELINE=0 未发布期），版本号无法区分新旧 schema，
+        // sessions 列存在性是唯一判别器：旧 group_key schema 若在此放行，
+        // 会在 ProjectCache.warmup 的 SELECT * FROM projects 处崩溃且报错无引导
+        const sessionColumns = this.db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>
+        if (!sessionColumns.some(column => column.name === 'project_id')) {
+            throw new Error(
+                `Detected legacy 'group_key' sessions schema (sessions has no project_id column) at ${this.dbPath}. ` +
+                'Stop hub/runner, then run `bun scripts/migrate-projects.ts` to migrate the database before starting this version.'
             )
         }
     }
