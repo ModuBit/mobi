@@ -3,7 +3,7 @@ name: pitfalls-general
 description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证）
 metadata:
   type: pitfall
-  last_verified: 2026-08-03
+  last_verified: 2026-08-12
 ---
 
 # 通用误判
@@ -59,6 +59,22 @@ return { titles: hits };
 2. `list_console_messages` 查 React `Encountered two children with the same key` 报错（key 碰撞的直接证据）
 3. 滚到顶后点「滚到底」按钮，断言 `scrollHeight - clientHeight - scrollTop ≈ 0`
 4. **真实发一条消息**跑完整流式，采样断言自己的消息与 agent 输出都可见、贴底跟随生效
+
+## 合成粘贴事件（ClipboardEvent）的局限
+
+测粘贴类特性（如「大段文本自动转附件」）时，用 `evaluate_script` 合成 `ClipboardEvent` + `DataTransfer` dispatch 到 textarea：
+
+```js
+const dt = new DataTransfer();
+dt.setData('text/plain', 'A'.repeat(1001));
+const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+textarea.dispatchEvent(ev);
+return { defaultPrevented: ev.defaultPrevented };
+```
+
+**能验证**：`preventDefault` 是否被调用、附件卡片是否生成、textarea 是否被阻止插入（`textarea.value === ''`）。
+
+**不能验证**：合成事件是 `isTrusted=false`，浏览器**默认文本插入只对 trusted 真实粘贴生效**——即使 handler 不 `preventDefault`，合成事件也不会把文本插进 textarea。故「小文本正常插入」的正向路径无法用合成事件验证，只能断言「不 preventDefault + 附件数不变」间接证明「未干预」，插入本身交给浏览器默认行为。
 
 ## 工具禁用
 
