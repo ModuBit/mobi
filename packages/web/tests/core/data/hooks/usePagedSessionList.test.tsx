@@ -281,6 +281,48 @@ describe('usePagedSessionList 共享核心（经 useProjectSessions 验证）', 
         await waitFor(() => expect(result.current.fullProjectPath).toBe('/home/u/demo'))
         expect(result.current.total).toBe(0)
     })
+
+    it('SSE tick 级短路：会话缓存换代但本分组未受波及时结果引用稳定，成员变更时才重算', async () => {
+        const s1 = makeSession('s1', { updatedAt: 10 })
+        projectSessions.mockResolvedValue(makePage([s1]))
+
+        const qc = makeQueryClient()
+        qc.setQueryData(['sessions'], [s1])
+        const { result } = renderHook(() => useProjectSessions('p1'), { wrapper: makeHookWrapper(qc) })
+
+        await waitFor(() => expect(result.current.sessions.map(s => s.id)).toEqual(['s1']))
+        const stableRef = result.current.sessions
+
+        // 1) 容器换代但元素引用全等（patchSessionCache 值不变外的另一形态）→ 复用上次结果
+        const cached = qc.getQueryData<Session[]>(['sessions']) ?? []
+        await act(async () => {
+            qc.setQueryData(['sessions'], [...cached])
+        })
+        expect(result.current.sessions).toBe(stableRef)
+
+        // 2) 分组外会话变更（容器 + 该元素均换代，分组成员引用未动）→ 结果引用不变，
+        //    切断他人会话高频心跳期间本分组行组件的连锁重渲染
+        const unrelated = makeSession('other', { updatedAt: 99 })
+        await act(async () => {
+            qc.setQueryData(['sessions'], [
+                ...(qc.getQueryData<Session[]>(['sessions']) ?? []),
+                unrelated,
+            ])
+        })
+        expect((qc.getQueryData<Session[]>(['sessions']) ?? []).length).toBe(2)
+        expect(result.current.sessions).toBe(stableRef)
+
+        // 3) 分组成员被更新（重命名后 updatedAt 变化）→ 重算，结果引用更新且内容反映新值
+        const member = qc.getQueryData<Session[]>(['sessions'])?.find(s => s.id === 's1')
+        await act(async () => {
+            qc.setQueryData(['sessions'], (old: Session[]) =>
+                old.map(s => (s.id === 's1' ? { ...s, updatedAt: 42 } : s))
+            )
+        })
+        expect(member).toBeTruthy()
+        await waitFor(() => expect(result.current.sessions).not.toBe(stableRef))
+        expect(result.current.sessions[0]?.updatedAt).toBe(42)
+    })
 })
 
 describe('useRecentSessions（共享核心经「最近」视图验证）', () => {

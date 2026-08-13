@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { compareSessionsForList } from '@/core/utils/sessionStatus'
 import type { Session, ProjectSessionsPage } from '@/core/data/api/types'
@@ -54,9 +54,29 @@ export function usePagedSessionList(
     // 从全局会话缓存获取完整 Session 数据
     const { data: allSessions } = useSessions()
 
+    // SSE tick 级重算防御：['sessions'] 数组容器在 patchSessionCache/mergeSessions 中常被换代，
+    // 但未涉及的 session 元素引用保持稳定（patchSessionCache 值不变时直接返回旧数组，变更时
+    // 也只替换目标元素）。利用这一点做两层短路：
+    // 1. 输入短路——容器换代但元素逐引用全等时，直接复用上次结果，跳过 Set 构建+过滤+排序；
+    // 2. 输出稳定——本分组成员未被波及（过滤+排序结果与上次逐引用全等）时，保持结果引用
+    //    不变，切断下游 visibleSessions/行组件在他人会话高频心跳期间的连锁重渲染。
+    const sessionsCacheRef = useRef<{ all: Session[] | undefined; result: Session[] }>({
+        all: undefined,
+        result: [],
+    })
+
     // 按 sessionIds 组装列表（活跃优先 → updatedAt）
     const sessions = useMemo<Session[]>(() => {
         if (!pages?.pages || !allSessions) return []
+
+        const prev = sessionsCacheRef.current
+        if (
+            prev.all !== undefined &&
+            prev.all.length === allSessions.length &&
+            prev.all.every((s, i) => s === allSessions[i])
+        ) {
+            return prev.result
+        }
 
         const sessionIdSet = new Set<string>()
         for (const page of pages.pages) {
@@ -65,9 +85,14 @@ export function usePagedSessionList(
             }
         }
 
-        return allSessions
+        const next = allSessions
             .filter(s => sessionIdSet.has(s.id))
             .sort(compareSessionsForList)
+        const unchanged =
+            prev.result.length === next.length && prev.result.every((s, i) => s === next[i])
+        const result = unchanged ? prev.result : next
+        sessionsCacheRef.current = { all: allSessions, result }
+        return result
     }, [pages?.pages, allSessions])
 
     // 判断列表是否包含活跃会话 → 决定默认展开
