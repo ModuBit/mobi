@@ -465,4 +465,72 @@ describe('projects REST 路由 + 会话归属', () => {
             expect(body.session.metadata?.name).toBe('组合改名')
         })
     })
+
+    describe('folders homeDir 校验（V8：建项目时前置拦截，避免 spawn 时才 403）', () => {
+        test('folder 在目标机器 homeDir 外 → 400', async () => {
+            // 走 engine 注册路径（与生产 CLI 一致，machineCache 可见）；store 直插缓存不可见
+            engine.getOrCreateMachine('m-home', { homeDir: '/home/u' }, null, 'default')
+
+            const res = await app.request('/api/projects', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    name: 'bad-proj', machineId: 'm-home',
+                    folders: [{ path: '/etc/evil', primary: true }]
+                })
+            })
+            expect(res.status).toBe(400)
+            const body = await res.json() as { error?: string }
+            expect(body.error).toMatch(/home/i)
+        })
+
+        test('folder 在 homeDir 内 → 正常创建', async () => {
+            const res = await app.request('/api/projects', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    name: 'ok-proj', machineId: 'm-home',
+                    folders: [
+                        { path: '/home/u/work/demo', primary: true },
+                        { path: '/home/u/work/shared', primary: false }
+                    ]
+                })
+            })
+            expect(res.status).toBe(200)
+        })
+
+        test('机器未知（无 homeDir）→ 放行（与 spawn 路由同语义）', async () => {
+            const res = await app.request('/api/projects', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    name: 'no-machine-proj', machineId: 'm-ghost',
+                    folders: [{ path: '/any/where', primary: true }]
+                })
+            })
+            expect(res.status).toBe(200)
+        })
+
+        test('PATCH 换 folders 到 homeDir 外 → 400', async () => {
+            // 先建一个合法项目
+            const created = await app.request('/api/projects', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    name: 'patch-proj', machineId: 'm-home',
+                    folders: [{ path: '/home/u/work/patch', primary: true }]
+                })
+            })
+            const { project } = await created.json() as { project: { id: string } }
+
+            const res = await app.request(`/api/projects/${project.id}`, {
+                method: 'PATCH',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    folders: [{ path: '/var/evil', primary: true }]
+                })
+            })
+            expect(res.status).toBe(400)
+        })
+    })
 })

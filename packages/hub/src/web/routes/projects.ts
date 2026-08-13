@@ -16,6 +16,7 @@
 
 import type { SessionSummary } from '@mobi/shared'
 import { ProjectFolderSchema, validateProjectFolders } from '@mobi/shared'
+import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { StoredSession } from '../../store'
@@ -112,6 +113,25 @@ const projectSessionsQuerySchema = z.object({
 export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
+    /**
+     * folders 路径须位于目标机器 homeDir 内——与 spawn 路由同一守卫语义（机器未知/无
+     * homeDir 时放行），但前置到建项目/改 folders 时刻拦截，避免「建得起来、spawn 才
+     * 403」的可用性陷阱。返回错误文案或 null
+     */
+    const validateFoldersWithinHomeDir = (
+        engine: SyncEngine, machineId: string, folders: Array<{ path: string }>
+    ): string | null => {
+        const homeDir = engine.getMachine(machineId)?.metadata?.homeDir
+        if (!homeDir) return null
+        for (const folder of folders) {
+            const validation = validateHomeDirPath(folder.path, homeDir)
+            if (!validation.valid) {
+                return `Folder "${folder.path}": ${validation.error} (must be within the machine home directory)`
+            }
+        }
+        return null
+    }
+
     // GET /api/projects - 项目列表（支持 ?machineId= 过滤）
     app.get('/projects', (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
@@ -144,6 +164,12 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const foldersError = validateProjectFolders(parsed.data.folders)
         if (foldersError) {
             return c.json({ error: foldersError }, 400)
+        }
+
+        // folders 路径范围前置校验（homeDir 外 → 400），避免建得起来、spawn 时才被拒
+        const homeDirError = validateFoldersWithinHomeDir(engine, parsed.data.machineId, parsed.data.folders)
+        if (homeDirError) {
+            return c.json({ error: homeDirError }, 400)
         }
 
         const namespace = c.get('namespace')
@@ -212,6 +238,11 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             const foldersError = validateProjectFolders(parsed.data.folders)
             if (foldersError) {
                 return c.json({ error: foldersError }, 400)
+            }
+            // 换 folders 时同样做 homeDir 范围校验（machineId 不可改，按既有归属校验）
+            const homeDirError = validateFoldersWithinHomeDir(engine, existing.machineId, parsed.data.folders)
+            if (homeDirError) {
+                return c.json({ error: homeDirError }, 400)
             }
         }
 
