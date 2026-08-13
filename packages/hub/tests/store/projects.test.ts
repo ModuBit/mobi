@@ -73,14 +73,23 @@ describe('ProjectStore', () => {
             name: 'a',
             folders: [{ path: '/a', primary: true }]
         })
-        store.projects.createProject({
-            namespace: 'other',
+        const b = store.projects.createProject({
+            namespace: 'default',
             machineId: 'm1',
             name: 'b',
             folders: [{ path: '/b', primary: true }]
         })
+        // 跨 namespace 的项目不应出现
+        store.projects.createProject({
+            namespace: 'other',
+            machineId: 'm1',
+            name: 'c',
+            folders: [{ path: '/c', primary: true }]
+        })
+        // update a 拉开 updatedAt → a 应排在 b 前
+        store.projects.updateProject(a.id, 'default', { name: 'a2' })
         const list = store.projects.getProjects('default')
-        expect(list.map(p => p.id)).toEqual([a.id])
+        expect(list.map(p => p.id)).toEqual([a.id, b.id])
     })
 
     test('update 改名/改 folders 并递增 seq', () => {
@@ -93,6 +102,38 @@ describe('ProjectStore', () => {
         const updated = store.projects.updateProject(p.id, 'default', { name: 'a2' })
         expect(updated?.name).toBe('a2')
         expect(store.projects.getProject(p.id)?.seq).toBeGreaterThan(p.seq)
+
+        // folders patch 分支：替换文件夹列表并再次递增 seq
+        const foldersUpdated = store.projects.updateProject(p.id, 'default', {
+            folders: [{ path: '/a/new', primary: true }]
+        })
+        expect(foldersUpdated?.folders).toEqual([{ path: '/a/new', primary: true }])
+        expect(foldersUpdated?.seq).toBeGreaterThan(updated?.seq ?? 0)
+
+        // folders patch 非法时抛错
+        expect(() =>
+            store.projects.updateProject(p.id, 'default', { folders: [] })
+        ).toThrow()
+    })
+
+    test('update 不存在的项目（即使 folders 非法）返回 null 而非抛错', () => {
+        const result = store.projects.updateProject('nonexistent', 'default', {
+            folders: []
+        })
+        expect(result).toBeNull()
+    })
+
+    test('跨 namespace 的 update 返回 null / delete 返回 false', () => {
+        const p = store.projects.createProject({
+            namespace: 'default',
+            machineId: 'm1',
+            name: 'a',
+            folders: [{ path: '/a', primary: true }]
+        })
+        expect(store.projects.updateProject(p.id, 'other', { name: 'x' })).toBeNull()
+        expect(store.projects.deleteProject(p.id, 'other')).toBe(false)
+        // 原 namespace 下项目未被误删
+        expect(store.projects.getProject(p.id)?.name).toBe('a')
     })
 
     test('删除不存在的项目返回 false', () => {

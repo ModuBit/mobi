@@ -18,7 +18,7 @@ import type { Database } from 'bun:sqlite'
 
 import type { ProjectFolder } from '@mobi/shared'
 
-import type { StoredProject } from './projects'
+import type { StoredProject } from './types'
 import { createProject, deleteProject, getProject, getProjects, updateProject } from './projects'
 
 /** 项目存储薄包装：与 SessionStore 等保持一致的 db 注入形态 */

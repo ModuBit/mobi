@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import type { Project } from '@mobi/shared'
+
 export type StoredSession = {
     id: string
     tag: string | null
@@ -62,6 +64,9 @@ export type StoredMessage = {
     /** 排序锚点；排队消息消费时跳到消费时刻 */
     positionAt: number
 }
+
+/** 项目实体存储形态（直接复用 shared 的 Project 定义） */
+export type StoredProject = Project
 
 export type StoredUser = {
     id: number

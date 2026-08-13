@@ -28,6 +28,7 @@ import { UserStore } from './userStore'
 export type {
     StoredMachine,
     StoredMessage,
+    StoredProject,
     StoredPushSubscription,
     StoredSession,
     StoredUser,
@@ -36,7 +37,6 @@ export type {
 export { MachineStore } from './machineStore'
 export { MessageStore } from './messageStore'
 export { ProjectStore } from './projectStore'
-export type { StoredProject } from './projects'
 export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'

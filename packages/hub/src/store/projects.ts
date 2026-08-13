@@ -17,9 +17,10 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { validateProjectFolders, type Project, type ProjectFolder } from '@mobi/shared'
+import { validateProjectFolders, type ProjectFolder } from '@mobi/shared'
 
 import { safeJsonParse } from './json'
+import type { StoredProject } from './types'
 
 type DbProjectRow = {
     id: string
@@ -32,7 +33,7 @@ type DbProjectRow = {
     seq: number
 }
 
-function toProject(row: DbProjectRow): Project {
+function toProject(row: DbProjectRow): StoredProject {
     return {
         id: row.id,
         namespace: row.namespace,
@@ -45,11 +46,9 @@ function toProject(row: DbProjectRow): Project {
     }
 }
 
-export type StoredProject = Project
-
 export function getProjects(db: Database, namespace: string): StoredProject[] {
     const rows = db.prepare(
-        'SELECT * FROM projects WHERE namespace = ? ORDER BY updated_at DESC'
+        'SELECT * FROM projects WHERE namespace = ? ORDER BY updated_at DESC, seq DESC'
     ).all(namespace) as DbProjectRow[]
     return rows.map(toProject)
 }
@@ -90,12 +89,14 @@ export function updateProject(
     namespace: string,
     patch: { name?: string; folders?: ProjectFolder[] }
 ): StoredProject | null {
+    // 先做存在性与 namespace 归属检查：不存在的项目直接返回 null，不触发校验抛错
+    const existing = getProject(db, id)
+    if (!existing || existing.namespace !== namespace) return null
+
     if (patch.folders) {
         const error = validateProjectFolders(patch.folders)
         if (error) throw new Error(error)
     }
-    const existing = getProject(db, id)
-    if (!existing || existing.namespace !== namespace) return null
 
     const now = Date.now()
     db.prepare(`
@@ -118,7 +119,12 @@ export function deleteProject(db: Database, id: string, namespace: string): bool
     if (!existing || existing.namespace !== namespace) return false
 
     db.transaction(() => {
-        db.prepare('UPDATE sessions SET project_id = NULL WHERE project_id = ?').run(id)
+        // 解绑也遵循 sessions 变更范式：成对递增 updated_at/seq，SSE 增量同步才能感知
+        db.prepare(`
+            UPDATE sessions
+            SET project_id = NULL, updated_at = @now, seq = seq + 1
+            WHERE project_id = @id
+        `).run({ id, now: Date.now() })
         db.prepare('DELETE FROM projects WHERE id = ? AND namespace = ?').run(id, namespace)
     })()
     return true
