@@ -234,6 +234,28 @@ describe('bootstrapSession 项目归属', () => {
         expect(h.updateMetadata).not.toHaveBeenCalled()
     })
 
+    it('resume 已绑会话但无冻结列表且项目机器不匹配（迁移存量 unknown/众数机器）：容忍降级，不抛错不冻结', async () => {
+        stubExists(['/a/mobi', '/a/shared'])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({ projectId: 'p1', metadata: { path: '/a/mobi' } }),
+            // 迁移兜底 'unknown' 或组内众数机器 ≠ 当前机器
+            project: baseProject({ machineId: 'unknown' })
+        })
+
+        // 迁移前该会话可正常 resume；machineId 门禁只应约束显式 --project，不应阻断历史会话恢复
+        const result = await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            claudeArgs: ['--resume', 'cs1']
+        })
+
+        expect(result.additionalDirectories).toEqual([])
+        expect(h.access).not.toHaveBeenCalled()
+        // 不冻结：留待在正确机器上 resume 时再派生
+        expect(h.updateMetadata).not.toHaveBeenCalled()
+    })
+
     it('resume 已绑会话但无冻结列表（迁移存量）：按当前 project folders 派生并冻结', async () => {
         stubExists(['/a/mobi', '/a/shared'])
         h.getOrCreateSession.mockResolvedValue({

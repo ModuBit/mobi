@@ -148,35 +148,52 @@ function extractResumeSessionId(claudeArgs?: string[]): string | null {
 
 /**
  * 计算会话的额外工作目录，优先级：冻结列表 > 项目派生 > 空。
+ * 返回 { dirs, freeze }：freeze 表示派生结果（含空列表）是否应写入 metadata 冻结。
  * 1. metadata.additionalDirectories 键已冻结（创建/迁移时写入，含空列表）→ 直接回放，
  *    完全忽略响应中的 project（不校验 machineId、不读 folders）——resume 历史会话不受
- *    项目后续变更影响
- * 2. 无该键 → 从 project.folders 派生：machineId 匹配 + 存在性校验；解析后等于 cwd 的
- *    文件夹跳过（agent 本就在里面），其余（含 primary）逐个校验并加入；primary 非 cwd
- *    且缺失硬失败，其余缺失 warn 跳过。派生结果（含空）由调用方冻结
- * 3. 都无 → 空数组
+ *    项目后续变更影响，且不重写（freeze=false）
+ * 2. 无该键 → 从 project.folders 派生（freeze=true）：
+ *    - 显式 --project（explicitProject）时 machineId 必须匹配，不匹配硬失败——用户明确
+ *      指定了归属，错了要立刻暴露
+ *    - 非显式（resume 历史会话，含迁移存量首次 resume）时 machineId 不匹配降级为
+ *      warn + 空目录且不冻结（freeze=false）——迁移前可恢复的会话不能因机器门禁起不来，
+ *      留待在正确机器上 resume 时再派生
+ *    - 存在性校验：解析后等于 cwd 的文件夹跳过（agent 本就在里面），其余（含 primary）
+ *      逐个校验并加入；primary 非 cwd 且缺失硬失败，其余缺失 warn 跳过
+ * 3. 都无 → 空数组（freeze=false）
  */
 async function resolveAdditionalDirectories(input: {
     project: Project | null
     sessionMetadata: unknown
     machineId: string
     workingDirectory: string
-}): Promise<string[]> {
-    const { project, sessionMetadata, machineId, workingDirectory } = input
+    /** projectId 是否由用户显式指定（--project / Web spawn）——决定机器门禁是硬失败还是降级 */
+    explicitProject: boolean
+}): Promise<{ dirs: string[]; freeze: boolean }> {
+    const { project, sessionMetadata, machineId, workingDirectory, explicitProject } = input
 
     // 优先级 1：冻结列表回放（键存在即冻结，空列表同样冻结——单文件夹项目冻结 []，
     // resume 不再重读项目）。hub 对已绑项目的会话始终返回 project，但冻结后项目
     // folders 的任何变更都不应影响历史会话，故此处不看 project
     const frozen = readFrozenAdditionalDirectories(sessionMetadata)
     if (frozen) {
-        return frozen
+        return { dirs: frozen, freeze: false }
     }
 
     // 优先级 2：项目派生（新建 / 迁移存量首次 resume）
     if (project) {
         // folders 是机器本地路径，项目必须归属本机才能使用
         if (project.machineId !== machineId) {
-            throw new Error(`Project '${project.name}' belongs to a different machine (${project.machineId}), this machine is ${machineId}`)
+            if (explicitProject) {
+                throw new Error(`Project '${project.name}' belongs to a different machine (${project.machineId}), this machine is ${machineId}`)
+            }
+            // resume 历史会话（如迁移兜底 'unknown' 或众数机器 ≠ 当前机器）：
+            // 机器门禁只约束显式归属，不阻断历史会话恢复——降级为无额外目录，且不冻结，
+            // 留待在正确机器上 resume 时再派生
+            logger.warn(
+                `[START] 会话所属项目 '${project.name}' 归属其他机器（${project.machineId}，本机 ${machineId}），跳过项目目录注入`
+            )
+            return { dirs: [], freeze: false }
         }
 
         const cwd = resolve(workingDirectory)
@@ -198,11 +215,11 @@ async function resolveAdditionalDirectories(input: {
             }
             dirs.push(folder.path)
         }
-        return dirs
+        return { dirs, freeze: true }
     }
 
     // 优先级 3：游离 / resume 未绑项目且无冻结 → 空
-    return []
+    return { dirs: [], freeze: false }
 }
 
 /** metadata 中是否已冻结 additionalDirectories（按键存在判定；返回 null = 未冻结） */
@@ -266,17 +283,18 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
     const apiSession = api.sessionSyncClient(sessionInfo)
 
     // 解析额外工作目录：优先回放冻结列表，其次从项目 folders 派生（见函数 docstring 的优先级规则）
-    const additionalDirectories = await resolveAdditionalDirectories({
+    const { dirs: additionalDirectories, freeze } = await resolveAdditionalDirectories({
         project: sessionInfo.project,
         sessionMetadata: sessionInfo.metadata,
         machineId,
-        workingDirectory
+        workingDirectory,
+        explicitProject: options.projectId !== undefined
     })
 
     // 派生结果冻结（含空列表——单文件夹项目冻结 []，resume 不再重读项目）：
-    // 仅当此前无该键（新建 / 迁移存量首次 resume）时写入；回放路径不重写，
+    // 仅派生路径（freeze=true）写入；回放路径与机器不匹配降级路径不写，
     // 保证冻结列表稳定、不被项目后续变更追溯覆盖
-    if (sessionInfo.project && !readFrozenAdditionalDirectories(sessionInfo.metadata)) {
+    if (freeze) {
         apiSession.updateMetadata((current) => ({
             ...current,
             additionalDirectories
