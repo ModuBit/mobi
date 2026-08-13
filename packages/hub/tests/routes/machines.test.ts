@@ -38,10 +38,16 @@ const mockMachine: Machine = {
     runnerStateVersion: 0,
 }
 
+/** 捕获 spawnSession 调用参数（projectId 应为最后一个位置参数） */
+const spawnCalls: unknown[][] = []
+
 const mockSyncEngine = {
     getMachine: (_id: string) => mockMachine,
     getOnlineMachinesByNamespace: (_ns: string) => [mockMachine],
-    spawnSession: async () => ({ type: 'success', sessionId: 'new-session-1' }),
+    spawnSession: async (...args: unknown[]) => {
+        spawnCalls.push(args)
+        return { type: 'success', sessionId: 'new-session-1' }
+    },
 } as unknown as SyncEngine
 
 describe('Machines API', () => {
@@ -88,5 +94,24 @@ describe('Machines API', () => {
         })
 
         expect(res.status).toBe(200)
+    })
+
+    test('POST /api/machines/:id/spawn body 中的 projectId 透传给 engine.spawnSession（最后一个位置参数）', async () => {
+        const token = await getAuthToken(app)
+        const before = spawnCalls.length
+
+        const res = await app.request('/api/machines/test-machine-1/spawn', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ directory: '/home/testuser/projects', projectId: 'project-7' }),
+        })
+
+        expect(res.status).toBe(200)
+        expect(spawnCalls.length).toBe(before + 1)
+        const args = spawnCalls[spawnCalls.length - 1]
+        expect(args[args.length - 1]).toBe('project-7')
     })
 })

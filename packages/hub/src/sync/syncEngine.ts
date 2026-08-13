@@ -430,10 +430,11 @@ export class SyncEngine {
         worktreeName?: string,
         resumeSessionId?: string,
         effort?: EffortLevel,
+        projectId?: string,
     ): Promise<{ type: 'success'; sessionId: string } | { type: 'error'; message: string }> {
         return await this.rpcGateway.spawnSession(
             machineId, directory, agent, model, permissionMode,
-            sessionType, worktreeName, resumeSessionId, effort
+            sessionType, worktreeName, resumeSessionId, effort, projectId
         )
     }
 

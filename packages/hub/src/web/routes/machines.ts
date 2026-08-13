@@ -32,7 +32,8 @@ const spawnBodySchema = z.object({
     effort: z.enum(EFFORT_LEVELS).optional(),
     permissionMode: PermissionModeSchema.optional(),
     sessionType: z.enum(['simple', 'worktree']).optional(),
-    worktreeName: z.string().optional()
+    worktreeName: z.string().optional(),
+    projectId: z.string().optional()
 })
 
 const pathsExistsSchema = z.object({
@@ -108,7 +109,8 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             parsed.data.sessionType,
             parsed.data.worktreeName,
             undefined, // resumeSessionId
-            parsed.data.effort
+            parsed.data.effort,
+            parsed.data.projectId
         )
         return c.json(result)
     })
