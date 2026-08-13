@@ -15,14 +15,16 @@
  */
 
 import type { ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import type { PermissionUpdate } from '@mobi/shared'
+import type { PermissionUpdate, Project, ProjectFolder } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
+import type { ProjectSessionsResult } from '../store/sessions'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
 import { MachineCache, type Machine } from './machineCache'
 import { MessageService } from './messageService'
+import { ProjectCache } from './projectCache'
 import {
     RpcGateway,
     type RpcCommandResponse,
@@ -60,8 +62,10 @@ export class SyncEngine {
     private readonly eventPublisher: EventPublisher
     private readonly sessionCache: SessionCache
     private readonly machineCache: MachineCache
+    private readonly projectCache: ProjectCache
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
+    private readonly store: Store
     private inactivityTimer: NodeJS.Timeout | null = null
 
     constructor(
@@ -73,8 +77,10 @@ export class SyncEngine {
         this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
         this.machineCache = new MachineCache(store, this.eventPublisher)
+        this.projectCache = new ProjectCache(store, this.eventPublisher)
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
+        this.store = store
         this.warmupCache()
         this.inactivityTimer = setInterval(() => this.expireInactive(), 5_000)
     }
@@ -159,6 +165,55 @@ export class SyncEngine {
         return this.machineCache.getOnlineMachinesByNamespace(namespace)
     }
 
+    // ============ 项目（project entity）============
+
+    getProjects(namespace: string): Project[] {
+        return this.projectCache.getProjects(namespace)
+    }
+
+    getProject(id: string): Project | undefined {
+        return this.projectCache.getProject(id)
+    }
+
+    createProject(namespace: string, input: { machineId: string; name: string; folders: ProjectFolder[] }): Project {
+        return this.projectCache.createProject(namespace, input)
+    }
+
+    updateProject(id: string, namespace: string, patch: { name?: string; folders?: ProjectFolder[] }): Project | null {
+        return this.projectCache.updateProject(id, namespace, patch)
+    }
+
+    deleteProject(id: string, namespace: string): boolean {
+        const ok = this.projectCache.deleteProject(id, namespace)
+        if (ok) {
+            // 名下会话已在 store 解绑，刷新 namespace 内存缓存让 hub 侧 session.projectId 同步
+            this.sessionCache.getSessionsByNamespace(namespace)
+        }
+        return ok
+    }
+
+    getSessionsByProject(namespace: string, projectId: string, cursor: number | null, limit?: number): ProjectSessionsResult {
+        return this.store.sessions.getSessionsByProject(namespace, projectId, cursor, limit)
+    }
+
+    getUnboundSessions(namespace: string, cursor: number | null, limit?: number): ProjectSessionsResult {
+        return this.store.sessions.getUnboundSessions(namespace, cursor, limit)
+    }
+
+    /**
+     * 归入项目 / 解绑（移回「最近」）。projectId 须存在且同 namespace（store 层校验）。
+     * 成功后刷新内存缓存并广播 session-updated，Web 端感知归属变化。
+     */
+    setSessionProject(sessionId: string, projectId: string | null, namespace: string): boolean {
+        const ok = this.store.sessions.setSessionProject(sessionId, projectId, namespace)
+        if (!ok) return false
+        const session = this.sessionCache.refreshSession(sessionId)
+        if (session) {
+            this.eventPublisher.emit({ type: 'session-updated', sessionId, data: session })
+        }
+        return true
+    }
+
     getMessagesPage(sessionId: string, options: { limit: number; beforeSeq: number | null }): {
         messages: DecryptedMessage[]
         page: {
@@ -229,10 +284,11 @@ export class SyncEngine {
     private warmupCache(): void {
         this.sessionCache.warmupCache()
         this.machineCache.warmupCache()
+        this.projectCache.warmupCache()
     }
 
-    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, mode?: 'local' | 'remote', runtimeState?: unknown): Session {
-        return this.sessionCache.getOrCreateSession(tag, metadata, agentState, namespace, mode, runtimeState)
+    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, mode?: 'local' | 'remote', runtimeState?: unknown, projectId?: string | null): Session {
+        return this.sessionCache.getOrCreateSession(tag, metadata, agentState, namespace, mode, runtimeState, projectId)
     }
 
     getSessionByClaudeSessionId(claudeSessionId: string, namespace: string): Session | null {

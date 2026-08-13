@@ -57,8 +57,11 @@ const modelSchema = z.object({
     model: z.string().nullable()
 })
 
-const renameSessionSchema = z.object({
-    name: z.string().min(1).max(255)
+/** PATCH /sessions/:id 通用 body：重命名与归入项目共用一个端点，至少携带一项 */
+const patchSessionSchema = z.object({
+    name: z.string().min(1).max(255).optional(),
+    /** 归属项目（null = 移回「最近」）；缺省 = 不动归属 */
+    projectId: z.string().nullable().optional()
 })
 
 const uploadDeleteSchema = z.object({
@@ -477,22 +480,45 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const body = await c.req.json().catch(() => null)
-        const parsed = renameSessionSchema.safeParse(body)
-        if (!parsed.success) {
-            return c.json({ error: 'Invalid body: name is required' }, 400)
+        const parsed = patchSessionSchema.safeParse(body)
+        if (!parsed.success || (parsed.data.name === undefined && parsed.data.projectId === undefined)) {
+            return c.json({ error: 'Invalid body: name or projectId is required' }, 400)
         }
 
-        try {
-            await engine.renameSession(sessionResult.sessionId, parsed.data.name)
-            return c.json({ ok: true })
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to rename session'
-            // Map concurrency/version errors to 409 conflict
-            if (message.includes('concurrently') || message.includes('version')) {
-                return c.json({ error: message }, 409)
+        // 归入项目 / 移回「最近」；目标项目必须与会话同 machine（机器未知的老数据放行）
+        if (parsed.data.projectId !== undefined) {
+            const namespace = c.get('namespace')
+            if (parsed.data.projectId !== null) {
+                const project = engine.getProject(parsed.data.projectId)
+                if (!project || project.namespace !== namespace) {
+                    return c.json({ error: 'Project not found' }, 404)
+                }
+                // 会话机器未知（老数据无 machineId）时放行；已知则必须匹配
+                const sessionMachineId = sessionResult.session.metadata?.machineId
+                if (sessionMachineId && project.machineId !== sessionMachineId) {
+                    return c.json({ error: 'Project belongs to a different machine' }, 400)
+                }
             }
-            return c.json({ error: message }, 500)
+            const ok = engine.setSessionProject(sessionResult.sessionId, parsed.data.projectId, namespace)
+            if (!ok) {
+                return c.json({ error: 'Session not found' }, 404)
+            }
         }
+
+        if (parsed.data.name !== undefined) {
+            try {
+                await engine.renameSession(sessionResult.sessionId, parsed.data.name)
+            } catch (error) {
+                const message = error instanceof Error ? error.message : 'Failed to rename session'
+                // Map concurrency/version errors to 409 conflict
+                if (message.includes('concurrently') || message.includes('version')) {
+                    return c.json({ error: message }, 409)
+                }
+                return c.json({ error: message }, 500)
+            }
+        }
+
+        return c.json({ ok: true })
     })
 
     app.delete('/sessions/:id', async (c) => {

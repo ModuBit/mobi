@@ -178,8 +178,8 @@ export class SessionCache {
         return this.getSessions().filter((session) => session.active)
     }
 
-    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, mode?: 'local' | 'remote', runtimeState?: unknown): Session {
-        const stored = this.store.sessions.getOrCreateSession(tag, metadata, agentState, namespace, runtimeState)
+    getOrCreateSession(tag: string, metadata: unknown, agentState: unknown, namespace: string, mode?: 'local' | 'remote', runtimeState?: unknown, projectId?: string | null): Session {
+        const stored = this.store.sessions.getOrCreateSession(tag, metadata, agentState, namespace, runtimeState, projectId)
         const session = this.refreshSession(stored.id) ?? (() => { throw new Error('Failed to load session') })()
 
         // 如果传入了 mode 且 session 当前没有 mode，设置初始 mode
@@ -244,7 +244,9 @@ export class SessionCache {
             runtimeState,
             permissionMode: existing?.permissionMode,
             mode: existing?.mode,
-            tag: stored.tag
+            tag: stored.tag,
+            // 归属项目（null = 游离）：必须显式带上，否则路由层读 session.projectId 恒 undefined
+            projectId: stored.projectId
         }
 
         this.sessions.set(sessionId, session)

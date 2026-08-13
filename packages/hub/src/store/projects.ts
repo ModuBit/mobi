@@ -53,6 +53,14 @@ export function getProjects(db: Database, namespace: string): StoredProject[] {
     return rows.map(toProject)
 }
 
+/** 跨 namespace 全量项目（缓存 warmup 用，镜像 machines.getMachines 的全量语义） */
+export function getAllProjects(db: Database): StoredProject[] {
+    const rows = db.prepare(
+        'SELECT * FROM projects ORDER BY updated_at DESC, seq DESC'
+    ).all() as DbProjectRow[]
+    return rows.map(toProject)
+}
+
 export function getProject(db: Database, id: string): StoredProject | null {
     const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as DbProjectRow | undefined
     return row ? toProject(row) : null

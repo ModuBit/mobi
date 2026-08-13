@@ -29,7 +29,9 @@ const createOrLoadSessionSchema = z.object({
     metadata: z.unknown(),
     agentState: z.unknown().nullable().optional(),
     mode: z.enum(['local', 'remote']).optional(),
-    runtimeState: z.unknown().optional()
+    runtimeState: z.unknown().optional(),
+    /** 归属项目（Web spawn 透传；缺省 = 游离） */
+    projectId: z.string().optional()
 })
 
 const createOrLoadMachineSchema = z.object({
@@ -118,8 +120,21 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         }
 
         const namespace = c.get('namespace')
-        const session = engine.getOrCreateSession(parsed.data.tag, parsed.data.metadata, parsed.data.agentState ?? null, namespace, parsed.data.mode, parsed.data.runtimeState)
-        return c.json({ session })
+        try {
+            const session = engine.getOrCreateSession(
+                parsed.data.tag, parsed.data.metadata, parsed.data.agentState ?? null,
+                namespace, parsed.data.mode, parsed.data.runtimeState, parsed.data.projectId
+            )
+            // 响应带 project：CLI 创建会话时校验归属并冻结 folders（不存在 → null = 游离）
+            const project = session.projectId
+                ? engine.getProject(session.projectId) ?? null
+                : null
+            return c.json({ session, project })
+        } catch (error) {
+            // store 层对不存在的 projectId 抛错（CLI 侧视为硬失败）
+            const message = error instanceof Error ? error.message : 'Failed to create session'
+            return c.json({ error: message }, 400)
+        }
     })
 
     // 注意：此路由必须注册在 /sessions/:id 之前，否则会被参数路由拦截

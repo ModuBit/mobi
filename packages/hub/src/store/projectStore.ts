@@ -19,7 +19,7 @@ import type { Database } from 'bun:sqlite'
 import type { ProjectFolder } from '@mobi/shared'
 
 import type { StoredProject } from './types'
-import { createProject, deleteProject, getProject, getProjects, updateProject } from './projects'
+import { createProject, deleteProject, getAllProjects, getProject, getProjects, updateProject } from './projects'
 
 /** 项目存储薄包装：与 SessionStore 等保持一致的 db 注入形态 */
 export class ProjectStore {
@@ -35,6 +35,11 @@ export class ProjectStore {
 
     getProject(id: string): StoredProject | null {
         return getProject(this.db, id)
+    }
+
+    /** 跨 namespace 全量项目（缓存 warmup 用） */
+    getAllProjects(): StoredProject[] {
+        return getAllProjects(this.db)
     }
 
     createProject(input: {

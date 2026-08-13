@@ -1,0 +1,278 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import type { SessionSummary } from '@mobi/shared'
+import { ProjectFolderSchema, validateProjectFolders } from '@mobi/shared'
+import { Hono } from 'hono'
+import { z } from 'zod'
+import type { StoredSession } from '../../store'
+import type { Session, SyncEngine } from '../../sync/syncEngine'
+import type { WebAppEnv } from '../middleware/auth'
+import { requireSyncEngine } from './guards'
+
+// 构建实时 session 状态映射（用于获取正确的 active 状态）
+function buildLiveSessionMap(engine: SyncEngine, namespace: string): Map<string, Session> {
+    const liveSessions = engine.getSessionsByNamespace(namespace)
+    const map = new Map<string, Session>()
+    for (const session of liveSessions) {
+        map.set(session.id, session)
+    }
+    return map
+}
+
+// 将 StoredSession 转换为 SessionSummary，使用实时数据获取 active 状态
+// （镜像 sessionGroups.ts 的同名 helper；sessionGroups 将在清理批次移除，此处为存活方）
+function toSummary(s: StoredSession, liveSessionMap: Map<string, Session>): SessionSummary {
+    // 从实时数据中获取 active 状态（数据库不存储）
+    const liveSession = liveSessionMap.get(s.id)
+    const active = liveSession?.active ?? false
+    const activeAt = liveSession?.activeAt ?? 0
+    const running = liveSession?.running ?? false
+
+    const metadata = s.metadata as {
+        path?: string
+        name?: string
+        machineId?: string
+        summary?: { text: string }
+        flavor?: string | null
+        worktree?: { basePath: string; branch: string; name: string }
+    } | null
+
+    const agentState = s.agentState as { requests?: Record<string, unknown> } | null
+    const runtimeState = s.runtimeState as { todos?: Array<{ status: string }>; tasks?: Array<{ status: string }> } | null
+
+    const pendingRequestsCount = agentState?.requests ? Object.keys(agentState.requests).length : 0
+
+    // metadata 必须包含 path 才能创建 summaryMetadata
+    const summaryMetadata = metadata?.path ? {
+        name: metadata.name,
+        path: metadata.path,
+        machineId: metadata.machineId ?? undefined,
+        summary: metadata.summary ? { text: metadata.summary.text } : undefined,
+        flavor: metadata.flavor ?? null,
+        worktree: metadata.worktree
+    } : null
+
+    const todoProgress = runtimeState?.todos?.length ? {
+        completed: runtimeState.todos.filter(t => t.status === 'completed').length,
+        total: runtimeState.todos.length
+    } : null
+
+    const taskProgress = runtimeState?.tasks?.length ? {
+        completed: runtimeState.tasks.filter(t => t.status === 'completed').length,
+        total: runtimeState.tasks.length
+    } : null
+
+    return {
+        id: s.id,
+        active,
+        running,
+        activeAt,
+        updatedAt: s.updatedAt,
+        metadata: summaryMetadata,
+        todoProgress,
+        taskProgress,
+        pendingRequestsCount
+    }
+}
+
+const listProjectsQuerySchema = z.object({
+    machineId: z.string().min(1).optional()
+})
+
+const createProjectSchema = z.object({
+    name: z.string().min(1),
+    machineId: z.string().min(1),
+    folders: z.array(ProjectFolderSchema)
+})
+
+const updateProjectSchema = z.object({
+    name: z.string().min(1).optional(),
+    folders: z.array(ProjectFolderSchema).optional()
+})
+
+// 分页 query 与响应形状对照 sessionGroups 的 groupSessionsQuerySchema
+const projectSessionsQuerySchema = z.object({
+    limit: z.coerce.number().min(1).max(100).optional().default(20),
+    cursor: z.coerce.number().optional()
+})
+
+export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
+    const app = new Hono<WebAppEnv>()
+
+    // GET /api/projects - 项目列表（支持 ?machineId= 过滤）
+    app.get('/projects', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const parsed = listProjectsQuerySchema.safeParse(c.req.query())
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid query parameters' }, 400)
+        }
+
+        const namespace = c.get('namespace')
+        let projects = engine.getProjects(namespace)
+        if (parsed.data.machineId) {
+            projects = projects.filter(p => p.machineId === parsed.data.machineId)
+        }
+        return c.json({ projects })
+    })
+
+    // POST /api/projects - 创建项目（folders 合法性由 validateProjectFolders 把关）
+    app.post('/projects', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = createProjectSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        const foldersError = validateProjectFolders(parsed.data.folders)
+        if (foldersError) {
+            return c.json({ error: foldersError }, 400)
+        }
+
+        const namespace = c.get('namespace')
+        const project = engine.createProject(namespace, parsed.data)
+        return c.json({ project })
+    })
+
+    // 注意：此路由必须注册在 /projects/:id 与 /projects/:id/sessions 之前，
+    // 否则两段路径 sessions/unbound 会被参数路由按 :id=sessions 拦截（同类坑见 cli.ts）
+    app.get('/projects/sessions/unbound', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const parsed = projectSessionsQuerySchema.safeParse(c.req.query())
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid query parameters' }, 400)
+        }
+
+        const namespace = c.get('namespace')
+        const result = engine.getUnboundSessions(namespace, parsed.data.cursor ?? null, parsed.data.limit)
+
+        const liveSessionMap = buildLiveSessionMap(engine, namespace)
+        const sessions = result.sessions.map(s => toSummary(s, liveSessionMap))
+
+        return c.json({
+            sessions,
+            nextCursor: result.nextCursor,
+            hasMore: result.hasMore,
+            total: result.total
+        })
+    })
+
+    // GET /api/projects/:id
+    app.get('/projects/:id', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const namespace = c.get('namespace')
+        const project = engine.getProject(c.req.param('id'))
+        if (!project || project.namespace !== namespace) {
+            return c.json({ error: 'Project not found' }, 404)
+        }
+        return c.json({ project })
+    })
+
+    // PATCH /api/projects/:id - 改名 / 改 folders（machineId 不可改）
+    app.patch('/projects/:id', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const id = c.req.param('id')
+        const namespace = c.get('namespace')
+
+        const existing = engine.getProject(id)
+        if (!existing || existing.namespace !== namespace) {
+            return c.json({ error: 'Project not found' }, 404)
+        }
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = updateProjectSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body' }, 400)
+        }
+
+        if (parsed.data.folders) {
+            const foldersError = validateProjectFolders(parsed.data.folders)
+            if (foldersError) {
+                return c.json({ error: foldersError }, 400)
+            }
+        }
+
+        const project = engine.updateProject(id, namespace, parsed.data)
+        if (!project) {
+            return c.json({ error: 'Project not found' }, 404)
+        }
+        return c.json({ project })
+    })
+
+    // DELETE /api/projects/:id - 名下会话解绑进「最近」（projectCache 负责 SSE 联动）
+    app.delete('/projects/:id', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const id = c.req.param('id')
+        const namespace = c.get('namespace')
+
+        const existing = engine.getProject(id)
+        if (!existing || existing.namespace !== namespace) {
+            return c.json({ error: 'Project not found' }, 404)
+        }
+
+        const ok = engine.deleteProject(id, namespace)
+        if (!ok) {
+            return c.json({ error: 'Project not found' }, 404)
+        }
+        return c.json({ success: true })
+    })
+
+    // GET /api/projects/:id/sessions - 项目内会话分页
+    app.get('/projects/:id/sessions', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const parsed = projectSessionsQuerySchema.safeParse(c.req.query())
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid query parameters' }, 400)
+        }
+
+        const id = c.req.param('id')
+        const namespace = c.get('namespace')
+
+        const project = engine.getProject(id)
+        if (!project || project.namespace !== namespace) {
+            return c.json({ error: 'Project not found' }, 404)
+        }
+
+        const result = engine.getSessionsByProject(namespace, id, parsed.data.cursor ?? null, parsed.data.limit)
+
+        const liveSessionMap = buildLiveSessionMap(engine, namespace)
+        const sessions = result.sessions.map(s => toSummary(s, liveSessionMap))
+
+        return c.json({
+            sessions,
+            nextCursor: result.nextCursor,
+            hasMore: result.hasMore,
+            total: result.total
+        })
+    })
+
+    return app
+}
