@@ -24,7 +24,7 @@ import { safeDecodeHeader } from '../utils/headers'
 import { Hono } from 'hono'
 import { resolve } from 'node:path'
 import { z } from 'zod'
-import type { SyncEngine, Session } from '../../sync/syncEngine'
+import { checkProjectAssignable, type SyncEngine, type Session } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
 import { serveFileContent } from './serveFileContent'
@@ -491,13 +491,15 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (parsed.data.projectId !== undefined) {
             const namespace = c.get('namespace')
             if (parsed.data.projectId !== null) {
-                const project = engine.getProject(parsed.data.projectId)
-                if (!project || project.namespace !== namespace) {
+                // 会话机器未知（老数据无 machineId）时放行；已知则必须匹配（此处保持 400 历史约定）
+                const sessionMachineId = sessionResult.session.metadata?.machineId
+                const assignable = checkProjectAssignable(
+                    engine, parsed.data.projectId, namespace, sessionMachineId
+                )
+                if (assignable === 'not_found') {
                     return c.json({ error: 'Project not found' }, 404)
                 }
-                // 会话机器未知（老数据无 machineId）时放行；已知则必须匹配
-                const sessionMachineId = sessionResult.session.metadata?.machineId
-                if (sessionMachineId && project.machineId !== sessionMachineId) {
+                if (assignable === 'machine_mismatch') {
                     return c.json({ error: 'Project belongs to a different machine' }, 400)
                 }
             }

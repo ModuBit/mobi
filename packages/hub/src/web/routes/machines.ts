@@ -21,7 +21,7 @@ import { validateHomeDirPath, isWithinBlacklistedDir } from '@mobi/shared/pathSe
 import { MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
 import { streamUpload } from '../utils/uploadStream'
 import { safeDecodeHeader } from '../utils/headers'
-import type { SyncEngine } from '../../sync/syncEngine'
+import { checkProjectAssignable, type SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
 
@@ -95,11 +95,11 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         // （404 存在性在前，与 POST /cli/sessions 约定一致），杜绝派生出绑定错误机器的幽灵会话
         if (parsed.data.projectId) {
             const namespace = c.get('namespace')
-            const project = engine.getProject(parsed.data.projectId)
-            if (!project || project.namespace !== namespace) {
+            const assignable = checkProjectAssignable(engine, parsed.data.projectId, namespace, machineId)
+            if (assignable === 'not_found') {
                 return c.json({ error: 'Project not found' }, 404)
             }
-            if (project.machineId !== machineId) {
+            if (assignable === 'machine_mismatch') {
                 return c.json({ error: 'Project belongs to a different machine' }, 403)
             }
         }

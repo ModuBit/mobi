@@ -662,3 +662,26 @@ export class SyncEngine {
         }
     }
 }
+
+/**
+ * 项目归属校验（web/cli 路由共用判定，收口在 engine 层避免各路由内联漂移）：
+ * - not_found：项目不存在或跨 namespace（调用方一般映射 404）
+ * - machine_mismatch：machineId 已知且与项目归属机器不符（调用方映射 403/400，按各自既有约定）
+ * - ok：可归属。machineId 未知/缺失（含非字符串的异常形态）时放行——老数据（无
+ *   machineId）不因此被拒，与 PATCH /sessions/:id 的历史语义一致
+ */
+export function checkProjectAssignable(
+    engine: SyncEngine,
+    projectId: string,
+    namespace: string,
+    machineId?: unknown
+): 'ok' | 'not_found' | 'machine_mismatch' {
+    const project = engine.getProject(projectId)
+    if (!project || project.namespace !== namespace) {
+        return 'not_found'
+    }
+    if (typeof machineId === 'string' && project.machineId !== machineId) {
+        return 'machine_mismatch'
+    }
+    return 'ok'
+}

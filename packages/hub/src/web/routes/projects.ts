@@ -20,7 +20,7 @@ import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { StoredSession } from '../../store'
-import type { Session, SyncEngine } from '../../sync/syncEngine'
+import { checkProjectAssignable, type Session, type SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
 
@@ -119,8 +119,10 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
      * 403」的可用性陷阱。返回错误文案或 null
      */
     const validateFoldersWithinHomeDir = (
-        engine: SyncEngine, machineId: string, folders: Array<{ path: string }>
+        engine: SyncEngine, machineId: string | undefined, folders: Array<{ path: string }>
     ): string | null => {
+        // 机器未知（查不到归属机器）时放行，与守卫语义一致
+        if (!machineId) return null
         const homeDir = engine.getMachine(machineId)?.metadata?.homeDir
         if (!homeDir) return null
         for (const folder of folders) {
@@ -208,11 +210,11 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) return engine
 
         const namespace = c.get('namespace')
-        const project = engine.getProject(c.req.param('id'))
-        if (!project || project.namespace !== namespace) {
+        // 存在性 + namespace 归属统一走 engine 判定
+        if (checkProjectAssignable(engine, c.req.param('id'), namespace) !== 'ok') {
             return c.json({ error: 'Project not found' }, 404)
         }
-        return c.json({ project })
+        return c.json({ project: engine.getProject(c.req.param('id')) })
     })
 
     // PATCH /api/projects/:id - 改名 / 改 folders（machineId 不可改）
@@ -223,8 +225,8 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const id = c.req.param('id')
         const namespace = c.get('namespace')
 
-        const existing = engine.getProject(id)
-        if (!existing || existing.namespace !== namespace) {
+        // 存在性 + namespace 归属统一走 engine 判定
+        if (checkProjectAssignable(engine, id, namespace) !== 'ok') {
             return c.json({ error: 'Project not found' }, 404)
         }
 
@@ -240,7 +242,8 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
                 return c.json({ error: foldersError }, 400)
             }
             // 换 folders 时同样做 homeDir 范围校验（machineId 不可改，按既有归属校验）
-            const homeDirError = validateFoldersWithinHomeDir(engine, existing.machineId, parsed.data.folders)
+            const machineId = engine.getProject(id)?.machineId
+            const homeDirError = validateFoldersWithinHomeDir(engine, machineId, parsed.data.folders)
             if (homeDirError) {
                 return c.json({ error: homeDirError }, 400)
             }
@@ -261,8 +264,8 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const id = c.req.param('id')
         const namespace = c.get('namespace')
 
-        const existing = engine.getProject(id)
-        if (!existing || existing.namespace !== namespace) {
+        // 存在性 + namespace 归属统一走 engine 判定
+        if (checkProjectAssignable(engine, id, namespace) !== 'ok') {
             return c.json({ error: 'Project not found' }, 404)
         }
 
@@ -286,8 +289,8 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const id = c.req.param('id')
         const namespace = c.get('namespace')
 
-        const project = engine.getProject(id)
-        if (!project || project.namespace !== namespace) {
+        // 存在性 + namespace 归属统一走 engine 判定
+        if (checkProjectAssignable(engine, id, namespace) !== 'ok') {
             return c.json({ error: 'Project not found' }, 404)
         }
 

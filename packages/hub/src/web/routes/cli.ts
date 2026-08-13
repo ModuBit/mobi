@@ -20,7 +20,7 @@ import { PROTOCOL_VERSION } from '@mobi/shared'
 import { configuration } from '../../configuration'
 import { constantTimeEquals } from '../../utils/crypto'
 import { parseAccessToken } from '../../utils/accessToken'
-import type { Machine, Session, SyncEngine } from '../../sync/syncEngine'
+import { checkProjectAssignable, type Machine, type Session, type SyncEngine } from '../../sync/syncEngine'
 
 const bearerSchema = z.string().regex(/^Bearer\s+(.+)$/i)
 
@@ -123,15 +123,15 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         // 归属校验前置：projectId 必须指向同 namespace 的现存项目（404 约定与 PATCH /sessions/:id 一致），
         // 避免 store 层抛错被宽 catch 吞成 400、掩盖真实故障（DB 错误等应照常 500）
         if (parsed.data.projectId) {
-            const project = engine.getProject(parsed.data.projectId)
-            if (!project || project.namespace !== namespace) {
-                return c.json({ error: 'Project not found' }, 404)
-            }
             // 机器一致性前置：项目 folders 是机器本地路径，归属其它机器时必须当场拒绝，
             // 否则 CLI 侧后置校验失败退出后会留下绑定该项目的幽灵空会话（D13/spec §4.1）。
-            // metadata.machineId 缺失（老数据/异常）放行，与 PATCH /sessions/:id 约定一致
+            // metadata 是 z.unknown()，machineId 只能在此处内联提取（缺失 = 老数据/异常，checkProjectAssignable 放行）
             const requestMachineId = (parsed.data.metadata as { machineId?: unknown } | null)?.machineId
-            if (typeof requestMachineId === 'string' && project.machineId !== requestMachineId) {
+            const assignable = checkProjectAssignable(engine, parsed.data.projectId, namespace, requestMachineId)
+            if (assignable === 'not_found') {
+                return c.json({ error: 'Project not found' }, 404)
+            }
+            if (assignable === 'machine_mismatch') {
                 return c.json({ error: 'Project belongs to a different machine' }, 403)
             }
         }
