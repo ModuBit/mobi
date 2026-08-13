@@ -37,7 +37,7 @@ GET /cli/sessions/by-claude-session/:claudeSessionId
 
 ```
 POST /cli/sessions
-Body: { tag, metadata, agentState }
+Body: { tag, metadata, agentState, mode?, runtimeState?, projectId? }
 ```
 
 - **用途**: 创建新 session 或获取已有 session（Hub 端按 tag 幂等）
@@ -45,6 +45,8 @@ Body: { tag, metadata, agentState }
   - `tag`: session 标签（用于 `--resume` 复用）
   - `metadata`: 机器/路径信息
   - `agentState`: Agent 状态快照
+  - `projectId`: 归属项目 id（`--project` 透传；Hub 校验项目归属本机，404/403 时报错）
+- **返回**: `Session & { project: Project | null }`——`project` 为归属项目实体（游离时 `null`），CLI 据此派生并冻结 `metadata.additionalDirectories`
 - **错误处理**: 响应校验失败抛出 `apiValidationError`
 
 ### `getOrCreateMachine(opts)`

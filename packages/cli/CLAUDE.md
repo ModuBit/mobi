@@ -14,6 +14,8 @@
 | `src/commands/runCli.ts` | CLI 启动流程 |
 | `src/commands/registry.ts` | 命令注册表 |
 | `src/commands/claude.ts` | 默认命令，启动 Claude 会话 |
+| `src/commands/claudeArgs.ts` | claude 命令参数解析（parseStartOptions 纯函数，含 --project） |
+| `src/runner/spawnArgs.ts` | runner spawn 子进程 CLI 参数构建（buildClaudeSpawnArgs 纯函数） |
 | `src/claude/loop.ts` | 会话循环（Local/Remote 模式切换） |
 | `src/modules/common/idleTimer.ts` | Session 自动超时计时器 |
 | `src/constants/uploadPaths.ts` | 上传文件路径常量（`.mobi/uploads`） |

@@ -12,6 +12,7 @@ graph TB
         Store[Store<br/>Schema 管理 / DB 生命周期]
         SessionStore[SessionStore]
         MachineStore[MachineStore]
+        ProjectStore[ProjectStore]
         MessageStore[MessageStore]
         UserStore[UserStore]
         PushStore[PushStore]
@@ -23,12 +24,14 @@ graph TB
 
     Store --> SessionStore
     Store --> MachineStore
+    Store --> ProjectStore
     Store --> MessageStore
     Store --> UserStore
     Store --> PushStore
 
     SessionStore --> SQLite
     MachineStore --> SQLite
+    ProjectStore --> SQLite
     MessageStore --> SQLite
     UserStore --> SQLite
     PushStore --> SQLite
@@ -38,8 +41,9 @@ graph TB
 
 | 子 Store | 职责 |
 |----------|------|
-| **SessionStore** | 会话 CRUD、分组查询、metadata / agentState / runtimeState 乐观锁更新 |
+| **SessionStore** | 会话 CRUD、按项目 / 「最近」分页查询（projectId 游标）、metadata / agentState / runtimeState 乐观锁更新 |
 | **MachineStore** | 机器 CRUD、metadata / runnerState 乐观锁更新 |
+| **ProjectStore** | 项目 CRUD（folders 校验）、删除时同事务解绑名下会话 |
 | **MessageStore** | 消息追加、按位置分页查询（byPosition）、sidechain 查询、排队消息 invoke/cancel |
 | **UserStore** | 用户绑定（平台 + 平台 ID）、按平台/命名空间查询 |
 | **PushStore** | Web Push 订阅管理（按命名空间） |
@@ -80,13 +84,13 @@ PRAGMA busy_timeout = 5000    // 5 秒超时
 | agent_state_version | INTEGER | DEFAULT 1 | agentState 乐观锁版本号 |
 | runtime_state | TEXT | | 运行时状态（JSON） |
 | runtime_state_updated_at | INTEGER | | 运行时状态最后更新时间 |
-| group_key | TEXT | | 分组标识 |
+| project_id | TEXT | | 归属项目（NULL = 游离，进「最近」） |
 | seq | INTEGER | DEFAULT 0 | 序号 |
 
 **索引**:
 - `idx_sessions_tag` → `(tag)`
 - `idx_sessions_tag_namespace` → `(tag, namespace)`
-- `idx_sessions_group_key` → `(group_key)`
+- `idx_sessions_project` → `(project_id)`
 
 ### machines
 
@@ -106,6 +110,27 @@ PRAGMA busy_timeout = 5000    // 5 秒超时
 
 **索引**:
 - `idx_machines_namespace` → `(namespace)`
+
+### projects
+
+「项目实体化」引入的项目实体，会话通过 `sessions.project_id` 归属项目。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | TEXT | PRIMARY KEY | 项目 ID（UUID） |
+| namespace | TEXT | NOT NULL DEFAULT 'default' | 命名空间 |
+| machine_id | TEXT | NOT NULL | 归属机器（folders 是机器本地路径） |
+| name | TEXT | NOT NULL | 项目名称 |
+| folders | TEXT | NOT NULL | 源文件夹列表（JSON，`[{ path, primary }]`，恰好一项 primary） |
+| created_at | INTEGER | NOT NULL | 创建时间 |
+| updated_at | INTEGER | NOT NULL | 更新时间 |
+| seq | INTEGER | DEFAULT 0 | 序号 |
+
+**索引**:
+- `idx_projects_namespace` → `(namespace)`
+- `idx_projects_machine` → `(machine_id)`
+
+**删除语义**：`deleteProject()` 在同一事务内将名下会话解绑（`project_id` 置 NULL，并成对递增 `updated_at`/`seq` 以便 SSE 增量同步感知），会话本身不删。存量库的 `group_key` 数据由一次性脚本 `scripts/migrate-projects.ts` 回填为项目实体。
 
 ### messages
 
@@ -176,6 +201,8 @@ packages/hub/src/store/
 ├── sessionStore.ts       # SessionStore 类（委托 sessions.ts）
 ├── machines.ts           # 机器 SQL 操作（底层函数）
 ├── machineStore.ts       # MachineStore 类（委托 machines.ts）
+├── projects.ts           # 项目 SQL 操作（底层函数，含删除时解绑会话）
+├── projectStore.ts       # ProjectStore 类（委托 projects.ts）
 ├── messages.ts           # 消息 SQL 操作（底层函数）
 ├── messageStore.ts       # MessageStore 类（委托 messages.ts）
 ├── users.ts              # 用户 SQL 操作（底层函数）

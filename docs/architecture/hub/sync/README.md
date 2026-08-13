@@ -49,6 +49,7 @@ graph TB
         EP[EventPublisher<br/>事件广播]
         SC[SessionCache<br/>会话状态]
         MC[MachineCache<br/>机器状态]
+        PC[ProjectCache<br/>项目缓存]
         MS[MessageService<br/>消息服务]
         RG[RpcGateway<br/>RPC 网关]
     end
@@ -133,13 +134,14 @@ flowchart LR
     IO1 -->|执行| CLI
 ```
 
-## 6. 五个子组件分工
+## 6. 六个子组件分工
 
 | 组件 | 方向 | 作用 |
 |------|------|------|
 | EventPublisher | CLI → Web | 事件广播（通过 SSE） |
 | SessionCache | 双向 | 会话状态管理 |
 | MachineCache | 双向 | 机器状态管理 |
+| ProjectCache | Web → Web | 项目缓存（CRUD + project-* 事件广播，镜像 sessionCache/machineCache 范式） |
 | MessageService | Web → CLI | Web 发送消息给 CLI |
 | RpcGateway | Web → CLI | 远程调用 CLI 功能 |
 
@@ -150,6 +152,7 @@ flowchart LR
 | **[EventPublisher](./event-publisher)** | 事件发布器，向 SSE 推送实时事件 |
 | **[SessionCache](./session-cache)** | 会话缓存，管理会话生命周期和活跃状态 |
 | **[MachineCache](./machine-cache)** | 机器缓存，管理 CLI 客户端在线状态 |
+| **ProjectCache** | 项目缓存，管理项目实体 CRUD 并广播 `project-added/updated/removed`；删除项目时逐个广播名下会话的 `session-updated`（解绑进「最近」） |
 | **[MessageService](./message-service)** | 消息服务，处理消息分页和发送 |
 | **[RpcGateway](./rpc-gateway)** | RPC 网关，通过 Socket.IO 调用 CLI 功能 |
 
@@ -159,9 +162,10 @@ flowchart LR
 flowchart LR
     A[创建 EventPublisher] --> B[创建 SessionCache]
     B --> C[创建 MachineCache]
-    C --> D[创建 MessageService]
+    C --> PC[创建 ProjectCache]
+    PC --> D[创建 MessageService]
     D --> E[创建 RpcGateway]
-    E --> F[warmupCache<br/>预热缓存]
+    E --> F[warmupCache<br/>预热缓存（含 projects 全量）]
     F --> G[启动定时器<br/>5s 清理不活跃]
 ```
 
@@ -175,6 +179,19 @@ flowchart LR
 | `getSessionsByNamespace()` | 按命名空间获取 |
 | `getSession()` | 获取单个会话 |
 | `getActiveSessions()` | 获取活跃会话 |
+| `getSessionsByProject()` | 按项目分页获取会话（updated_at 游标） |
+| `getUnboundSessions()` | 「最近」区分页（未归属项目的会话） |
+
+### 项目操作
+
+| 方法 | 作用 |
+|------|------|
+| `getProjects()` | 按命名空间获取项目列表 |
+| `getProject()` | 获取单个项目（ProjectCache 读穿透回源 DB） |
+| `createProject()` | 创建项目（广播 `project-added`） |
+| `updateProject()` | 改名 / 改 folders（广播 `project-updated`） |
+| `deleteProject()` | 删除项目（事务内解绑名下会话，广播 `project-removed` + 逐个 `session-updated`） |
+| `setSessionProject()` | 会话归入 / 移出项目 |
 
 ### 机器查询
 
@@ -236,6 +253,7 @@ packages/hub/src/sync/
 ├── eventPublisher.ts   # 事件发布
 ├── sessionCache.ts     # 会话缓存
 ├── machineCache.ts     # 机器缓存
+├── projectCache.ts     # 项目缓存（CRUD + project-* 事件）
 ├── messageService.ts   # 消息服务
 ├── rpcGateway.ts       # RPC 网关
 ├── aliveTime.ts        # 活跃时间计算

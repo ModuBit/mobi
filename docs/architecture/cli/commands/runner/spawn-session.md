@@ -47,7 +47,9 @@ flowchart TB
 | `worktreeName` | `string?` | - | Worktree 名称提示 |
 | `agent` | `'claude'` | `'claude'` | Agent 类型（当前仅 Claude） |
 | `model` | `string?` | - | 指定模型 |
-| `yolo` | `boolean?` | `false` | 跳过权限确认 |
+| `effort` | `EffortLevel?` | - | reasoning effort（low / medium / high / xhigh） |
+| `permissionMode` | `PermissionMode?` | - | 权限模式 |
+| `projectId` | `string?` | - | 归属项目 id（Web spawn 透传；Hub 侧已校验项目归属本机） |
 | `token` | `string?` | - | OAuth 认证 token |
 | `machineId` | `string?` | - | 机器 ID |
 | `sessionId` | `string?` | - | 会话 ID（保留字段） |
@@ -167,7 +169,9 @@ if (options.token) {
 | `MOBI_WORKTREE_PATH` | `worktreeInfo.worktreePath` | 工作目录 |
 | `MOBI_WORKTREE_CREATED_AT` | `worktreeInfo.createdAt` | 创建时间戳 |
 
-## 阶段四：CLI 参数构建（Lines 345-357）
+## 阶段四：CLI 参数构建
+
+参数构建抽为纯函数 `buildClaudeSpawnArgs()`（[`packages/cli/src/runner/spawnArgs.ts`](/packages/cli/src/runner/spawnArgs.ts)，便于单元测试）：
 
 ```typescript
 const args = ['claude'];                              // mobi claude 子命令
@@ -179,8 +183,14 @@ args.push('--started-by', 'runner');                   // 标记为 Runner 启�
 if (options.model) {
   args.push('--model', options.model);                 // 指定模型
 }
-if (yolo) {
-  args.push('--yolo');                                 // 跳过权限确认
+if (options.effort !== undefined) {
+  args.push('--effort', options.effort);               // reasoning effort
+}
+if (options.permissionMode) {
+  args.push('--permission-mode', options.permissionMode); // 权限模式
+}
+if (options.projectId) {
+  args.push('--project', options.projectId);           // 归属项目
 }
 ```
 

@@ -115,6 +115,7 @@ flowchart TB
 | `--model <model>` | 指定 Claude 模型 |
 | `--mobi-starting-mode <mode>` | 启动模式：`local` / `remote` |
 | `--started-by <source>` | 启动来源：`runner` / `terminal` |
+| `--project <id>` | 归属项目 id（Web spawn 透传；终端亦可手动指定） |
 | 其他参数 | 透传给 Claude Code |
 
 **降级策略**：连接 Hub 失败时自动降级为本地模式（`runLocalMode`），直接 `spawn` claude 进程，不提供远程控制功能。
@@ -226,6 +227,7 @@ packages/cli/src/
 │   ├── registry.ts              # 命令注册表，resolveCommand()
 │   ├── types.ts                 # CommandDefinition、CommandContext 类型
 │   ├── claude.ts                # 默认命令，启动 Claude 会话
+│   ├── claudeArgs.ts            # claude 命令参数解析（parseStartOptions 纯函数）
 │   ├── auth.ts                  # 认证管理命令
 │   ├── hub.ts                   # Hub 服务器启动命令
 │   ├── runner.ts                # Runner 管理命令

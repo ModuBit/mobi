@@ -63,7 +63,7 @@ flowchart TB
 | `requestSessionConfig` | 请求配置更新 | `{sessionId}:set-session-config` |
 | `requestRename` | 回写 CC customTitle（Mobi → CC 标题同步，best-effort） | `{sessionId}:rename-session` |
 | `killSession` | 杀死会话 | `{sessionId}:killSession` |
-| `spawnSession` | 创建新会话（支持 `sessionType`/`worktreeName`/`resumeSessionId`/`effort` 参数） | `{machineId}:spawn-mobi-session` |
+| `spawnSession` | 创建新会话（支持 `sessionType`/`worktreeName`/`resumeSessionId`/`effort`/`projectId` 参数；projectId 经 hub 校验项目归属目标机器后透传 CLI） | `{machineId}:spawn-mobi-session` |
 | `checkPathsExist` | 检查路径是否存在 | `{machineId}:path-exists` |
 | `getGitStatus` | 获取 Git 状态 | `{sessionId}:git-status` |
 | `readSessionFile` | 读取文件 | `{sessionId}:readFile` |

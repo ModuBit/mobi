@@ -152,7 +152,10 @@ flowchart TB
 | `--model <model>` | 指定 Claude 模型 |
 | `--mobi-starting-mode <mode>` | 强制启动模式：`local` / `remote` |
 | `--started-by <source>` | 启动来源：`runner` / `terminal`（Runner 启动时强制 remote） |
+| `--project <id>` | 归属项目 id（Web spawn 透传；终端亦可手动指定） |
 | 其他参数 | 透传给 Claude Code |
+
+参数解析由 `commands/claudeArgs.ts` 的 `parseStartOptions()` 纯函数完成（mobi 自身 flag 进 options，其余透传 claudeArgs）。
 
 ### 阶段二：会话启动（`runClaude.ts`）
 
@@ -246,15 +249,18 @@ flowchart LR
 **文件**: `packages/cli/src/agent/sessionFactory.ts`
 
 ```
-bootstrapSession({ flavor, startedBy, workingDirectory, ... })
+bootstrapSession({ flavor, startedBy, workingDirectory, projectId, ... })
     │
     ├── ApiClient.create()                    ← HTTP 客户端
     ├── api.getOrCreateMachine(metadata)      ← 注册/获取机器
     ├── buildSessionMetadata(workingDir, ...) ← 构建会话元数据
-    ├── api.getOrCreateSession(metadata)      ← 创建/获取会话
+    ├── api.getOrCreateSession(metadata, { projectId })  ← 创建/获取会话（响应含 project 实体）
+    ├── resolveAdditionalDirectories(project) ← 从 project.folders 派生附加目录并冻结进 metadata
     ├── api.sessionSyncClient(sessionInfo)    ← Socket.IO 客户端
     └── notifyRunnerSessionStarted()          ← 通知 Runner
 ```
+
+**项目目录解析（`resolveAdditionalDirectories`）**：带 `projectId` 创建会话时，从响应中的 `project.folders` 派生附加工作目录（machineId 匹配 + 存在性校验，过滤掉等于 cwd 的 primary），冻结进 `metadata.additionalDirectories` 并回写 Hub。后续 resume 时直接回放冻结值、忽略响应中的 project——历史会话不受项目 folders 变更影响。
 
 ### 关闭（cleanupAndExit）
 
@@ -350,7 +356,8 @@ flowchart TB
 ```
 packages/cli/src/
 ├── commands/
-│   └── claude.ts                         # 命令入口，参数解析、降级策略
+│   ├── claude.ts                         # 命令入口，参数解析、降级策略
+│   └── claudeArgs.ts                     # 参数解析纯函数 parseStartOptions()
 ├── claude/
 │   ├── runClaude.ts                      # 核心启动流程，组件编排
 │   ├── loop.ts                           # 模式循环入口

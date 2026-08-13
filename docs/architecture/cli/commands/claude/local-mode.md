@@ -107,7 +107,7 @@ flowchart TB
     SetResume --> BuildArgs["构建 Claude 参数"]
     Fresh --> BuildArgs
 
-    BuildArgs --> Args["参数列表:<br/>--resume <id> (如有)<br/>--append-system-prompt<br/>--mcp-config<br/>--allowedTools<br/>--settings (hook)<br/>--add-dir (blobs)<br/>其他 claudeArgs"]
+    BuildArgs --> Args["参数列表:<br/>--resume <id> (如有)<br/>--append-system-prompt<br/>--mcp-config<br/>--allowedTools<br/>--settings (hook)<br/>--add-dir (blobs + 附加目录)<br/>其他 claudeArgs"]
 
     Args --> Spawn["spawnWithAbort(claude, args)<br/>启动 Claude 进程"]
     Spawn --> Wait["等待进程退出"]
@@ -124,7 +124,7 @@ flowchart TB
 | `--mcp-config` | MCP 服务器配置（mobi MCP Server） |
 | `--allowedTools` | 允许的工具列表 |
 | `--settings` | Hook 配置文件路径 |
-| `--add-dir` | 添加 blobs 目录（用于文件上传） |
+| `--add-dir` | 添加 blobs 目录（用于文件上传）+ 会话附加目录（`opts.additionalDirectories`，来自项目 folders / metadata 冻结值） |
 | 其他 `claudeArgs` | 用户透传的 Claude 参数 |
 
 ### 环境变量

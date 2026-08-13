@@ -23,7 +23,7 @@ HTTP 服务器，使用 Hono 框架。
 | `/cli/*` | [Access Token](./auth.md) | [CLI 专用 API](./cli/cli.md) |
 | `/api/events` | [JWT](./auth.md) | [SSE 事件推送](./api/sse-events.md) |
 | `/api/sessions/*` | [JWT](./auth.md) | [会话管理](./api/sessions.md) |
-| `/api/session-groups/*` | [JWT](./auth.md) | [会话分组](./api/sessions.md) |
+| `/api/projects/*` | [JWT](./auth.md) | [项目管理](./api/projects.md) |
 | `/manifest.webmanifest` | 无 | PWA Manifest |
 | `/api/messages/*` | [JWT](./auth.md) | [消息管理](./api/messages.md) |
 | `/api/permissions/*` | [JWT](./auth.md) | [权限操作](./api/permissions.md) |
@@ -50,6 +50,7 @@ flowchart TB
     jwt --> submatch{子路由}
     submatch -->|/api/events| sse[SSE]
     submatch -->|/api/sessions| sessions[会话]
+    submatch -->|/api/projects| projects[项目]
     submatch -->|/api/messages| messages[消息]
     submatch -->|/api/permissions| permissions[权限]
     submatch -->|/api/machines| machines[机器]

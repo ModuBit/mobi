@@ -13,6 +13,8 @@
 | `src/index.ts` | 主入口，组件组装 |
 | `src/sync/syncEngine.ts` | 同步引擎 |
 | `src/store/index.ts` | SQLite 存储层（WAL） |
+| `src/store/projects.ts` | 项目实体存储（「项目实体化」，会话按项目 / 「最近」组织） |
+| `src/web/routes/projects.ts` | 项目 Web API（/api/projects） |
 | `src/socket/server.ts` | Socket.IO 服务器 |
 | `src/web/server.ts` | HTTP 服务器 |
 | `src/sse/sseManager.ts` | SSE 管理器 |

@@ -2,10 +2,9 @@
 
 **文件**：
 - [`packages/hub/src/web/routes/sessions.ts`](/packages/hub/src/web/routes/sessions.ts)
-- [`packages/hub/src/web/routes/sessionGroups.ts`](/packages/hub/src/web/routes/sessionGroups.ts)
 - [`packages/hub/src/web/routes/serveFileContent.ts`](/packages/hub/src/web/routes/serveFileContent.ts)（read-file / serve-file 共享的文件服务逻辑）
 
-会话相关的 HTTP API，包括会话管理和分组查询。
+会话相关的 HTTP API，包括会话管理。项目实体与按项目查询会话见 [Projects API](./projects.md)。
 
 ## 路由总览
 
@@ -23,18 +22,10 @@
 | POST | `/sessions/:id/switch` | 切换到远程模式 | 会话活跃 |
 | POST | `/sessions/:id/permission-mode` | 设置权限模式 | 会话活跃 |
 | POST | `/sessions/:id/model` | 设置模型 | 会话活跃 |
-| PATCH | `/sessions/:id` | 重命名会话 | - |
+| PATCH | `/sessions/:id` | 重命名会话 / 归入项目 | - |
 | DELETE | `/sessions/:id` | 删除会话 | 会话非活跃 |
 | GET | `/sessions/:id/slash-commands` | 获取斜杠命令 | - |
 | GET | `/sessions/:id/skills` | 获取技能列表 | - |
-
-### Session Groups 路由 (`/api/session-groups`)
-
-| 方法 | 路径 | 功能 |
-|------|------|------|
-| GET | `/session-groups` | 获取分组列表 |
-| GET | `/session-groups/sessions` | 获取分组内会话（分页） |
-
 
 ### GET /sessions — 获取会话列表
 
@@ -103,15 +94,25 @@
 { "ok": true }
 ```
 
-### PATCH /sessions/:id — 重命名会话
+### PATCH /sessions/:id — 重命名 / 归入项目
+
+重命名（`name`）与归入项目（`projectId: string | null`，null = 移回「最近」）共用一个端点，请求体至少携带一项。
 
 ```json
-// Request
-{ "sessionName": "新名称" }
+// Request（两个字段均可选，至少一项）
+{ "name": "新名称", "projectId": "proj-uuid" }
 
 // Response
 { "ok": true }
+
+// Error
+{ "error": "Invalid body: name or projectId is required" }   // 400
+{ "error": "Project not found" }                             // 404（projectId 不存在或不属于当前 namespace）
+{ "error": "Project belongs to a different machine" }        // 400（会话与项目不同机器；会话机器未知的老数据放行）
+{ "error": "..." }                                           // 409（rename 版本冲突）
 ```
+
+注意端点**非原子**：`projectId` 先应用，`rename` 失败（如版本冲突 409）时归属已变更，不回滚。
 
 ### GET /sessions/:id/slash-commands — 获取斜杠命令
 
@@ -121,32 +122,6 @@
     { "name": "/commit", "description": "创建提交", "argumentHint": "" },
     { "name": "/review", "description": "代码审查", "argumentHint": "" }
 ]
-```
-
-### Session Groups
-
-#### GET /session-groups — 获取分组列表
-
-```json
-// Response
-[
-    { "groupKey": "/Users/dev/project", "count": 3, "latestActiveAt": 1712000060000 },
-    { "groupKey": "/Users/dev/other", "count": 1, "latestActiveAt": 1711990000000 }
-]
-```
-
-#### GET /session-groups/sessions — 获取分组内会话（分页）
-
-```
-GET /api/session-groups/sessions?groupKey=/Users/dev/project&limit=20&offset=0
-```
-
-```json
-// Response
-{
-    "sessions": [...],
-    "total": 3
-}
 ```
 
 ## 权限模式

@@ -218,7 +218,7 @@ const sdkOptions: Options = {
     abortController,
     pathToClaudeCodeExecutable,
     settings: hookSettingsPath,
-    additionalDirectories: [blobsDir],
+    additionalDirectories: [blobsDir, ...(opts.additionalDirectories ?? [])],
 }
 ```
 

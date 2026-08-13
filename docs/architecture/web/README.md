@@ -131,12 +131,14 @@ packages/web/src/
 │   │   │   ├── messageCache.ts 消息缓存修补（patch/去重/排序）
 │   │   │   └── sessionCache.ts 会话缓存修补
 │   │   └── hooks/              React Hooks
-│   │       ├── queries/        TanStack Query 查询（12 个）
+│   │       ├── queries/        TanStack Query 查询（18 个）
 │   │       │   ├── useSessions.ts        会话列表
 │   │       │   ├── useSession.ts         单个会话
 │   │       │   ├── useMessages.ts        消息（无限滚动分页）
-│   │       │   ├── useSessionGroups.ts   会话分组
-│   │       │   ├── useGroupSessions.ts   分组内会话
+│   │       │   ├── useProjects.ts        项目列表（?machineId 过滤，第二维各自缓存）
+│   │       │   ├── useProjectSessions.ts 项目内会话（分页 + 前端 slice 揭示）
+│   │       │   ├── useRecentSessions.ts  「最近」区会话（未归属项目）
+│   │       │   ├── usePagedSessionList.ts 会话分页列表通用逻辑（useSessions 补齐 + 可见 slice）
 │   │       │   ├── useMachines.ts        机器列表
 │   │       │   ├── useFileTree.ts        文件树
 │   │       │   ├── useGitStatus.ts       Git 状态
@@ -144,11 +146,12 @@ packages/web/src/
 │   │       │   ├── useCommands.ts        斜杠命令列表
 │   │       │   ├── useSidechainMessages.ts Agent 子对话消息
 │   │       │   └── useSDKMetadata.ts     SDK 元数据
-│   │       ├── mutations/      TanStack Query 变更（4 个）
+│   │       ├── mutations/      TanStack Query 变更（7 个）
 │   │       │   ├── useSendMessage.ts     发送消息（运行中发送→排队）
 │   │       │   ├── useCancelQueuedMessage.ts 取消排队消息（乐观删除 + 两阶段）
-│   │       │   ├── useSessionActions.ts  会话操作（归档/中止/切换/恢复/重命名）
-│   │       │   └── useSpawnSession.ts    启动新会话
+│   │       │   ├── useSessionActions.ts  会话操作（归档/中止/切换/恢复/重命名/归入项目）
+│   │       │   ├── useProjectMutations.ts 项目 CRUD（创建/改名/改 folders/删除）
+│   │       │   └── useSpawnSession.ts    启动新会话（可带 projectId）
 │   │       ├── useMediaQuery.ts          响应式断点
 │   │       ├── useNotify.ts             通知 Hook
 │   │       └── useNotificationSetup.ts   通知权限 + Web Push 订阅
@@ -289,18 +292,21 @@ packages/web/src/
 │   │       ├── ToolViewPanel.tsx 通用工具面板
 │   │       └── lineNumberUtils.ts 行号工具
 │   ├── session/                会话管理
-│   │   ├── SessionList.tsx     会话列表
 │   │   ├── SessionDetail.tsx   会话详情
-│   │   ├── NewSessionForm.tsx  新建会话表单
+│   │   ├── NewSessionForm.tsx  新建会话表单（project-first：先选项目再选目录）
 │   │   ├── SessionContextBar.tsx 会话上下文栏
 │   │   ├── useMachineDirectoryListing.ts 机器目录列表 Hook
 │   │   └── useRecentPaths.ts   最近路径 Hook
+│   ├── project/                项目管理
+│   │   ├── ProjectFormModal.tsx  项目创建/编辑表单（名称 + folders + primary）
+│   │   └── AssignProjectModal.tsx 会话归入项目弹窗
 │   ├── layout/                 布局
 │   │   ├── MainLayout.tsx      三栏布局（RailNav + Sidebar + Content）
 │   │   ├── RailNav.tsx         左侧图标导航栏
 │   │   ├── MobileMenu.tsx      移动端汉堡菜单
 │   │   ├── PageHeader.tsx      页面头部
-│   │   ├── SessionListDrawer.tsx 会话列表抽屉
+│   │   ├── SidebarProjects.tsx 侧边栏项目分组 + 「最近」区
+│   │   ├── MobileProjectList.tsx 移动端项目列表
 │   │   ├── navConfig.ts        导航配置
 │   │   ├── InstallButton.tsx   PWA 安装按钮
 │   │   ├── UpdatePrompt.tsx    更新提示
@@ -394,7 +400,7 @@ graph TD
 | 路径 | 页面 | 说明 |
 |------|------|------|
 | `/login` | LoginPage | 登录页（无 MainLayout） |
-| `/sessions` | SessionsPage | 会话列表，左侧分组侧边栏 + 右侧列表 |
+| `/sessions` | SessionsPage | 会话列表，左侧项目分组 + 「最近」侧边栏，右侧列表 |
 | `/sessions/$sessionId` | SessionDetailPage | 会话详情，支持聊天/文件/终端三个视图 |
 | `/sessions/new` | NewSessionPage | 新建会话向导 |
 | `/settings` | SettingsPage | 设置页面 |
@@ -425,8 +431,11 @@ sequenceDiagram
         Provider->>Provider: markMessagesConsumed()（invokedAt 翻值，缓存就地修补）
         QC->>UI: 自动 re-render
     else session-added / session-removed
-        Provider->>QC: invalidateQueries(sessions)
+        Provider->>QC: invalidateQueries(sessions) / projectViews 批失效
         QC->>UI: 刷新列表
+    else project-added / project-updated / project-removed
+        Provider->>QC: invalidateQueries(projects) / projectViews 批失效
+        QC->>UI: 刷新项目与列表
     end
 ```
 
@@ -435,7 +444,9 @@ sequenceDiagram
 - `session-updated` 使用 `setQueryData` 直接修补缓存，避免心跳触发 API 请求
 - `message-received` 使用 `invalidateQueries` 触发 refetch，因为消息有分页和去重逻辑
 - `messages-consumed` 使用 `markMessagesConsumed` 就地修补缓存（把命中 localId 的消息 `invokedAt` 翻值），避免 refetch 抖动
-- 失效操作通过批处理（16ms 防抖）合并，避免高频事件导致多次 API 请求
+- 失效操作通过批处理（16ms 防抖）合并，避免高频事件导致多次 API 请求；列表失效分 `sessions` / `projectViews`（projects / projectSessions / recentSessions 三个 key）等 scope 批量执行
+- `project-removed` 后名下会话已被 Hub 解绑进「最近」，与 `session-*` 共用 `projectViews` 批失效
+- **sessions 单一数据源**：`useProjectSessions` / `useRecentSessions` 的 queryFn 把分页会话 upsert 进全局 sessions 缓存（`mergeSessions`），列表只持 sessionIds——列表数据永远是全局缓存的视图而非独立副本
 
 ### 消息渲染管线
 
@@ -611,7 +622,7 @@ Web 端区分三种状态，使用不同的管理方案：
 ```
 
 - **RailNav**：固定宽度图标导航栏，支持桌面/移动自适应
-- **ContentSidebar**：可折叠的内容侧边栏，展示会话分组列表
+- **ContentSidebar**：可折叠的内容侧边栏，展示项目分组会话列表 + 「最近」区（SidebarProjects）
 - **Content Area**：主内容区域，根据视图模式切换聊天/文件/终端
 
 移动端时 RailNav 替换为汉堡菜单（MobileMenu），ContentSidebar 变为全屏覆盖。
