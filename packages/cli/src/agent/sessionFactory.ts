@@ -147,11 +147,13 @@ function extractResumeSessionId(claudeArgs?: string[]): string | null {
 }
 
 /**
- * 计算会话的额外工作目录：
- * - 新建（有 project）：校验 machineId 匹配与 folders 存在性；primary 缺失硬失败，
- *   其余缺失 warn 跳过；通过者由调用方冻结进 metadata.additionalDirectories
- * - resume（hub 不回 project）：直接回放 metadata.additionalDirectories（创建时冻结的列表）
- * - 游离：空数组
+ * 计算会话的额外工作目录，优先级：冻结列表 > 项目派生 > 空。
+ * 1. metadata.additionalDirectories 已冻结（创建时写入）→ 直接回放，完全忽略响应中的
+ *    project（不校验 machineId、不读 folders）——resume 历史会话不受项目后续变更影响
+ * 2. 无冻结列表 → 从 project.folders 派生：machineId 匹配 + 存在性校验；primary 缺失硬失败，
+ *    其余缺失 warn 跳过；通过者由调用方冻结进 metadata（新创建必然走此分支；
+ *    迁移存量（从未冻结）首次 resume 也会派生一次并冻结）
+ * 3. 都无 → 空数组
  */
 async function resolveAdditionalDirectories(input: {
     project: Project | null
@@ -161,34 +163,47 @@ async function resolveAdditionalDirectories(input: {
 }): Promise<string[]> {
     const { project, sessionMetadata, machineId, workingDirectory } = input
 
-    if (!project) {
-        // resume 回放：metadata 冻结列表（MetadataSchema.additionalDirectories）
-        const frozen = (sessionMetadata as { additionalDirectories?: string[] } | null)?.additionalDirectories
-        return frozen ?? []
+    // 优先级 1：冻结列表回放（resume 已冻结会话；hub 对已绑项目的会话始终返回 project，
+    // 但冻结后项目 folders 的任何变更都不应影响历史会话，故此处不看 project）
+    const frozen = (sessionMetadata as { additionalDirectories?: string[] } | null)?.additionalDirectories
+    if (frozen && frozen.length > 0) {
+        return frozen
     }
 
-    // folders 是机器本地路径，项目必须归属本机才能使用
-    if (project.machineId !== machineId) {
-        throw new Error(`Project '${project.name}' belongs to a different machine (${project.machineId}), this machine is ${machineId}`)
-    }
+    // 优先级 2：项目派生（新建 / 迁移存量首次 resume）
+    if (project) {
+        // folders 是机器本地路径，项目必须归属本机才能使用
+        if (project.machineId !== machineId) {
+            throw new Error(`Project '${project.name}' belongs to a different machine (${project.machineId}), this machine is ${machineId}`)
+        }
 
-    const dirs: string[] = []
-    for (const folder of project.folders) {
-        const exists = await access(folder.path).then(() => true).catch(() => false)
-        if (folder.primary) {
-            // primary 即 cwd；cwd 本身必然存在（进程就在里面），此分支仅防御显式不匹配
-            if (!exists && !folder.path.startsWith(workingDirectory) && workingDirectory !== folder.path) {
-                throw new Error(`Primary folder does not exist: ${folder.path}`)
+        const dirs: string[] = []
+        for (const folder of project.folders) {
+            const exists = await access(folder.path).then(() => true).catch(() => false)
+            if (folder.primary) {
+                // primary 即 cwd；cwd 本身必然存在（进程就在里面），此分支仅防御显式不匹配
+                if (!exists && !folder.path.startsWith(workingDirectory) && workingDirectory !== folder.path) {
+                    throw new Error(`Primary folder does not exist: ${folder.path}`)
+                }
+                continue
             }
-            continue
+            if (exists) {
+                dirs.push(folder.path)
+            } else {
+                logger.warn(`[START] 项目文件夹不存在，跳过 add-dir: ${folder.path}`)
+            }
         }
-        if (exists) {
-            dirs.push(folder.path)
-        } else {
-            logger.warn(`[START] 项目文件夹不存在，跳过 add-dir: ${folder.path}`)
-        }
+        return dirs
     }
-    return dirs
+
+    // 优先级 3：游离 / resume 未绑项目且无冻结 → 空
+    return []
+}
+
+/** metadata 中是否存在已冻结的 additionalDirectories（非空才算冻结） */
+function readFrozenAdditionalDirectories(sessionMetadata: unknown): string[] | null {
+    const frozen = (sessionMetadata as { additionalDirectories?: string[] } | null)?.additionalDirectories
+    return frozen && frozen.length > 0 ? frozen : null
 }
 
 export async function bootstrapSession(options: SessionBootstrapOptions): Promise<SessionBootstrapResult> {
@@ -245,7 +260,7 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
 
     const apiSession = api.sessionSyncClient(sessionInfo)
 
-    // 解析额外工作目录：创建时来自 project.folders（校验+过滤后冻结），resume 时回放 metadata 冻结列表
+    // 解析额外工作目录：优先回放冻结列表，其次从项目 folders 派生（见函数 docstring 的优先级规则）
     const additionalDirectories = await resolveAdditionalDirectories({
         project: sessionInfo.project,
         sessionMetadata: sessionInfo.metadata,
@@ -253,8 +268,11 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         workingDirectory
     })
 
-    // 创建路径冻结：resume 后 Hub 不回 project，回放依赖这里的冻结结果
-    if (options.projectId && sessionInfo.project && additionalDirectories.length > 0) {
+    // 派生结果冻结：仅当此前无冻结列表（新建 / 迁移存量首次 resume）且派生非空时写入；
+    // 回放路径不重写，保证冻结列表稳定不被项目后续变更覆盖
+    if (sessionInfo.project
+        && !readFrozenAdditionalDirectories(sessionInfo.metadata)
+        && additionalDirectories.length > 0) {
         apiSession.updateMetadata((current) => ({
             ...current,
             additionalDirectories

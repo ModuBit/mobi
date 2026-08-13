@@ -45,3 +45,65 @@ describe('parseStartOptions --project', () => {
         expect(unknownArgs).toEqual(['--extra-flag', 'value'])
     })
 })
+
+describe('parseStartOptions 既有 flag 回归（锁定搬迁前行为）', () => {
+    it('--yolo → bypassPermissions 且透传 --dangerously-skip-permissions', () => {
+        const { options, unknownArgs } = parseStartOptions(['--yolo'])
+        expect(options.permissionMode).toBe('bypassPermissions')
+        expect(unknownArgs).toEqual(['--dangerously-skip-permissions'])
+    })
+
+    it('--dangerously-skip-permissions → bypassPermissions 且透传', () => {
+        const { options, unknownArgs } = parseStartOptions(['--dangerously-skip-permissions'])
+        expect(options.permissionMode).toBe('bypassPermissions')
+        expect(unknownArgs).toEqual(['--dangerously-skip-permissions'])
+    })
+
+    it('--model 与 -m 均解析模型并透传', () => {
+        const a = parseStartOptions(['--model', 'sonnet'])
+        expect(a.options.model).toBe('sonnet')
+        expect(a.unknownArgs).toEqual(['--model', 'sonnet'])
+
+        const b = parseStartOptions(['-m', 'opus'])
+        expect(b.options.model).toBe('opus')
+        expect(b.unknownArgs).toEqual(['--model', 'opus'])
+    })
+
+    it('--model 缺值 → 抛错', () => {
+        expect(() => parseStartOptions(['--model'])).toThrow(/Missing --model value/i)
+    })
+
+    it('--effort 解析并透传', () => {
+        const { options, unknownArgs } = parseStartOptions(['--effort', 'high'])
+        expect(options.effort).toBe('high')
+        expect(unknownArgs).toEqual(['--effort', 'high'])
+    })
+
+    it('--effort 缺值 → 抛错', () => {
+        expect(() => parseStartOptions(['--effort'])).toThrow(/Missing --effort value/i)
+    })
+
+    it('--permission-mode 解析合法值，缺值/非法值抛错', () => {
+        expect(parseStartOptions(['--permission-mode', 'plan']).options.permissionMode).toBe('plan')
+        expect(() => parseStartOptions(['--permission-mode'])).toThrow(/Missing --permission-mode value/i)
+        expect(() => parseStartOptions(['--permission-mode', 'bogus'])).toThrow()
+    })
+
+    it('--started-by / --mobi-starting-mode 解析', () => {
+        const { options } = parseStartOptions(['--started-by', 'runner', '--mobi-starting-mode', 'remote'])
+        expect(options.startedBy).toBe('runner')
+        expect(options.startingMode).toBe('remote')
+    })
+
+    it('--mobi-starting-mode 非法值 → 抛错', () => {
+        expect(() => parseStartOptions(['--mobi-starting-mode', 'bogus'])).toThrow()
+    })
+
+    it('-h/--help 置 showHelp 并透传；未知 flag 及其取值透传', () => {
+        const { showHelp, unknownArgs } = parseStartOptions([
+            '-h', '--verbose', '--unknown-flag', 'its-value', 'bare-arg'
+        ])
+        expect(showHelp).toBe(true)
+        expect(unknownArgs).toEqual(['-h', '--verbose', '--unknown-flag', 'its-value', 'bare-arg'])
+    })
+})

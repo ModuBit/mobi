@@ -211,11 +211,15 @@ describe('bootstrapSession 项目归属', () => {
         expect(h.updateMetadata).not.toHaveBeenCalled()
     })
 
-    it('resume：从返回 session.metadata.additionalDirectories 回放', async () => {
-        stubExists(['/a/mobi'])
+    it('resume 已绑项目的会话（响应带 project）：冻结列表优先回放，忽略 project、不做 folders 校验、不冻结', async () => {
+        // access 全部失败也无所谓——回放分支不读 folders
+        stubExists([])
         h.getOrCreateSession.mockResolvedValue({
-            ...mockSession({ metadata: { path: '/a/mobi', additionalDirectories: ['/frozen'] } }),
-            project: null
+            ...mockSession({
+                projectId: 'p1',
+                metadata: { path: '/a/mobi', additionalDirectories: ['/frozen'] }
+            }),
+            project: baseProject({ machineId: 'm-other' })
         })
 
         const result = await bootstrapSession({
@@ -226,6 +230,30 @@ describe('bootstrapSession 项目归属', () => {
         })
 
         expect(result.additionalDirectories).toEqual(['/frozen'])
+        expect(h.access).not.toHaveBeenCalled()
         expect(h.updateMetadata).not.toHaveBeenCalled()
+    })
+
+    it('resume 已绑会话但无冻结列表（迁移存量）：按当前 project folders 派生并冻结', async () => {
+        stubExists(['/a/mobi', '/a/shared'])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({ projectId: 'p1', metadata: { path: '/a/mobi' } }),
+            project: baseProject()
+        })
+
+        const result = await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            claudeArgs: ['--resume', 'cs1']
+        })
+
+        expect(result.additionalDirectories).toEqual(['/a/shared'])
+        expect(h.updateMetadata).toHaveBeenCalledTimes(1)
+        const handler = h.updateMetadata.mock.calls[0][0] as (cur: Record<string, unknown>) => Record<string, unknown>
+        expect(handler({ path: '/a/mobi' })).toEqual({
+            path: '/a/mobi',
+            additionalDirectories: ['/a/shared']
+        })
     })
 })
