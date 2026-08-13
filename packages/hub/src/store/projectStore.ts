@@ -59,7 +59,8 @@ export class ProjectStore {
         return updateProject(this.db, id, namespace, patch)
     }
 
-    deleteProject(id: string, namespace: string): boolean {
+    /** 删除项目并解绑名下会话（事务内）；返回受影响 session id 列表，失败 false */
+    deleteProject(id: string, namespace: string): string[] | false {
         return deleteProject(this.db, id, namespace)
     }
 }

@@ -72,21 +72,17 @@ export class ProjectCache {
 
     /**
      * 删除项目（store 事务内解绑名下会话，project_id → NULL）。
-     * 删除成功返回受影响的 session ID 列表（快照时已算出），失败返回 null——
-     * 调用方（syncEngine）据此刻意刷新 sessionCache 对应条目，无需全 namespace 扫描。
+     * 删除成功返回受影响的 session ID 列表（事务内枚举，无「先查后删」竞态窗口），
+     * 失败返回 null——调用方（syncEngine）据此刻意刷新 sessionCache 对应条目，
+     * 无需全 namespace 扫描。
      */
     deleteProject(id: string, namespace: string): string[] | null {
-        // 快照名下会话：store 删除事务内会把它们解绑（project_id → NULL），
-        // 删除成功后需逐个广播 session-updated，Web 端才能感知会话流入「最近」
-        const affectedSessionIds = this.store.sessions.getSessionsByNamespace(namespace)
-            .filter(s => s.projectId === id)
-            .map(s => s.id)
-
-        const ok = this.store.projects.deleteProject(id, namespace)
-        if (!ok) return null
+        const affectedSessionIds = this.store.projects.deleteProject(id, namespace)
+        if (affectedSessionIds === false) return null
 
         this.projects.delete(id)
         this.publisher.emit({ type: 'project-removed', projectId: id, namespace })
+        // 名下会话已解绑（流入「最近」），逐个广播让 Web 端感知
         for (const sessionId of affectedSessionIds) {
             this.publisher.emit({ type: 'session-updated', sessionId, namespace })
         }

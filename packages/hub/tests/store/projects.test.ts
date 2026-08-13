@@ -160,22 +160,31 @@ describe('ProjectStore', () => {
     })
 
     // 依赖 Task 3 的 getOrCreateSession(..., projectId) 参数，届时补全实现启用
-    it('删除项目 → 名下 sessions 解绑（project_id 置 NULL）', () => {
+    it('删除项目 → 名下 sessions 解绑（project_id 置 NULL），返回受影响 id 与解绑一致', () => {
         const p = store.projects.createProject({
             namespace: 'default',
             machineId: 'm1',
             name: 'mobi',
             folders: [{ path: '/a/mobi', primary: true }]
         })
-        const bound = store.sessions.getOrCreateSession(
+        const bound1 = store.sessions.getOrCreateSession(
             'proj-del-1', { path: '/a/mobi' }, null, 'default', undefined, p.id
         )
-        expect(bound.projectId).toBe(p.id)
+        const bound2 = store.sessions.getOrCreateSession(
+            'proj-del-2', { path: '/a/mobi' }, null, 'default', undefined, p.id
+        )
+        // 游离会话不受影响
+        store.sessions.getOrCreateSession('proj-del-free', { path: '/x' }, null, 'default')
+        expect(bound1.projectId).toBe(p.id)
 
-        expect(store.projects.deleteProject(p.id, 'default')).toBe(true)
+        const affected = store.projects.deleteProject(p.id, 'default')
+        // 返回的 id 列表 = 事务内实际解绑的会话，游离会话不在其中
+        expect(affected !== false && [...affected].sort()).toEqual([bound1.id, bound2.id].sort())
+
         // 会话本身不删，仅解绑
-        const after = store.sessions.getSession(bound.id)
+        const after = store.sessions.getSession(bound1.id)
         expect(after).not.toBeNull()
         expect(after?.projectId).toBeNull()
+        expect(store.sessions.getSession(bound2.id)?.projectId).toBeNull()
     })
 })

@@ -127,12 +127,20 @@ export function updateProject(
     return getProject(db, id)
 }
 
-/** 删除项目：同事务内将名下 sessions 解绑（project_id 置 NULL），会话本身不删 */
-export function deleteProject(db: Database, id: string, namespace: string): boolean {
+/**
+ * 删除项目：同事务内将名下 sessions 解绑（project_id 置 NULL），会话本身不删。
+ * 返回受影响的 session id 列表（调用方据此广播/刷新缓存）；项目不存在或跨 namespace
+ * 时返回 false。枚举与解绑放在同一事务里，消除「先查后删」间隙内新归入会话解绑了
+ * 却不在返回列表的竞态；只取 id（走 idx_sessions_project），调用方无需再全量扫描
+ */
+export function deleteProject(db: Database, id: string, namespace: string): string[] | false {
     const existing = getProject(db, id)
     if (!existing || existing.namespace !== namespace) return false
 
-    db.transaction(() => {
+    return db.transaction(() => {
+        const affectedIds = (db.prepare(
+            'SELECT id FROM sessions WHERE project_id = ?'
+        ).all(id) as Array<{ id: string }>).map(row => row.id)
         // 解绑也遵循 sessions 变更范式：成对递增 updated_at/seq，SSE 增量同步才能感知
         db.prepare(`
             UPDATE sessions
@@ -140,6 +148,6 @@ export function deleteProject(db: Database, id: string, namespace: string): bool
             WHERE project_id = @id
         `).run({ id, now: Date.now() })
         db.prepare('DELETE FROM projects WHERE id = ? AND namespace = ?').run(id, namespace)
+        return affectedIds
     })()
-    return true
 }
