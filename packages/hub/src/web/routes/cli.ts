@@ -127,6 +127,13 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             if (!project || project.namespace !== namespace) {
                 return c.json({ error: 'Project not found' }, 404)
             }
+            // 机器一致性前置：项目 folders 是机器本地路径，归属其它机器时必须当场拒绝，
+            // 否则 CLI 侧后置校验失败退出后会留下绑定该项目的幽灵空会话（D13/spec §4.1）。
+            // metadata.machineId 缺失（老数据/异常）放行，与 PATCH /sessions/:id 约定一致
+            const requestMachineId = (parsed.data.metadata as { machineId?: unknown } | null)?.machineId
+            if (typeof requestMachineId === 'string' && project.machineId !== requestMachineId) {
+                return c.json({ error: 'Project belongs to a different machine' }, 403)
+            }
         }
         const session = engine.getOrCreateSession(
             parsed.data.tag, parsed.data.metadata, parsed.data.agentState ?? null,

@@ -344,6 +344,58 @@ describe('projects REST 路由 + 会话归属', () => {
             expect(await res.json()).toMatchObject({ error: 'Project not found' })
         })
 
+        test('machine 不匹配 → 403 且不落库（幽灵会话回归）', async () => {
+            const { data } = await createProject({ name: 'cli-ghost-proj', machineId: 'mA' })
+            const res = await app.request('/cli/sessions', {
+                method: 'POST',
+                headers: cliHeaders,
+                body: JSON.stringify({
+                    tag: 'tag-cli-ghost',
+                    // 关键：请求机器 mB ≠ 项目机器 mA——hub 应当场拒绝，不留绑定错误机器的空会话
+                    metadata: { path: '/ghost/marker', host: 'h', machineId: 'mB' },
+                    projectId: data.project!.id,
+                }),
+            })
+            expect(res.status).toBe(403)
+            expect(await res.json()).toMatchObject({ error: 'Project belongs to a different machine' })
+
+            // 幽灵会话回归：项目名下不应出现任何会话
+            const list = await app.request(`/api/projects/${data.project!.id}/sessions?limit=100`, { headers: authHeaders })
+            expect(list.status).toBe(200)
+            const body = await list.json() as { sessions: Array<{ id: string; metadata?: { path?: string } }> }
+            expect(body.sessions.some(s => s.metadata?.path === '/ghost/marker')).toBe(false)
+        })
+
+        test('machine 匹配 → 200 正常创建', async () => {
+            const { data } = await createProject({ name: 'cli-match-proj', machineId: 'mA' })
+            const res = await app.request('/cli/sessions', {
+                method: 'POST',
+                headers: cliHeaders,
+                body: JSON.stringify({
+                    tag: 'tag-cli-match',
+                    metadata: { path: '/a/cli-match', host: 'h', machineId: 'mA' },
+                    projectId: data.project!.id,
+                }),
+            })
+            expect(res.status).toBe(200)
+            const body = await res.json() as { session: { projectId?: string | null } }
+            expect(body.session.projectId).toBe(data.project!.id)
+        })
+
+        test('metadata.machineId 缺失（老数据/异常）→ 放行', async () => {
+            const { data } = await createProject({ name: 'cli-legacy-proj', machineId: 'mA' })
+            const res = await app.request('/cli/sessions', {
+                method: 'POST',
+                headers: cliHeaders,
+                body: JSON.stringify({
+                    tag: 'tag-cli-legacy',
+                    metadata: { path: '/a/cli-legacy', host: 'h' },
+                    projectId: data.project!.id,
+                }),
+            })
+            expect(res.status).toBe(200)
+        })
+
         test('不带 projectId → project 为 null', async () => {
             const res = await app.request('/cli/sessions', {
                 method: 'POST',

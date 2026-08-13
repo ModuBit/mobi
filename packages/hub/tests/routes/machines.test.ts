@@ -41,9 +41,13 @@ const mockMachine: Machine = {
 /** 捕获 spawnSession 调用参数（projectId 应为最后一个位置参数） */
 const spawnCalls: unknown[][] = []
 
+/** mock 项目表：id → 项目（machineId 校验用） */
+const projects = new Map<string, { id: string; namespace: string; machineId: string }>()
+
 const mockSyncEngine = {
     getMachine: (_id: string) => mockMachine,
     getOnlineMachinesByNamespace: (_ns: string) => [mockMachine],
+    getProject: (id: string) => projects.get(id),
     spawnSession: async (...args: unknown[]) => {
         spawnCalls.push(args)
         return { type: 'success', sessionId: 'new-session-1' }
@@ -98,6 +102,8 @@ describe('Machines API', () => {
 
     test('POST /api/machines/:id/spawn body 中的 projectId 透传给 engine.spawnSession（最后一个位置参数）', async () => {
         const token = await getAuthToken(app)
+        // project-7 归属目标机器 test-machine-1 → 校验通过
+        projects.set('project-7', { id: 'project-7', namespace: 'default', machineId: 'test-machine-1' })
         const before = spawnCalls.length
 
         const res = await app.request('/api/machines/test-machine-1/spawn', {
@@ -113,5 +119,41 @@ describe('Machines API', () => {
         expect(spawnCalls.length).toBe(before + 1)
         const args = spawnCalls[spawnCalls.length - 1]
         expect(args[args.length - 1]).toBe('project-7')
+    })
+
+    test('POST /api/machines/:id/spawn projectId 归属其它机器 → 403 且不触发 spawn', async () => {
+        const token = await getAuthToken(app)
+        projects.set('project-other', { id: 'project-other', namespace: 'default', machineId: 'another-machine' })
+        const before = spawnCalls.length
+
+        const res = await app.request('/api/machines/test-machine-1/spawn', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ directory: '/home/testuser/projects', projectId: 'project-other' }),
+        })
+
+        expect(res.status).toBe(403)
+        expect(await res.json()).toMatchObject({ error: 'Project belongs to a different machine' })
+        // 幽灵会话回归：spawn 未被调用，会话未被派生
+        expect(spawnCalls.length).toBe(before)
+    })
+
+    test('POST /api/machines/:id/spawn projectId 不存在 → 404（存在性校验在前）', async () => {
+        const token = await getAuthToken(app)
+
+        const res = await app.request('/api/machines/test-machine-1/spawn', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ directory: '/home/testuser/projects', projectId: 'no-such-project' }),
+        })
+
+        expect(res.status).toBe(404)
+        expect(await res.json()).toMatchObject({ error: 'Project not found' })
     })
 })

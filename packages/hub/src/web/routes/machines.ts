@@ -91,6 +91,19 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Invalid body' }, 400)
         }
 
+        // 归属校验前置：projectId 必须指向同 namespace 的现存项目且归属目标机器
+        // （404 存在性在前，与 POST /cli/sessions 约定一致），杜绝派生出绑定错误机器的幽灵会话
+        if (parsed.data.projectId) {
+            const namespace = c.get('namespace')
+            const project = engine.getProject(parsed.data.projectId)
+            if (!project || project.namespace !== namespace) {
+                return c.json({ error: 'Project not found' }, 404)
+            }
+            if (project.machineId !== machineId) {
+                return c.json({ error: 'Project belongs to a different machine' }, 403)
+            }
+        }
+
         // 安全校验：directory 必须在 homeDir 内
         const homeDir = machine.metadata?.homeDir
         if (homeDir) {
