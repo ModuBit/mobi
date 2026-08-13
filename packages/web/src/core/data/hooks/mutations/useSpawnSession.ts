@@ -31,6 +31,8 @@ export interface SpawnInput {
     permissionMode?: PermissionMode
     sessionType?: SessionType
     worktreeName?: string
+    /** 归属项目（缺省 = 游离会话，进「最近」）；hub 侧校验项目存在且属于该机器 */
+    projectId?: string
 }
 
 export type { SpawnResponse }
@@ -55,7 +57,8 @@ export function useSpawnSession(): {
                     input.permissionMode,
                     input.sessionType,
                     input.worktreeName,
-                    input.effort
+                    input.effort,
+                    input.projectId
                 )
 
                 // hub spawnSession 失败时返回 { type:'error', message } 且 HTTP 仍 200，

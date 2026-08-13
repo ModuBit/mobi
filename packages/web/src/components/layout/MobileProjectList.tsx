@@ -21,7 +21,7 @@ import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { FolderClosed, FolderOpen, Plus } from 'lucide-react'
+import { FolderClosed, FolderOpen, History, Plus } from 'lucide-react'
 import {
     EditOutlined,
     InboxOutlined,
@@ -31,8 +31,9 @@ import {
     CloseOutlined,
     LoadingOutlined,
 } from '@ant-design/icons'
-import { useSessionGroups } from '@/core/data/hooks/queries/useSessionGroups'
-import { useProjectGroupSessions } from '@/core/data/hooks/useProjectGroupSessions'
+import { useProjects } from '@/core/data/hooks/queries/useProjects'
+import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions'
+import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useMobiApi } from '@/core/data/api/client'
@@ -41,10 +42,10 @@ import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
-import { getSessionAvatarStatus, extractFolderName } from '@/core/utils/sessionStatus'
+import { getSessionAvatarStatus } from '@/core/utils/sessionStatus'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
-import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
+import type { Session, SessionMetadataSummary, Project } from '@/core/data/api/types'
 
 const { useToken } = antTheme
 
@@ -300,14 +301,14 @@ function MobileSessionItem({ session, active, onClick, onLongPress }: MobileSess
 // ========== 项目分组组件 ==========
 
 interface MobileProjectGroupProps {
-    groupKey: string
+    project: Project
     activeSessionId: string | undefined
     onSessionAction: (sessionId: string) => void
     onCloseMenu: () => void
 }
 
 function MobileProjectGroup({
-    groupKey, activeSessionId, onSessionAction, onCloseMenu,
+    project, activeSessionId, onSessionAction, onCloseMenu,
 }: MobileProjectGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -319,15 +320,14 @@ function MobileProjectGroup({
         isLoadingInitial, isLoadingMore,
         showCollapse, canShowMore, remainingCount,
         showMore, collapse,
-    } = useProjectGroupSessions(groupKey, activeSessionId)
+    } = useProjectSessions(project.id, activeSessionId)
 
-    const folderName = extractFolderName(groupKey)
-
+    // 新建会话：带上项目归属（hub 侧把 cwd 锁定项目 primary folder + 挂 projectId）
     const handleNewSession = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
         onCloseMenu()
-        navigate({ to: '/sessions/new', search: { cwd: fullProjectPath } })
-    }, [navigate, fullProjectPath, onCloseMenu])
+        navigate({ to: '/sessions/new', search: { cwd: fullProjectPath, projectId: project.id } })
+    }, [navigate, fullProjectPath, project.id, onCloseMenu])
 
     const handleSessionClick = useCallback((sessionId: string) => {
         onCloseMenu()
@@ -345,7 +345,7 @@ function MobileProjectGroup({
                 <FolderIcon $token={token}>
                     {expanded ? <FolderOpen size={18} /> : <FolderClosed size={18} />}
                 </FolderIcon>
-                <GroupName $token={token}>{folderName}</GroupName>
+                <GroupName $token={token}>{project.name}</GroupName>
                 <NewSessionBtn $token={token} onClick={handleNewSession} aria-label={t('nav.newSession')}>
                     <Plus size={18} />
                 </NewSessionBtn>
@@ -358,6 +358,107 @@ function MobileProjectGroup({
                                 <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
                                 <span className="sk-bar" style={{ flex: 1 }} />
                             </SkeletonRow>
+                            <SkeletonRow $token={token}>
+                                <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
+                                <span className="sk-bar" style={{ flex: 1 }} />
+                            </SkeletonRow>
+                            <SkeletonRow $token={token}>
+                                <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
+                                <span className="sk-bar" style={{ flex: 1 }} />
+                            </SkeletonRow>
+                        </>
+                    ) : visibleSessions.map(session => (
+                        <MobileSessionItem
+                            key={session.id}
+                            session={session}
+                            active={session.id === activeSessionId}
+                            onClick={() => handleSessionClick(session.id)}
+                            onLongPress={() => onSessionAction(session.id)}
+                        />
+                    ))}
+                    {showFooter && (
+                        <ListFooter>
+                            {canShowMore && !isLoadingMore && (
+                                <FooterLink $token={token} onClick={showMore}>
+                                    {remainingCount > 0
+                                        ? t('nav.showMore', { count: remainingCount })
+                                        : t('nav.loadMore')}
+                                </FooterLink>
+                            )}
+                            {showCollapse && !isLoadingMore && (
+                                <FooterLink $token={token} onClick={collapse}>
+                                    {t('nav.collapse')}
+                                </FooterLink>
+                            )}
+                            {isLoadingMore && (
+                                <FooterLink $token={token} disabled>
+                                    <LoadingOutlined /> {t('common.loading')}
+                                </FooterLink>
+                            )}
+                        </ListFooter>
+                    )}
+                </SessionListInner>
+            </SessionListWrapper>
+        </div>
+    )
+}
+
+// ========== 「最近」分组（游离会话） ==========
+
+interface MobileRecentGroupProps {
+    activeSessionId: string | undefined
+    onSessionAction: (sessionId: string) => void
+    onCloseMenu: () => void
+}
+
+/**
+ * 「最近」分组：游离（未归入项目）会话，默认展开（与桌面端一致）
+ */
+function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMenu }: MobileRecentGroupProps) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const navigate = useNavigate()
+
+    // 「最近」默认展开（用户仍可手动折叠）
+    const {
+        sessions, visibleSessions,
+        expanded, toggleExpanded,
+        isLoadingInitial, isLoadingMore,
+        showCollapse, canShowMore, remainingCount,
+        showMore, collapse,
+    } = useRecentSessions(activeSessionId, true)
+
+    const handleSessionClick = useCallback((sessionId: string) => {
+        onCloseMenu()
+        navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+    }, [navigate, onCloseMenu])
+
+    // 新建会话（游离）：不带项目信息
+    const handleNewSession = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation()
+        onCloseMenu()
+        navigate({ to: '/sessions/new', search: { cwd: undefined } })
+    }, [navigate, onCloseMenu])
+
+    const wrapperExpanded = expanded && (sessions.length > 0 || isLoadingInitial)
+    const showSkeleton = isLoadingInitial && sessions.length === 0
+    const showFooter = !showSkeleton && (showCollapse || canShowMore || isLoadingMore)
+
+    return (
+        <div>
+            <GroupHeader $token={token} onClick={toggleExpanded}>
+                <FolderIcon $token={token}>
+                    <History size={18} />
+                </FolderIcon>
+                <GroupName $token={token}>{t('nav.recent')}</GroupName>
+                <NewSessionBtn $token={token} onClick={handleNewSession} aria-label={t('nav.newSessionUnassigned')}>
+                    <Plus size={18} />
+                </NewSessionBtn>
+            </GroupHeader>
+            <SessionListWrapper $expanded={wrapperExpanded}>
+                <SessionListInner>
+                    {showSkeleton ? (
+                        <>
                             <SkeletonRow $token={token}>
                                 <span className="sk-bar" style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0 }} />
                                 <span className="sk-bar" style={{ flex: 1 }} />
@@ -433,8 +534,8 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
 
     const renameActions = useSessionActions(renameSessionId)
 
-    // 获取所有分组
-    const { data: groups = [] } = useSessionGroups()
+    // 获取所有项目 + 最近会话（游离会话）
+    const { data: projects = [] } = useProjects()
     // 获取所有会话（用于查找 ActionSheet 对应 session）
     const { data: allSessions } = useSessions()
 
@@ -442,13 +543,14 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
         return allSessions?.find(s => s.id === sessionId)
     }, [allSessions])
 
-    // 使缓存失效
+    // 使缓存失效（项目视图相关查询一并失效，保证分组归属及时刷新）
     const invalidateAll = useCallback(async (sessionId: string) => {
         await Promise.all([
             queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
             queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
-            queryClient.invalidateQueries({ queryKey: queryKeys.sessionGroups }),
-            queryClient.invalidateQueries({ queryKey: ['groupSessions'] }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.recentSessions }),
+            queryClient.invalidateQueries({ queryKey: ['projectSessions'] }),
         ])
     }, [queryClient])
 
@@ -560,15 +662,22 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
         <>
             <Container $token={token}>
                 <SectionHeader $token={token}>{t('nav.projects')}</SectionHeader>
-                {groups.map(group => (
+                {projects.map(project => (
                     <MobileProjectGroup
-                        key={group.key}
-                        groupKey={group.key}
+                        key={project.id}
+                        project={project}
                         activeSessionId={activeSessionId}
                         onSessionAction={setActionSessionId}
                         onCloseMenu={onCloseMenu}
                     />
                 ))}
+                {/* 「最近」分组：游离会话 */}
+                <SectionHeader $token={token}>{t('nav.recent')}</SectionHeader>
+                <MobileRecentGroup
+                    activeSessionId={activeSessionId}
+                    onSessionAction={setActionSessionId}
+                    onCloseMenu={onCloseMenu}
+                />
             </Container>
 
             {/* ActionSheet：会话操作菜单（重命名 / 归档·恢复 / 删除 / 取消）

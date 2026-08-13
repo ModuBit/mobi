@@ -71,6 +71,8 @@
         "machinePlaceholder": "Select machine",
         "machineLoading": "Loading...",
         "machineEmpty": "No machines available",
+        "project": "Project",
+        "projectPlaceholder": "Select a project (optional)",
         "workDirectory": "Work Directory",
         "directoryPlaceholder": "Enter work directory path",
         "sessionType": "Session Type",

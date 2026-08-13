@@ -30,12 +30,13 @@ import {
     Typography,
 } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { DesktopOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
+import { DesktopOutlined, FolderOutlined, FolderOpenOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { InputRef } from 'antd'
 import type { AutoCompleteProps } from 'antd'
 import type { Machine } from '@/core/data/api/types'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
+import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSpawnSession } from '@/core/data/hooks/mutations/useSpawnSession'
 import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirectoryListing'
 import { useRecentPaths } from './useRecentPaths'
@@ -99,6 +100,7 @@ export function NewSession(props: NewSessionProps) {
 
     // 表单状态
     const [machineId, setMachineId] = useState<string | null>(null)
+    const [projectId, setProjectId] = useState<string | null>(null)
     const [directory, setDirectory] = useState('')
     const [agent, setAgent] = useState<AgentType>(loadPreferredAgent)
     const [model, setModel] = useState(loadPreferredModel)
@@ -159,6 +161,19 @@ export function NewSession(props: NewSessionProps) {
     const machineHomeDir = currentMachine?.metadata?.homeDir
     const { options: directoryOptions, isLoading: isDirectoryLoading } = useMachineDirectoryListing(machineId, directory, machineHomeDir)
 
+    // 当前机器的项目（可选归属）：选中后 spawn 透传 projectId，目录锁定项目 primary folder
+    const { data: machineProjects = [] } = useProjects(machineId ?? undefined)
+    const selectedProject = useMemo(
+        () => machineProjects.find(p => p.id === projectId),
+        [machineProjects, projectId],
+    )
+    // 选中/切换项目 → 目录锁定 primary folder（项目 folders 在 hub/cli 侧冻结进 session metadata）
+    useEffect(() => {
+        if (!selectedProject) return
+        const primaryPath = selectedProject.folders.find(f => f.primary)?.path
+        if (primaryPath) setDirectory(primaryPath)
+    }, [selectedProject])
+
     // 目录下拉受控：选中目录后子目录加载完成时自动展开
     const [directoryOpen, setDirectoryOpen] = useState(false)
     const pendingOpenRef = useRef(false)
@@ -170,9 +185,10 @@ export function NewSession(props: NewSessionProps) {
         }
     }, [directoryOptions])
 
-    // 机器变化
+    // 机器变化：项目按机器隔离，换机器清空项目选择
     const handleMachineChange = useCallback((newMachineId: string) => {
         setMachineId(newMachineId)
+        setProjectId(null)
         const paths = getRecentPaths(newMachineId)
         setDirectory(paths[0] || '')
     }, [getRecentPaths])
@@ -190,7 +206,8 @@ export function NewSession(props: NewSessionProps) {
                 effort,
                 permissionMode,
                 sessionType,
-                worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined
+                worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
+                projectId: projectId ?? undefined,
             })
             if (result.type === 'success' && result.sessionId) {
                 setLastUsedMachineId(machineId)
@@ -295,6 +312,24 @@ export function NewSession(props: NewSessionProps) {
                 </Form.Item>
             )}
 
+            {/* 归属项目（可选）：不选 = 游离会话（进「最近」）；选中后目录锁定项目 primary folder */}
+            {machineProjects.length > 0 && (
+                <Form.Item label={<><FolderOpenOutlined style={{ marginRight: 4 }} />{t('newSession.project')}</>}>
+                    <Select
+                        allowClear
+                        value={projectId ?? undefined}
+                        onChange={(v) => setProjectId(v ?? null)}
+                        disabled={isFormDisabled}
+                        placeholder={t('newSession.projectPlaceholder')}
+                        options={machineProjects.map(p => ({
+                            value: p.id,
+                            label: p.name,
+                        }))}
+                        style={{ width: '100%' }}
+                    />
+                </Form.Item>
+            )}
+
             <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />{t('newSession.workDirectory')}</>}>
                 <AutoComplete
                     open={directoryOpen && autoCompleteOptions.length > 0}
@@ -319,11 +354,11 @@ export function NewSession(props: NewSessionProps) {
                     }}
                     defaultActiveFirstOption
                     suffixIcon={isDirectoryLoading ? <LoadingOutlined /> : undefined}
-                    disabled={isFormDisabled}
+                    disabled={isFormDisabled || !!selectedProject}
                     style={{ width: '100%' }}
                     popupMatchSelectWidth={false}
                 />
-                {recentPaths.length > 0 && (
+                {recentPaths.length > 0 && !selectedProject && (
                     <div style={{ marginTop: 8, lineHeight: '2em' }}>
                         {recentPaths.slice(0, 5).map((path) => (
                             <AppTooltip key={path} title={path} mouseEnterDelay={0.3}>

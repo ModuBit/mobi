@@ -26,6 +26,7 @@ import styled from '@emotion/styled'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import { EFFORT_LEVELS, EFFORT_LABELS, getPermissionModeTone } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
+import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
 import { SessionSpawnPending } from '@/components/session/SessionSpawnPending'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
@@ -268,7 +269,7 @@ export function NewSessionPage() {
     const { token } = useToken()
     const { message: messageApi } = App.useApp()
     const navigate = useNavigate()
-    const { cwd: initialCwd } = useSearch({ strict: false }) as { cwd?: string }
+    const { cwd: initialCwd, projectId: initialProjectId } = useSearch({ strict: false }) as { cwd?: string; projectId?: string }
     const api = useMobiApi()
     const hasFinePointer = useHasFinePointer()
 
@@ -309,6 +310,12 @@ export function NewSessionPage() {
     const { spawnSession } = useSpawnSession()
     const { getRecentPaths, addRecentPath, removeRecentPath, getLastUsedMachineId, setLastUsedMachineId } = useRecentPaths()
     const activeMachines = machines.filter(m => m.active)
+    // 搜索参数携带的归属项目（侧边栏「+ 新建会话」进入）：机器 + 目录按项目初始化，spawn 透传 projectId
+    const { data: allProjects = [] } = useProjects()
+    const initialProject = useMemo(
+        () => (initialProjectId ? allProjects.find(p => p.id === initialProjectId) : undefined),
+        [allProjects, initialProjectId],
+    )
 
     // 当前选中机器的 homeDir
     const currentMachine = machines.find(m => m.id === selectedMachineId)
@@ -367,6 +374,20 @@ export function NewSessionPage() {
         setConfirmedDirectory(normalizeDirectoryPath(initialCwd))
         setMetadataNeeded(true)
     }, [initialCwd])
+
+    // 搜索参数携带项目（projects 缓存异步就绪）：机器 + 目录按项目 primary folder 初始化。
+    // 项目 folders 在 hub/cli 侧冻结进 session metadata（cwd/additionalDirectories），页面只做回显
+    const projectAppliedRef = useRef(false)
+    useEffect(() => {
+        if (!initialProject || projectAppliedRef.current) return
+        projectAppliedRef.current = true
+        setSelectedMachineId(initialProject.machineId)
+        const primaryPath = initialProject.folders.find(f => f.primary)?.path
+        if (primaryPath) {
+            setSelectedDirectory(primaryPath)
+            setConfirmedDirectory(normalizeDirectoryPath(primaryPath))
+        }
+    }, [initialProject])
 
     // 能力目标：用 confirmedDirectory 避免输入过程触发 metadata
     const capTarget = useMemo<CapabilityTarget | null>(() => {
@@ -627,6 +648,8 @@ export function NewSessionPage() {
                 permissionMode,
                 sessionType,
                 worktreeName: sessionType === 'worktree' ? (worktreeName.trim() || undefined) : undefined,
+                // 归属项目（搜索参数进入时携带）；项目被删则 hub 报错，不在此静默降级
+                projectId: initialProject?.id,
             }
 
             const result = await spawnSession(input)
@@ -678,7 +701,7 @@ export function NewSessionPage() {
     }, [
         selectedMachineId, selectedDirectory, isPending,
         agent, model, effort, permissionMode, sessionType, worktreeName,
-        spawnSession, navigate, messageApi, api.messages,
+        initialProject, spawnSession, navigate, messageApi, api.messages,
         setLastUsedMachineId, addRecentPath,
     ])
 

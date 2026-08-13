@@ -71,6 +71,8 @@
         "machinePlaceholder": "选择机器",
         "machineLoading": "加载中...",
         "machineEmpty": "暂无可用机器",
+        "project": "归属项目",
+        "projectPlaceholder": "选择项目（可选）",
         "workDirectory": "工作目录",
         "directoryPlaceholder": "输入工作目录路径",
         "sessionType": "会话类型",
