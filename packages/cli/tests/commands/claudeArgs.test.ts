@@ -34,6 +34,15 @@ describe('parseStartOptions --project', () => {
         expect(() => parseStartOptions(['--project'])).toThrow(/Missing --project value/i)
     })
 
+    it('值类 flag 的下一参数是 flag 时不被吞作值（V6）', () => {
+        // `mobi --project --yolo` 应报缺值，而不是把 --yolo 当 projectId 消费掉
+        expect(() => parseStartOptions(['--project', '--yolo'])).toThrow(/Missing --project value/i)
+        expect(() => parseStartOptions(['--model', '--yolo'])).toThrow(/Missing --model value/i)
+        expect(() => parseStartOptions(['-m', '--yolo'])).toThrow(/Missing --model value/i)
+        expect(() => parseStartOptions(['--effort', '-m'])).toThrow(/Missing --effort value/i)
+        expect(() => parseStartOptions(['--permission-mode', '--model', 'opus'])).toThrow(/Missing --permission-mode value/i)
+    })
+
     it('与 --permission-mode 等其他参数共存互不干扰', () => {
         const { options, unknownArgs } = parseStartOptions([
             '--permission-mode', 'plan',

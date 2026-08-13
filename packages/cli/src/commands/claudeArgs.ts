@@ -19,6 +19,18 @@ import { PERMISSION_MODES, type EffortLevel } from '@mobi/shared'
 import type { StartOptions } from '@/claude/runClaude'
 
 /**
+ * 取「值类 flag」的下一参数作值；缺失或本身是 flag（以 - 开头）时报缺值，
+ * 避免把后续 flag 吞作值（如 `mobi --project --yolo` 把 --yolo 当 projectId）
+ */
+function consumeFlagValue(args: string[], index: number, flagName: string): string {
+    const value = args[index + 1]
+    if (!value || value.startsWith('-')) {
+        throw new Error(`Missing ${flagName} value`)
+    }
+    return value
+}
+
+/**
  * 解析 mobi 默认命令（claude）的命令行参数：
  * - mobi 自身的 flag（--project / --permission-mode / --model 等）进 options
  * - 其余参数（含取值）透传给 claude code（unknownArgs → options.claudeArgs）
@@ -42,48 +54,40 @@ export function parseStartOptions(args: string[]): {
             unknownArgs.push(arg)
         } else if (arg === '--mobi-starting-mode') {
             // 设置启动模式
-            options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
+            options.startingMode = z.enum(['local', 'remote']).parse(consumeFlagValue(args, i, arg))
+            i += 1
         } else if (arg === '--yolo') {
             // 设置yolo模式
             options.permissionMode = 'bypassPermissions'
             unknownArgs.push('--dangerously-skip-permissions')
         } else if (arg === '--permission-mode') {
             // 设置权限模式（newchat 透传）
-            const mode = args[++i]
-            if (!mode) {
-                throw new Error('Missing --permission-mode value')
-            }
-            options.permissionMode = z.enum(PERMISSION_MODES).parse(mode)
+            options.permissionMode = z.enum(PERMISSION_MODES).parse(consumeFlagValue(args, i, arg))
+            i += 1
         } else if (arg === '--dangerously-skip-permissions') {
             // 与yolo模式相同
             options.permissionMode = 'bypassPermissions'
             unknownArgs.push(arg)
         } else if (arg === '--model' || arg === '-m') {
             // 设置模型
-            const model = args[++i]
-            if (!model) {
-                throw new Error('Missing --model value')
-            }
+            const model = consumeFlagValue(args, i, '--model')
+            i += 1
             options.model = model
             unknownArgs.push('--model', model)
         } else if (arg === '--effort') {
             // 设置 reasoning effort
-            const effort = args[++i]
-            if (!effort) {
-                throw new Error('Missing --effort value')
-            }
+            const effort = consumeFlagValue(args, i, '--effort')
+            i += 1
             options.effort = effort as EffortLevel
             unknownArgs.push('--effort', effort)
         } else if (arg === '--started-by') {
             // 设置启动来源
-            options.startedBy = args[++i] as 'runner' | 'terminal'
+            options.startedBy = consumeFlagValue(args, i, arg) as 'runner' | 'terminal'
+            i += 1
         } else if (arg === '--project') {
             // 归属项目 id（Web spawn 透传；终端亦可手动指定）
-            const pid = args[++i]
-            if (!pid) {
-                throw new Error('Missing --project value')
-            }
-            options.projectId = pid
+            options.projectId = consumeFlagValue(args, i, '--project')
+            i += 1
         } else {
             // 其他claude code参数
             unknownArgs.push(arg)
