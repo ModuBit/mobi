@@ -23,8 +23,8 @@
 // 注意：真实库执行前先停掉 hub / runner 进程，避免 WAL 与写竞争。
 
 import { Database } from 'bun:sqlite'
-import { copyFileSync, existsSync } from 'node:fs'
-import { basename } from 'node:path'
+import { chmodSync, copyFileSync, existsSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 
@@ -78,6 +78,16 @@ type DbReport = {
 function tableColumns(db: Database, table: string): string[] {
     const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
     return rows.map((r) => r.name)
+}
+
+/**
+ * 路径归一化：反斜杠统一为正斜杠、去尾部斜杠（与 hub extractGroupKey 写入侧一致，不做大小写归一）。
+ * 防止尾斜杠路径 basename 得空串、以及仅分隔符不同的同目录被拆成两个 folder。
+ * 根路径（如 "/"）去尾斜杠后为空，回填为 "/"。
+ */
+function normalizePath(p: string): string {
+    const norm = p.replace(/\\/g, '/').replace(/\/+$/, '')
+    return norm === '' ? '/' : norm
 }
 
 /** 安全 JSON 解析：失败返回 null */
@@ -135,7 +145,15 @@ function migrateDb(dbPath: string): void {
         return
     }
 
-    // 1. 备份（永不覆盖既有备份：同日重跑则追加时分秒，仍冲突则追加序号）
+    // 1a. WAL checkpoint：残留 -wal 未落盘时主文件不是完整状态，直接拷贝会丢已提交数据。
+    //     先开库 truncate checkpoint 把 WAL 并入主文件，备份必然等于完整一致状态。
+    {
+        const pre = new Database(dbPath)
+        pre.run('PRAGMA wal_checkpoint(TRUNCATE)')
+        pre.close()
+    }
+
+    // 1b. 备份（永不覆盖既有备份：同日重跑则追加时分秒，仍冲突则追加序号）+ 收紧权限
     const day = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     let backupPath = `${dbPath}.bak-${day}`
     if (existsSync(backupPath)) {
@@ -146,6 +164,7 @@ function migrateDb(dbPath: string): void {
         }
     }
     copyFileSync(dbPath, backupPath)
+    chmodSync(backupPath, 0o600)
     console.log(`[备份] ${dbPath} -> ${backupPath}`)
 
     const db = new Database(dbPath)
@@ -234,7 +253,8 @@ function backfill(db: Database, report: DbReport): void {
                 report.skippedRows += 1
                 continue
             }
-            const path = typeof meta.path === 'string' ? meta.path : ''
+            const rawPath = typeof meta.path === 'string' ? meta.path : ''
+            const path = rawPath ? normalizePath(rawPath) : ''
             if (path && !paths.includes(path)) paths.push(path)
             const machineId = typeof meta.machineId === 'string' ? meta.machineId : ''
             if (machineId) machineEntries.push({ machineId, updatedAt: row.updated_at })
@@ -249,9 +269,11 @@ function backfill(db: Database, report: DbReport): void {
             continue
         }
 
-        // 最短路径为 primary；machine_id 取众数（并列取最新），全空回退 namespace 最近机器，再无则 unknown
-        const primaryPath = paths.reduce((a, b) => (b.length < a.length ? b : a))
+        // 最短路径为 primary；等长并列时取字典序最小（先 sort 保证确定化）
+        const sortedPaths = [...paths].sort()
+        const primaryPath = sortedPaths.reduce((a, b) => (b.length < a.length ? b : a))
         const folders: ProjectFolder[] = paths.map((p) => ({ path: p, primary: p === primaryPath }))
+        // machine_id 取众数（并列取最新），全空回退 namespace 最近机器，再无则 unknown
         const machineId =
             pickMachineId(machineEntries) ??
             ((findFallbackMachine.get(namespace) as { id: string } | undefined)?.id ?? 'unknown')
@@ -272,6 +294,13 @@ function backfill(db: Database, report: DbReport): void {
             const now = Date.now()
             insertProject.run(projectId, namespace, machineId, name, JSON.stringify(folders), now, now, 0)
             report.created += 1
+            console.log(
+                `[新建] 项目 ${name}（ns=${namespace}，机器=${machineId}，会话=${groupRows.length}，folders=${JSON.stringify(folders)}）`
+            )
+        } else {
+            console.log(
+                `[复用] 项目 ${name}（ns=${namespace}，机器=${machineId}，会话=${groupRows.length}，folders=${JSON.stringify(folders)}）`
+            )
         }
 
         // 挂钩组内会话（group_key 为 NULL 的老会话不在此列，保持游离）
@@ -285,7 +314,10 @@ function backfill(db: Database, report: DbReport): void {
 // ---- 入口 ----
 
 const dbPaths = process.argv.slice(2)
-const targets = dbPaths.length > 0 ? dbPaths : DEFAULT_DB_PATHS
+// 支持 ~/ 前缀展开
+const expandPath = (p: string): string =>
+    p === '~' || p.startsWith('~/') ? join(homedir(), p.slice(1)) : p
+const targets = (dbPaths.length > 0 ? dbPaths : DEFAULT_DB_PATHS).map(expandPath)
 
 let failed = 0
 for (const p of targets) {
