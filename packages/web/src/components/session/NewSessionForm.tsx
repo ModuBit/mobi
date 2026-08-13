@@ -40,6 +40,7 @@ import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSpawnSession } from '@/core/data/hooks/mutations/useSpawnSession'
 import { useMachineDirectoryListing, parsePrefixInput } from './useMachineDirectoryListing'
 import { useRecentPaths } from './useRecentPaths'
+import { buildMachineSelectOptions } from '@/core/utils/machineUtils'
 import type { AgentType, SessionType } from '@/domain/session/types'
 import { AGENT_OPTIONS, CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { getEffortOptions, getPermissionModeTone, type EffortLevel, type PermissionMode } from '@mobi/shared'
@@ -65,15 +66,6 @@ export interface NewSessionProps {
 }
 
 const { Text } = Typography
-
-/**
- * 获取机器显示名称
- */
-function getMachineTitle(machine: Machine): string {
-    if (machine.metadata?.displayName) return machine.metadata.displayName
-    if (machine.metadata?.host) return machine.metadata.host
-    return machine.id.slice(0, 8)
-}
 
 function startEllipsis(path: string, maxLen = 40): string {
     if (path.length <= maxLen) return path
@@ -299,15 +291,7 @@ export function NewSession(props: NewSessionProps) {
                         loading={isLoading}
                         placeholder={isLoading ? t('newSession.machineLoading') : t('newSession.machinePlaceholder')}
                         notFoundContent={isLoading ? <Spin size="small" /> : t('newSession.machineEmpty')}
-                        options={machines.map(m => ({
-                            value: m.id,
-                            label: (
-                                <span>
-                                    {getMachineTitle(m)}
-                                    {m.metadata?.platform ? ` (${m.metadata.platform})` : ''}
-                                </span>
-                            )
-                        }))}
+                        options={buildMachineSelectOptions(machines)}
                     />
                 </Form.Item>
             )}

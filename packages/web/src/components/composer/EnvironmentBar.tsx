@@ -21,6 +21,7 @@ import { AppTooltip } from '@/components/ui/AppTooltip'
 import { DesktopOutlined, FolderOpenOutlined, FolderOutlined, HistoryOutlined, HomeOutlined, LoadingOutlined } from '@ant-design/icons'
 import { parsePrefixInput, type DirectoryOption } from '@/components/session/useMachineDirectoryListing'
 import type { Machine } from '@/core/data/api/types'
+import { buildMachineSelectOptions } from '@/core/utils/machineUtils'
 
 /**
  * 从目录路径提取项目名（取最后一段）
@@ -99,15 +100,6 @@ export function buildDirectoryAutoCompleteOptions(
             ),
         }
     })
-}
-
-/**
- * 获取机器显示名称
- */
-export function getMachineTitle(machine: Pick<Machine, 'id' | 'metadata'>): string {
-    if (machine.metadata?.displayName) return machine.metadata.displayName
-    if (machine.metadata?.host) return machine.metadata.host
-    return machine.id.slice(0, 8)
 }
 
 /**
@@ -214,15 +206,7 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
     )
 
     // 机器选项
-    const machineSelectOptions = activeMachines.map(m => ({
-        value: m.id,
-        label: (
-            <span>
-                {getMachineTitle(m)}
-                {m.metadata?.platform ? ` (${m.metadata.platform})` : ''}
-            </span>
-        ),
-    }))
+    const machineSelectOptions = buildMachineSelectOptions(activeMachines)
 
     return (
         <div style={{

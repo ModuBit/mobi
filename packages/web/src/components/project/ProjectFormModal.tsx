@@ -22,18 +22,12 @@ import { validateProjectFolders, type ProjectFolder } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useCreateProject, useUpdateProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
-import type { Machine, Project } from '@/core/data/api/types'
+import type { Project } from '@/core/data/api/types'
+import { buildMachineSelectOptions } from '@/core/utils/machineUtils'
 
 /** 可编辑的文件夹行：带稳定 key（路径可编辑且可重复，不能当 React key） */
 interface EditableFolder extends ProjectFolder {
     key: number
-}
-
-/** 获取机器显示名称（与 NewSessionForm 一致） */
-function getMachineTitle(machine: Machine): string {
-    if (machine.metadata?.displayName) return machine.metadata.displayName
-    if (machine.metadata?.host) return machine.metadata.host
-    return machine.id.slice(0, 8)
 }
 
 interface FolderRowProps {
@@ -230,15 +224,7 @@ export function ProjectFormModal({ open, onClose, project }: ProjectFormModalPro
                             disabled={isPending}
                             loading={machinesLoading}
                             placeholder={machinesLoading ? t('newSession.machineLoading') : t('newSession.machinePlaceholder')}
-                            options={machines.map(m => ({
-                                value: m.id,
-                                label: (
-                                    <span>
-                                        {getMachineTitle(m)}
-                                        {m.metadata?.platform ? ` (${m.metadata.platform})` : ''}
-                                    </span>
-                                ),
-                            }))}
+                            options={buildMachineSelectOptions(machines)}
                         />
                     </Form.Item>
                 )}
