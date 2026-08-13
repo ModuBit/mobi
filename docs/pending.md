@@ -385,7 +385,11 @@ hooks: {
 
 ---
 
-## 14. 增加项目实体，替代基于 session path 的分组
+## 14. ~~增加项目实体，替代基于 session path 的分组~~ ✅ 已完成（2026-08-13，「项目实体化」）
+
+**实现**：Project 一等实体（name + machineId + folders[恰一 primary]）、session.project_id 归属、终端会话游离进「最近」、folders 创建时冻结 `metadata.additionalDirectories` 且 resume 回放、groupKey 全链路删除。spec `docs/superpowers/specs/2026-08-13-project-entity-design.md`（决策 D1–D14）、存量迁移 `scripts/migrate-projects.ts`。详见提交 e2add170..e07b171a。
+
+> 以下为原始记录，保留备查：
 
 **现状**：
 - 没有"项目"概念，`SessionGroup` 是从 session 的 `metadata.path` 用 `extractGroupKey` 截取最后两段（如 `github/modu`）group 出来的
@@ -1111,3 +1115,96 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 **相关 memory**：[[project_bubble-list-virtualization]]（虚拟化已废弃，tag `chat-list-virtualized` 留存）、[[project_virtuoso-mount-flicker]]/[[project_scroll-fight-pointer-drag]]/[[project_virtuoso-prepend-firstitemindex]]/[[project_virtuoso-followoutput-trap]]/[[project_virtuoso-key-collision]]（virtuoso 踩坑记录，方向已废弃但留作参考）。
 
 **优先级**：高（长会话 DOM 增长会卡顿，需 window 钳制）。
+
+---
+
+## 41. 会话产出「知识化」——可检索的个人 coding 工作日志
+
+**背景**：mobi 的 hub SQLite 里躺着每一次重构、每一次 debug、每一次架构决策的完整会话记录，但目前**用完即弃**——对话流走完就没人再看。这是 mobi 最大的未开发价值。
+
+**痛点**：「上周 Claude 是怎么修那个 race condition 的？」「上次给那个模块加测试，它的思路是什么？」现在完全没法查，只能人肉翻会话。
+
+**为何是 mobi 独有的机会**：CC TUI 是单会话、不留痕的；mobi 天然汇聚了用户所有会话的完整数据。这个数据资产别人没有，mobi 有，却没开发利用。把 mobi 从「远程查看器」升级成「个人 coding 工作日志/知识库」，是产品定位的质变。
+
+**待探索方向**：
+- 跨会话全文检索（会话内容 + 文件路径 + 工具操作）
+- 会话摘要（每条会话自动生成「做了什么/改了哪些文件/结论」的结构化摘要）
+- 按项目/时间/关键词聚合的工作日志视图
+
+**技术成本**：低。数据已在 hub（SQLite + 全量消息），缺的是检索索引 + 摘要生成 + 查询 UI。不涉及核心管道改动。
+
+**优先级**：高。投入小、回报是产品定位跃迁，且具备数据独占性。
+
+---
+
+## 42. 多会话「指挥中心」视图
+
+**背景**：重度使用的真实形态不是「一个会话」，而是**同时开多个 Claude 改不同模块**。但 mobi 的 UI 仍停在单会话心智——切进切出，看不到全局。hub 本就是中心化的，天然拥有跨会话视角，缺的是把这个视角做出来。
+
+**痛点**：同时跑 3 个会话时，手机上无法一屏掌握——谁在跑、谁卡在审批、谁先完成了、谁的 context 快满了。得逐个点进去看。
+
+**与既有探索的区别**：记忆中暂停过的 Task Rows 探索（`.mobi/uploads` 源码）是**单会话内**把扁平对话结构化成任务进度；本项是**跨会话**的全局编排视图，方向不冲突。
+
+**待探索方向**：
+- 全局会话状态看板（活跃/等待审批/已完成/context 占用，一屏概览）
+- 跨会话事件流（按时间合并多会话的关键事件：完成、卡审批、报错）
+- 会话间产出对齐（多会话改同一模块时的冲突预警）
+
+**技术成本**：中。hub 数据已就绪，主要工作在 web 端新增跨会话聚合视图 + 查询。
+
+**优先级**：中。差异化最强，但依赖「多会话重度使用」是否为真实场景——若平时只开一两个会话，优先级下调。
+
+---
+
+## 43. 弱网下「关键消息必达」——投递分层
+
+**背景**：pending 里的 bundle 瘦身（#19）、字体子集化都是「加载快一点」，但移动场景的**本质痛点**是断网（地铁、电梯、切换基站）。mobi 现在是纯 SSE 流，**一断全断**——Claude 在等我审批一个 `rm`，我刚好进电梯没信号，这条 permission 就静默丢了。
+
+**痛点**：关键事件（permission/ready/重要里程碑）没有比普通对话更强的投递保证，与聊天一起走 best-effort SSE。
+
+**待探索方向**：
+- **消息分级**：permission/ready/里程碑等「必须响应」事件走可靠通道；普通对话流才走 best-effort SSE
+- **可靠通道**：离线缓存（断网期间关键事件落盘）+ 重连必达（补拉未确认事件）+ Web Push 兜底（SW 独立线程，长时后台可靠）
+- **现状基础**：Web Push 基建已就绪（visibility 分级投递在用），可在此基础上加「关键事件必达」语义
+
+**技术成本**：中高。要重构投递分层（消息打标 + 客户端确认 + 补拉协议 + 离线缓存），动到 SSE/通知核心链路。
+
+**优先级**：中高。直接补「移动」这个核心场景最疼的洞，是「桌面思维迁移到移动」与「真正为移动设计」的分水岭。
+
+---
+
+## 44. teammate 残留清理 — 已完成的 subagent 条目滞留 teamState
+
+**背景**（2026-08-13）：用户在 teamState 面板看到 **34 个 teammate 全部归属同一会话**——正好是「项目实体化」subagent-driven 开发派出的全部 agent 数（10 任务 × 3 agent + E2E + 终审 + 修复 + 文档同步 = 34）。它们早已完成退出，但条目一直挂着。
+
+**根因**：SDK 的 `TeammateIdle` / `TaskCompleted` hook 回调可获取队友完成事件（见 #11 调研结论），但 mobi **未消费这类事件做 teammate 清理**——条目写入 `runtime_state.teamState` 后无生命周期出口。且 teamState 随 session runtimeState **落库持久化**，父会话结束后仍残留，直到该会话 runtime state 被重置。
+
+**影响**：
+- 无资源占用（进程已退出），纯展示层脏数据
+- 长会话多派几次 subagent 即重演，越积越多
+
+**方向**：
+- 消费 teammate 完成/空闲事件（SDK `hooks` option 的 `TeammateIdle`/`TaskCompleted` 回调，即 #11 已验证可行的方案）→ 从 teamState 移除对应条目，或至少标记为已完成态
+- 顺带定义「父会话结束后 teamState 的生命周期」（清空/归档）
+- 落在 `.scratch/task-state-sync/` 那批 runtime state 同步问题的延长线上
+
+### 现象二：「清理团队状态」清不掉（2026-08-13 实测）
+
+用户点 TeamAgentPanel 的清理（`clearField="teamState"`）→ teamState 不消失。
+
+**已核实的链路（这部分代码是对的）**：
+- UI → `PATCH /api/sessions/:id` `{clearFields:['teamState']}` → `store/sessions.ts clearRuntimeStateFields`（DB JSON 删键 + seq+1）→ `sessionCache.clearRuntimeStateFields`（刷内存 + SSE `session-updated` 携带完整 runtimeState）
+- web SSE 侧 `'runtimeState' in delta` → `runtimeStateReplace=true` 全量替换（缺失键会被移除），补丁语义无问题
+
+**根因假设（待验证，证据充分）**：teamState 是**派生态**，派生源是消息历史——`sessionHandlers.ts` 的消息处理对每条含 `Agent`/`Task` tool_use 的消息调 `extractTeamStateFromMessageContent` → `applyTeamStateDelta` 加 member（隐式团队名即 `session-XXXXXXXX`，34 个 member 来自历史里 34 次 Agent 派发）。而该处理路径**会被 resume/重连重放**（`sessionHandlers.ts:274` 注释明说「resume 重放时……」）——清掉派生缓存后，任何一次重放历史消息都会从消息历史**重建** teamState。即：清理只清了缓存，没清（也不该清）派生源，重放即复活。
+
+**修复方向（一并解决）**：
+- 派生与清理的优先级：用户清理应记 tombstone（如 runtimeState 记 `_teamStateClearedAt`），重放重派生时早于该时间点的 delta 不再产生 teamState（或：重放路径整体跳过 teamState 重建，只信 live 增量）
+- 结合现象一：正常出口应是 teammate 完成/团队结束事件，而非靠手动清理；手动清理则是「重置派生基线」语义
+
+**相关文件**：
+- `packages/cli/src/claude/claudeRemote.ts` — SDK `hooks` option 配置点（#11 同款）
+- `packages/hub/src/sync/teams.ts` — team state 提取
+- `packages/web/src/core/data/` — teamState 展示
+
+**优先级**：中。脏数据影响观感且会累积；实现路径已被 #11 调研铺过一半。
