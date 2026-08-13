@@ -50,6 +50,12 @@ async function runLocalMode(options: StartOptions): Promise<void> {
     console.log(chalk.yellow('⚠️  Running in local-only mode (no Hub connection)'))
     console.log(chalk.gray('   Remote control features are disabled.\n'))
 
+    if (options.projectId) {
+        // 项目归属需要 Hub 连接（校验 machineId / folders 并冻结），离线降级时无法生效
+        console.warn(chalk.yellow('⚠️  Hub 不可达，--project 已忽略'))
+        console.warn(chalk.gray('   Project membership requires a Hub connection.\n'))
+    }
+
     const claudeArgs = [...(options.claudeArgs || [])]
 
     // 添加权限模式

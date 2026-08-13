@@ -256,4 +256,88 @@ describe('bootstrapSession 项目归属', () => {
             additionalDirectories: ['/a/shared']
         })
     })
+
+    it('单文件夹项目（仅 primary=cwd）：派生为空也要冻结 []', async () => {
+        stubExists(['/a/mobi'])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({ projectId: 'p1' }),
+            project: baseProject({ folders: [{ path: '/a/mobi', primary: true }] })
+        })
+
+        const result = await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            projectId: 'p1'
+        })
+
+        expect(result.additionalDirectories).toEqual([])
+        // 空列表同样冻结：resume 不再重读项目、不受后续变更影响
+        expect(h.updateMetadata).toHaveBeenCalledTimes(1)
+        const handler = h.updateMetadata.mock.calls[0][0] as (cur: Record<string, unknown>) => Record<string, unknown>
+        expect(handler({ path: '/a/mobi' })).toEqual({
+            path: '/a/mobi',
+            additionalDirectories: []
+        })
+    })
+
+    it('resume 冻结空列表的会话（键存在为 []）：回放空、不读项目、不重写', async () => {
+        stubExists([])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({
+                projectId: 'p1',
+                metadata: { path: '/a/mobi', additionalDirectories: [] }
+            }),
+            // 故意 machineId 不匹配也无所谓——回放分支不读 project
+            project: baseProject({ machineId: 'm-other' })
+        })
+
+        const result = await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            claudeArgs: ['--resume', 'cs1']
+        })
+
+        expect(result.additionalDirectories).toEqual([])
+        expect(h.access).not.toHaveBeenCalled()
+        expect(h.updateMetadata).not.toHaveBeenCalled()
+    })
+
+    it('worktree 形态（cwd≠primary）：primary 进入 add-dir 列表并冻结', async () => {
+        stubExists(['/a/mobi', '/a/shared'])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({ projectId: 'p1' }),
+            project: baseProject()
+        })
+
+        // worktree 会话：spawn cwd 是 worktree 路径，primary 是 base 仓库
+        const result = await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'runner',
+            workingDirectory: '/a/mobi/.git/worktrees/wt1',
+            projectId: 'p1'
+        })
+
+        // primary（base 仓库）≠ cwd → 加入；agent 可同时访问 base + worktree
+        expect(result.additionalDirectories).toEqual(['/a/mobi', '/a/shared'])
+        expect(h.updateMetadata).toHaveBeenCalledTimes(1)
+    })
+
+    it('前缀误配回归：/a/mobic 不因前缀匹配 /a/mobi 被当作 cwd', async () => {
+        stubExists([])
+        h.getOrCreateSession.mockResolvedValue({
+            ...mockSession({ projectId: 'p1' }),
+            project: baseProject({ folders: [{ path: '/a/mobic', primary: true }] })
+        })
+
+        // 旧 startsWith 启发式会误判 '/a/mobic' 匹配 cwd '/a/mobi' 而放行；
+        // 新规则按路径解析精确比较 → primary 非 cwd 且缺失 → 硬失败
+        await expect(bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            projectId: 'p1'
+        })).rejects.toThrow(/primary/i)
+    })
 })
