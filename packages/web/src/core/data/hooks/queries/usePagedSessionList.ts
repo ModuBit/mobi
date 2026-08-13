@@ -22,8 +22,8 @@ import type { Session, ProjectSessionsPage } from '@/core/data/api/types'
 /** 默认展示的会话数；每次点「展开更多」递增的数量 */
 const VISIBLE_PAGE_SIZE = 5
 
-/** usePagedSessionGroup 需要的无限查询状态（由调用方的 useInfiniteQuery 结果贡献） */
-export interface PagedSessionGroupQueryState {
+/** usePagedSessionList 需要的无限查询状态（由调用方的 useInfiniteQuery 结果贡献） */
+export interface PagedSessionListQueryState {
     /** 无限查询聚合页（sessionIds 分页） */
     data: { pages: ProjectSessionsPage[] } | undefined
     isLoading: boolean
@@ -43,8 +43,8 @@ export interface PagedSessionGroupQueryState {
  * - 展开/收起容器状态（含活跃会话时自动展开）
  * - total / remainingCount / 骨架与加载更多判定
  */
-export function usePagedSessionGroup(
-    query: PagedSessionGroupQueryState,
+export function usePagedSessionList(
+    query: PagedSessionListQueryState,
     activeSessionId?: string,
     defaultExpanded = false,
 ) {
@@ -130,6 +130,8 @@ export function usePagedSessionGroup(
         // 时按钮过早消失、剩余页不可达（最坏情况只是多点一次拉到空页）
         canShowMore: remainingCount > 0 || !!hasNextPage,
         remainingCount,
+        /** 后端真实总数（首屏未就绪时为 undefined，调用方按需回退） */
+        total,
         showMore,
         collapse,
     }

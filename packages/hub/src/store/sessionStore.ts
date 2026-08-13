@@ -26,8 +26,6 @@ import {
     getSessions,
     getRecentSessions,
     getSessionsByNamespace,
-    getSessionGroups as getSessionGroupsFromDb,
-    getSessionsByGroup as getSessionsByGroupFromDb,
     getSessionsByProject as getSessionsByProjectFromDb,
     getUnboundSessions as getUnboundSessionsFromDb,
     setSessionProject as setSessionProjectFromDb,
@@ -35,9 +33,8 @@ import {
     clearRuntimeStateFields,
     updateSessionAgentState,
     updateSessionMetadata,
-    type SessionGroup,
-    type GroupSessionsResult,
-    type ProjectSessionsResult
+    type ProjectSessionsResult,
+    type SetSessionProjectResult
 } from './sessions'
 
 export class SessionStore {
@@ -119,21 +116,6 @@ export class SessionStore {
         return deleteSession(this.db, id, namespace)
     }
 
-    // ============ 分组相关 ============
-
-    getSessionGroups(namespace: string): SessionGroup[] {
-        return getSessionGroupsFromDb(this.db, namespace)
-    }
-
-    getSessionsByGroup(
-        namespace: string,
-        groupKey: string,
-        cursor: number | null,
-        limit?: number
-    ): GroupSessionsResult {
-        return getSessionsByGroupFromDb(this.db, namespace, groupKey, cursor, limit)
-    }
-
     // ============ 项目归属相关 ============
 
     getSessionsByProject(
@@ -153,7 +135,7 @@ export class SessionStore {
         return getUnboundSessionsFromDb(this.db, namespace, cursor, limit)
     }
 
-    setSessionProject(id: string, projectId: string | null, namespace: string): boolean {
+    setSessionProject(id: string, projectId: string | null, namespace: string): SetSessionProjectResult {
         return setSessionProjectFromDb(this.db, id, projectId, namespace)
     }
 }

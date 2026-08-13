@@ -34,7 +34,6 @@ type DbSessionRow = {
     agent_state_version: number
     runtime_state: string | null
     runtime_state_updated_at: number | null
-    group_key: string | null
     project_id: string | null
     seq: number
 }
@@ -53,28 +52,9 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         agentStateVersion: row.agent_state_version,
         runtimeState: safeJsonParse(row.runtime_state),
         runtimeStateUpdatedAt: row.runtime_state_updated_at,
-        groupKey: row.group_key,
         projectId: row.project_id,
         seq: row.seq
     }
-}
-
-/**
- * 从 path 中提取分组 key
- * 规则：取 path 的最后两级目录
- * 示例：/home/user/projects/mobi/src → projects/mobi
- */
-export function extractGroupKey(path: string | undefined | null): string | null {
-    if (!path) return null
-
-    // 规范化路径，处理 Windows 路径分隔符
-    const normalized = path.replace(/\\/g, '/')
-    const parts = normalized.split('/').filter(Boolean)
-
-    // 边界情况处理
-    if (parts.length === 0) return null
-    if (parts.length === 1) return parts[0]
-    return parts.slice(-2).join('/')
 }
 
 export function getOrCreateSession(
@@ -144,23 +124,19 @@ export function getOrCreateSession(
         projectIdVerified = project.id
     }
 
-    // 计算 groupKey
-    const metadataObj = metadata as { path?: string } | null
-    const groupKey = extractGroupKey(metadataObj?.path)
-
     db.prepare(`
         INSERT INTO sessions (
             id, tag, namespace, machine_id, created_at, updated_at,
             metadata, metadata_version,
             agent_state, agent_state_version,
             runtime_state, runtime_state_updated_at,
-            group_key, project_id, seq
+            project_id, seq
         ) VALUES (
             @id, @tag, @namespace, NULL, @created_at, @updated_at,
             @metadata, 1,
             @agent_state, 1,
             @runtime_state, @runtime_state_updated_at,
-            @group_key, @project_id, 0
+            @project_id, 0
         )
     `).run({
         id,
@@ -172,7 +148,6 @@ export function getOrCreateSession(
         agent_state: agentStateJson,
         runtime_state: runtimeStateJson,
         runtime_state_updated_at: runtimeState ? now : null,
-        group_key: groupKey,
         project_id: projectIdVerified
     })
 
@@ -392,43 +367,9 @@ export function deleteSession(db: Database, id: string, namespace: string): bool
     return result.changes > 0
 }
 
-// ============ 分组相关 ============
+// ============ 项目归属相关 ============
 
-export type SessionGroup = {
-    key: string
-    name: string
-    activeCount: number
-    totalCount: number
-    updatedAt: number
-}
-
-export function getSessionGroups(db: Database, namespace: string): SessionGroup[] {
-    const rows = db.prepare(`
-        SELECT
-            group_key,
-            COUNT(*) as total_count,
-            MAX(updated_at) as updated_at
-        FROM sessions
-        WHERE namespace = ? AND group_key IS NOT NULL
-        GROUP BY group_key
-        ORDER BY
-            MAX(updated_at) DESC
-    `).all(namespace) as Array<{
-        group_key: string
-        total_count: number
-        updated_at: number
-    }>
-
-    return rows.map(row => ({
-        key: row.group_key,
-        name: row.group_key,
-        activeCount: 0,  // 将在 API 层从内存计算
-        totalCount: row.total_count,
-        updatedAt: row.updated_at
-    }))
-}
-
-export type GroupSessionsResult = {
+export type ProjectSessionsResult = {
     sessions: StoredSession[]
     nextCursor: number | null
     hasMore: boolean
@@ -436,24 +377,32 @@ export type GroupSessionsResult = {
     total: number
 }
 
-export function getSessionsByGroup(
+/**
+ * 会话分页查询的共享实现（getSessionsByProject / getUnboundSessions 复用）。
+ *
+ * 单语句同时取分页数据与全集总数：内层 CTE 用 COUNT(*) OVER() 算全集
+ * （仅按 whereSql 过滤，不含 cursor/LIMIT），外层套 cursor 过滤与分页。
+ * 用单语句而非「SELECT + 独立 COUNT」是为了快照一致——SQLite WAL 下两条独立语句
+ * 各自取读快照，中间若有 CLI 写入 session，COUNT 与分页 SELECT 会基于不同快照，
+ * 致 total 与累计行数偏差、前端 remainingCount 失真。单语句天然同一快照，无竞态。
+ *
+ * 已知限制（记录而非修复）：游标为 `updated_at < cursor`，同一毫秒的会话在跨页
+ * 边界会被整批跳过（tie-skip）。理论上可用 (updated_at, seq) 元组游标消除，但那会
+ * 改变 nextCursor 的结构语义（web 端按单数字 cursor 透传），风险大于收益，故保持现状。
+ */
+function paginateSessions(
     db: Database,
-    namespace: string,
-    groupKey: string,
+    whereSql: string,
+    params: Array<string | number | null>,
     cursor: number | null,
     limit: number = 20
-): GroupSessionsResult {
-    // 单语句同时取分页数据与全集总数：内层 CTE 用 COUNT(*) OVER() 算分组全集
-    // （仅 namespace + group_key 过滤，不含 cursor/LIMIT），外层套 cursor 过滤与分页。
-    // 用单语句而非「SELECT + 独立 COUNT」是为了快照一致——SQLite WAL 下两条独立语句
-    // 各自取读快照，中间若有 CLI 写入 session，COUNT 与分页 SELECT 会基于不同快照，
-    // 致 total 与累计行数偏差、前端 remainingCount 失真。单语句天然同一快照，无竞态。
+): ProjectSessionsResult {
     const cursorCondition = cursor ? 'AND updated_at < ?' : ''
     const sql = `
         WITH counted AS (
             SELECT *, COUNT(*) OVER() AS total_count
             FROM sessions
-            WHERE namespace = ? AND group_key = ?
+            WHERE ${whereSql}
         )
         SELECT * FROM counted
         WHERE 1=1 ${cursorCondition}
@@ -462,8 +411,8 @@ export function getSessionsByGroup(
     `
 
     const rows = cursor
-        ? db.prepare(sql).all(namespace, groupKey, cursor, limit) as (DbSessionRow & { total_count: number })[]
-        : db.prepare(sql).all(namespace, groupKey, limit) as (DbSessionRow & { total_count: number })[]
+        ? db.prepare(sql).all(...params, cursor, limit) as (DbSessionRow & { total_count: number })[]
+        : db.prepare(sql).all(...params, limit) as (DbSessionRow & { total_count: number })[]
 
     const sessions = rows.map(toStoredSession)
     const hasMore = rows.length === limit
@@ -476,13 +425,9 @@ export function getSessionsByGroup(
     return { sessions, nextCursor, hasMore, total }
 }
 
-// ============ 项目归属相关 ============
-
-export type ProjectSessionsResult = GroupSessionsResult
-
 /**
  * 按项目分页查询会话（SQL 按 updated_at 游标；前端再按 active→updatedAt 排序展示）。
- * 单语句 + COUNT(*) OVER() 的快照一致语义与 getSessionsByGroup 相同，见其注释。
+ * 快照一致语义见 paginateSessions 注释。
  */
 export function getSessionsByProject(
     db: Database,
@@ -491,36 +436,12 @@ export function getSessionsByProject(
     cursor: number | null,
     limit: number = 20
 ): ProjectSessionsResult {
-    const cursorCondition = cursor ? 'AND updated_at < ?' : ''
-    const sql = `
-        WITH counted AS (
-            SELECT *, COUNT(*) OVER() AS total_count
-            FROM sessions
-            WHERE namespace = ? AND project_id = ?
-        )
-        SELECT * FROM counted
-        WHERE 1=1 ${cursorCondition}
-        ORDER BY updated_at DESC
-        LIMIT ?
-    `
-
-    const rows = cursor
-        ? db.prepare(sql).all(namespace, projectId, cursor, limit) as (DbSessionRow & { total_count: number })[]
-        : db.prepare(sql).all(namespace, projectId, limit) as (DbSessionRow & { total_count: number })[]
-
-    const sessions = rows.map(toStoredSession)
-    const hasMore = rows.length === limit
-    const nextCursor = hasMore && rows.length > 0
-        ? rows[rows.length - 1].updated_at
-        : null
-    const total = rows.length > 0 ? rows[0].total_count : 0
-
-    return { sessions, nextCursor, hasMore, total }
+    return paginateSessions(db, 'namespace = ? AND project_id = ?', [namespace, projectId], cursor, limit)
 }
 
 /**
  * 游离会话分页查询（project_id IS NULL），「最近」区数据源。
- * 单语句 + COUNT(*) OVER() 的快照一致语义与 getSessionsByGroup 相同，见其注释。
+ * 快照一致语义见 paginateSessions 注释。
  */
 export function getUnboundSessions(
     db: Database,
@@ -528,50 +449,38 @@ export function getUnboundSessions(
     cursor: number | null,
     limit: number = 20
 ): ProjectSessionsResult {
-    const cursorCondition = cursor ? 'AND updated_at < ?' : ''
-    const sql = `
-        WITH counted AS (
-            SELECT *, COUNT(*) OVER() AS total_count
-            FROM sessions
-            WHERE namespace = ? AND project_id IS NULL
-        )
-        SELECT * FROM counted
-        WHERE 1=1 ${cursorCondition}
-        ORDER BY updated_at DESC
-        LIMIT ?
-    `
-
-    const rows = cursor
-        ? db.prepare(sql).all(namespace, cursor, limit) as (DbSessionRow & { total_count: number })[]
-        : db.prepare(sql).all(namespace, limit) as (DbSessionRow & { total_count: number })[]
-
-    const sessions = rows.map(toStoredSession)
-    const hasMore = rows.length === limit
-    const nextCursor = hasMore && rows.length > 0
-        ? rows[rows.length - 1].updated_at
-        : null
-    const total = rows.length > 0 ? rows[0].total_count : 0
-
-    return { sessions, nextCursor, hasMore, total }
+    return paginateSessions(db, 'namespace = ? AND project_id IS NULL', [namespace], cursor, limit)
 }
 
+/** setSessionProject 的三态结果（幂等语义见函数注释） */
+export type SetSessionProjectResult =
+    | 'changed'   // 归属变化，已写入（seq/updated_at 递增，调用方需广播）
+    | 'noop'      // 归属未变化，幂等跳过（不递增 seq，无需广播）
+    | 'not_found' // 会话不存在，或目标项目不存在 / 跨 namespace
+
 /**
- * 归入项目 / 解绑（纯改分组，不动 metadata）；projectId 须存在且同 namespace。
+ * 归入项目 / 解绑（纯改归属，不动 metadata）；projectId 须存在且同 namespace。
  * updated_at + seq 成对递增，与 sessions 变更范式一致（SSE 增量同步靠 seq 感知）。
+ * 幂等：重归入同一项目（project_id 未变）不递增 seq/updated_at，避免无意义的 SSE 扰动
+ * ——`IS NOT ?` 同时覆盖 null 与非 null 两种「目标与现值相同」的情形（SQLite 的
+ * 严格不等号对 NULL 恒为 NULL，IS NOT 才能正确比较）。
  */
 export function setSessionProject(
     db: Database,
     id: string,
     projectId: string | null,
     namespace: string
-): boolean {
+): SetSessionProjectResult {
     if (projectId) {
         const project = db.prepare('SELECT id FROM projects WHERE id = ? AND namespace = ?')
             .get(projectId, namespace) as { id: string } | undefined
-        if (!project) return false
+        if (!project) return 'not_found'
     }
     const result = db.prepare(
-        'UPDATE sessions SET project_id = ?, updated_at = ?, seq = seq + 1 WHERE id = ? AND namespace = ?'
-    ).run(projectId, Date.now(), id, namespace)
-    return result.changes > 0
+        'UPDATE sessions SET project_id = ?, updated_at = ?, seq = seq + 1 WHERE id = ? AND namespace = ? AND project_id IS NOT ?'
+    ).run(projectId, Date.now(), id, namespace, projectId)
+    if (result.changes > 0) return 'changed'
+    // changes=0 有两种可能：幂等跳过（会话在、归属没变）或会话不存在，需区分
+    return db.prepare('SELECT 1 FROM sessions WHERE id = ? AND namespace = ?')
+        .get(id, namespace) ? 'noop' : 'not_found'
 }

@@ -16,7 +16,6 @@
 
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 import type { Session } from '@/core/data/api/types'
-import { basename } from '@/core/utils/path'
 
 /**
  * getSessionAvatarStatus 的最小输入结构。
@@ -30,7 +29,7 @@ type AvatarStatusInput = Pick<Session, 'active' | 'running'> & {
 
 /**
  * 根据会话状态映射为头像状态
- * 多处复用：SidebarProjects、SessionList、MobileProjectList
+ * 多处复用：SidebarProjects、MobileProjectList
  *
  * 待审批判定双数据源：
  *   - 列表项（SessionSummary）：只有 pendingRequestsCount（hub 序列化时已计数）
@@ -55,7 +54,7 @@ type SessionSortInput = Pick<Session, 'active' | 'updatedAt'>
 
 /**
  * 会话列表排序比较函数（返回负数 a 在前、正数 b 在前、0 相等）。
- * 复用于：SidebarProjects、MobileProjectList、SessionList。
+ * 复用于：SidebarProjects、MobileProjectList。
  *
  * 排序规则：
  *   1. 活跃会话（active=true，含执行中/等待输入/等待审批）永远排在已退出会话（active=false）之前
@@ -68,12 +67,4 @@ type SessionSortInput = Pick<Session, 'active' | 'updatedAt'>
 export function compareSessionsForList(a: SessionSortInput, b: SessionSortInput): number {
     if (a.active !== b.active) return a.active ? -1 : 1
     return b.updatedAt - a.updatedAt
-}
-
-/**
- * 从 group.key 路径提取最后一段目录名（用于展示）
- * 复用 path.basename（处理反斜杠与空段，更健壮）
- */
-export function extractFolderName(key: string): string {
-    return basename(key) || key
 }

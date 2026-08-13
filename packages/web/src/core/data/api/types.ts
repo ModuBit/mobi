@@ -245,44 +245,13 @@ export type DeleteUploadResponse = {
     error?: string
 }
 
-// ============ 会话分组类型 ============
-
-export interface SessionGroup {
-    key: string
-    name: string
-    activeCount: number
-    totalCount: number
-    updatedAt: number
-}
-
-export interface SessionGroupsResponse {
-    groups: SessionGroup[]
-}
-
-export interface GroupSessionsResponse {
-    sessions: Session[]
-    nextCursor: number | null
-    hasMore: boolean
-    /** 分组会话总数（不受游标影响） */
-    total: number
-}
-
-// 用于 hook 内部的归一化数据结构（groupSessions 缓存只存 ID）
-export interface GroupSessionsPage {
-    sessionIds: string[]
-    nextCursor: number | null
-    hasMore: boolean
-    /** 分组会话总数（不受游标影响，用于前端显示「真实剩余」） */
-    total: number
-}
-
-// ============ 项目类型（实体化后替代会话分组） ============
+// ============ 项目类型（会话按项目 / 「最近」组织） ============
 
 import type { Project, ProjectFolder } from '@mobi/shared'
 
 export type { Project, ProjectFolder }
 
-/** 项目会话分页响应（对照 GroupSessionsResponse，hub 返回完整 Session） */
+/** 项目会话分页响应（hub 返回完整 Session） */
 export interface ProjectSessionsResponse {
     sessions: Session[]
     nextCursor: number | null

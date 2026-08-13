@@ -176,7 +176,6 @@ let toastSeq = 0
 
 type PendingInvalidations = {
     sessions: boolean
-    sessionGroups: boolean
     projectViews: boolean
     machines: boolean
     sessionIds: Set<string>
@@ -219,14 +218,13 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const pendingInvalidationsRef = useRef<PendingInvalidations>({
         sessions: false,
-        sessionGroups: false,
         projectViews: false,
         machines: false,
         sessionIds: new Set(),
     })
 
     // 批处理失效：将失效请求合并到同一微任务中，减少重复 API 调用。
-    // - 'sessions'：全局会话列表 + 旧 sessionGroups 视图
+    // - 'sessions'：全局会话列表
     // - 'projectViews'：项目维度视图（['projects'] / ['projectSessions'] / ['recentSessions']）。
     //   session 增删改会改变项目组与「最近」的 sessionIds 成员，必须一并刷新，
     //   否则新会话不出现 / 删除会话残留
@@ -234,7 +232,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         const pending = pendingInvalidationsRef.current
         if (scope === 'sessions') {
             pending.sessions = true
-            pending.sessionGroups = true
         } else if (scope === 'machines') {
             pending.machines = true
         } else {
@@ -249,14 +246,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             invalidationTimerRef.current = null
             const p = pendingInvalidationsRef.current
             const qc = queryClientRef.current
-            if (!p.sessions && !p.sessionGroups && !p.projectViews && !p.machines && p.sessionIds.size === 0) return
+            if (!p.sessions && !p.projectViews && !p.machines && p.sessionIds.size === 0) return
 
             const tasks: Array<Promise<unknown>> = []
             if (p.sessions) tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessions }))
-            if (p.sessionGroups) {
-                tasks.push(qc.invalidateQueries({ queryKey: queryKeys.sessionGroups }))
-                tasks.push(qc.invalidateQueries({ queryKey: ['groupSessions'] }))
-            }
             if (p.projectViews) {
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.projects }))
                 tasks.push(qc.invalidateQueries({ queryKey: queryKeys.recentSessions }))
@@ -268,7 +261,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             }
 
             p.sessions = false
-            p.sessionGroups = false
             p.projectViews = false
             p.machines = false
             p.sessionIds.clear()
@@ -554,7 +546,6 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             // 重置待处理状态
             pendingInvalidationsRef.current = {
                 sessions: false,
-                sessionGroups: false,
                 projectViews: false,
                 machines: false,
                 sessionIds: new Set(),

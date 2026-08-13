@@ -95,21 +95,41 @@ describe('sessions 与 project 关联', () => {
             folders: [{ path: '/a/mobi', primary: true }]
         })
         const s = store.sessions.getOrCreateSession('tag9', { path: '/x' }, {}, 'default')
-        expect(store.sessions.setSessionProject(s.id, project.id, 'default')).toBe(true)
+        expect(store.sessions.setSessionProject(s.id, project.id, 'default')).toBe('changed')
         expect(store.sessions.getSession(s.id)?.projectId).toBe(project.id)
-        expect(store.sessions.setSessionProject(s.id, null, 'default')).toBe(true)
+        expect(store.sessions.setSessionProject(s.id, null, 'default')).toBe('changed')
         expect(store.sessions.getSession(s.id)?.projectId).toBeNull()
     })
 
-    it('setSessionProject 目标项目不存在 → false；跨 namespace → false', () => {
+    it('setSessionProject 幂等：重归入同一项目不递增 seq/updated_at', () => {
+        const project = store.projects.createProject({
+            namespace: 'default', machineId: 'm1', name: 'mobi',
+            folders: [{ path: '/a/mobi', primary: true }]
+        })
+        const s = store.sessions.getOrCreateSession('tag9b', { path: '/x' }, {}, 'default')
+        expect(store.sessions.setSessionProject(s.id, project.id, 'default')).toBe('changed')
+        // 重归入同一项目：noop，且 seq/updated_at 保持不变
+        const before = store.sessions.getSession(s.id)!
+        expect(store.sessions.setSessionProject(s.id, project.id, 'default')).toBe('noop')
+        const after = store.sessions.getSession(s.id)!
+        expect(after.seq).toBe(before.seq)
+        expect(after.updatedAt).toBe(before.updatedAt)
+        // 幂等解绑：归属已是 null，再解绑仍是 noop
+        expect(store.sessions.setSessionProject(s.id, null, 'default')).toBe('changed')
+        expect(store.sessions.setSessionProject(s.id, null, 'default')).toBe('noop')
+    })
+
+    it('setSessionProject 目标项目不存在 / 跨 namespace / 会话不存在 → not_found', () => {
         const s = store.sessions.getOrCreateSession('tag10', { path: '/x' }, {}, 'default')
-        expect(store.sessions.setSessionProject(s.id, 'nope', 'default')).toBe(false)
+        expect(store.sessions.setSessionProject(s.id, 'nope', 'default')).toBe('not_found')
         // 跨 namespace：项目在 other，会话在 default
         const other = store.projects.createProject({
             namespace: 'other', machineId: 'm1', name: 'y',
             folders: [{ path: '/y', primary: true }]
         })
-        expect(store.sessions.setSessionProject(s.id, other.id, 'default')).toBe(false)
+        expect(store.sessions.setSessionProject(s.id, other.id, 'default')).toBe('not_found')
+        // 会话不存在
+        expect(store.sessions.setSessionProject('ghost', other.id, 'other')).toBe('not_found')
     })
 
     it('resume 复用：已存在 session 的 projectId 不变（合并分支不重算归属）', () => {

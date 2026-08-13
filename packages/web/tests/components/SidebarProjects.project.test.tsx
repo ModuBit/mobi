@@ -158,7 +158,7 @@ describe('SidebarProjects 项目实体化', () => {
         const r1 = makeSession('r1', '游离会话')
         setup({ projectSessionsMap: { p1: [s1] }, recent: [r1] })
 
-        // 项目组标题 = project.name（不再从 groupKey 提取目录名）
+        // 项目组标题 = project.name（项目实体化后不再从路径提取目录名）
         expect(await screen.findByText('Demo')).toBeInTheDocument()
         expect(screen.getByText('OtherMachine')).toBeInTheDocument()
         expect(screen.getByText('nav.recent')).toBeInTheDocument()

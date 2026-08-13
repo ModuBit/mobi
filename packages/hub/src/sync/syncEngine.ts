@@ -204,11 +204,13 @@ export class SyncEngine {
 
     /**
      * 归入项目 / 解绑（移回「最近」）。projectId 须存在且同 namespace（store 层校验）。
-     * 成功后刷新内存缓存并广播 session-updated，Web 端感知归属变化。
+     * 归属变化时刷新内存缓存并广播 session-updated，Web 端感知归属变化；
+     * 幂等重归入（归属未变）视为成功但不广播，避免无意义的 SSE 扰动。
      */
     setSessionProject(sessionId: string, projectId: string | null, namespace: string): boolean {
-        const ok = this.store.sessions.setSessionProject(sessionId, projectId, namespace)
-        if (!ok) return false
+        const result = this.store.sessions.setSessionProject(sessionId, projectId, namespace)
+        if (result === 'not_found') return false
+        if (result === 'noop') return true
         const session = this.sessionCache.refreshSession(sessionId)
         if (session) {
             this.eventPublisher.emit({ type: 'session-updated', sessionId, data: session })

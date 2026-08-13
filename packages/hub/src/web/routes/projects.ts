@@ -34,7 +34,6 @@ function buildLiveSessionMap(engine: SyncEngine, namespace: string): Map<string,
 }
 
 // 将 StoredSession 转换为 SessionSummary，使用实时数据获取 active 状态
-// （镜像 sessionGroups.ts 的同名 helper；sessionGroups 将在清理批次移除，此处为存活方）
 function toSummary(s: StoredSession, liveSessionMap: Map<string, Session>): SessionSummary {
     // 从实时数据中获取 active 状态（数据库不存储）
     const liveSession = liveSessionMap.get(s.id)
@@ -104,7 +103,7 @@ const updateProjectSchema = z.object({
     folders: z.array(ProjectFolderSchema).optional()
 })
 
-// 分页 query 与响应形状对照 sessionGroups 的 groupSessionsQuerySchema
+// 会话分页 query（limit + updated_at 游标）
 const projectSessionsQuerySchema = z.object({
     limit: z.coerce.number().min(1).max(100).optional().default(20),
     cursor: z.coerce.number().optional()

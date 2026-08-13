@@ -382,7 +382,7 @@ function getSessionName(session: Session): string {
 
 // ========== 分组共享 props（项目组与「最近」一致） ==========
 
-interface SessionGroupSharedProps {
+interface SessionListSharedProps {
     activeSessionId: string | undefined
     renamingSessionId: string | null
     renameValue: string
@@ -481,7 +481,7 @@ function SessionRow({
 
 // ========== 分组内会话列表（项目组与「最近」共用的渲染骨架） ==========
 
-interface GroupSessionListProps extends SessionGroupSharedProps {
+interface SessionRowsListProps extends SessionListSharedProps {
     sessions: Session[]
     visibleSessions: Session[]
     isLoadingInitial: boolean
@@ -496,13 +496,13 @@ interface GroupSessionListProps extends SessionGroupSharedProps {
     renderExtraAction?: (session: Session) => React.ReactNode
 }
 
-function GroupSessionList({
+function SessionRowsList({
     activeSessionId, renamingSessionId, renameValue, setRenameValue,
     onRenameConfirm, onRenameCancel, onArchive, onResume, onDelete, onRenameStart, renameLoading,
     sessions, visibleSessions, isLoadingInitial, isLoadingMore,
     showCollapse, canShowMore, remainingCount, showMore, collapse,
     onSessionClick, renderExtraAction,
-}: GroupSessionListProps) {
+}: SessionRowsListProps) {
     const { token } = useToken()
     const { t } = useTranslation()
 
@@ -575,7 +575,7 @@ function GroupSessionList({
 
 // ========== 项目分组组件 ==========
 
-interface ProjectGroupProps extends SessionGroupSharedProps {
+interface ProjectGroupProps extends SessionListSharedProps {
     project: Project
     /** 编辑项目（标题 hover 菜单） */
     onEditProject: (project: Project) => void
@@ -585,7 +585,8 @@ interface ProjectGroupProps extends SessionGroupSharedProps {
     onMoveToRecent: (session: Session) => void
     /** 换项目（打开 AssignProjectModal） */
     onChangeProject: (session: Session) => void
-    assignPending: boolean
+    /** 正在变更归属的会话 id（仅该行禁用追加操作，其余行不受牵连） */
+    assignPendingSessionId: string | undefined
 }
 
 /**
@@ -596,7 +597,7 @@ function ProjectGroup({
     project, activeSessionId,
     renamingSessionId, renameValue, setRenameValue,
     onRenameConfirm, onRenameCancel, onArchive, onResume, onDelete, onRenameStart,
-    renameLoading, onEditProject, onDeleteProject, onMoveToRecent, onChangeProject, assignPending,
+    renameLoading, onEditProject, onDeleteProject, onMoveToRecent, onChangeProject, assignPendingSessionId,
 }: ProjectGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -652,13 +653,13 @@ function ProjectGroup({
             <ActionButton
                 $token={token}
                 title={t('common.more')}
-                disabled={assignPending}
+                disabled={session.id === assignPendingSessionId}
                 onClick={(e) => e.stopPropagation()}
             >
                 <MoreOutlined style={{ fontSize: 11 }} />
             </ActionButton>
         </Dropdown>
-    ), [t, token, onMoveToRecent, onChangeProject, assignPending])
+    ), [t, token, onMoveToRecent, onChangeProject, assignPendingSessionId])
 
     // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
     // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
@@ -688,7 +689,7 @@ function ProjectGroup({
             </GroupHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>
-                    <GroupSessionList
+                    <SessionRowsList
                         activeSessionId={activeSessionId}
                         renamingSessionId={renamingSessionId}
                         renameValue={renameValue}
@@ -720,10 +721,11 @@ function ProjectGroup({
 
 // ========== 「最近」分组组件（未归入项目的会话） ==========
 
-interface RecentGroupProps extends SessionGroupSharedProps {
+interface RecentGroupProps extends SessionListSharedProps {
     /** 归入项目（打开 AssignProjectModal） */
     onAssign: (session: Session) => void
-    assignPending: boolean
+    /** 正在归入项目的会话 id（仅该行禁用入口，其余行不受牵连） */
+    assignPendingSessionId: string | undefined
 }
 
 /**
@@ -733,7 +735,7 @@ function RecentGroup({
     activeSessionId,
     renamingSessionId, renameValue, setRenameValue,
     onRenameConfirm, onRenameCancel, onArchive, onResume, onDelete, onRenameStart,
-    renameLoading, onAssign, assignPending,
+    renameLoading, onAssign, assignPendingSessionId,
 }: RecentGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -763,12 +765,12 @@ function RecentGroup({
         <ActionButton
             $token={token}
             title={t('project.assignTo')}
-            disabled={assignPending}
+            disabled={session.id === assignPendingSessionId}
             onClick={(e) => { e.stopPropagation(); onAssign(session) }}
         >
             <FolderAddOutlined style={{ fontSize: 11 }} />
         </ActionButton>
-    ), [t, token, onAssign, assignPending])
+    ), [t, token, onAssign, assignPendingSessionId])
 
     // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
     const wrapperExpanded = expanded
@@ -792,7 +794,7 @@ function RecentGroup({
             </GroupHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>
-                    <GroupSessionList
+                    <SessionRowsList
                         activeSessionId={activeSessionId}
                         renamingSessionId={renamingSessionId}
                         renameValue={renameValue}
@@ -978,6 +980,11 @@ export function SidebarProjects() {
         setAssignSession(session)
     }, [])
 
+    // 正在变更归属的会话 id：mutation pending 时取其 variables（目标行），空闲时为 undefined
+    const assignPendingSessionId = assignMutation.isPending
+        ? assignMutation.variables?.sessionId
+        : undefined
+
     const sharedProps = {
         activeSessionId,
         renamingSessionId,
@@ -1014,13 +1021,13 @@ export function SidebarProjects() {
                     onDeleteProject={handleDeleteProject}
                     onMoveToRecent={handleMoveToRecent}
                     onChangeProject={handleOpenAssign}
-                    assignPending={assignMutation.isPending}
+                    assignPendingSessionId={assignPendingSessionId}
                 />
             ))}
             <RecentGroup
                 {...sharedProps}
                 onAssign={handleOpenAssign}
-                assignPending={assignMutation.isPending}
+                assignPendingSessionId={assignPendingSessionId}
             />
 
             {/* 新建/编辑项目弹窗 */}

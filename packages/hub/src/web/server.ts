@@ -29,7 +29,6 @@ import { createAuthRoutes } from './routes/auth'
 import { createEventsRoutes } from './routes/events'
 import { createSessionsRoutes } from './routes/sessions'
 import { createProjectsRoutes } from './routes/projects'
-import { createSessionGroupsRoutes } from './routes/sessionGroups'
 import { createMessagesRoutes } from './routes/messages'
 import { createPermissionsRoutes } from './routes/permissions'
 import { createMachinesRoutes } from './routes/machines'
@@ -153,7 +152,6 @@ export function createWebApp(options: {
     app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker))
     app.route('/api', createSessionsRoutes(options.getSyncEngine))
     app.route('/api', createProjectsRoutes(options.getSyncEngine))
-    app.route('/api', createSessionGroupsRoutes(options.getSyncEngine, options.store))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))
     app.route('/api', createMachinesRoutes(options.getSyncEngine))

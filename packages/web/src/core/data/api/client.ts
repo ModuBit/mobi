@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
-import type { Session, DecryptedMessage, MessagesResponse, SessionGroupsResponse, GroupSessionsResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
+import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
 import type { PermissionMode } from '@mobi/shared'
 
 // 全局 401 处理回调（由外部设置）
@@ -254,20 +254,7 @@ export function createMobiApi() {
             getSubscriptionStatus: () => client.get<{ subscribed: boolean }>('/api/push/subscription'),
         },
 
-        // Session Groups
-        sessionGroups: {
-            list: () => client.get<SessionGroupsResponse>('/api/session-groups'),
-            getSessions: (groupKey: string, cursor?: number, limit?: number) =>
-                client.get<GroupSessionsResponse>('/api/session-groups/sessions', {
-                    params: {
-                        groupKey,
-                        ...(cursor !== undefined && { cursor }),
-                        limit: limit ?? 20
-                    }
-                }),
-        },
-
-        // Projects（项目实体化，替代 sessionGroups）
+        // Projects（项目实体化，会话按项目 / 「最近」组织）
         projects: {
             // 项目列表（?machineId= 过滤某机器名下项目）
             list: (machineId?: string) =>

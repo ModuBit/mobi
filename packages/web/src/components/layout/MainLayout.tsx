@@ -19,7 +19,6 @@ import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { AppSidebar } from './AppSidebar'
 import { MobileMenuDrawer } from './MobileMenu'
-import { SessionListDrawer } from './SessionListDrawer'
 import { WcoTitleBar, resolveChromeColor } from './WcoTitleBar'
 import { useWindowControlsOverlay, WcoContext } from './useWindowControlsOverlay'
 import { Outlet } from '@tanstack/react-router'
@@ -106,7 +105,6 @@ export function MainLayout() {
                     </Layout.Content>
                 </Layout>
             </div>
-            <SessionListDrawer />
             {/* 移动端底部弹出菜单 */}
             <MobileMenuDrawer />
             </WcoContext.Provider>

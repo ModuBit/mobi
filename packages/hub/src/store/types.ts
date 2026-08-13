@@ -29,7 +29,6 @@ export type StoredSession = {
     agentStateVersion: number
     runtimeState: unknown | null
     runtimeStateUpdatedAt: number | null
-    groupKey: string | null
     /** 归属项目 id；游离会话为 null */
     projectId: string | null
     seq: number

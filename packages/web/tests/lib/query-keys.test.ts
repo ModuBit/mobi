@@ -29,11 +29,6 @@ describe('queryKeys', () => {
             expect(Array.isArray(queryKeys.sessions)).toBe(true)
         })
 
-        it('sessionGroups 应为 as const 元组', () => {
-            expect(queryKeys.sessionGroups).toEqual(['sessionGroups'])
-            expect(Array.isArray(queryKeys.sessionGroups)).toBe(true)
-        })
-
         it('machines 应为 as const 元组', () => {
             expect(queryKeys.machines).toEqual(['machines'])
             expect(Array.isArray(queryKeys.machines)).toBe(true)
@@ -49,12 +44,6 @@ describe('queryKeys', () => {
 
         it('不同 sessionId 应产生不同的 key', () => {
             expect(queryKeys.session('a')).not.toEqual(queryKeys.session('b'))
-        })
-
-        it('groupSessions(groupKey) 应返回正确元组', () => {
-            const key = queryKeys.groupSessions('today')
-            expect(key).toEqual(['groupSessions', 'today'])
-            expect(key).toHaveLength(2)
         })
 
         it('gitStatus(sessionId) 应返回正确元组', () => {
@@ -126,8 +115,8 @@ describe('queryKeys', () => {
     describe('key 唯一性', () => {
         it('不同类型的静态 key 应互不相等', () => {
             expect(queryKeys.sessions).not.toEqual(queryKeys.machines)
-            expect(queryKeys.sessions).not.toEqual(queryKeys.sessionGroups)
-            expect(queryKeys.machines).not.toEqual(queryKeys.sessionGroups)
+            expect(queryKeys.sessions).not.toEqual(queryKeys.projects)
+            expect(queryKeys.machines).not.toEqual(queryKeys.projects)
         })
 
         it('同一工厂函数不同参数应产生不同 key', () => {

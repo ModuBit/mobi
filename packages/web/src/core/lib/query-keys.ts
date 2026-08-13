@@ -25,10 +25,6 @@ export const queryKeys = {
     session: (sessionId: string) => ['session', sessionId] as const,
     /** Sidechain 消息 */
     sidechainMessages: (sessionId: string, parentToolUseId: string) => ['sidechain-messages', sessionId, parentToolUseId] as const,
-    /** 会话分组列表 */
-    sessionGroups: ['sessionGroups'] as const,
-    /** 分组下的会话 */
-    groupSessions: (groupKey: string) => ['groupSessions', groupKey] as const,
     /** 项目列表（第二维为 machineId 或 'all'；亦可作前缀失效所有项目查询） */
     projects: ['projects'] as const,
     /** 项目内会话（ID 分页；前缀 ['projectSessions'] 用于批量失效） */

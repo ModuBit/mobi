@@ -16,7 +16,7 @@
 
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import { usePagedSessionGroup } from '@/core/data/hooks/queries/usePagedSessionGroup'
+import { usePagedSessionList } from '@/core/data/hooks/queries/usePagedSessionList'
 import { queryKeys } from '@/core/lib/query-keys'
 import { mergeSessions } from '@/core/data/cache/sessionCache'
 import type { Session, ProjectSessionsPage } from '@/core/data/api/types'
@@ -28,9 +28,9 @@ const PAGE_SIZE = 20
  *
  * - 分页查询拿到完整 Session 后 upsert 进全局 ['sessions'] 缓存，本查询只返回 sessionIds
  *   （单一数据源策略）
- * - 分页/展开/剩余数等展示逻辑由 usePagedSessionGroup 共享核心承担
+ * - 分页/展开/剩余数等展示逻辑由 usePagedSessionList 共享核心承担
  */
-export type UseRecentSessionsResult = ReturnType<typeof usePagedSessionGroup>
+export type UseRecentSessionsResult = ReturnType<typeof usePagedSessionList>
 
 export function useRecentSessions(
     activeSessionId?: string,
@@ -69,5 +69,5 @@ export function useRecentSessions(
     })
 
     // 分页/展开/剩余数等展示逻辑：共享核心
-    return usePagedSessionGroup(query, activeSessionId, defaultExpanded)
+    return usePagedSessionList(query, activeSessionId, defaultExpanded)
 }

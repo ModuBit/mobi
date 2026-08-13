@@ -18,7 +18,7 @@ import { useMemo } from 'react'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
-import { usePagedSessionGroup } from '@/core/data/hooks/queries/usePagedSessionGroup'
+import { usePagedSessionList } from '@/core/data/hooks/queries/usePagedSessionList'
 import { queryKeys } from '@/core/lib/query-keys'
 import { mergeSessions } from '@/core/data/cache/sessionCache'
 import type { Session, ProjectSessionsPage } from '@/core/data/api/types'
@@ -26,12 +26,12 @@ import type { Session, ProjectSessionsPage } from '@/core/data/api/types'
 const PAGE_SIZE = 20
 
 /**
- * 项目内会话列表的统一逻辑层（由 useProjectGroupSessions 改造：groupKey → projectId）
+ * 项目内会话列表的统一逻辑层
  *
  * 收口 PC（SidebarProjects）与移动端（MobileProjectList）共用：
  * - 项目内会话分页查询：拿到完整 Session 后 upsert 进全局 ['sessions'] 缓存，
  *   本查询只返回 sessionIds（单一数据源策略）
- * - 分页/展开/剩余数等展示逻辑由 usePagedSessionGroup 共享核心承担
+ * - 分页/展开/剩余数/total 等展示逻辑由 usePagedSessionList 共享核心承担
  * - 完整项目路径提取（从 useProjects 缓存取该项目 primary folder path，供「新建会话」cwd）
  */
 export interface UseProjectSessionsResult {
@@ -99,7 +99,7 @@ export function useProjectSessions(
     })
 
     // 分页/展开/剩余数等展示逻辑：共享核心
-    const paged = usePagedSessionGroup(query, activeSessionId)
+    const paged = usePagedSessionList(query, activeSessionId)
 
     // 项目列表（取 primary folder path；与侧边栏共享同一份缓存）
     const { data: projects } = useProjects()
@@ -110,13 +110,9 @@ export function useProjectSessions(
         return projects?.find(p => p.id === projectId)?.folders.find(f => f.primary)?.path ?? ''
     }, [projects, projectId])
 
-    // 后端真实总数（删除项目二次确认文案「名下 N 个会话将移至最近」）
-    const pages = query.data?.pages
-    const total = pages && pages.length > 0 ? pages[pages.length - 1].total : undefined
-
+    // total（删除项目二次确认文案用）直接取共享核心的返回，不再从 pages 重算
     return {
         ...paged,
         fullProjectPath,
-        total,
     }
 }

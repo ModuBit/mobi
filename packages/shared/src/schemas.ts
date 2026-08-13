@@ -454,7 +454,6 @@ export const SessionSchema = z.object({
     runtimeState: RuntimeStateSchema.optional(),
     permissionMode: PermissionModeSchema.optional(),
     mode: z.enum(['local', 'remote']).optional(),
-    groupKey: z.string().optional(),
     tag: z.string().nullable().optional(),   // Hub session 的标签，用于 getOrCreateSession 时复用
     /** 归属项目（null = 游离，进「最近」） */
     projectId: z.string().nullable().optional(),

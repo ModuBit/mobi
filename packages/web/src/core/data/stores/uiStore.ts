@@ -45,8 +45,6 @@ interface UiState {
     theme: Theme
     locale: Locale
     mobileMenuOpen: boolean
-    sessionListDrawerOpen: boolean
-    newSessionDrawerOpen: boolean
     // 侧边栏展开/收起（桌面端）
     sidebarExpanded: boolean
     // 重命名
@@ -56,8 +54,6 @@ interface UiState {
     setTheme: (theme: Theme) => void
     setLocale: (locale: Locale) => void
     setMobileMenuOpen: (open: boolean) => void
-    setSessionListDrawerOpen: (open: boolean) => void
-    setNewSessionDrawerOpen: (open: boolean) => void
     toggleSidebar: () => void
     startRename: (sessionId: string, currentValue: string) => void
     setRenameValue: (value: string) => void
@@ -70,8 +66,6 @@ export const useUiStore = create<UiState>()(
             theme: 'dark',
             locale: getSystemLocale(),
             mobileMenuOpen: false,
-            sessionListDrawerOpen: false,
-            newSessionDrawerOpen: false,
             sidebarExpanded: true,
             renamingSessionId: null,
             renameValue: '',
@@ -81,8 +75,6 @@ export const useUiStore = create<UiState>()(
                 return set({ locale })
             },
             setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
-            setSessionListDrawerOpen: (open) => set({ sessionListDrawerOpen: open }),
-            setNewSessionDrawerOpen: (open) => set({ newSessionDrawerOpen: open }),
             toggleSidebar: () => set((state) => ({ sidebarExpanded: !state.sidebarExpanded })),
             startRename: (sessionId, currentValue) => set({ renamingSessionId: sessionId, renameValue: currentValue }),
             setRenameValue: (value) => set({ renameValue: value }),
