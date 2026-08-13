@@ -15,13 +15,12 @@
  */
 
 import { useMemo } from 'react'
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { usePagedSessionList } from '@/core/data/hooks/queries/usePagedSessionList'
+import { useSessionIdsPages } from '@/core/data/hooks/queries/useSessionIdsPages'
 import { queryKeys } from '@/core/lib/query-keys'
-import { mergeSessions } from '@/core/data/cache/sessionCache'
-import type { Session, ProjectSessionsPage } from '@/core/data/api/types'
+import type { Session } from '@/core/data/api/types'
 
 const PAGE_SIZE = 20
 
@@ -29,8 +28,8 @@ const PAGE_SIZE = 20
  * 项目内会话列表的统一逻辑层
  *
  * 收口 PC（SidebarProjects）与移动端（MobileProjectList）共用：
- * - 项目内会话分页查询：拿到完整 Session 后 upsert 进全局 ['sessions'] 缓存，
- *   本查询只返回 sessionIds（单一数据源策略）
+ * - 项目内会话无限分页 + ['sessions'] upsert 脚手架由 useSessionIdsPages 承担
+ *   （单一数据源策略）
  * - 分页/展开/剩余数/total 等展示逻辑由 usePagedSessionList 共享核心承担
  * - 完整项目路径提取（从 useProjects 缓存取该项目 primary folder path，供「新建会话」cwd）
  */
@@ -67,34 +66,12 @@ export function useProjectSessions(
     activeSessionId?: string,
 ): UseProjectSessionsResult {
     const api = useMobiApi()
-    const queryClient = useQueryClient()
 
     // 获取该项目下的会话 ID 列表（始终请求，避免折叠时无数据判断激活态）
-    const query = useInfiniteQuery<ProjectSessionsPage>({
+    const query = useSessionIdsPages({
         queryKey: queryKeys.projectSessions(projectId!),
-        queryFn: async ({ pageParam }) => {
-            const cursor = pageParam as number | undefined
-            const res = await api.projects.sessions(projectId!, cursor, PAGE_SIZE)
-
-            // 将完整 Session 数据 upsert 到全局 sessions 缓存（单一数据源）
-            queryClient.setQueryData<Session[]>(queryKeys.sessions, (old) =>
-                mergeSessions(old, res.data.sessions)
-            )
-
-            return {
-                sessionIds: res.data.sessions.map(s => s.id),
-                nextCursor: res.data.nextCursor,
-                hasMore: res.data.hasMore,
-                total: res.data.total,
-            }
-        },
-        initialPageParam: undefined,
-        getNextPageParam: (lastPage) => {
-            if (!lastPage.hasMore || lastPage.nextCursor === null) {
-                return undefined
-            }
-            return lastPage.nextCursor
-        },
+        fetchPage: (cursor) =>
+            api.projects.sessions(projectId!, cursor ?? undefined, PAGE_SIZE).then(res => res.data),
         enabled: !!projectId,
     })
 
