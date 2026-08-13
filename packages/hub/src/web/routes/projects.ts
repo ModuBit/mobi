@@ -15,7 +15,7 @@
  */
 
 import type { SessionSummary } from '@mobi/shared'
-import { ProjectFolderSchema, validateProjectFolders } from '@mobi/shared'
+import { ProjectFolderSchema, toSessionSummary, validateProjectFolders } from '@mobi/shared'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -24,69 +24,23 @@ import { checkProjectAssignable, type Session, type SyncEngine } from '../../syn
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSyncEngine } from './guards'
 
-// 构建实时 session 状态映射（用于获取正确的 active 状态）
-function buildLiveSessionMap(engine: SyncEngine, namespace: string): Map<string, Session> {
-    const liveSessions = engine.getSessionsByNamespace(namespace)
-    const map = new Map<string, Session>()
-    for (const session of liveSessions) {
-        map.set(session.id, session)
-    }
-    return map
-}
-
-// 将 StoredSession 转换为 SessionSummary，使用实时数据获取 active 状态
-function toSummary(s: StoredSession, liveSessionMap: Map<string, Session>): SessionSummary {
-    // 从实时数据中获取 active 状态（数据库不存储）
-    const liveSession = liveSessionMap.get(s.id)
-    const active = liveSession?.active ?? false
-    const activeAt = liveSession?.activeAt ?? 0
-    const running = liveSession?.running ?? false
-
-    const metadata = s.metadata as {
-        path?: string
-        name?: string
-        machineId?: string
-        summary?: { text: string }
-        flavor?: string | null
-        worktree?: { basePath: string; branch: string; name: string }
-    } | null
-
-    const agentState = s.agentState as { requests?: Record<string, unknown> } | null
-    const runtimeState = s.runtimeState as { todos?: Array<{ status: string }>; tasks?: Array<{ status: string }> } | null
-
-    const pendingRequestsCount = agentState?.requests ? Object.keys(agentState.requests).length : 0
-
-    // metadata 必须包含 path 才能创建 summaryMetadata
-    const summaryMetadata = metadata?.path ? {
-        name: metadata.name,
-        path: metadata.path,
-        machineId: metadata.machineId ?? undefined,
-        summary: metadata.summary ? { text: metadata.summary.text } : undefined,
-        flavor: metadata.flavor ?? null,
-        worktree: metadata.worktree
-    } : null
-
-    const todoProgress = runtimeState?.todos?.length ? {
-        completed: runtimeState.todos.filter(t => t.status === 'completed').length,
-        total: runtimeState.todos.length
-    } : null
-
-    const taskProgress = runtimeState?.tasks?.length ? {
-        completed: runtimeState.tasks.filter(t => t.status === 'completed').length,
-        total: runtimeState.tasks.length
-    } : null
-
-    return {
-        id: s.id,
-        active,
-        running,
-        activeAt,
-        updatedAt: s.updatedAt,
-        metadata: summaryMetadata,
-        todoProgress,
-        taskProgress,
-        pendingRequestsCount
-    }
+/**
+ * 将分页查出的 StoredSession 修饰为 SessionSummary（复用 shared 的 toSessionSummary，
+ * 不再本地复刻字段装配）。active/running/activeAt/mode 不入库，只能取内存会话缓存的
+ * 实时值——逐 id 调 engine.getSession（缓存命中），替代此前每个分页请求全 namespace
+ * 扫描建 Map 只为修饰 ≤limit 行的 O(namespace) 浪费
+ */
+function toSummaryWithLiveState(engine: SyncEngine, stored: StoredSession): SessionSummary {
+    const live = engine.getSession(stored.id)
+    // 存储字段（updatedAt/metadata/进度计数）以分页行为准，仅叠加内存态字段
+    const session = {
+        ...stored,
+        active: live?.active ?? false,
+        activeAt: live?.activeAt ?? 0,
+        running: live?.running ?? false,
+        mode: live?.mode,
+    } as unknown as Session
+    return toSessionSummary(session)
 }
 
 const listProjectsQuerySchema = z.object({
@@ -193,8 +147,7 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const namespace = c.get('namespace')
         const result = engine.getUnboundSessions(namespace, parsed.data.cursor ?? null, parsed.data.limit)
 
-        const liveSessionMap = buildLiveSessionMap(engine, namespace)
-        const sessions = result.sessions.map(s => toSummary(s, liveSessionMap))
+        const sessions = result.sessions.map(s => toSummaryWithLiveState(engine, s))
 
         return c.json({
             sessions,
@@ -296,8 +249,7 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
         const result = engine.getSessionsByProject(namespace, id, parsed.data.cursor ?? null, parsed.data.limit)
 
-        const liveSessionMap = buildLiveSessionMap(engine, namespace)
-        const sessions = result.sessions.map(s => toSummary(s, liveSessionMap))
+        const sessions = result.sessions.map(s => toSummaryWithLiveState(engine, s))
 
         return c.json({
             sessions,
