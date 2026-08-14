@@ -15,11 +15,11 @@
  */
 
 /**
- * 回归守卫：置顶乐观更新
+ * 回归守卫：置顶 API success 后本地缓存立即生效
  *
- * 点击后本地缓存先行生效（分组成员 + pinned 标记立即翻转，不等 invalidate→refetch
- * 的 2-3s 链路）；API 失败回滚快照；成功后 invalidate 补偿。
- * 用可控 deferred 模拟 API 时序：mutate 发出后、API 未 resolve 时断言缓存已翻转。
+ * PATCH 成功瞬间分组成员 + pinned 标记当场翻转（不等 invalidate→refetch 的
+ * 2-3s 收敛链路）；API 在途期间缓存不动（loading 由调用方展示）；失败不改缓存。
+ * 用可控 deferred 模拟 API 时序：mutate 发出后、未 resolve 时断言缓存未动。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -85,30 +85,34 @@ function deferred() {
     return { promise, resolve, reject }
 }
 
-describe('useSetSessionPinned 乐观更新', () => {
+describe('useSetSessionPinned success 后本地立即生效', () => {
     beforeEach(() => {
         vi.clearAllMocks()
     })
 
-    it('pin：API 未返回时缓存已翻转（进置顶区、离开项目组、pinned=true）', async () => {
+    it('pin：API 在途时缓存不动，success 瞬间翻转（进置顶区、离开项目组、pinned=true）', async () => {
         const { qc, result } = setup()
         const d = deferred()
         setPinnedMock.mockReturnValueOnce(d.promise)
 
         await act(async () => {
             void result.current.mutateAsync({ sessionId: 's1', pinned: true })
-            // 让 onMutate 的微任务跑完（API 仍挂起）
+            // 让在途状态跑完微任务（API 仍挂起）
             await Promise.resolve()
         })
 
-        // 乐观态立即生效
-        expect(qc.getQueryData<Session[]>(queryKeys.sessions)![0].pinned).toBe(true)
-        expect(qc.getQueryData<any>(queryKeys.pinnedSessions)!.pages[0].sessionIds).toEqual(['s1'])
-        expect(qc.getQueryData<any>(queryKeys.projectSessions('p1'))!.pages[0].sessionIds).toEqual([])
+        // API 未返回：缓存保持原状（期间由调用方展示 loading）
+        expect(qc.getQueryData<Session[]>(queryKeys.sessions)![0].pinned).toBe(false)
+        expect(qc.getQueryData<any>(queryKeys.pinnedSessions)!.pages[0].sessionIds).toEqual([])
 
         d.resolve(undefined)
         await waitFor(() => expect(result.current.isSuccess).toBe(true))
         expect(setPinnedMock).toHaveBeenCalledWith('s1', true)
+
+        // success 瞬间本地生效
+        expect(qc.getQueryData<Session[]>(queryKeys.sessions)![0].pinned).toBe(true)
+        expect(qc.getQueryData<any>(queryKeys.pinnedSessions)!.pages[0].sessionIds).toEqual(['s1'])
+        expect(qc.getQueryData<any>(queryKeys.projectSessions('p1'))!.pages[0].sessionIds).toEqual([])
     })
 
     it('unpin：回填原项目组（projectId 有值）', async () => {
@@ -141,7 +145,7 @@ describe('useSetSessionPinned 乐观更新', () => {
         expect(qc.getQueryData<any>(queryKeys.recentSessions)!.pages[0].sessionIds).toEqual(['s1'])
     })
 
-    it('API 失败：回滚乐观态到快照', async () => {
+    it('API 失败：不做任何本地改动', async () => {
         const { qc, result } = setup()
 
         setPinnedMock.mockRejectedValueOnce(new Error('network'))
@@ -149,7 +153,7 @@ describe('useSetSessionPinned 乐观更新', () => {
             await result.current.mutateAsync({ sessionId: 's1', pinned: true }).catch(() => {})
         })
 
-        // 回滚：pinned=false、仍在项目组、置顶区为空
+        // 缓存保持原状：pinned=false、仍在项目组、置顶区为空
         expect(qc.getQueryData<Session[]>(queryKeys.sessions)![0].pinned).toBe(false)
         expect(qc.getQueryData<any>(queryKeys.projectSessions('p1'))!.pages[0].sessionIds).toEqual(['s1'])
         expect(qc.getQueryData<any>(queryKeys.pinnedSessions)!.pages[0].sessionIds).toEqual([])

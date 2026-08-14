@@ -18,12 +18,12 @@ import type { InfiniteData } from '@tanstack/react-query'
 import type { ProjectSessionsPage } from '@/core/data/api/types'
 
 /**
- * 置顶乐观更新的缓存调整（纯函数，便于单测）。
+ * 置顶成功后的本地缓存调整（纯函数，便于单测）。
  *
- * 背景：置顶点击后走「mutation → invalidate → refetch → SSE 批处理」链路，
- * 大库多会话时整条收敛要 2-3s，用户感知「点了没反应」。改为点击瞬间本地先生效：
- * 分组成员（sessionIds pages）与 pinned 标记立即翻转，成功后的 invalidate 与
- * SSE 事件做真值补偿（顺带同步其他端）。
+ * 背景：置顶若只靠「invalidate → refetch → SSE 批处理」链路收敛，
+ * 大库多会话时要 2-3s，用户感知「点了没反应」。改为 PATCH success 后
+ * 本地缓存立即生效：分组成员（sessionIds pages）与 pinned 标记当场翻转，
+ * 随后的 invalidate 与 SSE 事件做真值补偿（顺带同步其他端）。
  */
 
 /**
