@@ -15,13 +15,14 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
-import { Alert, App, AutoComplete, Button, Form, Input, Modal, Radio, Select, Spin, theme } from 'antd'
+import { Alert, App, AutoComplete, Button, Drawer, Form, Input, Modal, Radio, Select, Spin, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { DesktopOutlined, FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
 import { validateProjectFolders, type ProjectFolder } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useCreateProject, useUpdateProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { Project } from '@/core/data/api/types'
 import { buildMachineSelectOptions } from '@/core/utils/machineUtils'
 
@@ -42,13 +43,14 @@ interface FolderRowProps {
     onRemove: () => void
 }
 
-/** 单个文件夹行：路径输入（子目录补全）+ 主目录 Radio + 移除按钮 */
+/** 单个文件夹行：路径输入（子目录补全）+ 主目录 Radio + 移除按钮（移动端纵向堆叠） */
 function FolderRow({
     machineId, homeDir, folder, canRemove, disabled,
     onPathChange, onPrimaryChange, onRemove,
 }: FolderRowProps) {
     const { t } = useTranslation()
     const { token } = theme.useToken()
+    const isMobile = useIsMobile()
     const { options, isLoading } = useMachineDirectoryListing(machineId, folder.path, homeDir)
 
     const autoCompleteOptions = useMemo(() => {
@@ -60,35 +62,44 @@ function FolderRow({
     }, [folder.path, options, homeDir])
 
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={isMobile
+            ? { display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }
+            : { display: 'flex', alignItems: 'center', gap: 8 }}
+        >
             <AutoComplete
                 value={folder.path}
                 options={autoCompleteOptions}
                 onChange={onPathChange}
                 placeholder={t('project.folderPathPlaceholder')}
                 disabled={disabled}
-                style={{ flex: 1 }}
+                style={{ flex: 1, width: isMobile ? '100%' : undefined }}
                 popupMatchSelectWidth={false}
                 suffixIcon={isLoading ? <Spin size="small" /> : undefined}
                 onSelect={(value) => onPathChange(value)}
             />
-            <Radio
-                checked={folder.primary}
-                onChange={onPrimaryChange}
-                disabled={disabled}
-                title={t('project.primary')}
+            {/* 移动端窄屏一行放不下：Radio + 移除按钮单独一行，两端对齐 */}
+            <div style={isMobile
+                ? { display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
+                : { display: 'contents' }}
             >
-                {t('project.primary')}
-            </Radio>
-            <Button
-                type="text"
-                size="small"
-                icon={<MinusOutlined />}
-                disabled={disabled || !canRemove}
-                onClick={onRemove}
-                title={t('project.removeFolder')}
-                style={{ color: canRemove ? token.colorError : undefined }}
-            />
+                <Radio
+                    checked={folder.primary}
+                    onChange={onPrimaryChange}
+                    disabled={disabled}
+                    title={t('project.primary')}
+                >
+                    {t('project.primary')}
+                </Radio>
+                <Button
+                    type="text"
+                    size="small"
+                    icon={<MinusOutlined />}
+                    disabled={disabled || !canRemove}
+                    onClick={onRemove}
+                    title={t('project.removeFolder')}
+                    style={{ color: canRemove ? token.colorError : undefined }}
+                />
+            </div>
         </div>
     )
 }
@@ -101,7 +112,7 @@ export interface ProjectFormModalProps {
 }
 
 /**
- * 项目新建/编辑共用表单弹窗
+ * 项目新建/编辑共用表单弹窗（端别自适应：PC 居中 Modal / 移动端底部 Drawer）
  *
  * - name：项目名
  * - machine：所属机器（新建可选，编辑不可改——项目 folders 是机器本地路径，换机器无意义）
@@ -111,6 +122,7 @@ export function ProjectFormModal({ open, onClose, project }: ProjectFormModalPro
     const { t } = useTranslation()
     const { message: messageApi } = App.useApp()
     const isEdit = !!project
+    const isMobile = useIsMobile()
 
     const { machines, isLoading: machinesLoading } = useMachines()
 
@@ -193,86 +205,124 @@ export function ProjectFormModal({ open, onClose, project }: ProjectFormModalPro
         }
     }
 
+    // 表单体两端共享，仅外壳随端别切换
+    const formBody = (
+        <Form layout="vertical" requiredMark={false} style={{ marginTop: 16 }}>
+            <Form.Item label={t('project.name')}>
+                <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={t('project.namePlaceholder')}
+                    disabled={isPending}
+                    autoFocus
+                />
+            </Form.Item>
+
+            {showMachineSelect && (
+                <Form.Item label={<><DesktopOutlined style={{ marginRight: 4 }} />{t('project.machine')}</>}>
+                    <Select
+                        value={machineId ?? undefined}
+                        onChange={setMachineId}
+                        disabled={isPending}
+                        loading={machinesLoading}
+                        placeholder={machinesLoading ? t('newSession.machineLoading') : t('newSession.machinePlaceholder')}
+                        options={buildMachineSelectOptions(machines)}
+                    />
+                </Form.Item>
+            )}
+
+            <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />{t('project.folders')}</>}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {folders.map((folder, idx) => (
+                        <FolderRow
+                            key={folder.key}
+                            machineId={machineId}
+                            homeDir={machineHomeDir}
+                            folder={folder}
+                            canRemove={folders.length > 1}
+                            disabled={isPending}
+                            onPathChange={(path) => setFolders(prev =>
+                                prev.map((f, i) => (i === idx ? { ...f, path } : f))
+                            )}
+                            onPrimaryChange={() => setFolders(prev =>
+                                prev.map((f, i) => ({ ...f, primary: i === idx }))
+                            )}
+                            onRemove={() => setFolders(prev =>
+                                prev.filter((_, i) => i !== idx)
+                            )}
+                        />
+                    ))}
+                    <Button
+                        type="dashed"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onClick={handleAddFolder}
+                        disabled={isPending}
+                        style={{ alignSelf: 'flex-start' }}
+                    >
+                        {t('project.addFolder')}
+                    </Button>
+                </div>
+            </Form.Item>
+
+            {(nameError || foldersError) && (
+                <Alert
+                    type="warning"
+                    showIcon
+                    icon={<HomeOutlined />}
+                    message={nameError ?? foldersError}
+                    style={{ marginBottom: 8 }}
+                />
+            )}
+        </Form>
+    )
+
+    const title = isEdit ? t('project.edit') : t('project.create')
+    const okText = isEdit ? t('common.save') : t('project.create')
+
+    // 移动端：底部 Drawer（height:auto / maxHeight:85vh / 底部 safe-area——web CLAUDE.md 规范），
+    // 操作按钮随表单流入 body 底部（无 footer 栏）
+    if (isMobile) {
+        return (
+            <Drawer
+                title={title}
+                open={open}
+                onClose={() => { if (!isPending) onClose() }}
+                placement="bottom"
+                closable={false}
+                maskClosable={!isPending}
+                destroyOnClose
+                styles={{
+                    wrapper: { height: 'auto', maxHeight: '85vh' },
+                    body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' },
+                }}
+            >
+                {formBody}
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                    <Button block disabled={isPending} onClick={onClose}>
+                        {t('common.cancel')}
+                    </Button>
+                    <Button block type="primary" disabled={!isValid} loading={isPending} onClick={handleOk}>
+                        {okText}
+                    </Button>
+                </div>
+            </Drawer>
+        )
+    }
+
     return (
         <Modal
-            title={isEdit ? t('project.edit') : t('project.create')}
+            title={title}
             open={open}
             onOk={handleOk}
             onCancel={onClose}
             confirmLoading={isPending}
             okButtonProps={{ disabled: !isValid }}
-            okText={isEdit ? t('common.save') : t('project.create')}
+            okText={okText}
             cancelText={t('common.cancel')}
             destroyOnClose
         >
-            <Form layout="vertical" requiredMark={false} style={{ marginTop: 16 }}>
-                <Form.Item label={t('project.name')}>
-                    <Input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder={t('project.namePlaceholder')}
-                        disabled={isPending}
-                        autoFocus
-                    />
-                </Form.Item>
-
-                {showMachineSelect && (
-                    <Form.Item label={<><DesktopOutlined style={{ marginRight: 4 }} />{t('project.machine')}</>}>
-                        <Select
-                            value={machineId ?? undefined}
-                            onChange={setMachineId}
-                            disabled={isPending}
-                            loading={machinesLoading}
-                            placeholder={machinesLoading ? t('newSession.machineLoading') : t('newSession.machinePlaceholder')}
-                            options={buildMachineSelectOptions(machines)}
-                        />
-                    </Form.Item>
-                )}
-
-                <Form.Item label={<><FolderOutlined style={{ marginRight: 4 }} />{t('project.folders')}</>}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {folders.map((folder, idx) => (
-                            <FolderRow
-                                key={folder.key}
-                                machineId={machineId}
-                                homeDir={machineHomeDir}
-                                folder={folder}
-                                canRemove={folders.length > 1}
-                                disabled={isPending}
-                                onPathChange={(path) => setFolders(prev =>
-                                    prev.map((f, i) => (i === idx ? { ...f, path } : f))
-                                )}
-                                onPrimaryChange={() => setFolders(prev =>
-                                    prev.map((f, i) => ({ ...f, primary: i === idx }))
-                                )}
-                                onRemove={() => setFolders(prev =>
-                                    prev.filter((_, i) => i !== idx)
-                                )}
-                            />
-                        ))}
-                        <Button
-                            type="dashed"
-                            size="small"
-                            icon={<PlusOutlined />}
-                            onClick={handleAddFolder}
-                            disabled={isPending}
-                            style={{ alignSelf: 'flex-start' }}
-                        >
-                            {t('project.addFolder')}
-                        </Button>
-                    </div>
-                </Form.Item>
-
-                {(nameError || foldersError) && (
-                    <Alert
-                        type="warning"
-                        showIcon
-                        icon={<HomeOutlined />}
-                        message={nameError ?? foldersError}
-                        style={{ marginBottom: 8 }}
-                    />
-                )}
-            </Form>
+            {formBody}
         </Modal>
     )
 }

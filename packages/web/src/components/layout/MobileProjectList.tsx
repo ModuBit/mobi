@@ -23,7 +23,7 @@ import {
     PlayCircleOutlined,
     CloseOutlined,
 } from '@ant-design/icons'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -38,11 +38,12 @@ import { clearSessionResources } from '@/core/lib/sessionResources'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import {
-    Container, SectionHeader, SectionTitleText, SectionChevron,
+    Container, SectionHeader, SectionTitleText, SectionChevron, NewSessionBtn,
     SessionListWrapper, SessionListInner,
 } from './mobileProjectList.styles'
 import { MobileProjectGroup } from './MobileProjectGroup'
 import { MobileRecentGroup } from './MobileRecentGroup'
+import { ProjectFormModal } from '@/components/project/ProjectFormModal'
 import { useSectionExpanded } from './useSectionExpanded'
 
 const { useToken } = antTheme
@@ -72,6 +73,9 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
     // 重命名 Modal 状态
     const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
     const [renameValue, setRenameValue] = useState('')
+
+    // 新建项目表单状态（ProjectFormModal 端别自适应，移动端渲染为底部 Drawer）
+    const [projectModalOpen, setProjectModalOpen] = useState(false)
 
     const renameActions = useSessionActions(renameSessionId)
 
@@ -215,6 +219,13 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                         <ChevronRight size={14} />
                     </SectionChevron>
                     <SectionTitleText>{t('nav.projects')}</SectionTitleText>
+                    <NewSessionBtn
+                        $token={token}
+                        aria-label={t('nav.newProject')}
+                        onClick={(e) => { e.stopPropagation(); setProjectModalOpen(true) }}
+                    >
+                        <Plus size={18} />
+                    </NewSessionBtn>
                 </SectionHeader>
                 <SessionListWrapper $expanded={projectsExpanded}>
                     <SessionListInner>
@@ -344,6 +355,12 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                     autoFocus
                 />
             </Modal>
+
+            {/* 新建项目表单（移动端渲染为底部 Drawer） */}
+            <ProjectFormModal
+                open={projectModalOpen}
+                onClose={() => setProjectModalOpen(false)}
+            />
         </>
     )
 }

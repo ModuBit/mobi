@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { App as AntdApp } from 'antd'
@@ -68,6 +68,12 @@ vi.mock('react-i18next', async (orig) => {
     }
 })
 
+// 端别受控（setup.ts 的 matchMedia mock 恒不匹配 → useIsMobile 恒 true，需显式钉住）
+const mobileState = vi.hoisted(() => ({ current: false }))
+vi.mock('@/core/data/hooks/useMediaQuery', () => ({
+    useIsMobile: () => mobileState.current,
+}))
+
 import { ProjectFormModal } from '@/components/project/ProjectFormModal'
 import type { Project } from '@/core/data/api/types'
 
@@ -93,14 +99,18 @@ function renderModal(project?: Project | null) {
     )
 }
 
-/** 弹窗底部主按钮（确定/保存）——Modal 渲染在 body 门户，不能查 render 容器 */
+/** 弹窗底部主按钮（确定/保存）——Modal/Drawer 均渲染在 body 门户，不能查 render 容器 */
 function okButton(): HTMLButtonElement {
-    const btn = document.querySelector('.ant-modal-footer .ant-btn-primary')
+    // PC 走 Modal footer；移动端操作按钮随表单流入 Drawer body
+    const selector = mobileState.current
+        ? '.ant-drawer-body .ant-btn-primary'
+        : '.ant-modal-footer .ant-btn-primary'
+    const btn = document.querySelector(selector)
     if (!(btn instanceof HTMLButtonElement)) throw new Error('ok button not found')
     return btn
 }
 
-describe('ProjectFormModal', () => {
+describe('ProjectFormModal（PC Modal 形态）', () => {
     it('编辑模式回填 name/folders，单机时隐藏机器选择器', async () => {
         const project = makeProject({
             folders: [
@@ -179,5 +189,39 @@ describe('ProjectFormModal', () => {
             },
         })
         expect(createMutateAsync).not.toHaveBeenCalled()
+    })
+})
+
+describe('ProjectFormModal（移动端底部 Drawer 形态）', () => {
+    beforeEach(() => {
+        mobileState.current = true
+    })
+
+    afterEach(() => {
+        mobileState.current = false
+        cleanup()
+    })
+
+    it('渲染为底部 Drawer 而非 Modal，表单与操作按钮可用', async () => {
+        renderModal(makeProject())
+
+        expect(await screen.findByText('project.edit')).toBeInTheDocument()
+        expect(document.querySelector('.ant-drawer')).not.toBeNull()
+        expect(document.querySelector('.ant-modal')).toBeNull()
+        // 编辑回填即合法：Drawer 内主按钮可用
+        expect(okButton()).toBeEnabled()
+        expect(screen.getByDisplayValue('Demo')).toBeInTheDocument()
+    })
+
+    it('校验不通过时禁用 Drawer 内提交按钮', async () => {
+        renderModal(makeProject({
+            folders: [
+                { path: '/a', primary: true },
+                { path: '/b', primary: true },
+            ],
+        }))
+
+        expect(await screen.findByText('Exactly one primary folder is required')).toBeInTheDocument()
+        expect(okButton()).toBeDisabled()
     })
 })
