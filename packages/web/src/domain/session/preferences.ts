@@ -23,6 +23,7 @@ const MODEL_STORAGE_KEY = 'mobi:newSession:model'
 const YOLO_STORAGE_KEY = 'mobi:newSession:yolo'
 const EFFORT_STORAGE_KEY = 'mobi:newSession:effort'
 const PERMISSION_MODE_STORAGE_KEY = 'mobi:newSession:permissionMode'
+const LAST_USED_PROJECT_STORAGE_KEY = 'mobi:newSession:lastUsedProject'
 
 const VALID_MODELS = CLAUDE_MODEL_FALLBACK.map(m => m.value)
 
@@ -131,4 +132,31 @@ export function loadPreferredPermissionMode(): PermissionMode {
  */
 export function savePreferredPermissionMode(mode: PermissionMode): void {
     savePreference(PERMISSION_MODE_STORAGE_KEY, mode)
+}
+
+/**
+ * 加载最近新建会话使用的项目 id（直接进入新建会话时默认回选）。
+ * 项目可能已被删除，调用方须在项目列表中校验存在性后再使用
+ */
+export function loadLastUsedProjectId(): string | null {
+    try {
+        return localStorage.getItem(LAST_USED_PROJECT_STORAGE_KEY) || null
+    } catch {
+        return null
+    }
+}
+
+/**
+ * 保存最近新建会话使用的项目 id。空串视为清除（不落脏值）
+ */
+export function saveLastUsedProjectId(projectId: string): void {
+    try {
+        if (projectId) {
+            localStorage.setItem(LAST_USED_PROJECT_STORAGE_KEY, projectId)
+        } else {
+            localStorage.removeItem(LAST_USED_PROJECT_STORAGE_KEY)
+        }
+    } catch {
+        // 忽略存储错误
+    }
 }

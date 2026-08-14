@@ -53,6 +53,8 @@ import {
     savePreferredEffort,
     loadPreferredPermissionMode,
     savePreferredPermissionMode,
+    loadLastUsedProjectId,
+    saveLastUsedProjectId,
 } from '@/domain/session/preferences'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { Logo } from '@/components/layout/Logo'
@@ -345,15 +347,30 @@ export function NewSessionPage() {
             setSelectedDirectory(primaryPath)
             setConfirmedDirectory(normalizeDirectoryPath(primaryPath))
         }
+        // 记住最近使用的项目：直接进入新建会话（无 param）时默认回选
+        saveLastUsedProjectId(project.id)
     }, [])
 
-    // 搜索参数携带项目（projects 缓存异步就绪）：侧边栏「+ 新建会话」进入时预选
-    const projectAppliedRef = useRef(false)
+    // 搜索参数携带项目（projects 缓存异步就绪）：侧边栏项目上的「+ 新建会话」进入时预选。
+    // 记录已应用的 param id 而非布尔：从另一项目的「+」再次进入时 param 已变，须重新应用
+    // （布尔一次锁死会停留在首个项目上，换项目点击不再切换）
+    const appliedParamRef = useRef<string | null>(null)
     useEffect(() => {
-        if (!initialProject || projectAppliedRef.current) return
-        projectAppliedRef.current = true
+        if (!initialProject || appliedParamRef.current === initialProject.id) return
+        appliedParamRef.current = initialProject.id
         applyProject(initialProject)
     }, [initialProject, applyProject])
+
+    // 无 param 直接进入（顶栏「+ 新建会话」）：默认选中最近使用的项目。
+    // 项目可能已被删，须在列表内命中才回选；命中失败保持未选（用户手动选择）
+    const restoredLastUsedRef = useRef(false)
+    useEffect(() => {
+        if (restoredLastUsedRef.current || initialProjectId || allProjects.length === 0) return
+        restoredLastUsedRef.current = true
+        const lastUsedId = loadLastUsedProjectId()
+        const project = lastUsedId ? allProjects.find(p => p.id === lastUsedId) : undefined
+        if (project) applyProject(project)
+    }, [allProjects, initialProjectId, applyProject])
 
     // 手动选择项目（可搜索下拉）：机器 + 目录从项目派生
     const handleProjectChange = useCallback((projectId: string) => {
