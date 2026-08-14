@@ -69,13 +69,15 @@ export function normalizeDirectoryPath(path: string): string {
 
 /**
  * 判断路径是否位于 homeDir 内（homeDir 本身也算在内）。
- * 浏览器端纯字符串前缀判断（无 node path 可用）；hub 侧 validateHomeDirPath
- * 用 resolve 处理 `..` 等形态并做服务端权威校验，此处仅做提交前即时反馈。
+ * 浏览器端纯字符串判断（无 node path 可用），与 hub 侧 validateHomeDirPath 的
+ * 权威判定保持同向：斜杠归一（win32 反斜杠路径）+ 大小写不敏感——宁可放行由
+ * hub 400 兜底，不可误杀（误杀会锁死 Windows 机器上的整个表单）。`..` 等形态
+ * 不折叠，交 hub resolve 后的权威判定。
  */
 export function isPathWithinHomeDir(path: string, homeDir: string): boolean {
     if (!path || !homeDir) return false
-    const p = normalizeDirectoryPath(path)
-    const home = normalizeDirectoryPath(homeDir)
+    const p = normalizeDirectoryPath(path).replace(/\\/g, '/').toLowerCase()
+    const home = normalizeDirectoryPath(homeDir).replace(/\\/g, '/').toLowerCase()
     return p === home || p.startsWith(home + '/')
 }
 

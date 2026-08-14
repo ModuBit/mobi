@@ -40,7 +40,8 @@ function getGroupEntries(
  * （大库多会话时要 2-3s，用户感知「点了没反应/慢一拍」）：
  * - ['sessions'] 中该会话 pinned 翻转（按钮态立即正确）
  * - 分组成员同步搬移：pin → 进 ['pinnedSessions']、从「最近」/项目组移除；unpin 反向
- *   （归属未变：projectId 有值回项目组，否则回「最近」）
+ *   （归属未变：projectId 有值回项目组，否则回「最近」；缓存不含该会话、归属未知时
+ *   不本地插入，插错分组比晚到更糟，交 invalidate 收敛）
  * 随后 invalidateProjectViews + 会话本体/全局缓存失效做真值补偿；
  * SSE 事件（现有逻辑不变）负责同步其他端。
  * 失败不做任何本地改动（错误提示由调用方处理）。
@@ -55,12 +56,14 @@ export function useSetSessionPinned() {
         },
 
         onSuccess: (_data, { sessionId, pinned }) => {
-            // 会话当前归属（决定 unpin 回填哪个分组）
+            // 会话当前归属（决定 unpin 回填哪个分组）；缓存不含该会话时归属未知
             const sessions = queryClient.getQueryData<Session[]>(queryKeys.sessions)
             const session = sessions?.find(s => s.id === sessionId)
-            const restoreKey = session?.projectId
-                ? queryKeys.projectSessions(session.projectId)
-                : queryKeys.recentSessions
+            const restoreKey = session
+                ? (session.projectId
+                    ? queryKeys.projectSessions(session.projectId)
+                    : queryKeys.recentSessions)
+                : null
 
             // 1. 全局会话列表：pinned 翻转
             queryClient.setQueryData<Session[]>(queryKeys.sessions, old =>
@@ -75,15 +78,17 @@ export function useSetSessionPinned() {
                 toggleIdInPages(old, sessionId, pinned))
 
             if (pinned) {
-                // 离开原分组：从「最近」与所有项目组移除（幂等，不存在的移除是 no-op）
+                // 离开原分组：从「最近」与所有项目组移除（幂等，不存在的移除是 no-op；
+                // 归属未知时全扫是唯一安全做法）
                 queryClient.setQueryData<GroupPages>(queryKeys.recentSessions, old =>
                     toggleIdInPages(old, sessionId, false))
                 for (const [key] of getGroupEntries(queryClient, queryKeys.projectSessionsRoot)) {
                     queryClient.setQueryData<GroupPages>(key, old =>
                         toggleIdInPages(old, sessionId, false))
                 }
-            } else {
-                // 回原分组
+            } else if (restoreKey) {
+                // 回原分组。缓存查不到归属时不插——插错分组（项目会话闪进「最近」）
+                // 比晚到更糟，交给下方 invalidate 收敛
                 queryClient.setQueryData<GroupPages>(restoreKey, old =>
                     toggleIdInPages(old, sessionId, true))
             }

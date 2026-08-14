@@ -31,15 +31,16 @@ function makeData(...pages: Array<Partial<ProjectSessionsPage>>) {
 }
 
 describe('toggleIdInPages（置顶乐观更新的分组成员调整）', () => {
-    it('add：插入首页首位并 total+1', () => {
+    it('add：插入首页首位，全页 total 同步 +1（total 是分组全局数，消费方读最后一页）', () => {
         const data = makeData({ sessionIds: ['s1', 's2'], total: 2 }, { sessionIds: ['s3'], total: 3 })
 
         const next = toggleIdInPages(data, 'sx', true)!
 
         expect(next.pages[0].sessionIds).toEqual(['sx', 's1', 's2'])
         expect(next.pages[0].total).toBe(3)
-        // 非首页不动（同组各页 total 一致由 invalidate 补偿纠正）
-        expect(next.pages[1]).toBe(data.pages[1])
+        // 非首页 sessionIds 不动，仅 total 同步（与 remove 分支对称，避免「还剩 N」失真）
+        expect(next.pages[1].sessionIds).toEqual(['s3'])
+        expect(next.pages[1].total).toBe(4)
     })
 
     it('add：已存在则幂等返回原引用', () => {
@@ -63,11 +64,9 @@ describe('toggleIdInPages（置顶乐观更新的分组成员调整）', () => {
         expect(toggleIdInPages(data, 'sx', false)).toBe(data)
     })
 
-    it('add 且 pages 为空：兜底造首页', () => {
-        const next = toggleIdInPages(makeData(), 'sx', true)!
-        expect(next.pages).toHaveLength(1)
-        expect(next.pages[0].sessionIds).toEqual(['sx'])
-        expect(next.pages[0].total).toBe(1)
+    it('data 存在但 pages 为空（查询刚 reset）：原样返回，交给 invalidate 补偿（不捏造与真值无关的假页）', () => {
+        const data = makeData()
+        expect(toggleIdInPages(data, 'sx', true)).toBe(data)
     })
 
     it('缓存未拉过（undefined）：原样返回，交给 invalidate 补偿', () => {

@@ -28,9 +28,11 @@ import type { ProjectSessionsPage } from '@/core/data/api/types'
 
 /**
  * 在无限分页查询的 pages 中加入/移除会话 id（幂等：目标态已满足则原样返回）。
- * add=true：插入首页首位（置顶区新成员排最前）并 total+1；
- * add=false：从所有页移除并 total-1（各页 total 同步，避免「剩余 N」短暂失真）。
- * 缓存尚无数据（查询未拉过）时原样返回，留给 invalidate 补偿填充。
+ * add=true：插入首页首位（置顶区新成员排最前），全页 total 同步 +1；
+ * add=false：从所有页移除，全页 total 同步 -1（total 是分组全局数、各页一致，
+ * 消费方读最后一页，不同步会让「还剩 N」短暂失真）。
+ * 缓存无数据（查询未拉过）或 pages 为空（查询刚 reset）时原样返回，
+ * 留给 invalidate 补偿填充——不捏造与真值无关的假页。
  */
 export function toggleIdInPages(
     data: InfiniteData<ProjectSessionsPage> | undefined,
@@ -41,15 +43,16 @@ export function toggleIdInPages(
 
     const existed = data.pages.some(p => p.sessionIds.includes(sessionId))
     if (add === existed) return data
+    // 无页可插/可移（查询刚 reset）：原样返回，不造假页
+    if (data.pages.length === 0) return data
 
     let pages: ProjectSessionsPage[]
     if (add) {
-        pages = data.pages.length === 0
-            // 置顶区通常已拉过首页；防御性兜底（查询刚被 reset）
-            ? [{ sessionIds: [sessionId], nextCursor: null, hasMore: false, total: 1 }]
-            : data.pages.map((p, i) => i === 0
-                ? { ...p, sessionIds: [sessionId, ...p.sessionIds], total: p.total + 1 }
-                : p)
+        pages = data.pages.map((p, i) => i === 0
+            ? { ...p, sessionIds: [sessionId, ...p.sessionIds], total: p.total + 1 }
+            // 非首页 sessionIds 不动，仅 total 同步（分组全局数，与 remove 分支对称，
+            // 消费方读最后一页 total，只加首页会让「还剩 N」失真）
+            : { ...p, total: p.total + 1 })
     } else {
         pages = data.pages.map(p => ({
             ...p,

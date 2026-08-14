@@ -336,7 +336,10 @@ export function NewSessionPage() {
         return selectedDirectory
     }, [selectedDirectory, machineHomeDir])
 
-    // 选定项目 → 机器 + 工作目录（primary folder）一次性冻结进 state。
+    // 选定项目 → 机器 + 工作目录（primary folder）一次性冻结进 state，并把所选同步回
+    // URL param（replace 不产生历史条目）——param 是项目选择的唯一驱动源：手动改选后
+    // 再点侧边栏同一项目的「+」时 param 必然变化，param effect 才能重新应用
+    // （否则手动改选与 param 预选各持一份状态，会互相盖不住）。
     // selectedProjectId 是冻结快照——项目从缓存消失（被删）也不清空，spawn 仍透传由 hub 报错。
     // 项目 folders 在 hub/cli 侧冻结进 session metadata（cwd/additionalDirectories），页面只做回显
     const applyProject = useCallback((project: Project) => {
@@ -349,7 +352,8 @@ export function NewSessionPage() {
         }
         // 记住最近使用的项目：直接进入新建会话（无 param）时默认回选
         saveLastUsedProjectId(project.id)
-    }, [])
+        navigate({ to: '/sessions/new', search: { projectId: project.id }, replace: true })
+    }, [navigate])
 
     // 搜索参数携带项目（projects 缓存异步就绪）：侧边栏项目上的「+ 新建会话」进入时预选。
     // 记录已应用的 param id 而非布尔：从另一项目的「+」再次进入时 param 已变，须重新应用

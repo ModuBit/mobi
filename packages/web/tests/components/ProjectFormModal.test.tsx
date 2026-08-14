@@ -171,7 +171,7 @@ describe('ProjectFormModal（PC Modal 形态）', () => {
         expect(screen.getByDisplayValue('/b')).toBeInTheDocument()
     })
 
-    it('合法编辑提交：走 update 分支并剥掉行 key', async () => {
+    it('合法编辑提交：走 update 分支；folders 未动时 patch 只传 name（不触发 hub 全量 folders 校验）', async () => {
         const project = makeProject()
         renderModal(project)
         await screen.findByDisplayValue('Demo')
@@ -183,12 +183,29 @@ describe('ProjectFormModal（PC Modal 形态）', () => {
         })
         expect(updateMutateAsync).toHaveBeenCalledWith({
             projectId: 'p1',
-            patch: {
-                name: 'Demo',
-                folders: [{ path: '/home/u/demo', primary: true }],
-            },
+            patch: { name: 'Demo' },
         })
         expect(createMutateAsync).not.toHaveBeenCalled()
+    })
+
+    it('folders 被改动时提交携带新 folders（剥掉行 key）', async () => {
+        const project = makeProject()
+        renderModal(project)
+        const pathInput = await waitFor(() =>
+            document.querySelector('.ant-modal-body .ant-select input') as HTMLInputElement)
+        fireEvent.change(pathInput, { target: { value: '/home/u/demo2' } })
+
+        fireEvent.click(okButton())
+
+        await waitFor(() => {
+            expect(updateMutateAsync).toHaveBeenCalledWith({
+                projectId: 'p1',
+                patch: {
+                    name: 'Demo',
+                    folders: [{ path: '/home/u/demo2', primary: true }],
+                },
+            })
+        })
     })
 })
 
@@ -240,12 +257,37 @@ describe('ProjectFormModal（新建 + onCreated 回填）', () => {
     })
 
     it('home 外路径门禁：提示须位于机器主目录内 + 提交禁用（与创建会话 cwd 同一约束）', async () => {
-        renderModal(makeProject({
-            folders: [{ path: '/etc/secret', primary: true }],
-        }))
+        renderModal(makeProject())
+
+        // 新建场景无初始快照：home 外路径整体拦截
+        const pathInput = document.querySelector('.ant-modal-body .ant-select input') as HTMLInputElement
+        expect(pathInput).not.toBeNull()
+        fireEvent.change(pathInput, { target: { value: '/etc/secret' } })
 
         expect(await screen.findByText('project.folderOutsideHome')).toBeInTheDocument()
         expect(okButton()).toBeDisabled()
+    })
+
+    it('存量 home 外项目：folders 未动时纯改名可保存（patch 只传 name，不做 home 校验）', async () => {
+        // 早于 hub 前置校验创建的存量项目，folder 在 home 外（homeDir=/home/u）
+        renderModal(makeProject({
+            folders: [{ path: '/etc/legacy', primary: true }],
+        }))
+
+        // 未动 folders：不触发 home 校验，可直接提交
+        expect(okButton()).toBeEnabled()
+
+        const nameInput = screen.getByDisplayValue('Demo')
+        fireEvent.change(nameInput, { target: { value: 'Renamed' } })
+        fireEvent.click(okButton())
+
+        await waitFor(() => {
+            // folders 未变不传——hub 对显式传入的 folders 做全量校验，纯改名不应被存量 path 连坐
+            expect(updateMutateAsync).toHaveBeenCalledWith({
+                projectId: 'p1',
+                patch: { name: 'Renamed' },
+            })
+        })
     })
 })
 

@@ -145,6 +145,23 @@ describe('useSetSessionPinned success 后本地立即生效', () => {
         expect(qc.getQueryData<any>(queryKeys.recentSessions)!.pages[0].sessionIds).toEqual(['s1'])
     })
 
+    it('unpin：缓存不含该会话（归属未知）不本地插入，等 invalidate 收敛', async () => {
+        const { qc, result } = setup()
+        // 全局缓存为空，置顶区有 s1
+        qc.setQueryData<Session[]>(queryKeys.sessions, [])
+        qc.setQueryData(queryKeys.pinnedSessions, makePages(['s1']))
+        const recentBefore = qc.getQueryData<any>(queryKeys.recentSessions)
+
+        setPinnedMock.mockResolvedValueOnce(undefined)
+        await act(async () => {
+            await result.current.mutateAsync({ sessionId: 's1', pinned: false })
+        })
+
+        // 置顶区已移除，但「最近」不做插入（插错分组比晚到更糟）
+        expect(qc.getQueryData<any>(queryKeys.pinnedSessions)!.pages[0].sessionIds).toEqual([])
+        expect(qc.getQueryData<any>(queryKeys.recentSessions)).toBe(recentBefore)
+    })
+
     it('API 失败：不做任何本地改动', async () => {
         const { qc, result } = setup()
 

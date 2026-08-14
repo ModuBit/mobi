@@ -154,17 +154,24 @@ export function ProjectFormModal({ open, onClose, project, onCreated }: ProjectF
     const [folders, setFolders] = useState<EditableFolder[]>([{ key: 0, path: '', primary: true }])
 
     // 打开时按模式初始化（编辑回填 / 新建重置）——仅在打开/切换编辑对象时执行，
-    // 不追踪 machines 等数据变化（避免表单被后台 refetch 覆盖用户输入）
+    // 不追踪 machines 等数据变化（避免表单被后台 refetch 覆盖用户输入）。
+    // 同时快照初始 folders（path+primary 联合键）：home 范围校验只查「用户改动过的
+    // path」、folders 未变时 patch 不传——早于 hub 前置校验创建的存量 home 外项目
+    // 才不会连纯改名都被锁死
+    const initialFolderKeysRef = useRef<Set<string>>(new Set())
+    const folderKey = (f: { path: string; primary: boolean }) => `${f.path.trim()}|${f.primary}`
     useEffect(() => {
         if (!open) return
         if (project) {
             setName(project.name)
             setMachineId(project.machineId)
             setFolders(project.folders.map(f => ({ ...f, key: nextFolderKey() })))
+            initialFolderKeysRef.current = new Set(project.folders.map(folderKey))
         } else {
             setName('')
             setMachineId(machines.length === 1 ? machines[0].id : null)
             setFolders([{ key: nextFolderKey(), path: '', primary: true }])
+            initialFolderKeysRef.current = new Set()
         }
     }, [open, project?.id])
 
@@ -185,16 +192,28 @@ export function ProjectFormModal({ open, onClose, project, onCreated }: ProjectF
 
     // 校验：名称 + folders 结构（shared 出错误码）+ home 范围（与创建会话 cwd 同一约束）
     const nameError = name.trim() ? null : t('project.nameRequired')
+    // folders 是否被改动（行级：path 或 primary 任一变化即算——path+primary 联合键）。
+    // 存量项目可能含 home 外 path（早于 hub 前置校验创建），只拦新改动、放行未动的
+    // 旧值——否则机器后来才上报 homeDir 时，纯改名也会被整体锁死且无绕过入口
+    const foldersChanged = useMemo(
+        () => {
+            const initial = initialFolderKeysRef.current
+            return initial.size !== folders.length
+                || folders.some(f => !initial.has(folderKey(f)))
+        },
+        [folders],
+    )
     const foldersError = useMemo(() => {
         const code = validateProjectFolders(folders)
         if (code) return t(FOLDERS_ERROR_I18N[code])
-        // 机器 homeDir 已知时，folders 路径必须在其内（hub 侧 validateFoldersWithinHomeDir
+        // 机器 homeDir 已知时，改动过的 folder 路径必须在其内（hub 侧 validateFoldersWithinHomeDir
         // 是提交后的服务端兜底，这里前置到表单即时反馈；homeDir 缺失时放行，与其语义一致）
-        if (machineHomeDir && folders.some(f => !isPathWithinHomeDir(f.path.trim(), machineHomeDir))) {
+        if (machineHomeDir && foldersChanged
+            && folders.some(f => !isPathWithinHomeDir(f.path.trim(), machineHomeDir))) {
             return t('project.folderOutsideHome', { homeDir: machineHomeDir })
         }
         return null
-    }, [folders, machineHomeDir, t])
+    }, [folders, machineHomeDir, foldersChanged, t])
     const isValid = !nameError && !foldersError && !!machineId
 
     const handleAddFolder = useCallback(() => {
@@ -209,7 +228,11 @@ export function ProjectFormModal({ open, onClose, project, onCreated }: ProjectF
             if (isEdit && project) {
                 await updateMutation.mutateAsync({
                     projectId: project.id,
-                    patch: { name: name.trim(), folders: trimmedFolders },
+                    // folders 未动就不传：hub 对显式传入的 folders 做全量 home 校验，
+                    // 纯改名不应因存量 path 被拒（与上面行级校验的语义一致）
+                    patch: foldersChanged
+                        ? { name: name.trim(), folders: trimmedFolders }
+                        : { name: name.trim() },
                 })
             } else {
                 const created = await createMutation.mutateAsync({
