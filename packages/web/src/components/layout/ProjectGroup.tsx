@@ -21,7 +21,7 @@ import type { MenuProps } from 'antd'
 import { EditOutlined, DeleteOutlined, MoreOutlined, ImportOutlined, SwapOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { FolderClosed, FolderOpen, SquarePen } from 'lucide-react'
+import { FolderClosed, FolderOpen, Plus } from 'lucide-react'
 import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions'
 import type { Session, Project } from '@/core/data/api/types'
 import {
@@ -129,7 +129,7 @@ export function ProjectGroup({
                 <GroupName>{project.name}</GroupName>
                 <span className="header-actions" style={{ display: 'inline-flex', gap: 2 }}>
                     <HeaderActionButton $token={token} className="new-session-btn" onClick={handleNewSession}>
-                        <SquarePen size={13} />
+                        <Plus size={13} />
                     </HeaderActionButton>
                     <Dropdown menu={headerMenu} trigger={['click']}>
                         <HeaderActionButton

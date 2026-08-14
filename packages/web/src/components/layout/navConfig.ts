@@ -15,7 +15,7 @@
  */
 
 import {
-    SquarePen,
+    Plus,
     Search,
     Blocks,
     Clock,
@@ -34,7 +34,7 @@ export interface NavItemConfig {
 
 // 主导航项（侧边栏显示）
 export const mainNavItems: NavItemConfig[] = [
-    { key: 'new-session', icon: SquarePen, labelKey: 'nav.newSession' },
+    { key: 'new-session', icon: Plus, labelKey: 'nav.newSession' },
     { key: 'search', icon: Search, labelKey: 'nav.search', disabled: true },
     { key: 'plugins', icon: Blocks, labelKey: 'nav.plugins', disabled: true },
     { key: 'automation', icon: Clock, labelKey: 'nav.automation', disabled: true },
@@ -67,6 +67,6 @@ export function getNavActiveKey(pathname: string, key: string): boolean {
 
 // 移动端菜单项（MobileMenu 使用，项目列表单独嵌入）
 export const mobileNavItems: NavItemConfig[] = [
-    { key: 'new-session', icon: SquarePen, labelKey: 'nav.newSession' },
+    { key: 'new-session', icon: Plus, labelKey: 'nav.newSession' },
     { key: 'settings', icon: Settings, labelKey: 'nav.settings' },
 ]

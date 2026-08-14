@@ -17,8 +17,7 @@
 import type React from 'react'
 import { useCallback, useState } from 'react'
 import { App, Modal, theme as antTheme } from 'antd'
-import { FolderAddOutlined } from '@ant-design/icons'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -267,7 +266,7 @@ export function SidebarProjects() {
                     title={t('nav.newProject')}
                     onClick={handleOpenCreateProject}
                 >
-                    <FolderAddOutlined style={{ fontSize: 12 }} />
+                    <Plus size={12} />
                 </SectionActionButton>
             </SectionTitleRow>
             <SessionListWrapper $expanded={projectsExpanded}>

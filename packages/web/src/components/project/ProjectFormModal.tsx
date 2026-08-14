@@ -15,9 +15,10 @@
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
-import { Alert, App, AutoComplete, Button, Drawer, Form, Input, Modal, Radio, Select, Spin, theme } from 'antd'
+import { Alert, App, AutoComplete, Button, Form, Input, Modal, Radio, Select, Spin, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { DesktopOutlined, FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
+import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { validateProjectFolders, type ProjectFolder, type ProjectFoldersError } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useCreateProject, useUpdateProject } from '@/core/data/hooks/mutations/useProjectMutations'
@@ -324,25 +325,23 @@ export function ProjectFormModal({ open, onClose, project, onCreated }: ProjectF
     const title = isEdit ? t('project.edit') : t('project.create')
     const okText = isEdit ? t('common.save') : t('project.create')
 
-    // 移动端：底部 Drawer（height:auto / maxHeight:85vh / 底部 safe-area——web CLAUDE.md 规范），
-    // 操作按钮随表单流入 body 底部（无 footer 栏）
+    // 移动端：底部 MobileDrawer（统一行为：header 下拉手势关闭 + 手势返回按层级关闭——
+    // 哨兵栈保证多层覆盖物后入先出；height:auto / maxHeight:85dvh 由 MobileDrawer 内置），
+    // 操作按钮随表单流入 body 底部（无 footer 栏），safe-area 下沉到按钮容器
     if (isMobile) {
         return (
-            <Drawer
+            <MobileDrawer
                 title={title}
                 open={open}
                 onClose={() => { if (!isPending) onClose() }}
-                placement="bottom"
-                closable={false}
                 maskClosable={!isPending}
                 destroyOnClose
-                styles={{
-                    wrapper: { height: 'auto', maxHeight: '85vh' },
-                    body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' },
-                }}
             >
                 {formBody}
-                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <div style={{
+                    display: 'flex', gap: 8, marginTop: 16,
+                    paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+                }}>
                     <Button block disabled={isPending} onClick={onClose}>
                         {t('common.cancel')}
                     </Button>
@@ -350,7 +349,7 @@ export function ProjectFormModal({ open, onClose, project, onCreated }: ProjectF
                         {okText}
                     </Button>
                 </div>
-            </Drawer>
+            </MobileDrawer>
         )
     }
 
