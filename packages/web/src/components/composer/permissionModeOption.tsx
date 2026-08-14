@@ -17,8 +17,8 @@
 /**
  * 权限模式下拉框共享渲染
  *
- * 三处复用：NewSessionForm（新建表单）、ChatComposer（桌面端运行时切换）、
- * NewSessionPage（移动端运行时切换）。
+ * 三处复用：NewSessionPage（新建页 footer）、ChatComposer（桌面端运行时切换）、
+ * ChatComposer（移动端运行时切换）。
  *
  * 渲染策略：
  * - 选中态（label）：仅名称，紧凑显示

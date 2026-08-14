@@ -109,6 +109,8 @@ export interface ProjectFormModalProps {
     onClose: () => void
     /** 编辑模式传入项目实体；缺省为新建 */
     project?: Project | null
+    /** 新建成功回调（携带创建出的项目实体，供调用方自动回填选中） */
+    onCreated?: (project: Project) => void
 }
 
 /**
@@ -118,7 +120,7 @@ export interface ProjectFormModalProps {
  * - machine：所属机器（新建可选，编辑不可改——项目 folders 是机器本地路径，换机器无意义）
  * - folders：≥1 项且恰一项 primary（validateProjectFolders 把关，不通过禁用提交）
  */
-export function ProjectFormModal({ open, onClose, project }: ProjectFormModalProps) {
+export function ProjectFormModal({ open, onClose, project, onCreated }: ProjectFormModalProps) {
     const { t } = useTranslation()
     const { message: messageApi } = App.useApp()
     const isEdit = !!project
@@ -154,7 +156,7 @@ export function ProjectFormModal({ open, onClose, project }: ProjectFormModalPro
         }
     }, [open, project?.id])
 
-    // 单机时隐藏机器选择器，直接取唯一值（与 NewSessionForm 单机隐藏逻辑一致）
+    // 单机时隐藏机器选择器，直接取唯一值（与新建会话的单一机器隐藏逻辑一致）
     const showMachineSelect = !isEdit && machines.length > 1
     useEffect(() => {
         if (isEdit) return
@@ -192,11 +194,12 @@ export function ProjectFormModal({ open, onClose, project }: ProjectFormModalPro
                     patch: { name: name.trim(), folders: trimmedFolders },
                 })
             } else {
-                await createMutation.mutateAsync({
+                const created = await createMutation.mutateAsync({
                     name: name.trim(),
                     machineId: machineId!,
                     folders: trimmedFolders,
                 })
+                onCreated?.(created)
             }
             messageApi.success(t('common.success'))
             onClose()

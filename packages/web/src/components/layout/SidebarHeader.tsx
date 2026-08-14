@@ -90,7 +90,7 @@ export function SidebarHeader() {
             {/* Logo - 点击跳转新对话 */}
             <LogoArea
                 $token={token}
-                onClick={() => navigate({ to: '/sessions/new', search: { cwd: undefined } })}
+                onClick={() => navigate({ to: '/sessions/new', search: {} })}
             >
                 <LogoIcon />
                 <BrandName $token={token}><MobiWordmark size={15} /></BrandName>

@@ -63,7 +63,7 @@ export function ProjectGroup({
     const handleSessionClick = useSessionRowNavigate()
 
     const {
-        sessions, visibleSessions, fullProjectPath, total,
+        sessions, visibleSessions, total,
         expanded, toggleExpanded,
         isLoadingInitial, isLoadingMore,
         showCollapse, canShowMore, remainingCount,
@@ -73,8 +73,8 @@ export function ProjectGroup({
     // 新建会话：带上项目归属（hub 侧把 cwd 锁定项目 primary folder + 挂 projectId）
     const handleNewSession = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
-        navigate({ to: '/sessions/new', search: { cwd: fullProjectPath, projectId: project.id } })
-    }, [navigate, fullProjectPath, project.id])
+        navigate({ to: '/sessions/new', search: { projectId: project.id } })
+    }, [navigate, project.id])
 
     // 标题 hover 菜单：编辑 / 删除项目
     const headerMenu: MenuProps = {

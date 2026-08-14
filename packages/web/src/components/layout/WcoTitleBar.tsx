@@ -164,7 +164,7 @@ export function WcoTitleBar({ side }: WcoTitleBarProps) {
             <LeftCluster>
                 <LogoArea
                     $token={token}
-                    onClick={() => navigate({ to: '/sessions/new', search: { cwd: undefined } })}
+                    onClick={() => navigate({ to: '/sessions/new', search: {} })}
                     aria-label="Mobi"
                 >
                     <Logo style={{ width: 18, height: 18 }} />

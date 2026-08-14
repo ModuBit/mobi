@@ -63,7 +63,7 @@ const indexRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: '/',
     beforeLoad: () => {
-        throw redirect({ to: '/sessions/new', search: { cwd: undefined } })
+        throw redirect({ to: '/sessions/new', search: {} })
     },
 })
 
@@ -79,7 +79,7 @@ const sessionsIndexRoute = createRoute({
     getParentRoute: () => sessionsLayoutRoute,
     path: '/',
     beforeLoad: () => {
-        throw redirect({ to: '/sessions/new', search: { cwd: undefined } })
+        throw redirect({ to: '/sessions/new', search: {} })
     },
 })
 
@@ -90,13 +90,12 @@ const sessionDetailRoute = createRoute({
     component: SessionDetailPage,
 })
 
-// 新建会话页（支持 ?cwd= 预设目录 + ?projectId= 预设归属项目；均为可选，缺省游离会话）
+// 新建会话页（?projectId= 预设归属项目；web 创建会话必须选项目，机器/目录由项目派生）
 const newSessionRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'sessions/new',
     component: NewSessionPage,
-    validateSearch: (search: Record<string, unknown>): { cwd?: string; projectId?: string } => ({
-        cwd: (search.cwd as string) || undefined,
+    validateSearch: (search: Record<string, unknown>): { projectId?: string } => ({
         projectId: (search.projectId as string) || undefined,
     }),
 })

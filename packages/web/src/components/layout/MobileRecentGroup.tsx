@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-import type React from 'react'
 import { useCallback } from 'react'
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronRight, Plus } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import {
-    SectionHeader, SectionTitleText, SectionChevron, NewSessionBtn,
+    SectionHeader, SectionTitleText, SectionChevron,
     SessionListWrapper, SessionListInner, EmptyRow,
 } from './mobileProjectList.styles'
 import { MobileSessionItem } from './MobileSessionItem'
@@ -59,13 +58,6 @@ export function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMen
         navigate({ to: '/sessions/$sessionId', params: { sessionId } })
     }, [navigate, onCloseMenu])
 
-    // 新建会话（游离）：不带项目信息
-    const handleNewSession = useCallback((e: React.MouseEvent) => {
-        e.stopPropagation()
-        onCloseMenu()
-        navigate({ to: '/sessions/new', search: { cwd: undefined } })
-    }, [navigate, onCloseMenu])
-
     // 展开即撑开：空分区展开时展示「暂无会话」占位，加载中展示骨架
     const wrapperExpanded = expanded
     const { showSkeleton, showEmpty, showFooter } = getSessionListDisplayState({
@@ -84,9 +76,6 @@ export function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMen
                     <ChevronRight size={14} />
                 </SectionChevron>
                 <SectionTitleText>{t('nav.recent')}</SectionTitleText>
-                <NewSessionBtn $token={token} onClick={handleNewSession} aria-label={t('nav.newSessionUnassigned')}>
-                    <Plus size={18} />
-                </NewSessionBtn>
             </SectionHeader>
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>

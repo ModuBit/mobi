@@ -180,7 +180,7 @@ describe('SidebarProjects 项目实体化', () => {
 
         expect(navigateSpy).toHaveBeenCalledWith({
             to: '/sessions/new',
-            search: { cwd: '/home/u/demo', projectId: 'p1' },
+            search: { projectId: 'p1' },
         })
     })
 

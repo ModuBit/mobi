@@ -14,17 +14,15 @@
  * limitations under the License.
  */
 
-import type React from 'react'
 import { useCallback } from 'react'
 import { theme as antTheme } from 'antd'
 import { FolderAddOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
-import { ChevronRight, SquarePen } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import type { Session } from '@/core/data/api/types'
 import {
-    GroupContainer, SectionTitleRow, SectionTitle, SectionChevron, SectionActionButton,
+    GroupContainer, SectionTitleRow, SectionTitle, SectionChevron,
     SessionListWrapper, SessionListInner, ActionButton,
 } from './sidebarProjects.styles'
 import { SessionRowsList } from './SessionRowsList'
@@ -49,7 +47,6 @@ export function RecentGroup({
 }: RecentGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
-    const navigate = useNavigate()
     const handleSessionClick = useSessionRowNavigate()
 
     const {
@@ -59,12 +56,6 @@ export function RecentGroup({
         showCollapse, canShowMore, remainingCount,
         showMore, collapse,
     } = useRecentSessions(activeSessionId, true)
-
-    // 新建会话（游离）：不带项目信息
-    const handleNewSession = useCallback((e: React.MouseEvent) => {
-        e.stopPropagation()
-        navigate({ to: '/sessions/new', search: { cwd: undefined } })
-    }, [navigate])
 
     // 行内追加操作：归入项目…
     const renderExtraAction = useCallback((session: Session) => (
@@ -92,14 +83,6 @@ export function RecentGroup({
                     <ChevronRight size={12} />
                 </SectionChevron>
                 <SectionTitle $token={token}>{t('nav.recent')}</SectionTitle>
-                <SectionActionButton
-                    $token={token}
-                    className="section-extra"
-                    title={t('nav.newSessionUnassigned')}
-                    onClick={handleNewSession}
-                >
-                    <SquarePen size={12} />
-                </SectionActionButton>
             </SectionTitleRow>
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>

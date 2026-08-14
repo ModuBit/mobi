@@ -29,8 +29,7 @@ import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
 import { SessionSpawnPending } from '@/components/session/SessionSpawnPending'
-import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
-import { useRecentPaths } from '@/components/session/useRecentPaths'
+import { ProjectFormModal } from '@/components/project/ProjectFormModal'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from '@/components/composer/useDirectoryCommands'
 import { useAttachmentHandling } from '@/components/composer/useAttachmentHandling'
@@ -43,6 +42,7 @@ import { AttachmentList } from '@/components/composer/AttachmentItem'
 import { ResponsiveActionBar, type ActionItem } from '@/components/composer/ResponsiveActionBar'
 import { EnvironmentBar, extractProjectName } from '@/components/composer/EnvironmentBar'
 import { useMobiApi } from '@/core/data/api/client'
+import type { Project } from '@/core/data/api/types'
 import { type AgentType, type SessionType, CLAUDE_MODEL_FALLBACK, AGENT_OPTIONS } from '@/domain/session/types'
 import {
     loadPreferredAgent,
@@ -269,7 +269,7 @@ export function NewSessionPage() {
     const { token } = useToken()
     const { message: messageApi } = App.useApp()
     const navigate = useNavigate()
-    const { cwd: initialCwd, projectId: initialProjectId } = useSearch({ strict: false }) as { cwd?: string; projectId?: string }
+    const { projectId: initialProjectId } = useSearch({ strict: false }) as { projectId?: string }
     const api = useMobiApi()
     const hasFinePointer = useHasFinePointer()
 
@@ -287,13 +287,16 @@ export function NewSessionPage() {
     const [effort, setEffort] = useState<EffortLevel>(() => loadPreferredEffort())
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => loadPreferredPermissionMode())
 
-    // 环境配置
+    // 环境配置（项目即环境：机器 + 工作目录均为所选项目的派生快照，不再手动选择/输入）
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
     const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null)
     const [selectedDirectory, setSelectedDirectory] = useState('')
     const [sessionType, setSessionType] = useState<SessionType>('simple')
     const [worktreeName, setWorktreeName] = useState('')
     const [inputText, setInputText] = useState('')
     const [isPending, setIsPending] = useState(false)
+    // 新建项目表单（下拉底部「+ 新建项目」入口；完成创建后自动回填选中）
+    const [projectModalOpen, setProjectModalOpen] = useState(false)
 
     // 确认的目录：只有在用户明确选定（blur / 点击标签 / 初始化恢复）时才更新，
     // 用于 metadata 请求，避免输入过程中每字符触发
@@ -308,19 +311,12 @@ export function NewSessionPage() {
     // 数据
     const { machines, isLoading: isLoadingMachines } = useMachines()
     const { spawnSession } = useSpawnSession()
-    const { getRecentPaths, addRecentPath, removeRecentPath, getLastUsedMachineId, setLastUsedMachineId } = useRecentPaths()
-    const activeMachines = machines.filter(m => m.active)
-    // 搜索参数携带的归属项目（侧边栏「+ 新建会话」进入）：机器 + 目录按项目初始化，spawn 透传 projectId
+    // 全量项目（跨机器）：机器由所选项目派生，不再单独选择
     const { data: allProjects = [] } = useProjects()
     const initialProject = useMemo(
         () => (initialProjectId ? allProjects.find(p => p.id === initialProjectId) : undefined),
         [allProjects, initialProjectId],
     )
-    // 归属项目（可选）：不选 = 游离会话（进「最近」）；选中后目录锁定项目 primary folder。
-    // selectedProjectId 是冻结快照——项目从缓存消失（被删）也不清空，spawn 仍透传由 hub 报错
-    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-    // 当前选中机器的项目（手动选择只允许同机器项目）
-    const { data: machineProjects = [] } = useProjects(selectedMachineId ?? undefined)
 
     // 当前选中机器的 homeDir
     const currentMachine = machines.find(m => m.id === selectedMachineId)
@@ -338,81 +334,37 @@ export function NewSessionPage() {
         return selectedDirectory
     }, [selectedDirectory, machineHomeDir])
 
-    const { options: directoryOptions, isLoading: isDirectoryLoading } = useMachineDirectoryListing(
-        selectedMachineId,
-        selectedDirectory,
-        machineHomeDir,
-    )
-
-    // 当前机器的最近路径
-    const recentPaths = useMemo(() => getRecentPaths(selectedMachineId), [getRecentPaths, selectedMachineId])
-
-    // 初始化机器选择（自动选择上次使用的机器，search param cwd 优先）
-    useEffect(() => {
-        if (activeMachines.length === 0) return
-        if (selectedMachineId && activeMachines.find(m => m.id === selectedMachineId)) return
-        const lastUsed = getLastUsedMachineId()
-        const foundLast = lastUsed ? activeMachines.find(m => m.id === lastUsed) : null
-        if (foundLast) {
-            setSelectedMachineId(foundLast.id)
-            // search param cwd 优先于最近路径
-            const dir = initialCwd || getRecentPaths(foundLast.id)[0]
-            if (dir) {
-                setSelectedDirectory(dir)
-                setConfirmedDirectory(normalizeDirectoryPath(dir))
-            }
-        } else if (activeMachines[0]) {
-            setSelectedMachineId(activeMachines[0].id)
-            if (initialCwd) {
-                setSelectedDirectory(initialCwd)
-                setConfirmedDirectory(normalizeDirectoryPath(initialCwd))
-            }
-        }
-    }, [activeMachines, selectedMachineId, getLastUsedMachineId, getRecentPaths, initialCwd])
-
-    // search param cwd 变化时同步更新目录（响应式，非初始化场景）
-    const cwdAppliedRef = useRef<string | undefined>(undefined)
-    useEffect(() => {
-        if (!initialCwd || cwdAppliedRef.current === initialCwd) return
-        cwdAppliedRef.current = initialCwd
-        setSelectedDirectory(initialCwd)
-        setConfirmedDirectory(normalizeDirectoryPath(initialCwd))
-        setMetadataNeeded(true)
-    }, [initialCwd])
-
-    // 搜索参数携带项目（projects 缓存异步就绪）：解析结果（id + primary path）一次性冻结进 state。
-    // 此后项目即使被删也不清空——spawn 仍携带 projectId，由 hub 真报错（404），不静默降级游离。
+    // 选定项目 → 机器 + 工作目录（primary folder）一次性冻结进 state。
+    // selectedProjectId 是冻结快照——项目从缓存消失（被删）也不清空，spawn 仍透传由 hub 报错。
     // 项目 folders 在 hub/cli 侧冻结进 session metadata（cwd/additionalDirectories），页面只做回显
+    const applyProject = useCallback((project: Project) => {
+        setSelectedProjectId(project.id)
+        setSelectedMachineId(project.machineId)
+        const primaryPath = project.folders.find(f => f.primary)?.path
+        if (primaryPath) {
+            setSelectedDirectory(primaryPath)
+            setConfirmedDirectory(normalizeDirectoryPath(primaryPath))
+        }
+    }, [])
+
+    // 搜索参数携带项目（projects 缓存异步就绪）：侧边栏「+ 新建会话」进入时预选
     const projectAppliedRef = useRef(false)
     useEffect(() => {
         if (!initialProject || projectAppliedRef.current) return
         projectAppliedRef.current = true
-        setSelectedProjectId(initialProject.id)
-        setSelectedMachineId(initialProject.machineId)
-        const primaryPath = initialProject.folders.find(f => f.primary)?.path
-        if (primaryPath) {
-            setSelectedDirectory(primaryPath)
-            setConfirmedDirectory(normalizeDirectoryPath(primaryPath))
-        }
-    }, [initialProject])
+        applyProject(initialProject)
+    }, [initialProject, applyProject])
 
-    // 手动选择项目：选中 → 目录锁定项目 primary folder；清空 → 游离（目录恢复可改）
-    const handleProjectChange = useCallback((projectId: string | null) => {
-        setSelectedProjectId(projectId)
-        if (!projectId) return
-        const project = machineProjects.find(p => p.id === projectId)
-        const primaryPath = project?.folders.find(f => f.primary)?.path
-        if (primaryPath) {
-            setSelectedDirectory(primaryPath)
-            setConfirmedDirectory(normalizeDirectoryPath(primaryPath))
-        }
-    }, [machineProjects])
+    // 手动选择项目（可搜索下拉）：机器 + 目录从项目派生
+    const handleProjectChange = useCallback((projectId: string) => {
+        const project = allProjects.find(p => p.id === projectId)
+        if (project) applyProject(project)
+    }, [allProjects, applyProject])
 
-    // 机器选择变更：项目按机器隔离，换机器清空项目选择（降级游离）
-    const handleMachineChange = useCallback((machineId: string) => {
-        setSelectedMachineId(machineId)
-        setSelectedProjectId(null)
-    }, [])
+    // 下拉底部「+ 新建项目」完成创建：自动回填选中（机器/目录随项目派生）
+    const handleProjectCreated = useCallback((project: Project) => {
+        applyProject(project)
+    }, [applyProject])
 
     // 能力目标：用 confirmedDirectory 避免输入过程触发 metadata
     const capTarget = useMemo<CapabilityTarget | null>(() => {
@@ -686,14 +638,6 @@ export function NewSessionPage() {
 
             const sessionId = result.sessionId
 
-            // 记录最近使用的机器和路径
-            if (selectedMachineId) {
-                setLastUsedMachineId(selectedMachineId)
-                if (selectedDirectory.trim()) {
-                    addRecentPath(selectedMachineId, selectedDirectory.trim())
-                }
-            }
-
             // 有内容时发送消息
             if (currentText || currentAttachments.length > 0) {
                 // 拼接附件路径到消息文本（与 ChatComposer 一致）
@@ -727,7 +671,6 @@ export function NewSessionPage() {
         selectedMachineId, selectedDirectory, isPending,
         agent, model, effort, permissionMode, sessionType, worktreeName,
         selectedProjectId, spawnSession, navigate, messageApi, api.messages,
-        setLastUsedMachineId, addRecentPath,
     ])
 
     // ============ 按钮状态 ============
@@ -960,24 +903,12 @@ export function NewSessionPage() {
                     onDrop={inputDisabled ? undefined : handleDrop}
                 >
                     <EnvironmentBar
-                        machines={machines}
-                        isLoading={isLoadingMachines}
-                        selectedMachineId={selectedMachineId}
-                        onMachineChange={handleMachineChange}
-                        directoryOptions={directoryOptions}
-                        isDirectoryLoading={isDirectoryLoading}
-                        selectedDirectory={selectedDirectory}
-                        onDirectoryChange={setSelectedDirectory}
-                        onDirectoryConfirm={(dir) => setConfirmedDirectory(normalizeDirectoryPath(dir))}
-                        recentPaths={recentPaths}
-                        machineHomeDir={machineHomeDir}
-                        onRemoveRecentPath={selectedMachineId
-                            ? (path) => removeRecentPath(selectedMachineId, path)
-                            : undefined}
-                        projects={machineProjects}
+                        projects={allProjects}
                         selectedProjectId={selectedProjectId}
                         onProjectChange={handleProjectChange}
-                        directoryLocked={!!selectedProjectId}
+                        onCreateProject={() => setProjectModalOpen(true)}
+                        machineLabel={machineLabel}
+                        directoryLabel={directoryLabel}
                         disabled={false}
                     />
                     {/* Sender + Dropdowns：position: relative 使下拉定位于 Sender 上方 */}
@@ -1121,6 +1052,14 @@ export function NewSessionPage() {
                 </div>
                 )}
                 </InputCard>
+
+                {/* 新建项目（项目下拉底部入口，端别自适应：PC Modal / 移动端底部 Drawer）。
+                    完成创建后 onCreated 自动回填选中，机器/目录随项目派生 */}
+                <ProjectFormModal
+                    open={projectModalOpen}
+                    onClose={() => setProjectModalOpen(false)}
+                    onCreated={handleProjectCreated}
+                />
             </ContentWrapper>
         </PageContainer>
     )

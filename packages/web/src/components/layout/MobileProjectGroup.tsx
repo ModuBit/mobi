@@ -48,7 +48,7 @@ export function MobileProjectGroup({
     const navigate = useNavigate()
 
     const {
-        sessions, visibleSessions, fullProjectPath,
+        sessions, visibleSessions,
         expanded, toggleExpanded,
         isLoadingInitial, isLoadingMore,
         showCollapse, canShowMore, remainingCount,
@@ -59,8 +59,8 @@ export function MobileProjectGroup({
     const handleNewSession = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
         onCloseMenu()
-        navigate({ to: '/sessions/new', search: { cwd: fullProjectPath, projectId: project.id } })
-    }, [navigate, fullProjectPath, project.id, onCloseMenu])
+        navigate({ to: '/sessions/new', search: { projectId: project.id } })
+    }, [navigate, project.id, onCloseMenu])
 
     const handleSessionClick = useCallback((sessionId: string) => {
         onCloseMenu()

@@ -192,6 +192,44 @@ describe('ProjectFormModal（PC Modal 形态）', () => {
     })
 })
 
+describe('ProjectFormModal（新建 + onCreated 回填）', () => {
+    beforeEach(() => {
+        // 本文件 mock 为 hoisted 共享实例，清掉前序 describe 的调用记录
+        vi.clearAllMocks()
+    })
+
+    it('新建提交走 create 分支并回调 onCreated 携带创建出的实体', async () => {
+        const createdProject = makeProject({ id: 'p-new', name: 'Fresh' })
+        createMutateAsync.mockResolvedValueOnce(createdProject)
+        const onCreated = vi.fn()
+
+        render(
+            <AntdApp>
+                <ProjectFormModal open onClose={() => {}} project={null} onCreated={onCreated} />
+            </AntdApp>,
+        )
+        // 单机自动选中（machines mock 只有一台），补名称即合法
+        const nameInput = await screen.findByPlaceholderText('project.namePlaceholder')
+        fireEvent.change(nameInput, { target: { value: 'Fresh' } })
+        expect(okButton()).toBeEnabled()
+
+        fireEvent.click(okButton())
+
+        await waitFor(() => {
+            expect(createMutateAsync).toHaveBeenCalledWith({
+                name: 'Fresh',
+                machineId: 'm1',
+                folders: [{ path: '', primary: true }],
+            })
+        })
+        // 创建出的实体原样回传，供调用方自动回填选中
+        await waitFor(() => {
+            expect(onCreated).toHaveBeenCalledWith(createdProject)
+        })
+        expect(updateMutateAsync).not.toHaveBeenCalled()
+    })
+})
+
 describe('ProjectFormModal（移动端底部 Drawer 形态）', () => {
     beforeEach(() => {
         mobileState.current = true

@@ -147,23 +147,4 @@ describe('MobileRecentGroup（平级「最近」分区）', () => {
         fireEvent.click(screen.getByText('nav.recent'))
         expect(toggleExpanded).toHaveBeenCalledTimes(1)
     })
-
-    it('新建会话按钮点击不冒泡触发折叠', () => {
-        const toggleExpanded = vi.fn()
-        const s1 = makeSession('r1')
-        recentState.current = makeHookState({
-            sessions: [s1], visibleSessions: [s1], toggleExpanded,
-        })
-
-        render(
-            <MobileRecentGroup
-                activeSessionId={undefined}
-                onSessionAction={vi.fn()}
-                onCloseMenu={vi.fn()}
-            />
-        )
-
-        fireEvent.click(screen.getByLabelText('nav.newSessionUnassigned'))
-        expect(toggleExpanded).not.toHaveBeenCalled()
-    })
 })

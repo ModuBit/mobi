@@ -62,8 +62,7 @@
         "collapse": "Collapse",
         "recent": "Recent",
         "newProject": "New Project",
-        "noSessions": "No sessions yet",
-        "newSessionUnassigned": "New Chat (unassigned)"
+        "noSessions": "No sessions yet"
     },
     "home": {
         "newSession": "New Session"
@@ -74,7 +73,7 @@
         "machineLoading": "Loading...",
         "machineEmpty": "No machines available",
         "project": "Project",
-        "projectPlaceholder": "Select a project (optional)",
+        "projectPlaceholder": "Search and select a project",
         "workDirectory": "Work Directory",
         "directoryPlaceholder": "Enter work directory path",
         "sessionType": "Session Type",
@@ -491,6 +490,7 @@
         "assignTitle": "Assign to project",
         "assignPlaceholder": "Select a project",
         "assignEmpty": "No projects on this machine",
+        "empty": "No projects yet",
         "name": "Project name",
         "namePlaceholder": "Enter project name",
         "machine": "Machine",
