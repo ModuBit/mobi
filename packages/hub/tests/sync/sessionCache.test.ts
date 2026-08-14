@@ -390,3 +390,32 @@ describe('SessionCache.applyRefreshedSDKMetadata', () => {
         expect(emits).toHaveLength(0)
     })
 })
+
+describe('SessionCache.refreshSession 携带 pinned', () => {
+    let store: Store
+    let cache: SessionCache
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        cache = new SessionCache(store, stubPublisher)
+    })
+
+    afterEach(() => {
+        store.close()
+    })
+
+    test('内存 Session 带 pinned（默认 false），DB 置顶后 refreshSession 反映 true', () => {
+        // 回归：refreshSession 曾漏填 pinned，导致 GET /sessions 与 SSE session-updated 载荷的
+        // toSessionSummary 读 session.pinned 恒 undefined → 全局缓存反复抹掉 pinned
+        const session = cache.getOrCreateSession('tag-pin', { path: '/tmp/p' }, null, 'default')
+        expect(cache.getSession(session.id)?.pinned).toBe(false)
+
+        // DB 层置顶（与 syncEngine.setSessionPinned 同路径：store → refreshSession → 广播）
+        expect(store.sessions.setSessionPinned(session.id, true, 'default')).toBe('changed')
+
+        // refreshSession 必须把 stored.pinned 带回内存 Session
+        const refreshed = cache.refreshSession(session.id)
+        expect(refreshed?.pinned).toBe(true)
+        expect(cache.getSession(session.id)?.pinned).toBe(true)
+    })
+})

@@ -246,7 +246,11 @@ export class SessionCache {
             mode: existing?.mode,
             tag: stored.tag,
             // 归属项目（null = 游离）：必须显式带上，否则路由层读 session.projectId 恒 undefined
-            projectId: stored.projectId
+            projectId: stored.projectId,
+            // 置顶态：必须显式带上，否则 GET /sessions 与 SSE session-updated 载荷的
+            // toSessionSummary 读 session.pinned 恒 undefined → 全局缓存反复抹掉 pinned，
+            // 「置顶」分组按钮态/成员资格与分页查询打架（见 sessions_pinned 回归）
+            pinned: stored.pinned
         }
 
         this.sessions.set(sessionId, session)
