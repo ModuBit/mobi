@@ -40,7 +40,9 @@ import {
 } from './sidebarProjects.styles'
 import { ProjectGroup } from './ProjectGroup'
 import { RecentGroup } from './RecentGroup'
+import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
+import { usePagedSectionList } from './usePagedSectionList'
 
 const { useToken } = antTheme
 
@@ -69,6 +71,10 @@ export function SidebarProjects() {
         expanded: projectsExpanded,
         toggleExpanded: toggleProjectsExpanded,
     } = useSectionExpanded(projects.length > 0)
+    // 项目列表前端分页：默认 5 个，超出 footer 展开剩余 / 收起（数据仍全量拉取）
+    const {
+        visibleItems: visibleProjects, showCollapse, canShowMore, remainingCount, showMore, collapse,
+    } = usePagedSectionList(projects)
     const [projectModalOpen, setProjectModalOpen] = useState(false)
     const [editingProject, setEditingProject] = useState<Project | null>(null)
     const [assignSession, setAssignSession] = useState<Session | null>(null)
@@ -243,7 +249,7 @@ export function SidebarProjects() {
             </SectionTitleRow>
             <SessionListWrapper $expanded={projectsExpanded}>
                 <SessionListInner>
-                    {projects.map(project => (
+                    {visibleProjects.map(project => (
                         <ProjectGroup
                             key={project.id}
                             project={project}
@@ -255,6 +261,17 @@ export function SidebarProjects() {
                             assignPendingSessionId={assignPendingSessionId}
                         />
                     ))}
+                    {(showCollapse || canShowMore) && (
+                        <SessionListFooter
+                            variant="desktop"
+                            canShowMore={canShowMore}
+                            remainingCount={remainingCount}
+                            isLoadingMore={false}
+                            showCollapse={showCollapse}
+                            onShowMore={showMore}
+                            onCollapse={collapse}
+                        />
+                    )}
                 </SessionListInner>
             </SessionListWrapper>
             <RecentGroup

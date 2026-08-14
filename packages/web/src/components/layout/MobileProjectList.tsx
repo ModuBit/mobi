@@ -44,7 +44,9 @@ import {
 import { MobileProjectGroup } from './MobileProjectGroup'
 import { MobileRecentGroup } from './MobileRecentGroup'
 import { ProjectFormModal } from '@/components/project/ProjectFormModal'
+import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
+import { usePagedSectionList } from './usePagedSectionList'
 
 const { useToken } = antTheme
 
@@ -86,6 +88,10 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
         expanded: projectsExpanded,
         toggleExpanded: toggleProjectsExpanded,
     } = useSectionExpanded(projects.length > 0)
+    // 项目列表前端分页：默认 5 个，超出 footer 展开剩余 / 收起（与桌面端一致）
+    const {
+        visibleItems: visibleProjects, showCollapse, canShowMore, remainingCount, showMore, collapse,
+    } = usePagedSectionList(projects)
     // 获取所有会话（用于查找 ActionSheet 对应 session）
     const { data: allSessions } = useSessions()
 
@@ -229,7 +235,7 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                 </SectionHeader>
                 <SessionListWrapper $expanded={projectsExpanded}>
                     <SessionListInner>
-                        {projects.map(project => (
+                        {visibleProjects.map(project => (
                             <MobileProjectGroup
                                 key={project.id}
                                 project={project}
@@ -238,6 +244,17 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                                 onCloseMenu={onCloseMenu}
                             />
                         ))}
+                        {(showCollapse || canShowMore) && (
+                            <SessionListFooter
+                                variant="mobile"
+                                canShowMore={canShowMore}
+                                remainingCount={remainingCount}
+                                isLoadingMore={false}
+                                showCollapse={showCollapse}
+                                onShowMore={showMore}
+                                onCollapse={collapse}
+                            />
+                        )}
                     </SessionListInner>
                 </SessionListWrapper>
                 {/* 「最近」分区：游离会话（自带 SectionHeader 承载标题/折叠/新建按钮） */}

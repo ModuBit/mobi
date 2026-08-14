@@ -184,6 +184,32 @@ describe('SidebarProjects 项目实体化', () => {
         })
     })
 
+    it('项目列表前端分页：默认 5 个，展开剩余 / 收起', async () => {
+        // 7 个项目：首屏 5 + 剩余 2
+        const many = Array.from({ length: 7 }, (_, i) =>
+            makeProject({ id: `pp${i}`, name: `项目${i}` }))
+        setup({ projects: many })
+
+        expect(await screen.findByText('项目0')).toBeInTheDocument()
+        // 首屏只渲染前 5 个项目组
+        expect(screen.getByText('项目4')).toBeInTheDocument()
+        expect(screen.queryByText('项目5')).not.toBeInTheDocument()
+        expect(screen.queryByText('项目6')).not.toBeInTheDocument()
+        // footer「展开剩余 N」可见
+        expect(screen.getByText('nav.showMore')).toBeInTheDocument()
+
+        // 展开剩余 → 7 个全渲染 + 出现「收起」
+        fireEvent.click(screen.getByText('nav.showMore'))
+        expect(screen.getByText('项目5')).toBeInTheDocument()
+        expect(screen.getByText('项目6')).toBeInTheDocument()
+        expect(screen.getByText('nav.collapse')).toBeInTheDocument()
+
+        // 收起 → 回到 5 个
+        fireEvent.click(screen.getByText('nav.collapse'))
+        expect(screen.queryByText('项目5')).not.toBeInTheDocument()
+        expect(screen.getByText('项目4')).toBeInTheDocument()
+    })
+
     it('删除项目：hover 菜单 → 二次确认 → 调 projects.remove', async () => {
         const s1 = makeSession('s1', '项目会话一')
         const s2 = makeSession('s2', '项目会话二')
