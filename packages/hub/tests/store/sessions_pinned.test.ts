@@ -33,11 +33,13 @@ describe('sessions 置顶（纯展示维度分组，不改归属）', () => {
         const s = store.sessions.getOrCreateSession('pin-1', { path: '/x' }, {}, 'default')
         expect(s.pinned).toBe(false)
 
-        // changed：置顶 + seq/updated_at 递增
+        // changed：置顶 + seq 递增，但 updated_at 不动（置顶是纯展示维度，
+        // 不扰动分组排序与游标分页所依据的 updated_at——见下一条用例）
         expect(store.sessions.setSessionPinned(s.id, true, 'default')).toBe('changed')
         const pinned = store.sessions.getSession(s.id)
         expect(pinned?.pinned).toBe(true)
         expect(pinned!.seq).toBeGreaterThan(s.seq)
+        expect(pinned!.updatedAt).toBe(s.updatedAt)
 
         // noop：重复置顶不递增 seq
         const seqBefore = pinned!.seq
@@ -51,6 +53,22 @@ describe('sessions 置顶（纯展示维度分组，不改归属）', () => {
         // 取消置顶
         expect(store.sessions.setSessionPinned(s.id, false, 'default')).toBe('changed')
         expect(store.sessions.getSession(s.id)?.pinned).toBe(false)
+    })
+
+    it('置顶往返不改变排序：updated_at 不受扰动，分组内顺序保持', async () => {
+        // 三个会话按 updated_at 升序落库（后落库的排前面）；sleep 隔毫秒避免同毫秒落库
+        const a = store.sessions.getOrCreateSession('order-a', { path: '/x' }, {}, 'default')
+        await Bun.sleep(2)
+        const b = store.sessions.getOrCreateSession('order-b', { path: '/x' }, {}, 'default')
+        await Bun.sleep(2)
+        const c = store.sessions.getOrCreateSession('order-c', { path: '/x' }, {}, 'default')
+
+        // 置顶最早的 a 再取消：若 updated_at 被刷新，a 会窜到最前
+        store.sessions.setSessionPinned(a.id, true, 'default')
+        store.sessions.setSessionPinned(a.id, false, 'default')
+
+        const ids = store.sessions.getUnboundSessions('default', null).sessions.map(s => s.id)
+        expect(ids).toEqual([c.id, b.id, a.id])
     })
 
     it('置顶会话从「项目」「最近」过滤、进「置顶」；取消置顶反向', () => {

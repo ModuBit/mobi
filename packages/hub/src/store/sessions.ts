@@ -515,15 +515,18 @@ export function setSessionProject(
 
 /** setSessionPinned 的三态结果（幂等语义与 setSessionProject 一致） */
 export type SetSessionPinnedResult =
-    | 'changed'   // 置顶态变化，已写入（seq/updated_at 递增，调用方需广播）
+    | 'changed'   // 置顶态变化，已写入（seq 递增、updated_at 不动，调用方需广播）
     | 'noop'      // 置顶态未变化，幂等跳过（不递增 seq，无需广播）
     | 'not_found' // 会话不存在或跨 namespace
 
 /**
  * 置顶 / 取消置顶。置顶是纯展示维度的分组（不改归属）：置顶 → 会话进「置顶」分组，
  * 同时从「项目」「最近」过滤掉；取消置顶反向。归属（project_id）原样保留——
- * 取消置顶后回到原分组。updated_at + seq 成对递增，与 sessions 变更范式一致。
- * 幂等：置顶态未变化时不递增 seq/updated_at，避免无意义的 SSE 扰动。
+ * 取消置顶后回到原分组。
+ * 只递增 seq（变更代数，供 SSE 广播感知），**不动 updated_at**：分组排序与游标
+ * 分页都以 updated_at 为据（paginateSessions），置顶往返若刷新它，会话会窜到
+ * 分组最前，破坏原有排序。
+ * 幂等：置顶态未变化时不递增 seq，避免无意义的 SSE 扰动。
  */
 export function setSessionPinned(
     db: Database,
@@ -533,8 +536,8 @@ export function setSessionPinned(
 ): SetSessionPinnedResult {
     const target = pinned ? 1 : 0
     const result = db.prepare(
-        'UPDATE sessions SET pinned = ?, updated_at = ?, seq = seq + 1 WHERE id = ? AND namespace = ? AND pinned IS NOT ?'
-    ).run(target, Date.now(), id, namespace, target)
+        'UPDATE sessions SET pinned = ?, seq = seq + 1 WHERE id = ? AND namespace = ? AND pinned IS NOT ?'
+    ).run(target, id, namespace, target)
     if (result.changes > 0) return 'changed'
     return db.prepare('SELECT 1 FROM sessions WHERE id = ? AND namespace = ?')
         .get(id, namespace) ? 'noop' : 'not_found'
