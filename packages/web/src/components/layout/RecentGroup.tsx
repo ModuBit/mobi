@@ -20,11 +20,11 @@ import { theme as antTheme } from 'antd'
 import { FolderAddOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { History, SquarePen } from 'lucide-react'
+import { ChevronRight, SquarePen } from 'lucide-react'
 import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import type { Session } from '@/core/data/api/types'
 import {
-    GroupContainer, GroupHeader, HeaderActionButton, FolderIcon, GroupName,
+    GroupContainer, SectionTitleRow, SectionTitle, SectionChevron, SectionActionButton,
     SessionListWrapper, SessionListInner, ActionButton,
 } from './sidebarProjects.styles'
 import { SessionRowsList } from './SessionRowsList'
@@ -41,7 +41,8 @@ interface RecentGroupProps extends SessionListSharedProps {
 }
 
 /**
- * 「最近」分组：游离（未归入项目）会话，默认展开
+ * 「最近」分区：游离（未归入项目）会话，与「项目」分区平级。
+ * 有会话默认展开、空分区默认收起；用户折叠后选择持久生效
  */
 export function RecentGroup({
     activeSessionId, onAssign, assignPendingSessionId, ...shared
@@ -51,7 +52,6 @@ export function RecentGroup({
     const navigate = useNavigate()
     const handleSessionClick = useSessionRowNavigate()
 
-    // 「最近」默认展开（用户仍可手动折叠）
     const {
         sessions, visibleSessions,
         expanded, toggleExpanded,
@@ -78,26 +78,29 @@ export function RecentGroup({
         </ActionButton>
     ), [t, token, onAssign, assignPendingSessionId])
 
-    // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
+    // 展开即撑开：空分区展开时展示「暂无会话」占位，加载中展示骨架
     const wrapperExpanded = expanded
 
     return (
         <GroupContainer>
-            <GroupHeader $token={token} onClick={toggleExpanded}>
-                <FolderIcon $token={token}>
-                    <History size={14} />
-                </FolderIcon>
-                <GroupName>{t('nav.recent')}</GroupName>
-                <span className="header-actions" style={{ display: 'inline-flex', gap: 2 }}>
-                    <HeaderActionButton
-                        $token={token}
-                        title={t('nav.newSessionUnassigned')}
-                        onClick={handleNewSession}
-                    >
-                        <SquarePen size={13} />
-                    </HeaderActionButton>
-                </span>
-            </GroupHeader>
+            <SectionTitleRow
+                role="button"
+                aria-expanded={expanded}
+                onClick={toggleExpanded}
+            >
+                <SectionChevron $token={token} $expanded={expanded}>
+                    <ChevronRight size={12} />
+                </SectionChevron>
+                <SectionTitle $token={token}>{t('nav.recent')}</SectionTitle>
+                <SectionActionButton
+                    $token={token}
+                    className="section-extra"
+                    title={t('nav.newSessionUnassigned')}
+                    onClick={handleNewSession}
+                >
+                    <SquarePen size={12} />
+                </SectionActionButton>
+            </SectionTitleRow>
             <SessionListWrapper $expanded={wrapperExpanded}>
                 <SessionListInner>
                     <SessionRowsList

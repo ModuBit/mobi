@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+import type React from 'react'
 import { useCallback, useState } from 'react'
 import { App, Modal, theme as antTheme } from 'antd'
 import { FolderAddOutlined } from '@ant-design/icons'
+import { ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -32,15 +34,19 @@ import { clearSessionResources } from '@/core/lib/sessionResources'
 import { ProjectFormModal } from '@/components/project/ProjectFormModal'
 import { AssignProjectModal } from '@/components/project/AssignProjectModal'
 import type { Session, Project } from '@/core/data/api/types'
-import { Container, SectionTitleRow, SectionTitle, SectionActionButton } from './sidebarProjects.styles'
+import {
+    Container, SectionTitleRow, SectionTitle, SectionChevron, SectionActionButton,
+    SessionListWrapper, SessionListInner,
+} from './sidebarProjects.styles'
 import { ProjectGroup } from './ProjectGroup'
 import { RecentGroup } from './RecentGroup'
+import { useSectionExpanded } from './useSectionExpanded'
 
 const { useToken } = antTheme
 
 /**
  * 侧边栏项目分组会话列表
- * 按项目实体分组展示 + 尾部「最近」区（未归入项目的会话）
+ * 「项目」「最近」两个平级分区（将来还会有「置顶」），每个分区可折叠、空分区默认收起
  */
 export function SidebarProjects() {
     const { token } = useToken()
@@ -58,6 +64,11 @@ export function SidebarProjects() {
 
     // 项目管理状态
     const { data: projects = [] } = useProjects()
+    // 「项目」分区折叠：有项目默认展开、空分区默认收起，用户 toggle 后持久生效
+    const {
+        expanded: projectsExpanded,
+        toggleExpanded: toggleProjectsExpanded,
+    } = useSectionExpanded(projects.length > 0)
     const [projectModalOpen, setProjectModalOpen] = useState(false)
     const [editingProject, setEditingProject] = useState<Project | null>(null)
     const [assignSession, setAssignSession] = useState<Session | null>(null)
@@ -142,8 +153,9 @@ export function SidebarProjects() {
 
     // ===== 项目管理 =====
 
-    // 打开新建项目弹窗
-    const handleOpenCreateProject = useCallback(() => {
+    // 打开新建项目弹窗（分区标题行可折叠，阻断冒泡避免连带触发）
+    const handleOpenCreateProject = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation()
         setEditingProject(null)
         setProjectModalOpen(true)
     }, [])
@@ -211,7 +223,14 @@ export function SidebarProjects() {
 
     return (
         <Container>
-            <SectionTitleRow>
+            <SectionTitleRow
+                role="button"
+                aria-expanded={projectsExpanded}
+                onClick={toggleProjectsExpanded}
+            >
+                <SectionChevron $token={token} $expanded={projectsExpanded}>
+                    <ChevronRight size={12} />
+                </SectionChevron>
                 <SectionTitle $token={token}>{t('nav.projects')}</SectionTitle>
                 <SectionActionButton
                     $token={token}
@@ -222,18 +241,22 @@ export function SidebarProjects() {
                     <FolderAddOutlined style={{ fontSize: 12 }} />
                 </SectionActionButton>
             </SectionTitleRow>
-            {projects.map(project => (
-                <ProjectGroup
-                    key={project.id}
-                    project={project}
-                    {...sharedProps}
-                    onEditProject={handleOpenEditProject}
-                    onDeleteProject={handleDeleteProject}
-                    onMoveToRecent={handleMoveToRecent}
-                    onChangeProject={handleOpenAssign}
-                    assignPendingSessionId={assignPendingSessionId}
-                />
-            ))}
+            <SessionListWrapper $expanded={projectsExpanded}>
+                <SessionListInner>
+                    {projects.map(project => (
+                        <ProjectGroup
+                            key={project.id}
+                            project={project}
+                            {...sharedProps}
+                            onEditProject={handleOpenEditProject}
+                            onDeleteProject={handleDeleteProject}
+                            onMoveToRecent={handleMoveToRecent}
+                            onChangeProject={handleOpenAssign}
+                            assignPendingSessionId={assignPendingSessionId}
+                        />
+                    ))}
+                </SessionListInner>
+            </SessionListWrapper>
             <RecentGroup
                 {...sharedProps}
                 onAssign={handleOpenAssign}

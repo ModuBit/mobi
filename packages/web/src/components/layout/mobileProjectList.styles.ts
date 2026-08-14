@@ -32,16 +32,35 @@ export const Container = styled.div<{ $token: SidebarToken }>`
     background: ${props => props.$token.colorBgLayout};
 `
 
-// 分区标题行
+// 分区标题行（可点击折叠分区，右侧可承载操作按钮）
 export const SectionHeader = styled.div<{ $token: SidebarToken }>`
     display: flex;
     align-items: center;
+    gap: 4px;
     padding: 8px 20px 4px;
     font-size: 13px;
     font-weight: 600;
     color: ${props => props.$token.colorTextQuaternary};
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    cursor: pointer;
+    user-select: none;
+`
+
+// 分区标题文字（flex:1 撑开，右侧留出操作按钮位）
+export const SectionTitleText = styled.span`
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+`
+
+// 分区折叠指示箭头（展开时旋转 90°）
+export const SectionChevron = styled.span<{ $expanded: boolean; $token: SidebarToken }>`
+    display: inline-flex;
+    flex-shrink: 0;
+    transform: rotate(${props => props.$expanded ? 90 : 0}deg);
+    transition: transform 0.15s ease;
 `
 
 // 项目头

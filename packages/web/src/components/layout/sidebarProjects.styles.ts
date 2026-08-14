@@ -32,11 +32,15 @@ export const Container = styled.div`
     min-height: 0;
 `
 
-// 分区标题行（标题 + hover 显示的「新建项目」按钮）
+// 分区标题行（可点击折叠分区 + hover 显示的「新建项目」等按钮）
 export const SectionTitleRow = styled.div`
     display: flex;
     align-items: center;
+    gap: 2px;
     padding: 8px 8px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
 
     .section-extra {
         visibility: hidden;
@@ -44,6 +48,15 @@ export const SectionTitleRow = styled.div`
     &:hover .section-extra {
         visibility: visible;
     }
+`
+
+// 分区折叠指示箭头（展开时旋转 90°）
+export const SectionChevron = styled.span<{ $expanded: boolean; $token: SidebarToken }>`
+    display: inline-flex;
+    flex-shrink: 0;
+    color: ${props => props.$token.colorTextQuaternary};
+    transform: rotate(${props => props.$expanded ? 90 : 0}deg);
+    transition: transform 0.15s ease;
 `
 
 // 分区标题

@@ -364,6 +364,50 @@ describe('useRecentSessions（共享核心经「最近」视图验证）', () =>
         expect(result.current.visibleSessions).toHaveLength(5)
         expect(result.current.showCollapse).toBe(false)
     })
+
+    it('分区折叠语义：空分区默认收起，会话到达后自动展开', async () => {
+        // 首屏空 → 后续 refetch 返回 1 条
+        unboundSessions.mockResolvedValueOnce(makePage([]))
+        unboundSessions.mockResolvedValue(makePage([makeSession('r1')]))
+
+        const qc = makeQueryClient()
+        qc.setQueryData(['sessions'], [])
+        const { result } = renderHook(() => useRecentSessions(), { wrapper: makeHookWrapper(qc) })
+
+        // 首屏数据就绪后：空分区默认收起
+        await waitFor(() => expect(result.current.isLoadingInitial).toBe(false))
+        expect(result.current.expanded).toBe(false)
+
+        // 数据到达（SSE 失效触发 refetch）→ 自动展开，无需用户操作
+        await act(async () => {
+            await qc.invalidateQueries({ queryKey: ['recentSessions'] })
+        })
+        await waitFor(() => expect(result.current.sessions).toHaveLength(1))
+        expect(result.current.expanded).toBe(true)
+    })
+
+    it('用户收起后新会话到达 → 保持收起（用户选择优先于内容派生）', async () => {
+        unboundSessions.mockResolvedValueOnce(makePage([makeSession('r1')]))
+        unboundSessions.mockResolvedValue(makePage([makeSession('r1'), makeSession('r2')]))
+
+        const qc = makeQueryClient()
+        qc.setQueryData(['sessions'], [])
+        const { result } = renderHook(() => useRecentSessions(), { wrapper: makeHookWrapper(qc) })
+
+        await waitFor(() => expect(result.current.sessions).toHaveLength(1))
+        expect(result.current.expanded).toBe(true)
+
+        // 用户手动收起
+        act(() => result.current.toggleExpanded())
+        expect(result.current.expanded).toBe(false)
+
+        // 分区来了新会话（refetch 后 sessions 增长）→ 不强行弹开
+        await act(async () => {
+            await qc.invalidateQueries({ queryKey: ['recentSessions'] })
+        })
+        await waitFor(() => expect(result.current.sessions).toHaveLength(2))
+        expect(result.current.expanded).toBe(false)
+    })
 })
 
 describe('P1：session-* SSE 事件失效项目视图', () => {

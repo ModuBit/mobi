@@ -31,8 +31,8 @@ export type UseRecentSessionsResult = ReturnType<typeof usePagedSessionList>
 
 export function useRecentSessions(
     activeSessionId?: string,
-    /** 默认展开（「最近」区默认展开，用户仍可手动折叠） */
-    defaultExpanded = false,
+    /** 「最近」为平级分区：有会话默认展开、空分区默认收起（用户 toggle 后以用户选择为准） */
+    expandWithContent = true,
 ): UseRecentSessionsResult {
     const api = useMobiApi()
 
@@ -44,5 +44,5 @@ export function useRecentSessions(
     })
 
     // 分页/展开/剩余数等展示逻辑：共享核心
-    return usePagedSessionList(query, activeSessionId, defaultExpanded)
+    return usePagedSessionList(query, activeSessionId, expandWithContent)
 }

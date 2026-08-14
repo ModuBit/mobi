@@ -46,7 +46,8 @@ export interface PagedSessionListQueryState {
 export function usePagedSessionList(
     query: PagedSessionListQueryState,
     activeSessionId?: string,
-    defaultExpanded = false,
+    /** 分区级折叠语义：有内容默认展开、空分区默认收起（「最近」等平级分区） */
+    expandWithContent = false,
 ) {
     const { data: pages, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = query
     const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE)
@@ -100,13 +101,18 @@ export function usePagedSessionList(
         return !!activeSessionId && sessions.some(s => s.id === activeSessionId)
     }, [activeSessionId, sessions])
 
-    // 展开状态：用户可自由折叠/展开（defaultExpanded 供「最近」等默认展开的分组使用）
-    const [expanded, setExpanded] = useState(defaultExpanded)
+    // 展开状态三态优先级：用户显式 toggle > 包含活跃会话的自动展开 > 依据内容的默认值。
+    // - expandWithContent 分区（「最近」）：有会话默认展开、空分区默认收起——数据异步到达
+    //   后自动展开，无需等用户操作；普通分组（项目组）静态默认收起
+    // - 用户 toggle 后以用户选择为准，不再随后续数据翻动翻转（收起的分区来新会话不会强行弹开）
+    const [override, setOverride] = useState<boolean | null>(null)
+    const baseExpanded = expandWithContent ? sessions.length > 0 : false
+    const expanded = override ?? baseExpanded
     // 当数据加载后发现包含活跃会话，自动展开（仅首次触发）
     const [autoExpanded, setAutoExpanded] = useState(false)
     useEffect(() => {
         if (containsActive && !autoExpanded) {
-            setExpanded(true)
+            setOverride(true)
             setAutoExpanded(true)
         }
     }, [containsActive, autoExpanded])
@@ -125,8 +131,8 @@ export function usePagedSessionList(
     const remainingCount = Math.max(realTotal - visibleCount, 0)
 
     const toggleExpanded = useCallback(() => {
-        setExpanded(prev => !prev)
-    }, [])
+        setOverride(!(override ?? baseExpanded))
+    }, [override, baseExpanded])
 
     // 展开更多：前端递增 visibleCount；下一档将超出本地已加载数据、且后端还有 → 触底拉取下一页。
     // 注意 fetchNextPage 在 setState updater 之外调用——StrictMode 下 updater 会双调用，

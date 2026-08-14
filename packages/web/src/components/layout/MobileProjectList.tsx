@@ -23,6 +23,7 @@ import {
     PlayCircleOutlined,
     CloseOutlined,
 } from '@ant-design/icons'
+import { ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -36,9 +37,13 @@ import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
-import { Container, SectionHeader } from './mobileProjectList.styles'
+import {
+    Container, SectionHeader, SectionTitleText, SectionChevron,
+    SessionListWrapper, SessionListInner,
+} from './mobileProjectList.styles'
 import { MobileProjectGroup } from './MobileProjectGroup'
 import { MobileRecentGroup } from './MobileRecentGroup'
+import { useSectionExpanded } from './useSectionExpanded'
 
 const { useToken } = antTheme
 
@@ -49,7 +54,7 @@ interface MobileProjectListProps {
 
 /**
  * Mobile 端项目折叠列表
- * 嵌入 MobileMenuDrawer，提供项目浏览和会话操作
+ * 「项目」「最近」两个平级分区（将来还会有「置顶」），每个分区可折叠、空分区默认收起
  */
 export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
     const { token } = useToken()
@@ -72,6 +77,11 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
 
     // 获取所有项目 + 最近会话（游离会话）
     const { data: projects = [] } = useProjects()
+    // 「项目」分区折叠：有项目默认展开、空分区默认收起，用户 toggle 后持久生效
+    const {
+        expanded: projectsExpanded,
+        toggleExpanded: toggleProjectsExpanded,
+    } = useSectionExpanded(projects.length > 0)
     // 获取所有会话（用于查找 ActionSheet 对应 session）
     const { data: allSessions } = useSessions()
 
@@ -195,17 +205,31 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
     return (
         <>
             <Container $token={token}>
-                <SectionHeader $token={token}>{t('nav.projects')}</SectionHeader>
-                {projects.map(project => (
-                    <MobileProjectGroup
-                        key={project.id}
-                        project={project}
-                        activeSessionId={activeSessionId}
-                        onSessionAction={setActionSessionId}
-                        onCloseMenu={onCloseMenu}
-                    />
-                ))}
-                {/* 「最近」分组：游离会话（自带 GroupHeader 承载标题/折叠/新建按钮） */}
+                <SectionHeader
+                    $token={token}
+                    role="button"
+                    aria-expanded={projectsExpanded}
+                    onClick={toggleProjectsExpanded}
+                >
+                    <SectionChevron $token={token} $expanded={projectsExpanded}>
+                        <ChevronRight size={14} />
+                    </SectionChevron>
+                    <SectionTitleText>{t('nav.projects')}</SectionTitleText>
+                </SectionHeader>
+                <SessionListWrapper $expanded={projectsExpanded}>
+                    <SessionListInner>
+                        {projects.map(project => (
+                            <MobileProjectGroup
+                                key={project.id}
+                                project={project}
+                                activeSessionId={activeSessionId}
+                                onSessionAction={setActionSessionId}
+                                onCloseMenu={onCloseMenu}
+                            />
+                        ))}
+                    </SessionListInner>
+                </SessionListWrapper>
+                {/* 「最近」分区：游离会话（自带 SectionHeader 承载标题/折叠/新建按钮） */}
                 <MobileRecentGroup
                     activeSessionId={activeSessionId}
                     onSessionAction={setActionSessionId}
