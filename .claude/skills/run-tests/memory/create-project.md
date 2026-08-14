@@ -46,3 +46,9 @@ metadata:
 - **evaluate 点 combobox 不聚焦** — 见上；用 a11y uid click
 - **hover 条件渲染按钮 CDP 工具点不到** — 项目组「+」、行内 more、Assign 按钮都是 hover 显示；dispatch 合成 mouseover 不触发 CSS :hover，直接 evaluate `.click()` 即可
 - **menuitem 用 a11y uid click 超时** — antd Dropdown 弹出菜单项需 evaluate `[role="menuitem"]` 文本匹配后 `.click()`
+
+## 会话置顶 / 取消置顶（2026-08-14）
+
+- 桌面：会话行 hover 操作中的 pin 按钮，`button[title="Pin"]` / `[title="Unpin"]`（hover 条件渲染，evaluate `.click()`）
+- 移动端：长按会话行 → ActionSheet「置顶 / 取消置顶」
+- 验证点：置顶 → 「置顶」分区（SidebarProjects/MobilePinnedGroup）出现该会话且自动展开，原分组（项目/最近）即时过滤掉；取消 → 回原分组。SSE 驱动（session-updated 全载荷 → projectViews 三键连带失效），无需刷新
