@@ -1208,3 +1208,17 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 - `packages/web/src/core/data/` — teamState 展示
 
 **优先级**：中。脏数据影响观感且会累积；实现路径已被 #11 调研铺过一半。
+
+## 45. 项目列表真分页（后端 cursor 分页）
+
+**背景**（2026-08-14）：侧边栏「项目」分区列表已做**前端分页**（`usePagedSectionList`：默认 5 个 + 展开剩余/收起），但数据仍是 hub `GET /projects` 一次性全量返回。
+
+**触发条件**：项目数量显著增长（几百+）时，全量拉取 + 全量内存排序（`getProjects` 的 `MAX(s.updated_at)` 派生排序）成为负担，需要真分页。
+
+**方向**：
+- hub `GET /api/projects` 加 cursor 分页（参照 `paginateSessions` 的共享 CTE 分页方案：cursor + total + hasMore）
+- 注意排序键是派生的「组内会话最新活动」（`COALESCE(last_active_at, p.updated_at)`），cursor 需锚定该排序值而非纯 id——换页期间会话活动导致的排序漂移要考虑（sessions 分页同款问题的项目版）
+- web `useProjects` 迁移到 `useSessionIdsPages` 同款 infinite-query 工厂 + `usePagedSectionList` 的触底后端分页模式（现成骨架，替换数据源即可）
+- `AssignProjectModal` / 新建会话项目下拉等全量消费方按需保留全量接口或提高单页上限
+
+**优先级**：低。当前项目量级（个位/十位）下无感知；等量级上来再做。

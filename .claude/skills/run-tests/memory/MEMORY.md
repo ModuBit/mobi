@@ -6,7 +6,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [浏览器连接](browser-connect.md) — Chrome DevTools MCP 复用、僵尸进程清理
 - [登录](login.md) — token 输入 + Connect 提交、验证跳转
 - [自定义输入框操作](input-box.md) — click → Ctrl+A → type_text 通用规范（登录 / 聊天共用）
-- [创建会话](create-session.md) — 新建 / 选机器 / 工作目录
+- [创建会话](create-session.md) — 项目即环境：可搜索下拉选项目 / 下拉底部新建项目自动回填 / 发消息即建
 - [项目实体化 UI](create-project.md) — 建项目 / 项目内新建会话 / 归入项目往返 / 编辑 folders / 删项目（Escape 关 modal / hover 按钮 evaluate click 坑）
 - [终端游离会话](terminal-session.md) — script 造 PTY 后台跑 CLI，会话入 Recent
 - [文件树验证](file-tree-verify.md) — 展开 inspector 文件树 / 虚拟滚动下数条目（看 network 响应非 DOM）/ 截断字段
