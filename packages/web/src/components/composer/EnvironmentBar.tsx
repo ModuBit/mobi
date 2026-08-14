@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Divider, Select, theme } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
@@ -58,6 +59,8 @@ interface EnvironmentBarProps {
 export function EnvironmentBar(props: EnvironmentBarProps) {
     const { token } = theme.useToken()
     const { t } = useTranslation()
+    // 受控 open：点下拉底部「+ 新建项目」时需主动收起下拉，否则弹窗关闭后浮层残留
+    const [selectOpen, setSelectOpen] = useState(false)
     const {
         projects,
         selectedProjectId,
@@ -85,6 +88,8 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                 <Select
                     value={selectedProjectId ?? undefined}
                     onChange={onProjectChange}
+                    open={selectOpen}
+                    onOpenChange={setSelectOpen}
                     disabled={disabled}
                     placeholder={t('newSession.projectPlaceholder')}
                     size="small"
@@ -107,7 +112,11 @@ export function EnvironmentBar(props: EnvironmentBarProps) {
                                 icon={<PlusOutlined />}
                                 disabled={disabled}
                                 onMouseDown={(e) => e.preventDefault()}
-                                onClick={onCreateProject}
+                                onClick={() => {
+                                    // 先收起宿主下拉再打开新建项目弹窗（点击在下拉内部 antd 不会自动收起）
+                                    setSelectOpen(false)
+                                    onCreateProject?.()
+                                }}
                             >
                                 {t('project.create')}
                             </Button>

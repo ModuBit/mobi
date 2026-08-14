@@ -26,6 +26,7 @@ import { resolve } from 'node:path'
 import { z } from 'zod'
 import { checkProjectAssignable, type SyncEngine, type Session } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
+import { toSummaryWithLiveState } from '../utils/sessionSummary'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
 import { serveFileContent } from './serveFileContent'
 
@@ -126,16 +127,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const result = engine.getPinnedSessions(namespace, parsed.data.cursor ?? null, parsed.data.limit)
 
         // 与项目/「最近」分页一致：存储字段以分页行为准，仅叠加内存态（active/running/mode）
-        const sessions = result.sessions.map(stored => {
-            const live = engine.getSession(stored.id)
-            return toSessionSummary({
-                ...stored,
-                active: live?.active ?? false,
-                activeAt: live?.activeAt ?? 0,
-                running: live?.running ?? false,
-                mode: live?.mode,
-            } as unknown as Session)
-        })
+        const sessions = result.sessions.map(stored => toSummaryWithLiveState(engine, stored))
 
         return c.json({
             sessions,

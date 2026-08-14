@@ -26,7 +26,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { ReactNode, JSX } from 'react'
 import { ConfigProvider } from 'antd'
@@ -113,6 +113,31 @@ describe('EnvironmentBar 项目即环境', () => {
         const { getByText } = renderPopup()
         fireEvent.click(getByText('project.create'))
         expect(onCreateProject).toHaveBeenCalledTimes(1)
+    })
+
+    it('点击「+ 新建项目」先收起宿主下拉（受控 open），避免弹窗关闭后浮层残留', () => {
+        const onCreateProject = vi.fn()
+        render(
+            <EnvironmentBar
+                projects={PROJECTS}
+                selectedProjectId={null}
+                onProjectChange={vi.fn()}
+                onCreateProject={onCreateProject}
+            />,
+            { wrapper: cpWrapper },
+        )
+
+        // 通过受控 onOpenChange 模拟 antd 展开
+        act(() => {
+            (selectProps.current.onOpenChange as (visible: boolean) => void)(true)
+        })
+        expect(selectProps.current.open).toBe(true)
+
+        // 点击下拉底部「+ 新建项目」：下拉收起 + 回调触发
+        const { getByText } = renderPopup()
+        fireEvent.click(getByText('project.create'))
+        expect(onCreateProject).toHaveBeenCalledTimes(1)
+        expect(selectProps.current.open).toBe(false)
     })
 
     it('选中项目后展示派生环境只读回显（机器 + 主目录）', () => {

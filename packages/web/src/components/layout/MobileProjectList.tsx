@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback } from 'react'
-import { Button, Drawer, Input, Modal, theme as antTheme } from 'antd'
+import { App as AntdApp, Button, Drawer, Input, Modal, theme as antTheme } from 'antd'
 import {
     EditOutlined,
     InboxOutlined,
@@ -66,6 +66,7 @@ interface MobileProjectListProps {
 export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
     const { token } = useToken()
     const { t } = useTranslation()
+    const { message: messageApi } = AntdApp.useApp()
     const navigate = useNavigate()
     const queryClient = useQueryClient()
     const api = useMobiApi()
@@ -92,11 +93,12 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
             await pinMutation.mutateAsync({ sessionId: session.id, pinned: !session.pinned })
             setActionSessionId(null)
         } catch {
-            // 错误由 hook 内部处理
+            // mutation hook 无 onError，这里与桌面端 SidebarProjects 对齐：失败弹全局错误提示
+            messageApi.error(t('common.error'))
         } finally {
             setPinLoadingId(null)
         }
-    }, [pinMutation])
+    }, [pinMutation, messageApi, t])
 
     const renameActions = useSessionActions(renameSessionId)
 

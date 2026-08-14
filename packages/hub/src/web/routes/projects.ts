@@ -14,34 +14,14 @@
  * limitations under the License.
  */
 
-import type { SessionSummary } from '@mobi/shared'
-import { ProjectFolderSchema, toSessionSummary, validateProjectFolders } from '@mobi/shared'
+import { ProjectFolderSchema, validateProjectFolders } from '@mobi/shared'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import type { StoredSession } from '../../store'
-import { checkProjectAssignable, type Session, type SyncEngine } from '../../sync/syncEngine'
+import { checkProjectAssignable, type SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
+import { toSummaryWithLiveState } from '../utils/sessionSummary'
 import { requireSyncEngine } from './guards'
-
-/**
- * 将分页查出的 StoredSession 修饰为 SessionSummary（复用 shared 的 toSessionSummary，
- * 不再本地复刻字段装配）。active/running/activeAt/mode 不入库，只能取内存会话缓存的
- * 实时值——逐 id 调 engine.getSession（缓存命中），替代此前每个分页请求全 namespace
- * 扫描建 Map 只为修饰 ≤limit 行的 O(namespace) 浪费
- */
-function toSummaryWithLiveState(engine: SyncEngine, stored: StoredSession): SessionSummary {
-    const live = engine.getSession(stored.id)
-    // 存储字段（updatedAt/metadata/进度计数）以分页行为准，仅叠加内存态字段
-    const session = {
-        ...stored,
-        active: live?.active ?? false,
-        activeAt: live?.activeAt ?? 0,
-        running: live?.running ?? false,
-        mode: live?.mode,
-    } as unknown as Session
-    return toSessionSummary(session)
-}
 
 const listProjectsQuerySchema = z.object({
     machineId: z.string().min(1).optional()
