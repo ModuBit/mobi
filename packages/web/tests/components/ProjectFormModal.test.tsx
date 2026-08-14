@@ -142,8 +142,8 @@ describe('ProjectFormModal（PC Modal 形态）', () => {
         })
         renderModal(project)
 
-        // validateProjectFolders 的报错提示（shared 侧字面量）
-        expect(await screen.findByText('Exactly one primary folder is required')).toBeInTheDocument()
+        // shared 出错误码，表单映射 i18n key（mock t 原样返回 key）
+        expect(await screen.findByText('project.foldersInvalid')).toBeInTheDocument()
         expect(okButton()).toBeDisabled()
     })
 
@@ -163,7 +163,7 @@ describe('ProjectFormModal（PC Modal 形态）', () => {
         fireEvent.click(removeButtons[0])
 
         await waitFor(() => {
-            expect(screen.getByText('Exactly one primary folder is required')).toBeInTheDocument()
+            expect(screen.getByText('project.foldersInvalid')).toBeInTheDocument()
         })
         expect(okButton()).toBeDisabled()
         // 第一行已移除，只剩 /b
@@ -208,10 +208,20 @@ describe('ProjectFormModal（新建 + onCreated 回填）', () => {
                 <ProjectFormModal open onClose={() => {}} project={null} onCreated={onCreated} />
             </AntdApp>,
         )
-        // 单机自动选中（machines mock 只有一台），补名称即合法
+        // 单机自动选中（machines mock 只有一台）；只填名称时 folder 路径仍为空 → 门禁拦截
         const nameInput = await screen.findByPlaceholderText('project.namePlaceholder')
         fireEvent.change(nameInput, { target: { value: 'Fresh' } })
-        expect(okButton()).toBeEnabled()
+        expect(await screen.findByText('project.folderPathRequired')).toBeInTheDocument()
+        expect(okButton()).toBeDisabled()
+
+        // 补上合法路径（homeDir=/home/u）后即可提交
+        // （AutoComplete 内部 input 的 placeholder 不走标准属性渲染，按结构取输入框）
+        const pathInput = document.querySelector('.ant-modal-body .ant-select input') as HTMLInputElement
+        expect(pathInput).not.toBeNull()
+        fireEvent.change(pathInput, { target: { value: '/home/u/fresh' } })
+        await waitFor(() => {
+            expect(okButton()).toBeEnabled()
+        })
 
         fireEvent.click(okButton())
 
@@ -219,7 +229,7 @@ describe('ProjectFormModal（新建 + onCreated 回填）', () => {
             expect(createMutateAsync).toHaveBeenCalledWith({
                 name: 'Fresh',
                 machineId: 'm1',
-                folders: [{ path: '', primary: true }],
+                folders: [{ path: '/home/u/fresh', primary: true }],
             })
         })
         // 创建出的实体原样回传，供调用方自动回填选中
@@ -227,6 +237,15 @@ describe('ProjectFormModal（新建 + onCreated 回填）', () => {
             expect(onCreated).toHaveBeenCalledWith(createdProject)
         })
         expect(updateMutateAsync).not.toHaveBeenCalled()
+    })
+
+    it('home 外路径门禁：提示须位于机器主目录内 + 提交禁用（与创建会话 cwd 同一约束）', async () => {
+        renderModal(makeProject({
+            folders: [{ path: '/etc/secret', primary: true }],
+        }))
+
+        expect(await screen.findByText('project.folderOutsideHome')).toBeInTheDocument()
+        expect(okButton()).toBeDisabled()
     })
 })
 
@@ -259,7 +278,7 @@ describe('ProjectFormModal（移动端底部 Drawer 形态）', () => {
             ],
         }))
 
-        expect(await screen.findByText('Exactly one primary folder is required')).toBeInTheDocument()
+        expect(await screen.findByText('project.foldersInvalid')).toBeInTheDocument()
         expect(okButton()).toBeDisabled()
     })
 })

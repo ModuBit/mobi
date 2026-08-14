@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { ProjectFolderSchema, validateProjectFolders } from '@mobi/shared'
+import { ProjectFolderSchema, validateProjectFolders, PROJECT_FOLDERS_ERROR_MESSAGES } from '@mobi/shared'
 import { validateHomeDirPath } from '@mobi/shared/pathSecurity'
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -99,7 +99,7 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
         const foldersError = validateProjectFolders(parsed.data.folders)
         if (foldersError) {
-            return c.json({ error: foldersError }, 400)
+            return c.json({ error: PROJECT_FOLDERS_ERROR_MESSAGES[foldersError] }, 400)
         }
 
         // folders 路径范围前置校验（homeDir 外 → 400），避免建得起来、spawn 时才被拒
@@ -172,7 +172,7 @@ export function createProjectsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (parsed.data.folders) {
             const foldersError = validateProjectFolders(parsed.data.folders)
             if (foldersError) {
-                return c.json({ error: foldersError }, 400)
+                return c.json({ error: PROJECT_FOLDERS_ERROR_MESSAGES[foldersError] }, 400)
             }
             // 换 folders 时同样做 homeDir 范围校验（machineId 不可改，按既有归属校验）
             const machineId = engine.getProject(id)?.machineId

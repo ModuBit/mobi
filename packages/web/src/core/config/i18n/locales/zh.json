@@ -502,6 +502,8 @@
         "addFolder": "添加文件夹",
         "primary": "主目录",
         "removeFolder": "移除",
+        "folderPathRequired": "文件夹路径不能为空",
+        "folderOutsideHome": "文件夹路径必须位于机器主目录（{{homeDir}}）内",
         "foldersInvalid": "至少一个文件夹，且恰好一个主目录",
         "nameRequired": "项目名称不能为空"
     }

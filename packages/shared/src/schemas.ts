@@ -44,11 +44,32 @@ export const ProjectFolderSchema = z.object({
 
 export type ProjectFolder = z.infer<typeof ProjectFolderSchema>
 
-/** 校验项目文件夹列表：≥1 项且恰一项 primary；返回错误文案或 null */
-export function validateProjectFolders(folders: ProjectFolder[]): string | null {
-    if (folders.length === 0) return 'At least one folder is required'
+/**
+ * 项目 folders 校验错误码：校验规则跨端共享（web 表单门禁 + hub API 守卫），
+ * 但文案是各端展示层的事——hub 用 PROJECT_FOLDERS_ERROR_MESSAGES 出英文 400 文案，
+ * web 按码映射 i18n key
+ */
+export type ProjectFoldersError =
+    | 'empty'          // 列表为空
+    | 'empty_path'     // 存在空路径 / 纯空白路径（空文件夹曾可建出项目）
+    | 'no_primary'     // 无主目录
+    | 'multi_primary'  // 多个主目录
+
+/** hub 400 响应文案（web 不用，见 ProjectFoldersError 注释） */
+export const PROJECT_FOLDERS_ERROR_MESSAGES: Record<ProjectFoldersError, string> = {
+    empty: 'At least one folder is required',
+    empty_path: 'Every folder path is required',
+    no_primary: 'Exactly one primary folder is required',
+    multi_primary: 'Exactly one primary folder is required',
+}
+
+/** 校验项目文件夹列表：≥1 项、每项 path trim 非空、恰一项 primary；返回错误码或 null */
+export function validateProjectFolders(folders: ProjectFolder[]): ProjectFoldersError | null {
+    if (folders.length === 0) return 'empty'
+    if (folders.some(f => !f.path.trim())) return 'empty_path'
     const primaries = folders.filter(f => f.primary)
-    if (primaries.length !== 1) return 'Exactly one primary folder is required'
+    if (primaries.length === 0) return 'no_primary'
+    if (primaries.length > 1) return 'multi_primary'
     return null
 }
 

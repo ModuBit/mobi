@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { validateProjectFolders, type ProjectFolder } from '@mobi/shared'
+import { validateProjectFolders, PROJECT_FOLDERS_ERROR_MESSAGES, type ProjectFolder } from '@mobi/shared'
 
 import { safeJsonParse } from './json'
 import type { StoredProject } from './types'
@@ -77,7 +77,7 @@ export function createProject(
     input: { namespace: string; machineId: string; name: string; folders: ProjectFolder[] }
 ): StoredProject {
     const error = validateProjectFolders(input.folders)
-    if (error) throw new Error(error)
+    if (error) throw new Error(PROJECT_FOLDERS_ERROR_MESSAGES[error])
 
     const now = Date.now()
     const row: DbProjectRow = {
@@ -109,7 +109,7 @@ export function updateProject(
 
     if (patch.folders) {
         const error = validateProjectFolders(patch.folders)
-        if (error) throw new Error(error)
+        if (error) throw new Error(PROJECT_FOLDERS_ERROR_MESSAGES[error])
     }
 
     const now = Date.now()

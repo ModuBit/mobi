@@ -104,6 +104,20 @@ describe('projects REST 路由 + 会话归属', () => {
             })
             expect(res.status).toBe(400)
         })
+
+        test('空 path → 400（resolve("") 落 hub cwd 曾绕过 homeDir 校验，空文件夹项目建得出来）', async () => {
+            const res = await app.request('/api/projects', {
+                method: 'POST',
+                headers: authHeaders,
+                body: JSON.stringify({
+                    name: 'empty-path', machineId: 'm1',
+                    folders: [{ path: '', primary: true }],
+                }),
+            })
+            expect(res.status).toBe(400)
+            const data = await res.json() as { error: string }
+            expect(data.error).toContain('path is required')
+        })
     })
 
     describe('GET /api/projects', () => {

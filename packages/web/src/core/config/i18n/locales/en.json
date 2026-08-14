@@ -502,6 +502,8 @@
         "addFolder": "Add folder",
         "primary": "Primary",
         "removeFolder": "Remove",
+        "folderPathRequired": "Folder path cannot be empty",
+        "folderOutsideHome": "Folder path must be within the machine home directory ({{homeDir}})",
         "foldersInvalid": "At least one folder with exactly one primary",
         "nameRequired": "Project name is required"
     }

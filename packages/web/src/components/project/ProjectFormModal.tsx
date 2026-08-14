@@ -18,13 +18,25 @@ import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { Alert, App, AutoComplete, Button, Drawer, Form, Input, Modal, Radio, Select, Spin, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { DesktopOutlined, FolderOutlined, HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
-import { validateProjectFolders, type ProjectFolder } from '@mobi/shared'
+import { validateProjectFolders, type ProjectFolder, type ProjectFoldersError } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useCreateProject, useUpdateProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import { useMachineDirectoryListing } from '@/components/session/useMachineDirectoryListing'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { Project } from '@/core/data/api/types'
 import { buildMachineSelectOptions } from '@/core/utils/machineUtils'
+import { isPathWithinHomeDir } from '@/core/utils/path'
+
+/**
+ * folders 结构错误码 → i18n key（shared 只出码不出文案，见 ProjectFoldersError 注释）；
+ * 空/primary 错误共用一条提示，空路径单独提示更具体
+ */
+const FOLDERS_ERROR_I18N: Record<ProjectFoldersError, string> = {
+    empty: 'project.foldersInvalid',
+    no_primary: 'project.foldersInvalid',
+    multi_primary: 'project.foldersInvalid',
+    empty_path: 'project.folderPathRequired',
+}
 
 /** 可编辑的文件夹行：带稳定 key（路径可编辑且可重复，不能当 React key） */
 interface EditableFolder extends ProjectFolder {
@@ -171,12 +183,18 @@ export function ProjectFormModal({ open, onClose, project, onCreated }: ProjectF
     const currentMachine = machines.find(m => m.id === machineId)
     const machineHomeDir = currentMachine?.metadata?.homeDir as string | undefined
 
-    // 校验：名称 + folders 结构
+    // 校验：名称 + folders 结构（shared 出错误码）+ home 范围（与创建会话 cwd 同一约束）
     const nameError = name.trim() ? null : t('project.nameRequired')
-    const foldersError = useMemo(
-        () => validateProjectFolders(folders),
-        [folders],
-    )
+    const foldersError = useMemo(() => {
+        const code = validateProjectFolders(folders)
+        if (code) return t(FOLDERS_ERROR_I18N[code])
+        // 机器 homeDir 已知时，folders 路径必须在其内（hub 侧 validateFoldersWithinHomeDir
+        // 是提交后的服务端兜底，这里前置到表单即时反馈；homeDir 缺失时放行，与其语义一致）
+        if (machineHomeDir && folders.some(f => !isPathWithinHomeDir(f.path.trim(), machineHomeDir))) {
+            return t('project.folderOutsideHome', { homeDir: machineHomeDir })
+        }
+        return null
+    }, [folders, machineHomeDir, t])
     const isValid = !nameError && !foldersError && !!machineId
 
     const handleAddFolder = useCallback(() => {

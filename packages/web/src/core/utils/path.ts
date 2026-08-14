@@ -68,6 +68,18 @@ export function normalizeDirectoryPath(path: string): string {
 }
 
 /**
+ * 判断路径是否位于 homeDir 内（homeDir 本身也算在内）。
+ * 浏览器端纯字符串前缀判断（无 node path 可用）；hub 侧 validateHomeDirPath
+ * 用 resolve 处理 `..` 等形态并做服务端权威校验，此处仅做提交前即时反馈。
+ */
+export function isPathWithinHomeDir(path: string, homeDir: string): boolean {
+    if (!path || !homeDir) return false
+    const p = normalizeDirectoryPath(path)
+    const home = normalizeDirectoryPath(homeDir)
+    return p === home || p.startsWith(home + '/')
+}
+
+/**
  * 截断路径左侧（保留文件名和右侧路径部分）
  * 例如: "a/b/c/d/file.ts" -> "...c/d/file.ts"
  */

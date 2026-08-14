@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     ProjectFolderSchema, ProjectSchema, SessionSchema, MetadataSchema,
-    validateProjectFolders,
+    validateProjectFolders, PROJECT_FOLDERS_ERROR_MESSAGES,
 } from '../src/schemas'
 
 describe('ProjectFolderSchema', () => {
@@ -33,20 +33,32 @@ describe('ProjectFolderSchema', () => {
 
 describe('validateProjectFolders', () => {
     it('空数组报错', () => {
-        expect(validateProjectFolders([])).toContain('At least one folder')
+        expect(validateProjectFolders([])).toBe('empty')
     })
     it('无 primary 报错', () => {
-        expect(validateProjectFolders([{ path: '/a', primary: false }])).toContain('Exactly one primary')
+        expect(validateProjectFolders([{ path: '/a', primary: false }])).toBe('no_primary')
     })
     it('多个 primary 报错', () => {
         expect(validateProjectFolders([
             { path: '/a', primary: true }, { path: '/b', primary: true },
-        ])).toContain('Exactly one primary')
+        ])).toBe('multi_primary')
+    })
+    it('path 为空串 / 纯空白报错（空文件夹曾可建出项目的根因）', () => {
+        expect(validateProjectFolders([{ path: '', primary: true }])).toBe('empty_path')
+        expect(validateProjectFolders([
+            { path: '/a', primary: true }, { path: '  ', primary: false },
+        ])).toBe('empty_path')
     })
     it('合法列表返回 null', () => {
         expect(validateProjectFolders([
             { path: '/a', primary: true }, { path: '/b', primary: false },
         ])).toBeNull()
+    })
+    it('PROJECT_FOLDERS_ERROR_MESSAGES 覆盖全部错误码（hub 400 文案来源）', () => {
+        for (const message of Object.values(PROJECT_FOLDERS_ERROR_MESSAGES)) {
+            expect(typeof message).toBe('string')
+            expect(message.length).toBeGreaterThan(0)
+        }
     })
 })
 
