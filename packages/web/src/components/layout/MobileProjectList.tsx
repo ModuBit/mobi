@@ -21,6 +21,7 @@ import {
     InboxOutlined,
     DeleteOutlined,
     PlayCircleOutlined,
+    PushpinOutlined,
     CloseOutlined,
 } from '@ant-design/icons'
 import { ChevronRight, Plus } from 'lucide-react'
@@ -29,6 +30,7 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
+import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -43,6 +45,7 @@ import {
 } from './mobileProjectList.styles'
 import { MobileProjectGroup } from './MobileProjectGroup'
 import { MobileRecentGroup } from './MobileRecentGroup'
+import { MobilePinnedGroup } from './MobilePinnedGroup'
 import { ProjectFormModal } from '@/components/project/ProjectFormModal'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
@@ -57,7 +60,8 @@ interface MobileProjectListProps {
 
 /**
  * Mobile 端项目折叠列表
- * 「项目」「最近」两个平级分区（将来还会有「置顶」），每个分区可折叠、空分区默认收起
+ * 「置顶」「项目」「最近」三个平级分区，每个分区可折叠、空分区默认收起。
+ * 置顶是纯展示维度分组（不改归属），入口在长按 ActionSheet
  */
 export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
     const { token } = useToken()
@@ -78,6 +82,21 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
 
     // 新建项目表单状态（ProjectFormModal 端别自适应，移动端渲染为底部 Drawer）
     const [projectModalOpen, setProjectModalOpen] = useState(false)
+
+    // 置顶 / 取消置顶（ActionSheet 入口，所有分组通用）
+    const pinMutation = useSetSessionPinned()
+    const [pinLoadingId, setPinLoadingId] = useState<string | null>(null)
+    const handleTogglePin = useCallback(async (session: Session) => {
+        setPinLoadingId(session.id)
+        try {
+            await pinMutation.mutateAsync({ sessionId: session.id, pinned: !session.pinned })
+            setActionSessionId(null)
+        } catch {
+            // 错误由 hook 内部处理
+        } finally {
+            setPinLoadingId(null)
+        }
+    }, [pinMutation])
 
     const renameActions = useSessionActions(renameSessionId)
 
@@ -215,6 +234,12 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
     return (
         <>
             <Container $token={token}>
+                {/* 「置顶」分区：跨项目/游离的置顶会话，三个平级分区之首 */}
+                <MobilePinnedGroup
+                    activeSessionId={activeSessionId}
+                    onSessionAction={setActionSessionId}
+                    onCloseMenu={onCloseMenu}
+                />
                 <SectionHeader
                     $token={token}
                     role="button"
@@ -291,6 +316,19 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                             onClick={handleRenameStart}
                         >
                             {t('session.actions.rename')}
+                        </Button>
+
+                        {/* 置顶 / 取消置顶 */}
+                        <Button
+                            type="text"
+                            block
+                            icon={<PushpinOutlined />}
+                            disabled={!!actionLoading || pinLoadingId === actionSession.id}
+                            loading={pinLoadingId === actionSession.id}
+                            style={{ height: 48, justifyContent: 'flex-start', paddingInline: 20 }}
+                            onClick={() => handleTogglePin(actionSession)}
+                        >
+                            {actionSession.pinned ? t('session.actions.unpin') : t('session.actions.pin')}
                         </Button>
 
                         {/* 归档 / 恢复 */}

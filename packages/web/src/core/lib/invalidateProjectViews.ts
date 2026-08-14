@@ -21,6 +21,7 @@ import { queryKeys } from '@/core/lib/query-keys'
  * 统一失效「项目维度视图」缓存：
  * - ['projects']：项目列表本身
  * - ['recentSessions']：「最近」分组
+ * - ['pinnedSessions']：「置顶」分组
  * - ['projectSessions', *]：所有项目的会话分组（根前缀匹配）
  *
  * 会话增删/归属变更/项目删除都会改变各分组视图的 sessionIds 成员，
@@ -31,6 +32,7 @@ export async function invalidateProjectViews(queryClient: QueryClient): Promise<
     await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
         queryClient.invalidateQueries({ queryKey: queryKeys.recentSessions }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.pinnedSessions }),
         queryClient.invalidateQueries({ queryKey: queryKeys.projectSessionsRoot }),
     ])
 }

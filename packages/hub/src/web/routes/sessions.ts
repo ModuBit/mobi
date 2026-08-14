@@ -57,15 +57,23 @@ const modelSchema = z.object({
     model: z.string().nullable()
 })
 
-/** PATCH /sessions/:id 通用 body：重命名与归入项目共用一个端点，至少携带一项 */
+/** PATCH /sessions/:id 通用 body：重命名 / 归入项目 / 置顶共用一个端点，至少携带一项 */
 const patchSessionSchema = z.object({
     name: z.string().min(1).max(255).optional(),
     /** 归属项目（null = 移回「最近」）；缺省 = 不动归属 */
-    projectId: z.string().nullable().optional()
+    projectId: z.string().nullable().optional(),
+    /** 置顶（true = 进「置顶」分组，从「项目」「最近」过滤掉）；缺省 = 不动置顶态 */
+    pinned: z.boolean().optional()
 })
 
 const uploadDeleteSchema = z.object({
     path: z.string().min(1)
+})
+
+/** 置顶会话分页 query（limit + updated_at 游标） */
+const pinnedSessionsQuerySchema = z.object({
+    limit: z.coerce.number().min(1).max(100).optional().default(20),
+    cursor: z.coerce.number().optional()
 })
 
 export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
@@ -98,6 +106,43 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             .map(toSessionSummary)
 
         return c.json({ sessions })
+    })
+
+    // GET /sessions/pinned - 置顶会话分页（跨项目/游离，「置顶」区数据源）。
+    // 注意：此路由必须注册在 /sessions/:id 之前，否则单段路径 pinned 会被按 :id 拦截
+    // （同类坑见 cli.ts 与 projects.ts 的两段路径注释）
+    app.get('/sessions/pinned', (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const parsed = pinnedSessionsQuerySchema.safeParse(c.req.query())
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid query parameters' }, 400)
+        }
+
+        const namespace = c.get('namespace')
+        const result = engine.getPinnedSessions(namespace, parsed.data.cursor ?? null, parsed.data.limit)
+
+        // 与项目/「最近」分页一致：存储字段以分页行为准，仅叠加内存态（active/running/mode）
+        const sessions = result.sessions.map(stored => {
+            const live = engine.getSession(stored.id)
+            return toSessionSummary({
+                ...stored,
+                active: live?.active ?? false,
+                activeAt: live?.activeAt ?? 0,
+                running: live?.running ?? false,
+                mode: live?.mode,
+            } as unknown as Session)
+        })
+
+        return c.json({
+            sessions,
+            nextCursor: result.nextCursor,
+            hasMore: result.hasMore,
+            total: result.total
+        })
     })
 
     app.get('/sessions/:id', (c) => {
@@ -483,8 +528,12 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
         const body = await c.req.json().catch(() => null)
         const parsed = patchSessionSchema.safeParse(body)
-        if (!parsed.success || (parsed.data.name === undefined && parsed.data.projectId === undefined)) {
-            return c.json({ error: 'Invalid body: name or projectId is required' }, 400)
+        if (!parsed.success || (
+            parsed.data.name === undefined
+            && parsed.data.projectId === undefined
+            && parsed.data.pinned === undefined
+        )) {
+            return c.json({ error: 'Invalid body: name, projectId or pinned is required' }, 400)
         }
 
         // 归入项目 / 移回「最近」；目标项目必须与会话同 machine（机器未知的老数据放行）
@@ -519,6 +568,14 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
                     return c.json({ error: message }, 409)
                 }
                 return c.json({ error: message }, 500)
+            }
+        }
+
+        // 置顶 / 取消置顶（纯展示维度分组：置顶进「置顶」区，取消后回原分组）
+        if (parsed.data.pinned !== undefined) {
+            const ok = engine.setSessionPinned(sessionResult.sessionId, parsed.data.pinned, c.get('namespace'))
+            if (!ok) {
+                return c.json({ error: 'Session not found' }, 404)
             }
         }
 

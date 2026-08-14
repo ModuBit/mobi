@@ -60,6 +60,7 @@
         "showMore": "Show more ({{count}} left)",
         "loadMore": "Show more",
         "collapse": "Collapse",
+        "pinned": "Pinned",
         "recent": "Recent",
         "newProject": "New Project",
         "noSessions": "No sessions yet"
@@ -129,7 +130,9 @@
             "resume": "Resume",
             "deleteConfirmTitle": "Delete Session",
             "deleteConfirmContent": "Are you sure you want to delete this session? This action cannot be undone.",
-            "nameRequired": "Please enter a session name"
+            "nameRequired": "Please enter a session name",
+            "pin": "Pin",
+            "unpin": "Unpin"
         },
         "contextUsage": {
             "remaining": "{{tokens}} left",

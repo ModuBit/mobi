@@ -160,6 +160,7 @@ export class Store {
                 runtime_state TEXT,
                 runtime_state_updated_at INTEGER,
                 project_id TEXT,
+                pinned INTEGER DEFAULT 0,
                 seq INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);

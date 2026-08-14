@@ -25,6 +25,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useAssignSessionProject, useDeleteProject } from '@/core/data/hooks/mutations/useProjectMutations'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
+import { useSetSessionPinned } from '@/core/data/hooks/mutations/useSessionPinned'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useMobiApi } from '@/core/data/api/client'
 import { queryKeys } from '@/core/lib/query-keys'
@@ -40,6 +41,7 @@ import {
 } from './sidebarProjects.styles'
 import { ProjectGroup } from './ProjectGroup'
 import { RecentGroup } from './RecentGroup'
+import { PinnedGroup } from './PinnedGroup'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
 import { usePagedSectionList } from './usePagedSectionList'
@@ -48,7 +50,8 @@ const { useToken } = antTheme
 
 /**
  * 侧边栏项目分组会话列表
- * 「项目」「最近」两个平级分区（将来还会有「置顶」），每个分区可折叠、空分区默认收起
+ * 「置顶」「项目」「最近」三个平级分区，每个分区可折叠、空分区默认收起。
+ * 置顶是纯展示维度分组（不改归属）：置顶 → 进「置顶」区并从「项目」「最近」过滤掉，取消反向
  */
 export function SidebarProjects() {
     const { token } = useToken()
@@ -81,6 +84,7 @@ export function SidebarProjects() {
 
     const assignMutation = useAssignSessionProject()
     const deleteProjectMutation = useDeleteProject()
+    const pinMutation = useSetSessionPinned()
 
     // 使缓存失效（项目维度视图由 invalidateProjectViews 统一收口）
     const invalidateAll = useCallback(async (sessionId: string) => {
@@ -213,6 +217,20 @@ export function SidebarProjects() {
         ? assignMutation.variables?.sessionId
         : undefined
 
+    // 置顶 / 取消置顶（所有分组通用的行内操作，失败提示与归入项目一致）
+    const handleTogglePin = useCallback(async (session: Session) => {
+        try {
+            await pinMutation.mutateAsync({ sessionId: session.id, pinned: !session.pinned })
+        } catch {
+            messageApi.error(t('common.error'))
+        }
+    }, [pinMutation, t, messageApi])
+
+    // 正在变更置顶态的会话 id（仅该行禁用，其余行不受牵连）
+    const pinPendingSessionId = pinMutation.isPending
+        ? pinMutation.variables?.sessionId
+        : undefined
+
     const sharedProps = {
         activeSessionId,
         renamingSessionId,
@@ -225,10 +243,15 @@ export function SidebarProjects() {
         onDelete: handleDelete,
         onRenameStart: startRename,
         renameLoading: renameActions.isPending,
+        onTogglePin: handleTogglePin,
+        pinPendingSessionId,
     }
 
     return (
         <Container>
+            {/* 「置顶」分区：跨项目/游离的置顶会话，三个平级分区之首 */}
+            <PinnedGroup {...sharedProps} />
+
             <SectionTitleRow
                 role="button"
                 aria-expanded={projectsExpanded}

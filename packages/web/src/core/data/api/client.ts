@@ -113,6 +113,17 @@ export function createMobiApi() {
             clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) =>
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),
             rename: (sessionId: string, name: string) => client.patch(`/api/sessions/${sessionId}`, { name }),
+            // 置顶 / 取消置顶（置顶进「置顶」分组，从「项目」「最近」过滤掉；取消反向）
+            setPinned: (sessionId: string, pinned: boolean) =>
+                client.patch(`/api/sessions/${sessionId}`, { pinned }),
+            // 置顶会话分页（跨项目/游离，「置顶」区数据源）
+            pinnedSessions: (cursor?: number, limit?: number) =>
+                client.get<ProjectSessionsResponse>('/api/sessions/pinned', {
+                    params: {
+                        ...(cursor !== undefined && { cursor }),
+                        limit: limit ?? 20,
+                    },
+                }),
             // 上传文件（二进制流式 + 进度 + 取消，替换 FormData→multipart）
             upload: (
                 sessionId: string,

@@ -41,12 +41,14 @@ const projectsRemove = vi.hoisted(() => vi.fn())
 const projectSessions = vi.hoisted(() => vi.fn())
 const unboundSessions = vi.hoisted(() => vi.fn())
 const assignSession = vi.hoisted(() => vi.fn())
+const pinnedSessions = vi.hoisted(() => vi.fn())
 const mockApi = {
     sessions: {
         list: sessionsList,
         archive: sessionsArchive,
         resume: sessionsResume,
         delete: sessionsDelete,
+        pinnedSessions: pinnedSessions,
     },
     projects: {
         list: projectsList,
@@ -120,7 +122,7 @@ function pageOf(sessions: Session[], total = sessions.length) {
 const P1 = makeProject()
 const P2 = makeProject({ id: 'p2', machineId: 'm2', name: 'OtherMachine' })
 
-function setup(opts: { projects?: Project[]; projectSessionsMap?: Record<string, Session[]>; recent?: Session[] } = {}) {
+function setup(opts: { projects?: Project[]; projectSessionsMap?: Record<string, Session[]>; recent?: Session[]; pinned?: Session[] } = {}) {
     const projects = opts.projects ?? [P1, P2]
     const map = opts.projectSessionsMap ?? {}
     projectsList.mockImplementation(async (machineId?: string) => ({
@@ -128,6 +130,7 @@ function setup(opts: { projects?: Project[]; projectSessionsMap?: Record<string,
     }))
     projectSessions.mockImplementation(async (projectId: string) => pageOf(map[projectId] ?? []))
     unboundSessions.mockResolvedValue(pageOf(opts.recent ?? []))
+    pinnedSessions.mockResolvedValue(pageOf(opts.pinned ?? []))
 
     // staleTime Infinity + 预置 ['sessions']：避免 useSessions 拉取与分组 upsert 竞争覆盖
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })

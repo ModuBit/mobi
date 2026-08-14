@@ -202,6 +202,26 @@ export class SyncEngine {
         return this.store.sessions.getUnboundSessions(namespace, cursor, limit)
     }
 
+    getPinnedSessions(namespace: string, cursor: number | null, limit?: number): ProjectSessionsResult {
+        return this.store.sessions.getPinnedSessions(namespace, cursor, limit)
+    }
+
+    /**
+     * 置顶 / 取消置顶（纯展示维度分组，不改归属）。置顶态变化时刷新内存缓存并广播
+     * session-updated，Web 端连带失效「置顶」「项目」「最近」三个分组视图；
+     * 幂等置顶（态未变）视为成功但不广播，避免无意义的 SSE 扰动。
+     */
+    setSessionPinned(sessionId: string, pinned: boolean, namespace: string): boolean {
+        const result = this.store.sessions.setSessionPinned(sessionId, pinned, namespace)
+        if (result === 'not_found') return false
+        if (result === 'noop') return true
+        const session = this.sessionCache.refreshSession(sessionId)
+        if (session) {
+            this.eventPublisher.emit({ type: 'session-updated', sessionId, data: session })
+        }
+        return true
+    }
+
     /**
      * 归入项目 / 解绑（移回「最近」）。projectId 须存在且同 namespace（store 层校验）。
      * 归属变化时刷新内存缓存并广播 session-updated，Web 端感知归属变化；

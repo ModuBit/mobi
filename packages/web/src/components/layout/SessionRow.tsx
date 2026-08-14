@@ -17,6 +17,7 @@
 import type React from 'react'
 import { Badge, Input, theme as antTheme } from 'antd'
 import { EditOutlined, InboxOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons'
+import { Pin, PinOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { useNotificationBadgeStore } from '@/core/data/stores/notificationBadgeStore'
@@ -45,6 +46,10 @@ interface SessionRowProps {
     onArchive: () => void
     onResume: () => void
     onDelete: () => void
+    /** 置顶 / 取消置顶（所有分组通用的行内操作） */
+    onTogglePin: () => void
+    /** 置顶操作进行中（仅该行禁用，其余行不受牵连） */
+    pinLoading?: boolean
     /** 追加操作（「移至最近」/「归入项目」等 Dropdown 入口） */
     extraAction?: React.ReactNode
 }
@@ -53,7 +58,7 @@ interface SessionRowProps {
 export function SessionRow({
     session, active, isRenaming,
     renameValue, onRenameValueChange, onRenameConfirm, onRenameCancel, onRenameLoading,
-    onClick, onRename, onArchive, onResume, onDelete, extraAction,
+    onClick, onRename, onArchive, onResume, onDelete, onTogglePin, pinLoading, extraAction,
 }: SessionRowProps) {
     const { token } = useToken()
     const { t } = useTranslation()
@@ -94,6 +99,14 @@ export function SessionRow({
             <SessionActions className="session-actions">
                 <ActionButton $token={token} title={t('session.actions.rename')} onClick={(e) => { e.stopPropagation(); onRename() }}>
                     <EditOutlined style={{ fontSize: 11 }} />
+                </ActionButton>
+                <ActionButton
+                    $token={token}
+                    disabled={pinLoading}
+                    title={session.pinned ? t('session.actions.unpin') : t('session.actions.pin')}
+                    onClick={(e) => { e.stopPropagation(); onTogglePin() }}
+                >
+                    {session.pinned ? <PinOff size={11} /> : <Pin size={11} />}
                 </ActionButton>
                 {session.active ? (
                     <ActionButton $token={token} title={t('session.actions.archive')} onClick={(e) => { e.stopPropagation(); onArchive() }}>

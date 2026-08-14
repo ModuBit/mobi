@@ -31,6 +31,8 @@ export type StoredSession = {
     runtimeStateUpdatedAt: number | null
     /** 归属项目 id；游离会话为 null */
     projectId: string | null
+    /** 会话置顶（true = 进「置顶」分组，同时从「项目」「最近」过滤掉） */
+    pinned: boolean
     seq: number
 }
 

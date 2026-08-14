@@ -39,6 +39,8 @@ export const queryKeys = {
     projectSessions: (projectId: string) => [...projectSessionsRoot, projectId] as const,
     /** 未归入项目的「最近」会话 */
     recentSessions: ['recentSessions'] as const,
+    /** 置顶会话（跨项目/游离，「置顶」区数据源） */
+    pinnedSessions: ['pinnedSessions'] as const,
     /** 机器列表 */
     machines: ['machines'] as const,
     /** 机器 SDK 元数据 */

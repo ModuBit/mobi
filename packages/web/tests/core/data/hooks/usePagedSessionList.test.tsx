@@ -24,11 +24,12 @@ import type { ReactNode } from 'react'
 // ============ useMobiApi mock（必须返回稳定引用，否则 effect 无限循环 OOM——项目已知坑） ============
 
 const sessionsList = vi.hoisted(() => vi.fn())
+const pinnedSessions = vi.hoisted(() => vi.fn())
 const projectsList = vi.hoisted(() => vi.fn())
 const projectSessions = vi.hoisted(() => vi.fn())
 const unboundSessions = vi.hoisted(() => vi.fn())
 const mockApi = {
-    sessions: { list: sessionsList },
+    sessions: { list: sessionsList, pinnedSessions: pinnedSessions },
     projects: {
         list: projectsList,
         sessions: projectSessions,
@@ -89,6 +90,7 @@ vi.mock('antd', async (orig) => {
 
 import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions'
 import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
+import { usePinnedSessions } from '@/core/data/hooks/queries/usePinnedSessions'
 import type { Session, Project, ProjectSessionsPage } from '@/core/data/api/types'
 
 function makeSession(id: string, overrides: Partial<Session> = {}): Session {
@@ -410,6 +412,22 @@ describe('useRecentSessions（共享核心经「最近」视图验证）', () =>
     })
 })
 
+describe('usePinnedSessions（共享核心经「置顶」视图验证）', () => {
+    it('拉取置顶会话并 upsert 进 ["sessions"]；空置顶区分区默认收起', async () => {
+        const s1 = makeSession('pin1', { updatedAt: 30 })
+        pinnedSessions.mockResolvedValueOnce(makePage([s1]))
+            .mockResolvedValue(makePage([]))
+
+        const qc = makeQueryClient()
+        qc.setQueryData(['sessions'], [])
+        const { result } = renderHook(() => usePinnedSessions(), { wrapper: makeHookWrapper(qc) })
+
+        await waitFor(() => expect(result.current.sessions.map(s => s.id)).toEqual(['pin1']))
+        expect(qc.getQueryData<Session[]>(['sessions'])?.map(s => s.id)).toEqual(['pin1'])
+        expect(result.current.expanded).toBe(true)
+    })
+})
+
 describe('P1：session-* SSE 事件失效项目视图', () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -430,6 +448,7 @@ describe('P1：session-* SSE 事件失效项目视图', () => {
         })
         const keys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
         expect(keys.some(k => Array.isArray(k) && k[0] === 'recentSessions')).toBe(true)
+        expect(keys.some(k => Array.isArray(k) && k[0] === 'pinnedSessions')).toBe(true)
         expect(keys.some(k => Array.isArray(k) && k[0] === 'projectSessions')).toBe(true)
         invalidateSpy.mockRestore()
     }
@@ -464,6 +483,7 @@ describe('P1：session-* SSE 事件失效项目视图', () => {
         await new Promise(r => setTimeout(r, 120))
         const keys = invalidateSpy.mock.calls.map(c => (c[0] as { queryKey?: unknown }).queryKey)
         expect(keys.some(k => Array.isArray(k) && k[0] === 'projects')).toBe(false)
+        expect(keys.some(k => Array.isArray(k) && k[0] === 'pinnedSessions')).toBe(false)
         expect(keys.some(k => Array.isArray(k) && k[0] === 'projectSessions')).toBe(false)
         invalidateSpy.mockRestore()
     })

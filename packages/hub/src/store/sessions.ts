@@ -35,6 +35,7 @@ type DbSessionRow = {
     runtime_state: string | null
     runtime_state_updated_at: number | null
     project_id: string | null
+    pinned: number
     seq: number
 }
 
@@ -53,6 +54,7 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         runtimeState: safeJsonParse(row.runtime_state),
         runtimeStateUpdatedAt: row.runtime_state_updated_at,
         projectId: row.project_id,
+        pinned: row.pinned === 1,
         seq: row.seq
     }
 }
@@ -436,6 +438,7 @@ function paginateSessions(
 
 /**
  * 按项目分页查询会话（SQL 按 updated_at 游标；前端再按 active→updatedAt 排序展示）。
+ * 置顶会话不进「项目」分组（在「置顶」区展示）。
  * 快照一致语义见 paginateSessions 注释。
  */
 export function getSessionsByProject(
@@ -445,11 +448,13 @@ export function getSessionsByProject(
     cursor: number | null,
     limit: number = 20
 ): ProjectSessionsResult {
-    return paginateSessions(db, 'namespace = ? AND project_id = ?', [namespace, projectId], cursor, limit)
+    return paginateSessions(
+        db, 'namespace = ? AND project_id = ? AND pinned = 0', [namespace, projectId], cursor, limit)
 }
 
 /**
  * 游离会话分页查询（project_id IS NULL），「最近」区数据源。
+ * 置顶会话不进「最近」（在「置顶」区展示）。
  * 快照一致语义见 paginateSessions 注释。
  */
 export function getUnboundSessions(
@@ -458,7 +463,21 @@ export function getUnboundSessions(
     cursor: number | null,
     limit: number = 20
 ): ProjectSessionsResult {
-    return paginateSessions(db, 'namespace = ? AND project_id IS NULL', [namespace], cursor, limit)
+    return paginateSessions(
+        db, 'namespace = ? AND project_id IS NULL AND pinned = 0', [namespace], cursor, limit)
+}
+
+/**
+ * 置顶会话分页查询（跨项目/游离），「置顶」区数据源。
+ * 快照一致语义见 paginateSessions 注释。
+ */
+export function getPinnedSessions(
+    db: Database,
+    namespace: string,
+    cursor: number | null,
+    limit: number = 20
+): ProjectSessionsResult {
+    return paginateSessions(db, 'namespace = ? AND pinned = 1', [namespace], cursor, limit)
 }
 
 /** setSessionProject 的三态结果（幂等语义见函数注释） */
@@ -490,6 +509,33 @@ export function setSessionProject(
     ).run(projectId, Date.now(), id, namespace, projectId)
     if (result.changes > 0) return 'changed'
     // changes=0 有两种可能：幂等跳过（会话在、归属没变）或会话不存在，需区分
+    return db.prepare('SELECT 1 FROM sessions WHERE id = ? AND namespace = ?')
+        .get(id, namespace) ? 'noop' : 'not_found'
+}
+
+/** setSessionPinned 的三态结果（幂等语义与 setSessionProject 一致） */
+export type SetSessionPinnedResult =
+    | 'changed'   // 置顶态变化，已写入（seq/updated_at 递增，调用方需广播）
+    | 'noop'      // 置顶态未变化，幂等跳过（不递增 seq，无需广播）
+    | 'not_found' // 会话不存在或跨 namespace
+
+/**
+ * 置顶 / 取消置顶。置顶是纯展示维度的分组（不改归属）：置顶 → 会话进「置顶」分组，
+ * 同时从「项目」「最近」过滤掉；取消置顶反向。归属（project_id）原样保留——
+ * 取消置顶后回到原分组。updated_at + seq 成对递增，与 sessions 变更范式一致。
+ * 幂等：置顶态未变化时不递增 seq/updated_at，避免无意义的 SSE 扰动。
+ */
+export function setSessionPinned(
+    db: Database,
+    id: string,
+    pinned: boolean,
+    namespace: string
+): SetSessionPinnedResult {
+    const target = pinned ? 1 : 0
+    const result = db.prepare(
+        'UPDATE sessions SET pinned = ?, updated_at = ?, seq = seq + 1 WHERE id = ? AND namespace = ? AND pinned IS NOT ?'
+    ).run(target, Date.now(), id, namespace, target)
+    if (result.changes > 0) return 'changed'
     return db.prepare('SELECT 1 FROM sessions WHERE id = ? AND namespace = ?')
         .get(id, namespace) ? 'noop' : 'not_found'
 }

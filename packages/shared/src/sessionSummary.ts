@@ -37,6 +37,8 @@ export type SessionSummary = {
     pendingRequestsCount: number
     model?: string | null
     mode?: 'local' | 'remote'
+    /** 会话置顶（true = 进「置顶」分组） */
+    pinned?: boolean
 }
 
 export function toSessionSummary(session: Session): SessionSummary {
@@ -73,5 +75,6 @@ export function toSessionSummary(session: Session): SessionSummary {
         pendingRequestsCount,
         model: session.runtimeState?.model,
         mode: session.mode,
+        pinned: session.pinned,
     }
 }

@@ -60,6 +60,7 @@
         "showMore": "展开显示 (还剩 {{count}})",
         "loadMore": "展开更多",
         "collapse": "收起",
+        "pinned": "置顶",
         "recent": "最近",
         "newProject": "新建项目",
         "noSessions": "暂无会话"
@@ -129,7 +130,9 @@
             "resume": "恢复",
             "deleteConfirmTitle": "删除会话",
             "deleteConfirmContent": "确定要删除此会话吗？此操作无法撤销。",
-            "nameRequired": "请输入会话名称"
+            "nameRequired": "请输入会话名称",
+            "pin": "置顶",
+            "unpin": "取消置顶"
         },
         "contextUsage": {
             "remaining": "剩 {{tokens}}",

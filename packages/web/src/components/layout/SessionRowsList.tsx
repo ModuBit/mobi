@@ -45,6 +45,10 @@ export interface SessionListSharedProps {
     onDelete: (session: Session) => void
     onRenameStart: (sessionId: string, currentName: string) => void
     renameLoading: boolean
+    /** 置顶 / 取消置顶（所有分组通用） */
+    onTogglePin: (session: Session) => void
+    /** 正在变更置顶态的会话 id（仅该行禁用，其余行不受牵连） */
+    pinPendingSessionId: string | undefined
 }
 
 // ========== 分组内会话列表（项目组与「最近」共用的渲染骨架） ==========
@@ -68,6 +72,7 @@ interface SessionRowsListProps extends SessionListSharedProps {
 export function SessionRowsList({
     activeSessionId, renamingSessionId, renameValue, setRenameValue,
     onRenameConfirm, onRenameCancel, onArchive, onResume, onDelete, onRenameStart, renameLoading,
+    onTogglePin, pinPendingSessionId,
     sessions, visibleSessions, isLoadingInitial, isLoadingMore,
     showCollapse, canShowMore, remainingCount, showMore, collapse,
     onSessionClick, renderExtraAction,
@@ -101,6 +106,8 @@ export function SessionRowsList({
                     onArchive={() => onArchive(session)}
                     onResume={() => onResume(session)}
                     onDelete={() => onDelete(session)}
+                    onTogglePin={() => onTogglePin(session)}
+                    pinLoading={session.id === pinPendingSessionId}
                     extraAction={renderExtraAction?.(session)}
                 />
             ))}

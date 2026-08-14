@@ -457,6 +457,8 @@ export const SessionSchema = z.object({
     tag: z.string().nullable().optional(),   // Hub session 的标签，用于 getOrCreateSession 时复用
     /** 归属项目（null = 游离，进「最近」） */
     projectId: z.string().nullable().optional(),
+    /** 会话置顶（true = 进「置顶」分组，同时从「项目」「最近」过滤掉） */
+    pinned: z.boolean().optional(),
 })
 
 export type Session = z.infer<typeof SessionSchema>

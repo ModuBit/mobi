@@ -29,12 +29,15 @@ import {
     getSessionsByProject as getSessionsByProjectFromDb,
     getUnboundSessions as getUnboundSessionsFromDb,
     setSessionProject as setSessionProjectFromDb,
+    getPinnedSessions as getPinnedSessionsFromDb,
+    setSessionPinned as setSessionPinnedFromDb,
     setRuntimeState,
     clearRuntimeStateFields,
     updateSessionAgentState,
     updateSessionMetadata,
     type ProjectSessionsResult,
-    type SetSessionProjectResult
+    type SetSessionProjectResult,
+    type SetSessionPinnedResult
 } from './sessions'
 
 export class SessionStore {
@@ -137,5 +140,19 @@ export class SessionStore {
 
     setSessionProject(id: string, projectId: string | null, namespace: string): SetSessionProjectResult {
         return setSessionProjectFromDb(this.db, id, projectId, namespace)
+    }
+
+    // ============ 置顶相关 ============
+
+    getPinnedSessions(
+        namespace: string,
+        cursor: number | null,
+        limit?: number
+    ): ProjectSessionsResult {
+        return getPinnedSessionsFromDb(this.db, namespace, cursor, limit)
+    }
+
+    setSessionPinned(id: string, pinned: boolean, namespace: string): SetSessionPinnedResult {
+        return setSessionPinnedFromDb(this.db, id, pinned, namespace)
     }
 }
