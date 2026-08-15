@@ -134,13 +134,17 @@ export async function runSupervisor(): Promise<void> {
                         supervisor.start('runner', process.env)
                     } else {
                         supervisor.start('hub', hubEnv())
+                    }
+                    // 期望先落盘再过健康门：hub 健康门 throw 时 Supervisor 内部已托管 hub，
+                    // 持久层必须同步为 true，否则 supervisor 重启后不恢复 hub（状态分叉）
+                    desired[target] = true
+                    everManaged = true
+                    writeDesiredState(desired)
+                    if (target === 'hub') {
                         const healthy = await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
                         if (!healthy) throw new Error('hub started but health check failed')
                     }
-                    desired[target] = true
-                    everManaged = true
                 }
-                writeDesiredState(desired)
                 return { pid: process.pid, ...supervisor.status() }
             }
             case 'stop': {

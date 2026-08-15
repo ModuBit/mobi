@@ -20,6 +20,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 import { configuration } from '@/configuration'
+import { writeDesiredState } from '@/supervisor/desiredState'
 import { getMobiCliCommand } from '@/utils/spawnMobiCli'
 import { isBunCompiled } from '@/projectPath'
 import { askYesNo } from './prompts'
@@ -106,11 +107,11 @@ WantedBy=default.target
 /**
  * 安装系统服务
  *
- * host/port 不再写入服务配置——由 supervisor 期望状态承载
+ * host/port 不写入系统服务配置——由 supervisor 期望状态承载
  * （用户经 `mobi service start --host/--port` 调整后即持久化），
- * 参数仅为兼容 setup 流程调用签名而保留。
+ * 但安装时需用向导选择的 host/port 种子期望状态。
  */
-export async function installService(_host: string, _port: number): Promise<void> {
+export async function installService(host: string, port: number): Promise<void> {
     const platform = process.platform
 
     if (platform !== 'darwin' && platform !== 'linux') {
@@ -149,6 +150,10 @@ export async function installService(_host: string, _port: number): Promise<void
     if (existsSync(legacyWrapper)) {
         rmSync(legacyWrapper)
     }
+
+    // 种子期望状态：launchd/systemd 拉起 supervisor 后据此恢复 hub+runner，
+    // 且让向导选择的 host/port 真正生效（否则空期望 30s 自退、服务装完即死）
+    writeDesiredState({ hub: true, runner: true, host, port })
 
     if (platform === 'darwin') {
         installLaunchd()

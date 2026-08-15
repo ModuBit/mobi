@@ -54,6 +54,14 @@ function readDesiredLite(): { hub: boolean; port: number } {
     return { hub: state?.hub ?? false, port: state?.port ?? 2222 }
 }
 
+/**
+ * start/restart 的 IPC 客户端超时。
+ * 服务端 start 的 hub 健康门最长 30s（HUB_HEALTH_TIMEOUT_MS），外加
+ * ensureSupervisorRunning 的 spawn 就绪期；默认 10s 会在 hub 启动慢时
+ * 假报失败而服务实际成功，故显式放宽到 60s。
+ */
+const START_COMMAND_TIMEOUT_MS = 60_000
+
 /** 探活：supervisor 未运行返回 false（不拉起） */
 async function isSupervisorAlive(): Promise<boolean> {
     try {
@@ -98,12 +106,17 @@ function printStatus(payload: ServiceStatusPayload): void {
 export async function serviceStart(scope: ServiceScope, options: StartOptions = {}): Promise<void> {
     await runControlAction(async () => {
         await ensureSupervisorRunning()
-        const payload = await sendControlCommand(configuration.supervisorSocketFile, {
-            cmd: 'start',
-            scope,
-            host: options.host,
-            port: options.port,
-        }) as ServiceStatusPayload
+        const payload = await sendControlCommand(
+            configuration.supervisorSocketFile,
+            {
+                cmd: 'start',
+                scope,
+                host: options.host,
+                port: options.port,
+            },
+            // 服务端 hub 健康门最长 30s + spawn 就绪期，默认 10s 会假报失败
+            START_COMMAND_TIMEOUT_MS,
+        ) as ServiceStatusPayload
         printStatus(payload)
         // hub 实际在跑（无论本次 scope 是否含 hub）才打印访问入口
         if (payload.hub.status === 'running') {
@@ -133,12 +146,17 @@ export async function serviceStop(scope: ServiceScope): Promise<void> {
 export async function serviceRestart(scope: ServiceScope, options: StartOptions = {}): Promise<void> {
     await runControlAction(async () => {
         await ensureSupervisorRunning()
-        const payload = await sendControlCommand(configuration.supervisorSocketFile, {
-            cmd: 'restart',
-            scope,
-            host: options.host,
-            port: options.port,
-        }) as ServiceStatusPayload
+        const payload = await sendControlCommand(
+            configuration.supervisorSocketFile,
+            {
+                cmd: 'restart',
+                scope,
+                host: options.host,
+                port: options.port,
+            },
+            // 与 serviceStart 同理：服务端 start 路径健康门最长 30s
+            START_COMMAND_TIMEOUT_MS,
+        ) as ServiceStatusPayload
         printStatus(payload)
     })
 }
