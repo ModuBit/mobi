@@ -822,7 +822,7 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 - `runSupervisor` 编排层零单测覆盖（finish 幂等/idle 竞态/onEmpty 路径仅靠人审），值得补注入式 fake server 测试
 - B 路径 launchd/systemd 真机验证未做（安装/开机自启/KeepAlive 拉起/空退出不重拉）
 - `hub start-sync` 直接调用时无端口范围校验（仅 service start/restart 经 parseHostPortArgs 校验）
-- **`hub start` 不读 profile 的端口配置**（2026-08-15 E2E 踩坑）：supervised 路径端口来自 desired state，空则兜底 2222（default 环境端口）——`mobi hub start --profile e2e` 不带 `--port` 会与 default 环境 hub 撞端口，且 supervisor 健康门可能打到 default hub 上假通过。desired state 初始化时应参考 profile 端口配置
+- ~~`hub start` 不读 profile 的端口配置~~（✅ 2026-08-15 已修）：desired state 兜底端口改为感知 profile env（`profilePortOrDefault`，supervisor 继承 CLI 的 `MOBI_LISTEN_PORT`），`mobi hub start --profile e2e` 不带 `--port` 也落在 2224。e2e bootstrap 脚本仍显式传 `--port` 作双保险
 
 ---
 

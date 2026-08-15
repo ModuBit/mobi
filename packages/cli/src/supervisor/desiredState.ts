@@ -39,12 +39,25 @@ export interface SupervisorDesiredState {
 export const DEFAULT_SUPERVISOR_HOST = '127.0.0.1'
 export const DEFAULT_SUPERVISOR_PORT = 2222
 
+/**
+ * 默认端口兜底：优先取当前 profile 注入的 MOBI_LISTEN_PORT（supervisor 由 CLI
+ * spawn 时继承 profile env），无/非法则回落 2222。
+ *
+ * 背景：e2e/dev profile 端口与 default 不同（2224/2223）。desired state 为空时若
+ * 硬编码 2222，`mobi hub start --profile e2e` 不带 --port 会与 default 环境 hub
+ * 撞端口，且 supervisor 健康门可能打到 default hub 上假通过。
+ */
+function profilePortOrDefault(): number {
+    const envPort = Number(process.env.MOBI_LISTEN_PORT)
+    return Number.isInteger(envPort) && envPort > 0 && envPort < 65536 ? envPort : DEFAULT_SUPERVISOR_PORT
+}
+
 export function defaultDesiredState(): SupervisorDesiredState {
     return {
         hub: false,
         runner: false,
         host: DEFAULT_SUPERVISOR_HOST,
-        port: DEFAULT_SUPERVISOR_PORT,
+        port: profilePortOrDefault(),
     }
 }
 
@@ -67,7 +80,7 @@ export function readDesiredState(
             port:
                 Number.isFinite(port) && Number.isInteger(port) && port > 0 && port < 65536
                     ? port
-                    : DEFAULT_SUPERVISOR_PORT,
+                    : profilePortOrDefault(),
         }
     } catch {
         return null

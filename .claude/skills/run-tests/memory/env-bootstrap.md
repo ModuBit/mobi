@@ -56,7 +56,7 @@ store.close()
 ## 坑（误判）
 
 - **bootstrap 不退出不是卡死** — 末尾 `wait` 常驻是设计（保持环境）；background 跑 + 轮询 `ready.flag`，ready 后直接用，**不等脚本退出 / stdout echo**（stdout 后台被缓冲看不到）
-- **supervised 架构下 hub start 必须显式 `--port`（2026-08-15 踩坑）** — `mobi hub start` 走 supervisor 托管，端口来自 desired state（空则兜底 **2222 = default 环境端口**），e2e profile 的 2224 配置不会自动进链路。不带 `--port` 会与 default 环境的 hub 撞端口 + supervisor 健康门打错端口假通过。bootstrap 脚本已修（`hub start --host 127.0.0.1 --port ${HUB_PORT}`）；同理 cleanup 已加 `service stop`（否则 supervisor 退避重启会把被 kill 的 hub 拉回，端口竞态）。产品层遗留：`hub start` 不读 profile 端口配置的问题记在 docs/pending.md #46
+- **supervised 架构下 hub start 必须显式 `--port`（2026-08-15 踩坑，产品层已根治）** — `mobi hub start` 走 supervisor 托管，端口来自 desired state；踩坑当时兜底硬编码 2222（default 环境端口）会撞端口 + 健康门假通过。**产品层已修**：desired state 兜底感知 profile env（`MOBI_LISTEN_PORT`），不带 `--port` 也能落在 2224（已冒烟验证）。bootstrap 脚本仍显式传 `--host 127.0.0.1 --port ${HUB_PORT}` 作双保险；cleanup 已加 `service stop` 且**先于** `e2e_stop_runner` 执行（先 kill runner 会被 supervisor 退避重启拉回，端口竞态）
 - **hub 早期 banner 端口不可信** — banner 可能打默认 2222；以 bootstrap 输出的 `HUB_PORT`=2224 为准
 - **default 共存时登录 REFUSED** — 确认 e2e web 进程 `MOBI_API_URL=2224`；若显 2222（fallback），vite proxy 会连错端口 → 登录 `ERR_CONNECTION_REFUSED`
 - **旧 e2e 残留进程干扰** — cleanup 已加 `--profile e2e` pattern 兜底；仍异常手动 `pkill -f -- '--profile e2e'`

@@ -108,16 +108,17 @@ cleanup() {
         wait "${WEB_PID}" 2>/dev/null || true
     fi
 
-    e2e_stop_runner "${RUNNER_STATE_FILE}"
-
-    # 1.5 supervised 架构收尾：hub/runner 是 supervisor 的孙进程，直接 kill 端口进程
-    #     会被 supervisor 退避重启拉回（端口竞态）。先走 service stop 让 supervisor
-    #     优雅收掉托管集；desired 清空后 supervisor 自行退出（onEmpty）
+    # 1.5 supervised 架构收尾：hub/runner 是 supervisor 的孙进程，直接 kill 会被
+    #     supervisor 退避重启拉回（端口竞态）。必须先 service stop 让 supervisor
+    #     优雅收掉托管集（desired 清空后 supervisor 自行退出 onEmpty），
+    #     再做按 state file / 端口的兜底清理
     e2e_log_info "停止 e2e supervisor 托管的服务..."
     (
         cd "${MOBI_ROOT}" && \
         bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" service stop &>/dev/null || true
     )
+
+    e2e_stop_runner "${RUNNER_STATE_FILE}"
 
     # 2. 端口兜底清理：杀孙进程（hub start-sync / web vite 监听端口，子 shell kill 会遗漏）
     #    孙进程都监听端口，按端口 kill 必杀，避免孤儿残留
