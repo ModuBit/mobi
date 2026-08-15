@@ -109,65 +109,15 @@
 
 ---
 
-## 11. Team Agent UI 支持 — Hook 状态追踪方案待实现
+## 11. ~~Team Agent UI 支持 — Hook 状态追踪方案待实现~~ ✅ 已解决（2026-08-15 与 #44 合并处理）
 
-**相关文件**：
-- `packages/hub/src/sync/teams.ts` — Hook 事件处理代码（已实现，待激活）
-- `packages/hub/tests/sync/teams.test.ts` — Hook 处理测试（已通过）
-- `packages/cli/src/claude/claudeRemote.ts` — SDK `hooks` option 配置点
-- `packages/web/src/core/data/stores/teamAgentsStore.ts` — 待创建
-- `packages/web/src/components/composer/TeamAgentPanel.tsx` — 待创建
-- `packages/web/src/components/composer/TeamAgentCard.tsx` — 待创建
+**hooks 路线判死**：SDK 0.3.227 实装的 `Options.hooks` 只支持 command/prompt/agent/http/mcp_tool 五种类型，**没有 JS 回调**——条目调研时「SDK hooks option JS 回调 ✅ 可行」的结论与实装版本不符。
 
-**设计文档**：`docs/superpowers/specs/2026-05-31-team-agent-support-design.md`（本地，gitignored）
-**实施计划**：`docs/superpowers/plans/2026-05-31-team-agent-ui-support.md`（本地，gitignored）
+**条目想要的其余部分早已存在**：Web UI（`teamAgentsStore` + `TeamAgentPanel` + `TeamAgentCard`）已创建在用（条目「待创建」过时）；Hub 的 team state 提取（TeamCreate/Agent/SendMessage/task_started/task_progress）与 all-done 自动清理（`applyTeamStateDelta` 尾部）均已实现。
 
-**现状**：
-- Hub 已实现 team state 提取（TeamCreate/Agent(team_name)/TaskUpdate/SendMessage），Task 1（hook 事件处理 + 测试）已完成并提交
-- Web UI 组件（store + panel + card + 集成）尚未实现
-- Team agent 的 **idle/completed 状态追踪**依赖 hook 事件输入数据
+**真正的缺口**（与 #44 同根因）：member `status: 'running'` 无出口翻终态。已由 tool_result 消费方案解决，见 #44。
 
-**核心问题 — SDK Hook 输入数据获取**：
-
-| 方案 | 可行性 | 说明 |
-|------|--------|------|
-| `includeHookEvents: true` | ❌ 不可行 | `SDKHookStartedMessage` 只有事件名（`hook_event`），不含输入数据（`teammate_name`、`team_name` 等） |
-| SDK `hooks` option JS 回调 | ✅ 可行 | 回调直接收到完整 `HookInput`（`TeammateIdleHookInput`/`TaskCompletedHookInput`），类型安全 |
-| HTTP Hook Server 扩展 | ⚠️ 可行但重 | 需 shell 进程 + HTTP 中转，比 JS 回调重得多 |
-
-**SDK `hooks` option 实现方式**：
-```typescript
-// claudeRemote.ts sdkOptions.hooks
-hooks: {
-  TeammateIdle: [{
-    hooks: [async (input) => {
-      // input: { hook_event_name: "TeammateIdle", teammate_name, team_name, session_id, ... }
-      // 转发到 Hub
-      return { continue: true }
-    }]
-  }],
-  TaskCompleted: [{
-    hooks: [async (input) => {
-      // input: { hook_event_name: "TaskCompleted", task_id, task_subject, teammate_name?, team_name?, ... }
-      // 转发到 Hub
-      return { continue: true }
-    }]
-  }]
-}
-```
-
-**暂停原因**：hooks 回调方案实现复杂度高（回调闭包 onMessage、IPC 双向通信、最小化阻塞等）
-
-**无 hook 时的降级行为**：
-- Member 生命周期：active → shutdown（无 idle）
-- Task 生命周期：in_progress → completed（通过 TaskUpdate）
-- 自动清理仅在 TeamDelete 时触发
-
-**待完成（按实施计划顺序）**：
-1. ~~Task 1: Hub teams.ts hook 处理~~ ✅ 已完成
-2. Task 2: CLI 开启 hooks 回调并转发 team 相关事件
-3. Task 3-8: Web 端 store + UI 组件 + 集成
-4. Task 9: 集成验证
+---
 
 ---
 
@@ -721,41 +671,21 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 
 ---
 
-## 44. teammate 残留清理 — 已完成的 subagent 条目滞留 teamState
+## 44. ~~teammate 残留清理 — 已完成的 subagent 条目滞留 teamState~~ ✅ 已解决（2026-08-15，与 #11 合并处理）
 
-**背景**（2026-08-13）：用户在 teamState 面板看到 **34 个 teammate 全部归属同一会话**——正好是「项目实体化」subagent-driven 开发派出的全部 agent 数（10 任务 × 3 agent + E2E + 终审 + 修复 + 文档同步 = 34）。它们早已完成退出，但条目一直挂着。
+两个现象同一根因：**member 生命周期只有入口（Agent tool_use 注册 `status: 'running'`）没有出口**——自动清理（`applyTeamStateDelta` 的 all-done 判定）早已存在，但 member 永远等不到 done，形同虚设。
 
-**根因**：SDK 的 `TeammateIdle` / `TaskCompleted` hook 回调可获取队友完成事件（见 #11 调研结论），但 mobi **未消费这类事件做 teammate 清理**——条目写入 `runtime_state.teamState` 后无生命周期出口。且 teamState 随 session runtimeState **落库持久化**，父会话结束后仍残留，直到该会话 runtime state 被重置。
+**修复（零 hook、零 CLI 改动，hub 纯函数层）**：Agent 工具的 `tool_result` 本来就在消息流里，它到达即意味着该 teammate 已跑完：
 
-**影响**：
-- 无资源占用（进程已退出），纯展示层脏数据
-- 长会话多派几次 subagent 即重演，越积越多
+- `TeamMemberSchema` 加 `toolUseIds`；`processTaskToolWithTeam` 存派发 tool_use id
+- 新增 `extractTeamMemberCompletionFromMessageContent`：扫 user 消息的 tool_result，配对 `toolUseIds` → member + 对应 task（`agent:${name}`）翻 completed（is_error 也算完成——失败的 teammate 也要退出）
+- `sessionHandlers`（live）与 `backfillRuntimeStateFromMessages`（重放）两处接入
 
-**方向**：
-- 消费 teammate 完成/空闲事件（SDK `hooks` option 的 `TeammateIdle`/`TaskCompleted` 回调，即 #11 已验证可行的方案）→ 从 teamState 移除对应条目，或至少标记为已完成态
-- 顺带定义「父会话结束后 teamState 的生命周期」（清空/归档）
-- 落在 `.scratch/task-state-sync/` 那批 runtime state 同步问题的延长线上
+**现象二（清理不生效）随之消失**：重放按序处理历史（tool_use 重建 → tool_result 再标完成 → all-done 自动清空），清理后重放自然收敛为空，无需 tombstone。
 
-### 现象二：「清理团队状态」清不掉（2026-08-13 实测）
+**E2E 实测**（2026-08-15）：派发 `e2e-analyzer` → 审批后 teamState 落库（member running + toolUseIds）；subagent 完成 → teamState 清空（runtimeState 只剩 effort/model）、TeamAgentPanel 消失。修复前同场景 panel 永挂 running。单测 13 用例 + socket 级集成 2 用例。
 
-用户点 TeamAgentPanel 的清理（`clearField="teamState"`）→ teamState 不消失。
-
-**已核实的链路（这部分代码是对的）**：
-- UI → `PATCH /api/sessions/:id` `{clearFields:['teamState']}` → `store/sessions.ts clearRuntimeStateFields`（DB JSON 删键 + seq+1）→ `sessionCache.clearRuntimeStateFields`（刷内存 + SSE `session-updated` 携带完整 runtimeState）
-- web SSE 侧 `'runtimeState' in delta` → `runtimeStateReplace=true` 全量替换（缺失键会被移除），补丁语义无问题
-
-**根因假设（待验证，证据充分）**：teamState 是**派生态**，派生源是消息历史——`sessionHandlers.ts` 的消息处理对每条含 `Agent`/`Task` tool_use 的消息调 `extractTeamStateFromMessageContent` → `applyTeamStateDelta` 加 member（隐式团队名即 `session-XXXXXXXX`，34 个 member 来自历史里 34 次 Agent 派发）。而该处理路径**会被 resume/重连重放**（`sessionHandlers.ts:274` 注释明说「resume 重放时……」）——清掉派生缓存后，任何一次重放历史消息都会从消息历史**重建** teamState。即：清理只清了缓存，没清（也不该清）派生源，重放即复活。
-
-**修复方向（一并解决）**：
-- 派生与清理的优先级：用户清理应记 tombstone（如 runtimeState 记 `_teamStateClearedAt`），重放重派生时早于该时间点的 delta 不再产生 teamState（或：重放路径整体跳过 teamState 重建，只信 live 增量）
-- 结合现象一：正常出口应是 teammate 完成/团队结束事件，而非靠手动清理；手动清理则是「重置派生基线」语义
-
-**相关文件**：
-- `packages/cli/src/claude/claudeRemote.ts` — SDK `hooks` option 配置点（#11 同款）
-- `packages/hub/src/sync/teams.ts` — team state 提取
-- `packages/web/src/core/data/` — teamState 展示
-
-**优先级**：中。脏数据影响观感且会累积；实现路径已被 #11 调研铺过一半。
+**实现坑（DB 实证）**：消息 envelope 外层 `role` 恒为 `'agent'`（SDK 统一 envelope），真实消息类型看 `data.type`——解析 tool_result 不能检查外层 role，对齐 `sync/tasks.ts` 的判定方式。
 
 ## 45. 项目列表真分页（后端 cursor 分页）
 

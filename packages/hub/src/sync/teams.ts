@@ -20,8 +20,8 @@ import type { TeamState } from '@mobi/shared/types'
 
 type TeamStateDelta = Partial<TeamState> & { _action?: 'create' | 'delete' | 'update' }
 
-function extractToolBlocks(content: Record<string, unknown>): Array<{ name: string; input: Record<string, unknown> }> {
-    const blocks: Array<{ name: string; input: Record<string, unknown> }> = []
+function extractToolBlocks(content: Record<string, unknown>): Array<{ id?: string; name: string; input: Record<string, unknown> }> {
+    const blocks: Array<{ id?: string; name: string; input: Record<string, unknown> }> = []
 
     // Claude output format: { type: 'output', data: { type: 'assistant', message: { content: [...] } } }
     if (content.type === 'output') {
@@ -40,7 +40,8 @@ function extractToolBlocks(content: Record<string, unknown>): Array<{ name: stri
             if (!name) continue
             const input = isObject(block.input) ? block.input as Record<string, unknown> : null
             if (!input) continue
-            blocks.push({ name, input })
+            const id = typeof block.id === 'string' ? block.id : undefined
+            blocks.push({ id, name, input })
         }
     }
 
@@ -66,7 +67,7 @@ function processTeamDelete(): TeamStateDelta {
     return { _action: 'delete' }
 }
 
-function processTaskToolWithTeam(input: Record<string, unknown>): TeamStateDelta | null {
+function processTaskToolWithTeam(toolUseId: string | undefined, input: Record<string, unknown>): TeamStateDelta | null {
     // SDK v2.1.178+：session 只有隐式单团队，team_name 已 deprecated（accepted but ignored）。
     // 不再要求 team_name；只用 name 是否存在来判定这是一次 teammate 派发——
     // 普通 subagent 的 Agent tool_use input 不带 name 字段，因此不会误注册。
@@ -85,6 +86,8 @@ function processTaskToolWithTeam(input: Record<string, unknown>): TeamStateDelta
             status: 'running',
             prompt,
             startedAt: Date.now(),
+            // 记录派发 tool_use id：tool_result 到达时据此配对标记完成（teammate 生命周期出口）
+            toolUseIds: toolUseId ? [toolUseId] : undefined,
         }],
         tasks: description ? [{
             id: `agent:${name}`,
@@ -152,7 +155,7 @@ export function extractTeamStateFromMessageContent(messageContent: unknown): Tea
                 break
             case 'Task':
             case 'Agent':
-                delta = processTaskToolWithTeam(block.input)
+                delta = processTaskToolWithTeam(block.id, block.input)
                 break
             // TaskCreate/TaskUpdate 不在此解析：task 状态的单一真相源是
             // runtime_state.tasks（由 sync/tasks.ts 的 extractTaskDeltas + applyTaskDelta 承载）。
@@ -264,6 +267,70 @@ export function extractTeamSystemDeltasFromMessageContent(
     }
 
     return null
+}
+
+/**
+ * 从 user 消息的 tool_result 中提取 teammate 完成增量（pending #11/#44）。
+ *
+ * teammate 生命周期此前只有入口（Agent tool_use 注册 member）没有出口——
+ * `status: 'running'` 永远不会被翻成终态，导致已完成的 teammate 条目
+ * 永挂在 teamState（自动清理形同虚设）。而 Agent 工具的 tool_result
+ * 本来就在消息流里：它到达即意味着该 teammate 已跑完，据此配对
+ * member.toolUseIds 标记 completed，由 applyTeamStateDelta 既有的
+ * all-done 自动清理接管清空。
+ *
+ * 对应 task（`agent:${name}`）同步翻 completed——否则 allTasksDone
+ * 不满足、自动清理不触发。失败（is_error）的 tool_result 同样算完成：
+ * 失败的 teammate 也要退出，避免永挂。
+ */
+export function extractTeamMemberCompletionFromMessageContent(
+    messageContent: unknown,
+    existingTeamState: TeamState | null | undefined,
+): TeamStateDelta | null {
+    if (!existingTeamState) return null
+
+    const record = unwrapRoleWrappedRecordEnvelope(messageContent)
+    if (!record) return null
+    // tool_result 挂在 data.type='user' 的消息（assistant 的 tool_use → user 的 tool_result）。
+    // 外层 role 恒为 'agent'（SDK 统一 envelope，实测 DB 消息），真实消息类型看 data.type
+    // ——对齐 sync/tasks.ts processUserToolResults 的判定方式
+    if (!isObject(record.content) || record.content.type !== 'output') return null
+
+    const data = isObject(record.content.data) ? record.content.data : null
+    if (!data || data.type !== 'user') return null
+
+    const message = isObject(data.message) ? data.message : null
+    if (!message) return null
+
+    const modelContent = message.content
+    if (!Array.isArray(modelContent)) return null
+
+    const completedNames = new Set<string>()
+    for (const block of modelContent) {
+        if (!isObject(block) || block.type !== 'tool_result') continue
+        const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : null
+        if (!toolUseId) continue
+        for (const member of existingTeamState.members ?? []) {
+            // 已终态的 member 幂等跳过
+            if (member.status && member.status !== 'running' && member.status !== 'active') continue
+            if (member.toolUseIds?.includes(toolUseId)) {
+                completedNames.add(member.name)
+            }
+        }
+    }
+    if (completedNames.size === 0) return null
+
+    // 对应 task 同步翻 completed（仅未终态的；title 供 applyTeamStateDelta 插入分支用）
+    const completedTasks = (existingTeamState.tasks ?? [])
+        .filter(t => completedNames.has(t.owner ?? '') && t.status !== 'completed' && t.status !== 'deleted')
+        .map(t => ({ id: t.id, title: t.title, status: 'completed' as const, owner: t.owner }))
+
+    return {
+        _action: 'update',
+        members: Array.from(completedNames, name => ({ name, status: 'completed' as const })),
+        ...(completedTasks.length > 0 ? { tasks: completedTasks } : {}),
+        updatedAt: Date.now()
+    }
 }
 
 /**

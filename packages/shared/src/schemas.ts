@@ -326,6 +326,8 @@ export const TeamMemberSchema = z.object({
     startedAt: z.number().optional(),
     lastProgressAt: z.number().optional(),
     taskIds: z.array(z.string()).optional(),
+    /** 派发该 teammate 的 Agent tool_use id 列表，供 tool_result 到达时配对标记完成 */
+    toolUseIds: z.array(z.string()).optional(),
 })
 
 export type TeamMember = z.infer<typeof TeamMemberSchema>

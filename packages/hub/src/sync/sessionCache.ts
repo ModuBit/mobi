@@ -22,7 +22,12 @@ import { clampAliveTime } from './aliveTime'
 import { EventPublisher } from './eventPublisher'
 import { extractTaskDeltasFromMessageContent, PendingTaskMap, applyTaskDelta } from './tasks'
 import { extractTodoWriteTodosFromMessageContent } from './todos'
-import { extractTeamStateFromMessageContent, applyTeamStateDelta, handleTeamSessionEnd } from './teams'
+import {
+    extractTeamStateFromMessageContent,
+    extractTeamMemberCompletionFromMessageContent,
+    applyTeamStateDelta,
+    handleTeamSessionEnd,
+} from './teams'
 
 /**
  * 从消息中回填 runtimeState（todos、teamState 等）
@@ -76,6 +81,13 @@ export function backfillRuntimeStateFromMessages(
                         : t
                 )
             }
+        }
+
+        // tool_result 消费：teammate 完成出口（与 live 路径 sessionHandlers 同款，
+        // 保证清理后重放按序收敛——tool_use 重建、tool_result 再标记完成并自动清空）
+        const teamCompletionDelta = extractTeamMemberCompletionFromMessageContent(message.content, teamState)
+        if (teamCompletionDelta) {
+            teamState = applyTeamStateDelta(teamState, teamCompletionDelta, sessionId)
         }
 
         // 再处理 tasks（在已知 team 上下文的情况下）

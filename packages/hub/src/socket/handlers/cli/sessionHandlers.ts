@@ -23,7 +23,12 @@ import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
-import { extractTeamStateFromMessageContent, extractTeamSystemDeltasFromMessageContent, applyTeamStateDelta } from '../../../sync/teams'
+import {
+    extractTeamStateFromMessageContent,
+    extractTeamSystemDeltasFromMessageContent,
+    extractTeamMemberCompletionFromMessageContent,
+    applyTeamStateDelta,
+} from '../../../sync/teams'
 import {
     collectBackgroundToolUseIds,
     extractBackgroundTaskDeltasFromMessageContent,
@@ -195,8 +200,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
 
         // team system message 路由（仅当 teamState 非空时生效）
         const teamSystemDelta = extractTeamSystemDeltasFromMessageContent(content, existingRuntimeState.teamState)
+        // user 消息的 tool_result：teammate 完成出口（配对 member.toolUseIds 标 completed）
+        const teamCompletionDelta = extractTeamMemberCompletionFromMessageContent(content, existingRuntimeState.teamState)
 
-        if (todos || taskDeltas.length > 0 || teamDelta || bgTaskDelta || teamSystemDelta) {
+        if (todos || taskDeltas.length > 0 || teamDelta || bgTaskDelta || teamSystemDelta || teamCompletionDelta) {
 
             // 合并 todos
             if (todos) {
@@ -228,6 +235,12 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             if (teamSystemDelta) {
                 const existingTeamState = existingRuntimeState.teamState ?? null
                 existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamSystemDelta, sid) ?? undefined
+            }
+
+            // 合并 teammate 完成 delta（tool_result 配对；全 done 时 applyTeamStateDelta 自动清空 teamState）
+            if (teamCompletionDelta) {
+                const existingTeamState = existingRuntimeState.teamState ?? null
+                existingRuntimeState.teamState = applyTeamStateDelta(existingTeamState, teamCompletionDelta, sid) ?? undefined
             }
 
             // 合并 tasks

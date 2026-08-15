@@ -249,3 +249,113 @@ describe('goal-status：CLI 上报 goal 状态 → 校验 + 委派 onGoalStatus'
         expect(accessError.called).toBe(true)
     })
 })
+
+// ============ teammate 完成出口：tool_result 消费（pending #11/#44）============
+
+describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期', () => {
+    type TeamRuntimeState = { teamState?: { members?: Array<{ name: string; status?: string; toolUseIds?: string[] }>; tasks?: Array<{ id: string; status?: string }>; teamName: string } }
+
+    /** 构造带内存态 runtimeState 的 deps：setRuntimeState 写回，模拟 DB 状态演进 */
+    function makeTeamDeps() {
+        const session = makeStoredSession('s1')
+        const runtimeStateRef: { current: TeamRuntimeState | null } = { current: null }
+        const events: SyncEvent[] = []
+        const deps: SessionHandlersDeps = {
+            store: {
+                messages: {
+                    addMessage: (_sid: string, content: unknown) => ({ ...makeMsg('m', 'loc', 1), content }),
+                },
+                sessions: {
+                    getSession: (_sid: string) => ({ ...session, runtimeState: runtimeStateRef.current }),
+                    setRuntimeState: (_sid: string, state: unknown) => {
+                        runtimeStateRef.current = state as TeamRuntimeState | null
+                        return true
+                    },
+                },
+            } as unknown as SessionHandlersDeps['store'],
+            resolveSessionAccess: (sid: string) => ({ ok: true as const, value: { ...session, runtimeState: runtimeStateRef.current } as never }),
+            emitAccessError: () => {},
+            onWebappEvent: (e: SyncEvent) => { events.push(e) },
+        }
+        return { deps, runtimeStateRef, events }
+    }
+
+    const agentDispatch = {
+        sid: 's1', localId: 'loc-1',
+        message: {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'assistant',
+                    message: { content: [{ type: 'tool_use', id: 'tu-1', name: 'Agent', input: { name: 'analyzer', description: '分析任务' } }] },
+                },
+            },
+        },
+    }
+
+    const agentResult = {
+        sid: 's1', localId: 'loc-2',
+        message: {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'user',
+                    message: { content: [{ type: 'tool_result', tool_use_id: 'tu-1', content: 'done' }] },
+                },
+            },
+        },
+    }
+
+    test('tool_use 注册 running member，tool_result 到达后 member completed 且 teamState 自动清空', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, runtimeStateRef } = makeTeamDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        // 1. Agent tool_use → member running + task in_progress
+        fakeSocket.emit('message', agentDispatch)
+        const dispatchState = runtimeStateRef.current?.teamState
+        expect(dispatchState).toBeDefined()
+        expect(dispatchState!.members).toHaveLength(1)
+        expect(dispatchState!.members![0]).toMatchObject({ name: 'analyzer', status: 'running' })
+        expect(dispatchState!.members![0].toolUseIds).toEqual(['tu-1'])
+
+        // 2. tool_result → member/task completed → 全 done → teamState 清空
+        fakeSocket.emit('message', agentResult)
+        expect(runtimeStateRef.current?.teamState).toBeUndefined()
+    })
+
+    test('部分完成：仅 analyzer 的 tool_result 到达时保留 coder', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, runtimeStateRef } = makeTeamDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('message', {
+            ...agentDispatch,
+            message: {
+                ...agentDispatch.message,
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'assistant',
+                        message: {
+                            content: [
+                                { type: 'tool_use', id: 'tu-1', name: 'Agent', input: { name: 'analyzer', description: '分析' } },
+                                { type: 'tool_use', id: 'tu-2', name: 'Agent', input: { name: 'coder', description: '编码' } },
+                            ],
+                        },
+                    },
+                },
+            },
+        })
+        fakeSocket.emit('message', agentResult)
+
+        const state = runtimeStateRef.current?.teamState
+        expect(state).toBeDefined()
+        const analyzer = state!.members!.find(m => m.name === 'analyzer')
+        const coder = state!.members!.find(m => m.name === 'coder')
+        expect(analyzer?.status).toBe('completed')
+        expect(coder?.status).toBe('running')
+    })
+})

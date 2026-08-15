@@ -18,6 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import {
     extractTeamStateFromMessageContent,
     extractTeamSystemDeltasFromMessageContent,
+    extractTeamMemberCompletionFromMessageContent,
     applyTeamStateDelta,
     handleTeamSessionEnd,
 } from '../../src/sync/teams'
@@ -35,6 +36,27 @@ function makeAssistantToolUse(toolUseId: string, name: string, input: Record<str
                 type: 'assistant',
                 message: {
                     content: [{ type: 'tool_use', id: toolUseId, name, input }]
+                }
+            }
+        }
+    }
+}
+
+/** 构造 tool_result 消息（含 tool_result 块）。外层 role 恒为 'agent'（SDK 统一 envelope，实测 DB） */
+function makeUserToolResult(toolUseId: string, options?: { isError?: boolean }) {
+    return {
+        role: 'agent',
+        content: {
+            type: 'output',
+            data: {
+                type: 'user',
+                message: {
+                    content: [{
+                        type: 'tool_result',
+                        tool_use_id: toolUseId,
+                        ...(options?.isError ? { is_error: true } : {}),
+                        content: 'done',
+                    }]
                 }
             }
         }
@@ -511,6 +533,166 @@ describe('extractTeamSystemDeltasFromMessageContent', () => {
             state,
         )
         expect(result).toBeNull()
+    })
+})
+
+// ============ tool_result 消费：teammate 完成出口（pending #11/#44）============
+
+describe('Agent tool_use 提取 toolUseIds', () => {
+    test('member 携带 tool_use id，供 tool_result 配对', () => {
+        const delta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-42', 'Agent', { name: 'analyzer', description: '分析' })
+        )
+        expect(delta!.members![0].toolUseIds).toEqual(['tu-42'])
+    })
+})
+
+describe('extractTeamMemberCompletionFromMessageContent', () => {
+    test('tool_use_id 命中 running member → member completed + 对应 task completed', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'running', toolUseIds: ['tu-1'] }],
+            tasks: [{ id: 'agent:analyzer', title: '分析', status: 'in_progress', owner: 'analyzer' }],
+        })
+        const delta = extractTeamMemberCompletionFromMessageContent(makeUserToolResult('tu-1'), state)
+        expect(delta).not.toBeNull()
+        expect(delta!.members).toHaveLength(1)
+        expect(delta!.members![0]).toMatchObject({ name: 'analyzer', status: 'completed' })
+        expect(delta!.tasks).toHaveLength(1)
+        expect(delta!.tasks![0]).toMatchObject({ id: 'agent:analyzer', status: 'completed' })
+    })
+
+    test('tool_use_id 不匹配任何 member → null（普通工具的 tool_result）', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'running', toolUseIds: ['tu-1'] }],
+        })
+        expect(extractTeamMemberCompletionFromMessageContent(makeUserToolResult('tu-other'), state)).toBeNull()
+    })
+
+    test('无 teamState → null', () => {
+        expect(extractTeamMemberCompletionFromMessageContent(makeUserToolResult('tu-1'), null)).toBeNull()
+    })
+
+    test('非 user 消息（assistant tool_use）→ null', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'running', toolUseIds: ['tu-1'] }],
+        })
+        expect(extractTeamMemberCompletionFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', { name: 'analyzer' }), state
+        )).toBeNull()
+    })
+
+    test('外层 role 是原始 user 形态（非 envelope）也兼容', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'running', toolUseIds: ['tu-1'] }],
+        })
+        const raw = { ...makeUserToolResult('tu-1'), role: 'user' }
+        expect(extractTeamMemberCompletionFromMessageContent(raw, state)).not.toBeNull()
+    })
+
+    test('is_error 的 tool_result 也算完成（失败的 teammate 也要退出，避免永挂）', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'running', toolUseIds: ['tu-1'] }],
+            tasks: [{ id: 'agent:analyzer', title: '分析', status: 'in_progress', owner: 'analyzer' }],
+        })
+        const delta = extractTeamMemberCompletionFromMessageContent(
+            makeUserToolResult('tu-1', { isError: true }), state
+        )
+        expect(delta!.members![0].status).toBe('completed')
+    })
+
+    test('member 已是终态 → 幂等跳过（不产出 delta）', () => {
+        const state = makeTeamState({
+            members: [{ name: 'analyzer', status: 'completed', toolUseIds: ['tu-1'] }],
+        })
+        expect(extractTeamMemberCompletionFromMessageContent(makeUserToolResult('tu-1'), state)).toBeNull()
+    })
+
+    test('同消息多个 tool_result 命中多个 member → 全部产出', () => {
+        const state = makeTeamState({
+            members: [
+                { name: 'analyzer', status: 'running', toolUseIds: ['tu-1'] },
+                { name: 'coder', status: 'running', toolUseIds: ['tu-2'] },
+            ],
+            tasks: [
+                { id: 'agent:analyzer', title: '分析', status: 'in_progress', owner: 'analyzer' },
+                { id: 'agent:coder', title: '编码', status: 'in_progress', owner: 'coder' },
+            ],
+        })
+        const message = {
+            role: 'user',
+            content: {
+                type: 'output',
+                data: {
+                    type: 'user',
+                    message: {
+                        content: [
+                            { type: 'tool_result', tool_use_id: 'tu-1', content: 'a' },
+                            { type: 'tool_result', tool_use_id: 'tu-2', content: 'b' },
+                        ]
+                    }
+                }
+            }
+        }
+        const delta = extractTeamMemberCompletionFromMessageContent(message, state)
+        expect(delta!.members).toHaveLength(2)
+        expect(delta!.tasks).toHaveLength(2)
+    })
+})
+
+describe('tool_use → tool_result 全链自动清理', () => {
+    test('派发 → 完成 → teamState 清空（#44 现象一的修复路径）', () => {
+        // 1. Agent tool_use 注册 member（running）+ task（in_progress）
+        const dispatchDelta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', { name: 'analyzer', description: '分析任务' })
+        )
+        let state = applyTeamStateDelta(null, dispatchDelta!, 'abcd1234-0000')
+        expect(state).not.toBeNull()
+        expect(state!.members![0].status).toBe('running')
+
+        // 2. tool_result 到达 → member/task completed → 全 done → 自动清理
+        const completionDelta = extractTeamMemberCompletionFromMessageContent(
+            makeUserToolResult('tu-1'), state
+        )
+        state = applyTeamStateDelta(state, completionDelta!, 'abcd1234-0000')
+        expect(state).toBeNull()
+    })
+
+    test('清理后重放：tool_use 重建 → tool_result 再收敛为空（#44 现象二的修复路径）', () => {
+        // 重放按序处理历史消息：先 tool_use（member 翻回 running），后 tool_result（再翻 completed 清空）
+        const dispatchDelta = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', { name: 'analyzer', description: '分析任务' })
+        )
+        const completionDelta = extractTeamMemberCompletionFromMessageContent(
+            makeUserToolResult('tu-1'),
+            applyTeamStateDelta(null, dispatchDelta!, 'abcd1234-0000'),
+        )
+
+        let state: TeamState | null = null
+        state = applyTeamStateDelta(state, dispatchDelta!, 'abcd1234-0000')
+        expect(state).not.toBeNull()
+        state = applyTeamStateDelta(state, completionDelta!, 'abcd1234-0000')
+        expect(state).toBeNull()
+    })
+
+    test('多个 teammate 部分完成 → 保留未完成者', () => {
+        const d1 = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-1', 'Agent', { name: 'analyzer', description: '分析' })
+        )
+        const d2 = extractTeamStateFromMessageContent(
+            makeAssistantToolUse('tu-2', 'Agent', { name: 'coder', description: '编码' })
+        )
+        let state = applyTeamStateDelta(null, d1!, 'abcd1234-0000')
+        state = applyTeamStateDelta(state, d2!)
+
+        const c1 = extractTeamMemberCompletionFromMessageContent(makeUserToolResult('tu-1'), state)
+        state = applyTeamStateDelta(state, c1!)
+
+        // analyzer 标记 completed（保留展示终态），coder 仍 running → teamState 不清空
+        expect(state).not.toBeNull()
+        const analyzer = state!.members!.find(m => m.name === 'analyzer')
+        const coder = state!.members!.find(m => m.name === 'coder')
+        expect(analyzer?.status).toBe('completed')
+        expect(coder?.status).toBe('running')
     })
 })
 
