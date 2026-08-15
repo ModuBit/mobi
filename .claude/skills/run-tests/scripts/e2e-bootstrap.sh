@@ -110,6 +110,15 @@ cleanup() {
 
     e2e_stop_runner "${RUNNER_STATE_FILE}"
 
+    # 1.5 supervised 架构收尾：hub/runner 是 supervisor 的孙进程，直接 kill 端口进程
+    #     会被 supervisor 退避重启拉回（端口竞态）。先走 service stop 让 supervisor
+    #     优雅收掉托管集；desired 清空后 supervisor 自行退出（onEmpty）
+    e2e_log_info "停止 e2e supervisor 托管的服务..."
+    (
+        cd "${MOBI_ROOT}" && \
+        bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" service stop &>/dev/null || true
+    )
+
     # 2. 端口兜底清理：杀孙进程（hub start-sync / web vite 监听端口，子 shell kill 会遗漏）
     #    孙进程都监听端口，按端口 kill 必杀，避免孤儿残留
     e2e_log_info "端口兜底清理（孙进程）..."
@@ -159,7 +168,9 @@ main() {
 
     (
         cd "${MOBI_ROOT}" && \
-        bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" hub start &>"${E2E_TMPDIR}/logs/hub.log"
+        # supervised 架构：hub 端口由 supervisor 的 desired state 决定（兜底 2222 = default 环境），
+        # e2e 必须显式传 --port，否则与 default 环境的 hub 撞端口
+        bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" hub start --host 127.0.0.1 --port "${HUB_PORT}" &>"${E2E_TMPDIR}/logs/hub.log"
     ) &
     HUB_PID="${!}"
     disown

@@ -3,7 +3,7 @@ name: plan-mode-verify
 description: 验证 plan 批准后权限模式切换（auto/acceptEdits/default）—— 切 plan / 触发 exit_plan_mode / 批准按钮 / 模式生效观测点
 metadata:
   type: recipe
-  last_verified: 2026-08-03
+  last_verified: 2026-08-15
 ---
 
 # plan 批准后权限模式切换验证
@@ -68,6 +68,6 @@ composer 底部权限模式 combobox（文案随当前模式变：Request Approv
 ## 坑
 
 - **提交消息用 evaluate_script 点底部 arrow-up 按钮**（type_text + submitKey 在自定义框不可靠，见 [[input-box]] / [[chat-verify]]）
-- **批准后等 ~10s** 才看新 turn（PLAN_FAKE_RESTART 注入 → 新 turn 启动有延迟）
+- **批准后立即生效，无重启延迟**（2026-08-15 起 PLAN_FAKE hack 已拆除：批准 → allow + query.setPermissionMode，模型**同一 turn** 直接开始执行计划；旧的「等 ~10s 等 PLAN_FAKE_RESTART 注入」不再需要）
 - **同一会话可复用**：切回 Plan Mode 再发新任务，模型会再次规划（不必新建会话）。但任务要换文件名，否则模型纠结已存在文件
 - **pending 审批收尾**：default 档验证完会留 pending Write 审批，点 `Deny` 收掉，避免会话一直 awaiting
