@@ -446,7 +446,7 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 
 ---
 
-## 35. HTML 预览 iframe `allow-same-origin` 安全权衡（引用资源加载 vs 隔离）
+## 35. ~~HTML 预览 iframe `allow-same-origin` 安全权衡（引用资源加载 vs 隔离）~~ ✅ 关闭（2026-08-15 复核维持既定决策）
 
 **背景**（2026-07-29）：Web 端 HTML 预览（`HtmlPreviewView` 的 `HtmlIframe`）为支持「Live Server 式刷新 + 引用外部 CSS/JS 生效」，做了两处改动：
 
@@ -477,6 +477,8 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 - `packages/hub/src/web/routes/serveFileContent.ts` — serve-file 响应头（`no-cache`）
 
 **优先级**：低。当前信任边界（用户 cwd 文件）可接受；待「预览不可信 HTML」成为场景再评估。
+
+**复核**（2026-08-15）：sandbox 配置与决策注释原样未变（`HtmlPreviewView.tsx`），触发条件未出现，维持既定决策关闭。若未来需要预览不可信来源的 HTML（如下载的第三方页面），按上文三个备选方向重新评估。
 
 ---
 
