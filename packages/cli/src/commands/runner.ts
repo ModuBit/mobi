@@ -26,6 +26,7 @@ import { getLatestRunnerLog } from '@/ui/logger'
 import { spawnMobiCli } from '@/utils/spawnMobiCli'
 import { isProcessAlive } from '@/utils/process'
 import { readRunnerState } from '@/persistence'
+import { startPpidWatchdog } from '@/supervisor/ppidWatchdog'
 import { initializeToken } from '@/ui/tokenInit'
 import type { CommandDefinition } from './types'
 
@@ -116,6 +117,11 @@ export const runnerCommand: CommandDefinition = {
         }
 
         if (runnerSubcommand === 'start-sync') {
+            // 父进程（supervisor，或前台调试时的 shell）死亡时自杀，
+            // 避免孤儿 runner 占锁文件/状态文件（SIGTERM 走 runner 既有优雅清理）
+            startPpidWatchdog({
+                onOrphaned: () => process.kill(process.pid, 'SIGTERM'),
+            })
             await initializeToken()
             await startRunner()
             process.exit(0)

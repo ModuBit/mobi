@@ -16,6 +16,7 @@
 
 import chalk from 'chalk'
 import { readHubState, type HubLocallyPersistedState } from '@/persistence'
+import { startPpidWatchdog } from '@/supervisor/ppidWatchdog'
 import { isProcessAlive, killProcess } from '@/utils/process'
 import { spawnMobiCli } from '@/utils/spawnMobiCli'
 import type { CommandDefinition, CommandContext } from './types'
@@ -199,6 +200,11 @@ export const hubCommand: CommandDefinition = {
             const { host, port } = parseHubArgs(context.commandArgs.slice(1))
             if (host) process.env.MOBI_LISTEN_HOST = host
             if (port) process.env.MOBI_LISTEN_PORT = port
+            // 父进程（supervisor，或前台调试时的 shell）死亡时自杀，
+            // 避免孤儿 hub 占端口/状态文件（SIGTERM 走 hub 既有优雅清理）
+            startPpidWatchdog({
+                onOrphaned: () => process.kill(process.pid, 'SIGTERM'),
+            })
             await import('../../../hub/src/index')
             return
         }
