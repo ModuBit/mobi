@@ -98,27 +98,14 @@
 
 ---
 
-## 9. Web 端权限审批支持 "Always Allow"（永久允许）
+## 9. ~~Web 端权限审批支持 "Always Allow"（永久允许）~~ ✅ 已解决（2026-08-15 核查，功能已实现）
 
-**相关文件**：
-- `packages/web/src/components/chat/PermissionRequest.tsx` — 权限审批 UI
-- `packages/web/src/components/tool-card/PermissionFooter.tsx` — 工具卡片内权限 UI
-- `packages/cli/src/claude/utils/permissionHandler.ts` — CLI 端权限处理
+条目描述已过时，两波改动落地后功能已完整：
 
-**现状**：
-- Web 端权限审批只支持：
-  - 普通工具：Allow / Allow for session / Deny
-  - Edit 工具：Allow / Allow all edits / Deny
-- CLI 端支持 "Always allow"（写入项目/用户配置文件），Web 端暂不支持
+- **CLI 侧**（2026-07-12 `db24be62`）：`permissionHandler` 对齐 SDK 原生权限能力——Web 回传的 `updatedPermissions` 透传 SDK 持久化（`decisionClassification: 'user_permanent'`）+ mobi Set 会话级兜底
+- **Web 侧**（2026-07-28 feat：PermissionFooter 按 suggestions destination 渲染）：`PermissionFooter.tsx` 按 SDK suggestions 的 destination 分组渲染四档——本次会话（session）/ 本地项目（localSettings）/ 当前项目（projectSettings）/ 当前用户（userSettings），后三档写配置文件跨会话生效，即本条目要的 "Always Allow"；「避免选项过多」也已解决（由窄到宽排序，主操作只占最窄档）
 
-**待实现**：
-- Web 端增加 "Always allow" 选项
-- 通过 SDK 的 `updatedPermissions` + `destination: 'projectSettings'` 持久化权限规则
-- 需确认前端 UI 设计（避免选项过多）
-
-**优先级**：
-- 低优先级，当前会话内授权满足基本需求
-- 后续根据用户反馈决定是否实现
+条目原列的相关文件 `PermissionRequest.tsx` 已在早期重构中删除，权限 UI 统一在 `PermissionFooter`。
 
 ---
 
