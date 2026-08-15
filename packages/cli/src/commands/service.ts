@@ -15,154 +15,26 @@
  */
 
 import chalk from 'chalk'
-import { readHubState, readRunnerState } from '@/persistence'
-import { isProcessAlive, killProcess } from '@/utils/process'
-import { spawnMobiCli } from '@/utils/spawnMobiCli'
+import { runSupervisor } from '@/supervisor'
+import { serviceStart, serviceStop, serviceRestart, serviceStatus } from './serviceOps'
+import { parseHostPortArgs } from './serviceArgs'
+import type { ServiceScope } from '@/supervisor/control'
 import type { CommandDefinition, CommandContext } from './types'
-
-async function waitForHubReady(host: string, port: number, timeoutMs = 10_000): Promise<boolean> {
-    const url = `http://${host}:${port}/health`
-    const deadline = Date.now() + timeoutMs
-
-    while (Date.now() < deadline) {
-        try {
-            const response = await fetch(url, { signal: AbortSignal.timeout(2000) })
-            if (response.ok) return true
-        } catch {
-            // hub 尚未就绪
-        }
-        await new Promise(resolve => setTimeout(resolve, 200))
-    }
-
-    return false
-}
-
-async function runServiceStart(context: CommandContext): Promise<void> {
-    // 解析 host/port
-    const args = context.commandArgs.slice(1)
-    let host = '127.0.0.1'
-    let port = 2222
-    for (let i = 0; i < args.length; i++) {
-        if ((args[i] === '--host' || args[i] === '--port') && i + 1 < args.length) {
-            if (args[i] === '--host') host = args[++i]
-            else port = parseInt(args[++i], 10)
-        } else if (args[i].startsWith('--host=')) {
-            host = args[i].slice('--host='.length)
-        } else if (args[i].startsWith('--port=')) {
-            port = parseInt(args[i].slice('--port='.length), 10)
-        }
-    }
-
-    // 启动 hub
-    console.log(chalk.gray('Starting hub...'))
-    const hubEnv = { ...process.env }
-    hubEnv.MOBI_LISTEN_HOST = host
-    hubEnv.MOBI_LISTEN_PORT = String(port)
-
-    const hubChild = spawnMobiCli(['hub', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: hubEnv,
-    })
-    hubChild.unref()
-
-    const ready = await waitForHubReady(host, port)
-    if (!ready) {
-        console.error(chalk.red('Hub failed to start'))
-        process.exit(1)
-    }
-    console.log(chalk.green(`Hub started (PID ${hubChild.pid})`))
-
-    // 启动 runner
-    console.log(chalk.gray('Starting runner...'))
-    const runnerChild = spawnMobiCli(['runner', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env,
-    })
-    runnerChild.unref()
-    console.log(chalk.green(`Runner started (PID ${runnerChild.pid})`))
-
-    console.log('')
-    console.log(`Service ready at ${chalk.cyan(`http://localhost:${port}`)}`)
-}
-
-async function runServiceStop(): Promise<void> {
-    // 先停 runner
-    const runnerState = await readRunnerState()
-    if (runnerState && isProcessAlive(runnerState.pid)) {
-        console.log(chalk.gray(`Stopping runner (PID ${runnerState.pid})...`))
-        await killProcess(runnerState.pid)
-        console.log(chalk.green('Runner stopped'))
-    } else {
-        console.log(chalk.gray('Runner is not running'))
-    }
-
-    // 再停 hub
-    const hubState = await readHubState()
-    if (hubState && isProcessAlive(hubState.pid)) {
-        console.log(chalk.gray(`Stopping hub (PID ${hubState.pid})...`))
-        await killProcess(hubState.pid)
-        console.log(chalk.green('Hub stopped'))
-    } else {
-        console.log(chalk.gray('Hub is not running'))
-    }
-}
-
-async function runServiceRestart(context: CommandContext): Promise<void> {
-    await runServiceStop()
-    console.log('')
-    await runServiceStart(context)
-}
-
-async function runServiceStatus(): Promise<void> {
-    const hubState = await readHubState()
-    const runnerState = await readRunnerState()
-
-    console.log(chalk.bold('Service Status'))
-    console.log('')
-
-    // Hub
-    if (hubState && isProcessAlive(hubState.pid)) {
-        console.log(`  Hub:       ${chalk.green('running')} (PID ${hubState.pid})`)
-        console.log(`  Listen:    ${hubState.listenHost}:${hubState.listenPort}`)
-        console.log(`  Web URL:   ${chalk.cyan(`http://localhost:${hubState.listenPort}`)}`)
-
-        try {
-            const response = await fetch(`http://${hubState.listenHost}:${hubState.listenPort}/health`, {
-                signal: AbortSignal.timeout(3000),
-            })
-            if (response.ok) {
-                const health = await response.json() as { status: string; protocolVersion: string }
-                console.log(`  Health:    ${chalk.green(health.status)}`)
-            }
-        } catch {
-            console.log(`  Health:    ${chalk.yellow('unreachable')}`)
-        }
-    } else {
-        console.log(`  Hub:       ${chalk.gray('stopped')}`)
-    }
-
-    console.log('')
-
-    // Runner
-    if (runnerState && isProcessAlive(runnerState.pid)) {
-        console.log(`  Runner:    ${chalk.green('running')} (PID ${runnerState.pid})`)
-    } else {
-        console.log(`  Runner:    ${chalk.gray('stopped')}`)
-    }
-}
 
 function showServiceHelp(): void {
     console.log(`
-${chalk.bold('mobi service')} - Manage hub + runner together
+${chalk.bold('mobi service')} - Manage hub + runner via supervisor
 
 ${chalk.bold('Usage:')}
-  mobi service start [--host <host>] [--port <port>]
-                            Start hub and runner
-  mobi service stop         Stop hub and runner
-  mobi service restart      Restart hub and runner
-  mobi service status       Show service status
+  mobi service start [--host <host>] [--port <port>]   Start hub and runner (supervised)
+  mobi service stop                                    Stop hub and runner, supervisor exits
+  mobi service restart                                 Restart hub and runner
+  mobi service status                                  Show supervisor/hub/runner status
+
+  mobi service hub <start|stop|restart|status>          Manage hub only
+  mobi service runner <start|stop|restart|status>       Manage runner only
+
+${chalk.gray('mobi hub / mobi runner 顶层命令是 service 子命令的别名')}
 `)
 }
 
@@ -170,33 +42,47 @@ export const serviceCommand: CommandDefinition = {
     name: 'service',
     requiresRuntimeAssets: true,
     run: async (context: CommandContext) => {
-        const subcommand = context.commandArgs[0]
+        const args = context.commandArgs
 
-        if (subcommand === '-h' || subcommand === '--help') {
+        if (args[0] === '-h' || args[0] === '--help') {
             showServiceHelp()
             return
         }
 
-        if (subcommand === 'start') {
-            await runServiceStart(context)
+        // 内部命令：前台运行 supervisor（A 路径由 ensureSupervisorRunning spawn；B 路径由系统服务 ExecStart）
+        if (args[0] === 'supervise' && (args[1] === '--sync' || args[1] === 'sync')) {
+            await runSupervisor()
             return
         }
 
-        if (subcommand === 'stop') {
-            await runServiceStop()
+        // 解析可选的组件前缀：service [hub|runner] <action>
+        let scope: ServiceScope = 'both'
+        let actionArgs = args
+        if (args[0] === 'hub' || args[0] === 'runner') {
+            scope = args[0]
+            actionArgs = args.slice(1)
+        }
+        const action = actionArgs[0]
+
+        if (action === 'start') {
+            const { host, port } = parseHostPortArgs(actionArgs.slice(1))
+            await serviceStart(scope, { host, port })
             return
         }
-
-        if (subcommand === 'restart') {
-            await runServiceRestart(context)
+        if (action === 'stop') {
+            await serviceStop(scope)
             return
         }
-
-        if (subcommand === 'status') {
-            await runServiceStatus()
+        if (action === 'restart') {
+            const { host, port } = parseHostPortArgs(actionArgs.slice(1))
+            await serviceRestart(scope, { host, port })
+            return
+        }
+        if (action === 'status') {
+            await serviceStatus()
             return
         }
 
         showServiceHelp()
-    }
+    },
 }
