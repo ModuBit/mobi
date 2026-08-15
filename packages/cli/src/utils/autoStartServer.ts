@@ -15,57 +15,37 @@
  */
 
 /**
- * Auto-start hub module
+ * CLI 启动早期的服务自动拉起（hub + runner），统一经 supervisor 托管。
  *
- * Automatically starts the MOBI hub when CLI is launched
- * if specific conditions are met:
- * 1. MOBI_API_URL is not set (using default localhost:DEFAULT_SERVER_PORT)
- * 2. cliApiToken exists in settings.json (hub was previously started)
- * 3. DEFAULT_SERVER_PORT is not currently listening
+ * 收编背景：`hub start-sync` / `runner start-sync` 带 PPID 看门狗（父进程死亡即
+ * 自杀），任何 detached spawn start-sync 并期望该进程比调用方活得更久的路径，
+ * 都会在调用方退出后被看门狗杀掉。因此自动拉起一律改为
+ * ensureSupervisorRunning + 控制指令，由 supervisor 作为父进程托管，
+ * CLI 会话结束后 hub/runner 仍存活。
+ *
+ * 触发条件保持既有语义：
+ * 1. MOBI_API_URL 未设置（使用默认 localhost）
+ * 2. settings.json 中存在 cliApiToken（hub 曾启动过）且未配置独立 apiUrl
+ * 3. hub 未在运行（health 探测，而非旧的"端口被占用"近似判断）
  */
 
 import chalk from 'chalk'
-import { createConnection } from 'node:net'
 import { configuration } from '@/configuration'
 import { readSettings } from '@/persistence'
-import { spawnMobiCli } from '@/utils/spawnMobiCli'
+import { ensureSupervisorRunning, sendControlCommand } from '@/supervisor/control'
 import { logger } from '@/ui/logger'
+import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@/runner/controlClient'
 
-const DEFAULT_SERVER_PORT = 2222
-const SERVER_STARTUP_TIMEOUT_MS = 10000
-const POLL_INTERVAL_MS = 200
-const PORT_CHECK_TIMEOUT_MS = 1000
+/** hub /health 探测超时 */
+const HEALTH_CHECK_TIMEOUT_MS = 1000
 
 /**
- * Check if a port is currently listening (cross-platform)
+ * start 类控制指令的客户端超时。
+ * 服务端 start 的 hub 健康门最长 30s（HUB_HEALTH_TIMEOUT_MS），外加
+ * ensureSupervisorRunning 的 spawn 就绪期；默认 10s 会在启动慢时假报失败
+ * 而服务实际成功，故与 serviceOps 的 START_COMMAND_TIMEOUT_MS 对齐放宽到 60s。
  */
-async function checkPortListening(port: number, host: string = '127.0.0.1'): Promise<boolean> {
-    return new Promise((resolve) => {
-        const socket = createConnection({ port, host })
-
-        const cleanup = () => {
-            socket.removeAllListeners()
-            socket.destroy()
-        }
-
-        socket.setTimeout(PORT_CHECK_TIMEOUT_MS)
-
-        socket.on('connect', () => {
-            cleanup()
-            resolve(true)
-        })
-
-        socket.on('error', () => {
-            cleanup()
-            resolve(false)
-        })
-
-        socket.on('timeout', () => {
-            cleanup()
-            resolve(false)
-        })
-    })
-}
+const START_COMMAND_TIMEOUT_MS = 60_000
 
 /**
  * Check if hub is ready via health endpoint
@@ -73,7 +53,7 @@ async function checkPortListening(port: number, host: string = '127.0.0.1'): Pro
 async function checkServerHealth(url: string): Promise<boolean> {
     try {
         const response = await fetch(`${url}/health`, {
-            signal: AbortSignal.timeout(1000)
+            signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS)
         })
         return response.ok
     } catch {
@@ -82,31 +62,10 @@ async function checkServerHealth(url: string): Promise<boolean> {
 }
 
 /**
- * Wait for hub to become ready
- */
-async function waitForServerReady(
-    url: string,
-    maxWaitMs: number = SERVER_STARTUP_TIMEOUT_MS,
-    pollIntervalMs: number = POLL_INTERVAL_MS
-): Promise<boolean> {
-    const startTime = Date.now()
-
-    while (Date.now() - startTime < maxWaitMs) {
-        if (await checkServerHealth(url)) {
-            logger.debug(`[AUTO-START] Server ready after ${Date.now() - startTime}ms`)
-            return true
-        }
-        await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
-    }
-
-    return false
-}
-
-/**
  * Determine if hub should be auto-started
  */
 async function shouldAutoStartServer(): Promise<boolean> {
-    // Condition 1: MOBI_API_URL not set (using default localhost:DEFAULT_SERVER_PORT)
+    // Condition 1: MOBI_API_URL not set (using default localhost)
     if (process.env.MOBI_API_URL) {
         logger.debug('[AUTO-START] MOBI_API_URL is set, skipping auto-start')
         return false
@@ -127,10 +86,10 @@ async function shouldAutoStartServer(): Promise<boolean> {
         return false
     }
 
-    // Condition 3: DEFAULT_SERVER_PORT is not currently listening
-    const isListening = await checkPortListening(DEFAULT_SERVER_PORT)
-    if (isListening) {
-        logger.debug(`[AUTO-START] Port ${DEFAULT_SERVER_PORT} already in use, skipping auto-start`)
+    // Condition 3: hub 已在运行（health 探测）则不重复拉起。
+    // 旧实现用"默认端口被占用"近似，会被同端口的其他服务误判为已运行
+    if (await checkServerHealth(configuration.apiUrl)) {
+        logger.debug(`[AUTO-START] Hub already running at ${configuration.apiUrl}, skipping auto-start`)
         return false
     }
 
@@ -138,25 +97,7 @@ async function shouldAutoStartServer(): Promise<boolean> {
 }
 
 /**
- * Start hub as a child process (will exit when CLI exits)
- */
-function startServerAsChild(): void {
-    const serverProcess = spawnMobiCli(['hub', 'start-sync'], {
-        detached: false,
-        stdio: 'ignore',
-        env: process.env
-    })
-
-    logger.debug(`[AUTO-START] Hub process spawned with PID ${serverProcess.pid}`)
-
-    // Ensure hub is killed when CLI exits
-    process.on('exit', () => {
-        serverProcess.kill()
-    })
-}
-
-/**
- * Main entry point: auto-start hub if conditions are met
+ * Main entry point: auto-start hub (via supervisor) if conditions are met
  */
 export async function maybeAutoStartServer(): Promise<void> {
     try {
@@ -168,15 +109,14 @@ export async function maybeAutoStartServer(): Promise<void> {
         logger.debug('[AUTO-START] Starting hub automatically...')
         console.log(chalk.gray('Starting MOBI hub in background...'))
 
-        startServerAsChild()
-
-        const isReady = await waitForServerReady(configuration.apiUrl)
-
-        if (!isReady) {
-            console.log(chalk.yellow('Warning: Hub did not start within expected time'))
-            console.log(chalk.gray('  Try running `mobi hub start` manually to see errors'))
-            return
-        }
+        // hub 由 supervisor 托管：崩溃退避重启、CLI 退出后仍存活
+        await ensureSupervisorRunning()
+        // 服务端 start 应答即已过 hub 健康门，无需再轮询等待
+        await sendControlCommand(
+            configuration.supervisorSocketFile,
+            { cmd: 'start', scope: 'hub' },
+            START_COMMAND_TIMEOUT_MS
+        )
 
         console.log(chalk.green('MOBI hub started'))
     } catch (error) {
@@ -185,5 +125,34 @@ export async function maybeAutoStartServer(): Promise<void> {
         if (error instanceof Error) {
             console.log(chalk.gray(`  Error: ${error.message}`))
         }
+        console.log(chalk.gray('  Try running `mobi hub start` manually to see errors'))
+    }
+}
+
+/**
+ * 确保 runner 在跑且为当前 CLI 版本，否则经 supervisor 拉起。
+ *
+ * 用于交互式 CLI 启动早期：失败绝不中断会话启动——仅记日志降级，
+ * 后续 hub 连接失败会自然走本地模式等既有降级路径。
+ * （旧实现 detached spawn `runner start-sync` + unref 期望 runner 比调用方
+ * 活得更久，但 start-sync 的 PPID 看门狗会在调用方退出后将其杀掉，故收编。）
+ */
+export async function maybeAutoStartRunner(): Promise<void> {
+    if (await isRunnerRunningCurrentlyInstalledMobiVersion()) {
+        return
+    }
+
+    logger.debug('[AUTO-START] Starting mobi background service...')
+
+    try {
+        await ensureSupervisorRunning()
+        await sendControlCommand(
+            configuration.supervisorSocketFile,
+            { cmd: 'start', scope: 'runner' },
+            START_COMMAND_TIMEOUT_MS
+        )
+    } catch (error) {
+        // 会话启动早期的自动拉起：静默降级，不中断
+        logger.debug('[AUTO-START] Failed to start runner via supervisor, continuing without it', error)
     }
 }

@@ -19,12 +19,10 @@ import { execFileSync, spawn } from 'node:child_process'
 import { PROTOCOL_VERSION } from '@mobi/shared'
 import type { StartOptions } from '@/claude/runClaude'
 import { configuration } from '@/configuration'
-import { isRunnerRunningCurrentlyInstalledMobiVersion } from '@/runner/controlClient'
 import { authAndSetupMachineIfNeeded } from '@/ui/auth'
 import { logger } from '@/ui/logger'
 import { initializeToken } from '@/ui/tokenInit'
-import { spawnMobiCli } from '@/utils/spawnMobiCli'
-import { maybeAutoStartServer } from '@/utils/autoStartServer'
+import { maybeAutoStartServer, maybeAutoStartRunner } from '@/utils/autoStartServer'
 import { withBunRuntimeEnv } from '@/utils/bunRuntime'
 import { extractErrorInfo } from '@/utils/errorUtils'
 import { getClaudeExecutablePath } from '@/claude/sdk/claudeExecutable'
@@ -172,27 +170,16 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
         // 初始化 cli auth token
         await initializeToken()
         // 启动 mobi hub （如果需要）
-        // mobi hub 会随 mobi 一同关闭
+        // hub/runner 均经 supervisor 托管：CLI 会话结束后仍存活
         await maybeAutoStartServer()
         // 确保设置了 cli auth token 并初始化 machineId
         await authAndSetupMachineIfNeeded()
 
         logger.debug('Ensuring mobi background service is running & matches our version...')
 
-        // 启动 mobi runner （如果需要）
-        if (!(await isRunnerRunningCurrentlyInstalledMobiVersion())) {
-            logger.debug('Starting mobi background service...')
-
-            const runnerProcess = spawnMobiCli(['runner', 'start-sync'], {
-                detached: true,
-                stdio: 'ignore',
-                env: process.env
-            })
-            // mobi runner 完全独立于父进程后台运行
-            runnerProcess.unref()
-
-            await new Promise(resolve => setTimeout(resolve, 200))
-        }
+        // 启动 mobi runner （如果需要）——经 supervisor 托管，
+        // CLI 会话结束后 runner 继续存活以管理会话
+        await maybeAutoStartRunner()
 
         try {
             const { runClaude } = await import('@/claude/runClaude')
