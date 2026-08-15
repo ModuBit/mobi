@@ -63,9 +63,9 @@ Runner 是 Mobi 的后台进程管理器，负责 Claude 会话的生命周期�
 ```mermaid
 flowchart TB
     subgraph Commands["命令层"]
-        Start["mobi runner start"] --> Spawn["spawnMobiCli<br/>detached"]
-        Stop["mobi runner stop"] --> HTTP["runner.controlClient"]
-        Status["mobi runner status"] --> Doctor["runDoctorCommand"]
+        Start["mobi runner start"] --> Supervisor["serviceOps → supervisor<br/>IPC 托管"]
+        Stop["mobi runner stop"] --> Supervisor
+        Status["mobi runner status"] --> Supervisor
         List["mobi runner list"] --> HTTP["runner.controlClient"]
         StopSession["mobi runner stop-session"] --> HTTP["runner.controlClient"]
         Logs["mobi runner logs"] --> Local["readRunnerState"]
@@ -144,10 +144,10 @@ Runner 追踪两种来源的会话：
 
 | 子命令 | 说明 | 通信方式 |
 |--------|------|----------|
-| [`start`](./start.md) | 后台启动 Runner | 本地 spawn |
-| [`start-sync`](./start-sync.md) | 同步启动（内部使用） | 直接调用 |
-| [`stop`](./stop.md) | 停止 Runner | HTTP → Runner |
-| [`status`](./status.md) | 查看状态 | doctor 命令 |
+| [`start`](./start.md) | 启动 Runner（supervisor 托管，`service runner start` 的别名） | supervisor IPC |
+| [`start-sync`](./start-sync.md) | 同步启动（内部使用，含 PPID 看门狗） | 直接调用 |
+| [`stop`](./stop.md) | 停止 Runner | supervisor IPC |
+| [`status`](./status.md) | 查看状态（supervisor 全景） | supervisor IPC |
 | [`list`](./list.md) | 列出活跃会话 | HTTP → Runner |
 | [`stop-session`](./stop-session.md) | 停止指定会话 | HTTP → Runner |
 | [`logs`](./logs.md) | 查看日志路径 | 本地文件读取 |

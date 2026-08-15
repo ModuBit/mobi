@@ -2,15 +2,16 @@
 
 文件 [`packages/cli/src/commands/hub.ts`](/packages/cli/src/commands/hub.ts)
 
-`mobi hub` 命令是 Hub 模块的 CLI 入口，解析参数后通过 `import` 加载 Hub 模块启动服务器。
+`mobi hub` 命令是 Hub 模块的 CLI 入口。`start`/`stop`/`restart`/`status` 收编为 [`mobi service hub`](../service/) 子命令的别名（经 supervisor 托管）；`start-sync` 前台直跑，解析参数后通过 `import` 加载 Hub 模块启动服务器。
 
 ## 架构
 
 ```mermaid
 flowchart TB
-    Start["mobi hub --host x --port y"] --> Parse["parseHubArgs()<br/>解析 --host / --port"]
+    Start["mobi hub start-sync --host x --port y"] --> Parse["parseHubArgs()<br/>解析 --host / --port"]
     Parse --> Env["设置环境变量<br/>MOBI_LISTEN_HOST / MOBI_LISTEN_PORT"]
-    Env --> Import["import('../../../../packages/hub/src/index')"]
+    Env --> Watchdog["startPpidWatchdog()<br/>父进程（supervisor）死亡时 SIGTERM 自杀"]
+    Watchdog --> Import["import('../../../hub/src/index')"]
     Import --> HubMain["packages/hub/src/index.ts → main()"]
     HubMain --> Config["createConfiguration()"]
     Config --> Store["Store (SQLite)"]
@@ -125,5 +126,5 @@ packages/cli/src/commands/
 
 | 文件 | 入口 |
 |------|------|
-| `packages/cli/src/commands/hub.ts` | [`hubCommand`](/packages/cli/src/commands/hub.ts) |
+| `packages/cli/src/commands/hub.ts` | [`hubCommand`](/packages/cli/src/commands/hub.ts)（start/stop/restart/status 委托 `serviceOps`） |
 | `packages/cli/src/utils/autoStartServer.ts` | [`maybeAutoStartServer()`](/packages/cli/src/utils/autoStartServer.ts) |

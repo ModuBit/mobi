@@ -16,6 +16,9 @@
 | `src/commands/claude.ts` | 默认命令，启动 Claude 会话 |
 | `src/commands/claudeArgs.ts` | claude 命令参数解析（parseStartOptions 纯函数，含 --project） |
 | `src/runner/spawnArgs.ts` | runner spawn 子进程 CLI 参数构建（buildClaudeSpawnArgs 纯函数） |
+| `src/supervisor/` | 进程托管：`supervisor.ts` 状态机、`control.ts` IPC、`index.ts` runSupervisor 编排、`desiredState.ts` 期望状态、`restartPolicy.ts` 退避策略、`ppidWatchdog.ts` 看门狗 |
+| `src/commands/serviceOps.ts` | service 命令族共用操作（ensure supervisor + IPC + 状态输出） |
+| `src/utils/httpHealth.ts` | waitForUrlOk HTTP 健康轮询 |
 | `src/claude/loop.ts` | 会话循环（Local/Remote 模式切换） |
 | `src/modules/common/idleTimer.ts` | Session 自动超时计时器 |
 | `src/constants/uploadPaths.ts` | 上传文件路径常量（`.mobi/uploads`） |
