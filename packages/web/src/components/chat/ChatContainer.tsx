@@ -135,6 +135,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
 
+    // 最近一次消息活动时间（倒序找最后一条带 positionAt 的消息）：
+    // 供 StatusBar 的静默告警（agent 挂死可观测，见 AgentLoadingBubble / docs/pending.md #34）。
+    // 含排队消息——用户刚发消息也是活动，不应误报等待
+    const lastActivityAt = useMemo(() => {
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const at = messages[i].positionAt
+            if (at !== undefined) return at
+        }
+        return undefined
+    }, [messages])
+
     const { blocks: rawBlocks, byId } = useMemo(() => {
         // 排队消息仅在悬浮条展示，不进入聊天线程
         const visibleMessages = messages.filter(m => !isQueuedInMobi(m))
@@ -453,6 +464,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 active={session?.active ?? false}
                 allowSendWhenInactive={false}
                 running={session?.running ?? false}
+                lastActivityAt={lastActivityAt}
                 agentState={session?.agentState}
                 metadata={metadata}
                 agentFlavor={agentFlavor}
