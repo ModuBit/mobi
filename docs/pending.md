@@ -352,23 +352,14 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 
 ---
 
-## 31. Tool Use snapshot 渐进式透出 partial input（方案 2）
+## 31. ~~Tool Use snapshot 渐进式透出 partial input（方案 2）~~ ✅ 关闭（2026-08-15 核查，维持不做）
 
-**背景**（2026-07-23）：已实现方案 1（`content_block_start` 立即下发 `input={}` 占位，消除 Write/Edit 生成 input 期间的盲区，见 [spec](superpowers/specs/2026-07-23-tool-use-placeholder-snapshot-design.md)）。方案 1 占位期不显示 input 细节（file_path 等要等 `content_block_stop` 才出现）。
+方案 1（`content_block_start` 立即下发 `input={}` 占位）仍在 `streamSnapshotSender.ts` 稳定工作。方案 2（partial JSON 容错提取 key）**维持不做**：
 
-**目标**：在 `input_json_delta` 流式累积期间也节流 flush，对累积的 **partial JSON** 容错提取已完成的 key（如 `file_path`），让用户看到文件路径等参数先于完整 input 出现。
+- 收益小：占位期是 input 生成期间（秒级），错过的是「正在写哪个文件」的一瞥，完成后立即可见；触发条件（用户反馈占位期想看参数）至今未出现
+- 成本实打实：partial JSON 无法直接 parse——引入 `jsonrepair`（依赖体积）或自写容错 key 提取（转义/嵌套/未闭合字符串的坑）；Write 大 `content` 每次 flush parse + 传输，与 #8 带宽优化方向冲突
 
-**复杂度/风险**：
-- partial JSON 不完整，无法直接 `JSON.parse`——要么引入 `jsonrepair`（依赖体积），要么自写容错 key 提取（转义/嵌套/字符串未闭合的坑）
-- Write 的 `content` 字段可能很大，每次 flush 都 parse + 传输，带宽与 CPU 开销上升（与 #8 带宽优化冲突，需权衡）
-
-**涉及文件**：
-- `packages/cli/src/claude/utils/streamSnapshotSender.ts` — `append(tool_use)` 标 dirty 节流 flush；`buildBlocks` 对未 ready tool_use 容错 parse 累积 input
-- 前端 `ensureToolBlock` 已支持同 id input 渐进更新，无需改动
-
-**触发条件**：方案 1 上线后用户反馈「占位期想知道在写哪个文件/什么参数」时再做。当前 YAGNI。
-
-**优先级**：低。
+若未来长 input 生成成为常态观察痛点，再评估节流 + 只提取首部 key 的折中方案。
 
 ---
 
