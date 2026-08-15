@@ -1232,3 +1232,45 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 - `runSupervisor` 编排层零单测覆盖（finish 幂等/idle 竞态/onEmpty 路径仅靠人审），值得补注入式 fake server 测试
 - B 路径 launchd/systemd 真机验证未做（安装/开机自启/KeepAlive 拉起/空退出不重拉）
 - `hub start-sync` 直接调用时无端口范围校验（仅 service start/restart 经 parseHostPortArgs 校验）
+
+---
+
+## 47. 桌面端应用（macOS）— 可行性结论与技术选型（2026-08-15 探索）
+
+**背景**：探索 mobi 桌面化。需求已澄清：核心动机 = 本地一体化零部署 + 原生体验（Dock/通知/菜单栏）+ 降低分发门槛；CLI 留在系统终端（桌面 app 只承载 Web UI）；先只做 macOS；本地 hub 保留局域网多端访问（手机 PWA 不受影响）。
+
+**核心结论**：**可行性高，mobi 核心改造量接近零**。mobi 二进制已是「hub + runner + Web 资产」自包含单体（bun `--compile`，~93MB），supervisor 已解决「托管 hub+runner、崩溃退避重启」。桌面化的本质是给它套一个原生壳。
+
+**架构（sidecar 模式）**：
+
+```
+mobi.app（dmg 分发）
+├── 原生壳（Tauri 或 Electron）    ← 窗口、Dock、通知、菜单栏、自动更新
+├── mobi 二进制（sidecar，现有产物） ← 启动时等价 mobi service start（复用 supervisor 探活/复用）
+└── WebView                        ← 加载 http://127.0.0.1:<port>（现有 Web UI 零改动）
+```
+
+行为模型：打开 app = 自动 `mobi service start`（已运行则复用，supervisor IPC 探活可判断）；`mobi claude` / 浏览器 / 手机 PWA 全不受影响——同一个 hub 实例。关窗口可收进菜单栏，hub 继续跑。
+
+**壳技术栈对比**（2026-08-15，Tauri 2 文档已核实 sidecar/updater 为一等公民）：
+
+| 维度 | Tauri 2 | Electron |
+|---|---|---|
+| 安装体积 | ~110MB（壳只占 ~15MB） | ~250MB+（Chromium ~160MB 叠加） |
+| 运行内存 | WKWebView 共享系统 WebKit，~150-250MB | 独立 Chromium，~300-500MB |
+| 拉起 mobi | Rust shell plugin spawn（几十行 Rust） | Node child_process（TS 最顺手） |
+| 壳自动更新 | updater plugin（签名更新） | electron-updater（最成熟） |
+| 签名公证 | 均需 Apple Developer $99/年，工作量相当 | 同左 |
+| Web UI 兼容性 | ⚠️ WKWebView 的 SSE/Web Push 行为需实测（WKWebView 不支持 Web Push） | ✅ Chromium 与浏览器一致，零风险 |
+
+**推荐**：Tauri（常驻菜单栏型应用对体积/内存敏感，Rust 代价集中在壳层一次性投入，估 <1000 行）。**建议先做半天级 PoC**（壳 + 手动 `mobi service start` + WebView 加载现有 Web UI，验证 SSE/Socket.IO/cookie 登录在 WKWebView 的实际行为），通过则定 Tauri，不通过退 Electron。
+
+**两个与壳选型无关的共同改造点**（真正要动 mobi 的地方）：
+1. **通知桥**：Web 通知走 Web Push（PushService/NotificationHub），WKWebView/Electron 渲染进程都收不到——桌面端通知需 Web UI → 壳层事件桥（Tauri emit / Electron IPC → 原生通知）
+2. **登录态注入**：app 自己拉起的 hub 应自动注入信任凭证跳过 JWT 登录界面（hub 侧能力，「零部署」体验的关键）
+
+**mobi 二进制更新**：与壳无关——复用现有 `mobi upgrade`，或随壳捆绑新版。
+
+**状态**：探索结论已记录，待决策是否启动（先 PoC 验证 WKWebView 兼容性）。
+
+**优先级**：待用户决策。
