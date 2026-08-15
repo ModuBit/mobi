@@ -39,6 +39,7 @@ import { formatMessageWithAttachments } from '@/utils/attachmentFormatter';
 import { normalizeClaudeSessionModel } from './model';
 import { getInvokedCwd } from '@/utils/invokedCwd';
 import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
+import { normalizeContinueArg } from './utils/normalizeContinueArg';
 
 export interface StartOptions {
     model?: string
@@ -72,6 +73,9 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     const initialState: AgentState = {};
     const initialModel = normalizeClaudeSessionModel(options.model);
     const startingMode = options.startingMode ?? (startedBy === 'runner' ? 'remote' : 'local');
+    // -c 规范化为显式 --resume（bootstrapSession 的 tag 复用与 claudeLocal 透传都依赖
+    // 显式 --resume 形态；详见 normalizeContinueArg 的 docstring）
+    options.claudeArgs = await normalizeContinueArg(options.claudeArgs, workingDirectory);
     const { api, apiSession, sessionInfo, additionalDirectories } = await bootstrapSession({
         flavor: 'claude',
         startedBy,

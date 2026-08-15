@@ -363,3 +363,65 @@ describe('bootstrapSession 项目归属', () => {
         })).rejects.toThrow(/primary/i)
     })
 })
+
+describe('bootstrapSession --resume tag 复用（pending #6）', () => {
+    const RESUME_ARGS = ['--resume', 'claude-abc']
+
+    function invokedTag(): string {
+        const call = h.getOrCreateSession.mock.calls[0]?.[0] as { tag?: string }
+        return call?.tag ?? ''
+    }
+
+    it('--resume 命中已有非活跃 Hub session：复用其 tag', async () => {
+        stubExists([])
+        h.getSessionByClaudeSessionId.mockResolvedValue(
+            mockSession({ active: false, tag: 'tag-existing' })
+        )
+        h.getOrCreateSession.mockResolvedValue(mockSession())
+
+        await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            claudeArgs: RESUME_ARGS
+        })
+
+        expect(invokedTag()).toBe('tag-existing')
+    })
+
+    it('已有 Hub session 仍 active（如另一终端挂着）：不复用 tag，新建 session', async () => {
+        stubExists([])
+        h.getSessionByClaudeSessionId.mockResolvedValue(
+            mockSession({ active: true, tag: 'tag-busy' })
+        )
+        h.getOrCreateSession.mockResolvedValue(mockSession())
+
+        await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            claudeArgs: RESUME_ARGS
+        })
+
+        // 不复用 busy tag；新 tag 是随机 uuid（≠ tag-busy 且非空）
+        const tag = invokedTag()
+        expect(tag).toBeTruthy()
+        expect(tag).not.toBe('tag-busy')
+    })
+
+    it('Hub 无对应记录：新建（随机 tag）', async () => {
+        stubExists([])
+        h.getSessionByClaudeSessionId.mockResolvedValue(null)
+        h.getOrCreateSession.mockResolvedValue(mockSession())
+
+        await bootstrapSession({
+            flavor: 'claude',
+            startedBy: 'terminal',
+            workingDirectory: '/a/mobi',
+            claudeArgs: RESUME_ARGS
+        })
+
+        expect(invokedTag()).toBeTruthy()
+        expect(invokedTag()).not.toBe('tag1')
+    })
+})

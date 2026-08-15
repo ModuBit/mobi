@@ -51,24 +51,15 @@
 
 ---
 
-## 6. `-c`（continue）模式未复用已有 mobi session
+## 6. ~~`-c`（continue）模式未复用已有 mobi session~~ ✅ 已解决（2026-08-15）
 
-**相关文件**：
-- `packages/cli/src/agent/sessionFactory.ts:127-137` — `extractResumeSessionId` 只识别 `--resume` / `-r`
-- `packages/cli/src/commands/claude.ts:137-141` — claude 参数透传
+**方案**：mobi 主导 resume 目标，而非猜测 claude 的 `-c` 会选谁。`runClaude` 入口把 `-c`/`--continue` 规范化为显式 `--resume <id>`（`claude/utils/normalizeContinueArg.ts`）：最近会话用 SDK 官方 `listSessions({ dir: cwd, limit: 1 })` 枚举（按 lastModified 降序，含 worktrees 归并），替换后下游全走现成 `--resume` 路径——sessionFactory tag 复用、claudeLocal 透传、scanner 预加载、claudeRemote resume，零额外改动。
 
-**现状**：
-- `mobi --resume <sessionId>` 会通过 `extractResumeSessionId` 解析出 claudeSessionId，查找已有 Hub session 并复用其 tag
-- `mobi -c`（continue，恢复最近一次对话）透传给 Claude Code 后，Claude 会恢复已有会话，但 mobi 端不识别 `-c` 参数
-- 结果：同一个 Claude Code session 对应多个 mobi session
+**降级策略（绝不变差）**：显式 `--resume` 已存在则 resume 优先不动；目录无历史会话 / `listSessions` 失败则保留 `-c` 原样透传，由 claude 自行处理。
 
-**原因**：
-- `-c` 没有显式 session ID，需要从 Claude 的项目会话历史中查找最近的 session
-- `extractResumeSessionId` 未覆盖 `-c` / `--continue` 参数
+**并发防护**：`sessionFactory` 复用 tag 前检查 Hub session 的 `active`——仍活跃（如另一终端挂着）则不复用、新建 session（对齐 Web 端「active 不可再接入」语义），避免双进程并到一条 session 消息交错。毫秒级双开竞态窗口为已知边界（与 Claude 自身 `-c` 同水平）。
 
-**待修复**：
-- `extractResumeSessionId` 需要识别 `-c` / `--continue` 参数
-- 当检测到 `-c` 但无显式 session ID 时，需通过 Claude 的项目会话目录（`~/.claude/projects/{hash}/`）或 Hub API 查找该工作目录下最近的 session，获取其 claudeSessionId 后走复用逻辑
+单测 12 用例（normalizeContinueArg 9 + sessionFactory tag 复用 3）；bun 下真实冒烟：demo 目录 `['--model','sonnet','-c']` → `['--model','sonnet','--resume','0d3f0594-…']`（listSessions 返回正确按时间降序）。
 
 ---
 

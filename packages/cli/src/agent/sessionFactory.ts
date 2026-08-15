@@ -245,9 +245,18 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
         try {
             const existingSession = await api.getSessionByClaudeSessionId(resumeClaudeSessionId)
             if (existingSession?.tag) {
-                // 用已有 session 的 tag 调用 getOrCreateSession，Hub 会返回同一条记录
-                sessionTag = existingSession.tag
-                logger.debug(`[START] 找到已有 Hub session (id=${existingSession.id})，复用 tag: ${sessionTag}`)
+                if (existingSession.active) {
+                    // 该 Claude 会话仍有一个 mobi 进程在跑（如另一终端还挂着）：
+                    // 复用 tag 会让两个进程并到同一条 Hub session，消息流交错、
+                    // runtimeState 互相覆盖。对齐 Web 端「active 的 session 不可再
+                    // 接入」语义——降级为新建 session；Claude 层照旧 resume
+                    // （与用户裸跑两个 claude -c 同水平，mobi 不拦）
+                    logger.debug(`[START] 已有 Hub session (id=${existingSession.id}) 仍在运行，不复用 tag，新建 session`)
+                } else {
+                    // 用已有 session 的 tag 调用 getOrCreateSession，Hub 会返回同一条记录
+                    sessionTag = existingSession.tag
+                    logger.debug(`[START] 找到已有 Hub session (id=${existingSession.id})，复用 tag: ${sessionTag}`)
+                }
             } else {
                 logger.debug(`[START] 未找到对应 Hub session，新建`)
             }
