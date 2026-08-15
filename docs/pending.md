@@ -318,28 +318,17 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 
 ---
 
-## 29. Web 字体刷新跳变（品牌字体加载导致 swap 闪烁）
+## 29. ~~Web 字体刷新跳变（品牌字体加载导致 swap 闪烁）~~ ✅ 已解决（2026-08-15 核查，子集化已实施）
 
-**背景**（2026-07-16）：用户反馈每次刷新页面，字体渲染有明显的"先后过程"——几秒内字体从系统字体逐步变成阿里普惠体，视觉跳变明显。每次刷新都复现（即使字体已缓存，仍要重新解码）。
+**方案 2（子集化）已落地**（`scripts/subset-fonts.py`，字体文件 2026-08-09 更新）：
 
-**根因**：
-- `packages/web/src/styles/fonts.css` 用阿里巴巴普惠体 3.0，Regular 单文件约 3.8MB，加 Medium/Bold + JetBrains Mono 总共几个 MB
-- 所有 `@font-face` 设 `font-display: swap`：解码期间先用 fallback 系统字体渲染，每个字重解码完依次 swap 成品牌字体 → 明显的"渐进变脸"
-- `index.html` 只 preload 了 Regular + JetBrains Mono Regular，Medium/Bold 未 preload，多字重先后就绪加剧跳变
-- 即使字体已被 HTTP 缓存，每次刷新仍要重新解码几 MB，swap 期依旧可见
+- 阿里普惠体 3.0 裁剪到 GB2312 一级常用字（3755 字）+ ASCII + 希腊字母 + 常用数学/标点，每字重 1.7MB → **~500KB**，解码时间大幅缩短，swap 跳变窗口随之收敛
+- `index.html` 的 preload 已移除（决策记录在 fonts.css 注释：字体非首屏关键路径，有系统字体兜底，慢链路让位给 JS）
+- 子集外字符由浏览器回退系统字体（实装验证过）
 
-**涉及文件**：
-- `packages/web/src/styles/fonts.css` — `@font-face` 定义（`font-display`、`unicode-range`）
-- `packages/web/index.html` — 字体 preload
-- `packages/web/src/styles/variables.css` — `--font-sans` / `--font-chat` / `--font-sans-fallback` 字体栈
+**原条目一个警告的修正**：方案 2 曾警告「子集化后必须去掉 `unicode-range`，否则缺失字形显示豆腐块不回退」——实装**保留了 unicode-range**（声明完整 U+4E00-9FFF，子集只含其中 3755 字）且回退行为正常。Chrome 对「unicode-range 命中但字形缺失」会继续走 per-character fallback 链，只有整条链都缺字形才豆腐块；该警告技术上过虑。
 
-**方案**（待决策，取决于"品牌字体是否必须为硬需求"）：
-1. **换系统字体**（最简单、零成本零风险）：`--font-sans` / `--font-chat` 改系统字体栈（`PingFang SC` / `Microsoft YaHei` / `sans-serif`），零加载零跳变。代价：放弃阿里普惠体品牌字体。
-2. **子集化**：把阿里普惠体裁到常用字集（如 GB2312 一级约 3755 字），文件降到几百 KB，解码快到 swap 几乎不可见。**注意**：子集化后必须去掉 `unicode-range` 声明（否则声明范围内的缺失字形会显示豆腐块且不触发回退）；极少数子集外的生僻字/特殊符号会自动回退系统字体，视觉上略有字体不统一，但不影响可读性。
-3. **内容淡入**：在 `document.fonts.ready` 之前隐藏内容或显示骨架，字体就绪后整体淡入。保留品牌字体与完整字符覆盖，代价是首屏短暂等待（可设超时兜底强制显示）。
-4. **`font-display: optional`**：一行改动，不 swap。缓存命中且解码快时首帧即品牌字体，否则本次停留在系统字体、不再切换。大文件下"看不到品牌字体"的概率较高。
-
-**优先级**：低（纯视觉体验，非功能阻塞）。待确认品牌字体是否为硬需求后选定方案。
+**相关文件**：`packages/web/src/styles/fonts.css`、`scripts/subset-fonts.py`、`packages/web/public/fonts/`
 
 ---
 
