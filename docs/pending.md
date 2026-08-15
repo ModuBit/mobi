@@ -626,7 +626,16 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 
 **技术成本**：中高。要重构投递分层（消息打标 + 客户端确认 + 补拉协议 + 离线缓存），动到 SSE/通知核心链路。
 
-**优先级**：中高。直接补「移动」这个核心场景最疼的洞，是「桌面思维迁移到移动」与「真正为移动设计」的分水岭。
+**优先级（2026-08-16 复核降级）**：低。核心保障已被既有机制覆盖，完整投递分层重构（中高成本）投入产出不成立：
+
+| 条目担心的场景 | 现有机制（核查确认） |
+|---|---|
+| 断网期间 permission 丢失 | **数据层不丢**：permission 持久化在 agentState（DB），非 SSE 瞬态；重连后 sessions refetch 恢复 pending 态 |
+| 断线错过事件 | **重连补拉**：`reconnected` → invalidate sessions + projectViews + fetchLatestMessages merge（generation 防竞态） |
+| 页面后台漏提醒 | **Web Push**（visibility 分级投递 + SW 系统通知）已就绪 |
+| 断网感知 | 断开 warning（duration 0） |
+
+「电梯里错过 rm 审批」实际不会丢——出电梯重连，pending 照常显示。**剩余缺口**仅两个边缘：离线期间的「提醒」不补发（数据在但要自己注意到角标）、页面被杀 + 无 push 订阅的组合。**触发条件**：用户实际反馈离线漏提醒时再做。
 
 ---
 
