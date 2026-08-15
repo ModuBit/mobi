@@ -35,8 +35,9 @@ sqlite3 ~/.mobi-e2e/mobi.db "SELECT runtime_state FROM sessions WHERE id='$SID';
 
 ## UI 验证
 
-- 运行中：`document.body.innerText` 含 `Team: session-xxxxxxxx`（TeamAgentPanel）
+- 运行中：`document.body.innerText` 含 `Team: session-xxxxxxxx`（TeamAgentPanel，旁边是 member 名 + running + churning…）
 - 完成后：`Team:` 消失；消息流里 Agent 卡片（`e2e-analyzer` 字样）保留是正常历史
+- **消失态必须在出现态之后验证**（2026-08-15 教训）：只查「不在」是空洞的真——若面板从头就因渲染 bug 不存在，验证照样「通过」。批准后先 evaluate_script 抓出现态，再用 async 轮询（页面内 `await setTimeout` 循环，最多 120s）等 `Team:` 消失
 
 ## 坑
 
