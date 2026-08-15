@@ -23,10 +23,18 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const mockReadSettings = vi.fn()
-const mockEnsureSupervisorRunning = vi.fn()
-const mockSendControlCommand = vi.fn()
-const mockIsRunnerRunning = vi.fn()
+// vi.hoisted 保证 vi.mock 工厂（会被提升到文件顶部）能引用这些 mock
+const {
+    mockReadSettings,
+    mockEnsureSupervisorRunning,
+    mockSendControlCommand,
+    mockIsRunnerRunning,
+} = vi.hoisted(() => ({
+    mockReadSettings: vi.fn(),
+    mockEnsureSupervisorRunning: vi.fn(),
+    mockSendControlCommand: vi.fn(),
+    mockIsRunnerRunning: vi.fn(),
+}))
 
 vi.mock('@/persistence', () => ({
     readSettings: mockReadSettings,
@@ -49,7 +57,7 @@ vi.mock('@/ui/logger', () => ({
     logger: { debug: vi.fn() },
 }))
 
-import { maybeAutoStartServer, maybeAutoStartRunner } from './autoStartServer'
+import { maybeAutoStartServer, maybeAutoStartRunner } from '@/utils/autoStartServer'
 
 /** 默认满足全部触发条件（无 MOBI_API_URL、无 apiUrl、有 token、hub 未运行） */
 function resetHappyPathPreconditions(): void {
