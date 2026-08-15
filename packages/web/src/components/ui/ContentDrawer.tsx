@@ -48,11 +48,11 @@ interface ContentDrawerProps {
     children: ReactNode
     /** 宽度（仅 PC 端生效） */
     size?: DrawerWidthConfig
-    /** 关闭时是否销毁子元素 */
-    destroyOnClose?: boolean
+    /** 隐藏时是否销毁子元素 */
+    destroyOnHidden?: boolean
 }
 
-function ContentDrawerInner({ title, open, onClose, bodyStyle, children, size, destroyOnClose }: ContentDrawerProps) {
+function ContentDrawerInner({ title, open, onClose, bodyStyle, children, size, destroyOnHidden }: ContentDrawerProps) {
     const isMobile = useIsMobile()
 
     if (isMobile) {
@@ -61,7 +61,7 @@ function ContentDrawerInner({ title, open, onClose, bodyStyle, children, size, d
                 open={open}
                 onClose={onClose}
                 title={title}
-                destroyOnClose={destroyOnClose}
+                destroyOnHidden={destroyOnHidden}
                 styles={{
                     body: {
                         padding: 0,
@@ -82,7 +82,7 @@ function ContentDrawerInner({ title, open, onClose, bodyStyle, children, size, d
             title={title}
             placement="right"
             size={size ?? DRAWER_WIDTH_PRESETS.narrow}
-            destroyOnClose={destroyOnClose}
+            destroyOnHidden={destroyOnHidden}
             styles={{
                 body: {
                     padding: 0,

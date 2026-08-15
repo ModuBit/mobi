@@ -78,7 +78,7 @@ export function AssignProjectModal({ session, open, onClose }: AssignProjectModa
             okButtonProps={{ disabled: !selected }}
             okText={t('common.confirm')}
             cancelText={t('common.cancel')}
-            destroyOnClose
+            destroyOnHidden
         >
             {machineProjects.length === 0 ? (
                 <Text type="secondary">{t('project.assignEmpty')}</Text>

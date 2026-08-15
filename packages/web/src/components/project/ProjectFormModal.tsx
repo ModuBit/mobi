@@ -335,7 +335,7 @@ export function ProjectFormModal({ open, onClose, project, onCreated }: ProjectF
                 open={open}
                 onClose={() => { if (!isPending) onClose() }}
                 maskClosable={!isPending}
-                destroyOnClose
+                destroyOnHidden
             >
                 {formBody}
                 <div style={{
@@ -363,7 +363,7 @@ export function ProjectFormModal({ open, onClose, project, onCreated }: ProjectF
             okButtonProps={{ disabled: !isValid }}
             okText={okText}
             cancelText={t('common.cancel')}
-            destroyOnClose
+            destroyOnHidden
         >
             {formBody}
         </Modal>

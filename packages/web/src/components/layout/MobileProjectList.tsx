@@ -402,7 +402,7 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                 confirmLoading={renameActions.isPending}
                 okText={t('common.confirm')}
                 cancelText={t('common.cancel')}
-                destroyOnClose
+                destroyOnHidden
             >
                 <Input
                     value={renameValue}

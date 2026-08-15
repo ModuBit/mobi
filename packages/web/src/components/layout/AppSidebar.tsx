@@ -54,11 +54,6 @@ const SidebarInner = styled.div<{
     pointer-events: ${props => props.$expanded ? 'auto' : 'none'};
 `
 
-// 弹性占位
-const Spacer = styled.div`
-    flex: 1;
-`
-
 /**
  * 侧边栏主组件
  * 桌面端 240px 宽侧边栏，包含 Logo、导航、会话列表、底部操作
@@ -82,7 +77,6 @@ export function AppSidebar() {
                 {!isWco && <SidebarHeader />}
                 <SidebarNav />
                 <SidebarProjects />
-                <Spacer />
                 <SidebarFooter />
             </SidebarInner>
         </SidebarContainer>
