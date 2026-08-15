@@ -25,7 +25,6 @@ import { logger } from "@/lib";
 import type { SDKMessage, SDKTaskStartedMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult, PermissionUpdate, PermissionDecisionClassification } from "../sdk/types";
 import type { PermissionUpdate as MobiPermissionUpdate, SDKUIHints } from "@mobi/shared";
-import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { PermissionMode } from "../types";
 import { isObject } from "@mobi/shared";
@@ -268,14 +267,23 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
             // Handle exit_plan_mode specially
             logger.debug('Plan mode result received', response);
             if (response.approved) {
-                logger.debug('Plan approved - injecting PLAN_FAKE_RESTART');
-                // Inject the approval message at the beginning of the queue
-                if (response.mode && PLAN_EXIT_MODES.includes(response.mode)) {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: response.mode });
-                } else {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: 'default' });
+                // 批准计划：直接 allow，SDK 在同一 turn 继续执行计划（对齐 Claude Code TUI 原生行为）。
+                // permissionMode 切换由上方通用 response.mode 分支承担（session 写入 + query.setPermissionMode）；
+                // 无/非法 mode 时此处兜底 default——计划批准后不应停留在 plan 模式。
+                // （旧实现为 deny + PLAN_FAKE_REJECT/PLAN_FAKE_RESTART 注入重启，SDK 支持运行时
+                //  切换 permissionMode 后已拆除，enter_plan_mode 进入路径本就走 setPermissionMode）
+                const targetMode = response.mode && PLAN_EXIT_MODES.includes(response.mode)
+                    ? response.mode
+                    : 'default';
+                if (targetMode !== response.mode) {
+                    this.handleModeChange(targetMode);
                 }
-                pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
+                pending.resolve({
+                    behavior: 'allow',
+                    updatedInput: (pending.input as Record<string, unknown>) || {},
+                    decisionClassification: 'user_temporary' as PermissionDecisionClassification,
+                    toolUseID: pending.toolUseID,
+                });
             } else {
                 pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' });
             }

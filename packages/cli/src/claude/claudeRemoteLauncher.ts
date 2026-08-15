@@ -28,7 +28,6 @@ import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { calcContextUsageFromResult, calcContextUsageFromCompact } from "./utils/contextUsageCalc";
-import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
@@ -304,11 +303,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         this.handleSessionFound = handleSessionFound;
         session.addSessionFoundCallback(handleSessionFound);
 
-        // 跟踪 exit_plan_mode 工具调用的 ID，用于在收到 tool_result 时检测并处理 plan mode 退出逻辑
-        // 当用户批准 plan mode 退出时，permissionHandler 会故意返回 deny + PLAN_FAKE_REJECT 来"欺骗" SDK
-        // 此处需要拦截 PLAN_FAKE_REJECT 并替换为正常结果，同时 SDK 会处理注入的 PLAN_FAKE_RESTART 消息
-        const planModeToolCalls = new Set<string>();
         // 跟踪 enter_plan_mode 工具调用，成功后同步 permissionMode 为 plan
+        // （exit_plan_mode 批准已改为 allow + query.setPermissionMode 直切，
+        //  无需再拦截伪造 tool_result，见 permissionHandler exit_plan_mode 分支）
         const enterPlanModeToolCalls = new Set<string>();
         // 跟踪所有正在执行中的工具调用，记录 parentToolCallId 用于处理嵌套工具调用场景
         // 工具开始执行时添加，收到 tool_result 时移除
@@ -328,10 +325,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         if (c.type === 'tool_use') {
                             logger.debug('[remote]: detected tool use ' + c.id! + ' parent: ' + umessage.parent_tool_use_id);
                             ongoingToolCalls.set(c.id!, { parentToolCallId: umessage.parent_tool_use_id ?? null });
-                            if (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode') {
-                                logger.debug('[remote]: detected plan mode tool call ' + c.id!);
-                                planModeToolCalls.add(c.id! as string);
-                            }
                             if (c.name === 'enter_plan_mode' || c.name === 'EnterPlanMode') {
                                 logger.debug('[remote]: detected enter plan mode tool call ' + c.id!);
                                 enterPlanModeToolCalls.add(c.id! as string);
@@ -362,22 +355,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         message: {
                             ...umessage.message,
                             content: umessage.message.content.map((c: ContentBlockParam): ContentBlockParam => {
-                                if (c.type === 'tool_result' && c.tool_use_id && planModeToolCalls.has(c.tool_use_id)) {
-                                    planModeToolCalls.delete(c.tool_use_id);
-                                    if (c.content === PLAN_FAKE_REJECT) {
-                                        logger.debug('[remote]: hack plan mode exit');
-                                        logger.debugLargeJson('[remote]: hack plan mode exit', c);
-                                        // 透传可能存在的自定义 mode 字段（permissions 相关），保持与历史行为一致
-                                        const mode = (c as ContentBlockParam & { mode?: unknown }).mode;
-                                        return {
-                                            ...c,
-                                            is_error: false,
-                                            content: 'Plan approved',
-                                            ...(mode !== undefined ? { mode } : {}),
-                                        } as ContentBlockParam;
-                                    }
-                                    return c;
-                                }
                                 if (c.type === 'tool_result' && c.tool_use_id && enterPlanModeToolCalls.has(c.tool_use_id)) {
                                     enterPlanModeToolCalls.delete(c.tool_use_id);
                                     if (!c.is_error) {

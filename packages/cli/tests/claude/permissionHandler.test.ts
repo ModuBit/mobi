@@ -567,6 +567,70 @@ describe('PermissionHandler — mode 变更通知 SDK Query（onApplyPermissionM
     })
 })
 
+// ─── ExitPlanMode 批准：allow + setPermissionMode 直切（PLAN_FAKE hack 已拆除）──
+// 背景：旧实现批准计划时 deny + PLAN_FAKE_REJECT 骗 SDK 停止，再注入 PLAN_FAKE_RESTART
+// 按新 permissionMode 重启，launcher 还需拦截伪造 tool_result。SDK 已支持
+// query.setPermissionMode 运行时切换（plan 无特例，进入 plan 也早已走该路径），
+// 退出对称化：批准即 allow（SDK 同 turn 继续执行计划），模式切换由通用 mode 分支 +
+// 无/非法 mode 的 default 兜底承担。
+describe('PermissionHandler — ExitPlanMode 批准（allow 直切，无 PLAN_FAKE）', () => {
+    function makePending() {
+        return { resolve: vi.fn(), reject: vi.fn(), toolName: 'exit_plan_mode', input: { plan: 'do it' }, toolUseID: 't-plan' }
+    }
+
+    it('批准带合法 mode → resolve allow + 模式切到该值，不注入队列消息', async () => {
+        const { session } = createMockDeps()
+        const onApplyPermissionMode = vi.fn()
+        const handler = new PermissionHandler(session as never, { onApplyPermissionMode })
+        const pending = makePending()
+
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({ id: 't-plan', approved: true, mode: 'acceptEdits' }, pending)
+
+        expect(pending.resolve).toHaveBeenCalledTimes(1)
+        expect(pending.resolve.mock.calls[0][0]).toMatchObject({ behavior: 'allow' })
+        expect(session.getPermissionMode()).toBe('acceptEdits')
+        expect(onApplyPermissionMode).toHaveBeenCalledWith('acceptEdits')
+        expect(session.queue.unshift).not.toHaveBeenCalled()
+    })
+
+    it('批准无 mode → 兜底切 default（避免停留在 plan）', async () => {
+        const { session } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        const pending = makePending()
+
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({ id: 't-plan', approved: true }, pending)
+
+        expect(pending.resolve.mock.calls[0][0]).toMatchObject({ behavior: 'allow' })
+        expect(session.getPermissionMode()).toBe('default')
+        expect(session.queue.unshift).not.toHaveBeenCalled()
+    })
+
+    it('批准带非法 mode → 仍兜底 default', async () => {
+        const { session } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        const pending = makePending()
+
+        // @ts-expect-error 访问 protected；mode 传非法值
+        await handler.handlePermissionResponse({ id: 't-plan', approved: true, mode: 'yolo' }, pending)
+
+        expect(pending.resolve.mock.calls[0][0]).toMatchObject({ behavior: 'allow' })
+        expect(session.getPermissionMode()).toBe('default')
+    })
+
+    it('拒绝 → deny + reason 透传（行为保持）', async () => {
+        const { session } = createMockDeps()
+        const handler = new PermissionHandler(session as never)
+        const pending = makePending()
+
+        // @ts-expect-error 访问 protected
+        await handler.handlePermissionResponse({ id: 't-plan', approved: false, reason: 'plan has gaps' }, pending)
+
+        expect(pending.resolve.mock.calls[0][0]).toMatchObject({ behavior: 'deny', message: 'plan has gaps' })
+    })
+})
+
 describe('PermissionHandler — AskUserQuestion 聊一聊 reason 透传', () => {
     function makeSession() {
         return {

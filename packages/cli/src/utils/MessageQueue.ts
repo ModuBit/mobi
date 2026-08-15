@@ -202,41 +202,6 @@ export class MessageQueue<T> {
     }
 
     /**
-     * Push a message to the beginning of the queue with a mode.
-     */
-    unshift(message: string, mode: T, localId?: string): void {
-        if (this.closed) {
-            throw new Error('Cannot unshift to closed queue');
-        }
-
-        const modeHash = this.modeHasher(mode);
-        logger.debug(`[MessageQueue] unshift() called with mode hash: ${modeHash}`);
-
-        this.queue.unshift({
-            message,
-            mode,
-            modeHash,
-            isolate: false,
-            localId
-        });
-
-        // Trigger message handler if set
-        if (this.onMessageHandler) {
-            this.onMessageHandler(message, mode);
-        }
-
-        // Notify waiter if any
-        if (this.waiter) {
-            logger.debug(`[MessageQueue] Notifying waiter`);
-            const waiter = this.waiter;
-            this.waiter = null;
-            waiter(true);
-        }
-
-        logger.debug(`[MessageQueue] unshift() completed. Queue size: ${this.queue.length}`);
-    }
-
-    /**
      * Reset the queue - clears all messages and resets to empty state
      */
     reset(): void {
