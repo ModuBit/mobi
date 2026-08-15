@@ -127,12 +127,13 @@ describe('InspectorPane', () => {
         expect(resumeSessionMock).toHaveBeenCalled()
     })
 
-    it('离线 + 有 tab：保留 tab 内容作毛玻璃背景，叠加恢复层', () => {
+    it('离线 + 有 tab：保留 tab 内容作毛玻璃背景，叠加恢复层', async () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().openTerminalTab('s1') // 关闭前已开 terminal tab
         renderWithClient(<InspectorPane sessionId="s1" active={false} />)
         // tab 内容（mock TerminalView）仍渲染 —— 作为毛玻璃背景，模糊可见关闭前的内容
-        expect(screen.getByTestId('mock-terminal-view')).toBeInTheDocument()
+        // TerminalView 已懒加载（React.lazy），断言需异步等待 chunk resolve
+        expect(await screen.findByTestId('mock-terminal-view')).toBeInTheDocument()
         // 恢复层（activate-cover-mask 毛玻璃）覆盖其上
         expect(screen.getByRole('button', { name: 'composer.activate' })).toBeInTheDocument()
         expect(document.querySelector('.activate-cover-mask')).toBeInTheDocument()
@@ -183,7 +184,7 @@ describe('InspectorPane', () => {
         expect(s.expanded).toBe(false)
     })
 
-    it('openTerminalTab 后 terminal tab 激活并渲染 TerminalView', () => {
+    it('openTerminalTab 后 terminal tab 激活并渲染 TerminalView', async () => {
         useWorkspaceStore.getState().setExpanded('s1', true)
         useWorkspaceStore.getState().openTerminalTab('s1')
         renderWithClient(<InspectorPane sessionId="s1" />)
@@ -191,8 +192,8 @@ describe('InspectorPane', () => {
         const terminalTab = st.tabs.find((t) => t.mode === 'terminal')
         expect(terminalTab).toBeTruthy()
         expect(st.activeTabId).toBe(terminalTab!.id)
-        // 渲染了终端视图
-        const tv = screen.getByTestId('mock-terminal-view')
+        // 渲染了终端视图（TerminalView 懒加载，需异步等待 chunk resolve）
+        const tv = await screen.findByTestId('mock-terminal-view')
         expect(tv).toHaveAttribute('data-session', 's1')
         expect(tv.getAttribute('data-terminal')).toBe(terminalTab!.terminalId)
     })

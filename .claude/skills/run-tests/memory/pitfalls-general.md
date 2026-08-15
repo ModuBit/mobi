@@ -1,9 +1,9 @@
 ---
 name: pitfalls-general
-description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证）
+description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证）
 metadata:
   type: pitfall
-  last_verified: 2026-08-12
+  last_verified: 2026-08-15
 ---
 
 # 通用误判
@@ -59,6 +59,22 @@ return { titles: hits };
 2. `list_console_messages` 查 React `Encountered two children with the same key` 报错（key 碰撞的直接证据）
 3. 滚到顶后点「滚到底」按钮，断言 `scrollHeight - clientHeight - scrollTop ≈ 0`
 4. **真实发一条消息**跑完整流式，采样断言自己的消息与 agent 输出都可见、贴底跟随生效
+
+## 懒加载验证（2026-08-15，xterm/katex 按需加载）
+
+验证「某模块是否只在触发时才加载」：
+
+1. **基线先行**：进入页面后先记一次请求快照（此时必须无目标模块请求），再触发动作——
+   只查「没有」是空洞的真（模块可能从头就没进依赖图）
+2. **用 CDP `list_network_requests` 看时序，不用 `performance.getEntriesByType('resource')`**——
+   resource buffer 默认 250 条上限，dev 模式模块请求多，很快塞满，**新请求不入 entries**
+   （实测误判「katex/xterm 未加载」而 DOM 明明渲染了）；CDP 网络列表无此限制
+3. **dev 模式是懒加载验证的最佳环境**：模块按需逐个拉，静态 import 会立刻出现在
+   加载链里（如 InspectorPane.tsx 加载但 TerminalView.tsx 不在 = 懒加载生效）
+4. 功能验证不可省：`.katex` DOM 出现（公式渲染）、`.xterm-screen` 出现（终端渲染）——
+   按需加载 + 渲染正确是两个独立命题
+5. inspector 展开按钮是 ChatPane 的 lucide `PanelRight`（`svg.lucide-panel-right`）；
+   locale 可能是英文——`wait_for` 别用中文文案「终端」，用 DOM/按钮语义定位
 
 ## 合成粘贴事件（ClipboardEvent）的局限
 

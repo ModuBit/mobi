@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Layout, Tabs, Button, Dropdown, App } from 'antd'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Layout, Tabs, Button, Dropdown, App, Spin } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -24,7 +24,9 @@ import { PanelRightClose, Folder, FileSearch, Maximize, Minimize, Plus } from 'l
 import FileTreeView from '@/components/files/FileTreeView'
 import FileContentView from '@/components/files/FileContentView'
 import { getEditorApi } from '@/components/files/EditorRegistry'
-import TerminalView from '@/components/terminal/TerminalView'
+// TerminalView 懒加载：xterm 及 addons（raw ~324K）只在首次打开终端 tab 时拉取，
+// 不进会话页首载关键路径（终端为低频功能）。default export，React.lazy 直接可用
+const TerminalView = lazy(() => import('@/components/terminal/TerminalView'))
 import { ActivateCover } from '@/components/ui/ActivateCover'
 import { clearCachedInstance } from '@/core/hooks/useCachedInstance'
 import { InspectorEmptyState } from './InspectorEmptyState'
@@ -230,7 +232,11 @@ export function InspectorPane({ sessionId, active = true }: InspectorPaneProps) 
             return <FileContentView sessionId={sessionId} tabId={tab.id} filePath={tab.filePath} active={active} />
         }
         if (tab.mode === 'terminal' && tab.terminalId) {
-            return <TerminalView sessionId={sessionId} terminalId={tab.terminalId} />
+            return (
+                <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
+                    <TerminalView sessionId={sessionId} terminalId={tab.terminalId} />
+                </Suspense>
+            )
         }
         return (
             <FileTreeView

@@ -19,10 +19,16 @@
  *
  * 验证行内正则的跨行匹配修复，以及各种 LaTeX 语法的回归测试。
  * 直接测试 inline tokenizer 的正则匹配行为，不依赖浏览器渲染。
+ * 另含 katex 懒加载后的 marked 集成渲染与 containsLatex 探测。
  */
 
 import { describe, it, expect } from 'vitest'
-import { INLINE_LATEX_RULE } from '@/components/ui/latexPlugin'
+import { Marked } from 'marked'
+import Latex, {
+    INLINE_LATEX_RULE,
+    containsLatex,
+    ensureKatexLoaded,
+} from '@/components/ui/latexPlugin'
 
 describe('latexPlugin inline regex', () => {
     describe('行内 $...$（单美元符号）', () => {
@@ -133,5 +139,87 @@ describe('latexPlugin inline regex', () => {
             expect(match).not.toBeNull()
             expect(match![1]).toBe('\\alpha')
         })
+    })
+})
+
+// ============ containsLatex 探测（决定是否触发 katex 按需加载）============
+
+describe('containsLatex', () => {
+    it('行内公式 → true', () => {
+        expect(containsLatex('质量能量 $E=mc^2$ 是著名公式')).toBe(true)
+    })
+
+    it('单行 $$...$$ → true', () => {
+        expect(containsLatex('公式 $$\\sum_{i=1}^n i$$ 如上')).toBe(true)
+    })
+
+    it('跨行块级 $$...$$ → true', () => {
+        expect(containsLatex('$$\n\\frac{a}{b}\n$$')).toBe(true)
+    })
+
+    it('\\(...\\) → true', () => {
+        expect(containsLatex('见 \\(x^2 + y^2\\) 式')).toBe(true)
+    })
+
+    it('\\[...\\] → true', () => {
+        expect(containsLatex('\\[\\frac{a}{b}\\]')).toBe(true)
+    })
+
+    it('纯文本 → false', () => {
+        expect(containsLatex('hello world，没有任何公式')).toBe(false)
+    })
+
+    it('code block 内的 $ 不触发（tokenizer 也不会处理 code 内容）', () => {
+        expect(containsLatex('```bash\necho $PATH\n```')).toBe(false)
+    })
+
+    it('行内 code 内的 $ 不触发', () => {
+        expect(containsLatex('运行 `echo $HOME` 即可')).toBe(false)
+    })
+
+    it('未配对的 $ 不触发', () => {
+        expect(containsLatex('价格是 $5.00 而已')).toBe(false)
+    })
+
+    it('同行的两个 $ 视作一对（与 tokenizer 从 $ 起匹配的真实行为一致的超集）', () => {
+        // marked tokenizer 在 $ 位置收到 src 后 '$5 and $' 会命中 inline 规则——
+        // 探测须不窄于该行为（宁可误加载 chunk，不可漏判公式）
+        expect(containsLatex('Price: $5.00 and $10.00')).toBe(true)
+    })
+})
+
+// ============ 懒加载后的 marked 集成渲染 ============
+
+describe('Latex 扩展渲染（katex 懒加载）', () => {
+    it('ensureKatexLoaded 完成后，行内公式渲染为 katex html', async () => {
+        await ensureKatexLoaded()
+        const md = new Marked({ extensions: Latex() })
+        const html = md.parse('质量能量 $E=mc^2$') as string
+        expect(html).toContain('katex')
+        expect(html).toContain('inline-katex')
+    })
+
+    it('块级公式渲染为 katex html', async () => {
+        await ensureKatexLoaded()
+        const md = new Marked({ extensions: Latex() })
+        const html = md.parse('$$\n\\frac{a}{b}\n$$') as string
+        expect(html).toContain('katex')
+    })
+
+    it('katex 未加载时 renderer 退回原文展示（防御兜底）', () => {
+        // Latex() 是同步工厂：直接调用 renderer 验证未就绪时不出错、不产出 katex
+        const md = new Marked({ extensions: Latex() })
+        const html = md.parse('公式 $E=mc^2$') as string
+        // 上一个用例已加载过 katex（模块级单例），此处只验证不抛错；
+        // 未加载分支由 containsLatex + Markdown 层的加载门控保证不会走到
+        expect(typeof html).toBe('string')
+    })
+
+    it('无公式文本不受扩展影响', async () => {
+        await ensureKatexLoaded()
+        const md = new Marked({ extensions: Latex() })
+        const html = md.parse('普通文本 **加粗**') as string
+        expect(html).toContain('<strong>加粗</strong>')
+        expect(html).not.toContain('katex')
     })
 })

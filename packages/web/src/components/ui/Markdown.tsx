@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import { memo, useMemo, useRef, type CSSProperties, type FC } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type FC } from 'react'
 import { XMarkdown, type ComponentProps, type XMarkdownProps } from '@ant-design/x-markdown'
-import Latex from './latexPlugin'
+import Latex, { containsLatex, ensureKatexLoaded } from './latexPlugin'
 import slashCommand from './slashCommandPlugin'
 import mention from './mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
@@ -35,7 +35,9 @@ export const MARKDOWN_STREAMING_CONFIG: StreamingOption = {
     animationConfig: { fadeDuration: 100 },
 }
 
-/** 默认启用的 x-markdown 扩展（LaTeX 公式渲染） */
+/** 默认启用的 x-markdown 扩展（LaTeX 公式渲染）。
+ *  renderer 内部引用动态加载的 katex 实例——只有 ensureKatexLoaded 完成后
+ *  这些扩展才会进入渲染配置（见 katexReady 门控），工厂本身可同步创建 */
 const LATEX_EXTENSIONS = Latex()
 
 /** slash command badge 扩展 */
@@ -133,6 +135,22 @@ export const Markdown = memo(function Markdown({
     const useDrip = !!streaming && typing !== false
     const displayContent = useStreamingContent(content ?? '', useDrip)
 
+    // LaTeX 按需加载：探测到公式特征才拉 katex chunk（raw ~234K，含样式），
+    // 避免绝大多数不含公式的消息把 katex 带进会话页首载。加载是模块级幂等
+    // （ensureKatexLoaded 缓存 promise），加载过后所有渲染一直带 Latex 扩展
+    const [katexReady, setKatexReady] = useState(false)
+    const needsKatex = useMemo(() => containsLatex(displayContent), [displayContent])
+    useEffect(() => {
+        if (!needsKatex || katexReady) return
+        let cancelled = false
+        ensureKatexLoaded().then(() => {
+            if (!cancelled) setKatexReady(true)
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [needsKatex, katexReady])
+
     const streamingOption: StreamingOption | undefined = useMemo(() => {
         if (streaming === true) return MARKDOWN_STREAMING_CONFIG
         return streaming || undefined
@@ -180,7 +198,9 @@ export const Markdown = memo(function Markdown({
     const mergedConfig = useMemo(() => {
         const slashExts = enableSlashCommand ? SLASH_COMMAND_EXTENSIONS : []
         const mentionExts = enableMention ? MENTION_EXTENSIONS : []
-        const baseExts = [...FOOTNOTE_REF_EXTENSIONS, ...slashExts, ...mentionExts, ...LATEX_EXTENSIONS]
+        // Latex 扩展仅在 katex 就绪后加入（未就绪时公式暂以原文展示，加载完成即渲染）
+        const latexExts = katexReady ? LATEX_EXTENSIONS : []
+        const baseExts = [...FOOTNOTE_REF_EXTENSIONS, ...slashExts, ...mentionExts, ...latexExts]
         if (!config) return { breaks: true, extensions: baseExts }
         return {
             breaks: true,
@@ -190,7 +210,7 @@ export const Markdown = memo(function Markdown({
                 ...baseExts,
             ],
         }
-    }, [config, enableSlashCommand, enableMention])
+    }, [config, enableSlashCommand, enableMention, katexReady])
 
     return (
         <FootnoteContext.Provider value={footnotesMapRef.current}>
