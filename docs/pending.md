@@ -2,24 +2,21 @@
 
 记录暂时跳过、稍后需要深入梳理的逻辑。
 
----
-
-## 1. 技术债：CLI 端 Web Server 框架不统一
-
-**当前状态**：CLI 端两个 Server 使用不同实现
-- Runner ControlServer → Fastify（已有 Zod schema 验证、类型化路由）
-- HookServer → Node `http`（手写，1 个端点）
-
-**目标**：按模块边界统一框架
-- **CLI 端**：统一使用 Fastify（轻量，适合 CLI 工具）
-- **Hub 端**：继续使用 Hono（功能强，适合服务端）
-
-**改造范围**：
-- `packages/cli/src/claude/utils/startHookServer.ts` — 从 Node `http` 迁移到 Fastify
+> 已完成/已失效条目定期清理，历史内容见 git log。**条目编号保留不复用**（代码注释、memory 中有 `#40` 式引用）。
 
 ---
 
-## 2. Local 模式下 SubAgent 消息缺失
+## 1. ~~技术债：CLI 端 Web Server 框架不统一~~（触发式，暂不迁移）
+
+**决策**（2026-08-15）：HookServer（`packages/cli/src/claude/utils/startHookServer.ts`，Node `http` 手写）**不迁移** Fastify。核查：仅 1 个端点（`POST /hook/session-start`）、单一调用方（`runClaude.ts`）、职责单一（SessionStart hook 检测 sessionId 漂移），Fastify 的类型化路由/schema 验证在单端点场景发挥不出来，迁移属纯一致性 churn；而该链路管 sessionId 关联，回归风险不对称。
+
+**触发条件**：hook 需求变复杂时顺势迁移——加第二个端点、需要 schema 验证、或需要流式 body 处理。
+
+---
+
+## 2. ~~Local 模式下 SubAgent 消息缺失~~（暂不处理，2026-08-15）
+
+**决策**：价值不高——Local 模式下在 Web UI 看消息的场景极少。待 Local 模式使用成为常态再评估。
 
 **相关文件**：
 - `packages/cli/src/claude/utils/sessionScanner.ts` — SessionScanner 实现
@@ -34,52 +31,14 @@
 
 ---
 
-## 3. Permission 系统重构
+## 3. ~~Permission 系统重构~~ ✅ 已解决（2026-08-15 逐项核查 + 3.3 实施）
 
-**相关文件**：
-- `packages/cli/src/claude/utils/permissionHandler.ts` — Claude 专用权限处理器
-- `packages/cli/src/modules/common/permission/BasePermissionHandler.ts` — 通用权限基类
-- `packages/cli/src/claude/claudeRemote.ts` — SDK 集成点
-- `packages/cli/src/claude/claudeRemoteLauncher.ts` — 生命周期管理
-- `packages/web/src/components/tool-card/PermissionFooter.tsx` — Web 端审批 UI
-- `packages/web/src/api/client.ts` — API 客户端
+四个子项的命运：
 
-**现状问题**：
-
-### 3.1 ExitPlanMode 模式丢失
-
-- `ExitPlanMode` 被批准后，`PLAN_FAKE_RESTART` 的模式取自 `response.mode`
-- 由于之前的问题，`response.mode` 永远为 `undefined`，硬编码为 `'default'`
-- 如果用户原来在 `acceptEdits` 模式，Claude 进 plan 后退出，模式被降级为 `default`
-- 应该记住进入 plan 前的原始模式，退出时恢复
-
-### 3.2 EnterPlanMode 未被追踪
-
-- Claude 在任何模式下都可能调用 `EnterPlanMode` 进入"软 plan 模式"
-- PermissionHandler 没有追踪这个状态转换，`this.permissionMode` 不变
-- 虽然 Claude 的 system prompt 会约束只使用只读工具，但 PermissionHandler 层面没有强制执行
-- 如果 Claude 违反约束调用写工具，不会被自动拦截
-
-### 3.3 "假拒绝"模式的可维护性
-
-- `PLAN_FAKE_REJECT` + `PLAN_FAKE_RESTART` 机制是理解门槛较高的 hack
-- `claudeRemoteLauncher.ts` 中需要额外拦截 `PLAN_FAKE_REJECT` 的 tool_result 并替换为 "Plan approved"
-- 多处代码需要感知 plan mode 的特殊处理（`permissionHandler.ts`、`claudeRemoteLauncher.ts`、`getToolDescriptor.ts`）
-- 散落在多个文件中的 plan mode 逻辑增加了维护负担
-
-### 3.4 SDK 消息有损转换
-
-- `sdkToLogConverter.ts` 的 `convert()` 方法丢弃了 `SDKUserMessage` 的 `isSynthetic`、`tool_use_result`、`priority` 字段
-- 被注释掉的 sidechain UUID 注册代码（line 168-174）应确认是否需要并清理
-- 考虑统一转换逻辑，避免静默丢弃字段
-
-**重构方向**：
-1. PermissionHandler 增加 plan mode 状态追踪，支持 `EnterPlanMode` / `ExitPlanMode` 对称处理
-2. 退出 plan 时自动恢复进入前的原始模式，而非硬编码 `'default'`
-3. 评估是否有更好的模式切换机制替代"假拒绝"（取决于 SDK 是否提供运行时模式切换能力）
-4. 清理 `sdkToLogConverter.ts` 中的注释代码和静默字段丢弃
-
----
+- **3.1 ExitPlanMode 模式丢失 — 设计已变更解决**：Web 端 `PermissionFooter.approveWithMode('acceptEdits' | 'default' | 'auto')` 让用户批准 plan 时显式选择退出后模式，「记住原模式恢复」的思路被更好的交互取代
+- **3.2 EnterPlanMode 未追踪 — 已解决**：`claudeRemoteLauncher` 跟踪 `enter_plan_mode` tool_use，成功后 `handleModeChange('plan')` 同步
+- **3.3 假拒绝 hack — 已拆除（本次实施）**：核实 SDK `query.setPermissionMode` 官方支持运行时切换（plan 无特例）且进入 plan 已走该路径后，退出对称化：批准 → `allow` + `handleModeChange(mode)`（写 session + 通知运行中 Query），替代 deny + `PLAN_FAKE_REJECT` + `PLAN_FAKE_RESTART` 队列注入 + launcher 拦截伪造 tool_result。顺带删除 `sdk/prompts.ts`（仅含两个魔法字符串）与 `MessageQueue.unshift`（hack 专用注入通道）。UX 改善：批准后同 turn 无缝执行计划，无重启延迟。单测 4 用例 + E2E（Approve (Auto) 档：Write 免审批 + 指示器 compass→bulb + 同 turn 继续）验证
+- **3.4 SDK 消息有损转换 — 已过时**：userLog 现为 `{...baseFields, ...userMsg}` 全量 spread 不丢字段；sidechain UUID 注册是活代码
 
 ## 4. Task 工具 prompt 展示应由前端处理
 
@@ -102,48 +61,6 @@
 - 前端 Task 工具卡片直接从 `input.prompt` 读取并展示任务描述
 - 移除 `claudeRemoteLauncher.ts:287-299` 的虚拟消息生成逻辑
 - 移除 `sdkToLogConverter.ts` 的 `convertSidechainUserMessage` 方法
-
----
-
-## 5. ~~Web Worker 优化 SSE 后台连接稳定性~~ ✅ 已解决（commit dcacf0a）
-
-**真实根因**：`@microsoft/fetch-event-source` 默认 `openWhenHidden=false`，页面进入 hidden（切 tab / 最小化 / 切 app 触发 `visibilitychange`）时库内部主动 `abort()` 连接——是「切走即断」的**确定性原因**，与浏览器后台节流无关（原假设误判）。
-
-**修复**：`packages/web/src/core/data/realtime/sseClient.ts` 显式配置 `openWhenHidden: true`（一行），后台保持 SSE 长连接。Web Worker 方案不再必要，已放弃。回归测试 `packages/web/tests/realtime/sseClient.test.ts` 锁定该配置。
-
-> 以下为已废弃的原方案，保留备查（其中文件路径为重构前的旧路径）：
-
-**相关文件**：
-- `packages/web/src/realtime/sseClient.ts` — SSE 客户端
-- `packages/web/src/providers/SSEProvider.tsx` — SSE Provider
-
-**现状问题**：
-- 浏览器在 Tab 失焦/最小化时会节流甚至静默断开 SSE 连接
-- 当前通过 `onopen` 检测静默断开重连，但断连期间会丢失事件
-- 后台 Tab 中的 `setTimeout` / `setInterval` 也会被节流，无法可靠检测断连
-
-**改造方案**：
-- 将 SSE 客户端移入 Web Worker 线程运行
-- Web Worker 不受主线程节流影响，可保持 SSE 长连接
-- 通过 `postMessage` 双向通信：
-  - 主线程 → Worker：`connect` / `disconnect` 控制指令
-  - Worker → 主线程：SSE 事件（`SyncEvent`）转发
-- 主线程接收事件后照常更新 React Query 缓存
-
-**架构示意**：
-```
-主线程 (React)                    Worker 线程
-┌─────────────────┐              ┌─────────────────┐
-│ SSEProvider     │  connect()   │ SSEClient       │
-│ React Query     │ ───────────→ │ fetchEventSource│
-│ UI Notification │ ←─────────── │ 事件监听        │
-└─────────────────┘  postMessage └─────────────────┘
-```
-
-**改造范围**：
-- 新建 `packages/web/src/realtime/sseWorker.ts`：Worker 入口，封装 SSEClient
-- 修改 `packages/web/src/realtime/sseClient.ts`：抽取为 Worker 兼容的独立类
-- 修改 `packages/web/src/providers/SSEProvider.tsx`：通过 Worker 管理连接
 
 ---
 
@@ -234,34 +151,6 @@
 
 ---
 
-## 10. ~~Web 端消息列表长列表性能优化~~ ✅ 已完成（react-virtuoso 虚拟化，2026-08-01）
-
-**状态**：已完成。Bubble.List 全量渲染 → react-virtuoso 虚拟化，DOM 钳制（baseline 16993 → ~1484，降 91%），forced reflow 消除，CLS 0.00。e2e 验证（goal 会话 3825 条消息）：加载 15 页历史后 DOM 1925（vs baseline 17159，降 88%），trace 无 insight。
-
-**方案**：react-virtuoso 替换 Bubble.List 渲染容器（保留 antdx Bubble 单组件，视觉不变）。滚动行为由 Virtuoso 原生 API 接管：
-- `followOutput`：流式追加贴底跟随
-- `startReached`：滚到顶加载历史（fetchNextPage）
-- `firstItemIndex`：从大数递减，prepend 历史时保持滚动位置
-- `atBottomStateChange`：驱动「滚到底」按钮
-
-**相关文件**：
-- `packages/web/src/components/chat/VirtuosoChatList.tsx` — 虚拟化列表（Virtuoso + Bubble 单组件 + firstItemIndex prepend 追踪）
-- `packages/web/src/components/chat/ChatContainer.tsx` — 移除 Bubble.List + ~250 行 observer 逻辑，接入 VirtuosoChatList
-- `packages/web/src/components/chat/CollapsibleUserMessage.tsx` — measure 改 useEffect + ResizeObserver 异步（避免虚拟化下 forced reflow）
-- `packages/web/src/components/ui/FilePathText.tsx` — antd Typography.ellipsis 改 CSS flex ellipsis + Tooltip（避免 isEleEllipsis forced reflow）
-
-**关键模式 — mount-time 几何检测放大**：虚拟化下 bubble 频繁 mount/unmount，所有「mount 时同步读几何属性」的组件被放大成 forced reflow。迁移时审计并修了两个（CollapsibleUserMessage 读 scrollHeight、FilePathText 的 isEleEllipsis）。bubble 渲染路径上其他组件（ReasoningBlock 等）经验证不受影响。
-
-**已排除方案**（PoC 实测）：`content-visibility: auto`（CLS 0.5，bubble 高度 4-1621px 极度分散 CSS 估值无解）、数据层裁剪（pages[0] SSE 膨胀 + 游标连续性硬问题，静默丢消息风险高）。
-
-**落地 commit**：`408d466`（PoC）→ `ad807d9`（role 模板 + firstItemIndex）→ `5345bf8`（ChatContainer Virtuoso 适配）→ `6d65f05`（移除 Bubble.List + observer，启用虚拟化）。
-
-**遗留**（低优先，非阻塞）：
-- fill 级联未实现（大屏 + 短消息初始可能不满视口；用户向上滚 startReached 加载，多数场景 50 条已溢出）
-- 流式 followOutput 真实场景验证（e2e 用历史会话验证了渲染层性能；真实流式行为待用户使用反馈）
-
----
-
 ## 11. Team Agent UI 支持 — Hook 状态追踪方案待实现
 
 **相关文件**：
@@ -324,36 +213,6 @@ hooks: {
 
 ---
 
-## 12. Web 端消息列表渲染性能优化 — reconcile 与增量 reduce 的取舍
-
-**相关文件**：
-- `packages/web/src/components/chat/ChatContainer.tsx` — 消息渲染容器
-- `packages/web/src/components/chat/buildBubbleItems.tsx` — bubble 列表构建
-- `packages/web/src/domain/chat/reducer.ts` — `reduceChatBlocks` 全量归约
-- `packages/web/src/domain/chat/reconcile.ts` — `reconcileChatBlocks` 结构化共享（已实现，未接入）
-- `packages/web/src/domain/chat/groupToolCalls.ts` — 工具组折叠
-
-### 现状
-
-- SSE 每推送一条新消息 → `useMessages` 返回新数组 → `reduceChatBlocks` 对**全部消息**执行 normalize → trace → reduce
-- `reconcileChatBlocks` 已实现（逐字段对比新旧 block，未变化返回旧引用），但**调用者为 0**，从未接入渲染链路
-- `Bubble.List` 无虚拟滚动（见 #10），DOM 节点随消息量线性增长
-- 每次 SSE 事件产生全新 block 对象 → 下游 `React.memo`（`TextBlock` 等）无法生效 → 所有 bubble 重渲染
-
-### 决策
-
-- **当前**：接入 `reconcileChatBlocks`，保持全量 reduce 不变。Block 引用稳定 → `React.memo` 生效 → 未变化的 bubble 不重渲染
-- **后续**（如全量 reduce 计算耗时成为瓶颈）：将 `reduceChatBlocks` 重构为 **stateful reducer**（维护 `toolBlocksById`、`pendingCompactMetadata`、trace 树等内部状态），实现真正的增量 reduce。这是一次大规模重构
-
-### 实施路径
-
-1. 补齐 `reconcile.ts` 和 `reducer.ts` 的单测
-2. 在 `ChatContainer` 的 `useMemo` 中接入 `reconcileChatBlocks`
-3. 确保 `buildChatBubbleItems` 及各 Block 组件的 `React.memo` 正确生效
-4. 单测全部通过
-
----
-
 ## 13. 页面刷新后 Agent 执行状态丢失
 
 **相关文件**：
@@ -382,32 +241,6 @@ hooks: {
 - 需要每条 `tool_progress` 到达时频繁更新 runtimeState（写入 DB）
 - 需要额外清理逻辑（`tool_result` 到达时清除对应条目）
 - 当前体验缺陷可接受，等下一个 `tool_progress` 自然恢复
-
----
-
-## 14. ~~增加项目实体，替代基于 session path 的分组~~ ✅ 已完成（2026-08-13，「项目实体化」）
-
-**实现**：Project 一等实体（name + machineId + folders[恰一 primary]）、session.project_id 归属、终端会话游离进「最近」、folders 创建时冻结 `metadata.additionalDirectories` 且 resume 回放、groupKey 全链路删除。spec `docs/superpowers/specs/2026-08-13-project-entity-design.md`（决策 D1–D14）、存量迁移 `scripts/migrate-projects.ts`。详见提交 e2add170..e07b171a。
-
-> 以下为原始记录，保留备查：
-
-**现状**：
-- 没有"项目"概念，`SessionGroup` 是从 session 的 `metadata.path` 用 `extractGroupKey` 截取最后两段（如 `github/modu`）group 出来的
-- `groupKey` 不是全路径，不能直接用作创建 session 的 `cwd`
-- 新建会话时需要从该分组下的第一个 session 的 `metadata.path` 反推完整项目路径
-- 当分组下没有任何 session 时，无法获取完整路径
-
-**相关文件**：
-- `packages/hub/src/store/sessions.ts` — `extractGroupKey` 截断路径逻辑
-- `packages/hub/src/web/routes/sessionGroups.ts` — 分组 API
-- `packages/web/src/core/data/api/types.ts` — `SessionGroup` 类型
-- `packages/web/src/components/layout/SidebarProjects.tsx` — 侧边栏项目列表（当前用 session metadata.path 反推）
-
-**改造方向**：
-- 新增 `Project` 实体（独立于 session），存储完整项目路径、名称等元信息
-- session 通过 `projectId` 关联项目，不再通过 path 截断 group
-- `SessionGroup` API 改为 `Project` API，直接返回完整路径
-- 侧边栏项目列表直接使用项目的全路径，无需反推
 
 ---
 
@@ -447,21 +280,6 @@ hooks: {
 - 代价：Hub 写入 + 清理逻辑，约中等复杂度
 
 **触发条件**：多设备使用成为常态、用户反馈角标不一致时实施
-
----
-
-## 17. ~~VisibilityTracker 与 /api/visibility 清理~~ ⛔ 不再适用（commit a56d549）
-
-**原计划**（通知重设计一期）：通知链路曾改为「前端判定」，VisibilityTracker 一度不再被通知链路消费，计划移除 `VisibilityTracker` 类、`/api/visibility` 路由及前端 visibilitychange 上报。
-
-**为何不再适用**：P0 投递策略分级（commit a56d549）重新启用 visibility 决策——`PushNotificationChannel` 通过 `sseManager.hasVisibleConnection()` 判定「有可见连接 → SSE toast（不打扰）/ 后台 + 有 push 订阅 → Web Push（SW 独立线程，长时后台可靠）/ 无 push 订阅 → SSE toast 兜底」。决策公式：`shouldUseToast = hasVisibleConnection(ns) || !hasSubscription(ns)`。
-
-VisibilityTracker、`/api/visibility` 路由、前端 visibilitychange 上报已恢复为通知投递的**核心依赖**，不可清理。
-
-**相关文件**（均为核心依赖，保留）：
-- `packages/hub/src/visibility/visibilityTracker.ts` — 可见性追踪
-- `packages/hub/src/web/routes/events.ts` — `/api/visibility` 上报路由
-- `packages/web/src/core/providers/SSEProvider.tsx` — 前端 visibilitychange 上报
 
 ---
 
@@ -556,32 +374,6 @@ VisibilityTracker、`/api/visibility` 路由、前端 visibilitychange 上报已
 
 ---
 
-## 21. ~~Lint P1 清理遗留的签名/契约不一致~~ ✅ 已解决（commit `8874481`，2026-06-19）
-
-**已修复**：
-- **I-1**：`generateLaunchdPlist` / `installLaunchd` 删 host/port 死参（plist 模板不用，靠 wrapper script 传递），与 `generateSystemdUnit()` 无参对齐。host/port 现只流向真正消费它的 `generateWrapperScript`。
-- **I-2**：`SidebarProjects.handleRenameConfirm` 删 `_sessionId` 死参（用 `renamingSessionId` state），`ProjectGroup.onRenameConfirm` 改无参，与 `SessionList` / `MobileProjectList` 统一。
-- **M-1/M-2/M-3**：按 reviewer 评估跳过（`Record<string,never>` 合格、`let stderr: string` 保留更优、catch 注释内联更好）。
-
-验证：typecheck 0 error、test 全过（shared 155 / cli 277 / web 623）、lint 101 不变（`_` 参数本被 `^_` 抑制，删除不改变 warning 数）。
-
-> 以下为修复前的原记录，保留备查：
-
-P1 lint 清理（commit `7c79400`~`b7a1fce`，lint 244→101）中，对 unused-vars 用 `_` 前缀掩盖了 2 处**既有的**签名/契约不一致（非 lint 引入，`_` 只是让它们不报警）。功能正常，但应单独排查：
-
-**I-1 签名/实现不对称**：`packages/cli/src/setup/serviceManager.ts` `generateLaunchdPlist(_host, _port)` — 签名带 host/port 参数，但 plist 模板不使用（host/port 在 wrapper script 生成时硬编码）。对比同文件 `generateSystemdUnit()`（无参）。建议改签名删参与 systemd 对齐，或确认 plist 确需 host/port 后补上逻辑。
-
-**I-2 prop 契约不一致**：`packages/web/src/components/layout/SidebarProjects.tsx` `handleRenameConfirm(_sessionId)` 与 `onRenameConfirm` prop 契约 `(sessionId: string) => void` 不符；同项目 `SessionList.tsx:157`、`MobileProjectList.tsx:447` 的同名 handler 均无参。建议统一契约（都带 sessionId 或都不带）。
-
-**可选小改进（非必须）**：
-- `registerKillSessionHandler.ts` `Record<string, never>` 可简化
-- `claudeRemote.ts` `let stderr: string` 类型注解可省（保留也合理）
-- `sandboxManager.ts` 两处相同 catch 注释可提取 helper
-
-**优先级**：低（非阻塞，功能正常；`_` 前缀已让 lint 通过）。
-
----
-
 ## 22. session 关闭后文件浏览降级到 machine 级 handler（调研）
 
 **背景**：InspectorPane 的文件浏览（`list-directory`/`read-file`）走 **session 级 RPC**，handler 注册在每会话子进程（`mobi claude`）里——子进程退出（session 关闭）即失效，报 "RPC handler not registered"。当前用「恢复会话」覆盖层引导用户 resume（`InspectorPane` `!active` 时早返回 resume 层）。此为与 hapi 一致的正确兜底，但意味着 session 关闭后**完全无法浏览文件**。
@@ -609,30 +401,6 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 
 ---
 
-## 23. 会话附件上传（web → hub → cli）流式传输优化 ✅ 已完成
-
-**完成摘要**（对称下载侧 readFileRange，2026-06-25）：
-- web↔hub：axios POST 二进制 Blob body（浏览器 chunked 流式 + `onUploadProgress` 进度 + `AbortController` 取消），替换 FormData→multipart→base64
-- hub↔cli：`writeFileRange` 分块写 RPC（`emitWithAck` 串行 = 天然背压），替换 base64 整包 `uploadFile`
-- hub 端点二进制流式：`c.req.raw.body` reader 聚合 256KB（`uploadStream` 共享管道）+ 中断清理半成品 + 三道大小闸（Content-Length 413 / totalSize 预校验 / 累计 written 兜底）
-- cli `writeFileRange` 无状态分块写（`open` + `fd.write(position=offset)`）+ offset 越界防御（stat 校验）+ 扩展名/path 遍历/cwd 安全
-- 进度 UI：`FileAttachment.progress` + `onProgress` 节流（每 5%/100ms）+ `AttachmentItem` Progress 圆环
-- 测试：cli handler 10 用例 + `uploadStream` 9 用例（聚合/背压/cli拒绝/reader中断/不完整清理）+ rpcCall 二进制往返 4 用例 + 端点集成 + E2E（100KB/500KB md5 一致）
-
-**关键发现：@socket.io/bun-engine 0.1.1 发送二进制附件 bug**
-- bun-engine 自带的 parser `encodePacket` 仅认 `Buffer.isBuffer(data)`，对 `Uint8Array`（socket.io 二进制附件的实际类型）走 else 分支字符串拼接 → cli `parse error` 断连
-- 这解释了为何下载侧（cli→hub readFileRange，bun-engine **接收**方向）工作，而上传侧（hub→cli writeFileRange，bun-engine **发送**方向）失败
-- bun-engine 0.1.1 是 npm 最新（2026-04-23），bug 未修；官方 `engine.io-parser` 5.2.3 处理正确但 bun-engine 没复用
-- **修复**：`patches/@socket.io%2Fbun-engine@0.1.1.patch`（`Buffer.isBuffer` → `ArrayBuffer.isView`，对齐官方 parser），`bun patch` 持久化 + `package.json` patchedDependencies，重装自动应用
-
-**遗留（低优先，非本次范围）**：
-- 中断清理的边界（`--max-time` 极短导致首块未 flush，无 path → 不触发 cleanup）——实际用户取消场景（AbortController）会经 hub reader.read() 抛错触发清理，已覆盖；curl 极短超时是测试 artifact
-- bun-engine patch 待上游修复后可移除（关注 0.1.2+ 版本）
-
----
-
-
-
 ## 24. 文件流式端点（`/read-file`）quality review 遗留项
 
 Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以下非阻塞项待后续评估：
@@ -653,39 +421,6 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 **相关文件**：`packages/hub/src/web/routes/sessions.ts:492-581`
 
 **优先级**：低，Task 8 收尾或 Task 6/7 预览方式定了后评估。
-
----
-
-## 25. ~~P3 图片浏览器缓存（SW 方案）搁置~~ ✅ 已解决（cookie 改造 + src 直连）
-
-**原方案**（搁置）：SW 拦截 `/read-file` 注入 token + Cache API（pending #19 复杂）。
-
-**实际解决（2026-06-22）**：cookie 认证改造（C-T1/T2/T3）后，`<img src="/api/sessions/:id/read-file?path=">` 直连带 cookie → 认证通过 → **浏览器原生 HTTP 缓存白送**（端点 ETag + Cache-Control `private, no-cache` → 协商 304）。无需 SW。ImageContentView（M-T1）从 objectURL 改 src 直连。SW 方案不再需要。
-
-**相关文件**：`packages/web/src/components/files/ImageContentView.tsx`（src 直连）、cookie 改造（C-T1/T2/T3）
-
-**状态**：已解决，关闭。
-
-**背景**：用户最初诉求「图片加浏览器缓存，避免重复获取」。当前图片走 `URL.createObjectURL(blob)`（`blob:` 协议，不走浏览器 HTTP 缓存），原因是 `/read-file` 端点要 token 认证，`<img src>` 带不了 Authorization header。
-
-**SW 方案（已设计未实施）**：
-- `packages/web/src/core/pwa/sw.ts`（mobi 已有 SW 基建，Web Push 在用）加 fetch 拦截 `/read-file`，透明注入 Authorization header + Cache API 缓存
-- token 传递：web postMessage → SW（+ IndexedDB 兜底，防 SW 重启丢 token）
-- 缓存策略：stale-while-revalidate（返回缓存 + 后台 etag 更新）
-- `ImageContentView` 从 objectURL 改为 `<img src={端点URL}>` 直连（SW 接管）
-
-**搁置原因（2026-06-21 用户决策）**：SW 方案复杂度高（token 传递 postMessage+IDB / 缓存策略选择 / 拦截范围 / SW 重启 token 丢失一致性），收益（图片浏览器缓存）相对核心功能（流式管道 + 高亮 + markdown + etag）是边际的。
-
-**现状可接受**：
-- 图片 objectURL 直显（P0）+ 5MB 阈值（P1）
-- react-query cache：切 tab 回来命中缓存（不重复下载），非浏览器 HTTP 缓存但功能上「不重复获取」
-- etag 协商（P4）：meta refetch 时浏览器层可能 304
-
-**待后续**：若图片重复获取成为体验瓶颈、或 SW 基建为其他需求（如离线）扩展时，再实施此方案。
-
-**相关文件**：`packages/web/src/components/files/ImageContentView.tsx`、`packages/web/src/core/pwa/sw.ts`、`packages/web/src/core/pwa/registerSW.ts`
-
-**优先级**：低，按需触发。
 
 ---
 
@@ -717,24 +452,6 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 - C. hub→cli 二进制段改 base64（绕过，膨胀 33% 仅内网段，半改善）
 
 **优先级**：低，触发式。无触发信号则保持 patch 现状。
-
----
-
-## 27. ~~dev 环境终端 WebSocket 受 Vite 8 + Bun proxy 阻塞~~ ✅ 已解决
-
-**真实根因**：这是三个叠加问题，不是单一的 `destroySoon()`：
-
-1. Vite Web 端口与 Hub 端口不同，proxy 默认保留 Web Origin；Hub CORS 因此返回 403 `Origin not allowed`。
-2. Vite 8 的 WebSocket proxy 在 Bun runtime 下无法可靠转发 upgrade tunnel；即使 `rewriteWsOrigin` 后 Hub 返回 101，浏览器连接仍会失败。
-3. 失败响应/异常断开路径调用 Node `socket.destroySoon()`，而 Bun socket 未实现该方法，导致整个 Vite dev server 崩溃。
-
-**修复**：
-- terminal 在 dev 构建中通过 `__MOBI_HUB_URL__` 直连 Hub，绕过损坏的 Vite WS tunnel；production 仍使用 `window.location.origin`。
-- dev/e2e profile 明确将 Web origin 加入 `CORS_ORIGINS`，允许浏览器跨端口直连。
-- 移除已无调用方的 `/socket.io` proxy；不保留 Vite patch，避免维护一条业务不再经过的死链路。
-- 同时修正 E2E 暴露的 Web→Hub 事件名错配：`terminal:open` → Hub 实际监听的 `terminal:create`。
-
-**验证**：dev E2E 中 terminal 状态为 connected，PTY 显示 shell prompt，执行 `printf '__MOBI_DEV_WS_OK__\\n'` 后输出 marker。
 
 ---
 
@@ -853,34 +570,6 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 
 ---
 
-## 33. 接入 `background_tasks_changed`（level signal）作为后台任务存活集合
-
-**状态**：✅ 已实现（2026-08-01）。见 `packages/hub/src/sync/backgroundTasks.ts` 的 `extractBackgroundTaskIdsFromMessageContent` 与 `sessionHandlers.ts` 连接级 `activeBackgroundTaskIds`。
-
-**背景**（2026-07-25）：SDK 0.3.203 新增 `background_tasks_changed` system message，携带每次成员变更后的全量存活后台任务。官方定位为 **level signal**，用于替代 `task_started` / `task_notification` 的 edge 配对——"consumers that only need 'is background work running' should replace their set with each payload rather than pairing edges, so a missed bookend cannot wedge a stale running indicator"（`sdk.d.ts:2892`）。mobi 当前完全不处理该消息。
-
-**已验证可行**：E2E 环境跑 `/code-review high` 时，hub 实际收到 **10 条** `background_tasks_changed`（已落库，`classifyMessage` 默认 persistent）。真实 payload 为累积式 REPLACE（1→2→3 个任务），`task_type: "local_agent"`，`task_id` 与 edge 流一致：
-
-```json
-{"subtype":"background_tasks_changed","tasks":[
-  {"task_id":"a1d3610cf1ff...","task_type":"local_agent","description":"Line-by-line review of large launcher/cl..."}
-]}
-```
-
-**接入方式的设计约束**（已实现时的决策）：
-
-1. **不能直接 REPLACE 现有 `runtimeState.backgroundTasks`**。payload 仅有 `task_id` / `task_type` / `description` 三个字段，而 mobi 的 `BackgroundTaskItem` 还有 `toolName`、`status`、`startedAt`、`metrics`（tokens/toolUses/durationMs）、`summary`、`subagentType`。直接覆盖会抹掉 edge 流积累的进度与指标（E2E 里"34.7s · Reviewing runClaude.ts"会消失），属功能退化。→ **实现采用连接级 `activeBackgroundTaskIds` Set 仅作 task_started 后台准入判定，不落库、不覆盖 backgroundTasks**。
-2. **SDK 明确禁止与 edge 流关联**："the payload carries ids only, so do not correlate it with the edge stream"，且"Ordering relative to the bookends for the same transition is unspecified"。若用 level 集合反向清理残留任务，可能误杀刚启动、level 尚未包含的任务，需额外防护。→ **实现只用于 task_started 的准入（task_id ∈ activeBackgroundTaskIds → 后台），不做反向清理**。
-3. **per-process 语义**：`nothing is emitted at startup, so consumers must reset to the empty set whenever the session's CLI process (re)starts`。hub 需在 CLI 重连时清空该集合，否则留下永久"有后台任务在跑"的假象。→ **连接级 Set 随 socket 连接生命周期自动创建/销毁，天然满足**。
-
-**为何做**（2026-08-01）：发现 SDK 对**所有** Bash/Agent 任务（无论前后台）都 emit `task_started`，旧实现把所有 task_started 都当后台任务，导致 92% 前台任务被误判为后台。接入 bg_changed 集合后，`task_started` 的 task_id ∈ 集合才判后台，正确修复识别。
-
-**涉及文件**：
-- `packages/hub/src/sync/backgroundTasks.ts` — `extractBackgroundTaskIdsFromMessageContent` + task_started 组合判定
-- `packages/hub/src/socket/handlers/cli/sessionHandlers.ts` — 连接级 `activeBackgroundTaskIds`
-- `packages/shared/src/schemas.ts` — `BackgroundTaskItemSchema` 加 `isBackground`
-- `packages/web/src/components/composer/TasksPanel.tsx` — 合并前台 agent + 后台任务面板
-
 ## 34. `Auto` 模型下 claude 子进程静默挂死（无产出、无超时、无提示）
 
 **现象**（2026-07-26，dev 环境实测）：Web 侧选模型 `Auto` 时发送 `/code-review high 全面审查 ...`，会话永远停在 `thinking…`：
@@ -937,73 +626,6 @@ Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以�
 
 ---
 
-## 36. ~~上下文用量采集的定时器兜底~~（已失效）
-
-> **已失效（2026-07-30）**：`getContextUsage()` 因在 claude 子进程内触发大量 `count_tokens` / Haiku 兜底请求，撑爆 provider 请求频率限制（连发消息必 429），已**彻底移除**。仪表盘改为完全由 `result` / `assistant` 消息的 usage 字段派生（零额外 API），"事件驱动采集"不复存在，本条定时器兜底讨论随之作废。
-
-**背景**（2026-07-29）：上下文用量仪表盘（composer thread 线 + SessionContextBar 吊顶详情）的采集采用**纯事件驱动**——在 `load` / `resume` / `/compact` / `/clear` / `error` / 每条 assistant message / `result` 这些上下文显著变化的时刻调 SDK 的 `getContextUsage()`。这些事件覆盖了绝大多数变化时刻（含长 turn 中间 tool 循环的增长——每条 assistant message 都会刷新）。
-
-**为何暂不加定时器**：定时器（如 15s 轮询）的唯一价值是兜底「未监听事件导致的变化」，该概率极低；而代价是引入一个常驻后台运转的东西 + 一套可靠性机制（防重入 / 错误隔离 try-catch / 幂等 start / destroy 清理 / RPC 超时 / 失败落盘日志）。属 YAGNI，等真实需求再加。用户当时对「常驻后台定时器是否会以未预料方式出问题」有说不出来的顾虑，遂决定先纯事件驱动。
-
-**若日后加，设计已就绪**：
-- 提炼轻量 `IntervalTask` 工具类（封装 setInterval + 错误隔离 + 防重入 running flag + 幂等 start/stop + destroy guard + 可选超时），对齐现有 `StreamSnapshotSender` 的自包含定时器模式
-- contextUsage 采集器作为首个使用者；旧定时逻辑（keepAlive / watchdog / stale heartbeat）不强制迁移，渐进清理
-- 定位为事件驱动的低频心跳兜底（60–120s），即便定时器偶发故障也不影响核心功能（事件触发仍工作，条最多停在旧值，下个事件自愈）
-- 采集结果与现有事件驱动同款：落库到 `runtimeState.contextUsage`（复用 runtimeState 通道）+ SSE 推 web
-
-**触发条件**：实际使用中观测到「上下文变了但仪表盘没刷新」（条长时间停在旧值），且确认是漏了某个未监听的事件点。
-
-**相关文件**（功能实现后精确化）：
-- `packages/cli/src/claude/claudeRemote.ts` — 事件驱动采集注入点（`sdkOutputLoop` / `handleSpecialCommand`）
-- `packages/cli/src/claude/utils/streamSnapshotSender.ts` — `IntervalTask` 提炼的参照模式
-- 未来 `packages/cli/src/claude/utils/intervalTask.ts` — 定时器工具（加定时器时创建）
-
-**优先级**：低。事件驱动已覆盖常见变化；纯加固项。
-
----
-
-## 37. 渲染链路诊断埋点（tool_use 卡片渲染问题专项）
-
-**问题背景**（2026-08-01）：thinking → text → tool_use 组合下，工具卡片偶发不渲染 running 态、必须等 tool_result 才出现。用户反复反馈、已修复多次仍复发。**E2E 从零重放复现不出来**（干净场景一切正常），说明 bug 依赖某种前置状态/组合（历史会话、审批时序、网络抖动等），只能靠「bug 发生时留现场数据」定位。
-
-**解决方案**：web 端常驻「渲染链路诊断埋点」，记录每条工具调用经过渲染链路的每个决策点：
-
-```
-CLI snapshot ──SSE──▶ normalizeDecryptedMessage ──▶ reduceChatBlocks ──▶ ToolCallBlock 渲染
-        ① snapshot 到达        ② 建/更新 tool-call block            ③ 卡片渲染
-```
-
-### 使用方法（bug 发生后回读数据）
-
-- **开启**：URL 加 `?diag=1`，或 localStorage 置 `mobi-diag-enabled=1`（下次加载自动开）。全构建可用（dev/prod 均可），默认关。
-- **移动端（PWA）便捷入口**：创建页连点品牌 Logo ≥5 次解锁「设置页调试区块」（`debug.unlocked` 提示），区块内可**开关诊断埋点** + **一键下载诊断数据**（内容即 `window.__mobiDiag.dump()`，落盘 `mobi-diag-<ts>.json`）。后续所有调试能力（vConsole 开关等）都追加到该区块，作为移动端调试统一入口。见 `core/lib/debug.ts`（解锁状态）+ `components/settings/blocks/DebugSection.tsx`。
-- **取数据**：bug 出现后浏览器控制台执行 `window.__mobiDiag.dump()`（返回 JSON）；或 `copy(window.__mobiDiag.dump())` 复制走。刷新/关页数据仍在（localStorage 镜像），无需在 bug 前预装。
-- **数据形态**：`events` 事件序列 + `tools` 按 tool_use_id 聚合的状态史（`created:running` → `state:pending` → `state:running (approved)` → …），可定位「卡在 ①②③ 哪一环」。
-- **管理**：`window.__mobiDiag.clear()` 清空；`disable()` 关闭并清数据。
-
-### 实现要点（相关文件）
-
-- `packages/web/src/core/lib/diag.ts`（新）— 环形缓冲（最近 ~300 条）+ localStorage 镜像（`beforeunload` 兜底刷盘）+ 开关 + 全局接口。**localStorage 安全访问器**：vitest/jsdom 下 `window.localStorage` 为 undefined（Node 22+ localStorage 是实验性的，需 `--localstorage-file`），判空降级为「仅内存缓冲」绝不抛错
-- `packages/web/src/domain/chat/normalize.ts` — `normalizeDecryptedMessage` 入口记录 snapshot/完整消息到达（`recordSnapshot`）
-- `packages/web/src/domain/chat/reducerTools.ts` — `ensureToolBlock` 记录工具建块与状态迁移（`recordTool`）
-- `packages/web/src/main.tsx` — `initDiag()` 启动初始化（normalize 侧也兜底调一次，防裁剪）
-- `packages/web/tests/setup.ts` — jsdom localStorage polyfill（`LocalStorageStub`）
-- 测试：`tests/core/lib/diag.test.ts`（8 用例）+ `tests/chat/reducerTools.test.ts` 埋点接入 describe 块
-
-### 踩过的坑（去重设计）
-
-1. **历史重放刷屏**：reducer 每次 SSE 全量重跑，`toolBlocksById` Map 重建 → 历史工具反复被当「新建」。修复：`created` 按 toolUseId 去重（只记首次）；`state` 按 `(state, permission值)` 去重（值没变不算迁移，历史固定 permission 重放跳过）。修复前 AskUserQuestion 被记 20 条重复，修复后 2 条。
-2. **`state` 事件用值比较而非引用比较**：reducer 重跑都新建 permission 对象，引用必然不同，必须 `JSON.stringify` 比内容。
-
-### 待办
-
-- 代码改动**尚未 commit**（diag.ts / normalize.ts / reducerTools.ts / main.tsx / setup.ts / 测试）
-- 触发条件：下次用户反馈「工具卡片又不渲染了」时，直接用本埋点回读现场数据定位卡点，替代 E2E 反复复现。
-
-**优先级**：高（工具卡片渲染是核心 UX，已反复复发）。
-
----
-
 ## 38. ~~上下文用量条展示~~（已隐藏，功能保留）
 
 > **已隐藏（2026-08-01）**：composer sender 上方的上下文用量条（`ContextUsageThread`）统计数据不准确，先在展示层隐藏。**功能逻辑全部保留**——CLI 的 `contextUsageCalc` 计算、`runtimeState.contextUsage` 传递链、web 组件本身都未动，仅渲染处短路。
@@ -1024,38 +646,6 @@ CLI snapshot ──SSE──▶ normalizeDecryptedMessage ──▶ reduceChatBl
 **触发条件**：重做统计口径时（需要把「什么是准的占用」定义清楚），再恢复展示。
 
 **优先级**：低（展示层隐藏，不阻塞功能）。
-
-## 39. ~~虚拟化历史加载顶部 Skeleton 未显示~~ ✅ 已解决（Header 闭包致组件类型变化）
-
-> **真根因定位 + 修复（2026-08-02）**：当初「Header 函数被调用但输出未进 DOM」并非 react-virtuoso 内部抑制，而是 `components={{ Header: () => isFetching ? <Skeleton/> : null }}` 的写法本身——每次 `isFetching` 变化都产生一个**全新的函数组件类型**，React 遇到组件类型变化会卸载旧子树、挂载新子树（而非更新），挂载时机错位就表现为输出不进 DOM。
->
-> **修复**：`HistoryLoadingHeader` 与 `CHAT_LIST_COMPONENTS` 提为模块级常量（组件类型恒定），加载态改经 Virtuoso 的 `context` prop 传入。同类型问题的 E2E 验证受数据量限制（dev 会话历史两页取尽，无第二页触发骨架），靠单测锁定 `components.Header` 跨渲染同引用契约。
->
-> **以下为旧记录，保留备查**：
-
-> **发现（2026-08-01，code-review 问题 7 E2E 验证时）**：虚拟化迁移后，滚到顶加载更旧历史（`fetchNextPage`）时，顶部应有 Skeleton 视觉反馈（替代旧 Bubble.List 的 `__loading-skeleton__` 项）。当前 `VirtuosoChatList` 用 `components={{ Header: () => isFetchingNextPage ? <Skeleton/> : null }}` 实现，但 **Skeleton 实际未出现在 DOM**。
-
-**诊断**（E2E 实测）：
-- `fetchNextPage` 确实触发（网络请求 `messages?beforeSeq=...` 200）；
-- `isFetchingNextPage` 确实变 true（Header 函数内 log 确认 `{"isFetchingNextPage":true}` 被调用 2 次）；
-- 但 `[data-testid="virtuoso-header"]` 在 `isFetchingNextPage=true` 窗口（1.5s 人为 sleep）内全文档搜不到 → Header 函数被调用但输出未挂载 DOM。
-
-**疑似根因**：react-virtuoso 的 `components.Header`（`Ir` memo，mjs:2570）在 List（`Cr`，mjs:2667）内渲染于 item-list 之前，但在 prepend 虚拟化模式下 Header 输出未实际挂载——可能是 system state 更新 HeaderComponent 后 `Ir` 的 memo 未重渲染，或 Header 输出被 Virtuoso 内部 padding/transform 逻辑抑制。**未定位精确根因**。
-
-**已做的相关修复（保留）**：
-- `components` prop 始终传对象（commit `8e5b02a`）——传显式 undefined 会让 react-virtuoso 把 undefined 写入 components state → selector `d => d[l]` 崩（`Cannot read 'EmptyPlaceholder'`）。这是 P0 崩溃，与 Skeleton 显示无关，独立保留。
-
-**待办**：
-- 定位 react-virtuoso `components.Header` 在 prepend 模式不渲染的根因；或
-- 换方案：用 `fixedHeaderContent`（sticky 顶部）/ `topItemCount` + 头部骨架 item / 在 `VirtuosoChatList` 外部（`ChatContainer` 顶部）渲染独立骨架条（脱离 Virtuoso）。
-
-**相关文件**：
-- `packages/web/src/components/chat/VirtuosoChatList.tsx` — `components` useMemo + Header
-- `packages/web/src/components/chat/ChatContainer.tsx` — `onStartReached` + `isFetchingNextPage` 传递
-
-**优先级**：低（本地/快速网络下历史加载 <50ms 无感知；远程慢网络下缺视觉反馈）。核心功能（对话、虚拟化、prepend 数据加载）均正常。
-
----
 
 ## 40. 消息列表：Bubble.List 全量渲染已恢复，数据层窗口化（第二步）待做
 
@@ -1232,6 +822,7 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 - `runSupervisor` 编排层零单测覆盖（finish 幂等/idle 竞态/onEmpty 路径仅靠人审），值得补注入式 fake server 测试
 - B 路径 launchd/systemd 真机验证未做（安装/开机自启/KeepAlive 拉起/空退出不重拉）
 - `hub start-sync` 直接调用时无端口范围校验（仅 service start/restart 经 parseHostPortArgs 校验）
+- **`hub start` 不读 profile 的端口配置**（2026-08-15 E2E 踩坑）：supervised 路径端口来自 desired state，空则兜底 2222（default 环境端口）——`mobi hub start --profile e2e` 不带 `--port` 会与 default 环境 hub 撞端口，且 supervisor 健康门可能打到 default hub 上假通过。desired state 初始化时应参考 profile 端口配置
 
 ---
 
