@@ -274,23 +274,6 @@ export class SDKToLogConverter {
     }
 
     /**
-     * Convert a simple string content to a sidechain user message
-     * Used for Task tool sub-agent prompts
-     */
-    convertSidechainUserMessage(toolUseId: string, content: string): RawJSONLines {
-        const uuid = randomUUID()
-        this.sidechainLastUUID.set(toolUseId, uuid);
-        return {
-            ...this.buildBaseFields(uuid, null, true, toolUseId),
-            type: 'user',
-            message: {
-                role: 'user',
-                content: content
-            },
-        }
-    }
-
-    /**
      * Generate an interrupted tool result message
      * Used when a tool call is interrupted by the user
      * @param toolUseId - The ID of the tool that was interrupted

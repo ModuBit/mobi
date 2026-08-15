@@ -40,27 +40,14 @@
 - **3.3 假拒绝 hack — 已拆除（本次实施）**：核实 SDK `query.setPermissionMode` 官方支持运行时切换（plan 无特例）且进入 plan 已走该路径后，退出对称化：批准 → `allow` + `handleModeChange(mode)`（写 session + 通知运行中 Query），替代 deny + `PLAN_FAKE_REJECT` + `PLAN_FAKE_RESTART` 队列注入 + launcher 拦截伪造 tool_result。顺带删除 `sdk/prompts.ts`（仅含两个魔法字符串）与 `MessageQueue.unshift`（hack 专用注入通道）。UX 改善：批准后同 turn 无缝执行计划，无重启延迟。单测 4 用例 + E2E（Approve (Auto) 档：Write 免审批 + 指示器 compass→bulb + 同 turn 继续）验证
 - **3.4 SDK 消息有损转换 — 已过时**：userLog 现为 `{...baseFields, ...userMsg}` 全量 spread 不丢字段；sidechain UUID 注册是活代码
 
-## 4. Task 工具 prompt 展示应由前端处理
+## 4. ~~Task 工具 prompt 展示应由前端处理~~ ✅ 已解决（2026-08-15 核查 + 死代码删除）
 
-**相关文件**：
-- `packages/cli/src/claude/claudeRemoteLauncher.ts:287-299` — 生成虚拟 user 消息
-- `packages/cli/src/claude/utils/sdkToLogConverter.ts:237-257` — `convertSidechainUserMessage` 方法
-- `packages/web/src/` — 前端渲染
+核查发现虚拟注入**早已是死代码**，实际数据路径已切换：
+- 注入条件 `c.name === 'Task'`，但 SDK 派发工具已改名 **Agent**（dev DB 实证 5 次派发全是 Agent），注入从未触发
+- SDK 已真实下发 sidechain 首条 prompt user 消息（`parentUuid: null` + content 为 text block 数组），走 `convert()` 通用路径入库
+- 前端已消费真实数据：`normalizeAgent.ts` user-array → sidechain prompt → `tracer.ts` `promptToTaskId` 匹配挂链；`tool-card/index.tsx` `getAgentPrompt` 从 tool_use.input.prompt 渲染卡片
 
-**现状**：
-- CLI 在检测到 `Task` 工具调用时，从 `tool_use.input.prompt` 提取内容，生成一条虚拟 sidechain user 消息发送到 Hub
-- 目的是让 Web 端展示 subagent 的任务描述
-- 但 `tool_use` 消息本身已包含完整的 `input.prompt` 数据，前端可以直接从 tool_use block 中读取并渲染
-
-**问题**：
-1. 多了一条不必要的网络消息
-2. `convertSidechainUserMessage` 方法仅为此场景存在
-3. 前端无法区分"用户真的说了这句话"和"subagent 的任务描述"
-
-**重构方向**：
-- 前端 Task 工具卡片直接从 `input.prompt` 读取并展示任务描述
-- 移除 `claudeRemoteLauncher.ts:287-299` 的虚拟消息生成逻辑
-- 移除 `sdkToLogConverter.ts` 的 `convertSidechainUserMessage` 方法
+**本次删除**：`claudeRemoteLauncher.ts` Task 虚拟消息注入块 + `sdkToLogConverter.convertSidechainUserMessage` 方法（唯一调用方即死代码）。parentUuid 链不受影响（真实首条消息到达时照常写 `sidechainLastUUID`）。
 
 ---
 

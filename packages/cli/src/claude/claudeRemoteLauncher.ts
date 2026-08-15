@@ -438,20 +438,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
                 messageQueue.enqueue(logMessage);
             }
-
-            if (message.type === 'assistant') {
-                const umessage = message as SDKAssistantMessage;
-                if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                    for (const c of umessage.message.content) {
-                        if (c.type === 'tool_use' && c.name === 'Task' && c.input && typeof (c.input as Record<string, unknown>).prompt === 'string') {
-                            const logMessage2 = sdkToLogConverter.convertSidechainUserMessage(c.id!, (c.input as Record<string, unknown>).prompt as string);
-                            if (logMessage2) {
-                                messageQueue.enqueue(logMessage2);
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         try {
