@@ -141,7 +141,7 @@ export async function runSupervisor(): Promise<void> {
                     everManaged = true
                 }
                 writeDesiredState(desired)
-                return supervisor.status()
+                return { pid: process.pid, ...supervisor.status() }
             }
             case 'stop': {
                 const targets: Array<'hub' | 'runner'> =
@@ -151,7 +151,7 @@ export async function runSupervisor(): Promise<void> {
                     desired[target] = false
                 }
                 writeDesiredState(desired)
-                return supervisor.status()
+                return { pid: process.pid, ...supervisor.status() }
             }
             case 'restart': {
                 if (request.host) desired.host = request.host
@@ -164,7 +164,7 @@ export async function runSupervisor(): Promise<void> {
                     everManaged = true
                 }
                 writeDesiredState(desired)
-                return supervisor.status()
+                return { pid: process.pid, ...supervisor.status() }
             }
             case 'status':
                 return { pid: process.pid, ...supervisor.status() }
