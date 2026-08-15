@@ -21,7 +21,7 @@
  * 读取该文件恢复停机前的托管配置。
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { configuration } from '@/configuration'
 
@@ -64,17 +64,26 @@ export function readDesiredState(
             hub: Boolean(parsed.hub),
             runner: Boolean(parsed.runner),
             host: typeof parsed.host === 'string' && parsed.host ? parsed.host : DEFAULT_SUPERVISOR_HOST,
-            port: Number.isFinite(port) && port > 0 && port < 65536 ? port : DEFAULT_SUPERVISOR_PORT,
+            port:
+                Number.isFinite(port) && Number.isInteger(port) && port > 0 && port < 65536
+                    ? port
+                    : DEFAULT_SUPERVISOR_PORT,
         }
     } catch {
         return null
     }
 }
 
+/**
+ * 原子写：先写临时文件再 rename，supervisor 崩溃时不会留下半截 JSON
+ * （读到半截文件会被 readDesiredState 判为非法而丢失整个期望状态）。
+ */
 export function writeDesiredState(
     state: SupervisorDesiredState,
     filePath: string = configuration.supervisorStateFile,
 ): void {
     mkdirSync(dirname(filePath), { recursive: true })
-    writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf8')
+    const tmpPath = `${filePath}.tmp`
+    writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf8')
+    renameSync(tmpPath, filePath)
 }

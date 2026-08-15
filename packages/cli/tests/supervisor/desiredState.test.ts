@@ -55,6 +55,11 @@ describe('supervisor 期望状态持久化', () => {
         expect(readDesiredState(stateFile)).toEqual({ hub: true, runner: true, host: '127.0.0.1', port: 2222 })
     })
 
+    it('非整数端口（浮点）归一为默认端口', () => {
+        writeFileSync(stateFile, JSON.stringify({ hub: true, runner: false, host: '127.0.0.1', port: 3333.5 }))
+        expect(readDesiredState(stateFile)).toEqual({ hub: true, runner: false, host: '127.0.0.1', port: 2222 })
+    })
+
     it('非法 JSON 返回 null（视为无状态）', () => {
         writeFileSync(stateFile, '{oops')
         expect(readDesiredState(stateFile)).toBeNull()

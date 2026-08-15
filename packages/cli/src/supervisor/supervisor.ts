@@ -32,7 +32,7 @@ export type ComponentStatus = 'stopped' | 'running' | 'backoff' | 'failed'
 export interface ManagedProcess {
     pid?: number | undefined
     on(event: 'exit', listener: (code: number | null, signal: string | null) => void): void
-    stderr?: { on(event: 'data', listener: (chunk: Buffer) => void): void } | undefined
+    stderr?: { on(event: 'data', listener: (chunk: Buffer) => void): void } | null | undefined
     kill(signal?: NodeJS.Signals): void
 }
 
