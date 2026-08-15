@@ -185,17 +185,41 @@ describe('Supervisor 托管状态机', () => {
         expect(h.supervisor.status().hub.consecutiveCrashes).toBe(0)
     })
 
-    it('shutdown → 先 runner 后 hub 有序停止', () => {
+    it('shutdown → 先 runner 后 hub 有序停止，全部退出后 resolve', async () => {
         const h = createHarness()
         h.supervisor.start('hub')
         h.supervisor.start('runner')
-        h.supervisor.shutdown()
+        const shutdownPromise = h.supervisor.shutdown()
         expect(h.processes[0].killedWith).toBeNull() // hub 尚未被杀
         expect(h.processes[1].killedWith).toBe('SIGTERM')
         h.processes[1].exit(0)
         // runner 停止后 hub 才被杀
         expect(h.processes[0].killedWith).toBe('SIGTERM')
         h.processes[0].exit(0)
+        await shutdownPromise
+        // 第二次调用幂等，立即 resolve；两进程均已退出，终态均为 stopped
+        await h.supervisor.shutdown()
+        expect(h.processes.every((p) => p.killedWith === 'SIGTERM')).toBe(true)
+        expect(h.supervisor.status().hub).toMatchObject({ status: 'stopped' })
+        expect(h.supervisor.status().runner).toMatchObject({ status: 'stopped' })
+    })
+
+    it('stderr 尾部截断——崩溃现场仅保留最后 8000 字符', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+
+        for (let i = 0; i < 5; i++) {
+            if (i === 4) h.processes.at(-1)!.emitStderr('x'.repeat(9000) + 'TAIL_MARKER')
+            h.advance(1_000)
+            h.processes.at(-1)!.exit(1)
+            if (i < 4) vi.advanceTimersByTime(nextBackoffFor(i + 1))
+        }
+        vi.advanceTimersByTime(60_000)
+
+        expect(h.crashLogs).toHaveLength(1)
+        expect(h.crashLogs[0].tail.length).toBeLessThanOrEqual(8_100)
+        expect(h.crashLogs[0].tail.endsWith('TAIL_MARKER')).toBe(true)
     })
 })
 

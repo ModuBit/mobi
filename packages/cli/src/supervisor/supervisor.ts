@@ -221,10 +221,23 @@ export class Supervisor {
             return
         }
 
+        // shutdown 发起的停止：不算崩溃、不计数、不退避
+        if (this.shuttingDown) {
+            rt.status = 'stopped'
+            return
+        }
+
         // 显式 restart：立即重拉，不走崩溃计数
         if (rt.restartOnExit) {
             rt.restartOnExit = false
             rt.consecutiveCrashes = 0
+            // restart 与 shutdown 竞态：kill 后、exit 派发前调用了 shutdown()，
+            // 此时不再重拉（否则 shutdown 期间拉起的新子进程成孤儿）。
+            // 注：上方 shuttingDown 守卫已拦截此场景，此处校验是防御性文档。
+            if (this.shuttingDown) {
+                rt.status = 'stopped'
+                return
+            }
             this.spawnComponent(name)
             return
         }
