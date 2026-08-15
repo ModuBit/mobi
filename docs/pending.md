@@ -121,34 +121,18 @@
 
 ---
 
-## 13. 页面刷新后 Agent 执行状态丢失
+## 13. ~~页面刷新后 Agent 执行状态丢失~~ ✅ 关闭（2026-08-15 核查，维持现状）
 
-**相关文件**：
-- `packages/shared/src/messageClassification.ts` — `tool_progress` / `tool_use_summary` 分类为 `ephemeral`
-- `packages/web/src/domain/chat/reducerTimeline.ts:94-111` — `agent-progress` 事件更新 ToolCallBlock 的 metrics/summary
-- `packages/hub/src/sync/sessionCache.ts` — runtimeState（已有 backgroundTasks 同模式）
+**核查确认**：现状与原条目描述一致，无新变化——`tool_progress` / `tool_use_summary` 仍是 ephemeral（`messageClassification.ts:50-51`，SSE 实时推送、历史查询过滤），`reducerTimeline.ts:97` 依赖实时 `agent-progress` 事件更新 ToolCallBlock，runtimeState 无 agentProgress 字段（方案一从未实施）。
 
-**现状**：
-- `tool_progress` 和 `tool_use_summary` 被分类为 `ephemeral`：SSE 实时推送正常，历史查询时过滤
-- Web 端通过 SSE 实时收到 `agent-progress` 事件，更新对应 ToolCallBlock 的 `agentMetrics`（token 消耗、工具次数）和 `agentSummary`
-- **刷新页面后**：Hub 历史查询不返回 `ephemeral` 消息 → `agent-progress` 事件丢失 → ToolCallBlock 无 metrics/summary → 直到下一个实时 `tool_progress` 到来才恢复
+**维持现状（不实施任何方案）的理由**：
 
-**影响**：
-- 功能无影响，仅体验上的小缺陷（agent 执行中间状态暂时空白）
-- agent 执行完成后，最终指标通过 `tool_result` 的 `agentMetrics` 字段持久化在 ToolResult 中，不受影响
+- **恢复窗口很小**：agent 运行中 `tool_progress` 持续到达（秒级），刷新后等一条即恢复；只有「agent 跑完前几十秒恰好刷新」才见空白，且最终指标由 `tool_result` 的 `agentMetrics` 持久化，终点数据不丢
+- **方案一（runtimeState 存储）成本被低估**：`tool_progress` 高频到达，每条落 runtimeState = 每条写 SQLite + 广播 session-updated，远比 backgroundTasks 模式（仅任务边界写）频繁
+- **模式反例**：metadata SWR 死循环与 teamState 生命周期（#11/#44）的教训均表明「往 runtimeState 频繁写派生状态」是最易出竞态的模式，为小体验缺陷引入不值
+- 客户端缓存（跨设备不一致）与保留最近 N 条 ephemeral（清理逻辑重）维持原判不采用
 
-**评估过的方案**：
-
-| 方案 | 做法 | 成本 | 决定 |
-|------|------|------|------|
-| runtimeState 存储 agentProgress | 在 `runtimeState.agentProgress[toolUseId]` 存最新 metrics/summary，复用 backgroundTasks 同模式 | 低（~70 行 + 测试） | 暂不实施 |
-| 客户端缓存（localStorage） | 浏览器端缓存最新 agentProgress | 中，跨设备不一致 | 不采用 |
-| 保留最近 N 条 ephemeral | DB 中仅保留每类最近一条 | 高，需新清理逻辑 | 不采用 |
-
-**暂不实施原因**：
-- 需要每条 `tool_progress` 到达时频繁更新 runtimeState（写入 DB）
-- 需要额外清理逻辑（`tool_result` 到达时清除对应条目）
-- 当前体验缺陷可接受，等下一个 `tool_progress` 自然恢复
+**触发条件**：若未来 agent 执行中间状态成为核心观察场景（如长任务的进度监控），再评估 runtimeState 节流写入方案（如仅在指标变化超阈值时落库）。
 
 ---
 
