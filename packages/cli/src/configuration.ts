@@ -41,6 +41,8 @@ class Configuration {
     public readonly runnerStateFile: string
     public readonly runnerLockFile: string
     public readonly hubStateFile: string
+    public readonly supervisorSocketFile: string
+    public readonly supervisorStateFile: string
     public readonly currentCliVersion: string
 
     public readonly isExperimentalEnabled: boolean
@@ -84,6 +86,8 @@ class Configuration {
         this.runnerStateFile = join(this.mobiHomeDir, 'runner.state.json')
         this.runnerLockFile = join(this.mobiHomeDir, 'runner.state.json.lock')
         this.hubStateFile = join(this.mobiHomeDir, 'hub.state.json')
+        this.supervisorSocketFile = join(this.mobiHomeDir, 'supervisor.sock')
+        this.supervisorStateFile = join(this.mobiHomeDir, 'supervisor-state.json')
 
         this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.MOBI_EXPERIMENTAL?.toLowerCase() || '')
         this.isAgentTeamsEnabled = ['true', '1', 'yes'].includes(process.env.MOBI_AGENT_TEAMS?.toLowerCase() || '')
