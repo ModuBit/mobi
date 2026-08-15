@@ -17,20 +17,25 @@
 /**
  * Supervisor 进程编排入口（`mobi service supervise --sync`）。
  *
- * 职责：幂等启动守卫 → 孤儿清理 → IPC server → 恢复期望状态 → 常驻等待指令；
- * 信号/指令触发时有序关停。
+ * 职责：幂等启动守卫 → 绑定控制 socket 占锁（bind 失败探活决定退让/夺回）→
+ * 孤儿清理 → 恢复期望状态 → 常驻等待指令；信号/指令触发时有序关停。
  * A 路径下由 CLI（ensureSupervisorRunning）spawn；B 路径下由
  * launchd/systemd 直接 ExecStart。
  */
 
-import { existsSync, unlinkSync, writeFileSync } from 'node:fs'
+import { unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { configuration } from '@/configuration'
 import { logger } from '@/ui/logger'
 import { spawnMobiCli } from '@/utils/spawnMobiCli'
 import { waitForUrlOk } from '@/utils/httpHealth'
 import { Supervisor } from './supervisor'
-import { startControlServer, sendControlCommand, type ControlRequest } from './control'
+import {
+    startControlServer,
+    sendControlCommand,
+    type ControlRequest,
+    type ControlServer,
+} from './control'
 import { defaultDesiredState, readDesiredState, writeDesiredState } from './desiredState'
 import { cleanupOrphans } from './orphanCleanup'
 
@@ -53,15 +58,7 @@ export async function runSupervisor(): Promise<void> {
         // 无应答（连接失败/超时）→ socket 是残留文件或不存在，继续启动
     }
 
-    // 1. 孤儿清理：清掉上次残留的 hub/runner
-    await cleanupOrphans()
-
-    // 2. 清理残留 socket 文件（上次异常退出会留下）
-    if (existsSync(configuration.supervisorSocketFile)) {
-        unlinkSync(configuration.supervisorSocketFile)
-    }
-
-    // 3. 编排状态
+    // 1. 编排状态
     const desired = readDesiredState() ?? defaultDesiredState()
     let everManaged = false
     let finished = false
@@ -101,11 +98,14 @@ export async function runSupervisor(): Promise<void> {
         },
     )
 
-    // 4. IPC server
-    const server = await startControlServer(configuration.supervisorSocketFile, (request) =>
-        handleRequest(request),
-    )
+    // 2. 绑定控制 socket（占锁）。bind 失败 ≠ 无 supervisor（可能是并发冷启动中
+    //    的先起者）：探活有应答则退让，无应答则为残留文件，unlink 后重试一次。
+    //    持锁成功后才具备孤儿清理资格，杜绝"守卫探活→unlink"之间数秒 TOCTOU 窗口
+    const server = await bindControlServer()
     logger.debug(`[SUPERVISOR] Control server listening: ${configuration.supervisorSocketFile}`)
+
+    // 3. 孤儿清理：清掉上次残留的 hub/runner
+    await cleanupOrphans()
 
     const hubHealthUrl = () => `http://${desired.host}:${desired.port}/health`
 
@@ -160,6 +160,8 @@ export async function runSupervisor(): Promise<void> {
                     request.scope === 'both' ? ['runner', 'hub'] : [request.scope]
                 for (const target of targets) {
                     supervisor.restart(target, target === 'hub' ? hubEnv() : process.env)
+                    desired[target] = true
+                    everManaged = true
                 }
                 writeDesiredState(desired)
                 return supervisor.status()
@@ -177,6 +179,9 @@ export async function runSupervisor(): Promise<void> {
         finished = true
         if (idleTimer) clearTimeout(idleTimer)
         await supervisor.shutdown()
+        // 宏任务屏障：让处理中的 IPC 响应（微任务链上的 socket.write）先落盘，
+        // 避免 server.stop() 抢跑销毁 socket 导致客户端误报失败
+        await new Promise((resolve) => setImmediate(resolve))
         await server.stop()
         logger.debug(`[SUPERVISOR] Exiting with code ${exitCode}`)
         process.exit(exitCode)
@@ -189,12 +194,44 @@ export async function runSupervisor(): Promise<void> {
         void finish(1)
     })
 
-    // 5. 恢复期望状态（B 路径开机自启 = 恢复停机前配置）
+    /**
+     * 尝试绑定控制 socket；bind 失败时探活决定退让或夺回，最多重试一次：
+     * - 有应答 → 先起者赢，本进程退让退出
+     * - 无应答 → socket 是上次异常退出的残留文件，unlink 后重试
+     * - 重试仍失败 → 无法占锁，放弃启动
+     */
+    async function bindControlServer(): Promise<ControlServer> {
+        try {
+            return await startControlServer(configuration.supervisorSocketFile, (request) =>
+                handleRequest(request),
+            )
+        } catch {
+            // bind 失败：socket 路径已被占用（活 supervisor 持有 / 残留文件）
+            try {
+                await sendControlCommand(configuration.supervisorSocketFile, { cmd: 'status' }, 1_000)
+                logger.debug('[SUPERVISOR] Another supervisor already running, exiting')
+                process.exit(0)
+            } catch {
+                unlinkSync(configuration.supervisorSocketFile)
+            }
+            try {
+                return await startControlServer(configuration.supervisorSocketFile, (request) =>
+                    handleRequest(request),
+                )
+            } catch (retryError) {
+                logger.debug('[SUPERVISOR] Failed to bind control socket, giving up', retryError)
+                process.exit(1)
+            }
+        }
+    }
+
+    // 4. 恢复期望状态（B 路径开机自启 = 恢复停机前配置）
     if (desired.hub || desired.runner) {
         if (desired.hub) {
             supervisor.start('hub', hubEnv())
             everManaged = true
-            await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
+            const healthy = await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
+            if (!healthy) logger.debug('[SUPERVISOR] hub not healthy after restore, continuing')
         }
         if (desired.runner) {
             supervisor.start('runner', process.env)

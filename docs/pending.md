@@ -1222,3 +1222,11 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 - `AssignProjectModal` / 新建会话项目下拉等全量消费方按需保留全量接口或提高单页上限
 
 **优先级**：低。当前项目量级（个位/十位）下无感知；等量级上来再做。
+
+---
+
+## 46. supervisor 已知边界
+
+- `supervisor.stop/shutdown` 仅发 SIGTERM，子进程挂起信号时 finish 永不完成——需加宽限期 SIGKILL 升级
+- `cleanupOrphans` 按持久化 pid 探活击杀，存在 pid 复用误杀理论风险
+- `runSupervisor` 编排层零单测覆盖（finish 幂等/idle 竞态/onEmpty 路径仅靠人审），值得补注入式 fake server 测试
