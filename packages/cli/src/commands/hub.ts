@@ -66,7 +66,7 @@ export const hubCommand: CommandDefinition = {
         if (subcommand === 'start') {
             const { host, port } = parseHostPortArgs(context.commandArgs.slice(1))
             await serviceStart('hub', { host, port })
-            process.exit(0)
+            return
         }
 
         if (subcommand === 'start-sync') {
@@ -84,18 +84,18 @@ export const hubCommand: CommandDefinition = {
 
         if (subcommand === 'status') {
             await serviceStatus()
-            process.exit(0)
+            return
         }
 
         if (subcommand === 'stop') {
             await serviceStop('hub')
-            process.exit(0)
+            return
         }
 
         if (subcommand === 'restart') {
             const { host, port } = parseHostPortArgs(context.commandArgs.slice(1))
             await serviceRestart('hub', { host, port })
-            process.exit(0)
+            return
         }
 
         showHubHelp()

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-/** 解析 --host/--port（支持 `--host x` 与 `--host=x` 两种形式） */
+/** 解析 --host/--port（支持 `--host x` 与 `--host=x` 两种形式；非法端口直接抛错） */
 export function parseHostPortArgs(args: string[]): { host?: string; port?: number } {
     let host: string | undefined
     let port: number | undefined
@@ -22,12 +22,21 @@ export function parseHostPortArgs(args: string[]): { host?: string; port?: numbe
         if (args[i] === '--host' && i + 1 < args.length) {
             host = args[++i]
         } else if (args[i] === '--port' && i + 1 < args.length) {
-            port = parseInt(args[++i], 10)
+            port = parsePort(args[++i])
         } else if (args[i].startsWith('--host=')) {
             host = args[i].slice('--host='.length)
         } else if (args[i].startsWith('--port=')) {
-            port = parseInt(args[i].slice('--port='.length), 10)
+            port = parsePort(args[i].slice('--port='.length))
         }
     }
     return { host, port }
+}
+
+/** 端口校验：NaN 或越界均视为非法 */
+function parsePort(raw: string): number {
+    const port = parseInt(raw, 10)
+    if (!Number.isFinite(port) || port < 1 || port > 65535) {
+        throw new Error(`Invalid port: ${raw}. Must be a number between 1 and 65535`)
+    }
+    return port
 }

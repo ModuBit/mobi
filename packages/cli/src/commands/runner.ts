@@ -88,7 +88,7 @@ export const runnerCommand: CommandDefinition = {
 
         if (runnerSubcommand === 'start') {
             await serviceStart('runner')
-            process.exit(0)
+            return
         }
 
         if (runnerSubcommand === 'start-sync') {
@@ -104,17 +104,17 @@ export const runnerCommand: CommandDefinition = {
 
         if (runnerSubcommand === 'stop') {
             await serviceStop('runner')
-            process.exit(0)
+            return
         }
 
         if (runnerSubcommand === 'restart') {
             await serviceRestart('runner')
-            process.exit(0)
+            return
         }
 
         if (runnerSubcommand === 'status') {
             await serviceStatus()
-            process.exit(0)
+            return
         }
 
         if (runnerSubcommand === 'logs') {

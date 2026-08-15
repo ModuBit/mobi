@@ -17,35 +17,31 @@
 /**
  * service 命令族共用的 CLI 侧操作：确保 supervisor 存活 → 发控制指令 → 打印结果。
  * `mobi service`、`mobi hub`、`mobi runner` 三个入口都走这里，保证语义唯一。
+ *
+ * start/restart 会主动拉起 supervisor；status/stop 只探活不拉起，
+ * 避免只读查询在冷启动时意外唤醒 supervisor 并按 desired state 恢复整套服务。
  */
 
 import chalk from 'chalk'
 import { configuration } from '@/configuration'
 import { ensureSupervisorRunning, sendControlCommand, type ServiceScope } from '@/supervisor/control'
 import { readDesiredState } from '@/supervisor/desiredState'
+import type { ComponentStatusReport } from '@/supervisor/supervisor'
 
 export interface StartOptions {
     host?: string
     port?: number
 }
 
-interface ComponentReport {
-    name: 'hub' | 'runner'
-    managed: boolean
-    status: 'stopped' | 'running' | 'backoff' | 'failed'
-    pid?: number
-    consecutiveCrashes: number
-}
-
 interface ServiceStatusPayload {
     pid: number
-    hub: ComponentReport
-    runner: ComponentReport
+    hub: ComponentStatusReport
+    runner: ComponentStatusReport
 }
 
 const LABEL: Record<'hub' | 'runner', string> = { hub: 'Hub', runner: 'Runner' }
 
-function colorStatus(status: ComponentReport['status']): string {
+function colorStatus(status: ComponentStatusReport['status']): string {
     if (status === 'running') return chalk.green('running')
     if (status === 'failed') return chalk.red('failed')
     if (status === 'backoff') return chalk.yellow('backoff')
@@ -56,6 +52,26 @@ function colorStatus(status: ComponentReport['status']): string {
 function readDesiredLite(): { hub: boolean; port: number } {
     const state = readDesiredState()
     return { hub: state?.hub ?? false, port: state?.port ?? 2222 }
+}
+
+/** 探活：supervisor 未运行返回 false（不拉起） */
+async function isSupervisorAlive(): Promise<boolean> {
+    try {
+        await sendControlCommand(configuration.supervisorSocketFile, { cmd: 'status' }, 2_000)
+        return true
+    } catch {
+        return false
+    }
+}
+
+/** 控制指令失败时打印友好错误并退出，避免裸栈 */
+async function runControlAction(action: () => Promise<void>): Promise<void> {
+    try {
+        await action()
+    } catch (error) {
+        console.error(chalk.red(error instanceof Error ? error.message : String(error)))
+        process.exit(1)
+    }
 }
 
 function printStatus(payload: ServiceStatusPayload): void {
@@ -80,44 +96,63 @@ function printStatus(payload: ServiceStatusPayload): void {
 }
 
 export async function serviceStart(scope: ServiceScope, options: StartOptions = {}): Promise<void> {
-    await ensureSupervisorRunning()
-    const payload = await sendControlCommand(configuration.supervisorSocketFile, {
-        cmd: 'start',
-        scope,
-        host: options.host,
-        port: options.port,
-    }) as ServiceStatusPayload
-    printStatus(payload)
-    const desired = readDesiredLite()
-    console.log('')
-    console.log(chalk.green(`Service ready at ${chalk.cyan(`http://localhost:${desired.port}`)}`))
+    await runControlAction(async () => {
+        await ensureSupervisorRunning()
+        const payload = await sendControlCommand(configuration.supervisorSocketFile, {
+            cmd: 'start',
+            scope,
+            host: options.host,
+            port: options.port,
+        }) as ServiceStatusPayload
+        printStatus(payload)
+        // hub 实际在跑（无论本次 scope 是否含 hub）才打印访问入口
+        if (payload.hub.status === 'running') {
+            const desired = readDesiredLite()
+            console.log('')
+            console.log(chalk.green(`Service ready at ${chalk.cyan(`http://localhost:${desired.port}`)}`))
+        }
+    })
 }
 
 export async function serviceStop(scope: ServiceScope): Promise<void> {
-    await ensureSupervisorRunning()
-    await sendControlCommand(configuration.supervisorSocketFile, { cmd: 'stop', scope })
-    if (scope === 'both') {
-        console.log(chalk.green('Service stopped'))
-    } else {
-        console.log(chalk.green(`${LABEL[scope]} stopped`))
+    // 只探活不拉起：本来没跑就没必要（也不应该）唤醒 supervisor 再停它
+    if (!(await isSupervisorAlive())) {
+        console.log(chalk.yellow('Service is not running'))
+        return
     }
+    await runControlAction(async () => {
+        await sendControlCommand(configuration.supervisorSocketFile, { cmd: 'stop', scope })
+        if (scope === 'both') {
+            console.log(chalk.green('Service stopped'))
+        } else {
+            console.log(chalk.green(`${LABEL[scope]} stopped`))
+        }
+    })
 }
 
 export async function serviceRestart(scope: ServiceScope, options: StartOptions = {}): Promise<void> {
-    await ensureSupervisorRunning()
-    const payload = await sendControlCommand(configuration.supervisorSocketFile, {
-        cmd: 'restart',
-        scope,
-        host: options.host,
-        port: options.port,
-    }) as ServiceStatusPayload
-    printStatus(payload)
+    await runControlAction(async () => {
+        await ensureSupervisorRunning()
+        const payload = await sendControlCommand(configuration.supervisorSocketFile, {
+            cmd: 'restart',
+            scope,
+            host: options.host,
+            port: options.port,
+        }) as ServiceStatusPayload
+        printStatus(payload)
+    })
 }
 
 export async function serviceStatus(): Promise<void> {
-    await ensureSupervisorRunning()
-    const payload = await sendControlCommand(configuration.supervisorSocketFile, {
-        cmd: 'status',
-    }) as ServiceStatusPayload
-    printStatus(payload)
+    // 只读查询绝不拉起 supervisor（否则 desired state 非空时会意外恢复整套服务）
+    if (!(await isSupervisorAlive())) {
+        console.log(chalk.yellow('Service is not running'))
+        return
+    }
+    await runControlAction(async () => {
+        const payload = await sendControlCommand(configuration.supervisorSocketFile, {
+            cmd: 'status',
+        }) as ServiceStatusPayload
+        printStatus(payload)
+    })
 }
