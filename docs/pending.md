@@ -241,30 +241,21 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 
 **决策**：暂不实施。当前 resume 覆盖层方案足够；待「session 关闭后仍需查看文件」成为明确需求、且上述 cwd/安全问题有结论后再评估。
 
-**优先级**：低，按需触发。
+**价值评估补充**（2026-08-15）：场景低频（消息流内代码块/diff/工具卡已覆盖大部分回看需求），resume 兜底只多一次点击；实施需解决 cwd 动态指定（cli RPC 签名改动）与 machine 级绕过 session 审计两个硬问题。**与 #41（会话知识化）联动**：若 #41 落地、回看历史会话文件产物成为高频动作，本项优先级自然上升——真正的触发信号在 #41。
+
+**优先级**：低，按需触发（联动 #41）。
 
 ---
 
-## 24. 文件流式端点（`/read-file`）quality review 遗留项
+## 24. ~~文件流式端点（`/read-file`）quality review 遗留项~~ ✅ 已解决（2026-08-15 核查，三个子项均已在后续实现中落地）
 
-Task 5（commit `28acf9a`，hub 流式端点）code quality review 通过，以下非阻塞项待后续评估：
+- **I3（ENOENT→404）✅**：`serveFileContent.ts` 已实现——cli 侧 stat 对不存在文件抛 ENOENT，结构化 `code='ENOENT'`，hub 分流 `404`（其余 500）。主路径（read-file / serve-file 流式端点）已覆盖
+- **I4（suffix range）✅**：正则已是 `^bytes=(\d*)-(\d*)$`，明确支持 `bytes=-N`（最后 N 字节，N ≥ size 回退整个文件）；前端 `MediaContentView` 原生 `<video>`/`<audio>` 标签读 mp4 moov 的刚需已被覆盖
+- **M2（抽模块）✅**：meta/304/Range/stream 逻辑已抽至 `serveFileContent.ts`，read-file 与 serve-file 共用
 
-**I3 — ENOENT/越权 应映射为 404/403（当前 500）**：
-- `packages/hub/src/web/routes/sessions.ts` 的流式端点：`readFileMeta` 失败（含 cli ENOENT、validatePath 越权）统一返回 500
-- 语义不准：文件不存在应为 404，路径越权应为 403，前端难以区分「文件没了」vs「cli 挂了」
-- 方向：cli `readFileMeta` handler 区分 ENOENT 单独返回标志，或 hub 端按 error 字符串轻量映射（`/ENOENT|no such file/i` → 404，validation 类 → 403）
+**微小残留（不动）**：辅助端点 `file-meta`（sessions.ts）仍统一 500——前端消费方式是直接把 error 抛成 query error，不区分状态码做 UI，改为 404 无行为差异，不值得动。
 
-**I4 — suffix range（`bytes=-N`）当前返回 416**：
-- 正则 `^bytes=(\d+)-(\d*)$` 不匹配 `bytes=-5`（RFC 7233 表示「最后 5 字节」）→ isRange=false → 命中 416 分支
-- 影响：浏览器 `<video>` seek 末尾、`<audio>` 流式、curl `--range -N`/aria2 等会发 suffix range，当前拿不到数据
-- 取决于 Task 6/7 预览方式：若 fetch 手动分片（发 `bytes=start-`）则无影响；若 `<video src>` 原生标签则需补 suffix（正则加 `(\d*)-(\d+)` 分支 + `start = max(0, size-N)`）
-
-**M2 — sessions.ts read 类端点可抽模块**：
-- 流式端点 +82 行后 sessions.ts 持续膨胀，Task 8 移除旧 readFile 后若 read 类端点（read-file + 未来 list/search）继续膨胀，可抽 `readFileRoute.ts`。当前内联合理，YAGNI。
-
-**相关文件**：`packages/hub/src/web/routes/sessions.ts:492-581`
-
-**优先级**：低，Task 8 收尾或 Task 6/7 预览方式定了后评估。
+**相关文件**：`packages/hub/src/web/routes/serveFileContent.ts`、`packages/hub/src/web/routes/sessions.ts`
 
 ---
 
