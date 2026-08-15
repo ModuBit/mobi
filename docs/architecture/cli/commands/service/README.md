@@ -21,7 +21,10 @@ mobi hub start-sync / runner start-sync        # 前台直跑（supervisor 内�
 
 语义要点：
 
-- **幂等**：重复 start 不再 spawn；未运行时 stop 不报错
+- **幂等**：重复 start（组件真正在跑）不再 spawn；未运行时 stop 不报错
+- **failed/backoff 态的显式 start**：视为用户要求现在就绪——清崩溃计数立即重拉（否则 `mobi` 启动时的自动拉起路径永远救不活 failed 的 runner）
+- **start 带 `--host`/`--port` 遇 hub 已在跑**：降级为 restart 语义（start 对 running 组件幂等跳过、不会应用新配置）
+- **restart 顺序**：hub 先行且过健康门（等 pid 翻转 + `/health` 通过，防旧实例 SIGTERM 排水期误判就绪）再动 runner
 - **冷启动探活**：`status`/`stop` 只探活不拉起——supervisor 未运行时打印 "Service is not running"，避免只读查询产生副作用（尤其是 desired state 非空时会恢复整套服务的场景）
 - **start/restart** 才走 `ensureSupervisorRunning()` 拉起 supervisor
 - runner 的 `list`/`stop-session`/`logs` 子命令保留原实现（直接与 runner 通信，不经 supervisor）
@@ -68,7 +71,8 @@ flowchart TB
 
 - 退避：第 n 次连续崩溃后等待 1s → 2s → 4s → … → 30s 封顶
 - 计数：单次运行不足 60s 即退出算一次"连续崩溃"；稳定运行 ≥ 60s 后重新起算（偶发崩溃不累积）
-- **连续 5 次 → `failed`**：不再自动拉起；崩溃现场（stderr 尾部）落盘 `~/.mobi/logs/<组件>-crash.log`；对应组件 `restart` 重置计数重新拉起；failed 不影响另一组件
+- **崩溃的两种形态**：子进程 exit（非零/信号）与 spawn 异步 `error`（二进制缺失等——只 emit error 不 emit exit）均走同一计数/退避；exit 之后迟到的 error 忽略防双计数
+- **连续 5 次 → `failed`**：不再自动拉起；崩溃现场（stderr 尾部，含 spawn error 信息）落盘 `~/.mobi/logs/<组件>-crash.log`；对应组件 `restart` 或显式 `start` 均重置计数重新拉起；failed 不影响另一组件
 - 显式 stop 不计崩溃
 
 ## 生命周期

@@ -22,6 +22,7 @@ class FakeProcess implements ManagedProcess {
     pid: number
     killedWith: string | null = null
     private exitListeners: Array<(code: number | null, signal: string | null) => void> = []
+    private errorListeners: Array<(error: Error) => void> = []
     private stderrListeners: Array<(chunk: Buffer) => void> = []
     private static nextPid = 1000
 
@@ -29,8 +30,11 @@ class FakeProcess implements ManagedProcess {
         this.pid = FakeProcess.nextPid++
     }
 
-    on(event: 'exit', listener: (code: number | null, signal: string | null) => void): void {
-        if (event === 'exit') this.exitListeners.push(listener)
+    on(event: 'exit', listener: (code: number | null, signal: string | null) => void): void
+    on(event: 'error', listener: (error: Error) => void): void
+    on(event: string, listener: (...args: never[]) => void): void {
+        if (event === 'exit') this.exitListeners.push(listener as never)
+        if (event === 'error') this.errorListeners.push(listener as never)
     }
 
     get stderr() {
@@ -51,6 +55,11 @@ class FakeProcess implements ManagedProcess {
 
     exit(code: number | null): void {
         for (const listener of this.exitListeners) listener(code, null)
+    }
+
+    /** 模拟 spawn 异步失败（只 emit error，不 emit exit） */
+    emitError(message: string): void {
+        for (const listener of this.errorListeners) listener(new Error(message))
     }
 }
 
@@ -220,6 +229,99 @@ describe('Supervisor 托管状态机', () => {
         expect(h.crashLogs).toHaveLength(1)
         expect(h.crashLogs[0].tail.length).toBeLessThanOrEqual(8_100)
         expect(h.crashLogs[0].tail.endsWith('TAIL_MARKER')).toBe(true)
+    })
+
+    it('failed 后显式 start → 清崩溃计数立即重拉（而非 no-op）', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+
+        // 连崩 5 次 → failed
+        for (let i = 0; i < 5; i++) {
+            h.advance(1_000)
+            h.processes.at(-1)!.exit(1)
+            if (i < 4) vi.advanceTimersByTime(nextBackoffFor(i + 1))
+        }
+        vi.advanceTimersByTime(60_000)
+        expect(h.supervisor.status().hub.status).toBe('failed')
+
+        // 显式 start：用户要求现在就绪——立即重拉且计数清零
+        h.supervisor.start('hub')
+        expect(h.processes).toHaveLength(6)
+        expect(h.supervisor.status().hub).toMatchObject({ status: 'running', consecutiveCrashes: 0 })
+    })
+
+    it('backoff 退避中显式 start → 不等退避立即重拉', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+        h.advance(1_000)
+        h.processes[0].exit(1)
+        expect(h.supervisor.status().hub.status).toBe('backoff')
+
+        // 退避还剩 1s：显式 start 立即拉起
+        h.supervisor.start('hub')
+        expect(h.processes).toHaveLength(2)
+        expect(h.supervisor.status().hub).toMatchObject({ status: 'running', consecutiveCrashes: 0 })
+    })
+
+    it('running 中显式 start 传入新 env → 幂等不重拉，但刷新 env 供下次重拉使用', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub', { MOBI_LISTEN_PORT: '2222' })
+        h.supervisor.start('hub', { MOBI_LISTEN_PORT: '3333' })
+        expect(h.processes).toHaveLength(1)
+
+        // 崩溃后的自动重拉使用最新 env
+        h.processes[0].exit(1)
+        vi.advanceTimersByTime(1_000)
+        expect(h.processes).toHaveLength(2)
+    })
+
+    it('spawn error（无 exit）→ 视同崩溃进入退避，错误信息进崩溃现场', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+
+        // spawn 异步失败（如二进制缺失）：只有 error 没有 exit
+        h.processes[0].emitError('spawn mobi ENOENT')
+        expect(h.supervisor.status().hub.status).toBe('backoff')
+        expect(h.supervisor.status().hub.consecutiveCrashes).toBe(1)
+
+        // 退避后重拉
+        vi.advanceTimersByTime(1_000)
+        expect(h.processes).toHaveLength(2)
+    })
+
+    it('exit 之后再到达的 error → 忽略，不重复计数', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+        h.advance(1_000)
+        h.processes[0].exit(1)
+        // exit 已处理：迟到的 error（如对已退出进程 kill 的 ESRCH）不应再计一次崩溃
+        h.processes[0].emitError('kill ESRCH')
+
+        expect(h.supervisor.status().hub.consecutiveCrashes).toBe(1)
+        vi.advanceTimersByTime(nextBackoffFor(1))
+        expect(h.processes).toHaveLength(2)
+    })
+
+    it('连续 spawn error → 计数累加到 failed，崩溃现场含 spawn error 信息', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+
+        for (let i = 0; i < 5; i++) {
+            h.advance(1_000)
+            h.processes.at(-1)!.emitError('spawn mobi ENOENT')
+            if (i < 4) vi.advanceTimersByTime(nextBackoffFor(i + 1))
+        }
+        vi.advanceTimersByTime(60_000)
+
+        expect(h.supervisor.status().hub.status).toBe('failed')
+        expect(h.crashLogs).toHaveLength(1)
+        expect(h.crashLogs[0].tail).toContain('spawn mobi ENOENT')
     })
 })
 

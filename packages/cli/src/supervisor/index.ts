@@ -28,7 +28,7 @@ import { join } from 'node:path'
 import { configuration } from '@/configuration'
 import { logger } from '@/ui/logger'
 import { spawnMobiCli } from '@/utils/spawnMobiCli'
-import { waitForUrlOk } from '@/utils/httpHealth'
+import { isUrlOk, waitForUrlOk } from '@/utils/httpHealth'
 import { Supervisor } from './supervisor'
 import {
     startControlServer,
@@ -115,11 +115,65 @@ export async function runSupervisor(): Promise<void> {
         MOBI_LISTEN_PORT: String(desired.port),
     })
 
+    /**
+     * 等 hub 就绪：观察到 pid 翻转到新实例且健康检查通过。
+     * restart 场景旧实例在 SIGTERM 排水期仍可能应答 /health，仅凭健康检查会
+     * 提前放行（随后旧实例死亡），故必须同时观察到 pid 变化。
+     */
+    async function waitForHubHealthyAfterRespawn(prevPid: number | undefined): Promise<boolean> {
+        const deadline = Date.now() + HUB_HEALTH_TIMEOUT_MS
+        while (Date.now() < deadline) {
+            const pid = supervisor.status().hub.pid
+            if (pid !== undefined && pid !== prevPid && (await isUrlOk(hubHealthUrl()))) {
+                return true
+            }
+            await new Promise((resolve) => setTimeout(resolve, 200))
+        }
+        return false
+    }
+
+    /**
+     * 启动/重启 hub 并等待健康。期望状态先落盘再过健康门：健康门 throw 时
+     * Supervisor 内部已托管 hub，持久层必须同步为 true，否则 supervisor 重启后
+     * 不恢复 hub（状态分叉）。
+     *
+     * - hub 在跑且本次变更了 host/port：start 对 running 组件是幂等跳过，不会
+     *   应用新配置（新端口健康门必失败 + 期望状态与实际分叉——supervisor 重启
+     *   后 hub 会意外换端口），降级为 restart 语义
+     * - hub 在跑且未变更配置（幂等 start）：旧实例即目标，直接健康门
+     */
+    async function launchHubAndWait(mode: 'start' | 'restart', configChanged: boolean): Promise<void> {
+        const report = supervisor.status().hub
+        const alreadyRunning = desired.hub && report.status === 'running'
+        const needsRespawn = mode === 'restart' || (configChanged && alreadyRunning)
+        const prevPid = report.pid
+
+        if (needsRespawn) {
+            supervisor.restart('hub', hubEnv())
+        } else {
+            supervisor.start('hub', hubEnv())
+        }
+        desired.hub = true
+        everManaged = true
+        writeDesiredState(desired)
+
+        const healthy =
+            alreadyRunning && !needsRespawn
+                ? await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
+                : await waitForHubHealthyAfterRespawn(prevPid)
+        if (!healthy) {
+            throw new Error(`hub ${needsRespawn ? 'restarted' : 'started'} but health check failed`)
+        }
+    }
+
     async function handleRequest(request: ControlRequest): Promise<unknown> {
         switch (request.cmd) {
             case 'start': {
+                const prevHost = desired.host
+                const prevPort = desired.port
                 if (request.host) desired.host = request.host
                 if (request.port) desired.port = request.port
+                const hubConfigChanged = desired.host !== prevHost || desired.port !== prevPort
 
                 const targets: Array<'hub' | 'runner'> =
                     request.scope === 'both' ? ['hub', 'runner'] : [request.scope]
@@ -132,17 +186,11 @@ export async function runSupervisor(): Promise<void> {
                             if (!healthy) throw new Error('hub is not healthy, refusing to start runner')
                         }
                         supervisor.start('runner', process.env)
+                        desired.runner = true
+                        everManaged = true
+                        writeDesiredState(desired)
                     } else {
-                        supervisor.start('hub', hubEnv())
-                    }
-                    // 期望先落盘再过健康门：hub 健康门 throw 时 Supervisor 内部已托管 hub，
-                    // 持久层必须同步为 true，否则 supervisor 重启后不恢复 hub（状态分叉）
-                    desired[target] = true
-                    everManaged = true
-                    writeDesiredState(desired)
-                    if (target === 'hub') {
-                        const healthy = await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
-                        if (!healthy) throw new Error('hub started but health check failed')
+                        await launchHubAndWait('start', hubConfigChanged)
                     }
                 }
                 return { pid: process.pid, ...supervisor.status() }
@@ -160,14 +208,26 @@ export async function runSupervisor(): Promise<void> {
             case 'restart': {
                 if (request.host) desired.host = request.host
                 if (request.port) desired.port = request.port
+                // 与 start 同序：先 hub（过健康门）再 runner。旧序 runner→hub
+                // 不等 hub 就绪就重启 runner，会让 runner 对着正在被杀/未就绪
+                // 的 hub 空转一轮重连
                 const targets: Array<'hub' | 'runner'> =
-                    request.scope === 'both' ? ['runner', 'hub'] : [request.scope]
+                    request.scope === 'both' ? ['hub', 'runner'] : [request.scope]
                 for (const target of targets) {
-                    supervisor.restart(target, target === 'hub' ? hubEnv() : process.env)
-                    desired[target] = true
-                    everManaged = true
+                    if (target === 'runner') {
+                        if (desired.hub) {
+                            const healthy = await waitForUrlOk(hubHealthUrl(), HUB_HEALTH_TIMEOUT_MS)
+                            if (!healthy) throw new Error('hub is not healthy, refusing to restart runner')
+                        }
+                        supervisor.restart('runner', process.env)
+                        desired.runner = true
+                        everManaged = true
+                        writeDesiredState(desired)
+                    } else {
+                        // mode=restart 时恒走 respawn，configChanged 参数仅供 start 分支参考
+                        await launchHubAndWait('restart', false)
+                    }
                 }
-                writeDesiredState(desired)
                 return { pid: process.pid, ...supervisor.status() }
             }
             case 'status':
@@ -194,7 +254,9 @@ export async function runSupervisor(): Promise<void> {
     process.on('SIGTERM', () => void finish(0))
     process.on('SIGINT', () => void finish(0))
     process.on('uncaughtException', (error) => {
-        logger.debug('[SUPERVISOR] Uncaught exception', error)
+        // 至少落 stderr：launchd/systemd 会接管到 supervisor-stderr.log，
+        // 否则生产环境 supervisor 濒死时完全无感知
+        console.error('[SUPERVISOR] Uncaught exception, exiting', error)
         void finish(1)
     })
 

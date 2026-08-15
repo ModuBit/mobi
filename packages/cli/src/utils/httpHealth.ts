@@ -19,6 +19,16 @@
  * 收敛自 commands/hub.ts 与 commands/service.ts 各自重复的 waitForHubReady。
  */
 
+/** 单次探测 URL 是否返回 2xx（waitForUrlOk 的最小单元） */
+export async function isUrlOk(url: string, timeoutMs: number = 2_000): Promise<boolean> {
+    try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+        return response.ok
+    } catch {
+        return false
+    }
+}
+
 export async function waitForUrlOk(
     url: string,
     timeoutMs: number = 10_000,
@@ -26,12 +36,7 @@ export async function waitForUrlOk(
 ): Promise<boolean> {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
-        try {
-            const response = await fetch(url, { signal: AbortSignal.timeout(2_000) })
-            if (response.ok) return true
-        } catch {
-            // 尚未就绪
-        }
+        if (await isUrlOk(url)) return true
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
     return false

@@ -48,6 +48,16 @@ function getSuperviseCommand(): { argv: string[]; execStart: string } {
     }
 }
 
+/** XML 特殊字符转义：PATH/argv 含 & 等字符时会生成非法 plist，launchd 静默拒绝加载 */
+function escapeXml(value: string): string {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&apos;')
+}
+
 /**
  * 生成 macOS launchd plist
  */
@@ -61,7 +71,7 @@ function generateLaunchdPlist(): string {
     <string>${LAUNCHD_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-${supervise.argv.map((arg) => `        <string>${arg}</string>`).join('\n')}
+${supervise.argv.map((arg) => `        <string>${escapeXml(arg)}</string>`).join('\n')}
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -77,7 +87,7 @@ ${supervise.argv.map((arg) => `        <string>${arg}</string>`).join('\n')}
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>${process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin'}</string>
+        <string>${escapeXml(process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin')}</string>
     </dict>
 </dict>
 </plist>

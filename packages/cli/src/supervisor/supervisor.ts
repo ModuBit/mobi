@@ -32,6 +32,7 @@ export type ComponentStatus = 'stopped' | 'running' | 'backoff' | 'failed'
 export interface ManagedProcess {
     pid?: number | undefined
     on(event: 'exit', listener: (code: number | null, signal: string | null) => void): void
+    on(event: 'error', listener: (error: Error) => void): void
     stderr?: { on(event: 'data', listener: (chunk: Buffer) => void): void } | null | undefined
     kill(signal?: NodeJS.Signals): void
 }
@@ -82,12 +83,27 @@ export class Supervisor {
         private readonly hooks: SupervisorHooks,
     ) {}
 
-    /** 托管并启动一个组件。已在托管集中则幂等跳过。 */
+    /**
+     * 托管并启动一个组件。真正在跑则幂等跳过（但刷新 env，供下次重拉使用）；
+     * failed/backoff 态（崩溃放弃或退避等待中）显式 start 视为用户要求现在就绪
+     * ——清崩溃计数立即重拉，否则 `mobi service hub start` 对 failed 组件是 no-op，
+     * 自动拉起路径（maybeAutoStartRunner）也永远救不活它。
+     */
     start(name: ComponentName, env: Record<string, string | undefined> = process.env): void {
         if (this.shuttingDown) throw new Error('supervisor is shutting down')
-        if (this.desired.has(name)) return
-        this.desired.add(name)
         this.envs.set(name, env)
+        if (this.desired.has(name)) {
+            const rt = this.ensureRuntime(name)
+            if (rt.process) return
+            if (rt.restartTimer) {
+                clearTimeout(rt.restartTimer)
+                rt.restartTimer = null
+            }
+            rt.consecutiveCrashes = 0
+            this.spawnComponent(name)
+            return
+        }
+        this.desired.add(name)
         this.spawnComponent(name)
     }
 
@@ -208,6 +224,19 @@ export class Supervisor {
                     : combined
         })
         child.on('exit', () => this.handleExit(name))
+        // spawn 异步失败（二进制缺失/无权限等）只 emit error、不 emit exit：
+        // 不监听会让组件永远卡在 running（无重启、无崩溃现场），且未监听的
+        // error 事件会抛 uncaughtException 直接掀翻 supervisor。
+        child.on('error', (error) => {
+            // exit 已处理过（如对已退出进程 kill 迟到报 ESRCH）：忽略，防双计数
+            if (rt.process !== child) return
+            const combined = `${rt.stderrTail}\n[spawn error] ${error.message}`
+            rt.stderrTail =
+                combined.length > MAX_STDERR_TAIL_CHARS
+                    ? combined.slice(-MAX_STDERR_TAIL_CHARS)
+                    : combined
+            this.handleExit(name)
+        })
     }
 
     private handleExit(name: ComponentName): void {

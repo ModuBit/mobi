@@ -15,7 +15,13 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { waitForUrlOk } from '@/utils/httpHealth'
+import { isUrlOk, waitForUrlOk } from '@/utils/httpHealth'
+
+describe('isUrlOk', () => {
+    it('不可达 URL → 返回 false 而非抛错', async () => {
+        await expect(isUrlOk('http://127.0.0.1:1/health')).resolves.toBe(false)
+    })
+})
 
 describe('waitForUrlOk', () => {
     it('URL 永不可达 → 超时后返回 false 而非抛错', async () => {
