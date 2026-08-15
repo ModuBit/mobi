@@ -482,7 +482,7 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 
 ---
 
-## 38. ~~上下文用量条展示~~（已隐藏，功能保留）
+## 38. ~~上下文用量条展示~~（已隐藏，功能保留；2026-08-15 复核维持）
 
 > **已隐藏（2026-08-01）**：composer sender 上方的上下文用量条（`ContextUsageThread`）统计数据不准确，先在展示层隐藏。**功能逻辑全部保留**——CLI 的 `contextUsageCalc` 计算、`runtimeState.contextUsage` 传递链、web 组件本身都未动，仅渲染处短路。
 
@@ -502,6 +502,8 @@ mobi 的 runner 守护进程**已注册**一份 machine 级文件/目录 handler
 - `packages/shared/src/schemas.ts` — `ContextUsage` 类型（保留）
 
 **触发条件**：重做统计口径时（需要把「什么是准的占用」定义清楚），再恢复展示。
+
+**复核**（2026-08-15）：现状与记录一致且机制已升级——隐藏开关从硬编码常量改为 `isContextUsageShown()`（默认关，`localStorage mobi-show-context-usage=1` 可开启校验）。计算/传递/组件链路全保留。维持关闭，等统计口径定义需求出现。
 
 **优先级**：低（展示层隐藏，不阻塞功能）。
 
