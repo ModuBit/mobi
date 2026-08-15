@@ -175,22 +175,14 @@
 
 ---
 
-## 18. 通知重设计收尾清理项
+## 18. ~~通知重设计收尾清理项~~ ✅ 已解决（2026-08-15 核查 + 删除死代码）
 
-通知重设计一期落地后的零散清理（均非阻塞，可独立小 PR）：
+通知重设计一期落地后的零散清理，四项处置：
 
-**相关文件**：
-- `packages/web/src/components/layout/SidebarSessionItem.tsx` — 死代码组件
-- `packages/web/src/core/pwa/registerSW.ts` + `packages/web/vite.config.ts` — SW dev 调试矛盾
-- `packages/web/src/core/data/hooks/useNotificationSetup.ts` — namespace 死参数
-
-**待清理**：
-- **SidebarSessionItem 死代码**：全项目无引用（实际侧边栏用 `SessionList` 的 `@ant-design/x` `<Conversations>`）。删除避免未来误改（本次 Unit 5 曾误在其上加角标，review 才发现）
-- **SW dev 调试矛盾**：`vite.config.ts` `devOptions.enabled: true` 但 `registerSW.ts` 在 `import.meta.env.DEV` 跳过 SW 注册 → dev 模式 SW 构建但不注册。如需 dev 调试 SW（push），需对齐两者（pre-existing，非本次引入）
-- **useNotificationSetup namespace 参数**：当前 `void namespace` 占位（hub 从 token 解析 namespace，client 不传）。若确认未来 unsubscribe 也不需要 client 传 namespace，可删参数（YAGNI）；reviewer 评估为「尊重预留决策」，非必须改
-- **测试补充**：`usePwaMode` 的 change/unmount 路径、`useNotificationSetup` 的 subscribe 失败路径，可补测试锁死行为
-
-**优先级**：低，一期功能完整；稳定后逐项清理
+- **SidebarSessionItem 死代码**：✅ 已删除（本次）。全仓核查确认无任何外部引用与测试文件（侧边栏实际用 `SessionList` 的 `<Conversations>`）
+- **SW dev 调试矛盾**：✅ 已在后续 `registerSW.ts` 重写中解决——DEV 现在也注册 SW（`/dev-sw.js?dev-sw`，`type:'module'`），与 `vite.config.ts` 的 `devOptions.enabled: true` 对齐，dev 可完整测 Web Push。条目描述的「DEV 跳过注册」不复存在
+- **useNotificationSetup namespace 参数**：维持 `void namespace` 占位。删除会拉长链条（`NotificationSettings` 的 namespace prop 唯一用途即传它，删 prop 还需再改其调用方），reviewer「尊重预留决策」维持
+- **测试补充**（usePwaMode change/unmount、subscribe 失败路径）：不做。hook 行为稳定，等真改到这些路径时按「改前先补测试」纪律补
 
 ---
 
