@@ -33,55 +33,25 @@ const SYSTEMD_UNIT_NAME = 'mobi.service'
 const SYSTEMD_UNIT_DIR = join(homedir(), '.config', 'systemd', 'user')
 const SYSTEMD_UNIT_PATH = join(SYSTEMD_UNIT_DIR, SYSTEMD_UNIT_NAME)
 
-// Wrapper 脚本
-const WRAPPER_SCRIPT = join(configuration.mobiHomeDir, 'mobi-service.sh')
-
 /**
- * 获取 mobi 命令的完整路径字符串（用于 wrapper 脚本）
+ * 获取 supervisor 启动命令（用于系统服务配置）。
+ * ProgramArguments / ExecStart 直接可用；host/port 不再进服务配置——
+ * supervisor 自身从期望状态（supervisor-state.json）恢复，用户经
+ * `mobi service start --host/--port` 调整后即持久化。
  */
-function getMobiBinPath(): string {
-    const cmd = getMobiCliCommand([])
-    if (cmd.args.length > 0) {
-        // 开发模式: bun /path/to/entrypoint
-        return `${cmd.command} ${cmd.args[0]}`
+function getSuperviseCommand(): { argv: string[]; execStart: string } {
+    const cmd = getMobiCliCommand(['service', 'supervise', '--sync'])
+    return {
+        argv: [cmd.command, ...cmd.args],
+        execStart: [cmd.command, ...cmd.args].join(' '),
     }
-    return cmd.command
-}
-
-/**
- * 生成 wrapper 脚本内容
- */
-function generateWrapperScript(host: string, port: number): string {
-    const mobiBin = getMobiBinPath()
-
-    return `#!/bin/bash
-# Mobi service wrapper - starts hub then runner
-set -e
-
-# Start hub in background
-${mobiBin} hub start-sync --host ${host} --port ${port} &
-HUB_PID=$!
-
-# Wait for hub to be healthy
-MAX_WAIT=30
-WAITED=0
-while [ $WAITED -lt $MAX_WAIT ]; do
-    if curl -sf http://${host}:${port}/health > /dev/null 2>&1; then
-        break
-    fi
-    sleep 1
-    WAITED=$((WAITED + 1))
-done
-
-# Start runner in foreground (service tracks this PID)
-exec ${mobiBin} runner start-sync
-`
 }
 
 /**
  * 生成 macOS launchd plist
  */
 function generateLaunchdPlist(): string {
+    const supervise = getSuperviseCommand()
     return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -90,16 +60,19 @@ function generateLaunchdPlist(): string {
     <string>${LAUNCHD_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${WRAPPER_SCRIPT}</string>
+${supervise.argv.map((arg) => `        <string>${arg}</string>`).join('\n')}
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>StandardOutPath</key>
-    <string>${join(configuration.logsDir, 'hub-stdout.log')}</string>
+    <string>${join(configuration.logsDir, 'supervisor-stdout.log')}</string>
     <key>StandardErrorPath</key>
-    <string>${join(configuration.logsDir, 'hub-stderr.log')}</string>
+    <string>${join(configuration.logsDir, 'supervisor-stderr.log')}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -115,12 +88,12 @@ function generateLaunchdPlist(): string {
  */
 function generateSystemdUnit(): string {
     return `[Unit]
-Description=Mobi Hub and Runner Service
+Description=Mobi Supervisor (hub + runner)
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=${WRAPPER_SCRIPT}
+ExecStart=${getSuperviseCommand().execStart}
 Restart=on-failure
 RestartSec=5
 Environment=PATH=${process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin'}
@@ -132,8 +105,12 @@ WantedBy=default.target
 
 /**
  * 安装系统服务
+ *
+ * host/port 不再写入服务配置——由 supervisor 期望状态承载
+ * （用户经 `mobi service start --host/--port` 调整后即持久化），
+ * 参数仅为兼容 setup 流程调用签名而保留。
  */
-export async function installService(host: string, port: number): Promise<void> {
+export async function installService(_host: string, _port: number): Promise<void> {
     const platform = process.platform
 
     if (platform !== 'darwin' && platform !== 'linux') {
@@ -167,9 +144,11 @@ export async function installService(host: string, port: number): Promise<void> 
         await removeService()
     }
 
-    // 生成 wrapper 脚本
-    writeFileSync(WRAPPER_SCRIPT, generateWrapperScript(host, port), { mode: 0o755 })
-    console.log(chalk.gray(`  Wrapper script: ${WRAPPER_SCRIPT}`))
+    // 清理旧版 wrapper 脚本（已废弃，supervisor 由系统服务直接 ExecStart）
+    const legacyWrapper = join(configuration.mobiHomeDir, 'mobi-service.sh')
+    if (existsSync(legacyWrapper)) {
+        rmSync(legacyWrapper)
+    }
 
     if (platform === 'darwin') {
         installLaunchd()
@@ -192,7 +171,7 @@ function installLaunchd(): void {
     // 加载并启动
     execSync(`launchctl load ${LAUNCHD_PLIST}`, { stdio: 'pipe' })
     console.log(chalk.green('Service installed and started (launchd)'))
-    console.log(chalk.gray('  Logs: ~/.mobi/logs/hub-stdout.log'))
+    console.log(chalk.gray('  Logs: ~/.mobi/logs/supervisor-stdout.log'))
 }
 
 function installSystemd(): void {
@@ -236,10 +215,11 @@ export async function removeService(): Promise<void> {
         return
     }
 
-    // 删除 wrapper 脚本
-    if (existsSync(WRAPPER_SCRIPT)) {
-        rmSync(WRAPPER_SCRIPT)
-        console.log(chalk.gray('  Wrapper script removed'))
+    // 清理旧版 wrapper 脚本（已废弃，双保险：卸载也清旧文件）
+    const legacyWrapper = join(configuration.mobiHomeDir, 'mobi-service.sh')
+    if (existsSync(legacyWrapper)) {
+        rmSync(legacyWrapper)
+        console.log(chalk.gray('  Legacy wrapper script removed'))
     }
 }
 
@@ -312,10 +292,6 @@ export async function serviceStatus(): Promise<void> {
     } else {
         console.log(`  Platform:   ${chalk.yellow('not supported for service management')}`)
     }
-
-    // 检查 wrapper 脚本
-    const wrapperExists = existsSync(WRAPPER_SCRIPT)
-    console.log(`  Wrapper:    ${wrapperExists ? chalk.green('exists') : chalk.gray('not found')}`)
 
     // 检查服务加载状态
     if (platform === 'darwin' && existsSync(LAUNCHD_PLIST)) {
