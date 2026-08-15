@@ -63,18 +63,11 @@
 
 ---
 
-## 7. Web 端支持渲染 Claude Code 的 Recap 消息
+## 7. ~~Web 端支持渲染 Claude Code 的 Recap 消息~~ ✅ 已解决（2026-08-15 核查，链路早已存在）
 
-**相关文件**：
-- `packages/web/src/components/chat/ChatContainer.tsx` — 消息渲染
-- `packages/web/src/chat/` — 消息解析与归约
-- `packages/cli/src/claude/utils/sdkToLogConverter.ts` — SDK 消息转换
+**recap 的真实形态**（transcript 实证）：成对出现——`system:compact_boundary` 边界消息 + 带 `isCompactSummary: true`、`isVisibleInTranscriptOnly: true` 的合成 user 消息（内容为 "This session is being continued... Summary: ..." 大文本）。
 
-**待确认**：
-- Claude Code 在 resume 会话时会生成 recap 消息（对话摘要），当前 Web 端是否已正确识别和渲染
-- recap 消息在 SDK 消息流中的 type / subtype 标识
-- 前端消息解析器（messageParser / reducerTools）是否需要适配 recap 类型
-- recap 消息的展示样式（折叠/展开、区分于普通消息）
+**现有处理链路完整**：摘要原文在 `normalizeAgent.ts:589` 按 `isCompactSummary` 直接跳过（不渲染成用户消息）；`compact_boundary` 生成 `compact-summary` block，由 `CompactSummaryBlock`（折叠摘要卡片 + `extractSummary`）渲染；microcompact 也有专门处理。CLI schema（`claude/types.ts:47`）已定义该字段且 convert 全量 spread 透传。dev DB 有 4 条 `compact_boundary` 真实数据佐证链路在工作。
 
 ---
 
