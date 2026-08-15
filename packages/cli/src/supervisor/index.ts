@@ -107,13 +107,20 @@ export async function runSupervisor(): Promise<void> {
     // 3. 孤儿清理：清掉上次残留的 hub/runner
     await cleanupOrphans()
 
-    const hubHealthUrl = () => `http://${desired.host}:${desired.port}/health`
+    // 注意：必须是函数声明（提升）而非 const 箭头函数——控制 socket 在孤儿清理前
+    // 就已 bind（bind 占锁），清理 await 期间事件循环放开，IPC 指令可能在下方
+    // const 初始化前到达，箭头函数会触发 TDZ（"Cannot access before initialization"）
+    function hubHealthUrl(): string {
+        return `http://${desired.host}:${desired.port}/health`
+    }
 
-    const hubEnv = (): Record<string, string | undefined> => ({
-        ...process.env,
-        MOBI_LISTEN_HOST: desired.host,
-        MOBI_LISTEN_PORT: String(desired.port),
-    })
+    function hubEnv(): Record<string, string | undefined> {
+        return {
+            ...process.env,
+            MOBI_LISTEN_HOST: desired.host,
+            MOBI_LISTEN_PORT: String(desired.port),
+        }
+    }
 
     /**
      * 等 hub 就绪：观察到 pid 翻转到新实例且健康检查通过。
