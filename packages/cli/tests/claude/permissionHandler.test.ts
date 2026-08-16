@@ -607,6 +607,30 @@ describe('PermissionHandler — ExitPlanMode 批准（allow 直切，无 PLAN_FA
         expect(session.queue.unshift).not.toHaveBeenCalled()
     })
 
+    it('批准无 mode → 兜底切换完成前不 resolve（SDK 放行时 permissionMode 已生效）', async () => {
+        const { session } = createMockDeps()
+        // 用手动 deferred 模拟 setPermissionMode 异步生效
+        let releaseModeSwitch: (() => void) | undefined
+        const onApplyPermissionMode = vi.fn(() => new Promise<void>(resolve => {
+            releaseModeSwitch = resolve
+        }))
+        const handler = new PermissionHandler(session as never, { onApplyPermissionMode })
+        const pending = makePending()
+
+        // @ts-expect-error 访问 protected
+        const completion = handler.handlePermissionResponse({ id: 't-plan', approved: true }, pending)
+
+        // mode 切换挂起期间不得放行——否则 SDK 在 plan 模式下开始执行计划
+        await Promise.resolve()
+        expect(pending.resolve).not.toHaveBeenCalled()
+        expect(session.getPermissionMode()).toBe('default')
+
+        releaseModeSwitch!()
+        await completion
+        expect(pending.resolve).toHaveBeenCalledTimes(1)
+        expect(pending.resolve.mock.calls[0][0]).toMatchObject({ behavior: 'allow' })
+    })
+
     it('批准带非法 mode → 仍兜底 default', async () => {
         const { session } = createMockDeps()
         const handler = new PermissionHandler(session as never)

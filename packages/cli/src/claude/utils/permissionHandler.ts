@@ -139,22 +139,25 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
     /**
      * 权限模式变更：写入 session（唯一真相源，心跳/审批判断都从 session 读）。
      * 调用方：web 切换（set-session-config → syncSessionModes）与 plan 流程。
+     * 同步入口：内部走 applyModeChange 并兜错——调用方（claudeRemoteLauncher）不
+     * await，错误必须在此内部兜住，避免 UnhandledPromiseRejection。
      */
     handleModeChange(mode: PermissionMode) {
+        void this.applyModeChange(mode);
+    }
+
+    /**
+     * mode 变更的完整落地：写 session + 通知运行中 Query 切换（query.setPermissionMode）。
+     * 错误吞 + 记 warn（Query 已终止/销毁时可能 reject）。
+     * await 版供 handlePermissionResponse 在 resolve 放行前调用——保证 SDK 拿到
+     * allow 时 permissionMode 已切换，消除「批准计划但 SDK 仍处 plan 模式」的竞态。
+     */
+    private async applyModeChange(mode: PermissionMode): Promise<void> {
         this.session.setPermissionMode(mode);
-        // enter_plan_mode 成功后同步：除写 session 外，通知运行中 Query 切换。
-        // 错误在此吞 + 记 warn，避免 UnhandledPromiseRejection（query.setPermissionMode 可能因
-        // Query 已终止/销毁而 reject）。签名保持同步 void —— 调用方（claudeRemoteLauncher）
-        // 不 await，错误必须在此内部兜住。与 handlePermissionResponse 中的 await 路径行为对齐。
         try {
-            const result = this.onApplyPermissionMode?.(mode);
-            if (result && typeof (result as Promise<unknown>).catch === 'function') {
-                (result as Promise<unknown>).catch(err => {
-                    logger.warn(`[permission] 切换运行中 Query permissionMode → ${mode} 失败`, err);
-                });
-            }
+            await this.onApplyPermissionMode?.(mode);
         } catch (err) {
-            logger.warn(`[permission] 同步切换 permissionMode → ${mode} 抛错`, err);
+            logger.warn(`[permission] 切换运行中 Query permissionMode → ${mode} 失败`, err);
         }
     }
 
@@ -212,12 +215,11 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
 
         // Update permission mode
         if (response.mode) {
-            this.session.setPermissionMode(response.mode);
             // 通知运行中的 SDK Query 动态切换（ExitPlanMode 批准 / 普通工具批准带 mode 都走这里）。
             // session 字段供 keepAlive 上报与 Query 重启时 getSessionConfig 读取；运行中 Query 的
             // 模式切换只能靠 query.setPermissionMode，不能只写 session——否则 plan 批准选 auto 后
             // SDK 仍停留在旧模式，编辑继续走 canUseTool 弹审批。
-            await this.onApplyPermissionMode?.(response.mode);
+            await this.applyModeChange(response.mode);
         }
 
         // Handle ask_user_question
@@ -276,7 +278,10 @@ export class PermissionHandler extends BasePermissionHandler<PermissionResponse,
                     ? response.mode
                     : 'default';
                 if (targetMode !== response.mode) {
-                    this.handleModeChange(targetMode);
+                    // 无/非法 mode 的兜底路径：await 完成切换（写 session + query.setPermissionMode）
+                    // 再 resolve 放行——SDK 在同一 turn 开始执行计划中的 Write/Edit 时，
+                    // permissionMode 必须已生效，否则会撞上 plan 模式本不该出现的审批/拒绝
+                    await this.applyModeChange(targetMode);
                 }
                 pending.resolve({
                     behavior: 'allow',
