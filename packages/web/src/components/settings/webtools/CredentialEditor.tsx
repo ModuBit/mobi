@@ -34,7 +34,7 @@ export type ProviderEntry = NonNullable<RedactedWebToolsConfig['providers']>[num
 export interface CredentialEditorProps {
     provider: ProviderEntry
     /**
-     * 在场性提交：只提交编辑中的凭据键（string=新值；null=清除）。
+     * 在场性提交：只提交编辑中的凭据键（string=新值；null=清除为契约保留，当前 UI 未提供清除入口）。
      * 失败 toast 归属上层（WebToolsSection.saveBase）——本组件收到 false 时保持编辑态静默返回，禁止重复弹错。
      */
     onSave: (credentials: Record<string, string | null>) => Promise<boolean>
@@ -137,19 +137,25 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
         setEditing(initiallyEditing)
     }
 
-    /** 在场性过滤：只取草稿值 ≠ 初始 preview 的键（保存允许空串提交，验证额外要求非空——空值无以验证） */
-    const changedCredentials = (requireNonEmpty: boolean): Record<string, string> =>
+    /**
+     * 在场性过滤：只取草稿值 ≠ 初始 preview 且非空的键（保存与验证共用）。
+     * 空串必须排除：写侧 merge 对空凭据键静默保持旧值，提交空串会造成「已保存」却未改的假象；
+     * 空凭据也无以验证（verify RPC 需要完整凭据）。无可提交变更时保存/验证按钮一并禁用。
+     */
+    const changedCredentials = (): Record<string, string> =>
         Object.fromEntries(
-            keys.filter(
-                (key) => draft[key] !== initialPreview[key] && (!requireNonEmpty || draft[key] !== ''),
-            ).map((key) => [key, draft[key]]),
+            keys.filter((key) => draft[key] !== initialPreview[key] && draft[key] !== '').map((key) => [
+                key,
+                draft[key],
+            ]),
         )
+    const hasSubmittableChange = Object.keys(changedCredentials()).length > 0
 
     /** 保存：成功 toast 由本组件弹（saved），失败静默保持编辑态（上层已弹 error） */
     const handleSave = async () => {
         setSaving(true)
         try {
-            const ok = await onSave(changedCredentials(false))
+            const ok = await onSave(changedCredentials())
             if (ok) {
                 message.success(t('settings.webTools.saved'))
                 setEditing(false)
@@ -164,15 +170,14 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
     const handleVerify = async () => {
         setVerifying(true)
         try {
-            setVerifyResult(await onVerify(changedCredentials(true)))
+            setVerifyResult(await onVerify(changedCredentials()))
         } finally {
             setVerifying(false)
         }
     }
 
     return (
-        // 点击编辑区不冒泡到卡头（避免触发展开/收起）
-        <EditorBox $token={token} onClick={(e) => e.stopPropagation()}>
+        <EditorBox $token={token}>
             {keys.map((key) => {
                 const inputId = `cred-${key}`
                 const set = provider.credentials[key]?.set ?? false
@@ -208,6 +213,8 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                             size="small"
                             icon={<ShieldCheck size={14} />}
                             loading={verifying}
+                            // 空草稿无可验证的凭据变更，禁用防空凭据 RPC
+                            disabled={!hasSubmittableChange}
                             onClick={() => {
                                 void handleVerify()
                             }}
@@ -221,6 +228,8 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                             size="small"
                             type="primary"
                             loading={saving}
+                            // 空草稿无可保存的凭据变更，禁用防空串提交（写侧会静默保持旧值，却弹「已保存」误导）
+                            disabled={!hasSubmittableChange}
                             onClick={() => {
                                 void handleSave()
                             }}

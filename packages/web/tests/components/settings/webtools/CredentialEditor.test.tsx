@@ -16,6 +16,7 @@
 
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
 import { App as AntdApp, ConfigProvider } from 'antd'
 
 // i18n：key 恒等返回（按钮 name 即 key 文本），仅 verifyOk 需要 {{ms}} 插值走映射
@@ -98,6 +99,8 @@ describe('CredentialEditor（预览态 → 编辑态 → 在场性提交）', ()
     it('验证失败 → 显示错误文案', async () => {
         renderEditor({ onVerify: vi.fn(async () => ({ success: false, error: 'Invalid API key' })) })
         fireEvent.click(screen.getByRole('button', { name: 'settings.webTools.replace' }))
+        // 空草稿下验证按钮禁用，需输入后才可发起
+        fireEvent.change(screen.getByLabelText('settings.webTools.apiKey'), { target: { value: 'tvly-bad' } })
         fireEvent.click(screen.getByRole('button', { name: 'settings.webTools.verify' }))
         await waitFor(() => { expect(screen.getByText('Invalid API key')).toBeTruthy() })
     })
@@ -113,6 +116,18 @@ describe('CredentialEditor（预览态 → 编辑态 → 在场性提交）', ()
         expect(input.value).toBe('')
         expect(input.readOnly).toBe(false)
         expect(screen.queryByRole('button', { name: 'settings.webTools.replace' })).toBeNull()
+    })
+    it('空输入禁用保存/验证：进入编辑态未输入两按钮 disabled，输入后 enabled', () => {
+        renderEditor()
+        fireEvent.click(screen.getByRole('button', { name: 'settings.webTools.replace' }))
+
+        // 「替换」清空后未输入：无可提交的凭据变更——保存（防空串静默保持旧值却报「已保存」）与验证（防空凭据 RPC）一并禁用
+        expect(screen.getByRole('button', { name: 'settings.webTools.save' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'settings.webTools.verify' })).toBeDisabled()
+
+        fireEvent.change(screen.getByLabelText('settings.webTools.apiKey'), { target: { value: 'tvly-k' } })
+        expect(screen.getByRole('button', { name: 'settings.webTools.save' })).toBeEnabled()
+        expect(screen.getByRole('button', { name: 'settings.webTools.verify' })).toBeEnabled()
     })
     it('保存成功退出编辑态后 reload 重读 preview：输入框跟随新 preview（不残留明文草稿）', async () => {
         const onSave = vi.fn(async () => true)
