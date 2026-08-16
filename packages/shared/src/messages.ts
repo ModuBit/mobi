@@ -56,6 +56,46 @@ export function unwrapRoleWrappedRecordEnvelope(value: unknown): RoleWrappedReco
     return null
 }
 
+/** unwrapOutputMessage 的产物 */
+export interface UnwrappedOutputMessage {
+    /** envelope 外层 role（'agent'/'user' 等，是否过滤由调用方按需决定） */
+    role: string
+    /** SDK 消息数据层：type、message 及 tool_use_result 等同级字段都在这层 */
+    data: Record<string, unknown>
+    /** Anthropic 消息体；system 消息（task_started 等）无 message 字段时为 null */
+    message: Record<string, unknown> | null
+    /** message.content 内容块数组；message 缺失或 content 非数组时为 null */
+    blocks: unknown[] | null
+}
+
+/**
+ * 解包 SDK 输出消息的通用骨架：
+ * envelope → { role, content } → content.type === 'output' → data。
+ * 此前这段解包在 hub sync/tasks.ts 与 sync/teams.ts 三处手写且 role 校验已分叉，
+ * 收口于此——envelope 格式变化只改这一处，不会再有静默丢 delta 的漏改点。
+ *
+ * - 不做 role 过滤：实测 envelope role 随真实消息类型变化（assistant 消息 'agent'、
+ *   user 消息 'user'），各调用方按需用返回的 role 自行校验；真正的消息类型判别
+ *   一律看 data.type（assistant/user/system）。
+ * - message/blocks 可为 null：system 消息没有 message 字段（只带 subtype 等数据层
+ *   字段），需要 blocks 的调用方（assistant tool_use / user tool_result）自行判空。
+ */
+export function unwrapOutputMessage(messageContent: unknown): UnwrappedOutputMessage | null {
+    const record = unwrapRoleWrappedRecordEnvelope(messageContent)
+    if (!record) return null
+
+    const content = record.content
+    if (!isObject(content) || content.type !== 'output') return null
+
+    const data = isObject(content.data) ? content.data : null
+    if (!data) return null
+
+    const message = isObject(data.message) ? data.message : null
+    const blocks = message && Array.isArray(message.content) ? message.content : null
+
+    return { role: record.role, data, message, blocks }
+}
+
 /**
  * 判断 Claude 系统消息子类型是否在聊天中可见
  */

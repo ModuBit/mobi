@@ -150,3 +150,84 @@ describe('isClaudeChatVisibleMessage', () => {
         expect(isClaudeChatVisibleMessage({ type: 'system' })).toBe(false)
     })
 })
+
+// ========== unwrapOutputMessage（SDK 输出消息解包骨架收口）==========
+
+import { unwrapOutputMessage } from '../src/messages'
+
+describe('unwrapOutputMessage', () => {
+    /** 构造完整 output 信封：envelope → output → data → message.content */
+    function makeEnvelope(role: string, dataType: string, blocks: unknown[], extraData: Record<string, unknown> = {}) {
+        return {
+            role,
+            content: {
+                type: 'output',
+                data: { type: dataType, message: { content: blocks }, ...extraData },
+            },
+        }
+    }
+
+    it('完整结构解包出 role/data/message/blocks', () => {
+        const blocks = [{ type: 'tool_use', id: 't1', name: 'Agent', input: {} }]
+        const result = unwrapOutputMessage(makeEnvelope('agent', 'assistant', blocks))
+        expect(result).not.toBeNull()
+        expect(result!.role).toBe('agent')
+        expect(result!.data.type).toBe('assistant')
+        expect(result!.blocks).toEqual(blocks)
+    })
+
+    it('system 消息（无 message 字段）仍解包出 role/data，message/blocks 为 null', () => {
+        const systemMessage = {
+            role: 'agent',
+            content: { type: 'output', data: { type: 'system', subtype: 'task_started', task_id: 't1' } },
+        }
+        const result = unwrapOutputMessage(systemMessage)
+        expect(result).not.toBeNull()
+        expect(result!.data.subtype).toBe('task_started')
+        expect(result!.message).toBeNull()
+        expect(result!.blocks).toBeNull()
+    })
+
+    it('保留 data 层的同级字段（tool_use_result 等）', () => {
+        const result = unwrapOutputMessage(
+            makeEnvelope('user', 'user', [], { tool_use_result: { task: { id: 'x' } } })
+        )
+        expect(result!.data.tool_use_result).toEqual({ task: { id: 'x' } })
+    })
+
+    it('不过滤 role：agent / user 均可解包（真实消息类型看 data.type）', () => {
+        expect(unwrapOutputMessage(makeEnvelope('agent', 'assistant', []))).not.toBeNull()
+        expect(unwrapOutputMessage(makeEnvelope('user', 'user', []))).not.toBeNull()
+    })
+
+    it('非 output 信封返回 null', () => {
+        expect(unwrapOutputMessage({ role: 'agent', content: { type: 'stream_event' } })).toBeNull()
+        expect(unwrapOutputMessage({ role: 'agent', content: 'text' })).toBeNull()
+    })
+
+    it('message.content 非数组时仍解包，blocks 为 null', () => {
+        const stringContent = unwrapOutputMessage(makeEnvelope('agent', 'assistant', 'oops' as never))
+        expect(stringContent).not.toBeNull()
+        expect(stringContent!.blocks).toBeNull()
+
+        const noContent = unwrapOutputMessage({
+            role: 'agent',
+            content: { type: 'output', data: { type: 'assistant', message: {} } },
+        })
+        expect(noContent).not.toBeNull()
+        expect(noContent!.blocks).toBeNull()
+    })
+
+    it('嵌套信封（message / data.message / payload.message 包装）同样解包', () => {
+        const inner = makeEnvelope('agent', 'system', [])
+        expect(unwrapOutputMessage({ message: inner })).not.toBeNull()
+        expect(unwrapOutputMessage({ data: { message: inner } })).not.toBeNull()
+        expect(unwrapOutputMessage({ payload: { message: inner } })).not.toBeNull()
+    })
+
+    it('非对象输入返回 null', () => {
+        expect(unwrapOutputMessage(null)).toBeNull()
+        expect(unwrapOutputMessage(undefined)).toBeNull()
+        expect(unwrapOutputMessage('string')).toBeNull()
+    })
+})

@@ -15,37 +15,27 @@
  */
 
 import { isObject } from '@mobi/shared'
-import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
+import { unwrapOutputMessage } from '@mobi/shared/messages'
 import type { TeamState } from '@mobi/shared/types'
 
 type TeamStateDelta = Partial<TeamState> & { _action?: 'create' | 'delete' | 'update' }
 
-function extractToolBlocks(content: Record<string, unknown>): Array<{ id?: string; name: string; input: Record<string, unknown> }> {
-    const blocks: Array<{ id?: string; name: string; input: Record<string, unknown> }> = []
+/** 从内容块数组中过滤出带合法 name/input 的 tool_use 块 */
+function extractToolBlocks(blocks: unknown[] | null): Array<{ id?: string; name: string; input: Record<string, unknown> }> {
+    const result: Array<{ id?: string; name: string; input: Record<string, unknown> }> = []
+    if (!blocks) return result
 
-    // Claude output format: { type: 'output', data: { type: 'assistant', message: { content: [...] } } }
-    if (content.type === 'output') {
-        const data = isObject(content.data) ? content.data : null
-        if (!data || data.type !== 'assistant') return blocks
-
-        const message = isObject(data.message) ? data.message : null
-        if (!message) return blocks
-
-        const modelContent = message.content
-        if (!Array.isArray(modelContent)) return blocks
-
-        for (const block of modelContent) {
-            if (!isObject(block) || block.type !== 'tool_use') continue
-            const name = typeof block.name === 'string' ? block.name : null
-            if (!name) continue
-            const input = isObject(block.input) ? block.input as Record<string, unknown> : null
-            if (!input) continue
-            const id = typeof block.id === 'string' ? block.id : undefined
-            blocks.push({ id, name, input })
-        }
+    for (const block of blocks) {
+        if (!isObject(block) || block.type !== 'tool_use') continue
+        const name = typeof block.name === 'string' ? block.name : null
+        if (!name) continue
+        const input = isObject(block.input) ? block.input as Record<string, unknown> : null
+        if (!input) continue
+        const id = typeof block.id === 'string' ? block.id : undefined
+        result.push({ id, name, input })
     }
 
-    return blocks
+    return result
 }
 
 function processTeamCreate(input: Record<string, unknown>): TeamStateDelta | null {
@@ -132,13 +122,13 @@ function processSendMessage(input: Record<string, unknown>): TeamStateDelta | nu
 }
 
 export function extractTeamStateFromMessageContent(messageContent: unknown): TeamStateDelta | null {
-    const record = unwrapRoleWrappedRecordEnvelope(messageContent)
-    if (!record) return null
+    // 解包骨架收口在 unwrapOutputMessage（shared/messages）；此处只关心 assistant 消息的 tool_use
+    const unwrapped = unwrapOutputMessage(messageContent)
+    if (!unwrapped) return null
+    if (unwrapped.role !== 'agent' && unwrapped.role !== 'assistant') return null
+    if (unwrapped.data.type !== 'assistant') return null
 
-    if (record.role !== 'agent' && record.role !== 'assistant') return null
-    if (!isObject(record.content) || typeof record.content.type !== 'string') return null
-
-    const blocks = extractToolBlocks(record.content)
+    const blocks = extractToolBlocks(unwrapped.blocks)
     if (blocks.length === 0) return null
 
     let result: TeamStateDelta | null = null
@@ -208,13 +198,13 @@ export function extractTeamSystemDeltasFromMessageContent(
 ): TeamStateDelta | null {
     if (!existingTeamState) return null
 
-    const record = unwrapRoleWrappedRecordEnvelope(messageContent)
-    if (!record) return null
-    if (record.role !== 'agent') return null
-    if (!isObject(record.content) || record.content.type !== 'output') return null
+    // 解包骨架收口在 unwrapOutputMessage（shared/messages）；此处只关心 system 消息
+    const unwrapped = unwrapOutputMessage(messageContent)
+    if (!unwrapped) return null
+    if (unwrapped.role !== 'agent') return null
 
-    const data = isObject(record.content.data) ? record.content.data : null
-    if (!data || data.type !== 'system') return null
+    const data = unwrapped.data.type === 'system' ? unwrapped.data : null
+    if (!data) return null
 
     const subtype = typeof data.subtype === 'string' ? data.subtype : null
 
@@ -289,24 +279,14 @@ export function extractTeamMemberCompletionFromMessageContent(
 ): TeamStateDelta | null {
     if (!existingTeamState) return null
 
-    const record = unwrapRoleWrappedRecordEnvelope(messageContent)
-    if (!record) return null
-    // tool_result 挂在 data.type='user' 的消息（assistant 的 tool_use → user 的 tool_result）。
-    // 外层 role 恒为 'agent'（SDK 统一 envelope，实测 DB 消息），真实消息类型看 data.type
-    // ——对齐 sync/tasks.ts processUserToolResults 的判定方式
-    if (!isObject(record.content) || record.content.type !== 'output') return null
-
-    const data = isObject(record.content.data) ? record.content.data : null
-    if (!data || data.type !== 'user') return null
-
-    const message = isObject(data.message) ? data.message : null
-    if (!message) return null
-
-    const modelContent = message.content
-    if (!Array.isArray(modelContent)) return null
+    // 解包骨架收口在 unwrapOutputMessage（shared/messages）。
+    // tool_result 挂在 data.type='user' 的消息（assistant 的 tool_use → user 的 tool_result），
+    // 真实消息类型看 data.type——对齐 sync/tasks.ts 的判定方式
+    const unwrapped = unwrapOutputMessage(messageContent)
+    if (!unwrapped || unwrapped.data.type !== 'user') return null
 
     const completedNames = new Set<string>()
-    for (const block of modelContent) {
+    for (const block of unwrapped.blocks ?? []) {
         if (!isObject(block) || block.type !== 'tool_result') continue
         const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : null
         if (!toolUseId) continue

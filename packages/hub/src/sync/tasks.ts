@@ -15,7 +15,7 @@
  */
 
 import { isObject } from '@mobi/shared'
-import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
+import { unwrapOutputMessage, type UnwrappedOutputMessage } from '@mobi/shared/messages'
 import { TaskItemSchema, TasksSchema } from '@mobi/shared/schemas'
 import type { TaskItem } from '@mobi/shared/types'
 
@@ -89,24 +89,14 @@ function parseContentAsJson(content: unknown): unknown {
     return null
 }
 
-/** 从 assistant 消息的 content 中提取 tool_use 块并暂存 */
+/** 从 assistant 消息的 content blocks 中提取 tool_use 块并暂存 */
 function processAssistantToolUses(
-    messageContent: unknown,
+    blocks: unknown[] | null,
     pendingMap: PendingTaskMap
 ): void {
-    if (!isObject(messageContent)) return
-    if (messageContent.type !== 'output') return
+    if (!blocks) return
 
-    const data = isObject(messageContent.data) ? messageContent.data : null
-    if (!data || data.type !== 'assistant') return
-
-    const message = isObject(data.message) ? data.message : null
-    if (!message) return
-
-    const modelContent = message.content
-    if (!Array.isArray(modelContent)) return
-
-    for (const block of modelContent) {
+    for (const block of blocks) {
         if (!isObject(block) || block.type !== 'tool_use') continue
         const name = typeof block.name === 'string' ? block.name : null
         if (!name || !TASK_TOOL_NAMES.has(name)) continue
@@ -125,28 +115,16 @@ function processAssistantToolUses(
     }
 }
 
-/** 从 user 消息的 tool_result 中配对提取 TaskDelta */
+/** 从 user 消息的 tool_result blocks 中配对提取 TaskDelta */
 function processUserToolResults(
-    messageContent: unknown,
+    unwrapped: UnwrappedOutputMessage,
     pendingMap: PendingTaskMap
 ): TaskDelta[] {
-    if (!isObject(messageContent)) return []
-    if (messageContent.type !== 'output') return []
-
-    const data = isObject(messageContent.data) ? messageContent.data : null
-    if (!data || data.type !== 'user') return []
-
-    const message = isObject(data.message) ? data.message : null
-    if (!message) return []
-
-    const modelContent = message.content
-    if (!Array.isArray(modelContent)) return []
-
     // tool_use_result 与 message 同级，包含工具的结构化结果
-    const toolUseResult = isObject(data.tool_use_result) ? data.tool_use_result : null
+    const toolUseResult = isObject(unwrapped.data.tool_use_result) ? unwrapped.data.tool_use_result : null
 
     const deltas: TaskDelta[] = []
-    for (const block of modelContent) {
+    for (const block of unwrapped.blocks ?? []) {
         if (!isObject(block) || block.type !== 'tool_result') continue
 
         // 失败的 tool_result 直接跳过
@@ -303,22 +281,17 @@ export function extractTaskDeltasFromMessageContent(
     messageContent: unknown,
     pendingMap: PendingTaskMap
 ): TaskDelta[] {
-    const record = unwrapRoleWrappedRecordEnvelope(messageContent)
-    if (!record) return []
+    // 解包骨架收口在 unwrapOutputMessage（shared/messages），此处按 data.type 分流
+    const unwrapped = unwrapOutputMessage(messageContent)
+    if (!unwrapped) return []
 
-    const content = record.content
-    if (!isObject(content) || content.type !== 'output') return []
-
-    const data = isObject(content.data) ? content.data as Record<string, unknown> : null
-    if (!data) return []
-
-    if (data.type === 'assistant') {
-        processAssistantToolUses(content, pendingMap)
+    if (unwrapped.data.type === 'assistant') {
+        processAssistantToolUses(unwrapped.blocks, pendingMap)
         return []
     }
 
-    if (data.type === 'user') {
-        return processUserToolResults(content, pendingMap)
+    if (unwrapped.data.type === 'user') {
+        return processUserToolResults(unwrapped, pendingMap)
     }
 
     return []
