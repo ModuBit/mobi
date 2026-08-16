@@ -373,6 +373,11 @@
     },
     "settings": {
         "title": "Settings",
+        "sections": {
+            "notifications": { "title": "Notifications", "desc": "Push channels · Install to home screen" },
+            "webTools": { "title": "Web Tools", "desc": "Search & fetch provider configuration" },
+            "debug": { "title": "Debug", "desc": "Diagnostics · Data export" }
+        },
         "webTools": {
             "title": "Web Tools",
             "desc": "Replace Claude's built-in WebSearch / WebFetch with mobi's own implementation (remote mode only)",

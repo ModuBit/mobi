@@ -373,6 +373,11 @@
     },
     "settings": {
         "title": "设置",
+        "sections": {
+            "notifications": { "title": "通知与推送", "desc": "推送通道 · 安装到主屏" },
+            "webTools": { "title": "Web 工具", "desc": "搜索与抓取的 provider 配置" },
+            "debug": { "title": "调试", "desc": "诊断埋点 · 数据导出" }
+        },
         "webTools": {
             "title": "Web 工具",
             "desc": "替换 Claude 内置的 WebSearch / WebFetch 为 mobi 自建实现（仅远程模式生效）",

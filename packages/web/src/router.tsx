@@ -35,8 +35,17 @@ const SessionDetailPage = lazy(() =>
 const NewSessionPage = lazy(() =>
     import('./pages/NewSessionPage').then((m) => ({ default: m.NewSessionPage })),
 )
-const SettingsPage = lazy(() =>
-    import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+const SettingsLayout = lazy(() =>
+    import('./pages/SettingsPage').then((m) => ({ default: m.SettingsLayout })),
+)
+const NotificationsSection = lazy(() =>
+    import('./components/settings/sections/NotificationsSection').then((m) => ({ default: m.NotificationsSection })),
+)
+const WebToolsSectionPlaceholder = lazy(() =>
+    import('./components/settings/sections/WebToolsSectionPlaceholder').then((m) => ({ default: m.WebToolsSectionPlaceholder })),
+)
+const DebugSectionRoute = lazy(() =>
+    import('./components/settings/sections/DebugSectionRoute').then((m) => ({ default: m.DebugSectionRoute })),
 )
 
 // Root route - wraps all routes with App component
@@ -100,11 +109,35 @@ const newSessionRoute = createRoute({
     }),
 })
 
-// 设置页
+// 设置页 layout 路由（左侧分区导航 / mobile 子页由 SettingsLayout 响应式分流）
 const settingsRoute = createRoute({
     getParentRoute: () => mainLayoutRoute,
     path: 'settings',
-    component: SettingsPage,
+    component: SettingsLayout,
+})
+// 设置 index：临时指向 notifications，后续 task 换成 SettingsIndex 分流渲染
+const settingsIndexRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: '/',
+    component: NotificationsSection,
+})
+// 通知与推送分区
+const settingsNotificationsRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'notifications',
+    component: NotificationsSection,
+})
+// Web 工具分区（暂为旧交互组件占位，后续 task 替换）
+const settingsWebToolsRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'web-tools',
+    component: WebToolsSectionPlaceholder,
+})
+// 调试分区（未解锁渲染空分区）
+const settingsDebugRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'debug',
+    component: DebugSectionRoute,
 })
 
 // Create router
@@ -118,7 +151,12 @@ export const router = createRouter({
                 sessionDetailRoute,
             ]),
             newSessionRoute,
-            settingsRoute,
+            settingsRoute.addChildren([
+                settingsIndexRoute,
+                settingsNotificationsRoute,
+                settingsWebToolsRoute,
+                settingsDebugRoute,
+            ]),
         ]),
     ]),
 })
