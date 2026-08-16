@@ -1,28 +1,29 @@
 ---
 name: web-tools-verify
-description: Web 工具（WebSearch/WebFetch alias 到 mobi-web MCP）配置页 + 工具替换链路 E2E 验证
+description: Web 工具（WebSearch/WebFetch alias 到 mobi-web MCP）设置子页 + 工具替换链路 E2E 验证
 metadata:
   type: recipe
-  last_verified: 2026-08-16
+  last_verified: 2026-08-17
 ---
 
 # Web 工具 E2E 验证（toolAliases → mcp__mobi-web）
 
-配置链路：Web 设置页卡片（`/settings`）→ hub `GET/POST /api/machines/:id/web-tools` →
-runner RPC → 落盘 **`~/.mobi-e2e/settings.json` 的 `webTools` 段**（与 hub 自身 settings 同文件）。
-运行链路：SDK `toolAliases` 把内置 WebSearch/WebFetch 重定向到 in-process MCP `mcp__mobi-web__web_search/web_fetch`。
+配置链路：`/settings` 分组入口（mobile）/ 左侧分区导航（PC ≥992px）→ `/settings/web-tools` 子页
+→ hub `GET/POST /api/machines/:id/web-tools`（+ `POST .../web-tools/verify`）→ runner RPC → 落盘
+**`~/.mobi-e2e/settings.json` 的 `webTools` 段**。运行链路：SDK `toolAliases` 重定向 WebSearch/WebFetch 到 in-process MCP。
 
-## E2E-1 配置页链路
+## E2E-1 配置子页链路（2026-08-17 重构后 UI）
 
-1. `/settings` 滚到 "Web Tools" 卡片。无 provider 时 alert 显示
-   "Not configured — model web tool calls will return a not-configured notice"
-2. 启用 Tavily switch → click API Key 输入框（`textbox "Enter API Key"`）→ Ctrl+A → type key
-3. Search/Fetch Provider 两个 combobox 各自 click → listbox 选 "Tavily" → Save → toast "Saved"
-4. 落盘断言（`~/.mobi-e2e/settings.json`）：
-   `webTools = { searchProviderId:'tavily', fetchProviderId:'tavily', providers:[{id:'tavily',enabled:true,credentials:{apiKey},timeoutMs:15000}, {id:'bocha',enabled:false,credentials:{},timeoutMs:15000}] }`
-   （bocha disabled 空凭据条目是默认行为，不算偏差）
-5. 刷新 `/settings`：凭据回显 "Set (leave blank to keep)"、输入框 placeholder 变
-   "Leave blank to keep current value"；**不改动直接 Save** → apiKey 不变（merge 语义 E2E 锁定）
+子页结构：用途路由卡（web_search/web_fetch 两个 Select 即时保存）+ Providers 区（每 provider 卡：外置开关 + 点卡头展开内联凭据编辑器）。
+
+1. mobile 视口（390x844）`/settings`：入口卡列表；Web 工具入口副标题位状态徽标（未配置灰 / Tavily 已启用绿点）；PC 视口（≥992）`/settings` 直接渲染默认通知分区 + 左侧 200px 分区导航（active 高亮 + Tavily 徽标外显）
+2. 无 provider 时路由卡为引导态（**无 combobox**，DOM 断言 `document.querySelectorAll('[role="combobox"]').length === 0`）
+3. 开 provider 开关 → 即时保存（reload）→ 路由卡出现两行 Select
+4. 点 provider 卡头（a11y tree 中是 `button "Tavily" expandable`）展开编辑器；未设凭据时直接编辑态，**空草稿下 Verify/Save 双 disabled**
+5. 输入 key → Verify（fake key 走真实 tavily → 401 → auth 文案「tavily Unauthorized: missing or invalid API key.」内联回显）→ Save → 输入框回**只读预览态**显示掩码串（如 `tvly-******56` = maskCredential 前5+6星+后2）+「Replace」按钮
+6. 路由 Select：**值为空时可选（单 provider 也不锁定）**，选中后自动锁定（disabled）——2026-08-17 E2E 发现过「空值锁定导致路由设不上」bug 已修（e1146a85），回归点
+7. 禁用被路由引用的 provider → 前端拦截（warning toast + 开关不动 + 不落盘，`settings.json` enabled 仍 true）
+8. 落盘断言：`webTools.providers[0].credentials.apiKey` 明文、enabled、`searchProviderId/fetchProviderId`；**无 preview/掩码串落盘**
 
 ## E2E-2 工具替换链路（fake key → 401）
 
@@ -30,16 +31,19 @@ runner RPC → 落盘 **`~/.mobi-e2e/settings.json` 的 `webTools` 段**（与 h
 2. WebSearch 触发权限弹窗（卡片显示内置名 "Web Search"）→ Allow
 3. 断言三处证据：
    - 工具分组标题 `Thought 0.3s, search the web 1 time · 1 failed`
-   - 展开工具卡片（click 卡片标题）后 tool_result 原文：
-     `tavily HTTP 401 Unauthorized（凭据可能失效，请到 mobi 设置页更新 provider 配置）`
+   - 展开工具卡片后 tool_result 原文：`tavily HTTP 401 Unauthorized（凭据可能失效，请到 mobi 设置页更新 provider 配置）`
    - 模型转述可见 alias 后真实工具名：`(MCP) mobi-web:web_search`
 
-## 坑（2026-08-16 实测）
+## 坑（2026-08-16/17 实测）
 
 - **alias 不隐藏原始 MCP 工具** — 模型看到工具列表里同时有内置名（alias 映射）和
   `mcp__mobi-web__web_search`，WebSearch 401 后模型会**直调 MCP 工具重试**（同样 401），
   再转 WebFetch 抓站。验证 401 文案第一次失败即可收敛，后续审批可 Deny 结束回合
 - **直调 MCP 工具的卡片标题显示原始名**（如 `Web Fetch mcp__mobi-web__web_fetch: <url>`），
   alias 调用显示内置名（"Web Search"）——两种都正常
+- **截图与 a11y tree 可能不一致**（视觉帧 vs 当前 DOM）——以 `evaluate_script` 查 DOM 为权威
+  （引导态断言 combobox 数量曾因此误判）
+- **E2E 环境浏览器 profile 残留 debug 解锁态**（localStorage 跨 cleanup 存活）→ 设置入口列表
+  出现 Debug 入口属预期，不是回归
 - 工具卡片 body 展开后 a11y tree 可能不列全文，用 TreeWalker evaluate 抓文本（见 [[pitfalls-general]]）
 - 首轮还会有 Change Title 审批弹窗，Allow 即可
