@@ -43,6 +43,8 @@ metadata:
 ## 坑
 
 - **Escape 关掉整个 modal** — New Project 对话框内按 Escape（想取消 autocompletion）会把对话框直接关闭，已填内容全丢。folder 路径输完直接进行下一步，不按 Enter 也不按 Escape
+- **folder 路径必须在机器主目录内**（hub 校验）— `/tmp/xxx` 会被拒（"Folder path must be within the machine home directory (/Users/…)"），用 `~/workspace/demo` 等 home 下路径
+- **folder combobox 输错无法全选重输** — Ctrl+A / Meta+A 在该 combobox 都不生效（Ctrl+A 跳行首，输入变追加），Remove 按钮单行时 disabled；输错了直接 Escape 关 modal 重开重填最快
 - **evaluate 点 combobox 不聚焦** — 见上；用 a11y uid click
 - **hover 条件渲染按钮 CDP 工具点不到** — 项目组「+」、行内 more、Assign 按钮都是 hover 显示；dispatch 合成 mouseover 不触发 CSS :hover，直接 evaluate `.click()` 即可
 - **menuitem 用 a11y uid click 超时** — antd Dropdown 弹出菜单项需 evaluate `[role="menuitem"]` 文本匹配后 `.click()`
