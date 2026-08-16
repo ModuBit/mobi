@@ -339,6 +339,7 @@ packages/web/src/
 │   ├── settings/               设置页面
 │   │   ├── SettingsModule.tsx
 │   │   ├── NotificationSettings.tsx 通知设置区块（权限开关、订阅状态）
+│   │   ├── WebToolsSettings.tsx Web 工具配置卡片（provider 启停/凭据，经 hub RPC 读写 runner settings）
 │   │   └── blocks/             通知设置子组件（GuideSection 权限引导 / PwaCard PWA 卡）
 │   └── ui/                     共享 UI 原语
 │       ├── Markdown.tsx        Markdown 渲染器

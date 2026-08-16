@@ -26,6 +26,7 @@ registerCommonHandlers(rpcHandlerManager, workingDirectory)
 | commands | `refreshMetadata` | SDK 元数据刷新 | [slash-commands-skills.md](./slash-commands-skills.md) |
 | uploads | `uploadFile`, `deleteUpload` | 文件上传 | [uploads.md](./uploads.md) |
 | sessionFiles | `searchSessionFiles`, `listSessionDirectory` | 会话文件搜索与目录浏览 | （内联） |
+| webToolsConfig | `get-web-tools-config`, `set-web-tools-config` | Web 工具配置读写（凭据脱敏回显 / 锁内 merge 落盘） | （内联；仅 machine 级，`ApiMachineClient` 构造时注册） |
 
 ## 架构模式
 

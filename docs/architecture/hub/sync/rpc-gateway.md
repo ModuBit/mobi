@@ -77,6 +77,8 @@ flowchart TB
 | `stopTask` | 停止后台任务 | `{sessionId}:stop-task` |
 | `runRipgrep` | 搜索代码 | `{sessionId}:ripgrep` |
 | `cancelCliQueuedMessage` | 取消 CLI 内存队列中缓冲的排队消息（两阶段取消的 CLI 侧） | `{sessionId}:cancel-queued-message` |
+| `getWebToolsConfig` | 读取 web 工具配置（凭据脱敏回显；hub 纯透传不落库） | `{machineId}:get-web-tools-config` |
+| `setWebToolsConfig` | 写入 web 工具配置（runner 锁内 merge 凭据后落盘 settings.json） | `{machineId}:set-web-tools-config` |
 
 ## RPC 调用流程
 

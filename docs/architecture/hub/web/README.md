@@ -27,7 +27,7 @@ HTTP 服务器，使用 Hono 框架。
 | `/manifest.webmanifest` | 无 | PWA Manifest |
 | `/api/messages/*` | [JWT](./auth.md) | [消息管理](./api/messages.md) |
 | `/api/permissions/*` | [JWT](./auth.md) | [权限操作](./api/permissions.md) |
-| `/api/machines/*` | [JWT](./auth.md) | 机器管理 |
+| `/api/machines/*` | [JWT](./auth.md) | 机器管理（含 [Web 工具配置](./api/web-tools.md)） |
 | `/api/git/*` | [JWT](./auth.md) | [Git 与文件操作](./api/git.md) |
 | `/api/push/*` | [JWT](./auth.md) | [推送订阅](./api/push.md) |
 | `/*` | - | 静态资源（Web UI） |
