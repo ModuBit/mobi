@@ -16,32 +16,44 @@
 
 /**
  * Tavily provider：官方 SDK（@tavily/core）—— search + extract（服务端提炼正文直出）。
- * SDK 的 search/extract 均支持 timeout（秒）；HTTP 错误 message 以状态码开头
- * （"401 Error: {...}"）、超时为 "Request timed out after N seconds."，
+ * SDK 的 search/extract 均支持 timeout（秒）；错误形态以 SDK 抛错点为准，
  * 据此映射到统一的 WebToolError 错误码。
  */
-import { tavily } from '@tavily/core'
+import { tavily, TavilyKeylessLimitError } from '@tavily/core'
 import type { WebToolProvider, WebFetchInput, WebFetchResult, WebSearchInput, WebSearchResult, WebToolProviderCredentials } from '../provider'
 import { WebToolError } from '../provider'
 
 /**
- * SDK 错误 → WebToolError 映射（message 形态以 @tavily/core 抛错点为准）：
+ * SDK 错误 → WebToolError 映射（形态以 @tavily/core dist 抛错点为准）：
  * - "Request timed out after N seconds." → timeout
- * - "401 Error: ..." 等状态码开头 → 429/5xx 归 upstream，其余 4xx 归 auth（凭据失效 → 提示去配置页）
- * - 其它（网络层 reject 原样抛出）→ network
+ * - TavilyKeylessLimitError（keyless 配额封顶）→ upstream
+ * - 非标准错误体（detail.error 缺失）带状态码前缀 "401 Error: {...}" → 401/403 归 auth，其余归 upstream
+ * - 标准错误体 {"detail":{"error":"Invalid API key"}} 抛出的 message 只有文本、无状态码 →
+ *   凭据类文案（api key/unauthorized/forbidden）归 auth，其余归 upstream
+ * - "An unexpected error occurred ..."（SDK 包装的网络层 reject）→ network
  */
 function mapTavilyError(error: unknown): WebToolError {
+    if (error instanceof TavilyKeylessLimitError) {
+        return new WebToolError('upstream', 'tavily', `tavily 配额受限：${error.message}`)
+    }
     const message = error instanceof Error ? error.message : String(error)
     if (message.startsWith('Request timed out')) {
         return new WebToolError('timeout', 'tavily', `tavily 请求超时：${message}`)
     }
     const statusMatch = /^(\d{3}) Error:/.exec(message)
     if (statusMatch) {
+        // 401/403 是凭据问题（提示去配置页）；400 参数错、429 限流、5xx 服务端 → upstream
         const status = Number(statusMatch[1])
-        const code = status === 429 || status >= 500 ? 'upstream' : 'auth'
+        const code = status === 401 || status === 403 ? 'auth' : 'upstream'
         return new WebToolError(code, 'tavily', `tavily ${message}`)
     }
-    return new WebToolError('network', 'tavily', `tavily 网络错误：${message}`)
+    if (message.startsWith('An unexpected error occurred')) {
+        return new WebToolError('network', 'tavily', `tavily 网络错误：${message}`)
+    }
+    if (/api\s*key|unauthorized|forbidden/i.test(message)) {
+        return new WebToolError('auth', 'tavily', `tavily ${message}`)
+    }
+    return new WebToolError('upstream', 'tavily', `tavily 服务错误：${message}`)
 }
 
 export function createTavilyProvider(credentials: WebToolProviderCredentials): WebToolProvider {

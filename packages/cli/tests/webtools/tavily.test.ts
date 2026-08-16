@@ -15,12 +15,15 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { TavilyKeylessLimitError } from '@tavily/core'
 import { createTavilyProvider } from '@/webtools/providers/tavily'
 
-// mock 官方 SDK：tavily 工厂返回稳定引用（search/extract 均 vi.fn）
+// mock 官方 SDK：tavily 工厂返回稳定引用（search/extract 均 vi.fn）；
+// 其余导出（TavilyKeylessLimitError 等）用真实实现——实现侧 instanceof 依赖同一 class
 const searchMock = vi.fn()
 const extractMock = vi.fn()
-vi.mock('@tavily/core', () => ({
+vi.mock('@tavily/core', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@tavily/core')>()),
     tavily: vi.fn(() => ({ search: searchMock, extract: extractMock })),
 }))
 
@@ -67,25 +70,43 @@ describe('tavily search（官方 SDK）', () => {
         await provider.search({ query: 'q' })
         expect((searchMock.mock.calls[0]![1] as { timeout: number }).timeout).toBe(1)
     })
-    it('"401 Error: ..." → WebToolError（code=auth）', async () => {
-        searchMock.mockRejectedValue(new Error('401 Error: {"detail":{"error":"Invalid API key"}}'))
+    it('标准错误体（401 "Invalid API key"，无状态码前缀）→ code=auth', async () => {
+        // SDK handleRequestError：detail.error 存在时 throw new Error(该文本)——Tavily 标准错误体恰是这种形态
+        searchMock.mockRejectedValue(new Error('Invalid API key'))
         const provider = createTavilyProvider({ apiKey: 'bad', timeoutMs: 15_000 })
         await expect(provider.search({ query: 'x' })).rejects.toMatchObject({ code: 'auth', providerId: 'tavily' })
     })
-    it('"429/5xx Error: ..." → code=upstream', async () => {
-        searchMock.mockRejectedValueOnce(new Error('429 Error: {"detail":{"error":"Rate limit"}}'))
-        searchMock.mockRejectedValueOnce(new Error('502 Error: {"detail":{"error":"Bad gateway"}}'))
+    it('非标准错误体 "401/403 Error: ..." → code=auth', async () => {
+        searchMock.mockRejectedValueOnce(new Error('401 Error: {"detail":"Unauthorized"}'))
+        searchMock.mockRejectedValueOnce(new Error('403 Error: {"detail":"Forbidden"}'))
+        const provider = createTavilyProvider({ apiKey: 'bad', timeoutMs: 15_000 })
+        await expect(provider.search({ query: 'x' })).rejects.toMatchObject({ code: 'auth' })
+        await expect(provider.search({ query: 'x' })).rejects.toMatchObject({ code: 'auth' })
+    })
+    it('非凭据类 4xx/429/5xx 前缀形态与标准体 429 → code=upstream', async () => {
+        searchMock.mockRejectedValueOnce(new Error('400 Error: {"detail":"bad request"}'))
+        searchMock.mockRejectedValueOnce(new Error('429 Error: {"detail":"Rate limit"}'))
+        searchMock.mockRejectedValueOnce(new Error('502 Error: {"detail":"Bad gateway"}'))
+        searchMock.mockRejectedValueOnce(new Error('Rate limit exceeded')) // 标准体 429：无前缀纯文本
         const provider = createTavilyProvider({ apiKey: 'k', timeoutMs: 15_000 })
-        await expect(provider.search({ query: 'x' })).rejects.toMatchObject({ code: 'upstream' })
-        await expect(provider.search({ query: 'x' })).rejects.toMatchObject({ code: 'upstream' })
+        for (let i = 0; i < 4; i++) {
+            await expect(provider.search({ query: 'x' })).rejects.toMatchObject({ code: 'upstream' })
+        }
+    })
+    it('TavilyKeylessLimitError（keyless 配额封顶）→ code=upstream', async () => {
+        searchMock.mockRejectedValue(new TavilyKeylessLimitError({
+            message: 'keyless limit reached', capType: 'daily', retryAfter: null, bonusEligible: false, continuationPaths: [],
+        }))
+        const provider = createTavilyProvider({ apiKey: 'k', timeoutMs: 15_000 })
+        await expect(provider.search({ query: 'x' })).rejects.toMatchObject({ code: 'upstream', providerId: 'tavily' })
     })
     it('"Request timed out after N seconds." → code=timeout', async () => {
         searchMock.mockRejectedValue(new Error('Request timed out after 15 seconds.'))
         const provider = createTavilyProvider({ apiKey: 'k', timeoutMs: 15_000 })
         await expect(provider.search({ query: 'x' })).rejects.toMatchObject({ code: 'timeout', providerId: 'tavily' })
     })
-    it('普通网络错误 → code=network', async () => {
-        searchMock.mockRejectedValue(new Error('fetch failed'))
+    it('网络层错误（SDK 包装形态）→ code=network', async () => {
+        searchMock.mockRejectedValue(new Error('An unexpected error occurred while making the request. Error: fetch failed'))
         const provider = createTavilyProvider({ apiKey: 'k', timeoutMs: 15_000 })
         await expect(provider.search({ query: 'x' })).rejects.toMatchObject({ code: 'network', providerId: 'tavily' })
     })
@@ -116,8 +137,8 @@ describe('tavily fetch（SDK extract）', () => {
         const promise = provider.fetch({ url: 'https://a.com', prompt: 'x' })
         await expect(promise).rejects.toMatchObject({ code: 'empty', providerId: 'tavily' })
     })
-    it('SDK 抛错（401）→ code=auth', async () => {
-        extractMock.mockRejectedValue(new Error('401 Error: {"detail":{"error":"Invalid API key"}}'))
+    it('SDK 抛错（标准体 401）→ code=auth', async () => {
+        extractMock.mockRejectedValue(new Error('Invalid API key'))
         const provider = createTavilyProvider({ apiKey: 'bad', timeoutMs: 15_000 })
         await expect(provider.fetch({ url: 'https://a.com', prompt: 'x' })).rejects.toMatchObject({ code: 'auth' })
     })
