@@ -62,10 +62,15 @@ export function domainFilter(
     const hostOf = (url: string): string => {
         try { return new URL(url).hostname } catch { return '' }
     }
+    // 域名大小写不敏感（对齐内置 WebSearch 语义）：URL().hostname 已小写化，模型给的域名大小写不一
+    const matchesDomain = (host: string, domain: string): boolean => {
+        const normalized = domain.toLowerCase()
+        return host === normalized || host.endsWith(`.${normalized}`)
+    }
     return results.filter((r) => {
         const host = hostOf(r.url)
-        if (input.allowed_domains?.length && !input.allowed_domains.some((d) => host === d || host.endsWith(`.${d}`))) return false
-        if (input.blocked_domains?.length && input.blocked_domains.some((d) => host === d || host.endsWith(`.${d}`))) return false
+        if (input.allowed_domains?.length && !input.allowed_domains.some((d) => matchesDomain(host, d))) return false
+        if (input.blocked_domains?.length && input.blocked_domains.some((d) => matchesDomain(host, d))) return false
         return true
     })
 }

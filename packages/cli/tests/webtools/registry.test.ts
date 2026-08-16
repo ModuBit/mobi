@@ -72,6 +72,11 @@ describe('domainFilter', () => {
         const sub = [{ title: 's', url: 'https://sub.a.com/x', snippet: '' }]
         expect(domainFilter(sub, { allowed_domains: ['a.com'] })).toHaveLength(1)
     })
+    it('域名大小写不敏感（URL hostname 已小写，过滤域名含大写仍命中）', () => {
+        // 对齐内置 WebSearch 语义：模型 emit allowed_domains: ['GitHub.com'] 不该把结果全过滤掉
+        expect(domainFilter(results, { allowed_domains: ['A.com'] })).toHaveLength(1)
+        expect(domainFilter(results, { blocked_domains: ['B.COM'] })).toHaveLength(1)
+    })
     it('无过滤条件原样返回', () => {
         expect(domainFilter(results, {})).toHaveLength(2)
     })
