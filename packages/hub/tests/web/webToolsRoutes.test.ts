@@ -16,9 +16,9 @@
 
 import { describe, expect, it, vi } from 'bun:test'
 import { Hono } from 'hono'
-import type { WebAppEnv } from '../middleware/auth'
-import type { SyncEngine } from '../../sync/syncEngine'
-import { createWebToolsRoutes } from './webTools'
+import type { WebAppEnv } from '../../src/web/middleware/auth'
+import type { SyncEngine } from '../../src/sync/syncEngine'
+import { createWebToolsRoutes } from '../../src/web/routes/webTools'
 
 const NAMESPACE = 'ns-test'
 
