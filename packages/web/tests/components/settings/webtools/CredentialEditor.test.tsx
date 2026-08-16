@@ -114,6 +114,29 @@ describe('CredentialEditor（预览态 → 编辑态 → 在场性提交）', ()
         expect(input.readOnly).toBe(false)
         expect(screen.queryByRole('button', { name: 'settings.webTools.replace' })).toBeNull()
     })
+    it('保存成功退出编辑态后 reload 重读 preview：输入框跟随新 preview（不残留明文草稿）', async () => {
+        const onSave = vi.fn(async () => true)
+        const { rerender } = render(
+            <ConfigProvider><AntdApp>
+                <CredentialEditor provider={provider} onSave={onSave} onVerify={vi.fn(async () => ({ success: true, latencyMs: 1 }))} />
+            </AntdApp></ConfigProvider>,
+        )
+        fireEvent.click(screen.getByRole('button', { name: 'settings.webTools.replace' }))
+        fireEvent.change(screen.getByLabelText('settings.webTools.apiKey'), { target: { value: 'tvly-plainsecret' } })
+        fireEvent.click(screen.getByRole('button', { name: 'settings.webTools.save' }))
+        await waitFor(() => { expect(onSave).toHaveBeenCalledWith({ apiKey: 'tvly-plainsecret' }) })
+
+        // Section reload 后 provider 换新 preview（组件不重挂载）：预览态输入框必须显示新掩码串而非明文草稿
+        const reloaded = { ...provider, credentials: { apiKey: { set: true, preview: 'tvly-******99' } } }
+        rerender(
+            <ConfigProvider><AntdApp>
+                <CredentialEditor provider={reloaded} onSave={onSave} onVerify={vi.fn(async () => ({ success: true, latencyMs: 1 }))} />
+            </AntdApp></ConfigProvider>,
+        )
+        const input = screen.getByDisplayValue('tvly-******99') as HTMLInputElement
+        expect(input.readOnly).toBe(true)
+        expect(screen.queryByDisplayValue('tvly-plainsecret')).toBeNull()
+    })
     it('保存失败（onSave false）→ 不弹 error toast（上层负责）、保持编辑态', async () => {
         const { onSave } = renderEditor({ onSave: vi.fn(async () => false) })
         fireEvent.click(screen.getByRole('button', { name: 'settings.webTools.replace' }))

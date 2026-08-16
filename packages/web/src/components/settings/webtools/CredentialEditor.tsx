@@ -190,7 +190,9 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                             // aria-label 独立于可见 label（后者还含 set 状态文案，不能作为可访问名整体）
                             aria-label={t(`settings.webTools.${key}`)}
                             readOnly={!editing}
-                            value={draft[key] ?? ''}
+                            // 预览态始终显示 props 派生的掩码串：保存成功后 Section reload 重读 preview，
+                            // 编辑器不重挂载也能跟随新掩码，绝不残留用户输入的明文草稿
+                            value={editing ? draft[key] ?? '' : initialPreview[key] ?? ''}
                             onChange={(e) => setDraft((prev) => ({ ...prev, [key]: e.target.value }))}
                             placeholder={t('settings.webTools.apiKeyPlaceholder')}
                             autoComplete="new-password"
