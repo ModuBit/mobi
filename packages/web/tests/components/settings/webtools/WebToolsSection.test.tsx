@@ -302,4 +302,20 @@ describe('WebToolsSection', () => {
         expect(screen.queryByRole('switch', { name: 'tavily-enabled' })).toBeNull()
         expect(stableApi.machines.webTools.set).not.toHaveBeenCalled()
     })
+
+    it('单 provider：路由值非空的行锁定、为空的行可选（首次配置后路由可设上）', async () => {
+        // tavily 已启用；search 路由为空（首次配置场景）、fetch 路由已指向 tavily
+        mockLoadConfig({ enabled: true, searchProviderId: undefined, fetchProviderId: 'tavily' })
+        renderSection()
+
+        await waitFor(() => expect(screen.getByText('web_search')).toBeTruthy())
+        // search 行值为空 → 不锁定（否则首次配置后路由永远设不上，runner resolve → NO_PROVIDER）
+        expect(screen.getByRole('combobox', { name: '搜索' }).closest('.ant-select')).not.toHaveClass(
+            'ant-select-disabled',
+        )
+        // fetch 行已有值 → 锁定显示（单 provider 切无可切）
+        expect(screen.getByRole('combobox', { name: '抓取' }).closest('.ant-select')).toHaveClass(
+            'ant-select-disabled',
+        )
+    })
 })

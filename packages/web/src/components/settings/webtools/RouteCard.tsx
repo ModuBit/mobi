@@ -107,8 +107,6 @@ export function RouteCard({ config, enabledIds, saving, onChange }: RouteCardPro
     const { t } = useTranslation()
 
     const options = enabledIds.map((id) => ({ value: id, label: t(`settings.webTools.providers.${id}`) }))
-    // 单一可选项：锁定显示（切无可切）；保存中同样禁用防并发提交
-    const locked = enabledIds.length <= 1 || saving
 
     return (
         <Card $token={token}>
@@ -119,27 +117,33 @@ export function RouteCard({ config, enabledIds, saving, onChange }: RouteCardPro
                 <Hint $token={token}>{t('settings.webTools.routeEmptyHint')}</Hint>
             ) : (
                 <>
-                    {ROUTES.map(({ key, icon: Icon, tool, labelKey }) => (
-                        <Row key={key}>
-                            <RowIcon $token={token}>
-                                <Icon size={15} strokeWidth={2} />
-                            </RowIcon>
-                            <RowLabel $token={token}>{t(labelKey)}</RowLabel>
-                            <ToolPill $token={token}>{tool}</ToolPill>
-                            <Select<WebToolProviderId>
-                                size="small"
-                                style={{ marginLeft: 'auto', minWidth: 140 }}
-                                aria-label={t(labelKey)}
-                                value={key === 'search' ? config.searchProviderId : config.fetchProviderId}
-                                options={options}
-                                disabled={locked}
-                                placeholder={t('settings.webTools.routePlaceholder')}
-                                onChange={(next) => {
-                                    void onChange(key === 'search' ? { searchProviderId: next } : { fetchProviderId: next })
-                                }}
-                            />
-                        </Row>
-                    ))}
+                    {ROUTES.map(({ key, icon: Icon, tool, labelKey }) => {
+                        const value = key === 'search' ? config.searchProviderId : config.fetchProviderId
+                        // 单一可选项且该行已有值：锁定显示（切无可切）；
+                        // 值为空（首次配置场景）必须可点选，否则路由永远设不上（runner resolve 返回 null → NO_PROVIDER）
+                        const locked = saving || (enabledIds.length === 1 && Boolean(value))
+                        return (
+                            <Row key={key}>
+                                <RowIcon $token={token}>
+                                    <Icon size={15} strokeWidth={2} />
+                                </RowIcon>
+                                <RowLabel $token={token}>{t(labelKey)}</RowLabel>
+                                <ToolPill $token={token}>{tool}</ToolPill>
+                                <Select<WebToolProviderId>
+                                    size="small"
+                                    style={{ marginLeft: 'auto', minWidth: 140 }}
+                                    aria-label={t(labelKey)}
+                                    value={value}
+                                    options={options}
+                                    disabled={locked}
+                                    placeholder={t('settings.webTools.routePlaceholder')}
+                                    onChange={(next) => {
+                                        void onChange(key === 'search' ? { searchProviderId: next } : { fetchProviderId: next })
+                                    }}
+                                />
+                            </Row>
+                        )
+                    })}
                     <Hint $token={token}>{t('settings.webTools.routeHint')}</Hint>
                 </>
             )}
