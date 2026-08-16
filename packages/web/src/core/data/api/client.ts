@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionMode } from '@mobi/shared'
+import type { PermissionMode, RedactedWebToolsConfig, WebToolsConfig } from '@mobi/shared'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -340,6 +340,16 @@ export function createMobiApi() {
             // 目录列表（@ 引用展开子目录）
             listSessionDirectory: (machineId: string, cwd: string, path: string, prefix?: string, opts?: { signal?: AbortSignal }) =>
                 client.get<ListFilesResponse>(`/api/machines/${machineId}/list-session-directory`, { params: { cwd, path, prefix }, signal: opts?.signal }),
+            // Web 工具配置（hub 纯透传 runner RPC；凭据脱敏回显，机器离线 502 reject）
+            webTools: {
+                get: (machineId: string) =>
+                    client.get<{ config: RedactedWebToolsConfig }>(`/api/machines/${machineId}/web-tools`),
+                set: (machineId: string, config: WebToolsConfig) =>
+                    client.post<{ success: true } | { success: false; error: string }>(
+                        `/api/machines/${machineId}/web-tools`,
+                        { config },
+                    ),
+            },
         },
     }
 }

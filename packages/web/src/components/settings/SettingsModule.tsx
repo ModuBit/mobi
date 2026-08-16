@@ -20,6 +20,7 @@ import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { NotificationSettings } from './NotificationSettings'
+import { WebToolsSettings } from './WebToolsSettings'
 import { DebugSection } from './blocks/DebugSection'
 import styled from '@emotion/styled'
 
@@ -62,6 +63,8 @@ export function SettingsModule() {
                     传空串作为语义占位（useNotificationSetup 内部 void 标注）。
                 */}
                 <NotificationSettings namespace="" />
+                {/* Web 工具配置：provider 启停 / 凭据 / 搜索抓取选择（机器级，hub 透传 runner RPC） */}
+                <WebToolsSettings />
                 {/* 调试区块：未解锁时不渲染（见 blocks/DebugSection） */}
                 <DebugSection />
             </SettingsContent>

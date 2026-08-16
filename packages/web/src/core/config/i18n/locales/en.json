@@ -372,7 +372,28 @@
         }
     },
     "settings": {
-        "title": "Settings"
+        "title": "Settings",
+        "webTools": {
+            "title": "Web Tools",
+            "desc": "Replace Claude's built-in WebSearch / WebFetch with mobi's own implementation (remote mode only)",
+            "providers": {
+                "tavily": "Tavily",
+                "bocha": "Bocha"
+            },
+            "apiKey": "API Key",
+            "credentialSet": "Set (leave blank to keep)",
+            "credentialUnset": "Not set",
+            "credentialKeepPlaceholder": "Leave blank to keep current value",
+            "credentialInputPlaceholder": "Enter API Key",
+            "searchProvider": "Search Provider",
+            "fetchProvider": "Fetch Provider",
+            "selectPlaceholder": "Select a provider",
+            "save": "Save",
+            "saved": "Saved",
+            "saveFailed": "Failed to save",
+            "offline": "Machine offline, unable to load config",
+            "notConfigured": "Not configured — model web tool calls will return a not-configured notice"
+        }
     },
     "debug": {
         "title": "Debug",

@@ -372,7 +372,28 @@
         }
     },
     "settings": {
-        "title": "设置"
+        "title": "设置",
+        "webTools": {
+            "title": "Web 工具",
+            "desc": "替换 Claude 内置的 WebSearch / WebFetch 为 mobi 自建实现（仅远程模式生效）",
+            "providers": {
+                "tavily": "Tavily",
+                "bocha": "博查"
+            },
+            "apiKey": "API Key",
+            "credentialSet": "已设置（留空保持不变）",
+            "credentialUnset": "未设置",
+            "credentialKeepPlaceholder": "留空保持不变",
+            "credentialInputPlaceholder": "输入 API Key",
+            "searchProvider": "搜索 Provider",
+            "fetchProvider": "抓取 Provider",
+            "selectPlaceholder": "选择 Provider",
+            "save": "保存",
+            "saved": "已保存",
+            "saveFailed": "保存失败",
+            "offline": "机器离线，无法读取配置",
+            "notConfigured": "未配置——模型调用 web 工具将返回未配置提示"
+        }
     },
     "debug": {
         "title": "调试",
