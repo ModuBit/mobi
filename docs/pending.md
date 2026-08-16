@@ -371,3 +371,93 @@ mobi.app（dmg 分发）
 **状态**：探索结论已记录，待决策是否启动（先 PoC 验证 WKWebView 兼容性）。
 
 **优先级**：待用户决策。
+
+---
+
+## 48. CLI 二进制瘦身——claude 二进制去内嵌（统一回退链 + 双打包形态）
+
+**背景**（2026-08-16）：CLI 二进制从 ~300M 涨到 372M，根因**不是业务代码**——是内嵌的 Claude Code 二进制（`packages/cli/tools/archives/claude-*.bin`，当前 272M）在膨胀。SDK 版本号是 `^` 浮动的，每次 `bun install` 悄悄升级 → 构建时 `downloadClaudeBinary` 拉对应版本 claude → 官方二进制本身逐版变胖（npm registry 实数据：darwin-arm64 从 2.1.218 的 243MiB 涨到 2.1.233 的 292MiB，15 版 +50MB）。体积构成：claude 272M + bun runtime ~90M + difftastic/ripgrep ~15M + JS/web assets 几 M。
+
+**方案（已讨论定方向）**：`getClaudeExecutablePath()` 改为统一回退链，两种打包形态跑**同一份代码**：
+
+```
+1. MOBI_CLAUDE_PATH env（不变，escape hatch）
+2. bunfs 内嵌命中？   extractFromBunfs → 真实路径（SDK 内容寻址缓存管复用）
+3. 磁盘缓存命中？     ~/.mobi/cache/claude/<platform>-<version>.bin
+                     existsSync + verifySha256(manifest checksum)
+4. 下载               tmp+rename 原子落地 + sha256 校验
+5. 失败 → undefined   （PATH 兜底，不变）
+```
+
+- **预带版**：链 2 命中，离线可用（现状行为）
+- **Lite 版**：链 2 miss，走 3/4；下载一次后 3 永远命中，体验与预带版一致
+
+**关键改动点**：
+
+- `embeddedClaudeBinary.bun.ts`：`loadEmbeddedClaudeBinary` 未命中 feature 时**返回 undefined**（现抛错）；嵌入与否用编译期 feature `MOBI_EMBED_CLAUDE` 门控——lite 构建不传该 flag → `import ... with {type:'file'}` 分支被常量折叠消除 → **不要求 .bin 存在**（文件缺失时 bun build 直接报错，必须靠 feature 消分支）
+- `build-executable.ts`：加 lite 开关（跳过 `downloadClaudeBinary`、feature flags 不含 `MOBI_EMBED_CLAUDE`），平台 feature 两种形态都传（选 difftastic/ripgrep target 用）；根 package.json 加 `build:exe:lite` 入口
+- **版本 + checksum 编译期烧入**（最易踩坑）：下载分支需要 `manifest.json` 的版本与 checksum，lite 包运行机器上没有 node_modules，`readSdkVersion`/`readSdkManifest` 必须在构建期 define 烧死，不能运行时 read
+- 下载逻辑搬到运行时模块：`scripts/downloadClaudeBinary.ts` 核心（URL 构建/stall 重试/sha256/tmp+rename）抽到共用模块，构建脚本与运行时 resolver 共用；其依赖 `claudeBinarySource.ts` 全是纯函数
+
+**防重复下载机制**（三层，均有现成参照）：版本寻址路径 + sha256 校验（`downloadClaudeBinary` 现有缓存分支直接复用）；tmp+rename 原子写防并发半成品（进程内再加 promise 去重）；SDK `extractFromBunfs` 本身即内容寻址 + existsSync 短路的同款模式（且对非 `$bunfs` 路径原样返回，下载分支不会二次拷贝）。
+
+**收益**：dist-exe 从 372M → ~100M；mobi 升级但 SDK 版本未变 → checksum 相同 → 不重新下载；离线/下载失败回退链不变。
+
+**下载时机**：懒加载（首个 claude 会话前）为底线；体验更优是 `service start` 时后台预取 + 懒加载兜底（共享同一 promise）。
+
+**相关文件**：
+
+- `packages/cli/src/claude/sdk/claudeExecutable.ts` — 回退链主体
+- `packages/cli/src/runtime/embeddedClaudeBinary.bun.ts` — undefined 语义 + feature 门控
+- `packages/cli/scripts/downloadClaudeBinary.ts` / `packages/cli/src/runtime/claudeBinarySource.ts` — 下载与校验逻辑复用源
+
+**优先级**：待用户决策启动。
+
+---
+
+## 49. 插件化架构观察项——DeepSeek Harness / cordis 借鉴评估（2026-08-16）
+
+**背景**：DeepSeek 开源 [dsh](https://github.com/deepseek-ai/deepseek-harness)（一切即插件，底层 [cordis](https://github.com/cordiverse/cordis)）。已读其架构文档与 cordis-primer，评估对 mobi 后续扩展特性（skill/MCP 管理、插件管理等）的借鉴价值。
+
+**核心结论**：**思想可抄，框架不引入**。dsh 的插件化解决的是「自己就是 harness」的问题——模型适配器、工具注册表、agent loop 都自研所以都得可替换。mobi 的 agent loop / 工具协议 / skill / MCP 执行层都在 Claude Agent SDK 里，mobi 是 SDK 之上的控制面 + 远程 UI，没有自己的 agent loop 可插件化。且 cordis 与 dsh 均 developer preview、有 breaking changes，为一个不存在的扩展面引入重依赖是架构错配。
+
+**值得借鉴的四个设计思想**：
+
+1. **Seam 三分法**：可替换能力 = Service Definition（声明接口）+ Provider（实现）+ Consumer（使用方），三者一并设计才算 seam。mobi 已有事实 seam：gateway（CCR backend，当时的「核心接口 + 兜底换 backend + capability 声明」正是此思路）。做扩展特性前先问：是给 claude 配置做管理面（CRUD + 配置生成，无 seam），还是 mobi 自己插拔能力（自定义面板、通知渠道等，才需要 seam）
+2. **注册皆可逆副作用**：每个注册（路由/监听器/定时器）必须有对应 disposer，teardown 自动撤销。hub 的 socket handler / SSE / DB watcher 可以此为编码规范（一个简单 effect 风格辅助函数即可，不需要 cordis）
+3. **类型化事件 + 分发模式**：emit / waterfall（环绕中间件、可短路）/ parallel / serial。mobi 事件跨进程（CLI→hub→web），机制不能照搬，但事件域三分法可参考：session 事件 = 持久事实、agent 事件 = 实时协调、能力事件 = 策略挂载
+4. **配置分层叠加**：profile → bundle → patch 逐层叠加、上层可整体替换下层条目。做 skill/MCP 管理时「默认 → 用户级 → 项目级 → 会话级」分层配置模型直接可抄（Claude Code 自家 settings 同构）
+
+**决策标准**（等第一个「真插件」场景出现再定）：
+
+- 管理面需求（浏览/启停/配置已装 skill 与 MCP server）→ 纯 CRUD + 配置生成，不需要插件框架
+- 宿主面需求（第三方给 hub 加 API 路由 / web 加面板 / 加通知渠道）→ 先手写 ~100 行内部插件注册表（install/register/dispose + 类型化 key），跑通 2-3 个真实插件后再评估 cordis
+
+**实施前回头读**：dsh 的 [capability-seams](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/capability-seams.zh.md) 与 [extension-cookbook](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/extension-cookbook.md)。
+
+**优先级**：低，触发式。skill/MCP 管理特性启动时激活本条。
+
+---
+
+## 50. settings.json 职责拆分（2026-08-16）
+
+**背景**：`~/.mobi/settings.json` 目前承载了过多职责（machine 身份、token、hub server 配置、claudeEnv、超时、bash 注入开关，后续还要加 webTools 配置），读写方横跨 hub / runner / CLI 多进程，靠文件锁 + 原子写维持一致性。
+
+**方向**：按使用方拆分成职责分明的配置文件，共用的放共享文件，hub 用的、runner/cli 用的、插件用的各自独立，避免单一文件成为所有进程的写入热点与耦合点。
+
+**注意**：拆分时需兼容现有字段的迁移读取；`updateSettings` 的文件锁与 tmp+rename 原子写模式应保留到各拆分文件。
+
+**优先级**：中。web 工具配置（webTools 段）落地后启动评估——它会让 settings.json 再多一个高频读写的配置段，正好是拆分的触发点。
+
+---
+
+## 51. Web 工具配置页打磨项（2026-08-16）
+
+**背景**：自定义 Web 工具特性（toolAliases 替换内置 WebSearch/WebFetch）已落地，配置页 V1 固定取第一台在线机器。E2E 与最终审查遗留以下打磨点：
+
+1. **多机选择器**：Web 工具卡片固定取第一台在线机器，多机环境下其余机器的配置在 UI 上不可达（hub 侧按 machine 路由的能力已就绪，纯前端工作）
+2. **凭据清除通道**：空串=保持旧值是唯一语义，换 key 可覆盖，但彻底删除已存凭据只能手改 settings.json——需要"清除凭据"的显式操作
+3. **禁用已选 provider 的预校验**：禁用当前被选为搜索/抓取源的 provider 后直接保存会被 runner 校验拒绝（错误信息清晰但偏事后），前端可预清 selects 或预校验
+4. **海外用户回退**：toolAliases 常驻注入意味着内置 WebSearch/WebFetch 在任何网络环境都被替换（未配 provider 即报错）。当前按"国内环境内置不可用"接受；若有海外使用诉求，需加"切回内置"选项
+
+**优先级**：低。按需逐项处理。
