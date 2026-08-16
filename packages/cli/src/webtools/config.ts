@@ -22,7 +22,7 @@
  * 不用 FSWatcher：原子写是 tmp+rename 换 inode，Linux inotify 会盯旧 inode 静默失效。
  */
 import { statSync, readFileSync, existsSync } from 'node:fs'
-import { WebToolsConfigSchema, type WebToolsConfig } from '@mobi/shared'
+import { WebToolsConfigSchema, normalizeWebToolsConfig, type WebToolsConfig } from '@mobi/shared'
 import { configuration } from '@/configuration'
 
 let cache: { file: string; mtimeMs: number; config: WebToolsConfig } | null = null
@@ -50,7 +50,8 @@ export function readWebToolsConfig(file: string = configuration.settingsFile): W
     }
     try {
         const raw = JSON.parse(readFileSync(file, 'utf8')) as { webTools?: unknown }
-        const config = WebToolsConfigSchema.parse(raw.webTools ?? {})
+        // 存量归一：残留已下线 provider 条目剔除（合法配置不被连坐成空），不抛错
+        const config = normalizeWebToolsConfig(raw.webTools)
         cache = { file, mtimeMs, config }
         return config
     } catch {

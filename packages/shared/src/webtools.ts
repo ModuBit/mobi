@@ -91,3 +91,41 @@ export function credentialKeysFor(id: WebToolProviderId): string[] {
             return ['apiKey']
     }
 }
+
+/**
+ * 存量配置归一：读取落盘数据（不可信输入）时的统一入口。
+ *
+ * schema 收窄（如 provider 下线）后，旧机器的 settings.json 可能残留未知 provider
+ * 条目，整体 parse 会抛错——若读取侧直接回退空配置，合法条目会被一个下线条目
+ * "连坐"清空（web 工具静默禁用、配置页无法自修复）。此处降级容错：
+ * 剔除未知/非法 provider 条目、清空指向它们的选择，保留其余合法配置。
+ * 合法输入走正常 parse（默认值填充等语义不变），永不抛错。
+ */
+export function normalizeWebToolsConfig(raw: unknown): WebToolsConfig {
+    const parsed = WebToolsConfigSchema.safeParse(raw)
+    if (parsed.success) return parsed.data
+    if (typeof raw !== 'object' || raw === null) return {}
+    const record = raw as Record<string, unknown>
+
+    // 逐条校验 providers：未知 id/非法条目丢弃，重复 id 保留首条（对齐 schema 唯一性语义）
+    const providers: WebToolProviderSettings[] = []
+    if (Array.isArray(record.providers)) {
+        for (const item of record.providers) {
+            const entry = WebToolProviderSettingsSchema.safeParse(item)
+            if (!entry.success || providers.some((p) => p.id === entry.data.id)) continue
+            providers.push(entry.data)
+        }
+    }
+
+    // 选择指向被剔除/未知条目 → 清空（schema 容忍中间态，路由层对此返回 null）
+    const knownId = (id: unknown): WebToolProviderId | undefined =>
+        typeof id === 'string' && providers.some((p) => p.id === id) ? (id as WebToolProviderId) : undefined
+    const searchProviderId = knownId(record.searchProviderId)
+    const fetchProviderId = knownId(record.fetchProviderId)
+
+    return {
+        ...(searchProviderId ? { searchProviderId } : {}),
+        ...(fetchProviderId ? { fetchProviderId } : {}),
+        ...(providers.length > 0 ? { providers } : {}),
+    }
+}

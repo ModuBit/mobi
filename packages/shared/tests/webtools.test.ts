@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-/** web 工具配置协议类型与凭据脱敏测试（bun:test） */
+/** web 工具配置协议类型与凭据脱敏测试 */
 import { describe, expect, it } from 'vitest'
-import { WebToolsConfigSchema, redactWebToolsConfig } from '../src/webtools'
+import { WebToolsConfigSchema, redactWebToolsConfig, normalizeWebToolsConfig } from '../src/webtools'
 
 describe('WebToolsConfigSchema', () => {
     it('空对象合法（未配置态）', () => {
@@ -71,5 +71,69 @@ describe('redactWebToolsConfig', () => {
     it('无 providers 时脱敏结果也不含 providers', () => {
         const redacted = redactWebToolsConfig(WebToolsConfigSchema.parse({}))
         expect(redacted.providers).toBeUndefined()
+    })
+})
+
+describe('normalizeWebToolsConfig（存量归一）', () => {
+    it('合法配置原样通过', () => {
+        const config = { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'k' } }] }
+        expect(normalizeWebToolsConfig(config)).toEqual(WebToolsConfigSchema.parse(config))
+    })
+
+    it('残留已下线 provider 条目（如 bocha）→ 剔除该条目，保留其余合法配置', () => {
+        const normalized = normalizeWebToolsConfig({
+            searchProviderId: 'tavily',
+            providers: [
+                { id: 'tavily', enabled: true, credentials: { apiKey: 'k' } },
+                { id: 'bocha', enabled: true, credentials: { apiKey: 'b' } },
+            ],
+        })
+        expect(normalized.providers).toHaveLength(1)
+        expect(normalized.providers?.[0]?.id).toBe('tavily')
+        expect(normalized.searchProviderId).toBe('tavily')
+    })
+
+    it('选择指向被剔除条目 → 清空该选择（schema 容忍中间态，路由层返回 null）', () => {
+        const normalized = normalizeWebToolsConfig({
+            searchProviderId: 'bocha',
+            fetchProviderId: 'tavily',
+            providers: [
+                { id: 'bocha', enabled: true, credentials: {} },
+                { id: 'tavily', enabled: true, credentials: { apiKey: 'k' } },
+            ],
+        })
+        expect(normalized.searchProviderId).toBeUndefined()
+        expect(normalized.fetchProviderId).toBe('tavily')
+        expect(normalized.providers).toHaveLength(1)
+    })
+
+    it('重复 provider id → 保留首条（对齐 schema 唯一性语义）', () => {
+        const normalized = normalizeWebToolsConfig({
+            providers: [
+                { id: 'tavily', enabled: true, credentials: { apiKey: 'first' } },
+                { id: 'tavily', enabled: false, credentials: {} },
+            ],
+        })
+        expect(normalized.providers).toHaveLength(1)
+        expect(normalized.providers?.[0]?.credentials.apiKey).toBe('first')
+    })
+
+    it('选择指向未知 provider（providers 段合法）→ 清空选择、保留条目', () => {
+        const normalized = normalizeWebToolsConfig({
+            searchProviderId: 'nope',
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'k' } }],
+        })
+        expect(normalized.searchProviderId).toBeUndefined()
+        expect(normalized.providers?.[0]?.id).toBe('tavily')
+    })
+
+    it('垃圾输入（字符串/null/undefined）→ 空配置', () => {
+        expect(normalizeWebToolsConfig('nope')).toEqual({})
+        expect(normalizeWebToolsConfig(null)).toEqual({})
+        expect(normalizeWebToolsConfig(undefined)).toEqual({})
+    })
+
+    it('providers 全部非法 → 空配置', () => {
+        expect(normalizeWebToolsConfig({ providers: [{ id: 'bocha', enabled: true }, 'garbage'] })).toEqual({})
     })
 })

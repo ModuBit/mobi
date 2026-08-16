@@ -87,4 +87,20 @@ describe('readWebToolsConfig（mtime 惰性读）', () => {
         // A 的缓存不受 B 的读取影响
         expect(readWebToolsConfig(file)?.searchProviderId).toBe('tavily')
     })
+    it('残留已下线 provider 条目（如 bocha）→ 归一剔除，合法 tavily 配置不被连坐', () => {
+        writeFileSync(file, JSON.stringify({
+            webTools: {
+                searchProviderId: 'tavily',
+                providers: [
+                    { id: 'tavily', enabled: true, credentials: { apiKey: 'k' }, timeoutMs: 8000 },
+                    { id: 'bocha', enabled: true, credentials: { apiKey: 'b' } },
+                ],
+            },
+        }))
+        const config = readWebToolsConfig(file)
+        expect(config.providers).toHaveLength(1)
+        expect(config.providers?.[0]?.id).toBe('tavily')
+        expect(config.providers?.[0]?.credentials.apiKey).toBe('k')
+        expect(config.searchProviderId).toBe('tavily')
+    })
 })

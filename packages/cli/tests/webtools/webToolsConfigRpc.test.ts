@@ -25,32 +25,34 @@ import { readSettings, updateSettings, type Settings } from '@/persistence'
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import type { RpcRequest } from '@/api/rpc/types'
 import {
-    validateWebToolsConfig,
     parseWebToolsConfig,
     validateSelection,
     mergeProviderCredentials,
     registerWebToolsConfigHandler,
 } from '@/modules/common/handlers/webToolsConfig'
 
-describe('validateWebToolsConfig（写入校验）', () => {
-    it('选中的 provider 必须存在且启用', () => {
-        expect(validateWebToolsConfig({ searchProviderId: 'tavily' }).ok).toBe(false)
-        expect(validateWebToolsConfig({ searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: false, credentials: { apiKey: 'k' } }] }).ok).toBe(false)
-    })
-    it('选中的 provider 凭据必须齐全', () => {
-        expect(validateWebToolsConfig({ searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: {} }] }).ok).toBe(false)
-    })
+describe('parseWebToolsConfig（schema 层校验）', () => {
     it('合法配置通过并补默认 timeoutMs', () => {
-        const result = validateWebToolsConfig({ searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'k' } }] })
+        const result = parseWebToolsConfig({ searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'k' } }] })
         expect(result.ok).toBe(true)
         if (result.ok) expect(result.config.providers?.[0]?.timeoutMs).toBe(15_000)
     })
     it('空配置合法（清空场景）', () => {
-        expect(validateWebToolsConfig({}).ok).toBe(true)
+        expect(parseWebToolsConfig({}).ok).toBe(true)
     })
     it('非法输入（字符串/null）→ ok:false', () => {
-        expect(validateWebToolsConfig('nope').ok).toBe(false)
-        expect(validateWebToolsConfig(null).ok).toBe(false)
+        expect(parseWebToolsConfig('nope').ok).toBe(false)
+        expect(parseWebToolsConfig(null).ok).toBe(false)
+    })
+})
+
+describe('validateSelection（选择层校验）', () => {
+    it('选中的 provider 必须存在且启用', () => {
+        expect(validateSelection({ searchProviderId: 'tavily' })).toContain('不存在或未启用')
+        expect(validateSelection({ searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: false, credentials: { apiKey: 'k' }, timeoutMs: 1000 }] })).toContain('未启用')
+    })
+    it('选中的 provider 凭据必须齐全', () => {
+        expect(validateSelection({ searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: {}, timeoutMs: 1000 }] })).toContain('缺少凭据')
     })
 })
 
@@ -176,5 +178,49 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
         const response = await call(manager, 'get-web-tools-config', {}) as { config: unknown }
 
         expect(response).toEqual({ config: {} })
+    })
+
+    it('set：存量残留已下线 provider 条目（bocha）→ 保存不被砖化，落盘后条目被剔除', async () => {
+        persisted = {
+            webTools: {
+                searchProviderId: 'tavily',
+                providers: [
+                    { id: 'tavily', enabled: true, credentials: { apiKey: 'old' }, timeoutMs: 15_000 },
+                    { id: 'bocha', enabled: true, credentials: { apiKey: 'b' }, timeoutMs: 15_000 },
+                ],
+            } as unknown as Settings['webTools'],
+        }
+        const manager = makeManager()
+
+        // 脱敏页保存：tavily 留空（保持旧值）
+        const response = await call(manager, 'set-web-tools-config', {
+            config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: '' } }] },
+        })
+
+        expect(response).toEqual({ success: true })
+        // 落盘结果：bocha 条目消失，tavily 凭据沿用旧值
+        expect(persisted.webTools?.providers?.map((p) => p.id)).toEqual(['tavily'])
+        expect(persisted.webTools?.providers?.[0]?.credentials.apiKey).toBe('old')
+    })
+
+    it('get：存量残留已下线 provider 条目（bocha）→ 回显剔除后的合法配置而非空', async () => {
+        persisted = {
+            webTools: {
+                searchProviderId: 'tavily',
+                providers: [
+                    { id: 'tavily', enabled: true, credentials: { apiKey: 'secret' }, timeoutMs: 8000 },
+                    { id: 'bocha', enabled: true, credentials: { apiKey: 'b' }, timeoutMs: 15_000 },
+                ],
+            } as unknown as Settings['webTools'],
+        }
+        const manager = makeManager()
+
+        const response = await call(manager, 'get-web-tools-config', {}) as {
+            config: { searchProviderId?: string; providers?: Array<{ id: string; credentials: Record<string, { set: boolean }> }> }
+        }
+
+        expect(response.config.searchProviderId).toBe('tavily')
+        expect(response.config.providers?.map((p) => p.id)).toEqual(['tavily'])
+        expect(response.config.providers?.[0]?.credentials).toEqual({ apiKey: { set: true } })
     })
 })

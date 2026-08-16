@@ -16,11 +16,11 @@
 
 /**
  * web 工具配置 RPC（machine 级，注册在 runner 进程）：
- * - get-web-tools-config：读 settings.webTools，凭据脱敏回显（存量损坏时回退空配置）
+ * - get-web-tools-config：读 settings.webTools，存量归一后凭据脱敏回显
  * - set-web-tools-config：schema-parse → 锁内凭据 merge（空值=保持不变）+ 选择校验 → updateSettings 落盘（文件锁+原子写）
  * 生效：各会话进程 handler 调用时 mtime 惰性重读，无需通知。
  */
-import { WebToolsConfigSchema, redactWebToolsConfig, credentialKeysFor, type WebToolsConfig, type RedactedWebToolsConfig } from '@mobi/shared'
+import { WebToolsConfigSchema, normalizeWebToolsConfig, redactWebToolsConfig, credentialKeysFor, type WebToolsConfig, type RedactedWebToolsConfig } from '@mobi/shared'
 import { updateSettings, readSettings } from '@/persistence'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 
@@ -55,15 +55,6 @@ export function validateSelection(config: WebToolsConfig): string | null {
     return null
 }
 
-/** 写入校验 = schema 层 + 选择层组合（无既有凭据可 merge 的场景一次性校验） */
-export function validateWebToolsConfig(raw: unknown): ValidateResult {
-    const parsed = parseWebToolsConfig(raw)
-    if (!parsed.ok) return parsed
-    const error = validateSelection(parsed.config)
-    if (error) return { ok: false, error }
-    return parsed
-}
-
 /**
  * 凭据 merge：web 配置页只回传本次填写的凭据（脱敏回显不回传值），
  * 空字符串 = 保持旧值不动；非空 = 覆盖。新条目直接采用新值。
@@ -88,9 +79,8 @@ export function registerWebToolsConfigHandler(rpcHandlerManager: RpcHandlerManag
         async () => {
             try {
                 const settings = await readSettings()
-                // 存量配置损坏时回退空配置（与 readSettings 的容错姿态一致），不抛 RPC error
-                const parsed = WebToolsConfigSchema.safeParse(settings.webTools ?? {})
-                return { config: redactWebToolsConfig(parsed.success ? parsed.data : {}) }
+                // 存量归一：残留已下线 provider 条目剔除而非整体清空（损坏输入同样回退空配置），不抛 RPC error
+                return { config: redactWebToolsConfig(normalizeWebToolsConfig(settings.webTools)) }
             } catch (error) {
                 // 读盘 IO 失败（如权限/磁盘）：显式 error envelope，Web 侧区别于"机器离线"提示
                 return { error: `读取 web 工具配置失败：${error instanceof Error ? error.message : String(error)}` }
@@ -108,7 +98,8 @@ export function registerWebToolsConfigHandler(rpcHandlerManager: RpcHandlerManag
             if (!parsed.ok) return { success: false, error: parsed.error }
             try {
                 await updateSettings((s) => {
-                    const currentConfig = WebToolsConfigSchema.parse(s.webTools ?? {})
+                    // 存量归一：残留已下线 provider 条目剔除，保存不被存量砖化阻塞
+                    const currentConfig = normalizeWebToolsConfig(s.webTools)
                     const merged = mergeProviderCredentials(currentConfig, parsed.config)
                     const error = validateSelection(merged)
                     if (error) throw new Error(error) // updater 抛出则不落盘
