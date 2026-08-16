@@ -35,6 +35,8 @@ export function useWebToolsStatus(): WebToolsStatus {
             const online = machinesRes.data.machines.find((m) => m.active)
             if (!online) return 'offline' as const
             const configRes = await api.machines.webTools.get(online.id)
+            // 200 + { error } 变体 = runner RPC 内部错误（机器在线但配置读取失败）。
+            // 入口徽标只关心「可用/不可用」，与机器离线同归 offline 展示，文案层面不做区分
             if (!('config' in configRes.data)) return 'offline' as const
             return configRes.data.config.providers?.some((p) => p.enabled)
                 ? ('enabled' as const)

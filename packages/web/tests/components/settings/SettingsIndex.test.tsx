@@ -17,12 +17,13 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 
+/** 媒体查询开关：true=PC（≥992px），false=mobile（入口列表形态） */
+const mediaMatches = { value: false }
 vi.mock('@/core/data/hooks/queries/useWebToolsStatus', () => ({
     useWebToolsStatus: vi.fn(),
 }))
 vi.mock('@/core/data/hooks/useMediaQuery', () => ({
-    // 入口列表仅在 mobile（<992px）形态渲染
-    useMediaQuery: () => false,
+    useMediaQuery: () => mediaMatches.value,
 }))
 vi.mock('react-i18next', () => ({
     useTranslation: () => ({ t: (k: string) => k }),
@@ -44,6 +45,7 @@ afterEach(() => cleanup())
 
 describe('SettingsIndex（mobile 入口列表）', () => {
     it('渲染通知与 Web 工具入口，不含未解锁的调试入口', () => {
+        mediaMatches.value = false
         vi.mocked(useWebToolsStatus).mockReturnValue('enabled')
         render(<SettingsIndex />)
         expect(screen.getByText('settings.sections.notifications.title')).toBeTruthy()
@@ -51,13 +53,32 @@ describe('SettingsIndex（mobile 入口列表）', () => {
         expect(screen.queryByText('settings.sections.debug.title')).toBeNull()
     })
     it('Web 工具入口显示已启用徽标', () => {
+        mediaMatches.value = false
         vi.mocked(useWebToolsStatus).mockReturnValue('enabled')
         render(<SettingsIndex />)
         expect(screen.getByText('settings.sections.webTools.statusEnabled')).toBeTruthy()
     })
     it('offline 时显示机器离线徽标', () => {
+        mediaMatches.value = false
         vi.mocked(useWebToolsStatus).mockReturnValue('offline')
         render(<SettingsIndex />)
         expect(screen.getByText('settings.sections.webTools.statusOffline')).toBeTruthy()
+    })
+    it('loading 时副标题回退 desc 占位（避免卡片高度跳动）', () => {
+        mediaMatches.value = false
+        vi.mocked(useWebToolsStatus).mockReturnValue('loading')
+        render(<SettingsIndex />)
+        expect(screen.getByText('settings.sections.webTools.desc')).toBeTruthy()
+        expect(screen.queryByText('settings.sections.webTools.statusEnabled')).toBeNull()
+    })
+})
+
+describe('SettingsIndex（PC 分流）', () => {
+    it('宽屏（≥992px）直接渲染默认分区（通知），不渲染入口列表', () => {
+        mediaMatches.value = true
+        vi.mocked(useWebToolsStatus).mockReturnValue('enabled')
+        render(<SettingsIndex />)
+        expect(screen.getByTestId('notifications-section')).toBeTruthy()
+        expect(screen.queryByText('settings.sections.webTools.title')).toBeNull()
     })
 })

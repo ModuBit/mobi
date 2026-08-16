@@ -23,10 +23,17 @@ import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
 import { SETTINGS_WIDE_QUERY } from '@/pages/SettingsPage'
 import { NotificationsSection } from './NotificationsSection'
 import { SETTINGS_SECTIONS } from './registry'
-import { useWebToolsStatus } from '@/core/data/hooks/queries/useWebToolsStatus'
+import { useWebToolsStatus, type WebToolsStatus } from '@/core/data/hooks/queries/useWebToolsStatus'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
+
+/** 徽标 i18n key 显式映射（避免与状态值的首字母大写拼接隐式耦合） */
+const STATUS_BADGE_KEYS: Record<Exclude<WebToolsStatus, 'loading'>, string> = {
+    enabled: 'settings.sections.webTools.statusEnabled',
+    unconfigured: 'settings.sections.webTools.statusUnconfigured',
+    offline: 'settings.sections.webTools.statusOffline',
+}
 
 const List = styled.div`
     display: flex;
@@ -81,13 +88,14 @@ const EntrySub = styled.span<{ $token: Token }>`
     color: ${p => p.$token.colorTextTertiary};
 `
 
-/** Web 工具状态徽标：enabled 绿点 + 文案；其余灰文案；loading 不渲染 */
+/** Web 工具状态徽标：enabled 绿点 + 文案；其余灰文案；loading 回退副标题占位（避免卡片高度跳动） */
 function StatusBadge() {
     const { token } = useToken()
     const { t } = useTranslation()
     const status = useWebToolsStatus()
-    if (status === 'loading') return null
-    const key = `settings.sections.webTools.status${status[0]!.toUpperCase()}${status.slice(1)}`
+    // 加载中先渲染副标题文案占位，状态到达后原位替换为徽标
+    if (status === 'loading') return <>{t('settings.sections.webTools.desc')}</>
+    const key = STATUS_BADGE_KEYS[status]
     const on = status === 'enabled'
     return (
         <span
