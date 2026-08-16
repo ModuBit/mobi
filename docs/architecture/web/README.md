@@ -131,7 +131,7 @@ packages/web/src/
 │   │   │   ├── messageCache.ts 消息缓存修补（patch/去重/排序）
 │   │   │   └── sessionCache.ts 会话缓存修补
 │   │   └── hooks/              React Hooks
-│   │       ├── queries/        TanStack Query 查询（18 个）
+│   │       ├── queries/        TanStack Query 查询（20 个）
 │   │       │   ├── useSessions.ts        会话列表
 │   │       │   ├── useSession.ts         单个会话
 │   │       │   ├── useMessages.ts        消息（无限滚动分页）
@@ -145,7 +145,8 @@ packages/web/src/
 │   │       │   ├── useGitDiff.ts         Git Diff
 │   │       │   ├── useCommands.ts        斜杠命令列表
 │   │       │   ├── useSidechainMessages.ts Agent 子对话消息
-│   │       │   └── useSDKMetadata.ts     SDK 元数据
+│   │       │   ├── useSDKMetadata.ts     SDK 元数据
+│   │       │   └── useWebToolsStatus.ts Web 工具配置状态（三态推导：搜索/抓取是否就绪）
 │   │       ├── mutations/      TanStack Query 变更（7 个）
 │   │       │   ├── useSendMessage.ts     发送消息（运行中发送→排队）
 │   │       │   ├── useCancelQueuedMessage.ts 取消排队消息（乐观删除 + 两阶段）
@@ -338,14 +339,18 @@ packages/web/src/
 │   │   └── cachedTerminal.ts   终端实例工厂（xterm + socket 常驻缓存）
 │   ├── settings/               设置组件
 │   │   ├── NotificationSettings.tsx 通知设置区块（权限开关、订阅状态）
-│   │   ├── WebToolsSettings.tsx Web 工具配置卡片（provider 启停/凭据，经 hub RPC 读写 runner settings）
 │   │   ├── blocks/             设置子组件（GuideSection 权限引导 / PwaCard PWA 卡 / DebugSection 调试）
-│   │   └── sections/           设置分区（子路由页面与分区注册表，路由布局见 pages/SettingsPage.tsx）
-│   │       ├── registry.ts     分区定义单一真相（入口列表与分区导航共用）
-│   │       ├── SettingsIndex.tsx 入口列表页（mobile 首屏，含状态徽标）
-│   │       ├── NotificationsSection.tsx 通知分区（包 NotificationSettings）
-│   │       ├── WebToolsSectionPlaceholder.tsx Web 工具分区占位（沿用旧交互组件）
-│   │       └── DebugSectionRoute.tsx 调试分区路由（未解锁渲染空分区）
+│   │   ├── sections/           设置分区（子路由页面与分区注册表，路由布局见 pages/SettingsPage.tsx）
+│   │   │   ├── registry.ts     分区定义单一真相（入口列表与分区导航共用）
+│   │   │   ├── SettingsIndex.tsx 入口列表页（mobile 首屏，含 Web 工具状态徽标）
+│   │   │   ├── NotificationsSection.tsx 通知分区（包 NotificationSettings）
+│   │   │   ├── WebToolsSection.tsx Web 工具分区（用途路由卡 + provider 卡，子组件见 webtools/）
+│   │   │   └── DebugSectionRoute.tsx 调试分区路由（未解锁渲染空分区）
+│   │   └── webtools/           Web 工具子页组件
+│   │       ├── useWebToolsConfig.ts 配置读写 Hook（经 hub RPC 读写 runner settings，凭据在场性提交）
+│   │       ├── RouteCard.tsx   用途路由卡（搜索/抓取 provider 选择，即时保存）
+│   │       ├── ProviderCard.tsx provider 卡（开关外置 + 内联展开凭据编辑）
+│   │       └── CredentialEditor.tsx 凭据编辑器（只读预览态/替换编辑态 + 验证连接）
 │   └── ui/                     共享 UI 原语
 │       ├── Markdown.tsx        Markdown 渲染器
 │       ├── AutoDetectCodeBlock.tsx 代码块语言检测
@@ -370,7 +375,7 @@ packages/web/src/
 │   ├── SessionsLayout.tsx
 │   ├── SessionDetailPage.tsx
 │   ├── NewSessionPage.tsx
-│   └── SettingsPage.tsx
+│   └── SettingsPage.tsx       SettingsLayout 设置页响应式壳（导出 SettingsLayout）
 │
 └── styles/                     全局样式
     ├── antd.css                Ant Design 覆盖
@@ -397,10 +402,15 @@ graph TD
     Main --> Index["/ → redirect /sessions"]
     Main --> SessionsLayout["/sessions<br/>SessionsLayout（侧边栏 + 内容）"]
     Main --> NewSession["/sessions/new<br/>NewSessionPage"]
-    Main --> Settings["/settings<br/>SettingsPage"]
+    Main --> Settings["/settings<br/>SettingsLayout（PC 左侧分区导航 / mobile 子页返回）"]
 
     SessionsLayout --> SessionList["/sessions/<br/>SessionsPage（会话列表）"]
     SessionsLayout --> SessionDetail["/sessions/$sessionId<br/>SessionDetailPage"]
+
+    Settings --> SettingsIndex["/settings/<br/>SettingsIndex（入口列表，mobile 首屏）"]
+    Settings --> Notifications["/settings/notifications<br/>NotificationsSection"]
+    Settings --> WebTools["/settings/web-tools<br/>WebToolsSection"]
+    Settings --> Debug["/settings/debug<br/>DebugSectionRoute"]
 ```
 
 | 路径 | 页面 | 说明 |
@@ -409,7 +419,11 @@ graph TD
 | `/sessions` | SessionsPage | 会话列表，左侧项目分组 + 「最近」侧边栏，右侧列表 |
 | `/sessions/$sessionId` | SessionDetailPage | 会话详情，支持聊天/文件/终端三个视图 |
 | `/sessions/new` | NewSessionPage | 新建会话向导 |
-| `/settings` | SettingsPage | 设置页面 |
+| `/settings` | SettingsLayout（SettingsPage.tsx） | 设置 layout 路由：PC ≥992px 左侧 200px 分区导航，mobile 入口列表 + 子页返回 |
+| `/settings/` | SettingsIndex | 设置入口列表（mobile 首屏，含状态徽标） |
+| `/settings/notifications` | NotificationsSection | 通知分区（包 NotificationSettings） |
+| `/settings/web-tools` | WebToolsSection | Web 工具分区（路由卡 + provider 卡 + 凭据编辑器） |
+| `/settings/debug` | DebugSectionRoute | 调试分区（未解锁渲染空分区） |
 
 ## 数据流
 
