@@ -53,7 +53,13 @@ export function useWebToolsConfig(): WebToolsState {
                 // 两跳串行：机器列表（取第一台在线）→ 该机器的脱敏配置
                 const machinesRes = await api.machines.list()
                 const online = machinesRes.data.machines.find((m) => m.active)
-                if (!online) throw new Error('no online machine')
+                if (!online) {
+                    // 无在线机器：正常业务态（目标机器未连接），按离线呈现但不 warn
+                    if (cancelled) return
+                    setOffline(true)
+                    setLoaded(true)
+                    return
+                }
                 const configRes = await api.machines.webTools.get(online.id)
                 if (cancelled) return
                 // runner 读盘失败返回 error envelope（区别于机器离线），单独提示不吞进 offline 分支
@@ -66,7 +72,7 @@ export function useWebToolsConfig(): WebToolsState {
                 setConfig(configRes.data.config)
                 setLoaded(true)
             } catch (error) {
-                // 502（runner 离线）/ 网络异常 / 无在线机器，统一按"机器离线"提示；
+                // 502（runner 离线）/ 网络异常，统一按"机器离线"提示；
                 // warn 保留现场（先观测原则），编程错误不被静默吞掉
                 console.warn('[useWebToolsConfig] 加载失败', error)
                 if (!cancelled) {

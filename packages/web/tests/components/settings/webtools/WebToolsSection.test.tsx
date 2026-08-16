@@ -37,6 +37,7 @@ const i18nMap = vi.hoisted(() => ({
     'settings.webTools.route.search': '搜索',
     'settings.webTools.route.fetch': '抓取',
     'settings.webTools.routePlaceholder': '选择 provider',
+    'settings.webTools.routeEmptyHint': '先在下方启用一个 provider 并配置凭据，再回到这里选择路由',
     'settings.webTools.routeHint': '配置保存于目标机器 · 新会话即时生效',
     'settings.webTools.providersTitle': 'PROVIDERS',
     'settings.webTools.providers.tavily': 'Tavily',
@@ -74,6 +75,19 @@ vi.mock('@/components/settings/webtools/RouteCard', async (importOriginal) => {
         RouteCard: (props: import('@/components/settings/webtools/RouteCard').RouteCardProps) => {
             routeState.onChange = props.onChange
             return <actual.RouteCard {...props} />
+        },
+    }
+})
+
+// CredentialEditor（S9 占位）真实渲染（仍为 null），另捕获 onSave 供凭据保存用例稳定触发——
+// 编辑器内容 S9 才实装，UI 路径尚不可达
+const editorState = vi.hoisted(() => ({ onSave: null as null | ((credentials: Record<string, string | null>) => Promise<boolean>) }))
+vi.mock('@/components/settings/webtools/CredentialEditor', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/components/settings/webtools/CredentialEditor')>()
+    return {
+        CredentialEditor: (props: import('@/components/settings/webtools/CredentialEditor').CredentialEditorProps) => {
+            editorState.onSave = props.onSave
+            return <actual.CredentialEditor {...props} />
         },
     }
 })
@@ -116,6 +130,7 @@ describe('WebToolsSection', () => {
         stableApi.machines.webTools.set.mockReset()
         stableApi.machines.webTools.verify.mockReset()
         routeState.onChange = null
+        editorState.onSave = null
     })
     afterEach(() => cleanup())
 
@@ -215,5 +230,66 @@ describe('WebToolsSection', () => {
         expect(config.fetchProviderId).toBe('tavily')
         // 成功后 reload：get 重读
         await waitFor(() => expect(stableApi.machines.webTools.get.mock.calls.length).toBeGreaterThanOrEqual(2))
+    })
+
+    it('凭据保存走 saveBase：set 实参回填 search/fetch 路由字段（防整体替换清空路由）', async () => {
+        mockLoadConfig({ enabled: true, searchProviderId: 'tavily', fetchProviderId: 'tavily' })
+        stableApi.machines.webTools.set.mockResolvedValue({ data: { success: true } })
+        renderSection()
+
+        // 展开编辑器（占位渲染 null，onSave 已被捕获）
+        const head = await waitFor(() => screen.getByRole('button', { name: 'Tavily' }))
+        fireEvent.click(head)
+        expect(editorState.onSave).toBeTruthy()
+        await editorState.onSave!({ apiKey: 'tvly-new-key' })
+
+        await waitFor(() => expect(stableApi.machines.webTools.set).toHaveBeenCalledTimes(1))
+        const [, config] = stableApi.machines.webTools.set.mock.calls[0] as [
+            string,
+            { searchProviderId?: string; fetchProviderId?: string; providers: Array<{ id: string; enabled: boolean; timeoutMs: number; credentials: Record<string, string | null> }> },
+        ]
+        // providers 整体替换语义：路由字段必须回填现值，否则保存凭据会静默清空路由
+        expect(config.searchProviderId).toBe('tavily')
+        expect(config.fetchProviderId).toBe('tavily')
+        // 目标 provider 带编辑中的凭据键 + 现值 enabled/timeoutMs
+        expect(config.providers).toEqual([
+            { id: 'tavily', enabled: true, timeoutMs: 8000, credentials: { apiKey: 'tvly-new-key' } },
+        ])
+    })
+
+    it('保存失败（success:false）：恰好一条 error toast，开关状态不变', async () => {
+        // 已启用且未被路由引用 → 允许关闭；提交返回业务失败
+        mockLoadConfig({ enabled: true })
+        stableApi.machines.webTools.set.mockResolvedValue({ data: { success: false, error: 'provider "tavily" 缺少凭据：apiKey' } })
+        renderSection()
+
+        await waitFor(() => expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toBeTruthy())
+        fireEvent.click(screen.getByRole('switch', { name: 'tavily-enabled' }))
+
+        // 失败提示恰好一条（Section 层收口，卡层不重复弹）；开关仍选中
+        await waitFor(() => expect(screen.getByText('保存失败')).toBeTruthy())
+        expect(screen.queryAllByText('保存失败')).toHaveLength(1)
+        expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveClass('ant-switch-checked')
+    })
+
+    it('全部 provider 未启用：路由卡转引导态（无下拉、显示引导文案）', async () => {
+        mockLoadConfig({ enabled: false })
+        renderSection()
+
+        await waitFor(() =>
+            expect(screen.getByText('先在下方启用一个 provider 并配置凭据，再回到这里选择路由')).toBeTruthy(),
+        )
+        // 引导态不渲染路由下拉
+        expect(screen.queryByRole('combobox')).toBeNull()
+    })
+
+    it('机器离线（get reject）→ offline Alert 呈现，不渲染配置区', async () => {
+        stableApi.machines.list.mockResolvedValue({ data: { machines: [{ id: 'm1', active: true }] } })
+        stableApi.machines.webTools.get.mockRejectedValue(new Error('offline'))
+        renderSection()
+
+        await waitFor(() => expect(screen.getByText('机器离线，无法加载 Web 工具配置')).toBeTruthy())
+        expect(screen.queryByRole('switch', { name: 'tavily-enabled' })).toBeNull()
+        expect(stableApi.machines.webTools.set).not.toHaveBeenCalled()
     })
 })

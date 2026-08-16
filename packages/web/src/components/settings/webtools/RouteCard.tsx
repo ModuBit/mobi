@@ -129,6 +129,7 @@ export function RouteCard({ config, enabledIds, saving, onChange }: RouteCardPro
                             <Select<WebToolProviderId>
                                 size="small"
                                 style={{ marginLeft: 'auto', minWidth: 140 }}
+                                aria-label={t(labelKey)}
                                 value={key === 'search' ? config.searchProviderId : config.fetchProviderId}
                                 options={options}
                                 disabled={locked}

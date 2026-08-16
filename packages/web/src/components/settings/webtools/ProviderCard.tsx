@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { useState } from 'react'
 import { App, Switch, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -30,8 +29,11 @@ export interface ProviderCardProps {
     provider: ProviderEntry
     /** 该 provider 当前承担的用途（search/fetch 路由指向它）——禁用前拦截提示用 */
     referencedBy: ('search' | 'fetch')[]
+    /** 展开态受控（由上层持有）：reload 重读配置后编辑器不收起 */
+    expanded: boolean
+    onExpandedChange: (expanded: boolean) => void
     saving: boolean
-    /** 启用开关：返回是否成功（失败提示由本卡负责） */
+    /** 启用开关：返回是否成功（失败提示由上层负责） */
     onToggle: (enabled: boolean) => Promise<boolean>
     onSaveCredentials: (credentials: Record<string, string | null>) => Promise<boolean>
     onVerify: (credentials: Record<string, string>) => Promise<VerifyResult>
@@ -121,16 +123,17 @@ const Body = styled.div<{ $token: Token }>`
  * Provider 卡：logo/名称/描述/API Key 状态 + 启用开关外置；点击卡身展开内联凭据编辑器。
  * 禁用预校验：provider 正承担 search/fetch 路由时拒绝关闭（提示先调整路由），不动开关不发 RPC。
  */
-export function ProviderCard({ provider, referencedBy, saving, onToggle, onSaveCredentials, onVerify }: ProviderCardProps) {
+export function ProviderCard({ provider, referencedBy, expanded, onExpandedChange, saving, onToggle, onSaveCredentials, onVerify }: ProviderCardProps) {
     const { token } = useToken()
     const { t } = useTranslation()
     const { message } = App.useApp()
-    const [expanded, setExpanded] = useState(false)
 
+    // 展开区容器 id：卡头 aria-controls 关联（无障碍）
+    const editorId = `webtools-editor-${provider.id}`
     // 凭据状态：任一凭据键已设置即视为"已设置"（当前 provider 均为单键 apiKey）
     const keySet = credentialKeysFor(provider.id).some((key) => provider.credentials[key]?.set)
 
-    /** 开关切换：关闭被路由引用的 provider 先拦截（写侧也会校验，此处避免必然失败的请求） */
+    /** 开关切换：关闭被路由引用的 provider 先拦截（写侧也会校验，此处避免必然失败的请求）；失败提示由上层负责 */
     const handleToggle = async (enabled: boolean) => {
         if (!enabled && referencedBy.length > 0) {
             message.warning(
@@ -140,9 +143,10 @@ export function ProviderCard({ provider, referencedBy, saving, onToggle, onSaveC
             )
             return
         }
-        const ok = await onToggle(enabled)
-        if (!ok) message.error(t('settings.webTools.saveFailed'))
+        await onToggle(enabled)
     }
+
+    const toggleExpanded = () => onExpandedChange(!expanded)
 
     return (
         <Card $token={token} $expanded={expanded}>
@@ -151,12 +155,13 @@ export function ProviderCard({ provider, referencedBy, saving, onToggle, onSaveC
                 role="button"
                 tabIndex={0}
                 aria-expanded={expanded}
+                aria-controls={editorId}
                 aria-label={t(`settings.webTools.providers.${provider.id}`)}
-                onClick={() => setExpanded((prev) => !prev)}
+                onClick={toggleExpanded}
                 onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
-                        setExpanded((prev) => !prev)
+                        toggleExpanded()
                     }
                 }}
             >
@@ -187,7 +192,7 @@ export function ProviderCard({ provider, referencedBy, saving, onToggle, onSaveC
             </Head>
 
             {expanded && (
-                <Body $token={token}>
+                <Body $token={token} id={editorId}>
                     <CredentialEditor provider={provider} onSave={onSaveCredentials} onVerify={onVerify} />
                 </Body>
             )}

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { useState } from 'react'
 import { Alert, App, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
@@ -81,6 +82,8 @@ export function WebToolsSection() {
     const api = useMobiApi()
     const { message } = App.useApp()
     const { machineId, config, offline, loadError, loaded, reload, saving, save } = useWebToolsConfig()
+    // 展开态提升到本层持有：reload 重读脱敏配置后编辑器不收起，A 卡展开时操作 B 卡互不影响
+    const [expandedId, setExpandedId] = useState<WebToolProviderId | null>(null)
 
     /** 提交方向 provider 条目（在场性凭据） */
     type SubmissionProvider = WebToolsConfigSubmission['providers'] extends (infer P)[] | undefined ? P : never
@@ -171,6 +174,8 @@ export function WebToolsSection() {
                                             ),
                                         }}
                                         referencedBy={[]}
+                                        expanded={expandedId === id}
+                                        onExpandedChange={(expanded) => setExpandedId(expanded ? id : null)}
                                         saving={saving}
                                         onToggle={(enabled) =>
                                             saveBase({
@@ -193,6 +198,8 @@ export function WebToolsSection() {
                                     key={id}
                                     provider={entry}
                                     referencedBy={referencedBy(id)}
+                                    expanded={expandedId === id}
+                                    onExpandedChange={(expanded) => setExpandedId(expanded ? id : null)}
                                     saving={saving}
                                     onToggle={(enabled) =>
                                         saveBase({
@@ -200,13 +207,15 @@ export function WebToolsSection() {
                                         })
                                     }
                                     onSaveCredentials={async (credentials) => {
-                                        // 在场性提交：只带该 provider 被编辑的凭据键，其余字段回传现值
-                                        const ok = await save({
-                                            providers: [{ id, enabled: entry.enabled, timeoutMs: entry.timeoutMs, credentials }],
+                                        // 在场性提交：目标 provider 只带被编辑的凭据键，其余 provider 全量在场（credentials 键不在场=保持旧值）；
+                                        // 必须走 saveBase 回填路由字段——providers 整体替换语义下缺路由字段会静默清空路由
+                                        return saveBase({
+                                            providers: baseProviders().map((p) =>
+                                                p.id === id
+                                                    ? { id, enabled: entry.enabled, timeoutMs: entry.timeoutMs, credentials }
+                                                    : p,
+                                            ),
                                         })
-                                        if (ok) reload()
-                                        // 成功/失败 toast 由 CredentialEditor（S9）负责
-                                        return ok
                                     }}
                                     onVerify={(credentials) => verifyCredentials(id, credentials)}
                                 />
