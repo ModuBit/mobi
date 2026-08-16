@@ -50,6 +50,18 @@ export { BUBBLE_ROLES } from './bubbleRoles'
 
 const { useToken } = antTheme
 
+/**
+ * 取最后一条消息的活动时间戳（供 StatusBar 静默告警，见 AgentLoadingBubble / docs/pending.md #34）：
+ * 优先 positionAt（落库排序锚点）；快照消息（未落库）没有 positionAt 但有 createdAt——
+ * 快照/token 到达即活动，须一并计入，否则单条消息流式超阈值会被误报「长时间无响应」。
+ * 排队消息 positionAt = 提交时刻，同样计入——用户刚发消息也是活动，不应误报等待。
+ * 注：单个长工具执行期间无任何新消息到达时仍是盲区（客户端无从感知工具在跑）。
+ */
+export function lastMessageActivityAt(messages: Array<{ positionAt?: number; createdAt: number }>): number | undefined {
+    const last = messages[messages.length - 1]
+    return last?.positionAt ?? last?.createdAt
+}
+
 /** 用户消息气泡 hover 时显示 header 中的复制按钮 */
 const bubbleCopyStyles = css`
     .user-msg-bubble .msg-copy-btn {
@@ -135,16 +147,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     const metadata = (session?.metadata ?? null) as SessionMetadataSummary | null
 
-    // 最近一次消息活动时间（倒序找最后一条带 positionAt 的消息）：
-    // 供 StatusBar 的静默告警（agent 挂死可观测，见 AgentLoadingBubble / docs/pending.md #34）。
-    // 含排队消息——用户刚发消息也是活动，不应误报等待
-    const lastActivityAt = useMemo(() => {
-        for (let i = messages.length - 1; i >= 0; i -= 1) {
-            const at = messages[i].positionAt
-            if (at !== undefined) return at
-        }
-        return undefined
-    }, [messages])
+    // 最近一次消息活动时间：取最后一条消息（见 lastMessageActivityAt 的取舍说明）
+    const lastActivityAt = useMemo(() => lastMessageActivityAt(messages), [messages])
 
     const { blocks: rawBlocks, byId } = useMemo(() => {
         // 排队消息仅在悬浮条展示，不进入聊天线程

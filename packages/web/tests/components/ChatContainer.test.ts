@@ -207,3 +207,31 @@ describe('getApiErrorCode', () => {
         expect(getApiErrorCode({ error: 'string' })).toBeNull()
     })
 })
+
+// ========== lastMessageActivityAt（#34 静默告警的活动时间源）==========
+
+import { lastMessageActivityAt } from '@/components/chat/ChatContainer'
+
+describe('lastMessageActivityAt', () => {
+    it('落库消息（有 positionAt）取最后一条的 positionAt', () => {
+        expect(lastMessageActivityAt([
+            { positionAt: 1_000, createdAt: 1_000 },
+            { positionAt: 2_000, createdAt: 1_900 },
+        ])).toBe(2_000)
+    })
+
+    it('快照消息（无 positionAt，未落库）回退 createdAt——流式输出期间活动被计入，不误报等待', () => {
+        expect(lastMessageActivityAt([
+            { positionAt: 1_000, createdAt: 1_000 },
+            { createdAt: 3_000, snapshot: true },
+        ])).toBe(3_000)
+    })
+
+    it('全部为快照消息时取最后一条 createdAt', () => {
+        expect(lastMessageActivityAt([{ createdAt: 500 }])).toBe(500)
+    })
+
+    it('空列表返回 undefined（无活动信息，不触发告警）', () => {
+        expect(lastMessageActivityAt([])).toBeUndefined()
+    })
+})
