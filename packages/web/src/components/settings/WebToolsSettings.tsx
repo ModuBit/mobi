@@ -167,6 +167,8 @@ export function WebToolsSettings() {
     /** 脱敏回显配置（凭据只有 set 标记），加载失败置 null + offline = true */
     const [redacted, setRedacted] = useState<RedactedWebToolsConfig | null>(null)
     const [offline, setOffline] = useState(false)
+    /** runner 读盘失败（error envelope），与"机器离线"区分提示 */
+    const [loadError, setLoadError] = useState<string | null>(null)
     const [loaded, setLoaded] = useState(false)
     const [enabledMap, setEnabledMap] = useState<Record<WebToolProviderId, boolean>>(initialEnabled)
     const [credDraft, setCredDraft] = useState<CredentialDraft>({})
@@ -184,6 +186,12 @@ export function WebToolsSettings() {
                 if (!online) throw new Error('no online machine')
                 const configRes = await api.machines.webTools.get(online.id)
                 if (cancelled) return
+                // runner 读盘失败返回 error envelope（区别于机器离线），单独提示不吞进 offline 分支
+                if (!('config' in configRes.data)) {
+                    setLoadError(configRes.data.error ?? '')
+                    setLoaded(true)
+                    return
+                }
                 const config = configRes.data.config
                 setMachineId(online.id)
                 setRedacted(config)
@@ -265,7 +273,7 @@ export function WebToolsSettings() {
         label: t(`settings.webTools.providers.${id}`),
     }))
     // 未配置任何 provider：search/fetch 选择无意义，提示引导先启用并填写凭据
-    const noneConfigured = loaded && !offline && !(redacted?.providers?.some((p) => p.enabled) || Object.values(enabledMap).some(Boolean))
+    const noneConfigured = loaded && !offline && loadError === null && !(redacted?.providers?.some((p) => p.enabled) || Object.values(enabledMap).some(Boolean))
 
     return (
         <Wrap $token={token}>
@@ -283,11 +291,14 @@ export function WebToolsSettings() {
                 {offline && (
                     <Alert type="warning" showIcon title={t('settings.webTools.offline')} />
                 )}
+                {loadError !== null && (
+                    <Alert type="error" showIcon title={loadError || t('settings.webTools.loadFailed')} />
+                )}
                 {noneConfigured && (
                     <Alert type="info" showIcon title={t('settings.webTools.notConfigured')} />
                 )}
 
-                {loaded && !offline && WEB_TOOL_PROVIDER_IDS.map((id) => {
+                {loaded && !offline && loadError === null && WEB_TOOL_PROVIDER_IDS.map((id) => {
                     const providerState = redacted?.providers?.find((p) => p.id === id)
                     return (
                         <ProviderBlock key={id} $token={token}>
@@ -334,7 +345,7 @@ export function WebToolsSettings() {
                     )
                 })}
 
-                {loaded && !offline && (
+                {loaded && !offline && loadError === null && (
                     <>
                         <SelectRow $token={token}>
                             <SelectLabel $token={token}>{t('settings.webTools.searchProvider')}</SelectLabel>

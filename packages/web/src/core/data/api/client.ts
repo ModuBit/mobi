@@ -343,7 +343,7 @@ export function createMobiApi() {
             // Web 工具配置（hub 纯透传 runner RPC；凭据脱敏回显，机器离线 502 reject）
             webTools: {
                 get: (machineId: string) =>
-                    client.get<{ config: RedactedWebToolsConfig }>(`/api/machines/${machineId}/web-tools`),
+                    client.get<{ config: RedactedWebToolsConfig } | { error: string }>(`/api/machines/${machineId}/web-tools`),
                 set: (machineId: string, config: WebToolsConfig) =>
                     client.post<{ success: true } | { success: false; error: string }>(
                         `/api/machines/${machineId}/web-tools`,

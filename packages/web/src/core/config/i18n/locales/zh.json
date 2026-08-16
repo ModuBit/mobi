@@ -392,6 +392,7 @@
             "saved": "已保存",
             "saveFailed": "保存失败",
             "offline": "机器离线，无法读取配置",
+            "loadFailed": "读取 Web 工具配置失败",
             "notConfigured": "未配置——模型调用 web 工具将返回未配置提示"
         }
     },

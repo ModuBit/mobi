@@ -116,6 +116,17 @@ describe('WebToolsSettings', () => {
         expect(stableApi.machines.webTools.set).not.toHaveBeenCalled()
     })
 
+    it('runner 读盘失败（error envelope）→ 显示错误而非离线提示', async () => {
+        stableApi.machines.list.mockResolvedValue({ data: { machines: [{ id: 'm1', active: true }] } })
+        stableApi.machines.webTools.get.mockResolvedValue({ data: { error: '读取 web 工具配置失败：EACCES' } })
+        renderCard()
+
+        await waitFor(() => expect(screen.getByText(/EACCES/)).toBeTruthy())
+        // 与离线分支区分：不显示离线文案；不渲染配置块
+        expect(screen.queryByText(/机器离线/)).toBeNull()
+        expect(document.querySelector('.ant-switch')).toBeNull()
+    })
+
     it('保存提交正确 payload：machineId 正确，凭据本次填写值原样提交（bocha 留空 = 空串）', async () => {
         mockLoadConfig()
         stableApi.machines.webTools.set.mockResolvedValue({ data: { success: true } })

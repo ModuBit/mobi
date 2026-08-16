@@ -392,6 +392,7 @@
             "saved": "Saved",
             "saveFailed": "Failed to save",
             "offline": "Machine offline, unable to load config",
+            "loadFailed": "Failed to load web tools config",
             "notConfigured": "Not configured — model web tool calls will return a not-configured notice"
         }
     },

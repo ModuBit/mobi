@@ -83,13 +83,18 @@ export function mergeProviderCredentials(current: WebToolsConfig, incoming: WebT
 
 /** 注册到 runner 的 machine 级 RPC（apiMachine 构造器调用） */
 export function registerWebToolsConfigHandler(rpcHandlerManager: RpcHandlerManager): void {
-    rpcHandlerManager.registerHandler<Record<string, never>, { config: RedactedWebToolsConfig }>(
+    rpcHandlerManager.registerHandler<Record<string, never>, { config: RedactedWebToolsConfig } | { error: string }>(
         'get-web-tools-config',
         async () => {
-            const settings = await readSettings()
-            // 存量配置损坏时回退空配置（与 readSettings 的容错姿态一致），不抛 RPC error
-            const parsed = WebToolsConfigSchema.safeParse(settings.webTools ?? {})
-            return { config: redactWebToolsConfig(parsed.success ? parsed.data : {}) }
+            try {
+                const settings = await readSettings()
+                // 存量配置损坏时回退空配置（与 readSettings 的容错姿态一致），不抛 RPC error
+                const parsed = WebToolsConfigSchema.safeParse(settings.webTools ?? {})
+                return { config: redactWebToolsConfig(parsed.success ? parsed.data : {}) }
+            } catch (error) {
+                // 读盘 IO 失败（如权限/磁盘）：显式 error envelope，Web 侧区别于"机器离线"提示
+                return { error: `读取 web 工具配置失败：${error instanceof Error ? error.message : String(error)}` }
+            }
         },
     )
 
