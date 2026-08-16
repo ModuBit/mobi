@@ -31,6 +31,7 @@ import { registerCommonHandlers } from '../modules/common/registerCommonHandlers
 import type { SpawnSessionOptions, SpawnSessionResult } from '../modules/common/rpcTypes'
 import { applyVersionedAck } from './versionedUpdate'
 import { registerMachineDirectoryHandler } from '../modules/common/handlers/machineDirectory'
+import { registerWebToolsConfigHandler } from '../modules/common/handlers/webToolsConfig'
 
 interface ServerToRunnerEvents {
     update: (data: Update) => void
@@ -116,6 +117,8 @@ export class ApiMachineClient {
         })
 
         registerMachineDirectoryHandler(this.rpcHandlerManager)
+
+        registerWebToolsConfigHandler(this.rpcHandlerManager)
     }
 
     setRPCHandlers({ spawnSession, stopSession, requestShutdown }: MachineRpcHandlers): void {
