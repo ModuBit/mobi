@@ -69,18 +69,30 @@ export function validateSelection(config: WebToolsConfig): string | null {
 }
 
 /**
+ * 声明键判定：凭据只认 credentialKeysFor 登记过的键，未声明的脏键
+ * （提交方拼错字段名/恶意注入）不落盘、不参与合成。verify 草稿合成用
+ * （merge 侧按声明键遍历天然免疫脏键）。
+ */
+const declaredCredentialKey = (id: WebToolProviderId, key: string): boolean =>
+    credentialKeysFor(id).includes(key)
+
+/**
  * 凭据 merge（在场性三分支）：键不在场或空串 → 保持旧值（不在场=新 UI 未修改，
- * 空串=旧客户端全量提交兼容）；null → 清除；非空 → 覆盖。merge 产物是严格落盘类型（纯 string）。
+ * 空串=旧客户端全量提交兼容）；null → 清除；非空 → 覆盖。仅对声明键生效，
+ * 脏键（含旧值中的）不落盘。merge 产物是严格落盘类型（纯 string）。
  */
 export function mergeProviderCredentials(current: WebToolsConfig, incoming: WebToolsConfigSubmission): WebToolsConfig {
     const currentProviders = current.providers ?? []
     const mergedProviders = incoming.providers?.map((p) => {
         const old = currentProviders.find((o) => o.id === p.id)
-        const credentials: Record<string, string> = { ...old?.credentials }
-        for (const [key, value] of Object.entries(p.credentials)) {
-            if (value === null) delete credentials[key]
-            else if (value === '') continue
-            else credentials[key] = value
+        const oldValue = (key: string): string | undefined => old?.credentials[key]
+        const credentials: Record<string, string> = {}
+        for (const key of credentialKeysFor(p.id)) {
+            const value = p.credentials[key]
+            if (value === null) continue // null → 清除（不写入）
+            // 键不在场（undefined）→ 保持旧值；空串 → 保持旧值（旧客户端兼容）
+            const kept = value === undefined || value === '' ? oldValue(key) : value
+            if (kept) credentials[key] = kept
         }
         return { ...p, credentials } as WebToolProviderSettings
     })
@@ -131,34 +143,34 @@ export function registerWebToolsConfigHandler(rpcHandlerManager: RpcHandlerManag
     // 一次真实 search 的往返延迟即验证结果；不落盘、不泄露凭据值
     rpcHandlerManager.registerHandler<
         { providerId: WebToolProviderId; credentials?: Record<string, string> },
-        { ok: true; latencyMs: number } | { ok: false; error: string }
+        { success: true; latencyMs: number } | { success: false; error: string }
     >('verify-web-tools-provider', async (params) => {
-        if (!params?.providerId) return { ok: false, error: '缺少 providerId' }
+        if (!params?.providerId) return { success: false, error: '缺少 providerId' }
         // RPC 边界无 schema 校验（params 类型仅为声明），未知 id 提前拒绝而非让 credentialKeysFor 抛 TypeError
         if (!WEB_TOOL_PROVIDER_IDS.includes(params.providerId)) {
-            return { ok: false, error: `未知 provider：${params.providerId}` }
+            return { success: false, error: `未知 provider：${params.providerId}` }
         }
         try {
             const settings = await readSettings()
             const config = normalizeWebToolsConfig(settings.webTools)
             const entry = config.providers?.find((p) => p.id === params.providerId)
-            // 凭据合成：草稿非空字符串优先，其余用已存值
+            // 凭据合成：草稿非空字符串且为声明键时优先，其余用已存值（脏键不参与合成）
             const merged: Record<string, string> = { ...entry?.credentials }
             for (const [key, value] of Object.entries(params.credentials ?? {})) {
-                if (typeof value === 'string' && value) merged[key] = value
+                if (typeof value === 'string' && value && declaredCredentialKey(params.providerId, key)) merged[key] = value
             }
             const required = credentialKeysFor(params.providerId)
             const missing = required.filter((key) => !merged[key])
-            if (missing.length > 0) return { ok: false, error: `缺少凭据：${missing.join(', ')}` }
+            if (missing.length > 0) return { success: false, error: `缺少凭据：${missing.join(', ')}` }
             const provider = createProviderFor(params.providerId, {
                 apiKey: merged[required[0]!]!,
                 timeoutMs: entry?.timeoutMs ?? 15_000,
             })
             const started = Date.now()
             await provider.search({ query: 'connection test' })
-            return { ok: true, latencyMs: Date.now() - started }
+            return { success: true, latencyMs: Date.now() - started }
         } catch (error) {
-            return { ok: false, error: error instanceof Error ? error.message : String(error) }
+            return { success: false, error: error instanceof Error ? error.message : String(error) }
         }
     })
 }

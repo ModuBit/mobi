@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { resolveSearchProvider, resolveFetchProvider, NO_PROVIDER_MESSAGE, domainFilter } from '@/webtools/registry'
+import { resolveSearchProvider, resolveFetchProvider, createProviderFor, NO_PROVIDER_MESSAGE, domainFilter } from '@/webtools/registry'
 
 describe('resolveSearchProvider / resolveFetchProvider', () => {
     it('未配置 → null（走默认空实现）', () => {
@@ -54,6 +54,12 @@ describe('resolveSearchProvider / resolveFetchProvider', () => {
     })
     it('NO_PROVIDER_MESSAGE 包含配置指引', () => {
         expect(NO_PROVIDER_MESSAGE).toContain('设置')
+    })
+    it('createProviderFor：未知 id 抛错', () => {
+        expect(() => createProviderFor('nope', { apiKey: 'k', timeoutMs: 1000 })).toThrow(/未知 web 工具 provider/)
+    })
+    it('createProviderFor：已知 id 构造对应实例', () => {
+        expect(createProviderFor('tavily', { apiKey: 'k', timeoutMs: 1000 }).id).toBe('tavily')
     })
 })
 

@@ -101,6 +101,18 @@ describe('mergeProviderCredentials（在场性三分支）', () => {
         } as WebToolsConfigSubmission)
         expect(validateSelection(merged)).toContain('缺少凭据')
     })
+    it('新增条目（旧配置无 provider 段）直接采用新值（首次保存回归锁）', () => {
+        const merged = mergeProviderCredentials({}, {
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'fresh' }, timeoutMs: 15_000 }],
+        } as WebToolsConfigSubmission)
+        expect(merged.providers?.[0]?.credentials.apiKey).toBe('fresh')
+    })
+    it('脏键（未声明凭据键）不落盘', () => {
+        const merged = mergeProviderCredentials({}, {
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'x', junk: 'y' }, timeoutMs: 15_000 }],
+        } as WebToolsConfigSubmission)
+        expect(merged.providers?.[0]?.credentials).toEqual({ apiKey: 'x' })
+    })
 })
 
 describe('set handler 语义（parse → merge → validateSelection，merge 后校验）', () => {
@@ -279,7 +291,15 @@ describe('verify-web-tools-provider handler', () => {
         vi.mocked(createProviderFor).mockReturnValue(provider as never)
         const manager = makeManager()
         const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily', credentials: { apiKey: 'draft' } })
-        expect(res).toEqual({ ok: true, latencyMs: expect.any(Number) })
+        expect(res).toEqual({ success: true, latencyMs: expect.any(Number) })
+        expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'draft', timeoutMs: 15_000 })
+    })
+
+    it('草稿脏键（未声明凭据键）不参与合成', async () => {
+        persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 15_000 }] } }
+        vi.mocked(createProviderFor).mockReturnValue({ search: vi.fn().mockResolvedValue([]) } as never)
+        const manager = makeManager()
+        await call(manager, 'verify-web-tools-provider', { providerId: 'tavily', credentials: { apiKey: 'draft', junk: 'j' } })
         expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'draft', timeoutMs: 15_000 })
     })
 
@@ -291,33 +311,33 @@ describe('verify-web-tools-provider handler', () => {
         expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'stored', timeoutMs: 15_000 })
     })
 
-    it('凭据缺失 → ok:false 带原因', async () => {
+    it('凭据缺失 → success:false 带原因', async () => {
         persisted = {}
         const manager = makeManager()
         const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
-        expect(res).toEqual({ ok: false, error: expect.stringContaining('缺少凭据') })
+        expect(res).toEqual({ success: false, error: expect.stringContaining('缺少凭据') })
     })
 
-    it('provider 抛错 → ok:false 透传错误文案', async () => {
+    it('provider 抛错 → success:false 透传错误文案', async () => {
         persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'bad' }, timeoutMs: 15_000 }] } }
         vi.mocked(createProviderFor).mockReturnValue({
             search: vi.fn().mockRejectedValue(new Error('Invalid API key')),
         } as never)
         const manager = makeManager()
         const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
-        expect(res).toEqual({ ok: false, error: 'Invalid API key' })
+        expect(res).toEqual({ success: false, error: 'Invalid API key' })
     })
 
-    it('缺少 providerId → ok:false', async () => {
+    it('缺少 providerId → success:false', async () => {
         const manager = makeManager()
         const res = await call(manager, 'verify-web-tools-provider', {})
-        expect(res).toEqual({ ok: false, error: expect.stringContaining('providerId') })
+        expect(res).toEqual({ success: false, error: expect.stringContaining('providerId') })
     })
 
-    it('未知 providerId → ok:false（RPC 边界无 schema 校验，handler 自行兜底）', async () => {
+    it('未知 providerId → success:false（RPC 边界无 schema 校验，handler 自行兜底）', async () => {
         const manager = makeManager()
         const res = await call(manager, 'verify-web-tools-provider', { providerId: 'nope' })
-        expect(res).toEqual({ ok: false, error: expect.stringContaining('未知') })
+        expect(res).toEqual({ success: false, error: expect.stringContaining('未知') })
         expect(createProviderFor).not.toHaveBeenCalled()
     })
 })
