@@ -27,7 +27,8 @@ import { createTavilyProvider } from './providers/tavily'
 /** 无可用 provider 时的兜底错误文案（agent loop 不中断，模型可告知用户） */
 export const NO_PROVIDER_MESSAGE = 'mobi web 工具未配置可用的 provider。请到 mobi Web 设置页「Web 工具」中配置并启用至少一个搜索/抓取 provider（如 Tavily）。'
 
-function createProvider(id: string, credentials: { apiKey: string; timeoutMs: number }): WebToolProvider {
+/** 按 provider id 构造实例（resolve 路由与 verify RPC 共用）；未知 id 抛错 */
+export function createProviderFor(id: string, credentials: { apiKey: string; timeoutMs: number }): WebToolProvider {
     switch (id) {
         case 'tavily': return createTavilyProvider(credentials)
         default: throw new Error(`未知 web 工具 provider：${id}`)
@@ -43,7 +44,7 @@ function resolve(config: WebToolsConfig, selectedId: string | undefined): WebToo
     if (missing.length > 0) return null
     // 不变量：当前所有 provider 均为 apiKey 单键凭据（credentialKeysFor × WebToolProviderCredentials 的隐式契约）；
     // 出现多凭据 provider 时需将 credentials 整包下传并扩展该类型
-    return createProvider(settings.id, { apiKey: settings.credentials[requiredKeys[0]]!, timeoutMs: settings.timeoutMs })
+    return createProviderFor(settings.id, { apiKey: settings.credentials[requiredKeys[0]]!, timeoutMs: settings.timeoutMs })
 }
 
 export function resolveSearchProvider(config: WebToolsConfig): WebToolProvider | null {

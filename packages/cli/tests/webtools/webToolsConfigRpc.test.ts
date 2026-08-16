@@ -21,6 +21,12 @@ vi.mock('@/persistence', () => ({
     updateSettings: vi.fn(),
 }))
 
+// registry 整模块 mock：webToolsConfig.ts 仅 import createProviderFor，resolve 路由不进本测试图
+vi.mock('@/webtools/registry', () => ({
+    createProviderFor: vi.fn(),
+}))
+
+import type { WebToolsConfigSubmission } from '@mobi/shared'
 import { readSettings, updateSettings, type Settings } from '@/persistence'
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 import type { RpcRequest } from '@/api/rpc/types'
@@ -30,6 +36,7 @@ import {
     mergeProviderCredentials,
     registerWebToolsConfigHandler,
 } from '@/modules/common/handlers/webToolsConfig'
+import { createProviderFor } from '@/webtools/registry'
 
 describe('parseWebToolsConfig（schema 层校验）', () => {
     it('合法配置通过并补默认 timeoutMs', () => {
@@ -39,6 +46,10 @@ describe('parseWebToolsConfig（schema 层校验）', () => {
     })
     it('空配置合法（清空场景）', () => {
         expect(parseWebToolsConfig({}).ok).toBe(true)
+    })
+    it('null 凭据合法（提交方向：键被删除）', () => {
+        const result = parseWebToolsConfig({ providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: null } }] })
+        expect(result.ok).toBe(true)
     })
     it('非法输入（字符串/null）→ ok:false', () => {
         expect(parseWebToolsConfig('nope').ok).toBe(false)
@@ -56,27 +67,39 @@ describe('validateSelection（选择层校验）', () => {
     })
 })
 
-describe('mergeProviderCredentials（凭据 merge——空值=保持不变）', () => {
-    it('空字符串凭据沿用旧值', () => {
-        const merged = mergeProviderCredentials(
-            { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'old' } }] },
-            { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: '' } }] },
-        )
+describe('mergeProviderCredentials（在场性三分支）', () => {
+    const current = { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'old' }, timeoutMs: 15_000 }] }
+    it('键不在场 → 保持旧值（即时保存场景：credentials 传空对象）', () => {
+        const merged = mergeProviderCredentials(current, {
+            searchProviderId: 'tavily',
+            providers: [{ id: 'tavily', enabled: true, credentials: {}, timeoutMs: 15_000 }],
+        } as WebToolsConfigSubmission)
         expect(merged.providers?.[0]?.credentials.apiKey).toBe('old')
     })
-    it('新值覆盖旧值', () => {
-        const merged = mergeProviderCredentials(
-            { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'old' } }] },
-            { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'new' } }] },
-        )
+    it('空串 → 保持旧值（旧客户端全量提交兼容）', () => {
+        const merged = mergeProviderCredentials(current, {
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: '' }, timeoutMs: 15_000 }],
+        } as WebToolsConfigSubmission)
+        expect(merged.providers?.[0]?.credentials.apiKey).toBe('old')
+    })
+    it('非空 → 覆盖', () => {
+        const merged = mergeProviderCredentials(current, {
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'new' }, timeoutMs: 15_000 }],
+        } as WebToolsConfigSubmission)
         expect(merged.providers?.[0]?.credentials.apiKey).toBe('new')
     })
-    it('新增条目（旧配置无 provider 段）直接采用新值', () => {
-        const merged = mergeProviderCredentials(
-            {},
-            { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'fresh' } }] },
-        )
-        expect(merged.providers?.[0]?.credentials.apiKey).toBe('fresh')
+    it('null → 清除（键被删除）', () => {
+        const merged = mergeProviderCredentials(current, {
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: null }, timeoutMs: 15_000 }],
+        } as WebToolsConfigSubmission)
+        expect(merged.providers?.[0]?.credentials.apiKey).toBeUndefined()
+    })
+    it('清除被路由引用的凭据 → validateSelection 拒绝（merge 后校验兜底）', () => {
+        const merged = mergeProviderCredentials(current, {
+            searchProviderId: 'tavily',
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: null }, timeoutMs: 15_000 }],
+        } as WebToolsConfigSubmission)
+        expect(validateSelection(merged)).toContain('缺少凭据')
     })
 })
 
@@ -135,7 +158,7 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
         const manager = makeManager()
 
         const response = await call(manager, 'set-web-tools-config', {
-            config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: '' } }] },
+            config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: {} }] },
         })
 
         expect(response).toEqual({ success: true })
@@ -149,7 +172,7 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
         const manager = makeManager()
 
         const response = await call(manager, 'set-web-tools-config', {
-            config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: '' } }] },
+            config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: {} }] },
         })
 
         expect(response).toEqual({ success: false, error: expect.stringContaining('缺少凭据') as string })
@@ -192,9 +215,9 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
         }
         const manager = makeManager()
 
-        // 脱敏页保存：tavily 留空（保持旧值）
+        // 脱敏页保存：tavily 键不在场（保持旧值）
         const response = await call(manager, 'set-web-tools-config', {
-            config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: '' } }] },
+            config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true, credentials: {} }] },
         })
 
         expect(response).toEqual({ success: true })
@@ -222,5 +245,79 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
         expect(response.config.searchProviderId).toBe('tavily')
         expect(response.config.providers?.map((p) => p.id)).toEqual(['tavily'])
         expect(response.config.providers?.[0]?.credentials).toEqual({ apiKey: { set: true, preview: '******' } })
+    })
+})
+
+describe('verify-web-tools-provider handler', () => {
+    // updateSettings 的 mock：对内存快照应用 updater 并返回（模拟锁内读-改-写）
+    let persisted: Settings
+
+    beforeEach(() => {
+        vi.mocked(readSettings).mockReset()
+        vi.mocked(updateSettings).mockReset()
+        vi.mocked(createProviderFor).mockReset()
+        persisted = {}
+        vi.mocked(readSettings).mockImplementation(async () => persisted)
+        vi.mocked(updateSettings).mockImplementation(async (updater: (s: Settings) => Settings | Promise<Settings>) => {
+            persisted = await updater(persisted)
+            return persisted
+        })
+    })
+
+    function makeManager(): RpcHandlerManager {
+        const manager = new RpcHandlerManager({ scopePrefix: 'test', logger: () => {} })
+        registerWebToolsConfigHandler(manager)
+        return manager
+    }
+
+    const call = (manager: RpcHandlerManager, method: string, params: unknown) =>
+        manager.handleRequest({ method: `test:${method}`, params } satisfies RpcRequest)
+
+    it('草稿凭据优先于已存值（保存前验证新 key）', async () => {
+        persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 15_000 }] } }
+        const provider = { search: vi.fn().mockResolvedValue([]) }
+        vi.mocked(createProviderFor).mockReturnValue(provider as never)
+        const manager = makeManager()
+        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily', credentials: { apiKey: 'draft' } })
+        expect(res).toEqual({ ok: true, latencyMs: expect.any(Number) })
+        expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'draft', timeoutMs: 15_000 })
+    })
+
+    it('无草稿 → 用已存凭据', async () => {
+        persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 15_000 }] } }
+        vi.mocked(createProviderFor).mockReturnValue({ search: vi.fn().mockResolvedValue([]) } as never)
+        const manager = makeManager()
+        await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
+        expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'stored', timeoutMs: 15_000 })
+    })
+
+    it('凭据缺失 → ok:false 带原因', async () => {
+        persisted = {}
+        const manager = makeManager()
+        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
+        expect(res).toEqual({ ok: false, error: expect.stringContaining('缺少凭据') })
+    })
+
+    it('provider 抛错 → ok:false 透传错误文案', async () => {
+        persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'bad' }, timeoutMs: 15_000 }] } }
+        vi.mocked(createProviderFor).mockReturnValue({
+            search: vi.fn().mockRejectedValue(new Error('Invalid API key')),
+        } as never)
+        const manager = makeManager()
+        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
+        expect(res).toEqual({ ok: false, error: 'Invalid API key' })
+    })
+
+    it('缺少 providerId → ok:false', async () => {
+        const manager = makeManager()
+        const res = await call(manager, 'verify-web-tools-provider', {})
+        expect(res).toEqual({ ok: false, error: expect.stringContaining('providerId') })
+    })
+
+    it('未知 providerId → ok:false（RPC 边界无 schema 校验，handler 自行兜底）', async () => {
+        const manager = makeManager()
+        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'nope' })
+        expect(res).toEqual({ ok: false, error: expect.stringContaining('未知') })
+        expect(createProviderFor).not.toHaveBeenCalled()
     })
 })
