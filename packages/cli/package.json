@@ -25,6 +25,7 @@
         "@anthropic-ai/sdk": "^0.116.0",
         "@mobi/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.30.0",
+        "@tavily/core": "^0.7.7",
         "axios": "^1.19.0",
         "chalk": "^6.0.0",
         "cross-spawn": "^7.0.6",
