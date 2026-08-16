@@ -73,5 +73,32 @@ export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
     })
 
+    // 验证连接：透传 runner RPC（一次轻量真实搜索；凭据草稿优先于已存值，不落盘）
+    app.post('/machines/:id/web-tools/verify', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        const body = await c.req.json().catch(() => null) as { providerId?: string; credentials?: Record<string, string> } | null
+        if (!body?.providerId) {
+            return c.json({ error: 'Missing providerId' }, 400)
+        }
+
+        try {
+            const result = await engine.verifyWebToolsProvider(machineId, body.providerId, body.credentials)
+            return c.json(result)
+        } catch (error) {
+            // 502 = runner RPC 传输层不可达/超时；业务失败走 envelope 200（与 get/set 一致）
+            return c.json({ error: error instanceof Error ? error.message : String(error) }, 502)
+        }
+    })
+
     return app
 }

@@ -36,6 +36,7 @@ import {
     type RpcRefreshMetadataResponse,
     type RpcSaveFileResponse,
     type RpcSetWebToolsConfigResponse,
+    type RpcVerifyWebToolsProviderResponse,
     type RpcWriteFileRangeResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
@@ -55,6 +56,7 @@ export type {
     RpcRefreshMetadataResponse,
     RpcSaveFileResponse,
     RpcSetWebToolsConfigResponse,
+    RpcVerifyWebToolsProviderResponse,
     RpcWriteFileRangeResponse
 } from './rpcGateway'
 
@@ -634,6 +636,15 @@ export class SyncEngine {
 
     async setWebToolsConfig(machineId: string, config: unknown): Promise<RpcSetWebToolsConfigResponse> {
         return await this.rpcGateway.setWebToolsConfig(machineId, config)
+    }
+
+    /** Web 工具 provider 验证连接（透传 runner RPC；草稿凭据优先，不落盘） */
+    async verifyWebToolsProvider(
+        machineId: string,
+        providerId: string,
+        credentials?: Record<string, string>,
+    ): Promise<RpcVerifyWebToolsProviderResponse> {
+        return await this.rpcGateway.verifyWebToolsProvider(machineId, providerId, credentials)
     }
 
     async uploadFileRange(

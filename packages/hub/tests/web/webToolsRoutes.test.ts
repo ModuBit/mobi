@@ -26,6 +26,7 @@ const NAMESPACE = 'ns-test'
 function createTestEngine(overrides?: {
     getWebToolsConfig?: (id: string) => Promise<unknown>
     setWebToolsConfig?: (id: string, config: unknown) => Promise<unknown>
+    verifyWebToolsProvider?: (id: string, providerId: string, credentials?: Record<string, string>) => Promise<unknown>
     /** machine 归属的 namespace；null 表示 machine 不存在 */
     machineNamespace?: string | null
 }): SyncEngine {
@@ -37,6 +38,7 @@ function createTestEngine(overrides?: {
             namespace === null ? undefined : { id: 'm1', namespace },
         getWebToolsConfig: overrides?.getWebToolsConfig ?? vi.fn(),
         setWebToolsConfig: overrides?.setWebToolsConfig ?? vi.fn(),
+        verifyWebToolsProvider: overrides?.verifyWebToolsProvider ?? vi.fn(),
     } as unknown as SyncEngine
 }
 
@@ -134,5 +136,72 @@ describe('webTools 路由（纯透传）', () => {
         })
         expect(res.status).toBe(502)
         expect(((await res.json()) as { error: string }).error).toContain('write failed')
+    })
+
+    it('POST /verify 透传 runner 结果（success envelope）', async () => {
+        const verifySpy = vi.fn().mockResolvedValue({ success: true, latencyMs: 42 })
+        const app = createTestApp(createTestEngine({ verifyWebToolsProvider: verifySpy }))
+        const res = await app.request('/api/machines/m1/web-tools/verify', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ providerId: 'tavily', credentials: { apiKey: 'k' } }),
+        })
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({ success: true, latencyMs: 42 })
+        // 凭据草稿透传给 runner（不落盘）
+        expect(verifySpy).toHaveBeenCalledWith('m1', 'tavily', { apiKey: 'k' })
+    })
+
+    it('POST /verify 缺 providerId → 400', async () => {
+        const verifySpy = vi.fn()
+        const app = createTestApp(createTestEngine({ verifyWebToolsProvider: verifySpy }))
+        const res = await app.request('/api/machines/m1/web-tools/verify', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({}),
+        })
+        expect(res.status).toBe(400)
+        expect(verifySpy).not.toHaveBeenCalled()
+    })
+
+    it('POST /verify engine 未就绪 → 503', async () => {
+        const app = createTestApp(null)
+        const res = await app.request('/api/machines/m1/web-tools/verify', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ providerId: 'tavily' }),
+        })
+        expect(res.status).toBe(503)
+    })
+
+    it('POST /verify 下游抛错 → 502 带 error（不含凭据值）', async () => {
+        const app = createTestApp(
+            createTestEngine({ verifyWebToolsProvider: vi.fn().mockRejectedValue(new Error('runner offline')) }),
+        )
+        const res = await app.request('/api/machines/m1/web-tools/verify', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ providerId: 'tavily', credentials: { apiKey: 'secret-draft' } }),
+        })
+        expect(res.status).toBe(502)
+        const payload = (await res.json()) as { error: string }
+        expect(payload.error).toContain('runner offline')
+        // 凭据红线：错误文案不得回显草稿凭据值
+        expect(payload.error).not.toContain('secret-draft')
+    })
+
+    it('POST /verify 业务失败 → 200 envelope（success: false）', async () => {
+        const app = createTestApp(
+            createTestEngine({
+                verifyWebToolsProvider: vi.fn().mockResolvedValue({ success: false, error: 'invalid api key' }),
+            }),
+        )
+        const res = await app.request('/api/machines/m1/web-tools/verify', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ providerId: 'tavily' }),
+        })
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({ success: false, error: 'invalid api key' })
     })
 })

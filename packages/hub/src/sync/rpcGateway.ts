@@ -79,6 +79,11 @@ export type RpcSetWebToolsConfigResponse =
     | { success: true }
     | { success: false; error: string }
 
+// web 工具 provider 验证连接响应（一次轻量真实搜索；业务失败走 envelope）
+export type RpcVerifyWebToolsProviderResponse =
+    | { success: true; latencyMs: number }
+    | { success: false; error: string }
+
 export type RpcDirectoryEntry = {
     name: string
     type: 'file' | 'directory' | 'other'
@@ -304,6 +309,15 @@ export class RpcGateway {
 
     async setWebToolsConfig(machineId: string, config: unknown): Promise<RpcSetWebToolsConfigResponse> {
         return await this.machineRpc(machineId, 'set-web-tools-config', { config }) as RpcSetWebToolsConfigResponse
+    }
+
+    // web 工具 provider 验证连接（草稿凭据优先于已存值，runner 不落盘）
+    async verifyWebToolsProvider(
+        machineId: string,
+        providerId: string,
+        credentials?: Record<string, string>,
+    ): Promise<RpcVerifyWebToolsProviderResponse> {
+        return await this.machineRpc(machineId, 'verify-web-tools-provider', { providerId, credentials }) as RpcVerifyWebToolsProviderResponse
     }
 
     // 在 machine 上搜索文件
