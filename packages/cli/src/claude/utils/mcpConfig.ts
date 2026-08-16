@@ -17,6 +17,7 @@
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
 
 export type McpConfigArg = {
     value: string;
@@ -28,11 +29,35 @@ export type McpConfigOptions = {
     baseDir?: string;
 };
 
+/**
+ * 判别 SDK in-process MCP server 条目（type 判别字段为 'sdk'）。
+ * 此类条目携带活的 McpServer 实例，不可 JSON 序列化；且 local 模式（spawn claude CLI）
+ * 没有 toolAliases 机制、不做 web 工具替换，序列化前直接过滤。
+ */
+function isSdkMcpServer(value: unknown): value is McpSdkServerConfigWithInstance {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        (value as { type?: unknown }).type === 'sdk'
+    );
+}
+
+/** 过滤掉 SDK in-process server 条目，仅保留可 JSON 序列化的 mcpServers 子集 */
+function filterSerializableMcpServers(
+    mcpServers: Record<string, unknown>
+): Record<string, unknown> {
+    return Object.fromEntries(
+        Object.entries(mcpServers).filter(([, v]) => !isSdkMcpServer(v))
+    );
+}
+
 export function resolveMcpConfigArg(
     mcpServers: Record<string, unknown>,
     options?: McpConfigOptions
 ): McpConfigArg {
-    const configJson = JSON.stringify({ mcpServers });
+    const configJson = JSON.stringify({
+        mcpServers: filterSerializableMcpServers(mcpServers),
+    });
     const useFile = options?.useFile ?? process.platform === 'win32';
     if (!useFile) {
         return { value: configJson };
@@ -64,7 +89,8 @@ export function appendMcpConfigArg(
     mcpServers?: Record<string, unknown>,
     options?: McpConfigOptions
 ): (() => void) | null {
-    if (!mcpServers || Object.keys(mcpServers).length === 0) {
+    // 过滤后为空（含未传 / 全部为 SDK server）时不追加 --mcp-config（spawn CLI 无对应机制）
+    if (!mcpServers || Object.keys(filterSerializableMcpServers(mcpServers)).length === 0) {
         return null;
     }
 

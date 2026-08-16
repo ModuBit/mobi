@@ -40,6 +40,7 @@ import { normalizeClaudeSessionModel } from './model';
 import { getInvokedCwd } from '@/utils/invokedCwd';
 import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
 import { normalizeContinueArg } from './utils/normalizeContinueArg';
+import { createMobiWebMcpServer } from '@/webtools/server';
 
 export interface StartOptions {
     model?: string
@@ -424,7 +425,12 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             additionalDirectories,
             messageQueue,
             api,
-            allowedTools: mobiMcpServer.toolNames.map(toolName => `mcp__mobi__${toolName}`),
+            allowedTools: [
+                ...mobiMcpServer.toolNames.map(toolName => `mcp__mobi__${toolName}`),
+                // mobi-web 只读 web 工具（toolAliases 重定向目标）：预授权，避免 default 模式每次弹审批
+                'mcp__mobi-web__web_search',
+                'mcp__mobi-web__web_fetch',
+            ],
             onModeChange: createModeChangeHandler(apiSession),
             onSessionReady: (sessionInstance) => {
                 currentSessionRef.current = sessionInstance;
@@ -434,7 +440,10 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
                 'mobi': {
                     type: 'http' as const,
                     url: mobiMcpServer.url,
-                }
+                },
+                // mobi web 工具：in-process SDK server（remote 模式经 toolAliases 替换内置 WebSearch/WebFetch；
+                // local 模式经 mcpConfig 序列化过滤，不做替换）
+                'mobi-web': createMobiWebMcpServer(),
             },
             apiSession,
             claudeEnvVars: options.claudeEnvVars,

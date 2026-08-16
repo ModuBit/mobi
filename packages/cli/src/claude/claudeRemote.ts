@@ -734,6 +734,12 @@ export async function claudeRemote(opts: {
         },
         allowedTools: baseConfig.allowedTools ? baseConfig.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: baseConfig.disallowedTools,
+        // web 工具替换（常驻注入）：模型 emit WebSearch/WebFetch → 执行层重定向到 mobi-web in-process 工具。
+        // 无可用 provider 时 handler 返回明确错误（国内环境内置本就不可用，无回退损失）。
+        toolAliases: {
+            WebSearch: 'mcp__mobi-web__web_search',
+            WebFetch: 'mcp__mobi-web__web_fetch',
+        },
         canUseTool: async (toolName, input, options) => {
             const result = await opts.canCallTool(toolName, input, options);
             return result;
