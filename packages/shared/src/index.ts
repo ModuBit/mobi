@@ -25,6 +25,7 @@ export * from './sessionSummary'
 export * from './upload'
 export * from './messageClassification'
 export * from './constants'
+export * from './webtools'
 // 注意：exitLogger 不走 barrel 导出——它 import node:os/node:fs，
 // 进 barrel 会污染浏览器 bundle（web 通过 @mobi/shared 拉入会崩）。
 // hub/cli 一律走子路径 @mobi/shared/exitLogger（与 profile.ts 同策略）。
