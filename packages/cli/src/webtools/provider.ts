@@ -69,10 +69,19 @@ export interface WebToolProvider {
 }
 
 /**
+ * HTTP 状态码 → 错误 code 统一映射（fetchJson 与 provider 直连抓取共用）。
+ *
+ * 429 是限流不是凭据问题，归 upstream；其余 4xx 归 auth（凭据/参数失效 → 提示去配置页）、
+ * 5xx 归 upstream（上游不稳）。
+ */
+export function httpStatusToErrorCode(status: number): WebToolErrorCode {
+    return status === 429 || status >= 500 ? 'upstream' : 'auth'
+}
+
+/**
  * fetch 包装：超时（AbortController）+ 统一错误映射（各 provider 共用）。
  *
- * 4xx 归 auth（凭据/参数失效 → 提示去配置页）、5xx 归 upstream（上游不稳）、
- * AbortError 归 timeout、其余归 network。
+ * AbortError 归 timeout、SyntaxError（非 JSON）归 upstream、其余归 network。
  */
 export async function fetchJson(
     providerId: string,
@@ -85,9 +94,7 @@ export async function fetchJson(
     try {
         const response = await fetch(url, { ...init, signal: controller.signal })
         if (!response.ok) {
-            // 429 是限流不是凭据问题，归 upstream；其余 4xx 归 auth（凭据/参数失效 → 提示去配置页）、5xx 归 upstream（上游不稳）
-            const code = response.status === 429 || response.status >= 500 ? 'upstream' : 'auth'
-            throw new WebToolError(code, providerId, `${providerId} HTTP ${response.status} ${response.statusText}`)
+            throw new WebToolError(httpStatusToErrorCode(response.status), providerId, `${providerId} HTTP ${response.status} ${response.statusText}`)
         }
         return await response.json()
     } catch (error) {
