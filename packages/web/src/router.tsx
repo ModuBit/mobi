@@ -44,8 +44,8 @@ const NotificationsSection = lazy(() =>
 const SettingsIndex = lazy(() =>
     import('./components/settings/sections/SettingsIndex').then((m) => ({ default: m.SettingsIndex })),
 )
-const WebToolsSectionPlaceholder = lazy(() =>
-    import('./components/settings/sections/WebToolsSectionPlaceholder').then((m) => ({ default: m.WebToolsSectionPlaceholder })),
+const WebToolsSection = lazy(() =>
+    import('./components/settings/sections/WebToolsSection').then((m) => ({ default: m.WebToolsSection })),
 )
 const DebugSectionRoute = lazy(() =>
     import('./components/settings/sections/DebugSectionRoute').then((m) => ({ default: m.DebugSectionRoute })),
@@ -130,11 +130,11 @@ const settingsNotificationsRoute = createRoute({
     path: 'notifications',
     component: NotificationsSection,
 })
-// Web 工具分区（暂为旧交互组件占位，后续 task 替换）
+// Web 工具分区
 const settingsWebToolsRoute = createRoute({
     getParentRoute: () => settingsRoute,
     path: 'web-tools',
-    component: WebToolsSectionPlaceholder,
+    component: WebToolsSection,
 })
 // 调试分区（未解锁渲染空分区）
 const settingsDebugRoute = createRoute({

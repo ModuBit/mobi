@@ -379,25 +379,25 @@
             "debug": { "title": "Debug", "desc": "Diagnostics · Data export" }
         },
         "webTools": {
-            "title": "Web Tools",
-            "desc": "Replace Claude's built-in WebSearch / WebFetch with mobi's own implementation (remote mode only)",
             "providers": {
                 "tavily": "Tavily"
             },
             "apiKey": "API Key",
-            "credentialSet": "Set (leave blank to keep)",
+            "credentialSet": "Set",
             "credentialUnset": "Not set",
-            "credentialKeepPlaceholder": "Leave blank to keep current value",
-            "credentialInputPlaceholder": "Enter API Key",
-            "searchProvider": "Search Provider",
-            "fetchProvider": "Fetch Provider",
-            "selectPlaceholder": "Select a provider",
-            "save": "Save",
-            "saved": "Saved",
+            "routeTitle": "Usage Routes · Saved instantly",
+            "route": { "search": "Search", "fetch": "Fetch" },
+            "routePlaceholder": "Select a provider",
+            "routeEmptyHint": "Enable a provider below and configure its credentials first, then come back to pick routes",
+            "routeHint": "Config lives on the target machine · effective on new sessions",
+            "providersTitle": "PROVIDERS",
+            "providerDesc": { "tavily": "AI search & web extraction · tavily.com" },
+            "providerLogo": { "tavily": "Tv" },
+            "disableReferenced": "This provider is serving {{tools}}; adjust usage routes first",
+            "storageHint": "Only enabled providers appear in the usage route dropdowns",
             "saveFailed": "Failed to save",
-            "offline": "Machine offline, unable to load config",
-            "loadFailed": "Failed to load web tools config",
-            "notConfigured": "Not configured — model web tool calls will return a not-configured notice"
+            "offline": "Machine offline, unable to load web tools config",
+            "loadFailed": "Failed to load web tools config"
         }
     },
     "debug": {
