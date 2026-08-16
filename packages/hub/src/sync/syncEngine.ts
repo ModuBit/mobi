@@ -29,11 +29,13 @@ import {
     RpcGateway,
     type RpcCommandResponse,
     type RpcDeleteUploadResponse,
+    type RpcGetWebToolsConfigResponse,
     type RpcListDirectoryResponse,
     type RpcReadFileMetaResponse,
     type RpcReadFileRangeResponse,
     type RpcRefreshMetadataResponse,
     type RpcSaveFileResponse,
+    type RpcSetWebToolsConfigResponse,
     type RpcWriteFileRangeResponse
 } from './rpcGateway'
 import { SessionCache } from './sessionCache'
@@ -45,12 +47,14 @@ export type { SyncEventListener } from './eventPublisher'
 export type {
     RpcCommandResponse,
     RpcDeleteUploadResponse,
+    RpcGetWebToolsConfigResponse,
     RpcListDirectoryResponse,
     RpcPathExistsResponse,
     RpcReadFileMetaResponse,
     RpcReadFileRangeResponse,
     RpcRefreshMetadataResponse,
     RpcSaveFileResponse,
+    RpcSetWebToolsConfigResponse,
     RpcWriteFileRangeResponse
 } from './rpcGateway'
 
@@ -621,6 +625,15 @@ export class SyncEngine {
 
     async machineRefreshMetadata(machineId: string, cwd: string): Promise<RpcRefreshMetadataResponse> {
         return await this.rpcGateway.machineRefreshMetadata(machineId, cwd)
+    }
+
+    // web 工具配置读写（纯透传，hub 不存任何 web 工具状态）
+    async getWebToolsConfig(machineId: string): Promise<RpcGetWebToolsConfigResponse> {
+        return await this.rpcGateway.getWebToolsConfig(machineId)
+    }
+
+    async setWebToolsConfig(machineId: string, config: unknown): Promise<RpcSetWebToolsConfigResponse> {
+        return await this.rpcGateway.setWebToolsConfig(machineId, config)
     }
 
     async uploadFileRange(

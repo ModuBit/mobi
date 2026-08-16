@@ -15,7 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import type { PermissionUpdate } from '@mobi/shared'
+import type { PermissionUpdate, RedactedWebToolsConfig } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
@@ -68,6 +68,16 @@ export type RpcDeleteUploadResponse = {
     success: boolean
     error?: string
 }
+
+// web 工具配置读取响应（runner 侧凭据已脱敏）
+export type RpcGetWebToolsConfigResponse = {
+    config: RedactedWebToolsConfig
+}
+
+// web 工具配置写入响应（业务失败走 envelope，不用传输层错误表达）
+export type RpcSetWebToolsConfigResponse =
+    | { success: true }
+    | { success: false; error: string }
 
 export type RpcDirectoryEntry = {
     name: string
@@ -285,6 +295,15 @@ export class RpcGateway {
     // 删除 machine 上的已上传文件
     async machineDeleteUpload(machineId: string, cwd: string, path: string): Promise<RpcDeleteUploadResponse> {
         return await this.machineRpc(machineId, 'deleteUpload', { cwd, path }) as RpcDeleteUploadResponse
+    }
+
+    // web 工具配置读写（runner 落盘，会话进程惰性读生效）
+    async getWebToolsConfig(machineId: string): Promise<RpcGetWebToolsConfigResponse> {
+        return await this.machineRpc(machineId, 'get-web-tools-config', {}) as RpcGetWebToolsConfigResponse
+    }
+
+    async setWebToolsConfig(machineId: string, config: unknown): Promise<RpcSetWebToolsConfigResponse> {
+        return await this.machineRpc(machineId, 'set-web-tools-config', { config }) as RpcSetWebToolsConfigResponse
     }
 
     // 在 machine 上搜索文件

@@ -32,6 +32,7 @@ import { createProjectsRoutes } from './routes/projects'
 import { createMessagesRoutes } from './routes/messages'
 import { createPermissionsRoutes } from './routes/permissions'
 import { createMachinesRoutes } from './routes/machines'
+import { createWebToolsRoutes } from './routes/webTools'
 import { createGitRoutes } from './routes/git'
 import { createCliRoutes } from './routes/cli'
 import { createPushRoutes } from './routes/push'
@@ -155,6 +156,7 @@ export function createWebApp(options: {
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))
     app.route('/api', createMachinesRoutes(options.getSyncEngine))
+    app.route('/api', createWebToolsRoutes(options.getSyncEngine))
     app.route('/api', createGitRoutes(options.getSyncEngine))
     app.route('/api', createPushRoutes(options.store, options.vapidPublicKey))
 
