@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+import { useState } from 'react'
+import { App, Button, Input, theme as antTheme } from 'antd'
+import { useTranslation } from 'react-i18next'
+import { ShieldCheck } from 'lucide-react'
+import styled from '@emotion/styled'
+import { credentialKeysFor } from '@mobi/shared'
 import type { RedactedWebToolsConfig } from '@mobi/shared'
 
 /**
@@ -27,15 +33,212 @@ export type ProviderEntry = NonNullable<RedactedWebToolsConfig['providers']>[num
 
 export interface CredentialEditorProps {
     provider: ProviderEntry
-    /** 在场性提交：只提交编辑中的凭据键（string=新值；null=清除） */
+    /**
+     * 在场性提交：只提交编辑中的凭据键（string=新值；null=清除）。
+     * 失败 toast 归属上层（WebToolsSection.saveBase）——本组件收到 false 时保持编辑态静默返回，禁止重复弹错。
+     */
     onSave: (credentials: Record<string, string | null>) => Promise<boolean>
     onVerify: (credentials: Record<string, string>) => Promise<VerifyResult>
 }
 
+const { useToken } = antTheme
+
+type Token = ReturnType<typeof useToken>['token']
+
+// 编辑器容器：内联虚线框（与卡头实线区分层级——编辑区是二级内容）
+const EditorBox = styled.div<{ $token: Token }>`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px dashed ${p => p.$token.colorBorder};
+    border-radius: 12px;
+    background: ${p => p.$token.colorFillQuaternary};
+`
+
+// 凭据键行：label + set 状态文案 + 输入框
+const FieldRow = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+`
+
+const FieldLabel = styled.label<{ $token: Token }>`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: ${p => p.$token.colorTextSecondary};
+`
+
+// set 状态文案：已设（绿）/未设（灰）
+const SetBadge = styled.span<{ $token: Token; $set: boolean }>`
+    font-size: 11px;
+    color: ${p => (p.$set ? p.$token.colorSuccessText : p.$token.colorTextTertiary)};
+`
+
+const Actions = styled.div<{ $token: Token }>`
+    display: flex;
+    align-items: center;
+    gap: ${p => p.$token.marginXS}px;
+    flex-wrap: wrap;
+`
+
+// 验证结果：成功绿 / 失败红，字号与 hint 一致
+const VerifyOutcome = styled.span<{ $token: Token; $ok: boolean }>`
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: ${p => (p.$ok ? p.$token.colorSuccessText : p.$token.colorErrorText)};
+`
+
 /**
- * 凭据编辑器（S9 实装）：只读预览态（掩码 preview）/ 替换编辑态 / 验证连接。
- * 本占位仅定义契约——ProviderCard 展开区先渲染 null，S9 落地后恢复真实交互与测试。
+ * 凭据编辑器：只读预览态（掩码 preview）↔ 替换编辑态。
+ *
+ * 设计动机：hub 只回脱敏 preview（如 `tvly-******56`），明文不可回传浏览器——
+ * 掩码串不可被误当作真实值编辑，改凭据必须点「替换」显式表达意图（清空重填）。
+ * 凭据未设置（set:false）时无预览可显，直接进入编辑态。
+ *
+ * 在场性提交：保存/验证 payload 只携带与初始 preview 不同的键——未编辑的凭据键
+ * 不在场即"保持旧值"，避免掩码串覆盖真实凭据。
  */
-export function CredentialEditor(_props: CredentialEditorProps): null {
-    return null
+export function CredentialEditor({ provider, onSave, onVerify }: CredentialEditorProps) {
+    const { token } = useToken()
+    const { t } = useTranslation()
+    const { message } = App.useApp()
+
+    const keys = credentialKeysFor(provider.id)
+
+    // 初始预览值：已设置的键取掩码 preview，未设置的键为空
+    const initialPreview = Object.fromEntries(
+        keys.map((key) => [key, provider.credentials[key]?.set ? provider.credentials[key]?.preview ?? '' : '']),
+    ) as Record<string, string>
+
+    // 任一键未设置 → 无预览可显，初始即编辑态
+    const initiallyEditing = keys.some((key) => !provider.credentials[key]?.set)
+
+    const [editing, setEditing] = useState(initiallyEditing)
+    const [draft, setDraft] = useState<Record<string, string>>(initialPreview)
+    const [saving, setSaving] = useState(false)
+    const [verifying, setVerifying] = useState(false)
+    const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
+
+    /** 预览态点「替换」：清空该键草稿进入编辑态（掩码串不能作为编辑起点） */
+    const startEditing = () => {
+        setDraft(Object.fromEntries(keys.map((key) => [key, ''])))
+        setVerifyResult(null)
+        setEditing(true)
+    }
+
+    /** 取消：草稿恢复 preview、编辑态回到初始规则、验证结果清空 */
+    const cancelEditing = () => {
+        setDraft(initialPreview)
+        setVerifyResult(null)
+        setEditing(initiallyEditing)
+    }
+
+    /** 在场性过滤：只取草稿值 ≠ 初始 preview 的键（保存允许空串提交，验证额外要求非空——空值无以验证） */
+    const changedCredentials = (requireNonEmpty: boolean): Record<string, string> =>
+        Object.fromEntries(
+            keys.filter(
+                (key) => draft[key] !== initialPreview[key] && (!requireNonEmpty || draft[key] !== ''),
+            ).map((key) => [key, draft[key]]),
+        )
+
+    /** 保存：成功 toast 由本组件弹（saved），失败静默保持编辑态（上层已弹 error） */
+    const handleSave = async () => {
+        setSaving(true)
+        try {
+            const ok = await onSave(changedCredentials(false))
+            if (ok) {
+                message.success(t('settings.webTools.saved'))
+                setEditing(false)
+                setVerifyResult(null)
+            }
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    /** 验证连接：结果内联呈现（成功带耗时，失败显示 error 文案），不打断编辑态 */
+    const handleVerify = async () => {
+        setVerifying(true)
+        try {
+            setVerifyResult(await onVerify(changedCredentials(true)))
+        } finally {
+            setVerifying(false)
+        }
+    }
+
+    return (
+        // 点击编辑区不冒泡到卡头（避免触发展开/收起）
+        <EditorBox $token={token} onClick={(e) => e.stopPropagation()}>
+            {keys.map((key) => {
+                const inputId = `cred-${key}`
+                const set = provider.credentials[key]?.set ?? false
+                return (
+                    <FieldRow key={key}>
+                        <FieldLabel $token={token} htmlFor={inputId}>
+                            {t(`settings.webTools.${key}`)}
+                            <SetBadge $token={token} $set={set}>
+                                {set ? t('settings.webTools.credentialSet') : t('settings.webTools.credentialUnset')}
+                            </SetBadge>
+                        </FieldLabel>
+                        <Input
+                            id={inputId}
+                            size="small"
+                            // aria-label 独立于可见 label（后者还含 set 状态文案，不能作为可访问名整体）
+                            aria-label={t(`settings.webTools.${key}`)}
+                            readOnly={!editing}
+                            value={draft[key] ?? ''}
+                            onChange={(e) => setDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                            placeholder={t('settings.webTools.apiKeyPlaceholder')}
+                            autoComplete="new-password"
+                        />
+                    </FieldRow>
+                )
+            })}
+
+            <Actions $token={token}>
+                {editing ? (
+                    <>
+                        <Button
+                            size="small"
+                            icon={<ShieldCheck size={14} />}
+                            loading={verifying}
+                            onClick={() => {
+                                void handleVerify()
+                            }}
+                        >
+                            {t('settings.webTools.verify')}
+                        </Button>
+                        <Button size="small" onClick={cancelEditing}>
+                            {t('settings.webTools.cancel')}
+                        </Button>
+                        <Button
+                            size="small"
+                            type="primary"
+                            loading={saving}
+                            onClick={() => {
+                                void handleSave()
+                            }}
+                        >
+                            {t('settings.webTools.save')}
+                        </Button>
+                    </>
+                ) : (
+                    <Button size="small" type="primary" onClick={startEditing}>
+                        {t('settings.webTools.replace')}
+                    </Button>
+                )}
+                {verifyResult !== null && (
+                    <VerifyOutcome $token={token} $ok={verifyResult.success}>
+                        {verifyResult.success
+                            ? t('settings.webTools.verifyOk', { ms: String(verifyResult.latencyMs) })
+                            : verifyResult.error}
+                    </VerifyOutcome>
+                )}
+            </Actions>
+        </EditorBox>
+    )
 }

@@ -115,7 +115,8 @@ function mockLoadConfig(overrides?: { enabled?: boolean; searchProviderId?: 'tav
                 fetchProviderId: overrides?.fetchProviderId,
                 providers: [
                     // timeoutMs 用非默认值，锁定"提交回传已加载超时，防整体替换重置为 schema 默认 15000"
-                    { id: 'tavily', enabled: overrides?.enabled ?? true, timeoutMs: 8000, credentials: { apiKey: { set: true } } },
+                    // preview 掩码串供编辑器只读预览态用例断言
+                    { id: 'tavily', enabled: overrides?.enabled ?? true, timeoutMs: 8000, credentials: { apiKey: { set: true, preview: 'tvly-******56' } } },
                 ],
             },
         },
@@ -171,7 +172,16 @@ describe('WebToolsSection', () => {
         expect(head).toHaveAttribute('aria-expanded', 'false')
     })
 
-    it.todo('编辑器展示 preview 只读态（S9 实装后恢复）')
+    it('编辑器展示 preview 只读态（S9 实装恢复）', async () => {
+        mockLoadConfig()
+        renderSection()
+
+        // 点击卡头展开 → 编辑器渲染脱敏 preview（readonly，不可误编辑掩码串）
+        const head = await waitFor(() => screen.getByRole('button', { name: 'Tavily' }))
+        fireEvent.click(head)
+        const input = screen.getByDisplayValue('tvly-******56') as HTMLInputElement
+        expect(input.readOnly).toBe(true)
+    })
 
     it('禁用被 search/fetch 引用的 provider 被拦截：提示且不发 RPC', async () => {
         mockLoadConfig({ enabled: true, searchProviderId: 'tavily', fetchProviderId: 'tavily' })

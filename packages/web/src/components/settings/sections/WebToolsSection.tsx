@@ -104,8 +104,8 @@ export function WebToolsSection() {
         }))
 
     /**
-     * 即时保存基础配置（开关/路由）：next 覆盖对应字段，路由字段缺省回填现有值（整体替换语义）。
-     * 成功后 reload() 重读脱敏配置；开关/路由即时生效无需 success 打扰。
+     * 即时保存（路由/开关/凭据）：next 覆盖对应字段，路由字段缺省回填现有值（整体替换语义）。
+     * 成功后 reload() 重读脱敏配置；失败提示统一在此收口（编辑器静默依赖本约定）。
      */
     const saveBase = async (next: { searchProviderId?: WebToolProviderId; fetchProviderId?: WebToolProviderId; providers: SubmissionProvider[] }) => {
         const ok = await save({

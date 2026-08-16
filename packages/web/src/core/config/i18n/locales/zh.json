@@ -396,6 +396,13 @@
             "disableReferenced": "该 provider 正承担 {{tools}}，请先调整用途路由",
             "storageHint": "启用的 provider 才出现在用途路由下拉中",
             "saveFailed": "保存失败",
+            "replace": "替换",
+            "cancel": "取消",
+            "save": "保存",
+            "saved": "已保存",
+            "verify": "验证连接",
+            "verifyOk": "验证通过（{{ms}}ms）",
+            "apiKeyPlaceholder": "粘贴 API Key",
             "offline": "机器离线，无法加载 Web 工具配置",
             "loadFailed": "加载 Web 工具配置失败"
         }
