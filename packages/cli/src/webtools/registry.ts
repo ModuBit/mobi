@@ -23,15 +23,13 @@ import type { WebToolsConfig } from '@mobi/shared'
 import { credentialKeysFor } from '@mobi/shared'
 import type { WebToolProvider, WebSearchInput, WebSearchResult } from './provider'
 import { createTavilyProvider } from './providers/tavily'
-import { createBochaProvider } from './providers/bocha'
 
 /** 无可用 provider 时的兜底错误文案（agent loop 不中断，模型可告知用户） */
-export const NO_PROVIDER_MESSAGE = 'mobi web 工具未配置可用的 provider。请到 mobi Web 设置页「Web 工具」中配置并启用至少一个搜索/抓取 provider（如 Tavily 或博查）。'
+export const NO_PROVIDER_MESSAGE = 'mobi web 工具未配置可用的 provider。请到 mobi Web 设置页「Web 工具」中配置并启用至少一个搜索/抓取 provider（如 Tavily）。'
 
 function createProvider(id: string, credentials: { apiKey: string; timeoutMs: number }): WebToolProvider {
     switch (id) {
         case 'tavily': return createTavilyProvider(credentials)
-        case 'bocha': return createBochaProvider(credentials)
         default: throw new Error(`未知 web 工具 provider：${id}`)
     }
 }

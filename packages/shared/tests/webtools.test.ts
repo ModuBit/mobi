@@ -26,7 +26,7 @@ describe('WebToolsConfigSchema', () => {
     it('完整配置通过并带默认值', () => {
         const parsed = WebToolsConfigSchema.parse({
             searchProviderId: 'tavily',
-            fetchProviderId: 'bocha',
+            fetchProviderId: 'tavily',
             providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'tvly-x' } }],
         })
         expect(parsed.providers?.[0]?.timeoutMs).toBe(15000)

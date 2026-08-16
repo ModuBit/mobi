@@ -69,10 +69,10 @@ describe('mergeProviderCredentials（凭据 merge——空值=保持不变）', 
         )
         expect(merged.providers?.[0]?.credentials.apiKey).toBe('new')
     })
-    it('新增条目（旧配置无此 provider）直接采用新值', () => {
+    it('新增条目（旧配置无 provider 段）直接采用新值', () => {
         const merged = mergeProviderCredentials(
             {},
-            { providers: [{ id: 'bocha', enabled: true, credentials: { apiKey: 'fresh' } }] },
+            { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'fresh' } }] },
         )
         expect(merged.providers?.[0]?.credentials.apiKey).toBe('fresh')
     })

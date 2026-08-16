@@ -69,13 +69,13 @@ describe('readWebToolsConfig（mtime 惰性读）', () => {
             file,
             JSON.stringify({
                 webTools: {
-                    searchProviderId: 'bocha',
-                    providers: [{ id: 'bocha', enabled: true, credentials: { apiKey: 'k' } }],
+                    searchProviderId: 'tavily',
+                    providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'k2' } }],
                 },
             }),
         )
         bumpMtime()
-        expect(readWebToolsConfig(file)?.searchProviderId).toBe('bocha')
+        expect(readWebToolsConfig(file)?.providers?.[0]?.credentials.apiKey).toBe('k2')
     })
     it('多文件互不污染：A 的缓存不给损坏的 B 兜底', () => {
         const fileB = join(dir, 'settings-b.json')

@@ -377,8 +377,7 @@
             "title": "Web Tools",
             "desc": "Replace Claude's built-in WebSearch / WebFetch with mobi's own implementation (remote mode only)",
             "providers": {
-                "tavily": "Tavily",
-                "bocha": "Bocha"
+                "tavily": "Tavily"
             },
             "apiKey": "API Key",
             "credentialSet": "Set (leave blank to keep)",

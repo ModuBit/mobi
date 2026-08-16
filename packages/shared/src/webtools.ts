@@ -24,7 +24,7 @@
 import { z } from 'zod'
 
 /** 可选 provider 清单：新增 provider 时在此登记 */
-export const WEB_TOOL_PROVIDER_IDS = ['tavily', 'bocha'] as const
+export const WEB_TOOL_PROVIDER_IDS = ['tavily'] as const
 export type WebToolProviderId = (typeof WEB_TOOL_PROVIDER_IDS)[number]
 
 export const WebToolProviderSettingsSchema = z.object({
@@ -88,8 +88,6 @@ export function redactWebToolsConfig(config: WebToolsConfig): RedactedWebToolsCo
 export function credentialKeysFor(id: WebToolProviderId): string[] {
     switch (id) {
         case 'tavily':
-            return ['apiKey']
-        case 'bocha':
             return ['apiKey']
     }
 }

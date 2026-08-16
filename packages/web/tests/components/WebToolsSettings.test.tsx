@@ -35,7 +35,6 @@ vi.mock('@/core/data/api/client', () => ({
 const i18nMap = vi.hoisted(() => ({
     'settings.webTools.title': 'Web 工具',
     'settings.webTools.providers.tavily': 'Tavily',
-    'settings.webTools.providers.bocha': '博查',
     'settings.webTools.apiKey': 'API Key',
     'settings.webTools.credentialSet': '已设置（留空保持不变）',
     'settings.webTools.credentialUnset': '未设置',
@@ -72,9 +71,8 @@ function mockLoadConfig() {
             config: {
                 searchProviderId: 'tavily',
                 providers: [
-                    { id: 'tavily', enabled: true, timeoutMs: 15000, credentials: { apiKey: { set: true } } },
                     // timeoutMs 用非默认值，锁定"提交回传已加载超时，防整体替换重置为 schema 默认 15000"
-                    { id: 'bocha', enabled: false, timeoutMs: 8000, credentials: { apiKey: { set: false } } },
+                    { id: 'tavily', enabled: true, timeoutMs: 8000, credentials: { apiKey: { set: true } } },
                 ],
             },
         },
@@ -90,17 +88,14 @@ describe('WebToolsSettings', () => {
     })
     afterEach(() => cleanup())
 
-    it('加载并回显配置：tavily 启用且凭据已设置，bocha 未启用未设置', async () => {
+    it('加载并回显配置：tavily 启用且凭据已设置', async () => {
         mockLoadConfig()
         renderCard()
 
         // 已设置（留空保持不变）extra 出现 = 配置回显完成
         await waitFor(() => expect(screen.getByText(/已设置（留空保持不变）/)).toBeTruthy())
-        // tavily Switch 选中、bocha 未选中（aria-label 定位，不依赖 DOM 顺序）
+        // tavily Switch 选中（aria-label 定位，不依赖 DOM 顺序）
         expect(screen.getByRole('switch', { name: 'tavily' })).toHaveClass('ant-switch-checked')
-        expect(screen.getByRole('switch', { name: 'bocha' })).not.toHaveClass('ant-switch-checked')
-        // 未启用 provider 的凭据显示"未设置"
-        expect(screen.getByText('未设置')).toBeTruthy()
         // 两跳请求的入参
         expect(stableApi.machines.list).toHaveBeenCalledTimes(1)
         expect(stableApi.machines.webTools.get).toHaveBeenCalledWith('m1')
@@ -127,16 +122,16 @@ describe('WebToolsSettings', () => {
         expect(document.querySelector('.ant-switch')).toBeNull()
     })
 
-    it('保存提交正确 payload：machineId 正确，凭据本次填写值原样提交（bocha 留空 = 空串）', async () => {
+    it('保存提交正确 payload：machineId 正确，凭据本次填写值原样提交', async () => {
         mockLoadConfig()
         stableApi.machines.webTools.set.mockResolvedValue({ data: { success: true } })
         const { container } = renderCard()
 
         await waitFor(() => expect(screen.getByText(/已设置（留空保持不变）/)).toBeTruthy())
 
-        // tavily 的 apiKey 输入（第一个密码框；bocha 为第二个）
+        // tavily 的 apiKey 输入（唯一密码框）
         const inputs = container.querySelectorAll('input.ant-input')
-        expect(inputs).toHaveLength(2)
+        expect(inputs).toHaveLength(1)
         fireEvent.change(inputs[0], { target: { value: 'tvly-new-key' } })
 
         fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }))
@@ -149,14 +144,9 @@ describe('WebToolsSettings', () => {
         expect(machineId).toBe('m1')
         expect(config.searchProviderId).toBe('tavily')
         const tavily = config.providers.find((p) => p.id === 'tavily')
-        const bocha = config.providers.find((p) => p.id === 'bocha')
         expect(tavily?.credentials.apiKey).toBe('tvly-new-key')
-        // 未填写的凭据以空串提交——runner 侧 merge 语义：空 = 保持旧值不动
-        expect(bocha?.credentials.apiKey).toBe('')
-        expect(bocha?.enabled).toBe(false)
-        // 超时非本页可编辑项：回传已加载值（bocha 8000），防 runner 整体替换时被重置为默认 15000
-        expect(tavily?.timeoutMs).toBe(15000)
-        expect(bocha?.timeoutMs).toBe(8000)
+        // 超时非本页可编辑项：回传已加载值（8000），防 runner 整体替换时被重置为 schema 默认 15000
+        expect(tavily?.timeoutMs).toBe(8000)
         // 保存成功 toast
         await waitFor(() => expect(screen.getByText('已保存')).toBeTruthy())
     })

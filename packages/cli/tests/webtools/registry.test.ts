@@ -41,15 +41,15 @@ describe('resolveSearchProvider / resolveFetchProvider', () => {
     })
     it('fetch 未单独配置时回退 searchProviderId', () => {
         const provider = resolveFetchProvider({
-            searchProviderId: 'bocha',
-            providers: [{ id: 'bocha', enabled: true, credentials: { apiKey: 'k' }, timeoutMs: 1000 }],
+            searchProviderId: 'tavily',
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'k' }, timeoutMs: 1000 }],
         })
-        expect(provider?.id).toBe('bocha')
+        expect(provider?.id).toBe('tavily')
     })
     it('选中的 provider 无对应配置条目 → null（schema 容忍的中间态）', () => {
         expect(resolveSearchProvider({
             searchProviderId: 'tavily',
-            providers: [{ id: 'bocha', enabled: true, credentials: { apiKey: 'k' }, timeoutMs: 1000 }],
+            providers: [],
         })).toBeNull()
     })
     it('NO_PROVIDER_MESSAGE 包含配置指引', () => {
