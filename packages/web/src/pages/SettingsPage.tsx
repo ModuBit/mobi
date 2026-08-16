@@ -49,7 +49,7 @@ const SettingsContent = styled.div<{ $token: ReturnType<typeof useToken>['token'
 `
 
 /** PC 形态：左侧分区导航 + 右侧内容 */
-const Split = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
+const Split = styled.div`
     display: flex;
     gap: 28px;
     align-items: flex-start;
@@ -58,7 +58,7 @@ const Split = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     width: 100%;
 `
 
-const SubNav = styled.nav<{ $token: ReturnType<typeof useToken>['token'] }>`
+const SubNav = styled.nav`
     width: 200px;
     flex-shrink: 0;
     display: flex;
@@ -84,6 +84,11 @@ const SubNavItem = styled.button<{ $token: ReturnType<typeof useToken>['token'];
     box-shadow: ${p => p.$active
         ? `0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px ${p.$token.colorBorderSecondary}`
         : 'none'};
+    /* 键盘可达性：focus-visible 用主题色描边 */
+    &:focus-visible {
+        outline: 2px solid ${p => p.$token.colorPrimary};
+        outline-offset: 2px;
+    }
 `
 
 const SectionMain = styled.main`
@@ -107,8 +112,9 @@ export function SettingsLayout() {
     const sections = SETTINGS_SECTIONS.filter((s) => s.visible())
 
     if (!isWide) {
+        // activeSectionId 已校验段在 SETTINGS_SECTIONS 内，未知段返回 null（回到入口态标题）
         const titleKey = active
-            ? SETTINGS_SECTIONS.find((s) => s.id === active)!.titleKey
+            ? SETTINGS_SECTIONS.find((s) => s.id === active)?.titleKey ?? 'settings.title'
             : 'settings.title'
         return (
             <SettingsContainer>
@@ -143,8 +149,8 @@ export function SettingsLayout() {
                 </>}
             />
             <SettingsContent $token={token}>
-                <Split $token={token}>
-                    <SubNav $token={token}>
+                <Split>
+                    <SubNav>
                         {sections.map((s) => {
                             const Icon = s.icon
                             return (

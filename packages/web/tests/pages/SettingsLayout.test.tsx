@@ -32,7 +32,6 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }
 vi.mock('@/core/lib/debug', () => ({ isDebugUnlocked: () => false }))
 
 import { SettingsLayout } from '@/pages/SettingsPage'
-import { SETTINGS_SECTIONS } from '@/components/settings/sections/registry'
 import {
     createMemoryHistory,
     createRouter,
@@ -42,7 +41,7 @@ import {
     Outlet,
 } from '@tanstack/react-router'
 
-/** 用内存路由渲染 SettingsLayout（RouterProvider mount 异步，返回 findBy* 等待路由 commit） */
+/** 用内存路由渲染 SettingsLayout（RouterProvider mount 异步，用 findBy* 等待路由 commit） */
 async function renderLayout(path: string) {
     const root = createRootRoute({ component: Outlet })
     const layout = createRoute({ getParentRoute: () => root, path: 'settings', component: SettingsLayout })
@@ -56,8 +55,6 @@ async function renderLayout(path: string) {
         history: createMemoryHistory({ initialEntries: [path] }),
     })
     render(<RouterProvider router={router} />)
-    // 等子路由 Outlet 内容出现（RouterProvider 异步 commit）
-    await screen.findByTestId('child-outlet')
 }
 
 afterEach(() => cleanup())
@@ -66,22 +63,30 @@ describe('SettingsLayout 响应式壳', () => {
     it('PC（≥992px）：渲染分区导航与子内容', async () => {
         mediaMatches.value = true
         await renderLayout('/settings/notifications')
+        // 等子路由 Outlet 内容出现（RouterProvider 异步 commit）后再断言
+        expect(await screen.findByTestId('child-outlet')).toBeTruthy()
         expect(screen.getByText('settings.sections.notifications.title')).toBeTruthy()
         expect(screen.getByText('settings.sections.webTools.title')).toBeTruthy()
-        expect(screen.getByTestId('child-outlet')).toBeTruthy()
+        // debug 入口默认不可见（未解锁）
+        expect(screen.queryByText('settings.sections.debug.title')).toBeNull()
     })
 
     it('mobile（<992px）：不渲染分区导航，渲染子内容 + 返回键', async () => {
         mediaMatches.value = false
         await renderLayout('/settings/notifications')
+        expect(await screen.findByTestId('child-outlet')).toBeTruthy()
         expect(screen.queryByText('settings.sections.webTools.title')).toBeNull()
-        expect(screen.getByTestId('child-outlet')).toBeTruthy()
+        // debug 入口默认不可见（未解锁）
+        expect(screen.queryByText('settings.sections.debug.title')).toBeNull()
         expect(screen.getByRole('button', { name: 'common.back' })).toBeTruthy()
     })
 
-    it('debug 分区默认不可见', async () => {
-        mediaMatches.value = true
-        await renderLayout('/settings/notifications')
-        expect(SETTINGS_SECTIONS.find((s) => s.id === 'debug')!.visible()).toBe(false)
+    it('mobile 未知子路由段：回入口态标题（settings.title），不崩溃、无返回键', async () => {
+        mediaMatches.value = false
+        // fuzzy notFoundMode 下 layout 仍渲染，activeSectionId 对未知段须返回 null 而非类型谎言
+        await renderLayout('/settings/foo')
+        expect(await screen.findByText('settings.title')).toBeTruthy()
+        expect(screen.getByTestId('sidebar-toggle')).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'common.back' })).toBeNull()
     })
 })

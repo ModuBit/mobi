@@ -36,8 +36,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     { id: 'debug', titleKey: 'settings.sections.debug.title', descKey: 'settings.sections.debug.desc', icon: Bug, visible: () => isDebugUnlocked() },
 ]
 
-/** 从 pathname 推断当前激活分区 id（/settings/web-tools → web-tools） */
+/**
+ * 从 pathname 推断当前激活分区 id（/settings/web-tools → web-tools）
+ * 未知段返回 null：PC 分支照常渲染路由 Not Found，mobile 分支回到入口态（settings.title + SidebarToggle）
+ */
 export function activeSectionId(pathname: string): SettingsSection['id'] | null {
     const match = /^\/settings\/([\w-]+)/.exec(pathname)
-    return (match?.[1] as SettingsSection['id']) ?? null
+    const segment = match?.[1]
+    return SETTINGS_SECTIONS.find((s) => s.id === segment)?.id ?? null
 }
