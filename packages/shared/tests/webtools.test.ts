@@ -16,7 +16,13 @@
 
 /** web 工具配置协议类型与凭据脱敏测试 */
 import { describe, expect, it } from 'vitest'
-import { WebToolsConfigSchema, redactWebToolsConfig, normalizeWebToolsConfig } from '../src/webtools'
+import {
+    WebToolsConfigSchema,
+    WebToolsConfigSubmissionSchema,
+    maskCredential,
+    redactWebToolsConfig,
+    normalizeWebToolsConfig,
+} from '../src/webtools'
 
 describe('WebToolsConfigSchema', () => {
     it('空对象合法（未配置态）', () => {
@@ -50,13 +56,13 @@ describe('WebToolsConfigSchema', () => {
 })
 
 describe('redactWebToolsConfig', () => {
-    it('凭据脱敏为 has 布尔', () => {
+    it('凭据脱敏为在场性布尔 + 掩码 preview', () => {
         const redacted = redactWebToolsConfig(
             WebToolsConfigSchema.parse({
                 providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'secret' } }],
             }),
         )
-        expect(redacted.providers?.[0]?.credentials).toEqual({ apiKey: { set: true } })
+        expect(redacted.providers?.[0]?.credentials).toEqual({ apiKey: { set: true, preview: '******' } })
     })
 
     it('未设置的凭据字段显示 set: false', () => {
@@ -135,5 +141,48 @@ describe('normalizeWebToolsConfig（存量归一）', () => {
 
     it('providers 全部非法 → 空配置', () => {
         expect(normalizeWebToolsConfig({ providers: [{ id: 'bocha', enabled: true }, 'garbage'] })).toEqual({})
+    })
+})
+
+describe('maskCredential', () => {
+    it('len ≥ 12：前 5 + 6 星 + 后 2', () => {
+        expect(maskCredential('tvly-abcdEFGH1234')).toBe('tvly-******34')
+    })
+    it('8 ≤ len < 12：前 3 + 4 星 + 后 2', () => {
+        expect(maskCredential('abcdefghij')).toBe('abc****ij')
+    })
+    it('len < 8：全掩码', () => {
+        expect(maskCredential('abc')).toBe('***')
+        expect(maskCredential('abcdefg')).toBe('*******')
+    })
+})
+
+describe('WebToolsConfigSubmissionSchema（提交方向：credentials 值 string | null）', () => {
+    it('null（清除）/ string（覆盖）均合法；非字符串非 null 拒绝', () => {
+        expect(WebToolsConfigSubmissionSchema.safeParse({
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: null } }],
+        }).success).toBe(true)
+        expect(WebToolsConfigSubmissionSchema.safeParse({
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'new-key' } }],
+        }).success).toBe(true)
+        expect(WebToolsConfigSubmissionSchema.safeParse({
+            providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 123 } }],
+        }).success).toBe(false)
+    })
+})
+
+describe('redactWebToolsConfig preview 生成', () => {
+    it('已设置凭据带 preview（掩码），未设置 { set: false } 无 preview', () => {
+        const redacted = redactWebToolsConfig({
+            searchProviderId: 'tavily',
+            providers: [
+                { id: 'tavily', enabled: true, credentials: { apiKey: 'tvly-abcdef123456' }, timeoutMs: 15_000 },
+            ],
+        })
+        expect(redacted.providers?.[0]?.credentials.apiKey).toEqual({ set: true, preview: 'tvly-******56' })
+    })
+    it('未设置凭据：{ set: false } 无 preview', () => {
+        const redacted = redactWebToolsConfig({ providers: [{ id: 'tavily', enabled: true, credentials: {}, timeoutMs: 15_000 }] })
+        expect(redacted.providers?.[0]?.credentials.apiKey).toEqual({ set: false })
     })
 })

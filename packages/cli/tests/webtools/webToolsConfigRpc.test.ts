@@ -166,9 +166,9 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
         }
         const manager = makeManager()
 
-        const response = await call(manager, 'get-web-tools-config', {}) as { config: { providers?: Array<{ credentials: Record<string, { set: boolean }> }> } }
+        const response = await call(manager, 'get-web-tools-config', {}) as { config: { providers?: Array<{ credentials: Record<string, { set: boolean; preview?: string }> }> } }
 
-        expect(response.config.providers?.[0]?.credentials).toEqual({ apiKey: { set: true } })
+        expect(response.config.providers?.[0]?.credentials).toEqual({ apiKey: { set: true, preview: '******' } })
     })
 
     it('get：存量配置损坏 → 回退空配置，不抛 RPC error', async () => {
@@ -216,11 +216,11 @@ describe('RPC handler 穿透（registerWebToolsConfigHandler + RpcHandlerManager
         const manager = makeManager()
 
         const response = await call(manager, 'get-web-tools-config', {}) as {
-            config: { searchProviderId?: string; providers?: Array<{ id: string; credentials: Record<string, { set: boolean }> }> }
+            config: { searchProviderId?: string; providers?: Array<{ id: string; credentials: Record<string, { set: boolean; preview?: string }> }> }
         }
 
         expect(response.config.searchProviderId).toBe('tavily')
         expect(response.config.providers?.map((p) => p.id)).toEqual(['tavily'])
-        expect(response.config.providers?.[0]?.credentials).toEqual({ apiKey: { set: true } })
+        expect(response.config.providers?.[0]?.credentials).toEqual({ apiKey: { set: true, preview: '******' } })
     })
 })
