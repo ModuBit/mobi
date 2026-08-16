@@ -15,8 +15,8 @@
  */
 
 /** web 工具配置协议类型与凭据脱敏测试（bun:test） */
-import { describe, expect, it } from 'bun:test'
-import { WebToolsConfigSchema, redactWebToolsConfig } from './webtools'
+import { describe, expect, it } from 'vitest'
+import { WebToolsConfigSchema, redactWebToolsConfig } from '../src/webtools'
 
 describe('WebToolsConfigSchema', () => {
     it('空对象合法（未配置态）', () => {
