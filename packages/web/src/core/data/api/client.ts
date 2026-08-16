@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionMode, RedactedWebToolsConfig, WebToolsConfig } from '@mobi/shared'
+import type { PermissionMode, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId } from '@mobi/shared'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -344,10 +344,17 @@ export function createMobiApi() {
             webTools: {
                 get: (machineId: string) =>
                     client.get<{ config: RedactedWebToolsConfig } | { error: string }>(`/api/machines/${machineId}/web-tools`),
-                set: (machineId: string, config: WebToolsConfig) =>
+                // set：提交方向在场性类型（凭据键不在场=保持、null=清除、空串=旧客户端保持）
+                set: (machineId: string, config: WebToolsConfigSubmission) =>
                     client.post<{ success: true } | { success: false; error: string }>(
                         `/api/machines/${machineId}/web-tools`,
                         { config },
+                    ),
+                // 验证连接：一次轻量真实搜索；草稿凭据优先于已存值，不落盘
+                verify: (machineId: string, providerId: WebToolProviderId, credentials?: Record<string, string>) =>
+                    client.post<{ success: true; latencyMs: number } | { success: false; error: string }>(
+                        `/api/machines/${machineId}/web-tools/verify`,
+                        { providerId, credentials },
                     ),
             },
         },
