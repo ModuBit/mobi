@@ -68,4 +68,6 @@ export const queryKeys = {
     ] as const,
     /** SDK 元数据（commands, models, agents 等） */
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,
+    /** Web 工具状态摘要（设置入口徽标：机器列表 → 脱敏配置两跳聚合） */
+    webToolsStatus: ['web-tools-status'] as const,
 }

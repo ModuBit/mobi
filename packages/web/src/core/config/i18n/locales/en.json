@@ -375,7 +375,7 @@
         "title": "Settings",
         "sections": {
             "notifications": { "title": "Notifications", "desc": "Push channels · Install to home screen" },
-            "webTools": { "title": "Web Tools", "desc": "Search & fetch provider configuration" },
+            "webTools": { "title": "Web Tools", "desc": "Search & fetch provider configuration", "statusEnabled": "Enabled", "statusUnconfigured": "Not configured", "statusOffline": "Machine offline" },
             "debug": { "title": "Debug", "desc": "Diagnostics · Data export" }
         },
         "webTools": {

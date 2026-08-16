@@ -41,6 +41,9 @@ const SettingsLayout = lazy(() =>
 const NotificationsSection = lazy(() =>
     import('./components/settings/sections/NotificationsSection').then((m) => ({ default: m.NotificationsSection })),
 )
+const SettingsIndex = lazy(() =>
+    import('./components/settings/sections/SettingsIndex').then((m) => ({ default: m.SettingsIndex })),
+)
 const WebToolsSectionPlaceholder = lazy(() =>
     import('./components/settings/sections/WebToolsSectionPlaceholder').then((m) => ({ default: m.WebToolsSectionPlaceholder })),
 )
@@ -115,11 +118,11 @@ const settingsRoute = createRoute({
     path: 'settings',
     component: SettingsLayout,
 })
-// 设置 index：临时指向 notifications，后续 task 换成 SettingsIndex 分流渲染
+// 设置 index：PC 渲染默认分区（通知），mobile 渲染分组入口列表（SettingsIndex 内部分流）
 const settingsIndexRoute = createRoute({
     getParentRoute: () => settingsRoute,
     path: '/',
-    component: NotificationsSection,
+    component: SettingsIndex,
 })
 // 通知与推送分区
 const settingsNotificationsRoute = createRoute({
