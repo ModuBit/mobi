@@ -345,6 +345,24 @@ describe('Supervisor 托管状态机', () => {
         expect(h.supervisor.status().hub.status).toBe('running')
     })
 
+    it('stop→start 竞态：旧进程迟到的 exit 不清新进程引用、不触发崩溃重拉', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+        h.supervisor.stop('hub') // SIGTERM 已发，旧进程优雅排水中（exit 未到达）
+        h.supervisor.start('hub') // 立即重拉：rt.process 已换成新 child
+        expect(h.processes).toHaveLength(2)
+        expect(h.supervisor.status().hub).toMatchObject({ managed: true, status: 'running' })
+
+        // 旧进程 exit 迟到到达：身份校验应忽略，不得把新进程清成幽灵 + 误走崩溃退避
+        h.processes[0].exit(0)
+        expect(h.supervisor.status().hub).toMatchObject({ managed: true, status: 'running', pid: h.processes[1].pid })
+        // 新进程不受牵连，也没有退避重拉出第三个进程
+        expect(h.processes[1].killedWith).toBeNull()
+        vi.advanceTimersByTime(60_000)
+        expect(h.processes).toHaveLength(2)
+    })
+
     it('spawn error（无 exit）→ 视同崩溃进入退避，错误信息进崩溃现场', () => {
         vi.useFakeTimers()
         const h = createHarness()

@@ -233,7 +233,13 @@ export class Supervisor {
                     ? combined.slice(-MAX_STDERR_TAIL_CHARS)
                     : combined
         })
-        child.on('exit', () => this.handleExit(name))
+        // 身份校验（对齐下方 error 回调）：rt.process 已换新（stop→start 竞态下重拉）
+        // 或已清空（error 已处理过）时，旧子进程迟到的 exit 直接忽略——否则会把
+        // 新进程引用清成幽灵，并按崩溃路径退避重拉，撞同一端口进入崩溃循环
+        child.on('exit', () => {
+            if (rt.process !== child) return
+            this.handleExit(name)
+        })
         // spawn 异步失败（二进制缺失/无权限等）只 emit error、不 emit exit：
         // 不监听会让组件永远卡在 running（无重启、无崩溃现场），且未监听的
         // error 事件会抛 uncaughtException 直接掀翻 supervisor。
