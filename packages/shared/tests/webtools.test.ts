@@ -148,12 +148,27 @@ describe('maskCredential', () => {
     it('len ≥ 12：前 5 + 6 星 + 后 2', () => {
         expect(maskCredential('tvly-abcdEFGH1234')).toBe('tvly-******34')
     })
+    it('len = 12 精确分界：走 len ≥ 12 档', () => {
+        expect(maskCredential('tvly-abcd123')).toBe('tvly-******23')
+    })
     it('8 ≤ len < 12：前 3 + 4 星 + 后 2', () => {
         expect(maskCredential('abcdefghij')).toBe('abc****ij')
     })
-    it('len < 8：全掩码', () => {
-        expect(maskCredential('abc')).toBe('***')
-        expect(maskCredential('abcdefg')).toBe('*******')
+    it('len = 8 精确分界：走 8 ≤ len < 12 档', () => {
+        expect(maskCredential('abcdefgh')).toBe('abc****gh')
+    })
+    it('len < 8：全掩码（恒 6 星，不泄露长度）', () => {
+        expect(maskCredential('abc')).toBe('******')
+        expect(maskCredential('abcdefg')).toBe('******')
+        expect(maskCredential('')).toBe('******')
+    })
+    it('星数恒定：preview 长度不随输入长度变化', () => {
+        // len 13 与 len 14（首 5 + 末 2 相同）preview 完全一致，星数固定为 6
+        expect(maskCredential('tvly-123456ab')).toBe('tvly-******ab')
+        expect(maskCredential('tvly-1234567ab')).toBe('tvly-******ab')
+        // 短凭据同样恒 6 星
+        expect(maskCredential('a')).toBe('******')
+        expect(maskCredential('1234567')).toBe('******')
     })
 })
 

@@ -84,7 +84,7 @@ export type RedactedWebToolsConfig = Omit<WebToolsConfig, 'providers'> & {
 }
 
 /**
- * 凭据掩码预览：len ≥ 12 → 前 5 + 6 星 + 后 2；8 ≤ len < 12 → 前 3 + 4 星 + 后 2；len < 8 → 全掩码。
+ * 凭据掩码预览：len ≥ 12 → 前 5 + 6 星 + 后 2；8 ≤ len < 12 → 前 3 + 4 星 + 后 2；len < 8 → 全掩码（恒 6 星，不泄露长度）。
  * 泄露面为「已登录用户在设置页查看」威胁模型可接受（对齐 GitHub token 显 last 4）；
  * preview 与凭据值同红线——任何日志/错误文案不得输出。
  */
@@ -92,7 +92,7 @@ export function maskCredential(value: string): string {
     const len = value.length
     if (len >= 12) return `${value.slice(0, 5)}${'*'.repeat(6)}${value.slice(-2)}`
     if (len >= 8) return `${value.slice(0, 3)}${'*'.repeat(4)}${value.slice(-2)}`
-    return '*'.repeat(len)
+    return '*'.repeat(6)
 }
 
 /** web 配置页回显用：凭据值替换为 { set: true/false, preview? } */
