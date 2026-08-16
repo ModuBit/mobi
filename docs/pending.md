@@ -674,11 +674,11 @@ react-virtuoso 虚拟化（#10）落地后，**prepend 后持续上滚跳动**�
 
 ## 46. supervisor 已知边界
 
-- `supervisor.stop/shutdown` 仅发 SIGTERM，子进程挂起信号时 finish 永不完成——需加宽限期 SIGKILL 升级
-- `cleanupOrphans` 按持久化 pid 探活击杀，存在 pid 复用误杀理论风险
-- `runSupervisor` 编排层零单测覆盖（finish 幂等/idle 竞态/onEmpty 路径仅靠人审），值得补注入式 fake server 测试
-- B 路径 launchd/systemd 真机验证未做（安装/开机自启/KeepAlive 拉起/空退出不重拉）
-- `hub start-sync` 直接调用时无端口范围校验（仅 service start/restart 经 parseHostPortArgs 校验）
+- ~~`supervisor.stop/shutdown` 仅发 SIGTERM，子进程挂起信号时 finish 永不完成~~（✅ 2026-08-16 已修）：`terminateProcess` 统一三处停止路径（stop/restart/shutdown）——SIGTERM + 5s 宽限期升级 SIGKILL；升级回调以 child 引用比对防误杀重拉的新进程，`handleExit` 清理定时器双保险。兼容性：正常优雅退出（远快于 5s）不受影响；e2e 脚本与 dev 直跑形态（`launch.json` 的 Hub/Runner Start-Sync 不走 supervisor）无涉；Supervisor 调试形态下断点暂停 = 挂起，SIGKILL 升级恰是预期行为。单测 +5 用例
+- `cleanupOrphans` 按持久化 pid 探活击杀，存在 pid 复用误杀理论风险（有探活，窗口极小，维持记录）
+- ~~`runSupervisor` 编排层零单测覆盖~~（✅ 已过时）：`tests/supervisor/` 5 个测试文件，`supervisor.test.ts` 注入式 fake 进程 20 用例覆盖状态机主体（stop/onEmpty/restart/shutdown 有序/backoff 竞态/SIGKILL 升级）；`index.ts` 编排层仍薄，维持
+- B 路径 launchd/systemd 真机验证未做（需真机操作，维持）
+- `hub start-sync` 直接调用时无端口范围校验（仅 service start/restart 经 parseHostPortArgs 校验）；start-sync 基本是内部路径（supervisor spawn / autoStartServer），低优维持
 - ~~`hub start` 不读 profile 的端口配置~~（✅ 2026-08-15 已修）：desired state 兜底端口改为感知 profile env（`profilePortOrDefault`，supervisor 继承 CLI 的 `MOBI_LISTEN_PORT`），`mobi hub start --profile e2e` 不带 `--port` 也落在 2224。e2e bootstrap 脚本仍显式传 `--port` 作双保险
 
 ---

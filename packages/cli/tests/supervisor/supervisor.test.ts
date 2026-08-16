@@ -278,6 +278,73 @@ describe('Supervisor 托管状态机', () => {
         expect(h.processes).toHaveLength(2)
     })
 
+    // ============ SIGTERM 宽限期 SIGKILL 升级（pending #46-1）============
+
+    it('stop 后子进程挂起信号 → 宽限期到升级 SIGKILL（状态机不卡死）', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+        h.supervisor.stop('hub')
+        // 只发过 SIGTERM，进程不响应（挂起：如 SQLite 死循环/断点暂停）
+        expect(h.processes[0].killedWith).toBe('SIGTERM')
+        vi.advanceTimersByTime(5_000)
+        expect(h.processes[0].killedWith).toBe('SIGKILL')
+    })
+
+    it('stop 后子进程正常退出 → 不升级 SIGKILL（宽限定时器被清理）', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+        h.supervisor.stop('hub')
+        h.processes[0].exit(0)
+        vi.advanceTimersByTime(5_000)
+        expect(h.processes[0].killedWith).toBe('SIGTERM')
+    })
+
+    it('restart 后子进程挂起 → SIGKILL 升级后 exit 到达仍正常重拉', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+        h.supervisor.restart('hub')
+        vi.advanceTimersByTime(5_000)
+        expect(h.processes[0].killedWith).toBe('SIGKILL')
+        // SIGKILL 致死的 exit 到达（signal='SIGKILL'）→ restartOnExit 照常重拉
+        h.processes[0].exit(null)
+        expect(h.processes).toHaveLength(2)
+        // 重拉的新进程不受旧宽限定时器影响
+        expect(h.processes[1].killedWith).toBeNull()
+    })
+
+    it('shutdown 遇挂起组件 → SIGKILL 升级后串行推进，promise 最终 resolve', async () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('runner')
+        h.supervisor.start('hub')
+        const p = h.supervisor.shutdown()
+        // runner 挂起不退
+        vi.advanceTimersByTime(5_000)
+        expect(h.processes[0].killedWith).toBe('SIGKILL')
+        // SIGKILL 后 exit 到达 → 推进到 hub（SIGTERM）
+        h.processes[0].exit(null)
+        expect(h.processes[1].killedWith).toBe('SIGTERM')
+        h.processes[1].exit(0)
+        await vi.waitFor(() => p) // 不抛超时即 resolve
+    })
+
+    it('宽限期内的迟到 kill 不会误杀重拉的新进程（child 引用比对）', () => {
+        vi.useFakeTimers()
+        const h = createHarness()
+        h.supervisor.start('hub')
+        h.supervisor.restart('hub')
+        // SIGTERM 后进程「缓慢」退出：宽限期前 exit 到达，restart 立即重拉新进程
+        h.processes[0].exit(0)
+        expect(h.processes).toHaveLength(2)
+        // 旧宽限定时器随后 fire（时间轴上迟到）：不得对新进程发 SIGKILL
+        vi.advanceTimersByTime(5_000)
+        expect(h.processes[1].killedWith).toBeNull()
+        expect(h.supervisor.status().hub.status).toBe('running')
+    })
+
     it('spawn error（无 exit）→ 视同崩溃进入退避，错误信息进崩溃现场', () => {
         vi.useFakeTimers()
         const h = createHarness()

@@ -63,12 +63,22 @@ interface ComponentRuntime {
     startedAt: number
     consecutiveCrashes: number
     restartTimer: ReturnType<typeof setTimeout> | null
+    /** SIGTERM 宽限升级定时器（见 terminateProcess） */
+    killTimer: ReturnType<typeof setTimeout> | null
     stderrTail: string
     /** 显式 restart 触发的退出：不走崩溃计数，立即重拉 */
     restartOnExit: boolean
 }
 
 const MAX_STDERR_TAIL_CHARS = 8_000
+
+/**
+ * SIGTERM 宽限期：子进程挂起信号（如 SQLite 死循环、调试器断点暂停）时 exit
+ * 永不到达，stop/shutdown 的状态机会卡死（finish 永不完成）。超时即升级
+ * SIGKILL 强杀。正常优雅关闭（hub 排水 + clearHubState）远快于此值不受影响
+ * （见 docs/pending.md #46）。
+ */
+const KILL_GRACE_MS = 5_000
 
 export class Supervisor {
     private readonly desired = new Set<ComponentName>()
@@ -118,7 +128,7 @@ export class Supervisor {
         }
         rt.consecutiveCrashes = 0
         if (rt.process) {
-            rt.process.kill('SIGTERM')
+            this.terminateProcess(rt)
             // exit 事件到达时 desired 已不含 name → 走"显式停止"分支
         } else {
             rt.status = 'stopped'
@@ -141,7 +151,7 @@ export class Supervisor {
         }
         if (rt.process) {
             rt.restartOnExit = true
-            rt.process.kill('SIGTERM')
+            this.terminateProcess(rt)
         } else {
             // backoff/failed 态：清掉定时器，立即重拉
             if (rt.restartTimer) {
@@ -185,9 +195,9 @@ export class Supervisor {
                     stopNext()
                     return
                 }
-                // exit 事件驱动串行停止
+                // exit 事件驱动串行停止（挂起时由宽限 SIGKILL 保证 exit 终会到达）
                 process.on('exit', () => stopNext())
-                process.kill('SIGTERM')
+                this.terminateProcess(rt)
             }
             stopNext()
         })
@@ -239,10 +249,33 @@ export class Supervisor {
         })
     }
 
+    /**
+     * 发 SIGTERM 并布置宽限升级：KILL_GRACE_MS 内未退出则 SIGKILL 强杀，
+     * 保证 stop/restart/shutdown 的状态机不会因子进程挂起信号而卡死。
+     * 升级回调以 child 引用比对——exit 后重拉的新进程（rt.process 已换）
+     * 不受迟到定时器误伤；handleExit 亦会清理定时器，双保险。
+     */
+    private terminateProcess(rt: ComponentRuntime): void {
+        const child = rt.process
+        if (!child) return
+        if (rt.killTimer) clearTimeout(rt.killTimer)
+        child.kill('SIGTERM')
+        rt.killTimer = setTimeout(() => {
+            rt.killTimer = null
+            if (rt.process === child) {
+                child.kill('SIGKILL')
+            }
+        }, KILL_GRACE_MS)
+    }
+
     private handleExit(name: ComponentName): void {
         const rt = this.runtimes.get(name)
         if (!rt) return
         rt.process = null
+        if (rt.killTimer) {
+            clearTimeout(rt.killTimer)
+            rt.killTimer = null
+        }
 
         // 显式 stop：desired 已不含该组件（stop() 先删再 kill）
         if (!this.desired.has(name)) {
@@ -301,6 +334,7 @@ export class Supervisor {
                 startedAt: 0,
                 consecutiveCrashes: 0,
                 restartTimer: null,
+                killTimer: null,
                 stderrTail: '',
                 restartOnExit: false,
             }
