@@ -336,11 +336,16 @@ packages/web/src/
 │   ├── terminal/               终端视图
 │   │   ├── TerminalView.tsx    终端视图（useCachedInstance 保活）
 │   │   └── cachedTerminal.ts   终端实例工厂（xterm + socket 常驻缓存）
-│   ├── settings/               设置页面
-│   │   ├── SettingsModule.tsx
+│   ├── settings/               设置组件
 │   │   ├── NotificationSettings.tsx 通知设置区块（权限开关、订阅状态）
 │   │   ├── WebToolsSettings.tsx Web 工具配置卡片（provider 启停/凭据，经 hub RPC 读写 runner settings）
-│   │   └── blocks/             通知设置子组件（GuideSection 权限引导 / PwaCard PWA 卡）
+│   │   ├── blocks/             设置子组件（GuideSection 权限引导 / PwaCard PWA 卡 / DebugSection 调试）
+│   │   └── sections/           设置分区（子路由页面与分区注册表，路由布局见 pages/SettingsPage.tsx）
+│   │       ├── registry.ts     分区定义单一真相（入口列表与分区导航共用）
+│   │       ├── SettingsIndex.tsx 入口列表页（mobile 首屏，含状态徽标）
+│   │       ├── NotificationsSection.tsx 通知分区（包 NotificationSettings）
+│   │       ├── WebToolsSectionPlaceholder.tsx Web 工具分区占位（沿用旧交互组件）
+│   │       └── DebugSectionRoute.tsx 调试分区路由（未解锁渲染空分区）
 │   └── ui/                     共享 UI 原语
 │       ├── Markdown.tsx        Markdown 渲染器
 │       ├── AutoDetectCodeBlock.tsx 代码块语言检测
