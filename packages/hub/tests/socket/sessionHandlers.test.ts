@@ -389,7 +389,7 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, bindSpy, events } = makeBoundDeps({ bindReturn: ['loc-1'] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [{ localId: 'loc-1', nativeId: 'uu-1' }] })
+        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }] })
         expect(bindSpy.args!.sid).toBe('s1')
         expect(bindSpy.args!.bindings).toEqual([{ localId: 'loc-1', nativeId: 'uu-1' }])
         // messages-bound 不广播 SSE，仅落库绑定
@@ -400,7 +400,7 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, bindSpy, accessError } = makeBoundDeps({ bindReturn: [], sessionOk: false })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
-        fakeSocket.emit('messages-bound', { sid: 'unknown', bindings: [{ localId: 'loc-1', nativeId: 'uu-1' }] })
+        fakeSocket.emit('messages-bound', { sid: 'unknown', bindings: [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }] })
         expect(accessError.called).toBe(true)
         expect(bindSpy.args).toBeNull()
     })
@@ -423,12 +423,13 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
             sid: 's1',
             bindings: [
                 null,
-                { localId: 'loc-1', nativeId: 'uu-1' },          // 有效
-                { localId: 'loc-2', nativeId: '' },               // 空串 nativeId → 占坑，丢弃
-                { localId: 'loc-3', nativeId: undefined },        // 缺字段 → bindNativeIds 会抛错，丢弃
-                { localId: '', nativeId: 'uu-3' },                // 空 localId → 永远匹配不到行，丢弃
+                { localId: 'loc-1', metadata: { nativeId: 'uu-1' } },                 // 有效
+                { localId: 'loc-2', metadata: { nativeId: '' } },                     // 空串 nativeId → 占坑，丢弃
+                { localId: 'loc-3', metadata: { nativeId: undefined } },              // 缺字段 → bindNativeIds 会抛错，丢弃
+                { localId: 'loc-3' },                                                 // 整个 metadata 缺失 → 丢弃
+                { localId: '', metadata: { nativeId: 'uu-3' } },                      // 空 localId → 永远匹配不到行，丢弃
                 'garbage',
-                { localId: 'loc-4', nativeId: 'uu-4' },           // 有效
+                { localId: 'loc-4', metadata: { nativeId: 'uu-4', nativeSessionId: 'ns-1' } },  // 有效（带 session 归属）
             ],
         })
         expect(bindSpy.args).not.toBeNull()

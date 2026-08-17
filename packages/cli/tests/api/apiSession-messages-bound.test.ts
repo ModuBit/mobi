@@ -88,23 +88,24 @@ beforeEach(() => {
     mockSocket.emit.mockClear()
 })
 
-describe('sendClaudeSessionMessage 携带 nativeId', () => {
-    it('body 带 uuid 时 message 事件 payload 的 nativeId 与 localId 同值', () => {
+describe('sendClaudeSessionMessage 携带 native metadata', () => {
+    it('body 带 uuid 时 message 事件 payload 的 metadata.nativeId 与 localId 同值', () => {
         const client = makeClient()
         client.sendClaudeSessionMessage({
             type: 'assistant',
             uuid: 'sdk-uuid-1',
+            session_id: 'cc-sess-1',
             message: { content: [] },
         } as never)
 
         expect(mockSocket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
             sid: 'session-1',
             localId: 'sdk-uuid-1',
-            nativeId: 'sdk-uuid-1',
+            metadata: { nativeId: 'sdk-uuid-1', nativeSessionId: 'cc-sess-1' },
         }))
     })
 
-    it('body 不带 uuid 时 message 事件 payload 的 nativeId 与 localId 均不带真值', () => {
+    it('body 不带 uuid 时 message 事件 payload 的 metadata 与 localId 均不带真值', () => {
         const client = makeClient()
         client.sendClaudeSessionMessage({
             type: 'assistant',
@@ -114,7 +115,7 @@ describe('sendClaudeSessionMessage 携带 nativeId', () => {
         expect(mockSocket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
             sid: 'session-1',
             localId: undefined,
-            nativeId: undefined,
+            metadata: { nativeId: undefined, nativeSessionId: undefined },
         }))
     })
 })
@@ -126,18 +127,20 @@ describe('emitMessagesBound 绑定上报', () => {
         expect(mockSocket.emit).not.toHaveBeenCalled()
     })
 
-    it('非空数组 emit messages-bound 事件，payload 带 sid 与 bindings', () => {
+    it('非空数组 emit messages-bound 事件，载荷为 metadata 形态（批内同 nativeId）', () => {
         const client = makeClient()
-        const bindings = [
+        client.emitMessagesBound([
             { localId: 'local-1', nativeId: 'native-1' },
             { localId: 'local-2', nativeId: 'native-1' },
-        ]
-        client.emitMessagesBound(bindings)
+        ])
 
         expect(mockSocket.emit).toHaveBeenCalledTimes(1)
         expect(mockSocket.emit).toHaveBeenCalledWith('messages-bound', {
             sid: 'session-1',
-            bindings,
+            bindings: [
+                { localId: 'local-1', metadata: { nativeId: 'native-1' } },
+                { localId: 'local-2', metadata: { nativeId: 'native-1' } },
+            ],
         })
     })
 })

@@ -422,8 +422,8 @@ export class ApiSessionClient extends EventEmitter {
             // 使用 Claude Code 的 uuid 作为 localId，供 Hub DB 去重
             // resume 场景下同一消息的 uuid 保持不变，Hub 可通过 localId 避免重复存储
             localId: body.uuid,
-            // SDK 消息的 native_id 与 local_id 同值双写（用户消息另有 messages-bound 绑定路径）
-            nativeId: body.uuid,
+            // SDK 消息自带 uuid 与 session id，一并写入 metadata（rewind 锚点）
+            metadata: { nativeId: body.uuid, nativeSessionId: body.session_id || undefined },
             category
         })
 
@@ -526,10 +526,19 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.emit('messages-submitted', { sid: this.sessionId, localIds })
     }
 
-    /** 通知 Hub：这批 localId 的用户消息已绑定 native_id（push 给 SDK 时生成，批内同值） */
+    /** 通知 Hub：这批 localId 的用户消息已绑定 native 锚点（push 给 SDK 时生成，批内同值）。
+     * 载荷按新协议 metadata 形态上报（nativeSessionId 由 attach 路径补写，此处可空） */
     emitMessagesBound(bindings: { localId: string; nativeId: string }[]): void {
         if (bindings.length === 0) return
-        this.socket.emit('messages-bound', { sid: this.sessionId, bindings })
+        this.socket.emit('messages-bound', {
+            sid: this.sessionId,
+            bindings: bindings.map(b => ({ localId: b.localId, metadata: { nativeId: b.nativeId } }))
+        })
+    }
+
+    /** 通知 Hub：native session 已切换（onSessionFound 变化），补写该会话缺 nativeSessionId 的消息行 */
+    emitNativeAttached(nativeSessionId: string): void {
+        this.socket.emit('messages-native-attached', { sid: this.sessionId, nativeSessionId })
     }
 
     /**

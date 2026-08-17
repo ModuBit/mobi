@@ -149,8 +149,15 @@ export interface ServerToClientEvents {
     error: (data: { message: string; code?: SocketErrorReason; scope?: 'session' | 'machine'; id?: string }) => void
 }
 
+/** 消息的上游 native 事实（rewind 锚点）——nativeId 为 transcript 消息 uuid；nativeSessionId 为所属
+ * 上游 session uuid（新会话首批用户消息 push 时可能未知，可空，待 attach 补写） */
+export interface NativeMessageMetadata {
+    nativeId?: string
+    nativeSessionId?: string
+}
+
 export interface ClientToServerEvents {
-    message: (data: { sid: string; message: unknown; localId?: string; nativeId?: string; snapshot?: boolean; category?: MessageCategory }) => void
+    message: (data: { sid: string; message: unknown; localId?: string; metadata?: NativeMessageMetadata; snapshot?: boolean; category?: MessageCategory }) => void
     'session-alive': (data: {
         sid: string
         time: number
@@ -220,8 +227,14 @@ export interface ClientToServerEvents {
     'usage-report': (data: unknown) => void
     'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
     'messages-submitted': (data: { sid: string; localIds: string[] }) => void
-    /** CLI push 用户消息给 SDK 时上报 (localId → nativeId) 绑定（同一 push 的批内 N 条共享一个 nativeId） */
-    'messages-bound': (data: { sid: string; bindings: { localId: string; nativeId: string }[] }) => void
+    /** CLI push 用户消息给 SDK 时上报 (localId → native 锚点) 绑定（同一 push 的批内 N 条共享一个 nativeId） */
+    'messages-bound': (data: { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] }) => void
+    /** CLI onSessionFound 且 native session 变化时上报：Hub 补写该会话缺 nativeSessionId 的消息行（幂等） */
+    'messages-native-attached': (data: { sid: string; nativeSessionId: string }) => void
+    /** rewind 截断成功（CLI → Hub）：Hub 即刻按 deleteFromSeq 软删除并转 SSE */
+    'rewound-truncated': (data: { sid: string; nativeId: string; deleteFromSeq: number }) => void
+    /** rewind 终态（CLI → Hub）：filesRestored false 时 error 携带原因，转 SSE */
+    'rewind-completed': (data: { sid: string; filesRestored: boolean; error?: string }) => void
     'cancel-queued-message': (data: { sid: string; messageId: string; localId: string }) => void
     /** CLI 事件驱动上报上下文用量（hub 落库到 runtimeState.contextUsage + SSE 推 web）。
      * contextUsage 为 null 表示清空（/clear 后新会话从 0 开始，用量线隐藏直到下次真实 turn） */

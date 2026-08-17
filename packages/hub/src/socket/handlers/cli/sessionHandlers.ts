@@ -525,8 +525,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
     })
 
-    // CLI push 用户消息给 SDK 时上报 (localId → nativeId) 绑定；幂等落库，不广播（web 经历史查询获取）
-    socket.on('messages-bound', (data: { sid: string; bindings: { localId: string; nativeId: string }[] }) => {
+    // CLI push 用户消息给 SDK 时上报 (localId → native 锚点) 绑定；幂等落库，不广播（web 经历史查询获取）
+    socket.on('messages-bound', (data: { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] }) => {
         if (!data || typeof data.sid !== 'string' || !Array.isArray(data.bindings)) {
             return
         }
@@ -536,11 +536,15 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
         // 逐项校验：null 项/缺字段会让 bindNativeIds 抛 TypeError，空串 nativeId 则永久占坑
-        // （first-write-wins + IS NULL 守卫会挡住后续合法绑定）——无效项直接丢弃，不落库
-        const bindings = data.bindings.filter((b): b is { localId: string; nativeId: string } =>
-            b !== null && typeof b === 'object' &&
-            typeof b.localId === 'string' && b.localId.length > 0 &&
-            typeof b.nativeId === 'string' && b.nativeId.length > 0)
+        // （first-write-wins + IS NULL 守卫会挡住后续合法绑定）——无效项直接丢弃，不落库。
+        // 过渡态：协议已切 metadata 形态，store 尚未迁移（Task 4），此处解包回扁平形态
+        const bindings = data.bindings
+            .filter((b): b is { localId: string; metadata: { nativeId: string } } =>
+                b !== null && typeof b === 'object' &&
+                typeof b.localId === 'string' && b.localId.length > 0 &&
+                typeof b.metadata === 'object' && b.metadata !== null &&
+                typeof b.metadata.nativeId === 'string' && b.metadata.nativeId.length > 0)
+            .map(b => ({ localId: b.localId, nativeId: b.metadata.nativeId }))
         if (bindings.length === 0) return
 
         store.messages.bindNativeIds(data.sid, bindings)
