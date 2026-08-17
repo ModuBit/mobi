@@ -25,21 +25,31 @@ interface CopyButtonProps {
     className?: string
 }
 
+/**
+ * 写剪贴板（navigator.clipboard 失败时降级 execCommand——非安全上下文/旧内核）。
+ * CopyButton 与移动端消息长按操作菜单共用。
+ */
+export async function copyTextToClipboard(text: string): Promise<boolean> {
+    try {
+        await navigator.clipboard.writeText(text)
+        return true
+    } catch {
+        const textarea = document.createElement('textarea')
+        textarea.value = text
+        document.body.appendChild(textarea)
+        textarea.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(textarea)
+        return ok
+    }
+}
+
 export function CopyButton({ text, size = 20, className }: CopyButtonProps) {
     const [copied, setCopied] = useState(false)
     const { t } = useTranslation()
 
     const handleCopy = useCallback(async () => {
-        try {
-            await navigator.clipboard.writeText(text)
-        } catch {
-            const textarea = document.createElement('textarea')
-            textarea.value = text
-            document.body.appendChild(textarea)
-            textarea.select()
-            document.execCommand('copy')
-            document.body.removeChild(textarea)
-        }
+        await copyTextToClipboard(text)
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
     }, [text])

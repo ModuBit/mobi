@@ -100,7 +100,7 @@ export function AgentDrawerContent({ block, metadata, sessionId }: {
             childrenBlocks,
             { metadata, isThinking: false, disableDrawer: true },
             isRunning,
-            { contextResetLabel: t('chat.contextReset') },
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere') },
         )
 
         const items = [...baseItems]

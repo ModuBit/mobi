@@ -40,6 +40,7 @@ import {
     clearMessageWindow,
     fetchLatestMessages,
 } from '@/core/data/stores/messageWindowStore'
+import { ingestRewindSseEvent } from '@/core/data/stores/rewindStore'
 
 /**
  * 使用 setQueryData 直接更新 session 缓存
@@ -269,6 +270,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const handleSyncEvent = useCallback((event: SyncEvent) => {
         const qc = queryClientRef.current
         const nt = notifyRef.current
+
+        // rewind 两段回报（rewound-truncated / rewind-completed）：shared SyncEventSchema
+        // 由 hub 线并行扩展中，web 侧按 type 字段先行接入（SSEClient 只 JSON.parse 不做 zod
+        // 校验，未知事件天然透传）；已消费则跳过后续 switch
+        if (ingestRewindSseEvent(event)) return
 
         switch (event.type) {
             case 'session-added':

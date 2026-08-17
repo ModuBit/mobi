@@ -109,6 +109,15 @@ export function createMobiApi() {
             // 停止后台任务
             stopTask: (sessionId: string, taskId: string) =>
                 client.post(`/api/sessions/${sessionId}/stop-task`, { taskId }),
+            // rewind 预检：校验 transcript 锚点存在性 + 文件快照可恢复性（结果驱动确认弹窗三形态）
+            rewindDryRun: (sessionId: string, nativeId: string) =>
+                client.post<{ canRewind: boolean; canRestoreFiles: boolean }>(
+                    `/api/sessions/${sessionId}/rewind/dry-run`,
+                    { nativeId },
+                ),
+            // rewind 执行：闸门通过即受理（202），结果经 SSE 两段回报（rewound-truncated → rewind-completed）
+            rewind: (sessionId: string, nativeId: string, restoreFiles: boolean) =>
+                client.post(`/api/sessions/${sessionId}/rewind`, { nativeId, restoreFiles }),
             // 清理 runtimeState 指定字段
             clearRuntimeStateFields: (sessionId: string, clearFields: ('todos' | 'tasks' | 'backgroundTasks' | 'teamState' | 'goalStatus')[]) =>
                 client.patch(`/api/sessions/${sessionId}/runtime-state`, { clearFields }),

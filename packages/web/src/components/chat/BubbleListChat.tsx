@@ -279,6 +279,15 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     useEffect(() => {
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
+        // rewind 截断后内容不足视口：主动启动 fill 补足（清除行不产生 scroll 事件，
+        // startReached 路径不会自然触发；条件与 handleScroll 的 fill 分支一致）
+        if (!isFillingRef.current
+            && renderItemsLengthRef.current < VISIBLE_WINDOW
+            && hasNextPageRef.current && !isFetchingNextPageRef.current && followingRef.current) {
+            isFillingRef.current = true
+            onLoadMoreRef.current()
+            return
+        }
         if (!isFillingRef.current) return
         if (!hasNextPageRef.current || isFetchingNextPageRef.current) return
         const { scrollHeight, clientHeight } = scrollBox

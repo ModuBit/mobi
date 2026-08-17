@@ -16,7 +16,7 @@
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { Spin, Button, theme as antTheme, message } from 'antd'
-import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined } from '@ant-design/icons'
+import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined, RollbackOutlined } from '@ant-design/icons'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
@@ -25,21 +25,26 @@ import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { isQueuedInMobi } from '@/core/lib/messages'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
-import { formatMessageTime } from '@/core/utils/timeFormat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
 import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleItems'
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
-import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND } from '@/domain/chat/presentation'
+import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress } from '@/domain/chat/presentation'
+import { canRewindMessage, collectRewindBatchText, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
-import { CopyButton } from './CopyButton'
+import { UserMessageFooter } from './UserMessageFooter'
+import { RewindDialog, type RewindDryRunResult } from './RewindDialog'
+import { MessageActionsDrawer, type MessageActionTarget } from './MessageActionsDrawer'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
-import { useBackgroundTasksStore } from '@/core/data/stores/backgroundTasksStore'
+import { useBackgroundTasksStore, useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
+import { useRewindStore, useRewindProgress, useRewindCompletion } from '@/core/data/stores/rewindStore'
+import { useLongPress } from '@/core/data/hooks/useLongPress'
+import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
 import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
@@ -70,6 +75,14 @@ const bubbleCopyStyles = css`
     }
     .user-msg-bubble:hover .msg-copy-btn {
         opacity: 1;
+    }
+`
+
+/** 移动端长按期间抑制系统选区/长按菜单（AppTooltip 先例：callout + user-select） */
+const longPressSuppressStyles = css`
+    .chat-longpress-suppress [data-bubble-key] {
+        -webkit-touch-callout: none;
+        user-select: none;
     }
 `
 
@@ -255,6 +268,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 有更多历史页时，过滤掉「孤儿」running tool-call block（结果被分页切走、永久卡 running），
     // 但保留尾部的「活跃」running 工具块（当前正在执行的工具）——否则长任务（如 Write）
     // 会在整个执行窗口被隐藏，直到 tool_result 到达才出现。详见 filterBlocksForPagination。
+    // rewind 生命周期 store 订阅（合成块追加/超时兜底/终态收尾共用，须先于 chatBlocks 声明）
+    const rewindProgress = useRewindProgress(sessionId)
+    const rewindCompletion = useRewindCompletion(sessionId)
+
     const chatBlocks = useMemo(() => {
         let blocks = filterBlocksForPagination(rawBlocks, hasNextPage)
         // 追加后台任务完成卡片
@@ -275,8 +292,34 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 meta: undefined,
             }))]
         }
+        // 追加 rewind 起点/终点合成块（对齐 bgCompletedTasks 的本地追加模式）：
+        // 起点 = 合成 user-text REWIND_COMMAND（不发送不落库，仅驱动 isRewindInProgress，
+        //        buildBubbleItems 跳过渲染）；终点 = agent-event rewind-completed
+        //        （截断点在列表尾部——锚点之后已被清除，天然落在正确位置；渲染为分隔线）
+        if (rewindProgress) {
+            blocks = [...blocks, {
+                kind: 'user-text' as const,
+                id: `rewind-start-${rewindProgress.startedAt}`,
+                localId: null,
+                createdAt: rewindProgress.startedAt,
+                text: REWIND_COMMAND,
+            }]
+        }
+        if (rewindCompletion) {
+            blocks = [...blocks, {
+                kind: 'agent-event' as const,
+                id: `rewind-completed-${rewindCompletion.completedAt}`,
+                createdAt: rewindCompletion.completedAt,
+                event: {
+                    type: 'rewind-completed',
+                    filesRestored: rewindCompletion.filesRestored,
+                    ...(rewindCompletion.error !== undefined ? { error: rewindCompletion.error } : {}),
+                } as const,
+                meta: undefined,
+            }]
+        }
         return blocks
-    }, [rawBlocks, hasNextPage, bgCompletedTasks])
+    }, [rawBlocks, hasNextPage, bgCompletedTasks, rewindProgress, rewindCompletion])
 
     // 从 chatBlocks 推导压缩状态：完成标志见 isCompactCompletion（compact-summary 成功路径 + compact-completed 失败兜底）
     const isCompressing = useMemo(
@@ -286,6 +329,143 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // /clear 进行中：禁用输入，防止 clear 期间提交新消息（与 isCompressing 共用 isCommandInProgress）
     const isClearing = useMemo(() => isClearInProgress(chatBlocks), [chatBlocks])
+
+    // ──────────────────────────────────────────────────────────────
+    // rewind 生命周期（spec §4.1 / §4.5）
+    // ──────────────────────────────────────────────────────────────
+
+    // rewind 进行中：禁用输入（完成标志 rewind-completed；rewound-truncated 非终态——文件恢复仍在途）
+    const isRewinding = useMemo(() => isRewindInProgress(chatBlocks), [chatBlocks])
+
+    // rewind 弹窗状态：draft 记录目标锚点与入口（PC modal / 移动 Drawer）；
+    // dryRun null = 预检拉取中；executing = POST 已受理等 SSE 终态
+    const [rewindDraft, setRewindDraft] = useState<{ nativeId: string; source: 'modal' | 'drawer' } | null>(null)
+    const [rewindDryRun, setRewindDryRun] = useState<RewindDryRunResult | null>(null)
+    const [rewindExecuting, setRewindExecuting] = useState(false)
+    // 锚点批原文（确认时捕获，rewindFrom 清窗后取不到）+ sender 回填请求（nonce 触发 ChatComposer 应用）
+    const pendingBackfillRef = useRef<string | null>(null)
+    const [draftRequest, setDraftRequest] = useState<{ text: string; nonce: number } | undefined>(undefined)
+    const draftNonceRef = useRef(0)
+
+    // 会话视图卸载清理（本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建）
+    useEffect(() => {
+        return () => useRewindStore.getState().clearSession(sessionId)
+    }, [sessionId])
+
+    // rewind 卡死兜底（对齐 clearStuck 模式，spec §4.5）：
+    // - truncated 已到、completed 30s 未到（CLI 崩溃于文件恢复阶段，失败模式 #9）→ 超时视为完成（filesRestored 按 false）
+    // - 截断前阶段（accepted 后无任何回报）设 90s 硬上限，防 CLI 崩溃于截断前致 sender 永久禁用（spec 外补充兜底）
+    useEffect(() => {
+        if (!rewindProgress) return
+        const timeoutMs = rewindProgress.truncatedAt != null ? 30_000 : 90_000
+        const timer = setTimeout(() => {
+            useRewindStore.getState().completeRewind(sessionId, false, 'timeout')
+            messageApi.warning(t('chat.rewind.timedOut'))
+        }, timeoutMs)
+        return () => clearTimeout(timer)
+    }, [rewindProgress, sessionId, messageApi, t])
+
+    // rewind 终态到达：关闭确认 UI、回填 sender、部分失败提示（文件恢复失败=合法降态，spec §5.4）
+    useEffect(() => {
+        if (!rewindCompletion) return
+        setRewindDraft(null)
+        setRewindDryRun(null)
+        setRewindExecuting(false)
+        setActionsTarget(null)
+        // 回填在 rewind-completed 之后（失败/超时兜底同样回填——截断已生效，原文已捕获）
+        if (pendingBackfillRef.current != null) {
+            setDraftRequest({ text: pendingBackfillRef.current, nonce: ++draftNonceRef.current })
+            pendingBackfillRef.current = null
+        }
+        if (!rewindCompletion.filesRestored && rewindCompletion.error && rewindCompletion.error !== 'timeout') {
+            messageApi.warning(t('chat.rewind.filesFailed', { reason: rewindCompletion.error }))
+        }
+    }, [rewindCompletion, messageApi, t])
+
+    // rewind 入口：dry-run 预检 → canRewind 才弹确认（否则 toast，spec §5.3）
+    const openRewindDialog = useCallback(async (nativeId: string, source: 'modal' | 'drawer' = 'modal') => {
+        setRewindDraft({ nativeId, source })
+        setRewindDryRun(null)
+        try {
+            const res = await api.sessions.rewindDryRun(sessionId, nativeId)
+            if (!res.data.canRewind) {
+                // 预检拒绝（假锚点 / /clear 前旧行误判等）：不弹窗，干净拒绝
+                messageApi.error(t('chat.rewind.unavailable'))
+                setRewindDraft(null)
+                return
+            }
+            setRewindDryRun({ canRewind: true, canRestoreFiles: !!res.data.canRestoreFiles })
+        } catch {
+            messageApi.error(t('chat.rewind.unavailable'))
+            setRewindDraft(null)
+        }
+    }, [api, sessionId, messageApi, t])
+
+    // rewind 确认执行：受理成功进入生命周期（起点行插入 → sender 禁用），结果等 SSE 两段回报
+    const confirmRewind = useCallback(async (restoreFiles: boolean) => {
+        if (!rewindDraft) return
+        // 回填文本须在截断清窗前捕获（锚点批 N 条原文随后被 rewindFrom 清除，spec §4.4）
+        pendingBackfillRef.current = collectRewindBatchText(messages, rewindDraft.nativeId)
+        setRewindExecuting(true)
+        try {
+            await api.sessions.rewind(sessionId, rewindDraft.nativeId, restoreFiles)
+            useRewindStore.getState().beginRewind(sessionId, rewindDraft.nativeId)
+        } catch (err) {
+            // 干净失败（闸门拒绝 / 网络错误）：列表与 sender 不动，toast 原因
+            setRewindExecuting(false)
+            pendingBackfillRef.current = null
+            const reason = err instanceof Error ? err.message : String(err)
+            messageApi.error(t('chat.rewind.filesFailed', { reason }))
+        }
+    }, [rewindDraft, api, sessionId, messages, messageApi, t])
+
+    const handleOpenRewind = useCallback((nativeId: string) => {
+        void openRewindDialog(nativeId, 'modal')
+    }, [openRewindDialog])
+
+    // ──────────────────────────────────────────────────────────────
+    // 移动端长按操作菜单（spec §5.2）：事件委托到滚动容器
+    //（antdx Bubble item 不透传 touch handlers，靠 data-bubble-key 定位目标行）
+    // ──────────────────────────────────────────────────────────────
+    const isMobile = useIsMobile()
+    const [actionsTarget, setActionsTarget] = useState<MessageActionTarget | null>(null)
+    // 长按期间抑制系统选区（touchstart 置位、touchend/move 复位）
+    const [longPressActive, setLongPressActive] = useState(false)
+    // key → 消息操作信息索引（decoratedItems 内重建，判据与 footer 同源）
+    const actionsInfoByRef = useRef<Map<string, MessageActionTarget>>(new Map())
+    const longPressKeyRef = useRef<string | null>(null)
+
+    const openActionsMenu = useCallback(() => {
+        const key = longPressKeyRef.current
+        longPressKeyRef.current = null
+        if (!key) return
+        const info = actionsInfoByRef.current.get(key)
+        if (info) setActionsTarget(info)
+    }, [])
+    const longPress = useLongPress(openActionsMenu)
+
+    const handleBubbleTouchStart = useCallback((e: React.TouchEvent) => {
+        const el = (e.target as HTMLElement).closest?.('[data-bubble-key]')
+        const key = el?.getAttribute('data-bubble-key') ?? null
+        longPressKeyRef.current = key
+        if (key) {
+            setLongPressActive(true)
+            longPress.onTouchStart()
+        }
+    }, [longPress])
+    const handleBubbleTouchEnd = useCallback(() => {
+        setLongPressActive(false)
+        longPressKeyRef.current = null
+        longPress.onTouchEnd()
+    }, [longPress])
+    const handleBubbleTouchMove = useCallback(() => {
+        setLongPressActive(false)
+        longPress.onTouchMove()
+    }, [longPress])
+    // 气泡上长按会触发系统 contextmenu（选区/呼出菜单），长按手势期间拦截
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        if ((e.target as HTMLElement).closest?.('[data-bubble-key]')) e.preventDefault()
+    }, [])
 
     // clear 完成事件（context-cleared）丢失兜底：发送完成 10s 后若仍卡在 clear，强制解禁，
     // 避免输入永久禁用。compact 不加此兜底——其可合法耗时数十秒，超时会误判进行中为卡死。
@@ -307,53 +487,93 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         setShowScrollBottom(!following)
     }, [])
 
+    // rewind 判据数据源：会话当前 native session id + 后台任务在途数（store 订阅，spec §3.4）
+    const sessionNativeSessionId = metadata?.nativeSessionId
+    const backgroundTasksCount = useBackgroundTasks(sessionId).length
+
     const decoratedItems = useMemo(() => {
         const baseItems = buildChatBubbleItems(
             chatBlocks,
             { metadata, isThinking: false, api, sessionId, disabled: sendMutation.isPending },
             !!session?.running,
-            { contextResetLabel: t('chat.contextReset') },
+            { contextResetLabel: t('chat.contextReset'), rewoundToHereLabel: t('chat.rewind.rewoundToHere') },
+        )
+
+        // block.id === 消息 id（normalize 以消息 id 作 block id），按 id 建消息 metadata 索引，
+        // 供 footer rewind 判据取该行的 native 锚点
+        const metaById = new Map<string, NativeMessageMetadata | null>(
+            messages.map(m => [m.id, m.metadata ?? null]),
         )
 
         const decorated: ChatBubbleItem[] = baseItems.map(item => {
             const block = item.block
             const isUserText = block?.kind === 'user-text'
 
+            // rewind 判据（footer 操作组与移动长按菜单同源，spec §5.5）
+            const rewindable = isUserText && block
+                ? canRewindMessage(
+                    { metadata: metaById.get(block.id) },
+                    sessionNativeSessionId,
+                    { running: !!session?.running, backgroundTasks: backgroundTasksCount },
+                )
+                : false
+
             return {
                 ...item,
-                header: isUserText ? (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <div className="msg-copy-btn">
-                            <CopyButton text={block && 'text' in block ? (block as { text: string }).text : ''} size={16} />
-                        </div>
-                    </div>
-                ) : undefined,
                 classNames: isUserText ? { root: 'user-msg-bubble' } : undefined,
                 footer: isUserText && block ? (
-                    <span style={{ fontSize: 11, opacity: 0.6 }}>{formatMessageTime(block.createdAt)}</span>
+                    <UserMessageFooter
+                        text={block.text}
+                        createdAt={block.createdAt}
+                        canRewind={rewindable}
+                        onRewind={() => {
+                            const nativeId = metaById.get(block.id)?.nativeId
+                            if (nativeId) handleOpenRewind(nativeId)
+                        }}
+                    />
                 ) : undefined,
                 footerPlacement: 'outer-end' as const,
             }
         })
 
+        // 移动端长按菜单目标索引（key → 操作信息；判据与 footer 同源同帧计算）
+        const actionsInfo = new Map<string, MessageActionTarget>()
+        for (const item of decorated) {
+            const block = item.block
+            if (block?.kind !== 'user-text') continue
+            const meta = metaById.get(block.id)
+            actionsInfo.set(item.key, {
+                key: item.key,
+                text: block.text,
+                nativeId: meta?.nativeId ?? null,
+                canRewind: canRewindMessage(
+                    { metadata: meta },
+                    sessionNativeSessionId,
+                    { running: !!session?.running, backgroundTasks: backgroundTasksCount },
+                ),
+            })
+        }
+        actionsInfoByRef.current = actionsInfo
+
         // 结构化共享：block 未变的 item 复用上一帧对象（连同其 content 元素），
         // 让 BubbleItem 的 memo 真正生效。
         //
         // 缓存自失效：content 由 block + 渲染上下文共同决定，上下文变了必须整体重建，
-        // 否则会复用捕获了旧 ctx（旧 disabled / 旧 api）的 content。这里把上下文签名
+        // 否则会复用捕获了旧 ctx（旧 disabled / 旧 api / 旧 footer 判据）的 content。这里把上下文签名
         // 与缓存存在一起比对——签名不同则丢弃缓存，从空 Map 重建。
         const ctxKey = `${metadata?.path ?? ''}|${sessionId}|${sendMutation.isPending}|${!!session?.running}`
+            + `|${sessionNativeSessionId ?? ''}|${backgroundTasksCount}`
         const reusableCache = prevItemsRef.current.ctxKey === ctxKey
             ? prevItemsRef.current.cache
             : new Map()
         const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
         prevItemsRef.current = { cache, ctxKey }
         return items
-    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t])
+    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, handleOpenRewind])
 
     const bubbleItems = useMemo(() => {
         // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝
-        if (!isCompressing && !isClearing) return decoratedItems
+        if (!isCompressing && !isClearing && !isRewinding) return decoratedItems
 
         const items: ChatBubbleItem[] = [...decoratedItems]
 
@@ -375,8 +595,17 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             })
         }
 
+        if (isRewinding) {
+            items.push({
+                key: '__rewinding__',
+                role: 'assistant',
+                content: <CommandProgressBubble icon={<RollbackOutlined />} titleKey="chat.rewind.executing" />,
+                variant: 'borderless',
+            })
+        }
+
         return items
-    }, [decoratedItems, isCompressing, isClearing])
+    }, [decoratedItems, isCompressing, isClearing, isRewinding])
 
     const handleSend = (text: string) => {
         if (import.meta.env.DEV) console.log('[Send] handleSend', { textLen: text.length, hasTrim: !!text.trim() })
@@ -419,7 +648,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
             <Global styles={collapsibleUserMessageStyles} />
-            <div className="chat-scroll-container" style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}>
+            <Global styles={longPressSuppressStyles} />
+            <div
+                className={`chat-scroll-container${longPressActive ? ' chat-longpress-suppress' : ''}`}
+                style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}
+                onTouchStart={isMobile ? handleBubbleTouchStart : undefined}
+                onTouchEnd={isMobile ? handleBubbleTouchEnd : undefined}
+                onTouchMove={isMobile ? handleBubbleTouchMove : undefined}
+                onContextMenu={isMobile ? handleContextMenu : undefined}
+            >
                 {chatBlocks.length === 0 ? (
                     <ChatWelcome sessionId={sessionId} />
                 ) : (
@@ -458,9 +695,43 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 )}
             </div>
 
+            <RewindDialog
+                open={rewindDraft?.source === 'modal'}
+                dryRun={rewindDryRun}
+                loading={rewindExecuting}
+                onConfirm={(restoreFiles) => { void confirmRewind(restoreFiles) }}
+                onCancel={() => {
+                    setRewindDraft(null)
+                    setRewindDryRun(null)
+                }}
+            />
+
+            {/* 移动端长按操作菜单（仅移动端挂长按，PC 走 footer hover 操作组） */}
+            {isMobile && (
+                <MessageActionsDrawer
+                    open={actionsTarget !== null}
+                    target={actionsTarget}
+                    rewindActive={rewindDraft?.source === 'drawer' && actionsTarget !== null}
+                    dryRun={rewindDryRun}
+                    loading={rewindExecuting}
+                    onClose={() => {
+                        setActionsTarget(null)
+                        setRewindDraft(null)
+                        setRewindDryRun(null)
+                    }}
+                    onRewind={(nativeId) => { void openRewindDialog(nativeId, 'drawer') }}
+                    onConfirmRewind={(restoreFiles) => { void confirmRewind(restoreFiles) }}
+                    onCancelRewind={() => {
+                        setRewindDraft(null)
+                        setRewindDryRun(null)
+                    }}
+                />
+            )}
+
             <ChatComposer
                 sessionId={sessionId}
-                disabled={sendMutation.isPending || isCompressing || (isClearing && !clearStuck)}
+                draftRequest={draftRequest}
+                disabled={sendMutation.isPending || isCompressing || isRewinding || (isClearing && !clearStuck)}
                 sending={sendMutation.isPending}
                 compressing={isCompressing}
                 permissionMode={session?.permissionMode}

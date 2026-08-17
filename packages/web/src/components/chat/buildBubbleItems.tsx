@@ -16,6 +16,7 @@
 
 import type React from 'react'
 import type { ChatBlock } from '@/domain/chat'
+import { REWIND_COMMAND } from '@/domain/chat/presentation'
 import type { ChatBlockContext } from './blocks'
 import { groupCollapsibleToolCalls } from '@/domain/chat/groupToolCalls'
 import { renderChatBlock } from './blocks'
@@ -24,6 +25,8 @@ import { ToolCallGroupRenderer } from './blocks/ToolCallGroupBlock'
 export type BuildBubbleOptions = {
     /** context-cleared 分隔线的翻译文本 */
     contextResetLabel: string
+    /** rewind 截断点「已回退至此」分隔线的翻译文本 */
+    rewoundToHereLabel: string
 }
 
 const ASSISTANT_BLOCK_KINDS = new Set(['agent-text', 'agent-reasoning', 'tool-call', 'compact-summary'])
@@ -90,9 +93,27 @@ export function buildChatBubbleItems(
             continue
         }
 
+        // rewind-completed 事件渲染为「已回退至此」分隔线（对齐 context-cleared 分隔线形态，spec §4.4）；
+        // 同时它是 isRewindInProgress 的完成标志（纯状态信号，此处承担视觉呈现）
+        if (block.kind === 'agent-event' && block.event.type === 'rewind-completed') {
+            items.push({
+                key: block.id,
+                role: 'divider',
+                content: <span style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)' }}>{options.rewoundToHereLabel}</span>,
+                block,
+            })
+            continue
+        }
+
         // compact-completed 是纯完成信号（供 isCompressing 退出压缩态），不渲染气泡：
         // 成功路径已有 compact-summary 反馈压缩统计，失败路径已有 assistant 回复说明原因
         if (block.kind === 'agent-event' && block.event.type === 'compact-completed') {
+            continue
+        }
+
+        // rewind 起点合成行（ChatContainer 本地插入的 REWIND_COMMAND 标记，非真实消息）：
+        // 仅驱动 isRewindInProgress 禁用 sender，不渲染气泡
+        if (block.kind === 'user-text' && block.text.trim() === REWIND_COMMAND) {
             continue
         }
 

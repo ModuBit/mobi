@@ -64,6 +64,24 @@ export function isClearInProgress(chatBlocks: ChatBlock[]): boolean {
     )
 }
 
+/**
+ * rewind 命令标记：Web 确认 rewind 时本地插入的合成 user-text（不发送、不落库），
+ * 仅作为 isCommandInProgress 的起点行（对齐 /clear 的「user-text 命令 → 完成事件」扫描模式）。
+ * buildBubbleItems 跳过渲染该标记行。理论上与用户真实输入 /rewind 文本冲突——
+ * rewinding 完成标记到达前该行会被隐藏一个 turn，可接受。
+ */
+export const REWIND_COMMAND = '/rewind'
+
+/** rewind 完成标志：CLI 两段回报的终态事件（rewound-truncated 非终态——文件恢复仍在途，spec §4.5） */
+export function isRewindCompletion(block: ChatBlock): boolean {
+    return block.kind === 'agent-event' && block.event.type === 'rewind-completed'
+}
+
+/** rewind 是否进行中（起点：合成 REWIND_COMMAND 行；完成标志：rewind-completed 事件） */
+export function isRewindInProgress(chatBlocks: ChatBlock[]): boolean {
+    return isCommandInProgress(chatBlocks, REWIND_COMMAND, isRewindCompletion)
+}
+
 export function formatUnixTimestamp(value: number): string {
     const ms = value < 1_000_000_000_000 ? value * 1000 : value
     const date = new Date(ms)

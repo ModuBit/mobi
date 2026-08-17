@@ -171,6 +171,17 @@
         },
         "copy": "复制",
         "copied": "已复制",
+        "rewind": {
+            "title": "回退并编辑",
+            "restoreAndRewind": "恢复代码并回退",
+            "rewindOnly": "仅回退对话",
+            "executing": "正在回退...",
+            "unavailable": "该消息暂无法回退",
+            "filesUnavailable": "文件快照已超出保留窗口，将仅回退对话",
+            "filesFailed": "文件恢复失败：{{reason}}",
+            "timedOut": "回退超时，已解锁输入",
+            "rewoundToHere": "已回退至此"
+        },
         "expand": "展开",
         "collapse": "收起",
         "tool": {

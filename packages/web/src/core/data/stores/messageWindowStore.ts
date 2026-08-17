@@ -292,6 +292,20 @@ export function markMessagesSubmitted(sessionId: string, localIds: string[], sub
     })
 }
 
+/**
+ * rewind 截断：清除窗口内 seq >= deleteFromSeq 的已加载行（与 Hub 软删除范围一致，spec §4.4）。
+ * 无 seq 行（乐观/快照）保留——rewind 期间会话必为 idle，正常无在途行；
+ * 清除后剩余不足视口时由 BubbleListChat 的 fill 级联自动 prepend 补足。
+ * oldestSeq 不变（只删尾部，最小 seq 不动）。
+ */
+export function rewindFrom(sessionId: string, deleteFromSeq: number): void {
+    _internal.updateState(sessionId, prev => {
+        const next = prev.messages.filter(m => m.seq == null || m.seq < deleteFromSeq)
+        if (next.length === prev.messages.length) return prev
+        return _internal.buildState(prev, { messages: next })
+    })
+}
+
 /** 发送状态机（sending/sent/failed） */
 export function updateMessageStatus(sessionId: string, localId: string, status: MessageStatus): void {
     if (!localId) return

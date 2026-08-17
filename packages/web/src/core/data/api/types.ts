@@ -45,10 +45,18 @@ export type {
 // 消息发送状态
 export type MessageStatus = 'sending' | 'sent' | 'queued' | 'failed'
 
+/** 消息行的上游 native 事实（rewind 锚点；hub DTO 输出 metadata 字段，web 侧独立声明先行） */
+export type NativeMessageMetadata = {
+    nativeId?: string
+    nativeSessionId?: string
+}
+
 // 扩展的解密消息（包含发送状态）
 export type DecryptedMessage = ProtocolDecryptedMessage & {
     status?: MessageStatus
     originalText?: string
+    /** 上游 agent 引擎的 native 事实（transcript 消息 uuid + 所属 session uuid），rewind 判据数据源 */
+    metadata?: NativeMessageMetadata | null
 }
 
 // ============ 会话类型 ============
@@ -62,6 +70,8 @@ export type SessionMetadataSummary = {
     os?: string
     summary?: { text: string; updatedAt: number }
     machineId?: string
+    /** 会话当前所属上游 session uuid（rewind 判据与消息行 metadata.nativeSessionId 比对） */
+    nativeSessionId?: string
     tools?: string[]
     flavor?: string | null
     worktree?: WorktreeMetadata

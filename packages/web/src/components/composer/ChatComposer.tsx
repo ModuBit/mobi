@@ -95,6 +95,11 @@ interface ChatComposerProps {
     contextUsage?: ContextUsage | null
     /** goal 状态（来自 session.runtimeState.goalStatus；无值时不渲染徽标） */
     goal?: GoalStatus | null
+    /**
+     * 外部草稿回填请求（rewind 收尾把锚点批原文灌回 sender 并聚焦）：
+     * nonce 单调递增触发应用，同 nonce 不重复；text 为空串时忽略
+     */
+    draftRequest?: { text: string; nonce: number }
 }
 
 /**
@@ -310,6 +315,7 @@ export function ChatComposer(props: ChatComposerProps) {
         tasks,
         contextUsage,
         goal,
+        draftRequest,
     } = props
 
     const [text, setText] = useState('')
@@ -320,6 +326,17 @@ export function ChatComposer(props: ChatComposerProps) {
         setText(draftText)
         requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
     }, [])
+
+    // rewind 收尾回填（spec §4.4）：锚点批 N 条原文 join('\n') 灌回 sender 并聚焦（移动端弹键盘）。
+    // 经 ref 读最新请求体，effect 只依赖 nonce——避免 draftRequest 对象引用变化重复触发
+    const draftRequestRef = useRef(draftRequest)
+    draftRequestRef.current = draftRequest
+    const draftNonce = draftRequest?.nonce
+    useEffect(() => {
+        if (draftNonce == null) return
+        const req = draftRequestRef.current
+        if (req && req.text.length > 0) setDraft(req.text)
+    }, [draftNonce, setDraft])
 
     // 跨页草稿（NewSessionPage 创建会话后发送失败时暂存）优先级最高：取出后落入当前 session 草稿，
     // 随后 useComposerDraft 的 rAF 恢复会从草稿库读到它 —— 天然一致，无需标志位协调 (#2)
