@@ -397,6 +397,16 @@ export class SyncEngine {
         await this.rpcGateway.stopTask(sessionId, taskId)
     }
 
+    // rewind 预检（Web → Hub → CLI RPC 转发）：锚点存在性 + rewindFiles(dryRun)，结果原样透传给 Web
+    async rewindDryRun(sessionId: string, nativeId: string): Promise<unknown> {
+        return await this.rpcGateway.rewindDryRun(sessionId, nativeId)
+    }
+
+    // rewind 执行（RPC 只做受理；CLI 闸门复检，结果经 socket 两段回报 → SSE 推 Web）
+    async rewind(sessionId: string, nativeId: string, restoreFiles: boolean): Promise<unknown> {
+        return await this.rpcGateway.rewind(sessionId, nativeId, restoreFiles)
+    }
+
     async archiveSession(sessionId: string): Promise<void> {
         await this.rpcGateway.killSession(sessionId)
         this.handleSessionEnd({ sid: sessionId, time: Date.now() })

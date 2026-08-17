@@ -24,6 +24,7 @@ import { serveStatic } from 'hono/bun'
 import { configuration } from '../configuration'
 import { PROTOCOL_VERSION, MAX_UPLOAD_BYTES } from '@mobi/shared'
 import type { SyncEngine } from '../sync/syncEngine'
+import type { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
 import { createAuthMiddleware, type WebAppEnv } from './middleware/auth'
 import { createAuthRoutes } from './routes/auth'
 import { createEventsRoutes } from './routes/events'
@@ -89,6 +90,8 @@ export function createWebApp(options: {
     corsOrigins?: string[]
     embeddedAssetMap: Map<string, EmbeddedWebAsset> | null
     distDirOverride?: string
+    /** 活跃后台任务集合（rewind API 闸门；须与 CLI socket handler 写侧共用同一实例，生产组装层必传） */
+    backgroundTaskTracker?: BackgroundTaskTracker
 }): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -151,7 +154,10 @@ export function createWebApp(options: {
     app.route('/api', createAuthRoutes(options.jwtSecret))
     app.use('/api/*', createAuthMiddleware(options.jwtSecret))
     app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker))
-    app.route('/api', createSessionsRoutes(options.getSyncEngine))
+    app.route('/api', createSessionsRoutes(
+        options.getSyncEngine,
+        options.backgroundTaskTracker ? () => options.backgroundTaskTracker : undefined,
+    ))
     app.route('/api', createProjectsRoutes(options.getSyncEngine))
     app.route('/api', createMessagesRoutes(options.getSyncEngine))
     app.route('/api', createPermissionsRoutes(options.getSyncEngine))
@@ -250,6 +256,8 @@ export async function startWebServer(options: {
     vapidPublicKey: string
     socketEngine: SocketEngine
     corsOrigins?: string[]
+    /** 活跃后台任务集合（rewind API 闸门；须与 CLI socket handler 写侧共用同一实例） */
+    backgroundTaskTracker?: BackgroundTaskTracker
 }): Promise<BunServer<WebSocketData>> {
     const isCompiled = isBunCompiled()
     const embeddedAssetMap = isCompiled ? await loadEmbeddedAssetMap() : null
@@ -261,7 +269,8 @@ export async function startWebServer(options: {
         store: options.store,
         vapidPublicKey: options.vapidPublicKey,
         corsOrigins: options.corsOrigins,
-        embeddedAssetMap
+        embeddedAssetMap,
+        backgroundTaskTracker: options.backgroundTaskTracker
     })
 
     const socketHandler = options.socketEngine.handler()

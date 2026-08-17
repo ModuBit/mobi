@@ -168,6 +168,16 @@ export class RpcGateway {
         await this.sessionRpc(sessionId, 'rename-session', { title })
     }
 
+    // rewind 预检：CLI 用 getSessionMessages 锚点预检 + rewindFiles(dryRun)，返回 { canRewind, canRestoreFiles }
+    async rewindDryRun(sessionId: string, nativeId: string): Promise<unknown> {
+        return await this.sessionRpc(sessionId, 'rewind-dry-run', { nativeId })
+    }
+
+    // rewind 执行（只做受理：CLI 闸门通过即返 accepted，结果经 socket 两段回报上报）
+    async rewind(sessionId: string, nativeId: string, restoreFiles: boolean): Promise<unknown> {
+        return await this.sessionRpc(sessionId, 'rewind', { nativeId, restoreFiles })
+    }
+
     async killSession(sessionId: string): Promise<void> {
         await this.sessionRpc(sessionId, 'killSession', {})
     }

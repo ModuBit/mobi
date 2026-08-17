@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto'
 import type { ContextUsage, GoalStatus, PermissionMode, RuntimeState } from '@mobi/shared/types'
 import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
+import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import { toDecryptedMessage } from '../../../sync/messageService'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
@@ -96,6 +97,8 @@ export type SessionHandlersDeps = {
     store: Store
     resolveSessionAccess: ResolveSessionAccess
     emitAccessError: EmitAccessError
+    /** 活跃后台任务集合（写侧：background_tasks_changed replace；读侧：rewind API 闸门） */
+    backgroundTaskTracker: BackgroundTaskTracker
     onSessionAlive?: (payload: SessionAlivePayload) => void
     onSessionEnd?: (payload: SessionEndPayload) => void
     onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage | null }) => void
@@ -104,7 +107,7 @@ export type SessionHandlersDeps = {
 }
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
-    const { store, resolveSessionAccess, emitAccessError, onSessionAlive, onSessionEnd, onContextUsage, onGoalStatus, onWebappEvent } = deps
+    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, onSessionAlive, onSessionEnd, onContextUsage, onGoalStatus, onWebappEvent } = deps
 
     // session 连接级别的 PendingTaskMap，在连接生命周期内持续存在
     const pendingTaskMap = new PendingTaskMap()
@@ -113,8 +116,6 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     const backgroundToolUseIds = new Map<string, BackgroundToolName>()
     // 已确认的后台任务 ID 集合，用于过滤 task_progress / task_notification
     const backgroundTaskIds = new Set<string>()
-    // 活跃后台任务 ID 集合（background_tasks_changed 权威集合，replace 语义），用于 task_started 后台判定
-    const activeBackgroundTaskIds = new Set<string>()
 
     socket.on('message', (data: unknown) => {
         const parsed = messageSchema.safeParse(data)
@@ -184,11 +185,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 处理 task_started 时集合必须已是最新
         const activeBgIds = extractBackgroundTaskIdsFromMessageContent(content)
         if (activeBgIds !== null) {
-            activeBackgroundTaskIds.clear()
-            for (const id of activeBgIds) activeBackgroundTaskIds.add(id)
+            backgroundTaskTracker.replace(sid, activeBgIds)
         }
 
-        const bgTaskDelta = extractBackgroundTaskDeltasFromMessageContent(content, backgroundToolUseIds, backgroundTaskIds, activeBackgroundTaskIds)
+        const bgTaskDelta = extractBackgroundTaskDeltasFromMessageContent(content, backgroundToolUseIds, backgroundTaskIds, backgroundTaskTracker.getActive(sid))
 
         // 维护后台任务追踪集合：started 时注册并清理 Map，completed 时移除
         if (bgTaskDelta) {

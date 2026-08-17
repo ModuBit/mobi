@@ -17,6 +17,7 @@
 import { describe, test, expect } from 'bun:test'
 import { registerSessionHandlers } from '../../src/socket/handlers/cli/sessionHandlers'
 import type { SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
+import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
 import type { StoredMessage, StoredSession } from '../../src/store/types'
 import type { SyncEvent } from '../../src/sync/syncEngine'
 
@@ -88,6 +89,7 @@ function makeDeps(opts: {
             return { ok: true as const, value: makeStoredSession(sid) }
         },
         emitAccessError: () => { accessError.called = true },
+        backgroundTaskTracker: new BackgroundTaskTracker(),
         onWebappEvent: (e: SyncEvent) => { events.push(e) },
     }
 
@@ -188,6 +190,7 @@ describe('goal-status：CLI 上报 goal 状态 → 校验 + 委派 onGoalStatus'
                 return { ok: true as const, value: makeStoredSession(sid) }
             },
             emitAccessError: () => { accessError.called = true },
+            backgroundTaskTracker: new BackgroundTaskTracker(),
             onGoalStatus: (payload: { sid: string; goalStatus: unknown }) => { captured.push(payload) },
         }
         return { deps, captured, accessError }
@@ -275,6 +278,7 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
             } as unknown as SessionHandlersDeps['store'],
             resolveSessionAccess: (sid: string) => ({ ok: true as const, value: { ...session, runtimeState: runtimeStateRef.current } as never }),
             emitAccessError: () => {},
+            backgroundTaskTracker: new BackgroundTaskTracker(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
         return { deps, runtimeStateRef, events }
@@ -380,6 +384,7 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
                     ? { ok: false, reason: 'not-found' as const }
                     : { ok: true as const, value: makeStoredSession(sid) },
             emitAccessError: () => { accessError.called = true },
+            backgroundTaskTracker: new BackgroundTaskTracker(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
         return { deps, events, bindSpy, accessError }

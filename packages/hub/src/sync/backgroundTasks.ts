@@ -151,7 +151,7 @@ export function extractBackgroundTaskDeltasFromMessageContent(
     content: unknown,
     backgroundToolUseIds?: Map<string, BackgroundToolName>,
     knownTaskIds?: Set<string>,
-    activeBackgroundTaskIds?: Set<string>,
+    activeBackgroundTaskIds?: ReadonlySet<string>,
 ): BackgroundTaskDelta | null {
     const record = unwrapRoleWrappedRecordEnvelope(content)
     if (!record) return null

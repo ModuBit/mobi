@@ -30,6 +30,7 @@ import { AUTH_COOKIE_NAME } from '../web/auth/session'
 import { registerCliHandlers } from './handlers/cli'
 import { registerTerminalHandlers } from './handlers/terminal'
 import { RpcRegistry } from './rpcRegistry'
+import { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
 import type { SyncEvent } from '../sync/syncEngine'
 import { TerminalRegistry } from './terminalRegistry'
 import type { CliSocketWithData, SocketData, SocketServer } from './socketTypes'
@@ -71,6 +72,9 @@ export type SocketServerDeps = {
     store: Store
     jwtSecret: Uint8Array
     corsOrigins?: string[]
+    /** 活跃后台任务集合（CLI 事件维护，rewind API 闸门读取）。
+     *  缺省时 socket server 自建实例——仅测试用；生产组装层（index.ts）必须传入与 web 路由层共用的同一实例 */
+    backgroundTaskTracker?: BackgroundTaskTracker
     getSession?: (sessionId: string) => { active: boolean; namespace: string } | null
     onWebappEvent?: (event: SyncEvent) => void
     onSessionAlive?: (payload: { sid: string; time: number; running?: boolean; mode?: 'local' | 'remote' }) => void
@@ -136,6 +140,9 @@ export function createSocketServer(deps: SocketServerDeps): {
     const cliNs = io.of('/cli')
     const terminalNs = io.of('/terminal')
 
+    // 单实例共享（缺省自建仅测试路径用）：CLI 连接事件维护，rewind API 闸门读取
+    const backgroundTaskTracker = deps.backgroundTaskTracker ?? new BackgroundTaskTracker()
+
     const rpcRegistry = new RpcRegistry()
     const terminalRegistry = new TerminalRegistry({
         idleTimeoutMs,
@@ -168,6 +175,7 @@ export function createSocketServer(deps: SocketServerDeps): {
         store: deps.store,
         rpcRegistry,
         terminalRegistry,
+        backgroundTaskTracker,
         // 以下回调转发给 SyncEngine 处理状态同步
         onSessionAlive: deps.onSessionAlive,  // CLI心跳保活
         onSessionEnd: deps.onSessionEnd,      // CLI会话结束

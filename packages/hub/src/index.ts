@@ -32,6 +32,7 @@ import { hubLogger } from './logger'
 import { writeHubState, clearHubState } from './config/hubState'
 import { Store } from './store'
 import { SyncEngine, type SyncEvent } from './sync/syncEngine'
+import { BackgroundTaskTracker } from './sync/backgroundTaskTracker'
 import { NotificationHub } from './notifications/notificationHub'
 import type { NotificationChannel } from './notifications/notificationTypes'
 import { startWebServer } from './web/server'
@@ -162,10 +163,15 @@ async function main() {
     visibilityTracker = new VisibilityTracker()
     sseManager = new SSEManager(30_000, visibilityTracker)
 
+    // 活跃后台任务集合：CLI socket handler 写（background_tasks_changed replace）、
+    // rewind API 路由读（闸门）——两端共用同一实例，在此组装层创建并注入
+    const backgroundTaskTracker = new BackgroundTaskTracker()
+
     const socketServer = createSocketServer({
         store,
         jwtSecret,
         corsOrigins: config.corsOrigins,
+        backgroundTaskTracker,
         getSession: (sessionId) => {
             // active 状态只从内存（SyncEngine）获取，不存储在数据库中
             return syncEngine?.getSession(sessionId) ?? null
@@ -201,7 +207,8 @@ async function main() {
         store,
         vapidPublicKey: vapidKeys.publicKey,
         socketEngine: socketServer.engine,
-        corsOrigins: config.corsOrigins
+        corsOrigins: config.corsOrigins,
+        backgroundTaskTracker
     })
 
     // 启动 settings.json 监听：webApiToken 轮换时热 reload，无需重启 hub

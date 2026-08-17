@@ -18,6 +18,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 
 import { Store } from '../../src/store'
 import { registerSessionHandlers, type SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
+import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
 import type { SyncEvent } from '../../src/sync/syncEngine'
 
 /** webapp 用户消息内容（真实信封） */
@@ -56,6 +57,7 @@ function makeDeps(store: Store) {
             return { ok: false as const, reason: 'not-found' as const }
         },
         emitAccessError: () => { accessError.called = true },
+        backgroundTaskTracker: new BackgroundTaskTracker(),
         onWebappEvent: (e: SyncEvent) => { events.push(e) },
     }
     // rewind 两段回报事件尚未收录进 shared SyncEventSchema（hub 本地扩展形态），断言侧放宽读取

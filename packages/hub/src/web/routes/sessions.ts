@@ -25,6 +25,7 @@ import { Hono } from 'hono'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import { checkProjectAssignable, type SyncEngine, type Session } from '../../sync/syncEngine'
+import type { BackgroundTaskTracker } from '../../sync/backgroundTaskTracker'
 import type { WebAppEnv } from '../middleware/auth'
 import { toSummaryWithLiveState } from '../utils/sessionSummary'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
@@ -77,7 +78,23 @@ const pinnedSessionsQuerySchema = z.object({
     cursor: z.coerce.number().optional()
 })
 
-export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
+/** rewind 预检 body（对齐 effort 路由的 zod body 校验模式） */
+const rewindDryRunSchema = z.object({
+    nativeId: z.string().min(1)
+})
+
+/** rewind 执行 body */
+const rewindSchema = z.object({
+    nativeId: z.string().min(1),
+    restoreFiles: z.boolean()
+})
+
+export function createSessionsRoutes(
+    getSyncEngine: () => SyncEngine | null,
+    /** 活跃后台任务集合（rewind 闸门权威数据源；与 CLI socket handler 写侧共用同一实例）。
+     *  缺省时跳过闸门（仅测试用），生产组装层必传 */
+    getBackgroundTaskTracker?: () => BackgroundTaskTracker | null | undefined,
+): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
     app.get('/sessions', (c) => {
@@ -469,6 +486,58 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ ok: true })
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to apply effort'
+            return c.json({ error: message }, 409)
+        }
+    })
+
+    // rewind 预检：透传 CLI RPC 结果（{ canRewind, canRestoreFiles }），Web 据此渲染两选项/降级单选项弹窗
+    app.post('/sessions/:id/rewind/dry-run', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        if (sessionResult instanceof Response) return sessionResult
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = rewindDryRunSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body: nativeId is required' }, 400)
+        }
+
+        try {
+            const result = await engine.rewindDryRun(sessionResult.sessionId, parsed.data.nativeId)
+            return c.json(result)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to rewind dry-run'
+            return c.json({ error: message }, 409)
+        }
+    })
+
+    // rewind 执行：闸门（该会话在途后台任务 → 409）通过即转发 CLI RPC 受理（202）。
+    // 结果不经本响应返回——CLI 截断/文件恢复经 socket 两段回报（rewound-truncated → rewind-completed）→ SSE 推 Web
+    app.post('/sessions/:id/rewind', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) return engine
+
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        if (sessionResult instanceof Response) return sessionResult
+
+        const body = await c.req.json().catch(() => null)
+        const parsed = rewindSchema.safeParse(body)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid body: nativeId and restoreFiles are required' }, 400)
+        }
+
+        const backgroundTaskTracker = getBackgroundTaskTracker?.()
+        if (backgroundTaskTracker?.hasActive(sessionResult.sessionId)) {
+            return c.json({ error: 'session has background tasks in flight' }, 409)
+        }
+
+        try {
+            await engine.rewind(sessionResult.sessionId, parsed.data.nativeId, parsed.data.restoreFiles)
+            return c.json({ accepted: true }, 202)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to rewind'
             return c.json({ error: message }, 409)
         }
     })
