@@ -77,4 +77,19 @@ describe('MobileDrawer', () => {
         expect(body).toBeTruthy()
         expect(body.style.overflow).toBe('hidden')
     })
+
+    it('body 必须带与 wrapper 同值的 maxHeight：内容超限时 body 收缩、由内部滚动区滚，而非 section/wrapper 滚走把手', () => {
+        const onClose = vi.fn()
+        render(
+            <MobileDrawer open onClose={onClose} title="测试">
+                <div>内容</div>
+            </MobileDrawer>,
+        )
+        const body = document.querySelector('.ant-drawer-body') as HTMLElement
+        // 不加该约束时：wrapper 被 maxHeight 限高，但 body（auto 链）不收缩，
+        // 溢出部分由 antd 的 .ant-drawer-section（overflow:auto）滚动——把手在其内部，会随内容滚走
+        expect(body.style.maxHeight).toBe('85dvh')
+        const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
+        expect(wrapper.style.maxHeight).toBe('85dvh')
+    })
 })

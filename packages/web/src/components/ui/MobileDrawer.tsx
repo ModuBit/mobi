@@ -259,6 +259,11 @@ export function MobileDrawer({
             // 一旦 body 允许滚动（如曾传入 overflow: 'auto'），整个 body 连同
             // 拖拽把手会随内容滚走，下拉关闭手势在滚动后不可达。故放在 spread 之后强制生效
             overflow: 'hidden',
+            // 同为不变量：body 必须与 wrapper 同值 maxHeight。antd 的 .ant-drawer-section /
+            // content-wrapper 自带 overflow:auto，但 body 处在 auto 高度链上不会跟着 wrapper 收缩——
+            // 不限高时溢出部分会由 section 滚动（把手在其内部，随内容滚走）。
+            // 限高后 body 成为受限的 flex 列，溢出下沉到内容区滚，把手固定
+            maxHeight,
         },
     } as DrawerProps['styles']
 
