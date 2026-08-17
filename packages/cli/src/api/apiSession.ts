@@ -51,6 +51,12 @@ import { TerminalManager } from '@/terminal/TerminalManager'
 import { applyVersionedAck } from './versionedUpdate'
 import { IdleTimer } from '@/modules/common/idleTimer'
 
+/** 兜底重连初始退避（ms），上限 30s */
+const MANUAL_RECONNECT_BASE_DELAY_MS = 1_000
+const MANUAL_RECONNECT_MAX_DELAY_MS = 30_000
+/** connect_error 落盘节流窗口（ms） */
+const CONNECT_ERROR_LOG_WINDOW_MS = 60_000
+
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string
     readonly sessionId: string
@@ -70,6 +76,12 @@ export class ApiSessionClient extends EventEmitter {
     private idleTimer: IdleTimer | null = null
     private agentStateLock = new AsyncLock()
     private metadataLock = new AsyncLock()
+    /** 服务端主动断开的兜底重连定时器（socket.io v4 对 'io server disconnect' 不自动重连） */
+    private manualReconnectTimer: ReturnType<typeof setTimeout> | null = null
+    /** 兜底重连退避（连续被服务端断开时指数增长，connect 成功复位） */
+    private manualReconnectDelayMs = MANUAL_RECONNECT_BASE_DELAY_MS
+    /** connect_error 落盘节流：重连循环每 1-5s 触发一次，窗口内只记首条防刷屏 */
+    private lastConnectErrorLogAt = 0
 
     constructor(token: string, session: Session) {
         super()
@@ -133,6 +145,7 @@ export class ApiSessionClient extends EventEmitter {
             logger.debug('Socket connected successfully')
             this.rpcHandlerManager.onSocketConnect(this.socket)
             this.idleTimer?.onReconnect()
+            this.clearManualReconnect()
             if (this.hasConnectedOnce) {
                 this.needsBackfill = true
             }
@@ -150,7 +163,9 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         this.socket.on('disconnect', (reason) => {
-            logger.debug('[API] Socket disconnected:', reason)
+            // 断开原因落盘（WARN）：hub 重启/换血后会话退出的定位证据——曾因 debug 不落盘而无从排查
+            logger.warn('[API] Socket disconnected:', reason)
+            this.scheduleManualReconnect(reason)
             this.rpcHandlerManager.onSocketDisconnect()
             this.terminalManager.closeAll()
             this.idleTimer?.onDisconnect()
@@ -160,7 +175,12 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         this.socket.on('connect_error', (error) => {
-            logger.debug('[API] Socket connection error:', error)
+            // 节流落盘：错误文案是「重连为何失败」的直接证据（鉴权拒绝 / 网络不可达 / 握手失败）
+            const now = Date.now()
+            if (now - this.lastConnectErrorLogAt > CONNECT_ERROR_LOG_WINDOW_MS) {
+                this.lastConnectErrorLogAt = now
+                logger.warn('[API] Socket connection error:', error instanceof Error ? error.message : String(error))
+            }
             this.rpcHandlerManager.onSocketDisconnect()
             this.idleTimer?.onDisconnect()
         })
@@ -728,6 +748,7 @@ export class ApiSessionClient extends EventEmitter {
         this.rpcHandlerManager.onSocketDisconnect()
         this.terminalManager.closeAll()
         this.idleTimer?.destroy()
+        this.clearManualReconnect()
         this.socket.disconnect()
     }
 
@@ -768,6 +789,34 @@ export class ApiSessionClient extends EventEmitter {
     private handleDisconnectTimeout(): void {
         logger.debug('[API] Disconnect timeout, exiting')
         this.emit('disconnect-timeout')
+    }
+
+    /**
+     * 服务端主动断开（'io server disconnect'）的兜底重连：socket.io v4 对该 reason
+     * 不自动重连（hub 优雅关闭/单连接被踢都会走到），必须手动 connect() 恢复重连循环，
+     * 否则 10 分钟 disconnect timeout 到期会话进程直接退出（2026-08-17 排查的根因链）。
+     * transport 层断开（transport close/error/ping timeout）走 socket.io 内置自动重连，不干预；
+     * 'io client disconnect' 是本进程主动断开（退出路径），禁止兜底——否则进程退不出去。
+     */
+    private scheduleManualReconnect(reason: string): void {
+        if (reason !== 'io server disconnect' || this.manualReconnectTimer) return
+        const delay = this.manualReconnectDelayMs
+        this.manualReconnectDelayMs = Math.min(this.manualReconnectDelayMs * 2, MANUAL_RECONNECT_MAX_DELAY_MS)
+        logger.warn(`[API] Server-initiated disconnect, manual reconnect in ${delay}ms`)
+        this.manualReconnectTimer = setTimeout(() => {
+            this.manualReconnectTimer = null
+            if (!this.socket.connected) this.socket.connect()
+        }, delay)
+        this.manualReconnectTimer.unref?.()
+    }
+
+    /** connect 成功后清兜底定时器并复位退避 */
+    private clearManualReconnect(): void {
+        if (this.manualReconnectTimer) {
+            clearTimeout(this.manualReconnectTimer)
+            this.manualReconnectTimer = null
+        }
+        this.manualReconnectDelayMs = MANUAL_RECONNECT_BASE_DELAY_MS
     }
 
     private handleIdleTimeout(): void {
