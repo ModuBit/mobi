@@ -220,6 +220,8 @@ export interface ClientToServerEvents {
     'usage-report': (data: unknown) => void
     'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
     'messages-submitted': (data: { sid: string; localIds: string[] }) => void
+    /** CLI push 用户消息给 SDK 时上报 (localId → nativeId) 绑定（同一 push 的批内 N 条共享一个 nativeId） */
+    'messages-bound': (data: { sid: string; bindings: { localId: string; nativeId: string }[] }) => void
     'cancel-queued-message': (data: { sid: string; messageId: string; localId: string }) => void
     /** CLI 事件驱动上报上下文用量（hub 落库到 runtimeState.contextUsage + SSE 推 web）。
      * contextUsage 为 null 表示清空（/clear 后新会话从 0 开始，用量线隐藏直到下次真实 turn） */

@@ -441,6 +441,11 @@ export const DecryptedMessageSchema = z.object({
     seq: z.number().nullable(),
     localId: z.string().nullable(),
     /**
+     * 该消息在上游 agent 引擎 transcript 中的消息 id（用户消息 = CLI push 时生成的 uuid；
+     * SDK 下发消息 = 与 localId 同值双写）。null/缺省 = 未绑定（不可作为 rewind 锚点）。
+     */
+    nativeId: z.string().nullable().optional(),
+    /**
      * 被 agent 消费的时刻；仅当该消息经过排队轨道（queue_state pending→consumed）时写入。
      * 非排队消息（agent/CLI/system 输出）恒为 null。排序请用 positionAt，不要 COALESCE 本字段。
      */
