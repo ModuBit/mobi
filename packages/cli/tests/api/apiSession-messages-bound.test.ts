@@ -103,6 +103,20 @@ describe('sendClaudeSessionMessage 携带 nativeId', () => {
             nativeId: 'sdk-uuid-1',
         }))
     })
+
+    it('body 不带 uuid 时 message 事件 payload 的 nativeId 与 localId 均不带真值', () => {
+        const client = makeClient()
+        client.sendClaudeSessionMessage({
+            type: 'assistant',
+            message: {},
+        } as never)
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+            sid: 'session-1',
+            localId: undefined,
+            nativeId: undefined,
+        }))
+    })
 })
 
 describe('emitMessagesBound 绑定上报', () => {
