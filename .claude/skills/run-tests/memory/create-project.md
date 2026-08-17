@@ -46,6 +46,7 @@ metadata:
 - **folder 路径必须在机器主目录内**（hub 校验）— `/tmp/xxx` 会被拒（"Folder path must be within the machine home directory (/Users/…)"），用 `~/workspace/demo` 等 home 下路径
 - **folder combobox 输错无法全选重输** — Ctrl+A / Meta+A 在该 combobox 都不生效（Ctrl+A 跳行首，输入变追加），Remove 按钮单行时 disabled；输错了直接 Escape 关 modal 重开重填最快
 - **evaluate 点 combobox 不聚焦** — 见上；用 a11y uid click
+- **fill_form 灌 folder combobox 会崩整页（2026-08-17 踩坑）** — `fill_form` 对 New Project 对话框的 FolderRow AutoComplete 程序化赋值触发 "Maximum update depth exceeded"（Select 组件 setState 循环），整个 app 崩到 error boundary。恢复：重新 navigate 到 /sessions/new 重填。folder 输入**必须** click（snapshot uid）+ `type_text`，禁 `fill`/`fill_form`
 - **hover 条件渲染按钮 CDP 工具点不到** — 项目组「+」、行内 more、Assign 按钮都是 hover 显示；dispatch 合成 mouseover 不触发 CSS :hover，直接 evaluate `.click()` 即可
 - **menuitem 用 a11y uid click 超时** — antd Dropdown 弹出菜单项需 evaluate `[role="menuitem"]` 文本匹配后 `.click()`
 

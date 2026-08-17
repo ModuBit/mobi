@@ -22,6 +22,7 @@ sqlite3 ~/.mobi-e2e/mobi.db "SELECT local_id, native_id FROM messages WHERE loca
 ## 观察（2026-08-17 实测）
 
 - **排队消息大多不走 collectBatch 合并**：running 中连发两条，会经 **steer 提前提交路径**（stealByLocalId → sink 单独 push）各自绑定独立 uuid——不是 bug；1:N 批内共享仅当两消息恰好在同一 collect 时刻排队（steer 窗口外）。1:N 语义靠单测覆盖
+- **!bash 已 noBatch 不合批（2026-08-17 code-review 修复后复验）**：running 中排 `! echo xxx` + 普通消息 → bash 单独执行（UI 出 "run 1 shell command" 折叠组、模型看到注入输出）、普通消息独立 turn 被回复、两行 native_id 各自独立（无交叉错绑）
 - **第一个回合可能触发 Change Title 工具审批**（"Irreversible — proceed with care" 卡住输入框 disabled）——snapshot 找 "Allow" 按钮批准后继续，不算失败
 - E2E runner 的模型（glm-5.2）首 token ~5-11s，纯文本回合 5-50s；`sleep 10-20` 后直接查 SQL 即可，不必等 UI
 
