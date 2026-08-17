@@ -291,7 +291,9 @@ export class Store {
         const base = `SQLite schema version mismatch for ${location}. Expected ${SCHEMA_VERSION}, found ${currentVersion}.`
         if (SCHEMA_RELEASE_BASELINE === 0) {
             return new Error(
-                `${base} Database was created with an unreleased schema — delete the database file and restart.`
+                `${base} Database was created with an unreleased schema — ` +
+                'run the one-off migration script on it (e.g. `sqlite3 <db> < scripts/migrate-native-id.sql` for native_id), ' +
+                'or delete the database file and restart.'
             )
         }
         return new Error(
