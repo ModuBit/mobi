@@ -162,7 +162,7 @@ export const MetadataSchema = z.object({
     os: z.string().optional(),
     summary: MetadataSummarySchema.optional(),
     machineId: z.string().optional(),
-    claudeSessionId: z.string().optional(),
+    nativeSessionId: z.string().optional(),
     tools: z.array(z.string()).optional(),
     /** SDK 元数据（来自 initializationResult） */
     sdkMetadata: SDKMetadataSchema.optional(),

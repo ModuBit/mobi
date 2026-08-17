@@ -95,8 +95,8 @@ export class SessionStore {
         return getSession(this.db, id)
     }
 
-    getSessionByClaudeSessionId(claudeSessionId: string, namespace: string): StoredSession | null {
-        return getSessionByClaudeSessionId(this.db, claudeSessionId, namespace)
+    getSessionByClaudeSessionId(nativeSessionId: string, namespace: string): StoredSession | null {
+        return getSessionByClaudeSessionId(this.db, nativeSessionId, namespace)
     }
 
     getSessionByNamespace(id: string, namespace: string): StoredSession | null {

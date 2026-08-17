@@ -134,7 +134,7 @@ describe('MetadataSchema', () => {
             os: 'linux',
             summary: { text: '测试摘要', updatedAt: 1000 },
             machineId: 'machine-1',
-            claudeSessionId: 'session-1',
+            nativeSessionId: 'session-1',
             tools: ['tool1', 'tool2'],
         }
         const result = MetadataSchema.parse(meta)

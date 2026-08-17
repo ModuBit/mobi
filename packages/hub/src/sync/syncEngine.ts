@@ -321,8 +321,8 @@ export class SyncEngine {
         return this.sessionCache.getOrCreateSession(tag, metadata, agentState, namespace, mode, runtimeState, projectId)
     }
 
-    getSessionByClaudeSessionId(claudeSessionId: string, namespace: string): Session | null {
-        return this.sessionCache.getSessionByClaudeSessionId(claudeSessionId, namespace)
+    getSessionByClaudeSessionId(nativeSessionId: string, namespace: string): Session | null {
+        return this.sessionCache.getSessionByClaudeSessionId(nativeSessionId, namespace)
     }
 
     getOrCreateMachine(id: string, metadata: unknown, runnerState: unknown, namespace: string): Machine {
@@ -487,9 +487,9 @@ export class SyncEngine {
         }
 
         // Mobi 当前仅支持 Claude
-        // claudeSessionId 可能为空（会话创建后未发送消息就退出），
+        // nativeSessionId 可能为空（会话创建后未发送消息就退出），
         // 此时 fallback 为新会话而非 resume
-        const resumeToken = metadata.claudeSessionId
+        const resumeToken = metadata.nativeSessionId
 
         const onlineMachines = this.machineCache.getOnlineMachinesByNamespace(namespace)
         if (onlineMachines.length === 0) {

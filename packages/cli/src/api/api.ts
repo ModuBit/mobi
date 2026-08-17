@@ -31,10 +31,10 @@ export class ApiClient {
 
     private constructor(private readonly token: string) { }
 
-    async getSessionByClaudeSessionId(claudeSessionId: string): Promise<Session | null> {
+    async getSessionByClaudeSessionId(nativeSessionId: string): Promise<Session | null> {
         try {
             const response = await axios.get<{ session: CreateSessionResponse['session'] }>(
-                `${configuration.apiUrl}/cli/sessions/by-claude-session/${encodeURIComponent(claudeSessionId)}`,
+                `${configuration.apiUrl}/cli/sessions/by-claude-session/${encodeURIComponent(nativeSessionId)}`,
                 {
                     headers: {
                         Authorization: `Bearer ${this.token}`

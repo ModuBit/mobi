@@ -619,7 +619,7 @@ export async function claudeRemote(opts: {
     // 清理 IDE 调试器环境变量，避免 SDK spawn 的 claude 子进程继承后冲突
     stripBunDebuggerEnv(process.env as Record<string, string | undefined>);
 
-    // 预生成 claudeSessionId，让上游（metadata）立即可用
+    // 预生成 nativeSessionId，让上游（metadata）立即可用
     // SDK 支持 Options.sessionId 指定自定义 session ID
     const pregeneratedSessionId = !startFrom ? randomUUID() : undefined
     if (pregeneratedSessionId) {

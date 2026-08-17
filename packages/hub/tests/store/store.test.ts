@@ -223,11 +223,11 @@ describe('Store', () => {
         expect(messages[1].seq).toBeLessThan(messages[2].seq)
     })
 
-    test('通过 claudeSessionId 查找会话', () => {
-        // metadata.claudeSessionId 存在时能找到
+    test('通过 nativeSessionId 查找会话', () => {
+        // metadata.nativeSessionId 存在时能找到
         const session = store.sessions.getOrCreateSession(
             'tag-with-claude-id',
-            { claudeSessionId: 'claude-abc-123', path: '/some/path' },
+            { nativeSessionId: 'claude-abc-123', path: '/some/path' },
             null,
             'default'
         )
@@ -240,23 +240,23 @@ describe('Store', () => {
         const notFound = store.sessions.getSessionByClaudeSessionId('non-existent', 'default')
         expect(notFound).toBeNull()
 
-        // namespace 隔离：同一 claudeSessionId 在不同 namespace 找不到
+        // namespace 隔离：同一 nativeSessionId 在不同 namespace 找不到
         const wrongNs = store.sessions.getSessionByClaudeSessionId('claude-abc-123', 'other-ns')
         expect(wrongNs).toBeNull()
     })
 
-    test('通过 claudeSessionId 查找会话 - 多条记录取 updated_at 最新', () => {
+    test('通过 nativeSessionId 查找会话 - 多条记录取 updated_at 最新', () => {
         // 第一条
         store.sessions.getOrCreateSession(
             'tag-old',
-            { claudeSessionId: 'claude-dup-456' },
+            { nativeSessionId: 'claude-dup-456' },
             null,
             'default'
         )
-        // 第二条（tag 不同，但 claudeSessionId 相同）
+        // 第二条（tag 不同，但 nativeSessionId 相同）
         const newer = store.sessions.getOrCreateSession(
             'tag-new',
-            { claudeSessionId: 'claude-dup-456' },
+            { nativeSessionId: 'claude-dup-456' },
             null,
             'default'
         )

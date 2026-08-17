@@ -238,10 +238,10 @@ export async function bootstrapSession(options: SessionBootstrapOptions): Promis
 
     let sessionTag = options.tag ?? randomUUID()
 
-    // 若有 --resume <claudeSessionId>，尝试找到已有 Hub session 并复用其 tag
+    // 若有 --resume <nativeSessionId>，尝试找到已有 Hub session 并复用其 tag
     const resumeClaudeSessionId = extractResumeSessionId(options.claudeArgs)
     if (resumeClaudeSessionId) {
-        logger.debug(`[START] --resume 检测到 claudeSessionId: ${resumeClaudeSessionId}，尝试复用 Hub session`)
+        logger.debug(`[START] --resume 检测到 nativeSessionId: ${resumeClaudeSessionId}，尝试复用 Hub session`)
         try {
             const existingSession = await api.getSessionByClaudeSessionId(resumeClaudeSessionId)
             if (existingSession?.tag) {

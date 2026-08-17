@@ -202,8 +202,8 @@ export class SessionCache {
         return session
     }
 
-    getSessionByClaudeSessionId(claudeSessionId: string, namespace: string): Session | null {
-        const stored = this.store.sessions.getSessionByClaudeSessionId(claudeSessionId, namespace)
+    getSessionByClaudeSessionId(nativeSessionId: string, namespace: string): Session | null {
+        const stored = this.store.sessions.getSessionByClaudeSessionId(nativeSessionId, namespace)
         if (!stored) return null
         // 先从内存缓存取，缓存未命中时从数据库加载（与其他读方法行为一致）
         return this.sessions.get(stored.id) ?? this.refreshSession(stored.id) ?? null

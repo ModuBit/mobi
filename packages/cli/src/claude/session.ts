@@ -75,7 +75,7 @@ export class Session extends AgentSessionBase<EnhancedMode> {
             sessionIdLabel: 'Claude Code',
             applySessionIdToMetadata: (metadata, sessionId) => ({
                 ...metadata,
-                claudeSessionId: sessionId
+                nativeSessionId: sessionId
             }),
             permissionMode: opts.permissionMode,
             model: opts.model,
