@@ -16,6 +16,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { logger } from '@/lib'
 
 export interface PushUserMessageOpts {
     /** 本批消息的 mobi localId；空/缺省 = 注入路径（不绑定 native_id） */
@@ -44,6 +45,13 @@ export function pushUserMessage(
         uuid: nativeId,
     })
     if (opts.localIds && opts.localIds.length > 0) {
-        opts.onBound?.({ localIds: opts.localIds, nativeId })
+        // 绑定上报失败必须就地吞掉：本函数的调用方（如 steer sink）在 try/catch 内
+        // 调用并把异常视作 push 失败，会让 pushBack 把已送达 SDK 的消息重复投递。
+        // 上报只是元数据绑定，失败了不值得回滚消息投递。
+        try {
+            opts.onBound?.({ localIds: opts.localIds, nativeId })
+        } catch (e) {
+            logger.warn('[pushUserMessage] 绑定上报失败（消息已投递，不回滚）:', e)
+        }
     }
 }

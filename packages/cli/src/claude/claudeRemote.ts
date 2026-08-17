@@ -854,7 +854,8 @@ export async function claudeRemote(opts: {
             try {
                 pushUserMessage(messages, sanitizeUserMessage(text), { localIds: localId ? [localId] : [], onBound });
                 return true;
-            } catch {
+            } catch (e) {
+                logger.debug('[claudeRemote] steer push 失败，消息将 pushBack 恢复排队:', e);
                 return false;
             }
         });

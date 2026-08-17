@@ -107,6 +107,21 @@ describe('handleSpecialCommand', () => {
         expect(result.handled).toBe(true)
         expect(result.shouldExit).toBe(true)
     })
+
+    it('!bash 命令把 localIds 透传给 executeBash 作第二参', async () => {
+        const executeBash = vi.fn()
+        const ctx = {
+            onClear: vi.fn(),
+            onCompactStart: vi.fn(),
+            executeBash,
+            onReady: vi.fn(),
+        } as unknown as ReturnType<typeof createMockContext>
+        const result = await handleSpecialCommand('! echo hi', ctx, ['l1'])
+
+        expect(result.handled).toBe(true)
+        // localIds 原样透传，供 executeBash 把注入消息与 mobi 消息绑定
+        expect(executeBash).toHaveBeenCalledWith('echo hi', ['l1'])
+    })
 })
 
 describe('createSpecialCommandContext', () => {
