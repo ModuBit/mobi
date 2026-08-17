@@ -22,6 +22,10 @@ type SidebarToken = ReturnType<typeof antTheme.useToken>['token']
 
 // ========== 移动端项目列表样式组件 ==========
 
+// 项目列表区（B-1 定稿）：与 drawer 同底色，仅上下发丝线分隔——
+// 不再用 colorBgLayout 灰底色块：drawer 已是「遮罩 > 面板」两层表面，
+// 嵌第三层材质显拼凑，且深色下 bgLayout 比面板更暗会变成「凹洞」。
+// 分组语义由 SectionHeader 小标签承担
 export const Container = styled.div<{ $token: SidebarToken }>`
     display: flex;
     flex-direction: column;
@@ -29,7 +33,6 @@ export const Container = styled.div<{ $token: SidebarToken }>`
     border-bottom: 1px solid ${props => props.$token.colorBorderSecondary};
     margin: 4px 0;
     padding: 4px 0;
-    background: ${props => props.$token.colorBgLayout};
 `
 
 // 分区标题行（可点击折叠分区，右侧可承载操作按钮）

@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import { Download } from 'lucide-react'
 import { theme as antTheme } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
+import { MobileMenuItem } from './mobileMenu.styles'
 import styled from '@emotion/styled'
 
 const { useToken } = antTheme
@@ -39,21 +40,6 @@ const NavItem = styled.button<{ $token: ReturnType<typeof useToken>['token'] }>`
     &:hover {
         background: ${props => props.$token.colorPrimaryBg};
         color: ${props => props.$token.colorPrimary};
-    }
-`
-
-const MenuItem = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 20px;
-    cursor: pointer;
-    color: ${props => props.$token.colorText};
-    background: transparent;
-    transition: all 0.2s;
-
-    &:hover {
-        background: ${props => props.$token.colorPrimaryBg};
     }
 `
 
@@ -145,10 +131,10 @@ export function InstallButton({ variant = 'nav' }: InstallButtonProps) {
 
     if (variant === 'menu') {
         return (
-            <MenuItem $token={token} onClick={handleInstall}>
+            <MobileMenuItem $token={token} onClick={handleInstall}>
                 <Download size={20} />
                 <span>{t('notification.pwa.install')}</span>
-            </MenuItem>
+            </MobileMenuItem>
         )
     }
 

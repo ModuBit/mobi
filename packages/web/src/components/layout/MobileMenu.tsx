@@ -23,6 +23,7 @@ import { useMobiApi } from '@/core/data/api/client'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './navConfig'
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
+import { MobileMenuItem } from './mobileMenu.styles'
 import { MobileProjectList } from './MobileProjectList'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { Menu, Sun, Moon, Languages, RefreshCw, RotateCw } from 'lucide-react'
@@ -61,31 +62,6 @@ const MenuButton = styled.button<{ $token: ReturnType<typeof useToken>['token'] 
 
 const MenuContent = styled.div<{ $token: ReturnType<typeof useToken>['token'] }>`
     background: ${props => props.$token.colorBgContainer};
-`
-
-const MenuItem = styled.div<{ $active: boolean; $danger?: boolean; $token: ReturnType<typeof useToken>['token'] }>`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 20px;
-    cursor: pointer;
-    color: ${props => {
-        if (props.$danger) return props.$token.colorError
-        return props.$active ? props.$token.colorPrimary : props.$token.colorText
-    }};
-    background: ${props => props.$active ? props.$token.colorPrimaryBg : 'transparent'};
-    transition: all 0.2s;
-    ${props => props.$danger ? `border-top: 1px solid ${props.$token.colorBorder};` : ''}
-
-    @media (hover: hover) {
-        &:hover {
-            background: ${props => props.$token.colorPrimaryBg};
-        }
-    }
-
-    &:active {
-        background: ${props => props.$token.colorPrimaryBg};
-    }
 `
 
 // 汉堡菜单按钮
@@ -160,7 +136,7 @@ export function MobileMenuDrawer() {
             <MenuContent $token={token}>
                 {/* 新建会话 */}
                 {topItems.map((item) => (
-                    <MenuItem
+                    <MobileMenuItem
                         key={item.key}
                         $active={getNavActiveKey(location.pathname, item.key)}
                         $token={token}
@@ -168,7 +144,7 @@ export function MobileMenuDrawer() {
                     >
                         <item.icon size={20} />
                         <span>{t(item.labelKey)}</span>
-                    </MenuItem>
+                    </MobileMenuItem>
                 ))}
 
                 {/* 项目列表 */}
@@ -176,7 +152,7 @@ export function MobileMenuDrawer() {
 
                 {/* 设置等 */}
                 {bottomItems.map((item) => (
-                    <MenuItem
+                    <MobileMenuItem
                         key={item.key}
                         $active={getNavActiveKey(location.pathname, item.key)}
                         $token={token}
@@ -184,33 +160,33 @@ export function MobileMenuDrawer() {
                     >
                         <item.icon size={20} />
                         <span>{t(item.labelKey)}</span>
-                    </MenuItem>
+                    </MobileMenuItem>
                 ))}
 
                 {/* PWA 安装按钮 */}
                 <InstallButton variant="menu" />
 
-                {/* 主题 & 语言切换 */}
+                {/* 主题 & 语言切换（双列行：列内左对齐，左列图标起点与其他行一致） */}
                 <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                    <MenuItem
+                    <MobileMenuItem
                         $active={false}
                         $token={token}
-                        style={{ flex: 1, justifyContent: 'center' }}
+                        style={{ flex: 1 }}
                         onClick={toggleTheme}
                     >
                         {resolvedTheme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                         <span>{resolvedTheme === 'dark' ? t('nav.themeLight') : t('nav.themeDark')}</span>
-                    </MenuItem>
+                    </MobileMenuItem>
                     <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorder, margin: '8px 0' }} />
-                    <MenuItem
+                    <MobileMenuItem
                         $active={false}
                         $token={token}
-                        style={{ flex: 1, justifyContent: 'center' }}
+                        style={{ flex: 1 }}
                         onClick={toggleLocale}
                     >
                         <Languages size={20} />
                         <span>{locale === 'zh' ? 'English' : '中文'}</span>
-                    </MenuItem>
+                    </MobileMenuItem>
                 </div>
 
                 {/* 刷新(软刷新：仅 location.reload，不清 SW 缓存) + 重启(清缓存硬刷新)
@@ -218,10 +194,10 @@ export function MobileMenuDrawer() {
                     仅 PWA 展示：浏览器有自带刷新按钮，PWA(standalone)无浏览器 chrome 才需要 */}
                 {isPwa && (
                     <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                        <MenuItem
+                        <MobileMenuItem
                             $active={false}
                             $token={token}
-                            style={{ flex: 1, justifyContent: 'center' }}
+                            style={{ flex: 1 }}
                             onClick={() => {
                                 handleClose()
                                 // Android Chrome PWA standalone：同步 window.location.reload() 紧随
@@ -233,12 +209,12 @@ export function MobileMenuDrawer() {
                         >
                             <RotateCw size={20} />
                             <span>{t('nav.refresh')}</span>
-                        </MenuItem>
+                        </MobileMenuItem>
                         <div style={{ width: 1, alignSelf: 'stretch', background: token.colorBorder, margin: '8px 0' }} />
-                        <MenuItem
+                        <MobileMenuItem
                             $active={false}
                             $token={token}
-                            style={{ flex: 1, justifyContent: 'center' }}
+                            style={{ flex: 1 }}
                             onClick={() => {
                                 handleClose()
                                 restart()
@@ -246,11 +222,11 @@ export function MobileMenuDrawer() {
                         >
                             <RefreshCw size={20} />
                             <span>{t('nav.restart')}</span>
-                        </MenuItem>
+                        </MobileMenuItem>
                     </div>
                 )}
 
-                <MenuItem
+                <MobileMenuItem
                     $active={false}
                     $danger={true}
                     $token={token}
@@ -260,7 +236,7 @@ export function MobileMenuDrawer() {
                 >
                     <logoutNavItem.icon size={20} />
                     <span>{t(logoutNavItem.labelKey)}</span>
-                </MenuItem>
+                </MobileMenuItem>
             </MenuContent>
         </MobileDrawer>
     )
