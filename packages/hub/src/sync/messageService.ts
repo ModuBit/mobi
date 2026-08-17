@@ -21,21 +21,12 @@ import type { Store, StoredMessage } from '../store'
 import { EventPublisher } from './eventPublisher'
 
 /**
- * 消息 DTO 的 rewind 扩展：metadata（nativeId / nativeSessionId）从 StoredMessage 直出，
- * 供 Web 端 rewind 判据（与当前会话 nativeSessionId 一致性比较）。
- * 注：shared DecryptedMessageSchema 尚未收录 metadata（跨包未决，web 线补齐 schema 后收敛）；
- * 旧 nativeId 直出字段已移除——统一走 metadata，不再双形态并存
- */
-export type DecryptedMessageDto = DecryptedMessage & {
-    metadata: NativeMessageMetadata | null
-}
-
-/**
  * StoredMessage → 对外 DTO 的唯一映射。所有向 web/CLI 下发消息的出口
  * （历史查询、new-message update、message-received 事件）必须复用此处，
- * 新增消息字段时只改这一处，避免多处内联展开形状静默分叉
+ * 新增消息字段时只改这一处，避免多处内联展开形状静默分叉。
+ * metadata（nativeId / nativeSessionId）从 StoredMessage 直出，供 Web 端 rewind 判据
  */
-export function toDecryptedMessage(message: StoredMessage): DecryptedMessageDto {
+export function toDecryptedMessage(message: StoredMessage): DecryptedMessage {
     return {
         id: message.id,
         seq: message.seq,

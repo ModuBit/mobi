@@ -441,10 +441,14 @@ export const DecryptedMessageSchema = z.object({
     seq: z.number().nullable(),
     localId: z.string().nullable(),
     /**
-     * 该消息在上游 agent 引擎 transcript 中的消息 id（用户消息 = CLI push 时生成的 uuid；
-     * SDK 下发消息 = 与 localId 同值双写）。null/缺省 = 未绑定（不可作为 rewind 锚点）。
+     * 上游 native 事实（rewind 锚点）。nativeId = transcript 消息 uuid（用户消息 = CLI push
+     * 时生成的 uuid；SDK 下发消息 = 与 localId 同值）。nativeSessionId = 所属上游 session
+     * uuid（新会话首批用户消息 push 时未知，待 attach 补写）。null/缺省 = 未绑定（不可 rewind）。
      */
-    nativeId: z.string().nullable().optional(),
+    metadata: z.object({
+        nativeId: z.string().optional(),
+        nativeSessionId: z.string().optional()
+    }).nullable().optional(),
     /**
      * 被 agent 消费的时刻；仅当该消息经过排队轨道（queue_state pending→consumed）时写入。
      * 非排队消息（agent/CLI/system 输出）恒为 null。排序请用 positionAt，不要 COALESCE 本字段。
@@ -525,6 +529,17 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
     SessionChangedSchema.extend({
         type: z.literal('message-received'),
         message: DecryptedMessageSchema
+    }),
+    SessionChangedSchema.extend({
+        type: z.literal('rewound-truncated'),
+        /** 软删除起点：seq >= deleteFromSeq 的消息行已标记删除 */
+        deleteFromSeq: z.number()
+    }),
+    SessionChangedSchema.extend({
+        type: z.literal('rewind-completed'),
+        /** 文件是否已恢复（false 时 error 携带原因） */
+        filesRestored: z.boolean(),
+        error: z.string().optional()
     }),
     MachineChangedSchema.extend({
         type: z.literal('machine-updated'),

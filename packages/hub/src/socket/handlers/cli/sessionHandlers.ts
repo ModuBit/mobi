@@ -554,14 +554,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         store.messages.bindNativeIds(data.sid, bindings)
     })
 
-    // rewind 两段回报 SSE 事件（hub 本地形态）。
-    // 注：shared SyncEventSchema 尚未收录这两类事件（跨包未决：web 线补 schema 后收敛到 shared），
-    // 此处以本地类型 + 单点 as 断言收敛——运行时载荷 { type, sessionId, ... } 与 SSE 直播路径（不校验 schema）兼容
-    type RewindSyncEvent =
-        | { type: 'rewound-truncated'; sessionId: string; deleteFromSeq: number }
-        | { type: 'rewind-completed'; sessionId: string; filesRestored: boolean; error?: string }
-    const emitRewindEvent = (event: RewindSyncEvent) => {
-        onWebappEvent?.(event as unknown as SyncEvent)
+    // rewind 两段回报 SSE 事件（shared SyncEventSchema 已收录 rewound-truncated / rewind-completed）
+    const emitRewindEvent = (event: Extract<SyncEvent, { type: 'rewound-truncated' | 'rewind-completed' }>) => {
+        onWebappEvent?.(event)
     }
 
     // CLI onSessionFound 且 native session 变化时上报：批量补写该会话缺 nativeSessionId 的消息行，
