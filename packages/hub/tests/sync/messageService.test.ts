@@ -22,7 +22,7 @@ import type { StoredMessage } from '../../src/store/types'
 function msg(seq: number, over: Partial<StoredMessage> = {}): StoredMessage {
     return {
         id: `id-${seq}`, sessionId: 's', content: {}, createdAt: seq * 10, seq,
-        localId: `loc-${seq}`, nativeId: null, isSidechain: false, parentToolUseId: null,
+        localId: `loc-${seq}`, metadata: null, deletedAt: null, isSidechain: false, parentToolUseId: null,
         category: 'persistent', submittedAt: null,
         queueState: 'pending', positionAt: seq * 10,
         ...over,

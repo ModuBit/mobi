@@ -202,7 +202,11 @@ export class Store {
                 created_at INTEGER NOT NULL,
                 seq INTEGER NOT NULL,
                 local_id TEXT,
+                -- 废弃列：Phase 1 的独立 native_id，代码已不再读写（native 事实统一入 metadata JSON）。
+                -- 列保留作历史（deploy 时不删），存量数据由人工 SQL 迁入 metadata
                 native_id TEXT,
+                metadata TEXT,
+                deleted_at INTEGER,
                 is_sidechain INTEGER NOT NULL DEFAULT 0,
                 parent_tool_use_id TEXT,
                 category TEXT NOT NULL DEFAULT 'persistent',
@@ -292,6 +296,16 @@ export class Store {
                 `Detected legacy messages schema (messages has no native_id column) at ${this.dbPath}. ` +
                 'Stop hub/runner, then run ' +
                 `'sqlite3 ${this.dbPath} "ALTER TABLE messages ADD COLUMN native_id TEXT"' and restart.`
+            )
+        }
+
+        // 「native_id 之后、metadata 之前」的存量库同理（BASELINE=0 未发布期版本号无法区分）：
+        // 缺列放行会在首个引用 metadata 的 SQL 处报无引导错误。不做代码内迁移（部署时人工补列），此处只负责引导
+        if (!messageColumns.some(column => column.name === 'metadata')) {
+            throw new Error(
+                `Detected legacy messages schema (messages has no metadata column) at ${this.dbPath}. ` +
+                'Stop hub/runner, then run ' +
+                `'sqlite3 ${this.dbPath} "ALTER TABLE messages ADD COLUMN metadata TEXT; ALTER TABLE messages ADD COLUMN deleted_at INTEGER;"' and restart.`
             )
         }
     }

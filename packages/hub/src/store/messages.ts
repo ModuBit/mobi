@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { isQueueableUserSubmission, type MessageCategory } from '@mobi/shared'
+import { isQueueableUserSubmission, type MessageCategory, type NativeMessageMetadata } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
 import { safeJsonParse } from './json'
@@ -29,7 +29,10 @@ type DbMessageRow = {
     created_at: number
     seq: number
     local_id: string | null
-    native_id: string | null
+    /** 上游 native 事实 JSON（{ nativeId?, nativeSessionId? }）；NULL = 未记录 */
+    metadata: string | null
+    /** 软删除时刻（rewind 截断）；NULL = 未删除 */
+    deleted_at: number | null
     is_sidechain: number
     parent_tool_use_id: string | null
     category: string
@@ -40,6 +43,36 @@ type DbMessageRow = {
 
 /** 历史查询的 category 过滤条件（只返回 persistent 消息） */
 const HISTORY_CATEGORY_FILTER = "category = 'persistent'"
+
+/** 读取路径统一过滤软删除行（rewind 截断后不可见，行保留兜底可找回） */
+const NOT_DELETED_FILTER = 'AND deleted_at IS NULL'
+
+/** metadata JSON 中 nativeId 缺失的判定片段（first-write-wins 守卫） */
+const NATIVE_ID_MISSING_GUARD = "json_extract(COALESCE(metadata, '{}'), '$.nativeId') IS NULL"
+
+/** 解析 metadata 列 JSON（NULL / 损坏 → null，损坏时不当作已记录事实） */
+function parseMetadata(raw: string | null): NativeMessageMetadata | null {
+    return (safeJsonParse(raw) as NativeMessageMetadata | null) ?? null
+}
+
+/** 序列化 metadata（无有效字段 → null 列，避免落 '{}' 空对象噪音） */
+function serializeMetadata(metadata: NativeMessageMetadata | null): string | null {
+    if (!metadata || (metadata.nativeId === undefined && metadata.nativeSessionId === undefined)) {
+        return null
+    }
+    return JSON.stringify(metadata)
+}
+
+/**
+ * 合并 native 事实（first-write-wins）：只补空缺字段，已有值（含已有 nativeSessionId）不覆盖。
+ * 供 addMessage 的 resume 重放更新分支使用（SQL COALESCE 语义的 TS 等价物，因需同时保两类 key）。
+ */
+function mergeMetadata(existing: NativeMessageMetadata | null, incoming: NativeMessageMetadata | null): NativeMessageMetadata {
+    return {
+        nativeId: existing?.nativeId ?? incoming?.nativeId,
+        nativeSessionId: existing?.nativeSessionId ?? incoming?.nativeSessionId,
+    }
+}
 
 /**
  * 从 content（RawJSONLines 对象）中提取 isSidechain 标记
@@ -64,7 +97,8 @@ function toStoredMessage(row: DbMessageRow): StoredMessage {
         createdAt: row.created_at,
         seq: row.seq,
         localId: row.local_id,
-        nativeId: row.native_id,
+        metadata: parseMetadata(row.metadata),
+        deletedAt: row.deleted_at,
         isSidechain: row.is_sidechain === 1,
         parentToolUseId: row.parent_tool_use_id,
         category: row.category,
@@ -80,7 +114,7 @@ export function addMessage(
     content: unknown,
     localId: string | null | undefined,
     category: MessageCategory = 'persistent',
-    nativeId: string | null | undefined = null,
+    metadata: NativeMessageMetadata | null = null,
 ): StoredMessage {
     const now = Date.now()
 
@@ -92,16 +126,18 @@ export function addMessage(
             // 相同 localId：更新内容（resume 重放，内容可能有增量变化）。
             // queue_state 由新内容重新裁决：仍可排队 → 保留已有状态（已消费不复位为 pending）；
             // 不再可排队（如 CLI 回显）→ 归入非排队轨道（queue_state=NULL）。
+            // native 事实 first-write-wins：只补空缺，已有值不覆盖（对齐旧 native_id COALESCE 语义）
             const parentToolUseId = extractParentToolUseId(content)
             const stillQueueable = isQueueableUserSubmission(content, existing.local_id)
             const queueState = stillQueueable
                 ? (existing.queue_state === 'consumed' ? 'consumed' : 'pending')
                 : null
+            const mergedMetadata = mergeMetadata(parseMetadata(existing.metadata), metadata)
             db.prepare(
                 `UPDATE messages
                  SET content = @content, parent_tool_use_id = @parent_tool_use_id,
                      category = @category, queue_state = @queue_state,
-                     native_id = COALESCE(native_id, @native_id),
+                     metadata = @metadata,
                      submitted_at = CASE WHEN @queue_state = 'consumed' THEN submitted_at ELSE NULL END
                  WHERE id = @id`
             ).run({
@@ -109,7 +145,7 @@ export function addMessage(
                 parent_tool_use_id: parentToolUseId,
                 category: category,
                 queue_state: queueState,
-                native_id: nativeId ?? null,
+                metadata: serializeMetadata(mergedMetadata),
                 id: existing.id,
             })
             const updated = db.prepare('SELECT * FROM messages WHERE id = ?').get(existing.id) as DbMessageRow
@@ -132,10 +168,10 @@ export function addMessage(
 
     db.prepare(`
         INSERT INTO messages (
-            id, session_id, content, created_at, seq, local_id, native_id, is_sidechain,
+            id, session_id, content, created_at, seq, local_id, metadata, is_sidechain,
             parent_tool_use_id, category, submitted_at, queue_state, position_at
         ) VALUES (
-            @id, @session_id, @content, @created_at, @seq, @local_id, @native_id, @is_sidechain,
+            @id, @session_id, @content, @created_at, @seq, @local_id, @metadata, @is_sidechain,
             @parent_tool_use_id, @category, @submitted_at, @queue_state, @position_at
         )
     `).run({
@@ -145,7 +181,7 @@ export function addMessage(
         created_at: now,
         seq: msgSeq,
         local_id: localId ?? null,
-        native_id: nativeId ?? null,
+        metadata: serializeMetadata(metadata),
         is_sidechain: isSidechain,
         parent_tool_use_id: parentToolUseId,
         category: category,
@@ -177,7 +213,9 @@ export function getMessages(
     ).get(sessionId, beforeSeq) as { p: number; seq: number } | undefined
     if (!anchor) {
         // 游标行已不存在（如排队消息被取消后物理删除）→ 停止翻页返回空，
-        // 避免回退到 queryByPosition(undefined) 拿最新页造成重复消息/滚动错乱
+        // 避免回退到 queryByPosition(undefined) 拿最新页造成重复消息/滚动错乱。
+        // 注意此处不过滤 deleted_at：软删除行仍可作翻页坐标（rewind 后更早历史要继续可翻），
+        // 页内行由 queryByPosition 的 NOT_DELETED_FILTER 保证不含软删除行
         return []
     }
     return queryByPosition(db, sessionId, limit, anchor, sidechainFilter)
@@ -201,7 +239,7 @@ function queryByPosition(
         : ''
     const rows = db.prepare(`
         SELECT * FROM messages
-        WHERE session_id = @sessionId AND category = 'persistent' ${sidechainFilter} ${beforeClause}
+        WHERE session_id = @sessionId AND category = 'persistent' ${sidechainFilter} ${beforeClause} ${NOT_DELETED_FILTER}
         ORDER BY position_at DESC, seq DESC
         LIMIT @limit
     `).all({
@@ -213,27 +251,85 @@ function queryByPosition(
     return rows.reverse().map(toStoredMessage)
 }
 
-/** 绑定用户消息的 native_id（push 时上报）。只写 NULL 行——幂等，重复上报/重发不覆盖。返回实际绑定的 localId。 */
+/** 绑定用户消息的 native 锚点到 metadata（push 时上报）。只补 nativeId 空缺的行——幂等，
+ *  重复上报/重发不覆盖；已有 nativeSessionId 保留（message 事件可能先写入）。返回实际绑定的 localId。 */
 export function bindNativeIds(
     db: Database,
     sessionId: string,
-    bindings: { localId: string; nativeId: string }[],
+    bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[],
 ): string[] {
     if (bindings.length === 0) return []
-    const stmt = db.prepare(
-        `UPDATE messages SET native_id = ?
-         WHERE session_id = ? AND local_id = ? AND native_id IS NULL`
-    )
-    // 事务包裹：批次原子落库，避免逐条 autocommit 在中途失败时残留半批绑定（1:N 批内共享同一 native_id）
+    // json_set 的 SQL NULL 值会落成 json null，故 nativeSessionId 拆两条语句：
+    // 仅在绑定确带值时才 set 该 key（COALESCE 保已有值，first-write-wins）
+    const setNativeIdOnly = db.prepare(`
+        UPDATE messages
+        SET metadata = json_set(COALESCE(metadata, '{}'), '$.nativeId', @nativeId)
+        WHERE session_id = @sid AND local_id = @localId AND ${NATIVE_ID_MISSING_GUARD}
+    `)
+    const setNativeIdWithSession = db.prepare(`
+        UPDATE messages
+        SET metadata = json_set(
+            json_set(COALESCE(metadata, '{}'), '$.nativeId', @nativeId),
+            '$.nativeSessionId', COALESCE(json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId'), @nativeSessionId))
+        WHERE session_id = @sid AND local_id = @localId AND ${NATIVE_ID_MISSING_GUARD}
+    `)
+    // 事务包裹：批次原子落库，避免逐条 autocommit 在中途失败时残留半批绑定（1:N 批内共享同一 nativeId）
     const run = db.transaction((): string[] => {
         const bound: string[] = []
         for (const b of bindings) {
-            const result = stmt.run(b.nativeId, sessionId, b.localId)
+            const stmt = b.metadata.nativeSessionId ? setNativeIdWithSession : setNativeIdOnly
+            const result = stmt.run({
+                nativeId: b.metadata.nativeId,
+                nativeSessionId: b.metadata.nativeSessionId ?? null,
+                sid: sessionId,
+                localId: b.localId,
+            })
             if (result.changes > 0) bound.push(b.localId)
         }
         return bound
     })
     return run()
+}
+
+/** attach 补写：该会话所有缺 nativeSessionId 的行补上新 session id。幂等（重复上报无行可补）。
+ *  含误补旧行（/clear 前消息）——设计如此：deploy 后存量自愈靠它，误判可 rewind 的行由 CLI 预检拒绝。
+ *  返回补写后的行（供 handler 广播消息更新，Web 端刷新 rewind 判据）。 */
+export function attachNativeSessionId(
+    db: Database,
+    sessionId: string,
+    nativeSessionId: string,
+): StoredMessage[] {
+    const run = db.transaction((): StoredMessage[] => {
+        const rows = db.prepare(`
+            SELECT * FROM messages
+            WHERE session_id = ? AND json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId') IS NULL
+        `).all(sessionId) as DbMessageRow[]
+        if (rows.length === 0) return []
+        const stmt = db.prepare(
+            `UPDATE messages SET metadata = json_set(COALESCE(metadata, '{}'), '$.nativeSessionId', ?) WHERE id = ?`
+        )
+        return rows.map(row => {
+            stmt.run(nativeSessionId, row.id)
+            // 事务内行未被并发修改，TS 侧合并 overlay 避免二次回读
+            const merged = { ...parseMetadata(row.metadata), nativeSessionId }
+            return { ...toStoredMessage(row), metadata: merged }
+        })
+    })
+    return run()
+}
+
+/** 软删除：seq >= fromSeq 且未删的行打 deleted_at（rewind 截断；行保留兜底可找回）。
+ *  幂等：已删行不再计入。返回删除行数。 */
+export function softDeleteMessagesFrom(
+    db: Database,
+    sessionId: string,
+    fromSeq: number,
+): number {
+    const result = db.prepare(
+        `UPDATE messages SET deleted_at = @now
+         WHERE session_id = @sid AND seq >= @fromSeq AND deleted_at IS NULL`
+    ).run({ now: Date.now(), sid: sessionId, fromSeq })
+    return result.changes
 }
 
 /** 把 localId 对应的 pending 消息翻为 consumed：写 submitted_at + 跳 position_at。返回实际更新的 localId。 */
@@ -264,7 +360,7 @@ export function markMessagesSubmitted(
 /** 仍排队（queue_state='pending'）的 user 消息，用于悬浮条钉最新页。 */
 export function getUnsubmittedLocalMessages(db: Database, sessionId: string): StoredMessage[] {
     const rows = db.prepare(
-        `SELECT * FROM messages WHERE session_id = ? AND queue_state = 'pending' ORDER BY seq ASC`
+        `SELECT * FROM messages WHERE session_id = ? AND queue_state = 'pending' ${NOT_DELETED_FILTER} ORDER BY seq ASC`
     ).all(sessionId) as DbMessageRow[]
     return rows.map(toStoredMessage)
 }
@@ -319,7 +415,7 @@ export function getMessagesAfter(
     const safeAfterSeq = Number.isFinite(afterSeq) ? afterSeq : 0
 
     const rows = db.prepare(
-        `SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?`
+        `SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? AND seq > ? ${NOT_DELETED_FILTER} ORDER BY seq ASC LIMIT ?`
     ).all(sessionId, safeAfterSeq, safeLimit) as DbMessageRow[]
 
     return rows.map(toStoredMessage)
@@ -333,7 +429,7 @@ export function getSidechainMessages(
     parentToolUseId: string
 ): StoredMessage[] {
     const rows = db.prepare(
-        `SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? AND parent_tool_use_id = ? ORDER BY seq DESC LIMIT ?`
+        `SELECT * FROM messages WHERE ${HISTORY_CATEGORY_FILTER} AND session_id = ? AND parent_tool_use_id = ? ${NOT_DELETED_FILTER} ORDER BY seq DESC LIMIT ?`
     ).all(sessionId, parentToolUseId, SIDECHAIN_MESSAGE_LIMIT) as DbMessageRow[]
     return rows.reverse().map(toStoredMessage)
 }

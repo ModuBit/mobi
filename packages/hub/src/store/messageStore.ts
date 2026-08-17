@@ -16,11 +16,12 @@
 
 import type { Database } from 'bun:sqlite'
 
-import type { MessageCategory } from '@mobi/shared'
+import type { MessageCategory, NativeMessageMetadata } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
 import {
     addMessage,
+    attachNativeSessionId,
     bindNativeIds,
     cancelQueuedMessage,
     getMessageSubmitState,
@@ -29,7 +30,8 @@ import {
     getSidechainMessages,
     getUnsubmittedLocalMessages,
     markMessagesSubmitted,
-    mergeSessionMessages
+    mergeSessionMessages,
+    softDeleteMessagesFrom
 } from './messages'
 
 export class MessageStore {
@@ -39,13 +41,23 @@ export class MessageStore {
         this.db = db
     }
 
-    addMessage(sessionId: string, content: unknown, localId?: string | null, category: MessageCategory = 'persistent', nativeId?: string | null): StoredMessage {
-        return addMessage(this.db, sessionId, content, localId, category, nativeId)
+    addMessage(sessionId: string, content: unknown, localId?: string | null, category: MessageCategory = 'persistent', metadata?: NativeMessageMetadata | null): StoredMessage {
+        return addMessage(this.db, sessionId, content, localId, category, metadata)
     }
 
-    /** 绑定用户消息的 native_id（push 时上报）；只写 NULL 行，幂等。返回实际绑定的 localId。 */
-    bindNativeIds(sessionId: string, bindings: { localId: string; nativeId: string }[]): string[] {
+    /** 绑定用户消息的 native 锚点到 metadata（push 时上报）；只补空缺，幂等。返回实际绑定的 localId。 */
+    bindNativeIds(sessionId: string, bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[]): string[] {
         return bindNativeIds(this.db, sessionId, bindings)
+    }
+
+    /** attach 补写：该会话所有缺 nativeSessionId 的行补上新 session id（幂等）。返回补写后的行。 */
+    attachNativeSessionId(sessionId: string, nativeSessionId: string): StoredMessage[] {
+        return attachNativeSessionId(this.db, sessionId, nativeSessionId)
+    }
+
+    /** 软删除 seq >= fromSeq 且未删的行（rewind 截断，幂等）。返回删除行数。 */
+    softDeleteMessagesFrom(sessionId: string, fromSeq: number): number {
+        return softDeleteMessagesFrom(this.db, sessionId, fromSeq)
     }
 
     getMessages(sessionId: string, limit: number = 200, beforeSeq?: number, excludeSidechain: boolean = false): StoredMessage[] {

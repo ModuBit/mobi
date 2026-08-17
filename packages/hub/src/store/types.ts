@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Project } from '@mobi/shared'
+import type { NativeMessageMetadata, Project } from '@mobi/shared'
 
 export type StoredSession = {
     id: string
@@ -57,8 +57,11 @@ export type StoredMessage = {
     createdAt: number
     seq: number
     localId: string | null
-    /** 上游 agent transcript 消息 id；null = 未绑定（不可 rewind 锚点） */
-    nativeId: string | null
+    /** 上游 native 事实（rewind 锚点 + 所属上游 session）；null = 未记录（不可 rewind 锚点）。
+     *  Phase 1 的独立 native_id 列已废弃，统一收敛到此 JSON 字段 */
+    metadata: NativeMessageMetadata | null
+    /** 软删除时刻（rewind 截断）；null = 未删除。读取路径统一过滤已删行 */
+    deletedAt: number | null
     isSidechain: boolean
     parentToolUseId: string | null
     category: string  // 'discard' | 'ephemeral' | 'persistent'

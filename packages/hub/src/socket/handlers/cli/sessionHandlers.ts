@@ -165,7 +165,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 使用 CLI 传来的 category（CLI 已在发送端分类），降级为 persistent
         const category: MessageCategory = parsed.data.category ?? 'persistent'
 
-        const msg = store.messages.addMessage(sid, content, localId, category, parsed.data.nativeId)
+        // 过渡态：协议 message 事件仍带扁平 nativeId（Task 5 换 metadata 字段），此处组装成 metadata 形态落库
+        const msg = store.messages.addMessage(sid, content, localId, category,
+            parsed.data.nativeId ? { nativeId: parsed.data.nativeId } : null)
 
         // 提取并更新 runtimeState（todos、tasks、teamState 等）
         const todos = extractTodoWriteTodosFromMessageContent(content)
@@ -535,16 +537,16 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             emitAccessError('session', data.sid, sessionAccess.reason)
             return
         }
-        // 逐项校验：null 项/缺字段会让 bindNativeIds 抛 TypeError，空串 nativeId 则永久占坑
-        // （first-write-wins + IS NULL 守卫会挡住后续合法绑定）——无效项直接丢弃，不落库。
-        // 过渡态：协议已切 metadata 形态，store 尚未迁移（Task 4），此处解包回扁平形态
+        // 逐项校验：null 项/缺字段会让 bindNativeIds 抛 TypeError，空串 nativeId / nativeSessionId
+        // 则永久占坑（first-write-wins + json_extract IS NULL 守卫会挡住后续合法绑定）——无效项直接丢弃，不落库
         const bindings = data.bindings
-            .filter((b): b is { localId: string; metadata: { nativeId: string } } =>
+            .filter((b): b is { localId: string; metadata: { nativeId: string; nativeSessionId?: string } } =>
                 b !== null && typeof b === 'object' &&
                 typeof b.localId === 'string' && b.localId.length > 0 &&
                 typeof b.metadata === 'object' && b.metadata !== null &&
-                typeof b.metadata.nativeId === 'string' && b.metadata.nativeId.length > 0)
-            .map(b => ({ localId: b.localId, nativeId: b.metadata.nativeId }))
+                typeof b.metadata.nativeId === 'string' && b.metadata.nativeId.length > 0 &&
+                (b.metadata.nativeSessionId === undefined
+                    || (typeof b.metadata.nativeSessionId === 'string' && b.metadata.nativeSessionId.length > 0)))
         if (bindings.length === 0) return
 
         store.messages.bindNativeIds(data.sid, bindings)

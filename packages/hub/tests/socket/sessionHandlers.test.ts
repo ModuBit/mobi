@@ -34,7 +34,7 @@ function makeStoredSession(sid: string): StoredSession {
 function makeMsg(id: string, localId: string | null, seq: number): StoredMessage {
     return {
         id, sessionId: 's1', content: {}, createdAt: seq, seq,
-        localId, nativeId: null, isSidechain: false, parentToolUseId: null,
+        localId, metadata: null, deletedAt: null, isSidechain: false, parentToolUseId: null,
         category: 'persistent', submittedAt: null,
         queueState: 'pending', positionAt: seq,
     }
@@ -363,12 +363,12 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
 describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
     function makeBoundDeps(opts: { bindReturn: string[]; sessionOk?: boolean }) {
         const events: SyncEvent[] = []
-        const bindSpy = { args: null as { sid: string; bindings: { localId: string; nativeId: string }[] } | null }
+        const bindSpy = { args: null as { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] } | null }
         const accessError = { called: false }
         const deps: SessionHandlersDeps = {
             store: {
                 messages: {
-                    bindNativeIds: (sid: string, bindings: { localId: string; nativeId: string }[]) => {
+                    bindNativeIds: (sid: string, bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[]) => {
                         bindSpy.args = { sid, bindings }
                         return opts.bindReturn
                     },
@@ -391,7 +391,7 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
         fakeSocket.emit('messages-bound', { sid: 's1', bindings: [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }] })
         expect(bindSpy.args!.sid).toBe('s1')
-        expect(bindSpy.args!.bindings).toEqual([{ localId: 'loc-1', nativeId: 'uu-1' }])
+        expect(bindSpy.args!.bindings).toEqual([{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }])
         // messages-bound 不广播 SSE，仅落库绑定
         expect(events).toEqual([])
     })
@@ -434,8 +434,8 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
         })
         expect(bindSpy.args).not.toBeNull()
         expect(bindSpy.args!.bindings).toEqual([
-            { localId: 'loc-1', nativeId: 'uu-1' },
-            { localId: 'loc-4', nativeId: 'uu-4' },
+            { localId: 'loc-1', metadata: { nativeId: 'uu-1' } },
+            { localId: 'loc-4', metadata: { nativeId: 'uu-4', nativeSessionId: 'ns-1' } },
         ])
     })
 
