@@ -41,7 +41,7 @@ export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 2
+const SCHEMA_VERSION: number = 1
 // 发布基线：0 表示未发布，schema 可直接修改无需迁移；
 // 首次发布后设为当前 SCHEMA_VERSION，后续变更必须编写迁移脚本
 const SCHEMA_RELEASE_BASELINE: number = 0
@@ -282,6 +282,18 @@ export class Store {
                 'Stop hub/runner, then run `bun scripts/migrate-projects.ts` to migrate the database before starting this version.'
             )
         }
+
+        // 「项目实体化之后、native_id 之前」的存量库 user_version 同为 1（BASELINE=0 未发布期），版本号无法区分，
+        // 列存在性是唯一判别器：缺列放行会在首个引用 native_id 的 SQL 处报无引导错误。
+        // 不做代码内迁移（用户决策：部署时人工补列），此处只负责引导
+        const messageColumns = this.db.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
+        if (!messageColumns.some(column => column.name === 'native_id')) {
+            throw new Error(
+                `Detected legacy messages schema (messages has no native_id column) at ${this.dbPath}. ` +
+                'Stop hub/runner, then run ' +
+                `'sqlite3 ${this.dbPath} "ALTER TABLE messages ADD COLUMN native_id TEXT"' and restart.`
+            )
+        }
     }
 
     private buildSchemaMismatchError(currentVersion: number): Error {
@@ -291,9 +303,7 @@ export class Store {
         const base = `SQLite schema version mismatch for ${location}. Expected ${SCHEMA_VERSION}, found ${currentVersion}.`
         if (SCHEMA_RELEASE_BASELINE === 0) {
             return new Error(
-                `${base} Database was created with an unreleased schema — ` +
-                'run the one-off migration script on it (e.g. `sqlite3 <db> < scripts/migrate-native-id.sql` for native_id), ' +
-                'or delete the database file and restart.'
+                `${base} Database was created with an unreleased schema — delete the database file and restart.`
             )
         }
         return new Error(

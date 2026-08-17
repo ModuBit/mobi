@@ -68,7 +68,7 @@ describe('Store schema 初始化', () => {
             // 只创建部分表，但 user_version 与 SCHEMA_VERSION 匹配
             const db = new Database(dbPath, { create: true })
             db.run('CREATE TABLE sessions (id TEXT PRIMARY KEY)')
-            db.run('PRAGMA user_version = 2') // 匹配当前 SCHEMA_VERSION
+            db.run('PRAGMA user_version = 1') // 匹配当前 SCHEMA_VERSION
             db.close()
 
             expect(() => new Store(dbPath)).toThrow(/missing required tables/)

@@ -99,7 +99,7 @@ function createLegacyDb(): void {
             endpoint TEXT NOT NULL UNIQUE
         );
     `)
-    db.run('PRAGMA user_version = 2')
+    db.run('PRAGMA user_version = 1')
     db.close()
 }
 
@@ -118,6 +118,56 @@ describe('legacy schema guard', () => {
         db.close()
 
         expect(() => new Store(dbPath)).toThrow(/migrate-projects/)
+    })
+
+    it('缺 native_id 列的库（项目实体化之后、native_id 之前）→ 报错并引导手动补列', () => {
+        // 用当前 Store 建库（含 projects/project_id），再删列模拟旧库——SQLite 不支持 DROP COLUMN 前的
+        // 简化：直接建一个「无 native_id 但有 project_id」的库
+        const db = new Database(dbPath, { create: true, readwrite: true })
+        db.run(`
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY, tag TEXT,
+                namespace TEXT NOT NULL DEFAULT 'default', machine_id TEXT,
+                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+                metadata TEXT, metadata_version INTEGER DEFAULT 1,
+                agent_state TEXT, agent_state_version INTEGER DEFAULT 1,
+                runtime_state TEXT, runtime_state_updated_at INTEGER,
+                project_id TEXT, seq INTEGER DEFAULT 0
+            );
+            CREATE TABLE messages (
+                id TEXT PRIMARY KEY, session_id TEXT NOT NULL, content TEXT NOT NULL,
+                created_at INTEGER NOT NULL, seq INTEGER NOT NULL, local_id TEXT,
+                is_sidechain INTEGER NOT NULL DEFAULT 0, parent_tool_use_id TEXT,
+                category TEXT NOT NULL DEFAULT 'persistent', submitted_at INTEGER,
+                queue_state TEXT, position_at INTEGER NOT NULL
+            );
+            CREATE TABLE machines (
+                id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',
+                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+                metadata TEXT, metadata_version INTEGER DEFAULT 1,
+                runner_state TEXT, runner_state_version INTEGER DEFAULT 1,
+                active INTEGER DEFAULT 0, active_at INTEGER, seq INTEGER DEFAULT 0
+            );
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT NOT NULL,
+                platform_user_id TEXT NOT NULL, namespace TEXT NOT NULL DEFAULT 'default',
+                created_at INTEGER NOT NULL, UNIQUE(platform, platform_user_id)
+            );
+            CREATE TABLE push_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, namespace TEXT NOT NULL,
+                endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
+                created_at INTEGER NOT NULL, UNIQUE(namespace, endpoint)
+            );
+            CREATE TABLE projects (
+                id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',
+                machine_id TEXT NOT NULL, name TEXT NOT NULL, folders TEXT NOT NULL,
+                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, seq INTEGER DEFAULT 0
+            );
+        `)
+        db.run('PRAGMA user_version = 1')
+        db.close()
+
+        expect(() => new Store(dbPath)).toThrow(/ALTER TABLE messages ADD COLUMN native_id/)
     })
 
     it('全新库正常初始化（projects 表就位）', () => {
