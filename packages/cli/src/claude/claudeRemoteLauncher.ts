@@ -32,6 +32,7 @@ import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
 import { createSessionScanner, readSessionLog } from "./utils/sessionScanner";
+import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { classifyMessage } from '@mobi/shared';
@@ -188,6 +189,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         const goalHandler = new GoalStatusHandler(
             session.client,
             (m) => session.client.sendClaudeSessionMessage(m),
+        );
+        // attach 上报：native session id 变化（首启/新会话 /clear /compact fork）时通知 Hub
+        // 批量补写该会话缺 nativeSessionId 的消息行（rewind 判据的数据源）
+        const reportNativeAttach = createNativeAttachReporter(
+            (nativeSessionId) => session.client.emitNativeAttached(nativeSessionId)
         );
         // scanner 只启动一次(首次 onSessionFound)；后续 session 切换走 onNewSession
         let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null;
@@ -523,6 +529,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         },
                         onSessionFound: (sessionId) => {
                             session.onSessionFound(sessionId);
+                            // attach：native session 变化（首启/新会话/compact 切换）→ Hub 补写空缺行
+                            reportNativeAttach(sessionId);
                             if (!scannerPromise) {
                                 // 首次：启动 scanner(只传 onAttachmentStatus,不传 onMessage——
                                 // remote 模式 SDK 消息流已送聊天消息,scanner 送消息会重复)
