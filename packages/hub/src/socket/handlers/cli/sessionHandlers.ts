@@ -70,7 +70,7 @@ const messageSchema = z.object({
     sid: z.string(),
     message: z.union([z.string(), z.unknown()]),
     localId: z.string().optional(),
-    nativeId: z.string().optional(),
+    nativeId: z.string().nullable().optional(),
     snapshot: z.boolean().optional(),
     category: z.enum(['discard', 'ephemeral', 'persistent']).optional()
 })

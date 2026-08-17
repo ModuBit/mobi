@@ -387,11 +387,13 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
 
     test('合法 bindings → 委托 store.bindNativeIds', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, bindSpy } = makeBoundDeps({ bindReturn: ['loc-1'] })
+        const { deps, bindSpy, events } = makeBoundDeps({ bindReturn: ['loc-1'] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
         fakeSocket.emit('messages-bound', { sid: 's1', bindings: [{ localId: 'loc-1', nativeId: 'uu-1' }] })
         expect(bindSpy.args!.sid).toBe('s1')
         expect(bindSpy.args!.bindings).toEqual([{ localId: 'loc-1', nativeId: 'uu-1' }])
+        // messages-bound 不广播 SSE，仅落库绑定
+        expect(events).toEqual([])
     })
 
     test('session 不存在 → 不 invoke', () => {
