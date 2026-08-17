@@ -550,6 +550,13 @@ export async function claudeRemote(opts: {
     // Fixed parameters
     sessionId: string | null,
     path: string,
+    /**
+     * rewind 截断轮保留锚（锚点用户消息前最近一条 assistant entry uuid）：
+     * 携带时本轮为「截断空跑轮」——不等用户消息，空 prompt 一次性启动，
+     * resume+resumeSessionAt 的 fork 截断在进程 boot 时发生，result 到达即截断落盘，
+     * launcher 随后做两段回报（rewound-truncated / rewind-completed）
+     */
+    resumeSessionAt?: string,
     mcpServers?: Record<string, McpServerConfig>,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
@@ -741,6 +748,9 @@ export async function claudeRemote(opts: {
             preset: 'claude_code' as const,
             append: buildAppendSystemPrompt(baseConfig),
         },
+        // rewind 文件回滚依赖 file checkpoint（Query.rewindFiles 的前置条件，
+        // SDK 类型注明 "Requires file checkpointing to be enabled"）
+        enableFileCheckpointing: true,
         allowedTools: baseConfig.allowedTools ? baseConfig.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: baseConfig.disallowedTools,
         // web 工具替换（常驻注入）：模型 emit WebSearch/WebFetch → 执行层重定向到 mobi-web in-process 工具。
@@ -763,6 +773,40 @@ export async function claudeRemote(opts: {
         toolConfig: {
             askUserQuestion: { previewFormat: 'markdown' }
         },
+    }
+
+    // rewind 截断空跑轮：不等用户消息（常规轮的 Promise.allSettled 门会阻塞到下一条消息，
+    // 截断与两段回报将被无限推迟），空 prompt 一次性启动——fork 截断发生在进程 boot，
+    // result 到达即截断落盘。文件回滚已在 rewind RPC 受理阶段（截断前）完成，本轮只截断
+    if (opts.resumeSessionAt) {
+        const response = query({ prompt: '', options: { ...sdkOptions, resumeSessionAt: opts.resumeSessionAt } })
+        opts.onQueryReady?.(response)
+        // sdkOutputLoop 要求 onRunningChange 必选，此处收敛可选性
+        const onRunningChange = opts.onRunningChange ?? ((_running: boolean) => { });
+        onRunningChange(true)
+
+        const snapshotSender = new StreamSnapshotSender(opts.onSnapshot, opts.getConverter())
+        snapshotSender.start()
+        try {
+            await sdkOutputLoop(response, { isCompactCommand: false }, {
+                path: opts.path,
+                onMessage: opts.onMessage,
+                onAbortFlush: opts.onAbortFlush,
+                snapshotSender,
+                onSessionFound: opts.onSessionFound,
+                // 截断轮不发 ready：rewind 进行中（sender 由 Web 侧禁用，终态以 rewind-completed 为准）
+                onReady: () => { },
+                onRunningChange,
+                onContextUsage: opts.onContextUsage,
+            })
+        } finally {
+            try { response.close() } catch (e) {
+                logger.debug(`[claudeRemote] Error closing truncation response:`, e)
+            }
+            snapshotSender.destroy()
+            onRunningChange(false)
+        }
+        return
     }
 
     const [warmSettled, msgSettled] = await Promise.allSettled([

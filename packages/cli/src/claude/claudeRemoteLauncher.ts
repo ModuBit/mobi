@@ -34,6 +34,7 @@ import type { RawJSONLines } from "./types";
 import { createSessionScanner, readSessionLog } from "./utils/sessionScanner";
 import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
 import { REWIND_EXIT_SENTINEL } from "./utils/rewindSentinel";
+import { reportRewindCompletion } from "./utils/rewindReport";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { classifyMessage } from '@mobi/shared';
@@ -456,6 +457,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 logger.debug('[remote]: launch');
                 messageBuffer.addMessage('═'.repeat(40), 'status');
 
+                // rewind 截断轮：rewind RPC 受理后经哨兵退出了上一轮 query，pendingRewind 已置位——
+                // 本轮以 resumeSessionAt 空跑截断（不清 sessionId，同会话原地截断），完成后两段回报
+                const rewind = session.pendingRewind;
+                if (rewind) {
+                    messageBuffer.addMessage(`Rewinding session to anchor ${rewind.resumeAt.slice(0, 8)}...`, 'status');
+                }
+
                 const isNewSession = session.sessionId !== previousSessionId;
                 if (isNewSession) {
                     messageBuffer.addMessage('Starting new Claude session...', 'status');
@@ -475,6 +483,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 try {
                     await claudeRemote({
                         sessionId: session.sessionId,
+                        // rewind 截断轮携带保留锚（其前最近一条 assistant entry uuid）：
+                        // 语义是「加载到该条（含）为止」，锚点用户消息及其后全部丢弃
+                        resumeSessionAt: rewind?.resumeAt,
                         path: session.path,
                         allowedTools: session.allowedTools ?? [],
                         mcpServers: session.mcpServers,
@@ -625,6 +636,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
                     session.consumeOneTimeFlags();
 
+                    // rewind 截断轮完成（fork 已落盘）→ 两段回报：
+                    // rewound-truncated（Hub 软删除定界）→ rewind-completed（终态，含受理阶段
+                    // 已完成的文件回滚结果）。截断失败路径见下方 catch 的如实回报
+                    if (rewind) {
+                        await reportRewindCompletion(session.client, rewind);
+                        session.pendingRewind = null;
+                    }
+
                     if (!this.exitReason && controller.signal.aborted) {
                         session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                     }
@@ -639,6 +658,17 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     logger.error(`[remote]: launch error: ${errorDetail}`);
                     if (!this.exitReason) {
                         session.client.sendSessionEvent({ type: 'message', message: `Process exited unexpectedly: ${e instanceof Error ? e.message : String(e)}` });
+                        // rewind 截断失败的如实回报（PoC 定案失败语义：文件可能已回滚——受理阶段先于
+                        // 截断执行；对话未截。经 rewind-completed 终态让 Web 收尾，不放 pendingRewind
+                        // 重试——截断错误通常是确定性的，重试只会死循环）
+                        if (session.pendingRewind) {
+                            const failed = session.pendingRewind;
+                            session.pendingRewind = null;
+                            session.client.emitRewindCompleted(
+                                failed.filesRestored,
+                                `rewind truncation failed: ${e instanceof Error ? e.message : String(e)}`
+                            );
+                        }
                         // claude 进程崩溃，退出 session 避免僵尸进程
                         this.exitReason = 'exit';
                     }

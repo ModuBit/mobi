@@ -542,6 +542,63 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * 反查 rewind 截断边界：同 metadata.nativeId 的最小 seq 行（锚点批首行，1:N 批整批同删的定界）。
+     * 走既有 GET /cli/sessions/:id/messages 接口正向分页（afterSeq 游标递进，对齐 backfillMessages）；
+     * 消息按 seq 升序返回，首个命中即最小 seq。未找到（行已删 / Hub DTO 未含 metadata）返回 0，
+     * 调用方按边界反查失败处理（跳过 truncated 上报，completed 带 error 收尾）。
+     */
+    async fetchRewindBoundary(nativeId: string): Promise<number> {
+        let cursor = 0
+        const limit = 200
+        while (true) {
+            const response = await axios.get(
+                `${configuration.apiUrl}/cli/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                {
+                    params: { afterSeq: cursor, limit },
+                    headers: {
+                        Authorization: `Bearer ${this.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 15_000
+                }
+            )
+
+            const parsed = CliMessagesResponseSchema.safeParse(response.data)
+            if (!parsed.success) {
+                throw apiValidationError('Invalid /cli/sessions/:id/messages response', response)
+            }
+
+            const messages = parsed.data.messages
+            if (messages.length === 0) break
+
+            let maxSeq = cursor
+            for (const message of messages) {
+                if (typeof message.seq === 'number' && message.seq > maxSeq) {
+                    maxSeq = message.seq
+                }
+                if (message.metadata?.nativeId === nativeId && typeof message.seq === 'number') {
+                    // 升序遍历，首个命中即批首行
+                    return message.seq
+                }
+            }
+
+            if (maxSeq <= cursor || messages.length < limit) break
+            cursor = maxSeq
+        }
+        return 0
+    }
+
+    /** rewind 截断成功上报（CLI → Hub）：Hub 即刻软删除 seq >= deleteFromSeq 的行并转 SSE */
+    emitRewoundTruncated(nativeId: string, deleteFromSeq: number): void {
+        this.socket.emit('rewound-truncated', { sid: this.sessionId, nativeId, deleteFromSeq })
+    }
+
+    /** rewind 终态上报（CLI → Hub）：转 SSE；filesRestored=false 时 error 携带原因（部分失败如实报错） */
+    emitRewindCompleted(filesRestored: boolean, error?: string): void {
+        this.socket.emit('rewind-completed', { sid: this.sessionId, filesRestored, error })
+    }
+
+    /**
      * 上报上下文用量（事件驱动采集）。
      * Hub 落库到 runtimeState.contextUsage + SSE 推 web。
      */

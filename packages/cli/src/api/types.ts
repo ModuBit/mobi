@@ -92,6 +92,11 @@ export const CliMessagesResponseSchema = z.object({
         seq: z.number(),
         createdAt: z.number(),
         localId: z.string().nullable().optional(),
+        /** native 锚点（rewind 判据与截断边界反查依赖；Hub DTO 已含，缺省兼容旧 Hub） */
+        metadata: z.object({
+            nativeId: z.string().optional(),
+            nativeSessionId: z.string().optional()
+        }).nullable().optional(),
         content: z.unknown()
     }))
 })
