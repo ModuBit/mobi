@@ -71,7 +71,11 @@ const messageSchema = z.object({
     sid: z.string(),
     message: z.union([z.string(), z.unknown()]),
     localId: z.string().optional(),
-    nativeId: z.string().nullable().optional(),
+    /** 上游 native 事实（rewind 锚点）：CLI 在 SDK 下发消息时自带，两者无时序问题 */
+    metadata: z.object({
+        nativeId: z.string().optional(),
+        nativeSessionId: z.string().optional()
+    }).optional(),
     snapshot: z.boolean().optional(),
     category: z.enum(['discard', 'ephemeral', 'persistent']).optional()
 })
@@ -165,9 +169,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 使用 CLI 传来的 category（CLI 已在发送端分类），降级为 persistent
         const category: MessageCategory = parsed.data.category ?? 'persistent'
 
-        // 过渡态：协议 message 事件仍带扁平 nativeId（Task 5 换 metadata 字段），此处组装成 metadata 形态落库
-        const msg = store.messages.addMessage(sid, content, localId, category,
-            parsed.data.nativeId ? { nativeId: parsed.data.nativeId } : null)
+        const msg = store.messages.addMessage(sid, content, localId, category, parsed.data.metadata ?? null)
 
         // 提取并更新 runtimeState（todos、tasks、teamState 等）
         const todos = extractTodoWriteTodosFromMessageContent(content)
@@ -550,5 +552,83 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         if (bindings.length === 0) return
 
         store.messages.bindNativeIds(data.sid, bindings)
+    })
+
+    // rewind 两段回报 SSE 事件（hub 本地形态）。
+    // 注：shared SyncEventSchema 尚未收录这两类事件（跨包未决：web 线补 schema 后收敛到 shared），
+    // 此处以本地类型 + 单点 as 断言收敛——运行时载荷 { type, sessionId, ... } 与 SSE 直播路径（不校验 schema）兼容
+    type RewindSyncEvent =
+        | { type: 'rewound-truncated'; sessionId: string; deleteFromSeq: number }
+        | { type: 'rewind-completed'; sessionId: string; filesRestored: boolean; error?: string }
+    const emitRewindEvent = (event: RewindSyncEvent) => {
+        onWebappEvent?.(event as unknown as SyncEvent)
+    }
+
+    // CLI onSessionFound 且 native session 变化时上报：批量补写该会话缺 nativeSessionId 的消息行，
+    // 并按 message 落库后的广播模式把补写行推给 Web（Web 端据此刷新 rewind 判据）
+    socket.on('messages-native-attached', (data: { sid: string; nativeSessionId: string }) => {
+        if (!data || typeof data.sid !== 'string'
+            || typeof data.nativeSessionId !== 'string' || data.nativeSessionId.length === 0) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        const attached = store.messages.attachNativeSessionId(data.sid, data.nativeSessionId)
+        if (attached.length === 0) return
+
+        for (const msg of attached) {
+            // update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
+            // 补写行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射
+            const message = { ...toDecryptedMessage(msg), seq: msg.seq }
+            socket.to(`session:${data.sid}`).emit('update', {
+                id: randomUUID(),
+                seq: msg.seq,
+                createdAt: Date.now(),
+                body: {
+                    t: 'new-message' as const,
+                    sid: data.sid,
+                    message
+                }
+            })
+            onWebappEvent?.({
+                type: 'message-received',
+                sessionId: data.sid,
+                message: toDecryptedMessage(msg)
+            })
+        }
+    })
+
+    // rewind 截断成功（CLI 两段回报第一段，含 CLI 反查的锚点批首行 seq）：
+    // Hub 即刻软删除（先 CLI 截断成功再 Hub 删），随即转 SSE 过渡态
+    socket.on('rewound-truncated', (data: { sid: string; nativeId: string; deleteFromSeq: number }) => {
+        if (!data || typeof data.sid !== 'string'
+            || typeof data.nativeId !== 'string' || data.nativeId.length === 0
+            || !Number.isFinite(data.deleteFromSeq)) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        store.messages.softDeleteMessagesFrom(data.sid, data.deleteFromSeq)
+        emitRewindEvent({ type: 'rewound-truncated', sessionId: data.sid, deleteFromSeq: data.deleteFromSeq })
+    })
+
+    // rewind 终态（CLI 两段回报第二段）：filesRestored false 时 error 携带原因，转 SSE
+    socket.on('rewind-completed', (data: { sid: string; filesRestored: boolean; error?: string }) => {
+        if (!data || typeof data.sid !== 'string' || typeof data.filesRestored !== 'boolean'
+            || (data.error !== undefined && typeof data.error !== 'string')) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        emitRewindEvent({ type: 'rewind-completed', sessionId: data.sid, filesRestored: data.filesRestored, error: data.error })
     })
 }
