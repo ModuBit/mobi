@@ -451,13 +451,25 @@ mobi.app（dmg 分发）
 
 ---
 
-## 51. Web 工具配置页打磨项（2026-08-16）
+## 51. Web 工具配置页打磨项（2026-08-16；2026-08-17 review 修复后更新）
 
 **背景**：自定义 Web 工具特性（toolAliases 替换内置 WebSearch/WebFetch）已落地，配置页 V1 固定取第一台在线机器。E2E 与最终审查遗留以下打磨点：
 
 1. **多机选择器**：Web 工具卡片固定取第一台在线机器，多机环境下其余机器的配置在 UI 上不可达（hub 侧按 machine 路由的能力已就绪，纯前端工作）
-2. **凭据清除通道**：空串=保持旧值是唯一语义，换 key 可覆盖，但彻底删除已存凭据只能手改 settings.json——需要"清除凭据"的显式操作
-3. **禁用已选 provider 的预校验**：禁用当前被选为搜索/抓取源的 provider 后直接保存会被 runner 校验拒绝（错误信息清晰但偏事后），前端可预清 selects 或预校验
+2. **凭据清除通道**：协议已支持（null=清除），但 UI 仍未提供"清除凭据"入口——彻底删除已存凭据仍需手改 settings.json
+3. ~~**禁用已选 provider 的预校验**~~：已实现（前端拦截 + 引导先清路由；allowClear 后 teardown 流程畅通）
 4. **海外用户回退**：toolAliases 常驻注入意味着内置 WebSearch/WebFetch 在任何网络环境都被替换（未配 provider 即报错）。当前按"国内环境内置不可用"接受；若有海外使用诉求，需加"切回内置"选项
 
 **优先级**：低。按需逐项处理。
+
+---
+
+## 52. Web 工具提交协议：在场性扩展到路由字段与 providers 条目（2026-08-17）
+
+**背景**：凭据键已实现"在场性"语义（不在场=保持、null=清除、非空=覆盖），但 `searchProviderId`/`fetchProviderId` 与 `providers` 数组仍是**整体替换**语义——每个 UI 调用方必须全量重建配置（web 侧 `providersWith()` 回填所有 id + 路由字段），任何未来调用方（CLI 直连操作、第二个设置入口、快捷开关）漏掉回填就会静默清空机器上的配置。2026-08-17 code review 的 altitude 角度指出这是「客户端全量重建补偿写协议」的结构性问题。
+
+**方向**：把在场性协议扩展到整个 submission——providers 条目不在场=保持该条目、路由字段不在场=保持现值、显式 null/空 providers=清除。runner 侧 `mergeProviderCredentials` 升级为完整配置 merge，web 侧删掉 `providersWith()` 回填逻辑、改为只提交变更的字段。
+
+**前置**：协议变更是 breaking change（旧语义下「缺字段=清除」被部分调用方依赖，如 allowClear 路由清除靠缺字段实现），需要版本协商或兼容窗口；与 pending #50（settings.json 拆分）的迁移时机一并考虑。
+
+**优先级**：低。当前 web 是唯一写入方、`providersWith()` 已封装集中，风险可控；第二个写入方出现时升级为高。

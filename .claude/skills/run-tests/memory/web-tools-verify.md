@@ -12,18 +12,19 @@ metadata:
 → hub `GET/POST /api/machines/:id/web-tools`（+ `POST .../web-tools/verify`）→ runner RPC → 落盘
 **`~/.mobi-e2e/settings.json` 的 `webTools` 段**。运行链路：SDK `toolAliases` 重定向 WebSearch/WebFetch 到 in-process MCP。
 
-## E2E-1 配置子页链路（2026-08-17 重构后 UI）
+## E2E-1 配置子页链路（2026-08-17 review 修复后 UI）
 
-子页结构：用途路由卡（web_search/web_fetch 两个 Select 即时保存）+ Providers 区（每 provider 卡：外置开关 + 点卡头展开内联凭据编辑器）。
+子页结构：用途路由卡（web_search/web_fetch 两个 Select 即时保存，**allowClear 可清除**）+ Providers 区（每 provider 卡：外置开关 + 点卡头展开内联凭据编辑器，展开有 grid-rows 过渡动画）。
 
-1. mobile 视口（390x844）`/settings`：入口卡列表；Web 工具入口副标题位状态徽标（未配置灰 / Tavily 已启用绿点）；PC 视口（≥992）`/settings` 直接渲染默认通知分区 + 左侧 200px 分区导航（active 高亮 + Tavily 徽标外显）
+1. mobile 视口（390x844）`/settings`：入口卡列表；Web 工具入口副标题位状态徽标（**以路由为准**：有 search/fetch 路由=绿点已启用，仅开关打开=未配置，机器离线=灰）；PC 视口（≥992）`/settings` 直接渲染默认通知分区 + 左侧 200px 分区导航（active 高亮 + Tavily 徽标外显，compact 态只在 enabled 显示绿点）
 2. 无 provider 时路由卡为引导态（**无 combobox**，DOM 断言 `document.querySelectorAll('[role="combobox"]').length === 0`）
-3. 开 provider 开关 → 即时保存（reload）→ 路由卡出现两行 Select
-4. 点 provider 卡头（a11y tree 中是 `button "Tavily" expandable`）展开编辑器；未设凭据时直接编辑态，**空草稿下 Verify/Save 双 disabled**
-5. 输入 key → Verify（fake key 走真实 tavily → 401 → auth 文案「tavily Unauthorized: missing or invalid API key.」内联回显）→ Save → 输入框回**只读预览态**显示掩码串（如 `tvly-******56` = maskCredential 前5+6星+后2）+「Replace」按钮
-6. 路由 Select：**值为空时可选（单 provider 也不锁定）**，选中后自动锁定（disabled）——2026-08-17 E2E 发现过「空值锁定导致路由设不上」bug 已修（e1146a85），回归点
-7. 禁用被路由引用的 provider → 前端拦截（warning toast + 开关不动 + 不落盘，`settings.json` enabled 仍 true）
-8. 落盘断言：`webTools.providers[0].credentials.apiKey` 明文、enabled、`searchProviderId/fetchProviderId`；**无 preview/掩码串落盘**
+3. 开 provider 开关 → 即时保存 → 路由卡出现两行 Select；**保存后编辑器不收起、草稿不丢**（react-query invalidate 重读，子树不卸载）；返回 `/settings` 徽标即时刷新（同一 queryKey）
+4. 点 provider 卡头（a11y tree 中是 `button "Tavily" expandable`）展开编辑器；未设凭据时直接编辑态，**空草稿下 Save disabled、Verify 也 disabled（无已存凭据可验）**；已存凭据时预览态有「验证连接」按钮（空草稿也可用——runner 用已存 key）
+5. 输入 key → Verify（fake key 走真实 tavily → 401 → auth 文案「tavily Unauthorized: missing or invalid API key.」内联回显）→ Save → 回**只读预览态**显示掩码串（如 `tvly-******56`）+「Replace」「验证连接」按钮
+6. 路由 Select：**任何行不锁定**（含单 provider 有值），allowClear 图标可清除路由（清除=teardown 第一步，之后才能禁用被引用的 provider）——旧「有值锁定」语义已废弃
+7. 禁用被路由引用的 provider → 前端拦截（warning toast + 开关不动 + 不落盘）；**先清路由再禁用则成功**
+8. 落盘断言：`webTools.providers[0].credentials.apiKey` 明文、enabled、`searchProviderId/fetchProviderId`；**无 preview/掩码串落盘**；清除路由后对应字段从 settings.json 消失
+9. 保存失败（runner 校验拒）→ toast 显示 runner 具体原因（如 `provider "tavily" 缺少凭据：apiKey`），非通用「保存失败」
 
 ## E2E-2 工具替换链路（fake key → 401）
 
