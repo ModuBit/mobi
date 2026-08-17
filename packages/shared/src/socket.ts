@@ -150,7 +150,7 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
-    message: (data: { sid: string; message: unknown; localId?: string; snapshot?: boolean; category?: MessageCategory }) => void
+    message: (data: { sid: string; message: unknown; localId?: string; nativeId?: string; snapshot?: boolean; category?: MessageCategory }) => void
     'session-alive': (data: {
         sid: string
         time: number
