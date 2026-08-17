@@ -441,10 +441,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         }
 
         try {
-            let pending: {
-                message: string;
-                mode: EnhancedMode;
-            } | null = null;
+            // 暂存待下轮重启会话再投递的完整批次（mode 变更/isolate 时存入，恢复时原样返回）
+            let pending: Awaited<ReturnType<typeof session.queue.waitForMessagesAndGetAsString>> = null;
 
             let previousSessionId: string | null = null;
             while (!this.exitReason) {
@@ -516,7 +514,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 modeHash = msg.hash;
                                 return {
                                     message: msg.message,
-                                    mode: msg.mode
+                                    mode: msg.mode,
+                                    localIds: msg.localIds,
                                 };
                             }
 

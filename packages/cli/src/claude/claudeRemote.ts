@@ -482,7 +482,7 @@ export async function userInputLoop(
     messages: PushableAsyncIterable<SDKUserMessage>,
     ctx: LoopContext,
     opts: {
-        nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>
+        nextMessage: () => Promise<{ message: string, mode: EnhancedMode, localIds: string[] } | null>
         specialCommandCtx: SpecialCommandContext
         /** 中止信号，外部调用 abort() 时退出循环 */
         signal?: AbortSignal
@@ -562,7 +562,7 @@ export async function claudeRemote(opts: {
     canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: string, mode: EnhancedMode, localIds: string[] } | null>,
     onReady: () => void,
 
     // Callbacks
