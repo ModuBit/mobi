@@ -253,8 +253,12 @@ export function MobileDrawer({
             padding: 0,
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden',
             ...userStyles?.body,
+            // 布局不变量，禁止调用方覆盖：body 是 flex 列容器（overflow hidden），
+            // 拖拽把手是其固定子元素、内容区（flex:1 + overflow auto）自行滚动。
+            // 一旦 body 允许滚动（如曾传入 overflow: 'auto'），整个 body 连同
+            // 拖拽把手会随内容滚走，下拉关闭手势在滚动后不可达。故放在 spread 之后强制生效
+            overflow: 'hidden',
         },
     } as DrawerProps['styles']
 

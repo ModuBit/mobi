@@ -14,13 +14,17 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, cleanup } from '@testing-library/react'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
 
 describe('MobileDrawer', () => {
     beforeEach(() => __resetHistoryGuardForTest())
+
+    // vitest 未开 globals，须显式 cleanup；否则 drawer portal 跨用例累积，
+    // querySelector 会抓到前一用例残留的 .ant-drawer-body（默认样式），断言失真
+    afterEach(() => cleanup())
 
     it('渲染、open 切换、卸载均不抛异常（#4 复位 effect / #9 卸载 cleanup）', () => {
         const onClose = vi.fn()
@@ -54,5 +58,23 @@ describe('MobileDrawer', () => {
         const before = window.history.state
         render(<MobileDrawer open={false} onClose={onClose} title="测试" />)
         expect(window.history.state).toBe(before)
+    })
+
+    it('body overflow 强制 hidden：调用方传 overflow 覆盖也不生效（拖拽把手必须固定，不随内容滚动）', () => {
+        const onClose = vi.fn()
+        render(
+            <MobileDrawer
+                open
+                onClose={onClose}
+                title="测试"
+                // 复现 MobileMenu 曾传入的破坏性覆盖：body 变滚动容器后把手会随内容滚走
+                styles={{ body: { padding: 0, overflow: 'auto' } }}
+            >
+                <div>内容</div>
+            </MobileDrawer>,
+        )
+        const body = document.querySelector('.ant-drawer-body') as HTMLElement
+        expect(body).toBeTruthy()
+        expect(body.style.overflow).toBe('hidden')
     })
 })

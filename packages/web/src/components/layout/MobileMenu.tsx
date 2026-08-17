@@ -153,7 +153,9 @@ export function MobileMenuDrawer() {
             title={t('nav.menu')}
             open={mobileMenuOpen}
             onClose={handleClose}
-            styles={{ body: { padding: 0, overflow: 'auto' } }}
+            // body overflow 不允许覆盖（MobileDrawer 布局不变量：拖拽把手固定、内容区自滚），
+            // 这里只按移动端 Drawer 规范补底部安全边界，防「退出登录」被底部横条遮挡
+            styles={{ body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' } }}
         >
             <MenuContent $token={token}>
                 {/* 新建会话 */}
