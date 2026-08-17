@@ -628,9 +628,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             }
                         },
                         onSteerSinkReady: (push) => { this.steerSink = push },
-                        // 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）
+                        // 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）。
+                        // push 时若 native session id 已知（非首条）直接带上，省去 attach 补写往返
                         onMessagesBound: (bindings) => {
-                            session.client.emitMessagesBound(bindings)
+                            session.client.emitMessagesBound(bindings, session.sessionId ?? undefined)
                         },
                     });
 

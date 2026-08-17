@@ -527,12 +527,16 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /** 通知 Hub：这批 localId 的用户消息已绑定 native 锚点（push 给 SDK 时生成，批内同值）。
-     * 载荷按新协议 metadata 形态上报（nativeSessionId 由 attach 路径补写，此处可空） */
-    emitMessagesBound(bindings: { localId: string; nativeId: string }[]): void {
+     * 载荷按 metadata 形态上报。nativeSessionId 在 push 时已知（非首条消息）则直接带上，
+     * 省去 attach 补写往返；首条消息 push 时 session id 未知，留空由 attach 补写 */
+    emitMessagesBound(bindings: { localId: string; nativeId: string }[], nativeSessionId?: string): void {
         if (bindings.length === 0) return
         this.socket.emit('messages-bound', {
             sid: this.sessionId,
-            bindings: bindings.map(b => ({ localId: b.localId, metadata: { nativeId: b.nativeId } }))
+            bindings: bindings.map(b => ({
+                localId: b.localId,
+                metadata: { nativeId: b.nativeId, ...(nativeSessionId ? { nativeSessionId } : {}) }
+            }))
         })
     }
 

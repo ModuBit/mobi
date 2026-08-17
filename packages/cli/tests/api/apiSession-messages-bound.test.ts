@@ -143,4 +143,19 @@ describe('emitMessagesBound 绑定上报', () => {
             ],
         })
     })
+
+    it('带 nativeSessionId 参数 → metadata 含 nativeSessionId（非首条消息 push 时已知直带，省 attach 往返）', () => {
+        const client = makeClient()
+        client.emitMessagesBound(
+            [{ localId: 'local-1', nativeId: 'native-1' }],
+            'cc-sess-9'
+        )
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-bound', {
+            sid: 'session-1',
+            bindings: [
+                { localId: 'local-1', metadata: { nativeId: 'native-1', nativeSessionId: 'cc-sess-9' } },
+            ],
+        })
+    })
 })
