@@ -70,6 +70,7 @@ const messageSchema = z.object({
     sid: z.string(),
     message: z.union([z.string(), z.unknown()]),
     localId: z.string().optional(),
+    nativeId: z.string().optional(),
     snapshot: z.boolean().optional(),
     category: z.enum(['discard', 'ephemeral', 'persistent']).optional()
 })
@@ -163,7 +164,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 使用 CLI 传来的 category（CLI 已在发送端分类），降级为 persistent
         const category: MessageCategory = parsed.data.category ?? 'persistent'
 
-        const msg = store.messages.addMessage(sid, content, localId, category)
+        const msg = store.messages.addMessage(sid, content, localId, category, parsed.data.nativeId)
 
         // 提取并更新 runtimeState（todos、tasks、teamState 等）
         const todos = extractTodoWriteTodosFromMessageContent(content)
@@ -314,6 +315,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     seq: msg.seq,
                     createdAt: msg.createdAt,
                     localId: msg.localId,
+                    nativeId: msg.nativeId,
                     submittedAt: msg.submittedAt,
                     queueState: msg.queueState,
                     positionAt: msg.positionAt,
@@ -330,6 +332,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                 id: msg.id,
                 seq: msg.seq,
                 localId: msg.localId,
+                nativeId: msg.nativeId,
                 submittedAt: msg.submittedAt,
                 queueState: msg.queueState,
                 positionAt: msg.positionAt,
@@ -536,5 +539,20 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         if (fresh.length > 0) {
             onWebappEvent?.({ type: 'messages-submitted', sessionId: data.sid, localIds: fresh, submittedAt })
         }
+    })
+
+    // CLI push 用户消息给 SDK 时上报 (localId → nativeId) 绑定；幂等落库，不广播（web 经历史查询获取）
+    socket.on('messages-bound', (data: { sid: string; bindings: { localId: string; nativeId: string }[] }) => {
+        if (!data || typeof data.sid !== 'string' || !Array.isArray(data.bindings)) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        if (data.bindings.length === 0) return
+
+        store.messages.bindNativeIds(data.sid, data.bindings)
     })
 }

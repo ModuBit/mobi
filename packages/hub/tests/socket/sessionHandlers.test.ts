@@ -359,3 +359,57 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
         expect(coder?.status).toBe('running')
     })
 })
+
+describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
+    function makeBoundDeps(opts: { bindReturn: string[]; sessionOk?: boolean }) {
+        const events: SyncEvent[] = []
+        const bindSpy = { args: null as { sid: string; bindings: { localId: string; nativeId: string }[] } | null }
+        const accessError = { called: false }
+        const deps: SessionHandlersDeps = {
+            store: {
+                messages: {
+                    bindNativeIds: (sid: string, bindings: { localId: string; nativeId: string }[]) => {
+                        bindSpy.args = { sid, bindings }
+                        return opts.bindReturn
+                    },
+                },
+                sessions: {},
+            } as unknown as SessionHandlersDeps['store'],
+            resolveSessionAccess: (sid: string) =>
+                opts.sessionOk === false
+                    ? { ok: false, reason: 'not-found' as const }
+                    : { ok: true as const, value: makeStoredSession(sid) },
+            emitAccessError: () => { accessError.called = true },
+            onWebappEvent: (e: SyncEvent) => { events.push(e) },
+        }
+        return { deps, events, bindSpy, accessError }
+    }
+
+    test('合法 bindings → 委托 store.bindNativeIds', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, bindSpy } = makeBoundDeps({ bindReturn: ['loc-1'] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [{ localId: 'loc-1', nativeId: 'uu-1' }] })
+        expect(bindSpy.args!.sid).toBe('s1')
+        expect(bindSpy.args!.bindings).toEqual([{ localId: 'loc-1', nativeId: 'uu-1' }])
+    })
+
+    test('session 不存在 → 不 invoke', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, bindSpy, accessError } = makeBoundDeps({ bindReturn: [], sessionOk: false })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        fakeSocket.emit('messages-bound', { sid: 'unknown', bindings: [{ localId: 'loc-1', nativeId: 'uu-1' }] })
+        expect(accessError.called).toBe(true)
+        expect(bindSpy.args).toBeNull()
+    })
+
+    test('空 bindings / 非法 payload → 直接忽略', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, bindSpy } = makeBoundDeps({ bindReturn: [] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [] })
+        fakeSocket.emit('messages-bound', null)
+        fakeSocket.emit('messages-bound', { sid: 's1' })
+        expect(bindSpy.args).toBeNull()
+    })
+})
