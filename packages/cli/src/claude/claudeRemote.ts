@@ -47,6 +47,7 @@ import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
 import { buildClaudeFeatureEnv } from './featureFlags'
+import { pushUserMessage } from './utils/pushUserMessage'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 
 /**
@@ -67,7 +68,8 @@ export type SpecialCommandResult = {
 export type SpecialCommandContext = {
     onClear: () => void
     onCompactStart: () => void
-    executeBash: (cmd: string) => Promise<void>
+    /** localIds：本批用户消息的 mobi localId，随 !cmd 注入文本一并绑定 native_id */
+    executeBash: (cmd: string, localIds: string[]) => Promise<void>
     onReady: () => void
 }
 
@@ -81,7 +83,7 @@ export function createSpecialCommandContext(
         onSessionReset?: () => void
         onReady: () => void
     },
-    executeBash: (cmd: string) => Promise<void>
+    executeBash: (cmd: string, localIds: string[]) => Promise<void>
 ): SpecialCommandContext {
     return {
         onClear: () => {
@@ -108,7 +110,8 @@ export function createSpecialCommandContext(
  */
 export async function handleSpecialCommand(
     message: string,
-    context: SpecialCommandContext
+    context: SpecialCommandContext,
+    localIds: string[] = []
 ): Promise<SpecialCommandResult> {
     const special = parseSpecialCommand(message)
 
@@ -127,7 +130,7 @@ export async function handleSpecialCommand(
 
     // !bash: 本地执行，继续等待下一条消息
     if (special.type === 'bash' && special.command) {
-        await context.executeBash(special.command)
+        await context.executeBash(special.command, localIds)
         context.onReady()
         return { handled: true, shouldExit: false, isCompact: false }
     }
@@ -490,6 +493,8 @@ export async function userInputLoop(
         isRunning?: () => boolean
         /** 等待 agent 闲置（running 翻 false / result 时 resolve） */
         waitForIdle?: () => Promise<void>
+        /** 用户消息 push 给 SDK 后上报 (localIds → nativeId) 绑定 */
+        onBound?: (binding: { localIds: string[]; nativeId: string }) => void
     },
 ): Promise<void> {
     while (!opts.signal?.aborted) {
@@ -517,7 +522,7 @@ export async function userInputLoop(
             return;
         }
 
-        const result = await handleSpecialCommand(next.message, opts.specialCommandCtx);
+        const result = await handleSpecialCommand(next.message, opts.specialCommandCtx, next.localIds);
 
         // 需要退出（如 /clear）
         if (result.shouldExit) {
@@ -535,13 +540,8 @@ export async function userInputLoop(
             continue;
         }
 
-        // 普通消息或 compact，推送到 messages
-        messages.push({
-            type: 'user',
-            message: { role: 'user', content: sanitizeUserMessage(next.message) },
-            parent_tool_use_id: null,
-            session_id: '',
-        });
+        // 普通消息或 compact，推送到 messages（预设 uuid 并上报 localIds → nativeId 绑定）
+        pushUserMessage(messages, sanitizeUserMessage(next.message), { localIds: next.localIds, onBound: opts.onBound });
     }
 }
 
@@ -563,6 +563,8 @@ export async function claudeRemote(opts: {
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode, localIds: string[] } | null>,
+    /** 用户消息 push 给 SDK 后上报 (localIds → nativeId) 绑定 */
+    onMessagesBound: (bindings: { localId: string; nativeId: string }[]) => void,
     onReady: () => void,
 
     // Callbacks
@@ -587,8 +589,14 @@ export async function claudeRemote(opts: {
     // Query 就绪回调，用于外部获取 Query 引用（interrupt/close）
     onQueryReady?: (query: Query) => void,
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
-    onSteerSinkReady?: (push: (text: string) => boolean) => void,
+    // push 携带可选 localId：steal 路径的消息同样预设 uuid 并上报绑定
+    onSteerSinkReady?: (push: (text: string, localId?: string) => boolean) => void,
 }) {
+
+    // pushUserMessage 的绑定回调适配：localIds 批展开为逐条 (localId, nativeId) 上报
+    const onBound = (binding: { localIds: string[]; nativeId: string }) => {
+        opts.onMessagesBound(binding.localIds.map(localId => ({ localId, nativeId: binding.nativeId })))
+    }
 
     // Check if session is valid
     let startFrom = opts.sessionId;
@@ -623,10 +631,11 @@ export async function claudeRemote(opts: {
     // 在 messages + query 就绪后（下方 wiring）才接通；接通前为 null，
     // 故「首条消息即 !cmd」（query 尚未启动，函数会在 handleSpecialCommand 后 return）时不注入，
     // 退化为纯本地执行——符合预期。注入消息不调 onMessage，SDK 也不回放 user 文本，UI 看不到。
-    let bashInjectSink: ((text: string) => boolean) | null = null
+    let bashInjectSink: ((text: string, localIds?: string[]) => boolean) | null = null
 
-    // !bash: 本地执行 shell 命令，不走 SDK，生成 tool_use/tool_result 消息对
-    const executeBashCommand = async (command: string): Promise<void> => {
+    // !bash: 本地执行 shell 命令，不走 SDK，生成 tool_use/tool_result 消息对。
+    // localIds：触发本条 !cmd 的用户消息批 localId，注入时绑定到注入消息的 native_id
+    const executeBashCommand = async (command: string, localIds: string[] = []): Promise<void> => {
         logger.debug(`[claudeRemote] Bash command detected: ${command}`)
 
         const toolCallId = `${BASH_TOOL_CALL_PREFIX}${randomUUID()}`
@@ -684,7 +693,7 @@ export async function claudeRemote(opts: {
         // sink 返回 push 是否被接纳，据此判断注入是否真的会触发模型轮次。
         const injected = configuration.bashInjectContext && Boolean(bashInjectSink)
         const turnStarted = injected
-            ? bashInjectSink!(buildBashInjectionText(command, stdout, stderr, hasError))
+            ? bashInjectSink!(buildBashInjectionText(command, stdout, stderr, hasError), localIds)
             : false
 
         // running 复位策略：
@@ -777,15 +786,10 @@ export async function claudeRemote(opts: {
     const messages = new PushableAsyncIterable<SDKUserMessage>();
     // 返回 push 是否被接纳：messages 已关闭（query 退出）时 push 会抛错，捕获返回 false，
     // 供 executeBashCommand 判断「注入不会触发模型轮次」并据此复位 running。
-    bashInjectSink = (text: string): boolean => {
+    bashInjectSink = (text: string, localIds: string[] = []): boolean => {
         if (messages.done) return false;
         try {
-            messages.push({
-                type: 'user',
-                message: { role: 'user', content: text },
-                parent_tool_use_id: null,
-                session_id: '',
-            });
+            pushUserMessage(messages, text, { localIds, onBound });
             return true;
         } catch {
             return false;
@@ -793,7 +797,7 @@ export async function claudeRemote(opts: {
     };
 
     const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
-    const initialResult = await handleSpecialCommand(initial.message, specialCommandCtx)
+    const initialResult = await handleSpecialCommand(initial.message, specialCommandCtx, initial.localIds)
 
     if (initialResult.shouldExit) {
         warmRef?.close()
@@ -837,33 +841,22 @@ export async function claudeRemote(opts: {
 
     // Push initial message
     // 首条即 bash 且注入开时，executeBashCommand 已把注入 push 进 messages，不再 push 原始 !cmd 文本；
-    // 其余（普通消息 / compact）push 原文。
+    // 其余（普通消息 / compact）push 原文（预设 uuid 并上报 localIds → nativeId 绑定）。
     if (!isBashInitial) {
-        messages.push({
-            type: 'user',
-            message: {
-                role: 'user',
-                content: sanitizeUserMessage(initial.message),
-            },
-            parent_tool_use_id: null,
-            session_id: '', // SDK 会在运行时填充
-        });
+        pushUserMessage(messages, sanitizeUserMessage(initial.message), { localIds: initial.localIds, onBound });
     }
 
     // 注入 steer sink：把文本 push 进 SDK input stream，返回 true。
     // 由 launcher 的 steer-queued-message RPC 调用，把已排队消息提前提交给 SDK。
+    // localId 携带时同样预设 uuid 并上报绑定（steal 路径单条消息）。
     if (opts.onSteerSinkReady) {
-        opts.onSteerSinkReady((text: string) => {
-            messages.push({
-                type: 'user',
-                message: {
-                    role: 'user',
-                    content: sanitizeUserMessage(text),
-                },
-                parent_tool_use_id: null,
-                session_id: '',
-            });
-            return true;
+        opts.onSteerSinkReady((text: string, localId?: string) => {
+            try {
+                pushUserMessage(messages, sanitizeUserMessage(text), { localIds: localId ? [localId] : [], onBound });
+                return true;
+            } catch {
+                return false;
+            }
         });
     }
 
@@ -925,6 +918,7 @@ export async function claudeRemote(opts: {
                 specialCommandCtx,
                 isRunning: () => running,
                 waitForIdle,
+                onBound,
                 signal: loopAbort.signal,
             }),
         ])

@@ -62,7 +62,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // SDK Query 引用，用于 interrupt/close 控制
     private queryRef: Query | null = null;
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 文本 push 进 SDK input stream
-    private steerSink: ((text: string) => boolean) | null = null;
+    private steerSink: ((text: string, localId?: string) => boolean) | null = null;
     // 上次真实 turn 的窗口大小与累计成本，供 compact_boundary 上报时复用
     // （compact_boundary 消息不带 contextWindow 与 costUsd，只能复用上次记忆）
     private lastMaxTokens = 0;
@@ -262,7 +262,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
             let ok: boolean
             try {
-                ok = this.steerSink(stolen.message)
+                ok = this.steerSink(stolen.message, localId)
             } catch (e) {
                 // SDK input stream 已 end（mode 切换重启/turn 间隙旧循环已结束）→ push 抛错，回填保命
                 logger.debug('[remote]: steer push failed, restoring queue', e)
@@ -600,6 +600,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             }
                         },
                         onSteerSinkReady: (push) => { this.steerSink = push },
+                        // 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）
+                        onMessagesBound: (bindings) => {
+                            session.client.emitMessagesBound(bindings)
+                        },
                     });
 
                     session.consumeOneTimeFlags();
