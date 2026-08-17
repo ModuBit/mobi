@@ -19,20 +19,27 @@ import type { Server } from 'socket.io'
 import type { Store, StoredMessage } from '../store'
 import { EventPublisher } from './eventPublisher'
 
-export class MessageService {
-    private static toDecrypted(message: StoredMessage): DecryptedMessage {
-        return {
-            id: message.id,
-            seq: message.seq,
-            localId: message.localId,
-            nativeId: message.nativeId,
-            submittedAt: message.submittedAt,
-            queueState: message.queueState,
-            positionAt: message.positionAt,
-            content: message.content,
-            createdAt: message.createdAt,
-        }
+/**
+ * StoredMessage → 对外 DTO 的唯一映射。所有向 web/CLI 下发消息的出口
+ * （历史查询、new-message update、message-received 事件）必须复用此处，
+ * 新增消息字段时只改这一处，避免多处内联展开形状静默分叉
+ */
+export function toDecryptedMessage(message: StoredMessage): DecryptedMessage {
+    return {
+        id: message.id,
+        seq: message.seq,
+        localId: message.localId,
+        nativeId: message.nativeId,
+        submittedAt: message.submittedAt,
+        queueState: message.queueState,
+        positionAt: message.positionAt,
+        content: message.content,
+        createdAt: message.createdAt,
     }
+}
+
+export class MessageService {
+    private static readonly toDecrypted = toDecryptedMessage
 
     constructor(
         private readonly store: Store,
@@ -124,6 +131,7 @@ export class MessageService {
         }
 
         const msg = this.store.messages.addMessage(sessionId, content, payload.localId ?? undefined)
+        const message = toDecryptedMessage(msg)
 
         const update = {
             id: msg.id,
@@ -132,17 +140,7 @@ export class MessageService {
             body: {
                 t: 'new-message' as const,
                 sid: sessionId,
-                message: {
-                    id: msg.id,
-                    seq: msg.seq,
-                    createdAt: msg.createdAt,
-                    localId: msg.localId,
-                    nativeId: msg.nativeId,
-                    submittedAt: msg.submittedAt,
-                    queueState: msg.queueState,
-                    positionAt: msg.positionAt,
-                    content: msg.content
-                }
+                message
             }
         }
         this.io.of('/cli').to(`session:${sessionId}`).emit('update', update)
@@ -150,17 +148,7 @@ export class MessageService {
         this.publisher.emit({
             type: 'message-received',
             sessionId,
-            message: {
-                id: msg.id,
-                seq: msg.seq,
-                localId: msg.localId,
-                nativeId: msg.nativeId,
-                submittedAt: msg.submittedAt,
-                queueState: msg.queueState,
-                positionAt: msg.positionAt,
-                content: msg.content,
-                createdAt: msg.createdAt
-            }
+            message
         })
     }
 

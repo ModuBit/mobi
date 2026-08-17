@@ -414,4 +414,35 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
         fakeSocket.emit('messages-bound', { sid: 's1' })
         expect(bindSpy.args).toBeNull()
     })
+
+    test('混入无效元素的 bindings → 只透传有效项（null/缺字段/空串不落库）', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, bindSpy } = makeBoundDeps({ bindReturn: [] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        fakeSocket.emit('messages-bound', {
+            sid: 's1',
+            bindings: [
+                null,
+                { localId: 'loc-1', nativeId: 'uu-1' },          // 有效
+                { localId: 'loc-2', nativeId: '' },               // 空串 nativeId → 占坑，丢弃
+                { localId: 'loc-3', nativeId: undefined },        // 缺字段 → bindNativeIds 会抛错，丢弃
+                { localId: '', nativeId: 'uu-3' },                // 空 localId → 永远匹配不到行，丢弃
+                'garbage',
+                { localId: 'loc-4', nativeId: 'uu-4' },           // 有效
+            ],
+        })
+        expect(bindSpy.args).not.toBeNull()
+        expect(bindSpy.args!.bindings).toEqual([
+            { localId: 'loc-1', nativeId: 'uu-1' },
+            { localId: 'loc-4', nativeId: 'uu-4' },
+        ])
+    })
+
+    test('全部元素无效 → 不 invoke', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, bindSpy } = makeBoundDeps({ bindReturn: [] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [null, { localId: 'loc-1', nativeId: '' }] })
+        expect(bindSpy.args).toBeNull()
+    })
 })

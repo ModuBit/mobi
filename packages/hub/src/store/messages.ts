@@ -224,12 +224,16 @@ export function bindNativeIds(
         `UPDATE messages SET native_id = ?
          WHERE session_id = ? AND local_id = ? AND native_id IS NULL`
     )
-    const bound: string[] = []
-    for (const b of bindings) {
-        const result = stmt.run(b.nativeId, sessionId, b.localId)
-        if (result.changes > 0) bound.push(b.localId)
-    }
-    return bound
+    // 事务包裹：批次原子落库，避免逐条 autocommit 在中途失败时残留半批绑定（1:N 批内共享同一 native_id）
+    const run = db.transaction((): string[] => {
+        const bound: string[] = []
+        for (const b of bindings) {
+            const result = stmt.run(b.nativeId, sessionId, b.localId)
+            if (result.changes > 0) bound.push(b.localId)
+        }
+        return bound
+    })
+    return run()
 }
 
 /** 把 localId 对应的 pending 消息翻为 consumed：写 submitted_at + 跳 position_at。返回实际更新的 localId。 */

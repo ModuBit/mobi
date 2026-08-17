@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto'
 import type { ContextUsage, GoalStatus, PermissionMode, RuntimeState } from '@mobi/shared/types'
 import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
+import { toDecryptedMessage } from '../../../sync/messageService'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
 import {
@@ -303,6 +304,9 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             }
         }
 
+        // update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
+        // 刚落库的行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射
+        const message = { ...toDecryptedMessage(msg), seq: msg.seq }
         const update = {
             id: randomUUID(),
             seq: msg.seq,
@@ -310,17 +314,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             body: {
                 t: 'new-message' as const,
                 sid,
-                message: {
-                    id: msg.id,
-                    seq: msg.seq,
-                    createdAt: msg.createdAt,
-                    localId: msg.localId,
-                    nativeId: msg.nativeId,
-                    submittedAt: msg.submittedAt,
-                    queueState: msg.queueState,
-                    positionAt: msg.positionAt,
-                    content: msg.content
-                }
+                message
             }
         }
         socket.to(`session:${sid}`).emit('update', update)
@@ -328,17 +322,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         onWebappEvent?.({
             type: 'message-received',
             sessionId: sid,
-            message: {
-                id: msg.id,
-                seq: msg.seq,
-                localId: msg.localId,
-                nativeId: msg.nativeId,
-                submittedAt: msg.submittedAt,
-                queueState: msg.queueState,
-                positionAt: msg.positionAt,
-                content: msg.content,
-                createdAt: msg.createdAt
-            }
+            message: toDecryptedMessage(msg)
         })
     })
 
@@ -551,8 +535,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             emitAccessError('session', data.sid, sessionAccess.reason)
             return
         }
-        if (data.bindings.length === 0) return
+        // 逐项校验：null 项/缺字段会让 bindNativeIds 抛 TypeError，空串 nativeId 则永久占坑
+        // （first-write-wins + IS NULL 守卫会挡住后续合法绑定）——无效项直接丢弃，不落库
+        const bindings = data.bindings.filter((b): b is { localId: string; nativeId: string } =>
+            b !== null && typeof b === 'object' &&
+            typeof b.localId === 'string' && b.localId.length > 0 &&
+            typeof b.nativeId === 'string' && b.nativeId.length > 0)
+        if (bindings.length === 0) return
 
-        store.messages.bindNativeIds(data.sid, data.bindings)
+        store.messages.bindNativeIds(data.sid, bindings)
     })
 }
