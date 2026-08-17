@@ -20,6 +20,7 @@
  */
 
 import { z } from "zod";
+import type { RewindFilesResult } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudePermissionMode, EffortLevel } from "@mobi/shared/types";
 
 // Usage statistics for assistant messages - used in apiSession.ts
@@ -131,13 +132,31 @@ export type GoalStatusAttachment = z.infer<typeof GoalStatusAttachmentSchema>;
 // claude 模块权限模式别名（绑定 Claude；保留可演化性：未来支持 non-claude agent 时分化）
 export type PermissionMode = ClaudePermissionMode
 
-/** SDK Query 动态控制引用，用于 setModel/setPermissionMode/applyFlagSettings */
+/** SDK Query 动态控制引用，用于 setModel/setPermissionMode/applyFlagSettings/rewindFiles */
 export type QueryControlRef = {
   current: {
     setPermissionMode: (m: PermissionMode) => Promise<void>
     setModel: (m?: string) => Promise<void>
     applyFlagSettings: (settings: Record<string, unknown>) => Promise<void>
+    /** rewind 文件回滚（需运行中的 Query 句柄，RPC 到 claude 进程读 file checkpoint） */
+    rewindFiles: (userMessageId: string, options?: { dryRun?: boolean }) => Promise<RewindFilesResult>
   } | null
+}
+
+/**
+ * rewind 待执行状态：rewind RPC handler 写（受理成功时）、launcher while 循环读
+ * （下轮以 resumeSessionAt 截断重启）——挂载在 Session 对象上是因为 launcher 与
+ * runClaude 共享同一 Session 实例（loop 创建、onSessionReady 回填 currentSessionRef），
+ * 无需引入模块级全局状态。文件回滚在 RPC 受理阶段（截断前）已完成，此处只携带结果
+ * 供终态回报（rewind-completed 的 filesRestored / error）。
+ */
+export type PendingRewind = {
+  /** rewind 目标用户消息的 native uuid（transcript 锚点） */
+  nativeId: string
+  /** resumeSessionAt 保留锚（锚点前最近一条 assistant entry uuid），截断重启用 */
+  resumeAt: string
+  /** 文件是否已在受理阶段回滚成功（截断前执行——截断后 checkpoint 作废，PoC poc8 实测） */
+  filesRestored: boolean
 }
 
 export interface EnhancedMode {

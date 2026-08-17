@@ -219,6 +219,28 @@ export class MessageQueue<T> {
     }
 
     /**
+     * rewind 前清空未消费排队项（不注入新消息）：丢弃项经 onBatchConsumed 通知 Hub 标记，
+     * 防 Web 悬浮条永久卡死（对齐 pushAfterClear 的丢弃通知与 markInFlight 模式）。
+     * 与 pushAfterClear 的区别：不压入任何替代消息——rewind 的「重启触发」由调用方
+     * 随后经 pushIsolateAndClear(REWIND_EXIT_SENTINEL) 的 isolate 哨兵承担。
+     */
+    clearPending(): void {
+        const discardedLocalIds = this.queue
+            .map(item => item.localId)
+            .filter((l): l is string => Boolean(l));
+
+        logger.debug(`[MessageQueue] clearPending() called. Clearing ${this.queue.length} messages`);
+        this.queue = [];
+
+        // 通知丢弃项已「离开队列」（agent 不会再处理它们）。同步标 in-flight，与
+        // collectBatch/steal 语义一致：此窗口内不可取消（否则与「保留为 consumed」矛盾）
+        if (discardedLocalIds.length > 0) {
+            for (const id of discardedLocalIds) this.markInFlight(id);
+            this.onBatchConsumedHandler?.(discardedLocalIds);
+        }
+    }
+
+    /**
      * Reset the queue - clears all messages and resets to empty state
      */
     reset(): void {

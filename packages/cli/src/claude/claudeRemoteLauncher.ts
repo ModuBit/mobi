@@ -33,6 +33,7 @@ import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
 import { createSessionScanner, readSessionLog } from "./utils/sessionScanner";
 import { createNativeAttachReporter } from "./utils/nativeAttachReporter";
+import { REWIND_EXIT_SENTINEL } from "./utils/rewindSentinel";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { classifyMessage } from '@mobi/shared';
@@ -511,6 +512,14 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             if (msg) {
                                 // 重置空闲计时器（用户发送消息）
                                 session.client.resetIdleTimer();
+
+                                // rewind 退出哨兵：识别后不暂存 pending、不推送 SDK，直接令本轮
+                                // query 结束（plan 中 requestLoopExit 的实际接线，复用 isolate 机制）——
+                                // launcher 下轮循环读到 session.pendingRewind 后以 resumeSessionAt 截断重启
+                                if (msg.isolate && msg.message === REWIND_EXIT_SENTINEL) {
+                                    logger.debug('[remote]: rewind exit sentinel received, ending current query round');
+                                    return null;
+                                }
 
                                 if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
                                     logger.debug('[remote]: mode has changed, pending message');

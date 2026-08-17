@@ -676,3 +676,45 @@ describe('MessageQueue pushAfterClear 的丢弃项亦标 in-flight', () => {
         expect(queue.tryCancel('loc-b')).toBe('submitted');
     });
 });
+
+describe('MessageQueue clearPending（rewind 前清空）', () => {
+    it('清空队列并经 onBatchConsumed 通知丢弃项（与 pushAfterClear 同路径）', async () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        const consumed: string[][] = [];
+        queue.setOnBatchConsumed((localIds) => consumed.push(localIds));
+
+        queue.push('a', { m: '1' }, 'loc-a');
+        queue.push('b', { m: '1' }, 'loc-b');
+        queue.push('c', { m: '1' });  // 无 localId（不应出现在通知里）
+
+        queue.clearPending();
+
+        expect(queue.size()).toBe(0);
+        expect(consumed).toEqual([['loc-a', 'loc-b']]);
+        // 丢弃项已标 in-flight：此窗口内不可取消（防幽灵消息，与 collectBatch/steal 语义一致）
+        expect(queue.tryCancel('loc-a')).toBe('submitted');
+        expect(queue.tryCancel('loc-b')).toBe('submitted');
+    });
+
+    it('空队列 clearPending 为无操作（不触发空通知）', () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+        const consumed: string[][] = [];
+        queue.setOnBatchConsumed((localIds) => consumed.push(localIds));
+
+        queue.clearPending();
+
+        expect(queue.size()).toBe(0);
+        expect(consumed).toEqual([]);
+    });
+
+    it('清空后可继续 push（不注入新消息，区别于 pushAfterClear）', () => {
+        const queue = new MessageQueue<{ m: string }>(m => JSON.stringify(m));
+
+        queue.push('a', { m: '1' }, 'loc-a');
+        queue.clearPending();
+        queue.push('next', { m: '1' }, 'loc-next');
+
+        expect(queue.size()).toBe(1);
+        expect(queue.peekByLocalId('loc-next')?.message).toBe('next');
+    });
+});

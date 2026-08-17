@@ -21,7 +21,7 @@ import { AgentSessionBase } from '@/agent/sessionBase';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionModel } from '@/api/types';
 import type { EffortLevel } from '@mobi/shared';
-import type { EnhancedMode, PermissionMode } from './types';
+import type { EnhancedMode, PermissionMode, PendingRewind } from './types';
 import type { LocalLaunchExitReason } from '@/agent/localLaunchPolicy';
 
 type LocalLaunchFailure = {
@@ -39,6 +39,11 @@ export class Session extends AgentSessionBase<EnhancedMode> {
     readonly startingMode: 'local' | 'remote';
     /** 项目冻结的额外工作目录（创建时来自项目 folders，resume 时回放 metadata） */
     readonly additionalDirectories: string[];
+    /**
+     * rewind 待执行状态：rewind RPC handler 写（受理成功时）、claudeRemoteLauncher 的
+     * while 循环读（下轮以 resumeSessionAt 截断重启）。挂在本对象上的理由见 PendingRewind 注释。
+     */
+    pendingRewind: PendingRewind | null = null;
     localLaunchFailure: LocalLaunchFailure | null = null;
 
     constructor(opts: {

@@ -40,6 +40,7 @@ import { normalizeClaudeSessionModel } from './model';
 import { getInvokedCwd } from '@/utils/invokedCwd';
 import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
 import { normalizeContinueArg } from './utils/normalizeContinueArg';
+import { registerRewindHandlers } from './utils/rewindHandlers';
 import { createMobiWebMcpServer } from '@/webtools/server';
 
 export interface StartOptions {
@@ -419,6 +420,17 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             throw new Error('rename requires non-empty title string');
         }
         await syncAgentRename(claudeLocator(currentSessionRef.current), title);
+    });
+
+    // rewind RPC（Web → Hub → CLI）：dry-run 预检与执行闸门。pendingRewind 状态挂在 Session 上——
+    // launcher while 循环与此处共享同一实例（loop 创建、onSessionReady 回填 currentSessionRef），
+    // 文件回滚在受理阶段经 queryControlRef（running query 句柄）先于截断执行
+    registerRewindHandlers({
+        rpcManager: apiSession.rpcHandlerManager,
+        getRewindSession: () => currentSessionRef.current,
+        messageQueue,
+        queryControl: queryControlRef,
+        workingDirectory,
     });
 
     let loopError: unknown = null;
