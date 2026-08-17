@@ -18,3 +18,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [标题同步验证](title-sync-verify.md) — Web rename / change_title MCP 回写 CC customTitle，查 jsonl custom-title entry，rename 框 Ctrl+A 追加坑
 - [teammate 生命周期验证](teammate-verify.md) — 派带 name 的 Agent / 审批时序 / DB 轮询 teamState / envelope role 恒为 agent 的坑
 - [Web 工具验证](web-tools-verify.md) — 设置页 Web Tools 卡片操作 / webTools 落盘断言 / merge 语义 / toolAliases 401 链路证据 / alias 不隐藏原始 MCP 工具的坑
+- [native_id 绑定验证](native-id-verify.md) — SQL 断言各 push 路径绑定 / API 暴露；排队消息多走 steer 各自绑定；首回合 Change Title 审批卡输入坑
