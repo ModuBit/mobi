@@ -67,26 +67,63 @@ describe('MessageQueue', () => {
             type: string;
             context?: string;
         }
-        
+
         const queue = new MessageQueue<Mode>(
             mode => `${mode.type}-${mode.context || 'default'}`
         );
-        
+
         queue.push('message1', { type: 'local' });
         queue.push('message2', { type: 'local' });
         queue.push('message3', { type: 'local', context: 'test' });
-        
+
         // First batch - same mode hash
         const result1 = await queue.waitForMessagesAndGetAsString();
         expect(result1).not.toBeNull();
         expect(result1?.message).toBe('message1\nmessage2');
         expect(result1?.mode).toEqual({ type: 'local' });
-        
+
         // Second batch - different context
         const result2 = await queue.waitForMessagesAndGetAsString();
         expect(result2).not.toBeNull();
         expect(result2?.message).toBe('message3');
         expect(result2?.mode).toEqual({ type: 'local', context: 'test' });
+    });
+
+    it('noBatch 消息在队首时单独成批，不与后续同 mode 消息合并', async () => {
+        const queue = new MessageQueue<string>(mode => mode);
+
+        queue.pushNoBatch('! ls', 'local', 'loc-bash');
+        queue.push('你好', 'local', 'loc-1');
+
+        const result1 = await queue.waitForMessagesAndGetAsString();
+        expect(result1?.message).toBe('! ls');
+        expect(result1?.localIds).toEqual(['loc-bash']);
+        expect(result1?.isolate).toBe(false); // noBatch 无 isolate 的重启暂存语义
+
+        const result2 = await queue.waitForMessagesAndGetAsString();
+        expect(result2?.message).toBe('你好');
+        expect(result2?.localIds).toEqual(['loc-1']);
+        expect(queue.size()).toBe(0);
+    });
+
+    it('noBatch 消息排在后面时，前方同 mode 批次在其前截断', async () => {
+        const queue = new MessageQueue<string>(mode => mode);
+
+        queue.push('你好', 'local', 'loc-1');
+        queue.pushNoBatch('! ls', 'local', 'loc-bash');
+        queue.push('再问', 'local', 'loc-2');
+
+        const result1 = await queue.waitForMessagesAndGetAsString();
+        expect(result1?.message).toBe('你好');
+        expect(result1?.localIds).toEqual(['loc-1']);
+
+        const result2 = await queue.waitForMessagesAndGetAsString();
+        expect(result2?.message).toBe('! ls');
+        expect(result2?.localIds).toEqual(['loc-bash']);
+
+        const result3 = await queue.waitForMessagesAndGetAsString();
+        expect(result3?.message).toBe('再问');
+        expect(result3?.localIds).toEqual(['loc-2']);
     });
 
     it('should wait for messages when queue is empty', async () => {

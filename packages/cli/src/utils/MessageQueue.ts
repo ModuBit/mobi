@@ -21,6 +21,7 @@ interface QueueItem<T> {
     mode: T;
     modeHash: string;
     isolate?: boolean; // If true, this message must be processed alone
+    noBatch?: boolean; // If true, never batch-merge with others (no isolate's restart-to-next-session semantics, for !bash local execution)
     localId?: string; // 用户消息的本地 ID，用于通知 Hub 已消费
 }
 
@@ -93,6 +94,21 @@ export class MessageQueue<T> {
      * Push a message to the queue with a mode.
      */
     push(message: string, mode: T, localId?: string): void {
+        this.enqueue(message, mode, localId);
+    }
+
+    /**
+     * Push a message that must never be batch-merged with others.
+     * Unlike isolate (which additionally means "stash to next session restart", e.g. /clear),
+     * noBatch only prevents merging — used for !bash local execution: a merged batch like
+     * "! cmd\n正文" would run the normal message text as shell input and mis-bind native_id.
+     */
+    pushNoBatch(message: string, mode: T, localId?: string): void {
+        this.enqueue(message, mode, localId, { noBatch: true });
+    }
+
+    /** 入队内部实现：统一的 handler 通知与 waiter 唤醒 */
+    private enqueue(message: string, mode: T, localId?: string, flags: { noBatch?: boolean } = {}): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -105,6 +121,7 @@ export class MessageQueue<T> {
             mode,
             modeHash,
             isolate: false,
+            noBatch: flags.noBatch,
             localId
         });
 
@@ -356,8 +373,8 @@ export class MessageQueue<T> {
         const isolate = firstItem.isolate ?? false;
         const targetModeHash = firstItem.modeHash;
 
-        // If the first message requires isolation, only process it alone
-        if (firstItem.isolate) {
+        // If the first message requires isolation or no-merge, only process it alone
+        if (firstItem.isolate || firstItem.noBatch) {
             const item = this.queue.shift()!;
             sameModeMessages.push(item.message);
             if (item.localId) {
@@ -365,10 +382,11 @@ export class MessageQueue<T> {
             }
             logger.debug(`[MessageQueue] Collected isolated message with mode hash: ${targetModeHash}`);
         } else {
-            // Collect all messages with the same mode until we hit an isolated message
+            // Collect all messages with the same mode until we hit an isolated or no-merge message
             while (this.queue.length > 0 &&
                 this.queue[0].modeHash === targetModeHash &&
-                !this.queue[0].isolate) {
+                !this.queue[0].isolate &&
+                !this.queue[0].noBatch) {
                 const item = this.queue.shift()!;
                 sameModeMessages.push(item.message);
                 if (item.localId) {

@@ -340,6 +340,17 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             return;
         }
 
+        if (specialCommand.type === 'bash') {
+            logger.debug('[start] Detected !bash command');
+            const commandText = specialCommand.originalMessage || message.content.text;
+            // !bash 本地执行：noBatch 禁止与普通消息合并成批——合并批 "! cmd\n正文" 会把正文
+            // 当 shell 输入执行，且 native_id 绑定会把普通消息行错绑到注入消息的 uuid。
+            // 不清空队列（区别于 /compact）：已排队的消息保留待后续批次
+            messageQueue.pushNoBatch(commandText, enhancedMode, message.localId);
+            logger.debugLargeJson('[start] !bash command pushed to queue:', message);
+            return;
+        }
+
         if (specialCommand.type === 'clear') {
             logger.debug('[start] Detected /clear command');
             const commandText = specialCommand.originalMessage || message.content.text;
