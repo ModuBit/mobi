@@ -15,7 +15,6 @@
  */
 
 import type { AttachmentMetadata, DecryptedMessage } from '@mobi/shared/types'
-import type { NativeMessageMetadata } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store, StoredMessage } from '../store'
 import { EventPublisher } from './eventPublisher'
