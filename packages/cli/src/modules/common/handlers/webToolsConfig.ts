@@ -22,7 +22,7 @@
  * 生效：各会话进程 handler 调用时 mtime 惰性重读，无需通知。
  */
 import {
-    WEB_TOOL_PROVIDER_IDS,
+    VerifyWebToolsProviderSchema,
     WebToolsConfigSubmissionSchema,
     normalizeWebToolsConfig,
     redactWebToolsConfig,
@@ -34,7 +34,7 @@ import {
     type RedactedWebToolsConfig,
 } from '@mobi/shared'
 import { updateSettings, readSettings } from '@/persistence'
-import { createProviderFor } from '@/webtools/registry'
+import { createProviderFor, prepareCredentials } from '@/webtools/registry'
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager'
 
 export type ValidateResult = { ok: true; config: WebToolsConfigSubmission } | { ok: false; error: string }
@@ -75,6 +75,9 @@ export function validateSelection(config: WebToolsConfig): string | null {
  */
 const declaredCredentialKey = (id: WebToolProviderId, key: string): boolean =>
     credentialKeysFor(id).includes(key)
+
+/** verify 连通检测的超时上限：hub 侧 machine RPC 有 30s socket 超时，条目 timeoutMs（最高 120s）超出部分必被掐断白等，钳到上限内留余量 */
+const VERIFY_TIMEOUT_CAP_MS = 20_000
 
 /**
  * 凭据 merge（在场性三分支）：键不在场或空串 → 保持旧值（不在场=新 UI 未修改，
@@ -140,34 +143,35 @@ export function registerWebToolsConfigHandler(rpcHandlerManager: RpcHandlerManag
     )
 
     // 凭据连通性验证：保存前用草稿 key 试连（草稿非空优先，其余沿用已存值），
-    // 一次真实 search 的往返延迟即验证结果；不落盘、不泄露凭据值
+    // 一次真实 search（maxResults=1 省配额）的往返延迟即验证结果；不落盘、不泄露凭据值
     rpcHandlerManager.registerHandler<
         { providerId: WebToolProviderId; credentials?: Record<string, string> },
         { success: true; latencyMs: number } | { success: false; error: string }
     >('verify-web-tools-provider', async (params) => {
-        if (!params?.providerId) return { success: false, error: '缺少 providerId' }
-        // RPC 边界无 schema 校验（params 类型仅为声明），未知 id 提前拒绝而非让 credentialKeysFor 抛 TypeError
-        if (!WEB_TOOL_PROVIDER_IDS.includes(params.providerId)) {
-            return { success: false, error: `未知 provider：${params.providerId}` }
+        // RPC 边界 schema 校验：与 hub 路由共用同一 schema，credentials 畸形值（null/数字）
+        // 整体拒绝而非静默过滤——否则会用已存凭据跑真实验证，返回「验证通过」假阳性
+        const parsed = VerifyWebToolsProviderSchema.safeParse(params)
+        if (!parsed.success) {
+            const issue = parsed.error.issues[0]
+            return { success: false, error: `verify 参数非法（${issue?.path.join('.') ?? 'params'}）：${issue?.message ?? ''}` }
         }
+        const { providerId, credentials } = parsed.data
         try {
             const settings = await readSettings()
             const config = normalizeWebToolsConfig(settings.webTools)
-            const entry = config.providers?.find((p) => p.id === params.providerId)
+            const entry = config.providers?.find((p) => p.id === providerId)
             // 凭据合成：草稿非空字符串且为声明键时优先，其余用已存值（脏键不参与合成）
             const merged: Record<string, string> = { ...entry?.credentials }
-            for (const [key, value] of Object.entries(params.credentials ?? {})) {
-                if (typeof value === 'string' && value && declaredCredentialKey(params.providerId, key)) merged[key] = value
+            for (const [key, value] of Object.entries(credentials ?? {})) {
+                if (value && declaredCredentialKey(providerId, key)) merged[key] = value
             }
-            const required = credentialKeysFor(params.providerId)
-            const missing = required.filter((key) => !merged[key])
+            const { missing, apiKey } = prepareCredentials(providerId, merged)
             if (missing.length > 0) return { success: false, error: `缺少凭据：${missing.join(', ')}` }
-            const provider = createProviderFor(params.providerId, {
-                apiKey: merged[required[0]!]!,
-                timeoutMs: entry?.timeoutMs ?? 15_000,
-            })
+            // 超时钳制：条目 timeoutMs 最高 120s，超出 hub 30s socket 上限的部分必被掐断白等
+            const timeoutMs = Math.min(entry?.timeoutMs ?? 15_000, VERIFY_TIMEOUT_CAP_MS)
+            const provider = createProviderFor(providerId, { apiKey: apiKey!, timeoutMs })
             const started = Date.now()
-            await provider.search({ query: 'connection test' })
+            await provider.search({ query: 'connection test', maxResults: 1 })
             return { success: true, latencyMs: Date.now() - started }
         } catch (error) {
             return { success: false, error: error instanceof Error ? error.message : String(error) }

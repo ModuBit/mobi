@@ -67,7 +67,7 @@ export function createTavilyProvider(credentials: WebToolProviderCredentials): W
         async search(input: WebSearchInput): Promise<WebSearchResult[]> {
             try {
                 const response = await client.search(input.query, {
-                    maxResults: 10,
+                    maxResults: input.maxResults ?? 10,
                     timeout: timeoutSeconds,
                     // 域名过滤透传 SDK 服务端过滤（非空才带；handler 侧 domainFilter 仍是兜底双保险）
                     ...(input.allowed_domains?.length ? { includeDomains: input.allowed_domains } : {}),

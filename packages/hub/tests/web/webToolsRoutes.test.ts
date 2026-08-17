@@ -164,6 +164,30 @@ describe('webTools 路由（纯透传）', () => {
         expect(verifySpy).not.toHaveBeenCalled()
     })
 
+    it('POST /verify credentials 畸形值（null/数字）→ 400（边界拒绝，防假阳性透传）', async () => {
+        const verifySpy = vi.fn()
+        const app = createTestApp(createTestEngine({ verifyWebToolsProvider: verifySpy }))
+        const res = await app.request('/api/machines/m1/web-tools/verify', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ providerId: 'tavily', credentials: { apiKey: null } }),
+        })
+        expect(res.status).toBe(400)
+        expect(verifySpy).not.toHaveBeenCalled()
+    })
+
+    it('POST /verify 未知 providerId → 400（schema enum 拒绝）', async () => {
+        const verifySpy = vi.fn()
+        const app = createTestApp(createTestEngine({ verifyWebToolsProvider: verifySpy }))
+        const res = await app.request('/api/machines/m1/web-tools/verify', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ providerId: 'nope' }),
+        })
+        expect(res.status).toBe(400)
+        expect(verifySpy).not.toHaveBeenCalled()
+    })
+
     it('POST /verify engine 未就绪 → 503', async () => {
         const app = createTestApp(null)
         const res = await app.request('/api/machines/m1/web-tools/verify', {

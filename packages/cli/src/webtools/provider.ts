@@ -19,11 +19,13 @@
  * 输出统一格式；fetch 的内容加工策略由各 provider 自行决定。
  */
 
-/** 对齐内置 WebSearch 入参（sdk-tools.d.ts WebSearchInput） */
+/** 对齐内置 WebSearch 入参（sdk-tools.d.ts WebSearchInput）；maxResults 为轻量调用（如 verify 连通检测）预留 */
 export type WebSearchInput = {
     query: string
     allowed_domains?: string[]
     blocked_domains?: string[]
+    /** 结果条数上限（provider 各自默认，如 tavily=10）；连通性验证传 1 省配额与延迟 */
+    maxResults?: number
 }
 
 /** 对齐内置 WebFetch 入参（sdk-tools.d.ts WebFetchInput） */

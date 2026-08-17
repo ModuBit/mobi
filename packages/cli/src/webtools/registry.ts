@@ -19,7 +19,7 @@
  * 对模型暴露的工具永远固定（web_search/web_fetch），provider 切换完全封装在此。
  * 无可用 provider → null，由工具 handler 返回 NO_PROVIDER_MESSAGE（默认空实现）。
  */
-import type { WebToolsConfig } from '@mobi/shared'
+import type { WebToolsConfig, WebToolProviderId } from '@mobi/shared'
 import { credentialKeysFor } from '@mobi/shared'
 import type { WebToolProvider, WebSearchInput, WebSearchResult } from './provider'
 import { createTavilyProvider } from './providers/tavily'
@@ -35,16 +35,27 @@ export function createProviderFor(id: string, credentials: { apiKey: string; tim
     }
 }
 
+/**
+ * 凭据整备（resolve 路由与 verify RPC 共用）：声明键缺失列表 + 首个声明键的值。
+ * 不变量：当前所有 provider 均为 apiKey 单键凭据（credentialKeysFor × WebToolProviderCredentials 的隐式契约）；
+ * 出现多凭据 provider 时需将 credentials 整包下传并扩展该类型。
+ */
+export function prepareCredentials(
+    id: WebToolProviderId,
+    credentials: Record<string, string>,
+): { missing: string[]; apiKey?: string } {
+    const required = credentialKeysFor(id)
+    const missing = required.filter((key) => !credentials[key])
+    return { missing, apiKey: missing.length === 0 ? credentials[required[0]!] : undefined }
+}
+
 function resolve(config: WebToolsConfig, selectedId: string | undefined): WebToolProvider | null {
     if (!selectedId) return null
     const settings = config.providers?.find((p) => p.id === selectedId)
     if (!settings || !settings.enabled) return null
-    const requiredKeys = credentialKeysFor(settings.id)
-    const missing = requiredKeys.filter((key) => !settings.credentials[key])
+    const { missing, apiKey } = prepareCredentials(settings.id, settings.credentials)
     if (missing.length > 0) return null
-    // 不变量：当前所有 provider 均为 apiKey 单键凭据（credentialKeysFor × WebToolProviderCredentials 的隐式契约）；
-    // 出现多凭据 provider 时需将 credentials 整包下传并扩展该类型
-    return createProviderFor(settings.id, { apiKey: settings.credentials[requiredKeys[0]]!, timeoutMs: settings.timeoutMs })
+    return createProviderFor(settings.id, { apiKey: apiKey!, timeoutMs: settings.timeoutMs })
 }
 
 export function resolveSearchProvider(config: WebToolsConfig): WebToolProvider | null {

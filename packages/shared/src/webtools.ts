@@ -76,6 +76,19 @@ export const WebToolsConfigSubmissionSchema = WebToolsConfigObjectSchema.extend(
     providers: z.array(WebToolProviderSubmissionSchema).optional(),
 }).superRefine(refineUniqueProviderIds)
 export type WebToolsConfigSubmission = z.infer<typeof WebToolsConfigSubmissionSchema>
+/** 提交方向的单个 provider 条目（web 侧构造 payload 复用，避免内联 infer 重复定义） */
+export type WebToolProviderSubmission = z.infer<typeof WebToolProviderSubmissionSchema>
+
+/**
+ * verify-web-tools-provider RPC 请求体（hub 路由 400 校验与 runner handler 边界共用）。
+ * credentials 草稿只认纯 string record：null/数字等畸形值在边界整体拒绝，
+ * 而非静默过滤后用已存凭据跑真实验证造成「验证通过」假阳性。
+ */
+export const VerifyWebToolsProviderSchema = z.object({
+    providerId: z.enum(WEB_TOOL_PROVIDER_IDS),
+    credentials: z.record(z.string(), z.string()).optional(),
+})
+export type VerifyWebToolsProviderParams = z.infer<typeof VerifyWebToolsProviderSchema>
 
 /** 凭据脱敏回显结构：只告诉前端"设没设"（preview 为 maskCredential 掩码产物），不回传值 */
 export type RedactedCredentials = Record<string, { set: boolean; preview?: string }>

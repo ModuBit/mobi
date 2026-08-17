@@ -56,6 +56,14 @@ describe('tavily search（官方 SDK）', () => {
             excludeDomains: ['ads.com'],
         })
     })
+    it('maxResults 透传（verify 连通检测传 1 省配额），缺省 10', async () => {
+        searchMock.mockResolvedValue({ results: [] })
+        const provider = createTavilyProvider({ apiKey: 'k', timeoutMs: 15_000 })
+        await provider.search({ query: 'q', maxResults: 1 })
+        expect((searchMock.mock.calls[0]![1] as { maxResults: number }).maxResults).toBe(1)
+        await provider.search({ query: 'q' })
+        expect((searchMock.mock.calls[1]![1] as { maxResults: number }).maxResults).toBe(10)
+    })
     it('域名过滤为空/缺省时不带 includeDomains/excludeDomains', async () => {
         searchMock.mockResolvedValue({ results: [] })
         const provider = createTavilyProvider({ apiKey: 'k', timeoutMs: 15_000 })

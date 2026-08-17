@@ -19,6 +19,7 @@
  * hub 不存任何 web 工具状态，配置真相源在目标机器的 ~/.mobi/settings.json
  */
 import { Hono } from 'hono'
+import { VerifyWebToolsProviderSchema } from '@mobi/shared'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
@@ -86,13 +87,17 @@ export function createWebToolsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return machine
         }
 
-        const body = await c.req.json().catch(() => null) as { providerId?: string; credentials?: Record<string, string> } | null
-        if (!body?.providerId) {
-            return c.json({ error: 'Missing providerId' }, 400)
+        // schema 校验（与 runner handler 共用 VerifyWebToolsProviderSchema）：
+        // credentials 畸形值（null/数字）在边界拒绝，而非透传后被静默过滤造成验证假阳性
+        const body = await c.req.json().catch(() => null)
+        const parsed = VerifyWebToolsProviderSchema.safeParse(body)
+        if (!parsed.success) {
+            const issue = parsed.error.issues[0]
+            return c.json({ error: `Invalid verify request (${issue?.path.join('.') ?? 'body'}): ${issue?.message ?? ''}` }, 400)
         }
 
         try {
-            const result = await engine.verifyWebToolsProvider(machineId, body.providerId, body.credentials)
+            const result = await engine.verifyWebToolsProvider(machineId, parsed.data.providerId, parsed.data.credentials)
             return c.json(result)
         } catch (error) {
             // 502 = runner RPC 传输层不可达/超时；业务失败走 envelope 200（与 get/set 一致）

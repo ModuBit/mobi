@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest'
 import {
     WebToolsConfigSchema,
     WebToolsConfigSubmissionSchema,
+    VerifyWebToolsProviderSchema,
     maskCredential,
     redactWebToolsConfig,
     normalizeWebToolsConfig,
@@ -183,6 +184,22 @@ describe('WebToolsConfigSubmissionSchema（提交方向：credentials 值 string
         expect(WebToolsConfigSubmissionSchema.safeParse({
             providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 123 } }],
         }).success).toBe(false)
+    })
+})
+
+describe('VerifyWebToolsProviderSchema（verify RPC 请求体）', () => {
+    it('合法：providerId + 可选 credentials（纯 string record）', () => {
+        expect(VerifyWebToolsProviderSchema.safeParse({ providerId: 'tavily' }).success).toBe(true)
+        expect(VerifyWebToolsProviderSchema.safeParse({ providerId: 'tavily', credentials: { apiKey: 'draft' } }).success).toBe(true)
+    })
+    it('未知 providerId / 缺 providerId 拒绝', () => {
+        expect(VerifyWebToolsProviderSchema.safeParse({ providerId: 'nope' }).success).toBe(false)
+        expect(VerifyWebToolsProviderSchema.safeParse({}).success).toBe(false)
+    })
+    it('credentials 含 null/数字等畸形值整体拒绝（防假阳性：静默降级用已存 key 验证）', () => {
+        expect(VerifyWebToolsProviderSchema.safeParse({ providerId: 'tavily', credentials: { apiKey: null } }).success).toBe(false)
+        expect(VerifyWebToolsProviderSchema.safeParse({ providerId: 'tavily', credentials: { apiKey: 123 } }).success).toBe(false)
+        expect(VerifyWebToolsProviderSchema.safeParse({ providerId: 'tavily', credentials: 'x' }).success).toBe(false)
     })
 })
 

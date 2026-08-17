@@ -21,8 +21,9 @@ vi.mock('@/persistence', () => ({
     updateSettings: vi.fn(),
 }))
 
-// registry 整模块 mock：webToolsConfig.ts 仅 import createProviderFor，resolve 路由不进本测试图
-vi.mock('@/webtools/registry', () => ({
+// registry 模块 mock：createProviderFor 换 spy（verify 断言构造实参），prepareCredentials 纯函数用真实实现
+vi.mock('@/webtools/registry', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/webtools/registry')>()),
     createProviderFor: vi.fn(),
 }))
 
@@ -285,7 +286,7 @@ describe('verify-web-tools-provider handler', () => {
     const call = (manager: RpcHandlerManager, method: string, params: unknown) =>
         manager.handleRequest({ method: `test:${method}`, params } satisfies RpcRequest)
 
-    it('草稿凭据优先于已存值（保存前验证新 key）', async () => {
+    it('草稿凭据优先于已存值（保存前验证新 key）；search 只取 1 条省配额', async () => {
         persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 15_000 }] } }
         const provider = { search: vi.fn().mockResolvedValue([]) }
         vi.mocked(createProviderFor).mockReturnValue(provider as never)
@@ -293,6 +294,7 @@ describe('verify-web-tools-provider handler', () => {
         const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily', credentials: { apiKey: 'draft' } })
         expect(res).toEqual({ success: true, latencyMs: expect.any(Number) })
         expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'draft', timeoutMs: 15_000 })
+        expect(provider.search).toHaveBeenCalledWith({ query: 'connection test', maxResults: 1 })
     })
 
     it('草稿脏键（未声明凭据键）不参与合成', async () => {
@@ -328,16 +330,34 @@ describe('verify-web-tools-provider handler', () => {
         expect(res).toEqual({ success: false, error: 'Invalid API key' })
     })
 
-    it('缺少 providerId → success:false', async () => {
+    it('缺少 providerId → success:false（schema 边界拒绝）', async () => {
         const manager = makeManager()
         const res = await call(manager, 'verify-web-tools-provider', {})
         expect(res).toEqual({ success: false, error: expect.stringContaining('providerId') })
     })
 
-    it('未知 providerId → success:false（RPC 边界无 schema 校验，handler 自行兜底）', async () => {
+    it('未知 providerId → success:false（schema enum 拒绝，handler 不再手写兜底）', async () => {
         const manager = makeManager()
         const res = await call(manager, 'verify-web-tools-provider', { providerId: 'nope' })
-        expect(res).toEqual({ success: false, error: expect.stringContaining('未知') })
+        expect(res).toEqual({ success: false, error: expect.stringContaining('verify 参数非法') })
         expect(createProviderFor).not.toHaveBeenCalled()
+    })
+
+    it('credentials 含 null 等畸形值 → 整体拒绝而非静默用已存凭据（防验证假阳性）', async () => {
+        persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 15_000 }] } }
+        vi.mocked(createProviderFor).mockReturnValue({ search: vi.fn().mockResolvedValue([]) } as never)
+        const manager = makeManager()
+        const res = await call(manager, 'verify-web-tools-provider', { providerId: 'tavily', credentials: { apiKey: null } })
+        expect(res).toEqual({ success: false, error: expect.stringContaining('verify 参数非法') })
+        // 关键：绝不能用已存凭据跑真实验证（否则用户以为草稿通过了）
+        expect(createProviderFor).not.toHaveBeenCalled()
+    })
+
+    it('条目 timeoutMs 超过 hub socket 上限 → 钳制到 20s（超出部分必被 hub 30s 掐断白等）', async () => {
+        persisted = { webTools: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: 'stored' }, timeoutMs: 120_000 }] } }
+        vi.mocked(createProviderFor).mockReturnValue({ search: vi.fn().mockResolvedValue([]) } as never)
+        const manager = makeManager()
+        await call(manager, 'verify-web-tools-provider', { providerId: 'tavily' })
+        expect(createProviderFor).toHaveBeenCalledWith('tavily', { apiKey: 'stored', timeoutMs: 20_000 })
     })
 })
