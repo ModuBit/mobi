@@ -18,7 +18,7 @@ import { App, Switch, theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { credentialKeysFor } from '@mobi/shared'
-import { enter } from '@/components/settings/blocks/shared'
+import { SettingsCard } from '@/components/settings/blocks/shared'
 import { CredentialEditor, type ProviderEntry, type VerifyResult } from './CredentialEditor'
 
 const { useToken } = antTheme
@@ -35,18 +35,14 @@ export interface ProviderCardProps {
     saving: boolean
     /** 启用开关：返回是否成功（失败提示由上层负责） */
     onToggle: (enabled: boolean) => Promise<boolean>
-    onSaveCredentials: (credentials: Record<string, string | null>) => Promise<boolean>
+    /** 凭据保存（在场性：只提交编辑中的非空键）；返回成功与否（失败提示由上层负责） */
+    onSaveCredentials: (credentials: Record<string, string>) => Promise<boolean>
     onVerify: (credentials: Record<string, string>) => Promise<VerifyResult>
 }
 
-// 卡片：与路由卡同族；展开态细边框微亮提示层级
-const Card = styled.section<{ $token: Token; $expanded: boolean }>`
-    display: flex;
-    flex-direction: column;
-    border-radius: 12px;
-    background: ${p => p.$token.colorBgContainer};
-    border: 1px solid ${p => (p.$expanded ? p.$token.colorBorder : p.$token.colorBorderSecondary)};
-    animation: ${enter} 0.3s ease-out;
+// 卡片：共享 SettingsCard 扩展；展开态细边框微亮提示层级
+const Card = styled(SettingsCard)<{ $token: Token; $expanded: boolean }>`
+    border-color: ${p => (p.$expanded ? p.$token.colorBorder : p.$token.colorBorderSecondary)};
 `
 
 // 卡头：可点击展开（除 Switch 区域），键盘可达
@@ -113,10 +109,20 @@ const SwitchArea = styled.span`
     flex-shrink: 0;
 `
 
-// 展开区：内联凭据编辑器（S9 实装）
-const Body = styled.div<{ $token: Token }>`
-    padding: 0 16px 16px 68px;
+// 展开区：内联凭据编辑器。grid-rows 0fr↔1fr 过渡（尺寸变化必须有过渡动画）；
+// 收起时内容仍挂载（草稿保留），visibility 延迟隐藏防tab焦点落进 0 高度区
+const Body = styled.div<{ $token: Token; $expanded: boolean }>`
+    display: grid;
+    grid-template-rows: ${p => (p.$expanded ? '1fr' : '0fr')};
+    transition: grid-template-rows 0.2s ease;
     border-top: 1px solid ${p => p.$token.colorBorderSecondary};
+`
+
+const BodyInner = styled.div<{ $visible: boolean }>`
+    overflow: hidden;
+    visibility: ${p => (p.$visible ? 'visible' : 'hidden')};
+    padding: 0 16px ${p => (p.$visible ? '16px' : '0')} 68px;
+    transition: padding 0.2s ease, visibility 0.2s;
 `
 
 /**
@@ -191,11 +197,14 @@ export function ProviderCard({ provider, referencedBy, expanded, onExpandedChang
                 </SwitchArea>
             </Head>
 
-            {expanded && (
-                <Body $token={token} id={editorId}>
-                    <CredentialEditor provider={provider} onSave={onSaveCredentials} onVerify={onVerify} />
-                </Body>
-            )}
+            <Body $token={token} $expanded={expanded}>
+                {/* 常挂载：收起后草稿保留，重新展开不丢输入 */}
+                <BodyInner $visible={expanded}>
+                    <div id={editorId}>
+                        <CredentialEditor provider={provider} onSave={onSaveCredentials} onVerify={onVerify} />
+                    </div>
+                </BodyInner>
+            </Body>
         </Card>
     )
 }

@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider, App as AntdApp } from 'antd'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 // 稳定引用（模块级单例）：useMobiApi 每次渲染返回同一对象，避免 effect 无限循环（worker OOM 前车之鉴）
 const stableApi = {
@@ -68,7 +69,7 @@ vi.mock('react-i18next', () => ({
 
 // RouteCard 真实渲染（保留渲染断言），另捕获 onChange 供路由变更用例稳定触发：
 // 当前 provider 清单仅 tavily 一项，真实 Select 恒锁定（无可选项），走 UI 交互断言不了 onChange 路径
-const routeState = vi.hoisted(() => ({ onChange: null as null | ((next: { searchProviderId?: 'tavily'; fetchProviderId?: 'tavily' }) => Promise<boolean>) }))
+const routeState = vi.hoisted(() => ({ onChange: null as null | ((next: { searchProviderId?: 'tavily' | null; fetchProviderId?: 'tavily' | null }) => Promise<boolean>) }))
 vi.mock('@/components/settings/webtools/RouteCard', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/components/settings/webtools/RouteCard')>()
     return {
@@ -81,7 +82,7 @@ vi.mock('@/components/settings/webtools/RouteCard', async (importOriginal) => {
 
 // CredentialEditor（S9 占位）真实渲染（仍为 null），另捕获 onSave 供凭据保存用例稳定触发——
 // 编辑器内容 S9 才实装，UI 路径尚不可达
-const editorState = vi.hoisted(() => ({ onSave: null as null | ((credentials: Record<string, string | null>) => Promise<boolean>) }))
+const editorState = vi.hoisted(() => ({ onSave: null as null | ((credentials: Record<string, string>) => Promise<boolean>) }))
 vi.mock('@/components/settings/webtools/CredentialEditor', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/components/settings/webtools/CredentialEditor')>()
     return {
@@ -94,14 +95,17 @@ vi.mock('@/components/settings/webtools/CredentialEditor', async (importOriginal
 
 import { WebToolsSection } from '@/components/settings/sections/WebToolsSection'
 
-/** 渲染：ConfigProvider + AntdApp 让 App.useApp().message 可用（toast 渲染进 DOM 可断言） */
+/** 渲染：QueryClientProvider（数据层 react-query）+ ConfigProvider + AntdApp（toast 可断言）；每渲染独立 QueryClient 防缓存串测 */
 function renderSection() {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     return render(
-        <ConfigProvider>
-            <AntdApp>
-                <WebToolsSection />
-            </AntdApp>
-        </ConfigProvider>,
+        <QueryClientProvider client={queryClient}>
+            <ConfigProvider>
+                <AntdApp>
+                    <WebToolsSection />
+                </AntdApp>
+            </ConfigProvider>
+        </QueryClientProvider>,
     )
 }
 
@@ -267,7 +271,7 @@ describe('WebToolsSection', () => {
         ])
     })
 
-    it('保存失败（success:false）：恰好一条 error toast，开关状态不变', async () => {
+    it('保存失败（success:false）：恰好一条 error toast 且透传 runner 原因（非通用文案），开关状态不变', async () => {
         // 已启用且未被路由引用 → 允许关闭；提交返回业务失败
         mockLoadConfig({ enabled: true })
         stableApi.machines.webTools.set.mockResolvedValue({ data: { success: false, error: 'provider "tavily" 缺少凭据：apiKey' } })
@@ -276,9 +280,9 @@ describe('WebToolsSection', () => {
         await waitFor(() => expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toBeTruthy())
         fireEvent.click(screen.getByRole('switch', { name: 'tavily-enabled' }))
 
-        // 失败提示恰好一条（Section 层收口，卡层不重复弹）；开关仍选中
-        await waitFor(() => expect(screen.getByText('保存失败')).toBeTruthy())
-        expect(screen.queryAllByText('保存失败')).toHaveLength(1)
+        // 失败提示恰好一条（Section 层收口）且带 runner 校验原因——支持性回归锁（旧 UI 有此能力）
+        await waitFor(() => expect(screen.getByText('provider "tavily" 缺少凭据：apiKey')).toBeTruthy())
+        expect(screen.queryAllByText('provider "tavily" 缺少凭据：apiKey')).toHaveLength(1)
         expect(screen.getByRole('switch', { name: 'tavily-enabled' })).toHaveClass('ant-switch-checked')
     })
 
@@ -303,19 +307,38 @@ describe('WebToolsSection', () => {
         expect(stableApi.machines.webTools.set).not.toHaveBeenCalled()
     })
 
-    it('单 provider：路由值非空的行锁定、为空的行可选（首次配置后路由可设上）', async () => {
-        // tavily 已启用；search 路由为空（首次配置场景）、fetch 路由已指向 tavily
+    it('单 provider：路由行不锁定且可清除（allowClear）——teardown 流程（清路由 → 禁用 provider）畅通', async () => {
+        // tavily 已启用；search 路由为空、fetch 路由已指向 tavily
         mockLoadConfig({ enabled: true, searchProviderId: undefined, fetchProviderId: 'tavily' })
         renderSection()
 
         await waitFor(() => expect(screen.getByText('web_search')).toBeTruthy())
-        // search 行值为空 → 不锁定（否则首次配置后路由永远设不上，runner resolve → NO_PROVIDER）
-        expect(screen.getByRole('combobox', { name: '搜索' }).closest('.ant-select')).not.toHaveClass(
-            'ant-select-disabled',
-        )
-        // fetch 行已有值 → 锁定显示（单 provider 切无可切）
-        expect(screen.getByRole('combobox', { name: '抓取' }).closest('.ant-select')).toHaveClass(
-            'ant-select-disabled',
-        )
+        // 两行均不锁定：值非空的单 provider 行也可清除（旧版锁定会让路由永远设不上/撤不掉）
+        for (const label of ['搜索', '抓取']) {
+            expect(screen.getByRole('combobox', { name: label }).closest('.ant-select')).not.toHaveClass(
+                'ant-select-disabled',
+            )
+        }
+        // allowClear 生效：有值的行渲染清除按钮
+        expect(screen.getByRole('combobox', { name: '抓取' }).closest('.ant-select')).toBeTruthy()
+    })
+
+    it('路由清除（null）：set payload 不含被清除的路由字段（区别于「未提及回填现值」）', async () => {
+        mockLoadConfig({ enabled: true, searchProviderId: 'tavily', fetchProviderId: 'tavily' })
+        stableApi.machines.webTools.set.mockResolvedValue({ data: { success: true } })
+        renderSection()
+
+        await waitFor(() => expect(screen.getByText('web_search')).toBeTruthy())
+        expect(routeState.onChange).toBeTruthy()
+        // 清除 fetch 路由：null 语义 → payload 只回填 search 现值，fetch 字段整体缺席（整体替换语义下即清除落盘）
+        await routeState.onChange!({ fetchProviderId: null })
+
+        await waitFor(() => expect(stableApi.machines.webTools.set).toHaveBeenCalledTimes(1))
+        const [, config] = stableApi.machines.webTools.set.mock.calls[0] as [
+            string,
+            { searchProviderId?: string; fetchProviderId?: string; providers: unknown[] },
+        ]
+        expect(config.searchProviderId).toBe('tavily')
+        expect('fetchProviderId' in config).toBe(false)
     })
 })

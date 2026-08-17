@@ -77,14 +77,22 @@ describe('useWebToolsStatus 三态推导', () => {
         expect(await renderStatus()).toBe('offline')
     })
 
-    it('providers.some(enabled)=true → enabled', async () => {
+    it('路由指向 provider（search/fetch 任一非空）→ enabled（以实际路由为准）', async () => {
         machinesList.mockResolvedValue({ data: { machines: [makeMachine({ id: 'm1' }), makeMachine({ id: 'm2' })] } })
         webToolsGet.mockResolvedValue({
-            data: { config: { providers: [{ id: 'tavily', enabled: true }, { id: 'bocha', enabled: false }] } },
+            data: { config: { searchProviderId: 'tavily', providers: [{ id: 'tavily', enabled: true }] } },
         })
         expect(await renderStatus()).toBe('enabled')
         // 多机取第一台在线
         expect(webToolsGet).toHaveBeenCalledWith('m1')
+    })
+
+    it('仅开关打开而无路由 → unconfigured（runner resolve 返回 null，绿点徽标不得虚报可用）', async () => {
+        machinesList.mockResolvedValue({ data: { machines: [makeMachine()] } })
+        webToolsGet.mockResolvedValue({
+            data: { config: { providers: [{ id: 'tavily', enabled: true, credentials: { apiKey: { set: true } } }] } },
+        })
+        expect(await renderStatus()).toBe('unconfigured')
     })
 
     it('providers 存在但均未启用 → unconfigured', async () => {

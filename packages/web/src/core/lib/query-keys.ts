@@ -68,6 +68,6 @@ export const queryKeys = {
     ] as const,
     /** SDK 元数据（commands, models, agents 等） */
     sdkMetadata: (sessionId: string) => ['sdkMetadata', sessionId] as const,
-    /** Web 工具状态摘要（设置入口徽标：机器列表 → 脱敏配置两跳聚合） */
-    webToolsStatus: ['web-tools-status'] as const,
+    /** Web 工具脱敏配置（子页与入口徽标共用同一缓存：状态由 select 派生，保存后失效即两处同步） */
+    webToolsConfig: ['web-tools-config'] as const,
 }

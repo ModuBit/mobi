@@ -36,3 +36,17 @@ export const IconBox = styled.span<{ $token: { colorTextSecondary: string } }>`
     color: ${p => p.$token.colorTextSecondary};
     font-size: 17px;
 `
+
+/**
+ * 设置页主卡容器（容器色 + 细边框 + 12px 圆角 + 入场动画）。
+ * RouteCard / ProviderCard 等设置分区卡片共享，padding/gap/边框态由各卡按需扩展——
+ * 主题圆角或卡片语言调整只改这一处，不再逐卡漂移。
+ */
+export const SettingsCard = styled.section<{ $token: { colorBgContainer: string; colorBorderSecondary: string } }>`
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    background: ${p => p.$token.colorBgContainer};
+    border: 1px solid ${p => p.$token.colorBorderSecondary};
+    animation: ${enter} 0.3s ease-out;
+`

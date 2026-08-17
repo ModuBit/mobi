@@ -14,36 +14,33 @@
  * limitations under the License.
  */
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
-import { queryKeys } from '@/core/lib/query-keys'
+import { webToolsConfigQuery, type WebToolsConfigQueryData } from './useWebToolsConfig'
 
-/** Web 工具状态摘要（设置入口徽标渲染用） */
+/** Web 工具状态摘要（设置入口/分区导航徽标渲染用） */
 export type WebToolsStatus = 'enabled' | 'unconfigured' | 'offline' | 'loading'
 
 /**
+ * 状态派生：以实际路由为准——search/fetch 任一路由指向 provider 才算"已启用"
+ * （写入侧 validateSelection 保证路由目标已启用且凭据齐全）。
+ * 仅开关打开而无路由 → unconfigured：runner resolve 返回 null、每次调用 NO_PROVIDER，绿点徽标不能虚报可用。
+ */
+export function deriveWebToolsStatus(data: WebToolsConfigQueryData | undefined): Exclude<WebToolsStatus, 'loading'> {
+    if (data?.status !== 'ok') return 'offline'
+    return data.config.searchProviderId || data.config.fetchProviderId ? 'enabled' : 'unconfigured'
+}
+
+/**
  * Web 工具分区状态摘要（入口徽标用）。
- * 两跳：机器列表（第一台在线）→ 该机器脱敏配置。staleTime 内缓存复用。
- * 任何一步失败 → offline（机器离线语义）。
+ * 与子页共用 webToolsConfigQuery 同一份缓存（select 只做派生）：保存后子页 invalidate 一次，徽标立即同步。
  */
 export function useWebToolsStatus(): WebToolsStatus {
     const api = useMobiApi()
+    const queryClient = useQueryClient()
     const query = useQuery({
-        queryKey: queryKeys.webToolsStatus,
-        queryFn: async () => {
-            const machinesRes = await api.machines.list()
-            const online = machinesRes.data.machines.find((m) => m.active)
-            if (!online) return 'offline' as const
-            const configRes = await api.machines.webTools.get(online.id)
-            // 200 + { error } 变体 = runner RPC 内部错误（机器在线但配置读取失败）。
-            // 入口徽标只关心「可用/不可用」，与机器离线同归 offline 展示，文案层面不做区分
-            if (!('config' in configRes.data)) return 'offline' as const
-            return configRes.data.config.providers?.some((p) => p.enabled)
-                ? ('enabled' as const)
-                : ('unconfigured' as const)
-        },
-        staleTime: 30_000,
-        retry: false,
+        ...webToolsConfigQuery(api, queryClient),
+        select: deriveWebToolsStatus,
     })
     if (query.isPending) return 'loading'
     return query.data ?? 'offline'

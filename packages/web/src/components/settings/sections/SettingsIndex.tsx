@@ -20,20 +20,13 @@ import { ChevronRight } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import styled from '@emotion/styled'
 import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
-import { SETTINGS_WIDE_QUERY } from '@/pages/SettingsPage'
+import { SETTINGS_WIDE_QUERY } from './registry'
 import { NotificationsSection } from './NotificationsSection'
 import { SETTINGS_SECTIONS } from './registry'
-import { useWebToolsStatus, type WebToolsStatus } from '@/core/data/hooks/queries/useWebToolsStatus'
+import { WebToolsStatusBadge } from './WebToolsStatusBadge'
 
 const { useToken } = antTheme
 type Token = ReturnType<typeof useToken>['token']
-
-/** 徽标 i18n key 显式映射（避免与状态值的首字母大写拼接隐式耦合） */
-const STATUS_BADGE_KEYS: Record<Exclude<WebToolsStatus, 'loading'>, string> = {
-    enabled: 'settings.sections.webTools.statusEnabled',
-    unconfigured: 'settings.sections.webTools.statusUnconfigured',
-    offline: 'settings.sections.webTools.statusOffline',
-}
 
 const List = styled.div`
     display: flex;
@@ -88,43 +81,11 @@ const EntrySub = styled.span<{ $token: Token }>`
     color: ${p => p.$token.colorTextTertiary};
 `
 
-/** Web 工具状态徽标：enabled 绿点 + 文案；其余灰文案；loading 回退副标题占位（避免卡片高度跳动） */
-function StatusBadge() {
-    const { token } = useToken()
-    const { t } = useTranslation()
-    const status = useWebToolsStatus()
-    // 加载中先渲染副标题文案占位，状态到达后原位替换为徽标
-    if (status === 'loading') return <>{t('settings.sections.webTools.desc')}</>
-    const key = STATUS_BADGE_KEYS[status]
-    const on = status === 'enabled'
-    return (
-        <span
-            style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 12,
-                color: on ? token.colorSuccessText : token.colorTextTertiary,
-            }}
-        >
-            {on && (
-                <span
-                    style={{
-                        width: 5,
-                        height: 5,
-                        borderRadius: '50%',
-                        background: token.colorSuccess,
-                    }}
-                />
-            )}
-            {t(key)}
-        </span>
-    )
-}
+/** Web 工具状态徽标已提取为 WebToolsStatusBadge（单文件单职责，PC 导航与 mobile 入口共用） */
 
 /**
  * /settings index 分流：PC（≥992px）渲染默认分区（通知），mobile 渲染分组入口列表。
- * 入口 = registry 分区清单；Web 工具入口的副标题位显示实时状态徽标。
+ * 入口 = registry 分区清单；声明了 badge 的分区副标题位显示实时状态徽标。
  */
 export function SettingsIndex() {
     const { token } = useToken()
@@ -153,7 +114,7 @@ export function SettingsIndex() {
                         <EntryText>
                             <EntryTitle $token={token}>{t(s.titleKey)}</EntryTitle>
                             <EntrySub $token={token}>
-                                {s.id === 'web-tools' ? <StatusBadge /> : t(s.descKey)}
+                                {s.badge === 'web-tools-status' ? <WebToolsStatusBadge /> : t(s.descKey)}
                             </EntrySub>
                         </EntryText>
                         <ChevronRight size={16} color={token.colorTextQuaternary} />

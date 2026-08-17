@@ -34,10 +34,11 @@ export type ProviderEntry = NonNullable<RedactedWebToolsConfig['providers']>[num
 export interface CredentialEditorProps {
     provider: ProviderEntry
     /**
-     * 在场性提交：只提交编辑中的凭据键（string=新值；null=清除为契约保留，当前 UI 未提供清除入口）。
+     * 在场性提交：只提交编辑中的凭据键（非空新值）；未修改的键不进 payload = 保持旧值。
      * 失败 toast 归属上层（WebToolsSection.saveBase）——本组件收到 false 时保持编辑态静默返回，禁止重复弹错。
      */
-    onSave: (credentials: Record<string, string | null>) => Promise<boolean>
+    onSave: (credentials: Record<string, string>) => Promise<boolean>
+    /** 空对象 = 用已存凭据验证（runner 侧已存值兜底）；非空 = 验证草稿新值 */
     onVerify: (credentials: Record<string, string>) => Promise<VerifyResult>
 }
 
@@ -139,8 +140,9 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
 
     /**
      * 在场性过滤：只取草稿值 ≠ 初始 preview 且非空的键（保存与验证共用）。
-     * 空串必须排除：写侧 merge 对空凭据键静默保持旧值，提交空串会造成「已保存」却未改的假象；
-     * 空凭据也无以验证（verify RPC 需要完整凭据）。无可提交变更时保存/验证按钮一并禁用。
+     * 空串必须排除：写侧 merge 对空凭据键静默保持旧值，提交空串会造成「已保存」却未改的假象。
+     * 验证不同：空草稿 + 已存凭据 → 传空对象用已存值验证（runner 兜底），
+     * 只有「无草稿变更且无已存凭据」才无可验证。
      */
     const changedCredentials = (): Record<string, string> =>
         Object.fromEntries(
@@ -150,6 +152,9 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
             ]),
         )
     const hasSubmittableChange = Object.keys(changedCredentials()).length > 0
+    // 声明键全部已设 → 无草稿也可发起验证（用已存凭据检查连通性，是验证连接的主要场景）
+    const hasStoredCredentials = keys.every((key) => provider.credentials[key]?.set)
+    const canVerify = hasSubmittableChange || hasStoredCredentials
 
     /** 保存：成功 toast 由本组件弹（saved），失败静默保持编辑态（上层已弹 error） */
     const handleSave = async () => {
@@ -213,8 +218,8 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                             size="small"
                             icon={<ShieldCheck size={14} />}
                             loading={verifying}
-                            // 空草稿无可验证的凭据变更，禁用防空凭据 RPC
-                            disabled={!hasSubmittableChange}
+                            // 空草稿且无已存凭据 → 无可验证对象；有已存凭据时空草稿 = 用已存值验证
+                            disabled={!canVerify}
                             onClick={() => {
                                 void handleVerify()
                             }}
@@ -238,9 +243,22 @@ export function CredentialEditor({ provider, onSave, onVerify }: CredentialEdito
                         </Button>
                     </>
                 ) : (
-                    <Button size="small" type="primary" onClick={startEditing}>
-                        {t('settings.webTools.replace')}
-                    </Button>
+                    <>
+                        {/* 预览态也提供验证（用已存凭据检查连通性——验证已落盘 key 是本按钮的主要场景） */}
+                        <Button
+                            size="small"
+                            icon={<ShieldCheck size={14} />}
+                            loading={verifying}
+                            onClick={() => {
+                                void handleVerify()
+                            }}
+                        >
+                            {t('settings.webTools.verify')}
+                        </Button>
+                        <Button size="small" type="primary" onClick={startEditing}>
+                            {t('settings.webTools.replace')}
+                        </Button>
+                    </>
                 )}
                 {verifyResult !== null && (
                     <VerifyOutcome $token={token} $ok={verifyResult.success}>

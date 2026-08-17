@@ -22,10 +22,10 @@ import {
     WEB_TOOL_PROVIDER_IDS,
     credentialKeysFor,
     type WebToolProviderId,
-    type WebToolsConfigSubmission,
+    type WebToolProviderSubmission,
 } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
-import { useWebToolsConfig } from '@/components/settings/webtools/useWebToolsConfig'
+import { useWebToolsConfig } from '@/core/data/hooks/queries/useWebToolsConfig'
 import { RouteCard } from '@/components/settings/webtools/RouteCard'
 import { ProviderCard } from '@/components/settings/webtools/ProviderCard'
 import type { ProviderEntry, VerifyResult } from '@/components/settings/webtools/CredentialEditor'
@@ -34,10 +34,7 @@ const { useToken } = antTheme
 
 type Token = ReturnType<typeof useToken>['token']
 
-/** 基础配置提交里的 provider 条目（凭据键全不在场 = 保持旧值） */
-type BaseProvider = { id: WebToolProviderId; enabled: boolean; timeoutMs: number; credentials: Record<string, never> }
-
-/** 空占位：加载中保持子页高度，避免布局跳动 */
+/** 空占位：首次加载中保持子页高度，避免布局跳动（invalidate 重读不卸载，不回到此态） */
 const Placeholder = styled.div`
     min-height: 160px;
 `
@@ -81,44 +78,61 @@ export function WebToolsSection() {
     const { t } = useTranslation()
     const api = useMobiApi()
     const { message } = App.useApp()
-    const { machineId, config, offline, loadError, loaded, reload, saving, save } = useWebToolsConfig()
-    // 展开态提升到本层持有：reload 重读脱敏配置后编辑器不收起，A 卡展开时操作 B 卡互不影响
+    const { machineId, config, offline, loadError, loaded, saving, save } = useWebToolsConfig()
+    // 展开态提升到本层持有：保存后 invalidate 重读脱敏配置，子树不卸载编辑器不收起，A 卡展开时操作 B 卡互不影响
     const [expandedId, setExpandedId] = useState<WebToolProviderId | null>(null)
-
-    /** 提交方向 provider 条目（在场性凭据） */
-    type SubmissionProvider = WebToolsConfigSubmission['providers'] extends (infer P)[] | undefined ? P : never
 
     const providerEntry = (id: WebToolProviderId): ProviderEntry | undefined =>
         config?.providers?.find((p) => p.id === id)
 
     const enabledIds = WEB_TOOL_PROVIDER_IDS.filter((id) => providerEntry(id)?.enabled)
 
-    /** 全量 provider 基础配置（凭据键全不在场 = 保持旧值），开关/路由变更走这条通道 */
-    const baseProviders = (): BaseProvider[] =>
-        WEB_TOOL_PROVIDER_IDS.map((id) => ({
-            id,
-            enabled: providerEntry(id)?.enabled ?? false,
-            // 超时非本页可编辑项，回传已加载值避免落盘被 schema 默认值覆盖
-            timeoutMs: providerEntry(id)?.timeoutMs ?? 15_000,
-            credentials: {},
-        }))
+    /**
+     * 全量 provider 提交条目（providers 整体替换语义：提交必须覆盖全部 id，缺谁落盘就丢谁）。
+     * targetId 的 provider 应用 patch：开关走显式 enabled；凭据首次保存时机器尚无条目 → 连带启用（填凭据即启用）。
+     * 不指定 target（路由变更）= 纯回填全部现值。凭据键不在场 = 保持旧值（在场性协议）。
+     */
+    const providersWith = (
+        targetId?: WebToolProviderId,
+        patch: { enabled?: boolean; credentials?: Record<string, string> } = {},
+    ): WebToolProviderSubmission[] =>
+        WEB_TOOL_PROVIDER_IDS.map((pid) => {
+            const entry = providerEntry(pid)
+            if (pid !== targetId) {
+                return { id: pid, enabled: entry?.enabled ?? false, timeoutMs: entry?.timeoutMs ?? 15_000, credentials: {} }
+            }
+            return {
+                id: pid,
+                enabled: patch.enabled ?? entry?.enabled ?? Boolean(patch.credentials),
+                // 超时非本页可编辑项，回传已加载值避免落盘被 schema 默认值覆盖
+                timeoutMs: entry?.timeoutMs ?? 15_000,
+                credentials: patch.credentials ?? {},
+            }
+        })
 
     /**
-     * 即时保存（路由/开关/凭据）：next 覆盖对应字段，路由字段缺省回填现有值（整体替换语义）。
-     * 成功后 reload() 重读脱敏配置；失败提示统一在此收口（编辑器静默依赖本约定）。
+     * 即时保存（路由/开关/凭据）。
+     * 路由字段：undefined = 未提及回填现值；null = 显式清除（allowClear）——providers/路由整体替换语义下
+     * 构造 payload 时必须区分这两者，否则清除意图会被回填吞掉。
+     * 失败提示统一在此收口并透传 runner 原因（编辑器静默依赖本约定）。
      */
-    const saveBase = async (next: { searchProviderId?: WebToolProviderId; fetchProviderId?: WebToolProviderId; providers: SubmissionProvider[] }) => {
-        const ok = await save({
-            ...(config?.searchProviderId ? { searchProviderId: config.searchProviderId } : {}),
-            ...(config?.fetchProviderId ? { fetchProviderId: config.fetchProviderId } : {}),
-            ...next,
+    const saveBase = async (next: {
+        searchProviderId?: WebToolProviderId | null
+        fetchProviderId?: WebToolProviderId | null
+        providers: WebToolProviderSubmission[]
+    }) => {
+        const search = next.searchProviderId !== undefined ? next.searchProviderId : config?.searchProviderId
+        const fetch = next.fetchProviderId !== undefined ? next.fetchProviderId : config?.fetchProviderId
+        const result = await save({
+            ...(search ? { searchProviderId: search } : {}),
+            ...(fetch ? { fetchProviderId: fetch } : {}),
+            providers: next.providers,
         })
-        if (!ok) {
-            message.error(t('settings.webTools.saveFailed'))
+        if (!result.ok) {
+            message.error(result.error || t('settings.webTools.saveFailed'))
             return false
         }
-        reload()
-        return true
+        return true // hook 已 invalidate 共享缓存自动重读
     }
 
     /** 验证连接：传输层异常（502 等）收敛为失败 envelope，S9 编辑器统一按 success:false 呈现 */
@@ -153,70 +167,32 @@ export function WebToolsSection() {
                         config={config}
                         enabledIds={[...enabledIds]}
                         saving={saving}
-                        onChange={(next) => saveBase({ ...next, providers: baseProviders() })}
+                        onChange={(next) => saveBase({ ...next, providers: providersWith() })}
                     />
 
                     <SectionLabel $token={token}>{t('settings.webTools.providersTitle')}</SectionLabel>
                     <CardStack $token={token}>
                         {WEB_TOOL_PROVIDER_IDS.map((id) => {
                             const entry = providerEntry(id)
-                            if (!entry) {
-                                // 机器上尚无该 provider 条目：展示未启用默认卡；首次提交凭据时连带 enabled:true（填凭据即启用）
-                                return (
-                                    <ProviderCard
-                                        key={id}
-                                        provider={{
-                                            id,
-                                            enabled: false,
-                                            timeoutMs: 15_000,
-                                            credentials: Object.fromEntries(
-                                                credentialKeysFor(id).map((key) => [key, { set: false }]),
-                                            ),
-                                        }}
-                                        referencedBy={[]}
-                                        expanded={expandedId === id}
-                                        onExpandedChange={(expanded) => setExpandedId(expanded ? id : null)}
-                                        saving={saving}
-                                        onToggle={(enabled) =>
-                                            saveBase({
-                                                providers: baseProviders().map((p) => (p.id === id ? { ...p, enabled } : p)),
-                                            })
-                                        }
-                                        onSaveCredentials={(credentials) =>
-                                            saveBase({
-                                                providers: [
-                                                    { id, enabled: true, timeoutMs: 15_000, credentials },
-                                                ],
-                                            })
-                                        }
-                                        onVerify={(credentials) => verifyCredentials(id, credentials)}
-                                    />
-                                )
+                            // 机器上尚无条目的 provider 合成默认卡（未启用、凭据未设），与真实条目走同一条保存链路
+                            const provider: ProviderEntry = entry ?? {
+                                id,
+                                enabled: false,
+                                timeoutMs: 15_000,
+                                credentials: Object.fromEntries(
+                                    credentialKeysFor(id).map((key) => [key, { set: false }]),
+                                ),
                             }
                             return (
                                 <ProviderCard
                                     key={id}
-                                    provider={entry}
+                                    provider={provider}
                                     referencedBy={referencedBy(id)}
                                     expanded={expandedId === id}
                                     onExpandedChange={(expanded) => setExpandedId(expanded ? id : null)}
                                     saving={saving}
-                                    onToggle={(enabled) =>
-                                        saveBase({
-                                            providers: baseProviders().map((p) => (p.id === id ? { ...p, enabled } : p)),
-                                        })
-                                    }
-                                    onSaveCredentials={async (credentials) => {
-                                        // 在场性提交：目标 provider 只带被编辑的凭据键，其余 provider 全量在场（credentials 键不在场=保持旧值）；
-                                        // 必须走 saveBase 回填路由字段——providers 整体替换语义下缺路由字段会静默清空路由
-                                        return saveBase({
-                                            providers: baseProviders().map((p) =>
-                                                p.id === id
-                                                    ? { id, enabled: entry.enabled, timeoutMs: entry.timeoutMs, credentials }
-                                                    : p,
-                                            ),
-                                        })
-                                    }}
+                                    onToggle={(enabled) => saveBase({ providers: providersWith(id, { enabled }) })}
+                                    onSaveCredentials={(credentials) => saveBase({ providers: providersWith(id, { credentials }) })}
                                     onVerify={(credentials) => verifyCredentials(id, credentials)}
                                 />
                             )

@@ -60,12 +60,19 @@ function renderEditor(overrides?: { onSave?: ReturnType<typeof vi.fn>; onVerify?
 afterEach(() => cleanup())
 
 describe('CredentialEditor（预览态 → 编辑态 → 在场性提交）', () => {
-    it('默认只读预览态：显示 preview，输入框 readonly，无保存/验证按钮，有「替换」', () => {
+    it('默认只读预览态：显示 preview，输入框 readonly，无保存按钮，有「验证连接」（用已存凭据）与「替换」', () => {
         renderEditor()
         const input = screen.getByDisplayValue('tvly-******56') as HTMLInputElement
         expect(input.readOnly).toBe(true)
         expect(screen.queryByRole('button', { name: 'settings.webTools.save' })).toBeNull()
+        expect(screen.getByRole('button', { name: 'settings.webTools.verify' })).toBeEnabled()
         expect(screen.getByRole('button', { name: 'settings.webTools.replace' })).toBeTruthy()
+    })
+    it('预览态点「验证连接」→ onVerify 收到空对象（runner 用已存凭据检查连通性）', async () => {
+        const { onVerify } = renderEditor()
+        fireEvent.click(screen.getByRole('button', { name: 'settings.webTools.verify' }))
+        await waitFor(() => { expect(onVerify).toHaveBeenCalledWith({}) })
+        await waitFor(() => { expect(screen.getByText(/42/)).toBeTruthy() })
     })
     it('预览态点「替换」→ 清空进入编辑态', () => {
         renderEditor()
@@ -117,17 +124,29 @@ describe('CredentialEditor（预览态 → 编辑态 → 在场性提交）', ()
         expect(input.readOnly).toBe(false)
         expect(screen.queryByRole('button', { name: 'settings.webTools.replace' })).toBeNull()
     })
-    it('空输入禁用保存/验证：进入编辑态未输入两按钮 disabled，输入后 enabled', () => {
+    it('空输入禁用保存、验证仍可用（已存凭据兜底）：输入后两按钮 enabled', () => {
         renderEditor()
         fireEvent.click(screen.getByRole('button', { name: 'settings.webTools.replace' }))
 
-        // 「替换」清空后未输入：无可提交的凭据变更——保存（防空串静默保持旧值却报「已保存」）与验证（防空凭据 RPC）一并禁用
+        // 「替换」清空后未输入：保存禁用（防空串静默保持旧值却报「已保存」）；
+        // 验证可用——空草稿 = 用已存凭据验证（检查已落盘 key 是验证连接的主要场景）
         expect(screen.getByRole('button', { name: 'settings.webTools.save' })).toBeDisabled()
-        expect(screen.getByRole('button', { name: 'settings.webTools.verify' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'settings.webTools.verify' })).toBeEnabled()
 
         fireEvent.change(screen.getByLabelText('settings.webTools.apiKey'), { target: { value: 'tvly-k' } })
         expect(screen.getByRole('button', { name: 'settings.webTools.save' })).toBeEnabled()
         expect(screen.getByRole('button', { name: 'settings.webTools.verify' })).toBeEnabled()
+    })
+    it('未设凭据 + 空草稿：保存/验证均禁用（无可验证对象、无可保存变更）', () => {
+        render(<ConfigProvider><AntdApp>
+            <CredentialEditor
+                provider={{ ...provider, credentials: { apiKey: { set: false } } }}
+                onSave={vi.fn(async () => true)}
+                onVerify={vi.fn(async () => ({ success: true, latencyMs: 1 }))}
+            />
+        </AntdApp></ConfigProvider>)
+        expect(screen.getByRole('button', { name: 'settings.webTools.save' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'settings.webTools.verify' })).toBeDisabled()
     })
     it('保存成功退出编辑态后 reload 重读 preview：输入框跟随新 preview（不残留明文草稿）', async () => {
         const onSave = vi.fn(async () => true)

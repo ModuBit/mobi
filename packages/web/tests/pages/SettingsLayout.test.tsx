@@ -30,6 +30,10 @@ vi.mock('@/components/layout/MobileMenu', () => ({ MobileMenuButton: () => <butt
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }))
 // 锁定调试分区未解锁态，避免受其它用例 localStorage 污染
 vi.mock('@/core/lib/debug', () => ({ isDebugUnlocked: () => false }))
+// PC 分区导航的 Web 工具徽标依赖 react-query，测试树无 QueryClientProvider——mock 到状态摘要层
+vi.mock('@/core/data/hooks/queries/useWebToolsStatus', () => ({
+    useWebToolsStatus: () => 'unconfigured',
+}))
 
 import { SettingsLayout } from '@/pages/SettingsPage'
 import {

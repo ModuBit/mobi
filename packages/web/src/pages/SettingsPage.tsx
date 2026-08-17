@@ -23,13 +23,11 @@ import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useMediaQuery } from '@/core/data/hooks/useMediaQuery'
-import { SETTINGS_SECTIONS, activeSectionId } from '@/components/settings/sections/registry'
+import { SETTINGS_SECTIONS, SETTINGS_WIDE_QUERY, activeSection } from '@/components/settings/sections/registry'
+import { WebToolsStatusBadge } from '@/components/settings/sections/WebToolsStatusBadge'
 
 const { Title } = Typography
 const { useToken } = antTheme
-
-/** 设置分区导航断点：≥992px 显示左侧分区导航（主侧栏240+分区导航200+内容720 的宽度预算） */
-export const SETTINGS_WIDE_QUERY = '(min-width: 992px)'
 
 const SettingsContainer = styled.div`
     display: flex;
@@ -108,14 +106,12 @@ export function SettingsLayout() {
     const isWide = useMediaQuery(SETTINGS_WIDE_QUERY)
     const location = useLocation()
     const navigate = useNavigate()
-    const active = activeSectionId(location.pathname)
+    const active = activeSection(location.pathname)
     const sections = SETTINGS_SECTIONS.filter((s) => s.visible())
 
     if (!isWide) {
-        // activeSectionId 已校验段在 SETTINGS_SECTIONS 内，未知段返回 null（回到入口态标题）
-        const titleKey = active
-            ? SETTINGS_SECTIONS.find((s) => s.id === active)?.titleKey ?? 'settings.title'
-            : 'settings.title'
+        // activeSection 已校验段在 SETTINGS_SECTIONS 内，未知段返回 null（回到入口态标题）
+        const titleKey = active?.titleKey ?? 'settings.title'
         return (
             <SettingsContainer>
                 <PageHeader
@@ -157,11 +153,12 @@ export function SettingsLayout() {
                                 <SubNavItem
                                     key={s.id}
                                     $token={token}
-                                    $active={active === s.id}
+                                    $active={active?.id === s.id}
                                     onClick={() => { void navigate({ to: `/settings/${s.id}` }) }}
                                 >
                                     <Icon size={16} opacity={0.75} />
                                     {t(s.titleKey)}
+                                    {s.badge === 'web-tools-status' && <WebToolsStatusBadge variant="compact" />}
                                 </SubNavItem>
                             )
                         })}
