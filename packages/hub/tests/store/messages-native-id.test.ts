@@ -50,6 +50,13 @@ describe('addMessage nativeId', () => {
         const again = addMessage(db, 's1', WEBAPP_USER, 'local-3')
         expect(again.nativeId).toBe('uu-3')
     })
+
+    test('相同 localId 重复插入且带不同 nativeId：首写值仍保留（COALESCE 竞争值丢弃）', () => {
+        addMessage(db, 's1', WEBAPP_USER, 'local-x', 'persistent', 'uu-first')
+        const again = addMessage(db, 's1', WEBAPP_USER, 'local-x', 'persistent', 'uu-second')
+        expect(again.nativeId).toBe('uu-first')
+        expect(getMessages(db, 's1')[0].nativeId).toBe('uu-first')
+    })
 })
 
 describe('bindNativeIds', () => {
