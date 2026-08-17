@@ -1,9 +1,9 @@
 ---
 name: pitfalls-general
-description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证）
+description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style）
 metadata:
   type: pitfall
-  last_verified: 2026-08-15
+  last_verified: 2026-08-17
 ---
 
 # 通用误判
@@ -91,6 +91,21 @@ return { defaultPrevented: ev.defaultPrevented };
 **能验证**：`preventDefault` 是否被调用、附件卡片是否生成、textarea 是否被阻止插入（`textarea.value === ''`）。
 
 **不能验证**：合成事件是 `isTrusted=false`，浏览器**默认文本插入只对 trusted 真实粘贴生效**——即使 handler 不 `preventDefault`，合成事件也不会把文本插进 textarea。故「小文本正常插入」的正向路径无法用合成事件验证，只能断言「不 preventDefault + 附件数不变」间接证明「未干预」，插入本身交给浏览器默认行为。
+
+## React/antd 控制的 inline style 不能用 evaluate_script 改（模拟布局不可行）
+
+想模拟「内容溢出 drawer 最大高度」等布局场景时，用 `evaluate_script` 改 antd 组件的 inline style
+（如压 `content-wrapper` 的 maxHeight、压 body 高度逼滚动区溢出）**不可行**（2026-08-17 验证 drawer 滚动时踩过）：
+
+- antd Drawer 的 `styles.wrapper` / `styles.body` 是 React 受控 inline style，任何 re-render（SSE 流、query 刷新）
+  都会把改动覆盖回去，rAF 后读到的全是原始值，白测一轮
+- 连环坑：body 是 flex 列且高度 auto，单压子元素 height 不生效（被 flex 拉伸抵消），多层尝试都在原地打转
+
+**正确做法**：
+- 造**真实溢出**：用 env-bootstrap 的 seed 脚本插足量数据让内容真的超过 maxHeight（注意 `usePagedSectionList`
+  分页会限长列表，需点「展开显示」或插到多分组）
+- 或退到**结构断言**：只读验证 DOM 结构（滚动容器与把手是否兄弟节点、body overflow 是否 hidden）+ 单测锁定，
+  这对「把手固定不随内容滚」这类结构性命题已充分
 
 ## 工具禁用
 
