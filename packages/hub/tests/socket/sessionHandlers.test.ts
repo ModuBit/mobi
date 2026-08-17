@@ -34,7 +34,7 @@ function makeStoredSession(sid: string): StoredSession {
 function makeMsg(id: string, localId: string | null, seq: number): StoredMessage {
     return {
         id, sessionId: 's1', content: {}, createdAt: seq, seq,
-        localId, isSidechain: false, parentToolUseId: null,
+        localId, nativeId: null, isSidechain: false, parentToolUseId: null,
         category: 'persistent', submittedAt: null,
         queueState: 'pending', positionAt: seq,
     }

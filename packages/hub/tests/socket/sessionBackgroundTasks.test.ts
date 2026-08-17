@@ -91,7 +91,7 @@ function makeEnv() {
             messages: {
                 addMessage: (): StoredMessage => ({
                     id: 'm1', sessionId: SID, content: {}, createdAt: 1, seq: 1,
-                    localId: null, isSidechain: false, parentToolUseId: null,
+                    localId: null, nativeId: null, isSidechain: false, parentToolUseId: null,
                     category: 'persistent', submittedAt: null, queueState: 'pending', positionAt: 1,
                 }),
             },

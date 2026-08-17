@@ -22,9 +22,10 @@ import { join } from 'node:path'
 import { Store } from '../../src/store'
 
 /**
- * V1（code-review）：存量旧 schema 库（user_version=1、sessions 带 group_key、无 projects 表）
+ * V1（code-review）：存量旧 schema 库（user_version 与当前 SCHEMA_VERSION 相同、sessions 带 group_key、无 projects 表）
  * 必须在 initSchema 阶段被明确拒绝并引导到迁移脚本，
  * 而不是放行后在 ProjectCache.warmup 的 SELECT * FROM projects 处崩溃。
+ * 注：BASELINE=0 未发布期版本号无法区分新旧 schema，列存在性是唯一判别器，故 fixture 钉当前版本号。
  */
 
 let tmpDir: string
@@ -39,7 +40,7 @@ afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true })
 })
 
-/** 造一个「项目实体化之前」的旧库：五张旧表、sessions 带 group_key、user_version=1 */
+/** 造一个「项目实体化之前」的旧库：五张旧表、sessions 带 group_key、user_version 钉当前 SCHEMA_VERSION */
 function createLegacyDb(): void {
     const db = new Database(dbPath, { create: true, readwrite: true })
     db.run(`
@@ -98,7 +99,7 @@ function createLegacyDb(): void {
             endpoint TEXT NOT NULL UNIQUE
         );
     `)
-    db.run('PRAGMA user_version = 1')
+    db.run('PRAGMA user_version = 2')
     db.close()
 }
 

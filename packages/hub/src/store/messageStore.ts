@@ -21,6 +21,7 @@ import type { MessageCategory } from '@mobi/shared'
 import type { StoredMessage } from './types'
 import {
     addMessage,
+    bindNativeIds,
     cancelQueuedMessage,
     getMessageSubmitState,
     getMessages,
@@ -38,8 +39,13 @@ export class MessageStore {
         this.db = db
     }
 
-    addMessage(sessionId: string, content: unknown, localId?: string | null, category: MessageCategory = 'persistent'): StoredMessage {
-        return addMessage(this.db, sessionId, content, localId, category)
+    addMessage(sessionId: string, content: unknown, localId?: string | null, category: MessageCategory = 'persistent', nativeId?: string | null): StoredMessage {
+        return addMessage(this.db, sessionId, content, localId, category, nativeId)
+    }
+
+    /** 绑定用户消息的 native_id（push 时上报）；只写 NULL 行，幂等。返回实际绑定的 localId。 */
+    bindNativeIds(sessionId: string, bindings: { localId: string; nativeId: string }[]): string[] {
+        return bindNativeIds(this.db, sessionId, bindings)
     }
 
     getMessages(sessionId: string, limit: number = 200, beforeSeq?: number, excludeSidechain: boolean = false): StoredMessage[] {

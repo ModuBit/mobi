@@ -29,6 +29,7 @@ type DbMessageRow = {
     created_at: number
     seq: number
     local_id: string | null
+    native_id: string | null
     is_sidechain: number
     parent_tool_use_id: string | null
     category: string
@@ -63,6 +64,7 @@ function toStoredMessage(row: DbMessageRow): StoredMessage {
         createdAt: row.created_at,
         seq: row.seq,
         localId: row.local_id,
+        nativeId: row.native_id,
         isSidechain: row.is_sidechain === 1,
         parentToolUseId: row.parent_tool_use_id,
         category: row.category,
@@ -78,6 +80,7 @@ export function addMessage(
     content: unknown,
     localId: string | null | undefined,
     category: MessageCategory = 'persistent',
+    nativeId: string | null | undefined = null,
 ): StoredMessage {
     const now = Date.now()
 
@@ -98,6 +101,7 @@ export function addMessage(
                 `UPDATE messages
                  SET content = @content, parent_tool_use_id = @parent_tool_use_id,
                      category = @category, queue_state = @queue_state,
+                     native_id = COALESCE(native_id, @native_id),
                      submitted_at = CASE WHEN @queue_state = 'consumed' THEN submitted_at ELSE NULL END
                  WHERE id = @id`
             ).run({
@@ -105,6 +109,7 @@ export function addMessage(
                 parent_tool_use_id: parentToolUseId,
                 category: category,
                 queue_state: queueState,
+                native_id: nativeId ?? null,
                 id: existing.id,
             })
             const updated = db.prepare('SELECT * FROM messages WHERE id = ?').get(existing.id) as DbMessageRow
@@ -127,10 +132,10 @@ export function addMessage(
 
     db.prepare(`
         INSERT INTO messages (
-            id, session_id, content, created_at, seq, local_id, is_sidechain,
+            id, session_id, content, created_at, seq, local_id, native_id, is_sidechain,
             parent_tool_use_id, category, submitted_at, queue_state, position_at
         ) VALUES (
-            @id, @session_id, @content, @created_at, @seq, @local_id, @is_sidechain,
+            @id, @session_id, @content, @created_at, @seq, @local_id, @native_id, @is_sidechain,
             @parent_tool_use_id, @category, @submitted_at, @queue_state, @position_at
         )
     `).run({
@@ -140,6 +145,7 @@ export function addMessage(
         created_at: now,
         seq: msgSeq,
         local_id: localId ?? null,
+        native_id: nativeId ?? null,
         is_sidechain: isSidechain,
         parent_tool_use_id: parentToolUseId,
         category: category,
@@ -205,6 +211,25 @@ function queryByPosition(
         limit: safeLimit,
     }) as DbMessageRow[]
     return rows.reverse().map(toStoredMessage)
+}
+
+/** 绑定用户消息的 native_id（push 时上报）。只写 NULL 行——幂等，重复上报/重发不覆盖。返回实际绑定的 localId。 */
+export function bindNativeIds(
+    db: Database,
+    sessionId: string,
+    bindings: { localId: string; nativeId: string }[],
+): string[] {
+    if (bindings.length === 0) return []
+    const stmt = db.prepare(
+        `UPDATE messages SET native_id = ?
+         WHERE session_id = ? AND local_id = ? AND native_id IS NULL`
+    )
+    const bound: string[] = []
+    for (const b of bindings) {
+        const result = stmt.run(b.nativeId, sessionId, b.localId)
+        if (result.changes > 0) bound.push(b.localId)
+    }
+    return bound
 }
 
 /** 把 localId 对应的 pending 消息翻为 consumed：写 submitted_at + 跳 position_at。返回实际更新的 localId。 */

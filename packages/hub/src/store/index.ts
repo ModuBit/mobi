@@ -41,7 +41,7 @@ export { PushStore } from './pushStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 1
+const SCHEMA_VERSION: number = 2
 // 发布基线：0 表示未发布，schema 可直接修改无需迁移；
 // 首次发布后设为当前 SCHEMA_VERSION，后续变更必须编写迁移脚本
 const SCHEMA_RELEASE_BASELINE: number = 0
@@ -202,6 +202,7 @@ export class Store {
                 created_at INTEGER NOT NULL,
                 seq INTEGER NOT NULL,
                 local_id TEXT,
+                native_id TEXT,
                 is_sidechain INTEGER NOT NULL DEFAULT 0,
                 parent_tool_use_id TEXT,
                 category TEXT NOT NULL DEFAULT 'persistent',

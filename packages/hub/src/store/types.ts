@@ -57,6 +57,8 @@ export type StoredMessage = {
     createdAt: number
     seq: number
     localId: string | null
+    /** 上游 agent transcript 消息 id；null = 未绑定（不可 rewind 锚点） */
+    nativeId: string | null
     isSidechain: boolean
     parentToolUseId: string | null
     category: string  // 'discard' | 'ephemeral' | 'persistent'
