@@ -465,14 +465,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 messageBuffer.addMessage('═'.repeat(40), 'status');
 
                 // rewind：rewind RPC 受理后经哨兵退出了上一轮 query，pendingRewind 已置位。
-                // 两段回报提前到此（Hub 软删除只反查锚点 seq，不依赖 SDK 截断）；SDK 的
-                // 截断由下面 claudeRemote 的 startup 预热在 boot 时惰性生效（resumeSessionAt
-                // 加载到锚点即截断，不再走空跑轮）。rewind 局部变量保留 resumeAt 供传参。
+                // SDK 的截断由下面 claudeRemote 的 startup 预热承载（resumeSessionAt 加载到
+                // 锚点即截断，不再走空跑轮）。两段回报经 onRewindTruncated 回调移到 startup
+                // 截断后——对齐设计文档「先 CLI 截断成功，再 Hub 软删除（CLI 失败则 Hub 不动）」，
+                // 截断失败由下方 catch 补发 completed { error }。rewind 局部变量保留 resumeAt 供传参。
                 const rewind = session.pendingRewind;
                 if (rewind) {
                     messageBuffer.addMessage(`Rewinding session to anchor ${rewind.resumeAt.slice(0, 8)}...`, 'status');
-                    await reportRewindCompletion(session.client, rewind);
-                    session.pendingRewind = null;
                 }
 
                 const isNewSession = session.sessionId !== previousSessionId;
@@ -497,6 +496,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         // rewind 截断轮携带保留锚（其前最近一条 assistant entry uuid）：
                         // 语义是「加载到该条（含）为止」，锚点用户消息及其后全部丢弃
                         resumeSessionAt: rewind?.resumeAt,
+                        // startup 截断完成后回报（先截断后软删除），并清 pendingRewind。
+                        // 先清再回报：截断已完成即标记收尾，后续 query 失败不算截断失败
+                        onRewindTruncated: rewind ? async () => {
+                            session.pendingRewind = null;
+                            await reportRewindCompletion(session.client, rewind);
+                        } : undefined,
                         path: session.path,
                         allowedTools: session.allowedTools ?? [],
                         mcpServers: session.mcpServers,
@@ -537,8 +542,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
                                 // rewind 退出哨兵：识别后不暂存 pending、不推送 SDK，直接令本轮
                                 // query 结束（plan 中 requestLoopExit 的实际接线，复用 isolate 机制）——
-                                // launcher 下轮循环读到 session.pendingRewind 后以 resumeSessionAt 截断重启
-                                if (msg.isolate && msg.message === REWIND_EXIT_SENTINEL) {
+                                // launcher 下轮循环读到 session.pendingRewind 后以 resumeSessionAt 截断重启。
+                                // 仅非截断轮识别：截断轮（rewind 已置位）时哨兵可能是上一轮残留
+                                //（RPC 在 query 轮间隙触发），忽略它继续等用户消息，避免误触发本轮早退
+                                if (msg.isolate && msg.message === REWIND_EXIT_SENTINEL && !rewind) {
                                     logger.debug('[remote]: rewind exit sentinel received, ending current query round');
                                     return null;
                                 }
@@ -652,6 +659,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                     }
                 } catch (e) {
+                    // 截断失败（claudeRemote 抛错）：补发 completed { error } 而不发 truncated——
+                    // 对齐设计文档「CLI 失败则 Hub 不动」：Hub 不软删除，Web 收到 error 终态解锁
+                    // 并 toast 原因。文件回滚结果 filesRestored 在 RPC 阶段已确定（先于截断），如实携带。
+                    if (rewind && session.pendingRewind === rewind) {
+                        session.client.emitRewindCompleted(
+                            rewind.filesRestored,
+                            `rewind truncation failed: ${e instanceof Error ? e.message : String(e)}`,
+                        );
+                        session.pendingRewind = null;
+                    }
                     // 增强错误日志：序列化非标准错误对象
                     // 用 error 级而非 debug：SDK 崩溃错误（含 stderr tail，见 getProcessExitError）
                     // 需始终落盘以便事后从日志排查。debug 在生产模式只进 ringBuffer、不落盘，

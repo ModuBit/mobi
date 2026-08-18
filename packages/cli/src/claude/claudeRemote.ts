@@ -559,11 +559,12 @@ export async function claudeRemote(opts: {
     path: string,
     /**
      * rewind 截断轮保留锚（锚点用户消息前最近一条 assistant entry uuid）：
-     * 携带时本轮为「截断空跑轮」——不等用户消息，空 prompt 一次性启动，
-     * resume+resumeSessionAt 的 fork 截断在进程 boot 时发生，result 到达即截断落盘，
-     * launcher 随后做两段回报（rewound-truncated / rewind-completed）
+     * 携带时本轮为截断轮——startup 预热 boot 时按 resume 加载历史到锚点即截断，
+     * 截断确认后经 onRewindTruncated 回报（先截断后软删除），再等用户消息
      */
     resumeSessionAt?: string,
+    /** rewind 截断完成后（startup 预热 boot 加载历史到锚点）立即回调，做两段回报 */
+    onRewindTruncated?: () => Promise<void>,
     mcpServers?: Record<string, McpServerConfig>,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
@@ -791,23 +792,37 @@ export async function claudeRemote(opts: {
     }
 
     // rewind 截断由 startup 预热承载：sdkOptions 已带 resumeSessionAt（resume 时只加载到
-    // 锚点 uuid 为止），startup 在 boot 时加载历史即完成截断，随后 nextMessage 正常等用户
-    // 消息——不再走「空 prompt 一次性启动」的空跑轮（空 prompt 会被模型当成空消息，触发
-    // 一轮「看起来消息是空的」的无意义回复）。
-    const [warmSettled, msgSettled] = await Promise.allSettled([
-        startup({ options: sdkOptions }),
-        opts.nextMessage(),
-    ])
+    // 锚点 uuid 为止），startup 在 boot 时加载历史即完成截断。
+    let initial: { message: string; mode: EnhancedMode; localIds: string[] };
+    if (opts.resumeSessionAt) {
+        // 截断轮：串行 startup 截断 → 回报 → 等用户消息。回报必须落在 nextMessage 之前——
+        // 用户消息依赖 Web 回填（rewind-completed），回填依赖回报，若等 nextMessage 再回报会死锁。
+        // startup 失败（进程 spawn 失败）向上抛，由 launcher catch 补发 completed { error }
+        warmRef = await startup({ options: sdkOptions })
+        await opts.onRewindTruncated?.()
+        const msg = await opts.nextMessage()
+        if (!msg) {
+            warmRef?.close()
+            return
+        }
+        initial = msg
+    } else {
+        // 常规轮：并行 startup 预热 + 等首条消息（不再走空 prompt 空跑轮）
+        const [warmSettled, msgSettled] = await Promise.allSettled([
+            startup({ options: sdkOptions }),
+            opts.nextMessage(),
+        ])
 
-    if (warmSettled.status === 'fulfilled') {
-        warmRef = warmSettled.value
-    }
+        if (warmSettled.status === 'fulfilled') {
+            warmRef = warmSettled.value
+        }
 
-    if (msgSettled.status !== 'fulfilled' || !msgSettled.value) {
-        warmRef?.close()
-        return
+        if (msgSettled.status !== 'fulfilled' || !msgSettled.value) {
+            warmRef?.close()
+            return
+        }
+        initial = msgSettled.value
     }
-    const initial = msgSettled.value
 
     // 创建 messages 并接通 !bash 注入 sink：提前到首条消息处理之前，使「首条即 !cmd」时
     // executeBashCommand 推入的注入也能进入下面的 query——与中途 !cmd 行为一致，不再退化。

@@ -576,10 +576,24 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         // 缓存自失效：content 由 block + 渲染上下文共同决定，上下文变了必须整体重建，
         // 否则会复用捕获了旧 ctx（旧 disabled / 旧 api / 旧 footer 判据）的 content。这里把上下文签名
         // 与缓存存在一起比对——签名不同则丢弃缓存，从空 Map 重建。
+        // 消息 metadata 签名（rewind 判据输入）：nativeId/nativeSessionId/nativeAckAt 的补写
+        //（attach/ack）会翻 canRewind，但 block 引用不变 → reconcileBubbleItems 复用旧 footer。
+        // 三计数单调增（first-write-wins 只补空缺），任一变化即丢弃 cache 重建 footer
+        let nativeIdCount = 0
+        let nativeSidCount = 0
+        let nativeAckCount = 0
+        for (const m of messages) {
+            const md = m.metadata
+            if (md?.nativeId) nativeIdCount++
+            if (md?.nativeSessionId) nativeSidCount++
+            if (md?.nativeAckAt != null) nativeAckCount++
+        }
         const ctxKey = `${metadata?.path ?? ''}|${sessionId}|${sendMutation.isPending}|${!!session?.running}`
             + `|${sessionNativeSessionId ?? ''}|${backgroundTasksCount}`
             // rewind 状态入签名：dry-run 完成 / executing 翻转时 footer 的 Popover 内容须重建
             + `|${rewindDraft?.messageId ?? ''}|${rewindDraft?.source ?? ''}|${rewindDryRun?.canRewind ?? ''}-${rewindDryRun?.canRestoreFiles ?? ''}|${rewindExecuting}`
+            // metadata 签名：ack/attach 补写后 rewind 图标即时刷新（而非「刷新才见」）
+            + `|${nativeIdCount}-${nativeSidCount}-${nativeAckCount}`
         const reusableCache = prevItemsRef.current.ctxKey === ctxKey
             ? prevItemsRef.current.cache
             : new Map()

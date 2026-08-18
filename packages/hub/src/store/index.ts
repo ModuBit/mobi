@@ -291,8 +291,10 @@ export class Store {
         // 「项目实体化之后、native_id 之前」的存量库 user_version 同为 1（BASELINE=0 未发布期），版本号无法区分，
         // 列存在性是唯一判别器：缺列放行会在首个引用 native_id 的 SQL 处报无引导错误。
         // 不做代码内迁移（用户决策：部署时人工补列），此处只负责引导
-        const messageColumns = this.db.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
-        if (!messageColumns.some(column => column.name === 'native_id')) {
+        // table_xinfo 额外暴露 hidden 列（STORED 生成列 hidden=3），用于区分普通列 vs 生成列
+        const messageColumns = this.db.prepare('PRAGMA table_xinfo(messages)').all() as Array<{ name: string; hidden?: number }>
+        const nativeIdCol = messageColumns.find(column => column.name === 'native_id')
+        if (!nativeIdCol) {
             throw new Error(
                 `Detected legacy messages schema (messages has no native_id column) at ${this.dbPath}. ` +
                 'Stop hub/runner, then run ' +
@@ -301,12 +303,25 @@ export class Store {
         }
 
         // 「native_id 之后、metadata 之前」的存量库同理（BASELINE=0 未发布期版本号无法区分）：
-        // 缺列放行会在首个引用 metadata 的 SQL 处报无引导错误。不做代码内迁移（部署时人工补列），此处只负责引导
+        // 缺列放行会在首个引用 metadata 的 SQL 处报无引导错误。不做代码内迁移（部署时人工补列），此处只负责引导。
+        // 先于 native_id 生成列检测——生成列定义依赖 metadata，缺 metadata 时无从判定生成列
         if (!messageColumns.some(column => column.name === 'metadata')) {
             throw new Error(
                 `Detected legacy messages schema (messages has no metadata column) at ${this.dbPath}. ` +
                 'Stop hub/runner, then run ' +
                 `'sqlite3 ${this.dbPath} "ALTER TABLE messages ADD COLUMN metadata TEXT; ALTER TABLE messages ADD COLUMN deleted_at INTEGER;"' and restart.`
+            )
+        }
+
+        // native_id 必须是 STORED 生成列（值恒等于 metadata.nativeId）。Phase 1 遗留的普通 TEXT 列
+        //（ADD COLUMN 建列）hidden=0：代码只写 metadata 不写 native_id，普通列恒 NULL，
+        // markMessagesAcked 的 WHERE native_id=@nativeId 永不命中 → nativeAckAt 静默失效（rewind 判据落空）
+        if (nativeIdCol.hidden !== 3) {
+            throw new Error(
+                `Detected messages.native_id is not a STORED generated column (hidden=${nativeIdCol.hidden ?? 0}) at ${this.dbPath}. ` +
+                'Stop hub/runner, then rebuild the column as ' +
+                `'native_id TEXT GENERATED ALWAYS AS (json_extract(metadata, '$.nativeId')) STORED' ` +
+                '(drop the plain column and recreate, since SQLite cannot ALTER a plain column into a generated one), then restart.'
             )
         }
     }
