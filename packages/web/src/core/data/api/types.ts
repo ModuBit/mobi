@@ -49,6 +49,8 @@ export type MessageStatus = 'sending' | 'sent' | 'queued' | 'failed'
 export type NativeMessageMetadata = {
     nativeId?: string
     nativeSessionId?: string
+    /** CC 接收确认时刻（isReplay 回显落点）；缺省 = 未确认（不可 rewind） */
+    nativeAckAt?: number
 }
 
 // 扩展的解密消息（包含发送状态）

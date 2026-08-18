@@ -208,6 +208,42 @@ describe('resolveMessageCache', () => {
         expect(result[0].metadata).toEqual({ nativeId: 'uu-1', nativeSessionId: 'ns-1' })
     })
 
+    it('skipIfNotSnapshot 命中时，合并 messages-acked 补写的 nativeAckAt', () => {
+        // messages-bound 先补 nativeId/nativeSessionId，messages-acked 再补 nativeAckAt：
+        // 若漏 nativeAckAt，rewind 判据（nativeAckAt != null）永远 false，hover 不显 rewind icon
+        const msg = makeMsg({
+            id: 'msg-1',
+            content: makeContent('p1', []),
+            metadata: { nativeId: 'uu-1', nativeSessionId: 'ns-1' },
+        })
+        const cache = resolveMessageCache(undefined, msg)
+
+        const acked = makeMsg({
+            id: 'msg-1',
+            content: makeContent('p1', []),
+            metadata: { nativeId: 'uu-1', nativeSessionId: 'ns-1', nativeAckAt: 1787037249305 },
+        })
+        const result = resolveMessageCache(cache, acked, { skipIfNotSnapshot: true })
+        expect(result[0].metadata).toEqual({ nativeId: 'uu-1', nativeSessionId: 'ns-1', nativeAckAt: 1787037249305 })
+    })
+
+    it('skipIfNotSnapshot 命中且 nativeAckAt 已存在 → 不覆盖（引用相等）', () => {
+        const msg = makeMsg({
+            id: 'msg-1',
+            content: makeContent('p1', []),
+            metadata: { nativeId: 'uu-1', nativeSessionId: 'ns-1', nativeAckAt: 111 },
+        })
+        const cache = resolveMessageCache(undefined, msg)
+
+        const dup = makeMsg({
+            id: 'msg-1',
+            content: makeContent('p1', []),
+            metadata: { nativeId: 'uu-1', nativeSessionId: 'ns-1', nativeAckAt: 999 },
+        })
+        const result = resolveMessageCache(cache, dup, { skipIfNotSnapshot: true })
+        expect(result).toBe(cache) // nativeAckAt 已有值，引用相等，未修改
+    })
+
     it('skipIfNotSnapshot 命中且旧消息 seq 为 null（乐观消息）→ 补真实 seq', () => {
         // Web 发消息乐观追加 seq=null，落库 message-received 带真实 seq：
         // 若不补 seq，rewindFrom 的 `seq == null` 会永远保留它，导致回退后消息清不掉

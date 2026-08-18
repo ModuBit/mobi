@@ -32,7 +32,8 @@ export function extractParentUuid(content: unknown): string | null {
  * 合并 native metadata（rewind 锚点），first-write-wins：只补旧值空缺的字段，
  * 不覆盖已有值（与 hub 侧 store 的 mergeMetadata 语义对齐）。
  * 用于重复消息（skipIfNotSnapshot）命中时，把 messages-bound 补写的 nativeId/nativeSessionId
- * 增量合并进已渲染行——否则补写只落库、Web 端不更新，hover 不显 rewind icon、刷新才见。
+ * 与 messages-acked 补写的 nativeAckAt 增量合并进已渲染行——否则补写只落库、Web 端不更新，
+ * hover 不显 rewind icon、刷新才见。
  * 无空缺（两者一致或旧值已完整）→ 返回原引用，调用方据此判断无变化。
  */
 function mergeNativeMetadata(
@@ -49,6 +50,10 @@ function mergeNativeMetadata(
     }
     if (existing.nativeSessionId === undefined && incoming.nativeSessionId !== undefined) {
         merged.nativeSessionId = incoming.nativeSessionId
+        changed = true
+    }
+    if (existing.nativeAckAt === undefined && incoming.nativeAckAt !== undefined) {
+        merged.nativeAckAt = incoming.nativeAckAt
         changed = true
     }
     return changed ? merged : existing
