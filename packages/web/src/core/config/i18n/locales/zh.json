@@ -180,7 +180,11 @@
             "filesUnavailable": "文件快照已超出保留窗口，将仅回退对话",
             "filesFailed": "文件恢复失败：{{reason}}",
             "timedOut": "回退超时，已解锁输入",
-            "rewoundToHere": "已回退至此"
+            "rewoundToHere": "已回退至此",
+            "notice": "此消息之后的所有对话将被移除",
+            "targetLabel": "回退至此",
+            "restoreDesc": "将工作目录文件回滚到此刻的快照",
+            "rewindOnlyDesc": "代码保持现状，仅重写后续对话"
         },
         "expand": "展开",
         "collapse": "收起",

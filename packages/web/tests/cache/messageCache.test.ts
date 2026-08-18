@@ -175,6 +175,60 @@ describe('resolveMessageCache', () => {
         expect(result).toBe(cache) // 引用相等，未修改
     })
 
+    it('skipIfNotSnapshot 命中重复消息时，合并 native metadata 补写（rewind 锚点）', () => {
+        // Web 发消息落库时 metadata=null，messages-bound 广播补写 nativeId/nativeSessionId
+        const msg = makeMsg({ id: 'msg-1', content: makeContent('p1', []) })
+        const cache = resolveMessageCache(undefined, msg)
+
+        const bound = makeMsg({
+            id: 'msg-1',
+            content: makeContent('p1', []),
+            metadata: { nativeId: 'uu-1', nativeSessionId: 'ns-1' },
+        })
+        const result = resolveMessageCache(cache, bound, { skipIfNotSnapshot: true })
+        expect(result).toHaveLength(1)
+        expect(result[0].metadata).toEqual({ nativeId: 'uu-1', nativeSessionId: 'ns-1' })
+    })
+
+    it('skipIfNotSnapshot 命中且旧消息 metadata 已完整 → 不覆盖（引用相等）', () => {
+        const msg = makeMsg({ id: 'msg-1', content: makeContent('p1', []), metadata: { nativeId: 'uu-old', nativeSessionId: 'ns-old' } })
+        const cache = resolveMessageCache(undefined, msg)
+
+        const bound = makeMsg({ id: 'msg-1', content: makeContent('p1', []), metadata: { nativeId: 'uu-new', nativeSessionId: 'ns-new' } })
+        const result = resolveMessageCache(cache, bound, { skipIfNotSnapshot: true })
+        expect(result).toBe(cache) // 无空缺，引用相等，未修改
+    })
+
+    it('skipIfNotSnapshot 命中且旧消息 metadata 部分空缺 → 只补空缺字段', () => {
+        const msg = makeMsg({ id: 'msg-1', content: makeContent('p1', []), metadata: { nativeId: 'uu-1' } })
+        const cache = resolveMessageCache(undefined, msg)
+
+        const bound = makeMsg({ id: 'msg-1', content: makeContent('p1', []), metadata: { nativeId: 'uu-1', nativeSessionId: 'ns-1' } })
+        const result = resolveMessageCache(cache, bound, { skipIfNotSnapshot: true })
+        expect(result[0].metadata).toEqual({ nativeId: 'uu-1', nativeSessionId: 'ns-1' })
+    })
+
+    it('skipIfNotSnapshot 命中且旧消息 seq 为 null（乐观消息）→ 补真实 seq', () => {
+        // Web 发消息乐观追加 seq=null，落库 message-received 带真实 seq：
+        // 若不补 seq，rewindFrom 的 `seq == null` 会永远保留它，导致回退后消息清不掉
+        const optimistic = makeMsg({ id: 'msg-1', seq: null as unknown as number, content: makeContent('p1', []) })
+        const cache = resolveMessageCache(undefined, optimistic)
+
+        const received = makeMsg({ id: 'msg-1', seq: 66, content: makeContent('p1', []) })
+        const result = resolveMessageCache(cache, received, { skipIfNotSnapshot: true })
+        expect(result).toHaveLength(1)
+        expect(result[0].seq).toBe(66)
+    })
+
+    it('skipIfNotSnapshot 命中且旧消息 seq 已有值 → 不覆盖 seq（引用相等）', () => {
+        const msg = makeMsg({ id: 'msg-1', seq: 66, content: makeContent('p1', []) })
+        const cache = resolveMessageCache(undefined, msg)
+
+        const dup = makeMsg({ id: 'msg-1', seq: 66, content: makeContent('p1', []) })
+        const result = resolveMessageCache(cache, dup, { skipIfNotSnapshot: true })
+        expect(result).toBe(cache) // 无变化，引用相等
+    })
+
     it('snapshot 替换 snapshot 不受 skipIfNotSnapshot 影响', () => {
         const s1 = makeMsg({ id: 'snap-1', snapshot: true, content: makeContent('p1', []) })
         const s2 = makeMsg({ id: 'snap-1', snapshot: true, content: makeContent('p1', [text('updated')]) })

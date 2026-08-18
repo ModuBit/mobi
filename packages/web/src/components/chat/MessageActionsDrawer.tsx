@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { CopyOutlined, RollbackOutlined } from '@ant-design/icons'
+import { Copy, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { RewindConfirmView, type RewindDryRunResult } from './RewindDialog'
@@ -99,18 +99,18 @@ export function MessageActionsDrawer({
             <div style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
                 {rewindActive ? (
                     <div style={{ padding: 16 }}>
-                        <RewindConfirmView dryRun={dryRun} loading={loading} onConfirm={onConfirmRewind} onCancel={onCancelRewind} />
+                        <RewindConfirmView targetText={target?.text ?? null} dryRun={dryRun} loading={loading} onConfirm={onConfirmRewind} onCancel={onCancelRewind} />
                     </div>
                 ) : (
                     <nav role="menu" aria-label={t('chat.rewind.title')}>
                         <MenuRow
-                            icon={<CopyOutlined />}
+                            icon={<Copy size={16} />}
                             label={t('chat.copy')}
                             onClick={() => { void handleCopy() }}
                         />
                         {target?.canRewind && target.nativeId && (
                             <MenuRow
-                                icon={<RollbackOutlined />}
+                                icon={<Undo2 size={16} />}
                                 label={t('chat.rewind.title')}
                                 onClick={() => onRewind(target.nativeId!)}
                             />

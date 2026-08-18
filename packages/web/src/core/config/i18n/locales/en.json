@@ -180,7 +180,11 @@
             "filesUnavailable": "File snapshots are outside the retention window; only the conversation will be rewound",
             "filesFailed": "File restore failed: {{reason}}",
             "timedOut": "Rewind timed out; input unlocked",
-            "rewoundToHere": "Rewound to here"
+            "rewoundToHere": "Rewound to here",
+            "notice": "All messages after this point will be removed",
+            "targetLabel": "Rewind to",
+            "restoreDesc": "Restore working directory files to this snapshot",
+            "rewindOnlyDesc": "Keep code as-is, rewrite the conversation only"
         },
         "expand": "Expand",
         "collapse": "Collapse",

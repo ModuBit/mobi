@@ -71,6 +71,8 @@ interface RewindState {
     markTruncated: (sessionId: string, deleteFromSeq: number) => void
     /** SSE rewind-completed / 超时兜底 → 终态（清除进行中态） */
     completeRewind: (sessionId: string, filesRestored: boolean, error?: string) => void
+    /** 用户发新消息（新对话开始）→ 清除终态快照，「已回退至此」分隔线随之消失 */
+    clearCompletion: (sessionId: string) => void
     /** 会话视图卸载清理 */
     clearSession: (sessionId: string) => void
 }
@@ -117,6 +119,14 @@ export const useRewindStore = create<RewindState>((set) => ({
                 completedAt: Date.now(),
             })
             return { progressBySession: nextProgress, completionBySession: nextCompletion }
+        }),
+
+    clearCompletion: (sessionId) =>
+        set((state) => {
+            if (!state.completionBySession.has(sessionId)) return state
+            const nextCompletion = new Map(state.completionBySession)
+            nextCompletion.delete(sessionId)
+            return { completionBySession: nextCompletion }
         }),
 
     clearSession: (sessionId) =>

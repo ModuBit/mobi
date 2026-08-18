@@ -16,7 +16,8 @@
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { Spin, Button, theme as antTheme, message } from 'antd'
-import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined, RollbackOutlined } from '@ant-design/icons'
+import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined } from '@ant-design/icons'
+import { Undo2 } from 'lucide-react'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
@@ -339,7 +340,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // rewind 弹窗状态：draft 记录目标锚点与入口（PC modal / 移动 Drawer）；
     // dryRun null = 预检拉取中；executing = POST 已受理等 SSE 终态
-    const [rewindDraft, setRewindDraft] = useState<{ nativeId: string; source: 'modal' | 'drawer' } | null>(null)
+    const [rewindDraft, setRewindDraft] = useState<{ nativeId: string; source: 'modal' | 'drawer'; targetText: string | null } | null>(null)
     const [rewindDryRun, setRewindDryRun] = useState<RewindDryRunResult | null>(null)
     const [rewindExecuting, setRewindExecuting] = useState(false)
     // 锚点批原文（确认时捕获，rewindFrom 清窗后取不到）+ sender 回填请求（nonce 触发 ChatComposer 应用）
@@ -384,7 +385,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // rewind 入口：dry-run 预检 → canRewind 才弹确认（否则 toast，spec §5.3）
     const openRewindDialog = useCallback(async (nativeId: string, source: 'modal' | 'drawer' = 'modal') => {
-        setRewindDraft({ nativeId, source })
+        setRewindDraft({ nativeId, source, targetText: collectRewindBatchText(messages, nativeId) })
         setRewindDryRun(null)
         try {
             const res = await api.sessions.rewindDryRun(sessionId, nativeId)
@@ -399,7 +400,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             messageApi.error(t('chat.rewind.unavailable'))
             setRewindDraft(null)
         }
-    }, [api, sessionId, messageApi, t])
+    }, [api, sessionId, messageApi, t, messages])
 
     // rewind 确认执行：受理成功进入生命周期（起点行插入 → sender 禁用），结果等 SSE 两段回报
     const confirmRewind = useCallback(async (restoreFiles: boolean) => {
@@ -599,7 +600,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             items.push({
                 key: '__rewinding__',
                 role: 'assistant',
-                content: <CommandProgressBubble icon={<RollbackOutlined />} titleKey="chat.rewind.executing" />,
+                content: <CommandProgressBubble icon={<Undo2 />} titleKey="chat.rewind.executing" />,
                 variant: 'borderless',
             })
         }
@@ -697,6 +698,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             <RewindDialog
                 open={rewindDraft?.source === 'modal'}
+                targetText={rewindDraft?.targetText ?? null}
                 dryRun={rewindDryRun}
                 loading={rewindExecuting}
                 onConfirm={(restoreFiles) => { void confirmRewind(restoreFiles) }}

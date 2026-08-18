@@ -18,6 +18,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useMobiApi } from '@/core/data/api/client'
 import { makeClientSideId } from '@/core/lib/messages'
 import { appendOptimisticMessage, fetchLatestMessages } from '@/core/data/stores/messageWindowStore'
+import { useRewindStore } from '@/core/data/stores/rewindStore'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /**
@@ -61,6 +62,8 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
                 status: isRunning ? 'queued' : 'sending',
             }
             appendOptimisticMessage(sessionId, optimistic)
+            // 用户发新消息 = 新对话开始，清除 rewind 终态快照（「已回退至此」分隔线随之消失）
+            useRewindStore.getState().clearCompletion(sessionId)
             return { localId: vars.localId }
         },
         onSuccess: () => {

@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useState } from 'react'
-import { CopyOutlined, CheckOutlined } from '@ant-design/icons'
+import { Copy, CheckCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { IconButton } from '@/components/ui/IconButton'
 
@@ -57,7 +57,7 @@ export function CopyButton({ text, size = 20, className }: CopyButtonProps) {
     return (
         <IconButton
             className={className}
-            icon={copied ? <CheckOutlined style={{ fontSize: size * 0.7 }} /> : <CopyOutlined style={{ fontSize: size * 0.7 }} />}
+            icon={copied ? <CheckCheck size={size * 0.7} color="var(--ant-color-success)" /> : <Copy size={size * 0.7} />}
             size={size}
             tooltip={copied ? t('chat.copied') : t('chat.copy')}
             tooltipPlacement="top"

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { RollbackOutlined } from '@ant-design/icons'
+import { Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CopyButton } from './CopyButton'
 import { IconButton } from '@/components/ui/IconButton'
@@ -46,7 +46,7 @@ export function UserMessageFooter({ text, createdAt, canRewind, onRewind }: User
             {canRewind && (
                 <span className="msg-copy-btn">
                     <IconButton
-                        icon={<RollbackOutlined style={{ fontSize: 10 }} />}
+                        icon={<Undo2 size={14} />}
                         size={14}
                         aria-label={t('chat.rewind.title')}
                         tooltip={t('chat.rewind.title')}
@@ -55,7 +55,7 @@ export function UserMessageFooter({ text, createdAt, canRewind, onRewind }: User
                     />
                 </span>
             )}
-            <span style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.6 }}>{formatMessageTime(createdAt)}</span>
+            <span style={{ marginLeft: 'auto', paddingLeft: 8, fontSize: 11, opacity: 0.6 }}>{formatMessageTime(createdAt)}</span>
         </div>
     )
 }

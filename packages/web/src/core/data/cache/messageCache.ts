@@ -29,6 +29,32 @@ export function extractParentUuid(content: unknown): string | null {
 }
 
 /**
+ * 合并 native metadata（rewind 锚点），first-write-wins：只补旧值空缺的字段，
+ * 不覆盖已有值（与 hub 侧 store 的 mergeMetadata 语义对齐）。
+ * 用于重复消息（skipIfNotSnapshot）命中时，把 messages-bound 补写的 nativeId/nativeSessionId
+ * 增量合并进已渲染行——否则补写只落库、Web 端不更新，hover 不显 rewind icon、刷新才见。
+ * 无空缺（两者一致或旧值已完整）→ 返回原引用，调用方据此判断无变化。
+ */
+function mergeNativeMetadata(
+    existing: DecryptedMessage['metadata'],
+    incoming: DecryptedMessage['metadata'],
+): DecryptedMessage['metadata'] {
+    if (!incoming) return existing
+    if (!existing) return incoming
+    const merged: NonNullable<DecryptedMessage['metadata']> = { ...existing }
+    let changed = false
+    if (existing.nativeId === undefined && incoming.nativeId !== undefined) {
+        merged.nativeId = incoming.nativeId
+        changed = true
+    }
+    if (existing.nativeSessionId === undefined && incoming.nativeSessionId !== undefined) {
+        merged.nativeSessionId = incoming.nativeSessionId
+        changed = true
+    }
+    return changed ? merged : existing
+}
+
+/**
  * 解析消息缓存更新
  * 纯函数，便于测试
  */
@@ -56,7 +82,17 @@ export function resolveMessageCache(
     const existingIdx = base.findIndex(m => m.id === msg.id)
     if (existingIdx !== -1) {
         if (options?.skipIfNotSnapshot && !base[existingIdx].snapshot) {
-            // 真正的重复消息（SSE retry / Hub 去重）
+            // 真正的重复消息（SSE retry / Hub 去重）默认忽略；
+            // 但 rewind 锚点补写（messages-bound 广播）是同 id 消息的 metadata 增量更新，
+            // 需合并 metadata 而非丢弃，否则 Web 端已渲染行不更新、hover 不显 rewind icon
+            const merged = mergeNativeMetadata(base[existingIdx].metadata, msg.metadata)
+            // 乐观消息 seq=null → 落库消息带真实 seq：补 seq，否则 rewindFrom 的 `seq == null` 永远保留它
+            const seq = base[existingIdx].seq == null && msg.seq != null ? msg.seq : base[existingIdx].seq
+            if (merged !== base[existingIdx].metadata || seq !== base[existingIdx].seq) {
+                const updated = base.slice()
+                updated[existingIdx] = { ...base[existingIdx], metadata: merged, seq }
+                return updated
+            }
             return base
         }
         // snapshot 原地更新，或 snapshot → full message 替换

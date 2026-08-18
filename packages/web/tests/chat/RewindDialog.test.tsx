@@ -28,6 +28,10 @@ vi.mock('react-i18next', () => ({
                 'chat.rewind.restoreAndRewind': '恢复代码并回退',
                 'chat.rewind.rewindOnly': '仅回退对话',
                 'chat.rewind.filesUnavailable': '文件快照已超出保留窗口，将仅回退对话',
+                'chat.rewind.notice': '此消息之后的所有对话将被移除',
+                'chat.rewind.targetLabel': '回退至此',
+                'chat.rewind.restoreDesc': '将工作目录文件回滚到此刻的快照',
+                'chat.rewind.rewindOnlyDesc': '代码保持现状，仅重写后续对话',
                 'common.cancel': '取消',
             }
             return map[key] ?? key
