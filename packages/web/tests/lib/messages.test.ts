@@ -139,6 +139,31 @@ describe('mergeMessages', () => {
         expect(result[2].id).toBe('msg-3')
     })
 
+    it('positionAt 优先于 seq 排序（对齐 hub 排队消费跳变语义）', () => {
+        // 排队消息消费时 positionAt 跳到消费时刻（可早于/晚于 seq 顺序），
+        // 排序必须跟 positionAt 走，而非 seq——否则运行中消费的用户消息会卡在 turn 中间
+        const incoming: DecryptedMessage[] = [
+            createMessage({ id: 'msg-1', seq: 1, positionAt: 3000 }),
+            createMessage({ id: 'msg-2', seq: 2, positionAt: 1000 }),
+            createMessage({ id: 'msg-3', seq: 3, positionAt: 2000 }),
+        ]
+
+        const result = mergeMessages([], incoming)
+        // positionAt 排序：1000, 2000, 3000（而非 seq 1,2,3）
+        expect(result.map(m => m.id)).toEqual(['msg-2', 'msg-3', 'msg-1'])
+    })
+
+    it('positionAt 缺失（如 snapshot）时回退 seq 排序', () => {
+        const incoming: DecryptedMessage[] = [
+            createMessage({ id: 'msg-1', seq: 3 }),
+            createMessage({ id: 'msg-2', seq: 1 }),
+            createMessage({ id: 'msg-3', seq: 2 }),
+        ]
+
+        const result = mergeMessages([], incoming)
+        expect(result.map(m => m.id)).toEqual(['msg-2', 'msg-3', 'msg-1'])
+    })
+
     it('当 seq 为 null 时应按 createdAt 排序', () => {
         const existing: DecryptedMessage[] = []
         const incoming: DecryptedMessage[] = [

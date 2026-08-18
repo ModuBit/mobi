@@ -261,6 +261,20 @@ describe('queued/optimistic actions', () => {
         expect(r.submittedAt).toBe(123)
     })
 
+    it('markMessagesSubmitted 消费后按 positionAt 重排（排队消息跳到 turn 之后）', () => {
+        const assistant = (id: string, seq: number, positionAt: number) =>
+            ({ ...msg(id, seq), positionAt, queueState: null, localId: null } as DecryptedMessage)
+        // 运行中发消息：到达顺序 assistant A(100) → 排队 q(150) → assistant B(200)
+        ingestIncomingMessages('s1', [assistant('a', 1, 100)])
+        appendOptimisticMessage('s1', { ...msg('q', null), positionAt: 150, queueState: 'pending' as const, localId: 'loc-q' } as DecryptedMessage)
+        ingestIncomingMessages('s1', [assistant('b', 2, 200)])
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'q', 'b'])
+
+        // 消费 q：positionAt 跳变到 999 → 重排到 turn 消息之后，而非卡在 a/b 中间
+        markMessagesSubmitted('s1', ['loc-q'], 999)
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'b', 'q'])
+    })
+
     it('updateMessageStatus 改 status', () => {
         const m = { ...msg('x', null), localId: 'loc-1', status: 'sending' as MessageStatus } as DecryptedMessage
         appendOptimisticMessage('s1', m)

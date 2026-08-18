@@ -84,4 +84,45 @@ describe('markMessagesSubmitted', () => {
         expect(out[0].submittedAt).toBe(999)
         expect(out).not.toBe(original)
     })
+
+    it('消费时 positionAt 跳到 submittedAt（对齐 hub 跳变语义）', () => {
+        const out = markMessagesSubmitted([m('a', null)], ['a'], 999)
+        expect(out[0].positionAt).toBe(999)
+    })
+
+    it('消费后按 positionAt 重排：排队消息跳到 turn 消息之后', () => {
+        const assistant = (id: string, positionAt: number): DecryptedMessage => ({
+            id,
+            seq: 1,
+            localId: null,
+            createdAt: positionAt,
+            content: { role: 'agent', content: { type: 'text', text: id } },
+            submittedAt: null,
+            queueState: null,
+            status: 'sent',
+            positionAt,
+        })
+        // 运行中发消息：assistant A(100) → 排队用户消息 q(150, 发送时刻) → assistant B(200)
+        const queued: DecryptedMessage = {
+            id: 'q',
+            seq: 2,
+            localId: 'loc-q',
+            createdAt: 150,
+            content: { role: 'user', content: 'hello' },
+            submittedAt: null,
+            queueState: 'pending',
+            status: 'queued',
+            positionAt: 150,
+        }
+
+        const out = markMessagesSubmitted(
+            [assistant('a', 100), queued, assistant('b', 200)],
+            ['loc-q'],
+            999,
+        )
+
+        // q 消费后 positionAt 跳到 999 → 排在 turn 消息之后，而非卡在 A/B 中间
+        expect(out.map(x => x.id)).toEqual(['a', 'b', 'q'])
+        expect(out.find(x => x.id === 'q')?.positionAt).toBe(999)
+    })
 })

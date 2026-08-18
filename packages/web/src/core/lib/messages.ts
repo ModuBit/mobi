@@ -56,9 +56,21 @@ export function isQueuedInMobi(msg: DecryptedMessage): boolean {
 }
 
 /**
- * 消息比较函数，用于排序
+ * 消息比较函数，用于排序。
+ *
+ * 主排序键 = positionAt（与 hub 侧 position_at 排序语义对齐）：排队消息被消费时
+ * positionAt 跳到消费时刻，保证「运行中消费的消息排在 turn 之后」。seq 只是落库自增序号，
+ * 不随排队消费跳变——若以 seq 为主键，运行中发消息时用户消息会卡在上一轮 assistant 输出中间
+ *（乐观发送时刻早于 turn 结束时落库的后续 assistant 消息）。positionAt 缺失（如 snapshot）回退 seq。
  */
 function compareMessages(a: DecryptedMessage, b: DecryptedMessage): number {
+    const aPos = typeof a.positionAt === 'number' ? a.positionAt : null
+    const bPos = typeof b.positionAt === 'number' ? b.positionAt : null
+
+    if (aPos !== null && bPos !== null && aPos !== bPos) {
+        return aPos - bPos
+    }
+
     const aSeq = typeof a.seq === 'number' ? a.seq : null
     const bSeq = typeof b.seq === 'number' ? b.seq : null
 
@@ -70,6 +82,15 @@ function compareMessages(a: DecryptedMessage, b: DecryptedMessage): number {
         return a.createdAt - b.createdAt
     }
     return a.id.localeCompare(b.id)
+}
+
+/**
+ * 按排序锚点排序消息（positionAt → seq → createdAt → id），返回新数组。
+ * 供排队消息消费（positionAt 跳变）后重排，恢复 messages 数组有序——这是唯一打破
+ * 「到达顺序 = 有序」的场景（正常运行中 positionAt 单调递增，append 即有序）。
+ */
+export function sortMessages(messages: DecryptedMessage[]): DecryptedMessage[] {
+    return [...messages].sort(compareMessages)
 }
 
 /**
