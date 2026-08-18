@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { UserMessageFooter } from '@/components/chat/UserMessageFooter'
 
@@ -26,16 +26,36 @@ vi.mock('react-i18next', () => ({
             const map: Record<string, string> = {
                 'chat.rewind.title': '回退并编辑',
                 'chat.copy': '复制',
+                'chat.rewind.restoreAndRewind': '恢复代码并回退',
+                'chat.rewind.rewindOnly': '仅回退对话',
+                'chat.rewind.filesUnavailable': '文件快照已超出保留窗口，将仅回退对话',
+                'chat.rewind.notice': '此消息之后的所有对话将被移除',
+                'chat.rewind.targetLabel': '回退至此',
+                'chat.rewind.restoreDesc': '将工作目录文件回滚到此刻的快照',
+                'chat.rewind.rewindOnlyDesc': '代码保持现状，仅重写后续对话',
+                'common.cancel': '取消',
             }
             return map[key] ?? key
         },
     }),
 }))
 
+// jsdom 无 ResizeObserver，antd Popover（rc-resize-observer）依赖它测量触发元素
+const origRO = globalThis.ResizeObserver
+class FakeRO {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+}
+beforeEach(() => {
+    globalThis.ResizeObserver = FakeRO as unknown as typeof ResizeObserver
+})
+
 // 渲染型测试显式 cleanup（vitest 未开 globals，DOM 累积会炸）
 afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    globalThis.ResizeObserver = origRO
 })
 
 /** 当前渲染中 button 数量（复制按钮无稳定 accessible name，按数量断言操作组成员） */
@@ -77,5 +97,59 @@ describe('UserMessageFooter（用户消息 footer 操作组）', () => {
         // 非当天显示 MM/DD HH:mm（formatMessageTime 既有格式）
         expect(children[2].textContent).toBe('01/01 12:34')
         expect(children[2].style.marginLeft).toBe('auto')
+    })
+})
+
+describe('UserMessageFooter rewind Popover（PC 锚定确认，替代居中 Modal）', () => {
+    it('rewindOpen → ⏪ 外包 Popover 渲染确认视图（两选项）', () => {
+        render(
+            <UserMessageFooter
+                text="hello" createdAt={Date.now()} canRewind
+                onRewind={vi.fn()}
+                rewindOpen
+                rewindDryRun={{ canRewind: true, canRestoreFiles: true }}
+                rewindLoading={false}
+                onRewindConfirm={vi.fn()} onRewindCancel={vi.fn()}
+            />,
+        )
+        expect(screen.getByRole('button', { name: '恢复代码并回退' })).toBeTruthy()
+        expect(screen.getByRole('button', { name: '仅回退对话' })).toBeTruthy()
+    })
+
+    it('rewindOpen 确认 → onRewindConfirm 携带 restoreFiles', () => {
+        const onRewindConfirm = vi.fn()
+        render(
+            <UserMessageFooter
+                text="hello" createdAt={Date.now()} canRewind
+                onRewind={vi.fn()}
+                rewindOpen
+                rewindDryRun={{ canRewind: true, canRestoreFiles: true }}
+                rewindLoading={false}
+                onRewindConfirm={onRewindConfirm} onRewindCancel={vi.fn()}
+            />,
+        )
+        fireEvent.click(screen.getByRole('button', { name: '恢复代码并回退' }))
+        expect(onRewindConfirm).toHaveBeenCalledWith(true)
+    })
+
+    it('rewindOpen=false → 不渲染 Popover 确认内容', () => {
+        render(<UserMessageFooter text="hello" createdAt={Date.now()} canRewind onRewind={vi.fn()} />)
+        expect(screen.queryByRole('button', { name: '恢复代码并回退' })).toBeNull()
+    })
+
+    it('rewindOpen 时点击 ⏪ 不再触发 onRewind（避免重复 dry-run）', () => {
+        const onRewind = vi.fn()
+        render(
+            <UserMessageFooter
+                text="hello" createdAt={Date.now()} canRewind
+                onRewind={onRewind}
+                rewindOpen
+                rewindDryRun={{ canRewind: true, canRestoreFiles: true }}
+                rewindLoading={false}
+                onRewindConfirm={vi.fn()} onRewindCancel={vi.fn()}
+            />,
+        )
+        fireEvent.click(screen.getByRole('button', { name: '回退并编辑' }))
+        expect(onRewind).not.toHaveBeenCalled()
     })
 })

@@ -16,9 +16,9 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { RewindConfirmView, RewindDialog } from '@/components/chat/RewindDialog'
+import { RewindConfirmView } from '@/components/chat/RewindConfirmView'
 
-// mock i18next：提供 rewind 弹窗文案映射（initReactI18next 必须 noop 导出，避免 i18n 顶层 init 报错）
+// mock i18next：提供 rewind 确认视图文案映射（initReactI18next 必须 noop 导出，避免 i18n 顶层 init 报错）
 vi.mock('react-i18next', () => ({
     initReactI18next: { type: '3rdParty', init: () => {} },
     useTranslation: () => ({
@@ -39,17 +39,10 @@ vi.mock('react-i18next', () => ({
     }),
 }))
 
-// useIsMobile：默认桌面（Modal 形态）；单测内可切换
-const useIsMobileMock = vi.fn(() => false)
-vi.mock('@/core/data/hooks/useMediaQuery', () => ({
-    useIsMobile: () => useIsMobileMock(),
-}))
-
 // 渲染型测试显式 cleanup（vitest 未开 globals，DOM 累积会炸）
 afterEach(() => {
     cleanup()
     vi.clearAllMocks()
-    useIsMobileMock.mockReturnValue(false)
 })
 
 const bothTrue = { canRewind: true, canRestoreFiles: true }
@@ -96,25 +89,5 @@ describe('RewindConfirmView（确认视图三形态，spec §5.3）', () => {
         expect((screen.getByRole('button', { name: '恢复代码并回退' }) as HTMLButtonElement).disabled).toBe(true)
         expect((screen.getByRole('button', { name: '仅回退对话' }) as HTMLButtonElement).disabled).toBe(true)
         expect((screen.getByRole('button', { name: '取消' }) as HTMLButtonElement).disabled).toBe(true)
-    })
-})
-
-describe('RewindDialog（桌面 Modal / 移动底部 Drawer）', () => {
-    it('桌面渲染 Modal 形态且透传确认视图', () => {
-        render(<RewindDialog open dryRun={bothTrue} loading={false} onConfirm={vi.fn()} onCancel={vi.fn()} />)
-        expect(screen.getByText('回退并编辑')).toBeTruthy()
-        expect(screen.getByRole('button', { name: '恢复代码并回退' })).toBeTruthy()
-    })
-
-    it('open=false → 不渲染内容', () => {
-        render(<RewindDialog open={false} dryRun={bothTrue} loading={false} onConfirm={vi.fn()} onCancel={vi.fn()} />)
-        expect(screen.queryByRole('button', { name: '恢复代码并回退' })).toBeNull()
-    })
-
-    it('移动端渲染底部 Drawer 形态（复用确认视图）', () => {
-        useIsMobileMock.mockReturnValue(true)
-        render(<RewindDialog open dryRun={bothTrue} loading={false} onConfirm={vi.fn()} onCancel={vi.fn()} />)
-        expect(screen.getByText('回退并编辑')).toBeTruthy()
-        expect(screen.getByRole('button', { name: '恢复代码并回退' })).toBeTruthy()
     })
 })

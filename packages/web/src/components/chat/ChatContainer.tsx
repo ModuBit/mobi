@@ -36,7 +36,7 @@ import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_CO
 import { canRewindMessage, collectRewindBatchText, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
-import { RewindDialog, type RewindDryRunResult } from './RewindDialog'
+import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, type MessageActionTarget } from './MessageActionsDrawer'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
@@ -338,9 +338,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // rewind 进行中：禁用输入（完成标志 rewind-completed；rewound-truncated 非终态——文件恢复仍在途）
     const isRewinding = useMemo(() => isRewindInProgress(chatBlocks), [chatBlocks])
 
-    // rewind 弹窗状态：draft 记录目标锚点与入口（PC modal / 移动 Drawer）；
-    // dryRun null = 预检拉取中；executing = POST 已受理等 SSE 终态
-    const [rewindDraft, setRewindDraft] = useState<{ nativeId: string; source: 'modal' | 'drawer'; targetText: string | null } | null>(null)
+    // rewind 弹窗状态：draft 记录目标锚点与入口（PC Popover / 移动 Drawer）；
+    // messageId 标识锚定消息（PC Popover 定位到对应 footer）；dryRun null = 预检拉取中；
+    // executing = POST 已受理等 SSE 终态
+    const [rewindDraft, setRewindDraft] = useState<{ nativeId: string; source: 'modal' | 'drawer'; targetText: string | null; messageId?: string } | null>(null)
     const [rewindDryRun, setRewindDryRun] = useState<RewindDryRunResult | null>(null)
     const [rewindExecuting, setRewindExecuting] = useState(false)
     // 锚点批原文（确认时捕获，rewindFrom 清窗后取不到）+ sender 回填请求（nonce 触发 ChatComposer 应用）
@@ -384,8 +385,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }, [rewindCompletion, messageApi, t])
 
     // rewind 入口：dry-run 预检 → canRewind 才弹确认（否则 toast，spec §5.3）
-    const openRewindDialog = useCallback(async (nativeId: string, source: 'modal' | 'drawer' = 'modal') => {
-        setRewindDraft({ nativeId, source, targetText: collectRewindBatchText(messages, nativeId) })
+    const openRewindDialog = useCallback(async (nativeId: string, source: 'modal' | 'drawer' = 'modal', messageId?: string) => {
+        setRewindDraft({ nativeId, source, targetText: collectRewindBatchText(messages, nativeId), messageId })
         setRewindDryRun(null)
         try {
             const res = await api.sessions.rewindDryRun(sessionId, nativeId)
@@ -420,9 +421,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
     }, [rewindDraft, api, sessionId, messages, messageApi, t])
 
-    const handleOpenRewind = useCallback((nativeId: string) => {
-        void openRewindDialog(nativeId, 'modal')
+    // PC 入口：messageId 标识锚定消息（footer Popover 定位），nativeId 为 rewind 锚点
+    const handleOpenRewind = useCallback((messageId: string, nativeId: string) => {
+        void openRewindDialog(nativeId, 'modal', messageId)
     }, [openRewindDialog])
+
+    // 取消 rewind（Popover 取消按钮 / 点击外部 / 再次点击 ⏪）：清 draft + 预检结果
+    const cancelRewind = useCallback(() => {
+        setRewindDraft(null)
+        setRewindDryRun(null)
+    }, [])
 
     // ──────────────────────────────────────────────────────────────
     // 移动端长按操作菜单（spec §5.2）：事件委托到滚动容器
@@ -529,8 +537,14 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         canRewind={rewindable}
                         onRewind={() => {
                             const nativeId = metaById.get(block.id)?.nativeId
-                            if (nativeId) handleOpenRewind(nativeId)
+                            if (nativeId) handleOpenRewind(block.id, nativeId)
                         }}
+                        rewindOpen={rewindDraft?.source === 'modal' && rewindDraft?.messageId === block.id}
+                        rewindTargetText={rewindDraft?.targetText ?? null}
+                        rewindDryRun={rewindDryRun}
+                        rewindLoading={rewindExecuting}
+                        onRewindConfirm={(restoreFiles) => { void confirmRewind(restoreFiles) }}
+                        onRewindCancel={cancelRewind}
                     />
                 ) : undefined,
                 footerPlacement: 'outer-end' as const,
@@ -564,13 +578,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         // 与缓存存在一起比对——签名不同则丢弃缓存，从空 Map 重建。
         const ctxKey = `${metadata?.path ?? ''}|${sessionId}|${sendMutation.isPending}|${!!session?.running}`
             + `|${sessionNativeSessionId ?? ''}|${backgroundTasksCount}`
+            // rewind 状态入签名：dry-run 完成 / executing 翻转时 footer 的 Popover 内容须重建
+            + `|${rewindDraft?.messageId ?? ''}|${rewindDraft?.source ?? ''}|${rewindDryRun?.canRewind ?? ''}-${rewindDryRun?.canRestoreFiles ?? ''}|${rewindExecuting}`
         const reusableCache = prevItemsRef.current.ctxKey === ctxKey
             ? prevItemsRef.current.cache
             : new Map()
         const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
         prevItemsRef.current = { cache, ctxKey }
         return items
-    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, handleOpenRewind])
+    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind])
 
     const bubbleItems = useMemo(() => {
         // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝
@@ -695,18 +711,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     />
                 )}
             </div>
-
-            <RewindDialog
-                open={rewindDraft?.source === 'modal'}
-                targetText={rewindDraft?.targetText ?? null}
-                dryRun={rewindDryRun}
-                loading={rewindExecuting}
-                onConfirm={(restoreFiles) => { void confirmRewind(restoreFiles) }}
-                onCancel={() => {
-                    setRewindDraft(null)
-                    setRewindDryRun(null)
-                }}
-            />
 
             {/* 移动端长按操作菜单（仅移动端挂长按，PC 走 footer hover 操作组） */}
             {isMobile && (

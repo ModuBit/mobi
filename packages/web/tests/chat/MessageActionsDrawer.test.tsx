@@ -77,30 +77,36 @@ describe('MessageActionsDrawer（移动端长按操作菜单）', () => {
     it('可 rewind 消息 → 菜单列出 复制 / 回退并编辑', () => {
         renderDrawer()
         expect(screen.getByText('复制')).toBeTruthy()
-        expect(screen.getByText('回退并编辑')).toBeTruthy()
+        expect(screen.getByRole('button', { name: '回退并编辑' })).toBeTruthy()
     })
 
     it('不可 rewind → 菜单只有复制', () => {
         renderDrawer({ target: cannotRewindTarget })
         expect(screen.getByText('复制')).toBeTruthy()
-        expect(screen.queryByText('回退并编辑')).toBeNull()
+        expect(screen.queryByRole('button', { name: '回退并编辑' })).toBeNull()
     })
 
-    it('点「回退并编辑」→ 触发 onRewind(nativeId)，同 Drawer 切换为确认视图（loading → 选项）', () => {
+    it('点「回退并编辑」→ 触发 onRewind(nativeId)', () => {
         const props = renderDrawer()
-        fireEvent.click(screen.getByText('回退并编辑'))
+        fireEvent.click(screen.getByRole('button', { name: '回退并编辑' }))
         expect(props.onRewind).toHaveBeenCalledWith('u1')
+    })
 
-        // 切换确认视图：dry-run 拉取中（dryRun null）→ loading 态
-        cleanup()
-        renderDrawer({ rewindActive: true, dryRun: null })
-        expect(screen.queryByText('恢复代码并回退')).toBeNull()
-
-        // dry-run 双 true → 两选项（与 PC 弹窗共用 RewindConfirmView）
-        cleanup()
+    it('rewindActive → 复制行保留 + 回退并编辑行隐藏 + 确认内容就地展开（合并一层）', () => {
         renderDrawer({ rewindActive: true, dryRun: { canRewind: true, canRestoreFiles: true } })
+        // 复制行仍在（一层，不整页切换）
+        expect(screen.getByText('复制')).toBeTruthy()
+        // 菜单里的「回退并编辑」行隐藏（Drawer 标题是 span 非 button）
+        expect(screen.queryByRole('button', { name: '回退并编辑' })).toBeNull()
+        // 确认内容就地展开
         expect(screen.getByText('恢复代码并回退')).toBeTruthy()
         expect(screen.getByText('仅回退对话')).toBeTruthy()
+    })
+
+    it('rewindActive + dryRun null（预检拉取中）→ 复制行保留 + loading 态，无选项', () => {
+        renderDrawer({ rewindActive: true, dryRun: null })
+        expect(screen.getByText('复制')).toBeTruthy()
+        expect(screen.queryByText('恢复代码并回退')).toBeNull()
     })
 
     it('确认视图确认 → onConfirmRewind 透传 restoreFiles', () => {

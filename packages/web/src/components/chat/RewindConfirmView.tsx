@@ -15,12 +15,10 @@
  */
 
 import { useState } from 'react'
-import { Button, Modal, Spin } from 'antd'
+import { Button, Spin } from 'antd'
 import styled from '@emotion/styled'
 import { FolderGit2, MessageSquare, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { MobileDrawer } from '@/components/ui/MobileDrawer'
-import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 
 /** dry-run 预检结果（hub POST /api/sessions/:id/rewind/dry-run 响应体） */
 export type RewindDryRunResult = {
@@ -192,7 +190,7 @@ function OptionCard({ primary, icon, title, desc, loading, disabled, onClick }: 
 
 /**
  * rewind 确认视图（共用组件，spec §5.5）：
- * PC 弹窗（RewindDialog）与移动端长按 Drawer（MessageActionsDrawer）两个薄入口共用。
+ * PC 锚定 Popover（UserMessageFooter）与移动端长按 Drawer（MessageActionsDrawer）两个薄入口共用。
  * 三形态（spec §5.3）：双 true 两选项 / canRestoreFiles false 单选项 + 说明 / canRewind false 不弹窗（入口层拦截）。
  */
 export function RewindConfirmView({ targetText, dryRun, loading, onConfirm, onCancel }: RewindConfirmViewProps) {
@@ -266,55 +264,5 @@ export function RewindConfirmView({ targetText, dryRun, loading, onConfirm, onCa
                 {t('common.cancel')}
             </Button>
         </Root>
-    )
-}
-
-export interface RewindDialogProps {
-    open: boolean
-    /** 回退目标消息原文（预览用） */
-    targetText?: string | null
-    /** dry-run 结果（PC 入口在结果到达且 canRewind 后才打开，此处不为 null；保守起见仍容忍 null 显示 loading） */
-    dryRun: RewindDryRunResult | null
-    /** 执行中（POST 受理后等待 SSE 终态，期间关闭弹窗由 SSE 完成效应接管） */
-    loading: boolean
-    onConfirm: (restoreFiles: boolean) => void
-    onCancel: () => void
-}
-
-/** rewind 确认弹窗：桌面居中 Modal / 移动端底部 Drawer（New Project 响应式先例） */
-export function RewindDialog({ open, targetText, dryRun, loading, onConfirm, onCancel }: RewindDialogProps) {
-    const { t } = useTranslation()
-    const isMobile = useIsMobile()
-    const confirmView = (
-        <RewindConfirmView targetText={targetText} dryRun={dryRun} loading={loading} onConfirm={onConfirm} onCancel={onCancel} />
-    )
-
-    if (isMobile) {
-        return (
-            <MobileDrawer
-                title={t('chat.rewind.title')}
-                open={open}
-                onClose={onCancel}
-                maskClosable={!loading}
-                destroyOnHidden
-            >
-                <div style={{ padding: 16, paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
-                    {confirmView}
-                </div>
-            </MobileDrawer>
-        )
-    }
-
-    return (
-        <Modal
-            title={t('chat.rewind.title')}
-            open={open}
-            onCancel={onCancel}
-            footer={null}
-            maskClosable={!loading}
-            destroyOnHidden
-        >
-            {confirmView}
-        </Modal>
     )
 }

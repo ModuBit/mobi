@@ -17,7 +17,7 @@
 import { Copy, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
-import { RewindConfirmView, type RewindDryRunResult } from './RewindDialog'
+import { RewindConfirmView, type RewindDryRunResult } from './RewindConfirmView'
 import { copyTextToClipboard } from './CopyButton'
 
 /** 长按选中的用户消息（canRewind 与 PC footer 判据同源——canRewindMessage） */
@@ -97,25 +97,26 @@ export function MessageActionsDrawer({
             destroyOnHidden
         >
             <div style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
-                {rewindActive ? (
-                    <div style={{ padding: 16 }}>
+                {/* 合并一层：复制始终可用；「回退并编辑」点击后隐藏，确认视图就地展开在下方，
+                    不再整页切换（spec §5.2） */}
+                <nav role="menu" aria-label={t('chat.rewind.title')}>
+                    <MenuRow
+                        icon={<Copy size={16} />}
+                        label={t('chat.copy')}
+                        onClick={() => { void handleCopy() }}
+                    />
+                    {target?.canRewind && target.nativeId && !rewindActive && (
+                        <MenuRow
+                            icon={<Undo2 size={16} />}
+                            label={t('chat.rewind.title')}
+                            onClick={() => onRewind(target.nativeId!)}
+                        />
+                    )}
+                </nav>
+                {rewindActive && (
+                    <div style={{ padding: 16, borderTop: '1px solid var(--ant-color-border-secondary)' }}>
                         <RewindConfirmView targetText={target?.text ?? null} dryRun={dryRun} loading={loading} onConfirm={onConfirmRewind} onCancel={onCancelRewind} />
                     </div>
-                ) : (
-                    <nav role="menu" aria-label={t('chat.rewind.title')}>
-                        <MenuRow
-                            icon={<Copy size={16} />}
-                            label={t('chat.copy')}
-                            onClick={() => { void handleCopy() }}
-                        />
-                        {target?.canRewind && target.nativeId && (
-                            <MenuRow
-                                icon={<Undo2 size={16} />}
-                                label={t('chat.rewind.title')}
-                                onClick={() => onRewind(target.nativeId!)}
-                            />
-                        )}
-                    </nav>
                 )}
             </div>
         </MobileDrawer>
