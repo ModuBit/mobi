@@ -172,6 +172,70 @@ describe('messages-native-attached', () => {
     })
 })
 
+describe('messages-acked（isReplay 回显确认）', () => {
+    let store: Store
+    let sid: string
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        sid = store.sessions.getOrCreateSession('ack-test', { path: '/tmp/x' }, null, 'default').id
+    })
+
+    test('有效 nativeId → 写 nativeAckAt 并按消息落库后模式广播', () => {
+        store.messages.addMessage(sid, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
+
+        const fakeSocket = makeFakeSocket()
+        const { deps, events } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-acked', { sid, nativeId: 'uu-1' })
+
+        const row = store.messages.getMessages(sid, 10)[0]
+        expect(row.metadata?.nativeAckAt).toBeTypeOf('number')
+
+        // 广播补写行：room update + SSE message-received，DTO metadata 已含 nativeAckAt
+        expect(fakeSocket.updates).toHaveLength(1)
+        const update = fakeSocket.updates[0].payload as { body: { message: { localId: string; metadata: unknown } } }
+        expect(update.body.message.localId).toBe('local-1')
+        expect((update.body.message.metadata as Record<string, unknown>).nativeAckAt).toBeTypeOf('number')
+        expect(events.filter(e => e.type === 'message-received')).toHaveLength(1)
+    })
+
+    test('重复 ack → first-write-wins 不覆盖、不广播', () => {
+        store.messages.addMessage(sid, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
+        store.messages.markMessagesAcked(sid, 'uu-1', 111)
+
+        const fakeSocket = makeFakeSocket()
+        const { deps, events } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-acked', { sid, nativeId: 'uu-1' })
+        expect(fakeSocket.updates).toHaveLength(0)
+        expect(events).toEqual([])
+    })
+
+    test('非法载荷（缺 sid / nativeId 空串）→ 忽略', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, accessError } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-acked', { nativeId: 'uu-1' })
+        fakeSocket.emit('messages-acked', { sid, nativeId: '' })
+        fakeSocket.emit('messages-acked', null)
+        expect(accessError.called).toBe(false)
+        expect(fakeSocket.updates).toHaveLength(0)
+    })
+
+    test('session 不存在 → access error，不落库', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, accessError } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-acked', { sid: 'ghost', nativeId: 'uu-1' })
+        expect(accessError.called).toBe(true)
+    })
+})
+
 describe('rewound-truncated / rewind-completed（两段回报）', () => {
     let store: Store
     let sid: string

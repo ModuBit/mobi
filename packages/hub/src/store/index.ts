@@ -202,9 +202,9 @@ export class Store {
                 created_at INTEGER NOT NULL,
                 seq INTEGER NOT NULL,
                 local_id TEXT,
-                -- 废弃列：Phase 1 的独立 native_id，代码已不再读写（native 事实统一入 metadata JSON）。
-                -- 列保留作历史（deploy 时不删），存量数据由人工 SQL 迁入 metadata
-                native_id TEXT,
+                -- native_id 物化列（STORED 生成列）：值恒等于 metadata.nativeId，供按锚点查询的索引。
+                -- 部署前旧库的普通 TEXT 列（Phase 1 遗留）由人工 SQL DROP 后重建为本生成列
+                native_id TEXT GENERATED ALWAYS AS (json_extract(metadata, '$.nativeId')) STORED,
                 metadata TEXT,
                 deleted_at INTEGER,
                 is_sidechain INTEGER NOT NULL DEFAULT 0,
@@ -219,6 +219,7 @@ export class Store {
             CREATE INDEX IF NOT EXISTS idx_messages_session_main ON messages(session_id, seq, is_sidechain);
             CREATE INDEX IF NOT EXISTS idx_messages_parent_tool ON messages(parent_tool_use_id);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_local_id ON messages(session_id, local_id) WHERE local_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_messages_native_id ON messages(session_id, native_id) WHERE native_id IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_messages_session_position
                 ON messages(session_id, position_at DESC, seq DESC);
             CREATE INDEX IF NOT EXISTS idx_messages_session_unsubmitted_local

@@ -545,6 +545,11 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.emit('messages-native-attached', { sid: this.sessionId, nativeSessionId })
     }
 
+    /** 通知 Hub：CC 已回显接收该 nativeId 的用户消息（写 metadata.nativeAckAt，rewind 判据） */
+    emitMessagesAcked(nativeId: string): void {
+        this.socket.emit('messages-acked', { sid: this.sessionId, nativeId })
+    }
+
     /**
      * 反查 rewind 截断边界：同 metadata.nativeId 的最小 seq 行（锚点批首行，1:N 批整批同删的定界）。
      * 走既有 GET /cli/sessions/:id/messages 接口正向分页（afterSeq 游标递进，对齐 backfillMessages）；

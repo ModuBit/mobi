@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 
 import { Store } from '../../src/store'
-import { addMessage, bindNativeIds, getMessages } from '../../src/store/messages'
+import { addMessage, bindNativeIds, getMessages, markMessagesAcked } from '../../src/store/messages'
 
 /** 建一个带 metadata/deleted_at 列的最小 messages 表（无 FK/无 sessions，纯模块级函数测试，参照 messages-byposition.test.ts） */
 function makeDb(): Database {
@@ -69,14 +69,15 @@ describe('bindNativeIds（metadata 形态）', () => {
     let db: Database
     beforeEach(() => { db = makeDb() })
 
-    test('绑定空缺行并返回命中的 localId', () => {
+    test('绑定空缺行并返回补写后的行', () => {
         addMessage(db, 's1', WEBAPP_USER, 'local-a')
         addMessage(db, 's1', WEBAPP_USER, 'local-b')
         const bound = bindNativeIds(db, 's1', [
             { localId: 'local-a', metadata: { nativeId: 'uu-a' } },
             { localId: 'local-b', metadata: { nativeId: 'uu-a' } },
         ])
-        expect(bound).toEqual(['local-a', 'local-b'])
+        expect(bound.map(m => m.localId)).toEqual(['local-a', 'local-b'])
+        expect(bound.every(m => m.metadata?.nativeId === 'uu-a')).toBe(true)
         const rows = getMessages(db, 's1')
         expect(rows.find(r => r.localId === 'local-a')!.metadata?.nativeId).toBe('uu-a')
         expect(rows.find(r => r.localId === 'local-b')!.metadata?.nativeId).toBe('uu-a')
@@ -125,7 +126,42 @@ describe('MessageStore 类（Store 全链路）', () => {
     test('MessageStore 类暴露 bindNativeIds', () => {
         store.messages.addMessage(sessionId, WEBAPP_USER, 'local-e')
         const bound = store.messages.bindNativeIds(sessionId, [{ localId: 'local-e', metadata: { nativeId: 'uu-e' } }])
-        expect(bound).toEqual(['local-e'])
+        expect(bound.map(m => m.localId)).toEqual(['local-e'])
         expect(store.messages.getMessages(sessionId)[0].metadata?.nativeId).toBe('uu-e')
+    })
+})
+
+describe('markMessagesAcked（isReplay 回显 → nativeAckAt）', () => {
+    let store: Store
+    let sessionId: string
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        sessionId = store.sessions.getOrCreateSession('ack-test', null, null, 'default').id
+    })
+
+    test('首次 ack 写 nativeAckAt 并按 native_id 生成列命中返回行', () => {
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
+        const acked = store.messages.markMessagesAcked(sessionId, 'uu-1', 1755500000000)
+        expect(acked).not.toBeNull()
+        expect(acked!.metadata?.nativeAckAt).toBe(1755500000000)
+        // 落库生效（nativeId/nativeSessionId 同族保留，nativeAckAt 追加）
+        const row = store.messages.getMessages(sessionId)[0]
+        expect(row.metadata).toEqual({ nativeId: 'uu-1', nativeAckAt: 1755500000000 })
+    })
+
+    test('重复 ack → first-write-wins 不覆盖，返回 null', () => {
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
+        store.messages.markMessagesAcked(sessionId, 'uu-1', 111)
+        const again = store.messages.markMessagesAcked(sessionId, 'uu-1', 222)
+        expect(again).toBeNull()
+        expect(store.messages.getMessages(sessionId)[0].metadata?.nativeAckAt).toBe(111)
+    })
+
+    test('无此 nativeId 行 → 返回 null 不落库', () => {
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
+        const acked = store.messages.markMessagesAcked(sessionId, 'ghost', 1755500000000)
+        expect(acked).toBeNull()
+        expect(store.messages.getMessages(sessionId)[0].metadata?.nativeAckAt).toBeUndefined()
     })
 })

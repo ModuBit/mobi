@@ -473,3 +473,64 @@ mobi.app（dmg 分发）
 **前置**：协议变更是 breaking change（旧语义下「缺字段=清除」被部分调用方依赖，如 allowClear 路由清除靠缺字段实现），需要版本协商或兼容窗口；与 pending #50（settings.json 拆分）的迁移时机一并考虑。
 
 **优先级**：低。当前 web 是唯一写入方、`providersWith()` 已封装集中，风险可控；第二个写入方出现时升级为高。
+
+---
+
+## 53. 撤回刚发消息（发送后未响应时 Esc 回填输入框）
+
+**背景**（2026-08-18 讨论）：对齐 CC CLI 的 Esc 行为——发出消息后、还没响应时停止，这条消息回到输入框，可改错字重发。用户诉求很具体：「发出去发现发错/错别字，紧急终止后想改重发」。
+
+**最终语义**（三分支，统一进 Stop/interrupt，2026-08-18 定）：
+
+```
+interrupt（用户停止）
+ ├─ queue 里有消息 → 正常 interrupt，队列下一条照跑        【现有 Stop 语义，零改动】
+ └─ queue 里没消息：
+      ├─ 最后一条 user 后已有输出 → 正常停止（生成到一半）
+      └─ 最后一条 user 后无任何输出 → 撤回：软删除这条 + 回填 sender   【新增】
+```
+
+**为何不能硬套 rewind**：rewind 要重启 query（成本高）；且「未响应」场景里消息大概率已 push 但 CC 可能未落 .jsonl，走 rewind 是假锚点。故撤回是比 rewind 更前置、更轻的「软删除 + 回填」，不重启 query。
+
+**实现方案（简单版 A，复用现有件）**：
+
+- interrupt 复用现有 abort 链路（web `sessions.abort` → CLI `handleAbortRequest → queryRef.interrupt()`）
+- 三分支判定在 **CLI** 做（queue 状态 + transcript 是否已输出，CLI 都是第一手真相）
+- 「queue 空 + 无输出」→ CLI 上报 Hub 软删除最后一条 user（复用 `softDeleteMessagesFrom(seq)`）
+- Hub 软删除 + 转 SSE → web 清窗 + 回填 sender（复用 rewind 的 draftRequest 机制）
+- 判定细节：「queue 空」对应消息已 `collectBatch` 取出（in-flight 已 push）；「无输出」= 本轮尚未收到任何 assistant 消息（text/tool/stream_event）
+
+**已知边界（resume 复活）**：软删除只清 Hub/Web，CLI `.jsonl` 里那条 user 还在 → 下次 resume 复活为「最后一条无回复消息」。CC CLI 无痕是因为「提交前拦截」（消息没进 transcript），mobi 隔着 SDK 是「提交后软删除」，无法零成本对齐。
+
+**优化点（待做，方案 B）**：撤回时记录 pending 截断锚点，下次 resume 用现成 `resumeSessionAt` 顺带裁掉 `.jsonl` 残留行，做到 resume 无痕。当前不重启 query，下次自然 resume 时生效。
+
+**相关文件**：
+
+- `packages/cli/src/claude/claudeRemoteLauncher.ts` — `handleAbortRequest`（三分支判定注入点）
+- `packages/cli/src/claude/claudeRemote.ts` — `sdkOutputLoop`（「无输出」判定）
+- `packages/hub/src/store/messages.ts` — `softDeleteMessagesFrom`（软删除复用）
+- rewind 回填链路：`rewindStore.ts` / `draftRequest` / `collectRewindBatchText`
+
+**优先级**：简单版 A 已定，待实施；优化点 B 后续。
+
+---
+
+## 54. CLI→Hub 消息元数据事件散乱，需收敛（2026-08-18）
+
+**背景**：2026-08-18 讨论 isReplay（CC 接收确认）时，梳理 CLI→Hub 的 socket 事件发现，消息的「native 事实」被拆成多个独立事件、各写一个字段，随新字段的加入持续膨胀：
+
+- `messages-submitted` —— 写 `queue_state`/`submitted_at`（排队轨道）
+- `messages-bound` —— 写 `nativeId`（push 预设 uuid）
+- `messages-native-attached` —— 补写 `nativeSessionId`（CC 会话建立后）
+- `messages-acked`（规划中）—— 写 `nativeAckAt`（CC 回显确认）
+
+概念上都是「同一条消息的元数据」，却散成 4 个事件、4 次往返、4 种载荷结构，Hub 侧也各写各的字段。加上命名风格不统一（`message` 无前缀 / `messages-*` 复数 / `rewound-truncated` vs `rewind-completed` 同族不同词 / `terminal:*` 冒号分隔），进一步放大散乱感。
+
+**方向**（待定，先记录不实施）：
+
+- 收敛为统一「消息 native 事实」事件（合并 bound/attached/acked 或统一载荷结构），一次往返写齐 nativeId + nativeSessionId + ackAt
+- 或至少统一命名规范（native 事实族统一 `messages-native:*` 之类的前缀）
+
+**注意**：收敛是 breaking change（旧事件名有 CLI/Hub 双侧消费方），需版本协商/兼容窗口；与 isReplay（ack 事件）落地时机一并考虑——若 ack 先落地，散乱会再加一个事件，收敛成本更高。
+
+**优先级**：低。先按现状加 `messages-acked` 完成 isReplay，收敛独立立项。

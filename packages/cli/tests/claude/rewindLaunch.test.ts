@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { query } from '@anthropic-ai/claude-agent-sdk'
-import { claudeRemote } from '../../src/claude/claudeRemote'
+import { query, startup } from '@anthropic-ai/claude-agent-sdk'
+import { claudeRemote, isReplayUserMessage } from '../../src/claude/claudeRemote'
 import { reportRewindCompletion, type RewindReportClient } from '../../src/claude/utils/rewindReport'
 import type { PendingRewind } from '../../src/claude/types'
 
@@ -29,6 +29,7 @@ vi.mock('@/ui/logger', () => ({
 }))
 
 const mockedQuery = vi.mocked(query)
+const mockedStartup = vi.mocked(startup)
 
 /** 构造空流 Query（立即完成，无 init/result） */
 function emptyQuery() {
@@ -76,28 +77,33 @@ function truncationOpts() {
 describe('claudeRemote rewind 截断空跑轮', () => {
     beforeEach(() => {
         mockedQuery.mockReset()
+        mockedStartup.mockReset()
     })
 
-    it('resumeSessionAt 携带时：不等用户消息，以空 prompt + resumeSessionAt 启动并自然结束', async () => {
+    it('resumeSessionAt 携带时：经 startup 预热加载到锚点（不走空 prompt 空跑轮）', async () => {
         const fake = emptyQuery()
-        mockedQuery.mockReturnValue(fake as never)
-        const opts = truncationOpts()
+        // startup 预热返回 warmRef，后续用户消息经 warmRef.query 继续
+        const warmRef = { query: vi.fn().mockReturnValue(fake), close: vi.fn() }
+        mockedStartup.mockResolvedValue(warmRef as never)
+        const nextMessage = vi.fn().mockResolvedValue({
+            message: 'hello', mode: { permissionMode: 'default' as const }, localIds: ['loc-1'],
+        })
+        const opts = { ...truncationOpts(), nextMessage }
 
         await claudeRemote(opts)
 
-        // 空 prompt 一次性启动，options 携带保留锚与 file checkpointing
-        expect(mockedQuery).toHaveBeenCalledTimes(1)
-        const [arg] = mockedQuery.mock.calls[0] as [{ prompt: string; options: Record<string, unknown> }]
-        expect(arg.prompt).toBe('')
-        expect(arg.options.resumeSessionAt).toBe('anchor-assistant-1')
-        expect(arg.options.enableFileCheckpointing).toBe(true)
-        // 未等待用户消息即完成（nextMessage 永不 resolve）
-        expect(opts.nextMessage).not.toHaveBeenCalled()
-        // query 生命周期：ready 上报 → running true → 完成 → close → running false
-        expect(opts.onQueryReady).toHaveBeenCalledWith(fake)
-        expect(opts.onRunningChange).toHaveBeenNthCalledWith(1, true)
-        expect(opts.onRunningChange).toHaveBeenLastCalledWith(false)
-        expect(fake.close).toHaveBeenCalled()
+        // 截断由 startup 预热承载：options 携带 resumeSessionAt + file checkpointing
+        expect(mockedStartup).toHaveBeenCalledTimes(1)
+        const [startupArg] = mockedStartup.mock.calls[0] as [{ options: Record<string, unknown> }]
+        expect(startupArg.options.resumeSessionAt).toBe('anchor-assistant-1')
+        expect(startupArg.options.enableFileCheckpointing).toBe(true)
+        // isReplay 回显开关：CC 把 stdin 用户消息回显（带预设 uuid），CLI 拦截后作接收确认
+        expect(startupArg.options.extraArgs).toEqual({ 'replay-user-messages': null })
+        // 等用户消息（不再以空 prompt 空跑）
+        expect(nextMessage).toHaveBeenCalled()
+        // 用户消息经 warmRef.query 继续，而非直接 query 空 prompt
+        expect(warmRef.query).toHaveBeenCalled()
+        expect(mockedQuery).not.toHaveBeenCalled()
     })
 
     it('不携带 resumeSessionAt 时走常规轮（不进入截断分支）', async () => {
@@ -182,5 +188,20 @@ describe('reportRewindCompletion（两段回报）', () => {
         await reportRewindCompletion(client, noFiles)
 
         expect(client.completed).toHaveBeenCalledWith(false, undefined)
+    })
+})
+
+describe('isReplayUserMessage（isReplay 回显判别）', () => {
+    it('isReplay:true 的 user 消息 → true', () => {
+        expect(isReplayUserMessage({ type: 'user', isReplay: true, uuid: 'x' } as never)).toBe(true)
+    })
+
+    it('普通 user 消息（无 isReplay）→ false', () => {
+        expect(isReplayUserMessage({ type: 'user', uuid: 'x' } as never)).toBe(false)
+    })
+
+    it('非 user 消息（assistant/result）→ false', () => {
+        expect(isReplayUserMessage({ type: 'assistant' } as never)).toBe(false)
+        expect(isReplayUserMessage({ type: 'result' } as never)).toBe(false)
     })
 })

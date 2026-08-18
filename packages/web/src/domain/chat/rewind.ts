@@ -24,6 +24,8 @@
 export type NativeMessageMetadata = {
     nativeId?: string
     nativeSessionId?: string
+    /** CC 接收确认时刻（isReplay 回显落点）；缺省 = 未确认（不可 rewind） */
+    nativeAckAt?: number
 }
 
 /** 判据入参的最小消息形状 */
@@ -54,6 +56,8 @@ export function canRewindMessage(
     if (!sessionNativeSessionId) return false
     // 消息无 native 锚点（!bash 本地执行 / messages-bound 丢失）→ 不可
     if (!message.metadata?.nativeId || !message.metadata.nativeSessionId) return false
+    // 未确认（CC 尚未回显接收）→ 假锚点，不可 rewind
+    if (!message.metadata.nativeAckAt) return false
     // 同一 transcript 链才可 rewind（/clear 前旧行 nativeSessionId 不一致）
     return message.metadata.nativeSessionId === sessionNativeSessionId
 }

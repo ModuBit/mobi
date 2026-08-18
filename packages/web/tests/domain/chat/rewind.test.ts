@@ -18,7 +18,7 @@ import { describe, it, expect } from 'vitest'
 import { canRewindMessage } from '@/domain/chat/rewind'
 
 /** 判据入参的最小消息形状（结构化类型，与 DecryptedMessage.metadata 同构） */
-const base = { localId: 'local-1', metadata: { nativeId: 'u1', nativeSessionId: 'ns-1' } }
+const base = { localId: 'local-1', metadata: { nativeId: 'u1', nativeSessionId: 'ns-1', nativeAckAt: 1755500000000 } }
 const idle = { running: false, backgroundTasks: 0 }
 
 describe('canRewindMessage', () => {
@@ -28,6 +28,10 @@ describe('canRewindMessage', () => {
 
     it('不一致（/clear 前旧行）→ 不可', () => {
         expect(canRewindMessage(base, 'ns-2', idle)).toBe(false)
+    })
+
+    it('缺 nativeAckAt（CC 尚未回显接收，假锚点）→ 不可，即便 nativeId/nativeSessionId 齐全', () => {
+        expect(canRewindMessage({ localId: 'l', metadata: { nativeId: 'u1', nativeSessionId: 'ns-1' } }, 'ns-1', idle)).toBe(false)
     })
 
     it('缺 nativeId（!bash 本地执行 / 绑定丢失）→ 不可', () => {

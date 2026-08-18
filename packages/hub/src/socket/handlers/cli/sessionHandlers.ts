@@ -529,7 +529,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
     })
 
-    // CLI push 用户消息给 SDK 时上报 (localId → native 锚点) 绑定；幂等落库，不广播（web 经历史查询获取）
+    // CLI push 用户消息给 SDK 时上报 (localId → native 锚点) 绑定；幂等落库，
+    // 补写行按 message 落库后的广播模式推给 Web（Web 端据此刷新 rewind 判据，否则 hover 不显 icon、刷新才见）
     socket.on('messages-bound', (data: { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] }) => {
         if (!data || typeof data.sid !== 'string' || !Array.isArray(data.bindings)) {
             return
@@ -551,7 +552,61 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
                     || (typeof b.metadata.nativeSessionId === 'string' && b.metadata.nativeSessionId.length > 0)))
         if (bindings.length === 0) return
 
-        store.messages.bindNativeIds(data.sid, bindings)
+        const bound = store.messages.bindNativeIds(data.sid, bindings)
+        if (bound.length === 0) return
+        for (const msg of bound) {
+            // update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
+            // 补写行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射
+            const message = { ...toDecryptedMessage(msg), seq: msg.seq }
+            socket.to(`session:${data.sid}`).emit('update', {
+                id: randomUUID(),
+                seq: msg.seq,
+                createdAt: Date.now(),
+                body: {
+                    t: 'new-message' as const,
+                    sid: data.sid,
+                    message
+                }
+            })
+            onWebappEvent?.({
+                type: 'message-received',
+                sessionId: data.sid,
+                message: toDecryptedMessage(msg)
+            })
+        }
+    })
+
+    // CLI 收到 isReplay 回显时上报：按 nativeId 写 nativeAckAt（first-write-wins），
+    // 并按 message 落库后的广播模式推补写行给 Web（Web 端据此刷新 rewind 判据）
+    socket.on('messages-acked', (data: { sid: string; nativeId: string }) => {
+        if (!data || typeof data.sid !== 'string' || typeof data.nativeId !== 'string' || data.nativeId.length === 0) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        const acked = store.messages.markMessagesAcked(data.sid, data.nativeId, Date.now())
+        if (!acked) return
+        // update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
+        // 补写行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射
+        const message = { ...toDecryptedMessage(acked), seq: acked.seq }
+        socket.to(`session:${data.sid}`).emit('update', {
+            id: randomUUID(),
+            seq: acked.seq,
+            createdAt: Date.now(),
+            body: {
+                t: 'new-message' as const,
+                sid: data.sid,
+                message
+            }
+        })
+        onWebappEvent?.({
+            type: 'message-received',
+            sessionId: data.sid,
+            message: toDecryptedMessage(acked)
+        })
     })
 
     // rewind 两段回报 SSE 事件（shared SyncEventSchema 已收录 rewound-truncated / rewind-completed）

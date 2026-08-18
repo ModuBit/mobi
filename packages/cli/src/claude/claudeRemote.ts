@@ -25,6 +25,7 @@ import {
     type SDKMessage,
     type SDKSystemMessage,
     type SDKUserMessage,
+    type SDKUserMessageReplay,
     type SDKAssistantMessage,
     type SDKPartialAssistantMessage,
     type SDKResultMessage,
@@ -210,6 +211,12 @@ export function buildBashInjectionText(command: string, stdout: string, stderr: 
 export function sanitizeUserMessage(message: string): string {
     // 匹配成对的 $（排除已转义的 \$ 和块级 $$...$$），中间不含换行或另一对 $
     return message.replace(/(?<!\\)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g, '\\($1\\)')
+}
+
+/** 判别 isReplay 回显消息（CC 接收确认信号，nativeAckAt 数据源）。
+ *  回显 uuid = 当初 push 时预设的 nativeId；launcher onMessage 据此拦截并转 ack 上报。 */
+export function isReplayUserMessage(message: SDKMessage): message is SDKUserMessageReplay {
+    return message.type === 'user' && (message as SDKUserMessageReplay).isReplay === true
 }
 
 function resolveResumeSessionId(claudeArgs: string[] | undefined, cwd: string): string | null {
@@ -733,6 +740,10 @@ export async function claudeRemote(opts: {
         // sdkToLogConverter default 分支透传——只需开此 option，后续链路即通。
         promptSuggestions: true,
         resume: startFrom ?? undefined,
+        // rewind 截断：resume 时只加载到该 uuid（锚点前最近一条 assistant message）为止。
+        // 与 resume 配合由 startup 预热在 boot 时生效，不走空 prompt——空 prompt 会被
+        // 模型当成「空消息」触发一轮无意义回复。此处仅在 rewind 轮有值，其余轮 undefined。
+        resumeSessionAt: opts.resumeSessionAt,
         sessionId: pregeneratedSessionId,
         mcpServers: opts.mcpServers,
         permissionMode: baseConfig.permissionMode,
@@ -751,6 +762,10 @@ export async function claudeRemote(opts: {
         // rewind 文件回滚依赖 file checkpoint（Query.rewindFiles 的前置条件，
         // SDK 类型注明 "Requires file checkpointing to be enabled"）
         enableFileCheckpointing: true,
+        // isReplay 回显：CC 把 stdin 用户消息回显（带预设 uuid），CLI 拦截后作接收确认
+        // （nativeAckAt 数据源，rewind 锚点可靠性）。必须与 launcher onMessage 拦截同一 PR 上线，
+        // 否则回显会重复落库。
+        extraArgs: { 'replay-user-messages': null },
         allowedTools: baseConfig.allowedTools ? baseConfig.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: baseConfig.disallowedTools,
         // web 工具替换（常驻注入）：模型 emit WebSearch/WebFetch → 执行层重定向到 mobi-web in-process 工具。
@@ -775,40 +790,10 @@ export async function claudeRemote(opts: {
         },
     }
 
-    // rewind 截断空跑轮：不等用户消息（常规轮的 Promise.allSettled 门会阻塞到下一条消息，
-    // 截断与两段回报将被无限推迟），空 prompt 一次性启动——fork 截断发生在进程 boot，
-    // result 到达即截断落盘。文件回滚已在 rewind RPC 受理阶段（截断前）完成，本轮只截断
-    if (opts.resumeSessionAt) {
-        const response = query({ prompt: '', options: { ...sdkOptions, resumeSessionAt: opts.resumeSessionAt } })
-        opts.onQueryReady?.(response)
-        // sdkOutputLoop 要求 onRunningChange 必选，此处收敛可选性
-        const onRunningChange = opts.onRunningChange ?? ((_running: boolean) => { });
-        onRunningChange(true)
-
-        const snapshotSender = new StreamSnapshotSender(opts.onSnapshot, opts.getConverter())
-        snapshotSender.start()
-        try {
-            await sdkOutputLoop(response, { isCompactCommand: false }, {
-                path: opts.path,
-                onMessage: opts.onMessage,
-                onAbortFlush: opts.onAbortFlush,
-                snapshotSender,
-                onSessionFound: opts.onSessionFound,
-                // 截断轮不发 ready：rewind 进行中（sender 由 Web 侧禁用，终态以 rewind-completed 为准）
-                onReady: () => { },
-                onRunningChange,
-                onContextUsage: opts.onContextUsage,
-            })
-        } finally {
-            try { response.close() } catch (e) {
-                logger.debug(`[claudeRemote] Error closing truncation response:`, e)
-            }
-            snapshotSender.destroy()
-            onRunningChange(false)
-        }
-        return
-    }
-
+    // rewind 截断由 startup 预热承载：sdkOptions 已带 resumeSessionAt（resume 时只加载到
+    // 锚点 uuid 为止），startup 在 boot 时加载历史即完成截断，随后 nextMessage 正常等用户
+    // 消息——不再走「空 prompt 一次性启动」的空跑轮（空 prompt 会被模型当成空消息，触发
+    // 一轮「看起来消息是空的」的无意义回复）。
     const [warmSettled, msgSettled] = await Promise.allSettled([
         startup({ options: sdkOptions }),
         opts.nextMessage(),

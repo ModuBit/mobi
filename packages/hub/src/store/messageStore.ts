@@ -31,6 +31,7 @@ import {
     getUnsubmittedLocalMessages,
     markMessagesSubmitted,
     mergeSessionMessages,
+    markMessagesAcked,
     softDeleteMessagesFrom
 } from './messages'
 
@@ -45,14 +46,19 @@ export class MessageStore {
         return addMessage(this.db, sessionId, content, localId, category, metadata)
     }
 
-    /** 绑定用户消息的 native 锚点到 metadata（push 时上报）；只补空缺，幂等。返回实际绑定的 localId。 */
-    bindNativeIds(sessionId: string, bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[]): string[] {
+    /** 绑定用户消息的 native 锚点到 metadata（push 时上报）；只补空缺，幂等。返回补写后的行（供广播）。 */
+    bindNativeIds(sessionId: string, bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[]): StoredMessage[] {
         return bindNativeIds(this.db, sessionId, bindings)
     }
 
     /** attach 补写：该会话所有缺 nativeSessionId 的行补上新 session id（幂等）。返回补写后的行。 */
     attachNativeSessionId(sessionId: string, nativeSessionId: string): StoredMessage[] {
         return attachNativeSessionId(this.db, sessionId, nativeSessionId)
+    }
+
+    /** 标记 CC 已接收（isReplay 回显）。按 native_id 生成列查询，first-write-wins。返回更新后的行。 */
+    markMessagesAcked(sessionId: string, nativeId: string, ackAt: number): StoredMessage | null {
+        return markMessagesAcked(this.db, sessionId, nativeId, ackAt)
     }
 
     /** 软删除 seq >= fromSeq 且未删的行（rewind 截断，幂等）。返回删除行数。 */

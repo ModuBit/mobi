@@ -447,7 +447,8 @@ export const DecryptedMessageSchema = z.object({
      */
     metadata: z.object({
         nativeId: z.string().optional(),
-        nativeSessionId: z.string().optional()
+        nativeSessionId: z.string().optional(),
+        nativeAckAt: z.number().optional()
     }).nullable().optional(),
     /**
      * 被 agent 消费的时刻；仅当该消息经过排队轨道（queue_state pending→consumed）时写入。

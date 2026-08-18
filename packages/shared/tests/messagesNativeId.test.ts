@@ -56,6 +56,18 @@ describe('DecryptedMessageSchema metadata（rewind 锚点）', () => {
         })
         expect(noSession.success).toBe(true)
     })
+
+    it('metadata 可带 nativeAckAt（CC 接收确认时刻，number）', () => {
+        const parsed = DecryptedMessageSchema.safeParse({
+            id: 'm3', seq: 3, localId: 'l3',
+            metadata: { nativeId: 'u3', nativeSessionId: 'sess-3', nativeAckAt: 1755500000000 },
+            content: {}, createdAt: 3,
+        })
+        expect(parsed.success).toBe(true)
+        if (parsed.success) {
+            expect(parsed.data.metadata?.nativeAckAt).toBe(1755500000000)
+        }
+    })
 })
 
 describe('SyncEventSchema rewind 两段回报事件', () => {

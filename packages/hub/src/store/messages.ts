@@ -57,7 +57,7 @@ function parseMetadata(raw: string | null): NativeMessageMetadata | null {
 
 /** 序列化 metadata（无有效字段 → null 列，避免落 '{}' 空对象噪音） */
 function serializeMetadata(metadata: NativeMessageMetadata | null): string | null {
-    if (!metadata || (metadata.nativeId === undefined && metadata.nativeSessionId === undefined)) {
+    if (!metadata || (metadata.nativeId === undefined && metadata.nativeSessionId === undefined && metadata.nativeAckAt === undefined)) {
         return null
     }
     return JSON.stringify(metadata)
@@ -71,6 +71,7 @@ function mergeMetadata(existing: NativeMessageMetadata | null, incoming: NativeM
     return {
         nativeId: existing?.nativeId ?? incoming?.nativeId,
         nativeSessionId: existing?.nativeSessionId ?? incoming?.nativeSessionId,
+        nativeAckAt: existing?.nativeAckAt ?? incoming?.nativeAckAt,
     }
 }
 
@@ -252,12 +253,14 @@ function queryByPosition(
 }
 
 /** 绑定用户消息的 native 锚点到 metadata（push 时上报）。只补 nativeId 空缺的行——幂等，
- *  重复上报/重发不覆盖；已有 nativeSessionId 保留（message 事件可能先写入）。返回实际绑定的 localId。 */
+ *  重复上报/重发不覆盖；已有 nativeSessionId 保留（message 事件可能先写入）。返回补写后的行
+ *  （供 handler 广播消息更新，Web 端据此刷新 rewind 判据——否则补写只落库、Web 端已渲染的行
+ *  不更新，hover 不显 rewind icon，刷新才见）。 */
 export function bindNativeIds(
     db: Database,
     sessionId: string,
     bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[],
-): string[] {
+): StoredMessage[] {
     if (bindings.length === 0) return []
     // json_set 的 SQL NULL 值会落成 json null，故 nativeSessionId 拆两条语句：
     // 仅在绑定确带值时才 set 该 key（COALESCE 保已有值，first-write-wins）
@@ -273,9 +276,13 @@ export function bindNativeIds(
             '$.nativeSessionId', COALESCE(json_extract(COALESCE(metadata, '{}'), '$.nativeSessionId'), @nativeSessionId))
         WHERE session_id = @sid AND local_id = @localId AND ${NATIVE_ID_MISSING_GUARD}
     `)
+    // local_id 有 UNIQUE INDEX（session_id, local_id），一行一 localId，回读补写后的完整行供广播
+    const selectByLocalId = db.prepare(
+        'SELECT * FROM messages WHERE session_id = ? AND local_id = ? LIMIT 1'
+    )
     // 事务包裹：批次原子落库，避免逐条 autocommit 在中途失败时残留半批绑定（1:N 批内共享同一 nativeId）
-    const run = db.transaction((): string[] => {
-        const bound: string[] = []
+    const run = db.transaction((): StoredMessage[] => {
+        const bound: StoredMessage[] = []
         for (const b of bindings) {
             const stmt = b.metadata.nativeSessionId ? setNativeIdWithSession : setNativeIdOnly
             const result = stmt.run({
@@ -284,11 +291,36 @@ export function bindNativeIds(
                 sid: sessionId,
                 localId: b.localId,
             })
-            if (result.changes > 0) bound.push(b.localId)
+            if (result.changes > 0) {
+                const row = selectByLocalId.get(sessionId, b.localId) as DbMessageRow | undefined
+                if (row) bound.push(toStoredMessage(row))
+            }
         }
         return bound
     })
     return run()
+}
+
+/** 标记 CC 已接收（isReplay 回显）。按 native_id 生成列索引查询，first-write-wins：
+ *  重复 ack / 无此 nativeId 行返回 null。返回更新后的完整行（供 handler 广播 Web 刷新
+ *  rewind 判据）。ackAt 落 metadata.nativeAckAt（与 nativeId/nativeSessionId 同族 JSON）。 */
+export function markMessagesAcked(
+    db: Database,
+    sessionId: string,
+    nativeId: string,
+    ackAt: number,
+): StoredMessage | null {
+    const result = db.prepare(`
+        UPDATE messages
+        SET metadata = json_set(COALESCE(metadata, '{}'), '$.nativeAckAt', @ackAt)
+        WHERE session_id = @sid AND native_id = @nativeId
+          AND json_extract(COALESCE(metadata, '{}'), '$.nativeAckAt') IS NULL
+    `).run({ ackAt, sid: sessionId, nativeId })
+    if (result.changes === 0) return null
+    const row = db.prepare(
+        'SELECT * FROM messages WHERE session_id = ? AND native_id = ? LIMIT 1'
+    ).get(sessionId, nativeId) as DbMessageRow | undefined
+    return row ? toStoredMessage(row) : null
 }
 
 /** attach 补写：该会话所有缺 nativeSessionId 的行补上新 session id。幂等（重复上报无行可补）。

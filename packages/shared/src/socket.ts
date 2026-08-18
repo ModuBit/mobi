@@ -154,6 +154,8 @@ export interface ServerToClientEvents {
 export interface NativeMessageMetadata {
     nativeId?: string
     nativeSessionId?: string
+    /** CC 接收确认时刻（isReplay 回显落点）；缺省 = 未确认（不可 rewind） */
+    nativeAckAt?: number
 }
 
 export interface ClientToServerEvents {
@@ -231,6 +233,8 @@ export interface ClientToServerEvents {
     'messages-bound': (data: { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] }) => void
     /** CLI onSessionFound 且 native session 变化时上报：Hub 补写该会话缺 nativeSessionId 的消息行（幂等） */
     'messages-native-attached': (data: { sid: string; nativeSessionId: string }) => void
+    /** CLI 收到 isReplay 回显时上报：Hub 按 nativeId 写 metadata.nativeAckAt（first-write-wins） */
+    'messages-acked': (data: { sid: string; nativeId: string }) => void
     /** rewind 截断成功（CLI → Hub）：Hub 即刻按 deleteFromSeq 软删除并转 SSE */
     'rewound-truncated': (data: { sid: string; nativeId: string; deleteFromSeq: number }) => void
     /** rewind 终态（CLI → Hub）：filesRestored false 时 error 携带原因，转 SSE */

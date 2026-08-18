@@ -159,3 +159,16 @@ describe('emitMessagesBound 绑定上报', () => {
         })
     })
 })
+
+describe('emitMessagesAcked 接收确认上报', () => {
+    it('emit messages-acked 事件，载荷为 { sid, nativeId }', () => {
+        const client = makeClient()
+        client.emitMessagesAcked('native-1')
+
+        expect(mockSocket.emit).toHaveBeenCalledTimes(1)
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-acked', {
+            sid: 'session-1',
+            nativeId: 'native-1',
+        })
+    })
+})

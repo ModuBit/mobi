@@ -365,7 +365,7 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
 })
 
 describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
-    function makeBoundDeps(opts: { bindReturn: string[]; sessionOk?: boolean }) {
+    function makeBoundDeps(opts: { bindReturn: StoredMessage[]; sessionOk?: boolean }) {
         const events: SyncEvent[] = []
         const bindSpy = { args: null as { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] } | null }
         const accessError = { called: false }
@@ -390,14 +390,24 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
         return { deps, events, bindSpy, accessError }
     }
 
-    test('合法 bindings → 委托 store.bindNativeIds', () => {
+    test('合法 bindings → 委托 store.bindNativeIds 并广播补写行给 Web（刷新 rewind 判据）', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, bindSpy, events } = makeBoundDeps({ bindReturn: ['loc-1'] })
+        const boundMsg = makeMsg('m-1', 'loc-1', 1)
+        const { deps, bindSpy, events } = makeBoundDeps({ bindReturn: [boundMsg] })
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
         fakeSocket.emit('messages-bound', { sid: 's1', bindings: [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }] })
         expect(bindSpy.args!.sid).toBe('s1')
         expect(bindSpy.args!.bindings).toEqual([{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }])
-        // messages-bound 不广播 SSE，仅落库绑定
+        // 补写行经 message-received SSE 广播给 Web，供其刷新 rewind 判据
+        expect(events).toEqual([{ type: 'message-received', sessionId: 's1', message: expect.objectContaining({ id: 'm-1', localId: 'loc-1' }) }])
+    })
+
+    test('补写为空（已绑定过）→ 不广播', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, bindSpy, events } = makeBoundDeps({ bindReturn: [] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        fakeSocket.emit('messages-bound', { sid: 's1', bindings: [{ localId: 'loc-1', metadata: { nativeId: 'uu-1' } }] })
+        expect(bindSpy.args).not.toBeNull()
         expect(events).toEqual([])
     })
 
