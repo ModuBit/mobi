@@ -588,25 +588,29 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
         const acked = store.messages.markMessagesAcked(data.sid, data.nativeId, Date.now())
-        if (!acked) return
-        // update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
-        // 补写行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射
-        const message = { ...toDecryptedMessage(acked), seq: acked.seq }
-        socket.to(`session:${data.sid}`).emit('update', {
-            id: randomUUID(),
-            seq: acked.seq,
-            createdAt: Date.now(),
-            body: {
-                t: 'new-message' as const,
-                sid: data.sid,
-                message
-            }
-        })
-        onWebappEvent?.({
-            type: 'message-received',
-            sessionId: data.sid,
-            message: toDecryptedMessage(acked)
-        })
+        if (acked.length === 0) return
+        // 合并批 1:N（同 nativeId 多行）逐行广播——只推一行会让批内其余行的 nativeAckAt
+        // 不实时更新，rewind 入口「刷新才见」。update 事件的 new-message 体受 shared
+        // UpdateNewMessageBodySchema 约束（seq: number）——补写行 seq 恒为 number，此处显式收窄，
+        // 其余字段复用统一 DTO 映射
+        for (const msg of acked) {
+            const message = { ...toDecryptedMessage(msg), seq: msg.seq }
+            socket.to(`session:${data.sid}`).emit('update', {
+                id: randomUUID(),
+                seq: msg.seq,
+                createdAt: Date.now(),
+                body: {
+                    t: 'new-message' as const,
+                    sid: data.sid,
+                    message
+                }
+            })
+            onWebappEvent?.({
+                type: 'message-received',
+                sessionId: data.sid,
+                message: toDecryptedMessage(msg)
+            })
+        }
     })
 
     // rewind 两段回报 SSE 事件（shared SyncEventSchema 已收录 rewound-truncated / rewind-completed）
@@ -654,9 +658,11 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     // rewind 截断成功（CLI 两段回报第一段，含 CLI 反查的锚点批首行 seq）：
     // Hub 即刻软删除（先 CLI 截断成功再 Hub 删），随即转 SSE 过渡态
     socket.on('rewound-truncated', (data: { sid: string; nativeId: string; deleteFromSeq: number }) => {
+        // deleteFromSeq 须为正整数（seq 从 1 起）：Hub 是软删除的执行端，CLI 端 reportRewindCompletion
+        // 的 >0 防御不足以兜底异常载荷——0/负数会让 seq >= fromSeq 命中全部行，整会话历史被软删除
         if (!data || typeof data.sid !== 'string'
             || typeof data.nativeId !== 'string' || data.nativeId.length === 0
-            || !Number.isFinite(data.deleteFromSeq)) {
+            || !Number.isInteger(data.deleteFromSeq) || data.deleteFromSeq <= 0) {
             return
         }
         const sessionAccess = resolveSessionAccess(data.sid)

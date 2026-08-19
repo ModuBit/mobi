@@ -33,7 +33,7 @@ import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress } from '@/domain/chat/presentation'
-import { canRewindMessage, collectRewindBatchText, type NativeMessageMetadata } from '@/domain/chat/rewind'
+import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
 import { type RewindDryRunResult } from './RewindConfirmView'
@@ -391,8 +391,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         try {
             const res = await api.sessions.rewindDryRun(sessionId, nativeId)
             if (!res.data.canRewind) {
-                // 预检拒绝（假锚点 / /clear 前旧行误判等）：不弹窗，干净拒绝
-                messageApi.error(t('chat.rewind.unavailable'))
+                // 预检拒绝：不弹窗，干净拒绝——链首给 /clear 引导，其余（假锚点/换链旧行）笼统提示
+                messageApi.error(t(rewindRejectReasonKey(res.data.reason)))
                 setRewindDraft(null)
                 return
             }
@@ -413,11 +413,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             await api.sessions.rewind(sessionId, rewindDraft.nativeId, restoreFiles)
             useRewindStore.getState().beginRewind(sessionId, rewindDraft.nativeId)
         } catch (err) {
-            // 干净失败（闸门拒绝 / 网络错误）：列表与 sender 不动，toast 原因
+            // 干净失败（闸门拒绝 / 网络错误）：列表与 sender 不动，toast 原因。
+            // 与 filesFailed（截断已发生、文件恢复失败的部分降态）区分——本分支 rewind 根本未执行
             setRewindExecuting(false)
             pendingBackfillRef.current = null
             const reason = err instanceof Error ? err.message : String(err)
-            messageApi.error(t('chat.rewind.filesFailed', { reason }))
+            messageApi.error(t('chat.rewind.rejected', { reason }))
         }
     }, [rewindDraft, api, sessionId, messages, messageApi, t])
 
@@ -499,6 +500,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // rewind 判据数据源：会话当前 native session id + 后台任务在途数（store 订阅，spec §3.4）
     const sessionNativeSessionId = metadata?.nativeSessionId
     const backgroundTasksCount = useBackgroundTasks(sessionId).length
+    // rewind 互斥（体验层）：POST 在途或截断等待窗口内，其余消息的 rewind 入口一并隐藏——
+    // 截断轮等待用户输入时 session.running=false、后台任务为 0，若无此判据可并发触发第二次 rewind
+    const rewindBusy = rewindExecuting || rewindProgress != null
+    // 链首隐藏（保守判据）：仅当窗口含全部历史时才可判定「其前无同链 assistant 行」的链首用户行
+    //（CLI 预检必拒，隐藏免掉「点了必失败」）；窗口未到头（hasNextPage）不可判定 → null = 保守不隐藏
+    const chainHeadIds = useMemo(
+        () => (hasNextPage ? null : collectChainHeadUserRowIds(messages)),
+        [messages, hasNextPage],
+    )
 
     const decoratedItems = useMemo(() => {
         const baseItems = buildChatBubbleItems(
@@ -523,7 +533,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 ? canRewindMessage(
                     { metadata: metaById.get(block.id) },
                     sessionNativeSessionId,
-                    { running: !!session?.running, backgroundTasks: backgroundTasksCount },
+                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy },
+                    chainHeadIds?.has(block.id),
                 )
                 : false
 
@@ -564,7 +575,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 canRewind: canRewindMessage(
                     { metadata: meta },
                     sessionNativeSessionId,
-                    { running: !!session?.running, backgroundTasks: backgroundTasksCount },
+                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy },
+                    chainHeadIds?.has(block.id),
                 ),
             })
         }
@@ -590,8 +602,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
         const ctxKey = `${metadata?.path ?? ''}|${sessionId}|${sendMutation.isPending}|${!!session?.running}`
             + `|${sessionNativeSessionId ?? ''}|${backgroundTasksCount}`
-            // rewind 状态入签名：dry-run 完成 / executing 翻转时 footer 的 Popover 内容须重建
+            // rewind 状态入签名：dry-run 完成 / executing 翻转时 footer 的 Popover 内容须重建；
+            // rewindBusy 翻转（受理/终态）翻 canRewind，footer/长按菜单入口须随帧刷新
             + `|${rewindDraft?.messageId ?? ''}|${rewindDraft?.source ?? ''}|${rewindDryRun?.canRewind ?? ''}-${rewindDryRun?.canRestoreFiles ?? ''}|${rewindExecuting}`
+            + `|${rewindBusy}`
+            // 链首骨架翻转（窗口到头 / 历史补齐）翻 canRewind，入口须随帧刷新；unk = 不可判定
+            + `|${chainHeadIds === null ? 'unk' : chainHeadIds.size}`
             // metadata 签名：ack/attach 补写后 rewind 图标即时刷新（而非「刷新才见」）
             + `|${nativeIdCount}-${nativeSidCount}-${nativeAckCount}`
         const reusableCache = prevItemsRef.current.ctxKey === ctxKey
@@ -600,7 +616,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
         prevItemsRef.current = { cache, ctxKey }
         return items
-    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind])
+    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind])
 
     const bubbleItems = useMemo(() => {
         // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝

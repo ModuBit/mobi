@@ -177,6 +177,8 @@
             "rewindOnly": "仅回退对话",
             "executing": "正在回退...",
             "unavailable": "该消息暂无法回退",
+            "firstMessage": "会话首条消息无法回退，请使用 /clear 开始新对话",
+            "rejected": "回退未执行：{{reason}}",
             "filesUnavailable": "文件快照已超出保留窗口，将仅回退对话",
             "filesFailed": "文件恢复失败：{{reason}}",
             "timedOut": "回退超时，已解锁输入",

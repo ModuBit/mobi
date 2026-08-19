@@ -177,6 +177,8 @@
             "rewindOnly": "Rewind conversation only",
             "executing": "Rewinding...",
             "unavailable": "This message cannot be rewound",
+            "firstMessage": "The first message of a session cannot be rewound — use /clear to start fresh",
+            "rejected": "Rewind not executed: {{reason}}",
             "filesUnavailable": "File snapshots are outside the retention window; only the conversation will be rewound",
             "filesFailed": "File restore failed: {{reason}}",
             "timedOut": "Rewind timed out; input unlocked",

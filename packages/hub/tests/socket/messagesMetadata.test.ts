@@ -291,6 +291,9 @@ describe('rewound-truncated / rewind-completed（两段回报）', () => {
 
         fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1' })                          // 缺 deleteFromSeq
         fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: NaN })      // 非有限数
+        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: 0 })        // 下界：0 会命中全部行
+        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: -1 })       // 负数
+        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: 1.5 })      // 小数（非整数）
         fakeSocket.emit('rewind-completed', { sid })                                            // 缺 filesRestored
         fakeSocket.emit('rewind-completed', { sid, filesRestored: 'yes' })                      // 类型错
         expect(store.messages.getMessages(sid, 10)).toHaveLength(2)

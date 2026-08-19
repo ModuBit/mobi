@@ -302,25 +302,27 @@ export function bindNativeIds(
 }
 
 /** 标记 CC 已接收（isReplay 回显）。按 native_id 生成列索引查询，first-write-wins：
- *  重复 ack / 无此 nativeId 行返回 null。返回更新后的完整行（供 handler 广播 Web 刷新
- *  rewind 判据）。ackAt 落 metadata.nativeAckAt（与 nativeId/nativeSessionId 同族 JSON）。 */
+ *  重复 ack / 无此 nativeId 行返回空数组。合并批 1:N（多行共享同一 nativeId）全部命中，
+ *  返回全部更新后的行（供 handler 逐行广播 Web 刷新 rewind 判据——只广播一行会让批内
+ *  其余行的 nativeAckAt 不实时更新，rewind 入口「刷新才见」）。ackAt 落 metadata.nativeAckAt
+ *  （与 nativeId/nativeSessionId 同族 JSON）。 */
 export function markMessagesAcked(
     db: Database,
     sessionId: string,
     nativeId: string,
     ackAt: number,
-): StoredMessage | null {
+): StoredMessage[] {
     const result = db.prepare(`
         UPDATE messages
         SET metadata = json_set(COALESCE(metadata, '{}'), '$.nativeAckAt', @ackAt)
         WHERE session_id = @sid AND native_id = @nativeId
           AND json_extract(COALESCE(metadata, '{}'), '$.nativeAckAt') IS NULL
     `).run({ ackAt, sid: sessionId, nativeId })
-    if (result.changes === 0) return null
-    const row = db.prepare(
-        'SELECT * FROM messages WHERE session_id = ? AND native_id = ? LIMIT 1'
-    ).get(sessionId, nativeId) as DbMessageRow | undefined
-    return row ? toStoredMessage(row) : null
+    if (result.changes === 0) return []
+    const rows = db.prepare(
+        'SELECT * FROM messages WHERE session_id = ? AND native_id = ?'
+    ).all(sessionId, nativeId) as DbMessageRow[]
+    return rows.map(toStoredMessage)
 }
 
 /** attach 补写：该会话所有缺 nativeSessionId 的行补上新 session id。幂等（重复上报无行可补）。

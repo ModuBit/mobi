@@ -23,6 +23,7 @@ import type {
     AgentState,
     AttachmentMetadata,
     DecryptedMessage as ProtocolDecryptedMessage,
+    NativeMessageMetadata,
     Session,
     SessionSummary,
     SyncEvent,
@@ -34,6 +35,7 @@ import type {
 export type {
     AgentState,
     AttachmentMetadata,
+    NativeMessageMetadata,
     Session,
     SessionSummary,
     SyncEvent,
@@ -44,14 +46,6 @@ export type {
 
 // 消息发送状态
 export type MessageStatus = 'sending' | 'sent' | 'queued' | 'failed'
-
-/** 消息行的上游 native 事实（rewind 锚点；hub DTO 输出 metadata 字段，web 侧独立声明先行） */
-export type NativeMessageMetadata = {
-    nativeId?: string
-    nativeSessionId?: string
-    /** CC 接收确认时刻（isReplay 回显落点）；缺省 = 未确认（不可 rewind） */
-    nativeAckAt?: number
-}
 
 // 扩展的解密消息（包含发送状态）
 export type DecryptedMessage = ProtocolDecryptedMessage & {

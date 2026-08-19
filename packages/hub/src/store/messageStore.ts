@@ -56,8 +56,9 @@ export class MessageStore {
         return attachNativeSessionId(this.db, sessionId, nativeSessionId)
     }
 
-    /** 标记 CC 已接收（isReplay 回显）。按 native_id 生成列查询，first-write-wins。返回更新后的行。 */
-    markMessagesAcked(sessionId: string, nativeId: string, ackAt: number): StoredMessage | null {
+    /** 标记 CC 已接收（isReplay 回显）。按 native_id 生成列查询，first-write-wins。
+     *  合并批 1:N 全部命中，返回全部更新后的行（供逐行广播）。 */
+    markMessagesAcked(sessionId: string, nativeId: string, ackAt: number): StoredMessage[] {
         return markMessagesAcked(this.db, sessionId, nativeId, ackAt)
     }
 

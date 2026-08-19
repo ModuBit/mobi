@@ -15,6 +15,7 @@
  */
 
 import { create } from 'zustand'
+import { SyncEventSchema, type SyncEvent } from '@mobi/shared'
 import { rewindFrom } from '@/core/data/stores/messageWindowStore'
 
 /**
@@ -25,20 +26,11 @@ import { rewindFrom } from '@/core/data/stores/messageWindowStore'
  * 30s 超时兜底解锁。对齐 backgroundTasksStore 的「SSE 层写、组件层读」模式。
  */
 
-/** rewound-truncated SSE 载荷（hub 广播形状；shared SyncEventSchema 由 hub 线并行扩展，web 侧独立声明先行） */
-export type RewoundTruncatedEvent = {
-    type: 'rewound-truncated'
-    sessionId: string
-    deleteFromSeq: number
-}
+/** rewound-truncated SSE 载荷（shared SyncEventSchema 已收录，单一来源） */
+export type RewoundTruncatedEvent = Extract<SyncEvent, { type: 'rewound-truncated' }>
 
 /** rewind-completed SSE 载荷（终态；filesRestored false 时 error 携带原因） */
-export type RewindCompletedEvent = {
-    type: 'rewind-completed'
-    sessionId: string
-    filesRestored: boolean
-    error?: string
-}
+export type RewindCompletedEvent = Extract<SyncEvent, { type: 'rewind-completed' }>
 
 export type RewindSseEvent = RewoundTruncatedEvent | RewindCompletedEvent
 
@@ -109,11 +101,14 @@ export const useRewindStore = create<RewindState>((set) => ({
     completeRewind: (sessionId, filesRestored, error) =>
         set((state) => {
             const prev = state.progressBySession.get(sessionId)
+            // 与 markTruncated 同款守卫：无进行中态即忽略——页面重载/SSE 重连后迟到的
+            // rewind-completed 不注入幽灵终态（无对应 rewind 的「已回退至此」分隔线）
+            if (!prev) return state
             const nextProgress = new Map(state.progressBySession)
             nextProgress.delete(sessionId)
             const nextCompletion = new Map(state.completionBySession)
             nextCompletion.set(sessionId, {
-                nativeId: prev?.nativeId ?? '',
+                nativeId: prev.nativeId,
                 filesRestored,
                 error,
                 completedAt: Date.now(),
@@ -151,29 +146,20 @@ export function useRewindCompletion(sessionId: string): RewindCompletion | undef
 }
 
 /**
- * 从未知 SSE 事件中解析 rewind 两段回报（SSEClient 只 JSON.parse 不做 zod 校验，
- * shared SyncEvent union 尚未收录这两个事件类型——按 type 字段判别，形状不符返回 null）。
+ * 从未知 SSE 事件中解析 rewind 两段回报（SSEClient 只 JSON.parse 不做 zod 校验）。
+ * 形状校验复用 shared SyncEventSchema（单一来源，避免 web 侧手写副本静默失配）——
+ * 先按 type 字段判别（非 rewind 事件零成本直返 null，不跑整个 union 的 zod parse），
+ * 再 safeParse 收敛形状，不符返回 null。
  */
 export function parseRewindSseEvent(event: unknown): RewindSseEvent | null {
     if (!event || typeof event !== 'object') return null
-    const e = event as Record<string, unknown>
-    if (e.type === 'rewound-truncated') {
-        if (typeof e.sessionId === 'string' && e.sessionId.length > 0 && typeof e.deleteFromSeq === 'number') {
-            return { type: 'rewound-truncated', sessionId: e.sessionId, deleteFromSeq: e.deleteFromSeq }
-        }
-        return null
-    }
-    if (e.type === 'rewind-completed') {
-        if (typeof e.sessionId === 'string' && e.sessionId.length > 0 && typeof e.filesRestored === 'boolean') {
-            return {
-                type: 'rewind-completed',
-                sessionId: e.sessionId,
-                filesRestored: e.filesRestored,
-                error: typeof e.error === 'string' && e.error.length > 0 ? e.error : undefined,
-            }
-        }
-    }
-    return null
+    const type = (event as Record<string, unknown>).type
+    if (type !== 'rewound-truncated' && type !== 'rewind-completed') return null
+    const parsed = SyncEventSchema.safeParse(event)
+    if (!parsed.success) return null
+    return parsed.data.type === 'rewound-truncated' || parsed.data.type === 'rewind-completed'
+        ? parsed.data
+        : null
 }
 
 /**

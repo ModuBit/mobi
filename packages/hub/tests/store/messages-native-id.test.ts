@@ -143,25 +143,36 @@ describe('markMessagesAcked（isReplay 回显 → nativeAckAt）', () => {
     test('首次 ack 写 nativeAckAt 并按 native_id 生成列命中返回行', () => {
         store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
         const acked = store.messages.markMessagesAcked(sessionId, 'uu-1', 1755500000000)
-        expect(acked).not.toBeNull()
-        expect(acked!.metadata?.nativeAckAt).toBe(1755500000000)
+        expect(acked).toHaveLength(1)
+        expect(acked[0].metadata?.nativeAckAt).toBe(1755500000000)
         // 落库生效（nativeId/nativeSessionId 同族保留，nativeAckAt 追加）
         const row = store.messages.getMessages(sessionId)[0]
         expect(row.metadata).toEqual({ nativeId: 'uu-1', nativeAckAt: 1755500000000 })
     })
 
-    test('重复 ack → first-write-wins 不覆盖，返回 null', () => {
+    test('合并批 1:N（同 nativeId 多行）→ 全部命中并全量返回（供逐行广播）', () => {
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-batch' })
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-2', 'persistent', { nativeId: 'uu-batch' })
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-3', 'persistent', { nativeId: 'uu-other' })
+        const acked = store.messages.markMessagesAcked(sessionId, 'uu-batch', 1755500000000)
+        expect(acked.map(m => m.localId).sort()).toEqual(['local-1', 'local-2'])
+        expect(acked.every(m => m.metadata?.nativeAckAt === 1755500000000)).toBe(true)
+        // 批外行不受影响
+        expect(store.messages.getMessages(sessionId).find(r => r.localId === 'local-3')!.metadata?.nativeAckAt).toBeUndefined()
+    })
+
+    test('重复 ack → first-write-wins 不覆盖，返回空', () => {
         store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
         store.messages.markMessagesAcked(sessionId, 'uu-1', 111)
         const again = store.messages.markMessagesAcked(sessionId, 'uu-1', 222)
-        expect(again).toBeNull()
+        expect(again).toEqual([])
         expect(store.messages.getMessages(sessionId)[0].metadata?.nativeAckAt).toBe(111)
     })
 
-    test('无此 nativeId 行 → 返回 null 不落库', () => {
+    test('无此 nativeId 行 → 返回空不落库', () => {
         store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
         const acked = store.messages.markMessagesAcked(sessionId, 'ghost', 1755500000000)
-        expect(acked).toBeNull()
+        expect(acked).toEqual([])
         expect(store.messages.getMessages(sessionId)[0].metadata?.nativeAckAt).toBeUndefined()
     })
 })

@@ -534,20 +534,29 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 return p;
                             }
 
-                            const msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                            for (;;) {
+                                const msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                                if (!msg) return null;
 
-                            if (msg) {
                                 // 重置空闲计时器（用户发送消息）
                                 session.client.resetIdleTimer();
 
-                                // rewind 退出哨兵：识别后不暂存 pending、不推送 SDK，直接令本轮
-                                // query 结束（plan 中 requestLoopExit 的实际接线，复用 isolate 机制）——
-                                // launcher 下轮循环读到 session.pendingRewind 后以 resumeSessionAt 截断重启。
-                                // 仅非截断轮识别：截断轮（rewind 已置位）时哨兵可能是上一轮残留
-                                //（RPC 在 query 轮间隙触发），忽略它继续等用户消息，避免误触发本轮早退
-                                if (msg.isolate && msg.message === REWIND_EXIT_SENTINEL && !rewind) {
-                                    logger.debug('[remote]: rewind exit sentinel received, ending current query round');
-                                    return null;
+                                // rewind 退出哨兵：识别后不暂存 pending、不推送 SDK（NUL 前缀串
+                                // 作为 prompt 会污染会话）。判定以「实时」session.pendingRewind 为准——
+                                // 局部 rewind 是轮起快照，截断轮中已被 onRewindTruncated 清空，不能作判据：
+                                // - 非空：哨兵对应尚未消费的 rewind（常规轮的新 rewind / 截断轮中抵达的
+                                //   第二次 rewind）→ return null 结束本轮，launcher 下轮循环读到
+                                //   pendingRewind 后以 resumeSessionAt 截断重启（plan 中 requestLoopExit
+                                //   的实际接线，复用 isolate 机制）
+                                // - 空：本轮截断已执行后的残留哨兵（RPC 落在 query 轮间隙时入队）→
+                                //   丢弃，继续等下一条用户消息，避免误触发本轮早退
+                                if (msg.isolate && msg.message === REWIND_EXIT_SENTINEL) {
+                                    if (session.pendingRewind) {
+                                        logger.debug('[remote]: rewind exit sentinel received, ending current query round');
+                                        return null;
+                                    }
+                                    logger.debug('[remote]: stale rewind exit sentinel dropped, keep waiting for user message');
+                                    continue;
                                 }
 
                                 if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
@@ -562,8 +571,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                     localIds: msg.localIds,
                                 };
                             }
-
-                            return null;
                         },
                         onSessionFound: (sessionId) => {
                             session.onSessionFound(sessionId);

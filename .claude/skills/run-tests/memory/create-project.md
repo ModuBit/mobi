@@ -25,6 +25,8 @@ metadata:
 3. 加第二个 folder：点 "Add folder"，新行同样 snapshot-uid click 后输入
 4. 提交按钮变 enabled 后 click
 
+注意：**环境只有一台机器时 Machine 选择器整行省略**（自动选中，2026-08-19 实测），不必找机器下拉。
+
 ## 项目内新建会话
 
 项目组标题行 hover 出「+」（`.new-session-btn`）→ evaluate 定位 click → 跳

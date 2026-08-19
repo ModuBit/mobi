@@ -94,6 +94,12 @@ describe('rewindStore 状态机', () => {
         expect(useRewindStore.getState().progressBySession.size).toBe(0)
     })
 
+    it('completeRewind 无进行中态 → 忽略（页面重载后迟到的 completed 不产生幽灵终态）', () => {
+        useRewindStore.getState().completeRewind('sess-1', true)
+        expect(useRewindStore.getState().progressBySession.size).toBe(0)
+        expect(useRewindStore.getState().completionBySession.size).toBe(0)
+    })
+
     it('clearSession 清理；beginRewind 清掉旧终态', () => {
         const sid = 'sess-1'
         useRewindStore.getState().beginRewind(sid, 'u1')
