@@ -533,7 +533,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 ? canRewindMessage(
                     { metadata: metaById.get(block.id) },
                     sessionNativeSessionId,
-                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy },
+                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active },
                     chainHeadIds?.has(block.id),
                 )
                 : false
@@ -575,7 +575,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 canRewind: canRewindMessage(
                     { metadata: meta },
                     sessionNativeSessionId,
-                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy },
+                    { running: !!session?.running, backgroundTasks: backgroundTasksCount, rewinding: rewindBusy, active: session?.active },
                     chainHeadIds?.has(block.id),
                 ),
             })
@@ -602,6 +602,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         }
         const ctxKey = `${metadata?.path ?? ''}|${sessionId}|${sendMutation.isPending}|${!!session?.running}`
             + `|${sessionNativeSessionId ?? ''}|${backgroundTasksCount}`
+            // 会话激活态入签名：CLI 上/下线翻 canRewind（离线时 rewind RPC 无法送达），入口须随帧刷新
+            + `|${session?.active ?? ''}`
             // rewind 状态入签名：dry-run 完成 / executing 翻转时 footer 的 Popover 内容须重建；
             // rewindBusy 翻转（受理/终态）翻 canRewind，footer/长按菜单入口须随帧刷新
             + `|${rewindDraft?.messageId ?? ''}|${rewindDraft?.source ?? ''}|${rewindDryRun?.canRewind ?? ''}-${rewindDryRun?.canRestoreFiles ?? ''}|${rewindExecuting}`
@@ -616,7 +618,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const { items, cache } = reconcileBubbleItems(decorated, reusableCache)
         prevItemsRef.current = { cache, ctxKey }
         return items
-    }, [chatBlocks, session?.running, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind])
+    }, [chatBlocks, session?.running, session?.active, metadata, api, sessionId, sendMutation.isPending, t, messages, sessionNativeSessionId, backgroundTasksCount, rewindBusy, chainHeadIds, handleOpenRewind, rewindDraft, rewindDryRun, rewindExecuting, confirmRewind, cancelRewind])
 
     const bubbleItems = useMemo(() => {
         // 无进行中命令时直接复用 decoratedItems 引用，不做无意义的数组拷贝

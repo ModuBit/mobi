@@ -90,4 +90,12 @@ describe('RewindConfirmView（确认视图三形态，spec §5.3）', () => {
         expect((screen.getByRole('button', { name: '仅回退对话' }) as HTMLButtonElement).disabled).toBe(true)
         expect((screen.getByRole('button', { name: '取消' }) as HTMLButtonElement).disabled).toBe(true)
     })
+
+    it('超长 targetText → 预览卡片截前 80 字符 + 省略号，不整串渲染', () => {
+        const long = 'x'.repeat(500)
+        render(<RewindConfirmView targetText={long} dryRun={bothTrue} loading={false} onConfirm={vi.fn()} onCancel={vi.fn()} />)
+        expect(screen.getByText('回退至此')).toBeTruthy()
+        expect(screen.getByText(`${'x'.repeat(80)}…`)).toBeTruthy()
+        expect(screen.queryByText(long)).toBeNull()
+    })
 })

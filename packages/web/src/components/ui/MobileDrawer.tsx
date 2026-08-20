@@ -77,13 +77,26 @@ const DraggableArea = styled.div`
     }
 `
 
+/** 标题行：extra 靠右常规流布局，标题绝对定位恒居中（不受 extra 宽度影响） */
 const TitleRow = styled.div`
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     min-height: 22px;
     font-weight: 500;
     font-size: 16px;
+`
+
+/** 居中标题：绝对定位恒居中；超长省略号截断（不与右侧 extra 重叠溢出） */
+const TitleText = styled.span`
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 `
 
 export interface MobileDrawerProps extends Omit<DrawerProps, 'placement' | 'width' | 'height'> {
@@ -244,6 +257,15 @@ export function MobileDrawer({
     const userStyles = typeof propStyles === 'object' ? propStyles : undefined
     const mergedStyles = {
         ...propStyles,
+        // 顶部左右圆角（底部抽屉视觉惯例，12px 与项目浮层圆角一致）；
+        // overflow hidden 让 header/内容裁切到圆角内（调用方可覆盖）。
+        // antd v6：原 styles.content 已改名 styles.section（DOM 为 .ant-drawer-section）
+        section: {
+            borderTopLeftRadius: 12,
+            borderTopRightRadius: 12,
+            overflow: 'hidden',
+            ...userStyles?.section,
+        },
         wrapper: {
             height: 'auto',
             maxHeight,
@@ -294,7 +316,7 @@ export function MobileDrawer({
                     {showDragHandle && <DragHandle />}
                     {(title || extra) && (
                         <TitleRow>
-                            <span>{title}</span>
+                            {title != null && <TitleText>{title}</TitleText>}
                             {extra && <span>{extra}</span>}
                         </TitleRow>
                     )}

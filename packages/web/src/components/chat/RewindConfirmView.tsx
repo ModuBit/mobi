@@ -19,6 +19,7 @@ import { Button, Spin } from 'antd'
 import styled from '@emotion/styled'
 import { FolderGit2, MessageSquare, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { truncateRewindPreview } from '@/domain/chat/rewind'
 
 /** dry-run 预检结果（hub POST /api/sessions/:id/rewind/dry-run 响应体） */
 export type RewindDryRunResult = {
@@ -222,7 +223,8 @@ export function RewindConfirmView({ targetText, dryRun, loading, onConfirm, onCa
             {targetText ? (
                 <TargetCard>
                     <TargetLabel>{t('chat.rewind.targetLabel')}</TargetLabel>
-                    <TargetText>{targetText}</TargetText>
+                    {/* 预览只作确认锚点：截前 N 字符 + 省略号（line-clamp 兜底无空格长串） */}
+                    <TargetText>{truncateRewindPreview(targetText)}</TargetText>
                 </TargetCard>
             ) : null}
 

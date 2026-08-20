@@ -29,13 +29,15 @@ export type RewindableMessage = {
     metadata?: NativeMessageMetadata | null
 }
 
-/** 会话侧状态（running 来自 session DTO；backgroundTasks 计数来自 backgroundTasksStore；
+/** 会话侧状态（running/active 来自 session DTO；backgroundTasks 计数来自 backgroundTasksStore；
  *  rewinding 来自 rewindStore 进行中态——截断等待窗口内互斥其余 rewind 入口） */
 export type RewindSessionState = {
     running: boolean
     backgroundTasks: number
     /** rewind 进行中（POST 受理 → rewind-completed）→ 互斥再次触发 */
     rewinding?: boolean
+    /** 会话激活（CLI 在线）；false = 离线，rewind RPC 无法送达 → 隐藏入口；undefined = 不可判定（保守不隐藏） */
+    active?: boolean
 }
 
 /**
@@ -53,6 +55,8 @@ export function canRewindMessage(
 ): boolean {
     // 在途工作（前台 running / 后台任务 / rewind 截断等待窗口）期间禁止 rewind
     if (sessionState.running || sessionState.backgroundTasks > 0 || sessionState.rewinding) return false
+    // 会话未激活（CLI 离线）→ rewind RPC 无法送达，dry-run/POST 必失败，直接隐藏入口
+    if (sessionState.active === false) return false
     // 会话侧 native session 未知（老数据 / 尚未上报）→ 保守不可
     if (!sessionNativeSessionId) return false
     // 消息无 native 锚点（!bash 本地执行 / messages-bound 丢失）→ 不可
@@ -138,4 +142,17 @@ export function rewindRejectReasonKey(reason: string | undefined): 'chat.rewind.
     return reason?.includes('first message')
         ? 'chat.rewind.firstMessage'
         : 'chat.rewind.unavailable'
+}
+
+/** 回退目标预览截断长度（字符数，按码点计）：预览只作「回退到哪里」的确认锚点，长文整串渲染无意义 */
+const REWIND_PREVIEW_MAX_CHARS = 80
+
+/**
+ * 回退目标预览截断：超长原文只展示前 maxChars 个字符 + 省略号。
+ * 按码点切（Array.from），避免 emoji 等代理对被从中间截成乱码。
+ * 仅用于确认视图预览；回填编辑器的原文走完整 targetText，不受此影响。
+ */
+export function truncateRewindPreview(text: string, maxChars: number = REWIND_PREVIEW_MAX_CHARS): string {
+    const chars = Array.from(text)
+    return chars.length <= maxChars ? text : `${chars.slice(0, maxChars).join('')}…`
 }

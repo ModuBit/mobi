@@ -92,4 +92,27 @@ describe('MobileDrawer', () => {
         const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
         expect(wrapper.style.maxHeight).toBe('85dvh')
     })
+
+    it('section 顶部左右圆角 + overflow hidden（header/内容裁切到圆角内；antd v6 section = 旧 content）', () => {
+        render(<MobileDrawer open onClose={vi.fn()} title="测试"><div>内容</div></MobileDrawer>)
+        const section = document.querySelector('.ant-drawer-section') as HTMLElement
+        expect(section).toBeTruthy()
+        expect(section.style.borderTopLeftRadius).toBe('12px')
+        expect(section.style.borderTopRightRadius).toBe('12px')
+        expect(section.style.overflow).toBe('hidden')
+    })
+
+    it('标题恒居中：绝对定位 + translateX(-50%)，不受右侧 extra 宽度影响', () => {
+        render(
+            <MobileDrawer open onClose={vi.fn()} title="标题" extra={<span>右侧操作</span>}>
+                <div>内容</div>
+            </MobileDrawer>,
+        )
+        // 首个 span 是 TitleText（DragHandle 是 div）；断言绝对居中定位
+        const title = document.querySelector('.ant-drawer-body span') as HTMLElement
+        expect(title).toBeTruthy()
+        const computed = getComputedStyle(title)
+        expect(computed.position).toBe('absolute')
+        expect(computed.transform).toBe('translateX(-50%)')
+    })
 })

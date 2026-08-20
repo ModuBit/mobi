@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { canRewindMessage, collectChainHeadUserRowIds, rewindRejectReasonKey } from '@/domain/chat/rewind'
+import { canRewindMessage, collectChainHeadUserRowIds, rewindRejectReasonKey, truncateRewindPreview } from '@/domain/chat/rewind'
 
 /** 判据入参的最小消息形状（结构化类型，与 DecryptedMessage.metadata 同构） */
 const base = { localId: 'local-1', metadata: { nativeId: 'u1', nativeSessionId: 'ns-1', nativeAckAt: 1755500000000 } }
@@ -53,6 +53,12 @@ describe('canRewindMessage', () => {
         expect(canRewindMessage(base, 'ns-1', { running: false, backgroundTasks: 0, rewinding: true })).toBe(false)
         // 缺省（旧调用点）不改变行为
         expect(canRewindMessage(base, 'ns-1', { running: false, backgroundTasks: 0, rewinding: undefined })).toBe(true)
+    })
+
+    it('会话未激活（CLI 离线，rewind RPC 无法送达）→ 不可；active 缺省（不可判定）→ 不隐藏', () => {
+        expect(canRewindMessage(base, 'ns-1', { running: false, backgroundTasks: 0, active: false })).toBe(false)
+        expect(canRewindMessage(base, 'ns-1', { running: false, backgroundTasks: 0, active: true })).toBe(true)
+        expect(canRewindMessage(base, 'ns-1', { running: false, backgroundTasks: 0, active: undefined })).toBe(true)
     })
 
     it('会话无 nativeSessionId（未知态）→ 保守不可', () => {
@@ -109,5 +115,28 @@ describe('rewindRejectReasonKey（dry-run 拒绝文案判别）', () => {
     it('其余 reason / 缺省 → 笼统 unavailable', () => {
         expect(rewindRejectReasonKey('rewind anchor not found in transcript')).toBe('chat.rewind.unavailable')
         expect(rewindRejectReasonKey(undefined)).toBe('chat.rewind.unavailable')
+    })
+})
+
+describe('truncateRewindPreview（回退目标预览截断）', () => {
+    it('不超长 → 原样返回', () => {
+        expect(truncateRewindPreview('短消息')).toBe('短消息')
+        expect(truncateRewindPreview('a'.repeat(80))).toBe('a'.repeat(80))
+    })
+
+    it('超长 → 前 80 字符 + 省略号', () => {
+        const long = 'a'.repeat(200)
+        expect(truncateRewindPreview(long)).toBe(`${'a'.repeat(80)}…`)
+        // 自定义长度
+        expect(truncateRewindPreview(long, 10)).toBe(`${'a'.repeat(10)}…`)
+    })
+
+    it('按码点切，代理对（emoji）不在中间截断产生乱码', () => {
+        // '😀' 占 2 个 UTF-16 码元；第 80 个码点恰好是 emoji 时不得切成半截
+        const text = `x${'😀'.repeat(80)}y`
+        const truncated = truncateRewindPreview(text, 10)
+        expect(truncated.endsWith('…')).toBe(true)
+        expect(truncated.includes('\uD83D')).toBe(true) // 完整 emoji 保留
+        expect(Array.from(truncated).slice(0, 10)).toEqual(['x', ...Array(9).fill('😀')])
     })
 })
