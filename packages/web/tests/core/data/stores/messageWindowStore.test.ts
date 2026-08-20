@@ -10,6 +10,7 @@ import {
     removeOptimisticMessage,
     markMessagesSubmitted,
     updateMessageStatus,
+    reconcileLatestMessages,
     _resetForTest,
     _internal,
 } from '@/core/data/stores/messageWindowStore'
@@ -280,5 +281,74 @@ describe('queued/optimistic actions', () => {
         appendOptimisticMessage('s1', m)
         updateMessageStatus('s1', 'loc-1', 'failed')
         expect(getMessageWindowState('s1').messages[0].status).toBe('failed')
+    })
+})
+
+// ──────────────────────────────────────────────────────────────
+// reconcileLatestMessages（rewind 超时对账，M4：以服务端真相替换）
+// ──────────────────────────────────────────────────────────────
+
+describe('reconcileLatestMessages（rewind 超时对账）', () => {
+    beforeEach(() => _resetForTest())
+
+    it('服务端已删的行从窗口移除（SSE 事件丢失时的本地残留），保留服务端现存行', async () => {
+        // 本地窗口有 a(3) b(4) c(5)；Hub 已软删 b/c（SSE 丢了），服务端真相只剩 a
+        _internal.updateState('s1', prev => _internal.buildState(prev, {
+            messages: [msg('a', 3), msg('b', 4), msg('c', 5)],
+            hasFetchedLatest: true,
+        }))
+        const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
+
+        await reconcileLatestMessages(api, 's1')
+
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a'])
+    })
+
+    it('本地未提交乐观行（sending/failed）保留，不随替换丢失', async () => {
+        const optimistic: DecryptedMessage = {
+            ...msg('opt', null),
+            localId: 'loc-1',
+            status: 'sending',
+        } as DecryptedMessage
+        _internal.updateState('s1', prev => _internal.buildState(prev, {
+            messages: [msg('a', 3), msg('b', 4), optimistic],
+            hasFetchedLatest: true,
+        }))
+        const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
+
+        await reconcileLatestMessages(api, 's1')
+
+        const ids = getMessageWindowState('s1').messages.map(m => m.id)
+        // 乐观行 seq 为 null，按排序锚点（positionAt/createdAt）排在服务端行之前
+        expect(ids).toEqual(['opt', 'a'])
+        expect(getMessageWindowState('s1').messages.find(m => m.id === 'opt')?.status).toBe('sending')
+    })
+
+    it('对账失败 → 保持现状（不破坏窗口），hasFetchedLatest 仍置位', async () => {
+        _internal.updateState('s1', prev => _internal.buildState(prev, {
+            messages: [msg('a', 3), msg('b', 4)],
+            hasFetchedLatest: true,
+        }))
+        const api = {
+            messages: { list: async () => { throw new Error('network down') } },
+        } as unknown as MobiApi
+
+        await reconcileLatestMessages(api, 's1')
+
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'b'])
+        expect(getMessageWindowState('s1').hasFetchedLatest).toBe(true)
+    })
+
+    it('对账期间窗口被 clear → 旧响应按 generation 丢弃', async () => {
+        _internal.updateState('s1', prev => _internal.buildState(prev, {
+            messages: [msg('a', 3)],
+            hasFetchedLatest: true,
+        }))
+        const api = makeApi([{ messages: [msg('stale', 1)], page: { hasMore: false, nextBeforeSeq: null } }])
+        const pending = reconcileLatestMessages(api, 's1')
+        clearMessageWindow('s1')
+        await pending
+
+        expect(getMessageWindowState('s1').messages).toEqual([])
     })
 })

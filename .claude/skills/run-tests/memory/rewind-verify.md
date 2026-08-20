@@ -1,9 +1,9 @@
 ---
 name: rewind-verify
-description: rewind 全链路 E2E — 按钮/ack/dry-run/截断上下文探针/连续 rewind/回填断言；进行中窗口抓不到的坑
+description: rewind 全链路 E2E — 按钮/ack/dry-run/截断上下文探针/连续 rewind/回填断言/双 tab 同步；进行中窗口抓不到的坑
 metadata:
   type: recipe
-  last_verified: 2026-08-19
+  last_verified: 2026-08-20
 ---
 
 # rewind 全链路验证
@@ -39,6 +39,28 @@ metadata:
   别反复尝试抓 in-flight 状态（sender disabled / 其余入口隐藏）——这类互斥验证靠单测，E2E 只断言终态。
 - **已回填 sender 上 Ctrl+A 不清空**：rewind 回填后 Ctrl+A + type_text 会**追加**而非替换。
   探针消息须先清空（连续 Backspace）或接受追加（探针问句在文末同样生效）。
+
+## 双 tab 同步验证（多端生命周期，2026-08-20 验证）
+
+「另一 tab/设备发起 rewind」的同步断言（远端 tab 由 truncated 事件驱动进入生命周期）：
+
+1. **开第二 tab**：`new_page` 打开同一 `/sessions/<sid>` URL——同浏览器 profile 共享 cookie，免二次登录
+2. **tab A 发起 rewind**（PC footer 按钮 → "Rewind conversation only"）
+3. **tab B（远端）断言**（`evaluate_script`，sleep ~5s 后）：
+   - 被退回合消失、之前回合保留（窗口同步清除）
+   - **「已回退至此」分隔线可见**（`innerText` 含 `已回退至此` / `Rewound to here`）——truncated 事件驱动进入生命周期的核心验证点
+   - sender **空**（回填只到发起 tab）、解锁
+4. **反向再验一轮**：tab B 发起、tab A 作远端，断言对称
+5. **tab B 截断后继续对话**正常（截断轮重启后消息消费健康）
+
+坑：
+- **分隔线在 `take_snapshot`（a11y tree）里不显示**——用 `evaluate_script` 读 `document.body.innerText` 断言
+- **同浏览器不同 tab 的 i18n locale 可能不同**（实测 A 中文 B 英文）——文案断言兼容两种（`已回退至此` / `Rewound to here`）
+- 远端 tab 的 sender 若有上轮回填的草稿不会被清——那是用户草稿，非 rewind 状态，别误判
+
+## 链首隐藏验证（顺带）
+
+会话**首条**用户消息 footer 无 rewind 按钮（链首判定，`collectChainHeadUserRowIds`）、第二条有——snapshot 直接可见。
 
 ## 观察（2026-08-19 实测）
 

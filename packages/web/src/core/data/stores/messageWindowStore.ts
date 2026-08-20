@@ -264,6 +264,33 @@ export function ingestIncomingMessages(sessionId: string, incoming: DecryptedMes
     })
 }
 
+/**
+ * rewind 超时对账（M4）：重拉首页并以服务端为准**替换**窗口内容——
+ * 与 fetchLatest 的 merge 语义不同，服务端已软删除的行（SSE 事件丢失时本地残留）
+ * 会被移除；仅保留本地未提交的乐观行（sending/failed，服务端无对应行）。
+ * 供超时兜底在解锁 sender 前收敛「界面 ↔ Hub DB」的失同步。
+ */
+export async function reconcileLatestMessages(api: MobiApi, sessionId: string): Promise<void> {
+    const prev = _internal.getState(sessionId)
+    if (prev.isLoading) return
+    const gen = beginAsyncGeneration(sessionId, 'latest', {})
+    try {
+        const res = await api.messages.list(sessionId, { beforeSeq: undefined })
+        if (!isCurrentGeneration(sessionId, 'latest', gen)) return
+        updateStateForGeneration(sessionId, 'latest', gen, p => {
+            // 服务端真相为主体；本地乐观行（未提交，服务端必然无行）merge 回来防丢输入
+            const localPending = p.messages.filter(m => m.status === 'sending' || m.status === 'failed')
+            const messages = mergeMessages(res.data.messages, localPending)
+            return _internal.buildState(p, { messages, oldestSeq: computeOldestSeq(messages), isLoading: false, hasFetchedLatest: true })
+        })
+    } catch (err) {
+        // 对账失败保持现状（超时兜底按原路径收尾），留日志诊断
+        console.error('[messageWindowStore] reconcileLatest failed', sessionId, err)
+        if (!isCurrentGeneration(sessionId, 'latest', gen)) return
+        updateStateForGeneration(sessionId, 'latest', gen, p => _internal.buildState(p, { isLoading: false, hasFetchedLatest: true }))
+    }
+}
+
 // ──────────────────────────────────────────────────────────────
 // queued/optimistic actions
 // ──────────────────────────────────────────────────────────────

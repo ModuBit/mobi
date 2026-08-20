@@ -36,7 +36,7 @@ export type RewindSseEvent = RewoundTruncatedEvent | RewindCompletedEvent
 
 /** rewind 进行中状态（beginRewind 创建，completeRewind 清除） */
 export type RewindProgress = {
-    /** rewind 目标锚点（用户消息 nativeId） */
+    /** rewind 目标锚点（用户消息 nativeId）；远端发起进入时为空串（SSE 载荷不含锚点，仅存档不消费） */
     nativeId: string
     /** Web 确认 rewind 的时刻（POST 受理成功后） */
     startedAt: number
@@ -173,6 +173,14 @@ export function ingestRewindSseEvent(event: unknown): boolean {
     if (!parsed) return false
     const store = useRewindStore.getState()
     if (parsed.type === 'rewound-truncated') {
+        // 远端发起（另一 tab/设备 rewind，本 tab 无进行中态）→ 由 truncated 驱动进入生命周期（#4）：
+        // 后续 completed 落终态（「已回退至此」分隔线）、30s 超时兜底随之生效，sender 同步禁用。
+        // 载荷不含锚点，nativeId 留空（completion.nativeId 仅存档不消费）；
+        // 本地已发起则不覆盖（保留真实锚点）。页面重载后迟到的孤立 truncated 会被
+        // hub 去重挡住（M5 不重放广播），到达即说明 rewind 真实在途
+        if (!store.progressBySession.get(parsed.sessionId)) {
+            store.beginRewind(parsed.sessionId, '')
+        }
         store.markTruncated(parsed.sessionId, parsed.deleteFromSeq)
         rewindFrom(parsed.sessionId, parsed.deleteFromSeq)
     } else {

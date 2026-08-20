@@ -22,6 +22,7 @@ import {
     parseRewindSseEvent,
     ingestRewindSseEvent,
 } from '@/core/data/stores/rewindStore'
+import { _resetForTest, _internal, getMessageWindowState } from '@/core/data/stores/messageWindowStore'
 
 function userText(text: string): UserTextBlock {
     return { kind: 'user-text', id: `u-${text}`, localId: null, createdAt: 1000, text }
@@ -138,5 +139,43 @@ describe('rewind SSE 事件接入', () => {
         expect(ingestRewindSseEvent({ type: 'rewind-completed', sessionId: sid, filesRestored: false, error: 'io' })).toBe(true)
         expect(useRewindStore.getState().progressBySession.size).toBe(0)
         expect(useRewindStore.getState().completionBySession.get(sid)?.error).toBe('io')
+    })
+
+    it('远端发起（#4）：无本地 progress 的 truncated → 由事件驱动进入生命周期（sender 随之禁用、终态可见）', () => {
+        const sid = 'sess-remote'
+        // 另一 tab/设备发起的 rewind：本 tab 未 beginRewind，直接收到广播 truncated
+        expect(ingestRewindSseEvent({ type: 'rewound-truncated', sessionId: sid, deleteFromSeq: 4 })).toBe(true)
+
+        const progress = useRewindStore.getState().progressBySession.get(sid)
+        expect(progress).toBeDefined()
+        expect(progress?.truncatedAt).not.toBeNull()
+        expect(progress?.deleteFromSeq).toBe(4)
+        // 载荷不含锚点，nativeId 留空（completion.nativeId 仅存档不消费）
+        expect(progress?.nativeId).toBe('')
+
+        // 后续 completed 广播 → 正常落终态（不再被守卫吞掉）
+        expect(ingestRewindSseEvent({ type: 'rewind-completed', sessionId: sid, filesRestored: true })).toBe(true)
+        expect(useRewindStore.getState().progressBySession.has(sid)).toBe(false)
+        expect(useRewindStore.getState().completionBySession.get(sid)?.filesRestored).toBe(true)
+    })
+
+    it('本地已发起时 truncated 不覆盖真实锚点（远端进入只兜无 progress 的会话）', () => {
+        const sid = 'sess-local'
+        useRewindStore.getState().beginRewind(sid, 'u9')
+        ingestRewindSseEvent({ type: 'rewound-truncated', sessionId: sid, deleteFromSeq: 2 })
+        expect(useRewindStore.getState().progressBySession.get(sid)?.nativeId).toBe('u9')
+    })
+
+    it('远端进入同样清窗口（rewindFrom 与 progress 进入同帧生效）', () => {
+        const sid = 'sess-remote-window'
+        _resetForTest()
+        _internal.updateState(sid, prev => _internal.buildState(prev, {
+            messages: [
+                { id: 'm1', seq: 1, localId: null, content: { role: 'user', content: { type: 'text', text: 'a' } }, createdAt: 1 } as never,
+                { id: 'm2', seq: 2, localId: null, content: { role: 'user', content: { type: 'text', text: 'b' } }, createdAt: 2 } as never,
+            ],
+        }))
+        ingestRewindSseEvent({ type: 'rewound-truncated', sessionId: sid, deleteFromSeq: 2 })
+        expect(getMessageWindowState(sid).messages.map(m => m.id)).toEqual(['m1'])
     })
 })

@@ -135,13 +135,28 @@ export function collectChainHeadUserRowIds(rows: RewindChainRow[]): Set<string> 
 }
 
 /**
- * dry-run 拒绝 reason → i18n key 判别：链首场景给 /clear 引导文案，
+ * dry-run / 执行拒绝 reason → i18n key 判别：链首场景给 /clear 引导文案，
+ * busy（多端并发，rewind 已在途）给「回退正在进行中」提示，
  * 其余（假锚点 / 换链旧行等）用笼统 unavailable——CLI reason 是英文串，不直出给用户。
  */
-export function rewindRejectReasonKey(reason: string | undefined): 'chat.rewind.firstMessage' | 'chat.rewind.unavailable' {
-    return reason?.includes('first message')
-        ? 'chat.rewind.firstMessage'
-        : 'chat.rewind.unavailable'
+export function rewindRejectReasonKey(reason: string | undefined):
+    | 'chat.rewind.firstMessage'
+    | 'chat.rewind.inProgress'
+    | 'chat.rewind.unavailable' {
+    if (reason?.includes('first message')) return 'chat.rewind.firstMessage'
+    if (reason?.includes('in progress')) return 'chat.rewind.inProgress'
+    return 'chat.rewind.unavailable'
+}
+
+/**
+ * 文件恢复失败 error → i18n key 判别（终态 filesRestored=false 的部分降态提示）：
+ * 边界反查失败（CLI 截断后 Hub 行已不可定位）有明确语义文案，其余笼统提醒检查工作目录。
+ * 与 rewindRejectReasonKey 同理：CLI reason 是英文串不直出，原文经 console 留诊断。
+ */
+export function rewindFilesFailedKey(error: string | undefined): 'chat.rewind.filesFailedBoundary' | 'chat.rewind.filesFailed' {
+    return error?.includes('boundary')
+        ? 'chat.rewind.filesFailedBoundary'
+        : 'chat.rewind.filesFailed'
 }
 
 /** 回退目标预览截断长度（字符数，按码点计）：预览只作「回退到哪里」的确认锚点，长文整串渲染无意义 */

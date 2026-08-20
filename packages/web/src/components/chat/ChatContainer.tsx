@@ -33,7 +33,7 @@ import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress } from '@/domain/chat/presentation'
-import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
+import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
 import { type RewindDryRunResult } from './RewindConfirmView'
@@ -44,6 +44,7 @@ import type { SessionMetadataSummary } from '@/core/data/api/types'
 import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
 import { useBackgroundTasksStore, useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import { useRewindStore, useRewindProgress, useRewindCompletion } from '@/core/data/stores/rewindStore'
+import { reconcileLatestMessages } from '@/core/data/stores/messageWindowStore'
 import { useLongPress } from '@/core/data/hooks/useLongPress'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
@@ -357,15 +358,22 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // rewind 卡死兜底（对齐 clearStuck 模式，spec §4.5）：
     // - truncated 已到、completed 30s 未到（CLI 崩溃于文件恢复阶段，失败模式 #9）→ 超时视为完成（filesRestored 按 false）
     // - 截断前阶段（accepted 后无任何回报）设 90s 硬上限，防 CLI 崩溃于截断前致 sender 永久禁用（spec 外补充兜底）
+    // 超时不直接解锁：先对账 refetch 服务端真相（SSE 事件丢失时窗口可能仍显示已删行，M4），
+    // 对账期间 progress 保留 → sender 维持禁用（消息不落进未定义时序，#3）；8s 护栏防 refetch 卡死把用户锁死
+    const handleRewindTimeout = useCallback(async () => {
+        await Promise.race([
+            reconcileLatestMessages(api, sessionId),
+            new Promise<void>(resolve => { setTimeout(resolve, 8_000) }),
+        ])
+        useRewindStore.getState().completeRewind(sessionId, false, 'timeout')
+        messageApi.warning(t('chat.rewind.timedOut'))
+    }, [api, sessionId, messageApi, t])
     useEffect(() => {
         if (!rewindProgress) return
         const timeoutMs = rewindProgress.truncatedAt != null ? 30_000 : 90_000
-        const timer = setTimeout(() => {
-            useRewindStore.getState().completeRewind(sessionId, false, 'timeout')
-            messageApi.warning(t('chat.rewind.timedOut'))
-        }, timeoutMs)
+        const timer = setTimeout(() => { void handleRewindTimeout() }, timeoutMs)
         return () => clearTimeout(timer)
-    }, [rewindProgress, sessionId, messageApi, t])
+    }, [rewindProgress, handleRewindTimeout])
 
     // rewind 终态到达：关闭确认 UI、回填 sender、部分失败提示（文件恢复失败=合法降态，spec §5.4）
     useEffect(() => {
@@ -380,7 +388,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             pendingBackfillRef.current = null
         }
         if (!rewindCompletion.filesRestored && rewindCompletion.error && rewindCompletion.error !== 'timeout') {
-            messageApi.warning(t('chat.rewind.filesFailed', { reason: rewindCompletion.error }))
+            // 部分降态提示：CLI error 是英文串不直出（对齐 rewindRejectReasonKey 原则），原文留 console 诊断
+            console.warn('[rewind] files restore failed:', rewindCompletion.error)
+            messageApi.warning(t(rewindFilesFailedKey(rewindCompletion.error)))
         }
     }, [rewindCompletion, messageApi, t])
 
@@ -418,7 +428,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             setRewindExecuting(false)
             pendingBackfillRef.current = null
             const reason = err instanceof Error ? err.message : String(err)
-            messageApi.error(t('chat.rewind.rejected', { reason }))
+            // busy（多端并发，另一端 rewind 在途）给专用提示；其余保留 reason 细节
+            messageApi.error(
+                reason.includes('in progress')
+                    ? t('chat.rewind.inProgress')
+                    : t('chat.rewind.rejected', { reason }),
+            )
         }
     }, [rewindDraft, api, sessionId, messages, messageApi, t])
 
@@ -504,11 +519,22 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 截断轮等待用户输入时 session.running=false、后台任务为 0，若无此判据可并发触发第二次 rewind
     const rewindBusy = rewindExecuting || rewindProgress != null
     // 链首隐藏（保守判据）：仅当窗口含全部历史时才可判定「其前无同链 assistant 行」的链首用户行
-    //（CLI 预检必拒，隐藏免掉「点了必失败」）；窗口未到头（hasNextPage）不可判定 → null = 保守不隐藏
-    const chainHeadIds = useMemo(
-        () => (hasNextPage ? null : collectChainHeadUserRowIds(messages)),
-        [messages, hasNextPage],
-    )
+    //（CLI 预检必拒，隐藏免掉「点了必失败」）；窗口未到头（hasNextPage）不可判定 → null = 保守不隐藏。
+    // 结构签名缓存（#7）：骨架只取决于行序列的 (id, role, nativeSessionId) 有序序列——流式 chunk
+    // 只更新行内容不动结构，签名不变则复用上一帧 Set，跳过 Set 重建；结构真变（追加 / attach 补写 /
+    // 消费重排）签名即变自然重建。hasNextPage 未到头时骨架恒 null，签名计算短路
+    const chainHeadsCacheRef = useRef<{ key: string; set: Set<string> } | null>(null)
+    const chainHeadIds = useMemo(() => {
+        if (hasNextPage) return null
+        const structureKey = messages
+            .map(m => `${m.id}|${(m.content as { role?: string } | null)?.role ?? ''}|${m.metadata?.nativeSessionId ?? ''}`)
+            .join(';')
+        const cached = chainHeadsCacheRef.current
+        if (cached?.key === structureKey) return cached.set
+        const set = collectChainHeadUserRowIds(messages)
+        chainHeadsCacheRef.current = { key: structureKey, set }
+        return set
+    }, [messages, hasNextPage])
 
     const decoratedItems = useMemo(() => {
         const baseItems = buildChatBubbleItems(

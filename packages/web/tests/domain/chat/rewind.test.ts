@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { canRewindMessage, collectChainHeadUserRowIds, rewindRejectReasonKey, truncateRewindPreview } from '@/domain/chat/rewind'
+import { canRewindMessage, collectChainHeadUserRowIds, rewindFilesFailedKey, rewindRejectReasonKey, truncateRewindPreview } from '@/domain/chat/rewind'
 
 /** 判据入参的最小消息形状（结构化类型，与 DecryptedMessage.metadata 同构） */
 const base = { localId: 'local-1', metadata: { nativeId: 'u1', nativeSessionId: 'ns-1', nativeAckAt: 1755500000000 } }
@@ -105,16 +105,32 @@ describe('collectChainHeadUserRowIds（链首用户行骨架）', () => {
     })
 })
 
-describe('rewindRejectReasonKey（dry-run 拒绝文案判别）', () => {
+describe('rewindRejectReasonKey（dry-run / 执行拒绝文案判别）', () => {
     it('链首 reason（含 first message）→ firstMessage 文案（带 /clear 引导）', () => {
         expect(rewindRejectReasonKey(
             'rewind anchor not found in transcript (cannot rewind the first message of a session — use /clear instead)',
         )).toBe('chat.rewind.firstMessage')
     })
 
+    it('busy reason（含 in progress，多端并发）→ inProgress 文案', () => {
+        expect(rewindRejectReasonKey('rewind is already in progress')).toBe('chat.rewind.inProgress')
+    })
+
     it('其余 reason / 缺省 → 笼统 unavailable', () => {
         expect(rewindRejectReasonKey('rewind anchor not found in transcript')).toBe('chat.rewind.unavailable')
         expect(rewindRejectReasonKey(undefined)).toBe('chat.rewind.unavailable')
+    })
+})
+
+describe('rewindFilesFailedKey（文件恢复失败文案判别）', () => {
+    it('边界反查失败（含 boundary）→ 专用文案', () => {
+        expect(rewindFilesFailedKey('rewind boundary not found on hub')).toBe('chat.rewind.filesFailedBoundary')
+        expect(rewindFilesFailedKey('rewind boundary lookup failed: timeout')).toBe('chat.rewind.filesFailedBoundary')
+    })
+
+    it('其余 error / 缺省 → 笼统提醒检查工作目录（不直出英文串）', () => {
+        expect(rewindFilesFailedKey('some internal error')).toBe('chat.rewind.filesFailed')
+        expect(rewindFilesFailedKey(undefined)).toBe('chat.rewind.filesFailed')
     })
 })
 
