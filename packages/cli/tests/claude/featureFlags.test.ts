@@ -15,16 +15,26 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { buildClaudeFeatureEnv, CLAUDE_AGENT_TEAMS_ENV } from '../../src/claude/featureFlags'
+import { buildClaudeFeatureEnv, CLAUDE_AGENT_TEAMS_ENV, CLAUDE_TODO_TOOLS_ENV } from '../../src/claude/featureFlags'
 
 describe('buildClaudeFeatureEnv', () => {
-    test('全部关闭时返回空对象', () => {
-        expect(buildClaudeFeatureEnv({ agentTeams: false, claudeEnv: {} })).toEqual({})
+    test('全部关闭时仅含 todo tools 保底注入（SDK 0.3.233 起任务工具默认移出新模型工具面）', () => {
+        expect(buildClaudeFeatureEnv({ agentTeams: false, claudeEnv: {} })).toEqual({
+            [CLAUDE_TODO_TOOLS_ENV]: '1',
+        })
     })
 
     test('agentTeams 开启时注入 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', () => {
         const env = buildClaudeFeatureEnv({ agentTeams: true, claudeEnv: {} })
         expect(env[CLAUDE_AGENT_TEAMS_ENV]).toBe('1')
+    })
+
+    test('todo tools 保底注入可被 claudeEnv 显式关闭（用户跟随 Claude Code 新默认时不注入任务工具）', () => {
+        const env = buildClaudeFeatureEnv({
+            agentTeams: false,
+            claudeEnv: { [CLAUDE_TODO_TOOLS_ENV]: '0' },
+        })
+        expect(env[CLAUDE_TODO_TOOLS_ENV]).toBe('0')
     })
 
     test('claudeEnv 的变量被合并进返回', () => {
@@ -46,15 +56,15 @@ describe('buildClaudeFeatureEnv', () => {
         expect(env[CLAUDE_AGENT_TEAMS_ENV]).toBe('0')
     })
 
-    test('claudeEnv 非对象时防御为空（settings.json 写坏不致崩溃）', () => {
+    test('claudeEnv 非对象时防御为仅含内置注入（settings.json 写坏不致崩溃）', () => {
         const env = buildClaudeFeatureEnv({
             agentTeams: false,
             claudeEnv: 'not-an-object' as unknown as Record<string, string>,
         })
-        expect(env).toEqual({})
+        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1' })
     })
 
-    test('claudeEnv 为数组时防御为空（数组也是 object，须显式排除）', () => {
+    test('claudeEnv 为数组时防御为仅含内置注入（数组也是 object，须显式排除）', () => {
         // settings.json 误写 "claudeEnv": ["a","b"] —— typeof==='object' 通过，
         // 但 Object.entries 会得到 [['0','a'],['1','b']]，值是 string 不被过滤，
         // 会注入名为 '0'/'1' 的环境变量。必须 Array.isArray 排除。
@@ -62,7 +72,7 @@ describe('buildClaudeFeatureEnv', () => {
             agentTeams: false,
             claudeEnv: ['ANTHROPIC_LOG', 'debug'] as unknown as Record<string, string>,
         })
-        expect(env).toEqual({})
+        expect(env).toEqual({ [CLAUDE_TODO_TOOLS_ENV]: '1' })
     })
 
     test('claudeEnv 值非 string 时跳过该键（保证返回类型 Record<string,string>）', () => {

@@ -20,6 +20,14 @@ import { configuration } from '@/configuration';
 export const CLAUDE_AGENT_TEAMS_ENV = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS';
 
 /**
+ * 任务工具保底开关（由 claude 侧读取）。SDK 0.3.233 / Claude Code 2.1.233 起
+ * TaskCreate/TaskGet/TaskUpdate/TaskList/TodoWrite 在新模型（Opus 4.8 / Sonnet 5 及
+ * 更新）默认移出工具面——mobi Web 的工具卡片与任务展示消费这些工具调用流，
+ * 保底注入维持既有体验；用户可在 settings.json claudeEnv 显式置 '0' 跟随新默认。
+ */
+export const CLAUDE_TODO_TOOLS_ENV = 'CLAUDE_CODE_ENABLE_TODO_TOOLS';
+
+/**
  * buildClaudeFeatureEnv 的输入。可选——不传时从 configuration 单例读取默认值，
  * 调用点（claudeRemote / runClaude）无需改动；测试可显式传参做纯函数验证。
  */
@@ -46,7 +54,10 @@ export function buildClaudeFeatureEnv(opts?: ClaudeFeatureEnvOptions): Record<st
     const agentTeams = opts?.agentTeams ?? configuration.isAgentTeamsEnabled;
     const rawClaudeEnv = opts?.claudeEnv ?? configuration.claudeEnv;
 
-    const env: Record<string, string> = {};
+    const env: Record<string, string> = {
+        // 任务工具保底（见 CLAUDE_TODO_TOOLS_ENV 注释）；claudeEnv 层可覆盖为 '0'
+        [CLAUDE_TODO_TOOLS_ENV]: '1',
+    };
 
     if (agentTeams) {
         env[CLAUDE_AGENT_TEAMS_ENV] = '1';
