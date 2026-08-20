@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { canRewindMessage, collectChainHeadUserRowIds, rewindFilesFailedKey, rewindRejectReasonKey, truncateRewindPreview } from '@/domain/chat/rewind'
+import { canRewindMessage, collectChainHeadUserRowIds, extractRewindRejectReason, rewindFilesFailedKey, rewindRejectReasonKey, truncateRewindPreview } from '@/domain/chat/rewind'
 
 /** 判据入参的最小消息形状（结构化类型，与 DecryptedMessage.metadata 同构） */
 const base = { localId: 'local-1', metadata: { nativeId: 'u1', nativeSessionId: 'ns-1', nativeAckAt: 1755500000000 } }
@@ -102,6 +102,27 @@ describe('collectChainHeadUserRowIds（链首用户行骨架）', () => {
         const noChain = { id: 'u0', content: { role: 'user' }, metadata: null }
         const heads = collectChainHeadUserRowIds([noChain, u('u1')])
         expect([...heads]).toEqual(['u1'])
+    })
+})
+
+describe('extractRewindRejectReason（执行失败 reason 提取）', () => {
+    it('HTTP 错误（axios）优先取响应体 error 字段——hub 409 透传的 CLI 拒绝原因（如 busy）', () => {
+        const axiosLike = {
+            isAxiosError: true,
+            message: 'Request failed with status code 409',
+            response: { data: { error: 'rewind is already in progress' } },
+        }
+        expect(extractRewindRejectReason(axiosLike)).toBe('rewind is already in progress')
+    })
+
+    it('非 HTTP 错误（网络断开等）回退 Error.message', () => {
+        expect(extractRewindRejectReason(new Error('Network Error'))).toBe('Network Error')
+    })
+
+    it('响应体无 error 字段（如 500 空体）也回退 message；非 Error 值 String 化', () => {
+        const noBody = { message: 'Request failed with status code 500', response: { data: {} } }
+        expect(extractRewindRejectReason(noBody)).toBe('Request failed with status code 500')
+        expect(extractRewindRejectReason('weird')).toBe('weird')
     })
 })
 

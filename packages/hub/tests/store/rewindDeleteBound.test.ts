@@ -108,4 +108,26 @@ describe('RewindDeleteBoundTracker', () => {
         // 会话间隔离
         expect(tracker.isDuplicateTruncated('s2', 'u1', 3)).toBe(false)
     })
+
+    test('isDuplicateTruncated：A 的重放被 B 的回报插队（单槽覆盖）后仍正确去重', () => {
+        const tracker = new RewindDeleteBoundTracker()
+        // rewind A 的 truncated 已处理
+        expect(tracker.isDuplicateTruncated('s1', 'uA', 2)).toBe(false)
+        // rewind B 的 truncated 先于 A 的重放到达
+        expect(tracker.isDuplicateTruncated('s1', 'uB', 1)).toBe(false)
+        // A 的重放到达：键不与当前相邻（曾被 B 插队）但仍在保留集合内 → 去重
+        expect(tracker.isDuplicateTruncated('s1', 'uA', 2)).toBe(true)
+    })
+
+    test('isDuplicateTruncated：保留键有界——超出上限淘汰最旧，被淘汰键重见视为首见', () => {
+        const tracker = new RewindDeleteBoundTracker()
+        for (let i = 0; i < 8; i++) {
+            expect(tracker.isDuplicateTruncated('s1', `u${i}`, i)).toBe(false)
+        }
+        // 第 9 个键淘汰最旧的 u0 → u0 重见如首见（8 个之外的重放窗口早已超过 CLI 重试上限）
+        expect(tracker.isDuplicateTruncated('s1', 'u8', 8)).toBe(false)
+        expect(tracker.isDuplicateTruncated('s1', 'u0', 0)).toBe(false)
+        // 未被淘汰的 u7 仍去重
+        expect(tracker.isDuplicateTruncated('s1', 'u7', 7)).toBe(true)
+    })
 })

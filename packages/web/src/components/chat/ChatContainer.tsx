@@ -33,7 +33,7 @@ import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress } from '@/domain/chat/presentation'
-import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
+import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
 import { type RewindDryRunResult } from './RewindConfirmView'
@@ -365,8 +365,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             reconcileLatestMessages(api, sessionId),
             new Promise<void>(resolve => { setTimeout(resolve, 8_000) }),
         ])
-        useRewindStore.getState().completeRewind(sessionId, false, 'timeout')
-        messageApi.warning(t('chat.rewind.timedOut'))
+        // 对账窗口内 SSE 终态可能已先到（completeRewind 守卫吞掉本次）——告警只在
+        // 超时兜底真正生效时弹，避免「回退成功却提示超时」的自相矛盾
+        const applied = useRewindStore.getState().completeRewind(sessionId, false, 'timeout')
+        if (applied) messageApi.warning(t('chat.rewind.timedOut'))
     }, [api, sessionId, messageApi, t])
     useEffect(() => {
         if (!rewindProgress) return
@@ -427,7 +429,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // 与 filesFailed（截断已发生、文件恢复失败的部分降态）区分——本分支 rewind 根本未执行
             setRewindExecuting(false)
             pendingBackfillRef.current = null
-            const reason = err instanceof Error ? err.message : String(err)
+            const reason = extractRewindRejectReason(err)
             // busy（多端并发，另一端 rewind 在途）给专用提示；其余保留 reason 细节
             messageApi.error(
                 reason.includes('in progress')

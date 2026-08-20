@@ -102,17 +102,34 @@ describe('MobileDrawer', () => {
         expect(section.style.overflow).toBe('hidden')
     })
 
-    it('标题恒居中：绝对定位 + translateX(-50%)，不受右侧 extra 宽度影响', () => {
+    it('标题恒居中：三栏 grid（1fr 内容 1fr），标题中栏、extra 右栏——空间不足时省略号截断而非重叠', () => {
         render(
             <MobileDrawer open onClose={vi.fn()} title="标题" extra={<span>右侧操作</span>}>
                 <div>内容</div>
             </MobileDrawer>,
         )
-        // 首个 span 是 TitleText（DragHandle 是 div）；断言绝对居中定位
+        // 首个 span 是 TitleText（DragHandle 是 div）；TitleRow 即其父级 div（emotion css- 类）
         const title = document.querySelector('.ant-drawer-body span') as HTMLElement
+        const row = title.closest('div') as HTMLElement
+        const extra = row.querySelectorAll('span')[1] as HTMLElement
         expect(title).toBeTruthy()
-        const computed = getComputedStyle(title)
-        expect(computed.position).toBe('absolute')
-        expect(computed.transform).toBe('translateX(-50%)')
+        expect(extra).toBeTruthy()
+
+        const titleStyle = getComputedStyle(title as HTMLElement)
+        const extraStyle = getComputedStyle(extra as HTMLElement)
+        // 三栏 grid：标题在中栏（grid-column 2）居中，extra 在右栏（grid-column 3）靠右；
+        // 各占一栏天然不重叠——绝对定位方案下长标题会延伸到 extra 下方
+        expect(titleStyle.gridColumn).toBe('2')
+        expect(titleStyle.justifySelf).toBe('center')
+        expect(titleStyle.overflow).toBe('hidden')
+        expect(titleStyle.textOverflow).toBe('ellipsis')
+        expect(extraStyle.gridColumn).toBe('3')
+        expect(extraStyle.justifySelf).toBe('end')
+        // 栅格模板（1fr minmax(0,auto) 1fr）保证左右两栏等分、标题几何居中
+        //（jsdom 不解析逗号内空格，按整体串断言）
+        const template = getComputedStyle(row as HTMLElement).gridTemplateColumns
+        expect(template.startsWith('1fr')).toBe(true)
+        expect(template).toContain('minmax(0')
+        expect(template.endsWith('1fr')).toBe(true)
     })
 })

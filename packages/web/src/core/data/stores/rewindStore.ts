@@ -61,8 +61,8 @@ interface RewindState {
     beginRewind: (sessionId: string, nativeId: string) => void
     /** SSE rewound-truncated → 记录截断回报（30s 超时兜底自此起算） */
     markTruncated: (sessionId: string, deleteFromSeq: number) => void
-    /** SSE rewind-completed / 超时兜底 → 终态（清除进行中态） */
-    completeRewind: (sessionId: string, filesRestored: boolean, error?: string) => void
+    /** SSE rewind-completed / 超时兜底 → 终态（清除进行中态）。返回是否生效（false = 守卫吞掉，无进行中态） */
+    completeRewind: (sessionId: string, filesRestored: boolean, error?: string) => boolean
     /** 用户发新消息（新对话开始）→ 清除终态快照，「已回退至此」分隔线随之消失 */
     clearCompletion: (sessionId: string) => void
     /** 会话视图卸载清理 */
@@ -98,12 +98,14 @@ export const useRewindStore = create<RewindState>((set) => ({
             return { progressBySession: next }
         }),
 
-    completeRewind: (sessionId, filesRestored, error) =>
+    completeRewind: (sessionId, filesRestored, error) => {
+        let applied = false
         set((state) => {
             const prev = state.progressBySession.get(sessionId)
             // 与 markTruncated 同款守卫：无进行中态即忽略——页面重载/SSE 重连后迟到的
             // rewind-completed 不注入幽灵终态（无对应 rewind 的「已回退至此」分隔线）
             if (!prev) return state
+            applied = true
             const nextProgress = new Map(state.progressBySession)
             nextProgress.delete(sessionId)
             const nextCompletion = new Map(state.completionBySession)
@@ -114,7 +116,9 @@ export const useRewindStore = create<RewindState>((set) => ({
                 completedAt: Date.now(),
             })
             return { progressBySession: nextProgress, completionBySession: nextCompletion }
-        }),
+        })
+        return applied
+    },
 
     clearCompletion: (sessionId) =>
         set((state) => {

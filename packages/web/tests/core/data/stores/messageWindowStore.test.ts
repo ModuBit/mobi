@@ -304,14 +304,14 @@ describe('reconcileLatestMessages（rewind 超时对账）', () => {
         expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a'])
     })
 
-    it('本地未提交乐观行（sending/failed）保留，不随替换丢失', async () => {
-        const optimistic: DecryptedMessage = {
-            ...msg('opt', null),
-            localId: 'loc-1',
-            status: 'sending',
-        } as DecryptedMessage
+    it('本地未提交乐观行（sending/queued/failed）保留，不随替换丢失——queued 是运行中排队行，服务端同样无行', async () => {
+        const mkOptimistic = (id: string, status: 'sending' | 'queued' | 'failed'): DecryptedMessage => ({
+            ...msg(id, null),
+            localId: `loc-${id}`,
+            status,
+        }) as DecryptedMessage
         _internal.updateState('s1', prev => _internal.buildState(prev, {
-            messages: [msg('a', 3), msg('b', 4), optimistic],
+            messages: [msg('a', 3), mkOptimistic('opt', 'sending'), mkOptimistic('q', 'queued'), mkOptimistic('f', 'failed')],
             hasFetchedLatest: true,
         }))
         const api = makeApi([{ messages: [msg('a', 3)], page: { hasMore: false, nextBeforeSeq: null } }])
@@ -319,9 +319,24 @@ describe('reconcileLatestMessages（rewind 超时对账）', () => {
         await reconcileLatestMessages(api, 's1')
 
         const ids = getMessageWindowState('s1').messages.map(m => m.id)
-        // 乐观行 seq 为 null，按排序锚点（positionAt/createdAt）排在服务端行之前
-        expect(ids).toEqual(['opt', 'a'])
-        expect(getMessageWindowState('s1').messages.find(m => m.id === 'opt')?.status).toBe('sending')
+        // 乐观行 seq 为 null 排在服务端行之前；批内相对顺序不依赖（排序锚点相同，稳定性不作保证）
+        expect(ids[ids.length - 1]).toBe('a')
+        expect([...ids].sort()).toEqual(['a', 'f', 'opt', 'q'])
+    })
+
+    it('hasMore 跟随响应更新：旧窗口 hasMore=false 且已加载全量历史，替换后只剩一页 hasMore=true 时不得沿用旧值（否则更早历史永远无法再加载）', async () => {
+        _internal.updateState('s1', prev => _internal.buildState(prev, {
+            messages: [msg('old', 1), msg('a', 3), msg('b', 4)],
+            hasFetchedLatest: true,
+            hasMore: false,
+        }))
+        const api = makeApi([{ messages: [msg('a', 3), msg('b', 4)], page: { hasMore: true, nextBeforeSeq: 3 } }])
+
+        await reconcileLatestMessages(api, 's1')
+
+        const state = getMessageWindowState('s1')
+        expect(state.messages.map(m => m.id)).toEqual(['a', 'b'])
+        expect(state.hasMore).toBe(true)
     })
 
     it('对账失败 → 保持现状（不破坏窗口），hasFetchedLatest 仍置位', async () => {

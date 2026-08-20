@@ -149,6 +149,21 @@ export function rewindRejectReasonKey(reason: string | undefined):
 }
 
 /**
+ * rewind 执行失败 catch 的 reason 提取：优先取 HTTP 错误体里的 `error` 字段
+ * （hub 409 透传的 CLI 拒绝原因，如 busy），非 HTTP 错误回退 Error.message。
+ * 裸读 err.message 只会拿到 axios 标准串（"Request failed with status code 409"），
+ * 409 体里的 reason 永远到不了文案映射。
+ */
+export function extractRewindRejectReason(err: unknown): string {
+    const body = (err as { response?: { data?: { error?: unknown } } } | null)?.response?.data
+    if (typeof body?.error === 'string' && body.error.length > 0) return body.error
+    // 网络/超时等非 HTTP 错误：Error.message（axios 错误本身是 Error 子类，.message 即标准串）
+    const message = (err as { message?: unknown } | null)?.message
+    if (typeof message === 'string' && message.length > 0) return message
+    return String(err)
+}
+
+/**
  * 文件恢复失败 error → i18n key 判别（终态 filesRestored=false 的部分降态提示）：
  * 边界反查失败（CLI 截断后 Hub 行已不可定位）有明确语义文案，其余笼统提醒检查工作目录。
  * 与 rewindRejectReasonKey 同理：CLI reason 是英文串不直出，原文经 console 留诊断。

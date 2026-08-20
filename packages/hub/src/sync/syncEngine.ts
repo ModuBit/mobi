@@ -409,11 +409,22 @@ export class SyncEngine {
 
     // rewind 执行（RPC 只做受理；CLI 闸门复检，结果经 socket 两段回报 → SSE 推 Web）
     async rewind(sessionId: string, nativeId: string, restoreFiles: boolean): Promise<unknown> {
-        const result = await this.rpcGateway.rewind(sessionId, nativeId, restoreFiles)
+        // 受理时点上界在 RPC 前采样：CLI handler 在回 ack 前要 await 文件回滚（大仓库可超
+        // rpcGateway 30s 超时）——hub 侧 RPC 抛错但 CLI 已受理并继续截断，迟到回报仍需上界防御，
+        // 故结果未知（抛错）与受理成功两条路径都标记（fail-safe，M3）
+        const maxSeq = this.store.messages.getMaxSeq(sessionId)
+        let result: unknown
+        try {
+            result = await this.rpcGateway.rewind(sessionId, nativeId, restoreFiles)
+        } catch (err) {
+            this.rewindDeleteBounds.markAccepted(sessionId, maxSeq)
+            throw err
+        }
         // 受理成功 → 记录软删除上界（受理时点最大 seq，M3：迟到截断回报不得吞掉受理后新行）。
-        // CLI socket handler 的 rewound-truncated 消费此上界收窄软删除范围
+        // CLI socket handler 的 rewound-truncated 消费此上界收窄软删除范围；
+        // CLI 干净拒绝（accepted:false）不标记——rewind 不会执行，无迟到回报可防御
         if (!result || typeof result !== 'object' || (result as { accepted?: unknown }).accepted !== false) {
-            this.rewindDeleteBounds.markAccepted(sessionId, this.store.messages.getMaxSeq(sessionId))
+            this.rewindDeleteBounds.markAccepted(sessionId, maxSeq)
         }
         return result
     }

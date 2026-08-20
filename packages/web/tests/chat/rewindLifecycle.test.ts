@@ -95,10 +95,17 @@ describe('rewindStore 状态机', () => {
         expect(useRewindStore.getState().progressBySession.size).toBe(0)
     })
 
-    it('completeRewind 无进行中态 → 忽略（页面重载后迟到的 completed 不产生幽灵终态）', () => {
-        useRewindStore.getState().completeRewind('sess-1', true)
+    it('completeRewind 无进行中态 → 忽略并返回 false（超时兜底据此抑制误告警——对账窗口内 SSE 终态已先到）', () => {
+        expect(useRewindStore.getState().completeRewind('sess-1', true)).toBe(false)
         expect(useRewindStore.getState().progressBySession.size).toBe(0)
         expect(useRewindStore.getState().completionBySession.size).toBe(0)
+    })
+
+    it('completeRewind 生效时返回 true（超时兜底真正接管才弹超时告警）', () => {
+        const sid = 'sess-1'
+        useRewindStore.getState().beginRewind(sid, 'u1')
+        expect(useRewindStore.getState().completeRewind(sid, true)).toBe(true)
+        expect(useRewindStore.getState().completionBySession.has(sid)).toBe(true)
     })
 
     it('clearSession 清理；beginRewind 清掉旧终态', () => {

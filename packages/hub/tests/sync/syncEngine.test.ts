@@ -18,6 +18,7 @@ import { describe, test, expect } from 'bun:test'
 import { SyncEngine } from '../../src/sync/syncEngine'
 import { Store } from '../../src/store'
 import type { RpcRegistry } from '../../src/socket/rpcRegistry'
+import { RewindDeleteBoundTracker } from '../../src/sync/rewindDeleteBoundTracker'
 
 /**
  * renameSession 单测：验证 sessionCache 更新后 best-effort 同步 RPC 到 CLI。
@@ -147,6 +148,89 @@ describe('SyncEngine.renameSession', () => {
 
             // RPC 确实尝试过（registry 返回 null → rpcCall throw，emitWithAck 未被调用）
             expect(h.emitCalls).toHaveLength(0)
+        } finally {
+            h.cleanup()
+        }
+    })
+})
+
+/**
+ * rewind 受理上界（M3 fail-safe）：上界在 RPC 前采样，RPC 结果未知（抛错）与受理成功
+ * 两条路径都标记——CLI 文件回滚可超 RPC 30s 超时，hub 抛错但 CLI 已继续截断，迟到回报仍需上界防御。
+ */
+describe('SyncEngine.rewind 受理上界', () => {
+    interface RewindHandle {
+        engine: SyncEngine
+        store: Store
+        tracker: RewindDeleteBoundTracker
+        sessionId: string
+        cleanup: () => void
+    }
+
+    /** CLI RPC 行为可控的最小 engine：seed 3 条消息（seq 1..3，受理时点 maxSeq=3） */
+    function makeRewindEngine(rpc: 'accepted' | 'rejected' | 'throw'): RewindHandle {
+        const store = new Store(':memory:')
+        const sessionId = store.sessions.getOrCreateSession('rewind-engine-test', null, null, 'default').id
+        for (let i = 1; i <= 3; i++) {
+            store.messages.addMessage(sessionId, { role: 'user', content: { text: `m${i}` } })
+        }
+
+        const fakeSocket = {
+            timeout() { return this },
+            async emitWithAck() {
+                if (rpc === 'throw') throw new Error('rpc timeout after 30s')
+                return rpc === 'accepted'
+                    ? { accepted: true }
+                    : { accepted: false, reason: 'rewind is already in progress' }
+            },
+        }
+        const sockets = new Map([['sock-1', fakeSocket]])
+        const io = { of() { return { sockets } } } as unknown as import('socket.io').Server
+        const registry = {
+            getSocketIdForMethod(method: string) {
+                return method.endsWith(':rewind') ? 'sock-1' : null
+            },
+        } as unknown as RpcRegistry
+        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+
+        const tracker = new RewindDeleteBoundTracker()
+        const engine = new SyncEngine(store, io, registry, sseManager, tracker)
+        return {
+            engine, store, tracker, sessionId,
+            cleanup: () => {
+                engine.stop()
+                store.close()
+            },
+        }
+    }
+
+    test('受理成功（accepted）→ 标记受理时点 maxSeq（=3）', async () => {
+        const h = makeRewindEngine('accepted')
+        try {
+            await h.engine.rewind(h.sessionId, 'u1', false)
+            expect(h.tracker.consume(h.sessionId)).toBe(3)
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('RPC 抛错（超时，CLI 结果未知）→ 上界已标记（fail-safe）：CLI 可能已受理并继续截断', async () => {
+        const h = makeRewindEngine('throw')
+        try {
+            await expect(h.engine.rewind(h.sessionId, 'u1', false)).rejects.toThrow('rpc timeout')
+            // 迟到的 rewound-truncated 消费到的上界 = 受理时点 maxSeq，不吞受理后新行
+            expect(h.tracker.consume(h.sessionId)).toBe(3)
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('CLI 干净拒绝（accepted:false）→ 不标记（rewind 不会执行，无迟到回报可防御）', async () => {
+        const h = makeRewindEngine('rejected')
+        try {
+            const result = await h.engine.rewind(h.sessionId, 'u1', false) as { accepted: boolean }
+            expect(result.accepted).toBe(false)
+            expect(h.tracker.consume(h.sessionId)).toBeNull()
         } finally {
             h.cleanup()
         }

@@ -30,8 +30,10 @@
 
 export class RewindDeleteBoundTracker {
     private readonly bounds = new Map<string, number>()
-    /** 最近一次已处理的截断回报（sid → `nativeId:deleteFromSeq`）——CLI 可靠队列重放的幂等去重键 */
-    private readonly lastTruncated = new Map<string, string>()
+    /** 每会话最近已处理的截断回报键（`nativeId:deleteFromSeq`）——CLI 可靠队列重放的幂等去重键 */
+    private readonly truncatedKeys = new Map<string, string[]>()
+    /** 每会话保留的去重键数量上限：同会话短时间多次 rewind 的键都需在场，超出淘汰最旧 */
+    private static readonly MAX_TRACKED_KEYS = 8
 
     /** rewind 受理成功（CLI accepted）时记录软删除上界（受理时点会话最大 seq） */
     markAccepted(sessionId: string, maxSeq: number): void {
@@ -50,11 +52,19 @@ export class RewindDeleteBoundTracker {
      * 截断回报去重（重放幂等）：同一 (nativeId, deleteFromSeq) 的重复回报只处理一次。
      * 首见记录并返回 false；重放返回 true（调用方跳过软删除与 SSE，仅回 ack）。
      * 同锚点的合法 rewind 不可能重演（锚点行已被删），同键重见必然是 CLI 重放。
+     *
+     * 保留最近 N 个键而非单槽：A 的重放可能被另一 rewind B 的回报插队（单槽被 B 覆盖），
+     * 单槽判定会误把 A 的重放当首见，重新执行无上界软删除。
      */
     isDuplicateTruncated(sessionId: string, nativeId: string, deleteFromSeq: number): boolean {
         const key = `${nativeId}:${deleteFromSeq}`
-        if (this.lastTruncated.get(sessionId) === key) return true
-        this.lastTruncated.set(sessionId, key)
+        const keys = this.truncatedKeys.get(sessionId)
+        if (keys?.includes(key)) return true
+        const next = [...(keys ?? []), key]
+        if (next.length > RewindDeleteBoundTracker.MAX_TRACKED_KEYS) {
+            next.splice(0, next.length - RewindDeleteBoundTracker.MAX_TRACKED_KEYS)
+        }
+        this.truncatedKeys.set(sessionId, next)
         return false
     }
 }
