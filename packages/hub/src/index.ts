@@ -33,6 +33,7 @@ import { writeHubState, clearHubState } from './config/hubState'
 import { Store } from './store'
 import { SyncEngine, type SyncEvent } from './sync/syncEngine'
 import { BackgroundTaskTracker } from './sync/backgroundTaskTracker'
+import { RewindDeleteBoundTracker } from './sync/rewindDeleteBoundTracker'
 import { NotificationHub } from './notifications/notificationHub'
 import type { NotificationChannel } from './notifications/notificationTypes'
 import { startWebServer } from './web/server'
@@ -167,11 +168,15 @@ async function main() {
     // rewind API 路由读（闸门）——两端共用同一实例，在此组装层创建并注入
     const backgroundTaskTracker = new BackgroundTaskTracker()
 
+    // rewind 软删除上界：SyncEngine 受理时写、CLI socket handler 截断回报时读——共用同一实例
+    const rewindDeleteBoundTracker = new RewindDeleteBoundTracker()
+
     const socketServer = createSocketServer({
         store,
         jwtSecret,
         corsOrigins: config.corsOrigins,
         backgroundTaskTracker,
+        rewindDeleteBoundTracker,
         getSession: (sessionId) => {
             // active 状态只从内存（SyncEngine）获取，不存储在数据库中
             return syncEngine?.getSession(sessionId) ?? null
@@ -190,7 +195,7 @@ async function main() {
         onMachineAlive: (payload) => syncEngine?.handleMachineAlive(payload)
     })
 
-    syncEngine = new SyncEngine(store, socketServer.io, socketServer.rpcRegistry, sseManager)
+    syncEngine = new SyncEngine(store, socketServer.io, socketServer.rpcRegistry, sseManager, rewindDeleteBoundTracker)
 
     const notificationChannels: NotificationChannel[] = [
         // WEB端（SSE/WEB-PUSH)

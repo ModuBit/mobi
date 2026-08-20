@@ -534,7 +534,16 @@ export function createSessionsRoutes(
         }
 
         try {
-            await engine.rewind(sessionResult.sessionId, parsed.data.nativeId, parsed.data.restoreFiles)
+            const result = await engine.rewind(sessionResult.sessionId, parsed.data.nativeId, parsed.data.restoreFiles) as
+                | { accepted?: unknown; reason?: unknown }
+                | null
+                | undefined
+            // CLI 干净拒绝（busy / 文件回滚失败等闸门拒绝）→ 409 透传 reason。
+            // 此前恒 202 会吞掉拒绝结果——Web 误入 rewind 生命周期干等 90s 超时
+            if (result && typeof result === 'object' && result.accepted === false) {
+                const reason = typeof result.reason === 'string' && result.reason.length > 0 ? result.reason : 'rewind rejected'
+                return c.json({ error: reason }, 409)
+            }
             return c.json({ accepted: true }, 202)
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to rewind'

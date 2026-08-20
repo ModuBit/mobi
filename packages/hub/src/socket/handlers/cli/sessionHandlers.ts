@@ -22,6 +22,7 @@ import type { ContextUsage, GoalStatus, PermissionMode, RuntimeState } from '@mo
 import type { Store, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
+import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import { toDecryptedMessage } from '../../../sync/messageService'
 import { PendingTaskMap, extractTaskDeltasFromMessageContent, applyTaskDelta } from '../../../sync/tasks'
 import { extractTodoWriteTodosFromMessageContent } from '../../../sync/todos'
@@ -99,6 +100,8 @@ export type SessionHandlersDeps = {
     emitAccessError: EmitAccessError
     /** 活跃后台任务集合（写侧：background_tasks_changed replace；读侧：rewind API 闸门） */
     backgroundTaskTracker: BackgroundTaskTracker
+    /** rewind 软删除上界（读侧：rewound-truncated 消费；写侧：SyncEngine 受理时 mark，共用实例） */
+    rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     onSessionAlive?: (payload: SessionAlivePayload) => void
     onSessionEnd?: (payload: SessionEndPayload) => void
     onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage | null }) => void
@@ -107,7 +110,7 @@ export type SessionHandlersDeps = {
 }
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
-    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, onSessionAlive, onSessionEnd, onContextUsage, onGoalStatus, onWebappEvent } = deps
+    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, onSessionAlive, onSessionEnd, onContextUsage, onGoalStatus, onWebappEvent } = deps
 
     // session 连接级别的 PendingTaskMap，在连接生命周期内持续存在
     const pendingTaskMap = new PendingTaskMap()
@@ -656,35 +659,51 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     })
 
     // rewind 截断成功（CLI 两段回报第一段，含 CLI 反查的锚点批首行 seq）：
-    // Hub 即刻软删除（先 CLI 截断成功再 Hub 删），随即转 SSE 过渡态
-    socket.on('rewound-truncated', (data: { sid: string; nativeId: string; deleteFromSeq: number }) => {
+    // Hub 即刻软删除（先 CLI 截断成功再 Hub 删），随即转 SSE 过渡态。
+    // 软删除带上界（M3）：只删 rewind 受理时点已存在的行——回报迟到时，受理后新发的消息不被误删。
+    // ack 确认制（M5）：CLI 可靠队列据此出队；去重后重放回报仅回 ack（软删除/SSE 不重复执行）
+    socket.on('rewound-truncated', (data: { sid: string; nativeId: string; deleteFromSeq: number }, ack?: () => void) => {
         // deleteFromSeq 须为正整数（seq 从 1 起）：Hub 是软删除的执行端，CLI 端 reportRewindCompletion
         // 的 >0 防御不足以兜底异常载荷——0/负数会让 seq >= fromSeq 命中全部行，整会话历史被软删除
         if (!data || typeof data.sid !== 'string'
             || typeof data.nativeId !== 'string' || data.nativeId.length === 0
             || !Number.isInteger(data.deleteFromSeq) || data.deleteFromSeq <= 0) {
+            ack?.()
             return
         }
         const sessionAccess = resolveSessionAccess(data.sid)
         if (!sessionAccess.ok) {
             emitAccessError('session', data.sid, sessionAccess.reason)
+            ack?.()
             return
         }
-        store.messages.softDeleteMessagesFrom(data.sid, data.deleteFromSeq)
+        // CLI 可靠队列的重放（ack 丢失后原样重发）→ 幂等跳过：软删除/SSE 均已执行过
+        if (rewindDeleteBoundTracker?.isDuplicateTruncated(data.sid, data.nativeId, data.deleteFromSeq)) {
+            ack?.()
+            return
+        }
+        // 受理时记录的上界（一次性消费；无记录 = hub 重启丢内存 → 回退无上界删除，旧行为）
+        const bound = rewindDeleteBoundTracker?.consume(data.sid) ?? undefined
+        store.messages.softDeleteMessagesFrom(data.sid, data.deleteFromSeq, bound)
         emitRewindEvent({ type: 'rewound-truncated', sessionId: data.sid, deleteFromSeq: data.deleteFromSeq })
+        ack?.()
     })
 
-    // rewind 终态（CLI 两段回报第二段）：filesRestored false 时 error 携带原因，转 SSE
-    socket.on('rewind-completed', (data: { sid: string; filesRestored: boolean; error?: string }) => {
+    // rewind 终态（CLI 两段回报第二段）：filesRestored false 时 error 携带原因，转 SSE。
+    // 重放安全（web 无进行中态即忽略），ack 确认制同上
+    socket.on('rewind-completed', (data: { sid: string; filesRestored: boolean; error?: string }, ack?: () => void) => {
         if (!data || typeof data.sid !== 'string' || typeof data.filesRestored !== 'boolean'
             || (data.error !== undefined && typeof data.error !== 'string')) {
+            ack?.()
             return
         }
         const sessionAccess = resolveSessionAccess(data.sid)
         if (!sessionAccess.ok) {
             emitAccessError('session', data.sid, sessionAccess.reason)
+            ack?.()
             return
         }
         emitRewindEvent({ type: 'rewind-completed', sessionId: data.sid, filesRestored: data.filesRestored, error: data.error })
+        ack?.()
     })
 }

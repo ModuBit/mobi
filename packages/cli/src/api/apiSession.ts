@@ -50,12 +50,15 @@ import { cleanupUploadDir } from '../modules/common/handlers/uploads'
 import { TerminalManager } from '@/terminal/TerminalManager'
 import { applyVersionedAck } from './versionedUpdate'
 import { IdleTimer } from '@/modules/common/idleTimer'
+import { ReliableRewindReportQueue } from '../claude/utils/reliableReport'
 
 /** 兜底重连初始退避（ms），上限 30s */
 const MANUAL_RECONNECT_BASE_DELAY_MS = 1_000
 const MANUAL_RECONNECT_MAX_DELAY_MS = 30_000
 /** connect_error 落盘节流窗口（ms） */
 const CONNECT_ERROR_LOG_WINDOW_MS = 60_000
+/** rewind 回报 ack 等待上限（ms）：超时视为失败进可靠队列重试 */
+const REWIND_REPORT_ACK_TIMEOUT_MS = 5_000
 
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string
@@ -82,6 +85,8 @@ export class ApiSessionClient extends EventEmitter {
     private manualReconnectDelayMs = MANUAL_RECONNECT_BASE_DELAY_MS
     /** connect_error 落盘节流：重连循环每 1-5s 触发一次，窗口内只记首条防刷屏 */
     private lastConnectErrorLogAt = 0
+    /** rewind 两段回报的可靠上报队列（ack 确认制，M5） */
+    private readonly rewindReportQueue: ReliableRewindReportQueue
 
     constructor(token: string, session: Session) {
         super()
@@ -141,11 +146,25 @@ export class ApiSessionClient extends EventEmitter {
             this.idleTimer?.reset()
         })
 
+        // rewind 两段回报改走可靠队列（M5）：ack 确认 + 失败重试 + 重连补发，
+        // 断线窗口内 fire-and-forget 丢事件会造成 CLI transcript / Hub DB 永久分叉
+        const sock = this.socket
+        this.rewindReportQueue = new ReliableRewindReportQueue({
+            get connected() { return sock.connected },
+            emitAck: (event, body, callback) => {
+                (sock.timeout(REWIND_REPORT_ACK_TIMEOUT_MS) as unknown as {
+                    emit: (e: string, b: unknown, cb: (err: unknown, res?: unknown) => void) => void
+                }).emit(event, body, callback)
+            },
+        })
+
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully')
             this.rpcHandlerManager.onSocketConnect(this.socket)
             this.idleTimer?.onReconnect()
             this.clearManualReconnect()
+            // 补发未确认的 rewind 回报（ack 制：断线期间的回报在此重放，hub 幂等消化）
+            this.rewindReportQueue.onConnected()
             if (this.hasConnectedOnce) {
                 this.needsBackfill = true
             }
@@ -597,14 +616,14 @@ export class ApiSessionClient extends EventEmitter {
         return 0
     }
 
-    /** rewind 截断成功上报（CLI → Hub）：Hub 即刻软删除 seq >= deleteFromSeq 的行并转 SSE */
+    /** rewind 截断成功上报（CLI → Hub，ack 确认制）：Hub 即刻软删除 seq ∈ [deleteFromSeq, 受理上界] 的行并转 SSE */
     emitRewoundTruncated(nativeId: string, deleteFromSeq: number): void {
-        this.socket.emit('rewound-truncated', { sid: this.sessionId, nativeId, deleteFromSeq })
+        this.rewindReportQueue.enqueue({ event: 'rewound-truncated', body: { sid: this.sessionId, nativeId, deleteFromSeq } })
     }
 
-    /** rewind 终态上报（CLI → Hub）：转 SSE；filesRestored=false 时 error 携带原因（部分失败如实报错） */
+    /** rewind 终态上报（CLI → Hub，ack 确认制）：转 SSE；filesRestored=false 时 error 携带原因（部分失败如实报错） */
     emitRewindCompleted(filesRestored: boolean, error?: string): void {
-        this.socket.emit('rewind-completed', { sid: this.sessionId, filesRestored, error })
+        this.rewindReportQueue.enqueue({ event: 'rewind-completed', body: { sid: this.sessionId, filesRestored, error } })
     }
 
     /**

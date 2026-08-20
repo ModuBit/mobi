@@ -19,6 +19,7 @@ import type { PermissionUpdate, Project, ProjectFolder } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ProjectSessionsResult } from '../store/sessions'
+import { RewindDeleteBoundTracker } from './rewindDeleteBoundTracker'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
@@ -72,13 +73,16 @@ export class SyncEngine {
     private readonly messageService: MessageService
     private readonly rpcGateway: RpcGateway
     private readonly store: Store
+    /** rewind 软删除上界（受理时写 / 截断回报消费；与 CLI socket handler 共用实例，index.ts 注入） */
+    private readonly rewindDeleteBounds: RewindDeleteBoundTracker
     private inactivityTimer: NodeJS.Timeout | null = null
 
     constructor(
         store: Store,
         io: Server,
         rpcRegistry: RpcRegistry,
-        sseManager: SSEManager
+        sseManager: SSEManager,
+        rewindDeleteBounds?: RewindDeleteBoundTracker
     ) {
         this.eventPublisher = new EventPublisher(sseManager, (event) => this.resolveNamespace(event))
         this.sessionCache = new SessionCache(store, this.eventPublisher)
@@ -87,6 +91,7 @@ export class SyncEngine {
         this.messageService = new MessageService(store, io, this.eventPublisher)
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
         this.store = store
+        this.rewindDeleteBounds = rewindDeleteBounds ?? new RewindDeleteBoundTracker()
         this.warmupCache()
         this.inactivityTimer = setInterval(() => this.expireInactive(), 5_000)
     }
@@ -404,7 +409,13 @@ export class SyncEngine {
 
     // rewind 执行（RPC 只做受理；CLI 闸门复检，结果经 socket 两段回报 → SSE 推 Web）
     async rewind(sessionId: string, nativeId: string, restoreFiles: boolean): Promise<unknown> {
-        return await this.rpcGateway.rewind(sessionId, nativeId, restoreFiles)
+        const result = await this.rpcGateway.rewind(sessionId, nativeId, restoreFiles)
+        // 受理成功 → 记录软删除上界（受理时点最大 seq，M3：迟到截断回报不得吞掉受理后新行）。
+        // CLI socket handler 的 rewound-truncated 消费此上界收窄软删除范围
+        if (!result || typeof result !== 'object' || (result as { accepted?: unknown }).accepted !== false) {
+            this.rewindDeleteBounds.markAccepted(sessionId, this.store.messages.getMaxSeq(sessionId))
+        }
+        return result
     }
 
     async archiveSession(sessionId: string): Promise<void> {

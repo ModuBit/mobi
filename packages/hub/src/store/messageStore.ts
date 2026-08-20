@@ -32,6 +32,7 @@ import {
     markMessagesSubmitted,
     mergeSessionMessages,
     markMessagesAcked,
+    getMaxSeq,
     softDeleteMessagesFrom
 } from './messages'
 
@@ -62,9 +63,14 @@ export class MessageStore {
         return markMessagesAcked(this.db, sessionId, nativeId, ackAt)
     }
 
-    /** 软删除 seq >= fromSeq 且未删的行（rewind 截断，幂等）。返回删除行数。 */
-    softDeleteMessagesFrom(sessionId: string, fromSeq: number): number {
-        return softDeleteMessagesFrom(this.db, sessionId, fromSeq)
+    /** 软删除 fromSeq <= seq <= maxSeq（无上界则到尾）且未删的行（rewind 截断，幂等）。返回删除行数。 */
+    softDeleteMessagesFrom(sessionId: string, fromSeq: number, maxSeq?: number): number {
+        return softDeleteMessagesFrom(this.db, sessionId, fromSeq, maxSeq)
+    }
+
+    /** 会话当前最大 seq（无消息返回 0）——rewind 受理时点的软删除上界 */
+    getMaxSeq(sessionId: string): number {
+        return getMaxSeq(this.db, sessionId)
     }
 
     getMessages(sessionId: string, limit: number = 200, beforeSeq?: number, excludeSidechain: boolean = false): StoredMessage[] {

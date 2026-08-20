@@ -31,6 +31,13 @@ export interface RewindSessionView {
     running: boolean;
     /** rewind 待执行状态（handler 写、launcher while 循环读） */
     pendingRewind: PendingRewind | null;
+    /**
+     * rewind RPC 受理中（多端并发互斥占位）：handler 入口在任何 await 之前同步置位、
+     * finally 释放——文件回滚耗时窗口内并发的第二个请求据此 busy 拒绝，
+     * 避免 pendingRewind 单槽被覆盖。与 pendingRewind 语义分离：
+     * 本字段 = RPC 受理中（秒级），pendingRewind = 待截断（等 launcher 消费）
+     */
+    rewindInFlight: boolean;
 }
 
 export interface RewindHandlerDeps {
@@ -47,6 +54,9 @@ export interface RewindHandlerDeps {
 /** 锚点换算失败（假锚点 / 链首）的拒绝文案——链首场景带 /clear 引导 */
 const ANCHOR_REJECT_REASON =
     'rewind anchor not found in transcript (cannot rewind the first message of a session — use /clear instead)';
+
+/** rewind 已在途的 busy 拒绝文案（Web 据此映射「回退正在进行中」提示） */
+const REWIND_IN_PROGRESS_REASON = 'rewind is already in progress';
 
 /** 校验 rewind 载荷中的 nativeId（用户消息 native uuid） */
 function parseNativeId(payload: unknown): string {
@@ -84,6 +94,12 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
             return { canRewind: false, canRestoreFiles: false, reason: 'native session id is unknown' };
         }
 
+        // rewind 在途（受理中 / 待截断）→ 直接 busy 拒绝：跳过锚点预检省一次 transcript 读取，
+        // 另一端连确认弹窗都不该弹出（Web 按 reason 映射「回退正在进行中」提示）
+        if (session.rewindInFlight || session.pendingRewind) {
+            return { canRewind: false, canRestoreFiles: false, reason: REWIND_IN_PROGRESS_REASON };
+        }
+
         // 锚点存在性预检（假锚点/换链旧行不在当前 transcript chain → null）
         const resumeAt = await findRewindAnchor(session.sessionId, workingDirectory, nativeId);
         if (!resumeAt) {
@@ -113,53 +129,65 @@ export function registerRewindHandlers(deps: RewindHandlerDeps): void {
             return { accepted: false, reason: 'native session id is unknown' };
         }
 
-        // 闸门复检（Hub 已查后台任务集合）：队列非空 / 前台运行中 → 拒绝
-        if (messageQueue.size() > 0) {
-            return { accepted: false, reason: 'message queue is not empty' };
+        // 并发互斥（多端同时确认）：受理中（rewindInFlight）或待截断（pendingRewind）→ busy 拒绝。
+        // check-and-set 必须先于任何 await 同步完成——RPC handler 并发执行，若在 await 文件回滚后才
+        // 置位，耗时窗口内到达的第二个请求会看到空槽位双双通过、pendingRewind 单槽被覆盖
+        if (session.rewindInFlight || session.pendingRewind) {
+            return { accepted: false, reason: REWIND_IN_PROGRESS_REASON };
         }
-        if (session.running) {
-            return { accepted: false, reason: 'session is running' };
-        }
-
-        // 锚点复检（与 dry-run 同源；受理窗口内 transcript 可能已变）
-        const resumeAt = await findRewindAnchor(session.sessionId, workingDirectory, nativeId);
-        if (!resumeAt) {
-            return { accepted: false, reason: ANCHOR_REJECT_REASON };
-        }
-
-        // 文件回滚先于截断（PoC poc8 实测：截断后被截区间的 file checkpoint 立即作废，
-        // 截断前调用才有效）。失败 → 干净失败：不截断、不清队列
-        let filesRestored = false;
-        if (restoreFiles) {
-            const query = queryControl.current;
-            if (!query) {
-                return { accepted: false, reason: 'claude query handle unavailable for file restore' };
+        session.rewindInFlight = true;
+        try {
+            // 闸门复检（Hub 已查后台任务集合）：队列非空 / 前台运行中 → 拒绝
+            if (messageQueue.size() > 0) {
+                return { accepted: false, reason: 'message queue is not empty' };
             }
-            try {
-                const result = await query.rewindFiles(nativeId);
-                if (!result.canRewind) {
-                    return {
-                        accepted: false,
-                        reason: `file restore unavailable: ${result.error ?? 'file checkpoint missing'}`
-                    };
+            if (session.running) {
+                return { accepted: false, reason: 'session is running' };
+            }
+
+            // 锚点复检（与 dry-run 同源；受理窗口内 transcript 可能已变）
+            const resumeAt = await findRewindAnchor(session.sessionId, workingDirectory, nativeId);
+            if (!resumeAt) {
+                return { accepted: false, reason: ANCHOR_REJECT_REASON };
+            }
+
+            // 文件回滚先于截断（PoC poc8 实测：截断后被截区间的 file checkpoint 立即作废，
+            // 截断前调用才有效）。失败 → 干净失败：不截断、不清队列
+            let filesRestored = false;
+            if (restoreFiles) {
+                const query = queryControl.current;
+                if (!query) {
+                    return { accepted: false, reason: 'claude query handle unavailable for file restore' };
                 }
-                filesRestored = true;
-            } catch (e) {
-                return { accepted: false, reason: `file restore failed: ${e instanceof Error ? e.message : String(e)}` };
+                try {
+                    const result = await query.rewindFiles(nativeId);
+                    if (!result.canRewind) {
+                        return {
+                            accepted: false,
+                            reason: `file restore unavailable: ${result.error ?? 'file checkpoint missing'}`
+                        };
+                    }
+                    filesRestored = true;
+                } catch (e) {
+                    return { accepted: false, reason: `file restore failed: ${e instanceof Error ? e.message : String(e)}` };
+                }
             }
+
+            // 记录待执行 rewind：launcher while 循环读到后以 resumeSessionAt 截断重启（不清 sessionId）
+            session.pendingRewind = { nativeId, resumeAt, filesRestored };
+
+            // 清空未消费排队项：丢弃项经 onBatchConsumed 通知 Hub（防 Web 悬浮条卡死，对齐 /clear 丢弃路径）
+            messageQueue.clearPending();
+
+            // 入队 isolate 哨兵：唤醒阻塞中的 nextMessage 并触发当前 query 循环退出。
+            // launcher 的 nextMessage 识别哨兵后直接丢弃（不暂存 pending、不推送 SDK）。
+            // 队列此刻已空，pushIsolateAndClear 的清队为无操作——清队语义已由 clearPending 显式表达
+            messageQueue.pushIsolateAndClear(REWIND_EXIT_SENTINEL, { permissionMode: 'default' });
+
+            return { accepted: true };
+        } finally {
+            // 统一释放占位：成功路径 pendingRewind 已置位（互斥由它接力），失败路径槽位干净可重试
+            session.rewindInFlight = false;
         }
-
-        // 记录待执行 rewind：launcher while 循环读到后以 resumeSessionAt 截断重启（不清 sessionId）
-        session.pendingRewind = { nativeId, resumeAt, filesRestored };
-
-        // 清空未消费排队项：丢弃项经 onBatchConsumed 通知 Hub（防 Web 悬浮条卡死，对齐 /clear 丢弃路径）
-        messageQueue.clearPending();
-
-        // 入队 isolate 哨兵：唤醒阻塞中的 nextMessage 并触发当前 query 循环退出。
-        // launcher 的 nextMessage 识别哨兵后直接丢弃（不暂存 pending、不推送 SDK）。
-        // 队列此刻已空，pushIsolateAndClear 的清队为无操作——清队语义已由 clearPending 显式表达
-        messageQueue.pushIsolateAndClear(REWIND_EXIT_SENTINEL, { permissionMode: 'default' });
-
-        return { accepted: true };
     });
 }

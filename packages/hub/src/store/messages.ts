@@ -353,16 +353,20 @@ export function attachNativeSessionId(
 }
 
 /** 软删除：seq >= fromSeq 且未删的行打 deleted_at（rewind 截断；行保留兜底可找回）。
+ *  maxSeq（可选上界）：只删 seq <= maxSeq 的行——rewind 受理时点已存在的行（M3 防御：
+ *  截断回报迟到时，受理后新发的消息 seq 更大，无上界会误删）。
  *  幂等：已删行不再计入。返回删除行数。 */
 export function softDeleteMessagesFrom(
     db: Database,
     sessionId: string,
     fromSeq: number,
+    maxSeq?: number,
 ): number {
     const result = db.prepare(
         `UPDATE messages SET deleted_at = @now
-         WHERE session_id = @sid AND seq >= @fromSeq AND deleted_at IS NULL`
-    ).run({ now: Date.now(), sid: sessionId, fromSeq })
+         WHERE session_id = @sid AND seq >= @fromSeq AND deleted_at IS NULL
+         ${maxSeq !== undefined ? 'AND seq <= @maxSeq' : ''}`
+    ).run({ now: Date.now(), sid: sessionId, fromSeq, maxSeq: maxSeq ?? null })
     return result.changes
 }
 

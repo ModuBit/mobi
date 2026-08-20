@@ -46,6 +46,7 @@ function setup(opts: {
         sessionId: 'native-sess-1',
         running: false,
         pendingRewind: null,
+        rewindInFlight: false,
         ...opts.session,
     }
     const messageQueue = new MessageQueue<EnhancedMode>(m => JSON.stringify(m))
@@ -137,9 +138,74 @@ describe('rewind RPC handlers', () => {
 
             expect(result.canRestoreFiles).toBe(true)
         })
+
+        it('rewind 在途（rewindInFlight / pendingRewind）→ canRewind false（reason 含 in progress）', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            const inflight = setup({ session: { rewindInFlight: true } })
+            const result1 = await inflight.handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean; reason?: string }
+            expect(result1.canRewind).toBe(false)
+            expect(result1.reason).toContain('in progress')
+            // 不做锚点预检（busy 与锚点无关，省一次 transcript 读取）
+            expect(mockedFindAnchor).not.toHaveBeenCalled()
+
+            const pending = setup({ session: { pendingRewind: { nativeId: 'u0', resumeAt: 'a0', filesRestored: false } } })
+            const result2 = await pending.handlers.get('rewind-dry-run')!({ nativeId: 'u1' }) as { canRewind: boolean }
+            expect(result2.canRewind).toBe(false)
+        })
     })
 
     describe('rewind 执行', () => {
+        it('rewind 在途（rewindInFlight / pendingRewind）→ busy 拒绝，不动队列不查锚点', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            const inflight = setup({ session: { rewindInFlight: true } })
+            const result1 = await inflight.handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean; reason: string }
+            expect(result1.accepted).toBe(false)
+            expect(result1.reason).toContain('in progress')
+            expect(mockedFindAnchor).not.toHaveBeenCalled()
+
+            const pending = setup({ session: { pendingRewind: { nativeId: 'u0', resumeAt: 'a0', filesRestored: false } } })
+            const result2 = await pending.handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
+            expect(result2.accepted).toBe(false)
+        })
+
+        it('并发窗口互斥：第一个请求 await 文件回滚期间，第二个请求 busy 拒绝（占位先于任何 await）', async () => {
+            mockedFindAnchor.mockResolvedValue('a1')
+            let releaseRestore: (() => void) | null = null
+            const rewindFiles = vi.fn().mockImplementation(() => new Promise(resolve => {
+                releaseRestore = () => resolve({ canRewind: true })
+            }))
+            const { handlers, session } = setup({ rewindFiles })
+
+            // 第一个请求进入文件回滚的 await（未完成，pendingRewind 尚未置位）
+            const first = handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: true })
+            await vi.waitFor(() => expect(session.rewindInFlight).toBe(true))
+
+            // 第二个请求在此窗口到达：必须被同步占位拦下
+            const second = await handlers.get('rewind')!({ nativeId: 'u2', restoreFiles: false }) as { accepted: boolean; reason: string }
+            expect(second.accepted).toBe(false)
+            expect(second.reason).toContain('in progress')
+
+            // 第一个请求正常完成
+            releaseRestore!()
+            expect(await first).toEqual({ accepted: true })
+            expect(session.pendingRewind).toEqual({ nativeId: 'u1', resumeAt: 'a1', filesRestored: true })
+            expect(session.rewindInFlight).toBe(false)
+        })
+
+        it('干净失败后释放占位：后续请求可再次发起（finally 兜底，不残留死锁）', async () => {
+            // 第一次：锚点复检失败被拒
+            mockedFindAnchor.mockResolvedValueOnce(null).mockResolvedValueOnce('a1')
+            const { handlers, session } = setup()
+            const first = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
+            expect(first.accepted).toBe(false)
+            expect(session.rewindInFlight).toBe(false)
+
+            // 第二次：同样的请求可重新走完整流程并受理
+            const second = await handlers.get('rewind')!({ nativeId: 'u1', restoreFiles: false }) as { accepted: boolean }
+            expect(second.accepted).toBe(true)
+            expect(session.pendingRewind).toEqual({ nativeId: 'u1', resumeAt: 'a1', filesRestored: false })
+        })
+
         it('队列非空 → 拒绝且不清队列', async () => {
             mockedFindAnchor.mockResolvedValue('a1')
             const { handlers, messageQueue } = setup()

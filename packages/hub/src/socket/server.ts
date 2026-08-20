@@ -31,6 +31,7 @@ import { registerCliHandlers } from './handlers/cli'
 import { registerTerminalHandlers } from './handlers/terminal'
 import { RpcRegistry } from './rpcRegistry'
 import { BackgroundTaskTracker } from '../sync/backgroundTaskTracker'
+import type { RewindDeleteBoundTracker } from '../sync/rewindDeleteBoundTracker'
 import type { SyncEvent } from '../sync/syncEngine'
 import { TerminalRegistry } from './terminalRegistry'
 import type { CliSocketWithData, SocketData, SocketServer } from './socketTypes'
@@ -75,6 +76,9 @@ export type SocketServerDeps = {
     /** 活跃后台任务集合（CLI 事件维护，rewind API 闸门读取）。
      *  缺省时 socket server 自建实例——仅测试用；生产组装层（index.ts）必须传入与 web 路由层共用的同一实例 */
     backgroundTaskTracker?: BackgroundTaskTracker
+    /** rewind 软删除上界（SyncEngine 受理时写，CLI rewound-truncated 读）。
+     *  生产组装层（index.ts）必须传入与 SyncEngine 共用的同一实例 */
+    rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     getSession?: (sessionId: string) => { active: boolean; namespace: string } | null
     onWebappEvent?: (event: SyncEvent) => void
     onSessionAlive?: (payload: { sid: string; time: number; running?: boolean; mode?: 'local' | 'remote' }) => void
@@ -176,6 +180,7 @@ export function createSocketServer(deps: SocketServerDeps): {
         rpcRegistry,
         terminalRegistry,
         backgroundTaskTracker,
+        rewindDeleteBoundTracker: deps.rewindDeleteBoundTracker,
         // 以下回调转发给 SyncEngine 处理状态同步
         onSessionAlive: deps.onSessionAlive,  // CLI心跳保活
         onSessionEnd: deps.onSessionEnd,      // CLI会话结束

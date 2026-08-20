@@ -19,6 +19,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 import { Store } from '../../src/store'
 import { registerSessionHandlers, type SessionHandlersDeps } from '../../src/socket/handlers/cli/sessionHandlers'
 import { BackgroundTaskTracker } from '../../src/sync/backgroundTaskTracker'
+import { RewindDeleteBoundTracker } from '../../src/sync/rewindDeleteBoundTracker'
 import type { SyncEvent } from '../../src/sync/syncEngine'
 
 /** webapp 用户消息内容（真实信封） */
@@ -46,7 +47,7 @@ function makeFakeSocket() {
     }
 }
 
-function makeDeps(store: Store) {
+function makeDeps(store: Store, opts: { rewindDeleteBoundTracker?: RewindDeleteBoundTracker } = {}) {
     const events: SyncEvent[] = []
     const accessError = { called: false }
     const deps: SessionHandlersDeps = {
@@ -58,6 +59,7 @@ function makeDeps(store: Store) {
         },
         emitAccessError: () => { accessError.called = true },
         backgroundTaskTracker: new BackgroundTaskTracker(),
+        rewindDeleteBoundTracker: opts.rewindDeleteBoundTracker,
         onWebappEvent: (e: SyncEvent) => { events.push(e) },
     }
     // rewind 两段回报事件尚未收录进 shared SyncEventSchema（hub 本地扩展形态），断言侧放宽读取
@@ -266,6 +268,82 @@ describe('rewound-truncated / rewind-completed（两段回报）', () => {
         const truncated = rewindEvents.find(e => e.type === 'rewound-truncated')
         expect(truncated).toBeDefined()
         expect(truncated!.deleteFromSeq).toBe(3)
+    })
+
+    test('rewound-truncated 带受理上界 → 只删受理时已存在的行（M3：迟到回报不吞新消息）', () => {
+        for (let i = 1; i <= 3; i++) {
+            store.messages.addMessage(
+                sid,
+                { ...WEBAPP_USER, content: { type: 'text', text: `m${i}` } },
+                `local-${i}`, 'persistent', { nativeId: `u${i}` },
+            )
+        }
+        // 受理时点：最大 seq = 3。之后（Web 超时解锁后）用户又发了 seq 4、5
+        for (let i = 4; i <= 5; i++) {
+            store.messages.addMessage(
+                sid,
+                { ...WEBAPP_USER, content: { type: 'text', text: `m${i}` } },
+                `local-${i}`, 'persistent', { nativeId: `u${i}` },
+            )
+        }
+
+        const tracker = new RewindDeleteBoundTracker()
+        tracker.markAccepted(sid, 3)
+        const fakeSocket = makeFakeSocket()
+        const { deps } = makeDeps(store, { rewindDeleteBoundTracker: tracker })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        // 迟到回报：deleteFromSeq = 2 → 只删 2..3，4..5（受理后新消息）保留
+        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u2', deleteFromSeq: 2 })
+        expect(store.messages.getMessages(sid, 10).map(r => r.seq)).toEqual([1, 4, 5])
+
+        // 新 rewind（不同锚点）未受理（无上界记录）→ 回退无上界删除到尾
+        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1', deleteFromSeq: 1 })
+        expect(store.messages.getMessages(sid, 10).map(r => r.seq)).toEqual([])
+    })
+
+    test('重放去重 + ack（M5）：同载荷重复回报不二次软删除/不二次广播，仍回 ack', () => {
+        for (let i = 1; i <= 3; i++) {
+            store.messages.addMessage(
+                sid,
+                { ...WEBAPP_USER, content: { type: 'text', text: `m${i}` } },
+                `local-${i}`, 'persistent', { nativeId: `u${i}` },
+            )
+        }
+        const tracker = new RewindDeleteBoundTracker()
+        const fakeSocket = makeFakeSocket()
+        const { deps, events } = makeDeps(store, { rewindDeleteBoundTracker: tracker })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        const ack1 = { called: false }
+        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u2', deleteFromSeq: 2 }, () => { ack1.called = true })
+        expect(ack1.called).toBe(true)
+        expect(store.messages.getMessages(sid, 10).map(r => r.seq)).toEqual([1])
+        expect(events.filter(e => e.type === 'rewound-truncated')).toHaveLength(1)
+
+        // CLI 可靠队列重放（ack 丢失场景）：原样重发 → 幂等跳过 + ack
+        const ack2 = { called: false }
+        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u2', deleteFromSeq: 2 }, () => { ack2.called = true })
+        expect(ack2.called).toBe(true)
+        expect(events.filter(e => e.type === 'rewound-truncated')).toHaveLength(1)
+
+        // completed 同样回 ack（重放由 web 守卫消化，hub 不去重）
+        const ack3 = { called: false }
+        fakeSocket.emit('rewind-completed', { sid, filesRestored: true }, () => { ack3.called = true })
+        expect(ack3.called).toBe(true)
+        expect(events.filter(e => e.type === 'rewind-completed')).toHaveLength(1)
+    })
+
+    test('非法载荷 / session 不存在 → 仍回 ack（重试无价值，防 CLI 队列死循环）', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps } = makeDeps(store)
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        const acks: boolean[] = []
+        fakeSocket.emit('rewound-truncated', { sid, nativeId: 'u1' }, () => { acks.push(true) })
+        fakeSocket.emit('rewound-truncated', { sid: 'ghost', nativeId: 'u1', deleteFromSeq: 1 }, () => { acks.push(true) })
+        fakeSocket.emit('rewind-completed', { sid: 'ghost', filesRestored: true }, () => { acks.push(true) })
+        expect(acks).toEqual([true, true, true])
     })
 
     test('rewind-completed → SSE 广播终态（含 filesRestored 与 error）', () => {

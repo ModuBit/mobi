@@ -185,6 +185,35 @@ describe('rewind API 路由', () => {
             expect(calls.rewind).toEqual({ sessionId: 'test-session-1', nativeId: 'uu-1', restoreFiles: true })
         })
 
+        test('CLI 干净拒绝（accepted:false，如 busy / 文件回滚失败）→ 409 透传 reason，不再恒 202', async () => {
+            const { engine } = makeRewindEngine({ rewindResult: { accepted: false, reason: 'rewind is already in progress' } })
+            const route = makeApp(() => engine, new BackgroundTaskTracker())
+
+            const res = await route.request('/sessions/test-session-1/rewind', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nativeId: 'uu-1', restoreFiles: false }),
+            })
+
+            expect(res.status).toBe(409)
+            const body = await res.json() as { error: string }
+            expect(body.error).toContain('in progress')
+        })
+
+        test('CLI 返回无 reason 的 accepted:false → 409 带兜底文案', async () => {
+            const { engine } = makeRewindEngine({ rewindResult: { accepted: false } })
+            const route = makeApp(() => engine, new BackgroundTaskTracker())
+
+            const res = await route.request('/sessions/test-session-1/rewind', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nativeId: 'uu-1', restoreFiles: false }),
+            })
+
+            expect(res.status).toBe(409)
+            expect(await res.json()).toEqual({ error: 'rewind rejected' })
+        })
+
         test('后台任务清空（replace 空数组）后 → 闸门放行', async () => {
             const { engine, calls } = makeRewindEngine()
             const tracker = new BackgroundTaskTracker()

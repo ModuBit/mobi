@@ -19,6 +19,7 @@ import type { Store, StoredMachine, StoredSession } from '../../../store'
 import type { RpcRegistry } from '../../rpcRegistry'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
+import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
 import type { TerminalRegistry } from '../../terminalRegistry'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
@@ -65,6 +66,8 @@ export type CliHandlersDeps = {
     terminalRegistry: TerminalRegistry
     /** 活跃后台任务集合（CLI 事件维护，rewind API 闸门读取；与 web 路由层共用同一实例） */
     backgroundTaskTracker: BackgroundTaskTracker
+    /** rewind 软删除上界（SyncEngine 受理时写；与 SyncEngine 共用同一实例） */
+    rewindDeleteBoundTracker?: RewindDeleteBoundTracker
     onSessionAlive?: (payload: SessionAlivePayload) => void
     onSessionEnd?: (payload: SessionEndPayload) => void
     onMachineAlive?: (payload: MachineAlivePayload) => void
@@ -76,7 +79,7 @@ export type CliHandlersDeps = {
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, onSessionAlive, onSessionEnd, onMachineAlive, onContextUsage, onGoalStatus, onWebappEvent } = deps
+    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, rewindDeleteBoundTracker, onSessionAlive, onSessionEnd, onMachineAlive, onContextUsage, onGoalStatus, onWebappEvent } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -134,6 +137,7 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         resolveSessionAccess,
         emitAccessError,
         backgroundTaskTracker,
+        rewindDeleteBoundTracker,
         onSessionAlive,
         onSessionEnd,
         onContextUsage,

@@ -44,6 +44,12 @@ export class Session extends AgentSessionBase<EnhancedMode> {
      * while 循环读（下轮以 resumeSessionAt 截断重启）。挂在本对象上的理由见 PendingRewind 注释。
      */
     pendingRewind: PendingRewind | null = null;
+    /**
+     * rewind RPC 受理中占位（多端并发互斥）：rewind handler 入口在任何 await 前同步置位、
+     * finally 释放。与 pendingRewind 语义分离——本字段挡住「文件回滚耗时窗口内并发第二个
+     * rewind 覆盖 pendingRewind 单槽」的竞态。见 rewindHandlers.ts
+     */
+    rewindInFlight: boolean = false;
     localLaunchFailure: LocalLaunchFailure | null = null;
 
     constructor(opts: {
