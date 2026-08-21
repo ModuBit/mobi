@@ -616,15 +616,18 @@ export function ChatComposer(props: ChatComposerProps) {
 
     const needsRefocusRef = useRef(false)
 
-    // disabled 结束后恢复焦点（发送 mutation 完成时 disabled 从 true 变回 false）
+    // disabled 结束后恢复焦点（发送 mutation 完成时 disabled 从 true 变回 false）。
+    // 仅限有物理键盘的设备（hasFinePointer，line 275）——触屏设备聚焦会弹出虚拟键盘
+    // 挤占视口，发送后用户想看的是回复而非继续打字，故跳过
     useEffect(() => {
         if (!controlsDisabled && needsRefocusRef.current) {
             needsRefocusRef.current = false
+            if (!hasFinePointer) return
             requestAnimationFrame(() => {
                 getTextarea(wrapperRef.current)?.focus()
             })
         }
-    }, [controlsDisabled])
+    }, [controlsDisabled, hasFinePointer])
 
     const handleSubmit = useCallback((content: string) => {
         if (import.meta.env.DEV) console.log('[Send] handleSubmit', { contentLen: content.length, canSend, mentionOpen: mention.isOpen, slashOpen: slash.isOpen, uploading: attachments.filter(a => a.status === 'uploading').length })
