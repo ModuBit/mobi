@@ -26,18 +26,18 @@ const here = dirname(fileURLToPath(import.meta.url))
 const designMd = readFileSync(resolve(here, '../../../DESIGN.md'), 'utf-8')
 
 /** 从 frontmatter 的 motion 块提取数值（正则解析，避免引入 yaml 依赖） */
-function extractPreset(name: string): { damping: number; response: number } {
-    const re = new RegExp(`${name}:\\s*\\{\\s*damping:\\s*([\\d.]+),\\s*response:\\s*([\\d.]+)\\s*\\}`)
+function extractPreset(name: string): { bounce: number; duration: number } {
+    const re = new RegExp(`${name}:\\s*\\{\\s*bounce:\\s*([\\d.]+),\\s*duration:\\s*([\\d.]+)\\s*\\}`)
     const m = designMd.match(re)
     if (!m) throw new Error(`DESIGN.md motion 块缺少 ${name}`)
-    return { damping: Number(m[1]), response: Number(m[2]) }
+    return { bounce: Number(m[1]), duration: Number(m[2]) }
 }
 
 describe('spring 预设与 DESIGN.md 一致性（文档与代码同源守卫）', () => {
     it.each(['ui', 'momentum', 'gentle'])('spring.%s 与文档数值一致', (name) => {
         const doc = extractPreset(name)
-        const code = spring[name as keyof typeof spring] as { damping: number; duration: number }
-        expect(code.damping).toBe(doc.damping)
-        expect(code.duration).toBe(doc.response)
+        const code = spring[name as keyof typeof spring] as { bounce: number; duration: number }
+        expect(code.bounce).toBe(doc.bounce)
+        expect(code.duration).toBe(doc.duration)
     })
 })

@@ -83,9 +83,9 @@ typography:
     lineHeight: 1.4
 motion:
   # spring 动效预设——与 components/motion/presets.ts 一一对应（有一致性测试守卫）
-  ui:       { damping: 0.8,  response: 0.35 }   # 状态切换默认档，轻微 overshoot
-  momentum: { damping: 0.75, response: 0.3 }    # 拖拽释放沉降
-  gentle:   { damping: 0.9,  response: 0.5 }    # 大面积元素，弹跳收敛
+  ui:       { bounce: 0.25, duration: 0.35 }   # 状态切换默认档，轻微 overshoot
+  momentum: { bounce: 0.2,  duration: 0.3 }     # 拖拽释放沉降
+  gentle:   { bounce: 0.05, duration: 0.5 }     # 大面积元素，弹跳收敛
 materials:
   glass-bg: "62% paper + blur(18px) saturate(160%)"
   glass-edge: "1px 顶缘高光（light 40% 白 / dark 12% 白）"
@@ -245,13 +245,13 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 - **三档预设，唯一来源是 `components/motion/presets.ts`**（数值与 frontmatter 一一对应，有一致性测试守卫）：
 
-  | 预设 | damping | response | 用途 |
-  |------|---------|----------|------|
-  | `spring.ui` | 0.8 | 0.35 | 状态切换、开关、面板开合（默认档，轻微 overshoot） |
-  | `spring.momentum` | 0.75 | 0.3 | 拖拽释放后的沉降（velocity 由调用方透传） |
-  | `spring.gentle` | 0.9 | 0.5 | 大面积元素（Modal 级）位移，弹跳收敛防廉价感 |
+  | 预设 | bounce | duration | 用途 |
+  |------|--------|----------|------|
+  | `spring.ui` | 0.25 | 0.35 | 状态切换、开关、面板开合（默认档，轻微 overshoot） |
+  | `spring.momentum` | 0.2 | 0.3 | 拖拽释放后的沉降（velocity 由调用方透传） |
+  | `spring.gentle` | 0.05 | 0.5 | 大面积元素（Modal 级）位移，弹跳收敛防廉价感 |
 
-  motion 的 `(type: spring, damping, duration)` 即 Apple 的 (damping ratio, response) 参数化：damping < 1 带 overshoot，duration 越小越跟手（非固定时长，settle 时间由参数涌现）。**组件禁止手写 damping 字面量**——调气质只改 presets.ts。
+  参数化用 motion 的 duration-based spring：`duration` 是到达目标的感知时长（越短越跟手），`bounce` 0~1 控制过冲弹性（0 无回弹，1 极弹）。**组件禁止手写 bounce/duration 字面量**——调气质只改 presets.ts。⚠️ 禁止传 `damping`/`stiffness`：motion 的 `damping` 是绝对阻尼系数（与 Apple 的 damping ratio 阻尼比不是一个东西），且它一出现就会覆盖 `duration`/`bounce`——曾误传 `damping: 0.8`（几乎无阻尼）导致所有 spring 多周期长震荡。
 - **一切动效可打断**：用户在动画进行中的任何输入都应立即生效，动画从当前值+当前速度重新求解，而不是等播完。禁止锁输入等动画完成。
 - **手势释放判定：速度符号优先于位置**。快甩即关、快反向推即回位；拖到一半松手但速度接近零，才按位置判定。释放后用 momentum 投射（inertia decay `0.998`）继续沉降，让手势与动画无缝衔接。
 - **性能边界**：JS spring 跑在主线程，**避开聊天流等大区域**——虚拟列表内的条目不用 spring。所有动效只动 `transform` / `opacity`，不触发 layout。
@@ -287,7 +287,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **Don't** 用饱和原色（`#f00`/`#0f0`）——语义色必须走土地色谱的低饱和值。
 - **Don't** 用粗实线分隔——边框最淡 {colors.hairline}，分隔首选留白。
 - **Don't** 在聊天气泡里用正文体替代等宽体。
-- **Don't** 在组件里手写 damping/duration 字面量——spring 预设唯一来源是 `components/motion/presets.ts`。
+- **Don't** 在组件里手写 bounce/duration/damping/stiffness 字面量——spring 预设唯一来源是 `components/motion/presets.ts`（damping/stiffness 会覆盖 duration/bounce，见上文陷阱）。
 - **Don't** 锁输入等动画完成——一切动效可打断。
 - **Don't** 毛玻璃叠毛玻璃，或大面积使用毛玻璃。
 - **Don't** 新建移动端底部 Drawer 时省略安全区 padding 与 85dvh 上限。
