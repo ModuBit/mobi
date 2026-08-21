@@ -59,6 +59,21 @@ html[data-theme='dark'] {
     -webkit-backdrop-filter: var(--glass-blur);
 }
 
+/* 顶部 edge fade：与底部对称——消息从毛玻璃 GlassHeader 下滚过时自然淡出。
+ * 挂在 ChatWrapper 内顶部；zIndex 4 低于 GlassHeader 浮层（zIndex 6），
+ * 透过半透明玻璃（62% 不透明）叠一层渐变，在玻璃下缘形成柔和融合。
+ * 注意：不含 backdrop-filter——上方 GlassHeader 已模糊，避免毛玻璃叠毛玻璃 */
+.chat-edge-fade-top {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 12px;
+    z-index: 4;
+    pointer-events: none;
+    background: linear-gradient(to bottom, var(--glass-bg), transparent);
+}
+
 /* 长按气泡确认反馈：scale 0.97 过冲回弹（cubic-bezier 近似 spring.momentum） */
 .bubble-press-pop {
     animation: bubble-press-pop 350ms cubic-bezier(0.3, 1.5, 0.5, 1);

@@ -16,6 +16,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { DragControls } from 'motion/react'
 import i18n from '@/core/config/i18n'
 
 // 主题（支持 system）
@@ -50,6 +51,8 @@ interface UiState {
     // 重命名
     renamingSessionId: string | null
     renameValue: string
+    // 移动端菜单抽屉注册的拖拽控制柄（EdgeSwipeBack 左缘右滑远程接管 sheet 拖拽用；null = 未注册）
+    mobileMenuDragControls: DragControls | null
     // 操作方法
     setTheme: (theme: Theme) => void
     setLocale: (locale: Locale) => void
@@ -58,6 +61,7 @@ interface UiState {
     startRename: (sessionId: string, currentValue: string) => void
     setRenameValue: (value: string) => void
     cancelRename: () => void
+    setMobileMenuDragControls: (controls: DragControls | null) => void
 }
 
 export const useUiStore = create<UiState>()(
@@ -69,6 +73,7 @@ export const useUiStore = create<UiState>()(
             sidebarExpanded: true,
             renamingSessionId: null,
             renameValue: '',
+            mobileMenuDragControls: null,
             setTheme: (theme) => set({ theme }),
             setLocale: (locale) => {
                 i18n.changeLanguage(locale)
@@ -79,6 +84,8 @@ export const useUiStore = create<UiState>()(
             startRename: (sessionId, currentValue) => set({ renamingSessionId: sessionId, renameValue: currentValue }),
             setRenameValue: (value) => set({ renameValue: value }),
             cancelRename: () => set({ renamingSessionId: null, renameValue: '' }),
+            // DragControls 是非序列化运行时对象，仅存内存，不持久化（partialize 未含它）
+            setMobileMenuDragControls: (controls) => set({ mobileMenuDragControls: controls }),
         }),
         {
             name: 'mobi-ui',
