@@ -17,35 +17,45 @@
 /**
  * 移动端底部抽屉组件
  * 统一行为：最大高度 85dvh、header 下拉手势关闭
+ *
+ * 动效采用「单向控制」架构：antd Drawer 的 wrapper transform 动画被 CSS 全程禁用，
+ * sheet 的打开弹入 / 拖拽跟手 / 释放沉降 / 滑出关闭全部由内部 motion.div 自管；
+ * antd 只提供 portal、mask 淡入淡出、z-index、a11y、history guard。
  */
 
-import { useRef, useCallback, useState, useLayoutEffect, useEffect } from 'react'
+import { useRef, useCallback, useLayoutEffect, useEffect } from 'react'
 import { Drawer, type DrawerProps } from 'antd'
 import { Global, css } from '@emotion/react'
 import styled from '@emotion/styled'
 import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
-
-/** 下拉关闭阈值（px） */
-const SWIPE_THRESHOLD = 60
+import {
+    motion,
+    useDragControls,
+    useMotionValue,
+    animate,
+    type DragControls,
+    type PanInfo,
+} from 'motion/react'
+import { spring } from '@/components/motion/presets'
+import { resolveDragDisposition } from './resolveDragDisposition'
 
 /** 手势返回 / 下拉关闭无真实 DOM 事件，构造最小事件对象，
  *  避免上层 onClose 实现读取 stopPropagation/preventDefault 时 TypeError */
 const createSyntheticCloseEvent = () =>
     ({ stopPropagation() {}, preventDefault() {} }) as unknown as React.MouseEvent
 
-/** 手势关闭时禁用 antd 动画的 class */
-const SWIPE_CLOSING_CLASS = 'mobile-drawer-swipe-closing'
+/** 挂在 drawer root 上的标记 class，用于把「禁用 wrapper 动画」精确圈定到本 drawer */
+const WRAPPER_MOTION_OFF_CLASS = 'mobile-drawer-motion-off'
 
-/** 禁用 antd Drawer 关闭动画，并锁定滑出位 */
-const swipeClosingStyles = css`
-    /* 精确匹配当前 drawer 自身的 content-wrapper（antd DOM: root > drawer > wrapper），
-       避免嵌套 drawer 时外层 swipeClosing 连带锁住内层 wrapper（#11） */
-    .${SWIPE_CLOSING_CLASS} > .ant-drawer > .ant-drawer-content-wrapper {
+// 单向控制：禁用 antd wrapper 的 transform 动画（enter/leave 均不再位移），
+// sheet 全部动效由内部 motion.div 自管；antd 只保留 portal / mask 淡入淡出 / a11y。
+// 常驻规则（非仅手势期间）——打开动画同样由 motion 呈现，彻底避免双向拉扯。
+// 精确匹配自身层级（.ant-drawer-content-wrapper 在 root 的 drawer 直下），
+// 防止嵌套 drawer 时外层规则连带锁住内层（旧 #11 的教训）。
+const wrapperMotionOff = css`
+    .${WRAPPER_MOTION_OFF_CLASS} > .ant-drawer > .ant-drawer-content-wrapper {
         transition: none !important;
-        /* 关键：onClose 后 antd motion-leave 会清除 inline transform、把 content-wrapper
-           重置回原位（translateY(0)），导致拖拽关闭时 drawer 从滑出位闪回原位再消失。
-           用 !important 锁定 translateY(100%)，覆盖 antd 的 inline transform，保持滑出位 */
-        transform: translateY(100%) !important;
+        transform: none !important;
     }
 `
 
@@ -108,12 +118,17 @@ export interface MobileDrawerProps extends Omit<DrawerProps, 'placement' | 'widt
     maxHeight?: string
     /** 是否展示拖拽指示条，默认 true */
     showDragHandle?: boolean
+    /**
+     * 外部拖拽控制柄（可选）。EdgeSwipeBack 从屏幕左缘远程启动本 sheet 的拖拽时传入
+     * （motion useDragControls 的远程触发设计）。缺省时内部自建。
+     */
+    dragControls?: DragControls
 }
 
 /**
  * 移动端底部 Drawer
  * - 从底部弹出，最大高度 85dvh
- * - header 区域支持下拉手势关闭（跟手 + 阈值判定）
+ * - header 区域支持下拉手势关闭（motion 拖拽：跟手 + 速度继承 + 沉降/滑出）
  * - 顶部拖拽指示条提示可拖拽
  */
 export function MobileDrawer({
@@ -126,45 +141,15 @@ export function MobileDrawer({
     styles: propStyles,
     rootClassName,
     children,
+    dragControls: externalControls,
     closable: _closable,
     ...rest
 }: MobileDrawerProps) {
-    const startYRef = useRef<number | null>(null)
-    const deltaYRef = useRef(0)
-    const draggableRef = useRef<HTMLDivElement>(null)
-    // 手势关闭中：禁用 antd 动画，自行控制 translateY 滑出
-    const [swipeClosing, setSwipeClosing] = useState(false)
-
-    const getContentWrapper = useCallback((): HTMLElement | null => {
-        return draggableRef.current?.closest('.ant-drawer-content-wrapper') as HTMLElement | null
-    }, [])
-
-    // 滑出动画进行中标记。配合下方 useLayoutEffect，每次渲染重新应用 translateY(100%)，
-    // 防止父组件 re-render（如 session 详情页 SSE 消息流）触发 antd Drawer 重置
-    // content-wrapper 的 transform，导致 drawer 弹回原位再消失的闪动
-    const [isClosing, setIsClosing] = useState(false)
-
-    // 收集手势关闭过程中的所有定时器/rAF，卸载或重开时统一清理（#9）
-    const timersRef = useRef<{ timeouts: number[]; raf: number | null }>({ timeouts: [], raf: null })
-    const clearTimers = useCallback(() => {
-        timersRef.current.timeouts.forEach(id => clearTimeout(id))
-        if (timersRef.current.raf != null) cancelAnimationFrame(timersRef.current.raf)
-        timersRef.current = { timeouts: [], raf: null }
-    }, [])
-
-    // 卸载时清理残留定时器，避免在已卸载组件上 setState（#9）
-    useEffect(() => {
-        return () => clearTimers()
-    }, [clearTimers])
-
-    // 重新打开时复位关闭态，防止快速 close→reopen 期间 isClosing 残留导致 drawer 卡在滑出位（#4）
-    useEffect(() => {
-        if (open) {
-            clearTimers()
-            setIsClosing(false)
-            setSwipeClosing(false)
-        }
-    }, [open, clearTimers])
+    const controls = useDragControls()
+    // 实际驱动 sheet 的控制柄：外部传入时用外部的（EdgeSwipeBack 远程触发），否则用内部自建的
+    const activeControls = externalControls ?? controls
+    const y = useMotionValue(0)
+    const sheetRef = useRef<HTMLDivElement>(null)
 
     // onClose 用 ref 持有，避免父组件内联箭头每次渲染产生新引用导致 effect 重跑（重复 push 哨兵）
     const onCloseRef = useRef(onClose)
@@ -181,93 +166,51 @@ export function MobileDrawer({
         return dispose
     }, [open])
 
+    // 打开动画：sheet 从屏外弹入（spring.ui）；antd wrapper 已被 CSS 静默。
+    // useLayoutEffect 在首帧绘制前设初值，避免 sheet 先以 y=0 闪现一帧再跳到屏外
     useLayoutEffect(() => {
-        if (!isClosing) return
-        const wrapper = getContentWrapper()
-        if (!wrapper) return
-        wrapper.style.transition = 'transform 0.2s ease'
-        wrapper.style.transform = 'translateY(100%)'
-    })
+        if (!open) return
+        const h = sheetRef.current?.offsetHeight ?? 0
+        y.set(h)
+        const anim = animate(y, 0, spring.ui)
+        return () => anim.stop()
+    }, [open, y])
 
-    const handleTouchStart = useCallback((e: React.TouchEvent) => {
-        startYRef.current = e.touches[0].clientY
-        deltaYRef.current = 0
-    }, [])
-
-    const handleTouchMove = useCallback((e: React.TouchEvent) => {
-        if (startYRef.current === null) return
-        const currentY = e.touches[0].clientY
-        deltaYRef.current = currentY - startYRef.current
-
-        // 只响应向下拖动
-        if (deltaYRef.current > 0) {
-            const wrapper = getContentWrapper()
-            if (wrapper) {
-                wrapper.style.transition = 'none'
-                wrapper.style.transform = `translateY(${deltaYRef.current}px)`
-            }
+    const handleDragEnd = useCallback((
+        _e: MouseEvent | TouchEvent | PointerEvent,
+        info: PanInfo,
+    ) => {
+        const height = sheetRef.current?.offsetHeight ?? 0
+        const disposition = resolveDragDisposition({
+            offset: info.offset.y,
+            velocity: info.velocity.y,
+            height,
+        })
+        if (disposition === 'close') {
+            // 滑出：继承手势速度，落定后调 onClose
+            //（antd leave 只淡出 mask——wrapper transform 已被 CSS 锁为 none，
+            //  内容已在 wrapper 内 100% 偏移出屏，无闪烁）
+            animate(y, height, { ...spring.momentum, velocity: info.velocity.y })
+                .then(() => onCloseRef.current?.(createSyntheticCloseEvent()))
+        } else {
+            // 沉降回原位：同样继承手势速度
+            animate(y, 0, { ...spring.momentum, velocity: info.velocity.y })
         }
-    }, [getContentWrapper])
-
-    const handleTouchEnd = useCallback(() => {
-        // 新手势开始，取消前一次未完成的动画定时器，防止回弹与滑出竞态（#10）
-        clearTimers()
-        const wrapper = getContentWrapper()
-        if (wrapper) {
-            if (deltaYRef.current > SWIPE_THRESHOLD) {
-                // 超过阈值：触发滑出动画（isClosing + useLayoutEffect 控制 transform）
-                setIsClosing(true)
-                // 动画完成后：禁用 antd 关闭动画 + 触发关闭
-                const t1 = window.setTimeout(() => {
-                    setSwipeClosing(true)
-                    // 等 class 生效后再调 onClose
-                    const raf = requestAnimationFrame(() => {
-                        // 手势关闭无真实事件，用合成事件触发 onClose（避免上层读 e.stopPropagation 等）
-                        onClose?.(createSyntheticCloseEvent())
-                        // 等 antd motion-leave 完成（~300ms）再清理状态。期间 swipeClosing CSS
-                        // 用 !important 锁定 transform translateY(100%)，防止 motion-leave 重置回原位闪动
-                        const t2 = window.setTimeout(() => {
-                            setSwipeClosing(false)
-                            setIsClosing(false)
-                            // 清除 inline transform/transition（此时 content 已 hidden，清除不影响视觉），
-                            // 避免残留 translateY(100%) 导致下次打开 drawer 时内容仍在滑出位（只见 mask 不见 drawer）
-                            const w = getContentWrapper()
-                            if (w) {
-                                w.style.transform = ''
-                                w.style.transition = ''
-                            }
-                        }, 350)
-                        timersRef.current.timeouts.push(t2)
-                    })
-                    timersRef.current.raf = raf
-                }, 200)
-                timersRef.current.timeouts.push(t1)
-            } else {
-                // 未超过阈值，弹回原位
-                wrapper.style.transition = 'transform 0.2s ease'
-                wrapper.style.transform = ''
-                const t = window.setTimeout(() => {
-                    wrapper.style.transition = ''
-                }, 200)
-                timersRef.current.timeouts.push(t)
-            }
-        }
-        startYRef.current = null
-        deltaYRef.current = 0
-    }, [onClose, getContentWrapper, clearTimers])
+    }, [y])
 
     // 合并 wrapper styles（antd 5.x 运行时支持 styles.wrapper，类型为 stylesAndFn 联合，
     // 这里仅处理对象式配置，函数式由 antd 内部消费）
     const userStyles = typeof propStyles === 'object' ? propStyles : undefined
     const mergedStyles = {
         ...propStyles,
-        // 顶部左右圆角（底部抽屉视觉惯例，12px 与项目浮层圆角一致）；
-        // overflow hidden 让 header/内容裁切到圆角内（调用方可覆盖）。
-        // antd v6：原 styles.content 已改名 styles.section（DOM 为 .ant-drawer-section）
+        // antd v6：原 styles.content 已改名 styles.section（DOM 为 .ant-drawer-section）。
+        // 顶部圆角与背景已移入内部 motion.div（视觉 sheet 主体），section 仅保留
+        // overflow hidden 裁切 + 透明背景（防 antd 默认底色从圆角外露出）
         section: {
             borderTopLeftRadius: 12,
             borderTopRightRadius: 12,
             overflow: 'hidden',
+            background: 'transparent',
             ...userStyles?.section,
         },
         wrapper: {
@@ -293,13 +236,12 @@ export function MobileDrawer({
         },
     } as DrawerProps['styles']
 
-    // 手势关闭时追加特殊 class 禁用 antd 动画
-    const finalRootClassName = [rootClassName, swipeClosing ? SWIPE_CLOSING_CLASS : '']
+    const finalRootClassName = [rootClassName, WRAPPER_MOTION_OFF_CLASS]
         .filter(Boolean).join(' ') || undefined
 
     return (
         <>
-            <Global styles={swipeClosingStyles} />
+            <Global styles={wrapperMotionOff} />
             <Drawer
                 open={open}
                 onClose={onClose}
@@ -308,28 +250,52 @@ export function MobileDrawer({
                 closable={false}
                 styles={mergedStyles}
                 rootClassName={finalRootClassName}
+                // 外部控制柄存在时保持挂载，供 EdgeSwipeBack 远程 start（后续任务）
+                forceRender={!!externalControls}
                 {...rest}
             >
-                {/* 自定义 header：拖拽区域 */}
-                <DraggableArea
-                    ref={draggableRef}
-                    onTouchStart={handleTouchStart}
-                    onTouchMove={handleTouchMove}
-                    onTouchEnd={handleTouchEnd}
+                {/* 视觉 sheet 主体：背景 + 圆角 + 全部位移动效都在这里，
+                    antd 的 wrapper 只是被 CSS 静默的容器 */}
+                <motion.div
+                    ref={sheetRef}
+                    data-testid="mobile-drawer-sheet"
+                    drag="y"
+                    dragListener={false}
+                    dragControls={activeControls}
+                    // 上边界（top: 0）越界由 dragElastic 阻尼跟动 = rubber-band；
+                    // 下边界放到 10000px，实际不约束 = 下拖 1:1 跟手
+                    dragConstraints={{ top: 0, bottom: 10000 }}
+                    dragElastic={0.2}
+                    // 释放后的沉降/滑出由 handleDragEnd 显式 animate 接管（带速度继承），
+                    // 关掉 motion 内建惯性，避免两套动画对 y 的双向拉扯
+                    dragMomentum={false}
+                    onDragEnd={handleDragEnd}
+                    style={{
+                        y,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        height: '100%',
+                        background: 'var(--ant-color-bg-container)',
+                        borderTopLeftRadius: 12,
+                        borderTopRightRadius: 12,
+                    }}
                 >
-                    {showDragHandle && <DragHandle />}
-                    {(title || extra) && (
-                        <TitleRow>
-                            {title != null && <TitleText>{title}</TitleText>}
-                            {extra && <TitleExtra>{extra}</TitleExtra>}
-                        </TitleRow>
-                    )}
-                </DraggableArea>
+                    {/* 自定义 header：拖拽区域，pointerdown 远程启动 sheet 拖拽 */}
+                    <DraggableArea onPointerDown={(e) => activeControls.start(e)}>
+                        {showDragHandle && <DragHandle />}
+                        {(title || extra) && (
+                            <TitleRow>
+                                {title != null && <TitleText>{title}</TitleText>}
+                                {extra && <TitleExtra>{extra}</TitleExtra>}
+                            </TitleRow>
+                        )}
+                    </DraggableArea>
 
-                {/* 内容区域 */}
-                <div style={{ flex: 1, overflow: 'auto' }}>
-                    {children}
-                </div>
+                    {/* 内容区域 */}
+                    <div style={{ flex: 1, overflow: 'auto' }}>
+                        {children}
+                    </div>
+                </motion.div>
             </Drawer>
         </>
     )
