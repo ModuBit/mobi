@@ -240,7 +240,13 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                 setActionLoading(null)
             },
         })
-        const disposeGuard = pushHistoryGuard(() => modal.destroy())
+        const disposeGuard = pushHistoryGuard(() => {
+            // 手势返回等同取消：destroy() 不触发 onCancel/onOk，loading 态须在此
+            // 显式复位——否则 ActionSheet 会被 closeActionSheet 的 loading 守卫
+            // 永久冻结（收不起也操作不了）
+            modal.destroy()
+            setActionLoading(null)
+        })
     }, [actionSessionId, api, queryClient, invalidateAll, activeSessionId, onCloseMenu, navigate, t])
 
 

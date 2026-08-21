@@ -27,8 +27,11 @@ import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
  *
  * @param active 覆盖物可见期（true 推哨兵 / false dispose 弹掉）
  * @param onBackPressed 手势返回时的收起动作（经 ref 持有，引用变化不重推哨兵）
+ * @param rearmKey 重臂纪元：变化时 dispose 旧哨兵并重推一个新哨兵。用于
+ *   「哨兵已被 popstate 消费，但收起动作被否决、覆盖物仍在屏上」的场景——
+ *   不重推则下一次手势返回将穿透到路由层
  */
-export function useHistoryGuard(active: boolean, onBackPressed: () => void): void {
+export function useHistoryGuard(active: boolean, onBackPressed: () => void, rearmKey?: unknown): void {
     const cbRef = useRef(onBackPressed)
     cbRef.current = onBackPressed
     useEffect(() => {
@@ -36,5 +39,5 @@ export function useHistoryGuard(active: boolean, onBackPressed: () => void): voi
         // 闭包经 ref 间接调用，保证 pushHistoryGuard/disposer 匹配到的是同一个稳定引用
         const stable = () => cbRef.current()
         return pushHistoryGuard(stable)
-    }, [active])
+    }, [active, rearmKey])
 }

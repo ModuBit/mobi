@@ -25,10 +25,11 @@
  * 所有关闭路径（手势释放 / 点遮罩 / 手势返回 / 父组件直调 setOpen(false)）统一
  * 先通知父组件，open 翻 false 后由关闭 effect 同时启动 spring 滑出与 antd leave
  * （mask 淡出），调用方零改动；否决式 onClose 消费者（如 loading 守卫传 noop）
- * 可拦住关闭，sheet 沉降回原位而非卡在屏外。
+ * 可拦住关闭，sheet 沉降回原位而非卡在屏外，且被消费的 history 哨兵会自动重臂
+ * （防下一次返回手势穿透路由）。
  */
 
-import { useRef, useState, useCallback, useLayoutEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import { Drawer, type DrawerProps } from 'antd'
 import { Global, css } from '@emotion/react'
 import styled from '@emotion/styled'
@@ -167,6 +168,16 @@ export function MobileDrawer({
         setMounted(true)
     }
 
+    // 哨兵存活期：**不绑 mounted**——关闭 effect 在滑出启动时就翻 mounted=false（并行
+    // 卸载），若绑 mounted，哨兵会在滑出窗口起手即 dispose（queueMicrotask back()），
+    // 其后 ~300ms 内的手势返回将穿透到路由层退出 session detail。guardAlive 覆盖
+    // mounted 全程 + 滑出动画窗口，落定（或已出屏直卸载）才释放。
+    const [guardAlive, setGuardAlive] = useState(open === true)
+    if (open && !guardAlive) setGuardAlive(true)
+    // 否决重臂纪元：手势返回消费了哨兵但关闭被否决（onClose 被拦、sheet 沉降回原位）
+    // 时 +1，驱动 useHistoryGuard 重推哨兵——否则下一次返回手势将穿透到路由层
+    const [guardEpoch, setGuardEpoch] = useState(0)
+
     // mounted / open 经 ref 读取：关闭 effect 只依赖 [open]（setMounted 翻转后本 effect
     // 不需重跑，ref 读取避免依赖膨胀），openRef 用于 closeWithAnimation 的否决检测
     // （父组件 setState flush 后判断关闭是否被否决）
@@ -179,6 +190,10 @@ export function MobileDrawer({
     // open 需一拍后才触发关闭 effect——速度经此 ref 暂存传递，供关闭 effect 的
     // 滑出动画继承；非手势路径（点遮罩 / history guard）为 null
     const pendingCloseVelocityRef = useRef<number | null>(null)
+
+    // 否决检测定时器：供关闭 effect（接管滑出时作废）与组件卸载清理，防止
+    // 卸载后仍对已分离的 MotionValue 启动沉降动画
+    const vetoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // 统一关闭路径：**先通知后动画**——立即调 onClose，父组件 setOpen(false) 后由
     // 关闭 effect 从当前位置滑出屏（手势速度经 pendingCloseVelocityRef 暂存继承）。
@@ -197,16 +212,20 @@ export function MobileDrawer({
         // 否决检测：为什么用 setTimeout(0)——要等父组件 setState flush 后读 openRef
         // 才能判断关闭是否被否决。若仍为 true（onClose 被 loading 守卫等拦下），
         // 说明关闭 effect 不会运行，把 sheet 沉降回原位而非卡在屏外；
-        // 若已翻 false 则什么都不做（关闭 effect 已接管滑出）。
+        // 若已翻 false 则什么都不做（关闭 effect 已接管，且会 clearTimeout 作废本检测）。
         // 沉降动画带拒绝分支防 unhandled rejection（如被后续动画 stop 中断）——
         // animate 返回的控件类型只有 then（无 catch），用双参 then 兜住拒绝
-        setTimeout(() => {
+        vetoTimerRef.current = setTimeout(() => {
+            vetoTimerRef.current = null
             if (!openRef.current) return
             const v = pendingCloseVelocityRef.current
             // 沉降即消费掉暂存速度，防陈旧速度被后续关闭复用
             pendingCloseVelocityRef.current = null
             animate(y, 0, v != null ? { ...spring.momentum, velocity: v } : spring.momentum)
                 .then(() => {}, () => {})
+            // 哨兵已被本次返回手势消费但关闭被否决：重臂纪元 +1 驱动 useHistoryGuard
+            // 重推哨兵，覆盖仍开着的 drawer——否则下一次返回手势将穿透到路由层
+            setGuardEpoch(e => e + 1)
         }, 0)
     }, [y])
 
@@ -218,11 +237,11 @@ export function MobileDrawer({
     closeWithAnimationRef.current = closeWithAnimation
 
     // 移动端全屏手势返回（iOS 边缘滑动 / Android 返回键 / 浏览器 back）应关闭 drawer，
-    // 而非穿透到路由层退出 session detail。绑定 mounted（非 open）：哨兵跟随真实可见性，
-    // 滑出动画期间保持存活，卸载（含父直调关闭的滑出开始后）时 dispose 弹掉。
+    // 而非穿透到路由层退出 session detail。绑定 guardAlive（非 mounted，见其声明处说明）：
+    // 覆盖 mounted 全程 + 滑出动画窗口，滑出落定才 dispose 弹掉。
     // closeWithAnimation 用 ref 持有：避免回调引用变化导致哨兵反复 dispose/re-push
-    // （旧实现的教训），也保证嵌套 drawer 的栈序稳定
-    useHistoryGuard(mounted, () => closeWithAnimationRef.current())
+    // （旧实现的教训），也保证嵌套 drawer 的栈序稳定；guardEpoch 是否决后的重臂纪元
+    useHistoryGuard(guardAlive, () => closeWithAnimationRef.current(), guardEpoch)
 
     // 关闭 effect：open=false 时若 sheet 仍在屏内（closeWithAnimation 已通知父组件 /
     // 弹入中途 / 父组件直调 setOpen(false)），启动 spring 滑出，**同时立即**翻 mounted
@@ -234,6 +253,14 @@ export function MobileDrawer({
     // 后者会把已出屏误判为在屏内再跑一次 h→h 空动画
     useLayoutEffect(() => {
         if (open || !mountedRef.current) return undefined
+        // 关闭已接管（父组件已翻 open=false）：否决检测定时器作废——沉降不应再发生。
+        // 这同时消除异步关闭场景的误判窗口：若父组件 setOpen(false) 有延迟（await /
+        // startTransition），旧实现在定时器触发时会误判否决、把 sheet 沉降回屏内，
+        // 随后关闭 effect 再滑出，出现「弹回再弹走」的跳变
+        if (vetoTimerRef.current != null) {
+            clearTimeout(vetoTimerRef.current)
+            vetoTimerRef.current = null
+        }
         const h = sheetRef.current?.offsetHeight ?? 0
         if (y.get() < h - 8) {
             // 消费 closeWithAnimation 暂存的手势速度：手势路径带速度滑出（释放动量连续），
@@ -244,11 +271,25 @@ export function MobileDrawer({
             // 落定回调无需再卸载——mounted 已在此处翻转
             const anim = animate(y, h, v != null ? { ...spring.momentum, velocity: v } : spring.momentum)
             setMounted(false)
+            // 哨兵延迟到滑出落定才释放：动画窗口内手势返回仍应被本 drawer 拦截
+            //（消费哨兵 → closeWithAnimation → onClose 幂等）而非穿透路由。
+            // 重开（openRef 已 true）时哨兵仍须存活，交由打开路径继续持有
+            anim.then(
+                () => { if (!openRef.current) setGuardAlive(false) },
+                () => { if (!openRef.current) setGuardAlive(false) },
+            )
             return () => anim.stop()
         }
+        // 已出屏：直接卸载，哨兵随之释放
+        setGuardAlive(false)
         setMounted(false)
         return undefined
     }, [open, y])
+
+    // 卸载清理否决检测定时器：防止卸载后仍对已分离的 MotionValue 启动沉降动画
+    useEffect(() => () => {
+        if (vetoTimerRef.current != null) clearTimeout(vetoTimerRef.current)
+    }, [])
 
     // 打开动画：sheet 从屏外弹入（spring.ui）；antd wrapper 已被 CSS 静默。
     // useLayoutEffect 在首帧绘制前设初值，避免 sheet 先以 y=0 闪现一帧再跳到屏外。

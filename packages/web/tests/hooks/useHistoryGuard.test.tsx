@@ -49,4 +49,33 @@ describe('useHistoryGuard（声明式哨兵 hook）', () => {
         window.dispatchEvent(new PopStateEvent('popstate'))
         expect(onBackPressed).toHaveBeenCalledTimes(1)
     })
+
+    it('rearmKey 变化时重推哨兵：消费后的哨兵可恢复（否决场景），下一次 popstate 仍触发回调', async () => {
+        const onBackPressed = vi.fn()
+        // 宿主：回调**不**翻转 active（模拟否决），经 rearmKey 重臂
+        function VetoHost() {
+            const [active, setActive] = useState(false)
+            const [epoch, setEpoch] = useState(0)
+            useHistoryGuard(active, () => {
+                onBackPressed()
+                // 哨兵已被消费但覆盖物仍在：重臂
+                setEpoch(e => e + 1)
+            }, epoch)
+            return (
+                <button data-testid="open" onClick={() => setActive(true)}>open</button>
+            )
+        }
+        const { getByTestId } = render(<VetoHost />)
+        fireEvent.click(getByTestId('open'))
+        await waitFor(() => expect(window.history.state).toMatchObject({ mobiHistoryGuard: true }))
+
+        // 第一次消费：回调触发 + 重臂（guardId 递增）
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        expect(onBackPressed).toHaveBeenCalledTimes(1)
+        await waitFor(() => expect(window.history.state).toMatchObject({ guardId: 2 }))
+
+        // 第二次 popstate：重臂哨兵被消费，回调再次触发（否则穿透路由层）
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        await waitFor(() => expect(onBackPressed).toHaveBeenCalledTimes(2))
+    })
 })

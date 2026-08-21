@@ -42,10 +42,17 @@ describe('resolveEdgeSwipeDirection（左缘滑动方向锁判定）', () => {
         expect(resolveEdgeSwipeDirection(0, 0, 30, 12)).toBe('horizontal')
     })
 
-    it('向左滑（负方向）dx 同样胜出 → horizontal（方向锁只看幅度胜出，不辨正负）', () => {
-        // 起手已在最左缘（x=0），负方向位移在真实场景中不可达；
-        // 纯函数按幅度对称处理，正负由起手层（热区内起手）天然约束
-        expect(resolveEdgeSwipeDirection(15, 0, 0, 3)).toBe('horizontal')
+    it('向左滑（负方向）dx 幅度胜出 → vertical（放弃跟踪，不开菜单）', () => {
+        // 起手可在热区内任意位置（x 最大 20px），向左滑 10px+ 完全可达；
+        // 左滑（远离屏幕缘）不是返回意图，必须放弃跟踪——旧实现取绝对值
+        // 比较会误判 horizontal 而弹出菜单
+        expect(resolveEdgeSwipeDirection(15, 0, 0, 3)).toBe('vertical')
+        expect(resolveEdgeSwipeDirection(20, 0, 5, 0)).toBe('vertical')
+    })
+
+    it('左滑往返（净位移仍向左）→ vertical', () => {
+        // 起手 x=18 → 左滑到 x=2 → 回滑到 x=6：净位移 -12 过迟滞且向左
+        expect(resolveEdgeSwipeDirection(18, 0, 6, 0)).toBe('vertical')
     })
 
     it('dy 胜出 → vertical（用户在滚动，放弃跟踪）', () => {

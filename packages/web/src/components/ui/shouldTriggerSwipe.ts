@@ -27,14 +27,18 @@ export type EdgeSwipeDirection = 'pending' | 'horizontal' | 'vertical'
  * 左缘起手滑动的方向锁判定。
  *
  * - 两轴位移均未过迟滞 → 'pending'（继续观察，不判定）
- * - 水平分量胜出 → 'horizontal'（右滑意图，开菜单）
- * - 垂直分量胜出 → 'vertical'（用户在滚动，放弃跟踪交还浏览器）
+ * - **右滑**（dx > 0）且水平分量胜出 → 'horizontal'（返回意图，开菜单）
+ * - 其余（垂直分量胜出 / 向左滑）→ 'vertical'（放弃跟踪交还浏览器）
+ *
+ * 水平意图必须辨正负：起手可在热区内任意位置（x 最大 EDGE_WIDTH），
+ * 向左滑 10px+ 完全可达——左滑（远离屏幕缘）不是返回意图，判 'vertical'
+ * 放弃跟踪。旧实现取绝对值比较，左滑过迟滞也会被误判 horizontal 而弹出菜单。
  *
  * 方向锁是热区不拦截的关键：只有确认水平意图才动作，
  * 竖向滑动全程不被 preventDefault / touch-action 干扰。
  *
- * 抽成纯函数以便单测覆盖边界（未过迟滞 / 水平胜出 / 垂直胜出 / 对角近似）。
- * 起点 是否在热区内由 pointerdown 捕获层负责，本函数不再判定起点。
+ * 抽成纯函数以便单测覆盖边界（未过迟滞 / 水平胜出 / 垂直胜出 / 对角近似 / 左滑）。
+ * 起点是否在热区内由 pointerdown 捕获层负责，本函数不再判定起点。
  */
 export function resolveEdgeSwipeDirection(
     startX: number,
@@ -42,8 +46,8 @@ export function resolveEdgeSwipeDirection(
     currentX: number,
     currentY: number,
 ): EdgeSwipeDirection {
-    const dx = Math.abs(currentX - startX)
-    const dy = Math.abs(currentY - startY)
-    if (dx <= HYSTERESIS && dy <= HYSTERESIS) return 'pending'
-    return dx > dy ? 'horizontal' : 'vertical'
+    const dx = currentX - startX
+    const dy = currentY - startY
+    if (Math.abs(dx) <= HYSTERESIS && Math.abs(dy) <= HYSTERESIS) return 'pending'
+    return dx > 0 && dx > Math.abs(dy) ? 'horizontal' : 'vertical'
 }

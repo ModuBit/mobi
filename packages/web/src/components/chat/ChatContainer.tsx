@@ -25,7 +25,7 @@ import { useMessages } from '@/core/data/hooks/queries/useMessages'
 import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
-import { isQueuedInMobi } from '@/core/lib/messages'
+import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
@@ -41,7 +41,7 @@ import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, type MessageActionTarget } from './MessageActionsDrawer'
 import { useMobiApi } from '@/core/data/api/client'
 import type { ActionItem } from '@/components/composer/ResponsiveActionBar'
-import type { SessionMetadataSummary } from '@/core/data/api/types'
+import type { DecryptedMessage, SessionMetadataSummary } from '@/core/data/api/types'
 import { useRunningAgentsStore } from '@/core/data/stores/runningAgentsStore'
 import { useBackgroundTasksStore, useBackgroundTasks } from '@/core/data/stores/backgroundTasksStore'
 import { useRewindStore, useRewindProgress, useRewindCompletion } from '@/core/data/stores/rewindStore'
@@ -72,15 +72,23 @@ export function lastMessageActivityAt(messages: Array<{ positionAt?: number; cre
 }
 
 /**
- * 取本轮运行的起点时间戳（最后一条 user 消息，供 StatusBar 计时）：
+ * 取本轮运行的起点时间戳（最后一条有效 user 消息，供 StatusBar 计时）：
  * 刷新页面后从消息列表重算而非组件 mount 时间，计时不会归零；
  * 用户新发一条消息即开启新一轮计时。取值与 lastMessageActivityAt 同源
  * （positionAt 优先，快照/排队消息退 createdAt——排队消息提交时刻即本轮起点，须计入）。
+ *
+ * - role 读 `content.role`（与 isUserMessage 同口径）——DecryptedMessage **没有**
+ *   顶层 role 字段，旧实现读 `m.role` 恒 undefined，计时从未生效（测试用顶层
+ *   role 造数据掩盖了错位）
+ * - 排除 status='failed' / 'sending' 的乐观消息（与 isQueuedInMobi 的排除口径
+ *   一致）：发送失败的消息留在列表但从未开启本轮；在途消息尚未被受理，当前
+ *   running 的仍是旧一轮
  */
-export function lastUserMessageAt(messages: Array<{ role?: string; positionAt?: number; createdAt: number }>): number | undefined {
+export function lastUserMessageAt(messages: DecryptedMessage[]): number | undefined {
     for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages[i]
-        if (m.role === 'user') return m.positionAt ?? m.createdAt
+        if (m.status === 'failed' || m.status === 'sending') continue
+        if (isUserMessage(m)) return m.positionAt ?? m.createdAt
     }
     return undefined
 }

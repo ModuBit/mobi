@@ -239,33 +239,59 @@ describe('lastMessageActivityAt', () => {
 
 // ========== lastUserMessageAt（StatusBar 本轮计时的时间源）==========
 
+/** 造最小 DecryptedMessage 形状：role 在 content 内（生产真实形状——顶层无 role 字段） */
+const msg = (role: string, extra: Partial<Parameters<typeof lastUserMessageAt>[0][number]> = {}) =>
+    ({ content: { role }, createdAt: 0, ...extra }) as Parameters<typeof lastUserMessageAt>[0][number]
+
 describe('lastUserMessageAt', () => {
     it('取最后一条 user 消息的 positionAt（其后的 agent/event 消息不影响）', () => {
         expect(lastUserMessageAt([
-            { role: 'user', positionAt: 1_000, createdAt: 1_000 },
-            { role: 'agent', positionAt: 8_000, createdAt: 7_000 },
-            { role: 'event', positionAt: 9_000, createdAt: 8_500 },
+            msg('user', { positionAt: 1_000, createdAt: 1_000 }),
+            msg('assistant', { positionAt: 8_000, createdAt: 7_000 }),
+            msg('system', { positionAt: 9_000, createdAt: 8_500 }),
         ])).toBe(1_000)
     })
 
     it('user 消息无 positionAt（排队/快照）回退 createdAt——提交时刻即本轮起点', () => {
         expect(lastUserMessageAt([
-            { role: 'agent', positionAt: 2_000, createdAt: 1_500 },
-            { role: 'user', createdAt: 5_000 },
+            msg('assistant', { positionAt: 2_000, createdAt: 1_500 }),
+            msg('user', { createdAt: 5_000 }),
         ])).toBe(5_000)
     })
 
     it('多条 user 取最后一条', () => {
         expect(lastUserMessageAt([
-            { role: 'user', positionAt: 1_000, createdAt: 1_000 },
-            { role: 'agent', positionAt: 2_000, createdAt: 1_900 },
-            { role: 'user', positionAt: 3_000, createdAt: 2_900 },
+            msg('user', { positionAt: 1_000, createdAt: 1_000 }),
+            msg('assistant', { positionAt: 2_000, createdAt: 1_900 }),
+            msg('user', { positionAt: 3_000, createdAt: 2_900 }),
         ])).toBe(3_000)
+    })
+
+    it('role 读 content.role 而非顶层（顶层无 role 字段——旧实现恒 undefined，计时从未生效）', () => {
+        // 顶层 role（真实消息不存在，防回归用）不得参与判定；content.role 为准
+        expect(lastUserMessageAt([
+            msg('assistant', { positionAt: 2_000, createdAt: 1_500 }),
+        ])).toBeUndefined()
+    })
+
+    it('发送失败的 user 消息不劫持计时起点——跳过取更早的有效 user', () => {
+        expect(lastUserMessageAt([
+            msg('user', { positionAt: 1_000, createdAt: 1_000 }),
+            msg('assistant', { positionAt: 2_000, createdAt: 1_900 }),
+            msg('user', { positionAt: 9_000, createdAt: 8_000, status: 'failed' }),
+        ])).toBe(1_000)
+    })
+
+    it('在途（sending）的 user 消息同样跳过——尚未被受理，当前 running 的仍是旧一轮', () => {
+        expect(lastUserMessageAt([
+            msg('user', { positionAt: 1_000, createdAt: 1_000 }),
+            msg('user', { positionAt: 9_000, createdAt: 8_000, status: 'sending' }),
+        ])).toBe(1_000)
     })
 
     it('无 user 消息返回 undefined（计时回退组件 mount 时间）', () => {
         expect(lastUserMessageAt([
-            { role: 'agent', positionAt: 2_000, createdAt: 1_500 },
+            msg('assistant', { positionAt: 2_000, createdAt: 1_500 }),
         ])).toBeUndefined()
         expect(lastUserMessageAt([])).toBeUndefined()
     })

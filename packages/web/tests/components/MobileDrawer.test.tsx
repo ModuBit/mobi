@@ -249,6 +249,56 @@ describe('MobileDrawer', () => {
         expect(onClose).not.toHaveBeenCalled()
     })
 
+    it('滑出动画窗口内哨兵仍存活：手势返回被本 drawer 拦截（再触发 onClose）而非穿透到路由层', async () => {
+        const onClose = vi.fn()
+        const { rerender } = render(<MobileDrawer open onClose={onClose} title="测试" />)
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        Object.defineProperty(sheet, 'offsetHeight', { value: 400 })
+        await waitForOpenSettled()
+        animateCalls.length = 0
+
+        // 父组件直调关闭：关闭 effect 立即翻 mounted=false（并行卸载），滑出动画
+        //（50ms 桩）尚在途——此时手势返回
+        rerender(<MobileDrawer open={false} onClose={onClose} title="测试" />)
+        expect(sheet.style.transform).not.toBe('translateY(400px)') // 滑出未落定
+        window.dispatchEvent(new PopStateEvent('popstate'))
+
+        // 哨兵未随 mounted=false 被 dispose：popstate 消费哨兵 → closeWithAnimation
+        // → onClose 被调（幂等，父组件已是 false）。旧实现绑 mounted，滑出起手即
+        // dispose，popstate 落空 → onClose 不被调（真实浏览器上穿透退出 session detail）
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 })
+        // 关闭已接管（openRef=false），否决检测不应再沉降
+        await waitFor(() => {
+            expect(animateCalls.some((c) => c.target === 400)).toBe(true)
+        }, { timeout: 2000 })
+        expect(animateCalls.some((c) => c.target === 0)).toBe(false)
+    })
+
+    it('否决后哨兵重臂：沉降回原位时重推哨兵，第二次手势返回仍关闭 drawer 而非穿透路由', async () => {
+        const onClose = vi.fn()
+        render(<DrawerHost veto onClose={onClose} />)
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        Object.defineProperty(sheet, 'offsetHeight', { value: 400 })
+        await waitForOpenSettled()
+        animateCalls.length = 0
+
+        // 第一次手势返回：哨兵被消费，但关闭被否决（open 保持 true）
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        expect(onClose).toHaveBeenCalledTimes(1)
+        // 否决检测触发沉降 + 重臂：guardId 递增（首推 1 → 重臂 2）
+        await waitFor(() => {
+            expect(animateCalls.some((c) => c.target === 0)).toBe(true)
+        }, { timeout: 2000 })
+        await waitFor(() => {
+            expect(window.history.state).toMatchObject({ mobiHistoryGuard: true, guardId: 2 })
+        }, { timeout: 2000 })
+
+        // 第二次手势返回：消费重臂哨兵，仍关闭 drawer（onClose 第二次被调）。
+        // 旧实现哨兵已被消费且未重推，popstate 落空 → 穿透到路由层
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2), { timeout: 2000 })
+    })
+
     it('嵌套 drawer：手势返回只关子级不关父级（哨兵栈序 LIFO）', async () => {
         const parentClose = vi.fn()
         const childClose = vi.fn()
