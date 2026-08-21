@@ -15,3 +15,30 @@
         --agent-card-width: 130px;
     }
 }
+
+/* ==================== 毛玻璃材质（apple-design 借鉴） ====================
+ * 仅限「滚动内容之上的功能浮层」（顶栏/底栏）引用；禁大面积卡片、禁毛玻璃叠毛玻璃。
+ * 桌面端顶部不引入（固定侧栏无滚动穿透）；底部 Composer 两端通用。
+ * 取值依据：--ant-color-bg-container 由 antd v6（默认开启 cssVar）运行时注入，
+ * antd.css 已多处消费该变量佐证其真实存在；回落值 #faf9f5 与 ThemeProvider
+ * light token colorBgContainer（core/config/theme/tokens.ts）一致。
+ */
+:root {
+    --glass-bg: color-mix(in srgb, var(--ant-color-bg-container, #faf9f5) 62%, transparent);
+    --glass-blur: blur(18px) saturate(160%);
+    /* 顶缘高光 = 光打在材质上（light 40% 白） */
+    --glass-edge: 1px solid color-mix(in srgb, #ffffff 40%, transparent);
+}
+
+/* dark 模式：edge 高光更含蓄 */
+html[data-theme='dark'] {
+    --glass-edge: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* 降级：用户要求减少透明效果时，材质回到不透明纸面 */
+@media (prefers-reduced-transparency: reduce) {
+    :root {
+        --glass-bg: var(--ant-color-bg-container, #faf9f5);
+        --glass-blur: none;
+    }
+}

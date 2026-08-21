@@ -110,3 +110,12 @@ pre, code {
         animation: none !important;
     }
 }
+
+/* ==================== 排印 tracking 分档（Apple optical sizing） ====================
+ * letter-spacing 随字号变化：大字收紧、小字微松——禁止全站固定 letter-spacing。
+ * 注：计划中的 .font-size-micro / .mono-sm 正 tracking 选择器经 grep 确认
+ * 在 src/ 中无任何使用，故不添加（避免死代码）。
+ */
+h1, h2, h3, h4 {
+    letter-spacing: -0.01em;
+}
