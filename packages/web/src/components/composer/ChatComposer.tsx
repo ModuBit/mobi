@@ -69,6 +69,8 @@ interface ChatComposerProps {
     running?: boolean
     /** 最近一次消息活动时间戳（毫秒），透传 StatusBar 静默告警（agent 挂死可观测） */
     lastActivityAt?: number
+    /** 本轮运行起点时间戳（毫秒，最后一条 user 消息），透传 StatusBar 计时——刷新不归零 */
+    runStartedAt?: number
     /** 是否正在压缩历史（compact）：压缩期间不显示 loading 状态栏，避免与列表内的 CommandProgressBubble 重复 */
     compressing?: boolean
     agentState?: AgentState | null
@@ -292,6 +294,7 @@ export function ChatComposer(props: ChatComposerProps) {
         allowSendWhenInactive = false,
         running = false,
         lastActivityAt,
+        runStartedAt,
         compressing = false,
         agentState,
         metadata,
@@ -727,6 +730,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 status={loadingStatus ?? undefined}
                 running={running && !compressing}
                 lastActivityAt={lastActivityAt}
+                startedAt={runStartedAt}
                 goal={goal}
                 sessionId={sessionId}
                 onClearGoal={handleClearGoal}

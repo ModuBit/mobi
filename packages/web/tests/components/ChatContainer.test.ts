@@ -210,7 +210,7 @@ describe('getApiErrorCode', () => {
 
 // ========== lastMessageActivityAt（#34 静默告警的活动时间源）==========
 
-import { lastMessageActivityAt } from '@/components/chat/ChatContainer'
+import { lastMessageActivityAt, lastUserMessageAt } from '@/components/chat/ChatContainer'
 
 describe('lastMessageActivityAt', () => {
     it('落库消息（有 positionAt）取最后一条的 positionAt', () => {
@@ -233,5 +233,40 @@ describe('lastMessageActivityAt', () => {
 
     it('空列表返回 undefined（无活动信息，不触发告警）', () => {
         expect(lastMessageActivityAt([])).toBeUndefined()
+    })
+})
+
+
+// ========== lastUserMessageAt（StatusBar 本轮计时的时间源）==========
+
+describe('lastUserMessageAt', () => {
+    it('取最后一条 user 消息的 positionAt（其后的 agent/event 消息不影响）', () => {
+        expect(lastUserMessageAt([
+            { role: 'user', positionAt: 1_000, createdAt: 1_000 },
+            { role: 'agent', positionAt: 8_000, createdAt: 7_000 },
+            { role: 'event', positionAt: 9_000, createdAt: 8_500 },
+        ])).toBe(1_000)
+    })
+
+    it('user 消息无 positionAt（排队/快照）回退 createdAt——提交时刻即本轮起点', () => {
+        expect(lastUserMessageAt([
+            { role: 'agent', positionAt: 2_000, createdAt: 1_500 },
+            { role: 'user', createdAt: 5_000 },
+        ])).toBe(5_000)
+    })
+
+    it('多条 user 取最后一条', () => {
+        expect(lastUserMessageAt([
+            { role: 'user', positionAt: 1_000, createdAt: 1_000 },
+            { role: 'agent', positionAt: 2_000, createdAt: 1_900 },
+            { role: 'user', positionAt: 3_000, createdAt: 2_900 },
+        ])).toBe(3_000)
+    })
+
+    it('无 user 消息返回 undefined（计时回退组件 mount 时间）', () => {
+        expect(lastUserMessageAt([
+            { role: 'agent', positionAt: 2_000, createdAt: 1_500 },
+        ])).toBeUndefined()
+        expect(lastUserMessageAt([])).toBeUndefined()
     })
 })

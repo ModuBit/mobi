@@ -37,7 +37,10 @@ interface ScrambleTextProps {
  * - 前沿缓冲区 + 超出旧文本：预生成乱码池字符
  */
 export function ScrambleText({ text, previousText, speed = 40 }: ScrambleTextProps) {
-    const [revealed, setRevealed] = useState(0)
+    // 首挂载 text === previousText（如 AgentLoadingBubble 的首词）时无需过渡：
+    // 直接全揭示——否则 revealed 停在 0，前 SCRAMBLE_BUFFER 个字符会永远
+    // 显示乱码池字符（首词第一字符恒乱码的根因）
+    const [revealed, setRevealed] = useState(() => (text === previousText ? text.length : 0))
 
     const prevTextRef = useRef(previousText ?? generateRandomString(text.length))
     const oldTextRef = useRef(previousText ?? generateRandomString(text.length))

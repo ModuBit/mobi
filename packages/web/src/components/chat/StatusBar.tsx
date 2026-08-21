@@ -29,6 +29,8 @@ interface StatusBarProps {
     running: boolean
     /** 最近一次消息活动时间戳（毫秒），透传 AgentLoadingBubble 静默告警（agent 挂死可观测） */
     lastActivityAt?: number
+    /** 本轮运行起点时间戳（毫秒，最后一条 user 消息），透传 AgentLoadingBubble 计时——刷新不归零 */
+    startedAt?: number
     /** goal 状态（有值时渲染徽标） */
     goal?: GoalStatus | null
     /** sessionId（goal 清理用，与 onClearGoal 同时传入） */
@@ -44,7 +46,7 @@ interface StatusBarProps {
  * 布局：整行撑满 composer 内容宽——loading 气泡靠左，goal 徽标靠右（marginLeft:auto）。
  * goal 在右、loading 在左同时存在时左右分开；只一个时该元素落在自己的边。
  */
-export function StatusBar({ agentId, status, running, lastActivityAt, goal, sessionId, onClearGoal }: StatusBarProps) {
+export function StatusBar({ agentId, status, running, lastActivityAt, startedAt, goal, sessionId, onClearGoal }: StatusBarProps) {
     const showGoal = goal != null
     const showLoading = running && Boolean(status)
     if (!showGoal && !showLoading) return null
@@ -59,7 +61,7 @@ export function StatusBar({ agentId, status, running, lastActivityAt, goal, sess
                 width: '100%',
             }}
         >
-            {showLoading ? <AgentLoadingBubble agentId={agentId} status={status!} lastActivityAt={lastActivityAt} /> : null}
+            {showLoading ? <AgentLoadingBubble agentId={agentId} status={status!} lastActivityAt={lastActivityAt} startedAt={startedAt} /> : null}
             {showGoal ? (
                 <div style={{ marginLeft: 'auto' }}>
                     <GoalBadge

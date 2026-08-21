@@ -71,6 +71,20 @@ export function lastMessageActivityAt(messages: Array<{ positionAt?: number; cre
     return last?.positionAt ?? last?.createdAt
 }
 
+/**
+ * 取本轮运行的起点时间戳（最后一条 user 消息，供 StatusBar 计时）：
+ * 刷新页面后从消息列表重算而非组件 mount 时间，计时不会归零；
+ * 用户新发一条消息即开启新一轮计时。取值与 lastMessageActivityAt 同源
+ * （positionAt 优先，快照/排队消息退 createdAt——排队消息提交时刻即本轮起点，须计入）。
+ */
+export function lastUserMessageAt(messages: Array<{ role?: string; positionAt?: number; createdAt: number }>): number | undefined {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i]
+        if (m.role === 'user') return m.positionAt ?? m.createdAt
+    }
+    return undefined
+}
+
 /** 用户消息气泡 hover 时显示 header 中的复制按钮 */
 const bubbleCopyStyles = css`
     .user-msg-bubble .msg-copy-btn {
@@ -166,6 +180,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 最近一次消息活动时间：取最后一条消息（见 lastMessageActivityAt 的取舍说明）
     const lastActivityAt = useMemo(() => lastMessageActivityAt(messages), [messages])
+    // 本轮运行起点：最后一条 user 消息（见 lastUserMessageAt 的取舍说明）
+    const runStartedAt = useMemo(() => lastUserMessageAt(messages), [messages])
 
     const { blocks: rawBlocks, byId } = useMemo(() => {
         // 排队消息仅在悬浮条展示，不进入聊天线程
@@ -837,6 +853,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 allowSendWhenInactive={false}
                 running={session?.running ?? false}
                 lastActivityAt={lastActivityAt}
+                runStartedAt={runStartedAt}
                 agentState={session?.agentState}
                 metadata={metadata}
                 agentFlavor={agentFlavor}

@@ -69,11 +69,22 @@ export function AgentLoadingBubble({ agentId, status, startedAt, lastActivityAt 
     // 静默计时：距最近消息活动的秒数（复用每秒 tick 的计时器；无来源时以 startedAt 兜底恒不告警）
     const stallElapsed = useElapsedSeconds(lastActivityAt ?? effectiveStartedAt)
 
-    // 每隔 VIBING_INTERVAL 秒随机切换 vibing 消息
-    const vibingIndex = elapsed <= 0
-        ? initialOffset.current
-        : (initialOffset.current + Math.floor((elapsed - 1) / VIBING_INTERVAL)) % VIBING_MESSAGES.length
-    const vibingMsg = VIBING_MESSAGES[vibingIndex].toLowerCase() + '…'
+    // 轮换词：每 VIBING_INTERVAL 秒**随机**切换（不同于当前词），而非顺序步进
+    // ——顺序轮换在长会话里呈现明显的循环规律感。轮换时刻序号作 effect 依赖，
+    // 序号翻转时才挑新词（elapsed 连续递增，不能直接进依赖）
+    const rotateTick = elapsed <= 0 ? 0 : Math.floor((elapsed - 1) / VIBING_INTERVAL)
+    const [vibingMsg, setVibingMsg] = useState(() => VIBING_MESSAGES[initialOffset.current].toLowerCase() + '…')
+    useEffect(() => {
+        if (rotateTick === 0) return
+        setVibingMsg(prev => {
+            // 随机挑一个与当前不同的词（词表 >1，循环重抽必终止）
+            let next = prev
+            while (next === prev) {
+                next = VIBING_MESSAGES[Math.floor(Math.random() * VIBING_MESSAGES.length)].toLowerCase() + '…'
+            }
+            return next
+        })
+    }, [rotateTick])
 
     // vibingMsg 变化时更新 prevMsg，供下一次 ScrambleText 过渡动画
     useEffect(() => {

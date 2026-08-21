@@ -34,6 +34,21 @@ describe('ScrambleText', () => {
         vi.useRealTimers()
     })
 
+
+    it('首挂载 text === previousText 时直接全揭示——首字符不再显示乱码', () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+
+        const { container } = render(
+            <ScrambleText text="cooking…" previousText="cooking…" speed={40} />
+        )
+        // 立即（0ms，无动画）显示完整目标文本——旧实现 revealed 恒 0，
+        // 前 SCRAMBLE_BUFFER 个字符永远停在乱码池字符
+        expect(container.textContent).toBe('cooking…')
+
+        vi.useRealTimers()
+    })
+
     it('有 previousText 时，从旧文本过渡到新文本', () => {
         vi.useFakeTimers()
         vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))

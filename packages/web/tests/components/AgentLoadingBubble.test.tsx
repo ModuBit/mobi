@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, waitFor, cleanup } from '@testing-library/react'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { render, waitFor, cleanup, act } from '@testing-library/react'
 import { AgentLoadingBubble } from '@/components/chat/AgentLoadingBubble'
 
 // vitest 未开 globals，渲染型测试需显式 cleanup，否则 DOM 累积串味后续断言
@@ -66,6 +66,27 @@ describe('AgentLoadingBubble', () => {
         // aria-label 提示长时间无响应
         const status = container.querySelector('[role="status"]')
         expect(status?.getAttribute('aria-label')).toContain('长时间无响应')
+    })
+
+
+    it('vibing 轮换为随机换词：轮换时刻必然换到不同词（while 保证 ≠ 当前词）', () => {
+        vi.useFakeTimers()
+        const { container } = render(
+            <AgentLoadingBubble agentId="agent-1" status="outputting" />,
+        )
+        const initialText = container.textContent ?? ''
+
+        // 推进时间：elapsed=6 → 第 1 次轮换；分步推进让 ScrambleText 动画
+        //（setInterval 40ms/步）逐帧完成——纯 fake timers 轮询，不用 waitFor
+        //（waitFor 内部定时器会被 fake 冻结，卡死到测试级超时）
+        for (let i = 0; i < 60; i++) {
+            act(() => { vi.advanceTimersByTime(200) })
+            const current = container.textContent ?? ''
+            if (current !== initialText) break
+        }
+        // 轮换必然发生且新词 ≠ 首词（随机抽取的 while 循环保证不同）
+        expect(container.textContent).not.toBe(initialText)
+        vi.useRealTimers()
     })
 
     it('静默未超阈值 → 保持 vibing（不误报）', () => {
