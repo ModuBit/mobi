@@ -86,7 +86,6 @@ export function ToolCallGroupRenderer({
           <ToolCallRenderer
             key={block.id}
             block={block}
-            inGroup
             {...ctx}
           />
         ))}

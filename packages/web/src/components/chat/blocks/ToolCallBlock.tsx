@@ -25,13 +25,11 @@ import type { MobiApi } from '@/core/data/api/client'
 import type { ToolPermission } from '@/domain/tool/types'
 import { getToolIcon, StatusStateIcon } from '@/components/tool-card/toolIcons'
 import { getToolPresentation, isTerminalTool, isAgentTool, isBackgroundAgentTool, isBackgroundTool, isTeamAgentTool } from '@/components/tool-card/knownTools'
-import { isExitPlanModeTool } from '@/core/lib/toolInputUtils'
 import { getToolResultViewComponent } from '@/components/tool-card/views/_results'
 import { getToolViewComponent } from '@/components/tool-card/views/_all'
 import { ToolDetailDrawer } from '@/components/tool-card/ToolDetailDrawer'
 import { OverflowContainer } from '@/components/ui/OverflowContainer'
 import { FilePathText } from '@/components/ui/FilePathText'
-import { isAskUserQuestionToolName } from '@/domain/tool/askUserQuestion'
 import { Markdown } from '@/components/ui/Markdown'
 import { getAgentPrompt } from '@/components/tool-card/index'
 import { formatAgentMetrics } from '@/core/lib/metricsFormat'
@@ -43,9 +41,6 @@ const PREVIEW_MAX_HEIGHT = {
     FILE: 200,
     TERMINAL: 160,
 } as const
-
-/** 默认展开的工具名 */
-const EXPANDED_TOOL_NAMES = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash', 'shell_command'])
 
 /** 转换权限对象格式 */
 function convertPermission(perm: NonNullable<ChatToolCall['permission']>): ToolPermission {
@@ -248,7 +243,7 @@ function ToolCallPreviewContent({
 }
 
 /** 渲染 ToolCallBlock（来自 reduceChatBlocks） */
-export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata, sessionId, disableDrawer, inGroup }: {
+export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata, sessionId, disableDrawer }: {
     block: Extract<ChatBlock, { kind: 'tool-call' }>
     metadata: SessionMetadataSummary | null
     /** 审批交互已由 ComposerInfoPanel 承担，chat 区工具卡片不需要 api/disabled/onDone；保留类型声明维持调用方接口稳定 */
@@ -257,9 +252,6 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     disabled?: boolean
     onDone?: () => void
     disableDrawer?: boolean
-    /** 是否在折叠组内渲染：组内统一默认收起（降噪优先，靠组标题概览 + 单卡片点开看详情）。
-     *  组外散落时仍按各工具原 defaultExpanded 逻辑（如 Edit/Write/Bash 默认展开）。 */
-    inGroup?: boolean
 }) {
     const { token } = antTheme.useToken()
     const tool = block.tool
@@ -274,33 +266,22 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
         metadata
     })
 
-    const isAskUserQuestion = isAskUserQuestionToolName(tool.name)
-    const askUserQuestionDone = isAskUserQuestion && !hasPermission
-    const expandOnPermission = isExitPlanModeTool(tool.name)
-    const permissionDrivenExpand = expandOnPermission && hasPermission
     const isError = tool.state === 'error'
     const isAgent = isAgentTool(tool.name)
     const isBgAgent = isBackgroundTool(tool.name, tool.input)
     const agentRunning = isAgent && (tool.state === 'running' || tool.state === 'pending')
-    // 终端工具（Bash/shell_command）即报错也默认展开：用户主动下发的命令，
-    // 失败/被拦截时必须直接看到命令与原因（如 mobi 本地 !bash 的高危拦截提示），
-    // 不能像其它工具那样 error 即折叠降噪。
-    // 组内（inGroup）统一收起降噪，但保留「终端工具失败必展开」这一安全不变式——
-    // 组头红角标只表达「≥1 失败」，不承载命令文本/失败原因；用户展开组后须直接看到命令与原因，
-    // 不应再要求一次卡片展开。组内不会出现 pending permission（未落定的工具散落不进组）。
-    const defaultExpanded = inGroup
-        ? isError && isTerminalTool(tool.name)
-        : (!isError || isTerminalTool(tool.name)) && (EXPANDED_TOOL_NAMES.has(tool.name) || permissionDrivenExpand || askUserQuestionDone || agentRunning || isBgAgent)
-    const [expanded, setExpanded] = useState(defaultExpanded)
-    const prevPermissionDrivenExpand = useRef(permissionDrivenExpand)
-
+    // 所有工具卡片默认收起（2026-08-21 用户降噪决策）：不再按工具名/失败态/审批态
+    // 自动展开（thinking 块除外，见 ReasoningBlock），失败也收起——用户想看再点开。
+    // 「终端工具失败必展开」的安全不变式随之废弃（git 历史可溯）
+    const [expanded, setExpanded] = useState(false)
     const prevIsError = useRef(isError)
+    // 手动展开的卡片执行失败时自动收起（失败也应降噪，终端工具不再例外）
     useEffect(() => {
-        if (isError && !prevIsError.current && !isTerminalTool(tool.name)) {
+        if (isError && !prevIsError.current) {
             setExpanded(false)
         }
         prevIsError.current = isError
-    }, [isError, tool.name])
+    }, [isError])
 
     // 前台 Agent 完成时自动收起（后台 agent 不收起，保留 summary 展示）
     const prevAgentRunning = useRef(agentRunning)
@@ -310,29 +291,6 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
         }
         prevAgentRunning.current = agentRunning
     }, [agentRunning, isBgAgent])
-
-    // ExitPlanMode: 审批结束后自动收起
-    useEffect(() => {
-        if (!expandOnPermission) return
-        if (prevPermissionDrivenExpand.current && !permissionDrivenExpand) {
-            setExpanded(false)
-        }
-        prevPermissionDrivenExpand.current = permissionDrivenExpand
-    }, [expandOnPermission, permissionDrivenExpand])
-
-    // AskUserQuestion: pending 时收起，回答/拒绝/中断后展开
-    const prevAskUserQuestionPending = useRef(isAskUserQuestion && hasPermission)
-    useEffect(() => {
-        if (!isAskUserQuestion) return
-        const wasPending = prevAskUserQuestionPending.current
-        const isPending = hasPermission
-        prevAskUserQuestionPending.current = isPending
-        if (isPending) {
-            setExpanded(false)
-        } else if (wasPending && !isPending) {
-            setExpanded(true)
-        }
-    }, [isAskUserQuestion, hasPermission])
 
     const [drawerOpen, setDrawerOpen] = useState(false)
     const drawerDisabled = disableDrawer || isBgAgent
