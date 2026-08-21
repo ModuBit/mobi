@@ -15,10 +15,8 @@
  */
 
 import { theme as antTheme } from 'antd'
-import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from '@tanstack/react-router'
-import { useDragControls } from 'motion/react'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
@@ -92,7 +90,7 @@ export function MobileMenuDrawer() {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const location = useLocation()
-    const { mobileMenuOpen, setMobileMenuOpen, setMobileMenuDragControls } = useUiStore()
+    const { mobileMenuOpen, setMobileMenuOpen } = useUiStore()
     const { logout } = useAuthStore()
     const api = useMobiApi()
     const isMobile = useIsMobile()
@@ -103,16 +101,6 @@ export function MobileMenuDrawer() {
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
-
-    // 拖拽控制柄：传给 MobileDrawer 后由外部驱动（forceRender 常驻可 start），
-    // 同时注册到 uiStore 供 EdgeSwipeBack 左缘右滑远程 start（1:1 跟手拖出 sheet）
-    const dragControls = useDragControls()
-    useEffect(() => {
-        if (!isMobile) return
-        // 可选链容错：既有测试对 uiStore 的 mock 未提供该 action（非本组件关注点）
-        setMobileMenuDragControls?.(dragControls)
-        return () => setMobileMenuDragControls?.(null)
-    }, [isMobile, dragControls, setMobileMenuDragControls])
 
     // 登出：先清服务端 cookie，再清内存 state（cookie 链路下两步缺一不可）
     const handleLogout = () => {
@@ -141,8 +129,6 @@ export function MobileMenuDrawer() {
             title={t('nav.menu')}
             open={mobileMenuOpen}
             onClose={handleClose}
-            // 外部拖拽控制柄：EdgeSwipeBack 远程启动 sheet 拖拽的通道
-            dragControls={dragControls}
             // body overflow 不允许覆盖（MobileDrawer 布局不变量：拖拽把手固定、内容区自滚），
             // 这里只按移动端 Drawer 规范补底部安全边界，防「退出登录」被底部横条遮挡
             styles={{ body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' } }}

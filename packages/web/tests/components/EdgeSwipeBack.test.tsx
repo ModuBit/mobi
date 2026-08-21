@@ -15,17 +15,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, fireEvent, cleanup } from '@testing-library/react'
+import { render, cleanup } from '@testing-library/react'
 
 // uiStore mock：只提供 EdgeSwipeBack 用到的 getState（zustand store 形状），
 // 避免引入真实 store 连带 i18n 初始化。
 // mockState 必须稳定引用（getState 每次返回同一对象），测试内按需改字段值
 const setMobileMenuOpen = vi.fn()
-const start = vi.fn()
-const mockState: {
-    setMobileMenuOpen: typeof setMobileMenuOpen
-    mobileMenuDragControls: { start: typeof start } | null
-} = { setMobileMenuOpen, mobileMenuDragControls: { start } }
+const mockState = { setMobileMenuOpen }
 vi.mock('@/core/data/stores/uiStore', () => ({
     useUiStore: {
         getState: () => mockState,
@@ -34,79 +30,137 @@ vi.mock('@/core/data/stores/uiStore', () => ({
 
 import { EdgeSwipeBack } from '@/components/ui/EdgeSwipeBack'
 
-describe('EdgeSwipeBack', () => {
+/** 在 document 上派发合成 PointerEvent（jsdom 30 原生支持 pointerId/clientX init） */
+const dispatchPointer = (
+    type: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel',
+    init: { pointerId: number; clientX: number; clientY: number },
+) => {
+    document.dispatchEvent(
+        new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: init.pointerId,
+            clientX: init.clientX,
+            clientY: init.clientY,
+        }),
+    )
+}
+
+describe('EdgeSwipeBack（无浮层 document 捕获 + 方向锁）', () => {
     beforeEach(() => {
         setMobileMenuOpen.mockClear()
-        start.mockClear()
-        mockState.mobileMenuDragControls = { start }
     })
 
     // vitest 未开 globals，渲染型测试须显式 cleanup
     afterEach(() => cleanup())
 
-    it('渲染热区 div：fixed 定位、宽 20px、贴左缘、zIndex 4', () => {
-        render(<EdgeSwipeBack />)
-        const hotzone = document.querySelector('[data-testid="edge-swipe-hotzone"]') as HTMLElement
-        expect(hotzone).toBeTruthy()
-        expect(hotzone.getAttribute('aria-hidden')).toBe('true')
-        expect(hotzone.style.position).toBe('fixed')
-        expect(hotzone.style.width).toBe('20px')
-        expect(hotzone.style.left).toBe('0px')
-        expect(hotzone.style.top).toBe('0px')
-        expect(hotzone.style.bottom).toBe('0px')
-        expect(hotzone.style.zIndex).toBe('4')
-        // 禁浏览器默认触摸行为，手势由 pointer 事件接管
-        expect(hotzone.style.touchAction).toBe('none')
+    it('不渲染任何 DOM（无浮层，不拦截滚动/点击）', () => {
+        const { container } = render(<EdgeSwipeBack />)
+        expect(container.childElementCount).toBe(0)
     })
 
-    it('热区点按不动（未过迟滞）不触发：不打开菜单、不 start drag', () => {
+    it('热区内起手 + 水平位移胜出 → setMobileMenuOpen(true)', () => {
         render(<EdgeSwipeBack />)
-        const hotzone = document.querySelector('[data-testid="edge-swipe-hotzone"]')!
 
-        // pointerdown 后直接抬起，无位移
-        fireEvent.pointerDown(hotzone, { clientX: 5 })
-        fireEvent.pointerUp(window)
+        // 热区内起手（x=10 <= EDGE_WIDTH 20），右滑 dx=25、dy=0 → horizontal
+        dispatchPointer('pointerdown', { pointerId: 1, clientX: 10, clientY: 100 })
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 35, clientY: 100 })
+
+        expect(setMobileMenuOpen).toHaveBeenCalledTimes(1)
+        expect(setMobileMenuOpen).toHaveBeenCalledWith(true)
+    })
+
+    it('未过迟滞的位移不触发；越过后才触发', () => {
+        render(<EdgeSwipeBack />)
+
+        dispatchPointer('pointerdown', { pointerId: 1, clientX: 10, clientY: 100 })
+        // dx=5 未过迟滞（10px）→ pending
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 15, clientY: 100 })
+        expect(setMobileMenuOpen).not.toHaveBeenCalled()
+
+        // 越过迟滞 → horizontal
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 25, clientY: 100 })
+        expect(setMobileMenuOpen).toHaveBeenCalledWith(true)
+    })
+
+    it('一次手势只触发一次：确认后后续 move 不再重复 setMobileMenuOpen', () => {
+        render(<EdgeSwipeBack />)
+
+        dispatchPointer('pointerdown', { pointerId: 1, clientX: 10, clientY: 100 })
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 35, clientY: 100 })
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 60, clientY: 100 })
+
+        expect(setMobileMenuOpen).toHaveBeenCalledTimes(1)
+    })
+
+    it('竖向位移胜出 → 不开菜单，且放弃跟踪（后续水平位移也不认）', () => {
+        render(<EdgeSwipeBack />)
+
+        dispatchPointer('pointerdown', { pointerId: 1, clientX: 10, clientY: 100 })
+        // dy=40 胜出 dx=5 → vertical，浏览器接管滚动
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 15, clientY: 140 })
+        expect(setMobileMenuOpen).not.toHaveBeenCalled()
+
+        // 跟踪已清除，同一手势内再水平移动也不触发
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 60, clientY: 140 })
+        expect(setMobileMenuOpen).not.toHaveBeenCalled()
+    })
+
+    it('热区外起手（clientX=80 > EDGE_WIDTH）→ 不跟踪、不开菜单', () => {
+        render(<EdgeSwipeBack />)
+
+        dispatchPointer('pointerdown', { pointerId: 1, clientX: 80, clientY: 100 })
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 140, clientY: 100 })
 
         expect(setMobileMenuOpen).not.toHaveBeenCalled()
-        expect(start).not.toHaveBeenCalled()
     })
 
-    it('位移越过迟滞 → setMobileMenuOpen(true) 且 dragControls.start 被调用（远程拖拽路径）', () => {
+    it('多指：跟踪中另一指针 pointerup 不打断手势（后续仍能触发）', () => {
         render(<EdgeSwipeBack />)
-        const hotzone = document.querySelector('[data-testid="edge-swipe-hotzone"]')!
 
-        // 热区内起手（x=5 < EDGE_WIDTH）右滑 35px（> HYSTERESIS 10px）
-        fireEvent.pointerDown(hotzone, { clientX: 5 })
-        fireEvent.pointerMove(window, { clientX: 40 })
+        // 指针 1 热区内起手，位移未过迟滞（pending）
+        dispatchPointer('pointerdown', { pointerId: 1, clientX: 10, clientY: 100 })
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 14, clientY: 100 })
 
+        // 另一根手指（指针 2）抬起——不是被跟踪指针，不得清理跟踪
+        dispatchPointer('pointerup', { pointerId: 2, clientX: 50, clientY: 50 })
+
+        // 指针 1 继续右滑越过迟滞 → 仍应触发
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 35, clientY: 100 })
         expect(setMobileMenuOpen).toHaveBeenCalledWith(true)
-        expect(start).toHaveBeenCalledTimes(1)
     })
 
-    it('controls 未注册（菜单未挂载）→ 仍 setMobileMenuOpen(true)，start 不被调（spring 弹入 fallback）', () => {
-        mockState.mobileMenuDragControls = null
+    it('被跟踪指针自身 pointerup 结束手势，抬起后 move 不再触发', () => {
         render(<EdgeSwipeBack />)
-        const hotzone = document.querySelector('[data-testid="edge-swipe-hotzone"]')!
 
-        fireEvent.pointerDown(hotzone, { clientX: 5 })
-        fireEvent.pointerMove(window, { clientX: 40 })
+        dispatchPointer('pointerdown', { pointerId: 1, clientX: 10, clientY: 100 })
+        dispatchPointer('pointerup', { pointerId: 1, clientX: 12, clientY: 100 })
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 60, clientY: 100 })
 
-        expect(setMobileMenuOpen).toHaveBeenCalledWith(true)
-        expect(start).not.toHaveBeenCalled()
+        expect(setMobileMenuOpen).not.toHaveBeenCalled()
     })
 
-    it('组件 unmount 后 window pointermove 监听被清理：滑动不再触发 open/start', () => {
+    it('pointercancel（浏览器接管滚动）同样清理跟踪', () => {
+        render(<EdgeSwipeBack />)
+
+        dispatchPointer('pointerdown', { pointerId: 1, clientX: 10, clientY: 100 })
+        dispatchPointer('pointercancel', { pointerId: 1, clientX: 12, clientY: 100 })
+        dispatchPointer('pointermove', { pointerId: 1, clientX: 60, clientY: 100 })
+
+        expect(setMobileMenuOpen).not.toHaveBeenCalled()
+    })
+
+    it('unmount 后不再响应：派发事件无异常且不开菜单', () => {
         const { unmount } = render(<EdgeSwipeBack />)
-        const hotzone = document.querySelector('[data-testid="edge-swipe-hotzone"]')!
 
-        // 起手但未过迟滞（挂上 window 监听），随后卸载组件
-        fireEvent.pointerDown(hotzone, { clientX: 5 })
+        dispatchPointer('pointerdown', { pointerId: 1, clientX: 10, clientY: 100 })
         unmount()
 
-        // 卸载后再滑动：若监听未清理，此处会触发 setMobileMenuOpen / start
-        fireEvent.pointerMove(window, { clientX: 40 })
-
+        // 卸载后滑动：若监听未清理，此处会触发 setMobileMenuOpen
+        expect(() => {
+            dispatchPointer('pointermove', { pointerId: 1, clientX: 60, clientY: 100 })
+            dispatchPointer('pointerup', { pointerId: 1, clientX: 60, clientY: 100 })
+        }).not.toThrow()
         expect(setMobileMenuOpen).not.toHaveBeenCalled()
-        expect(start).not.toHaveBeenCalled()
     })
 })

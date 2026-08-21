@@ -14,97 +14,93 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { useUiStore } from '@/core/data/stores/uiStore'
-import { EDGE_WIDTH, shouldTriggerSwipe } from './shouldTriggerSwipe'
+import { EDGE_WIDTH, resolveEdgeSwipeDirection } from './shouldTriggerSwipe'
 
-/** 一次手势注册到 window 上的监听的移除函数集合 */
-type DetachListener = () => void
-
-/** 批量移除 window 监听 */
-const detachWindowListeners = (detachList: DetachListener[]) => {
-    for (const detach of detachList) detach()
+/** 被跟踪的左缘起手指针 */
+interface TrackedPointer {
+    pointerId: number
+    startX: number
+    startY: number
 }
 
 /**
  * 左缘右滑开侧栏（iOS 边缘返回手势的 Web 近似）。
  *
- * 流程：
- * 1. 屏幕最左缘 EDGE_WIDTH 宽的热区捕获 pointerdown；
- * 2. 位移越过迟滞阈值（shouldTriggerSwipe 判定，防误触）后：
- *    - setMobileMenuOpen(true) 打开菜单；
- *    - 远程 start MobileMenuDrawer 注册到 uiStore 的 dragControls，
- *      sheet 1:1 跟手拖出（MobileDrawer 传 dragControls 时 forceRender 常驻可 start），
- *      打开弹入动画由 MobileDrawer 的 isDragging 防御跳过（不与远程拖拽双写），
- *      释放判定（速度符号）复用 MobileDrawer 内统一逻辑；
- * 3. controls 未注册（null，菜单未挂载）时 fallback：仅 setMobileMenuOpen(true)，
- *    菜单走 spring 弹入动画。
+ * 设计：无浮层 + document 捕获 + 方向锁。
+ *
+ * - **无浮层**：组件不渲染任何 DOM（return null），pointer 事件以 capture 挂在
+ *   document 上被动观察。旧方案是渲染固定 20px 宽、`touch-action: none` 的热区
+ *   浮层，它会吞掉最左缘的竖向滚动与点击（气泡左缘按钮点不到、贴边滚不动），
+ *   已废弃。
+ * - **方向锁**（resolveEdgeSwipeDirection）：起手后位移未过迟滞前不动作；
+ *   水平分量胜出才确认右滑意图 → `setMobileMenuOpen(true)`（菜单 spring 弹入，
+ *   产品已决策放弃远程拖拽跟手）；垂直分量胜出说明用户在滚动 → 立即放弃跟踪，
+ *   全程无 preventDefault，浏览器滚动不受干扰。
+ * - **多指规则**：首个进入热区的指针赢——已跟踪时忽略后续 pointerdown；
+ *   pointerup / pointercancel 仅当 pointerId 与被跟踪指针一致时才清理，
+ *   其他手指抬起不打断跟踪中的手势（旧实现挂在 window 不分辨指针，多指必断）。
+ * - 竖向滑动被浏览器接管滚动时会收到 pointercancel，走同一清理路径闭环。
  *
  * 仅移动端挂载（ChatPane 内 isMobile 分支），桌面端不渲染。
  */
 export function EdgeSwipeBack() {
-    // pointerdown 是事件回调（非 effect）注册的 window 监听，React 不会自动回收，
-    // 存入 ref 集合（移除函数），unmount effect 中统一移除（防卸载后仍触发）
-    const windowListenersRef = useRef<DetachListener[]>([])
-
-    // unmount 清理：移除当前挂着的所有 window 监听
-    useEffect(() => () => {
-        detachWindowListeners(windowListenersRef.current)
-        windowListenersRef.current = []
-    }, [])
-
-    const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-        const startX = e.clientX
-        // 保留原始 pointerdown 事件：motion dragControls.start 需要真实起手事件定位起点
-        const startEvent = e.nativeEvent
+    useEffect(() => {
+        // 首个进入热区的被跟踪指针（多指时后进入者不抢占）
+        let tracked: TrackedPointer | null = null
+        // 已触发标记：一次手势只 setMobileMenuOpen(true) 一次，后续 move 不再动作
         let triggered = false
 
-        const onMove = (ev: PointerEvent) => {
-            if (triggered) return
-            if (!shouldTriggerSwipe(startX, ev.clientX)) return
-            triggered = true
+        // 起手：capture 阶段被动观察 document 上的 pointerdown，不 preventDefault
+        const onPointerDown = (e: PointerEvent) => {
+            if (tracked) return
+            if (e.clientX > EDGE_WIDTH) return
+            tracked = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY }
+            triggered = false
+        }
 
-            const { setMobileMenuOpen, mobileMenuDragControls } = useUiStore.getState()
-            setMobileMenuOpen(true)
-            if (mobileMenuDragControls) {
-                mobileMenuDragControls.start(startEvent)
+        // 跟踪：仅处理被跟踪指针的位移，按方向锁决策
+        const onPointerMove = (e: PointerEvent) => {
+            if (!tracked || e.pointerId !== tracked.pointerId) return
+            const direction = resolveEdgeSwipeDirection(
+                tracked.startX,
+                tracked.startY,
+                e.clientX,
+                e.clientY,
+            )
+            if (direction === 'pending') return
+            if (direction === 'horizontal') {
+                if (!triggered) {
+                    triggered = true
+                    // 惰性取 store：避免组件层订阅造成多余渲染
+                    useUiStore.getState().setMobileMenuOpen(true)
+                }
+                return
             }
-            // controls 未注册 fallback：仅 setMobileMenuOpen(true)，菜单 spring 打开
+            // 'vertical'：用户在滚动，放弃跟踪交还浏览器
+            // （随后浏览器接管滚动会补发 pointercancel，提前清理无妨）
+            tracked = null
         }
 
-        const cleanup = () => {
-            detachWindowListeners(windowListenersRef.current)
-            windowListenersRef.current = []
+        // 收尾：仅被跟踪指针的 up / cancel 才清理——其他手指抬起不打断手势
+        const endTracking = (e: PointerEvent) => {
+            if (tracked && e.pointerId === tracked.pointerId) tracked = null
         }
 
-        // 多指防御：后手势赢——先清掉上一组监听再注册新的，
-        // 避免多个 pointerdown 各挂一组 onMove 竞争触发
-        detachWindowListeners(windowListenersRef.current)
-        windowListenersRef.current = [
-            () => window.removeEventListener('pointermove', onMove),
-            () => window.removeEventListener('pointerup', cleanup),
-            () => window.removeEventListener('pointercancel', cleanup),
-        ]
-        window.addEventListener('pointermove', onMove)
-        window.addEventListener('pointerup', cleanup)
-        window.addEventListener('pointercancel', cleanup)
+        document.addEventListener('pointerdown', onPointerDown, { capture: true })
+        document.addEventListener('pointermove', onPointerMove, { capture: true })
+        document.addEventListener('pointerup', endTracking, { capture: true })
+        document.addEventListener('pointercancel', endTracking, { capture: true })
+
+        // 卸载时移除全部监听（capture 标志须与注册一致）
+        return () => {
+            document.removeEventListener('pointerdown', onPointerDown, true)
+            document.removeEventListener('pointermove', onPointerMove, true)
+            document.removeEventListener('pointerup', endTracking, true)
+            document.removeEventListener('pointercancel', endTracking, true)
+        }
     }, [])
 
-    return (
-        <div
-            data-testid="edge-swipe-hotzone"
-            aria-hidden={true}
-            onPointerDown={handlePointerDown}
-            style={{
-                position: 'fixed',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: EDGE_WIDTH,
-                zIndex: 4,
-                // 阻止浏览器把触摸翻译成滚动/返回导航，手势全程由 pointer 事件接管
-                touchAction: 'none',
-            }}
-        />
-    )
+    return null
 }

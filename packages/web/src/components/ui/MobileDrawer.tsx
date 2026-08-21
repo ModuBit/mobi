@@ -23,7 +23,8 @@
  * antd 只提供 portal、mask 淡入淡出、z-index、a11y、history guard。
  * 内部把受控 open 转为半受控 mounted——「动画优先于卸载」：
  * 所有关闭路径（手势释放 / 点遮罩 / 手势返回 / 父组件直调 setOpen(false)）
- * 统一获得滑出动效后才真正卸载，调用方零改动。
+ * 统一先通知父组件、父组件翻转 open 后由关闭 effect 滑出屏再卸载，调用方零改动；
+ * 否决式 onClose 消费者（如 loading 守卫传 noop）可拦住关闭，sheet 沉降回原位而非卡在屏外。
  */
 
 import { useRef, useState, useCallback, useLayoutEffect, useEffect } from 'react'
@@ -36,7 +37,6 @@ import {
     useDragControls,
     useMotionValue,
     animate,
-    type DragControls,
     type PanInfo,
 } from 'motion/react'
 import { spring } from '@/components/motion/presets'
@@ -121,11 +121,6 @@ export interface MobileDrawerProps extends Omit<DrawerProps, 'placement' | 'widt
     maxHeight?: string
     /** 是否展示拖拽指示条，默认 true */
     showDragHandle?: boolean
-    /**
-     * 外部拖拽控制柄（可选）。EdgeSwipeBack 从屏幕左缘远程启动本 sheet 的拖拽时传入
-     * （motion useDragControls 的远程触发设计）。缺省时内部自建。
-     */
-    dragControls?: DragControls
 }
 
 /**
@@ -144,24 +139,16 @@ export function MobileDrawer({
     styles: propStyles,
     rootClassName,
     children,
-    dragControls: externalControls,
     closable: _closable,
     ...rest
 }: MobileDrawerProps) {
     const controls = useDragControls()
-    // 实际驱动 sheet 的控制柄：外部传入时用外部的（EdgeSwipeBack 远程触发），否则用内部自建的
-    const activeControls = externalControls ?? controls
     const y = useMotionValue(0)
     const sheetRef = useRef<HTMLDivElement>(null)
 
     // onClose 用 ref 持有，避免父组件内联箭头每次渲染产生新引用导致 effect 重跑（重复 push 哨兵）
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
-
-    // 正被拖拽标记（onDragStart 置 true / handleDragEnd 置 false）。
-    // EdgeSwipeBack 从屏幕左缘远程 controls.start 后 React 才 flush open=true，
-    // 打开动画 effect 若不感知拖拽中，y.set(h) 会把正跟手的 sheet 拽到屏底再弹入（双写竞争）
-    const isDraggingRef = useRef(false)
 
     // 半受控挂载：open=true 立即挂载；open=false 时若 sheet 仍在屏内（弹入中途 /
     // 父组件直调 setOpen(false)），先 spring 滑出再卸载——「动画优先于卸载」，
@@ -180,20 +167,45 @@ export function MobileDrawer({
     const openRef = useRef(open)
     openRef.current = open
 
-    // 统一关闭路径：先 spring 滑出屏，落定后再调 onClose（父组件此时才 setOpen(false)，
-    // 关闭 effect 发现 y 已出屏 → 立即卸载，antd leave 只淡出 mask——wrapper transform
-    // 已被 CSS 锁 none，内容已出屏，无闪烁）。
+    // 手势释放速度暂存：closeWithAnimation「先通知后动画」，父组件 setState 翻转
+    // open 需一拍后才触发关闭 effect——速度经此 ref 暂存传递，供关闭 effect 的
+    // 滑出动画继承；非手势路径（点遮罩 / history guard）为 null
+    const pendingCloseVelocityRef = useRef<number | null>(null)
+
+    // 统一关闭路径：**先通知后动画**——立即调 onClose，父组件 setOpen(false) 后由
+    // 关闭 effect 从当前位置滑出屏（手势速度经 pendingCloseVelocityRef 暂存继承）。
+    // 为什么倒转时序：存在否决式消费者（如 loading 守卫期间 onClose 传 noop），
+    // 旧「先滑出后通知」会在滑出跑完后被 noop 拦下，父组件 open 保持 true 而
+    // 依赖 [open, mounted, y] 的打开动画 effect 均未变化——sheet 永远停在屏外。
+    // 先通知则否决天然可拦截；否决时（open 未翻转）由下方否决检测把 sheet 沉降回原位。
+    // 完整时序：手势释放 → closeWithAnimation 同步调 onClose → 父组件 setState flush
+    // （同一事件循环内）→ open=false 触发关闭 effect（useLayoutEffect，绘制前）→
+    // 从当前拖拽位置带速度滑出 → 落定 setMounted(false)。
     // 手势释放（velocity 透传，px/s 向下为正）、点遮罩、history guard 返回全部走这里，
     // 与 iOS sheet 行为同构（点遮罩也是滑出）
     const closeWithAnimation = useCallback((velocity?: number) => {
-        const h = sheetRef.current?.offsetHeight ?? 0
-        animate(y, h, velocity != null ? { ...spring.momentum, velocity } : spring.momentum)
-            .then(() => onCloseRef.current?.(createSyntheticCloseEvent()))
+        pendingCloseVelocityRef.current = velocity ?? null
+        onCloseRef.current?.(createSyntheticCloseEvent())
+        // 否决检测：为什么用 setTimeout(0)——要等父组件 setState flush 后读 openRef
+        // 才能判断关闭是否被否决。若仍为 true（onClose 被 loading 守卫等拦下），
+        // 说明关闭 effect 不会运行，把 sheet 沉降回原位而非卡在屏外；
+        // 若已翻 false 则什么都不做（关闭 effect 已接管滑出）。
+        // 沉降动画带拒绝分支防 unhandled rejection（如被后续动画 stop 中断）——
+        // animate 返回的控件类型只有 then（无 catch），用双参 then 兜住拒绝
+        setTimeout(() => {
+            if (!openRef.current) return
+            const v = pendingCloseVelocityRef.current
+            // 沉降即消费掉暂存速度，防陈旧速度被后续关闭复用
+            pendingCloseVelocityRef.current = null
+            animate(y, 0, v != null ? { ...spring.momentum, velocity: v } : spring.momentum)
+                .then(() => {}, () => {})
+        }, 0)
     }, [y])
 
     // closeWithAnimation 用 ref 持有：history guard effect 只依赖 open，
     // 避免回调引用变化导致哨兵反复 dispose/re-push（旧实现的教训）。
-    // history guard 场景哨兵已被 popstate 消费，动画延迟 ~0.4s 后才 onClose 不影响哨兵语义
+    // history guard 场景哨兵已被 popstate 消费，closeWithAnimation 立即 onClose
+    //（时序上无动画延迟），不影响哨兵语义
     const closeWithAnimationRef = useRef(closeWithAnimation)
     closeWithAnimationRef.current = closeWithAnimation
 
@@ -209,16 +221,21 @@ export function MobileDrawer({
         return dispose
     }, [mounted])
 
-    // 关闭 effect：open=false 时若 sheet 仍在屏内（弹入中途 / 父组件直调 setOpen(false)），
-    // 先 spring 滑出再卸载——「动画优先于卸载」；已出屏（y 距屏外 h 不足 8px，如
-    // closeWithAnimation 落定后父组件 setOpen(false)）则立即卸载，手势路径零额外等待。
+    // 关闭 effect：open=false 时若 sheet 仍在屏内（closeWithAnimation 已通知父组件 /
+    // 弹入中途 / 父组件直调 setOpen(false)），先 spring 滑出再卸载——「动画优先于卸载」；
+    // 已出屏（y 距屏外 h 不足 8px，如拖拽已把 sheet 拽出屏的释放路径）则立即卸载，
+    // 手势路径零额外等待。
     // 判据用「y.get() < h - 8」而非 y.get() > 8：滑出落定时 y 恰等于 h（仍 > 8），
     // 后者会把已出屏误判为在屏内再跑一次 h→h 空动画
     useLayoutEffect(() => {
         if (open || !mountedRef.current) return undefined
         const h = sheetRef.current?.offsetHeight ?? 0
         if (y.get() < h - 8) {
-            const anim = animate(y, h, spring.momentum)
+            // 消费 closeWithAnimation 暂存的手势速度：手势路径带速度滑出（释放动量连续），
+            // 父直调路径暂存为 null 用纯 spring。启动即清空，防陈旧速度被后续关闭复用
+            const v = pendingCloseVelocityRef.current
+            pendingCloseVelocityRef.current = null
+            const anim = animate(y, h, v != null ? { ...spring.momentum, velocity: v } : spring.momentum)
             anim.then(
                 () => {
                     // 落定时 open 已翻回 true（关闭途中重开）则不卸载
@@ -238,12 +255,9 @@ export function MobileDrawer({
     // 打开动画：sheet 从屏外弹入（spring.ui）；antd wrapper 已被 CSS 静默。
     // useLayoutEffect 在首帧绘制前设初值，避免 sheet 先以 y=0 闪现一帧再跳到屏外。
     // 依赖含 mounted（真正挂载后才能测 offsetHeight）与 open（关闭途中重开时
-    // mounted 未翻转，靠 open 翻转重新触发弹入）。
-    // 正被拖拽时（EdgeSwipeBack 远程 start 先于 open flush 执行）跳过弹入，
-    // 放手后由 handleDragEnd 的 settle 分支归位，防止 y.set(h) 与跟手位移双写竞争
+    // mounted 未翻转，靠 open 翻转重新触发弹入）
     useLayoutEffect(() => {
         if (!open || !mounted) return
-        if (isDraggingRef.current) return
         const h = sheetRef.current?.offsetHeight ?? 0
         y.set(h)
         const anim = animate(y, 0, spring.ui)
@@ -254,7 +268,6 @@ export function MobileDrawer({
         _e: MouseEvent | TouchEvent | PointerEvent,
         info: PanInfo,
     ) => {
-        isDraggingRef.current = false
         const height = sheetRef.current?.offsetHeight ?? 0
         // 拖拽中途 ref 失效（offsetHeight 0）时直接放弃判定：
         // 否则位置阈值退化为 offset > 0，微小位移也会误判为关闭
@@ -265,7 +278,8 @@ export function MobileDrawer({
             height,
         })
         if (disposition === 'close') {
-            // 统一关闭路径：滑出动画 + 落定后 onClose（继承手势速度）
+            // 统一关闭路径：立即 onClose + 暂存手势速度，父组件翻转 open 后由
+            // 关闭 effect 带速度滑出（继承手势速度）
             closeWithAnimation(info.velocity.y)
         } else {
             // 沉降回原位：同样继承手势速度
@@ -319,7 +333,8 @@ export function MobileDrawer({
             <Global styles={wrapperMotionOff} />
             <Drawer
                 open={mounted}
-                // 点遮罩 / closable 关闭也走统一路径：先滑出动画、落定后再把关闭通知给父组件。
+                // 点遮罩 / closable 关闭也走统一路径：立即把关闭通知给父组件，
+                // 父组件翻转 open 后由关闭 effect 滑出屏。
                 // 不能直接传 closeWithAnimation——antd 会把 MouseEvent 作为首参传入，
                 // 被误当成 velocity 参数；箭头包装确保无速度继承
                 onClose={() => closeWithAnimation()}
@@ -328,8 +343,6 @@ export function MobileDrawer({
                 closable={false}
                 styles={mergedStyles}
                 rootClassName={finalRootClassName}
-                // 外部控制柄存在时保持挂载，供 EdgeSwipeBack 远程 start（后续任务）
-                forceRender={!!externalControls}
                 {...rest}
             >
                 {/* 视觉 sheet 主体：背景 + 圆角 + 全部位移动效都在这里，
@@ -339,7 +352,7 @@ export function MobileDrawer({
                     data-testid="mobile-drawer-sheet"
                     drag="y"
                     dragListener={false}
-                    dragControls={activeControls}
+                    dragControls={controls}
                     // 上边界（top: 0）越界由 dragElastic 阻尼跟动 = rubber-band；
                     // 下边界放到 10000px，实际不约束 = 下拖 1:1 跟手
                     dragConstraints={{ top: 0, bottom: 10000 }}
@@ -347,7 +360,6 @@ export function MobileDrawer({
                     // 释放后的沉降/滑出由 handleDragEnd 显式 animate 接管（带速度继承），
                     // 关掉 motion 内建惯性，避免两套动画对 y 的双向拉扯
                     dragMomentum={false}
-                    onDragStart={() => { isDraggingRef.current = true }}
                     onDragEnd={handleDragEnd}
                     style={{
                         y,
@@ -359,8 +371,8 @@ export function MobileDrawer({
                         borderTopRightRadius: 12,
                     }}
                 >
-                    {/* 自定义 header：拖拽区域，pointerdown 远程启动 sheet 拖拽 */}
-                    <DraggableArea onPointerDown={(e) => activeControls.start(e)}>
+                    {/* 自定义 header：拖拽区域，pointerdown 启动 sheet 拖拽 */}
+                    <DraggableArea onPointerDown={(e) => controls.start(e)}>
                         {showDragHandle && <DragHandle />}
                         {(title || extra) && (
                             <TitleRow>

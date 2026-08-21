@@ -16,9 +16,19 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, waitFor } from '@testing-library/react'
-import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
+import { useState } from 'react'
+import type {
+    AnimationPlaybackControls,
+    HTMLMotionProps,
+    MotionValue,
+    PanInfo,
+} from 'motion/react'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
+
+// 记录 animate 调用参数（target / options），供「否决沉降回原位」「速度继承」断言。
+// vi.hoisted 保证变量可被 vi.mock 工厂（提升到文件顶部）引用
+const animateCalls = vi.hoisted(() => [] as Array<{ target: number; options?: unknown }>)
 
 // motion 的 spring 积分器在 vitest jsdom 的 rAF 时间戳下会发散（实测 animate 0→400
 // 在 300ms 冲到 751px 且永不 resolve；tween 正常）。既有 popstate 用例能过只因
@@ -27,12 +37,14 @@ import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
 // 并 resolve」的可控桩——保持「动画先于卸载」的时序语义，断言确定性落定
 vi.mock('motion/react', async (importOriginal) => {
     const actual = await importOriginal<typeof import('motion/react')>()
+    const { createElement, forwardRef } = await import('react')
     const animateStub = (
         value: MotionValue<number>,
         target: number,
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         _options?: unknown,
     ): AnimationPlaybackControls => {
+        animateCalls.push({ target, options: _options })
         const promise = new Promise<void>((resolve) => {
             setTimeout(() => {
                 value.set(target)
@@ -44,11 +56,81 @@ vi.mock('motion/react', async (importOriginal) => {
             then: (resolve, reject) => promise.then(resolve, reject),
         } as AnimationPlaybackControls
     }
-    return { ...actual, animate: animateStub }
+
+    // motion.div 桩：真实 motion.div 原样渲染（样式 / drag props 全透传），仅把
+    // onDragEnd 回调挂到 DOM 节点（__mobiDragEnd）上，供测试以合成 PanInfo 直接触发
+    // handleDragEnd——jsdom 无法模拟真实 motion 拖拽序列，而拖拽跟手机制本身是
+    // motion 的职责，不在本组件测试范围
+    const MotionDivStub = forwardRef<HTMLDivElement, HTMLMotionProps<'div'>>(
+        function MotionDivStub(props, ref) {
+            const { onDragEnd, ...rest } = props
+            return createElement(actual.motion.div, {
+                ...rest,
+                onDragEnd,
+                ref: (node: HTMLDivElement | null) => {
+                    if (typeof ref === 'function') ref(node)
+                    else if (ref) ref.current = node
+                    if (node) {
+                        ;(node as HTMLDivElement & { __mobiDragEnd?: unknown }).__mobiDragEnd
+                            = onDragEnd
+                    }
+                },
+            })
+        },
+    )
+
+    // motion 是 Proxy（spread 会丢方法），包一层把 div 指向桩、其余透传真实实现
+    const motionStub = new Proxy(actual.motion, {
+        get(target, key) {
+            return key === 'div' ? MotionDivStub : Reflect.get(target, key)
+        },
+    })
+
+    return { ...actual, animate: animateStub, motion: motionStub }
 })
 
+/** 受控宿主：模拟真实父组件——onClose 时翻转 open（触发关闭 effect 滑出）；
+ *  veto=true 时拦住关闭（复现 MessageActionsDrawer loading 时传 noop onClose 的
+ *  否决式消费场景：open 保持 true，关闭 effect 不会运行） */
+function DrawerHost({ veto = false, onClose }: { veto?: boolean; onClose?: () => void }) {
+    const [open, setOpen] = useState(true)
+    const handleClose = () => {
+        onClose?.()
+        if (!veto) setOpen(false)
+    }
+    return (
+        <MobileDrawer open={open} onClose={handleClose} title="测试">
+            <div>内容</div>
+        </MobileDrawer>
+    )
+}
+
+/** 以合成 PanInfo 直接触发 handleDragEnd（motion.div 桩挂出的 __mobiDragEnd） */
+const triggerDragEnd = (offsetY: number, velocityY: number) => {
+    const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as
+        (HTMLElement & { __mobiDragEnd?: (e: never, info: PanInfo) => void }) | null
+    expect(sheet?.__mobiDragEnd).toBeTypeOf('function')
+    sheet!.__mobiDragEnd!(undefined as never, {
+        point: { x: 0, y: offsetY },
+        delta: { x: 0, y: offsetY },
+        offset: { x: 0, y: offsetY },
+        velocity: { x: 0, y: velocityY },
+    })
+}
+
+/** 等打开弹入动画落定（sheet 回到屏内 y=0），后续关闭才不会被关闭 effect
+ *  误判为「已出屏」而跳过滑出动画 */
+const waitForOpenSettled = async () => {
+    const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+    // 打开 effect 先 y.set(400)（屏外）再弹回 0；落定后 transform 不再是 400px
+    await waitFor(() => expect(sheet.style.transform).not.toBe('translateY(400px)'), { timeout: 2000 })
+}
+
 describe('MobileDrawer', () => {
-    beforeEach(() => __resetHistoryGuardForTest())
+    beforeEach(() => {
+        __resetHistoryGuardForTest()
+        animateCalls.length = 0
+    })
 
     // vitest 未开 globals，须显式 cleanup；否则 drawer portal 跨用例累积，
     // querySelector 会抓到前一用例残留的 .ant-drawer-body（默认样式），断言失真
@@ -71,15 +153,72 @@ describe('MobileDrawer', () => {
         expect(onClose).not.toHaveBeenCalled()
     })
 
-    it('open 时推 history 哨兵，手势返回（popstate）先滑出动画、落定后触发 onClose 关闭 drawer', async () => {
+    it('open 时推 history 哨兵，手势返回（popstate）立即触发 onClose（先通知后动画），父组件翻转 open 后由关闭 effect 滑出', async () => {
         const onClose = vi.fn()
         render(<MobileDrawer open onClose={onClose} title="测试" />)
         // open 即应推入哨兵
         expect(window.history.state).toMatchObject({ mobiHistoryGuard: true })
         // 模拟移动端全屏手势返回
         window.dispatchEvent(new PopStateEvent('popstate'))
-        // 手势返回统一走 closeWithAnimation：先 spring 滑出屏，落定后才调 onClose（异步）
+        // 手势返回统一走 closeWithAnimation：新时序下 onClose 立即被调（无动画等待）
         await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    })
+
+    it('否决式 onClose（loading 守卫拦下关闭、open 保持 true）时 sheet 沉降回原位而非卡在屏外', async () => {
+        const onClose = vi.fn()
+        // veto 宿主：onClose 被调但不翻转 open（复现 MessageActionsDrawer 的 loading 守卫）
+        render(<DrawerHost veto onClose={onClose} />)
+        // jsdom 下 offsetHeight 恒 0，强制给定高度让关闭路径走「滑出屏」目标 y=400
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        Object.defineProperty(sheet, 'offsetHeight', { value: 400 })
+        await waitForOpenSettled()
+        animateCalls.length = 0
+
+        // 模拟点遮罩 / 手势返回路径触发关闭（popstate → closeWithAnimation()）
+        window.dispatchEvent(new PopStateEvent('popstate'))
+
+        // 先通知后动画：onClose 立即被调，但被宿主否决（open 保持 true）
+        expect(onClose).toHaveBeenCalledTimes(1)
+
+        // 否决检测（setTimeout 0，等 setState flush 后读 openRef）触发沉降：
+        // animate 目标是 0（回原位）而非 400（滑出屏）——旧实现会滑出屏后卡死
+        await waitFor(() => {
+            expect(animateCalls.some((c) => c.target === 0)).toBe(true)
+        }, { timeout: 2000 })
+        expect(animateCalls.some((c) => c.target === 400)).toBe(false)
+
+        // 沉降后：drawer 未卸载（仍 open）、sheet 未滑出屏
+        const root = document.querySelector('.ant-drawer') as HTMLElement
+        expect(root.className).toContain('ant-drawer-open')
+        expect(sheet.style.transform).not.toBe('translateY(400px)')
+    })
+
+    it('手势关闭路径：释放速度经 pendingCloseVelocityRef 传到关闭 effect 的滑出动画（velocity 继承）', async () => {
+        const onClose = vi.fn()
+        render(<DrawerHost onClose={onClose} />)
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        Object.defineProperty(sheet, 'offsetHeight', { value: 400 })
+        await waitForOpenSettled()
+        animateCalls.length = 0
+
+        // 拖拽过 1/3 高度（300 > 400/3）→ 'close' 分支；释放速度 800px/s 一并带出
+        triggerDragEnd(300, 800)
+
+        // 先通知后动画：onClose 立即被调，宿主翻转 open → 关闭 effect 接管滑出
+        expect(onClose).toHaveBeenCalledTimes(1)
+
+        // 关闭 effect 的 animate：目标 400（滑出屏）且 options.velocity 继承手势速度 800
+        await waitFor(() => {
+            const closeCall = animateCalls.find((c) => c.target === 400)
+            expect(closeCall).toBeTruthy()
+            expect((closeCall?.options as { velocity?: number } | undefined)?.velocity).toBe(800)
+        }, { timeout: 2000 })
+
+        // 滑出落定 → setMounted(false) → drawer 关闭（antd leave 只淡出 mask）
+        await waitFor(() => {
+            const r = document.querySelector('.ant-drawer') as HTMLElement | null
+            expect(r?.className ?? '').not.toContain('ant-drawer-open')
+        }, { timeout: 2000 })
     })
 
     it('父组件直调 open=false（不经 onClose）时 sheet 先滑出再卸载——动画优先于卸载', async () => {
