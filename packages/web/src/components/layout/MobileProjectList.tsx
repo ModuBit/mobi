@@ -38,6 +38,8 @@ import { invalidateProjectViews } from '@/core/lib/invalidateProjectViews'
 import { clearMessageWindow } from '@/core/data/stores/messageWindowStore'
 import { clearSessionResources } from '@/core/lib/sessionResources'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
+import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
+import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import {
     Container, SectionHeader, SectionTitleText, SectionChevron, NewSessionBtn,
@@ -162,6 +164,12 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
         setRenameValue('')
     }, [])
 
+    // ActionSheet / 重命名 Modal 虽是 antd 原生浮层（非 MobileDrawer），同样必须接
+    // history 哨兵：否则弹在 MobileMenu（哨兵）之上时，手势返回会穿透二级浮层
+    // 直接消费菜单的哨兵——表现为「返回关了父级菜单，ActionSheet 还开着」
+    useHistoryGuard(actionSessionId != null, closeActionSheet)
+    useHistoryGuard(renameSessionId != null, handleRenameCancel)
+
     // 归档
     const handleArchive = useCallback(async () => {
         if (!actionSessionId) return
@@ -199,13 +207,16 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
         if (!actionSessionId) return
         const sessionId = actionSessionId
         setActionLoading('delete')
-        Modal.confirm({
+        // 删除确认是命令式 Modal（无受控 open state），手动推哨兵：
+        // 手势返回销毁 Modal（等同取消），onOk/onCancel 各自 dispose 弹掉哨兵
+        const modal = Modal.confirm({
             title: t('session.actions.deleteConfirmTitle'),
             content: t('session.actions.deleteConfirmContent'),
             okText: t('common.confirm'),
             okButtonProps: { danger: true },
             cancelText: t('common.cancel'),
             onOk: async () => {
+                disposeGuard()
                 try {
                     await api.sessions.delete(sessionId)
                     queryClient.removeQueries({ queryKey: queryKeys.session(sessionId) })
@@ -225,10 +236,13 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                 }
             },
             onCancel: () => {
+                disposeGuard()
                 setActionLoading(null)
             },
         })
+        const disposeGuard = pushHistoryGuard(() => modal.destroy())
     }, [actionSessionId, api, queryClient, invalidateAll, activeSessionId, onCloseMenu, navigate, t])
+
 
     // ActionSheet 当前操作的 session
     const actionSession = actionSessionId ? findSession(actionSessionId) : null

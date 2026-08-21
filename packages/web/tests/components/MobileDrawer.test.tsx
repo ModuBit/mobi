@@ -92,7 +92,7 @@ vi.mock('motion/react', async (importOriginal) => {
 /** 受控宿主：模拟真实父组件——onClose 时翻转 open（触发关闭 effect 滑出）；
  *  veto=true 时拦住关闭（复现 MessageActionsDrawer loading 时传 noop onClose 的
  *  否决式消费场景：open 保持 true，关闭 effect 不会运行） */
-function DrawerHost({ veto = false, onClose }: { veto?: boolean; onClose?: () => void }) {
+function DrawerHost({ veto = false, onClose, children }: { veto?: boolean; onClose?: () => void; children?: React.ReactNode }) {
     const [open, setOpen] = useState(true)
     const handleClose = () => {
         onClose?.()
@@ -100,7 +100,7 @@ function DrawerHost({ veto = false, onClose }: { veto?: boolean; onClose?: () =>
     }
     return (
         <MobileDrawer open={open} onClose={handleClose} title="测试">
-            <div>内容</div>
+            {children ?? <div>内容</div>}
         </MobileDrawer>
     )
 }
@@ -221,40 +221,50 @@ describe('MobileDrawer', () => {
         }, { timeout: 2000 })
     })
 
-    it('父组件直调 open=false（不经 onClose）时 sheet 先滑出再卸载——动画优先于卸载', async () => {
+    it('父组件直调 open=false（不经 onClose）时滑出与 antd leave 并行启动——mask 淡出不滞后成残影', async () => {
         const onClose = vi.fn()
         const { rerender } = render(<MobileDrawer open onClose={onClose} title="测试" />)
 
         // jsdom 下 offsetHeight 恒 0，关闭 effect 会判为「已出屏」立即卸载；
-        // 手动给定高度让关闭走「滑出再卸载」分支（滑出目标 y=h=400）
+        // 手动给定高度让关闭走「滑出」分支（滑出目标 y=h=400）
         const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
         expect(sheet).toBeTruthy()
         Object.defineProperty(sheet, 'offsetHeight', { value: 400 })
 
         rerender(<MobileDrawer open={false} onClose={onClose} title="测试" />)
 
-        // 滑出动画进行中（50ms 桩未落定）：mounted 仍 true，antd 未 leave——
-        // drawer 仍带 ant-drawer-open 类、sheet 未出屏
+        // 并行时序：open=false 立即翻 mounted → antd leave 马上开始（open 类即刻移除，
+        // mask 淡出与滑出同步——串行会有「sheet 走了 mask 再慢慢淡出」的残影）
         const root = document.querySelector('.ant-drawer') as HTMLElement
         expect(root).toBeTruthy()
-        expect(root.className).toContain('ant-drawer-open')
+        expect(root.className).not.toContain('ant-drawer-open')
+
+        // 滑出动画仍在进行（50ms 桩未落定）：sheet 尚未出屏，随后落定到位
         expect(sheet.style.transform).not.toBe('translateY(400px)')
-
-        // 动画落定 → setMounted(false) → antd leave——antd Drawer 关闭不卸载 DOM
-        //（默认 destroyOnClose=false），可见性信号是 open 类移除 + wrapper 转隐藏类
         await waitFor(() => {
-            const r = document.querySelector('.ant-drawer') as HTMLElement | null
-            expect(r?.className ?? '').not.toContain('ant-drawer-open')
-            expect(
-                document.querySelector('.ant-drawer-content-wrapper')?.className,
-            ).toContain('ant-drawer-content-wrapper-hidden')
+            expect(sheet.style.transform).toBe('translateY(400px)')
         }, { timeout: 2000 })
-
-        // 滑出落定后 y 到位（sheet 出屏）
-        expect(sheet.style.transform).toBe('translateY(400px)')
 
         // 全程不经 onClose（父直调路径，非交互关闭）
         expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('嵌套 drawer：手势返回只关子级不关父级（哨兵栈序 LIFO）', async () => {
+        const parentClose = vi.fn()
+        const childClose = vi.fn()
+        // 子 drawer 渲染在父 children 内，同帧挂载——后推哨兵者在栈顶
+        render(
+            <DrawerHost onClose={parentClose}>
+                <DrawerHost onClose={childClose} />
+            </DrawerHost>,
+        )
+        expect(window.history.state).toMatchObject({ mobiHistoryGuard: true })
+
+        // 模拟手势返回：popstate 应消费子级哨兵，只关子
+        window.dispatchEvent(new PopStateEvent('popstate'))
+
+        await waitFor(() => expect(childClose).toHaveBeenCalled(), { timeout: 2000 })
+        expect(parentClose).not.toHaveBeenCalled()
     })
 
     it('open=false 时不推哨兵（不干扰路由层 history）', () => {

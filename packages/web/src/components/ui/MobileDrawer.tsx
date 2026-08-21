@@ -21,17 +21,18 @@
  * 动效采用「单向控制」架构：antd Drawer 的 wrapper transform 动画被 CSS 全程禁用，
  * sheet 的打开弹入 / 拖拽跟手 / 释放沉降 / 滑出关闭全部由内部 motion.div 自管；
  * antd 只提供 portal、mask 淡入淡出、z-index、a11y、history guard。
- * 内部把受控 open 转为半受控 mounted——「动画优先于卸载」：
- * 所有关闭路径（手势释放 / 点遮罩 / 手势返回 / 父组件直调 setOpen(false)）
- * 统一先通知父组件、父组件翻转 open 后由关闭 effect 滑出屏再卸载，调用方零改动；
- * 否决式 onClose 消费者（如 loading 守卫传 noop）可拦住关闭，sheet 沉降回原位而非卡在屏外。
+ * 内部把受控 open 转为半受控 mounted——关闭时滑出与卸载**并行**启动：
+ * 所有关闭路径（手势释放 / 点遮罩 / 手势返回 / 父组件直调 setOpen(false)）统一
+ * 先通知父组件，open 翻 false 后由关闭 effect 同时启动 spring 滑出与 antd leave
+ * （mask 淡出），调用方零改动；否决式 onClose 消费者（如 loading 守卫传 noop）
+ * 可拦住关闭，sheet 沉降回原位而非卡在屏外。
  */
 
-import { useRef, useState, useCallback, useLayoutEffect, useEffect } from 'react'
+import { useRef, useState, useCallback, useLayoutEffect } from 'react'
 import { Drawer, type DrawerProps } from 'antd'
 import { Global, css } from '@emotion/react'
 import styled from '@emotion/styled'
-import { pushHistoryGuard } from '@/core/lib/drawerHistoryGuard'
+import { useHistoryGuard } from '@/core/hooks/useHistoryGuard'
 import {
     motion,
     useDragControls,
@@ -150,18 +151,17 @@ export function MobileDrawer({
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
 
-    // 半受控挂载：open=true 立即挂载；open=false 时若 sheet 仍在屏内（弹入中途 /
-    // 父组件直调 setOpen(false)），先 spring 滑出再卸载——「动画优先于卸载」，
-    // 所有关闭路径统一滑出，调用方零改动。已出屏则立即卸载（手势路径无额外等待）
-    const [mounted, setMounted] = useState(open)
+    // 半受控挂载：open=true 立即挂载；open=false 时由关闭 effect 启动滑出并同步翻
+    // mounted=false（antd leave 与 motion 滑出并行），所有关闭路径统一滑出，调用方零改动
+    const [mounted, setMounted] = useState(open === true)
     if (open && !mounted) {
         // open=true 立即挂载（React 官方「渲染期调整 state」模式，避免多等一帧 effect）
         setMounted(true)
     }
 
-    // mounted / open 经 ref 读取：关闭 effect 只依赖 [open]（setMounted 由动画落定回调
-    // 异步触发，mounted 进依赖会在落定后反复重跑关闭 effect），openRef 用于动画落定时
-    // 判断「关闭途中是否已被重开」
+    // mounted / open 经 ref 读取：关闭 effect 只依赖 [open]（setMounted 翻转后本 effect
+    // 不需重跑，ref 读取避免依赖膨胀），openRef 用于 closeWithAnimation 的否决检测
+    // （父组件 setState flush 后判断关闭是否被否决）
     const mountedRef = useRef(mounted)
     mountedRef.current = mounted
     const openRef = useRef(open)
@@ -210,21 +210,18 @@ export function MobileDrawer({
     closeWithAnimationRef.current = closeWithAnimation
 
     // 移动端全屏手势返回（iOS 边缘滑动 / Android 返回键 / 浏览器 back）应关闭 drawer，
-    // 而非穿透到路由层退出 session detail。挂载时推一个同 URL history 哨兵：
-    // 手势返回消费哨兵 → 先滑出动画再 onClose；卸载（含父直调关闭的滑出落定后）时
-    // dispose 弹掉哨兵——哨兵跟随真实可见性（挂载推、卸载弹），滑出动画期间保持存活
-    useEffect(() => {
-        if (!mounted) return
-        const dispose = pushHistoryGuard(() => {
-            closeWithAnimationRef.current()
-        })
-        return dispose
-    }, [mounted])
+    // 而非穿透到路由层退出 session detail。绑定 mounted（非 open）：哨兵跟随真实可见性，
+    // 滑出动画期间保持存活，卸载（含父直调关闭的滑出开始后）时 dispose 弹掉。
+    // closeWithAnimation 用 ref 持有：避免回调引用变化导致哨兵反复 dispose/re-push
+    // （旧实现的教训），也保证嵌套 drawer 的栈序稳定
+    useHistoryGuard(mounted, () => closeWithAnimationRef.current())
 
     // 关闭 effect：open=false 时若 sheet 仍在屏内（closeWithAnimation 已通知父组件 /
-    // 弹入中途 / 父组件直调 setOpen(false)），先 spring 滑出再卸载——「动画优先于卸载」；
-    // 已出屏（y 距屏外 h 不足 8px，如拖拽已把 sheet 拽出屏的释放路径）则立即卸载，
-    // 手势路径零额外等待。
+    // 弹入中途 / 父组件直调 setOpen(false)），启动 spring 滑出，**同时立即**翻 mounted
+    // 让 antd Drawer 进入 leave——mask 淡出与 sheet 滑出并行（串行会出现「sheet 已滑走、
+    // 半透明 mask 再慢慢淡出」的残影，真机踩过）。antd leave 期间内容 DOM 保留（leave
+    // 结束才加 -hidden），sheet 滑出全程可见；wrapper transform 已被 CSS 锁静止不受影响。
+    // 已出屏（y 距屏外 h 不足 8px，如拖拽已把 sheet 拽出屏的释放路径）则直接卸载。
     // 判据用「y.get() < h - 8」而非 y.get() > 8：滑出落定时 y 恰等于 h（仍 > 8），
     // 后者会把已出屏误判为在屏内再跑一次 h→h 空动画
     useLayoutEffect(() => {
@@ -235,17 +232,10 @@ export function MobileDrawer({
             // 父直调路径暂存为 null 用纯 spring。启动即清空，防陈旧速度被后续关闭复用
             const v = pendingCloseVelocityRef.current
             pendingCloseVelocityRef.current = null
+            // anim 仅用于 cleanup stop（关闭途中重开 / 组件卸载时终止）；
+            // 落定回调无需再卸载——mounted 已在此处翻转
             const anim = animate(y, h, v != null ? { ...spring.momentum, velocity: v } : spring.momentum)
-            anim.then(
-                () => {
-                    // 落定时 open 已翻回 true（关闭途中重开）则不卸载
-                    if (!openRef.current) setMounted(false)
-                },
-                // 被提前 stop（重开 / 组件卸载）：无需处理，stop 即 cleanup 的本意
-                () => {},
-            )
-            // cleanup stop 防泄漏：关闭途中重开（打断滑出、交还打开动画 effect 接管）
-            // 或组件卸载（路由切换）时终止动画
+            setMounted(false)
             return () => anim.stop()
         }
         setMounted(false)
