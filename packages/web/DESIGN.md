@@ -86,10 +86,6 @@ motion:
   ui:       { bounce: 0, duration: 0.35 }   # 状态切换默认档
   momentum: { bounce: 0, duration: 0.3 }     # 拖拽释放沉降
   gentle:   { bounce: 0, duration: 0.5 }     # 大面积元素
-materials:
-  glass-bg: "62% paper + blur(18px) saturate(160%)"
-  glass-edge: "1px 顶缘高光（light 40% 白 / dark 12% 白）"
-  适用: 仅滚动内容之上的功能浮层（顶栏/底栏）；禁大面积、禁叠层
 rounded:
   xs: 2px
   sm: 8px
@@ -209,14 +205,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 ## Materials
 
-毛玻璃是「**滚动内容之上的功能浮层**」的层级语言——它不是装饰，而是表达「下面还有东西在流」的透明度承诺。配方收敛在 `--glass-*` CSS 变量。
-
-- **配方**：`62% bg-container + blur(18px) saturate(160%)`，外加 1px 顶缘高光（light 40% 白 / dark 12% 白）模拟玻璃受光面。Light/Dark 由 antd cssVar 驱动，不单独维护两套值。
-- **适用边界**：仅顶栏/底栏这类滚动内容之上的功能浮层（桌面端顶部不引入）。**禁大面积卡片、禁毛玻璃叠毛玻璃**——两层 blur 叠加可读性直接崩溃。
-- **边界用 edge fade**：浮层与内容的交界用渐隐（`.chat-edge-fade-top/bottom`）替代 hairline 分割线——毛玻璃本身就是软边界，硬线反而破功。
-- **浮层高度可变**：附件展开、排队条出现时浮层会变高，由 `useElementHeightVar` 自动让位——滚动内容**永不被遮挡**，也不留白窟窿。
-- **降级**：`prefers-reduced-transparency` 下回退不透明纸面，牺牲通透保可读。
-- **性能**：低端安卓的 blur 代价是已知问题，限定小面积即控住。它与「几乎不用投影」的纸感体系并存不冲突：毛玻璃管滚动穿透层，温度差管容器分层。
+**不采用毛玻璃**（2026-08-21 决策，曾引入后回退）：真机上半透明 + `backdrop-filter` 的玻璃感不明显，而滚动时内容在玻璃层下移动导致 blur 每帧重算、真机明显卡顿。顶栏/底栏一律用**不透明纸面 + hairline 分割线**（升级前原方案），`--glass-*` 变量与 `.chat-edge-fade-*` 已删除，勿再引入滚动穿透类浮层材质。
 
 ## Shapes
 
@@ -270,7 +259,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **释放速度继承（velocity handoff）**：手势结束时的速度原样交给 spring——这是「手势与动画无缝衔接」的关键。丢掉速度，动画就得从零加速，读作「卡了一下」。
 - **判定速度符号优先于位置**：快甩即关、快反向推即回位（见 Motion 章）。现有实现在 MobileDrawer 的 `resolveDragDisposition`。
 - **rubber-band 上边界**（`dragElastic 0.2`）：内容已在顶部还继续下拉时，位移按比例衰减而非硬停。硬停读作「冻结」，渐进阻尼读作「到底了」。
-- **迟滞 10px 防误触**：左缘右滑（EdgeSwipeBack，仅会话详情页）需位移超过 10px 才认定为手势，避免贴边点击误开侧栏。热区 zIndex 低于 GlassHeader/Composer（浮层在上），左缘右滑仅在中间滚动区段可用，顶部/底部被浮层覆盖。
+- **迟滞 10px 防误触 + 方向锁**：左缘右滑（EdgeSwipeBack，仅会话详情页）位移超过 10px 且水平分量胜出才认定为手势；竖向分量胜出立即放弃跟踪交还浏览器滚动——检测层无浮层、全程无 preventDefault，贴边滚动与点击不受干扰。
 - **多模态反馈三原则**：causality（因果明确——反馈必须能归因到刚才那个动作）/ harmony（视觉+触觉同帧，不各走各的）/ utility（只在有意义的时刻反馈，不为震而震）。
 
 ## Do's and Don'ts
@@ -289,5 +278,5 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **Don't** 在聊天气泡里用正文体替代等宽体。
 - **Don't** 在组件里手写 bounce/duration/damping/stiffness 字面量——spring 预设唯一来源是 `components/motion/presets.ts`（damping/stiffness 会覆盖 duration/bounce，见上文陷阱）。
 - **Don't** 锁输入等动画完成——一切动效可打断。
-- **Don't** 毛玻璃叠毛玻璃，或大面积使用毛玻璃。
+- **Don't** 引入毛玻璃/滚动穿透浮层材质（真机卡顿 + 效果不明显，见 Materials）。
 - **Don't** 新建移动端底部 Drawer 时省略安全区 padding 与 85dvh 上限。

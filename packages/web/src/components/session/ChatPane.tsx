@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { useRef } from 'react'
 import { Layout, Button } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { useTranslation } from 'react-i18next'
@@ -28,21 +27,15 @@ import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { EdgeSwipeBack } from '@/components/ui/EdgeSwipeBack'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
-import { useElementHeightVar } from '@/core/hooks/useElementHeightVar'
 import { useWorkspaceStore } from '@/core/data/stores/workspaceStore'
 import type { Session, SessionMetadataSummary } from '@/core/data/api/types'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
 
-// $ 前缀 transient prop：emotion 默认不透传到 DOM（项目惯例，同 MobileMenu.styles 的 $token）
-const ChatWrapper = styled.div<{ $padTop?: boolean }>`
+const ChatWrapper = styled.div`
     position: absolute;
     inset: 0;
     display: flex;
     flex-direction: column;
-    /* 移动端 header 浮层让位：--chat-header-h 由 ResizeObserver 同步
-     * （useElementHeightVar 挂在 header 浮层 wrapper 上，变量写在它的父容器
-     * = 浮层结构最外层 relative div，ChatWrapper 是其后代可继承） */
-    padding-top: ${p => (p.$padTop ? 'var(--chat-header-h, 0px)' : '0')};
 `
 
 export interface ChatPaneProps {
@@ -59,9 +52,7 @@ export interface ChatPaneProps {
  * 展开按钮）+ SessionContextBar + ChatContainer。
  * - 展开按钮仅在检视面板收起（!expanded）时显示
  * - 归档会话入口移至会话列表（SidebarProjects / MobileProjectList），避免误触
- * - 移动端：header 区浮层化（毛玻璃 GlassHeader），消息从其下滚过被模糊，
- *   滚动区以 padding-top 让位（高度经 --chat-header-h 实时跟随）；
- *   桌面端保持原 flex 流结构不变
+ * - 移动端另挂 EdgeSwipeBack（左缘右滑开菜单）
  */
 export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatPaneProps) {
     const { t } = useTranslation()
@@ -70,11 +61,6 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
     const setExpanded = useWorkspaceStore((s) => s.setExpanded)
 
     const showExpand = !expanded
-
-    // header 浮层 wrapper：高度同步为父容器（relative div）的 --chat-header-h，
-    // 供 ChatWrapper padding-top 继承（写入链见 ChatWrapper 注释）
-    const headerWrapRef = useRef<HTMLDivElement>(null)
-    useElementHeightVar(headerWrapRef, '--chat-header-h')
 
     // header 内容两分支复用（同一时刻只渲染一支，元素复用安全）
     const headerLeft = (
@@ -119,56 +105,17 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
 
     return (
         <Layout style={{ height: '100%' }}>
-            {isMobile ? (
-                /* 移动端浮层结构：滚动区占满全高，header 毛玻璃浮层叠其上 */
-                <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <Layout.Content style={{ position: 'relative', overflow: 'hidden', flex: 1 }}>
-                        <ChatWrapper $padTop>
-                            {chatContainer}
-                            {/* 顶部 edge fade：消息从毛玻璃 GlassHeader 下滚过时自然淡出（与底部对称）。
-                                zIndex 4 低于 header 浮层（zIndex 6），透过半透明玻璃形成融合 */}
-                            <div className="chat-edge-fade-top" />
-                        </ChatWrapper>
-                    </Layout.Content>
-                    {/* header 浮层：消息从其下滚过被毛玻璃模糊。
-                        zIndex 6 高于 Composer 浮层（5）/ edge fade（4）；
-                        高度经 ResizeObserver 同步为父容器 --chat-header-h 供下方让位 */}
-                    <div
-                        ref={headerWrapRef}
-                        style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            zIndex: 6,
-                            background: 'var(--glass-bg)',
-                            backdropFilter: 'var(--glass-blur)',
-                            WebkitBackdropFilter: 'var(--glass-blur)',
-                            borderBottom: 'var(--glass-edge)',
-                        }}
-                    >
-                        <PageHeader left={headerLeft} right={headerRight} />
-                        <SessionContextBar
-                            metadata={session.metadata as SessionMetadataSummary | null}
-                        />
-                    </div>
-                </div>
-            ) : (
-                /* 桌面端原结构：header 区在滚动区外的 flex 流中 */
-                <>
-                    <PageHeader left={headerLeft} right={headerRight} />
+            <PageHeader left={headerLeft} right={headerRight} />
 
-                    <SessionContextBar
-                        metadata={session.metadata as SessionMetadataSummary | null}
-                    />
+            <SessionContextBar
+                metadata={session.metadata as SessionMetadataSummary | null}
+            />
 
-                    <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
-                        <ChatWrapper>
-                            {chatContainer}
-                        </ChatWrapper>
-                    </Layout.Content>
-                </>
-            )}
+            <Layout.Content style={{ position: 'relative', overflow: 'hidden' }}>
+                <ChatWrapper>
+                    {chatContainer}
+                </ChatWrapper>
+            </Layout.Content>
 
             {/* 左缘右滑开侧栏（仅移动端；fixed 定位不参与 flex 布局） */}
             {isMobile && <EdgeSwipeBack />}

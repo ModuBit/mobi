@@ -16,63 +16,6 @@
     }
 }
 
-/* ==================== 毛玻璃材质（apple-design 借鉴） ====================
- * 仅限「滚动内容之上的功能浮层」（顶栏/底栏）引用；禁大面积卡片、禁毛玻璃叠毛玻璃。
- * 桌面端顶部不引入（固定侧栏无滚动穿透）；底部 Composer 两端通用。
- * 取值依据：--ant-color-bg-container 由 antd v6（默认开启 cssVar）运行时注入，
- * antd.css 已多处消费该变量佐证其真实存在；回落值 #faf9f5 与 ThemeProvider
- * light token colorBgContainer（core/config/theme/tokens.ts）一致。
- */
-:root {
-    --glass-bg: color-mix(in srgb, var(--ant-color-bg-container, #faf9f5) 62%, transparent);
-    --glass-blur: blur(18px) saturate(160%);
-    /* 顶缘高光 = 光打在材质上（light 40% 白） */
-    --glass-edge: 1px solid color-mix(in srgb, #ffffff 40%, transparent);
-}
-
-/* dark 模式：edge 高光更含蓄 */
-html[data-theme='dark'] {
-    --glass-edge: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-/* 降级：用户要求减少透明效果时，材质回到不透明纸面 */
-@media (prefers-reduced-transparency: reduce) {
-    :root {
-        --glass-bg: var(--ant-color-bg-container, #faf9f5);
-        --glass-blur: none;
-    }
-}
-
-/* 底部 edge fade：消息从毛玻璃下滚过时自然淡出（替代硬分割线）。
- * 定位基准为滚动视口容器（position: relative、自身不滚动），absolute bottom:0 即贴视口底；
- * zIndex 4：盖在消息之上、被 Composer 毛玻璃浮层（zIndex 5）盖住上缘形成融合。
- * 不含 backdrop-filter——下方 Composer 已模糊，避免毛玻璃叠毛玻璃 */
-.chat-edge-fade-bottom {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 12px;
-    z-index: 4;
-    pointer-events: none;
-    background: linear-gradient(to top, var(--glass-bg), transparent);
-}
-
-/* 顶部 edge fade：与底部对称——消息从毛玻璃 GlassHeader 下滚过时自然淡出。
- * 挂在 ChatWrapper 内顶部；zIndex 4 低于 GlassHeader 浮层（zIndex 6），
- * 透过半透明玻璃（62% 不透明）叠一层渐变，在玻璃下缘形成柔和融合。
- * 注意：不含 backdrop-filter——上方 GlassHeader 已模糊，避免毛玻璃叠毛玻璃 */
-.chat-edge-fade-top {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 0;
-    height: 12px;
-    z-index: 4;
-    pointer-events: none;
-    background: linear-gradient(to bottom, var(--glass-bg), transparent);
-}
-
 /* 长按气泡确认反馈：scale 0.97 过冲回弹（cubic-bezier 近似 spring.momentum） */
 .bubble-press-pop {
     animation: bubble-press-pop 350ms cubic-bezier(0.3, 1.5, 0.5, 1);

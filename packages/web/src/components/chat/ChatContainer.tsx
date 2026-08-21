@@ -52,7 +52,6 @@ import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
 import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
 import { spring } from '@/components/motion/presets'
-import { useElementHeightVar } from '@/core/hooks/useElementHeightVar'
 
 // BUBBLE_ROLES 由 BubbleListChat 内部使用（from './bubbleRoles'），此处仅保留 re-export
 // 供历史 import './ChatContainer' 的调用方兼容
@@ -153,10 +152,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const sendMutation = useSendMessage(sessionId, session?.running ?? false)
     const sessionActions = useSessionActions(sessionId)
     const chatListRef = useRef<BubbleListChatHandle>(null)
-    // 毛玻璃 Composer 浮层 wrapper：高度经 ResizeObserver 同步为根容器 CSS 变量 --composer-h，
-    // 滚动区 padding-bottom / 滚到底按钮避让 / edge fade 均消费它。回落 0px 防首帧闪烁。
-    const composerWrapRef = useRef<HTMLDivElement>(null)
-    useElementHeightVar(composerWrapRef, '--composer-h')
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定。
     // 无需按 sessionId 重置——本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建实例。
@@ -742,7 +737,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto', position: 'relative' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto' }}>
             {contextHolder}
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
@@ -750,7 +745,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={longPressSuppressStyles} />
             <div
                 className={`chat-scroll-container${longPressActive ? ' chat-longpress-suppress' : ''}`}
-                style={{ flex: 1, overflow: 'hidden', padding: '8px 8px calc(var(--composer-h, 0px) + 16px)', fontFamily: 'var(--font-chat)', position: 'relative' }}
+                style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}
                 onTouchStart={isMobile ? handleBubbleTouchStart : undefined}
                 onTouchEnd={isMobile ? handleBubbleTouchEnd : undefined}
                 onTouchMove={isMobile ? handleBubbleTouchMove : undefined}
@@ -783,8 +778,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                                 position: 'absolute',
                                 left: '50%',
                                 x: '-50%',
-                                // 避开毛玻璃 Composer 浮层
-                                bottom: 'calc(var(--composer-h, 0px) + 24px)',
+                                bottom: 32,
                                 zIndex: 10,
                                 // 容器不挡点击，按钮自身恢复
                                 pointerEvents: 'none',
@@ -807,11 +801,6 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         </motion.div>
                     )}
                 </AnimatePresence>
-                {/* 底部 edge fade：消息从毛玻璃下滚过时自然淡出（替代硬分割线）。
-                    本容器自身不滚动（overflow hidden 视口，滚动在 BubbleListChat 内部 scrollBox），
-                    absolute bottom:0 即贴视口底；zIndex 4 低于 Composer 浮层（zIndex 5），
-                    上缘被毛玻璃盖住形成融合 */}
-                <div className="chat-edge-fade-bottom" />
             </div>
 
             {/* 移动端长按操作菜单（仅移动端挂长按，PC 走 footer hover 操作组） */}
@@ -836,58 +825,41 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 />
             )}
 
-            {/* 毛玻璃 Composer 浮层（GlassFooter）：脱离文档流叠在滚动区之上，
-                高度经 --composer-h 让滚动区 padding 自动跟随（附件展开/收起、排队条、安全区） */}
-            <div
-                ref={composerWrapRef}
-                style={{
-                    position: 'absolute',
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    zIndex: 5,
-                    background: 'var(--glass-bg)',
-                    backdropFilter: 'var(--glass-blur)',
-                    WebkitBackdropFilter: 'var(--glass-blur)',
-                    borderTop: 'var(--glass-edge)',
-                }}
-            >
-                <ChatComposer
-                    sessionId={sessionId}
-                    draftRequest={draftRequest}
-                    disabled={sendMutation.isPending || isCompressing || isRewinding || (isClearing && !clearStuck)}
-                    sending={sendMutation.isPending}
-                    compressing={isCompressing}
-                    permissionMode={session?.permissionMode}
-                    model={session?.runtimeState?.model}
-                    active={session?.active ?? false}
-                    allowSendWhenInactive={false}
-                    running={session?.running ?? false}
-                    lastActivityAt={lastActivityAt}
-                    agentState={session?.agentState}
-                    metadata={metadata}
-                    agentFlavor={agentFlavor}
-                    mode={session?.mode}
-                    workingDir={session?.metadata?.path}
-                    effort={session?.runtimeState?.effort}
-                    todos={session?.runtimeState?.todos}
-                    tasks={session?.runtimeState?.tasks}
-                    contextUsage={session?.runtimeState?.contextUsage ?? null}
-                    goal={session?.runtimeState?.goalStatus ?? null}
-                    onEffortChange={handleEffortChange}
-                    onPermissionModeChange={handlePermissionModeChange}
-                    onModelChange={handleModelChange}
-                    onSend={handleSend}
-                    onAbort={handleAbort}
-                    abortPending={sessionActions.isAbortPending}
-                    onActivate={() => sessionActions.resumeSession()}
-                    activatePending={sessionActions.isResumePending}
-                    onSwitchToRemote={() => sessionActions.switchSession()}
-                    switchPending={sessionActions.isSwitchPending}
-                    extraLeftButtons={extraComposerButtons}
-                    extraItems={extraComposerItems}
+            <ChatComposer
+                sessionId={sessionId}
+                draftRequest={draftRequest}
+                disabled={sendMutation.isPending || isCompressing || isRewinding || (isClearing && !clearStuck)}
+                sending={sendMutation.isPending}
+                compressing={isCompressing}
+                permissionMode={session?.permissionMode}
+                model={session?.runtimeState?.model}
+                active={session?.active ?? false}
+                allowSendWhenInactive={false}
+                running={session?.running ?? false}
+                lastActivityAt={lastActivityAt}
+                agentState={session?.agentState}
+                metadata={metadata}
+                agentFlavor={agentFlavor}
+                mode={session?.mode}
+                workingDir={session?.metadata?.path}
+                effort={session?.runtimeState?.effort}
+                todos={session?.runtimeState?.todos}
+                tasks={session?.runtimeState?.tasks}
+                contextUsage={session?.runtimeState?.contextUsage ?? null}
+                goal={session?.runtimeState?.goalStatus ?? null}
+                onEffortChange={handleEffortChange}
+                onPermissionModeChange={handlePermissionModeChange}
+                onModelChange={handleModelChange}
+                onSend={handleSend}
+                onAbort={handleAbort}
+                abortPending={sessionActions.isAbortPending}
+                onActivate={() => sessionActions.resumeSession()}
+                activatePending={sessionActions.isResumePending}
+                onSwitchToRemote={() => sessionActions.switchSession()}
+                switchPending={sessionActions.isSwitchPending}
+                extraLeftButtons={extraComposerButtons}
+                extraItems={extraComposerItems}
                 />
-            </div>
         </div>
     )
 }
