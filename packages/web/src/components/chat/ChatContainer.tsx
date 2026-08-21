@@ -15,6 +15,7 @@
  */
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
 import { Spin, Button, theme as antTheme, message } from 'antd'
 import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined } from '@ant-design/icons'
 import { Undo2 } from 'lucide-react'
@@ -50,6 +51,8 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { useChatBlocksByIdStore } from '@/core/data/stores/chatBlocksByIdStore'
 import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
 import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
+import { spring } from '@/components/motion/presets'
+import { useElementHeightVar } from '@/core/hooks/useElementHeightVar'
 
 // BUBBLE_ROLES 由 BubbleListChat 内部使用（from './bubbleRoles'），此处仅保留 re-export
 // 供历史 import './ChatContainer' 的调用方兼容
@@ -150,6 +153,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const sendMutation = useSendMessage(sessionId, session?.running ?? false)
     const sessionActions = useSessionActions(sessionId)
     const chatListRef = useRef<BubbleListChatHandle>(null)
+    // 毛玻璃 Composer 浮层 wrapper：高度经 ResizeObserver 同步为根容器 CSS 变量 --composer-h，
+    // 滚动区 padding-bottom / 滚到底按钮避让 / edge fade 均消费它。回落 0px 防首帧闪烁。
+    const composerWrapRef = useRef<HTMLDivElement>(null)
+    useElementHeightVar(composerWrapRef, '--composer-h')
     const [showScrollBottom, setShowScrollBottom] = useState(false)
     // reconcile 结构化共享：维护前一帧 byId，让未变化的 block 保持引用稳定。
     // 无需按 sessionId 重置——本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建实例。
@@ -461,13 +468,26 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // key → 消息操作信息索引（decoratedItems 内重建，判据与 footer 同源）
     const actionsInfoByRef = useRef<Map<string, MessageActionTarget>>(new Map())
     const longPressKeyRef = useRef<string | null>(null)
+    // 长按手势起始气泡 DOM（touchstart 记录，openActionsMenu 消费做缩放反馈）
+    const pressTargetRef = useRef<HTMLElement | null>(null)
 
     const openActionsMenu = useCallback(() => {
         const key = longPressKeyRef.current
         longPressKeyRef.current = null
         if (!key) return
         const info = actionsInfoByRef.current.get(key)
-        if (info) setActionsTarget(info)
+        if (!info) return
+        setActionsTarget(info)
+        // 多模态反馈：视觉（缩放过冲）+ 触觉（Android PWA）同帧触发，因果明确
+        const el = pressTargetRef.current
+        if (el) {
+            el.classList.remove('bubble-press-pop') // 连续长按同一气泡可重放
+            void el.offsetWidth // 强制 reflow 重启动画
+            el.classList.add('bubble-press-pop')
+            el.addEventListener('animationend', () => el.classList.remove('bubble-press-pop'), { once: true })
+        }
+        // iOS Safari 不支持 vibrate 则静默跳过
+        if ('vibrate' in navigator) navigator.vibrate(10)
     }, [])
     const longPress = useLongPress(openActionsMenu)
 
@@ -475,6 +495,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const el = (e.target as HTMLElement).closest?.('[data-bubble-key]')
         const key = el?.getAttribute('data-bubble-key') ?? null
         longPressKeyRef.current = key
+        // 记录手势起始气泡 DOM，供 openActionsMenu 做长按确认的缩放反馈
+        pressTargetRef.current = (e.target as HTMLElement).closest?.('.ant-bubble') as HTMLElement | null
         if (key) {
             setLongPressActive(true)
             longPress.onTouchStart()
@@ -720,7 +742,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     }
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: CHAT_MAX_WIDTH, width: '100%', margin: '0 auto', position: 'relative' }}>
             {contextHolder}
             <Global styles={bubbleCopyStyles} />
             <Global styles={chatScrollStyles} />
@@ -728,7 +750,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             <Global styles={longPressSuppressStyles} />
             <div
                 className={`chat-scroll-container${longPressActive ? ' chat-longpress-suppress' : ''}`}
-                style={{ flex: 1, overflow: 'hidden', padding: '8px 8px', fontFamily: 'var(--font-chat)', position: 'relative' }}
+                style={{ flex: 1, overflow: 'hidden', padding: '8px 8px calc(var(--composer-h, 0px) + 16px)', fontFamily: 'var(--font-chat)', position: 'relative' }}
                 onTouchStart={isMobile ? handleBubbleTouchStart : undefined}
                 onTouchEnd={isMobile ? handleBubbleTouchEnd : undefined}
                 onTouchMove={isMobile ? handleBubbleTouchMove : undefined}
@@ -750,26 +772,46 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                         onFollowingChange={handleFollowingChange}
                     />
                 )}
-                {showScrollBottom && (
-                    <Button
-                        type="default"
-                        shape="circle"
-                        size="middle"
-                        // running 时换用 loading 图标：用户滚离底部时仍能感知「正在生成」，点击回到底部查看
-                        icon={session?.running ? <LoadingOutlined /> : <DownOutlined />}
-                        onClick={handleScrollToBottom}
-                        style={{
-                            position: 'absolute',
-                            left: '50%',
-                            bottom: 32,
-                            transform: 'translateX(-50%)',
-                            zIndex: 10,
-                            boxShadow: token.boxShadowSecondary,
-                            minWidth: 36,
-                            minHeight: 36,
-                        }}
-                    />
-                )}
+                <AnimatePresence>
+                    {showScrollBottom && (
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.6 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.6 }}
+                            transition={spring.ui}
+                            style={{
+                                position: 'absolute',
+                                left: '50%',
+                                x: '-50%',
+                                // 避开毛玻璃 Composer 浮层
+                                bottom: 'calc(var(--composer-h, 0px) + 24px)',
+                                zIndex: 10,
+                                // 容器不挡点击，按钮自身恢复
+                                pointerEvents: 'none',
+                            }}
+                        >
+                            <Button
+                                type="default"
+                                shape="circle"
+                                size="middle"
+                                // running 时换用 loading 图标：用户滚离底部时仍能感知「正在生成」，点击回到底部查看
+                                icon={session?.running ? <LoadingOutlined /> : <DownOutlined />}
+                                onClick={handleScrollToBottom}
+                                style={{
+                                    pointerEvents: 'auto',
+                                    boxShadow: token.boxShadowSecondary,
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                }}
+                            />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+                {/* 底部 edge fade：消息从毛玻璃下滚过时自然淡出（替代硬分割线）。
+                    本容器自身不滚动（overflow hidden 视口，滚动在 BubbleListChat 内部 scrollBox），
+                    absolute bottom:0 即贴视口底；zIndex 4 低于 Composer 浮层（zIndex 5），
+                    上缘被毛玻璃盖住形成融合 */}
+                <div className="chat-edge-fade-bottom" />
             </div>
 
             {/* 移动端长按操作菜单（仅移动端挂长按，PC 走 footer hover 操作组） */}
@@ -794,41 +836,58 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 />
             )}
 
-            <ChatComposer
-                sessionId={sessionId}
-                draftRequest={draftRequest}
-                disabled={sendMutation.isPending || isCompressing || isRewinding || (isClearing && !clearStuck)}
-                sending={sendMutation.isPending}
-                compressing={isCompressing}
-                permissionMode={session?.permissionMode}
-                model={session?.runtimeState?.model}
-                active={session?.active ?? false}
-                allowSendWhenInactive={false}
-                running={session?.running ?? false}
-                lastActivityAt={lastActivityAt}
-                agentState={session?.agentState}
-                metadata={metadata}
-                agentFlavor={agentFlavor}
-                mode={session?.mode}
-                workingDir={session?.metadata?.path}
-                effort={session?.runtimeState?.effort}
-                todos={session?.runtimeState?.todos}
-                tasks={session?.runtimeState?.tasks}
-                contextUsage={session?.runtimeState?.contextUsage ?? null}
-                goal={session?.runtimeState?.goalStatus ?? null}
-                onEffortChange={handleEffortChange}
-                onPermissionModeChange={handlePermissionModeChange}
-                onModelChange={handleModelChange}
-                onSend={handleSend}
-                onAbort={handleAbort}
-                abortPending={sessionActions.isAbortPending}
-                onActivate={() => sessionActions.resumeSession()}
-                activatePending={sessionActions.isResumePending}
-                onSwitchToRemote={() => sessionActions.switchSession()}
-                switchPending={sessionActions.isSwitchPending}
-                extraLeftButtons={extraComposerButtons}
-                extraItems={extraComposerItems}
-            />
+            {/* 毛玻璃 Composer 浮层（GlassFooter）：脱离文档流叠在滚动区之上，
+                高度经 --composer-h 让滚动区 padding 自动跟随（附件展开/收起、排队条、安全区） */}
+            <div
+                ref={composerWrapRef}
+                style={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 5,
+                    background: 'var(--glass-bg)',
+                    backdropFilter: 'var(--glass-blur)',
+                    WebkitBackdropFilter: 'var(--glass-blur)',
+                    borderTop: 'var(--glass-edge)',
+                }}
+            >
+                <ChatComposer
+                    sessionId={sessionId}
+                    draftRequest={draftRequest}
+                    disabled={sendMutation.isPending || isCompressing || isRewinding || (isClearing && !clearStuck)}
+                    sending={sendMutation.isPending}
+                    compressing={isCompressing}
+                    permissionMode={session?.permissionMode}
+                    model={session?.runtimeState?.model}
+                    active={session?.active ?? false}
+                    allowSendWhenInactive={false}
+                    running={session?.running ?? false}
+                    lastActivityAt={lastActivityAt}
+                    agentState={session?.agentState}
+                    metadata={metadata}
+                    agentFlavor={agentFlavor}
+                    mode={session?.mode}
+                    workingDir={session?.metadata?.path}
+                    effort={session?.runtimeState?.effort}
+                    todos={session?.runtimeState?.todos}
+                    tasks={session?.runtimeState?.tasks}
+                    contextUsage={session?.runtimeState?.contextUsage ?? null}
+                    goal={session?.runtimeState?.goalStatus ?? null}
+                    onEffortChange={handleEffortChange}
+                    onPermissionModeChange={handlePermissionModeChange}
+                    onModelChange={handleModelChange}
+                    onSend={handleSend}
+                    onAbort={handleAbort}
+                    abortPending={sessionActions.isAbortPending}
+                    onActivate={() => sessionActions.resumeSession()}
+                    activatePending={sessionActions.isResumePending}
+                    onSwitchToRemote={() => sessionActions.switchSession()}
+                    switchPending={sessionActions.isSwitchPending}
+                    extraLeftButtons={extraComposerButtons}
+                    extraItems={extraComposerItems}
+                />
+            </div>
         </div>
     )
 }

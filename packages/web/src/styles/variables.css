@@ -42,3 +42,32 @@ html[data-theme='dark'] {
         --glass-blur: none;
     }
 }
+
+/* 底部 edge fade：消息从毛玻璃下滚过时自然淡出（替代硬分割线）。
+ * 定位基准为滚动视口容器（position: relative、自身不滚动），absolute bottom:0 即贴视口底；
+ * zIndex 4：盖在消息之上、被 Composer 毛玻璃浮层（zIndex 5）盖住上缘形成融合 */
+.chat-edge-fade-bottom {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 12px;
+    z-index: 4;
+    pointer-events: none;
+    background: linear-gradient(to top, var(--glass-bg), transparent);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+}
+
+/* 长按气泡确认反馈：scale 0.97 过冲回弹（cubic-bezier 近似 spring.momentum） */
+.bubble-press-pop {
+    animation: bubble-press-pop 350ms cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+@keyframes bubble-press-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(0.97); }
+    100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .bubble-press-pop { animation: none; }
+}
