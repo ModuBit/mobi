@@ -534,3 +534,22 @@ interrupt（用户停止）
 **注意**：收敛是 breaking change（旧事件名有 CLI/Hub 双侧消费方），需版本协商/兼容窗口；与 isReplay（ack 事件）落地时机一并考虑——若 ack 先落地，散乱会再加一个事件，收敛成本更高。
 
 **优先级**：低。先按现状加 `messages-acked` 完成 isReplay，收敛独立立项。
+
+---
+
+## 55. StatusBar 本轮计时的起点应落 runtime_state（2026-08-21）
+
+**背景**：composer 状态栏计时（AgentLoadingBubble）刷新页面后曾归零，已用「最后一条 user 消息时间戳」（`lastUserMessageAt`，2026-08-21 commit 19dd8db1）作过渡方案。但消息列表窗口化后，长运行会话的窗口内可能不含本轮 user 消息——计时起点失真（回退 mount 时间或窗口内错误的旧轮消息）。
+
+**现状链路事实**（2026-08-21 调研）：
+- `running` 既不在 runtime_state 也不入库——hub 内存 sessionCache 实时态，CLI 经 `session-alive` 心跳（volatile）周期上报；hub 重启即丢，心跳恢复
+- `runningAt` 不能复用：`sessionCache.ts` 每次心跳都无条件覆盖 `runningAt = t`（语义 = 最近心跳时刻，非 running 翻转时刻）
+- `RuntimeStateSchema`（shared）现无任何时间字段
+
+**方向**（讨论中，待定）：
+1. CLI 轮次开始（收到用户消息 / query 启动）上报精确时间 → hub 写 `runtime_state.runStartedAt`（落库 + SSE，与 context-usage / goal-status 通道同构）→ web StatusBar 优先用它，回退 lastUserMessageAt
+2. 或改 `runningAt` 语义：仅在 running 翻转时更新（心跳不覆盖）——改动最小，但 hub 重启后丢失，精度受心跳周期限制
+
+**相关文件**：`packages/shared/src/schemas.ts`（RuntimeStateSchema）、`packages/hub/src/sync/sessionCache.ts`（handleSessionAlive）、`packages/hub/src/socket/handlers/cli/sessionHandlers.ts`（context-usage handler 参照）、`packages/cli/src/api/apiSession.ts`（keepAlive / 新 RPC）、web 透传链 `ChatContainer → ChatComposer → StatusBar → AgentLoadingBubble`
+
+**优先级**：待用户定夺方向后实施。
