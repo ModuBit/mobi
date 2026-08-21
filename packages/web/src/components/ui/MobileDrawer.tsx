@@ -63,12 +63,18 @@ const WRAPPER_MOTION_OFF_CLASS = 'mobile-drawer-motion-off'
 // 防止嵌套 drawer 时外层规则连带锁住内层（旧 #11 的教训）。
 // opacity 一并锁 1：leave-active 的终态类会设 opacity 0.7，只锁 transition 的话
 // 该值会无过渡地瞬时生效，仍是可见跳变。
+// box-shadow 一并清零（真机踩坑）：antd v6 面板自带白色 elevation 阴影（向上投影
+// rgba(255,255,255,…) 0px -6px 16px），它属于 wrapper 盒子——顶缘固定在 sheet
+// 全开位置且**不随 sheet 拖拽/滑出位移**。拖拽中 sheet 移走后，这条白阴影叠在
+// 深色 mask 上 = 真机「title 上方一条上下深浅不一的分界线」。wrapper 是被静默
+// 的纯容器，视觉主体是内部 motion.div（sheet），不应有任何视觉残留
 const wrapperMotionOff = css`
     .ant-drawer.${WRAPPER_MOTION_OFF_CLASS} > .ant-drawer-content-wrapper {
         transition: none !important;
         transform: none !important;
         opacity: 1 !important;
         animation: none !important;
+        box-shadow: none !important;
     }
 `
 
