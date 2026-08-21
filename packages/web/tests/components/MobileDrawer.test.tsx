@@ -16,8 +16,36 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, waitFor } from '@testing-library/react'
+import type { AnimationPlaybackControls, MotionValue } from 'motion/react'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
+
+// motion 的 spring 积分器在 vitest jsdom 的 rAF 时间戳下会发散（实测 animate 0→400
+// 在 300ms 冲到 751px 且永不 resolve；tween 正常）。既有 popstate 用例能过只因
+// y 已在目标值、动画瞬时完成。半受控挂载的「滑出落定 → 卸载」依赖真实 spring 落定，
+// 这里部分 mock 'motion/react'：其余导出原样，animate 替换为「延迟 50ms 后跳到目标
+// 并 resolve」的可控桩——保持「动画先于卸载」的时序语义，断言确定性落定
+vi.mock('motion/react', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('motion/react')>()
+    const animateStub = (
+        value: MotionValue<number>,
+        target: number,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        _options?: unknown,
+    ): AnimationPlaybackControls => {
+        const promise = new Promise<void>((resolve) => {
+            setTimeout(() => {
+                value.set(target)
+                resolve()
+            }, 50)
+        })
+        return {
+            stop() {},
+            then: (resolve, reject) => promise.then(resolve, reject),
+        } as AnimationPlaybackControls
+    }
+    return { ...actual, animate: animateStub }
+})
 
 describe('MobileDrawer', () => {
     beforeEach(() => __resetHistoryGuardForTest())
@@ -52,6 +80,42 @@ describe('MobileDrawer', () => {
         window.dispatchEvent(new PopStateEvent('popstate'))
         // 手势返回统一走 closeWithAnimation：先 spring 滑出屏，落定后才调 onClose（异步）
         await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    })
+
+    it('父组件直调 open=false（不经 onClose）时 sheet 先滑出再卸载——动画优先于卸载', async () => {
+        const onClose = vi.fn()
+        const { rerender } = render(<MobileDrawer open onClose={onClose} title="测试" />)
+
+        // jsdom 下 offsetHeight 恒 0，关闭 effect 会判为「已出屏」立即卸载；
+        // 手动给定高度让关闭走「滑出再卸载」分支（滑出目标 y=h=400）
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        expect(sheet).toBeTruthy()
+        Object.defineProperty(sheet, 'offsetHeight', { value: 400 })
+
+        rerender(<MobileDrawer open={false} onClose={onClose} title="测试" />)
+
+        // 滑出动画进行中（50ms 桩未落定）：mounted 仍 true，antd 未 leave——
+        // drawer 仍带 ant-drawer-open 类、sheet 未出屏
+        const root = document.querySelector('.ant-drawer') as HTMLElement
+        expect(root).toBeTruthy()
+        expect(root.className).toContain('ant-drawer-open')
+        expect(sheet.style.transform).not.toBe('translateY(400px)')
+
+        // 动画落定 → setMounted(false) → antd leave——antd Drawer 关闭不卸载 DOM
+        //（默认 destroyOnClose=false），可见性信号是 open 类移除 + wrapper 转隐藏类
+        await waitFor(() => {
+            const r = document.querySelector('.ant-drawer') as HTMLElement | null
+            expect(r?.className ?? '').not.toContain('ant-drawer-open')
+            expect(
+                document.querySelector('.ant-drawer-content-wrapper')?.className,
+            ).toContain('ant-drawer-content-wrapper-hidden')
+        }, { timeout: 2000 })
+
+        // 滑出落定后 y 到位（sheet 出屏）
+        expect(sheet.style.transform).toBe('translateY(400px)')
+
+        // 全程不经 onClose（父直调路径，非交互关闭）
+        expect(onClose).not.toHaveBeenCalled()
     })
 
     it('open=false 时不推哨兵（不干扰路由层 history）', () => {

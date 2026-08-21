@@ -21,11 +21,12 @@
  * 动效采用「单向控制」架构：antd Drawer 的 wrapper transform 动画被 CSS 全程禁用，
  * sheet 的打开弹入 / 拖拽跟手 / 释放沉降 / 滑出关闭全部由内部 motion.div 自管；
  * antd 只提供 portal、mask 淡入淡出、z-index、a11y、history guard。
- * 所有关闭路径（手势释放 / 点遮罩 / 手势返回）统一走 closeWithAnimation：
- * 先滑出屏，落定后才通知父组件关闭。
+ * 内部把受控 open 转为半受控 mounted——「动画优先于卸载」：
+ * 所有关闭路径（手势释放 / 点遮罩 / 手势返回 / 父组件直调 setOpen(false)）
+ * 统一获得滑出动效后才真正卸载，调用方零改动。
  */
 
-import { useRef, useCallback, useLayoutEffect, useEffect } from 'react'
+import { useRef, useState, useCallback, useLayoutEffect, useEffect } from 'react'
 import { Drawer, type DrawerProps } from 'antd'
 import { Global, css } from '@emotion/react'
 import styled from '@emotion/styled'
@@ -162,12 +163,28 @@ export function MobileDrawer({
     // 打开动画 effect 若不感知拖拽中，y.set(h) 会把正跟手的 sheet 拽到屏底再弹入（双写竞争）
     const isDraggingRef = useRef(false)
 
+    // 半受控挂载：open=true 立即挂载；open=false 时若 sheet 仍在屏内（弹入中途 /
+    // 父组件直调 setOpen(false)），先 spring 滑出再卸载——「动画优先于卸载」，
+    // 所有关闭路径统一滑出，调用方零改动。已出屏则立即卸载（手势路径无额外等待）
+    const [mounted, setMounted] = useState(open)
+    if (open && !mounted) {
+        // open=true 立即挂载（React 官方「渲染期调整 state」模式，避免多等一帧 effect）
+        setMounted(true)
+    }
+
+    // mounted / open 经 ref 读取：关闭 effect 只依赖 [open]（setMounted 由动画落定回调
+    // 异步触发，mounted 进依赖会在落定后反复重跑关闭 effect），openRef 用于动画落定时
+    // 判断「关闭途中是否已被重开」
+    const mountedRef = useRef(mounted)
+    mountedRef.current = mounted
+    const openRef = useRef(open)
+    openRef.current = open
+
     // 统一关闭路径：先 spring 滑出屏，落定后再调 onClose（父组件此时才 setOpen(false)，
-    // antd leave 只淡出 mask——wrapper transform 已被 CSS 锁 none，内容已出屏，无闪烁）。
+    // 关闭 effect 发现 y 已出屏 → 立即卸载，antd leave 只淡出 mask——wrapper transform
+    // 已被 CSS 锁 none，内容已出屏，无闪烁）。
     // 手势释放（velocity 透传，px/s 向下为正）、点遮罩、history guard 返回全部走这里，
-    // 与 iOS sheet 行为同构（点遮罩也是滑出）。
-    // 边界：父组件不经 onClose 直接 setOpen(false)（如菜单项 navigate 后关闭）无法拦截，
-    // 此时 antd leave 淡 mask、sheet 瞬消，与旧行为一致，可接受。
+    // 与 iOS sheet 行为同构（点遮罩也是滑出）
     const closeWithAnimation = useCallback((velocity?: number) => {
         const h = sheetRef.current?.offsetHeight ?? 0
         animate(y, h, velocity != null ? { ...spring.momentum, velocity } : spring.momentum)
@@ -181,28 +198,57 @@ export function MobileDrawer({
     closeWithAnimationRef.current = closeWithAnimation
 
     // 移动端全屏手势返回（iOS 边缘滑动 / Android 返回键 / 浏览器 back）应关闭 drawer，
-    // 而非穿透到路由层退出 session detail。open 时推一个同 URL history 哨兵：
-    // 手势返回消费哨兵 → 先滑出动画再 onClose；用户主动关闭（遮罩/下拉/按钮）时 dispose 弹掉哨兵
+    // 而非穿透到路由层退出 session detail。挂载时推一个同 URL history 哨兵：
+    // 手势返回消费哨兵 → 先滑出动画再 onClose；卸载（含父直调关闭的滑出落定后）时
+    // dispose 弹掉哨兵——哨兵跟随真实可见性（挂载推、卸载弹），滑出动画期间保持存活
     useEffect(() => {
-        if (!open) return
+        if (!mounted) return
         const dispose = pushHistoryGuard(() => {
             closeWithAnimationRef.current()
         })
         return dispose
-    }, [open])
+    }, [mounted])
+
+    // 关闭 effect：open=false 时若 sheet 仍在屏内（弹入中途 / 父组件直调 setOpen(false)），
+    // 先 spring 滑出再卸载——「动画优先于卸载」；已出屏（y 距屏外 h 不足 8px，如
+    // closeWithAnimation 落定后父组件 setOpen(false)）则立即卸载，手势路径零额外等待。
+    // 判据用「y.get() < h - 8」而非 y.get() > 8：滑出落定时 y 恰等于 h（仍 > 8），
+    // 后者会把已出屏误判为在屏内再跑一次 h→h 空动画
+    useLayoutEffect(() => {
+        if (open || !mountedRef.current) return undefined
+        const h = sheetRef.current?.offsetHeight ?? 0
+        if (y.get() < h - 8) {
+            const anim = animate(y, h, spring.momentum)
+            anim.then(
+                () => {
+                    // 落定时 open 已翻回 true（关闭途中重开）则不卸载
+                    if (!openRef.current) setMounted(false)
+                },
+                // 被提前 stop（重开 / 组件卸载）：无需处理，stop 即 cleanup 的本意
+                () => {},
+            )
+            // cleanup stop 防泄漏：关闭途中重开（打断滑出、交还打开动画 effect 接管）
+            // 或组件卸载（路由切换）时终止动画
+            return () => anim.stop()
+        }
+        setMounted(false)
+        return undefined
+    }, [open, y])
 
     // 打开动画：sheet 从屏外弹入（spring.ui）；antd wrapper 已被 CSS 静默。
     // useLayoutEffect 在首帧绘制前设初值，避免 sheet 先以 y=0 闪现一帧再跳到屏外。
+    // 依赖含 mounted（真正挂载后才能测 offsetHeight）与 open（关闭途中重开时
+    // mounted 未翻转，靠 open 翻转重新触发弹入）。
     // 正被拖拽时（EdgeSwipeBack 远程 start 先于 open flush 执行）跳过弹入，
     // 放手后由 handleDragEnd 的 settle 分支归位，防止 y.set(h) 与跟手位移双写竞争
     useLayoutEffect(() => {
-        if (!open) return
+        if (!open || !mounted) return
         if (isDraggingRef.current) return
         const h = sheetRef.current?.offsetHeight ?? 0
         y.set(h)
         const anim = animate(y, 0, spring.ui)
         return () => anim.stop()
-    }, [open, y])
+    }, [open, mounted, y])
 
     const handleDragEnd = useCallback((
         _e: MouseEvent | TouchEvent | PointerEvent,
@@ -272,7 +318,7 @@ export function MobileDrawer({
         <>
             <Global styles={wrapperMotionOff} />
             <Drawer
-                open={open}
+                open={mounted}
                 // 点遮罩 / closable 关闭也走统一路径：先滑出动画、落定后再把关闭通知给父组件。
                 // 不能直接传 closeWithAnimation——antd 会把 MouseEvent 作为首参传入，
                 // 被误当成 velocity 参数；箭头包装确保无速度继承
