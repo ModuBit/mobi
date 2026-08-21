@@ -51,15 +51,23 @@ const createSyntheticCloseEvent = () =>
 /** 挂在 drawer root 上的标记 class，用于把「禁用 wrapper 动画」精确圈定到本 drawer */
 const WRAPPER_MOTION_OFF_CLASS = 'mobile-drawer-motion-off'
 
-// 单向控制：禁用 antd wrapper 的 transform 动画（enter/leave 均不再位移），
-// sheet 全部动效由内部 motion.div 自管；antd 只保留 portal / mask 淡入淡出 / a11y。
-// 常驻规则（非仅手势期间）——打开动画同样由 motion 呈现，彻底避免双向拉扯。
-// 精确匹配自身层级（.ant-drawer-content-wrapper 在 root 的 drawer 直下），
+// 单向控制：禁用 antd 的 panel motion（enter/leave 均）——sheet 全部位移动效由内部
+// motion.div 自管，antd 只保留 portal / mask 淡入淡出 / a11y。
+// ⚠️ 层级坑（真机采样实证）：antd v6 的 rootClassName 直接挂在 .ant-drawer 元素本身，
+// wrapper 是它的直接子元素（两层），不是「root > .ant-drawer > wrapper」三层——曾按
+// 三层写导致锁从未命中，antd leave 在 wrapper 上跑 translateY+opacity(→0.7) transition，
+// 与 sheet 滑出叠加：sheet 关闭途中整体变 70% 半透明 = 真机「半透明残影」的根因。
+// jsdom 不执行 CSS transition，单测无法暴露，须真机/CDP 采样验证。
+// 选择器用 `.ant-drawer.mobile-drawer-motion-off`（同元素双类）精确圈定到本 drawer，
 // 防止嵌套 drawer 时外层规则连带锁住内层（旧 #11 的教训）。
+// opacity 一并锁 1：leave-active 的终态类会设 opacity 0.7，只锁 transition 的话
+// 该值会无过渡地瞬时生效，仍是可见跳变。
 const wrapperMotionOff = css`
-    .${WRAPPER_MOTION_OFF_CLASS} > .ant-drawer > .ant-drawer-content-wrapper {
+    .ant-drawer.${WRAPPER_MOTION_OFF_CLASS} > .ant-drawer-content-wrapper {
         transition: none !important;
         transform: none !important;
+        opacity: 1 !important;
+        animation: none !important;
     }
 `
 
