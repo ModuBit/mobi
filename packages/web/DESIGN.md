@@ -81,6 +81,15 @@ typography:
     fontSize: 11.5px
     fontWeight: 400
     lineHeight: 1.4
+motion:
+  # spring 动效预设——与 components/motion/presets.ts 一一对应（有一致性测试守卫）
+  ui:       { damping: 0.8,  response: 0.35 }   # 状态切换默认档，轻微 overshoot
+  momentum: { damping: 0.75, response: 0.3 }    # 拖拽释放沉降
+  gentle:   { damping: 0.9,  response: 0.5 }    # 大面积元素，弹跳收敛
+materials:
+  glass-bg: "62% paper + blur(18px) saturate(160%)"
+  glass-edge: "1px 顶缘高光（light 40% 白 / dark 12% 白）"
+  适用: 仅滚动内容之上的功能浮层（顶栏/底栏）；禁大面积、禁叠层
 rounded:
   xs: 2px
   sm: 8px
@@ -178,6 +187,7 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **聊天气泡是项目独有特征**：气泡正文 `font-chat` 让 **JetBrains Mono 排在 PuHuiTi 之前**——英文/代码/标点走等宽，中文回落正文体。这让对话流天然带「终端日志」的质感，而非普通 IM。新增气泡内容请沿用 `var(--font-chat)`，不要改回正文体。
 - **等宽字体专用于数据**：代码块、时间戳（`font-variant-numeric: tabular-nums` 对齐数字）、文件路径、CLI 输出。绝不用等宽字体排正文标题。
 - **字号克制**：正文 16px / 14px，标签 13px，等宽数据 13px / 11.5px。不设超过 24px 的大标题——这不是一个营销页面。
+- **tracking 分档**：≥20px 标题 `-0.01em`、正文 `0`、极小字视可读性微正（见 base.css）。letter-spacing 禁止全站固定值——大标题需要收紧透气，小字需要放松可读，一刀切必错一头。
 
 ## Layout
 
@@ -196,6 +206,17 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - 抬升层（Modal/Drawer/Popover）才用极淡投影：`rgba(0,0,0,0.05) 0px 4px 24px`，几乎不可见。
 - Dark 模式投影稍重（`0.3`）以在暗底上可辨，但仍保持含蓄。
 - **例外**：Bash 模式发光边框用 `box-shadow` 叠暖橙光晕，PixelCard 用 canvas 粒子——它们是动效信号，不是静态层次。
+
+## Materials
+
+毛玻璃是「**滚动内容之上的功能浮层**」的层级语言——它不是装饰，而是表达「下面还有东西在流」的透明度承诺。配方收敛在 `--glass-*` CSS 变量。
+
+- **配方**：`62% bg-container + blur(18px) saturate(160%)`，外加 1px 顶缘高光（light 40% 白 / dark 12% 白）模拟玻璃受光面。Light/Dark 由 antd cssVar 驱动，不单独维护两套值。
+- **适用边界**：仅顶栏/底栏这类滚动内容之上的功能浮层（桌面端顶部不引入）。**禁大面积卡片、禁毛玻璃叠毛玻璃**——两层 blur 叠加可读性直接崩溃。
+- **边界用 edge fade**：浮层与内容的交界用渐隐（`.chat-edge-fade-top/bottom`）替代 hairline 分割线——毛玻璃本身就是软边界，硬线反而破功。
+- **浮层高度可变**：附件展开、排队条出现时浮层会变高，由 `useElementHeightVar` 自动让位——滚动内容**永不被遮挡**，也不留白窟窿。
+- **降级**：`prefers-reduced-transparency` 下回退不透明纸面，牺牲通透保可读。
+- **性能**：低端安卓的 blur 代价是已知问题，限定小面积即控住。它与「几乎不用投影」的纸感体系并存不冲突：毛玻璃管滚动穿透层，温度差管容器分层。
 
 ## Shapes
 
@@ -220,13 +241,37 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 ## Motion
 
-动效克制、机械、不弹跳。状态切换像拨开关，不像关门。
+动效是 **spring 物理动效**（Motion 库，`motion/react`）。状态切换不是播放一段写死的曲线，而是一次物理求解：从**当前值 + 当前速度**起跳，继承手势速度，带着轻微 overshoot 收敛—— overshoot 更符合物理直觉，因为现实中的物体有质量。
 
+- **三档预设，唯一来源是 `components/motion/presets.ts`**（数值与 frontmatter 一一对应，有一致性测试守卫）：
+
+  | 预设 | damping | response | 用途 |
+  |------|---------|----------|------|
+  | `spring.ui` | 0.8 | 0.35 | 状态切换、开关、面板开合（默认档，轻微 overshoot） |
+  | `spring.momentum` | 0.75 | 0.3 | 拖拽释放后的沉降（velocity 由调用方透传） |
+  | `spring.gentle` | 0.9 | 0.5 | 大面积元素（Modal 级）位移，弹跳收敛防廉价感 |
+
+  motion 的 `(type: spring, damping, duration)` 即 Apple 的 (damping ratio, response) 参数化：damping < 1 带 overshoot，duration 越小越跟手（非固定时长，settle 时间由参数涌现）。**组件禁止手写 damping 字面量**——调气质只改 presets.ts。
+- **一切动效可打断**：用户在动画进行中的任何输入都应立即生效，动画从当前值+当前速度重新求解，而不是等播完。禁止锁输入等动画完成。
+- **手势释放判定：速度符号优先于位置**。快甩即关、快反向推即回位；拖到一半松手但速度接近零，才按位置判定。释放后用 momentum 投射（inertia decay `0.998`）继续沉降，让手势与动画无缝衔接。
+- **性能边界**：JS spring 跑在主线程，**避开聊天流等大区域**——虚拟列表内的条目不用 spring。所有动效只动 `transform` / `opacity`，不触发 layout。
+- **降级**：`prefers-reduced-motion` 下全量换 ≤200ms opacity cross-fade，物理感让位于可访问性。
 - **按压反馈（移动端）**：去掉浏览器默认 tap-highlight，改用 `[role]/button/.tappable:active { opacity: 0.7 }`——圆形元素得圆形反馈，不出现方形高亮块。**仅触屏**生效，桌面端保留 hover。
 - **状态点呼吸**：`status-dot-breathe` 在 `opacity 1 ↔ 0.3` 间脉动，表示运行态。
 - **ScrambleText**：字符乱码滚动到位的打字机效果，用于 loading 文案。
 - **PixelCard 粒子**：悬停触发的 canvas 粒子扩散。
-- 原则：**没有任何 UI 动画超过 300ms**；超过就砍。遵守 `prefers-reduced-motion`。
+- 遵守 `prefers-reduced-motion`。
+
+## Gestures
+
+移动端是单手设备，手势是一等公民。规则围绕一个原则：**手指一动，界面立即跟；手指一松，物理接管**。
+
+- **1:1 跟踪**：Pointer Events + `setPointerCapture`，触摸点抓到哪元素就跟到哪，尊重抓取偏移（抓手那一刻的相对位置），不跳变。
+- **释放速度继承（velocity handoff）**：手势结束时的速度原样交给 spring——这是「手势与动画无缝衔接」的关键。丢掉速度，动画就得从零加速，读作「卡了一下」。
+- **判定速度符号优先于位置**：快甩即关、快反向推即回位（见 Motion 章）。现有实现在 MobileDrawer 的 `resolveDragDisposition`。
+- **rubber-band 上边界**（`dragElastic 0.2`）：内容已在顶部还继续下拉时，位移按比例衰减而非硬停。硬停读作「冻结」，渐进阻尼读作「到底了」。
+- **迟滞 10px 防误触**：左缘右滑（EdgeSwipeBack，仅会话详情页）需位移超过 10px 才认定为手势，避免贴边点击误开侧栏。
+- **多模态反馈三原则**：causality（因果明确——反馈必须能归因到刚才那个动作）/ harmony（视觉+触觉同帧，不各走各的）/ utility（只在有意义的时刻反馈，不为震而震）。
 
 ## Do's and Don'ts
 
@@ -235,10 +280,14 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 - **Do** 在聊天气泡里用 `var(--font-chat)` 等宽优先字体。
 - **Do** 落在 8 的倍数间距刻度上。
 - **Do** 移动端可点元素加 `.tappable` 或语义 role，以获得 opacity 按压反馈。
+- **Do** 动效用 spring 预设（`components/motion/presets.ts` 唯一来源，与 frontmatter 数值同源）。
+- **Do** 手势释放用速度符号判定——快甩即关、快反向推即回位。
 - **Don't** 用纯黑 `#000` 或纯白 `#fff` 做大面积底色（净白仅限抬升层）。
 - **Don't** 给按钮、输入加阴影或 focus 光晕——这是本项目的核心克制。
 - **Don't** 用饱和原色（`#f00`/`#0f0`）——语义色必须走土地色谱的低饱和值。
 - **Don't** 用粗实线分隔——边框最淡 {colors.hairline}，分隔首选留白。
 - **Don't** 在聊天气泡里用正文体替代等宽体。
-- **Don't** 让 UI 动画超过 300ms，或使用弹跳/过冲缓动。
+- **Don't** 在组件里手写 damping/duration 字面量——spring 预设唯一来源是 `components/motion/presets.ts`。
+- **Don't** 锁输入等动画完成——一切动效可打断。
+- **Don't** 毛玻璃叠毛玻璃，或大面积使用毛玻璃。
 - **Don't** 新建移动端底部 Drawer 时省略安全区 padding 与 85dvh 上限。
