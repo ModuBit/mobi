@@ -18,14 +18,14 @@ import { describe, it, expect } from 'vitest'
 import { spring } from '@/components/motion/presets'
 
 describe('motion spring 预设', () => {
-    it('spring.ui：状态切换默认档，轻微 overshoot', () => {
-        expect(spring.ui).toEqual({ type: 'spring', duration: 0.35, bounce: 0.25 })
+    it('spring.ui：状态切换默认档，无 overshoot', () => {
+        expect(spring.ui).toEqual({ type: 'spring', duration: 0.35, bounce: 0 })
     })
     it('spring.momentum：拖拽释放沉降档', () => {
-        expect(spring.momentum).toEqual({ type: 'spring', duration: 0.3, bounce: 0.2 })
+        expect(spring.momentum).toEqual({ type: 'spring', duration: 0.3, bounce: 0 })
     })
-    it('spring.gentle：大面积元素档，弹跳收敛', () => {
-        expect(spring.gentle).toEqual({ type: 'spring', duration: 0.5, bounce: 0.05 })
+    it('spring.gentle：大面积元素档', () => {
+        expect(spring.gentle).toEqual({ type: 'spring', duration: 0.5, bounce: 0 })
     })
     it('预设不得携带 damping/stiffness/mass——会覆盖 duration/bounce 并引入绝对阻尼系数陷阱', () => {
         for (const preset of Object.values(spring)) {

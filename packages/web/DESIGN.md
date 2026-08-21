@@ -83,9 +83,9 @@ typography:
     lineHeight: 1.4
 motion:
   # spring 动效预设——与 components/motion/presets.ts 一一对应（有一致性测试守卫）
-  ui:       { bounce: 0.25, duration: 0.35 }   # 状态切换默认档，轻微 overshoot
-  momentum: { bounce: 0.2,  duration: 0.3 }     # 拖拽释放沉降
-  gentle:   { bounce: 0.05, duration: 0.5 }     # 大面积元素，弹跳收敛
+  ui:       { bounce: 0, duration: 0.35 }   # 状态切换默认档
+  momentum: { bounce: 0, duration: 0.3 }     # 拖拽释放沉降
+  gentle:   { bounce: 0, duration: 0.5 }     # 大面积元素
 materials:
   glass-bg: "62% paper + blur(18px) saturate(160%)"
   glass-edge: "1px 顶缘高光（light 40% 白 / dark 12% 白）"
@@ -241,17 +241,17 @@ Dark 不是把 Light 反相，而是**对称映射同一套语义**：墨与纸�
 
 ## Motion
 
-动效是 **spring 物理动效**（Motion 库，`motion/react`）。状态切换不是播放一段写死的曲线，而是一次物理求解：从**当前值 + 当前速度**起跳，继承手势速度，带着轻微 overshoot 收敛—— overshoot 更符合物理直觉，因为现实中的物体有质量。
+动效是 **spring 物理动效**（Motion 库，`motion/react`）。状态切换不是播放一段写死的曲线，而是一次物理求解：从**当前值 + 当前速度**起跳，继承手势速度，临界阻尼收敛、无 overshoot——真机体感过冲容易动效过头，故不弹跳；物理感来自速度继承与可打断性，而非过冲。
 
 - **三档预设，唯一来源是 `components/motion/presets.ts`**（数值与 frontmatter 一一对应，有一致性测试守卫）：
 
   | 预设 | bounce | duration | 用途 |
   |------|--------|----------|------|
-  | `spring.ui` | 0.25 | 0.35 | 状态切换、开关、面板开合（默认档，轻微 overshoot） |
-  | `spring.momentum` | 0.2 | 0.3 | 拖拽释放后的沉降（velocity 由调用方透传） |
-  | `spring.gentle` | 0.05 | 0.5 | 大面积元素（Modal 级）位移，弹跳收敛防廉价感 |
+  | `spring.ui` | 0 | 0.35 | 状态切换、开关、面板开合（默认档） |
+  | `spring.momentum` | 0 | 0.3 | 拖拽释放后的沉降（velocity 由调用方透传） |
+  | `spring.gentle` | 0 | 0.5 | 大面积元素（Modal 级）位移 |
 
-  参数化用 motion 的 duration-based spring：`duration` 是到达目标的感知时长（越短越跟手），`bounce` 0~1 控制过冲弹性（0 无回弹，1 极弹）。**组件禁止手写 bounce/duration 字面量**——调气质只改 presets.ts。⚠️ 禁止传 `damping`/`stiffness`：motion 的 `damping` 是绝对阻尼系数（与 Apple 的 damping ratio 阻尼比不是一个东西），且它一出现就会覆盖 `duration`/`bounce`——曾误传 `damping: 0.8`（几乎无阻尼）导致所有 spring 多周期长震荡。
+  参数化用 motion 的 duration-based spring：`duration` 是到达目标的感知时长（越短越跟手），`bounce` 0~1 控制过冲弹性。**bounce 统一为 0**（无 overshoot）——真机体感 overshoot 容易动效过头（2026-08-21 决策去除），保留 spring 的速度继承与可打断性。**组件禁止手写 bounce/duration 字面量**——调气质只改 presets.ts。⚠️ 禁止传 `damping`/`stiffness`：motion 的 `damping` 是绝对阻尼系数（与 Apple 的 damping ratio 阻尼比不是一个东西），且它一出现就会覆盖 `duration`/`bounce`——曾误传 `damping: 0.8`（几乎无阻尼）导致所有 spring 多周期长震荡。
 - **一切动效可打断**：用户在动画进行中的任何输入都应立即生效，动画从当前值+当前速度重新求解，而不是等播完。禁止锁输入等动画完成。
 - **手势释放判定：速度符号优先于位置**。快甩即关、快反向推即回位；拖到一半松手但速度接近零，才按位置判定。释放后用 momentum 投射（inertia decay `0.998`）继续沉降，让手势与动画无缝衔接。
 - **性能边界**：JS spring 跑在主线程，**避开聊天流等大区域**——虚拟列表内的条目不用 spring。所有动效只动 `transform` / `opacity`，不触发 layout。
