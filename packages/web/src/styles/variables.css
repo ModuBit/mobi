@@ -45,7 +45,8 @@ html[data-theme='dark'] {
 
 /* 底部 edge fade：消息从毛玻璃下滚过时自然淡出（替代硬分割线）。
  * 定位基准为滚动视口容器（position: relative、自身不滚动），absolute bottom:0 即贴视口底；
- * zIndex 4：盖在消息之上、被 Composer 毛玻璃浮层（zIndex 5）盖住上缘形成融合 */
+ * zIndex 4：盖在消息之上、被 Composer 毛玻璃浮层（zIndex 5）盖住上缘形成融合。
+ * 不含 backdrop-filter——下方 Composer 已模糊，避免毛玻璃叠毛玻璃 */
 .chat-edge-fade-bottom {
     position: absolute;
     left: 0;
@@ -55,8 +56,6 @@ html[data-theme='dark'] {
     z-index: 4;
     pointer-events: none;
     background: linear-gradient(to top, var(--glass-bg), transparent);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
 }
 
 /* 顶部 edge fade：与底部对称——消息从毛玻璃 GlassHeader 下滚过时自然淡出。

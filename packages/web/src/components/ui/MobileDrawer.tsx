@@ -21,6 +21,8 @@
  * 动效采用「单向控制」架构：antd Drawer 的 wrapper transform 动画被 CSS 全程禁用，
  * sheet 的打开弹入 / 拖拽跟手 / 释放沉降 / 滑出关闭全部由内部 motion.div 自管；
  * antd 只提供 portal、mask 淡入淡出、z-index、a11y、history guard。
+ * 所有关闭路径（手势释放 / 点遮罩 / 手势返回）统一走 closeWithAnimation：
+ * 先滑出屏，落定后才通知父组件关闭。
  */
 
 import { useRef, useCallback, useLayoutEffect, useEffect } from 'react'
@@ -155,21 +157,47 @@ export function MobileDrawer({
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
 
+    // 正被拖拽标记（onDragStart 置 true / handleDragEnd 置 false）。
+    // EdgeSwipeBack 从屏幕左缘远程 controls.start 后 React 才 flush open=true，
+    // 打开动画 effect 若不感知拖拽中，y.set(h) 会把正跟手的 sheet 拽到屏底再弹入（双写竞争）
+    const isDraggingRef = useRef(false)
+
+    // 统一关闭路径：先 spring 滑出屏，落定后再调 onClose（父组件此时才 setOpen(false)，
+    // antd leave 只淡出 mask——wrapper transform 已被 CSS 锁 none，内容已出屏，无闪烁）。
+    // 手势释放（velocity 透传，px/s 向下为正）、点遮罩、history guard 返回全部走这里，
+    // 与 iOS sheet 行为同构（点遮罩也是滑出）。
+    // 边界：父组件不经 onClose 直接 setOpen(false)（如菜单项 navigate 后关闭）无法拦截，
+    // 此时 antd leave 淡 mask、sheet 瞬消，与旧行为一致，可接受。
+    const closeWithAnimation = useCallback((velocity?: number) => {
+        const h = sheetRef.current?.offsetHeight ?? 0
+        animate(y, h, velocity != null ? { ...spring.momentum, velocity } : spring.momentum)
+            .then(() => onCloseRef.current?.(createSyntheticCloseEvent()))
+    }, [y])
+
+    // closeWithAnimation 用 ref 持有：history guard effect 只依赖 open，
+    // 避免回调引用变化导致哨兵反复 dispose/re-push（旧实现的教训）。
+    // history guard 场景哨兵已被 popstate 消费，动画延迟 ~0.4s 后才 onClose 不影响哨兵语义
+    const closeWithAnimationRef = useRef(closeWithAnimation)
+    closeWithAnimationRef.current = closeWithAnimation
+
     // 移动端全屏手势返回（iOS 边缘滑动 / Android 返回键 / 浏览器 back）应关闭 drawer，
     // 而非穿透到路由层退出 session detail。open 时推一个同 URL history 哨兵：
-    // 手势返回消费哨兵 → 触发 onClose；用户主动关闭（遮罩/下拉/按钮）时 dispose 弹掉哨兵。
+    // 手势返回消费哨兵 → 先滑出动画再 onClose；用户主动关闭（遮罩/下拉/按钮）时 dispose 弹掉哨兵
     useEffect(() => {
         if (!open) return
         const dispose = pushHistoryGuard(() => {
-            onCloseRef.current?.(createSyntheticCloseEvent())
+            closeWithAnimationRef.current()
         })
         return dispose
     }, [open])
 
     // 打开动画：sheet 从屏外弹入（spring.ui）；antd wrapper 已被 CSS 静默。
-    // useLayoutEffect 在首帧绘制前设初值，避免 sheet 先以 y=0 闪现一帧再跳到屏外
+    // useLayoutEffect 在首帧绘制前设初值，避免 sheet 先以 y=0 闪现一帧再跳到屏外。
+    // 正被拖拽时（EdgeSwipeBack 远程 start 先于 open flush 执行）跳过弹入，
+    // 放手后由 handleDragEnd 的 settle 分支归位，防止 y.set(h) 与跟手位移双写竞争
     useLayoutEffect(() => {
         if (!open) return
+        if (isDraggingRef.current) return
         const h = sheetRef.current?.offsetHeight ?? 0
         y.set(h)
         const anim = animate(y, 0, spring.ui)
@@ -180,23 +208,24 @@ export function MobileDrawer({
         _e: MouseEvent | TouchEvent | PointerEvent,
         info: PanInfo,
     ) => {
+        isDraggingRef.current = false
         const height = sheetRef.current?.offsetHeight ?? 0
+        // 拖拽中途 ref 失效（offsetHeight 0）时直接放弃判定：
+        // 否则位置阈值退化为 offset > 0，微小位移也会误判为关闭
+        if (!height) return
         const disposition = resolveDragDisposition({
             offset: info.offset.y,
             velocity: info.velocity.y,
             height,
         })
         if (disposition === 'close') {
-            // 滑出：继承手势速度，落定后调 onClose
-            //（antd leave 只淡出 mask——wrapper transform 已被 CSS 锁为 none，
-            //  内容已在 wrapper 内 100% 偏移出屏，无闪烁）
-            animate(y, height, { ...spring.momentum, velocity: info.velocity.y })
-                .then(() => onCloseRef.current?.(createSyntheticCloseEvent()))
+            // 统一关闭路径：滑出动画 + 落定后 onClose（继承手势速度）
+            closeWithAnimation(info.velocity.y)
         } else {
             // 沉降回原位：同样继承手势速度
             animate(y, 0, { ...spring.momentum, velocity: info.velocity.y })
         }
-    }, [y])
+    }, [y, closeWithAnimation])
 
     // 合并 wrapper styles（antd 5.x 运行时支持 styles.wrapper，类型为 stylesAndFn 联合，
     // 这里仅处理对象式配置，函数式由 antd 内部消费）
@@ -244,7 +273,10 @@ export function MobileDrawer({
             <Global styles={wrapperMotionOff} />
             <Drawer
                 open={open}
-                onClose={onClose}
+                // 点遮罩 / closable 关闭也走统一路径：先滑出动画、落定后再把关闭通知给父组件。
+                // 不能直接传 closeWithAnimation——antd 会把 MouseEvent 作为首参传入，
+                // 被误当成 velocity 参数；箭头包装确保无速度继承
+                onClose={() => closeWithAnimation()}
                 placement="bottom"
                 title={null}
                 closable={false}
@@ -269,6 +301,7 @@ export function MobileDrawer({
                     // 释放后的沉降/滑出由 handleDragEnd 显式 animate 接管（带速度继承），
                     // 关掉 motion 内建惯性，避免两套动画对 y 的双向拉扯
                     dragMomentum={false}
+                    onDragStart={() => { isDraggingRef.current = true }}
                     onDragEnd={handleDragEnd}
                     style={{
                         y,

@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { render, cleanup, waitFor } from '@testing-library/react'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
 
@@ -43,14 +43,15 @@ describe('MobileDrawer', () => {
         expect(onClose).not.toHaveBeenCalled()
     })
 
-    it('open 时推 history 哨兵，手势返回（popstate）触发 onClose 关闭 drawer', () => {
+    it('open 时推 history 哨兵，手势返回（popstate）先滑出动画、落定后触发 onClose 关闭 drawer', async () => {
         const onClose = vi.fn()
         render(<MobileDrawer open onClose={onClose} title="测试" />)
         // open 即应推入哨兵
         expect(window.history.state).toMatchObject({ mobiHistoryGuard: true })
         // 模拟移动端全屏手势返回
         window.dispatchEvent(new PopStateEvent('popstate'))
-        expect(onClose).toHaveBeenCalledTimes(1)
+        // 手势返回统一走 closeWithAnimation：先 spring 滑出屏，落定后才调 onClose（异步）
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 })
     })
 
     it('open=false 时不推哨兵（不干扰路由层 history）', () => {

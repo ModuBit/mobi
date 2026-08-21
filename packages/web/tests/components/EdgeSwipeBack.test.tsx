@@ -18,12 +18,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, fireEvent, cleanup } from '@testing-library/react'
 
 // uiStore mock：只提供 EdgeSwipeBack 用到的 getState（zustand store 形状），
-// 避免引入真实 store 连带 i18n 初始化
+// 避免引入真实 store 连带 i18n 初始化。
+// mockState 必须稳定引用（getState 每次返回同一对象），测试内按需改字段值
 const setMobileMenuOpen = vi.fn()
 const start = vi.fn()
+const mockState: {
+    setMobileMenuOpen: typeof setMobileMenuOpen
+    mobileMenuDragControls: { start: typeof start } | null
+} = { setMobileMenuOpen, mobileMenuDragControls: { start } }
 vi.mock('@/core/data/stores/uiStore', () => ({
     useUiStore: {
-        getState: () => ({ setMobileMenuOpen, mobileMenuDragControls: { start } }),
+        getState: () => mockState,
     },
 }))
 
@@ -33,6 +38,7 @@ describe('EdgeSwipeBack', () => {
     beforeEach(() => {
         setMobileMenuOpen.mockClear()
         start.mockClear()
+        mockState.mobileMenuDragControls = { start }
     })
 
     // vitest 未开 globals，渲染型测试须显式 cleanup
@@ -60,6 +66,45 @@ describe('EdgeSwipeBack', () => {
         // pointerdown 后直接抬起，无位移
         fireEvent.pointerDown(hotzone, { clientX: 5 })
         fireEvent.pointerUp(window)
+
+        expect(setMobileMenuOpen).not.toHaveBeenCalled()
+        expect(start).not.toHaveBeenCalled()
+    })
+
+    it('位移越过迟滞 → setMobileMenuOpen(true) 且 dragControls.start 被调用（远程拖拽路径）', () => {
+        render(<EdgeSwipeBack />)
+        const hotzone = document.querySelector('[data-testid="edge-swipe-hotzone"]')!
+
+        // 热区内起手（x=5 < EDGE_WIDTH）右滑 35px（> HYSTERESIS 10px）
+        fireEvent.pointerDown(hotzone, { clientX: 5 })
+        fireEvent.pointerMove(window, { clientX: 40 })
+
+        expect(setMobileMenuOpen).toHaveBeenCalledWith(true)
+        expect(start).toHaveBeenCalledTimes(1)
+    })
+
+    it('controls 未注册（菜单未挂载）→ 仍 setMobileMenuOpen(true)，start 不被调（spring 弹入 fallback）', () => {
+        mockState.mobileMenuDragControls = null
+        render(<EdgeSwipeBack />)
+        const hotzone = document.querySelector('[data-testid="edge-swipe-hotzone"]')!
+
+        fireEvent.pointerDown(hotzone, { clientX: 5 })
+        fireEvent.pointerMove(window, { clientX: 40 })
+
+        expect(setMobileMenuOpen).toHaveBeenCalledWith(true)
+        expect(start).not.toHaveBeenCalled()
+    })
+
+    it('组件 unmount 后 window pointermove 监听被清理：滑动不再触发 open/start', () => {
+        const { unmount } = render(<EdgeSwipeBack />)
+        const hotzone = document.querySelector('[data-testid="edge-swipe-hotzone"]')!
+
+        // 起手但未过迟滞（挂上 window 监听），随后卸载组件
+        fireEvent.pointerDown(hotzone, { clientX: 5 })
+        unmount()
+
+        // 卸载后再滑动：若监听未清理，此处会触发 setMobileMenuOpen / start
+        fireEvent.pointerMove(window, { clientX: 40 })
 
         expect(setMobileMenuOpen).not.toHaveBeenCalled()
         expect(start).not.toHaveBeenCalled()

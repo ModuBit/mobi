@@ -14,9 +14,17 @@
  * limitations under the License.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { EDGE_WIDTH, shouldTriggerSwipe } from './shouldTriggerSwipe'
+
+/** 一次手势注册到 window 上的监听的移除函数集合 */
+type DetachListener = () => void
+
+/** 批量移除 window 监听 */
+const detachWindowListeners = (detachList: DetachListener[]) => {
+    for (const detach of detachList) detach()
+}
 
 /**
  * 左缘右滑开侧栏（iOS 边缘返回手势的 Web 近似）。
@@ -27,6 +35,7 @@ import { EDGE_WIDTH, shouldTriggerSwipe } from './shouldTriggerSwipe'
  *    - setMobileMenuOpen(true) 打开菜单；
  *    - 远程 start MobileMenuDrawer 注册到 uiStore 的 dragControls，
  *      sheet 1:1 跟手拖出（MobileDrawer 传 dragControls 时 forceRender 常驻可 start），
+ *      打开弹入动画由 MobileDrawer 的 isDragging 防御跳过（不与远程拖拽双写），
  *      释放判定（速度符号）复用 MobileDrawer 内统一逻辑；
  * 3. controls 未注册（null，菜单未挂载）时 fallback：仅 setMobileMenuOpen(true)，
  *    菜单走 spring 弹入动画。
@@ -34,6 +43,16 @@ import { EDGE_WIDTH, shouldTriggerSwipe } from './shouldTriggerSwipe'
  * 仅移动端挂载（ChatPane 内 isMobile 分支），桌面端不渲染。
  */
 export function EdgeSwipeBack() {
+    // pointerdown 是事件回调（非 effect）注册的 window 监听，React 不会自动回收，
+    // 存入 ref 集合（移除函数），unmount effect 中统一移除（防卸载后仍触发）
+    const windowListenersRef = useRef<DetachListener[]>([])
+
+    // unmount 清理：移除当前挂着的所有 window 监听
+    useEffect(() => () => {
+        detachWindowListeners(windowListenersRef.current)
+        windowListenersRef.current = []
+    }, [])
+
     const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         const startX = e.clientX
         // 保留原始 pointerdown 事件：motion dragControls.start 需要真实起手事件定位起点
@@ -48,19 +67,24 @@ export function EdgeSwipeBack() {
             const { setMobileMenuOpen, mobileMenuDragControls } = useUiStore.getState()
             setMobileMenuOpen(true)
             if (mobileMenuDragControls) {
-                // TODO(真机验证): open=true 触发的 MobileDrawer y 弹入动画（animate(y, 0, spring.ui)）
-                // 与此处 controls.start 手动 drag 可能双向争抢 y。若实测冲突，
-                // 后续在 MobileDrawer 的打开 effect 里检测「正被外部 drag」跳过 animate
                 mobileMenuDragControls.start(startEvent)
             }
             // controls 未注册 fallback：仅 setMobileMenuOpen(true)，菜单 spring 打开
         }
 
         const cleanup = () => {
-            window.removeEventListener('pointermove', onMove)
-            window.removeEventListener('pointerup', cleanup)
-            window.removeEventListener('pointercancel', cleanup)
+            detachWindowListeners(windowListenersRef.current)
+            windowListenersRef.current = []
         }
+
+        // 多指防御：后手势赢——先清掉上一组监听再注册新的，
+        // 避免多个 pointerdown 各挂一组 onMove 竞争触发
+        detachWindowListeners(windowListenersRef.current)
+        windowListenersRef.current = [
+            () => window.removeEventListener('pointermove', onMove),
+            () => window.removeEventListener('pointerup', cleanup),
+            () => window.removeEventListener('pointercancel', cleanup),
+        ]
         window.addEventListener('pointermove', onMove)
         window.addEventListener('pointerup', cleanup)
         window.addEventListener('pointercancel', cleanup)
