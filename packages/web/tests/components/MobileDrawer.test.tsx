@@ -119,11 +119,13 @@ const triggerDragEnd = (offsetY: number, velocityY: number) => {
 }
 
 /** 等打开弹入动画落定（sheet 回到屏内 y=0），后续关闭才不会被关闭 effect
- *  误判为「已出屏」而跳过滑出动画 */
+ *  误判为「已出屏」而跳过滑出动画。注意起点是 translateY(innerHeight)（视口高），
+ *  不能按具体高度断言——桩 50ms 后跳到 0，transform 离开屏外值即落定 */
 const waitForOpenSettled = async () => {
     const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
-    // 打开 effect 先 y.set(400)（屏外）再弹回 0；落定后 transform 不再是 400px
-    await waitFor(() => expect(sheet.style.transform).not.toBe('translateY(400px)'), { timeout: 2000 })
+    await waitFor(() => {
+        expect(sheet.style.transform).not.toBe(`translateY(${window.innerHeight}px)`)
+    }, { timeout: 2000 })
 }
 
 describe('MobileDrawer', () => {
@@ -162,6 +164,20 @@ describe('MobileDrawer', () => {
         window.dispatchEvent(new PopStateEvent('popstate'))
         // 手势返回统一走 closeWithAnimation：新时序下 onClose 立即被调（无动画等待）
         await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    })
+
+    it('打开动画起点用视口高、不依赖 offsetHeight：effect 同步执行后 sheet 即被置于屏外（translateY(innerHeight)）', () => {
+        const onClose = vi.fn()
+        render(<MobileDrawer open onClose={onClose} title="测试" />)
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        expect(sheet).toBeTruthy()
+        // CDP 实证：antd v6 panel 挂载/可测晚于打开动画 effect（首开 ref null、
+        // 重开 hidden 态高度 0），读 offsetHeight 会退化 h=0 → animate(0→0) 瞬时
+        // = 真机「弹出大概率无动画」。起点必须与测量时序解耦：
+        // useLayoutEffect 同步 y.set(innerHeight)，motion.div 挂载时以该值渲染
+        expect(sheet.style.transform).toBe(`translateY(${window.innerHeight}px)`)
+        // animate 目标为 0（弹入屏内），而非退化的 0→0
+        expect(animateCalls.some((c) => c.target === 0)).toBe(true)
     })
 
     it('否决式 onClose（loading 守卫拦下关闭、open 保持 true）时 sheet 沉降回原位而非卡在屏外', async () => {
@@ -230,6 +246,9 @@ describe('MobileDrawer', () => {
         const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
         expect(sheet).toBeTruthy()
         Object.defineProperty(sheet, 'offsetHeight', { value: 400 })
+        // 等打开弹入落定：否则 y 仍在屏外（translateY(innerHeight)），关闭 effect
+        // 会判「已出屏」直接卸载、不走滑出分支
+        await waitForOpenSettled()
 
         rerender(<MobileDrawer open={false} onClose={onClose} title="测试" />)
 
@@ -355,6 +374,28 @@ describe('MobileDrawer', () => {
         expect(body.style.maxHeight).toBe('85dvh')
         const wrapper = document.querySelector('.ant-drawer-content-wrapper') as HTMLElement
         expect(wrapper.style.maxHeight).toBe('85dvh')
+    })
+
+    it('溢出收缩链不变量：sheet 用 flex:1+minHeight:0（禁 height:100%）、内容区补 minHeight:0——否则长内容撑爆 sheet 被裁而非出滚动', () => {
+        const onClose = vi.fn()
+        render(
+            <MobileDrawer open onClose={onClose} title="测试">
+                <div>内容</div>
+            </MobileDrawer>,
+        )
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        expect(sheet).toBeTruthy()
+        // height:'100%' 在只有 maxHeight（height:auto）的 body 下按 CSS 规范退化为
+        // auto——CDP 实测内容超限时 sheet 被撑到内容全高（2449px），溢出被 body
+        // 的 overflow:hidden 直接裁掉 = 真机「内容多看不到、不滚动」
+        expect(sheet.style.height).not.toBe('100%')
+        expect(sheet.style.flex).toBe('1 1 0%')
+        expect(sheet.style.minHeight).toBe('0px')
+        // 内容区：flex item 默认 min-height:auto 不收缩，无 minHeight:0 时没有
+        // 可滚空间（scrollHeight === clientHeight）
+        const contentArea = sheet.querySelector(':scope > div:last-child') as HTMLElement
+        expect(contentArea.style.minHeight).toBe('0px')
+        expect(contentArea.style.overflow).toBe('auto')
     })
 
     it('section 顶部左右圆角 + overflow hidden（header/内容裁切到圆角内；antd v6 section = 旧 content）', () => {

@@ -261,7 +261,9 @@ export function MobileDrawer({
             clearTimeout(vetoTimerRef.current)
             vetoTimerRef.current = null
         }
-        const h = sheetRef.current?.offsetHeight ?? 0
+        // 滑出目标高度：实测为准；panel 异常不可测（0，见打开动画 effect 的时序说明）
+        // 时兜底视口高——保证 y 能滑出屏外而非滞留屏内
+        const h = sheetRef.current?.offsetHeight || window.innerHeight
         if (y.get() < h - 8) {
             // 消费 closeWithAnimation 暂存的手势速度：手势路径带速度滑出（释放动量连续），
             // 父直调路径暂存为 null 用纯 spring。启动即清空，防陈旧速度被后续关闭复用
@@ -292,13 +294,17 @@ export function MobileDrawer({
     }, [])
 
     // 打开动画：sheet 从屏外弹入（spring.ui）；antd wrapper 已被 CSS 静默。
-    // useLayoutEffect 在首帧绘制前设初值，避免 sheet 先以 y=0 闪现一帧再跳到屏外。
-    // 依赖含 mounted（真正挂载后才能测 offsetHeight）与 open（关闭途中重开时
+    // ⚠️ 起点用视口高而非 sheetRef.offsetHeight（CDP 实证踩坑）：antd v6 panel 的
+    // 挂载/可测时序晚于本 effect——首开时 panel 尚未挂载（ref 为 null），重开时
+    // panel 处于 leave 后的 hidden 态（display:none 子树，offsetHeight 恒 0），
+    // 实测两条路径都让 h 退化 0 → y.set(0) + animate(0→0) 瞬时完成 = 「打开无
+    // 动画直接展示」。改用视口高：① 恒 ≥ 85dvh 上限，起点必在屏外；② 与测量
+    // 时序彻底解耦——motion.div 挂载时以 y 当前值渲染，弹入自然衔接。
+    // 依赖含 mounted（真正挂载后才能弹入）与 open（关闭途中重开时
     // mounted 未翻转，靠 open 翻转重新触发弹入）
     useLayoutEffect(() => {
         if (!open || !mounted) return
-        const h = sheetRef.current?.offsetHeight ?? 0
-        y.set(h)
+        y.set(window.innerHeight)
         const anim = animate(y, 0, spring.ui)
         return () => anim.stop()
     }, [open, mounted, y])
@@ -404,7 +410,15 @@ export function MobileDrawer({
                         y,
                         display: 'flex',
                         flexDirection: 'column',
-                        height: '100%',
+                        // ⚠️ 不能用 height:'100%'：body 只有 maxHeight 没有确定 height
+                        //（height:auto），CSS 规范下子级百分比高度退化 auto——CDP 实测
+                        // 内容超限时 sheet 被撑到内容全高（2449px > 85dvh=690），
+                        // contentArea 跟着全高（无可滚空间），溢出被 body 的
+                        // overflow:hidden 直接裁掉 = 「内容多看不到」。改 flex 收缩：
+                        // flex:1 让 sheet 填满 body 的钳制高度，minHeight:0 解除
+                        // flex item 默认 min-height:auto 的「不收缩」限制
+                        flex: '1 1 0%',
+                        minHeight: 0,
                         background: 'var(--ant-color-bg-container)',
                         borderTopLeftRadius: 12,
                         borderTopRightRadius: 12,
@@ -421,8 +435,9 @@ export function MobileDrawer({
                         )}
                     </DraggableArea>
 
-                    {/* 内容区域 */}
-                    <div style={{ flex: 1, overflow: 'auto' }}>
+                    {/* 内容区域：minHeight:0 同 sheet——没有它 flex item 不会收缩到
+                        内容高度以下，长内容会把 sheet 撑爆而非出滚动条 */}
+                    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                         {children}
                     </div>
                 </motion.div>
