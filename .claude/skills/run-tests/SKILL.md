@@ -22,12 +22,17 @@ description: 代码变更完成后，检查并执行测试验证 — typecheck�
 ```
 询问用户 → 用户确认执行
 
+第 0 步：受影响包路由（见下方「受影响包路由规则」）
+    计算本轮要跑的包集合 → 决定第 2 步跑全量还是子集
+
 第 1 步：typecheck
     bun run typecheck
+    （增量缓存生效时 ~12s，始终全量跑）
     ↓ 失败 → 修复后重新执行
 
 第 2 步：单元 & 集成测试
-    bun run test
+    全量：bun run test
+    路由子集：bun run test:cli（或 test:hub / test:web / test:shared，按第 0 步结果）
     注意：必须从项目根目录执行，不要 cd 到子目录后单独跑 bun test
     - hub 用 bun 内置运行器，shared/cli/web 用 vitest
     - 在 web 目录下直接 bun test 会忽略 vitest.config.ts 的 jsdom 配置
@@ -35,6 +40,7 @@ description: 代码变更完成后，检查并执行测试验证 — typecheck�
 
 第 3 步：lint 检查
     bun run lint && bun run lint:deps
+    （始终全量——eslint/depcruise 本身快）
     ↓ 失败 → 按提示修复
 
 第 4 步：E2E 验证（按需）
@@ -46,13 +52,41 @@ description: 代码变更完成后，检查并执行测试验证 — typecheck�
 输出测试摘要
 ```
 
+## 受影响包路由规则
+
+全量测试空闲机器 ~40s（web 31s + 其余三包 9s），但在机器被压载时（生产 hub/runner/会话 CLI 并行、内存换页）可劣化到 ~400s（2026-08-22 实测 10 倍差距，用例执行时间 50s↔529s）。按改动路由可以：① 正常时把 cli 类小改动的反馈压到 ~7s；② 压载时避免跑最重、对负载最敏感的 web 包。**路由只影响第 2 步的单测范围**，typecheck/lint 始终全量，CI 始终全量兜底。
+
+**计算改动文件**（两者取并集，不依赖「上次跑到哪」的状态）：
+
+```bash
+git diff --name-only HEAD                                  # 未提交改动
+git diff --name-only @{u}..HEAD 2>/dev/null \
+  || git diff --name-only origin/main..HEAD                # 未推送 commits
+```
+
+**路由决策**（自上而下第一条命中生效）：
+
+| 条件 | 跑什么 |
+|---|---|
+| 用户明确要求全量 / 发布前验证 | 全量 `bun run test` |
+| 改动文件集为空 | 全量（兜底：检测不到改动时不给假绿灯） |
+| 命中根级/跨包文件（`tsconfig*.json`、根 `package.json`、`bun.lock`、eslint/depcruise 配置、`.github/`） | 全量 |
+| 命中 `packages/shared/**` | 全量（协议底座，其余三包都依赖） |
+| 只命中 `packages/hub/**` | `bun run test:hub` |
+| 只命中 `packages/cli/**` | `bun run test:cli` |
+| 只命中 `packages/web/**` | `bun run test:web` |
+| 无法判断（如删除文件、rename 等） | 全量 |
+
+输出摘要时**必须写明路由结果与依据**（改了什么 → 跑了哪些包），让用户能一眼发现路由错了。
+
 ## 输出格式
 
 ```
 ## run-tests 检查结果
 
 - ✅ typecheck — 通过
-- ✅ 单测 (shared: 105/105, hub: 129/129, cli: 247/247, web: 456/456) — 全部通过
+- 🎯 单测路由 — 只改了 packages/cli/** → test:cli（全量留给 CI）
+- ✅ 单测 (cli: 248/248) — 全部通过
 - ✅ lint — 通过
 - ⏭️ E2E — 跳过（本次变更不影响用户使用）
 ```
