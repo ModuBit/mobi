@@ -114,11 +114,21 @@ export class IdleTimer {
             return;
         }
 
+        // 已在断开窗口内则不重排：断开计时从「首次断开」起算。
+        // 断开期间每次重连尝试的 connect_error 都会再次进入这里，若重排会覆盖
+        // disconnectTimer 引用——旧计时器泄漏仍在跑，onReconnect 的 clearTimeout
+        // 只能清掉最后一个。后果：hub 重启（deploy）后已成功重连的会话，
+        // 仍在首次断开 10 分钟后被泄漏计时器误杀退出（2026-08-22 排查的根因链）。
+        if (this.isDisconnected) {
+            return;
+        }
+
         this.isDisconnected = true;
         this.clearIdleTimers();
 
         // 启动断开超时计时器
         this.disconnectTimer = setTimeout(() => {
+            this.disconnectTimer = null;
             logger.debug('[IdleTimer] Disconnect timeout reached');
             this.onDisconnectTimeout();
         }, this.disconnectTimeoutMs);
