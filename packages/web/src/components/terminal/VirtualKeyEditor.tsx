@@ -67,7 +67,7 @@ export function VirtualKeyEditor({ open, onClose }: VirtualKeyEditorProps) {
             placement="bottom"
             height="auto"
             styles={{
-                wrapper: { height: 'auto', maxHeight: '85vh' },
+                wrapper: { height: 'auto', maxHeight: '85dvh' },
                 body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' },
             }}
             extra={

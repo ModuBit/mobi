@@ -398,6 +398,26 @@ describe('MobileDrawer', () => {
         expect(contentArea.style.overflow).toBe('auto')
     })
 
+    it('底部 safe-area 由组件统一收口：sheet 带 paddingBottom 且底缘贴屏（body padding 强制 0）——body padding 会把 sheet 抬离屏底露出 mask 空隙', () => {
+        const onClose = vi.fn()
+        render(
+            <MobileDrawer
+                open
+                onClose={onClose}
+                title="测试"
+                // 复现已删除的调用方传参（MobileMenu 曾传）：body padding 不得再抬高 sheet
+                styles={{ body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' } }}
+            >
+                <div>内容</div>
+            </MobileDrawer>,
+        )
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        expect(sheet.style.paddingBottom).toBe('max(24px, env(safe-area-inset-bottom))')
+        const body = document.querySelector('.ant-drawer-body') as HTMLElement
+        // 组件写入 padding: 0（数字），CSSOM 序列化为 '0px'（同 minHeight 断言风格）
+        expect(body.style.padding).toBe('0px')
+    })
+
     it('section 顶部左右圆角 + overflow hidden（header/内容裁切到圆角内；antd v6 section = 旧 content）', () => {
         render(<MobileDrawer open onClose={vi.fn()} title="测试"><div>内容</div></MobileDrawer>)
         const section = document.querySelector('.ant-drawer-section') as HTMLElement

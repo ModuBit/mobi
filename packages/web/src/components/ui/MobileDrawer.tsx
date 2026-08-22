@@ -359,14 +359,13 @@ export function MobileDrawer({
             ...userStyles?.wrapper,
         },
         body: {
-            padding: 0,
             display: 'flex',
             flexDirection: 'column',
             ...userStyles?.body,
-            // 布局不变量，禁止调用方覆盖：body 是 flex 列容器（overflow hidden），
-            // 拖拽把手是其固定子元素、内容区（flex:1 + overflow auto）自行滚动。
-            // 一旦 body 允许滚动（如曾传入 overflow: 'auto'），整个 body 连同
-            // 拖拽把手会随内容滚走，下拉关闭手势在滚动后不可达。故放在 spread 之后强制生效
+            // 布局不变量，禁止调用方覆盖：body 是透明层（padding 会把 sheet 抬离屏底、
+            // 露出 mask = 「距底空隙」），纵向 padding 统一由 sheet 的 paddingBottom
+            // 承载；overflow/maxHeight 保证把手固定 + 内容区自滚（说明见声明处）
+            padding: 0,
             overflow: 'hidden',
             // 同为不变量：body 必须与 wrapper 同值 maxHeight。antd 的 .ant-drawer-section /
             // content-wrapper 自带 overflow:auto，但 body 处在 auto 高度链上不会跟着 wrapper 收缩——
@@ -425,6 +424,11 @@ export function MobileDrawer({
                         // flex item 默认 min-height:auto 的「不收缩」限制
                         flex: '1 1 0%',
                         minHeight: 0,
+                        // 底部 safe-area 由组件统一收口：sheet 背景含 padding 铺到屏幕底
+                        // （不透 mask 露「空隙」），内容避让 home indicator。此前由各调用方
+                        // 往 body 传 paddingBottom——body 是透明层，padding 会把 sheet 抬离
+                        // 屏底、露出深色 mask = 真机「drawer 距底部一段空隙」
+                        paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
                         background: 'var(--ant-color-bg-container)',
                         borderTopLeftRadius: 12,
                         borderTopRightRadius: 12,

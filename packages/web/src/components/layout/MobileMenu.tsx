@@ -129,9 +129,8 @@ export function MobileMenuDrawer() {
             title={t('nav.menu')}
             open={mobileMenuOpen}
             onClose={handleClose}
-            // body overflow 不允许覆盖（MobileDrawer 布局不变量：拖拽把手固定、内容区自滚），
-            // 这里只按移动端 Drawer 规范补底部安全边界，防「退出登录」被底部横条遮挡
-            styles={{ body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' } }}
+            // 底部 safe-area 由 MobileDrawer 组件统一收口（sheet paddingBottom），
+            // 不再往 body 传 padding——body padding 会把 sheet 抬离屏底露出 mask 空隙
         >
             <MenuContent $token={token}>
                 {/* 新建会话 */}

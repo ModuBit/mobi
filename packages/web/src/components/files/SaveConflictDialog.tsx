@@ -27,7 +27,7 @@ interface Props {
  * OCC 冲突 Drawer：保存返回 409（文件已被 Claude 改）时弹出。
  * 二选一：丢弃本地编辑重新加载 / 强制覆盖。
  *
- * 移动端底部 Drawer 规范：height:auto / maxHeight:85vh / 底部 safe-area（web CLAUDE.md）。
+ * 移动端底部 Drawer 规范：height:auto / maxHeight:85dvh / 底部 safe-area（web CLAUDE.md）。
  */
 export function SaveConflictDialog({ open, onReload, onForceOverwrite }: Props) {
     const { t } = useTranslation()
@@ -38,7 +38,7 @@ export function SaveConflictDialog({ open, onReload, onForceOverwrite }: Props) 
             closable={false}
             maskClosable={false}
             styles={{
-                wrapper: { height: 'auto', maxHeight: '85vh' },
+                wrapper: { height: 'auto', maxHeight: '85dvh' },
                 body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' },
             }}
         >

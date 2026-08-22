@@ -66,7 +66,6 @@ function ContentDrawerInner({ title, open, onClose, bodyStyle, children, size, d
                     body: {
                         padding: 0,
                         ...bodyStyle,
-                        paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
                     },
                 }}
             >
