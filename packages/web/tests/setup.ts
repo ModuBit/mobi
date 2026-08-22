@@ -16,7 +16,13 @@
 
 import { vi } from 'vitest'
 import { resolve } from 'path'
+import { configure } from '@testing-library/react'
 import { readMobiVersion } from '../src/core/lib/version'
+
+// waitFor/findBy 的 RTL 默认超时是 1s，且不吃 vitest 的 testTimeout——全量并发
+// CPU 饱和时异步渲染 1s 内完不成即抛「Unable to find an element」（负载型 flaky
+// 的残余来源）。全局放宽到 5s；真渲染不出来 5s 后照样失败暴露
+configure({ asyncUtilTimeout: 5000 })
 
 // __MOBI_VERSION__ 由 vite 构建期从 cli package.json 注入（见 vite.config.ts），
 // 但 vitest 用独立 config 不走 define，这里补全局 stub，同源读取避免写死

@@ -27,5 +27,10 @@ export default defineConfig({
         include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
         environment: 'jsdom',
         setupFiles: ['tests/setup.ts'],
+        // 默认 5s 在全量并发下会被 CPU 饱和打爆（重渲染用例独占跑 1-4s，
+        // 9 worker 满载时部分用例超 5s → 超时型 flaky）。15s 留足负载峰值余量；
+        // 真正的死循环用例在 15s 下依然会超时暴露，不会掩盖
+        testTimeout: 15_000,
+        hookTimeout: 15_000,
     },
 })
