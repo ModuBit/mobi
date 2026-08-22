@@ -9,6 +9,7 @@
         "strictNullChecks": true,
         "noImplicitReturns": true,
         "skipLibCheck": true,
+        "incremental": true,
         "resolveJsonModule": true,
         "declaration": true,
         "declarationMap": true,

@@ -6,6 +6,9 @@ dist/
 dev-dist/
 .cert/
 
+# tsc 增量缓存
+*.tsbuildinfo
+
 # Database files
 *.db
 *.db-wal
