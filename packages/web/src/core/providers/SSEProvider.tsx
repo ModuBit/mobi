@@ -217,6 +217,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
     // 批处理失效相关 refs
     const invalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // 后台断线标记：connected=false 时置位；回前台时若仍置位则补一次对账。
+    // 覆盖「reconnected 事件已在后台（throttled-but-alive 重连）被消费」的场景——
+    // 该场景下回前台不会再触发 reconnected，标记是对账的唯一依据
+    const hadGapRef = useRef(false)
     const pendingInvalidationsRef = useRef<PendingInvalidations>({
         sessions: false,
         projectViews: false,
@@ -264,6 +268,23 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             p.sessionIds.clear()
             if (tasks.length > 0) void Promise.all(tasks).catch(() => {})
         }, INVALIDATION_BATCH_MS)
+    }
+
+    /**
+     * 断连后的状态对账：hub broadcast 不重放断连期间的事件，漏掉的变更须由 web 端补拉。
+     * 各失效对象与缺口：
+     * - sessions 列表 + projectViews：侧边栏/项目分组成员与计数变化
+     * - 当前会话详情（['session', sid]）：agentState（等待授权/AskUserQuestion）与
+     *   runtimeState（task/后台任务列表）的唯一来源——漏了它，断连期间发生的状态变化
+     *   将永久陈旧，移动 PWA 下 refetchOnWindowFocus 不可作为确定性兜底
+     * - 最新消息：fetchLatestMessages 静默 merge（invalidate 全量刷新有覆盖危险）
+     */
+    function resyncAfterGap() {
+        const sid = parseActiveSessionId(window.location.pathname)
+        // sid 为 null（不在会话页）时仍失效列表与项目视图——侧边栏状态也需对账
+        scheduleInvalidation('sessions', sid ?? undefined)
+        scheduleInvalidation('projectViews')
+        if (sid && apiRef.current) void fetchLatestMessages(apiRef.current, sid)
     }
 
     // 所有依赖通过 ref 访问，确保回调引用稳定
@@ -367,6 +388,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 }
                 if (event.connected === false) {
                     subscriptionIdRef.current = null
+                    hadGapRef.current = true
                     nt.warning({
                         key: 'sse-disconnected',
                         message: tRef.current('notification.sseDisconnected'),
@@ -375,17 +397,12 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     })
                 }
                 if (event.reconnected) {
-                    // 静默恢复：仅关闭断开提示 + 刷新数据，不再弹"连接已恢复" toast
+                    // 静默恢复：仅关闭断开提示 + 对账补拉，不再弹"连接已恢复" toast
                     // 移动端后台→前台频繁触发重连，success 提示打扰用户且无信息价值；
                     // 真实断网仍由上方 connected===false 的 warning 提示
                     nt.destroy('sse-disconnected')
-                    scheduleInvalidation('sessions')
-                    // 断连期间错过的 project-*/归属变更事件无法重放——项目维度视图必须连带补拉，
-                    // 否则他端新建/删除/归入的项目会话在侧边栏长期陈旧
-                    scheduleInvalidation('projectViews')
-                    // messages 不再 invalidate（refetch 覆盖危险），改 fetchLatest merge + generation 防竞态
-                    const sid = parseActiveSessionId(window.location.pathname)
-                    if (sid && apiRef.current) void fetchLatestMessages(apiRef.current, sid)
+                    hadGapRef.current = false
+                    resyncAfterGap()
                 }
                 break
             case 'toast': {
@@ -530,18 +547,25 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         // 页面可见性变化时上报 Hub（仅在状态实际变化时发送）
         let lastHidden = document.hidden
         const handleVisibilityChange = () => {
-            const id = subscriptionIdRef.current
-            if (!id) return
             if (document.hidden === lastHidden) return
             const wasHidden = lastHidden
             lastHidden = document.hidden
-            apiRef.current.visibility.report(id, document.hidden ? 'hidden' : 'visible').catch(() => {})
-            // 回前台:hidden→visible 时主动检查连接健康,半死则立即重连。
-            // 后台期间 watchdog 跳过检查,连接可能在后台变半死(移动端网络切换),
-            // 回前台需立即恢复,不等下次 onerror/心跳。
+            // 回前台:hidden→visible 时主动检查连接健康 + 断线对账。
+            // 两者都不得依赖 subscriptionId——断线时它已被清空(null)，早退会让
+            // 回前台重连检查被静默跳过（只剩 10s 看门狗兜底，真机恢复明显变慢）。
             if (wasHidden && !document.hidden) {
                 clientRef.current?.reconnectIfStale()
+                // 后台期间若发生过断线（reconnected 可能在后台已被消费），回前台无
+                // reconnected 事件，凭 hadGap 标记补一次对账；无断线则跳过，避免桌面
+                // alt-tab 切换触发请求风暴
+                if (hadGapRef.current) {
+                    hadGapRef.current = false
+                    resyncAfterGap()
+                }
             }
+            const id = subscriptionIdRef.current
+            if (!id) return
+            apiRef.current.visibility.report(id, document.hidden ? 'hidden' : 'visible').catch(() => {})
         }
         document.addEventListener('visibilitychange', handleVisibilityChange)
 
