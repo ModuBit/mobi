@@ -18,7 +18,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 import { Database } from 'bun:sqlite'
 
 import { Store } from '../../src/store'
-import { addMessage, bindNativeIds, getMessages, markMessagesAcked } from '../../src/store/messages'
+import { addMessage, bindNativeIds, getMessages } from '../../src/store/messages'
 
 /** 建一个带 metadata/deleted_at 列的最小 messages 表（无 FK/无 sessions，纯模块级函数测试，参照 messages-byposition.test.ts） */
 function makeDb(): Database {
@@ -174,5 +174,57 @@ describe('markMessagesAcked（isReplay 回显 → nativeAckAt）', () => {
         const acked = store.messages.markMessagesAcked(sessionId, 'ghost', 1755500000000)
         expect(acked).toEqual([])
         expect(store.messages.getMessages(sessionId)[0].metadata?.nativeAckAt).toBeUndefined()
+    })
+})
+
+describe('advanceMessagesAcked（isReplay 回显 → lifecycle 推进）', () => {
+    let store: Store
+    let sessionId: string
+
+    beforeEach(() => {
+        store = new Store(':memory:')
+        sessionId = store.sessions.getOrCreateSession('advance-ack-test', null, null, 'default').id
+    })
+
+    test('合并批 1:N（同 nativeId 多行 pushed）→ 全部推进且返回全量行 id', () => {
+        const m1 = store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-batch' })
+        const m2 = store.messages.addMessage(sessionId, WEBAPP_USER, 'local-2', 'persistent', { nativeId: 'uu-batch' })
+        const m3 = store.messages.addMessage(sessionId, WEBAPP_USER, 'local-3', 'persistent', { nativeId: 'uu-batch' })
+        // 同 nativeId 的 queued 行（尚未 push）：不被推进
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-q', 'persistent', { nativeId: 'uu-batch' })
+        // 不同 nativeId 的 pushed 行：批外不受影响
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-o', 'persistent', { nativeId: 'uu-other' })
+        store.messages.markMessagesPushed(sessionId, ['local-1', 'local-2', 'local-3', 'local-o'], 1000)
+
+        const acked = store.messages.advanceMessagesAcked(sessionId, 'uu-batch', 2000)
+        expect(acked.sort()).toEqual([m1.id, m2.id, m3.id].sort())
+
+        const rows = store.messages.getMessages(sessionId)
+        expect(rows.find(r => r.localId === 'local-1')!.lifecycle).toBe('acked')
+        expect(rows.find(r => r.localId === 'local-2')!.lifecycle).toBe('acked')
+        expect(rows.find(r => r.localId === 'local-3')!.lifecycle).toBe('acked')
+        expect(rows.find(r => r.localId === 'local-1')!.lifecycleAt).toBe(2000)
+        // queued 行不动（单调性：仅 pushed 可推进）
+        expect(rows.find(r => r.localId === 'local-q')!.lifecycle).toBe('queued')
+        // 批外 pushed 行不动
+        expect(rows.find(r => r.localId === 'local-o')!.lifecycle).toBe('pushed')
+    })
+
+    test('已 acked / 重复 ack → 幂等返回空，lifecycleAt 不被覆盖', () => {
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
+        store.messages.markMessagesPushed(sessionId, ['local-1'], 1000)
+        store.messages.advanceMessagesAcked(sessionId, 'uu-1', 2000)
+        const again = store.messages.advanceMessagesAcked(sessionId, 'uu-1', 3000)
+        expect(again).toEqual([])
+        const row = store.messages.getMessages(sessionId)[0]
+        expect(row.lifecycle).toBe('acked')
+        expect(row.lifecycleAt).toBe(2000)
+    })
+
+    test('无此 nativeId 行 → 返回空，lifecycle 不动', () => {
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'local-1', 'persistent', { nativeId: 'uu-1' })
+        store.messages.markMessagesPushed(sessionId, ['local-1'], 1000)
+        expect(store.messages.advanceMessagesAcked(sessionId, 'ghost', 2000)).toEqual([])
+        expect(store.messages.getMessages(sessionId)[0].lifecycle).toBe('pushed')
     })
 })
