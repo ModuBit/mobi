@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-import { SNAPSHOT_PENDING_ID, GoalStatusSchema, type ClientToServerEvents } from '@mobi/shared'
+import { SNAPSHOT_PENDING_ID, GoalStatusSchema, type ClientToServerEvents, type MessageFact } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import type { ContextUsage, GoalStatus, PermissionMode, RuntimeState } from '@mobi/shared/types'
-import type { Store, StoredSession } from '../../../store'
+import type { Store, StoredMessage, StoredSession } from '../../../store'
 import type { SyncEvent } from '../../../sync/syncEngine'
 import type { BackgroundTaskTracker } from '../../../sync/backgroundTaskTracker'
 import type { RewindDeleteBoundTracker } from '../../../sync/rewindDeleteBoundTracker'
@@ -528,6 +528,100 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         })
     })
 
+    // ===== 用户消息事实共享处理体（旧 4 事件与 messages-facts 统一事件共用，防逻辑分叉）=====
+
+    /** 补写/推进行的统一广播：按 message 落库后的广播模式逐行推给 Web（update new-message +
+     *  SSE message-received）——Web 端据此刷新 rewind 判据与 lifecycle 展示（P3 消费）。
+     *  update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
+     *  行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射 */
+    const broadcastStoredMessages = (sid: string, msgs: StoredMessage[]) => {
+        for (const msg of msgs) {
+            const message = { ...toDecryptedMessage(msg), seq: msg.seq }
+            socket.to(`session:${sid}`).emit('update', {
+                id: randomUUID(),
+                seq: msg.seq,
+                createdAt: Date.now(),
+                body: {
+                    t: 'new-message' as const,
+                    sid,
+                    message
+                }
+            })
+            onWebappEvent?.({
+                type: 'message-received',
+                sessionId: sid,
+                message: toDecryptedMessage(msg)
+            })
+        }
+    }
+
+    /** 消费排队消息 → 推进 lifecycle=pushed 后转发 SSE（原 messages-submitted 处理体）。
+     *  DB 落盘成功后才转发 SSE，防 live/refresh 状态分叉。 */
+    const processSubmitted = (sid: string, localIds: string[], pushedAt: number) => {
+        if (localIds.length === 0) return
+        const fresh = store.messages.markMessagesPushed(sid, localIds, pushedAt)
+        if (fresh.length > 0) {
+            onWebappEvent?.({ type: 'messages-submitted', sessionId: sid, localIds: fresh, submittedAt: pushedAt })
+        }
+    }
+
+    /** native 锚点绑定（原 messages-bound 处理体）：幂等落库，补写行逐行广播（Web 端据此
+     *  刷新 rewind 判据，否则 hover 不显 icon、刷新才见）。逐项校验：null 项/缺字段会让
+     *  bindNativeIds 抛 TypeError，空串 nativeId / nativeSessionId 则永久占坑（first-write-wins +
+     *  json_extract IS NULL 守卫会挡住后续合法绑定）——无效项直接丢弃，不落库 */
+    const processBound = (
+        sid: string,
+        bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[]
+    ) => {
+        const valid = bindings
+            .filter((b): b is { localId: string; metadata: { nativeId: string; nativeSessionId?: string } } =>
+                b !== null && typeof b === 'object' &&
+                typeof b.localId === 'string' && b.localId.length > 0 &&
+                typeof b.metadata === 'object' && b.metadata !== null &&
+                typeof b.metadata.nativeId === 'string' && b.metadata.nativeId.length > 0 &&
+                (b.metadata.nativeSessionId === undefined
+                    || (typeof b.metadata.nativeSessionId === 'string' && b.metadata.nativeSessionId.length > 0)))
+        if (valid.length === 0) return
+        const bound = store.messages.bindNativeIds(sid, valid)
+        if (bound.length > 0) broadcastStoredMessages(sid, bound)
+    }
+
+    /** isReplay 回显确认（原 messages-acked 处理体）。先推进 lifecycle='acked' 再写
+     *  metadata.nativeAckAt：markMessagesAcked 内部 UPDATE 后 SELECT 返回行快照用于广播——
+     *  若 advance 在其后，快照的 lifecycle/lifecycleAt 是推进前的旧值。advance 的 WHERE
+     *  只看 lifecycle 不受 metadata UPDATE 影响，换序安全。共一时间戳消除 nativeAckAt 与
+     *  lifecycle_at 分叉。P1 双写：nativeAckAt 照常写（rewind 判据不动；P2 事件收敛时评估停写） */
+    const processAcked = (sid: string, nativeId: string, ackedAt?: number) => {
+        const at = ackedAt ?? Date.now()
+        store.messages.advanceMessagesAcked(sid, nativeId, at)
+        const acked = store.messages.markMessagesAcked(sid, nativeId, at)
+        // 合并批 1:N（同 nativeId 多行）逐行广播——只推一行会让批内其余行的 nativeAckAt
+        // 不实时更新，rewind 入口「刷新才见」
+        if (acked.length > 0) broadcastStoredMessages(sid, acked)
+    }
+
+    /** attach 补写（原 messages-native-attached 处理体）：该会话所有缺 nativeSessionId 的行
+     *  补上新 session id（幂等），补写行逐行广播（Web 端据此刷新 rewind 判据）。 */
+    const processAttached = (sid: string, nativeSessionId: string) => {
+        const attached = store.messages.attachNativeSessionId(sid, nativeSessionId)
+        if (attached.length > 0) broadcastStoredMessages(sid, attached)
+    }
+
+    /** command_lifecycle 终态推进（messages-facts 新增 fact）：单调推进（终态不回退/不互覆）→
+     *  按 id 回读推进后的行 → 逐行广播（载荷含推进后 lifecycle/lifecycleAt，P3 消费）。
+     *  无命中（乱序/重复帧）静默返回，不广播。 */
+    const processLifecycleFact = (
+        sid: string,
+        nativeId: string,
+        state: 'processing' | 'done' | 'cancelled' | 'discarded',
+        at: number
+    ) => {
+        const ids = store.messages.advanceMessagesLifecycle(sid, nativeId, state, at)
+        if (ids.length === 0) return
+        const rows = store.messages.getMessagesByIds(sid, ids)
+        if (rows.length > 0) broadcastStoredMessages(sid, rows)
+    }
+
     // CLI 消费了排队消息 → 推进 lifecycle=pushed 后转发 SSE 给 Web
     socket.on('messages-submitted', (data: { sid: string; localIds: string[] }) => {
         if (!data || typeof data.sid !== 'string' || !Array.isArray(data.localIds)) {
@@ -538,14 +632,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             emitAccessError('session', data.sid, sessionAccess.reason)
             return
         }
-        if (data.localIds.length === 0) return
-
-        const pushedAt = Date.now()
-        const fresh = store.messages.markMessagesPushed(data.sid, data.localIds, pushedAt)
-        // DB 落盘成功后才转发 SSE，防 live/refresh 状态分叉
-        if (fresh.length > 0) {
-            onWebappEvent?.({ type: 'messages-submitted', sessionId: data.sid, localIds: fresh, submittedAt: pushedAt })
-        }
+        processSubmitted(data.sid, data.localIds, Date.now())
     })
 
     // CLI push 用户消息给 SDK 时上报 (localId → native 锚点) 绑定；幂等落库，
@@ -559,43 +646,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             emitAccessError('session', data.sid, sessionAccess.reason)
             return
         }
-        // 逐项校验：null 项/缺字段会让 bindNativeIds 抛 TypeError，空串 nativeId / nativeSessionId
-        // 则永久占坑（first-write-wins + json_extract IS NULL 守卫会挡住后续合法绑定）——无效项直接丢弃，不落库
-        const bindings = data.bindings
-            .filter((b): b is { localId: string; metadata: { nativeId: string; nativeSessionId?: string } } =>
-                b !== null && typeof b === 'object' &&
-                typeof b.localId === 'string' && b.localId.length > 0 &&
-                typeof b.metadata === 'object' && b.metadata !== null &&
-                typeof b.metadata.nativeId === 'string' && b.metadata.nativeId.length > 0 &&
-                (b.metadata.nativeSessionId === undefined
-                    || (typeof b.metadata.nativeSessionId === 'string' && b.metadata.nativeSessionId.length > 0)))
-        if (bindings.length === 0) return
-
-        const bound = store.messages.bindNativeIds(data.sid, bindings)
-        if (bound.length === 0) return
-        for (const msg of bound) {
-            // update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
-            // 补写行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射
-            const message = { ...toDecryptedMessage(msg), seq: msg.seq }
-            socket.to(`session:${data.sid}`).emit('update', {
-                id: randomUUID(),
-                seq: msg.seq,
-                createdAt: Date.now(),
-                body: {
-                    t: 'new-message' as const,
-                    sid: data.sid,
-                    message
-                }
-            })
-            onWebappEvent?.({
-                type: 'message-received',
-                sessionId: data.sid,
-                message: toDecryptedMessage(msg)
-            })
-        }
+        processBound(data.sid, data.bindings)
     })
 
-    // CLI 收到 isReplay 回显时上报：按 nativeId 写 nativeAckAt（first-write-wins），
+    // CLI 收到 isReplay 回显时上报：按 nativeId 写 nativeAckAt（first-write-wins）+ 推进 lifecycle='acked'，
     // 并按 message 落库后的广播模式推补写行给 Web（Web 端据此刷新 rewind 判据）
     socket.on('messages-acked', (data: { sid: string; nativeId: string }) => {
         if (!data || typeof data.sid !== 'string' || typeof data.nativeId !== 'string' || data.nativeId.length === 0) {
@@ -606,36 +660,56 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             emitAccessError('session', data.sid, sessionAccess.reason)
             return
         }
-        // 先推进 lifecycle='acked' 再写 metadata.nativeAckAt：markMessagesAcked 内部 UPDATE 后
-        // SELECT 返回行快照用于下方广播——若 advance 在其后，快照的 lifecycle/lifecycleAt 是推进前的
-        // 旧值（P1 无消费方、P2 终态接入后即回退载荷）。advance 的 WHERE 只看 lifecycle 不受
-        // metadata UPDATE 影响，换序安全。共一时间戳消除 nativeAckAt 与 lifecycle_at 分叉。
-        // P1 双写：nativeAckAt 照常写（rewind 判据不动；P2 事件收敛时评估停写）
-        const ackedAt = Date.now()
-        store.messages.advanceMessagesAcked(data.sid, data.nativeId, ackedAt)
-        const acked = store.messages.markMessagesAcked(data.sid, data.nativeId, ackedAt)
-        if (acked.length === 0) return
-        // 合并批 1:N（同 nativeId 多行）逐行广播——只推一行会让批内其余行的 nativeAckAt
-        // 不实时更新，rewind 入口「刷新才见」。update 事件的 new-message 体受 shared
-        // UpdateNewMessageBodySchema 约束（seq: number）——补写行 seq 恒为 number，此处显式收窄，
-        // 其余字段复用统一 DTO 映射
-        for (const msg of acked) {
-            const message = { ...toDecryptedMessage(msg), seq: msg.seq }
-            socket.to(`session:${data.sid}`).emit('update', {
-                id: randomUUID(),
-                seq: msg.seq,
-                createdAt: Date.now(),
-                body: {
-                    t: 'new-message' as const,
-                    sid: data.sid,
-                    message
-                }
-            })
-            onWebappEvent?.({
-                type: 'message-received',
-                sessionId: data.sid,
-                message: toDecryptedMessage(msg)
-            })
+        processAcked(data.sid, data.nativeId)
+    })
+
+    // CLI→Hub 统一消息事实：批内多 kind 分发。旧 4 事件双受理（旧 CLI 兼容），处理体共享防分叉。
+    // fact.at 缺省取 hub 接收时刻（每批一个 now，批内共时）
+    socket.on('messages-facts', (data: { sid: string; facts: MessageFact[] }) => {
+        if (!data || typeof data.sid !== 'string' || !Array.isArray(data.facts)) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        const now = Date.now()
+        for (const fact of data.facts) {
+            if (!fact || typeof fact.kind !== 'string') continue
+            switch (fact.kind) {
+                case 'pushed':
+                    if (Array.isArray(fact.localIds)) {
+                        processSubmitted(data.sid, fact.localIds, fact.at ?? now)
+                    }
+                    break
+                case 'bound':
+                    processBound(data.sid, [{
+                        localId: fact.localId,
+                        metadata: {
+                            nativeId: fact.nativeId,
+                            ...(fact.nativeSessionId ? { nativeSessionId: fact.nativeSessionId } : {})
+                        }
+                    }])
+                    break
+                case 'attached':
+                    if (typeof fact.nativeSessionId === 'string' && fact.nativeSessionId.length > 0) {
+                        processAttached(data.sid, fact.nativeSessionId)
+                    }
+                    break
+                case 'acked':
+                    if (typeof fact.nativeId === 'string' && fact.nativeId.length > 0) {
+                        processAcked(data.sid, fact.nativeId, fact.at ?? now)
+                    }
+                    break
+                case 'lifecycle':
+                    if (typeof fact.nativeId === 'string' && fact.nativeId.length > 0
+                        && (fact.state === 'processing' || fact.state === 'done'
+                            || fact.state === 'cancelled' || fact.state === 'discarded')) {
+                        processLifecycleFact(data.sid, fact.nativeId, fact.state, fact.at ?? now)
+                    }
+                    break
+            }
         }
     })
 
@@ -656,29 +730,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             emitAccessError('session', data.sid, sessionAccess.reason)
             return
         }
-        const attached = store.messages.attachNativeSessionId(data.sid, data.nativeSessionId)
-        if (attached.length === 0) return
-
-        for (const msg of attached) {
-            // update 事件的 new-message 体受 shared UpdateNewMessageBodySchema 约束（seq: number）——
-            // 补写行 seq 恒为 number，此处显式收窄，其余字段复用统一 DTO 映射
-            const message = { ...toDecryptedMessage(msg), seq: msg.seq }
-            socket.to(`session:${data.sid}`).emit('update', {
-                id: randomUUID(),
-                seq: msg.seq,
-                createdAt: Date.now(),
-                body: {
-                    t: 'new-message' as const,
-                    sid: data.sid,
-                    message
-                }
-            })
-            onWebappEvent?.({
-                type: 'message-received',
-                sessionId: data.sid,
-                message: toDecryptedMessage(msg)
-            })
-        }
+        processAttached(data.sid, data.nativeSessionId)
     })
 
     // rewind 截断成功（CLI 两段回报第一段，含 CLI 反查的锚点批首行 seq）：

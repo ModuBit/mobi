@@ -33,6 +33,8 @@ import {
     mergeSessionMessages,
     markMessagesAcked,
     advanceMessagesAcked,
+    advanceMessagesLifecycle,
+    getMessagesByIds,
     getMaxSeq,
     softDeleteMessagesFrom
 } from './messages'
@@ -98,6 +100,22 @@ export class MessageStore {
     /** 按 nativeId 把 pushed 消息推进为 acked（first-write-wins，单调性），返回实际推进的行 id。 */
     advanceMessagesAcked(sessionId: string, nativeId: string, ackedAt: number): string[] {
         return advanceMessagesAcked(this.db, sessionId, nativeId, ackedAt)
+    }
+
+    /** 按 nativeId 单调推进 lifecycle 至 command_lifecycle 终态（processing/done/cancelled/discarded），
+     *  已处终态（含 withdrawn）不被覆盖、processing 不回退，返回实际推进的行 id。 */
+    advanceMessagesLifecycle(
+        sessionId: string,
+        nativeId: string,
+        state: 'processing' | 'done' | 'cancelled' | 'discarded',
+        at: number
+    ): string[] {
+        return advanceMessagesLifecycle(this.db, sessionId, nativeId, state, at)
+    }
+
+    /** 按 id 集合回读行（advance* 返回 id，广播需完整行），按 seq 升序。 */
+    getMessagesByIds(sessionId: string, ids: string[]): StoredMessage[] {
+        return getMessagesByIds(this.db, sessionId, ids)
     }
 
     getUnsubmittedLocalMessages(sessionId: string): StoredMessage[] {

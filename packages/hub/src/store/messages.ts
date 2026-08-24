@@ -417,6 +417,43 @@ export function advanceMessagesAcked(
     return rows.map(r => r.id)
 }
 
+/** 按 nativeId 单调推进 lifecycle 至目标态（processing/done/cancelled/discarded——CC command_lifecycle 终态）。
+ *  单调性（CASE 内联防注入）：processing(rank 3) 可从 queued/pushed/acked 推进；终态(rank 4)可从
+ *  queued/pushed/acked/processing 推进，但已处终态(含 withdrawn)不被覆盖、processing 不回退——
+ *  乱序帧安全。单语句 UPDATE RETURNING 原子推进，返回实际推进行 id（供 handler 回读行广播）。 */
+export function advanceMessagesLifecycle(
+    db: Database,
+    sessionId: string,
+    nativeId: string,
+    state: 'processing' | 'done' | 'cancelled' | 'discarded',
+    at: number
+): string[] {
+    const rows = db.prepare(
+        `UPDATE messages SET lifecycle = @state, lifecycle_at = @at
+         WHERE session_id = @sid AND native_id = @nativeId
+           AND lifecycle IS NOT NULL AND lifecycle != 'withdrawn'
+           AND (CASE lifecycle WHEN 'queued' THEN 0 WHEN 'pushed' THEN 1 WHEN 'acked' THEN 2
+                WHEN 'processing' THEN 3 ELSE 4 END)
+               < (CASE WHEN @state = 'processing' THEN 3 ELSE 4 END)
+         RETURNING id`
+    ).all({ state, at, sid: sessionId, nativeId }) as { id: string }[]
+    return rows.map(r => r.id)
+}
+
+/** 按 id 集合回读行（advance* 只返回 id，广播需完整行——P3 消费 lifecycle/lifecycleAt 载荷）。
+ *  按 seq 升序返回，与广播顺序一致。 */
+export function getMessagesByIds(
+    db: Database,
+    sessionId: string,
+    ids: string[]
+): StoredMessage[] {
+    if (ids.length === 0) return []
+    const rows = db.prepare(
+        `SELECT * FROM messages WHERE session_id = ? AND id IN (${ids.map(() => '?').join(',')}) ORDER BY seq ASC`
+    ).all(sessionId, ...ids) as DbMessageRow[]
+    return rows.map(toStoredMessage)
+}
+
 /** 仍排队（lifecycle='queued'）的 user 消息，用于悬浮条钉最新页。 */
 export function getUnsubmittedLocalMessages(db: Database, sessionId: string): StoredMessage[] {
     const rows = db.prepare(

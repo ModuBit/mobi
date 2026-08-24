@@ -324,14 +324,14 @@ describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期
                     addMessage: (_sid: string, content: unknown) => ({ ...makeMsg('m', 'loc', 1), content }),
                 },
                 sessions: {
-                    getSession: (_sid: string) => ({ ...session, runtimeState: runtimeStateRef.current }),
+                    getSession: () => ({ ...session, runtimeState: runtimeStateRef.current }),
                     setRuntimeState: (_sid: string, state: unknown) => {
                         runtimeStateRef.current = state as TeamRuntimeState | null
                         return true
                     },
                 },
             } as unknown as SessionHandlersDeps['store'],
-            resolveSessionAccess: (sid: string) => ({ ok: true as const, value: { ...session, runtimeState: runtimeStateRef.current } as never }),
+            resolveSessionAccess: () => ({ ok: true as const, value: { ...session, runtimeState: runtimeStateRef.current } as never }),
             emitAccessError: () => {},
             backgroundTaskTracker: new BackgroundTaskTracker(),
             onWebappEvent: (e: SyncEvent) => { events.push(e) },
@@ -579,5 +579,162 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
         // 且两者共一时间戳（nativeAckAt === lifecycle_at），不产生 1ms 分叉
         expect(calls).toEqual(['advance', 'nativeAck'])
         expect(advanceSpy.args!.at).toBe(nativeAckSpy.args!.at)
+    })
+})
+
+describe('messages-facts：CLI→Hub 统一消息事实事件', () => {
+    /** 构造 messages-facts 专用 deps：mock 全部 store.messages 事实写入方法，各自捕获调用参数 */
+    function makeFactsDeps(opts: {
+        pushedReturn?: string[]
+        lifecycleReturn?: string[]
+        byIdsReturn?: StoredMessage[]
+    }) {
+        const events: SyncEvent[] = []
+        const storeCalls: string[] = []
+        const pushedSpy = { args: null as { sid: string; lids: string[]; at: number } | null }
+        const lifecycleSpy = { args: null as { sid: string; nativeId: string; state: string; at: number } | null }
+        const deps: SessionHandlersDeps = {
+            store: {
+                messages: {
+                    markMessagesPushed: (sid: string, lids: string[], at: number) => {
+                        storeCalls.push('pushed')
+                        pushedSpy.args = { sid, lids, at }
+                        return opts.pushedReturn ?? []
+                    },
+                    advanceMessagesLifecycle: (sid: string, nativeId: string, state: 'processing' | 'done' | 'cancelled' | 'discarded', at: number) => {
+                        storeCalls.push('lifecycle')
+                        lifecycleSpy.args = { sid, nativeId, state, at }
+                        return opts.lifecycleReturn ?? []
+                    },
+                    getMessagesByIds: () => {
+                        storeCalls.push('byIds')
+                        return opts.byIdsReturn?.filter(() => true) ?? []
+                    },
+                },
+                sessions: {},
+            } as unknown as SessionHandlersDeps['store'],
+            resolveSessionAccess: (sid: string) => ({ ok: true as const, value: makeStoredSession(sid) }),
+            emitAccessError: () => {},
+            backgroundTaskTracker: new BackgroundTaskTracker(),
+            onWebappEvent: (e: SyncEvent) => { events.push(e) },
+        }
+        return { deps, events, storeCalls, pushedSpy, lifecycleSpy }
+    }
+
+    /** fake socket 变体：额外捕获 socket.to(room).emit(...) 的广播（update new-message 断言用） */
+    function makeBroadcastSocket() {
+        const handlers = new Map<string, (...args: unknown[]) => void>()
+        const broadcasts: { room: string; event: string; payload: unknown }[] = []
+        return {
+            on(event: string, handler: (...args: unknown[]) => void) {
+                handlers.set(event, handler)
+            },
+            to(room: string) {
+                return {
+                    emit(event: string, payload: unknown) {
+                        broadcasts.push({ room, event, payload })
+                    },
+                }
+            },
+            emit(event: string, ...args: unknown[]) {
+                handlers.get(event)?.(...args)
+            },
+            broadcasts,
+        }
+    }
+
+    test('混合批：pushed fact 走 markMessagesPushed + SSE messages-submitted（at 透传）', () => {
+        const fakeSocket = makeBroadcastSocket()
+        const { deps, events, pushedSpy } = makeFactsDeps({ pushedReturn: ['loc-1'] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', {
+            sid: 's1',
+            facts: [
+                { kind: 'pushed', localIds: ['loc-1'], at: 1234 },
+                { kind: 'unknown-kind' as never },
+            ],
+        })
+
+        // 未知 kind 静默跳过，pushed fact 正常处理
+        expect(pushedSpy.args).toEqual({ sid: 's1', lids: ['loc-1'], at: 1234 })
+        expect(events).toEqual([
+            { type: 'messages-submitted', sessionId: 's1', localIds: ['loc-1'], submittedAt: 1234 },
+        ])
+    })
+
+    test('lifecycle fact：advanceMessagesLifecycle 被调 + 对返回行广播 update new-message（载荷含推进后 lifecycle）', () => {
+        const fakeSocket = makeBroadcastSocket()
+        const advancedMsg = { ...makeMsg('m1', 'loc-1', 1), lifecycle: 'processing' as const, lifecycleAt: 3000 }
+        const { deps, events, lifecycleSpy } = makeFactsDeps({ lifecycleReturn: ['m1'], byIdsReturn: [advancedMsg] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', {
+            sid: 's1',
+            facts: [{ kind: 'lifecycle', nativeId: 'nu-1', state: 'processing', at: 3000 }],
+        })
+
+        expect(lifecycleSpy.args).toEqual({ sid: 's1', nativeId: 'nu-1', state: 'processing', at: 3000 })
+
+        // 广播：socket.to('session:s1') 逐行 update new-message，载荷含推进后 lifecycle
+        expect(fakeSocket.broadcasts).toHaveLength(1)
+        const b = fakeSocket.broadcasts[0]
+        expect(b.room).toBe('session:s1')
+        expect(b.event).toBe('update')
+        const payload = b.payload as { seq: number; body: { t: string; sid: string; message: { id: string; lifecycle: string; lifecycleAt: number } } }
+        expect(payload.body.t).toBe('new-message')
+        expect(payload.body.sid).toBe('s1')
+        expect(payload.body.message.id).toBe('m1')
+        expect(payload.body.message.lifecycle).toBe('processing')
+        expect(payload.body.message.lifecycleAt).toBe(3000)
+
+        // SSE 同步推 message-received（复用 bound 补写广播模式）
+        expect(events).toEqual([
+            { type: 'message-received', sessionId: 's1', message: expect.objectContaining({ id: 'm1', lifecycle: 'processing' }) },
+        ])
+    })
+
+    test('lifecycle fact 无命中（乱序/重复帧）→ 不广播', () => {
+        const fakeSocket = makeBroadcastSocket()
+        const { deps, events } = makeFactsDeps({ lifecycleReturn: [] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', {
+            sid: 's1',
+            facts: [{ kind: 'lifecycle', nativeId: 'nu-1', state: 'done', at: 3000 }],
+        })
+
+        expect(fakeSocket.broadcasts).toEqual([])
+        expect(events).toEqual([])
+    })
+
+    test('非法载荷（缺 sid / facts 非数组 / null）静默忽略', () => {
+        const fakeSocket = makeBroadcastSocket()
+        const { deps, events, pushedSpy, lifecycleSpy } = makeFactsDeps({})
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-facts', null)
+        fakeSocket.emit('messages-facts', { facts: [{ kind: 'pushed', localIds: ['loc-1'] }] })
+        fakeSocket.emit('messages-facts', { sid: 's1' })
+        fakeSocket.emit('messages-facts', { sid: 123, facts: [] })
+
+        expect(pushedSpy.args).toBeNull()
+        expect(lifecycleSpy.args).toBeNull()
+        expect(events).toEqual([])
+        expect(fakeSocket.broadcasts).toEqual([])
+    })
+
+    test('旧事件 messages-submitted 行为不变（回归锁定）', () => {
+        const fakeSocket = makeBroadcastSocket()
+        const { deps, events, pushedSpy } = makeFactsDeps({ pushedReturn: ['loc-1'] })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('messages-submitted', { sid: 's1', localIds: ['loc-1'] })
+
+        expect(pushedSpy.args!.sid).toBe('s1')
+        expect(pushedSpy.args!.lids).toEqual(['loc-1'])
+        expect(pushedSpy.args!.at).toBeTypeOf('number')
+        expect(events).toHaveLength(1)
+        expect((events[0] as Extract<SyncEvent, { type: 'messages-submitted' }>).localIds).toEqual(['loc-1'])
     })
 })
