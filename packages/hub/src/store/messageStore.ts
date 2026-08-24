@@ -32,6 +32,7 @@ import {
     markMessagesPushed,
     mergeSessionMessages,
     markMessagesAcked,
+    advanceMessagesAcked,
     getMaxSeq,
     softDeleteMessagesFrom
 } from './messages'
@@ -92,6 +93,11 @@ export class MessageStore {
     /** 把 localId 对应的 queued 消息推进为 pushed（lifecycle/lifecycle_at 落库 + position_at 跳变），返回实际更新的 localId 列表 */
     markMessagesPushed(sessionId: string, localIds: string[], pushedAt: number): string[] {
         return markMessagesPushed(this.db, sessionId, localIds, pushedAt)
+    }
+
+    /** 按 nativeId 把 pushed 消息推进为 acked（first-write-wins，单调性），返回实际推进的行 id。 */
+    advanceMessagesAcked(sessionId: string, nativeId: string, ackedAt: number): string[] {
+        return advanceMessagesAcked(this.db, sessionId, nativeId, ackedAt)
     }
 
     getUnsubmittedLocalMessages(sessionId: string): StoredMessage[] {

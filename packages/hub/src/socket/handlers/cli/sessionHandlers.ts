@@ -607,6 +607,8 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
         const acked = store.messages.markMessagesAcked(data.sid, data.nativeId, Date.now())
+        // P1 双写：推进 lifecycle='acked'（metadata.nativeAckAt 照常写，rewind 判据不动；P2 事件收敛时评估停写）
+        store.messages.advanceMessagesAcked(data.sid, data.nativeId, Date.now())
         if (acked.length === 0) return
         // 合并批 1:N（同 nativeId 多行）逐行广播——只推一行会让批内其余行的 nativeAckAt
         // 不实时更新，rewind 入口「刷新才见」。update 事件的 new-message 体受 shared

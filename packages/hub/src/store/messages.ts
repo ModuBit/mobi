@@ -400,6 +400,26 @@ export function markMessagesPushed(
     return candidates
 }
 
+/** 按 nativeId 把 pushed 消息推进为 acked（CC 回显确认）。first-write-wins：仅 pushed 可推进，
+ *  queued/终态不动（单调性）；时间戳由调用方传接收时刻。返回实际推进的行 id。 */
+export function advanceMessagesAcked(
+    db: Database,
+    sessionId: string,
+    nativeId: string,
+    ackedAt: number
+): string[] {
+    const rows = db.prepare(
+        `SELECT id FROM messages
+         WHERE session_id = ? AND native_id = ? AND lifecycle = 'pushed'`
+    ).all(sessionId, nativeId) as { id: string }[]
+    if (rows.length === 0) return []
+    const stmt = db.prepare(
+        `UPDATE messages SET lifecycle = 'acked', lifecycle_at = ?
+         WHERE session_id = ? AND native_id = ? AND lifecycle = 'pushed'`
+    )
+    return rows.filter(r => stmt.run(ackedAt, sessionId, nativeId).changes > 0).map(r => r.id)
+}
+
 /** 仍排队（lifecycle='queued'）的 user 消息，用于悬浮条钉最新页。 */
 export function getUnsubmittedLocalMessages(db: Database, sessionId: string): StoredMessage[] {
     const rows = db.prepare(

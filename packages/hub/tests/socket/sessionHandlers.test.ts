@@ -517,3 +517,57 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
         expect(bindSpy.args).toBeNull()
     })
 })
+
+describe('messages-acked：isReplay 回显确认（双写）', () => {
+    /** 构造 messages-acked 专用 deps：mock nativeAckAt 写入（markMessagesAcked）与 lifecycle
+     *  推进（advanceMessagesAcked）两个 store 方法，各自捕获调用参数。 */
+    function makeAckedDeps(): {
+        deps: SessionHandlersDeps
+        nativeAckSpy: { args: { sid: string; nativeId: string; at: number } | null }
+        advanceSpy: { args: { sid: string; nativeId: string; at: number } | null }
+    } {
+        const nativeAckSpy = { args: null as { sid: string; nativeId: string; at: number } | null }
+        const advanceSpy = { args: null as { sid: string; nativeId: string; at: number } | null }
+        const deps: SessionHandlersDeps = {
+            store: {
+                messages: {
+                    // 原有 nativeAckAt 写入路径（first-write-wins + 返回补写行供广播）
+                    markMessagesAcked: (sid: string, nativeId: string, at: number) => {
+                        nativeAckSpy.args = { sid, nativeId, at }
+                        return [makeMsg('m1', 'loc-1', 1)]
+                    },
+                    advanceMessagesAcked: (sid: string, nativeId: string, at: number) => {
+                        advanceSpy.args = { sid, nativeId, at }
+                        return ['m1']
+                    },
+                },
+                sessions: {},
+            } as unknown as SessionHandlersDeps['store'],
+            resolveSessionAccess: (sid: string) => ({ ok: true as const, value: makeStoredSession(sid) }),
+            emitAccessError: () => {},
+            backgroundTaskTracker: new BackgroundTaskTracker(),
+            onWebappEvent: () => {},
+        }
+        return { deps, nativeAckSpy, advanceSpy }
+    }
+
+    test('messages-acked：推进 lifecycle=acked（双写——nativeAckAt 路径照旧）', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, nativeAckSpy, advanceSpy } = makeAckedDeps()
+
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        fakeSocket.emit('messages-acked', { sid: 's1', nativeId: 'nu-1' })
+
+        // 原有 nativeAckAt 写入路径照常触发
+        expect(nativeAckSpy.args).not.toBeNull()
+        expect(nativeAckSpy.args!.sid).toBe('s1')
+        expect(nativeAckSpy.args!.nativeId).toBe('nu-1')
+        expect(nativeAckSpy.args!.at).toBeTypeOf('number')
+
+        // lifecycle 推进：按 nativeId 调 advanceMessagesAcked，时间戳为接收时刻
+        expect(advanceSpy.args).not.toBeNull()
+        expect(advanceSpy.args!.sid).toBe('s1')
+        expect(advanceSpy.args!.nativeId).toBe('nu-1')
+        expect(advanceSpy.args!.at).toBeTypeOf('number')
+    })
+})

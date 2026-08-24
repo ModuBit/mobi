@@ -112,7 +112,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
     // 取消排队消息。CLI 是「是否仍可安全取消」的权威（in-flight 防幽灵消息）：
     // CLI 已 collectBatch 的消息（status='submitted'）绝不可删 DB，否则 agent 会回复一条
-    // 用户以为已取消的消息。故 DB 仍 pending 时先问 CLI，再决定是否物理删除。
+    // 用户以为已取消的消息。故 DB 仍 queued 时先问 CLI，再决定是否物理删除。
     app.delete('/sessions/:id/messages/:messageId', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
@@ -141,7 +141,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
         if (state.submitted) return c.json({ status: 'submitted' })
 
-        // DB 仍 pending：问 CLI 是否已 in-flight（已 collect，不可取消）
+        // DB 仍 queued：问 CLI 是否已 in-flight（已 collect，不可取消）
         let cliStatus: 'cancelled' | 'submitted' | 'not-in-queue'
         try {
             const cliRes = await engine.cancelCliQueuedMessage(sessionId, localId)
