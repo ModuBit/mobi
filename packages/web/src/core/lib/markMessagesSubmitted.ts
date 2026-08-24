@@ -18,10 +18,12 @@ import type { DecryptedMessage } from '@/core/data/api/types'
 import { sortMessages } from './messages'
 
 /**
- * 把 localId 命中的排队消息翻为 consumed（queueState='consumed' + submittedAt + status='sent'）。
- * 同时 positionAt 跳到消费时刻（submittedAt）——对齐 hub 侧 position_at = submittedAt 的跳变语义，
+ * 把 localId 命中的排队消息翻为 pushed（lifecycle='pushed' + lifecycleAt + status='sent'）。
+ * SSE `messages-submitted` 事件的 `submittedAt` 值即 pushed 转换时刻，落 `lifecycleAt`；
+ * 同时 positionAt 跳到该时刻——对齐 hub 侧 position_at = lifecycle_at 的跳变语义，
  * 保证运行中消费的消息排在 turn 之后。消费跳变是唯一打破「到达顺序 = 有序」的场景，随后按
- * positionAt 重排恢复有序。first-write-wins：已是 consumed 的不动。
+ * positionAt 重排恢复有序。first-write-wins：单调守卫 `lifecycle === 'queued'`，
+ * 已离开排队态（pushed 及之后）的不动。
  */
 export function markMessagesSubmitted(
     messages: DecryptedMessage[],
@@ -31,9 +33,9 @@ export function markMessagesSubmitted(
     const set = new Set(localIds)
     let changed = false
     const next = messages.map(m => {
-        if (m.localId && set.has(m.localId) && m.queueState !== 'consumed') {
+        if (m.localId && set.has(m.localId) && m.lifecycle === 'queued') {
             changed = true
-            return { ...m, queueState: 'consumed' as const, submittedAt, status: 'sent' as const, positionAt: submittedAt }
+            return { ...m, lifecycle: 'pushed' as const, lifecycleAt: submittedAt, status: 'sent' as const, positionAt: submittedAt }
         }
         return m
     })

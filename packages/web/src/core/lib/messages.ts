@@ -45,14 +45,14 @@ function isOptimisticMessage(msg: DecryptedMessage): boolean {
 /**
  * 是否为「仍在排队、未被 agent 消费」的消息（悬浮条展示、从线程剔除的判断依据）。
  *
- * 只读显式 `queueState==='pending'`——这是 Hub 写入时用 denylist 谓词裁决的单一结果，
+ * 只读显式 `lifecycle==='queued'`——这是 Hub 写入时用 denylist 谓词裁决的单一结果，
  * Web 不再反推来源/时间戳。乐观消息（尚未收到服务端 echo）由 useSendMessage 直接置
- * queueState='pending'。
+ * lifecycle='queued'。
  * status='sending'（非 running 发送，在途开新 turn）/ status='failed' 排除。
  */
 export function isQueuedInMobi(msg: DecryptedMessage): boolean {
     if (msg.status === 'failed' || msg.status === 'sending') return false
-    return msg.queueState === 'pending'
+    return msg.lifecycle === 'queued'
 }
 
 /**
@@ -111,7 +111,7 @@ export function mergeMessages(existing: DecryptedMessage[], incoming: DecryptedM
     }
     for (const msg of incoming) {
         let row = msg
-        // (1) 服务端 echo 带有 localId：从乐观消息迁移 status/submittedAt
+        // (1) 服务端 echo 带有 localId：从乐观消息迁移 status/lifecycleAt
         // 避免排队中的乐观气泡被服务端确认后丢失排队态
         if (row.localId) {
             const optimistic = byId.get(row.localId)
@@ -119,15 +119,15 @@ export function mergeMessages(existing: DecryptedMessage[], incoming: DecryptedM
                 row = {
                     ...row,
                     status: optimistic.status ?? row.status,
-                    submittedAt: optimistic.submittedAt ?? row.submittedAt,
+                    lifecycleAt: optimistic.lifecycleAt ?? row.lifecycleAt,
                 }
             }
         }
-        // (2) 不让 incoming 用 null/undefined submittedAt 覆盖已有的非 null submittedAt
-        // 防止陈旧的服务端 echo 回退已确认的 invoke 状态
+        // (2) 不让 incoming 用 null/undefined lifecycleAt 覆盖已有的非 null lifecycleAt
+        // 防止陈旧的服务端 echo 回退已确认的 pushed 状态
         const prev = byId.get(row.id)
-        if (prev && prev.submittedAt != null && row.submittedAt == null) {
-            row = { ...row, submittedAt: prev.submittedAt }
+        if (prev && prev.lifecycleAt != null && row.lifecycleAt == null) {
+            row = { ...row, lifecycleAt: prev.lifecycleAt }
         }
         byId.set(row.id, row)
     }

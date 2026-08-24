@@ -71,7 +71,7 @@ vi.mock('@/core/data/hooks/queries/useMessages', () => ({
     }),
 }))
 
-/** 构造排队中的 user 消息（queueState='pending'） */
+/** 构造排队中的 user 消息（lifecycle='queued'） */
 function queuedMsg(id: string, text: string): DecryptedMessage {
     return {
         id,
@@ -80,7 +80,7 @@ function queuedMsg(id: string, text: string): DecryptedMessage {
         role: 'user',
         content: { content: { text } },
         originalText: text,
-        queueState: 'pending',
+        lifecycle: 'queued',
         status: 'completed',
         createdAt: 1000,
     } as unknown as DecryptedMessage

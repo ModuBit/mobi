@@ -31,8 +31,8 @@ function msg(id: string, seq: number | null): DecryptedMessage {
         id,
         seq,
         localId: null,
-        submittedAt: null,
-        queueState: null,
+        lifecycleAt: null,
+        lifecycle: null,
         positionAt: seq ?? 0,
         createdAt: seq ?? 0,
         content: { role: 'user', content: { type: 'text', text: id } },
@@ -253,21 +253,21 @@ describe('queued/optimistic actions', () => {
         expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual([])
     })
 
-    it('markMessagesSubmitted 把命中 localId 翻为 consumed', () => {
-        const m = { ...msg('x', null), localId: 'loc-1', queueState: 'pending' as const } as DecryptedMessage
+    it('markMessagesSubmitted 把命中 localId 翻为 pushed', () => {
+        const m = { ...msg('x', null), localId: 'loc-1', lifecycle: 'queued' as const } as DecryptedMessage
         appendOptimisticMessage('s1', m)
         markMessagesSubmitted('s1', ['loc-1'], 123)
         const r = getMessageWindowState('s1').messages[0]
-        expect(r.queueState).toBe('consumed')
-        expect(r.submittedAt).toBe(123)
+        expect(r.lifecycle).toBe('pushed')
+        expect(r.lifecycleAt).toBe(123)
     })
 
     it('markMessagesSubmitted 消费后按 positionAt 重排（排队消息跳到 turn 之后）', () => {
         const assistant = (id: string, seq: number, positionAt: number) =>
-            ({ ...msg(id, seq), positionAt, queueState: null, localId: null } as DecryptedMessage)
+            ({ ...msg(id, seq), positionAt, lifecycle: null, localId: null } as DecryptedMessage)
         // 运行中发消息：到达顺序 assistant A(100) → 排队 q(150) → assistant B(200)
         ingestIncomingMessages('s1', [assistant('a', 1, 100)])
-        appendOptimisticMessage('s1', { ...msg('q', null), positionAt: 150, queueState: 'pending' as const, localId: 'loc-q' } as DecryptedMessage)
+        appendOptimisticMessage('s1', { ...msg('q', null), positionAt: 150, lifecycle: 'queued' as const, localId: 'loc-q' } as DecryptedMessage)
         ingestIncomingMessages('s1', [assistant('b', 2, 200)])
         expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'q', 'b'])
 

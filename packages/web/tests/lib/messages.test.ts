@@ -30,8 +30,8 @@ function createMessage(overrides: Partial<DecryptedMessage> = {}): DecryptedMess
         seq: 1,
         localId: null,
         createdAt: 1000,
-        // 默认一条排队消息（queueState=pending）；非排队用例显式覆盖为 null
-        queueState: 'pending',
+        // 默认一条排队消息（lifecycle='queued'）；非排队用例显式覆盖为 null
+        lifecycle: 'queued',
         content: { role: 'user', content: 'hello', meta: { sentFrom: 'webapp' } },
         ...overrides,
     }
@@ -75,19 +75,19 @@ describe('isUserMessage', () => {
 })
 
 describe('isQueuedInMobi', () => {
-    // 新模型：isQueuedInMobi 只读 queueState==='pending'（Hub 写入裁决的单一结果）。
-    // createMessage 默认 queueState='pending' 表示一条排队消息。
-    it('queueState=pending = 排队中', () => {
+    // 新模型：isQueuedInMobi 只读 lifecycle==='queued'（Hub 写入裁决的单一结果）。
+    // createMessage 默认 lifecycle='queued' 表示一条排队消息。
+    it('lifecycle=queued = 排队中', () => {
         expect(isQueuedInMobi(createMessage())).toBe(true)
     })
 
-    it('queueState=consumed = 不排队', () => {
-        expect(isQueuedInMobi(createMessage({ queueState: 'consumed', submittedAt: 1000 }))).toBe(false)
+    it('lifecycle=pushed = 不排队', () => {
+        expect(isQueuedInMobi(createMessage({ lifecycle: 'pushed', lifecycleAt: 1000 }))).toBe(false)
     })
 
-    it('queueState 缺失（非排队轨道消息）= 不排队', () => {
-        expect(isQueuedInMobi(createMessage({ queueState: null }))).toBe(false)
-        expect(isQueuedInMobi(createMessage({ queueState: undefined }))).toBe(false)
+    it('lifecycle 缺失（非排队轨道消息）= 不排队', () => {
+        expect(isQueuedInMobi(createMessage({ lifecycle: null }))).toBe(false)
+        expect(isQueuedInMobi(createMessage({ lifecycle: undefined }))).toBe(false)
     })
 
     it('failed 状态 = 不排队', () => {
@@ -95,23 +95,23 @@ describe('isQueuedInMobi', () => {
     })
 
     it('sending 状态（非 running 乐观消息）= 不排队，作为普通气泡', () => {
-        expect(isQueuedInMobi(createMessage({ status: 'sending', queueState: null }))).toBe(false)
+        expect(isQueuedInMobi(createMessage({ status: 'sending', lifecycle: null }))).toBe(false)
     })
 
-    it('agent 消息（queueState 非 pending）= 不排队', () => {
+    it('agent 消息（lifecycle 非 queued）= 不排队', () => {
         const msg = createMessage({
-            queueState: null,
+            lifecycle: null,
             content: { role: 'agent', content: { type: 'text', text: 'hi' } },
         })
         expect(isQueuedInMobi(msg)).toBe(false)
     })
 
-    it('CLI 回显：Hub 裁决为非排队轨道（queueState=null）→ 不排队', () => {
+    it('CLI 回显：Hub 裁决为非排队轨道（lifecycle=null）→ 不排队', () => {
         // local-command-stdout / compact summary 等 CLI 回显，Hub addMessage 用 denylist 判定
-        // 不进排队轨道，Web 只读 queueState，与来源无关
+        // 不进排队轨道，Web 只读 lifecycle，与来源无关
         const msg = createMessage({
-            queueState: null,
-            submittedAt: null,
+            lifecycle: null,
+            lifecycleAt: null,
             content: {
                 role: 'user',
                 content: { type: 'text', text: '<local-command-stdout>Set model to sonnet</local-command-stdout>' },
@@ -267,8 +267,8 @@ describe('mergeMessages', () => {
     })
 })
 
-describe('mergeMessages submittedAt 保留', () => {
-    it('服务端 echo 缺 submittedAt 时从乐观消息迁移 status', () => {
+describe('mergeMessages lifecycleAt 保留', () => {
+    it('服务端 echo 缺 lifecycleAt 时从乐观消息迁移 status', () => {
         const optimistic = createMessage({
             id: 'local-1',
             localId: 'local-1',
@@ -281,7 +281,7 @@ describe('mergeMessages submittedAt 保留', () => {
             localId: 'local-1',
             seq: 1,
             createdAt: 1000,
-            // submittedAt 未设 — 模拟服务端 echo 不带此字段
+            // lifecycleAt 未设 — 模拟服务端 echo 不带此字段
         })
 
         const result = mergeMessages([optimistic], [serverEcho])
@@ -290,37 +290,37 @@ describe('mergeMessages submittedAt 保留', () => {
         expect(result[0].status).toBe('queued')
     })
 
-    it('incoming 覆盖时不丢已有的 submittedAt（防陈旧 echo 回退）', () => {
+    it('incoming 覆盖时不丢已有的 lifecycleAt（防陈旧 echo 回退）', () => {
         const existing = createMessage({
             id: 'server-1',
             localId: null,
-            submittedAt: 100,
+            lifecycleAt: 100,
         })
         const incoming = createMessage({
             id: 'server-1',
             localId: null,
-            // incoming 缺 submittedAt — 模拟陈旧的服务端数据
+            // incoming 缺 lifecycleAt — 模拟陈旧的服务端数据
         })
 
         const result = mergeMessages([existing], [incoming])
         expect(result).toHaveLength(1)
-        expect(result[0].submittedAt).toBe(100)
+        expect(result[0].lifecycleAt).toBe(100)
     })
 
-    it('incoming 带 submittedAt 时正常覆盖（不保留旧值）', () => {
+    it('incoming 带 lifecycleAt 时正常覆盖（不保留旧值）', () => {
         const existing = createMessage({
             id: 'server-1',
             localId: null,
-            submittedAt: 100,
+            lifecycleAt: 100,
         })
         const incoming = createMessage({
             id: 'server-1',
             localId: null,
-            submittedAt: 200,
+            lifecycleAt: 200,
         })
 
         const result = mergeMessages([existing], [incoming])
-        expect(result[0].submittedAt).toBe(200)
+        expect(result[0].lifecycleAt).toBe(200)
     })
 })
 

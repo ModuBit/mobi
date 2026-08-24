@@ -176,7 +176,7 @@ export function createMobiApi() {
                     params: { parentToolUseId },
                     signal: opts?.signal,
                 }),
-            // 取消排队消息（仍处于 submittedAt=null 的 user 消息）；已 submit 则返回 'submitted'
+            // 取消排队消息（仍处于 lifecycle='queued' 的 user 消息）；已 push 则返回 'submitted'
             cancel: (sessionId: string, messageId: string) =>
                 client.delete<{ status: 'cancelled' | 'submitted' }>(`/api/sessions/${sessionId}/messages/${messageId}`),
             // steer：把仍排队的消息提前提交给 Claude Code SDK input stream

@@ -18,10 +18,10 @@ import { describe, it, expect } from 'vitest'
 import { markMessagesSubmitted } from '@/core/lib/markMessagesSubmitted'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
-/** 创建 mock DecryptedMessage。submittedAt 非空 ⇒ 已 consumed（queueState='consumed'） */
+/** 创建 mock DecryptedMessage。lifecycleAt 非空 ⇒ 已 pushed（lifecycle='pushed'） */
 function m(
     localId: string | null,
-    submittedAt: number | null | undefined,
+    lifecycleAt: number | null | undefined,
     overrides: Partial<DecryptedMessage> = {},
 ): DecryptedMessage {
     return {
@@ -30,36 +30,36 @@ function m(
         localId,
         createdAt: 0,
         content: { role: 'user', content: 'hello' },
-        submittedAt,
-        queueState: submittedAt != null ? 'consumed' : 'pending',
-        status: submittedAt != null ? 'sent' : 'queued',
+        lifecycleAt,
+        lifecycle: lifecycleAt != null ? 'pushed' : 'queued',
+        status: lifecycleAt != null ? 'sent' : 'queued',
         ...overrides,
     }
 }
 
 describe('markMessagesSubmitted', () => {
-    it('翻转命中 localId 的 submittedAt 并更新 status', () => {
+    it('翻转命中 localId 的 lifecycleAt 并更新 status', () => {
         const out = markMessagesSubmitted(
             [m('a', null), m('b', null)],
             ['a'],
             999,
         )
-        expect(out[0].submittedAt).toBe(999)
+        expect(out[0].lifecycleAt).toBe(999)
         expect(out[0].status).toBe('sent')
-        expect(out[1].submittedAt).toBeNull()
+        expect(out[1].lifecycleAt).toBeNull()
         expect(out[1].status).toBe('queued')
     })
 
-    it('已 invoke 的不动（first-write-wins）', () => {
+    it('已 pushed 的不动（first-write-wins）', () => {
         const out = markMessagesSubmitted([m('a', 100)], ['a'], 999)
-        expect(out[0].submittedAt).toBe(100)
-        expect(out[0].queueState).toBe('consumed')
+        expect(out[0].lifecycleAt).toBe(100)
+        expect(out[0].lifecycle).toBe('pushed')
         expect(out[0].status).toBe('sent')
     })
 
     it('localId 为 null 的消息不受影响', () => {
         const out = markMessagesSubmitted([m(null, null)], ['x'], 999)
-        expect(out[0].submittedAt).toBeNull()
+        expect(out[0].lifecycleAt).toBeNull()
     })
 
     it('未命中的 localId 不影响其他消息', () => {
@@ -68,8 +68,8 @@ describe('markMessagesSubmitted', () => {
             ['c'],
             999,
         )
-        expect(out[0].submittedAt).toBeNull()
-        expect(out[1].submittedAt).toBeNull()
+        expect(out[0].lifecycleAt).toBeNull()
+        expect(out[1].lifecycleAt).toBeNull()
     })
 
     it('空数组安全返回', () => {
@@ -80,12 +80,12 @@ describe('markMessagesSubmitted', () => {
     it('不修改原数组（返回新数组）', () => {
         const original = [m('a', null)]
         const out = markMessagesSubmitted(original, ['a'], 999)
-        expect(original[0].submittedAt).toBeNull()
-        expect(out[0].submittedAt).toBe(999)
+        expect(original[0].lifecycleAt).toBeNull()
+        expect(out[0].lifecycleAt).toBe(999)
         expect(out).not.toBe(original)
     })
 
-    it('消费时 positionAt 跳到 submittedAt（对齐 hub 跳变语义）', () => {
+    it('消费时 positionAt 跳到 lifecycleAt（对齐 hub 跳变语义）', () => {
         const out = markMessagesSubmitted([m('a', null)], ['a'], 999)
         expect(out[0].positionAt).toBe(999)
     })
@@ -97,8 +97,8 @@ describe('markMessagesSubmitted', () => {
             localId: null,
             createdAt: positionAt,
             content: { role: 'agent', content: { type: 'text', text: id } },
-            submittedAt: null,
-            queueState: null,
+            lifecycleAt: null,
+            lifecycle: null,
             status: 'sent',
             positionAt,
         })
@@ -109,8 +109,8 @@ describe('markMessagesSubmitted', () => {
             localId: 'loc-q',
             createdAt: 150,
             content: { role: 'user', content: 'hello' },
-            submittedAt: null,
-            queueState: 'pending',
+            lifecycleAt: null,
+            lifecycle: 'queued',
             status: 'queued',
             positionAt: 150,
         }

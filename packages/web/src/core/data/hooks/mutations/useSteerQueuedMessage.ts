@@ -21,7 +21,7 @@ import { fetchLatestMessages } from '@/core/data/stores/messageWindowStore'
 /**
  * steer 排队消息 Mutation Hook
  *
- * 把仍排队（submittedAt=null）的消息提前提交给 Claude Code SDK input stream。
+ * 把仍排队（lifecycle='queued'）的消息提前提交给 Claude Code SDK input stream。
  * 提交成功后由 SSE messages-submitted 事件把消息移出 QueuedMessagesBar 并进主 timeline。
  * 无论成功失败都失效重拉，确保与服务端一致（submitted 状态、是否已不在队列）。
  */

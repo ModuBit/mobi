@@ -312,7 +312,7 @@ export function removeOptimisticMessage(sessionId: string, localId: string): voi
     })
 }
 
-/** SSE messages-submitted：queued 被 agent 消费，翻 submittedAt + queueState */
+/** SSE messages-submitted：queued 被 agent 消费，翻 lifecycleAt + lifecycle */
 export function markMessagesSubmitted(sessionId: string, localIds: string[], submittedAt: number): void {
     if (localIds.length === 0) return
     _internal.updateState(sessionId, prev => {

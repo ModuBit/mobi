@@ -48,10 +48,10 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
                 id: vars.localId,
                 seq: null,
                 localId: vars.localId,
-                submittedAt: null,
-                // running 中发送 → 进排队轨道（queueState=pending，悬浮展示）；
+                lifecycleAt: null,
+                // running 中发送 → 进排队轨道（lifecycle='queued'，悬浮展示）；
                 // 否则 sending（在途开新 turn，不进悬浮条）
-                queueState: isRunning ? 'pending' : null,
+                lifecycle: isRunning ? 'queued' as const : null,
                 positionAt: Date.now(),
                 content: {
                     role: 'user',

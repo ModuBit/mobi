@@ -96,7 +96,9 @@ describe('useSendMessage', () => {
         expect(msgs).toHaveLength(1)
         const optimistic = msgs[0]
         expect(optimistic.status).toBe('sending')
-        expect(optimistic.submittedAt).toBeNull()
+        expect(optimistic.lifecycleAt).toBeNull()
+        // 非 running 发送 → 不进排队轨道
+        expect(optimistic.lifecycle).toBeNull()
         // 乐观消息 id === localId
         expect(optimistic.id).toBe(optimistic.localId)
         // content 信封正确
@@ -125,6 +127,8 @@ describe('useSendMessage', () => {
 
         const msgs = readStoreMessages()
         expect(msgs[0].status).toBe('queued')
+        // running 中发送 → 进排队轨道（lifecycle='queued'）
+        expect(msgs[0].lifecycle).toBe('queued')
     })
 
     it('mutate(text) 生成的 localId 被 onMutate 与 mutationFn 共享', async () => {
