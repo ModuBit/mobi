@@ -44,14 +44,16 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
         },
         onMutate: async (vars: { text: string; localId: string }) => {
             // 乐观气泡：content 信封与 hub messageService.sendMessage 保持一致
-            // positionAt / createdAt / lifecycleAt 共用同一发送时刻，对齐 hub
-            // 「queued 时 lifecycle_at = created_at」契约不变量
+            // positionAt / createdAt 共用同一发送时刻；lifecycleAt 仅排队轨道携带
+            //（= createdAt，对齐 hub「queued 时 lifecycle_at = created_at」契约），
+            // 非排队轨道恒 null——否则服务端 echo 被 mergeMessages 第 (1) 步无条件
+            // 继承乐观 lifecycleAt，永久携带 lifecycle=null + 伪时间戳的非法组合
             const now = Date.now()
             const optimistic: DecryptedMessage = {
                 id: vars.localId,
                 seq: null,
                 localId: vars.localId,
-                lifecycleAt: now,
+                lifecycleAt: isRunning ? now : null,
                 // running 中发送 → 进排队轨道（lifecycle='queued'，悬浮展示）；
                 // 否则 sending（在途开新 turn，不进悬浮条）
                 lifecycle: isRunning ? 'queued' as const : null,

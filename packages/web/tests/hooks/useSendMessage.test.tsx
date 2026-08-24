@@ -96,9 +96,9 @@ describe('useSendMessage', () => {
         expect(msgs).toHaveLength(1)
         const optimistic = msgs[0]
         expect(optimistic.status).toBe('sending')
-        // lifecycleAt = 发送时刻数值（与 positionAt 同源），对齐 hub「queued 时 lifecycle_at=created_at」不变量
-        expect(typeof optimistic.lifecycleAt).toBe('number')
-        expect(optimistic.lifecycleAt).toBe(optimistic.positionAt)
+        // 非排队轨道（lifecycle=null）时 lifecycleAt 恒 null——shared 契约不变量，
+        // 携带伪时间戳会让后续按 lifecycleAt 判时间序的消费点读到与 positionAt 不一致的值
+        expect(optimistic.lifecycleAt).toBeNull()
         // 非 running 发送 → 不进排队轨道
         expect(optimistic.lifecycle).toBeNull()
         // 乐观消息 id === localId
@@ -129,8 +129,9 @@ describe('useSendMessage', () => {
 
         const msgs = readStoreMessages()
         expect(msgs[0].status).toBe('queued')
-        // running 中发送 → 进排队轨道（lifecycle='queued'）
+        // running 中发送 → 进排队轨道（lifecycle='queued'），lifecycleAt = created_at（hub 契约不变量）
         expect(msgs[0].lifecycle).toBe('queued')
+        expect(msgs[0].lifecycleAt).toBe(msgs[0].createdAt)
     })
 
     it('mutate(text) 生成的 localId 被 onMutate 与 mutationFn 共享', async () => {
