@@ -199,7 +199,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         disallowedTools: mode.disallowedTools
     }));
 
-    // 消费批次时通知 Hub（messages-submitted → submitted_at）
+    // 消费批次时通知 Hub（messages-facts pushed → lifecycle='pushed'）
     messageQueue.setOnBatchConsumed((localIds) => {
         apiSession.emitMessagesSubmitted(localIds);
     });

@@ -141,7 +141,7 @@ describe('emitMessagesBound 绑定上报', () => {
         expect(mockSocket.emit).not.toHaveBeenCalled()
     })
 
-    it('非空数组 emit messages-bound 事件，载荷为 metadata 形态（批内同 nativeId）', () => {
+    it('非空数组 emit messages-facts，facts 为 bound 形态（批内同 nativeId）', () => {
         const client = makeClient()
         client.emitMessagesBound([
             { localId: 'local-1', nativeId: 'native-1' },
@@ -149,40 +149,80 @@ describe('emitMessagesBound 绑定上报', () => {
         ])
 
         expect(mockSocket.emit).toHaveBeenCalledTimes(1)
-        expect(mockSocket.emit).toHaveBeenCalledWith('messages-bound', {
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-facts', {
             sid: 'session-1',
-            bindings: [
-                { localId: 'local-1', metadata: { nativeId: 'native-1' } },
-                { localId: 'local-2', metadata: { nativeId: 'native-1' } },
+            facts: [
+                { kind: 'bound', localId: 'local-1', nativeId: 'native-1' },
+                { kind: 'bound', localId: 'local-2', nativeId: 'native-1' },
             ],
         })
     })
 
-    it('带 nativeSessionId 参数 → metadata 含 nativeSessionId（非首条消息 push 时已知直带，省 attach 往返）', () => {
+    it('带 nativeSessionId 参数 → bound fact 含 nativeSessionId（非首条消息 push 时已知直带，省 attach 往返）', () => {
         const client = makeClient()
         client.emitMessagesBound(
             [{ localId: 'local-1', nativeId: 'native-1' }],
             'cc-sess-9'
         )
 
-        expect(mockSocket.emit).toHaveBeenCalledWith('messages-bound', {
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-facts', {
             sid: 'session-1',
-            bindings: [
-                { localId: 'local-1', metadata: { nativeId: 'native-1', nativeSessionId: 'cc-sess-9' } },
+            facts: [
+                { kind: 'bound', localId: 'local-1', nativeId: 'native-1', nativeSessionId: 'cc-sess-9' },
             ],
         })
     })
 })
 
+describe('emitMessagesSubmitted / emitNativeAttached 事实上报', () => {
+    it('emitMessagesSubmitted：空数组不 emit，非空 emit messages-facts pushed fact', () => {
+        const client = makeClient()
+        client.emitMessagesSubmitted([])
+        expect(mockSocket.emit).not.toHaveBeenCalled()
+
+        client.emitMessagesSubmitted(['local-1', 'local-2'])
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-facts', {
+            sid: 'session-1',
+            facts: [
+                { kind: 'pushed', localIds: ['local-1', 'local-2'], at: expect.any(Number) },
+            ],
+        })
+    })
+
+    it('emitNativeAttached：emit messages-facts attached fact', () => {
+        const client = makeClient()
+        client.emitNativeAttached('cc-sess-7')
+
+        expect(mockSocket.emit).toHaveBeenCalledTimes(1)
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-facts', {
+            sid: 'session-1',
+            facts: [{ kind: 'attached', nativeSessionId: 'cc-sess-7' }],
+        })
+    })
+})
+
 describe('emitMessagesAcked 接收确认上报', () => {
-    it('emit messages-acked 事件，载荷为 { sid, nativeId }', () => {
+    it('emit messages-facts，facts 为 acked 形态', () => {
         const client = makeClient()
         client.emitMessagesAcked('native-1')
 
         expect(mockSocket.emit).toHaveBeenCalledTimes(1)
-        expect(mockSocket.emit).toHaveBeenCalledWith('messages-acked', {
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-facts', {
             sid: 'session-1',
-            nativeId: 'native-1',
+            facts: [{ kind: 'acked', nativeId: 'native-1', at: expect.any(Number) }],
+        })
+    })
+})
+
+describe('emitLifecycleFact 终态信号上报', () => {
+    it.each(['processing', 'done', 'cancelled', 'discarded'] as const)('state=%s → emit messages-facts lifecycle fact', (state) => {
+        const client = makeClient()
+        client.emitLifecycleFact('native-1', state)
+
+        expect(mockSocket.emit).toHaveBeenCalledTimes(1)
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-facts', {
+            sid: 'session-1',
+            facts: [{ kind: 'lifecycle', nativeId: 'native-1', state, at: expect.any(Number) }],
         })
     })
 })

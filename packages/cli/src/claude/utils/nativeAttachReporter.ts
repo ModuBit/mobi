@@ -19,7 +19,7 @@
  *
  * 场景：SDK 的 onSessionFound 可能对同一 id 多次触发（resume 回放、多轮 init），
  * 只有 id 真正变化（新会话、/clear、/compact 内部 fork）才需要 Hub 批量补写该会话
- * 缺 nativeSessionId 的消息行（messages-native-attached 事件）。Hub 侧「只补空缺」
+ * 缺 nativeSessionId 的消息行（messages-facts attached fact）。Hub 侧「只补空缺」
  * 本身幂等，此处去重只为省事件与日志噪音。
  */
 export function createNativeAttachReporter(

@@ -18,7 +18,7 @@ import React from "react";
 import { join } from "node:path";
 import { Session } from "./session";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
-import { claudeRemote, isReplayUserMessage } from "./claudeRemote";
+import { claudeRemote, commandLifecycleToFact, isReplayUserMessage } from "./claudeRemote";
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
@@ -260,7 +260,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (!stolen) return { status: 'submitted' }
 
             // push 失败的统一回填：消息已从队列移除，若 SDK input stream 未就绪或已关闭，
-            // 必须放回队列，否则消息丢失（DB 行仍 submitted_at=null 但 agent 永远收不到）
+            // 必须放回队列，否则消息丢失（DB 行 lifecycle 停留 queued 但 agent 永远收不到）
             const pushBack = () => session.queue.push(stolen.message, stolen.mode, localId)
 
             if (!this.steerSink) {
@@ -327,6 +327,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             // （nativeAckAt 数据源）。回显 uuid = 当初 push 时预设的 nativeId，故按 uuid 回填。
             if (isReplayUserMessage(message)) {
                 session.client.emitMessagesAcked(message.uuid)
+                return
+            }
+
+            // 拦截 command_lifecycle 帧：CC 排队消息生命周期回执。控制帧不 convert 不落库
+            //（classifyMessage discard 兜底），只取信号转 lifecycle fact 上报 Hub。
+            // command_uuid = push 时预设的 nativeId，Hub 按 nativeId 反查推进
+            const lifecycleSignal = commandLifecycleToFact(message)
+            if (lifecycleSignal) {
+                session.client.emitLifecycleFact(lifecycleSignal.nativeId, lifecycleSignal.state)
                 return
             }
 

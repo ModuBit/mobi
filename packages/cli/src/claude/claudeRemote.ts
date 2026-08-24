@@ -219,6 +219,24 @@ export function isReplayUserMessage(message: SDKMessage): message is SDKUserMess
     return message.type === 'user' && (message as SDKUserMessageReplay).isReplay === true
 }
 
+/** command_lifecycle 帧 → lifecycle fact 的状态映射。
+ *  CC 对排队消息（push 时预设的 command_uuid = nativeId）的生命周期回执：
+ *  started → processing、completed → done、cancelled / discarded 直传；
+ *  queued 不上报（Hub 已有初始排队态），非法/缺字段返回 null。 */
+export function commandLifecycleToFact(
+    message: unknown
+): { nativeId: string; state: 'processing' | 'done' | 'cancelled' | 'discarded' } | null {
+    if (typeof message !== 'object' || message === null) return null
+    const m = message as { type?: unknown; command_uuid?: unknown; state?: unknown }
+    if (m.type !== 'command_lifecycle') return null
+    if (typeof m.command_uuid !== 'string' || m.command_uuid.length === 0) return null
+    const s = m.state
+    if (s === 'started') return { nativeId: m.command_uuid, state: 'processing' }
+    if (s === 'completed') return { nativeId: m.command_uuid, state: 'done' }
+    if (s === 'cancelled' || s === 'discarded') return { nativeId: m.command_uuid, state: s }
+    return null
+}
+
 function resolveResumeSessionId(claudeArgs: string[] | undefined, cwd: string): string | null {
     if (!claudeArgs) return null;
 

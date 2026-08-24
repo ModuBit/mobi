@@ -25,7 +25,7 @@ import { apiValidationError } from '@/utils/errorUtils'
 import { AsyncLock } from '@/utils/lock'
 import type { RawJSONLines } from '@/claude/types'
 import { configuration } from '@/configuration'
-import type { ClientToServerEvents, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
+import type { ClientToServerEvents, ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, MessageFact, ServerToClientEvents, TerminalErrorPayload, TerminalExitPayload, TerminalOutputPayload, TerminalReadyPayload, Update } from '@mobi/shared'
 import {
     TerminalClosePayloadSchema,
     TerminalOpenPayloadSchema,
@@ -544,34 +544,46 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
-    /** 通知 Hub：这批 localId 的消息已提交给 Claude Code（将入 submitted_at） */
+    /** 通知 Hub：这批 localId 的消息已推给 Claude Code（pushed 转换，写入 lifecycle/lifecycle_at） */
     emitMessagesSubmitted(localIds: string[]): void {
         if (localIds.length === 0) return
-        this.socket.emit('messages-submitted', { sid: this.sessionId, localIds })
+        this.emitFacts([{ kind: 'pushed', localIds, at: Date.now() }])
     }
 
     /** 通知 Hub：这批 localId 的用户消息已绑定 native 锚点（push 给 SDK 时生成，批内同值）。
-     * 载荷按 metadata 形态上报。nativeSessionId 在 push 时已知（非首条消息）则直接带上，
-     * 省去 attach 补写往返；首条消息 push 时 session id 未知，留空由 attach 补写 */
+     * nativeSessionId 在 push 时已知（非首条消息）则直接带上，省去 attach 补写往返；
+     * 首条消息 push 时 session id 未知，留空由 attach 补写 */
     emitMessagesBound(bindings: { localId: string; nativeId: string }[], nativeSessionId?: string): void {
         if (bindings.length === 0) return
-        this.socket.emit('messages-bound', {
-            sid: this.sessionId,
-            bindings: bindings.map(b => ({
-                localId: b.localId,
-                metadata: { nativeId: b.nativeId, ...(nativeSessionId ? { nativeSessionId } : {}) }
-            }))
-        })
+        this.emitFacts(bindings.map((b): MessageFact => ({
+            kind: 'bound',
+            localId: b.localId,
+            nativeId: b.nativeId,
+            ...(nativeSessionId ? { nativeSessionId } : {})
+        })))
     }
 
     /** 通知 Hub：native session 已切换（onSessionFound 变化），补写该会话缺 nativeSessionId 的消息行 */
     emitNativeAttached(nativeSessionId: string): void {
-        this.socket.emit('messages-native-attached', { sid: this.sessionId, nativeSessionId })
+        this.emitFacts([{ kind: 'attached', nativeSessionId }])
     }
 
-    /** 通知 Hub：CC 已回显接收该 nativeId 的用户消息（写 metadata.nativeAckAt，rewind 判据） */
+    /** 通知 Hub：CC 已回显接收该 nativeId 的用户消息（acked 转换，rewind 判据） */
     emitMessagesAcked(nativeId: string): void {
-        this.socket.emit('messages-acked', { sid: this.sessionId, nativeId })
+        this.emitFacts([{ kind: 'acked', nativeId, at: Date.now() }])
+    }
+
+    /** 上报 command_lifecycle 终态信号（CC 排队消息生命周期回执转译，见 commandLifecycleToFact） */
+    emitLifecycleFact(nativeId: string, state: 'processing' | 'done' | 'cancelled' | 'discarded'): void {
+        this.emitFacts([{ kind: 'lifecycle', nativeId, state, at: Date.now() }])
+    }
+
+    /** 消息事实上报统一出口：一批 fact 一次往返（messages-facts 事件） */
+    private emitFacts(facts: MessageFact[]): void {
+        this.socket.emit('messages-facts', {
+            sid: this.sessionId,
+            facts
+        })
     }
 
     /**

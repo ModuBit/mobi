@@ -85,7 +85,7 @@ export class MessageQueue<T> {
         this.onMessageHandler = handler;
     }
 
-    /** 设置「一批消息被 collectBatch shift 消费」回调（用于 emit messages-submitted） */
+    /** 设置「一批消息被 collectBatch shift 消费」回调（用于 emit messages-facts pushed fact） */
     setOnBatchConsumed(handler: ((localIds: string[]) => void) | null): void {
         this.onBatchConsumedHandler = handler;
     }
@@ -180,7 +180,7 @@ export class MessageQueue<T> {
         const methodName = isolate ? 'pushIsolateAndClear' : 'pushAndClear';
         logger.debug(`[MessageQueue] ${methodName}() mode=${modeHash}, clearing ${this.queue.length} messages`);
 
-        // 被清空的排队项需要通知 Hub 标记为已处理（submittedAt），否则其 DB 行永远 submitted_at=null，
+        // 被清空的排队项需要通知 Hub 标记为已推送（lifecycle='pushed'），否则其 DB 行永远停留 queued，
         // Web 悬浮条会永久卡死。收集带 localId 的丢弃项，触发 onBatchConsumed（与正常消费同路径）。
         const discardedLocalIds = this.queue
             .map(item => item.localId)
