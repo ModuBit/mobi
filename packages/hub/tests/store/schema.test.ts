@@ -84,4 +84,38 @@ describe('Store schema 初始化', () => {
         expect(session.id).toBeTruthy()
         store.close()
     })
+
+    test('messages 表：lifecycle/lifecycle_at 列存在，queue_state/submitted_at 已退役', () => {
+        const dir = createTempDir()
+        const dbPath = join(dir, 'lifecycle.db')
+        try {
+            new Store(dbPath).close()
+            const db = new Database(dbPath)
+            const cols = db.prepare('PRAGMA table_info(messages)').all() as { name: string }[]
+            db.close()
+            const names = cols.map(c => c.name)
+            expect(names).toContain('lifecycle')
+            expect(names).toContain('lifecycle_at')
+            expect(names).not.toContain('queue_state')
+            expect(names).not.toContain('submitted_at')
+        } finally {
+            rmSync(dir, { recursive: true, force: true })
+        }
+    })
+
+    test('排队索引按 lifecycle=queued 过滤', () => {
+        const dir = createTempDir()
+        const dbPath = join(dir, 'queued-index.db')
+        try {
+            new Store(dbPath).close()
+            const db = new Database(dbPath)
+            const idx = db.prepare(
+                "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_messages_session_queued'"
+            ).get() as { sql: string } | undefined
+            db.close()
+            expect(idx?.sql).toContain("lifecycle = 'queued'")
+        } finally {
+            rmSync(dir, { recursive: true, force: true })
+        }
+    })
 })

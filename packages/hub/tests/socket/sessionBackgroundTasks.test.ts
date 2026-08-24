@@ -93,7 +93,7 @@ function makeEnv() {
                 addMessage: (): StoredMessage => ({
                     id: 'm1', sessionId: SID, content: {}, createdAt: 1, seq: 1,
                     localId: null, metadata: null, deletedAt: null, isSidechain: false, parentToolUseId: null,
-                    category: 'persistent', submittedAt: null, queueState: 'pending', positionAt: 1,
+                    category: 'persistent', lifecycle: 'queued', lifecycleAt: null, positionAt: 1,
                 }),
             },
         } as unknown as SessionHandlersDeps['store'],

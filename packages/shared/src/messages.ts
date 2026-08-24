@@ -168,8 +168,8 @@ export function isCliOrigin(content: unknown): boolean {
  * 回显（local-command-stdout、compact continuation summary 等），已在对话里，不是
  * 待消费的用户输入。其余所有来源（webapp 及未来端）默认排队。
  *
- * 这是「排队」的**唯一写入决策点**：Hub `addMessage` 据此决定 queue_state。
- * Web 端只读 queue_state，不再反推来源。
+ * 这是「排队」的**唯一写入决策点**：Hub `addMessage` 据此决定 lifecycle。
+ * Web 端只读 lifecycle，不再反推来源。
  */
 export function isQueueableUserSubmission(content: unknown, localId: string | null | undefined): boolean {
     if (!localId) return false

@@ -29,7 +29,7 @@ import {
     getMessagesAfter,
     getSidechainMessages,
     getUnsubmittedLocalMessages,
-    markMessagesSubmitted,
+    markMessagesPushed,
     mergeSessionMessages,
     markMessagesAcked,
     getMaxSeq,
@@ -89,8 +89,9 @@ export class MessageStore {
         return mergeSessionMessages(this.db, fromSessionId, toSessionId)
     }
 
-    markMessagesSubmitted(sessionId: string, localIds: string[], submittedAt: number): string[] {
-        return markMessagesSubmitted(this.db, sessionId, localIds, submittedAt)
+    /** 把 localId 对应的 queued 消息推进为 pushed（lifecycle/lifecycle_at 落库 + position_at 跳变），返回实际更新的 localId 列表 */
+    markMessagesPushed(sessionId: string, localIds: string[], pushedAt: number): string[] {
+        return markMessagesPushed(this.db, sessionId, localIds, pushedAt)
     }
 
     getUnsubmittedLocalMessages(sessionId: string): StoredMessage[] {

@@ -23,8 +23,8 @@ function msg(seq: number, over: Partial<StoredMessage> = {}): StoredMessage {
     return {
         id: `id-${seq}`, sessionId: 's', content: {}, createdAt: seq * 10, seq,
         localId: `loc-${seq}`, metadata: null, deletedAt: null, isSidechain: false, parentToolUseId: null,
-        category: 'persistent', submittedAt: null,
-        queueState: 'pending', positionAt: seq * 10,
+        category: 'persistent', lifecycleAt: null,
+        lifecycle: 'queued', positionAt: seq * 10,
         ...over,
     }
 }
@@ -43,7 +43,7 @@ function makeService(opts: {
                 if (_limit === 1 && beforeSeq !== undefined) return opts.olderProbe ?? []
                 return opts.page
             },
-            getUnsubmittedLocalMessages: () => opts.page.filter(m => m.queueState === 'pending'),
+            getUnsubmittedLocalMessages: () => opts.page.filter(m => m.lifecycle === 'queued'),
         },
     }
     const service = new MessageService(store as never, {} as never, {} as never)
@@ -55,7 +55,7 @@ describe('MessageService.getMessagesPage 游标', () => {
         // 场景：agent 卡住，用户连发 3 条全 pending；更早有历史
         const { service } = makeService({
             page: [msg(1), msg(2), msg(3)],
-            olderProbe: [msg(0, { queueState: null })], // 更早存在一条非排队消息
+            olderProbe: [msg(0, { lifecycle: null })], // 更早存在一条非排队消息
         })
 
         const result = service.getMessagesPage('s', { limit: 3, beforeSeq: null })

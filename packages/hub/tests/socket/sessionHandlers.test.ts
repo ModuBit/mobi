@@ -36,8 +36,8 @@ function makeMsg(id: string, localId: string | null, seq: number): StoredMessage
     return {
         id, sessionId: 's1', content: {}, createdAt: seq, seq,
         localId, metadata: null, deletedAt: null, isSidechain: false, parentToolUseId: null,
-        category: 'persistent', submittedAt: null,
-        queueState: 'pending', positionAt: seq,
+        category: 'persistent', lifecycleAt: null,
+        lifecycle: 'queued', positionAt: seq,
     }
 }
 
@@ -62,7 +62,7 @@ function makeFakeSocket() {
 
 /**
  * 构造 SessionHandlersDeps，注入可控的 messages mock 与事件捕获。
- * markInvokedSpy 捕获 markMessagesSubmitted 的参数。
+ * markInvokedSpy 捕获 markMessagesPushed 的参数。
  */
 function makeDeps(opts: {
     unsubmitted: StoredMessage[]
@@ -77,7 +77,7 @@ function makeDeps(opts: {
         store: {
             messages: {
                 getUnsubmittedLocalMessages: () => opts.unsubmitted,
-                markMessagesSubmitted: (sid: string, lids: string[], at: number) => {
+                markMessagesPushed: (sid: string, lids: string[], at: number) => {
                     markInvokedSpy.args = { sid, lids, at }
                     return opts.markInvokedReturn
                 },
@@ -107,7 +107,7 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
         fakeSocket.emit('session-end', { sid: 's1', time: Date.now() })
 
-        // markMessagesSubmitted 被调用，localId 全部传入
+        // markMessagesPushed 被调用，localId 全部传入
         expect(markInvokedSpy.args).not.toBeNull()
         expect(markInvokedSpy.args!.sid).toBe('s1')
         expect(markInvokedSpy.args!.lids).toEqual(['loc-1', 'loc-2'])
@@ -163,7 +163,7 @@ describe('session-end：CLI 离线时 force-invoke 排队消息', () => {
         expect(events).toHaveLength(0)
     })
 
-    test('markMessagesSubmitted 返回空（竞态：被别处先 invoke）→ 不广播', () => {
+    test('markMessagesPushed 返回空（竞态：被别处先 invoke）→ 不广播', () => {
         const fakeSocket = makeFakeSocket()
         const { deps, events } = makeDeps({
             unsubmitted: [makeMsg('m1', 'loc-1', 1)],

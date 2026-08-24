@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { isQueueableUserSubmission, type MessageCategory, type NativeMessageMetadata } from '@mobi/shared'
+import { isQueueableUserSubmission, type MessageCategory, type MessageLifecycle, type NativeMessageMetadata } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
 import { safeJsonParse } from './json'
@@ -36,8 +36,8 @@ type DbMessageRow = {
     is_sidechain: number
     parent_tool_use_id: string | null
     category: string
-    submitted_at: number | null
-    queue_state: 'pending' | 'consumed' | null
+    lifecycle: MessageLifecycle | null
+    lifecycle_at: number | null
     position_at: number
 }
 
@@ -103,8 +103,8 @@ function toStoredMessage(row: DbMessageRow): StoredMessage {
         isSidechain: row.is_sidechain === 1,
         parentToolUseId: row.parent_tool_use_id,
         category: row.category,
-        submittedAt: row.submitted_at,
-        queueState: row.queue_state,
+        lifecycle: row.lifecycle,
+        lifecycleAt: row.lifecycle_at,
         positionAt: row.position_at,
     }
 }
@@ -125,27 +125,32 @@ export function addMessage(
         ).get(sessionId, localId) as DbMessageRow | undefined
         if (existing) {
             // 相同 localId：更新内容（resume 重放，内容可能有增量变化）。
-            // queue_state 由新内容重新裁决：仍可排队 → 保留已有状态（已消费不复位为 pending）；
-            // 不再可排队（如 CLI 回显）→ 归入非排队轨道（queue_state=NULL）。
+            // lifecycle 由新内容重新裁决：仍可排队 → 保留已有状态（已推进不复位为 queued，
+            // 天然兼容未来终态 pushed/acked/... 均不复位）；不再可排队（如 CLI 回显）
+            // → 归入非排队轨道（lifecycle=NULL）。
             // native 事实 first-write-wins：只补空缺，已有值不覆盖（对齐旧 native_id COALESCE 语义）
             const parentToolUseId = extractParentToolUseId(content)
             const stillQueueable = isQueueableUserSubmission(content, existing.local_id)
-            const queueState = stillQueueable
-                ? (existing.queue_state === 'consumed' ? 'consumed' : 'pending')
+            const lifecycle: MessageLifecycle | null = stillQueueable
+                ? (existing.lifecycle && existing.lifecycle !== 'queued' ? existing.lifecycle : 'queued')
                 : null
             const mergedMetadata = mergeMetadata(parseMetadata(existing.metadata), metadata)
             db.prepare(
                 `UPDATE messages
                  SET content = @content, parent_tool_use_id = @parent_tool_use_id,
-                     category = @category, queue_state = @queue_state,
+                     category = @category, lifecycle = @lifecycle,
                      metadata = @metadata,
-                     submitted_at = CASE WHEN @queue_state = 'consumed' THEN submitted_at ELSE NULL END
+                     lifecycle_at = CASE
+                         WHEN @lifecycle IS NULL THEN NULL
+                         WHEN @lifecycle = 'queued' THEN created_at
+                         ELSE lifecycle_at
+                     END
                  WHERE id = @id`
             ).run({
                 content: JSON.stringify(content),
                 parent_tool_use_id: parentToolUseId,
                 category: category,
-                queue_state: queueState,
+                lifecycle: lifecycle,
                 metadata: serializeMetadata(mergedMetadata),
                 id: existing.id,
             })
@@ -164,16 +169,16 @@ export function addMessage(
     const isSidechain = extractIsSidechain(content) ? 1 : 0
     const parentToolUseId = extractParentToolUseId(content)
     // 排队轨道的「唯一写入决策点」：denylist，CLI 来源永不排队。
-    // submitted_at 仅在消费时写入；position_at 初始 = created_at（消费时跳变）。
-    const queueState = isQueueableUserSubmission(content, localId) ? 'pending' : null
+    // lifecycle_at 记录当前态进入时刻（queued 时 = created_at）；position_at 初始 = created_at（push 时跳变）。
+    const lifecycle: MessageLifecycle | null = isQueueableUserSubmission(content, localId) ? 'queued' : null
 
     db.prepare(`
         INSERT INTO messages (
             id, session_id, content, created_at, seq, local_id, metadata, is_sidechain,
-            parent_tool_use_id, category, submitted_at, queue_state, position_at
+            parent_tool_use_id, category, lifecycle, lifecycle_at, position_at
         ) VALUES (
             @id, @session_id, @content, @created_at, @seq, @local_id, @metadata, @is_sidechain,
-            @parent_tool_use_id, @category, @submitted_at, @queue_state, @position_at
+            @parent_tool_use_id, @category, @lifecycle, @lifecycle_at, @position_at
         )
     `).run({
         id,
@@ -186,8 +191,8 @@ export function addMessage(
         is_sidechain: isSidechain,
         parent_tool_use_id: parentToolUseId,
         category: category,
-        submitted_at: null,
-        queue_state: queueState,
+        lifecycle: lifecycle,
+        lifecycle_at: lifecycle === 'queued' ? now : null,
         position_at: now,
     })
 
@@ -223,8 +228,8 @@ export function getMessages(
 }
 
 /**
- * 按 position_at 分页查询消息。beforeSeq 是页内最老消息的 seq（可为任意 queue_state，
- * 由 messageService.getMessagesPage 选定）。若该游标为 pending 消息且在翻页间隙被消费，
+ * 按 position_at 分页查询消息。beforeSeq 是页内最老消息的 seq（可为任意 lifecycle，
+ * 由 messageService.getMessagesPage 选定）。若该游标为 queued 消息且在翻页间隙被 push，
  * 其 position_at 跳变会让下一页与当前页重叠——由 Web 端 flattenMessagesPages 跨页 id 去重兜底。
  */
 function queryByPosition(
@@ -370,53 +375,53 @@ export function softDeleteMessagesFrom(
     return result.changes
 }
 
-/** 把 localId 对应的 pending 消息翻为 consumed：写 submitted_at + 跳 position_at。返回实际更新的 localId。 */
-export function markMessagesSubmitted(
+/** 把 localId 对应的 queued 消息推进为 pushed：写 lifecycle/lifecycle_at + 跳 position_at。返回实际更新的 localId。 */
+export function markMessagesPushed(
     db: Database,
     sessionId: string,
     localIds: string[],
-    submittedAt: number
+    pushedAt: number
 ): string[] {
     if (localIds.length === 0) return []
-    // 候选 = 仍 pending 的；first-write-wins：已 consumed 的不动（position_at 已是消费时刻，不能二次跳变）
+    // 候选 = 仍 queued 的；first-write-wins：已推进的不动（position_at 已是 push 时刻，不能二次跳变）
     const rows = db.prepare(
         `SELECT local_id FROM messages
          WHERE session_id = ? AND local_id IN (${localIds.map(() => '?').join(',')})
-           AND queue_state = 'pending'`
+           AND lifecycle = 'queued'`
     ).all(sessionId, ...localIds) as { local_id: string }[]
     const candidates = rows.map(r => r.local_id)
     if (candidates.length === 0) return []
     const result = db.prepare(
         `UPDATE messages
-         SET queue_state = 'consumed', submitted_at = ?, position_at = ?
-         WHERE session_id = ? AND queue_state = 'pending' AND local_id IN (${candidates.map(() => '?').join(',')})`
-    ).run(submittedAt, submittedAt, sessionId, ...candidates)
+         SET lifecycle = 'pushed', lifecycle_at = ?, position_at = ?
+         WHERE session_id = ? AND lifecycle = 'queued' AND local_id IN (${candidates.map(() => '?').join(',')})`
+    ).run(pushedAt, pushedAt, sessionId, ...candidates)
     void result
     return candidates
 }
 
-/** 仍排队（queue_state='pending'）的 user 消息，用于悬浮条钉最新页。 */
+/** 仍排队（lifecycle='queued'）的 user 消息，用于悬浮条钉最新页。 */
 export function getUnsubmittedLocalMessages(db: Database, sessionId: string): StoredMessage[] {
     const rows = db.prepare(
-        `SELECT * FROM messages WHERE session_id = ? AND queue_state = 'pending' ${NOT_DELETED_FILTER} ORDER BY seq ASC`
+        `SELECT * FROM messages WHERE session_id = ? AND lifecycle = 'queued' ${NOT_DELETED_FILTER} ORDER BY seq ASC`
     ).all(sessionId) as DbMessageRow[]
     return rows.map(toStoredMessage)
 }
 
-/** 删除一条仍排队（pending）的消息；已 consumed 则不删。 */
+/** 删除一条仍排队（queued）的消息；已推进（pushed 及之后）则不删。 */
 export function cancelQueuedMessage(
     db: Database,
     sessionId: string,
     localId: string
 ): { cancelled: boolean; submitted: boolean } {
     const row = db.prepare(
-        `SELECT queue_state FROM messages WHERE session_id = ? AND local_id = ?`
-    ).get(sessionId, localId) as { queue_state: 'pending' | 'consumed' | null } | undefined
+        `SELECT lifecycle FROM messages WHERE session_id = ? AND local_id = ?`
+    ).get(sessionId, localId) as { lifecycle: MessageLifecycle | null } | undefined
     if (!row) return { cancelled: false, submitted: false }
-    if (row.queue_state === 'consumed') return { cancelled: false, submitted: true }
-    // TOCTOU：SELECT 与 DELETE 之间可能被 markMessagesSubmitted 翻为 consumed，用 changes 判定真实结果
+    if (row.lifecycle && row.lifecycle !== 'queued') return { cancelled: false, submitted: true }
+    // TOCTOU：SELECT 与 DELETE 之间可能被 markMessagesPushed 推进，用 changes 判定真实结果
     const result = db.prepare(
-        `DELETE FROM messages WHERE session_id = ? AND local_id = ? AND queue_state = 'pending'`
+        `DELETE FROM messages WHERE session_id = ? AND local_id = ? AND lifecycle = 'queued'`
     ).run(sessionId, localId)
     return { cancelled: result.changes > 0, submitted: result.changes === 0 }
 }
@@ -428,10 +433,10 @@ export function getMessageSubmitState(
     localId: string
 ): { exists: boolean, submitted: boolean } {
     const row = db.prepare(
-        `SELECT queue_state FROM messages WHERE session_id = ? AND local_id = ?`
-    ).get(sessionId, localId) as { queue_state: 'pending' | 'consumed' | null } | undefined
+        `SELECT lifecycle FROM messages WHERE session_id = ? AND local_id = ?`
+    ).get(sessionId, localId) as { lifecycle: MessageLifecycle | null } | undefined
     if (!row) return { exists: false, submitted: false }
-    return { exists: true, submitted: row.queue_state === 'consumed' }
+    return { exists: true, submitted: Boolean(row.lifecycle && row.lifecycle !== 'queued') }
 }
 
 /**

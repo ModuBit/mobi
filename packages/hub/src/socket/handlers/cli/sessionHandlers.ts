@@ -500,11 +500,11 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // CLI 离线：把仍排队的本地 user 消息全部 invoke，防悬浮条卡死
         const unsubmitted = store.messages.getUnsubmittedLocalMessages(data.sid)
         if (unsubmitted.length > 0) {
-            const submittedAt = Date.now()
+            const pushedAt = Date.now()
             const lids = unsubmitted.map(m => m.localId).filter((l): l is string => Boolean(l))
-            const fresh = store.messages.markMessagesSubmitted(data.sid, lids, submittedAt)
+            const fresh = store.messages.markMessagesPushed(data.sid, lids, pushedAt)
             if (fresh.length > 0) {
-                onWebappEvent?.({ type: 'messages-submitted', sessionId: data.sid, localIds: fresh, submittedAt })
+                onWebappEvent?.({ type: 'messages-submitted', sessionId: data.sid, localIds: fresh, submittedAt: pushedAt })
             }
         }
     })
@@ -528,7 +528,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         })
     })
 
-    // CLI 消费了排队消息 → 标记 submittedAt 后转发 SSE 给 Web
+    // CLI 消费了排队消息 → 推进 lifecycle=pushed 后转发 SSE 给 Web
     socket.on('messages-submitted', (data: { sid: string; localIds: string[] }) => {
         if (!data || typeof data.sid !== 'string' || !Array.isArray(data.localIds)) {
             return
@@ -540,11 +540,11 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         }
         if (data.localIds.length === 0) return
 
-        const submittedAt = Date.now()
-        const fresh = store.messages.markMessagesSubmitted(data.sid, data.localIds, submittedAt)
+        const pushedAt = Date.now()
+        const fresh = store.messages.markMessagesPushed(data.sid, data.localIds, pushedAt)
         // DB 落盘成功后才转发 SSE，防 live/refresh 状态分叉
         if (fresh.length > 0) {
-            onWebappEvent?.({ type: 'messages-submitted', sessionId: data.sid, localIds: fresh, submittedAt })
+            onWebappEvent?.({ type: 'messages-submitted', sessionId: data.sid, localIds: fresh, submittedAt: pushedAt })
         }
     })
 

@@ -125,8 +125,8 @@ describe('缺 metadata 列的存量库 → 启动报错引导人工补列', () =
                 created_at INTEGER NOT NULL, seq INTEGER NOT NULL, local_id TEXT,
                 native_id TEXT,
                 is_sidechain INTEGER NOT NULL DEFAULT 0, parent_tool_use_id TEXT,
-                category TEXT NOT NULL DEFAULT 'persistent', submitted_at INTEGER,
-                queue_state TEXT, position_at INTEGER NOT NULL
+                category TEXT NOT NULL DEFAULT 'persistent', lifecycle TEXT,
+                lifecycle_at INTEGER, position_at INTEGER NOT NULL
             );
             CREATE TABLE machines (
                 id TEXT PRIMARY KEY, namespace TEXT NOT NULL DEFAULT 'default',

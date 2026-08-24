@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { NativeMessageMetadata, Project } from '@mobi/shared'
+import type { MessageLifecycle, NativeMessageMetadata, Project } from '@mobi/shared'
 
 export type StoredSession = {
     id: string
@@ -65,10 +65,10 @@ export type StoredMessage = {
     isSidechain: boolean
     parentToolUseId: string | null
     category: string  // 'discard' | 'ephemeral' | 'persistent'
-    /** 被 agent 消费的时刻；仅排队轨道消息消费后写入，否则 null */
-    submittedAt: number | null
-    /** 排队生命周期：null（非排队轨道）/ 'pending'（等消费）/ 'consumed'（已消费） */
-    queueState: 'pending' | 'consumed' | null
+    /** 用户消息生命周期；null = 非排队轨道。推进单调（queued→pushed→acked→…），终态不复位 */
+    lifecycle: MessageLifecycle | null
+    /** lifecycle 当前态的进入时刻（queued 时 = created_at）；非排队轨道恒 null */
+    lifecycleAt: number | null
     /** 排序锚点；排队消息消费时跳到消费时刻 */
     positionAt: number
 }

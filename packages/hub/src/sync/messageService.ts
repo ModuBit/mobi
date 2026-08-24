@@ -31,8 +31,8 @@ export function toDecryptedMessage(message: StoredMessage): DecryptedMessage {
         seq: message.seq,
         localId: message.localId,
         metadata: message.metadata,
-        submittedAt: message.submittedAt,
-        queueState: message.queueState,
+        lifecycle: message.lifecycle,
+        lifecycleAt: message.lifecycleAt,
         positionAt: message.positionAt,
         content: message.content,
         createdAt: message.createdAt,
@@ -71,9 +71,9 @@ export class MessageService {
             messages.push(...unsubmitted)
         }
 
-        // 游标锚点 = 页内最老消息的 seq（不分 queue_state）。
-        // 不跳过 pending：否则整页全 pending 时 oldestSeq=null → hasMore=false，更早历史被锁死。
-        // pending 锚点的 position_at 会在消费时跳变，但游标语义是「翻到此 seq 之前」，漂移只会让
+        // 游标锚点 = 页内最老消息的 seq（不分 lifecycle）。
+        // 不跳过 queued：否则整页全 queued 时 oldestSeq=null → hasMore=false，更早历史被锁死。
+        // queued 锚点的 position_at 会在 push 时跳变，但游标语义是「翻到此 seq 之前」，漂移只会让
         // 下一页多含若干已取消息，由 mergeMessages 的 id 去重兜底，不丢消息、不重复。
         let oldestSeq: number | null = null
         for (const message of stored) {
@@ -153,9 +153,9 @@ export class MessageService {
         })
     }
 
-    /** 标记 localId 对应的排队消息为「已消费」（submittedAt 落库），返回实际更新的 localId 列表 */
-    markMessagesSubmitted(sessionId: string, localIds: string[], submittedAt: number): string[] {
-        return this.store.messages.markMessagesSubmitted(sessionId, localIds, submittedAt)
+    /** 把 localId 对应的 queued 消息推进为 pushed（lifecycle/lifecycleAt 落库），返回实际更新的 localId 列表 */
+    markMessagesPushed(sessionId: string, localIds: string[], pushedAt: number): string[] {
+        return this.store.messages.markMessagesPushed(sessionId, localIds, pushedAt)
     }
 
     /** 取消仍排队的消息（物理删除）；已 invoke 的不动 */
