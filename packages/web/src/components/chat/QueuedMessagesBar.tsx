@@ -17,9 +17,9 @@
 import { useMemo } from 'react'
 import { Button, theme, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { ClockCircleOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { ClockCircleOutlined, EditOutlined, DeleteOutlined, StopOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { isQueuedInMobi } from '@/core/lib/messages'
+import { isDiscardedInMobi, isQueuedInMobi } from '@/core/lib/messages'
 import { useCancelQueuedMessage } from '@/core/data/hooks/mutations/useCancelQueuedMessage'
 import { useSteerQueuedMessage } from '@/core/data/hooks/mutations/useSteerQueuedMessage'
 import type { DecryptedMessage } from '@/core/data/api/types'
@@ -43,7 +43,9 @@ export interface QueuedMessagesBarProps {
 
 /**
  * 排队消息悬浮条
- * agent 运行中时新发的消息进入排队，在此展示，支持取消/编辑
+ * agent 运行中时新发的消息进入排队，在此展示，支持取消/编辑。
+ * 同时展示「已丢弃」分区（终态可见性）：cancelled（turn 死亡连坐）/ discarded（被显式丢弃）
+ * 的消息不再静默消失，以灰色删除线展示，无任何操作。
  */
 export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactElement | null {
     const { sessionId, messages, onEdit } = props
@@ -64,7 +66,15 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
         [messages],
     )
 
-    if (queued.length === 0) return null
+    // 已丢弃（终态）分区：cancelled/discarded 消息的终态可见性，无操作按钮
+    const discarded = useMemo(
+        () => messages
+            .filter(isDiscardedInMobi)
+            .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)),
+        [messages],
+    )
+
+    if (queued.length === 0 && discarded.length === 0) return null
 
     const handleCancel = (msg: DecryptedMessage) => {
         if (!msg.localId) return
@@ -103,40 +113,118 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                 flexDirection: 'column',
                 gap: token.paddingXS,
             }}>
-                {/* 标题行 */}
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    color: token.colorTextSecondary,
-                    fontSize: 12,
-                }}>
-                    <ClockCircleOutlined style={{ fontSize: 13, color: token.colorInfo }} />
-                    <span>{t('chat.queued.title', { count: queued.length })}</span>
-                </div>
+                {/* 排队分区（有排队消息时才展示标题行与列表） */}
+                {queued.length > 0 && (
+                    <>
+                        {/* 标题行 */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            color: token.colorTextSecondary,
+                            fontSize: 12,
+                        }}>
+                            <ClockCircleOutlined style={{ fontSize: 13, color: token.colorInfo }} />
+                            <span>{t('chat.queued.title', { count: queued.length })}</span>
+                        </div>
 
-                {/* 排队消息列表 */}
-                {queued.map(msg => (
-                    <QueuedItem
-                        key={msg.localId ?? msg.id}
-                        text={previewText(msg)}
-                        cancelPending={
-                            cancelMutation.isPending &&
-                            cancelMutation.variables === msg.localId
-                        }
-                        steerPending={
-                            steerMutation.isPending &&
-                            steerMutation.variables === msg.localId
-                        }
-                        onEdit={() => handleEdit(msg)}
-                        onCancel={() => handleCancel(msg)}
-                        onSteer={() => handleSteer(msg)}
-                        editLabel={t('chat.queued.edit')}
-                        cancelLabel={t('chat.queued.cancel')}
-                        steerLabel={t('chat.queued.steer')}
-                    />
-                ))}
+                        {/* 排队消息列表 */}
+                        {queued.map(msg => (
+                            <QueuedItem
+                                key={msg.localId ?? msg.id}
+                                text={previewText(msg)}
+                                cancelPending={
+                                    cancelMutation.isPending &&
+                                    cancelMutation.variables === msg.localId
+                                }
+                                steerPending={
+                                    steerMutation.isPending &&
+                                    steerMutation.variables === msg.localId
+                                }
+                                onEdit={() => handleEdit(msg)}
+                                onCancel={() => handleCancel(msg)}
+                                onSteer={() => handleSteer(msg)}
+                                editLabel={t('chat.queued.edit')}
+                                cancelLabel={t('chat.queued.cancel')}
+                                steerLabel={t('chat.queued.steer')}
+                            />
+                        ))}
+                    </>
+                )}
+
+                {/* 已丢弃分区（终态可见性）：灰色删除线，无操作按钮 */}
+                {discarded.length > 0 && (
+                    <>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            color: token.colorTextTertiary,
+                            fontSize: 12,
+                        }}>
+                            <StopOutlined style={{ fontSize: 13 }} />
+                            <span>{t('chat.queued.discardedTitle', { count: discarded.length })}</span>
+                        </div>
+
+                        {discarded.map(msg => (
+                            <DiscardedItem
+                                key={msg.localId ?? msg.id}
+                                text={previewText(msg)}
+                                stateLabel={
+                                    msg.lifecycle === 'cancelled'
+                                        ? t('chat.queued.stateCancelled')
+                                        : t('chat.queued.stateDiscarded')
+                                }
+                            />
+                        ))}
+                    </>
+                )}
             </div>
+        </div>
+    )
+}
+
+/** 单条已丢弃消息卡片：容器样式同 QueuedItem 但整体弱化，文本删除线，无操作按钮 */
+function DiscardedItem(props: { text: string; stateLabel: string }): React.ReactElement {
+    const { text, stateLabel } = props
+    const { token } = theme.useToken()
+
+    return (
+        <div
+            style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: token.paddingXS,
+                background: token.colorBgContainer,
+                borderRadius: token.borderRadius,
+                padding: `${token.paddingXS}px ${token.paddingSM}px`,
+                minHeight: 36,
+                color: token.colorTextTertiary,
+            }}
+        >
+            {/* 文本预览：删除线 + 弱化色，最多 3 行截断 */}
+            <span
+                style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 13,
+                    lineHeight: 1.4,
+                    textDecoration: 'line-through',
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical',
+                    wordBreak: 'break-word',
+                    whiteSpace: 'pre-wrap',
+                }}
+            >
+                {text || '...'}
+            </span>
+
+            {/* 状态词（已取消/已丢弃）：小号弱化，不可交互 */}
+            <span style={{ flexShrink: 0, fontSize: 12 }}>
+                {stateLabel}
+            </span>
         </div>
     )
 }

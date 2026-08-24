@@ -78,6 +78,20 @@ function submittedMsg(id: string, text: string): DecryptedMessage {
     }
 }
 
+/** 构建 user 消息，lifecycle 可指定（cancelled/discarded/done/processing 等终态/中态） */
+function lifecycleMsg(id: string, text: string, lifecycle: 'cancelled' | 'discarded' | 'done' | 'processing'): DecryptedMessage {
+    return {
+        id,
+        seq: null,
+        localId: id,
+        lifecycleAt: 3000,
+        lifecycle,
+        createdAt: 1000,
+        content: { role: 'user', content: { type: 'text', text }, meta: { sentFrom: 'webapp' } },
+        status: 'sent',
+    }
+}
+
 /** 构建 agent 消息 */
 function agentMsg(id: string, text: string): DecryptedMessage {
     return {
@@ -208,6 +222,49 @@ describe('QueuedMessagesBar', () => {
         // 已被 agent 抢先处理 → 不回填
         opts.onSuccess({ data: { status: 'submitted' } })
         expect(onEdit).not.toHaveBeenCalled()
+    })
+
+    it('cancelled/discarded 消息渲染灰色丢弃分区：删除线 + 状态词，无操作按钮', () => {
+        const { container, getByText } = renderBar([
+            queuedMsg('q1', '还在排队'),
+            lifecycleMsg('c1', '被连坐取消', 'cancelled'),
+            lifecycleMsg('d1', '被显式丢弃', 'discarded'),
+        ])
+
+        // 排队分区标题仍在
+        expect(getByText('chat.queued.title')).toBeInTheDocument()
+        // 丢弃分区标题出现
+        expect(getByText('chat.queued.discardedTitle')).toBeInTheDocument()
+        // 两条丢弃消息文本带删除线
+        const cancelledText = getByText('被连坐取消')
+        expect(cancelledText.style.textDecoration).toContain('line-through')
+        const discardedText = getByText('被显式丢弃')
+        expect(discardedText.style.textDecoration).toContain('line-through')
+        // 状态词
+        expect(getByText('chat.queued.stateCancelled')).toBeInTheDocument()
+        expect(getByText('chat.queued.stateDiscarded')).toBeInTheDocument()
+        // 全部操作按钮（steer/edit/cancel）只在排队条目上——共 3 个
+        expect(container.querySelectorAll('button').length).toBe(3)
+        expect(container.querySelectorAll('.anticon-thunderbolt').length).toBe(1)
+    })
+
+    it('queued 空而 discarded 有 → Bar 仍渲染（不返回 null）', () => {
+        const { container, getByText } = renderBar([lifecycleMsg('d1', '唯一丢弃', 'discarded')])
+
+        // 排队分区标题不出现，丢弃分区标题在，Bar 非 null
+        expect(container.textContent).not.toBe('')
+        expect(container.querySelector('span')?.textContent).not.toContain('chat.queued.title')
+        expect(getByText('chat.queued.discardedTitle')).toBeInTheDocument()
+        expect(getByText('唯一丢弃')).toBeInTheDocument()
+    })
+
+    it('done/processing 不进悬浮条也不进丢弃分区', () => {
+        const { container } = renderBar([
+            lifecycleMsg('p1', '处理中消息', 'processing'),
+            lifecycleMsg('f1', '已完成消息', 'done'),
+        ])
+
+        expect(container.textContent).toBe('')
     })
 
     it('点击 steer 按钮 → steerMutation.mutate(localId)', () => {

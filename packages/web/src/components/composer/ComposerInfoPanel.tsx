@@ -45,7 +45,7 @@ import { TeamAgentPanel } from './TeamAgentPanel'
 import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 import type { ToolCallBlock } from '@/domain/chat/types'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
-import { isQueuedInMobi } from '@/core/lib/messages'
+import { isDiscardedInMobi, isQueuedInMobi } from '@/core/lib/messages'
 import { QueuedMessagesBar } from '@/components/chat/QueuedMessagesBar'
 
 const { Text } = Typography
@@ -261,7 +261,9 @@ function QueuedMessagesSection({
     sessionId: string
     onEdit: (text: string) => void
 }) {
-    const { data: messages = EMPTY_MESSAGES } = useMessages(sessionId, (all) => all.filter(isQueuedInMobi))
+    // 数据源同时取「排队中」与「已丢弃（终态可见性）」——Bar 内部再各自过滤。
+    // 注意 hasQueued（见下）仍只看 isQueuedInMobi：被丢弃不算「有排队」，composer 状态提示语义不混淆。
+    const { data: messages = EMPTY_MESSAGES } = useMessages(sessionId, (all) => all.filter((m) => isQueuedInMobi(m) || isDiscardedInMobi(m)))
     if (messages.length === 0) return null
     return (
         <QueuedMessagesBar
