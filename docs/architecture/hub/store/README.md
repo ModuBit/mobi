@@ -148,7 +148,7 @@ PRAGMA busy_timeout = 5000    // 5 秒超时
 | is_sidechain | INTEGER | NOT NULL DEFAULT 0 | 是否为 sidechain 消息 |
 | parent_tool_use_id | TEXT | | 所属 tool_use 的消息 ID |
 | category | TEXT | NOT NULL DEFAULT 'persistent' | 消息分类（persistent/ephemeral） |
-| lifecycle | TEXT | | 用户消息生命周期（'queued'/'pushed'/'acked'，其余 P2 写入）；NULL 表示非排队轨道 |
+| lifecycle | TEXT | | 用户消息生命周期（'queued'/'pushed'/'acked'/'processing'/'done'/'cancelled'/'discarded'，'withdrawn' 预留）；NULL 表示非排队轨道。写入单调推进（`advanceMessagesLifecycle`，CASE rank 防乱序回退） |
 | lifecycle_at | INTEGER | | 最近一次 lifecycle 转换的时刻 |
 | position_at | INTEGER | NOT NULL | 排序锚点（insert 时 = created_at，push 时跳到 push 时刻） |
 

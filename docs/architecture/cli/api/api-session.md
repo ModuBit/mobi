@@ -148,9 +148,19 @@ Session 级 RPC 通过 `RpcHandlerManager` 管理：
 | `permission-mode-changed` | `{ mode }` | 权限模式变更 |
 | `ready` | - | Session 就绪 |
 
-### 排队消息消费通知
+### 消息事实上报（messages-facts）
 
-`emitMessagesSubmitted(localIds)` 通过 `socket.emit('messages-submitted', { sid, localIds })` 通知 Hub：这批 localId 的消息已 push 给 Claude Code。由 `runClaude` 绑定到 `MessageQueue.setOnBatchConsumed` 回调，批次消费后自动触发。Hub 收到后将 `lifecycle` 推进为 `'pushed'`（`lifecycleAt` 落库）并转发 SSE 给 Web。
+CLI→Hub 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷 `{ sid, facts: MessageFact[] }`，shared `MessageFact` 联合类型）。四个 emit 方法 + 新增的 `emitLifecycleFact` 全部收敛到私有 `emitFacts` 统一出口：
+
+| 方法 | fact kind | 触发 |
+|------|-----------|------|
+| `emitMessagesSubmitted(localIds)` | `pushed` | `runClaude` 绑定到 `MessageQueue.setOnBatchConsumed` 回调，批次消费后自动触发；Hub 侧 `markMessagesPushed` 推进 `lifecycle='pushed'` 并转发 SSE 给 Web |
+| `emitMessagesBound(bindings, nativeSessionId?)` | `bound` | push 给 SDK 时生成预设 uuid（native 锚点），`(localId, nativeId)` 配对即确定即上报 |
+| `emitNativeAttached(nativeSessionId)` | `attached` | `onSessionFound` 中 id 真正变化时补写该会话缺 nativeSessionId 的消息行 |
+| `emitMessagesAcked(nativeId)` | `acked` | CC isReplay 回显确认（rewind 判据） |
+| `emitLifecycleFact(nativeId, state)` | `lifecycle` | `onMessage` 中 `commandLifecycleToFact` 拦截 CC 的 command_lifecycle 帧（started→processing、completed→done、cancelled/discarded 直传），转终态信号上报 |
+
+不再直接 emit 旧 4 事件（`messages-submitted` / `messages-bound` / `messages-native-attached` / `messages-acked`）——旧事件由 Hub 保留兼容旧 CLI 二进制双受理（#54 收敛清理时下线）。
 
 ### 上下文用量上报
 

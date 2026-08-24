@@ -171,7 +171,7 @@ packages/web/src/
 │   │   └── SSEProvider.tsx     SSE 全局连接管理（单例）
 │   ├── lib/                    业务辅助逻辑
 │   │   ├── query-keys.ts       React Query key 集中定义
-│   │   ├── messages.ts         消息合并/去重/排序（缓存操作工具，isQueuedForInvocation）
+│   │   ├── messages.ts         消息合并/去重/排序（缓存操作工具，isQueuedForInvocation；mergeMessages 含 lifecycle 单调防护——陈旧 queued echo 不回退已推进状态）
 │   │   ├── markMessagesSubmitted.ts 排队消息消费标记（lifecycle queued→pushed，first-write-wins）
 │   │   ├── fileAttachments.ts  文件附件类型和辅助函数
 │   │   ├── composerDrafts.ts  per-session 草稿持久化（sessionStorage + LRU，含附件子集）

@@ -118,8 +118,12 @@ socket.on('disconnect', () => {
 | `update-metadata` | 请求/响应 | 乐观锁更新 metadata | `update` → 同房间 | onWebappEvent |
 | `update-state` | 请求/响应 | 乐观锁更新 agentState | `update` → 同房间 | onWebappEvent |
 | `session-alive` | 单向 | — | — | onSessionAlive |
-| `session-end` | 单向 | — | — | onSessionEnd |
-| `messages-submitted` | 单向 | markMessagesPushed | — | onWebappEvent |
+| `session-end` | 单向 | force-push 排队消息（markMessagesPushed） | — | onSessionEnd + onWebappEvent（messages-submitted SSE） |
+| `messages-facts` | 单向 | 按 fact kind 分发（见下） | 补写/推进行 `update` → 同房间 | onWebappEvent |
+| `messages-submitted`（旧，兼容） | 单向 | processSubmitted（markMessagesPushed） | — | onWebappEvent |
+| `messages-bound`（旧，兼容） | 单向 | processBound（bindNativeIds） | 补写行 `update` → 同房间 | onWebappEvent |
+| `messages-native-attached`（旧，兼容） | 单向 | processAttached（attachNativeSessionId） | 补写行 `update` → 同房间 | onWebappEvent |
+| `messages-acked`（旧，兼容） | 单向 | processAcked（advanceMessagesAcked + markMessagesAcked） | 推进行 `update` → 同房间 | onWebappEvent |
 
 ### message：消息接收
 
@@ -175,9 +179,26 @@ CLI 通过 `expectedVersion` 实现乐观锁，如果版本不匹配，返回当
 
 **session-end force-push**：CLI 离线时，把仍排队的本地 user 消息（`lifecycle = 'queued'`）全部 push，防止悬浮条卡死。通过 `getUnsubmittedLocalMessages` + `markMessagesPushed` 实现，成功后转发 `messages-submitted` SSE 事件。
 
-### messages-submitted：排队消息已 push
+### messages-facts：统一消息事实（CLI→Hub 收敛方向）
 
-CLI 通过 `messages-submitted` 事件通知 Hub：一批 localId 的消息已 push 给 Claude Code。Hub 先做访问控制，再调用 `markMessagesPushed`（first-write-wins，已推进的不动）将 `lifecycle='pushed'` + `lifecycleAt` 落盘，最后转发 `messages-submitted` SSE 事件给 Web。
+新 CLI 的所有消息事实上报收敛为单一事件 `messages-facts`（载荷 `{ sid, facts: MessageFact[] }`，shared `MessageFact` 联合类型）：批内多 kind fact 一次往返，handler 逐项分发。旧 4 事件（`messages-submitted` / `messages-bound` / `messages-native-attached` / `messages-acked`）保留兼容旧 CLI 二进制——Hub 双受理，处理体共享防逻辑分叉（#54 收敛清理时下线）。
+
+**共享处理函数**（旧 4 事件 handler 与 `messages-facts` 分发共用）：
+
+| 函数 | fact kind / 旧事件 | 行为 |
+|------|------|------|
+| `broadcastStoredMessages(sid, msgs)` | （公共出口） | 落库行逐行推 Web：`update` new-message（seq 显式收窄）+ SSE `message-received`，Web 据此刷新 rewind 判据与 lifecycle 展示 |
+| `processSubmitted(sid, localIds, pushedAt)` | `pushed` / `messages-submitted` | `markMessagesPushed`（queued→pushed，first-write-wins），落盘成功后转发 SSE `messages-submitted`（防 live/refresh 状态分叉） |
+| `processBound(sid, bindings)` | `bound` / `messages-bound` | 逐项校验（null/缺字段/空串丢弃防空串占坑）→ `bindNativeIds` 幂等落库，补写行广播 |
+| `processAcked(sid, nativeId, ackedAt)` | `acked` / `messages-acked` | 先 `advanceMessagesAcked` 推进 lifecycle='acked' 再 `markMessagesAcked` 写 nativeAckAt（快照携带推进后值，共一时间戳），推进行逐行广播（合并批 1:N） |
+| `processAttached(sid, nativeSessionId)` | `attached` / `messages-native-attached` | `attachNativeSessionId` 补写该会话缺 nativeSessionId 的行（幂等），补写行广播 |
+| `processLifecycleFact(sid, nativeId, state, at)` | `lifecycle`（新） | `advanceMessagesLifecycle` 单调推进（queued<pushed<acked<processing<终态，已处终态/withdrawn 不被覆盖、processing 不回退）→ `getMessagesByIds` 回读推进后的行 → 逐行广播（载荷含推进后 lifecycle/lifecycleAt，P3 消费）。无命中（乱序/重复帧）静默返回 |
+
+`fact.at` 缺省取 hub 接收时刻（每批一个 now，批内共时）。终态信号的 CLI 侧来源见 [message-lifecycle.md](../../message-lifecycle.md)「终态接入：command_lifecycle 帧拦截」。
+
+### messages-submitted：排队消息已 push（旧事件，兼容受理）
+
+旧 CLI 二进制通过 `messages-submitted` 事件通知 Hub：一批 localId 的消息已 push 给 Claude Code。Hub 先做访问控制，再走共享的 `processSubmitted` 调用 `markMessagesPushed`（first-write-wins，已推进的不动）将 `lifecycle='pushed'` + `lifecycleAt` 落盘，最后转发 `messages-submitted` SSE 事件给 Web。
 
 ---
 

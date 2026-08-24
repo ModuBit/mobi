@@ -247,7 +247,9 @@ const sdkOptions: Options = {
     └── catch AbortError → 忽略
 ```
 
-**门控效果**：用户在 agent 运行期间发送的消息（status='queued'）会排队悬浮在 Web 端，等 agent idle（result 到达）后才被真正拉取并送给 SDK，此时 CLI 通过 `onBatchConsumed` → `emitMessagesSubmitted` 通知 Hub 将这批消息的 `lifecycle` 推进为 `'pushed'`（`lifecycleAt` 落库）。
+**门控效果**：用户在 agent 运行期间发送的消息（status='queued'）会排队悬浮在 Web 端，等 agent idle（result 到达）后才被真正拉取并送给 SDK，此时 CLI 通过 `onBatchConsumed` → `emitMessagesSubmitted`（内部走 `emitFacts` 统一出口，`messages-facts` 事件 pushed fact）通知 Hub 将这批消息的 `lifecycle` 推进为 `'pushed'`（`lifecycleAt` 落库）。
+
+**command_lifecycle 帧拦截**：CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。`onMessage` 中纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）把 started→processing、completed→done、cancelled/discarded 直传，控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报 Hub 终态推进。
 
 ## PermissionHandler — 工具权限审批
 

@@ -146,4 +146,4 @@ GET /api/sessions/:id/messages/after?afterSeq=100&limit=50
 | 方法入口 | 触发点 | 事件类型 | 说明 |
 |----------|--------|----------|------|
 | `sendMessage` | 用户发送消息 | `message-received` | 包含完整消息内容 |
-| `markMessagesPushed` | CLI push 排队消息 / session-end force-push | `messages-submitted` | `localIds` + `submittedAt`（即 push 时刻），Web 据此把悬浮消息翻为正式消息 |
+| `markMessagesPushed` | CLI push 排队消息（`messages-facts` pushed fact，旧 `messages-submitted` 兼容受理）/ session-end force-push | `messages-submitted` | `localIds` + `submittedAt`（即 push 时刻），Web 据此把悬浮消息翻为正式消息 |
