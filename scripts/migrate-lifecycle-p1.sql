@@ -19,7 +19,14 @@
 --     → lifecycle = 'pushed'，  lifecycle_at = COALESCE(submitted_at, created_at)
 --   其他（NULL 等）
 --     → lifecycle = NULL，      lifecycle_at = NULL
+--
+-- ⚠️ 严禁重复执行：成功后再跑会静默清空 messages 表（.bail on 已拦截，见下）。
+--    若上次执行中途失败留下 messages_new，先手工 DROP TABLE messages_new 再重跑。
 -- ============================================================================
+
+-- 错误即中止（sqlite3 CLI 默认 .bail off 会继续执行导致静默清空）：
+-- INSERT 报错时中止脚本，未 COMMIT 的事务随连接关闭回滚
+.bail on
 
 PRAGMA foreign_keys = OFF;
 
