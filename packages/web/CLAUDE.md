@@ -23,11 +23,18 @@
 
 ## 移动端 Drawer 规范
 
-所有移动端底部弹出 Drawer（`placement="bottom"`）必须遵守：
+所有移动端底部弹出 Drawer（`placement="bottom"`）**优先使用 `MobileDrawer`**（`src/components/ui/MobileDrawer.tsx`），以下不变量由组件统一收口，调用方不要再手动配置：
 
-- **高度自适应**: `wrapper: { height: 'auto' }`
-- **最高不超过 85%**: `wrapper: { maxHeight: '85vh' }`
-- **底部安全边界**: `body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }`，防止被底部横条/圆角遮挡
+- **高度自适应 + 上限**：组件内置 `wrapper: { height: 'auto', maxHeight: '85dvh' }`（需调整上限时传 `maxHeight` prop）
+- **底部安全边界**：sheet 自带 `paddingBottom: 'max(24px, env(safe-area-inset-bottom))'`——**禁止调用方往 `styles.body` 传 padding**（组件强制 `padding: 0`，body padding 会把 sheet 抬离屏底、露出 mask 空隙），同样禁止覆盖 `body.overflow` / `body.maxHeight`
+- **开合动画 / header 下拉关闭 / 手势返回哨兵**：组件内置，`onClose` 消费者须**同步**决定是否关闭（异步决定会看到「沉降再滑出」弹跳）
+
+仅当无需交互关闭的纯提示框（如 `SaveConflictDialog`，`maskClosable={false}` 且无拖拽关闭语义）可直接用 antd `Drawer`，手动配置：
+
+- `styles.wrapper: { height: 'auto', maxHeight: '85dvh' }`
+- `styles.body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }`
+
+注意：这套手动配置**仅对原生 antd Drawer 生效**；同一 prop 传给 MobileDrawer 会被组件不变量覆盖（见上）。
 
 ## 跨格式字段访问
 

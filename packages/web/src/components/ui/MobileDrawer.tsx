@@ -26,7 +26,8 @@
  * 先通知父组件，open 翻 false 后由关闭 effect 同时启动 spring 滑出与 antd leave
  * （mask 淡出），调用方零改动；否决式 onClose 消费者（如 loading 守卫传 noop）
  * 可拦住关闭，sheet 沉降回原位而非卡在屏外，且被消费的 history 哨兵会自动重臂
- * （防下一次返回手势穿透路由）。
+ * （防下一次返回手势穿透路由）；哨兵发起的关闭（手势返回）在滑出动画窗口内
+ * 同样重臂哨兵——动画期间的第二次返回手势仍被本 drawer 拦截而非穿透路由。
  */
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react'
@@ -51,6 +52,10 @@ const createSyntheticCloseEvent = () =>
 
 /** 挂在 drawer root 上的标记 class，用于把「禁用 wrapper 动画」精确圈定到本 drawer */
 const WRAPPER_MOTION_OFF_CLASS = 'mobile-drawer-motion-off'
+
+/** 否决检测第二拍宽限：首拍后 open 仍 true 时再等这一窗口，覆盖 startTransition /
+ *  短异步消费者；仍 true 才判定否决（真正长异步才决定关闭属契约外，见 closeWithAnimation） */
+const VETO_GRACE_MS = 100
 
 // 单向控制：禁用 antd 的 panel motion（enter/leave 均）——sheet 全部位移动效由内部
 // motion.div 自管，antd 只保留 portal / mask 淡入淡出 / a11y。
@@ -184,6 +189,12 @@ export function MobileDrawer({
     // 时 +1，驱动 useHistoryGuard 重推哨兵——否则下一次返回手势将穿透到路由层
     const [guardEpoch, setGuardEpoch] = useState(0)
 
+    // 哨兵是否已被 popstate 消费（本次关闭是否由手势返回发起）：消费后 drawerHistoryGuard
+    // 栈上已无本 drawer 的哨兵，滑出动画窗口内的第二次返回手势会穿透到路由层——关闭
+    // effect 据此在滑出起手时重臂一个哨兵覆盖动画窗口（见关闭 effect）。重臂（含否决
+    // 后的重臂）后哨兵回到栈上，标记随之复位
+    const guardConsumedRef = useRef(false)
+
     // mounted / open 经 ref 读取：关闭 effect 只依赖 [open]（setMounted 翻转后本 effect
     // 不需重跑，ref 读取避免依赖膨胀），openRef 用于 closeWithAnimation 的否决检测
     // （父组件 setState flush 后判断关闭是否被否决）
@@ -212,28 +223,46 @@ export function MobileDrawer({
     // 从当前拖拽位置带速度滑出 → 落定 setMounted(false)。
     // 手势释放（velocity 透传，px/s 向下为正）、点遮罩、history guard 返回全部走这里，
     // 与 iOS sheet 行为同构（点遮罩也是滑出）
-    const closeWithAnimation = useCallback((velocity?: number) => {
-        pendingCloseVelocityRef.current = velocity ?? null
-        onCloseRef.current?.(createSyntheticCloseEvent())
-        // 否决检测：为什么用 setTimeout(0)——要等父组件 setState flush 后读 openRef
-        // 才能判断关闭是否被否决。若仍为 true（onClose 被 loading 守卫等拦下），
-        // 说明关闭 effect 不会运行，把 sheet 沉降回原位而非卡在屏外；
-        // 若已翻 false 则什么都不做（关闭 effect 已接管，且会 clearTimeout 作废本检测）。
-        // 沉降动画带拒绝分支防 unhandled rejection（如被后续动画 stop 中断）——
-        // animate 返回的控件类型只有 then（无 catch），用双参 then 兜住拒绝
-        vetoTimerRef.current = setTimeout(() => {
+    /** 否决检测调度：delayMs 为 0 时是首拍，之后进入宽限第二拍；宽限后仍 open=true 才沉降。
+     *  定时器句柄始终记在 vetoTimerRef（关闭 effect 接管 / 组件卸载时统一作废） */
+    const scheduleVetoCheck = useCallback(function scheduleVeto(delayMs: number): ReturnType<typeof setTimeout> {
+        return setTimeout(() => {
             vetoTimerRef.current = null
             if (!openRef.current) return
+            if (delayMs === 0) {
+                vetoTimerRef.current = scheduleVeto(VETO_GRACE_MS)
+                return
+            }
             const v = pendingCloseVelocityRef.current
             // 沉降即消费掉暂存速度，防陈旧速度被后续关闭复用
             pendingCloseVelocityRef.current = null
             animate(y, 0, v != null ? { ...spring.momentum, velocity: v } : spring.momentum)
                 .then(() => {}, () => {})
             // 哨兵已被本次返回手势消费但关闭被否决：重臂纪元 +1 驱动 useHistoryGuard
-            // 重推哨兵，覆盖仍开着的 drawer——否则下一次返回手势将穿透到路由层
+            // 重推哨兵，覆盖仍开着的 drawer——否则下一次返回手势将穿透到路由层。
+            // 重臂后哨兵回到栈上，消费标记复位
+            guardConsumedRef.current = false
             setGuardEpoch(e => e + 1)
-        }, 0)
+        }, delayMs)
     }, [y])
+
+    const closeWithAnimation = useCallback((velocity?: number) => {
+        pendingCloseVelocityRef.current = velocity ?? null
+        onCloseRef.current?.(createSyntheticCloseEvent())
+        // 否决检测（两段式）：关闭是否被否决（onClose 被拦、open 未翻转）只能等父组件
+        // setState flush 后读 openRef 判断——
+        // - 第一拍（setTimeout 0）：覆盖同步消费者。open 已翻 false 则关闭 effect 接管
+        //   （其 clearTimeout 作废本检测），什么都不做
+        // - 第二拍（宽限 VETO_GRACE_MS）：覆盖 startTransition / 短异步消费者——首拍时
+        //   open 仍 true 但稍后翻 false 的场景。直接判否决会出现「沉降回原位 → 再滑出」
+        //   的弹跳，且重臂的哨兵多压一条 entry
+        // - 两拍后仍 open=true → 判定否决：沉降回原位 + 重臂哨兵
+        // 真正长异步（> 宽限窗口）才决定关闭的消费者属契约外，仍会看到弹跳——
+        // onClose 消费者应同步决定是否关闭。
+        // 沉降动画带拒绝分支防 unhandled rejection（如被后续动画 stop 中断）——
+        // animate 返回的控件类型只有 then（无 catch），用双参 then 兜住拒绝
+        vetoTimerRef.current = scheduleVetoCheck(0)
+    }, [y, scheduleVetoCheck])
 
     // closeWithAnimation 用 ref 持有：history guard effect 只依赖 open，
     // 避免回调引用变化导致哨兵反复 dispose/re-push（旧实现的教训）。
@@ -246,8 +275,13 @@ export function MobileDrawer({
     // 而非穿透到路由层退出 session detail。绑定 guardAlive（非 mounted，见其声明处说明）：
     // 覆盖 mounted 全程 + 滑出动画窗口，滑出落定才 dispose 弹掉。
     // closeWithAnimation 用 ref 持有：避免回调引用变化导致哨兵反复 dispose/re-push
-    // （旧实现的教训），也保证嵌套 drawer 的栈序稳定；guardEpoch 是否决后的重臂纪元
-    useHistoryGuard(guardAlive, () => closeWithAnimationRef.current(), guardEpoch)
+    // （旧实现的教训），也保证嵌套 drawer 的栈序稳定；回调里先记 guardConsumedRef——
+    // popstate 已消费栈中哨兵，关闭 effect 须知道「哨兵发起的关闭」滑出起手要重臂；
+    // guardEpoch 是否决后的重臂纪元
+    useHistoryGuard(guardAlive, () => {
+        guardConsumedRef.current = true
+        closeWithAnimationRef.current()
+    }, guardEpoch)
 
     // 关闭 effect：open=false 时若 sheet 仍在屏内（closeWithAnimation 已通知父组件 /
     // 弹入中途 / 父组件直调 setOpen(false)），启动 spring 滑出，**同时立即**翻 mounted
@@ -267,6 +301,12 @@ export function MobileDrawer({
             clearTimeout(vetoTimerRef.current)
             vetoTimerRef.current = null
         }
+        // 读取并复位哨兵消费标记：手势返回发起的关闭，drawerHistoryGuard 栈上已无本
+        // drawer 的哨兵（popstate 已消费）——「滑出动画窗口内返回仍被本 drawer 拦截」的
+        // 不变量对其不成立，须在滑出起手时重臂一个哨兵补上（见下方 slide-out 分支）。
+        // 非哨兵路径（点遮罩 / 拖拽释放 / 父直调）哨兵仍在栈上，无需重臂
+        const guardConsumed = guardConsumedRef.current
+        guardConsumedRef.current = false
         // 滑出目标高度：实测为准；panel 异常不可测（0，见打开动画 effect 的时序说明）
         // 时兜底视口高——保证 y 能滑出屏外而非滞留屏内
         const h = sheetRef.current?.offsetHeight || window.innerHeight
@@ -279,16 +319,24 @@ export function MobileDrawer({
             // 落定回调无需再卸载——mounted 已在此处翻转
             const anim = animate(y, h, v != null ? { ...spring.momentum, velocity: v } : spring.momentum)
             setMounted(false)
-            // 哨兵延迟到滑出落定才释放：动画窗口内手势返回仍应被本 drawer 拦截
-            //（消费哨兵 → closeWithAnimation → onClose 幂等）而非穿透路由。
-            // 重开（openRef 已 true）时哨兵仍须存活，交由打开路径继续持有
+            if (guardConsumed) {
+                // 重臂哨兵覆盖滑出动画窗口（guardEpoch +1 驱动 useHistoryGuard 重推）：
+                // 动画期间第二次手势返回仍消费哨兵 → closeWithAnimation → onClose 幂等，
+                // 而非穿透路由退出 session detail。落定 setGuardAlive(false) 时 disposer
+                // 会把这个重臂的哨兵经 history.back() 弹掉，history 净变化为零。
+                // 重开（openRef 已 true）时哨兵仍须存活，交由打开路径继续持有
+                setGuardEpoch(e => e + 1)
+            }
             anim.then(
                 () => { if (!openRef.current) setGuardAlive(false) },
                 () => { if (!openRef.current) setGuardAlive(false) },
             )
             return () => anim.stop()
         }
-        // 已出屏：直接卸载，哨兵随之释放
+        // 已出屏：直接卸载，哨兵随之释放。暂存的手势速度一并清空——本分支不消费速度
+        //（sheet 已在屏外，无需动画），残留会被后续重开的父直调关闭误继承
+        //（旧甩动速度 → sheet 暴速滑出的跳变）
+        pendingCloseVelocityRef.current = null
         setGuardAlive(false)
         setMounted(false)
         return undefined

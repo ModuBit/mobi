@@ -6,9 +6,7 @@
    ChatComposer 的 Sender 实色白底与 InspectorPane 的彩色 tab 内容共用此样式——
    深色遮罩在白底上呈灰雾、在彩色内容上呈压暗，都是「未激活」视觉。 */
 .activate-cover-mask {
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(10px) saturate(1.6);
-    -webkit-backdrop-filter: blur(10px) saturate(1.6);
+    backdrop-filter: blur(2px) saturate(1.0);
 }
 
 html[data-theme='dark'] .activate-cover-mask {

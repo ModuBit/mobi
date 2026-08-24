@@ -15,10 +15,11 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Drawer, Button, Space, Typography, Tag } from 'antd'
+import { Button, Space, Typography, Tag } from 'antd'
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useVirtualKeysStore, type VirtualKey } from '@/core/data/stores/virtualKeysStore'
+import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { VirtualKeyPicker } from './VirtualKeyPicker'
 
 interface VirtualKeyEditorProps {
@@ -60,16 +61,12 @@ export function VirtualKeyEditor({ open, onClose }: VirtualKeyEditorProps) {
     }
 
     return (
-        <Drawer
+        // 移动端底部 Drawer 用 MobileDrawer：高度/safe-area/动画/手势返回由组件统一收口
+        //（web CLAUDE.md 移动端 Drawer 规范），不再手动传 wrapper/body styles
+        <MobileDrawer
             title={t('terminal.virtualKeys.editor.title')}
             open={open}
             onClose={save}
-            placement="bottom"
-            height="auto"
-            styles={{
-                wrapper: { height: 'auto', maxHeight: '85dvh' },
-                body: { paddingBottom: 'max(24px, env(safe-area-inset-bottom))' },
-            }}
             extra={
                 <Button type="primary" onClick={save}>
                     {t('terminal.virtualKeys.editor.save')}
@@ -118,6 +115,6 @@ export function VirtualKeyEditor({ open, onClose }: VirtualKeyEditorProps) {
                 onAdd={addKey}
                 onClose={() => setPickerOpen(false)}
             />
-        </Drawer>
+        </MobileDrawer>
     )
 }

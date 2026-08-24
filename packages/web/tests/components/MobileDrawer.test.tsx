@@ -318,6 +318,109 @@ describe('MobileDrawer', () => {
         await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2), { timeout: 2000 })
     })
 
+    it('手势返回发起的关闭：滑出动画窗口内重臂哨兵，第二次返回手势仍被拦截而非穿透路由', async () => {
+        const onClose = vi.fn()
+        render(<DrawerHost onClose={onClose} />)
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        Object.defineProperty(sheet, 'offsetHeight', { value: 400, configurable: true })
+        await waitForOpenSettled()
+
+        // 第一次手势返回：消费哨兵#1 → onClose → 宿主翻 open → 关闭 effect 滑出 + 重臂哨兵#2
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 })
+        // 重臂的哨兵在滑出动画窗口内存在（interval 收紧，抢在 50ms 桩落定前观测到）
+        await waitFor(() => {
+            expect(window.history.state).toMatchObject({ mobiHistoryGuard: true, guardId: 2 })
+        }, { timeout: 2000, interval: 5 })
+
+        // 第二次手势返回（滑出未落定）：消费重臂哨兵 → closeWithAnimation → onClose 幂等再调。
+        // 不重臂时哨兵#1 已被首次返回消费、栈上无条目，popstate 落空穿透路由（旧实现的洞）
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2), { timeout: 2000 })
+    })
+
+    it('已出屏关闭清空暂存速度：重开后父直调关闭不继承上一轮的甩动速度', async () => {
+        let setOpenExternal: ((v: boolean) => void) | null = null
+        function ReopenHost() {
+            const [open, setOpen] = useState(true)
+            setOpenExternal = setOpen
+            return (
+                <MobileDrawer open={open} onClose={() => setOpen(false)} title="测试">
+                    <div>内容</div>
+                </MobileDrawer>
+            )
+        }
+        render(<ReopenHost />)
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        // h=8：y(0) < h-8(0) 为假 → 关闭走「已出屏」直卸载分支
+        Object.defineProperty(sheet, 'offsetHeight', { value: 8, configurable: true })
+        await waitForOpenSettled()
+
+        // 甩出路径：拖拽判定 close（offset 300 > 8/3），释放速度 2000 被 closeWithAnimation 暂存
+        triggerDragEnd(300, 2000)
+        // onClose → 宿主翻 open=false → 已出屏分支直卸载（不消费速度——修复点：此处清空暂存）
+        await waitFor(() => {
+            const root = document.querySelector('.ant-drawer') as HTMLElement | null
+            expect(root?.className ?? '').not.toContain('ant-drawer-open')
+        }, { timeout: 2000 })
+
+        // 重开（同一组件实例，pendingCloseVelocityRef 跨开关周期存活）
+        setOpenExternal!(true)
+        const sheet2 = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        await waitFor(() => {
+            expect(sheet2.style.transform).toBe(`translateY(${window.innerHeight}px)`)
+        }, { timeout: 2000 })
+        // 换高度让关闭走滑出分支（h=400，y 落定 0 < 392）
+        Object.defineProperty(sheet2, 'offsetHeight', { value: 400, configurable: true })
+        await waitForOpenSettled()
+        animateCalls.length = 0
+
+        // 父直调关闭（不经 onClose）：滑出动画不得继承陈旧的 2000（旧实现残留 → 暴速滑出）
+        setOpenExternal!(false)
+        await waitFor(() => {
+            expect(animateCalls.some((c) => c.target === 400)).toBe(true)
+        }, { timeout: 2000 })
+        const closeCall = animateCalls.find((c) => c.target === 400)
+        expect((closeCall?.options as { velocity?: number } | undefined)?.velocity).toBeUndefined()
+    })
+
+    it('父组件延迟 setOpen(false)（宽限窗口内）不误判否决：无沉降动画，仅滑出', async () => {
+        const onClose = vi.fn()
+        function DelayedHost({ delayMs }: { delayMs: number }) {
+            const [open, setOpen] = useState(true)
+            return (
+                <MobileDrawer
+                    open={open}
+                    onClose={() => {
+                        onClose()
+                        // 短异步消费者：onClose 后 50ms 才决定关闭（< VETO_GRACE_MS 宽限）
+                        setTimeout(() => setOpen(false), delayMs)
+                    }}
+                    title="测试"
+                >
+                    <div>内容</div>
+                </MobileDrawer>
+            )
+        }
+        render(<DelayedHost delayMs={50} />)
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        Object.defineProperty(sheet, 'offsetHeight', { value: 400, configurable: true })
+        await waitForOpenSettled()
+        animateCalls.length = 0
+
+        // 手势返回触发 closeWithAnimation：onClose 立即被调，open 50ms 后才翻转
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 })
+        animateCalls.length = 0
+
+        // 宽限期内 open 翻 false → 关闭 effect 接管滑出（target 400）；
+        // 全程不得出现沉降（target 0）——旧实现单拍 setTimeout(0) 在 0ms 就误判否决
+        await waitFor(() => {
+            expect(animateCalls.some((c) => c.target === 400)).toBe(true)
+        }, { timeout: 2000 })
+        expect(animateCalls.some((c) => c.target === 0)).toBe(false)
+    })
+
     it('嵌套 drawer：手势返回只关子级不关父级（哨兵栈序 LIFO）', async () => {
         const parentClose = vi.fn()
         const childClose = vi.fn()
