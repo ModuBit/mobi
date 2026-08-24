@@ -17,6 +17,7 @@
 import { z } from 'zod'
 import type { PermissionMode, EffortLevel } from './modes'
 import type { MessageCategory } from './messageClassification'
+import type { MessageFact } from './messages'
 import type { ContextUsage, GoalStatus } from './schemas'
 
 export type SocketErrorReason = 'namespace-missing' | 'access-denied' | 'not-found'
@@ -228,6 +229,11 @@ export interface ClientToServerEvents {
     ping: (callback: () => void) => void
     'usage-report': (data: unknown) => void
     'idle-timeout-warning': (data: { sid: string; timeoutAt: number; remainingMs: number }) => void
+    // ===== 消息事实协议（新，收敛方向）=====
+    /** CLI→Hub 统一消息事实事件：批内合并多 kind fact 一次往返（MessageFact 联合见 messages.ts）。
+     *  旧 CLI 二进制仍发下方旧 4 事件，Hub 双受理；#54 收敛清理时下线旧事件 */
+    'messages-facts': (data: { sid: string; facts: MessageFact[] }) => void
+    // ===== 旧 4 事件（保留兼容旧 CLI 二进制，新 CLI 已改发 messages-facts）=====
     'messages-submitted': (data: { sid: string; localIds: string[] }) => void
     /** CLI push 用户消息给 SDK 时上报 (localId → native 锚点) 绑定（同一 push 的批内 N 条共享一个 nativeId） */
     'messages-bound': (data: { sid: string; bindings: { localId: string; metadata: { nativeId: string; nativeSessionId?: string } }[] }) => void

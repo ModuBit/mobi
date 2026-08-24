@@ -148,6 +148,20 @@ export type SentFrom = 'cli' | 'webapp' | (string & {})
  */
 export type MessageLifecycle = 'queued' | 'pushed' | 'acked' | 'processing' | 'done' | 'cancelled' | 'discarded' | 'withdrawn'
 
+/**
+ * CLI→Hub 的消息事实（messages-facts 事件载荷元素）。批内合并，一次往返。
+ * `at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。
+ * 与旧 4 事件（messages-submitted/bound/native-attached/acked）语义对照：
+ * pushed ← submitted、bound/attached/acked 同名、lifecycle 为新增（command_lifecycle 帧转译）。
+ * 未来扩展（预留，暂不实现）：{ kind: 'withdrawn'; localId: string }（pending #53 撤回）。
+ */
+export type MessageFact =
+    | { kind: 'bound'; localId: string; nativeId: string; nativeSessionId?: string }
+    | { kind: 'attached'; nativeSessionId: string }
+    | { kind: 'pushed'; localIds: string[]; at?: number }
+    | { kind: 'acked'; nativeId: string; at?: number }
+    | { kind: 'lifecycle'; nativeId: string; state: 'processing' | 'done' | 'cancelled' | 'discarded'; at?: number }
+
 /** 从消息 content 信封读取 sentFrom 来源标识 */
 export function getSentFrom(content: unknown): SentFrom | null {
     if (!isObject(content)) return null
