@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { isLifecycleAhead } from '@mobi/shared'
 import type { DecryptedMessage } from '@/core/data/api/types'
 import { uuid } from './uuid'
 
@@ -125,18 +126,19 @@ export function mergeMessages(existing: DecryptedMessage[], incoming: DecryptedM
         }
         // (2) 不让 incoming 用 null/undefined lifecycleAt 覆盖已有的非 null lifecycleAt
         // 防止陈旧的服务端 echo 回退已确认的 pushed 状态
-        // (2b) lifecycle 单调防护：prev 已推进而 row 回退为 'queued'（陈旧 echo/快照在推进前
-        // 捕获）时保留 prev 的 lifecycle + lifecycleAt——对齐 shared 契约「转换单调前进」，
-        // 防幽灵回悬浮条。判定用 lifecycleAt 时间戳：仅当 prev 不晚于 row 才视为陈旧回退
-        //（row 更晚说明是更新的权威状态，正常接受）
+        // (2b) lifecycle 单调防护（rank 泛化）：prev 已推进而 incoming 回退（rank 更低或同 rank 异终态）
+        // 时保留 prev 的 lifecycle + lifecycleAt——对齐 shared 契约「转换单调前进」。陈旧 echo/
+        // in-flight fetch 旧响应晚到均适用。incoming 更靠后则正常接受。
+        // 时间戳判定：仅当 prev 不晚于 incoming 才视为陈旧回退（incoming 更晚 = 更新的权威状态）
         const prev = byId.get(row.id)
         if (prev && prev.lifecycleAt != null && row.lifecycleAt == null) {
             row = { ...row, lifecycleAt: prev.lifecycleAt }
-        } else if (
-            prev && row.lifecycle === 'queued'
-            && prev.lifecycle && prev.lifecycle !== 'queued'
-            && prev.lifecycleAt != null && row.lifecycleAt != null
-            && prev.lifecycleAt >= row.lifecycleAt
+        }
+        if (
+            prev && prev.lifecycle && row.lifecycle
+            && prev.lifecycle !== row.lifecycle
+            && !isLifecycleAhead(prev.lifecycle, row.lifecycle)
+            && (prev.lifecycleAt ?? 0) >= (row.lifecycleAt ?? 0)
         ) {
             row = { ...row, lifecycle: prev.lifecycle, lifecycleAt: prev.lifecycleAt }
         }

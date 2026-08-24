@@ -265,6 +265,58 @@ describe('resolveMessageCache', () => {
         expect(result).toBe(cache) // 无变化，引用相等
     })
 
+    it('skipIfNotSnapshot 命中时，lifecycle 广播（rank 前进）单调合并——pushed 行推进为 done', () => {
+        // hub 终态推进后逐行广播 update new-message（载荷含推进后 lifecycle/lifecycleAt），
+        // 已渲染行只 merge metadata 会丢弃 lifecycle → 刷新才见（messages-bound 当年同坑），此处同点修复
+        const row = makeMsg({ id: 'msg-1', lifecycle: 'pushed', lifecycleAt: 1000, content: makeContent('p1', []) })
+        const cache = resolveMessageCache(undefined, row)
+
+        const broadcast = makeMsg({ id: 'msg-1', lifecycle: 'done', lifecycleAt: 2000, content: makeContent('p1', []) })
+        const result = resolveMessageCache(cache, broadcast, { skipIfNotSnapshot: true })
+        expect(result).toHaveLength(1)
+        expect(result).not.toBe(cache) // lifecycle 有变化，返回新数组
+        expect(result[0].lifecycle).toBe('done')
+        expect(result[0].lifecycleAt).toBe(2000)
+    })
+
+    it('skipIfNotSnapshot 命中时，lifecycle 回退广播（done→processing）不生效、返回原引用', () => {
+        const row = makeMsg({ id: 'msg-1', lifecycle: 'done', lifecycleAt: 3000, content: makeContent('p1', []) })
+        const cache = resolveMessageCache(undefined, row)
+
+        const stale = makeMsg({ id: 'msg-1', lifecycle: 'processing', lifecycleAt: 2000, content: makeContent('p1', []) })
+        const result = resolveMessageCache(cache, stale, { skipIfNotSnapshot: true })
+        expect(result).toBe(cache) // 无其他变化，引用相等
+        expect(result[0].lifecycle).toBe('done')
+        expect(result[0].lifecycleAt).toBe(3000)
+    })
+
+    it('lifecycle 广播缺 lifecycleAt 时保留旧值', () => {
+        const row = makeMsg({ id: 'msg-1', lifecycle: 'pushed', lifecycleAt: 1000, content: makeContent('p1', []) })
+        const cache = resolveMessageCache(undefined, row)
+
+        const broadcast = makeMsg({ id: 'msg-1', lifecycle: 'done', lifecycleAt: null, content: makeContent('p1', []) })
+        const result = resolveMessageCache(cache, broadcast, { skipIfNotSnapshot: true })
+        expect(result[0].lifecycle).toBe('done')
+        expect(result[0].lifecycleAt).toBe(1000)
+    })
+
+    it('lifecycle 不变但 metadata 有增量 → 仍走 metadata merge（不回归）', () => {
+        const row = makeMsg({ id: 'msg-1', lifecycle: 'pushed', lifecycleAt: 1000, content: makeContent('p1', []) })
+        const cache = resolveMessageCache(undefined, row)
+
+        const bound = makeMsg({
+            id: 'msg-1',
+            lifecycle: 'pushed',
+            lifecycleAt: 1000,
+            content: makeContent('p1', []),
+            metadata: { nativeId: 'uu-1', nativeSessionId: 'ns-1' },
+        })
+        const result = resolveMessageCache(cache, bound, { skipIfNotSnapshot: true })
+        expect(result).not.toBe(cache)
+        expect(result[0].metadata).toEqual({ nativeId: 'uu-1', nativeSessionId: 'ns-1' })
+        expect(result[0].lifecycle).toBe('pushed')
+    })
+
     it('snapshot 替换 snapshot 不受 skipIfNotSnapshot 影响', () => {
         const s1 = makeMsg({ id: 'snap-1', snapshot: true, content: makeContent('p1', []) })
         const s2 = makeMsg({ id: 'snap-1', snapshot: true, content: makeContent('p1', [text('updated')]) })

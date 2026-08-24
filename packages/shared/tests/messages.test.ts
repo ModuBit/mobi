@@ -20,6 +20,7 @@ import {
     unwrapRoleWrappedRecordEnvelope,
     isClaudeChatVisibleSystemSubtype,
     isClaudeChatVisibleMessage,
+    isLifecycleAhead,
 } from '../src/messages'
 
 describe('isRoleWrappedRecord', () => {
@@ -235,5 +236,45 @@ describe('unwrapOutputMessage', () => {
         expect(unwrapOutputMessage(null)).toBeNull()
         expect(unwrapOutputMessage(undefined)).toBeNull()
         expect(unwrapOutputMessage('string')).toBeNull()
+    })
+})
+
+describe('isLifecycleAhead', () => {
+    it('rank 前进返回 true（queued→pushed / processing→done）', () => {
+        expect(isLifecycleAhead('queued', 'pushed')).toBe(true)
+        expect(isLifecycleAhead('processing', 'done')).toBe(true)
+        expect(isLifecycleAhead('queued', 'withdrawn')).toBe(true)
+    })
+
+    it('同 rank 终态互不覆盖（done→cancelled false）', () => {
+        expect(isLifecycleAhead('done', 'cancelled')).toBe(false)
+        expect(isLifecycleAhead('cancelled', 'done')).toBe(false)
+        expect(isLifecycleAhead('done', 'discarded')).toBe(false)
+    })
+
+    it('回退返回 false（pushed→queued）', () => {
+        expect(isLifecycleAhead('pushed', 'queued')).toBe(false)
+        expect(isLifecycleAhead('done', 'processing')).toBe(false)
+    })
+
+    it('null / undefined 任一侧返回 false（非排队轨道不参与推进）', () => {
+        expect(isLifecycleAhead(null, 'queued')).toBe(false)
+        expect(isLifecycleAhead('queued', null)).toBe(false)
+        expect(isLifecycleAhead(undefined, 'done')).toBe(false)
+        expect(isLifecycleAhead('done', undefined)).toBe(false)
+        expect(isLifecycleAhead(null, null)).toBe(false)
+    })
+
+    it('相同状态返回 false', () => {
+        expect(isLifecycleAhead('queued', 'queued')).toBe(false)
+        expect(isLifecycleAhead('done', 'done')).toBe(false)
+    })
+
+    it('withdrawn 高位：任何→withdrawn true、withdrawn→任何 false', () => {
+        expect(isLifecycleAhead('queued', 'withdrawn')).toBe(true)
+        expect(isLifecycleAhead('done', 'withdrawn')).toBe(true)
+        expect(isLifecycleAhead('processing', 'withdrawn')).toBe(true)
+        expect(isLifecycleAhead('withdrawn', 'queued')).toBe(false)
+        expect(isLifecycleAhead('withdrawn', 'done')).toBe(false)
     })
 })

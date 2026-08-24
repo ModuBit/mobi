@@ -148,6 +148,21 @@ export type SentFrom = 'cli' | 'webapp' | (string & {})
  */
 export type MessageLifecycle = 'queued' | 'pushed' | 'acked' | 'processing' | 'done' | 'cancelled' | 'discarded' | 'withdrawn'
 
+/** lifecycle 状态推进序——与 hub advanceMessagesLifecycle 的 SQL CASE rank 同语义，勿单边改。
+ *  终态（done/cancelled/discarded）同为 4：互不覆盖（first-terminal-wins）。withdrawn 单独高位（永不后续推进）。 */
+export const LIFECYCLE_RANK: Record<Exclude<MessageLifecycle, null>, number> = {
+    queued: 0, pushed: 1, acked: 2, processing: 3, done: 4, cancelled: 4, discarded: 4, withdrawn: 5,
+}
+
+/** candidate 是否比 current 更靠后（rank 严格更大且不同 rank——同 rank 的不同终态互不覆盖）。
+ *  null（非排队轨道）不参与推进。 */
+export function isLifecycleAhead(current: MessageLifecycle | null | undefined, candidate: MessageLifecycle | null | undefined): boolean {
+    if (!current || !candidate) return false
+    if (current === candidate) return false
+    if (LIFECYCLE_RANK[current] === LIFECYCLE_RANK[candidate]) return false
+    return LIFECYCLE_RANK[current] < LIFECYCLE_RANK[candidate]
+}
+
 /**
  * CLI→Hub 的消息事实（messages-facts 事件载荷元素）。批内合并，一次往返。
  * `at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。

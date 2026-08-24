@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { isLifecycleAhead } from '@mobi/shared'
 import type { DecryptedMessage } from '@mobi/shared'
 
 /** 从 DecryptedMessage.content 信封中提取 parentUuid */
@@ -90,12 +91,23 @@ export function resolveMessageCache(
             // 真正的重复消息（SSE retry / Hub 去重）默认忽略；
             // 但 rewind 锚点补写（messages-bound 广播）是同 id 消息的 metadata 增量更新，
             // 需合并 metadata 而非丢弃，否则 Web 端已渲染行不更新、hover 不显 rewind icon
-            const merged = mergeNativeMetadata(base[existingIdx].metadata, msg.metadata)
+            const prevMsg = base[existingIdx]
+            const merged = mergeNativeMetadata(prevMsg.metadata, msg.metadata)
             // 乐观消息 seq=null → 落库消息带真实 seq：补 seq，否则 rewindFrom 的 `seq == null` 永远保留它
-            const seq = base[existingIdx].seq == null && msg.seq != null ? msg.seq : base[existingIdx].seq
-            if (merged !== base[existingIdx].metadata || seq !== base[existingIdx].seq) {
+            const seq = prevMsg.seq == null && msg.seq != null ? msg.seq : prevMsg.seq
+            // lifecycle 广播（hub 终态推进的 update new-message）单调合并：rank 前进才接受——
+            // 与 messages-bound 补写当年同坑（只落库 Web 不更新、刷新才见），同点修复。
+            // lifecycleAt 随 lifecycle 推进同步（广播缺 lifecycleAt 时保留旧值）
+            let lifecycle = prevMsg.lifecycle
+            let lifecycleAt = prevMsg.lifecycleAt
+            if (isLifecycleAhead(prevMsg.lifecycle, msg.lifecycle)) {
+                lifecycle = msg.lifecycle
+                lifecycleAt = msg.lifecycleAt ?? prevMsg.lifecycleAt
+            }
+            if (merged !== prevMsg.metadata || seq !== prevMsg.seq
+                || lifecycle !== prevMsg.lifecycle || lifecycleAt !== prevMsg.lifecycleAt) {
                 const updated = base.slice()
-                updated[existingIdx] = { ...base[existingIdx], metadata: merged, seq }
+                updated[existingIdx] = { ...prevMsg, metadata: merged, seq, lifecycle, lifecycleAt }
                 return updated
             }
             return base

@@ -407,6 +407,28 @@ describe('mergeMessages lifecycle 单调防护', () => {
         expect(merged[0].lifecycle).toBe('pushed')
         expect(merged[0].lifecycleAt).toBe(2000)
     })
+
+    it('done 收到陈旧 pushed echo 不回退（rank 泛化——非 queued 回退同样防护）', () => {
+        // P3 泛化：防护不再只针对回退为 'queued'，任意 rank 更低的陈旧帧（如 in-flight
+        // fetch 旧响应 / 陈旧 echo）都不把已终态的行拉回中间态
+        const existing = [createMessage({
+            id: 'm1',
+            lifecycle: 'done',
+            lifecycleAt: 3000,
+            positionAt: 3000,
+        })]
+        const incoming = [createMessage({
+            id: 'm1',
+            lifecycle: 'pushed',
+            lifecycleAt: 1000,
+            positionAt: 1000,
+            createdAt: 1000,
+        })]
+
+        const merged = mergeMessages(existing, incoming)
+        expect(merged[0].lifecycle).toBe('done')
+        expect(merged[0].lifecycleAt).toBe(3000)
+    })
 })
 
 describe('makeClientSideId', () => {
