@@ -136,14 +136,17 @@ export type { RoleWrappedRecord }
 export type SentFrom = 'cli' | 'webapp' | (string & {})
 
 /**
- * 排队生命周期状态（messages.queue_state 列）。
- * - `null`：非排队轨道消息（agent/CLI/system 输出等），从不进入排队悬浮条。
- * - `'pending'`：webapp 用户提交、等待 agent 消费（悬浮展示）。
- * - `'consumed'`：已离开排队轨道——通常是 agent 消费，也可能是被 /compact、/clear 等命令
- *   清空队列时丢弃（agent 不会再处理，但作为用户已发送的消息留在历史，故仍走 submittedAt 落库、
- *   positionAt 跳变，而非物理删除）。Web 据此移出悬浮条、翻为正式气泡。
+ * 用户消息生命周期状态（messages.lifecycle 列 / DecryptedMessage.lifecycle）。
+ * - `null`：非排队轨道（agent/CLI/system 输出等），从不进入排队悬浮条
+ * - `'queued'`：webapp 用户提交、等待 CLI 消费（悬浮展示）
+ * - `'pushed'`：CLI 已 push 给 Claude Code（原 queue_state='consumed'）
+ * - `'acked'`：CC isReplay 回显确认收到（原 metadata.nativeAckAt）
+ * - `'processing'`：CC 开始处理本条（command_lifecycle:started，P2 写入）
+ * - `'done'` / `'cancelled'` / `'discarded'`：CC 终态——完成 / turn 死亡连坐 / 被显式丢弃（P2 写入）
+ * - `'withdrawn'`：撤回（pending #53 预留）
+ * 转换单调前进：只会 queued→pushed→acked→processing→{done|cancelled|discarded}，queued→withdrawn
  */
-export type QueueState = 'pending' | 'consumed' | null
+export type MessageLifecycle = 'queued' | 'pushed' | 'acked' | 'processing' | 'done' | 'cancelled' | 'discarded' | 'withdrawn'
 
 /** 从消息 content 信封读取 sentFrom 来源标识 */
 export function getSentFrom(content: unknown): SentFrom | null {

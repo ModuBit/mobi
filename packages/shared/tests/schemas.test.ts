@@ -72,37 +72,65 @@ describe('DecryptedMessageSchema', () => {
         expect(result.localId).toBeNull()
     })
 
-    it('accepts submittedAt null and number', () => {
+    it('accepts lifecycleAt null and number', () => {
         const base = { id: 'm1', seq: 1, localId: null, content: {}, createdAt: 0 }
-        expect(DecryptedMessageSchema.parse({ ...base, submittedAt: null }).submittedAt).toBeNull()
-        expect(DecryptedMessageSchema.parse({ ...base, submittedAt: 123 }).submittedAt).toBe(123)
+        expect(DecryptedMessageSchema.parse({ ...base, lifecycle: 'queued', lifecycleAt: null }).lifecycleAt).toBeNull()
+        expect(DecryptedMessageSchema.parse({ ...base, lifecycle: 'queued', lifecycleAt: 123 }).lifecycleAt).toBe(123)
     })
 
-    it('defaults submittedAt to undefined when absent (optional)', () => {
+    it('defaults lifecycle/lifecycleAt to undefined when absent (optional)', () => {
         const parsed = DecryptedMessageSchema.parse({ id: 'm1', seq: 1, localId: null, content: {}, createdAt: 0 })
-        expect(parsed.submittedAt).toBeUndefined()
+        expect(parsed.lifecycle).toBeUndefined()
+        expect(parsed.lifecycleAt).toBeUndefined()
     })
 
-    it('使用 submittedAt 而非 invokedAt', () => {
+    it('使用 lifecycleAt 而非 invokedAt', () => {
         const msg = {
             id: 'm1',
             seq: 1,
             localId: null,
             content: { role: 'user', content: { type: 'text', text: 'hi' } },
             createdAt: 1000,
-            submittedAt: 2000,
+            lifecycle: 'queued',
+            lifecycleAt: 2000,
         }
         const parsed = DecryptedMessageSchema.safeParse(msg)
         expect(parsed.success).toBe(true)
-        expect((parsed.success ? parsed.data.submittedAt : null)).toBe(2000)
+        expect((parsed.success ? parsed.data.lifecycleAt : null)).toBe(2000)
     })
 
-    it('submittedAt 可空可缺省', () => {
+    it('lifecycleAt 可空可缺省', () => {
         const parsed = DecryptedMessageSchema.safeParse({
             id: 'm1', seq: null, localId: null, createdAt: 1,
             content: { role: 'user', content: { type: 'text', text: '' } },
         })
         expect(parsed.success).toBe(true)
+    })
+
+    it('DecryptedMessage lifecycle 字段：合法值解析、非法值拒收', () => {
+        for (const lifecycle of ['queued', 'pushed', 'acked', 'processing', 'done', 'cancelled', 'discarded', 'withdrawn'] as const) {
+            const msg = DecryptedMessageSchema.parse({
+                id: 'm1', seq: null, localId: null,
+                lifecycle, lifecycleAt: 123,
+                content: {}, createdAt: 1,
+            })
+            expect(msg.lifecycle).toBe(lifecycle)
+            expect(msg.lifecycleAt).toBe(123)
+        }
+        expect(() => DecryptedMessageSchema.parse({
+            id: 'm1', seq: null, localId: null, lifecycle: 'pending',
+            content: {}, createdAt: 1,
+        })).toThrow()
+    })
+
+    it('DecryptedMessage 旧字段 queueState/submittedAt 已退役（zod strip）', () => {
+        const msg = DecryptedMessageSchema.parse({
+            id: 'm1', seq: null, localId: null,
+            queueState: 'pending', submittedAt: 5,
+            content: {}, createdAt: 1,
+        } as Record<string, unknown>)
+        expect('queueState' in msg).toBe(false)
+        expect('submittedAt' in msg).toBe(false)
     })
 
     it('缺少必填字段抛错', () => {
