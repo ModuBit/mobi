@@ -86,6 +86,22 @@ function queuedMsg(id: string, text: string): DecryptedMessage {
     } as unknown as DecryptedMessage
 }
 
+/** 构造终态被丢弃的 user 消息（lifecycle='cancelled'/'discarded'） */
+function discardedMsg(id: string, text: string, lifecycle: 'cancelled' | 'discarded' = 'discarded'): DecryptedMessage {
+    return {
+        id,
+        localId: id,
+        seq: null,
+        role: 'user',
+        content: { content: { text } },
+        originalText: text,
+        lifecycle,
+        lifecycleAt: 2000,
+        status: 'completed',
+        createdAt: 1000,
+    } as unknown as DecryptedMessage
+}
+
 // mock MobiApi
 const mockApi = {
     respondPermission: vi.fn(),
@@ -258,6 +274,23 @@ describe('ComposerInfoPanel', () => {
         expect(container.textContent).toContain('排队的内容预览')
         // 编辑按钮存在（具体取消/编辑交互由 QueuedMessagesBar 自身测试覆盖）
         expect(container.querySelectorAll('button').length).toBeGreaterThan(0)
+        unmount()
+    })
+
+    it('queued 空 + discarded 有 + 无其他面板内容 → 面板渲染丢弃分区（hasContent 门禁不吞掉）', () => {
+        // turn 死亡常态：无 requests/todos/tasks/agents，唯一可见性来源是丢弃分区
+        messagesMock.data = [discardedMsg('d-1', '被丢弃的内容预览')]
+        const { container, unmount } = render(
+            <ComposerInfoPanel {...defaultProps} />,
+            { wrapper }
+        )
+        // 面板不因 hasQueued=false 卸载
+        expect(container.innerHTML).not.toBe('')
+        // 丢弃分区标题 + 消息预览可见
+        expect(container.textContent).toContain('chat.queued.discardedTitle')
+        expect(container.textContent).toContain('被丢弃的内容预览')
+        // 丢弃条目无操作按钮
+        expect(container.querySelectorAll('button').length).toBe(0)
         unmount()
     })
 

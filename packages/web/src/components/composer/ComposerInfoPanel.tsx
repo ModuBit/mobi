@@ -262,7 +262,9 @@ function QueuedMessagesSection({
     onEdit: (text: string) => void
 }) {
     // 数据源同时取「排队中」与「已丢弃（终态可见性）」——Bar 内部再各自过滤。
-    // 注意 hasQueued（见下）仍只看 isQueuedInMobi：被丢弃不算「有排队」，composer 状态提示语义不混淆。
+    // hasQueued（见下）是 hasContent 门禁的「排队/丢弃可见性」信号，同样纳入 discarded：
+    // turn 死亡常态下无 requests/todos/tasks/agents，丢弃分区是唯一内容——若只算 queued，
+    // 排队消息被 cancelled/discarded 的那一帧面板会整体卸载，丢弃分区永远渲染不出来。
     const { data: messages = EMPTY_MESSAGES } = useMessages(sessionId, (all) => all.filter((m) => isQueuedInMobi(m) || isDiscardedInMobi(m)))
     if (messages.length === 0) return null
     return (
@@ -302,10 +304,12 @@ export function ComposerInfoPanel({
     const hasTeamAgents = teamAgents.length > 0 && !!teamName
     const hasAgents = agents.length > 0
 
-    // 只订阅「是否存在排队消息」布尔。useSyncExternalStore 下 store 每次 SSE 写入都 notify，
+    // 只订阅「是否存在排队/丢弃消息」布尔（hasContent 门禁信号，无第二个消费者）。
+    // 纳入 discarded：丢弃分区在无其他面板内容时（turn 死亡常态）也必须可见。
+    // useSyncExternalStore 下 store 每次 SSE 写入都 notify，
     // 本面板会随消息变动重渲染——已知 trade-off（不无限循环；getSnapshot 返回稳定 state 引用）。
     // 若流式期 ToolInteractionPanel/TasksPanel 等重型子树 reconcile 开销显著，后续加 selector 缓存优化。
-    const { data: hasQueued = false } = useMessages(sessionId, (all) => all.some(isQueuedInMobi))
+    const { data: hasQueued = false } = useMessages(sessionId, (all) => all.some((m) => isQueuedInMobi(m) || isDiscardedInMobi(m)))
 
     // 从 store 派生最新 block：先查 running agents，再查 byId（覆盖后台 Agent 任务）
     const drawerBlock: ToolCallBlock | null = (() => {
