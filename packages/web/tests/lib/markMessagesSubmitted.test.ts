@@ -18,7 +18,8 @@ import { describe, it, expect } from 'vitest'
 import { markMessagesSubmitted } from '@/core/lib/markMessagesSubmitted'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
-/** 创建 mock DecryptedMessage。lifecycleAt 非空 ⇒ 已 pushed（lifecycle='pushed'） */
+/** 创建 mock DecryptedMessage。默认按 lifecycleAt 派生（null ⇒ queued、非空 ⇒ pushed），
+ *  但 hub 真实语义 queued 行 lifecycleAt=createdAt（非空）——测该场景时用 overrides 显式传 lifecycle */
 function m(
     localId: string | null,
     lifecycleAt: number | null | undefined,
@@ -31,7 +32,7 @@ function m(
         createdAt: 0,
         content: { role: 'user', content: 'hello' },
         lifecycleAt,
-        lifecycle: lifecycleAt != null ? 'pushed' : 'queued',
+        lifecycle: overrides.lifecycle ?? (lifecycleAt != null ? 'pushed' : 'queued'),
         status: lifecycleAt != null ? 'sent' : 'queued',
         ...overrides,
     }

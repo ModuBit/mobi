@@ -357,7 +357,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 break
             }
             case 'messages-submitted':
-                // 排队消息被 agent 真正消费：把命中 localId 的消息 submittedAt 翻为给定时间戳
+                // 排队消息被 agent 真正消费：把命中 localId 的消息翻为 pushed（lifecycleAt = 事件 submittedAt）
                 if (event.sessionId && event.localIds?.length) {
                     markSubmittedInStore(event.sessionId, event.localIds, event.submittedAt)
                 }
