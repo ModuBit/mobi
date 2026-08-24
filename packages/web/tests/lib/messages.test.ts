@@ -324,6 +324,91 @@ describe('mergeMessages lifecycleAt 保留', () => {
     })
 })
 
+describe('mergeMessages lifecycle 单调防护', () => {
+    it('pushed 行收到陈旧 queued echo 不回退（lifecycleAt 更早或相等）', () => {
+        const existing = [createMessage({
+            id: 'm1',
+            localId: 'l1',
+            lifecycle: 'pushed',
+            lifecycleAt: 2000,
+            positionAt: 2000,
+        })]
+        const incoming = [createMessage({
+            id: 'm1',
+            localId: 'l1',
+            lifecycle: 'queued',
+            lifecycleAt: 1000,
+            positionAt: 1000,
+            createdAt: 1000,
+        })]
+
+        const merged = mergeMessages(existing, incoming)
+        expect(merged[0].lifecycle).toBe('pushed')
+        expect(merged[0].lifecycleAt).toBe(2000)
+    })
+
+    it('incoming lifecycleAt 更晚的合法更新正常接受（不误伤正常推进）', () => {
+        const existing = [createMessage({
+            id: 'm1',
+            localId: 'l1',
+            lifecycle: 'queued',
+            lifecycleAt: 1000,
+            positionAt: 1000,
+        })]
+        const incoming = [createMessage({
+            id: 'm1',
+            localId: 'l1',
+            lifecycle: 'pushed',
+            lifecycleAt: 2000,
+            positionAt: 2000,
+        })]
+
+        const merged = mergeMessages(existing, incoming)
+        expect(merged[0].lifecycle).toBe('pushed')
+        expect(merged[0].lifecycleAt).toBe(2000)
+    })
+
+    it('终态同样不被陈旧帧拉回（done 收到陈旧 queued）', () => {
+        const existing = [createMessage({
+            id: 'm1',
+            lifecycle: 'done',
+            lifecycleAt: 3000,
+            positionAt: 3000,
+        })]
+        const incoming = [createMessage({
+            id: 'm1',
+            lifecycle: 'queued',
+            lifecycleAt: 1000,
+            positionAt: 1000,
+            createdAt: 1000,
+        })]
+
+        const merged = mergeMessages(existing, incoming)
+        expect(merged[0].lifecycle).toBe('done')
+        expect(merged[0].lifecycleAt).toBe(3000)
+    })
+
+    it('lifecycleAt 相等时同样视为陈旧回退（相等 = 同一转换的重复帧）', () => {
+        const existing = [createMessage({
+            id: 'm1',
+            lifecycle: 'pushed',
+            lifecycleAt: 2000,
+            positionAt: 2000,
+        })]
+        const incoming = [createMessage({
+            id: 'm1',
+            lifecycle: 'queued',
+            lifecycleAt: 2000,
+            positionAt: 1000,
+            createdAt: 1000,
+        })]
+
+        const merged = mergeMessages(existing, incoming)
+        expect(merged[0].lifecycle).toBe('pushed')
+        expect(merged[0].lifecycleAt).toBe(2000)
+    })
+})
+
 describe('makeClientSideId', () => {
     it('应生成以指定前缀开头的 ID', () => {
         const id = makeClientSideId('test')

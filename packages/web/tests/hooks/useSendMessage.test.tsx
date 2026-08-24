@@ -96,7 +96,9 @@ describe('useSendMessage', () => {
         expect(msgs).toHaveLength(1)
         const optimistic = msgs[0]
         expect(optimistic.status).toBe('sending')
-        expect(optimistic.lifecycleAt).toBeNull()
+        // lifecycleAt = 发送时刻数值（与 positionAt 同源），对齐 hub「queued 时 lifecycle_at=created_at」不变量
+        expect(typeof optimistic.lifecycleAt).toBe('number')
+        expect(optimistic.lifecycleAt).toBe(optimistic.positionAt)
         // 非 running 发送 → 不进排队轨道
         expect(optimistic.lifecycle).toBeNull()
         // 乐观消息 id === localId

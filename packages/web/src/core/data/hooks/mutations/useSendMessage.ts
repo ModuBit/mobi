@@ -44,21 +44,24 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
         },
         onMutate: async (vars: { text: string; localId: string }) => {
             // 乐观气泡：content 信封与 hub messageService.sendMessage 保持一致
+            // positionAt / createdAt / lifecycleAt 共用同一发送时刻，对齐 hub
+            // 「queued 时 lifecycle_at = created_at」契约不变量
+            const now = Date.now()
             const optimistic: DecryptedMessage = {
                 id: vars.localId,
                 seq: null,
                 localId: vars.localId,
-                lifecycleAt: null,
+                lifecycleAt: now,
                 // running 中发送 → 进排队轨道（lifecycle='queued'，悬浮展示）；
                 // 否则 sending（在途开新 turn，不进悬浮条）
                 lifecycle: isRunning ? 'queued' as const : null,
-                positionAt: Date.now(),
+                positionAt: now,
                 content: {
                     role: 'user',
                     content: { type: 'text', text: vars.text, attachments: undefined },
                     meta: { sentFrom: 'webapp' },
                 },
-                createdAt: Date.now(),
+                createdAt: now,
                 status: isRunning ? 'queued' : 'sending',
             }
             appendOptimisticMessage(sessionId, optimistic)
