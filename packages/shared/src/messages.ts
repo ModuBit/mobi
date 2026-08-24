@@ -35,6 +35,11 @@ const VISIBLE_CLAUDE_SYSTEM_SUBTYPES = new Set([
     'task_updated',
 ])
 
+// 顶层不可见的控制帧（非对话内容，聊天中不渲染）
+// - command_lifecycle：SDK 0.3.206 的排队生命周期回执，早期版本曾被当 persistent 落库；
+//   新消息已由 classifyMessage discard 拦截，此处兜底静默过滤历史 DB 行（web 端不再 console.warn）
+const INVISIBLE_CLAUDE_TOP_LEVEL_TYPES = new Set(['command_lifecycle'])
+
 export function isRoleWrappedRecord(value: unknown): value is RoleWrappedRecord {
     if (!isObject(value)) return false
     return typeof value.role === 'string' && 'content' in value
@@ -106,14 +111,15 @@ export function isClaudeChatVisibleSystemSubtype(subtype: unknown): subtype is s
 /**
  * 判断消息是否在 Claude 聊天中可见
  *
- * 黑名单仅覆盖 system 子类型：非 system 的顶层 type 一律视为可见（由 normalize handler
- * 决定如何渲染，未识别类型在 normalizeAgentRecord console.warn 后跳过，不走 JSON dump）。
+ * - 顶层控制帧黑名单（INVISIBLE_CLAUDE_TOP_LEVEL_TYPES）：明确已知的非对话控制帧，静默跳过。
+ * - 其余非 system 的顶层 type 一律视为可见（由 normalize handler 决定如何渲染，未识别类型在
+ *   normalizeAgentRecord console.warn 后跳过，不走 JSON dump）。
  * 历史上曾为 tool_progress/tool_use_summary 设过顶层黑名单，接入 handler 后已移除——
  * 回滚入口是 git history，无需常驻空集合。
  */
 export function isClaudeChatVisibleMessage(message: { type: unknown; subtype?: unknown }): boolean {
     if (message.type !== 'system') {
-        return true
+        return typeof message.type === 'string' && !INVISIBLE_CLAUDE_TOP_LEVEL_TYPES.has(message.type)
     }
 
     return isClaudeChatVisibleSystemSubtype(message.subtype)

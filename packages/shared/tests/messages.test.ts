@@ -149,6 +149,12 @@ describe('isClaudeChatVisibleMessage', () => {
     it('system 无 subtype 返回 false', () => {
         expect(isClaudeChatVisibleMessage({ type: 'system' })).toBe(false)
     })
+
+    it('command_lifecycle 返回 false（控制帧，历史落库行静默跳过）', () => {
+        // SDK 0.3.206 新增的排队生命周期回执，早期版本曾被当 persistent 落库；
+        // 现由 classifyMessage discard 拦截新消息，此处兜底过滤历史行（web 端不再 console.warn）
+        expect(isClaudeChatVisibleMessage({ type: 'command_lifecycle' })).toBe(false)
+    })
 })
 
 // ========== unwrapOutputMessage（SDK 输出消息解包骨架收口）==========

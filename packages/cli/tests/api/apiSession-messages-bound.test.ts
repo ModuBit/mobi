@@ -105,6 +105,20 @@ describe('sendClaudeSessionMessage 携带 native metadata', () => {
         }))
     })
 
+    it('discard 分类消息不发送（含 local 模式 scanner 旁路，如 command_lifecycle）', () => {
+        const client = makeClient()
+        // Claude 转录 JSONL 含 command_lifecycle 行，local 模式 scanner 不经 remote 循环的
+        // 391 行过滤直接调本方法——发送端统一按分类拦截，discard 一律不 emit
+        client.sendClaudeSessionMessage({
+            type: 'command_lifecycle',
+            uuid: 'rec-uuid-1',
+            command_uuid: 'cmd-uuid-1',
+            state: 'completed',
+        } as never)
+
+        expect(mockSocket.emit).not.toHaveBeenCalled()
+    })
+
     it('body 不带 uuid 时 message 事件 payload 的 metadata 与 localId 均不带真值', () => {
         const client = makeClient()
         client.sendClaudeSessionMessage({

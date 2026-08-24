@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { normalizeAgentRecord, isSkippableAgentContent } from '../../../src/domain/chat/normalizeAgent'
 
 describe('normalizeAgentRecord', () => {
@@ -28,6 +28,31 @@ describe('normalizeAgentRecord', () => {
         expect(normalizeAgentRecord('test', null, Date.now(), null)).toBeNull()
         expect(normalizeAgentRecord('test', null, Date.now(), {})).toBeNull()
         expect(normalizeAgentRecord('test', null, Date.now(), { type: 'unknown' })).toBeNull()
+    })
+
+    it('历史落库的 command_lifecycle 静默跳过且不触发 console.warn', () => {
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        try {
+            // SDK 0.3.206 的排队生命周期回执（控制帧），早期版本被当 persistent 落库
+            const result = normalizeAgentRecord(
+                baseParams.messageId,
+                baseParams.localId,
+                baseParams.createdAt,
+                {
+                    type: 'output',
+                    data: {
+                        type: 'command_lifecycle',
+                        command_uuid: 'bb3531f2-b131-4d81-95b4-6e700d85b38a',
+                        state: 'completed',
+                    },
+                }
+            )
+
+            expect(result).toBeNull()
+            expect(warnSpy).not.toHaveBeenCalled()
+        } finally {
+            warnSpy.mockRestore()
+        }
     })
 
     it('should handle assistant output', () => {

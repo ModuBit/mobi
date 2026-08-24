@@ -409,6 +409,11 @@ export class ApiSessionClient extends EventEmitter {
         const subtype = body.type === 'system' ? body.subtype : undefined
         const category = classifyMessage(body.type, subtype)
 
+        // discard 统一在此拦截：remote 循环入口（claudeRemoteLauncher）虽已过滤，
+        // 但 local 模式 scanner（转录 JSONL 含 command_lifecycle 等控制帧）等旁路
+        // 直接调用本方法——发送端唯一咽喉点，保证 discard 消息不进 Hub 不落库
+        if (category === 'discard') return
+
         let content: MessageContent
 
         if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {

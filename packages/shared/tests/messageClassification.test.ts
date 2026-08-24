@@ -50,6 +50,10 @@ describe('classifyMessage', () => {
         it('rate_limit_event → discard', () => {
             expect(classifyMessage('rate_limit_event')).toBe('discard')
         })
+
+        it('command_lifecycle → discard（排队生命周期回执，控制帧非对话内容）', () => {
+            expect(classifyMessage('command_lifecycle')).toBe('discard')
+        })
     })
 
     describe('ephemeral 规则', () => {

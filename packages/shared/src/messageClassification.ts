@@ -39,6 +39,9 @@ const DISCARD_RULES: readonly ClassificationRule[] = [
     { type: 'system', subtype: 'files_persisted' },
     { type: 'auth_status' },
     { type: 'rate_limit_event' },
+    // SDK 0.3.206 新增：排队消息生命周期回执（queued/started/completed/cancelled/discarded），
+    // 控制帧非对话内容，每条用户消息产生 2-3 帧，落库纯膨胀。未来做排队终态特性走 onCommandLifecycle 回调
+    { type: 'command_lifecycle' },
 ]
 
 /** 黑名单：存 DB 但查询历史时过滤 */
