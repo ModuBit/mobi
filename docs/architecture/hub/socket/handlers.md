@@ -119,7 +119,7 @@ socket.on('disconnect', () => {
 | `update-state` | 请求/响应 | 乐观锁更新 agentState | `update` → 同房间 | onWebappEvent |
 | `session-alive` | 单向 | — | — | onSessionAlive |
 | `session-end` | 单向 | — | — | onSessionEnd |
-| `messages-consumed` | 单向 | markMessagesInvoked | — | onWebappEvent |
+| `messages-submitted` | 单向 | markMessagesPushed | — | onWebappEvent |
 
 ### message：消息接收
 
@@ -173,11 +173,11 @@ CLI 通过 `expectedVersion` 实现乐观锁，如果版本不匹配，返回当
 
 两者都先做访问控制，不合法则返回错误。
 
-**session-end force-invoke**：CLI 离线时，把仍排队的本地 user 消息（`invoked_at IS NULL AND local_id IS NOT NULL`）全部 invoke，防止悬浮条卡死。通过 `getUninvokedLocalMessages` + `markMessagesInvoked` 实现，成功后转发 `messages-consumed` SSE 事件。
+**session-end force-push**：CLI 离线时，把仍排队的本地 user 消息（`lifecycle = 'queued'`）全部 push，防止悬浮条卡死。通过 `getUnsubmittedLocalMessages` + `markMessagesPushed` 实现，成功后转发 `messages-submitted` SSE 事件。
 
-### messages-consumed：排队消息已消费
+### messages-submitted：排队消息已 push
 
-CLI 通过 `messages-consumed` 事件通知 Hub：一批 localId 的消息已被 agent 真正消费。Hub 先做访问控制，再调用 `markMessagesInvoked`（first-write-wins，已 invoke 的不动）将 `invokedAt` 落盘，最后转发 `messages-consumed` SSE 事件给 Web。
+CLI 通过 `messages-submitted` 事件通知 Hub：一批 localId 的消息已 push 给 Claude Code。Hub 先做访问控制，再调用 `markMessagesPushed`（first-write-wins，已推进的不动）将 `lifecycle='pushed'` + `lifecycleAt` 落盘，最后转发 `messages-submitted` SSE 事件给 Web。
 
 ---
 

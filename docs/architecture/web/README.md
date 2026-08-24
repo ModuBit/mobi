@@ -172,7 +172,7 @@ packages/web/src/
 │   ├── lib/                    业务辅助逻辑
 │   │   ├── query-keys.ts       React Query key 集中定义
 │   │   ├── messages.ts         消息合并/去重/排序（缓存操作工具，isQueuedForInvocation）
-│   │   ├── markMessagesConsumed.ts 排队消息消费标记（invokedAt first-write-wins）
+│   │   ├── markMessagesSubmitted.ts 排队消息消费标记（lifecycle queued→pushed，first-write-wins）
 │   │   ├── fileAttachments.ts  文件附件类型和辅助函数
 │   │   ├── composerDrafts.ts  per-session 草稿持久化（sessionStorage + LRU，含附件子集）
 │   │   ├── toolInputUtils.ts   工具输入解析
@@ -447,8 +447,8 @@ sequenceDiagram
     else message-received（新消息）
         Provider->>QC: invalidateQueries(messages)
         QC->>UI: 触发 refetch → 渲染新消息
-    else messages-consumed（排队消息被消费）
-        Provider->>Provider: markMessagesConsumed()（invokedAt 翻值，缓存就地修补）
+    else messages-submitted（排队消息已推送给 Claude Code）
+        Provider->>Provider: markMessagesSubmitted()（lifecycle 翻为 pushed，缓存就地修补）
         QC->>UI: 自动 re-render
     else session-added / session-removed
         Provider->>QC: invalidateQueries(sessions) / projectViews 批失效
@@ -463,7 +463,7 @@ sequenceDiagram
 
 - `session-updated` 使用 `setQueryData` 直接修补缓存，避免心跳触发 API 请求
 - `message-received` 使用 `invalidateQueries` 触发 refetch，因为消息有分页和去重逻辑
-- `messages-consumed` 使用 `markMessagesConsumed` 就地修补缓存（把命中 localId 的消息 `invokedAt` 翻值），避免 refetch 抖动
+- `messages-submitted` 使用 `markMessagesSubmitted` 就地修补缓存（把命中 localId 的消息 `lifecycle` 翻为 `'pushed'`、`lifecycleAt`/`positionAt` 跳到 submittedAt），避免 refetch 抖动
 - 失效操作通过批处理（16ms 防抖）合并，避免高频事件导致多次 API 请求；列表失效分 `sessions` / `projectViews`（projects / projectSessions / recentSessions 三个 key）等 scope 批量执行
 - `project-removed` 后名下会话已被 Hub 解绑进「最近」，与 `session-*` 共用 `projectViews` 批失效
 - **sessions 单一数据源**：`useProjectSessions` / `useRecentSessions` 的 queryFn 把分页会话 upsert 进全局 sessions 缓存（`mergeSessions`），列表只持 sessionIds——列表数据永远是全局缓存的视图而非独立副本

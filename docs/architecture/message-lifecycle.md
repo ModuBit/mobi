@@ -246,7 +246,7 @@ Hub 通过 SSE 向 Web 端推送 `SyncEvent`：
 - `heartbeat`：心跳
 - `connection-changed`：连接状态变化
 - `idle-timeout-warning`：空闲超时预警
-- `messages-submitted`：排队消息被 agent 真正消费（`queue_state=consumed` + `submittedAt` 落库），Web 据此把悬浮消息翻为正式消息
+- `messages-submitted`：排队消息被 CLI 推送给 Claude Code（`lifecycle='pushed'` + `lifecycleAt` 落库；事件名与载荷 `{localIds, submittedAt}` 沿用旧名），Web 据此把悬浮消息翻为正式消息
 
 Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新。
 
@@ -275,31 +275,33 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 
 ### 三语义解耦模型
 
-排队状态、消费时间、排序锚点是三个独立关注点，由不同列承载（不再由 `submitted_at` 一列重载）：
+生命周期状态、转换时刻、排序锚点是三个独立关注点，由不同列承载（不再由 `submitted_at` 一列重载，历史见 P1 重构）：
 
 | 列 / 字段 | 含义 |
 |------|------|
-| `queue_state` (`messages.queue_state` / `DecryptedMessage.queueState`) | 排队生命周期：`NULL`（非排队轨道，如 agent/CLI/system 输出）/ `'pending'`（等消费）/ `'consumed'`（已消费）。「是否排队」的唯一读取依据 |
-| `submitted_at` (`submittedAt`) | 被 agent 消费的时刻；**仅** `pending→consumed` 时写入，非排队消息恒 `NULL`。不参与排序 |
-| `position_at` (`positionAt`) | 排序锚点；insert 时 = `created_at`，排队消息消费时跳到消费时刻（保留「运行中消费的消息排在 turn 之后」UX） |
+| `lifecycle` (`messages.lifecycle` / `DecryptedMessage.lifecycle`，类型 `MessageLifecycle`) | 排队生命周期：`NULL`（非排队轨道，如 agent/CLI/system 输出）/ `'queued'`（webapp 提交待消费）/ `'pushed'`（已推给 Claude Code，原 `queue_state='consumed'`）/ `'acked'`（CC isReplay 回显确认，原 `metadata.nativeAckAt`）/ `'processing'`/`'done'`/`'cancelled'`/`'discarded'`/`'withdrawn'`（P2 写入，pending #53 预留）。「是否排队」的唯一读取依据 |
+| `lifecycle_at` (`lifecycleAt`) | 最近一次 lifecycle 转换的时刻；非排队消息恒 `NULL`。不参与排序（排序请用 `positionAt`，不要 COALESCE 本字段） |
+| `position_at` (`positionAt`) | 排序锚点；insert 时 = `created_at`，排队消息 push 时跳到 push 时刻（保留「运行中消费的消息排在 turn 之后」UX） |
+
+转换单调前进：`queued→pushed→acked→processing→{done|cancelled|discarded}`，`queued→withdrawn`。
 
 ### 不变量与单一决策点
 
-- **写入决策只在 Hub `addMessage`**：用 shared 谓词 `isQueueableUserSubmission(content, localId)`（**denylist**：`role==='user' && localId && sentFrom!=='cli'`）决定 `queue_state='pending'`。
+- **写入决策只在 Hub `addMessage`**：用 shared 谓词 `isQueueableUserSubmission(content, localId)`（**denylist**：`role==='user' && localId && sentFrom!=='cli'`）决定 `lifecycle='queued'`。
   - 只有 CLI 来源一定不排队（CLI 消息是 Claude Code 输出流回显，已在对话里）；webapp 及未来端默认排队。
-- **读取只看显式状态**：Web `isQueuedInMobi` = `queueState==='pending'`，不再反推来源或时间戳。
+- **读取只看显式状态**：Web `isQueuedInMobi` = `lifecycle==='queued'`，不再反推来源或时间戳。
 
 ### 完整流程
 
 ```mermaid
 flowchart LR
     Web["Web 用户<br/>（agent 运行中发送）"] -->|"POST 消息<br/>localId"| Hub["Hub<br/>addMessage"]
-    Hub -->|"isQueueableUserSubmission<br/>→ queue_state='pending'"| DB[("SQLite<br/>排队")]
-    Hub -->|"SSE message-received<br/>queueState=pending"| WebBar["Web 悬浮条<br/>QueuedMessagesBar"]
+    Hub -->|"isQueueableUserSubmission<br/>→ lifecycle='queued'"| DB[("SQLite<br/>排队")]
+    Hub -->|"SSE message-received<br/>lifecycle=queued"| WebBar["Web 悬浮条<br/>QueuedMessagesBar"]
 
     CLI["CLI gated pump<br/>agent idle 时 pull"] -->|"collectBatch<br/>localIds（同步标 in-flight）"| Consume["消费"]
-    Consume -->|"emitMessagesSubmitted"| Hub2["Hub<br/>markMessagesSubmitted"]
-    Hub2 -->|"queue_state=consumed<br/>submitted_at+position_at 落库"| DB2[("SQLite")]
+    Consume -->|"emitMessagesSubmitted"| Hub2["Hub<br/>markMessagesPushed"]
+    Hub2 -->|"lifecycle='pushed'<br/>lifecycle_at+position_at 落库"| DB2[("SQLite")]
     Hub2 -->|"SSE messages-submitted"| WebFinal["Web<br/>markMessagesSubmitted<br/>翻为正式消息"]
 ```
 
@@ -307,22 +309,23 @@ flowchart LR
 
 | 环节 | 位置 | 行为 |
 |------|------|------|
-| **入库决策** | Hub `addMessage` + shared `isQueueableUserSubmission` | denylist：非 CLI 的 user+localId → `queue_state='pending'`；其余 → `NULL` |
+| **入库决策** | Hub `addMessage` + shared `isQueueableUserSubmission` | denylist：非 CLI 的 user+localId → `lifecycle='queued'`；其余 → `NULL` |
 | **Gated Pump（C-2）** | CLI `userInputLoop` | agent 运行时不 pull，等 result 才拉取，消息始终停留在 MessageQueue |
-| **消费通知** | CLI `collectBatch`（同步标记 `inFlightLocalIds`）→ `onBatchConsumed` → `emitMessagesSubmitted` | → Hub `messages-submitted` handler → `markMessagesSubmitted`（pending→consumed，first-write-wins）→ SSE `messages-submitted` |
-| **首页钉入** | Hub `getMessagesPage` | 首页（`beforeSeq=null`）out-of-band 查询仍排队的本地消息（`queue_state='pending'`），追加到列表尾部。翻页游标 `nextBeforeSeq` 只取**非 pending**消息的 seq（position 稳定，防游标漂移） |
-| **session-end 兜底** | Hub `sessionHandlers` | CLI 离线时 force-consume 所有剩余 `queue_state='pending'` 消息，防止悬浮条卡死 |
-| **取消（CLI 权威）** | Web `DELETE` → Hub | Hub 先 `getMessageSubmitState`；DB 仍 pending 时问 CLI `cancel-queued-message`：`tryCancel` 返回 `submitted`（in-flight，已 collect）/`cancelled`（仍在队列）/`not-in-queue`（尚未送达）。仅 `cancelled`/`not-in-queue` 才物理删 DB——**in-flight 绝不删**，防幽灵消息 |
+| **消费通知** | CLI `collectBatch`（同步标记 `inFlightLocalIds`）→ `onBatchConsumed` → `emitMessagesSubmitted` | → Hub `messages-submitted` handler → `markMessagesPushed`（queued→pushed，first-write-wins）→ SSE `messages-submitted` |
+| **回显确认（acked）** | CLI `messages-acked` handler | CC isReplay 回显时按 nativeId 双写：`metadata.nativeAckAt` 照写（rewind 判据不动）+ `advanceMessagesAcked` 推进 `lifecycle='acked'`（仅 pushed 可推进，单调性） |
+| **首页钉入** | Hub `getMessagesPage` | 首页（`beforeSeq=null`）out-of-band 查询仍排队的本地消息（`lifecycle='queued'`，`getUnsubmittedLocalMessages`），追加到列表尾部、不参与 `nextBeforeSeq`/`hasMore` 计算。翻页游标 = 页内最老消息的 seq（**不分 lifecycle**）——跳过 queued 会让整页全 queued 时 `hasMore=false` 锁死更早历史；queued 锚点 position 跳变的漂移由 Web `mergeMessages` id 去重兜底 |
+| **session-end 兜底** | Hub `sessionHandlers` | CLI 离线时把所有剩余 `lifecycle='queued'` 消息 force-push（`markMessagesPushed`），防止悬浮条卡死 |
+| **取消（CLI 权威）** | Web `DELETE` → Hub | Hub 先 `getMessageSubmitState`（`lifecycle!=='queued'` 即已提交）；DB 仍 queued 时问 CLI `cancel-queued-message`：`tryCancel` 返回 `submitted`（in-flight，已 collect）/`cancelled`（仍在队列）/`not-in-queue`（尚未送达）。仅 `cancelled`/`not-in-queue` 才物理删 DB——**in-flight 绝不删**，防幽灵消息 |
 
 ### Web 端处理
 
 | 组件 | 职责 |
 |------|------|
 | `QueuedMessagesBar` | composer 上方悬浮条，展示排队消息，✕ 取消 / ✎ 编辑（回填草稿）/ ⚡ steer |
-| `useSendMessage` | 乐观注入：`isRunning` → `queueState='pending'`+`status='queued'`，否则 `status='sending'` |
+| `useSendMessage` | 乐观注入：`isRunning` → `lifecycle='queued'`+`status='queued'`，否则 `status='sending'` |
 | `useCancelQueuedMessage` | 乐观删除缓存中的 localId 消息；`status='sent'` 时失效重拉 |
-| `markMessagesSubmitted` | SSE `messages-submitted` 到达时，把命中 localId 的消息 `queueState='consumed'`（first-write-wins） |
-| `isQueuedInMobi` | `queueState==='pending'`（剔除 `status='sending'/'failed'`）。排队判定的唯一入口 |
+| `markMessagesSubmitted` | SSE `messages-submitted` 到达时，把命中 localId 的消息 `lifecycle='pushed'`（+ `lifecycleAt`/`positionAt` 跳到 submittedAt，first-write-wins） |
+| `isQueuedInMobi` | `lifecycle==='queued'`（剔除 `status='sending'/'failed'`）。排队判定的唯一入口 |
 | `ChatContainer` | 线程过滤掉排队消息（`isQueuedInMobi`），仅在悬浮条展示 |
 | `ChatComposer` | `canSend` 去掉 `!running` 门控，运行中允许发送（→排队） |
 
@@ -596,11 +599,11 @@ type ChatBlock =
 | CLI 队列 | `packages/cli/src/claude/utils/OutgoingMessageQueue.ts` | 消息发送队列（保序、延迟发送、透传） |
 | CLI 循环 | `packages/cli/src/claude/claudeRemote.ts` | 处理 result 控制信号、流式 snapshot 事件分发、gated pump（排队消息门控） |
 | CLI 快照发送 | `packages/cli/src/claude/utils/streamSnapshotSender.ts` | 累积 stream_event delta，定时发送 snapshot |
-| Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化（queue_state/position_at 列、byPosition 分页） |
+| Hub 存储 | `packages/hub/src/store/index.ts` | SQLite 消息持久化（lifecycle/position_at 列、byPosition 分页） |
 | Hub 同步 | `packages/hub/src/sync/syncEngine.ts` | SSE 推送、cancelQueuedMessage 委托 |
-| Hub 消息服务 | `packages/hub/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesSubmitted/cancelQueuedMessage |
+| Hub 消息服务 | `packages/hub/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesPushed/cancelQueuedMessage |
 | Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + 按 `parentUuid` 关联清理，assembler 聚合后可靠）、messages-submitted 处理 |
-| Web 排队消费标记 | `packages/web/src/core/lib/markMessagesSubmitted.ts` | 排队消息 queueState 翻为 consumed（first-write-wins） |
+| Web 排队消费标记 | `packages/web/src/core/lib/markMessagesSubmitted.ts` | 排队消息 lifecycle 翻为 pushed（first-write-wins） |
 | Web 排队悬浮条 | `packages/web/src/components/chat/QueuedMessagesBar.tsx` | composer 上方悬浮排队消息（✕取消 / ✎编辑） |
 | Web 标准化入口 | `packages/web/src/domain/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
 | Web Agent 标准化 | `packages/web/src/domain/chat/normalizeAgent.ts` | Agent 消息详细解析 |

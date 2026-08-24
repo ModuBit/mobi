@@ -150,7 +150,7 @@ Session 级 RPC 通过 `RpcHandlerManager` 管理：
 
 ### 排队消息消费通知
 
-`emitMessagesConsumed(localIds)` 通过 `socket.emit('messages-consumed', { sid, localIds })` 通知 Hub：这批 localId 的消息已被 agent 真正消费。由 `runClaude` 绑定到 `MessageQueue.setOnBatchConsumed` 回调，批次消费后自动触发。Hub 收到后将 `invokedAt` 落库并转发 SSE 给 Web。
+`emitMessagesSubmitted(localIds)` 通过 `socket.emit('messages-submitted', { sid, localIds })` 通知 Hub：这批 localId 的消息已 push 给 Claude Code。由 `runClaude` 绑定到 `MessageQueue.setOnBatchConsumed` 回调，批次消费后自动触发。Hub 收到后将 `lifecycle` 推进为 `'pushed'`（`lifecycleAt` 落库）并转发 SSE 给 Web。
 
 ### 上下文用量上报
 

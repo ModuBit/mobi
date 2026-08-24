@@ -79,7 +79,7 @@ broadcast(event: SyncEvent): void
 | `connection-changed` | 所有连接 |
 | `message-received` | all=true 或对应 session 的订阅者 |
 | `message-snapshot` | all=true 或对应 session 的订阅者 |
-| `messages-consumed` | all=true 或对应 session 的订阅者 |
+| `messages-submitted` | all=true 或对应 session 的订阅者 |
 | `idle-timeout-warning` | all=true 或对应 session 的订阅者 |
 | `session-updated` | all=true 或 session 匹配 |
 | `machine-updated` | all=true 或 machine 匹配 |

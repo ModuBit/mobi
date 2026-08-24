@@ -44,7 +44,7 @@ graph TB
 | **SessionStore** | 会话 CRUD、按项目 / 「最近」分页查询（projectId 游标）、metadata / agentState / runtimeState 乐观锁更新 |
 | **MachineStore** | 机器 CRUD、metadata / runnerState 乐观锁更新 |
 | **ProjectStore** | 项目 CRUD（folders 校验）、删除时同事务解绑名下会话 |
-| **MessageStore** | 消息追加、按位置分页查询（byPosition）、sidechain 查询、排队消息 invoke/cancel |
+| **MessageStore** | 消息追加、按位置分页查询（byPosition）、sidechain 查询、排队消息 push/cancel/ack |
 | **UserStore** | 用户绑定（平台 + 平台 ID）、按平台/命名空间查询 |
 | **PushStore** | Web Push 订阅管理（按命名空间） |
 
@@ -142,18 +142,26 @@ PRAGMA busy_timeout = 5000    // 5 秒超时
 | created_at | INTEGER | NOT NULL | 创建时间 |
 | seq | INTEGER | NOT NULL | 序号 |
 | local_id | TEXT | | 客户端本地 ID |
+| native_id | TEXT | STORED 生成列 | 值恒等于 `metadata.nativeId`，供按锚点查询的索引 |
+| metadata | TEXT | | 消息元数据（nativeId/nativeAckAt 等） |
+| deleted_at | INTEGER | | 软删除时刻 |
 | is_sidechain | INTEGER | NOT NULL DEFAULT 0 | 是否为 sidechain 消息 |
 | parent_tool_use_id | TEXT | | 所属 tool_use 的消息 ID |
 | category | TEXT | NOT NULL DEFAULT 'persistent' | 消息分类（persistent/ephemeral） |
-| invoked_at | INTEGER | | 被 agent 真正处理的时刻；NULL 表示仍在排队悬浮 |
+| lifecycle | TEXT | | 用户消息生命周期（'queued'/'pushed'/'acked'，其余 P2 写入）；NULL 表示非排队轨道 |
+| lifecycle_at | INTEGER | | 最近一次 lifecycle 转换的时刻 |
+| position_at | INTEGER | NOT NULL | 排序锚点（insert 时 = created_at，push 时跳到 push 时刻） |
 
 **索引**:
 - `idx_messages_session` → `(session_id, seq)`
 - `idx_messages_session_main` → `(session_id, seq, is_sidechain)`
 - `idx_messages_parent_tool` → `(parent_tool_use_id)`
 - `idx_messages_local_id` → `UNIQUE (session_id, local_id) WHERE local_id IS NOT NULL`
-- `idx_messages_session_position` → `(session_id, COALESCE(invoked_at, created_at) DESC, seq DESC)`（表达式索引，byPosition 分页）
-- `idx_messages_session_uninvoked_local` → `(session_id) WHERE invoked_at IS NULL AND local_id IS NOT NULL`（部分索引，悬浮排队消息查询）
+- `idx_messages_native_id` → `(session_id, native_id) WHERE native_id IS NOT NULL`
+- `idx_messages_session_position` → `(session_id, position_at DESC, seq DESC)`（byPosition 分页）
+- `idx_messages_session_queued` → `(session_id) WHERE lifecycle = 'queued'`（部分索引，悬浮排队消息查询）
+
+**迁移**：存量库的 `queue_state`/`submitted_at` 列 → `lifecycle`/`lifecycle_at` 由一次性脚本 `scripts/migrate-lifecycle-p1.sql`（表重建法，含 `.bail on`）在 deploy 前手动执行。
 
 ### users
 

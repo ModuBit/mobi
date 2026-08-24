@@ -13,7 +13,7 @@ flowchart TB
         getMessagesAfter[getMessagesAfter]
         getSidechainMessages[getSidechainMessages]
         sendMessage[sendMessage]
-        markMessagesInvoked[markMessagesInvoked]
+        markMessagesPushed[markMessagesPushed]
         cancelQueuedMessage[cancelQueuedMessage]
     end
 
@@ -28,7 +28,7 @@ flowchart TB
     WebAPI -->|Sidechain 查询| getSidechainMessages
     WebAPI -->|发送消息| sendMessage
     WebAPI -->|取消排队| cancelQueuedMessage
-    SocketHandler[CLI Socket Handler] -->|排队消息已消费| markMessagesInvoked
+    SocketHandler[CLI Socket Handler] -->|排队消息已 push| markMessagesPushed
 
     getMessagesPage --> Store
     getMessagesAfter --> Store
@@ -36,8 +36,8 @@ flowchart TB
     sendMessage --> Store
     sendMessage --> IO
     sendMessage --> Publisher
-    markMessagesInvoked --> Store
-    markMessagesInvoked --> Publisher
+    markMessagesPushed --> Store
+    markMessagesPushed --> Publisher
     cancelQueuedMessage --> Store
 
     Publisher -->|message-received| SSE[SSEManager]
@@ -53,8 +53,8 @@ flowchart TB
 | `getMessagesAfter()` | 获取指定序号后的消息（增量同步） |
 | `getSidechainMessages()` | 获取指定 toolUseId 的 Sidechain 消息 |
 | `sendMessage()` | 发送消息 |
-| `markMessagesInvoked()` | 标记 localId 对应的排队消息为已消费（`invokedAt` 落库，first-write-wins） |
-| `cancelQueuedMessage()` | 取消仍排队的消息（物理删除）；已 invoke 的不动 |
+| `markMessagesPushed()` | 把 localId 对应的 queued 消息推进为 pushed（`lifecycle`/`lifecycleAt` 落库，first-write-wins） |
+| `cancelQueuedMessage()` | 取消仍排队的消息（物理删除）；已 push 的不动 |
 
 ## 消息发送流程
 
@@ -129,9 +129,9 @@ GET /api/sessions/:id/messages?limit=50&beforeSeq=100
 }
 ```
 
-**首页 out-of-band 钉入**：`beforeSeq` 为 null（首页）时，额外查询仍排队的本地 user 消息（`invoked_at IS NULL AND local_id IS NOT NULL`），追加到列表尾部。这些消息不参与 `nextBeforeSeq`/`hasMore` 计算，仅保证悬浮条可见。
+**首页 out-of-band 钉入**：`beforeSeq` 为 null（首页）时，额外查询仍排队的本地 user 消息（`lifecycle = 'queued'`，`getUnsubmittedLocalMessages`），追加到列表尾部。这些消息不参与 `nextBeforeSeq`/`hasMore` 计算，仅保证悬浮条可见。
 
-**byPosition 分页**：消息按 `COALESCE(invoked_at, created_at) DESC, seq DESC` 排序分页（position 表达式索引），复合游标 `(position_at, seq)` 翻页。
+**byPosition 分页**：消息按 `position_at DESC, seq DESC` 排序分页（`idx_messages_session_position` 索引），翻页游标取页内最老消息的 seq（`nextBeforeSeq`，不分 lifecycle）。
 
 ### getMessagesAfter
 
@@ -146,4 +146,4 @@ GET /api/sessions/:id/messages/after?afterSeq=100&limit=50
 | 方法入口 | 触发点 | 事件类型 | 说明 |
 |----------|--------|----------|------|
 | `sendMessage` | 用户发送消息 | `message-received` | 包含完整消息内容 |
-| `markMessagesInvoked` | CLI 消费排队消息 / session-end force-invoke | `messages-consumed` | `localIds` + `invokedAt`，Web 据此把悬浮消息翻为正式消息 |
+| `markMessagesPushed` | CLI push 排队消息 / session-end force-push | `messages-submitted` | `localIds` + `submittedAt`（即 push 时刻），Web 据此把悬浮消息翻为正式消息 |

@@ -46,7 +46,8 @@ GET /api/sessions/sess-abc123/messages?limit=50&beforeSeq=200
             "id": "msg-001",
             "seq": 199,
             "localId": "local-xyz",
-            "invokedAt": 1712000000000,
+            "lifecycle": "pushed",
+            "lifecycleAt": 1712000000000,
             "content": { "role": "user", "content": "你好" },
             "createdAt": 1712000000000
         },
@@ -77,18 +78,18 @@ GET /api/sessions/sess-abc123/messages?limit=50&beforeSeq=200
 DELETE /api/sessions/:id/messages/:messageId
 ```
 
-`messageId` 为消息的 `localId`。采用**两阶段取消**：先查 DB（已 invoke？已删？），再兜底 RPC 通知 CLI 删除内存缓冲。
+`messageId` 为消息的 `localId`。采用**两阶段取消**：先查 DB（`lifecycle` 已非 queued？已删？），再兜底 RPC 通知 CLI 删除内存缓冲。
 
 ### 响应
 
 ```typescript
-{ status: 'cancelled' | 'invoked' }
+{ status: 'cancelled' | 'submitted' }
 ```
 
 | 状态 | 含义 |
 |------|------|
 | `cancelled` | DB 层已物理删除该排队消息，并已通知 CLI 清理内存缓冲 |
-| `invoked` | 消息已被 agent 消费（`invokedAt` 已落库）或 CLI 已抢先处理，无法取消 |
+| `submitted` | 消息已被 CLI push 给 Claude Code（`lifecycle` 已非 `queued`）或 CLI 已抢先处理，无法取消 |
 
 ## 发送消息
 

@@ -298,7 +298,7 @@ Session 通过 `ApiSessionClient` 与 Hub 保持双向实时通信：
 | `update-metadata` | CLI → Hub | 更新会话元数据（版本化，乐观锁） |
 | `update-state` | CLI → Hub | 更新 AgentState（版本化，乐观锁） |
 | `session-end` | CLI → Hub | 通知会话结束 |
-| `messages-consumed` | CLI → Hub | 通知一批 localId 的排队消息已被 agent 消费 |
+| `messages-submitted` | CLI → Hub | 通知一批 localId 的排队消息已 push 给 Claude Code |
 | `cancel-queued-message` | Hub → CLI | RPC：取消 CLI 内存队列中缓冲的排队消息 |
 | `update` | Hub → CLI | 接收状态更新（消息、session、machine） |
 | `rpc-request` | Hub → CLI | RPC 请求（abort、switch、set-session-config 等） |
