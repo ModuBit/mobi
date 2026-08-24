@@ -525,18 +525,22 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
         deps: SessionHandlersDeps
         nativeAckSpy: { args: { sid: string; nativeId: string; at: number } | null }
         advanceSpy: { args: { sid: string; nativeId: string; at: number } | null }
+        calls: string[]
     } {
         const nativeAckSpy = { args: null as { sid: string; nativeId: string; at: number } | null }
         const advanceSpy = { args: null as { sid: string; nativeId: string; at: number } | null }
+        const calls: string[] = []
         const deps: SessionHandlersDeps = {
             store: {
                 messages: {
                     // 原有 nativeAckAt 写入路径（first-write-wins + 返回补写行供广播）
                     markMessagesAcked: (sid: string, nativeId: string, at: number) => {
+                        calls.push('nativeAck')
                         nativeAckSpy.args = { sid, nativeId, at }
                         return [makeMsg('m1', 'loc-1', 1)]
                     },
                     advanceMessagesAcked: (sid: string, nativeId: string, at: number) => {
+                        calls.push('advance')
                         advanceSpy.args = { sid, nativeId, at }
                         return ['m1']
                     },
@@ -548,12 +552,12 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
             backgroundTaskTracker: new BackgroundTaskTracker(),
             onWebappEvent: () => {},
         }
-        return { deps, nativeAckSpy, advanceSpy }
+        return { deps, nativeAckSpy, advanceSpy, calls }
     }
 
     test('messages-acked：推进 lifecycle=acked（双写——nativeAckAt 路径照旧）', () => {
         const fakeSocket = makeFakeSocket()
-        const { deps, nativeAckSpy, advanceSpy } = makeAckedDeps()
+        const { deps, nativeAckSpy, advanceSpy, calls } = makeAckedDeps()
 
         registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
         fakeSocket.emit('messages-acked', { sid: 's1', nativeId: 'nu-1' })
@@ -569,5 +573,11 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
         expect(advanceSpy.args!.sid).toBe('s1')
         expect(advanceSpy.args!.nativeId).toBe('nu-1')
         expect(advanceSpy.args!.at).toBeTypeOf('number')
+
+        // 顺序：advance 先于 nativeAck 写入——markMessagesAcked 的 SELECT 快照用于广播，
+        // 后置 advance 会让广播载荷携带推进前的旧 lifecycle（终审 Important-1）；
+        // 且两者共一时间戳（nativeAckAt === lifecycle_at），不产生 1ms 分叉
+        expect(calls).toEqual(['advance', 'nativeAck'])
+        expect(advanceSpy.args!.at).toBe(nativeAckSpy.args!.at)
     })
 })

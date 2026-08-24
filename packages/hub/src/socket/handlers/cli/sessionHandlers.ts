@@ -606,9 +606,14 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             emitAccessError('session', data.sid, sessionAccess.reason)
             return
         }
-        const acked = store.messages.markMessagesAcked(data.sid, data.nativeId, Date.now())
-        // P1 双写：推进 lifecycle='acked'（metadata.nativeAckAt 照常写，rewind 判据不动；P2 事件收敛时评估停写）
-        store.messages.advanceMessagesAcked(data.sid, data.nativeId, Date.now())
+        // 先推进 lifecycle='acked' 再写 metadata.nativeAckAt：markMessagesAcked 内部 UPDATE 后
+        // SELECT 返回行快照用于下方广播——若 advance 在其后，快照的 lifecycle/lifecycleAt 是推进前的
+        // 旧值（P1 无消费方、P2 终态接入后即回退载荷）。advance 的 WHERE 只看 lifecycle 不受
+        // metadata UPDATE 影响，换序安全。共一时间戳消除 nativeAckAt 与 lifecycle_at 分叉。
+        // P1 双写：nativeAckAt 照常写（rewind 判据不动；P2 事件收敛时评估停写）
+        const ackedAt = Date.now()
+        store.messages.advanceMessagesAcked(data.sid, data.nativeId, ackedAt)
+        const acked = store.messages.markMessagesAcked(data.sid, data.nativeId, ackedAt)
         if (acked.length === 0) return
         // 合并批 1:N（同 nativeId 多行）逐行广播——只推一行会让批内其余行的 nativeAckAt
         // 不实时更新，rewind 入口「刷新才见」。update 事件的 new-message 体受 shared
