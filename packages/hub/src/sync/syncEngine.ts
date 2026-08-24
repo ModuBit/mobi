@@ -307,6 +307,10 @@ export class SyncEngine {
         this.sessionCache.handleGoalStatus(payload)
     }
 
+    handleRunStarted(payload: { sid: string; runStartedAt: number }): void {
+        this.sessionCache.handleRunStarted(payload)
+    }
+
     handleMachineAlive(payload: { machineId: string; time: number }): void {
         this.machineCache.handleMachineAlive(payload)
     }

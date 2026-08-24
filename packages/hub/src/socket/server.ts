@@ -86,6 +86,7 @@ export type SocketServerDeps = {
     onMachineAlive?: (payload: { machineId: string; time: number }) => void
     onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage | null }) => void
     onGoalStatus?: (payload: { sid: string; goalStatus: GoalStatus | null }) => void
+    onRunStarted?: (payload: { sid: string; runStartedAt: number }) => void
 }
 
 export function createSocketServer(deps: SocketServerDeps): {
@@ -187,6 +188,7 @@ export function createSocketServer(deps: SocketServerDeps): {
         onMachineAlive: deps.onMachineAlive,  // CLI机器心跳
         onContextUsage: deps.onContextUsage,  // CLI上下文用量上报
         onGoalStatus: deps.onGoalStatus,      // CLI goal 状态上报
+        onRunStarted: deps.onRunStarted,      // CLI 轮次起点上报
         onWebappEvent: deps.onWebappEvent     // Web端实时事件
     }))
 

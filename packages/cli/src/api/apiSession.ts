@@ -650,6 +650,18 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * 上报当前轮次起点（running 翻转 false→true 时，SessionBase.onRunningChange 触发）。
+     * Hub 落库到 runtimeState.runStartedAt + SSE 推 web——StatusBar 计时的权威来源，
+     * 不随 web 消息窗口化丢失（docs/pending.md #55）。
+     */
+    reportRunStarted(at: number): void {
+        this.socket.emit('run-started', {
+            sid: this.sessionId,
+            runStartedAt: at,
+        })
+    }
+
+    /**
      * 上报 goal 状态（hub 落库到 runtimeState.goalStatus + SSE 推 web）。
      * goalStatus 为 null 表示清空（达成 10s 后自动清空 / 手动清理）。
      */

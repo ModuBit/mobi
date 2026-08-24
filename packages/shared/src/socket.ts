@@ -246,4 +246,7 @@ export interface ClientToServerEvents {
     /** CLI 事件驱动上报 goal 状态（hub 落库到 runtimeState.goalStatus + SSE 推 web）。
      * goalStatus 为 null 表示清空（达成 10s 后 / 手动清理）。 */
     'goal-status': (data: { sid: string; goalStatus: GoalStatus | null }) => void
+    /** CLI 轮次起点上报（running 翻转 false→true 时，hub 落库到 runtimeState.runStartedAt + SSE 推 web）。
+     * StatusBar 计时的权威来源——不随 web 消息窗口化丢失（docs/pending.md #55） */
+    'run-started': (data: { sid: string; runStartedAt: number }) => void
 }

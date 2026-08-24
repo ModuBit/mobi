@@ -253,6 +253,61 @@ describe('goal-status：CLI 上报 goal 状态 → 校验 + 委派 onGoalStatus'
     })
 })
 
+describe('run-started：CLI 轮次起点上报 → 校验 + 委派 onRunStarted', () => {
+    /** 构造 run-started 专用 deps，捕获 onRunStarted 回调与 accessError */
+    function makeRunDeps(opts: { sessionOk?: boolean } = {}) {
+        const captured: { sid: string; runStartedAt: number }[] = []
+        const accessError = { called: false }
+        const deps: SessionHandlersDeps = {
+            store: { sessions: {}, messages: {} } as unknown as SessionHandlersDeps['store'],
+            resolveSessionAccess: (sid: string) => {
+                if (opts.sessionOk === false) return { ok: false, reason: 'not-found' as const }
+                return { ok: true as const, value: makeStoredSession(sid) }
+            },
+            emitAccessError: () => { accessError.called = true },
+            backgroundTaskTracker: new BackgroundTaskTracker(),
+            onRunStarted: (payload: { sid: string; runStartedAt: number }) => { captured.push(payload) },
+        }
+        return { deps, captured, accessError }
+    }
+
+    test('合法 payload → onRunStarted 被调用，透传 runStartedAt', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured, accessError } = makeRunDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('run-started', { sid: 's1', runStartedAt: 1755800000000 })
+
+        expect(captured).toHaveLength(1)
+        expect(captured[0]).toEqual({ sid: 's1', runStartedAt: 1755800000000 })
+        expect(accessError.called).toBe(false)
+    })
+
+    test('非法 payload（runStartedAt 非有限正数 / sid 非字符串）→ 静默丢弃', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured } = makeRunDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('run-started', { sid: 's1', runStartedAt: 'now' as unknown })
+        fakeSocket.emit('run-started', { sid: 's1', runStartedAt: -1 })
+        fakeSocket.emit('run-started', { sid: 's1', runStartedAt: Number.NaN })
+        fakeSocket.emit('run-started', { sid: 123, runStartedAt: 1755800000000 })
+
+        expect(captured).toHaveLength(0)
+    })
+
+    test('未知 sid → emitAccessError，不调 onRunStarted', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured, accessError } = makeRunDeps({ sessionOk: false })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('run-started', { sid: 'unknown', runStartedAt: 1755800000000 })
+
+        expect(captured).toHaveLength(0)
+        expect(accessError.called).toBe(true)
+    })
+})
+
 // ============ teammate 完成出口：tool_result 消费（pending #11/#44）============
 
 describe('message：Agent tool_use → tool_result 驱动 teamState 生命周期', () => {

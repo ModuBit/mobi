@@ -59,6 +59,12 @@ export type GoalStatusPayload = {
     goalStatus: GoalStatus | null
 }
 
+export type RunStartedPayload = {
+    sid: string
+    /** 轮次起点（epoch ms，CLI running 翻转 false→true 时上报） */
+    runStartedAt: number
+}
+
 export type CliHandlersDeps = {
     io: SocketServer
     store: Store
@@ -75,11 +81,13 @@ export type CliHandlersDeps = {
     onContextUsage?: (payload: ContextUsagePayload) => void
     /** CLI 事件驱动上报 goal 状态 → 落库 runtimeState.goalStatus + SSE 推 */
     onGoalStatus?: (payload: GoalStatusPayload) => void
+    /** CLI 轮次起点上报（running 翻转）→ 落库 runtimeState.runStartedAt + SSE 推 */
+    onRunStarted?: (payload: RunStartedPayload) => void
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, rewindDeleteBoundTracker, onSessionAlive, onSessionEnd, onMachineAlive, onContextUsage, onGoalStatus, onWebappEvent } = deps
+    const { io, store, rpcRegistry, terminalRegistry, backgroundTaskTracker, rewindDeleteBoundTracker, onSessionAlive, onSessionEnd, onMachineAlive, onContextUsage, onGoalStatus, onRunStarted, onWebappEvent } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
 
@@ -142,6 +150,7 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         onSessionEnd,
         onContextUsage,
         onGoalStatus,
+        onRunStarted,
         onWebappEvent
     })
     registerMachineHandlers(socket, {

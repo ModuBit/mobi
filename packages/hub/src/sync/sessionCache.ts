@@ -424,6 +424,36 @@ export class SessionCache {
         })
     }
 
+    /**
+     * 处理轮次起点上报（CLI running 翻转 false→true 时，SessionBase.onRunningChange 触发）。
+     * 落库到 runtimeState.runStartedAt（复用 updateRuntimeStateField 同款路径）
+     * + SSE 推 runtimeState patch 给 web——StatusBar 计时的权威来源，不随消息窗口化丢失
+     *（docs/pending.md #55）。轮次结束后保留旧值（running=false 时 UI 不消费）
+     */
+    handleRunStarted(payload: { sid: string; runStartedAt: number }): void {
+        const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
+        if (!session) return
+        // 时间倒退保护：CLI 重连等场景可能重报旧值，取 max 防计时起点回跳
+        if (typeof session.runtimeState?.runStartedAt === 'number'
+            && session.runtimeState.runStartedAt >= payload.runStartedAt) {
+            return
+        }
+        try {
+            this.updateRuntimeStateField(
+                session, payload.sid, 'runStartedAt', payload.runStartedAt,
+                Date.now(), session.namespace,
+            )
+        } catch {
+            // 落库失败不阻塞 CLI 流程（下次翻转会重试上报）
+            return
+        }
+        this.publisher.emit({
+            type: 'session-updated',
+            sessionId: session.id,
+            data: { runtimeState: session.runtimeState },
+        })
+    }
+
     handleSessionEnd(payload: { sid: string; time: number }): void {
         const t = clampAliveTime(payload.time) ?? Date.now()
 

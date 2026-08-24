@@ -106,11 +106,13 @@ export type SessionHandlersDeps = {
     onSessionEnd?: (payload: SessionEndPayload) => void
     onContextUsage?: (payload: { sid: string; contextUsage: ContextUsage | null }) => void
     onGoalStatus?: (payload: { sid: string; goalStatus: GoalStatus | null }) => void
+    /** CLI 轮次起点上报（running 翻转 false→true 时）→ 落库 runtimeState.runStartedAt + SSE 推 */
+    onRunStarted?: (payload: { sid: string; runStartedAt: number }) => void
     onWebappEvent?: (event: SyncEvent) => void
 }
 
 export function registerSessionHandlers(socket: CliSocketWithData, deps: SessionHandlersDeps): void {
-    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, onSessionAlive, onSessionEnd, onContextUsage, onGoalStatus, onWebappEvent } = deps
+    const { store, resolveSessionAccess, emitAccessError, backgroundTaskTracker, rewindDeleteBoundTracker, onSessionAlive, onSessionEnd, onContextUsage, onGoalStatus, onRunStarted, onWebappEvent } = deps
 
     // session 连接级别的 PendingTaskMap，在连接生命周期内持续存在
     const pendingTaskMap = new PendingTaskMap()
@@ -468,6 +470,20 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             return
         }
         onGoalStatus?.(data)
+    })
+
+    socket.on('run-started', (data: { sid: string; runStartedAt: number }) => {
+        // 轮次起点（epoch ms）：CLI running 翻转 false→true 时上报（SessionBase.onRunningChange）
+        if (!data || typeof data.sid !== 'string' || typeof data.runStartedAt !== 'number'
+            || !Number.isFinite(data.runStartedAt) || data.runStartedAt <= 0) {
+            return
+        }
+        const sessionAccess = resolveSessionAccess(data.sid)
+        if (!sessionAccess.ok) {
+            emitAccessError('session', data.sid, sessionAccess.reason)
+            return
+        }
+        onRunStarted?.(data)
     })
 
     socket.on('session-end', (data: SessionEndPayload) => {

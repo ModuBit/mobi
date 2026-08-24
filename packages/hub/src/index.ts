@@ -189,6 +189,8 @@ async function main() {
         onContextUsage: (payload) => syncEngine?.handleContextUsage(payload),
         // CLI goal 状态上报 → 落库 runtimeState.goalStatus + SSE 推
         onGoalStatus: (payload) => syncEngine?.handleGoalStatus(payload),
+        // CLI 轮次起点上报（running 翻转）→ 落库 runtimeState.runStartedAt + SSE 推
+        onRunStarted: (payload) => syncEngine?.handleRunStarted(payload),
         // CLI 断开/结束 → 清理会话资源
         onSessionEnd: (payload) => syncEngine?.handleSessionEnd(payload),
         // CLI 机器心跳 → 更新机器在线状态

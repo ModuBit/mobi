@@ -210,7 +210,7 @@ describe('getApiErrorCode', () => {
 
 // ========== lastMessageActivityAt（#34 静默告警的活动时间源）==========
 
-import { lastMessageActivityAt, lastUserMessageAt } from '@/components/chat/ChatContainer'
+import { lastMessageActivityAt, lastUserMessageAt, resolveRunStartedAt } from '@/components/chat/ChatContainer'
 
 describe('lastMessageActivityAt', () => {
     it('落库消息（有 positionAt）取最后一条的 positionAt', () => {
@@ -294,5 +294,28 @@ describe('lastUserMessageAt', () => {
             msg('assistant', { positionAt: 2_000, createdAt: 1_500 }),
         ])).toBeUndefined()
         expect(lastUserMessageAt([])).toBeUndefined()
+    })
+})
+
+// ========== resolveRunStartedAt（StatusBar 计时起点合成，docs/pending.md #55 方案 1）==========
+
+describe('resolveRunStartedAt', () => {
+    it('两者都有取最大：runtimeState 权威，但 SSE 丢失/未达时窗口内新消息更准', () => {
+        // runtimeState 滞后（上一轮残留）vs 窗口内刚出现的 user 消息 → 取窗口值
+        expect(resolveRunStartedAt(1_000, 5_000)).toBe(5_000)
+        // 窗口滑出本轮 user 消息（失守）vs runtimeState 当前轮权威值 → 取 runtimeState
+        expect(resolveRunStartedAt(9_000, 1_000)).toBe(9_000)
+    })
+
+    it('仅 runtimeState 有值（长会话窗口化失守）→ 用权威值，不回退 mount 时间', () => {
+        expect(resolveRunStartedAt(9_000, undefined)).toBe(9_000)
+    })
+
+    it('仅窗口有值（CLI 旧版本未上报 / SSE 丢失）→ 沿用消息推导', () => {
+        expect(resolveRunStartedAt(undefined, 5_000)).toBe(5_000)
+    })
+
+    it('两者都缺 → undefined（AgentLoadingBubble 回退组件 mount 时间）', () => {
+        expect(resolveRunStartedAt(undefined, undefined)).toBeUndefined()
     })
 })

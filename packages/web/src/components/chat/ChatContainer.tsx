@@ -93,6 +93,26 @@ export function lastUserMessageAt(messages: DecryptedMessage[]): number | undefi
     return undefined
 }
 
+/**
+ * StatusBar 计时起点的合成（docs/pending.md #55 方案 1）：
+ * - `fromRuntime`（runtimeState.runStartedAt）：CLI running 翻转 false→true 时上报、hub 落库 +
+ *   SSE 推——**权威来源**，长会话消息窗口滑出本轮 user 消息时仍可拿到正确起点
+ * - `fromMessages`（lastUserMessageAt）：窗口内消息推导——SSE 事件丢失/尚未到达时比
+ *   runtimeState 新（刚出现的 user 消息 vs 上一轮残留值）
+ *
+ * 取二者最大值：保证单调不回跳——runtimeState 滞后时取窗口内新消息时刻，窗口失守时
+ * 取 runtimeState 权威值；两者都缺（首轮刷新 + 窗口为空）返回 undefined（AgentLoadingBubble
+ * 回退组件 mount 时间）
+ */
+export function resolveRunStartedAt(
+    fromRuntime: number | undefined,
+    fromMessages: number | undefined,
+): number | undefined {
+    if (fromRuntime == null) return fromMessages
+    if (fromMessages == null) return fromRuntime
+    return Math.max(fromRuntime, fromMessages)
+}
+
 /** 用户消息气泡 hover 时显示 header 中的复制按钮 */
 const bubbleCopyStyles = css`
     .user-msg-bubble .msg-copy-btn {
@@ -188,8 +208,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // 最近一次消息活动时间：取最后一条消息（见 lastMessageActivityAt 的取舍说明）
     const lastActivityAt = useMemo(() => lastMessageActivityAt(messages), [messages])
-    // 本轮运行起点：最后一条 user 消息（见 lastUserMessageAt 的取舍说明）
-    const runStartedAt = useMemo(() => lastUserMessageAt(messages), [messages])
+    // 本轮运行起点：runtimeState.runStartedAt（CLI 翻转上报，权威）与窗口内最后一条 user
+    // 消息取最大（见 resolveRunStartedAt 的取舍说明）
+    const runStartedAt = useMemo(
+        () => resolveRunStartedAt(session?.runtimeState?.runStartedAt, lastUserMessageAt(messages)),
+        [session?.runtimeState?.runStartedAt, messages],
+    )
 
     const { blocks: rawBlocks, byId } = useMemo(() => {
         // 排队消息仅在悬浮条展示，不进入聊天线程

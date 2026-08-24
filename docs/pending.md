@@ -537,7 +537,9 @@ interrupt（用户停止）
 
 ---
 
-## 55. StatusBar 本轮计时的起点应落 runtime_state（2026-08-21）
+## 55. StatusBar 本轮计时的起点应落 runtime_state（✅ 2026-08-22 已实施，方案 1）
+
+**状态**：已按方案 1 落地——CLI `SessionBase.onRunningChange` 在 running 翻转 false→true 时经 `run-started` socket 事件上报轮次起点；hub `sessionCache.handleRunStarted` 落库 `runtimeState.runStartedAt`（时间倒退保护：重报旧值静默忽略）+ SSE 推 runtimeState patch；web `ChatContainer.resolveRunStartedAt` 取 runtimeState 权威值与窗口内 `lastUserMessageAt` 的最大值（单调不回跳），StatusBar 计时不再随消息窗口化失守。以下为原始调研记录。
 
 **背景**：composer 状态栏计时（AgentLoadingBubble）刷新页面后曾归零，已用「最后一条 user 消息时间戳」（`lastUserMessageAt`，2026-08-21 commit 19dd8db1）作过渡方案。但消息列表窗口化后，长运行会话的窗口内可能不含本轮 user 消息——计时起点失真（回退 mount 时间或窗口内错误的旧轮消息）。
 
@@ -550,6 +552,6 @@ interrupt（用户停止）
 1. CLI 轮次开始（收到用户消息 / query 启动）上报精确时间 → hub 写 `runtime_state.runStartedAt`（落库 + SSE，与 context-usage / goal-status 通道同构）→ web StatusBar 优先用它，回退 lastUserMessageAt
 2. 或改 `runningAt` 语义：仅在 running 翻转时更新（心跳不覆盖）——改动最小，但 hub 重启后丢失，精度受心跳周期限制
 
-**相关文件**：`packages/shared/src/schemas.ts`（RuntimeStateSchema）、`packages/hub/src/sync/sessionCache.ts`（handleSessionAlive）、`packages/hub/src/socket/handlers/cli/sessionHandlers.ts`（context-usage handler 参照）、`packages/cli/src/api/apiSession.ts`（keepAlive / 新 RPC）、web 透传链 `ChatContainer → ChatComposer → StatusBar → AgentLoadingBubble`
+**相关文件**：`packages/shared/src/schemas.ts`（RuntimeStateSchema）、`packages/hub/src/sync/sessionCache.ts`（handleSessionAlive / handleRunStarted）、`packages/hub/src/socket/handlers/cli/sessionHandlers.ts`（run-started handler，参照 context-usage）、`packages/cli/src/api/apiSession.ts`（reportRunStarted）、`packages/cli/src/agent/sessionBase.ts`（onRunningChange 翻转上报）、web 透传链 `ChatContainer → ChatComposer → StatusBar → AgentLoadingBubble`
 
-**优先级**：待用户定夺方向后实施。
+**优先级**：已完成（方案 1）。

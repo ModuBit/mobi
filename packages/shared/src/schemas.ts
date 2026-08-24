@@ -418,6 +418,10 @@ export const RuntimeStateSchema = z.object({
     contextUsage: ContextUsageSchema.optional(),
     /** 当前/最近一次 goalStatus；null 表示无 goal 或已清空 */
     goalStatus: GoalStatusSchema.nullable().optional(),
+    /** 当前轮次起点（epoch ms，CLI running 翻转 false→true 时上报）。StatusBar 计时的权威
+     *  来源——消息窗口化后 web 内存窗口可能已不含本轮 user 消息，仅靠消息推导会失真
+     *  （docs/pending.md #55 方案 1）。轮次结束后保留旧值（running=false 时 UI 不消费） */
+    runStartedAt: z.number().optional(),
 })
 
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>
