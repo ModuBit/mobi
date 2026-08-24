@@ -192,7 +192,7 @@ CLI 通过 `expectedVersion` 实现乐观锁，如果版本不匹配，返回当
 | `processBound(sid, bindings)` | `bound` / `messages-bound` | 逐项校验（null/缺字段/空串丢弃防空串占坑）→ `bindNativeIds` 幂等落库，补写行广播 |
 | `processAcked(sid, nativeId, ackedAt)` | `acked` / `messages-acked` | 先 `advanceMessagesAcked` 推进 lifecycle='acked' 再 `markMessagesAcked` 写 nativeAckAt（快照携带推进后值，共一时间戳），推进行逐行广播（合并批 1:N） |
 | `processAttached(sid, nativeSessionId)` | `attached` / `messages-native-attached` | `attachNativeSessionId` 补写该会话缺 nativeSessionId 的行（幂等），补写行广播 |
-| `processLifecycleFact(sid, nativeId, state, at)` | `lifecycle`（新） | `advanceMessagesLifecycle` 单调推进（queued<pushed<acked<processing<终态，已处终态/withdrawn 不被覆盖、processing 不回退）→ `getMessagesByIds` 回读推进后的行 → 逐行广播（载荷含推进后 lifecycle/lifecycleAt，P3 消费）。无命中（乱序/重复帧）静默返回 |
+| `processLifecycleFact(sid, nativeId, state, at)` | `lifecycle`（新） | `advanceMessagesLifecycle` 单调推进（queued<pushed<acked<processing<终态，已处终态/withdrawn 不被覆盖、processing 不回退）→ `getMessagesByIds` 回读推进后的行 → 逐行广播（载荷含推进后 lifecycle/lifecycleAt，Web 单调合并实时消费）。无命中（乱序/重复帧）静默返回 |
 
 `fact.at` 缺省取 hub 接收时刻（每批一个 now，批内共时）。终态信号的 CLI 侧来源见 [message-lifecycle.md](../../message-lifecycle.md)「终态接入：command_lifecycle 帧拦截」。
 

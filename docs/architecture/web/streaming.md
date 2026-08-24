@@ -237,4 +237,4 @@ E2E 的 glm 模型 text 输出快（常一批 snapshot 就完整），snapshot �
 | `web/.../components/ui/useStreamingContent.ts` | 逐字揭示 hook（首批从 0 + wasStreaming + cleanup rafRef=0） |
 | `web/.../components/ui/Markdown.tsx` | `finalContent = displayContent` |
 | `web/.../components/chat/ChatContainer.tsx` | 流式滚动跟随（三段式 gap 策略 + 镜像零读 + captureFollowTarget） |
-| `web/.../core/data/cache/messageCache.ts` | snapshot 原地更新 / full 按 `parentUuid` 清理 snapshot（assembler 聚合 full 后 parentUuid 不漂移，双保险第一道） |
+| `web/.../core/data/cache/messageCache.ts` | snapshot 原地更新 / full 按 `parentUuid` 清理 snapshot（assembler 聚合 full 后 parentUuid 不漂移，双保险第一道）/ 同 id 广播单调合并 lifecycle（终态实时生效，见 [message-lifecycle.md](../message-lifecycle.md)） |

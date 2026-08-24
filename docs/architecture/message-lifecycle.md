@@ -284,7 +284,7 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 | `lifecycle_at` (`lifecycleAt`) | 最近一次 lifecycle 转换的时刻；非排队消息恒 `NULL`。不参与排序（排序请用 `positionAt`，不要 COALESCE 本字段） |
 | `position_at` (`positionAt`) | 排序锚点；insert 时 = `created_at`，排队消息 push 时跳到 push 时刻（保留「运行中消费的消息排在 turn 之后」UX） |
 
-转换单调前进：`queued→pushed→acked→processing→{done|cancelled|discarded}`，`queued→withdrawn`。
+转换单调前进：`queued→pushed→acked→processing→{done|cancelled|discarded}`，`queued→withdrawn`。推进序由 shared `LIFECYCLE_RANK` 定义（与 Hub SQL CASE rank 同语义，勿单边改：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4——done/cancelled/discarded 同 rank 互不覆盖、withdrawn 单独高位 5），`isLifecycleAhead` 为其判定函数。
 
 ### 事实上报协议（messages-facts，CLI→Hub）
 
@@ -302,7 +302,18 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 **`messages-facts`**（�
 
 ### 终态接入：command_lifecycle 帧拦截
 
-CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。CLI `onMessage` 中用纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）拦截：**started→processing、completed→done、cancelled/discarded 直传**（queued 不上报，Hub 已有初始排队态）；控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报。Hub `advanceMessagesLifecycle` 按 nativeId 单调推进（CASE rank：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4，已处终态/withdrawn 不被覆盖、processing 不回退，乱序帧安全），推进后 `getMessagesByIds` 回读完整行，`broadcastStoredMessages` 逐行广播 update new-message（载荷含推进后 lifecycle/lifecycleAt，P3 消费）。
+CC 对排队消息（push 时预设的 `command_uuid` = nativeId）发出 `command_lifecycle` 生命周期回执。CLI `onMessage` 中用纯函数 `commandLifecycleToFact`（`claudeRemote.ts`）拦截：**started→processing、completed→done、cancelled/discarded 直传**（queued 不上报，Hub 已有初始排队态）；控制帧不 convert 不落库（分类层 discard 兜底），只取信号 `emitLifecycleFact`（`messages-facts` lifecycle fact）上报。Hub `advanceMessagesLifecycle` 按 nativeId 单调推进（CASE rank：queued 0 < pushed 1 < acked 2 < processing 3 < 终态 4，已处终态/withdrawn 不被覆盖、processing 不回退，乱序帧安全），推进后 `getMessagesByIds` 回读完整行，`broadcastStoredMessages` 逐行广播 update new-message（载荷含推进后 lifecycle/lifecycleAt，Web 单调合并实时消费，见「终态 UI 可见性」）。
+
+### 终态 UI 可见性（P3，粗粒度）
+
+终态广播到达 Web 后不再「刷新才见」，三个消费点共用 `isLifecycleAhead` 单调判定：
+
+- **messageCache 单调合并**：`resolveMessageCache` 同 id 分支（skipIfNotSnapshot 路径）在合并 metadata/seq 的同时单调合并 `lifecycle`/`lifecycleAt`（rank 前进才接受，广播缺 `lifecycleAt` 时保留旧值）——与 messages-bound 补写当年同坑（只落库 Web 不更新）同点修复。
+- **mergeMessages 单调防护泛化**：原「陈旧 queued echo 不回退」特判泛化为 rank 比较（rank 更低或同 rank 异终态且 prev 不晚于 incoming 时保留 prev），陈旧 echo / in-flight fetch 旧响应晚到均适用。
+- **悬浮条「已丢弃」分区**：`isDiscardedInMobi`（`lifecycle==='cancelled' || 'discarded'`，剔除 `status='sending'/'failed'` 乐观在途/失败态）。`QueuedMessagesBar` 增「已丢弃」分区——灰色删除线 + 状态词（已取消/已丢弃），**无任何操作按钮**，消息不再静默消失。`ComposerInfoPanel` 数据源与 `hasContent` 门禁（hasQueued 信号）均纳入 discarded：turn 死亡常态下无 requests/todos/tasks/agents，丢弃分区是面板唯一内容，只算 queued 会让面板整体卸载。
+- **气泡终态标注**：`ChatContainer` 以 `lifecycleById` 为判据，cancelled/discarded 的用户气泡 footer 同排左侧加灰色小标注（icon + 状态词，不抢焦）；`ctxKey` 加 `terminalLifecycleCount` 让缓存失效，标注随广播即时出现（lifecycle 翻转不动 block 引用，不进签名就「刷新才见」）。
+
+**粗粒度边界**：done/processing/pushed/acked 无任何标注（用户不关心传输细节）；withdrawn 不做（#53 预留）。
 
 ### 不变量与单一决策点
 
@@ -326,7 +337,7 @@ flowchart LR
     CC["Claude Code"] -->|"command_lifecycle 帧<br/>started/completed/cancelled/discarded"| Intercept["CLI onMessage<br/>commandLifecycleToFact 拦截"]
     Intercept -->|"emitLifecycleFact<br/>messages-facts lifecycle fact"| Hub3["Hub<br/>advanceMessagesLifecycle"]
     Hub3 -->|"单调推进 processing/终态<br/>getMessagesByIds 回读"| DB3[("SQLite")]
-    Hub3 -->|"update new-message 逐行广播<br/>（P3 消费）"| WebT["Web"]
+    Hub3 -->|"update new-message 逐行广播<br/>（Web 单调合并实时生效）"| WebT["Web"]
 ```
 
 ### 关键环节
@@ -337,7 +348,7 @@ flowchart LR
 | **Gated Pump（C-2）** | CLI `userInputLoop` | agent 运行时不 pull，等 result 才拉取，消息始终停留在 MessageQueue |
 | **消费通知** | CLI `collectBatch`（同步标记 `inFlightLocalIds`）→ `onBatchConsumed` → `emitMessagesSubmitted`（内部走 `emitFacts`） | → Hub `messages-facts` handler → `processSubmitted` → `markMessagesPushed`（queued→pushed，first-write-wins）→ SSE `messages-submitted` |
 | **回显确认（acked）** | CLI `onMessage` 检测 isReplay 回显 → `emitMessagesAcked`（`emitFacts`） | → Hub `processAcked`：按 nativeId 双写——先 `advanceMessagesAcked` 推进 `lifecycle='acked'` 再写 `metadata.nativeAckAt`（rewind 判据不动，共一时间戳消除分叉），推进行逐行广播 |
-| **终态接入（command_lifecycle）** | CLI `onMessage` 帧拦截 `commandLifecycleToFact`（started→processing、completed→done、cancelled/discarded 直传）→ `emitLifecycleFact`（`emitFacts`） | → Hub `processLifecycleFact` → `advanceMessagesLifecycle`（nativeId 单调推进，CASE rank 防乱序回退）→ `getMessagesByIds` 回读 → 逐行广播 update new-message（P3 消费） |
+| **终态接入（command_lifecycle）** | CLI `onMessage` 帧拦截 `commandLifecycleToFact`（started→processing、completed→done、cancelled/discarded 直传）→ `emitLifecycleFact`（`emitFacts`） | → Hub `processLifecycleFact` → `advanceMessagesLifecycle`（nativeId 单调推进，CASE rank 防乱序回退）→ `getMessagesByIds` 回读 → 逐行广播 update new-message（Web 单调合并实时生效，见「终态 UI 可见性」） |
 | **首页钉入** | Hub `getMessagesPage` | 首页（`beforeSeq=null`）out-of-band 查询仍排队的本地消息（`lifecycle='queued'`，`getUnsubmittedLocalMessages`），追加到列表尾部、不参与 `nextBeforeSeq`/`hasMore` 计算。翻页游标 = 页内最老消息的 seq（**不分 lifecycle**）——跳过 queued 会让整页全 queued 时 `hasMore=false` 锁死更早历史；queued 锚点 position 跳变的漂移由 Web `mergeMessages` id 去重兜底 |
 | **session-end 兜底** | Hub `sessionHandlers` | CLI 离线时把所有剩余 `lifecycle='queued'` 消息 force-push（`markMessagesPushed`），防止悬浮条卡死 |
 | **取消（CLI 权威）** | Web `DELETE` → Hub | Hub 先 `getMessageSubmitState`（`lifecycle!=='queued'` 即已提交）；DB 仍 queued 时问 CLI `cancel-queued-message`：`tryCancel` 返回 `submitted`（in-flight，已 collect）/`cancelled`（仍在队列）/`not-in-queue`（尚未送达）。仅 `cancelled`/`not-in-queue` 才物理删 DB——**in-flight 绝不删**，防幽灵消息 |
@@ -346,13 +357,15 @@ flowchart LR
 
 | 组件 | 职责 |
 |------|------|
-| `QueuedMessagesBar` | composer 上方悬浮条，展示排队消息，✕ 取消 / ✎ 编辑（回填草稿）/ ⚡ steer |
+| `QueuedMessagesBar` | composer 上方悬浮条，展示排队消息，✕ 取消 / ✎ 编辑（回填草稿）/ ⚡ steer；另含「已丢弃」分区（cancelled/discarded 灰色删除线 + 状态词，无操作，终态可见性） |
 | `useSendMessage` | 乐观注入：`isRunning` → `lifecycle='queued'`+`status='queued'`（`lifecycleAt`/`positionAt`/`createdAt` 共用同一发送时刻，对齐 hub「queued 时 lifecycle_at = created_at」契约），否则 `status='sending'` |
 | `useCancelQueuedMessage` | 乐观删除缓存中的 localId 消息；`status='sent'` 时失效重拉 |
 | `markMessagesSubmitted` | SSE `messages-submitted` 到达时，把命中 localId 的消息 `lifecycle='pushed'`（+ `lifecycleAt`/`positionAt` 跳到 submittedAt，first-write-wins） |
-| `mergeMessages` | 合并去重时 lifecycle 单调防护：prev 已推进而 row 回退为 `'queued'`（陈旧 echo/快照在推进前捕获）时保留 prev 的 lifecycle + lifecycleAt（按 `lifecycleAt` 时间戳判新旧，row 更晚则正常接受），防幽灵回悬浮条 |
+| `mergeMessages` | 合并去重时 lifecycle 单调防护（rank 泛化）：prev 已推进而 row 回退（rank 更低或同 rank 异终态，且 prev 不晚于 row）时保留 prev 的 lifecycle + lifecycleAt，陈旧 echo / in-flight fetch 旧响应晚到均适用，防幽灵回悬浮条 |
+| `messageCache`（`resolveMessageCache`） | 同 id 广播单调合并 lifecycle/lifecycleAt（`isLifecycleAhead`，rank 前进才接受）——终态推进广播实时生效，不「刷新才见」 |
 | `isQueuedInMobi` | `lifecycle==='queued'`（剔除 `status='sending'/'failed'`）。排队判定的唯一入口 |
-| `ChatContainer` | 线程过滤掉排队消息（`isQueuedInMobi`），仅在悬浮条展示 |
+| `isDiscardedInMobi` | `lifecycle==='cancelled' || 'discarded'`（剔除 `status='sending'/'failed'`）。悬浮条「已丢弃」分区判据；注意与用户主动取消排队（API 返回值 `'cancelled'`）是不同概念 |
+| `ChatContainer` | 线程过滤掉排队消息（`isQueuedInMobi`），仅在悬浮条展示；cancelled/discarded 的用户气泡 footer 加灰色终态小标注（`lifecycleById` 判据，ctxKey 含 `terminalLifecycleCount`） |
 | `ChatComposer` | `canSend` 去掉 `!running` 门控，运行中允许发送（→排队） |
 
 ---
@@ -630,7 +643,7 @@ type ChatBlock =
 | Hub 消息服务 | `packages/hub/src/sync/messageService.ts` | 分页查询（首页钉排队）、markMessagesPushed/cancelQueuedMessage |
 | Web SSE | `packages/web/src/core/providers/SSEProvider.tsx` | 接收实时事件、snapshot 缓存管理（upsertMessageCache + 按 `parentUuid` 关联清理，assembler 聚合后可靠）、messages-submitted 处理 |
 | Web 排队消费标记 | `packages/web/src/core/lib/markMessagesSubmitted.ts` | 排队消息 lifecycle 翻为 pushed（first-write-wins） |
-| Web 排队悬浮条 | `packages/web/src/components/chat/QueuedMessagesBar.tsx` | composer 上方悬浮排队消息（✕取消 / ✎编辑） |
+| Web 排队悬浮条 | `packages/web/src/components/chat/QueuedMessagesBar.tsx` | composer 上方悬浮排队消息（✕取消 / ✎编辑）+「已丢弃」分区（终态可见性，无操作） |
 | Web 标准化入口 | `packages/web/src/domain/chat/normalize.ts` | DecryptedMessage → NormalizedMessage |
 | Web Agent 标准化 | `packages/web/src/domain/chat/normalizeAgent.ts` | Agent 消息详细解析 |
 | Web User 标准化 | `packages/web/src/domain/chat/normalizeUser.ts` | User 消息解析 |
@@ -639,5 +652,5 @@ type ChatBlock =
 | Web 时间线归约 | `packages/web/src/domain/chat/reducerTimeline.ts` | 时间线 → ChatBlock 转换、隐藏工具过滤（isHiddenTool） |
 | Web 工具过滤 | `packages/web/src/domain/chat/reducerTools.ts` | isHiddenTool / isChangeTitleToolName 判断 |
 | Web 渲染 | `packages/web/src/components/chat/ChatContainer.tsx` | ChatBlock → UI 组件 |
-| 共享工具 | `packages/shared/src/messages.ts` | unwrapRole / isSkippable / isVisible / MessageFact 联合类型 |
+| 共享工具 | `packages/shared/src/messages.ts` | unwrapRole / isSkippable / isVisible / MessageFact 联合类型 / LIFECYCLE_RANK + isLifecycleAhead（lifecycle rank 单调判定，与 hub SQL CASE 同语义） |
 | 共享分类 | `packages/shared/src/messageClassification.ts` | classifyMessage / shouldSendToHub / shouldIncludeInHistory |

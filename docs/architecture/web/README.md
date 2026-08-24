@@ -34,7 +34,7 @@ Web 是 Mobi 的浏览器前端，提供 Claude Code 会话的远程交互界面
 |------|------|
 | **SSEProvider** | 全局 SSE 连接管理器（单例），接收实时事件并更新 React Query 缓存 |
 | **SSEClient** | SSE 传输层，封装 `@microsoft/fetch-event-source`，负责连接/重连/认证 |
-| **ChatContainer** | 聊天容器组件，消费 `useMessages` 数据并渲染消息列表 |
+| **ChatContainer** | 聊天容器组件，消费 `useMessages` 数据并渲染消息列表；cancelled/discarded 的用户气泡 footer 加灰色终态小标注 |
 | **ToolCard** | 工具调用展示组件，根据工具名称选择对应的视图（Edit、Diff、Write 等） |
 | **ChatComposer** | 消息输入组件，支持文本输入、斜杠命令自动补全、文件附件。运行中允许发送（消息进入排队悬浮条）。切换 session 时待发送的文本与已上传附件通过 `composerDrafts`（sessionStorage）持久化 |
 | **Chat Reducer** | 消息归约器（`domain/chat/reducer.ts`），将原始消息事件归约为 ChatBlock 列表 |
@@ -128,7 +128,7 @@ packages/web/src/
 │   │   ├── realtime/           实时通信
 │   │   │   └── sseClient.ts    SSE 传输层（fetch-event-source 封装）
 │   │   ├── cache/              缓存操作工具
-│   │   │   ├── messageCache.ts 消息缓存修补（patch/去重/排序）
+│   │   │   ├── messageCache.ts 消息缓存修补（patch/去重/排序；同 id 广播单调合并 lifecycle——终态实时生效）
 │   │   │   └── sessionCache.ts 会话缓存修补
 │   │   └── hooks/              React Hooks
 │   │       ├── queries/        TanStack Query 查询（20 个）
@@ -171,7 +171,7 @@ packages/web/src/
 │   │   └── SSEProvider.tsx     SSE 全局连接管理（单例）
 │   ├── lib/                    业务辅助逻辑
 │   │   ├── query-keys.ts       React Query key 集中定义
-│   │   ├── messages.ts         消息合并/去重/排序（缓存操作工具，isQueuedForInvocation；mergeMessages 含 lifecycle 单调防护——陈旧 queued echo 不回退已推进状态）
+│   │   ├── messages.ts         消息合并/去重/排序（缓存操作工具，isQueuedInMobi/isDiscardedInMobi；mergeMessages 含 lifecycle 单调防护——rank 比较，陈旧 echo/旧响应不回退已推进状态）
 │   │   ├── markMessagesSubmitted.ts 排队消息消费标记（lifecycle queued→pushed，first-write-wins）
 │   │   ├── fileAttachments.ts  文件附件类型和辅助函数
 │   │   ├── composerDrafts.ts  per-session 草稿持久化（sessionStorage + LRU，含附件子集）
@@ -227,7 +227,7 @@ packages/web/src/
 ├── components/                 UI 组件（按功能域分组）
 │   ├── chat/                   聊天视图
 │   │   ├── ChatContainer.tsx   主聊天容器
-│   │   ├── QueuedMessagesBar.tsx 排队消息悬浮条（agent 运行中发送的消息，✕取消 / ✎编辑）
+│   │   ├── QueuedMessagesBar.tsx 排队消息悬浮条（agent 运行中发送的消息，✕取消 / ✎编辑）+「已丢弃」分区（cancelled/discarded 灰色删除线，无操作）
 │   │   ├── buildBubbleItems.tsx Bubble 渲染项构建
 │   │   ├── bubbleRoles.ts      气泡角色配置
 │   │   ├── ChatWelcome.tsx     空态欢迎页
