@@ -140,6 +140,10 @@
         }
     },
     "chat": {
+        "message": {
+            "terminalCancelled": "Cancelled",
+            "terminalDiscarded": "Discarded"
+        },
         "turnDetail": {
             "duration": "Duration",
             "ttft": "First token",

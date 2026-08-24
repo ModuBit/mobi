@@ -19,7 +19,10 @@
  * 测试从 ChatContainer.tsx 中提取的纯函数
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createElement } from 'react'
+import { render, screen, cleanup } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
 
 // ========== parseCliOutputText ==========
 
@@ -317,5 +320,156 @@ describe('resolveRunStartedAt', () => {
 
     it('两者都缺 → undefined（AgentLoadingBubble 回退组件 mount 时间）', () => {
         expect(resolveRunStartedAt(undefined, undefined)).toBeUndefined()
+    })
+})
+
+// ========== 终态用户气泡标注（P3 粗粒度可见，spec .scratch/user-message-lifecycle）==========
+
+// Bun jsdom 环境下 navigator.language 未定义，uiStore 初始化需要（AppTooltip.test 先例）
+vi.hoisted(() => {
+    try {
+        if (!(globalThis as Record<string, unknown>).navigator || !(navigator as Record<string, unknown>).language) {
+            Object.defineProperty(navigator, 'language', { value: 'zh-CN', configurable: true })
+        }
+    } catch {
+        Object.defineProperty(globalThis, 'navigator', {
+            value: { language: 'zh-CN', languages: ['zh-CN', 'en'] },
+            writable: true,
+            configurable: true,
+        })
+    }
+})
+
+// mock i18next（含被测的 chat.message.* 词条；未命中 key 原样返回）
+vi.mock('react-i18next', () => ({
+    initReactI18next: { type: '3rdParty', init: vi.fn() },
+    useTranslation: () => ({
+        t: (key: string) => {
+            const map: Record<string, string> = {
+                'chat.message.terminalCancelled': '已取消',
+                'chat.message.terminalDiscarded': '已丢弃',
+            }
+            return map[key] ?? key
+        },
+    }),
+}))
+
+// 消息数据源（稳定引用，避免 effect 循环）
+const chatState = vi.hoisted(() => ({ messages: [] as Array<Record<string, unknown>> }))
+vi.mock('@/core/data/hooks/queries/useMessages', () => ({
+    useMessages: () => ({
+        data: chatState.messages,
+        isLoading: false,
+        fetchNextPage: () => Promise.resolve(),
+        hasNextPage: false,
+        isFetchingNextPage: false,
+    }),
+}))
+
+// 会话数据源：最小形状（不 running、无 runtimeState）
+vi.mock('@/core/data/hooks/queries/useSession', () => ({
+    useSession: () => ({
+        data: { running: false, active: true, metadata: null, runtimeState: null },
+    }),
+}))
+
+vi.mock('@/core/data/hooks/mutations/useSendMessage', () => ({
+    useSendMessage: () => ({ isPending: false, mutate: vi.fn() }),
+}))
+
+vi.mock('@/core/data/hooks/mutations/useSessionActions', () => ({
+    useSessionActions: () => ({
+        abortSession: vi.fn(),
+        resumeSession: vi.fn(),
+        switchSession: vi.fn(),
+        setPermissionMode: vi.fn(),
+        setModelMode: vi.fn(),
+        setEffort: vi.fn(),
+        isAbortPending: false,
+        isResumePending: false,
+        isSwitchPending: false,
+    }),
+}))
+
+// api client：rewind 预检/执行不会真实发起
+vi.mock('@/core/data/api/client', () => ({
+    useMobiApi: () => ({
+        sessions: { rewindDryRun: vi.fn(), rewind: vi.fn() },
+    }),
+}))
+
+// jsdom 无 matchMedia —— 移动端判定恒 false（PC footer 路径）
+vi.mock('@/core/data/hooks/useMediaQuery', () => ({
+    BREAKPOINTS: {},
+    useMediaQuery: () => false,
+    useIsMobile: () => false,
+    useIsDesktop: () => true,
+    useHasFinePointer: () => true,
+}))
+
+// composer 不在本次断言范围
+vi.mock('@/components/composer/ChatComposer', () => ({
+    ChatComposer: () => null,
+}))
+
+// 气泡列表替身：只渲染 footer（被测标注所在），content 链（tiptap 等）不进 DOM
+vi.mock('@/components/chat/BubbleListChat', () => ({
+    BubbleListChat: (props: { items: Array<{ key: string; footer?: React.ReactNode }> }) =>
+        createElement(
+            'div',
+            null,
+            props.items.map(item =>
+                createElement('div', { key: item.key, 'data-bubble-key': item.key }, item.footer ?? null),
+            ),
+        ),
+}))
+
+import { ChatContainer } from '@/components/chat/ChatContainer'
+import type { DecryptedMessage } from '@/core/data/api/types'
+
+/** 造最小用户消息（content 为 role-wrapped 信封 + text，能走通 normalize→user-text block） */
+function userMsg(id: string, text: string, lifecycle: string | null): DecryptedMessage {
+    return {
+        id,
+        localId: null,
+        seq: 1,
+        positionAt: 1000,
+        content: { role: 'user', content: { type: 'text', text } },
+        createdAt: 1000,
+        status: 'completed',
+        lifecycle,
+    } as unknown as DecryptedMessage
+}
+
+beforeEach(() => {
+    chatState.messages = []
+})
+
+afterEach(() => {
+    cleanup()
+})
+
+describe('终态用户气泡标注', () => {
+    it('lifecycle=cancelled 的用户气泡渲染终态标注（已取消）', () => {
+        chatState.messages = [userMsg('m1', '被取消的消息', 'cancelled')]
+        render(createElement(ChatContainer, { sessionId: 'test-session' }))
+        expect(screen.getByText('已取消')).toBeInTheDocument()
+    })
+
+    it('lifecycle=discarded 的用户气泡渲染终态标注（已丢弃）', () => {
+        chatState.messages = [userMsg('m2', '被丢弃的消息', 'discarded')]
+        render(createElement(ChatContainer, { sessionId: 'test-session' }))
+        expect(screen.getByText('已丢弃')).toBeInTheDocument()
+    })
+
+    it('done/queued/非排队消息无终态标注', () => {
+        chatState.messages = [
+            userMsg('m3', '正常处理完的消息', 'done'),
+            userMsg('m4', '无 lifecycle 的消息', null),
+            userMsg('m5', '仍在排队的消息', 'queued'),
+        ]
+        render(createElement(ChatContainer, { sessionId: 'test-session' }))
+        expect(screen.queryByText('已取消')).not.toBeInTheDocument()
+        expect(screen.queryByText('已丢弃')).not.toBeInTheDocument()
     })
 })

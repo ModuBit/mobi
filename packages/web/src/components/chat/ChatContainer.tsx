@@ -17,7 +17,7 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { Spin, Button, theme as antTheme, message } from 'antd'
-import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined } from '@ant-design/icons'
+import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined, StopOutlined } from '@ant-design/icons'
 import { Undo2 } from 'lucide-react'
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
@@ -616,10 +616,19 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         const metaById = new Map<string, NativeMessageMetadata | null>(
             messages.map(m => [m.id, m.metadata ?? null]),
         )
+        // 与 metaById 同源同式：message.id → lifecycle（终态标注判据，P3 粗粒度可见）
+        const lifecycleById = new Map<string, DecryptedMessage['lifecycle']>(
+            messages.map(m => [m.id, m.lifecycle ?? null]),
+        )
 
         const decorated: ChatBubbleItem[] = baseItems.map(item => {
             const block = item.block
             const isUserText = block?.kind === 'user-text'
+
+            // 终态标注判据：cancelled/discarded 的用户消息「这条没被处理」一眼可见；
+            // 其余 lifecycle（含 done）与非排队消息不标注（用户不关心传输细节）
+            const terminalLifecycle = isUserText && block ? lifecycleById.get(block.id) : null
+            const isTerminalLifecycle = terminalLifecycle === 'cancelled' || terminalLifecycle === 'discarded'
 
             // rewind 判据（footer 操作组与移动长按菜单同源，spec §5.5）
             const rewindable = isUserText && block
@@ -631,26 +640,42 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 )
                 : false
 
+            // footer：非终态时结构零改动（只增不改）；终态时在 footer 同排左侧加灰色小标注，
+            // UserMessageFooter 包 flex:1 容器——时间戳（marginLeft:auto）仍贴最右，标注占左侧
+            const baseFooter = isUserText && block ? (
+                <UserMessageFooter
+                    text={block.text}
+                    createdAt={block.createdAt}
+                    canRewind={rewindable}
+                    onRewind={() => {
+                        const nativeId = metaById.get(block.id)?.nativeId
+                        if (nativeId) handleOpenRewind(block.id, nativeId)
+                    }}
+                    rewindOpen={rewindDraft?.source === 'modal' && rewindDraft?.messageId === block.id}
+                    rewindTargetText={rewindDraft?.targetText ?? null}
+                    rewindDryRun={rewindDryRun}
+                    rewindLoading={rewindExecuting}
+                    onRewindConfirm={(restoreFiles) => { void confirmRewind(restoreFiles) }}
+                    onRewindCancel={cancelRewind}
+                />
+            ) : undefined
+
             return {
                 ...item,
                 classNames: isUserText ? { root: 'user-msg-bubble' } : undefined,
-                footer: isUserText && block ? (
-                    <UserMessageFooter
-                        text={block.text}
-                        createdAt={block.createdAt}
-                        canRewind={rewindable}
-                        onRewind={() => {
-                            const nativeId = metaById.get(block.id)?.nativeId
-                            if (nativeId) handleOpenRewind(block.id, nativeId)
-                        }}
-                        rewindOpen={rewindDraft?.source === 'modal' && rewindDraft?.messageId === block.id}
-                        rewindTargetText={rewindDraft?.targetText ?? null}
-                        rewindDryRun={rewindDryRun}
-                        rewindLoading={rewindExecuting}
-                        onRewindConfirm={(restoreFiles) => { void confirmRewind(restoreFiles) }}
-                        onRewindCancel={cancelRewind}
-                    />
-                ) : undefined,
+                footer: isTerminalLifecycle ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span
+                            data-testid="user-msg-terminal"
+                            // 与悬浮条丢弃态同语言：token.colorTextTertiary + 小号字（一眼可见但不抢焦）
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: token.colorTextTertiary, fontSize: 11, flexShrink: 0 }}
+                        >
+                            <StopOutlined style={{ fontSize: 11 }} />
+                            {t(terminalLifecycle === 'cancelled' ? 'chat.message.terminalCancelled' : 'chat.message.terminalDiscarded')}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>{baseFooter}</div>
+                    </div>
+                ) : baseFooter,
                 footerPlacement: 'outer-end' as const,
             }
         })
@@ -687,11 +712,15 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         let nativeIdCount = 0
         let nativeSidCount = 0
         let nativeAckCount = 0
+        let terminalLifecycleCount = 0
         for (const m of messages) {
             const md = m.metadata
             if (md?.nativeId) nativeIdCount++
             if (md?.nativeSessionId) nativeSidCount++
             if (md?.nativeAckAt != null) nativeAckCount++
+            // lifecycle 终态翻转（queued→cancelled/discarded 广播）不动 block 引用，
+            // 但 footer 标注依赖 lifecycleById → 须入签名让缓存失效、footer 随帧重建
+            if (m.lifecycle === 'cancelled' || m.lifecycle === 'discarded') terminalLifecycleCount++
         }
         const ctxKey = `${metadata?.path ?? ''}|${sessionId}|${sendMutation.isPending}|${!!session?.running}`
             + `|${sessionNativeSessionId ?? ''}|${backgroundTasksCount}`
@@ -705,6 +734,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             + `|${chainHeadIds === null ? 'unk' : chainHeadIds.size}`
             // metadata 签名：ack/attach 补写后 rewind 图标即时刷新（而非「刷新才见」）
             + `|${nativeIdCount}-${nativeSidCount}-${nativeAckCount}`
+            // lifecycle 终态签名：cancelled/discarded 广播到达后标注即时出现（而非「刷新才见」）
+            + `|${terminalLifecycleCount}`
         const reusableCache = prevItemsRef.current.ctxKey === ctxKey
             ? prevItemsRef.current.cache
             : new Map()
