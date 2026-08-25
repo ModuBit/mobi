@@ -53,6 +53,20 @@ const HISTORY_PREFETCH_DISTANCE = 200
 const RESTORE_SCROLL_GUARD_MS = 100
 
 /**
+ * fill 级联判据：内容是否未撑满视口（几何语义）。
+ *
+ * fill 的设计语义是「初始加载内容未溢出时连续拉页」——补的是**视口**，不是消息数：
+ * 启动条件必须与停止条件（scrollHeight > clientHeight 停，见 fill effect）对称，都按几何判定。
+ * 严禁用「renderItems < VISIBLE_WINDOW」之类数量条件做启动判据——bubble 与消息不是 1:1
+ * （tool-heavy 会话 ~6 消息/bubble），数量启动 + 几何停止的不对称会形成循环拉取，
+ * 直到凑够 400 bubble（实测 28 请求 / 82% 会话历史；更低的 bubble 比则全量加载）。
+ * clientHeight=0（容器隐藏/未布局）不触发，避免隐藏态误拉。
+ */
+function isViewportUnfilled(scrollBox: HTMLElement): boolean {
+    return scrollBox.clientHeight > 0 && scrollBox.scrollHeight <= scrollBox.clientHeight
+}
+
+/**
  * 全量渲染的聊天列表（antdx Bubble.List）。
  *
  * ## 为什么不用 react-virtuoso
@@ -114,7 +128,6 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     const [windowTick, setWindowTick] = useState(0)
 
     // 同步 renderItems 信息到 ref（handleScroll useCallback([]) 闭包读不到 renderItems）
-    const renderItemsLengthRef = useRef(0)
     const firstRenderItemKeyRef = useRef<string | number | null | undefined>(undefined)
 
     const { handleScrollerRef, following, stickToBottom } = useStickToBottom(items.length > 0)
@@ -207,9 +220,10 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
             return
         }
 
-        // fill：window 没填满 + 还有历史 + 仍在贴底（following） → 主动加载。
+        // fill：内容未撑满视口 + 还有历史 + 仍在贴底（following） → 主动加载。
+        // 判据见 isViewportUnfilled（几何语义，与停止条件对称）；
         // gate following：用户上滚看历史（following=false）时不 fill，避免 fill effect 钉底瞬移用户
-        if (renderItemsLengthRef.current < VISIBLE_WINDOW && hasNextPageRef.current && !isFetchingNextPageRef.current && followingRef.current) {
+        if (isViewportUnfilled(scrollBox) && hasNextPageRef.current && !isFetchingNextPageRef.current && followingRef.current) {
             isFillingRef.current = true
             onLoadMoreRef.current()
         }
@@ -280,9 +294,9 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         const scrollBox = scrollBoxRef.current
         if (!scrollBox) return
         // rewind 截断后内容不足视口：主动启动 fill 补足（清除行不产生 scroll 事件，
-        // startReached 路径不会自然触发；条件与 handleScroll 的 fill 分支一致）
+        // startReached 路径不会自然触发；判据与 handleScroll 的 fill 分支一致，见 isViewportUnfilled）
         if (!isFillingRef.current
-            && renderItemsLengthRef.current < VISIBLE_WINDOW
+            && isViewportUnfilled(scrollBox)
             && hasNextPageRef.current && !isFetchingNextPageRef.current && followingRef.current) {
             isFillingRef.current = true
             onLoadMoreRef.current()
@@ -346,8 +360,6 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         ]
     }, [items, following, isFetchingNextPage, windowTick])
 
-    // 同步 renderItems 信息到 ref（handleScroll useCallback([]) 闭包读不到 renderItems）
-    renderItemsLengthRef.current = renderItems.length
     // 跳过 skeleton，取第一个真实 item 的 key（供 offsetTop querySelector 测量）
     const firstRealItem = renderItems.find(it => it.key !== '__loading-skeleton__')
     firstRenderItemKeyRef.current = firstRealItem?.key
