@@ -22,3 +22,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [native_id 绑定验证](native-id-verify.md) — SQL 断言各 push 路径绑定 / API 暴露；排队消息多走 steer 各自绑定；首回合 Change Title 审批卡输入坑
 - [rewind 全链路验证](rewind-verify.md) — 按钮/ack/dry-run/截断上下文探针/连续 rewind/回填断言/**双 tab 同步**/链首隐藏；进行中窗口 <2s 抓不到的坑
 - [CDP 动效逐帧采样](motion-verify.md) — rAF 探针验证 CSS 动画/选择器命中（jsdom 测不出）；antd v6 rootClassName 层级坑
+- [真实大会话注入](real-session-seed.md) — prod→e2e 拷库（messages 必须显式列 position_at）做消息窗口化/fill 级联验证
