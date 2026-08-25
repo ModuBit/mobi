@@ -520,16 +520,23 @@ describe('messages-bound：CLI 上报用户消息 native_id 绑定', () => {
 
 describe('messages-acked：isReplay 回显确认（双写）', () => {
     /** 构造 messages-acked 专用 deps：mock nativeAckAt 写入（markMessagesAcked）与 lifecycle
-     *  推进（advanceMessagesAcked）两个 store 方法，各自捕获调用参数。 */
-    function makeAckedDeps(): {
+     *  推进（advanceMessagesAcked）两个 store 方法，各自捕获调用参数；返回值可定制
+     * （交错/重复 acked fact 下两写命中集不同，见广播并集用例）。 */
+    function makeAckedDeps(opts: {
+        advanceReturn?: string[]
+        markReturn?: ReturnType<typeof makeMsg>[]
+        byIdsReturn?: ReturnType<typeof makeMsg>[]
+    } = {}): {
         deps: SessionHandlersDeps
         nativeAckSpy: { args: { sid: string; nativeId: string; at: number } | null }
         advanceSpy: { args: { sid: string; nativeId: string; at: number } | null }
         calls: string[]
+        events: SyncEvent[]
     } {
         const nativeAckSpy = { args: null as { sid: string; nativeId: string; at: number } | null }
         const advanceSpy = { args: null as { sid: string; nativeId: string; at: number } | null }
         const calls: string[] = []
+        const events: SyncEvent[] = []
         const deps: SessionHandlersDeps = {
             store: {
                 messages: {
@@ -537,12 +544,16 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
                     markMessagesAcked: (sid: string, nativeId: string, at: number) => {
                         calls.push('nativeAck')
                         nativeAckSpy.args = { sid, nativeId, at }
-                        return [makeMsg('m1', 'loc-1', 1)]
+                        return opts.markReturn ?? [makeMsg('m1', 'loc-1', 1)]
                     },
                     advanceMessagesAcked: (sid: string, nativeId: string, at: number) => {
                         calls.push('advance')
                         advanceSpy.args = { sid, nativeId, at }
-                        return ['m1']
+                        return opts.advanceReturn ?? ['m1']
+                    },
+                    getMessagesByIds: (sid: string, ids: string[]) => {
+                        void sid
+                        return opts.byIdsReturn?.filter(m => ids.includes(m.id)) ?? []
                     },
                 },
                 sessions: {},
@@ -550,9 +561,9 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
             resolveSessionAccess: (sid: string) => ({ ok: true as const, value: makeStoredSession(sid) }),
             emitAccessError: () => {},
             backgroundTaskTracker: new BackgroundTaskTracker(),
-            onWebappEvent: () => {},
+            onWebappEvent: (e: SyncEvent) => { events.push(e) },
         }
-        return { deps, nativeAckSpy, advanceSpy, calls }
+        return { deps, nativeAckSpy, advanceSpy, calls, events }
     }
 
     test('messages-acked：推进 lifecycle=acked（双写——nativeAckAt 路径照旧）', () => {
@@ -579,6 +590,39 @@ describe('messages-acked：isReplay 回显确认（双写）', () => {
         // 且两者共一时间戳（nativeAckAt === lifecycle_at），不产生 1ms 分叉
         expect(calls).toEqual(['advance', 'nativeAck'])
         expect(advanceSpy.args!.at).toBe(nativeAckSpy.args!.at)
+    })
+
+    test('广播以 advance ∪ mark 并集为准——mark 无增量（nativeAckAt 已写）而 advance 有命中时仍广播', () => {
+        const fakeSocket = makeFakeSocket()
+        // 交错/重复 acked fact 场景：某行 metadata.nativeAckAt 已先行写入（mark 的
+        // IS NULL 守卫不命中返回空），但 lifecycle 仍 'pushed'（advance 的 WHERE 命中推进）
+        const advancedRow = makeMsg('m2', 'loc-2', 2)
+        const { deps, events } = makeAckedDeps({
+            advanceReturn: ['m2'],
+            markReturn: [],
+            byIdsReturn: [advancedRow],
+        })
+
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        fakeSocket.emit('messages-acked', { sid: 's1', nativeId: 'nu-2' })
+
+        // 只按 mark 返回广播会让 advance 推进过的行不广播——Web 端 lifecycle 停留
+        // 'pushed' 直到刷新（正是本特性要消灭的「刷新才见」bug 类）
+        expect(events).toEqual([{ type: 'message-received', sessionId: 's1', message: expect.objectContaining({ id: 'm2' }) }])
+    })
+
+    test('两写均无增量（重复 acked fact）→ 不广播', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, events } = makeAckedDeps({
+            advanceReturn: [],
+            markReturn: [],
+            byIdsReturn: [makeMsg('m1', 'loc-1', 1)],
+        })
+
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+        fakeSocket.emit('messages-acked', { sid: 's1', nativeId: 'nu-1' })
+
+        expect(events).toEqual([])
     })
 })
 

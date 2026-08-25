@@ -587,17 +587,21 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     }
 
     /** isReplay 回显确认（原 messages-acked 处理体）。先推进 lifecycle='acked' 再写
-     *  metadata.nativeAckAt：markMessagesAcked 内部 UPDATE 后 SELECT 返回行快照用于广播——
-     *  若 advance 在其后，快照的 lifecycle/lifecycleAt 是推进前的旧值。advance 的 WHERE
-     *  只看 lifecycle 不受 metadata UPDATE 影响，换序安全。共一时间戳消除 nativeAckAt 与
-     *  lifecycle_at 分叉。P1 双写：nativeAckAt 照常写（rewind 判据不动；P2 事件收敛时评估停写） */
+     *  metadata.nativeAckAt，共一时间戳（at）消除 nativeAckAt 与 lifecycle_at 分叉。
+     *  广播以 advance ∪ mark 的 id 并集为准（getMessagesByIds 统一回读推进后快照）——
+     *  两写的命中集不同：advance 只看 lifecycle='pushed'，mark 只看 nativeAckAt 缺失。
+     *  交错/重复 acked fact 下可能只有一边有增量（如 nativeAckAt 已先行写入而 lifecycle
+     *  仍 pushed），只按 mark 返回广播会让 advance 推进过的行不广播——Web 端 lifecycle
+     *  停留 pushed 直到刷新。P1 双写：nativeAckAt 照常写（rewind 判据不动） */
     const processAcked = (sid: string, nativeId: string, ackedAt?: number) => {
         const at = ackedAt ?? Date.now()
-        store.messages.advanceMessagesAcked(sid, nativeId, at)
-        const acked = store.messages.markMessagesAcked(sid, nativeId, at)
-        // 合并批 1:N（同 nativeId 多行）逐行广播——只推一行会让批内其余行的 nativeAckAt
-        // 不实时更新，rewind 入口「刷新才见」
-        if (acked.length > 0) broadcastStoredMessages(sid, acked)
+        const advancedIds = store.messages.advanceMessagesAcked(sid, nativeId, at)
+        const marked = store.messages.markMessagesAcked(sid, nativeId, at)
+        const ids = new Set(advancedIds)
+        for (const m of marked) ids.add(m.id)
+        if (ids.size === 0) return
+        const rows = store.messages.getMessagesByIds(sid, [...ids])
+        if (rows.length > 0) broadcastStoredMessages(sid, rows)
     }
 
     /** attach 补写（原 messages-native-attached 处理体）：该会话所有缺 nativeSessionId 的行
