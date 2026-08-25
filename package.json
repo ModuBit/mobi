@@ -3,7 +3,7 @@
     "private": true,
     "workspaces": ["packages/*"],
     "scripts": {
-        "dev": "concurrently \"bun run dev:hub\" \"bun run dev:web\" --kill-others-on-fail",
+        "dev": "bun run --parallel dev:hub dev:web",
         "build": "bun run build:hub && bun run build:web",
         "build:hub": "cd packages/hub && bun run build",
         "build:web": "cd packages/web && bun run build",
@@ -28,7 +28,6 @@
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
-        "concurrently": "^10.0.5",
         "dependency-cruiser": "^18.2.0",
         "eslint": "^10.8.1",
         "husky": "^9.1.7",
