@@ -433,8 +433,14 @@ export class SessionCache {
     handleRunStarted(payload: { sid: string; runStartedAt: number }): void {
         const session = this.sessions.get(payload.sid) ?? this.refreshSession(payload.sid)
         if (!session) return
-        // 时间倒退保护：CLI 重连等场景可能重报旧值，取 max 防计时起点回跳
-        if (typeof session.runtimeState?.runStartedAt === 'number'
+        // 时间倒退保护仅在「上一轮仍在跑」时生效（session.running 来自 keepAlive，CLI 在
+        // 翻转 false→true 时先发 run-started 再发 keepAlive(true)——run-started 到达时
+        // running 反映上一轮状态）：此时旧值重报只可能是重连重投递，静默忽略。
+        // running=false（轮次已结束/机器接管）后的上报必是新轮次起点——CLI 只在翻转时上报、
+        // 不重试，此时即便时间戳早于存量值（CLI 机器时钟偏慢/NTP 回拨）也必须接受，
+        // 否则计时起点永久陈旧（elapsed 虚大）
+        if (session.running
+            && typeof session.runtimeState?.runStartedAt === 'number'
             && session.runtimeState.runStartedAt >= payload.runStartedAt) {
             return
         }

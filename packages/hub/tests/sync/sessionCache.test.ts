@@ -317,14 +317,34 @@ describe('SessionCache.handleRunStarted（docs/pending.md #55 方案 1）', () =
         expect(rs?.runStartedAt).toBe(1755800000000)
     })
 
-    test('重报旧值（CLI 重连等）→ 静默忽略，不落库不推送（防计时起点回跳）', () => {
+    test('running 在途时重报旧值（CLI 重连重投递等）→ 静默忽略，不落库不推送（防计时起点回跳）', () => {
         const session = cache.getOrCreateSession('tag-run-3', { path: '/tmp/p' }, null, 'default')
+        // 上一轮仍在跑（keepAlive running=true）——此时旧值重报只可能是陈旧重投递
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: true })
 
         cache.handleRunStarted({ sid: session.id, runStartedAt: 1755800000200 })
         cache.handleRunStarted({ sid: session.id, runStartedAt: 1755800000100 })
 
         expect(cache.getSession(session.id)?.runtimeState?.runStartedAt).toBe(1755800000200)
-        expect(emits.filter(e => e.type === 'session-updated')).toHaveLength(1)
+        // 只数 runStarted 推送的 runtimeState patch（handleSessionAlive 的 alive 广播不计入）
+        const runStartedPushes = emits.filter(e =>
+            e.type === 'session-updated' && (e.data as { runtimeState?: unknown }).runtimeState !== undefined)
+        expect(runStartedPushes).toHaveLength(1)
+    })
+
+    test('轮次结束后新上报早于存量值（时钟偏慢的机器接管）→ 接受（防计时起点永久陈旧）', () => {
+        const session = cache.getOrCreateSession('tag-run-4', { path: '/tmp/p' }, null, 'default')
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: true })
+        cache.handleRunStarted({ sid: session.id, runStartedAt: 1755800000200 })
+        // 上一轮结束（keepAlive running=false），新轮次起点上报——CLI 只在翻转 false→true
+        // 时上报，这必是新轮次；Date.now() 取自 CLI 机器，时钟偏差/NTP 回拨可能早于存量值
+        cache.handleSessionAlive({ sid: session.id, time: Date.now(), running: false })
+        cache.handleRunStarted({ sid: session.id, runStartedAt: 1755800000100 })
+
+        expect(cache.getSession(session.id)?.runtimeState?.runStartedAt).toBe(1755800000100)
+        const runStartedPushes = emits.filter(e =>
+            e.type === 'session-updated' && (e.data as { runtimeState?: unknown }).runtimeState !== undefined)
+        expect(runStartedPushes).toHaveLength(2)
     })
 
     test('未知 sid 静默忽略（不抛错）', () => {
