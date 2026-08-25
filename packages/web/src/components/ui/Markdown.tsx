@@ -138,9 +138,11 @@ export const Markdown = memo(function Markdown({
 
     // LaTeX 按需加载：探测到公式特征才拉 katex chunk（raw ~234K，含样式），
     // 避免绝大多数不含公式的消息把 katex 带进会话页首载。加载是模块级幂等
-    // （ensureKatexLoaded 缓存 promise），加载过后所有渲染一直带 Latex 扩展
+    // （ensureKatexLoaded 缓存 promise），加载过后所有渲染一直带 Latex 扩展。
+    // 探测用 target（content）而非逐字中的 display——超集探测，公式特征的
+    // 判定结果与揭示进度无关，只算一次不随每帧 display 变化重扫
     const [katexReady, setKatexReady] = useState(false)
-    const needsKatex = useMemo(() => containsLatex(displayContent), [displayContent])
+    const needsKatex = useMemo(() => containsLatex(content ?? ''), [content])
     useEffect(() => {
         if (!needsKatex || katexReady) return
         let cancelled = false
@@ -189,12 +191,20 @@ export const Markdown = memo(function Markdown({
     // 流式中途插入的双段结构一次性归一（此时全文完成，单次全量 parse 可接受）。
     // 判据用 display 长度而非 streaming prop：full message 到达后 streaming 已翻
     // false，但 wasStreaming 的逐字收敛仍在进行（display 仍 < content），拆分必须继续。
-    // 拆分基准是清洗后的 cleanContent（两段拼回 === cleanContent，正文不含脚注定义原文）
+    // 拆分基准是清洗后的 cleanContent（两段拼回 === cleanContent，正文不含脚注定义原文）。
+    // splitStablePrevRef 传上帧切点做增量恢复：切点处状态必为干净，从切点续扫
+    // 与全量等价，每帧拆分成本 O(尾部) 而非 O(全文)——超长回复在 120Hz 下也稳
     const isDripping = displayContent.length < (content ?? '').length
-    const { stable, tail } = useMemo(
-        () => (isDripping ? splitStablePrefix(cleanContent) : { stable: '', tail: cleanContent }),
-        [isDripping, cleanContent],
-    )
+    const splitStablePrevRef = useRef('')
+    const { stable, tail } = useMemo(() => {
+        if (!isDripping) {
+            splitStablePrevRef.current = ''
+            return { stable: '', tail: cleanContent }
+        }
+        const split = splitStablePrefix(cleanContent, splitStablePrevRef.current || undefined)
+        splitStablePrevRef.current = split.stable
+        return split
+    }, [isDripping, cleanContent])
 
     // 仅在脚注数据实质变化时重建 Map，流式渲染期间保持稳定引用
     const footnotesRef = useRef(footnotes)

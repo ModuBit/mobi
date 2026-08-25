@@ -117,10 +117,39 @@ describe('splitStablePrefix', () => {
         expect(tail).toBe('表后段落流式中')
     })
 
-    it('HTML 块一旦出现：其后全部不切（保守——HTML 内空行语义不可靠）', () => {
-        const text = 'para\n\n<div>\n\nhtml 内空行\n</div>\n\npara2 流式中'
-        const { stable } = expectInvariant(text)
+    it('HTML 块：块内不切，块结束后恢复可切', () => {
+        // HTML 块行是延续块：块内（含块内空行后的 tag 内容）不设切点
+        const { stable } = expectInvariant('para\n\n<div>\n\nhtml 内空行\n</div>\n\npara2 流式中')
+        // '</div>' 后的空行到 'para2' 时延续仍被视为可能继续——保守把 HTML 块留 tail
         expect(stable).toBe('para\n\n')
+
+        // HTML 块结束（空行 + 非 tag 普通行）确认后，后续块边界可切：
+        // CommonMark HTML 块结束于空行后的非 tag 内容，marked 同此解析——切开与渲染器一致
+        const { stable: s2, tail } = expectInvariant('para\n\n<div>\n</div>\n\n中间段。\n\ntail 流式中')
+        expect(s2).toBe('para\n\n<div>\n</div>\n\n中间段。\n\n')
+        expect(tail).toBe('tail 流式中')
+    })
+
+    it('autolink（<https://…>、<user@host>）不是 HTML 块，不锁死后续切点', () => {
+        const { stable, tail } = expectInvariant('para\n\n<https://example.com>\n\npara2 流式中')
+        expect(stable).toBe('para\n\n<https://example.com>\n\n')
+        expect(tail).toBe('para2 流式中')
+
+        const { stable: s2 } = expectInvariant('para\n\n<user@host>\n\npara2 流式中')
+        expect(s2).toBe('para\n\n<user@host>\n\n')
+    })
+
+    it('嵌套 fence：外层 ```` 内的 ``` 不提前闭合，切点在整块之后', () => {
+        // LLM 展示 markdown 示例的常见形态：4 反引号包裹、内含 3 反引号
+        const text = 'para1\n\n````js\nconst a = `code`\n```\ninner\n````\n\n尾部段落流式中'
+        const { stable, tail } = expectInvariant(text)
+        expect(stable).toBe('para1\n\n````js\nconst a = `code`\n```\ninner\n````\n\n')
+        expect(tail).toBe('尾部段落流式中')
+    })
+
+    it('fence 闭栏长度不足不闭合（```` 包 ~~~ 不互闭、短闭合行无效）', () => {
+        const { stable } = expectInvariant('para\n\n~~~\ncode ``` \n内层\n~~~\n\ntail 流式中')
+        expect(stable).toBe('para\n\n~~~\ncode ``` \n内层\n~~~\n\n')
     })
 
     it('setext 标题（下划线式）：标题与其下划线间无空行天然不切', () => {
@@ -142,5 +171,47 @@ describe('splitStablePrefix', () => {
         const { stable } = splitStablePrefix(text)
         // 全部块完成 + 尾部空行 → 全文 stable
         expect(stable).toBe(text)
+    })
+
+    describe('增量恢复（prevStable）', () => {
+        it('逐帧增长：增量结果与全量结果恒等，且 stable 单调不减', () => {
+            // 模拟流式逐字：从段首逐步增长到完整文本
+            const full = [
+                'para1 完成段。\n\n',
+                '```ts\nconst a = 1\n```\n\n',
+                '- 列表项 A\n- 列表项 B\n\n',
+                'para2 完成段。\n\n',
+                '尾部流式中',
+            ].join('')
+            let prevStable = ''
+            for (let n = 1; n <= full.length; n += 7) {
+                const text = full.slice(0, n)
+                const inc = splitStablePrefix(text, prevStable || undefined)
+                const full2 = splitStablePrefix(text)
+                expect(inc).toEqual(full2)
+                expect(inc.stable.length).toBeGreaterThanOrEqual(Math.min(prevStable.length, text.length))
+                prevStable = inc.stable
+            }
+        })
+
+        it('prevStable 非前缀（文本收缩）时自动回退，结果与全量一致', () => {
+            const text = '新内容 para\n\n尾'
+            const prev = '旧的前缀 xyz\n\n'
+            expect(splitStablePrefix(text, prev)).toEqual(splitStablePrefix(text))
+        })
+
+        it('大文本增量只扫尾部：50k 字符重复调用不异常且结果正确', () => {
+            let text = ''
+            for (let i = 0; i < 2000; i++) text += `第 ${i} 段内容。\n\n`
+            text += '尾部流式中'
+            let prev = ''
+            // 模拟揭示推进：stable 建立后逐帧 +1 字符追加
+            let result = splitStablePrefix(text, prev || undefined)
+            expect(result.stable.length).toBeGreaterThan(0)
+            for (let i = 0; i < 50; i++) {
+                result = splitStablePrefix(text + 'x'.repeat(i), result.stable)
+            }
+            expect(result.stable + result.tail).toContain('尾部流式中')
+        })
     })
 })

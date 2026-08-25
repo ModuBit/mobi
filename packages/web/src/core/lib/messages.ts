@@ -57,16 +57,6 @@ export function isQueuedInMobi(msg: DecryptedMessage): boolean {
 }
 
 /**
- * 是否为「终态被丢弃」的消息（悬浮条丢弃分区展示）。
- * cancelled（turn 死亡连坐）/ discarded（被 /clear、cancel 显式丢弃）——与用户主动取消排队
- * （API 返回值 'cancelled'）是不同概念。status sending/failed 排除（乐观在途/失败有自己的 UI）。
- */
-export function isDiscardedInMobi(msg: DecryptedMessage): boolean {
-    if (msg.status === 'failed' || msg.status === 'sending') return false
-    return msg.lifecycle === 'cancelled' || msg.lifecycle === 'discarded'
-}
-
-/**
  * 消息比较函数，用于排序。
  *
  * 主排序键 = positionAt（与 hub 侧 position_at 排序语义对齐）：排队消息被消费时
