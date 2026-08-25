@@ -410,6 +410,27 @@ describe('useRecentSessions（共享核心经「最近」视图验证）', () =>
         await waitFor(() => expect(result.current.sessions).toHaveLength(2))
         expect(result.current.expanded).toBe(false)
     })
+
+    it('回归：分组成员清空（会话归入项目后的空页）而全局缓存元素引用不变 → sessions 必须重算', async () => {
+        // E2E 实证场景：从「最近」归入项目后 invalidate refetch，unbound 返回空页。
+        // 空页的 mergeSessions 保留元素引用（容器换代、元素逐引用全等），而分组成员
+        // （sessionIds）已独立变化——输入短路若不校验 pages，会吞掉成员变化返回过期
+        // result，UI 停留旧分组直到刷新页面（useSessionIdsPages 数据链路本身是正确的）
+        const r1 = makeSession('r1', { updatedAt: 30 })
+        unboundSessions.mockResolvedValueOnce(makePage([r1]))
+        unboundSessions.mockResolvedValueOnce(makePage([]))
+
+        const qc = makeQueryClient()
+        qc.setQueryData(['sessions'], [r1])
+        const { result } = renderHook(() => useRecentSessions(), { wrapper: makeHookWrapper(qc) })
+
+        await waitFor(() => expect(result.current.sessions).toHaveLength(1))
+
+        await act(async () => {
+            await qc.invalidateQueries({ queryKey: ['recentSessions'] })
+        })
+        await waitFor(() => expect(result.current.sessions).toHaveLength(0))
+    })
 })
 
 describe('usePinnedSessions（共享核心经「置顶」视图验证）', () => {

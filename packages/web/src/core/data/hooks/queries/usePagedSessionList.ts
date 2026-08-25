@@ -58,11 +58,15 @@ export function usePagedSessionList(
     // SSE tick 级重算防御：['sessions'] 数组容器在 patchSessionCache/mergeSessions 中常被换代，
     // 但未涉及的 session 元素引用保持稳定（patchSessionCache 值不变时直接返回旧数组，变更时
     // 也只替换目标元素）。利用这一点做两层短路：
-    // 1. 输入短路——容器换代但元素逐引用全等时，直接复用上次结果，跳过 Set 构建+过滤+排序；
+    // 1. 输入短路——容器换代但元素逐引用全等、且分组成员页未换代时，直接复用上次结果，
+    //    跳过 Set 构建+过滤+排序。pages 必须参与判定：分组成员（sessionIds）独立于全局
+    //    缓存变化（归组/置顶后 invalidate refetch 换页），且 mergeSessions 对空页保留
+    //    元素引用——只看元素全等会吞掉成员变化，UI 停在旧分组直到刷新（E2E 实证回归）；
     // 2. 输出稳定——本分组成员未被波及（过滤+排序结果与上次逐引用全等）时，保持结果引用
     //    不变，切断下游 visibleSessions/行组件在他人会话高频心跳期间的连锁重渲染。
-    const sessionsCacheRef = useRef<{ all: Session[] | undefined; result: Session[] }>({
+    const sessionsCacheRef = useRef<{ all: Session[] | undefined; pages: ProjectSessionsPage[] | undefined; result: Session[] }>({
         all: undefined,
+        pages: undefined,
         result: [],
     })
 
@@ -72,9 +76,10 @@ export function usePagedSessionList(
 
         const prev = sessionsCacheRef.current
         if (
-            prev.all !== undefined &&
-            prev.all.length === allSessions.length &&
-            prev.all.every((s, i) => s === allSessions[i])
+            prev.all !== undefined
+            && prev.pages === pages.pages
+            && prev.all.length === allSessions.length
+            && prev.all.every((s, i) => s === allSessions[i])
         ) {
             return prev.result
         }
@@ -92,7 +97,7 @@ export function usePagedSessionList(
         const unchanged =
             prev.result.length === next.length && prev.result.every((s, i) => s === next[i])
         const result = unchanged ? prev.result : next
-        sessionsCacheRef.current = { all: allSessions, result }
+        sessionsCacheRef.current = { all: allSessions, pages: pages.pages, result }
         return result
     }, [pages?.pages, allSessions])
 

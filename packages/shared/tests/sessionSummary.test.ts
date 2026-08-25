@@ -177,4 +177,14 @@ describe('toSessionSummary', () => {
         const summary = toSessionSummary(session)
         expect(summary.taskProgress).toBeNull()
     })
+
+    it('含 projectId 时透传——Web 取消置顶后据此回填原项目分组', () => {
+        const summary = toSessionSummary(makeSession({ projectId: 'p1' }))
+        expect(summary.projectId).toBe('p1')
+    })
+
+    it('projectId 为 null（游离）或缺失时归一为 null，不残留 undefined', () => {
+        expect(toSessionSummary(makeSession({ projectId: null })).projectId).toBeNull()
+        expect(toSessionSummary(makeSession()).projectId).toBeNull()
+    })
 })
