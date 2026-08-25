@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, waitFor } from '@testing-library/react'
+import { render, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { useState } from 'react'
 import type {
     AnimationPlaybackControls,
@@ -207,6 +207,34 @@ describe('MobileDrawer', () => {
         const root = document.querySelector('.ant-drawer') as HTMLElement
         expect(root.className).toContain('ant-drawer-open')
         expect(sheet.style.transform).not.toBe('translateY(400px)')
+    })
+
+    it('连点遮罩（宽限窗口内两次 closeWithAnimation）只保留最后一条否决检测链——单次沉降、单次哨兵重臂', async () => {
+        const onClose = vi.fn()
+        render(<DrawerHost veto onClose={onClose} />)
+        const sheet = document.querySelector('[data-testid="mobile-drawer-sheet"]') as HTMLElement
+        Object.defineProperty(sheet, 'offsetHeight', { value: 400 })
+        await waitForOpenSettled()
+        animateCalls.length = 0
+
+        // 宽限窗口（VETO_GRACE_MS=100ms）内连点两次遮罩：两次 closeWithAnimation、
+        // 两次 onClose 都合法发生（否决式宿主 open 保持 true），但否决检测链只能有一条——
+        // 旧实现的定时器记账会被第二条 clobber，两条链先后触发双份沉降动画 +
+        // 双份哨兵重臂（history 额外 push/pop 一轮）
+        const mask = document.querySelector('.ant-drawer-mask') as HTMLElement
+        expect(mask).toBeTruthy()
+        fireEvent.click(mask)
+        fireEvent.click(mask)
+
+        expect(onClose).toHaveBeenCalledTimes(2)
+        // 等否决检测链跑完（首拍 setTimeout 0 + 宽限 100ms + 桩动画 50ms）
+        await waitFor(() => {
+            expect(animateCalls.some((c) => c.target === 0)).toBe(true)
+        }, { timeout: 2000 })
+        // 再等一拍让可能存在的第二条链（bug 时）也触发完
+        await new Promise((r) => setTimeout(r, 250))
+        expect(animateCalls.filter((c) => c.target === 0)).toHaveLength(1)
+        expect(animateCalls.some((c) => c.target === 400)).toBe(false)
     })
 
     it('手势关闭路径：释放速度经 pendingCloseVelocityRef 传到关闭 effect 的滑出动画（velocity 继承）', async () => {

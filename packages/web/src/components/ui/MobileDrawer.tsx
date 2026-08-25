@@ -249,6 +249,14 @@ export function MobileDrawer({
     const closeWithAnimation = useCallback((velocity?: number) => {
         pendingCloseVelocityRef.current = velocity ?? null
         onCloseRef.current?.(createSyntheticCloseEvent())
+        // 连点防重入（单链重启语义）：宽限窗口内的第二次 closeWithAnimation 会再排一条
+        // 否决检测链，旧链的定时器回调先置 vetoTimerRef=null 会 clobber 新链句柄，两条链
+        // 先后触发 → 双份沉降 + 双份哨兵重臂（history 额外 push/pop 一轮）。作废旧链只保留
+        // 最后一条——onClose 已再次通知过，检测的只是「最终是否被否决」，一条链足够
+        if (vetoTimerRef.current != null) {
+            clearTimeout(vetoTimerRef.current)
+            vetoTimerRef.current = null
+        }
         // 否决检测（两段式）：关闭是否被否决（onClose 被拦、open 未翻转）只能等父组件
         // setState flush 后读 openRef 判断——
         // - 第一拍（setTimeout 0）：覆盖同步消费者。open 已翻 false 则关闭 effect 接管
