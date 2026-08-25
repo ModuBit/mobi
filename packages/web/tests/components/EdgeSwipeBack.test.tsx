@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { render, cleanup, fireEvent } from '@testing-library/react'
 
 // uiStore mock：只提供 EdgeSwipeBack 用到的 getState（zustand store 形状），
 // 避免引入真实 store 连带 i18n 初始化。
@@ -54,9 +54,38 @@ describe('EdgeSwipeBack（无浮层 document 捕获 + 方向锁）', () => {
     // vitest 未开 globals，渲染型测试须显式 cleanup
     afterEach(() => cleanup())
 
-    it('不渲染任何 DOM（无浮层，不拦截滚动/点击）', () => {
+    it('渲染手势抑制条：touch-action: pan-y（声明式压制原生水平返回手势，竖向滚动放行）', () => {
         const { container } = render(<EdgeSwipeBack />)
-        expect(container.childElementCount).toBe(0)
+        const strip = container.querySelector('[data-testid="edge-swipe-suppressor"]') as HTMLElement
+        // 无浮层设计删掉了 touch-action 抑制，右滑开菜单会与浏览器原生 back 手势同时
+        // 触发（popstate 消费菜单哨兵 → 菜单闪现即关）。抑制条只做一件事：
+        // 让左缘起手的触摸不被浏览器翻译成水平导航——pan-y 放行竖向滚动（旧浮层的
+        // touch-action:none 会吞贴边竖滚，已废弃）
+        expect(strip).toBeTruthy()
+        expect(strip.style.touchAction).toBe('pan-y')
+        expect(strip.style.position).toBe('fixed')
+        expect(strip.style.width).toBe('20px')
+        expect(strip.style.left).toBe('0px')
+    })
+
+    it('抑制条点击穿透：命中期间的点击转投给下方元素（气泡左缘按钮照常可点）', () => {
+        const { container } = render(<EdgeSwipeBack />)
+        const strip = container.querySelector('[data-testid="edge-swipe-suppressor"]') as HTMLElement
+        const underlying = document.createElement('button')
+        const onClick = vi.fn()
+        underlying.addEventListener('click', onClick)
+        document.body.appendChild(underlying)
+        // jsdom 无布局也无 elementFromPoint，stub 返回热区正下方的元素
+        Object.defineProperty(document, 'elementFromPoint', {
+            value: vi.fn().mockReturnValue(underlying),
+            configurable: true,
+        })
+
+        fireEvent.click(strip, { clientX: 5, clientY: 100 })
+
+        expect(onClick).toHaveBeenCalledTimes(1)
+        delete (document as Partial<Document> & { elementFromPoint?: unknown }).elementFromPoint
+        underlying.remove()
     })
 
     it('热区内起手 + 水平位移胜出 → setMobileMenuOpen(true)', () => {

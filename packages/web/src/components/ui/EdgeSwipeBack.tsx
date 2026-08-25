@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { EDGE_WIDTH, resolveEdgeSwipeDirection } from './shouldTriggerSwipe'
 
@@ -28,12 +28,15 @@ interface TrackedPointer {
 /**
  * 左缘右滑开侧栏（iOS 边缘返回手势的 Web 近似）。
  *
- * 设计：无浮层 + document 捕获 + 方向锁。
+ * 设计：手势抑制条 + document 捕获 + 方向锁。
  *
- * - **无浮层**：组件不渲染任何 DOM（return null），pointer 事件以 capture 挂在
- *   document 上被动观察。旧方案是渲染固定 20px 宽、`touch-action: none` 的热区
- *   浮层，它会吞掉最左缘的竖向滚动与点击（气泡左缘按钮点不到、贴边滚不动），
- *   已废弃。
+ * - **手势抑制条**（本组件唯一的 DOM）：20px 宽、`touch-action: pan-y` 的固定条。
+ *   浏览器把左缘起手的触摸翻译成水平 back 导航时会与右滑开菜单同时触发——popstate
+ *   消费菜单刚推的 history 哨兵，菜单闪现即关。touch-action 是唯一可靠的声明式压制
+ *   （事件层 preventDefault 来不及，手势在起手早期就被浏览器认领）。取 pan-y 而非
+ *   旧浮层的 none：竖向滚动全程放行（none 会吞贴边竖滚，「贴边滚不动」是旧方案废弃
+ *   的主因之一）。条不承载检测逻辑（检测仍走 document 捕获），命中期间的点击穿透
+ *   转投给下方元素（气泡左缘按钮照常可点）。
  * - **方向锁**（resolveEdgeSwipeDirection）：起手后位移未过迟滞前不动作；
  *   水平分量胜出才确认右滑意图 → `setMobileMenuOpen(true)`（菜单 spring 弹入，
  *   产品已决策放弃远程拖拽跟手）；垂直分量胜出说明用户在滚动 → 立即放弃跟踪，
@@ -46,6 +49,26 @@ interface TrackedPointer {
  * 仅移动端挂载（ChatPane 内 isMobile 分支），桌面端不渲染。
  */
 export function EdgeSwipeBack() {
+    const suppressorRef = useRef<HTMLDivElement>(null)
+
+    // 抑制条是 touch-action 载体必须可命中，命中期间的点击转投给下方元素：
+    // 暂时摘掉命中（pointerEvents none）→ 取该点最上层元素 → 恢复 → 冒泡派发 click。
+    // React 的 onClick 走根容器委托，转投事件带 bubbles 即可到达真实处理器；
+    // 抑制条自身不是下方元素的祖先，无双重触发
+    const forwardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        const strip = suppressorRef.current
+        if (!strip) return
+        strip.style.pointerEvents = 'none'
+        const target = document.elementFromPoint(e.clientX, e.clientY)
+        strip.style.pointerEvents = ''
+        target?.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            clientX: e.clientX,
+            clientY: e.clientY,
+        }))
+    }
+
     useEffect(() => {
         // 首个进入热区的被跟踪指针（多指时后进入者不抢占）
         let tracked: TrackedPointer | null = null
@@ -102,5 +125,23 @@ export function EdgeSwipeBack() {
         }
     }, [])
 
-    return null
+    return (
+        // 手势抑制条（见组件 docstring）：仅 touch-action 载体 + 点击穿透，
+        // zIndex 取低值——须在菜单 Drawer / mask 之下，不干扰弹层交互
+        <div
+            ref={suppressorRef}
+            data-testid="edge-swipe-suppressor"
+            aria-hidden={true}
+            onClick={forwardClick}
+            style={{
+                position: 'fixed',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: EDGE_WIDTH,
+                zIndex: 4,
+                touchAction: 'pan-y',
+            }}
+        />
+    )
 }
