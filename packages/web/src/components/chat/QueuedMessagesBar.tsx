@@ -17,10 +17,9 @@
 import { useMemo } from 'react'
 import { Button, theme, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { ClockCircleOutlined, EditOutlined, DeleteOutlined, StopOutlined, ThunderboltOutlined, CloseOutlined } from '@ant-design/icons'
+import { ClockCircleOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { isDiscardedInMobi, isQueuedInMobi } from '@/core/lib/messages'
-import { useDiscardedDismissed, useDiscardedDismissStore } from '@/core/data/stores/discardedDismissStore'
+import { isQueuedInMobi } from '@/core/lib/messages'
 import { useCancelQueuedMessage } from '@/core/data/hooks/mutations/useCancelQueuedMessage'
 import { useSteerQueuedMessage } from '@/core/data/hooks/mutations/useSteerQueuedMessage'
 import type { DecryptedMessage } from '@/core/data/api/types'
@@ -44,9 +43,9 @@ export interface QueuedMessagesBarProps {
 
 /**
  * 排队消息悬浮条
- * agent 运行中时新发的消息进入排队，在此展示，支持取消/编辑。
- * 同时展示「已丢弃」分区（终态可见性）：cancelled（turn 死亡连坐）/ discarded（被显式丢弃）
- * 的消息不再静默消失，以灰色删除线展示，无任何操作。
+ * agent 运行中时新发的消息进入排队，在此展示，支持插队/取消/编辑。
+ * cancelled/discarded 终态消息不在此展示——终态可见性由聊天流内的灰色标注承担
+ *（ChatContainer footer 标注），composer 区不再呈现终态列表。
  */
 export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactElement | null {
     const { sessionId, messages, onEdit } = props
@@ -67,24 +66,7 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
         [messages],
     )
 
-    // 已丢弃（终态）分区：cancelled/discarded 消息的终态可见性，无操作按钮。
-    // 已被用户清除的消息（discardedDismissStore，UI 态）不展示——否则 DB 终态行永存 +
-    // 无淘汰机制会让删除线卡片跨刷新无限累积，面板也被恒钉住。
-    // 新到达的丢弃消息（id 不在清除集合）不受旧清除影响，仍会展示
-    const dismissedIds = useDiscardedDismissed(sessionId)
-    const discarded = useMemo(
-        () => messages
-            .filter(isDiscardedInMobi)
-            .filter(msg => !dismissedIds.has(msg.id))
-            .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)),
-        [messages, dismissedIds],
-    )
-
-    const handleDismissDiscarded = () => {
-        useDiscardedDismissStore.getState().dismiss(sessionId, discarded.map(msg => msg.id))
-    }
-
-    if (queued.length === 0 && discarded.length === 0) return null
+    if (queued.length === 0) return null
 
     const handleCancel = (msg: DecryptedMessage) => {
         if (!msg.localId) return
@@ -161,91 +143,7 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                         ))}
                     </>
                 )}
-
-                {/* 已丢弃分区（终态可见性）：灰色删除线，无操作按钮；标题行右侧「清除」
-                    释放面板（防 DB 终态行无限累积钉死 ComposerInfoPanel） */}
-                {discarded.length > 0 && (
-                    <>
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            color: token.colorTextTertiary,
-                            fontSize: 12,
-                        }}>
-                            <StopOutlined style={{ fontSize: 13, flexShrink: 0 }} />
-                            <span style={{ flex: 1, minWidth: 0 }}>
-                                {t('chat.queued.discardedTitle', { count: discarded.length })}
-                            </span>
-                            <AppTooltip title={t('chat.queued.dismiss')}>
-                                <Button
-                                    type="text"
-                                    size="small"
-                                    icon={<CloseOutlined />}
-                                    onClick={handleDismissDiscarded}
-                                />
-                            </AppTooltip>
-                        </div>
-
-                        {discarded.map(msg => (
-                            <DiscardedItem
-                                key={msg.localId ?? msg.id}
-                                text={previewText(msg)}
-                                stateLabel={
-                                    msg.lifecycle === 'cancelled'
-                                        ? t('chat.queued.stateCancelled')
-                                        : t('chat.queued.stateDiscarded')
-                                }
-                            />
-                        ))}
-                    </>
-                )}
             </div>
-        </div>
-    )
-}
-
-/** 单条已丢弃消息卡片：容器样式同 QueuedItem 但整体弱化，文本删除线，无操作按钮 */
-function DiscardedItem(props: { text: string; stateLabel: string }): React.ReactElement {
-    const { text, stateLabel } = props
-    const { token } = theme.useToken()
-
-    return (
-        <div
-            style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: token.paddingXS,
-                background: token.colorBgContainer,
-                borderRadius: token.borderRadius,
-                padding: `${token.paddingXS}px ${token.paddingSM}px`,
-                minHeight: 36,
-                color: token.colorTextTertiary,
-            }}
-        >
-            {/* 文本预览：删除线 + 弱化色，最多 3 行截断 */}
-            <span
-                style={{
-                    flex: 1,
-                    minWidth: 0,
-                    fontSize: 13,
-                    lineHeight: 1.4,
-                    textDecoration: 'line-through',
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: 'vertical',
-                    wordBreak: 'break-word',
-                    whiteSpace: 'pre-wrap',
-                }}
-            >
-                {text || '...'}
-            </span>
-
-            {/* 状态词（已取消/已丢弃）：小号弱化，不可交互 */}
-            <span style={{ flexShrink: 0, fontSize: 12 }}>
-                {stateLabel}
-            </span>
         </div>
     )
 }

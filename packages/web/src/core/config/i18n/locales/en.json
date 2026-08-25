@@ -298,11 +298,7 @@
             "cancel": "Cancel",
             "alreadySubmitted": "Message already submitted to Claude Code, cannot edit",
             "steer": "Submit to Claude Code now",
-            "steerFailed": "Could not submit; still queued",
-            "discardedTitle": "Discarded ({{count}})",
-            "stateCancelled": "Cancelled",
-            "stateDiscarded": "Discarded",
-            "dismiss": "Dismiss"
+            "steerFailed": "Could not submit; still queued"
         }
     },
     "files": {

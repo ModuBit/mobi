@@ -51,7 +51,6 @@ vi.mock('react-i18next', () => ({
 }))
 
 import { QueuedMessagesBar } from '@/components/chat/QueuedMessagesBar'
-import { useDiscardedDismissStore, __resetDiscardedDismissStoreForTest } from '@/core/data/stores/discardedDismissStore'
 
 /** 构建排队中的 user 消息（lifecycle='queued'） */
 function queuedMsg(id: string, text: string, createdAt = 1000): DecryptedMessage {
@@ -131,8 +130,6 @@ describe('QueuedMessagesBar', () => {
         steerMock.mutate.mockReset()
         steerMock.isPending = false
         steerMock.variables = undefined
-        // 清除记录 store 用例间隔离
-        __resetDiscardedDismissStoreForTest()
     })
 
     afterEach(() => cleanup())
@@ -227,88 +224,26 @@ describe('QueuedMessagesBar', () => {
         expect(onEdit).not.toHaveBeenCalled()
     })
 
-    it('cancelled/discarded 消息渲染灰色丢弃分区：删除线 + 状态词，无操作按钮', () => {
-        const { container, getByText } = renderBar([
+    it('cancelled/discarded 终态消息不渲染（丢弃分区已移除，终态可见性由聊天流内标注承担）', () => {
+        const { container, getByText, queryByText } = renderBar([
             queuedMsg('q1', '还在排队'),
             lifecycleMsg('c1', '被连坐取消', 'cancelled'),
             lifecycleMsg('d1', '被显式丢弃', 'discarded'),
         ])
 
-        // 排队分区标题仍在
-        expect(getByText('chat.queued.title')).toBeInTheDocument()
-        // 丢弃分区标题出现
-        expect(getByText('chat.queued.discardedTitle')).toBeInTheDocument()
-        // 两条丢弃消息文本带删除线
-        const cancelledText = getByText('被连坐取消')
-        expect(cancelledText.style.textDecoration).toContain('line-through')
-        const discardedText = getByText('被显式丢弃')
-        expect(discardedText.style.textDecoration).toContain('line-through')
-        // 状态词
-        expect(getByText('chat.queued.stateCancelled')).toBeInTheDocument()
-        expect(getByText('chat.queued.stateDiscarded')).toBeInTheDocument()
-        // 排队条目操作按钮（steer/edit/cancel）3 个 + 丢弃分区标题行的清除按钮 1 个——共 4
-        expect(container.querySelectorAll('button').length).toBe(4)
-        expect(container.querySelectorAll('.anticon-thunderbolt').length).toBe(1)
-        expect(container.querySelectorAll('.anticon-close').length).toBe(1)
-    })
-
-    it('点击丢弃分区清除按钮 → 分区消失（UI 态记录），排队分区不受影响', () => {
-        const { container, getByText } = renderBar([
-            queuedMsg('q1', '还在排队'),
-            lifecycleMsg('d1', '被显式丢弃', 'discarded'),
-        ])
-
-        // 清除前：丢弃消息可见
-        expect(getByText('被显式丢弃')).toBeInTheDocument()
-
-        const dismissBtn = container.querySelector('.anticon-close')!.closest('button')!
-        fireEvent.click(dismissBtn)
-
-        // 清除后：丢弃分区整体消失（标题 + 条目），排队分区原样保留
-        expect(container.textContent).not.toContain('chat.queued.discardedTitle')
-        expect(container.textContent).not.toContain('被显式丢弃')
+        // 排队分区原样保留（含 3 个操作按钮）
         expect(getByText('chat.queued.title')).toBeInTheDocument()
         expect(getByText('还在排队')).toBeInTheDocument()
+        expect(container.querySelectorAll('button').length).toBe(3)
+        // 终态消息不出现：无文本、无丢弃分区标题
+        expect(queryByText('被连坐取消')).toBeNull()
+        expect(queryByText('被显式丢弃')).toBeNull()
+        expect(container.textContent).not.toContain('chat.queued.discardedTitle')
     })
 
-    it('清除后新到达的丢弃消息仍展示（id 粒度，不因「全部清除」错过新终态）', () => {
-        const { container, rerender } = renderBar([lifecycleMsg('d1', '旧的丢弃', 'discarded')])
-        fireEvent.click(container.querySelector('.anticon-close')!.closest('button')!)
-        expect(container.textContent).not.toContain('旧的丢弃')
-
-        // 新 turn 死亡连坐的新丢弃消息（id 不在清除集合）照常展示
-        rerender(
-            <ConfigProvider>
-                <QueuedMessagesBar sessionId="s1" messages={[
-                    lifecycleMsg('d1', '旧的丢弃', 'discarded'),
-                    lifecycleMsg('c2', '新的连坐', 'cancelled'),
-                ]} onEdit={vi.fn()} />
-            </ConfigProvider>,
-        )
-        expect(container.textContent).not.toContain('旧的丢弃')
-        expect(container.textContent).toContain('新的连坐')
-    })
-
-    it('清除记录 per-session 隔离：另一会话的丢弃消息不受影响', () => {
-        const { container } = render(
-            <ConfigProvider>
-                <QueuedMessagesBar sessionId="other-session" messages={[lifecycleMsg('d1', '会话B的丢弃', 'discarded')]} onEdit={vi.fn()} />
-            </ConfigProvider>,
-        )
-        // 先在 s1 会话清除同一 id
-        useDiscardedDismissStore.getState().dismiss('s1', ['d1'])
-
-        expect(container.textContent).toContain('会话B的丢弃')
-    })
-
-    it('queued 空而 discarded 有 → Bar 仍渲染（不返回 null）', () => {
-        const { container, getByText } = renderBar([lifecycleMsg('d1', '唯一丢弃', 'discarded')])
-
-        // 排队分区标题不出现，丢弃分区标题在，Bar 非 null
-        expect(container.textContent).not.toBe('')
-        expect(container.querySelector('span')?.textContent).not.toContain('chat.queued.title')
-        expect(getByText('chat.queued.discardedTitle')).toBeInTheDocument()
-        expect(getByText('唯一丢弃')).toBeInTheDocument()
+    it('queued 空而只有终态消息 → Bar 渲染 null', () => {
+        const { container } = renderBar([lifecycleMsg('d1', '唯一丢弃', 'discarded')])
+        expect(container.textContent).toBe('')
     })
 
     it('done/processing 不进悬浮条也不进丢弃分区', () => {

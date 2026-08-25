@@ -45,8 +45,7 @@ import { TeamAgentPanel } from './TeamAgentPanel'
 import { useTeamMembers, useTeamName } from '@/core/data/stores/teamAgentsStore'
 import type { ToolCallBlock } from '@/domain/chat/types'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
-import { isDiscardedInMobi, isQueuedInMobi } from '@/core/lib/messages'
-import { useDiscardedDismissed } from '@/core/data/stores/discardedDismissStore'
+import { isQueuedInMobi } from '@/core/lib/messages'
 import { QueuedMessagesBar } from '@/components/chat/QueuedMessagesBar'
 
 const { Text } = Typography
@@ -262,16 +261,9 @@ function QueuedMessagesSection({
     sessionId: string
     onEdit: (text: string) => void
 }) {
-    // 数据源同时取「排队中」与「已丢弃（终态可见性）」——Bar 内部再各自过滤。
-    // 已被用户清除的丢弃消息（discardedDismissStore，UI 态）不进数据源；
-    // hasQueued（见下）是 hasContent 门禁的「排队/丢弃可见性」信号，同样排除——
-    // 否则清除后 Bar 空了但门禁仍恒 true，面板被永久钉住。
-    // 未清除时丢弃分区纳入门禁：turn 死亡常态下无 requests/todos/tasks/agents，
-    // 丢弃分区是唯一内容——若只算 queued，排队消息被 cancelled/discarded 的那一帧
-    // 面板会整体卸载，丢弃分区永远渲染不出来
-    const dismissedIds = useDiscardedDismissed(sessionId)
-    const { data: messages = EMPTY_MESSAGES } = useMessages(sessionId, (all) => all.filter((m) =>
-        isQueuedInMobi(m) || (isDiscardedInMobi(m) && !dismissedIds.has(m.id))))
+    // 只取排队子集。cancelled/discarded 终态消息不进 composer 区——
+    // 终态可见性由聊天流内的灰色标注承担（ChatContainer footer 标注）
+    const { data: messages = EMPTY_MESSAGES } = useMessages(sessionId, (all) => all.filter(isQueuedInMobi))
     if (messages.length === 0) return null
     return (
         <QueuedMessagesBar
@@ -310,15 +302,11 @@ export function ComposerInfoPanel({
     const hasTeamAgents = teamAgents.length > 0 && !!teamName
     const hasAgents = agents.length > 0
 
-    // 只订阅「是否存在排队/未清除丢弃消息」布尔（hasContent 门禁信号，无第二个消费者）。
-    // 纳入 discarded（未清除的）：丢弃分区在无其他面板内容时（turn 死亡常态）也必须可见；
-    // 已清除的排除——否则清除后门禁仍恒 true，面板被 DB 永存的终态行永久钉住。
+    // 只订阅「是否存在排队消息」布尔（hasContent 门禁信号，无第二个消费者）。
     // useSyncExternalStore 下 store 每次 SSE 写入都 notify，
     // 本面板会随消息变动重渲染——已知 trade-off（不无限循环；getSnapshot 返回稳定 state 引用）。
     // 若流式期 ToolInteractionPanel/TasksPanel 等重型子树 reconcile 开销显著，后续加 selector 缓存优化。
-    const dismissedIdsForGate = useDiscardedDismissed(sessionId)
-    const { data: hasQueued = false } = useMessages(sessionId, (all) => all.some((m) =>
-        isQueuedInMobi(m) || (isDiscardedInMobi(m) && !dismissedIdsForGate.has(m.id))))
+    const { data: hasQueued = false } = useMessages(sessionId, (all) => all.some(isQueuedInMobi))
 
     // 从 store 派生最新 block：先查 running agents，再查 byId（覆盖后台 Agent 任务）
     const drawerBlock: ToolCallBlock | null = (() => {

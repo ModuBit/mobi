@@ -667,7 +667,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span
                             data-testid="user-msg-terminal"
-                            // 与悬浮条丢弃态同语言：token.colorTextTertiary + 小号字（一眼可见但不抢焦）
+                            // 弱化呈现：token.colorTextTertiary + 小号字（一眼可见但不抢焦）
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: token.colorTextTertiary, fontSize: 11, flexShrink: 0 }}
                         >
                             <StopOutlined style={{ fontSize: 11 }} />

@@ -298,11 +298,7 @@
             "cancel": "取消",
             "alreadySubmitted": "消息已提交给 Claude Code，无法编辑",
             "steer": "立即提交给 Claude Code",
-            "steerFailed": "暂无法提交，仍保留在队列中",
-            "discardedTitle": "已丢弃（{{count}}）",
-            "stateCancelled": "已取消",
-            "stateDiscarded": "已丢弃",
-            "dismiss": "清除"
+            "steerFailed": "暂无法提交，仍保留在队列中"
         }
     },
     "files": {
