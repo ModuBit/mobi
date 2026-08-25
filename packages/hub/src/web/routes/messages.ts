@@ -52,7 +52,8 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const sessionId = sessionResult.sessionId
 
         const parsed = querySchema.safeParse(c.req.query())
-        const limit = parsed.success ? (parsed.data.limit ?? 50) : 50
+        // 默认页大小 100：tool-heavy 会话 bubble:消息比低，50 条/页首屏内容偏少
+        const limit = parsed.success ? (parsed.data.limit ?? 100) : 100
         const beforeSeq = parsed.success ? (parsed.data.beforeSeq ?? null) : null
         return c.json(engine.getMessagesPage(sessionId, { limit, beforeSeq }))
     })
