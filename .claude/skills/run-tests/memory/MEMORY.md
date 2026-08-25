@@ -15,6 +15,7 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [通用误判](pitfalls-general.md) — 不归属单一任务的经验（token 用途、诊断命令、短生命周期 DOM 验证、工具禁用）
 - [调试解锁 E2E](debug-unlock-e2e.md) — evaluate_script 模拟连点 + 拦截 a.click 捕获下载
 - [贴底跟随验证](scroll-follow-verify.md) — virtuoso DOM 锚点、rAF 探针、触发真流式的 prompt、指标阈值
+- [流式丝滑度采样](streaming-smoothness.md) — 揭示节奏 rAF 探针（间隔/步长分布）、A/B 基线、长文压测 prompt、嵌套 .x-markdown 误判坑
 - [标题同步验证](title-sync-verify.md) — Web rename / change_title MCP 回写 CC customTitle，查 jsonl custom-title entry，rename 框 Ctrl+A 追加坑
 - [teammate 生命周期验证](teammate-verify.md) — 派带 name 的 Agent / 审批时序 / DB 轮询 teamState / envelope role 恒为 agent 的坑
 - [Web 工具验证](web-tools-verify.md) — 设置页 Web Tools 卡片操作 / webTools 落盘断言 / merge 语义 / toolAliases 401 链路证据 / alias 不隐藏原始 MCP 工具的坑

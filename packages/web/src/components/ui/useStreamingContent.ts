@@ -89,7 +89,6 @@ export function useStreamingContent(target: string, streaming?: boolean): string
         // 曾流式（含 full message 替换 snapshot 后 streaming 变 false）且有未揭示内容 → 继续逐字到收敛
         if (revealedRef.current < target.length && rafRef.current === 0) {
             let lastTime = performance.now()
-            let lastRender = lastTime
             const tick = (now: number) => {
                 const dt = Math.max(now - lastTime, 1)
                 lastTime = now
@@ -99,11 +98,10 @@ export function useStreamingContent(target: string, streaming?: boolean): string
                 const chars = Math.max(1, Math.round(rate * dt))
                 revealedRef.current = Math.min(revealedRef.current + chars, targetRef.current.length)
 
-                // 节流 DOM 更新到 ~20fps，避免 XMarkdown 高频重解析
-                if (now - lastRender >= 50 || revealedRef.current >= targetRef.current.length) {
-                    lastRender = now
-                    setDisplay(targetRef.current.slice(0, revealedRef.current))
-                }
+                // 每帧更新：增量 Markdown（Markdown 组件按稳定前缀拆双段）把每帧的
+                // re-parse 成本压到 O(尾部小块)，无需再节流。每帧揭示 1-3 字符的
+                // 连续流动感（120Hz 屏同样平滑）取代旧 50ms 节流的 20fps 阶梯跳变
+                setDisplay(targetRef.current.slice(0, revealedRef.current))
 
                 if (revealedRef.current < targetRef.current.length) {
                     rafRef.current = requestAnimationFrame(tick)

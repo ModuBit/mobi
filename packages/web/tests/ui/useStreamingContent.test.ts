@@ -131,4 +131,28 @@ describe('useStreamingContent', () => {
         flush(60)
         expect(result.current).toBe(base + 'b'.repeat(50))
     })
+
+    it('每帧连续更新：连续两帧 display 都增长（无 20fps 节流的跳帧阶梯）', () => {
+        // 增量 Markdown（稳定前缀拆分）把每帧 re-parse 压到 O(尾部) 后，
+        // 揭示不再节流——每 rAF 帧小幅推进，连续流动感。
+        // target 100 字符（>50 触发追赶）：追赶速率 100/500ms = 0.2 char/ms
+        const target = 'a'.repeat(100)
+        const { result, rerender } = renderHook(({ t }) => useStreamingContent(t, true), {
+            initialProps: { t: '' },
+        })
+        rerender({ t: target })
+        expect(rafMap.size).toBeGreaterThan(0)
+
+        const lens: number[] = []
+        for (let i = 0; i < 5; i++) {
+            step(16)
+            lens.push(result.current.length)
+        }
+        // 每帧后长度都应大于前一帧（连续增长，无一帧跳空）
+        for (let i = 1; i < lens.length; i++) {
+            expect(lens[i]).toBeGreaterThan(lens[i - 1])
+        }
+        // 单帧步长应是小幅（追赶速率 0.2 char/ms × 16ms ≈ 3 字符）
+        expect(Math.max(...lens.slice(1).map((l, i) => l - lens[i]), 0)).toBeLessThanOrEqual(5)
+    })
 })

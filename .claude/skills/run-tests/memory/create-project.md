@@ -3,7 +3,7 @@ name: create-project
 description: 项目实体化 — 建项目 / 项目内新建会话 / 归入项目往返 / 编辑 folders / 删项目 的 UI 操作
 metadata:
   type: recipe
-  last_verified: 2026-08-14
+  last_verified: 2026-08-25
 ---
 
 # 项目实体化 UI 操作
@@ -44,6 +44,7 @@ metadata:
 
 ## 坑
 
+- **播种数据必须带 `metadata.machineId`（2026-08-25 踩过）** — 用 store 脚本造会话时 metadata 缺 machineId，「归入项目」弹窗按会话机器过滤项目，会显示 "No projects on this machine"。播种 metadata 里加 `machineId: 'm-e2e'`（与项目 machineId 一致）即可；改完须刷新页面（弹窗读的是 Web 缓存里的 session）
 - **Escape 关掉整个 modal** — New Project 对话框内按 Escape（想取消 autocompletion）会把对话框直接关闭，已填内容全丢。folder 路径输完直接进行下一步，不按 Enter 也不按 Escape
 - **folder 路径必须在机器主目录内**（hub 校验）— `/tmp/xxx` 会被拒（"Folder path must be within the machine home directory (/Users/…)"），用 `~/workspace/demo` 等 home 下路径
 - **folder combobox 输错无法全选重输** — Ctrl+A / Meta+A 在该 combobox 都不生效（Ctrl+A 跳行首，输入变追加），Remove 按钮单行时 disabled；输错了直接 Escape 关 modal 重开重填最快
