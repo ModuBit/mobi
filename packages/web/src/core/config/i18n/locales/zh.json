@@ -301,7 +301,8 @@
             "steerFailed": "暂无法提交，仍保留在队列中",
             "discardedTitle": "已丢弃（{{count}}）",
             "stateCancelled": "已取消",
-            "stateDiscarded": "已丢弃"
+            "stateDiscarded": "已丢弃",
+            "dismiss": "清除"
         }
     },
     "files": {

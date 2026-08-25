@@ -301,7 +301,8 @@
             "steerFailed": "Could not submit; still queued",
             "discardedTitle": "Discarded ({{count}})",
             "stateCancelled": "Cancelled",
-            "stateDiscarded": "Discarded"
+            "stateDiscarded": "Discarded",
+            "dismiss": "Dismiss"
         }
     },
     "files": {

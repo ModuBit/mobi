@@ -37,6 +37,7 @@ import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ComposerInfoPanel } from '@/components/composer/ComposerInfoPanel'
+import { __resetDiscardedDismissStoreForTest } from '@/core/data/stores/discardedDismissStore'
 import type { AgentState, SessionMetadataSummary, DecryptedMessage } from '@/core/data/api/types'
 import type { MobiApi } from '@/core/data/api/client'
 import type { TodoItem } from '@mobi/shared'
@@ -141,8 +142,9 @@ const defaultProps = {
 
 describe('ComposerInfoPanel', () => {
     beforeEach(() => {
-        // 隔离用例：重置排队消息 mock，避免上一用例残留污染
+        // 隔离用例：重置排队消息 mock 与清除记录 store，避免上一用例残留污染
         messagesMock.data = []
+        __resetDiscardedDismissStoreForTest()
         observeSpy.mockClear()
     })
 
@@ -289,9 +291,26 @@ describe('ComposerInfoPanel', () => {
         // 丢弃分区标题 + 消息预览可见
         expect(container.textContent).toContain('chat.queued.discardedTitle')
         expect(container.textContent).toContain('被丢弃的内容预览')
-        // 丢弃条目无操作按钮
-        expect(container.querySelectorAll('button').length).toBe(0)
+        // 丢弃条目无操作按钮——唯一按钮是分区标题行的清除（.anticon-close）
+        expect(container.querySelectorAll('button').length).toBe(1)
         unmount()
+    })
+
+    it('点击丢弃分区清除 → 面板门禁释放整体卸载（防 DB 终态行永久钉死面板）', async () => {
+        // turn 死亡常态 + 唯一内容是丢弃分区：清除后 hasQueued 翻 false、hasContent 翻 false
+        messagesMock.data = [discardedMsg('d-1', '被丢弃的内容预览')]
+        const { container } = render(
+            <ComposerInfoPanel {...defaultProps} />,
+            { wrapper }
+        )
+        expect(container.innerHTML).not.toBe('')
+
+        const dismissBtn = container.querySelector('.anticon-close')!.closest('button')!
+        fireEvent.click(dismissBtn)
+
+        // 门禁释放：面板整体卸载（清除是 UI 态，消息仍在 mock 数据里）
+        expect(messagesMock.data).toHaveLength(1)
+        expect(container.innerHTML).toBe('')
     })
 
     it('有 running agents 时渲染面板', async () => {

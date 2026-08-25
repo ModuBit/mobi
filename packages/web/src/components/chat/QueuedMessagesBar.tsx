@@ -17,9 +17,10 @@
 import { useMemo } from 'react'
 import { Button, theme, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { ClockCircleOutlined, EditOutlined, DeleteOutlined, StopOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { ClockCircleOutlined, EditOutlined, DeleteOutlined, StopOutlined, ThunderboltOutlined, CloseOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { isDiscardedInMobi, isQueuedInMobi } from '@/core/lib/messages'
+import { useDiscardedDismissed, useDiscardedDismissStore } from '@/core/data/stores/discardedDismissStore'
 import { useCancelQueuedMessage } from '@/core/data/hooks/mutations/useCancelQueuedMessage'
 import { useSteerQueuedMessage } from '@/core/data/hooks/mutations/useSteerQueuedMessage'
 import type { DecryptedMessage } from '@/core/data/api/types'
@@ -66,13 +67,22 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
         [messages],
     )
 
-    // 已丢弃（终态）分区：cancelled/discarded 消息的终态可见性，无操作按钮
+    // 已丢弃（终态）分区：cancelled/discarded 消息的终态可见性，无操作按钮。
+    // 已被用户清除的消息（discardedDismissStore，UI 态）不展示——否则 DB 终态行永存 +
+    // 无淘汰机制会让删除线卡片跨刷新无限累积，面板也被恒钉住。
+    // 新到达的丢弃消息（id 不在清除集合）不受旧清除影响，仍会展示
+    const dismissedIds = useDiscardedDismissed(sessionId)
     const discarded = useMemo(
         () => messages
             .filter(isDiscardedInMobi)
+            .filter(msg => !dismissedIds.has(msg.id))
             .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)),
-        [messages],
+        [messages, dismissedIds],
     )
+
+    const handleDismissDiscarded = () => {
+        useDiscardedDismissStore.getState().dismiss(sessionId, discarded.map(msg => msg.id))
+    }
 
     if (queued.length === 0 && discarded.length === 0) return null
 
@@ -152,7 +162,8 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                     </>
                 )}
 
-                {/* 已丢弃分区（终态可见性）：灰色删除线，无操作按钮 */}
+                {/* 已丢弃分区（终态可见性）：灰色删除线，无操作按钮；标题行右侧「清除」
+                    释放面板（防 DB 终态行无限累积钉死 ComposerInfoPanel） */}
                 {discarded.length > 0 && (
                     <>
                         <div style={{
@@ -162,8 +173,18 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                             color: token.colorTextTertiary,
                             fontSize: 12,
                         }}>
-                            <StopOutlined style={{ fontSize: 13 }} />
-                            <span>{t('chat.queued.discardedTitle', { count: discarded.length })}</span>
+                            <StopOutlined style={{ fontSize: 13, flexShrink: 0 }} />
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                                {t('chat.queued.discardedTitle', { count: discarded.length })}
+                            </span>
+                            <AppTooltip title={t('chat.queued.dismiss')}>
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    icon={<CloseOutlined />}
+                                    onClick={handleDismissDiscarded}
+                                />
+                            </AppTooltip>
                         </div>
 
                         {discarded.map(msg => (
