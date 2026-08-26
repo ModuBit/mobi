@@ -135,6 +135,9 @@
             "unpin": "Unpin"
         },
         "contextUsage": {
+            "title": "Context Usage",
+            "used": "Used",
+            "cost": "Total Cost",
             "remaining": "{{tokens}} left",
             "toggleHint": "Toggle percentage / used tokens"
         }

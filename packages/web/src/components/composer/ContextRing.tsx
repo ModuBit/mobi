@@ -1,0 +1,111 @@
+/*
+ * Copyright Maner·Fan
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { theme, Popover } from 'antd'
+import { keyframes } from '@emotion/react'
+import { useTranslation } from 'react-i18next'
+import type { ContextUsage } from '@mobi/shared'
+import { formatTokens } from '@/core/lib/formatTokens'
+
+/** ≥90% 透明度脉冲（「马上要压缩」） */
+const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.35}`
+
+export type RingTone = 'idle' | 'notice' | 'warn' | 'danger'
+
+/**
+ * 四档色（灰/橙/橙红/红，参照 codex/qoder 低调风格）：
+ * <50 灰（日常几乎无感）/ 50-75 橙（开始注意）/ 75-90 橙红（该考虑压缩）/ ≥90 红+脉冲
+ */
+export function resolveRingTone(percentage: number): { pct: number; tone: RingTone } {
+    const pct = Math.max(0, Math.min(100, Math.round(percentage)))
+    const tone: RingTone = pct >= 90 ? 'danger' : pct >= 75 ? 'warn' : pct >= 50 ? 'notice' : 'idle'
+    return { pct, tone }
+}
+
+/** 圆环半径（viewBox 24，描边 2.5） */
+const R = 10
+const CIRC = 2 * Math.PI * R
+
+interface ContextRingProps {
+    usage: ContextUsage
+    /** 圆环直径 px（PC 工具栏 20 / 移动 header 22，默认 20） */
+    size?: number
+}
+
+/**
+ * 上下文水位圆环（瞬时水位，数据来自 runtimeState.contextUsage）。
+ * 弧长 = 已用比例；点击 Popover 详情（PC/移动统一，触屏支持点击触发）。
+ * 无数据不渲染——由挂载方保证（contextUsage 为空不挂）。
+ */
+export function ContextRing({ usage, size = 20 }: ContextRingProps) {
+    const { t } = useTranslation()
+    const { token } = theme.useToken()
+    const { pct, tone } = resolveRingTone(usage.percentage)
+    const color = tone === 'danger' ? token.colorError
+        : tone === 'warn' ? '#fa541c' // volcano-6 橙红（主题无此档，显式色值）
+        : tone === 'notice' ? token.colorWarning
+        : token.colorTextTertiary
+    const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
+
+    const ring = (
+        <svg
+            role="button"
+            aria-label={`${pct}%`}
+            width={size}
+            height={size}
+            viewBox="0 0 24 24"
+            style={{ display: 'block', cursor: 'pointer', animation: tone === 'danger' ? `${pulse} 1.3s ease-in-out infinite` : undefined }}
+        >
+            <circle cx="12" cy="12" r={R} fill="none" stroke={token.colorBorderSecondary} strokeWidth="2.5" />
+            <circle
+                cx="12" cy="12" r={R} fill="none" stroke={color} strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray={CIRC}
+                strokeDashoffset={CIRC * (1 - pct / 100)}
+                transform="rotate(-90 12 12)"
+            />
+        </svg>
+    )
+
+    return (
+        <Popover
+            trigger="click"
+            placement="topRight"
+            styles={{ content: { minWidth: 'min(280px, 80vw)' } }}
+            content={(
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, display: 'grid', gap: 4, padding: '4px 2px' }}>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{t('session.contextUsage.title')}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                        <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.used')}</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {usage.totalTokens.toLocaleString()} / {usage.maxTokens.toLocaleString()} ({pct}%)
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                        <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.remaining', { tokens: formatTokens(remaining) })}</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(remaining)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                        <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cost')}</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>${usage.costUsd.toFixed(2)}</span>
+                    </div>
+                </div>
+            )}
+        >
+            {ring}
+        </Popover>
+    )
+}

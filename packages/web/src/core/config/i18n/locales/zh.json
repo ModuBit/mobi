@@ -135,6 +135,9 @@
             "unpin": "取消置顶"
         },
         "contextUsage": {
+            "title": "上下文水位",
+            "used": "已用",
+            "cost": "累计成本",
             "remaining": "剩 {{tokens}}",
             "toggleHint": "点击切换 百分比 / 已用 tokens"
         }
