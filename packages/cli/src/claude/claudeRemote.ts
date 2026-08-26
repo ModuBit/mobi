@@ -49,6 +49,7 @@ import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotS
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
 import { buildClaudeFeatureEnv } from './featureFlags'
 import { pushUserMessage } from './utils/pushUserMessage'
+import { StreamUsageCapture, injectUsageFromStream } from './utils/streamUsageCapture'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 
 /**
@@ -386,12 +387,16 @@ export async function sdkOutputLoop(
     // message 级（一条），二者 1-vs-1 才能让前端 parentUuid 清理可靠（不漂移）。
     // 用 template.uuid（= body.uuid，SDK 分配、写进 .jsonl）作 localId，resume 去重安全；
     // 不复用 sdkUuid——那是 stream_event 的临时 uuid，不在 .jsonl，会破坏 resume。
+    // usage 跨通道摆渡：message_start 捕获真实 usage（message_delta 补 output），
+    // 装配 flush 时注入——assistant 消息 envelope 的 usage 是 {0,0} 占位，不注入则落库即丢
+    const usageCapture = new StreamUsageCapture();
     const assembler = new AssistantPartialAssembler((msg) => {
         // full 下发前注入 thinking 的 durationMs/done：snapshot→full 是替换关系，
         // full 若不重新携带，思考完成后「思考了 X 秒」会在 full 到达时丢失（injectThinkingMeta 按
         // content 数组下标匹配 buffers 中已 done 的 thinking block）
         if (msg.type === 'assistant' && (msg as SDKAssistantMessage).message?.id) {
             opts.snapshotSender.injectThinkingMeta(msg as SDKAssistantMessage);
+            injectUsageFromStream(msg as SDKAssistantMessage, usageCapture);
         }
         opts.onMessage(msg);
         // assembler 聚合输出完整 full（同 message.id 的所有 block 拼回一条，带 message.id）→
@@ -413,8 +418,9 @@ export async function sdkOutputLoop(
         }
         logger.debugLargeJson(`[sdkOutputLoop] Message ${message.type}`, message);
 
-        // 处理流式事件：累积 delta 到 snapshot sender
+        // 处理流式事件：累积 delta 到 snapshot sender + 捕获 usage（供装配注入）
         if (message.type === 'stream_event') {
+            usageCapture.capture(message);
             handleStreamEvent(message, opts.snapshotSender, opts.initialModel);
             continue;
         }
