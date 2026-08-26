@@ -21,22 +21,29 @@ import { chaseStep } from './scrollChase'
  * 小容器（如 thinking 内容盒）的缓动贴底。
  *
  * 与 useStickToBottom（主聊天列表）共用同一套追赶机制（{@link chaseStep}，
- * 含缓动数学/精确贴底/外部干预检测）：trigger 变化（流式内容增长信号）→
- * 启动 rAF 缓动追赶，替代 `scrollTop = scrollHeight` 硬跳（换行/增高时
+ * 含缓动数学/精确贴底/外部干预检测）：**ResizeObserver 观测内容盒高度** →
+ * 增高即启动 rAF 缓动追赶，替代 `scrollTop = scrollHeight` 硬跳（换行/增高时
  * 容器内容瞬跳一行，快输出下「一跳一跳」）。
+ *
+ * ## 为什么观测 DOM 而不是 React 参数作触发信号
+ *
+ * 内容盒里的 Markdown 逐字揭示（useStreamingContent）在 rAF 里 setState，DOM
+ * 每帧增高——这些变化不经过组件 props。若以「流式 text」（SSE 快照粒度）为
+ * 触发：追赶循环 ~130ms 收敛退出后到下一快照前（~300-500ms）新增的高度无人
+ * 跟随，思考盒滞后数行后在快照瞬间跳追——正是本 hook 要消灭的「一跳一跳」
+ * 在小容器上的残留。RO 与主列表 hook 的观测对象语义一致（主列表 RO 观测
+ * `.ant-bubble-list-scroll-content`，此处观测容器自身）。
  *
  * 与主列表 hook 的差异：无跟随意图管理（手势/恢复跟随）——容器语义是
  * 「流式期间恒贴底」，与旧硬钉一致；但保留**外部干预让位**：每帧核对上次
  * 设置的 scrollTop，被外部改动（程序补偿/浏览器 clamp）即中止本轮追赶，
- * 下一次 trigger 变化再重新接管。
+ * 下一次 RO 触发再重新接管。
  *
- * @param ref 滚动容器
- * @param trigger 变化即视为「内容可能增长」的信号（如流式 text）
- * @param enabled 是否启用（流式中 true；收起/历史态 false——含在飞帧循环的急停）
+ * @param ref 滚动容器（被观测其高度变化）
+ * @param enabled 是否启用（流式中 true；收起/历史态 false——含在飞帧循环的急停与 RO 拆除）
  */
 export function useSmoothStickBottom(
     ref: RefObject<HTMLElement | null>,
-    trigger: unknown,
     enabled: boolean,
 ): void {
     const rafRef = useRef(0)
@@ -49,7 +56,7 @@ export function useSmoothStickBottom(
     useEffect(() => {
         if (!enabled) return
         const el = ref.current
-        if (!el || rafRef.current !== 0) return
+        if (!el) return
 
         const frame = () => {
             rafRef.current = 0
@@ -64,8 +71,18 @@ export function useSmoothStickBottom(
                 rafRef.current = requestAnimationFrame(frame)
             }
         }
+        // 循环在飞则让位（RO 高频触发不去重启动）；收敛后下一次 RO 触发自然续追
+        if (rafRef.current !== 0) return
         rafRef.current = requestAnimationFrame(frame)
-    }, [trigger, enabled, ref])
+
+        // RO 回调高频轻量：仅当无在飞循环时排一帧
+        const observer = new ResizeObserver(() => {
+            if (rafRef.current !== 0) return
+            rafRef.current = requestAnimationFrame(frame)
+        })
+        observer.observe(el)
+        return () => observer.disconnect()
+    }, [enabled, ref])
 
     useEffect(() => () => {
         cancelAnimationFrame(rafRef.current)

@@ -32,6 +32,40 @@ const STREAM_MIN_RATE = 0.02
 /** 到达速率 EMA 的上界（char/ms）：防同帧 rerender 等极端瞬时速率污染 */
 const STREAM_ARRIVAL_EMA_CAP = 2
 
+/** 同帧多次 rerender 时 dt 被钳到一帧内，瞬时速率虚高会污染 EMA——此类样本不采 */
+const STREAM_SAMPLE_MIN_DT_MS = 16
+
+/** EMA 采样记忆：上次样本的时间与长度基准 */
+export interface ArrivalSample {
+    ema: number
+    last: { t: number; len: number } | null
+}
+
+/**
+ * 更新到达速率采样（EMA 单步，抽纯函数便于单测）。
+ *
+ * 三分支语义：
+ * - len 增长且 dt ≥ 一帧 → 采样：EMA = 0.3×旧 + 0.7×瞬时速率（cap 封顶）
+ * - len 增长但 dt < 一帧（同帧爆发 rerender）→ **保留旧基准不采**——本批字符并入下一个
+ *   合格样本（若覆写基准，爆发的前半段字符永久丢失出统计，瞬时速率被系统性低估）
+ * - len 不变（无新增 rerender）→ 仅推进时间基准：下次采样的 dt 只覆盖真正的新增时段，
+ *   停滞期不被稀释进速率；EMA 不衰减（间歇 ≠ 吞吐为零）
+ */
+export function sampleArrivalRate(prev: ArrivalSample, now: number, len: number): ArrivalSample {
+    const last = prev.last
+    if (!last || len === last.len) {
+        return { ema: prev.ema, last: { t: now, len } }
+    }
+    if (now - last.t < STREAM_SAMPLE_MIN_DT_MS) {
+        return prev
+    }
+    const inst = (len - last.len) / (now - last.t)
+    return {
+        ema: Math.min(STREAM_ARRIVAL_EMA_CAP, prev.ema * 0.3 + inst * 0.7),
+        last: { t: now, len },
+    }
+}
+
 /**
  * 长度自适应节流档位（target 字符数 → 最小揭示间隔 ms）。
  *
@@ -104,20 +138,14 @@ export function useStreamingContent(target: string, streaming?: boolean): string
         targetRef.current = target
         streamingRef.current = !!streaming
 
-        // 到达速率 EMA：仅在实际有新内容时更新（无新增不衰减——间歇≠吞吐为零）。
-        // dt < 一帧（16ms）的样本不采——同帧多次更新时 dt 被钳到 1ms，瞬时速率
-        // 虚高会污染 EMA；其字符量自然并入下一个 ≥16ms 样本
+        // 到达速率 EMA 采样（语义见 sampleArrivalRate）：仅在实际有新内容时更新
         const now = performance.now()
-        const last = arrivalLastRef.current
-        if (last && target.length > last.len && now - last.t >= 16) {
-            const dt = now - last.t
-            const inst = (target.length - last.len) / dt
-            arrivalEmaRef.current = Math.min(
-                STREAM_ARRIVAL_EMA_CAP,
-                arrivalEmaRef.current * 0.3 + inst * 0.7,
-            )
-        }
-        arrivalLastRef.current = { t: now, len: target.length }
+        const sampled = sampleArrivalRate(
+            { ema: arrivalEmaRef.current, last: arrivalLastRef.current },
+            now, target.length,
+        )
+        arrivalEmaRef.current = sampled.ema
+        arrivalLastRef.current = sampled.last
 
         const snapToFull = () => {
             cancelAnimationFrame(rafRef.current)

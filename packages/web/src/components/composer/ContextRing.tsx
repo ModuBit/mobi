@@ -19,7 +19,7 @@ import { keyframes } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens } from '@/core/lib/formatTokens'
-import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
+import { calcCacheHitRate, formatCacheHitRate } from '@/core/lib/cacheHitRate'
 
 /** ≥90% 透明度脉冲（「马上要压缩」） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.35}`
@@ -158,7 +158,7 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
                             {hitRate !== undefined && (
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                                     <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cacheHit')}</span>
-                                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{hitRate.toFixed(1)}%</span>
+                                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCacheHitRate(hitRate)}</span>
                                 </div>
                             )}
                         </>

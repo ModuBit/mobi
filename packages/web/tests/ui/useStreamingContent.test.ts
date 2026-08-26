@@ -21,6 +21,7 @@ import {
     STREAM_BASE_RATE,
     revealIntervalFor,
     useStreamingContent,
+    sampleArrivalRate,
 } from '@/components/ui/useStreamingContent'
 
 describe('revealIntervalFor（长度自适应节流档位）', () => {
@@ -64,6 +65,41 @@ describe('computeRevealRate（速率匹配揭示）', () => {
     it('稳态速率有下限：到达速率极低（EMA 冷启动/长间歇）时不塌零', () => {
         expect(computeRevealRate(20, 0)).toBeGreaterThan(0)
         expect(computeRevealRate(20, 0)).toBeLessThanOrEqual(STREAM_BASE_RATE)
+    })
+})
+
+describe('sampleArrivalRate（EMA 采样基准）', () => {
+    it('无基准（首样本）→ 只建基准不采样', () => {
+        const r = sampleArrivalRate({ ema: 0.1, last: null }, 100, 50)
+        expect(r.ema).toBe(0.1)
+        expect(r.last).toEqual({ t: 100, len: 50 })
+    })
+
+    it('合格样本（dt ≥ 一帧）→ EMA = 0.3×旧 + 0.7×瞬时速率，基准推进', () => {
+        const r = sampleArrivalRate({ ema: 0.1, last: { t: 0, len: 10 } }, 100, 60)
+        // inst = (60-10)/100 = 0.5
+        expect(r.ema).toBeCloseTo(0.1 * 0.3 + 0.5 * 0.7)
+        expect(r.last).toEqual({ t: 100, len: 60 })
+    })
+
+    it('同帧爆发（len 增长但 dt < 一帧）→ 基准保留不采，字符并入下一样本', () => {
+        const prev = { ema: 0.1, last: { t: 0, len: 10 } }
+        const r = sampleArrivalRate(prev, 8, 110)  // +100 字符仅隔 8ms
+        expect(r).toEqual(prev)
+    })
+
+    it('爆发后的合格样本计入全部增量字符（回归：覆写基准曾把前半段字符丢失出统计）', () => {
+        // t=0 len=10 → t=8 爆发到 110（跳过）→ t=24 到 111。
+        // bug 态（爆发时覆写基准）：inst = (111-110)/16 ≈ 0.06；修复后 dt=24 全量计：
+        const r = sampleArrivalRate({ ema: 0.1, last: { t: 0, len: 10 } }, 24, 111)
+        const inst = (111 - 10) / 24  // ≈ 4.2 char/ms
+        expect(r.ema).toBeCloseTo(Math.min(2, 0.1 * 0.3 + inst * 0.7))
+    })
+
+    it('len 不变（无新增 rerender）→ 仅推进时间基准，EMA 不衰减', () => {
+        const r = sampleArrivalRate({ ema: 0.1, last: { t: 0, len: 50 } }, 500, 50)
+        expect(r.ema).toBe(0.1)
+        expect(r.last).toEqual({ t: 500, len: 50 })
     })
 })
 
@@ -215,10 +251,10 @@ describe('useStreamingContent', () => {
                 lens.push(result.current.length)
             }
         }
-        // gap>0 期间的连续停滞帧数。跳过冷启动首轮（EMA 未热按基础速率揭示，
-        // 有一轮旧节奏的追赶-停滞；第 2 轮起速率匹配生效）
+        // gap>0 期间的连续停滞帧数。跳过冷启动前两轮（EMA 未热按基础速率揭示有一轮旧节奏；
+        // 首个合格样本含 mount 以来的全部到达字符会瞬时冲高 EMA，二轮内收敛到匹配速率）
         let maxDry = 0, dry = 0
-        for (let i = 13; i < lens.length; i++) {
+        for (let i = 25; i < lens.length; i++) {
             if (lens[i] === lens[i-1] && lens[i] < targetLen) dry++
             else dry = 0
             maxDry = Math.max(maxDry, dry)

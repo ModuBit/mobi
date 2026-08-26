@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
+import { calcCacheHitRate, formatCacheHitRate } from '@/core/lib/cacheHitRate'
 
 describe('calcCacheHitRate', () => {
     it('正常四项：cacheRead / (input + cacheCreation + cacheRead)，一位小数', () => {
@@ -36,5 +36,17 @@ describe('calcCacheHitRate', () => {
     it('分母 0（本地命令等）→ undefined', () => {
         expect(calcCacheHitRate({})).toBeUndefined()
         expect(calcCacheHitRate({ inputTokens: 0, cacheReadTokens: 0 })).toBeUndefined()
+    })
+})
+
+describe('formatCacheHitRate', () => {
+    it('非整数一位小数', () => {
+        expect(formatCacheHitRate(99.7)).toBe('99.7%')
+        expect(formatCacheHitRate(98.88888)).toBe('98.9%')
+    })
+
+    it('整数不带假小数尾（回归：历史落库整数值 toFixed(1) 曾补零成 87.0%，与新数据真精度无法区分）', () => {
+        expect(formatCacheHitRate(91)).toBe('91%')
+        expect(formatCacheHitRate(100)).toBe('100%')
     })
 })

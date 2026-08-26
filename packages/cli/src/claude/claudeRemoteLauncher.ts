@@ -331,7 +331,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             if (!hasAssistantUsage(u)) return  // 渠道零值/缺失跳过（判据与 calc 同源，勿内联重算）
             this.lastAssistantUsage = u
             // 窗口未记忆（首 turn / resume 后新进程）→ 按模型名预填猜测值，实时上报立即生效，
-            // 不必等第一个 result；result 到达时 calcContextUsageFromResult 用真实 contextWindow 覆盖
+            // 不必等第一个 result。注意：猜测仅在 result.modelUsage 携带 contextWindow 时才被
+            // 真实值覆盖；渠道不返回该字段时猜测值整个会话生效（已知取舍，pending #57）
             if (this.lastMaxTokens === 0) {
                 this.lastMaxTokens = guessContextWindow(model) ?? 0
             }

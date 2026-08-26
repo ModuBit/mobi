@@ -23,8 +23,11 @@
  * - 名字含 `[1m]`（忽略大小写）→ 1M 窗口
  * - 其余一律 200k（claude 标准窗口；未知网关模型名也按此猜，宁可显示不精确也不全程缺席）
  *
- * 猜错无害：result 到达时 calcContextUsageFromResult 用真实 contextWindow 覆盖记忆，
- * 偏差只存在于首个 result 之前。窗口档位若出新规格（如 [2m]），在此追加分支。
+ * ⚠️ 修正前提：仅当 result.modelUsage 携带 contextWindow 时猜测才被真实值覆盖；
+ * 渠道不返回该字段时（部分第三方网关），calcContextUsageFromResult 的
+ * `main?.contextWindow || lastMaxTokens` 会回退到猜测值本身——错误读数整个会话生效、
+ * 无法自愈。此为已知的「宁显示不错缺席」取舍（用户拍板），改进方向见 docs/pending.md #57。
+ * 窗口档位若出新规格（如 [2m]），在此追加分支。
  */
 export function guessContextWindow(model: string | undefined): number | undefined {
     if (!model) return undefined

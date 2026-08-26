@@ -374,7 +374,7 @@ export type TeamState = z.infer<typeof TeamStateSchema>
  *   （message_start 三项输入 + message_delta 累计 output = 该条消息完成后的瞬时窗口占用）
  * - maxTokens：窗口大小，权威来源 result.modelUsage[model].contextWindow（launcher 记忆）；
  *   首 turn / resume 后由模型名猜测预填（guessContextWindow，[1m]→1M 其余→200k），
- *   result 到达即用真实值覆盖
+ *   result 携带 contextWindow 时用真实值覆盖（渠道不返回时猜测值整个会话生效，见 pending #57）
  * - percentage：totalTokens / maxTokens × 100
  * - costUsd：result.total_cost_usd（会话累计成本，launcher 记忆）
  * 上报时机：每条主线 assistant 消息实时上报（turn 内上涨）；result 兜底一次；compact_boundary

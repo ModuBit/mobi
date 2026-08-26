@@ -584,7 +584,7 @@ interrupt（用户停止）
 
 **背景**：上下文水位的分母 `maxTokens`（窗口大小）权威来源只有 `result.modelUsage[model].contextWindow`——turn 结束才到达。导致新会话首个 turn / resume 后（新进程内存清零）实时上报全程被 `lastMaxTokens === 0` 拦截，圆环整个首 turn 缺席（复杂首 turn 也一样）。
 
-**已落地的过渡方案**（2026-08-26）：`guessContextWindow(model)` 按模型名猜测预填（名字含 `[1m]` 忽略大小写 → 1M；其余一律 200k），主线 assistant 到达时若窗口未记忆则填充，实时上报立即生效；result 到达时用真实 `contextWindow` 覆盖。**局限**：窗口知识硬编码在 CLI 内，猜测可能过时/错——新窗口档位（如 `[2m]`）出现要手动追加分支；网关渠道自定义模型名不带 `[1m]` 时按 200k 猜可能偏小（偏小比缺席好，但仍是错的）；首 turn 内百分比可能短暂不准。
+**已落地的过渡方案**（2026-08-26）：`guessContextWindow(model)` 按模型名猜测预填（名字含 `[1m]` 忽略大小写 → 1M；其余一律 200k），主线 assistant 到达时若窗口未记忆则填充，实时上报立即生效；result 到达时用真实 `contextWindow` 覆盖。**局限**：窗口知识硬编码在 CLI 内，猜测可能过时/错——新窗口档位（如 `[2m]`）出现要手动追加分支；网关渠道自定义模型名不带 `[1m]` 时按 200k 猜可能偏小（偏小比缺席好，但仍是错的）；首 turn 内百分比可能短暂不准。**补充边界**（2026-08-26 code-review）：「result 权威修正」有前提——部分第三方网关的 result.modelUsage 不携带 contextWindow，`calcContextUsageFromResult` 的 `main?.contextWindow || lastMaxTokens` 会回退到猜测值本身，错误读数整个会话生效、无法自愈（如实际 128k/1M 的非 Claude 模型按 200k 记忆显示失真百分比）。这是用户拍板的「宁显示不错缺席」取舍；方向 3（hub 集中配置表）是唯一能同时覆盖此场景的方案。
 
 **更好的方案方向**（待讨论）：
 
@@ -615,3 +615,22 @@ interrupt（用户停止）
 - `packages/cli/src/supervisor/ppidWatchdog.ts` — 同类看门狗的形态参照
 
 **优先级**：低。触发条件苛刻且已有 doctor clean 兜底识别；若未来出现生产幽灵再实施。
+
+## 59. 单段流式渲染的全量 re-parse 成本无上界（2026-08-26 code-review）
+
+**背景**：流式渲染回退单段 XMarkdown（commit 5bd93406，替代双段拆分）后，每次揭示都是对**全文**的全量 parse + sanitize + 建树——XMarkdown 的流式优化只覆盖输入稳定层（useStreaming hook 的增量 token cache），不减少 parse 成本。`revealIntervalFor` 长度档位（≤4k 每帧 / ≤8k 32ms / ≤16k 48ms / ∞ 64ms）**只封顶揭示频率，不封顶单次成本**：单次 parse 随内容长度线性增长。
+
+**影响**：>16k 字符的消息流式期间每 64ms 全量 re-parse 一次（~15 次/秒）；100k 字符的长回复流式期间主线程持续执行全量 parse+sanitize+建树，低端/移动设备可感卡顿。被删的双段方案把每帧成本压在 O(尾部稳定段外的增量)，此问题上界有限——回退单段是对该性能保护的回退（换取 append-only 结构稳定与其他渲染诉求的可扩展性，用户拍板）。
+
+**方向**（待讨论）：
+
+1. **库层增量 parse**：上游 @ant-design/x-markdown 支持稳定前缀缓存（按块级节点缓存已 parse 结果，只 parse 尾部未闭合块）——根治但依赖库演进
+2. **Web Worker off-thread parse**：主线程只渲染，parse 移 worker——改动大，streaming 场景的 worker 通信节奏需设计
+3. **条件性双段回归**：仅超长消息（如 >32k）启用稳定前缀拆段，正常长度保持单段——双段的复杂度只付给真正需要的场景
+4. **加大超长档间隔**：>32k 再加档（如 120ms）——治标，压频率不压单次成本
+
+**相关文件**：`packages/web/src/components/ui/Markdown.tsx`（单段渲染）、`packages/web/src/components/ui/useStreamingContent.ts`（档位）
+
+**相关 memory**：`xmarkdown-append-only-assumption`（库的流式管线假设）、`streaming-ux-smoothness`（单段决策过程）
+
+**优先级**：中。日常长度（<16k）无感；长回复（>30k 字符的代码生成场景）真实可感。

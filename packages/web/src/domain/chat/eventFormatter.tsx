@@ -20,6 +20,7 @@ import { theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { formatMessageTime } from '@/core/utils/timeFormat'
 import { formatTokens } from '@/core/lib/formatTokens'
+import { formatCacheHitRate } from '@/core/lib/cacheHitRate'
 import type { AgentEvent } from './types'
 
 /** 毫秒 → 可读时长（turn 概要与详情共用，避免两处公式偏移） */
@@ -80,7 +81,7 @@ function TurnResultMeta({ event, createdAt }: { event: TurnResultEvent; createdA
             >
                 {hasDetail && <span style={{ display: 'inline-block', width: '1em' }}>{open ? '▾' : '▸'}</span>}
                 {dur}{!noTokens && <> · {formatTokensCount(event.tokens)}</>}
-                {event.cacheHitRate !== undefined && <> · ⚡{event.cacheHitRate.toFixed(1)}%</>}
+                {event.cacheHitRate !== undefined && <> · ⚡{formatCacheHitRate(event.cacheHitRate)}</>}
                 {time && <span style={{ marginLeft: 8 }}>{time}</span>}
             </span>
             {hasDetail && (
@@ -104,7 +105,7 @@ function TurnResultMeta({ event, createdAt }: { event: TurnResultEvent; createdA
                             {event.cacheReadTokens !== undefined && <DetailRow label={t('chat.turnDetail.cacheRead')} value={formatTokens(event.cacheReadTokens)} />}
                             {event.cacheCreationTokens !== undefined && <DetailRow label={t('chat.turnDetail.cacheWrite')} value={formatTokens(event.cacheCreationTokens)} />}
                             {event.totalInputTokens !== undefined && <DetailRow label={t('chat.turnDetail.totalInput')} value={formatTokens(event.totalInputTokens)} />}
-                            {event.cacheHitRate !== undefined && <DetailRow label={t('chat.turnDetail.cacheHit')} value={`${event.cacheHitRate.toFixed(1)}%`} />}
+                            {event.cacheHitRate !== undefined && <DetailRow label={t('chat.turnDetail.cacheHit')} value={formatCacheHitRate(event.cacheHitRate)} />}
                         </div>
                     </div>
                 </div>
