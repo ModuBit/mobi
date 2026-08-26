@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult } from '../../../src/claude/utils/contextUsageCalc'
+import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage } from '../../../src/claude/utils/contextUsageCalc'
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
 
 describe('calcContextUsageFromAssistant', () => {
@@ -71,7 +71,7 @@ describe('calcContextUsageFromResult（新口径）', () => {
         const r = calcContextUsageFromResult(
             makeResult({ input_tokens: 1509, cache_creation_input_tokens: 0, cache_read_input_tokens: 255232, output_tokens: 353 }),
             { input_tokens: 1199, cache_creation_input_tokens: 0, cache_read_input_tokens: 127744 },
-            0)
+            0, 0)
         // 128943 = 1199+127744（assistant 瞬时），不是 256741（result 累计）
         expect(r.usage).toEqual({ totalTokens: 128943, maxTokens: 1_000_000, percentage: 12.8943, costUsd: 0.5 })
         expect(r.maxTokens).toBe(1_000_000)
@@ -79,7 +79,7 @@ describe('calcContextUsageFromResult（新口径）', () => {
     })
 
     it('无可靠 assistant usage → usage 为 null 但记忆字段仍返回', () => {
-        const r = calcContextUsageFromResult(makeResult({ input_tokens: 1509, cache_read_input_tokens: 255232 }), undefined, 0)
+        const r = calcContextUsageFromResult(makeResult({ input_tokens: 1509, cache_read_input_tokens: 255232 }), undefined, 0, 0)
         expect(r.usage).toBeNull()
         expect(r.maxTokens).toBe(1_000_000)
     })
@@ -87,7 +87,25 @@ describe('calcContextUsageFromResult（新口径）', () => {
     it('result 无 modelUsage → 沿用旧窗口记忆；两者皆无 → usage 为 null', () => {
         const noMu = makeResult({ input_tokens: 1 }) as SDKResultMessage
         delete (noMu as { modelUsage?: unknown }).modelUsage
-        expect(calcContextUsageFromResult(noMu, { input_tokens: 10, cache_read_input_tokens: 100 }, 800000).maxTokens).toBe(800000)
-        expect(calcContextUsageFromResult(noMu, { input_tokens: 10, cache_read_input_tokens: 100 }, 0).usage).toBeNull()
+        expect(calcContextUsageFromResult(noMu, { input_tokens: 10, cache_read_input_tokens: 100 }, 800000, 0).maxTokens).toBe(800000)
+        expect(calcContextUsageFromResult(noMu, { input_tokens: 10, cache_read_input_tokens: 100 }, 0, 0).usage).toBeNull()
+    })
+
+    it('result 缺 total_cost_usd（部分错误 result）→ costUsd 为 undefined 不覆写记忆，兜底水位成本用旧记忆', () => {
+        const noCost = makeResult({ input_tokens: 5 }) as SDKResultMessage
+        delete (noCost as { total_cost_usd?: unknown }).total_cost_usd
+        const r = calcContextUsageFromResult(noCost, { input_tokens: 10, cache_read_input_tokens: 100 }, 1_000_000, 1.23)
+        expect(r.costUsd).toBeUndefined()          // 调用方据此保持旧记忆，不归零
+        expect(r.usage?.costUsd).toBe(1.23)        // 兜底水位用最新已知成本，不报 $0.00
+    })
+})
+
+describe('hasAssistantUsage（判据单一来源）', () => {
+    it('四项和 > 0 → true；全 0/缺失/undefined → false', () => {
+        expect(hasAssistantUsage({ input_tokens: 5 })).toBe(true)
+        expect(hasAssistantUsage({ output_tokens: 7 })).toBe(true)
+        expect(hasAssistantUsage({ input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 })).toBe(false)
+        expect(hasAssistantUsage({})).toBe(false)
+        expect(hasAssistantUsage(undefined)).toBe(false)
     })
 })

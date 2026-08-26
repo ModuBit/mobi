@@ -27,7 +27,7 @@ import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
-import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, type AssistantUsage } from "./utils/contextUsageCalc";
+import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage, type AssistantUsage } from "./utils/contextUsageCalc";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
@@ -146,9 +146,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             this.lastCostUsd = resultMsg.total_cost_usd ?? this.lastCostUsd
             return
         }
-        const r = calcContextUsageFromResult(resultMsg, this.lastAssistantUsage, this.lastMaxTokens)
+        const r = calcContextUsageFromResult(resultMsg, this.lastAssistantUsage, this.lastMaxTokens, this.lastCostUsd)
         if (r.maxTokens > 0) this.lastMaxTokens = r.maxTokens
-        this.lastCostUsd = r.costUsd
+        if (r.costUsd !== undefined) this.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
         if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
         try {
             this.session.client.reportContextUsage(r.usage)
@@ -325,7 +325,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 主线 assistant 到达即实时上报水位（turn 内逐步上涨）；零 usage（渠道不返回）跳过。
         // 箭头捕获 this——onMessage 是 function 声明，内部无 this
         const reportAssistantUsage = (u: SDKAssistantMessage['message']['usage']) => {
-            if (!u) return
+            if (!hasAssistantUsage(u)) return  // 渠道零值/缺失跳过（判据与 calc 同源，勿内联重算）
             this.lastAssistantUsage = u
             if (this.lastMaxTokens === 0) return  // 首 turn 前窗口未知，等 result 兜底
             const usage = calcContextUsageFromAssistant(u, this.lastMaxTokens, this.lastCostUsd)
@@ -358,11 +358,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
             if (message.type === 'assistant') {
                 const usageMsg = message as SDKAssistantMessage;
-                if (!usageMsg.parent_tool_use_id) {
-                    const u = usageMsg.message?.usage;
-                    const total = (u?.input_tokens ?? 0) + (u?.cache_creation_input_tokens ?? 0)
-                        + (u?.cache_read_input_tokens ?? 0) + (u?.output_tokens ?? 0);
-                    if (total > 0) reportAssistantUsage(u);
+                // 主线 assistant（子代理 parent_tool_use_id 非空，其 usage 是独立子上下文不作水位）；
+                // 有效性判据（渠道零值跳过）统一在 reportAssistantUsage 内的 hasAssistantUsage
+                if (!usageMsg.parent_tool_use_id && usageMsg.message?.usage) {
+                    reportAssistantUsage(usageMsg.message.usage);
                 }
                 const umessage = message as SDKAssistantMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {

@@ -47,10 +47,9 @@ export function calcContextUsageFromAssistant(
     lastMaxTokens: number,
     lastCostUsd: number,
 ): ContextUsage | null {
-    if (!usage) return null
-    const totalTokens = (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
-        + (usage.cache_read_input_tokens ?? 0) + (usage.output_tokens ?? 0)
-    if (totalTokens === 0) return null
+    if (!hasAssistantUsage(usage)) return null
+    const totalTokens = (usage!.input_tokens ?? 0) + (usage!.cache_creation_input_tokens ?? 0)
+        + (usage!.cache_read_input_tokens ?? 0) + (usage!.output_tokens ?? 0)
     if (lastMaxTokens === 0) return null
     return {
         totalTokens,
@@ -66,8 +65,19 @@ export interface ResultUsageRefresh {
     usage: ContextUsage | null
     /** 本次窗口大小（result 新值 || 调用方旧记忆；0 = 未知，调用方不应采纳） */
     maxTokens: number
-    /** 本次累计成本 */
-    costUsd: number
+    /** 本次累计成本；undefined = result 未携带（如部分错误 result），调用方应保持旧记忆 */
+    costUsd: number | undefined
+}
+
+/**
+ * assistant usage 是否有效（四项和 > 0；渠道零值/缺失 → false）。
+ * calcContextUsageFromAssistant 的零值守卫与 launcher 的实时上报前置判据同源于此——
+ * 水位口径若调整只改这里，勿在调用方内联重算（口径漂移源头）。
+ */
+export function hasAssistantUsage(usage: AssistantUsage | undefined): boolean {
+    if (!usage) return false
+    return (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+        + (usage.cache_read_input_tokens ?? 0) + (usage.output_tokens ?? 0) > 0
 }
 
 /**
@@ -82,6 +92,7 @@ export function calcContextUsageFromResult(
     resultMsg: SDKResultMessage,
     lastAssistantUsage: AssistantUsage | undefined,
     lastMaxTokens: number,
+    lastCostUsd: number,
 ): ResultUsageRefresh {
     const entries = Object.values(resultMsg.modelUsage ?? {})
     // 主模型：取累计 inputTokens 最大的（fallback/subagent 可能有多个，主对话占大头）
@@ -89,9 +100,10 @@ export function calcContextUsageFromResult(
         ? entries.reduce((a, b) => (b.inputTokens > a.inputTokens ? b : a))
         : null
     const maxTokens = main?.contextWindow || lastMaxTokens
-    const costUsd = resultMsg.total_cost_usd ?? 0
+    const costUsd = resultMsg.total_cost_usd
     return {
-        usage: calcContextUsageFromAssistant(lastAssistantUsage, maxTokens, costUsd),
+        // 兜底水位的成本用「最新已知」值（result 值 ?? 调用方旧记忆），避免缺字段时报 $0.00
+        usage: calcContextUsageFromAssistant(lastAssistantUsage, maxTokens, costUsd ?? lastCostUsd),
         maxTokens,
         costUsd,
     }

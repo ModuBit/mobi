@@ -287,14 +287,14 @@ describe('sdkOutputLoop contextUsage 分发', () => {
         expect(onContextUsage).toHaveBeenCalled()
     })
 
-    it('conversation_reset（claude 侧 /clear）触发 onContextCleared 清空用量', async () => {
+    it('conversation_reset 不触发 onContextCleared（plan-mode exit 也发此消息，无法与 /clear 区分）', async () => {
         const onContextCleared = vi.fn()
         await sdkOutputLoop(
-            // 注意：conversation_reset 是顶层 type，不是 system 的 subtype（SDKConversationResetMessage）
+            // conversation_reset 是顶层 type（SDKConversationResetMessage）
             mockQuery([{ type: 'conversation_reset', new_conversation_id: 'n', uuid: 'u', session_id: 's' } as unknown as SDKMessage]),
             { isCompactCommand: false } satisfies LoopContext,
             { ...baseOpts(), onContextCleared },
         )
-        expect(onContextCleared).toHaveBeenCalledTimes(1)
+        expect(onContextCleared).not.toHaveBeenCalled()
     })
 })
