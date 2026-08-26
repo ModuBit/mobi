@@ -253,6 +253,83 @@ describe('goal-status：CLI 上报 goal 状态 → 校验 + 委派 onGoalStatus'
     })
 })
 
+describe('context-usage：CLI 上报水位 → 校验 + 委派 onContextUsage', () => {
+    /** 构造 context-usage 专用 deps，捕获 onContextUsage 回调与 accessError */
+    function makeUsageDeps(opts: { sessionOk?: boolean } = {}) {
+        const captured: { sid: string; contextUsage: unknown }[] = []
+        const accessError = { called: false }
+        const deps: SessionHandlersDeps = {
+            store: { sessions: {}, messages: {} } as unknown as SessionHandlersDeps['store'],
+            resolveSessionAccess: (sid: string) => {
+                if (opts.sessionOk === false) return { ok: false, reason: 'not-found' as const }
+                return { ok: true as const, value: makeStoredSession(sid) }
+            },
+            emitAccessError: () => { accessError.called = true },
+            backgroundTaskTracker: new BackgroundTaskTracker(),
+            onContextUsage: (payload: { sid: string; contextUsage: unknown }) => { captured.push(payload) },
+        }
+        return { deps, captured, accessError }
+    }
+
+    test('合法 contextUsage → onContextUsage 被调用', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured, accessError } = makeUsageDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('context-usage', {
+            sid: 's1',
+            contextUsage: { totalTokens: 128943, maxTokens: 1_000_000, percentage: 12.9, costUsd: 0.5 },
+        })
+
+        expect(captured).toHaveLength(1)
+        expect(captured[0].contextUsage).toEqual({ totalTokens: 128943, maxTokens: 1_000_000, percentage: 12.9, costUsd: 0.5 })
+        expect(accessError.called).toBe(false)
+    })
+
+    test('contextUsage:null（清空）→ onContextUsage 透传 null', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured } = makeUsageDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('context-usage', { sid: 's1', contextUsage: null })
+
+        expect(captured).toHaveLength(1)
+        expect(captured[0].contextUsage).toBeNull()
+    })
+
+    test('malformed contextUsage（空对象，缺必填字段）→ 静默丢弃，防落库 + SSE 推 web 崩溃', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured } = makeUsageDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        // 旧版仅 typeof object 校验时 {} 会透传 → web ContextRing 读 costUsd.toFixed 崩 composer
+        fakeSocket.emit('context-usage', { sid: 's1', contextUsage: {} })
+
+        expect(captured).toHaveLength(0)
+    })
+
+    test('malformed contextUsage（基本类型而非对象）→ 静默丢弃', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured } = makeUsageDeps()
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('context-usage', { sid: 's1', contextUsage: 128943 as unknown })
+
+        expect(captured).toHaveLength(0)
+    })
+
+    test('未知 sid → emitAccessError，不调 onContextUsage', () => {
+        const fakeSocket = makeFakeSocket()
+        const { deps, captured, accessError } = makeUsageDeps({ sessionOk: false })
+        registerSessionHandlers(fakeSocket as unknown as Parameters<typeof registerSessionHandlers>[0], deps)
+
+        fakeSocket.emit('context-usage', { sid: 'unknown', contextUsage: null })
+
+        expect(captured).toHaveLength(0)
+        expect(accessError.called).toBe(true)
+    })
+})
+
 describe('run-started：CLI 轮次起点上报 → 校验 + 委派 onRunStarted', () => {
     /** 构造 run-started 专用 deps，捕获 onRunStarted 回调与 accessError */
     function makeRunDeps(opts: { sessionOk?: boolean } = {}) {

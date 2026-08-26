@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { SNAPSHOT_PENDING_ID, GoalStatusSchema, type ClientToServerEvents, type MessageFact } from '@mobi/shared'
+import { SNAPSHOT_PENDING_ID, ContextUsageSchema, GoalStatusSchema, type ClientToServerEvents, type MessageFact } from '@mobi/shared'
 import type { MessageCategory } from '@mobi/shared'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
@@ -442,10 +442,13 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     })
 
     socket.on('context-usage', (data: { sid: string; contextUsage: ContextUsage | null }) => {
-        // null = 清空（/clear）；非 null 必须是对象
-        if (!data || typeof data.sid !== 'string'
-            || (data.contextUsage !== null && (typeof data.contextUsage !== 'object' || !data.contextUsage))) {
-            return
+        // null = 清空（/clear）；非 null 必须是合法 ContextUsage
+        // （与 goal-status 等 handler 一致用 Zod 校验，防 malformed payload 落库 + SSE 推 web 崩溃）
+        if (!data || typeof data.sid !== 'string') return
+        if (data.contextUsage !== null) {
+            const parsed = ContextUsageSchema.safeParse(data.contextUsage)
+            if (!parsed.success) return
+            data.contextUsage = parsed.data
         }
         const sessionAccess = resolveSessionAccess(data.sid)
         if (!sessionAccess.ok) {
