@@ -19,7 +19,7 @@ import styled from '@emotion/styled'
 import type { SessionMetadataSummary } from '@/core/data/api/types'
 
 /** Session 上下文信息条（吊顶）：工作目录 / Git 分支 / Worktree，静态展示。
- * 上下文用量已移至 composer 的 ContextUsageThread 展示，吊顶不再承载用量。 */
+ * 上下文用量已移至水位圆环（ContextRing）展示，吊顶不再承载用量。 */
 const BarContainer = styled.div`
     display: flex;
     padding: 4px 12px;

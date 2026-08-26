@@ -22,6 +22,7 @@ import styled from '@emotion/styled'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SessionContextBar } from '@/components/session/SessionContextBar'
 import { ChatContainer } from '@/components/chat/ChatContainer'
+import { ContextRing } from '@/components/composer/ContextRing'
 import { MobileMenuButton } from '@/components/layout/MobileMenu'
 import { SidebarToggle } from '@/components/layout/SidebarToggle'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
@@ -84,15 +85,23 @@ export function ChatPane({ sessionId, session, displayName, agentStatus }: ChatP
         </>
     )
 
-    const headerRight = showExpand && (
-        <AppTooltip title={t('session.inspector.expand')}>
-            <Button
-                type="text"
-                size="small"
-                icon={<PanelRight size={16} />}
-                onClick={() => setExpanded(sessionId, true)}
-            />
-        </AppTooltip>
+    const headerRight = (
+        <>
+            {/* 移动端水位圆环（PC 挂 composer 工具栏）——参照 codex/chatgpt 双端分流 */}
+            {isMobile && session.runtimeState?.contextUsage ? (
+                <ContextRing usage={session.runtimeState.contextUsage} size={22} />
+            ) : null}
+            {showExpand && (
+                <AppTooltip title={t('session.inspector.expand')}>
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<PanelRight size={16} />}
+                        onClick={() => setExpanded(sessionId, true)}
+                    />
+                </AppTooltip>
+            )}
+        </>
     )
 
     // key={sessionId}：切会话必须重新挂载，不能复用组件实例。

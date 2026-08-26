@@ -50,9 +50,9 @@ import { getPermissionModeColor } from './permissionModeColors'
 import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from './permissionModeOption'
 import { getPermissionModeIcon } from './permissionModeIcons'
 import { SubmitButton } from './SubmitButton'
-import { ContextUsageThread } from './ContextUsageThread'
+import { ContextRing } from './ContextRing'
 import { resolveSubmitButtonState } from './submitButtonState'
-import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
+import { useHasFinePointer, useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import type { ClearRuntimeStateField } from '@/components/composer/ClearStateButton'
 import { usePromptSuggestion, usePromptSuggestionStore } from '@/core/data/stores/promptSuggestionStore'
 import { SuggestionChip } from './SuggestionChip'
@@ -93,7 +93,7 @@ interface ChatComposerProps {
     switchPending?: boolean
     todos?: TodoItem[]
     tasks?: TaskItem[]
-    /** 上下文用量（来自 session.runtimeState.contextUsage）。展示已隐藏（统计不准，见 docs/pending.md），传值保留供日后恢复 */
+    /** 上下文用量（来自 session.runtimeState.contextUsage）；无值时不渲染水位圆环 */
     contextUsage?: ContextUsage | null
     /** goal 状态（来自 session.runtimeState.goalStatus；无值时不渲染徽标） */
     goal?: GoalStatus | null
@@ -102,20 +102,6 @@ interface ChatComposerProps {
      * nonce 单调递增触发应用，同 nonce 不重复；text 为空串时忽略
      */
     draftRequest?: { text: string; nonce: number }
-}
-
-/**
- * 是否展示上下文用量线：统计不准先隐藏（见 docs/pending.md #38）。
- * 默认关（行为与硬编码 false 一致）；支持运行时通过 localStorage 置
- * `mobi-show-context-usage=1` 开启，供统计口径修正前手动校验。读取放
- * 组件渲染时调用（与 diag 标记同机制：页面加载/刷新时读取，不需响应式）。
- */
-function isContextUsageShown(): boolean {
-    try {
-        return typeof window !== 'undefined' && window.localStorage?.getItem('mobi-show-context-usage') === '1'
-    } catch {
-        return false
-    }
 }
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
@@ -275,6 +261,7 @@ export function ChatComposer(props: ChatComposerProps) {
     const { token } = theme.useToken()
     const api = useMobiApi()
     const hasFinePointer = useHasFinePointer()
+    const isMobile = useIsMobile()
 
     // goal 清理回调：供 StatusBar 内 GoalBadge 的 ClearStateButton 使用
     const handleClearGoal = useCallback(
@@ -736,11 +723,6 @@ export function ChatComposer(props: ChatComposerProps) {
                 onClearGoal={handleClearGoal}
             />
 
-            {/* 上下文用量线（Sender 上方）。
-                统计不准先隐藏（见 docs/pending.md #38）：localStorage 置 mobi-show-context-usage=1 即恢复显示，
-                CLI 计算 / runtimeState 传值链路保留，无需改动他处。 */}
-            {isContextUsageShown() && contextUsage ? <ContextUsageThread usage={contextUsage} /> : null}
-
             <div
                 ref={wrapperRef}
                 className={isBashMode ? 'bash-mode' : undefined}
@@ -880,6 +862,11 @@ export function ChatComposer(props: ChatComposerProps) {
                                             }}
                                         />
                                     ),
+                                }] : []),
+                                // 上下文水位圆环（仅 PC；移动端挂 ChatPane header，避免挤占底部空间）
+                                ...(!isMobile && contextUsage ? [{
+                                    key: 'contextRing',
+                                    render: () => <ContextRing usage={contextUsage} />,
                                 }] : []),
                             ]}
                             suffix={showLocalModeCover ? null : (
