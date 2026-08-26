@@ -119,4 +119,21 @@ describe('ContextRing', () => {
         ).not.toThrow()
         expect(screen.getByRole('button', { name: '0%' })).toBeTruthy()
     })
+
+    it('200k 衰减刻度线：1M 窗口（ratio 0.2 <1）渲染 line，位置在 20% 角度', () => {
+        render(<ContextRing usage={makeUsage({ maxTokens: 1_000_000, percentage: 13 })} />)
+        const line = document.querySelector('svg[role="button"] line')
+        expect(line).toBeTruthy()
+        // 20% 角度（顶部起顺时针 72°）：外端 x≈23.89, y≈8.14
+        expect(Number(line!.getAttribute('x2'))).toBeCloseTo(23.89, 1)
+        expect(Number(line!.getAttribute('y2'))).toBeCloseTo(8.14, 1)
+    })
+
+    it('200k 衰减刻度线退化：窗口 ≤200k（ratio ≥1）不渲染', () => {
+        const { unmount } = render(<ContextRing usage={makeUsage({ maxTokens: 200_000, percentage: 13 })} />)
+        expect(document.querySelector('svg[role="button"] line')).toBeNull()
+        unmount()
+        render(<ContextRing usage={makeUsage({ maxTokens: 100_000, percentage: 13 })} />)
+        expect(document.querySelector('svg[role="button"] line')).toBeNull()
+    })
 })

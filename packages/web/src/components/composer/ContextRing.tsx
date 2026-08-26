@@ -39,6 +39,29 @@ export function resolveRingTone(percentage: number): { pct: number; tone: RingTo
 const R = 10
 const CIRC = 2 * Math.PI * R
 
+/**
+ * 上下文质量衰减线（绝对值）：超过该值长上下文召回/效果开始变差，与窗口大小无关。
+ * 在环上 200k/maxTokens 角度处画一根静态橙色短刻度线（仪表红线隐喻），弧越过即「进衰减区」；
+ * 仅作位置标注、不参与变色——环色仍由窗口百分比四档决定，两维度零冲突。
+ * ratio ≥ 1（如 200k 窗口模型）时线与满弧终点重合，无意义，不画。
+ */
+const DEGRADATION_THRESHOLD_TOKENS = 200_000
+/** 刻度线径向范围（略跨环带出头，r7.5→r12.5） */
+const TICK_R_INNER = 7.5
+const TICK_R_OUTER = 12.5
+
+/** 计算 200k 刻度线两端坐标；不满足显示条件返回 null */
+function degradationTick(maxTokens: number): { x1: number; y1: number; x2: number; y2: number } | null {
+    const ratio = DEGRADATION_THRESHOLD_TOKENS / maxTokens
+    if (!Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) return null
+    const theta = ratio * 2 * Math.PI // 顶部起顺时针
+    const sin = Math.sin(theta), cos = Math.cos(theta)
+    return {
+        x1: 12 + TICK_R_INNER * sin, y1: 12 - TICK_R_INNER * cos,
+        x2: 12 + TICK_R_OUTER * sin, y2: 12 - TICK_R_OUTER * cos,
+    }
+}
+
 interface ContextRingProps {
     usage: ContextUsage
     /** 圆环直径 px（PC 工具栏 20 / 移动 header 22，默认 20） */
@@ -59,6 +82,7 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
         : tone === 'notice' ? token.colorWarning
         : token.colorTextTertiary
     const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
+    const tick = degradationTick(usage.maxTokens)
 
     const ring = (
         <svg
@@ -77,6 +101,11 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
                 strokeDashoffset={CIRC * (1 - pct / 100)}
                 transform="rotate(-90 12 12)"
             />
+            {/* 200k 衰减刻度线：画在进度弧之上（后画），横跨环带出头，弧越过即进衰减区 */}
+            {tick && (
+                <line x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2}
+                    stroke="#fa8c16" strokeWidth="1.4" strokeLinecap="round" />
+            )}
         </svg>
     )
 
