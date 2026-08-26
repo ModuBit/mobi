@@ -50,7 +50,8 @@ export type AgentEvent =
     | { type: 'turn-result'; durationMs: number; tokens: number; error?: string;
         numTurns: number | null; ttftMs?: number; costUsd?: number;
         inputTokens?: number; outputTokens?: number;
-        cacheReadTokens?: number; cacheCreationTokens?: number; model?: string }
+        cacheReadTokens?: number; cacheCreationTokens?: number; model?: string;
+        totalInputTokens?: number; cacheHitRate?: number }
     | { type: 'agent-progress'; toolUseId: string; metrics: AgentMetrics; summary?: string }
     // tool_progress 心跳：长任务（Bash 等）每 30s 推送，校准对应工具卡片的运行耗时
     | { type: 'tool-progress'; toolUseId: string; elapsedSeconds: number; toolName: string }

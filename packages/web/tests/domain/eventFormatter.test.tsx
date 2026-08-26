@@ -89,6 +89,45 @@ describe('formatEvent turn-result', () => {
         // 不显示 token 数（无「N tokens」字样）
         expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
     })
+
+    it('含缓存命中率时概要显示 ⚡N%，详情含总输入与命中率行', () => {
+        // cr=91 in=5 cc=4 → 总输入 100、命中率 91%
+        renderEvent({
+            ...baseEvent,
+            inputTokens: 5,
+            outputTokens: 213,
+            cacheReadTokens: 91,
+            cacheCreationTokens: 4,
+            totalInputTokens: 100,
+            cacheHitRate: 91,
+        })
+        // 概要：· ⚡91%
+        expect(screen.getByText(/⚡91%/)).toBeInTheDocument()
+        // 展开详情：总输入（含缓存）= 100、缓存命中 = 91%
+        fireEvent.click(screen.getByRole('button'))
+        expect(screen.getByText('总输入（含缓存）')).toBeInTheDocument()
+        expect(screen.getByText('缓存命中')).toBeInTheDocument()
+        expect(screen.getByText(/^100$/)).toBeInTheDocument()
+        expect(screen.getByText('91%')).toBeInTheDocument()
+    })
+
+    it('无缓存数据（usage 只有 input/output）不显示 ⚡ 与命中率详情行', () => {
+        renderEvent({
+            type: 'turn-result',
+            durationMs: 13200,
+            tokens: 263,
+            numTurns: 2,
+            ttftMs: 800,
+            inputTokens: 50,
+            outputTokens: 213,
+        })
+        // 概要无 ⚡
+        expect(screen.queryByText(/⚡/)).not.toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button'))
+        // 详情无总输入/命中率行
+        expect(screen.queryByText('总输入（含缓存）')).not.toBeInTheDocument()
+        expect(screen.queryByText('缓存命中')).not.toBeInTheDocument()
+    })
 })
 
 // 防漏网根因：Task 7 只测到 normalize 层，没跨 reducer→render，

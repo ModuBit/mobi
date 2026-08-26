@@ -153,7 +153,9 @@
             "input": "输入",
             "output": "输出",
             "cacheRead": "缓存读",
-            "cacheWrite": "缓存写"
+            "cacheWrite": "缓存写",
+            "totalInput": "总输入（含缓存）",
+            "cacheHit": "缓存命中"
         },
         "thinking": "思考中...",
         "thought": "思考完成",

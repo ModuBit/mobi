@@ -457,6 +457,10 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
     const cacheCreationTokens = usage ? (asNumber(getField(usage, 'cache_creation_input_tokens')) ?? undefined) : undefined
     const tokens = inputTokens + outputTokens
 
+    // 总输入（含缓存复用）与缓存命中率：cr / (in+cc+cr)，分母 0（本地命令）→ undefined 不展示
+    const totalInput = inputTokens + (cacheCreationTokens ?? 0) + (cacheReadTokens ?? 0)
+    const cacheHitRate = totalInput > 0 ? Math.round(((cacheReadTokens ?? 0) / totalInput) * 100) : undefined
+
     // 成本 / 首 token / 模型（result 独有，assistant 无）
     const costUsd = asNumber(getField(data, 'total_cost_usd')) ?? undefined
     const ttftMs = asNumber(getField(data, 'ttft_ms')) ?? undefined
@@ -487,6 +491,8 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
         ...(cacheReadTokens !== undefined && { cacheReadTokens }),
         ...(cacheCreationTokens !== undefined && { cacheCreationTokens }),
         ...(model !== undefined && { model }),
+        ...(totalInput > 0 && { totalInputTokens: totalInput }),
+        ...(cacheHitRate !== undefined && { cacheHitRate }),
         ...(error && { error }),
     })
 }
