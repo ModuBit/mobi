@@ -40,6 +40,17 @@ const R = 10
 const CIRC = 2 * Math.PI * R
 
 /**
+ * 瞬时水位的缓存命中率（cacheRead / (input+cacheCreation+cacheRead)，与 turn 概要同口径、
+ * 同精度一位小数）。无细分字段（compact 路径 post_tokens 只有总量）或分母 0 → undefined 不展示。
+ */
+export function resolveCacheHitRate(usage: ContextUsage): number | undefined {
+    if (usage.inputTokens === undefined || usage.cacheReadTokens === undefined) return undefined
+    const totalInput = usage.inputTokens + (usage.cacheCreationTokens ?? 0) + usage.cacheReadTokens
+    if (totalInput <= 0) return undefined
+    return Math.round((usage.cacheReadTokens / totalInput) * 1000) / 10
+}
+
+/**
  * 上下文质量衰减线（绝对值）：超过该值长上下文召回/效果开始变差，与窗口大小无关。
  * 在环上 200k/maxTokens 角度处画一根静态橙色短刻度线（仪表红线隐喻），弧越过即「进衰减区」；
  * 仅作位置标注、不参与变色——环色仍由窗口百分比四档决定，两维度零冲突。
@@ -83,6 +94,10 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
         : token.colorTextTertiary
     const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
     const tick = degradationTick(usage.maxTokens)
+    const hitRate = resolveCacheHitRate(usage)
+    // 细分四项随 assistant 路径上报；compact 路径只有总量 → 整组隐藏
+    const hasBreakdown = usage.inputTokens !== undefined && usage.outputTokens !== undefined
+        && usage.cacheReadTokens !== undefined && usage.cacheCreationTokens !== undefined
 
     const ring = (
         <svg
@@ -120,17 +135,44 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.used')}</span>
                         <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                            {usage.totalTokens.toLocaleString()} / {usage.maxTokens.toLocaleString()} ({pct}%)
+                            {formatTokens(usage.totalTokens)} / {formatTokens(usage.maxTokens)} ({pct}%)
                         </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                        <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.remaining', { tokens: formatTokens(remaining) })}</span>
+                        <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.remaining')}</span>
                         <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(remaining)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                         <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cost')}</span>
                         <span style={{ fontVariantNumeric: 'tabular-nums' }}>${usage.costUsd.toFixed(2)}</span>
                     </div>
+                    {/* 瞬时请求细分（compact 路径无细分整组隐藏）：四项 token + 缓存命中率 */}
+                    {hasBreakdown && (
+                        <>
+                            <div style={{ marginTop: 4, borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 4, display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                                <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.input')}</span>
+                                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.inputTokens!)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                                <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.output')}</span>
+                                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.outputTokens!)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                                <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cacheRead')}</span>
+                                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.cacheReadTokens!)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                                <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cacheWrite')}</span>
+                                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTokens(usage.cacheCreationTokens!)}</span>
+                            </div>
+                            {hitRate !== undefined && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                                    <span style={{ color: token.colorTextTertiary }}>{t('session.contextUsage.cacheHit')}</span>
+                                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{hitRate.toFixed(1)}%</span>
+                                </div>
+                            )}
+                        </>
+                    )}
                 </div>
             )}
         >

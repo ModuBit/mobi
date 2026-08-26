@@ -22,7 +22,11 @@ describe('calcContextUsageFromAssistant', () => {
     it('正常值：三项输入 + output 为水位（消息完成后的实际占用），算百分比', () => {
         const r = calcContextUsageFromAssistant(
             { input_tokens: 310, cache_creation_input_tokens: 0, cache_read_input_tokens: 127488, output_tokens: 42 }, 1_000_000, 0.42)
-        expect(r).toEqual({ totalTokens: 127840, maxTokens: 1_000_000, percentage: 12.784, costUsd: 0.42 })
+        expect(r).toEqual({
+            totalTokens: 127840, maxTokens: 1_000_000, percentage: 12.784, costUsd: 0.42,
+            // 四项细分随水位上报（web Popover 展示 + 命中率计算）
+            inputTokens: 310, outputTokens: 42, cacheReadTokens: 127488, cacheCreationTokens: 0,
+        })
     })
 
     it('output 缺失（delta 未到/abort）→ 回退三项输入之和', () => {
@@ -42,10 +46,12 @@ describe('calcContextUsageFromAssistant', () => {
 })
 
 describe('calcContextUsageFromCompact（行为锁定）', () => {
-    it('post_tokens + 记忆窗口 → 压缩后水位', () => {
+    it('post_tokens + 记忆窗口 → 压缩后水位（无细分：post_tokens 只有总量）', () => {
         const u = calcContextUsageFromCompact(18000, 1_000_000, 0.42)
         expect(u).toMatchObject({ totalTokens: 18000, maxTokens: 1_000_000, costUsd: 0.42 })
         expect(u!.percentage).toBeCloseTo(1.8, 10)
+        expect(u!.inputTokens).toBeUndefined()
+        expect(u!.cacheReadTokens).toBeUndefined()
     })
     it('post_tokens 缺失或无窗口记忆 → null', () => {
         expect(calcContextUsageFromCompact(undefined, 1_000_000, 0)).toBeNull()
@@ -73,7 +79,10 @@ describe('calcContextUsageFromResult（新口径）', () => {
             { input_tokens: 1199, cache_creation_input_tokens: 0, cache_read_input_tokens: 127744 },
             0, 0)
         // 128943 = 1199+127744（assistant 瞬时），不是 256741（result 累计）
-        expect(r.usage).toEqual({ totalTokens: 128943, maxTokens: 1_000_000, percentage: 12.8943, costUsd: 0.5 })
+        expect(r.usage).toEqual({
+            totalTokens: 128943, maxTokens: 1_000_000, percentage: 12.8943, costUsd: 0.5,
+            inputTokens: 1199, outputTokens: 0, cacheReadTokens: 127744, cacheCreationTokens: 0,
+        })
         expect(r.maxTokens).toBe(1_000_000)
         expect(r.costUsd).toBe(0.5)
     })

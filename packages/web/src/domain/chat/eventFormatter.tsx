@@ -80,7 +80,7 @@ function TurnResultMeta({ event, createdAt }: { event: TurnResultEvent; createdA
             >
                 {hasDetail && <span style={{ display: 'inline-block', width: '1em' }}>{open ? '▾' : '▸'}</span>}
                 {dur}{!noTokens && <> · {formatTokensCount(event.tokens)}</>}
-                {event.cacheHitRate !== undefined && <> · ⚡{event.cacheHitRate}%</>}
+                {event.cacheHitRate !== undefined && <> · ⚡{event.cacheHitRate.toFixed(1)}%</>}
                 {time && <span style={{ marginLeft: 8 }}>{time}</span>}
             </span>
             {hasDetail && (
@@ -104,7 +104,7 @@ function TurnResultMeta({ event, createdAt }: { event: TurnResultEvent; createdA
                             {event.cacheReadTokens !== undefined && <DetailRow label={t('chat.turnDetail.cacheRead')} value={formatTokens(event.cacheReadTokens)} />}
                             {event.cacheCreationTokens !== undefined && <DetailRow label={t('chat.turnDetail.cacheWrite')} value={formatTokens(event.cacheCreationTokens)} />}
                             {event.totalInputTokens !== undefined && <DetailRow label={t('chat.turnDetail.totalInput')} value={formatTokens(event.totalInputTokens)} />}
-                            {event.cacheHitRate !== undefined && <DetailRow label={t('chat.turnDetail.cacheHit')} value={`${event.cacheHitRate}%`} />}
+                            {event.cacheHitRate !== undefined && <DetailRow label={t('chat.turnDetail.cacheHit')} value={`${event.cacheHitRate.toFixed(1)}%`} />}
                         </div>
                     </div>
                 </div>

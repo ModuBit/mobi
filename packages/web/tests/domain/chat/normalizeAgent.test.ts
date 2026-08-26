@@ -559,6 +559,23 @@ describe('normalizeAgentRecord', () => {
         expect(result && 'type' in result.content ? result.content.totalInputTokens : null).toBe(100)
     })
 
+    it('turn-result：命中率保留一位小数（99.7 不被整数舍入吞成 100）', () => {
+        // 实测场景：input 2k + cacheRead 726k + cacheWrite 0 → 真实 ~99.73%，
+        // 整数四舍五入曾误显 ⚡100%，失真
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result', subtype: 'success', duration_ms: 1000, num_turns: 1,
+                    total_cost_usd: 0.01, is_error: false, stop_reason: null,
+                    usage: { input_tokens: 2000, output_tokens: 4, cache_creation_input_tokens: 0, cache_read_input_tokens: 726000 },
+                },
+            },
+        )
+        expect(result && 'type' in result.content ? result.content.cacheHitRate : null).toBe(99.7)
+    })
+
     it('should handle result with error and return turn-result event with error', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,

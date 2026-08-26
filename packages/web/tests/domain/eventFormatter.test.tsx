@@ -101,14 +101,14 @@ describe('formatEvent turn-result', () => {
             totalInputTokens: 100,
             cacheHitRate: 91,
         })
-        // 概要：· ⚡91%
-        expect(screen.getByText(/⚡91%/)).toBeInTheDocument()
-        // 展开详情：总输入（含缓存）= 100、缓存命中 = 91%
+        // 概要：· ⚡91.0%（命中率统一一位小数，整数也带小数位）
+        expect(screen.getByText(/⚡91\.0%/)).toBeInTheDocument()
+        // 展开详情：总输入（含缓存）= 100、缓存命中 = 91.0%
         fireEvent.click(screen.getByRole('button'))
         expect(screen.getByText('总输入（含缓存）')).toBeInTheDocument()
         expect(screen.getByText('缓存命中')).toBeInTheDocument()
         expect(screen.getByText(/^100$/)).toBeInTheDocument()
-        expect(screen.getByText('91%')).toBeInTheDocument()
+        expect(screen.getByText('91.0%')).toBeInTheDocument()
     })
 
     it('无缓存数据（usage 只有 input/output）不显示 ⚡ 与命中率详情行', () => {

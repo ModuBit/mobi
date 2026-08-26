@@ -48,14 +48,22 @@ export function calcContextUsageFromAssistant(
     lastCostUsd: number,
 ): ContextUsage | null {
     if (!hasAssistantUsage(usage)) return null
-    const totalTokens = (usage!.input_tokens ?? 0) + (usage!.cache_creation_input_tokens ?? 0)
-        + (usage!.cache_read_input_tokens ?? 0) + (usage!.output_tokens ?? 0)
+    const inputTokens = usage!.input_tokens ?? 0
+    const cacheCreationTokens = usage!.cache_creation_input_tokens ?? 0
+    const cacheReadTokens = usage!.cache_read_input_tokens ?? 0
+    const outputTokens = usage!.output_tokens ?? 0
+    const totalTokens = inputTokens + cacheCreationTokens + cacheReadTokens + outputTokens
     if (lastMaxTokens === 0) return null
     return {
         totalTokens,
         maxTokens: lastMaxTokens,
         percentage: (totalTokens / lastMaxTokens) * 100,
         costUsd: lastCostUsd,
+        // 四项细分随水位上报（web Popover 展示 + 缓存命中率计算）
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheCreationTokens,
     }
 }
 

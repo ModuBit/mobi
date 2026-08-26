@@ -138,7 +138,12 @@
             "title": "上下文水位",
             "used": "已用",
             "cost": "累计成本",
-            "remaining": "剩 {{tokens}}"
+            "remaining": "剩余",
+            "input": "输入",
+            "output": "输出",
+            "cacheRead": "缓存读",
+            "cacheWrite": "缓存写",
+            "cacheHit": "缓存命中"
         }
     },
     "chat": {

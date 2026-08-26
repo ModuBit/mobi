@@ -388,6 +388,14 @@ export const ContextUsageSchema = z.object({
     percentage: z.number(),
     /** 会话累计成本（USD），取自 result.total_cost_usd */
     costUsd: z.number(),
+    /**
+     * 瞬时水位四项细分（assistant 路径填充，web Popover 展示 + 缓存命中率计算）。
+     * 可选：compact 路径的 post_tokens 只有总量，细分不可知 → 缺省
+     */
+    inputTokens: z.number().optional(),
+    outputTokens: z.number().optional(),
+    cacheReadTokens: z.number().optional(),
+    cacheCreationTokens: z.number().optional(),
 })
 
 export type ContextUsage = z.infer<typeof ContextUsageSchema>

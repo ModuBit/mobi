@@ -19,13 +19,24 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { ContextRing, resolveRingTone } from '@/components/composer/ContextRing'
 import type { ContextUsage } from '@mobi/shared'
 
-// mock i18next：透传 key 并做 {{tokens}} 插值（initReactI18next 必须 noop 导出，避免 i18n 顶层 init 报错）
+// mock i18next：contextUsage 命名空间映射中文词，其余透传 key（initReactI18next 必须 noop 导出，
+// 避免 i18n 顶层 init 报错）
 vi.mock('react-i18next', () => ({
     initReactI18next: { type: '3rdParty', init: () => {} },
     useTranslation: () => ({
-        t: (key: string, opts?: { tokens?: string }) => {
-            if (key === 'session.contextUsage.remaining') return `剩 ${opts?.tokens ?? ''}`
-            return key
+        t: (key: string) => {
+            const dict: Record<string, string> = {
+                'session.contextUsage.title': '上下文水位',
+                'session.contextUsage.used': '已用',
+                'session.contextUsage.remaining': '剩余',
+                'session.contextUsage.cost': '累计成本',
+                'session.contextUsage.input': '输入',
+                'session.contextUsage.output': '输出',
+                'session.contextUsage.cacheRead': '缓存读',
+                'session.contextUsage.cacheWrite': '缓存写',
+                'session.contextUsage.cacheHit': '缓存命中',
+            }
+            return dict[key] ?? key
         },
     }),
 }))
@@ -98,15 +109,47 @@ describe('ContextRing', () => {
         expect(ring.tagName.toLowerCase()).toBe('svg')
     })
 
-    it('点击后 Popover 展示已用/上限/百分比/成本', async () => {
+    it('点击后 Popover 展示已用/上限/百分比/成本（数字 k/m 归一）', async () => {
         render(<ContextRing usage={makeUsage()} />)
         fireEvent.click(screen.getByRole('button', { name: '13%' }))
         // Popover 内容 portal 到 body，异步挂载
         await waitFor(() => {
-            expect(document.body.textContent).toContain('13,000 / 100,000 (13%)')
+            expect(document.body.textContent).toContain('13k / 100k (13%)')
         })
         expect(document.body.textContent).toContain('$0.42')
-        expect(document.body.textContent).toContain('剩 87k')
+        // 剩余行：label + 归一数值（87,000 → 87k）
+        expect(document.body.textContent).toContain('剩余')
+        expect(document.body.textContent).toContain('87k')
+    })
+
+    it('带细分时展示输入/输出/缓存读/缓存写四项与命中率（assistant 路径）', async () => {
+        render(<ContextRing usage={makeUsage({
+            totalTokens: 128943, maxTokens: 1_000_000, percentage: 12.89,
+            inputTokens: 1199, outputTokens: 744, cacheReadTokens: 127744, cacheCreationTokens: 256,
+        })} />)
+        fireEvent.click(screen.getByRole('button', { name: '13%' }))
+        await waitFor(() => {
+            expect(document.body.textContent).toContain('129k / 1.0m (13%)')
+        })
+        const text = document.body.textContent!
+        // 四项细分（formatTokens 归一：1199→1k / 744→744 / 127744→128k / 256→256）
+        expect(text).toContain('输入'); expect(text).toContain('1k')
+        expect(text).toContain('输出'); expect(text).toContain('744')
+        expect(text).toContain('缓存读'); expect(text).toContain('128k')
+        expect(text).toContain('缓存写'); expect(text).toContain('256')
+        // 命中率 = 127744/(1199+256+127744) ≈ 98.9%（一位小数，与 turn 概要同口径）
+        expect(text).toContain('缓存命中'); expect(text).toContain('98.9%')
+    })
+
+    it('无细分时（compact 路径）不渲染四项与命中率行', async () => {
+        render(<ContextRing usage={makeUsage()} />)
+        fireEvent.click(screen.getByRole('button', { name: '13%' }))
+        await waitFor(() => {
+            expect(document.body.textContent).toContain('13k / 100k (13%)')
+        })
+        const text = document.body.textContent!
+        expect(text).not.toContain('输入')
+        expect(text).not.toContain('缓存命中')
     })
 
     it('usage 全 0 时正常渲染不抛错（灰环，aria-label 0%）', () => {
