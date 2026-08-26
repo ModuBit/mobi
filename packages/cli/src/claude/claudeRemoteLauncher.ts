@@ -28,6 +28,7 @@ import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, hasAssistantUsage, type AssistantUsage } from "./utils/contextUsageCalc";
+import { guessContextWindow } from "./utils/modelContextWindow";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
@@ -67,7 +68,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // steer sink：由 claudeRemote 启动循环时注入，把 steer 文本 push 进 SDK input stream
     private steerSink: ((text: string, localId?: string) => boolean) | null = null;
     // 上次真实 turn 的窗口大小与累计成本，供 compact_boundary 上报时复用
-    // （compact_boundary 消息不带 contextWindow 与 costUsd，只能复用上次记忆）
+    // （compact_boundary 消息不带 contextWindow 与 costUsd，只能复用上次记忆）。
+    // 初值 0 = 窗口未知：主线 assistant 到达时按模型名猜（guessContextWindow）预填，
+    // result.modelUsage 到达后始终为权威真实值
     private lastMaxTokens = 0;
     private lastCostUsd = 0;
     /** 本 turn 最后一条主线 assistant 的 usage（瞬时水位来源；/clear 时重置） */
@@ -324,10 +327,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
         // 主线 assistant 到达即实时上报水位（turn 内逐步上涨）；零 usage（渠道不返回）跳过。
         // 箭头捕获 this——onMessage 是 function 声明，内部无 this
-        const reportAssistantUsage = (u: SDKAssistantMessage['message']['usage']) => {
+        const reportAssistantUsage = (u: SDKAssistantMessage['message']['usage'], model?: string) => {
             if (!hasAssistantUsage(u)) return  // 渠道零值/缺失跳过（判据与 calc 同源，勿内联重算）
             this.lastAssistantUsage = u
-            if (this.lastMaxTokens === 0) return  // 首 turn 前窗口未知，等 result 兜底
+            // 窗口未记忆（首 turn / resume 后新进程）→ 按模型名预填猜测值，实时上报立即生效，
+            // 不必等第一个 result；result 到达时 calcContextUsageFromResult 用真实 contextWindow 覆盖
+            if (this.lastMaxTokens === 0) {
+                this.lastMaxTokens = guessContextWindow(model) ?? 0
+            }
+            if (this.lastMaxTokens === 0) return  // 模型名也缺失的极端情况，等 result 兜底
             const usage = calcContextUsageFromAssistant(u, this.lastMaxTokens, this.lastCostUsd)
             if (!usage) return
             try { session.client.reportContextUsage(usage) } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
@@ -361,7 +369,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 // 主线 assistant（子代理 parent_tool_use_id 非空，其 usage 是独立子上下文不作水位）；
                 // 有效性判据（渠道零值跳过）统一在 reportAssistantUsage 内的 hasAssistantUsage
                 if (!usageMsg.parent_tool_use_id && usageMsg.message?.usage) {
-                    reportAssistantUsage(usageMsg.message.usage);
+                    reportAssistantUsage(usageMsg.message.usage, usageMsg.message.model);
                 }
                 const umessage = message as SDKAssistantMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
