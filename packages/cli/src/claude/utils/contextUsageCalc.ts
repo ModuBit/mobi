@@ -18,56 +18,80 @@ import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { ContextUsage } from '@mobi/shared/types'
 
 /**
- * 上下文用量本地组装（零额外 API）——把 SDK result / compact_boundary 消息里的 usage 字段
- * 换算成 ContextUsage，供 launcher 上报。抽成纯函数便于单测。
+ * 上下文用量本地组装（零额外 API）——把 SDK 消息里的 usage 字段换算成 ContextUsage，
+ * 供 launcher 上报。抽成纯函数便于单测。
  *
- * 两种来源：
- * - 真实 turn 的 result：usage 反映当前窗口占用；
- * - compact_boundary：post_tokens 反映压缩后占用，但该消息不带窗口大小/成本，需复用上次记忆。
- *
- * 返回 null 表示本次不可靠（本地命令 usage=0 / 窗口未知 / post_tokens 缺失），调用方应跳过、
+ * 返回 null 表示本次不可靠（渠道零值 / 窗口未知 / post_tokens 缺失），调用方应跳过、
  * 保持上一轮读数，等下一次可靠来源修正。
  */
-export interface ContextUsageResult {
-    usage: ContextUsage
-    /** 本次主模型窗口大小，供 compact_boundary 复用记忆 */
+
+/**
+ * assistant usage 四项子集（message_start 三项输入 + message_delta 累计 output）。
+ * 各项允许 null——SDK BetaUsage 的 cache 项类型为 number | null，`?? 0` 统一归一。
+ */
+export type AssistantUsage = {
+    input_tokens?: number | null
+    cache_creation_input_tokens?: number | null
+    cache_read_input_tokens?: number | null
+    output_tokens?: number | null
+}
+
+/**
+ * 从主线 assistant 消息的 usage 组装**瞬时水位**（该条消息完成后的实际窗口占用）。
+ * totalTokens = input + cache_creation + cache_read + output——前三项是该次请求的完整输入
+ * （message_start），output 是本条消息输出（message_delta 累计，缺失时回退三项和）。
+ * 返回 null 表示本次不可靠（渠道零值 / 窗口未知），调用方跳过、保持上一轮读数。
+ */
+export function calcContextUsageFromAssistant(
+    usage: AssistantUsage | undefined,
+    lastMaxTokens: number,
+    lastCostUsd: number,
+): ContextUsage | null {
+    if (!usage) return null
+    const totalTokens = (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+        + (usage.cache_read_input_tokens ?? 0) + (usage.output_tokens ?? 0)
+    if (totalTokens === 0) return null
+    if (lastMaxTokens === 0) return null
+    return {
+        totalTokens,
+        maxTokens: lastMaxTokens,
+        percentage: (totalTokens / lastMaxTokens) * 100,
+        costUsd: lastCostUsd,
+    }
+}
+
+/** calcContextUsageFromResult 的返回：兜底上报用水位 + 需要刷新的记忆 */
+export interface ResultUsageRefresh {
+    /** 兜底上报用水位；null = 本次不报（无可靠 assistant usage），保持上一轮读数 */
+    usage: ContextUsage | null
+    /** 本次窗口大小（result 新值 || 调用方旧记忆；0 = 未知，调用方不应采纳） */
     maxTokens: number
-    /** 本次累计成本，供 compact_boundary 复用记忆 */
+    /** 本次累计成本 */
     costUsd: number
 }
 
 /**
- * 从真实 turn 的 result 消息组装用量。
- * - totalTokens = usage 的 input + cache_creation + cache_read（当前窗口占用）
- * - maxTokens = modelUsage 中累计 inputTokens 最大的主模型的 contextWindow
- * - costUsd = total_cost_usd（会话累计成本）
+ * 从 turn 的 result 消息刷新窗口/成本记忆，并用「本 turn 最后一条主线 assistant 的 usage」
+ * 兜底组装一次瞬时水位。
  *
- * 本地命令（/usage /cost /help 等不调主模型的指令）result.usage 为 0 → 返回 null。
- * 判据是 totalTokens===0 这个数据特征，不维护命令清单。
+ * ⚠️ 口径铁律：result.usage 是 turn 内主循环所有请求的**逐项累计**（实测 255232 = 127488+127744），
+ * 不是瞬时窗口占用——**绝不**用 result.usage 的三项和当 totalTokens。
+ * maxTokens / costUsd 只在此消息（modelUsage 主模型 contextWindow / total_cost_usd）。
  */
-export function calcContextUsageFromResult(resultMsg: SDKResultMessage): ContextUsageResult | null {
-    const u = resultMsg.usage
-    const totalTokens = u
-        ? (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
-        : 0
-    // 本地命令 result.usage 为 0，不代表占用归零 → 跳过
-    if (totalTokens === 0) return null
+export function calcContextUsageFromResult(
+    resultMsg: SDKResultMessage,
+    lastAssistantUsage: AssistantUsage | undefined,
+    lastMaxTokens: number,
+): ResultUsageRefresh {
     const entries = Object.values(resultMsg.modelUsage ?? {})
     // 主模型：取累计 inputTokens 最大的（fallback/subagent 可能有多个，主对话占大头）
     const main = entries.length > 0
         ? entries.reduce((a, b) => (b.inputTokens > a.inputTokens ? b : a))
         : null
-    const maxTokens = main?.contextWindow ?? 0
-    // 窗口大小未知（异常/空 result 未填 modelUsage）→ 跳过，避免显示误导性的「0%」与「Xk/0」
-    if (maxTokens === 0) return null
+    const maxTokens = main?.contextWindow || lastMaxTokens
     const costUsd = resultMsg.total_cost_usd ?? 0
     return {
-        usage: {
-            totalTokens,
-            maxTokens,
-            percentage: (totalTokens / maxTokens) * 100,
-            costUsd,
-        },
+        usage: calcContextUsageFromAssistant(lastAssistantUsage, maxTokens, costUsd),
         maxTokens,
         costUsd,
     }

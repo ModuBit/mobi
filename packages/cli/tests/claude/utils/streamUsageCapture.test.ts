@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { StreamUsageCapture, injectUsageFromStream } from './streamUsageCapture'
+import { StreamUsageCapture, injectUsageFromStream } from '../../../src/claude/utils/streamUsageCapture'
 import type { SDKAssistantMessage, SDKPartialAssistantMessage } from '@anthropic-ai/claude-agent-sdk'
 
 /** 构造 stream_event 消息（只填被测字段，其余 as 断言） */
