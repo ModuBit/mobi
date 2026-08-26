@@ -27,7 +27,7 @@ import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
-import { calcContextUsageFromResult, calcContextUsageFromCompact } from "./utils/contextUsageCalc";
+import { calcContextUsageFromAssistant, calcContextUsageFromCompact, calcContextUsageFromResult, type AssistantUsage } from "./utils/contextUsageCalc";
 import { EnhancedMode, type QueryControlRef } from "./types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import type { RawJSONLines } from "./types";
@@ -70,6 +70,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     // （compact_boundary 消息不带 contextWindow 与 costUsd，只能复用上次记忆）
     private lastMaxTokens = 0;
     private lastCostUsd = 0;
+    /** 本 turn 最后一条主线 assistant 的 usage（瞬时水位来源；/clear 时重置） */
+    private lastAssistantUsage: AssistantUsage | undefined
 
     constructor(
         session: Session,
@@ -132,8 +134,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     }
 
     /**
-     * 上下文用量上报（真实 turn 的 result）：组装逻辑见 calcContextUsageFromResult（纯函数）。
-     * 本地命令（/usage 等，usage=0）/ 窗口未知 → 组装返回 null，跳过保持上一轮读数。
+     * result 到达时刷新窗口/成本记忆（这两个值只在 result 消息），并用本 turn 最后一条
+     * 主线 assistant 的 usage 兜底上报一次（与实时上报同值，覆盖无害；首 turn 必经此路径）。
+     * 组装逻辑见 calcContextUsageFromResult（纯函数）。
      * compact / 中断已在 claudeRemote 层过滤（不到此）。记忆 maxTokens/costUsd 供 compact 复用。
      */
     private handleContextUsage(resultMsg: SDKResultMessage, isCompact: boolean): void {
@@ -143,10 +146,10 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             this.lastCostUsd = resultMsg.total_cost_usd ?? this.lastCostUsd
             return
         }
-        const r = calcContextUsageFromResult(resultMsg)
-        if (!r) return
-        this.lastMaxTokens = r.maxTokens
+        const r = calcContextUsageFromResult(resultMsg, this.lastAssistantUsage, this.lastMaxTokens)
+        if (r.maxTokens > 0) this.lastMaxTokens = r.maxTokens
         this.lastCostUsd = r.costUsd
+        if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数
         try {
             this.session.client.reportContextUsage(r.usage)
         } catch (e) {
@@ -319,6 +322,17 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         // 工具开始执行时添加，收到 tool_result 时移除
         const ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
 
+        // 主线 assistant 到达即实时上报水位（turn 内逐步上涨）；零 usage（渠道不返回）跳过。
+        // 箭头捕获 this——onMessage 是 function 声明，内部无 this
+        const reportAssistantUsage = (u: SDKAssistantMessage['message']['usage']) => {
+            if (!u) return
+            this.lastAssistantUsage = u
+            if (this.lastMaxTokens === 0) return  // 首 turn 前窗口未知，等 result 兜底
+            const usage = calcContextUsageFromAssistant(u, this.lastMaxTokens, this.lastCostUsd)
+            if (!usage) return
+            try { session.client.reportContextUsage(usage) } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
+        }
+
         function onMessage(message: SDKMessage) {
             // 重置空闲计时器（Agent 输出）
             session.client.resetIdleTimer();
@@ -343,6 +357,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             permissionHandler.onMessage(message);
 
             if (message.type === 'assistant') {
+                const usageMsg = message as SDKAssistantMessage;
+                if (!usageMsg.parent_tool_use_id) {
+                    const u = usageMsg.message?.usage;
+                    const total = (u?.input_tokens ?? 0) + (u?.cache_creation_input_tokens ?? 0)
+                        + (u?.cache_read_input_tokens ?? 0) + (u?.output_tokens ?? 0);
+                    if (total > 0) reportAssistantUsage(u);
+                }
                 const umessage = message as SDKAssistantMessage;
                 if (umessage.message.content && Array.isArray(umessage.message.content)) {
                     for (const c of umessage.message.content) {
@@ -623,6 +644,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             // 重置成本/窗口记忆，避免下个 compact_boundary 复用上个会话的累计成本
                             this.lastMaxTokens = 0;
                             this.lastCostUsd = 0;
+                            this.lastAssistantUsage = undefined;
                         },
                         onContextUsage: (resultMsg, isCompact) => {
                             this.handleContextUsage(resultMsg, isCompact);
