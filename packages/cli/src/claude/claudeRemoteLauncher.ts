@@ -22,7 +22,7 @@ import { claudeRemote, commandLifecycleToFact, isReplayUserMessage } from "./cla
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
-import type { SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
@@ -75,6 +75,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private lastCostUsd = 0;
     /** 本 turn 最后一条主线 assistant 的 usage（瞬时水位来源；/clear 时重置） */
     private lastAssistantUsage: AssistantUsage | undefined
+    /**
+     * CLI 请求的模型名（system/init.model，与 result.modelUsage key 同源）。
+     * 窗口猜测用它而非 assistant.message.model——网关渠道后者是上游真实名
+     * （如 glm-5.3），与 modelUsage 按请求名查的窗口知识不同源（见 reportAssistantUsage）
+     */
+    private lastRequestModel: string | undefined
 
     constructor(
         session: Session,
@@ -332,14 +338,27 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             this.lastAssistantUsage = u
             // 窗口未记忆（首 turn / resume 后新进程）→ 按模型名预填猜测值，实时上报立即生效，
             // 不必等第一个 result。注意：猜测仅在 result.modelUsage 携带 contextWindow 时才被
-            // 真实值覆盖；渠道不返回该字段时猜测值整个会话生效（已知取舍，pending #57）
+            // 真实值覆盖；渠道不返回该字段时猜测值整个会话生效（已知取舍，pending #57）。
+            // 猜测输入优先用 init 的请求名（lastRequestModel）——网关渠道 assistant.message.model
+            // 是上游真实名（如 glm-5.3），与 modelUsage 按请求名查的窗口知识不同源，会猜出
+            // 与 result 修正值不一致的窗口（实测 [1M] 请求被按上游名猜成 200k）
             if (this.lastMaxTokens === 0) {
-                this.lastMaxTokens = guessContextWindow(model) ?? 0
+                this.lastMaxTokens = guessContextWindow(this.lastRequestModel ?? model) ?? 0
             }
             if (this.lastMaxTokens === 0) return  // 模型名也缺失的极端情况，等 result 兜底
             const usage = calcContextUsageFromAssistant(u, this.lastMaxTokens, this.lastCostUsd)
             if (!usage) return
             try { session.client.reportContextUsage(usage) } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
+        }
+
+        // 记录 CLI 请求名（箭头捕获 this——onMessage 是 function 声明，内部无 this）。
+        // init 先于一切 assistant 到达且每次新 query（含 resume）都重发，模型切换自动更新；
+        // 窗口猜测与 result.modelUsage 同源的模型名
+        const rememberRequestModel = (msg: SDKMessage) => {
+            if (msg.type === 'system' && (msg as SDKSystemMessage).subtype === 'init') {
+                const requestModel = (msg as SDKSystemMessage).model
+                if (requestModel) this.lastRequestModel = requestModel
+            }
         }
 
         function onMessage(message: SDKMessage) {
@@ -364,6 +383,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
             formatClaudeMessageForInk(message, messageBuffer);
             permissionHandler.onMessage(message);
+
+            // 记录 CLI 请求名（实现见 rememberRequestModel 注释）
+            rememberRequestModel(message)
 
             if (message.type === 'assistant') {
                 const usageMsg = message as SDKAssistantMessage;
