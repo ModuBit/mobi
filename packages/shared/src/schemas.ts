@@ -369,11 +369,14 @@ export type TeamState = z.infer<typeof TeamStateSchema>
  * 上下文窗口用量快照
  *
  * 完全由 SDK 消息流派生，**不调用** `Query.getContextUsage()`（后者会触发大量
- * count_tokens / Haiku 兜底请求，撑爆 provider 请求频率限制）。每轮 result 后由 CLI 本地组装：
- * - totalTokens：最后一条 assistant 消息的 input + cache_creation + cache_read（当前窗口占用）
- * - maxTokens：result.modelUsage[model].contextWindow（窗口大小）
+ * count_tokens / Haiku 兜底请求，撑爆 provider 请求频率限制）。由 CLI 本地组装：
+ * - totalTokens：主线最后一条 assistant 消息的 input + cache_creation + cache_read + output
+ *   （message_start 三项输入 + message_delta 累计 output = 该条消息完成后的瞬时窗口占用）
+ * - maxTokens：result.modelUsage[model].contextWindow（窗口大小，仅 result 携带，launcher 记忆）
  * - percentage：totalTokens / maxTokens × 100
- * - costUsd：result.total_cost_usd（会话累计成本）
+ * - costUsd：result.total_cost_usd（会话累计成本，launcher 记忆）
+ * 上报时机：每条主线 assistant 消息实时上报（turn 内上涨）；result 兜底一次；compact_boundary
+ * 用 post_tokens 反映压缩后占用。注意 result.usage 是 turn 内累计，不是瞬时水位，不作 totalTokens。
  *
  * 不再包含分类细分（system/tools/mcp/memory）——那只有 getContextUsage 能给，代价过高。
  * 「距窗口上限剩余」= maxTokens − totalTokens，无需阈值。
