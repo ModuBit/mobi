@@ -22,6 +22,7 @@ import {
     AT_BOTTOM_THRESHOLD,
     SMOOTH_SCROLL_FALLBACK_MS,
     REFOLLOW_DEBOUNCE_MS,
+    CHASE_ABORT_RETRY_MS,
     type StickToBottomController,
 } from '@/components/chat/useStickToBottom'
 
@@ -455,6 +456,37 @@ describe('useStickToBottom — smooth 门闩', () => {
 })
 
 describe('useStickToBottom — 平滑追赶（修换行/增高瞬跳）', () => {
+    it('追赶中 enabled 翻 false → 下一帧停追（RO 已断开，rAF 循环不得残留）', () => {
+        const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        const { rerender, Probe } = renderHook(true, el)
+        setScrollHeight(3000)
+        act(() => { FakeResizeObserver.instances[0].trigger() })
+        stepFrames(2)
+        const mid = el.scrollTop
+        expect(mid).toBeGreaterThan(500)
+
+        rerender(<Probe on={false} />)
+        stepFrames(20)
+        expect(el.scrollTop).toBe(mid)
+    })
+
+    it('追赶被外部干预中止 → 短延时后自动补追（修 turn 末尾残差：旧实现每次 RO 都精确钉底）', () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
+        renderHook(true, el)
+        setScrollHeight(3000)
+        act(() => { FakeResizeObserver.instances[0].trigger() })
+        stepFrames(2)
+        act(() => { el.scrollTop = 800 }) // 外部干预（如浏览器 clamp / 程序补偿）
+        stepFrames(5)
+        expect(el.scrollTop).toBe(800) // 先让位
+
+        // 干预是一次性调整而非持续控制——短延时后重估：仍跟随且距底 > snap 则恢复追赶
+        act(() => { vi.advanceTimersByTime(CHASE_ABORT_RETRY_MS + 1) })
+        stepFrames(40)
+        expect(el.scrollTop).toBe(2500)
+    })
+
     it('追赶途中触发 scrollend（追赶自身滚动的 settle）不打断追赶（回归：scrollend 无条件补钉致追赶退化为单帧瞬跳）', () => {
         const { el, setScrollHeight } = makeScroller({ scrollHeight: 1000, clientHeight: 500, scrollTop: 500 })
         renderHook(true, el)

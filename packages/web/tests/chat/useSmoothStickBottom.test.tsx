@@ -124,6 +124,20 @@ describe('useSmoothStickBottom — 小容器缓动贴底', () => {
         expect(el.scrollTop).toBe(0)
         expect(rafMap.size).toBe(0)
     })
+
+    it('追赶进行中 enabled 翻 false → 下一帧停追（契约：禁用即不动作，不含在飞的 rAF）', () => {
+        const { el } = makeScroller({ scrollHeight: 1000, clientHeight: 200, scrollTop: 0 })
+        const { rerender } = renderProbe(el, 'a', true)
+        rerenderProbe(rerender, el, 'b', true)
+        stepFrames(2)
+        const mid = el.scrollTop
+        expect(mid).toBeGreaterThan(0)
+
+        rerenderProbe(rerender, el, 'c', false)
+        stepFrames(20)
+        // 已排队的帧循环须被禁用守卫拦下，不得继续把容器拉到底
+        expect(el.scrollTop).toBe(mid)
+    })
 })
 
 // rerender 辅助：重新渲染 Probe（保持组件实例）

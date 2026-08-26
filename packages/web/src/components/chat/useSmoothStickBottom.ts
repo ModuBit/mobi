@@ -15,14 +15,15 @@
  */
 
 import { useEffect, useRef, type RefObject } from 'react'
-import { CHASE_EASE, CHASE_SNAP_PX } from './useStickToBottom'
+import { chaseStep } from './scrollChase'
 
 /**
  * 小容器（如 thinking 内容盒）的缓动贴底。
  *
- * 与 useStickToBottom（主聊天列表）共用同一套追赶参数：trigger 变化（流式
- * 内容增长信号）→ 启动 rAF 缓动追赶，替代 `scrollTop = scrollHeight` 硬跳
- * （换行/增高时容器内容瞬跳一行，快输出下「一跳一跳」）。
+ * 与 useStickToBottom（主聊天列表）共用同一套追赶机制（{@link chaseStep}，
+ * 含缓动数学/精确贴底/外部干预检测）：trigger 变化（流式内容增长信号）→
+ * 启动 rAF 缓动追赶，替代 `scrollTop = scrollHeight` 硬跳（换行/增高时
+ * 容器内容瞬跳一行，快输出下「一跳一跳」）。
  *
  * 与主列表 hook 的差异：无跟随意图管理（手势/恢复跟随）——容器语义是
  * 「流式期间恒贴底」，与旧硬钉一致；但保留**外部干预让位**：每帧核对上次
@@ -31,7 +32,7 @@ import { CHASE_EASE, CHASE_SNAP_PX } from './useStickToBottom'
  *
  * @param ref 滚动容器
  * @param trigger 变化即视为「内容可能增长」的信号（如流式 text）
- * @param enabled 是否启用（流式中 true；收起/历史态 false）
+ * @param enabled 是否启用（流式中 true；收起/历史态 false——含在飞帧循环的急停）
  */
 export function useSmoothStickBottom(
     ref: RefObject<HTMLElement | null>,
@@ -40,6 +41,10 @@ export function useSmoothStickBottom(
 ): void {
     const rafRef = useRef(0)
     const expectedTopRef = useRef<number | null>(null)
+    // enabled 的最新值：在飞的追赶帧循环据此急停（effect 只拦新启动，rAF 链
+    // 不会自动断——契约「禁用即不动作」须在帧内自守卫）
+    const enabledRef = useRef(enabled)
+    enabledRef.current = enabled
 
     useEffect(() => {
         if (!enabled) return
@@ -49,27 +54,15 @@ export function useSmoothStickBottom(
         const frame = () => {
             rafRef.current = 0
             const el = ref.current
-            if (!el) {
+            if (!el || !enabledRef.current) {
                 expectedTopRef.current = null
                 return
             }
-            // 外部干预检测：上一帧设置的值被改动 → 中止让位（下次 trigger 重新接管）
-            if (expectedTopRef.current !== null && el.scrollTop !== expectedTopRef.current) {
-                expectedTopRef.current = null
-                return
+            const step = chaseStep(el, expectedTopRef.current)
+            expectedTopRef.current = step.expectedTop
+            if (!step.done) {
+                rafRef.current = requestAnimationFrame(frame)
             }
-            const bottom = el.scrollHeight - el.clientHeight
-            const dist = bottom - el.scrollTop
-            if (dist <= CHASE_SNAP_PX) {
-                el.scrollTop = bottom
-                expectedTopRef.current = null
-                return
-            }
-            el.scrollTop += dist * CHASE_EASE
-            // 期望值取「写后读回」：浏览器会把 scrollTop snap 到物理像素网格，
-            // 存浮点计算值会下一帧误判「外部干预」而中止
-            expectedTopRef.current = el.scrollTop
-            rafRef.current = requestAnimationFrame(frame)
         }
         rafRef.current = requestAnimationFrame(frame)
     }, [trigger, enabled, ref])

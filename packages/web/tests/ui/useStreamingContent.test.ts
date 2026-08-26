@@ -181,6 +181,21 @@ describe('useStreamingContent', () => {
         expect(Math.max(...lens.slice(1).map((l, i) => l - lens[i]), 0)).toBeLessThanOrEqual(5)
     })
 
+    it('EMA 冷启动（首个 ≥16ms 样本前）按基础速率揭示——起笔不慢速', () => {
+        // 首快照 40 字符（gap ≤ 50 走稳态分支）：EMA 未热时的稳态速率应为基础速率
+        //（~90-100 chars/s），不得塌到 MIN_RATE 20 chars/s（表现为开头打字极慢）
+        const { result, rerender } = renderHook(({ t }) => useStreamingContent(t, true), {
+            initialProps: { t: '' },
+        })
+        rerender({ t: 'a'.repeat(40) })
+        step(16)
+        step(16)
+        step(16)
+        // 基础速率 × 48ms ≈ 4-5 字符；bug 态（EMA=0 → 20 chars/s）48ms 仅 ~1 字符
+        expect(result.current.length).toBeGreaterThanOrEqual(4)
+        expect(result.current.length).toBeLessThan(40)
+    })
+
     it('慢速到达期间揭示流连续：无 ≥4 帧连续停滞（gap>0 时，jitter buffer）', () => {
         // 每 200ms 到达 10 字符（有效 50 chars/s，低于基础速率 100）。
         // 旧实现按基础速率揭示 → 每轮 100ms 追平、停滞 100ms 等下一批（一断一断）；
@@ -200,9 +215,10 @@ describe('useStreamingContent', () => {
                 lens.push(result.current.length)
             }
         }
-        // gap>0 期间的连续停滞帧数（旧实现每轮停滞 ~6 帧等快照）
+        // gap>0 期间的连续停滞帧数。跳过冷启动首轮（EMA 未热按基础速率揭示，
+        // 有一轮旧节奏的追赶-停滞；第 2 轮起速率匹配生效）
         let maxDry = 0, dry = 0
-        for (let i = 1; i < lens.length; i++) {
+        for (let i = 13; i < lens.length; i++) {
             if (lens[i] === lens[i-1] && lens[i] < targetLen) dry++
             else dry = 0
             maxDry = Math.max(maxDry, dry)

@@ -90,8 +90,10 @@ export function useStreamingContent(target: string, streaming?: boolean): string
     // 否则 full message 到达时 streaming 变 false 会立即全显，覆盖 snapshot 阶段的逐字
     const wasStreamingRef = useRef(!!streaming)
     const streamingRef = useRef(!!streaming)
-    // 到达速率 EMA（char/ms）：快照节奏的有效吞吐，供稳态速率匹配（jitter buffer）
-    const arrivalEmaRef = useRef(0)
+    // 到达速率 EMA（char/ms）：快照节奏的有效吞吐，供稳态速率匹配（jitter buffer）。
+    // 初始为基础速率——冷启动（首个 ≥16ms 样本前）按基础速率揭示，与旧节奏一致，
+    // 不因 EMA 未热塌到下限（否则每条消息开头都有一个 ~20 chars/s 的慢速窗口）
+    const arrivalEmaRef = useRef(STREAM_BASE_RATE)
     const arrivalLastRef = useRef<{ t: number; len: number } | null>(null)
     // 揭示量浮点累积：慢速率（<1 字符/帧）跨帧凑整提交，避免「每帧强制 ≥1 字符」
     // 把缓冲瞬间榨干又停滞（这正是「一断一断」的成因之一）

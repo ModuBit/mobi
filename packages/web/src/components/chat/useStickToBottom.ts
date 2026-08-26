@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { chaseStep } from './scrollChase'
 
 /**
  * 距底部小于此像素即视为「在底部」，用于**恢复**跟随。
@@ -45,16 +46,14 @@ export const SMOOTH_SCROLL_FALLBACK_MS = 1000
 export const REFOLLOW_DEBOUNCE_MS = 150
 
 /**
- * 追赶缓动：每帧追掉「距底部剩余距离」的比例。
+ * 追赶被外部干预中止后的补追延时（ms）。
  *
- * 流式内容增高（换行/新增块）不再瞬跳（`scrollTop = scrollHeight` 一行高度直落），
- * 而是指数缓动追赶——一行 ~22px 约 8 帧（~130ms）平滑滚下，快输出/窄屏下
- * 持续增高的场景列表平滑跟随而非一跳一跳。
+ * 外部干预（浏览器 clamp / 程序补偿）是一次性调整而非持续控制——中止让位后
+ * 短延时重估：仍跟随且距底 > snap 则恢复追赶。缺了这层，turn 最后一次增高
+ * 的追赶若恰好被 settle 补偿打断，列表会永久停在距底 ~一行处（旧实现每次
+ * RO 都精确钉底，不存在该残差）。
  */
-export const CHASE_EASE = 0.25
-
-/** 距底 ≤ 此像素直接贴齐（精确收敛：turn 结束 finalDist === 0） */
-export const CHASE_SNAP_PX = 1
+export const CHASE_ABORT_RETRY_MS = 300
 
 /** 内容总高所在层的选择器。antdx Bubble.List 的 scroller（scrollBoxNativeElement）直接子元素是
  *  `.ant-bubble-list-scroll-content`（内容层），高度随消息/bubble 高度变化——RO 观测它驱动贴底跟随。 */
@@ -121,6 +120,10 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
     // 跟随意图。ref 供事件/observer 同步读写（避免闭包读到旧值），state 仅用于驱动按钮渲染
     const followRef = useRef(true)
     const [following, setFollowing] = useState(true)
+    // enabled 的最新值：在飞的追赶帧循环据此急停（enabled=false 后 RO/监听已拆，
+    // 但 rAF 链不会自动断——契约「禁用即不动作」须在帧内自守卫）
+    const enabledRef = useRef(enabled)
+    enabledRef.current = enabled
 
     const setFollow = useCallback((next: boolean) => {
         if (followRef.current === next) return
@@ -165,47 +168,52 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
     }, [])
 
     /**
-     * 平滑追赶（RO 增高的主路径）：每帧追掉剩余距离的 {@link CHASE_EASE}，
-     * ≤{@link CHASE_SNAP_PX} 贴齐。修「换行时列表瞬跳一行」（快输出/窄屏下
-     一跳一跳）。三重让位守卫：停止跟随 / smooth 门闩 / 指针按住；另检测
+     * 平滑追赶（RO 增高的主路径）：每帧经 {@link chaseStep} 缓动追底（修「换行时
+     * 列表瞬跳一行」）。让位守卫：禁用 / 停止跟随 / smooth 门闩 / 指针按住 /
      * 外部程序改 scrollTop（prepend 恢复补偿、浏览器 clamp）——被改动即中止，
-     * 不与任何外部滚动控制争抢。
+     * 但干预是一次性调整而非持续控制，中止后 {@link CHASE_ABORT_RETRY_MS}
+     * 重估补追（防 turn 末尾残差）。
      */
     const chaseRafRef = useRef(0)
     const chaseExpectedTopRef = useRef<number | null>(null)
+    const chaseRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const stopChase = useCallback(() => {
         if (chaseRafRef.current !== 0) cancelAnimationFrame(chaseRafRef.current)
         chaseRafRef.current = 0
         chaseExpectedTopRef.current = null
+        if (chaseRetryTimerRef.current !== null) {
+            clearTimeout(chaseRetryTimerRef.current)
+            chaseRetryTimerRef.current = null
+        }
     }, [])
 
     const chaseFrame = useCallback(() => {
         chaseRafRef.current = 0
         const scroller = scrollerElRef.current
-        if (!scroller || !followRef.current || smoothScrollingRef.current || pointerDownRef.current) {
+        if (!scroller || !enabledRef.current || !followRef.current
+            || smoothScrollingRef.current || pointerDownRef.current) {
             chaseExpectedTopRef.current = null
             return
         }
-        // 外部干预检测：上一帧设置的值被别人改动（prepend 恢复 / clamp）→ 中止让位
-        if (chaseExpectedTopRef.current !== null
-            && scroller.scrollTop !== chaseExpectedTopRef.current) {
-            chaseExpectedTopRef.current = null
+        const step = chaseStep(scroller, chaseExpectedTopRef.current)
+        chaseExpectedTopRef.current = step.expectedTop
+        if (step.aborted) {
+            // 中止让位 + 短延时重估：守卫内联（不调 chaseIfFollowing，避免 useCallback 循环依赖）
+            if (chaseRetryTimerRef.current === null) {
+                chaseRetryTimerRef.current = setTimeout(() => {
+                    chaseRetryTimerRef.current = null
+                    if (!enabledRef.current || !followRef.current) return
+                    if (smoothScrollingRef.current || pointerDownRef.current) return
+                    if (chaseRafRef.current !== 0) return
+                    chaseRafRef.current = requestAnimationFrame(chaseFrame)
+                }, CHASE_ABORT_RETRY_MS)
+            }
             return
         }
-        const bottom = scroller.scrollHeight - scroller.clientHeight
-        const dist = bottom - scroller.scrollTop
-        if (dist <= CHASE_SNAP_PX) {
-            // 收敛（含 dist=0 / 内容收缩的负值）→ 精确贴底
-            scroller.scrollTop = bottom
-            chaseExpectedTopRef.current = null
-            return
+        if (!step.done) {
+            chaseRafRef.current = requestAnimationFrame(chaseFrame)
         }
-        scroller.scrollTop += dist * CHASE_EASE
-        // 期望值取「写后读回」：浏览器会把 scrollTop snap 到物理像素网格
-        //（DPR 2 时 0.5px 粒度），存浮点计算值会下一帧误判「外部干预」而中止
-        chaseExpectedTopRef.current = scroller.scrollTop
-        chaseRafRef.current = requestAnimationFrame(chaseFrame)
     }, [])
 
     const chaseIfFollowing = useCallback(() => {
@@ -235,11 +243,6 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         pinToBottom()
     }, [pinToBottom])
 
-    /**
-     * 门闩解除时补钉：smooth 期间 RO/onScroll/totalListHeightChanged 均被门闩跳过，
-     * 若内容在 smooth 进行中变化，最后一次变化未被钉底。门闩解除（scrollend / 定时器兜底 /
-     * behavior='auto'）统一在此补一次，避免残留。
-     */
     /**
      * 门闩解除时补钉：smooth 期间 RO/onScroll/totalListHeightChanged 均被门闩跳过，
      * 若内容在 smooth 进行中变化，最后一次变化未被钉底。门闩解除（scrollend / 定时器兜底）
