@@ -378,6 +378,12 @@ export async function sdkOutputLoop(
          * post_tokens 为可选字段（失败时缺失）→ 传入 undefined，launcher 保持上一轮读数。
          */
         onCompactBoundary?: (postTokens: number | undefined) => void
+        /**
+         * 上下文被清空（conversation_reset：claude 侧 /clear，非 mobi 特殊命令路径）时触发。
+         * launcher 上报 null 清空水位并重置 maxTokens/costUsd/lastAssistantUsage 记忆——
+         * 否则水位线残留旧会话值直到下一条 assistant 才被覆盖。
+         */
+        onContextCleared?: () => void
     },
 ): Promise<void> {
     let queryStarted = false;
@@ -456,6 +462,13 @@ export async function sdkOutputLoop(
             const meta = (message as SDKCompactBoundaryMessage).compact_metadata;
             const postTokens = typeof meta?.post_tokens === 'number' ? meta.post_tokens : undefined;
             opts.onCompactBoundary?.(postTokens);
+        }
+
+        // conversation_reset（claude 侧 /clear）：与 mobi /clear 特殊命令同样清空用量与记忆。
+        // 注意它是顶层 type（SDKConversationResetMessage），不是 system 的 subtype。
+        // mobi /clear 不经此（specialCommand 拦截后重启 query，不产生此消息），故无双触发
+        if (message.type === 'conversation_reset') {
+            opts.onContextCleared?.();
         }
 
         // 处理 result 消息：不阻塞，直接继续拉取后台消息
@@ -980,6 +993,7 @@ export async function claudeRemote(opts: {
                 onCompactCompleted: opts.onCompactCompleted,
                 onContextUsage: opts.onContextUsage,
                 onCompactBoundary: opts.onCompactBoundary,
+                onContextCleared: opts.onContextCleared,
                 signal: loopAbort.signal,
             }),
             userInputLoop(messages, loopCtx, {
