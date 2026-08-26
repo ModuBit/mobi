@@ -16,27 +16,54 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { computeRevealRate, STREAM_BASE_RATE, useStreamingContent } from '@/components/ui/useStreamingContent'
+import {
+    computeRevealRate,
+    STREAM_BASE_RATE,
+    revealIntervalFor,
+    useStreamingContent,
+} from '@/components/ui/useStreamingContent'
 
-describe('computeRevealRate', () => {
-    it('积压时按 char/ms 计算速率，使积压在 ~500ms 内匀速追完（而非数帧脉冲清空）', () => {
-        // 150 字符积压：期望 ~0.3 char/ms（150 / 500ms），不应是 ~5（帧数被当 ms 用）
-        const rate = computeRevealRate(150)
-        // 上界：一帧 16ms × rate 揭示量应远小于 150（不能 2 帧清空 80%）
-        // rate < 0.5 → 一帧最多 ~8 字符，30+ 帧才追完 = 匀速
+describe('revealIntervalFor（长度自适应节流档位）', () => {
+    it('正常长度（≤4k 字符）每帧揭示（interval 0）', () => {
+        expect(revealIntervalFor(0)).toBe(0)
+        expect(revealIntervalFor(4000)).toBe(0)
+    })
+
+    it('超长内容逐级拉长揭示间隔，把单段全量 re-parse 的每帧成本封顶', () => {
+        expect(revealIntervalFor(4001)).toBe(32)
+        expect(revealIntervalFor(8000)).toBe(32)
+        expect(revealIntervalFor(8001)).toBe(48)
+        expect(revealIntervalFor(16000)).toBe(48)
+        expect(revealIntervalFor(16001)).toBe(64)
+        expect(revealIntervalFor(100000)).toBe(64)
+    })
+})
+
+describe('computeRevealRate（速率匹配揭示）', () => {
+    it('积压超过阈值时按 char/ms 加速追赶，使积压在 ~500ms 内匀速追完', () => {
+        const rate = computeRevealRate(150, 0.05)
         expect(rate).toBeLessThan(0.5)
         expect(rate).toBeGreaterThan(STREAM_BASE_RATE)
     })
 
-    it('积压低于阈值时回落基础速率', () => {
-        expect(computeRevealRate(30)).toBe(STREAM_BASE_RATE)
-    })
-
     it('一帧（~16ms）揭示量不应超过积压的 10%（杜绝脉冲式大块）', () => {
         const gap = 200
-        const rate = computeRevealRate(gap)
-        const charsPerFrame = rate * 16 // 60fps 一帧
+        const rate = computeRevealRate(gap, 0.05)
+        const charsPerFrame = rate * 16
         expect(charsPerFrame).toBeLessThan(gap * 0.1)
+    })
+
+    it('稳态（积压低于阈值）：揭示速率贴着到达速率略慢，保持缓冲不榨干（jitter buffer）', () => {
+        // 到达 50 chars/s（0.05 char/ms）慢于基础速率 → 旧实现按 100 chars/s 揭示会
+        // 追平后停滞等快照（一断一断）；匹配策略以 0.9×到达速率持续揭示
+        const rate = computeRevealRate(20, 0.05)
+        expect(rate).toBeCloseTo(0.045)
+        expect(rate).toBeLessThan(0.05) // 永不快于到达 → 缓冲单调不空
+    })
+
+    it('稳态速率有下限：到达速率极低（EMA 冷启动/长间歇）时不塌零', () => {
+        expect(computeRevealRate(20, 0)).toBeGreaterThan(0)
+        expect(computeRevealRate(20, 0)).toBeLessThanOrEqual(STREAM_BASE_RATE)
     })
 })
 
@@ -133,8 +160,6 @@ describe('useStreamingContent', () => {
     })
 
     it('每帧连续更新：连续两帧 display 都增长（无 20fps 节流的跳帧阶梯）', () => {
-        // 增量 Markdown（稳定前缀拆分）把每帧 re-parse 压到 O(尾部) 后，
-        // 揭示不再节流——每 rAF 帧小幅推进，连续流动感。
         // target 100 字符（>50 触发追赶）：追赶速率 100/500ms = 0.2 char/ms
         const target = 'a'.repeat(100)
         const { result, rerender } = renderHook(({ t }) => useStreamingContent(t, true), {
@@ -154,5 +179,63 @@ describe('useStreamingContent', () => {
         }
         // 单帧步长应是小幅（追赶速率 0.2 char/ms × 16ms ≈ 3 字符）
         expect(Math.max(...lens.slice(1).map((l, i) => l - lens[i]), 0)).toBeLessThanOrEqual(5)
+    })
+
+    it('慢速到达期间揭示流连续：无 ≥4 帧连续停滞（gap>0 时，jitter buffer）', () => {
+        // 每 200ms 到达 10 字符（有效 50 chars/s，低于基础速率 100）。
+        // 旧实现按基础速率揭示 → 每轮 100ms 追平、停滞 100ms 等下一批（一断一断）；
+        // 速率匹配后以 ~45 chars/s 持续揭示，gap 不榨干 → 揭示流连续
+        const { result, rerender } = renderHook(({ t }) => useStreamingContent(t, true), {
+            initialProps: { t: '' },
+        })
+        let target = ''
+        let targetLen = 0
+        const lens: number[] = []
+        for (let round = 0; round < 8; round++) {
+            targetLen += 10
+            target = 'a'.repeat(targetLen)
+            act(() => { rerender({ t: target }) })
+            for (let f = 0; f < 12; f++) {
+                step(16)
+                lens.push(result.current.length)
+            }
+        }
+        // gap>0 期间的连续停滞帧数（旧实现每轮停滞 ~6 帧等快照）
+        let maxDry = 0, dry = 0
+        for (let i = 1; i < lens.length; i++) {
+            if (lens[i] === lens[i-1] && lens[i] < targetLen) dry++
+            else dry = 0
+            maxDry = Math.max(maxDry, dry)
+        }
+        expect(maxDry).toBeLessThanOrEqual(3)
+        flush(60)
+        expect(result.current).toBe(target)
+    })
+
+    it('超长内容自适应节流：每帧到达但隔档揭示（48ms 档，非每帧），节奏仍连续', () => {
+        // target 10k 字符 → 48ms 档：单段全量 re-parse 是 O(全文)，隔 3 帧揭示一次
+        // 把每帧成本封顶；rAF 每帧仍被调度（间隔未到直接让位）
+        const target = 'a'.repeat(10000)
+        const { result, rerender } = renderHook(({ t }) => useStreamingContent(t, true), {
+            initialProps: { t: '' },
+        })
+        rerender({ t: target })
+        expect(rafMap.size).toBeGreaterThan(0)
+
+        const lens: number[] = [result.current.length]
+        for (let i = 0; i < 6; i++) {
+            step(16)
+            lens.push(result.current.length)
+        }
+        // 16ms × 3 = 48ms 才揭示一次：6 帧中恰 2 次揭示（第 3、6 帧）
+        const reveals = lens.slice(1).filter((l, i) => l > lens[i])
+        expect(reveals).toHaveLength(2)
+        // 揭示步长按 dt=48ms 计（追赶速率 10k/500ms=20 char/ms × 48ms ≈ 960 字符），
+        // 不会因节流脉冲清空——单次揭示仍是小比例
+        const steps = lens.slice(1).map((l, i) => l - lens[i]).filter(d => d > 0)
+        expect(Math.max(...steps)).toBeLessThanOrEqual(1000)
+        // 持续推进到收敛
+        flush(60)
+        expect(result.current).toBe(target)
     })
 })

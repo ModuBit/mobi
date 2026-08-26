@@ -20,6 +20,7 @@ import ThinkIcon from '@ant-design/x/es/think/icons/think'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from '@/components/ui/Markdown'
 import { StatusStateIcon } from '@/components/tool-card/toolIcons'
+import { useSmoothStickBottom } from '@/components/chat/useSmoothStickBottom'
 
 /** 思考过程渲染 */
 export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isStreaming, durationMs }: {
@@ -37,11 +38,9 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
         if (!thinking) setExpanded(false)
     }, [thinking])
 
-    useEffect(() => {
-        if (isStreaming && contentRef.current) {
-            contentRef.current.scrollTop = contentRef.current.scrollHeight
-        }
-    }, [text, isStreaming])
+    // 流式期间内容盒缓动贴底（替代 scrollTop = scrollHeight 硬跳——换行时
+    // 内容瞬跳一行，快输出下「一跳一跳」）；trigger = text，每帧揭示都会续追
+    useSmoothStickBottom(contentRef, text, !!isStreaming)
 
     // 完成态：耗时 ≥ 100ms 展示「思考完成 · X.X秒」；
     // < 100ms（interleaved thinking 的极短片段，toFixed 得 0.0s 无意义）/ 无耗时（local/历史消息）退化为「思考完成」

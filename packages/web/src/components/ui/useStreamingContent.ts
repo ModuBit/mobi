@@ -22,20 +22,51 @@ export const STREAM_BASE_RATE = 0.1
 const STREAM_CATCHUP_THRESHOLD = 50
 /** 积压追赶时长（毫秒）：积压内容在此时长内匀速追完，约一个 snapshot 间隔 */
 const STREAM_CATCHUP_DURATION_MS = 500
+/**
+ * 稳态揭示速率相对到达速率的折扣：刻意略慢于到达，让缓冲单调不空——
+ * 揭示流连续（jitter buffer 语义），替代「尽快追平→停滞等快照」的停-走循环
+ */
+const STREAM_MATCH_FACTOR = 0.9
+/** 稳态速率下限：到达速率未知/极低（EMA 冷启动、长间歇）时不塌零 */
+const STREAM_MIN_RATE = 0.02
+/** 到达速率 EMA 的上界（char/ms）：防同帧 rerender 等极端瞬时速率污染 */
+const STREAM_ARRIVAL_EMA_CAP = 2
+
+/**
+ * 长度自适应节流档位（target 字符数 → 最小揭示间隔 ms）。
+ *
+ * 单段渲染下 XMarkdown 对 content 是全量 parse + 全量 sanitize + 全量建树
+ * （库的流式优化只覆盖输入稳定层，见 useStreaming hook），每揭示一次的成本
+ * 随内容长度线性增长。正常长度每帧揭示（60-120Hz 连续流动感）；超长内容
+ * 逐级拉长间隔把每帧成本封顶——时间制档位不随屏幕刷新率漂移（120Hz 屏
+ * 与 60Hz 屏的揭示节奏一致）。流式中 target 单调增长，档位只升不降，
+ * 无边界抖动问题。
+ */
+const STREAM_INTERVAL_TIERS: Array<{ maxLen: number; interval: number }> = [
+    { maxLen: 4000, interval: 0 },
+    { maxLen: 8000, interval: 32 },
+    { maxLen: 16000, interval: 48 },
+    { maxLen: Number.POSITIVE_INFINITY, interval: 64 },
+]
+
+/** 按内容长度取最小揭示间隔（ms），档位语义见 {@link STREAM_INTERVAL_TIERS} */
+export function revealIntervalFor(len: number): number {
+    return STREAM_INTERVAL_TIERS.find(tier => len <= tier.maxLen)!.interval
+}
 
 /**
  * 计算逐字揭示速率（字符/毫秒）。
- * 积压超过阈值时加速追平，否则回落到基础速率。
  *
- * 单位为 char/ms，与 STREAM_BASE_RATE 一致——这样 `chars = round(rate * dt_ms)`
- * 在基础与追赶两条分支都自洽。曾误用「帧数」(STREAM_CATCHUP_FRAMES) 作分母，
- * 被当成 ms 与 BASE_RATE 合并，使追赶速率放大约 16×（1帧≈16ms），
- * 导致每批 snapshot 在 2~3 帧内脉冲式清空 80%，表现为流式「一大块一大块」。
+ * - 积压超过阈值：加速追赶（gap / 500ms），使批量快照在 ~一个间隔内匀速追完
+ * - 稳态（积压低于阈值）：**速率匹配**——贴着到达速率 × 0.9 揭示且封顶基础速率。
+ *   到达慢于基础速率时（慢模型/proxy/突发快照），旧实现按基础速率揭示会追平
+ *   缓冲后停滞等下一批（体感「一断一断」）；匹配策略让揭示流连续、缓冲不榨干
  */
-export function computeRevealRate(gap: number): number {
-    return gap > STREAM_CATCHUP_THRESHOLD
-        ? Math.max(STREAM_BASE_RATE, gap / STREAM_CATCHUP_DURATION_MS)
-        : STREAM_BASE_RATE
+export function computeRevealRate(gap: number, arrivalRate: number): number {
+    if (gap > STREAM_CATCHUP_THRESHOLD) {
+        return Math.max(STREAM_BASE_RATE, gap / STREAM_CATCHUP_DURATION_MS)
+    }
+    return Math.min(STREAM_BASE_RATE, Math.max(STREAM_MIN_RATE, arrivalRate * STREAM_MATCH_FACTOR))
 }
 
 /**
@@ -58,14 +89,38 @@ export function useStreamingContent(target: string, streaming?: boolean): string
     // - 流式结束后的 full message（曾流式）→ 继续逐字到收敛，不被 snapToFull 打断
     // 否则 full message 到达时 streaming 变 false 会立即全显，覆盖 snapshot 阶段的逐字
     const wasStreamingRef = useRef(!!streaming)
+    const streamingRef = useRef(!!streaming)
+    // 到达速率 EMA（char/ms）：快照节奏的有效吞吐，供稳态速率匹配（jitter buffer）
+    const arrivalEmaRef = useRef(0)
+    const arrivalLastRef = useRef<{ t: number; len: number } | null>(null)
+    // 揭示量浮点累积：慢速率（<1 字符/帧）跨帧凑整提交，避免「每帧强制 ≥1 字符」
+    // 把缓冲瞬间榨干又停滞（这正是「一断一断」的成因之一）
+    const revealProgressRef = useRef(0)
     const rafRef = useRef(0)
 
     useEffect(() => {
         targetRef.current = target
+        streamingRef.current = !!streaming
+
+        // 到达速率 EMA：仅在实际有新内容时更新（无新增不衰减——间歇≠吞吐为零）。
+        // dt < 一帧（16ms）的样本不采——同帧多次更新时 dt 被钳到 1ms，瞬时速率
+        // 虚高会污染 EMA；其字符量自然并入下一个 ≥16ms 样本
+        const now = performance.now()
+        const last = arrivalLastRef.current
+        if (last && target.length > last.len && now - last.t >= 16) {
+            const dt = now - last.t
+            const inst = (target.length - last.len) / dt
+            arrivalEmaRef.current = Math.min(
+                STREAM_ARRIVAL_EMA_CAP,
+                arrivalEmaRef.current * 0.3 + inst * 0.7,
+            )
+        }
+        arrivalLastRef.current = { t: now, len: target.length }
 
         const snapToFull = () => {
             cancelAnimationFrame(rafRef.current)
             rafRef.current = 0
+            revealProgressRef.current = 0
             revealedRef.current = targetRef.current.length
             setDisplay(targetRef.current)
         }
@@ -88,24 +143,49 @@ export function useStreamingContent(target: string, streaming?: boolean): string
 
         // 曾流式（含 full message 替换 snapshot 后 streaming 变 false）且有未揭示内容 → 继续逐字到收敛
         if (revealedRef.current < target.length && rafRef.current === 0) {
-            let lastTime = performance.now()
+            let lastRevealTime = performance.now()
             const tick = (now: number) => {
-                const dt = Math.max(now - lastTime, 1)
-                lastTime = now
+                // 长度自适应节流：间隔未到直接让位（rAF 每帧仍被调度），
+                // 揭示量按实际间隔 dt 计——节奏拉长的同时速率守恒，不会脉冲清空
+                const interval = revealIntervalFor(targetRef.current.length)
+                if (now - lastRevealTime < interval) {
+                    rafRef.current = requestAnimationFrame(tick)
+                    return
+                }
+                const dt = Math.max(now - lastRevealTime, 1)
+                lastRevealTime = now
 
                 const gap = targetRef.current.length - revealedRef.current
-                const rate = computeRevealRate(gap)
-                const chars = Math.max(1, Math.round(rate * dt))
-                revealedRef.current = Math.min(revealedRef.current + chars, targetRef.current.length)
+                if (gap <= 0) {
+                    // 缓冲已空：停转待下一个快照唤醒（effect 重启 tick）。
+                    // 速率匹配下稳态 gap 不归零，此路径只在「真正无内容可显」时进入
+                    revealProgressRef.current = 0
+                    rafRef.current = 0
+                    return
+                }
 
-                // 每帧更新：增量 Markdown（Markdown 组件按稳定前缀拆双段）把每帧的
-                // re-parse 成本压到 O(尾部小块)，无需再节流。每帧揭示 1-3 字符的
-                // 连续流动感（120Hz 屏同样平滑）取代旧 50ms 节流的 20fps 阶梯跳变
-                setDisplay(targetRef.current.slice(0, revealedRef.current))
+                // 消息已结束（streaming 翻 false）→ 无需保缓冲，全速收敛
+                const rate = streamingRef.current
+                    ? computeRevealRate(gap, arrivalEmaRef.current)
+                    : Math.max(STREAM_BASE_RATE, gap / STREAM_CATCHUP_DURATION_MS)
+
+                revealProgressRef.current += rate * dt
+                const commit = Math.floor(revealProgressRef.current)
+                if (commit >= 1) {
+                    revealProgressRef.current -= commit
+                    revealedRef.current = Math.min(
+                        revealedRef.current + commit,
+                        targetRef.current.length,
+                    )
+                    // 正常长度（≤4k）每帧提交 1-3 字符的连续流动感（120Hz 屏同样平滑）；
+                    // 超长内容由 interval 档位拉长节奏，替代旧 50ms 节流的 20fps 阶梯跳变
+                    setDisplay(targetRef.current.slice(0, revealedRef.current))
+                }
 
                 if (revealedRef.current < targetRef.current.length) {
                     rafRef.current = requestAnimationFrame(tick)
                 } else {
+                    revealProgressRef.current = 0
                     rafRef.current = 0
                 }
             }

@@ -1,18 +1,42 @@
 ---
 name: scroll-follow-verify
-description: 验证消息列表贴底跟随 / 「滚到底」按钮 —— 探针脚本、DOM 锚点、指标阈值、手势掉队语义、totalListHeightChanged
+description: 验证消息列表贴底跟随 / 「滚到底」按钮 —— 探针脚本、DOM 锚点、平滑追赶指标、scrollend 干扰坑、手势掉队语义
 metadata:
   type: recipe
-  last_verified: 2026-08-03
+  last_verified: 2026-08-26
 ---
 
 # 贴底跟随 / 滚到底按钮 验证
 
-## DOM 锚点（稳定，来自 react-virtuoso）
+## 平滑追赶（2026-08-26 起，修换行「一跳一跳」）
+
+RO 增高路径是 rAF 缓动追赶（`CHASE_EASE=0.25`，每帧追掉剩余距离 25%，≤1px 贴齐），
+非瞬跳。硬钉仅保留给 smooth 门闩解除 / `stickToBottom('auto')`。
+
+**探针判别「平滑 vs 瞬跳」**（每帧记 scrollTop，看运动串而非单帧位移）：
+- 健康：多帧连续运动串（≥3 帧成串）、单帧位移中位 ~4px、运动帧占流式期 ~60%、单帧串 0 个
+- 瞬跳回归：大量**单帧运动串**（一动即停）、单帧位移 ≈ 整行高度（~30px+）
+- 分析陷阱：揭示增长窗口的边界要取「首个→最后一个增长帧」，别把完成后静止尾巴算进去
+
+**两大干扰坑（都踩过）**：
+1. **scrollend 无条件补钉会杀死追赶**：scrollend 对一切滚动（含追赶自身）触发，
+   无条件 `pinIfFollowing` → 追赶第一帧 settle 即被硬拉到底、第二帧外部干预检测中止
+   → 退化为单帧瞬跳。修复：`releaseSmoothGateAndPin` 仅在 smooth 门闩确实闭合时动作
+2. **scrollTop 像素 snap**：浏览器把 scrollTop snap 到物理像素网格（DPR2 = 0.5px），
+   外部干预检测的期望值必须「写后读回」，存浮点计算值会每帧误判中止
+   （jsdom 假容器不 snap，单测测不出）
+
+**现场抓干扰者的手法**：setter 间谍拿调用栈——
+`Object.defineProperty(sc, 'scrollTop', { get: 原get, set(v){ 记录 new Error().stack; 原set.call(this,v) } })`，
+再人为 `scrollTop -= 100`，看谁把它写回去。
+
+## DOM 锚点（稳定）
 
 | 目标 | 选择器 |
 |---|---|
-| 滚动容器 | `[data-testid="virtuoso-scroller"]` |
+| 滚动容器（Bubble.List，现行） | `.ant-bubble-list-scroll-box` |
+| 内容层（RO 观测） | `.ant-bubble-list-scroll-content` |
+| 旧 virtuoso（已废弃） | `[data-testid="virtuoso-scroller"]` |
 | 内容总高层 | `[data-testid="virtuoso-item-list"]` |
 
 ⚠️ **不要靠遍历父链找 `scrollHeight > clientHeight` 来定位 scroller** —— 会话短时内容不超视口，全链都不可滚，返回 null。直接用 testid。

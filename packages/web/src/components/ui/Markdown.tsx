@@ -21,7 +21,6 @@ import slashCommand from './slashCommandPlugin'
 import mention from './mentionPlugin'
 import { extractFootnotes, footnoteRefExtension, type FootnoteItem } from './footnotePlugin'
 import { useStreamingContent } from './useStreamingContent'
-import { splitStablePrefix } from '@/core/lib/markdownSplit'
 import AutoDetectCodeBlock from './AutoDetectCodeBlock'
 import { MermaidDiagram } from './MermaidDiagram'
 import { FootnoteContext, FootnoteRef, FootnoteSources } from './FootnoteComponents'
@@ -184,28 +183,6 @@ export const Markdown = memo(function Markdown({
         [finalContent],
     )
 
-    // 增量渲染：揭示进行中（display 尚未追上 target）把已揭示内容拆成
-    // 「稳定前缀（完成块）+ 活动尾部」。stable 段 content 值不变时被 XMarkdown 的
-    // memo 浅比较短路（字符串按值比较）——零 re-parse 零 re-render，每帧只有
-    // 尾部小块参与 parse。收敛后（display === content）回归单段渲染，
-    // 流式中途插入的双段结构一次性归一（此时全文完成，单次全量 parse 可接受）。
-    // 判据用 display 长度而非 streaming prop：full message 到达后 streaming 已翻
-    // false，但 wasStreaming 的逐字收敛仍在进行（display 仍 < content），拆分必须继续。
-    // 拆分基准是清洗后的 cleanContent（两段拼回 === cleanContent，正文不含脚注定义原文）。
-    // splitStablePrevRef 传上帧切点做增量恢复：切点处状态必为干净，从切点续扫
-    // 与全量等价，每帧拆分成本 O(尾部) 而非 O(全文)——超长回复在 120Hz 下也稳
-    const isDripping = displayContent.length < (content ?? '').length
-    const splitStablePrevRef = useRef('')
-    const { stable, tail } = useMemo(() => {
-        if (!isDripping) {
-            splitStablePrevRef.current = ''
-            return { stable: '', tail: cleanContent }
-        }
-        const split = splitStablePrefix(cleanContent, splitStablePrevRef.current || undefined)
-        splitStablePrevRef.current = split.stable
-        return split
-    }, [isDripping, cleanContent])
-
     // 仅在脚注数据实质变化时重建 Map，流式渲染期间保持稳定引用
     const footnotesRef = useRef(footnotes)
     const footnotesMapRef = useRef(new Map<number, FootnoteItem>())
@@ -239,20 +216,15 @@ export const Markdown = memo(function Markdown({
 
     return (
         <FootnoteContext.Provider value={footnotesMapRef.current}>
+            {/* 单段渲染：XMarkdown 的流式管线（AnimationText 增量淡入 / 位置 key /
+                useStreaming 前缀 cache）整套假设 content append-only，单容器是其
+                原生形态——结构在流式全程恒定，不存在双段拆分/归一时的结构翻转
+                （结构翻转会触发整块重淡入 = 闪烁，也会引入跨容器间距断裂）。
+                全量 re-parse 的成本控制由 useStreamingContent 的长度自适应节流承担 */}
             <div className={mergedClassName} style={{ maxWidth: '100%', ...style }}>
-                {/* 稳定前缀：不传 streaming（无尾部动画/渐显），content 值不变即整体短路 */}
-                {stable ? (
-                    <XMarkdown
-                        {...rest}
-                        content={stable}
-                        components={mergedComponents}
-                        paragraphTag={paragraphTag}
-                        config={mergedConfig}
-                    />
-                ) : null}
                 <XMarkdown
                     {...rest}
-                    content={tail}
+                    content={cleanContent}
                     streaming={streamingOption}
                     components={mergedComponents}
                     paragraphTag={paragraphTag}

@@ -44,6 +44,18 @@ export const SMOOTH_SCROLL_FALLBACK_MS = 1000
  */
 export const REFOLLOW_DEBOUNCE_MS = 150
 
+/**
+ * 追赶缓动：每帧追掉「距底部剩余距离」的比例。
+ *
+ * 流式内容增高（换行/新增块）不再瞬跳（`scrollTop = scrollHeight` 一行高度直落），
+ * 而是指数缓动追赶——一行 ~22px 约 8 帧（~130ms）平滑滚下，快输出/窄屏下
+ * 持续增高的场景列表平滑跟随而非一跳一跳。
+ */
+export const CHASE_EASE = 0.25
+
+/** 距底 ≤ 此像素直接贴齐（精确收敛：turn 结束 finalDist === 0） */
+export const CHASE_SNAP_PX = 1
+
 /** 内容总高所在层的选择器。antdx Bubble.List 的 scroller（scrollBoxNativeElement）直接子元素是
  *  `.ant-bubble-list-scroll-content`（内容层），高度随消息/bubble 高度变化——RO 观测它驱动贴底跟随。 */
 const ITEM_LIST_SELECTOR = '.ant-bubble-list-scroll-content'
@@ -145,12 +157,63 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         }
     }, [])
 
-    /** 直接钉到底。不走 Virtuoso 的 scrollToIndex —— 见文件底部说明 */
+    /** 直接钉到底（精确底 = scrollHeight - clientHeight）。供 smooth 门闩解除 / 'auto' 直钉 */
     const pinToBottom = useCallback(() => {
         const scroller = scrollerElRef.current
         if (!scroller) return
-        scroller.scrollTop = scroller.scrollHeight
+        scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight
     }, [])
+
+    /**
+     * 平滑追赶（RO 增高的主路径）：每帧追掉剩余距离的 {@link CHASE_EASE}，
+     * ≤{@link CHASE_SNAP_PX} 贴齐。修「换行时列表瞬跳一行」（快输出/窄屏下
+     一跳一跳）。三重让位守卫：停止跟随 / smooth 门闩 / 指针按住；另检测
+     * 外部程序改 scrollTop（prepend 恢复补偿、浏览器 clamp）——被改动即中止，
+     * 不与任何外部滚动控制争抢。
+     */
+    const chaseRafRef = useRef(0)
+    const chaseExpectedTopRef = useRef<number | null>(null)
+
+    const stopChase = useCallback(() => {
+        if (chaseRafRef.current !== 0) cancelAnimationFrame(chaseRafRef.current)
+        chaseRafRef.current = 0
+        chaseExpectedTopRef.current = null
+    }, [])
+
+    const chaseFrame = useCallback(() => {
+        chaseRafRef.current = 0
+        const scroller = scrollerElRef.current
+        if (!scroller || !followRef.current || smoothScrollingRef.current || pointerDownRef.current) {
+            chaseExpectedTopRef.current = null
+            return
+        }
+        // 外部干预检测：上一帧设置的值被别人改动（prepend 恢复 / clamp）→ 中止让位
+        if (chaseExpectedTopRef.current !== null
+            && scroller.scrollTop !== chaseExpectedTopRef.current) {
+            chaseExpectedTopRef.current = null
+            return
+        }
+        const bottom = scroller.scrollHeight - scroller.clientHeight
+        const dist = bottom - scroller.scrollTop
+        if (dist <= CHASE_SNAP_PX) {
+            // 收敛（含 dist=0 / 内容收缩的负值）→ 精确贴底
+            scroller.scrollTop = bottom
+            chaseExpectedTopRef.current = null
+            return
+        }
+        scroller.scrollTop += dist * CHASE_EASE
+        // 期望值取「写后读回」：浏览器会把 scrollTop snap 到物理像素网格
+        //（DPR 2 时 0.5px 粒度），存浮点计算值会下一帧误判「外部干预」而中止
+        chaseExpectedTopRef.current = scroller.scrollTop
+        chaseRafRef.current = requestAnimationFrame(chaseFrame)
+    }, [])
+
+    const chaseIfFollowing = useCallback(() => {
+        if (!followRef.current) return
+        if (smoothScrollingRef.current || pointerDownRef.current) return
+        if (chaseRafRef.current !== 0) return // 已在追赶
+        chaseRafRef.current = requestAnimationFrame(chaseFrame)
+    }, [chaseFrame])
 
     /**
      * 跟随中（且非 smooth 门闩期）则钉底。供 RO / totalListHeightChanged / 门闩释放共用。
@@ -177,10 +240,21 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
      * 若内容在 smooth 进行中变化，最后一次变化未被钉底。门闩解除（scrollend / 定时器兜底 /
      * behavior='auto'）统一在此补一次，避免残留。
      */
+    /**
+     * 门闩解除时补钉：smooth 期间 RO/onScroll/totalListHeightChanged 均被门闩跳过，
+     * 若内容在 smooth 进行中变化，最后一次变化未被钉底。门闩解除（scrollend / 定时器兜底）
+     * 统一在此补一次，避免残留。
+     *
+     * **仅在门闩确实闭合时动作**：scrollend 对一切滚动（含平滑追赶自身产生的滚动）
+     * 都会触发，若无条件补钉会与追赶争抢——追赶第一帧的滚动 settle 即被硬拉到底，
+     * 下一帧被外部干预检测中止（表现为追赶失效、退化为单帧瞬跳）。
+     */
     const releaseSmoothGateAndPin = useCallback(() => {
+        if (!smoothScrollingRef.current) return
         releaseSmoothGate()
+        stopChase()
         pinIfFollowing()
-    }, [pinIfFollowing, releaseSmoothGate])
+    }, [pinIfFollowing, releaseSmoothGate, stopChase])
 
     /** 当前几何位置是否在底部附近 */
     const isNearBottom = useCallback(() => {
@@ -193,8 +267,12 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         setFollow(true)
         const scroller = scrollerElRef.current
         if (!scroller) return
+        // 按钮接管滚动控制权：停掉进行中的平滑追赶，避免两条滚动路径争抢
+        stopChase()
         if (behavior === 'auto') {
-            releaseSmoothGateAndPin()
+            // 直钉不走门闩语义（releaseSmoothGateAndPin 仅在门闩闭合时动作）
+            releaseSmoothGate()
+            pinIfFollowing()
             return
         }
         smoothScrollingRef.current = true
@@ -203,7 +281,7 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         if (smoothTimerRef.current !== null) clearTimeout(smoothTimerRef.current)
         smoothTimerRef.current = setTimeout(releaseSmoothGateAndPin, SMOOTH_SCROLL_FALLBACK_MS)
         scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
-    }, [releaseSmoothGateAndPin, setFollow])
+    }, [releaseSmoothGateAndPin, setFollow, stopChase])
 
     // scroll → 仅恢复跟随；用户手势 → 停止跟随；scrollend → 解除 smooth 门闩
     //
@@ -309,20 +387,23 @@ export function useStickToBottom(enabled: boolean): StickToBottomController {
         }
     }, [enabled, isNearBottom, releaseSmoothGateAndPin, setFollow])
 
-    // 内容增高 → 跟随中则钉底
+    // 内容增高 → 跟随中则平滑追赶（修换行/增高的瞬跳；直钉仅保留给 smooth 门闩解除等终态修正）
     useEffect(() => {
         const scroller = scrollerElRef.current
         if (!enabled || !scroller) return
         const content = scroller.querySelector(ITEM_LIST_SELECTOR)
         if (!content) return
 
-        const observer = new ResizeObserver(pinIfFollowing)
+        const observer = new ResizeObserver(chaseIfFollowing)
         observer.observe(content)
         return () => observer.disconnect()
-    }, [enabled, pinIfFollowing])
+    }, [enabled, chaseIfFollowing])
 
-    // 卸载时清掉兜底定时器，避免在已销毁组件上跑回调
-    useEffect(() => releaseSmoothGate, [releaseSmoothGate])
+    // 卸载时清掉兜底定时器与追赶 rAF，避免在已销毁组件上跑回调
+    useEffect(() => () => {
+        releaseSmoothGate()
+        stopChase()
+    }, [releaseSmoothGate, stopChase])
 
     // 卸载时清 re-follow 延时定时器，防遗留
     useEffect(() => () => {

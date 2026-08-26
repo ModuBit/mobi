@@ -15,9 +15,11 @@
  */
 
 /**
- * Markdown 流式增量渲染规格：
- * 揭示进行中（display < content）按稳定前缀拆双段——stable 段零 re-parse、
- * tail 段承接流式；收敛后（display === content）回归单段渲染。
+ * Markdown 流式渲染规格（单段架构）：
+ * 全程单 XMarkdown 渲染——流式揭示中、追平间隙、消息结束，DOM 结构恒单段，
+ * 无任何双段拆分/结构翻转（XMarkdown 流式管线假设 content append-only，
+ * 结构变化会触发 AnimationText 整块重淡入 = 闪烁）。揭示节奏的成本控制
+ * 由 useStreamingContent 的长度自适应节流承担，不靠拆段。
  * XMarkdown 与 useStreamingContent 均 mock，纯组件契约验证；真实链路由 E2E 覆盖。
  */
 
@@ -32,10 +34,11 @@ vi.mock('@/components/ui/useStreamingContent', () => ({
     useStreamingContent: () => displayState.current,
     STREAM_BASE_RATE: 0.1,
     computeRevealRate: vi.fn(() => 0.1),
+    revealIntervalFor: vi.fn(() => 0),
 }))
 
 // XMarkdown mock：按真实实现包 memo（content 值不变 + props 引用稳定 → 跳过重渲染），
-// 记录每次渲染的 props 验证双段结构与 stable 段短路行为
+// 记录每次渲染的 props 验证单段结构与 memo 短路行为
 const xmdRenders = vi.hoisted(() => ({
     calls: [] as Array<{ content: string; streaming?: unknown }>,
 }))
@@ -53,7 +56,7 @@ function mountedSegments() {
     return screen.queryAllByTestId('xmd').map(el => el.textContent ?? '')
 }
 
-describe('Markdown 流式增量渲染', () => {
+describe('Markdown 流式渲染（单段架构）', () => {
     beforeEach(() => {
         xmdRenders.calls.length = 0
         displayState.current = ''
@@ -66,59 +69,48 @@ describe('Markdown 流式增量渲染', () => {
         displayState.current = 'para1\n\npara2'
         render(<Markdown content={'para1\n\npara2'} />)
         expect(mountedSegments()).toEqual(['para1\n\npara2'])
-        // 无 streaming prop
         expect(xmdRenders.calls[xmdRenders.calls.length - 1].streaming).toBeUndefined()
     })
 
-    it('流式揭示中（display < content）：拆双段，stable 无 streaming、tail 承接流式，拼接 === display', () => {
+    it('流式揭示中（display < content）：单段渲染已揭示内容，带 streaming 选项', () => {
         const content = 'para1\n\npara2\n\npara3'
-        displayState.current = 'para1\n\npara2\n\np'
-        render(<Markdown content={content} streaming typing />)
-        const segs = mountedSegments()
-        expect(segs).toHaveLength(2)
-        expect(segs[0]).toBe('para1\n\npara2\n\n')
-        expect(segs[1]).toBe('p')
-        // 稳定前缀段不传 streaming（无尾部动画/渐显）
-        const lastTwo = xmdRenders.calls.slice(-2)
-        expect(lastTwo[0].streaming).toBeUndefined()
-        expect(lastTwo[1].streaming).toBeTruthy()
-        expect(segs.join('')).toBe(displayState.current)
-    })
-
-    it('揭示收敛（display === content）：回归单段渲染全文', () => {
-        const content = 'para1\n\npara2'
-        displayState.current = content
-        // memo 组件：rerender 须有 prop 变化才重渲染（真实场景 display 是组件内部 state）
-        const { rerender } = render(<Markdown content={content} streaming typing style={{ a: 1 }} />)
-        expect(mountedSegments()).toEqual([content])
-
-        // 先进入双段
         displayState.current = 'para1\n\npar'
-        rerender(<Markdown content={content} streaming typing style={{ a: 2 }} />)
-        expect(mountedSegments()).toEqual(['para1\n\n', 'par'])
+        render(<Markdown content={content} streaming typing />)
+        expect(mountedSegments()).toEqual(['para1\n\npar'])
+        expect(xmdRenders.calls[xmdRenders.calls.length - 1].streaming).toBeTruthy()
+    })
 
-        // 再收敛回单段（双段结构一次性归一）
+    it('结构恒单段：揭示中 / 追平间隙 / 收敛 / 消息结束，全程无结构翻转（防闪烁回归）', () => {
+        const content = 'para1\n\npara2\n\npara3'
+        // 揭示中
+        displayState.current = 'para1\n\npara2\n\np'
+        const { rerender } = render(<Markdown content={content} streaming typing style={{ a: 1 }} />)
+        expect(mountedSegments()).toEqual(['para1\n\npara2\n\np'])
+
+        // 追平间隙（display === content，streaming 仍 true——快照间歇的常态）
         displayState.current = content
-        rerender(<Markdown content={content} streaming typing style={{ a: 3 }} />)
+        rerender(<Markdown content={content} streaming typing style={{ a: 2 }} />)
+        expect(mountedSegments()).toEqual([content])
+
+        // 消息结束（streaming 翻 false）
+        rerender(<Markdown content={content} typing style={{ a: 3 }} />)
         expect(mountedSegments()).toEqual([content])
     })
 
-    it('stable 段 memo：display 增长但完成块不变时，stable 段不再重渲染（只 tail 重渲染）', () => {
-        const content = 'para1\n\npara2 tail tail tail'
-        displayState.current = 'para1\n\npara2 t'
+    it('display 不变时 XMarkdown 不重渲染（memo 按值短路）', () => {
+        const content = 'para1\n\npara2'
+        displayState.current = 'para1\n\npar'
         const { rerender } = render(<Markdown content={content} streaming typing style={{ a: 1 }} />)
+        const rendersBefore = xmdRenders.calls.length
 
-        // 帧序列：stable 不变、tail 增长（每次 rerender 传新 style 引用穿透 memo）
-        const frames = ['para1\n\npara2 ta', 'para1\n\npara2 tai']
-        frames.forEach((display, i) => {
-            displayState.current = display
-            rerender(<Markdown content={content} streaming typing style={{ a: i + 2 }} />)
-        })
+        // 同 display rerender（真实场景：父组件无关 state 变化）→ XMarkdown 跳过
+        rerender(<Markdown content={content} streaming typing style={{ a: 1 }} />)
+        expect(xmdRenders.calls.length).toBe(rendersBefore)
 
-        // stable 内容（'para1\n\n'）只应渲染一次；每次 tail 增长各渲染一次
-        const stableRenders = xmdRenders.calls.filter(c => c.content === 'para1\n\n')
-        expect(stableRenders).toHaveLength(1)
-        const tailRenders = xmdRenders.calls.filter(c => c.content.startsWith('para2'))
-        expect(tailRenders.map(c => c.content)).toEqual(['para2 t', 'para2 ta', 'para2 tai'])
+        // display 增长 → 恰好一次重渲染
+        displayState.current = 'para1\n\npara'
+        rerender(<Markdown content={content} streaming typing style={{ a: 2 }} />)
+        expect(xmdRenders.calls.length).toBe(rendersBefore + 1)
+        expect(xmdRenders.calls[xmdRenders.calls.length - 1].content).toBe('para1\n\npara')
     })
 })
