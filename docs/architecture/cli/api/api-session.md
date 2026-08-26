@@ -164,7 +164,11 @@ CLI→Hub 的消息事实收敛为单一 socket 事件 `messages-facts`（载荷
 
 ### 上下文用量上报
 
-`reportContextUsage(usage)` 通过 `socket.emit('context-usage', { sid, contextUsage })` 上报上下文用量。每轮 `result` 时由 `claudeRemoteLauncher` 本地组装（**不调** SDK `getContextUsage()`——其在子进程内会触发大量 `count_tokens` 请求撑爆 provider 限流）：`totalTokens` = 最后一条 assistant 的 `input+cache_creation+cache_read`（当前占用），`maxTokens` = `result.modelUsage[model].contextWindow`，`costUsd` = `result.total_cost_usd`。Hub 落库到 `runtimeState.contextUsage`（复用 `updateRuntimeStateField`）+ SSE 推 Web。
+`reportContextUsage(usage)` 通过 `socket.emit('context-usage', { sid, contextUsage })` 上报上下文用量。每轮 `result` 时由 `claudeRemoteLauncher` 本地组装（**不调** SDK `getContextUsage()`——其在子进程内会触发大量 `count_tokens` 请求撑爆 provider 限流）：`maxTokens` = `result.modelUsage[model].contextWindow`，`costUsd` = `result.total_cost_usd`。Hub 落库到 `runtimeState.contextUsage`（复用 `updateRuntimeStateField`）+ SSE 推 Web。
+
+> ⚠️ **`totalTokens` 现状与目标（2026-08-26 实测钉死）**：当前实现 `calcContextUsageFromResult` 用 `result.usage` 的三项和当"当前占用"——**口径错误**：`result.usage` 是 turn 内主循环所有请求的逐项累计（实测 255232 = 127488+127744），会远超窗口（1M 窗口显示 1.12M）且随 turn 内请求数波动。正确口径 = 主线最后一条 assistant 的瞬时水位（见下），修复方案见 `docs/superpowers/specs/2026-08-25-context-waterline-design.md`（含 assistant usage 在装配层丢失、需从 stream_event 捕获注入的根因）。
+
+> usage 账本语义（2026-08-26 修正）：`message_start` 的 `usage` 输入三项（input/cc/cr）是终值（请求发出时输入已 tokenize 完），`output_tokens` 为占位；`message_delta` 的 `usage.output_tokens` 为累计终值，输入三项亦可回填非空累计值（SDK 类型 `BetaMessageDeltaUsage` 三项为 `number|null`，服务端实践常态为 null）；**无 `message_end`**，`message_stop` 不带 usage。两者都是**单次 API 请求**的账（Messages API 无状态，每个 turn 的工具循环 = 多次独立请求，input 随历史逐次变大），**无会话累计字段**。「上下文占用」语义 = 该条消息完成后的瞬时占用（message_start 三项 + message_delta output 四项和）——`result.usage` **不是**它（是累计），此前"`result` 带来的正是它"的结论错误，已推翻。当前 `handleStreamEvent` 处理 `message_start` 只拿 `model`/`message.id`/`sdkUuid`，usage 未捕获——这正是装配消息 usage 全 0 的根因（修复见上述 spec）。
 
 ## IdleTimer 集成
 

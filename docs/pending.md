@@ -555,3 +555,27 @@ interrupt（用户停止）
 **相关文件**：`packages/shared/src/schemas.ts`（RuntimeStateSchema）、`packages/hub/src/sync/sessionCache.ts`（handleSessionAlive / handleRunStarted）、`packages/hub/src/socket/handlers/cli/sessionHandlers.ts`（run-started handler，参照 context-usage）、`packages/cli/src/api/apiSession.ts`（reportRunStarted）、`packages/cli/src/agent/sessionBase.ts`（onRunningChange 翻转上报）、web 透传链 `ChatContainer → ChatComposer → StatusBar → AgentLoadingBubble`
 
 **优先级**：已完成（方案 1）。
+
+---
+
+## 56. 消息信封「投影税」——native schema 包裹层的消费成本（2026-08-25）
+
+**背景**（2026-08-25 assembler 深挖时梳理）：CLI 把 Claude Code 原生消息（RawJSONLines）整体塞进 mobi 信封 `{ role: 'agent', content: { type: 'output', data: <原样 body> }, meta }` 后存 Hub DB。信封是**加包装不是改内容**——`data` 不透明透传，Hub 不做 Zod 校验不剥字段（无 metadata SWR 死循环那类 strip 风险），native schema 演进无损保存。当前无正确性问题（DB 是只读投影、无回喂 SDK 路径、web 有 `safeStringify` 兜底）。
+
+**代价（投影税，三处）**：
+
+1. **层层下钻**：web 取 native 字段要 `content.content.data.message.xxx` 多级取值（`normalize.ts` 的 `extractAnthropicMessageId` 四级链、`getField` 的 snake/camel 双格式兼容都是为这层包装交的税）
+2. **双层 schema 演进**：信封（shared 定义）与 native（Anthropic 定义）各自变化，normalize 层要跟（好在 native 层对 mobi 只读，只需"能读出要用的"）
+3. **对账/导出映射**：拿 DB 行与 `.jsonl` transcript 对照（如 abort 场景的合并键验证）需先剥信封
+
+**待讨论方向**（仅记录，未定）：
+
+- normalize 层是否有机会一次性解包出 native 视图（typed），减少散落各处的下钻与 getField
+- 信封结构是否收敛/扁平化（`data` 提升为消息本体一等字段），或维持现状接受税
+- 与 assembler 去留讨论（见 memory `project_sdk-partial-assembler`，web 消费层若改为能吃 block 级行则 assembler 可删）相关——两者都动"web 怎么消费消息"这层，宜一并讨论
+
+**相关文件**：`packages/cli/src/api/apiSession.ts`（sendClaudeSessionMessage 信封构造）、`packages/shared/src/messages.ts`（unwrapRoleWrappedRecordEnvelope）、`packages/web/src/domain/chat/normalize.ts`（解包 + extractAnthropicMessageId）、`packages/web/src/domain/chat/normalizeAgent.ts`
+
+**优先级**：低。当前无正确性问题，纯结构优化；与 assembler 去留讨论捆绑启动。
+
+---

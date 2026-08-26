@@ -18,6 +18,63 @@ flowchart LR
 
 ---
 
+## SDK 消息类型与 mobi 三层类型体系（2026-08-25 钉死）
+
+一条消息从产生到渲染经过**三层类型体系**，层层不同、不可混谈：
+
+```mermaid
+flowchart LR
+    SDKT["① SDK 标准类型<br/>SDKMessage（type + subtype）"]
+    ENV["② mobi 信封<br/>{role, content.type, data}"]
+    EVT["③ web 领域事件<br/>AgentEvent（派生）"]
+    SDKT -->|"apiSession.sendClaudeSessionMessage<br/>原样塞进 data"| ENV
+    ENV -->|"normalize / normalizeAgent<br/>从 data 派生"| EVT
+```
+
+### ① SDK 标准类型（官方 `SDKMessage` 联合，按顶层 type 分组）
+
+| type | subtype / 说明 | 落库 |
+|---|---|---|
+| `assistant` | 模型输出；子代理的也是此类型，靠 `parent_tool_use_id` 区分主线/子链 | persistent |
+| `user` | 用户输入 / **tool_result**（工具执行结果回传，同 type） | persistent |
+| `result` | **turn 结束总结**（`usage`/`modelUsage`/`total_cost_usd` 独家携带）；subtype: success / error_* | persistent |
+| `stream_event` | 裸 SSE 事件透传（message_start 等，`includePartialMessages` 开启才有）；**只对主 session**（SDK 契约，子代理请求不走此通道） | 不走落库（快照通道专用） |
+| `system` | `init`（会话初始化）、`compact_boundary`（压缩边界，带 `post_tokens`）、`conversation_reset`（/clear）、`status`、`task_started`/`task_updated`/`task_notification`/`background_tasks_changed`（后台任务）、`vcs_state_changed`（git 状态）、`informational`、`permission_denied`、`worker_shutting_down`、`commands_changed` 等 | 多数 persistent，部分 ephemeral |
+| `tool_progress` | 工具执行心跳（约 30s） | ephemeral |
+| `tool_use_summary` | 工具组人话摘要 | ephemeral |
+| `prompt_suggestion` | 下一步输入建议 | ephemeral |
+| `auth_status` / `rate_limit_event` / `command_lifecycle` | 认证 / 限流 / 排队回执 | discard |
+| `system` 杂项 | `thinking_tokens`、`hook_*`、`plugin_install`、`files_persisted` | discard |
+
+SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单就是为了不误伤未知新类型（默认 persistent）。
+
+### ② mobi 信封（CLI→Hub 落库形态，`apiSession.sendClaudeSessionMessage`）
+
+```json
+{ "role": "agent", "content": { "type": "output", "data": { …SDK 原始消息原样… } }, "meta": { "sentFrom": "cli" } }
+```
+
+- `role`：仅 `user`（真用户纯文本输入）/ `agent`（其余一切，含 system/result）
+- `content.type`：仅 `text` / `output`
+- **`data` 是 SDK 原始消息的不透明透传**（`type`/`subtype`/`message.usage` 原样保留）——从 DB 取 SDK 字段直接下钻 `data.xxx`，无 mobi 改写（见 pending #56「投影税」）
+
+### ③ web 领域事件（`normalizeAgent.ts` 派生，与 SDK 无对应关系）
+
+`turn-result`（← result）、`compact`/`microcompact`（← compact_boundary 等）、`bg-task-*`（← task_* 系列）、`aborted`、`tool-progress` 等——纯渲染语义，由 ① 的消息**派生**，不回写。
+
+### usage 账本两把尺子（易混，2026-08-26 实测钉死）
+
+| | `result.usage` | assistant `message.usage`（stream_event 侧） |
+|---|---|---|
+| 口径 | turn 内主循环所有请求的**逐项累计**（实测 255232 = 127488+127744）——流量表 | 单次请求快照——油量表 |
+| 数据落点 | result 消息顶层 | `message_start`（input/cc/cr 输入三项为终值）+ `message_delta`（累计 `output_tokens` 终值；三项亦可回填非空累计值） |
+| 能否超窗口 | 能（累计重复计前文） | 不能 |
+| 用途 | turn 概要 / 成本核算 | 上下文瞬时水位（该条消息完成后占用 = 三项输入 + output） |
+
+流式协议补充事实：**无 `message_end`**，只有 `message_stop`（无 usage）；一次 API 请求 = 一条 message 信封（`message_start` 恰一次），thinking/text/tool 是信封内并列的 content block（`content_block_start/delta/stop` 三连），**不是**各自一套 message 信封；`message_delta` 无 message.id（同一时刻仅一条 message 在流，关联最近 message_start）。
+
+---
+
 ## 消息分类体系
 
 **设计文档**：`docs/superpowers/specs/2026-06-07-message-classification-filtering-design.md`
@@ -262,7 +319,14 @@ Web 端 `SSEProvider` 接收事件，更新 React Query 缓存触发 UI 刷新�
 | `message-snapshot` | 同 id 原地更新（覆盖旧 snapshot），新 id 追加 |
 | `message-received` | 先通过 `parentUuid` 清除同轮次 snapshot（assembler 聚合 full 后 parentUuid 不漂移；reducer 再按 `(messageId, type)` 兜底），再 upsert |
 
-**snapshot 清理机制（双保险）**：SDK `includePartialMessages` 把一条 message 的多 content block 拆成多条 full（共享 `message.id`、各自 uuid），与 snapshot（一条累积）粒度不匹配。CLI `AssistantPartialAssembler` 按 `message.id` 把拆分的 full **聚合成一条**，使 snapshot/full 1-vs-1，`parentUuid` 不再漂移（`d7260a2` 之前稳定态）。
+**snapshot 清理机制（双保险）**：SDK 把一条 message 的多 content block 拆成多条 full（共享 `message.id`、各自 uuid；**与 `includePartialMessages` 无关**，2026-08-25 实测关掉 flag 照样拆），与 snapshot（一条累积）粒度不匹配。CLI `AssistantPartialAssembler` 按 `message.id` 把拆分的 full **聚合成一条**，使 snapshot/full 1-vs-1，`parentUuid` 不再漂移（`d7260a2` 之前稳定态）。
+
+**去重键与 uuid 语义（2026-08-25 实测钉死）**：
+
+- **Hub 落库去重只看 `localId = body.uuid`**（`apiSession.sendClaudeSessionMessage`，resume 不变，重发 = UPDATE 同一行）；`message.id`（Anthropic 分配）**不参与** Hub 去重，只用于 CLI 侧 assembler 归拢碎片 + 前端 `(messageId, type)` 兜底（藏在信封 `data.message.id` 里被 web 挖出）
+- **合并行 uuid = 最后一个碎片的 uuid**（`template.uuid`）；block 内部**无 uuid**（uuid 是行级字段）；被丢弃的中间碎片 uuid 无任何下游消费者，权威副本在 `.jsonl`（其本身也是 block-per-line，uuid 与 SDK emit 一一对应）
+- **不能用 uuid 做 snapshot↔full 关联的原因**：snapshot 每次 flush 现生成随机 uuid；`sdkUuid`（stream_event 包装层）不写 .jsonl、不等于任何 body uuid——snapshot 与 full 之间唯一共享的稳定标识是 `message.id`（message_start 即携带）
+- 详细分析（assembler 必要性、abort 合并键边界、信封投影税）见 [streaming.md](web/streaming.md) 关键设计 1 的实测定位与 pending #56
 
 > - **第一道（messageCache `resolveMessageCache`）**：full 到达按 `parentUuid` 删同轮次 snapshot。assembler 聚合后可靠，已知边界（`parentUuid` 为 null 的会话首条、SSE 乱序）可能漏清。
 > - **第二道（reducer `dedupeSnapshotBlocks`）**：兜底第一道——snapshot 的 block 若已被同 `(messageId, type)` 的 full 覆盖则不渲染。`type`（reasoning/text）是内容自带的稳定标识。

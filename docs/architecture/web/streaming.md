@@ -45,7 +45,7 @@ snapshot 和 full 是同一条消息的两个阶段，id 各不同：
 
 **粒度匹配是关键**：snapshot 是 message 级（一条累积所有 content block）；full 必须也是 message 级（一条），二者 1-vs-1 才能让前端 `resolveMessageCache` 按 parentUuid 清理可靠。
 
-**问题根源**：SDK 开 `includePartialMessages`（为拿 stream_event 喂逐字）会**按 content block 拆开** emit 最终 assistant——一条 message（`[thinking, text]`）变成两条 full（thinking-full + text-full，共享 `message.id`、各自独立 uuid）。snapshot 一条 vs full 两条，粒度不匹配 → 对齐崩坏 → thinking 双气泡（snapshot 的 thinking block 与 thinking-full 重复）。
+**问题根源**：SDK 会**按 content block 拆开** emit 最终 assistant——一条 message（`[thinking, text]`）变成两条 full（thinking-full + text-full，共享 `message.id`、各自独立 uuid）。**拆分与 `includePartialMessages` 无关**（2026-08-25 实测：关掉 flag 照样按 block 拆发，flag 只额外提供 stream_event），所以 assembler 不能靠关 flag 绕过。snapshot 一条 vs full 两条，粒度不匹配 → 对齐崩坏 → thinking 双气泡（snapshot 的 thinking block 与 thinking-full 重复）。
 
 **解：CLI `AssistantPartialAssembler` 按 `message.id` 把拆分的 full 聚合回一条**（content 拼回 `[thinking, text]`，uuid 取最新 partial 的 `body.uuid`）。聚合后 full 一条、snapshot 一条，1-vs-1，parentUuid 不漂移，`resolveMessageCache` 按 parentUuid 清理可靠——**这就是 message queue 之前流式稳定的原因**。
 
@@ -60,6 +60,15 @@ snapshot 和 full 是同一条消息的两个阶段，id 各不同：
 **前端双保险**：assembler 让 parentUuid 清理可靠（第一道，messageCache 层），但 parentUuid 有已知边界（null：会话首条 assistant、SSE 乱序）可能漏清。reducer 入口 `dedupeSnapshotBlocks` 按 `(messageId, type)` 兜底（第二道，渲染层）——snapshot 的 block 若已被同 `(messageId, type)` 的 full 覆盖则不渲染。两道在不同层，任一生效即无双气泡。`type`（reasoning/text）是内容自带的稳定标识，不依赖 block 序号或到达顺序。
 
 **取舍（为何暂时保留 assembler）**：`dedupeSnapshotBlocks` 按 `(messageId, type)` 过滤**单独就能解决**双气泡 + text 不中断（snapshot 的 text block 渲染到 text-full）。assembler 的额外价值是双保险（parentUuid 清理可靠 + 聚合 full 含完整 text，避免 parentUuid 误删 snapshot 的 text 中断）。**代价**：assembler 累积到 flushAll 才输出，后台 complete message（无后续非 assistant 分隔）延迟到 turn 结束落库（后台 agent 多数有 stream_event 实时显示，complete 少数延迟）。**暂时保留 assembler**；若未来后台延迟成问题，可删 assembler + 删 parentUuid 清理，只留 type 过滤（见 `assistantPartialAssembler.ts` 类注释）。
+
+**实测定位（2026-08-25，评估 assembler 去留时钉死的事实）**：
+
+- **transcript `.jsonl` 本身就是 block-per-line**——一行一个 block、各自 uuid、共享 `message.id`，与 SDK emit 的碎片 uuid 一一对应。⇒ assembler 输出的 message 级行（uuid=末碎片）**不是** transcript 形态，"对齐 .jsonl"不成立；有无 assembler，resume 去重都成立（无：live 与重放同 uuid 对同 uuid；有：重放碎片再合并回同 key）
+- ⇒ assembler **不是 DB/transcript 一致性的必需品**，其真实价值只在 web 消费层（snapshot↔full 1:1 替换 + 消息级渲染的 parentUuid 链）
+- **uuid 语义**：block 内部无 uuid（uuid 是行级字段；tool_use 的 `id` 是另一套调用级标识，不受合并影响）；合并丢弃的中间碎片 uuid 无任何下游消费者（Hub 去重只看合并行 uuid = 末碎片；前端配对用 tool_use.id / messageId+type）；remote 模式 scanner 不送 transcript 消息（`claudeRemoteLauncher` 只提 goal_status），SDK 消息流是 Hub 行的唯一来源
+- **已知边界**：abort 中断时 live flush 的合并键（已见碎片的末 uuid）可能与 `.jsonl` 最终末行 uuid 不一致 → resume 重放合并出不同 key → 重复行。`onAbortFlush`/`consumePendingFull`/`markFullDelivered` 守此边界
+- **flush 时机安全性（2026-08-26 论证钉死）**：assembler 的"下一条非 assistant 消息边界"flush **不存在无限等待**——一条 message 进 pending 后归宿穷尽：①还有工具调用 → user(tool_result) 触发（延迟上界=工具时长）；②turn 结束/出错 → result 触发（毫秒级）；③query 中止 → snapshot 补全替代 flush；④迭代结束 → `flushAll()` 兜底。agent loop 结构保证不存在"消息生成完、无后续消息、query 也不结束"的状态。理论残留：SDK 若在同 message 的 block 碎片之间插入非 assistant 消息 → 同 message 双 flush（内容拆半、同 message.id 两条）——窗口极小且是**既有**理论风险（Map 重新累积优雅，但挡不住同 id 双 flush）；若要根治需先实证 SDK 双通道交错顺序后改 message_stop 主动 flush（跨通道时序无契约，暂不动）。等 flush 期间内容不卡：snapshot 通道已实时渲染，flush 只影响落库时刻
+- 删除 assembler 的完整评估（web 能否消费 block 级行）与信封「投影税」讨论捆绑：pending #56
 
 ### 2. isStreaming 不依赖 isRunning
 
