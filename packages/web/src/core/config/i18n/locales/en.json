@@ -141,9 +141,9 @@
             "remaining": "Remaining",
             "input": "Input",
             "output": "Output",
-            "cacheRead": "Cache Read",
-            "cacheWrite": "Cache Write",
-            "cacheHit": "Cache Hit"
+            "cacheRead": "Cache read",
+            "cacheWrite": "Cache write",
+            "cacheHit": "Cache hit"
         }
     },
     "chat": {
@@ -162,7 +162,7 @@
             "cacheRead": "Cache read",
             "cacheWrite": "Cache write",
             "totalInput": "Total Input (incl. cache)",
-            "cacheHit": "Cache Hit"
+            "cacheHit": "Cache hit"
         },
         "thinking": "Thinking...",
         "thought": "Thought",

@@ -19,6 +19,7 @@ import { keyframes } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import type { ContextUsage } from '@mobi/shared'
 import { formatTokens } from '@/core/lib/formatTokens'
+import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
 /** ≥90% 透明度脉冲（「马上要压缩」） */
 const pulse = keyframes`0%,100%{opacity:1}50%{opacity:0.35}`
@@ -38,17 +39,6 @@ export function resolveRingTone(percentage: number): { pct: number; tone: RingTo
 /** 圆环半径（viewBox 24，描边 2.5） */
 const R = 10
 const CIRC = 2 * Math.PI * R
-
-/**
- * 瞬时水位的缓存命中率（cacheRead / (input+cacheCreation+cacheRead)，与 turn 概要同口径、
- * 同精度一位小数）。无细分字段（compact 路径 post_tokens 只有总量）或分母 0 → undefined 不展示。
- */
-export function resolveCacheHitRate(usage: ContextUsage): number | undefined {
-    if (usage.inputTokens === undefined || usage.cacheReadTokens === undefined) return undefined
-    const totalInput = usage.inputTokens + (usage.cacheCreationTokens ?? 0) + usage.cacheReadTokens
-    if (totalInput <= 0) return undefined
-    return Math.round((usage.cacheReadTokens / totalInput) * 1000) / 10
-}
 
 /**
  * 上下文质量衰减线（绝对值）：超过该值长上下文召回/效果开始变差，与窗口大小无关。
@@ -94,7 +84,7 @@ export function ContextRing({ usage, size = 20 }: ContextRingProps) {
         : token.colorTextTertiary
     const remaining = Math.max(0, usage.maxTokens - usage.totalTokens)
     const tick = degradationTick(usage.maxTokens)
-    const hitRate = resolveCacheHitRate(usage)
+    const hitRate = calcCacheHitRate(usage)
     // 细分四项随 assistant 路径上报；compact 路径只有总量 → 整组隐藏
     const hasBreakdown = usage.inputTokens !== undefined && usage.outputTokens !== undefined
         && usage.cacheReadTokens !== undefined && usage.cacheCreationTokens !== undefined

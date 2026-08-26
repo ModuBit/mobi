@@ -17,6 +17,7 @@
 import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, ToolResult, ToolResultPermission, MessageMeta } from './types'
 import { asNumber, asString, getField, isObject } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
+import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
 // 中断消息的正则匹配
 const INTERRUPTED_PATTERN = /\[Request interrupted by user\]/
@@ -457,14 +458,10 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
     const cacheCreationTokens = usage ? (asNumber(getField(usage, 'cache_creation_input_tokens')) ?? undefined) : undefined
     const tokens = inputTokens + outputTokens
 
-    // 总输入（含缓存复用）与缓存命中率：cr / (in+cc+cr)。命中率仅在渠道确实上报了 cache
-    // 字段时才有意义（cacheReadTokens 为 undefined = 渠道不报缓存数据 ≠ 命中 0%，显示 ⚡0% 会误导）；
-    // 分母 0（本地命令）→ 均不展示。精度保留到 0.1%（round 到一位小数）：整数四舍五入会把
-    // 真实 99.7% 舍成 ⚡100%（input 2k / cacheRead 726k 实测），「太满」反而失真
+    // 总输入（含缓存复用）与缓存命中率：口径单源在 core/lib/cacheHitRate（turn 概要与圆环
+    // Popover 共用）。命中率仅在渠道确实上报了 cache 字段时才有意义，分母 0（本地命令）→ 不展示
     const totalInput = inputTokens + (cacheCreationTokens ?? 0) + (cacheReadTokens ?? 0)
-    const cacheHitRate = cacheReadTokens !== undefined && totalInput > 0
-        ? Math.round((cacheReadTokens / totalInput) * 1000) / 10
-        : undefined
+    const cacheHitRate = calcCacheHitRate({ inputTokens, cacheCreationTokens, cacheReadTokens })
 
     // 成本 / 首 token / 模型（result 独有，assistant 无）
     const costUsd = asNumber(getField(data, 'total_cost_usd')) ?? undefined
