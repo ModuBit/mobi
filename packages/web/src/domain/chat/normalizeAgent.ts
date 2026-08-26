@@ -457,9 +457,13 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
     const cacheCreationTokens = usage ? (asNumber(getField(usage, 'cache_creation_input_tokens')) ?? undefined) : undefined
     const tokens = inputTokens + outputTokens
 
-    // 总输入（含缓存复用）与缓存命中率：cr / (in+cc+cr)，分母 0（本地命令）→ undefined 不展示
+    // 总输入（含缓存复用）与缓存命中率：cr / (in+cc+cr)。命中率仅在渠道确实上报了 cache
+    // 字段时才有意义（cacheReadTokens 为 undefined = 渠道不报缓存数据 ≠ 命中 0%，显示 ⚡0% 会误导）；
+    // 分母 0（本地命令）→ 均不展示
     const totalInput = inputTokens + (cacheCreationTokens ?? 0) + (cacheReadTokens ?? 0)
-    const cacheHitRate = totalInput > 0 ? Math.round(((cacheReadTokens ?? 0) / totalInput) * 100) : undefined
+    const cacheHitRate = cacheReadTokens !== undefined && totalInput > 0
+        ? Math.round((cacheReadTokens / totalInput) * 100)
+        : undefined
 
     // 成本 / 首 token / 模型（result 独有，assistant 无）
     const costUsd = asNumber(getField(data, 'total_cost_usd')) ?? undefined

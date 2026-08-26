@@ -537,7 +537,26 @@ describe('normalizeAgentRecord', () => {
             expect(result.content.durationMs).toBe(134000)
             expect(result.content.tokens).toBe(16800) // 12300 + 4500
             expect(result.content.error).toBeUndefined()
+            // cache 字段为 null（渠道不报缓存数据）→ 命中率不可知，不得算成 0%
+            expect(result.content.cacheHitRate).toBeUndefined()
+            expect(result.content.totalInputTokens).toBe(12300)
         }
+    })
+
+    it('turn-result：cache_read 为真实数值时算命中率（91 回归口径）', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result', subtype: 'success', duration_ms: 1000, num_turns: 1,
+                    total_cost_usd: 0.01, is_error: false, stop_reason: null,
+                    usage: { input_tokens: 5, output_tokens: 4, cache_creation_input_tokens: 4, cache_read_input_tokens: 91 },
+                },
+            },
+        )
+        expect(result && 'type' in result.content ? result.content.cacheHitRate : null).toBe(91)
+        expect(result && 'type' in result.content ? result.content.totalInputTokens : null).toBe(100)
     })
 
     it('should handle result with error and return turn-result event with error', () => {

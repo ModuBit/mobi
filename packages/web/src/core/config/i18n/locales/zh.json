@@ -138,8 +138,7 @@
             "title": "上下文水位",
             "used": "已用",
             "cost": "累计成本",
-            "remaining": "剩 {{tokens}}",
-            "toggleHint": "点击切换 百分比 / 已用 tokens"
+            "remaining": "剩 {{tokens}}"
         }
     },
     "chat": {
@@ -402,9 +401,21 @@
     "settings": {
         "title": "设置",
         "sections": {
-            "notifications": { "title": "通知与推送", "desc": "推送通道 · 安装到主屏" },
-            "webTools": { "title": "Web 工具", "desc": "搜索与抓取的 provider 配置", "statusEnabled": "已启用", "statusUnconfigured": "未配置", "statusOffline": "机器离线" },
-            "debug": { "title": "调试", "desc": "诊断埋点 · 数据导出" }
+            "notifications": {
+                "title": "通知与推送",
+                "desc": "推送通道 · 安装到主屏"
+            },
+            "webTools": {
+                "title": "Web 工具",
+                "desc": "搜索与抓取的 provider 配置",
+                "statusEnabled": "已启用",
+                "statusUnconfigured": "未配置",
+                "statusOffline": "机器离线"
+            },
+            "debug": {
+                "title": "调试",
+                "desc": "诊断埋点 · 数据导出"
+            }
         },
         "webTools": {
             "providers": {
@@ -414,13 +425,20 @@
             "credentialSet": "已设置",
             "credentialUnset": "未设置",
             "routeTitle": "用途路由 · 可直接调整",
-            "route": { "search": "搜索", "fetch": "抓取" },
+            "route": {
+                "search": "搜索",
+                "fetch": "抓取"
+            },
             "routePlaceholder": "选择 provider",
             "routeEmptyHint": "先在下方启用一个 provider 并配置凭据，再回到这里选择路由",
             "routeHint": "配置保存于目标机器 · 新会话即时生效",
             "providersTitle": "PROVIDERS",
-            "providerDesc": { "tavily": "AI 搜索与网页抓取 · tavily.com" },
-            "providerLogo": { "tavily": "Tv" },
+            "providerDesc": {
+                "tavily": "AI 搜索与网页抓取 · tavily.com"
+            },
+            "providerLogo": {
+                "tavily": "Tv"
+            },
             "disableReferenced": "该 provider 正承担 {{tools}}，请先调整用途路由",
             "storageHint": "启用的 provider 才出现在用途路由下拉中",
             "saveFailed": "保存失败",

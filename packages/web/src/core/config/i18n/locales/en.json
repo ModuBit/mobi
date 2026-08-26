@@ -138,8 +138,7 @@
             "title": "Context Usage",
             "used": "Used",
             "cost": "Total Cost",
-            "remaining": "{{tokens}} left",
-            "toggleHint": "Toggle percentage / used tokens"
+            "remaining": "{{tokens}} left"
         }
     },
     "chat": {
@@ -402,9 +401,21 @@
     "settings": {
         "title": "Settings",
         "sections": {
-            "notifications": { "title": "Notifications", "desc": "Push channels · Install to home screen" },
-            "webTools": { "title": "Web Tools", "desc": "Search & fetch provider configuration", "statusEnabled": "Enabled", "statusUnconfigured": "Not configured", "statusOffline": "Machine offline" },
-            "debug": { "title": "Debug", "desc": "Diagnostics · Data export" }
+            "notifications": {
+                "title": "Notifications",
+                "desc": "Push channels · Install to home screen"
+            },
+            "webTools": {
+                "title": "Web Tools",
+                "desc": "Search & fetch provider configuration",
+                "statusEnabled": "Enabled",
+                "statusUnconfigured": "Not configured",
+                "statusOffline": "Machine offline"
+            },
+            "debug": {
+                "title": "Debug",
+                "desc": "Diagnostics · Data export"
+            }
         },
         "webTools": {
             "providers": {
@@ -414,13 +425,20 @@
             "credentialSet": "Set",
             "credentialUnset": "Not set",
             "routeTitle": "Usage Routes · Saved instantly",
-            "route": { "search": "Search", "fetch": "Fetch" },
+            "route": {
+                "search": "Search",
+                "fetch": "Fetch"
+            },
             "routePlaceholder": "Select a provider",
             "routeEmptyHint": "Enable a provider below and configure its credentials first, then come back to pick routes",
             "routeHint": "Config lives on the target machine · effective on new sessions",
             "providersTitle": "PROVIDERS",
-            "providerDesc": { "tavily": "AI search & web extraction · tavily.com" },
-            "providerLogo": { "tavily": "Tv" },
+            "providerDesc": {
+                "tavily": "AI search & web extraction · tavily.com"
+            },
+            "providerLogo": {
+                "tavily": "Tv"
+            },
             "disableReferenced": "This provider is serving {{tools}}; adjust usage routes first",
             "storageHint": "Only enabled providers appear in the usage route dropdowns",
             "saveFailed": "Failed to save",
