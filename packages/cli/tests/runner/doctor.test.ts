@@ -22,7 +22,9 @@ import { deriveProfileFromEnvText, findRunawayMobiProcesses } from '@/runner/doc
 const PID_DEV_RUNNER = 1001001
 const PID_DEV_HUB = 1001002
 const PID_DEV_SESSION = 1001003
+const PID_DEV_SUPERVISOR = 1001004
 const PID_E2E_HUB = 1002001
+const PID_E2E_SUPERVISOR = 1002002
 const PID_DEFAULT_RUNNER = 1003001
 
 // 合成的 mobi 进程列表（cmd 内容决定 type 归类，profile 由 attributor 决定）
@@ -30,7 +32,9 @@ const SYNTHETIC_PROCESSES = [
     { pid: PID_DEV_RUNNER, name: 'mobi', cmd: 'mobi runner start' },
     { pid: PID_DEV_HUB, name: 'mobi', cmd: 'mobi hub start' },
     { pid: PID_DEV_SESSION, name: 'mobi', cmd: 'mobi session --started-by runner' },
+    { pid: PID_DEV_SUPERVISOR, name: 'bun', cmd: 'bun src/index.ts service supervise --sync' },
     { pid: PID_E2E_HUB, name: 'mobi', cmd: 'mobi hub start' },
+    { pid: PID_E2E_SUPERVISOR, name: 'mobi', cmd: 'mobi service supervise --sync' },
     { pid: PID_DEFAULT_RUNNER, name: 'mobi', cmd: 'mobi runner start' },
 ]
 
@@ -43,7 +47,9 @@ const PROFILE_BY_PID: Record<number, string> = {
     [PID_DEV_RUNNER]: 'dev',
     [PID_DEV_HUB]: 'dev',
     [PID_DEV_SESSION]: 'dev',
+    [PID_DEV_SUPERVISOR]: 'dev',
     [PID_E2E_HUB]: 'e2e',
+    [PID_E2E_SUPERVISOR]: 'e2e',
     [PID_DEFAULT_RUNNER]: 'default',
 }
 const stubAttributor = async (pids: number[]): Promise<Map<number, string | undefined>> => {
@@ -92,23 +98,27 @@ describe('findRunawayMobiProcesses', () => {
         const result = await findRunawayMobiProcesses('dev', stubAttributor)
         const pids = result.map(r => r.pid).sort()
 
-        // dev runner / hub / session 全部命中
-        expect(pids).toEqual([PID_DEV_HUB, PID_DEV_RUNNER, PID_DEV_SESSION].sort())
+        // dev runner / hub / session / supervisor 全部命中
+        expect(pids).toEqual(
+            [PID_DEV_HUB, PID_DEV_RUNNER, PID_DEV_SESSION, PID_DEV_SUPERVISOR].sort(),
+        )
         // 不含 e2e / default
         expect(pids).not.toContain(PID_E2E_HUB)
+        expect(pids).not.toContain(PID_E2E_SUPERVISOR)
         expect(pids).not.toContain(PID_DEFAULT_RUNNER)
     })
 
     it('profile=e2e：只返回 e2e 归属的进程', async () => {
         const result = await findRunawayMobiProcesses('e2e', stubAttributor)
-        expect(result.map(r => r.pid)).toEqual([PID_E2E_HUB])
+        expect(result.map(r => r.pid).sort()).toEqual([PID_E2E_HUB, PID_E2E_SUPERVISOR].sort())
     })
 
-    it('profile 省略 → clean all：返回全部可清理进程', async () => {
+    it('profile 省略 → clean all：返回全部可清理进程（含 supervisor）', async () => {
         const result = await findRunawayMobiProcesses(undefined, stubAttributor)
         const pids = result.map(r => r.pid).sort()
         expect(pids).toEqual([
-            PID_DEFAULT_RUNNER, PID_DEV_HUB, PID_DEV_RUNNER, PID_DEV_SESSION, PID_E2E_HUB,
+            PID_DEFAULT_RUNNER, PID_DEV_HUB, PID_DEV_RUNNER, PID_DEV_SESSION,
+            PID_DEV_SUPERVISOR, PID_E2E_HUB, PID_E2E_SUPERVISOR,
         ].sort())
     })
 

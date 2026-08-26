@@ -3,10 +3,18 @@ name: env-bootstrap
 description: E2E 环境启动 / 清理 / 就绪判断 / profile 检查 / 端口隔离 / 故障恢复
 metadata:
   type: recipe
-  last_verified: 2026-08-15
+  last_verified: 2026-08-26
 ---
 
 # 环境启动
+
+## 架构形态（2026-08-26 起：直跑，不经 supervisor）
+
+hub/web/runner 均为 `start-sync` 直跑形态——bootstrap 的**直接子进程**（PID 即 bun 本体，
+kill TERM 直达），PPID 看门狗保证 bootstrap 死亡时组件自杀。e2e 环境不存在 supervisor；
+`mobi service *`（supervisor 托管）只属于生产 default profile。
+背景：supervisor 托管形态曾在 E2E 泄漏「幽灵 supervisor」（绕过强杀子进程 + rm -rf 后
+failed 态常驻且 socket 失联不可发现），累积 10 个后才根治为直跑。
 
 ## 步骤
 
@@ -55,12 +63,12 @@ store.close()
 
 ## 坑（误判）
 
-- **偶发：hub 以 `start-sync` 直跑形态残留、脱离 supervisor 托管（2026-08-16 踩过）** — bootstrap 的 `mobi hub start` 竞态产物：一个 hub 变成直跑 `start-sync` 进程（不在 supervisor desired 集内），cleanup 的 `service stop`（IPC）管不到它；后续 supervisor 托管链的 hub 反复撞它端口 EADDRINUSE 秒退（exits.log 连续 error-exit code 1 可辨）。**判定**：`lsof -nP -iTCP:2224 -sTCP:LISTEN` + `ps -p <PID> -o command=` 看是 `hub start-sync` 直跑即中招。**处置**：按 PID 精确 kill（纪律：禁全局 pkill）后，**不必重跑 bootstrap**——存活的 supervisor 退避重试链会在数秒内自己占住端口拉起托管 hub（2026-08-16 二次复现验证）；kill 后 `lsof -nP -iTCP:2224 -sTCP:LISTEN` + 确认新 hub 的 ppid 是本环境 supervisor 即恢复。READY 之后顺手 lsof 一次可提前发现
-
+- **直跑进程识别** — `ps -eo pid,ppid,command | grep start-sync`：e2e 组件 ppid 指向
+  bootstrap 脚本；若 ppid 变 1 且环境应已清理，按 PID 精确 kill（禁全局 pkill）
 - **bootstrap 不退出不是卡死** — 末尾 `wait` 常驻是设计（保持环境）；background 跑 + 轮询 `ready.flag`，ready 后直接用，**不等脚本退出 / stdout echo**（stdout 后台被缓冲看不到）
-- **supervised 架构下 hub start 必须显式 `--port`（2026-08-15 踩坑，产品层已根治）** — `mobi hub start` 走 supervisor 托管，端口来自 desired state；踩坑当时兜底硬编码 2222（default 环境端口）会撞端口 + 健康门假通过。**产品层已修**：desired state 兜底感知 profile env（`MOBI_LISTEN_PORT`），不带 `--port` 也能落在 2224（已冒烟验证）。bootstrap 脚本仍显式传 `--host 127.0.0.1 --port ${HUB_PORT}` 作双保险；cleanup 已加 `service stop` 且**先于** `e2e_stop_runner` 执行（先 kill runner 会被 supervisor 退避重启拉回，端口竞态）
+- **bootstrap 必须显式 `--host 127.0.0.1 --port ${HUB_PORT}`** — start-sync 直跑下参数直接生效；不带 --port 会落 profile env 兜底值，显式传作双保险
 - **hub 早期 banner 端口不可信** — banner 可能打默认 2222；以 bootstrap 输出的 `HUB_PORT`=2224 为准
 - **default 共存时登录 REFUSED** — 确认 e2e web 进程 `MOBI_API_URL=2224`；若显 2222（fallback），vite proxy 会连错端口 → 登录 `ERR_CONNECTION_REFUSED`
-- **旧 e2e 残留进程干扰** — cleanup 已加 `--profile e2e` pattern 兜底；仍异常手动 `pkill -f -- '--profile e2e'`
+- **旧 e2e 残留进程干扰** — cleanup 已有 doctor clean（识别 runner/hub/session/supervisor 四类）+ 端口兜底 + `--profile e2e` pattern 兜底三道；仍异常手动按 PID kill
 - **必须用脚本管环境** — 禁止手动 `nohup bun run dev` 或 `kill` + 手启；脚本已处理端口冲突 / profile / 进程管理
 - **curl 直调生产 /api 需 JWT** — settings.json 的 webApiToken 不能直接当 Bearer 用；先 `POST /api/auth {token}` 换 cookie（`curl -c jar`）再带 jar 调用

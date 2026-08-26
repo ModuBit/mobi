@@ -579,3 +579,39 @@ interrupt（用户停止）
 **优先级**：低。当前无正确性问题，纯结构优化；与 assembler 去留讨论捆绑启动。
 
 ---
+
+## 57. 水位窗口大小的猜测预填是过渡方案，需要更好的来源（2026-08-26）
+
+**背景**：上下文水位的分母 `maxTokens`（窗口大小）权威来源只有 `result.modelUsage[model].contextWindow`——turn 结束才到达。导致新会话首个 turn / resume 后（新进程内存清零）实时上报全程被 `lastMaxTokens === 0` 拦截，圆环整个首 turn 缺席（复杂首 turn 也一样）。
+
+**已落地的过渡方案**（2026-08-26）：`guessContextWindow(model)` 按模型名猜测预填（名字含 `[1m]` 忽略大小写 → 1M；其余一律 200k），主线 assistant 到达时若窗口未记忆则填充，实时上报立即生效；result 到达时用真实 `contextWindow` 覆盖。**局限**：窗口知识硬编码在 CLI 内，猜测可能过时/错——新窗口档位（如 `[2m]`）出现要手动追加分支；网关渠道自定义模型名不带 `[1m]` 时按 200k 猜可能偏小（偏小比缺席好，但仍是错的）；首 turn 内百分比可能短暂不准。
+
+**更好的方案方向**（待讨论）：
+
+1. **resume 场景持久化恢复**：hub 的 `runtimeState.contextUsage.maxTokens` 本就持久化了上次会话的窗口大小——CLI 会话启动/resume 时从 hub 拉取该值初始化记忆，替代猜测（比猜准、零新知识源）。可与猜测叠加：持久值优先、无持久值才猜
+2. **SDK 透出**：Claude Agent SDK 未来若在 metadata/modelInfo 中暴露各模型 contextWindow，直接接入替换猜测
+3. **hub 集中维护模型配置表**：服务端权威的「模型 → 窗口」映射（可随版本更新），CLI 拉取使用——把窗口知识从 CLI 硬编码升级为可运营数据，顺带覆盖网关自定义模型名场景
+
+**相关文件**：
+
+- `packages/cli/src/claude/utils/modelContextWindow.ts` — 当前猜测实现（规则演进点）
+- `packages/cli/src/claude/claudeRemoteLauncher.ts` — `reportAssistantUsage` 预填接线、`lastMaxTokens` 记忆
+- `packages/hub/src/sync/sessionCache.ts` — 方向 1 的数据源（runtimeState.contextUsage 落库）
+
+**优先级**：低。过渡方案已消除「首 turn 全程缺席」的主要体验缺口，残余为短暂精度问题；方向 1 成本最低，建议与下次水位相关迭代一并做。
+
+---
+
+## 58. Supervisor 控制socket 存在性看门狗（unlink 幽灵防御）（2026-08-26）
+
+**背景**：E2E 每轮清理（`e2e-cleanup.sh` 绕过 supervisor 强杀子进程 + `rm -rf ~/.mobi-e2e`）曾累积 10 个「幽灵 supervisor」——控制 socket 文件随数据目录被删后，supervisor 探活 connect 得到 ENOENT、指令送不到，事件循环靠控制 server listen 撑着永不退出，且对 `ensureSupervisorRunning`/`doctor clean` 完全不可见。已通过 **e2e 切换 start-sync 直跑形态**（不再经过 supervisor）+ **doctor clean 识别 supervisor 类型** 消除该场景；但生产 A/B 路径（`mobi service start` / launchd）仍存在理论性 unlink 幽灵风险（窗口小：需旧实例 >1s 无应答 + 新实例并发 bind 或外部删除 socket 文件）。
+
+**方案方向**：runSupervisor 内启动低频看门狗（如每 5s `existsSync(configuration.supervisorSocketFile)`），文件消失 = 失去可发现性/可治理性 = 有序退出（走 finish(0) 收掉托管集）。语义：「socket 文件路径指向我」是 supervisor 存在意义的不变量。实现为依赖注入小模块放 `src/supervisor/`（参照 ppidWatchdog 形态），TDD 覆盖。
+
+**相关文件**：
+
+- `packages/cli/src/supervisor/index.ts` — runSupervisor 集成点
+- `packages/cli/src/supervisor/control.ts` — socket 路径来源（configuration.supervisorSocketFile）
+- `packages/cli/src/supervisor/ppidWatchdog.ts` — 同类看门狗的形态参照
+
+**优先级**：低。触发条件苛刻且已有 doctor clean 兜底识别；若未来出现生产幽灵再实施。

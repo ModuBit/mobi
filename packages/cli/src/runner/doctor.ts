@@ -136,6 +136,7 @@ async function getProcessProfiles(pids: number[]): Promise<Map<number, string | 
 const RUNNABLE_TYPES = new Set([
   'runner', 'dev-runner',
   'hub', 'dev-hub',
+  'supervisor', 'dev-supervisor',
   'runner-spawned-session', 'dev-runner-spawned',
   'runner-version-check', 'dev-runner-version-check',
 ])
@@ -168,6 +169,11 @@ export async function findAllMobiProcesses(attributor: ProfileAttributor = getPr
         type = isDevMode ? 'dev-runner' : 'runner';
       } else if (cmd.includes('hub start-sync') || cmd.includes('hub start')) {
         type = isDevMode ? 'dev-hub' : 'hub';
+      } else if (cmd.includes('service supervise')) {
+        // supervisor 常驻进程必须可被 doctor clean 识别，否则 E2E/dev 清理脚本
+        // 绕过它强杀子进程后会残留"无子进程却永不退出"的幽灵（profile 归属
+        // 靠 ps -E 读 env 的 MOBI_HOME，supervisor 由 CLI spawn 时继承）
+        type = isDevMode ? 'dev-supervisor' : 'supervisor';
       } else if (cmd.includes('--started-by runner')) {
         type = isDevMode ? 'dev-runner-spawned' : 'runner-spawned-session';
       } else if (cmd.includes('doctor')) {

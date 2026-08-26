@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # E2E 测试环境引导脚本
-# 启动 Hub + Web Dev Server，等待所有服务就绪后保持前台运行
+# 直跑形态启动 Hub + Web Dev Server + Runner（start-sync 前台组件本体，不经
+# supervisor 托管），等待所有服务就绪后保持前台运行
 # Ctrl+C 或收到 SIGTERM 时自动清理所有子进程
 # 通过 --profile e2e 加载配置
 
@@ -22,7 +23,7 @@ readonly POLL_INTERVAL=0.5
 
 HUB_PID=""
 WEB_PID=""
-RUNNER_PID=""
+RUNNER_BG_PID=""
 CLEANUP_DONE=false
 
 # 自动清理占用端口的进程
@@ -95,34 +96,26 @@ cleanup() {
 
     e2e_log_section "清理 E2E 测试环境"
 
-    # 1. 优雅终止已记录的子进程（子 shell PID）
-    if [[ -n "${HUB_PID}" ]] && kill -0 "${HUB_PID}" 2>/dev/null; then
-        e2e_log_info "终止 Hub 进程 (PID: ${HUB_PID})"
-        kill -TERM "${HUB_PID}" 2>/dev/null || true
-        wait "${HUB_PID}" 2>/dev/null || true
-    fi
+    # 1. 优雅终止直跑子进程：hub/web/runner 均为 start-sync 直跑形态，
+    #    是本脚本的直接子进程（PID 即 bun 本体），SIGTERM 走各自优雅清理。
+    #    PPID 看门狗兜底：本脚本意外死亡时组件自行退出
+    for name_pid in "Hub:${HUB_PID}" "Web Dev Server:${WEB_PID}" "Runner:${RUNNER_BG_PID}"; do
+        local label="${name_pid%%:*}"
+        local cpid="${name_pid##*:}"
+        if [[ -n "${cpid}" ]] && kill -0 "${cpid}" 2>/dev/null; then
+            e2e_log_info "终止 ${label} 进程 (PID: ${cpid})"
+            kill -TERM "${cpid}" 2>/dev/null || true
+            wait "${cpid}" 2>/dev/null || true
+        fi
+    done
 
-    if [[ -n "${WEB_PID}" ]] && kill -0 "${WEB_PID}" 2>/dev/null; then
-        e2e_log_info "终止 Web Dev Server 进程 (PID: ${WEB_PID})"
-        kill -TERM "${WEB_PID}" 2>/dev/null || true
-        wait "${WEB_PID}" 2>/dev/null || true
-    fi
-
-    # 1.5 supervised 架构收尾：hub/runner 是 supervisor 的孙进程，直接 kill 会被
-    #     supervisor 退避重启拉回（端口竞态）。必须先 service stop 让 supervisor
-    #     优雅收掉托管集（desired 清空后 supervisor 自行退出 onEmpty），
-    #     再做按 state file / 端口的兜底清理
-    e2e_log_info "停止 e2e supervisor 托管的服务..."
-    (
-        cd "${MOBI_ROOT}" && \
-        bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" service stop &>/dev/null || true
-    )
-
+    # 1.5 Runner 会话子进程兜底：按 state file 走 HTTP 逐个停止 claude 会话，
+    #     再对 runner 本体补一发优雅停止（上一步 SIGTERM 已使其退出时自动跳过）
     e2e_stop_runner "${RUNNER_STATE_FILE}"
 
-    # 2. 端口兜底清理：杀孙进程（hub start-sync / web vite 监听端口，子 shell kill 会遗漏）
-    #    孙进程都监听端口，按端口 kill 必杀，避免孤儿残留
-    e2e_log_info "端口兜底清理（孙进程）..."
+    # 2. 端口兜底清理：直跑进程若因异常脱离父子关系（如被 disown 的孙进程），
+    #    按监听端口必杀，避免孤儿残留
+    e2e_log_info "端口兜底清理..."
     local control_port=""
     if e2e_read_runner_state "${RUNNER_STATE_FILE}" 2>/dev/null && [[ -n "${RUNNER_HTTP_PORT}" ]]; then
         control_port="${RUNNER_HTTP_PORT}"
@@ -164,17 +157,13 @@ main() {
     # 清理上次残留的就绪信号（mkdir -p 不删旧文件）
     rm -f "${E2E_TMPDIR}/ready.flag"
 
-    # 3. 启动 Hub
+    # 3. 启动 Hub（直跑形态：不经 supervisor，start-sync 前台运行 hub 本体。
+    #    --host/--port 直接生效；PPID 看门狗保证本脚本死亡时 hub 自杀）
     e2e_log_section "启动 Hub"
 
-    (
-        cd "${MOBI_ROOT}" && \
-        # supervised 架构：hub 端口由 supervisor 的 desired state 决定（兜底 2222 = default 环境），
-        # e2e 必须显式传 --port，否则与 default 环境的 hub 撞端口
-        bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" hub start --host 127.0.0.1 --port "${HUB_PORT}" &>"${E2E_TMPDIR}/logs/hub.log"
-    ) &
+    bun run "${MOBI_ROOT}/packages/cli/src/index.ts" --profile "${PROFILE_NAME}" \
+        hub start-sync --host 127.0.0.1 --port "${HUB_PORT}" &>"${E2E_TMPDIR}/logs/hub.log" &
     HUB_PID="${!}"
-    disown
     e2e_log_info "Hub 进程已启动 (PID: ${HUB_PID})"
 
     # 4. 等待 Hub 就绪
@@ -208,13 +197,12 @@ main() {
     fi
     e2e_log_info "Web Dev Server 已就绪 ✓"
 
-    # 7. 启动 Runner
+    # 7. 启动 Runner（直跑形态同 Hub：后台运行 start-sync，就绪以 state file 为准）
     e2e_log_section "启动 Runner"
 
-    (
-        cd "${MOBI_ROOT}" && \
-        bun run packages/cli/src/index.ts --profile "${PROFILE_NAME}" runner start &>"${E2E_TMPDIR}/logs/runner.log"
-    )
+    bun run "${MOBI_ROOT}/packages/cli/src/index.ts" --profile "${PROFILE_NAME}" \
+        runner start-sync &>"${E2E_TMPDIR}/logs/runner.log" &
+    RUNNER_BG_PID="${!}"
 
     e2e_log_info "等待 Runner 就绪..."
     local runner_waited=0
