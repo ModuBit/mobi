@@ -163,20 +163,26 @@ describe('ContextRing', () => {
         expect(screen.getByRole('button', { name: '0%' })).toBeTruthy()
     })
 
-    it('200k 衰减刻度线：1M 窗口（ratio 0.2 <1）渲染 line，位置在 20% 角度', () => {
+    it('衰减刻度线：1M 窗口渲染两根（200k@20% 角度、400k@40% 角度）', () => {
         render(<ContextRing usage={makeUsage({ maxTokens: 1_000_000, percentage: 13 })} />)
-        const line = document.querySelector('svg[role="button"] line')
-        expect(line).toBeTruthy()
-        // 20% 角度（顶部起顺时针 72°）：外端 x≈23.89, y≈8.14
-        expect(Number(line!.getAttribute('x2'))).toBeCloseTo(23.89, 1)
-        expect(Number(line!.getAttribute('y2'))).toBeCloseTo(8.14, 1)
+        const lines = document.querySelectorAll('svg[role="button"] line')
+        expect(lines.length).toBe(2)
+        // 第一根 20% 角度（顶部起顺时针 72°）：外端 x≈23.89, y≈8.14
+        expect(Number(lines[0].getAttribute('x2'))).toBeCloseTo(23.89, 1)
+        expect(Number(lines[0].getAttribute('y2'))).toBeCloseTo(8.14, 1)
+        // 第二根 40% 角度（144°）：外端 x≈19.35, y≈22.11
+        expect(Number(lines[1].getAttribute('x2'))).toBeCloseTo(19.35, 1)
+        expect(Number(lines[1].getAttribute('y2'))).toBeCloseTo(22.11, 1)
     })
 
-    it('200k 衰减刻度线退化：窗口 ≤200k（ratio ≥1）不渲染', () => {
+    it('衰减刻度线退化：窗口 ≤200k 不渲染任何刻度；400k 窗口只渲染 200k 一根', () => {
         const { unmount } = render(<ContextRing usage={makeUsage({ maxTokens: 200_000, percentage: 13 })} />)
         expect(document.querySelector('svg[role="button"] line')).toBeNull()
         unmount()
         render(<ContextRing usage={makeUsage({ maxTokens: 100_000, percentage: 13 })} />)
         expect(document.querySelector('svg[role="button"] line')).toBeNull()
+        unmount()
+        render(<ContextRing usage={makeUsage({ maxTokens: 400_000, percentage: 13 })} />)
+        expect(document.querySelectorAll('svg[role="button"] line').length).toBe(1)
     })
 })
