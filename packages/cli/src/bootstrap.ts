@@ -17,6 +17,11 @@
 // 在编译后的二进制中禁用 Ink devtools，避免引入可选依赖
 process.env.DEV = 'false';
 
+// stdio 孤儿管道防护必须先于一切业务逻辑安装：晚于第一条 warning 就等于没装。
+// 详见 utils/stdioEpipeGuard.ts 头注（2026-08-27 会话暴毙事故的根因加固）
+const { installStdioEpipeGuard } = await import('./utils/stdioEpipeGuard');
+installStdioEpipeGuard();
+
 await import('./index');
 
 export {};
