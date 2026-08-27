@@ -68,21 +68,36 @@ function assertAllowedExt(absPath: string): string | null {
     return null
 }
 
+/**
+ * machine 通道读取的统一入口策略：cwd 归一 → 严格 cwd 边界 → 扩展名白名单。
+ * meta 与 range 两个 handler 共用，策略只此一处——改动不会两处漂移。
+ */
+function resolveAllowedMachinePath(
+    cwd: string,
+    relPath: string | undefined,
+): { abs: string } | { error: string; code?: string } {
+    const effectiveCwd = typeof cwd === 'string' && cwd.trim() !== '' ? cwd : process.cwd()
+    const abs = resolveWithinCwd(effectiveCwd, relPath ?? '')
+    if (!abs) {
+        return { error: 'Invalid path: outside cwd boundary' }
+    }
+    const denied = assertAllowedExt(abs)
+    if (denied) {
+        return { error: denied, code: 'EXT_FORBIDDEN' }
+    }
+    return { abs }
+}
+
 export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager): void {
     rpcHandlerManager.registerHandler<MachineReadFileMetaRequest, ReadFileMetaResponse>('readFileMeta', async (data) => {
-        const cwd = typeof data.cwd === 'string' && data.cwd.trim() !== '' ? data.cwd : process.cwd()
-        const abs = resolveWithinCwd(cwd, data.path ?? '')
-        if (!abs) {
-            return rpcError('Invalid path: outside cwd boundary')
-        }
-        const denied = assertAllowedExt(abs)
-        if (denied) {
-            return rpcError(denied, { code: 'EXT_FORBIDDEN' })
+        const resolved = resolveAllowedMachinePath(data.cwd ?? '', data.path)
+        if ('error' in resolved) {
+            return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
         }
 
         try {
-            logger.debug('[MACHINE] Read file meta:', abs)
-            return { success: true, meta: await fileMetaAt(abs) }
+            logger.debug('[MACHINE] Read file meta:', resolved.abs)
+            return { success: true, meta: await fileMetaAt(resolved.abs) }
         } catch (error) {
             logger.debug('[MACHINE] Failed to stat file:', error)
             // 透传 ENOENT 结构化码，hub 基于它精确映射 404
@@ -95,19 +110,14 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
     })
 
     rpcHandlerManager.registerHandler<MachineReadFileRangeRequest, ReadFileRangeResponse>('readFileRange', async (data) => {
-        const cwd = typeof data.cwd === 'string' && data.cwd.trim() !== '' ? data.cwd : process.cwd()
-        const abs = resolveWithinCwd(cwd, data.path ?? '')
-        if (!abs) {
-            return rpcError('Invalid path: outside cwd boundary')
-        }
-        const denied = assertAllowedExt(abs)
-        if (denied) {
-            return rpcError(denied, { code: 'EXT_FORBIDDEN' })
+        const resolved = resolveAllowedMachinePath(data.cwd ?? '', data.path)
+        if ('error' in resolved) {
+            return rpcError(resolved.error, resolved.code ? { code: resolved.code } : undefined)
         }
 
         try {
-            logger.debug('[MACHINE] Read file range:', abs, data.offset, data.length)
-            const st = await stat(abs)
+            logger.debug('[MACHINE] Read file range:', resolved.abs, data.offset, data.length)
+            const st = await stat(resolved.abs)
             const rawOffset = Math.floor(data.offset ?? 0)
             const rawLength = Math.floor(data.length ?? RPC_BINARY_CHUNK_SIZE)
             if (!Number.isFinite(rawOffset) || !Number.isFinite(rawLength) || rawOffset < 0 || rawLength < 0) {
@@ -117,10 +127,15 @@ export function registerMachineFileHandlers(rpcHandlerManager: RpcHandlerManager
             if (rawOffset >= st.size || length <= 0) {
                 return rpcError('Range out of bounds')
             }
-            return { success: true, chunk: await fileRangeAt(abs, rawOffset, length) }
+            return { success: true, chunk: await fileRangeAt(resolved.abs, rawOffset, length) }
         } catch (error) {
             logger.debug('[MACHINE] Failed to read file range:', error)
-            return rpcError(getErrorMessage(error, 'Failed to read file range'))
+            // 与 meta 对齐：ENOENT 结构化码透传（meta 后文件被并发删除等场景 hub 可精确 404）
+            const code = (error as NodeJS.ErrnoException | null | undefined)?.code
+            return rpcError(
+                getErrorMessage(error, 'Failed to read file range'),
+                code === 'ENOENT' ? { code: 'ENOENT' } : undefined,
+            )
         }
     })
 }

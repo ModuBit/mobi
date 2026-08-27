@@ -151,5 +151,14 @@ describe('machine file RPC handlers', () => {
             })) as { success: boolean }
             expect(r.success).toBe(false)
         })
+
+        it('meta 后文件被删除：ENOENT 结构化码透传（与 meta 对齐）', async () => {
+            const r = (await rpc.handleRequest({
+                method: `${SCOPE}:readFileRange`,
+                params: { path: 'gone.png', cwd: rootDir, offset: 0, length: 1 },
+            })) as { success: boolean; code?: string }
+            expect(r.success).toBe(false)
+            expect(r.code).toBe('ENOENT')
+        })
     })
 })

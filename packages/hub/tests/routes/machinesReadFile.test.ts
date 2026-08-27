@@ -39,6 +39,9 @@ const mockSyncEngine = {
         if (path.endsWith('.png')) {
             return { success: true, meta: { mime: 'image/png', size: CHUNK.length, etag: '8-123' } }
         }
+        if (path.endsWith('.html')) {
+            return { success: true, meta: { mime: 'text/html', size: CHUNK.length, etag: '1-1' } }
+        }
         return { success: false, error: 'File extension ".bin" is not allowed over machine channel' }
     },
     machineReadFileRange: async (_mid: unknown, _cwd: unknown, _p: unknown, offset: number, length: number) => {
@@ -83,6 +86,15 @@ describe('GET /api/machines/:id/read-file', () => {
         expect(res.headers.get('content-type')).toBe('image/png')
         expect(res.headers.get('etag')).toBe('8-123')
         expect(await res.text()).toBe(CHUNK)
+    })
+
+    test('200：html 文档带 nosniff + 断网 CSP（防 hub origin 脚本执行）', async () => {
+        const res = await get('/api/machines/test-machine-1/read-file?cwd=/home/testuser/proj&path=.mobi/uploads/evil.html')
+        expect(res.status).toBe(200)
+        expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+        const csp = res.headers.get('content-security-policy') ?? ''
+        expect(csp).toContain("connect-src 'none'")
+        expect(csp).toContain("default-src 'none'")
     })
 
     test('404：meta ENOENT 结构化透传', async () => {

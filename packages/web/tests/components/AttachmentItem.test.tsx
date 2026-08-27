@@ -130,4 +130,30 @@ describe('ImageThumb 图片缩略图', () => {
             expect(document.body.querySelector('.ant-image-preview')).not.toBeNull()
         })
     })
+
+    it('恢复态附件 machineId+cwd 可得：优先 machine 端点（会话关闭后仍可达）', () => {
+        const a: FileAttachment = {
+            id: 'restored-m',
+            file: new File([], 'shot.png'),
+            status: 'complete',
+            path: '.mobi/uploads/2026-08/shot-abc123.png',
+            name: 'shot.png',
+            size: 2048,
+            mimeType: 'image/png',
+        }
+        const { container } = render(
+            <AttachmentList
+                attachments={[a]}
+                onRemove={() => {}}
+                sessionId="sess-rw"
+                machineId="m-9"
+                cwd="/Users/t/demo"
+            />,
+        )
+        const img = container.querySelector('img')!
+        const src = img.getAttribute('src')!
+        expect(src).toContain('/api/machines/m-9/read-file')
+        expect(src).toContain(encodeURIComponent('.mobi/uploads/2026-08/shot-abc123.png'))
+        expect(src).not.toContain('/api/sessions/')
+    })
 })

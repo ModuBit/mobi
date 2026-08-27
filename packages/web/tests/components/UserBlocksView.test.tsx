@@ -87,6 +87,24 @@ describe('UserBlocksView ImageView', () => {
         expect(container.querySelector('img')!.getAttribute('src')).toMatch(/^data:image\/svg\+xml/)
     })
 
+    it('失败态钉死于触发它的 src：src 变化（如环境恢复）后自动重试正常 src', () => {
+        const { container, rerender } = render(
+            <UserBlocksView blocks={[serverImageBlock()]} env={{ sessionId: 'sess-1' }} />,
+        )
+        fireEvent.error(container.querySelector('img')!)
+        expect(container.querySelector('img')!.getAttribute('src')).toMatch(/^data:image\/svg\+xml/)
+
+        // 环境恢复（env 补上 machineId/cwd → src 切换为 machine 端点）：不再显示兜底图
+        rerender(
+            <UserBlocksView
+                blocks={[serverImageBlock()]}
+                env={{ sessionId: 'sess-1', machineId: 'm-1', cwd: '/Users/t/demo' }}
+            />,
+        )
+        const src = container.querySelector('img')!.getAttribute('src')!
+        expect(src).toContain('/api/machines/m-1/read-file')
+    })
+
     it('连续多图归并到同一横向容器：flex wrap + 间距，不一张一行', () => {
         const blocks = [
             serverImageBlock(),

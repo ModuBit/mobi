@@ -15,14 +15,15 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from 'react'
-import { App, Button, Input, Select, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
+import { App, Button, Input, Spin, Popover, Typography, Segmented, theme as antTheme } from 'antd'
+import styled from '@emotion/styled'
 import { AppTooltip } from '@/components/ui/AppTooltip'
+import { HoverSelect } from '@/components/ui/HoverSelect'
 import { Sender } from '@ant-design/x'
 import { PlusOutlined, InboxOutlined, RightOutlined, BranchesOutlined } from '@ant-design/icons'
 import { Cpu } from 'lucide-react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import styled from '@emotion/styled'
 import type { EffortLevel, PermissionMode } from '@mobi/shared'
 import { EFFORT_LEVELS, EFFORT_LABELS, getPermissionModeTone } from '@mobi/shared'
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
@@ -70,7 +71,6 @@ import { isSegmentEmpty, serializeSegments, type ComposerSegments } from '@/doma
 import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
 import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from '@/components/composer/permissionModeOption'
 import { getPermissionModeIcon } from '@/components/composer/permissionModeIcons'
-import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
 
 const { useToken } = antTheme
 
@@ -177,27 +177,7 @@ const InputCard = styled.div`
     }
 `
 
-const HoverSelect = styled(Select, {
-    shouldForwardProp: shouldNotForwardDollarProps,
-})<{
-    $token: ReturnType<typeof antTheme.useToken>['token']
-    $compact?: boolean
-}>`
-    border-radius: ${props => props.$token.borderRadiusSM}px;
-    transition: background 0.2s;
-
-    /* 覆盖 antd6 默认：下拉展开时有值内容被压暗到 opacity 0.25。
-       紧凑选择器（权限模式图标 / 模型名）收起与展开观感应一致，保持原色 */
-    &&.ant-select-open .ant-select-content-has-value {
-        opacity: 1;
-    }
-    ${props => props.$compact && `
-        height: 24px !important;
-        &&& .ant-select-input {
-            font-size: 12px !important;
-        }
-    `}
-`
+// 紧凑 Select 使用 ui/HoverSelect 共享定义（与 composer 共用）
 
 function CompactHoverSelect(props: Omit<React.ComponentProps<typeof HoverSelect>, 'size' | 'variant' | 'popupMatchSelectWidth' | '$compact'>) {
     useCompactDropdownStyle()

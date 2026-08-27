@@ -15,12 +15,13 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, createElement } from 'react'
-import { Button, Select, theme, Typography, Popover, message } from 'antd'
+import styled from '@emotion/styled'
+import { Button, theme, Typography, Popover, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
+import { HoverSelect } from '@/components/ui/HoverSelect'
 import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
-import styled from '@emotion/styled'
 import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
 import {
@@ -47,7 +48,6 @@ import { useAttachmentHandling } from './useAttachmentHandling'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from './useDirectoryCommands'
 import { useSDKMetadata, type ModelOption } from '@/core/data/hooks/queries/useSDKMetadata'
-import { shouldNotForwardDollarProps } from '@/core/lib/styledUtils'
 import { MentionDropdown } from './MentionDropdown'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { CommandHintBar } from './CommandHintBar'
@@ -145,28 +145,7 @@ const ComposerDock = styled.div`
     }
 `
 
-// 带 filled 背景的紧凑 Select
-const HoverSelect = styled(Select, {
-    shouldForwardProp: shouldNotForwardDollarProps,
-})<{
-    $token: ReturnType<typeof theme.useToken>['token']
-    $compact?: boolean
-}>`
-    border-radius: ${props => props.$token.borderRadiusSM}px;
-    transition: background 0.2s;
-
-    /* 覆盖 antd6 默认：下拉展开时有值内容被压暗到 opacity 0.25。
-       紧凑选择器（权限模式图标 / 模型名）收起与展开观感应一致，保持原色 */
-    &&.ant-select-open .ant-select-content-has-value {
-        opacity: 1;
-    }
-    ${props => props.$compact && `
-        height: 24px !important;
-        &&& .ant-select-input {
-            font-size: 12px !important;
-        }
-    `}
-`
+// 紧凑 Select 使用 ui/HoverSelect 共享定义（composer 与新建会话页共用）
 
 // 缩小 dropdown 弹出层的 option 字体（全局注入一次）
 const COMPACT_DROPDOWN_CLASS = 'compact-select-dropdown'
@@ -803,6 +782,8 @@ export function ChatComposer(props: ChatComposerProps) {
                 attachments={attachments}
                 onRemove={handleRemoveAttachment}
                 sessionId={sessionId}
+                machineId={metadata?.machineId}
+                cwd={metadata?.path}
             />
         ),
     ].filter(Boolean)

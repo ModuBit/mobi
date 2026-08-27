@@ -18,6 +18,7 @@ import { useState } from 'react'
 import { Button, Image } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { buildReadFileUrl } from '@/core/utils/fileUrl'
+import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 
 interface ImageContentViewProps {
     /** 会话 id（拼 read-file 端点 src） */
@@ -28,15 +29,7 @@ interface ImageContentViewProps {
     etag: string
 }
 
-// 加载失败兜底图：语言无关的「破损图片」SVG（灰色山+太阳占位）。
-// 用 data URI 内联，无需额外网络请求；i18n 文案由 antd 的 fallback 视觉语义承载。
-const FALLBACK_IMAGE = `data:image/svg+xml,${encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='180' viewBox='0 0 240 180'>
-        <rect width='240' height='180' fill='#f5f5f5'/>
-        <path d='M30 130 L90 70 L130 110 L170 60 L210 130 Z' fill='#d9d9d9'/>
-        <circle cx='175' cy='55' r='14' fill='#bfbfbf'/>
-    </svg>`,
-)}`
+// 加载失败兜底图见 core/utils/fallbackImage.ts（单源，文件预览与消息气泡共用）
 
 /**
  * 图片文件内容视图（纯展示）：

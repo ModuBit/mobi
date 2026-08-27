@@ -26,6 +26,27 @@ import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
 import { serveFileContent } from './serveFileContent'
 
+/**
+ * HTML 预览 CSP：与 sessions serve-file 的 PREVIEW_CSP 同构（connect-src 'none' 收口）。
+ * machine read-file 白名单放行了 .html/.js——若裸渲染，机器侧植入的 HTML 将在 hub origin
+ * 执行且自带登录 cookie，可自由调 hub API。注入 CSP 后 script 仍可跑（内嵌页面预览语义），
+ * 但任何网络外呼被切断，攻击面收敛为纯展示。
+ */
+const MACHINE_PREVIEW_CSP = [
+    "default-src 'none'",
+    "script-src 'self' https: 'unsafe-inline'",
+    "style-src 'self' https: 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' https: data:",
+    "media-src 'self' data:",
+    "connect-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'self'",
+    "object-src 'none'",
+    "frame-src 'none'",
+].join('; ')
+
 const spawnBodySchema = z.object({
     directory: z.string().min(1),
     agent: z.enum(['claude']).optional(),  // Mobi 当前仅支持 Claude
@@ -235,7 +256,12 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
                 readFileRange: (p, o, l) => engine.machineReadFileRange(machineId, cwd, p, o, l),
             },
             path,
-            { download: c.req.query('download') === '1' },
+            {
+                download: c.req.query('download') === '1',
+                // nosniff 防 MIME 嗅探；html 文档注入断网 CSP（防 hub origin 脚本执行，见上注）
+                extraHeaders: { 'x-content-type-options': 'nosniff' },
+                htmlCsp: MACHINE_PREVIEW_CSP,
+            },
         )
     })
 

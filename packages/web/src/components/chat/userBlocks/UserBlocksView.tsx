@@ -24,6 +24,7 @@ import type {
 } from '@mobi/shared'
 import { groupUserBlocks } from '@/domain/chat/userContent'
 import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
+import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { TextBlock } from '../blocks/TextBlock'
 
@@ -97,16 +98,6 @@ function DocumentView({ block }: UserBlockViewProps<UserDocumentBlock>) {
 /** 缩略图尺寸：聊天气泡内的小方块（微信/Slack 风格），点击可放大看原图 */
 const IMAGE_THUMB_SIZE = 80
 
-// 加载失败兜底图：语言无关的「破损图片」SVG（灰色山+太阳占位）。
-// 与 ImageContentView 同款内联 data URI，无需额外网络请求；会话关闭等场景 read-file 拉不到原图时展示。
-const FALLBACK_IMAGE = `data:image/svg+xml,${encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='180' viewBox='0 0 240 180'>
-        <rect width='240' height='180' fill='#f5f5f5'/>
-        <path d='M30 130 L90 70 L130 110 L170 60 L210 130 Z' fill='#d9d9d9'/>
-        <circle cx='175' cy='55' r='14' fill='#bfbfbf'/>
-    </svg>`,
-)}`
-
 /**
  * image 视图：FileCard 纯图卡压成 80×80 cover 小缩略图，点击 Image 自带 preview 放大看原图。
  * blob:/data:/http(s):// 等自足 URL 直接用（乐观回显的本地预览）；
@@ -118,17 +109,20 @@ const FALLBACK_IMAGE = `data:image/svg+xml,${encodeURIComponent(
  */
 function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     const { token } = theme.useToken()
-    const [failed, setFailed] = useState(false)
+    const [failedFor, setFailedFor] = useState<string | null>(null)
     const raw = block.previewUrl ?? block.source.value
     // blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地预览）；服务端路径优先 machine
-    // 端点（会话关闭后仍可达），env 信息不全时回退 session read-file（兼容）
+    // 端点（会话关闭后仍可达），env 信息不全时回退 session read-file（兼容）。
+    // 不带 etag v 参数：.mobi/uploads 为 write-once（上传即 shortId 唯一名，无覆盖路径），
+    // 不存在同路径内容变化的陈旧缓存问题——变更语义由「重新上传得新路径」承载。
     const computed =
         /^(blob:|data:|https?:\/\/)/i.test(raw)
             ? raw
             : env.machineId && env.cwd
                 ? buildMachineReadFileUrl(env.machineId, env.cwd, raw)
                 : buildReadFileUrl(env.sessionId ?? '', raw)
-    const src = failed ? FALLBACK_IMAGE : computed
+    // 失败态钉死在触发它的具体 src 上：src 变化（重试/网络恢复后重新渲染）自动重试
+    const src = failedFor === computed ? FALLBACK_IMAGE : computed
     return (
         <AppTooltip title={block.filename}>
             <FileCard
@@ -146,7 +140,7 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
                     fallback: FALLBACK_IMAGE,
                     // styles.image 才落在 <img> 元素上：width/height 只定外层容器，裁切必须单独传
                     styles: { image: { objectFit: 'cover' } },
-                    onError: () => setFailed(true),
+                    onError: () => setFailedFor(computed),
                 }}
             />
         </AppTooltip>
