@@ -341,16 +341,9 @@ export class SyncEngine {
     async sendMessage(
         sessionId: string,
         payload: {
-            text: string
+            /** 内容三形态之一（string / 单 block / block 数组，或旧平铺对象），透传给 messageService 归一 */
+            content: unknown
             localId?: string | null
-            attachments?: Array<{
-                id: string
-                filename: string
-                mimeType: string
-                size: number
-                path: string
-                previewUrl?: string
-            }>
             sentFrom?: 'webapp' | 'cli'
         }
     ): Promise<void> {

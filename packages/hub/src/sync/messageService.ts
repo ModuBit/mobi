@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import type { AttachmentMetadata, DecryptedMessage } from '@mobi/shared/types'
+import { normalizeUserContent } from '@mobi/shared'
+import type { DecryptedMessage } from '@mobi/shared/types'
 import type { Server } from 'socket.io'
 import type { Store, StoredMessage } from '../store'
 import { EventPublisher } from './eventPublisher'
@@ -111,21 +112,23 @@ export class MessageService {
     async sendMessage(
         sessionId: string,
         payload: {
-            text: string
+            /** 内容三形态之一（string / 单 block / block 数组，或旧平铺对象）。路由层已 Zod 校验，service 再归一保底 */
+            content: unknown
             localId?: string | null
-            attachments?: AttachmentMetadata[]
             sentFrom?: 'webapp' | 'cli'
         }
     ): Promise<void> {
         const sentFrom = payload.sentFrom ?? 'webapp'
 
+        // 写入侧格式单一化：三形态统一归一为 UserContentBlock[] 再落库（读取侧零分叉）
+        const blocks = normalizeUserContent(payload.content)
+        if (!blocks || blocks.length === 0) {
+            throw new Error('Invalid message content')
+        }
+
         const content = {
             role: 'user',
-            content: {
-                type: 'text',
-                text: payload.text,
-                attachments: payload.attachments
-            },
+            content: blocks,
             meta: {
                 sentFrom
             }

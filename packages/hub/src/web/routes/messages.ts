@@ -15,6 +15,7 @@
  */
 
 import { Hono } from 'hono'
+import { UserMessageContentSchema, normalizeUserContent } from '@mobi/shared'
 import { AttachmentMetadataSchema } from '@mobi/shared/schemas'
 import { z } from 'zod'
 import type { SyncEngine } from '../../sync/syncEngine'
@@ -30,11 +31,20 @@ const sidechainQuerySchema = z.object({
     parentToolUseId: z.string().min(1),
 })
 
-const sendMessageBodySchema = z.object({
+/** 新版发送格式：content 三形态（string / 单 block / block 数组） */
+const newFormatBodySchema = z.object({
+    content: UserMessageContentSchema,
+    localId: z.string().min(1).optional(),
+})
+
+/** 旧版 web/PWA 平铺发送格式（窗口期兼容） */
+const legacyFlatBodySchema = z.object({
     text: z.string(),
     localId: z.string().min(1).optional(),
-    attachments: z.array(AttachmentMetadataSchema).optional()
+    attachments: z.array(AttachmentMetadataSchema).optional(),
 })
+
+const sendMessageBodySchema = z.union([newFormatBodySchema, legacyFlatBodySchema])
 
 export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
@@ -97,17 +107,17 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        // Require text or attachments
-        if (!parsed.data.text && (!parsed.data.attachments || parsed.data.attachments.length === 0)) {
+        // 双格式收敛到同一归一函数：新格式直传，旧平铺组装为 {type:'text',text,attachments} 对象。
+        // 归一在此预检——空文本/空附件是客户端错误须回 400（service 层 throw 仅作非 HTTP 入口防线，
+        // 若落到那里会被 Hono 兜底成 500）
+        const rawContent = 'content' in parsed.data
+            ? parsed.data.content
+            : { type: 'text', text: parsed.data.text, attachments: parsed.data.attachments }
+        if (normalizeUserContent(rawContent) === null) {
             return c.json({ error: 'Message requires text or attachments' }, 400)
         }
 
-        await engine.sendMessage(sessionId, {
-            text: parsed.data.text,
-            localId: parsed.data.localId,
-            attachments: parsed.data.attachments,
-            sentFrom: 'webapp'
-        })
+        await engine.sendMessage(sessionId, { content: rawContent, localId: parsed.data.localId, sentFrom: 'webapp' })
         return c.json({ ok: true })
     })
 

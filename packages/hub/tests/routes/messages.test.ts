@@ -64,6 +64,102 @@ function makeMockEngine(opts: {
     return engine as unknown as SyncEngine & { deleteCalled: boolean }
 }
 
+/** mock engine 捕获 POST /messages 透传给 sendMessage 的 payload */
+function makeSendEngine() {
+    const sent: { sessionId: string; payload: unknown }[] = []
+    const engine = {
+        resolveSessionAccess: (_id: string, _ns: string) => ({
+            ok: true as const,
+            sessionId: 'test-session-1',
+            session: mockSession,
+        }),
+        sendMessage: async (sessionId: string, payload: unknown) => {
+            sent.push({ sessionId, payload })
+        },
+    }
+    return { engine: engine as unknown as SyncEngine, sent }
+}
+
+describe('POST /api/sessions/:id/messages（双发送格式）', () => {
+    let cleanup: () => void
+    let app: ReturnType<typeof import('../../src/web/server').createWebApp>
+
+    afterEach(() => {
+        cleanup?.()
+    })
+
+    async function postMessage(engine: SyncEngine, body: unknown) {
+        const setup = await setupTestApp(engine)
+        app = setup.app
+        cleanup = setup.cleanup
+        const token = await getAuthToken(app)
+        return await app.request('/api/sessions/test-session-1/messages', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+    }
+
+    test('新格式：content 三形态直传 sendMessage', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const res = await postMessage(engine, { content: 'hi', localId: 'l1' })
+        expect(res.status).toBe(200)
+        expect(await res.json()).toEqual({ ok: true })
+        expect(sent).toEqual([{
+            sessionId: 'test-session-1',
+            payload: { content: 'hi', localId: 'l1', sentFrom: 'webapp' },
+        }])
+    })
+
+    test('新格式：block 数组直传', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        const res = await postMessage(engine, { content: [{ type: 'text', text: 'yo' }] })
+        expect(res.status).toBe(200)
+        expect(sent[0].payload).toEqual({ content: [{ type: 'text', text: 'yo' }], localId: undefined, sentFrom: 'webapp' })
+    })
+
+    test('旧平铺格式：组装为 {type:text,text,attachments} 交同一归一函数', async () => {
+        const { engine, sent } = makeSendEngine()
+        const attachments = [{ id: '1', filename: 'a.png', mimeType: 'image/png', size: 3, path: '/p/a.png' }]
+
+        const res = await postMessage(engine, { text: 'old', attachments, localId: 'l2' })
+        expect(res.status).toBe(200)
+        expect(sent[0].payload).toEqual({
+            content: { type: 'text', text: 'old', attachments },
+            localId: 'l2',
+            sentFrom: 'webapp',
+        })
+    })
+
+    test('两种格式都不满足 → 400', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        for (const body of [{}, { text: 123 }, { attachments: 'x' }, { localId: 'only-id' }]) {
+            const res = await postMessage(engine, body)
+            expect(res.status).toBe(400)
+        }
+        expect(sent).toHaveLength(0)
+    })
+
+    test('归一失败（空文本/空数组/全未知 block）→ 400 而非 500，且不落库', async () => {
+        const { engine, sent } = makeSendEngine()
+
+        for (const body of [
+            { content: '' },
+            { text: '' },
+            { content: [] },
+            { content: [{ type: 'audio' }] },
+            { text: '', attachments: [] },
+        ]) {
+            const res = await postMessage(engine, body)
+            expect(res.status).toBe(400)
+        }
+        expect(sent).toHaveLength(0)
+    })
+})
+
 describe('DELETE /api/sessions/:id/messages/:messageId（CLI 权威的取消）', () => {
     let cleanup: () => void
     let app: ReturnType<typeof import('../../src/web/server').createWebApp>
