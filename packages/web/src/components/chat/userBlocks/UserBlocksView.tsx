@@ -23,7 +23,7 @@ import type {
     UserContentBlock, UserDocumentBlock, UserImageBlock, UserQuoteBlock, UserTextBlock,
 } from '@mobi/shared'
 import { groupUserBlocks } from '@/domain/chat/userContent'
-import { buildReadFileUrl } from '@/core/utils/fileUrl'
+import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { TextBlock } from '../blocks/TextBlock'
 
@@ -31,8 +31,12 @@ import { TextBlock } from '../blocks/TextBlock'
 export interface UserBlockRenderEnv {
     /** 合成消息：text 视图走弱化 span（原 TextBlock isSynthetic 语义，如 rewind 命令标记行） */
     isSynthetic?: boolean
-    /** 会话 ID：image/document 的服务端路径经 read-file 端点构造 src */
+    /** 会话 ID：machineId/cwd 缺失时附件回退 session read-file 取数（兼容老入口） */
     sessionId?: string
+    /** 归属机器 ID：消息附件静态资源经 machine 端点读取，与会话进程存活解耦 */
+    machineId?: string
+    /** 会话工作目录（machine 端点 cwd 参数） */
+    cwd?: string
 }
 
 /** 各类型视图的统一 props 形态（block 字段按注册键收窄） */
@@ -116,7 +120,14 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     const { token } = theme.useToken()
     const [failed, setFailed] = useState(false)
     const raw = block.previewUrl ?? block.source.value
-    const computed = /^(blob:|data:|https?:\/\/)/i.test(raw) ? raw : buildReadFileUrl(env.sessionId ?? '', raw)
+    // blob:/data:/http(s):// 自足 URL 直接用（乐观回显的本地预览）；服务端路径优先 machine
+    // 端点（会话关闭后仍可达），env 信息不全时回退 session read-file（兼容）
+    const computed =
+        /^(blob:|data:|https?:\/\/)/i.test(raw)
+            ? raw
+            : env.machineId && env.cwd
+                ? buildMachineReadFileUrl(env.machineId, env.cwd, raw)
+                : buildReadFileUrl(env.sessionId ?? '', raw)
     const src = failed ? FALLBACK_IMAGE : computed
     return (
         <AppTooltip title={block.filename}>

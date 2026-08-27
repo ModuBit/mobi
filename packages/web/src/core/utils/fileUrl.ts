@@ -50,3 +50,25 @@ export function buildReadFileUrl(
     if (opts.retry) params.set('_retry', String(opts.retry))
     return `/api/sessions/${sessionId}/read-file?${params.toString()}`
 }
+
+/**
+ * machine 通道 read-file 端点 URL 构造：跨会话存活的静态资源读取（消息附件预览等）。
+ * 与 buildReadFileUrl 的 v 参数机制一致（etag 作内容版本），协商缓存行为相同；
+ * 差异仅在寻址——sessionId 换成 machineId + cwd 显式二元组，会话关闭不影响可达性。
+ */
+export function buildMachineReadFileUrl(
+    machineId: string,
+    cwd: string,
+    filePath: string,
+    opts: {
+        /** 文件内容版本（meta.etag）；省略则不带 v */
+        etag?: string
+        /** 下载模式：追加 download=1 */
+        download?: boolean
+    } = {},
+): string {
+    const params = new URLSearchParams({ cwd, path: filePath })
+    if (opts.download) params.set('download', '1')
+    if (opts.etag) params.set('v', opts.etag)
+    return `/api/machines/${machineId}/read-file?${params.toString()}`
+}

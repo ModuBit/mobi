@@ -51,7 +51,12 @@ export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.
                 <CollapsibleUserMessage blocks={block.blocks} isSynthetic={block.isSynthetic}>
                     <UserBlocksView
                         blocks={block.blocks}
-                        env={{ isSynthetic: block.isSynthetic, sessionId: ctx.sessionId }}
+                        env={{
+                            isSynthetic: block.isSynthetic,
+                            sessionId: ctx.sessionId,
+                            machineId: ctx.metadata?.machineId,
+                            cwd: ctx.metadata?.path,
+                        }}
                     />
                 </CollapsibleUserMessage>
             )

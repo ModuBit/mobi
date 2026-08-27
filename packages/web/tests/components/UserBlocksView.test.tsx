@@ -17,6 +17,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup, fireEvent } from '@testing-library/react'
 import { UserBlocksView } from '@/components/chat/userBlocks/UserBlocksView'
+import { buildMachineReadFileUrl } from '@/core/utils/fileUrl'
 import type { UserImageBlock } from '@mobi/shared'
 
 // vitest 未开 globals，渲染型测试需显式 cleanup，否则 DOM 累积串味后续断言
@@ -109,5 +110,30 @@ describe('UserBlocksView ImageView', () => {
         )
         expect(container.querySelectorAll('.ant-space')).toHaveLength(0)
         expect(container.querySelectorAll('.ant-image')).toHaveLength(2)
+    })
+
+    it('env 带 machineId+cwd 时 src 走 machine 端点（会话关闭仍可达）', () => {
+        const { container } = render(
+            <UserBlocksView
+                blocks={[serverImageBlock()]}
+                env={{ sessionId: 'sess-1', machineId: 'm-1', cwd: '/Users/t/demo' }}
+            />,
+        )
+        const src = container.querySelector('img')!.getAttribute('src')!
+        expect(src).toContain('/api/machines/m-1/read-file')
+        expect(src).toContain(encodeURIComponent('.mobi/uploads/2026-08/photo.png'))
+        // 与 session 端点互斥：不再打 sessions read-file
+        expect(src).not.toContain('/api/sessions/')
+    })
+})
+
+describe('buildMachineReadFileUrl', () => {
+    it('cwd 与 path 并入查询串，支持 v/download', () => {
+        const url = new URL(buildMachineReadFileUrl('m-1', '/h/demo', '.mobi/uploads/a.png', { etag: 'e1', download: true }), 'http://localhost')
+        expect(url.pathname).toBe('/api/machines/m-1/read-file')
+        expect(url.searchParams.get('cwd')).toBe('/h/demo')
+        expect(url.searchParams.get('path')).toBe('.mobi/uploads/a.png')
+        expect(url.searchParams.get('v')).toBe('e1')
+        expect(url.searchParams.get('download')).toBe('1')
     })
 })
