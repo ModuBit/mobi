@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, ConfigProvider, Layout } from 'antd'
+import { theme as antTheme, ConfigProvider, Layout, Spin } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { AppSidebar } from './AppSidebar'
@@ -22,7 +22,7 @@ import { MobileMenuDrawer } from './MobileMenu'
 import { WcoTitleBar, resolveChromeColor } from './WcoTitleBar'
 import { useWindowControlsOverlay, WcoContext } from './useWindowControlsOverlay'
 import { Outlet } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Helmet } from 'react-helmet-async'
 import { UpdatePrompt } from './UpdatePrompt'
@@ -101,7 +101,11 @@ export function MainLayout() {
                         borderLeft: !isMobile && sidebarExpanded ? `1px solid ${token.colorBorder}` : undefined,
                         background: token.colorBgLayout,
                     }}>
-                        <Outlet />
+                        {/* 页面级懒加载 chunk 的内层边界：跳转时只内容区出 loading，
+                            侧边栏/布局骨架保持不动（外层 App 的 Suspense 只兜 MainLayout 自身） */}
+                        <Suspense fallback={<ContentLoadingFallback />}>
+                            <Outlet />
+                        </Suspense>
                     </Layout.Content>
                 </Layout>
             </div>
@@ -109,5 +113,14 @@ export function MainLayout() {
             <MobileMenuDrawer />
             </WcoContext.Provider>
         </ConfigProvider>
+    )
+}
+
+/** 内容区路由 chunk 拉取期间的占位：局部居中 Spin，布局（侧边栏）保持可见，避免全屏白闪 */
+function ContentLoadingFallback() {
+    return (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Spin />
+        </div>
     )
 }

@@ -14,42 +14,68 @@
  * limitations under the License.
  */
 
-import { lazy } from 'react'
+import { lazy, type ComponentType } from 'react'
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { App } from './App'
 
 // 页面组件用 React.lazy 拆成独立 chunk，把 chat/bubble/toolcard/markdown/editor 等
 // 重依赖移出主入口 bundle——首屏（尤其登录路径）只下 react+antd+providers+router 基础包。
-// App（root，含 SSEProvider）保持 eager（所有路由共用），并在 App 内用 Suspense 兜住懒加载。
-// 页面均为具名导出，故用 .then(m => ({ default: m.X })) 适配 React.lazy 的 default 约定。
-const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })))
-const MainLayout = lazy(() =>
-    import('./components/layout/MainLayout').then((m) => ({ default: m.MainLayout })),
-)
-const SessionsLayout = lazy(() =>
-    import('./pages/SessionsLayout').then((m) => ({ default: m.SessionsLayout })),
-)
-const SessionDetailPage = lazy(() =>
-    import('./pages/SessionDetailPage').then((m) => ({ default: m.SessionDetailPage })),
-)
-const NewSessionPage = lazy(() =>
-    import('./pages/NewSessionPage').then((m) => ({ default: m.NewSessionPage })),
-)
-const SettingsLayout = lazy(() =>
-    import('./pages/SettingsPage').then((m) => ({ default: m.SettingsLayout })),
-)
-const NotificationsSection = lazy(() =>
-    import('./components/settings/sections/NotificationsSection').then((m) => ({ default: m.NotificationsSection })),
-)
-const SettingsIndex = lazy(() =>
-    import('./components/settings/sections/SettingsIndex').then((m) => ({ default: m.SettingsIndex })),
-)
-const WebToolsSection = lazy(() =>
-    import('./components/settings/sections/WebToolsSection').then((m) => ({ default: m.WebToolsSection })),
-)
-const DebugSectionRoute = lazy(() =>
-    import('./components/settings/sections/DebugSectionRoute').then((m) => ({ default: m.DebugSectionRoute })),
-)
+// App（root，含 SSEProvider）保持 eager（所有路由共用）兜 root 级懒加载（LoginPage/MainLayout 自身），
+// MainLayout 内层再兜页面级懒加载（跳转时侧边栏不闪、只有内容区出 loading）。
+
+/** 路由 chunk 加载器：动态 import + 页面的具名导出名 */
+interface RouteChunkLoader {
+    load: () => Promise<unknown>
+    pick: string
+}
+
+// 路由 chunk 加载器表：React.lazy 与空闲预取（prefetchRouteChunks）共用同一批 import()，
+// 保证预取拉到的 URL 就是路由真正要的 chunk，后续导航命中 HTTP 缓存毫秒级返回。
+// 页面均为具名导出，mount 时由 lazyRoute 适配 React.lazy 的 default 约定。
+export const routeChunkLoaders = {
+    LoginPage: { load: () => import('./pages/LoginPage'), pick: 'LoginPage' },
+    MainLayout: { load: () => import('./components/layout/MainLayout'), pick: 'MainLayout' },
+    SessionsLayout: { load: () => import('./pages/SessionsLayout'), pick: 'SessionsLayout' },
+    SessionDetailPage: { load: () => import('./pages/SessionDetailPage'), pick: 'SessionDetailPage' },
+    NewSessionPage: { load: () => import('./pages/NewSessionPage'), pick: 'NewSessionPage' },
+    SettingsLayout: { load: () => import('./pages/SettingsPage'), pick: 'SettingsLayout' },
+    NotificationsSection: { load: () => import('./components/settings/sections/NotificationsSection'), pick: 'NotificationsSection' },
+    SettingsIndex: { load: () => import('./components/settings/sections/SettingsIndex'), pick: 'SettingsIndex' },
+    WebToolsSection: { load: () => import('./components/settings/sections/WebToolsSection'), pick: 'WebToolsSection' },
+    DebugSectionRoute: { load: () => import('./components/settings/sections/DebugSectionRoute'), pick: 'DebugSectionRoute' },
+} satisfies Record<string, RouteChunkLoader>
+
+// 具名导出 → React.lazy 的 default 约定适配
+const lazyRoute = (loader: RouteChunkLoader) =>
+    lazy(async () => {
+        const mod = (await loader.load()) as Record<string, ComponentType>
+        return { default: mod[loader.pick] }
+    })
+
+/**
+ * 空闲预取全部路由 chunk：认证判定通过后由 App 在浏览器空闲时调用一次。
+ * 单个 chunk 预取失败静默——真正导航时 React.lazy 会重新发起加载，走既有 loading 兜底。
+ */
+export async function prefetchRouteChunks(): Promise<void> {
+    await Promise.all(
+        Object.values(routeChunkLoaders).map((loader) =>
+            loader.load().catch(() => {
+                // 静默：预取是锦上添花，失败不应打扰用户
+            }),
+        ),
+    )
+}
+
+const LoginPage = lazyRoute(routeChunkLoaders.LoginPage)
+const MainLayout = lazyRoute(routeChunkLoaders.MainLayout)
+const SessionsLayout = lazyRoute(routeChunkLoaders.SessionsLayout)
+const SessionDetailPage = lazyRoute(routeChunkLoaders.SessionDetailPage)
+const NewSessionPage = lazyRoute(routeChunkLoaders.NewSessionPage)
+const SettingsLayout = lazyRoute(routeChunkLoaders.SettingsLayout)
+const NotificationsSection = lazyRoute(routeChunkLoaders.NotificationsSection)
+const SettingsIndex = lazyRoute(routeChunkLoaders.SettingsIndex)
+const WebToolsSection = lazyRoute(routeChunkLoaders.WebToolsSection)
+const DebugSectionRoute = lazyRoute(routeChunkLoaders.DebugSectionRoute)
 
 // Root route - wraps all routes with App component
 const rootRoute = createRootRoute({

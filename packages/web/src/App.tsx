@@ -22,6 +22,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { Spin } from 'antd'
 import { setUnauthorizedHandler, createApiClient, useMobiApi } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { prefetchRouteChunks } from '@/router'
 
 export function App() {
     const { authenticated, logout } = useAuthStore()
@@ -78,11 +79,24 @@ export function App() {
         }
     }, [authenticated, bootstrapped, location.pathname, navigate])
 
+    // 空闲预取全部路由 chunk：认证判定通过后浏览器空闲时触发一次，之后任意页面跳转
+    // 命中 HTTP 缓存不再 suspend（消除切页白屏）。未认证不预取——登录态下唯一可达
+    // 页面是登录页，且避免与登录页 chunk、auth/status 请求抢带宽
+    useEffect(() => {
+        if (!bootstrapped || !authenticated) return
+        // 旧 Safari（<18）无 requestIdleCallback，退化为短延时 setTimeout
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(() => { void prefetchRouteChunks() })
+        } else {
+            window.setTimeout(() => { void prefetchRouteChunks() }, 200)
+        }
+    }, [bootstrapped, authenticated])
+
     return (
         <ErrorBoundary>
             <SSEProvider>
-                {/* 路由页面组件用 React.lazy 拆 chunk；加载期间挂居中 Spin（非空，避免远端
-                    慢链路拉 LoginPage 等小 chunk 时白屏像崩溃）。chunk 缓存后近乎无感 */}
+                {/* root 级懒加载兜底：只接 MainLayout/LoginPage 自身 chunk 的 suspend。
+                    页面级 chunk 由 MainLayout 内容区的内层 Suspense 兜——跳转时布局不动 */}
                 <Suspense fallback={<RouteLoadingFallback />}>
                     <Outlet />
                 </Suspense>
@@ -91,7 +105,7 @@ export function App() {
     )
 }
 
-/** 路由懒加载 chunk 拉取期间的占位：全屏居中 Spin（antd 已在 eager 图，零额外开销） */
+/** root 级懒加载 chunk（MainLayout/LoginPage 自身）拉取期间的占位：全屏居中 Spin（antd 已在 eager 图，零额外开销） */
 function RouteLoadingFallback() {
     return (
         <div
