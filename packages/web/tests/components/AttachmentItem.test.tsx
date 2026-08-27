@@ -14,10 +14,13 @@
  * limitations under the License.
  */
 
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, afterEach } from 'vitest'
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { AttachmentList } from '@/components/composer/AttachmentItem'
 import type { FileAttachment } from '@/core/lib/fileAttachments'
+
+// vitest 未开 globals，渲染型测试需显式 cleanup，否则 DOM 累积串味后续断言
+afterEach(cleanup)
 
 describe('AttachmentList 恢复态渲染', () => {
     it('优先用顶层 size 而非空 file.size', () => {
@@ -55,6 +58,51 @@ describe('AttachmentList 恢复态渲染', () => {
             size: 1024,
         }
         const { container } = render(<AttachmentList attachments={[a]} onRemove={() => {}} />)
+        expect(container.querySelector('img')).toBeNull()
+    })
+})
+
+describe('ImageThumb 图片缩略图', () => {
+    const imgAttachment = (): FileAttachment => ({
+        id: 'img-x',
+        file: new File([new Uint8Array([1, 2, 3])], 'shot.png', { type: 'image/png' }),
+        status: 'complete',
+        path: '/uploads/2026-08/shot-xxxx.png',
+    })
+
+    it('上传完成态图片：36×36 cover 缩略图（外层容器），img 承载裁切', () => {
+        const { container } = render(<AttachmentList attachments={[imgAttachment()]} onRemove={() => {}} />)
+        const holder = container.querySelector('.ant-image') as HTMLElement
+        expect(holder).not.toBeNull()
+        expect(holder.style.width).toBe('36px')
+        expect(holder.style.height).toBe('36px')
+        const img = holder.querySelector('img')
+        expect(img).not.toBeNull()
+        expect(img!.style.objectFit).toBe('cover')
+        expect(img!.getAttribute('src')).toMatch(/^blob:/)
+    })
+
+    it('点击可放大预览：点击缩略图后 preview 浮层挂载', async () => {
+        const { container } = render(<AttachmentList attachments={[imgAttachment()]} onRemove={() => {}} />)
+        const holder = container.querySelector('.ant-image') as HTMLElement
+        fireEvent.click(holder.querySelector('img') ?? holder)
+        // 浮层经 Portal 渲染到 document.body
+        await waitFor(() => {
+            expect(document.body.querySelector('.ant-image-preview')).not.toBeNull()
+        })
+    })
+
+    it('空 file（恢复态）不渲染预览容器，回退图标（既有行为不回归）', () => {
+        const a: FileAttachment = {
+            id: 'empty',
+            file: new File([], 'pic.png'),
+            status: 'complete',
+            path: '/uploads/pic-xxxx.png',
+            name: 'pic.png',
+            size: 1024,
+        }
+        const { container } = render(<AttachmentList attachments={[a]} onRemove={() => {}} />)
+        expect(container.querySelector('.ant-image')).toBeNull()
         expect(container.querySelector('img')).toBeNull()
     })
 })

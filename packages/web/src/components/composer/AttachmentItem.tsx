@@ -15,7 +15,7 @@
  */
 
 import { memo, useState, useEffect, type FC } from 'react'
-import { theme, Spin, Progress } from 'antd'
+import { theme, Spin, Progress, Image } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { CloseOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
 import {
@@ -315,17 +315,16 @@ const ImageThumb = memo(function ImageThumb({
     }, [attachment.file])
 
     if (previewUrl && !imgError) {
+        // antd Image：36×36 缩略显示（width/height 定外层容器，cover 裁切经 styles.image 落 <img>），
+        // preview 开启 → 点击放大看原图。onError 置 imgError 回退图标。
         return (
-            <img
+            <Image
                 src={previewUrl}
                 alt=""
+                width={THUMB_SIZE}
+                height={THUMB_SIZE}
+                styles={{ image: { objectFit: 'cover', display: 'block' } }}
                 onError={() => setImgError(true)}
-                style={{
-                    width: THUMB_SIZE,
-                    height: THUMB_SIZE,
-                    objectFit: 'cover',
-                    display: 'block',
-                }}
             />
         )
     }
