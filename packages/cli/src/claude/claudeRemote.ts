@@ -215,9 +215,13 @@ export function sanitizeUserMessage(message: string): string {
     return message.replace(/(?<!\\)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g, '\\($1\\)')
 }
 
-/** sanitize 仅作用于 string 形态 payload；数组（含图片 content block）原样透传 */
-const sanitizePayload = (p: PromptPayload): PromptPayload =>
-    typeof p === 'string' ? sanitizeUserMessage(p) : p
+/** 对双形态 prompt 产物统一做 $...$ → \(...\) 转义：
+ *  string 原样转义；数组形态仅对 text 元素的文本逐个应用同一转义，
+ *  image 元素（base64 源）原样保留、元素顺序不变——保证「同句正文带图与否」行为一致 */
+export const sanitizePayload = (p: PromptPayload): PromptPayload =>
+    typeof p === 'string'
+        ? sanitizeUserMessage(p)
+        : p.map(el => el.type === 'text' ? { ...el, text: sanitizeUserMessage(el.text) } : el)
 
 /** 特殊命令（/clear /compact !bash）只可能出现在 string 形态 payload（命令均以纯文本入队）；
  *  数组 payload 恒为普通消息，返回空串走 handleSpecialCommand 的「普通消息」分支 */

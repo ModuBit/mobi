@@ -31,7 +31,7 @@ describe('summarizeBlocks', () => {
             { type: 'image', source: { type: 'url', value: '/b.png' }, id: 'i', filename: 'b.png', size: 2 },
             { type: 'quote', messageId: 'm', role: 'agent', excerpt: 'x' },
             { type: 'text', text: 'hi' },
-        ], LABELS)).toBe('[文件][图片][引用]hi')
+        ], LABELS)).toBe('[文件] [图片] [引用] hi')
     })
 
     it('空数组返回空串', () => {

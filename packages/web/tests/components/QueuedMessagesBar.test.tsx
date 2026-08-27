@@ -178,7 +178,7 @@ describe('QueuedMessagesBar', () => {
         const { getByText } = renderBar([withAttachment])
 
         // text 原文 + document 占位（t mock 返回 key 本身）
-        expect(getByText('看这个chat.summary.file')).toBeInTheDocument()
+        expect(getByText('看这个 chat.summary.file')).toBeInTheDocument()
     })
 
     it('排队消息与已 invoke 消息混合时只展示排队项', () => {

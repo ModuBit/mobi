@@ -24,18 +24,30 @@ export const EMPTY_SUMMARY_LABELS: SummaryLabels = { file: '', image: '', quote:
 
 /**
  * 单行预览：text 取原文依次连接，非 text block 以标签占位，block 顺序保持。
- * 排队消息悬浮条与 rewind 确认视图共用——原 QueuedMessagesBar.previewText 与
- * collectRewindBatchText 的「同形约定」由本函数收口为单一来源。
+ * 占位标签之间（以及标签与后续内容之间）插入单个空格——中文文案黏连尚可读，
+ * 英文 "[File][Image]" 会不可读。排队消息悬浮条与 rewind 确认视图共用——原
+ * QueuedMessagesBar.previewText 与 collectRewindBatchText 的「同形约定」由本函数收口为单一来源。
  */
 export function summarizeBlocks(blocks: UserContentBlock[], labels: SummaryLabels): string {
     let out = ''
+    let prevWasLabel = false
     for (const b of blocks) {
-        switch (b.type) {
-            case 'text': out += b.text; break
-            case 'document': out += labels.file; break
-            case 'image': out += labels.image; break
-            case 'quote': out += labels.quote; break
+        if (b.type === 'text') {
+            // 标签后接正文补单个空格，与标签间隔规则对称
+            if (prevWasLabel && b.text) out += ' '
+            out += b.text
+            prevWasLabel = false
+            continue
         }
+        const label =
+            b.type === 'document' ? labels.file :
+            b.type === 'image' ? labels.image :
+            labels.quote
+        // 标签与相邻内容之间补单个空格（中文黏连尚可读，英文 "[File][Image]" 不可读）；
+        // 空标签（rewind 回填的 EMPTY_SUMMARY_LABELS）不输出、不引入空格
+        if (label && (out.length > 0 || prevWasLabel)) out += ' '
+        out += label
+        prevWasLabel = Boolean(label)
     }
     return out
 }

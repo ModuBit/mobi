@@ -22,7 +22,7 @@ import {
     ProjectSchema,
     RuntimeStateSchema
 } from '@mobi/shared/schemas'
-import { UserMessageContentSchema } from '@mobi/shared'
+import { LegacyFlatObjectSchema, UserMessageContentSchema } from '@mobi/shared'
 import type { PermissionMode } from '@mobi/shared/types'
 import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
@@ -161,11 +161,8 @@ export const MessageMetaSchema = z.object({
 export type MessageMeta = z.infer<typeof MessageMetaSchema>
 
 /** 旧平铺 content（历史落库回放 / 旧 hub 窗口期）：宽松对象即可，消费端 normalizeUserContent 再归一 */
-const LegacyFlatUserContentSchema = z.looseObject({
-    type: z.string(),
-    text: z.string().optional(),
-    attachments: z.array(z.unknown()).optional()
-})
+/** 旧平铺宽松 schema 单源自 shared（与 normalizeUserContent 的 legacy 通道同一份规则），此处仅别名 */
+const LegacyFlatUserContentSchema = LegacyFlatObjectSchema
 
 export const UserMessageSchema = z.object({
     role: z.literal('user'),

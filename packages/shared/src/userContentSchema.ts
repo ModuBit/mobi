@@ -71,8 +71,9 @@ export type UserContentBlock = z.infer<typeof UserContentBlockSchema>
 /**
  * 读取侧归一的输入：允许旧平铺对象带任意多余键（attachments 等），按宽松对象校验。
  * 生产库存量 user 消息全部是 {type:'text',text} 平铺形态，靠此通道消化。
+ * 导出供消费方门口分流复用（如 cli api/types.ts 的 union 前置分支）——避免双源漂移。
  */
-const LegacyFlatObjectSchema = z.looseObject({
+export const LegacyFlatObjectSchema = z.looseObject({
     type: z.string(),
     text: z.string().optional(),
     attachments: z.array(z.unknown()).optional(),

@@ -25,7 +25,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { sanitizeUserMessage } from '@/claude/claudeRemote'
+import { sanitizeUserMessage, sanitizePayload } from '@/claude/claudeRemote'
 
 describe('sanitizeUserMessage', () => {
     it('应将单行内 LaTeX 公式 $...$ 替换为 \\(...\\)', () => {
@@ -70,5 +70,35 @@ describe('sanitizeUserMessage', () => {
 
     it('应处理空字符串', () => {
         expect(sanitizeUserMessage('')).toBe('')
+    })
+})
+
+describe('sanitizePayload', () => {
+    it('string 形态行为与 sanitizeUserMessage 一致', () => {
+        expect(sanitizePayload('成本是 $a+b$，注意开销')).toBe('成本是 \\(a+b\\)，注意开销')
+        expect(sanitizePayload('无公式的普通文本')).toBe('无公式的普通文本')
+    })
+
+    it('数组形态：text 元素转义、image 原样保留、元素顺序不变', () => {
+        const imageBlock = {
+            type: 'image' as const,
+            source: { type: 'base64' as const, media_type: 'image/png' as const, data: 'aGVsbG8=' },
+        }
+        const payload = [
+            { type: 'text' as const, text: '这张图里 $x+y$ 的含义是什么？' },
+            imageBlock,
+            { type: 'text' as const, text: '另外解释 $z^2$ 项' },
+        ]
+        const result = sanitizePayload(payload)
+        expect(result).toEqual([
+            { type: 'text', text: '这张图里 \\(x+y\\) 的含义是什么？' },
+            imageBlock,
+            { type: 'text', text: '另外解释 \\(z^2\\) 项' },
+        ])
+    })
+
+    it('数组形态：不含 $ 的 text 元素保持原样，不产生多余拷贝差异', () => {
+        const payload = [{ type: 'text' as const, text: '普通文本' }]
+        expect(sanitizePayload(payload)).toEqual([{ type: 'text', text: '普通文本' }])
     })
 })

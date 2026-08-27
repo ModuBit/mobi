@@ -93,8 +93,11 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                 // 只有真正取消成功才回填；已被 agent 处理则提示
                 if (res.data.status === 'cancelled') {
                     // 结构化还原：normalize 归一后 deserialize 为分段（text + 附件双桶 + 引用）；
-                    // normalize 失败（快照/乐观形态）兜底 originalText 纯文本
+                    // normalize 失败（快照/乐观形态）兜底 originalText 纯文本。
+                    // 剔除指向被取消消息自身的 quote（防御：引用不可能合法指向排队中的本条，
+                    // 残留只会产生 dangling 引用块）
                     const blocks = userBlocksOf(msg)
+                        ?.filter(b => b.type !== 'quote' || b.messageId !== msg.id)
                     if (blocks) {
                         onEdit(deserializeSegments(blocks))
                     } else {
