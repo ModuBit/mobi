@@ -17,9 +17,9 @@
 import { useCallback } from 'react'
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
 import { ChevronRight, Pin } from 'lucide-react'
 import { usePinnedSessions } from '@/core/data/hooks/queries/usePinnedSessions'
+import { useMenuNavigate } from './useMenuNavigate'
 import {
     SectionHeader, SectionTitleText, SectionChevron,
     SessionListWrapper, SessionListInner, EmptyRow,
@@ -33,17 +33,16 @@ const { useToken } = antTheme
 interface MobilePinnedGroupProps {
     activeSessionId: string | undefined
     onSessionAction: (sessionId: string) => void
-    onCloseMenu: () => void
 }
 
 /**
  * 移动端「置顶」分区：跨项目/游离的置顶会话，与「项目」「最近」平级、置于最前（与桌面端一致）。
  * 有会话默认展开、空分区默认收起；置顶/取消置顶走长按 ActionSheet（MobileProjectList 统一处理）
  */
-export function MobilePinnedGroup({ activeSessionId, onSessionAction, onCloseMenu }: MobilePinnedGroupProps) {
+export function MobilePinnedGroup({ activeSessionId, onSessionAction }: MobilePinnedGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
-    const navigate = useNavigate()
+    const navigateFromMenu = useMenuNavigate()
 
     const {
         sessions, visibleSessions,
@@ -54,9 +53,8 @@ export function MobilePinnedGroup({ activeSessionId, onSessionAction, onCloseMen
     } = usePinnedSessions(activeSessionId, true)
 
     const handleSessionClick = useCallback((sessionId: string) => {
-        onCloseMenu()
-        navigate({ to: '/sessions/$sessionId', params: { sessionId } })
-    }, [navigate, onCloseMenu])
+        navigateFromMenu({ to: '/sessions/$sessionId', params: { sessionId } })
+    }, [navigateFromMenu])
 
     // 展开即撑开：空分区展开时展示「暂无会话」占位，加载中展示骨架
     const wrapperExpanded = expanded

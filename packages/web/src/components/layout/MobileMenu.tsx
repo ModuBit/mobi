@@ -16,7 +16,7 @@
 
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useLocation } from '@tanstack/react-router'
+import { useLocation } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
@@ -25,6 +25,7 @@ import { mobileNavItems, logoutNavItem, navPathMap, getNavActiveKey } from './na
 import { useThemeLocaleToggle } from './useThemeLocaleToggle'
 import { MobileMenuItem } from './mobileMenu.styles'
 import { MobileProjectList } from './MobileProjectList'
+import { useMenuNavigate } from './useMenuNavigate'
 import { MobileDrawer } from '@/components/ui/MobileDrawer'
 import { Menu, Sun, Moon, Languages, RefreshCw, RotateCw } from 'lucide-react'
 import { InstallButton } from './InstallButton'
@@ -88,7 +89,6 @@ export function MobileMenuButton() {
 export function MobileMenuDrawer() {
     const { token } = useToken()
     const { t } = useTranslation()
-    const navigate = useNavigate()
     const location = useLocation()
     const { mobileMenuOpen, setMobileMenuOpen } = useUiStore()
     const { logout } = useAuthStore()
@@ -98,6 +98,8 @@ export function MobileMenuDrawer() {
     const restart = useForceUpdate()
     // 刷新/重启 仅 PWA(standalone)有意义:浏览器有自带刷新按钮,PWA 无浏览器 chrome
     const isPwa = usePwaMode()
+    // 菜单内导航统一走 hook：先关抽屉让滑出起步，再延迟提交路由渲染（防动画被渲染风暴饿死）
+    const navigateFromMenu = useMenuNavigate()
 
     // 关闭菜单
     const handleClose = () => setMobileMenuOpen(false)
@@ -112,9 +114,8 @@ export function MobileMenuDrawer() {
     const handleSelect = (key: string) => {
         const path = navPathMap[key]
         if (path) {
-            navigate({ to: path })
+            navigateFromMenu({ to: path })
         }
-        handleClose()
     }
 
     // 非移动端不渲染
@@ -147,7 +148,7 @@ export function MobileMenuDrawer() {
                 ))}
 
                 {/* 项目列表 */}
-                <MobileProjectList onCloseMenu={handleClose} />
+                <MobileProjectList />
 
                 {/* 设置等 */}
                 {bottomItems.map((item) => (

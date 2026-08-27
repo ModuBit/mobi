@@ -26,7 +26,7 @@ import {
 } from '@ant-design/icons'
 import { ChevronRight, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
@@ -48,6 +48,7 @@ import {
 import { MobileProjectGroup } from './MobileProjectGroup'
 import { MobileRecentGroup } from './MobileRecentGroup'
 import { MobilePinnedGroup } from './MobilePinnedGroup'
+import { useMenuNavigate } from './useMenuNavigate'
 import { ProjectFormModal } from '@/components/project/ProjectFormModal'
 import { SessionListFooter } from './SessionListFooter'
 import { useSectionExpanded } from './useSectionExpanded'
@@ -55,21 +56,16 @@ import { usePagedSectionList } from './usePagedSectionList'
 
 const { useToken } = antTheme
 
-interface MobileProjectListProps {
-    /** 关闭菜单 Drawer 的回调 */
-    onCloseMenu: () => void
-}
-
 /**
  * Mobile 端项目折叠列表
  * 「置顶」「项目」「最近」三个平级分区，每个分区可折叠、空分区默认收起。
  * 置顶是纯展示维度分组（不改归属），入口在长按 ActionSheet
  */
-export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
+export function MobileProjectList() {
     const { token } = useToken()
     const { t } = useTranslation()
     const { message: messageApi } = AntdApp.useApp()
-    const navigate = useNavigate()
+    const navigateFromMenu = useMenuNavigate()
     const queryClient = useQueryClient()
     const api = useMobiApi()
     const params = useParams({ strict: false })
@@ -193,14 +189,13 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
             const res = await api.sessions.resume(actionSessionId)
             await invalidateAll(actionSessionId)
             setActionSessionId(null)
-            onCloseMenu()
-            navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
+            navigateFromMenu({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
         } catch {
             // ignore
         } finally {
             setActionLoading(null)
         }
-    }, [actionSessionId, api, invalidateAll, onCloseMenu, navigate])
+    }, [actionSessionId, api, invalidateAll, navigateFromMenu])
 
     // 删除
     const handleDelete = useCallback(() => {
@@ -226,8 +221,7 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                     clearSessionResources(sessionId)
                     setActionSessionId(null)
                     if (activeSessionId === sessionId) {
-                        onCloseMenu()
-                        navigate({ to: '/sessions' })
+                        navigateFromMenu({ to: '/sessions' })
                     }
                 } catch {
                     // ignore
@@ -247,7 +241,7 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
             modal.destroy()
             setActionLoading(null)
         })
-    }, [actionSessionId, api, queryClient, invalidateAll, activeSessionId, onCloseMenu, navigate, t])
+    }, [actionSessionId, api, queryClient, invalidateAll, activeSessionId, navigateFromMenu, t])
 
 
     // ActionSheet 当前操作的 session
@@ -260,7 +254,6 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                 <MobilePinnedGroup
                     activeSessionId={activeSessionId}
                     onSessionAction={setActionSessionId}
-                    onCloseMenu={onCloseMenu}
                 />
                 <SectionHeader
                     $token={token}
@@ -288,7 +281,6 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                                 project={project}
                                 activeSessionId={activeSessionId}
                                 onSessionAction={setActionSessionId}
-                                onCloseMenu={onCloseMenu}
                             />
                         ))}
                         {(showCollapse || canShowMore) && (
@@ -308,7 +300,6 @@ export function MobileProjectList({ onCloseMenu }: MobileProjectListProps) {
                 <MobileRecentGroup
                     activeSessionId={activeSessionId}
                     onSessionAction={setActionSessionId}
-                    onCloseMenu={onCloseMenu}
                 />
             </Container>
 

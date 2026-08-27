@@ -17,9 +17,9 @@
 import { useCallback } from 'react'
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
+import { useMenuNavigate } from './useMenuNavigate'
 import {
     SectionHeader, SectionTitleText, SectionChevron,
     SessionListWrapper, SessionListInner, EmptyRow,
@@ -33,17 +33,16 @@ const { useToken } = antTheme
 interface MobileRecentGroupProps {
     activeSessionId: string | undefined
     onSessionAction: (sessionId: string) => void
-    onCloseMenu: () => void
 }
 
 /**
  * 移动端「最近」分区：游离（未归入项目）会话，与「项目」分区平级（与桌面端一致）。
  * 有会话默认展开、空分区默认收起；用户折叠后选择持久生效
  */
-export function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMenu }: MobileRecentGroupProps) {
+export function MobileRecentGroup({ activeSessionId, onSessionAction }: MobileRecentGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
-    const navigate = useNavigate()
+    const navigateFromMenu = useMenuNavigate()
 
     const {
         sessions, visibleSessions,
@@ -54,9 +53,8 @@ export function MobileRecentGroup({ activeSessionId, onSessionAction, onCloseMen
     } = useRecentSessions(activeSessionId, true)
 
     const handleSessionClick = useCallback((sessionId: string) => {
-        onCloseMenu()
-        navigate({ to: '/sessions/$sessionId', params: { sessionId } })
-    }, [navigate, onCloseMenu])
+        navigateFromMenu({ to: '/sessions/$sessionId', params: { sessionId } })
+    }, [navigateFromMenu])
 
     // 展开即撑开：空分区展开时展示「暂无会话」占位，加载中展示骨架
     const wrapperExpanded = expanded

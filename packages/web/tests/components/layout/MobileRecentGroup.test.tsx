@@ -29,9 +29,12 @@ vi.mock('@/core/data/hooks/queries/useRecentSessions', () => ({
     useRecentSessions: () => recentState.current,
 }))
 
-vi.mock('react-i18next', () => ({
-    useTranslation: () => ({ t: (key: string) => key }),
-}))
+// 部分 mock：保留 initReactI18next 等 side-effect 依赖（useMenuNavigate → uiStore
+// 导入链会触发 i18n config 模块），仅替换 useTranslation
+vi.mock('react-i18next', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('react-i18next')>()
+    return { ...actual, useTranslation: () => ({ t: (key: string) => key }) }
+})
 
 vi.mock('@tanstack/react-router', () => ({
     useNavigate: () => vi.fn(),
@@ -94,7 +97,6 @@ describe('MobileRecentGroup（平级「最近」分区）', () => {
             <MobileRecentGroup
                 activeSessionId={undefined}
                 onSessionAction={vi.fn()}
-                onCloseMenu={vi.fn()}
             />
         )
 
@@ -108,7 +110,6 @@ describe('MobileRecentGroup（平级「最近」分区）', () => {
             <MobileRecentGroup
                 activeSessionId={undefined}
                 onSessionAction={vi.fn()}
-                onCloseMenu={vi.fn()}
             />
         )
         expect(screen.getByText('nav.recent')).toBeInTheDocument()
@@ -122,7 +123,6 @@ describe('MobileRecentGroup（平级「最近」分区）', () => {
             <MobileRecentGroup
                 activeSessionId={undefined}
                 onSessionAction={vi.fn()}
-                onCloseMenu={vi.fn()}
             />
         )
         expect(screen.getByText('nav.recent')).toBeInTheDocument()
@@ -140,7 +140,6 @@ describe('MobileRecentGroup（平级「最近」分区）', () => {
             <MobileRecentGroup
                 activeSessionId={undefined}
                 onSessionAction={vi.fn()}
-                onCloseMenu={vi.fn()}
             />
         )
 

@@ -18,10 +18,10 @@ import type React from 'react'
 import { useCallback } from 'react'
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
 import { FolderClosed, FolderOpen, Plus } from 'lucide-react'
 import { useProjectSessions } from '@/core/data/hooks/queries/useProjectSessions'
 import type { Project } from '@/core/data/api/types'
+import { useMenuNavigate } from './useMenuNavigate'
 import {
     GroupHeader, FolderIcon, GroupName, NewSessionBtn,
     SessionListWrapper, SessionListInner, EmptyRow,
@@ -36,16 +36,15 @@ interface MobileProjectGroupProps {
     project: Project
     activeSessionId: string | undefined
     onSessionAction: (sessionId: string) => void
-    onCloseMenu: () => void
 }
 
 /** 移动端单个项目分组 */
 export function MobileProjectGroup({
-    project, activeSessionId, onSessionAction, onCloseMenu,
+    project, activeSessionId, onSessionAction,
 }: MobileProjectGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
-    const navigate = useNavigate()
+    const navigateFromMenu = useMenuNavigate()
 
     const {
         sessions, visibleSessions,
@@ -58,14 +57,12 @@ export function MobileProjectGroup({
     // 新建会话：带上项目归属（hub 侧把 cwd 锁定项目 primary folder + 挂 projectId）
     const handleNewSession = useCallback((e: React.MouseEvent) => {
         e.stopPropagation()
-        onCloseMenu()
-        navigate({ to: '/sessions/new', search: { projectId: project.id } })
-    }, [navigate, project.id, onCloseMenu])
+        navigateFromMenu({ to: '/sessions/new', search: { projectId: project.id } })
+    }, [navigateFromMenu, project.id])
 
     const handleSessionClick = useCallback((sessionId: string) => {
-        onCloseMenu()
-        navigate({ to: '/sessions/$sessionId', params: { sessionId } })
-    }, [navigate, onCloseMenu])
+        navigateFromMenu({ to: '/sessions/$sessionId', params: { sessionId } })
+    }, [navigateFromMenu])
 
     // 展开容器在「有会话」或「正在首次加载」时撑开，避免点了没反馈
     // 展开即撑开：空分组展示「暂无会话」占位（点击有反馈），加载中展示骨架
