@@ -3,10 +3,16 @@ name: pitfalls-general
 description: 跨任务通用误判（token 用途、诊断命令、工具禁用、短生命周期 DOM 验证、懒加载验证、React 控制的 inline style）
 metadata:
   type: pitfall
-  last_verified: 2026-08-17
+  last_verified: 2026-08-27
 ---
 
 # 通用误判
+
+## 附件上传测试文件必须放 repo 内（2026-08-27）
+
+CDP `upload_file` 的 filePath 只允许 workspace roots 内路径，`/tmp/...` 直接 Access denied。
+测试图片先复制进仓库内目录（如 `.scratch/e2e/`，已 gitignore）再传。
+
 
 ## token 用途（易用错）
 
