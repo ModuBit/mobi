@@ -757,7 +757,10 @@ export function createSessionsRoutes(
 
         // 共享文件服务逻辑（meta/304/Range/stream）抽至 serveFileContent，
         // 与 serve-file（HTML 预览静态资源）复用。
-        return serveFileContent(c, engine, sessionResult.sessionId, path, { download })
+        return serveFileContent(c, {
+            readFileMeta: (p) => engine.readFileMeta(sessionResult.sessionId, p),
+            readFileRange: (p, o, l) => engine.readFileRange(sessionResult.sessionId, p, o, l),
+        }, path, { download })
     })
 
     // 静态资源服务（HTML 预览用）：相对 cwd 的 path 段形式（splat），相对路径基准交给浏览器原生解析。
@@ -794,7 +797,10 @@ export function createSessionsRoutes(
 
         // download=1：top-level 打开会脱离 sandbox（同源执行），强制 attachment 触发下载而非渲染
         const download = c.req.query('download') === '1'
-        return serveFileContent(c, engine, sessionResult.sessionId, absPath, {
+        return serveFileContent(c, {
+            readFileMeta: (p) => engine.readFileMeta(sessionResult.sessionId, p),
+            readFileRange: (p, o, l) => engine.readFileRange(sessionResult.sessionId, p, o, l),
+        }, absPath, {
             download,
             extraHeaders: { 'x-content-type-options': 'nosniff' },
             // HTML 预览文档走 sandbox iframe。iframe 保留 allow-same-origin 是为了让同目录/子目录的

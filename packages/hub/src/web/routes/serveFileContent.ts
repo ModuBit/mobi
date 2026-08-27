@@ -18,7 +18,15 @@ import type { Context } from 'hono'
 import { stream } from 'hono/streaming'
 import { basename } from 'node:path'
 import { RPC_BINARY_CHUNK_SIZE } from '@mobi/shared'
-import type { SyncEngine } from '../../sync/syncEngine'
+
+/**
+ * 文件内容读取器：session 通道（sessionId 寻址）与 machine 通道（machineId+cwd 寻址）的公共面。
+ * serveFileContent 只依赖此抽象——meta→304→Range→stream 等机制层逻辑对两种寻址完全复用。
+ */
+export interface FileContentReader {
+    readFileMeta(path: string): Promise<{ success: boolean; meta?: { mime: string; size: number; etag: string }; error?: string; code?: string }>
+    readFileRange(path: string, offset: number, length: number): Promise<{ success: boolean; chunk?: Uint8Array; error?: string }>
+}
 
 interface ServeOptions {
     /** 下载场景（read-file 的 download=1）：追加 attachment content-disposition */
@@ -39,12 +47,11 @@ interface ServeOptions {
  */
 export async function serveFileContent(
     c: Context,
-    engine: SyncEngine,
-    sessionId: string,
+    reader: FileContentReader,
     absPath: string,
     opts: ServeOptions = {},
 ): Promise<Response> {
-    const meta = await engine.readFileMeta(sessionId, absPath)
+    const meta = await reader.readFileMeta(absPath)
     if (!meta.success || !meta.meta) {
         const status = meta.code === 'ENOENT' ? 404 : 500
         return c.json({ success: false, error: meta.error ?? 'Failed to read file meta' }, status)
@@ -138,7 +145,7 @@ export async function serveFileContent(
                 break
             }
             const len = Math.min(CHUNK, end - offset + 1)
-            const r = await engine.readFileRange(sessionId, absPath, offset, len)
+            const r = await reader.readFileRange(absPath, offset, len)
             if (!r.success || !r.chunk) {
                 break
             }

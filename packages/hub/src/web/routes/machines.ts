@@ -24,6 +24,7 @@ import { safeDecodeHeader } from '../utils/headers'
 import { checkProjectAssignable, type SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
+import { serveFileContent } from './serveFileContent'
 
 const spawnBodySchema = z.object({
     directory: z.string().min(1),
@@ -194,6 +195,48 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         } catch (error) {
             return c.json({ success: false, error: error instanceof Error ? error.message : 'Failed to list directory' }, 500)
         }
+    })
+
+    /**
+     * machine 通道读文件：跨会话存活的静态资源读取（消息附件预览等）。
+     * cwd/path 均为显式查询参数（客户端自报信任模型，与 upload/list-directory 一致）；
+     * cwd 先过 homeDir 黑白名单校验，路径边界与类型白名单由 cli 策略层最终裁决
+     * （严格 cwd + 图片/html/js/css 白名单，见 cli machineFiles handler）。
+     * 复用 serveFileContent 全套机制（meta→304→Range→stream），仅数据源换成 machine reader。
+     */
+    app.get('/machines/:id/read-file', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId)
+        if (machine instanceof Response) {
+            return machine
+        }
+
+        const cwd = c.req.query('cwd') ?? ''
+        const path = c.req.query('path') ?? ''
+        if (!cwd || !path) {
+            return c.json({ error: 'cwd and path parameters are required' }, 400)
+        }
+
+        // 与 list-directory 同一判据：cwd 必须落在 machine homeDir 内且不在黑名单目录
+        const invalidCwd = validateCwd(cwd, machine.metadata?.homeDir)
+        if (invalidCwd) {
+            return invalidCwd
+        }
+
+        return serveFileContent(
+            c,
+            {
+                readFileMeta: (p) => engine.machineReadFileMeta(machineId, cwd, p),
+                readFileRange: (p, o, l) => engine.machineReadFileRange(machineId, cwd, p, o, l),
+            },
+            path,
+            { download: c.req.query('download') === '1' },
+        )
     })
 
     // 刷新 machine 上的会话元数据
