@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect, createElement } from 'react'
 import { Button, Select, theme, Typography, Popover, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
@@ -493,6 +493,17 @@ export function ChatComposer(props: ChatComposerProps) {
         () => buildPermissionModeSelectOptions(t),
         [t]
     )
+    // 收起态仅展示图标：options.label 征用为各模式图标节点（色继承容器 tone 色），
+    // 下拉项详情由 optionRender 全权渲染（名称恒从 i18n 取，不读 label）
+    const permissionModeIconOptions = useMemo(
+        () => permissionSelectOptions.map(option => ({
+            ...option,
+            label: createElement(getPermissionModeIcon(option.value as PermissionMode), {
+                style: { fontSize: 12 },
+            }),
+        })),
+        [permissionSelectOptions],
+    )
 
     // 点击外部关闭下拉
     useEffect(() => {
@@ -702,7 +713,6 @@ export function ChatComposer(props: ChatComposerProps) {
 
     const permissionModeTone = getPermissionModeTone(permissionMode ?? 'default')
     const permissionModeColor = getPermissionModeColor(token, permissionModeTone) ?? undefined
-    const PermissionModeIcon = getPermissionModeIcon(permissionMode ?? 'default')
 
     // running 时的 loading 状态，驱动 ComposerInfoPanel 下方的 StatusBar
     const loadingStatus = running
@@ -879,11 +889,10 @@ export function ChatComposer(props: ChatComposerProps) {
                                     render: () => (
                                         <CompactHoverSelect
                                             $token={token}
-                                            prefix={<PermissionModeIcon style={{ fontSize: 12, opacity: 0.55, color: permissionModeColor }} />}
                                             value={permissionMode ?? 'default'}
                                             onChange={v => onPermissionModeChange?.(v as PermissionMode)}
                                             disabled={controlsDisabled || showLocalModeCover}
-                                            options={permissionSelectOptions}
+                                            options={permissionModeIconOptions}
                                             optionRender={(option) => renderPermissionModeOption(option, t, token)}
                                             virtual={false}
                                             listHeight={320}

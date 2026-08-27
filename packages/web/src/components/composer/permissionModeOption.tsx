@@ -21,8 +21,11 @@
  * ChatComposer（移动端运行时切换）。
  *
  * 渲染策略：
- * - 选中态（label）：仅名称，紧凑显示
- * - 下拉项（optionRender）：名称（tone 色）+ 描述（secondary 小字），描述自动换行
+ * - ChatComposer 运行时切换器：收起态仅图标（options.label 被征用为图标节点，色随容器 tone），
+ *   下拉项（optionRender）展示名称 + 描述
+ * - NewSessionPage：收起态显示名称（label 原义）
+ * - 下拉项（optionRender）：名称（tone 色）+ 描述（secondary 小字），描述自动换行；
+ *   名称恒从 i18n 取，不读 option.label
  *   描述直接展示比悬停 tooltip 更直观；popupMatchSelectWidth=false 让宽度自适应
  */
 
@@ -87,7 +90,10 @@ export function buildPermissionModeSelectOptions(t: (key: string) => string): Pe
  *
  * 用于 antd Select 的 optionRender。入参放宽为 unknown —— antd v6 的
  * optionRender 传入的是 FlattenOptionData 包装类型，但运行时即原始 option 对象，
- * 内部按需取 value/label/tone。neutral 色调回落到正文色（不染灰，避免视觉弱化）。
+ * 内部按需取 value/tone。
+ * 名称恒从 i18n 按 mode 取，不读 option.label —— composer 运行时切换器已把
+ * options.label 征用为「收起态图标节点」（只展示图标），label 不再承担名称。
+ * neutral 色调回落到正文色（不染灰，避免视觉弱化）。
  */
 export function renderPermissionModeOption(
     option: unknown,
@@ -95,22 +101,21 @@ export function renderPermissionModeOption(
     token: GlobalToken
 ): ReactNode {
     // antd optionRender 的 option 是 FlattenOptionData，原始数据在 option.data；
-    // 兼容直接 option 与 .data 包装两种结构，确保 value/label 可靠取到
+    // 兼容直接 option 与 .data 包装两种结构，确保 value 可靠取到
     const raw = (option ?? {}) as {
-        value?: string; label?: string;
-        data?: { value?: string; label?: string }
+        value?: string;
+        data?: { value?: string }
     }
     const source = raw.data ?? raw
     const mode = (source.value || raw.value || 'default') as PermissionMode
     const tone = getPermissionModeTone(mode)
-    const label = source.label ?? raw.label ?? t(`composer.permissionModes.${mode}`)
     const color = getPermissionModeColor(token, tone)
     const Icon = getPermissionModeIcon(mode)
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 0' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: color ?? token.colorText, fontWeight: 500 }}>
                 <Icon style={{ fontSize: 13 }} />
-                {label}
+                {t(`composer.permissionModes.${mode}`)}
             </span>
             <span style={{ fontSize: 12, lineHeight: 1.35, color: token.colorTextSecondary, whiteSpace: 'normal' }}>
                 {t(`composer.permissionModeDescriptions.${mode}`)}
