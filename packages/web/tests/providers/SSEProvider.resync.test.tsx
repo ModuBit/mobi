@@ -185,3 +185,44 @@ describe('SSEProvider 断连后状态对账(渲染集成)', () => {
         vi.useRealTimers()
     })
 })
+
+describe('SSEProvider session-updated —— 详情缓存未建立时不丢信号（渲染集成）', () => {
+    // 回归：spawn 后 CLI 首次心跳的 active:true 广播常早于会话页首次 GET 往返抵达——
+    // patchSessionCache 的 updater 对无数据 entry 返回原值，信号被静默丢弃；
+    // staleTime 30s 内无任何重拉 → 新会话 composer 常驻「恢复会话」浮层，刷新才好。
+    // 修复：详情缓存为空时转为 invalidate（标记 stale），mount 时必 refetch。
+    beforeEach(() => {
+        vi.clearAllMocks()
+        sseListener.current = null
+        setHidden(false)
+    })
+    afterEach(() => cleanup())
+
+    it('详情缓存无 entry → invalidate 该 session detail query', async () => {
+        const result = await renderProvider()
+        const invalidateSpy = vi.spyOn(result.queryClient, 'invalidateQueries')
+
+        actOrDispatch({ type: 'session-updated', sessionId: 's-fresh', data: { active: true } })
+
+        expect(invalidateSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ queryKey: ['session', 's-fresh'] }),
+        )
+    })
+
+    it('详情缓存已有数据 → 走 patch 更新，不额外 invalidate', async () => {
+        const result = await renderProvider()
+        result.queryClient.setQueryData(['session', 's-live'], { id: 's-live', active: false })
+        const invalidateSpy = vi.spyOn(result.queryClient, 'invalidateQueries')
+        invalidateSpy.mockClear()
+
+        actOrDispatch({ type: 'session-updated', sessionId: 's-live', data: { active: true } })
+
+        expect(invalidateSpy).not.toHaveBeenCalled()
+        expect(result.queryClient.getQueryData(['session', 's-live'])).toMatchObject({ id: 's-live', active: true })
+    })
+})
+
+function actOrDispatch(event: unknown) {
+    // 与 resync 用例一致：回调同步处理缓存更新，无需定时器推进
+    sseListener.current!(event as never)
+}

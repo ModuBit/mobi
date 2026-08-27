@@ -304,6 +304,14 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 scheduleInvalidation('projectViews')
                 break
             case 'session-updated': {
+                // 详情缓存尚未建立（如 spawn 后 CLI 首次心跳的 active:true 广播早于会话页
+                // 首次 GET 往返抵达）时，patchSessionCache 的 updater 会因 old=undefined
+                // 丢弃信号，且 staleTime 30s 内无任何重拉 → 新会话常驻「恢复会话」浮层。
+                // 此场景转为 invalidate 标记 stale：进入页面 mount 时必 refetch（hub 广播
+                // 发出时内存必已是新值，refetch 结果不会回退）；已有数据走正常 patch。
+                if (qc.getQueryData(queryKeys.session(event.sessionId)) === undefined) {
+                    qc.invalidateQueries({ queryKey: queryKeys.session(event.sessionId) })
+                }
                 patchSessionCache(qc, event.sessionId, event.data)
                 // 只有改变分组成员资格的载荷才失效项目视图：
                 // - 完整 session 载荷（delta.id === sessionId，如 setSessionProject 归属变更）
