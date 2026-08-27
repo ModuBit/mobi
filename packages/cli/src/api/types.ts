@@ -22,6 +22,7 @@ import {
     ProjectSchema,
     RuntimeStateSchema
 } from '@mobi/shared/schemas'
+import { UserMessageContentSchema } from '@mobi/shared'
 import type { PermissionMode } from '@mobi/shared/types'
 import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
@@ -159,13 +160,19 @@ export const MessageMetaSchema = z.object({
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>
 
+/** 旧平铺 content（历史落库回放 / 旧 hub 窗口期）：宽松对象即可，消费端 normalizeUserContent 再归一 */
+const LegacyFlatUserContentSchema = z.looseObject({
+    type: z.string(),
+    text: z.string().optional(),
+    attachments: z.array(z.unknown()).optional()
+})
+
 export const UserMessageSchema = z.object({
     role: z.literal('user'),
-    content: z.object({
-        type: z.literal('text'),
-        text: z.string(),
-        attachments: z.array(AttachmentMetadataSchema).optional()
-    }),
+    /** 内容四形态（string / 单 block / block 数组 / 旧平铺对象）；apiSession 门口只做形状分流，runClaude 消费时 normalizeUserContent 归一。
+     *  旧平铺分支必须在前：z.object 默认剥未知键，新格式 block 分支先命中会把 attachments 静默丢掉
+     *  （与 shared/userContentSchema 的归一陷阱同理）；looseObject 保留全部键无损透传 */
+    content: z.union([LegacyFlatUserContentSchema, UserMessageContentSchema]),
     /** 客户端乐观 ID（用于排队消息的 consume 通知与取消） */
     localId: z.string().optional(),
     localKey: z.string().optional(),

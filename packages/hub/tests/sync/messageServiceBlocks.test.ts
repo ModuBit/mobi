@@ -76,7 +76,8 @@ describe('MessageService.sendMessage 内容归一落库', () => {
         const { service, sessionId } = makeService()
 
         for (const bad of [null, '', [], [{ type: 'unknown' }]]) {
-            expect(service.sendMessage(sessionId, { content: bad, sentFrom: 'webapp' })).rejects.toThrow()
+            // reject 断言必须 await——浮动的 promise 失败会被 vitest 吞掉
+            await expect(service.sendMessage(sessionId, { content: bad, sentFrom: 'webapp' })).rejects.toThrow()
         }
 
         const msgs = service.getMessagesAfter(sessionId, { afterSeq: 0, limit: 10 })

@@ -33,9 +33,9 @@ import { registerKillSessionHandler } from './registerKillSessionHandler';
 import type { Session } from './session';
 import { bootstrapSession } from '@/agent/sessionFactory';
 import { createModeChangeHandler, createRunnerLifecycle, setControlledByUser } from '@/agent/runnerLifecycle';
-import { EFFORT_LEVELS, type EffortLevel, isPermissionModeAllowedForFlavor } from '@mobi/shared';
+import { EFFORT_LEVELS, type EffortLevel, isPermissionModeAllowedForFlavor, normalizeUserContent, type UserContentBlock } from '@mobi/shared';
 import { PermissionModeSchema } from '@mobi/shared/schemas';
-import { formatMessageWithAttachments } from '@/utils/attachmentFormatter';
+import { buildPromptFromBlocks, type PromptPayload } from '@/utils/promptBuilder';
 import { normalizeClaudeSessionModel } from './model';
 import { getInvokedCwd } from '@/utils/invokedCwd';
 import { initializeSandbox } from '@/modules/sandbox/sandboxManager';
@@ -54,6 +54,35 @@ export interface StartOptions {
     startedBy?: 'runner' | 'terminal'
     /** 归属项目 id（Web spawn / 终端 --project 透传；缺省 = 游离） */
     projectId?: string
+}
+
+/** onUserMessage 消费段的内容解析产物（抽为纯函数便于单测——handler 本体依赖 apiSession/queue 过重） */
+export interface ResolvedUserContent {
+    /** 归一后的 blocks（始终非空） */
+    blocks: UserContentBlock[];
+    /** 最终入队 prompt：纯文本退化为 string（与旧 attachmentFormatter 输出逐字节一致），含成功图片时为 content 数组 */
+    formattedPrompt: PromptPayload;
+    /** 首个 text block 的文本：特殊命令检测与命令串回退的源文本 */
+    commandSourceText: string;
+}
+
+/**
+ * 用户消息内容四形态（string / 单 block / block 数组 / 旧平铺对象）→ 消费产物：
+ * 归一 blocks + buildPromptFromBlocks 组装 prompt + 提取命令源文本。
+ * 无法归一（null / 空串 / 全畸形）返回 null，调用方跳过本条。
+ */
+export function resolveUserMessageContent(content: unknown): ResolvedUserContent | null {
+    const blocks = normalizeUserContent(content);
+    if (!blocks) {
+        return null;
+    }
+    // 特殊命令以纯文本输入，恒有 text block；无则空串（parseSpecialCommand 返回 null 走普通分支）
+    const textBlock = blocks.find((b): b is Extract<UserContentBlock, { type: 'text' }> => b.type === 'text');
+    return {
+        blocks,
+        formattedPrompt: buildPromptFromBlocks(blocks),
+        commandSourceText: textBlock?.text ?? '',
+    };
 }
 
 export async function runClaude(options: StartOptions = {}): Promise<void> {
@@ -317,11 +346,16 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
         }
 
-        // Check for special commands before processing
-        const specialCommand = parseSpecialCommand(message.content.text);
+        // 防御性归一：hub 落库恒为 block 数组，但历史库回放/旧 hub 窗口期可能仍是平铺对象或 string。
+        // 无法归一则跳过本条——只打 id 元信息不打正文，避免用户内容落入服务端日志
+        const resolved = resolveUserMessageContent(message.content);
+        if (!resolved) {
+            logger.warn('[loop] 用户消息内容无法归一，跳过:', { localId: message.localId, localKey: message.localKey });
+            return;
+        }
 
-        // Format message text with attachments for Claude
-        const formattedText = formatMessageWithAttachments(message.content.text, message.content.attachments);
+        // Check for special commands before processing
+        const specialCommand = parseSpecialCommand(resolved.commandSourceText);
 
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode ?? 'default',
@@ -335,7 +369,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
-            const commandText = specialCommand.originalMessage || message.content.text;
+            const commandText = specialCommand.originalMessage || resolved.commandSourceText;
             messageQueue.pushAndClear(commandText, enhancedMode, message.localId);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
@@ -343,7 +377,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         if (specialCommand.type === 'bash') {
             logger.debug('[start] Detected !bash command');
-            const commandText = specialCommand.originalMessage || message.content.text;
+            const commandText = specialCommand.originalMessage || resolved.commandSourceText;
             // !bash 本地执行：noBatch 禁止与普通消息合并成批——合并批 "! cmd\n正文" 会把正文
             // 当 shell 输入执行，且 native_id 绑定会把普通消息行错绑到注入消息的 uuid。
             // 不清空队列（区别于 /compact）：已排队的消息保留待后续批次
@@ -354,14 +388,15 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
 
         if (specialCommand.type === 'clear') {
             logger.debug('[start] Detected /clear command');
-            const commandText = specialCommand.originalMessage || message.content.text;
+            const commandText = specialCommand.originalMessage || resolved.commandSourceText;
             messageQueue.pushIsolateAndClear(commandText, enhancedMode, message.localId);
             logger.debugLargeJson('[start] /clear command pushed to queue:', message);
             return;
         }
 
-        // Push with resolved permission mode, model, system prompts, and tools
-        messageQueue.push(formattedText, enhancedMode, message.localId);
+        // Push with resolved permission mode, model, system prompts, and tools.
+        // 普通消息必须推 formattedPrompt（纯文本 string / 含图 content 数组）；特殊命令分支推命令串保持 string
+        messageQueue.push(resolved.formattedPrompt, enhancedMode, message.localId);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 
