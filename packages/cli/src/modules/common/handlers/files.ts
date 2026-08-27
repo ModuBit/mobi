@@ -49,7 +49,7 @@ type SaveFileResponse =
     | { success: false; conflict: true; currentEtag: string }
     | { success: false; error: string; code?: string }
 
-interface ReadFileMetaRequest {
+export interface ReadFileMetaRequest {
     path: string
 }
 
@@ -59,7 +59,7 @@ interface FileMeta {
     etag: string
 }
 
-interface ReadFileMetaResponse {
+export interface ReadFileMetaResponse {
     success: boolean
     meta?: FileMeta
     error?: string
@@ -67,13 +67,13 @@ interface ReadFileMetaResponse {
     code?: string
 }
 
-interface ReadFileRangeRequest {
+export interface ReadFileRangeRequest {
     path: string
     offset: number
     length: number
 }
 
-interface ReadFileRangeResponse {
+export interface ReadFileRangeResponse {
     success: boolean
     chunk?: Uint8Array
     error?: string
@@ -81,6 +81,27 @@ interface ReadFileRangeResponse {
 
 /** 单段最大 chunk（值在 @mobi/shared RPC_BINARY_CHUNK_SIZE 统一，与 hub 流式转发 / bun-engine 上限协同） */
 const FILE_RANGE_CHUNK = RPC_BINARY_CHUNK_SIZE
+
+/**
+ * 无策略读取核心：stat → meta 三元组（mime 按路径推断；etag = size-mtimeMs）。
+ * session / machine 两条通道的 readFileMeta handler 共用，此处不做任何路径安全或类型限制。
+ */
+export async function fileMetaAt(absPath: string): Promise<{ mime: string; size: number; etag: string }> {
+    const st = await stat(absPath)
+    return { mime: lookupMime(absPath), size: st.size, etag: `${st.size}-${Math.floor(st.mtimeMs)}` }
+}
+
+/**
+ * 无策略读取核心：读 [offset, offset+length) 字节段（createReadStream end inclusive）。
+ * offset/length 边界合法性由调用方先行校验。
+ */
+export async function fileRangeAt(absPath: string, offset: number, length: number): Promise<Uint8Array> {
+    const chunks: Buffer[] = []
+    for await (const c of createReadStream(absPath, { start: offset, end: offset + length - 1 })) {
+        chunks.push(c)
+    }
+    return new Uint8Array(Buffer.concat(chunks))
+}
 
 export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string): void {
     // readFileMeta：stat → mime/size/etag（etag = size-mtimeMs，文件变化 mtime 必变）
@@ -94,15 +115,8 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
 
         try {
             const resolvedPath = resolve(workingDirectory, data.path)
-            const st = await stat(resolvedPath)
-            return {
-                success: true,
-                meta: {
-                    mime: lookupMime(data.path),
-                    size: st.size,
-                    etag: `${st.size}-${Math.floor(st.mtimeMs)}`,
-                },
-            }
+            const meta = await fileMetaAt(resolvedPath)
+            return { success: true, meta }
         } catch (error) {
             logger.debug('Failed to stat file:', error)
             // 透传 errno code（ENOENT 等）让 hub 基于结构化码判 404，不再依赖文案
@@ -138,12 +152,8 @@ export function registerFileHandlers(rpcHandlerManager: RpcHandlerManager, worki
                 return rpcError('Range out of bounds')
             }
 
-            // createReadStream 的 end 是 inclusive，所以 end = offset + length - 1
-            const chunks: Buffer[] = []
-            for await (const c of createReadStream(resolvedPath, { start: offset, end: offset + length - 1 })) {
-                chunks.push(c)
-            }
-            return { success: true, chunk: new Uint8Array(Buffer.concat(chunks)) }
+            // createReadStream 的 end 是 inclusive，区间读取由共享核心处理
+            return { success: true, chunk: await fileRangeAt(resolvedPath, offset, length) }
         } catch (error) {
             logger.debug('Failed to read file range:', error)
             return rpcError(getErrorMessage(error, 'Failed to read file range'))
