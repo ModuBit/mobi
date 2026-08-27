@@ -15,8 +15,8 @@
  */
 
 import type React from 'react'
-import { useState } from 'react'
-import { theme } from 'antd'
+import { useState, Fragment } from 'react'
+import { theme, Space } from 'antd'
 import { FileCard } from '@ant-design/x'
 import { Bot, User } from 'lucide-react'
 import type {
@@ -174,6 +174,18 @@ export function UserBlocksView({ blocks, env }: { blocks: readonly UserContentBl
                             overflow="wrap"
                             items={seg.blocks.map(d => ({ name: d.filename, byte: d.size }))}
                         />
+                    )
+                }
+                // 连续 image 归并到横向 Space（可换行），多图不一张一行
+                if (seg.kind === 'images') {
+                    const first = seg.blocks[0]
+                    const key = `imgs-${first.id}`
+                    const inner = seg.blocks.map(b => <ImageView key={b.id} block={b} env={renderEnv} />)
+                    if (seg.blocks.length === 1) return <Fragment key={key}>{inner}</Fragment>
+                    return (
+                        <Space key={key} size={8} wrap style={{ maxWidth: '100%' }}>
+                            {inner}
+                        </Space>
                     )
                 }
                 const b = seg.block

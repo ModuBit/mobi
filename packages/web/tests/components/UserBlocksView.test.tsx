@@ -85,4 +85,29 @@ describe('UserBlocksView ImageView', () => {
         fireEvent.error(img)
         expect(container.querySelector('img')!.getAttribute('src')).toMatch(/^data:image\/svg\+xml/)
     })
+
+    it('连续多图归并到同一横向容器：flex wrap + 间距，不一张一行', () => {
+        const blocks = [
+            serverImageBlock(),
+            { ...serverImageBlock(), id: 'img-2', filename: 'photo2.png' },
+            { ...serverImageBlock(), id: 'img-3', filename: 'photo3.png' },
+        ]
+        const { container } = render(
+            <UserBlocksView blocks={blocks} env={{ sessionId: 'sess-1' }} />,
+        )
+        // 三张图共享同一个 antd Space 容器（横向 flex、可换行）
+        const space = container.querySelector('.ant-space')
+        expect(space).not.toBeNull()
+        expect((space as HTMLElement).style.flexWrap).toBe('wrap')
+        expect(space!.querySelectorAll('.ant-space-item .ant-image')).toHaveLength(3)
+    })
+
+    it('非连续多图不被归并：text 打断后各自成段', () => {
+        const blocks = [serverImageBlock(), { type: 'text', text: '说明' }, serverImageBlock()]
+        const { container } = render(
+            <UserBlocksView blocks={blocks} env={{ sessionId: 'sess-1' }} />,
+        )
+        expect(container.querySelectorAll('.ant-space')).toHaveLength(0)
+        expect(container.querySelectorAll('.ant-image')).toHaveLength(2)
+    })
 })

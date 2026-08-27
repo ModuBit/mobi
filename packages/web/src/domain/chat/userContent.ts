@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { UserContentBlock, UserContentSource, UserDocumentBlock, UserQuoteBlock, UserTextBlock } from '@mobi/shared'
+import type { UserContentBlock, UserContentSource, UserDocumentBlock, UserImageBlock, UserQuoteBlock, UserTextBlock } from '@mobi/shared'
 
 /** 【过渡】取 blocks 的首个非空 text 文本；命令识别等「首文本」语义场景专用（渲染已改走 UserBlocksView） */
 export function getUserPlainText(blocks: UserContentBlock[]): string {
@@ -30,10 +30,11 @@ export function collectUserText(blocks: readonly UserContentBlock[]): string {
     return blocks.filter((b): b is UserTextBlock => b.type === 'text').map(b => b.text).join('\n')
 }
 
-/** 渲染分段：连续 document 归并为一段（气泡内以 FileCard.List 合并展示），其余 block 各占一段 */
+/** 渲染分段：连续 document / 连续 image 各归并为一段（气泡内分别以横向容器合并展示），其余 block 各占一段 */
 export type UserBlockGroup =
     | { kind: 'block'; block: UserContentBlock }
     | { kind: 'documents'; blocks: UserDocumentBlock[] }
+    | { kind: 'images'; blocks: UserImageBlock[] }
 
 export function groupUserBlocks(blocks: readonly UserContentBlock[]): UserBlockGroup[] {
     const out: UserBlockGroup[] = []
@@ -42,6 +43,9 @@ export function groupUserBlocks(blocks: readonly UserContentBlock[]): UserBlockG
         if (b.type === 'document') {
             if (last?.kind === 'documents') last.blocks.push(b)
             else out.push({ kind: 'documents', blocks: [b] })
+        } else if (b.type === 'image') {
+            if (last?.kind === 'images') last.blocks.push(b)
+            else out.push({ kind: 'images', blocks: [b] })
         } else {
             out.push({ kind: 'block', block: b })
         }
