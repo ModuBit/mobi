@@ -273,6 +273,17 @@ export class RpcGateway {
         return await this.sessionRpc(sessionId, 'readFileRange', { path, offset, length }) as RpcReadFileRangeResponse
     }
 
+    // machine 通道读文件 meta（cwd 显式参数化；runner 侧策略=严格 cwd+扩展名白名单）。
+    // 服务跨会话存活的静态资源读取（消息附件预览），与会话进程存活解耦
+    async machineReadFileMeta(machineId: string, cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
+        return await this.machineRpc(machineId, 'readFileMeta', { cwd, path }) as RpcReadFileMetaResponse
+    }
+
+    // machine 通道分片读文件（同上）
+    async machineReadFileRange(machineId: string, cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
+        return await this.machineRpc(machineId, 'readFileRange', { cwd, path, offset, length }) as RpcReadFileRangeResponse
+    }
+
     // 保存文件到原路径（覆盖已存在 + etag OCC；content 为二进制附件原样透传）
     async saveFile(sessionId: string, path: string, content: Uint8Array, baseEtag: string): Promise<RpcSaveFileResponse> {
         return await this.sessionRpc(sessionId, 'saveFile', { path, content, baseEtag }) as RpcSaveFileResponse

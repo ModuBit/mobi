@@ -657,6 +657,16 @@ export class SyncEngine {
         return await this.rpcGateway.machineDeleteUpload(machineId, cwd, path)
     }
 
+    /** machine 通道读文件元信息（跨会话存活的静态资源读取，见 rpcGateway.machineReadFileMeta） */
+    async machineReadFileMeta(machineId: string, cwd: string, path: string): Promise<RpcReadFileMetaResponse> {
+        return await this.rpcGateway.machineReadFileMeta(machineId, cwd, path)
+    }
+
+    /** machine 通道分片读文件（同上） */
+    async machineReadFileRange(machineId: string, cwd: string, path: string, offset: number, length: number): Promise<RpcReadFileRangeResponse> {
+        return await this.rpcGateway.machineReadFileRange(machineId, cwd, path, offset, length)
+    }
+
     async machineSearchFiles(machineId: string, cwd: string, query: string): Promise<RpcListDirectoryResponse> {
         return await this.rpcGateway.machineSearchFiles(machineId, cwd, query)
     }
