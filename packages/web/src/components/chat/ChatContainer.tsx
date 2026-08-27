@@ -35,7 +35,7 @@ import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress } from '@/domain/chat/presentation'
-import { getUserPlainText } from '@/domain/chat/userContent'
+import { collectUserText } from '@/domain/chat/userContent'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
@@ -649,7 +649,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // UserMessageFooter 包 flex:1 容器——时间戳（marginLeft:auto）仍贴最右，标注占左侧
             const baseFooter = isUserText && block ? (
                 <UserMessageFooter
-                    text={getUserPlainText(block.blocks)}
+                    text={collectUserText(block.blocks)}
                     createdAt={block.createdAt}
                     canRewind={rewindable}
                     onRewind={() => {
@@ -693,7 +693,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             const meta = metaById.get(block.id)
             actionsInfo.set(item.key, {
                 key: item.key,
-                text: getUserPlainText(block.blocks),
+                text: collectUserText(block.blocks),
                 nativeId: meta?.nativeId ?? null,
                 canRewind: canRewindMessage(
                     { metadata: meta },

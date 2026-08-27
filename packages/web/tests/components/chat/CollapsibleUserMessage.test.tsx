@@ -17,6 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
+import type { UserContentBlock } from '@mobi/shared'
 import {
     CollapsibleUserMessage,
     USER_MESSAGE_COLLAPSE_THRESHOLD,
@@ -51,6 +52,9 @@ function getContent(container: HTMLElement): HTMLElement {
 
 /** 一段足以触发预估为「长」的文本（字符数 > ESTIMATE_CHAR_LIMIT） */
 const LONG_TEXT = 'x'.repeat(400)
+
+/** 由文本构造单 text block 的 blocks（组件 prop 已 blocks 化） */
+const textBlocks = (text: string): UserContentBlock[] => [{ type: 'text', text }]
 
 describe('estimateUserMessageOverflow', () => {
     it('空文本不预估为长', () => {
@@ -92,7 +96,7 @@ describe('CollapsibleUserMessage', () => {
     it('未超阈值时不显示按钮，也不折叠', () => {
         mockScrollHeight(USER_MESSAGE_COLLAPSE_THRESHOLD)
         const { container } = render(
-            <CollapsibleUserMessage>
+            <CollapsibleUserMessage blocks={[]}>
                 <p>短消息</p>
             </CollapsibleUserMessage>,
         )
@@ -104,7 +108,7 @@ describe('CollapsibleUserMessage', () => {
     it('测量超阈值时折叠并显示按钮（双向测量）', () => {
         mockScrollHeight(USER_MESSAGE_COLLAPSE_THRESHOLD + 100)
         const { container } = render(
-            <CollapsibleUserMessage>
+            <CollapsibleUserMessage blocks={[]}>
                 <p>长消息</p>
             </CollapsibleUserMessage>,
         )
@@ -117,7 +121,7 @@ describe('CollapsibleUserMessage', () => {
         // 文本 400 字符 → 预估为长（首帧折叠）；但实测 scrollHeight 未超阈值 → 应修正回无按钮
         mockScrollHeight(USER_MESSAGE_COLLAPSE_THRESHOLD - 50)
         const { container } = render(
-            <CollapsibleUserMessage text={LONG_TEXT}>
+            <CollapsibleUserMessage blocks={textBlocks(LONG_TEXT)}>
                 <p>{LONG_TEXT}</p>
             </CollapsibleUserMessage>,
         )
@@ -129,7 +133,7 @@ describe('CollapsibleUserMessage', () => {
     it('点击展开后切换为展开态，再次点击收起', () => {
         mockScrollHeight(USER_MESSAGE_COLLAPSE_THRESHOLD + 100)
         const { container } = render(
-            <CollapsibleUserMessage text={LONG_TEXT}>
+            <CollapsibleUserMessage blocks={textBlocks(LONG_TEXT)}>
                 <p>很长的消息</p>
             </CollapsibleUserMessage>,
         )
@@ -150,7 +154,7 @@ describe('CollapsibleUserMessage', () => {
     it('支持自定义 threshold（通过 CSS 变量注入）', () => {
         mockScrollHeight(60)
         const { container } = render(
-            <CollapsibleUserMessage threshold={50} text={LONG_TEXT}>
+            <CollapsibleUserMessage threshold={50} blocks={textBlocks(LONG_TEXT)}>
                 <p>中等长度消息</p>
             </CollapsibleUserMessage>,
         )
@@ -160,43 +164,44 @@ describe('CollapsibleUserMessage', () => {
         expect(getContent(container).style.getPropertyValue('--collapsible-threshold')).toBe('50px')
     })
 
-    it('text 不变时 rerender 跳过重渲（memo 自定义比较忽略 children 引用）', () => {
-        // user-text 的 children 由 text 唯一决定，text 相同即视为相等，跳过 reconcile。
-        // 这让流式期间未变化的用户消息气泡不被重渲。
+    it('blocks 结构不变时 rerender 跳过重渲（memo 自定义比较忽略 children 引用）', () => {
+        // user-text 的 children 由 (blocks, isSynthetic) 唯一决定，blocks 结构相等即视为相等，
+        // 跳过 reconcile。这让流式期间未变化的用户消息气泡不被重渲。
+        // 「结构相等」含引用不同的场景——reducer / snapshot→full 替换会换数组对象但内容相同
         mockScrollHeight(USER_MESSAGE_COLLAPSE_THRESHOLD)
         const { container, rerender } = render(
-            <CollapsibleUserMessage text="same"><p data-testid="c">A</p></CollapsibleUserMessage>,
+            <CollapsibleUserMessage blocks={[{ type: 'text', text: 'same' }]}><p data-testid="c">A</p></CollapsibleUserMessage>,
         )
         expect(container.querySelector('[data-testid=c]')?.textContent).toBe('A')
 
-        // rerender：text 相同，children 换成新元素（模拟 renderChatBlock 每次新建 JSX）
+        // rerender：blocks 内容相同但引用不同（模拟每帧新数组），children 换成新元素
         rerender(
-            <CollapsibleUserMessage text="same"><p data-testid="c">B</p></CollapsibleUserMessage>,
+            <CollapsibleUserMessage blocks={[{ type: 'text', text: 'same' }]}><p data-testid="c">B</p></CollapsibleUserMessage>,
         )
         // memo 生效 → 跳过重渲 → DOM 仍是 A（children 未被替换）
         expect(container.querySelector('[data-testid=c]')?.textContent).toBe('A')
 
-        // text 变了 → 重渲 → 新 children 生效
+        // blocks 变了 → 重渲 → 新 children 生效
         rerender(
-            <CollapsibleUserMessage text="changed"><p data-testid="c">C</p></CollapsibleUserMessage>,
+            <CollapsibleUserMessage blocks={[{ type: 'text', text: 'changed' }]}><p data-testid="c">C</p></CollapsibleUserMessage>,
         )
         expect(container.querySelector('[data-testid=c]')?.textContent).toBe('C')
     })
 
-    it('text 相同但 isSynthetic 变化时仍重渲（isSynthetic 纳入比较，不漏更新）', () => {
-        // children 内部用 isSynthetic（TextBlock），memo 比较器必须把它纳入，
-        // 否则同 text 不同 isSynthetic 会跳过重渲、TextBlock 用旧值。
+    it('blocks 相同但 isSynthetic 变化时仍重渲（isSynthetic 纳入比较，不漏更新）', () => {
+        // children 内部用 isSynthetic（text 视图柔和样式），memo 比较器必须把它纳入，
+        // 否则同 blocks 不同 isSynthetic 会跳过重渲、子视图用旧值。
         mockScrollHeight(USER_MESSAGE_COLLAPSE_THRESHOLD)
         const { container, rerender } = render(
-            <CollapsibleUserMessage text="same" isSynthetic={false}>
+            <CollapsibleUserMessage blocks={[{ type: 'text', text: 'same' }]} isSynthetic={false}>
                 <p data-testid="c">A</p>
             </CollapsibleUserMessage>,
         )
         expect(container.querySelector('[data-testid=c]')?.textContent).toBe('A')
 
-        // text 相同、isSynthetic 变化 → 必须重渲
+        // blocks 相同、isSynthetic 变化 → 必须重渲
         rerender(
-            <CollapsibleUserMessage text="same" isSynthetic={true}>
+            <CollapsibleUserMessage blocks={[{ type: 'text', text: 'same' }]} isSynthetic={true}>
                 <p data-testid="c">B</p>
             </CollapsibleUserMessage>,
         )

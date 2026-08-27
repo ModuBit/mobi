@@ -18,6 +18,8 @@ import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type Re
 import { useTranslation } from 'react-i18next'
 import { css } from '@emotion/react'
 import { ChevronDown } from 'lucide-react'
+import type { UserContentBlock } from '@mobi/shared'
+import { areUserBlocksEqual, collectUserText } from '@/domain/chat/userContent'
 
 /** 用户消息气泡收起高度阈值（px）：超过则默认折叠，点击展开 */
 export const USER_MESSAGE_COLLAPSE_THRESHOLD = 200
@@ -132,41 +134,43 @@ export const collapsibleUserMessageStyles = css`
  * 内容高度超过 {@link USER_MESSAGE_COLLAPSE_THRESHOLD} 时默认收起（阈值高度 + 底部渐隐），
  * 点击 toggle 在展开/收起间切换，带丝滑高度过渡。
  *
- * - 首帧用 `text` 的文本长度预估初始化（渲染即折叠），避免 DOM 测量延迟导致的「先全展示再折叠」闪烁；
+ * - 首帧用 blocks 聚合文本的长度预估初始化（渲染即折叠），避免 DOM 测量延迟导致的「先全展示再折叠」闪烁；
+ *   注：image/document 卡片的固定高度未计入预估——预估本就保守且 RO 测量会双向修正，
+ *   纯附件消息高度小、不触发折叠，混合消息由文本主导，误差可接受；
  * - `useLayoutEffect` 在 paint 前同步测量真实 scrollHeight 并**双向**修正 clippable ——
  *   既能让真正超阈值的长消息折叠，也能让被预估误判（如英文长文本渲染偏矮）的消息回到无按钮态，
  *   不会因保守预估而永久错误折叠；
  * - 动画完全由 CSS 驱动（`interpolate-size` 让浏览器原生插值 `height: auto`），JS 不参与高度过渡。
  *
- * `text` 按引用 memo 化预估结果，chatBlocks 高频重渲染（流式期间）时不会对历史消息重复计算。
+ * `blocks` 按结构相等 memo 化预估结果，chatBlocks 高频重渲染（流式期间）时不会对历史消息重复计算。
  */
 export const CollapsibleUserMessage = memo(
     function CollapsibleUserMessage({
         children,
-        text,
+        blocks,
         threshold = USER_MESSAGE_COLLAPSE_THRESHOLD,
-        // isSynthetic 不在组件体内渲染，仅供底部 memo 比较器纳入（避免同 text 不同
-        // isSynthetic 时跳过重渲、TextBlock 用旧值），故此处显式标记不参与 unused 检查
+        // isSynthetic 不在组件体内渲染，仅供底部 memo 比较器纳入（避免同 blocks 不同
+        // isSynthetic 时跳过重渲、子视图用旧值），故此处显式标记不参与 unused 检查
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         isSynthetic,
     }: {
         children: ReactNode
-        /** 消息原始文本，用于首帧折叠预估（按 text memo 化，避免高频重渲染重复计算） */
-        text?: string
+        /** 消息 content blocks：首帧按聚合文本做折叠预估（结构相等 memo 化，避免高频重渲染重复计算） */
+        blocks: UserContentBlock[]
         threshold?: number
         /**
-         * 是否合成消息（透传给 children TextBlock 的 isSynthetic）。
+         * 是否合成消息（透传给 children 的合成样式标记）。
          * children 内部用到此字段，但 memo 比较器忽略 children 元素引用，故必须把 isSynthetic
-         * 显式提到 prop 纳入比较，否则同 text 不同 isSynthetic 时会跳过重渲、TextBlock 用旧值。
+         * 显式提到 prop 纳入比较，否则同 blocks 不同 isSynthetic 时会跳过重渲、子视图用旧值。
          */
         isSynthetic?: boolean
     }) {
         const { t } = useTranslation()
         const [expanded, setExpanded] = useState(false)
-        // 首帧预估：按 text memo，text 不变（user 消息静态）则只算一次
+        // 首帧预估：按 blocks memo（结构相等即不算，user 消息静态则只算一次）
         const initiallyCollapsed = useMemo(
-            () => (text ? estimateUserMessageOverflow(text) : false),
-            [text],
+            () => estimateUserMessageOverflow(collectUserText(blocks)),
+            [blocks],
         )
         const [clippable, setClippable] = useState(initiallyCollapsed)
         const contentRef = useRef<HTMLDivElement>(null)
@@ -215,10 +219,15 @@ export const CollapsibleUserMessage = memo(
             </div>
         )
     },
-    // 自定义比较：user-text 的 children 由 (text, isSynthetic) 唯一决定（renderChatBlock 固定传
-    // <TextBlock text={block.text} isSynthetic={block.isSynthetic}/>），故两者相同即内容实质相同。
-    // 忽略 children 元素引用变化（renderChatBlock 每次都新建 JSX 元素），让流式期间未变化的用户
-    // 消息气泡跳过重渲。⚠️ 前提：children 不含这两个字段以外的动态字段；当前唯一调用点满足。
+    // 自定义比较：user-text 的 children 由 (blocks, isSynthetic) 唯一决定（renderChatBlock 固定传
+    // <UserBlocksView blocks={block.blocks} env={{isSynthetic, sessionId}}/>），故 blocks 结构相等
+    // 且 isSynthetic 相同即内容实质相同。忽略 children 元素引用变化（renderChatBlock 每次都新建
+    // JSX 元素）与 sessionId 变化（切换会话必然整体重建消息列表，无需靠比较器兜底），
+    // 让流式期间未变化的用户消息气泡跳过重渲。
+    // ⚠️ 前提：children 不含这些字段以外的动态字段；当前唯一调用点满足。
     // 若未来 children 引入更多动态 prop，必须把它提到这里纳入比较，否则会静默漏更新。
-    (prev, next) => prev.text === next.text && prev.threshold === next.threshold && prev.isSynthetic === next.isSynthetic,
+    (prev, next) =>
+        areUserBlocksEqual(prev.blocks, next.blocks)
+        && prev.threshold === next.threshold
+        && prev.isSynthetic === next.isSynthetic,
 )
