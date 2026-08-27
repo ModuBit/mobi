@@ -802,6 +802,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 key="attachments"
                 attachments={attachments}
                 onRemove={handleRemoveAttachment}
+                sessionId={sessionId}
             />
         ),
     ].filter(Boolean)

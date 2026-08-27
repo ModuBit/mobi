@@ -17,6 +17,7 @@
 import { memo, useState, useEffect, type FC } from 'react'
 import { theme, Spin, Progress, Image } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
+import { buildReadFileUrl } from '@/core/utils/fileUrl'
 import { CloseOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons'
 import {
     File, FileText, FileSpreadsheet, FileImage, FileVideo,
@@ -166,9 +167,12 @@ const THUMB_SIZE = 36
 const AttachmentCard = memo(function AttachmentCard({
     attachment,
     onRemove,
+    sessionId,
 }: {
     attachment: FileAttachment
     onRemove: (id: string) => void
+    /** 透传 ImageThumb：恢复态附件经 read-file 端点预览 */
+    sessionId?: string
 }) {
     const { token } = theme.useToken()
     const isImage = isImageAttachment(attachment)
@@ -206,7 +210,7 @@ const AttachmentCard = memo(function AttachmentCard({
                 background: isImage ? token.colorFillQuaternary : `${accentColor}10`,
             }}>
                 {isImage ? (
-                    <ImageThumb attachment={attachment} />
+                    <ImageThumb attachment={attachment} sessionId={sessionId} />
                 ) : (
                     <FileIconSlot
                         attachment={attachment}
@@ -295,14 +299,17 @@ const AttachmentCard = memo(function AttachmentCard({
 /** 图片缩略图子组件：管理 objectURL 生命周期；空 file（恢复态）直接回退图标 */
 const ImageThumb = memo(function ImageThumb({
     attachment,
+    sessionId,
 }: {
     attachment: FileAttachment
+    /** 会话 ID：恢复态附件（rewind 回填 / 草稿恢复）无本地 File，经 read-file 端点预览服务端原图 */
+    sessionId?: string
 }) {
     const { token } = theme.useToken()
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
     const [imgError, setImgError] = useState(false)
 
-    // 创建 / 清理 objectURL，避免内存泄漏；空 file（恢复态占位）跳过，直接回退图标
+    // 本地 blob 预览：创建 / 清理 objectURL，避免内存泄漏
     useEffect(() => {
         if (attachment.file.size === 0) {
             setPreviewUrl(null)
@@ -314,12 +321,19 @@ const ImageThumb = memo(function ImageThumb({
         return () => URL.revokeObjectURL(url)
     }, [attachment.file])
 
-    if (previewUrl && !imgError) {
+    // 预览 src 分流（对齐消息气泡 ImageView 的自足 URL / 服务端路径思路）：
+    // 1) 有本地 file → objectURL（上传中 / 正常态）
+    // 2) 恢复态空 file 但有 path + sessionId → read-file 端点取服务端原图
+    // 3) 都没有（无 sessionId 的恢复态）→ 回退图标
+    const thumbSrc = previewUrl
+        ?? (attachment.path && sessionId ? buildReadFileUrl(sessionId, attachment.path) : null)
+
+    if (thumbSrc && !imgError) {
         // antd Image：36×36 缩略显示（width/height 定外层容器，cover 裁切经 styles.image 落 <img>），
         // preview 开启 → 点击放大看原图。onError 置 imgError 回退图标。
         return (
             <Image
-                src={previewUrl}
+                src={thumbSrc}
                 alt=""
                 width={THUMB_SIZE}
                 height={THUMB_SIZE}
@@ -329,7 +343,7 @@ const ImageThumb = memo(function ImageThumb({
         )
     }
 
-    // 图片加载失败 / 恢复态空 file 回退
+    // 图片加载失败 / 恢复态空 file 且无服务端路径可读 → 回退图标
     return <FileImage size={16} style={{ color: token.colorTextQuaternary }} />
 })
 
@@ -357,6 +371,8 @@ interface AttachmentListProps {
     attachments: FileAttachment[]
     /** 移除回调 */
     onRemove: (id: string) => void
+    /** 会话 ID：图片附件缩略图预览的服务端路径回退需要（新建会话页无会话，不传） */
+    sessionId?: string
 }
 
 /**
@@ -366,7 +382,7 @@ interface AttachmentListProps {
  * 右侧统一显示文件名 + 人性化大小。
  */
 export const AttachmentList = memo(function AttachmentList(props: AttachmentListProps) {
-    const { attachments, onRemove } = props
+    const { attachments, onRemove, sessionId } = props
 
     if (attachments.length === 0) {
         return null
@@ -379,6 +395,7 @@ export const AttachmentList = memo(function AttachmentList(props: AttachmentList
                     key={attachment.id}
                     attachment={attachment}
                     onRemove={onRemove}
+                    sessionId={sessionId}
                 />
             ))}
         </div>

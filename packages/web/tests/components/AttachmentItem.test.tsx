@@ -105,4 +105,29 @@ describe('ImageThumb 图片缩略图', () => {
         expect(container.querySelector('.ant-image')).toBeNull()
         expect(container.querySelector('img')).toBeNull()
     })
+
+    it('恢复态附件有 path + sessionId：经 read-file 端点渲染可预览缩略图（rewind 回填场景）', () => {
+        const a: FileAttachment = {
+            id: 'restored',
+            file: new File([], 'shot.png'),
+            status: 'complete',
+            path: '.mobi/uploads/2026-08/shot-abc123.png',
+            name: 'shot.png',
+            size: 2048,
+            mimeType: 'image/png',
+        }
+        const { container } = render(
+            <AttachmentList attachments={[a]} onRemove={() => {}} sessionId="sess-rw" />,
+        )
+        const holder = container.querySelector('.ant-image') as HTMLElement
+        expect(holder).not.toBeNull()
+        const img = holder.querySelector('img')
+        expect(img!.getAttribute('src')).toContain('/api/sessions/sess-rw/read-file')
+        expect(img!.getAttribute('src')).toContain(encodeURIComponent('.mobi/uploads/2026-08/shot-abc123.png'))
+        // 点击同样可放大（preview 浮层挂载）
+        fireEvent.click(img!)
+        return waitFor(() => {
+            expect(document.body.querySelector('.ant-image-preview')).not.toBeNull()
+        })
+    })
 })
