@@ -33,15 +33,18 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
     const { t } = useTranslation()
     const [expanded, setExpanded] = useState(thinking)
     const contentRef = useRef<HTMLDivElement>(null)
+    // 高度信号源：内容盒被 maxHeight:200 clamp 固定后 border-box 恒定、RO 静默，
+    // 流式增长无人跟随——观测不受上限约束的内层元素（思考多了就不贴底的根因）
+    const innerRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         if (!thinking) setExpanded(false)
     }, [thinking])
 
     // 流式期间内容盒缓动贴底（替代 scrollTop = scrollHeight 硬跳——换行时
-    // 内容瞬跳一行，快输出下「一跳一跳」）；RO 观测内容盒高度，逐字揭示的
+    // 内容瞬跳一行，快输出下「一跳一跳」）；RO 观测内层内容高度，逐字揭示的
     // 每帧增高都续追（揭示进度不经过 props，text 快照粒度跟不上）
-    useSmoothStickBottom(contentRef, !!isStreaming)
+    useSmoothStickBottom(contentRef, !!isStreaming, { observeRef: innerRef })
 
     // 完成态：耗时 ≥ 100ms 展示「思考完成 · X.X秒」；
     // < 100ms（interleaved thinking 的极短片段，toFixed 得 0.0s 无意义）/ 无耗时（local/历史消息）退化为「思考完成」
@@ -64,7 +67,9 @@ export const ReasoningBlock = memo(function ReasoningBlock({ text, thinking, isS
             onExpand={setExpanded}
         >
             <div ref={contentRef} style={{ maxHeight: 200, overflowY: 'auto' }}>
-                <Markdown content={text} streaming={isStreaming} />
+                <div ref={innerRef}>
+                    <Markdown content={text} streaming={isStreaming} />
+                </div>
             </div>
         </Think>
     )

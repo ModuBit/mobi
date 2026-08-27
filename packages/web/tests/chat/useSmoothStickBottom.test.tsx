@@ -32,11 +32,12 @@ let rafSeq: number
 // jsdom 无 ResizeObserver：可手动泵回调的桩（记录 observe 的目标）
 type ROCallback = (entries: unknown[]) => void
 let roCallback: ROCallback | null = null
+let roObservedTargets: Element[] = []
 class FakeResizeObserver {
     constructor(cb: ROCallback) {
         roCallback = cb
     }
-    observe(): void {}
+    observe(target: Element): void { roObservedTargets.push(target) }
     unobserve(): void {}
     disconnect(): void {}
 }
@@ -45,6 +46,7 @@ beforeEach(() => {
     rafMap = new Map()
     rafSeq = 1
     roCallback = null
+    roObservedTargets = []
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
         const id = rafSeq++
         rafMap.set(id, cb)
@@ -198,3 +200,25 @@ function ProbeEnabled({ el, enabled }: { el: HTMLDivElement; enabled: boolean })
     useSmoothStickBottom(ref, enabled)
     return null
 }
+
+describe('useSmoothStickBottom — 观测目标（maxHeight 固定容器场景）', () => {
+    it('提供 observeRef 时观测内层内容元素而非滚动容器——容器被 maxHeight 固定后 border-box 恒定、RO 静默，只有内容元素的高度信号能驱动续追（回归：思考内容超 200px 后不再贴底）', () => {
+        const scroller = makeScroller({ scrollHeight: 1000, clientHeight: 200, scrollTop: 0 })
+        const inner = document.createElement('div')
+        scroller.appendChild(inner)
+
+        function Probe() {
+            const scrollerRef = useRef<HTMLDivElement>(null)
+            const innerRef = useRef<HTMLDivElement>(null)
+            ;(scrollerRef as { current: null }).current = scroller
+            ;(innerRef as { current: null }).current = inner
+            useSmoothStickBottom(scrollerRef, true, { observeRef: innerRef })
+            return null
+        }
+        render(<Probe />)
+
+        expect(roObservedTargets.length).toBeGreaterThan(0)
+        expect(roObservedTargets).toContain(inner)
+        expect(roObservedTargets).not.toContain(scroller)
+    })
+})
