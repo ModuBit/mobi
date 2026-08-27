@@ -17,12 +17,14 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Button, Select, theme, Typography, Popover, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
-import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined } from '@ant-design/icons'
+import { PlusOutlined, SwapOutlined, RightOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons'
 import { Sender } from '@ant-design/x'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
+import { isSegmentEmpty, type BlockFileRef, type ComposerSegments, type PendingQuoteRef } from '@/domain/chat/composerSegments'
+import { isImageFileAttachment, attachmentMimeType } from '@/core/lib/fileAttachments'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
@@ -84,7 +86,8 @@ interface ChatComposerProps {
     onEffortChange?: (effort: EffortLevel) => void
     onPermissionModeChange?: (mode: PermissionMode) => void
     onModelChange?: (model: string | null) => void
-    onSend: (text: string) => void
+    /** 发送回调：入参为当前输入的完整分段（文本 + 附件双桶 + 引用），wire 格式由 useSendMessage 序列化 */
+    onSend: (segments: ComposerSegments) => void
     onAbort?: () => void
     abortPending?: boolean
     onActivate?: () => void
@@ -102,11 +105,19 @@ interface ChatComposerProps {
      * nonce 单调递增触发应用，同 nonce 不重复；text 为空串时忽略
      */
     draftRequest?: { text: string; nonce: number }
+    /**
+     * 回填分段通道（P5 预留）：排队消息编辑 / rewind 回填等场景注入初始分段。
+     * 本期仅声明 props 通道，回填逻辑待 P5 接入（currentSegments 已按分段建模）。
+     */
+    initialSegments?: ComposerSegments
 }
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
     return wrapper?.querySelector('textarea') ?? null
 }
+
+// 引用 chip 的正文预览截断长度（全文悬浮可见）
+const QUOTE_CHIP_PREVIEW_MAX = 40
 
 // Dock 容器：包裹整个 Composer 区域，和 BubbleList 形成视觉分隔
 const ComposerDock = styled.div`
@@ -309,6 +320,8 @@ export function ChatComposer(props: ChatComposerProps) {
     } = props
 
     const [text, setText] = useState('')
+    // 待发送引用：本期数据通路 + 极简 chip 展示（上游引用入口后续任务接入）；不参与草稿持久化（P5 一并处理）
+    const [quotes, setQuotes] = useState<PendingQuoteRef[]>([])
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
     // 设置草稿并聚焦：suggestion 采纳 + ComposerInfoPanel 内排队消息编辑共用同一实现
@@ -361,6 +374,27 @@ export function ChatComposer(props: ChatComposerProps) {
         resetAttachments,
     } = useAttachmentHandling(sessionId, capabilities, controlsDisabled)
 
+    // 上传完成附件 → 分段文件引用，按 MIME 分桶为 images / files（document）。
+    // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶，
+    // 分桶判定单一来源在 fileAttachments.isImageFileAttachment（MIME 优先 + 扩展名兜底，
+    // 覆盖草稿恢复态占位 File 无 MIME 的情况）
+    const segmentBuckets = useMemo(() => {
+        const files: BlockFileRef[] = []
+        const images: BlockFileRef[] = []
+        for (const a of attachments) {
+            if (a.status !== 'complete' || !a.path) continue
+            const ref: BlockFileRef = {
+                id: a.id,
+                filename: a.name ?? a.file.name,
+                path: a.path,
+                mimeType: attachmentMimeType(a),
+                size: a.size ?? a.file.size,
+            }
+            ;(isImageFileAttachment(a) ? images : files).push(ref)
+        }
+        return { files, images }
+    }, [attachments])
+
     // per-session 草稿生命周期：挂载恢复、切走保存（依赖上面的 text/attachments/setters）
     useComposerDraft(
         sessionId,
@@ -396,11 +430,13 @@ export function ChatComposer(props: ChatComposerProps) {
     const trimmed = text.trim()
     const hasText = trimmed.length > 0
     const hasAttachments = attachments.length > 0
+    const hasQuotes = quotes.length > 0
     // 有 pending 权限请求时禁用发送
     const hasPendingPermission = Boolean(agentState?.requests && Object.keys(agentState.requests).length > 0)
     // 注意：running 时不禁用发送——运行中发送的消息会进入排队悬浮条（queued），
     // 等当前 turn 结束由 gated pump 喂给 agent。abort 走独立按钮/Ctrl+C，与此独立。
-    const canSend = (hasText || hasAttachments) && !controlsDisabled && !sending && !hasPendingPermission
+    // 空判定同时看 text / 附件 / 引用，对齐 hub「message requires text or attachments」语义
+    const canSend = (hasText || hasAttachments || hasQuotes) && !controlsDisabled && !sending && !hasPendingPermission
     // 合并按钮状态：canSend 时展示发送（含 running 中有内容的特殊情况），否则 running/sending 中展示停止
     const submitButtonState = resolveSubmitButtonState({
         canSend,
@@ -624,29 +660,36 @@ export function ChatComposer(props: ChatComposerProps) {
         if (!canSend) return
         if (mention.isOpen || slash.isOpen) return
 
-        // 检查是否有未完成上传的附件
+        // 上传中守卫：未完成附件没有 path，进不了分段会被静默丢弃，故阻止发送（沿用既有 warning）
         const pendingUploads = attachments.filter(a => a.status === 'uploading')
         if (pendingUploads.length > 0) {
             message.warning(t('composer.uploadPendingWarning'))
             return
         }
 
-        // 拼接附件路径到消息文本
-        const completedAttachments = attachments.filter(a => a.status === 'complete' && a.path)
-        const attachmentPaths = completedAttachments.map(a => `@${a.path}`).join('\n')
-        const finalText = attachmentPaths
-            ? `${content.trim()}\n${attachmentPaths}`
-            : content.trim()
+        // 组装完整分段直传——不再拼接 @path 文本：附件以 document/image block 结构化发送，
+        // 序列化为 wire blocks 由 useSendMessage 内统一完成
+        const segments: ComposerSegments = {
+            text: content,
+            files: segmentBuckets.files,
+            images: segmentBuckets.images,
+            quotes,
+        }
+        if (isSegmentEmpty(segments)) return
 
-        if (!finalText) return
-
-        onSend(finalText)
+        onSend(segments)
         setText('')
         resetAttachments()
+        setQuotes([])
         needsRefocusRef.current = true
         // 发新消息即消失: 清空当前建议(生命周期"每轮结束显示, 发送后消失")
         usePromptSuggestionStore.getState().clearSession(sessionId)
-    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, t, resetAttachments, sessionId])
+    }, [canSend, onSend, mention.isOpen, slash.isOpen, attachments, segmentBuckets, quotes, t, resetAttachments, sessionId])
+
+    // 引用 chip：excerpt 悬浮展示全文，chip 可单独移除（本期极简样式，后续迭代）
+    const removeQuote = useCallback((messageId: string) => {
+        setQuotes(prev => prev.filter(q => q.messageId !== messageId))
+    }, [])
 
     const showInactiveCover = !active && !allowSendWhenInactive
     const showLocalModeCover = active && mode === 'local'
@@ -684,6 +727,54 @@ export function ChatComposer(props: ChatComposerProps) {
                 }}
                 onDismiss={() => usePromptSuggestionStore.getState().clearSession(sessionId)}
             />
+        ),
+        hasQuotes && (
+            <div
+                key="quotes"
+                style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 0', alignItems: 'center' }}
+            >
+                {quotes.map(q => (
+                    <span
+                        key={q.messageId}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '4px 8px',
+                            borderRadius: 'var(--ant-border-radius-sm, 6px)',
+                            border: '1px solid var(--ant-color-border-secondary)',
+                            background: 'var(--ant-color-fill-quaternary)',
+                            maxWidth: 260,
+                        }}
+                    >
+                        <AppTooltip title={q.excerpt}>
+                            <span style={{
+                                fontSize: 12,
+                                lineHeight: '16px',
+                                color: 'var(--ant-color-text-secondary)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                            }}>
+                                {q.excerpt.length > QUOTE_CHIP_PREVIEW_MAX
+                                    ? `${q.excerpt.slice(0, QUOTE_CHIP_PREVIEW_MAX)}…`
+                                    : q.excerpt}
+                            </span>
+                        </AppTooltip>
+                        <CloseOutlined
+                            aria-label={t('composer.removeQuote')}
+                            onClick={() => removeQuote(q.messageId)}
+                            style={{
+                                fontSize: 10,
+                                color: 'var(--ant-color-text-quaternary)',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                                transition: 'color 0.15s',
+                            }}
+                        />
+                    </span>
+                ))}
+            </div>
         ),
         hasAttachments && (
             <AttachmentList

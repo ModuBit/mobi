@@ -506,7 +506,8 @@
         "activate": "Resume",
         "switchToRemote": "Switch to Remote Mode",
         "dropToUpload": "Drop files here to upload",
-        "uploadPendingWarning": "Please wait for file uploads to complete"
+        "uploadPendingWarning": "Please wait for file uploads to complete",
+        "removeQuote": "Remove quote"
     },
     "status": {
         "percentLeft": "{{percent}}% left"

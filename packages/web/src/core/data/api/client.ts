@@ -17,7 +17,7 @@
 import { useMemo } from 'react'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import type { Session, DecryptedMessage, MessagesResponse, Machine, ListDirectoryResponse, ListFilesResponse, Project, ProjectFolder, ProjectSessionsResponse } from './types'
-import type { PermissionMode, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId } from '@mobi/shared'
+import type { PermissionMode, RedactedWebToolsConfig, WebToolsConfigSubmission, WebToolProviderId, UserMessageContent } from '@mobi/shared'
 
 // 全局 401 处理回调（由外部设置）
 let onUnauthorized: (() => void) | null = null
@@ -169,8 +169,9 @@ export function createMobiApi() {
         messages: {
             list: (sessionId: string, params?: { beforeSeq?: number; limit?: number }) =>
                 client.get<MessagesResponse>(`/api/sessions/${sessionId}/messages`, { params }),
-            send: (sessionId: string, text: string, localId?: string) =>
-                client.post(`/api/sessions/${sessionId}/messages`, { text, localId }),
+            // content 三形态（string / 单 block / block 数组），hub 端统一走 UserMessageContentSchema
+            send: (sessionId: string, content: UserMessageContent, localId?: string) =>
+                client.post(`/api/sessions/${sessionId}/messages`, { content, localId }),
             sidechain: (sessionId: string, parentToolUseId: string, opts?: { signal?: AbortSignal }) =>
                 client.get<{ messages: DecryptedMessage[] }>(`/api/sessions/${sessionId}/sidechain-messages`, {
                     params: { parentToolUseId },

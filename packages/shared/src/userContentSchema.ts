@@ -60,6 +60,8 @@ export const UserMessageContentSchema = z.union([
 ])
 
 export type UserContentSource = z.infer<typeof UserContentSourceSchema>
+/** 用户消息 content 三形态：裸 string / 单 block / block 数组（发送 wire 形态） */
+export type UserMessageContent = z.infer<typeof UserMessageContentSchema>
 export type UserTextBlock = z.infer<typeof TextBlockSchema>
 export type UserImageBlock = z.infer<typeof ImageBlockSchema>
 export type UserDocumentBlock = z.infer<typeof DocumentBlockSchema>

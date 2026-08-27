@@ -15,8 +15,10 @@
  */
 
 import { useMutation } from '@tanstack/react-query'
+import type { UserContentBlock } from '@mobi/shared'
 import { useMobiApi } from '@/core/data/api/client'
 import { makeClientSideId } from '@/core/lib/messages'
+import { serializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
 import { appendOptimisticMessage, fetchLatestMessages } from '@/core/data/stores/messageWindowStore'
 import { useRewindStore } from '@/core/data/stores/rewindStore'
 import type { DecryptedMessage } from '@/core/data/api/types'
@@ -24,26 +26,29 @@ import type { DecryptedMessage } from '@/core/data/api/types'
 /**
  * 发送消息 Mutation Hook
  *
+ * 入参为 Composer 分段（text + 附件双桶 + 引用），内部 serializeSegments 转
+ * UserContentBlock[] 后以 { content: blocks } 新格式直传 hub——不再拼接 @path 文本。
+ *
  * 发送时立即在 store 追加一条乐观气泡：
  * - 会话运行中 → status='queued'（悬浮条展示，等待 agent 消费）
  * - 会话未运行 → status='sending'（服务端收到即入库回显）
  *
  * 关键：乐观 localId 必须与服务端发送 localId 一致，否则服务端 echo
  * 无法通过 mergeMessages 的 localId 去重替换乐观气泡。
- * 因此在 mutate(text) 时生成一次 localId，作为 { text, localId } 传入。
+ * 因此在 mutate(segments) 时生成一次 localId，与 blocks 一起传入。
  */
 export function useSendMessage(sessionId: string, isRunning: boolean) {
     const api = useMobiApi()
 
     const mutation = useMutation({
-        mutationFn: (vars: { text: string; localId: string }) => {
+        mutationFn: (vars: { blocks: UserContentBlock[]; localId: string }) => {
             if (import.meta.env.DEV) {
-                console.log('[Send] api.messages.send', { sessionId, localId: vars.localId, textLen: vars.text.length })
+                console.log('[Send] api.messages.send', { sessionId, localId: vars.localId, blocksLen: vars.blocks.length })
             }
-            return api.messages.send(sessionId, vars.text, vars.localId)
+            return api.messages.send(sessionId, vars.blocks, vars.localId)
         },
-        onMutate: async (vars: { text: string; localId: string }) => {
-            // 乐观气泡：content 信封与 hub messageService.sendMessage 保持一致
+        onMutate: async (vars: { blocks: UserContentBlock[]; localId: string }) => {
+            // 乐观气泡：content 信封持 blocks 数组，与 hub messageService.sendMessage 落库形态同构。
             // positionAt / createdAt 共用同一发送时刻；lifecycleAt 仅排队轨道携带
             //（= createdAt，对齐 hub「queued 时 lifecycle_at = created_at」契约），
             // 非排队轨道恒 null——否则服务端 echo 被 mergeMessages 第 (1) 步无条件
@@ -60,7 +65,7 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
                 positionAt: now,
                 content: {
                     role: 'user',
-                    content: { type: 'text', text: vars.text, attachments: undefined },
+                    content: vars.blocks,
                     meta: { sentFrom: 'webapp' },
                 },
                 createdAt: now,
@@ -81,17 +86,17 @@ export function useSendMessage(sessionId: string, isRunning: boolean) {
         },
     })
 
-    // 对外暴露统一的 mutate(text)/mutateAsync(text) 接口（内部生成 localId，
-    // 保证 onMutate 与 mutationFn 用同一个）。必须同时覆盖两者——只覆盖 mutate 会让
-    // 展开的 mutateAsync 仍按 {text,localId} 签名工作，调用方传 text 会丢 localId，
+    // 对外暴露统一的 mutate(segments)/mutateAsync(segments) 接口（内部生成 localId 并把
+    // 分段序列化为 blocks，保证 onMutate 与 mutationFn 用同一份产物）。必须同时覆盖两者——
+    // 只覆盖 mutate 会让展开的 mutateAsync 仍按旧签名工作，调用方传参错位会丢 localId，
     // 导致服务端 echo 无法按 localId 去重乐观气泡 → 重复消息。
-    const send = (text: string): { text: string; localId: string } => ({
-        text,
+    const send = (segments: ComposerSegments): { blocks: UserContentBlock[]; localId: string } => ({
+        blocks: serializeSegments(segments),
         localId: makeClientSideId('local'),
     })
     return {
         ...mutation,
-        mutate: (text: string) => mutation.mutate(send(text)),
-        mutateAsync: (text: string) => mutation.mutateAsync(send(text)),
+        mutate: (segments: ComposerSegments) => mutation.mutate(send(segments)),
+        mutateAsync: (segments: ComposerSegments) => mutation.mutateAsync(send(segments)),
     }
 }

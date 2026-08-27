@@ -89,6 +89,48 @@ export function getAcceptExtensions(): string {
 }
 
 /**
+ * 扩展名 → MIME 映射：发送分段化后 block source 需要 mimeType，
+ * 但「恢复态附件」的占位 File 无可靠 MIME（构造 File 的 type 恒空串），按扩展名兜底。
+ * 键为带点小写扩展名（与 getExtension 输出直接配套）。
+ */
+const EXT_TO_MIME: Record<string, string> = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+    '.webp': 'image/webp', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/vnd.microsoft.icon',
+    '.pdf': 'application/pdf',
+    '.txt': 'text/plain', '.csv': 'text/csv', '.md': 'text/markdown', '.html': 'text/html', '.xml': 'application/xml',
+    '.json': 'application/json', '.zip': 'application/zip',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.ppt': 'application/vnd.ms-powerpoint',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+}
+
+/** 图片扩展名集合：isImageFileAttachment 的扩展名兜底用 */
+const IMAGE_EXT_SET = new Set(Object.entries(EXT_TO_MIME).filter(([, m]) => m.startsWith('image/')).map(([e]) => e))
+
+/**
+ * 判定附件是否为图片类型（MIME 优先；恢复态占位 File 无可靠 MIME，按扩展名兜底）。
+ * 图片与文档在发送时分桶为 image / document block，两入口（粘贴、上传）共用此判定。
+ */
+export function isImageFileAttachment(attachment: FileAttachment): boolean {
+    if (attachment.file.size > 0 && attachment.file.type.startsWith('image/')) return true
+    const filename = attachment.name ?? attachment.file.name
+    return IMAGE_EXT_SET.has(getExtension(filename))
+}
+
+/**
+ * 取附件 MIME 类型：file.type 可靠时直接用；
+ * 恢复态占位 File 恒空串，按扩展名兜底；未知扩展回退通用二进制类型。
+ */
+export function attachmentMimeType(attachment: FileAttachment): string {
+    if (attachment.file.type) return attachment.file.type
+    const filename = attachment.name ?? attachment.file.name
+    return EXT_TO_MIME[getExtension(filename)] ?? 'application/octet-stream'
+}
+
+/**
  * 创建文件附件对象
  */
 export function createFileAttachment(file: File): FileAttachment {

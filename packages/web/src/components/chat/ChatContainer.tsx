@@ -26,6 +26,7 @@ import { useSession } from '@/core/data/hooks/queries/useSession'
 import { useSendMessage } from '@/core/data/hooks/mutations/useSendMessage'
 import { useSessionActions } from '@/core/data/hooks/mutations/useSessionActions'
 import { isQueuedInMobi, isUserMessage } from '@/core/lib/messages'
+import { isSegmentEmpty, type ComposerSegments } from '@/domain/chat/composerSegments'
 import { reduceChatBlocks, normalizeDecryptedMessage, extractRunningAgents, reconcileChatBlocks, type ChatBlocksById } from '@/domain/chat'
 import { buildChatBubbleItems } from './buildBubbleItems'
 import { BubbleListChat, type BubbleListChatHandle, type ChatBubbleItem } from './BubbleListChat'
@@ -781,10 +782,12 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         return items
     }, [decoratedItems, isCompressing, isClearing, isRewinding])
 
-    const handleSend = (text: string) => {
-        if (import.meta.env.DEV) console.log('[Send] handleSend', { textLen: text.length, hasTrim: !!text.trim() })
-        if (!text.trim()) return
-        sendMutation.mutate(text)
+    // 入参为 composer 完整分段；wire blocks（serializeSegments）由 useSendMessage 内部统一序列化。
+    // 空分段防御性拦截（正常路径由 composer canSend 保证）
+    const handleSend = (segments: ComposerSegments) => {
+        if (import.meta.env.DEV) console.log('[Send] handleSend', { textLen: segments.text.length })
+        if (isSegmentEmpty(segments)) return
+        sendMutation.mutate(segments)
         if (import.meta.env.DEV) console.log('[Send] sendMutation.mutate 已调用')
     }
 

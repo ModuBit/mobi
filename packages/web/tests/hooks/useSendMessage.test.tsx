@@ -16,7 +16,7 @@
 
 /**
  * useSendMessage 单元测试
- * 验证乐观更新注入 store、localId 共享、失败时 fetchLatestMessages
+ * 验证乐观更新注入 store、localId 共享、失败时 fetchLatestMessages、分段序列化直传 blocks
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -62,6 +62,8 @@ function readStoreMessages(): DecryptedMessage[] {
     return getMessageWindowState(SESSION_ID).messages
 }
 
+const textOnly = (text: string) => ({ text, files: [], images: [], quotes: [] })
+
 describe('useSendMessage', () => {
     let qc: QueryClient
 
@@ -88,7 +90,7 @@ describe('useSendMessage', () => {
         })
 
         await act(async () => {
-            result.current.mutate('hello')
+            result.current.mutate(textOnly('hello'))
         })
         await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
 
@@ -103,15 +105,14 @@ describe('useSendMessage', () => {
         expect(optimistic.lifecycle).toBeNull()
         // 乐观消息 id === localId
         expect(optimistic.id).toBe(optimistic.localId)
-        // content 信封正确
+        // content 信封持 blocks 数组（与 hub 落库同构）
         const content = optimistic.content as {
             role: string
-            content: { type: string; text: string }
+            content: Array<{ type: string; text: string }>
             meta: { sentFrom: string }
         }
         expect(content.role).toBe('user')
-        expect(content.content.type).toBe('text')
-        expect(content.content.text).toBe('hello')
+        expect(content.content).toEqual([{ type: 'text', text: 'hello' }])
         expect(content.meta.sentFrom).toBe('webapp')
     })
 
@@ -123,7 +124,7 @@ describe('useSendMessage', () => {
         })
 
         await act(async () => {
-            result.current.mutate('排队中')
+            result.current.mutate(textOnly('排队中'))
         })
         await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
 
@@ -134,7 +135,7 @@ describe('useSendMessage', () => {
         expect(msgs[0].lifecycleAt).toBe(msgs[0].createdAt)
     })
 
-    it('mutate(text) 生成的 localId 被 onMutate 与 mutationFn 共享', async () => {
+    it('mutate(segments) 生成的 localId 被 onMutate 与 mutationFn 共享', async () => {
         mocks.send.mockResolvedValue({ data: {} })
 
         const { result } = renderHook(() => useSendMessage(SESSION_ID, false), {
@@ -142,7 +143,7 @@ describe('useSendMessage', () => {
         })
 
         await act(async () => {
-            result.current.mutate('shared-id')
+            result.current.mutate(textOnly('shared-id'))
         })
         await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
 
@@ -174,7 +175,7 @@ describe('useSendMessage', () => {
         })
 
         await act(async () => {
-            result.current.mutate('new one')
+            result.current.mutate(textOnly('new one'))
         })
         await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
 
@@ -186,6 +187,31 @@ describe('useSendMessage', () => {
         expect(msgs[1].id).toBe(msgs[1].localId)
     })
 
+    it('分段输入序列化为 blocks 数组直传 api.messages.send', async () => {
+        mocks.send.mockResolvedValue({ data: {} })
+
+        const { result } = renderHook(() => useSendMessage(SESSION_ID, false), {
+            wrapper: makeWrapper(qc),
+        })
+
+        await act(async () => {
+            result.current.mutate({
+                text: '帮我看看',
+                files: [{ id: 'f1', filename: 'r.pdf', path: '/u/r.pdf', mimeType: 'application/pdf', size: 5 }],
+                images: [],
+                quotes: [],
+            })
+        })
+        await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1))
+
+        // body 第 2 参为 blocks：固定顺序 document → text
+        const blocks = mocks.send.mock.calls[0][1] as Array<Record<string, unknown>>
+        expect(blocks).toEqual([
+            { type: 'document', source: { type: 'url', value: '/u/r.pdf', mimeType: 'application/pdf' }, id: 'f1', filename: 'r.pdf', size: 5 },
+            { type: 'text', text: '帮我看看' },
+        ])
+    })
+
     it('onError 时调用 fetchLatestMessages(api, sessionId)', async () => {
         mocks.send.mockRejectedValue(new Error('network down'))
 
@@ -194,7 +220,7 @@ describe('useSendMessage', () => {
         })
 
         await act(async () => {
-            result.current.mutate('will-fail')
+            result.current.mutate(textOnly('will-fail'))
         })
         await waitFor(() => expect(result.current.isError).toBe(true))
 

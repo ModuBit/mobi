@@ -506,7 +506,8 @@
         "activate": "恢复会话",
         "switchToRemote": "切换到远程模式",
         "dropToUpload": "松开以上传文件",
-        "uploadPendingWarning": "请等待文件上传完成"
+        "uploadPendingWarning": "请等待文件上传完成",
+        "removeQuote": "移除引用"
     },
     "status": {
         "percentLeft": "{{percent}}% 剩余"

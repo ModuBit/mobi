@@ -661,7 +661,8 @@ export function NewSessionPage() {
 
             // 有内容时发送消息
             if (currentText || currentAttachments.length > 0) {
-                // 拼接附件路径到消息文本（与 ChatComposer 一致）
+                // 拼接附件路径到消息文本（TODO(P5): ChatComposer 已切分段直传 blocks，
+                // 此处仍走旧文本拼接，待 composer 分段模型下沉后一并对齐）
                 const completedAttachments = currentAttachments.filter(a => a.status === 'complete' && a.path)
                 const attachmentPaths = completedAttachments.map(a => `@${a.path}`).join('\n')
                 const finalText = attachmentPaths
