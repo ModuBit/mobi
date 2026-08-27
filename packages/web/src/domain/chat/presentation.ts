@@ -15,6 +15,7 @@
  */
 
 import type { AgentEvent, ChatBlock } from './types'
+import { getUserPlainText } from './userContent'
 
 const CLEAR_COMMAND = '/clear'
 
@@ -49,7 +50,7 @@ export function isCommandInProgress(
         const block = chatBlocks[i]
         if (isCompletion(block)) return false
         if (block.kind === 'user-text') {
-            return block.text.trim() === command
+            return getUserPlainText(block.blocks).trim() === command
         }
     }
     return false

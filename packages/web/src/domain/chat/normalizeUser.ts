@@ -14,35 +14,14 @@
  * limitations under the License.
  */
 
+import { normalizeUserContent } from '@mobi/shared'
 import type { NormalizedMessage, MessageMeta } from './types'
-import type { AttachmentMetadata } from '@/core/data/api/types'
-import { isObject } from '@mobi/shared'
 
-function parseAttachments(raw: unknown): AttachmentMetadata[] | undefined {
-    if (!Array.isArray(raw)) return undefined
-    const attachments: AttachmentMetadata[] = []
-    for (const item of raw) {
-        if (
-            isObject(item) &&
-            typeof item.id === 'string' &&
-            typeof item.filename === 'string' &&
-            typeof item.mimeType === 'string' &&
-            typeof item.size === 'number' &&
-            typeof item.path === 'string'
-        ) {
-            attachments.push({
-                id: item.id,
-                filename: item.filename,
-                mimeType: item.mimeType,
-                size: item.size,
-                path: item.path,
-                previewUrl: typeof item.previewUrl === 'string' ? item.previewUrl : undefined
-            })
-        }
-    }
-    return attachments.length > 0 ? attachments : undefined
-}
-
+/**
+ * user 消息读取侧归一：四形态（string / 旧平铺 / 单 block / 数组）统一收敛为
+ * UserContentBlock[]，归一逻辑单一来源在 @mobi/shared 的 normalizeUserContent。
+ * 畸形/空输入返回 null（由 normalize.ts 走 JSON dump 兜底）。
+ */
 export function normalizeUserRecord(
     messageId: string,
     localId: string | null,
@@ -50,30 +29,15 @@ export function normalizeUserRecord(
     content: unknown,
     meta?: MessageMeta
 ): NormalizedMessage | null {
-    if (typeof content === 'string') {
-        return {
-            id: messageId,
-            localId,
-            createdAt,
-            role: 'user',
-            content: { type: 'text', text: content },
-            isSidechain: false,
-            meta
-        }
+    const blocks = normalizeUserContent(content)
+    if (!blocks) return null
+    return {
+        id: messageId,
+        localId,
+        createdAt,
+        role: 'user',
+        content: { type: 'text', text: '', blocks },
+        isSidechain: false,
+        meta
     }
-
-    if (isObject(content) && content.type === 'text' && typeof content.text === 'string') {
-        const attachments = parseAttachments(content.attachments)
-        return {
-            id: messageId,
-            localId,
-            createdAt,
-            role: 'user',
-            content: { type: 'text', text: content.text, attachments },
-            isSidechain: false,
-            meta
-        }
-    }
-
-    return null
 }

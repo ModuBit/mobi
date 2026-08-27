@@ -218,7 +218,7 @@ const handleUserOutput: OutputHandler = (data, ctx) => {
             createdAt: ctx.createdAt,
             role: 'user',
             isSidechain: false,
-            content: { type: 'text', text: messageContent },
+            content: { type: 'text', text: '', blocks: [{ type: 'text', text: messageContent }] },
             meta: ctx.meta,
             isSynthetic
         }

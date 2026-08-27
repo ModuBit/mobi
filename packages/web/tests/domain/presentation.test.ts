@@ -19,7 +19,7 @@ import { isClearInProgress, isCommandInProgress, COMPACT_COMMAND, isCompactCompl
 import type { ChatBlock } from '../../src/domain/chat/types'
 
 function userText(text: string): ChatBlock {
-    return { kind: 'user-text', id: 'u', localId: null, createdAt: 0, text }
+    return { kind: 'user-text', id: 'u', localId: null, createdAt: 0, blocks: [{ type: 'text', text }] }
 }
 function contextCleared(): ChatBlock {
     return { kind: 'agent-event', id: 'a', createdAt: 0, event: { type: 'context-cleared' } }

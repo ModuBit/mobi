@@ -54,7 +54,7 @@ describe('extractRunningAgents', () => {
 
     it('过滤非 agent 工具', () => {
         const blocks: ChatBlock[] = [
-            { kind: 'user-text', id: 'u1', localId: null, createdAt: 0, text: 'hello' },
+            { kind: 'user-text', id: 'u1', localId: null, createdAt: 0, blocks: [{ type: 'text', text: 'hello' }] },
         ]
         expect(extractRunningAgents(blocks)).toEqual([])
     })

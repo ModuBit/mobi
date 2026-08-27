@@ -52,7 +52,7 @@ function userText(overrides: Partial<UserTextBlock> & { id: string }): UserTextB
         kind: 'user-text',
         localId: null,
         createdAt: 1000,
-        text: 'hello',
+        blocks: [{ type: 'text', text: 'hello' }],
         status: 'delivered',
         meta: undefined,
         isSynthetic: false,
@@ -150,8 +150,8 @@ describe('reconcileChatBlocks', () => {
     /* -------------------------------------------------------------- */
     describe('引用保持 — 字段完全相同时返回旧引用', () => {
         it('user-text', () => {
-            const prev = userText({ id: 'u1', text: 'hello' })
-            const next = userText({ id: 'u1', text: 'hello' })
+            const prev = userText({ id: 'u1', blocks: [{ type: 'text', text: 'hello' }] })
+            const next = userText({ id: 'u1', blocks: [{ type: 'text', text: 'hello' }] })
             const prevById = buildPrevById([prev])
             const { blocks } = reconcileChatBlocks([next], prevById)
             // 引用必须是 prev，不是 next
@@ -217,8 +217,8 @@ describe('reconcileChatBlocks', () => {
     /* -------------------------------------------------------------- */
     describe('引用更新 — 字段变化时返回新引用', () => {
         it('user-text text 变化', () => {
-            const prev = userText({ id: 'u1', text: 'hello' })
-            const next = userText({ id: 'u1', text: 'world' })
+            const prev = userText({ id: 'u1', blocks: [{ type: 'text', text: 'hello' }] })
+            const next = userText({ id: 'u1', blocks: [{ type: 'text', text: 'world' }] })
             const prevById = buildPrevById([prev])
             const { blocks } = reconcileChatBlocks([next], prevById)
             expect(blocks[0]).toBe(next)
@@ -368,14 +368,14 @@ describe('reconcileChatBlocks', () => {
     /* -------------------------------------------------------------- */
     describe('混合场景 — 部分 block 变化、部分不变', () => {
         it('多变一不变', () => {
-            const prevUser = userText({ id: 'u1', text: 'hello' })
+            const prevUser = userText({ id: 'u1', blocks: [{ type: 'text', text: 'hello' }] })
             const prevAgent = agentText({ id: 'a1', text: 'response' })
             const prevEvent = agentEvent({ id: 'e1', event: { type: 'ready' } })
 
             const prevById = buildPrevById([prevUser, prevAgent, prevEvent])
 
             // u1 不变、a1 text 变化、e1 不变
-            const nextUser = userText({ id: 'u1', text: 'hello' })
+            const nextUser = userText({ id: 'u1', blocks: [{ type: 'text', text: 'hello' }] })
             const nextAgent = agentText({ id: 'a1', text: 'new response' })
             const nextEvent = agentEvent({ id: 'e1', event: { type: 'ready' } })
 

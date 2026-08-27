@@ -47,7 +47,7 @@ function item(key: string): ChatBubbleItem {
         key,
         role: 'user',
         content: key,
-        block: { kind: 'user-text', id: key, localId: null, createdAt: 0, text: key } as never,
+        block: { kind: 'user-text', id: key, localId: null, createdAt: 0, blocks: [{ type: 'text', text: key }] } as never,
         'data-bubble-key': key,
     } as ChatBubbleItem
 }

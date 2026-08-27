@@ -25,7 +25,7 @@ import {
 import { _resetForTest, _internal, getMessageWindowState } from '@/core/data/stores/messageWindowStore'
 
 function userText(text: string): UserTextBlock {
-    return { kind: 'user-text', id: `u-${text}`, localId: null, createdAt: 1000, text }
+    return { kind: 'user-text', id: `u-${text}`, localId: null, createdAt: 1000, blocks: [{ type: 'text', text }] }
 }
 
 function agentEvent(type: string): AgentEventBlock {

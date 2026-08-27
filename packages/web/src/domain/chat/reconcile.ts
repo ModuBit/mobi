@@ -122,8 +122,22 @@ function areAgentEventsEqual(left: AgentEvent, right: AgentEvent): boolean {
     return getEventKey(left) === getEventKey(right)
 }
 
+/**
+ * blocks 结构相等：引用相等快速路径之外，逐块 JSON 比较（block 均为纯数据，
+ * 归一来源键序一致；键序不同最坏误判不等→多一次渲染，不会误判相等）。
+ * 语义对齐旧 text 字符串比较：重归一产出新数组但内容相同 → 仍保持旧引用。
+ */
+function areUserBlocksEqual(left: UserTextBlock['blocks'], right: UserTextBlock['blocks']): boolean {
+    if (left === right) return true
+    if (left.length !== right.length) return false
+    for (let i = 0; i < left.length; i += 1) {
+        if (JSON.stringify(left[i]) !== JSON.stringify(right[i])) return false
+    }
+    return true
+}
+
 function areUserTextBlocksEqual(left: UserTextBlock, right: UserTextBlock): boolean {
-    return left.text === right.text
+    return areUserBlocksEqual(left.blocks, right.blocks)
         && left.status === right.status
         && left.originalText === right.originalText
         && left.localId === right.localId

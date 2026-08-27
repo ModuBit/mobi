@@ -21,6 +21,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { normalizeDecryptedMessage } from '@/domain/chat/normalize'
+import { normalizeUserRecord } from '@/domain/chat/normalizeUser'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 // 抑制 console.warn 输出
@@ -73,9 +74,9 @@ describe('normalizeDecryptedMessage', () => {
         expect(result).not.toBeNull()
         expect(result!.role).toBe('user')
         expect(result!.id).toBe('msg-2')
-        const content = result!.content as { type: string; text: string }
+        const content = result!.content as { type: string; blocks: Array<{ type: string; text: string }> }
         expect(content.type).toBe('text')
-        expect(content.text).toBe('用户输入文本')
+        expect(content.blocks).toEqual([{ type: 'text', text: '用户输入文本' }])
     })
 
     it('应解析包含 tool_use 的消息', () => {
@@ -319,9 +320,9 @@ describe('normalizeDecryptedMessage', () => {
         const result = normalizeDecryptedMessage(message)
         expect(result).not.toBeNull()
         expect(result!.role).toBe('user')
-        const content = result!.content as { type: string; text: string }
+        const content = result!.content as { type: string; blocks: Array<{ type: string; text: string }> }
         expect(content.type).toBe('text')
-        expect(content.text).toBe('结构化文本消息')
+        expect(content.blocks).toEqual([{ type: 'text', text: '结构化文本消息' }])
     })
 
     it('应解析 event 类型消息', () => {
@@ -598,5 +599,33 @@ describe('normalizeDecryptedMessage', () => {
         const result = normalizeDecryptedMessage(message)
         expect(result).not.toBeNull()
         expect(result!.role).toBe('user')
+    })
+})
+
+describe('normalizeUserRecord（blocks 化归一）', () => {
+    it('数组 blocks 原样透出', () => {
+        const blocks = [
+            { type: 'text', text: 'a' },
+            { type: 'quote', messageId: 'm', role: 'agent', excerpt: 'e' },
+        ] satisfies import('@mobi/shared').UserContentBlock[]
+        const m = normalizeUserRecord('id', 'lid', 1, blocks)
+        expect(m?.role).toBe('user')
+        expect((m?.content as { blocks: unknown }).blocks).toEqual(blocks)
+    })
+
+    it('旧平铺对象（含 attachments）→ blocks 含 document', () => {
+        const m = normalizeUserRecord('id', 'lid', 1, {
+            type: 'text', text: 'a',
+            attachments: [{ id: '1', filename: 'f.pdf', mimeType: 'application/pdf', size: 1, path: '/p/f.pdf' }],
+        })
+        const blocks = (m?.content as { blocks: Array<Record<string, unknown>> }).blocks
+        expect(blocks[0]).toEqual({ type: 'text', text: 'a' })
+        expect(blocks[1].type).toBe('document')
+        expect((blocks[1].source as { value: string }).value).toBe('/p/f.pdf')
+    })
+
+    it('畸形输入 → null', () => {
+        expect(normalizeUserRecord('id', 'lid', 1, 12345)).toBeNull()
+        expect(normalizeUserRecord('id', 'lid', 1, { nonsense: true })).toBeNull()
     })
 })

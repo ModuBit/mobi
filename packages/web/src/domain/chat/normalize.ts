@@ -84,7 +84,7 @@ export function normalizeDecryptedMessage(message: DecryptedMessage): Normalized
                 createdAt: message.createdAt,
                 role: 'user',
                 isSidechain: false,
-                content: { type: 'text', text: safeStringify(record.content) },
+                content: { type: 'text', text: '', blocks: [{ type: 'text', text: safeStringify(record.content) }] },
                 meta: record.meta as MessageMeta | undefined,
                 status: message.status,
                 originalText: message.originalText,

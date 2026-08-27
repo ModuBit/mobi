@@ -46,7 +46,7 @@ function createUserText(overrides: Partial<UserTextBlock> = {}): UserTextBlock {
         id: 'user-1',
         localId: null,
         createdAt: 1000,
-        text: 'Hello',
+        blocks: [{ type: 'text', text: 'Hello' }],
         status: 'delivered',
         ...overrides,
     }

@@ -18,6 +18,7 @@ import type { AgentEvent, AgentEventBlock, ChatBlock, CompactSummaryBlock, Event
 import type { TracedMessage } from './tracer'
 import { createCliOutputBlock, isCliOutputText, mergeCliOutputBlocks, extractStandaloneStdout } from './reducerCliOutput'
 import { parseMessageAsEvent } from './reducerEvents'
+import { getUserPlainText } from './userContent'
 import { ensureToolBlock, extractTitleFromChangeTitleInput, isChangeTitleToolName, isHiddenTool, isPlanModeEnterTool, type PermissionEntry } from './reducerTools'
 
 // 根据事件类型获取渲染提示
@@ -176,6 +177,8 @@ export function reduceTimeline(
         }
 
         if (msg.role === 'user') {
+            // 【过渡】blocks 化后纯文本经 getUserPlainText 提取（多 block 消息取首个非空 text）
+            const plainText = getUserPlainText(msg.content.blocks)
             // 检测 compact 总结消息：来自 CLI 且之前有 compact 事件
             if (pendingCompactMetadata && msg.meta?.sentFrom === 'cli') {
                 const compactBlock: CompactSummaryBlock = {
@@ -183,7 +186,7 @@ export function reduceTimeline(
                     id: msg.id,
                     localId: msg.localId,
                     createdAt: msg.createdAt,
-                    text: msg.content.text,
+                    text: plainText,
                     preTokens: pendingCompactMetadata.preTokens,
                     postTokens: pendingCompactMetadata.postTokens,
                     durationMs: pendingCompactMetadata.durationMs,
@@ -194,9 +197,9 @@ export function reduceTimeline(
                 continue
             }
 
-            if (isCliOutputText(msg.content.text, msg.meta)) {
+            if (isCliOutputText(plainText, msg.meta)) {
                 // 纯 local-command-stdout（如 setModel 确认）→ 系统事件消息
-                const standaloneText = extractStandaloneStdout(msg.content.text)
+                const standaloneText = extractStandaloneStdout(plainText)
                 if (standaloneText !== null) {
                     blocks.push(createEventBlock({
                         id: msg.id,
@@ -210,7 +213,7 @@ export function reduceTimeline(
                     id: msg.id,
                     localId: msg.localId,
                     createdAt: msg.createdAt,
-                    text: msg.content.text,
+                    text: plainText,
                     source: 'user',
                     meta: msg.meta
                 }))
@@ -221,8 +224,7 @@ export function reduceTimeline(
                 id: msg.id,
                 localId: msg.localId,
                 createdAt: msg.createdAt,
-                text: msg.content.text,
-                attachments: msg.content.attachments,
+                blocks: msg.content.blocks,
                 status: msg.status,
                 originalText: msg.originalText,
                 meta: msg.meta,
@@ -438,7 +440,7 @@ export function reduceTimeline(
                         id: `${msg.id}:${idx}`,
                         localId: null,
                         createdAt: msg.createdAt,
-                        text: c.prompt
+                        blocks: [{ type: 'text', text: c.prompt }]
                     })
                 }
             }

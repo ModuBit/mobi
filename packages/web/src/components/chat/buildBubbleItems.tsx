@@ -17,6 +17,7 @@
 import type React from 'react'
 import type { ChatBlock } from '@/domain/chat'
 import { REWIND_COMMAND } from '@/domain/chat/presentation'
+import { getUserPlainText } from '@/domain/chat/userContent'
 import type { ChatBlockContext } from './blocks'
 import { groupCollapsibleToolCalls } from '@/domain/chat/groupToolCalls'
 import { renderChatBlock } from './blocks'
@@ -113,7 +114,7 @@ export function buildChatBubbleItems(
 
         // rewind 起点合成行（ChatContainer 本地插入的 REWIND_COMMAND 标记，非真实消息）：
         // 仅驱动 isRewindInProgress 禁用 sender，不渲染气泡
-        if (block.kind === 'user-text' && block.text.trim() === REWIND_COMMAND) {
+        if (block.kind === 'user-text' && getUserPlainText(block.blocks).trim() === REWIND_COMMAND) {
             continue
         }
 

@@ -86,7 +86,7 @@ describe('messageWindowStore.rewindFrom', () => {
 // ──────────────────────────────────────────────────────────────
 
 function userTextBlock(text: string): UserTextBlock {
-    return { kind: 'user-text', id: `u-${text}`, localId: null, createdAt: 1000, text }
+    return { kind: 'user-text', id: `u-${text}`, localId: null, createdAt: 1000, blocks: [{ type: 'text', text }] }
 }
 
 function eventBlock(type: string): AgentEventBlock {

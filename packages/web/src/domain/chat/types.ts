@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import type { AttachmentMetadata, MessageStatus } from '@/core/data/api/types'
-import type { PermissionUpdate } from '@mobi/shared'
+import type { MessageStatus } from '@/core/data/api/types'
+import type { PermissionUpdate, UserContentBlock } from '@mobi/shared'
 
 /** 消息元数据 */
 export type MessageMeta = {
@@ -141,7 +141,8 @@ export type NormalizedAgentContent =
 
 export type NormalizedMessage = ({
     role: 'user'
-    content: { type: 'text'; text: string; attachments?: AttachmentMetadata[] }
+    /** text 恒为 ''（占位保持判别式）；blocks 为归一后的唯一数据源 */
+    content: { type: 'text'; text: string; blocks: UserContentBlock[] }
 } | {
     role: 'agent'
     content: NormalizedAgentContent[]
@@ -201,8 +202,8 @@ export type UserTextBlock = {
     id: string
     localId: string | null
     createdAt: number
-    text: string
-    attachments?: AttachmentMetadata[]
+    /** 归一后的 block 数组——下游唯一形态（渲染/预览/回填皆由此派生） */
+    blocks: UserContentBlock[]
     status?: MessageStatus
     originalText?: string
     meta?: MessageMeta

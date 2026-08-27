@@ -21,6 +21,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { reduceChatBlocks } from '@/domain/chat/reducer'
+import { getUserPlainText } from '@/domain/chat/userContent'
 import type { NormalizedMessage } from '@/domain/chat/types'
 import type { AgentState } from '@mobi/shared'
 
@@ -37,7 +38,7 @@ function createUserMessage(
         createdAt: opts?.createdAt ?? Date.now(),
         role: 'user',
         isSidechain: false,
-        content: { type: 'text', text },
+        content: { type: 'text', text: '', blocks: [{ type: 'text', text }] },
     }
 }
 
@@ -163,7 +164,7 @@ describe('reduceChatBlocks', () => {
             expect(blocks).toHaveLength(1)
             expect(blocks[0].kind).toBe('user-text')
             const block = blocks[0] as Extract<typeof blocks[0], { kind: 'user-text' }>
-            expect(block.text).toBe('你好')
+            expect(getUserPlainText(block.blocks)).toBe('你好')
             expect(block.id).toBe('msg-1')
 
             // byId 也应包含该块
@@ -205,9 +206,9 @@ describe('reduceChatBlocks', () => {
             const agentBlock = blocks[1] as Extract<typeof blocks[1], { kind: 'agent-text' }>
             const userBlock2 = blocks[2] as Extract<typeof blocks[2], { kind: 'user-text' }>
 
-            expect(userBlock1.text).toBe('用户消息')
+            expect(getUserPlainText(userBlock1.blocks)).toBe('用户消息')
             expect(agentBlock.text).toBe('Agent 回复')
-            expect(userBlock2.text).toBe('追问')
+            expect(getUserPlainText(userBlock2.blocks)).toBe('追问')
         })
     })
 

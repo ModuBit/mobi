@@ -62,7 +62,7 @@ const childBlock: ChatBlock = {
     id: 'child-1',
     localId: null,
     createdAt: 2000,
-    text: 'hello',
+    blocks: [{ type: 'text', text: 'hello' }],
 }
 
 describe('useAgentSidechain', () => {
