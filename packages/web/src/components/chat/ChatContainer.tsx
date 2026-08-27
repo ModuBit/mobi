@@ -36,7 +36,7 @@ import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
 import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress } from '@/domain/chat/presentation'
 import { getUserPlainText } from '@/domain/chat/userContent'
-import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
+import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
 import { type RewindDryRunResult } from './RewindConfirmView'
@@ -397,9 +397,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     const [rewindDraft, setRewindDraft] = useState<{ nativeId: string; source: 'modal' | 'drawer'; targetText: string | null; messageId?: string } | null>(null)
     const [rewindDryRun, setRewindDryRun] = useState<RewindDryRunResult | null>(null)
     const [rewindExecuting, setRewindExecuting] = useState(false)
-    // 锚点批原文（确认时捕获，rewindFrom 清窗后取不到）+ sender 回填请求（nonce 触发 ChatComposer 应用）
-    const pendingBackfillRef = useRef<string | null>(null)
-    const [draftRequest, setDraftRequest] = useState<{ text: string; nonce: number } | undefined>(undefined)
+    // 锚点批分段（确认时捕获，rewindFrom 清窗后取不到）+ sender 结构化回填请求（nonce 触发 ChatComposer 应用）
+    const pendingBackfillRef = useRef<ComposerSegments | null>(null)
+    const [draftRequest, setDraftRequest] = useState<{ segments: ComposerSegments; nonce: number } | undefined>(undefined)
     const draftNonceRef = useRef(0)
 
     // 会话视图卸载清理（本组件由 ChatPane 以 key={sessionId} 挂载，切会话即重建）
@@ -437,8 +437,8 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
         setRewindExecuting(false)
         setActionsTarget(null)
         // 回填在 rewind-completed 之后（失败/超时兜底同样回填——截断已生效，原文已捕获）
-        if (pendingBackfillRef.current != null) {
-            setDraftRequest({ text: pendingBackfillRef.current, nonce: ++draftNonceRef.current })
+        if (pendingBackfillRef.current) {
+            setDraftRequest({ segments: pendingBackfillRef.current, nonce: ++draftNonceRef.current })
             pendingBackfillRef.current = null
         }
         if (!rewindCompletion.filesRestored && rewindCompletion.error && rewindCompletion.error !== 'timeout') {
@@ -470,8 +470,11 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // rewind 确认执行：受理成功进入生命周期（起点行插入 → sender 禁用），结果等 SSE 两段回报
     const confirmRewind = useCallback(async (restoreFiles: boolean) => {
         if (!rewindDraft) return
-        // 回填文本须在截断清窗前捕获（锚点批 N 条原文随后被 rewindFrom 清除，spec §4.4）
-        pendingBackfillRef.current = collectRewindBatchText(messages, rewindDraft.nativeId)
+        // 回填分段须在截断清窗前捕获（锚点批 N 条原文随后被 rewindFrom 清除，spec §4.4）：
+        // 批内多行同 nativeId 时合并还原（正文按 seq join、非 text 结构取首行模板）；
+        // 合并结果全空（数据异常）置 null——无从还原时静默放弃回填，不填占位误导用户
+        const merged = mergeSegmentRows(messages, rewindDraft.nativeId)
+        pendingBackfillRef.current = merged && !isSegmentEmpty(merged) ? merged : null
         setRewindExecuting(true)
         try {
             await api.sessions.rewind(sessionId, rewindDraft.nativeId, restoreFiles)

@@ -65,6 +65,8 @@ import { useHasFinePointer } from '@/core/data/hooks/useMediaQuery'
 import { normalizeDirectoryPath } from '@/core/utils/path'
 import { makeClientSideId } from '@/core/lib/messages'
 import { saveDraftText } from '@/core/lib/draftText'
+import { bucketCompletedAttachments } from '@/core/lib/fileAttachments'
+import { isSegmentEmpty, serializeSegments, type ComposerSegments } from '@/domain/chat/composerSegments'
 import { getPermissionModeColor } from '@/components/composer/permissionModeColors'
 import { buildPermissionModeSelectOptions, renderPermissionModeOption, usePermissionModeDropdownStyle, PERMISSION_MODE_DROPDOWN_CLASS } from '@/components/composer/permissionModeOption'
 import { getPermissionModeIcon } from '@/components/composer/permissionModeIcons'
@@ -659,25 +661,30 @@ export function NewSessionPage() {
 
             const sessionId = result.sessionId
 
-            // 有内容时发送消息
+            // 有内容时发送消息：分段直传 blocks（document/image 结构化，与 ChatComposer 同源
+            // bucketCompletedAttachments 分桶）——P5 起删除「@path 拼接进文本」的旧通道
             if (currentText || currentAttachments.length > 0) {
-                // 拼接附件路径到消息文本（TODO(P5): ChatComposer 已切分段直传 blocks，
-                // 此处仍走旧文本拼接，待 composer 分段模型下沉后一并对齐）
-                const completedAttachments = currentAttachments.filter(a => a.status === 'complete' && a.path)
-                const attachmentPaths = completedAttachments.map(a => `@${a.path}`).join('\n')
-                const finalText = attachmentPaths
-                    ? `${currentText}\n${attachmentPaths}`
-                    : currentText
+                const buckets = bucketCompletedAttachments(currentAttachments)
+                const segments: ComposerSegments = {
+                    text: currentText,
+                    files: buckets.files,
+                    images: buckets.images,
+                    quotes: [],
+                }
 
-                if (finalText) {
+                if (!isSegmentEmpty(segments)) {
                     try {
                         // 生成客户端 localId 供 SSE 早到消息去重（与 useSendMessage 一致）(#14)
                         const localId = makeClientSideId('local')
-                        await api.messages.send(sessionId, finalText, localId)
+                        await api.messages.send(sessionId, serializeSegments(segments), localId)
                     } catch {
-                        // 发送失败：把内容暂存，详情页 sender 预填供用户重试 (#2)
-                        // 会话已创建成功，仍导航到详情页（不留在 NewSessionPage）
-                        saveDraftText(finalText)
+                        // 发送失败：把内容暂存，详情页 sender 预填供用户重试 (#2)。
+                        // 跨页草稿通道（draftText）是纯文本：附件以 @path 行保留，提示用户文件已上传
+                        // 可引用（附件本身已落服务器，重发时无需重传）
+                        saveDraftText([
+                            currentText,
+                            ...[...buckets.files, ...buckets.images].map(r => `@${r.path}`),
+                        ].filter(Boolean).join('\n'))
                     }
                 }
             }

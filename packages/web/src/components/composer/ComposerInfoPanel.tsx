@@ -32,6 +32,7 @@ import { AskUserQuestionFooter } from '@/components/tool-card/AskUserQuestionFoo
 import { RequestUserInputFooter } from '@/components/tool-card/RequestUserInputFooter'
 import { isAskUserQuestionToolName, joinQuestionHeaders } from '@/domain/tool/askUserQuestion'
 import { isRequestUserInputToolName } from '@/domain/tool/requestUserInput'
+import type { ComposerSegments } from '@/domain/chat/composerSegments'
 import { getPermissionDescription } from '@/core/lib/toolInputUtils'
 import { useRunningAgents } from '@/core/data/stores/runningAgentsStore'
 import { useChatBlocksById } from '@/core/data/stores/chatBlocksByIdStore'
@@ -241,8 +242,8 @@ export type ComposerInfoPanelProps = {
     onRequestDone: () => void
     todos?: TodoItem[]
     tasks?: TaskItem[]
-    /** 排队消息编辑回填：把文本写回 composer 草稿并聚焦 */
-    onEditQueued: (text: string) => void
+    /** 排队消息编辑回填：把取消成功的排队消息完整分段写回 composer 并聚焦 */
+    onEditQueued: (segments: ComposerSegments) => void
 }
 
 /**
@@ -259,7 +260,7 @@ function QueuedMessagesSection({
     onEdit,
 }: {
     sessionId: string
-    onEdit: (text: string) => void
+    onEdit: (segments: ComposerSegments) => void
 }) {
     // 只取排队子集。cancelled/discarded 终态消息不进 composer 区——
     // 终态可见性由聊天流内的灰色标注承担（ChatContainer footer 标注）

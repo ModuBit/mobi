@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { UserTextBlock, AgentEventBlock } from '@/domain/chat'
 import { REWIND_COMMAND } from '@/domain/chat/presentation'
-import { collectRewindBatchText } from '@/domain/chat/rewind'
+import { collectRewindBatchText, mergeSegmentRows } from '@/domain/chat/rewind'
 import { buildChatBubbleItems } from '@/components/chat/buildBubbleItems'
 import {
     _resetForTest,
@@ -159,5 +159,64 @@ describe('collectRewindBatchText', () => {
     it('无匹配行 / 全空文本 → null', () => {
         expect(collectRewindBatchText([{ seq: 1, metadata: { nativeId: 'x' }, content: {} }], 'u1')).toBeNull()
         expect(collectRewindBatchText([], 'u1')).toBeNull()
+    })
+})
+
+// ──────────────────────────────────────────────────────────────
+// mergeSegmentRows（锚点批结构化还原为 ComposerSegments）
+// ──────────────────────────────────────────────────────────────
+
+describe('mergeSegmentRows', () => {
+    const row = (seq: number, text: string, nativeId = 'u1', extra: unknown[] = []) => ({
+        seq,
+        metadata: { nativeId },
+        content: { role: 'user', content: [{ type: 'text', text }, ...extra] },
+    })
+
+    it('单行纯文本批：无合并语义，即普通 deserialize', () => {
+        expect(mergeSegmentRows([row(1, 'hello')], 'u1'))
+            .toEqual({ text: 'hello', files: [], images: [], quotes: [] })
+    })
+
+    it('多行同 nativeId：正文按 seq 升序 join(\\n)，其余行排除', () => {
+        const rows = [
+            { seq: 12, metadata: { nativeId: 'u1' }, content: { role: 'user', content: { type: 'text', text: 'm2' } } },
+            { seq: 10, metadata: { nativeId: 'u1' }, content: { role: 'user', content: { type: 'text', text: 'm1' } } },
+            { seq: 11, metadata: { nativeId: 'other' }, content: { role: 'user', content: { type: 'text', text: 'nope' } } },
+        ]
+        expect(mergeSegmentRows(rows, 'u1')!.text).toBe('m1\nm2')
+    })
+
+    it('非 text 结构以首行为模板（避免多行携带同附件时重复堆叠）', () => {
+        const docBlock = {
+            type: 'document',
+            source: { type: 'url', value: '/a.pdf', mimeType: 'application/pdf' },
+            id: 'd1', filename: 'a.pdf', size: 1,
+        }
+        const rows = [
+            row(2, '第二行', 'u1'),
+            row(1, '第一行', 'u1', [docBlock, { type: 'quote', messageId: 'm9', role: 'agent', excerpt: 'q' }]),
+        ]
+        const merged = mergeSegmentRows(rows, 'u1')!
+        expect(merged.text).toBe('第一行\n第二行')
+        // 结构来自首行（seq=1）：files 有、quotes 有
+        expect(merged.files).toEqual([{
+            id: 'd1', filename: 'a.pdf', path: '/a.pdf', mimeType: 'application/pdf', size: 1,
+        }])
+        expect(merged.quotes).toEqual([{ messageId: 'm9', role: 'agent', excerpt: 'q' }])
+        expect(merged.images).toEqual([])
+        // 第二行的结构不并入（首行模板语义）
+    })
+
+    it('originalText 后备（快照/乐观形态）；无匹配行 → null', () => {
+        const rows = [
+            { seq: 1, metadata: { nativeId: 'u1' }, content: null, originalText: 'fallback' },
+            { seq: 2, metadata: null, content: { role: 'user', content: { type: 'text', text: 'no-native' } } },
+        ]
+        expect(mergeSegmentRows(rows, 'u1')).toEqual({
+            text: 'fallback', files: [], images: [], quotes: [],
+        })
+        expect(mergeSegmentRows([], 'u1')).toBeNull()
+        expect(mergeSegmentRows([{ seq: 1, metadata: { nativeId: 'x' }, content: {} }], 'u1')).toBeNull()
     })
 })

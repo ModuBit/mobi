@@ -24,7 +24,7 @@ import { isQueuedInMobi } from '@/core/lib/messages'
 import { useCancelQueuedMessage } from '@/core/data/hooks/mutations/useCancelQueuedMessage'
 import { useSteerQueuedMessage } from '@/core/data/hooks/mutations/useSteerQueuedMessage'
 import { summarizeBlocks } from '@/domain/chat/userContentSummary'
-import { getUserPlainText } from '@/domain/chat/userContent'
+import { deserializeSegments, emptySegments, type ComposerSegments } from '@/domain/chat/composerSegments'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /**
@@ -41,8 +41,8 @@ function userBlocksOf(msg: DecryptedMessage): UserContentBlock[] | null {
 export interface QueuedMessagesBarProps {
     sessionId: string
     messages: DecryptedMessage[]
-    /** 编辑：取消该消息 + 把文本回填 composer */
-    onEdit: (text: string) => void
+    /** 编辑：取消该消息 + 把完整分段（text + 附件双桶 + 引用）回填 composer */
+    onEdit: (segments: ComposerSegments) => void
 }
 
 /**
@@ -92,8 +92,14 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
             onSuccess: (res) => {
                 // 只有真正取消成功才回填；已被 agent 处理则提示
                 if (res.data.status === 'cancelled') {
-                    // 编辑回填暂维持纯文本（结构化还原是后续任务，勿在此扩散）
-                    onEdit(getUserPlainText(userBlocksOf(msg) ?? []) || msg.originalText || '')
+                    // 结构化还原：normalize 归一后 deserialize 为分段（text + 附件双桶 + 引用）；
+                    // normalize 失败（快照/乐观形态）兜底 originalText 纯文本
+                    const blocks = userBlocksOf(msg)
+                    if (blocks) {
+                        onEdit(deserializeSegments(blocks))
+                    } else {
+                        onEdit({ ...emptySegments(), text: msg.originalText ?? '' })
+                    }
                 } else {
                     messageApi.info(t('chat.queued.alreadySubmitted'))
                 }

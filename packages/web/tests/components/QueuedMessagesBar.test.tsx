@@ -208,7 +208,7 @@ describe('QueuedMessagesBar', () => {
         expect(onEdit).not.toHaveBeenCalled()
     })
 
-    it('点击编辑 + cancel 返回 cancelled → onEdit(previewText)', () => {
+    it('点击编辑 + cancel 返回 cancelled → onEdit 收到纯文本分段', () => {
         const onEdit = vi.fn()
         const { container } = renderBar([queuedMsg('q1', '编辑我')], onEdit)
 
@@ -222,9 +222,48 @@ describe('QueuedMessagesBar', () => {
         expect(callArgs[0]).toBe('q1')
         const opts = callArgs[1] as { onSuccess: (res: { data: { status: string } }) => void }
 
-        // cancel 成功 → 回填文本
+        // cancel 成功 → 结构化回填（纯文本消息还原为仅 text 段）
         opts.onSuccess({ data: { status: 'cancelled' } })
-        expect(onEdit).toHaveBeenCalledWith('编辑我')
+        expect(onEdit).toHaveBeenCalledWith({ text: '编辑我', files: [], images: [], quotes: [] })
+    })
+
+    it('带附件/引用的排队消息编辑 → onEdit 收到含 files/images/quotes 的完整分段（回填往返集成）', () => {
+        const onEdit = vi.fn()
+        const structured: DecryptedMessage = {
+            ...queuedMsg('q1', ''),
+            content: {
+                role: 'user',
+                content: [
+                    { type: 'quote', messageId: 'm9', role: 'agent', excerpt: '被引用的消息' },
+                    {
+                        type: 'document',
+                        source: { type: 'url', value: '/up/report.pdf', mimeType: 'application/pdf' },
+                        id: 'd1', filename: 'report.pdf', size: 123,
+                    },
+                    {
+                        type: 'image',
+                        source: { type: 'url', value: '/up/pic.png', mimeType: 'image/png' },
+                        id: 'g1', filename: 'pic.png', size: 456,
+                    },
+                    { type: 'text', text: '看这两份材料' },
+                ],
+                meta: { sentFrom: 'webapp' },
+            },
+        } as unknown as DecryptedMessage
+        const { container } = renderBar([structured], onEdit)
+
+        fireEvent.click(container.querySelector('.anticon-edit')!.closest('button')!)
+        const opts = cancelMock.mutate.mock.calls[0]![1] as {
+            onSuccess: (res: { data: { status: string } }) => void
+        }
+        opts.onSuccess({ data: { status: 'cancelled' } })
+
+        expect(onEdit).toHaveBeenCalledWith({
+            text: '看这两份材料',
+            files: [{ id: 'd1', filename: 'report.pdf', path: '/up/report.pdf', mimeType: 'application/pdf', size: 123 }],
+            images: [{ id: 'g1', filename: 'pic.png', path: '/up/pic.png', mimeType: 'image/png', size: 456 }],
+            quotes: [{ messageId: 'm9', role: 'agent', excerpt: '被引用的消息' }],
+        })
     })
 
     it('点击编辑 + cancel 返回 submitted → 不调 onEdit', () => {

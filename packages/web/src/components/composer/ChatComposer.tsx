@@ -23,8 +23,13 @@ import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import type { AgentState, ContextUsage, EffortLevel, GoalStatus, PermissionMode, Session, TodoItem, TaskItem } from '@mobi/shared'
 import { getPermissionModeOptionsForFlavor, getPermissionModeTone, EFFORT_LEVELS, EFFORT_LABELS } from '@mobi/shared'
-import { isSegmentEmpty, type BlockFileRef, type ComposerSegments, type PendingQuoteRef } from '@/domain/chat/composerSegments'
-import { isImageFileAttachment, attachmentMimeType } from '@/core/lib/fileAttachments'
+import {
+    isSegmentEmpty,
+    QUOTE_MAX_COUNT,
+    type ComposerSegments,
+    type PendingQuoteRef,
+} from '@/domain/chat/composerSegments'
+import { bucketCompletedAttachments, fileRefToPlaceholderAttachment } from '@/core/lib/fileAttachments'
 import { CLAUDE_MODEL_FALLBACK } from '@/domain/session/types'
 import { AttachmentList } from './AttachmentItem'
 import { ComposerInfoPanel } from './ComposerInfoPanel'
@@ -101,15 +106,11 @@ interface ChatComposerProps {
     /** goal 状态（来自 session.runtimeState.goalStatus；无值时不渲染徽标） */
     goal?: GoalStatus | null
     /**
-     * 外部草稿回填请求（rewind 收尾把锚点批原文灌回 sender 并聚焦）：
-     * nonce 单调递增触发应用，同 nonce 不重复；text 为空串时忽略
+     * 外部结构化回填请求（rewind 收尾把锚点批分段灌回 sender 并聚焦；
+     * 排队消息编辑走内部 onEditQueued → applySegments 通道，不经此 props）：
+     * nonce 单调递增触发应用，同 nonce 不重复；segments 全空时忽略
      */
-    draftRequest?: { text: string; nonce: number }
-    /**
-     * 回填分段通道（P5 预留）：排队消息编辑 / rewind 回填等场景注入初始分段。
-     * 本期仅声明 props 通道，回填逻辑待 P5 接入（currentSegments 已按分段建模）。
-     */
-    initialSegments?: ComposerSegments
+    draftRequest?: { segments: ComposerSegments; nonce: number }
 }
 
 function getTextarea(wrapper: HTMLDivElement | null): HTMLTextAreaElement | null {
@@ -320,26 +321,22 @@ export function ChatComposer(props: ChatComposerProps) {
     } = props
 
     const [text, setText] = useState('')
-    // 待发送引用：本期数据通路 + 极简 chip 展示（上游引用入口后续任务接入）；不参与草稿持久化（P5 一并处理）
+    // 待发送引用：极简 chip 展示。约束：持有条数恒 ≤ QUOTE_MAX_COUNT（=1，不允许多条堆叠）——
+    // 当前 UI 无「新增第二条引用」入口（本 state 仅经回填/草稿恢复整段写入），上限为未来引入
+    // 引用入口时的前置契约：置入超出时应替换最早一条；serialize 侧 slice(0, QUOTE_MAX_COUNT) 为底线
     const [quotes, setQuotes] = useState<PendingQuoteRef[]>([])
     const [effortPopoverModel, setEffortPopoverModel] = useState<string | null>(null)
 
-    // 设置草稿并聚焦：suggestion 采纳 + ComposerInfoPanel 内排队消息编辑共用同一实现
+    // 设置草稿并聚焦：suggestion 采纳共用此实现
     const setDraft = useCallback((draftText: string) => {
         setText(draftText)
         requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
     }, [])
 
-    // rewind 收尾回填（spec §4.4）：锚点批 N 条原文 join('\n') 灌回 sender 并聚焦（移动端弹键盘）。
-    // 经 ref 读最新请求体，effect 只依赖 nonce——避免 draftRequest 对象引用变化重复触发
+    // rewind 收尾结构化回填请求体：经 ref 读最新值，下方 effect 只依赖 nonce——
+    // 避免 draftRequest 对象引用变化重复触发（effect 与 applySegments 定义在同处，见 segmentBuckets 之后）
     const draftRequestRef = useRef(draftRequest)
     draftRequestRef.current = draftRequest
-    const draftNonce = draftRequest?.nonce
-    useEffect(() => {
-        if (draftNonce == null) return
-        const req = draftRequestRef.current
-        if (req && req.text.length > 0) setDraft(req.text)
-    }, [draftNonce, setDraft])
 
     // 跨页草稿（NewSessionPage 创建会话后发送失败时暂存）优先级最高：取出后落入当前 session 草稿，
     // 随后 useComposerDraft 的 rAF 恢复会从草稿库读到它 —— 天然一致，无需标志位协调 (#2)
@@ -375,31 +372,39 @@ export function ChatComposer(props: ChatComposerProps) {
     } = useAttachmentHandling(sessionId, capabilities, controlsDisabled)
 
     // 上传完成附件 → 分段文件引用，按 MIME 分桶为 images / files（document）。
-    // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶，
-    // 分桶判定单一来源在 fileAttachments.isImageFileAttachment（MIME 优先 + 扩展名兜底，
-    // 覆盖草稿恢复态占位 File 无 MIME 的情况）
-    const segmentBuckets = useMemo(() => {
-        const files: BlockFileRef[] = []
-        const images: BlockFileRef[] = []
-        for (const a of attachments) {
-            if (a.status !== 'complete' || !a.path) continue
-            const ref: BlockFileRef = {
-                id: a.id,
-                filename: a.name ?? a.file.name,
-                path: a.path,
-                mimeType: attachmentMimeType(a),
-                size: a.size ?? a.file.size,
-            }
-            ;(isImageFileAttachment(a) ? images : files).push(ref)
-        }
-        return { files, images }
-    }, [attachments])
+    // 粘贴截图、文件上传、拖拽三入口都汇入同一 attachments 数组后再分桶；
+    // 投影与分桶判定单一来源在 fileAttachments.bucketCompletedAttachments
+    // （isImageFileAttachment：MIME 优先 + 扩展名兜底，覆盖草稿恢复态占位 File 无 MIME 的情况）
+    const segmentBuckets = useMemo(
+        () => bucketCompletedAttachments(attachments),
+        [attachments],
+    )
+
+    // 结构化回填（排队消息编辑 / rewind 收尾共用）：text + 附件双桶（占位附件还原，
+    // 不再上传，MIME 由扩展名兜底重 derive）+ 引用 chip 一并恢复并聚焦。
+    // setter 均为稳定引用，回调恒稳定——下游 nonce effect / onEditQueued 传值无稳定性顾虑
+    const applySegments = useCallback((segments: ComposerSegments) => {
+        const refs = [...segments.files, ...segments.images]
+        setText(segments.text)
+        setAttachments(refs.map(fileRefToPlaceholderAttachment))
+        setQuotes(segments.quotes.slice(0, QUOTE_MAX_COUNT))
+        requestAnimationFrame(() => getTextarea(wrapperRef.current)?.focus())
+    }, [setAttachments])
+
+    // 回填应用门控：nonce 单调递增触发一次；空分段静默跳过
+    // （数据异常无从还原时不清空用户当前草稿）
+    const draftNonce = draftRequest?.nonce
+    useEffect(() => {
+        if (draftNonce == null) return
+        const req = draftRequestRef.current
+        if (req && !isSegmentEmpty(req.segments)) applySegments(req.segments)
+    }, [draftNonce, applySegments])
 
     // per-session 草稿生命周期：挂载恢复、切走保存（依赖上面的 text/attachments/setters）
     useComposerDraft(
         sessionId,
-        { text, attachments },
-        { setText, setAttachments },
+        { text, attachments, quotes },
+        { setText, setAttachments, setQuotes },
     )
 
     // SDK 元数据（模型列表等）
@@ -800,7 +805,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 }}
                 todos={todos}
                 tasks={tasks}
-                onEditQueued={setDraft}
+                onEditQueued={applySegments}
             />
 
             <StatusBar

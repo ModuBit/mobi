@@ -20,13 +20,15 @@ function makeAttachment(overrides: {
     name: string
     fileSize?: number
     fileType?: string
+    mimeType?: string
 }): FileAttachment {
-    const { name, fileSize = 0, fileType = '' } = overrides
+    const { name, fileSize = 0, fileType = '', mimeType } = overrides
     return {
         id: 'a1',
         name,
         file: new File([new ArrayBuffer(fileSize)], name, { type: fileType }),
         status: 'complete',
+        ...(mimeType ? { mimeType } : {}),
     }
 }
 
@@ -46,6 +48,14 @@ describe('isImageFileAttachment', () => {
     it('恢复态未知/无扩展名 → 非图片', () => {
         expect(isImageFileAttachment(makeAttachment({ name: 'data.bin' }))).toBe(false)
         expect(isImageFileAttachment(makeAttachment({ name: 'noext' }))).toBe(false)
+    })
+
+    it('恢复态顶层 MIME 存证优先：.tiff 未入 EXT_TO_MIME 但存证 image/tiff → 判图不错桶', () => {
+        // 回归锁定：建模时 attachmentMimeType 记录的值在恢复侧必须被读回，
+        // 否则占位 File 无 type + 扩展名不在映射表 → 桶从 images 翻转成 files
+        const restored = makeAttachment({ name: 'scan.tiff', mimeType: 'image/tiff' })
+        expect(isImageFileAttachment(restored)).toBe(true)
+        expect(attachmentMimeType(restored)).toBe('image/tiff')
     })
 })
 

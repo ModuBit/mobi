@@ -14,25 +14,33 @@
  * limitations under the License.
  */
 
-import type { FileAttachment } from './fileAttachments'
+import type { BlockFileRef, ComposerSegments, PendingQuoteRef } from '@/domain/chat/composerSegments'
+import { QUOTE_MAX_COUNT } from '@/domain/chat/composerSegments'
 
 const STORAGE_KEY = 'mobi:composer-drafts'
 const MAX_DRAFTS = 50
 
-/** 持久化的附件子集（File 不可序列化，只存展示与发送所需字段） */
-export type PersistedAttachment = {
+/** 持久化的文件引用（files/images 双桶共用）：上传完成后从 FileAttachment 投影而来 */
+export interface PersistedFileRef {
     id: string
-    name: string
+    filename: string
     path: string
+    mimeType: string
     size: number
 }
 
-export type SessionDraft = {
+/**
+ * 草稿的持久化分段形态（P5）：与 ComposerSegments 同构，仅去掉 volatile 的 previewUrl。
+ * 读写双侧 shape 校验；files/images/quotes 缺省按 [] 容错。
+ */
+export interface PersistedSegments {
     text: string
-    attachments: PersistedAttachment[]
+    files: PersistedFileRef[]
+    images: PersistedFileRef[]
+    quotes: PendingQuoteRef[]
 }
 
-type DraftsMap = Record<string, SessionDraft>
+type DraftsMap = Record<string, PersistedSegments>
 
 // 内存缓存：避免每次读写都解析 sessionStorage，同 hapi 实现
 let cache: DraftsMap | null = null
@@ -45,27 +53,87 @@ function safeParseJson(value: string): unknown {
     }
 }
 
-/** 校验单个 draft 结构，非法返回 null */
-function coerceDraft(value: unknown): SessionDraft | null {
+/** 校验单个文件引用项（新格式）；非法返回 null 由上层逐条剔除 */
+function coerceFileRef(value: unknown): PersistedFileRef | null {
+    if (!value || typeof value !== 'object') return null
+    const o = value as Record<string, unknown>
+    if (
+        typeof o.id !== 'string' ||
+        typeof o.filename !== 'string' ||
+        typeof o.path !== 'string' ||
+        typeof o.mimeType !== 'string' ||
+        typeof o.size !== 'number'
+    ) {
+        return null
+    }
+    return { id: o.id, filename: o.filename, path: o.path, mimeType: o.mimeType, size: o.size }
+}
+
+/** 校验单条引用分段；非法返回 null 由上层逐条剔除 */
+function coerceQuote(value: unknown): PendingQuoteRef | null {
+    if (!value || typeof value !== 'object') return null
+    const o = value as Record<string, unknown>
+    if (typeof o.messageId !== 'string' || typeof o.excerpt !== 'string') return null
+    if (o.role !== 'user' && o.role !== 'agent') return null
+    return { messageId: o.messageId, role: o.role, excerpt: o.excerpt }
+}
+
+/** 旧版附件项（{id,name,path,size}）→ 文件引用投影：MIME 未持久化，容错空串（恢复侧由扩展名兜底重 derive） */
+function legacyAttachmentToFileRef(value: unknown): PersistedFileRef | null {
+    if (!value || typeof value !== 'object') return null
+    const o = value as Record<string, unknown>
+    if (
+        typeof o.id !== 'string' ||
+        typeof o.name !== 'string' ||
+        typeof o.path !== 'string' ||
+        typeof o.size !== 'number'
+    ) {
+        return null
+    }
+    return { id: o.id, filename: o.name, path: o.path, mimeType: '', size: o.size }
+}
+
+/**
+ * 数组字段读取：缺省 / 非数组按 [] 容错；单项校验失败逐条剔除而非整单拒绝——
+ * 草稿是可丢弃缓存，宁可降级保留正文，不因个别坏项丢掉用户输入。
+ */
+function coerceArray<T>(value: unknown, item: (v: unknown) => T | null): T[] {
+    if (!Array.isArray(value)) return []
+    return value.map(item).filter((v): v is T => v !== null)
+}
+
+/** 校验单个 draft 结构，非法返回 null。兼容两种存量格式：见下方分支注释 */
+function coerceDraft(value: unknown): PersistedSegments | null {
     if (!value || typeof value !== 'object') return null
     const obj = value as Record<string, unknown>
     if (typeof obj.text !== 'string') return null
-    if (!Array.isArray(obj.attachments)) return null
-    const attachments: PersistedAttachment[] = []
-    for (const item of obj.attachments) {
-        if (!item || typeof item !== 'object') return null
-        const a = item as Record<string, unknown>
-        if (
-            typeof a.id !== 'string' ||
-            typeof a.name !== 'string' ||
-            typeof a.path !== 'string' ||
-            typeof a.size !== 'number'
-        ) {
-            return null
+
+    // P5 分段格式（当前写入的唯一格式）：files/images/quotes 三桶齐备
+    if (
+        Array.isArray(obj.files) ||
+        Array.isArray(obj.images) ||
+        Array.isArray(obj.quotes)
+    ) {
+        return {
+            text: obj.text,
+            files: coerceArray(obj.files, coerceFileRef),
+            images: coerceArray(obj.images, coerceFileRef),
+            quotes: coerceArray(obj.quotes, coerceQuote),
         }
-        attachments.push({ id: a.id, name: a.name, path: a.path, size: a.size })
     }
-    return { text: obj.text, attachments }
+
+    // 旧版草稿（P4 前）：{text, attachments: [{id,name,path,size}]} 单桶——视为全部文件，
+    // images/quotes 补空数组；mimeType 缺失存空串，恢复侧经扩展名兜底还原分桶与 MIME
+    if (Array.isArray(obj.attachments)) {
+        return {
+            text: obj.text,
+            files: coerceArray(obj.attachments, legacyAttachmentToFileRef),
+            images: [],
+            quotes: [],
+        }
+    }
+
+    return null
 }
 
 function hydrate(): DraftsMap {
@@ -124,20 +192,34 @@ function persist(next: DraftsMap): void {
     }
 }
 
-/** 仅保留可持久化的附件（complete 且有 path） */
-function toPersisted(attachments: FileAttachment[]): PersistedAttachment[] {
-    return attachments
-        .filter(a => a.status === 'complete' && !!a.path)
-        .map(a => ({
-            id: a.id,
-            // 顶层 name/size 优先（恢复态），回退 file（见 fileAttachments.ts 扩展）
-            name: a.name ?? a.file.name,
-            path: a.path!,
-            size: a.size ?? a.file.size,
-        }))
+/**
+ * ComposerSegments → 可持久化形态：
+ * 剥离 volatile 的 previewUrl（blob URL 跨会话失效）、quote 截至上限（serialize 时同样截断，双保险）。
+ */
+function toPersisted(segments: ComposerSegments): PersistedSegments {
+    const project = (f: BlockFileRef): PersistedFileRef =>
+        ({ id: f.id, filename: f.filename, path: f.path, mimeType: f.mimeType, size: f.size })
+    return {
+        text: segments.text,
+        files: segments.files.map(project),
+        images: segments.images.map(project),
+        quotes: segments.quotes.slice(0, QUOTE_MAX_COUNT),
+    }
 }
 
-export function getDraft(sessionId: string): SessionDraft | null {
+/** 分段空判定（删除草稿的条件）：text(trim 后) 与三个非文本桶全空 */
+function isPersistedEmpty(persisted: PersistedSegments): boolean {
+    return persisted.text.trim().length === 0
+        && persisted.files.length === 0
+        && persisted.images.length === 0
+        && persisted.quotes.length === 0
+}
+
+/**
+ * 读草稿：返回 ComposerSegments（PersistedSegments 结构子集，天然可赋值）；
+ * 不存在的 session 返回 null。
+ */
+export function getDraft(sessionId: string): ComposerSegments | null {
     const drafts = hydrate()
     const draft = drafts[sessionId]
     if (draft) {
@@ -148,37 +230,37 @@ export function getDraft(sessionId: string): SessionDraft | null {
     return draft ?? null
 }
 
-export function saveDraft(sessionId: string, text: string, attachments: FileAttachment[]): void {
+export function saveDraft(sessionId: string, segments: ComposerSegments): void {
     if (!sessionId) return
-    const trimmed = text.trim()
-    const persisted = toPersisted(attachments)
+    const persisted = toPersisted(segments)
     const next: DraftsMap = { ...hydrate() }
-    if (!trimmed && persisted.length === 0) {
+    if (isPersistedEmpty(persisted)) {
         delete next[sessionId]
     } else {
         // 先删再写，刷新 Object.keys() 顺序用于 LRU 淘汰
         delete next[sessionId]
-        next[sessionId] = { text, attachments: persisted }
+        next[sessionId] = persisted
     }
     evict(next)
     persist(next)
 }
 
 /**
- * 仅更新草稿文本，保留该 session 既有的附件草稿。
- * 供跨页草稿落入既有 session 时使用，避免用空附件覆盖。
+ * 仅更新草稿文本，保留该 session 既有的文件/图片/引用分段。
+ * 供跨页草稿落入既有 session 时使用，避免用空分段覆盖既有内容。
  */
 export function mergeDraftText(sessionId: string, text: string): void {
     if (!sessionId) return
-    const trimmed = text.trim()
     const existing = hydrate()[sessionId]
-    const keptAttachments = existing?.attachments ?? []
+    const keptFiles = existing?.files ?? []
+    const keptImages = existing?.images ?? []
+    const keptQuotes = existing?.quotes ?? []
     const next: DraftsMap = { ...hydrate() }
-    if (!trimmed && keptAttachments.length === 0) {
+    if (text.trim().length === 0 && keptFiles.length === 0 && keptImages.length === 0 && keptQuotes.length === 0) {
         delete next[sessionId]
     } else {
         delete next[sessionId]
-        next[sessionId] = { text, attachments: keptAttachments }
+        next[sessionId] = { text, files: keptFiles, images: keptImages, quotes: keptQuotes }
     }
     evict(next)
     persist(next)

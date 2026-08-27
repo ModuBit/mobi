@@ -16,6 +16,7 @@
 
 import type { UploadFileResponse } from '@/core/data/api/types'
 import { ALLOWED_EXTENSIONS_SET, ALLOWED_EXTENSIONS, BLOCKED_EXTENSIONS_SET, MAX_UPLOAD_BYTES } from '@mobi/shared/upload'
+import type { BlockFileRef } from '@/domain/chat/composerSegments'
 import { uuid } from './uuid'
 
 /**
@@ -44,6 +45,13 @@ export type FileAttachment = {
      * 渲染层优先读此字段，回退 file.size。正常上传态不填。
      */
     size?: number
+    /**
+     * 顶层 MIME（恢复态专用）：分段建模时的 attachmentMimeType 存证。
+     * 占位 File 的 type 恒空串，若丢弃此值仅靠扩展名兜底会让 EXT_TO_MIME 未覆盖的
+     * 白名单扩展（如 .tiff，MIME 为 image/tiff）在恢复后错分进 document 桶。
+     * 正常上传态不填。
+     */
+    mimeType?: string
 }
 
 /**
@@ -111,23 +119,72 @@ const EXT_TO_MIME: Record<string, string> = {
 const IMAGE_EXT_SET = new Set(Object.entries(EXT_TO_MIME).filter(([, m]) => m.startsWith('image/')).map(([e]) => e))
 
 /**
- * 判定附件是否为图片类型（MIME 优先；恢复态占位 File 无可靠 MIME，按扩展名兜底）。
+ * 判定附件是否为图片类型。
+ * 判定优先级：恢复态顶层 MIME（分段建模时存证，避免 .tiff 等未入 EXT_TO_MIME 的
+ * 白名单扩展恢复后桶翻转）> 占位/真实 File 的 type > 扩展名兜底。
  * 图片与文档在发送时分桶为 image / document block，两入口（粘贴、上传）共用此判定。
  */
 export function isImageFileAttachment(attachment: FileAttachment): boolean {
+    if (attachment.mimeType?.startsWith('image/')) return true
     if (attachment.file.size > 0 && attachment.file.type.startsWith('image/')) return true
     const filename = attachment.name ?? attachment.file.name
     return IMAGE_EXT_SET.has(getExtension(filename))
 }
 
 /**
- * 取附件 MIME 类型：file.type 可靠时直接用；
- * 恢复态占位 File 恒空串，按扩展名兜底；未知扩展回退通用二进制类型。
+ * 取附件 MIME 类型。优先级同 isImageFileAttachment：恢复态顶层 MIME 存证 >
+ * file.type（真实上传态可靠；恢复态恒空串）> 扩展名兜底 > 通用二进制类型。
  */
 export function attachmentMimeType(attachment: FileAttachment): string {
     if (attachment.file.type) return attachment.file.type
+    if (attachment.mimeType) return attachment.mimeType
     const filename = attachment.name ?? attachment.file.name
     return EXT_TO_MIME[getExtension(filename)] ?? 'application/octet-stream'
+}
+
+/**
+ * 上传完成的附件 → 分段文件引用双桶（document / image）。
+ *
+ * 投影与分桶判定的单一来源：isImageFileAttachment 分桶 + attachmentMimeType 补 MIME，
+ * 发送序列化（ChatComposer.segmentBuckets）与草稿持久化（useComposerDraft 保存路径）共用；
+ * 未完成上传（uploading/error/无 path）没有 path 无法进分段，投影前过滤。
+ */
+export function bucketCompletedAttachments(attachments: readonly FileAttachment[]): {
+    files: BlockFileRef[]
+    images: BlockFileRef[]
+} {
+    const files: BlockFileRef[] = []
+    const images: BlockFileRef[] = []
+    for (const a of attachments) {
+        if (a.status !== 'complete' || !a.path) continue
+        const ref: BlockFileRef = {
+            id: a.id,
+            filename: a.name ?? a.file.name,
+            path: a.path,
+            mimeType: attachmentMimeType(a),
+            size: a.size ?? a.file.size,
+        }
+        ;(isImageFileAttachment(a) ? images : files).push(ref)
+    }
+    return { files, images }
+}
+
+/**
+ * 分段文件引用 → 恢复态占位附件（草稿恢复 / 排队编辑 / rewind 回填的逆向还原）。
+ * 占位 File 不再上传，仅供渲染层 name fallback；mimeType 以分段建模时的存证优先直通，
+ * 缺失时经 attachmentMimeType 扩展名兜底重 derive，与分段建模语义自洽。
+ */
+export function fileRefToPlaceholderAttachment(ref: BlockFileRef): FileAttachment {
+    return {
+        id: ref.id,
+        // 占位 File：仅供渲染层 name fallback，不再触发上传
+        file: new File([], ref.filename),
+        status: 'complete' as const,
+        path: ref.path,
+        name: ref.filename,
+        size: ref.size,
+        ...(ref.mimeType ? { mimeType: ref.mimeType } : {}),
+    }
 }
 
 /**

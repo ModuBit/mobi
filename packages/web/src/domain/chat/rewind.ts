@@ -20,8 +20,9 @@
  * 天然识别 /clear（及其它换 session 场景）之前的消息。
  */
 
-import type { NativeMessageMetadata } from '@mobi/shared'
+import type { NativeMessageMetadata, UserContentBlock } from '@mobi/shared'
 import { normalizeUserContent } from '@mobi/shared'
+import { deserializeSegments, type ComposerSegments } from './composerSegments'
 import { summarizeBlocks, joinSummaries, EMPTY_SUMMARY_LABELS } from './userContentSummary'
 
 export type { NativeMessageMetadata }
@@ -86,16 +87,40 @@ export type RewindBatchRow = {
  * normalizeUserContent 归一后取 text 原文；非 text block（附件等）用空标签跳过
  * ——回填正文不该混入占位符；normalize 失败回落 originalText（快照/乐观形态）。
  */
+/** 行内 wire content → UserContentBlock[]；normalize 失败（快照/乐观形态）回退 originalText 单 text block */
+function rowBlocksOf(row: RewindBatchRow): UserContentBlock[] {
+    const inner = (row.content as { content?: unknown } | null)?.content
+    return normalizeUserContent(inner) ?? [{ type: 'text', text: row.originalText ?? '' }]
+}
+
 export function collectRewindBatchText(rows: RewindBatchRow[], nativeId: string): string | null {
     const summaries = rows
         .filter(r => r.metadata?.nativeId === nativeId)
         .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
-        .map(r => {
-            const blocks = normalizeUserContent((r.content as { content?: unknown } | null)?.content)
-            if (!blocks) return r.originalText ?? ''
-            return summarizeBlocks(blocks, EMPTY_SUMMARY_LABELS)
-        })
+        .map(r => summarizeBlocks(rowBlocksOf(r), EMPTY_SUMMARY_LABELS))
     return joinSummaries(summaries)
+}
+
+/**
+ * 锚点批还原为 ComposerSegments（rewind 收尾的结构化回填，spec §4.4）：
+ * - 非 text 结构（文件/图片/引用）以**首行为模板**——合并批语义上是同一输入被拆成多行，
+ *   结构元素以首个形态为准，避免多行携带同一附件时重复堆叠
+ * - 各行 text 原文按 seq 升序以 '\n' 连接（与 collectRewindBatchText 同口径）
+ * - 单行批即普通 deserialize（无合并语义生效）；无匹配行返回 null（调用方决定兜底）
+ */
+export function mergeSegmentRows(rows: RewindBatchRow[], nativeId: string): ComposerSegments | null {
+    const batch = rows
+        .filter(r => r.metadata?.nativeId === nativeId)
+        .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+    if (batch.length === 0) return null
+
+    const segments = batch.map(row => deserializeSegments(rowBlocksOf(row)))
+    // 循环后 batch.length > 0，segments[0] 必有值；文本段逐行收集重连
+    const template = segments[0]!
+    return {
+        ...template,
+        text: segments.map(s => s.text).filter(t => t.length > 0).join('\n'),
+    }
 }
 
 /** 链首骨架判定的行输入（与 DecryptedMessage 字段同构的最小形状；按 seq 升序传入） */
