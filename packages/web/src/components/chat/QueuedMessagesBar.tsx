@@ -19,19 +19,23 @@ import { Button, theme, message } from 'antd'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import { ClockCircleOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
+import { normalizeUserContent, type UserContentBlock } from '@mobi/shared'
 import { isQueuedInMobi } from '@/core/lib/messages'
 import { useCancelQueuedMessage } from '@/core/data/hooks/mutations/useCancelQueuedMessage'
 import { useSteerQueuedMessage } from '@/core/data/hooks/mutations/useSteerQueuedMessage'
+import { summarizeBlocks } from '@/domain/chat/userContentSummary'
+import { getUserPlainText } from '@/domain/chat/userContent'
 import type { DecryptedMessage } from '@/core/data/api/types'
 
 /**
- * 从消息中提取纯文本预览
- * 乐观消息格式：content.content.text
- * 后备：originalText
+ * 从消息信封（wire 格式）提取用户输入 blocks。
+ * 信封内层 content 兼容旧平铺 / 新 block 数组（normalizeUserContent 四形态归一）；
+ * 非 user 信封（agent/系统）不该出现在此（调用方已滤 queued），防御返回 null。
  */
-function previewText(msg: DecryptedMessage): string {
-    const c = msg.content as { content?: { text?: string } } | null
-    return c?.content?.text ?? msg.originalText ?? ''
+function userBlocksOf(msg: DecryptedMessage): UserContentBlock[] | null {
+    const envelope = msg.content as { role?: string; content?: unknown } | null
+    if (envelope?.role !== 'user') return null
+    return normalizeUserContent(envelope.content)
 }
 
 export interface QueuedMessagesBarProps {
@@ -54,6 +58,15 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
     const [messageApi, contextHolder] = message.useMessage()
     const cancelMutation = useCancelQueuedMessage(sessionId)
     const steerMutation = useSteerQueuedMessage(sessionId)
+
+    // 单行预览：text 原文连接 + 非 text block 标签占位（summarizeBlocks 单源）；normalize 失败回落 originalText
+    const summaryLabels = useMemo(() => ({
+        file: t('chat.summary.file'),
+        image: t('chat.summary.image'),
+        quote: t('chat.summary.quote'),
+    }), [t])
+    const previewOf = (msg: DecryptedMessage): string =>
+        summarizeBlocks(userBlocksOf(msg) ?? [], summaryLabels) || msg.originalText || ''
 
     // 防御性二次过滤 + 按时间排序。
     // 调用方（QueuedMessagesSection）的 useMessages select 已滤出排队子集（性能优化：避免传全量数组），
@@ -79,7 +92,8 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
             onSuccess: (res) => {
                 // 只有真正取消成功才回填；已被 agent 处理则提示
                 if (res.data.status === 'cancelled') {
-                    onEdit(previewText(msg))
+                    // 编辑回填暂维持纯文本（结构化还原是后续任务，勿在此扩散）
+                    onEdit(getUserPlainText(userBlocksOf(msg) ?? []) || msg.originalText || '')
                 } else {
                     messageApi.info(t('chat.queued.alreadySubmitted'))
                 }
@@ -124,7 +138,7 @@ export function QueuedMessagesBar(props: QueuedMessagesBarProps): React.ReactEle
                         {queued.map(msg => (
                             <QueuedItem
                                 key={msg.localId ?? msg.id}
-                                text={previewText(msg)}
+                                text={previewOf(msg)}
                                 cancelPending={
                                     cancelMutation.isPending &&
                                     cancelMutation.variables === msg.localId

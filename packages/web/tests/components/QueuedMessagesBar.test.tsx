@@ -162,6 +162,25 @@ describe('QueuedMessagesBar', () => {
         expect(getByText('第二条排队')).toBeInTheDocument()
     })
 
+    it('带附件的排队消息预览显示占位标签（summarizeBlocks 单源；i18n mock 透传 key）', () => {
+        const withAttachment: DecryptedMessage = {
+            ...queuedMsg('q1', ''),
+            content: {
+                role: 'user',
+                content: {
+                    type: 'text',
+                    text: '看这个',
+                    attachments: [{ id: 'a1', filename: 'a.pdf', mimeType: 'application/pdf', size: 1, path: '/up/a.pdf' }],
+                },
+                meta: { sentFrom: 'webapp' },
+            },
+        }
+        const { getByText } = renderBar([withAttachment])
+
+        // text 原文 + document 占位（t mock 返回 key 本身）
+        expect(getByText('看这个chat.summary.file')).toBeInTheDocument()
+    })
+
     it('排队消息与已 invoke 消息混合时只展示排队项', () => {
         const { getByText, queryByText } = renderBar([
             queuedMsg('q1', '排队中'),

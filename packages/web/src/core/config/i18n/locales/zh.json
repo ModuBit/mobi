@@ -308,6 +308,11 @@
             "alreadySubmitted": "消息已提交给 Claude Code，无法编辑",
             "steer": "立即提交给 Claude Code",
             "steerFailed": "暂无法提交，仍保留在队列中"
+        },
+        "summary": {
+            "file": "[文件]",
+            "image": "[图片]",
+            "quote": "[引用]"
         }
     },
     "files": {

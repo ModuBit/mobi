@@ -126,11 +126,12 @@ describe('buildChatBubbleItems rewind 渲染', () => {
 
 describe('collectRewindBatchText', () => {
     it('合并批：同 nativeId 多行按 seq 升序 join(\\n)', () => {
+        // wire 内层 content 为 {type:'text',text} 平铺（webapp 发送/落库形态），normalize 走单 block 通道
         const rows = [
-            { seq: 12, metadata: { nativeId: 'u1', nativeSessionId: 'ns' }, content: { content: { text: 'm2' } } },
-            { seq: 10, metadata: { nativeId: 'u1', nativeSessionId: 'ns' }, content: { content: { text: 'm1' } } },
-            { seq: 11, metadata: { nativeId: 'other' }, content: { content: { text: 'nope' } } },
-            { seq: 9, metadata: null, content: { content: { text: 'no-native' } } },
+            { seq: 12, metadata: { nativeId: 'u1', nativeSessionId: 'ns' }, content: { role: 'user', content: { type: 'text', text: 'm2' } } },
+            { seq: 10, metadata: { nativeId: 'u1', nativeSessionId: 'ns' }, content: { role: 'user', content: { type: 'text', text: 'm1' } } },
+            { seq: 11, metadata: { nativeId: 'other' }, content: { role: 'user', content: { type: 'text', text: 'nope' } } },
+            { seq: 9, metadata: null, content: { role: 'user', content: { type: 'text', text: 'no-native' } } },
         ]
         expect(collectRewindBatchText(rows, 'u1')).toBe('m1\nm2')
     })
@@ -138,6 +139,21 @@ describe('collectRewindBatchText', () => {
     it('originalText 后备（快照/乐观形态）', () => {
         const rows = [{ seq: 1, metadata: { nativeId: 'u1' }, content: null, originalText: 'fallback' }]
         expect(collectRewindBatchText(rows, 'u1')).toBe('fallback')
+    })
+
+    it('block 数组行：text 连接、非 text block（附件）不混入回填正文', () => {
+        const rows = [{
+            seq: 1,
+            metadata: { nativeId: 'u1' },
+            content: {
+                role: 'user',
+                content: [
+                    { type: 'text', text: '看这个' },
+                    { type: 'document', source: { type: 'url', value: '/a.pdf' }, id: 'd', filename: 'a.pdf', size: 1 },
+                ],
+            },
+        }]
+        expect(collectRewindBatchText(rows, 'u1')).toBe('看这个')
     })
 
     it('无匹配行 / 全空文本 → null', () => {

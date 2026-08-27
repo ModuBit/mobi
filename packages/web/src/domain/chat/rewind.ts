@@ -21,6 +21,8 @@
  */
 
 import type { NativeMessageMetadata } from '@mobi/shared'
+import { normalizeUserContent } from '@mobi/shared'
+import { summarizeBlocks, joinSummaries, EMPTY_SUMMARY_LABELS } from './userContentSummary'
 
 export type { NativeMessageMetadata }
 
@@ -80,18 +82,20 @@ export type RewindBatchRow = {
  * 锚点批原文收集（spec §4.4）：合并批 1:N 时 rewind 批内任一条 = 整批同删，
  * 回填须取当前窗口中同 metadata.nativeId 的全部用户行，按 seq 升序 join('\n')。
  * 须在 rewindFrom 清窗前调用（这些行随后会被清除）。
- * 文本提取与 QueuedMessagesBar.previewText 同形：content.content.text → originalText 后备。
+ * 行内预览由 userContentSummary.summarizeBlocks 单源提供：wire 内层 content 经
+ * normalizeUserContent 归一后取 text 原文；非 text block（附件等）用空标签跳过
+ * ——回填正文不该混入占位符；normalize 失败回落 originalText（快照/乐观形态）。
  */
 export function collectRewindBatchText(rows: RewindBatchRow[], nativeId: string): string | null {
-    const texts = rows
+    const summaries = rows
         .filter(r => r.metadata?.nativeId === nativeId)
         .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
         .map(r => {
-            const c = r.content as { content?: { text?: string } } | null
-            return c?.content?.text ?? r.originalText ?? ''
+            const blocks = normalizeUserContent((r.content as { content?: unknown } | null)?.content)
+            if (!blocks) return r.originalText ?? ''
+            return summarizeBlocks(blocks, EMPTY_SUMMARY_LABELS)
         })
-        .filter(text => text.length > 0)
-    return texts.length > 0 ? texts.join('\n') : null
+    return joinSummaries(summaries)
 }
 
 /** 链首骨架判定的行输入（与 DecryptedMessage 字段同构的最小形状；按 seq 升序传入） */
