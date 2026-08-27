@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, cleanup } from '@testing-library/react'
 import { SplitLayout } from '@/components/ui/SplitLayout'
 import { __resetHistoryGuardForTest } from '@/core/lib/drawerHistoryGuard'
 
@@ -89,5 +89,68 @@ describe('SplitLayout 移动端 history 哨兵', () => {
             />,
         )
         expect(window.history.state).toBe(before)
+    })
+})
+
+describe('SplitLayout 桌面左栏宽度模式（回归：sidebar 收起/展开时内容居中不跟手）', () => {
+    beforeEach(() => {
+        mobile = false
+    })
+    afterEach(cleanup)
+
+    /**
+     * 左内层元素 = left 子树的直接父级；emotion 会在 head 注入真实 CSS 文本，
+     * 可按元素的 emotion class 反查最终生效的规则，断言宽度模式。
+     */
+    function getLeftInnerCss() {
+        const leftLeaf = document.querySelector('[data-testid="split-left"]')!
+        const inner = leftLeaf.parentElement!
+        const css = [...document.head.querySelectorAll('style')]
+            .map(s => s.textContent)
+            .join('')
+        return { inner, css }
+    }
+
+    it('inspector 收起态 → 左内层 width:100% 且无 width 过渡（fluid：sidebar 动画期间实时居中）', () => {
+        render(
+            <SplitLayout
+                {...baseProps}
+                expanded={false}
+                onExpandedChange={vi.fn()}
+                left={<div data-testid="split-left">L</div>}
+                right={<div>R</div>}
+            />,
+        )
+        const { inner, css } = getLeftInnerCss()
+        const rule = inner.className.split(' ')
+            .map(c => {
+                const m = css.match(new RegExp(`\\.${c}\\s*{([^}]*)}`))
+                return m?.[1] ?? ''
+            })
+            .join('\n')
+        expect(rule).toContain('width:100%')
+        expect(rule).not.toContain('width 0.3s')
+    })
+
+    it('inspector 展开态 → 保持定宽 clip + width 过渡（展开/收起协调动画语义不变）', () => {
+        render(
+            <SplitLayout
+                {...baseProps}
+                expanded={true}
+                splitRatio={0.5}
+                onExpandedChange={vi.fn()}
+                left={<div data-testid="split-left">L</div>}
+                right={<div>R</div>}
+            />,
+        )
+        const { inner, css } = getLeftInnerCss()
+        const rule = inner.className.split(' ')
+            .map(c => {
+                const m = css.match(new RegExp(`\\.${c}\\s*{([^}]*)}`))
+                return m?.[1] ?? ''
+            })
+            .join('\n')
+        expect(rule).toMatch(/width:\d+(\.\d+)?px/)
+        expect(rule).toContain('width 0.3s')
     })
 })

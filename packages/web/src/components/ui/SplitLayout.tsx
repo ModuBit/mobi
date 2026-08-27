@@ -68,10 +68,17 @@ const LeftFlex = styled.div`
 `
 
 /** 桌面左栏内层：宽度随展开/折叠过渡（与右栏外层 width 动画同步），内容平滑重排而非瞬跳；拖动时禁过渡跟手。 */
-const LeftClipInner = styled.div<{ $width: number; $dragging: boolean }>`
-    width: ${p => p.$width}px;
+const LeftClipInner = styled.div<{ $width: number; $dragging: boolean; $fluid: boolean }>`
+    /* fluid（右栏收起）：纯 CSS width:100% 随 flex 实时伸缩 —— sidebar 收起/展开等
+       外部 resize 时内容逐帧重排居中，不受 width 过渡的滞后钝化（此前 JS 测量 px +
+       transition 追赶导致动画期间居中不跟手、结束后才滑到位）；
+       非 fluid（右栏展开/最大化）：JS 测量的定宽 clip（xterm 等需要稳定列宽），
+       width 过渡服务于「inspector 展开/收起」时左右两侧的协调滑动 */
     height: 100%;
-    transition: ${p => (p.$dragging ? 'none' : `width ${CLIP_DURATION} ${CLIP_EASING}`)};
+    width: ${p => (p.$fluid ? '100%' : `${p.$width}px`)};
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: ${p => (p.$dragging || p.$fluid ? 'none' : `width ${CLIP_DURATION} ${CLIP_EASING}`)};
 `
 
 // 桌面右栏外层：width 动画 + 裁剪（与 AppSidebar 同款）。拖动时禁用过渡以跟手。
@@ -268,7 +275,7 @@ export function SplitLayout({
     return (
         <div ref={containerRef} style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
             <LeftFlex>
-                <LeftClipInner $width={leftInnerPx} $dragging={dragging}>{left}</LeftClipInner>
+                <LeftClipInner $width={leftInnerPx} $dragging={dragging} $fluid={!expanded && !secondaryMaximized}>{left}</LeftClipInner>
             </LeftFlex>
             {showDivider && (
                 <Divider
