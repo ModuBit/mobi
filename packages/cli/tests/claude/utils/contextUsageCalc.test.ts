@@ -93,6 +93,55 @@ describe('calcContextUsageFromResult（新口径）', () => {
         expect(r.maxTokens).toBe(1_000_000)
     })
 
+    /** 复现自会话 019bef94 的真实 result：子代理（sonnet）累计 inputTokens 反超主线（opus[1M]） */
+    const makeMultiModelResult = (): SDKResultMessage => ({
+        type: 'result', subtype: 'success', uuid: 'u', session_id: 's',
+        duration_ms: 1000, duration_api_ms: 900, is_error: false, num_turns: 2,
+        result: '', stop_reason: null, total_cost_usd: 19.74,
+        usage: { input_tokens: 1686, output_tokens: 1505 },
+        modelUsage: {
+            // 主线：窗口 1M，但该 turn 子代理流量大，累计 inputTokens 反超
+            'claude-opus-4-8[1M]': {
+                inputTokens: 231407, outputTokens: 79911, cacheReadInputTokens: 15630528,
+                cacheCreationInputTokens: 0, webSearchRequests: 0, costUSD: 10.97,
+                contextWindow: 1000000, maxOutputTokens: 64000, canonicalModel: 'claude-opus-4-8', provider: 'firstParty',
+            },
+            // 子代理：累计 inputTokens 更大，但 contextWindow 只有 200k
+            'claude-sonnet-4-6': {
+                inputTokens: 352023, outputTokens: 108235, cacheReadInputTokens: 20311872,
+                cacheCreationInputTokens: 0, webSearchRequests: 0, costUSD: 8.77,
+                contextWindow: 200000, maxOutputTokens: 32000, canonicalModel: 'claude-sonnet-4-6', provider: 'firstParty',
+            },
+        },
+        permission_denials: [],
+    } as unknown as SDKResultMessage)
+
+    it('多模型条目：按请求名精确选中主模型，不被子代理的更大累计 inputTokens 带偏（019bef94 回归）', () => {
+        const r = calcContextUsageFromResult(
+            makeMultiModelResult(),
+            { input_tokens: 847, cache_creation_input_tokens: 0, cache_read_input_tokens: 218304, output_tokens: 1505 },
+            200_000,          // 已被上一轮污染的记忆
+            17.02,
+            'claude-opus-4-8[1M]',   // init 请求名
+        )
+        expect(r.maxTokens).toBe(1_000_000)
+        expect(r.usage?.maxTokens).toBe(1_000_000)
+    })
+
+    it('请求名未命中任何 key（旧版 SDK/异常）→ 回退「inputTokens 最大」启发式', () => {
+        const r = calcContextUsageFromResult(
+            makeMultiModelResult(),
+            undefined, 0, 0,
+            'some-model-not-in-usage',
+        )
+        expect(r.maxTokens).toBe(200_000)   // 启发式选中 inputTokens 最大的 sonnet 条目
+    })
+
+    it('未传请求名 → 保持启发式行为', () => {
+        const r = calcContextUsageFromResult(makeMultiModelResult(), undefined, 0, 0)
+        expect(r.maxTokens).toBe(200_000)
+    })
+
     it('result 无 modelUsage → 沿用旧窗口记忆；两者皆无 → usage 为 null', () => {
         const noMu = makeResult({ input_tokens: 1 }) as SDKResultMessage
         delete (noMu as { modelUsage?: unknown }).modelUsage

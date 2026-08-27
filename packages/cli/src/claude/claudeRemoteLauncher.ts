@@ -157,7 +157,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             this.lastCostUsd = resultMsg.total_cost_usd ?? this.lastCostUsd
             return
         }
-        const r = calcContextUsageFromResult(resultMsg, this.lastAssistantUsage, this.lastMaxTokens, this.lastCostUsd)
+        // 请求名传入 result 刷新：modelUsage 多模型条目时按请求名精确选中主模型，
+        // 不靠「inputTokens 最大」启发式（子代理流量大的 turn 会误选，见 calcContextUsageFromResult）
+        const r = calcContextUsageFromResult(resultMsg, this.lastAssistantUsage, this.lastMaxTokens, this.lastCostUsd, this.lastRequestModel)
         if (r.maxTokens > 0) this.lastMaxTokens = r.maxTokens
         if (r.costUsd !== undefined) this.lastCostUsd = r.costUsd  // 缺字段的 result 不覆写记忆
         if (!r.usage) return  // 无可靠 assistant usage → 保持上一轮读数

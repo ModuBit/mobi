@@ -95,18 +95,24 @@ export function hasAssistantUsage(usage: AssistantUsage | undefined): boolean {
  * ⚠️ 口径铁律：result.usage 是 turn 内主循环所有请求的**逐项累计**（实测 255232 = 127488+127744），
  * 不是瞬时窗口占用——**绝不**用 result.usage 的三项和当 totalTokens。
  * maxTokens / costUsd 只在此消息（modelUsage 主模型 contextWindow / total_cost_usd）。
+ *
+ * 主模型识别：优先按 requestModel（init 请求名）精确匹配 modelUsage key——两者同源；
+ * 匹配不到才退回「累计 inputTokens 最大」启发式。子代理流量大的 turn 里启发式会误选
+ * 小窗口的子代理条目，把已正确的 1M 记忆刷成 200k（019bef94 实测）。
  */
 export function calcContextUsageFromResult(
     resultMsg: SDKResultMessage,
     lastAssistantUsage: AssistantUsage | undefined,
     lastMaxTokens: number,
     lastCostUsd: number,
+    requestModel?: string,
 ): ResultUsageRefresh {
-    const entries = Object.values(resultMsg.modelUsage ?? {})
-    // 主模型：取累计 inputTokens 最大的（fallback/subagent 可能有多个，主对话占大头）
-    const main = entries.length > 0
-        ? entries.reduce((a, b) => (b.inputTokens > a.inputTokens ? b : a))
-        : null
+    const entries = Object.entries(resultMsg.modelUsage ?? {})
+    const exactPair = requestModel ? entries.find(([name]) => name === requestModel) : undefined
+    // 启发式兜底：取累计 inputTokens 最大的条目（fallback/subagent 可能有多个，主对话占大头）
+    const mainPair = exactPair
+        ?? (entries.length > 0 ? entries.reduce((a, b) => (b[1].inputTokens > a[1].inputTokens ? b : a)) : undefined)
+    const main = mainPair?.[1]
     const maxTokens = main?.contextWindow || lastMaxTokens
     const costUsd = resultMsg.total_cost_usd
     return {
