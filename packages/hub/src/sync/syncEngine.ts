@@ -292,7 +292,18 @@ export class SyncEngine {
         model?: string | null
         effort?: EffortLevel
     }): void {
+        // 激活翻转入参快照：handleSessionAlive 同步更新 sessionCache，前后各读一次即可判定翻转
+        const wasActive = this.sessionCache.getSession(payload.sid)?.active ?? false
         this.sessionCache.handleSessionAlive(payload)
+        const isActive = this.sessionCache.getSession(payload.sid)?.active ?? false
+
+        // 首次激活补拉 sdkMetadata：新会话 web 打开页面的首次 metadata GET 常早于 CLI 就绪，
+        // 阻塞 RPC 失败留空后此前再无补拉信号（模型选择一直默认列表，刷新页面才恢复）。
+        // CLI connect 时先重放注册全部 RPC handler 再发首个心跳（apiSession.ts），此点 RPC 必可达；
+        // fire-and-forget 幂等：已提取过则 CAS 内容相等即静默，不会形成 refetch↔SSE 循环。
+        if (!wasActive && isActive) {
+            void this.refreshSDKMetadataBackground(payload.sid)
+        }
     }
 
     handleSessionEnd(payload: { sid: string; time: number }): void {

@@ -34,7 +34,7 @@ interface EngineHandle {
 }
 
 /** 构造真实 SyncEngine + 可控 fake io/registry/sse */
-function makeEngine(opts: { renameOnline: boolean; emitDelayMs?: number }): EngineHandle {
+function makeEngine(opts: { renameOnline: boolean; emitDelayMs?: number; onlineMethods?: string[] }): EngineHandle {
     const store = new Store(':memory:')
     const emitCalls: { method: string; params: unknown }[] = []
 
@@ -55,6 +55,9 @@ function makeEngine(opts: { renameOnline: boolean; emitDelayMs?: number }): Engi
 
     const registry = {
         getSocketIdForMethod(method: string) {
+            if (opts.onlineMethods?.some(m => method.endsWith(`:${m}`))) {
+                return 'sock-1'
+            }
             if (method.endsWith(':rename-session')) {
                 return opts.renameOnline ? 'sock-1' : null
             }
@@ -231,6 +234,52 @@ describe('SyncEngine.rewind 受理上界', () => {
             const result = await h.engine.rewind(h.sessionId, 'u1', false) as { accepted: boolean }
             expect(result.accepted).toBe(false)
             expect(h.tracker.consume(h.sessionId)).toBeNull()
+        } finally {
+            h.cleanup()
+        }
+    })
+})
+
+describe('SyncEngine.handleSessionAlive —— 首次激活补拉 sdkMetadata', () => {
+    // 回归：新会话 web 打开页面的首次 metadata GET 常早于 CLI 就绪——阻塞 RPC 失败留空后，
+    // 此前再无补拉信号（刷新页面才恢复真实模型/别名）。CLI 首个 session-alive 到达即
+    // SDK handler 已注册（connect 时先重放注册再发心跳），此点 fire-and-forget 后台刷新，
+    // 内容变化经既有 sdk-metadata-refreshed SSE → web invalidate refetch 闭环。
+    test('inactive → active 翻转时后台拉取一次 refreshMetadata', async () => {
+        const h = makeEngine({ renameOnline: false, onlineMethods: ['refreshMetadata'] })
+        try {
+            const session = h.engine.getOrCreateSession(
+                'tag-alive-meta-1',
+                { path: '/tmp/proj', host: 'h-alive' },
+                null,
+                'default'
+            )
+
+            h.engine.handleSessionAlive({ sid: session.id, time: Date.now(), running: false })
+            await new Promise(r => setTimeout(r, 0))
+
+            expect(h.emitCalls.some(c => c.method === `${session.id}:refreshMetadata`)).toBe(true)
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test('已激活会话的后续心跳不重复触发（每次心跳都拉 = RPC 风暴）', async () => {
+        const h = makeEngine({ renameOnline: false, onlineMethods: ['refreshMetadata'] })
+        try {
+            const session = h.engine.getOrCreateSession(
+                'tag-alive-meta-2',
+                { path: '/tmp/proj', host: 'h-alive2' },
+                null,
+                'default'
+            )
+
+            h.engine.handleSessionAlive({ sid: session.id, time: Date.now(), running: false })
+            await new Promise(r => setTimeout(r, 0))
+            h.engine.handleSessionAlive({ sid: session.id, time: Date.now() + 1, running: true })
+            await new Promise(r => setTimeout(r, 0))
+
+            expect(h.emitCalls.filter(c => c.method.endsWith(':refreshMetadata'))).toHaveLength(1)
         } finally {
             h.cleanup()
         }
