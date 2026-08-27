@@ -54,9 +54,10 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
 { "role": "agent", "content": { "type": "output", "data": { …SDK 原始消息原样… } }, "meta": { "sentFrom": "cli" } }
 ```
 
-- `role`：仅 `user`（真用户纯文本输入）/ `agent`（其余一切，含 system/result）
-- `content.type`：仅 `text` / `output`
+- `role`：仅 `user`（真用户输入）/ `agent`（其余一切，含 system/result）
+- `content.type`：`output`（CLI 上报 SDK 消息）；webapp 用户输入的 content 是**block 数组**（AG-UI 对齐的 `UserContentBlock[]`，text/image/document/quote 四型，见 shared `userContentSchema.ts`）或兼容旧格式的 `text`
 - **`data` 是 SDK 原始消息的不透明透传**（`type`/`subtype`/`message.usage` 原样保留）——从 DB 取 SDK 字段直接下钻 `data.xxx`，无 mobi 改写（见 pending #56「投影税」）
+- 用户消息**写入侧统一归一**：hub `sendMessage` 经 shared `normalizeUserContent` 把 string / 旧平铺 `{type:'text',text,attachments}` / 新格式三形态归一为 block 数组落库；读取侧 web 端由同一函数归一（存量零迁移）
 
 ### ③ web 领域事件（`normalizeAgent.ts` 派生，与 SDK 无对应关系）
 
@@ -511,21 +512,24 @@ result 消息在整个管线中有三层处理：
 
 ### normalizeUserRecord 处理
 
-**文件**：`packages/web/src/domain/chat/normalizeUser.ts`
+**文件**：`packages/web/src/domain/chat/normalizeUser.ts`（归一逻辑单一来源在 shared `normalizeUserContent`）
+
+四形态归一为统一的 block 数组（下游只见一种形态）：
 
 | 输入 | 输出 |
 |------|------|
-| `typeof content === 'string'` | `role: 'user'` + text block |
-| `content.type === 'text'` | `role: 'user'` + text block + 可选 attachments |
-| 其他 | 返回 null（fallback 由 normalize.ts 处理） |
+| `typeof content === 'string'` | `[ { type:'text', text } ]` |
+| 平铺 object `{type:'text', text, attachments?}`（存量） | text block + attachments→document blocks |
+| 单 block 对象 / block 数组（新格式） | `[block]` / 原样 |
+| 其他（畸形） | 返回 null（fallback 由 normalize.ts 处理）；未知 block type 逐项剔除 |
 
 ### NormalizedMessage 类型
 
 标准化后的消息有三种形态：
 
 ```typescript
-// 用户消息
-{ role: 'user', content: { type: 'text', text: string, attachments?: [...] } }
+// 用户消息（blocks 为权威载体；text 恒空串仅为保持判别式占位）
+{ role: 'user', content: { type: 'text', text: '', blocks: UserContentBlock[] } }
 
 // Agent 消息（含 text / reasoning / tool-call / tool-result / summary / sidechain blocks）
 { role: 'agent', content: NormalizedAgentContent[] }

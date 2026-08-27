@@ -51,13 +51,15 @@ flowchart TB
 
 ```typescript
 interface QueueItem<T> {
-    message: string;      // 消息文本内容
+    message: PromptPayload; // 消息内容：string 或 Anthropic content 元素数组（PromptContentBlock[]，见 utils/promptBuilder.ts）——2026-08-27 多模态穿透
     mode: T;              // 模式上下文（如 EnhancedMode）
     modeHash: string;     // 模式的确定性哈希值（由 modeHasher 计算）
     isolate?: boolean;    // 是否要求隔离处理
     localId?: string;     // 用户消息的本地 ID，用于通知 Hub 已消费
 }
 ```
+
+批合并语义：多条消息合并时 string+string 用 `\n` 连接；任一侧为数组则走元素级 concat（`\n` 作独立 text 元素插入，元素零丢失）。pushUserMessage 直接把 payload 透传给 `SDKUserMessage.message.content`（SDK 类型本就 `string | ContentBlock[]`）。
 
 ### EnhancedMode
 

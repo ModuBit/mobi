@@ -38,6 +38,14 @@ export type Session = z.infer<typeof SessionSchema>
 - Type：去掉 Schema 后缀（如 `Session`、`PermissionMode`）
 - 常量：`UPPER_SNAKE_CASE`（如 `PERMISSION_MODES`、`PROTOCOL_VERSION`）
 
+### 多格式并存时：写入侧统一 + 读取侧归一化单源
+
+协议格式演进产生新旧两代格式共存时（如用户消息 content 的平铺对象 → block 数组）：
+
+- **写入侧**统一归一为新格式后落库（新行恒为新格式），存量零迁移
+- **读取侧**由 shared 导出的唯一纯函数归一（如 `normalizeUserContent(raw): Xxx[] | null`），下游只见一种形态
+- ⚠️ **zod 剥键陷阱**：union/优先级判断时，宽松的 `z.object` 分支会静默剥掉未知键——若旧平铺对象带附加字段（如 attachments），必须让 legacy 分支**先于**严格新格式分支命中，否则字段静默丢失。此陷阱已在 shared `userContentSchema.ts` 与 cli `api/types.ts` 双双出现并以测试锁定
+
 ## 导出规则
 
 - `schemas.ts`：`export` Schema 和推导类型（值 + 类型）

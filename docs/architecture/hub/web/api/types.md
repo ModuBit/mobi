@@ -107,7 +107,7 @@ interface DecryptedMessage {
     localId: string | null // 客户端本地 ID（用于去重）
     lifecycle?: MessageLifecycle | null // 用户消息生命周期（'queued' 排队悬浮 / 'pushed' 已推给 CC / 'acked' 回显确认，其余 P2 写入）；null 表示非排队轨道
     lifecycleAt?: number | null // 最近一次 lifecycle 转换的时刻；非排队消息恒为 null
-    content: unknown      // 消息内容（SDK 原始格式）
+    content: unknown      // 消息内容：信封 {role, content, meta}——用户输入的 content 恒为 UserContentBlock[] 数组（text/image/document/quote，schema 见 shared userContentSchema.ts），agent 信封 data 为 SDK 原始消息透传（详见 message-lifecycle.md「mobi 信封」节）
     createdAt: number     // 创建时间戳（毫秒）
     snapshot?: boolean    // 标识流式快照消息（未落库，Hub 直接透传给 Web）
 }

@@ -91,16 +91,12 @@ flowchart TB
     publisher --> sse[SSE 广播<br/>通知 Web]
 ```
 
-**消息内容格式**：
+**消息内容格式**（2026-08-27 block 化：`sendMessage({content, localId?, sentFrom?})` 先经 shared `normalizeUserContent` 把 string / 旧平铺对象 / 新格式三形态归一为 block 数组，无效内容抛错由路由层回 400）：
 
 ```typescript
 {
     role: 'user',
-    content: {
-        type: 'text',
-        text: string,
-        attachments?: AttachmentMetadata[]
-    },
+    content: UserContentBlock[],   // text/image/document/quote 四型（AG-UI 对齐），写入恒为数组
     meta: {
         sentFrom: 'webapp' | 'cli'
     }

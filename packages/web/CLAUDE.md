@@ -18,8 +18,8 @@
 | `src/domain/chat/types.ts` | NormalizedMessage / ChatBlock 类型定义 |
 | `src/components/tool-card/knownTools.tsx` | 工具卡片注册 |
 | `src/core/lib/query-keys.ts` | 查询缓存 Key |
-| `src/core/lib/fileAttachments.ts` | 文件附件类型与上传校验 |
-| `src/core/lib/composerDrafts.ts` | per-session 草稿持久化（文本 + 已上传附件，sessionStorage） |
+| `src/core/lib/fileAttachments.ts` | 文件附件类型与上传校验（分桶/MIME 投影单一来源 bucketCompletedAttachments） |
+| `src/core/lib/composerDrafts.ts` | per-session 草稿持久化（分段结构 text/files/images/quotes，sessionStorage，旧格式兼容读取） |
 
 ## 移动端 Drawer 规范
 

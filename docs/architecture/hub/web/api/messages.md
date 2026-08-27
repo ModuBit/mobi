@@ -93,36 +93,40 @@ DELETE /api/sessions/:id/messages/:messageId
 
 ## 发送消息
 
-### 请求体
+### 请求体（双格式 union，2026-08-27 content block 化）
+
+**新格式**——content 为 block 数组（AG-UI 对齐的 `UserContentBlock[]`：text/image/document/quote 四型，schema 见 shared `userContentSchema.ts`）：
 
 ```typescript
 {
-    text: string,                    // 消息文本
-    localId?: string,                // 客户端本地 ID（用于去重）
-    attachments?: AttachmentMetadata[]  // 附件列表
+    content: string | UserContentBlock | UserContentBlock[],  // 三形态之一
+    localId?: string
 }
 ```
-
-**示例**：
 
 ```json
 {
-    "text": "请帮我修复 auth 模块的 bug",
-    "localId": "client-msg-001",
-    "attachments": [
-        {
-            "id": "att-abc",
-            "filename": "screenshot.png",
-            "mimeType": "image/png",
-            "size": 102400,
-            "path": "/uploads/att-abc.png",
-            "previewUrl": "/api/files/att-abc/preview"
-        }
-    ]
+    "content": [
+        { "type": "quote", "messageId": "local-…", "role": "agent", "excerpt": "…" },
+        { "type": "document", "source": { "type": "url", "value": ".mobi/uploads/x.pdf", "mimeType": "application/pdf" }, "id": "…", "filename": "x.pdf", "size": 1024 },
+        { "type": "text", "text": "请帮我修复 auth 模块的 bug" }
+    ],
+    "localId": "client-msg-001"
 }
 ```
 
-> 类型定义详见 [共享类型](./types.md#attachmentmetadata)
+**旧平铺格式**（旧版 web/PWA 窗口期兼容；hub 归一后以数组落库）：
+
+```typescript
+{
+    text: string,
+    localId?: string,
+    attachments?: AttachmentMetadata[]
+}
+```
+
+> 类型定义详见 [共享类型](./types.md#attachmentmetadata) 与 shared `userContentSchema.ts`。
+> 两种格式经同一 `normalizeUserContent` 归一为 block 数组落库（无效内容返回 **400**）。
 
 ### 响应
 

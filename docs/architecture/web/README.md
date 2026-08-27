@@ -36,7 +36,7 @@ Web 是 Mobi 的浏览器前端，提供 Claude Code 会话的远程交互界面
 | **SSEClient** | SSE 传输层，封装 `@microsoft/fetch-event-source`，负责连接/重连/认证 |
 | **ChatContainer** | 聊天容器组件，消费 `useMessages` 数据并渲染消息列表；cancelled/discarded 的用户气泡 footer 加灰色终态小标注 |
 | **ToolCard** | 工具调用展示组件，根据工具名称选择对应的视图（Edit、Diff、Write 等） |
-| **ChatComposer** | 消息输入组件，支持文本输入、斜杠命令自动补全、文件附件。运行中允许发送（消息进入排队悬浮条）。切换 session 时待发送的文本与已上传附件通过 `composerDrafts`（sessionStorage）持久化 |
+| **ChatComposer** | 消息输入组件，支持文本输入、斜杠命令自动补全、文件附件。运行中允许发送（消息进入排队悬浮条）。发送时按分段状态（text/files/images/quotes）序列化为 `UserContentBlock[]` 数组直传。切换 session 时待发送的分段通过 `composerDrafts`（sessionStorage，含 images/quotes 桶）持久化；排队编辑/rewind 回填经 `applySegments` 还原完整分段 |
 | **Chat Reducer** | 消息归约器（`domain/chat/reducer.ts`），将原始消息事件归约为 ChatBlock 列表 |
 | **QueryKeys** | 集中定义的 React Query 缓存 key，确保缓存操作的一致性 |
 
@@ -204,7 +204,10 @@ packages/web/src/
 │   │   ├── reducerTimeline.ts  时间线归约
 │   │   ├── normalize.ts        消息标准化入口
 │   │   ├── normalizeAgent.ts   Agent 消息标准化
-│   │   ├── normalizeUser.ts    用户消息标准化
+│   │   ├── normalizeUser.ts    用户消息标准化（委托 shared normalizeUserContent，四形态归一为 blocks）
+│   │   ├── userContent.ts      用户 blocks 过渡辅助（getUserPlainText/collectUserText/groupUserBlocks）
+│   │   ├── userContentSummary.ts 预览文本单源（排队条与 rewind 行内摘要，i18n 占位标签）
+│   │   ├── composerSegments.ts composer 分段状态 ⇄ UserContentBlock[] 序列化/反序列化
 │   │   ├── reconcile.ts        消息对账（去重/排序/合并）
 │   │   ├── groupToolCalls.ts   工具调用折叠分组算法
 │   │   ├── presentation.ts     展示层格式化（时间戳、时长等）
