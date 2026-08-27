@@ -160,8 +160,7 @@ export const MessageMetaSchema = z.object({
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>
 
-/** 旧平铺 content（历史落库回放 / 旧 hub 窗口期）：宽松对象即可，消费端 normalizeUserContent 再归一 */
-/** 旧平铺宽松 schema 单源自 shared（与 normalizeUserContent 的 legacy 通道同一份规则），此处仅别名 */
+/** 旧平铺 content（历史落库回放 / 旧 hub 窗口期）：宽松 schema 单源自 shared（与 normalizeUserContent 的 legacy 通道同一份规则），此处仅别名 */
 const LegacyFlatUserContentSchema = LegacyFlatObjectSchema
 
 export const UserMessageSchema = z.object({
