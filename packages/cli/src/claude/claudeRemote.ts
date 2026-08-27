@@ -49,6 +49,7 @@ import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotS
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
 import { buildClaudeFeatureEnv } from './featureFlags'
 import { pushUserMessage } from './utils/pushUserMessage'
+import type { PromptPayload } from '@/utils/promptBuilder'
 import { StreamUsageCapture, injectUsageFromStream } from './utils/streamUsageCapture'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
 
@@ -213,6 +214,15 @@ export function sanitizeUserMessage(message: string): string {
     // 匹配成对的 $（排除已转义的 \$ 和块级 $$...$$），中间不含换行或另一对 $
     return message.replace(/(?<!\\)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g, '\\($1\\)')
 }
+
+/** sanitize 仅作用于 string 形态 payload；数组（含图片 content block）原样透传 */
+const sanitizePayload = (p: PromptPayload): PromptPayload =>
+    typeof p === 'string' ? sanitizeUserMessage(p) : p
+
+/** 特殊命令（/clear /compact !bash）只可能出现在 string 形态 payload（命令均以纯文本入队）；
+ *  数组 payload 恒为普通消息，返回空串走 handleSpecialCommand 的「普通消息」分支 */
+const asCommandText = (p: PromptPayload): string =>
+    typeof p === 'string' ? p : ''
 
 /** 判别 isReplay 回显消息（CC 接收确认信号，nativeAckAt 数据源）。
  *  回显 uuid = 当初 push 时预设的 nativeId；launcher onMessage 据此拦截并转 ack 上报。 */
@@ -521,7 +531,7 @@ export async function userInputLoop(
     messages: PushableAsyncIterable<SDKUserMessage>,
     ctx: LoopContext,
     opts: {
-        nextMessage: () => Promise<{ message: string, mode: EnhancedMode, localIds: string[] } | null>
+        nextMessage: () => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>
         specialCommandCtx: SpecialCommandContext
         /** 中止信号，外部调用 abort() 时退出循环 */
         signal?: AbortSignal
@@ -558,7 +568,7 @@ export async function userInputLoop(
             return;
         }
 
-        const result = await handleSpecialCommand(next.message, opts.specialCommandCtx, next.localIds);
+        const result = await handleSpecialCommand(asCommandText(next.message), opts.specialCommandCtx, next.localIds);
 
         // 需要退出（如 /clear）
         if (result.shouldExit) {
@@ -577,7 +587,7 @@ export async function userInputLoop(
         }
 
         // 普通消息或 compact，推送到 messages（预设 uuid 并上报 localIds → nativeId 绑定）
-        pushUserMessage(messages, sanitizeUserMessage(next.message), { localIds: next.localIds, onBound: opts.onBound });
+        pushUserMessage(messages, sanitizePayload(next.message), { localIds: next.localIds, onBound: opts.onBound });
     }
 }
 
@@ -606,7 +616,7 @@ export async function claudeRemote(opts: {
     canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID?: string } & SDKUIHints) => Promise<PermissionResult>,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: string, mode: EnhancedMode, localIds: string[] } | null>,
+    nextMessage: () => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>,
     /** 用户消息 push 给 SDK 后上报 (localIds → nativeId) 绑定 */
     onMessagesBound: (bindings: { localId: string; nativeId: string }[]) => void,
     onReady: () => void,
@@ -634,7 +644,7 @@ export async function claudeRemote(opts: {
     onQueryReady?: (query: Query) => void,
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
     // push 携带可选 localId：steal 路径的消息同样预设 uuid 并上报绑定
-    onSteerSinkReady?: (push: (text: string, localId?: string) => boolean) => void,
+    onSteerSinkReady?: (push: (payload: PromptPayload, localId?: string) => boolean) => void,
 }) {
 
     // pushUserMessage 的绑定回调适配：localIds 批展开为逐条 (localId, nativeId) 上报
@@ -822,7 +832,7 @@ export async function claudeRemote(opts: {
 
     // rewind 截断由 startup 预热承载：sdkOptions 已带 resumeSessionAt（resume 时只加载到
     // 锚点 uuid 为止），startup 在 boot 时加载历史即完成截断。
-    let initial: { message: string; mode: EnhancedMode; localIds: string[] };
+    let initial: { message: PromptPayload; mode: EnhancedMode; localIds: string[] };
     if (opts.resumeSessionAt) {
         // 截断轮：串行 startup 截断 → 回报 → 等用户消息。回报必须落在 nextMessage 之前——
         // 用户消息依赖 Web 回填（rewind-completed），回填依赖回报，若等 nextMessage 再回报会死锁。
@@ -870,7 +880,7 @@ export async function claudeRemote(opts: {
     };
 
     const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
-    const initialResult = await handleSpecialCommand(initial.message, specialCommandCtx, initial.localIds)
+    const initialResult = await handleSpecialCommand(asCommandText(initial.message), specialCommandCtx, initial.localIds)
 
     if (initialResult.shouldExit) {
         warmRef?.close()
@@ -916,16 +926,16 @@ export async function claudeRemote(opts: {
     // 首条即 bash 且注入开时，executeBashCommand 已把注入 push 进 messages，不再 push 原始 !cmd 文本；
     // 其余（普通消息 / compact）push 原文（预设 uuid 并上报 localIds → nativeId 绑定）。
     if (!isBashInitial) {
-        pushUserMessage(messages, sanitizeUserMessage(initial.message), { localIds: initial.localIds, onBound });
+        pushUserMessage(messages, sanitizePayload(initial.message), { localIds: initial.localIds, onBound });
     }
 
-    // 注入 steer sink：把文本 push 进 SDK input stream，返回 true。
+    // 注入 steer sink：把仍排队的消息 payload push 进 SDK input stream，返回 true。
     // 由 launcher 的 steer-queued-message RPC 调用，把已排队消息提前提交给 SDK。
     // localId 携带时同样预设 uuid 并上报绑定（steal 路径单条消息）。
     if (opts.onSteerSinkReady) {
-        opts.onSteerSinkReady((text: string, localId?: string) => {
+        opts.onSteerSinkReady((payload: PromptPayload, localId?: string) => {
             try {
-                pushUserMessage(messages, sanitizeUserMessage(text), { localIds: localId ? [localId] : [], onBound });
+                pushUserMessage(messages, sanitizePayload(payload), { localIds: localId ? [localId] : [], onBound });
                 return true;
             } catch (e) {
                 logger.debug('[claudeRemote] steer push 失败，消息将 pushBack 恢复排队:', e);

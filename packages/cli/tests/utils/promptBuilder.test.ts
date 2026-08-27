@@ -90,6 +90,28 @@ describe('buildPromptFromBlocks', () => {
         expect(buildPromptFromBlocks([doc('/a.pdf')])).toBe('@/a.pdf')
     })
 
+    it('data source 图片走 @path 降级并锁定产出 @<value>', () => {
+        // data 形态仅留骨架占位（落库恒用 url），读取恒降级
+        const r = buildPromptFromBlocks([{
+            type: 'image',
+            source: { type: 'data', value: 'aGVsbG8=', mimeType: 'image/png' },
+            id: 'i2', filename: 'x.png', size: 5,
+        }])
+        expect(r).toBe('@aGVsbG8=')
+    })
+
+    it('成功+失败图片混合 → 数组含一个 image 元素 + 一个含 @path 失败路径的 text 元素', () => {
+        const r = buildPromptFromBlocks([
+            img(join(dir, 'pic.png')),            // 读取成功 → base64 image 元素
+            img('/nonexistent/y.png'),            // 读取失败 → @path 降级入缓冲
+            { type: 'text', text: 'hi' },         // 正文并入缓冲，末尾冲刷为 text 元素
+        ])
+        expect(r).toEqual([
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64OfPng } },
+            { type: 'text', text: '@/nonexistent/y.png\n\nhi' },
+        ])
+    })
+
     it('空数组退化为空串', () => {
         expect(buildPromptFromBlocks([])).toBe('')
     })

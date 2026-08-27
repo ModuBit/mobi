@@ -50,4 +50,15 @@ describe('pushUserMessage', () => {
         expect(messages.push).toHaveBeenCalledTimes(1)
         expect(onBound).not.toHaveBeenCalled()
     })
+
+    test('数组 payload 原样透传为 message.content（不做任何内容处理）', () => {
+        const messages = makeMessages()
+        const blocks = [
+            { type: 'text', text: 'hello' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'abc' } },
+        ] as const
+        pushUserMessage(messages as never, [...blocks], {})
+        const pushed = messages.push.mock.calls[0][0]
+        expect(pushed.message.content).toEqual(blocks)
+    })
 })

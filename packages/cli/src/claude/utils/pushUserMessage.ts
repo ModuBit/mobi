@@ -16,6 +16,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { PromptPayload } from '@/utils/promptBuilder'
 import { logger } from '@/lib'
 
 export interface PushUserMessageOpts {
@@ -29,11 +30,12 @@ export interface PushUserMessageOpts {
  * 统一的用户消息 push 入口：生成 nativeId（uuid v4）写入 SDKUserMessage.uuid——
  * SDK 采纳输入侧预设 uuid（回显与 transcript 均用它），push 那一刻
  * (localIds, nativeId) 配对即确定，立即经 onBound 上报。
- * 注意：text 须为已 sanitize 的最终文本，本函数不做内容处理。
+ * 注意：payload 须为已 sanitize 的最终内容，本函数不做内容处理；
+ * SDKUserMessage.message.content 本就支持 string | ContentBlock[]，此处原样透传。
  */
 export function pushUserMessage(
     messages: { push: (msg: SDKUserMessage) => void },
-    text: string,
+    text: PromptPayload,
     opts: PushUserMessageOpts = {},
 ): void {
     const nativeId = randomUUID()

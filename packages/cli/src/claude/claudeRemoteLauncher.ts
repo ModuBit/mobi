@@ -22,6 +22,7 @@ import { claudeRemote, commandLifecycleToFact, isReplayUserMessage } from "./cla
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
+import type { PromptPayload } from "@/utils/promptBuilder";
 import type { SDKAssistantMessage, SDKMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage, Query } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
@@ -65,8 +66,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     private handleSessionFound: ((sessionId: string) => void) | null = null;
     // SDK Query 引用，用于 interrupt/close 控制
     private queryRef: Query | null = null;
-    // steer sink：由 claudeRemote 启动循环时注入，把 steer 文本 push 进 SDK input stream
-    private steerSink: ((text: string, localId?: string) => boolean) | null = null;
+    // steer sink：由 claudeRemote 启动循环时注入，把 steer 消息 payload push 进 SDK input stream
+    // （payload 可为数组 content block——队列消息可能是带图片的 PromptPayload）
+    private steerSink: ((payload: PromptPayload, localId?: string) => boolean) | null = null;
     // 上次真实 turn 的窗口大小与累计成本，供 compact_boundary 上报时复用
     // （compact_boundary 消息不带 contextWindow 与 costUsd，只能复用上次记忆）。
     // 初值 0 = 窗口未知：主线 assistant 到达时按模型名猜（guessContextWindow）预填，
@@ -264,7 +266,8 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             // 与位置，避免 steal 后 pushBack 丢 isolate（/clear 由 pushIsolateAndClear 入队）
             // 并被 collectBatch 重排序合并进相邻同 mode 消息。
             const peeked = session.queue.peekByLocalId(localId)
-            if (peeked && parseSpecialCommand(peeked.message).type) {
+            // 特殊命令只可能是 string 形态 payload（数组恒为普通消息），非 string 直接放行 steal
+            if (peeked && typeof peeked.message === 'string' && parseSpecialCommand(peeked.message).type) {
                 return { status: 'submitted' }
             }
 

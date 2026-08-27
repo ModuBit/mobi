@@ -16,6 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { MessageQueue } from '@/utils/MessageQueue';
+import type { PromptPayload } from '@/utils/promptBuilder';
 import { hashObject } from '@/utils/deterministicJson';
 
 describe('MessageQueue', () => {
@@ -716,5 +717,66 @@ describe('MessageQueue clearPending（rewind 前清空）', () => {
 
         expect(queue.size()).toBe(1);
         expect(queue.peekByLocalId('loc-next')?.message).toBe('next');
+    });
+});
+
+describe('MessageQueue PromptPayload 数组穿透', () => {
+    const blocks: PromptPayload = [
+        { type: 'text', text: 'hi' },
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'abc' } },
+    ];
+
+    it('单条数组 payload 原样出队（引用不换、无包装）', async () => {
+        const queue = new MessageQueue<string>(m => m);
+        queue.push(blocks, 'local', 'loc-1');
+        const r = await queue.waitForMessagesAndGetAsString();
+        expect(r?.message).toBe(blocks);
+        expect(r?.localIds).toEqual(['loc-1']);
+    });
+
+    it('string + 数组跨条合并 → 元素级 concat，\\n 分隔符为独立 text 元素', async () => {
+        const queue = new MessageQueue<string>(m => m);
+        queue.push('前置', 'local', 'loc-1');
+        queue.push(blocks, 'local', 'loc-2');
+        const r = await queue.waitForMessagesAndGetAsString();
+        expect(r?.message).toEqual([
+            { type: 'text', text: '前置' },
+            { type: 'text', text: '\n' },
+            { type: 'text', text: 'hi' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'abc' } },
+        ]);
+        expect(r?.localIds).toEqual(['loc-1', 'loc-2']);
+    });
+
+    it('数组 + 数组跨条合并 → 两侧元素零丢失，中间插 \\n 分隔符', async () => {
+        const queue = new MessageQueue<string>(m => m);
+        queue.push(blocks, 'local');
+        queue.push([{ type: 'text', text: '后置' }], 'local');
+        const r = await queue.waitForMessagesAndGetAsString();
+        expect(r?.message).toEqual([
+            { type: 'text', text: 'hi' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'abc' } },
+            { type: 'text', text: '\n' },
+            { type: 'text', text: '后置' },
+        ]);
+    });
+
+    it('noBatch 数组消息单独成批原样透传，不受合并影响', async () => {
+        const queue = new MessageQueue<string>(m => m);
+        queue.pushNoBatch(blocks, 'local', 'loc-1');
+        queue.push('next', 'local', 'loc-2');
+        const r1 = await queue.waitForMessagesAndGetAsString();
+        expect(r1?.message).toBe(blocks);
+        const r2 = await queue.waitForMessagesAndGetAsString();
+        expect(r2?.message).toBe('next');
+        expect(queue.size()).toBe(0);
+    });
+
+    it('数组消息可被 peekByLocalId / stealByLocalId 原样取出（steer 路径穿透）', () => {
+        const queue = new MessageQueue<string>(m => m);
+        queue.push(blocks, 'local', 'loc-1');
+        expect(queue.peekByLocalId('loc-1')?.message).toBe(blocks);
+        expect(queue.stealByLocalId('loc-1')?.message).toBe(blocks);
+        expect(queue.size()).toBe(0);
     });
 });

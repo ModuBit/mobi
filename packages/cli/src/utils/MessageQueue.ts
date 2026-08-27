@@ -15,14 +15,27 @@
  */
 
 import { logger } from "@/ui/logger";
+import type { PromptContentBlock, PromptPayload } from "./promptBuilder";
 
 interface QueueItem<T> {
-    message: string;
+    message: PromptPayload;
     mode: T;
     modeHash: string;
     isolate?: boolean; // If true, this message must be processed alone
     noBatch?: boolean; // If true, never batch-merge with others (no isolate's restart-to-next-session semantics, for !bash local execution)
     localId?: string; // 用户消息的本地 ID，用于通知 Hub 已消费
+}
+
+/**
+ * 多条用户消息合并为一份 payload：两侧均为 string 用 '\n' 连接（与历史 join('\n') 行为一致）；
+ * 任一侧为数组则走元素级 concat（插入的 '\n' 分隔符是独立 text 元素，Anthropic 拼接语义下
+ * 与原行为等价，元素零丢失）。
+ */
+function mergePayloads(a: PromptPayload, b: PromptPayload): PromptPayload {
+    if (typeof a === "string" && typeof b === "string") return `${a}\n${b}`;
+    const toEls = (p: PromptPayload): PromptContentBlock[] =>
+        typeof p === "string" ? [{ type: "text", text: p }] : p;
+    return [...toEls(a), { type: "text", text: "\n" }, ...toEls(b)];
 }
 
 /**
@@ -53,7 +66,7 @@ export class MessageQueue<T> {
     public queue: QueueItem<T>[] = []; // Made public for testing
     private waiter: ((hasMessages: boolean) => void) | null = null;
     private closed = false;
-    private onMessageHandler: ((message: string, mode: T) => void) | null = null;
+    private onMessageHandler: ((message: PromptPayload, mode: T) => void) | null = null;
     private onBatchConsumedHandler: ((localIds: string[]) => void) | null = null;
     /**
      * 已被 collectBatch/steal 取出（即将喂给 agent）、但 Hub 尚未确认 consumed 的 localId。
@@ -71,7 +84,7 @@ export class MessageQueue<T> {
 
     constructor(
         modeHasher: (mode: T) => string,
-        onMessageHandler: ((message: string, mode: T) => void) | null = null
+        onMessageHandler: ((message: PromptPayload, mode: T) => void) | null = null
     ) {
         this.modeHasher = modeHasher;
         this.onMessageHandler = onMessageHandler;
@@ -81,7 +94,7 @@ export class MessageQueue<T> {
     /**
      * Set a handler that will be called when a message arrives
      */
-    setOnMessage(handler: ((message: string, mode: T) => void) | null): void {
+    setOnMessage(handler: ((message: PromptPayload, mode: T) => void) | null): void {
         this.onMessageHandler = handler;
     }
 
@@ -93,7 +106,7 @@ export class MessageQueue<T> {
     /**
      * Push a message to the queue with a mode.
      */
-    push(message: string, mode: T, localId?: string): void {
+    push(message: PromptPayload, mode: T, localId?: string): void {
         this.enqueue(message, mode, localId);
     }
 
@@ -103,12 +116,12 @@ export class MessageQueue<T> {
      * noBatch only prevents merging — used for !bash local execution: a merged batch like
      * "! cmd\n正文" would run the normal message text as shell input and mis-bind native_id.
      */
-    pushNoBatch(message: string, mode: T, localId?: string): void {
+    pushNoBatch(message: PromptPayload, mode: T, localId?: string): void {
         this.enqueue(message, mode, localId, { noBatch: true });
     }
 
     /** 入队内部实现：统一的 handler 通知与 waiter 唤醒 */
-    private enqueue(message: string, mode: T, localId?: string, flags: { noBatch?: boolean } = {}): void {
+    private enqueue(message: PromptPayload, mode: T, localId?: string, flags: { noBatch?: boolean } = {}): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -145,7 +158,7 @@ export class MessageQueue<T> {
      * Push a message immediately without batching delay.
      * Does not clear the queue or enforce isolation.
      */
-    pushImmediate(message: string, mode: T, localId?: string): void {
+    pushImmediate(message: PromptPayload, mode: T, localId?: string): void {
         this.push(message, mode, localId);
     }
 
@@ -154,7 +167,7 @@ export class MessageQueue<T> {
      * Clears any pending messages but does NOT set isolate flag.
      * Used for commands like /compact that need a clean queue but should be processed normally.
      */
-    pushAndClear(message: string, mode: T, localId?: string): void {
+    pushAndClear(message: PromptPayload, mode: T, localId?: string): void {
         this.pushAfterClear(message, mode, false, localId);
     }
 
@@ -163,7 +176,7 @@ export class MessageQueue<T> {
      * Clears any pending messages and ensures this message is never batched with others.
      * Used for special commands that require dedicated processing (e.g., /clear).
      */
-    pushIsolateAndClear(message: string, mode: T, localId?: string): void {
+    pushIsolateAndClear(message: PromptPayload, mode: T, localId?: string): void {
         this.pushAfterClear(message, mode, true, localId);
     }
 
@@ -171,7 +184,7 @@ export class MessageQueue<T> {
      * 内部方法：清空队列后推送消息
      * @param isolate - true 表示隔离处理（触发 claudeRemote 重启），false 表示正常处理
      */
-    private pushAfterClear(message: string, mode: T, isolate: boolean, localId?: string): void {
+    private pushAfterClear(message: PromptPayload, mode: T, isolate: boolean, localId?: string): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -297,7 +310,7 @@ export class MessageQueue<T> {
      * （如 steer 前判断是否为特殊命令），避免 steal 后再 pushBack 丢失 isolate
      * 标志或被 collectBatch 重排序。不命中返回 null。
      */
-    peekByLocalId(localId: string): { message: string } | null {
+    peekByLocalId(localId: string): { message: PromptPayload } | null {
         const item = this.queue.find(it => it.localId === localId);
         if (!item) return null;
         return { message: item.message };
@@ -308,7 +321,7 @@ export class MessageQueue<T> {
      * 用于 steer：把仍排队的消息提前提交给 SDK input stream，避免 collectBatch 重复投递。
      * 不命中返回 null。
      */
-    stealByLocalId(localId: string): { message: string, mode: T } | null {
+    stealByLocalId(localId: string): { message: PromptPayload, mode: T } | null {
         const idx = this.queue.findIndex(item => item.localId === localId);
         if (idx < 0) return null;
         const [item] = this.queue.splice(idx, 1);
@@ -356,10 +369,11 @@ export class MessageQueue<T> {
     }
 
     /**
-     * Wait for messages and return all messages with the same mode as a single string
-     * Returns { message: string, mode: T, isolate: boolean, hash: string, localIds: string[] } or null if aborted/closed
+     * Wait for messages and return all messages with the same mode as a single payload
+     * Returns { message: PromptPayload, mode: T, isolate: boolean, hash: string, localIds: string[] } or null if aborted/closed
+     * （方法名保留历史 AsString 字样：payload 全程无图片时即 string，数组仅在图片场景出现）
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, localIds: string[] } | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: PromptPayload, mode: T, isolate: boolean, hash: string, localIds: string[] } | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
             return this.collectBatch();
@@ -383,13 +397,13 @@ export class MessageQueue<T> {
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, localIds: string[] } | null {
+    private collectBatch(): { message: PromptPayload, mode: T, hash: string, isolate: boolean, localIds: string[] } | null {
         if (this.queue.length === 0) {
             return null;
         }
 
         const firstItem = this.queue[0];
-        const sameModeMessages: string[] = [];
+        const sameModeMessages: PromptPayload[] = [];
         const consumedLocalIds: string[] = [];
         const mode = firstItem.mode;
         const isolate = firstItem.isolate ?? false;
@@ -425,8 +439,8 @@ export class MessageQueue<T> {
             this.onBatchConsumedHandler?.(consumedLocalIds);
         }
 
-        // Join all messages with newlines
-        const combinedMessage = sameModeMessages.join('\n');
+        // 批量合并：string+string 等价历史 join('\n')；数组参与时元素级 concat（见 mergePayloads）
+        const combinedMessage = sameModeMessages.reduce((acc, m) => mergePayloads(acc, m));
 
         return {
             message: combinedMessage,

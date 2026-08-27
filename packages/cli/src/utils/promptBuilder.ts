@@ -21,13 +21,15 @@ import { logger } from '@/ui/logger'
 /** 单个 Anthropic content 元素（mobi prompt 场景子集） */
 export type PromptContentBlock =
     | { type: 'text'; text: string }
-    | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+    | { type: 'image'; source: { type: 'base64'; media_type: SupportedImageMime; data: string } }
 
 /** prompt 产物：全程无成功图片退化 string（现状形态），否则 content 数组 */
 export type PromptPayload = string | PromptContentBlock[]
 
-/** Anthropic API 支持的图片 MIME（svg 等不受支持 → @path 降级） */
-const SUPPORTED_IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+/** Anthropic API 支持的图片 MIME（svg 等不受支持 → @path 降级）。
+ *  media_type 用字面量联合对齐 Anthropic ContentBlockParam，image 元素无需 cast 即可入 SDK */
+const SUPPORTED_IMAGE_MIME = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const
+type SupportedImageMime = (typeof SUPPORTED_IMAGE_MIME)[number]
 
 /**
  * 用户 blocks → SDK prompt 的位置性转换（spec：docs/superpowers/specs/2026-08-27-user-message-content-blocks-design.md）。
@@ -67,12 +69,12 @@ export function buildPromptFromBlocks(blocks: UserContentBlock[]): PromptPayload
                 break
             }
             case 'image': {
-                const data = tryReadImageBase64(block.source)
-                if (data) {
+                const image = tryReadImageBase64(block.source)
+                if (image) {
                     flush()
                     out.push({
                         type: 'image',
-                        source: { type: 'base64', media_type: block.source.mimeType ?? 'image/png', data },
+                        source: { type: 'base64', media_type: image.mediaType, data: image.data },
                     })
                 } else {
                     refs.push(`@${block.source.value}`)
@@ -103,13 +105,18 @@ export function buildPromptFromBlocks(blocks: UserContentBlock[]): PromptPayload
  * - data source 暂未启用（落库恒用 url source）
  * - MIME 不在 Anthropic 支持列表（如 svg）
  * - 文件读取失败（已被移动/删除）
+ *
+ * 返回校验后的 mediaType（字面量联合）与 data 一次算出——调用方 push image 元素时
+ * 无需重复推断 mime，类型与 Anthropic ContentBlockParam 直接对齐。
  */
-function tryReadImageBase64(source: UserImageBlock['source']): string | null {
+function tryReadImageBase64(source: UserImageBlock['source']): { data: string; mediaType: SupportedImageMime } | null {
     if (source.type !== 'url') return null
     const mime = source.mimeType ?? 'image/png'
-    if (!SUPPORTED_IMAGE_MIME.has(mime)) return null
+    // find 而非 Set.has：命中即得字面量联合类型，无需受控 cast
+    const mediaType = SUPPORTED_IMAGE_MIME.find(m => m === mime)
+    if (!mediaType) return null
     try {
-        return readFileSync(source.value, { encoding: 'base64' })
+        return { data: readFileSync(source.value, { encoding: 'base64' }), mediaType }
     } catch (e) {
         logger.warn(`[promptBuilder] 图片读取失败，降级 @path 引用: ${source.value}`, e)
         return null
