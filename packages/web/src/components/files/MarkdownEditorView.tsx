@@ -188,6 +188,9 @@ interface IconProps { size?: number }
 function MdBubbleContent({ editor }: { editor: Editor }) {
     const [linkOpen, setLinkOpen] = useState(false)
     const [linkUrl, setLinkUrl] = useState('')
+    // 颜色走 token 而非 var(--ant-*)：BubbleMenu appendTo body 后脱离 cssVar 作用域，
+    // var 全部失效（dark 下 fallback #fff 白底白字）；token 随主题重渲染，与下方 LinkBubble/ImageBubble 同源
+    const { token } = antTheme.useToken()
 
     const applyLink = () => {
         const chain = editor.chain().focus().extendMarkRange('link')
@@ -207,8 +210,8 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
                 onClick={onClick}
                 // active 用背景填充 + primary 文字色（同 MarkdownToolbar，浅色下仅 color 不可见）
                 style={active ? {
-                    color: 'var(--ant-color-primary)',
-                    background: 'var(--ant-color-primary-bg)',
+                    color: token.colorPrimary,
+                    background: token.colorPrimaryBg,
                 } : undefined}
             />
         </Tooltip>
@@ -217,7 +220,7 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
     return (
         <div style={{
             display: 'flex', alignItems: 'center', gap: 2, padding: '2px 4px',
-            background: 'var(--ant-color-bg-elevated, #fff)',
+            background: token.colorBgElevated,
             borderRadius: 6,
             boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
         }}>
@@ -254,7 +257,7 @@ function MdBubbleContent({ editor }: { editor: Editor }) {
                     size="small"
                     title="链接"
                     icon={<LinkIcon size={14} />}
-                    style={editor.isActive('link') ? { color: 'var(--ant-color-primary)', background: 'var(--ant-color-primary-bg)' } : undefined}
+                    style={editor.isActive('link') ? { color: token.colorPrimary, background: token.colorPrimaryBg } : undefined}
                 />
             </Popover>
         </div>
