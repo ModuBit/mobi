@@ -122,21 +122,11 @@ function useCompactDropdownStyle() {
 
 const PageContainer = styled.div`
     display: flex;
-    align-items: center;
     justify-content: center;
     width: 100%;
     height: 100%;
     position: relative;
     overflow-y: auto;
-
-    /* 移动端键盘弹出时 viewport 缩小，允许滚动以保证输入框可达 */
-    @supports (height: 100dvh) {
-        @media (max-width: 640px) {
-            align-items: flex-start;
-            padding-top: max(10dvh, 48px);
-            padding-bottom: 24px;
-        }
-    }
 `
 
 const SidebarToggleWrapper = styled.div`
@@ -151,6 +141,10 @@ const ContentWrapper = styled.div`
     max-width: 720px;
     width: 100%;
     padding: 0 24px;
+    /* 垂直居中用 flex auto-margin（而非容器 align-items: center）：内容溢出
+       （worktree 输入展开/附件列表/键盘收缩 viewport）时 auto margin 归零退化为
+       顶部对齐，配合容器 overflow-y: auto 保证顶部始终可滚动到达 */
+    margin: auto 0;
 `
 
 const TitleBar = styled.div<{ $color: string }>`
