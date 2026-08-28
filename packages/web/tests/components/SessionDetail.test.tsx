@@ -87,10 +87,11 @@ describe('SessionDetail（特征化）', () => {
         useNotificationBadgeStore.getState().clearAll()
     })
 
-    it('loading 时渲染 Spin', () => {
+    it('loading 时渲染 MobiLogo 品牌动画占位', () => {
         vi.mocked(useSession).mockReturnValue({ data: undefined, isLoading: true, error: null } as never)
         const { container } = render(<SessionDetail sessionId="s1" />, { wrapper })
-        expect(container.querySelector('.ant-spin')).toBeInTheDocument()
+        const svg = container.querySelector('svg')
+        expect(svg).toHaveAttribute('viewBox', '0 0 250 250')
     })
 
     it('error 时渲染错误态与返回首页按钮', () => {

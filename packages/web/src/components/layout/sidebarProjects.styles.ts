@@ -126,6 +126,7 @@ export const GroupHeader = styled.div<{ $token: SidebarToken }>`
 
 // 头部操作按钮（新建会话 / 更多菜单，hover 时通过 GroupHeader 的 CSS 显示）
 export const HeaderActionButton = styled.button<{ $token: SidebarToken }>`
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 20px;

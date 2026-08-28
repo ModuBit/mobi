@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Spin, Result, Button } from 'antd'
+import { Result, Button } from 'antd'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
@@ -24,6 +24,7 @@ import { ChatPane } from '@/components/session/ChatPane'
 import { InspectorPane } from '@/components/session/InspectorPane'
 import { WorkspaceSplitter } from '@/components/session/WorkspaceSplitter'
 import { getAgentStatus } from '@/components/pixel-avatar/types'
+import { MobiLogo } from '@/components/ui/MobiLogo'
 import { getSessionDisplayName } from '@/core/utils/sessionUtils'
 import { useWakeLock } from '@/core/pwa/useWakeLock'
 
@@ -58,7 +59,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     if (isLoading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <Spin size="large" />
+                <MobiLogo size={56} />
             </div>
         )
     }

@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-import { theme as antTheme, ConfigProvider, Layout, Spin } from 'antd'
+import { theme as antTheme, ConfigProvider, Layout } from 'antd'
 import { useUiStore, resolveTheme } from '@/core/data/stores/uiStore'
+import { MobiLogo } from '@/components/ui/MobiLogo'
 import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { AppSidebar } from './AppSidebar'
 import { MobileMenuDrawer } from './MobileMenu'
@@ -116,11 +117,11 @@ export function MainLayout() {
     )
 }
 
-/** 内容区路由 chunk 拉取期间的占位：局部居中 Spin，布局（侧边栏）保持可见，避免全屏白闪 */
+/** 内容区路由 chunk 拉取期间的占位：局部居中 MobiLogo 小跳（loop），布局（侧边栏）保持可见，避免全屏白闪 */
 function ContentLoadingFallback() {
     return (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Spin />
+            <MobiLogo size={48} />
         </div>
     )
 }

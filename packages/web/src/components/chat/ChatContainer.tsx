@@ -16,7 +16,7 @@
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Spin, Button, theme as antTheme, message } from 'antd'
+import { Button, theme as antTheme, message } from 'antd'
 import { DownOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons'
 
 import { Global, css } from '@emotion/react'
@@ -55,6 +55,7 @@ import { useTeamAgentsStore } from '@/core/data/stores/teamAgentsStore'
 import { collapsibleUserMessageStyles } from './CollapsibleUserMessage'
 import { spring } from '@/components/motion/presets'
 
+import { MobiLogo } from '@/components/ui/MobiLogo'
 // BUBBLE_ROLES 由 BubbleListChat 内部使用（from './bubbleRoles'），此处仅保留 re-export
 // 供历史 import './ChatContainer' 的调用方兼容
 export { BUBBLE_ROLES } from './bubbleRoles'
@@ -816,8 +817,10 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     if (messagesLoading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <Spin description={t('common.loading')} />
+            // MobiLogo 小跳 + 文字：svg aria-hidden，语义由文字承载（屏幕阅读器可读）
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                <MobiLogo size={56} />
+                <span style={{ fontSize: 13, color: 'var(--ant-colorTextTertiary)' }}>{t('common.loading')}</span>
             </div>
         )
     }
