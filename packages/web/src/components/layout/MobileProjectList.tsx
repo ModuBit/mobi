@@ -26,7 +26,7 @@ import {
 } from '@ant-design/icons'
 import { ChevronRight, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useParams } from '@tanstack/react-router'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSessions } from '@/core/data/hooks/queries/useSessions'
@@ -65,6 +65,7 @@ export function MobileProjectList() {
     const { token } = useToken()
     const { t } = useTranslation()
     const { message: messageApi } = AntdApp.useApp()
+    const navigate = useNavigate()
     const navigateFromMenu = useMenuNavigate()
     const queryClient = useQueryClient()
     const api = useMobiApi()
@@ -189,13 +190,13 @@ export function MobileProjectList() {
             const res = await api.sessions.resume(actionSessionId)
             await invalidateAll(actionSessionId)
             setActionSessionId(null)
-            navigateFromMenu({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } })
+            navigateFromMenu(() => navigate({ to: '/sessions/$sessionId', params: { sessionId: res.data.sessionId } }))
         } catch {
             // ignore
         } finally {
             setActionLoading(null)
         }
-    }, [actionSessionId, api, invalidateAll, navigateFromMenu])
+    }, [actionSessionId, api, invalidateAll, navigate, navigateFromMenu])
 
     // 删除
     const handleDelete = useCallback(() => {
@@ -221,7 +222,7 @@ export function MobileProjectList() {
                     clearSessionResources(sessionId)
                     setActionSessionId(null)
                     if (activeSessionId === sessionId) {
-                        navigateFromMenu({ to: '/sessions' })
+                        navigateFromMenu(() => navigate({ to: '/sessions' }))
                     }
                 } catch {
                     // ignore
@@ -241,7 +242,7 @@ export function MobileProjectList() {
             modal.destroy()
             setActionLoading(null)
         })
-    }, [actionSessionId, api, queryClient, invalidateAll, activeSessionId, navigateFromMenu, t])
+    }, [actionSessionId, api, queryClient, invalidateAll, activeSessionId, navigate, navigateFromMenu, t])
 
 
     // ActionSheet 当前操作的 session

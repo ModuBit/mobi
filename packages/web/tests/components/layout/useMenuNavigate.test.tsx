@@ -17,19 +17,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, cleanup } from '@testing-library/react'
 
-const navigateMock = vi.hoisted(() => vi.fn())
-
-vi.mock('@tanstack/react-router', () => ({
-    useNavigate: () => navigateMock,
-}))
-
 import { useMenuNavigate } from '@/components/layout/useMenuNavigate'
 import { useUiStore } from '@/core/data/stores/uiStore'
 
 describe('useMenuNavigate（抽屉滑出起步后再导航）', () => {
     beforeEach(() => {
         vi.useFakeTimers()
-        navigateMock.mockClear()
         useUiStore.setState({ mobileMenuOpen: true })
     })
 
@@ -39,34 +32,54 @@ describe('useMenuNavigate（抽屉滑出起步后再导航）', () => {
         cleanup()
     })
 
-    it('调用后立即关闭菜单，但不立刻导航', () => {
+    it('调用后立即关闭菜单，但不立刻执行导航闭包', () => {
         const { result } = renderHook(() => useMenuNavigate())
+        const go = vi.fn()
 
-        result.current({ to: '/sessions/$sessionId', params: { sessionId: 's1' } })
+        result.current(go)
 
         expect(useUiStore.getState().mobileMenuOpen).toBe(false)
-        expect(navigateMock).not.toHaveBeenCalled()
+        expect(go).not.toHaveBeenCalled()
     })
 
-    it('延迟起步窗口后导航，参数原样透传', () => {
+    it('延迟起步窗口后执行导航闭包', () => {
         const { result } = renderHook(() => useMenuNavigate())
+        const go = vi.fn()
 
-        result.current({ to: '/sessions/$sessionId', params: { sessionId: 's1' } })
+        result.current(go)
         vi.advanceTimersByTime(99)
-        expect(navigateMock).not.toHaveBeenCalled()
+        expect(go).not.toHaveBeenCalled()
 
         vi.advanceTimersByTime(1)
-        expect(navigateMock).toHaveBeenCalledTimes(1)
-        expect(navigateMock).toHaveBeenCalledWith({ to: '/sessions/$sessionId', params: { sessionId: 's1' } })
+        expect(go).toHaveBeenCalledTimes(1)
+    })
+
+    it('连续调用为单链重启：只执行最后一次的闭包', () => {
+        const { result } = renderHook(() => useMenuNavigate())
+        const first = vi.fn()
+        const second = vi.fn()
+
+        result.current(first)
+        vi.advanceTimersByTime(60)
+        result.current(second)
+        vi.advanceTimersByTime(40)
+        // 第一条的 100ms 到点：已被第二条覆盖，不执行
+        expect(first).not.toHaveBeenCalled()
+        expect(second).not.toHaveBeenCalled()
+
+        vi.advanceTimersByTime(60)
+        expect(first).not.toHaveBeenCalled()
+        expect(second).toHaveBeenCalledTimes(1)
     })
 
     it('hook 卸载时取消尚未触发的导航', () => {
         const { result, unmount } = renderHook(() => useMenuNavigate())
+        const go = vi.fn()
 
-        result.current({ to: '/sessions' })
+        result.current(go)
         unmount()
         vi.advanceTimersByTime(500)
 
-        expect(navigateMock).not.toHaveBeenCalled()
+        expect(go).not.toHaveBeenCalled()
     })
 })

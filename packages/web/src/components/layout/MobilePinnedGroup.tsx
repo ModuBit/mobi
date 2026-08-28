@@ -17,6 +17,7 @@
 import { useCallback } from 'react'
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from '@tanstack/react-router'
 import { ChevronRight, Pin } from 'lucide-react'
 import { usePinnedSessions } from '@/core/data/hooks/queries/usePinnedSessions'
 import { useMenuNavigate } from './useMenuNavigate'
@@ -42,6 +43,7 @@ interface MobilePinnedGroupProps {
 export function MobilePinnedGroup({ activeSessionId, onSessionAction }: MobilePinnedGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
+    const navigate = useNavigate()
     const navigateFromMenu = useMenuNavigate()
 
     const {
@@ -53,8 +55,8 @@ export function MobilePinnedGroup({ activeSessionId, onSessionAction }: MobilePi
     } = usePinnedSessions(activeSessionId, true)
 
     const handleSessionClick = useCallback((sessionId: string) => {
-        navigateFromMenu({ to: '/sessions/$sessionId', params: { sessionId } })
-    }, [navigateFromMenu])
+        navigateFromMenu(() => navigate({ to: '/sessions/$sessionId', params: { sessionId } }))
+    }, [navigate, navigateFromMenu])
 
     // 展开即撑开：空分区展开时展示「暂无会话」占位，加载中展示骨架
     const wrapperExpanded = expanded

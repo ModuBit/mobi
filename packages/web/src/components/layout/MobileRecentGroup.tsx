@@ -17,6 +17,7 @@
 import { useCallback } from 'react'
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import { useRecentSessions } from '@/core/data/hooks/queries/useRecentSessions'
 import { useMenuNavigate } from './useMenuNavigate'
@@ -42,6 +43,7 @@ interface MobileRecentGroupProps {
 export function MobileRecentGroup({ activeSessionId, onSessionAction }: MobileRecentGroupProps) {
     const { token } = useToken()
     const { t } = useTranslation()
+    const navigate = useNavigate()
     const navigateFromMenu = useMenuNavigate()
 
     const {
@@ -53,8 +55,8 @@ export function MobileRecentGroup({ activeSessionId, onSessionAction }: MobileRe
     } = useRecentSessions(activeSessionId, true)
 
     const handleSessionClick = useCallback((sessionId: string) => {
-        navigateFromMenu({ to: '/sessions/$sessionId', params: { sessionId } })
-    }, [navigateFromMenu])
+        navigateFromMenu(() => navigate({ to: '/sessions/$sessionId', params: { sessionId } }))
+    }, [navigate, navigateFromMenu])
 
     // 展开即撑开：空分区展开时展示「暂无会话」占位，加载中展示骨架
     const wrapperExpanded = expanded

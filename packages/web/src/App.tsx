@@ -22,7 +22,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { Spin } from 'antd'
 import { setUnauthorizedHandler, createApiClient, useMobiApi } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
-import { prefetchRouteChunks } from '@/router'
+import { prefetchRouteChunks } from '@/core/lib/routeChunks'
 
 export function App() {
     const { authenticated, logout } = useAuthStore()

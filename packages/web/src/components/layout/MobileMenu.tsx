@@ -16,7 +16,7 @@
 
 import { theme as antTheme } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useLocation } from '@tanstack/react-router'
+import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useMobiApi } from '@/core/data/api/client'
@@ -90,6 +90,7 @@ export function MobileMenuDrawer() {
     const { token } = useToken()
     const { t } = useTranslation()
     const location = useLocation()
+    const navigate = useNavigate()
     const { mobileMenuOpen, setMobileMenuOpen } = useUiStore()
     const { logout } = useAuthStore()
     const api = useMobiApi()
@@ -110,11 +111,14 @@ export function MobileMenuDrawer() {
         api.auth.logout().catch(() => {}).finally(() => logout())
     }
 
-    // 选择菜单项
+    // 选择菜单项：映射路径走 hook（关抽屉 → 滑出起步后导航）；未映射 key
+    // （当前 mobileNavItems 全覆盖，防御未来新增非导航项）仍须关闭抽屉
     const handleSelect = (key: string) => {
         const path = navPathMap[key]
         if (path) {
-            navigateFromMenu({ to: path })
+            navigateFromMenu(() => navigate({ to: path }))
+        } else {
+            handleClose()
         }
     }
 

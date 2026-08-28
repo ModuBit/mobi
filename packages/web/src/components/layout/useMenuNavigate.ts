@@ -15,14 +15,13 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { useUiStore } from '@/core/data/stores/uiStore'
 
 /** 抽屉滑出起步窗口：momentum spring 全程 300ms 的前 ~1/3，让滑出可见起步后再提交路由渲染 */
 const MENU_NAVIGATE_HEAD_START_MS = 100
 
 /**
- * 菜单抽屉内导航统一入口：先关抽屉，滑出动画起步后再导航。
+ * 菜单抽屉内导航统一入口：先关抽屉，滑出动画起步后再执行注入的导航闭包。
  *
  * 背景：MobileDrawer 的滑出是主线程 JS spring 动画（逐帧计算），若与 navigate 同拍
  * 提交，会话详情页的渲染风暴（react-query / 消息解密 / Bubble.List / markdown）会
@@ -30,11 +29,12 @@ const MENU_NAVIGATE_HEAD_START_MS = 100
  * 一个起步窗口（100ms）：滑出可见起步后两者并行推进，动画中后段即使被渲染挤几帧，
  * sheet 已大幅离屏，肉眼无感；总时长与「同拍提交」几乎一致（页面加载本就发生在动画期间）。
  *
- * 参数与 useNavigate 完全同形（透传），调用点零学习成本。定时器随 hook 卸载取消，
+ * 参数是调用方的导航闭包（内部用各调用方类型完整的 useNavigate 构造），路由路径 /
+ * params 的编译期校验保留在调用点，本 hook 不模仿 navigate 签名、无类型断言。
+ * 连续调用为单链重启语义（重启计时器，旧闭包作废）；定时器随 hook 卸载取消，
  * 防止组件树重建后陈旧导航突然生效。
  */
 export function useMenuNavigate() {
-    const navigate = useNavigate()
     const setMobileMenuOpen = useUiStore((s) => s.setMobileMenuOpen)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -43,14 +43,14 @@ export function useMenuNavigate() {
         if (timerRef.current != null) clearTimeout(timerRef.current)
     }, [])
 
-    return useCallback(((...args: unknown[]) => {
+    return useCallback((go: () => void) => {
         setMobileMenuOpen(false)
+        // 单链重启：前一次延迟未触发就被本次覆盖（快速连点不同会话行时
+        // 只执行最后一次，且旧定时器不会成为不可取消的孤儿）
+        if (timerRef.current != null) clearTimeout(timerRef.current)
         timerRef.current = setTimeout(() => {
             timerRef.current = null
-            // navigate 是泛型重载函数，Parameters<> 只能捕获到错误的签名形态；
-            // 边界处经 unknown 转发运行时参数，对外仍暴露完整类型的 navigate 签名，
-            // 调用点的路由路径 / params 校验不受影响
-            ;(navigate as (...a: unknown[]) => void)(...args)
+            go()
         }, MENU_NAVIGATE_HEAD_START_MS)
-    }) as typeof navigate, [navigate, setMobileMenuOpen])
+    }, [setMobileMenuOpen])
 }

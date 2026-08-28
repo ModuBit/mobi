@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { prefetchRouteChunks, routeChunkLoaders } from '@/router'
+import { prefetchRouteChunks, routeChunkLoaders } from '@/core/lib/routeChunks'
 
 describe('router 路由 chunk 加载器', () => {
     it('每个 loader 都能加载并导出声明的具名页面组件', async () => {
