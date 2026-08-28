@@ -16,10 +16,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { theme, Popconfirm, Drawer, Button } from 'antd'
+import { LoadingOutlined } from '@ant-design/icons'
 import { AppTooltip } from '@/components/ui/AppTooltip'
 import type { GlobalToken } from 'antd/es/theme/interface'
 import { Terminal, CircleStop, Eye, Zap } from 'lucide-react'
-import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { PixelAvatar } from '@/components/pixel-avatar/PixelAvatar'
 import { agentCardBg } from '@/components/composer/agentPalette'
@@ -28,13 +28,6 @@ import { useIsMobile } from '@/core/data/hooks/useMediaQuery'
 import { formatDuration, formatTokens } from '@/core/lib/metricsFormat'
 import type { BackgroundTask } from '@/domain/chat/types'
 import type { AgentStatus } from '@/components/pixel-avatar/types'
-
-const spinKeyframes = css`
-@keyframes bgtask-icon-spin {
-    from { transform: rotate(0deg) }
-    to { transform: rotate(360deg) }
-}
-`
 
 /** 格式化后台任务指标信息 */
 function formatMetrics(task: BackgroundTask): string {
@@ -49,7 +42,7 @@ function taskAvatarStatus(status: BackgroundTask['status']): AgentStatus {
     return status === 'running' ? 'outputting' : 'inactive'
 }
 
-/** 终态色板：completed=success、failed=error、其余（stopped 等）=primary 淡档（与运行中彗星环同色系，自然过渡） */
+/** 终态色板：completed=success、failed=error、其余（stopped 等）=primary 淡档（与运行中 loading 同色系，自然过渡） */
 function terminalStatusPalette(status: BackgroundTask['status'], token: GlobalToken): { bg: string; fg: string } {
     if (status === 'completed') return { bg: token.colorSuccessBg, fg: token.colorSuccess }
     if (status === 'failed') return { bg: token.colorErrorBg, fg: token.colorError }
@@ -184,7 +177,6 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
 
     return (
         <>
-            <Global styles={spinKeyframes} />
             <div style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 width: 'var(--agent-card-width, 200px)', height: 40,
@@ -238,7 +230,7 @@ export function BackgroundTaskCard({ task, onClick, onStop }: {
 
 /**
  * 非Agent工具图标
- * running = 纯彗星缺口环旋转（语义：运行中，不叠工具图标）
+ * running = LoadingOutlined 转圈（通用 loading，小尺寸内联位用品牌动画会糊）
  * 终态 = 柔色底圆 + 浓色 Terminal 图标（语义：bash 工具的结果）
  */
 function ToolIcon({ toolName, status }: { toolName: string; status: BackgroundTask['status'] }) {
@@ -256,21 +248,13 @@ function ToolIcon({ toolName, status }: { toolName: string; status: BackgroundTa
         )
     }
 
-    // 运行中：纯彗星环。conic-gradient 画「头亮尾透」弧段，radial-mask 挖空中心只留环
     if (status === 'running') {
-        const ringMask = 'radial-gradient(circle at center, transparent 8px, #000 8.5px)'
         return (
             <div style={{
                 width: 24, height: 24, display: 'flex',
                 alignItems: 'center', justifyContent: 'center',
             }}>
-                <div style={{
-                    width: 22, height: 22, borderRadius: '50%',
-                    background: `conic-gradient(from 0deg, transparent 0%, ${token.colorPrimary} 38%, transparent 72%)`,
-                    WebkitMask: ringMask,
-                    mask: ringMask,
-                    animation: 'bgtask-icon-spin 1.2s linear infinite',
-                }} />
+                <LoadingOutlined spin style={{ fontSize: 16, color: token.colorPrimary }} />
             </div>
         )
     }
