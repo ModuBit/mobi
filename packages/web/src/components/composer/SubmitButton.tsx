@@ -26,6 +26,7 @@ const spinKf = keyframes`
 
 /**
  * 停止态外圈：旋转的 loading ring（轨道淡橙 + 顶部暖橙头）
+ * 可见性 tuned：2.5→3px 边框、轨道 30%→35%——原参数太细太淡，用户感知不到"有动效"
  * 仅在方块态（非 abortPending）显示——abortPending 时 Button 自身 loading 转圈，
  * 双重转圈视觉冗余，故此时 $ring=false 隐藏光环
  */
@@ -38,7 +39,7 @@ const StopWrap = styled.span<{ $ring: boolean }>`
         position: absolute;
         inset: -4px;
         border-radius: 50%;
-        border: 2.5px solid color-mix(in srgb, var(--ant-colorWarning) 30%, transparent);
+        border: 3px solid color-mix(in srgb, var(--ant-colorWarning) 35%, transparent);
         border-top-color: var(--ant-colorWarning);
         animation: ${spinKf} 1s linear infinite;
         pointer-events: none;
