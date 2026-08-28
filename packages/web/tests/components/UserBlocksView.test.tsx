@@ -114,8 +114,9 @@ describe('UserBlocksView ImageView', () => {
         const { container } = render(
             <UserBlocksView blocks={blocks} env={{ sessionId: 'sess-1' }} />,
         )
-        // 三张图共享同一个 antd Space 容器（横向 flex、可换行）
-        const space = container.querySelector('.ant-space')
+        // 三张图共享同一个横向 wrap Space（顶层还有垂直 Space 包段落，此处取横向组）
+        // antd v6 的 wrap 不再加 class，而是 inline flex-wrap
+        const space = container.querySelector('.ant-space-horizontal')
         expect(space).not.toBeNull()
         expect((space as HTMLElement).style.flexWrap).toBe('wrap')
         expect(space!.querySelectorAll('.ant-space-item .ant-image')).toHaveLength(3)
@@ -126,7 +127,8 @@ describe('UserBlocksView ImageView', () => {
         const { container } = render(
             <UserBlocksView blocks={blocks} env={{ sessionId: 'sess-1' }} />,
         )
-        expect(container.querySelectorAll('.ant-space')).toHaveLength(0)
+        // 两张图各自成横向段（顶层垂直 Space 不计入）
+        expect(container.querySelectorAll('.ant-space-horizontal')).toHaveLength(2)
         expect(container.querySelectorAll('.ant-image')).toHaveLength(2)
     })
 

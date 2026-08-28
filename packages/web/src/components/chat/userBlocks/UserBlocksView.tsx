@@ -15,7 +15,7 @@
  */
 
 import type React from 'react'
-import { useState, Fragment } from 'react'
+import { useState } from 'react'
 import { theme, Space } from 'antd'
 import { FileCard } from '@ant-design/x'
 import { Bot, User } from 'lucide-react'
@@ -170,33 +170,30 @@ export const USER_BLOCK_RENDERERS: {
 /**
  * 用户消息气泡内容视图：按 blocks 顺序分发到各类型视图。
  *
- * - 连续 document 由 {@link groupUserBlocks} 归并后以 FileCard.List（wrap 流式排布）合并展示；
- * - 其余 block 逐块渲染，保持发送侧分段顺序。
+ * - 顶层段落间用垂直 Space 统一分隔（文本/引用/图片段/附件段）；
+ * - 连续 document 由 {@link groupUserBlocks} 归并后以横向 wrap Space 装单卡合并展示
+ *   （不用 FileCard.List——其 list-content 自带 12px 16px padding，气泡内过肥）；
+ * - 连续 image 归并到横向 wrap Space，多图不一张一行。
  */
 export function UserBlocksView({ blocks, env }: { blocks: readonly UserContentBlock[]; env?: UserBlockRenderEnv }) {
     const renderEnv: UserBlockRenderEnv = env ?? {}
     return (
-        <>
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
             {groupUserBlocks(blocks).map((seg, i) => {
                 if (seg.kind === 'documents') {
                     return (
-                        <FileCard.List
-                            key={`docs-${seg.blocks[0].id}`}
-                            size="small"
-                            overflow="wrap"
-                            items={seg.blocks.map(d => ({ name: d.filename, byte: d.size }))}
-                        />
+                        <Space key={`docs-${seg.blocks[0].id}`} size={8} wrap style={{ maxWidth: '100%' }}>
+                            {seg.blocks.map(d => (
+                                <FileCard key={d.id} size="small" type="file" name={d.filename} byte={d.size} />
+                            ))}
+                        </Space>
                     )
                 }
                 // 连续 image 归并到横向 Space（可换行），多图不一张一行
                 if (seg.kind === 'images') {
-                    const first = seg.blocks[0]
-                    const key = `imgs-${first.id}`
-                    const inner = seg.blocks.map(b => <ImageView key={b.id} block={b} env={renderEnv} />)
-                    if (seg.blocks.length === 1) return <Fragment key={key}>{inner}</Fragment>
                     return (
-                        <Space key={key} size={8} wrap style={{ maxWidth: '100%' }}>
-                            {inner}
+                        <Space key={`imgs-${seg.blocks[0].id}`} size={8} wrap style={{ maxWidth: '100%' }}>
+                            {seg.blocks.map(b => <ImageView key={b.id} block={b} env={renderEnv} />)}
                         </Space>
                     )
                 }
@@ -208,6 +205,6 @@ export function UserBlocksView({ blocks, env }: { blocks: readonly UserContentBl
                 const View = USER_BLOCK_RENDERERS[b.type] as React.FC<UserBlockViewProps<UserContentBlock>>
                 return <View key={key} block={b} env={renderEnv} />
             })}
-        </>
+        </Space>
     )
 }

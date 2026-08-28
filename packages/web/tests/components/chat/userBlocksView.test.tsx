@@ -77,7 +77,17 @@ describe('UserBlocksView 按 block 分发渲染', () => {
         expect(screen.getByText('帮我看看')).toBeInTheDocument()
     })
 
-    it('连续 document 合并为 FileCard.List；被其他 block 打断则分段', () => {
+    it('段落间用垂直 Space 分隔（文本/引用/图片/附件段统一间距）', () => {
+        const blocks: UserContentBlock[] = [
+            { type: 'quote', messageId: 'm1', role: 'agent', excerpt: '引用' },
+            { type: 'text', text: '正文' },
+        ]
+        const { container } = render(<UserBlocksView blocks={blocks} env={{ sessionId: 's1' }} />)
+        // 顶层垂直 Space：段间距由 Space 收口，不靠 FileCard 自带 padding
+        expect(container.querySelector('.ant-space-vertical')).not.toBeNull()
+    })
+
+    it('连续 document 归并一组（Space wrap 内多卡）；被其他 block 打断则另起一组', () => {
         const blocks: UserContentBlock[] = [
             {
                 type: 'document',
@@ -98,14 +108,17 @@ describe('UserBlocksView 按 block 分发渲染', () => {
         ]
         const { container } = render(<UserBlocksView blocks={blocks} />)
 
-        // 前 2 个 doc 进同一个 List，第 3 个独立成 List/List 之外单卡——共 2 个 List 容器
-        const lists = Array.from(container.querySelectorAll<HTMLElement>(LIST_ROOT))
-        expect(lists).toHaveLength(2)
-        expect(lists[0]).toHaveTextContent('a.zip')
-        expect(lists[0]).toHaveTextContent('b.pdf')
-        expect(lists[1]).toHaveTextContent('c.md')
-
+        // 3 张文件卡（d1+d2 同段、d3 单独段）；前 2 张共享同一个横向 wrap Space，第 3 张属另一段
+        const cards = Array.from(container.querySelectorAll(CARD_ROOT))
+        expect(cards).toHaveLength(3)
         expect(screen.getByText('中间夹一段')).toBeInTheDocument()
+
+        const groupOf = (card: Element) => card.closest('.ant-space')
+        expect(groupOf(cards[0]!)).not.toBeNull()
+        expect(groupOf(cards[0]!)).toBe(groupOf(cards[1]!))
+        expect(groupOf(cards[2]!)).not.toBe(groupOf(cards[0]!))
+        // document 组内不再使用 FileCard.List（其 list-content 自带 12px 16px padding，气泡内过肥）
+        expect(container.querySelector(LIST_ROOT)).toBeNull()
     })
 
     it('纯单 text blocks 与旧渲染等价（回归）', () => {
