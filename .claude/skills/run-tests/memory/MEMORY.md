@@ -25,3 +25,4 @@ E2E 操作的「越用越熟」知识库。每次 E2E **前先读**相关条目�
 - [CDP 动效逐帧采样](motion-verify.md) — rAF 探针验证 CSS 动画/选择器命中（jsdom 测不出）；antd v6 rootClassName 层级坑
 - [真实大会话注入](real-session-seed.md) — prod→e2e 拷库（messages 必须显式列 position_at）做消息窗口化/fill 级联验证
 - [上下文水位验证](waterline-verify.md) — assistant usage 落库断言 / contextUsage=四项和瞬时水位 / 圆环 svg[role=button] 双端断言 / 两把尺子别混
+- [跨会话消息可见性验证](cross-session-visibility-verify.md) — hook 观测落库+标签全链路 / 审批窗口入站消息被 CC 丢弃的坑 / 未 prompt 场景须真机验证
