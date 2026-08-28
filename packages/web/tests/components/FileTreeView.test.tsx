@@ -492,4 +492,70 @@ describe('FileTreeView', () => {
         // 关键:搜索结果里 src 虚拟目录不应再带树模式的截断提示
         expect(screen.queryByText('files.treeTruncated')).not.toBeInTheDocument()
     })
+
+    // 「从文件内容的弹层树里直接看到当前文件」：revealPath 展开祖先目录链，
+    // 数据就绪后目标文件无需逐层点击即可见，并选中高亮（已打开的文件在树中定位）。
+    it('revealPath：自动展开祖先目录并选中目标文件，不触发 onOpenFile', async () => {
+        const list = makeList({
+            '.': [{ name: 'src', type: 'directory' }],
+            src: [{ name: 'lib', type: 'directory' }],
+            'src/lib': [{ name: 'util.ts', type: 'file' }],
+        })
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        const onOpenFile = vi.fn()
+        renderWithClient(
+            <FileTreeView sessionId="s1" onOpenFile={onOpenFile} revealPath="src/lib/util.ts" />,
+        )
+
+        // 祖先自动展开：深层文件直接可见（无需点击 switcher）
+        const util = await screen.findByText('util.ts')
+        expect(list).toHaveBeenCalledWith('s1', 'src')
+        expect(list).toHaveBeenCalledWith('s1', 'src/lib')
+        // 选中高亮（当前文件在树中定位），但只定位不打开
+        expect(util.closest('.ant-tree-treenode')).toHaveAttribute('aria-selected', 'true')
+        expect(onOpenFile).not.toHaveBeenCalled()
+    })
+
+    it('revealPath 的祖先目录也进入订阅集合（刷新时一并刷新）', async () => {
+        const list = makeList({
+            '.': [{ name: 'src', type: 'directory' }],
+            src: [{ name: 'inner.ts', type: 'file' }],
+        })
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        renderWithClient(
+            <FileTreeView sessionId="s1" onOpenFile={vi.fn()} revealPath="src/inner.ts" />,
+        )
+        await screen.findByText('inner.ts')
+
+        const rootBefore = list.mock.calls.filter((c) => c[1] === '.').length
+        const srcBefore = list.mock.calls.filter((c) => c[1] === 'src').length
+        fireEvent.click(screen.getByRole('button', { name: 'files.refreshTree' }))
+
+        await waitFor(() => {
+            expect(list.mock.calls.filter((c) => c[1] === 'src').length).toBeGreaterThan(srcBefore)
+            expect(list.mock.calls.filter((c) => c[1] === '.').length).toBeGreaterThan(rootBefore)
+        })
+    })
+
+    // 工具链可能打开 cwd 外的文件（绝对路径无法映射进 cwd 相对 key 的树）——
+    // 此时展开到哪层都不对，必须整体跳过定位：不展开、不选中、不拉子目录
+    it('revealPath 为绝对路径（树范围外）→ 跳过定位', async () => {
+        const list = makeList({
+            '.': [{ name: 'src', type: 'directory' }],
+            src: [{ name: 'inner.ts', type: 'file' }],
+        })
+        mockedUseMobiApi.mockReturnValue({ files: { list } } as any)
+
+        const { container } = renderWithClient(
+            <FileTreeView sessionId="s1" onOpenFile={vi.fn()} revealPath="/Users/x/other-project/inner.ts" />,
+        )
+        await screen.findByText('src')
+
+        // src 未被展开/订阅：子级不可见，也未发出子目录请求
+        expect(screen.queryByText('inner.ts')).toBeNull()
+        expect(list).not.toHaveBeenCalledWith('s1', 'src')
+        expect(container.querySelectorAll('.ant-tree-treenode[aria-selected="true"]')).toHaveLength(0)
+    })
 })

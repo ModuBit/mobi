@@ -78,3 +78,21 @@ export function collectDirKeys(nodes: NestedFileNode[]): string[] {
     walk(nodes)
     return keys
 }
+
+/**
+ * 文件路径的祖先目录 key（相对根、由浅到深）：'a/b/c.ts' → ['a', 'a/b']。
+ * 文件树「定位当前文件」用：展开这些目录即可露出目标文件。
+ * 顶层文件返回 []；绝对路径按相对处理（split 过滤空段，与树内相对 key 语义一致——
+ * 若文件真在根外，展开这些 key 只是 no-op，不产生副作用）。
+ */
+export function ancestorDirKeys(filePath: string): string[] {
+    const parts = filePath.split('/').filter(Boolean)
+    parts.pop()
+    const keys: string[] = []
+    let cur = ''
+    for (const part of parts) {
+        cur = cur ? `${cur}/${part}` : part
+        keys.push(cur)
+    }
+    return keys
+}

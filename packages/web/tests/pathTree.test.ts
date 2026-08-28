@@ -81,3 +81,61 @@ describe('buildPathTree', () => {
         expect(keys.sort()).toEqual(['docs', 'src', 'src/foo'].sort())
     })
 })
+
+describe('ancestorDirKeys', () => {
+    it('深层文件的祖先目录由浅到深', async () => {
+        const { ancestorDirKeys } = await import('@/core/utils/pathTree')
+        expect(ancestorDirKeys('src/lib/util.ts')).toEqual(['src', 'src/lib'])
+    })
+
+    it('顶层文件无祖先，返回空数组', async () => {
+        const { ancestorDirKeys } = await import('@/core/utils/pathTree')
+        expect(ancestorDirKeys('a.ts')).toEqual([])
+    })
+
+    it('绝对路径按相对处理（过滤空段）', async () => {
+        const { ancestorDirKeys } = await import('@/core/utils/pathTree')
+        expect(ancestorDirKeys('/Users/x/demo/src/a.ts')).toEqual(['Users', 'Users/x', 'Users/x/demo', 'Users/x/demo/src'])
+    })
+
+    it('目录路径的末段也视为「文件名」剔除（传目录 key 时返回其祖先）', async () => {
+        const { ancestorDirKeys } = await import('@/core/utils/pathTree')
+        expect(ancestorDirKeys('src/lib')).toEqual(['src'])
+    })
+})
+
+describe('estimateTreeMinWidth', () => {
+    // 经 FileTreeView 导出：横向滚动的宽度下限估算（纯函数，虚拟滚动宽度稳定性依赖）
+    it('取「逐层缩进 + 最宽名」的最大值，深度更深但名短不一定是最大', async () => {
+        const { estimateTreeMinWidth } = await import('@/components/files/FileTreeView')
+        const w = estimateTreeMinWidth(
+            [{ name: 'short.ts' }, { name: 'a-very-long-file-name-in-root.ts' }],
+            { deep: { entries: [{ name: 'x' }] } },
+            [],
+        )
+        // 根级最长名行应主导宽度
+        const rootLongest = 0 * 16 + 76 + 'a-very-long-file-name-in-root.ts'.length * 7
+        expect(w).toBeGreaterThanOrEqual(rootLongest)
+        // 深层短名不超根级长名
+        expect(w).toBe(Math.ceil(rootLongest))
+    })
+
+    it('CJK 文件名按全宽估算（比同长度 ASCII 更宽）', async () => {
+        const { estimateTreeMinWidth } = await import('@/components/files/FileTreeView')
+        const ascii = estimateTreeMinWidth([{ name: 'a'.repeat(10) }], {}, [])
+        const cjk = estimateTreeMinWidth([{ name: '中'.repeat(10) }], {}, [])
+        expect(cjk).toBeGreaterThan(ascii)
+    })
+
+    it('空数据返回 0（宽度完全交由 max-content 兜底）', async () => {
+        const { estimateTreeMinWidth } = await import('@/components/files/FileTreeView')
+        expect(estimateTreeMinWidth(undefined, {}, [])).toBe(0)
+    })
+
+    it('搜索路径参与估算（按 path 深度缩进 + 末段名宽）', async () => {
+        const { estimateTreeMinWidth } = await import('@/components/files/FileTreeView')
+        const base = estimateTreeMinWidth([{ name: 'x' }], {}, [])
+        const withSearch = estimateTreeMinWidth([{ name: 'x' }], {}, ['a/b/c/very-long-searched-file-name.ts'])
+        expect(withSearch).toBeGreaterThan(base)
+    })
+})

@@ -31,8 +31,64 @@ import { basename } from '@/core/utils/path'
 import { formatFileSize } from '@/core/utils/fileSize'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { useDebouncedFileSearch, MAX_DISPLAY } from '@/core/data/hooks/queries/useDebouncedFileSearch'
-import { buildPathTree, collectDirKeys, type NestedFileNode } from '@/core/utils/pathTree'
+import { buildPathTree, collectDirKeys, ancestorDirKeys, type NestedFileNode } from '@/core/utils/pathTree'
 import type { ListDirectoryResponse } from '@/core/data/api/types'
+
+/** 在 treeData 中按 key 查找节点（reveal 收尾判定：目标文件是否已渲染进树） */
+function findDataNode(nodes: DataNode[], key: string): DataNode | null {
+    for (const n of nodes) {
+        if (n.key === key) return n
+        if (n.children) {
+            const found = findDataNode(n.children, key)
+            if (found) return found
+        }
+    }
+    return null
+}
+
+/** 单行文本宽度估算（px）：13px 字号，CJK/全角近似 13px、其余近似 7px */
+function estimateTextWidth(text: string): number {
+    let w = 0
+    for (const ch of text) w += ch.charCodeAt(0) > 0x2e7f ? 13 : 7
+    return w
+}
+
+/**
+ * 树的最小宽度估算（px）——横向滚动方案的宽度下限。
+ *
+ * 虚拟滚动只渲染可视行，`min-width: max-content` 仅由已渲染行决定：宽度随纵向滚动
+ * 跳变，且未渲染的长名行不贡献宽度、无法预先横向滚到。树数据是全量已知的
+ * （虚拟化只裁渲染不裁数据），故按「逐层缩进 + 该层最宽名」做全量估算，保证：
+ * - 宽度稳定单调（不随滚动窗口变化）
+ * - 不小于绝大多数行的实际宽度（个别估算偏小的行由行内 nowrap 溢出补偿，不会截断）
+ *
+ * 估算偏大只是多留白（横向滚到空白），无害。
+ */
+export function estimateTreeMinWidth(
+    rootEntries: { name: string }[] | undefined,
+    dirEntries: Record<string, { entries: { name: string }[] } | undefined>,
+    searchPaths: string[],
+): number {
+    const INDENT_UNIT = 16
+    const NODE_EXTRA = 76 // 图标 + switcher + 内边距
+    let max = 0
+    const consider = (depth: number, entries?: { name: string }[]) => {
+        if (!entries) return
+        for (const e of entries) {
+            max = Math.max(max, depth * INDENT_UNIT + NODE_EXTRA + estimateTextWidth(e.name))
+        }
+    }
+    consider(0, rootEntries)
+    for (const [path, meta] of Object.entries(dirEntries)) {
+        if (!meta || path === '.') continue
+        consider(path.split('/').length, meta.entries)
+    }
+    for (const p of searchPaths) {
+        const parts = p.split('/').filter(Boolean)
+        max = Math.max(max, (parts.length - 1) * INDENT_UNIT + NODE_EXTRA + estimateTextWidth(parts[parts.length - 1]))
+    }
+    return Math.ceil(max)
+}
 
 /**
  * 包裹层。antd v6 的 Tree 不会把 style/className 透传到 .ant-tree 根元素，
@@ -62,11 +118,9 @@ const TreeWrap = styled.div`
     && .ant-tree-treenode[aria-expanded='false'] .folder-open {
         display: none;
     }
-    /* 节点标题省略（名字过长显示 …）：
-       antd 默认 .ant-tree-node-content-wrapper 是 inline（span），icon 与 title 走 inline 流；
-       直接给 title 设 display:block 会让 block 子项撑破 inline 容器，导致 icon/文字分行。
-       这里把 content-wrapper 改成 flex，title 作为 flex 子项占满剩余空间并 ellipsis；
-       完整名 + 大小/修改时间由 Tooltip 包裹展示。 */
+    /* 节点标题不换行、不省略：层级展开后长名完整展示，宽度由内容撑开走横向滚动。
+       旧做法是 ellipsis——超宽内容被 … 吞掉，看全名只能靠 Tooltip。
+       content-wrapper 保持 flex 的原因不变（inline 容器装 block 子项会分行）。 */
     && .ant-tree-node-content-wrapper {
         display: flex;
         align-items: center;
@@ -75,9 +129,19 @@ const TreeWrap = styled.div`
     && .ant-tree-title {
         flex: 1 1 auto;
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
         white-space: nowrap;
+    }
+    /* 横向滚动：宽度取「数据全量估算」与「已渲染行 max-content」的较大者——
+       虚拟滚动下 max-content 只反映可视行（宽度随滚动跳变、未渲染长名滚不到），
+       --tree-min-width 由 estimateTreeMinWidth 按全量数据估算兜底（host 上定义，继承至此）。
+       rc-virtual-list 的滚动容器放开横向（纵向滚动仍由虚拟列表自己接管，互不干扰）。
+       !important 必须：rc-virtual-list 用 inline style 设 overflow:hidden，仅类选择器压不过。
+       非虚拟模式（jsdom / 未测到高）没有该容器，由 host 的 overflow:auto 兜底横向滚动。 */
+    && .ant-tree-list-holder-inner {
+        min-width: max(var(--tree-min-width, 0px), max-content);
+    }
+    && .ant-tree-list-holder > div:first-child {
+        overflow-x: auto !important;
     }
     /* 搜索结果截断提示 */
     .search-truncated {
@@ -186,6 +250,12 @@ interface FileTreeViewProps {
      * 默认 true：调用方不传时仅依赖 react-query 自身的 mount/focus refetch。
      */
     active?: boolean
+    /**
+     * 定位目标文件路径：传入后（挂载时 / active false→true 时）自动展开其祖先目录链，
+     * 数据就绪后滚动定位并选中该文件（不触发 onOpenFile）——
+     * 「从文件内容打开的弹层树里直接看到当前文件在哪」。
+     */
+    revealPath?: string
 }
 
 /**
@@ -203,12 +273,17 @@ interface FileTreeViewProps {
  *
  * 隐藏文件（. 开头）不显示。
  */
-export default function FileTreeView({ sessionId, onOpenFile, active = true }: FileTreeViewProps) {
+export default function FileTreeView({ sessionId, onOpenFile, active = true, revealPath }: FileTreeViewProps) {
     const { t } = useTranslation()
     const api = useMobiApi()
     const queryClient = useQueryClient()
     /** 受控选中键：仅 file 选中（folder 点击只展开，不选中不高亮） */
     const [selectedKeys, setSelectedKeys] = useState<string[]>([])
+    /**
+     * 受控展开键（树模式）：revealPath 定位与用户点按共用一份状态。
+     * 树模式必须受控——程序化展开（reveal）只能经由此通道，antd 无非受控的外部展开入口。
+     */
+    const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
     /** 已展开过的子目录路径（根 '.' 永远订阅，不在此列）；用于驱动 useQueries 订阅 */
     const [expandedPaths, setExpandedPaths] = useState<string[]>([])
     /** 筛选框输入；非空时切换为扁平搜索结果视图（替换树） */
@@ -223,15 +298,42 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
         refetch: refetchSearch,
     } = useDebouncedFileSearch(sessionId, filter)
 
+    /** 定位目标：scheduleReveal 挂起，目标文件渲染进树后由 reveal 收尾 effect 消费 */
+    const pendingRevealRef = useRef<string | null>(null)
+
+    /**
+     * 展开 revealPath 的祖先目录链并挂起定位。
+     * 订阅集合与展开键同步追加——祖先目录进入 useQueries，数据就绪后子节点才会出现在 treeData。
+     *
+     * 树的 key 是 cwd 相对路径：绝对路径（工具链打开 cwd 外/任意文件）无法映射进树，
+     * 展开到哪层都不对——显式跳过定位（不污染展开键，文件完整路径已有面包屑承载）。
+     */
+    const scheduleReveal = useCallback(() => {
+        if (!revealPath || isSearching) return
+        if (revealPath.startsWith('/')) return
+        pendingRevealRef.current = revealPath
+        const dirs = ancestorDirKeys(revealPath)
+        if (dirs.length === 0) return
+        setExpandedKeys((prev) => Array.from(new Set([...prev, ...dirs])))
+        setExpandedPaths((prev) => [...prev, ...dirs.filter((d) => !prev.includes(d))])
+    }, [revealPath, isSearching])
+
     // active false→true：invalidate 该 session 所有 directory query（根 + 已展开子目录），
     // 后台静默刷新。已有缓存先展示（SWR），用户感受到的是「打开即最新」。
+    // 重开弹层时顺带重新定位到当前 revealPath（tab 可能在关闭期间切到了别的文件）。
     const prevActiveRef = useRef(active)
     useEffect(() => {
         if (!prevActiveRef.current && active) {
             queryClient.invalidateQueries({ queryKey: queryKeys.sessionDirectories(sessionId) })
+            scheduleReveal()
         }
         prevActiveRef.current = active
-    }, [active, sessionId, queryClient])
+    }, [active, sessionId, queryClient, scheduleReveal])
+
+    // 挂载即定位：Popover 内容随首次打开挂载（active=true），active 边沿探测不到这次打开
+    useEffect(() => {
+        scheduleReveal()
+    }, [scheduleReveal])
 
     /** 手动刷新的最短旋转窗口（见 REFRESH_SPIN_MIN_MS） */
     const [spinUntilTimeout, setSpinUntilTimeout] = useState(false)
@@ -392,6 +494,12 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
         return nodes
     }, [rootListing, buildNodes, truncationNode])
 
+    // 树最小宽度估算（横向滚动的宽度下限，见 estimateTreeMinWidth；经 CSS 变量传给 inner）
+    const treeMinWidth = useMemo(
+        () => estimateTreeMinWidth(rootListing?.entries, dirData, searchResults.map((r) => r.path)),
+        [rootListing, dirData, searchResults],
+    )
+
     // 搜索模式：扁平结果重建嵌套树（虚拟目录合并公共前缀），叶子保留 size/modified
     const searchTree = useMemo(() => buildPathTree(searchResults), [searchResults])
     const searchTreeData = useMemo(() => buildNodes(searchTree), [searchTree, buildNodes])
@@ -407,18 +515,28 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
         }
     }
 
-    // 树模式懒加载：展开目录时订阅该目录（useQueries 接管后续 SWR 刷新）。
-    // cache 有则 fetchQuery 立即 resolve（antd 不显 loading，children 已从 dirData 渲染）；
-    // cache 无则等首次拉取完成，antd 期间显示 switcher loading。
-    // 注意：cache 命中时 antd 根本不调 loadData（treeData 已有 children）。
+    // 树模式懒加载：展开目录时拉取该目录数据（antd 对无 children 的节点才调 loadData；
+    // cache 已有则 children 从 dirData 直接渲染，antd 不调 loadData、不发请求）。
+    // 目录订阅由 handleExpand 维护（展开键受控后 onExpand 是订阅的统一入口）。
     const loadDirData: TreeProps['loadData'] = async (node) => {
         const path = node.key as string
-        setExpandedPaths((prev) => (prev.includes(path) ? prev : [...prev, path]))
         await queryClient.fetchQuery({
             queryKey: queryKeys.sessionDirectory(sessionId, path),
             queryFn: () => fetchDirectory(path),
             staleTime: 0,
         })
+    }
+
+    /**
+     * 受控展开：reveal 定位与用户点按共用 expandedKeys 一份状态。
+     * 订阅集合只增不减——收起目录保留订阅（SWR 缓存继续后台刷新），再展开不触发 stale refetch。
+     */
+    const handleExpand: TreeProps['onExpand'] = (keys, info) => {
+        setExpandedKeys(keys)
+        if (info.expanded && !info.node.isLeaf) {
+            const path = String(info.node.key)
+            setExpandedPaths((prev) => (prev.includes(path) ? prev : [...prev, path]))
+        }
     }
 
     /**
@@ -456,21 +574,40 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
         return () => ro.disconnect()
     }, [])
 
+    /** antd Tree ref：虚拟模式下 scrollTo 定位用 */
+    const treeRef = useRef<React.ComponentRef<typeof Tree>>(null)
+
+    // reveal 收尾：目标文件已渲染进树（祖先目录数据就绪）→ 选中 + 滚动定位，清除挂起。
+    // 虚拟模式下目标节点可能不在渲染窗口内，须经 scrollTo；非虚拟全量渲染无需滚动。
+    useEffect(() => {
+        const path = pendingRevealRef.current
+        if (!path || isSearching) return
+        if (!findDataNode(treeData, path)) return
+        pendingRevealRef.current = null
+        setSelectedKeys([path])
+        if (treeHeight > 0) {
+            treeRef.current?.scrollTo({ key: path, align: 'auto' })
+        }
+    }, [treeData, isSearching, treeHeight])
+
     const renderTree = (
         data: DataNode[],
-        opts: { expandedKeys?: string[]; loadData?: TreeProps['loadData'] },
+        opts: { expandedKeys?: React.Key[]; loadData?: TreeProps['loadData']; onExpand?: TreeProps['onExpand'] },
     ) => (
         <Tree
+            ref={treeRef}
             treeData={data}
             showIcon
             blockNode
             expandAction="click"
             selectedKeys={selectedKeys}
             loadData={opts.loadData}
+            onExpand={opts.onExpand}
             onSelect={onSelect}
             virtual={treeHeight > 0}
             height={treeHeight > 0 ? treeHeight : undefined}
-            // 仅搜索模式传 expandedKeys（全展开）；树模式省略以保持非受控（否则 antd 视为受控空，无法展开）
+            // 树模式与搜索模式都传受控 expandedKeys：树模式为 reveal 定位通道，
+            // 搜索模式保持原全展开语义
             {...(opts.expandedKeys ? { expandedKeys: opts.expandedKeys } : {})}
         />
     )
@@ -519,7 +656,10 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
             {/* 虚拟滚动 host：稳定挂载，ResizeObserver 测其高传给 Tree。
                 内只放 Tree/Empty/Skeleton（提示条已提到 host 外，不占 height）。
                 overflow auto 兼顾非虚拟模式(jsdom/未测到高)下内容可滚。 */}
-            <div ref={hostRef} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+            <div
+                ref={hostRef}
+                style={{ flex: 1, minHeight: 0, overflow: 'auto', '--tree-min-width': `${treeMinWidth}px` } as React.CSSProperties}
+            >
                 {isSearching ? (
                     searchResults.length === 0 ? (
                         // loading + 空：结果区保持空白（Input prefix 转圈指示），不显示 Skeleton 避免快网闪烁
@@ -550,7 +690,11 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true }: F
                 ) : !rootListing || rootListing.entries.length === 0 ? (
                     <Empty description={t('files.empty')} style={{ marginTop: 40 }} />
                 ) : (
-                    renderTree(treeData, { loadData: loadDirData })
+                    renderTree(treeData, {
+                        expandedKeys,
+                        onExpand: handleExpand,
+                        loadData: loadDirData,
+                    })
                 )}
             </div>
         </TreeWrap>

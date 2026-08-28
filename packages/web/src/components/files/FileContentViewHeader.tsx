@@ -154,9 +154,12 @@ export default function FileContentViewHeader({ sessionId, tabId, filePath, extr
                     placement="bottomLeft"
                     content={
                         <div style={{ width: 300, height: 400, overflow: 'auto' }}>
+                            {/* revealPath：打开弹层即定位到当前文件（展开祖先目录 + 滚动 + 选中），
+                                用户不必在弹层里重新逐层找当前文件 */}
                             <FileTreeView
                                 sessionId={sessionId}
                                 active={treeOpen}
+                                revealPath={filePath}
                                 onOpenFile={(fp, fn) => {
                                     // store 去重：当前文件不响应 / 别的 tab 已开则激活 / 否则当前 tab 转该文件
                                     openFileInTab(sessionId, tabId, fp, fn)
