@@ -559,6 +559,8 @@ export async function userInputLoop(
         waitForIdle?: () => Promise<void>
         /** 用户消息 push 给 SDK 后上报 (localIds → nativeId) 绑定 */
         onBound?: (binding: { localIds: string[]; nativeId: string }) => void
+        /** 输入 push 前回调：置 LoopContext.hasInput 并立即置 running（提前激活后 init 不再驱动 running） */
+        markInputPushed: () => void
     },
 ): Promise<void> {
     while (!opts.signal?.aborted) {
@@ -605,6 +607,7 @@ export async function userInputLoop(
         }
 
         // 普通消息或 compact，推送到 messages（预设 uuid 并上报 localIds → nativeId 绑定）
+        opts.markInputPushed();
         pushUserMessage(messages, sanitizePayload(next.message), { localIds: next.localIds, onBound: opts.onBound });
     }
 }
@@ -663,6 +666,9 @@ export async function claudeRemote(opts: {
     // steer sink 就绪回调：传入把文本 push 进 SDK input stream 的方法，用于 steer 已排队消息
     // push 携带可选 localId：steal 路径的消息同样预设 uuid 并上报绑定
     onSteerSinkReady?: (push: (payload: PromptPayload, localId?: string) => boolean) => void,
+    /** UserPromptSubmit hook 观测回调：入站 prompt（含跨会话 peer 消息）直达 wrapper，
+     * 由 launcher 甄别落库。恒同步调用、不阻塞 SDK 主流程（回调内部自行兜错） */
+    onInboundPrompt?: (input: { prompt: string; source?: string }) => void,
 }) {
 
     // pushUserMessage 的绑定回调适配：localIds 批展开为逐条 (localId, nativeId) 上报
@@ -779,7 +785,9 @@ export async function claudeRemote(opts: {
         }
     }
 
-    // 并行：预热子进程 + 等待用户首条消息
+    // 预热子进程；常规轮 startup 成功即「提前激活」（spec 2026-08-28 ①）——不等首条消息
+    // 就 attach query 并启动输出循环，跨会话等 SDK 旁路流量从会话第一秒起被消费落库。
+    // 首条消息的消费路径（nextMessage → handleSpecialCommand → push）原样后移，语义零变化。
     let warmRef: WarmQuery | null = null
 
     const baseConfig = opts.getSessionConfig()
@@ -846,79 +854,25 @@ export async function claudeRemote(opts: {
         toolConfig: {
             askUserQuestion: { previewFormat: 'markdown' }
         },
+        // 入站跨会话消息观测（spec 2026-08-28 ②）：SDK 进程内 hook 回调，
+        // 事件直达 wrapper——无需 shell 命令/端口/token（与 settings 文件的
+        // SessionStart hook-forwarder 并存不冲突）。只观测不干预，恒放行。
+        hooks: {
+            UserPromptSubmit: [{
+                hooks: [async (input) => {
+                    if (input.hook_event_name === 'UserPromptSubmit') {
+                        opts.onInboundPrompt?.({ prompt: input.prompt, source: input.source })
+                    }
+                    return { continue: true }
+                }],
+            }],
+        },
     }
 
-    // rewind 截断由 startup 预热承载：sdkOptions 已带 resumeSessionAt（resume 时只加载到
-    // 锚点 uuid 为止），startup 在 boot 时加载历史即完成截断。
-    let initial: { message: PromptPayload; mode: EnhancedMode; localIds: string[] };
-    if (opts.resumeSessionAt) {
-        // 截断轮：串行 startup 截断 → 回报 → 等用户消息。回报必须落在 nextMessage 之前——
-        // 用户消息依赖 Web 回填（rewind-completed），回填依赖回报，若等 nextMessage 再回报会死锁。
-        // startup 失败（进程 spawn 失败）向上抛，由 launcher catch 补发 completed { error }
-        warmRef = await startup({ options: sdkOptions })
-        await opts.onRewindTruncated?.()
-        const msg = await opts.nextMessage()
-        if (!msg) {
-            warmRef?.close()
-            return
-        }
-        initial = msg
-    } else {
-        // 常规轮：并行 startup 预热 + 等首条消息（不再走空 prompt 空跑轮）
-        const [warmSettled, msgSettled] = await Promise.allSettled([
-            startup({ options: sdkOptions }),
-            opts.nextMessage(),
-        ])
-
-        if (warmSettled.status === 'fulfilled') {
-            warmRef = warmSettled.value
-        }
-
-        if (msgSettled.status !== 'fulfilled' || !msgSettled.value) {
-            warmRef?.close()
-            return
-        }
-        initial = msgSettled.value
-    }
-
-    // 创建 messages 并接通 !bash 注入 sink：提前到首条消息处理之前，使「首条即 !cmd」时
-    // executeBashCommand 推入的注入也能进入下面的 query——与中途 !cmd 行为一致，不再退化。
-    // query 尚未启动，PushableAsyncIterable 会缓冲，query 消费时即触发模型响应。
-    const messages = new PushableAsyncIterable<SDKUserMessage>();
-    // 返回 push 是否被接纳：messages 已关闭（query 退出）时 push 会抛错，捕获返回 false，
-    // 供 executeBashCommand 判断「注入不会触发模型轮次」并据此复位 running。
-    bashInjectSink = (text: string, localIds: string[] = []): boolean => {
-        if (messages.done) return false;
-        try {
-            pushUserMessage(messages, text, { localIds, onBound });
-            return true;
-        } catch {
-            return false;
-        }
-    };
-
-    const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
-    const initialResult = await handleSpecialCommand(asCommandText(initial.message), specialCommandCtx, initial.localIds)
-
-    if (initialResult.shouldExit) {
-        warmRef?.close()
-        return
-    }
-
-    // 首条即 bash：注入开 → 注入已入 messages，落到下面启动 query；注入关 → 纯本地、不启动 query。
-    const isBashInitial = initialResult.handled && !initialResult.isCompact
-    if (isBashInitial && !configuration.bashInjectContext) {
-        warmRef?.close()
-        return
-    }
-
-    const isCompactCommand = initialResult.isCompact;
-
-    // Track running state
-    let running = false;
-
-    // idle gate：running 翻 false（result）时 resolve，供 userInputLoop 等待
+    // running 跟踪 + idle gate（先于 messages/bashInjectSink 声明，消除 TDZ 阅读歧义）：
+    // running 翻 false（result）时 resolve，供 userInputLoop 等待
     // 保证消息只在 agent 闲置时才被拉取并推送，避免 turn 串扰
+    let running = false;
     let idleResolver: (() => void) | null = null
     const waitForIdle = (): Promise<void> =>
         new Promise<void>(resolve => { idleResolver = resolve })
@@ -940,91 +894,182 @@ export async function claudeRemote(opts: {
         }
     };
 
-    // Push initial message
-    // 首条即 bash 且注入开时，executeBashCommand 已把注入 push 进 messages，不再 push 原始 !cmd 文本；
-    // 其余（普通消息 / compact）push 原文（预设 uuid 并上报 localIds → nativeId 绑定）。
-    if (!isBashInitial) {
-        pushUserMessage(messages, sanitizePayload(initial.message), { localIds: initial.localIds, onBound });
+    // 双循环共享上下文：hasInput 门控 init→running；initialModel 由 initial 处理后回填
+    const loopCtx: LoopContext = { isCompactCommand: false, hasInput: false }
+
+    /** 输入 push 统一前置：标记已有输入并立即置 running（提前激活后 init 不再驱动 running） */
+    const markInputPushed = (): void => {
+        loopCtx.hasInput = true
+        updateRunning(true)
     }
 
-    // 注入 steer sink：把仍排队的消息 payload push 进 SDK input stream，返回 true。
-    // 由 launcher 的 steer-queued-message RPC 调用，把已排队消息提前提交给 SDK。
-    // localId 携带时同样预设 uuid 并上报绑定（steal 路径单条消息）。
-    if (opts.onSteerSinkReady) {
-        opts.onSteerSinkReady((payload: PromptPayload, localId?: string) => {
-            try {
-                pushUserMessage(messages, sanitizePayload(payload), { localIds: localId ? [localId] : [], onBound });
-                return true;
-            } catch (e) {
-                logger.debug('[claudeRemote] steer push 失败，消息将 pushBack 恢复排队:', e);
-                return false;
-            }
-        });
-    }
-
-    let warmConsumed = false;
-    let response: Query;
-    if (warmRef) {
-        response = warmRef.query(messages)
-        warmConsumed = true
-    } else {
-        const fallbackConfig = opts.getSessionConfig()
-        const fallbackOptions: Options = {
-            ...sdkOptions,
-            permissionMode: fallbackConfig.permissionMode,
-            model: fallbackConfig.model,
-            effort: fallbackConfig.effort,
+    // 创建 messages 并接通 !bash 注入 sink：提前激活时随 attach 一同接通。query 尚未启动，
+    // PushableAsyncIterable 会缓冲，query 消费时即触发模型响应。
+    const messages = new PushableAsyncIterable<SDKUserMessage>();
+    // 返回 push 是否被接纳：messages 已关闭（query 退出）时 push 会抛错，捕获返回 false，
+    // 供 executeBashCommand 判断「注入不会触发模型轮次」并据此复位 running。
+    bashInjectSink = (text: string, localIds: string[] = []): boolean => {
+        if (messages.done) return false;
+        try {
+            markInputPushed();
+            pushUserMessage(messages, text, { localIds, onBound });
+            return true;
+        } catch {
+            return false;
         }
-        response = query({ prompt: messages, options: fallbackOptions })
-    }
+    };
 
-    // 把 Query 引用传给外部，用于 interrupt/close 控制
-    opts.onQueryReady?.(response);
-
-    updateRunning(true);
-
-    // 流式输出：Snapshot 发送器
-    const converter = opts.getConverter()
-    const snapshotSender = new StreamSnapshotSender(
-        opts.onSnapshot,
-        converter,
-    );
-    snapshotSender.start();
-
-    // 中间态恒 false（Task 5 由 markInputPushed 置位并回填 initialModel）
-    const loopCtx: LoopContext = {
-        isCompactCommand,
-        hasInput: false,
-    }
-
-    // 双循环协调：任一退出时 abort 通知另一个终止
+    // 双循环协调：任一退出时 abort 通知另一个终止（提前激活窗口内输出循环的 signal
+    // 已被引用，声明须先于 outputLoopPromise 创建）
     const loopAbort = new AbortController()
 
+    // —— attach 产物：提前激活 / fallback attach / finally 清理三方共享，统一声明
+    let warmConsumed = false
+    let response: Query | null = null
+    let snapshotSender: StreamSnapshotSender | null = null
+    let outputLoopError: unknown = null
+    let outputLoopPromise: Promise<void> | null = null
+
+    /** attach 完成后启动流式快照发送器与输出循环（提前激活与 fallback attach 共用） */
+    const startOutputLoop = (q: Query): void => {
+        // 流式输出：Snapshot 发送器
+        snapshotSender = new StreamSnapshotSender(
+            opts.onSnapshot,
+            opts.getConverter(),
+        );
+        snapshotSender.start();
+        outputLoopPromise = sdkOutputLoop(q, loopCtx, {
+            path: opts.path,
+            onMessage: opts.onMessage,
+            onAbortFlush: opts.onAbortFlush,
+            snapshotSender,
+            onSessionFound: opts.onSessionFound,
+            onReady: opts.onReady,
+            onRunningChange: updateRunning,
+            onCompletionEvent: opts.onCompletionEvent,
+            onCompactCompleted: opts.onCompactCompleted,
+            onContextUsage: opts.onContextUsage,
+            onCompactBoundary: opts.onCompactBoundary,
+            signal: loopAbort.signal,
+        }).catch((e) => { outputLoopError = e })
+        // 防首条消息等待窗口的未处理 rejection：race 接管前先挂 no-op catch
+        outputLoopPromise.catch(() => {})
+    }
+
+    // 下面的 early return（等不到首条消息 / 首条特殊命令退出 / 首条 !bash 注入关）
+    // 都可能发生在提前激活之后——统一由 finally 清理 attach 产物（abort 输出循环、
+    // 关闭 query、销毁 snapshotSender、复位 running、未消费的 warm 补关）。
     try {
-        await Promise.race([
-            sdkOutputLoop(response, loopCtx, {
-                path: opts.path,
-                onMessage: opts.onMessage,
-                onAbortFlush: opts.onAbortFlush,
-                snapshotSender,
-                onSessionFound: opts.onSessionFound,
-                onReady: opts.onReady,
-                onRunningChange: updateRunning,
-                onCompletionEvent: opts.onCompletionEvent,
-                onCompactCompleted: opts.onCompactCompleted,
-                onContextUsage: opts.onContextUsage,
-                onCompactBoundary: opts.onCompactBoundary,
-                signal: loopAbort.signal,
-            }),
-            userInputLoop(messages, loopCtx, {
-                nextMessage: opts.nextMessage,
-                specialCommandCtx,
-                isRunning: () => running,
-                waitForIdle,
-                onBound,
-                signal: loopAbort.signal,
-            }),
-        ])
+        // rewind 截断由 startup 预热承载：sdkOptions 已带 resumeSessionAt（resume 时只加载到
+        // 锚点 uuid 为止），startup 在 boot 时加载历史即完成截断。
+        let initial: { message: PromptPayload; mode: EnhancedMode; localIds: string[] };
+        if (opts.resumeSessionAt) {
+            // 截断轮：串行 startup 截断 → 回报 → 等用户消息。回报必须落在 nextMessage 之前——
+            // 用户消息依赖 Web 回填（rewind-completed），回填依赖回报，若等 nextMessage 再回报会死锁。
+            // 截断轮不提前激活（截断本身就是要丢历史，窗口内无旁路流量价值），行为与现状一致。
+            // startup 失败（进程 spawn 失败）向上抛，由 launcher catch 补发 completed { error }
+            warmRef = await startup({ options: sdkOptions })
+            await opts.onRewindTruncated?.()
+            const msg = await opts.nextMessage()
+            if (!msg) {
+                return
+            }
+            initial = msg
+        } else {
+            // 常规轮：预热；startup 失败不提前激活，回落现状路径（首条消息到了再 fallback attach），
+            // 不新增失败分支（spec 约束）
+            try {
+                warmRef = await startup({ options: sdkOptions })
+            } catch (e) {
+                logger.debug(`[claudeRemote] startup failed, deferring attach to first message:`, e)
+            }
+            if (warmRef) {
+                // 提前激活核心（spec 2026-08-28 ①）：不等首条消息即 attach + 启动输出循环，
+                // 首条消息等待窗口内的旁路流量（跨会话等 SDK 注入）被即时消费落库
+                response = warmRef.query(messages)
+                warmConsumed = true
+                // 把 Query 引用传给外部，用于 interrupt/close 控制
+                opts.onQueryReady?.(response);
+                startOutputLoop(response)
+            }
+            const msg = await opts.nextMessage()
+            if (!msg) {
+                return
+            }
+            initial = msg
+        }
+
+        const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
+        const initialResult = await handleSpecialCommand(asCommandText(initial.message), specialCommandCtx, initial.localIds)
+
+        if (initialResult.shouldExit) {
+            return
+        }
+
+        // 首条即 bash：注入开 → 注入已入 messages、由已启动的循环消费触发模型轮次；注入关 → 纯本地、退出。
+        const isBashInitial = initialResult.handled && !initialResult.isCompact
+        if (isBashInitial && !configuration.bashInjectContext) {
+            return
+        }
+
+        loopCtx.isCompactCommand = initialResult.isCompact;
+
+        if (!warmConsumed) {
+            // fallback attach（startup 失败路径，行为同现状）：首条消息到了再 attach
+            const fallbackConfig = opts.getSessionConfig()
+            const fallbackOptions: Options = {
+                ...sdkOptions,
+                permissionMode: fallbackConfig.permissionMode,
+                model: fallbackConfig.model,
+                effort: fallbackConfig.effort,
+            }
+            response = query({ prompt: messages, options: fallbackOptions })
+            // 把 Query 引用传给外部，用于 interrupt/close 控制
+            opts.onQueryReady?.(response);
+            startOutputLoop(response)
+        }
+
+        // initial 处理完成，回填模型名（stream_event 缺 model 时的快照兜底，见 LoopContext.initialModel）
+        loopCtx.initialModel = initial.mode.model
+
+        // 注入 steer sink：把仍排队的消息 payload push 进 SDK input stream，返回 true。
+        // 由 launcher 的 steer-queued-message RPC 调用，把已排队消息提前提交给 SDK。
+        // localId 携带时同样预设 uuid 并上报绑定（steal 路径单条消息）。
+        if (opts.onSteerSinkReady) {
+            opts.onSteerSinkReady((payload: PromptPayload, localId?: string) => {
+                try {
+                    markInputPushed();
+                    pushUserMessage(messages, sanitizePayload(payload), { localIds: localId ? [localId] : [], onBound });
+                    return true;
+                } catch (e) {
+                    logger.debug('[claudeRemote] steer push 失败，消息将 pushBack 恢复排队:', e);
+                    return false;
+                }
+            });
+        }
+
+        // Push initial message
+        // 首条即 bash 且注入开时，executeBashCommand 已把注入 push 进 messages，不再 push 原始 !cmd 文本；
+        // 其余（普通消息 / compact）push 原文（预设 uuid 并上报 localIds → nativeId 绑定）。
+        if (!isBashInitial) {
+            markInputPushed();
+            pushUserMessage(messages, sanitizePayload(initial.message), { localIds: initial.localIds, onBound });
+        }
+
+        // —— 输入循环：initial 已被外层消费，此刻才安全启动（避免双消费者竞争绕过特殊命令处理）；
+        // 输出循环已在提前激活 / fallback attach 时启动
+        const inputLoopPromise = userInputLoop(messages, loopCtx, {
+            nextMessage: opts.nextMessage,
+            specialCommandCtx,
+            isRunning: () => running,
+            waitForIdle,
+            onBound,
+            markInputPushed,
+            signal: loopAbort.signal,
+        })
+
+        await Promise.race([outputLoopPromise!, inputLoopPromise])
+        if (outputLoopError !== null) throw outputLoopError
     } catch (e) {
         // 增强错误日志：捕获 SDK 抛出的非标准错误对象。
         // 保持 debug 级：此处 re-throw，错误最终由 claudeRemoteLauncher 的终态 catch
@@ -1038,10 +1083,13 @@ export async function claudeRemote(opts: {
         // 通知未退出的循环终止
         loopAbort.abort()
         // 关闭 SDK 输出，确保 sdkOutputLoop 停止迭代
-        try { response.close() } catch (e) {
-            logger.debug(`[claudeRemote] Error closing response:`, e)
+        if (response) {
+            try { response.close() } catch (e) {
+                logger.debug(`[claudeRemote] Error closing response:`, e)
+            }
         }
-        snapshotSender.destroy();
+        // snapshotSender 仅在 startOutputLoop 闭包内赋值，TS 流分析在此收窄为 never，显式还原
+        (snapshotSender as StreamSnapshotSender | null)?.destroy();
         updateRunning(false);
         if (!warmConsumed) warmRef?.close();
     }
