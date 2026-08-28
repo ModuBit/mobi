@@ -496,6 +496,33 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
+    /**
+     * 落库入站跨会话消息（UserPromptSubmit hook 观测的 peer 消息）。
+     * 该消息未经 hub 发送通道，此处是它唯一的持久化入口；
+     * sentFrom 保留 'cli'（永不排队），来源标注放 meta.crossSession。
+     */
+    sendInboundCrossSessionMessage(text: string, fromName: string | null, nativeId: string): void {
+        const content: MessageContent = {
+            role: 'user',
+            content: {
+                type: 'text',
+                text
+            },
+            meta: {
+                sentFrom: 'cli',
+                ...(fromName ? { crossSession: { from: fromName } } : {})
+            }
+        }
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: content,
+            // nativeId 用随机 uuid（hook 输入无 transcript uuid）；仅用于 hub 本地去重锚
+            localId: nativeId,
+            metadata: { nativeId },
+            category: classifyMessage('user')
+        })
+    }
+
     sendAgentMessage(body: unknown): void {
         const content = {
             role: 'agent',

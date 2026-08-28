@@ -155,7 +155,9 @@ export const MessageMetaSchema = z.object({
     customSystemPrompt: z.string().nullable().optional(),
     appendSystemPrompt: z.string().nullable().optional(),
     allowedTools: z.array(z.string()).nullable().optional(),
-    disallowedTools: z.array(z.string()).nullable().optional()
+    disallowedTools: z.array(z.string()).nullable().optional(),
+    /** 跨会话入站消息来源标注（UserPromptSubmit hook 观测的 peer 消息，from = 来源会话名） */
+    crossSession: z.object({ from: z.string() }).optional()
 })
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>
