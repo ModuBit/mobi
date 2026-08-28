@@ -39,8 +39,8 @@ const StopWrap = styled.span<{ $ring: boolean }>`
         position: absolute;
         inset: -4px;
         border-radius: 50%;
-        border: 3px solid color-mix(in srgb, var(--ant-colorWarning) 35%, transparent);
-        border-top-color: var(--ant-colorWarning);
+        border: 3px solid color-mix(in srgb, var(--ant-color-warning) 35%, transparent);
+        border-top-color: var(--ant-color-warning);
         animation: ${spinKf} 1s linear infinite;
         pointer-events: none;
         /* abortPending 时 Button 自身转圈，光环隐藏 */

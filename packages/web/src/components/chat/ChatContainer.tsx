@@ -820,7 +820,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             // MobiLogo 小跳 + 文字：svg aria-hidden，语义由文字承载（屏幕阅读器可读）
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'center', alignItems: 'center', height: '100%' }}>
                 <MobiLogo size={56} />
-                <span style={{ fontSize: 13, color: 'var(--ant-colorTextTertiary)' }}>{t('common.loading')}</span>
+                <span style={{ fontSize: 13, color: 'var(--ant-color-text-tertiary)' }}>{t('common.loading')}</span>
             </div>
         )
     }

@@ -441,7 +441,7 @@ export function NewSessionPage() {
         return template(
             <span style={{
                 textDecoration: 'underline',
-                textDecorationColor: 'var(--ant-colorPrimary)',
+                textDecorationColor: 'var(--ant-color-primary)',
                 textUnderlineOffset: 4,
                 textDecorationThickness: 2,
             }}>

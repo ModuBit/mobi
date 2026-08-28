@@ -50,6 +50,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
                 token,
                 components,
                 algorithm,
+                // 显式开启 CSS 变量模式：把 token 注册为全局 --ant-* 自定义属性（v6 变量名为
+                // kebab-case，如 --ant-color-warning）。组件层多处样式依赖这些变量（如
+                // SubmitButton 光环的 color-mix、CommandProgressBubble 的 warning 色光标/
+                // 进度条）——不开启时这些 var() 全部无效（光环透明不可见、颜色静默降级为继承色）。
+                // v6 类型只接受 { prefix?, key? }，空对象 = 开启并走默认值
+                cssVar: {},
             }}
         >
             <AntApp>

@@ -53,12 +53,12 @@ const flowKf = keyframes`
 
 /** 卡片容器：浅底圆角，min-width 保证进度条可见 */
 const Card = styled.div`
-    background: var(--ant-colorBgElevated);
-    border: 1px solid var(--ant-colorBorderSecondary);
-    border-radius: var(--ant-borderRadiusLG, 14px);
+    background: var(--ant-color-bg-elevated);
+    border: 1px solid var(--ant-color-border-secondary);
+    border-radius: var(--ant-border-radius-lg, 14px);
     padding: 14px 16px;
     min-width: 240px;
-    box-shadow: var(--ant-boxShadowSecondary, none);
+    box-shadow: var(--ant-box-shadow-secondary, none);
     animation: ${cardInKf} 360ms cubic-bezier(.22, 1, .36, 1) both;
 
     ${reducedMotion} { animation: none; }
@@ -84,7 +84,7 @@ const Title = styled.span`
     font-family: var(--font-mono);
     font-size: 13.5px;
     font-weight: 500;
-    color: var(--ant-colorText);
+    color: var(--ant-color-text);
     letter-spacing: .01em;
     display: inline-flex;
     align-items: center;
@@ -93,7 +93,7 @@ const Title = styled.span`
         display: inline-block;
         width: .5em;
         margin-left: 3px;
-        color: var(--ant-colorWarning);
+        color: var(--ant-color-warning);
         animation: ${blinkKf} 1000ms steps(2, start) infinite;
         ${reducedMotion} { animation: none; opacity: .6; }
     }
@@ -104,7 +104,7 @@ const Progress = styled.div`
     width: 100%;
     height: 3px;
     border-radius: 999px;
-    background: var(--ant-colorBorder);
+    background: var(--ant-color-border);
     overflow: hidden;
     position: relative;
 
@@ -114,9 +114,9 @@ const Progress = styled.div`
         inset: 0;
         background: linear-gradient(90deg,
             transparent 0%,
-            var(--ant-colorTextTertiary) 30%,
-            var(--ant-colorWarning) 50%,
-            var(--ant-colorTextTertiary) 70%,
+            var(--ant-color-text-tertiary) 30%,
+            var(--ant-color-warning) 50%,
+            var(--ant-color-text-tertiary) 70%,
             transparent 100%);
         background-size: 200% 100%;
         animation: ${flowKf} 1500ms cubic-bezier(.4, 0, .2, 1) infinite;

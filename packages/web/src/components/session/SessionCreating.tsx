@@ -41,7 +41,7 @@ const viewInKf = keyframes`
 `
 
 const livePulseKf = keyframes`
-    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ant-colorWarning) 55%, transparent); }
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ant-color-warning) 55%, transparent); }
     70%  { box-shadow: 0 0 0 6px transparent; }
     100% { box-shadow: 0 0 0 0 transparent; }
 `
@@ -68,8 +68,8 @@ const View = styled.div`
     position: relative;
     overflow: hidden;
     min-height: 280px;
-    background: var(--ant-colorBgContainer);
-    border-radius: var(--ant-borderRadius, 8px);
+    background: var(--ant-color-bg-container);
+    border-radius: var(--ant-border-radius, 8px);
     animation: ${viewInKf} 420ms cubic-bezier(.22, 1, .36, 1) both;
 
     ${reducedMotion} { animation: none; }
@@ -84,23 +84,23 @@ const EnvChip = styled.div`
     gap: 8px;
     padding: 5px 12px;
     border-radius: 999px;
-    background: var(--ant-colorFillTertiary);
-    border: 1px solid var(--ant-colorBorderSecondary);
+    background: var(--ant-color-fill-tertiary);
+    border: 1px solid var(--ant-color-border-secondary);
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--ant-colorTextSecondary);
+    color: var(--ant-color-text-secondary);
     letter-spacing: .01em;
     max-width: 100%;
 
-    .machine { color: var(--ant-colorText); font-weight: 500; }
-    .sep     { color: var(--ant-colorTextQuaternary); }
+    .machine { color: var(--ant-color-text); font-weight: 500; }
+    .sep     { color: var(--ant-color-text-quaternary); }
     .path    { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .live-dot {
         width: 7px; height: 7px;
         flex-shrink: 0;
         border-radius: 50%;
-        background: var(--ant-colorWarning);
+        background: var(--ant-color-warning);
         animation: ${livePulseKf} 1800ms ease-out infinite;
         ${reducedMotion} { animation: none; }
     }
@@ -110,7 +110,7 @@ const EnvChip = styled.div`
 const Stage = styled.div`
     font-family: var(--font-mono);
     font-size: 14.5px;
-    color: var(--ant-colorText);
+    color: var(--ant-color-text);
     font-weight: 500;
     letter-spacing: .01em;
     display: inline-flex;
@@ -122,7 +122,7 @@ const Stage = styled.div`
         display: inline-block;
         width: .55em;
         margin-left: 3px;
-        color: var(--ant-colorWarning);
+        color: var(--ant-color-warning);
         animation: ${blinkKf} 1000ms steps(2, start) infinite;
         ${reducedMotion} { animation: none; opacity: .6; }
     }
@@ -131,7 +131,7 @@ const Stage = styled.div`
 const Sub = styled.div`
     font-family: var(--font-mono);
     font-size: 11.5px;
-    color: var(--ant-colorTextTertiary);
+    color: var(--ant-color-text-tertiary);
     margin-top: -10px;
     text-align: center;
 `
@@ -141,7 +141,7 @@ const Progress = styled.div`
     width: 220px;
     height: 3px;
     border-radius: 999px;
-    background: var(--ant-colorBorder);
+    background: var(--ant-color-border);
     overflow: hidden;
     position: relative;
     margin-top: 6px;
@@ -152,9 +152,9 @@ const Progress = styled.div`
         inset: 0;
         background: linear-gradient(90deg,
             transparent 0%,
-            var(--ant-colorText) 30%,
-            var(--ant-colorWarning) 50%,
-            var(--ant-colorText) 70%,
+            var(--ant-color-text) 30%,
+            var(--ant-color-warning) 50%,
+            var(--ant-color-text) 70%,
             transparent 100%);
         background-size: 200% 100%;
         animation: ${flowKf} 1500ms cubic-bezier(.4, 0, .2, 1) infinite;
