@@ -3,7 +3,7 @@ name: real-session-seed
 description: 把生产库真实会话（含全部消息）拷入 e2e 库，做消息加载 / 窗口化 / fill 级联类验证
 metadata:
   type: recipe
-  last_verified: 2026-08-25
+  last_verified: 2026-08-28
 ---
 
 # 真实大会话注入（prod → e2e 拷库）
@@ -49,3 +49,8 @@ DETACH prod;
 
 - **position_at 列**：见上，PRAGMA 不显示但 NOT NULL
 - **机器/项目引用**：置 NULL，否则分组/关联查询可能碰上缺失行
+- **贴底跟随弹回置顶**：会话贴底状态下程序化 `scrollTop=0` 会被 re-follow 钉回底部，
+  置顶触发级联时要多轮重试或等窗口离开贴底区
+- **消息窗口化优先于 img lazy**：验证「视口外图片不加载」时注意——窗口化让远处消息
+  连 DOM 都不进，img 级 lazy 只对窗口内屏外图片生效；且程序化瞬移滚动会让图片掠过
+  视口触发加载（无法用于验证远程不加载，那是浏览器原生保证）

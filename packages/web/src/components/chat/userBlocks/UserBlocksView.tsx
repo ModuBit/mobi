@@ -121,8 +121,10 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
             : env.machineId && env.cwd
                 ? buildMachineReadFileUrl(env.machineId, env.cwd, raw)
                 : buildReadFileUrl(env.sessionId ?? '', raw)
-    // 失败态钉死在触发它的具体 src 上：src 变化（重试/网络恢复后重新渲染）自动重试
-    const src = failedFor === computed ? FALLBACK_IMAGE : computed
+    // 失败态钉死在触发它的具体 src 上：src 变化（重试/网络恢复后重新渲染）自动重试。
+    // 兜底图无放大价值，preview 一并关闭（点击不再弹出兜底图预览）
+    const failed = failedFor === computed
+    const src = failed ? FALLBACK_IMAGE : computed
     return (
         <AppTooltip title={block.filename}>
             <FileCard
@@ -136,8 +138,13 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
                     overflow: 'hidden',
                 } }}
                 imageProps={{
-                    preview: true,
+                    preview: !failed,
                     fallback: FALLBACK_IMAGE,
+                    // 原生懒加载：rc-image COMMON_PROPS 白名单把 loading/decoding 透传到真实 <img>，
+                    // 视口外的历史图片不再随恢复/流式渲染一拥而上抢请求；已在视口内则立即加载，首屏无损。
+                    // 旧浏览器不支持时退化为 eager，安全降级。测试锁定该透传链路
+                    loading: 'lazy',
+                    decoding: 'async',
                     // styles.image 才落在 <img> 元素上：width/height 只定外层容器，裁切必须单独传
                     styles: { image: { objectFit: 'cover' } },
                     onError: () => setFailedFor(computed),

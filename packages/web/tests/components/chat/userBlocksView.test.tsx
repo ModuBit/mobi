@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { UserContentBlock } from '@mobi/shared'
 
@@ -126,6 +126,48 @@ describe('UserBlocksView 按 block 分发渲染', () => {
             />,
         )
         expect(screen.getByRole('img', { name: /p\.png|p/ })).toHaveAttribute('src', 'blob:http://localhost/abc')
+    })
+
+    it('image 走原生懒加载：loading=lazy + decoding=async 落到真实 <img>', () => {
+        // rc-image COMMON_PROPS 白名单透传——锁住这条链路，防上游把 loading 移出白名单后静默失效
+        render(
+            <UserBlocksView
+                blocks={[{
+                    type: 'image',
+                    source: { type: 'url', value: '/u/p.png', mimeType: 'image/png' },
+                    id: 'g1', filename: 'p.png', size: 1,
+                }]}
+                env={{ sessionId: 's1' }}
+            />,
+        )
+        const img = screen.getByRole('img', { name: /p\.png|p/ })
+        expect(img).toHaveAttribute('loading', 'lazy')
+        expect(img).toHaveAttribute('decoding', 'async')
+    })
+
+    it('image 加载失败进兜底态：src 换兜底图且关闭点击预览（兜底图无放大价值）', async () => {
+        const { container } = render(
+            <UserBlocksView
+                blocks={[{
+                    type: 'image',
+                    source: { type: 'url', value: '/u/p.png', mimeType: 'image/png' },
+                    id: 'g1', filename: 'p.png', size: 1,
+                }]}
+                env={{ sessionId: 's1' }}
+            />,
+        )
+        // 初始态可预览：rc-image 在 preview 开启时给外层容器 role=button
+        const img = screen.getByRole('img', { name: /p\.png|p/ })
+        expect(img.closest('[role="button"]')).not.toBeNull()
+
+        fireEvent.error(img)
+        const fallbackImg = await waitFor(() => {
+            const el = container.querySelector('img')
+            expect(el).toHaveAttribute('src', expect.stringContaining('data:image'))
+            return el as HTMLImageElement
+        })
+        // 失败态预览关闭：外层不再有 role=button（点卡片不弹兜底图放大）
+        expect(fallbackImg.closest('[role="button"]')).toBeNull()
     })
 })
 
