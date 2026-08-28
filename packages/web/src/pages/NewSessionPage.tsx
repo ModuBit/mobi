@@ -29,7 +29,7 @@ import { EFFORT_LEVELS, EFFORT_LABELS, getPermissionModeTone } from '@mobi/share
 import { useMachines } from '@/core/data/hooks/queries/useMachines'
 import { useProjects } from '@/core/data/hooks/queries/useProjects'
 import { useSpawnSession, type SpawnInput } from '@/core/data/hooks/mutations/useSpawnSession'
-import { SessionSpawnPending } from '@/components/session/SessionSpawnPending'
+import { SessionCreating } from '@/components/session/SessionCreating'
 import { ProjectFormModal } from '@/components/project/ProjectFormModal'
 import { useDirectoryCapabilities, type CapabilityTarget } from '@/core/data/hooks/queries/useDirectoryCapabilities'
 import { useDirectoryCommands } from '@/components/composer/useDirectoryCommands'
@@ -907,7 +907,7 @@ export function NewSessionPage() {
 
                 <InputCard>
                 {isPending ? (
-                    <SessionSpawnPending machineLabel={machineLabel} directory={directoryLabel} />
+                    <SessionCreating machineLabel={machineLabel} directory={directoryLabel} />
                 ) : (
                 <div
                     ref={wrapperRef}

@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
+import { MobiLogo } from '@/components/ui/MobiLogo'
 
 /**
  * 命令执行中进度 bubble（compact / clear 等共用）
  *
  * 聊天流里的进行中反馈。后端命令（/compact、/clear）无真实进度，这里不编造百分比、
- * 不计时——用 图标 + 固定文案 + 暖橙闪烁光标 + indeterminate 流动进度条，诚实传递
- * "命令在跑"。与 SessionSpawnPending 共用同一套流动条视觉语言。
+ * 不计时——用 MobiLogo 小跳动画 + 固定文案 + 暖橙闪烁光标 + indeterminate 流动进度条，
+ * 诚实传递"命令在跑"。与 SessionCreating 共用同一套视觉语言（MobiLogo + 流动条）。
  *
  * 主题：全部 antd cssVar + 项目 var(--font-mono)，light/dark 自动，零硬编码。
  * 动画：尊重 prefers-reduced-motion。
@@ -71,18 +71,13 @@ const Row = styled.div`
     margin-bottom: 12px;
 `
 
-/** 图标软底（暖橙 tint），与进度条高亮呼应 */
-const IconBox = styled.span`
-    width: 28px;
-    height: 28px;
+/** MobiLogo 容器：与右侧文案垂直对齐的固定宽槽 */
+const LogoSlot = styled.span`
+    width: 32px;
+    height: 32px;
     flex-shrink: 0;
-    border-radius: 8px;
     display: grid;
     place-items: center;
-    background: color-mix(in srgb, var(--ant-colorWarning) 14%, transparent);
-    color: var(--ant-colorWarning);
-
-    svg { width: 16px; height: 16px; }
 `
 
 const Title = styled.span`
@@ -131,8 +126,6 @@ const Progress = styled.div`
 `
 
 export interface CommandProgressBubbleProps {
-    /** 命令图标（如 CompressOutlined / ClearOutlined） */
-    icon: ReactNode
     /** 文案 i18n key（如 chat.compacting / chat.clearing） */
     titleKey: string
 }
@@ -141,15 +134,17 @@ export interface CommandProgressBubbleProps {
  * 命令执行中进度 bubble
  *
  * 由 ChatContainer 在 /compact、/clear 等命令进行中 push 到聊天流末尾。
- * 纯展示组件，无时间状态——进度条与光标是 CSS 动画循环。
+ * 纯展示组件，无时间状态——MobiLogo 小跳与进度条、光标是 CSS 动画循环。
  */
-export function CommandProgressBubble({ icon, titleKey }: CommandProgressBubbleProps) {
+export function CommandProgressBubble({ titleKey }: CommandProgressBubbleProps) {
     const { t } = useTranslation()
 
     return (
         <Card>
             <Row>
-                <IconBox>{icon}</IconBox>
+                <LogoSlot>
+                    <MobiLogo size={28} />
+                </LogoSlot>
                 {/* role=status：文案 mount 时由屏幕阅读器播报一次；装饰元素 aria-hidden */}
                 <Title role="status" aria-live="polite">
                     {t(titleKey)}

@@ -16,7 +16,7 @@
 
 /**
  * Mobi 品牌几何真源 —— 集中定义 "m" 标记与 "MOBI" 字标的 SVG 路径，
- * 供 Logo / AnimateLogo / MobiWordmark / MobiLockup 共享，避免几何分散多处。
+ * 供 Logo / MobiLogo / MobiWordmark / MobiLockup 共享，避免几何分散多处。
  */
 
 /** "m" 标记左半折线（viewBox 250×250），右半由 transform=translate(250,0) scale(-1,1) 镜像复用 */

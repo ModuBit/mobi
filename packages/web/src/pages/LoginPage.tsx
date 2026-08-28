@@ -29,7 +29,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useThemeLocaleToggle } from '@/components/layout/useThemeLocaleToggle'
 import { Logo } from '@/components/layout/Logo'
-import { AnimateLogo } from '@/components/layout/AnimateLogo'
+import { MobiLogo } from '@/components/ui/MobiLogo'
 import { MobiWordmark } from '@/components/layout/MobiWordmark'
 import { Helmet } from 'react-helmet-async'
 import axios from 'axios'
@@ -183,8 +183,8 @@ const WelcomeTitle = styled.h1`
     }
 `
 
-/** 动画 Logo（表单区域，颜色由 AnimateLogo 自随主题） */
-const AnimatedLogoWrap = styled(AnimateLogo)`
+/** 品牌 Logo（表单区域，入场打招呼播一轮：MobiLogo play=once） */
+const AnimatedLogoWrap = styled(MobiLogo)`
     display: block;
     width: 64px;
     height: 64px;
@@ -330,7 +330,7 @@ export function LoginPage() {
 
                 <FormArea>
                     <div style={{ marginBottom: 32 }}>
-                        <AnimatedLogoWrap />
+                        <AnimatedLogoWrap play="once" />
                         <WelcomeTitle>{t('login.welcome')}</WelcomeTitle>
                         <WelcomeSubtitle>
                             {t('login.welcomeSubtitle')}

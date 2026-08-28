@@ -17,7 +17,7 @@
 import { useTranslation } from 'react-i18next'
 import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
-import { AnimateLogo } from '@/components/layout/AnimateLogo'
+import { MobiLogo } from '@/components/ui/MobiLogo'
 
 /**
  * 创建会话过渡态
@@ -165,7 +165,7 @@ const Progress = styled.div`
     @media (max-width: 640px) { width: 180px; }
 `
 
-export interface SessionSpawnPendingProps {
+export interface SessionCreatingProps {
     /** 机器显示名（displayName → host → id.slice，见 NewSessionPage.machineLabel） */
     machineLabel: string
     /** 工作目录（已格式化，home 被替换为 ~） */
@@ -175,10 +175,10 @@ export interface SessionSpawnPendingProps {
 /**
  * 创建会话过渡态视图
  *
- * mount 时机即 isPending 起始，AnimateLogo 的 build 动画正好在显示时播放。
+ * mount 时机即 isPending 起始，MobiLogo 的「小跳三下」正好在显示时循环播放。
  * 纯展示组件，无任何时间状态——进度条与光标是 CSS 动画循环，不基于真实进度推导。
  */
-export function SessionSpawnPending({ machineLabel, directory }: SessionSpawnPendingProps) {
+export function SessionCreating({ machineLabel, directory }: SessionCreatingProps) {
     const { t } = useTranslation()
 
     return (
@@ -190,7 +190,7 @@ export function SessionSpawnPending({ machineLabel, directory }: SessionSpawnPen
                 <span className="path">{directory || '/'}</span>
             </EnvChip>
 
-            <AnimateLogo style={{ width: 64, height: 64, marginTop: 4, marginBottom: -6 }} />
+            <MobiLogo size={64} style={{ marginTop: 4, marginBottom: -6 }} />
 
             {/* role=status：mount 时由屏幕阅读器播报一次"正在创建会话…"；装饰元素 aria-hidden */}
             <Stage role="status" aria-live="polite">

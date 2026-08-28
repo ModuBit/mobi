@@ -19,10 +19,10 @@ import { SSEProvider } from '@/core/providers/SSEProvider'
 import { useAuthStore } from '@/core/data/stores/authStore'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useEffect, useState, Suspense } from 'react'
-import { Spin } from 'antd'
 import { setUnauthorizedHandler, createApiClient, useMobiApi } from '@/core/data/api/client'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { prefetchRouteChunks } from '@/core/lib/routeChunks'
+import { MobiLogo } from '@/components/ui/MobiLogo'
 
 export function App() {
     const { authenticated, logout } = useAuthStore()
@@ -105,7 +105,7 @@ export function App() {
     )
 }
 
-/** root 级懒加载 chunk（MainLayout/LoginPage 自身）拉取期间的占位：全屏居中 Spin（antd 已在 eager 图，零额外开销） */
+/** root 级懒加载 chunk（MainLayout/LoginPage 自身）拉取期间的占位：全屏居中 MobiLogo 小跳（loop） */
 function RouteLoadingFallback() {
     return (
         <div
@@ -116,7 +116,7 @@ function RouteLoadingFallback() {
                 minHeight: '100dvh',
             }}
         >
-            <Spin />
+            <MobiLogo size={56} />
         </div>
     )
 }

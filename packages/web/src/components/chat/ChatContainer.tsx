@@ -17,8 +17,8 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { Spin, Button, theme as antTheme, message } from 'antd'
-import { DownOutlined, LoadingOutlined, CompressOutlined, ClearOutlined, StopOutlined } from '@ant-design/icons'
-import { Undo2 } from 'lucide-react'
+import { DownOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons'
+
 import { Global, css } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import { useMessages } from '@/core/data/hooks/queries/useMessages'
@@ -759,7 +759,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             items.push({
                 key: '__compressing__',
                 role: 'assistant',
-                content: <CommandProgressBubble icon={<CompressOutlined />} titleKey="chat.compacting" />,
+                content: <CommandProgressBubble titleKey="chat.compacting" />,
                 variant: 'borderless',
             })
         }
@@ -768,7 +768,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             items.push({
                 key: '__clearing__',
                 role: 'assistant',
-                content: <CommandProgressBubble icon={<ClearOutlined />} titleKey="chat.clearing" />,
+                content: <CommandProgressBubble titleKey="chat.clearing" />,
                 variant: 'borderless',
             })
         }
@@ -777,7 +777,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
             items.push({
                 key: '__rewinding__',
                 role: 'assistant',
-                content: <CommandProgressBubble icon={<Undo2 />} titleKey="chat.rewind.executing" />,
+                content: <CommandProgressBubble titleKey="chat.rewind.executing" />,
                 variant: 'borderless',
             })
         }

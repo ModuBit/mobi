@@ -16,7 +16,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Bubble } from '@ant-design/x'
-import { Skeleton } from 'antd'
+import { MobiLogo } from '@/components/ui/MobiLogo'
 import { BUBBLE_ROLES } from './bubbleRoles'
 import type { BubbleItemBase } from './buildBubbleItems'
 import { useStickToBottom } from './useStickToBottom'
@@ -39,7 +39,7 @@ interface BubbleListChatProps {
     items: ChatBubbleItem[]
     /** 是否还有更旧的历史页（驱动「滚到顶加载」与 fill 级联） */
     hasNextPage: boolean
-    /** 正在加载更旧的历史页（顶部渲染 skeleton，fill 级联期间不显示） */
+    /** 正在加载更旧的历史页（顶部渲染 MobiLogo loading，fill 级联期间不显示） */
     isFetchingNextPage: boolean
     /** 加载更旧历史（对接 fetchNextPage） */
     onLoadMore: () => void
@@ -104,7 +104,7 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
     const pendingRestoreRef = useRef<{ scrollTop: number; scrollHeight: number; itemsLength: number; firstItemKey?: string | number | null } | null>(null)
     // restore 补偿期间屏蔽 scroll listener（避免重复触发 prefetch / 误判 fill）
     const isRestoringScrollRef = useRef(false)
-    // fill 级联：初始加载内容未溢出时连续拉页，期间不显示 skeleton（避免高度来回跳动）
+    // fill 级联：初始加载内容未溢出时连续拉页，期间不显示 loading（避免高度来回跳动）
     const isFillingRef = useRef(false)
     const scrollRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -323,7 +323,7 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
         scrollToBottom: stickToBottom,
     }), [stickToBottom])
 
-    // renderItems：window slice + 顶部 skeleton。
+    // renderItems：window slice + 顶部 loading。
     //
     // window 状态机（spec §6.2）：
     // - following=true（贴底看最新）：items.slice(-VISIBLE_WINDOW=400)，SSE 增长裁顶保 400
@@ -348,20 +348,25 @@ export const BubbleListChat = forwardRef<BubbleListChatHandle, BubbleListChatPro
             const n = Math.min(windowSizeRef.current, EXPAND_WINDOW)
             windowed = items.slice(-n)
         }
-        // 顶部 skeleton：fill 级联期间不显示（高度来回跳动致抖动），仅用户主动滚到顶加载时显示
+        // 顶部 loading：fill 级联期间不显示（高度来回跳动致抖动），仅用户主动滚到顶加载时显示。
+        // MobiLogo 小跳（loop）替代骨架屏——品牌动效即"正在拉取"，且比骨架屏高度小、prepend 跳动小
         if (!isFetchingNextPage || isFillingRef.current) return windowed
         return [
             {
-                key: '__loading-skeleton__',
+                key: '__loading-more__',
                 role: 'system' as const,
-                content: <Skeleton active avatar paragraph={{ rows: 2 }} />,
+                content: (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
+                        <MobiLogo size={40} />
+                    </div>
+                ),
             },
             ...windowed,
         ]
     }, [items, following, isFetchingNextPage, windowTick])
 
-    // 跳过 skeleton，取第一个真实 item 的 key（供 offsetTop querySelector 测量）
-    const firstRealItem = renderItems.find(it => it.key !== '__loading-skeleton__')
+    // 跳过 loading，取第一个真实 item 的 key（供 offsetTop querySelector 测量）
+    const firstRealItem = renderItems.find(it => it.key !== '__loading-more__')
     firstRenderItemKeyRef.current = firstRealItem?.key
 
     return (

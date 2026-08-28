@@ -22,7 +22,7 @@ import type { ReactNode } from 'react'
 import { CommandProgressBubble } from '@/components/chat/CommandProgressBubble'
 
 // mock i18next：提供命令进度文案映射
-// initReactI18next 必须 noop 导出 —— 同 SessionSpawnPending.test，避免 i18n 顶层 init 报错
+// initReactI18next 必须 noop 导出 —— 同 SessionCreating.test，避免 i18n 顶层 init 报错
 vi.mock('react-i18next', () => ({
     initReactI18next: { type: '3rdParty', init: () => {} },
     useTranslation: () => ({
@@ -36,8 +36,7 @@ vi.mock('react-i18next', () => ({
     }),
 }))
 
-// 测试用占位图标（data-testid 便于断言），不依赖 antd icon 库
-const TestIcon = () => <svg data-testid="cmd-icon" />
+// 测试用占位图标已随 icon prop 移除：进度 bubble 的左侧视觉统一为 MobiLogo 品牌动画
 
 const wrapper = ({ children }: { children: ReactNode }) => (
     <ConfigProvider>{children}</ConfigProvider>
@@ -47,23 +46,26 @@ describe('CommandProgressBubble', () => {
     // vitest 未开 globals，需显式 cleanup（见 project_web-test-cleanup-explicit）
     afterEach(cleanup)
 
-    it('渲染图标与文案', () => {
-        render(<CommandProgressBubble icon={<TestIcon />} titleKey="chat.compacting" />, { wrapper })
+    it('渲染 MobiLogo 品牌动画与文案', () => {
+        const { container } = render(<CommandProgressBubble titleKey="chat.compacting" />, { wrapper })
         expect(screen.getByText('正在压缩对话…')).toBeInTheDocument()
-        expect(screen.getByTestId('cmd-icon')).toBeInTheDocument()
+        // MobiLogo：250×250 viewBox 品牌动画 svg
+        //（不用 svg[viewBox=...] 选择器——jsdom 选择器引擎对 camelCase attribute 名匹配不可靠）
+        const svg = container.querySelector('svg')
+        expect(svg).toHaveAttribute('viewBox', '0 0 250 250')
     })
 
     it('titleKey 切换驱动文案（compact vs clear）', () => {
-        const { rerender } = render(<CommandProgressBubble icon={<TestIcon />} titleKey="chat.compacting" />, { wrapper })
+        const { rerender } = render(<CommandProgressBubble titleKey="chat.compacting" />, { wrapper })
         expect(screen.getByText('正在压缩对话…')).toBeInTheDocument()
 
-        rerender(<CommandProgressBubble icon={<TestIcon />} titleKey="chat.clearing" />)
+        rerender(<CommandProgressBubble titleKey="chat.clearing" />)
         expect(screen.getByText('正在清空上下文…')).toBeInTheDocument()
         expect(screen.queryByText('正在压缩对话…')).not.toBeInTheDocument()
     })
 
     it('文案容器具备 role=status 可访问性', () => {
-        render(<CommandProgressBubble icon={<TestIcon />} titleKey="chat.clearing" />, { wrapper })
+        render(<CommandProgressBubble titleKey="chat.clearing" />, { wrapper })
         const status = screen.getByRole('status')
         expect(status).toHaveTextContent('正在清空上下文')
         expect(status).toHaveAttribute('aria-live', 'polite')
