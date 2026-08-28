@@ -2,10 +2,14 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <!-- viewport-fit=cover：内容延伸到刘海/圆角/home 指示条区域，让 env(safe-area-inset-*)
          返回真实避让值（否则 iOS 下恒为 0，safe-area 全失效）。各贴边组件用 env() 自行避让。
-         maximum-scale 维持禁用缩放（看代码靠 drawer 内横向滚动，避免输入误捏合放大） -->
+         maximum-scale 维持禁用缩放（看代码靠 drawer 内横向滚动，避免输入误捏合放大）
+         interactive-widget=resizes-content：Android Chrome 键盘弹出时收缩布局视口（ICB）而非默认的
+         resizes-visual（只缩 visual viewport + 滚动 window 抬起输入框）。默认行为会把 100dvh 的
+         MainLayout 整体顶出屏外（header 消失）；resizes-content 下 dvh 跟随收缩，flex 布局原地
+         重排——header 保持可见、输入框贴键盘上沿。iOS Safari 忽略此关键字，无副作用 -->
     <!-- 浏览器 chrome（标签栏/地址栏）着色：静态默认浅色 #ffffff / 深色 #141414，运行时由 MainLayout 按 uiStore.theme 动态覆盖 -->
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)" />
