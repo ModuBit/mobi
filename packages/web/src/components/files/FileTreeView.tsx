@@ -31,7 +31,7 @@ import { basename } from '@/core/utils/path'
 import { formatFileSize } from '@/core/utils/fileSize'
 import { formatRelativeTime } from '@/core/utils/timeFormat'
 import { useDebouncedFileSearch, MAX_DISPLAY } from '@/core/data/hooks/queries/useDebouncedFileSearch'
-import { buildPathTree, collectDirKeys, ancestorDirKeys, type NestedFileNode } from '@/core/utils/pathTree'
+import { buildPathTree, collectDirKeys, ancestorDirKeys, estimateTreeMinWidth, type NestedFileNode } from '@/core/utils/pathTree'
 import type { ListDirectoryResponse } from '@/core/data/api/types'
 
 /** 在 treeData 中按 key 查找节点（reveal 收尾判定：目标文件是否已渲染进树） */
@@ -44,50 +44,6 @@ function findDataNode(nodes: DataNode[], key: string): DataNode | null {
         }
     }
     return null
-}
-
-/** 单行文本宽度估算（px）：13px 字号，CJK/全角近似 13px、其余近似 7px */
-function estimateTextWidth(text: string): number {
-    let w = 0
-    for (const ch of text) w += ch.charCodeAt(0) > 0x2e7f ? 13 : 7
-    return w
-}
-
-/**
- * 树的最小宽度估算（px）——横向滚动方案的宽度下限。
- *
- * 虚拟滚动只渲染可视行，`min-width: max-content` 仅由已渲染行决定：宽度随纵向滚动
- * 跳变，且未渲染的长名行不贡献宽度、无法预先横向滚到。树数据是全量已知的
- * （虚拟化只裁渲染不裁数据），故按「逐层缩进 + 该层最宽名」做全量估算，保证：
- * - 宽度稳定单调（不随滚动窗口变化）
- * - 不小于绝大多数行的实际宽度（个别估算偏小的行由行内 nowrap 溢出补偿，不会截断）
- *
- * 估算偏大只是多留白（横向滚到空白），无害。
- */
-export function estimateTreeMinWidth(
-    rootEntries: { name: string }[] | undefined,
-    dirEntries: Record<string, { entries: { name: string }[] } | undefined>,
-    searchPaths: string[],
-): number {
-    const INDENT_UNIT = 16
-    const NODE_EXTRA = 76 // 图标 + switcher + 内边距
-    let max = 0
-    const consider = (depth: number, entries?: { name: string }[]) => {
-        if (!entries) return
-        for (const e of entries) {
-            max = Math.max(max, depth * INDENT_UNIT + NODE_EXTRA + estimateTextWidth(e.name))
-        }
-    }
-    consider(0, rootEntries)
-    for (const [path, meta] of Object.entries(dirEntries)) {
-        if (!meta || path === '.') continue
-        consider(path.split('/').length, meta.entries)
-    }
-    for (const p of searchPaths) {
-        const parts = p.split('/').filter(Boolean)
-        max = Math.max(max, (parts.length - 1) * INDENT_UNIT + NODE_EXTRA + estimateTextWidth(parts[parts.length - 1]))
-    }
-    return Math.ceil(max)
 }
 
 /**
@@ -300,6 +256,8 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
 
     /** 定位目标：scheduleReveal 挂起，目标文件渲染进树后由 reveal 收尾 effect 消费 */
     const pendingRevealRef = useRef<string | null>(null)
+    /** 已定位过的 revealPath（归一化后）：同一文件只定位一次 */
+    const revealedForRef = useRef<string | null>(null)
 
     /**
      * 展开 revealPath 的祖先目录链并挂起定位。
@@ -307,12 +265,21 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
      *
      * 树的 key 是 cwd 相对路径：绝对路径（工具链打开 cwd 外/任意文件）无法映射进树，
      * 展开到哪层都不对——显式跳过定位（不污染展开键，文件完整路径已有面包屑承载）。
+     * './src/a.ts' 归一化为 'src/a.ts'——不归一化会产出 ['.','./src'] 等与树 key 永不
+     * 匹配的展开键，定位静默失效。
+     *
+     * 同一 revealPath 只执行一次（revealedForRef 守卫）：本回调的 identity 随
+     * isSearching/revealPath 变化会重跑「挂载即定位」effect，若无守卫会重新武装
+     * pendingReveal，用户清空搜索后的任意 treeData 变化都会把浏览位置/高亮拉回 revealPath。
      */
     const scheduleReveal = useCallback(() => {
         if (!revealPath || isSearching) return
         if (revealPath.startsWith('/')) return
-        pendingRevealRef.current = revealPath
-        const dirs = ancestorDirKeys(revealPath)
+        const normalized = revealPath.replace(/^\.\//, '')
+        if (revealedForRef.current === normalized) return
+        revealedForRef.current = normalized
+        pendingRevealRef.current = normalized
+        const dirs = ancestorDirKeys(normalized)
         if (dirs.length === 0) return
         setExpandedKeys((prev) => Array.from(new Set([...prev, ...dirs])))
         setExpandedPaths((prev) => [...prev, ...dirs.filter((d) => !prev.includes(d))])
@@ -494,17 +461,25 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
         return nodes
     }, [rootListing, buildNodes, truncationNode])
 
-    // 树最小宽度估算（横向滚动的宽度下限，见 estimateTreeMinWidth；经 CSS 变量传给 inner）
-    const treeMinWidth = useMemo(
-        () => estimateTreeMinWidth(rootListing?.entries, dirData, searchResults.map((r) => r.path)),
-        [rootListing, dirData, searchResults],
-    )
-
     // 搜索模式：扁平结果重建嵌套树（虚拟目录合并公共前缀），叶子保留 size/modified
     const searchTree = useMemo(() => buildPathTree(searchResults), [searchResults])
     const searchTreeData = useMemo(() => buildNodes(searchTree), [searchTree, buildNodes])
-    // 搜索结果默认全展开（用户正在看匹配项，不应再手动展开虚拟目录）
-    const searchExpandedKeys = useMemo(() => collectDirKeys(searchTree), [searchTree])
+
+    // 树最小宽度估算（横向滚动的宽度下限，见 estimateTreeMinWidth；经 CSS 变量传给 inner）。
+    // 搜索树传 buildPathTree 产物：缩进按合并前缀后的真实渲染深度计，不按原始 path 段数
+    const treeMinWidth = useMemo(
+        () => estimateTreeMinWidth(rootListing?.entries, dirData, searchTree),
+        [rootListing, dirData, searchTree],
+    )
+
+    // 搜索结果默认全展开（用户正在看匹配项），且为受控 state：用户可收起/再展开虚拟目录，
+    // 新搜索结果（searchTree 变化）重置回全展开。expandedKeys 受控而不接 onExpand 时
+    // antd 展开交互完全失效（受控值恒不更新）
+    const [searchExpandedKeys, setSearchExpandedKeys] = useState<React.Key[]>([])
+    useEffect(() => {
+        setSearchExpandedKeys(collectDirKeys(searchTree))
+    }, [searchTree])
+    const handleSearchExpand: TreeProps['onExpand'] = (keys) => setSearchExpandedKeys(keys)
 
     const onSelect: TreeProps['onSelect'] = (_keys, info) => {
         // 仅 file 选中并打开；folder 点击只触发展开（expandAction），不选中不高亮
@@ -592,10 +567,14 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
 
     const renderTree = (
         data: DataNode[],
-        opts: { expandedKeys?: React.Key[]; loadData?: TreeProps['loadData']; onExpand?: TreeProps['onExpand'] },
+        opts: { treeKey: string; expandedKeys?: React.Key[]; loadData?: TreeProps['loadData']; onExpand?: TreeProps['onExpand'] },
     ) => (
         <Tree
             ref={treeRef}
+            // treeKey：树模式/搜索模式各用独立实例。rc-tree 在同一实例上切换 treeData 后
+            // switcher 的 onExpand 不再触发（上一棵树在 DOM 留下 motion 残留空节点），
+            // 切换即强制重建实例规避之
+            key={opts.treeKey}
             treeData={data}
             showIcon
             blockNode
@@ -671,7 +650,7 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                         )
                     ) : (
                         <>
-                            {renderTree(searchTreeData, { expandedKeys: searchExpandedKeys })}
+                            {renderTree(searchTreeData, { treeKey: 'search', expandedKeys: searchExpandedKeys, onExpand: handleSearchExpand })}
                             {searchResults.length >= FILE_SEARCH_MAX && (
                                 <div className="search-truncated">
                                     {t('files.resultsTruncated', { count: FILE_SEARCH_MAX })}
@@ -691,6 +670,7 @@ export default function FileTreeView({ sessionId, onOpenFile, active = true, rev
                     <Empty description={t('files.empty')} style={{ marginTop: 40 }} />
                 ) : (
                     renderTree(treeData, {
+                        treeKey: 'tree',
                         expandedKeys,
                         onExpand: handleExpand,
                         loadData: loadDirData,

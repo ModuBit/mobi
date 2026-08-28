@@ -105,9 +105,9 @@ describe('ancestorDirKeys', () => {
 })
 
 describe('estimateTreeMinWidth', () => {
-    // 经 FileTreeView 导出：横向滚动的宽度下限估算（纯函数，虚拟滚动宽度稳定性依赖）
+    // 横向滚动的宽度下限估算（纯函数，虚拟滚动宽度稳定性依赖）
     it('取「逐层缩进 + 最宽名」的最大值，深度更深但名短不一定是最大', async () => {
-        const { estimateTreeMinWidth } = await import('@/components/files/FileTreeView')
+        const { estimateTreeMinWidth } = await import('@/core/utils/pathTree')
         const w = estimateTreeMinWidth(
             [{ name: 'short.ts' }, { name: 'a-very-long-file-name-in-root.ts' }],
             { deep: { entries: [{ name: 'x' }] } },
@@ -121,21 +121,28 @@ describe('estimateTreeMinWidth', () => {
     })
 
     it('CJK 文件名按全宽估算（比同长度 ASCII 更宽）', async () => {
-        const { estimateTreeMinWidth } = await import('@/components/files/FileTreeView')
+        const { estimateTreeMinWidth } = await import('@/core/utils/pathTree')
         const ascii = estimateTreeMinWidth([{ name: 'a'.repeat(10) }], {}, [])
         const cjk = estimateTreeMinWidth([{ name: '中'.repeat(10) }], {}, [])
         expect(cjk).toBeGreaterThan(ascii)
     })
 
     it('空数据返回 0（宽度完全交由 max-content 兜底）', async () => {
-        const { estimateTreeMinWidth } = await import('@/components/files/FileTreeView')
+        const { estimateTreeMinWidth } = await import('@/core/utils/pathTree')
         expect(estimateTreeMinWidth(undefined, {}, [])).toBe(0)
     })
 
-    it('搜索路径参与估算（按 path 深度缩进 + 末段名宽）', async () => {
-        const { estimateTreeMinWidth } = await import('@/components/files/FileTreeView')
+    // 搜索视图的树由 buildPathTree 合并公共前缀生成：'a/b/c/very-long.ts' 实际只渲染
+    // 在 1 层虚拟目录下，若按 path 段数算缩进会系统性高估宽度（review 发现）
+    it('搜索树按合并前缀后的真实深度估算，不按 path 段数', async () => {
+        const { estimateTreeMinWidth, buildPathTree } = await import('@/core/utils/pathTree')
         const base = estimateTreeMinWidth([{ name: 'x' }], {}, [])
-        const withSearch = estimateTreeMinWidth([{ name: 'x' }], {}, ['a/b/c/very-long-searched-file-name.ts'])
-        expect(withSearch).toBeGreaterThan(base)
+        // 4 层前缀 + 长末段：若按段数缩进会明显偏大
+        const searchTree = buildPathTree([file('a/b/c/d/very-long-searched-file-name.ts')])
+        const w = estimateTreeMinWidth([{ name: 'x' }], {}, searchTree)
+        expect(w).toBeGreaterThan(base)
+        // 合并后只有 1 层缩进：宽度不应超过「1 层缩进 + 末段名宽」太多（无 4 层缩进的放大）
+        const singleLevel = 1 * 16 + 76 + 'very-long-searched-file-name.ts'.length * 7
+        expect(w).toBeLessThan(singleLevel * 2)
     })
 })
