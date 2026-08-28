@@ -68,7 +68,7 @@ describe('UserBlocksView ImageView', () => {
         expect(container.querySelector('img')!.getAttribute('src')).toBe('blob:http://localhost/abc')
     })
 
-    it('文件名承载于 alt（无障碍）+ AppTooltip hover 提示包裹', () => {
+    it('文件名承载于 img alt（无障碍），不挂 tooltip', () => {
         const { container } = render(
             <UserBlocksView blocks={[serverImageBlock()]} env={{ sessionId: 'sess-1' }} />,
         )

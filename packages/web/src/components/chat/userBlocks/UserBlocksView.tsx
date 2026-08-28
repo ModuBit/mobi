@@ -25,7 +25,6 @@ import type {
 import { groupUserBlocks } from '@/domain/chat/userContent'
 import { buildMachineReadFileUrl, buildReadFileUrl } from '@/core/utils/fileUrl'
 import { FALLBACK_IMAGE } from '@/core/utils/fallbackImage'
-import { AppTooltip } from '@/components/ui/AppTooltip'
 import { TextBlock } from '../blocks/TextBlock'
 
 /** 渲染视图共用的上下文：文本柔和样式（合成消息）与会话文件 URL 构造所需 */
@@ -105,7 +104,7 @@ const IMAGE_THUMB_SIZE = 80
  *
  * 失败兜底由组件自管 failed 态（对齐 ImageContentView 的做法）：新版 @rc-component/image
  * 的 fallback 依赖内部 isImageValid 异步真加载，机制不透明且版本间易变——显式 onError 置
- * failed 换 src 到兜底图，行为可预期也可直接单测。hover 文件名提示由 AppTooltip 承载。
+ * failed 换 src 到兜底图，行为可预期也可直接单测。文件名承载于 img alt（无障碍），不挂 tooltip。
  */
 function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     const { token } = theme.useToken()
@@ -126,31 +125,29 @@ function ImageView({ block, env }: UserBlockViewProps<UserImageBlock>) {
     const failed = failedFor === computed
     const src = failed ? FALLBACK_IMAGE : computed
     return (
-        <AppTooltip title={block.filename}>
-            <FileCard
-                type="image"
-                name={block.filename}
-                src={src}
-                styles={{ file: {
-                    width: IMAGE_THUMB_SIZE,
-                    height: IMAGE_THUMB_SIZE,
-                    borderRadius: token.borderRadiusSM,
-                    overflow: 'hidden',
-                } }}
-                imageProps={{
-                    preview: !failed,
-                    fallback: FALLBACK_IMAGE,
-                    // 原生懒加载：rc-image COMMON_PROPS 白名单把 loading/decoding 透传到真实 <img>，
-                    // 视口外的历史图片不再随恢复/流式渲染一拥而上抢请求；已在视口内则立即加载，首屏无损。
-                    // 旧浏览器不支持时退化为 eager，安全降级。测试锁定该透传链路
-                    loading: 'lazy',
-                    decoding: 'async',
-                    // styles.image 才落在 <img> 元素上：width/height 只定外层容器，裁切必须单独传
-                    styles: { image: { objectFit: 'cover' } },
-                    onError: () => setFailedFor(computed),
-                }}
-            />
-        </AppTooltip>
+        <FileCard
+            type="image"
+            name={block.filename}
+            src={src}
+            styles={{ file: {
+                width: IMAGE_THUMB_SIZE,
+                height: IMAGE_THUMB_SIZE,
+                borderRadius: token.borderRadiusSM,
+                overflow: 'hidden',
+            } }}
+            imageProps={{
+                preview: !failed,
+                fallback: FALLBACK_IMAGE,
+                // 原生懒加载：rc-image COMMON_PROPS 白名单把 loading/decoding 透传到真实 <img>，
+                // 视口外的历史图片不再随恢复/流式渲染一拥而上抢请求；已在视口内则立即加载，首屏无损。
+                // 旧浏览器不支持时退化为 eager，安全降级。测试锁定该透传链路
+                loading: 'lazy',
+                decoding: 'async',
+                // styles.image 才落在 <img> 元素上：width/height 只定外层容器，裁切必须单独传
+                styles: { image: { objectFit: 'cover' } },
+                onError: () => setFailedFor(computed),
+            }}
+        />
     )
 }
 
