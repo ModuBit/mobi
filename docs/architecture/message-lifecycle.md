@@ -58,6 +58,7 @@ SDK 类型集**持续演进**（加法式新增），mobi 分类采用黑名单�
 - `content.type`：`output`（CLI 上报 SDK 消息）；webapp 用户输入的 content 是**block 数组**（AG-UI 对齐的 `UserContentBlock[]`，text/image/document/quote 四型，见 shared `userContentSchema.ts`）或兼容旧格式的 `text`
 - **`data` 是 SDK 原始消息的不透明透传**（`type`/`subtype`/`message.usage` 原样保留）——从 DB 取 SDK 字段直接下钻 `data.xxx`，无 mobi 改写（见 pending #56「投影税」）
 - 用户消息**写入侧统一归一**：hub `sendMessage` 经 shared `normalizeUserContent` 把 string / 旧平铺 `{type:'text',text,attachments}` / 新格式三形态归一为 block 数组落库；读取侧 web 端由同一函数归一（存量零迁移）
+- **入站跨会话消息**（2026-08-28）：CLI 经 SDK UserPromptSubmit hook 观测的 peer 消息（`claude/utils/inboundCrossSession.ts` 甄别），经 `sendInboundCrossSessionMessage` 落库为 `role=user` + `meta.sentFrom='cli'`（永不排队）+ `meta.crossSession = { from: 来源会话名 }`（信封缺 from-name 时省略）；web 渲染「📨 来自 xxx」标签。CC 行为坑：turn 卡权限审批窗口内入站的消息会被 CC 丢弃（queued_command remove），hook 不触发
 
 ### ③ web 领域事件（`normalizeAgent.ts` 派生，与 SDK 无对应关系）
 

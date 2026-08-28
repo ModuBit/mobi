@@ -160,6 +160,20 @@ flowchart TB
 
 `claudeRemote` 是与 Claude Code SDK 交互的核心函数，通过 `query()` 驱动 Claude。内部维护**双循环**：`sdkOutputLoop`（消费 SDK 输出）和 `userInputLoop`（拉取用户输入，带 gated pump 门控）。
 
+### 提前激活（2026-08-28）
+
+startup 预热成功后**不等首条用户消息**即 attach query 并启动 `sdkOutputLoop`——首条消息等待窗口内的 SDK 旁路流量（Claude Code 原生跨会话消息等）从会话第一秒起被消费落库。配套语义：
+
+- `LoopContext.hasInput`：init 仅在已有输入 push 时置 running=true（提前激活后启动 init 不代表 turn 运行，无 result 复位会令 web 永久显示「运行中」）；置位由 `markInputPushed` 在各 push 路径统一驱动
+- `LoopContext.initialModel`：循环先于首条消息启动，模型名在 initial 处理后回填（stream_event 缺 model 时的快照兜底）
+- 首条消息消费路径不变（`nextMessage` → `handleSpecialCommand` → push）；`userInputLoop` 在 initial 处理后才启动，避免双消费者竞争绕过首条特殊命令
+- startup 失败回落现状（首条消息到了再 fallback attach）；rewind 截断轮保持串行不提前激活
+- 详见 `docs/superpowers/specs/2026-08-28-cross-session-visibility-design.md`
+
+### 入站跨会话消息观测
+
+SDK 进程内 hook（`sdkOptions.hooks.UserPromptSubmit`）把入站 prompt 直达 wrapper（`onInboundPrompt` → launcher `handleInboundPrompt`）：`parseInboundCrossSession`（`claude/utils/inboundCrossSession.ts`）按 `source` 字段 + `<cross-session-message>` 信封甄别后，经 `ApiSessionClient.sendInboundCrossSessionMessage` 落库为带 `meta.crossSession = { from }` 的 user 消息（web 端渲染「📨 来自 xxx」标签）。会话 hook settings 注入 `crossSessionInbound: "accept"` 防 headless 默认 hold 吞消息。
+
 ### 执行流程
 
 ```mermaid
@@ -170,24 +184,22 @@ flowchart TB
     CheckArgs -->|是| ExtractResume["提取 resume sessionId"]
     CheckArgs -->|否| Fresh["startFrom = null"]
 
-    UseResume --> GetInitial
-    ExtractResume --> GetInitial
-    Fresh --> GetInitial["获取初始消息<br/>nextMessage()"]
+    UseResume --> Warmup
+    ExtractResume --> Warmup
+    Fresh --> Warmup["startup() 预热<br/>常规轮成功即提前激活"]
+
+    Warmup --> EarlyActivate["warmRef 非空：attach query<br/>+ 启动 sdkOutputLoop<br/>（不等首条消息，旁路流量即时落库）"]
+    EarlyActivate --> GetInitial["等首条消息<br/>nextMessage()"]
 
     GetInitial --> NoMsg{"无消息?"}
-    NoMsg -->|是| Return1["直接返回"]
+    NoMsg -->|是| Return1["finally 清理后返回"]
     NoMsg -->|否| CheckSpecial{"特殊命令?"}
 
     CheckSpecial -->|"/clear"| Clear["session.reset()<br/>onSessionReset()"]
     CheckSpecial -->|"/compact"| Compact["标记 compact 命令"]
-    CheckSpecial -->|"正常消息"| BuildOpts["构建 SDK Options"]
-
-    Clear --> Return2["返回"]
-    Compact --> BuildOpts
-
-    BuildOpts --> PushMsg["推送初始消息到 messages"]
-    PushMsg --> Query["query({ prompt, options })"]
-    Query --> Iterate["for await (message of response)"]
+    CheckSpecial -->|"正常消息"| PushMsg["推送初始消息到 messages<br/>（startup 失败时此处 fallback attach）"]
+    PushMsg --> InputLoop["启动 userInputLoop<br/>与输出循环 Promise.race"]
+    InputLoop --> Iterate["for await (message of response)"]
 
     Iterate --> OnMsg["onMessage(message)<br/>通知 Launcher"]
     Iterate --> SystemInit{"system init?"}
