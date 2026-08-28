@@ -185,6 +185,12 @@ export function getSentFrom(content: unknown): SentFrom | null {
     return typeof sf === 'string' ? sf as SentFrom : null
 }
 
+/** 跨会话入站消息标记（user 消息 meta.crossSession，CLI 经 UserPromptSubmit hook 观测写入） */
+export interface CrossSessionOrigin {
+    /** 发送方 CLI 会话名（如 'mobi-ad'），CLI 层名字，不映射 hub 会话标题 */
+    from: string
+}
+
 /** 是否为 CLI 来源（Claude Code 输出流回显，永不排队） */
 export function isCliOrigin(content: unknown): boolean {
     return getSentFrom(content) === 'cli'
