@@ -16,9 +16,11 @@
 
 import React from "react";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { Session } from "./session";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import { claudeRemote, commandLifecycleToFact, isReplayUserMessage } from "./claudeRemote";
+import { parseInboundCrossSession } from './utils/inboundCrossSession';
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
@@ -520,6 +522,19 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
         }
 
+        // 入站跨会话消息落库（spec 2026-08-28 ②）：hook 观测 → 甄别 → user 消息落库。
+        // 回调由 SDK hook 同步触发，任何异常就地吞掉——观测失败退化为现状（消息不落库），
+        // 绝不影响会话主流程。
+        const handleInboundPrompt = (input: { prompt: string; source?: string }) => {
+            try {
+                const parsed = parseInboundCrossSession(input);
+                if (!parsed) return;
+                session.client.sendInboundCrossSessionMessage(parsed.text, parsed.fromName, randomUUID());
+            } catch (e) {
+                logger.debug('[remote]: inbound cross-session prompt handling failed', e);
+            }
+        };
+
         try {
             // 暂存待下轮重启会话再投递的完整批次（mode 变更/isolate 时存入，恢复时原样返回）
             let pending: Awaited<ReturnType<typeof session.queue.waitForMessagesAndGetAsString>> = null;
@@ -574,6 +589,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         getSessionConfig: this.getSessionConfig,
                         flushConfig: this.flushConfig,
                         canCallTool: permissionHandler.handleToolCall,
+                        onInboundPrompt: handleInboundPrompt,
                         onQueryReady: (query) => {
                             this.queryRef = query;
                             // 暴露给外部用于动态 setModel/setPermissionMode
