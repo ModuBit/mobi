@@ -32,3 +32,4 @@ metadata:
 - **path 走 PathCascader 全路径输入** 见 [[create-session]]（Escape 确认，别 Enter）。
 - **permission 弹窗会挡** — 会话发首条消息后 SDK 可能弹 tool permission，先 `Allow this session` 放行再操作文件树。
 - 截断提示节点（`truncated:true` 时目录末尾挂）只在 >2000 条目目录才出现，单测已锁，E2E 一般不造这种目录。
+- **搜索模式收起/展开验证**（2026-08-28）— 文件树搜索框输入关键词 → 虚拟目录 switcher 点击收起/展开。jsdom 组件测不了（合成点击不触发 rc-tree 内部 switcher 处理，真浏览器正常），只能 E2E 验证：断言用 switcher class `_open`/`_close` + title 列表增减，别用 treenode 数量/文本消失（收起 motion 在真浏览器也有短暂滞留）。目录点击用 mousedown+mouseup+click 三连（React 受控组件不认单 click 的场景）。
