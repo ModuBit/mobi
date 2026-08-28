@@ -37,6 +37,12 @@ type HookSettings = {
      * 相比污染 mobi 自身的 process.env 更内聚——变量只作用于本次会话拉起的 claude。
      */
     env?: Record<string, string>;
+    /**
+     * 入站跨会话消息控制（官方 settings 键）。headless 会话按权限模式分类可能默认
+     * hold（dialogExpiry 5 分钟后丢弃），hook 观测收不到——mobi 会话显式 accept，
+     * 使跨会话 peer 消息直达（cross-session-messaging.md §Control inbound messages）。
+     */
+    crossSessionInbound?: 'accept' | 'hold' | 'refuse';
     hooks: {
         SessionStart: HookCommandConfig[];
     };
@@ -86,6 +92,7 @@ function buildHookSettings(
     };
 
     const settings: HookSettings = { hooks };
+    settings.crossSessionInbound = 'accept';
     if (hooksEnabled !== undefined) {
         settings.hooksConfig = {
             enabled: hooksEnabled
