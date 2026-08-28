@@ -68,9 +68,15 @@ describe('shared logger', () => {
     })
 
     it('findLatestLog 返回指定 processType 的最新文件', () => {
-        writeFileSync(join(TEST_DIR, '2020-01-01-00-00-00-pid-1-runner.log'), 'old')
-        writeFileSync(join(TEST_DIR, '2026-07-23-00-00-00-pid-2-runner.log'), 'new')
+        const old = join(TEST_DIR, '2020-01-01-00-00-00-pid-1-runner.log')
+        const fresh = join(TEST_DIR, '2026-07-23-00-00-00-pid-2-runner.log')
+        writeFileSync(old, 'old')
+        writeFileSync(fresh, 'new')
         writeFileSync(join(TEST_DIR, '2026-07-23-00-00-00-pid-3-hub.log'), 'other type')
+        // findLatestLog 按 mtime 判新旧——必须显式设置 mtime 与文件名时间戳一致：
+        // CI 上 writeFileSync 连续创建的文件 mtime 可能同 tick，排序退化取决于 readdir 顺序（环境随机）
+        utimesSync(old, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'))
+        utimesSync(fresh, new Date('2026-07-23T00:00:00Z'), new Date('2026-07-23T00:00:00Z'))
         const latest = findLatestLog(TEST_DIR, 'runner')
         expect(latest).not.toBeNull()
         expect(latest!.endsWith('pid-2-runner.log')).toBe(true)
@@ -99,9 +105,18 @@ describe('shared logger', () => {
     })
 
     it('cleanupOldLogs 单类超 keepPerType 时删最旧', () => {
-        // 造 3 个 runner 日志，keepPerType=1，应删最旧 2 个
+        // 造 3 个 runner 日志，keepPerType=1，应删最旧 2 个。
+        // mtime 显式设置为 now-2h/-1h/now（确定性 + 均不超 maxAgeDays 默认 7 天）：
+        // writeFileSync 连续创建的文件 mtime 在 CI 上可能同 tick，排序退化取决于 readdir 顺序（环境随机）
         const files = ['2026-07-20-00-00-00-pid-1-runner.log', '2026-07-21-00-00-00-pid-2-runner.log', '2026-07-22-00-00-00-pid-3-runner.log']
-        for (const f of files) writeFileSync(join(TEST_DIR, f), 'x')
+        const now = Date.now()
+        const ages = [2, 1, 0]
+        files.forEach((f, i) => {
+            const p = join(TEST_DIR, f)
+            writeFileSync(p, 'x')
+            const d = new Date(now - ages[i]! * 60 * 60 * 1000)
+            utimesSync(p, d, d)
+        })
 
         const { removed } = cleanupOldLogs(TEST_DIR, { keepPerType: 1 })
 
