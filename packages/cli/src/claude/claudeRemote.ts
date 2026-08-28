@@ -346,6 +346,18 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal, fallback: T): Pr
 export interface LoopContext {
     /** 是否为 /compact 命令（sdkOutputLoop 读取后重置） */
     isCompactCommand: boolean
+    /**
+     * 是否已有输入 push。提前激活（spec 2026-08-28）后 query attach 早于首条消息，
+     * 启动 init 不再代表 turn 运行——init 仅在 hasInput 时置 running=true，
+     * 否则无 turn 即无 result 复位，web 会永久显示「运行中」。
+     */
+    hasInput: boolean
+    /**
+     * 首条消息的模型名（stream_event 缺 model 时 snapshot 标注兜底）。
+     * 提前激活后循环先于 initial 启动，构造参数不可得——由 claudeRemote 在
+     * initial 处理完成后回填（handleStreamEvent 读取本字段，不再走 opts.initialModel）。
+     */
+    initialModel?: string
 }
 
 /**
@@ -356,7 +368,6 @@ export async function sdkOutputLoop(
     response: Query,
     ctx: LoopContext,
     opts: {
-        initialModel?: string
         path: string
         onMessage: (message: SDKMessage) => void
         snapshotSender: StreamSnapshotSender
@@ -435,7 +446,7 @@ export async function sdkOutputLoop(
         // 处理流式事件：累积 delta 到 snapshot sender + 捕获 usage（供装配注入）
         if (message.type === 'stream_event') {
             usageCapture.capture(message);
-            handleStreamEvent(message, opts.snapshotSender, opts.initialModel);
+            handleStreamEvent(message, opts.snapshotSender, ctx.initialModel);
             continue;
         }
 
@@ -449,7 +460,10 @@ export async function sdkOutputLoop(
 
         // 处理 system/init 消息
         if (message.type === 'system' && message.subtype === 'init') {
-            opts.onRunningChange(true);
+            // 提前激活：attach 早于首条消息，启动 init 不代表 turn 运行（见 LoopContext.hasInput）
+            if (ctx.hasInput) {
+                opts.onRunningChange(true);
+            }
 
             const systemInit = message as SDKSystemMessage;
 
@@ -977,8 +991,10 @@ export async function claudeRemote(opts: {
     );
     snapshotSender.start();
 
+    // 中间态恒 false（Task 5 由 markInputPushed 置位并回填 initialModel）
     const loopCtx: LoopContext = {
         isCompactCommand,
+        hasInput: false,
     }
 
     // 双循环协调：任一退出时 abort 通知另一个终止
@@ -987,7 +1003,6 @@ export async function claudeRemote(opts: {
     try {
         await Promise.race([
             sdkOutputLoop(response, loopCtx, {
-                initialModel: initial.mode.model,
                 path: opts.path,
                 onMessage: opts.onMessage,
                 onAbortFlush: opts.onAbortFlush,
