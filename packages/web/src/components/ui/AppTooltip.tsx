@@ -43,6 +43,13 @@ const LONG_PRESS_MS = 500
  * 外层 span 用 display:contents 不生成 box，不影响 flex/grid 布局；
  * pointer 事件由 React 合成（基于 DOM 层级，contents 元素照常接收）。
  *
+ * display:contents 的代价与补偿：无盒元素在 Chrome 下 getBoundingClientRect() 恒返回
+ * 零矩形，而 antd Tooltip（rc-align）正是以 wrapper span 的该矩形为定位目标——零矩形
+ * 使对齐失效：悬停期间 tooltip 停在屏外测量位（不可见），关闭动画阶段 overflow 钳制
+ * 把它推到视口左下角播放，形成「光标移开瞬间左下角闪一下」。补偿见 installRectBridge：
+ * 零矩形时委托给 Range 的内容联合矩形（Range 跨 display:contents 子树生效），
+ * 布局仍零影响，定位恢复以真实悬停内容为锚。
+ *
  * 受控用法：传 open 则透传给 antd Tooltip，hover/long-press 自动禁用
  * （如 InstallButton 的 iosTipOpen 由按钮 click 控制，无需 pointer 分流）。
  */
@@ -50,6 +57,34 @@ export function AppTooltip({ children, mouseEnterDelay, open: controlledOpen, ..
     const [internalOpen, setInternalOpen] = useState(false)
     const isControlled = controlledOpen !== undefined
     const open = isControlled ? controlledOpen : internalOpen
+
+    // wrapper span 的 ref：rc-trigger（@rc-component/trigger）克隆 child 时用
+    // useComposeRef 合并已有 ref，这里与它共存不冲突；rect 补丁挂载期安装
+    const wrapperRef = useRef<HTMLSpanElement>(null)
+
+    // display:contents 无盒 → Chrome 恒返回零矩形 → rc-align 以零矩形对齐失效
+    // （详见组件头注释）。零矩形时把 rect 委托给内容联合矩形（Range 跨 contents 子树），
+    // rc-align 拿到真实悬停内容矩形，定位与关闭动画都回到正确位置。
+    useEffect(() => {
+        const el = wrapperRef.current
+        if (!el) return
+        const original = el.getBoundingClientRect
+        el.getBoundingClientRect = function (this: HTMLSpanElement) {
+            const rect = original.call(this)
+            if (rect.width === 0 && rect.height === 0) {
+                const range = document.createRange()
+                range.selectNodeContents(this)
+                // jsdom / 旧浏览器 Range 可能没有 getBoundingClientRect，跳过委托走原值
+                const contentRect = typeof range.getBoundingClientRect === 'function'
+                    ? range.getBoundingClientRect()
+                    : rect
+                if (contentRect.width > 0 || contentRect.height > 0) return contentRect
+            }
+            return rect
+        }
+        // 卸载恢复原函数：StrictMode 双挂载下先恢复再重装，不会捕获到已补丁版本
+        return () => { el.getBoundingClientRect = original }
+    }, [])
 
     const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
     const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -124,6 +159,7 @@ export function AppTooltip({ children, mouseEnterDelay, open: controlledOpen, ..
     return (
         <Tooltip {...rest} mouseEnterDelay={mouseEnterDelay} open={open}>
             <span
+                ref={wrapperRef}
                 onPointerEnter={handlePointerEnter}
                 onPointerLeave={handlePointerLeave}
                 onPointerDown={handlePointerDown}
