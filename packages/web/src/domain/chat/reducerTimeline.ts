@@ -179,8 +179,9 @@ export function reduceTimeline(
         if (msg.role === 'user') {
             // 【过渡】blocks 化后纯文本经 getUserPlainText 提取（多 block 消息取首个非空 text）
             const plainText = getUserPlainText(msg.content.blocks)
-            // 检测 compact 总结消息：来自 CLI 且之前有 compact 事件
-            if (pendingCompactMetadata && msg.meta?.sentFrom === 'cli') {
+            // 检测 compact 总结消息：来自 CLI 且之前有 compact 事件。
+            // 跨会话入站消息 sentFrom 也是 'cli'，紧随 compact 事件到达时会被误判，需排除
+            if (pendingCompactMetadata && msg.meta?.sentFrom === 'cli' && !msg.meta?.crossSession) {
                 const compactBlock: CompactSummaryBlock = {
                     kind: 'compact-summary',
                     id: msg.id,
