@@ -1014,8 +1014,17 @@ export async function claudeRemote(opts: {
 
         loopCtx.isCompactCommand = initialResult.isCompact;
 
-        if (!warmConsumed) {
-            // fallback attach（startup 失败路径，行为同现状）：首条消息到了再 attach
+        if (!warmConsumed && warmRef) {
+            // 截断轮（resumeSessionAt）复用预热进程：startup 预热已完成 resume+截断加载，
+            // 直接 attach，不重新 spawn 冷启动。截断轮仍不提前激活（保持现状），
+            // 只是 attach 时复用；常规轮已提前激活（warmConsumed=true）不进此分支
+            response = warmRef.query(messages)
+            warmConsumed = true
+            // 把 Query 引用传给外部，用于 interrupt/close 控制
+            opts.onQueryReady?.(response);
+            startOutputLoop(response)
+        } else if (!warmConsumed) {
+            // fallback attach（startup 失败路径，行为同现状）：首条消息到了再冷启动 attach
             const fallbackConfig = opts.getSessionConfig()
             const fallbackOptions: Options = {
                 ...sdkOptions,
