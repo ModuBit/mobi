@@ -467,13 +467,23 @@ export async function sdkOutputLoop(
 
             const systemInit = message as SDKSystemMessage;
 
-            // 等待 session 文件写入磁盘
+            // 等待 session 文件写入磁盘。非阻塞：提前激活后 init 到达时 jsonl 往往尚未落盘，
+            // await 会阻塞输出循环最长 10s（awaitFileExist 超时），窗口内旁路流量全部积压——
+            // 改为文件就绪后异步上报。消费方均对时序不敏感：handleSessionFound 仅更新
+            // converter 的 sessionId（纯内存）；scanner 首次启动即在本回调内触发，
+            // 其 findSessionFiles 自发现文件、readSessionLog 对缺失文件容错返回空，
+            // 文件晚于 scanner 启动出现也会被 interval 重扫捕获
             if (systemInit.session_id) {
                 logger.debug(`[sdkOutputLoop] Waiting for session file: ${systemInit.session_id}`);
                 const projectDir = getProjectPath(opts.path);
-                const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`));
-                logger.debug(`[sdkOutputLoop] Session file found: ${systemInit.session_id} ${found}`);
-                opts.onSessionFound(systemInit.session_id);
+                void awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`))
+                    .then((found) => {
+                        logger.debug(`[sdkOutputLoop] Session file found: ${systemInit.session_id} ${found}`);
+                        opts.onSessionFound(systemInit.session_id);
+                    })
+                    .catch((e) => {
+                        logger.debug(`[sdkOutputLoop] Session file wait failed: ${systemInit.session_id}`, e);
+                    });
             }
         }
 
