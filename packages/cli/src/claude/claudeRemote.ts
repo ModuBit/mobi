@@ -861,6 +861,12 @@ export async function claudeRemote(opts: {
             UserPromptSubmit: [{
                 hooks: [async (input) => {
                     if (input.hook_event_name === 'UserPromptSubmit') {
+                        // 任何 prompt 提交都代表 turn 开始（hook 对所有 prompt 触发，含跨会话
+                        // peer 消息触发的 turn）。提前激活后 init 不驱动 running，peer turn
+                        // 不经 markInputPushed 则 running 恒 false——用户消息会 mid-turn 穿过
+                        // idle 门控造成 turn 串扰，result 还会把用户 turn 误显示为空闲。
+                        // 自己的 push 先行调用过，此处幂等无妨。
+                        markInputPushed();
                         opts.onInboundPrompt?.({ prompt: input.prompt, source: input.source })
                     }
                     return { continue: true }
