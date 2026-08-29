@@ -17,14 +17,17 @@
 import type { ChatBlock, CliOutputBlock, MessageMeta } from './types'
 import { stripAnsi } from './ansi'
 
-const CLI_TAG_REGEX = /<(?:local-command-[a-z-]+|command-(?:name|message|args))>/i
 const CLI_COMMAND_NAME_REGEX = /<command-name>/i
 const CLI_COMMAND_STDOUT_REGEX = /<local-command-stdout>/i
 const LOCAL_COMMAND_STDOUT_EXTRACT = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/i
 
-function hasCliOutputTags(text: string): boolean {
-    return CLI_TAG_REGEX.test(text)
-}
+/**
+ * CLI 信封开标签，锚定文本开头。
+ * 真实信封消息（CC 对本地命令 turn 的注入）标签恒在文本最前；正文中部出现的标签
+ * 是对标签字面量 的引用（代码块 / review JSON / 文档），不是信封——全文搜索会把
+ * 此类普通文本整条误判成 CLI 输出，再因缺 command-name / stdout 对渲染成空壳块。
+ */
+const CLI_TAG_PREFIX_REGEX = /^\s*<(?:local-command-[a-z-]+|command-(?:name|message|args))>/i
 
 function hasCommandNameTag(text: string): boolean {
     return CLI_COMMAND_NAME_REGEX.test(text)
@@ -35,7 +38,7 @@ function hasLocalCommandStdoutTag(text: string): boolean {
 }
 
 export function isCliOutputText(text: string, _meta?: unknown): boolean {
-    return hasCliOutputTags(text)
+    return CLI_TAG_PREFIX_REGEX.test(text)
 }
 
 /** 提取纯 local-command-stdout 内容（无 command-name），返回文本或 null */
