@@ -48,6 +48,12 @@ describe('parseInboundCrossSession', () => {
         expect(parseInboundCrossSession({ prompt, source: 'system' })).toEqual({ text: 'hello', fromName: null })
     })
 
+    it('开标签缺 from-name、正文引用别处 from-name 文本 → 不误提取，from 为 null', () => {
+        const prompt = '<cross-session-message from="uds:/tmp/x.sock">他提到 from-name="evil" 这个名字</cross-session-message>'
+        expect(parseInboundCrossSession({ prompt, source: 'system' }))
+            .toEqual({ text: '他提到 from-name="evil" 这个名字', fromName: null })
+    })
+
     it('正文多行保留原始换行（仅 trim 首尾）', () => {
         const r = parseInboundCrossSession({ prompt: envelope('a', 'line1\nline2') })
         expect(r?.text).toBe('line1\nline2')

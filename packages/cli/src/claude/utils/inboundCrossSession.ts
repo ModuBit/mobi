@@ -53,7 +53,11 @@ export function parseInboundCrossSession(input: InboundPromptInput): InboundCros
     const match = ENVELOPE_RE.exec(input.prompt)
     if (!match) return null
 
-    const fromName = FROM_NAME_RE.exec(match.input.slice(match.index, match.index + match[0].length))
+    // 只切开标签搜索：正文可能引用别处的 from-name="..." 文本，
+    // 在「开标签+正文」整体切片上搜索会误提取正文内容
+    const openTagEnd = match.input.indexOf('>', match.index)
+    const openTag = match.input.slice(match.index, openTagEnd + 1)
+    const fromName = FROM_NAME_RE.exec(openTag)
     return {
         text: match[1].trim(),
         fromName: fromName ? fromName[1] : null,
