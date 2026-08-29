@@ -1015,6 +1015,11 @@ export async function claudeRemote(opts: {
             initial = msg
         }
 
+        // initial 获取后立即回填模型名（stream_event 缺 model 时的快照兜底，见
+        // LoopContext.initialModel）：必须在 handleSpecialCommand 之前——首条即 !cmd 时
+        // 注入文本由此处触发 turn，其 stream_event 先于后面的 attach 段流动，晚回填快照缺 model
+        loopCtx.initialModel = initial.mode.model
+
         const specialCommandCtx = createSpecialCommandContext(opts, executeBashCommand)
         const initialResult = await handleSpecialCommand(asCommandText(initial.message), specialCommandCtx, initial.localIds)
 
@@ -1054,8 +1059,7 @@ export async function claudeRemote(opts: {
             startOutputLoop(response)
         }
 
-        // initial 处理完成，回填模型名（stream_event 缺 model 时的快照兜底，见 LoopContext.initialModel）
-        loopCtx.initialModel = initial.mode.model
+        // initial 处理完成，回填模型名的逻辑已上移到 handleSpecialCommand 之前（见上方注释）
 
         // 注入 steer sink：把仍排队的消息 payload push 进 SDK input stream，返回 true。
         // 由 launcher 的 steer-queued-message RPC 调用，把已排队消息提前提交给 SDK。
