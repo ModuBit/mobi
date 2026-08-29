@@ -510,13 +510,17 @@ export class ApiSessionClient extends EventEmitter {
             },
             meta: {
                 sentFrom: 'cli',
-                ...(fromName ? { crossSession: { from: fromName } } : {})
+                // crossSession 恒写入：fromName 降级（信封缺 from-name）时为空串，
+                // web 端判空后显示「来自 其他会话」。键缺失会让 web 的 compact 误判守卫
+                // （排除 crossSession 消息）失效，降级消息会被误渲染成 compact-summary
+                crossSession: { from: fromName ?? '' }
             }
         }
         this.socket.emit('message', {
             sid: this.sessionId,
             message: content,
-            // nativeId 用随机 uuid（hook 输入无 transcript uuid）；仅用于 hub 本地去重锚
+            // hook 输入无稳定 native 锚，localId 仅作唯一标识（随机 uuid）；
+            // SDK 重试重放的理论重复观测无去重，概率低可接受
             localId: nativeId,
             metadata: { nativeId },
             category: classifyMessage('user')
