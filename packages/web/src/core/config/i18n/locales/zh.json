@@ -149,7 +149,9 @@
     "chat": {
         "message": {
             "terminalCancelled": "已取消",
-            "terminalDiscarded": "已丢弃"
+            "terminalDiscarded": "已丢弃",
+            "crossSessionFrom": "来自 {{from}}",
+            "crossSessionFromUnknown": "来自其他会话"
         },
         "turnDetail": {
             "duration": "耗时",

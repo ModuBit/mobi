@@ -24,7 +24,6 @@ import { CliOutputBlock } from './CliOutputBlock'
 import { AgentEventBlock } from './AgentEventBlock'
 import { ToolCallRenderer } from './ToolCallBlock'
 import { CompactSummaryBlockComponent } from './CompactSummaryBlock'
-import { CrossSessionTag } from './CrossSessionTag'
 import { CollapsibleUserMessage } from '../CollapsibleUserMessage'
 import { UserBlocksView } from '../userBlocks/UserBlocksView'
 
@@ -47,26 +46,20 @@ export type ChatBlockContext = {
 /** 根据 block 类型渲染对应组件 */
 export function renderChatBlock(block: ChatBlock, ctx: ChatBlockContext): React.ReactNode {
     switch (block.kind) {
-        case 'user-text': {
-            const cs = (block.meta as { crossSession?: { from?: unknown } } | undefined)?.crossSession
-            const from = typeof cs?.from === 'string' && cs.from.length > 0 ? cs.from : null
+        case 'user-text':
             return (
-                <div>
-                    {from !== null && <CrossSessionTag from={from} />}
-                    <CollapsibleUserMessage blocks={block.blocks} isSynthetic={block.isSynthetic}>
-                        <UserBlocksView
-                            blocks={block.blocks}
-                            env={{
-                                isSynthetic: block.isSynthetic,
-                                sessionId: ctx.sessionId,
-                                machineId: ctx.metadata?.machineId,
-                                cwd: ctx.metadata?.path,
-                            }}
-                        />
-                    </CollapsibleUserMessage>
-                </div>
+                <CollapsibleUserMessage blocks={block.blocks} isSynthetic={block.isSynthetic}>
+                    <UserBlocksView
+                        blocks={block.blocks}
+                        env={{
+                            isSynthetic: block.isSynthetic,
+                            sessionId: ctx.sessionId,
+                            machineId: ctx.metadata?.machineId,
+                            cwd: ctx.metadata?.path,
+                        }}
+                    />
+                </CollapsibleUserMessage>
             )
-        }
         case 'agent-text':
             return <TextBlock text={block.text} isSynthetic={block.isSynthetic} isStreaming={block.isStreaming} />
         case 'agent-reasoning':

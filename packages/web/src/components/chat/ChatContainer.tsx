@@ -34,11 +34,12 @@ import { reconcileBubbleItems, type BubbleItemsCache } from './reconcileBubbleIt
 import { filterBlocksForPagination } from './filterBlocksForPagination'
 import { ChatComposer } from '@/components/composer/ChatComposer'
 import { CommandProgressBubble } from './CommandProgressBubble'
-import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress } from '@/domain/chat/presentation'
+import { isCommandInProgress, isClearInProgress, isCompactCompletion, COMPACT_COMMAND, REWIND_COMMAND, isRewindInProgress, getCrossSessionFrom } from '@/domain/chat/presentation'
 import { collectUserText } from '@/domain/chat/userContent'
 import { canRewindMessage, collectChainHeadUserRowIds, collectRewindBatchText, extractRewindRejectReason, mergeSegmentRows, rewindFilesFailedKey, rewindRejectReasonKey, type NativeMessageMetadata } from '@/domain/chat/rewind'
 import { ChatWelcome } from './ChatWelcome'
 import { UserMessageFooter } from './UserMessageFooter'
+import { CrossSessionTag } from './blocks/CrossSessionTag'
 import { type RewindDryRunResult } from './RewindConfirmView'
 import { MessageActionsDrawer, type MessageActionTarget } from './MessageActionsDrawer'
 import { useMobiApi } from '@/core/data/api/client'
@@ -646,6 +647,9 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
                 )
                 : false
 
+            // 跨会话入站来源标签挂气泡 header（填充背景之外、气泡体上方，随 placement: end 右对齐）
+            const crossSessionFrom = isUserText && block ? getCrossSessionFrom(block.meta) : null
+
             // footer：非终态时结构零改动（只增不改）；终态时在 footer 同排左侧加灰色小标注，
             // UserMessageFooter 包 flex:1 容器——时间戳（marginLeft:auto）仍贴最右，标注占左侧
             const baseFooter = isUserText && block ? (
@@ -668,6 +672,7 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
             return {
                 ...item,
+                header: crossSessionFrom !== null ? <CrossSessionTag from={crossSessionFrom} /> : undefined,
                 classNames: isUserText ? { root: 'user-msg-bubble' } : undefined,
                 footer: isTerminalLifecycle ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

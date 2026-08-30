@@ -14,10 +14,19 @@
  * limitations under the License.
  */
 
-import type { AgentEvent, ChatBlock } from './types'
+import type { AgentEvent, ChatBlock, MessageMeta } from './types'
 import { getUserPlainText } from './userContent'
 
 const CLEAR_COMMAND = '/clear'
+
+/**
+ * 跨会话入站来源提取（user 消息 meta.crossSession，CLI 经 UserPromptSubmit hook 观测写入）。
+ * from 为非空 string 才认——信封缺 from-name 的降级落库为 null/空，此时 UI 显示通用文案。
+ */
+export function getCrossSessionFrom(meta: MessageMeta | undefined): string | null {
+    const from = (meta as { crossSession?: { from?: unknown } } | undefined)?.crossSession?.from
+    return typeof from === 'string' && from.length > 0 ? from : null
+}
 
 /** /compact 命令字面量，web 端判定压缩状态用 */
 export const COMPACT_COMMAND = '/compact'
