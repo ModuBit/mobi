@@ -285,3 +285,75 @@ describe('SyncEngine.handleSessionAlive —— 首次激活补拉 sdkMetadata', 
         }
     })
 })
+
+/**
+ * abort stopKind 透传（批次 A：停止 × 队列语义闭环）：
+ * - 清队列档（turn-queue / turn-queue-tasks）：hub 层 queued 行就地批量删除 + RPC payload 带 stopKind
+ * - 默认档（turn）：只中断当前 turn，队列不动
+ */
+describe('SyncEngine.abortSession stopKind', () => {
+    const WEBAPP_USER = { role: 'user', content: { type: 'text', text: 'hi' }, meta: { sentFrom: 'webapp' } }
+
+    /** CLI RPC（abort）在线的 engine + 1 条 queued 消息 */
+    function makeAbortEngine() {
+        const store = new Store(':memory:')
+        const sessionId = store.sessions.getOrCreateSession('abort-stopkind-test', null, null, 'default').id
+        store.messages.addMessage(sessionId, WEBAPP_USER, 'loc-queued')
+
+        const emitCalls: { method: string; params: unknown }[] = []
+        const fakeSocket = {
+            timeout() { return this },
+            async emitWithAck(_event: string, payload: { method: string; params: unknown }) {
+                emitCalls.push(payload)
+                return { ok: true }
+            },
+        }
+        const sockets = new Map([['sock-1', fakeSocket]])
+        const io = { of() { return { sockets } } } as unknown as import('socket.io').Server
+        const registry = {
+            getSocketIdForMethod(method: string) {
+                return method.endsWith(':abort') ? 'sock-1' : null
+            },
+        } as unknown as RpcRegistry
+        const sseManager = { broadcast: () => {} } as unknown as import('../../src/sse/sseManager').SSEManager
+        const engine = new SyncEngine(store, io, registry, sseManager)
+
+        return {
+            engine, store, sessionId, emitCalls,
+            cleanup: () => {
+                engine.stop()
+                store.close()
+            },
+        }
+    }
+
+    test("清队列档 'turn-queue'：hub queued 行批量删除 + RPC payload 带 stopKind", async () => {
+        const h = makeAbortEngine()
+        try {
+            await h.engine.abortSession(h.sessionId, 'turn-queue')
+
+            expect(h.store.messages.getUnsubmittedLocalMessages(h.sessionId)).toEqual([])
+
+            await new Promise(r => setTimeout(r, 0))
+            expect(h.emitCalls).toHaveLength(1)
+            expect(h.emitCalls[0].method).toBe(`${h.sessionId}:abort`)
+            expect(h.emitCalls[0].params).toEqual({ reason: 'User aborted via Mobi', stopKind: 'turn-queue' })
+        } finally {
+            h.cleanup()
+        }
+    })
+
+    test("默认档 'turn'：队列不动，RPC payload 带 stopKind（缺省参数回填）", async () => {
+        const h = makeAbortEngine()
+        try {
+            await h.engine.abortSession(h.sessionId)
+
+            expect(h.store.messages.getUnsubmittedLocalMessages(h.sessionId)).toHaveLength(1)
+
+            await new Promise(r => setTimeout(r, 0))
+            expect(h.emitCalls[0].params).toEqual({ reason: 'User aborted via Mobi', stopKind: 'turn' })
+        } finally {
+            h.cleanup()
+        }
+    })
+})

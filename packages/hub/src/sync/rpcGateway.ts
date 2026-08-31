@@ -15,7 +15,7 @@
  */
 
 import type { EffortLevel, PermissionMode, SDKMetadata } from '@mobi/shared/types'
-import type { PermissionUpdate, RedactedWebToolsConfig } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, type PermissionUpdate, type RedactedWebToolsConfig, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 
@@ -144,8 +144,8 @@ export class RpcGateway {
         })
     }
 
-    async abortSession(sessionId: string): Promise<void> {
-        await this.sessionRpc(sessionId, 'abort', { reason: 'User aborted via Mobi' })
+    async abortSession(sessionId: string, stopKind: StopKind = DEFAULT_STOP_KIND): Promise<void> {
+        await this.sessionRpc(sessionId, 'abort', { reason: 'User aborted via Mobi', stopKind })
     }
 
     async switchSession(sessionId: string, to: 'remote' | 'local'): Promise<void> {

@@ -15,7 +15,7 @@
  */
 
 import type { ContextUsage, DecryptedMessage, EffortLevel, GoalStatus, PermissionMode, SDKMetadata, Session, SyncEvent } from '@mobi/shared/types'
-import type { PermissionUpdate, Project, ProjectFolder } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, isCancelQueued, type PermissionUpdate, type Project, type ProjectFolder, type StopKind } from '@mobi/shared'
 import type { Server } from 'socket.io'
 import type { Store } from '../store'
 import type { ProjectSessionsResult } from '../store/sessions'
@@ -401,8 +401,14 @@ export class SyncEngine {
         await this.rpcGateway.denyPermission(sessionId, requestId, decision, reason)
     }
 
-    async abortSession(sessionId: string): Promise<void> {
-        await this.rpcGateway.abortSession(sessionId)
+    async abortSession(sessionId: string, stopKind: StopKind = DEFAULT_STOP_KIND): Promise<void> {
+        // 清队列档：hub 层排队消息就地批量删除（CC 层队列由 CLI interrupt(cancelQueued) 清，
+        // 见 rpcGateway payload 的 stopKind）。store 在本层持有（同 rewind 的 this.store.messages 用法），
+        // web 路由层不接触 store。
+        if (isCancelQueued(stopKind)) {
+            this.store.messages.cancelAllQueuedMessages(sessionId)
+        }
+        await this.rpcGateway.abortSession(sessionId, stopKind)
     }
 
     // 停止后台任务

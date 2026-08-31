@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { isWithinDir } from '@mobi/shared/pathSecurity'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
@@ -87,6 +87,11 @@ const rewindDryRunSchema = z.object({
 const rewindSchema = z.object({
     nativeId: z.string().min(1),
     restoreFiles: z.boolean()
+})
+
+/** abort body：停止档位三档（批次 A，与 shared StopKind 对齐）；缺省 'turn' 只中断当前 turn */
+const abortSchema = z.object({
+    stopKind: z.enum(['turn', 'turn-queue', 'turn-queue-tasks']).default(DEFAULT_STOP_KIND)
 })
 
 export function createSessionsRoutes(
@@ -347,7 +352,12 @@ export function createSessionsRoutes(
             return sessionResult
         }
 
-        await engine.abortSession(sessionResult.sessionId)
+        // 停止是破坏性操作：body 缺失/非法时回落默认档（'turn'），不因档位解析失败而拒绝中断
+        const body = await c.req.json().catch(() => null)
+        const parsed = abortSchema.safeParse(body ?? {})
+        const stopKind = parsed.success ? parsed.data.stopKind : DEFAULT_STOP_KIND
+
+        await engine.abortSession(sessionResult.sessionId, stopKind)
         return c.json({ ok: true })
     })
 
