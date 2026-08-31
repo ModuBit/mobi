@@ -74,3 +74,11 @@ running 中发消息 → 进 QueuedMessagesBar 悬浮条（`Queued (N)`），不
 实测产生 `[reasoning, Read×4]` 连续段 → 折叠成一组，标题 `Thought 1.0s, read 4 files`（thinking 时长求和 + tool 计数）。展开组：点 `.tool-call-think` 的 header，`.ant-think-body` 内含 reasoning（ReasoningBlock, `Thought · Xs`）+ 各 tool 卡片。
 
 **读组标题**（区分组 vs 单工具卡片）：组标题是 `span[style*="font-weight"]`，文本为 `Read N files` / `Thought Xs` 等聚合短语；单工具卡片标题是工具描述（如 `List files in current directory`）。两者都用 `.tool-call-think` class，要按标题文本区分。
+
+## 三档停止与撤回（批次 A，2026-08-31）
+
+- **停止按钮三档**：点按=停本轮；长按 ~500ms（pointerdown→700ms→pointerup）弹 Popover 三档菜单（Stop this turn / Stop & clear queue / Stop everything，英文 locale）。菜单选择用 li 元素 MouseEvent mousedown+mouseup+click 三连。
+- **撤回验证的窗口真相**：撤回 = stopKind='turn' + 本 turn 零输出。glm-5.3-flash[1m] 首 token 仅 ~1s，**跨工具调用（2-5s 间隔）必然错过窗口** → 实际触发的是降级普通停止（也是正确行为）。要触发真撤回必须**单脚本内**完成「设值(native setter+input 事件) → click 发送 → 10ms 轮询 stop 按钮(svg 含 rect) → click」，sentToStopMs 可压到 ~10ms。
+- **按钮定位坑**：composer 右下角合并按钮 x>1300 且 y>700 的定位法会误中「Open File/Terminal/Review」等按钮——用 `ta.closest('.ant-sender')` 容器内找按钮；stop 态判据 = svg 含 `<rect>`，排除 `<title>Stop loading</title>`（abortPending disabled 态）。
+- **撤回成功断言链**：composer 回填原文（textarea.value）+ DB 行 `lifecycle='withdrawn'`+`deleted_at` 非空 + 无灰行。DB 是硬证据——UI innerText 匹配文本会误判（agent 输出/思考里提及同样文字）。
+- **延迟生效坑**：CLI 修复只对**修复后 spawn 的新会话进程**生效——重验 CLI 行为必须新建会话，旧会话进程还是旧代码。

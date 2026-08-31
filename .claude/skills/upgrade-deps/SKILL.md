@@ -103,7 +103,7 @@ bun run lint       # ESLint 检查
 
 **示例**（本项目）：`patches/@socket.io%2Fbun-engine@0.1.1.patch` 修复 bun-engine 发送二进制附件 bug（`Buffer.isBuffer`→`ArrayBuffer.isView`）。每次升级时若发现 `@socket.io/bun-engine` 有 0.1.2+，查其是否已修该 bug → 修复则移除补丁并升级。
 
-### 第八步：anthropic/claude 包 changelog 检查与回归
+### 第八步：anthropic/claude 包 changelog 检查、回归与机会挖掘
 
 **触发条件**：本次升级涉及任何 `@anthropic-ai/*` 包（cli 当前依赖 `@anthropic-ai/claude-agent-sdk`、`@anthropic-ai/sandbox-runtime`、`@anthropic-ai/sdk`，**均 0.x，semver 上 minor 即 breaking**）。这类包是 mobi 的协议层核心，第三步的风险分级不足以反映真实风险——**版本号无论几级，只要动了 anthropic 包就必须做这一步**。
 
@@ -143,9 +143,52 @@ changelog 里涉及下表方向的变化必须重点评估（代码定位 → �
 - **typecheck / test 拦不住的运行时行为**（partial 装配、流式、hooks、权限、resume）→ 必须用 `/run-tests` 的 E2E 走真实会话流程验证（见 `.claude/skills/run-tests/references/e2e.md`，先读其 `memory/MEMORY.md`）
 - **历史坑优先重验**：partial 装配（thinking 刷新不丢 + DB 持久）、claude 二进制 resolve（dev + 编译模式）、hooks 回调数据完整——每次必过
 
-#### 4. 汇报
+#### 4. 机会挖掘：筛出对 mobi 有利的新功能
 
-列出：本次跨越的 changelog 条目摘要、逐条影响评估（影响/不影响 + 理由 + 对应 mobi 代码）、已执行的回归项及结果。任何不确定的运行时行为变化，E2E 验证通过后再提交。
+影响评估（第 2-3 小节）是**防御性**的——新版本会不会弄坏 mobi；机会挖掘是**进攻性**的——新版本能带给 mobi 什么。同一个 changelog 要过两遍筛子，缺后者会错失升级附带的免费产品机会。
+
+**筛选范围**——changelog 里 host-facing 的新能力（mobi 作为 host 可消费的）：
+
+- 新 query options（如 `perTaskStopAffordance`、`managedSettings.modelPricing`）
+- 新 hooks 事件 / 回调输入数据（如 `PreModelSwitch`、SessionStart resume 新字段）
+- 新消息 / 帧类型与字段（如 task 条目 `ambient` 标记、`user_message_uuid`、`modelUsage[*].costBasis`、result 新字段）
+- 权限、subagent / background 任务、MCP、成本与 usage、resume / rewind 方向的新能力
+- claude 二进制侧新用户可见行为——若 mobi 可以据此做 UI / 状态展示
+
+**判断标准**——对照 mobi 产品定位（Claude Code 远程控制工具）与第 2 小节的功能面表，分三类：
+
+- (a) **增强现有功能**：mobi 已有对应模块，新能力直接提升它（如任务面板用 `ambient` 过滤家务任务）
+- (b) **填补已知短板**：对照 `docs/pending.md` 与历史坑，新能力恰好覆盖
+- (c) **全新能力**：mobi 没有的功能，引入需产品决策——照常列出，标明"需决策"
+
+**每条建议必须包含以下全部字段**（缺字段的建议不算产出）：
+
+| 字段 | 说明 |
+|---|---|
+| 功能名 | changelog 里的能力名 |
+| 出处 | SDK / claude 版本号 + 条目原文摘要 |
+| 对 mobi 的价值 | 一句话：解决什么问题 / 增强什么 |
+| 建议落地位置 | mobi 包 / 模块级（对照第 2 小节代码位置表） |
+| 优先级 | 高 / 中 / 低（高 = 低成本高价值，或填补已知短板） |
+
+**纪律**：
+
+- **宁缺毋滥**：没有值得引入的就明确写「本次无可引入项」，禁止为了产出硬凑条目
+- **只挖掘不实现**：本步骤产出建议，不写代码、不改配置
+- **建议独立成章**：禁止把建议散落在影响评估的括号注记里——散落的建议等于没有建议
+
+#### 5. 汇报
+
+汇报必须包含四个部分：
+
+1. 本次跨越的 changelog 条目摘要
+2. 逐条影响评估（影响/不影响 + 理由 + 对应 mobi 代码）
+3. 已执行的回归项及结果
+4. **📌 新功能引入建议**（第 4 小节的产出，独立章节）：完整建议表；无可引入项时明确写「本次无可引入项」
+
+任何不确定的运行时行为变化，E2E 验证通过后再提交。
+
+**建议持久化**：挖掘出的建议**直接写入** [docs/upstream-suggestions.md](../../../docs/upstream-suggestions.md)（上游新功能引入建议台账），不等用户确认——新条目状态标「待决策」，台账本身就是过目机制，用户逐条定夺后改状态。「已自动受益」与「不适用」的条目同样留档（防重复评估）。汇报中列出本次新增的台账条目编号，供用户审阅。
 
 ## 版本约束规范
 
@@ -162,5 +205,5 @@ changelog 里涉及下表方向的变化必须重点评估（代码定位 → �
 - **bun 运行时**：安装命令用 `bun install`，不是 npm
 - **升级后必验证**：typecheck → test → lint 三步缺一不可
 - **patchedDependencies 维护**：每次升级必须执行第七步，按上游新版情况处理补丁（移除/迁移/重做），不只是「移除」——上游没修但改了代码，补丁要跟着重做
-- **anthropic/claude 包强制 changelog 检查**：升任何 `@anthropic-ai/*` 包必须执行第八步——拉 SDK + Claude Code 两个 changelog，对照 mobi SDK 使用面评估影响，typecheck 拦不住的运行时行为用 E2E 回归
+- **anthropic/claude 包强制 changelog 检查**：升任何 `@anthropic-ai/*` 包必须执行第八步——拉 SDK + Claude Code 两个 changelog，对照 mobi SDK 使用面评估影响（防御）+ 挖掘可引入的新功能并产出建议表（进攻），typecheck 拦不住的运行时行为用 E2E 回归
 - **提交规范**：commit message 使用 `chore:` 前缀，列出关键变更
