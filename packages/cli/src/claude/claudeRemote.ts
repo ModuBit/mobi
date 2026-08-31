@@ -49,6 +49,7 @@ import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotS
 import { AssistantPartialAssembler } from './utils/assistantPartialAssembler'
 import { buildClaudeFeatureEnv } from './featureFlags'
 import { pushUserMessage } from './utils/pushUserMessage'
+import type { PushOrigin } from './utils/stopAction'
 import type { PromptPayload } from '@/utils/promptBuilder'
 import { StreamUsageCapture, injectUsageFromStream } from './utils/streamUsageCapture'
 import { stripBunDebuggerEnv } from '@/utils/spawnMobiCli'
@@ -676,8 +677,10 @@ export async function claudeRemote(opts: {
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: PromptPayload, mode: EnhancedMode, localIds: string[] } | null>,
-    /** 用户消息 push 给 SDK 后上报 (localIds → nativeId) 绑定 */
-    onMessagesBound: (bindings: { localId: string; nativeId: string }[]) => void,
+    /** 用户消息 push 给 SDK 后上报 (localIds → nativeId) 绑定。
+     *  origin 标注 push 来源（批次 A 撤回语义）：'turn' = 新 turn 首 push（缺省），
+     *  'steer' = turn 运行中的 steer sink push——launcher 据此决定是否复位 hasOutput（C1） */
+    onMessagesBound: (bindings: { localId: string; nativeId: string }[], origin?: PushOrigin) => void,
     onReady: () => void,
 
     // Callbacks
@@ -712,8 +715,9 @@ export async function claudeRemote(opts: {
 }) {
 
     // pushUserMessage 的绑定回调适配：localIds 批展开为逐条 (localId, nativeId) 上报
-    const onBound = (binding: { localIds: string[]; nativeId: string }) => {
-        opts.onMessagesBound(binding.localIds.map(localId => ({ localId, nativeId: binding.nativeId })))
+    // （origin 透传：normal/bash 注入不标 = 'turn'；steer sink 用带 'steer' 的包装）
+    const onBound = (binding: { localIds: string[]; nativeId: string }, origin?: PushOrigin) => {
+        opts.onMessagesBound(binding.localIds.map(localId => ({ localId, nativeId: binding.nativeId })), origin)
     }
 
     // Check if session is valid
@@ -1101,7 +1105,11 @@ export async function claudeRemote(opts: {
             opts.onSteerSinkReady((payload: PromptPayload, localId?: string) => {
                 try {
                     markInputPushed();
-                    pushUserMessage(messages, sanitizePayload(payload), { localIds: localId ? [localId] : [], onBound });
+                    // origin='steer'：turn 运行中的插队 push——launcher 不得据此复位 hasOutput（C1）
+                    pushUserMessage(messages, sanitizePayload(payload), {
+                        localIds: localId ? [localId] : [],
+                        onBound: (binding) => onBound(binding, 'steer'),
+                    });
                     return true;
                 } catch (e) {
                     logger.debug('[claudeRemote] steer push 失败，消息将 pushBack 恢复排队:', e);

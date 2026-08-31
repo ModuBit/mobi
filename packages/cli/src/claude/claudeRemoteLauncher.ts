@@ -42,7 +42,7 @@ import { reportRewindCompletion } from "./utils/rewindReport";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
 import { classifyMessage, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
-import { resolveStopAction } from './utils/stopAction';
+import { resolveStopAction, resolvePostInterruptAction, applyPushToTurnTracking } from './utils/stopAction';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
     RemoteLauncherBase,
@@ -148,7 +148,9 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         const receipt = await interruptWithOpts(isCancelQueued(stopKind) ? { cancelQueued: true } : undefined)
 
         if (stopKind !== 'turn') {
-            this.emitAbortedEvent(stopKind, 0)          // CC 层被取消消息由 lifecycle 帧自动回流
+            // 非 'turn' 档如实回传 still_queued：cancelQueued 未生效（旧二进制/取消失败）时
+            // 残留队列数是对账信息，硬编码 0 会把异常伪装成「已清空」（I3）
+            this.emitAbortedEvent(stopKind, receipt?.still_queued?.length ?? 0)
             return
         }
 
@@ -158,9 +160,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             hasLastPushed: this.turnTracking.lastPushedNativeId !== null,
         })
         if (action === 'withdraw' && this.turnTracking.lastPushedNativeId) {
-            // 复验：await interrupt() 返回即 abort 处理完成；窗口期若冒出输出则降级
-            if (this.turnTracking.hasOutput) {
-                this.emitAbortedEvent('turn', receipt?.still_queued?.length ?? 0)
+            // 复验：await interrupt() 返回即 abort 处理完成。守卫裁决收口在
+            // resolvePostInterruptAction（C1 修法 2 / I1 独立防线）——回执仍列排队消息
+            // （cancelQueued 未带或未生效，撤回目标还会执行）或窗口期冒出输出 → 降级普通停止
+            const stillQueuedCount = receipt?.still_queued?.length ?? 0
+            if (resolvePostInterruptAction({ turnHasOutput: this.turnTracking.hasOutput, stillQueuedCount }) === 'stop') {
+                this.emitAbortedEvent('turn', stillQueuedCount)
                 return
             }
             this.session.client.emitWithdrawnFact(this.turnTracking.lastPushedNativeId)
@@ -854,14 +859,18 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                         onSteerSinkReady: (push) => { this.steerSink = push },
                         // 用户消息 push 给 SDK 后上报 (localId → nativeId) 绑定（rewind 锚点）。
                         // push 时若 native session id 已知（非首条）直接带上，省去 attach 补写往返。
-                        // 同时是 turn 追踪的 push 接线点（批次 A）：normal / bash 注入 / steer 三条
-                        // push 路径都经 onBound 汇聚到此——新 turn 从 push 起算，覆盖记录
-                        // lastPushedNativeId（撤回目标）并复位 hasOutput（清上一中断 turn 的残留置位）
-                        onMessagesBound: (bindings) => {
+                        // 同时是 turn 追踪的 push 接线点（批次 A）：更新策略收口在
+                        // applyPushToTurnTracking（纯函数，C1 修法 1）——新 turn 的 push 复位
+                        // hasOutput 并覆盖撤回锚；steer push 只覆盖锚、不复位 hasOutput
+                        //（turn 运行中的插队不该抹掉「已产出输出」的事实）
+                        onMessagesBound: (bindings, origin) => {
                             const last = bindings[bindings.length - 1]
                             if (last) {
-                                this.turnTracking.lastPushedNativeId = last.nativeId
-                                this.turnTracking.hasOutput = false
+                                this.turnTracking = applyPushToTurnTracking(
+                                    this.turnTracking,
+                                    last.nativeId,
+                                    origin ?? 'turn',
+                                )
                             }
                             session.client.emitMessagesBound(bindings, session.sessionId ?? undefined)
                         },
