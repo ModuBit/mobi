@@ -16,11 +16,11 @@
 
 import { describe, it, expect } from 'vitest'
 
+import { isAbortedTerminalReason } from '@mobi/shared'
 import {
     resolveStopAction,
     resolvePostInterruptAction,
     applyPushToTurnTracking,
-    isInterruptedTerminalReason,
     normalizeStopKind,
     stopBackgroundTasksAllSettled,
 } from '../../src/claude/utils/stopAction'
@@ -103,15 +103,15 @@ describe('resolvePostInterruptAction（interrupt 返回后的复验裁决，C1 �
     })
 })
 
-describe('isInterruptedTerminalReason（中断终态判别，web normalizeAgent 同口径）', () => {
+describe('isAbortedTerminalReason（中断终态判别，跨端单源 @mobi/shared，web normalizeAgent 同口径）', () => {
     it('aborted_streaming / aborted_tools → true', () => {
-        expect(isInterruptedTerminalReason('aborted_streaming')).toBe(true)
-        expect(isInterruptedTerminalReason('aborted_tools')).toBe(true)
+        expect(isAbortedTerminalReason('aborted_streaming')).toBe(true)
+        expect(isAbortedTerminalReason('aborted_tools')).toBe(true)
     })
     it('正常/compact/completed/缺失 → false', () => {
-        expect(isInterruptedTerminalReason('completed')).toBe(false)
-        expect(isInterruptedTerminalReason(undefined)).toBe(false)
-        expect(isInterruptedTerminalReason(null)).toBe(false)
+        expect(isAbortedTerminalReason('completed')).toBe(false)
+        expect(isAbortedTerminalReason(undefined)).toBe(false)
+        expect(isAbortedTerminalReason(null)).toBe(false)
     })
 })
 
@@ -163,11 +163,11 @@ describe('normalizeStopKind（abort 入口校验：未知值回落默认档）',
 })
 
 describe('shouldSkipWithdrawnResultForward（撤回后中断 result 的转发抑制）', () => {
-    it('已内联至 claudeRemoteLauncher 调用点：外层 isInterruptedTerminalReason 收窄后退化为标志直查，'
-        + '等价行为由 isInterruptedTerminalReason 判别用例 + 调用点类型收窄保证', () => {
+    it('已内联至 claudeRemoteLauncher 调用点：外层 isAbortedTerminalReason 收窄后退化为标志直查，'
+        + '等价行为由 isAbortedTerminalReason 判别用例 + 调用点类型收窄保证', () => {
         // 内联前形态 shouldSkipWithdrawnResultForward(suppress, reason) === suppress && isInterrupted(reason)；
-        // 调用点位于 isInterruptedTerminalReason(reason)===true 分支内，恒等价于 suppress 直查
-        expect(isInterruptedTerminalReason('aborted_streaming')).toBe(true)
-        expect(isInterruptedTerminalReason('completed')).toBe(false)
+        // 调用点位于 isAbortedTerminalReason(reason)===true 分支内，恒等价于 suppress 直查
+        expect(isAbortedTerminalReason('aborted_streaming')).toBe(true)
+        expect(isAbortedTerminalReason('completed')).toBe(false)
     })
 })

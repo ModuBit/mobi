@@ -43,6 +43,7 @@ import { buildAppendSystemPrompt } from "./utils/systemPrompt";
 import type { PermissionResult } from "./sdk/types";
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKUIHints } from "@mobi/shared";
+import { isAbortedTerminalReason } from "@mobi/shared";
 import { getClaudeExecutablePath } from "./sdk/claudeExecutable";
 import { wrapCommand, cleanupSandbox, spawnWithTimeout } from "@/modules/sandbox/sandboxManager";
 import { StreamSnapshotSender, type ContentBlock } from './utils/streamSnapshotSender'
@@ -534,7 +535,7 @@ export async function sdkOutputLoop(
         if (message.type === 'result') {
             opts.onRunningChange(false);
             const { terminal_reason } = message as SDKResultMessage;
-            const isInterrupt = terminal_reason === 'aborted_streaming' || terminal_reason === 'aborted_tools';
+            const isInterrupt = isAbortedTerminalReason(terminal_reason);
 
             if (isInterrupt) {
                 logger.debug('[sdkOutputLoop] Interrupted');

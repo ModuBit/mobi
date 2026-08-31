@@ -61,14 +61,6 @@ export function resolvePostInterruptAction(state: {
     return 'withdraw'
 }
 
-/** 中断终态判别（与 web normalizeAgent.handleResultOutput 同口径）：
- *  SDK result 的 terminal_reason 命中 aborted_* 即「turn 被中断的死亡回执」。
- *  （撤回后转发抑制：调用点 claudeRemoteLauncher onMessage 在本判别为 true 的分支内
- *  直接查 suppressNextInterruptedResult 标志——helper 内层判别在调用点恒真，已内联。） */
-export function isInterruptedTerminalReason(reason: unknown): boolean {
-    return reason === 'aborted_streaming' || reason === 'aborted_tools'
-}
-
 /**
  * 后台任务并行停止（'turn-queue-tasks' 档）：Promise.allSettled 并发——单个 rejection
  * 不中断其余任务，总延迟从 N×RTT 降为最慢单个。失败不吞：按 { taskId, error } 返回，

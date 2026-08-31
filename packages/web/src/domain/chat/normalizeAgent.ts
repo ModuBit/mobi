@@ -15,7 +15,7 @@
  */
 
 import type { AgentEvent, AgentMetrics, NormalizedAgentContent, NormalizedMessage, ToolResult, ToolResultPermission, MessageMeta } from './types'
-import { asNumber, asString, getField, isObject, type StopKind } from '@mobi/shared'
+import { asNumber, asString, getField, isAbortedTerminalReason, isObject, type StopKind } from '@mobi/shared'
 import { isClaudeChatVisibleMessage } from '@mobi/shared/messages'
 import { calcCacheHitRate } from '@/core/lib/cacheHitRate'
 
@@ -446,8 +446,8 @@ const handleResultOutput: OutputHandler = (data, ctx) => {
     const isError = Boolean(data.is_error)
     const numTurns = asNumber(data.num_turns) ?? asNumber(data.numTurns) ?? null
 
-    // 中断
-    const isAborted = terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools'
+    // 中断（aborted_* 判别跨端单源 @mobi/shared.isAbortedTerminalReason）
+    const isAborted = isAbortedTerminalReason(terminalReason)
 
     // 提取耗时和 token 细分（result 消息携带完整 usage，CLI 已透传，无需额外采集）
     const durationMs = asNumber(data.duration_ms) ?? asNumber(data.durationMs) ?? 0

@@ -188,6 +188,18 @@ export function shouldStopTasks(kind: StopKind): boolean {
     return kind === 'turn-queue-tasks'
 }
 
+/** terminal_reason 的 aborted_* 取值（SDK result 的中断死亡回执已知集合，单一来源） */
+export const ABORTED_TERMINAL_REASONS = ['aborted_streaming', 'aborted_tools'] as const
+
+/**
+ * 是否为「被 interrupt/abort 截断的终态」reason（SDK result.terminal_reason 命中 aborted_*）。
+ * 跨端单源：CLI（撤回后中断 result 的转发抑制 / 中断时跳过 usage 上报）与
+ * web（aborted 灰行推导）共用——禁止消费端手写 `===` 副本（新增取值只改这里）。
+ */
+export function isAbortedTerminalReason(reason: unknown): boolean {
+    return typeof reason === 'string' && (ABORTED_TERMINAL_REASONS as readonly string[]).includes(reason)
+}
+
 /**
  * CLI→Hub 的消息事实（messages-facts 事件载荷元素）。批内合并，一次往返。
  * `at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。

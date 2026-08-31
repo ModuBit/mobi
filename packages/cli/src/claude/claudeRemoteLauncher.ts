@@ -41,12 +41,11 @@ import { REWIND_EXIT_SENTINEL } from "./utils/rewindSentinel";
 import { reportRewindCompletion } from "./utils/rewindReport";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
-import { classifyMessage, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
+import { classifyMessage, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
     resolvePostInterruptAction,
     applyPushToTurnTracking,
-    isInterruptedTerminalReason,
     stopBackgroundTasksAllSettled,
 } from './utils/stopAction';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
@@ -593,7 +592,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 // RawJSONLines 无 'result' discriminant（见 sdkToLogConverter case 'result'），走开放形状断言
                 if ((logMessage as { type?: string }).type === 'result') {
                     const reason = (logMessage as { terminal_reason?: unknown }).terminal_reason
-                    if (isInterruptedTerminalReason(reason)) {
+                    if (isAbortedTerminalReason(reason)) {
                         // 撤回后本 turn 的死亡回执：只拦第一条（标志消费即清），跳过 hub 转发/落库。
                         // 内层已收窄为中断 result，是否跳过退化为标志直查（原 helper 恒真内联）；
                         // 内部消费照旧（上方 Ink/权限/记忆已走完）；后续新 turn 的 result 正常转发
