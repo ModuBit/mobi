@@ -147,8 +147,11 @@ export function extractBackgroundTaskIdsFromMessageContent(
  *     b. tool_use_id 命中 backgroundToolUseIds（主 agent 显式 run_in_background=true，覆盖 CLI 重启等
  *        bg_changed 未 emit 的边界）
  *     c. data.is_backgrounded === true（SDK 显式后台标记，0.3.238+，覆盖无集合无入参的新边界）
- *   两者皆不命中 → 前台任务，不创建 delta（这正是修复「前台任务被识别成后台」的根因）。
- * - task_progress / task_notification / task_updated 仅当 taskId 在 knownTaskIds 中时才创建 delta
+ *   三信号皆不命中 → 前台任务，不创建 delta（这正是修复「前台任务被识别成后台」的根因）。
+ * - task_progress / task_notification / task_updated 默认仅当 taskId 在 knownTaskIds 中时才创建 delta；
+ *   唯一豁免是 task_updated 携带 patch.is_backgrounded=true：该任务可能本就不在集合中
+ *   （task_started 时被判前台丢弃的同款盲区，spec D3），终态直落 completed 分支、
+ *   非终态在「taskId 不在 knownTaskIds」前提下补建 started（防正常追踪中的后台任务被降级覆盖）
  */
 export function extractBackgroundTaskDeltasFromMessageContent(
     content: unknown,
@@ -264,11 +267,16 @@ export function extractBackgroundTaskDeltasFromMessageContent(
             : asString(patch?.status)
         const isTerminal = status === 'completed' || status === 'failed' || status === 'stopped'
 
+        // SDK 显式后台标记：既是补建/豁免判定信号，也是下方 knownTaskIds 过滤的豁免条件
+        const isExplicitBg = patch?.is_backgrounded === true
+
         // 中途后台化补建（spec D3）：前台任务 task_started 时被丢（判前台 return null），
-        // 事后转后台经 patch.is_backgrounded 到达且不会再有 task_started——在此补建，
-        // 顺带让写侧 knownTaskIds 收录，激活后续 progress/notification 匹配。
-        // patch 不携带 tool_use_id/subagent_type（sdk.d.ts SDKTaskUpdatedMessage），toolUseId 置 null
-        if (!isTerminal && patch?.is_backgrounded === true) {
+        // 事后转后台经 patch.is_backgrounded 到达且不会再有 task_started——仅对盲区任务补建。
+        // 已在 knownTaskIds 中的任务（写侧 started delta 会收录）说明已被 task_started 正常追踪，
+        // 携带真实 toolUseId/subagentType/toolName，跳过补建避免被 toolUseId=null/toolName='Bash'
+        // 的降级条目整体覆盖（final review Important #1）。
+        // patch 不携带 tool_use_id/subagent_type（sdk.d.ts SDKTaskUpdatedMessage），补建条目 toolUseId 置 null
+        if (!isTerminal && isExplicitBg && knownTaskIds?.has(taskId) !== true) {
             return {
                 type: 'started',
                 task: {
@@ -284,9 +292,10 @@ export function extractBackgroundTaskDeltasFromMessageContent(
         }
 
         // 过滤非后台任务。
-        // patch.is_backgrounded === true 时跳过：SDK 已显式标注后台，且该任务可能本就不在
-        // knownTaskIds 中（task_started 时被判前台丢弃的同款盲区，spec D3），无需集合背书
-        if (!(patch?.is_backgrounded === true) && knownTaskIds !== undefined && !knownTaskIds.has(taskId)) {
+        // isExplicitBg 时跳过：SDK 已显式标注后台，且该任务可能本就不在
+        // knownTaskIds 中（task_started 时被判前台丢弃的同款盲区，spec D3），无需集合背书；
+        // 已追踪任务经上方补建守卫落到此处后由非终态 return null 拦下（无 delta）
+        if (!isExplicitBg && knownTaskIds !== undefined && !knownTaskIds.has(taskId)) {
             return null
         }
 

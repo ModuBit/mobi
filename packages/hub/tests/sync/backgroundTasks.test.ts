@@ -740,6 +740,16 @@ describe('task_updated 中途后台化补建（批次 B，spec D3）', () => {
         expect(delta!.type).toBe('completed')
     })
 
+    test('taskId 已在 knownTaskIds 中时 patch.is_backgrounded=true 不补建（防正常后台任务被降级覆盖，批次 B final review Important #1）', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-tracked',
+            patch: { is_backgrounded: true, status: 'running' },
+        })
+        const known = new Set(['bt-tracked'])
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), known)
+        expect(delta).toBeNull()
+    })
+
     test('无 patch.is_backgrounded 且无终态 → 维持 return null（现状不变）', () => {
         const msg = makeSystemMessage('task_updated', {
             task_id: 'bt-other', patch: { description: 'only desc' },
