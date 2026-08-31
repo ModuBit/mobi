@@ -38,6 +38,7 @@ import {
     collectBackgroundToolUseIds,
     extractBackgroundTaskDeltasFromMessageContent,
     extractBackgroundTaskIdsFromMessageContent,
+    extractExcludedTaskStartedIds,
     applyBackgroundTaskDelta,
     type BackgroundToolName,
 } from '../../../sync/backgroundTasks'
@@ -123,6 +124,10 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
     const backgroundToolUseIds = new Map<string, BackgroundToolName>()
     // 已确认的后台任务 ID 集合，用于过滤 task_progress / task_notification
     const backgroundTaskIds = new Set<string>()
+    // 被 hub 过滤丢弃的后台任务 ID 集合（ambient 家务 / in_process_teammate，spec D1/D2）：
+    // 传给 deltas 提取作 excludedTaskIds，防被滤任务经 task_updated patch.is_backgrounded
+    // 豁免通道补建/直落终态复活（running 幽灵卡 / 空 ghost 终态条目）
+    const filteredTaskIds = new Set<string>()
 
     socket.on('message', (data: unknown) => {
         const parsed = messageSchema.safeParse(data)
@@ -187,15 +192,36 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
         // 先收集后台工具 ID（从 assistant 消息的 tool_use blocks）
         collectBackgroundToolUseIds(content, backgroundToolUseIds)
 
+        // 获取当前 runtimeState（须先于 bg delta 提取：persistedTaskIds 依赖已持久化的
+        // backgroundTasks——hub 重启/CLI 重连后连接级 backgroundTaskIds 清空且不从 DB 回种，
+        // 持久化的真实条目只能靠它挡住降级补建覆盖）。team system message 可能独立于其他 delta 到达
+        const existingSession = store.sessions.getSession(sid)
+        const existingRuntimeState = (existingSession?.runtimeState as RuntimeState) ?? {}
+        const persistedTaskIds: ReadonlySet<string> = new Set(
+            existingRuntimeState.backgroundTasks?.map(t => t.taskId) ?? [],
+        )
+
         // 再解析 background_tasks_changed，整体替换活跃后台集合（replace 语义）。
         // 必须先于 task_started 判定：bg_changed 是 task_started 的父消息（同 seq 先到），
-        // 处理 task_started 时集合必须已是最新
+        // 处理 task_started 时集合必须已是最新。被滤（ambient）条目同步 REPLACE 进 filteredTaskIds
         const activeBgIds = extractBackgroundTaskIdsFromMessageContent(content)
         if (activeBgIds !== null) {
-            backgroundTaskTracker.replace(sid, activeBgIds)
+            backgroundTaskTracker.replace(sid, activeBgIds.ids)
+            filteredTaskIds.clear()
+            for (const id of activeBgIds.filteredIds) filteredTaskIds.add(id)
         }
+        // task_started 入口被判丢弃（ambient/teammate）的 taskId 增量并入：无对应 bg_changed
+        // 快照的场景（如 teammate）也纳入排除集合
+        for (const id of extractExcludedTaskStartedIds(content)) filteredTaskIds.add(id)
 
-        const bgTaskDelta = extractBackgroundTaskDeltasFromMessageContent(content, backgroundToolUseIds, backgroundTaskIds, backgroundTaskTracker.getActive(sid))
+        const bgTaskDelta = extractBackgroundTaskDeltasFromMessageContent(
+            content,
+            backgroundToolUseIds,
+            backgroundTaskIds,
+            backgroundTaskTracker.getActive(sid),
+            persistedTaskIds,
+            filteredTaskIds,
+        )
 
         // 维护后台任务追踪集合：started 时注册并清理 Map，completed 时移除
         if (bgTaskDelta) {
@@ -207,11 +233,7 @@ export function registerSessionHandlers(socket: CliSocketWithData, deps: Session
             }
         }
 
-        // 获取当前 runtimeState（team system message 可能独立于其他 delta 到达）
-        const existingSession = store.sessions.getSession(sid)
-        const existingRuntimeState = (existingSession?.runtimeState as RuntimeState) ?? {}
-
-        // team system message 路由（仅当 teamState 非空时生效）
+        // team system message 路由（仅当 teamState 非空时生效；existingRuntimeState 已在上方取得）
         const teamSystemDelta = extractTeamSystemDeltasFromMessageContent(content, existingRuntimeState.teamState)
         // user 消息的 tool_result：teammate 完成出口（配对 member.toolUseIds 标 completed）
         const teamCompletionDelta = extractTeamMemberCompletionFromMessageContent(content, existingRuntimeState.teamState)

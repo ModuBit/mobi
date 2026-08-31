@@ -22,6 +22,7 @@ import {
     SessionSchema,
     SyncEventSchema,
     BackgroundTaskItemSchema,
+    extractLiveBackgroundTaskIds,
     RuntimeStateSchema,
     ContextUsageSchema,
     PermissionUpdateSchema,
@@ -576,5 +577,54 @@ describe('message-withdrawn SyncEvent', () => {
     it('originalText 允许 null，blocks 必须为数组', () => {
         expect(SyncEventSchema.safeParse({ type: 'message-withdrawn', sessionId: 's1', localId: 'l1', blocks: [], originalText: null }).success).toBe(true)
         expect(SyncEventSchema.safeParse({ type: 'message-withdrawn', sessionId: 's1', localId: 'l1', blocks: 'x', originalText: null }).success).toBe(false)
+    })
+})
+
+describe('BackgroundTaskItemSchema 枚举扩展（诚实降级，批次 B review fix2）', () => {
+    it('toolName 接受 unknown（补建条目无法确证工具类型）', () => {
+        const result = BackgroundTaskItemSchema.safeParse({
+            taskId: 'bt-1', toolName: 'unknown', description: '',
+            status: 'running', startedAt: 0,
+        })
+        expect(result.success).toBe(true)
+    })
+
+    it('status 接受 paused（patch.status 可携带 paused）', () => {
+        const result = BackgroundTaskItemSchema.safeParse({
+            taskId: 'bt-1', toolName: 'Bash', description: '',
+            status: 'paused', startedAt: 0,
+        })
+        expect(result.success).toBe(true)
+    })
+
+    it('存量 DB 记录（无新枚举值）继续通过 safeParse（additive 兼容）', () => {
+        const result = BackgroundTaskItemSchema.safeParse({
+            taskId: 'bt-1', toolName: 'Bash', description: '',
+            status: 'running', startedAt: 0,
+        })
+        expect(result.success).toBe(true)
+    })
+})
+
+describe('extractLiveBackgroundTaskIds（CLI/Hub 共用规则，批次 B review fix2 A6）', () => {
+    it('收集非空字符串 task_id，跳过 ambient 条目', () => {
+        const ids = extractLiveBackgroundTaskIds([
+            { task_id: 'bt-1', description: '用户任务' },
+            { task_id: 'bt-2', description: 'checkpoint', ambient: true },
+            { description: '无 id' },
+            { task_id: '', description: '空串 id' },
+            { task_id: 123 },
+            'garbage',
+            null,
+        ])
+        expect(ids.has('bt-1')).toBe(true)
+        expect(ids.has('bt-2')).toBe(false)
+        expect(ids.size).toBe(1)
+    })
+
+    it('非数组输入返回空集合（REPLACE 语义即清空）', () => {
+        expect(extractLiveBackgroundTaskIds(undefined).size).toBe(0)
+        expect(extractLiveBackgroundTaskIds('x').size).toBe(0)
+        expect(extractLiveBackgroundTaskIds(null).size).toBe(0)
     })
 })

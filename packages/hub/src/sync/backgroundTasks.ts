@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { asNumber, asString, isObject } from '@mobi/shared'
+import { asNumber, asString, isObject, extractLiveBackgroundTaskIds } from '@mobi/shared'
 import { unwrapRoleWrappedRecordEnvelope } from '@mobi/shared/messages'
 import type { BackgroundTaskItem } from '@mobi/shared'
 
@@ -100,6 +100,17 @@ export function collectBackgroundToolUseIds(
 }
 
 /**
+ * background_tasks_changed 提取结果。
+ * - ids：活跃后台任务 id 集合（REPLACE 语义整体替换）
+ * - filteredIds：本条消息中被过滤（ambient 家务）的 taskId——调用方据此维护被滤集合，
+ *   防被滤任务经 task_updated patch.is_backgrounded 豁免通道复活
+ */
+export type BackgroundTaskIdsExtraction = {
+    ids: Set<string>
+    filteredIds: Set<string>
+}
+
+/**
  * 从 system:background_tasks_changed 消息中提取活跃后台任务 id 集合。
  * SDK 文档（sdk.d.ts SDKBackgroundTasksChangedMessage）：携带全部活跃后台任务的
  * {task_id, task_type, description} 数组，客户端应**整体替换**（replace 语义）自己的集合，
@@ -109,7 +120,7 @@ export function collectBackgroundToolUseIds(
  */
 export function extractBackgroundTaskIdsFromMessageContent(
     content: unknown,
-): Set<string> | null {
+): BackgroundTaskIdsExtraction | null {
     const record = unwrapRoleWrappedRecordEnvelope(content)
     if (!record) return null
 
@@ -125,17 +136,49 @@ export function extractBackgroundTaskIdsFromMessageContent(
     const subtype = asString(data.subtype)
     if (subtype !== 'background_tasks_changed') return null
 
+    // 存活集合规则（task_id 非空字符串 + 跳过 ambient）单源于 shared 的 extractLiveBackgroundTaskIds
+    const ids = extractLiveBackgroundTaskIds(data.tasks)
+    // 被滤条目单独收集：ambient 家务任务对下游 deltas 是「不得复活」的黑名单而非不存在
+    const filteredIds = new Set<string>()
     const tasks = Array.isArray(data.tasks) ? data.tasks : []
-    const taskIds = new Set<string>()
     for (const item of tasks) {
-        if (!isObject(item)) continue
-        // 家务任务不进活跃后台集合（spec D1/D2：过滤在信号入口，下游 rewind 闸门等自动一致）
-        if (item.ambient === true) continue
+        if (!isObject(item) || item.ambient !== true) continue
         const taskId = asString(item.task_id)
-        if (!taskId) continue
-        taskIds.add(taskId)
+        if (taskId) filteredIds.add(taskId)
     }
-    return taskIds
+    return { ids, filteredIds }
+}
+
+/**
+ * task_started 消息中被 hub 判定为「入口丢弃」的 taskId（ambient 家务 / in_process_teammate，
+ * spec D1/D2）。两处共用同一判定：deltas 提取的 task_started 过滤、以及调用方维护被滤集合。
+ * 非丢弃（或 taskId 缺失/非字符串）返回 null。
+ */
+function droppedTaskStartedId(data: Record<string, unknown>): string | null {
+    if (data.ambient !== true && asString(data.task_type) !== 'in_process_teammate') return null
+    return asString(data.task_id) ?? null
+}
+
+/**
+ * 从 task_started 消息中提取被 hub 过滤丢弃（ambient / in_process_teammate）的 taskId 集合。
+ * 调用方（sessionHandlers）将结果并入连接级 filteredTaskIds，作为 deltas 提取的
+ * excludedTaskIds——这些任务不得经 task_updated patch.is_backgrounded 豁免通道补建/直落终态。
+ * 非 task_started 消息返回空集合。
+ */
+export function extractExcludedTaskStartedIds(content: unknown): Set<string> {
+    const excluded = new Set<string>()
+    const record = unwrapRoleWrappedRecordEnvelope(content)
+    if (!record || record.role !== 'agent') return excluded
+
+    const msgContent = record.content
+    if (!isObject(msgContent) || msgContent.type !== 'output') return excluded
+
+    const data = isObject(msgContent.data) ? msgContent.data : null
+    if (!data || data.type !== 'system' || asString(data.subtype) !== 'task_started') return excluded
+
+    const taskId = droppedTaskStartedId(data)
+    if (taskId) excluded.add(taskId)
+    return excluded
 }
 
 /**
@@ -151,13 +194,19 @@ export function extractBackgroundTaskIdsFromMessageContent(
  * - task_progress / task_notification / task_updated 默认仅当 taskId 在 knownTaskIds 中时才创建 delta；
  *   唯一豁免是 task_updated 携带 patch.is_backgrounded=true：该任务可能本就不在集合中
  *   （task_started 时被判前台丢弃的同款盲区，spec D3），终态直落 completed 分支、
- *   非终态在「taskId 不在 knownTaskIds」前提下补建 started（防正常追踪中的后台任务被降级覆盖）
+ *   非终态在「taskId 不在已知集合」前提下补建 started（防正常追踪中的后台任务被降级覆盖）
+ * - persistedTaskIds：已持久化的 backgroundTasks taskId（hub 重启/CLI 重连后连接级 knownTaskIds
+ *   清空且不从 DB 回种），补建守卫同 knownTaskIds 一起挡住持久化的真实条目被降级覆盖
+ * - excludedTaskIds：被 hub 过滤丢弃的任务（ambient 家务 / in_process_teammate）——
+ *   is_backgrounded 豁免通道（补建 + 终态直落）命中即 return null，防 running 幽灵卡复活
  */
 export function extractBackgroundTaskDeltasFromMessageContent(
     content: unknown,
     backgroundToolUseIds?: Map<string, BackgroundToolName>,
     knownTaskIds?: Set<string>,
     activeBackgroundTaskIds?: ReadonlySet<string>,
+    persistedTaskIds?: ReadonlySet<string>,
+    excludedTaskIds?: ReadonlySet<string>,
 ): BackgroundTaskDelta | null {
     const record = unwrapRoleWrappedRecordEnvelope(content)
     if (!record) return null
@@ -261,45 +310,65 @@ export function extractBackgroundTaskDeltasFromMessageContent(
         // task_updated 从 data.patch 取字段（终态与中途后台化补建共用提取）
         const patch = subtype === 'task_updated' ? (isObject(data.patch) ? data.patch : null) : null
 
-        // task_notification 从 data.status 取终态，task_updated 从 data.patch.status 取终态
-        const status = subtype === 'task_notification'
+        // task_notification 从 data.status 取终态，task_updated 从 data.patch.status 取终态。
+        // SDKTaskUpdatedMessage.patch.status 的终止值是 'killed'（用户停止单个后台任务）——
+        // BackgroundTaskItem.status 枚举无 killed，映射为 'stopped'（同义终态），
+        // 否则无终态 delta → web 卡片永停 running 转圈、后台集合不清除
+        const rawStatus = subtype === 'task_notification'
             ? asString(data.status)
             : asString(patch?.status)
+        const status = rawStatus === 'killed' ? 'stopped' : rawStatus
         const isTerminal = status === 'completed' || status === 'failed' || status === 'stopped'
 
-        // SDK 显式后台标记：既是补建/豁免判定信号，也是下方 knownTaskIds 过滤的豁免条件
-        const isExplicitBg = patch?.is_backgrounded === true
+        // task_updated 携带的 SDK 显式后台标记：既是补建/豁免判定信号，也是下方
+        // knownTaskIds 过滤的豁免条件。task_notification 无 patch，恒 false
+        const patchExplicitBg = patch?.is_backgrounded === true
 
-        // 中途后台化补建（spec D3）：前台任务 task_started 时被丢（判前台 return null），
-        // 事后转后台经 patch.is_backgrounded 到达且不会再有 task_started——仅对盲区任务补建。
-        // 已在 knownTaskIds 中的任务（写侧 started delta 会收录）说明已被 task_started 正常追踪，
-        // 携带真实 toolUseId/subagentType/toolName，跳过补建避免被 toolUseId=null/toolName='Bash'
-        // 的降级条目整体覆盖（final review Important #1）。
-        // patch 不携带 tool_use_id/subagent_type（sdk.d.ts SDKTaskUpdatedMessage），补建条目 toolUseId 置 null
-        if (!isTerminal && isExplicitBg && knownTaskIds?.has(taskId) !== true) {
-            return {
-                type: 'started',
-                task: {
-                    taskId,
-                    toolUseId: null,
-                    toolName: 'Bash',
-                    description: asString(patch.description) ?? '',
-                    status: 'running',
-                    isBackground: true,
-                    startedAt: Date.now(),
-                },
+        // 被滤任务（ambient 家务 / in_process_teammate）不得经 is_backgrounded 豁免通道复活：
+        // 正常路径由下方 knownTaskIds 过滤兜底，豁免通道（补建 + 终态直落）须显式拦截
+        if (patchExplicitBg && excludedTaskIds?.has(taskId) === true) return null
+
+        // ===== 终局分流（terminal-first）=====
+
+        if (!isTerminal) {
+            // 中途后台化补建（spec D3）：前台任务 task_started 时被丢（判前台 return null），
+            // 事后转后台经 patch.is_backgrounded 到达且不会再有 task_started——仅对盲区任务补建。
+            // 已在 knownTaskIds 中的任务（写侧 started delta 会收录）说明已被 task_started 正常追踪，
+            // 携带真实 toolUseId/subagentType/toolName；persistedTaskIds 同理覆盖 hub 重启/CLI 重连后
+            // 连接级集合清空的场景——两者任一命中即跳过补建，避免持久化的真实条目被降级条目整体覆盖
+            if (patchExplicitBg
+                && knownTaskIds?.has(taskId) !== true
+                && persistedTaskIds?.has(taskId) !== true) {
+                // patch 不携带 tool_use_id/subagent_type（sdk.d.ts SDKTaskUpdatedMessage），
+                // 补建条目无法确证工具类型 → toolName 诚实降级为 'unknown'（不冒充 Bash）；
+                // status 从 patch.status 诚实映射（枚举无 pending，paused 是最近的诚实表达）
+                const patchStatus = asString(patch?.status)
+                const rebuiltStatus: BackgroundTaskItem['status']
+                    = patchStatus === 'paused' || patchStatus === 'pending' ? 'paused' : 'running'
+                return {
+                    type: 'started',
+                    task: {
+                        taskId,
+                        toolUseId: null,
+                        toolName: 'unknown',
+                        description: asString(patch.description) ?? '',
+                        status: rebuiltStatus,
+                        isBackground: true,
+                        startedAt: Date.now(),
+                    },
+                }
             }
-        }
 
-        // 过滤非后台任务。
-        // isExplicitBg 时跳过：SDK 已显式标注后台，且该任务可能本就不在
-        // knownTaskIds 中（task_started 时被判前台丢弃的同款盲区，spec D3），无需集合背书；
-        // 已追踪任务经上方补建守卫落到此处后由非终态 return null 拦下（无 delta）
-        if (!isExplicitBg && knownTaskIds !== undefined && !knownTaskIds.has(taskId)) {
+            // 其余非终态：非补建路径一律不产 delta（已追踪任务的进行中增量本就不经此 subtype 合并）
             return null
         }
 
-        if (!isTerminal) return null
+        // 终态直落 completed。
+        // patchExplicitBg 时跳过 knownTaskIds 过滤：SDK 已显式标注后台，且该任务可能本就不在
+        // knownTaskIds 中（task_started 时被判前台丢弃的同款盲区，spec D3），无需集合背书
+        if (!patchExplicitBg && knownTaskIds !== undefined && !knownTaskIds.has(taskId)) {
+            return null
+        }
 
         // task_notification 从 data.summary 取，task_updated 优先从 data.patch.summary 取
         const summary = (subtype === 'task_updated'

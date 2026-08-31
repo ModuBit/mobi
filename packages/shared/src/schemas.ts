@@ -296,10 +296,12 @@ export const TasksSchema = z.array(TaskItemSchema)
 export const BackgroundTaskItemSchema = z.object({
     taskId: z.string(),
     toolUseId: z.string().nullable().optional(),
-    toolName: z.enum(['Bash', 'Agent', 'Monitor']),
+    /** 'unknown'：task_updated 补建条目无法确证工具类型（patch 不携带 tool_use_id/subagent_type），诚实降级而非冒充 Bash */
+    toolName: z.enum(['Bash', 'Agent', 'Monitor', 'unknown']),
     description: z.string(),
     subagentType: z.string().optional(),
-    status: z.enum(['running', 'completed', 'failed', 'stopped']),
+    /** 'paused'：task_updated patch 可携带 paused（SDKTaskUpdatedMessage.patch.status 联合），枚举无 pending 时 paused 是最近的诚实表达 */
+    status: z.enum(['running', 'completed', 'failed', 'stopped', 'paused']),
     /** 是否为后台任务（进入 backgroundTasks 的都是后台任务，恒 true）。SDK 对所有 Bash/Agent 任务都 emit task_started，此标志由 hub 判定后写入，供 Web 端统一区分前后台渲染。
      *  default(true)：存量 DB 记录（isBackground 字段加入前持久化的 runtime_state）经 RuntimeStateSchema.safeParse 时缺此字段，默认 true 与「进入 backgroundTasks 即后台」的语义一致，避免整条数组被 strip */
     isBackground: z.boolean().default(true),
@@ -316,6 +318,24 @@ export const BackgroundTaskItemSchema = z.object({
 export type BackgroundTaskItem = z.infer<typeof BackgroundTaskItemSchema>
 
 export const BackgroundTasksSchema = z.array(BackgroundTaskItemSchema)
+
+/**
+ * 从 background_tasks_changed 的 tasks 数组提取存活后台任务 id 集合（CLI 与 Hub 共用规则）：
+ * task_id 为非空字符串才收录；ambient === true 的家务任务（checkpoint/live-update watcher 等）
+ * 跳过——「全部停止」/ 后台面板只面向用户可见的工作（spec D1/D2）。
+ * 非数组输入返回空集合（调用方按 REPLACE 语义整体替换即清空）。
+ */
+export function extractLiveBackgroundTaskIds(tasks: unknown): Set<string> {
+    const ids = new Set<string>()
+    if (!Array.isArray(tasks)) return ids
+    for (const item of tasks) {
+        if (typeof item !== 'object' || item === null) continue
+        const t = item as { task_id?: unknown; ambient?: unknown }
+        if (t.ambient === true) continue
+        if (typeof t.task_id === 'string' && t.task_id.length > 0) ids.add(t.task_id)
+    }
+    return ids
+}
 
 export const TeamMemberSchema = z.object({
     name: z.string(),

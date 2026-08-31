@@ -19,6 +19,7 @@ import {
     collectBackgroundToolUseIds,
     extractBackgroundTaskDeltasFromMessageContent,
     extractBackgroundTaskIdsFromMessageContent,
+    extractExcludedTaskStartedIds,
     applyBackgroundTaskDelta,
 } from '../../src/sync/backgroundTasks'
 import type { BackgroundTaskDelta, BackgroundTaskItem } from '../../src/sync/backgroundTasks'
@@ -620,14 +621,16 @@ describe('extractBackgroundTaskIdsFromMessageContent', () => {
         ])
         const result = extractBackgroundTaskIdsFromMessageContent(msg)
         expect(result).not.toBeNull()
-        expect(Array.from(result!).sort()).toEqual(['bt-001', 'bt-002'])
+        expect(Array.from(result!.ids).sort()).toEqual(['bt-001', 'bt-002'])
+        expect(result!.filteredIds.size).toBe(0)
     })
 
     test('tasks 数组为空 → 返回空集合（replace 语义清空）', () => {
         const msg = makeBgChangedMessage([])
         const result = extractBackgroundTaskIdsFromMessageContent(msg)
         expect(result).not.toBeNull()
-        expect(result!.size).toBe(0)
+        expect(result!.ids.size).toBe(0)
+        expect(result!.filteredIds.size).toBe(0)
     })
 
     test('非 background_tasks_changed 消息 → 返回 null', () => {
@@ -644,7 +647,7 @@ describe('extractBackgroundTaskIdsFromMessageContent', () => {
         ])
         const result = extractBackgroundTaskIdsFromMessageContent(msg)
         expect(result).not.toBeNull()
-        expect(Array.from(result!)).toEqual(['bt-001'])
+        expect(Array.from(result!.ids)).toEqual(['bt-001'])
     })
 
     test('无法解包的消息返回 null', () => {
@@ -656,7 +659,7 @@ describe('extractBackgroundTaskIdsFromMessageContent', () => {
 // ============ 批次 B：ambient 过滤 + is_backgrounded（spec D1/D2/D3）============
 
 describe('ambient 过滤（批次 B）', () => {
-    test('background_tasks_changed 集合不含 ambient 条目', () => {
+    test('background_tasks_changed 集合不含 ambient 条目，但被滤条目进 filteredIds（review fix2 A4）', () => {
         const msg = makeSystemMessage('background_tasks_changed', {
             tasks: [
                 { task_id: 'bt-user', task_type: 'local_bash', description: '用户任务' },
@@ -665,8 +668,9 @@ describe('ambient 过滤（批次 B）', () => {
         })
         const ids = extractBackgroundTaskIdsFromMessageContent(msg)
         expect(ids).not.toBeNull()
-        expect(ids!.has('bt-user')).toBe(true)
-        expect(ids!.has('bt-housekeep')).toBe(false)
+        expect(ids!.ids.has('bt-user')).toBe(true)
+        expect(ids!.ids.has('bt-housekeep')).toBe(false)
+        expect(ids!.filteredIds.has('bt-housekeep')).toBe(true)
     })
 
     test('ambient task_started 不创建 delta', () => {
@@ -683,7 +687,7 @@ describe('ambient 过滤（批次 B）', () => {
             tasks: [{ task_id: 'bt-skip', task_type: 'local_bash', description: 'x', skip_transcript: true }],
         })
         const ids = extractBackgroundTaskIdsFromMessageContent(msg)
-        expect(ids!.has('bt-skip')).toBe(true)
+        expect(ids!.ids.has('bt-skip')).toBe(true)
     })
 })
 
@@ -885,5 +889,175 @@ describe('applyBackgroundTaskDelta', () => {
         expect(result[0].completedAt).toBeGreaterThan(0)
         // 兜底创建的最小终态条目也是后台任务
         expect(result[0].isBackground).toBe(true)
+    })
+})
+
+// ============ review fix2：A1 killed 终态 / A2 诚实降级 / A3 persistedTaskIds / A4 excludedTaskIds ============
+
+describe('A1: task_updated patch.status=killed → completed stopped（review fix2）', () => {
+    test('killed 映射为 stopped 终态 delta', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-kill',
+            patch: { status: 'killed' },
+        })
+        const known = new Set(['bt-kill'])
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), known)
+        expect(delta).not.toBeNull()
+        expect(delta!.type).toBe('completed')
+        if (delta!.type === 'completed') {
+            expect(delta!.status).toBe('stopped')
+        }
+    })
+
+    test('killed + patch.is_backgrounded=true（豁免通道）同样映射为 stopped', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-kill2',
+            patch: { status: 'killed', is_backgrounded: true },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), new Set())
+        expect(delta).not.toBeNull()
+        expect(delta!.type).toBe('completed')
+        if (delta!.type === 'completed') {
+            expect(delta!.status).toBe('stopped')
+        }
+    })
+})
+
+describe('A2: 补建条目诚实降级（review fix2）', () => {
+    test('补建条目 toolName=unknown（不冒充 Bash），running patch → status running', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-promote',
+            patch: { is_backgrounded: true, status: 'running' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), new Set())
+        expect(delta).not.toBeNull()
+        expect(delta!.type).toBe('started')
+        if (delta!.type === 'started') {
+            expect(delta!.task.toolName).toBe('unknown')
+            expect(delta!.task.status).toBe('running')
+        }
+    })
+
+    test('patch.status=paused → 补建 status paused（paused 不渲染为 running）', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-pause',
+            patch: { is_backgrounded: true, status: 'paused' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), new Set())
+        expect(delta).not.toBeNull()
+        if (delta!.type === 'started') {
+            expect(delta!.task.status).toBe('paused')
+            expect(delta!.task.toolName).toBe('unknown')
+        }
+    })
+
+    test('patch.status=pending → 枚举无 pending，paused 是最近的诚实表达', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-pending',
+            patch: { is_backgrounded: true, status: 'pending' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), new Set())
+        expect(delta).not.toBeNull()
+        if (delta!.type === 'started') {
+            expect(delta!.task.status).toBe('paused')
+        }
+    })
+
+    test('patch.status 缺省 → running（补建语义即「任务仍在进行中」）', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-nostatus',
+            patch: { is_backgrounded: true },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), new Set())
+        expect(delta).not.toBeNull()
+        if (delta!.type === 'started') {
+            expect(delta!.task.status).toBe('running')
+        }
+    })
+})
+
+describe('A3: persistedTaskIds 挡降级补建（review fix2）', () => {
+    test('knownTaskIds 空 + persistedTaskIds 含 taskId → 不补建（防 hub 重启后持久化条目被覆盖）', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-persisted',
+            patch: { is_backgrounded: true, status: 'running' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            msg, new Map(), new Set(), undefined, new Set(['bt-persisted']),
+        )
+        expect(delta).toBeNull()
+    })
+
+    test('persistedTaskIds 不含 taskId → 照常补建', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-fresh',
+            patch: { is_backgrounded: true, status: 'running' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            msg, new Map(), new Set(), undefined, new Set(['bt-other']),
+        )
+        expect(delta).not.toBeNull()
+        expect(delta!.type).toBe('started')
+    })
+})
+
+describe('A4: excludedTaskIds 拦截豁免通道（review fix2）', () => {
+    test('excludedTaskIds 含 taskId 时 patch.is_backgrounded=true 非终态 → null（不补建 running 幽灵卡）', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-ambient',
+            patch: { is_backgrounded: true, status: 'running' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            msg, new Map(), new Set(), undefined, undefined, new Set(['bt-ambient']),
+        )
+        expect(delta).toBeNull()
+    })
+
+    test('excludedTaskIds 含 taskId 时 patch.is_backgrounded=true 终态 → null（不留空 ghost 终态条目）', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-ambient',
+            patch: { is_backgrounded: true, status: 'completed' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            msg, new Map(), new Set(), undefined, undefined, new Set(['bt-ambient']),
+        )
+        expect(delta).toBeNull()
+    })
+
+    test('excludedTaskIds 不含 taskId → 豁免通道不受影响', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-normal',
+            patch: { is_backgrounded: true, status: 'completed' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            msg, new Map(), new Set(), undefined, undefined, new Set(['bt-ambient']),
+        )
+        expect(delta).not.toBeNull()
+        expect(delta!.type).toBe('completed')
+    })
+})
+
+describe('A4: extractExcludedTaskStartedIds（review fix2）', () => {
+    test('ambient task_started 的 taskId 进排除集合', () => {
+        const msg = makeSystemMessage('task_started', {
+            task_id: 'bt-housekeep', task_type: 'local_bash', ambient: true,
+        })
+        const excluded = extractExcludedTaskStartedIds(msg)
+        expect(excluded.has('bt-housekeep')).toBe(true)
+    })
+
+    test('in_process_teammate task_started 的 taskId 进排除集合', () => {
+        const msg = makeSystemMessage('task_started', {
+            task_id: 'bt-mate', task_type: 'in_process_teammate',
+        })
+        expect(extractExcludedTaskStartedIds(msg).has('bt-mate')).toBe(true)
+    })
+
+    test('正常 task_started 不进排除集合；非 task_started 消息返回空集合', () => {
+        const normal = makeSystemMessage('task_started', {
+            task_id: 'bt-user', task_type: 'local_agent',
+        })
+        expect(extractExcludedTaskStartedIds(normal).size).toBe(0)
+        expect(extractExcludedTaskStartedIds(makeSystemMessage('task_progress', { task_id: 'x' })).size).toBe(0)
     })
 })
