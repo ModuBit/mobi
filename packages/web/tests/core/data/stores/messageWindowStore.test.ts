@@ -426,3 +426,42 @@ describe('removeQueuedMessages（清队列档批量取消，与 hub 批删同步
         expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'sending', 'failed'])
     })
 })
+
+describe('withdrawFrom tombstone（撤回复活防护：迟到广播/snapshot 同 id 重放不复活）', () => {
+    beforeEach(() => _resetForTest())
+
+    it('tombstone 命中的行 ingest 不复活，未命中行照常合并', () => {
+        ingestIncomingMessages('s1', [msg('a', 1), msg('b', 2), msg('c', 3)])
+        withdrawFrom('s1', 'b')
+        // 迟到的 acked 行广播：同 id 重新到达 → 跳过
+        ingestIncomingMessages('s1', [msg('b', 2)])
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a'])
+        // 未命中行照常合并
+        ingestIncomingMessages('s1', [msg('d', 4)])
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a', 'd'])
+    })
+
+    it('被移除的尾随行同样进 tombstone（软删无上界，迟到达同样不复活）', () => {
+        ingestIncomingMessages('s1', [msg('a', 1), msg('b', 2), msg('c', 3)])
+        withdrawFrom('s1', 'b')
+        ingestIncomingMessages('s1', [msg('c', 3)])
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a'])
+    })
+
+    it('fetchLatest 响应含已撤回行时跳过合并（对账防护）', async () => {
+        ingestIncomingMessages('s1', [msg('a', 1), msg('b', 2)])
+        withdrawFrom('s1', 'b')   // 撤最后一行（及其后无行）——仅 b 进墓碑
+        const api = makeApi([{ messages: [msg('a', 1), msg('b', 2)], page: { hasMore: false, nextBeforeSeq: null } }])
+        await fetchLatestMessages(api, 's1')
+        // 未撤回的 a 照常合并回（响应迟到场景），已撤回的 b 跳过
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a'])
+    })
+
+    it('clearMessageWindow 清除 tombstone（会话删除后同 id 新行不再被拦截）', () => {
+        ingestIncomingMessages('s1', [msg('a', 1)])
+        withdrawFrom('s1', 'a')
+        clearMessageWindow('s1')
+        ingestIncomingMessages('s1', [msg('a', 1)])
+        expect(getMessageWindowState('s1').messages.map(m => m.id)).toEqual(['a'])
+    })
+})
