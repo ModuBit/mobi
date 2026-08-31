@@ -17,7 +17,7 @@
 import type { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
 
-import { isQueueableUserSubmission, type MessageCategory, type MessageLifecycle, type NativeMessageMetadata } from '@mobi/shared'
+import { isQueueableUserSubmission, normalizeUserContent, unwrapRoleWrappedRecordEnvelope, type MessageCategory, type MessageLifecycle, type NativeMessageMetadata } from '@mobi/shared'
 
 import type { StoredMessage } from './types'
 import { safeJsonParse } from './json'
@@ -417,15 +417,17 @@ export function advanceMessagesAcked(
     return rows.map(r => r.id)
 }
 
-/** 按 nativeId 单调推进 lifecycle 至目标态（processing/done/cancelled/discarded/refused——CC command_lifecycle 终态）。
- *  单调性（CASE 内联防注入）：processing(rank 3) 可从 queued/pushed/acked 推进；终态(rank 4，含 refused)可从
- *  queued/pushed/acked/processing 推进，但已处终态(含 withdrawn)不被覆盖、processing 不回退——
+/** 按 nativeId 单调推进 lifecycle 至目标态（processing/done/cancelled/discarded/refused——CC command_lifecycle
+ *  终态；withdrawn——撤回留档，仅 hub 内部使用）。
+ *  单调性（CASE 内联防注入）：processing(rank 3) 可从 queued/pushed/acked 推进；终态(rank 4，含 refused)
+ *  可从 queued/pushed/acked/processing 推进（withdrawn 走同档——queued/pushed/acked/processing 可撤回，
+ *  已终态行不可），但已处终态(含 withdrawn)不被覆盖、processing 不回退——
  *  乱序帧安全。单语句 UPDATE RETURNING 原子推进，返回实际推进行 id（供 handler 回读行广播）。 */
 export function advanceMessagesLifecycle(
     db: Database,
     sessionId: string,
     nativeId: string,
-    state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused',
+    state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused' | 'withdrawn',
     at: number
 ): string[] {
     const rows = db.prepare(
@@ -452,6 +454,32 @@ export function getMessagesByIds(
         `SELECT * FROM messages WHERE session_id = ? AND id IN (${ids.map(() => '?').join(',')}) ORDER BY seq ASC`
     ).all(sessionId, ...ids) as DbMessageRow[]
     return rows.map(toStoredMessage)
+}
+
+/** 按 nativeId 定位最新一行（同 nativeId 理论唯一，防御性取一）；软删除行不可见——
+ *  撤回/rewind 已截断的行查不到，天然幂等（重复 withdrawn fact 不重复受理）。 */
+export function getMessageByNativeId(
+    db: Database,
+    sessionId: string,
+    nativeId: string
+): StoredMessage | null {
+    const row = db.prepare(
+        `SELECT * FROM messages WHERE session_id = ? AND native_id = ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1`
+    ).get(sessionId, nativeId) as DbMessageRow | undefined
+    return row ? toStoredMessage(row) : null
+}
+
+/** 从 user 消息 content 信封提取撤回回填载荷（SSE message-withdrawn，批次 A）：
+ *  - blocks：信封内层经 normalizeUserContent 归一的 UserContentBlock[]（web composer 直接还原输入）
+ *  - originalText：text block 纯文本拼接——hub 不存 originalText 原始字段（grep 全仓核实，
+ *    web 端 originalText 是发送时本地态），此处为 hub 侧唯一来源，供 web normalize 失败时兜底
+ *  非 user 信封 / 无法归一 → blocks 空、originalText null（web 端回退空 composer，不抛错）。 */
+export function extractWithdrawnContent(content: unknown): { blocks: unknown[]; originalText: string | null } {
+    const inner = unwrapRoleWrappedRecordEnvelope(content)?.content
+    const blocks = normalizeUserContent(inner)
+    if (!blocks) return { blocks: [], originalText: null }
+    const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n')
+    return { blocks, originalText: text.length > 0 ? text : null }
 }
 
 /** 仍排队（lifecycle='queued'）的 user 消息，用于悬浮条钉最新页。 */

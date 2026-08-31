@@ -25,6 +25,7 @@ import {
     bindNativeIds,
     cancelAllQueuedMessages,
     cancelQueuedMessage,
+    getMessageByNativeId,
     getMessageSubmitState,
     getMessages,
     getMessagesAfter,
@@ -108,7 +109,7 @@ export class MessageStore {
     advanceMessagesLifecycle(
         sessionId: string,
         nativeId: string,
-        state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused',
+        state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused' | 'withdrawn',
         at: number
     ): string[] {
         return advanceMessagesLifecycle(this.db, sessionId, nativeId, state, at)
@@ -122,6 +123,11 @@ export class MessageStore {
     /** 按 id 集合回读行（advance* 返回 id，广播需完整行），按 seq 升序。 */
     getMessagesByIds(sessionId: string, ids: string[]): StoredMessage[] {
         return getMessagesByIds(this.db, sessionId, ids)
+    }
+
+    /** 按 nativeId 定位最新未删行（同 nativeId 理论唯一，防御性取一）；查不到返回 null */
+    getMessageByNativeId(sessionId: string, nativeId: string): StoredMessage | null {
+        return getMessageByNativeId(this.db, sessionId, nativeId)
     }
 
     getUnsubmittedLocalMessages(sessionId: string): StoredMessage[] {
