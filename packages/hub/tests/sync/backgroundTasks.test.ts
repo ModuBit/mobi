@@ -653,6 +653,102 @@ describe('extractBackgroundTaskIdsFromMessageContent', () => {
     })
 })
 
+// ============ 批次 B：ambient 过滤 + is_backgrounded（spec D1/D2/D3）============
+
+describe('ambient 过滤（批次 B）', () => {
+    test('background_tasks_changed 集合不含 ambient 条目', () => {
+        const msg = makeSystemMessage('background_tasks_changed', {
+            tasks: [
+                { task_id: 'bt-user', task_type: 'local_bash', description: '用户任务' },
+                { task_id: 'bt-housekeep', task_type: 'local_bash', description: 'checkpoint', ambient: true },
+            ],
+        })
+        const ids = extractBackgroundTaskIdsFromMessageContent(msg)
+        expect(ids).not.toBeNull()
+        expect(ids!.has('bt-user')).toBe(true)
+        expect(ids!.has('bt-housekeep')).toBe(false)
+    })
+
+    test('ambient task_started 不创建 delta', () => {
+        const msg = makeSystemMessage('task_started', {
+            task_id: 'bt-housekeep', task_type: 'local_bash',
+            description: 'checkpoint', ambient: true,
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg)
+        expect(delta).toBeNull()
+    })
+
+    test('skip_transcript 但非 ambient 的条目不被过滤（语义边界，spec D2）', () => {
+        const msg = makeSystemMessage('background_tasks_changed', {
+            tasks: [{ task_id: 'bt-skip', task_type: 'local_bash', description: 'x', skip_transcript: true }],
+        })
+        const ids = extractBackgroundTaskIdsFromMessageContent(msg)
+        expect(ids!.has('bt-skip')).toBe(true)
+    })
+})
+
+describe('is_backgrounded 第三信号（批次 B，spec D3）', () => {
+    test('两信号皆未命中但 is_backgrounded=true 时创建条目', () => {
+        const msg = makeSystemMessage('task_started', {
+            task_id: 'bt-explicit', task_type: 'local_agent',
+            description: '后台 agent', is_backgrounded: true, subagent_type: 'Explore',
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(
+            msg, new Map(), new Set(), new Set(),   // 空 backgroundToolUseIds / knownTaskIds / activeBackgroundTaskIds
+        )
+        expect(delta).not.toBeNull()
+        expect(delta!.type).toBe('started')
+        if (delta!.type === 'started') {
+            expect(delta!.task.taskId).toBe('bt-explicit')
+            expect(delta!.task.subagentType).toBe('Explore')
+        }
+    })
+
+    test('is_backgrounded=false（显式前台）不创建条目', () => {
+        const msg = makeSystemMessage('task_started', {
+            task_id: 'bt-fg', task_type: 'local_agent',
+            description: '前台', is_backgrounded: false,
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), new Set(), new Set())
+        expect(delta).toBeNull()
+    })
+})
+
+describe('task_updated 中途后台化补建（批次 B，spec D3）', () => {
+    test('patch.is_backgrounded=true 且无终态 status → 补建 started delta（toolUseId=null）', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-promoted',
+            patch: { is_backgrounded: true, status: 'running' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), new Set())
+        expect(delta).not.toBeNull()
+        expect(delta!.type).toBe('started')
+        if (delta!.type === 'started') {
+            expect(delta!.task.toolUseId).toBeNull()
+            expect(delta!.task.status).toBe('running')
+            expect(delta!.task.isBackground).toBe(true)
+        }
+    })
+
+    test('patch 带终态 status 时仍走既有 completed 分支，不补建', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-done',
+            patch: { is_backgrounded: true, status: 'completed' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), new Set())
+        expect(delta).not.toBeNull()
+        expect(delta!.type).toBe('completed')
+    })
+
+    test('无 patch.is_backgrounded 且无终态 → 维持 return null（现状不变）', () => {
+        const msg = makeSystemMessage('task_updated', {
+            task_id: 'bt-other', patch: { description: 'only desc' },
+        })
+        const delta = extractBackgroundTaskDeltasFromMessageContent(msg, new Map(), new Set())
+        expect(delta).toBeNull()
+    })
+})
+
 // ============ applyBackgroundTaskDelta 测试 ============
 
 describe('applyBackgroundTaskDelta', () => {

@@ -129,6 +129,8 @@ export function extractBackgroundTaskIdsFromMessageContent(
     const taskIds = new Set<string>()
     for (const item of tasks) {
         if (!isObject(item)) continue
+        // 家务任务不进活跃后台集合（spec D1/D2：过滤在信号入口，下游 rewind 闸门等自动一致）
+        if (item.ambient === true) continue
         const taskId = asString(item.task_id)
         if (!taskId) continue
         taskIds.add(taskId)
@@ -144,6 +146,7 @@ export function extractBackgroundTaskIdsFromMessageContent(
  *     a. task_id ∈ activeBackgroundTaskIds（background_tasks_changed 权威后台集合）
  *     b. tool_use_id 命中 backgroundToolUseIds（主 agent 显式 run_in_background=true，覆盖 CLI 重启等
  *        bg_changed 未 emit 的边界）
+ *     c. data.is_backgrounded === true（SDK 显式后台标记，0.3.238+，覆盖无集合无入参的新边界）
  *   两者皆不命中 → 前台任务，不创建 delta（这正是修复「前台任务被识别成后台」的根因）。
  * - task_progress / task_notification / task_updated 仅当 taskId 在 knownTaskIds 中时才创建 delta
  */
@@ -169,6 +172,9 @@ export function extractBackgroundTaskDeltasFromMessageContent(
 
     // task_started：任务启动（SDK 对前后台任务都 emit，需组合判定是否后台）
     if (subtype === 'task_started') {
+        // 家务任务当作不存在（spec D1/D2）；置于一切判定之前
+        if (data.ambient === true) return null
+
         // team agent（in_process_teammate）由 teams.ts 管理，不纳入后台任务
         const taskType = asString(data.task_type)
         if (taskType === 'in_process_teammate') return null
@@ -186,6 +192,9 @@ export function extractBackgroundTaskDeltasFromMessageContent(
         const isBackground =
             (activeBackgroundTaskIds !== undefined && activeBackgroundTaskIds.has(taskId))
             || (toolUseId !== null && backgroundToolUseIds?.has(toolUseId) === true)
+            // SDK 显式后台标记（0.3.238+，仅 local_agent/local_bash 设置）——第三 OR 信号，
+            // 覆盖「集合未收到 + 无 tool_use_id 入参」的新边界（spec D3）
+            || data.is_backgrounded === true
 
         // 前台任务：不是后台 → 不创建 started delta（修复「前台任务被识别成后台」的根因）
         if (!isBackground) return null
@@ -246,18 +255,46 @@ export function extractBackgroundTaskDeltasFromMessageContent(
         const taskId = asString(data.task_id)
         if (!taskId) return null
 
-        // 过滤非后台任务
-        if (knownTaskIds !== undefined && !knownTaskIds.has(taskId)) return null
+        // task_updated 从 data.patch 取字段（终态与中途后台化补建共用提取）
+        const patch = subtype === 'task_updated' ? (isObject(data.patch) ? data.patch : null) : null
 
         // task_notification 从 data.status 取终态，task_updated 从 data.patch.status 取终态
         const status = subtype === 'task_notification'
             ? asString(data.status)
-            : asString((isObject(data.patch) ? data.patch : null)?.status)
-        if (status !== 'completed' && status !== 'failed' && status !== 'stopped') return null
+            : asString(patch?.status)
+        const isTerminal = status === 'completed' || status === 'failed' || status === 'stopped'
+
+        // 中途后台化补建（spec D3）：前台任务 task_started 时被丢（判前台 return null），
+        // 事后转后台经 patch.is_backgrounded 到达且不会再有 task_started——在此补建，
+        // 顺带让写侧 knownTaskIds 收录，激活后续 progress/notification 匹配。
+        // patch 不携带 tool_use_id/subagent_type（sdk.d.ts SDKTaskUpdatedMessage），toolUseId 置 null
+        if (!isTerminal && patch?.is_backgrounded === true) {
+            return {
+                type: 'started',
+                task: {
+                    taskId,
+                    toolUseId: null,
+                    toolName: 'Bash',
+                    description: asString(patch.description) ?? '',
+                    status: 'running',
+                    isBackground: true,
+                    startedAt: Date.now(),
+                },
+            }
+        }
+
+        // 过滤非后台任务。
+        // patch.is_backgrounded === true 时跳过：SDK 已显式标注后台，且该任务可能本就不在
+        // knownTaskIds 中（task_started 时被判前台丢弃的同款盲区，spec D3），无需集合背书
+        if (!(patch?.is_backgrounded === true) && knownTaskIds !== undefined && !knownTaskIds.has(taskId)) {
+            return null
+        }
+
+        if (!isTerminal) return null
 
         // task_notification 从 data.summary 取，task_updated 优先从 data.patch.summary 取
         const summary = (subtype === 'task_updated'
-            ? asString((isObject(data.patch) ? data.patch : null)?.summary)
+            ? asString(patch?.summary)
             : null) || asString(data.summary) || undefined
 
         return { type: 'completed', taskId, status, summary }
