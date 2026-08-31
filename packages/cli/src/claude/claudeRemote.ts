@@ -852,6 +852,9 @@ export async function claudeRemote(opts: {
         promptSuggestions: true,
         // 停止只中断当前 turn，后台任务由『全部停止』档显式终止（spec D2）
         perTaskStopAffordance: true,
+        // 子代理 text/thinking 全文转发（批次 B，spec D4）：以带 parent_tool_use_id 的整条消息
+        // 到达（非流式增量），走既有落库/广播/归组链路进 Agent drawer。SSE 压力评估见 spec §3 D4
+        forwardSubagentText: true,
         resume: startFrom ?? undefined,
         // rewind 截断：resume 时只加载到该 uuid（锚点前最近一条 assistant message）为止。
         // 与 resume 配合由 startup 预热在 boot 时生效，不走空 prompt——空 prompt 会被

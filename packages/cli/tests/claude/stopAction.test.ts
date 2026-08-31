@@ -17,6 +17,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { isAbortedTerminalReason } from '@mobi/shared'
+import { collectLiveTaskIds } from '../../src/claude/claudeRemoteLauncher'
 import {
     resolveStopAction,
     resolvePostInterruptAction,
@@ -169,5 +170,24 @@ describe('shouldSkipWithdrawnResultForward（撤回后中断 result 的转发抑
         // 调用点位于 isAbortedTerminalReason(reason)===true 分支内，恒等价于 suppress 直查
         expect(isAbortedTerminalReason('aborted_streaming')).toBe(true)
         expect(isAbortedTerminalReason('completed')).toBe(false)
+    })
+})
+
+describe('collectLiveTaskIds（批次 B：ambient 过滤，spec D1/D2）', () => {
+    it('收集合法 task_id，跳过 ambient 条目与非法形状', () => {
+        const ids = collectLiveTaskIds([
+            { task_id: 'bt-1', description: '用户任务' },
+            { task_id: 'bt-2', description: 'checkpoint', ambient: true },
+            { description: '无 id' },
+            'garbage',
+            null,
+        ])
+        expect(ids.has('bt-1')).toBe(true)
+        expect(ids.has('bt-2')).toBe(false)
+        expect(ids.size).toBe(1)
+    })
+    it('tasks 非数组时返回空集合', () => {
+        expect(collectLiveTaskIds(undefined).size).toBe(0)
+        expect(collectLiveTaskIds('x').size).toBe(0)
     })
 })

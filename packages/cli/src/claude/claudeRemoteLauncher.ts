@@ -507,13 +507,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             // 见 SDKBackgroundTasksChangedMessage——勿做增量合并）。不 early-return，保持既有落库行为。
             // SDKSystemMessage 联合尚未收录该 subtype（SDK 0.3.251），走开放形状断言
             if (message.type === 'system' && (message as unknown as { subtype?: string }).subtype === 'background_tasks_changed') {
-                const tasks = (message as unknown as { tasks?: { task_id?: unknown }[] }).tasks
-                this.backgroundTaskIds = new Set(
-                    Array.isArray(tasks)
-                        ? tasks.map(t => (typeof t?.task_id === 'string' ? t.task_id : null))
-                            .filter((id): id is string => id !== null)
-                        : []
-                )
+                this.backgroundTaskIds = collectLiveTaskIds((message as unknown as { tasks?: unknown }).tasks)
             }
 
             formatClaudeMessageForInk(message, messageBuffer);
@@ -1018,6 +1012,23 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             this.processCleanupRef.current = null;
         }
     }
+}
+
+/**
+ * 从 background_tasks_changed 的 tasks 数组提取存活任务 id 集合（批次 A『全部停止』遍历源）。
+ * ambient 家务任务（checkpoint/live-update watcher 等）跳过——「全部停止」只停用户可见的工作，
+ * housekeeping 任务当作不存在（spec D1/D2）。非数组输入返回空集合（REPLACE 语义即清空）。
+ */
+export function collectLiveTaskIds(tasks: unknown): ReadonlySet<string> {
+    if (!Array.isArray(tasks)) return new Set()
+    const ids = new Set<string>()
+    for (const t of tasks) {
+        if (typeof t !== 'object' || t === null) continue
+        const item = t as { task_id?: unknown; ambient?: unknown }
+        if (item.ambient === true) continue
+        if (typeof item.task_id === 'string' && item.task_id.length > 0) ids.add(item.task_id)
+    }
+    return ids
 }
 
 export async function claudeRemoteLauncher(
