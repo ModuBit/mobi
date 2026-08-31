@@ -560,6 +560,16 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
         filesRestored: z.boolean(),
         error: z.string().optional()
     }),
+    // 撤回刚发消息（#53 / 批次 A）：hub 已软删除该行及其后全部行，blocks 为 content
+    // 信封内层 UserContentBlock[]（web deserializeSegments 还原 composer，失败兜底 originalText）
+    SessionChangedSchema.extend({
+        type: z.literal('message-withdrawn'),
+        /** 被撤回消息的 localId（web 乐观移除锚点） */
+        localId: z.string(),
+        /** 撤回时的完整内容（信封内层 blocks），供 composer 回填 */
+        blocks: z.array(z.unknown()),
+        originalText: z.string().nullable()
+    }),
     MachineChangedSchema.extend({
         type: z.literal('machine-updated'),
         data: z.unknown().optional()

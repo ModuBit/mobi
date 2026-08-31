@@ -564,3 +564,17 @@ describe('RuntimeStateSchema with goalStatus', () => {
         expect(result.goalStatus).toBeUndefined()
     })
 })
+
+describe('message-withdrawn SyncEvent', () => {
+    it('解析合法载荷', () => {
+        const ev = SyncEventSchema.safeParse({
+            type: 'message-withdrawn', sessionId: 's1', localId: 'l1',
+            blocks: [{ type: 'text', text: 'hi' }], originalText: 'hi',
+        })
+        expect(ev.success).toBe(true)
+    })
+    it('originalText 允许 null，blocks 必须为数组', () => {
+        expect(SyncEventSchema.safeParse({ type: 'message-withdrawn', sessionId: 's1', localId: 'l1', blocks: [], originalText: null }).success).toBe(true)
+        expect(SyncEventSchema.safeParse({ type: 'message-withdrawn', sessionId: 's1', localId: 'l1', blocks: 'x', originalText: null }).success).toBe(false)
+    })
+})
