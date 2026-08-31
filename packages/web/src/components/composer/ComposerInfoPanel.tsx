@@ -371,6 +371,7 @@ export function ComposerInfoPanel({
                         sessionId={sessionId}
                         api={api}
                         onAgentClick={(block) => setDrawerBlockId(block.id)}
+                        onTaskClick={(task) => { if (task.toolUseId) setDrawerBlockId(task.toolUseId) }}
                         onClear={handleClearState}
                     />
 

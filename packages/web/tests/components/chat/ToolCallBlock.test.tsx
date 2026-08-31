@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import type { ChatBlock } from '@/domain/chat'
 
@@ -44,9 +44,10 @@ vi.mock('@/components/tool-card/toolIcons', async (importOriginal) => {
     }
 })
 
-// mock ToolDetailDrawer（无需在审批场景验证）
+// mock ToolDetailDrawer：open 时渲染标记节点，供 drawer 开合断言
 vi.mock('@/components/tool-card/ToolDetailDrawer', () => ({
-    ToolDetailDrawer: () => null,
+    ToolDetailDrawer: ({ open }: { open?: boolean }) =>
+        open ? <div data-testid="tool-detail-drawer" role="dialog" /> : null,
 }))
 
 // mock OverflowContainer / FilePathText 为简单 div
@@ -134,5 +135,46 @@ describe('ToolCallRenderer 审批中（pending）渲染', () => {
 
         expect(screen.getByTestId('tool-call-think')).toBeInTheDocument()
         expect(screen.getByTestId('tool-call-title').textContent).toContain('Write')
+    })
+})
+
+describe('ToolCallBlock 后台 Agent drawer（批次 B，spec D5）', () => {
+    afterEach(cleanup)
+
+    function makeBgAgentBlock(): Extract<ChatBlock, { kind: 'tool-call' }> {
+        return {
+            kind: 'tool-call',
+            id: 'tool-bg-agent',
+            localId: null,
+            createdAt: 1000,
+            tool: {
+                id: 'tool-bg-agent',
+                name: 'Agent',
+                input: { prompt: 'x', run_in_background: true },
+                state: 'running',
+                createdAt: 1000,
+                startedAt: 1000,
+                completedAt: null,
+                description: null,
+                agentSummary: '后台研究中…',
+            },
+            children: [],
+        } as Extract<ChatBlock, { kind: 'tool-call' }>
+    }
+
+    it('isBgAgent（run_in_background input）的 Agent 卡片点击打开 drawer', () => {
+        render(
+            <ToolCallRenderer
+                block={makeBgAgentBlock()}
+                metadata={null}
+                sessionId="s1"
+            />,
+        )
+
+        // 初始不打开 drawer
+        expect(screen.queryByTestId('tool-detail-drawer')).not.toBeInTheDocument()
+        // 点击「查看详情」入口（stopPropagation 后走 handleViewDetail）
+        fireEvent.click(screen.getByTestId('tool-view-detail'))
+        expect(screen.getByTestId('tool-detail-drawer')).toBeInTheDocument()
     })
 })

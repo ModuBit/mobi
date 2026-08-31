@@ -138,6 +138,7 @@ function ToolCallPreviewContent({
                         {summary}
                     </div>
                     <div
+                        data-testid="tool-view-detail"
                         onClick={(e) => { e.stopPropagation(); onViewDetail() }}
                         style={{
                             marginTop: 8, fontSize: 12,
@@ -162,8 +163,8 @@ function ToolCallPreviewContent({
     }
 
     // 后台 Agent：tool_result 快速返回后 state=completed，但任务仍在后台执行
-    // 展示 agentSummary（来自 task_progress/task_notification），无 summary 时展示状态
-    // 后台 agent 暂不支持 drawer
+    // 展示 agentSummary（来自 task_progress/task_notification），无 summary 时展示状态；
+    // drawer 入口与前台 Agent 统一（批次 B，spec D5），点击「查看详情」打开
     if (isBackgroundAgentTool(tool.name, tool.input)) {
         const summary = toolCallBlock.tool.agentSummary
         return (
@@ -173,6 +174,17 @@ function ToolCallPreviewContent({
                     color: token.colorTextSecondary,
                 }}>
                     {summary ?? t('chat.backgroundTask.running', 'Running...')}
+                </div>
+                <div
+                    data-testid="tool-view-detail"
+                    onClick={(e) => { e.stopPropagation(); onViewDetail() }}
+                    style={{
+                        marginTop: 8, fontSize: 12,
+                        color: token.colorPrimary,
+                        cursor: 'pointer',
+                    }}
+                >
+                    {t('chat.tool.viewDetail')} →
                 </div>
             </div>
         )
@@ -293,7 +305,9 @@ export const ToolCallRenderer = memo(function ToolCallRenderer({ block, metadata
     }, [agentRunning, isBgAgent])
 
     const [drawerOpen, setDrawerOpen] = useState(false)
-    const drawerDisabled = disableDrawer || isBgAgent
+    // 后台 agent 不再禁用 drawer（批次 B，spec D5）：前后台入口统一；
+    // isBgAgent 仍保留给「前台完成自动收起」effect（语义无关）
+    const drawerDisabled = disableDrawer
     const handleViewDetail = useCallback(() => {
         if (drawerDisabled) return
         setDrawerOpen(true)

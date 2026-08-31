@@ -32,7 +32,7 @@ vi.hoisted(() => {
 })
 
 import { render } from '@testing-library/react'
-import { cleanup } from '@testing-library/react'
+import { cleanup, fireEvent, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ConfigProvider } from 'antd'
 import { TasksPanel } from '@/components/composer/TasksPanel'
@@ -193,5 +193,39 @@ describe('TasksPanel', () => {
         expect(card).toBeTruthy()
         card.click()
         expect(onAgentClick).toHaveBeenCalled()
+    })
+})
+
+describe('TasksPanel 后台任务点击（批次 B，spec D5）', () => {
+    afterEach(cleanup)
+
+    it('toolUseId 非空时点击回调携带 toolUseId', async () => {
+        const { useBackgroundTasksStore } = await loadStores()
+        useBackgroundTasksStore.getState().setTasks('test-session', [
+            makeBgTask('bt-1', { toolUseId: 'tu-1' }),
+        ])
+
+        const onTaskClick = vi.fn()
+        render(
+            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={onTaskClick} onClear={async () => {}} />,
+            { wrapper }
+        )
+        fireEvent.click(screen.getByText('后台研究'))
+        expect(onTaskClick).toHaveBeenCalledWith(expect.objectContaining({ taskId: 'bt-1', toolUseId: 'tu-1' }))
+    })
+
+    it('toolUseId 为 null 时点击不回调', async () => {
+        const { useBackgroundTasksStore } = await loadStores()
+        useBackgroundTasksStore.getState().setTasks('test-session', [
+            makeBgTask('bt-2', { toolUseId: null }),
+        ])
+
+        const onTaskClick = vi.fn()
+        render(
+            <TasksPanel sessionId="test-session" api={mockApi} onAgentClick={() => {}} onTaskClick={onTaskClick} onClear={async () => {}} />,
+            { wrapper }
+        )
+        fireEvent.click(screen.getByText('后台研究'))
+        expect(onTaskClick).not.toHaveBeenCalled()
     })
 })

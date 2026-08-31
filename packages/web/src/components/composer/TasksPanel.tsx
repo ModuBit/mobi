@@ -67,10 +67,12 @@ function sortItems(items: TaskListItem[]): TaskListItem[] {
 /**
  * 执行中任务面板
  */
-export function TasksPanel({ sessionId, api, onAgentClick, onClear }: {
+export function TasksPanel({ sessionId, api, onAgentClick, onTaskClick, onClear }: {
     sessionId: string
     api: MobiApi
     onAgentClick: (block: ToolCallBlock) => void
+    /** 后台任务卡片点击：携带完整 task，由调用方用 task.toolUseId 打开 drawer */
+    onTaskClick: (task: BackgroundTask) => void
     onClear: (sessionId: string, clearFields: ClearRuntimeStateField[]) => Promise<void>
 }) {
     const { t } = useTranslation()
@@ -165,7 +167,9 @@ export function TasksPanel({ sessionId, api, onAgentClick, onClear }: {
                 } as React.CSSProperties}>
                     {items.map(item => item.kind === 'agent'
                         ? <AgentCard key={item.agent.block.id} agent={item.agent} onClick={() => onAgentClick(item.agent.block)} />
-                        : <BackgroundTaskCard key={item.task.taskId} task={item.task} onClick={() => {}} onStop={item.task.status === 'running' ? (e) => handleStop(e, item.task) : undefined} />)}
+                        : <BackgroundTaskCard key={item.task.taskId} task={item.task}
+                            onClick={() => { if (item.task.toolUseId) onTaskClick(item.task) }}
+                            onStop={item.task.status === 'running' ? (e) => handleStop(e, item.task) : undefined} />)}
                 </div>
             </div>
             {showFade && (
