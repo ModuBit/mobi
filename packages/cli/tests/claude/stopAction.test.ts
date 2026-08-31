@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { isAbortedTerminalReason } from '@mobi/shared'
-import { collectLiveTaskIds } from '../../src/claude/claudeRemoteLauncher'
+import { collectLiveTaskIds } from '@/claude/claudeRemoteLauncher'
 import {
     resolveStopAction,
     resolvePostInterruptAction,

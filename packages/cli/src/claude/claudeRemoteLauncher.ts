@@ -41,7 +41,7 @@ import { REWIND_EXIT_SENTINEL } from "./utils/rewindSentinel";
 import { reportRewindCompletion } from "./utils/rewindReport";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
-import { classifyMessage, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
+import { classifyMessage, extractLiveBackgroundTaskIds, isAbortedTerminalReason, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
 import {
     resolveStopAction,
     resolvePostInterruptAction,
@@ -1016,19 +1016,12 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
 /**
  * 从 background_tasks_changed 的 tasks 数组提取存活任务 id 集合（批次 A『全部停止』遍历源）。
- * ambient 家务任务（checkpoint/live-update watcher 等）跳过——「全部停止」只停用户可见的工作，
- * housekeeping 任务当作不存在（spec D1/D2）。非数组输入返回空集合（REPLACE 语义即清空）。
+ * 提取规则（task_id 非空字符串 + 跳过 ambient 家务任务，spec D1/D2；非数组输入返回空集合
+ * 即 REPLACE 语义清空）单源于 shared 的 extractLiveBackgroundTaskIds——cli 与 hub 共用，
+ * 此处仅作薄包装以保持既有导出签名（ReadonlySet）与调用方不变。
  */
 export function collectLiveTaskIds(tasks: unknown): ReadonlySet<string> {
-    if (!Array.isArray(tasks)) return new Set()
-    const ids = new Set<string>()
-    for (const t of tasks) {
-        if (typeof t !== 'object' || t === null) continue
-        const item = t as { task_id?: unknown; ambient?: unknown }
-        if (item.ambient === true) continue
-        if (typeof item.task_id === 'string' && item.task_id.length > 0) ids.add(item.task_id)
-    }
-    return ids
+    return extractLiveBackgroundTaskIds(tasks)
 }
 
 export async function claudeRemoteLauncher(
