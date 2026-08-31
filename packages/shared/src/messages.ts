@@ -143,15 +143,16 @@ export type SentFrom = 'cli' | 'webapp' | (string & {})
  * - `'acked'`：CC isReplay 回显确认收到（原 metadata.nativeAckAt）
  * - `'processing'`：CC 开始处理本条（command_lifecycle:started，P2 写入）
  * - `'done'` / `'cancelled'` / `'discarded'`：CC 终态——完成 / turn 死亡连坐 / 被显式丢弃（P2 写入）
- * - `'withdrawn'`：撤回（pending #53 预留）
- * 转换单调前进：只会 queued→pushed→acked→processing→{done|cancelled|discarded}，queued→withdrawn
+ * - `'refused'`：跨会话 peer 消息被接收侧策略拒收（command_lifecycle:refused，U-8）
+ * - `'withdrawn'`：撤回
+ * 转换单调前进：只会 queued→pushed→acked→processing→{done|cancelled|discarded|refused}，queued→withdrawn
  */
-export type MessageLifecycle = 'queued' | 'pushed' | 'acked' | 'processing' | 'done' | 'cancelled' | 'discarded' | 'withdrawn'
+export type MessageLifecycle = 'queued' | 'pushed' | 'acked' | 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused' | 'withdrawn'
 
 /** lifecycle 状态推进序——与 hub advanceMessagesLifecycle 的 SQL CASE rank 同语义，勿单边改。
- *  终态（done/cancelled/discarded）同为 4：互不覆盖（first-terminal-wins）。withdrawn 单独高位（永不后续推进）。 */
+ *  终态（done/cancelled/discarded/refused）同为 4：互不覆盖（first-terminal-wins）。withdrawn 单独高位（永不后续推进）。 */
 export const LIFECYCLE_RANK: Record<Exclude<MessageLifecycle, null>, number> = {
-    queued: 0, pushed: 1, acked: 2, processing: 3, done: 4, cancelled: 4, discarded: 4, withdrawn: 5,
+    queued: 0, pushed: 1, acked: 2, processing: 3, done: 4, cancelled: 4, discarded: 4, refused: 4, withdrawn: 5,
 }
 
 /** candidate 是否比 current 更靠后（rank 严格更大且不同 rank——同 rank 的不同终态互不覆盖）。
@@ -188,14 +189,15 @@ export function shouldStopTasks(kind: StopKind): boolean {
  * `at` 为 CLI 观测时刻，缺省由 Hub 取接收时刻。
  * 与旧 4 事件（messages-submitted/bound/native-attached/acked）语义对照：
  * pushed ← submitted、bound/attached/acked 同名、lifecycle 为新增（command_lifecycle 帧转译）。
- * 未来扩展（预留，暂不实现）：{ kind: 'withdrawn'; localId: string }（pending #53 撤回）。
+ * withdrawn（撤回，#53 已在本批转正，不再是预留扩展）。
  */
 export type MessageFact =
     | { kind: 'bound'; localId: string; nativeId: string; nativeSessionId?: string }
     | { kind: 'attached'; nativeSessionId: string }
     | { kind: 'pushed'; localIds: string[]; at?: number }
     | { kind: 'acked'; nativeId: string; at?: number }
-    | { kind: 'lifecycle'; nativeId: string; state: 'processing' | 'done' | 'cancelled' | 'discarded'; at?: number }
+    | { kind: 'lifecycle'; nativeId: string; state: 'processing' | 'done' | 'cancelled' | 'discarded' | 'refused'; terminalReason?: string; at?: number }
+    | { kind: 'withdrawn'; nativeId: string; at?: number }
 
 /** 从消息 content 信封读取 sentFrom 来源标识 */
 export function getSentFrom(content: unknown): SentFrom | null {

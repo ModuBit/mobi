@@ -471,10 +471,11 @@ export const DecryptedMessageSchema = z.object({
      * 生命周期状态：null（非排队轨道，agent/CLI/system 输出）/ 'queued'（webapp 提交、等 CLI 消费）/
      * 'pushed'（CLI 已 push 给 Claude Code）/ 'acked'（CC isReplay 回显确认）/
      * 'processing'（CC 开始处理，P2 写入）/ 'done'|'cancelled'|'discarded'（CC 终态，P2 写入）/
-     * 'withdrawn'（撤回，pending #53 预留，P4 写入）。
+     * 'refused'（跨会话 peer 消息被接收侧策略拒收，command_lifecycle:refused，U-8）/
+     * 'withdrawn'（撤回，#53 本批实施）。
      * 「是否排队」的唯一读取依据（lifecycle==='queued'），不再靠时间戳缺失反推。
      */
-    lifecycle: z.enum(['queued', 'pushed', 'acked', 'processing', 'done', 'cancelled', 'discarded', 'withdrawn']).nullable().optional(),
+    lifecycle: z.enum(['queued', 'pushed', 'acked', 'processing', 'done', 'cancelled', 'discarded', 'refused', 'withdrawn']).nullable().optional(),
     /** 最近一次 lifecycle 转换的时刻；非排队消息恒为 null。排序请用 positionAt，不要 COALESCE 本字段 */
     lifecycleAt: z.number().nullable().optional(),
     /** 排序锚点（= 落库 created_at；排队消息被消费时跳到消费时刻，保留「运行中消费的消息排在 turn 之后」UX） */

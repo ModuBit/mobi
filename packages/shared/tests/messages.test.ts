@@ -24,6 +24,8 @@ import {
     isCancelQueued,
     shouldStopTasks,
     DEFAULT_STOP_KIND,
+    LIFECYCLE_RANK,
+    type MessageFact,
 } from '../src/messages'
 
 describe('isRoleWrappedRecord', () => {
@@ -297,5 +299,25 @@ describe('StopKind 判别函数', () => {
     it('turn-queue-tasks 档清队列且停任务', () => {
         expect(isCancelQueued('turn-queue-tasks')).toBe(true)
         expect(shouldStopTasks('turn-queue-tasks')).toBe(true)
+    })
+})
+
+describe('lifecycle refused 终态', () => {
+    it('refused 与 done/cancelled/discarded 同 rank（互不覆盖）', () => {
+        expect(LIFECYCLE_RANK.refused).toBe(4)
+        expect(isLifecycleAhead('done', 'refused')).toBe(false)
+        expect(isLifecycleAhead('refused', 'cancelled')).toBe(false)
+    })
+    it('withdrawn 仍为最高位，任何终态不覆盖它', () => {
+        expect(isLifecycleAhead('withdrawn', 'refused')).toBe(false)
+        expect(isLifecycleAhead('processing', 'withdrawn')).toBe(true)
+    })
+    it('lifecycle fact 接受 refused 状态与 terminalReason', () => {
+        const f: MessageFact = { kind: 'lifecycle', nativeId: 'n1', state: 'refused', terminalReason: 'policy' }
+        expect(f).toMatchObject({ state: 'refused', terminalReason: 'policy' })
+    })
+    it('withdrawn fact 形状', () => {
+        const f: MessageFact = { kind: 'withdrawn', nativeId: 'n1', at: 1 }
+        expect(f.kind).toBe('withdrawn')
     })
 })
