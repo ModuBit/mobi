@@ -422,14 +422,21 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
 
     // SSE 层已落 store 的撤回请求（reactive 订阅：请求到达即触发下方 effect）
     const withdrawRequest = useWithdrawRequest(sessionId)
-    // 挂载首帧只丢弃「会话打开前」滞留的陈旧请求、不回填——撤回回填只服务
-    // 「用户正看着消息消失」的即时反馈，隔了会话切换的陈旧回填会覆盖用户当前输入
-    const withdrawMountedRef = useRef(false)
+    // 本次会话视图创建时刻（首帧 render 判定陈旧基线）：早于它的请求属于
+    // 「会话未在场」时期，丢弃不回填——隔了会话切换的陈旧回填会覆盖用户当前输入
+    const withdrawMountedAtRef = useRef(Date.now())
+    const withdrawInitializedRef = useRef(false)
     useEffect(() => {
-        if (!withdrawMountedRef.current) {
-            withdrawMountedRef.current = true
-            useWithdrawStore.getState().clearSession(sessionId)
-            return
+        // 挂载首帧只甄别陈旧：createdAt 早于视图创建时刻的滞留请求丢弃；
+        // render→effect 窗口新到的请求（createdAt >= 基线）照常落到消费回填——
+        // 该窗口若被当陈旧清掉，行已被乐观移除且服务端软删，composer 回填是
+        // 该文本在 UI 的唯一归宿，丢了即静默丢内容（review Important 修复）
+        if (!withdrawInitializedRef.current) {
+            withdrawInitializedRef.current = true
+            if (withdrawRequest && withdrawRequest.createdAt < withdrawMountedAtRef.current) {
+                useWithdrawStore.getState().clearSession(sessionId)
+                return
+            }
         }
         if (!withdrawRequest) return
         const req = useWithdrawStore.getState().consumeWithdraw(sessionId)

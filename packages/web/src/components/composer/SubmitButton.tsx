@@ -21,7 +21,7 @@ import styled from '@emotion/styled'
 import { keyframes } from '@emotion/react'
 import { useTranslation } from 'react-i18next'
 import type { StopKind } from '@mobi/shared'
-import { resolveStopPress, type SubmitButtonState } from './submitButtonState'
+import { resolveStopPress, LONG_PRESS_MS, type SubmitButtonState } from './submitButtonState'
 
 const spinKf = keyframes`
     to { transform: rotate(360deg); }
@@ -202,7 +202,7 @@ function StopButtonState(props: { state: Extract<SubmitButtonState, { kind: 'sto
             timerRef.current = null
             longPressFiredRef.current = true
             setMenuOpen(true)
-        }, 500)
+        }, LONG_PRESS_MS)
     }
 
     const cancelPress = () => {

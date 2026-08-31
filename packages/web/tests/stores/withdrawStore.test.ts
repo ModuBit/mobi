@@ -52,4 +52,13 @@ describe('withdrawStore（撤回请求一次性信箱，spec §7.5）', () => {
         clearSession('s1')
         expect(consumeWithdraw('s1')).toBeNull()
     })
+
+    it('requestWithdraw 由 store 盖 createdAt 时间戳（挂载基线甄别陈旧的数据源）', () => {
+        const before = Date.now()
+        requestWithdraw('s1', { localId: 'l1', segments: null, originalText: 'hi', nonce: nextWithdrawNonce() })
+        const req = consumeWithdraw('s1')
+        expect(req).not.toBeNull()
+        expect(req!.createdAt).toBeGreaterThanOrEqual(before)
+        expect(req!.createdAt).toBeLessThanOrEqual(Date.now())
+    })
 })

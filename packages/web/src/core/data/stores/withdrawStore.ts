@@ -32,6 +32,9 @@ export interface WithdrawRequest {
     originalText: string | null
     /** 单调递增，驱动 ChatContainer 的 nonce effect（并发旧请求被覆盖） */
     nonce: number
+    /** 请求落 store 时刻（store 盖章）：会话视图以挂载时刻为基线甄别陈旧请求，
+     *  早于基线的丢弃、晚于基线（含 render→effect 窗口新到的）照常回填 */
+    createdAt: number
 }
 
 /** 模块级 nonce 计数器：进程内单调递增，保证后到请求可辨识 */
@@ -42,10 +45,12 @@ export function nextWithdrawNonce(): number {
     return ++withdrawNonceCounter
 }
 
+type WithdrawRequestInput = Omit<WithdrawRequest, 'createdAt'>
+
 interface WithdrawState {
     pendingBySession: Map<string, WithdrawRequest>
-    /** SSE message-withdrawn → 落入请求（同会话旧请求被覆盖） */
-    requestWithdraw: (sessionId: string, req: WithdrawRequest) => void
+    /** SSE message-withdrawn → 落入请求（同会话旧请求被覆盖；createdAt 由 store 盖章） */
+    requestWithdraw: (sessionId: string, req: WithdrawRequestInput) => void
     /** 消费即清除（一次性信箱）；无请求返回 null */
     consumeWithdraw: (sessionId: string) => WithdrawRequest | null
     /** 清除滞留请求（会话视图挂载时丢弃打开前的陈旧请求 / 卸载清理） */
@@ -57,7 +62,7 @@ export const useWithdrawStore = create<WithdrawState>((set) => ({
 
     requestWithdraw: (sessionId, req) =>
         set((state) => ({
-            pendingBySession: new Map(state.pendingBySession).set(sessionId, req),
+            pendingBySession: new Map(state.pendingBySession).set(sessionId, { ...req, createdAt: Date.now() }),
         })),
 
     consumeWithdraw: (sessionId) => {
@@ -90,8 +95,8 @@ export function useWithdrawRequest(sessionId: string): WithdrawRequest | undefin
 
 // 非组件侧（SSEProvider / 测试）使用的命令式入口：走 getState 转发 store action
 
-/** 落入撤回请求（同会话旧请求被覆盖，nonce 由 nextWithdrawNonce 供给） */
-export function requestWithdraw(sessionId: string, req: WithdrawRequest): void {
+/** 落入撤回请求（同会话旧请求被覆盖，nonce 由 nextWithdrawNonce 供给，createdAt 由 store 盖章） */
+export function requestWithdraw(sessionId: string, req: WithdrawRequestInput): void {
     useWithdrawStore.getState().requestWithdraw(sessionId, req)
 }
 

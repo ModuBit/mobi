@@ -388,6 +388,9 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 }
                 break
             case 'message-withdrawn': {
+                // 空 sessionId 守卫（对齐 messages-submitted 兄弟分支）：schema 虽必填，
+                // SSEClient 只 JSON.parse 不校验，防御空串写 store 垃圾键
+                if (!event.sessionId) break
                 // 撤回刚发消息（#53 / spec §7.5）：乐观移除与 hub 软删除（softDeleteMessagesFrom
                 // 无上界）对齐；服务端已删行不会出现在 refetch 结果里，merge 不会复活，refetch 兜底对账
                 withdrawFrom(event.sessionId, event.localId)
