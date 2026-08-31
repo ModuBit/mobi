@@ -153,6 +153,11 @@ function StopButtonState(props: { state: Extract<SubmitButtonState, { kind: 'sto
     const { state, onAbort } = props
     const { t } = useTranslation()
 
+    /** pointerup 已自行处理 abort 后，紧随的合成 click 落在该时间窗内才被吞——
+     *  窗口只需盖住释放到 click 派发的间隔（毫秒级）；窗口外到达的 click 视为键盘激活照常兜底，
+     *  避免标志常驻吞掉长按释放后的第一次键盘 Enter（触屏长按浏览器可能根本不派发合成 click） */
+    const POINTER_CLICK_SWALLOW_WINDOW_MS = 500
+
     // 三档菜单开合：全编程控制（trigger=[]），pointer 时序自管
     const [menuOpen, setMenuOpen] = useState(false)
     const wrapRef = useRef<HTMLSpanElement>(null)
@@ -160,8 +165,8 @@ function StopButtonState(props: { state: Extract<SubmitButtonState, { kind: 'sto
     const downAtRef = useRef<number | null>(null)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const longPressFiredRef = useRef(false)
-    // pointerup 已自行处理 abort（click 消费该标记防双触发；null 时 click 走键盘兜底路径）
-    const pointerHandledRef = useRef(false)
+    // pointerup 自行处理 abort 的时刻（click 在时间窗内到达则吞掉防双触发；null=无 pointer 处理在近旁）
+    const pointerHandledAtRef = useRef<number | null>(null)
 
     const clearTimer = () => {
         if (timerRef.current) {
@@ -195,7 +200,7 @@ function StopButtonState(props: { state: Extract<SubmitButtonState, { kind: 'sto
         setMenuOpen(false)
         downAtRef.current = Date.now()
         longPressFiredRef.current = false
-        pointerHandledRef.current = false
+        pointerHandledAtRef.current = null
         clearTimer()
         // 到阈值即开菜单（无需等释放）；触发长按后释放不再当点按
         timerRef.current = setTimeout(() => {
@@ -217,21 +222,21 @@ function StopButtonState(props: { state: Extract<SubmitButtonState, { kind: 'sto
         if (longPressFiredRef.current) {
             longPressFiredRef.current = false
             // 长按释放：菜单保持打开，交由点选/点外部收场；
-            // 吞掉随后合成的 click（否则 handleClick 的键盘兜底分支会误发 'turn' 中止）
-            pointerHandledRef.current = true
+            // 时间窗内吞掉随后合成的 click（否则 handleClick 的键盘兜底分支会误发 'turn' 中止）
+            pointerHandledAtRef.current = Date.now()
             return
         }
         if (startedAt == null) return
-        pointerHandledRef.current = true
+        pointerHandledAtRef.current = Date.now()
         if (resolveStopPress(Date.now() - startedAt) === 'click') onAbort?.('turn')
     }
 
     const handleClick = () => {
-        // pointerup 路径已处理（含点按 abort）→ 只吞掉这次 click 防双触发
-        if (pointerHandledRef.current) {
-            pointerHandledRef.current = false
-            return
-        }
+        // pointerup 路径已处理（含点按 abort）→ 时间窗内的合成 click 吞掉防双触发；
+        // 窗口外到达视为键盘激活（长按后首次 Enter 不得被吞），清标记后照常兜底
+        const handledAt = pointerHandledAtRef.current
+        pointerHandledAtRef.current = null
+        if (handledAt != null && Date.now() - handledAt <= POINTER_CLICK_SWALLOW_WINDOW_MS) return
         // 无 pointer 在途（键盘 Enter 聚焦触发）→ 兜底当点按
         if (downAtRef.current == null) onAbort?.('turn')
     }
