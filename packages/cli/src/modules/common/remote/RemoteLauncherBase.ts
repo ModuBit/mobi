@@ -16,7 +16,8 @@
 
 import { render } from 'ink';
 import type { ReactElement } from 'react';
-import { DEFAULT_STOP_KIND, type StopKind } from '@mobi/shared';
+import type { StopKind } from '@mobi/shared';
+import { normalizeStopKind } from '@/claude/utils/stopAction';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { restoreTerminalState } from '@/ui/terminalState';
 
@@ -95,8 +96,9 @@ export abstract class RemoteLauncherBase {
         handlers: RemoteLauncherAbortHandlers
     ): void {
         rpcHandlerManager.registerHandler('abort', async (params: { stopKind?: StopKind }) => {
-            // stopKind 缺省（旧 hub / 本地触发）按 'turn' 档处理——与既往「只中断当前 turn」语义一致
-            await handlers.onAbort(params?.stopKind ?? DEFAULT_STOP_KIND);
+            // stopKind 入口校验：缺省（旧 hub / 本地触发）或未知值（未来第 4 档 / 手误字符串）
+            // 一律回落 'turn'——isCancelQueued 负向默认下，未知值透传会静默升级为破坏性清队列
+            await handlers.onAbort(normalizeStopKind(params?.stopKind));
         });
 
         rpcHandlerManager.registerHandler('switch', async () => {

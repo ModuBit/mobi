@@ -22,6 +22,7 @@ import {
     applyPushToTurnTracking,
     isInterruptedTerminalReason,
     shouldSkipWithdrawnResultForward,
+    normalizeStopKind,
 } from '../../src/claude/utils/stopAction'
 
 /**
@@ -111,6 +112,25 @@ describe('isInterruptedTerminalReason（中断终态判别，web normalizeAgent 
         expect(isInterruptedTerminalReason('completed')).toBe(false)
         expect(isInterruptedTerminalReason(undefined)).toBe(false)
         expect(isInterruptedTerminalReason(null)).toBe(false)
+    })
+})
+
+describe('normalizeStopKind（abort 入口校验：未知值回落默认档）', () => {
+    it('三档合法值原样透传', () => {
+        expect(normalizeStopKind('turn')).toBe('turn')
+        expect(normalizeStopKind('turn-queue')).toBe('turn-queue')
+        expect(normalizeStopKind('turn-queue-tasks')).toBe('turn-queue-tasks')
+    })
+    it('未知字符串（手误 / 未来第 4 档）→ 回落 turn（不得静默升级为清队列）', () => {
+        // isCancelQueued 是负向默认（kind !== 'turn' 即清队列），未知值透传会静默升级为破坏性行为
+        expect(normalizeStopKind('turn-queues')).toBe('turn')
+        expect(normalizeStopKind('stop-all')).toBe('turn')
+        expect(normalizeStopKind('')).toBe('turn')
+    })
+    it('非字符串（null / undefined / 数字）→ 回落 turn', () => {
+        expect(normalizeStopKind(null)).toBe('turn')
+        expect(normalizeStopKind(undefined)).toBe('turn')
+        expect(normalizeStopKind(42)).toBe('turn')
     })
 })
 

@@ -14,6 +14,19 @@
  * limitations under the License.
  */
 
+import { DEFAULT_STOP_KIND, STOP_KIND_VALUES, type StopKind } from '@mobi/shared'
+
+/**
+ * abort 入口的 stopKind 校验：不白名单的值（旧 hub 手误、未来第 4 档在旧 CLI 上运行）
+ * 回落 DEFAULT_STOP_KIND('turn')。isCancelQueued 是负向默认（kind !== 'turn' 即清队列），
+ * 未知值不校验直接透传会静默升级为破坏性清队列——宁降不升。
+ */
+export function normalizeStopKind(value: unknown): StopKind {
+    return typeof value === 'string' && (STOP_KIND_VALUES as readonly string[]).includes(value)
+        ? value as StopKind
+        : DEFAULT_STOP_KIND
+}
+
 /** stopKind='turn' 的撤回三分支（spec §3.3）。初判只定意向；复验在 interrupt 返回后做。 */
 export function resolveStopAction(state: {
     turnHasOutput: boolean
