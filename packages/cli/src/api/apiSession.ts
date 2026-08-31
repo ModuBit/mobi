@@ -612,7 +612,7 @@ export class ApiSessionClient extends EventEmitter {
         at?: number,
         terminalReason?: string,
     ): void {
-        this.emitFacts([{ kind: 'lifecycle', nativeId, state, at, ...(terminalReason ? { terminalReason } : {}) }])
+        this.emitFacts([{ kind: 'lifecycle', nativeId, state, at: at ?? Date.now(), ...(terminalReason ? { terminalReason } : {}) }])
     }
 
     /** 上报撤回（#53：最后一条 user 无输出即停）——hub 据此软删除并广播 message-withdrawn 回填 */

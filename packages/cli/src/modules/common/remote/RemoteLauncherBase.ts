@@ -16,6 +16,7 @@
 
 import { render } from 'ink';
 import type { ReactElement } from 'react';
+import { DEFAULT_STOP_KIND, type StopKind } from '@mobi/shared';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { restoreTerminalState } from '@/ui/terminalState';
 
@@ -34,7 +35,8 @@ export type RemoteLauncherTerminalHandlers = {
 };
 
 export type RemoteLauncherAbortHandlers = {
-    onAbort: () => void | Promise<void>;
+    /** 停止请求（批次 A 三档：turn 只中断当前 turn / turn-queue 加清两层队列 / turn-queue-tasks 再停后台任务） */
+    onAbort: (stopKind: StopKind) => void | Promise<void>;
     onSwitch: () => void | Promise<void>;
 };
 
@@ -92,8 +94,9 @@ export abstract class RemoteLauncherBase {
         rpcHandlerManager: RpcHandlerManagerLike,
         handlers: RemoteLauncherAbortHandlers
     ): void {
-        rpcHandlerManager.registerHandler('abort', async () => {
-            await handlers.onAbort();
+        rpcHandlerManager.registerHandler('abort', async (params: { stopKind?: StopKind }) => {
+            // stopKind 缺省（旧 hub / 本地触发）按 'turn' 档处理——与既往「只中断当前 turn」语义一致
+            await handlers.onAbort(params?.stopKind ?? DEFAULT_STOP_KIND);
         });
 
         rpcHandlerManager.registerHandler('switch', async () => {

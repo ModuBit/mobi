@@ -845,6 +845,8 @@ export async function claudeRemote(opts: {
         // mobi 分类器已把 prompt_suggestion 归为 ephemeral（落 DB + SSE 实时推 + 历史过滤），
         // sdkToLogConverter default 分支透传——只需开此 option，后续链路即通。
         promptSuggestions: true,
+        // 停止只中断当前 turn，后台任务由『全部停止』档显式终止（spec D2）
+        perTaskStopAffordance: true,
         resume: startFrom ?? undefined,
         // rewind 截断：resume 时只加载到该 uuid（锚点前最近一条 assistant message）为止。
         // 与 resume 配合由 startup 预热在 boot 时生效，不走空 prompt——空 prompt 会被

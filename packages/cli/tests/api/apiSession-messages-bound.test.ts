@@ -225,4 +225,31 @@ describe('emitLifecycleFact 终态信号上报', () => {
             facts: [{ kind: 'lifecycle', nativeId: 'native-1', state, at: expect.any(Number) }],
         })
     })
+
+    it('state=refused → 直传（跨会话 peer 消息被拒收，U-8）', () => {
+        const client = makeClient()
+        client.emitLifecycleFact('native-1', 'refused')
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-facts', {
+            sid: 'session-1',
+            facts: [{ kind: 'lifecycle', nativeId: 'native-1', state: 'refused', at: expect.any(Number) }],
+        })
+    })
+
+    it('terminalReason → 开放透传（上游 Open set，U-13）；缺省不带该字段', () => {
+        const client = makeClient()
+        client.emitLifecycleFact('native-1', 'cancelled', undefined, 'api_error')
+
+        expect(mockSocket.emit).toHaveBeenCalledWith('messages-facts', {
+            sid: 'session-1',
+            facts: [{ kind: 'lifecycle', nativeId: 'native-1', state: 'cancelled', at: expect.any(Number), terminalReason: 'api_error' }],
+        })
+
+        const client2 = makeClient()
+        client2.emitLifecycleFact('native-1', 'done')
+        expect(mockSocket.emit).toHaveBeenLastCalledWith('messages-facts', {
+            sid: 'session-1',
+            facts: [{ kind: 'lifecycle', nativeId: 'native-1', state: 'done', at: expect.any(Number) }],
+        })
+    })
 })

@@ -41,7 +41,8 @@ import { REWIND_EXIT_SENTINEL } from "./utils/rewindSentinel";
 import { reportRewindCompletion } from "./utils/rewindReport";
 import { GoalStatusHandler } from "./goalStatusHandler";
 import { getProjectPath } from "./utils/path";
-import { classifyMessage } from '@mobi/shared';
+import { classifyMessage, isCancelQueued, shouldStopTasks, type StopKind } from '@mobi/shared';
+import { resolveStopAction } from './utils/stopAction';
 import type { ClaudePermissionMode } from "@mobi/shared/types";
 import {
     RemoteLauncherBase,
@@ -88,6 +89,15 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
     /** turn 追踪（批次 A 撤回）：均为单值标量（D10）。hasOutput 由 sdkOutputLoop 回调置位、
      *  result 到达复位；lastPushedNativeId 在 push 用户消息时覆盖记录（丢失只降级不误删） */
     private turnTracking: TurnTrackingState = { hasOutput: false, lastPushedNativeId: null }
+    /** 存活的后台任务 id（批次 A『全部停止』档的 stopTask 遍历源）。来源：background_tasks_changed
+     *  系统消息（sdk.d.ts 明确 REPLACE 语义——每次整体换掉集合，勿增量合并；query 轮结束清空）。
+     *  SDK 未提供任务列表查询 API（backgroundTasks() 是「后台化前台任务」开关，返回 boolean），只能自维护 */
+    private backgroundTaskIds: ReadonlySet<string> = new Set<string>()
+    /** 待注入到下一条中断 result 的停止信息（emitAbortedEvent 的落点，见该方法的注释） */
+    private pendingAbortInfo: { stopKind: StopKind; stillQueuedCount: number } | null = null
+    /** nextMessage 是否持有被暂存的待投递批次（mode 变更/isolate 时 stash）。
+     *  暂存批次不在 MessageQueue 里但下轮必投——撤回初判把它视同「队列非空」 */
+    private pendingBatchHeld = false
 
     constructor(
         session: Session,
@@ -115,15 +125,77 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         await this.abortFuture?.promise;
     }
 
-    private async handleAbortRequest(): Promise<void> {
-        logger.debug('[remote]: doAbort');
-        if (this.queryRef) {
-            // 优雅中断：SDK 发送 result，内循环不退出，等待下一条用户消息
-            await this.queryRef.interrupt();
-        } else {
-            // Query 还没创建，直接 abort signal
-            await this.abort();
+    /**
+     * 停止请求三档分派（批次 A）：
+     * - turn：只中断当前 turn（队列照跑、后台任务存活）
+     * - turn-queue：中断 + cancel_queued（CC 层排队消息取消，经 lifecycle 帧回流终态）
+     * - turn-queue-tasks：再遍历停止全部运行中的后台任务
+     * stopKind='turn' 且本 turn 无任何模型输出时走撤回两段式：interrupt 返回后复验，
+     * 仍无输出则撤回最后 push 的用户消息（withdrawn fact），并抑制 aborted 灰行注入（spec D6/§5.2）。
+     */
+    private async handleAbortRequest(stopKind: StopKind): Promise<void> {
+        logger.debug(`[remote]: doAbort stopKind=${stopKind}`)
+        if (!this.queryRef) {
+            await this.abort()   // Query 未创建：现状不变
+            return
         }
+        if (shouldStopTasks(stopKind)) await this.stopAllBackgroundTasks()
+
+        // interrupt 签名滞后：sdk.mjs 实现 interrupt(e) 支持 { cancelQueued: true } 并返回
+        // { still_queued, cancelled? }；上游补类型后删断言（spec §5.5）
+        const interruptWithOpts = this.queryRef.interrupt.bind(this.queryRef) as
+            (opts?: { cancelQueued?: boolean }) => Promise<{ still_queued?: string[] } | undefined>
+        const receipt = await interruptWithOpts(isCancelQueued(stopKind) ? { cancelQueued: true } : undefined)
+
+        if (stopKind !== 'turn') {
+            this.emitAbortedEvent(stopKind, 0)          // CC 层被取消消息由 lifecycle 帧自动回流
+            return
+        }
+
+        const action = resolveStopAction({
+            turnHasOutput: this.turnTracking.hasOutput,
+            pumpQueueEmpty: this.isPumpQueueEmpty(),
+            hasLastPushed: this.turnTracking.lastPushedNativeId !== null,
+        })
+        if (action === 'withdraw' && this.turnTracking.lastPushedNativeId) {
+            // 复验：await interrupt() 返回即 abort 处理完成；窗口期若冒出输出则降级
+            if (this.turnTracking.hasOutput) {
+                this.emitAbortedEvent('turn', receipt?.still_queued?.length ?? 0)
+                return
+            }
+            this.session.client.emitWithdrawnFact(this.turnTracking.lastPushedNativeId)
+            this.turnTracking.lastPushedNativeId = null
+            return                                       // 撤回路径抑制 aborted event（spec D6/§5.2）
+        }
+        this.emitAbortedEvent('turn', receipt?.still_queued?.length ?? 0)
+    }
+
+    /** 遍历停止运行中的后台任务（'turn-queue-tasks' 档；单个失败不中断） */
+    private async stopAllBackgroundTasks(): Promise<void> {
+        for (const taskId of this.backgroundTaskIds) {
+            try {
+                await this.queryRef?.stopTask(taskId)
+            } catch (e) {
+                logger.warn('[remote]: stopTask failed', taskId, e)
+            }
+        }
+    }
+
+    /** gated pump 队列是否为空：MessageQueue 无待消费项，且 nextMessage 未持有暂存批次。
+     *  撤回初判用——非空说明停止后还有消息会跑，不能撤回 */
+    private isPumpQueueEmpty(): boolean {
+        return this.session.queue.size() === 0 && !this.pendingBatchHeld
+    }
+
+    /**
+     * 标记本次停止的中断灰行变体信息（aborted event「发射」）。
+     * web 的 aborted 灰行由 result 消息 terminal_reason 推导（normalizeAgent.handleResultOutput），
+     * CLI 无独立 aborted 事件——「发射」= 给下一条经过的中断 result 注入 stopKind/stillQueuedCount
+     * （消费点在 onMessage 的 result 分支）；撤回路径不调用本方法即「抑制」（spec D6/§5.2）。
+     * sdk.d.ts 保证 interrupt 回执先于被中断 turn 的 result 写出，正常时序下注入必命中。
+     */
+    private emitAbortedEvent(stopKind: StopKind, stillQueuedCount: number): void {
+        this.pendingAbortInfo = { stopKind, stillQueuedCount }
     }
 
     private async handleSwitchRequest(): Promise<void> {
@@ -156,10 +228,13 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
      * compact / 中断已在 claudeRemote 层过滤（不到此）。记忆 maxTokens/costUsd 供 compact 复用。
      */
     private handleContextUsage(resultMsg: SDKResultMessage, isCompact: boolean): void {
-        // 非 compact result 到达即 turn 正常收尾：复位输出观测（撤回复验判据，批次 A §5.3）。
-        // 中断（aborted_*）result 不经过此回调（claudeRemote 层过滤）——撤回复验读的正是
-        // 「被中断 turn 是否产出过输出」，此处提前复位会造成误判（复验永远看到 false）
+        // 非 compact result 到达即 turn 正常收尾：复位输出观测并作废撤回锚（撤回复验判据，批次 A §5.3）。
+        // 撤回窗口只存在于「消息已 push、turn 未完成」期间——turn 正常完成后消息已被处理，
+        // 不再可撤（否则闲置时点停止会误删已完成对话）。中断（aborted_*）result 不经过此回调
+        // （claudeRemote 层过滤）——撤回复验读的正是「被中断 turn 是否产出过输出」，
+        // 此处提前复位会造成误判（复验永远看到 false）
         this.turnTracking.hasOutput = false
+        this.turnTracking.lastPushedNativeId = null
         // compact 的 result：用量已由 compact_boundary 的 post_tokens 上报，此处只回填累计成本
         // （compact 自身的 total_cost_usd），避免连续 /compact 期间 lastCostUsd 冻结
         if (isCompact) {
@@ -208,7 +283,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         const messageBuffer = this.messageBuffer;
 
         this.setupAbortHandlers(session.client.rpcHandlerManager, {
-            onAbort: () => this.handleAbortRequest(),
+            onAbort: (stopKind) => this.handleAbortRequest(stopKind),
             onSwitch: () => this.handleSwitchRequest()
         });
 
@@ -346,7 +421,6 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
         const ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
 
         // 主线 assistant 到达即实时上报水位（turn 内逐步上涨）；零 usage（渠道不返回）跳过。
-        // 箭头捕获 this——onMessage 是 function 声明，内部无 this
         const reportAssistantUsage = (u: SDKAssistantMessage['message']['usage'], model?: string) => {
             if (!hasAssistantUsage(u)) return  // 渠道零值/缺失跳过（判据与 calc 同源，勿内联重算）
             this.lastAssistantUsage = u
@@ -365,7 +439,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             try { session.client.reportContextUsage(usage) } catch (e) { logger.debug('[remote]: reportContextUsage (assistant) failed', e) }
         }
 
-        // 记录 CLI 请求名（箭头捕获 this——onMessage 是 function 声明，内部无 this）。
+        // 记录 CLI 请求名（箭头捕获 this，供 onMessage 内调用）。
         // init 先于一切 assistant 到达且每次新 query（含 resume）都重发，模型切换自动更新；
         // 窗口猜测与 result.modelUsage 同源的模型名
         const rememberRequestModel = (msg: SDKMessage) => {
@@ -375,7 +449,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
             }
         }
 
-        function onMessage(message: SDKMessage) {
+        const onMessage = (message: SDKMessage): void => {
             // 重置空闲计时器（Agent 输出）
             session.client.resetIdleTimer();
 
@@ -398,6 +472,19 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     lifecycleSignal.terminalReason,
                 )
                 return
+            }
+
+            // 后台任务存活集合（批次 A『全部停止』档的遍历源）：level 信号整体替换（REPLACE 语义，
+            // 见 SDKBackgroundTasksChangedMessage——勿做增量合并）。不 early-return，保持既有落库行为。
+            // SDKSystemMessage 联合尚未收录该 subtype（SDK 0.3.251），走开放形状断言
+            if (message.type === 'system' && (message as unknown as { subtype?: string }).subtype === 'background_tasks_changed') {
+                const tasks = (message as unknown as { tasks?: { task_id?: unknown }[] }).tasks
+                this.backgroundTaskIds = new Set(
+                    Array.isArray(tasks)
+                        ? tasks.map(t => (typeof t?.task_id === 'string' ? t.task_id : null))
+                            .filter((id): id is string => id !== null)
+                        : []
+                )
             }
 
             formatClaudeMessageForInk(message, messageBuffer);
@@ -471,6 +558,22 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     return
                 }
 
+                // 中断 result 注入停止变体信息（emitAbortedEvent 的消费点，见 pendingAbortInfo 注释）。
+                // 正常/compact result 到达即作废待注入信息（跨 turn 陈旧防护）。
+                // RawJSONLines 无 'result' discriminant（见 sdkToLogConverter case 'result'），走开放形状断言
+                if ((logMessage as { type?: string }).type === 'result') {
+                    const reason = (logMessage as { terminal_reason?: unknown }).terminal_reason
+                    const interrupted = reason === 'aborted_streaming' || reason === 'aborted_tools'
+                    if (interrupted && this.pendingAbortInfo) {
+                        const target = logMessage as unknown as Record<string, unknown>
+                        target.stopKind = this.pendingAbortInfo.stopKind
+                        target.stillQueuedCount = this.pendingAbortInfo.stillQueuedCount
+                        this.pendingAbortInfo = null
+                    } else if (!interrupted) {
+                        this.pendingAbortInfo = null
+                    }
+                }
+
                 if (logMessage.type === 'user' && logMessage.message?.content) {
                     const content = Array.isArray(logMessage.message.content)
                         ? logMessage.message.content
@@ -532,7 +635,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
 
                 messageQueue.enqueue(logMessage);
             }
-        }
+        };
 
         // 入站跨会话消息落库（spec 2026-08-28 ②）：hook 观测 → 甄别 → user 消息落库。
         // 回调由 SDK hook 同步触发，任何异常就地吞掉——观测失败退化为现状（消息不落库），
@@ -624,6 +727,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                             if (pending) {
                                 const p = pending;
                                 pending = null;
+                                this.pendingBatchHeld = false;
                                 return p;
                             }
 
@@ -655,6 +759,7 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                                 if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
                                     logger.debug('[remote]: mode has changed, pending message');
                                     pending = msg;
+                                    this.pendingBatchHeld = true;
                                     return null;
                                 }
                                 modeHash = msg.hash;
@@ -817,6 +922,11 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                     // 清空 steer sink：旧 SDK input stream 已 end，避免下一轮 claudeRemote 注入新 sink 前
                     // 命中 stale sink 导致 steer push 抛错（虽已 try/catch 回填，但清空让未就绪态更明确）
                     this.steerSink = null;
+                    // 轮级状态复位：后台任务集合按「进程重启即清空」语义随轮清空（sdk.d.ts level 信号
+                    // 为 per-process）；待注入停止信息与暂存批次标记不跨轮残留
+                    this.backgroundTaskIds = new Set<string>();
+                    this.pendingAbortInfo = null;
+                    this.pendingBatchHeld = false;
                     if (this.queryControlRef) {
                         this.queryControlRef.current = null;
                     }
