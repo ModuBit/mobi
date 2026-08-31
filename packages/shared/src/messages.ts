@@ -170,7 +170,11 @@ export function isLifecycleAhead(current: MessageLifecycle | null | undefined, c
  * - 'turn-queue'：中断当前 turn + 清空两层队列（hub queued 物理删除 + CC 层 cancel_queued）
  * - 'turn-queue-tasks'：再终止全部运行中的后台任务（遍历 stopTask）
  */
-export type StopKind = 'turn' | 'turn-queue' | 'turn-queue-tasks'
+/** StopKind 的运行时取值（单一来源）：hub abort 路由的 z.enum 直接引用，
+ *  勿在消费端手写字符串数组副本（新增档位只改这里） */
+export const STOP_KIND_VALUES = ['turn', 'turn-queue', 'turn-queue-tasks'] as const
+
+export type StopKind = (typeof STOP_KIND_VALUES)[number]
 
 export const DEFAULT_STOP_KIND: StopKind = 'turn'
 

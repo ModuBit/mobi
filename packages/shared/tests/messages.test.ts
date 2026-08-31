@@ -24,6 +24,7 @@ import {
     isCancelQueued,
     shouldStopTasks,
     DEFAULT_STOP_KIND,
+    STOP_KIND_VALUES,
     LIFECYCLE_RANK,
     type MessageFact,
 } from '../src/messages'
@@ -287,6 +288,15 @@ describe('isLifecycleAhead', () => {
 describe('StopKind 判别函数', () => {
     it('缺省值为 turn', () => {
         expect(DEFAULT_STOP_KIND).toBe('turn')
+    })
+    it('STOP_KIND_VALUES 与 StopKind 三档一一对应（hub z.enum 单一来源，勿手写副本）', () => {
+        expect([...STOP_KIND_VALUES]).toEqual(['turn', 'turn-queue', 'turn-queue-tasks'])
+        // 判别函数对每个运行时取值都有定义（覆盖完备性）
+        for (const kind of STOP_KIND_VALUES) {
+            expect(typeof isCancelQueued(kind)).toBe('boolean')
+            expect(typeof shouldStopTasks(kind)).toBe('boolean')
+        }
+        expect(DEFAULT_STOP_KIND).toBe(STOP_KIND_VALUES[0])
     })
     it('turn 档不清队列不停任务', () => {
         expect(isCancelQueued('turn')).toBe(false)

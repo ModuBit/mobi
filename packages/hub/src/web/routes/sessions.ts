@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { DEFAULT_STOP_KIND, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
+import { DEFAULT_STOP_KIND, STOP_KIND_VALUES, getPermissionModesForFlavor, isPermissionModeAllowedForFlavor, toSessionSummary } from '@mobi/shared'
 import { EFFORT_LEVELS } from '@mobi/shared/modes'
 import { isWithinDir } from '@mobi/shared/pathSecurity'
 import { PermissionModeSchema } from '@mobi/shared/schemas'
@@ -89,9 +89,9 @@ const rewindSchema = z.object({
     restoreFiles: z.boolean()
 })
 
-/** abort body：停止档位三档（批次 A，与 shared StopKind 对齐）；缺省 'turn' 只中断当前 turn */
+/** abort body：停止档位三档（批次 A）；取值单一来源 shared STOP_KIND_VALUES（勿手写副本），缺省 'turn' 只中断当前 turn */
 const abortSchema = z.object({
-    stopKind: z.enum(['turn', 'turn-queue', 'turn-queue-tasks']).default(DEFAULT_STOP_KIND)
+    stopKind: z.enum(STOP_KIND_VALUES).default(DEFAULT_STOP_KIND)
 })
 
 export function createSessionsRoutes(
