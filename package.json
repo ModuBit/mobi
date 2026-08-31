@@ -29,15 +29,15 @@
     "devDependencies": {
         "@eslint/js": "^10.0.1",
         "dependency-cruiser": "^18.2.0",
-        "eslint": "^10.8.1",
+        "eslint": "^10.9.1",
         "husky": "^9.1.7",
-        "lint-staged": "^17.3.0",
+        "lint-staged": "^17.4.1",
         "typescript": "^6.0.3",
-        "typescript-eslint": "^8.67.0"
+        "typescript-eslint": "^8.68.0"
     },
     "dependencies": {
-        "@tiptap/extension-task-item": "^3.30.2",
-        "@tiptap/extension-task-list": "^3.30.2"
+        "@tiptap/extension-task-item": "^3.30.5",
+        "@tiptap/extension-task-list": "^3.30.5"
     },
     "lint-staged": {
         "packages/*/src/**/*.{ts,tsx}": "eslint --fix"
