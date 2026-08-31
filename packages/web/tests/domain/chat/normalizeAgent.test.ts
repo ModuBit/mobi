@@ -505,6 +505,59 @@ describe('normalizeAgentRecord', () => {
         }
     })
 
+    it('aborted result 未带停止对账字段时事件不含 stopKind/stillQueuedCount（null 哨兵不落档，旧格式渲染不变）', () => {
+        const result = normalizeAgentRecord(
+            baseParams.messageId,
+            baseParams.localId,
+            baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result',
+                    terminal_reason: 'aborted_tools',
+                    num_turns: 2,
+                },
+            }
+        )
+
+        const content = result?.content
+        expect(content).toMatchObject({ type: 'aborted' })
+        expect('stopKind' in (content as object)).toBe(false)
+        // 缺字段不得以 null 值落档（asNumber 缺字段返回 null，须判 null 而非 !== undefined）
+        expect('stillQueuedCount' in (content as object)).toBe(false)
+    })
+
+    it('aborted result 带停止对账字段（snake/camel 双格式）时照常透传', () => {
+        const snake = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result',
+                    terminal_reason: 'aborted_streaming',
+                    stop_kind: 'turn-queue',
+                    still_queued_count: 3,
+                },
+            }
+        )
+        expect(snake?.content).toMatchObject({ type: 'aborted', stopKind: 'turn-queue', stillQueuedCount: 3 })
+
+        const camel = normalizeAgentRecord(
+            baseParams.messageId, baseParams.localId, baseParams.createdAt,
+            {
+                type: 'output',
+                data: {
+                    type: 'result',
+                    terminal_reason: 'aborted_streaming',
+                    stopKind: 'turn',
+                    stillQueuedCount: 0,
+                },
+            }
+        )
+        // 0 是合法计数（清队列档后仍队列 0 条），不得被吞
+        expect(camel?.content).toMatchObject({ type: 'aborted', stopKind: 'turn', stillQueuedCount: 0 })
+    })
+
     it('should handle result with success and return turn-result event', () => {
         const result = normalizeAgentRecord(
             baseParams.messageId,
