@@ -425,20 +425,16 @@ export function ChatContainer({ sessionId, extraComposerButtons, extraComposerIt
     // 本次会话视图创建时刻（首帧 render 判定陈旧基线）：早于它的请求属于
     // 「会话未在场」时期，丢弃不回填——隔了会话切换的陈旧回填会覆盖用户当前输入
     const withdrawMountedAtRef = useRef(Date.now())
-    const withdrawInitializedRef = useRef(false)
     useEffect(() => {
-        // 挂载首帧只甄别陈旧：createdAt 早于视图创建时刻的滞留请求丢弃；
+        // 陈旧甄别只看 createdAt < 视图创建时刻——时间锚定判据天然幂等，effect 每次重跑直接判定即可；
         // render→effect 窗口新到的请求（createdAt >= 基线）照常落到消费回填——
         // 该窗口若被当陈旧清掉，行已被乐观移除且服务端软删，composer 回填是
         // 该文本在 UI 的唯一归宿，丢了即静默丢内容（review Important 修复）
-        if (!withdrawInitializedRef.current) {
-            withdrawInitializedRef.current = true
-            if (withdrawRequest && withdrawRequest.createdAt < withdrawMountedAtRef.current) {
-                useWithdrawStore.getState().clearSession(sessionId)
-                return
-            }
-        }
         if (!withdrawRequest) return
+        if (withdrawRequest.createdAt < withdrawMountedAtRef.current) {
+            useWithdrawStore.getState().clearSession(sessionId)
+            return
+        }
         const req = useWithdrawStore.getState().consumeWithdraw(sessionId)
         if (!req) return
         // 结构化还原成功按分段回填（附件双桶 + 引用一并恢复）；失败兜底 originalText 纯文本

@@ -23,7 +23,7 @@ import { getToolFullViewComponent } from '@/components/tool-card/views/_all'
 import type { ToolViewProps } from '@/components/tool-card/views/_all'
 import type { ToolInfo } from '@/domain/tool/types'
 
-// mock i18next
+// mock i18next：t 直接返回 key 本身，断言文案用 key 值
 vi.mock('react-i18next', async (importOriginal) => {
     const actual = await importOriginal<typeof import('react-i18next')>()
     return {
